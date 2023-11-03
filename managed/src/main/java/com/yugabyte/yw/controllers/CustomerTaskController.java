@@ -4,43 +4,41 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.inject.Inject;
+import com.google.common.base.Strings;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.CustomerTaskManager;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.CustomerTaskFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.SubTaskFormData;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.forms.UniverseResp;
-import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.models.Audit;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.TaskInfo;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.TaskType;
-import io.ebean.Query;
+import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
+import com.yugabyte.yw.models.helpers.FailedSubtasks;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
+import io.ebean.ExpressionList;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import org.apache.commons.lang.StringUtils;
+import javax.inject.Inject;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
@@ -48,8 +46,9 @@ import play.mvc.Result;
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class CustomerTaskController extends AuthenticatedController {
 
-  @Inject private RuntimeConfigFactory runtimeConfigFactory;
+  @Inject private RuntimeConfGetter confGetter;
   @Inject private Commissioner commissioner;
+  @Inject private CustomerTaskManager customerTaskManager;
 
   static final String CUSTOMER_TASK_DB_QUERY_LIMIT = "yb.customer_task_db_query_limit";
   private static final String YB_SOFTWARE_VERSION = "ybSoftwareVersion";
@@ -59,7 +58,7 @@ public class CustomerTaskController extends AuthenticatedController {
 
   private List<SubTaskFormData> fetchFailedSubTasks(UUID parentUUID) {
     TaskInfo parentTask = TaskInfo.getOrBadRequest(parentUUID);
-    Query<TaskInfo> subTaskQuery =
+    ExpressionList<TaskInfo> subTaskQuery =
         TaskInfo.find
             .query()
             .where()
@@ -69,7 +68,7 @@ public class CustomerTaskController extends AuthenticatedController {
     LinkedList<TaskInfo> result = new LinkedList<>(subTaskQuery.findList());
 
     if (TaskInfo.ERROR_STATES.contains(parentTask.getTaskState()) && result.isEmpty()) {
-      JsonNode taskError = parentTask.getTaskDetails().get("errorString");
+      JsonNode taskError = parentTask.getDetails().get("errorString");
       if ((taskError != null) && !StringUtils.isEmpty(taskError.asText())) {
         // Parent task hasn't `sub_task_group_type` set but can have some error details
         // which are not present in subtasks. Usually these errors encountered on a
@@ -88,9 +87,9 @@ public class CustomerTaskController extends AuthenticatedController {
       subTaskData.subTaskUUID = taskInfo.getTaskUUID();
       subTaskData.subTaskType = taskInfo.getTaskType().name();
       subTaskData.subTaskState = taskInfo.getTaskState().name();
-      subTaskData.creationTime = taskInfo.getCreationTime();
+      subTaskData.creationTime = taskInfo.getCreateTime();
       subTaskData.subTaskGroupType = taskInfo.getSubTaskGroupType().name();
-      JsonNode taskError = taskInfo.getTaskDetails().get("errorString");
+      JsonNode taskError = taskInfo.getDetails().get("errorString");
       subTaskData.errorString = (taskError == null) ? "null" : taskError.asText();
       subTasks.add(subTaskData);
     }
@@ -109,16 +108,20 @@ public class CustomerTaskController extends AuthenticatedController {
       taskData.title = task.getFriendlyDescription();
       taskData.createTime = task.getCreateTime();
       taskData.completionTime = task.getCompletionTime();
-      taskData.target = task.getTarget().name();
+      taskData.target = task.getTargetType().name();
       taskData.type = task.getType().name();
       taskData.typeName =
           task.getCustomTypeName() != null
               ? task.getCustomTypeName()
               : task.getType().getFriendlyName();
       taskData.targetUUID = task.getTargetUUID();
+      taskData.userEmail = task.getUserEmail();
+      String correlationId = task.getCorrelationId();
+      if (!Strings.isNullOrEmpty(correlationId)) taskData.correlationId = correlationId;
       ObjectNode versionNumbers = Json.newObject();
-      JsonNode taskDetails = taskInfo.getTaskDetails();
-      if (taskData.type == "UpgradeSoftware" && taskDetails.has(YB_PREV_SOFTWARE_VERSION)) {
+      JsonNode taskDetails = taskInfo.getDetails();
+      if (task.getType() == CustomerTask.TaskType.SoftwareUpgrade
+          && taskDetails.has(YB_PREV_SOFTWARE_VERSION)) {
         versionNumbers.put(
             YB_PREV_SOFTWARE_VERSION, taskDetails.get(YB_PREV_SOFTWARE_VERSION).asText());
         versionNumbers.put(YB_SOFTWARE_VERSION, taskDetails.get(YB_SOFTWARE_VERSION).asText());
@@ -131,12 +134,12 @@ public class CustomerTaskController extends AuthenticatedController {
     }
   }
 
-  private Map<UUID, List<CustomerTaskFormData>> fetchTasks(UUID customerUUID, UUID targetUUID) {
-    Query<CustomerTask> customerTaskQuery =
+  private Map<UUID, List<CustomerTaskFormData>> fetchTasks(Customer customer, UUID targetUUID) {
+    ExpressionList<CustomerTask> customerTaskQuery =
         CustomerTask.find
             .query()
             .where()
-            .eq("customer_uuid", customerUUID)
+            .eq("customer_uuid", customer.getUuid())
             .orderBy("create_time desc");
 
     if (targetUUID != null) {
@@ -146,7 +149,9 @@ public class CustomerTaskController extends AuthenticatedController {
     List<CustomerTask> customerTaskList =
         customerTaskQuery
             .setMaxRows(
-                runtimeConfigFactory.globalRuntimeConf().getInt(CUSTOMER_TASK_DB_QUERY_LIMIT))
+                confGetter.getConfForScope(
+                    Customer.getOrBadRequest(customer.getUuid()),
+                    CustomerConfKeys.taskDbQueryLimit))
             .orderBy("create_time desc")
             .findPagedList()
             .getList();
@@ -156,42 +161,59 @@ public class CustomerTaskController extends AuthenticatedController {
     Set<UUID> taskUuids =
         customerTaskList.stream().map(CustomerTask::getTaskUUID).collect(Collectors.toSet());
     Map<UUID, TaskInfo> taskInfoMap =
-        TaskInfo.find(taskUuids)
-            .stream()
+        TaskInfo.find(taskUuids).stream()
             .collect(Collectors.toMap(TaskInfo::getTaskUUID, Function.identity()));
+    Map<UUID, CustomerTask> lastTaskByTargetMap =
+        customerTaskList.stream()
+            .filter(c -> c.getCompletionTime() != null)
+            .collect(
+                Collectors.toMap(
+                    CustomerTask::getTargetUUID,
+                    Function.identity(),
+                    (c1, c2) -> c1.getCompletionTime().after(c2.getCompletionTime()) ? c1 : c2));
+    Map<UUID, String> updatingTaskByTargetMap =
+        commissioner.getUpdatingTaskUUIDsForTargets(customer.getId());
+    Map<UUID, String> placementModificationTaskByTargetMap =
+        commissioner.getPlacementModificationTaskUUIDsForTargets(customer.getId());
+    Map<UUID, Set<String>> allowRetryTasksByTargetMap = new HashMap<>();
+    updatingTaskByTargetMap.forEach(
+        (universeUUID, taskUUID) ->
+            allowRetryTasksByTargetMap
+                .computeIfAbsent(universeUUID, k -> new HashSet<>())
+                .add(taskUUID));
+    placementModificationTaskByTargetMap.forEach(
+        (universeUUID, taskUUID) ->
+            allowRetryTasksByTargetMap
+                .computeIfAbsent(universeUUID, k -> new HashSet<>())
+                .add(taskUUID));
     for (CustomerTask task : customerTaskList) {
-      Optional<ObjectNode> optTaskProgress =
-          commissioner.buildTaskStatus(task, taskInfoMap.get(task.getTaskUUID()));
-      // If the task progress API returns error, we will log it and not add that task
-      // to the task list for UI rendering.
-      optTaskProgress.ifPresent(
-          taskProgress -> {
-            if (taskProgress.has("error")) {
-              LOG.error(
-                  "Error fetching task progress for {}. Error: {}",
-                  task.getTaskUUID(),
-                  taskProgress.get("error"));
-            } else {
-              CustomerTaskFormData taskData =
-                  buildCustomerTaskFromData(
-                      task, taskProgress, taskInfoMap.get(task.getTaskUUID()));
-              if (taskData != null) {
-                List<CustomerTaskFormData> taskList =
-                    taskListMap.getOrDefault(task.getTargetUUID(), new ArrayList<>());
-                taskList.add(taskData);
-                taskListMap.putIfAbsent(task.getTargetUUID(), taskList);
-              }
-            }
-          });
+      TaskInfo taskInfo = taskInfoMap.get(task.getTaskUUID());
+      commissioner
+          .buildTaskStatus(task, taskInfo, allowRetryTasksByTargetMap, lastTaskByTargetMap)
+          .ifPresent(
+              taskProgress -> {
+                CustomerTaskFormData taskData =
+                    buildCustomerTaskFromData(task, taskProgress, taskInfo);
+                if (taskData != null) {
+                  List<CustomerTaskFormData> taskList =
+                      taskListMap.computeIfAbsent(task.getTargetUUID(), k -> new ArrayList<>());
+                  taskList.add(taskData);
+                }
+              });
     }
     return taskListMap;
   }
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result list(UUID customerUUID) {
-    Customer.getOrBadRequest(customerUUID);
-
-    Map<UUID, List<CustomerTaskFormData>> taskList = fetchTasks(customerUUID, null);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Map<UUID, List<CustomerTaskFormData>> taskList = fetchTasks(customer, null);
     return PlatformResults.withData(taskList);
   }
 
@@ -199,10 +221,16 @@ public class CustomerTaskController extends AuthenticatedController {
       value = "List task",
       response = CustomerTaskFormData.class,
       responseContainer = "List")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result tasksList(UUID customerUUID, UUID universeUUID) {
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     List<CustomerTaskFormData> flattenList = new ArrayList<CustomerTaskFormData>();
-    Map<UUID, List<CustomerTaskFormData>> taskList = fetchTasks(customerUUID, universeUUID);
+    Map<UUID, List<CustomerTaskFormData>> taskList = fetchTasks(customer, universeUUID);
     for (List<CustomerTaskFormData> task : taskList.values()) {
       flattenList.addAll(task);
     }
@@ -210,15 +238,27 @@ public class CustomerTaskController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result universeTasks(UUID customerUUID, UUID universeUUID) {
-    Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     Map<UUID, List<CustomerTaskFormData>> taskList =
-        fetchTasks(customerUUID, universe.universeUUID);
+        fetchTasks(customer, universe.getUniverseUUID());
     return PlatformResults.withData(taskList);
   }
 
   @ApiOperation(value = "Get a task's status", response = Object.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result taskStatus(UUID customerUUID, UUID taskUUID) {
     Customer.getOrBadRequest(customerUUID);
     CustomerTask.getOrBadRequest(customerUUID, taskUUID);
@@ -227,10 +267,20 @@ public class CustomerTaskController extends AuthenticatedController {
     return ok(responseJson);
   }
 
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.19.1.0")
   @ApiOperation(
-      value = "Get a task's failed subtasks",
+      value =
+          "Deprecated since YBA version 2.19.1.0, "
+              + "Use /api/v1/customers/{cUUID}/tasks/{tUUID}/failed_subtasks instead",
       responseContainer = "Map",
       response = Object.class)
+  @Deprecated
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result failedSubtasks(UUID customerUUID, UUID taskUUID) {
     Customer.getOrBadRequest(customerUUID);
     CustomerTask.getOrBadRequest(customerUUID, taskUUID);
@@ -241,110 +291,111 @@ public class CustomerTaskController extends AuthenticatedController {
     return ok(responseJson);
   }
 
+  @ApiOperation(value = "Get a list of task's failed subtasks", response = FailedSubtasks.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result listFailedSubtasks(UUID customerUUID, UUID taskUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    CustomerTask.getOrBadRequest(customerUUID, taskUUID);
+
+    FailedSubtasks failedSubtasks = new FailedSubtasks();
+    List<SubTaskFormData> failedSubtaskFormDataList = fetchFailedSubTasks(taskUUID);
+    failedSubtasks.failedSubTasks =
+        failedSubtaskFormDataList.stream()
+            .map(s -> FailedSubtasks.toSubtaskData(s))
+            .collect(Collectors.toList());
+    return PlatformResults.withData(failedSubtasks);
+  }
+
   @ApiOperation(
-      value = "Retry a Universe task",
-      notes = "Retry a Universe task.",
-      response = UniverseResp.class)
-  public Result retryTask(UUID customerUUID, UUID taskUUID) {
-    Customer customer = Customer.getOrBadRequest(customerUUID);
+      value = "Retry a Universe or Provider task",
+      notes = "Retry a Universe or Provider task.",
+      response = PlatformResults.YBPTask.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation =
+            @Resource(
+                path = "details.universeUUID",
+                sourceType = SourceType.DB,
+                dbClass = TaskInfo.class,
+                identifier = "tasks",
+                columnName = "uuid"))
+  })
+  public Result retryTask(UUID customerUUID, UUID taskUUID, Http.Request request) {
+    CustomerTask customerTask = customerTaskManager.retryCustomerTask(customerUUID, taskUUID);
     TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
-    CustomerTask customerTask = CustomerTask.getOrBadRequest(customerUUID, taskUUID);
-
-    JsonNode oldTaskParams = commissioner.getTaskDetails(taskUUID);
-    TaskType taskType = taskInfo.getTaskType();
     LOG.info(
-        "Will retry task {}, of type {} in {} state.", taskUUID, taskType, taskInfo.getTaskState());
-    if (!Commissioner.isTaskRetryable(taskType)) {
-      String errMsg = String.format("Invalid task type: Task %s cannot be retried", taskUUID);
-      return ApiResponse.error(BAD_REQUEST, errMsg);
-    }
-
-    UniverseTaskParams taskParams = null;
-    switch (taskType) {
-      case CreateUniverse:
-      case EditUniverse:
-      case ReadOnlyClusterCreate:
-        UniverseDefinitionTaskParams params =
-            Json.fromJson(oldTaskParams, UniverseDefinitionTaskParams.class);
-        // Reset the error string.
-        params.setErrorString(null);
-        taskParams = params;
-        break;
-      case RemoveNodeFromUniverse:
-      case DeleteNodeFromUniverse:
-      case ReleaseInstanceFromUniverse:
-        String nodeName = oldTaskParams.get("nodeName").textValue();
-        String universeUUIDStr = oldTaskParams.get("universeUUID").textValue();
-        UUID universeUUID = UUID.fromString(universeUUIDStr);
-        int expectedUniverseVersion = oldTaskParams.get("expectedUniverseVersion").asInt();
-        // Build node task params for node actions.
-        NodeTaskParams nodeTaskParams = new NodeTaskParams();
-        nodeTaskParams.nodeName = nodeName;
-        nodeTaskParams.universeUUID = universeUUID;
-        nodeTaskParams.expectedUniverseVersion = -1;
-        taskParams = nodeTaskParams;
-        break;
-      default:
-        String errMsg =
-            String.format(
-                "Invalid task type: %s. Only Universe, some Node task retries are supported.",
-                taskType);
-        return ApiResponse.error(BAD_REQUEST, errMsg);
-    }
-
-    Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
-
-    if (!taskUUID.equals(universe.getUniverseDetails().updatingTaskUUID)) {
-      String errMsg = String.format("Invalid task state: Task %s cannot be retried", taskUUID);
-      return ApiResponse.error(BAD_REQUEST, errMsg);
-    }
-    taskParams.firstTry = false;
-    taskParams.setPreviousTaskUUID(taskUUID);
-    UUID newTaskUUID = commissioner.submit(taskType, taskParams);
-    LOG.info(
-        "Submitted retry task to universe for {}:{}, task uuid = {}.",
-        universe.universeUUID,
-        universe.name,
-        newTaskUUID);
-
-    CustomerTask.create(
-        customer,
-        universe.universeUUID,
-        newTaskUUID,
-        customerTask.getTarget(),
-        customerTask.getType(),
-        universe.name);
-    LOG.info(
-        "Saved task uuid {} in customer tasks table for universe {}:{}",
-        newTaskUUID,
-        universe.universeUUID,
-        universe.name);
+        "Saved task uuid {} in customer tasks table for target {}:{}",
+        customerTask.getTaskUUID(),
+        customerTask.getTargetUUID(),
+        customerTask.getTargetName());
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.CustomerTask,
             taskUUID.toString(),
             Audit.ActionType.Retry,
-            Json.toJson(taskParams),
-            newTaskUUID);
+            Json.toJson(taskInfo),
+            customerTask.getTaskUUID());
 
-    return PlatformResults.withData(new UniverseResp(universe, newTaskUUID));
+    return new PlatformResults.YBPTask(customerTask.getTaskUUID(), customerTask.getTargetUUID())
+        .asResult();
   }
 
   @ApiOperation(
       value = "Abort a task",
       notes = "Aborts a running task",
       response = YBPSuccess.class)
-  public Result abortTask(UUID customerUUID, UUID taskUUID) {
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation =
+            @Resource(
+                path = "details.universeUUID",
+                sourceType = SourceType.DB,
+                dbClass = TaskInfo.class,
+                identifier = "tasks",
+                columnName = "uuid"))
+  })
+  public Result abortTask(UUID customerUUID, UUID taskUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
+    // Validate if task belongs to the user or not
+    CustomerTask.getOrBadRequest(customerUUID, taskUUID);
     boolean isSuccess = commissioner.abortTask(taskUUID);
     if (!isSuccess) {
       return YBPSuccess.withMessage("Task is not running.");
     }
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(), Audit.TargetType.CustomerTask, taskUUID.toString(), Audit.ActionType.Abort);
+        .createAuditEntry(
+            request, Audit.TargetType.CustomerTask, taskUUID.toString(), Audit.ActionType.Abort);
     return YBPSuccess.withMessage("Task is being aborted.");
+  }
+
+  @ApiOperation(
+      hidden = true,
+      value = "Resume a paused task",
+      notes = "Resumes a paused task",
+      response = YBPSuccess.class)
+  // Hidden API for internal consumption.
+  public Result resumeTask(UUID customerUUID, UUID taskUUID, Http.Request request) {
+    Customer.getOrBadRequest(customerUUID);
+    // Validate if task belongs to the user or not
+    CustomerTask.getOrBadRequest(customerUUID, taskUUID);
+    boolean isSuccess = commissioner.resumeTask(taskUUID);
+    if (!isSuccess) {
+      return YBPSuccess.withMessage("Task is not paused.");
+    }
+    auditService()
+        .createAuditEntry(
+            request, Audit.TargetType.CustomerTask, taskUUID.toString(), Audit.ActionType.Resume);
+    return YBPSuccess.withMessage("Task is resumed.");
   }
 }

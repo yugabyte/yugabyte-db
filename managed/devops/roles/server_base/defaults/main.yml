@@ -14,13 +14,10 @@ nproc_override_file: /etc/security/limits.d/yb-nproc.conf
 linux_packages:
   - rsync
   - openssl
-  - xxhash
-
-azure_packages:
-  - libselinux-python
 
 aarch64_packages:
   - libatomic
+  - glibc-langpack-en
 
 debian_aarch64_packages:
   - libatomic1

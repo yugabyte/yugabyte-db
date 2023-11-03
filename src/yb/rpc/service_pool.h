@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_RPC_SERVICE_POOL_H
-#define YB_RPC_SERVICE_POOL_H
+#pragma once
 
 #include <stdint.h>
 
@@ -56,7 +55,7 @@ template<class T>
 class AtomicGauge;
 
 class Counter;
-class Histogram;
+class EventStats;
 class MetricEntity;
 class Socket;
 
@@ -90,5 +89,3 @@ class ServicePool : public RpcService {
 
 } // namespace rpc
 } // namespace yb
-
-#endif // YB_RPC_SERVICE_POOL_H

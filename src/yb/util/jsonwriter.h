@@ -29,14 +29,14 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_JSONWRITER_H
-#define YB_UTIL_JSONWRITER_H
+#pragma once
 
 #include <inttypes.h>
 
 #include <memory>
 
 #include "yb/gutil/macros.h"
+#include "yb/gutil/strings/stringpiece.h"
 
 namespace google {
 namespace protobuf {
@@ -46,6 +46,9 @@ class FieldDescriptor;
 } // namespace google
 
 namespace yb {
+
+// Escape the given string using JSON rules.
+void JsonEscape(GStringPiece s, std::string* out);
 
 class JsonWriterIf;
 
@@ -63,11 +66,15 @@ class JsonWriter {
     // Pretty-print the JSON, with nice indentation, newlines, etc.
     PRETTY,
     // Print the JSON as compactly as possible.
-    COMPACT
+    COMPACT,
+    // Use PRETTY/COMPACT mode, but escape in C-style non-printable characters
+    // in strings. See CHexEscape() for details.
+    PRETTY_ESCAPE_STR,
+    COMPACT_ESCAPE_STR
   };
 
   JsonWriter(std::stringstream* out, Mode mode);
-  ~JsonWriter();
+  virtual ~JsonWriter();
 
   void Null();
   void Bool(bool b);
@@ -94,17 +101,16 @@ class JsonWriter {
   static std::string ToJson(const google::protobuf::Message& pb,
                             Mode mode);
 
- private:
+ protected:
   void ProtobufField(const google::protobuf::Message& pb,
                      const google::protobuf::FieldDescriptor* field);
-  void ProtobufRepeatedField(const google::protobuf::Message& pb,
-                             const google::protobuf::FieldDescriptor* field,
-                             int index);
+  virtual void ProtobufRepeatedField(const google::protobuf::Message& pb,
+                                     const google::protobuf::FieldDescriptor* field,
+                                     int index);
 
+ private:
   std::unique_ptr<JsonWriterIf> impl_;
   DISALLOW_COPY_AND_ASSIGN(JsonWriter);
 };
 
 } // namespace yb
-
-#endif // YB_UTIL_JSONWRITER_H

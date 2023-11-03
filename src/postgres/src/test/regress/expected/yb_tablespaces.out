@@ -105,10 +105,10 @@ CREATE SCHEMA testschema;
 CREATE TABLESPACE invalid_tablespace WITH (replica_placement='{"num_replicas": 1, "placement_blocks":[{"cloud":"nonexistent","region":"nowhere","zone":"area51","min_num_replicas":1}]}');
 -- try using unsatisfiable tablespace
 CREATE TABLE testschema.foo (i int) TABLESPACE invalid_tablespace; -- fail
-ERROR:  Invalid argument: Invalid table definition: Error creating table yugabyte.foo on the master: Not enough tablet servers in the requested placements. Need at least 1, have 0
+ERROR:  Invalid table definition: Error creating table yugabyte.foo on the master: Not enough tablet servers in the requested placements. Need at least 1, have 0
 CREATE TABLE testschema.foo (i int) TABLESPACE regress_tblspace;
 ALTER TABLE testschema.foo SET TABLESPACE invalid_tablespace; -- fail
-ERROR:  Invalid argument: Not enough tablet servers in the requested placements. Need at least 1, have 0
+ERROR:  Not enough tablet servers in the requested placements. Need at least 1, have 0
 DROP TABLE testschema.foo;
 DROP TABLESPACE invalid_tablespace;
 -- try a table
@@ -184,10 +184,10 @@ Tablespace: "regress_tblspace"
 SET default_tablespace TO '';
 -- Verify that USING INDEX TABLESPACE is not supported for primary keys.
 CREATE TABLE testschema.using_index1 (a int PRIMARY KEY USING INDEX TABLESPACE regress_tblspace);
-ERROR:  Cannot set TABLESPACE for PRIMARY KEY INDEX.
+ERROR:  cannot set TABLESPACE for PRIMARY KEY INDEX
 DETAIL:  The tablespace of the indexed table will be used.
 CREATE TABLE testschema.using_index1 (a int, PRIMARY KEY(a) USING INDEX TABLESPACE regress_tblspace);
-ERROR:  Cannot set TABLESPACE for PRIMARY KEY INDEX.
+ERROR:  cannot set TABLESPACE for PRIMARY KEY INDEX
 DETAIL:  The tablespace of the indexed table will be used.
 -- Verify that USING INDEX TABLESPACE is supported for other constraints.
 CREATE TABLE testschema.using_index2 (a int UNIQUE USING INDEX TABLESPACE regress_tblspace);
@@ -244,6 +244,9 @@ CREATE TEMPORARY TABLE temptest (a INT);
 -- Fail, cannot set tablespaces for temp tables
 ALTER TABLE temptest SET TABLESPACE regress_tblspace;
 ERROR:  cannot set tablespaces for temporary tables
+-- Fail, cannot set tablespace for temp indexes
+CREATE INDEX temp_idx_tblspc ON temptest(a) TABLESPACE regress_tblspace;
+ERROR:  cannot set tablespace for temporary index
 DROP TABLE temptest;
 -- Fail, cannot set tablespaces for temp tables
 CREATE TEMPORARY TABLE tempparttest (a int) PARTITION BY LIST (a) TABLESPACE regress_tblspace;
@@ -314,19 +317,19 @@ SELECT * FROM testschema.test_default_tab;
 
 -- tablespace should not change even if there is an index rewrite
 ALTER TABLE testschema.test_default_tab ALTER id TYPE int;
-ERROR:  This ALTER TABLE command is not yet supported.
 \d testschema.test_index1
-   Index "testschema.test_index1"
- Column |  Type  | Key? | Definition
---------+--------+------+------------
- id     | bigint | yes  | id
+    Index "testschema.test_index1"
+ Column |  Type   | Key? | Definition
+--------+---------+------+------------
+ id     | integer | yes  | id
 lsm, for table "testschema.test_default_tab"
+Tablespace: "regress_tblspace"
 
 \d testschema.test_index2
-   Index "testschema.test_index2"
- Column |  Type  | Key? | Definition
---------+--------+------+------------
- id     | bigint | yes  | id
+    Index "testschema.test_index2"
+ Column |  Type   | Key? | Definition
+--------+---------+------+------------
+ id     | integer | yes  | id
 lsm, for table "testschema.test_default_tab"
 Tablespace: "regress_tblspace"
 
@@ -340,19 +343,19 @@ SELECT * FROM testschema.test_default_tab;
 SET default_tablespace TO '';
 -- tablespace should not change if no rewrite
 ALTER TABLE testschema.test_default_tab ALTER id TYPE int;
-ERROR:  This ALTER TABLE command is not yet supported.
 \d testschema.test_index1
-   Index "testschema.test_index1"
- Column |  Type  | Key? | Definition
---------+--------+------+------------
- id     | bigint | yes  | id
+    Index "testschema.test_index1"
+ Column |  Type   | Key? | Definition
+--------+---------+------+------------
+ id     | integer | yes  | id
 lsm, for table "testschema.test_default_tab"
+Tablespace: "regress_tblspace"
 
 \d testschema.test_index2
-   Index "testschema.test_index2"
- Column |  Type  | Key? | Definition
---------+--------+------+------------
- id     | bigint | yes  | id
+    Index "testschema.test_index2"
+ Column |  Type   | Key? | Definition
+--------+---------+------+------------
+ id     | integer | yes  | id
 lsm, for table "testschema.test_default_tab"
 Tablespace: "regress_tblspace"
 
@@ -364,6 +367,7 @@ ALTER TABLE testschema.test_default_tab ALTER id TYPE bigint;
 --------+--------+------+------------
  id     | bigint | yes  | id
 lsm, for table "testschema.test_default_tab"
+Tablespace: "regress_tblspace"
 
 \d testschema.test_index2
    Index "testschema.test_index2"
@@ -453,7 +457,7 @@ SET SESSION ROLE regress_tablespace_user2;
 CREATE TABLE tablespace_table (i int) TABLESPACE regress_tblspace; -- fail
 ERROR:  permission denied for tablespace regress_tblspace
 ALTER TABLE testschema.tablespace_acl ALTER c TYPE bigint;
-ERROR:  This ALTER TABLE command is not yet supported.
+ERROR:  permission denied for schema testschema
 RESET ROLE;
 ALTER TABLESPACE regress_tblspace RENAME TO regress_tblspace_renamed;
 ERROR:  ALTER TABLESPACE not supported yet
@@ -482,13 +486,13 @@ DROP ROLE regress_tablespace_user1;
 DROP ROLE regress_tablespace_user2;
 -- Colocated Tests
 CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}');
-CREATE DATABASE colocation_test colocated = true;
+CREATE DATABASE colocation_test colocation = true;
 \c colocation_test
 -- Should fail to set tablespace on a table in a colocated database
 CREATE TABLE tab_nonkey (a INT) TABLESPACE x;
 ERROR:  cannot create colocated table with a tablespace
 -- Should succeed in setting tablespace on a table in a colocated database when opted out
-CREATE TABLE tab_nonkey (a INT) WITH (COLOCATED = false) TABLESPACE x;
+CREATE TABLE tab_nonkey (a INT) WITH (COLOCATION = false) TABLESPACE x;
 -- cleanup
 DROP TABLE tab_nonkey;
 \c yugabyte
@@ -627,3 +631,235 @@ DROP TABLE foo;
 DROP TABLE bar;
 DROP TABLESPACE valid_tablespace;
 DROP TABLESPACE LP;
+/*
+Testing that an index in a tablespace with leader preference on a closer placement is preferred
+over one on a tablespace with leader preference on a farther placement.
+*/
+CREATE TABLE foo(x int, y int);
+CREATE TABLESPACE zone_pref
+  WITH (replica_placement='{"num_replicas": 4, "placement_blocks": [
+    {"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":1},
+    {"cloud":"cloud1","region":"region1","zone":"zone2","min_num_replicas":1},
+    {"cloud":"cloud1","region":"region2","zone":"zone1","min_num_replicas":1},
+    {"cloud":"cloud2","region":"region2","zone":"zone2","min_num_replicas":1}]}');
+CREATE TABLESPACE region_pref
+  WITH (replica_placement='{"num_replicas": 4, "placement_blocks": [
+    {"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1},
+    {"cloud":"cloud1","region":"region1","zone":"zone2","min_num_replicas":1,"leader_preference":1},
+    {"cloud":"cloud1","region":"region2","zone":"zone1","min_num_replicas":1},
+    {"cloud":"cloud2","region":"region2","zone":"zone2","min_num_replicas":1}]}');
+CREATE TABLESPACE cloud_pref
+  WITH (replica_placement='{"num_replicas": 4, "placement_blocks": [
+    {"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1},
+    {"cloud":"cloud1","region":"region1","zone":"zone2","min_num_replicas":1},
+    {"cloud":"cloud1","region":"region2","zone":"zone1","min_num_replicas":1,"leader_preference":1},
+    {"cloud":"cloud2","region":"region2","zone":"zone2","min_num_replicas":1}]}');
+CREATE UNIQUE INDEX zone_pref_ind ON foo(x) INCLUDE (y) TABLESPACE zone_pref;
+CREATE UNIQUE INDEX region_pref_ind ON foo(x) INCLUDE (y) TABLESPACE region_pref;
+CREATE UNIQUE INDEX cloud_pref_ind ON foo(x) INCLUDE (y) TABLESPACE cloud_pref;
+EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
+                 QUERY PLAN
+--------------------------------------------
+ Index Only Scan using zone_pref_ind on foo
+   Index Cond: (x = 5)
+(2 rows)
+
+SET yb_enable_geolocation_costing = off;
+EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
+                 QUERY PLAN
+---------------------------------------------
+ Index Only Scan using cloud_pref_ind on foo
+   Index Cond: (x = 5)
+(2 rows)
+
+SET yb_enable_geolocation_costing = on;
+DROP INDEX zone_pref_ind;
+EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
+                  QUERY PLAN
+----------------------------------------------
+ Index Only Scan using region_pref_ind on foo
+   Index Cond: (x = 5)
+(2 rows)
+
+DROP INDEX region_pref_ind;
+EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
+                 QUERY PLAN
+---------------------------------------------
+ Index Only Scan using cloud_pref_ind on foo
+   Index Cond: (x = 5)
+(2 rows)
+
+DROP INDEX cloud_pref_ind;
+DROP TABLE foo;
+DROP TABLESPACE zone_pref;
+DROP TABLESPACE region_pref;
+DROP TABLESPACE cloud_pref;
+/*
+Testing that a leader preference > 1 is ignored in distance cost calculations.
+*/
+CREATE TABLE foo(x int, y int);
+CREATE TABLESPACE zone_pref
+  WITH (replica_placement='{"num_replicas": 4, "placement_blocks": [
+    {"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":1},
+    {"cloud":"cloud1","region":"region1","zone":"zone2","min_num_replicas":1,"leader_preference":2},
+    {"cloud":"cloud1","region":"region2","zone":"zone1","min_num_replicas":1,"leader_preference":3},
+    {"cloud":"cloud2","region":"region2","zone":"zone2","min_num_replicas":1,"leader_preference":4}]}');
+CREATE TABLESPACE region_pref
+  WITH (replica_placement='{"num_replicas": 4, "placement_blocks": [
+    {"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":4},
+    {"cloud":"cloud1","region":"region1","zone":"zone2","min_num_replicas":1,"leader_preference":1},
+    {"cloud":"cloud1","region":"region2","zone":"zone1","min_num_replicas":1,"leader_preference":2},
+    {"cloud":"cloud2","region":"region2","zone":"zone2","min_num_replicas":1,"leader_preference":3}]}');
+CREATE TABLESPACE cloud_pref
+  WITH (replica_placement='{"num_replicas": 4, "placement_blocks": [
+    {"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":3},
+    {"cloud":"cloud1","region":"region1","zone":"zone2","min_num_replicas":1,"leader_preference":4},
+    {"cloud":"cloud1","region":"region2","zone":"zone1","min_num_replicas":1,"leader_preference":1},
+    {"cloud":"cloud2","region":"region2","zone":"zone2","min_num_replicas":1,"leader_preference":2}]}');
+CREATE UNIQUE INDEX zone_pref_ind ON foo(x) INCLUDE (y) TABLESPACE zone_pref;
+CREATE UNIQUE INDEX region_pref_ind ON foo(x) INCLUDE (y) TABLESPACE region_pref;
+CREATE UNIQUE INDEX cloud_pref_ind ON foo(x) INCLUDE (y) TABLESPACE cloud_pref;
+EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
+                 QUERY PLAN
+--------------------------------------------
+ Index Only Scan using zone_pref_ind on foo
+   Index Cond: (x = 5)
+(2 rows)
+
+DROP INDEX zone_pref_ind;
+EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
+                  QUERY PLAN
+----------------------------------------------
+ Index Only Scan using region_pref_ind on foo
+   Index Cond: (x = 5)
+(2 rows)
+
+DROP INDEX region_pref_ind;
+EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
+                 QUERY PLAN
+---------------------------------------------
+ Index Only Scan using cloud_pref_ind on foo
+   Index Cond: (x = 5)
+(2 rows)
+
+DROP INDEX cloud_pref_ind;
+DROP TABLE foo;
+DROP TABLESPACE zone_pref;
+DROP TABLESPACE region_pref;
+DROP TABLESPACE cloud_pref;
+/*
+Testing that a tablespace with leader preference is preferred over one with
+no leader preferences, when they have the same placements.
+*/
+CREATE TABLE foo(x int, y int);
+CREATE TABLESPACE no_pref
+  WITH (replica_placement='{"num_replicas": 4, "placement_blocks": [
+    {"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1},
+    {"cloud":"cloud1","region":"region1","zone":"zone2","min_num_replicas":1},
+    {"cloud":"cloud1","region":"region2","zone":"zone1","min_num_replicas":1},
+    {"cloud":"cloud2","region":"region2","zone":"zone2","min_num_replicas":1}]}');
+CREATE TABLESPACE has_pref
+  WITH (replica_placement='{"num_replicas": 4, "placement_blocks": [
+    {"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1},
+    {"cloud":"cloud1","region":"region1","zone":"zone2","min_num_replicas":1,"leader_preference":1},
+    {"cloud":"cloud1","region":"region2","zone":"zone1","min_num_replicas":1},
+    {"cloud":"cloud2","region":"region2","zone":"zone2","min_num_replicas":1}]}');
+CREATE UNIQUE INDEX no_pref_ind ON foo(x) INCLUDE (y) TABLESPACE no_pref;
+CREATE UNIQUE INDEX has_pref_ind ON foo(x) INCLUDE (y) TABLESPACE has_pref;
+EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
+                QUERY PLAN
+-------------------------------------------
+ Index Only Scan using has_pref_ind on foo
+   Index Cond: (x = 5)
+(2 rows)
+
+DROP TABLE foo;
+DROP TABLESPACE no_pref;
+DROP TABLESPACE has_pref;
+/*
+Testing that more specific leader-preferenced placements are preferred over
+less specific ones.
+*/
+CREATE TABLE foo(x int, y int);
+CREATE TABLESPACE most_pref
+  WITH (replica_placement='{"num_replicas": 4, "placement_blocks": [
+    {"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":1},
+    {"cloud":"cloud1","region":"region1","zone":"zone2","min_num_replicas":1,"leader_preference":1},
+    {"cloud":"cloud1","region":"region2","zone":"zone1","min_num_replicas":1,"leader_preference":1},
+    {"cloud":"cloud2","region":"region2","zone":"zone2","min_num_replicas":1}]}');
+CREATE TABLESPACE some_pref
+  WITH (replica_placement='{"num_replicas": 4, "placement_blocks": [
+    {"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":1},
+    {"cloud":"cloud1","region":"region1","zone":"zone2","min_num_replicas":1,"leader_preference":1},
+    {"cloud":"cloud1","region":"region2","zone":"zone1","min_num_replicas":1},
+    {"cloud":"cloud2","region":"region2","zone":"zone2","min_num_replicas":1}]}');
+CREATE TABLESPACE few_pref
+  WITH (replica_placement='{"num_replicas": 4, "placement_blocks": [
+    {"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":1},
+    {"cloud":"cloud1","region":"region1","zone":"zone2","min_num_replicas":1},
+    {"cloud":"cloud1","region":"region2","zone":"zone1","min_num_replicas":1},
+    {"cloud":"cloud2","region":"region2","zone":"zone2","min_num_replicas":1}]}');
+CREATE UNIQUE INDEX few_pref_ind ON foo(x) INCLUDE (y) TABLESPACE few_pref;
+CREATE UNIQUE INDEX some_pref_ind ON foo(x) INCLUDE (y) TABLESPACE some_pref;
+CREATE UNIQUE INDEX most_pref_ind ON foo(x) INCLUDE (y) TABLESPACE most_pref;
+EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
+                QUERY PLAN
+-------------------------------------------
+ Index Only Scan using few_pref_ind on foo
+   Index Cond: (x = 5)
+(2 rows)
+
+DROP INDEX few_pref_ind;
+EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
+                 QUERY PLAN
+--------------------------------------------
+ Index Only Scan using some_pref_ind on foo
+   Index Cond: (x = 5)
+(2 rows)
+
+DROP INDEX some_pref_ind;
+EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
+                 QUERY PLAN
+--------------------------------------------
+ Index Only Scan using most_pref_ind on foo
+   Index Cond: (x = 5)
+(2 rows)
+
+DROP INDEX most_pref_ind;
+DROP TABLE foo;
+DROP TABLESPACE most_pref;
+DROP TABLESPACE some_pref;
+DROP TABLESPACE few_pref;
+/*
+Testing that a tablespace with leader preference on a close and far placement is NOT
+preferred over a tablespace with leader preference on just a medium-distance placement.
+
+We estimate based on the worst case, which means that having a far leader-preferred placement
+leads to a large cost.
+*/
+CREATE TABLE foo(x int, y int);
+CREATE TABLESPACE close_far_pref
+  WITH (replica_placement='{"num_replicas": 4, "placement_blocks": [
+    {"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":1},
+    {"cloud":"cloud1","region":"region1","zone":"zone2","min_num_replicas":1},
+    {"cloud":"cloud1","region":"region2","zone":"zone1","min_num_replicas":1,"leader_preference":1},
+    {"cloud":"cloud2","region":"region2","zone":"zone2","min_num_replicas":1}]}');
+CREATE TABLESPACE medium_pref
+  WITH (replica_placement='{"num_replicas": 4, "placement_blocks": [
+    {"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1},
+    {"cloud":"cloud1","region":"region1","zone":"zone2","min_num_replicas":1,"leader_preference":1},
+    {"cloud":"cloud1","region":"region2","zone":"zone1","min_num_replicas":1},
+    {"cloud":"cloud2","region":"region2","zone":"zone2","min_num_replicas":1}]}');
+CREATE UNIQUE INDEX close_far_pref_ind ON foo(x) INCLUDE (y) TABLESPACE close_far_pref;
+CREATE UNIQUE INDEX medium_pref_ind ON foo(x) INCLUDE (y) TABLESPACE medium_pref;
+EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
+                  QUERY PLAN
+----------------------------------------------
+ Index Only Scan using medium_pref_ind on foo
+   Index Cond: (x = 5)
+(2 rows)
+
+DROP TABLE foo;
+DROP TABLESPACE close_far_pref;
+DROP TABLESPACE medium_pref;
+

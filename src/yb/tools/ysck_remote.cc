@@ -32,6 +32,7 @@
 
 #include "yb/tools/ysck_remote.h"
 
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
@@ -54,10 +55,13 @@
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/util/flags.h"
 
-DEFINE_bool(checksum_cache_blocks, false, "Should the checksum scanners cache the read blocks");
-DEFINE_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
-DEFINE_int32(tablets_batch_size_max, 100, "How many tablets to get from the Master per RPC");
+DEFINE_UNKNOWN_bool(checksum_cache_blocks, false,
+    "Should the checksum scanners cache the read blocks");
+DEFINE_UNKNOWN_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
+DEFINE_UNKNOWN_int32(tablets_batch_size_max, 100,
+    "How many tablets to get from the Master per RPC");
 DECLARE_int64(outbound_rpc_block_size);
 DECLARE_int64(outbound_rpc_memory_limit);
 
@@ -74,7 +78,6 @@ using rpc::RpcController;
 using std::shared_ptr;
 using std::string;
 using std::vector;
-using strings::Substitute;
 using client::YBTableName;
 
 MonoDelta GetDefaultTimeout() {

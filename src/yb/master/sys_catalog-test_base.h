@@ -30,12 +30,13 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_SYS_CATALOG_TEST_BASE_H_
-#define YB_MASTER_SYS_CATALOG_TEST_BASE_H_
+#pragma once
 
 #include <gtest/gtest.h>
 
+#include "yb/master/catalog_entity_info.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
@@ -46,9 +47,6 @@
 #include "yb/util/result.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/test_util.h"
-
-using yb::rpc::Messenger;
-using yb::rpc::MessengerBuilder;
 
 namespace yb {
 namespace master {
@@ -63,26 +61,66 @@ class SysCatalogTest : public YBTest {
         new MiniMaster(Env::Default(), GetTestPath("Master"), AllocateFreePort(),
                        AllocateFreePort(), 0));
     ASSERT_OK(mini_master_->Start());
-    master_ = mini_master_->master();
+    SetLocalVars();
     ASSERT_OK(master_->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+  }
 
-    // Create a client proxy to it.
-    MessengerBuilder bld("Client");
-    client_messenger_ = ASSERT_RESULT(bld.Build());
-    rpc::ProxyCache proxy_cache(client_messenger_.get());
+  Status RestartMaster() {
+    LOG(INFO) << "Restarting master";
+    RETURN_NOT_OK(mini_master_->Restart());
+    LOG(INFO) << "Restarted master";
+
+    SetLocalVars();
+    return Status::OK();
   }
 
   void TearDown() override {
-    if (client_messenger_) {
-      client_messenger_->Shutdown();
-    }
     mini_master_->Shutdown();
     YBTest::TearDown();
   }
 
-  std::unique_ptr<Messenger> client_messenger_;
+  // Create a new TableInfo.
+  TableInfoPtr CreateUncommittedTable(const std::string& table_id,
+                           SysTablesEntryPB_State state = SysTablesEntryPB::PREPARING,
+                           Schema schema = Schema(),
+                           bool colocated = false) {
+    auto table = master_->catalog_manager()->NewTableInfo(table_id, colocated);
+    table->mutable_metadata()->StartMutation();
+    auto* metadata = &table->mutable_metadata()->mutable_dirty()->pb;
+    metadata->set_name("testtb");
+    metadata->set_version(0);
+    metadata->mutable_replication_info()->mutable_live_replicas()->set_num_replicas(1);
+    metadata->set_state(state);
+    SchemaToPB(schema, metadata->mutable_schema());
+    return table;
+  }
+
+  // Create a new TabletInfo.
+  TabletInfoPtr CreateUncommittedTablet(TableInfo *table,
+                                        const std::string& tablet_id,
+                                        const std::string& start_key = "",
+                                        const std::string& end_key = "") {
+    auto tablet = make_scoped_refptr<TabletInfo>(table, tablet_id);
+    tablet->mutable_metadata()->StartMutation();
+    auto* metadata = &tablet->mutable_metadata()->mutable_dirty()->pb;
+    metadata->set_state(SysTabletsEntryPB::PREPARING);
+    metadata->mutable_partition()->set_partition_key_start(start_key);
+    metadata->mutable_partition()->set_partition_key_end(end_key);
+    metadata->set_table_id(table->id());
+    metadata->add_table_ids(table->id());
+    return tablet;
+  }
+
   std::unique_ptr<MiniMaster> mini_master_;
   Master* master_;
+  SysCatalogTable* sys_catalog_;
+
+ private:
+  void SetLocalVars() {
+    master_ = mini_master_->master();
+    ASSERT_OK(master_->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+    sys_catalog_ = master_->catalog_manager()->sys_catalog();
+  }
 };
 
 const int64_t kLeaderTerm = 1;
@@ -112,14 +150,218 @@ std::pair<std::string, std::string> AssertMetadataEqualsHelper(C* ti_a, C* ti_b)
 #define ASSERT_METADATA_EQ(a, b) do { \
     auto string_reps = AssertMetadataEqualsHelper((a), (b)); \
     GTEST_ASSERT_( \
-      ::testing::internal::EqHelper<GTEST_IS_NULL_LITERAL_(a)>::Compare \
+      ::testing::internal::EqHelper::Compare \
           (#a, #b, string_reps.first, string_reps.second), \
           GTEST_FATAL_FAILURE_); \
   } while (false)
 
+class TestTableLoader : public Visitor<PersistentTableInfo> {
+ public:
+  TestTableLoader() {}
+  ~TestTableLoader() { Reset(); }
 
+  void Reset() {
+    for (const auto& entry :  tables) {
+      entry.second->Release();
+    }
+    tables.clear();
+  }
+
+  Status Visit(const std::string& table_id, const SysTablesEntryPB& metadata) override {
+    // Setup the table info
+    TableInfo *table = new TableInfo(table_id, /* colocated */ false);
+    auto l = table->LockForWrite();
+    l.mutable_data()->pb.CopyFrom(metadata);
+    l.Commit();
+    table->AddRef();
+    tables[table->id()] = table;
+    return Status::OK();
+  }
+
+  std::map<std::string, TableInfo*> tables;
+};
+
+class TestTabletLoader : public Visitor<PersistentTabletInfo> {
+ public:
+  TestTabletLoader() {}
+  ~TestTabletLoader() { Reset(); }
+
+  void Reset() {
+    for (const auto& entry : tablets) {
+      entry.second->Release();
+    }
+    tablets.clear();
+  }
+
+  Status Visit(const std::string& tablet_id, const SysTabletsEntryPB& metadata) override {
+    // Setup the tablet info
+    TabletInfo *tablet = new TabletInfo(nullptr, tablet_id);
+    auto l = tablet->LockForWrite();
+    l.mutable_data()->pb.CopyFrom(metadata);
+    l.Commit();
+    tablet->AddRef();
+    tablets[tablet->id()] = tablet;
+    return Status::OK();
+  }
+
+  std::map<std::string, TabletInfo*> tablets;
+};
+
+class TestClusterConfigLoader : public Visitor<PersistentClusterConfigInfo> {
+ public:
+  TestClusterConfigLoader() {}
+  ~TestClusterConfigLoader() { Reset(); }
+
+  virtual Status Visit(
+      const std::string& fake_id, const SysClusterConfigEntryPB& metadata) override {
+    CHECK(!config_info) << "We either got multiple config_info entries, or we didn't Reset()";
+    config_info = std::make_shared<ClusterConfigInfo>();
+    auto l = config_info->LockForWrite();
+    l.mutable_data()->pb.CopyFrom(metadata);
+    l.Commit();
+    return Status::OK();
+  }
+
+  void Reset() {
+    config_info.reset();
+  }
+
+  std::shared_ptr<ClusterConfigInfo> config_info = nullptr;
+};
+
+class TestNamespaceLoader : public Visitor<PersistentNamespaceInfo> {
+ public:
+  TestNamespaceLoader() {}
+  ~TestNamespaceLoader() { Reset(); }
+
+  void Reset() {
+    for (NamespaceInfo* ni : namespaces) {
+      ni->Release();
+    }
+    namespaces.clear();
+  }
+
+  Status Visit(const std::string& ns_id, const SysNamespaceEntryPB& metadata) override {
+    // Setup the namespace info
+    NamespaceInfo* const ns = new NamespaceInfo(ns_id);
+    auto l = ns->LockForWrite();
+    l.mutable_data()->pb.CopyFrom(metadata);
+    l.Commit();
+    ns->AddRef();
+    namespaces.push_back(ns);
+    return Status::OK();
+  }
+
+  std::vector<NamespaceInfo*> namespaces;
+};
+
+class TestUDTypeLoader : public Visitor<PersistentUDTypeInfo> {
+ public:
+  TestUDTypeLoader() {}
+  ~TestUDTypeLoader() { Reset(); }
+
+  void Reset() {
+    for (UDTypeInfo* tp : udtypes) {
+      tp->Release();
+    }
+    udtypes.clear();
+  }
+
+  Status Visit(const std::string& udtype_id, const SysUDTypeEntryPB& metadata) override {
+    // Setup the udtype info
+    UDTypeInfo* const tp = new UDTypeInfo(udtype_id);
+    auto l = tp->LockForWrite();
+    l.mutable_data()->pb.CopyFrom(metadata);
+    l.Commit();
+    tp->AddRef();
+    udtypes.push_back(tp);
+    return Status::OK();
+  }
+
+  std::vector<UDTypeInfo*> udtypes;
+};
+
+class TestRedisConfigLoader : public Visitor<PersistentRedisConfigInfo> {
+ public:
+  TestRedisConfigLoader() {}
+  ~TestRedisConfigLoader() { Reset(); }
+
+  void Reset() {
+    for (RedisConfigInfo* rci : config_entries) {
+      rci->Release();
+    }
+    config_entries.clear();
+  }
+
+  Status Visit(const std::string& key, const SysRedisConfigEntryPB& metadata) override {
+    // Setup the redis config info
+    RedisConfigInfo* const rci = new RedisConfigInfo(key);
+    auto l = rci->LockForWrite();
+    l.mutable_data()->pb.CopyFrom(metadata);
+    l.Commit();
+    rci->AddRef();
+    config_entries.push_back(rci);
+    return Status::OK();
+  }
+
+  std::vector<RedisConfigInfo*> config_entries;
+};
+
+class TestSysConfigLoader : public Visitor<PersistentSysConfigInfo> {
+ public:
+  TestSysConfigLoader() {}
+  ~TestSysConfigLoader() { Reset(); }
+
+  void Reset() {
+    for (SysConfigInfo* sys_config : sys_configs) {
+      sys_config->Release();
+    }
+    sys_configs.clear();
+  }
+
+  Status Visit(const std::string& id, const SysConfigEntryPB& metadata) override {
+
+    // Setup the sysconfig info.
+    SysConfigInfo* const sys_config = new SysConfigInfo(id /* config_type */);
+    auto l = sys_config->LockForWrite();
+    l.mutable_data()->pb.CopyFrom(metadata);
+    l.Commit();
+    sys_config->AddRef();
+    sys_configs.push_back(sys_config);
+    LOG(INFO) << " Current SysConfigInfo: " << sys_config->ToString();
+    return Status::OK();
+  }
+
+  std::vector<SysConfigInfo*> sys_configs;
+};
+
+class TestRoleLoader : public Visitor<PersistentRoleInfo> {
+ public:
+  TestRoleLoader() {}
+  ~TestRoleLoader() { Reset(); }
+
+  void Reset() {
+    for (RoleInfo* rl : roles) {
+      rl->Release();
+    }
+    roles.clear();
+  }
+
+  Status Visit(const RoleName& role_name, const SysRoleEntryPB& metadata) override {
+
+    // Setup the role info
+    RoleInfo* const rl = new RoleInfo(role_name);
+    auto l = rl->LockForWrite();
+    l.mutable_data()->pb.CopyFrom(metadata);
+    l.Commit();
+    rl->AddRef();
+    roles.push_back(rl);
+    LOG(INFO) << " Current Role: " << rl->ToString();
+    return Status::OK();
+  }
+
+  std::vector<RoleInfo*> roles;
+};
 
 } // namespace master
 } // namespace yb
-
-#endif // YB_MASTER_SYS_CATALOG_TEST_BASE_H_

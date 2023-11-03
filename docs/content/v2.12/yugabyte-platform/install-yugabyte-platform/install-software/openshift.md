@@ -15,22 +15,22 @@ type: docs
 
   <li>
     <a href="../default/" class="nav-link">
-      <i class="fas fa-cloud"></i>Default</a>
+      <i class="fa-solid fa-cloud"></i>Default</a>
   </li>
 
   <li>
     <a href="../kubernetes/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>Kubernetes</a>
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>Kubernetes</a>
   </li>
 
   <li>
     <a href="../airgapped/" class="nav-link">
-      <i class="fas fa-unlink"></i>Airgapped</a>
+      <i class="fa-solid fa-link-slash"></i>Airgapped</a>
   </li>
 
   <li>
     <a href="../openshift/" class="nav-link active">
-      <i class="fas fa-cubes"></i>OpenShift</a>
+      <i class="fa-solid fa-cubes"></i>OpenShift</a>
   </li>
 
 </ul>
@@ -62,7 +62,7 @@ You can install the Yugabyte Platform Operator via the OpenShift web console or 
 
 You can install the Yugabyte Platform Operator as follows:
 
-- Login to the OpenShift Container Platform (OCP) cluster’s web console using admin credentials (for example, kube:admin).
+- Log in to the OpenShift Container Platform (OCP) cluster’s web console using admin credentials (for example, kube:admin).
 - Navigate to the **Operators > OperatorHub**, search for Yugabyte Platform Operator, and then open it to display details about the operator, as shown in the following illustration:
 
   ![Operator](/images/ee/openshift-operator.png)

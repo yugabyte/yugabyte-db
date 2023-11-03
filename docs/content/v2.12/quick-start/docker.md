@@ -6,49 +6,45 @@ description: Get started using YugabyteDB in less than five minutes on Docker.
 type: docs
 ---
 
-<div class="custom-tabs tabs-style-2">
-  <ul class="tabs-name">
-    <li>
-      <a href="../../quick-start-yugabytedb-managed/" class="nav-link">
-        Use a cloud cluster
-      </a>
-    </li>
-    <li class="active">
-      <a href="../" class="nav-link">
-        Use a local cluster
-      </a>
-    </li>
-  </ul>
-</div>
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../../quick-start-yugabytedb-managed/" class="nav-link">
+      Use a cloud cluster
+    </a>
+  </li>
+  <li class="active">
+    <a href="../" class="nav-link">
+      Use a local cluster
+    </a>
+  </li>
+</ul>
 
-<div class="custom-tabs tabs-style-1">
-  <ul class="tabs-name">
-    <li>
-      <a href="../" class="nav-link">
-        <i class="fab fa-apple" aria-hidden="true"></i>
-        macOS
-      </a>
-    </li>
-    <li>
-      <a href="../linux/" class="nav-link">
-        <i class="fab fa-linux" aria-hidden="true"></i>
-        Linux
-      </a>
-    </li>
-    <li class="active">
-      <a href="../docker/" class="nav-link">
-        <i class="fab fa-docker" aria-hidden="true"></i>
-        Docker
-      </a>
-    </li>
-    <li>
-      <a href="../kubernetes/" class="nav-link">
-        <i class="fas fa-cubes" aria-hidden="true"></i>
-        Kubernetes
-      </a>
-    </li>
-  </ul>
-</div>
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../" class="nav-link">
+      <i class="fa-brands fa-apple" aria-hidden="true"></i>
+      macOS
+    </a>
+  </li>
+  <li>
+    <a href="../linux/" class="nav-link">
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
+      Linux
+    </a>
+  </li>
+  <li class="active">
+    <a href="../docker/" class="nav-link">
+      <i class="fa-brands fa-docker" aria-hidden="true"></i>
+      Docker
+    </a>
+  </li>
+  <li>
+    <a href="../kubernetes/" class="nav-link">
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
+      Kubernetes
+    </a>
+  </li>
+</ul>
 
 ## Install YugabyteDB
 
@@ -62,15 +58,15 @@ The Docker option to run local clusters is recommended only for advanced Docker 
 
 You must have the Docker runtime installed on your localhost. Follow the links below to download and install Docker if you have not done so already.
 
-<i class="fab fa-apple" aria-hidden="true"></i> [Docker for Mac](https://store.docker.com/editions/community/docker-ce-desktop-mac)
+<i class="fa-brands fa-apple" aria-hidden="true"></i> [Docker for Mac](https://store.docker.com/editions/community/docker-ce-desktop-mac)
 
-<i class="fab fa-centos"></i> [Docker for CentOS](https://store.docker.com/editions/community/docker-ce-server-centos)
+<i class="fa-brands fa-centos"></i> [Docker for CentOS](https://store.docker.com/editions/community/docker-ce-server-centos)
 
-<i class="fab fa-ubuntu"></i> [Docker for Ubuntu](https://store.docker.com/editions/community/docker-ce-server-ubuntu)
+<i class="fa-brands fa-ubuntu"></i> [Docker for Ubuntu](https://store.docker.com/editions/community/docker-ce-server-ubuntu)
 
 <i class="icon-debian"></i> [Docker for Debian](https://store.docker.com/editions/community/docker-ce-server-debian)
 
-<i class="fab fa-windows" aria-hidden="true"></i> [Docker for Windows](https://store.docker.com/editions/community/docker-ce-desktop-windows)
+<i class="fa-brands fa-windows" aria-hidden="true"></i> [Docker for Windows](https://store.docker.com/editions/community/docker-ce-desktop-windows)
 
 ### Install
 
@@ -86,7 +82,7 @@ To create a 1-node cluster with a replication factor (RF) of 1, run the command 
 
 ```sh
 $ docker run -d --name yugabyte  -p7000:7000 -p9000:9000 -p5433:5433 -p9042:9042\
- yugabytedb/yugabyte:latest bin/yugabyted start\
+ yugabytedb/yugabyte:2.12.10.0-b41 bin/yugabyted start\
  --daemon=false
 ```
 
@@ -288,7 +284,7 @@ You’ll create two java applications, `UniformLoadBalance` and `TopologyAwareLo
         config.validate();
         HikariDataSource hikariDataSource = new HikariDataSource(config);
 
-        System.out.println("Wait for some time for Hikari Pool to setup and create the connections...");
+        System.out.println("Wait for some time for Hikari Pool to set up and create the connections...");
         System.out.println("You can verify the load balancing by visiting http://<host>:13000/rpcz as discussed before.");
         System.out.println("Enter a integer to continue once verified:");
         int x = new Scanner(System.in).nextInt();
@@ -400,7 +396,7 @@ When using `DriverManager.getConnection()`, you need to include the `load-balanc
         config.validate();
         HikariDataSource hikariDataSource = new HikariDataSource(config);
 
-        System.out.println("Wait for some time for Hikari Pool to setup and create the connections...");
+        System.out.println("Wait for some time for Hikari Pool to set up and create the connections...");
         System.out.println("You can verify the load balancing by visiting http://<host>:13000/rpcz as discussed before.");
         System.out.println("Enter a integer to continue once verified:");
         int x = new Scanner(System.in).nextInt();
@@ -425,4 +421,4 @@ When using `DriverManager.getConnection()`, you need to include the `load-balanc
 
 ### Explore the driver
 
-Learn more about the [Yugabyte JDBC driver](/preview/integrations/jdbc-driver) and explore the [demo apps](https://github.com/yugabyte/pgjdbc/tree/master/examples) to understand the driver's features in depth.
+Learn more about the [YugabyteDB JDBC driver](/preview/reference/drivers/java/yugabyte-jdbc-reference/) and explore the [demo apps](https://github.com/yugabyte/pgjdbc/tree/master/examples) to understand the driver's features in depth.

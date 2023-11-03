@@ -135,7 +135,6 @@ DefineVirtualRelation(RangeVar *relation, List *tlist, bool replace,
 	if (IsYugaByteEnabled() &&
 		!IsYsqlUpgrade &&
 		!IsBootstrapProcessingMode() &&
-		!YBIsPreparingTemplates() &&
 		YbIsSystemNamespaceByName(relation->schemaname))
 	{
 		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),

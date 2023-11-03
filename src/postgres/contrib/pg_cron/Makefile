@@ -6,7 +6,7 @@ DATA_built = $(EXTENSION)--1.0.sql
 DATA = $(wildcard $(EXTENSION)--*--*.sql)
 
 REGRESS_OPTS =--temp-config=./pg_cron.conf --temp-instance=./tmp_check
-REGRESS = pg_cron-test 
+REGRESS = pg_cron-test
 
 # compilation configuration
 MODULE_big = $(EXTENSION)
@@ -16,7 +16,7 @@ ifeq ($(CC),gcc)
 else
     PG_CPPFLAGS = -std=c99 -Wall -Wextra -Werror -Wno-unused-parameter -Wno-implicit-fallthrough -Iinclude -I$(libpq_srcdir)
 endif
-SHLIB_LINK = $(libpq) -L$(YB_BUILD_ROOT)/lib -lyb_pggate
+SHLIB_LINK = $(libpq) -L$(YB_BUILD_ROOT)/lib -lyb_pggate $(filter -lintl,$(LIBS))
 EXTRA_CLEAN += $(addprefix src/,*.gcno *.gcda) # clean up after profiling runs
 
 ifdef USE_PGXS

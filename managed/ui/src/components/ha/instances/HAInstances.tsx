@@ -1,18 +1,29 @@
 import _ from 'lodash';
-import React, { FC, ReactElement, useState } from 'react';
+import { FC, ReactElement, useState } from 'react';
 import { Col, Grid, Row } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
+
 import { YBButton } from '../../common/forms/fields';
 import { useLoadHAConfiguration } from '../hooks/useLoadHAConfiguration';
-import { AddStandbyInstanceModal } from '../modals/AddStandbyInstanceModal';
 import { YBLoading } from '../../common/indicators';
 import { HAErrorPlaceholder } from '../compounds/HAErrorPlaceholder';
-import { HAPlatformInstance } from '../../../redesign/helpers/dtos';
 import { DeleteModal } from '../modals/DeleteModal';
 import { PromoteInstanceModal } from '../modals/PromoteInstanceModal';
 import { BadgeInstanceType } from '../compounds/BadgeInstanceType';
-import './HAInstances.scss';
 import { timeFormatter } from '../../../utils/TableFormatters';
+import { AddStandbyInstanceModal } from '../modals/AddStandbyInstanceModal';
+
+import { HAPlatformInstance } from '../../../redesign/helpers/dtos';
+
+import './HAInstances.scss';
+
+interface HAInstancesProps {
+  // Dispatch
+  fetchRuntimeConfigs: () => void;
+  setRuntimeConfig: (key: string, value: string) => void;
+  // State
+  runtimeConfigs: any;
+}
 
 const renderAddress = (cell: any, row: HAPlatformInstance): ReactElement => (
   <a href={row.address} target="_blank" rel="noopener noreferrer">
@@ -28,7 +39,11 @@ const renderInstanceType = (cell: HAPlatformInstance['is_leader']): ReactElement
 const renderLastBackup = (cell: HAPlatformInstance['last_backup']): ReactElement | string =>
   cell ? timeFormatter(cell) : 'n/a';
 
-export const HAInstances: FC = () => {
+export const HAInstances: FC<HAInstancesProps> = ({
+  fetchRuntimeConfigs,
+  setRuntimeConfig,
+  runtimeConfigs
+}) => {
   const [isAddInstancesModalVisible, setAddInstancesModalVisible] = useState(false);
   const [instanceToDelete, setInstanceToDelete] = useState<string>();
   const [instanceToPromote, setInstanceToPromote] = useState<string>();
@@ -57,6 +72,7 @@ export const HAInstances: FC = () => {
         />
       );
     } else {
+      // eslint-disable-next-line no-lonely-if
       if (row.is_local) {
         return (
           <YBButton
@@ -78,7 +94,8 @@ export const HAInstances: FC = () => {
   }
 
   if (error) {
-    return <HAErrorPlaceholder error={error} configUUID={config?.uuid!}/>;
+    // eslint-disable-next-line @typescript-eslint/no-non-null-asserted-optional-chain
+    return <HAErrorPlaceholder error={error} configUUID={config?.uuid!} />;
   }
 
   if (isNoHAConfigExists) {
@@ -98,6 +115,9 @@ export const HAInstances: FC = () => {
           configId={config.uuid}
           visible={isAddInstancesModalVisible}
           onClose={hideAddInstancesModal}
+          fetchRuntimeConfigs={fetchRuntimeConfigs}
+          setRuntimeConfig={setRuntimeConfig}
+          runtimeConfigs={runtimeConfigs}
         />
         <DeleteModal
           configId={config.uuid}

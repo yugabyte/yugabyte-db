@@ -44,8 +44,11 @@ comment			("#"{non_newline}*)
 %%
 
 %{
-	litbuf = pg_malloc(LITBUF_INIT);
-	litbufsize = LITBUF_INIT;
+	if(litbuf == NULL)
+	{
+		litbuf = pg_malloc(LITBUF_INIT);
+		litbufsize = LITBUF_INIT;
+	}
 %}
 
 permutation		{ return PERMUTATION; }
@@ -122,4 +125,15 @@ yyerror(const char *message)
 {
 	fprintf(stderr, "%s at line %d\n", message, yyline);
 	exit(1);
+}
+
+void spec_scanner_finish(void)
+{
+	if (litbuf != NULL)
+	{
+		pfree(litbuf);
+		litbuf = NULL;
+		litbufpos = 0;
+		litbufsize = 0;
+	}
 }

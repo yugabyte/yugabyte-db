@@ -243,7 +243,6 @@ class MemTableIterator : public InternalIterator {
       const MemTable& mem, const ReadOptions& read_options, Arena* arena)
       : bloom_(nullptr),
         prefix_extractor_(mem.prefix_extractor_),
-        valid_(false),
         arena_mode_(arena != nullptr) {
     if (prefix_extractor_ != nullptr && !read_options.total_order_seek) {
       bloom_ = mem.prefix_bloom_.get();
@@ -261,49 +260,54 @@ class MemTableIterator : public InternalIterator {
     }
   }
 
-  bool Valid() const override { return valid_; }
-  void Seek(const Slice& k) override {
+  const KeyValueEntry& Seek(Slice k) override {
     PERF_TIMER_GUARD(seek_on_memtable_time);
     PERF_COUNTER_ADD(seek_on_memtable_count, 1);
     if (bloom_ != nullptr) {
       if (!bloom_->MayContain(
               prefix_extractor_->Transform(ExtractUserKey(k)))) {
         PERF_COUNTER_ADD(bloom_memtable_miss_count, 1);
-        valid_ = false;
-        return;
+        entry_ = KeyValueEntry::Invalid();
+        return entry_;
       } else {
         PERF_COUNTER_ADD(bloom_memtable_hit_count, 1);
       }
     }
-    iter_->Seek(k, nullptr);
-    valid_ = iter_->Valid();
+    return UpdateFetchResult(iter_->Seek(k));
   }
-  void SeekToFirst() override {
-    iter_->SeekToFirst();
-    valid_ = iter_->Valid();
+
+  const KeyValueEntry& SeekToFirst() override {
+    return UpdateFetchResult(iter_->SeekToFirst());
   }
-  void SeekToLast() override {
-    iter_->SeekToLast();
-    valid_ = iter_->Valid();
+
+  const KeyValueEntry& SeekToLast() override {
+    return UpdateFetchResult(iter_->SeekToLast());
   }
-  void Next() override {
+
+  const KeyValueEntry& Next() override {
     assert(Valid());
-    iter_->Next();
-    valid_ = iter_->Valid();
+    return UpdateFetchResult(iter_->Next());
   }
-  void Prev() override {
+
+  const KeyValueEntry& Prev() override {
     assert(Valid());
-    iter_->Prev();
-    valid_ = iter_->Valid();
+    return UpdateFetchResult(iter_->Prev());
   }
-  Slice key() const override {
-    assert(Valid());
-    return GetLengthPrefixedSlice(iter_->key());
+
+  const KeyValueEntry& UpdateFetchResult(const char* entry) {
+    if (!entry) {
+      entry_.Reset();
+      return entry_;
+    }
+
+    Slice key_slice = GetLengthPrefixedSlice(entry);
+    entry_.key = key_slice;
+    entry_.value = GetLengthPrefixedSlice(key_slice.cend());
+    return entry_;
   }
-  Slice value() const override {
-    assert(Valid());
-    Slice key_slice = GetLengthPrefixedSlice(iter_->key());
-    return GetLengthPrefixedSlice(key_slice.cdata() + key_slice.size());
+
+  const KeyValueEntry& Entry() const override {
+    return entry_;
   }
 
   Status status() const override { return Status::OK(); }
@@ -323,11 +327,43 @@ class MemTableIterator : public InternalIterator {
     return true;
   }
 
+  ScanForwardResult ScanForward(
+      const Comparator* user_key_comparator, const Slice& upperbound,
+      KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) override {
+    LOG_IF(DFATAL, !Valid()) << "Iterator should be valid.";
+
+    ScanForwardResult result;
+    do {
+      const auto user_key = ExtractUserKey(key());
+      if (!upperbound.empty() && user_key_comparator->Compare(user_key, upperbound) >= 0) {
+        break;
+      }
+
+      bool skip = false;
+      if (key_filter_callback) {
+        auto kf_result =
+            (*key_filter_callback)(/*prefixed_key=*/ Slice(), /*shared_bytes=*/ 0, user_key);
+        skip = kf_result.skip_key;
+      }
+
+      if (!skip && !(*scan_callback)(user_key, value())) {
+        result.reached_upperbound = false;
+        return result;
+      }
+
+      result.number_of_keys_visited++;
+      Next();
+    } while (Valid());
+
+    result.reached_upperbound = true;
+    return result;
+  }
+
  private:
   DynamicBloom* bloom_;
   const SliceTransform* const prefix_extractor_;
   MemTableRep::Iterator* iter_;
-  bool valid_;
+  KeyValueEntry entry_;
   bool arena_mode_;
 
   // No copying allowed
@@ -413,12 +449,16 @@ KeyHandle MemTable::PrepareAdd(SequenceNumber s, ValueType type,
   KeyHandle handle = table_->Allocate(encoded_len, &buf);
 
   char* p = EncodeVarint32(buf, internal_key_size);
+  auto* begin = p;
   p = key.CopyAllTo(p);
+  prepared_add->last_key = Slice(begin, p);
   uint64_t packed = PackSequenceAndType(s, type);
   EncodeFixed64(p, packed);
   p += 8;
   p = EncodeVarint32(p, val_size);
+  begin = p;
   p = value.CopyAllTo(p);
+  prepared_add->last_value = Slice(begin, p);
   assert((unsigned)(p - buf) == (unsigned)encoded_len);
 
   if (prefix_bloom_) {
@@ -769,11 +809,11 @@ void MemTable::Update(SequenceNumber seq,
   LookupKey lkey(key, seq);
   Slice mem_key = lkey.memtable_key();
 
-  std::unique_ptr<MemTableRep::Iterator> iter(
-      table_->GetDynamicPrefixIterator());
-  iter->Seek(lkey.internal_key(), mem_key.cdata());
+  std::unique_ptr<MemTableRep::Iterator> iter(table_->GetDynamicPrefixIterator());
+  iter->SeekMemTableKey(lkey.internal_key(), mem_key.cdata());
 
-  if (iter->Valid()) {
+  const char* entry = iter->Entry();
+  if (entry) {
     // entry format is:
     //    key_length  varint32
     //    userkey  char[klength-8]
@@ -783,7 +823,6 @@ void MemTable::Update(SequenceNumber seq,
     // Check that it belongs to same user key.  We do not check the
     // sequence number since the Seek() call above should have skipped
     // all entries with overly large sequence numbers.
-    const char* entry = iter->key();
     uint32_t key_length = 0;
     const char* key_ptr = GetVarint32Ptr(entry, entry + 5, &key_length);
     if (comparator_.comparator.user_comparator()->Equal(
@@ -830,11 +869,11 @@ bool MemTable::UpdateCallback(SequenceNumber seq,
   LookupKey lkey(key, seq);
   Slice memkey = lkey.memtable_key();
 
-  std::unique_ptr<MemTableRep::Iterator> iter(
-      table_->GetDynamicPrefixIterator());
-  iter->Seek(lkey.internal_key(), memkey.cdata());
+  std::unique_ptr<MemTableRep::Iterator> iter(table_->GetDynamicPrefixIterator());
+  iter->SeekMemTableKey(lkey.internal_key(), memkey.cdata());
 
-  if (iter->Valid()) {
+  const char* entry = iter->Entry();
+  if (entry) {
     // entry format is:
     //    key_length  varint32
     //    userkey  char[klength-8]
@@ -844,7 +883,6 @@ bool MemTable::UpdateCallback(SequenceNumber seq,
     // Check that it belongs to same user key.  We do not check the
     // sequence number since the Seek() call above should have skipped
     // all entries with overly large sequence numbers.
-    const char* entry = iter->key();
     uint32_t key_length = 0;
     const char* key_ptr = GetVarint32Ptr(entry, entry + 5, &key_length);
     if (comparator_.comparator.user_comparator()->Equal(
@@ -908,12 +946,11 @@ size_t MemTable::CountSuccessiveMergeEntries(const LookupKey& key) {
   // The iterator only needs to be ordered within the same user key.
   std::unique_ptr<MemTableRep::Iterator> iter(
       table_->GetDynamicPrefixIterator());
-  iter->Seek(key.internal_key(), memkey.cdata());
+  iter->SeekMemTableKey(key.internal_key(), memkey.cdata());
 
   size_t num_successive_merges = 0;
 
-  for (; iter->Valid(); iter->Next()) {
-    const char* entry = iter->key();
+  for (; const char* entry = iter->Entry(); iter->Next()) {
     uint32_t key_length = 0;
     const char* iter_key_ptr = GetVarint32Ptr(entry, entry + 5, &key_length);
     if (!comparator_.comparator.user_comparator()->Equal(
@@ -932,7 +969,7 @@ size_t MemTable::CountSuccessiveMergeEntries(const LookupKey& key) {
 }
 
 UserFrontierPtr MemTable::GetFrontier(UpdateUserValueType type) const {
-  std::lock_guard<SpinMutex> l(frontiers_mutex_);
+  std::lock_guard l(frontiers_mutex_);
   if (!frontiers_) {
     return nullptr;
   }
@@ -950,9 +987,11 @@ UserFrontierPtr MemTable::GetFrontier(UpdateUserValueType type) const {
 void MemTableRep::Get(const LookupKey& k, void* callback_args,
                       bool (*callback_func)(void* arg, const char* entry)) {
   auto iter = GetDynamicPrefixIterator();
-  for (iter->Seek(k.internal_key(), k.memtable_key().cdata());
-       iter->Valid() && callback_func(callback_args, iter->key());
-       iter->Next()) {
+  for (iter->SeekMemTableKey(k.internal_key(), k.memtable_key().cdata());; iter->Next()) {
+    auto entry = iter->Entry();
+    if (!entry || !callback_func(callback_args, entry)) {
+      break;
+    }
   }
 }
 

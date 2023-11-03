@@ -30,12 +30,13 @@
 // under the License.
 //
 
-#ifndef YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_FS_INSPECTOR_H
-#define YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_FS_INSPECTOR_H
+#pragma once
 
 #include <functional>
 #include <string>
 #include <vector>
+
+#include "yb/common/entity_ids_types.h"
 
 #include "yb/gutil/macros.h"
 
@@ -67,6 +68,8 @@ class ExternalMiniClusterFsInspector {
   explicit ExternalMiniClusterFsInspector(ExternalMiniCluster* cluster);
   ~ExternalMiniClusterFsInspector();
 
+  Result<std::vector<std::string>> RecursivelyListFilesInDir(const std::string& path);
+  Status RecursivelyListFilesInDir(const std::string& path, std::vector<std::string>* entries);
   Status ListFilesInDir(const std::string& path, std::vector<std::string>* entries);
   size_t CountFilesInDir(const std::string& path);
   int CountWALSegmentsOnTS(size_t index);
@@ -77,6 +80,11 @@ class ExternalMiniClusterFsInspector {
   // List all of the tablets with tablet metadata on the given tablet server index.
   // This may include tablets that are tombstoned and not running.
   std::vector<std::string> ListTabletsOnTS(size_t index);
+
+  void TableWalDirsOnTS(size_t index,
+    std::function<void (const std::string&, const std::string&)> handler);
+  Result<std::vector<std::string>> ListTableWalFilesOnTS(size_t index, const TableId& table_id);
+  Result<std::vector<std::string>> ListTableSstFilesOnTS(size_t index, const TableId& table_id);
 
   // List all fs_data_roots with running tablets conut on the given tablet server index.
   std::unordered_map<std::string, std::vector<std::string>> DrivesOnTS(size_t index);
@@ -118,9 +126,9 @@ class ExternalMiniClusterFsInspector {
   Status WaitForReplicaCount(
       int expected, const MonoDelta& timeout = MonoDelta::FromSeconds(30));
   Status WaitForTabletDataStateOnTS(size_t index,
-                                            const std::string& tablet_id,
-                                            tablet::TabletDataState data_state,
-                                            const MonoDelta& timeout = MonoDelta::FromSeconds(30));
+                                    const std::string& tablet_id,
+                                    tablet::TabletDataState data_state,
+                                    const MonoDelta& timeout = MonoDelta::FromSeconds(30));
 
   // Loop and check for certain filenames in the WAL directory of the specified
   // tablet. This function returns OK if we reach a state where:
@@ -148,5 +156,3 @@ class ExternalMiniClusterFsInspector {
 
 } // namespace itest
 } // namespace yb
-
-#endif // YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_FS_INSPECTOR_H

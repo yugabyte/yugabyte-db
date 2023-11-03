@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_CQL_QL_EXEC_RESCHEDULER_H
-#define YB_YQL_CQL_QL_EXEC_RESCHEDULER_H
+#pragma once
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -35,5 +34,3 @@ class Rescheduler {
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_EXEC_RESCHEDULER_H

@@ -26,21 +26,11 @@ fi
 . "${BASH_SOURCE[0]%/*}/common-build-env.sh"
 
 NON_GTEST_TESTS=(
-  merge-test
   non_gtest_failures-test
   c_test
-  compact_on_deletion_collector_test
   db_sanity_test
-  merge_test
 )
 make_regex_from_list NON_GTEST_TESTS "${NON_GTEST_TESTS[@]}"
-
-# There gtest suites have internal dependencies between tests, so those tests can't be run
-# separately.
-TEST_BINARIES_TO_RUN_AT_ONCE=(
-  tests-rocksdb/thread_local_test
-)
-make_regex_from_list TEST_BINARIES_TO_RUN_AT_ONCE "${TEST_BINARIES_TO_RUN_AT_ONCE[@]}"
 
 VALID_TEST_BINARY_DIRS_PREFIX="tests"
 VALID_TEST_BINARY_DIRS_RE="^${VALID_TEST_BINARY_DIRS_PREFIX}-[0-9a-zA-Z\-]+"
@@ -52,8 +42,9 @@ DEFAULT_TEST_TIMEOUT_SEC=${DEFAULT_TEST_TIMEOUT_SEC:-600}
 INCREASED_TEST_TIMEOUT_SEC=$(( DEFAULT_TEST_TIMEOUT_SEC * 2 ))
 
 # This timeout will be applied by the process_tree_supervisor.py script.
+# By default we allow 32 minutes, slightly more than the 30 minutes inside JUnit.
 # shellcheck disable=SC2034
-PROCESS_TREE_SUPERVISOR_TEST_TIMEOUT_SEC=$(( 30 * 60 ))
+PROCESS_TREE_SUPERVISOR_TEST_TIMEOUT_SEC=$(( 32 * 60 ))
 
 # We grep for these log lines and show them in the main log on test failure. This regular expression
 # is used with "grep -E".
@@ -184,7 +175,6 @@ validate_test_descriptor() {
 }
 
 # Some tests are not based on the gtest framework and don't generate an XML output file.
-# Also, RocksDB's thread_list_test is like that on Mac OS X.
 is_known_non_gtest_test() {
   local test_name=$1
 
@@ -226,8 +216,6 @@ is_known_non_gtest_test_by_rel_path() {
 #   tests
 #     This is an array that should be initialized by the caller. This adds new "test descriptors" to
 #     this array.
-#   num_binaries_to_run_at_once
-#     The number of binaries to be run in one shot. This variable is incremented if it exists.
 #   num_test_cases
 #     Total number of test cases collected. Test cases are Google Test's way of grouping tests
 #     (test functions) together. Usually they are methods of the same test class.
@@ -245,12 +233,8 @@ collect_gtest_tests() {
     return
   fi
 
-  if is_known_non_gtest_test_by_rel_path "$rel_test_binary" || \
-     [[ "$rel_test_binary" =~ $TEST_BINARIES_TO_RUN_AT_ONCE_RE ]]; then
+  if is_known_non_gtest_test_by_rel_path "$rel_test_binary"; then
     tests+=( "$rel_test_binary" )
-    if [ -n "${num_binaries_to_run_at_once:-}" ]; then
-      (( num_binaries_to_run_at_once+=1 ))
-    fi
     return
   fi
 
@@ -510,7 +494,7 @@ prepare_for_running_cxx_test() {
     is_gtest_test=true
   fi
 
-  if ! "$run_at_once" && "$is_gtest_test"; then
+  if [[ $run_at_once == "false" && $is_gtest_test == "true" ]]; then
     test_cmd_line+=( "--gtest_filter=$test_name" )
   fi
 
@@ -598,7 +582,7 @@ analyze_existing_core_file() {
     echo "$debugger_input" |
       "${debugger_cmd[@]}" 2>&1 |
       grep -Ev "^\[New LWP [0-9]+\]$" |
-      "$YB_SRC_ROOT"/build-support/dedup_thread_stacks.py |
+      "$YB_SCRIPT_PATH_DEDUP_THREAD_STACKS" |
       tee -a "$append_output_to"
   ) >&2
   set -e
@@ -773,7 +757,8 @@ handle_cxx_test_xml_output() {
   expect_vars_to_be_set \
     rel_test_binary \
     test_log_path \
-    xml_output_file
+    xml_output_file \
+    junit_test_case_id
 
   if [[ ! -f "$xml_output_file" || ! -s "$xml_output_file" ]]; then
     # XML does not exist or empty (most probably due to test crash during XML generation)
@@ -790,15 +775,17 @@ handle_cxx_test_xml_output() {
       # parse_test_failure will also generate XML file in this case.
     fi
     echo "Generating an XML output file using parse_test_failure.py: $xml_output_file" >&2
-    "$YB_SRC_ROOT"/build-support/parse_test_failure.py -x \
-        "$junit_test_case_id" "$test_log_path" >"$xml_output_file"
+    "$YB_SCRIPT_PATH_PARSE_TEST_FAILURE" \
+        "--xml_output_path=$xml_output_file" \
+        "--input_path=$test_log_path" \
+        "--junit_test_case_id=$junit_test_case_id"
   fi
 
   process_tree_supervisor_append_log_to_on_error=$test_log_path
 
   stop_process_tree_supervisor
 
-  if ! "$process_supervisor_success"; then
+  if [[ $process_supervisor_success == "false" ]]; then
     log "Process tree supervisor reported that the test failed"
     test_failed=true
   fi
@@ -808,7 +795,7 @@ handle_cxx_test_xml_output() {
     log "Test succeeded, updating $xml_output_file"
   fi
   update_test_result_xml_cmd=(
-    "$YB_SRC_ROOT"/build-support/update_test_result_xml.py
+    "$YB_SCRIPT_PATH_UPDATE_TEST_RESULT_XML"
     --result-xml "$xml_output_file"
     --mark-as-failed "$test_failed"
   )
@@ -835,15 +822,22 @@ set_test_log_url_prefix() {
 determine_test_timeout() {
   expect_num_args 0 "$@"
   expect_vars_to_be_set rel_test_binary
+  local -r build_root_basename=${BUILD_ROOT##*/}
   if [[ -n ${YB_TEST_TIMEOUT:-} ]]; then
     timeout_sec=$YB_TEST_TIMEOUT
   else
-    if [[ $rel_test_binary == "tests-pgwrapper/create_initial_sys_catalog_snapshot" || \
-          $rel_test_binary == "tests-pgwrapper/pg_libpq-test" || \
-          $rel_test_binary == "tests-pgwrapper/pg_libpq_err-test" || \
-          $rel_test_binary == "tests-pgwrapper/pg_mini-test" || \
-          $rel_test_binary == "tests-pgwrapper/pg_wrapper-test" || \
-          $rel_test_binary == "tests-tools/yb-admin-snapshot-schedule-test" ]]; then
+    if [[ ( $rel_test_binary == "tests-pgwrapper/create_initial_sys_catalog_snapshot" || \
+            $rel_test_binary == "tests-pgwrapper/pg_libpq-test" || \
+            $rel_test_binary == "tests-pgwrapper/pg_libpq_err-test" || \
+            $rel_test_binary == "tests-pgwrapper/pg_mini-test" || \
+            $rel_test_binary == "tests-pgwrapper/pg_wrapper-test" || \
+            $rel_test_binary == "tests-tools/yb-admin-snapshot-schedule-test" ) ||
+          ( $build_root_basename =~ ^tsan && \
+            ( $rel_test_binary == "tests-pgwrapper/geo_transactions-test" || \
+              $rel_test_binary == "tests-pgwrapper/pg_ddl_atomicity-test" || \
+              $rel_test_binary == "tests-pgwrapper/pg_mini-test" || \
+              $rel_test_binary == "tests-pgwrapper/pg_wait_on_conflict-test" || \
+              $rel_test_binary == "tests-pgwrapper/colocation-test" ) ) ]]; then
       timeout_sec=$INCREASED_TEST_TIMEOUT_SEC
     else
       timeout_sec=$DEFAULT_TEST_TIMEOUT_SEC
@@ -896,8 +890,6 @@ run_one_cxx_test() {
   pushd "$TEST_TMPDIR" >/dev/null
 
   export YB_FATAL_DETAILS_PATH_PREFIX=$test_log_path_prefix.fatal_failure_details
-
-  about_to_start_running_test
 
   local attempts_left
   for attempts_left in {1..0}; do
@@ -958,11 +950,11 @@ handle_cxx_test_failure() {
     test_cmd_line \
     test_log_path
 
-  if ! "$test_failed" & ! did_test_succeed "$test_exit_code" "$test_log_path"; then
+  if [[ $test_failed == "false" ]] && ! did_test_succeed "$test_exit_code" "$test_log_path"; then
     test_failed=true
   fi
 
-  if [[ ${test_failed} == "true" ]]; then
+  if [[ ${test_failed} == "true" || ${YB_FORCE_REWRITE_TEST_LOGS:-0} == "1" ]]; then
     (
       rewrite_test_log "${test_log_path}"
       echo
@@ -1021,8 +1013,11 @@ run_postproces_test_result_script() {
       --fatal-details-path-prefix "$YB_FATAL_DETAILS_PATH_PREFIX"
     )
   fi
-  "$VIRTUAL_ENV/bin/python" "${YB_SRC_ROOT}/python/yb/postprocess_test_result.py" \
-    "${args[@]}" "$@"
+  (
+    set_pythonpath
+    "$VIRTUAL_ENV/bin/python" "$YB_SCRIPT_PATH_POSTPROCESS_TEST_RESULT" \
+      "${args[@]}" "$@"
+  )
 }
 
 rewrite_test_log() {
@@ -1035,7 +1030,7 @@ rewrite_test_log() {
   (
     # TODO: we should just set PYTHONPATH globally, e.g. at the time we activate virtualenv.
     set_pythonpath
-    "${VIRTUAL_ENV}/bin/python" "${YB_SRC_ROOT}/python/yb/rewrite_test_log.py" \
+    "${VIRTUAL_ENV}/bin/python" "$YB_SCRIPT_PATH_REWRITE_TEST_LOG" \
         --input-log-path "${test_log_path}" \
         --replace-original \
         --yb-src-root "${YB_SRC_ROOT}" \
@@ -1158,13 +1153,8 @@ set_sanitizer_runtime_options() {
   # Don't add a hyphen after the regex so we can handle both tsan and tsan_slow.
   if [[ $build_root_basename =~ ^tsan ]]; then
     # Configure TSAN (ignored if this isn't a TSAN build).
-    #
-    # Deadlock detection (new in clang 3.5) is disabled because:
-    # 1. The clang 3.5 deadlock detector crashes in some YB unit tests. It
-    #    needs compiler-rt commits c4c3dfd, 9a8efe3, and possibly others.
-    # 2. Many unit tests report lock-order-inversion warnings; they should be
-    #    fixed before reenabling the detector.
-    TSAN_OPTIONS="detect_deadlocks=0"
+    TSAN_OPTIONS="detect_deadlocks=1"
+    TSAN_OPTIONS+=" second_deadlock_stack=1"
     TSAN_OPTIONS+=" suppressions=$YB_SRC_ROOT/build-support/tsan-suppressions.txt"
     TSAN_OPTIONS+=" history_size=7"
     TSAN_OPTIONS+=" external_symbolizer_path=$ASAN_SYMBOLIZER_PATH"
@@ -1365,6 +1355,8 @@ run_tests_on_spark() {
     run_tests_args+=( "--reports-dir" "$JENKINS_NFS_BUILD_REPORT_BASE_DIR" --write_report )
   fi
 
+  run_tests_args+=( "$@" )
+
   set +e
   (
     set -x
@@ -1373,7 +1365,7 @@ run_tests_on_spark() {
     # Finished task 2791.0 in stage 0.0 (TID 2791) in 10436 ms on <ip> (executor 3) (2900/2908)
     time "$spark_submit_cmd_path" \
       --driver-cores "$INITIAL_SPARK_DRIVER_CORES" \
-      "$YB_SRC_ROOT/build-support/run_tests_on_spark.py" \
+      "$YB_SCRIPT_PATH_RUN_TESTS_ON_SPARK" \
       "${run_tests_args[@]}" "$@" 2>&1 | \
       grep -Ev "TaskSetManager: (Starting task|Finished task .* \([0-9]+[1-9]/[0-9]+\))" \
            --line-buffered
@@ -1476,15 +1468,7 @@ fix_gtest_cxx_test_name() {
   log "Unable to find test matching gtest_filter $YB_GTEST_FILTER"
 }
 
-# This is called immediately before we start running the test. The Spark-based test runner watches
-# for this "flag file" to appear to catch a case where run-test.sh gets totally stuck on macOS
-# before even getting to the test.
-about_to_start_running_test() {
-  if [[ -n ${YB_TEST_STARTED_RUNNING_FLAG_FILE:-} ]]; then
-    touch "$YB_TEST_STARTED_RUNNING_FLAG_FILE"
-    log "Created file $YB_TEST_STARTED_RUNNING_FLAG_FILE to indicate that the test is starting"
-  fi
-}
+user_mvn_opts_for_java_test=()
 
 # Arguments: <maven_module_name> <test_class_and_maybe_method>
 # The second argument could have slashes instead of dots, and could have an optional .java
@@ -1550,6 +1534,9 @@ run_java_test() {
     -DtempDir="$surefire_rel_tmp_dir"
     "${MVN_COMMON_OPTIONS_IN_TESTS[@]}"
   )
+  if [[ ${#user_mvn_opts_for_java_test[@]} -gt 0 ]]; then
+    mvn_opts+=( "${user_mvn_opts_for_java_test[@]}" )
+  fi
   if [[ ${YB_JAVA_TEST_OFFLINE_MODE:-1} == "1" ]]; then
     # When running in a CI/CD environment, we specify --offline because we don't want any downloads
     # to happen from Maven Central or Nexus. Everything we need should already be in the local Maven
@@ -1639,14 +1626,13 @@ run_java_test() {
   log "Test log path: $test_log_path"
 
   local mvn_output_path=""
-  about_to_start_running_test
   if [[ ${YB_REDIRECT_MVN_OUTPUT_TO_FILE:-0} == 1 ]]; then
     mvn_output_path=$surefire_reports_dir/${test_class}__mvn_output.log
   fi
 
   local attempts_left
   for attempts_left in {1..0}; do
-    if "$should_clean_test_dir" && [[ -d $surefire_reports_dir ]]; then
+    if [[ $should_clean_test_dir == "true" && -d $surefire_reports_dir ]]; then
       log "Cleaning the existing contents of: $surefire_reports_dir"
       ( set -x; rm -f "$surefire_reports_dir"/* )
     fi
@@ -1705,13 +1691,23 @@ run_java_test() {
   process_tree_supervisor_append_log_to_on_error=$test_log_path
   stop_process_tree_supervisor
 
-  if ! "$process_supervisor_success"; then
-    log "Process tree supervisor script reported an error, marking the test as failed in" \
-        "$junit_xml_path"
-    "$YB_SRC_ROOT"/build-support/update_test_result_xml.py \
-      --result-xml "$junit_xml_path" \
-      --mark-as-failed true \
-      --extra-message "Process supervisor script reported errors (e.g. unterminated processes)."
+  if [[ ${process_supervisor_success} == "false" ]]; then
+    if grep -Eq 'CentOS Linux release 7[.]' /etc/centos-release &&
+       ! python3 -c 'import psutil' &>/dev/null
+    then
+      log "Process tree supervisor script reported an error, but this is CentOS 7 and " \
+          "the psutil module is not available in the VM image that we are using. Ignoring " \
+          "the process supervisor for now. We will revert this temporary workaround after the " \
+          "CentOS 7 image is updated. JUnit XML path: $junit_xml_path"
+      process_supervisor_success=true
+    else
+      log "Process tree supervisor script reported an error, marking the test as failed in" \
+          "$junit_xml_path"
+      "$YB_SCRIPT_PATH_UPDATE_TEST_RESULT_XML" \
+        --result-xml "$junit_xml_path" \
+        --mark-as-failed true \
+        --extra-message "Process supervisor script reported errors (e.g. unterminated processes)."
+    fi
   fi
 
   if is_jenkins ||
@@ -1742,6 +1738,7 @@ run_java_test() {
   fi
 
   if [[ -f ${test_log_path} ]]; then
+    # On Jenkins, this will only happen for failed tests. (See the logic above.)
     rewrite_test_log "${test_log_path}"
   fi
   if should_gzip_test_logs; then
@@ -1753,7 +1750,8 @@ run_java_test() {
   fi
 
   declare -i java_test_exit_code=$mvn_exit_code
-  if [[ $java_test_exit_code -eq 0 ]] && ! "$process_supervisor_success"; then
+  if [[ $java_test_exit_code -eq 0 &&
+        ${process_supervisor_success} == "false" ]]; then
     java_test_exit_code=1
   fi
 
@@ -1831,6 +1829,7 @@ run_all_java_test_methods_separately() {
     # shellcheck disable=SC2030,SC2031
     export YB_RUN_JAVA_TEST_METHODS_SEPARATELY=1
     export YB_REDIRECT_MVN_OUTPUT_TO_FILE=1
+    ensure_test_tmp_dir_is_set
     declare -i num_successes=0
     declare -i num_failures=0
     declare -i total_tests=0
@@ -1853,28 +1852,26 @@ run_all_java_test_methods_separately() {
       current_time_sec=$(date +%s)
       declare -i elapsed_time_sec=$(( current_time_sec - start_time_sec ))
       declare -i avg_test_time_sec=$(( elapsed_time_sec / total_tests ))
-      heading "Current Java test stats: " \
-              "$num_successes successful," \
-              "$num_failures failed," \
-              "$total_tests total," \
-              "success rate: $success_pct%," \
-              "elapsed time: $elapsed_time_sec sec," \
-              "avg test time: $avg_test_time_sec sec"
+      log "Current Java test stats: " \
+          "$num_successes successful," \
+          "$num_failures failed," \
+          "$total_tests total," \
+          "success rate: $success_pct%," \
+          "elapsed time: $elapsed_time_sec sec," \
+          "avg test time: $avg_test_time_sec sec"
     done < <( sort "$java_test_list_path" )
   )
 }
 
 run_python_doctest() {
-  python_root=$YB_SRC_ROOT/python
-  local PYTHONPATH
-  export PYTHONPATH=$python_root
+  set_pythonpath
 
   local IFS=$'\n'
   local file_list
   file_list=$( cd "$YB_SRC_ROOT" && git ls-files '*.py' )
 
   local python_file
-  for python_file in $file_list; do
+  for python_file in ${file_list}; do
     local basename=${python_file##*/}
     if [[ $python_file == managed/* ||
           $python_file == cloud/* ||
@@ -1931,7 +1928,9 @@ resolve_and_run_java_test() {
   local rel_java_src_path=${java_test_class//./\/}
   if ! is_jenkins; then
     log "Java test class: $java_test_class"
-    log "Java test method name and optionally a parameter set index: $java_test_method_name"
+    if [[ -n $java_test_method_name ]]; then
+      log "Java test method name and optionally a parameter set index: $java_test_method_name"
+    fi
   fi
 
   local module_name=""
@@ -2060,14 +2059,11 @@ run_cmake_unit_tests() {
 
   local cmake_files=( CMakeLists.txt )
   local IFS=$'\n'
-  local src_subdir
   local line
-  for src_subdir in src ent/src; do
-    ensure_directory_exists "$YB_SRC_ROOT/$src_subdir"
-    while IFS='' read -r line; do
-      cmake_files+=( "$line" )
-    done < <( find "$YB_SRC_ROOT/$src_subdir" -name "CMakeLists*.txt" )
-  done
+  ensure_directory_exists "$YB_SRC_ROOT/src"
+  while IFS='' read -r line; do
+    cmake_files+=( "$line" )
+  done < <( find "$YB_SRC_ROOT/src" -name "CMakeLists*.txt" )
   while IFS='' read -r line; do
     cmake_files+=( "$line" )
   done < <( find "$YB_SRC_ROOT/cmake_modules" -name "*.cmake" )

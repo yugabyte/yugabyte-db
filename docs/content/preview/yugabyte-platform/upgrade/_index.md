@@ -9,7 +9,7 @@ menu:
   preview_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: upgrade
-    weight: 649
+    weight: 700
 type: indexpage
 ---
 
@@ -28,7 +28,6 @@ You can upgrade YugabyteDB Anywhere to a newer version.
       </div>
     </a>
   </div>
-
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="upgrade-yp-kubernetes/">

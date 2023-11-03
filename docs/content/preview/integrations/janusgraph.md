@@ -4,68 +4,49 @@ linkTitle: JanusGraph
 description: JanusGraph
 aliases:
 menu:
-  preview:
+  preview_integrations:
     identifier: janusgraph
-    parent: integrations
+    parent: integrations-other
     weight: 571
 type: docs
 ---
 
-In this tutorial, you first set up [JanusGraph](https://janusgraph.org/) to work with YugabyteDB as the underlying database. Then, using the Gremlin console, you load some data and run some graph commands.
+This tutorial describes how to set up [JanusGraph](https://janusgraph.org/) to work with YugabyteDB and use the Gremlin console to load some data and run some graph commands.
 
-## 1. Start local cluster
+## Prerequisites
 
-Start a cluster on your [local computer](../../quick-start/). Check that you are able to connect to YugabyteDB using `ycqlsh` by executing the following:
+To use JanusGraph with YugabyteDB, you need the following:
 
-```sh
-$ ycqlsh
-```
+- Install YugabyteDB and start a single node local cluster. Refer to [Quick start](../../quick-start/).
+- JanusGraph. You can download from the [JanusGraph downloads page](https://github.com/JanusGraph/janusgraph/releases). This tutorial uses v0.6.2.
 
-```output
-Connected to local cluster at 127.0.0.1:9042.
-[ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
-Use HELP for help.
-```
+  ```sh
+  $ wget https://github.com/JanusGraph/janusgraph/releases/download/v0.6.2/janusgraph-0.6.2.zip
+  $ unzip janusgraph-0.6.2.zip
+  $ cd janusgraph-0.6.2/lib
+  ```
 
-```sql
-ycqlsh> DESCRIBE KEYSPACES;
-```
+- Download [cassandra-driver-core-3.8.0-yb-6.jar](https://repo1.maven.org/maven2/com/yugabyte/cassandra-driver-core/3.8.0-yb-6/cassandra-driver-core-3.8.0-yb-6.jar) and copy it into `janusgraph-0.6.2/lib`.
 
-```output
-system_schema  system_auth  system
+  Rename the existing Cassandra driver:
 
-ycqlsh>
-```
+  ```sh
+  mv cassandra-driver-core-3.1.4.jar cassandra-driver-core-3.1.4.jar.orig
+  ```
 
-## 2. Download JanusGraph
+## Run JanusGraph with YugabyteDB
 
-- Download from the [JanusGraph downloads page](https://github.com/JanusGraph/janusgraph/releases). This tutorial uses the `0.2.0` version of JanusGraph.
-
-```sh
-$ wget https://github.com/JanusGraph/janusgraph/releases/download/v0.2.0/janusgraph-0.2.0-hadoop2.zip
-$ unzip janusgraph-0.2.0-hadoop2.zip
-$ cd janusgraph-0.2.0-hadoop2/lib
-```
-
-- Download the [cassandra-driver-core-3.8.0-yb-6.jar](https://repo1.maven.org/maven2/com/yugabyte/cassandra-driver-core/3.8.0-yb-6/cassandra-driver-core-3.8.0-yb-6.jar) and copy it into `janusgraph-0.2.0-hadoop2/lib`.
-
-- Rename the existing cassandra driver.
-
-```sh
-mv cassandra-driver-core-3.1.4.jar cassandra-driver-core-3.1.4.jar.orig
-```
-
-## 3. Run JanusGraph with YugabyteDB
-
-- Start the Gremlin console by running `./bin/gremlin.sh`. You should see something like the following.
+Start the Gremlin console by running the following:
 
 ```sh
 $ ./bin/gremlin.sh
 ```
 
+You should see output similar to the following:
+
 ```output
-         \,,,/
-         (o o)
+        \,,,/
+        (o o)
 -----oOOo-(3)-oOOo-----
 plugin activated: janusgraph.imports
 plugin activated: tinkerpop.server
@@ -76,7 +57,7 @@ plugin activated: tinkerpop.tinkergraph
 gremlin>
 ```
 
-- Now use the YCQL config to initialize JanusGraph to talk to Yugabyte.
+Use the YCQL configuration to initialize JanusGraph to talk to YugabyteDB.
 
 ```sql
 gremlin> graph = JanusGraphFactory.open('conf/janusgraph-cql.properties')
@@ -86,13 +67,13 @@ gremlin> graph = JanusGraphFactory.open('conf/janusgraph-cql.properties')
 ==>standardjanusgraph[cql:[127.0.0.1]]
 ```
 
-- Open the YugabyteDB UI to verify that the `janusgraph` keyspace and the necessary tables were created by opening the following URL in a web browser: `http://localhost:7000/` (replace `localhost` with the IP address of any master node in a remote deployment). You should see the following.
+Open the YugabyteDB Admin console to verify that the `janusgraph` keyspace and the necessary tables were created by navigating to <http://localhost:7000/> (replace `localhost` with the IP address of any master node in a remote deployment). You should see the following:
 
 ![List of keyspaces and tables when running JanusGraph on YugabyteDB](/images/develop/ecosystem-integrations/janusgraph/yb-janusgraph-tables.png)
 
-## 4. Load sample data
+### Load sample data
 
-We are going to load the sample data that JanusGraph ships with - the Graph of the Gods. You can do this by running the following:
+You can load the sample data that JanusGraph ships with - the Graph of the Gods. You can do this by running the following:
 
 ```sh
 gremlin> GraphOfTheGodsFactory.loadWithoutMixedIndex(graph,true)
@@ -110,13 +91,19 @@ gremlin> g = graph.traversal()
 ==>graphtraversalsource[standardjanusgraph[cql:[127.0.0.1]], standard]
 ```
 
-## 5. Graph traversal examples
-
-For reference, here is the graph data loaded by the Graph of the Gods. You can find a lot more useful information about this in the [JanusGraph getting started page](https://docs.janusgraph.org/getting-started/basic-usage/).
+For reference, the following illustration shows the data loaded by the Graph of the Gods. For more information about the dataset, refer to [Basic usage](https://docs.janusgraph.org/getting-started/basic-usage/) in the JanusGraph documentation.
 
 ![Graph of the Gods](/images/develop/ecosystem-integrations/janusgraph/graph-of-the-gods-2.png)
 
-- Retrieve the Saturn vertex
+## Examples
+
+The following examples are derived from the examples in the JanusGraph documentation.
+
+### Graph traversal
+
+#### Queries about Hercules
+
+Retrieve the Saturn vertex.
 
 ```sh
 gremlin> saturn = g.V().has('name', 'saturn').next()
@@ -126,7 +113,7 @@ gremlin> saturn = g.V().has('name', 'saturn').next()
 ==>v[4168]
 ```
 
-- Who is Saturn’s grandchild?
+Who is Saturn's grandchild?
 
 ```sh
 gremlin> g.V(saturn).in('father').in('father').values('name')
@@ -136,7 +123,7 @@ gremlin> g.V(saturn).in('father').in('father').values('name')
 ==>hercules
 ```
 
-- Queries about Hercules
+Retrieve the Hercules vertex.
 
 ```sh
 gremlin> hercules = g.V(saturn).repeat(__.in('father')).times(2).next()
@@ -146,8 +133,9 @@ gremlin> hercules = g.V(saturn).repeat(__.in('father')).times(2).next()
 ==>v[4120]
 ```
 
+Who were the parents of Hercules?
+
 ```sql
-// Who were the parents of Hercules?
 gremlin> g.V(hercules).out('father', 'mother').values('name')
 ```
 
@@ -156,8 +144,9 @@ gremlin> g.V(hercules).out('father', 'mother').values('name')
 ==>alcmene
 ```
 
+Were the parents of Hercules gods or humans?
+
 ```sql
-// Were the parents of Hercules gods or humans?
 gremlin> g.V(hercules).out('father', 'mother').label()
 ```
 
@@ -166,8 +155,9 @@ gremlin> g.V(hercules).out('father', 'mother').label()
 ==>human
 ```
 
+Who did Hercules battle?
+
 ```sql
-// Who did Hercules battle?
 gremlin> g.V(hercules).out('battled').valueMap()
 ```
 
@@ -177,8 +167,9 @@ gremlin> g.V(hercules).out('battled').valueMap()
 ==>[name:[cerberus]]
 ```
 
+Who did Hercules battle after time 1?
+
 ```sql
-// Who did Hercules battle after time 1?
 gremlin> g.V(hercules).outE('battled').has('time', gt(1)).inV().values('name')
 ```
 
@@ -187,9 +178,9 @@ gremlin> g.V(hercules).outE('battled').has('time', gt(1)).inV().values('name')
 ==>hydra
 ```
 
-## 6. Complex graph traversal examples
+### Complex graph traversal
 
-- Who are Pluto's cohabitants?
+Retrieve the Pluto vertex.
 
 ```sql
 gremlin> pluto = g.V().has('name', 'pluto').next()
@@ -199,8 +190,9 @@ gremlin> pluto = g.V().has('name', 'pluto').next()
 ==>v[8416]
 ```
 
+Who are Pluto's cohabitants?
+
 ```sql
-// who are pluto's cohabitants?
 gremlin> g.V(pluto).out('lives').in('lives').values('name')
 ```
 
@@ -209,8 +201,9 @@ gremlin> g.V(pluto).out('lives').in('lives').values('name')
 ==>cerberus
 ```
 
+Pluto can't be his own cohabitant:
+
 ```sql
-// pluto can't be his own cohabitant
 gremlin> g.V(pluto).out('lives').in('lives').where(is(neq(pluto))).values('name')
 ```
 
@@ -226,10 +219,11 @@ gremlin> g.V(pluto).as('x').out('lives').in('lives').where(neq('x')).values('nam
 ==>cerberus
 ```
 
-- Queries about Pluto’s Brothers.
+#### Queries about Pluto's Brothers
+
+Where do Pluto's brothers live?
 
 ```sql
-// where do pluto's brothers live?
 gremlin> g.V(pluto).out('brother').out('lives').values('name')
 ```
 
@@ -238,8 +232,9 @@ gremlin> g.V(pluto).out('brother').out('lives').values('name')
 ==>sky
 ```
 
+Which brother lives in which place?
+
 ```sql
-// which brother lives in which place?
 gremlin> g.V(pluto).out('brother').as('god').out('lives').as('place').select('god', 'place')
 ```
 
@@ -248,8 +243,9 @@ gremlin> g.V(pluto).out('brother').as('god').out('lives').as('place').select('go
 ==>[god:v[8240],place:v[4144]]
 ```
 
+What is the name of the brother and the name of the place?
+
 ```sql
-// what is the name of the brother and the name of the place?
 gremlin> g.V(pluto).out('brother').as('god').out('lives').as('place').select('god', 'place').by('name')
 ```
 
@@ -258,12 +254,11 @@ gremlin> g.V(pluto).out('brother').as('god').out('lives').as('place').select('go
 ==>[god:jupiter,place:sky]
 ```
 
-## 7. Global graph index examples
+### Global graph index
 
-Geo-spatial indexes - events that have happened within 50 kilometers of Athens (latitude:37.97 and long:23.72).
+Show all events that occurred in 50 kilometers of Athens (latitude:37.97 and long:23.72).
 
 ```sql
-// Show all events that happened within 50 kilometers of Athens (latitude:37.97 and long:23.72).
 gremlin> g.E().has('place', geoWithin(Geoshape.circle(37.97, 23.72, 50)))
 ```
 
@@ -272,8 +267,9 @@ gremlin> g.E().has('place', geoWithin(Geoshape.circle(37.97, 23.72, 50)))
 ==>e[3yb-36g-7x1-9io][4120-battled->12336]
 ```
 
+For events that occurred in 50 kilometers of Athens, show who battled whom.
+
 ```sql
-// For these events that happened within 50 kilometers of Athens, show who battled whom.
 gremlin> g.E().has('place', geoWithin(Geoshape.circle(37.97, 23.72, 50))).as('source').inV().as('god2').select('source').outV().as('god1').select('god1', 'god2').by('name')
 ```
 

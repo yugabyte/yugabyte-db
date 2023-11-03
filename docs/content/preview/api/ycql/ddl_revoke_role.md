@@ -29,7 +29,7 @@ This statement is enabled by setting the YB-TServer flag [`--use_cassandra_authe
 
 ### Grammar
 
-```
+```ebnf
 revoke_role ::= REVOKE ROLE role_name FROM role_name
 ```
 

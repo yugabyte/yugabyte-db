@@ -7,28 +7,29 @@
 EXPLAIN (COSTS OFF) SELECT count(*) FROM airports WHERE iso_region = 'US-CA';
                       QUERY PLAN
 -------------------------------------------------------
- Aggregate
+ Finalize Aggregate
    ->  Index Only Scan using airports_idx2 on airports
          Index Cond: (iso_region = 'US-CA'::text)
-(3 rows)
+         Partial Aggregate: true
+(4 rows)
 
 EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
           ORDER BY ident;
-                 QUERY PLAN
---------------------------------------------
+                   QUERY PLAN
+-------------------------------------------------
  Index Scan using airports_pkey on airports
    Index Cond: (iso_region = 'US-CA'::text)
-   Filter: (type = 'small_airport'::text)
+   Remote Filter: (type = 'small_airport'::text)
 (3 rows)
 
 EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
           ORDER BY ident LIMIT 1;
-                    QUERY PLAN
---------------------------------------------------
+                      QUERY PLAN
+-------------------------------------------------------
  Limit
    ->  Index Scan using airports_pkey on airports
          Index Cond: (iso_region = 'US-CA'::text)
-         Filter: (type = 'small_airport'::text)
+         Remote Filter: (type = 'small_airport'::text)
 (4 rows)
 
 --
@@ -330,10 +331,10 @@ EXPLAIN (COSTS OFF) SELECT gps_code FROM airports;
 
 -- Use '!=' on hash column.
 EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region != 'US-CA';
-               QUERY PLAN
------------------------------------------
+                   QUERY PLAN
+------------------------------------------------
  Seq Scan on airports
-   Filter: (iso_region <> 'US-CA'::text)
+   Remote Filter: (iso_region <> 'US-CA'::text)
 (2 rows)
 
 -- ORDER BY hash column.

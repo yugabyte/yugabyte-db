@@ -1,7 +1,6 @@
 package com.yugabyte.yw.common.logging;
 
-import org.junit.Test;
-import org.slf4j.MDC;
+import static org.junit.Assert.*;
 
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
@@ -13,8 +12,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-
-import static org.junit.Assert.*;
+import org.junit.Test;
+import org.slf4j.MDC;
 
 public class MDCAwareThreadPoolExecutorTest {
   @Test

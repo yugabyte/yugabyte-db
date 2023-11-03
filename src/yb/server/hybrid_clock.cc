@@ -35,19 +35,18 @@
 #include <algorithm>
 #include <mutex>
 
-#include <glog/logging.h>
-
 #include "yb/gutil/bind.h"
 #include "yb/gutil/walltime.h"
 
 #include "yb/util/errno.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
+#include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
 
-DEFINE_bool(use_hybrid_clock, true,
+DEFINE_UNKNOWN_bool(use_hybrid_clock, true,
             "Whether HybridClock should be used as the default clock"
             " implementation. This should be disabled for testing purposes only.");
 TAG_FLAG(use_hybrid_clock, hidden);
@@ -65,17 +64,17 @@ METRIC_DEFINE_gauge_int64(server, hybrid_clock_skew,
                            yb::MetricUnit::kMicroseconds,
                            "Server clock skew.");
 
-DEFINE_string(time_source, "",
+DEFINE_UNKNOWN_string(time_source, "",
               "The clock source that HybridClock should use (for tests only). "
               "Leave empty for WallClock, other values depend on added clock providers and "
               "specific for appropriate tests, that adds them.");
 TAG_FLAG(time_source, hidden);
 
-DEFINE_bool(fail_on_out_of_range_clock_skew, true,
+DEFINE_UNKNOWN_bool(fail_on_out_of_range_clock_skew, true,
             "In case transactional tables are present, crash the process if clock skew greater "
             "than the configured maximum.");
 
-DEFINE_uint64(clock_skew_force_crash_bound_usec, 60000000,
+DEFINE_UNKNOWN_uint64(clock_skew_force_crash_bound_usec, 60000000,
               "If the clock skew larger than this amount (microseconds) is observed, we will force "
               "a crash regardless of the value of fail_on_out_of_range_clock_skew. This is useful "
               "for avoiding really large hybrid clock jumps. Set to 0 to disable the check. Note "
@@ -83,7 +82,6 @@ DEFINE_uint64(clock_skew_force_crash_bound_usec, 60000000,
 
 DECLARE_uint64(max_clock_skew_usec);
 
-using yb::Status;
 using strings::Substitute;
 
 namespace yb {
@@ -106,7 +104,7 @@ PhysicalClockPtr GetClock(const std::string& options) {
   auto pos = options.find(',');
   auto name = pos == std::string::npos ? options : options.substr(0, pos);
   auto arg = pos == std::string::npos ? std::string() : options.substr(pos + 1);
-  std::lock_guard<std::mutex> lock(providers_mutex);
+  std::lock_guard lock(providers_mutex);
   auto it = providers.find(name);
   if (it == providers.end()) {
     LOG(DFATAL) << "Unknown time source: " << name;
@@ -118,7 +116,7 @@ PhysicalClockPtr GetClock(const std::string& options) {
 } // namespace
 
 void HybridClock::RegisterProvider(std::string name, PhysicalClockProvider provider) {
-  std::lock_guard<std::mutex> lock(providers_mutex);
+  std::lock_guard lock(providers_mutex);
   providers.emplace(std::move(name), std::move(provider));
 }
 
@@ -144,7 +142,7 @@ HybridTimeRange HybridClock::NowRange() {
   uint64_t error;
 
   NowWithError(&now, &error);
-  auto max_global_now = HybridTimeFromMicroseconds(
+  auto max_global_now = HybridTime::FromMicros(
       clock_->MaxGlobalTime({now.GetPhysicalValueMicros(), error}));
   return std::make_pair(now, max_global_now);
 }
@@ -174,6 +172,8 @@ void HybridClock::NowWithError(HybridTime *hybrid_time, uint64_t *max_error_usec
            (ANNOTATE_UNPROTECTED_READ(FLAGS_clock_skew_force_crash_bound_usec) > 0 &&
             delta_us > ANNOTATE_UNPROTECTED_READ(FLAGS_clock_skew_force_crash_bound_usec))) &&
           clock_skew_control_enabled.load(std::memory_order_acquire)) {
+        TryRunChronycTracking();
+        TryRunChronycSourcestats();
         LOG(FATAL) << "Too big clock skew is detected: " << delta << ", while max allowed is: "
                    << max_allowed << "; clock_skew_force_crash_bound_usec="
                    << ANNOTATE_UNPROTECTED_READ(FLAGS_clock_skew_force_crash_bound_usec);
@@ -188,7 +188,7 @@ void HybridClock::NowWithError(HybridTime *hybrid_time, uint64_t *max_error_usec
     // Loop over the check in case of concurrent updates making the CAS fail.
     while (now->time_point > current_components.last_usec) {
       if (components_.compare_exchange_weak(current_components, new_components)) {
-        *hybrid_time = HybridTimeFromMicroseconds(new_components.last_usec);
+        *hybrid_time = HybridTime::FromMicros(new_components.last_usec);
         *max_error_usec = now->max_error;
         if (PREDICT_FALSE(VLOG_IS_ON(2))) {
           VLOG(2) << "Current clock is higher than the last one. Resetting logical values."
@@ -227,7 +227,7 @@ void HybridClock::NowWithError(HybridTime *hybrid_time, uint64_t *max_error_usec
   *max_error_usec = new_components.last_usec - (now->time_point - now->max_error);
 
   // We've already atomically incremented the logical, so subtract 1.
-  *hybrid_time = HybridTimeFromMicrosecondsAndLogicalValue(
+  *hybrid_time = HybridTime::FromMicrosecondsAndLogicalValue(
       new_components.last_usec,
       narrow_cast<LogicalTimeComponent>(new_components.logical)).Decremented();
   if (PREDICT_FALSE(VLOG_IS_ON(2))) {
@@ -243,7 +243,7 @@ void HybridClock::Update(const HybridTime& to_update) {
 
   HybridClockComponents current_components = components_.load(boost::memory_order_acquire);
   HybridClockComponents new_components = {
-    GetPhysicalValueMicros(to_update), GetLogicalValue(to_update) + 1
+    to_update.GetPhysicalValueMicros(), to_update.GetLogicalValue() + 1
   };
 
   // VLOG(4) crashes in TSAN mode
@@ -321,67 +321,6 @@ void HybridClock::RegisterMetrics(const scoped_refptr<MetricEntity>& metric_enti
       metric_entity,
       Bind(&HybridClock::SkewForMetrics, Unretained(this)))
     ->AutoDetachToLastValue(&metric_detacher_);
-}
-
-LogicalTimeComponent HybridClock::GetLogicalValue(const HybridTime& hybrid_time) {
-  return hybrid_time.GetLogicalValue();
-}
-
-MicrosTime HybridClock::GetPhysicalValueMicros(const HybridTime& hybrid_time) {
-  return hybrid_time.GetPhysicalValueMicros();
-}
-
-uint64_t HybridClock::GetPhysicalValueNanos(const HybridTime& hybrid_time) {
-  // Conversion to nanoseconds here is safe from overflow since 2^kBitsForLogicalComponent is less
-  // than MonoTime::kNanosecondsPerMicrosecond. Although, we still just check for sanity.
-  uint64_t micros = hybrid_time.value() >> HybridTime::kBitsForLogicalComponent;
-  CHECK(micros <= std::numeric_limits<uint64_t>::max() / MonoTime::kNanosecondsPerMicrosecond);
-  return micros * MonoTime::kNanosecondsPerMicrosecond;
-}
-
-HybridTime HybridClock::HybridTimeFromMicroseconds(uint64_t micros) {
-  return HybridTime::FromMicros(micros);
-}
-
-HybridTime HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(
-    MicrosTime micros, LogicalTimeComponent logical_value) {
-  return HybridTime::FromMicrosecondsAndLogicalValue(micros, logical_value);
-}
-
-// CAUTION: USE WITH EXTREME CARE!!! This function does not have overflow checking.
-// It is recommended to use CompareHybridClocksToDelta, below.
-HybridTime HybridClock::AddPhysicalTimeToHybridTime(const HybridTime& original,
-                                                    const MonoDelta& to_add) {
-  uint64_t new_physical = GetPhysicalValueMicros(original) + to_add.ToMicroseconds();
-  auto old_logical = GetLogicalValue(original);
-  return HybridTimeFromMicrosecondsAndLogicalValue(new_physical, old_logical);
-}
-
-int HybridClock::CompareHybridClocksToDelta(const HybridTime& begin,
-                                            const HybridTime& end,
-                                            const MonoDelta& delta) {
-  if (end < begin) {
-    return -1;
-  }
-  // We use nanoseconds since MonoDelta has nanosecond granularity.
-  uint64_t begin_nanos = GetPhysicalValueNanos(begin);
-  uint64_t end_nanos = GetPhysicalValueNanos(end);
-  uint64_t delta_nanos = delta.ToNanoseconds();
-  if (end_nanos - begin_nanos > delta_nanos) {
-    return 1;
-  } else if (end_nanos - begin_nanos == delta_nanos) {
-    uint64_t begin_logical = GetLogicalValue(begin);
-    uint64_t end_logical = GetLogicalValue(end);
-    if (end_logical > begin_logical) {
-      return 1;
-    } else if (end_logical < begin_logical) {
-      return -1;
-    } else {
-      return 0;
-    }
-  } else {
-    return -1;
-  }
 }
 
 void HybridClock::EnableClockSkewControl() {

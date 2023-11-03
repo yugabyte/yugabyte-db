@@ -1,12 +1,12 @@
-@import '../../_style/colors.scss';
+@use '../../_style/colors.scss';
 
 .replication-status-text {
   margin-left: 10px;
   i {
     margin-right: 5px;
   }
-  &.updating{
-    color: #1A44A5;
+  &.updating {
+    color: #1a44a5;
   }
   &.success {
     color: green;
@@ -15,18 +15,21 @@
     color: #f00000;
   }
   &.paused {
-    color: $YB_WARNING_COLOR;
+    color: colors.$YB_WARNING_COLOR;
   }
 }
-.replication-lag-value{
+.replication-lag-value {
   &.above-threshold {
     color: #f00000;
   }
   &.below-threshold {
     color: green;
   }
+  *.not-reported {
+    color: colors.$YB_WARNING_COLOR;
+  }
 }
 
 .yb-spinner {
-  color: $YB_ORANGE;
+  color: colors.$YB_ORANGE;
 }

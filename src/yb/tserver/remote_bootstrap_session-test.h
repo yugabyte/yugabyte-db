@@ -29,16 +29,15 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TSERVER_REMOTE_BOOTSTRAP_SESSION_TEST_H_
-#define YB_TSERVER_REMOTE_BOOTSTRAP_SESSION_TEST_H_
+#pragma once
 
 #include <memory>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
 #include "yb/consensus/consensus_fwd.h"
-#include "yb/common/partial_row.h"
+#include "yb/dockv/partial_row.h"
 #include "yb/common/wire_protocol-test-util.h"
 
 #include "yb/consensus/consensus_meta.h"
@@ -65,13 +64,10 @@ METRIC_DECLARE_entity(tablet);
 
 DECLARE_bool(quick_leader_election_on_create);
 
-using std::shared_ptr;
-using std::string;
 
 namespace yb {
 namespace tserver {
 
-using std::unique_ptr;
 using consensus::ConsensusMetadata;
 using consensus::RaftConfigPB;
 using consensus::RaftPeerPB;
@@ -100,7 +96,7 @@ class RemoteBootstrapSessionTest : public YBTabletTest {
  protected:
   void SetUpTabletPeer();
 
-  void TabletPeerStateChangedCallback(const string& tablet_id,
+  void TabletPeerStateChangedCallback(const std::string& tablet_id,
                                       std::shared_ptr<consensus::StateChangeContext> context);
 
   void PopulateTablet();
@@ -109,9 +105,9 @@ class RemoteBootstrapSessionTest : public YBTabletTest {
 
   MetricRegistry metric_registry_;
   scoped_refptr<LogAnchorRegistry> log_anchor_registry_;
-  unique_ptr<ThreadPool> raft_pool_;
-  unique_ptr<ThreadPool> tablet_prepare_pool_;
-  unique_ptr<ThreadPool> log_thread_pool_;
+  std::unique_ptr<ThreadPool> raft_pool_;
+  std::unique_ptr<ThreadPool> tablet_prepare_pool_;
+  std::unique_ptr<ThreadPool> log_thread_pool_;
   std::shared_ptr<TabletPeer> tablet_peer_;
   scoped_refptr<RemoteBootstrapSession> session_;
   std::unique_ptr<rpc::Messenger> messenger_;
@@ -121,5 +117,3 @@ class RemoteBootstrapSessionTest : public YBTabletTest {
 
 }  // namespace tserver
 }  // namespace yb
-
-#endif  // YB_TSERVER_REMOTE_BOOTSTRAP_SESSION_TEST_H_

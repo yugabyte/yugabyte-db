@@ -23,7 +23,7 @@ DROP TABLE temp_tbl;
 --
 -- Test COLOCATED database.
 --
-CREATE DATABASE test_yb_obj_props_clc COLOCATED = true;
+CREATE DATABASE test_yb_obj_props_clc COLOCATION = true;
 \c test_yb_obj_props_clc
 --
 -- Test yb_is_database_colocated.
@@ -35,15 +35,22 @@ SELECT yb_is_database_colocated();
 
 --
 -- Test yb_table_properties.
-CREATE TABLE clc_temp_tbl (h INT PRIMARY KEY) WITH (colocated=true);
-CREATE TABLE clc_temp_tbl_2 (h INT PRIMARY KEY) WITH (colocated=true, colocation_id=100500);
-SELECT c.relname, props.*
+CREATE TABLE clc_temp_tbl (h INT PRIMARY KEY) WITH (colocation=true);
+CREATE TABLE clc_temp_tbl_2 (h INT PRIMARY KEY) WITH (colocation=true, colocation_id=100500);
+SELECT
+    c.relname,
+    props.num_tablets,
+    props.num_hash_key_columns,
+    props.is_colocated,
+    grp.grpname,
+    props.colocation_id
 FROM pg_class c, yb_table_properties(c.oid) props
+JOIN pg_yb_tablegroup grp ON grp.oid = props.tablegroup_oid
 WHERE c.relname LIKE 'clc_%' AND c.relkind <> 'i' ORDER BY c.oid;
-    relname     | num_tablets | num_hash_key_columns | is_colocated | tablegroup_oid | colocation_id
-----------------+-------------+----------------------+--------------+----------------+---------------
- clc_temp_tbl   |           1 |                    0 | t            |                |         20001
- clc_temp_tbl_2 |           1 |                    0 | t            |                |        100500
+    relname     | num_tablets | num_hash_key_columns | is_colocated | grpname | colocation_id
+----------------+-------------+----------------------+--------------+---------+---------------
+ clc_temp_tbl   |           1 |                    0 | t            | default |         20001
+ clc_temp_tbl_2 |           1 |                    0 | t            | default |        100500
 (2 rows)
 
 -- Cleanup.

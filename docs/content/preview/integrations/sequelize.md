@@ -1,14 +1,14 @@
----
+<!---
 title: Using Sequelize with YugabyteDB
 linkTitle: Sequelize
 description: Using Sequelize with YugabyteDB
 menu:
-  preview:
+  preview_integrations:
     identifier: sequelize
     parent: integrations
     weight: 571
 type: docs
----
+--->
 
 This document describes how to use [Sequelize](https://sequelize.org/), a promise-based Node.js object-relational mapping (ORM), with YugabetyDB.
 
@@ -80,7 +80,7 @@ node demo.js
 
 You can verify the code execution by looking for the changes inside the database, as follows:
 
--  Navigate to your YugabyteDB installation directory by running the following command:
+- Navigate to your YugabyteDB installation directory by running the following command:
 
   ```shell
   cd /<path-to-yugabytedb>
@@ -88,24 +88,24 @@ You can verify the code execution by looking for the changes inside the database
 
 - Run the ysqlsh client by executing the following command:
 
-  ```
+  ```sh
   ./bin/ysqlsh
   ```
 
 - Obtain the list of all the tables in the database by executing the following command:
 
-  ```
+  ```sql
   \dt
   ```
 
 - Check if rows have been inserted into the table by executing the following:
 
-  ```
+  ```sql
   SELECT * FROM CUSTOMERS;
   ```
 
 The following illustration presents the output:
 
-![img](/images/ee/sequelize.png)
+![Sequelize output](/images/ee/sequelize.png)
 
 The `createdAt` and `updatedAt` timestamp columns have been added automatically by Sequelize.

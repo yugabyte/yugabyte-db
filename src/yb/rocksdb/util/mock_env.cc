@@ -35,6 +35,9 @@
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
 
+using std::unique_ptr;
+using std::shared_ptr;
+
 namespace rocksdb {
 
 class MemFile {
@@ -155,6 +158,8 @@ class MemFile {
   uint64_t ModifiedTime() const {
     return modified_time_;
   }
+
+  const std::string& filename() const { return fn_; }
 
  private:
   uint64_t Now() {
@@ -293,6 +298,8 @@ class MockWritableFile : public WritableFile {
   Status Sync() override { return file_->Fsync(); }
 
   uint64_t GetFileSize() override { return file_->Size(); }
+
+  const std::string& filename() const override { return file_->filename(); }
 
  private:
   inline size_t RequestToken(size_t bytes) {

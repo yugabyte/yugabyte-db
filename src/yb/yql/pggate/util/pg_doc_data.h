@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGGATE_UTIL_PG_DOC_DATA_H_
-#define YB_YQL_PGGATE_UTIL_PG_DOC_DATA_H_
+#pragma once
 
 #include "yb/common/common_fwd.h"
 
@@ -20,19 +19,24 @@
 
 #include "yb/yql/pggate/util/pg_wire.h"
 
+#include "yb/util/kv_util.h"
+
 namespace yb {
 namespace pggate {
 
-Status WriteColumn(const QLValuePB& col_value, faststring *buffer);
+Status WriteColumn(const QLValuePB& col_value, WriteBuffer* buffer);
+Status WriteColumn(const QLValuePB& col_value, ValueBuffer* buffer);
+
+void WriteBinaryColumn(const Slice& col_value, WriteBuffer* buffer);
 
 class PgDocData : public PgWire {
  public:
-  static void LoadCache(const Slice& cache, int64_t *total_row_count, Slice *cursor);
+  static void LoadCache(const Slice& cache, int64_t* total_row_count, Slice* cursor);
 
-  static PgWireDataHeader ReadDataHeader(Slice *cursor);
+  static bool ReadHeaderIsNull(Slice *cursor) {
+    return cursor->consume_byte() != 0;
+  }
 };
 
 }  // namespace pggate
 }  // namespace yb
-
-#endif // YB_YQL_PGGATE_UTIL_PG_DOC_DATA_H_

@@ -30,68 +30,64 @@
 // under the License.
 //
 
+#include "yb/common/key_encoder.h"
+
+#include <array>
 #include <functional>
 #include <string>
-#include <vector>
 
-
-#include "yb/common/common.pb.h"
-#include "yb/common/key_encoder.h"
-#include "yb/gutil/map-util.h"
 #include "yb/gutil/singleton.h"
-#include "yb/util/faststring.h"
 
-using std::shared_ptr;
-using std::unordered_map;
+#include "yb/util/faststring.h"
 
 namespace yb {
 
-
 // A resolver for Encoders
-template <typename Buffer>
+template<class Buffer>
 class EncoderResolver {
  public:
   const KeyEncoder<Buffer>& GetKeyEncoder(DataType t) {
-    return *FindOrDie(encoders_, t);
+    return *encoders_[to_underlying(t)];
   }
 
   const bool HasKeyEncoderForType(DataType t) {
-    return ContainsKey(encoders_, t);
+    return encoders_[to_underlying(t)] != nullptr;
   }
 
  private:
   EncoderResolver() {
-    AddMapping<BOOL>();
-    AddMapping<UINT8>();
-    AddMapping<INT8>();
-    AddMapping<UINT16>();
-    AddMapping<INT16>();
-    AddMapping<UINT32>();
-    AddMapping<INT32>();
-    AddMapping<UINT64>();
-    AddMapping<INT64>();
-    AddMapping<BINARY>();
-    AddMapping<FLOAT>();
-    AddMapping<DOUBLE>();
+    AddMapping<DataType::BOOL>();
+    AddMapping<DataType::UINT8>();
+    AddMapping<DataType::INT8>();
+    AddMapping<DataType::UINT16>();
+    AddMapping<DataType::INT16>();
+    AddMapping<DataType::UINT32>();
+    AddMapping<DataType::INT32>();
+    AddMapping<DataType::UINT64>();
+    AddMapping<DataType::INT64>();
+    AddMapping<DataType::BINARY>();
+    AddMapping<DataType::FLOAT>();
+    AddMapping<DataType::DOUBLE>();
   }
 
-  template<DataType Type> void AddMapping() {
+  template<DataType Type>
+  void AddMapping() {
     KeyEncoderTraits<Type, Buffer> traits;
-    encoders_.emplace(Type, std::make_shared<KeyEncoder<Buffer>>(traits));
+    encoders_[to_underlying(Type)] = std::make_shared<KeyEncoder<Buffer>>(traits);
   }
 
-  friend class Singleton<EncoderResolver<Buffer> >;
-  unordered_map<DataType, shared_ptr<KeyEncoder<Buffer> >, std::hash<size_t> > encoders_;
+  friend class Singleton<EncoderResolver<Buffer>>;
+  std::array<std::shared_ptr<KeyEncoder<Buffer>>, kDataTypeMapSize> encoders_;
 };
 
 template <typename Buffer>
 const KeyEncoder<Buffer>& GetKeyEncoder(const TypeInfo* typeinfo) {
-  return Singleton<EncoderResolver<Buffer> >::get()->GetKeyEncoder(typeinfo->physical_type);
+  return Singleton<EncoderResolver<Buffer>>::get()->GetKeyEncoder(typeinfo->physical_type);
 }
 
 // Returns true if the type is allowed in keys.
 bool IsTypeAllowableInKey(const TypeInfo* typeinfo) {
-  return Singleton<EncoderResolver<faststring> >::get()->HasKeyEncoderForType(
+  return Singleton<EncoderResolver<faststring>>::get()->HasKeyEncoderForType(
       typeinfo->physical_type);
 }
 
@@ -101,7 +97,7 @@ bool IsTypeAllowableInKey(const TypeInfo* typeinfo) {
 ////------------------------------------------------------------
 
 template
-const KeyEncoder<string>& GetKeyEncoder(const TypeInfo* typeinfo);
+const KeyEncoder<std::string>& GetKeyEncoder(const TypeInfo* typeinfo);
 
 template
 const KeyEncoder<faststring>& GetKeyEncoder(const TypeInfo* typeinfo);

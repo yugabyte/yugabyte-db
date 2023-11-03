@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_ENCRYPTION_ENCRYPTION_TEST_UTIL_H
-#define YB_ENCRYPTION_ENCRYPTION_TEST_UTIL_H
+#pragma once
 
 #include "yb/encryption/encryption_util.h"
 
@@ -55,5 +54,3 @@ void TestSequentialReads(Readable* file, const Slice& data) {
 
 } // namespace encryption
 } // namespace yb
-
-#endif // YB_ENCRYPTION_ENCRYPTION_TEST_UTIL_H

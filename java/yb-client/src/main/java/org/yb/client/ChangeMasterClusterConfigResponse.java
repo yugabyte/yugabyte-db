@@ -15,6 +15,7 @@ package org.yb.client;
 
 import org.yb.annotations.InterfaceAudience;
 import org.yb.master.MasterTypes;
+import org.yb.master.MasterTypes.MasterErrorPB.Code;
 
 @InterfaceAudience.Public
 public class ChangeMasterClusterConfigResponse extends YRpcResponse {
@@ -36,5 +37,10 @@ public class ChangeMasterClusterConfigResponse extends YRpcResponse {
     }
 
     return serverError.getStatus().getMessage();
+  }
+
+  // Get the error code of the error, if an error happened.
+  public Code errorCode() {
+    return serverError == null ? null : serverError.getCode();
   }
 }

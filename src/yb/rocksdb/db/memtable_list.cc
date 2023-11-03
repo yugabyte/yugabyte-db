@@ -27,6 +27,8 @@
 
 #include <string>
 
+#include "yb/gutil/casts.h"
+
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/db/memtable.h"
 #include "yb/rocksdb/db/version_set.h"
@@ -273,14 +275,19 @@ bool MemTableList::IsFlushPending() const {
 }
 
 // Returns the memtables that need to be flushed.
-void MemTableList::PickMemtablesToFlush(autovector<MemTable*>* ret, const MemTableFilter& filter) {
+void MemTableList::PickMemtablesToFlush(
+    autovector<MemTable*>* ret, const MemTableFilter& filter,
+    const MutableCFOptions* mutable_cf_options) {
   const auto& memlist = current_->memlist_;
   bool all_memtables_logged = false;
+  bool write_blocked =
+      mutable_cf_options &&
+      yb::make_signed(current_->memlist_.size()) >= mutable_cf_options->max_write_buffer_number;
   for (auto it = memlist.rbegin(); it != memlist.rend(); ++it) {
     MemTable* m = *it;
     if (!m->flush_in_progress_) {
       if (filter) {
-        Result<bool> filter_result = filter(*m);
+        Result<bool> filter_result = filter(*m, write_blocked);
         if (filter_result.ok()) {
           if (!filter_result.get()) {
             // The filter succeeded and said that this memtable cannot be flushed yet.

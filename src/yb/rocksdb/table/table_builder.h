@@ -21,8 +21,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef YB_ROCKSDB_TABLE_TABLE_BUILDER_H
-#define YB_ROCKSDB_TABLE_TABLE_BUILDER_H
+#pragma once
 
 #include <stdint.h>
 
@@ -137,5 +136,3 @@ class TableBuilder {
 };
 
 }  // namespace rocksdb
-
-#endif  // YB_ROCKSDB_TABLE_TABLE_BUILDER_H

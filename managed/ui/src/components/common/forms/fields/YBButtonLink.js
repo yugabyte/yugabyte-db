@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { PureComponent, Fragment } from 'react';
+import { PureComponent, Fragment } from 'react';
 import { YBLoadingLinearIcon } from '../../indicators';
 import { isDefinedNotNull } from '../../../../utils/ObjectUtils';
 
@@ -10,7 +10,6 @@ export default class YBButtonLink extends PureComponent {
       btnClass,
       btnText,
       btnIcon,
-      btnSize,
       link,
       btnStyle,
       disabled,
@@ -23,7 +22,7 @@ export default class YBButtonLink extends PureComponent {
       <a
         href={link}
         className={btnClass}
-        onClick={this.props.onClick}
+        onClick={onClick}
         style={btnStyle}
         disabled={disabled}
         {...otherProps}

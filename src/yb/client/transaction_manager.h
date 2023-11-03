@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_CLIENT_TRANSACTION_MANAGER_H
-#define YB_CLIENT_TRANSACTION_MANAGER_H
+#pragma once
 
 #include <functional>
 #include <memory>
@@ -30,7 +29,8 @@
 namespace yb {
 namespace client {
 
-typedef std::function<void(const Result<std::string>&)> PickStatusTabletCallback;
+using PickStatusTabletCallback = std::function<void(const Result<std::string>&)>;
+using UpdateTransactionTablesVersionCallback = std::function<void(const Status&)>;
 
 // TransactionManager manages multiple transactions. It lives at the YQL engine layer.
 class TransactionManager {
@@ -44,7 +44,9 @@ class TransactionManager {
 
   // Updates version for list of transaction table and placements, to let
   // TransactionManager decide whether a refresh of cached status tablets is needed.
-  void UpdateTransactionTablesVersion(uint64_t version);
+  void UpdateTransactionTablesVersion(
+      uint64_t version,
+      UpdateTransactionTablesVersionCallback callback = UpdateTransactionTablesVersionCallback());
 
   void PickStatusTablet(PickStatusTabletCallback callback, TransactionLocality locality);
 
@@ -70,5 +72,3 @@ class TransactionManager {
 
 } // namespace client
 } // namespace yb
-
-#endif // YB_CLIENT_TRANSACTION_MANAGER_H

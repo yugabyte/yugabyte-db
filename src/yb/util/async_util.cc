@@ -35,7 +35,7 @@ Synchronizer::~Synchronizer() {
 }
 
 void Synchronizer::StatusCB(const Status& status) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   if (!assigned_) {
     assigned_ = true;
     status_ = status;
@@ -86,7 +86,7 @@ Status Synchronizer::WaitUntil(const std::chrono::steady_clock::time_point& time
 }
 
 void Synchronizer::Reset() {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   EnsureWaitDone();
   assigned_ = false;
   status_ = Status::OK();

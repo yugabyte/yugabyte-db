@@ -11,22 +11,48 @@ menu:
 type: docs
 ---
 
-Install YugabyteDB on each of the nodes using the steps shown below.
+Installing YugabyteDB involves completing prerequisites and downloading the YugabyteDB package.
 
-## Download
+## Prerequisites
 
-Download the YugabyteDB binary package as described in the [Quick Start section](../../../quick-start/install/).
+{{% readfile "/preview/quick-start/include-prerequisites-linux.md" %}}
 
-Copy the YugabyteDB package into each instance and then run the following commands.
+## Download YugabyteDB
+
+YugabyteDB supports both x86 and ARM (aarch64) CPU architectures. Download packages ending in `x86_64.tar.gz` to run on x86, and packages ending in `aarch64.tar.gz` to run on ARM.
+
+The following instructions are for downloading the STS (standard-term support) release of YugabyteDB, which is recommended for production deployments. For other versions, see [Releases](../../../releases/).
+
+Download YugabyteDB as follows:
+
+1. Download the YugabyteDB package using one of the following `wget` commands:
+
+    ```sh
+    wget https://downloads.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
+    ```
+
+    Or:
+
+    ```sh
+    wget https://downloads.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-el8-aarch64.tar.gz
+    ```
+
+1. Extract the package and then change directories to the YugabyteDB home.
+
+    ```sh
+    tar xvfz yugabyte-{{< yb-version version="stable" format="build">}}-linux-x86_64.tar.gz && cd yugabyte-{{< yb-version version="stable">}}/
+    ```
+
+    Or:
+
+    ```sh
+    tar xvfz yugabyte-{{< yb-version version="stable" format="build">}}-el8-aarch64.tar.gz && cd yugabyte-{{< yb-version version="stable">}}/
+    ```
+
+## Configure YugabyteDB
+
+To configure YugabyteDB, run the following shell script:
 
 ```sh
-$ tar xvfz yugabyte-<version>-<os>.tar.gz && cd yugabyte-<version>/
-```
-
-## Configure
-
-- Run the **post_install.sh** script to make some final updates to the installed software.
-
-```sh
-$ ./bin/post_install.sh
+./bin/post_install.sh
 ```

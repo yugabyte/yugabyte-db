@@ -26,7 +26,7 @@ It allows adding, dropping, or renaming a column as well as updating a table pro
 
 ### Grammar
 
-```
+```ebnf
 alter_table ::= ALTER TABLE table_name alter_operator [ alter_operator ...]
 
 alter_operator ::= add_op | drop_op | rename_op | property_op
@@ -70,7 +70,7 @@ ycqlsh:example> DESCRIBE TABLE employees;
 
 Following result would be shown.
 
-```
+```output
 CREATE TABLE example.employees (
     id int,
     name text,
@@ -92,7 +92,7 @@ ycqlsh:example> DESCRIBE TABLE employees;
 
 Following result would be shown.
 
-```
+```output
 CREATE TABLE example.employees (
     id int,
     name text,
@@ -113,7 +113,7 @@ ycqlsh:example> DESCRIBE TABLE employees;
 
 Following result would be shown.
 
-```
+```output
 CREATE TABLE example.employees (
     id int,
     name text,
@@ -124,7 +124,7 @@ CREATE TABLE example.employees (
 
 ### Update a table property
 
-You can do this as shown below.
+You can do this as follows:
 
 ```sql
 ycqlsh:example> ALTER TABLE employees WITH default_time_to_live = 5;
@@ -136,7 +136,7 @@ ycqlsh:example> DESCRIBE TABLE employees;
 
 Following result would be shown.
 
-```
+```output
 CREATE TABLE example.employees (
     id int,
     name text,

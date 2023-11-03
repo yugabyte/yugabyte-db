@@ -18,8 +18,6 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_DB_WRITE_THREAD_H
-#define YB_ROCKSDB_DB_WRITE_THREAD_H
 
 #pragma once
 
@@ -301,5 +299,3 @@ class WriteThread {
 };
 
 }  // namespace rocksdb
-
-#endif // YB_ROCKSDB_DB_WRITE_THREAD_H

@@ -39,17 +39,19 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
 
+#include "yb/util/aggregate_stats.h"
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/histogram.pb.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/locks.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
+#include "yb/util/flags.h"
 
-DEFINE_bool(expose_metric_histogram_percentiles, true,
+DEFINE_UNKNOWN_bool(expose_metric_histogram_percentiles, true,
             "Should we expose the percentiles information for metrics histograms.");
 
-DEFINE_int32(max_tables_metrics_breakdowns, INT32_MAX,
+DEFINE_UNKNOWN_int32(max_tables_metrics_breakdowns, INT32_MAX,
              "The maxmimum number of tables to retrieve metrics for");
 
 // Process/server-wide metrics should go into the 'server' entity.
@@ -61,7 +63,6 @@ namespace yb {
 void RegisterMetricPrototype(const MetricPrototype* prototype);
 
 using std::string;
-using std::vector;
 using strings::Substitute;
 
 //
@@ -116,6 +117,8 @@ const char* MetricUnit::Name(Type unit) {
       return "messages";
     case kContextSwitches:
       return "context switches";
+    case kKeys:
+      return "keys";
     default:
       return "UNKNOWN UNIT";
   }
@@ -128,6 +131,7 @@ const char* MetricUnit::Name(Type unit) {
 const char* const MetricType::kGaugeType = "gauge";
 const char* const MetricType::kCounterType = "counter";
 const char* const MetricType::kHistogramType = "histogram";
+const char* const MetricType::kEventStatsType = "event stats";
 const char* MetricType::Name(MetricType::Type type) {
   switch (type) {
     case kGauge:
@@ -137,6 +141,20 @@ const char* MetricType::Name(MetricType::Type type) {
     case kHistogram:
       return kHistogramType;
     default:
+      return "UNKNOWN TYPE";
+  }
+}
+
+// For prometheus # TYPE.
+const char* MetricType::PrometheusType(MetricType::Type type) {
+  switch (type) {
+    case kGauge: case kLag:
+      return kGaugeType;
+    case kCounter:
+      return kCounterType;
+    default:
+      LOG(DFATAL) << Format("$0 type can't be exported to prometheus # TYPE",
+          Name(type));
       return "UNKNOWN TYPE";
   }
 }
@@ -182,7 +200,7 @@ Status MetricRegistry::WriteAsJson(JsonWriter* writer,
                                    const MetricJsonOptions& opts) const {
   EntityMap entities;
   {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     entities = entities_;
   }
 
@@ -212,7 +230,7 @@ Status MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
                                           const MetricPrometheusOptions& opts) const {
   EntityMap entities;
   {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     entities = entities_;
   }
 
@@ -237,8 +255,19 @@ Status MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
   return Status::OK();
 }
 
+void MetricRegistry::get_all_prototypes(std::set<std::string>& prototypes) const {
+  EntityMap entities;
+  {
+    std::lock_guard l(lock_);
+    entities = entities_;
+  }
+  for (const EntityMap::value_type& e : entities) {
+    prototypes.insert(e.second->prototype().name());
+  }
+}
+
 void MetricRegistry::RetireOldMetrics() {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   for (auto it = entities_.begin(); it != entities_.end();) {
     it->second->RetireOldMetrics();
 
@@ -300,11 +329,12 @@ void MetricPrototype::WriteFields(JsonWriter* writer,
 scoped_refptr<MetricEntity> MetricRegistry::FindOrCreateEntity(
     const MetricEntityPrototype* prototype,
     const std::string& id,
-    const MetricEntity::AttributeMap& initial_attributes) {
-  std::lock_guard<simple_spinlock> l(lock_);
+    const MetricEntity::AttributeMap& initial_attributes,
+    std::shared_ptr<MemTracker> mem_tracker) {
+  std::lock_guard l(lock_);
   scoped_refptr<MetricEntity> e = FindPtrOrNull(entities_, id);
   if (!e) {
-    e = new MetricEntity(prototype, id, initial_attributes);
+    e = new MetricEntity(prototype, id, initial_attributes, std::move(mem_tracker));
     InsertOrDie(&entities_, id, e);
   } else {
     e->SetAttributes(initial_attributes);
@@ -356,12 +386,12 @@ StringGauge::StringGauge(const GaugePrototype<string>* proto,
     : Gauge(proto), value_(std::move(initial_value)) {}
 
 std::string StringGauge::value() const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   return value_;
 }
 
 void StringGauge::set_value(const std::string& value) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   value_ = value;
 }
 
@@ -388,7 +418,7 @@ Status StringGauge::WriteForPrometheus(
 
 scoped_refptr<Counter> CounterPrototype::Instantiate(
     const scoped_refptr<MetricEntity>& entity) const {
-  return entity->FindOrCreateCounter(this);
+  return entity->FindOrCreateMetric<Counter>(this);
 }
 
 Counter::Counter(const CounterPrototype* proto) : Metric(proto) {
@@ -434,7 +464,9 @@ Status Counter::WriteForPrometheus(
   }
 
   return writer->WriteSingleEntry(attr, prototype_->name(), value(),
-                                  prototype()->aggregation_function());
+                                  prototype()->aggregation_function(),
+                                  MetricType::PrometheusType(prototype_->type()),
+                                  prototype_->description());
 }
 
 //
@@ -443,7 +475,7 @@ Status Counter::WriteForPrometheus(
 
 scoped_refptr<MillisLag> MillisLagPrototype::Instantiate(
     const scoped_refptr<MetricEntity>& entity) const {
-  return entity->FindOrCreateMillisLag(this);
+  return entity->FindOrCreateMetric<MillisLag>(this);
 }
 
 MillisLag::MillisLag(const MillisLagPrototype* proto)
@@ -476,7 +508,9 @@ Status MillisLag::WriteForPrometheus(
   }
 
   return writer->WriteSingleEntry(attr, prototype_->name(), lag_ms(),
-                                  prototype()->aggregation_function());
+                                  prototype()->aggregation_function(),
+                                  MetricType::PrometheusType(prototype_->type()),
+                                  prototype_->description());
 }
 
 AtomicMillisLag::AtomicMillisLag(const MillisLagPrototype* proto)
@@ -506,12 +540,10 @@ Status AtomicMillisLag::WriteAsJson(JsonWriter* writer, const MetricJsonOptions&
 /////////////////////////////////////////////////
 
 HistogramPrototype::HistogramPrototype(const MetricPrototype::CtorArgs& args,
-                                       uint64_t max_trackable_value, int num_sig_digits,
-                                       ExportPercentiles export_percentiles)
+                                       uint64_t max_trackable_value, int num_sig_digits)
   : MetricPrototype(args),
     max_trackable_value_(max_trackable_value),
-    num_sig_digits_(num_sig_digits),
-    export_percentiles_(export_percentiles) {
+    num_sig_digits_(num_sig_digits) {
   // Better to crash at definition time that at instantiation time.
   CHECK(HdrHistogram::IsValidHighestTrackableValue(max_trackable_value))
       << Substitute("Invalid max trackable value on histogram $0: $1",
@@ -523,106 +555,89 @@ HistogramPrototype::HistogramPrototype(const MetricPrototype::CtorArgs& args,
 
 scoped_refptr<Histogram> HistogramPrototype::Instantiate(
     const scoped_refptr<MetricEntity>& entity) const {
-  return entity->FindOrCreateHistogram(this);
+  return entity->FindOrCreateMetric<Histogram>(this);
 }
 
 /////////////////////////////////////////////////
-// Histogram
+// EventStatsPrototype
 /////////////////////////////////////////////////
 
-Histogram::Histogram(const HistogramPrototype* proto)
-  : Metric(proto),
-    histogram_(new HdrHistogram(proto->max_trackable_value(), proto->num_sig_digits())),
-    export_percentiles_(proto->export_percentiles()) {
+EventStatsPrototype::EventStatsPrototype(
+    const MetricPrototype::CtorArgs& args)
+  : MetricPrototype(args) {
 }
 
-Histogram::Histogram(
-  std::unique_ptr <HistogramPrototype> proto,  uint64_t highest_trackable_value,
-  int num_significant_digits, ExportPercentiles export_percentiles)
-  : Metric(std::move(proto)),
-    histogram_(new HdrHistogram(highest_trackable_value, num_significant_digits)),
-    export_percentiles_(export_percentiles) {
+scoped_refptr<EventStats> EventStatsPrototype::Instantiate(
+    const scoped_refptr<MetricEntity>& entity) const {
+  return entity->FindOrCreateMetric<EventStats>(this);
 }
 
-void Histogram::Increment(int64_t value) {
-  histogram_->Increment(value);
+/////////////////////////////////////////////////
+// BaseStats
+/////////////////////////////////////////////////
+
+template<typename Stats>
+void BaseStats<Stats>::Reset() const {
+  auto derived = const_cast<Stats*>(static_cast<const Stats*>(this));
+  derived->mutable_underlying()->Reset();
 }
 
-void Histogram::IncrementBy(int64_t value, int64_t amount) {
-  histogram_->IncrementBy(value, amount);
-}
-
-Status Histogram::WriteAsJson(JsonWriter* writer,
-                              const MetricJsonOptions& opts) const {
+template<typename Stats>
+Status BaseStats<Stats>::WriteAsJson(
+    JsonWriter* writer, const MetricJsonOptions& opts) const {
   if (prototype_->level() < opts.level) {
     return Status::OK();
   }
 
   HistogramSnapshotPB snapshot;
-  RETURN_NOT_OK(GetAndResetHistogramSnapshotPB(&snapshot, opts));
+  RETURN_NOT_OK(static_cast<const Stats*>(this)->GetAndResetHistogramSnapshotPB(
+      &snapshot, opts));
   writer->Protobuf(snapshot);
   return Status::OK();
 }
 
-Status Histogram::WriteForPrometheus(
+template<typename Stats>
+Status BaseStats<Stats>::WriteForPrometheus(
     PrometheusWriter* writer, const MetricEntity::AttributeMap& attr,
     const MetricPrometheusOptions& opts) const {
   if (prototype_->level() < opts.level) {
     return Status::OK();
   }
 
-  HdrHistogram snapshot(*histogram_);
-  // HdrHistogram reports percentiles based on all the data points from the
-  // begining of time. We are interested in the percentiles based on just
-  // the "newly-arrived" data. So, we will reset the histogram's percentiles
-  // between each invocation.
-  histogram_->ResetPercentiles();
-
   // Representing the sum and count require suffixed names.
   std::string hist_name = prototype_->name();
+  const char* description = prototype_->description();
+  const char* counter_type = MetricType::PrometheusType(MetricType::kCounter);
   auto copy_of_attr = attr;
+  // For #HELP and #TYPE, we need to print them for each entry, since our
+  // histogram doesn't really get exported as histograms.
   RETURN_NOT_OK(writer->WriteSingleEntry(
-        copy_of_attr, hist_name + "_sum", snapshot.TotalSum(),
-        prototype()->aggregation_function()));
+        copy_of_attr, hist_name + "_sum", TotalSum(),
+        prototype()->aggregation_function(), counter_type, description));
   RETURN_NOT_OK(writer->WriteSingleEntry(
-        copy_of_attr, hist_name + "_count", snapshot.TotalCount(),
-        prototype()->aggregation_function()));
+        copy_of_attr, hist_name + "_count", TotalCount(),
+        prototype()->aggregation_function(), counter_type, description));
 
-  // Copy the label map to add the quatiles.
-  if (export_percentiles_ && FLAGS_expose_metric_histogram_percentiles) {
-    copy_of_attr["quantile"] = "p50";
-    RETURN_NOT_OK(writer->WriteSingleEntry(copy_of_attr, hist_name,
-                                           snapshot.ValueAtPercentile(50),
-                                           prototype()->aggregation_function()));
-    copy_of_attr["quantile"] = "p95";
-    RETURN_NOT_OK(writer->WriteSingleEntry(copy_of_attr, hist_name,
-                                           snapshot.ValueAtPercentile(95),
-                                           prototype()->aggregation_function()));
-    copy_of_attr["quantile"] = "p99";
-    RETURN_NOT_OK(writer->WriteSingleEntry(copy_of_attr, hist_name,
-                                           snapshot.ValueAtPercentile(99),
-                                           prototype()->aggregation_function()));
-    copy_of_attr["quantile"] = "mean";
-    RETURN_NOT_OK(writer->WriteSingleEntry(copy_of_attr, hist_name,
-                                           snapshot.MeanValue(),
-                                           prototype()->aggregation_function()));
-    copy_of_attr["quantile"] = "max";
-    RETURN_NOT_OK(writer->WriteSingleEntry(copy_of_attr, hist_name,
-                                           snapshot.MaxValue(),
-                                           prototype()->aggregation_function()));
+  if (FLAGS_expose_metric_histogram_percentiles) {
+    RETURN_NOT_OK(static_cast<const Stats*>(this)->WritePercentilesForPrometheus(
+            writer, std::move(copy_of_attr)));
   }
+
+  // HdrHistogram reports percentiles based on all the data points from the
+  // begining of time. We are interested in the percentiles based on just
+  // the "newly-arrived" data. So, in the defualt setting, we will reset
+  // the histogram's percentiles between each invocation. User also has the
+  // option to set the url parameter reset_histograms=false
+  if (opts.reset_histograms) {
+    Reset();
+  }
+
   return Status::OK();
 }
 
-Status Histogram::GetAndResetHistogramSnapshotPB(HistogramSnapshotPB* snapshot_pb,
-                                                 const MetricJsonOptions& opts) const {
-  HdrHistogram snapshot(*histogram_);
-  // HdrHistogram reports percentiles based on all the data points from the
-  // begining of time. We are interested in the percentiles based on just
-  // the "newly-arrived" data. So, we will reset the histogram's percentiles
-  // between each invocation.
-  histogram_->ResetPercentiles();
-
+template<typename Stats>
+Status BaseStats<Stats>::GetAndResetHistogramSnapshotPB(
+    HistogramSnapshotPB* snapshot_pb, const MetricJsonOptions& opts) const {
   snapshot_pb->set_name(prototype_->name());
   if (opts.include_schema_info) {
     snapshot_pb->set_type(MetricType::Name(prototype_->type()));
@@ -630,19 +645,100 @@ Status Histogram::GetAndResetHistogramSnapshotPB(HistogramSnapshotPB* snapshot_p
     snapshot_pb->set_unit(MetricUnit::Name(prototype_->unit()));
     snapshot_pb->set_description(prototype_->description());
     snapshot_pb->set_level(MetricLevelName(prototype_->level()));
+  }
+  snapshot_pb->set_total_count(TotalCount());
+  snapshot_pb->set_total_sum(TotalSum());
+  snapshot_pb->set_min(MinValue());
+  snapshot_pb->set_mean(MeanValue());
+  snapshot_pb->set_max(MaxValue());
+
+  // HdrHistogram reports percentiles based on all the data points from the
+  // begining of time. We are interested in the percentiles based on just
+  // the "newly-arrived" data. So, in the defualt setting, we will reset
+  // the histogram's percentiles between each invocation. User also has the
+  // option to set the url parameter reset_histograms=false
+  if (opts.reset_histograms) {
+    Reset();
+  }
+
+  return Status::OK();
+}
+
+template class BaseStats<Histogram>;
+template class BaseStats<EventStats>;
+
+/////////////////////////////////////////////////
+// Histogram
+/////////////////////////////////////////////////
+
+Histogram::Histogram(const HistogramPrototype* proto)
+  : BaseStats<Histogram>(proto),
+    histogram_(new HdrHistogram(proto->max_trackable_value(), proto->num_sig_digits())) {
+}
+
+Histogram::Histogram(std::unique_ptr<HistogramPrototype> proto)
+  : BaseStats<Histogram>(std::move(proto)),
+    histogram_(new HdrHistogram(
+        down_cast<const HistogramPrototype*>(prototype_)->max_trackable_value(),
+        down_cast<const HistogramPrototype*>(prototype_)->num_sig_digits())) {
+}
+
+uint64_t Histogram::CountInBucketForValueForTests(uint64_t value) const {
+  return histogram_->CountInBucketForValue(value);
+}
+
+Status Histogram::WritePercentilesForPrometheus(
+    PrometheusWriter* writer, MetricEntity::AttributeMap attr) const {
+  std::string hist_name = prototype_->name();
+  const char* description = prototype_->description();
+  const char* gauge_type = MetricType::PrometheusType(MetricType::kGauge);
+  attr["quantile"] = "p50";
+  RETURN_NOT_OK(writer->WriteSingleEntry(attr, hist_name,
+                                         underlying()->ValueAtPercentile(50),
+                                         prototype()->aggregation_function(),
+                                         gauge_type, description));
+  attr["quantile"] = "p95";
+  RETURN_NOT_OK(writer->WriteSingleEntry(attr, hist_name,
+                                         underlying()->ValueAtPercentile(95),
+                                         prototype()->aggregation_function(),
+                                         gauge_type, description));
+  attr["quantile"] = "p99";
+  RETURN_NOT_OK(writer->WriteSingleEntry(attr, hist_name,
+                                         underlying()->ValueAtPercentile(99),
+                                         prototype()->aggregation_function(),
+                                         gauge_type, description));
+
+  attr["quantile"] = "mean";
+  RETURN_NOT_OK(writer->WriteSingleEntry(attr, hist_name,
+                                         underlying()->MeanValue(),
+                                         prototype()->aggregation_function(),
+                                         gauge_type, description));
+  attr["quantile"] = "max";
+  RETURN_NOT_OK(writer->WriteSingleEntry(attr, hist_name,
+                                         underlying()->MaxValue(),
+                                         prototype()->aggregation_function(),
+                                         gauge_type, description));
+
+  attr["quantile"] = "min";
+  RETURN_NOT_OK(writer->WriteSingleEntry(attr, hist_name,
+                                         underlying()->MinValue(),
+                                         prototype()->aggregation_function(),
+                                         gauge_type, description));
+  return Status::OK();
+}
+
+Status Histogram::GetAndResetHistogramSnapshotPB(
+    HistogramSnapshotPB* snapshot_pb, const MetricJsonOptions& opts) const {
+  HdrHistogram snapshot(*histogram_);
+  if (opts.include_schema_info) {
     snapshot_pb->set_max_trackable_value(snapshot.highest_trackable_value());
     snapshot_pb->set_num_significant_digits(snapshot.num_significant_digits());
   }
-  snapshot_pb->set_total_count(snapshot.TotalCount());
-  snapshot_pb->set_total_sum(snapshot.TotalSum());
-  snapshot_pb->set_min(snapshot.MinValue());
-  snapshot_pb->set_mean(snapshot.MeanValue());
   snapshot_pb->set_percentile_75(snapshot.ValueAtPercentile(75));
   snapshot_pb->set_percentile_95(snapshot.ValueAtPercentile(95));
   snapshot_pb->set_percentile_99(snapshot.ValueAtPercentile(99));
   snapshot_pb->set_percentile_99_9(snapshot.ValueAtPercentile(99.9));
   snapshot_pb->set_percentile_99_99(snapshot.ValueAtPercentile(99.99));
-  snapshot_pb->set_max(snapshot.MaxValue());
 
   if (opts.include_raw_histograms) {
     RecordedValuesIterator iter(&snapshot);
@@ -653,67 +749,80 @@ Status Histogram::GetAndResetHistogramSnapshotPB(HistogramSnapshotPB* snapshot_p
       snapshot_pb->add_counts(value.count_at_value_iterated_to);
     }
   }
+  return BaseStats<Histogram>::GetAndResetHistogramSnapshotPB(snapshot_pb, opts);
+}
+
+/////////////////////////////////////////////////
+// EventStats
+/////////////////////////////////////////////////
+
+EventStats::EventStats(const EventStatsPrototype* proto)
+  : BaseStats<EventStats>(proto),
+    stats_(new AggregateStats()) {
+}
+
+EventStats::EventStats(std::unique_ptr<EventStatsPrototype> proto)
+  : BaseStats<EventStats>(std::move(proto)),
+    stats_(new AggregateStats()) {
+}
+
+Status EventStats::WritePercentilesForPrometheus(
+    PrometheusWriter* writer, MetricEntity::AttributeMap attr) const {
   return Status::OK();
 }
 
-uint64_t Histogram::CountInBucketForValueForTests(uint64_t value) const {
-  return histogram_->CountInBucketForValue(value);
-}
+/////////////////////////////////////////////////
+// ScopedLatencyMetric
+/////////////////////////////////////////////////
 
-uint64_t Histogram::TotalCount() const {
-  return histogram_->TotalCount();
-}
-
-uint64_t Histogram::MinValueForTests() const {
-  return histogram_->MinValue();
-}
-
-uint64_t Histogram::MaxValueForTests() const {
-  return histogram_->MaxValue();
-}
-double Histogram::MeanValueForTests() const {
-  return histogram_->MeanValue();
-}
-
-ScopedLatencyMetric::ScopedLatencyMetric(
-    const scoped_refptr<Histogram>& latency_hist, Auto automatic)
-    : latency_hist_(latency_hist), auto_(automatic) {
+template<typename Stats>
+ScopedLatencyMetric<Stats>::ScopedLatencyMetric(
+    const scoped_refptr<Stats>& latency_stats, Auto automatic)
+    : latency_stats_(latency_stats), auto_(automatic) {
   Restart();
 }
 
-ScopedLatencyMetric::ScopedLatencyMetric(ScopedLatencyMetric&& rhs)
-    : latency_hist_(std::move(rhs.latency_hist_)), time_started_(rhs.time_started_),
+template<typename Stats>
+ScopedLatencyMetric<Stats>::ScopedLatencyMetric(ScopedLatencyMetric&& rhs)
+    : latency_stats_(std::move(rhs.latency_stats_)), time_started_(rhs.time_started_),
       auto_(rhs.auto_) {
 }
 
-void ScopedLatencyMetric::operator=(ScopedLatencyMetric&& rhs) {
+template<typename Stats>
+void ScopedLatencyMetric<Stats>::operator=(ScopedLatencyMetric&& rhs) {
   if (auto_) {
     Finish();
   }
 
-  latency_hist_ = std::move(rhs.latency_hist_);
+  latency_stats_ = std::move(rhs.latency_stats_);
   time_started_ = rhs.time_started_;
   auto_ = rhs.auto_;
 }
 
-ScopedLatencyMetric::~ScopedLatencyMetric() {
+template<typename Stats>
+ScopedLatencyMetric<Stats>::~ScopedLatencyMetric() {
   if (auto_) {
     Finish();
   }
 }
 
-void ScopedLatencyMetric::Restart() {
-  if (latency_hist_) {
+template<typename Stats>
+void ScopedLatencyMetric<Stats>::Restart() {
+  if (latency_stats_) {
     time_started_ = MonoTime::Now();
   }
 }
 
-void ScopedLatencyMetric::Finish() {
-  if (latency_hist_ != nullptr) {
+template<typename Stats>
+void ScopedLatencyMetric<Stats>::Finish() {
+  if (latency_stats_ != nullptr) {
     auto passed = (MonoTime::Now() - time_started_).ToMicroseconds();
-    latency_hist_->Increment(passed);
+    latency_stats_->Increment(passed);
   }
 }
+
+template class ScopedLatencyMetric<Histogram>;
+template class ScopedLatencyMetric<EventStats>;
 
 // Replace specific chars with underscore to pass PrometheusNameRegex().
 void EscapeMetricNameForPrometheus(std::string *id) {

@@ -32,7 +32,7 @@
 
 #include <boost/algorithm/string/predicate.hpp>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <glog/stl_logging.h>
 #include <gtest/gtest.h>
 
@@ -46,6 +46,9 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/fs/fs.pb.h"
+
+using std::string;
+using std::vector;
 
 DECLARE_string(fs_data_dirs);
 DECLARE_string(fs_wal_dirs);
@@ -106,18 +109,18 @@ class FsManagerTestBase : public YBTest {
   void SetupFlagsAndBaseDirs(
       const string& data_path, const string& wal_path, FsManagerOpts* out_opts) {
     // Setup data in case empty.
-    FLAGS_fs_data_dirs = data_path;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_fs_data_dirs) = data_path;
     if (!data_path.empty()) {
       string path = GetTestPath(data_path);
       ASSERT_OK(env_->CreateDir(path));
-      FLAGS_fs_data_dirs = path;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_fs_data_dirs) = path;
     }
     // Setup wal in case empty.
-    FLAGS_fs_wal_dirs = wal_path;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_fs_wal_dirs) = wal_path;
     if (!wal_path.empty()) {
       string path = GetTestPath(wal_path);
       ASSERT_OK(env_->CreateDir(path));
-      FLAGS_fs_wal_dirs = path;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_fs_wal_dirs) = path;
     }
     // Setup opts from flags and add server type.
     FsManagerOpts opts;

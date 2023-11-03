@@ -3,7 +3,7 @@ title: Manual deployment of YugabyteDB clusters
 headerTitle: Manual deployment
 linkTitle: Manual deployment
 description: Deploy a YugabyteDB cluster in a single region or data center with a multi-zone/multi-rack configuration.
-headcontent: Instructions for manually deploying YugabyteDB.
+headcontent: Deploy a YugabyteDB cluster in a single region or data center
 image: /images/section_icons/deploy/manual-deployment.png
 menu:
   stable:
@@ -15,7 +15,7 @@ type: indexpage
 
 This section covers the generic manual deployment of a YugabyteDB cluster in a single region or data center with a multi-zone/multi-rack configuration. Note that single zone configuration is a special case of multi-zone where all placement related flags are set to the same value across every node.
 
-For AWS deployments specifically, a <a href="../public-clouds/aws/manual-deployment/">step-by-step guide</a> to deploying a YugabyteDB cluster is also available. These steps can be easily adopted for on-premises deployments or deployments in other clouds.
+For AWS deployments specifically, a <a href="../public-clouds/aws/manual-deployment/">step-by-step guide</a> to deploying a YugabyteDB cluster is also available. These steps can be adopted for on-premises deployments or deployments in other clouds.
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
@@ -25,7 +25,7 @@ For AWS deployments specifically, a <a href="../public-clouds/aws/manual-deploym
         <div class="title">1. System configuration</div>
       </div>
       <div class="body">
-          Configure various system parameters such as ulimits correctly in order to run YugabyteDB.
+          Configure various system parameters such as ulimits correctly to run YugabyteDB.
       </div>
     </a>
   </div>

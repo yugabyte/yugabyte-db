@@ -1,79 +1,76 @@
 ---
-title: YugabyteDB Quick start
+title: YugabyteDB Quick start for Docker
 headerTitle: Quick start
-linkTitle: Quick start
+linkTitle: Docker
 headcontent: Create a local cluster on a single host
 description: Get started using YugabyteDB in less than five minutes on Docker.
 aliases:
   - /quick-start/docker/
 type: docs
+unversioned: true
 ---
 
-<div class="custom-tabs tabs-style-2">
-  <ul class="tabs-name">
-    <li>
-      <a href="../../quick-start-yugabytedb-managed/" class="nav-link">
-        Use a cloud cluster
-      </a>
-    </li>
-    <li class="active">
-      <a href="../../quick-start/" class="nav-link">
-        Use a local cluster
-      </a>
-    </li>
-  </ul>
-</div>
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../../quick-start-yugabytedb-managed/" class="nav-link">
+      <img src="/icons/cloud.svg" alt="Cloud Icon">
+      Use a cloud cluster
+    </a>
+  </li>
+  <li class="active">
+    <a href="../../quick-start/" class="nav-link">
+      <img src="/icons/database.svg" alt="Server Icon">
+      Use a local cluster
+    </a>
+  </li>
+</ul>
 
 The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../../deploy/).
 
-<div class="custom-tabs tabs-style-1">
-  <ul class="tabs-name">
-    <li>
-      <a href="../" class="nav-link">
-        <i class="fab fa-apple" aria-hidden="true"></i>
-        macOS
-      </a>
-    </li>
-    <li>
-      <a href="../linux/" class="nav-link">
-        <i class="fab fa-linux" aria-hidden="true"></i>
-        Linux
-      </a>
-    </li>
-    <li class="active">
-      <a href="../docker/" class="nav-link">
-        <i class="fab fa-docker" aria-hidden="true"></i>
-        Docker
-      </a>
-    </li>
-    <li>
-      <a href="../kubernetes/" class="nav-link">
-        <i class="fas fa-cubes" aria-hidden="true"></i>
-        Kubernetes
-      </a>
-    </li>
-  </ul>
-</div>
-
-## Install YugabyteDB
-
-Installing YugabyteDB involves completing [prerequisites](#prerequisites) and them performing the actual [installation](#install).
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../" class="nav-link">
+      <i class="fa-brands fa-apple" aria-hidden="true"></i>
+      macOS
+    </a>
+  </li>
+  <li>
+    <a href="../linux/" class="nav-link">
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
+      Linux
+    </a>
+  </li>
+  <li class="active">
+    <a href="../docker/" class="nav-link">
+      <i class="fa-brands fa-docker" aria-hidden="true"></i>
+      Docker
+    </a>
+  </li>
+  <li>
+    <a href="../kubernetes/" class="nav-link">
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
+      Kubernetes
+    </a>
+  </li>
+</ul>
 
 Note that the Docker option to run local clusters is recommended only for advanced Docker users. This is due to the fact that running stateful applications such as YugabyteDB in Docker is more complex and error-prone than running stateless applications.
+
+## Install YugabyteDB
 
 ### Prerequisites
 
 Before installing YugabyteDB, ensure that you have the Docker runtime installed on your localhost. To download and install Docker, select one of the following environments:
 
-<i class="fab fa-apple" aria-hidden="true"></i> [Docker for Mac](https://store.docker.com/editions/community/docker-ce-desktop-mac)
+<i class="fa-brands fa-apple" aria-hidden="true"></i> [Docker for Mac](https://store.docker.com/editions/community/docker-ce-desktop-mac)
 
-<i class="fab fa-centos"></i> [Docker for CentOS](https://store.docker.com/editions/community/docker-ce-server-centos)
+<i class="fa-brands fa-centos"></i> [Docker for CentOS](https://store.docker.com/editions/community/docker-ce-server-centos)
 
-<i class="fab fa-ubuntu"></i> [Docker for Ubuntu](https://store.docker.com/editions/community/docker-ce-server-ubuntu)
+<i class="fa-brands fa-ubuntu"></i> [Docker for Ubuntu](https://store.docker.com/editions/community/docker-ce-server-ubuntu)
 
 <i class="icon-debian"></i> [Docker for Debian](https://store.docker.com/editions/community/docker-ce-server-debian)
 
-<i class="fab fa-windows" aria-hidden="true"></i> [Docker for Windows](https://store.docker.com/editions/community/docker-ce-desktop-windows)
+<i class="fa-brands fa-windows" aria-hidden="true"></i> [Docker for Windows](https://store.docker.com/editions/community/docker-ce-desktop-windows)
 
 ### Install
 
@@ -88,25 +85,45 @@ docker pull yugabytedb/yugabyte:{{< yb-version version="preview" format="build">
 To create a 1-node cluster with a replication factor (RF) of 1, run the following command:
 
 ```sh
-docker run -d --name yugabyte  -p7000:7000 -p9000:9000 -p5433:5433 -p9042:9042\
- yugabytedb/yugabyte:latest bin/yugabyted start\
+docker run -d --name yugabyte -p7000:7000 -p9000:9000 -p15433:15433 -p5433:5433 -p9042:9042 \
+ yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} bin/yugabyted start \
  --daemon=false
 ```
 
 If you are running macOS Monterey, replace `-p7000:7000` with `-p7001:7000`. This is necessary because Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail unless you forward the port as shown. Alternatively, you can disable AirPlay receiving, then start YugabyteDB normally, and then, optionally, re-enable AirPlay receiving.
 
-Run the following command to check the cluster status:
+Run the following command to check the container status:
 
 ```sh
 docker ps
 ```
 
 ```output
-CONTAINER ID        IMAGE                 COMMAND                  CREATED             STATUS              PORTS                                                                                                                                                                     NAMES
-5088ca718f70        yugabytedb/yugabyte   "bin/yugabyted start…"   46 seconds ago      Up 44 seconds       0.0.0.0:5433->5433/tcp, 6379/tcp, 7100/tcp, 0.0.0.0:7000->7000/tcp, 0.0.0.0:9000->9000/tcp, 7200/tcp, 9100/tcp, 10100/tcp, 11000/tcp, 0.0.0.0:9042->9042/tcp, 12000/tcp   yugabyte
+CONTAINER ID   IMAGE                               COMMAND                  CREATED         STATUS         PORTS                                                                                                                                                                                               NAMES
+c1c98c29149b   yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}}   "/sbin/tini -- bin/y…"   7 seconds ago   Up 5 seconds   0.0.0.0:5433->5433/tcp, 6379/tcp, 7100/tcp, 0.0.0.0:7000->7000/tcp, 0.0.0.0:9000->9000/tcp, 7200/tcp, 9100/tcp, 10100/tcp, 11000/tcp, 0.0.0.0:9042->9042/tcp, 0.0.0.0:15433->15433/tcp, 12000/tcp   yugabyte
 ```
 
-Clients can now [connect to the YSQL and YCQL APIs](#connect-to-the-database) at `http://localhost:5433` and `http://localhost:9042` respectively.
+Run the following command to check the cluster status:
+
+```sh
+docker exec -it yugabyte yugabyted status
+```
+
+```output
++----------------------------------------------------------------------------------------------------------+
+|                                                yugabyted                                                 |
++----------------------------------------------------------------------------------------------------------+
+| Status              : Running.                                                                           |
+| Replication Factor  : 1                                                                                  |
+| YugabyteDB UI       : http://172.17.0.2:15433                                                            |
+| JDBC                : jdbc:postgresql://172.17.0.2:5433/yugabyte?user=yugabyte&password=yugabyte                  |
+| YSQL                : bin/ysqlsh -h 172.17.0.2  -U yugabyte -d yugabyte                                  |
+| YCQL                : bin/ycqlsh 172.17.0.2 9042 -u cassandra                                            |
+| Data Dir            : /root/var/data                                                                     |
+| Log Dir             : /root/var/logs                                                                     |
+| Universe UUID       : f4bae205-4b4f-4dcc-9656-a04354cb9301                                               |
++----------------------------------------------------------------------------------------------------------+
+```
 
 ### Run Docker in a persistent volume
 
@@ -122,7 +139,7 @@ In the preceding `docker run` command, the data stored in YugabyteDB does not pe
 
   ```sh
   docker run -d --name yugabyte \
-           -p7000:7000 -p9000:9000 -p5433:5433 -p9042:9042 \
+           -p7000:7000 -p9000:9000 -p15433:15433 -p5433:5433 -p9042:9042 \
            -v ~/yb_data:/home/yugabyte/yb_data \
            yugabytedb/yugabyte:latest bin/yugabyted start \
            --base_dir=/home/yugabyte/yb_data --daemon=false
@@ -130,44 +147,37 @@ In the preceding `docker run` command, the data stored in YugabyteDB does not pe
 
   If running macOS Monterey, replace `-p7000:7000` with `-p7001:7000`.
 
-## Use the Admin UI
-
-The cluster you have created consists of two processes: [YB-Master](../../architecture/concepts/yb-master/) which keeps track of various metadata (list of tables, users, roles, permissions, and so on) and [YB-TServer](../../architecture/concepts/yb-tserver/) which is responsible for the actual end user requests for data updates and queries.
-
-Each of the processes exposes its own Admin UI that can be used to check the status of the corresponding process, as well as perform certain administrative operations. The [yb-master Admin UI](../../reference/configuration/yb-master/#admin-ui) is available at <http://localhost:7000> and the [yb-tserver Admin UI](../../reference/configuration/yb-tserver/#admin-ui) is available at <http://localhost:9000>. To avoid port conflicts, you should make sure other processes on your machine do not have these ports mapped to `localhost`.
-
-### Overview and YB-Master status
-
-The following illustration shows the YB-Master home page with a cluster with a replication factor of 1, a single node, and no tables. The YugabyteDB version is also displayed.
-
-![master-home](/images/admin/master-home-docker-rf1.png)
-
-The **Masters** section shows the 1 YB-Master along with its corresponding cloud, region, and zone placement.
-
-### YB-TServer status
-
-Click **See all nodes** to open the **Tablet Servers** page that lists the YB-TServer along with the time since it last connected to the YB-Master using regular heartbeats, as per the following illustration:
-
-![master-home](/images/admin/master-tservers-list-docker-rf1.png)
-
 ## Connect to the database
+
+The cluster you have created consists of two processes:
+
+- [YB-Master](../../architecture/concepts/yb-master/) keeps track of various metadata (list of tables, users, roles, permissions, and so on).
+- [YB-TServer](../../architecture/concepts/yb-tserver/) is responsible for the actual end user requests for data updates and queries.
 
 Using the YugabyteDB SQL shell, [ysqlsh](../../admin/ysqlsh/), you can connect to your cluster and interact with it using distributed SQL. ysqlsh is installed with YugabyteDB and is located in the bin directory of the YugabyteDB home directory.
 
 To open the YSQL shell, run `ysqlsh`.
 
 ```sh
-$ docker exec -it yugabyte /home/yugabyte/bin/ysqlsh --echo-queries
+docker exec -it yugabyte bash -c '/home/yugabyte/bin/ysqlsh --echo-queries --host $(hostname)'
 ```
 
 ```output
-ysqlsh (11.2-YB-2.1.0.0-b0)
+ysqlsh (11.2-YB-{{< yb-version version="preview" >}}-b0)
 Type "help" for help.
 
 yugabyte=#
 ```
 
 To load sample data and explore an example using ysqlsh, refer to [Retail Analytics](../../sample-data/retail-analytics/).
+
+## Monitor your cluster
+
+When you start a cluster using yugabyted, you can monitor the cluster using the YugabyteDB UI, available at [localhost:15433](localhost:15433).
+
+![YugabyteDB UI Cluster Overview](/images/quick_start/quick-start-ui-overview.png)
+
+The YugabyteDB UI provides cluster status, node information, performance metrics, and more.
 
 <!--## Build a Java application
 
@@ -321,7 +331,7 @@ The following steps demonstrate how to create two Java applications, `UniformLoa
         config.validate();
         HikariDataSource hikariDataSource = new HikariDataSource(config);
 
-        System.out.println("Wait for some time for Hikari Pool to setup and create the connections...");
+        System.out.println("Wait for some time for Hikari Pool to set up and create the connections...");
         System.out.println("You can verify the load balancing by visiting http://<host>:13000/rpcz as discussed before.");
         System.out.println("Enter a integer to continue once verified:");
         int x = new Scanner(System.in).nextInt();
@@ -429,7 +439,7 @@ The following steps demonstrate how to create two Java applications, `UniformLoa
         config.validate();
         HikariDataSource hikariDataSource = new HikariDataSource(config);
 
-        System.out.println("Wait for some time for Hikari Pool to setup and create the connections...");
+        System.out.println("Wait for some time for Hikari Pool to set up and create the connections...");
         System.out.println("You can verify the load balancing by visiting http://<host>:13000/rpcz as discussed before.");
         System.out.println("Enter a integer to continue once verified:");
         int x = new Scanner(System.in).nextInt();

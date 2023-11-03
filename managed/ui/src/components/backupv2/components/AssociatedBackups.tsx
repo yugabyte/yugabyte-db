@@ -7,7 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React, { FC, useEffect, useState } from 'react';
+import { FC, useEffect, useState } from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { BootstrapTable, RemoteObjSpec, TableHeaderColumn } from 'react-bootstrap-table';
 import { useQuery } from 'react-query';
@@ -16,11 +16,12 @@ import { YBModal } from '../../common/forms/fields';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
 import { YBLoading } from '../../common/indicators';
 import { getBackupsList } from '../common/BackupAPI';
-import { ENTITY_NOT_AVAILABLE, FormatUnixTimeStampTimeToTimezone } from '../common/BackupUtils';
+import { ENTITY_NOT_AVAILABLE } from '../common/BackupUtils';
 import { IBackup } from '../common/IBackup';
 import { BackupDeleteModal } from './BackupDeleteModal';
 import { BackupDetails } from './BackupDetails';
 import './AssociatedBackups.scss';
+import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 
 interface AssociatedBackupsProps {
   visible: boolean;
@@ -139,18 +140,18 @@ export const AssociatedBackups: FC<AssociatedBackupsProps> = ({
                 </TableHeaderColumn>
                 <TableHeaderColumn
                   dataField="createTime"
-                  dataFormat={(time) => <FormatUnixTimeStampTimeToTimezone timestamp={time} />}
+                  dataFormat={(_, row: IBackup) => ybFormatDate(row.commonBackupInfo.createTime)}
                 >
                   Created At
                 </TableHeaderColumn>
 
                 <TableHeaderColumn
-                  dataField="state"
-                  dataFormat={(state) => {
-                    return <StatusBadge statusType={state} />;
+                  dataField="lastBackupState"
+                  dataFormat={(lastBackupState) => {
+                    return <StatusBadge statusType={lastBackupState} />;
                   }}
                 >
-                  Status
+                  Last Status
                 </TableHeaderColumn>
               </BootstrapTable>
             )}
@@ -159,7 +160,7 @@ export const AssociatedBackups: FC<AssociatedBackupsProps> = ({
       </YBModal>
       <Row className="associated-backups-details">
         <BackupDetails
-          backup_details={showDetails}
+          backupDetails={showDetails}
           onHide={() => setShowDetails(null)}
           storageConfigName={storageConfigData.configName}
           onDelete={() => {

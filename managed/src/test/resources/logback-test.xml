@@ -56,6 +56,7 @@
 
   <logger name="play" level="INFO" />
   <logger name="org.yb" level="INFO" />
+  <logger name="db.migration" level="INFO" />
   <logger name="application" level="TRACE" />
   <logger name="com.yugabyte.yw" level="TRACE" />
 

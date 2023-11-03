@@ -16,8 +16,7 @@
 // This module defines the enums to represent various optional clause in SQL.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_PT_OPTION_H_
-#define YB_YQL_CQL_QL_PTREE_PT_OPTION_H_
+#pragma once
 
 #include <cmath> // Include cmath to get DOMAIN definition and undef it here
 #include <iosfwd>
@@ -86,5 +85,3 @@ std::ostream& operator<<(std::ostream& out, ObjectType object_type);
 
 }  // namespace ql
 }  // namespace yb
-
-#endif // YB_YQL_CQL_QL_PTREE_PT_OPTION_H_

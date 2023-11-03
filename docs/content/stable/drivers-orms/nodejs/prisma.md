@@ -1,8 +1,9 @@
 ---
-title: Use an ORM
+title: Prisma ORM
+headerTitle: Use an ORM
 linkTitle: Use an ORM
-description: NodeJS ORM support for YugabyteDB
-headcontent: NodeJS ORM support for YugabyteDB
+description: Node.js Prisma ORM support for YugabyteDB
+headcontent: Node.js ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   stable:
@@ -15,13 +16,13 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../sequelize/" class="nav-link">
-      <i class="fab fa-node-js" aria-hidden="true"></i>
+      <i class="fa-brands fa-node-js" aria-hidden="true"></i>
       Sequelize
     </a>
   </li>
   <li>
     <a href="../prisma/" class="nav-link active">
-      <i class="fab fa-node-js" aria-hidden="true"></i>
+      <i class="fa-brands fa-node-js" aria-hidden="true"></i>
       Prisma
     </a>
   </li>
@@ -43,9 +44,9 @@ Prisma has a main file called `schema.prisma` in which the configurations and da
 
 ## CRUD operations
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps on the [Build an application](../../../quick-start/build-apps/nodejs/ysql-prisma/) page in the Quick start section.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps on the [Node.js ORM example application](../../orms/nodejs/ysql-prisma/) page.
 
-The following steps break down the quick start example to demonstrate how to perform common tasks required for Node.js application development using Prisma.
+The following steps break down the example to demonstrate how to perform common tasks required for Node.js application development using Prisma.
 
 ### Step 1: Create a Node.js project and install Prisma package
 
@@ -108,7 +109,7 @@ npm install -g prisma
 
 If you have a YugabyteDB Managed cluster, modify the `DATABASE_URL` using the following steps:
 
-1. Download your [cluster certificate](/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-add-ip/#download-your-cluster-certificate).
+1. Download your [cluster certificate](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication).
 
 1. Install OpenSSL, if not present.
 
@@ -262,6 +263,7 @@ npx prisma studio
 
 Open [http://localhost:5555](http://localhost:5555) in your browser to see the table and data created.
 
-## Next steps
+## Learn more
 
-- Explore [Scaling Node.js Applications](../../../explore/linear-scalability/) with YugabyteDB.
+- Build Node.js applications using [Sequelize ORM](../sequelize/)
+- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)

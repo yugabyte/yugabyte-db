@@ -11,10 +11,9 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_PREPARER_H
-#define YB_TABLET_PREPARER_H
+#pragma once
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/threadpool.h"
@@ -49,10 +48,11 @@ class Preparer {
   Status Submit(OperationDriver* txn_driver);
   ThreadPoolToken* PoolToken();
 
+  void DumpStatusHtml(std::ostream& out);
+
  private:
   std::unique_ptr<PreparerImpl> impl_;
 };
 
 };  // namespace tablet
 }  // namespace yb
-#endif  // YB_TABLET_PREPARER_H

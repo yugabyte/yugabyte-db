@@ -1,1564 +1,16 @@
-AlertRuleSeverityEnum:
-  title: Alert rule severity enum
-  description: Alert rule severity enum
-  type: string
-  enum:
-    - WARNING
-    - SEVERE
-AlertRuleSourceEnum:
-  title: Alert rule source enum
-  description: Alert rule source enum
-  type: string
-  enum:
-    - CLUSTER
-    - BILLING
-AlertRuleSpec:
-  title: Alert rule data
-  description: Alert rule data
+ApiError:
+  title: API Error
   type: object
   properties:
-    is_enabled:
-      type: boolean
-  required:
-    - is_enabled
-AlertTestEmailRequest:
-  title: Alert test email request
-  description: Alert test email request
-  type: object
-  properties:
-    email_list:
-      type: array
-      uniqueItems: true
-      items:
-        type: string
-        format: email
-  required:
-    - alertRuleId
-AlertRuleInfo:
-  title: Alert rule info
-  description: Alert rule info
-  type: object
-  properties:
-    id:
-      type: string
-      format: uuid
-    name:
-      type: string
-      nullable: false
-    source:
-      $ref: '#/AlertRuleSourceEnum'
-    severity:
-      $ref: '#/AlertRuleSeverityEnum'
-    is_editable:
-      type: boolean
-      default: true
-    description:
-      type: string
-      nullable: false
-  required:
-    - rule_name
-    - source
-    - severity
-    - id
-    - description
-AlertRuleData:
-  title: Alert rule data
-  description: Alert rule data
-  type: object
-  properties:
-    spec:
-      $ref: '#/AlertRuleSpec'
-    info:
-      $ref: '#/AlertRuleInfo'
-  required:
-    - spec
-    - config
-AlertNotificationData:
-  title: Alert rule data
-  description: Alert rule data
-  type: object
-  properties:
-    info:
-      $ref: '#/AlertNotificationInfo'
-  required:
-    - info
-AlertNotificationInfo:
-  title: Alert notification info
-  description: Alert notification info
-  type: object
-  properties:
-    id:
-      type: string
-      format: uuid
-      description: Unique id of the record
-    name:
-      type: string
-      description: Alert notification name
-    description:
-      type: string
-      description: Alert notification description
-    source_id:
-      type: string
-      description: Alert notification source id i.e cluster id or account id (In case of billing)
-    source_name:
-      type: string
-      description: Name of the cluster if source type is CLUSTER
-      nullable: true
-    severity:
-      $ref: '#/AlertRuleSeverityEnum'
-      description: Alert rule severity enum
-    trigger_time:
-      type: string
-      description: Alert notification trigered time
-  required:
-    - name
-    - description
-    - source_id
-    - severity
-    - trigger_time
-EntityMetadata:
-  title: Entity Metadata
-  description: Common metadata for entities
-  type: object
-  properties:
-    created_on:
-      description: Timestamp when the entity was created (UTC)
-      type: string
-      nullable: true
-    updated_on:
-      description: Timestamp when the entity was last updated (UTC)
-      type: string
-      nullable: true
-AddPlatformRequest:
-  title: Add Platform Request Payload
-  description: Payload to define a platform
-  type: object
-  properties:
-    platform_data:
-      $ref: '#/PlatformData'
-    credentials:
-      type: string
-      minLength: 1
-    admin_api_key:
-      type: string
-      format: uuid
-  required:
-    - platform_data
-    - credentials
-AddProjectToPlatformRequest:
-  title: Add Project To Platform Request Payload
-  description: Payload to define project and cloud
-  type: object
-  properties:
-    project_id:
-      type: string
-      format: uuid
-    cloud:
-      $ref: '#/CloudEnum'
-  required:
-    - project_id
-    - cloud
-RebuildMetricsTargetsRequest:
-  title: Rebuild meterics targets options
-  description: Payload to configure rebuild targets job
-  type: object
-  properties:
-    clean:
-      type: boolean
-      default: false
-  required:
-    - clean
-AddNetworkRequest:
-  title: Add Network Request Payload
-  description: Payload to define a network
-  type: object
-  properties:
-    vpc_data:
-      $ref: '#/VpcData'
-    subnets:
-      type: array
-      items:
-        $ref: '#/SubnetData'
-    platform_id:
-      description: The platform with which this VPC is peered
-      type: string
-      format: uuid
-  required:
-    - vpc_data
-    - subnet_data
-FaultInjectionSpec:
-  title: Fault Injection Spec
-  description: Contains the fault name and entity ref
-  type: object
-  properties:
-    fault_name:
-      type: string
-    entity_ref:
-      type: string
-    user_id:
-      type: string
-      format: uuid
-      nullable: true
-  required:
-    - fault_name
-    - entity_ref
-FaultInjection:
-  title: Fault Injection
-  description: Contains the entity ref and user id
-  type: object
-  properties:
-    entity_ref:
-      type: string
-    user_id:
-      type: string
-      format: uuid
-      nullable: true
-  required:
-    - fault_name
-    - entity_ref
-AuthTokenSpec:
-  title: Auth Token specification
-  description: Token Specification
-  type: object
-  required:
-    - expiry_time
-  properties:
-    expiry_time:
-      type: string
-      description: Timestamp when the token will expire (UTC)
-AdminTokenInfo:
-  title: Admin Token Info
-  description: Admin Token Info
-  type: object
-  required:
-    - id
-    - expiry_time
-    - issuing_authority
-  properties:
-    id:
-      type: string
-      format: uuid
-      description: The UUID of the token
-    impersonated_user_id:
-      type: string
-      format: uuid
-      description: UUID of the user that the admin is impersonating
-      nullable: true
-    expiry_time:
-      type: string
-      description: Timestamp when the token will expire (UTC)
-    impersonating_user_email:
-      type: string
-      description: The email of the admin user who issued the token
-      nullable: true
-    issuing_authority:
-      type: string
-      description: The service account email used to issue the jwt
-      nullable: true
-    metadata:
-      $ref: '#/EntityMetadata'
-AuthTokenInfo:
-  title: Auth Token Info
-  description: Auth Token Info
-  type: object
-  required:
-    - id
-    - issuer
-  properties:
-    id:
-      type: string
-      format: uuid
-      description: The UUID of the token
-    issuer:
-      type: string
-      description: Email of the user who issued the jwt
-    metadata:
-      $ref: '#/EntityMetadata'
-RoleData:
-  title: Role Data
-  description: RBAC Role Data
-  type: object
-  required:
-    - id
-    - name
-    - description
-  properties:
-    id:
-      type: string
-      format: uuid
-      description: The UUID of the RBAC role
-    name:
-      type: string
-      description: Name of the RBAC role
-    description:
-      type: string
-      description: Description of the RBAC role
-AuthTokenData:
-  title: Auth Token Data
-  description: Auth Token Data
-  type: object
-  properties:
-    spec:
-      $ref: '#/AuthTokenSpec'
-    info:
-      $ref: '#/AuthTokenInfo'
-DefaultInternalTagsUpdateData:
-  title: Default Internal Tags Update Data
-  description: Default internal tags update data
-  type: object
-  properties:
-    email_prefix:
-      type: string
-      description: Email prefix of the user
-    yb_dept:
-      type: string
-      description: Value of yb_dept tag
-    yb_task:
-      type: string
-      description: Value of yb_task tag
-    success:
-      type: boolean
-      description: Whether the update was successful or not
     error:
-      type: string
-      description: Error message when update fails
-  required:
-    - email_prefix
-    - success
-InternalTagsSpec:
-  title: Internal Tags Spec
-  description: Internal tags spec
-  type: object
-  properties:
-    email_prefix:
-      type: string
-      description: Email prefix of the user
-    yb_dept:
-      type: string
-      description: Value of yb_dept tag
-      nullable: true
-    yb_task:
-      type: string
-      description: Value of yb_task tag
-      nullable: true
-    yb_owner:
-      type: string
-      description: Value of yb_owner tag
-      nullable: true
-    yb_customer:
-      type: string
-      description: Value of yb_customer tag
-      nullable: true
-    override_default:
-      type: boolean
-      default: false
-      description: If true, then the default tags will be overridden
-UpdateDefaultInternalTagsRequest:
-  title: Default Internal Tags Update Request
-  description: Default internal tags update request
-  type: object
-  properties:
-    data:
-      type: array
-      items:
-        $ref: '#/InternalTagsSpec'
-RuntimeConfigSpec:
-  title: Runtime Config Spec
-  description: Runtime Config value specification for a path
-  type: object
-  properties:
-    config_key:
-      type: string
-      minLength: 1
-    config_value:
-      type: string
-    override_entities:
-      type: boolean
-  required:
-    - config_key
-RuntimeConfigUpdateData:
-  title: Runtime Config Update Data
-  description: Runtime Config data after update
-  type: object
-  properties:
-    config_key:
-      type: string
-      minLength: 1
-    config_value:
-      type: string
-      nullable: true
-    success:
-      type: boolean
-    error:
-      type: string
-      description: Success/Failure message
-      nullable: true
-  required:
-    - config_key
-    - success
-UpgradeRequestFilters:
-  title: Upgrade Request Filters
-  description: Filters to limit scheduled upgrade scope
-  type: object
-  properties:
-    cloud_type:
-      $ref: '#/CloudEnum'
-      nullable: true
-    region:
-      type: string
-      minLength: 7
-      nullable: true
-    cluster_tier:
-      $ref: '#/ClusterTier'
-      nullable: true
-UpgradeRequestSpec:
-  title: Upgrade Request Spec
-  description: Additional spec for scheduled upgrades
-  type: object
-  properties:
-    release_id:
-      description: Release ID to upgrade to (will default to latest if omitted)
-      type: string
-      format: uuid
-    filters:
-      $ref: '#/UpgradeRequestFilters'
-  required:
-    - filters
-UpgradeRequestInfo:
-  title: Upgrade Request Info
-  description: Upgrade Request Info
-  type: object
-  properties:
-    id:
-      description: Task instance ID
-      type: string
-      format: uuid
-    task_type:
-      description: Task type
-      type: string
-    scheduled_at:
-      description: Creation time
-      type: string
-    version:
-      description: Upgrade version
-      type: string
-  required:
-    - id
-    - task_type
-    - scheduled_at
-    - version
-ClusterBasedUpgradeRequestSpec:
-  title: Cluster Based Upgrade Request Spec
-  description: Upgrade Spec for Cluster Based Upgrade
-  type: object
-  properties:
-    release_id:
-      description: Release ID to upgrade to (will default to latest if omitted)
-      type: string
-      format: uuid
-RuntimeConfigUpdateRequest:
-  title: Runtime Config Update Request
-  description: Config key-value pairs for runtime config update
-  type: object
-  properties:
-    configs:
-      type: array
-      items:
-        $ref: '#/RuntimeConfigSpec'
-PlatformDataResponse:
-  title: Platform data
-  description: Information about YB Platform
-  properties:
-    id:
-      description: The UUID of the platform
-      type: string
-      format: uuid
-    platform_data:
-      $ref: '#/PlatformData'
-    num_clusters:
-      type: integer
-PlatformData:
-  title: Platform data
-  description: Information about YB Platform
-  properties:
-    hostname:
-      type: string
-    cloud_info:
-      $ref: '#/CloudInfo'
-    cidr:
-      $ref: '#/CidrBlock'
-    platform_type:
-      $ref: '#/PlatformTypeEnum'
-    vpc_id:
-      type: string
-    certificate_authority:
-      type: string
-    kube_cluster_endpoint:
-      type: string
-    kube_cluster_name:
-      type: string
-InternalSingleTenantVpcRequest:
-  title: Single Tenant Vpc Request
-  type: object
-  properties:
-    spec:
-      $ref: '#/SingleTenantVpcSpec'
-    vpc_id:
-      type: string
-      format: uuid
-      nullable: false
-    parent_id:
-      type: string
-      format: uuid
-      nullable: true
-VpcPeeringSpec:
-  title: Vpc Peering Specification
-  type: object
-  properties:
-    internal_yugabyte_vpc_id:
-      type: string
-      format: uuid
-      nullable: false
-    name:
-      description: The name of the peering
-      type: string
-      minLength: 3
-      maxLength: 63
-      pattern: ^(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?)$
-    customer_vpc:
-      $ref: '#/CustomerVpcSpec'
-  required:
-    - yugabyte_vpc_internal_id
-    - name
-    - customer_vpc
-SingleTenantVpcRequest:
-  title: Single Tenant Vpc Request
-  type: object
-  properties:
-    spec:
-      $ref: '#/SingleTenantVpcSpec'
-  required:
-    - spec
-CustomerVpcSpec:
-  title: Customer Vpc Specification
-  type: object
-  properties:
-    external_vpc_id:
-      type: string
-      nullable: false
-    cloud_provider_project:
-      type: string
-      nullable: false
-    cidr:
-      $ref: '#/CidrBlock'
-      nullable: true
-    cloud_info:
-      $ref: '#/VpcCloudInfo'
-  required:
-    - external_vpc_id
-    - cloud_provider_project
-    - cloud_info
-SingleTenantVpcSpec:
-  title: Single Tenant Vpc Specification
-  type: object
-  properties:
-    name:
-      description: The name of the vpc
-      type: string
-      minLength: 3
-      maxLength: 63
-      pattern: ^(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?)$
-    cloud:
-      $ref: '#/CloudEnum'
-    parent_cidr:
-      $ref: '#/CidrBlock'
-      nullable: true
-    region_specs:
-      type: array
-      uniqueItems: true
-      items:
-        $ref: '#/VpcRegionSpec'
-  required:
-    - name
-    - cloud
-    - region_specs
-VpcRegionSpec:
-  title: Vpc Region Spec
-  type: object
-  properties:
-    region:
-      type: string
-    cidr:
-       $ref: '#/CidrBlock'
-  required:
-    - region
-    - cidr
-SingleTenantVpcDataResponse:
-  title: Single Tenant Vpc Data
-  properties:
-    spec:
-      $ref: '#/SingleTenantVpcSpec'
-    info:
       type: object
       properties:
-        id:
+        detail:
+          description: Error message
           type: string
-          format: uuid
-          nullable: false
-        cloud_provider_project:
-          type: string
-        cluster_ids:
-          type: array
-          uniqueItems: true
-          nullable: false
-          items:
-            type: string
-            format: uuid
-            nullable: false
-        peering_ids:
-          type: array
-          uniqueItems: true
-          nullable: false
-          items:
-            type: string
-            format: uuid
-            nullable: false
-        state:
-          $ref: '#/VPCStateEnum'
-        external_vpc_id:
-          type: string
-          nullable: true
-          minLength: 1
-      required:
-        - id
-        - cluster_ids
-        - peering_ids
-        - state
-  required:
-    - spec
-    - info
-VpcPeeringData:
-  title: Single Tenant Vpc Data
-  type: object
-  properties:
-    spec:
-      $ref: '#/VpcPeeringSpec'
-    info:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-          nullable: false
-        state:
-          $ref: '#/PeeringStateEnum'
-        yugabyte_vpc_name:
-          type: string
-          nullable: false
-      required:
-        - id
-        - state
-        - single_tenant_vpc_name
-  required:
-    - spec
-    - info
-NetworkDataResponse:
-  title: Network Data
-  description: Information about cluster network
-  properties:
-    vpc:
-      $ref: '#/VpcDataResponse'
-    subnets:
-      type: array
-      items:
-        $ref: '#/SubnetDataResponse'
-VpcDataResponse:
-  title: VPC Data Response
-  description: Information about the VPC
-  properties:
-    id:
-      description: The ID of the VPC
-      type: string
-      format: uuid
-    vpc_data:
-      $ref: '#/VpcData'
-    num_clusters:
-      type: integer
-SubnetDataResponse:
-  title: Subnet Data Response
-  description: Information about the subnet
-  properties:
-    id:
-      description: The ID of the subnet
-      type: string
-      format: uuid
-    subnet_data:
-      $ref: '#/SubnetData'
-VpcData:
-  title: VPC Data
-  description: Information about the VPC
-  properties:
-    vpc_id:
-      description: The reference ID of the VPC in the provider cloud
-      type: string
-    cloud_project:
-      description: The account in AWS/project in GCP that this VPC belongs to.
-      type: string
-    cloud_info:
-      $ref: '#/CloudInfo'
-    cidr:
-      $ref: '#/CidrBlock'
-    vpc_type:
-      type: string
-      enum:
-        - Private
-        - Shared
-SubnetData:
-  title: Subnet Data
-  description: Information about the Subnet
-  properties:
-    subnet_id:
-      description: The subnet reference ID in the provider cloud
-      type: string
-    subnet_mapping:
-      description: The region/zone of the subnet
-      type: string
-    is_primary:
-      description: If the subnet is used for the primary NIC
-      type: boolean
-GlobalRateCardMap:
-  title: Global rate card map for type PROD or NON_PROD
-  description: Global rate card map for type PROD or NON_PROD
-  properties:
-    base_product_rate:
-      description: Base product rate
-      type: number
-      minimum: 0
-    overage_rate:
-      description: The overage rate
-      type: object
-      properties:
-        disk_storage:
-          description: Disk storage
-          type: number
-          minimum: 0
-        backup_storage:
-          description: Backup storage
-          type: number
-          minimum: 0
-      required:
-        - disk_storage
-        - backup_storage
-    burstable_vcpu_rate:
-      description: Burstable vCPU rate
-      type: number
-      minimum: 0
-    paused_cluster_disk_storage_rate:
-      description: Paused cluster disk storage rate
-      type: number
-      minimum: 0
-    rate_for:
-      description: Describes whether the rate is for prod or non-prod
-      type: string
-      enum:
-        - PROD
-        - NON_PROD
-  required:
-    - base_product_rate
-    - overage_rate
-    - rate_for
-AccountSpec:
-  title: Account Specification
-  description: Account Specification
-  type: object
-  required:
-    - name
-  properties:
-    name:
-      type: string
-      description: The account name
-      minLength: 1
-      maxLength: 63
-      pattern: ^(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?)$
-ModifyUserRoleRequest:
-  title: Modify User Role Request Payload
-  description: Modify user role request payload
-  type: object
-  required:
-    - role_id
-  properties:
-    role_id:
-     description: New role to associate with the user
-     type: string
-     format: uuid
-     nullable: false
-AccountInfo:
-  title: Account Info
-  description: Account Info
-  type: object
-  required:
-    - id
-    - owner_id
-    - roles
-  properties:
-    id:
-      type: string
-      format: uuid
-      description: The UUID of the account
-    owner_id:
-      type: string
-      format: uuid
-      description: UUID of the owner user of the account
-    roles:
-      type: array
-      uniqueItems: true
-      items:
-        $ref: '#/RoleData'
-    metadata:
-      $ref: '#/EntityMetadata'
-AccountData:
-  title: Account Data
-  description: Account Data
-  type: object
-  properties:
-    spec:
-      $ref: '#/AccountSpec'
-    info:
-      $ref: '#/AccountInfo'
-ClusterTable:
-  title: Cluster Table Object
-  description: Model representing a DB table
-  type: object
-  properties:
-    name:
-      type: string
-      minLength: 1
-      nullable: false
-    keyspace:
-      type: string
-      minLength: 1
-      nullable: false
-    type:
-      $ref: '#/YbApiEnum'
-    size_bytes:
-      type: integer
-      format: int64
-      minimum: 0
-  required:
-    - name
-    - keyspace
-    - type
-    - size_bytes
-ClusterTableData:
-  title: Cluster Table Data
-  description: List of cluster tables
-  type: array
-  uniqueItems: true
-  nullable: false
-  items:
-    $ref: '#/ClusterTable'
-SoftwareReleaseTrackInfo:
-  title: Software Release Track Info
-  description: Software release track Info
-  type: object
-  required:
-    - id
-  properties:
-    id:
-      type: string
-      format: uuid
-      description: The UUID of the release track
-    default_release_id:
-      type: string
-      format: uuid
-      nullable: true
-SoftwareReleaseTrackData:
-  title: Software Release Track Data
-  description: Software release track data
-  type: object
-  properties:
-    spec:
-      $ref: '#/SoftwareReleaseTrackSpec'
-    info:
-      $ref: '#/SoftwareReleaseTrackInfo'
-SoftwareReleaseInfo:
-  title: Software Release Track Info
-  description: Software release track Info
-  type: object
-  required:
-    - id
-    - track_id
-  properties:
-    id:
-      type: string
-      format: uuid
-      description: The UUID of the release
-    track_id:
-      type: string
-      format: uuid
-      description: The UUID of the release track
-SoftwareReleaseData:
-  title: Software Release Data
-  description: Software release data
-  type: object
-  properties:
-    spec:
-      $ref: '#/SoftwareReleaseSpec'
-    info:
-      $ref: '#/SoftwareReleaseInfo'
-  required:
-    - spec
-    - info
-NetworkAllowListData:
-  title: Allow List Data
-  description: Allow list data
-  type: object
-  properties:
-    spec:
-      $ref: '#/NetworkAllowListSpec'
-    info:
-      $ref: '#/NetworkAllowListInfo'
-  required:
-    - spec
-    - info
-CidrListResponseData:
-  title: Cidr List Response
-  description: A list of cidrs
-  type: array
-  uniqueItems: true
-  items:
-    $ref: '#/CidrBlock'
-InternalNetworkAllowListData:
-  title: Allow List Data
-  description: Allow list data
-  type: object
-  properties:
-    spec:
-      $ref: '#/InternalNetworkAllowListSpec'
-    info:
-      $ref: '#/NetworkAllowListInfo'
-RegionListResponseData:
-  title: Region List Response
-  description: A list of regions that a cluster can be deployed in
-  type: array
-  items:
-    $ref: '#/RegionListResponseDataItem'
-RegionListResponseDataItem:
-  title: Region List Response Data Item
-  description: An object containing code and name of a region
-  type: object
-  properties:
-    code:
-      type: string
-      description: Region code
-    name:
-      type: string
-      description: Region name
-    country_code:
-      type: string
-      description: Country code
-  required:
-    - code
-    - name
-    - country_code
-AppConfigResponseData:
-  title: App Config Response Data
-  description: A list of configuration paths and corresponding values
-  type: array
-  uniqueItems: true
-  items:
-    $ref: '#/AppConfigResponseDataItem'
-AppConfigResponseDataItem:
-  title: App Config Response Data Item
-  description: An object containing config path and value
-  type: object
-  properties:
-    path:
-      type: string
-      description: Configuration path
-    value:
-      type: string
-      description: Value corresponding to the path
-  required:
-    - path
-    - value
-CertificateContent:
-  title: CertificateContent
-  description: Content of the root certificate
-  type: string
-InstanceTypeSpecResponseItem:
-  title: Instance Type Spec
-  description: A HW spec for a specific VM instance type
-  type: object
-  properties:
-    memory_mb:
-      type: integer
-      description: Maxmium available RAM in MB
-    num_cores:
-      type: integer
-      description: Maximum number of cores supported
-    included_disk_size_gb:
-      type: integer
-      description: Maximum disk size in GB included for free
-    num_azs:
-      type: integer
-      description: Number of AZs supported by the instance type for the given region (if applicable)
-      nullable: true
-    is_enabled:
-      type: boolean
-      default: true
-      description: Whether the instance type is enabled
-  required:
-    - memory_mb
-    - num_cores
-    - included_disk_size_gb
-InstanceTypeSpecList:
-  title: Per-region Instance Type Spec List
-  description: A list of instance type HW specs for a given region/zone
-  type: array
-  uniqueItems: true
-  items:
-    $ref: '#/InstanceTypeSpecResponseItem'
-InstanceTypeSpecMapResponseData:
-  title: Instance Type Spec Map
-  description: A map of region codes to available HW specs
-  type: object
-  additionalProperties:
-    $ref: '#/InstanceTypeSpecList'
-ClusterLimits:
-  title: Specifications for cluster limits
-  description: Specifications for cluster limits
-  type: object
-  properties:
-    num_cores:
-      type: integer
-      minimum: 1
-    memory_mb:
-      type: integer
-      minimum: 2048  # This is the right number for when we switch to 1 core free tier instances
-    disk_size_gb:
-      type: integer
-      minimum: 10
-  required:
-    - num_cores
-    - memory_mb
-    - disk_size_gb
-FreeTierSpecsData:
-  title: Free tier specifications
-  description: Free tier specifications
-  type: object
-  properties:
-    cluster_limits:
-      $ref: '#/ClusterLimits'
-    apis:
-      type: array
-      items:
-        $ref: '#/YbApiEnum'
-      minItems: 1
-      uniqueItems: true
-  required:
-    - cluster_limits
-    - apis
-PaidTierSpecsData:
-  title: Paid tier specifications
-  description: Paid tier specifications
-  type: object
-  properties:
-    per_core_cost_cents_per_hr:
-      type: integer
-      minimum: 0
-    apis:
-      type: array
-      items:
-        $ref: '#/YbApiEnum'
-      minItems: 1
-      uniqueItems: true
-  required:
-    - per_core_cost_cents_per_hr
-    - apis
-ClusterTierSpecsResponseData:
-  title: Cluster specifications data
-  description: Cluster specifications data
-  type: object
-  properties:
-    free_tier:
-      $ref: '#/FreeTierSpecsData'
-    paid_tier:
-      $ref: '#/PaidTierSpecsData'
-  required:
-    - free_tier
-    - paid_tier
-InviteUserSpec:
-  title: Invite User Spec
-  required:
-    - email
-  type: object
-  properties:
-    email:
-      type: string
-      description: The email associated with the user
-      format: email
-      minLength: 5
-      maxLength: 100
-    first_name:
-      type: string
-      description: The first name associated with the user
-      minLength: 1
-      maxLength: 50
-      nullable: true
-    last_name:
-      type: string
-      description: The last name associated with the user
-      minLength: 1
-      maxLength: 50
-      nullable: true
-    company_name:
-      type: string
-      description: The company associated with the user
-      minLength: 1
-      maxLength: 255
-      nullable: true
-    role_id:
-      description: The role id of the user
-      type: string
-      format: uuid
-      nullable: true
-    password:
-      type: string
-      format: password
-      description: Password to associate with newly invited user
-      minLength: 8
-      maxLength: 72
-      nullable: true
-    country_code:
-      type: string
-      description: Two letter country code as defined in ISO 3166
-      minLength: 2
-      maxLength: 2
-      pattern: ^[A-Z][A-Z]$
-      nullable: true
-    marketing_consent:
-      type: boolean
-      description: Marketing consent of the user
-      default: false
-      nullable: true
-BatchInviteUserSpec:
-  type: object
-  title: Batch invite User Spec
-  properties:
-    userList:
-      type: array
-      items:
-        $ref: '#/InviteUserSpec'
-CreateProjectRequest:
-  title: Create Project Request Payload
-  required:
-    - name
-  type: object
-  properties:
-    name:
-      type: string
-      minLength: 1
-      maxLength: 63
-      pattern: ^(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?)$
-ProjectData:
-  title: Project Data
-  description: Project data
-  type: object
-  required:
-    - id
-    - name
-  properties:
-    id:
-      description: The UUID of the project
-      type: string
-      format: uuid
-    name:
-      description: The name of the project
-      type: string
-      minLength: 1
-      maxLength: 255
-    metadata:
-      $ref: '#/EntityMetadata'
-CreateUserRequest:
-  title: Create user request
-  description: Create user request
-  type: object
-  required:
-    - user_spec
-    - password
-  properties:
-    user_spec:
-      $ref: '#/UserSpec'
-    password:
-      type: string
-      format: password
-      description: Password associated with the user
-      minLength: 8
-      maxLength: 72
-    hcaptcha_token:
-      type: string
-      description: Token from hCaptcha service
-CreateClusterRequest:
-  title: Create cluster request
-  description: Create cluster request
-  type: object
-  required:
-    - cluster_spec
-    - db_credentials
-  properties:
-    cluster_spec:
-      $ref: '#/ClusterSpec'
-    db_credentials:
-      description: DB admin user credentials for YSQL/YCQL
-      type: object
-      properties:
-        ycql:
-          $ref: '#/DBCredentials'
-        ysql:
-          $ref: '#/DBCredentials'
-CreatePrivateClusterRequest:
-  title: Create private cluster request
-  description: Create private cluster request
-  type: object
-  required:
-    - cluster_spec
-    - db_credentials
-  properties:
-    cluster_spec:
-      $ref: '#/PrivateClusterSpec'
-    db_credentials:
-      description: DB admin user credentials for YSQL/YCQL
-      type: object
-      properties:
-        ycql:
-          $ref: '#/DBCredentials'
-        ysql:
-          $ref: '#/DBCredentials'
-UserSpec:
-  title: User Specification
-  description: User specification
-  type: object
-  required:
-    - email
-  properties:
-    email:
-      description: The email of the user
-      type: string
-      format: email
-      minLength: 5
-      maxLength: 100
-    first_name:
-      type: string
-      description: The first name associated with the user
-      minLength: 1
-      maxLength: 50
-      nullable: true
-    last_name:
-      type: string
-      description: The last name associated with the user
-      minLength: 1
-      maxLength: 50
-      nullable: true
-    company_name:
-      type: string
-      description: Company name associated with the user
-      minLength: 1
-      maxLength: 255
-      nullable: true
-    country_code:
-      type: string
-      description: Two letter country code as defined in ISO 3166
-      minLength: 2
-      maxLength: 2
-      pattern: ^[A-Z][A-Z]$
-      nullable: true
-    marketing_consent:
-      type: boolean
-      description: Marketing consent of the user
-      default: false
-      nullable: true
-ChangePasswordRequest:
-  title: Change password request payload
-  description: Change password request payload
-  type: object
-  required:
-    - newPassword
-  properties:
-    current_password:
-      type: string
-      format: password
-      description: Current password associated with the user
-      minLength: 8
-      maxLength: 72
-    new_password:
-      type: string
-      format: password
-      description: New password to associate with the user
-      minLength: 8
-      maxLength: 72
-UserInfo:
-  title: User Information
-  description: User Information
-  type: object
-  required:
-    - id
-    - state
-  properties:
-    id:
-      description: The UUID of the user
-      type: string
-      format: uuid
-    state:
-      $ref: '#/UserStateEnum'
-    role_list:
-      type: array
-      description: List of roles associated with the user
-      nullable: true
-      items:
-        $ref: '#/UserAccountRoleData'
-    metadata:
-      $ref: '#/EntityMetadata'
-    login_types:
-      type: array
-      description: List of login types associated with the user
-      items:
-        $ref: '#/LoginTypeEnum'
-UserData:
-  title: User Data
-  description: User Data
-  type: object
-  properties:
-    spec:
-      $ref: '#/UserSpec'
-    info:
-      $ref: '#/UserInfo'
-InviteUserData:
-  title: Invite User Data
-  description: Invite User Data
-  type: object
-  properties:
-    spec:
-      $ref: '#/InviteUserSpec'
-    info:
-      $ref: '#/UserInfo'
-BatchInviteUserData:
-  title: Batch Invite User Data
-  description: Batch invite User Data
-  type: object
-  properties:
-    userList:
-      type: array
-      items:
-        type: object
-        properties:
-          InviteUserData:
-            $ref: '#/InviteUserData'
-          is_successful:
-            description: user invitiation status
-            type: boolean
-          error_message:
-            type: string
-            nullable: True
-ReadReplicaSpec:
-  title: Read Replica Specification
-  description: Read Replica Spec
-  type: object
-  properties:
-    node_info:
-      $ref: '#/ClusterNodeInfo'
-    placement_info:
-      $ref: '#/PlacementInfo'
-    primary_cluster_id:
-      type: string
-      format: uuid
-  required:
-    - node_info
-    - cluster_region_info
-    - primary_cluster_id
-ClusterSpec:
-  title: Cluster Specification
-  description: Cluster spec
-  type: object
-  properties:
-    name:
-      description: The name of the cluster
-      type: string
-      minLength: 3
-      maxLength: 63
-      pattern: ^(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?)$
-    cloud_info:
-      $ref: '#/CloudInfo'
-    cluster_info:
-      $ref: '#/ClusterInfo'
-    network_info:
-      $ref: '#/Networking'
-    software_info:
-      $ref: '#/SoftwareInfo'
-    cluster_region_info:
-      type: array
-      uniqueItems: true
-      items:
-        $ref: '#/ClusterRegionInfo'
-      nullable: true
-    encryption_info:
-      $ref: '#/EncryptionInfo'
-  required:
-    - name
-    - cloud_info
-    - cluster_info
-    - network_info
-    - software_info
-    - encryption_info
-PrivateClusterSpec:
-  title: Private Cluster Specification
-  description: Private Cluster spec
-  type: object
-  properties:
-    name:
-      description: The name of the cluster
-      type: string
-      minLength: 3
-      maxLength: 63
-      pattern: ^(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?)$
-    cluster_info:
-      $ref: '#/PrivateClusterInfo'
-    cluster_region_info:
-      type: array
-      uniqueItems: true
-      minItems: 1
-      items:
-        $ref: '#/ClusterRegionInfo'
-    software_info:
-      $ref: '#/SoftwareInfo'
-  required:
-    - name
-    - cluster_info
-    - cluster_region_info
-    - software_info
-ScheduledMaintenanceEventData:
-  title: Scheduled Maintenance Event Data
-  description: Scheduled Maintenance Event Data
-  type: object
-  required:
-    - scheduled_execution_id
-    - maintenance_window
-    - event_type
-    - event_info
-    - state
-    - can_delay
-    - can_trigger
-  properties:
-    scheduled_execution_id:
-      description: Scheduled Execution ID
-      type: string
-      format: uuid
-    can_delay:
-      type: boolean
-      description: indicates if this event can be delayed
-    can_trigger:
-      type: boolean
-      description: indicates if this event can be triggered immediately
-    event_type:
-      $ref: '#/MaintenanceWindowEventTypeEnum'
-    event_info:
-      $ref: '#/DBUpgradeEventInfo'
-    state:
-      $ref: '#/MaintenanceWindowEventStateEnum'
-    maintenance_window:
-      $ref: '#/MaintenanceWindowInfo'
-MaintenanceWindowInfo:
-  title: Maintenance Window Info
-  description: Maintenance Window Info
-  type: object
-  required:
-    - start_timestamp
-    - end_timestamp
-  properties:
-    start_timestamp:
-      description: Start time of upgrade in UTC
-      type: string
-      example: 2021-08-06T08:37:27.707Z
-    end_timestamp:
-      description: End time of upgrade in UTC
-      type: string
-      example: 2021-08-06T08:57:00.707Z
-ScheduledUpgradeTaskData:
-  title: Scheduled Upgrade Task Data
-  description: Scheduled upgrade task data
-  type: object
-  required:
-    - spec
-    - info
-  properties:
-    spec:
-      $ref: '#/UpgradeRequestSpec'
-    info:
-      $ref: '#/UpgradeRequestInfo'
-ScheduledClusterUpgradeTaskData:
-  title: Scheduled Cluster Upgrade Task Data
-  description: Scheduled Cluster upgrade task data
-  type: object
-  required:
-    - spec
-    - info
-  properties:
-    spec:
-      $ref: '#/ClusterBasedUpgradeRequestSpec'
-    info:
-      $ref: '#/UpgradeRequestInfo'
-ClusterData:
-  title: Cluster Data
-  description: Cluster data
-  type: object
-  required:
-    - spec
-    - info
-  properties:
-    spec:
-      $ref: '#/ClusterSpec'
-    info:
-      $ref: '#/ClusterDataInfo'
-ReadReplicaData:
-  title: Cluster Data
-  description: Cluster data
-  type: object
-  required:
-    - spec
-    - info
-  properties:
-    spec:
-      $ref: '#/ReadReplicaSpec'
-    info:
-      $ref: '#/ClusterDataInfo'
-InternalClusterData:
-  title: Cluster Data with internal cluster details
-  description: Cluster data with internal cluster details
-  type: object
-  required:
-    - spec
-    - info
-  properties:
-    spec:
-      $ref: '#/ClusterSpec'
-    info:
-      $ref: '#/ClusterDataInfo'
-    internal_info:
-      type: object
-      properties:
-        custom_images:
-          type: array
-          uniqueItems: true
-          items:
-            type: string
-      required:
-        - custom_images
-LoggingLevelResponseSchema:
-  description: Type of Logging Level
-  type: object
-  properties:
-    data:
-      $ref: '#/LoggingLevelData'
+        status:
+          description: Error code
+          type: integer
 LiveQueryResponseSchema:
   title: Live Query Response Schema
   description: Live Query Response Schema
@@ -1697,41 +149,21 @@ SlowQueryResponseYSQLQueryItem:
       type: integer
     max_time:
       type: number
+      format: double
     mean_time:
       type: number
+      format: double
     min_time:
       type: number
+      format: double
     rows:
       type: integer
     stddev_time:
       type: number
+      format: double
     total_time:
       type: number
-LoggingLevelData:
-  title: Logging Level of API Server
-  description: Logging Level of API Server
-  type: object
-  properties:
-    logging_level:
-      description: Logging Level
-      type: string
-InternalNodeData:
-  type: object
-  description: Internal node data
-  properties:
-    name:
-      type: string
-      description: Name of the node (as recognized by platform)
-    private_ip:
-      type: string
-      description: Private IP of the node
-      nullable: true
-    region:
-      type: string
-      description: Region the node belongs to
-  required:
-    - name
-    - region
+      format: double
 NodeData:
   type: object
   description: Node data
@@ -1739,11 +171,20 @@ NodeData:
     name:
       type: string
       nullable: false
+    host:
+      type: string
+      nullable: false
     is_node_up:
       type: boolean
     is_master:
       type: boolean
     is_tserver:
+      type: boolean
+    is_read_replica:
+      type: boolean
+    is_master_up:
+      type: boolean
+    is_bootstrapping:
       type: boolean
     metrics:
       type: object
@@ -1770,12 +211,88 @@ NodeData:
           type: number
           format: double
           default: 0
+        time_since_hb_sec:
+          type: number
+          format: double
+          default: 0
+        uptime_seconds:
+          type: integer
+          format: int64
+          default: 0
+          minimum: 0
+        user_tablets_total:
+          type: integer
+          format: int64
+          default: 0
+          minimum: 0
+        user_tablets_leaders:
+          type: integer
+          format: int64
+          default: 0
+          minimum: 0
+        system_tablets_total:
+          type: integer
+          format: int64
+          default: 0
+          minimum: 0
+        system_tablets_leaders:
+          type: integer
+          format: int64
+          default: 0
+          minimum: 0
+        active_connections:
+          type: object
+          properties:
+            ysql:
+              type: integer
+              format: int64
+              default: 0
+              minimum: 0
+            ycql:
+              type: integer
+              format: int64
+              default: 0
+              minimum: 0
+          required:
+            - ysql
+            - ycql
+        master_uptime_us:
+          type: integer
+          format: int64
+          default: 0
+          minimum: 0
+        ram_used_bytes:
+          type: integer
+          format: int64
+          default: 0
+          minimum: 0
+        ram_provisioned_bytes:
+          type: integer
+          format: int64
+          default: 0
+          minimum: 0
+        disk_provisioned_bytes:
+          type: integer
+          format: int64
+          default: 0
+          minimum: 0
       required:
         - memory_used_bytes
         - total_sst_file_size_bytes
         - uncompressed_sst_file_size_bytes
         - read_ops_per_sec
         - write_ops_per_sec
+        - time_since_hb_sec
+        - uptime_seconds
+        - user_tablets_total
+        - user_tablets_leaders
+        - system_tablets_total
+        - system_tablets_leaders
+        - active_connections
+        - master_uptime_us
+        - ram_used_bytes
+        - ram_provisioned_bytes
+        - disk_provisioned_bytes
     cloud_info:
       type: object
       properties:
@@ -1792,37 +309,16 @@ NodeData:
       type: string
   required:
     - name
+    - host
     - is_node_up
     - is_master
     - is_tserver
+    - is_read_replica
+    - is_master_up
+    - is_bootstrapping
     - cloud_info
     - metrics
     - software_version
-ClusterInstantMetricsData:
-  title: Cluster Instant Metrics Data
-  description: Cluster instance metrics data
-  type: object
-  nullable: true
-  properties:
-    read_ops_per_second:
-      type: number
-      format: double
-    write_ops_per_second:
-      type: number
-      format: double
-ClusterInstantMetrics:
-  title: Cluster Instant Metrics
-  description: Cluster instant metrics
-  type: object
-  properties:
-    cluster_id:
-      type: string
-      format: uuid
-    metrics:
-      $ref: '#/ClusterInstantMetricsData'
-  required:
-    - cluster_id
-    - metrics
 MetricData:
   title: Metric Data
   description: Metric data
@@ -1844,700 +340,118 @@ MetricData:
   required:
     - name
     - values
-MigrationBackupSpec:
-  title: Backup Specification
-  description: Backup spec
-  type: object
-  properties:
-    cluster_id:
-      description: The UUID of the cluster
-      type: string
-      format: uuid
-    retention_period_in_days:
-      description: Time to retain the backup
-      type: integer
-    description:
-      description: Description for the backup
-      type: string
-      maxLength: 1024
-  required:
-    - cluster_id
-MigrationBackupInfo:
-  title: Backup Migration Restore Specification
-  description: Backup migration spec
-  type: object
-  properties:
-    id:
-      description: The UUID of the backup
-      type: string
-      format: uuid
-    cluster_name:
-      description: The name of the cluster
-      type: string
-    project_id:
-      description: The UUID of the project
-      type: string
-      format: uuid
-    platform_id:
-      description: The UUID of the platform
-      type: string
-      format: uuid
-    region:
-      description: Region of the bucket
-      type: string
-    bucket_name:
-      description: The name of the bucket
-      type: string
-    credentials:
-      description: Credentials of the backup
-      type: string
-    state:
-      $ref: '#/BackupStateEnum'
-    cloud_type:
-      $ref: '#/CloudEnum'
-    keyspaces_info:
-      type: array
-      description: List of keyspaces and their location
-      items:
-        $ref: '#/MigrationBackupKeyspaceInfo'
-MigrationBackupKeyspaceInfo:
-  title: Migration Backup Keyspace Info
-  description: Migration backup keyspace info
-  type: object
-  properties:
-    table_type:
-      description: Type of the table
-      type: string
-      pattern: '(YSQL|YCQL)'
-    keyspace:
-      description: Name of the keyspace
-      type: string
-    location:
-      description: Location of the keyspace
-      type: string
-BackupSpec:
-  title: Backup Specification
-  description: Backup spec
-  type: object
-  properties:
-    cluster_id:
-      description: The UUID of the cluster
-      type: string
-      format: uuid
-    retention_period_in_days:
-      description: Time to retain the backup
-      type: integer
-    description:
-      description: Description for the backup
-      type: string
-      maxLength: 1024
-  required:
-    - cluster_id
-RestoreSpec:
-  title: Backup Restore Specification
-  description: Backup spec
-  type: object
-  properties:
-    backup_id:
-      description: The UUID of the backup
-      type: string
-      format: uuid
-    cluster_id:
-      description: The UUID of the cluster
-      type: string
-      format: uuid
-MigrationRestoreSpec:
-  title: Backup Migration Restore Specification
-  description: Backup migration spec
-  type: object
-  properties:
-    cloud_type:
-      $ref: '#/CloudEnum'
-    credentials:
-      description: Credentials of the backup bucket
-      type: string
-    bucket_name:
-      description: Name of the backup bucket
-      type: string
-    region:
-      description: Region of the bucket
-      type: string
-    num_parallel_ops:
-      description: Number of parallel operations
-      type: integer
-      minimum: 1
-      maximum: 100
-      default: 8
-    keyspaces_info:
-      type: array
-      description: List of keyspaces and their location
-      items:
-        $ref: '#/MigrationBackupKeyspaceInfo'
-    cluster_id:
-      description: The UUID of the cluster
-      type: string
-      format: uuid
-    kms_spec:
-      $ref: '#/KmsSpec'
-KmsSpec:
-  title: KMS spec for EAR enabled clusters
-  description: Spec to create the KMS Config
+ActivityData:
+  title: Activity Data
+  description: Activity Data
   type: object
   properties:
     name:
-      description: Name of the KMS config
       type: string
-    access_key:
-      description: AWS access key
+    data:
+      type: object
+  required:
+    - name
+    - data
+AlertsInfo:
+  title: Alerts Info
+  description: Alerts Info
+  type: object
+  properties:
+    name:
+      description: Name of alert
       type: string
-    secret_key:
-      description: AWS secret key
-      type: string
-    cmk_id:
-      description: CMK id of AWS KMS
-      type: string
-    region:
-      description: AWS region
-      type: string
-    kms_endpoint:
-      description: KMS endpoint
+    info:
+      description: Array of alerts
       type: string
   required:
     - name
-MigrationRestoreInfo:
-  title: Migration Restore Info
-  description: Migration Restore Info
+    - info
+ClusterTableData:
+  title: Cluster Table Data
+  description: List of cluster tables
+  type: array
+  uniqueItems: true
+  nullable: false
+  items:
+    $ref: '#/ClusterTable'
+ClusterTable:
+  title: Cluster Table Object
+  description: Model representing a DB table
   type: object
   properties:
-    id:
-      description: The UUID of the restore
+    name:
       type: string
-      format: uuid
-    cluster_name:
-      description: The name of the cluster to which backup is being restored
+      minLength: 1
+      nullable: false
+    keyspace:
       type: string
-    description:
-      description: Description of the restore operation
+      minLength: 1
+      nullable: false
+    uuid:
       type: string
-      maxLength: 1024
-    state:
-      $ref: '#/RestoreStateEnum'
-    metadata:
-      $ref: '#/EntityMetadata'
-RestoreInfo:
-  title: Restore Info
-  description: Restore Info
-  type: object
-  properties:
-    id:
-      description: The UUID of the restore
-      type: string
-      format: uuid
-    project_id:
-      description: The UUID of the project
-      type: string
-      format: uuid
-    source_cluster_name:
-      description: The name of the cluster from which backup was taken
-      type: string
-    target_cluster_name:
-      description: The name of the cluster to which backup is being restored
-      type: string
-    description:
-      description: Description of the restore operation
-      type: string
-      maxLength: 1024
-    keyspace_info:
-      type: array
-      items:
-        $ref: '#/BackupKeyspaceInfo'
-    state:
-      $ref: '#/RestoreStateEnum'
-    metadata:
-      $ref: '#/EntityMetadata'
-    size_in_bytes:
+      minLength: 1
+      nullable: false
+    type:
+      $ref: '#/YbApiEnum'
+    size_bytes:
       type: integer
       format: int64
-      nullable: true
-MigrationRestoreData:
-  title: Restore Backup Data
-  description: Restore Backup data
+      minimum: 0
+  required:
+    - name
+    - keyspace
+    - uuid
+    - type
+    - size_bytes
+YbApiEnum:
+  title: Yb Api Enum
+  description: Type of DB API (YSQL/YCQL)
+  type: string
+  enum:
+    - YSQL
+    - YCQL
+ClusterData:
+  title: Cluster Data
+  description: Cluster data
   type: object
-  properties:
-    spec:
-      $ref: '#/MigrationRestoreSpec'
-    info:
-      $ref: '#/MigrationRestoreInfo'
-RestoreData:
-  title: Restore Backup Data
-  description: Restore Backup data
-  type: object
-  properties:
-    spec:
-      $ref: '#/RestoreSpec'
-    info:
-      $ref: '#/RestoreInfo'
-ScheduleData:
-  title: Schedule Data
-  description: Schedule data
-  type: object
-  properties:
-    spec:
-      $ref: '#/ScheduleSpec'
-    info:
-      $ref: '#/ScheduleInfo'
   required:
     - spec
     - info
-BackupInfo:
-  title: Backup Info
-  description: Backup data
+  properties:
+    spec:
+      $ref: '#/ClusterSpec'
+    info:
+      $ref: '#/ClusterDataInfo'
+ClusterSpec:
+  title: Cluster Specification
+  description: Cluster spec
   type: object
   properties:
-    id:
-      description: The UUID of the backup
-      type: string
-      format: uuid
-    cluster_name:
+    name:
       description: The name of the cluster
       type: string
-    state:
-      $ref: '#/BackupStateEnum'
-    action_type:
-      $ref: '#/BackupActionTypeEnum'
-    keyspace_info:
-      type: array
-      items:
-        $ref: '#/BackupKeyspaceInfo'
-    size_in_bytes:
-      type: integer
-      format: int64
-      nullable: true
-    deleted_on:
-      description: Timestamp when the backup was deleted
-      type: string
-      nullable: true
-    completed_on:
-      description: Timestamp when the backup creation completed
-      type: string
-      nullable: true
-    metadata:
-      $ref: '#/EntityMetadata'
-TaskInfo:
-  title: Task Info
-  description: Task data
-  type: object
-  properties:
-    id:
-      description: The UUID of the task
-      type: string
-      format: uuid
-    entity_id:
-      description: The ID of the entity being operated on
-      type: string
-      format: uuid
-    locking:
-      description: If the task locks the entity
-      type: boolean
-    entity_type:
-      $ref: '#/EntityTypeEnum'
-    task_type:
-      $ref: '#/TaskTypeEnum'
-    completed_on:
-      description: Time of task completion
-      type: string
-      nullable: true
-    state:
-      description: State of the task
-      type: string
-    metadata:
-      $ref: '#/EntityMetadata'
-MigrationBackupData:
-  title: Migration Backup Data
-  description: Migration backup data
-  type: object
-  properties:
-    spec:
-      $ref: '#/MigrationBackupSpec'
-    info:
-      $ref: '#/MigrationBackupInfo'
-BackupData:
-  title: Backup Data
-  description: Backup data
-  type: object
-  properties:
-    spec:
-      $ref: '#/BackupSpec'
-    info:
-      $ref: '#/BackupInfo'
-TaskData:
-  title: Task Data
-  description: Task data
-  type: object
-  properties:
-    info:
-      $ref: '#/TaskInfo'
-BackupScheduleSpec:
-  title: Backup Schedule Spec
-  description: Backup schedule spec
-  type: object
-  properties:
-    backup_spec:
-      $ref: '#/BackupSpec'
-    schedule_spec:
-      $ref: '#/ScheduleSpec'
-  required:
-    - backup_spec
-    - schedule_spec
-ScheduleSpec:
-  title: Schedule Spec
-  description: Schedule spec
-  type: object
-  properties:
-    time_interval_in_days:
-      description: Time interval between two scheduled tasks in days
-      type: integer
-    cron_expression:
-      description: Cron expression of the schedule
-      type: string
-      nullable: true
-    state:
-      $ref: '#/ScheduleStateEnum'
-  required:
-    - state
-ScheduleInfo:
-  title: Schedule Info
-  description: Schedule info
-  type: object
-  properties:
-    id:
-      description: Id of the schedule
-      type: string
-      format: uuid
-    task_type:
-      $ref: '#/TaskTypeEnum'
-    task_params:
-      description: Task params for the schedule type
-      type: object
-    entity_type:
-      $ref: '#/EntityTypeEnum'
-    entity_id:
-      description: Entity id for the schedule
-      type: string
-      format: uuid
-    schedule_type:
-      $ref: '#/ScheduleTypeEnum'
-    last_schedule_time:
-      description: Timestamp when the last schedule instance ran in UTC
-      type: string
-      nullable: true
-    next_schedule_time:
-      description: Timestamp when the next schedule instance will run in UTC
-      type: string
-      nullable: true
-  required:
-    - id
-    - task_type
-    - task_params
-    - entity_type
-    - entity_id
-VersionInfo:
-  title: Version Info
-  description: ''
-  type: object
-  properties:
-    data:
-      type: object
-      properties:
-        version:
-          type: string
-          minLength: 1
-        commit_hash:
-          type: string
-          minLength: 1
-      required:
-        - version
-        - commit_hash
-ApiError:
-  title: API Error
-  type: object
-  properties:
-    error:
-      type: object
-      properties:
-        detail:
-          description: Error message
-          type: string
-        status:
-          description: Error code
-          type: integer
-CloudEnum:
-  title: Cloud Enum
-  description: Which cloud the cluster is deployed in
-  type: string
-  default: MANUAL
-  enum:
-    - AWS
-    - GCP
-    - MANUAL
-ArchitectureEnum:
-  title: Architecture Enum
-  description: Architecture type
-  type: string
-  default: X86
-  enum:
-    - X86
-    - ARM
-EntityTypeEnum:
-  title: Entity Type Enum
-  description: The Entity type
-  type: string
-  enum:
-    - BACKUP
-    - CLUSTER
-    - CLUSTER_ALLOW_LIST
-    - PROJECT
-TaskTypeEnum:
-  title: Task Type Enum
-  description: The type of task
-  type: string
-  enum:
-    - CREATE_CLUSTER
-    - EDIT_CLUSTER
-    - DELETE_CLUSTER
-    - EDIT_ALLOW_LIST
-    - CREATE_BACKUP
-    - RESTORE_BACKUP
-    - MIGRATE_CLUSTER
-    - DELETE_PROJECT
-    - UPGRADE_CLUSTER
-    - PAUSE_CLUSTER
-    - RESUME_CLUSTER
-    - SETUP_XCLUSTER_REPLICATION
-VPCStateEnum:
-  title: VPC State Enum
-  description: The current state of a VPC
-  type: string
-  enum:
-    - CREATING
-    - FAILED
-    - ACTIVE
-    - DELETING
-PeeringStateEnum:
-  title: Peering State Enum
-  description: The current state of a VPC peering connection
-  type: string
-  enum:
-    - CREATING
-    - FAILED
-    - ACTIVE
-    - PENDING
-    - EXPIRED
-    - DELETING
-    - DELETED
-UserStateEnum:
-  title: User State Enum
-  description: Which state the user is in
-  type: string
-  default: ACTIVE
-  enum:
-    - ACTIVE
-    - PROVISIONED
-    - INACTIVE
-EventTypeEnum:
-  title: Event Type Enum
-  description: The type of an event
-  type: string
-  enum:
-    - CREATE
-    - EDIT
-    - PAUSE
-    - RESUME
-    - DELETE
-    - ADD
-    - REMOVE
-    - RESTORE
-    - ACTIVATE
-    - CANCEL
-    - SCHEDULE
-    - TRIGGER
-    - DELAY
-    - UPGRADE
-ResourceTypeEnum:
-  title: Resource Type Enum
-  description: The type of resource
-  type: string
-  enum:
-    - CLUSTER
-    - ALLOW_LIST
-    - BACKUP
-    - BACKUP_SCHEDULE
-    - ACCOUNT
-    - USER
-    - PROJECT
-    - BILLING
-    - PAYMENT
-    - TRACK
-    - MAINTENANCE_EVENT
-    - VPC
-    - VPC_PEERING
-    - MAINTENANCE_WINDOW
-    - MAINTENANCE_EXCLUSION
-EmailTemplateEnum:
-  title: Email Template Enum
-  description: Which type of email to send
-  type: string
-  example: USER_ONBOARDING
-  nullable: false
-  enum:
-    - USER_ONBOARDING
-    - SALES_USER_SIGNUP
-    - ABANDONED_CLUSTER_PAUSED
-    - ABANDONED_CLUSTER_WARNING
-    - ABANDONED_CLUSTER_DELETED
-    - ALERT_CLUSTER_DISK_SPACE_LOW
-    - ALERT_CLUSTER
-    - ALERT_BILLING
-    - ALERT_CLUSTER_TEST
-    - CLUSTER_CREATED
-    - PAUSED_CLUSTER_NOTIFICATION
-    - UPGRADE_SCHEDULED_FREE
-    - UPGRADE_SCHEDULED_RF1
-    - UPGRADE_SCHEDULED
-    - MAINTENANCE_EVENT
-    - MAINTENANCE_EVENT_COMPLETION_SUCCESS
-    - MAINTENANCE_EVENT_COMPLETION_FAILURE
-    - CUSTOM
-    - SINGLE_CREDIT_THRESHOLD_ALERT
-    - TOTAL_CREDIT_THRESHOLD_ALERT
-CidrBlock:
-  title: CIDR Block
-  description: A CIDR block
-  type: string
-  pattern: '^([0-9]{1,3}\.){3}[0-9]{1,3}($|/((?:[0-9]|[12][0-9]|3[012])))$'
-NetworkAllowListInfo:
-  title: NetworkAllowListInfo
-  description: Allow list info
-  type: object
-  properties:
-    id:
-      type: string
-      format: uuid
-    project_id:
-      type: string
-      format: uuid
-    cluster_ids:
-      type: array
-      items:
-        type: string
-        format: uuid
-  required:
-    - id
-    - project_id
-    - cluster_ids
-NetworkAllowListSpec:
-  title: NetworkAllowListSpec
-  description: Allow list for client connections to database
-  type: object
-  properties:
-    name:
-      type: string
-      description: Name of the allow list group
-      minLength: 1
-      maxLength: 63
-      pattern: ^(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?)$
-    description:
-      type: string
-      description: A short description of the allow list group
-    allow_list:
-      description: The list of CIDRs
-      type: array
-      minItems: 1
-      uniqueItems: true
-      items:
-        $ref: '#/CidrBlock'
-  required:
-    - name
-    - description
-    - allow_list
-InternalNetworkAllowListSpec:
-  title: NetworkAllowListSpec
-  description: Allow list for client connections to database
-  type: object
-  properties:
-    name:
-      type: string
-      description: Name of the allow list group
-      minLength: 1
-      maxLength: 63
-      pattern: ^(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?)$
-    description:
-      type: string
-      description: A short description of the allow list group
-    is_internal:
-      type: boolean
-      description: Whether this allow list entry will be visible to users or not
-      default: false
-    allow_list:
-      description: The list of CIDRs
-      type: array
-      minItems: 1
-      uniqueItems: true
-      items:
-        $ref: '#/CidrBlock'
-  required:
-    - name
-    - description
-    - is_internal
-    - allow_list
-SoftwareReleaseTrackSpec:
-  title: DB software Release Track
-  description: DB software release track
-  type: object
-  properties:
-    name:
-      type: string
-      description: track name
       minLength: 3
-  required:
-    - name
-SoftwareReleaseSpec:
-  title: DB Software Release
-  description: DB software release
-  type: object
-  properties:
-    version:
-      type: string
-      minLength: 10
-    release_date:
-      type: string
-      example: "1997-02-11"
-    is_default:
-      type: boolean
-      default: false
-  required:
-    - version
-    - release_date
-    - is_default
-BatchAddAccountSoftwareTrackRequest:
-  title: Batch Account Specific Software Release Track Data
-  description: Batch Account Specific Software Release Track Data
-  type: object
-  properties:
-    track_list:
+      maxLength: 63
+      pattern: ^(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?)$
+    cloud_info:
+      $ref: '#/CloudInfo'
+    cluster_info:
+      $ref: '#/ClusterInfo'
+    cluster_region_info:
       type: array
       uniqueItems: true
       items:
-        type: string
-        format: uuid
-NetworkAllowListIdList:
-  title: Allow List Id List
-  description: List of allow list IDs
-  type: array
-  uniqueItems: true
-  items:
-    type: string
-    format: uuid
+        $ref: '#/ClusterRegionInfo'
+      nullable: true
+    encryption_info:
+      $ref: '#/EncryptionInfo'
+  required:
+    - name
+    - cloud_info
+    - cluster_info
+    - network_info
+    - software_info
+    - encryption_info
 CloudInfo:
   title: Cloud Info
   description: Cloud deployment information
@@ -2552,84 +466,49 @@ CloudInfo:
   required:
     - code
     - region
-MaintenanceWindowEventTypeEnum:
-  title: Maintenance Window Event Type Enum
-  description: Maintenance Window Event Type Enum
+CloudEnum:
+  title: Cloud Enum
+  description: Which cloud the cluster is deployed in
   type: string
+  default: MANUAL
   enum:
-    - DB_UPGRADE
-MaintenanceWindowEventStateEnum:
-  title: Maintenance Window State Enum
-  description: Maintenance Window State Enum
-  type: string
-  enum:
-    - SCHEDULED
-    - ACTIVE
-DBUpgradeEventInfo:
-  title: DB Upgrade Event Info
-  description: DB Upgrade Event Info
+    - AWS
+    - GCP
+    - MANUAL
+ClusterInfo:
+  title: Cluster Info
+  description: Cluster level information
   type: object
-  required:
-    - release_id
-    - track_id
-    - version
-    - estimated_time_mins
   properties:
-    release_id:
-      description: Release ID
-      type: string
-      format: uuid
-    track_id:
-      description: Track ID
-      type: string
-      format: uuid
-    version:
-      description: Upgrade Version
-      type: string
-    estimated_time_mins:
-      description: Estimated time of completion in minutes
+    num_nodes:
+      description: How many nodes are in the cluster
       type: integer
-VpcCloudInfo:
-  title: VPC Cloud Info
-  description: Cloud deployment information for a VPC
-  type: object
-  properties:
-    code:
-      $ref: '#/CloudEnum'
-    region:
-      type: string
-      minLength: 1
+      minimum: 1
+      maximum: 24
+      default: 3
+    fault_tolerance:
+      $ref: '#/ClusterFaultTolerance'
+    replication_factor:
+      description: The replication factor applied on the cluster
+      type: integer
+      minimum: 1
+      maximum: 24
+    node_info:
+      $ref: '#/ClusterNodeInfo'
+    is_production:
+      description: Describes if the cluster is a production cluster
+      type: boolean
+      default: false
+    version:
+      description: cluster data version
+      type: integer
+      nullable: true
   required:
-    - code
-Networking:
-  title: Networking
-  description: Cluster networking
-  type: object
-  properties:
-    single_tenant_vpc_id:
-      type: string
-      format: uuid
-      nullable: true
-SoftwareInfo:
-  title: Software Info
-  description: Cluster software info
-  type: object
-  properties:
-    track_id:
-      type: string
-      format: uuid
-      nullable: true
-EncryptionInfo:
-  title: Encryption Info
-  description: Cluster encryption info
-  type: object
-  properties:
-    encryption_at_rest:
-      type: boolean
-      default: false
-    encryption_in_transit:
-      type: boolean
-      default: false
+    - num_nodes
+    - fault_tolerance
+    - node_info
+    - cluster_tier
+    - is_production
 ClusterFaultTolerance:
   title: Cluster Fault Tolerance
   description: The level of fault tolerance for the cluster
@@ -2652,12 +531,25 @@ ClusterNodeInfo:
       default: 0
     disk_size_gb:
       description: The total size of disk (GB)
-      type: integer
-      minimum: 10
-      maximum: 4096
-      default: 256
+      type: number
+      format: double
+      default: 0
+    disk_size_used_gb:
+      description: The total size of used disk space (GB)
+      type: number
+      format: double
+      default: 0
     cpu_usage:
       description: The average CPU usage over all nodes
+      type: number
+      format: double
+      default: 0
+    num_cores:
+      description: The number of CPU cores per node
+      type: integer
+      default: 0
+    ram_provisioned_gb:
+      description: The total size of provisioned ram (GB)
       type: number
       format: double
       default: 0
@@ -2665,66 +557,7 @@ ClusterNodeInfo:
     - num_cores
     - memory_mb
     - disk_size_gb
-ClusterInfo:
-  title: Cluster Info
-  description: Cluster level information
-  type: object
-  properties:
-    cluster_tier:
-      $ref: '#/ClusterTier'
-    cluster_type:
-      $ref: '#/ClusterType'
-      nullable: true
-    num_nodes:
-      description: How many nodes are in the cluster
-      type: integer
-      minimum: 1
-      maximum: 24
-      default: 3
-    fault_tolerance:
-      $ref: '#/ClusterFaultTolerance'
-    node_info:
-      $ref: '#/ClusterNodeInfo'
-    is_production:
-      description: Describes if the cluster is a production cluster
-      type: boolean
-      default: false
-    version:
-      description: cluster data version
-      type: integer
-      nullable: true
-  required:
-    - num_nodes
-    - fault_tolerance
-    - node_info
-    - cluster_tier
-    - is_production
-PrivateClusterInfo:
-  title: Private Cluster Info
-  description: Private cluster level information
-  type: object
-  properties:
-    cluster_tier:
-      $ref: '#/ClusterTier'
-    cluster_type:
-      $ref: '#/ClusterType'
-      nullable: true
-    fault_tolerance:
-      $ref: '#/ClusterFaultTolerance'
-    node_info:
-      $ref: '#/ClusterNodeInfo'
-    is_production:
-      description: Describes if the cluster is a production cluster
-      type: boolean
-      default: false
-    version:
-      description: cluster data version
-      type: integer
-  required:
-    - fault_tolerance
-    - node_info
-    - cluster_tier
-    - is_production
+    - ram_provisioned_gb
 ClusterRegionInfo:
   title: Cluster Region Info
   description: Cluster region info list
@@ -2732,14 +565,6 @@ ClusterRegionInfo:
   properties:
     placement_info:
       $ref: '#/PlacementInfo'
-    is_default:
-      type: boolean
-      default: false
-    is_affinitized:
-      description: If the leaders should be pinned to this region
-      type: boolean
-      default: true
-      nullable: true
   required:
     - placement_info
 PlacementInfo:
@@ -2753,24 +578,20 @@ PlacementInfo:
       minimum: 1
       maximum: 24
       default: 3
-    vpc_id:
-      type: string
-      format: uuid
-      nullable: true
-    num_replicas:
-      description: Number of data copies (read replica only)
-      type: integer
-      minimum: 1
-      maximum: 24
-      nullable: true
-    multi_zone:
-      description: Whether to spread the nodes in this region across zones
-      type: boolean
-      default: true
-      nullable: true
   required:
     - cloud_info
     - num_nodes
+EncryptionInfo:
+  title: Encryption Info
+  description: Cluster encryption info
+  type: object
+  properties:
+    encryption_at_rest:
+      type: boolean
+      default: false
+    encryption_in_transit:
+      type: boolean
+      default: false
 ClusterDataInfo:
   type: object
   properties:
@@ -2781,24 +602,6 @@ ClusterDataInfo:
     state:
       description: The current state of the cluster
       type: string
-    endpoint:
-      description: Endpoint to connect to the cluster
-      type: string
-      format: hostname
-      nullable: true
-    endpoints:
-      description: Endpoints to connect to the cluster by region
-      type: object
-      additionalProperties:
-        type: string
-        nullable: true
-      nullable: true
-      example:
-        us-west1: id.cloud_provider.cloud.yugabyte.com
-    project_id:
-      description: ID of the associated project
-      type: string
-      format: uuid
     software_version:
       description: The current version of YugabyteDB installed on the cluster
       type: string
@@ -2809,1849 +612,401 @@ ClusterDataInfo:
     - state
     - project_id
     - metadata
-DBCredentials:
-  description: username/password tuple
-  title: Credentials Object
+EntityMetadata:
+  title: Entity Metadata
+  description: Common metadata for entities
   type: object
   properties:
-    username:
-      type: string
-      description: username
-      minLength: 5
-    password:
-      type: string
-      description: password
-      format: password
-      minLength: 8
-  required:
-    - username
-    - password
-ClusterTier:
-  title: Cluster Tier
-  description: Which tier the cluster is in
-  type: string
-  default: PAID
-  enum:
-    - FREE
-    - PAID
-ClusterType:
-  title: Cluster Type
-  description: The kind of cluster deployment
-  type: string
-  enum:
-    - SYNCHRONOUS
-    - GEO_PARTITIONED
-BackupKeyspaceInfo:
-  title: Backup Keyspace Info
-  description: Backup keyspace info
-  type: object
-  properties:
-    table_type:
-      $ref: '#/YbApiEnum'
-    keyspaces:
-      type: array
-      description: List of keyspaces
-      items:
-        type: string
-BackupStateEnum:
-  title: Backup State Enum
-  description: State of the backup
-  type: string
-  enum:
-    - SUCCEEDED
-    - FAILED
-    - IN_PROGRESS
-RestoreStateEnum:
-  title: Backup State Enum
-  description: State of the backup
-  type: string
-  enum:
-    - SUCCEEDED
-    - FAILED
-    - IN_PROGRESS
-ScheduleStateEnum:
-  title: Schedule State Enum
-  description: State of the schedule
-  type: string
-  enum:
-    - ACTIVE
-    - PAUSED
-ScheduleTypeEnum:
-  title: Schedule Tyoe Enum
-  description: Type of the schedule
-  type: string
-  enum:
-    - SYSTEM_DEFAULT
-    - USER_DEFINED
-YbApiEnum:
-  title: Yb Api Enum
-  description: Type of DB API (YSQL/YCQL)
-  type: string
-  enum:
-    - YSQL
-    - YCQL
-BackupActionTypeEnum:
-  title: Backup Action Type Enum
-  description: Type of the backup action
-  type: string
-  enum:
-    - MANUAL
-    - SCHEDULED
-PaymentMethodEnum:
-  title: Payment method enum
-  description: Payment method enum (CARD/OTHER/EMPLOYEE)
-  type: string
-  enum:
-    - CREDIT_CARD
-    - OTHER
-    - EMPLOYEE
-InvoiceStatusEnum:
-  title: Invoice status enum
-  description: Invoice status enum
-  type: string
-  enum:
-    - DRAFT
-    - RUNNING
-    - INVOICED
-    - PENDING
-    - DISPUTE
-    - FORGIVEN
-InvoicePaymentEnum:
-  title: Invoice payment enum
-  description: Invoice payment enum
-  type: string
-  enum:
-    - PROCESSING
-    - PAID
-    - NA
-    - UNPAID
-    - REFUNDED
-    - FAILED PAYMENT
-PlatformTypeEnum:
-  title: Platform type
-  description: The type of clusters the platform supports
-  type: string
-  enum:
-    - Paid
-    - Free
-    - Both
-PagingLinks:
-  title: Paging Links
-  description: Links to navigate API pages
-  type: object
-  properties:
-    self:
+    created_on:
+      description: Timestamp when the entity was created (UTC)
       type: string
       nullable: true
-    next:
+    updated_on:
+      description: Timestamp when the entity was last updated (UTC)
       type: string
       nullable: true
-PagingMetadata:
-  title: Paging Metadata
-  description: API pagination metadata
-  type: object
-  properties:
-    continuation_token:
-      type: string
-      minLength: 36
-      nullable: true
-    links:
-      $ref: '#/PagingLinks'
-LoginRequest:
-  title: Login User Request Payload
-  type: object
-  properties:
-    email:
-      type: string
-      description: The email associated with the user
-      format: email
-    password:
-      type: string
-      description: The password associated with the user
-      format: password
-UserAccountRoleData:
-  title: User Account Role Data
-  type: object
-  properties:
-    account_id:
-      type: string
-      format: uuid
-    role_ids:
-      type: array
-      description: Role Ids
-      items:
-        type: string
-        format: uuid
-  required:
-    - account_id
-    - role_ids
 HealthCheckInfo:
   title: Health Check Info
   type: object
   properties:
-    build_info:
-      $ref: '#/BuildInfo'
-    runtime_info:
-      $ref: '#/RuntimeInfo'
-  required:
-    - build_info
-    - runtime_info
-BuildInfo:
-  title: Build Info
-  type: object
-  properties:
-    revision:
-      type: string
-      description: The hash of the cloud code that is running
-    branch:
-      type: string
-      description: The branch that the cloud code belongs to
-  required:
-    - revision
-    - branch
-RuntimeInfo:
-  title: Runtime Info
-  type: object
-  properties:
-    start_timestamp:
-      type: string
-      description: The time that the apiserver process was last started (UTC)
-      example: 2021-08-06T08:37:27.707Z
-    alive:
-      type: boolean
-      description: Whether or not the server is running
-  required:
-    - start_timestamp
-    - alive
-UserAccountListInfo:
-  title: User Account List Payload
-  type: object
-  properties:
-    owned_accounts:
+    dead_nodes:
       type: array
-      description: List of admin accounts associated with the user
-      nullable: true
-      items:
-        $ref: '#/AccountData'
-    admin_accounts:
-      type: array
-      description: List of admin accounts associated with the user
-      nullable: true
-      items:
-        $ref: '#/AccountData'
-    linked_accounts:
-      type: array
-      description: List of all accounts associated with the user
-      nullable: true
-      items:
-        $ref: '#/AccountData'
-    accounts:
-      type: array
-      description: List of all accounts associated with the user
-      nullable: true
-      items:
-        $ref: '#/AccountData'
-NodeConfigSpec:
-  title: Node config spec
-  description: Node config spec
-  type: object
-  properties:
-    num_vcpus:
-      type: integer
-    disk_storage_gb:
-      type: integer
-  required:
-    - num_vcpus
-    - disk_storage_gb
-EstimateClusterCostSpec:
-  title: Estimate Cluster Cost Spec
-  description: Estimate Cluster Cost Spec
-  type: object
-  properties:
-    cloud_provider:
-      $ref: '#/CloudEnum'
-    region:
-      type: string
-      minLength: 1
-      default: us-west2
-    num_nodes:
-      type: integer
-    is_production_cluster:
-      type: boolean
-    node_config:
-      $ref: '#/NodeConfigSpec'
-  required:
-    - cloud_provider
-    - region
-    - is_production_cluster
-    - node_config
-    - num_nodes
-EstimateClusterCostInfo:
-  title: Estimate cluster cost data
-  description: Estimate cluster cost data
-  type: object
-  properties:
-    estimated_cost_usd:
-      type: number
-      format: double
-      default: 0
-    additional_cost_usd:
-      type: number
-      format: double
-      default: 0
-  required:
-    - estimated_cost_usd
-    - additional_cost_usd
-InternalVpcPeeringSpec:
-      title: Peer two yugabyte VPC
-      description: Peer two yugabyte VPC
-      type: object
-      properties:
-        vpcIdToPeer:
-          type: string
-          format: uuid
-      required:
-        - vpcIdToPeer
-GetDefaultPaymentMethodSpec:
-  title: Get default payment method spec
-  description: Get default payment method spec
-  type: object
-  properties:
-    payment_method:
-      type: string
-      nullable: true
-SubscriptionCapacity:
-  title: Subscription capacity
-  type: object
-  properties:
-    prod_vcpus:
-      type: integer
-      example: 0
-    non_prod_vcpus:
-      type: integer
-      example: 0
-  required:
-    - prod_vcpus
-    - non_prod_vcpus
-BillingTypeSpec:
-  title: Billing type spec
-  type: object
-  nullable: true
-  properties:
-    type:
-      type: integer
-      default: 0 #For PayG = 0 , Subscription = 1
-    start_date:
-      type: string
-      format: date
-    end_date:
-      type: string
-      format: date
-    subscribed_capacity_summary:
-      $ref: '#/SubscriptionCapacity'
-    threshold:
-      type: integer
-      minimum: 0
-      example: 0
-  required:
-    - type
-AddressSpec:
-  title: Address spec
-  description: Address spec
-  type: object
-  properties:
-    country:
-      type: string
-      example: India
-      minLength: 4
-      maxLength: 64
-    state:
-      type: string
-      example: Maharastra
-      minLength: 2
-      maxLength: 64
-    address_line1:
-      type: string
-      example: Lane no 1312,CH Road
-      minLength: 4
-      maxLength: 128
-    address_line2:
-      type: string
-      example: 13/12,PCMC,Pune
-      maxLength: 128
-    city:
-      type: string
-      example: Pune
-      minLength: 1
-      maxLength: 128
-    postal_code:
-      type: string
-      example: "411062"
-      minLength: 1
-      maxLength: 16
-  required:
-    - country
-    - address_line1
-    - city
-    - postal_code
-BillingProfileSpec:
-  title: Billing profile spec
-  description: Billing profile spec
-  type: object
-  properties:
-    contact_name:
-      type: string
-      minLength: 1
-      maxLength: 50
-      example: Bob
-    contact_email_address:
-      type: string
-      format: email
-      example: bob@example.com
-    contact_phone:
-      type: string
-      maxLength: 15
-      example: +91 1234567890
-      nullable: true
-    company_name:
-      type: string
-      example: Yugabyte
-      maxLength: 128
-      nullable: true
-    invoice_address:
-      $ref: '#/AddressSpec'
-    billing_address:
-      $ref: '#/AddressSpec'
-    duns_number:
-      type: string
-      minLength: 9
-      maxLength: 9
-    tax_registration_number:
-      type: string
-      minLength: 5
-      maxLength: 20
-      example: 18AABCU9603R1ZM
-    billing_type:
-      $ref: '#/BillingTypeSpec'
-    payment_method_id:
-      type: string
-      nullable: true
-    payment_method_type:
-      $ref: '#/PaymentMethodEnum'
-  required:
-    - contact_name
-    - contact_email_address
-    - invoice_address
-    - billing_address
-    - payment_method_type
-PaymentMethodResponseSpec:
-  title: Payment method response spec
-  description: Payment method response spec
-  type: object
-  properties:
-    payment_method_id:
-      type: string
-    brand:
-      type: string
-    last_4_digits:
-      type: string
-    name:
-      type: string
-    exp_year:
-      type: string
-    exp_month:
-      type: string
-    is_default:
-      type: boolean
-      default: false
-  required:
-    - payment_method_id
-    - brand
-    - last_4_digits
-    - name
-    - exp_month
-    - exp_year
-    - is_default
-PaymentMethodSpec:
-  title: Payment method spec
-  description: Payment method spec
-  properties:
-    payment_method_id:
-      type: string
-    is_default:
-      type: boolean
-    payment_method_type:
-      $ref: '#/PaymentMethodEnum'
-  required:
-    - payment_method_id
-    - is_default
-    - payment_method_type
-PaymentMethodListResponseSpec:
-  title: Payment method list response spec
-  description: Payment method list response spec
-  type: object
-  properties:
-    card_list:
-      type: array
-      items:
-        $ref: '#/PaymentMethodResponseSpec'
-ActiveClusterRate:
-  title: Active cluster rate info
-  description: Active cluster rate info
-  type: object
-  properties:
-    rate_per_hour:
-      type: number
-      format: double
-      description: Cluster rate per hour when cluster is in active state
-  required:
-    - rate_per_hour
-PausedClusterRate:
-  title: Paused cluster rate info
-  description: Paused cluster rate info
-  type: object
-  properties:
-    rate_per_hour:
-      type: number
-      format: double
-      description: Cluster rate per hour when cluster is in paused state
-  required:
-    - rate_per_hour
-RateInfo:
-  title: Rate info
-  description: Rate info
-  type: object
-  properties:
-    active_cluster:
-      $ref: '#/ActiveClusterRate'
-      description: Active cluster rate info
-    paused_cluster:
-      $ref: '#/PausedClusterRate'
-      description: Paused cluster rate info
-  required:
-    - active_cluster
-    - paused_cluster
-RateCardSpec:
-  title: Rate card spec
-  description: Rate card spec
-  properties:
-    prod_vcpu_discount_percentage:
-      type: number
-      format: float
-      minimum: 0
-      maximum: 100
-    non_prod_vcpu_discount_percentage:
-      type: number
-      format: float
-      minimum: 0
-      maximum: 100
-    valid_from:
-      type: string
-      example: "2021-08-31"
-    valid_until:
-      type: string
-      example: "2022-08-31"
-  required:
-    - prod_vcpu_discount_percentage
-    - non_prod_vcpu_discount_percentage
-GlobalRateCardSpec:
-  title: Global rate card spec
-  description: Global rate card spec
-  properties:
-    type:
-      type: integer
-    rate:
-      type: array
-      items:
-        $ref: '#/GlobalRateCardMap'
-  required:
-    - type
-    - rate
-SetupIntentInfo:
-  title: Setup intent info
-  default: Setup intent info
-  properties:
-    token:
-      type: string
-  required:
-    - token
-CreditSpec:
-  title: Add credits spec
-  description: Add credits spec
-  type: object
-  properties:
-    total_credits:
-      type: integer
-      minimum: 1
-    valid_from:
-      type: string
-    valid_until:
-      type: string
-    credited_by:
-      type: string
-      format: email
-    reason:
-      type: string
-  required:
-    - total_credits
-    - valid_from
-    - valid_until
-    - credited_by
-    - reason
-CreditInfo:
-  title: Credit Information
-  description: Credit Information
-  type: object
-  properties:
-    credit_id:
-      type: string
-      format: uuid
-    credits_redeemed:
-      type: integer
-    metadata:
-      $ref: '#/EntityMetadata'
-  required:
-    - credit_id
-    - credits_redeemed
-    - metadata
-RefreshProviderPricingSpec:
-  title: Refresh provider pricing
-  description: Refresh provider pricing for clusters matching these filters
-  type: object
-  properties:
-    cloud:
-      $ref: '#/CloudEnum'
-    region:
-      type: string
-    tier:
-      $ref: '#/ClusterTier'
-    cluster_ids:
-      type: array
+      description: UUIDs of dead nodes
       items:
         type: string
         format: uuid
-      uniqueItems: true
-EstimateClusterCostData:
-  title: Estimate cluster cost data
-  description: Estimate cluster cost data
-  type: object
-  properties:
-    spec:
-      $ref: '#/EstimateClusterCostSpec'
-    info:
-      $ref: '#/EstimateClusterCostInfo'
-CreditData:
-  title: Credit identifier with credit spec
-  description: Credit identifier with credit spec
-  type: object
-  properties:
-    spec:
-      $ref: '#/CreditSpec'
-    info:
-      $ref: '#/CreditInfo'
-UpdatePaymentMethodSpec:
-  title: Update payment method of a billing account
-  description: Update payment method of a billing account
-  type: object
-  properties:
-    payment_method_type:
-      $ref: '#/PaymentMethodEnum'
-  required:
-    - payment_method_type
-UpdateCreditsSpec:
-  title: Update credits for an account
-  description: Update credits for an account
-  type: object
-  properties:
-    total_credits:
-      type: integer
-      minimum: 1
-  required:
-    - total_credits
-UpdateBillingInvoiceSpec:
-  title: Update invoice status of a billing account
-  description: Update invoice status of a billing account
-  type: object
-  properties:
-    invoice_status:
-      $ref: '#/InvoiceStatusEnum'
-    payment_status:
-      $ref: '#/InvoicePaymentEnum'
-  required:
-    - invoice_status
-    - payment_status
-SendEmailSpec:
-  title: Send email spec
-  description: Send email spec
-  type: object
-  properties:
-    email_template:
-      $ref: '#/EmailTemplateEnum'
-    user_email:
-      description: Send email corresponding to user
-      type: string
-      format: email
-      example: user@example.com
-      nullable: true
-    from_address:
-      description: Source email address
-      type: string
-      format: email
-      example: user@example.com
-      nullable: true
-    to_address:
-      description: Destination email address
-      type: string
-      format: email
-      example: user@example.com
-      nullable: true
-    reply_to_addresses:
-      description: Reply to Address(es)
-      type: array
-      uniqueItems: true
-      nullable: true
-      items:
-        type: string
-        format: email
-        example: user@example.com
-    cc_addresses:
-      description: CC Address(es)
-      type: array
-      uniqueItems: true
-      nullable: true
-      items:
-        type: string
-        format: email
-        example: user@example.com
-    mappings:
-      description: Email template mapping values
-      type: object
-      additionalProperties:
-        type: string
-      nullable: true
-  required:
-    - email_template
-AggregateSpec:
-  title: Aggregate spec
-  description: Aggregate spec
-  type: object
-  properties:
-    start_date:
-      type: string
-    end_date:
-      type: string
-  required:
-    - start_date
-    - end_date
-InvoiceInfo:
-  title: Invoice spec
-  description: Invoice spec
-  type: object
-  properties:
-    invoice_number:
-      type: string
-  required:
-    - invoice_number
-SetAutomaticInvoiceGenerationSpec:
-  title: Set automatic invoice generation spec
-  description: Set automatic invoice generation spec
-  type: object
-  properties:
-    automatic_invoice_generation:
-      type: boolean
-  required:
-    - automatic_invoice_generation
-InvoiceData:
-  title: Invoice data
-  description: Invoice data
-  type: object
-  properties:
-    invoice_id:
-      type: string
-      format: uuid
-    total_amount:
-      type: number
-      format: double
-    pdf_link:
-      type: string
-    invoiced_on:
-      type: string
-    start_date:
-      type: string
-    end_date:
-      type: string
-    payment_status:
-      type: string
-    invoice_number:
-      type: string
-    invoice_status:
-      type: string
-  required:
-    - invoice_id
-    - total_amount
-    - start_date
-    - end_date
-ZoneType:
-  title: Zone Type
-  description: Zone type
-  type: object
-  properties:
-    same_zone:
-      type: number
-      format: double
-    cross_zone:
-      type: number
-      format: double
-  required:
-    - same_zone
-    - cross_zone
-RegionType:
-  title: Region Type
-  description: Region type
-  type: object
-  properties:
-    same_region:
-      $ref: '#/ZoneType'
-    cross_region:
-      type: number
-      format: double
-    internet:
-      type: number
-      format: double
-  required:
-    - same_region
-    - cross_region
-    - internet
-NetworkData:
-  title: Network Data
-  description: Network data
-  type: object
-  properties:
-    ingress:
-      $ref: '#/RegionType'
-    egress:
-      $ref: '#/RegionType'
-  required:
-    - ingress
-    - egress
-BackupMeteringEvent:
-  title: Backup Metering Event
-  description: Backup metering event
-  type: object
-  properties:
-    start_timestamp:
-      type: string
-    period_in_mins:
-      type: number
-      format: double
-    total_backup_size_in_bytes:
+    most_recent_uptime:
       type: integer
       format: int64
-  required:
-    - start_timestamp
-    - period_in_mins
-    - total_backup_size_in_bytes
-ClusterMeteringEvent:
-  title: Cluster Metering Event
-  description: Cluster metering event
-  type: object
-  properties:
-    start_timestamp:
-      type: string
-    period_in_mins:
-      type: number
-      format: double
-    is_active:
-      type: boolean
-    cluster_data:
-      $ref: '#/ClusterData'
-  required:
-    - start_timestamp
-    - period_in_mins
-    - cluster_data
-EntityMeteringData:
-  title: Entity Metering Data
-  description: Entity metering data
-  type: object
-  properties:
-    cluster_id:
-      type: string
-      format: uuid
-    cluster_events:
-      type: array
-      items:
-        $ref: '#/ClusterMeteringEvent'
-    backup_events:
-      type: array
-      items:
-        $ref: '#/BackupMeteringEvent'
-    network_data:
-      $ref: '#/NetworkData'
-  required:
-    - cluster_id
-    - cluster_events
-    - backup_events
-    - network_data
-MeteringData:
-  title: Metering Data
-  description: Metering data
-  type: object
-  properties:
-    query_start_timestamp:
-      type: string
-    query_end_timestamp:
-      type: string
-    cluster_record_list:
-      type: array
-      items:
-        $ref: '#/EntityMeteringData'
-  required:
-    - query_start_timestamp
-    - query_end_timestamp
-    - cluster_record_list
-BillingInvoiceSummaryData:
-  title: Billing invoice summary data
-  description: Billing invoice summary data
-  type: object
-  properties:
-    status:
-      type: string
-      description: Invoice status
-    invoice_id:
-      type: string
-      format: uuid
-      description: Invoice unique id
-    invoice_serial_no:
-      type: string
-      nullable: true
-      description: Invoice serial number
-    invoice_pdf_link:
-      type: string
-      nullable: true
-      description: Invoice PDF downloadble link
-    total_amount:
-      type: number
-      format: double
-      nullable: true
-      description: Total invoice amount
-    billing_option:
-      type: string
-      description: Billing option i.e PayG or Subscription
-    billing_period:
-      type: string
-      description: Billing cycle period
-    previous_invoice_amount:
-      type: number
-      format: double
-      nullable: true
-      description: Previous invoiced amount
-    last_billed_on:
-      type: string
-      nullable: true
-      description: Previous invoice generated date
-    payment_status:
-      $ref: '#/InvoicePaymentEnum'
-    payment_date:
-      type: string
-      nullable: true
-    payment_method_detail:
-      type: string
-      nullable: true
-    payment_method_brand:
-      type: string
-      nullable: true
-    this_time_last_month_amount:
-      type: number
-      format: double
-      nullable: true
-    amount_percentage_change_from_last_month:
-      type: number
-      format: double
-      nullable: true
-  required:
-    - status
-    - invoice_id
-    - total_amount
-    - billing_option
-    - billing_period
-UsageSummaryDetail:
-  title: usage summary
-  description: usage summary
-  type: object
-  properties:
-    name:
-      type: string
-    description:
-      type: string
-    unit:
-      type: string
-    quantity:
-      type: number
-      format: double
-    unit_price:
-      type: number
-      format: double
-    amount:
-      type: number
-      format: double
-  required:
-    - name
-    - quantity
-    - unit_price
-    - amount
-ClusterUsageSummaryData:
-  title: Cluster usage summary data
-  description: Cluster usage summary data
-  type: object
-  properties:
-    cluster_id:
-      type: string
-      format: uuid
-    cluster_name:
-      type: string
-    is_apac_region:
-      type: boolean
-    instances:
-      type: array
-      items:
-        $ref: '#/UsageSummaryDetail'
-    data_storage:
-      type: array
-      items:
-        $ref: '#/UsageSummaryDetail'
-    paused_data_storage:
-      type: array
-      items:
-        $ref: '#/UsageSummaryDetail'
-    cloud_backup_storage:
-      type: array
-      items:
-        $ref: '#/UsageSummaryDetail'
-    paused_backup_storage:
-      type: array
-      items:
-        $ref: '#/UsageSummaryDetail'
-    data_transfer:
-      type: array
-      items:
-        $ref: '#/UsageSummaryDetail'
-    total_amount:
-      type: number
-      format: double
-  required:
-    - cluster_id
-    - is_apac_region
-    - cluster_name
-    - instances
-    - data_storage
-    - cloud_backup_storage
-    - data_transfer
-UsageSummaryStatisticsData:
-  title: Usage summary statistics data
-  description: Usage summary statistics data
-  type: object
-  properties:
-    name:
-      type: string
-    percentage:
-      type: number
-      format: float
       minimum: 0
-      maximum: 100
-    amount:
-      type: number
-      format: double
-  required:
-    - name
-    - percentage
-    - amount
-UsageSummaryData:
-  title: Usage summary data
-  description: Usage summary data
-  type: object
-  properties:
-    cluster_list:
+    under_replicated_tablets:
       type: array
-      items:
-        $ref: '#/ClusterUsageSummaryData'
-  required:
-    - cluster_list
-UsageSummaryClusterData:
-  title: Usage summary data by cluster
-  description: Usage summary data by cluster
-  type: object
-  properties:
-    cluster_list:
-      type: array
-      items:
-        $ref: '#/UsageSummaryStatisticsData'
-AuditEventData:
-  title: Audit Event data
-  description: Audit event data
-  type: object
-  properties:
-    entity_name:
-      type: string
-    audit_event_id:
-      type: string
-      format: uuid
-    account_id:
-      type: string
-      format: uuid
-    account_name:
-      type: string
-      nullable: true
-    project_id:
-      type: string
-      format: uuid
-      nullable: true
-    project_name:
-      type: string
-      nullable: true
-    cluster_id:
-      type: string
-      format: uuid
-      nullable: true
-    cluster_name:
-      type: string
-      nullable: true
-    user_id:
-      type: string
-      format: uuid
-      nullable: true
-    user_email:
-      type: string
-      nullable: true
-    impersonating_user_email:
-      type: string
-      nullable: true
-    task_id:
-      type: string
-      format: uuid
-      nullable: true
-    message:
-      type: string
-      nullable: false
-    is_successful:
-      type: boolean
-    resource_type:
-      type: string
-    event_type:
-      type: string
-    created_on:
-      type: string
-  required:
-    - account_id
-    - audit_event_id
-    - message
-    - is_successful
-    - resource_type
-    - event_type
-    - created_on
-    - entity_name
-AuditEventDetailedData:
-  title: Audit Event detailed data
-  description: Audit Event detailed data
-  type: object
-  additionalProperties: true
-AuditEventCategory:
-  title: Audit Event Category
-  description: Audit Event Category
-  type: object
-  properties:
-    resource_type:
-      $ref: '#/ResourceTypeEnum'
-    event_types:
-      type: array
-      items:
-        $ref: '#/EventTypeEnum'
-  required:
-    - resource_type
-    - event_types
-UsageSummaryInfrastructureData:
-  title: Usage summary data by infrastructure
-  description: Usage summary data by infrastructure
-  type: object
-  properties:
-    infrastructure_list:
-      type: array
-      items:
-        $ref: '#/UsageSummaryStatisticsData'
-VMImageMap:
-  title: VM Image region map data
-  description: VM Image region map data
-  type: object
-  additionalProperties:
-    type: string
-  minProperties: 1
-GFlagsMap:
-  title: GFlags map data
-  description: GFlags map data
-  type: object
-  additionalProperties:
-    type: string
-  minProperties: 1
-GflagsUpgradeRequest:
-  title: Request to upgrade gflags of a cluster
-  description: Request to upgrade gflags of a cluster
-  type: object
-  properties:
-    master_gflags:
-      $ref: '#/GFlagsMap'
-    tserver_gflags:
-      $ref: '#/GFlagsMap'
-  minProperties: 1
-DbUpgradeRequest:
-  title: Request to upgrade DB version of a cluster
-  description: Request to upgrade DB version of a cluster
-  type: object
-  properties:
-    release_id:
-      type: string
-      format: uuid
-    downgrade_override:
-      type: boolean
-      default: false
-  required:
-    - release_id
-VmUpgradeRequest:
-  title: Request to upgrade VM image of a cluster
-  description: Request to upgrade VM image of a cluster
-  type: object
-  properties:
-    vm_image:
-      $ref: '#/VMImageMap'
-    force_upgrade:
-      type: boolean
-      default: false
-  required:
-    - vm_image
-AccountQuota:
-  type: object
-  properties:
-    free_tier:
-      type: object
-      properties:
-        max_num_clusters:
-          description: Maximum number of free tier clusters allowed to exist simultaneously
-          type: integer
-          minimum: 0
-          maximum: 25
-        num_clusters_remaining:
-          description: Number of additional free tier clusters allowed to be created
-          type: integer
-          minimum: 0
-          maximum: 25
-      required:
-        - max_num_clusters
-        - num_clusters_remaining
-    paid_tier:
-      type: object
-      properties:
-        max_num_nodes_per_cluster:
-          description: Maximum number of nodes allowed for a cluster
-          type: integer
-          minimum: 0
-          maximum: 24
-        max_num_vcpus_per_cluster:
-          description: Maximum number of vcpus allowed for a cluster
-          type: integer
-          minimum: 0
-          maximum: 96
-      required:
-        - max_num_nodes_per_cluster
-        - max_num_vcpus_per_cluster
-  required:
-    - free_tier
-    - paid_tier
-CustomImageSetInfo:
-  title: Custom Image Set Information
-  description: Custom Image Set Information
-  type: object
-  properties:
-    id:
-      description: The UUID of the custom image set
-      type: string
-      format: uuid
-    metadata:
-      $ref: '#/EntityMetadata'
-  required:
-    - id
-CustomImageSetListItem:
-  title: Custom Image Set List Item
-  description: Custom Image Set List Item
-  type: object
-  properties:
-    id:
-      type: string
-      format: uuid
-    cloud_type:
-      $ref: '#/CloudEnum'
-    db_version:
-      description: Version of the DB present in the images of this custom image set
-      type: string
-    base_image_name:
-      description: Base image name on which the images of this custom image set are based on
-      type: string
-    build_reference:
-      description: Build reference that generated images of this custom image set
-      type: string
-    architecture:
-      $ref: '#/ArchitectureEnum'
-    is_default:
-      description: Denotes whether the images of this set are to be used for <cloud, db_version> combination or not
-      type: boolean
-    metadata:
-      $ref: '#/EntityMetadata'
-  required:
-    - id
-    - cloud_type
-    - db_version
-    - base_image_name
-    - build_reference
-    - architecture
-    - is_default
-CustomImageData:
-  title: Custom Image data
-  description: Custom Image data
-  type: object
-  properties:
-    spec:
-      $ref: '#/CustomImageSpec'
-    info:
-      $ref: '#/CustomImageInfo'
-CustomImageSpec:
-  title: Custom Image Specification
-  description: Custom Image specification
-  type: object
-  required:
-    - image_name
-    - region
-  properties:
-    image_name:
-      description: Name of the custom image in the cloud
-      type: string
-    region:
-      description: Cloud region where the custom image is deployed
-      type: string
-CustomImageInfo:
-  title: Custom Image Information
-  description: Custom Image Information
-  type: object
-  properties:
-    id:
-      description: The UUID of the custom image
-      type: string
-      format: uuid
-    metadata:
-      $ref: '#/EntityMetadata'
-  required:
-    - id
-CustomImageSetSpec:
-  title: Custom Image Set spec
-  description: Custom Image Set spec
-  type: object
-  required:
-    - cloud_type
-    - db_version
-    - base_image_name
-    - build_reference
-    - architecture
-    - is_default
-  properties:
-    cloud_type:
-      $ref: '#/CloudEnum'
-    db_version:
-      description: Version of the DB present in the images of this custom image set
-      type: string
-    base_image_name:
-      description: Base image name on which the images of this custom image set are based on
-      type: string
-    build_reference:
-      description: Build reference that generated images of this custom image set
-      type: string
-    architecture:
-      $ref: '#/ArchitectureEnum'
-    is_default:
-      description: Denotes whether the images of this set are to be used for <cloud, db_version> combination or not
-      type: boolean
-CustomImageSetData:
-  title: Custom Image Set data
-  description: Custom Image Set data
-  type: object
-  properties:
-    spec:
-      $ref: '#/CustomImageSetSpec'
-    info:
-      $ref: '#/CustomImageSetInfo'
-    custom_images:
-      description: List of Custom Images
-      type: array
-      items:
-        $ref: '#/CustomImageData'
-CreateBulkCustomImageSetSpecList:
-  title: Create Bulk Custom Image Set Spec List
-  description: List of custom image sets for bulk creation
-  type: object
-  properties:
-    custom_image_set_list:
-      type: array
-      uniqueItems: true
-      items:
-        $ref: '#/CreateBulkCustomImageSetSpec'
-CreateBulkCustomImageSetSpec:
-  title: Create Custom Image Set Spec
-  description: Create custom image set spec
-  type: object
-  required:
-    - cloud_type
-    - db_version
-    - base_image_name
-    - build_reference
-    - architecture
-    - is_default
-    - custom_images
-  properties:
-    cloud_type:
-      $ref: '#/CloudEnum'
-    db_version:
-      description: Version of the DB present in the images of this custom image set
-      type: string
-    base_image_name:
-      description: Base image name on which the images of this custom image set are based on
-      type: string
-    build_reference:
-      description: Build reference that generated images of this custom image set
-      type: string
-    architecture:
-      $ref: '#/ArchitectureEnum'
-    is_default:
-      description: Denotes whether the images of this set are to be used for <cloud, db_version> combination or not
-      type: boolean
-    custom_images:
-      description: List of Custom images in the set
-      type: array
-      items:
-        $ref: '#/CustomImageSpec'
-CreateBulkCustomImageSetStatus:
-  title: Custom Image Bulk Response Status
-  description: Custom Image bulk response Status
-  type: object
-  properties:
-    spec:
-      $ref: '#/CustomImageSetSpec'
-    info:
-      $ref: '#/CreateBulkCustomImageSetResponseInfo'
-CreateBulkCustomImageSetResponseInfo:
-  title: Custom Image Set Response Information
-  description: Custom Image Set Response Information
-  type: object
-  properties:
-    id:
-      description: The UUID of the custom image set
-      type: string
-      format: uuid
-    success:
-      description: Whether the creation of all custom images in the set is successful or not
-      type: boolean
-    error:
-      description: Error message in case of failure
-      type: string
-      nullable: true
-    metadata:
-      $ref: '#/EntityMetadata'
-  required:
-    - success
-XClusterConfigSpec:
-  title: XCluster Config Specification
-  description: XCluster Config Specification
-  type: object
-  required:
-    - name
-    - source_cluster_id
-    - target_cluster_id
-    - table_ids
-  properties:
-    name:
-      type: string
-      maxLength: 256
-      nullable: false
-      description: The name of the config to be created
-    source_cluster_id:
-      type: string
-      format: uuid
-      nullable: false
-      description: The UUID of the source cluster
-    target_cluster_id:
-      type: string
-      format: uuid
-      nullable: false
-      description: UUID of the target cluster
-    table_ids:
-      type: array
-      uniqueItems: true
+      description: UUIDs of under-replicated tablets
       items:
         type: string
-      description: Names of Tables to be replicated
-XClusterConfigInfo:
-  title: XCluster Config Information
-  description: XCluster Config Information
-  type: object
+        format: uuid
+    leaderless_tablets:
+      type: array
+      description: UUIDs of leaderless tablets
+      items:
+        type: string
+        format: uuid
   required:
-    - id
-    - state
-    - metadata
+    - dead_nodes
+    - most_recent_uptime
+    - under_replicated_tablets
+    - leaderless_tablets
+ClusterTabletData:
+  title: Cluster Tablet Data
+  description: List of cluster tablets
+  type: object
+  additionalProperties:
+    $ref: '#/ClusterTablet'
+ClusterTablet:
+  title: Cluster Tablet Object
+  description: Model representing a tablet
+  type: object
   properties:
-    id:
-      description: The UUID of the XCluster Config
+    namespace:
+      type: string
+    table_name:
+      type: string
+    table_uuid:
       type: string
       format: uuid
-    state:
-      $ref: '#/XClusterConfigStateEnum'
-    metadata:
-      $ref: '#/EntityMetadata'
-XClusterConfigData:
-  title: XCluster Config Data
-  description: XCluster Config Data
-  type: object
-  properties:
-    spec:
-      $ref: '#/XClusterConfigSpec'
-    info:
-      $ref: '#/XClusterConfigInfo'
-MaintenanceWindowExclusionData:
-  title: Maintenance Window Exclusion Data
-  description: Maintenance Window Exclusion Data
-  type: object
-  properties:
-    info:
-      $ref: '#/MaintenanceWindowExclusionInfo'
-    spec:
-      $ref: '#/MaintenanceWindowExclusionSpec'
-  required:
-    - info
-    - spec
-MaintenanceWindowExclusionSpec:
-  title: Maintenance Window Exclusion Spec
-  description: Maintenance Window Exclusion Spec
-  type: object
-  properties:
-    start_timestamp:
-      type: string
-      description: start date-time for Maintenance Window Exclusion
-      example: 2000-01-23T04:56:07.000+00:00
-    end_timestamp:
-      type: string
-      description: end date-time for Maintenance Window Exclusion
-      example: 2000-01-23T04:56:07.000+00:00
-  required:
-    - start_timestamp
-    - end_timestamp
-MaintenanceWindowExclusionInfo:
-  title: Maintenance Window Exclusion Info
-  description: Maintenance Window Exclusion Info
-  type: object
-  properties:
-    id:
+    tablet_id:
       type: string
       format: uuid
-      description: ID of Maintenance Window Exclusion
-      nullable: true
-    metadata:
-      $ref: '#/EntityMetadata'
-      nullable: true
-XClusterConfigStateEnum:
-  title: XCluster Config State Enum
-  description: XCluster Config State Enum
-  type: string
-  enum:
-    - CREATING
-    - UPDATING
-    - ACTIVE
-    - FAILED
-    - DELETING
-    - PAUSED
-GFlagsData:
-  title: Gflags Data
-  description: Gflags Data
-  type: object
-  properties:
-    master_gflags:
-      $ref: '#/GFlagsMap'
-    tserver_gflags:
-      $ref: '#/GFlagsMap'
-  minProperties: 1
+    has_leader:
+      type: boolean
   required:
-    - master_gflags
-    - tserver_gflags
-MaintenanceWindowSpec:
-  title: Maintenance Window Spec
-  description: Maintenance Window Spec
+    - namespace
+    - table_name
+    - table_uuid
+    - table_id
+    - has_leader
+GflagsInfo:
+  title: Gflags Info
+  description: Gflags Info
   type: object
   properties:
-    day:
-      $ref: '#/DayEnum'
-    hour:
+    master_flags:
+      type: array
+      items:
+        $ref: '#/Gflag'
+    tserver_flags:
+      type: array
+      items:
+        $ref: '#/Gflag'
+  required:
+    - master_flags
+    - tserver_flags
+Gflag:
+  title: Gflag
+  description: Gflag
+  type: object
+  properties:
+    name:
+      type: string
+    value:
+      type: string
+    type:
+      type: string
+TableInfo:
+  title: Table Info
+  description: Table Info
+  type: object
+  properties:
+    table_name:
+      type: string
+    table_id:
+      type: string
+      format: uuid
+    table_version:
       type: integer
-      description: Start time for Maintenance Windows
-      minimum: 0
-      maximum: 23
-  required:
-    - day
-    - hour
-DayEnum:
-  title: Day Enum
-  description: Day Enum
-  type: string
-  enum:
-    - SUN
-    - MON
-    - TUE
-    - WED
-    - THU
-    - FRI
-    - SAT
-MaintenanceScheduleSpec:
-  title: Maintenance Schedule Spec
-  description: Maintenance Schedule Spec
-  type: object
-  properties:
-    windows:
-      $ref: '#/MaintenanceWindowSpec'
-    exclusions:
+    table_type:
+      type: string
+    table_state:
+      type: string
+    table_state_message:
+      type: string
+    table_tablespace_oid:
+      type: string
+    table_replication_info:
+      type: object
+      properties:
+        live_replicas:
+          $ref: '#/TableReplicationInfo'
+        read_replicas:
+          type: array
+          items:
+            $ref: '#/TableReplicationInfo'
+    columns:
       type: array
-      uniqueItems: true
       items:
-        $ref: '#/MaintenanceWindowExclusionData'
+        $ref: '#/ColumnInfo'
+    tablets:
+      type: array
+      items:
+        $ref: '#/TabletInfo'
   required:
-    - windows
-    - exclusions
-MaintenanceScheduleData:
-  title: Maintenance Schedule Data
-  description: Maintenance Schedule Data
+    - table_name
+    - table_id
+    - table_version
+    - table_type
+    - table_state
+    - table_state_message
+    - table_replication_info
+    - columns
+    - tablets
+TabletInfo:
+  title: Tablet Info
+  description: Tablet Info
   type: object
   properties:
-    info:
-      $ref: '#/MaintenanceScheduleInfo'
-    spec:
-      $ref: '#/MaintenanceScheduleSpec'
-  required:
-    - info
-    - spec
-MaintenanceScheduleInfo:
-  title: Maintenance Schedule Info
-  description: Maintenance Schedule Info
-  type: object
-  properties:
-    is_locked:
+    tablet_id:
+      type: string
+      format: uuid
+    partition:
+      type: string
+    split_depth:
+      type: integer
+    state:
+      type: string
+    hidden:
       type: boolean
-  required:
-    - is_locked
-UserTutorialData:
-  title: User Tutorial Data
-  description: User Tutorial Data
-  type: object
-  properties:
-    spec:
-      $ref: '#/UserTutorialSpec'
-    info:
-      $ref: '#/UserTutorialInfo'
-  required:
-    - spec
-    - info
-NodeOpRequest:
-  title: Node operation request
-  description: Node Operation Request
-  type: object
-  required:
-    - node_name
-    - action
-  properties:
-    node_name:
-      description: Name of the node to be operated on
+    message:
       type: string
-    action:
-      $ref: '#/NodeOpEnum'    
-NodeOpEnum:
-  title: Node operation Enum
-  description: Action to be performed on the node
-  type: string
-  enum:
-    - STOP
-    - START
-UserTutorialInfo:
-  title: User Tutorial Info
-  description: User Tutorial Info
-  type: object
-  properties:
-    user_id:
-      type: string
-      format: uuid
-    tutorial_id:
-      type: string
-      format: uuid
-    tutorial_name:
-      type: string
-  required:
-    - user_id
-    - tutorial_id
-    - tutorial_name
-UserTutorialSpec:
-  title: User Tutorial Spec
-  description: User Tutorial Spec
-  type: object
-  properties:
-    is_enabled:
-      type: boolean
-    entities:
-      type: array
-      uniqueItems: true
-      items:
-        $ref: '#/UserTutorialSpecEntity'
-    states:
+    raft_config:
       type: array
       items:
-        $ref: '#/UserTutorialState'
-  required:
-    - is_enabled
-    - entities
-    - states
-UserTutorialSpecEntity:
-  title: User Tutorial Spec Entity
-  description: User Tutorial Spec Entity
+        $ref: '#/RaftConfig'
+RaftConfig:
+  title: Raft Config
+  description: Raft Config
   type: object
   properties:
-    entity_id:
+    uuid:
       type: string
       format: uuid
-    entity_type:
+    role:
       type: string
-  required:
-    - entity_id
-    - entity_type
-UserTutorialState:
-  title: User Tutorial State
-  description: User Tutorial State
+    location:
+      type: string
+ColumnInfo:
+  title: Column Info
+  description: Column Info
   type: object
   properties:
+    column:
+      type: string
     id:
       type: string
-      format: uuid
-    name:
+    type:
       type: string
-    is_completed:
-      type: boolean
-  required:
-    - id
-    - name
-    - is_completed
-SSOType:
-  title: SSO Type
-  description: SSO Type
-  type: string
-  enum:
-    - GOOGLE
-    - GITHUB
-    - LINKEDIN
-  example: GOOGLE
-SSOEventType:
-  title: SSO Event Type
-  description: SSO Event Type
-  type: string
-  enum:
-    - SIGNUP
-    - LOGIN
-    - INVITE
-  example: SIGNUP
-LoginTypeEnum:
-  title: Login Type
-  description: Login type associated with a user
-  type: string
-  enum:
-    - LOCAL
-    - GOOGLE
-    - GITHUB
-    - LINKEDIN
-UpdateGflagMaintenanceSpec:
-  title: Update Gflag Maintenance Spec
-  description: Update Gflag Maintenance Spec
+TableReplicationInfo:
+  title: TableReplicationInfo
+  description: TableReplicationInfo
   type: object
   properties:
-    use_custom_gflags:
-      type: boolean
-  required:
-    - use_custom_gflags
-ClusterTablespace:
-  title: Cluster Tablespace Object
-  description: Model representing a tablespace
-  type: object
-  properties:
-    name:
-      type: string
-      minLength: 1
-      nullable: false
     num_replicas:
       type: integer
-      format: int32
-      minimum: 1
-    placement_info_list:
+    placement_blocks:
       type: array
       items:
-        $ref: '#/TablePlacementInfo'
-  required:
-    - name
-    - num_replicas
-    - placement_info_list
-LoginTypeInfo:
-  title: Login type information
-  description: Login type information
-  type: object
-  required:
-    - login_type
-    - is_enabled
-  properties:
-    login_type:
-      $ref: '#/LoginTypeEnum'
-    is_enabled:
-      type: boolean
-AllowedLoginTypesSpec:
-  title: Modify Allowed Login Types Payload
-  description: Modify Allowed Login Types payload
-  type: object
-  required:
-    - allowed_login_types
-  properties:
-    allowed_login_types:
-      type: array
-      uniqueItems: true
-      items:
-        $ref: '#/LoginTypeInfo'
-      nullable: false
-ModifyAllowedLoginTypesRequest:
-  title: Modify Allowed Login Types Payload
-  description: Modify Allowed Login Types payload
-  type: object
-  required:
-    - allowed_login_types_spec
-  properties:
-    allowed_login_types_spec:
-      $ref: '#/AllowedLoginTypesSpec'
-TablePlacementInfo:
-  title: A placement object for table space
-  description: Model representing a table placement
-  type: object
-  properties:
-    cloud:
-      $ref: '#/CloudEnum'
-    region:
+        $ref: '#/PlacementBlock'
+    placement_uuid:
       type: string
-    zone:
-      type: string
+      format: uuid
+PlacementBlock:
+  title: Placement Block
+  description: Placement Block
+  type: object
+  properties:
+    cloud_info:
+      $ref: '#/PlacementCloudInfo'
     min_num_replicas:
       type: integer
-      minimum: 1
-  required:
-    - cloud
-    - region
-    - zone
-    - min_num_replicas
+PlacementCloudInfo:
+  title: Placement Cloud Info
+  description: Placement Cloud Info
+  type: object
+  properties:
+    placement_cloud:
+      type: string
+    placement_region:
+      type: string
+    placement_zone:
+      type: string
+VersionInfo:
+  title: YugabyteDB Version Info
+  description: YugabyteDB version info
+  type: object
+  properties:
+    version:
+      type: string
+VoyagerMigrationsInfo:
+  title: YB Voyager migrations Info
+  description: YB Voyager migrations Info
+  type: object
+  properties:
+    migrations:
+      type: array
+      items:
+        $ref: '#/VoyagerMigrationDetails'
+VoyagerMigrationDetails:
+  title: Voyager task details
+  description: Information regarding a specific voyager migration task
+  type: object
+  properties:
+    migration_uuid:
+      type: string
+      format: uuid
+    migration_name:
+      type: string
+    migration_phase:
+      type: integer
+    invocation_sequence:
+      type: integer
+    source_db:
+      type: string
+    complexity:
+      type: string
+    database_name:
+      type: string
+    schema_name:
+      type: string
+    status:
+      type: string
+    invocation_timestamp:
+      type: string
+VoyagerMigrateDataMetrics:
+  title: YB Voyager Migrate Data metrics Info
+  description: List of YB Voyager Data migrations metrics
+  type: object
+  properties:
+    metrics:
+      type: array
+      items:
+        $ref: '#/VoyagerMigrateDataMetricsDetails'
+VoyagerMigrateDataMetricsDetails:
+  title: Voyager Migrate Data Metrics details
+  description: Voyager data migration metrics details
+  type: object
+  properties:
+    migration_uuid:
+      type: string
+      format: uuid
+    table_name:
+      type: string
+    schema_name:
+      type: string
+    migration_phase:
+      type: integer
+    status:
+      type: integer
+    count_live_rows:
+      type: integer
+    count_total_rows:
+      type: integer
+    invocation_timestamp:
+      type: string
+# MigrateSchemaTasks:
+#   title: YB Voyager Migrate schema tasks
+#   description: List of schema migrations tasks
+#   type: object
+#   properties:
+#     metrics:
+#       type: array
+#       items:
+#         $ref: '#/MigrateSchemaTaskDetail'
+MigrateSchemaTaskInfo:
+  title: Details for export schema, import schema and analyze schema steps
+  description: Voyager data migration metrics details
+  type: object
+  properties:
+    migration_uuid:
+      type: string
+      format: uuid
+    overall_status:
+      type: string
+    export_schema:
+      type: string
+    analyze_schema:
+      type: string
+    import_schema:
+      type: string
+    suggestions_errors:
+      type: array
+      items:
+        $ref: '#/ErrorsAndSuggestionsDetails'
+    sql_objects:
+      type: array
+      items:
+        $ref: '#/SqlObjectsDetails'
+ErrorsAndSuggestionsDetails:
+  title: Errors and Suggestions details
+  description: Errors and suggestions details
+  type: object
+  properties:
+    objectType:
+      type: string
+    objectName:
+      type: string
+    reason:
+      type: string
+    sqlStatement:
+      type: string
+    filePath:
+      type: string
+    suggestion:
+      type: string
+    GH:
+      type: string
+SqlObjectsDetails:
+  title: Sql Objects
+  description: Sql obejcts type and count
+  type: object
+  properties:
+    objectType:
+      type: string
+    totalCount:
+      type: integer
+    invalidCount:
+      type: integer
+    objectNames:
+      type: string
+    objectDetails:
+      type: string
+MigrationAssesmentInfo:
+  title: Details for Voyager migrations assesment
+  description: Details for Voyager migrations assesment
+  type: object
+  properties:
+    assesment_status:
+      type: boolean
+    top_errors:
+      type: array
+      items:
+        type: string
+    top_suggestions:
+      type: array
+      items:
+        type: string
+    complexity_overview:
+      type: array
+      items:
+        $ref: '#/AssesmentComplexityInfo'
+AssesmentComplexityInfo:
+  title: Assesment complexity details
+  description: Assesment complexity details
+  type: object
+  properties:
+    schema:
+      type: string
+    sql_objects_count:
+      type: integer
+    table_count:
+      type: integer
+    complexity:
+      type: string

@@ -23,11 +23,12 @@
 
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/macros.h"
 
 using std::vector;
+using std::string;
 
 #ifdef _MSC_VER
 enum { IS__MSC_VER = 1 };

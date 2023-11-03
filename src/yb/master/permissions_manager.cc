@@ -32,6 +32,8 @@
 #include "yb/util/trace.h"
 
 using std::shared_ptr;
+using std::string;
+using std::vector;
 
 using yb::util::kBcryptHashSize;
 using yb::util::bcrypt_hashpw;

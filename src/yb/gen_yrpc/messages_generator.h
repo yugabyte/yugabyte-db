@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_GEN_YRPC_MESSAGES_GENERATOR_H
-#define YB_GEN_YRPC_MESSAGES_GENERATOR_H
+#pragma once
 
 #include <unordered_map>
 #include <unordered_set>
@@ -38,5 +37,3 @@ class MessagesGenerator {
 
 } // namespace gen_yrpc
 } // namespace yb
-
-#endif // YB_GEN_YRPC_MESSAGES_GENERATOR_H

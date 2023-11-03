@@ -1,11 +1,14 @@
 // Copyright (c) YugaByte, Inc.
 
-import React from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { Link } from 'react-router';
 
 import { isAvailable } from '../../../utils/LayoutUtils';
-import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
+import {
+  isKubernetesUniverse,
+  getPrimaryCluster,
+  optimizeVersion
+} from '../../../utils/UniverseUtils';
 import { YBCost } from '../../common/descriptors';
 import { UniverseStatusContainer } from '..';
 import { CellLocationPanel } from './CellLocationPanel';
@@ -15,9 +18,11 @@ import { timeFormatter } from '../../../utils/TableFormatters';
 export const YBUniverseItem = (props) => {
   const {
     universe,
+    runtimeConfigs,
     customer: { currentCustomer }
   } = props;
   const isPricingKnown = universe.resources?.pricingKnown;
+  const primaryCluster = getPrimaryCluster(universe?.universeDetails?.clusters);
 
   return (
     <div>
@@ -27,9 +32,17 @@ export const YBUniverseItem = (props) => {
             <Col sm={6}>
               <div className="universe-name-cell">{universe.name}</div>
             </Col>
-            <Col sm={6} className="universe-create-date-container">
-              <div>Created:</div>
-              {timeFormatter(universe.creationDate)}
+            <Col sm={6} className="inline-flex">
+              <div className="universe-create-version-container mr-5">
+                <div>Version:</div>
+                {optimizeVersion(
+                  primaryCluster?.userIntent?.ybSoftwareVersion.split('-')[0].split('.')
+                )}
+              </div>
+              <div className="universe-create-date-container">
+                <div>Created:</div>
+                {timeFormatter(universe.creationDate)}
+              </div>
             </Col>
           </Row>
           <div className="list-universe-status-container">
@@ -37,6 +50,7 @@ export const YBUniverseItem = (props) => {
               currentUniverse={universe}
               showLabelText={true}
               refreshUniverseData={props.fetchUniverseMetadata}
+              shouldDisplayTaskButton={false}
               showAlertsBadge={true}
             />
           </div>
@@ -59,6 +73,7 @@ export const YBUniverseItem = (props) => {
                 value={props.universe.pricePerHour}
                 multiplier="month"
                 isPricingKnown={isPricingKnown}
+                runtimeConfigs={runtimeConfigs}
               />
             </div>
             /month

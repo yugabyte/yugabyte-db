@@ -24,6 +24,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -49,9 +50,8 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
         "Started {} task for node {} in univ uuid={}",
         getName(),
         taskParams().nodeName,
-        taskParams().universeUUID);
+        taskParams().getUniverseUUID());
     NodeDetails currentNode = null;
-    boolean hitException = false;
     try {
       checkUniverseVersion();
 
@@ -60,13 +60,15 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
 
       currentNode = universe.getNode(taskParams().nodeName);
       if (currentNode == null) {
-        String msg = "No node " + taskParams().nodeName + " found in universe " + universe.name;
+        String msg =
+            "No node " + taskParams().nodeName + " found in universe " + universe.getName();
         log.error(msg);
         throw new RuntimeException(msg);
       }
 
-      currentNode.validateActionOnState(NodeActionType.RELEASE);
-
+      if (isFirstTry()) {
+        currentNode.validateActionOnState(NodeActionType.RELEASE);
+      }
       preTaskActions();
 
       // Update Node State to BeingDecommissioned.
@@ -85,7 +87,9 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
       if (Util.getNodeIp(universe, currentNode) != null) {
         // Create a task for removal of this server from blacklist on master leader.
         createModifyBlackListTask(
-                currentNodeDetails, false /* isAdd */, false /* isLeaderBlacklist */)
+                null /* addNodes */,
+                currentNodeDetails /* removeNodes */,
+                false /* isLeaderBlacklist */)
             .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
       }
       UserIntent userIntent =
@@ -94,10 +98,14 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
       if (instanceExists(taskParams())) {
         if (userIntent.providerType == CloudType.onprem) {
           // Stop master and tservers.
-          createStopServerTasks(currentNodeDetails, "master", true /* isForceDelete */)
+          createStopServerTasks(currentNodeDetails, ServerType.MASTER, true /* isForceDelete */)
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-          createStopServerTasks(currentNodeDetails, "tserver", true /* isForceDelete */)
+          createStopServerTasks(currentNodeDetails, ServerType.TSERVER, true /* isForceDelete */)
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+          if (universe.isYbcEnabled()) {
+            createStopYbControllerTasks(new HashSet<>(currentNodeDetails), true /*isIgnoreError*/)
+                .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+          }
         }
 
         // Set the node states to Removing.
@@ -105,6 +113,7 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
         // Create tasks to terminate that instance. Force delete and ignore errors.
         createDestroyServerTasks(
+                universe,
                 currentNodeDetails,
                 true /* isForceDelete */,
                 false /* deleteNode */,
@@ -113,7 +122,7 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
       }
 
       // Update the DNS entry for this universe.
-      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, userIntent)
+      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, universe)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Update the swamper target file.
@@ -131,7 +140,6 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
-      hitException = true;
       throw t;
     } finally {
       // Mark the update of the universe as done. This will allow future edits/updates to the

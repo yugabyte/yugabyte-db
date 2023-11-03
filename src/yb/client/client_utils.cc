@@ -38,6 +38,8 @@
 #include "yb/util/strongly_typed_uuid.h"
 #include "yb/util/threadpool.h"
 
+using std::string;
+
 DECLARE_bool(TEST_running_test);
 
 namespace yb {
@@ -72,24 +74,22 @@ Result<std::unique_ptr<rpc::Messenger>> CreateClientMessenger(
   return messenger;
 }
 
-Result<std::vector<internal::RemoteTabletPtr>> FilterTabletsByHashPartitionKeyRange(
+std::vector<internal::RemoteTabletPtr> FilterTabletsByKeyRange(
     const std::vector<internal::RemoteTabletPtr>& all_tablets,
     const std::string& partition_key_start,
     const std::string& partition_key_end) {
-  RETURN_NOT_OK(PartitionSchema::IsValidHashPartitionRange(partition_key_start,
-                                                           partition_key_end));
   std::vector<internal::RemoteTabletPtr> filtered_results;
   for (const auto& remote_tablet : all_tablets) {
-    if (PartitionSchema::GetOverlap(
+    if (dockv::PartitionSchema::HasOverlap(
             remote_tablet->partition().partition_key_start(),
-            remote_tablet->partition().partition_key_end(), partition_key_start,
+            remote_tablet->partition().partition_key_end(),
+            partition_key_start,
             partition_key_end)) {
       filtered_results.push_back(remote_tablet);
     }
   }
   return filtered_results;
 }
-
 
 } // namespace client
 } // namespace yb

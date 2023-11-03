@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import './stylesheets/StepProgressBar.scss';
 
 export default class StepProgressBar extends Component {
@@ -16,7 +16,7 @@ export default class StepProgressBar extends Component {
     });
   };
 
-  normalizeTasks = (taskDetails , taskStatus) => {
+  normalizeTasks = (taskDetails, taskStatus) => {
     const taskDetailsNormalized = [
       ...taskDetails,
       {
@@ -25,22 +25,17 @@ export default class StepProgressBar extends Component {
         title: 'Done'
       }
     ];
-    // if the task is failed and all sub task is in unknown state, then show failure
-    if(taskStatus === 'Failure' && this.isFailedIndex(taskDetailsNormalized) === -1){
-      taskDetailsNormalized[taskDetailsNormalized.length -1]['state'] = 'Failure';
-    }
-
-    if (this.isFailedIndex(taskDetailsNormalized) > -1) {
+    if (taskStatus === 'Failure' || taskStatus === 'Aborted') {
       for (let i = 0; i < this.isFailedIndex(taskDetailsNormalized); i++) {
         taskDetailsNormalized[i].class = 'to-be-failed';
       }
-    } else if (this.isRunningIndex(taskDetailsNormalized) > -1) {
+    } else if (taskStatus === 'Running' || taskStatus === 'Abort') {
       for (let i = 0; i < this.isRunningIndex(taskDetailsNormalized); i++) {
         taskDetailsNormalized[i].class = 'to-be-succeed';
       }
-    } else {
+    } else if (taskStatus === 'Success') {
       taskDetailsNormalized.forEachclass = 'finished';
-      taskDetailsNormalized[taskDetailsNormalized.length - 1].class = 'finished';
+      taskDetailsNormalized[taskDetailsNormalized.length - 1]['state'] = taskStatus;
     }
     return taskDetailsNormalized;
   };
@@ -52,10 +47,9 @@ export default class StepProgressBar extends Component {
     } = this.props.progressData;
     let taskClassName = '';
     const getTaskClass = function (type) {
-      if (type === 'Initializing' || type === 'Unknown') {
-        return 'pending';
-      } else if (type === 'Success') {
-        return 'finished';
+      if (type === 'Success') {
+        // Returning 'finished' shows green dots for finished ones.
+        return status === 'Success' ? 'finished' : 'pending';
       } else if (type === 'Running') {
         return 'running';
       } else if (type === 'Failure') {
@@ -63,34 +57,35 @@ export default class StepProgressBar extends Component {
       } else if (type === 'Aborted') {
         return 'failed';
       }
-      return null;
+      return 'pending';
     };
-
     const taskDetailsNormalized = this.normalizeTasks(taskDetails, status);
 
-    const tasksTotal = taskDetailsNormalized.length;
+    const tasksTotal = taskDetailsNormalized.length - 1;
     const taskIndex = taskDetailsNormalized.findIndex((element) => {
       return (
         element.state === 'Running' || element.state === 'Failure' || element.state === 'Aborted'
       );
     });
-
     const progressbarClass =
-      this.isFailedIndex(taskDetailsNormalized) > -1
+      status === 'Failure' || status === 'Aborted'
         ? 'failed'
-        : this.isRunningIndex(taskDetailsNormalized) > -1
+        : status === 'Created' || status === 'Abort' || status === 'Running'
         ? 'running'
         : 'finished';
     const barWidth =
-      taskIndex === -1
-        ? '100%'
+      tasksTotal === 0
+        ? status !== 'Success'
+          ? '0%'
+          : '100%'
         : (100 * (taskIndex + (this.isFailedIndex(taskDetailsNormalized) > -1 ? 0 : 0.5))) /
-            (tasksTotal - 1) +
+            tasksTotal +
           '%';
 
     const listLabels = taskDetailsNormalized.map(function (item, idx) {
       taskClassName = getTaskClass(item.state);
       return (
+        // eslint-disable-next-line react/no-array-index-key
         <li key={idx} className={taskClassName + ' ' + item.class}>
           <span>{item.title}</span>
         </li>

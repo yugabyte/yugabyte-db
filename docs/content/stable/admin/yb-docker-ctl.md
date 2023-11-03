@@ -7,11 +7,23 @@ menu:
   stable:
     identifier: yb-docker-ctl
     parent: admin
-    weight: 2420
+    weight: 100
 type: docs
 ---
 
-The `yb-docker-ctl` utility provides a simple command line interface (CLI), or shell, for administering a local Docker-based cluster for development and learning. It manages the [YB-Master](../yb-master/) and [YB-TServer](../yb-tserver/) containers to perform the necessary administration.
+The `yb-docker-ctl` utility provides a basic command line interface (CLI), or shell, for administering a local Docker-based cluster for development and learning. It manages the [YB-Master](../yb-master/) and [YB-TServer](../yb-tserver/) containers to perform the necessary administration.
+
+{{% note title="macOS Monterey" %}}
+
+macOS Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yb-docker-ctl create` to fail. Use the `--master_flags` flag when you start the cluster to change the default port number, as follows:
+
+```sh
+./bin/yb-docker-ctl create --master_flags "webserver_port=7001"
+```
+
+Alternatively, you can disable AirPlay receiving, then start YugabyteDB normally, and then, optionally, re-enable AirPlay receiving.
+
+{{% /note %}}
 
 ## Download
 
@@ -100,8 +112,8 @@ To pull an earlier Docker image tag (version), add the `--tag <tag-id>` flag to 
 
 In the following example, a 1-node YugabyteDB cluster is created using the earlier v1.3.2.1 release that has a tag of `1.3.2.1-b2`.
 
-```
-$yb-docker-ctl create --tag 1.3.2.1-b2
+```sh
+$ ./yb-docker-ctl create --tag 1.3.2.1-b2
 ```
 
 To get the correct tag value, see the [Docker Hub listing of tags for `yugabytedb/yugabyte`](https://hub.docker.com/r/yugabytedb/yugabyte/tags).
@@ -124,7 +136,7 @@ To create a 3-node local Docker-based cluster for development and learning, run 
 $ ./yb-docker-ctl create --rf 3
 ```
 
-```
+```output
 docker run --name yb-master-n1 --privileged -p 7000:7000 --net yb-net --detach yugabytedb/yugabyte:latest /home/yugabyte/yb-master --fs_data_dirs=/mnt/disk0,/mnt/disk1 --master_addresses=yb-master-n1:7100,yb-master-n2:7100,yb-master-n3:7100 --rpc_bind_addresses=yb-master-n1:7100
 Adding node yb-master-n1
 docker run --name yb-master-n2 --privileged --net yb-net --detach yugabytedb/yugabyte:latest /home/yugabyte/yb-master --fs_data_dirs=/mnt/disk0,/mnt/disk1 --master_addresses=yb-master-n1:7100,yb-master-n2:7100,yb-master-n3:7100 --rpc_bind_addresses=yb-master-n2:7100
@@ -160,7 +172,7 @@ Get the status of your local cluster, including the URLs for the Admin UI for ea
 $ ./yb-docker-ctl status
 ```
 
-```
+```output
 PID        Type       Node                 URL                       Status          Started At
 11818      tserver    yb-tserver-n3        http://172.19.0.7:9000    Running         2017-11-28T23:33:00.369124907Z
 11632      tserver    yb-tserver-n2        http://172.19.0.6:9000    Running         2017-11-28T23:32:59.874963849Z
@@ -178,7 +190,7 @@ Add a new node to the cluster. This will start a new `yb-tserver` process and gi
 $ ./yb-docker-ctl add_node
 ```
 
-```
+```output
 docker run --name yb-tserver-n4 --net yb-net --detach yugabytedb/yugabyte:latest /home/yugabyte/yb-tserver --fs_data_dirs=/mnt/disk0,/mnt/disk1 --tserver_master_addrs=04:7100,04:7100,04:7100 --rpc_bind_addresses=yb-tserver-n4:9100
 Adding node yb-tserver-n4
 ```
@@ -193,7 +205,7 @@ Remove a node from the cluster by executing the following command. The command t
 $ ./yb-docker-ctl remove_node --help
 ```
 
-```
+```output
 usage: yb-docker-ctl remove_node [-h] node
 
 positional arguments:
@@ -209,7 +221,7 @@ optional arguments:
 $ ./yb-docker-ctl remove_node 3
 ```
 
-```
+```output
 Stopping node :yb-tserver-n3
 ```
 
@@ -219,7 +231,6 @@ The `yb-docker-ctl destroy` command below destroys the local cluster, including 
 
 ```sh
 $ ./yb-docker-ctl destroy
-
 ```
 
 ## Upgrade container image

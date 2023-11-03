@@ -29,14 +29,13 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_INLINE_SLICE_H
-#define YB_UTIL_INLINE_SLICE_H
+#pragma once
 
 #include <atomic>
 #include <new>
 
 #include <boost/static_assert.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/casts.h"
@@ -198,5 +197,3 @@ class InlineSlice {
 } PACKED;
 
 } // namespace yb
-
-#endif // YB_UTIL_INLINE_SLICE_H

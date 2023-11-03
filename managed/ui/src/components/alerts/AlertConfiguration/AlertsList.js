@@ -4,12 +4,11 @@
 //
 // This file will hold all the configuration list of alerts.
 
-import moment from 'moment';
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { find } from 'lodash';
 import { Col, DropdownButton, MenuItem, Row } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
-import { getPromiseState } from '../../../utils/PromiseUtils';
 import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import { YBLoading } from '../../common/indicators';
 import { YBConfirmModal } from '../../modals';
@@ -29,6 +28,11 @@ import {
   formatString,
   NO_DESTINATION
 } from './AlertsFilter';
+import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
+import { RbacValidator, customPermValidateFunction, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { Action, Resource } from '../../../redesign/features/rbac';
+import { ControlComp } from '../../../redesign/features/rbac/common/validator/ValidatorUtils';
 
 /**
  * This is the header for YB Panel Item.
@@ -45,6 +49,7 @@ const header = (
   updateFilters,
   clearAllFilters
 ) => {
+  const canCreatePolicy = hasNecessaryPerm(ApiPermissionMap.CREATE_ALERT_CONFIGURATIONS);
   return (
     <>
       <Row className="pills-container">
@@ -67,10 +72,11 @@ const header = (
               {!isReadOnly && (
                 <DropdownButton
                   className="alert-config-actions btn btn-orange"
-                  title="Create Alert Config"
+                  title="Create Alert Policy"
                   id="bg-nested-dropdown"
                   bsStyle="danger"
                   pullRight
+                  disabled={!canCreatePolicy}
                 >
                   <MenuItem
                     className="alert-config-list"
@@ -119,13 +125,17 @@ const getTag = (type) => {
   return <span className="name-tag">{type}</span>;
 };
 
-const NO_DESTINATION_MSG = <span className='no-destination-msg'><i className='fa fa-exclamation-triangle' aria-hidden='true'/> No Destination</span>
+const NO_DESTINATION_MSG = (
+  <span className="no-destination-msg">
+    <i className="fa fa-exclamation-triangle" aria-hidden="true" /> No Destination
+  </span>
+);
 
 export const AlertsList = (props) => {
   const [alertList, setAlertList] = useState([]);
   const [metrics, setMetrics] = useState([]);
   const [alertDestinationList, setAlertDestinationList] = useState([]);
-  const [defaultDestination, setDefaultDestination] = useState([]);
+  const [defaultDestination, setDefaultDestination] = useState(undefined);
   const [filterVisible, setFilterVisible] = useState(true);
   const [filters, setFilters] = useState({});
   const [isAlertListLoading, setIsAlertListLoading] = useState(false);
@@ -166,7 +176,7 @@ export const AlertsList = (props) => {
     });
 
     alertDestinations().then((res) => {
-      setDefaultDestination(res.find((destination) => destination.defaultDestination));
+      setDefaultDestination(res?.find((destination) => destination.defaultDestination));
       setAlertDestinationList(res);
     });
   };
@@ -174,33 +184,33 @@ export const AlertsList = (props) => {
   useEffect(onInit, []);
 
   const formatName = (cell, row) => {
-
     const Tag = getTag(row.targetType);
 
     let name = row.name;
 
-    if(filters[FILTER_TYPE_NAME] && !isAlertListLoading){
-
+    if (filters[FILTER_TYPE_NAME] && !isAlertListLoading) {
       const searchText = filters[FILTER_TYPE_NAME];
-      const index = row.name.toLowerCase().indexOf(searchText.toLowerCase())
-      
-      name = <span>
-        {row?.name?.substr(0, index)}
-        <span className='highlight'>{row?.name?.substr(index, searchText.length)}</span>
-        {row?.name?.substr(index+searchText.length)}
+      const index = row.name.toLowerCase().indexOf(searchText.toLowerCase());
+
+      name = (
+        <span>
+          {row?.name?.substr(0, index)}
+          <span className="highlight">{row?.name?.substr(index, searchText.length)}</span>
+          {row?.name?.substr(index + searchText.length)}
         </span>
+      );
     }
-    
+
     if (!row.active) {
       return (
         <span className="alert-inactive" title={row.name}>
-          <span className='alert-name'>{name}</span> (Inactive) {Tag}
+          <span className="alert-name">{name}</span> (Inactive) {Tag}
         </span>
       );
     }
     return (
       <span title={row.name}>
-        <span className='alert-name'>{name}&nbsp;</span> {Tag}
+        <span className="alert-name">{name}&nbsp;</span> {Tag}
       </span>
     );
   };
@@ -218,7 +228,7 @@ export const AlertsList = (props) => {
       return (
         <span>
           {' '}
-          {defaultDestination.name} {tag}
+          {defaultDestination?.name} {tag}
         </span>
       );
     }
@@ -254,7 +264,7 @@ export const AlertsList = (props) => {
    * @param {object} row Respective row.
    */
   const formatCreatedTime = (cell, row) => {
-    return moment(row.createTime).format('MM/DD/yyyy');
+    return ybFormatDate(row.createTime);
   };
 
   /**
@@ -337,7 +347,6 @@ export const AlertsList = (props) => {
    */
   const onDeleteConfig = (row) => {
     deleteAlertConfig(row.uuid).then(() => {
-
       const reqPayload = preparePayloadForAlertReq();
       alertConfigs(reqPayload).then((res) => {
         setAlertList(res);
@@ -347,6 +356,11 @@ export const AlertsList = (props) => {
 
   const formatAlertTargets = (cell) => {
     if (cell.all) return 'All';
+    if (!customPermValidateFunction((userPermissions) => {
+      return find(userPermissions, { resourceType: Resource.UNIVERSE, actions: Action.READ }) !== undefined;
+    })) {
+      return ControlComp({ children: <span>No Universe Perm</span> });
+    }
     const targetUniverse = cell.uuids
       .map((uuid) => {
         return universes.data.find((destination) => destination.universeUUID === uuid);
@@ -357,7 +371,9 @@ export const AlertsList = (props) => {
     return (
       <span>
         {targetUniverse.map((u) => (
-          <div key={u.universeUUID} title={u.name}>{u.name}</div>
+          <div key={u.universeUUID} title={u.name}>
+            {u.name}
+          </div>
         ))}
       </span>
     );
@@ -430,18 +446,25 @@ export const AlertsList = (props) => {
 
   const decideDropdownMenuPos = (rowIndex, sizePerPage, totalRecords, currentPage) => {
     //display the menu at the bottom for the top five records
-    if(rowIndex < 5){
+    if (rowIndex < 5) {
       return false;
     }
     //display the menu at the top for the last five records
-    const itemsPresentInCurrentPage = Math.min(sizePerPage ,totalRecords - (currentPage * sizePerPage));
+    const itemsPresentInCurrentPage = Math.min(
+      sizePerPage,
+      totalRecords - currentPage * sizePerPage
+    );
 
     return itemsPresentInCurrentPage - rowIndex < 5;
-  }
+  };
 
   // This method will handle all the required actions for the particular row.
   const editActionLabel = isReadOnly ? 'Alert Details' : 'Edit Alert';
   const formatConfigActions = (cell, row, rowIndex, sizePerPage, totalRecords, currentPage) => {
+
+    const canEditAlerts = hasNecessaryPerm(ApiPermissionMap.MODIFY_ALERT_CONFIGURATIONS);
+    const canDeleteAlerts = hasNecessaryPerm(ApiPermissionMap.DELETE_ALERT_CONFIGURATIONS);
+
     return (
       <>
         <DropdownButton
@@ -452,47 +475,84 @@ export const AlertsList = (props) => {
           dropup={decideDropdownMenuPos(rowIndex, sizePerPage, totalRecords, currentPage)}
           pullRight
         >
-          <MenuItem
-            onClick={() => {
-              handleMetricsCall(row.targetType);
-              onEditAlertConfig(row);
-            }}
+          <RbacValidator
+            accessRequiredOn={ApiPermissionMap.MODIFY_ALERT_CONFIGURATIONS}
+            isControl
+            overrideStyle={{ display: 'block' }}
           >
-            <i className="fa fa-pencil"></i> {editActionLabel}
-          </MenuItem>
-
-          {!row.active && !isReadOnly ? (
             <MenuItem
               onClick={() => {
-                onToggleActive(row);
+                if (!canEditAlerts) return;
+                handleMetricsCall(row.targetType);
+                onEditAlertConfig(row);
               }}
+              disabled={!canEditAlerts}
             >
-              <i className="fa fa-toggle-on"></i> Activate
+              <i className="fa fa-pencil"></i> {editActionLabel}
             </MenuItem>
+          </RbacValidator>
+
+          {!row.active && !isReadOnly ? (
+            <RbacValidator
+              accessRequiredOn={ApiPermissionMap.MODIFY_ALERT_CONFIGURATIONS}
+              isControl
+              overrideStyle={{ display: 'block' }}
+            >
+              <MenuItem
+                onClick={() => {
+                  onToggleActive(row);
+                }}
+              >
+                <i className="fa fa-toggle-on"></i> Activate
+              </MenuItem>
+            </RbacValidator>
           ) : null}
 
           {row.active && !isReadOnly ? (
-            <MenuItem
-              onClick={() => {
-                onToggleActive(row);
-              }}
+            <RbacValidator
+              accessRequiredOn={ApiPermissionMap.MODIFY_ALERT_CONFIGURATIONS}
+              isControl
+              overrideStyle={{ display: 'block' }}
             >
-              <i className="fa fa-toggle-off"></i> Deactivate
-            </MenuItem>
+              <MenuItem
+                onClick={() => {
+                  if (!canEditAlerts) return;
+                  onToggleActive(row);
+                }}
+                disabled={!canEditAlerts}
+              >
+                <i className="fa fa-toggle-off"></i> Deactivate
+              </MenuItem>
+            </RbacValidator>
           ) : null}
 
           {!isReadOnly ? (
-            <MenuItem onClick={() => showDeleteModal(row?.uuid)}>
-              <i className="fa fa-trash"></i> Delete Alert
-            </MenuItem>
+            <RbacValidator
+              accessRequiredOn={ApiPermissionMap.DELETE_ALERT_CONFIGURATIONS}
+              isControl
+              overrideStyle={{ display: 'block' }}
+            >
+              <MenuItem onClick={() => {
+                if (!canDeleteAlerts) return;
+                showDeleteModal(row?.uuid);
+              }} disabled={!canDeleteAlerts}>
+                <i className="fa fa-trash"></i> Delete Alert
+              </MenuItem>
+            </RbacValidator>
           ) : null}
 
           {!isReadOnly ? (
-            <MenuItem onClick={() => onSendTestAlert(row)}>
-              <i className="fa fa-paper-plane"></i> Send Test Alert
-            </MenuItem>
+            <RbacValidator
+              accessRequiredOn={ApiPermissionMap.SEND_TEST_ALERT}
+              isControl
+              overrideStyle={{ display: 'block' }}
+            >
+              <MenuItem onClick={() => onSendTestAlert(row)}>
+                <i className="fa fa-paper-plane"></i> Send Test Alert
+              </MenuItem>
+            </RbacValidator>
           ) : null}
-        </DropdownButton>
+        </DropdownButton >
         <YBConfirmModal
           name="delete-alert-config"
           title="Confirm Delete"
@@ -588,7 +648,7 @@ export const AlertsList = (props) => {
               (universe) => universe.label === filters[FILTER_TYPE_UNIVERSE]
             );
             reqPayload['target'] = {
-              all: false,
+              all: true,
               uuids: [targetUniverse.value]
             };
           }
@@ -623,30 +683,32 @@ export const AlertsList = (props) => {
     });
   }, [filters]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!getPromiseState(universes).isSuccess() && !getPromiseState(universes).isEmpty()) {
-    return <YBLoading />;
-  }
+  // if (!getPromiseState(universes).isSuccess() && !getPromiseState(universes).isEmpty()) {
+  //   return <YBLoading />;
+  // }
 
   const clearAllFilters = () => {
     setFilters({});
   };
 
   return (
-    <YBPanelItem
-      header={header(
-        isReadOnly,
-        onCreateAlert,
-        enablePlatformAlert,
-        handleMetricsCall,
-        setInitialValues,
-        filterVisible,
-        setFilterVisible,
-        filters,
-        updateFilters,
-        clearAllFilters
-      )}
-      body={
-        <Row>
+    <RbacValidator
+      accessRequiredOn={ApiPermissionMap.GET_ALERT_CONFIGURATIONS}
+    >
+      <YBPanelItem
+        header={header(
+          isReadOnly,
+          onCreateAlert,
+          enablePlatformAlert,
+          handleMetricsCall,
+          setInitialValues,
+          filterVisible,
+          setFilterVisible,
+          filters,
+          updateFilters,
+          clearAllFilters
+        )}
+        body={<Row>
           {filterVisible && (
             <Col lg={2} className="filters">
               <AlertListsWithFilter
@@ -666,12 +728,12 @@ export const AlertsList = (props) => {
               options={{
                 ...options,
                 sizePerPage,
-                onSizePerPageList : setSizePerPage
+                onSizePerPageList: setSizePerPage
               }}
               pagination
               condensed
               ref={bootstrapTableRef}
-              maxHeight='500px'
+              maxHeight="500px"
             >
               <TableHeaderColumn dataField="uuid" isKey={true} hidden={true} />
               <TableHeaderColumn
@@ -739,7 +801,16 @@ export const AlertsList = (props) => {
               </TableHeaderColumn>
               <TableHeaderColumn
                 dataField="configActions"
-                dataFormat={(cell, row, _, rowIndex) => formatConfigActions(cell, row, rowIndex, sizePerPage, alertList.length, options.page)}
+                dataFormat={(cell, row, _, rowIndex) =>
+                  formatConfigActions(
+                    cell,
+                    row,
+                    rowIndex,
+                    sizePerPage,
+                    alertList.length,
+                    options.page
+                  )
+                }
                 columnClassName="yb-actions-cell"
                 className="yb-actions-cell"
                 width="5%"
@@ -749,8 +820,9 @@ export const AlertsList = (props) => {
             </BootstrapTable>
           </Col>
         </Row>
-      }
-      noBackground
-    />
+        }
+        noBackground
+      />
+    </RbacValidator>
   );
 };

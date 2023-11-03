@@ -31,23 +31,30 @@
 #
 
 set(YB_PCH_PREFIX common)
-set(YB_PCH_DEP_LIBS gmock gutil opid_proto yb_test_util yb_util)
+set(YB_PCH_DEP_LIBS gmock gtest gutil opid_proto yb_test_util yb_util)
 
 YRPC_GENERATE(
   COMMON_PROTO_SRCS COMMON_PROTO_HDRS COMMON_PROTO_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  NO_SERVICE_PROTO_FILES
-      redis_protocol.proto ql_protocol.proto
   NO_SERVICE_MESSAGES_PROTO_FILES
-      common.proto common_net.proto common_types.proto pgsql_protocol.proto transaction.proto
-      value.proto wire_protocol.proto)
+      common.proto
+      common_net.proto
+      common_types.proto
+      pgsql_protocol.proto
+      redis_protocol.proto
+      ql_protocol.proto
+      transaction.proto
+      value.proto
+      wire_protocol.proto
+  )
 ADD_YB_LIBRARY(yb_common_proto
   SRCS ${COMMON_PROTO_SRCS}
   DEPS protobuf yrpc_base rpc_base_proto
   NONLINK_DEPS ${COMMON_PROTO_TGTS})
 
 set(COMMON_BASE_SRCS
+  column_id.cc
   json_util.cc
   jsonb.cc
   ql_datatype.cc
@@ -59,6 +66,7 @@ set(COMMON_BASE_SRCS
 set(COMMON_BASE_LIBS
   yb_util
   yb_common_proto
+  yb_bfcommon
   )
 
 ADD_YB_LIBRARY(yb_common_base
@@ -67,39 +75,32 @@ ADD_YB_LIBRARY(yb_common_base
 
 set(COMMON_SRCS
   clock.cc
+  colocated_util.cc
   common_flags.cc
   common_types_util.cc
-  column_id.cc
+  common_util.cc
   consistent_read_point.cc
   entity_ids.cc
   hybrid_time.cc
   doc_hybrid_time.cc # must be after hybrid_time.cc
   id_mapping.cc
-  index.cc
   key_encoder.cc
-  partial_row.cc
   pgsql_error.cc
   placement_info.cc
-  ql_bfunc.cc
-  ql_expr.cc
-  ql_name.cc
-  ql_protocol_util.cc
-  ql_resultset.cc
-  ql_rowblock.cc
-  ql_serialization.cc
-  ql_scanspec.cc
   pg_types.cc
+  ql_protocol_util.cc
   retryable_request.cc
   roles_permissions.cc
   row.cc
   row_mark.cc
   schema.cc
+  schema_pbutil.cc
   snapshot.cc
+  termination_monitor.cc
   transaction.cc
   transaction_error.cc
   wire_protocol.cc
-  ybc_util.cc
-  ybc-internal.cc
+  llvm_profile_dumper.cc
   )
 
 set(COMMON_LIBS
@@ -113,6 +114,7 @@ set(COMMON_LIBS
 
 if (NOT APPLE)
   list(APPEND COMMON_LIBS libuuid)
+  list(APPEND COMMON_LIBS absl)
 endif()
 
 ADD_YB_LIBRARY(yb_common
@@ -120,32 +122,15 @@ ADD_YB_LIBRARY(yb_common
   DEPS ${COMMON_LIBS})
 add_dependencies(yb_common yb_bfql yb_bfpg)
 
-set(PARTITION_SRCS
-  partition.cc
-  )
-
-set(PARTITION_DEPS
-  yb_common
-  yb_util
-  yb_docdb_encoding
-  )
-
-ADD_YB_LIBRARY(yb_partition
-  SRCS ${PARTITION_SRCS}
-  DEPS ${PARTITION_DEPS}
-  )
-
 ADD_YB_TEST_LIBRARY(yb_common_test_util
                     SRCS transaction-test-util.cc wire_protocol-test-util.cc
                     DEPS yb_common yb_docdb)
 
-set(YB_TEST_LINK_LIBS yb_common yb_partition yb_common_test_util ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS yb_common yb_common_test_util ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(id_mapping-test)
 ADD_YB_TEST(jsonb-test)
-ADD_YB_TEST(ql_table_row-test)
-ADD_YB_TEST(partial_row-test)
-ADD_YB_TEST(partition-test)
 ADD_YB_TEST(placement_info-test)
 ADD_YB_TEST(schema-test)
 ADD_YB_TEST(types-test)
 ADD_YB_TEST(wire_protocol-test)
+ADD_YB_TEST(subtxn_set_and_pb-test)

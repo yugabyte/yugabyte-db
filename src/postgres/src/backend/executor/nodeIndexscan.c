@@ -36,6 +36,7 @@
 #include "catalog/pg_am.h"
 #include "catalog/pg_opfamily.h"
 #include "catalog/pg_proc.h"
+#include "catalog/pg_type.h"
 #include "executor/execdebug.h"
 #include "executor/nodeIndexscan.h"
 #include "lib/pairingheap.h"
@@ -110,6 +111,23 @@ IndexNext(IndexScanState *node)
 
 	if (scandesc == NULL)
 	{
+		if (IsYugaByteEnabled() && node->yb_iss_aggrefs)
+		{
+			/*
+			 * For aggregate pushdown, we only read aggregate results from
+			 * DocDB and pass that up to the aggregate node (agg pushdown
+			 * wouldn't be enabled if we needed to read other expressions). Set
+			 * up a dummy scan slot to hold as many attributes as there are
+			 * pushed aggregates.
+			 */
+			TupleDesc tupdesc =
+				CreateTemplateTupleDesc(list_length(node->yb_iss_aggrefs),
+										false /* hasoid */);
+			ExecInitScanTupleSlot(estate, &node->ss, tupdesc);
+			/* Refresh the local pointer. */
+			slot = node->ss.ss_ScanTupleSlot;
+		}
+
 		IndexScan *plan = castNode(IndexScan, node->ss.ps.plan);
 
 		/*
@@ -123,11 +141,17 @@ IndexNext(IndexScanState *node)
 								   node->iss_NumOrderByKeys);
 
 		node->iss_ScanDesc = scandesc;
-		scandesc->yb_scan_plan = (Scan *) plan;
-		scandesc->yb_rel_pushdown =
-			YbInstantiateRemoteParams(&plan->rel_remote, estate);
-		scandesc->yb_idx_pushdown =
-			YbInstantiateRemoteParams(&plan->index_remote, estate);
+
+		if (IsYugaByteEnabled())
+		{
+			scandesc->yb_scan_plan = (Scan *) plan;
+			scandesc->yb_rel_pushdown =
+				YbInstantiatePushdownParams(&plan->yb_rel_pushdown, estate);
+			scandesc->yb_idx_pushdown =
+				YbInstantiatePushdownParams(&plan->yb_idx_pushdown, estate);
+			scandesc->yb_aggrefs = node->yb_iss_aggrefs;
+			scandesc->yb_distinct_prefixlen = plan->yb_distinct_prefixlen;
+		}
 
 		/*
 		 * If no run-time keys to calculate or they are ready, go ahead and
@@ -140,35 +164,46 @@ IndexNext(IndexScanState *node)
 	}
 
 	/*
-	 * Setup LIMIT and future execution parameter before calling YugaByte scanning rountines.
+	 * Set up any locking that happens at the time of the scan.
 	 */
 	if (IsYugaByteEnabled()) {
+		IndexScan  *plan;
 		scandesc->yb_exec_params = &estate->yb_exec_params;
 		scandesc->yb_exec_params->rowmark = -1;
 
 		// Add row marks.
-		if (XactIsoLevel == XACT_SERIALIZABLE)
+		plan = castNode(IndexScan, node->ss.ps.plan);
+		if (IsolationIsSerializable() || plan->yb_lock_mechanism == YB_LOCK_CLAUSE_ON_PK)
 		{
 			/*
-			 * In case of SERIALIZABLE isolation level we have to take predicate locks to disallow
+			 * In case of SERIALIZABLE isolation level we have to take prefix range locks to disallow
 			 * INSERTion of new rows that satisfy the query predicate. So, we set the rowmark on all
 			 * read requests sent to tserver instead of locking each tuple one by one in LockRows node.
+			 *
+			 * For other isolation levels it's sometimes possible to take locks during the index scan
+			 * as well.
 			 */
 			ListCell   *l;
-			foreach(l, estate->es_rowMarks) {
+			foreach(l, estate->es_rowMarks)
+			{
 				ExecRowMark *erm = (ExecRowMark *) lfirst(l);
-				// Do not propogate non-row-locking row marks.
-				if (erm->markType != ROW_MARK_REFERENCE &&
-						erm->markType != ROW_MARK_COPY) {
+				// Do not propagate non-row-locking row marks.
+				if (erm->markType != ROW_MARK_REFERENCE && erm->markType != ROW_MARK_COPY)
+				{
 					scandesc->yb_exec_params->rowmark = erm->markType;
-					/*
-					 * TODO(Piyush): We don't honour SKIP LOCKED yet in serializable isolation level.
-					 */
-					scandesc->yb_exec_params->wait_policy = LockWaitError;
+					scandesc->yb_exec_params->pg_wait_policy = erm->waitPolicy;
+					YBSetRowLockPolicy(&scandesc->yb_exec_params->docdb_wait_policy,
+									   erm->waitPolicy);
 				}
 				break;
 			}
 		}
+
+		/*
+		 * Set reference to slot in scan desc so that YB amgettuple can use it
+		 * during aggregate pushdown.
+		 */
+		scandesc->yb_agg_slot = slot;
 	}
 
 	/*
@@ -191,10 +226,21 @@ IndexNext(IndexScanState *node)
 		 * Note: we pass 'false' because tuples returned by amgetnext are
 		 * pointers onto disk pages and must not be pfree()'d.
 		 */
-		ExecStoreBufferHeapTuple(tuple,	/* tuple to store */
-								 slot,	/* slot to store in */
-								 scandesc->xs_cbuf);	/* buffer containing
-														 * tuple */
+		if (IsYugaByteEnabled() && scandesc->yb_aggrefs)
+		{
+			/*
+			 * Slot should have already been updated by YB amgettuple.
+			 *
+			 * Also, index aggregate pushdown currently cannot support recheck,
+			 * and this should have been prevented by earlier logic.
+			 */
+			Assert(!scandesc->xs_recheck);
+		}
+		else
+			ExecStoreBufferHeapTuple(tuple,	/* tuple to store */
+									 slot,	/* slot to store in */
+									 scandesc->xs_cbuf);	/* buffer containing
+															 * tuple */
 
 		/*
 		 * If the index was lossy, we have to recheck the index quals using
@@ -282,9 +328,9 @@ IndexNextWithReorder(IndexScanState *node)
 		node->iss_ScanDesc = scandesc;
 		scandesc->yb_scan_plan = (Scan *) plan;
 		scandesc->yb_rel_pushdown =
-			YbInstantiateRemoteParams(&plan->rel_remote, estate);
+			YbInstantiatePushdownParams(&plan->yb_rel_pushdown, estate);
 		scandesc->yb_idx_pushdown =
-			YbInstantiateRemoteParams(&plan->index_remote, estate);
+			YbInstantiatePushdownParams(&plan->yb_idx_pushdown, estate);
 
 		/*
 		 * If no run-time keys to calculate or they are ready, go ahead and
@@ -665,9 +711,18 @@ ExecReScanIndexScan(IndexScanState *node)
 
 	/* reset index scan */
 	if (node->iss_ScanDesc)
+	{
+		IndexScanDesc scandesc = node->iss_ScanDesc;
+		IndexScan *plan = (IndexScan *) scandesc->yb_scan_plan;
+		EState *estate = node->ss.ps.state;
+		scandesc->yb_rel_pushdown =
+			YbInstantiatePushdownParams(&plan->yb_rel_pushdown, estate);
+		scandesc->yb_idx_pushdown =
+			YbInstantiatePushdownParams(&plan->yb_idx_pushdown, estate);
 		index_rescan(node->iss_ScanDesc,
 					 node->iss_ScanKeys, node->iss_NumScanKeys,
 					 node->iss_OrderByKeys, node->iss_NumOrderByKeys);
+	}
 	node->iss_ReachedEnd = false;
 
 	ExecScanReScan(&node->ss);
@@ -1047,9 +1102,17 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
 	 * If we are just doing EXPLAIN (ie, aren't going to run the plan), stop
 	 * here.  This allows an index-advisor plugin to EXPLAIN a plan containing
 	 * references to nonexistent indexes.
+	 *
+	 * YB note: For aggregate pushdown, we need recheck knowledge to determine
+	 * whether aggregates can be pushed down or not.  At the time of writing,
+	 * - aggregate pushdown only supports YB relations
+	 * - there cannot be a mix of non-YB tables and YB indexes, and vice versa
+	 * Use those assumptions to avoid the perf hit on EXPLAIN non-YB relations.
 	 */
 	if (eflags & EXEC_FLAG_EXPLAIN_ONLY)
-		return indexstate;
+		if (!(IsYBRelation(currentRelation) &&
+			  (eflags & EXEC_FLAG_YB_AGG_PARENT)))
+			return indexstate;
 
 	/*
 	 * Open the index relation.
@@ -1082,6 +1145,27 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
 						   &indexstate->iss_NumRuntimeKeys,
 						   NULL,	/* no ArrayKeys */
 						   NULL);
+
+	/*
+	 * For aggregate pushdown purposes, using the scan keys, determine ahead of
+	 * beginning the scan whether indexqual recheck might happen, and pass that
+	 * information up to the aggregate node.  Only attempt this for YB
+	 * relations since pushdown is not supported otherwise.
+	 */
+	if (IsYBRelation(indexstate->iss_RelationDesc) &&
+		(eflags & EXEC_FLAG_YB_AGG_PARENT))
+	{
+		indexstate->yb_iss_might_recheck =
+			yb_index_might_recheck(currentRelation,
+								   indexstate->iss_RelationDesc,
+								   false /* xs_want_itup */,
+								   indexstate->iss_ScanKeys,
+								   indexstate->iss_NumScanKeys);
+
+		/* Got the info for aggregate pushdown.  EXPLAIN can return now. */
+		if  (eflags & EXEC_FLAG_EXPLAIN_ONLY)
+			return indexstate;
+	}
 
 	/*
 	 * any ORDER BY exprs have to be turned into scankeys in the same way
@@ -1201,6 +1285,7 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
  * For these, we create a header ScanKey plus a subsidiary ScanKey array,
  * as specified in access/skey.h.  The elements of the row comparison
  * can have either constant or non-constant comparison values.
+ * YB: If op is an op ANY operator then we use the ScalarArrayOpExpr instead.
  *
  * 4. ScalarArrayOpExpr ("indexkey op ANY (array-expression)").  If the index
  * supports amsearcharray, we handle these the same as simple operators,
@@ -1209,6 +1294,20 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
  * and set up an IndexArrayKeyInfo struct to drive processing of the qual.
  * (Note that if we use an IndexArrayKeyInfo struct, the array expression is
  * always treated as requiring runtime evaluation, even if it's a constant.)
+ * YB: The left hand side of a ScalarArrayOpExpr can also be of the form
+ * ("ROW(indexkey, indexkey, ...) op ANY Array(rowexpr, rowexpr, rowexpr...)").
+ * Each rowexpr is expected to have the same set of types in it as the indexkeys
+ * do in the lhs row.
+ * These are found in the case of batched nested loop joins on multiple keys for
+ * now. These are not considered as RowCompareExprs as the structure of the
+ * RowCompareExpr only allows for operators where there is a 1-1 correspondence
+ * between keys in the lhs and values in the rhs. That cannnot be the case here.
+ * Unfortunately, this means that we have to special case certain SAOP
+ * processing logic to check for this RowExpr case.
+ * For now, these cases are generated for batched nested loop joins in
+ * yb_zip_batched_exprs() in restrictinfo.c during indexscan
+ * plan node generation.
+ *
  *
  * 5. NullTest ("indexkey IS NULL/IS NOT NULL").  We just fill in the
  * ScanKey properly.
@@ -1554,8 +1653,12 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 			/* sk_subtype, sk_collation, sk_func not used in a header */
 			this_scan_key->sk_argument = PointerGetDatum(first_sub_key);
 		}
-		else if (IsA(clause, ScalarArrayOpExpr))
+		else if (IsA(clause, ScalarArrayOpExpr) &&
+				 (!IsYugaByteEnabled() ||
+				  !IsA(yb_get_saop_left_op(clause), RowExpr)))
 		{
+			Assert(!IsYugaByteEnabled() ||
+				   IsA(yb_get_saop_left_op(clause), Var));
 			/* indexkey op ANY (array-expression) */
 			ScalarArrayOpExpr *saop = (ScalarArrayOpExpr *) clause;
 			int			flags = 0;
@@ -1672,6 +1775,157 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 								   saop->inputcollid,	/* collation */
 								   opfuncid,	/* reg proc to use */
 								   scanvalue);	/* constant */
+		}
+		else if (IsA(clause, ScalarArrayOpExpr))
+		{
+			Assert(IsYugaByteEnabled());
+			Assert(IsA(yb_get_saop_left_op(clause), RowExpr));
+			/* indexkey op ANY (array-expression) */
+			ScalarArrayOpExpr *saop = (ScalarArrayOpExpr *) clause;
+			int			flags = 0;
+			Datum		scanvalue;
+
+			/* used when lhs is a RowExpr */
+			ScanKey		first_sub_key;
+			int			n_sub_key = 0;
+			int			total_keys;
+
+			Assert(!isorderby);
+
+			Assert(saop->useOr);
+			opno = saop->opno;
+			opfuncid = saop->opfuncid;
+
+			/*
+			 * leftop should be the index key Var, possibly relabeled
+			 */
+			leftop = (Expr *) linitial(saop->args);
+
+			if (leftop && IsA(leftop, RelabelType))
+				leftop = ((RelabelType *) leftop)->arg;
+
+			Assert(leftop != NULL);
+
+			ScanKey this_key = this_scan_key;
+
+			RowExpr *rexpr = (RowExpr *) leftop;
+
+			total_keys = list_length(rexpr->args);
+			first_sub_key = (ScanKey)
+				palloc0(total_keys * sizeof(ScanKeyData));
+			this_key = first_sub_key;
+			flags |= SK_ROW_MEMBER;
+
+			/*
+			* We don't use ScanKeyEntryInitialize for the header because it
+			* isn't going to contain a valid sk_func pointer.
+			*/
+			MemSet(this_scan_key, 0, sizeof(ScanKeyData));
+			this_scan_key->sk_flags = flags | SK_ROW_HEADER | SK_SEARCHARRAY;
+			this_scan_key->sk_strategy = BTEqualStrategyNumber;
+			/* sk_subtype, sk_collation, sk_func not used in a header */
+			this_scan_key->sk_argument = PointerGetDatum(first_sub_key);
+			this_scan_key->sk_subtype = RECORDOID;
+
+			while (n_sub_key < total_keys)
+			{
+				RowExpr *rexpr = (RowExpr *) leftop;
+				varattno = ((Var *) list_nth(rexpr->args, n_sub_key))->varattno;
+				this_key = &first_sub_key[n_sub_key];
+				op_strategy = BTEqualStrategyNumber;
+				op_righttype = InvalidOid;
+
+				if (varattno < 1 || varattno > indnkeyatts)
+					elog(ERROR, "bogus index qualification");
+
+				/*
+				 * rightop is the constant or variable array value
+				 */
+				rightop = (Expr *) lsecond(saop->args);
+
+				if (rightop && IsA(rightop, RelabelType))
+					rightop = ((RelabelType *) rightop)->arg;
+
+				Assert(rightop != NULL);
+
+				if (index->rd_amroutine->amsearcharray)
+				{
+					/* Index AM will handle this like a simple operator */
+					flags |= SK_SEARCHARRAY;
+					if (IsA(rightop, Const))
+					{
+						/* OK, simple constant comparison value */
+						scanvalue = ((Const *) rightop)->constvalue;
+						if (((Const *) rightop)->constisnull)
+							flags |= SK_ISNULL;
+					}
+					else
+					{
+						/* Need to treat this one as a runtime key */
+						if (n_sub_key == 0)
+						{
+							if (n_runtime_keys >= max_runtime_keys)
+							{
+								if (max_runtime_keys == 0)
+								{
+									max_runtime_keys = 8;
+									runtime_keys = (IndexRuntimeKeyInfo *)
+										palloc(max_runtime_keys *
+											   sizeof(IndexRuntimeKeyInfo));
+								}
+								else
+								{
+									max_runtime_keys *= 2;
+									runtime_keys = (IndexRuntimeKeyInfo *)
+										repalloc(runtime_keys,
+												 max_runtime_keys *
+												 sizeof(IndexRuntimeKeyInfo));
+								}
+							}
+							runtime_keys[n_runtime_keys].scan_key = this_key;
+							runtime_keys[n_runtime_keys].key_expr =
+								ExecInitExpr(rightop, planstate);
+
+							/*
+							 * Careful here: the runtime expression is not of
+							 * op_righttype, but rather is an array of same; so
+							 * TypeIsToastable() isn't helpful.  However, we can
+							 * assume that all array types are toastable.
+							 */
+							runtime_keys[n_runtime_keys].key_toastable = true;
+							n_runtime_keys++;
+							scanvalue = (Datum) 0;
+						}
+					}
+				}
+				else
+				{
+					/* Executor has to expand the array value */
+					array_keys[n_array_keys].scan_key = this_key;
+					array_keys[n_array_keys].array_expr =
+						ExecInitExpr(rightop, planstate);
+					/* the remaining fields were zeroed by palloc0 */
+					n_array_keys++;
+					scanvalue = (Datum) 0;
+				}
+
+				/*
+				 * initialize the scan key's fields appropriately
+				 */
+				ScanKeyEntryInitialize(this_key,
+									   					 flags,
+									   					 varattno,  /* attribute number to scan */
+									   					 op_strategy, /* op's strategy */
+									   					 op_righttype,	/* strategy subtype */
+									   					 saop->inputcollid,	/* collation */
+									   					 opfuncid,	/* reg proc to use */
+									   					 scanvalue);	/* constant */
+				n_sub_key++;
+			}
+
+			this_scan_key->sk_attno = first_sub_key->sk_attno;
+			/* Mark the last subsidiary scankey correctly */
+			first_sub_key[n_sub_key - 1].sk_flags |= SK_ROW_END;
 		}
 		else if (IsA(clause, NullTest))
 		{

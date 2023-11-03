@@ -1,30 +1,35 @@
 ---
-title: Use an ORM
+title: Ebean ORM
+headerTitle: Use an ORM
 linkTitle: Use an ORM
-description: Java ORM support for YugabyteDB
+description: Java Ebean ORM support for YugabyteDB
 headcontent: Java ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
     identifier: java-orm-ebean
     parent: java-drivers
-    weight: 500
+    weight: 600
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/drivers-orms/java/ebean/" class="nav-link active">
-      <i class="icon-java-bold" aria-hidden="true"></i>
+    <a href="../hibernate/" class="nav-link">
+      Hibernate ORM
+    </a>
+  </li>
+
+  <li >
+    <a href="../ebean/" class="nav-link active">
       Ebean ORM
     </a>
   </li>
 
   <li >
-    <a href="/preview/drivers-orms/java/hibernate" class="nav-link">
-      <i class="icon-java-bold" aria-hidden="true"></i>
-      Hibernate ORM
+    <a href="../mybatis/" class="nav-link ">
+      MyBatis
     </a>
   </li>
 
@@ -38,7 +43,7 @@ Ebean ORM can be used with the [YugabyteDB JDBC driver](../yugabyte-jdbc) and th
 
 ## CRUD operations
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](/preview/develop/build-apps/java/ysql-ebean/) page.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Java ORM example application](../../orms/java/ysql-ebean/) page.
 
 The following sections demonstrate how to perform common tasks required for Java-based [Play Framework](https://www.playframework.com/documentation/2.8.x/api/java/index.html) application development using the Ebean ORM.
 
@@ -103,7 +108,7 @@ To begin using Ebean in the application, do the following:
     }
     ```
 
-1. Add the following dependency for the Yugabyte JDBC driver to the `build.sbt` file.
+1. Add the following dependency for the YugabyteDB JDBC driver to the `build.sbt` file.
 
     ```sbt
     libraryDependencies += "com.yugabyte" % "jdbc-yugabytedb" % "42.3.3"
@@ -240,6 +245,7 @@ To run the application and insert a new row, execute the following steps:
     ["{'empId' = '1', firstName ='John', 'lastName' ='Smith', 'email' ='jsmith@xyz.com' }"]
     ```
 
-## Next steps
+## Learn more
 
-Explore [scaling Java applications](../../../explore/linear-scalability) with YugabyteDB.
+- Build Java applications using [Hibernate ORM](../hibernate/)
+- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)

@@ -1,8 +1,9 @@
 ---
 title: Prepare the private cloud (on-premise) environment
-headerTitle: Prepare the private cloud (on-premise) environment
-linkTitle: Prepare the environment
+headerTitle: Cloud prerequisites
+linkTitle: Cloud prerequisites
 description: Prepare the private cloud (on-premise) environment for YugabyteDB Anywhere.
+headContent: Prepare your on-premises environment for YugabyteDB Anywhere
 menu:
   stable_yugabyte-platform:
     identifier: prepare-environment-5-private-cloud
@@ -15,14 +16,14 @@ type: docs
 
   <li>
     <a href="../aws/" class="nav-link">
-      <i class="fab fa-aws" aria-hidden="true"></i>
+      <i class="fa-brands fa-aws" aria-hidden="true"></i>
       AWS
     </a>
   </li>
 
   <li>
     <a href="../gcp/" class="nav-link">
-       <i class="fab fa-google" aria-hidden="true"></i>
+       <i class="fa-brands fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
@@ -36,44 +37,29 @@ type: docs
 
   <li>
     <a href="../kubernetes/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
 <li>
     <a href="../openshift/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-brands fa-redhat" aria-hidden="true"></i>
       OpenShift
     </a>
  </li>
 
   <li>
     <a href="../on-premises/" class="nav-link active">
-      <i class="fas fa-building" aria-hidden="true"></i>
+      <i class="fa-solid fa-building" aria-hidden="true"></i>
       On-premises
     </a>
   </li>
 
 </ul>
 
-To run a YugabyteDB universe on a private cloud, you need to prepare one computer to run YugabyteDB Anywhere, which is in turn used to install and manage the nodes included in the universe.
+To run a YugabyteDB on a private cloud, you need to prepare one computer to run YugabyteDB Anywhere. This computer is in turn used to install and manage the nodes onto which you will deploy YugabyteDB universes.
 
-A YugabyteDB Anywhere node has the following requirements:
+For information on the requirements for the node running YugabyteDB Anywhere, refer to [Prerequisites](../../prerequisites/installer/).
 
-* Hardware requirements:
-  * Nodes: 1 Virtual Machine
-  * Cores: 8 Cores
-  * RAM: 16 GB
-* Storage Disk:  100GB (minimum) (confirm SSD)
-* Docker Engine: supported version 19.03.n. If not installed, see [Installing Docker in airgapped](https://www.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/).
-* The following ports should be open on the YugabyteDB Anywhere host:
-  * 8800 – HTTP access to the Replicated UI.
-  * 80 – HTTP access to the YugabyteDB Anywhere UI.
-  * 443 - HTTPs access to the YugabyteDB Anywhere UI.
-  * 22 – SSH
-  * 9090 - Prometheus metrics
-
-  For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).
-
-* Ability to connect from the YugabyteDB Anywhere host to all YugabyteDB data nodes.
+For information on preparing the nodes onto which you will deploy universes, refer to [Prepare nodes for on-premises deployment](../../prepare-on-prem-nodes/).

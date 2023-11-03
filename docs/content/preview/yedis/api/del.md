@@ -16,11 +16,11 @@ Single-key request only. Requests with multiple keys are not yet supported.
 
 ## Synopsis
 
-<!-- <b>`DEL key [key ...]`</b><br> -->
-<b>`DEL key`</b><br>
+**`DEL key`**
+
 This command deletes the given `key`.
 
-<li>If the `key` does not exist, it is ignored and not counted toward the total number of removed keys.</li>
+- If the `key` does not exist, it is ignored and not counted toward the total number of removed keys.
 
 ## Return value
 

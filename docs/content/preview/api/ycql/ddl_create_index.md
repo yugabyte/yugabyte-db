@@ -9,7 +9,6 @@ menu:
     parent: api-cassandra
     weight: 1225
 aliases:
-  - /preview/api/cassandra/ddl_create_index
   - /preview/api/ycql/ddl_create_index
 type: docs
 ---
@@ -24,7 +23,7 @@ Use the `CREATE INDEX` statement to create a new index on a table. It defines th
 
 #### create_index
 
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="703" height="150" viewbox="0 0 703 150"><path class="connector" d="M0 22h15m67 0h10m59 0h30m32 0h10m45 0h10m64 0h20m-196 0q5 0 5 5v8q0 5 5 5h171q5 0 5-5v-8q0-5 5-5m5 0h10m94 0h10m38 0h7m2 0h2m2 0h2m-529 50h2m2 0h2m2 0h7m91 0h10m25 0h10m157 0h30m165 0h20m-200 0q5 0 5 5v8q0 5 5 5h175q5 0 5-5v-8q0-5 5-5m5 0h10m25 0h7m2 0h2m2 0h2m-573 50h2m2 0h2m2 0h27m216 0h20m-251 0q5 0 5 5v8q0 5 5 5h226q5 0 5-5v-8q0-5 5-5m5 0h30m128 0h20m-163 0q5 0 5 5v8q0 5 5 5h138q5 0 5-5v-8q0-5 5-5m5 0h30m65 0h10m114 0h20m-224 0q5 0 5 5v8q0 5 5 5h199q5 0 5-5v-8q0-5 5-5m5 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="67" height="25" rx="7"/><text class="text" x="25" y="22">CREATE</text><rect class="literal" x="92" y="5" width="59" height="25" rx="7"/><text class="text" x="102" y="22">INDEX</text><rect class="literal" x="181" y="5" width="32" height="25" rx="7"/><text class="text" x="191" y="22">IF</text><rect class="literal" x="223" y="5" width="45" height="25" rx="7"/><text class="text" x="233" y="22">NOT</text><rect class="literal" x="278" y="5" width="64" height="25" rx="7"/><text class="text" x="288" y="22">EXISTS</text><a xlink:href="../grammar_diagrams#index-name"><rect class="rule" x="372" y="5" width="94" height="25"/><text class="text" x="382" y="22">index_name</text></a><rect class="literal" x="476" y="5" width="38" height="25" rx="7"/><text class="text" x="486" y="22">ON</text><a xlink:href="../grammar_diagrams#table-name"><rect class="rule" x="15" y="55" width="91" height="25"/><text class="text" x="25" y="72">table_name</text></a><rect class="literal" x="116" y="55" width="25" height="25" rx="7"/><text class="text" x="126" y="72">(</text><a xlink:href="../grammar_diagrams#partition-key-columns"><rect class="rule" x="151" y="55" width="157" height="25"/><text class="text" x="161" y="72">partition_key_columns</text></a><a xlink:href="../grammar_diagrams#clustering-key-columns"><rect class="rule" x="338" y="55" width="165" height="25"/><text class="text" x="348" y="72">clustering_key_columns</text></a><rect class="literal" x="533" y="55" width="25" height="25" rx="7"/><text class="text" x="543" y="72">)</text><a xlink:href="../grammar_diagrams#clustering-key-column-ordering"><rect class="rule" x="35" y="105" width="216" height="25"/><text class="text" x="45" y="122">clustering_key_column_ordering</text></a><a xlink:href="../grammar_diagrams#covering-columns"><rect class="rule" x="301" y="105" width="128" height="25"/><text class="text" x="311" y="122">covering_columns</text></a><rect class="literal" x="479" y="105" width="65" height="25" rx="7"/><text class="text" x="489" y="122">WHERE</text><a xlink:href="../grammar_diagrams#index-predicate"><rect class="rule" x="554" y="105" width="114" height="25"/><text class="text" x="564" y="122">index_predicate</text></a><polygon points="699,129 703,129 703,115 699,115" style="fill:black;stroke-width:0"/></svg>
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="655" height="150" viewbox="0 0 655 150"><path class="connector" d="M0 22h15m68 0h30m70 0h20m-105 0q5 0 5 5v8q0 5 5 5h80q5 0 5-5v-8q0-5 5-5m5 0h10m59 0h30m32 0h10m46 0h10m64 0h20m-197 0q5 0 5 5v8q0 5 5 5h172q5 0 5-5v-8q0-5 5-5m5 0h10m97 0h10m39 0h7m2 0h2m2 0h2m-655 50h2m2 0h2m2 0h7m95 0h10m25 0h10m162 0h10m24 0h30m170 0h20m-205 0q5 0 5 5v8q0 5 5 5h180q5 0 5-5v-8q0-5 5-5m5 0h10m25 0h7m2 0h2m2 0h2m-621 50h2m2 0h2m2 0h27m132 0h20m-167 0q5 0 5 5v8q0 5 5 5h142q5 0 5-5v-8q0-5 5-5m5 0h30m127 0h20m-162 0q5 0 5 5v8q0 5 5 5h137q5 0 5-5v-8q0-5 5-5m5 0h30m66 0h10m121 0h20m-232 0q5 0 5 5v8q0 5 5 5h207q5 0 5-5v-8q0-5 5-5m5 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="68" height="25" rx="7"/><text class="text" x="25" y="22">CREATE</text><rect class="literal" x="113" y="5" width="70" height="25" rx="7"/><text class="text" x="123" y="22">UNIQUE</text><rect class="literal" x="213" y="5" width="59" height="25" rx="7"/><text class="text" x="223" y="22">INDEX</text><rect class="literal" x="302" y="5" width="32" height="25" rx="7"/><text class="text" x="312" y="22">IF</text><rect class="literal" x="344" y="5" width="46" height="25" rx="7"/><text class="text" x="354" y="22">NOT</text><rect class="literal" x="400" y="5" width="64" height="25" rx="7"/><text class="text" x="410" y="22">EXISTS</text><a xlink:href="../grammar_diagrams#index-name"><rect class="rule" x="494" y="5" width="97" height="25"/><text class="text" x="504" y="22">index_name</text></a><rect class="literal" x="601" y="5" width="39" height="25" rx="7"/><text class="text" x="611" y="22">ON</text><a xlink:href="../grammar_diagrams#table-name"><rect class="rule" x="15" y="55" width="95" height="25"/><text class="text" x="25" y="72">table_name</text></a><rect class="literal" x="120" y="55" width="25" height="25" rx="7"/><text class="text" x="130" y="72">(</text><a xlink:href="../grammar_diagrams#partition-key-columns"><rect class="rule" x="155" y="55" width="162" height="25"/><text class="text" x="165" y="72">partition_key_columns</text></a><rect class="literal" x="327" y="55" width="24" height="25" rx="7"/><text class="text" x="337" y="72">,</text><a xlink:href="../grammar_diagrams#clustering-key-columns"><rect class="rule" x="381" y="55" width="170" height="25"/><text class="text" x="391" y="72">clustering_key_columns</text></a><rect class="literal" x="581" y="55" width="25" height="25" rx="7"/><text class="text" x="591" y="72">)</text><a xlink:href="../grammar_diagrams#covering-columns"><rect class="rule" x="35" y="105" width="132" height="25"/><text class="text" x="45" y="122">covering_columns</text></a><a xlink:href="../grammar_diagrams#index-properties"><rect class="rule" x="217" y="105" width="127" height="25"/><text class="text" x="227" y="122">index_properties</text></a><rect class="literal" x="394" y="105" width="66" height="25" rx="7"/><text class="text" x="404" y="122">WHERE</text><a xlink:href="../grammar_diagrams#index-predicate"><rect class="rule" x="470" y="105" width="121" height="25"/><text class="text" x="480" y="122">index_predicate</text></a><polygon points="622,129 626,129 626,115 622,115" style="fill:black;stroke-width:0"/></svg>
 
 #### partition_key_columns
 
@@ -34,9 +33,9 @@ Use the `CREATE INDEX` statement to create a new index on a table. It defines th
 
 <svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="176" height="65" viewbox="0 0 176 65"><path class="connector" d="M0 52h35m-5 0q-5 0-5-5v-20q0-5 5-5h46m24 0h46q5 0 5 5v20q0 5-5 5m-5 0h35"/><polygon points="0,59 5,52 0,45" style="fill:black;stroke-width:0"/><rect class="literal" x="76" y="5" width="24" height="25" rx="7"/><text class="text" x="86" y="22">,</text><a xlink:href="../grammar_diagrams#index-column"><rect class="rule" x="35" y="35" width="106" height="25"/><text class="text" x="45" y="52">index_column</text></a><polygon points="172,59 176,59 176,45 172,45" style="fill:black;stroke-width:0"/></svg>
 
-#### clustering_key_column_ordering
+#### index_properties
 
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="641" height="100" viewbox="0 0 641 100"><path class="connector" d="M0 52h15m54 0h10m99 0h10m63 0h10m35 0h10m25 0h30m-5 0q-5 0-5-5v-20q0-5 5-5h98m24 0h98q5 0 5 5v20q0 5-5 5m-109 0h30m45 0h29m-84 25q0 5 5 5h5m54 0h5q5 0 5-5m-79-25q5 0 5 5v33q0 5 5 5h64q5 0 5-5v-33q0-5 5-5m5 0h30m25 0h15"/><polygon points="0,59 5,52 0,45" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="35" width="54" height="25" rx="7"/><text class="text" x="25" y="52">WITH</text><rect class="literal" x="79" y="35" width="99" height="25" rx="7"/><text class="text" x="89" y="52">CLUSTERING</text><rect class="literal" x="188" y="35" width="63" height="25" rx="7"/><text class="text" x="198" y="52">ORDER</text><rect class="literal" x="261" y="35" width="35" height="25" rx="7"/><text class="text" x="271" y="52">BY</text><rect class="literal" x="306" y="35" width="25" height="25" rx="7"/><text class="text" x="316" y="52">(</text><rect class="literal" x="454" y="5" width="24" height="25" rx="7"/><text class="text" x="464" y="22">,</text><a xlink:href="../grammar_diagrams#index-column"><rect class="rule" x="361" y="35" width="106" height="25"/><text class="text" x="371" y="52">index_column</text></a><rect class="literal" x="497" y="35" width="45" height="25" rx="7"/><text class="text" x="507" y="52">ASC</text><rect class="literal" x="497" y="65" width="54" height="25" rx="7"/><text class="text" x="507" y="82">DESC</text><rect class="literal" x="601" y="35" width="25" height="25" rx="7"/><text class="text" x="611" y="52">)</text><polygon points="637,59 641,59 641,45 637,45" style="fill:black;stroke-width:0"/></svg>
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="721" height="160" viewbox="0 0 721 160"><path class="connector" d="M0 52h15m54 0h30m-5 0q-5 0-5-5v-20q0-5 5-5h275m46 0h276q5 0 5 5v20q0 5-5 5m-592 0h20m117 0h10m29 0h10m117 0h284m-582 0q5 0 5 5v50q0 5 5 5h5m99 0h10m63 0h10m35 0h10m25 0h30m-5 0q-5 0-5-5v-20q0-5 5-5h98m24 0h98q5 0 5 5v20q0 5-5 5m-109 0h30m45 0h29m-84 25q0 5 5 5h5m54 0h5q5 0 5-5m-79-25q5 0 5 5v33q0 5 5 5h64q5 0 5-5v-33q0-5 5-5m5 0h30m25 0h5q5 0 5-5v-50q0-5 5-5m5 0h35"/><polygon points="0,59 5,52 0,45" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="35" width="54" height="25" rx="7"/><text class="text" x="25" y="52">WITH</text><rect class="literal" x="369" y="5" width="46" height="25" rx="7"/><text class="text" x="379" y="22">AND</text><a xlink:href="../grammar_diagrams#property-name"><rect class="rule" x="119" y="35" width="117" height="25"/><text class="text" x="129" y="52">property_name</text></a><rect class="literal" x="246" y="35" width="29" height="25" rx="7"/><text class="text" x="256" y="52">=</text><a xlink:href="../grammar_diagrams#property-literal"><rect class="rule" x="285" y="35" width="117" height="25"/><text class="text" x="295" y="52">property_literal</text></a><rect class="literal" x="119" y="95" width="99" height="25" rx="7"/><text class="text" x="129" y="112">CLUSTERING</text><rect class="literal" x="228" y="95" width="63" height="25" rx="7"/><text class="text" x="238" y="112">ORDER</text><rect class="literal" x="301" y="95" width="35" height="25" rx="7"/><text class="text" x="311" y="112">BY</text><rect class="literal" x="346" y="95" width="25" height="25" rx="7"/><text class="text" x="356" y="112">(</text><rect class="literal" x="494" y="65" width="24" height="25" rx="7"/><text class="text" x="504" y="82">,</text><a xlink:href="../grammar_diagrams#index-column"><rect class="rule" x="401" y="95" width="106" height="25"/><text class="text" x="411" y="112">index_column</text></a><rect class="literal" x="537" y="95" width="45" height="25" rx="7"/><text class="text" x="547" y="112">ASC</text><rect class="literal" x="537" y="125" width="54" height="25" rx="7"/><text class="text" x="547" y="142">DESC</text><rect class="literal" x="641" y="95" width="25" height="25" rx="7"/><text class="text" x="651" y="112">)</text><polygon points="717,59 721,59 721,45 717,45" style="fill:black;stroke-width:0"/></svg>
 
 #### index_column
 
@@ -57,15 +56,20 @@ Use the `CREATE INDEX` statement to create a new index on a table. It defines th
 ### Grammar
 
 ```ebnf
-create_index ::= CREATE INDEX [ IF NOT EXISTS ] index_name
-                     ON table_name ( partition_key_columns [ clustering_key_columns ] )
-                     [ clustering_key_column_ordering ] [ covering_columns ] [ 'WHERE' index_predicate ]
+create_index ::= CREATE [ UNIQUE ] INDEX [ IF NOT EXISTS ] index_name 
+                 ON  table_name ( partition_key_columns , 
+                 [ clustering_key_columns ] )  [ covering_columns ] 
+                 [ index_properties ] [ WHERE index_predicate ]
 
 partition_key_columns ::= index_column | ( index_column [ , ... ] )
 
 clustering_key_columns ::= index_column [ , ... ]
 
-clustering_key_column_ordering ::= WITH CLUSTERING ORDER BY ( { index_column [ ASC | DESC ] } [ , ... ] )
+index_properties ::= WITH 
+                     { property_name = property_literal
+                       | CLUSTERING ORDER BY ( 
+                         { index_column [ ASC | DESC ] } [ , ... ] ) } 
+                     [ AND ... ]
 
 index_column ::= column_name | jsonb_attribute
 
@@ -78,11 +82,16 @@ index_predicate ::= where_expression
 
 Where
 
-- `index_name`, `table_name`, and `column_name` are identifiers. `table_name` may be qualified with a keyspace name. `index_name` cannot be qualified with a keyspace name because an index must be created in the table's keyspace.
+- `index_name`, `table_name`, `property_name`, and `column_name` are identifiers. 
+- `table_name` may be qualified with a keyspace name. 
+- `index_name` cannot be qualified with a keyspace name because an index must be created in the table's keyspace.
+- `property_literal` is a literal of either [boolean](../type_bool), [text](../type_text), or [map](../type_collection) data type.
+- `index_column` can be any data type except `MAP`, `SET`, `LIST`, `JSONB`, `USER_DEFINED_TYPE`.
+
 
 ## Semantics
 
-- An error is raised if transactions have not be enabled using the `WITH transactions = { 'enabled' : true }` clause on the table to be indexed. This is because secondary indexes internally use distributed transactions to ensure ACID guarantees in the updates to the secondary index and the associated primary key. More details [here](https://blog.yugabyte.com/yugabyte-db-1-1-new-feature-speeding-up-queries-with-secondary-indexes/).
+- An error is raised if transactions have not be enabled using the `WITH transactions = { 'enabled' : true }` clause on the table to be indexed. This is because secondary indexes internally use distributed transactions to ensure ACID guarantees in the updates to the secondary index and the associated primary key. More details [here](https://www.yugabyte.com/blog/yugabyte-db-1-1-new-feature-speeding-up-queries-with-secondary-indexes/).
 - An error is raised if `index_name` already exists in the associated keyspace unless the `IF NOT EXISTS` option is used.
 - Indexes do not support TTL. An error is raised if data is inserted with TTL into a table with indexes.
 
@@ -101,6 +110,13 @@ When an index is created on an existing table, YugabyteDB will automatically bac
 - Clustering key is optional and defines an ordering for index rows within a partition.
 - Default ordering is ascending (`ASC`) but can be set for each clustering column as ascending or descending using the `CLUSTERING ORDER BY` property.
 - Any primary key column of the table not indexed explicitly in `index_columns` is added as a clustering column to the index implicitly. This is necessary so that the whole primary key of the table is indexed.
+
+### *index_properties*
+
+- The `CLUSTERING ORDER BY` property can be used to set the ordering for each clustering column individually (default is `ASC`).
+- The `TABLETS = <num>` property specifies the number of tablets to be used for the specified YCQL index. Setting this property overrides the value from the [`--yb_num_shards_per_tserver`](../../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) option. For an example, see [Create an index specifying the number of tablets](#create-an-index-specifying-the-number-of-tablets).
+- Use the `AND` operator to use multiple index properties.
+
 
 ### INCLUDED COLUMNS
 
@@ -296,7 +312,7 @@ ycqlsh:example> SELECT SUM(amount) FROM orders
 
 ### Create a table with a unique index
 
-You can do this as shown below.
+You can do this as follows:
 
 ```sql
 ycqlsh:example> CREATE TABLE emp (enum INT primary key,
@@ -335,6 +351,19 @@ ycqlsh:example> SELECT * FROM emp;
 ------+----------+-----------+---------
  1002 |    Smith |     Jason | jasmith
  1001 |    Smith |      John |  jsmith
+```
+
+### Create an index specifying the number of tablets
+
+You can use the `CREATE INDEX` statement with the `WITH tablets = <num>` clause to specify the number of tablets for an index. This is useful to scale the index up or down based on requirements.
+For example, for smaller or partial indexes, it may be wasteful to have a large number of shards (tablets). In that case, you can use this to reduce the number of tablets created for the index.
+Similarly, for a very large index, you can use this statement to presplit the index into a large number of shards to get improved performance.
+
+Note that YugabyteDB, by default, presplits an index in `yb_num_shards_per_tserver * num_of_tserver` shards. This clause can be used to override that setting on per-index basis.
+
+```sql
+ycqlsh:example> CREATE TABLE tracking (id int PRIMARY KEY, a TEXT) WITH transactions = { 'enabled' : true };
+ycqlsh:example> CREATE INDEX my_indx ON tracking(a) WITH tablets = 10;
 ```
 
 ## See also

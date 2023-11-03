@@ -19,8 +19,7 @@ EXTERNAL_PREFIXES = ['/usr/include/c++/v1/', '/usr/include/', '/include/rapidjso
 
 build_dir = os.getcwd()
 root_dir = os.path.dirname(os.path.dirname(build_dir))
-prefixes = [os.path.join(root_dir, 'ent/src/'), os.path.join(root_dir, 'src/'),
-            os.path.join(build_dir, 'src/')]
+prefixes = [os.path.join(root_dir, 'src/'), os.path.join(build_dir, 'src/')]
 
 nodes: typing.Dict[str, 'Node'] = {}
 missing = set()

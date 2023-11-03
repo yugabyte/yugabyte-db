@@ -18,7 +18,6 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_LITE
 
 #include "yb/rocksdb/utilities/write_batch_with_index/write_batch_with_index_internal.h"
 
@@ -276,5 +275,3 @@ WriteBatchWithIndexInternal::Result WriteBatchWithIndexInternal::GetFromBatch(
 }
 
 }  // namespace rocksdb
-
-#endif  // !ROCKSDB_LITE

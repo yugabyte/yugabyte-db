@@ -1,0 +1,16 @@
+Parsed test spec with 3 sessions
+
+starting permutation: s1u1 s2u s1u2 s3u s1c
+step s1u1: SELECT * FROM foo WHERE k = 1 FOR UPDATE;
+k              v              
+
+1              0              
+step s2u: update foo set v=10 where k=1; <waiting ...>
+step s1u2: SELECT * FROM foo WHERE k = 2 FOR UPDATE;
+k              v              
+
+2              0              
+step s3u: update foo set v=10 where k=2; <waiting ...>
+step s1c: COMMIT;
+step s2u: <... completed>
+step s3u: <... completed>

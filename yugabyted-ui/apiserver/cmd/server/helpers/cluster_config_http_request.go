@@ -2,10 +2,6 @@ package helpers
 
 import (
     "encoding/json"
-    "fmt"
-    "io/ioutil"
-    "net/http"
-    "time"
 )
 
 type PlacementBlock struct {
@@ -13,13 +9,15 @@ type PlacementBlock struct {
     MinNumReplicas int             `json:"min_num_replicas"`
 }
 
-type LiveReplicasStruct struct {
+type ReplicasStruct struct {
     NumReplicas     int              `json:"num_replicas"`
     PlacementBlocks []PlacementBlock `json:"placement_blocks"`
+    PlacementUuid   string           `json:"placement_uuid"`
 }
 
 type ReplicationInfoStruct struct {
-    LiveReplicas LiveReplicasStruct `json:"live_replicas"`
+    LiveReplicas ReplicasStruct   `json:"live_replicas"`
+    ReadReplicas []ReplicasStruct `json:"read_replicas"`
 }
 
 type EncryptionInfoStruct struct {
@@ -38,26 +36,26 @@ type ClusterConfigStruct struct {
 
 type ClusterConfigFuture struct {
     ClusterConfig ClusterConfigStruct
-    Error error
+    Error         error
 }
 
-func GetClusterConfigFuture(nodeHost string, future chan ClusterConfigFuture) {
+func (h *HelperContainer) GetClusterConfigFuture(nodeHost string, future chan ClusterConfigFuture) {
     clusterConfig := ClusterConfigFuture{
         ClusterConfig: ClusterConfigStruct{},
-        Error: nil,
+        Error:         nil,
     }
-    httpClient := &http.Client{
-        Timeout: time.Second * 10,
-    }
-    url := fmt.Sprintf("http://%s:7000/api/v1/cluster-config", nodeHost)
-    resp, err := httpClient.Get(url)
+    urls, err := h.BuildMasterURLs("api/v1/cluster-config")
     if err != nil {
         clusterConfig.Error = err
         future <- clusterConfig
         return
     }
-    defer resp.Body.Close()
-    body, err := ioutil.ReadAll(resp.Body)
+    body, err := h.AttemptGetRequests(urls, true)
+    if err != nil {
+        clusterConfig.Error = err
+        future <- clusterConfig
+        return
+    }
     if err != nil {
         clusterConfig.Error = err
         future <- clusterConfig

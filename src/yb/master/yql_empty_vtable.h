@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_YQL_EMPTY_VTABLE_H
-#define YB_MASTER_YQL_EMPTY_VTABLE_H
+#pragma once
 
 #include "yb/master/yql_virtual_table.h"
 
@@ -28,10 +27,8 @@ class YQLEmptyVTable : public YQLVirtualTable {
                           const NamespaceName& namespace_name,
                           const Master* const master,
                           const Schema& schema);
-  Result<std::shared_ptr<QLRowBlock>> RetrieveData(const QLReadRequestPB& request) const override;
+  Result<VTableDataPtr> RetrieveData(const QLReadRequestPB& request) const override;
 };
 
 }  // namespace master
 }  // namespace yb
-
-#endif // YB_MASTER_YQL_EMPTY_VTABLE_H

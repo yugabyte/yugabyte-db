@@ -34,6 +34,9 @@
 #include "yb/util/random_util.h"
 #include "yb/util/status_log.h"
 
+using std::string;
+using std::unique_ptr;
+
 namespace rocksdb {
 
 // Special Env used to delay background operations
@@ -92,9 +95,9 @@ DBHolder::DBHolder(const std::string path, bool encryption_enabled)
 
 DBHolder::~DBHolder() {
   Env::Default()->CleanupFile(kKeyFile);
-  rocksdb::SyncPoint::GetInstance()->DisableProcessing();
-  rocksdb::SyncPoint::GetInstance()->LoadDependency({});
-  rocksdb::SyncPoint::GetInstance()->ClearAllCallBacks();
+  yb::SyncPoint::GetInstance()->DisableProcessing();
+  yb::SyncPoint::GetInstance()->LoadDependency({});
+  yb::SyncPoint::GetInstance()->ClearAllCallBacks();
   Close();
   Options options;
   options.db_paths.emplace_back(dbname_, 0);
@@ -125,22 +128,6 @@ void DBHolder::CreateEncryptedEnv() {
 }
 
 bool DBHolder::ShouldSkipOptions(int option_config, int skip_mask) {
-#ifdef ROCKSDB_LITE
-    // These options are not supported in ROCKSDB_LITE
-  if (option_config == kHashSkipList ||
-      option_config == kPlainTableFirstBytePrefix ||
-      option_config == kPlainTableCappedPrefix ||
-      option_config == kPlainTableCappedPrefixNonMmap ||
-      option_config == kPlainTableAllBytesPrefix ||
-      option_config == kVectorRep || option_config == kHashLinkList ||
-      option_config == kUniversalCompaction ||
-      option_config == kUniversalCompactionMultiLevel ||
-      option_config == kUniversalSubcompactions ||
-      option_config == kFIFOCompaction ||
-      option_config == kConcurrentSkipList) {
-    return true;
-    }
-#endif
 
     if ((skip_mask & kSkipDeletesFilterFirst) &&
         option_config == kDeletesFilterFirst) {
@@ -266,13 +253,9 @@ Options DBHolder::CurrentOptions(
     const anon::OptionsOverride& options_override) {
   // this redundant copy is to minimize code change w/o having lint error.
   Options options = defaultOptions;
-  XFUNC_TEST("", "dbtest_options", inplace_options1, GetXFTestOptions,
-             reinterpret_cast<Options*>(&options),
-             options_override.skip_policy);
   BlockBasedTableOptions table_options;
   bool set_block_based_table_factory = true;
   switch (option_config_) {
-#ifndef ROCKSDB_LITE
     case kHashSkipList:
       options.prefix_extractor.reset(NewFixedPrefixTransform(1));
       options.memtable_factory.reset(NewHashSkipListRepFactory(16));
@@ -313,7 +296,6 @@ Options DBHolder::CurrentOptions(
       options.memtable_factory.reset(
           NewHashLinkListRepFactory(4, 0, 3, true, 4));
       break;
-#endif  // ROCKSDB_LITE
     case kMergePut:
       options.merge_operator = MergeOperators::CreatePutOperator();
       break;
@@ -614,7 +596,7 @@ std::string DBHolder::Contents(int cf) {
   std::string result;
   Iterator* iter = (cf == 0) ? db_->NewIterator(ReadOptions())
                              : db_->NewIterator(ReadOptions(), handles_[cf]);
-  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+  for (iter->SeekToFirst(); EXPECT_RESULT(iter->CheckedValid()); iter->Next()) {
     std::string s = IterStatus(iter);
     result.push_back('(');
     result.append(s);
@@ -624,7 +606,7 @@ std::string DBHolder::Contents(int cf) {
 
   // Check reverse iteration results are the reverse of forward results
   unsigned int matched = 0;
-  for (iter->SeekToLast(); iter->Valid(); iter->Prev()) {
+  for (iter->SeekToLast(); EXPECT_RESULT(iter->CheckedValid()); iter->Prev()) {
     EXPECT_LT(matched, forward.size());
     EXPECT_EQ(IterStatus(iter), forward[forward.size() - matched - 1]);
     matched++;
@@ -692,7 +674,6 @@ std::string DBHolder::AllEntriesFor(const Slice& user_key, int cf) {
   return result;
 }
 
-#ifndef ROCKSDB_LITE
 int DBHolder::NumSortedRuns(int cf) {
   ColumnFamilyMetaData cf_meta;
   if (cf == 0) {
@@ -750,7 +731,6 @@ size_t DBHolder::CountLiveFiles() {
   db_->GetLiveFilesMetaData(&metadata);
   return metadata.size();
 }
-#endif  // ROCKSDB_LITE
 
 int DBHolder::NumTableFilesAtLevel(int level, int cf) {
   std::string property;
@@ -943,7 +923,7 @@ std::string DBHolder::IterStatus(Iterator* iter) {
   if (iter->Valid()) {
     result = iter->key().ToString() + "->" + iter->value().ToString();
   } else {
-    result = "(invalid)";
+    result = "(invalid) " + iter->status().ToString();
   }
   return result;
 }

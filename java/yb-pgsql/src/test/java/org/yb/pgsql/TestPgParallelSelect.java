@@ -17,14 +17,15 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.util.BuildTypeUtil;
+import org.yb.YBTestRunner;
 
 import java.sql.Statement;
 import java.util.Map;
 
 import static org.yb.AssertionWrappers.*;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestPgParallelSelect extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgParallelSelect.class);
   private static final int kNumShardsPerTserver = 20;
@@ -36,7 +37,7 @@ public class TestPgParallelSelect extends BasePgSQLTest {
                                              String stmt,
                                              boolean pushdown_expected) throws Exception {
     long elapsedMillis = verifyStatementMetric(statement, stmt, AGGREGATE_PUSHDOWNS_METRIC,
-                                               pushdown_expected ? 1 : 0, 1, 1, true);
+                                               pushdown_expected ? 1 : 0, 0, 1, true);
     assertTrue(
         String.format("Query took %d ms! Expected %d ms at most", elapsedMillis, maxTotalMillis),
         elapsedMillis <= maxTotalMillis);
@@ -111,6 +112,10 @@ public class TestPgParallelSelect extends BasePgSQLTest {
       // prepare iteration
       int table_rows = 10000;
       int query_rows = table_rows / 100;
+      // Minimal expected improvement of parallel scan over sequential scan.
+      // Apparently parallelism of ASAN builds is much less efficient and unstable.
+      // Run test anyway, but don't expect real improvement.
+      double coeff = BuildTypeUtil.isASAN() ? 1.0 : 2.0;
       long timing;
 
       // Create and populate test table
@@ -127,14 +132,12 @@ public class TestPgParallelSelect extends BasePgSQLTest {
       statement.execute("SET yb_enable_expression_pushdown to on");
       // The where expression should be pushed down now and requests to
       // different tablets should be sent in parallel.
-      // Perallelism is set to 3 * kNumShardsPerTserver, and ideally the query
-      // should run that many times faster now. However the test is typically
-      // run on a single host with who-knows-how-few CPU cores, and some things
-      // are not paralelized: query planning, set up of parallel requests,
-      // combining of their results, etc.
-      // So expect humble 2 times improvement. If the feature does not work for
-      // any reason query tyme will be about the same.
-      assertQueryRuntimeWithRowCount(statement, query, query_rows, 5, timing / 2);
+      // Default parallelism is set to 3 * kNumShardsPerTserver, and ideally
+      // the query should run that many times faster now. However there are
+      // other factors, like build type, hardware, etc. Hence for better test
+      // stability use low coefficient.
+      assertQueryRuntimeWithRowCount(statement, query, query_rows, 5,
+                                     (long) ((double) timing / coeff));
     }
   }
 }

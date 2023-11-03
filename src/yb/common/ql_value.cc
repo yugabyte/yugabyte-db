@@ -15,11 +15,12 @@
 
 #include "yb/common/ql_value.h"
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/common/jsonb.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_type.h"
+#include "yb/common/schema.h"
 #include "yb/common/value.messages.h"
 
 #include "yb/gutil/casts.h"
@@ -33,11 +34,12 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/varint.h"
+#include "yb/util/flags.h"
 
 using yb::operator"" _MB;
 
 // Maximumum value size is 64MB
-DEFINE_int32(yql_max_value_size, 64_MB,
+DEFINE_UNKNOWN_int32(yql_max_value_size, 64_MB,
              "Maximum size of a value in the Yugabyte Query Layer");
 
 namespace yb {
@@ -45,6 +47,7 @@ namespace yb {
 using std::string;
 using std::shared_ptr;
 using std::to_string;
+using std::vector;
 using util::Decimal;
 using common::Jsonb;
 
@@ -291,30 +294,30 @@ Status QLValue::Deserialize(
   }
 
   switch (ql_type->main()) {
-    case INT8:
+    case DataType::INT8:
       return CQLDeserializeNum(
           len, Load8, static_cast<void (QLValue::*)(int8_t)>(&QLValue::set_int8_value), data);
-    case INT16:
+    case DataType::INT16:
       return CQLDeserializeNum(
           len, NetworkByteOrder::Load16,
           static_cast<void (QLValue::*)(int16_t)>(&QLValue::set_int16_value), data);
-    case INT32:
+    case DataType::INT32:
       return CQLDeserializeNum(
           len, NetworkByteOrder::Load32,
           static_cast<void (QLValue::*)(int32_t)>(&QLValue::set_int32_value), data);
-    case INT64:
+    case DataType::INT64:
       return CQLDeserializeNum(
           len, NetworkByteOrder::Load64,
           static_cast<void (QLValue::*)(int64_t)>(&QLValue::set_int64_value), data);
-    case FLOAT:
+    case DataType::FLOAT:
       return CQLDeserializeFloat(
           len, NetworkByteOrder::Load32,
           static_cast<void (QLValue::*)(float)>(&QLValue::set_float_value), data);
-    case DOUBLE:
+    case DataType::DOUBLE:
       return CQLDeserializeFloat(
           len, NetworkByteOrder::Load64,
           static_cast<void (QLValue::*)(double)>(&QLValue::set_double_value), data);
-    case DECIMAL: {
+    case DataType::DECIMAL: {
       string value;
       RETURN_NOT_OK(CQLDecodeBytes(len, data, &value));
       Decimal decimal;
@@ -322,25 +325,25 @@ Status QLValue::Deserialize(
       set_decimal_value(decimal.EncodeToComparable());
       return Status::OK();
     }
-    case VARINT: {
+    case DataType::VARINT: {
       string value;
       RETURN_NOT_OK(CQLDecodeBytes(len, data, &value));
-      util::VarInt varint;
+      VarInt varint;
       RETURN_NOT_OK(varint.DecodeFromTwosComplement(value));
       set_varint_value(varint);
       return Status::OK();
     }
-    case STRING:
+    case DataType::STRING:
       return CQLDecodeBytes(len, data, mutable_string_value());
-    case BOOL: {
+    case DataType::BOOL: {
       uint8_t value = 0;
       RETURN_NOT_OK(CQLDecodeNum(len, Load8, data, &value));
       set_bool_value(value != 0);
       return Status::OK();
     }
-    case BINARY:
+    case DataType::BINARY:
       return CQLDecodeBytes(len, data, mutable_binary_value());
-    case TIMESTAMP: {
+    case DataType::TIMESTAMP: {
       int64_t value = 0;
       RETURN_NOT_OK(CQLDecodeNum(len, NetworkByteOrder::Load64, data, &value));
       value = DateTime::AdjustPrecision(value,
@@ -349,19 +352,19 @@ Status QLValue::Deserialize(
       set_timestamp_value(value);
       return Status::OK();
     }
-    case DATE: {
+    case DataType::DATE: {
       uint32_t value = 0;
       RETURN_NOT_OK(CQLDecodeNum(len, NetworkByteOrder::Load32, data, &value));
       set_date_value(value);
       return Status::OK();
     }
-    case TIME: {
+    case DataType::TIME: {
       int64_t value = 0;
       RETURN_NOT_OK(CQLDecodeNum(len, NetworkByteOrder::Load64, data, &value));
       set_time_value(value);
       return Status::OK();
     }
-    case INET: {
+    case DataType::INET: {
       string bytes;
       RETURN_NOT_OK(CQLDecodeBytes(len, data, &bytes));
       InetAddress addr;
@@ -369,7 +372,7 @@ Status QLValue::Deserialize(
       set_inetaddress_value(addr);
       return Status::OK();
     }
-    case JSONB: {
+    case DataType::JSONB: {
       string json;
       RETURN_NOT_OK(CQLDecodeBytes(len, data, &json));
       Jsonb jsonb;
@@ -377,13 +380,13 @@ Status QLValue::Deserialize(
       set_jsonb_value(jsonb.MoveSerializedJsonb());
       return Status::OK();
     }
-    case UUID: {
+    case DataType::UUID: {
       string bytes;
       RETURN_NOT_OK(CQLDecodeBytes(len, data, &bytes));
       set_uuid_value(VERIFY_RESULT(Uuid::FromSlice(bytes)));
       return Status::OK();
     }
-    case TIMEUUID: {
+    case DataType::TIMEUUID: {
       string bytes;
       RETURN_NOT_OK(CQLDecodeBytes(len, data, &bytes));
       Uuid uuid = VERIFY_RESULT(Uuid::FromSlice(bytes));
@@ -391,7 +394,7 @@ Status QLValue::Deserialize(
       set_timeuuid_value(uuid);
       return Status::OK();
     }
-    case MAP: {
+    case DataType::MAP: {
       const shared_ptr<QLType>& keys_type = ql_type->param_type(0);
       const shared_ptr<QLType>& values_type = ql_type->param_type(1);
       set_map_value();
@@ -409,7 +412,7 @@ Status QLValue::Deserialize(
       }
       return Status::OK();
     }
-    case SET: {
+    case DataType::SET: {
       const shared_ptr<QLType>& elems_type = ql_type->param_type(0);
       set_set_value();
       int32_t nr_elems = 0;
@@ -422,7 +425,7 @@ Status QLValue::Deserialize(
       }
       return Status::OK();
     }
-    case LIST: {
+    case DataType::LIST: {
       const shared_ptr<QLType>& elems_type = ql_type->param_type(0);
       set_list_value();
       int32_t nr_elems = 0;
@@ -436,7 +439,7 @@ Status QLValue::Deserialize(
       return Status::OK();
     }
 
-    case USER_DEFINED_TYPE: {
+    case DataType::USER_DEFINED_TYPE: {
       set_map_value();
       int fields_size = narrow_cast<int>(ql_type->udtype_field_names().size());
       for (int i = 0; i < fields_size; i++) {
@@ -451,11 +454,11 @@ Status QLValue::Deserialize(
       return Status::OK();
     }
 
-    case FROZEN: {
+    case DataType::FROZEN: {
       set_frozen_value();
       const auto& type = ql_type->param_type(0);
       switch (type->main()) {
-        case MAP: {
+        case DataType::MAP: {
           std::map<QLValue, QLValue> map_values;
           const shared_ptr<QLType> &keys_type = type->param_type(0);
           const shared_ptr<QLType> &values_type = type->param_type(1);
@@ -478,7 +481,7 @@ Status QLValue::Deserialize(
 
           return Status::OK();
         }
-        case SET: {
+        case DataType::SET: {
           const shared_ptr<QLType> &elems_type = type->param_type(0);
           int32_t nr_elems = 0;
 
@@ -495,7 +498,7 @@ Status QLValue::Deserialize(
           }
           return Status::OK();
         }
-        case LIST: {
+        case DataType::LIST: {
           const shared_ptr<QLType> &elems_type = type->param_type(0);
           int32_t nr_elems = 0;
           RETURN_NOT_OK(CQLDecodeNum(sizeof(nr_elems), NetworkByteOrder::Load32, data, &nr_elems));
@@ -508,7 +511,7 @@ Status QLValue::Deserialize(
           return Status::OK();
         }
 
-        case USER_DEFINED_TYPE: {
+        case DataType::USER_DEFINED_TYPE: {
           const int fields_size = narrow_cast<int>(type->udtype_field_names().size());
           for (int i = 0; i < fields_size; i++) {
             // TODO (mihnea) default to null if value missing (CQL behavior)
@@ -525,7 +528,7 @@ Status QLValue::Deserialize(
       break;
     }
 
-    case TUPLE: {
+    case DataType::TUPLE: {
       set_tuple_value();
       size_t num_elems = ql_type->params().size();
       for (size_t i = 0; i < num_elems; ++i) {
@@ -754,17 +757,17 @@ Uuid QLValue::uuid_value(const LWQLValuePB& pb) {
   return CHECK_RESULT(Uuid::FromSlice(uuid_value_pb(pb)));
 }
 
-util::VarInt QLValue::varint_value(const QLValuePB& pb) {
+VarInt QLValue::varint_value(const QLValuePB& pb) {
   CHECK(pb.has_varint_value()) << "Value: " << pb.ShortDebugString();
-  util::VarInt varint;
+  VarInt varint;
   size_t num_decoded_bytes;
   CHECK_OK(varint.DecodeFromComparable(pb.varint_value(), &num_decoded_bytes));
   return varint;
 }
 
-util::VarInt QLValue::varint_value(const LWQLValuePB& pb) {
+VarInt QLValue::varint_value(const LWQLValuePB& pb) {
   CHECK(pb.has_varint_value()) << "Value: " << pb.ShortDebugString();
-  util::VarInt varint;
+  VarInt varint;
   size_t num_decoded_bytes;
   CHECK_OK(varint.DecodeFromComparable(pb.varint_value(), &num_decoded_bytes));
   return varint;
@@ -941,46 +944,6 @@ bool BothNotNull(const LWQLValuePB& lhs, const LWQLValuePB& rhs) {
 
 bool BothNull(const QLValuePB& lhs, const QLValue& rhs) {
   return IsNull(lhs) && rhs.IsNull();
-}
-
-vector<QLValuePB> SortTuplesbyOrdering(
-    const QLSeqValuePB& options, const std::vector<bool>& reverse) {
-  vector<QLValuePB> tuples{options.elems().begin(), options.elems().end()};
-  std::sort(tuples.begin(), tuples.end(), [reverse](const auto& t1, const auto& t2) {
-    DCHECK(t1.has_tuple_value());
-    DCHECK(t2.has_tuple_value());
-    const auto& tuple1 = t1.tuple_value();
-    const auto& tuple2 = t2.tuple_value();
-    DCHECK(tuple1.elems().size() == tuple2.elems().size());
-    auto li = tuple1.elems().begin();
-    auto ri = tuple2.elems().begin();
-    int i = 0;
-    int cmp = 0;
-    for (i = 0; i < tuple1.elems().size(); ++i, ++li, ++ri) {
-      if (IsNull(*li)) {
-        if (!IsNull(*ri)) {
-          cmp = 1;
-          break;
-        }
-      } else {
-        if (IsNull(*ri)) {
-          cmp = 0;
-          break;
-        }
-        int result = Compare(*li, *ri);
-        if (result != 0) {
-          cmp = (result < 0);
-          break;
-        }
-      }
-    }
-
-    if (i != tuple1.elems().size() && reverse[i]) {
-      cmp = cmp ^ 1;
-    }
-    return cmp;
-  });
-  return tuples;
 }
 
 template <class PB>

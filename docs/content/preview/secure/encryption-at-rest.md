@@ -37,7 +37,7 @@ You enable encryption as follows:
 2. Copy the key to master nodes. In the following example, assume a 3-node RF=3 cluster with `MASTER_ADDRESSES=ip1:7100,ip2:7100,ip3:7100`. Choose any string `<key_id>` for this key and use yb-admin to copy the key to each of the masters:
 
      ```sh
-     yb-admin -master_addresses $MASTER_ADDRESSES add_universe_keys_to_all_masters <key_id> /<path_to_universe_key>
+     yb-admin -master_addresses $MASTER_ADDRESSES add_universe_key_to_all_masters <key_id> /<path_to_universe_key>
    ```
 
    The preceding operation does not perform the key rotation, but rather seeds each master's in-memory state. The key only lives in memory, and the plaintext key is never persisted to the disk.
@@ -83,7 +83,7 @@ You can rotate the new key as follows:
 2. Copy the new key to master nodes, informing the master nodes about the new key, as follows:
 
      ```sh
-   yb-admin -master_addresses $MASTER_ADDRESSES add_universe_keys_to_all_masters
+   yb-admin -master_addresses $MASTER_ADDRESSES add_universe_key_to_all_masters
    <key_id_2> /path_to_universe_key_2
    ```
 

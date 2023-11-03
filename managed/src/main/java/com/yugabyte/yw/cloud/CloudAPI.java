@@ -1,8 +1,12 @@
 package com.yugabyte.yw.cloud;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.helpers.NLBHealthCheckConfiguration;
+import com.yugabyte.yw.models.helpers.NodeID;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -50,7 +54,7 @@ public interface CloudAPI {
    * @param config The credentials info.
    * @return true if credentials are valid otherwise return false.
    */
-  boolean isValidCreds(Map<String, String> config, String region);
+  boolean isValidCreds(Provider provider, String region);
 
   /**
    * Check whether cloud provider's credentials are valid to do KMS operations.
@@ -59,4 +63,24 @@ public interface CloudAPI {
    * @return true if credentials are valid otherwise return false.
    */
   boolean isValidCredsKms(ObjectNode config, UUID customerUUID);
+
+  void manageNodeGroup(
+      Provider provider,
+      String regionCode,
+      String lbName,
+      Map<AvailabilityZone, Set<NodeID>> azToNodesMap,
+      List<Integer> ports,
+      NLBHealthCheckConfiguration healthCheckConfig);
+
+  void validateInstanceTemplate(Provider provider, String instanceTemplate);
+
+  // Helper function to extract Resource name from resource URL
+  // It only works for URls that end with the resource Name.
+  static String getResourceNameFromResourceUrl(String resourceUrl) {
+    if (resourceUrl != null && !resourceUrl.isEmpty()) {
+      String[] urlParts = resourceUrl.split("/", 0);
+      return urlParts[urlParts.length - 1];
+    }
+    return null;
+  }
 }

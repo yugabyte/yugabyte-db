@@ -44,9 +44,9 @@
 #include "utils/resowner.h"
 #include "utils/syscache.h"
 #include "utils/varlena.h"
-#include "yb/yql/pggate/ybc_pggate.h"
 
 /*  YB includes. */
+#include "commands/ybccmds.h"
 #include "pg_yb_utils.h"
 
 /*
@@ -233,7 +233,8 @@ DefineSequence(ParseState *pstate, CreateSeqStmt *seq)
 	{
 		HandleYBStatus(YBCInsertSequenceTuple(MyDatabaseId,
 											  seqoid,
-											  yb_catalog_cache_version,
+											  YbGetCatalogCacheVersion(),
+											  YBIsDBCatalogVersionMode(),
 											  seqdataform.last_value,
 											  false /* is_called */));
 	}
@@ -313,7 +314,8 @@ ResetSequence(Oid seq_relid)
 		bool skipped = false;
 		HandleYBStatus(YBCUpdateSequenceTuple(MyDatabaseId,
 											  seq_relid,
-											  yb_catalog_cache_version,
+											  YbGetCatalogCacheVersion(),
+											  YBIsDBCatalogVersionMode(),
 											  startv /* last_val */,
 											  false /* is_called */,
 											  &skipped));
@@ -506,7 +508,8 @@ AlterSequence(ParseState *pstate, AlterSeqStmt *stmt)
 	{
 		HandleYBStatus(YBCReadSequenceTuple(MyDatabaseId,
 											relid,
-											yb_catalog_cache_version,
+											YbGetCatalogCacheVersion(),
+											YBIsDBCatalogVersionMode(),
 											&last_val,
 											&is_called));
 
@@ -546,7 +549,8 @@ AlterSequence(ParseState *pstate, AlterSeqStmt *stmt)
 				bool skipped = false;
 				HandleYBStatus(YBCUpdateSequenceTuple(MyDatabaseId,
 													  ObjectIdGetDatum(relid),
-													  yb_catalog_cache_version,
+													  YbGetCatalogCacheVersion(),
+													  YBIsDBCatalogVersionMode(),
 													  newdataform->last_value /* last_val */,
 													  newdataform->is_called /* is_called */,
 													  &skipped));
@@ -617,7 +621,7 @@ DeleteSequenceTuple(Oid relid)
 
 	if (IsYugaByteEnabled())
 	{
-		HandleYBStatus(YBCDeleteSequenceTuple(MyDatabaseId, relid));
+		YBCDropSequence(relid);
 	}
 
 	CatalogTupleDelete(rel, tuple);
@@ -639,10 +643,11 @@ YBReadSequenceTuple(Relation seqrel)
     int64_t last_val;
     bool is_called;
     HandleYBStatus(YBCReadSequenceTuple(MyDatabaseId,
-                                        relid,
-                                        yb_catalog_cache_version,
-                                        &last_val,
-                                        &is_called));
+										relid,
+										YbGetCatalogCacheVersion(),
+										YBIsDBCatalogVersionMode(),
+										&last_val,
+										&is_called));
     seqdataform.last_value = last_val;
     seqdataform.is_called = is_called;
     seqdataform.log_cnt = 0; /* not used by YugaByte, defaults to 0 */
@@ -715,6 +720,25 @@ nextval_oid(PG_FUNCTION_ARGS)
 	PG_RETURN_INT64(nextval_internal(relid, true));
 }
 
+/*
+ * yb_sequence_limit_reached
+ *
+ * Raise error about reached maximum or minimum limit of the sequence.
+ * Refactored to avoid too long lines in deeply nested blocks.
+ */
+static void
+yb_sequence_limit_reached(char *relname, bool is_asc, int64 limit)
+{
+	char buf[100];
+	char *msg = is_asc ?
+		"nextval: reached maximum value of sequence \"%s\" (%s)" :
+		"nextval: reached minimum value of sequence \"%s\" (%s)";
+	snprintf(buf, sizeof(buf), INT64_FORMAT, limit);
+	ereport(ERROR,
+			(errcode(ERRCODE_SEQUENCE_GENERATOR_LIMIT_EXCEEDED),
+			 errmsg(msg, relname, buf)));
+}
+
 int64
 nextval_internal(Oid relid, bool check_permissions)
 {
@@ -725,7 +749,6 @@ nextval_internal(Oid relid, bool check_permissions)
 	HeapTuple	pgstuple;
 	Form_pg_sequence pgsform;
 	HeapTupleData seqdatatuple;
-	FormData_pg_sequence_data seq_data;
 	Form_pg_sequence_data seq;
 	int64		incby,
 				maxv,
@@ -783,28 +806,146 @@ nextval_internal(Oid relid, bool check_permissions)
 	cycle = pgsform->seqcycle;
 	ReleaseSysCache(pgstuple);
 
-retry:
-	rescnt = 0;
 	if (IsYugaByteEnabled())
 	{
+		int64_t first_val;
 		int64_t last_val;
-		bool is_called;
-		HandleYBStatus(YBCReadSequenceTuple(MyDatabaseId,
-											relid,
-											yb_catalog_cache_version,
-											&last_val,
-											&is_called));
-		seq_data.last_value = last_val;
-		seq_data.is_called = is_called;
-		seq_data.log_cnt = 0;
-		seq = &seq_data;
+		if (yb_enable_sequence_pushdown)
+		{
+			YBCStatus s = YBCFetchSequenceTuple(MyDatabaseId,
+												relid,
+												YbGetCatalogCacheVersion(),
+												YBIsDBCatalogVersionMode(),
+												cache,
+												incby,
+												minv,
+												maxv,
+												cycle,
+												&first_val,
+												&last_val);
+			if (s && YBCStatusPgsqlError(s) == ERRCODE_SEQUENCE_GENERATOR_LIMIT_EXCEEDED)
+			{
+				YBCFreeStatus(s);
+				yb_sequence_limit_reached(RelationGetRelationName(seqrel),
+										  incby > 0, incby > 0 ? maxv : minv);
+				pg_unreachable();
+			}
+			else
+				HandleYBStatus(s);
+		}
+		else
+		{
+			/* compatibility, older versions do not support sequence fetch */
+			bool skipped = true;
+			while (skipped)
+			{
+				int64_t last;
+				bool is_called;
+				fetch = cache;
+				HandleYBStatus(YBCReadSequenceTuple(MyDatabaseId,
+													relid,
+													YbGetCatalogCacheVersion(),
+													YBIsDBCatalogVersionMode(),
+													&last,
+													&is_called));
+				/*
+				 * The fetching algorithm mimics the one implemented in DocDB,
+				 * which is optimized for higher fetch sizes, except it does
+				 * not try to fetch everything at once if it is safe from
+				 * numeric overflow point of view.
+				 * DocDB may need to deal with fetches from a shared process,
+				 * getting values for all backends on the node. That won't be
+				 * a case here. Also, this code is supposed to work only during
+				 * upgrades from older version, so it's OK to be suboptimal.
+				 */
+				if (incby > 0)
+				{
+					/* Fetch the first value */
+					/* If last value is called, advance it one step */
+					if (is_called)
+					{
+						/* Check for the limit, beware integer overflow */
+						if ((maxv >= 0 && last > maxv - incby) ||
+							(maxv < 0 && last + incby > maxv)) {
+							if (!cycle)
+							{
+								yb_sequence_limit_reached(
+									RelationGetRelationName(seqrel),
+									true, maxv);
+								pg_unreachable();
+							}
+							first_val = minv;
+						}
+						else /* one fetch does not go over the limit */
+							first_val = last + incby;
+					}
+					else /* call the last value */
+						first_val = last;
+					/* Safely fetch requested values */
+					last_val = first_val;
+					while (--fetch > 0 &&
+						   ((maxv >= 0 && last_val <= maxv - incby) ||
+							(maxv < 0 && last_val + incby <= maxv)))
+						last_val += incby;
+				} else { /* logic for negative increment */
+					/* Fetch the first value */
+					/* If last value is called, advance it one step */
+					if (is_called)
+					{
+						/* Check for the limit, beware integer overflow */
+						if ((minv <= 0 && last < minv - incby) ||
+							(minv > 0 && last + incby < minv)) {
+							if (!cycle)
+							{
+								yb_sequence_limit_reached(
+									RelationGetRelationName(seqrel),
+									false, minv);
+								pg_unreachable();
+							}
+							first_val = maxv;
+						}
+						else /* one fetch does not go over the limit */
+							first_val = last + incby;
+					}
+					else /* call the last value */
+						first_val = last;
+					/* Safely fetch requested values */
+					last_val = first_val;
+					while (--fetch > 0 &&
+						   ((minv <= 0 && last_val >= minv - incby) ||
+							(minv > 0 && last_val + incby >= minv)))
+						last_val += incby;
+				}
+				/*
+				 * Try to update the sequence. If the sequence has been
+				 * modified concurrently we would have to try again.
+				 */
+				HandleYBStatus(YBCUpdateSequenceTupleConditionally(
+					MyDatabaseId,
+					relid,
+					YbGetCatalogCacheVersion(),
+					YBIsDBCatalogVersionMode(),
+					last_val,
+					true /* is_called */,
+					last,
+					is_called,
+					&skipped));
+			}
+		}
+		/* save info in local cache */
+		elm->increment = incby;
+		elm->last = first_val;			/* last returned number */
+		elm->cached = last_val;			/* last fetched number */
+		elm->last_valid = true;
+		last_used_seq = elm;
+		relation_close(seqrel, NoLock);
+		return first_val;
 	}
-	else
-	{
-		/* lock page' buffer and read tuple */
-		seq = read_seq_tuple(seqrel, &buf, &seqdatatuple);
-		page = BufferGetPage(buf);
-	}
+
+	rescnt = 0;
+	/* lock page' buffer and read tuple */
+	seq = read_seq_tuple(seqrel, &buf, &seqdatatuple);
+	page = BufferGetPage(buf);
 
 	elm->increment = incby;
 	last = next = result = seq->last_value;
@@ -817,12 +958,6 @@ retry:
 		fetch--;
 	}
 
-	/*
-	 * We don't use the WAL log record. The value has already been updated and there is no way
-	 * to rollback to another sequence number.
-	 */
-	if (IsYugaByteEnabled())
-		goto check_bounds;
 	/*
 	 * Decide whether we should emit a WAL log record.  If so, force up the
 	 * fetch count to grab SEQ_LOG_VALS more values than we actually need to
@@ -851,7 +986,6 @@ retry:
 		}
 	}
 
-check_bounds:
 	while (fetch)				/* try to fetch cache [+ log ] numbers */
 	{
 		/*
@@ -916,8 +1050,7 @@ check_bounds:
 	}
 
 	log -= fetch;				/* adjust for any unfetched numbers */
-	if (!IsYugaByteEnabled())
-		Assert(log >= 0);
+	Assert(log >= 0);
 
 	/* save info in local cache */
 	elm->last = result;			/* last returned number */
@@ -925,34 +1058,6 @@ check_bounds:
 	elm->last_valid = true;
 
 	last_used_seq = elm;
-
-	/*
-	 * YugaByte doesn't use the WAL, and we don't need to free the buffer because we didn't allocate
-	 * memory for it. So close the relation and return the result now.
-	 */
-	if (IsYugaByteEnabled())
-	{
-		bool skipped = false;
-		/*
-		 * We do a conditional update here to detect write conflicts with other sessions. If the
-		 * update fails, we retry again by reading the last_val and is_called values and going
-		 * through the whole process again.
-		 */
-		HandleYBStatus(YBCUpdateSequenceTupleConditionally(MyDatabaseId,
-														   relid,
-														   yb_catalog_cache_version,
-														   last /* last_val */,
-														   true /* is_called */,
-														   seq->last_value /* expected_last_val */,
-														   seq->is_called /* expected_is_called */,
-														   &skipped));
-		if (skipped)
-		{
-			goto retry;
-		}
-		relation_close(seqrel, NoLock);
-		return result;
-	}
 
 	/*
 	 * If something needs to be WAL logged, acquire an xid, so this
@@ -1185,11 +1290,12 @@ do_setval(Oid relid, int64 next, bool iscalled)
 	if (IsYugaByteEnabled())
 	{
     HandleYBStatus(YBCUpdateSequenceTuple(MyDatabaseId,
-                                          relid,
-                                          yb_catalog_cache_version,
-                                          next,
-                                          iscalled,
-                                          NULL));
+										  relid,
+										  YbGetCatalogCacheVersion(),
+										  YBIsDBCatalogVersionMode(),
+										  next,
+										  iscalled,
+										  NULL));
 		relation_close(seqrel, NoLock);
 		return;
 	}

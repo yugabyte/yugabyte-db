@@ -104,4 +104,31 @@ TEST(TestIdMapping, TestReinsert) {
   "Cannot insert duplicate keys");
 }
 
+TEST(TestIdMapping, TestEquality) {
+  IdMapping m1;
+  m1.set(123, 456);
+  IdMapping m2(m1);
+  ASSERT_EQ(m1, m2);
+  m2.set(321, 456);
+  ASSERT_NE(m1, m2);
+  m1.set(321, 654);
+  ASSERT_NE(m1, m2);
+  m1.clear();
+  m1.set(123, 456);
+  m1.set(321, 456);
+  ASSERT_EQ(m1, m2);
+
+  // Capacity shouldn't matter
+  m1.clear();
+  for (int i = 0; i < 100000; ++i) {
+    m1.set(i, i);
+  }
+  m1.clear();
+  m1.set(123, 456);
+  m1.set(321, 456);
+  ASSERT_EQ(m1, m2);
+  m2.set(100, 200);
+  ASSERT_NE(m1, m2);
+}
+
 } // namespace yb

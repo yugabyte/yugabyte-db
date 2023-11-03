@@ -65,8 +65,7 @@
 //   them as well as execute them.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_BFPG_DIRECTORY_H_
-#define YB_BFPG_DIRECTORY_H_
+#pragma once
 
 #include <vector>
 
@@ -79,5 +78,3 @@ extern const std::vector<BFDecl> kBFDirectory;
 
 } // namespace bfpg
 } // namespace yb
-
-#endif  // YB_BFPG_DIRECTORY_H_

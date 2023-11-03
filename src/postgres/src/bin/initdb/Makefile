@@ -32,7 +32,7 @@ endif
 
 LIBS += -L$(YB_BUILD_ROOT)/lib
 ifneq ($(YB_BUILD_TYPE), compilecmds)
-LIBS += -lyb_util -lyb_pggate
+LIBS += -lyb_util -lyb_pggate $(YB_PG_EXE_LD_FLAGS_AFTER_YB_LIBS)
 endif
 
 OBJS=	initdb.o findtimezone.o localtime.o encnames.o $(WIN32RES)

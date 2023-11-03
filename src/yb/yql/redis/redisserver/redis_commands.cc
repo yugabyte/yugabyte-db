@@ -16,7 +16,6 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/preprocessor/stringize.hpp>
-#include <gflags/gflags.h>
 
 #include "yb/client/client.h"
 #include "yb/client/session.h"
@@ -24,7 +23,7 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/redis_constants_common.h"
 
 #include "yb/gutil/strings/join.h"
@@ -36,6 +35,7 @@
 #include "yb/rpc/scheduler.h"
 
 #include "yb/util/crypt.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/redis_util.h"
@@ -46,6 +46,9 @@
 #include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/yql/redis/redisserver/redis_encoding.h"
 #include "yb/yql/redis/redisserver/redis_rpc.h"
+
+using std::string;
+using std::vector;
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -61,14 +64,15 @@ static bool ValidateRedisPasswordSeparator(const char* flagname, const string& v
 }
 }
 
-DEFINE_bool(yedis_enable_flush, true, "Enables FLUSHDB and FLUSHALL commands in yedis.");
-DEFINE_bool(use_hashed_redis_password, true, "Store the hash of the redis passwords instead.");
-DEFINE_string(redis_passwords_separator, ",", "The character used to separate multiple passwords.");
+DEFINE_UNKNOWN_bool(yedis_enable_flush, true, "Enables FLUSHDB and FLUSHALL commands in yedis.");
+DEFINE_UNKNOWN_bool(use_hashed_redis_password, true,
+    "Store the hash of the redis passwords instead.");
+DEFINE_UNKNOWN_string(redis_passwords_separator, ",",
+    "The character used to separate multiple passwords.");
 
-DEFINE_int32(redis_keys_threshold, 10000,
+DEFINE_UNKNOWN_int32(redis_keys_threshold, 10000,
              "Maximum number of keys allowed to be in the db before the KEYS operation errors out");
 
-__attribute__((unused))
 DEFINE_validator(redis_passwords_separator, &ValidateRedisPasswordSeparator);
 
 namespace yb {
@@ -340,14 +344,16 @@ void GetTabletLocations(LocalCommandData data, RedisArrayPB* array_response) {
     uint16_t start_key = 0;
     uint16_t end_key_exclusive = kRedisClusterSlots;
     if (location.partition().has_partition_key_start()) {
-      if (location.partition().partition_key_start().size() == PartitionSchema::kPartitionKeySize) {
-        start_key = PartitionSchema::DecodeMultiColumnHashValue(
+      if (location.partition().partition_key_start().size() ==
+              dockv::PartitionSchema::kPartitionKeySize) {
+        start_key = dockv::PartitionSchema::DecodeMultiColumnHashValue(
             location.partition().partition_key_start());
       }
     }
     if (location.partition().has_partition_key_end()) {
-      if (location.partition().partition_key_end().size() == PartitionSchema::kPartitionKeySize) {
-        end_key_exclusive = PartitionSchema::DecodeMultiColumnHashValue(
+      if (location.partition().partition_key_end().size() ==
+              dockv::PartitionSchema::kPartitionKeySize) {
+        end_key_exclusive = dockv::PartitionSchema::DecodeMultiColumnHashValue(
             location.partition().partition_key_end());
       }
     }
@@ -486,7 +492,7 @@ void HandleSubscribeLikeCommand(LocalCommandData data, AsPattern as_pattern) {
         redisserver::EncodeAsInteger(subs[idx]).ToBuffer()});
   }
 
-  VLOG(3) << "In response to [p]Subscribe queueing " << data.arg_size() - 1
+  VLOG(3) << "In response to [p]Subscribe queuing " << data.arg_size() - 1
           << " messages : " << encoded_response;
   response.set_encoded_response(encoded_response);
   data.Respond(&response);
@@ -527,7 +533,7 @@ void HandleUnsubscribeLikeCommand(LocalCommandData data, AsPattern as_pattern) {
         redisserver::EncodeAsInteger(subs[idx]).ToBuffer()});
   }
 
-  VLOG(3) << "In response to [p]Unsubscribe queueing " << channels.size()
+  VLOG(3) << "In response to [p]Unsubscribe queuing " << channels.size()
           << " messages : " << encoded_response;
   response.set_encoded_response(encoded_response);
   data.Respond(&response);
@@ -907,7 +913,7 @@ class KeysProcessor : public std::enable_shared_from_this<KeysProcessor> {
     auto operation = std::make_shared<client::YBRedisReadOp>(data_.table()->shared_from_this());
     auto request = operation->mutable_request();
     uint16_t hash_code = partition_key.size() == 0 ?
-        0 : PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+        0 : dockv::PartitionSchema::DecodeMultiColumnHashValue(partition_key);
     request->mutable_key_value()->set_hash_code(hash_code);
     request->mutable_keys_request()->set_pattern(data_.arg(1).ToBuffer());
     request->mutable_keys_request()->set_threshold(keys_threshold_);

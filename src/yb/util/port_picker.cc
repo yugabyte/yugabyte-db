@@ -19,7 +19,7 @@
 namespace yb {
 
 uint16_t PortPicker::AllocateFreePort() {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
 
   // This will take a file lock ensuring the port does not get claimed by another thread/process
   // and add it to our vector of such locks that will be freed on minicluster shutdown.

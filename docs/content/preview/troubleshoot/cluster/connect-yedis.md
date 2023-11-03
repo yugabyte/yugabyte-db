@@ -60,15 +60,14 @@ Use `redis-cli` to connect to the local node, as follows:
 ./redis-cli -h <yb-local-address>
 ```
 
-Depending on your configuration, you may need to install `redis-cli`. For more information, see [Initialize YEDIS API and connect with redis-cli](../../yedis/quick-start/#1-initialize-yedis-api-and-connect-with-redis-cli).
+Depending on your configuration, you may need to install `redis-cli`. For more information, see [Initialize YEDIS API and connect with redis-cli](../../../yedis/quick-start/#1-initialize-yedis-api-and-connect-with-redis-cli).
 
 In the preceding command, `<yb-local-address>` is the address where the YEDIS service is listening (for example, as returned by `lsof`).
 
-If `redis-cli` can connect, the issue is likely a network issue with the original client not being able to access this node where YugabyteDB is running. 
+If `redis-cli` can connect, the issue is likely a network issue with the original client not being able to access this node where YugabyteDB is running.
 
-Otherwise, you might need to use the the `yb-admin` tool to run the following command: 
+Otherwise, you might need to use the `yb-admin` tool to run the following command:
 
 ```sh
 .bin/yb-admin --master_addresses <master-ip-addresses> setup_redis_table
 ```
-

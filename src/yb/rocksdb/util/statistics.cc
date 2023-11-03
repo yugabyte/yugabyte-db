@@ -25,19 +25,33 @@
 
 #include <inttypes.h>
 #include <algorithm>
+
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/port/likely.h"
+
+#include "yb/util/aggregate_stats.h"
 #include "yb/util/format.h"
-#include "yb/util/hdr_histogram.h"
+#include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 
 namespace rocksdb {
 
+namespace {
+
 using yb::GaugePrototype;
-using yb::HistogramPrototype;
+using yb::EventStatsPrototype;
 using yb::MetricEntity;
 using yb::MetricRegistry;
-using yb::MetricPrototype;
+
+void PopulateHistogramData(const yb::AggregateStats& hist, HistogramData* const data) {
+  data->count = hist.CurrentCount();
+  data->sum = hist.CurrentSum();
+  data->min = hist.MinValue();
+  data->max = hist.MaxValue();
+  data->average = hist.MeanValue();
+}
+
+} // namespace
 
 std::shared_ptr<Statistics> CreateDBStatistics(
     const scoped_refptr<MetricEntity>& hist_entity,
@@ -65,57 +79,73 @@ class StatisticsMetricPrototypes {
     const auto kNumTickers = TickersNameMap.size();
     // Metrics use a map based on the metric prototype's address.
     // We reserve the capacity apriori so that the elements are not moved around.
-    metric_names_.reserve(kNumHistograms + 2 * kNumTickers);
-    descriptions_.reserve(kNumHistograms + 2 * kNumTickers);
+    metric_names_.reserve(2 * kNumHistograms + 2 * kNumTickers);
+    descriptions_.reserve(2 * kNumHistograms + 2 * kNumTickers);
 
     for (size_t i = 0; i < kNumHistograms; i++) {
       CHECK_EQ(i, HistogramsNameMap[i].first);
       metric_names_.emplace_back(HistogramsNameMap[i].second);
-      const auto& hist_name = metric_names_.back();
+      const auto& hist_name_regular = metric_names_.back();
 
-      descriptions_.emplace_back(yb::Format("Per-table Rocksdb Histogram for $0", hist_name));
-      const auto& description = descriptions_.back();
+      descriptions_.emplace_back(
+          yb::Format("Per-table Regular Rocksdb Histogram for $0", hist_name_regular));
+      const auto& description_regular = descriptions_.back();
 
-      hist_prototypes_.emplace_back(std::make_unique<HistogramPrototype>(
+     regular_hist_prototypes_.emplace_back(std::make_unique<EventStatsPrototype>(
           ::yb::MetricPrototype::CtorArgs(
-              "table", hist_name.c_str(), description.c_str(), yb::MetricUnit::kMicroseconds,
-              description.c_str(), yb::MetricLevel::kInfo),
-          2, 1));
+              "table", hist_name_regular.c_str(), description_regular.c_str(),
+              yb::MetricUnit::kMicroseconds, description_regular.c_str(),
+              yb::MetricLevel::kInfo)));
+
+      metric_names_.emplace_back(yb::Format("intentsdb_$0", HistogramsNameMap[i].second));
+      const auto& hist_name_intents = metric_names_.back();
+
+      descriptions_.emplace_back(
+          yb::Format("Per-table Intents Rocksdb Histogram for $0", hist_name_intents));
+      const auto& description_intents = descriptions_.back();
+
+      intents_hist_prototypes_.emplace_back(std::make_unique<EventStatsPrototype>(
+          ::yb::MetricPrototype::CtorArgs(
+              "table", hist_name_intents.c_str(), description_intents.c_str(),
+              yb::MetricUnit::kMicroseconds, description_intents.c_str(),
+              yb::MetricLevel::kInfo)));
     }
 
     for (size_t i = 0; i < kNumTickers; i++) {
       CHECK_EQ(i, TickersNameMap[i].first);
       metric_names_.emplace_back(TickersNameMap[i].second);
-      const auto& ticker_name = metric_names_.back();
+      const auto& ticker_name_regular = metric_names_.back();
 
       descriptions_.emplace_back(
-          yb::Format("Per-tablet Regular Rocksdb Ticker for $0", ticker_name));
-      const auto& description = descriptions_.back();
+          yb::Format("Per-tablet Regular Rocksdb Ticker for $0", ticker_name_regular));
+      const auto& description_regular = descriptions_.back();
 
       regular_ticker_prototypes_.emplace_back(
           std::make_unique<GaugePrototype<uint64_t>>(::yb::MetricPrototype::CtorArgs(
-              "tablet", ticker_name.c_str(), description.c_str(), yb::MetricUnit::kRequests,
-              description.c_str(), yb::MetricLevel::kInfo)));
-    }
+              "tablet", ticker_name_regular.c_str(), description_regular.c_str(),
+              yb::MetricUnit::kRequests, description_regular.c_str(),
+              yb::MetricLevel::kInfo)));
 
-    for (size_t i = 0; i < kNumTickers; i++) {
-      CHECK_EQ(i, TickersNameMap[i].first);
       metric_names_.emplace_back(yb::Format("intentsdb_$0", TickersNameMap[i].second));
-      const auto& ticker_name = metric_names_.back();
+      const auto& ticker_name_intents = metric_names_.back();
 
       descriptions_.emplace_back(
-          yb::Format("Per-tablet Intents Rocksdb Ticker for $0", ticker_name));
-      const auto& description = descriptions_.back();
+          yb::Format("Per-tablet Intents Rocksdb Ticker for $0", ticker_name_intents));
+      const auto& description_intents = descriptions_.back();
 
       intents_ticker_prototypes_.emplace_back(
           std::make_unique<GaugePrototype<uint64_t>>(::yb::MetricPrototype::CtorArgs(
-              "tablet", ticker_name.c_str(), description.c_str(), yb::MetricUnit::kRequests,
-              description.c_str(), yb::MetricLevel::kInfo)));
+              "tablet", ticker_name_intents.c_str(), description_intents.c_str(),
+              yb::MetricUnit::kRequests, description_intents.c_str(),
+              yb::MetricLevel::kInfo)));
     }
   }
 
-  const std::vector<std::unique_ptr<HistogramPrototype>>& hist_prototypes() const {
-    return hist_prototypes_;
+  const std::vector<std::unique_ptr<EventStatsPrototype>>& regular_hist_prototypes() const {
+    return regular_hist_prototypes_;
+  }
+  const std::vector<std::unique_ptr<EventStatsPrototype>>& intents_hist_prototypes() const {
+    return intents_hist_prototypes_;
   }
   const std::vector<std::unique_ptr<GaugePrototype<uint64_t>>>& regular_ticker_prototypes() const {
     return regular_ticker_prototypes_;
@@ -125,7 +155,8 @@ class StatisticsMetricPrototypes {
   }
 
  private:
-  std::vector<std::unique_ptr<HistogramPrototype>> hist_prototypes_;
+  std::vector<std::unique_ptr<EventStatsPrototype>> regular_hist_prototypes_;
+  std::vector<std::unique_ptr<EventStatsPrototype>> intents_hist_prototypes_;
   std::vector<std::unique_ptr<GaugePrototype<uint64_t>>> regular_ticker_prototypes_;
   std::vector<std::unique_ptr<GaugePrototype<uint64_t>>> intents_ticker_prototypes_;
   // store the names and descriptions generated because the MetricPrototypes only keep
@@ -143,24 +174,33 @@ StatisticsMetricImpl::StatisticsMetricImpl(
   static StatisticsMetricPrototypes prototypes;
   const auto kNumHistograms = HistogramsNameMap.size();
   const auto kNumTickers = TickersNameMap.size();
-  for (size_t i = 0; hist_entity && i < kNumHistograms; i++) {
-    histograms_.push_back(prototypes.hist_prototypes()[i]->Instantiate(hist_entity));
+
+  auto& hist_prototypes = for_intents ? prototypes.intents_hist_prototypes()
+                                      : prototypes.regular_hist_prototypes();
+  if (hist_entity) {
+    histograms_.reserve(kNumHistograms);
+    for (size_t i = 0; i < kNumHistograms; i++) {
+      histograms_.push_back(hist_prototypes[i]->Instantiate(hist_entity));
+    }
   }
 
   auto& ticker_prototypes = for_intents ? prototypes.intents_ticker_prototypes()
                                         : prototypes.regular_ticker_prototypes();
-  for (size_t i = 0; tick_entity && i < kNumTickers; i++) {
-    tickers_.push_back(ticker_prototypes[i]->Instantiate(tick_entity, 0));
+  if (tick_entity) {
+    tickers_.reserve(kNumTickers);
+    for (size_t i = 0; i < kNumTickers; i++) {
+      tickers_.push_back(ticker_prototypes[i]->Instantiate(tick_entity, 0));
+    }
   }
 }
 
 StatisticsMetricImpl::~StatisticsMetricImpl() {}
 
-uint64_t StatisticsMetricImpl::getTickerCount(uint32_t tickerType) const {
+uint64_t StatisticsMetricImpl::getTickerCount(uint32_t ticker_type) const {
   if (!tickers_.empty()) {
-    assert(tickerType < tickers_.size());
+    DCHECK(ticker_type < tickers_.size());
     // Return its own ticker version
-    return tickers_[tickerType]->value();
+    return tickers_[ticker_type]->value();
   }
 
   return 0;
@@ -168,60 +208,132 @@ uint64_t StatisticsMetricImpl::getTickerCount(uint32_t tickerType) const {
 
 const char* StatisticsMetricImpl::GetTickerName(uint32_t ticker_type) const {
   CHECK_LT(ticker_type, tickers_.size());
+  if (tickers_.empty()) {
+    return "n/a";
+  }
   return tickers_[ticker_type]->prototype()->name();
 }
 
-void StatisticsMetricImpl::histogramData(uint32_t histogramType, HistogramData* const data) const {
-  assert(histogramType < histograms_.size());
-  assert(data);
-  if (histograms_.empty()) {
-    return;
+void StatisticsMetricImpl::histogramData(
+    uint32_t histogram_type, HistogramData* const data) const {
+  if (!histograms_.empty()) {
+    DCHECK(histogram_type < histograms_.size());
+    DCHECK(data);
+    PopulateHistogramData(*histograms_[histogram_type]->underlying(), data);
   }
-
-  const yb::HdrHistogram* hist = histograms_[histogramType]->histogram();
-  data->count = hist->CurrentCount();
-  data->sum = hist->CurrentSum();
-  data->min = hist->MinValue();
-  data->max = hist->MaxValue();
-  data->median = hist->ValueAtPercentile(50);
-  data->percentile95 = hist->ValueAtPercentile(95);
-  data->percentile99 = hist->ValueAtPercentile(99);
-  data->average = hist->MeanValue();
-  // Computing standard deviation is not supported by HdrHistogram.
-  // We don't use it for Yugabyte anyways.
-  data->standard_deviation = -1;
 }
 
-void StatisticsMetricImpl::setTickerCount(uint32_t tickerType, uint64_t count) {
+const yb::AggregateStats& StatisticsMetricImpl::getAggregateStats(uint32_t histogram_type) const {
+  DCHECK(histogram_type < histograms_.size());
+  return *histograms_[histogram_type]->underlying();
+}
+
+void StatisticsMetricImpl::setTickerCount(uint32_t ticker_type, uint64_t count) {
   if (!tickers_.empty()) {
-    assert(tickerType < tickers_.size());
-    tickers_[tickerType]->set_value(count);
-    if (tickerType == CURRENT_VERSION_SST_FILES_SIZE) {
+    DCHECK(ticker_type < tickers_.size());
+    tickers_[ticker_type]->set_value(count);
+    if (ticker_type == CURRENT_VERSION_SST_FILES_SIZE) {
       setTickerCount(OLD_BK_COMPAT_CURRENT_VERSION_SST_FILES_SIZE, count);
     }
   }
 }
 
-void StatisticsMetricImpl::recordTick(uint32_t tickerType, uint64_t count) {
+void StatisticsMetricImpl::recordTick(uint32_t ticker_type, uint64_t count) {
   if (!tickers_.empty()) {
-    assert(tickerType < tickers_.size());
-    tickers_[tickerType]->IncrementBy(count);
-    if (tickerType == CURRENT_VERSION_SST_FILES_SIZE) {
-      recordTick(OLD_BK_COMPAT_CURRENT_VERSION_SST_FILES_SIZE, count);
-    }
+    DCHECK(ticker_type < tickers_.size());
+    tickers_[ticker_type]->IncrementBy(count);
+  }
+  if (ticker_type == CURRENT_VERSION_SST_FILES_SIZE) {
+    recordTick(OLD_BK_COMPAT_CURRENT_VERSION_SST_FILES_SIZE, count);
   }
 }
 
 void StatisticsMetricImpl::resetTickersForTest() {
-  for (uint32_t i = 0; i < tickers_.size(); i++) {
+  for (uint32_t i = 0; i < tickers_.size(); ++i) {
     setTickerCount(i, 0);
   }
 }
 
-void StatisticsMetricImpl::measureTime(uint32_t histogramType, uint64_t value) {
+void StatisticsMetricImpl::measureTime(uint32_t histogram_type, uint64_t value) {
   if (!histograms_.empty()) {
-    assert(histogramType < histograms_.size());
-    histograms_[histogramType]->Increment(value);
+    DCHECK(histogram_type < histograms_.size());
+    histograms_[histogram_type]->Increment(value);
+  }
+}
+
+void StatisticsMetricImpl::addHistogram(uint32_t histogram_type, const yb::AggregateStats& stats) {
+  DCHECK(histogram_type < histograms_.size());
+  histograms_[histogram_type]->Add(stats);
+}
+
+ScopedStatistics::ScopedStatistics()
+    : tickers_(TickersNameMap.size(), 0),
+      histograms_(HistogramsNameMap.size()) {}
+
+uint64_t ScopedStatistics::getTickerCount(uint32_t ticker_type) const {
+  DCHECK(ticker_type < tickers_.size());
+  return tickers_[ticker_type];
+}
+
+const char* ScopedStatistics::GetTickerName(uint32_t ticker_type) const {
+  YB_LOG_EVERY_N_SECS(DFATAL, 100)
+      << "resetTickersForTest for scoped statistics is not supported.";
+  return "";
+}
+
+void ScopedStatistics::histogramData(
+    uint32_t histogram_type, HistogramData* const data) const {
+  if (!histograms_.empty()) {
+    DCHECK(histogram_type < histograms_.size());
+    DCHECK(data);
+    PopulateHistogramData(histograms_[histogram_type], data);
+  }
+}
+
+const yb::AggregateStats& ScopedStatistics::getAggregateStats(uint32_t histogram_type) const {
+  DCHECK(histogram_type < histograms_.size());
+  return histograms_[histogram_type];
+}
+
+void ScopedStatistics::setTickerCount(uint32_t ticker_type, uint64_t count) {
+  YB_LOG_EVERY_N_SECS(DFATAL, 100)
+      << "resetTickersForTest for scoped statistics is not supported.";
+}
+
+void ScopedStatistics::recordTick(uint32_t ticker_type, uint64_t count) {
+  DCHECK(ticker_type < tickers_.size());
+  tickers_[ticker_type] += count;
+  if (ticker_type == CURRENT_VERSION_SST_FILES_SIZE) {
+    recordTick(OLD_BK_COMPAT_CURRENT_VERSION_SST_FILES_SIZE, count);
+  }
+}
+
+void ScopedStatistics::addHistogram(uint32_t histogram_type, const yb::AggregateStats& stats) {
+  DCHECK(histogram_type < histograms_.size());
+  histograms_[histogram_type].Add(stats);
+}
+
+void ScopedStatistics::resetTickersForTest() {
+  YB_LOG_EVERY_N_SECS(DFATAL, 100)
+      << "resetTickersForTest for scoped statistics is not supported.";
+}
+
+void ScopedStatistics::measureTime(uint32_t histogram_type, uint64_t value) {
+  if (!histograms_.empty()) {
+    DCHECK(histogram_type < histograms_.size());
+    histograms_[histogram_type].Increment(value);
+  }
+}
+
+void ScopedStatistics::MergeAndClear(Statistics* target) {
+  CHECK_NOTNULL(target);
+  for (uint32_t i = 0; i < tickers_.size(); ++i) {
+    target->recordTick(i, tickers_[i]);
+    tickers_[i] = 0;
+  }
+  for (uint32_t i = 0; i < histograms_.size(); ++i) {
+    target->addHistogram(i, histograms_[i]);
+    histograms_[i].Reset(yb::PreserveTotalStats::kFalse);
   }
 }
 

@@ -27,6 +27,8 @@
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/status_log.h"
 
+using std::vector;
+
 namespace yb {
 namespace master {
 
@@ -59,11 +61,11 @@ LocalVTable::LocalVTable(const TableName& table_name,
     : YQLVirtualTable(table_name, namespace_name, master, CreateSchema()) {
 }
 
-Result<std::shared_ptr<QLRowBlock>> LocalVTable::RetrieveData(
+Result<VTableDataPtr> LocalVTable::RetrieveData(
     const QLReadRequestPB& request) const {
   vector<std::shared_ptr<TSDescriptor> > descs;
   GetSortedLiveDescriptors(&descs);
-  auto vtable = std::make_shared<QLRowBlock>(schema());
+  auto vtable = std::make_shared<qlexpr::QLRowBlock>(schema());
 
   struct Entry {
     size_t index;
@@ -105,7 +107,7 @@ Result<std::shared_ptr<QLRowBlock>> LocalVTable::RetrieveData(
   }
 
   for (const auto& entry : entries) {
-    QLRow& row = vtable->Extend();
+    auto& row = vtable->Extend();
     InetAddress private_ip(VERIFY_RESULT(Copy(entry.ips.private_ip_future.get())));
     InetAddress public_ip(VERIFY_RESULT(Copy(entry.ips.public_ip_future.get())));
     const CloudInfoPB& cloud_info = entry.ts_info.registration().common().cloud_info();

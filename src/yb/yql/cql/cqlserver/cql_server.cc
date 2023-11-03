@@ -21,13 +21,17 @@
 
 #include "yb/master/master_heartbeat.pb.h"
 
+#include "yb/rpc/connection.h"
 #include "yb/rpc/connection_context.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 
 #include "yb/tserver/tablet_server_interface.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/server/secure.h"
+#include "yb/rpc/secure_stream.h"
+
+#include "yb/util/flags.h"
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
@@ -35,17 +39,23 @@
 
 #include "yb/yql/cql/cqlserver/cql_rpc.h"
 #include "yb/yql/cql/cqlserver/cql_service.h"
+#include "yb/yql/cql/cqlserver/statements-path-handler.h"
 
-DEFINE_int32(cql_service_queue_length, 10000,
+DEFINE_UNKNOWN_int32(cql_service_queue_length, 10000,
              "RPC queue length for CQL service");
 TAG_FLAG(cql_service_queue_length, advanced);
 
-DEFINE_int32(cql_nodelist_refresh_interval_secs, 300,
-             "Interval after which a node list refresh event should be sent to all CQL clients.");
-TAG_FLAG(cql_nodelist_refresh_interval_secs, runtime);
+DEFINE_RUNTIME_int32(cql_nodelist_refresh_interval_secs, 300,
+    "Interval after which a node list refresh event should be sent to all CQL clients.");
 TAG_FLAG(cql_nodelist_refresh_interval_secs, advanced);
 
-DEFINE_int64(cql_rpc_memory_limit, 0, "CQL RPC memory limit");
+DEFINE_RUNTIME_bool(
+    cql_limit_nodelist_refresh_to_subscribed_conns, true,
+    "When enabled, the node list refresh events will only be sent to the connections which have "
+    "subscribed to receiving the topology change events.");
+TAG_FLAG(cql_limit_nodelist_refresh_to_subscribed_conns, advanced);
+
+DEFINE_UNKNOWN_int64(cql_rpc_memory_limit, 0, "CQL RPC memory limit");
 
 namespace yb {
 namespace cqlserver {
@@ -53,8 +63,6 @@ namespace cqlserver {
 using namespace std::placeholders;
 using namespace yb::size_literals;
 using namespace yb::ql; // NOLINT
-
-using yb::rpc::ServiceIf;
 
 namespace {
 
@@ -90,7 +98,10 @@ Status CQLServer::Start() {
   auto cql_service = std::make_shared<CQLServiceImpl>(this, opts_);
   cql_service->CompleteInit();
 
-  RETURN_NOT_OK(RegisterService(FLAGS_cql_service_queue_length, std::move(cql_service)));
+  cql_service_ = std::move(cql_service);
+  RETURN_NOT_OK(RegisterService(FLAGS_cql_service_queue_length, cql_service_));
+
+  AddStatementsPathHandlers(web_server_.get(), cql_service_);
 
   RETURN_NOT_OK(server::RpcAndWebServerBase::Start());
 
@@ -169,9 +180,6 @@ void CQLServer::CQLNodeListRefresh(const boost::system::error_code &ec) {
       const auto cql_port = first_rpc_address().port();
 
       // Queue event for all clients to add a node.
-      //
-      // TODO: the event should be sent only if there is appropriate subscription.
-      //       https://github.com/yugabyte/yugabyte-db/issues/3090
       cqlserver_event_list->AddEvent(
           BuildTopologyChangeEvent(TopologyChangeEventResponse::kNewNode,
                                    Endpoint(*addr, cql_port)));
@@ -181,13 +189,19 @@ void CQLServer::CQLNodeListRefresh(const boost::system::error_code &ec) {
   // Queue node refresh event, to remove any nodes that are down. Note that the 'MOVED_NODE'
   // event forces the client to refresh its entire cluster topology. The RPC address associated
   // with the event doesn't have much significance.
-  //
-  // TODO: the event should be sent only if there is appropriate subscription.
-  //       https://github.com/yugabyte/yugabyte-db/issues/3090
   cqlserver_event_list->AddEvent(
       BuildTopologyChangeEvent(TopologyChangeEventResponse::kMovedNode, first_rpc_address()));
 
-  Status s = messenger_->QueueEventOnAllReactors(cqlserver_event_list, SOURCE_LOCATION());
+  Status s;
+  if (PREDICT_TRUE(FLAGS_cql_limit_nodelist_refresh_to_subscribed_conns)) {
+    s = messenger_->QueueEventOnFilteredConnections(
+        cqlserver_event_list, SOURCE_LOCATION(), [](const rpc::ConnectionPtr conn) {
+          const auto& context = static_cast<CQLConnectionContext&>(conn->context());
+          return context.registered_events() & ql::BatchRequest::kTopologyChange;
+        });
+  } else {
+    s = messenger_->QueueEventOnAllReactors(cqlserver_event_list, SOURCE_LOCATION());
+  }
   if (!s.ok()) {
     LOG (WARNING) << strings::Substitute("Failed to push events: [$0], due to: $1",
                                          cqlserver_event_list->ToString(), s.ToString());
@@ -196,5 +210,31 @@ void CQLServer::CQLNodeListRefresh(const boost::system::error_code &ec) {
   RescheduleTimer();
 }
 
+Status CQLServer::ReloadKeysAndCertificates() {
+  if (!secure_context_) {
+    return Status::OK();
+  }
+
+  return server::ReloadSecureContextKeysAndCertificates(
+      secure_context_.get(),
+      fs_manager_->GetDefaultRootDir(),
+      server::SecureContextType::kExternal,
+      options_.HostsString());
+}
+
+Status CQLServer::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
+  RETURN_NOT_OK(RpcAndWebServerBase::SetupMessengerBuilder(builder));
+  if (!FLAGS_cert_node_filename.empty()) {
+    secure_context_ = VERIFY_RESULT(server::SetupSecureContext(
+        fs_manager_->GetDefaultRootDir(),
+        FLAGS_cert_node_filename,
+        server::SecureContextType::kExternal,
+        builder));
+  } else {
+    secure_context_ = VERIFY_RESULT(server::SetupSecureContext(
+        options_.HostsString(), *fs_manager_, server::SecureContextType::kExternal, builder));
+  }
+  return Status::OK();
+}
 }  // namespace cqlserver
 }  // namespace yb

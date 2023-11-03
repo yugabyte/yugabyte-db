@@ -69,12 +69,11 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_GUTIL_SINGLETON_H
-#define YB_GUTIL_SINGLETON_H
+#pragma once
 
 #include <stddef.h>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/once.h"
 
@@ -163,5 +162,3 @@ Type* Singleton<Type>::instance_ = NULL;
 
 template <typename Type>
 Type* Singleton<Type>::injected_instance_ = NULL;
-
-#endif  // YB_GUTIL_SINGLETON_H

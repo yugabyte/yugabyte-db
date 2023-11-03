@@ -24,59 +24,80 @@ func testHandlerFailure(ctx context.Context) (any, error) {
 
 func TestExecutor(t *testing.T) {
 	ctx := context.Background()
-	instance := GetInstance(ctx)
+	instance := GetInstance()
 	future, err := instance.SubmitTask(ctx, testHandler)
 	if err != nil {
-		t.Errorf("Submitting task to the executor failed - %s", err.Error())
+		t.Fatalf("Submitting task to the executor failed - %s", err.Error())
 	}
 
-	result := future.Get()
-	if result.err != nil {
-		t.Errorf("Future.Get() failed - %s", err.Error())
+	data, err := future.Get()
+	if err != nil {
+		t.Fatalf("Future.Get() failed - %s", err.Error())
 	}
-	data := result.data
 	data, ok := data.(string)
 	if !ok {
-		t.Errorf("Future.Get() returned incorrect data - %s", err.Error())
+		t.Fatalf("Future.Get() returned incorrect data - %s", err.Error())
 	}
 
 	if data != "test" {
-		t.Errorf("Result assertion failed.")
+		t.Fatalf("Result assertion failed.")
+	}
+	if future.State() != TaskSuccess {
+		t.Fatalf("Expected task state %s, found %s", TaskSuccess, future.State())
 	}
 }
 
 func TestExecutorFailure(t *testing.T) {
 	ctx := context.Background()
-	instance := GetInstance(ctx)
+	instance := GetInstance()
 	future, err := instance.SubmitTask(ctx, testHandlerFailure)
 	if err != nil {
-		t.Errorf("Submitting task to the executor failed - %s", err.Error())
+		t.Fatalf("Submitting task to the executor failed - %s", err.Error())
 	}
-	result := future.Get()
-	if result.err == nil {
-		t.Errorf("Expected Failure")
+	_, err = future.Get()
+	if err == nil {
+		t.Fatalf("Expected Failure")
 	}
-
-	if result.status != "error" {
-		t.Errorf("Expected Error status")
+	if future.State() != TaskFailed {
+		t.Fatalf("Expected task state %s, found %s", TaskFailed, future.State())
 	}
 }
 
 func TestExecutorCancel(t *testing.T) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
-	instance := GetInstance(ctx)
-
+	instance := GetInstance()
 	future, err := instance.SubmitTask(ctx, testHandlerSlowTask)
 	if err != nil {
-		t.Errorf("Submitting task to the executor failed - %s", err.Error())
+		t.Fatalf("Submitting task to the executor failed - %s", err.Error())
 	}
 	cancelFunc()
-	result := future.Get()
-	if result.err == nil {
-		t.Errorf("Expected Failure")
+	_, err = future.Get()
+	if err == nil {
+		t.Fatalf("Expected Failure")
 	}
 
-	if result.status != "canceled" {
-		t.Errorf("Expected Canceled status")
+	if err.Error() != "Task is cancelled" {
+		t.Fatalf("Expected Canceled status")
+	}
+	if future.State() != TaskAborted {
+		t.Fatalf("Expected task state %s, found %s", TaskAborted, future.State())
+	}
+}
+
+func TestExecutorPanic(t *testing.T) {
+	ctx := context.Background()
+	instance := GetInstance()
+	future, err := instance.SubmitTask(ctx, func(ctx context.Context) (any, error) {
+		panic("Panic")
+	})
+	if err != nil {
+		t.Fatalf("Submitting task to the executor failed - %s", err.Error())
+	}
+	_, err = future.Get()
+	if err == nil {
+		t.Fatalf("Expected Failure")
+	}
+	if future.State() != TaskFailed {
+		t.Fatalf("Expected task state %s, found %s", TaskFailed, future.State())
 	}
 }

@@ -69,6 +69,15 @@ public class CloudSpecificInfo {
   @ApiModelProperty(value = "Mounted disks LUN indexes")
   public Integer[] lun_indexes = new Integer[0];
 
+  @ApiModelProperty(value = "Pod name in Kubernetes")
+  public String kubernetesPodName = null;
+
+  @ApiModelProperty(value = "Kubernetes namespace")
+  public String kubernetesNamespace = null;
+
+  @ApiModelProperty(value = "Root volume ID or name")
+  public String root_volume = null;
+
   public CloudSpecificInfo() {}
 
   @Override
@@ -87,6 +96,10 @@ public class CloudSpecificInfo {
     cloudInfo.cloud = cloud;
     cloudInfo.assignPublicIP = assignPublicIP;
     cloudInfo.mount_roots = mount_roots;
+    cloudInfo.lun_indexes = lun_indexes == null ? new Integer[0] : lun_indexes.clone();
+    cloudInfo.kubernetesPodName = kubernetesPodName;
+    cloudInfo.kubernetesNamespace = kubernetesNamespace;
+    cloudInfo.root_volume = root_volume;
     return cloudInfo;
   }
 

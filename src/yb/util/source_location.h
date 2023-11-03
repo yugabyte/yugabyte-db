@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_SOURCE_LOCATION_H
-#define YB_UTIL_SOURCE_LOCATION_H
+#pragma once
 
 #include <string>
 
@@ -27,6 +26,9 @@ struct SourceLocation {
 
 #define SOURCE_LOCATION() SourceLocation {__FILE__, __LINE__}
 
-}  // namespace yb
+// Shorten the given source file path by removing prefixes that are unnecessarily long and/or would
+// not prevent us from finding the original source file given that we know the toolchain directory,
+// the third-party libraries directory, etc.
+const char* ShortenSourceFilePath(const char* file_path);
 
-#endif  // YB_UTIL_SOURCE_LOCATION_H
+}  // namespace yb

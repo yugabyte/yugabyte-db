@@ -47,11 +47,11 @@
 #include "yb/util/format.h"
 
 #ifndef GFLAGS
-bool FLAGS_enable_print = false;
+bool ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_print) = false;
 #else
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 using GFLAGS::ParseCommandLineFlags;
-DEFINE_bool(enable_print, false, "Print options generated to console.");
+DEFINE_NON_RUNTIME_bool(enable_print, false, "Print options generated to console.");
 #endif  // GFLAGS
 
 namespace rocksdb {
@@ -103,17 +103,14 @@ TEST_F(OptionsTest, LooseCondition) {
   options = PrintAndGetOptions(128 * 1024 * 1024, 8, 100);
   ASSERT_EQ(options.compaction_style, kCompactionStyleLevel);
 
-#ifndef ROCKSDB_LITE  // Universal compaction is not supported in ROCKSDB_LITE
   // Tight write amplification
   options = PrintAndGetOptions(128 * 1024 * 1024, 64, 10);
   ASSERT_EQ(options.compaction_style, kCompactionStyleUniversal);
-#endif  // !ROCKSDB_LITE
 
   // Both tight amplifications
   PrintAndGetOptions(128 * 1024 * 1024, 4, 8);
 }
 
-#ifndef ROCKSDB_LITE  // GetOptionsFromMap is not supported in ROCKSDB_LITE
 TEST_F(OptionsTest, GetOptionsFromMapTest) {
   std::unordered_map<std::string, std::string> cf_options_map = {
       {"write_buffer_size", "1"},
@@ -316,10 +313,7 @@ TEST_F(OptionsTest, GetOptionsFromMapTest) {
   ASSERT_EQ(new_db_opt.bytes_per_sync, static_cast<uint64_t>(47));
   ASSERT_EQ(new_db_opt.wal_bytes_per_sync, static_cast<uint64_t>(48));
 }
-#endif  // !ROCKSDB_LITE
 
-#ifndef ROCKSDB_LITE  // GetColumnFamilyOptionsFromString is not supported in
-                      // ROCKSDB_LITE
 TEST_F(OptionsTest, GetColumnFamilyOptionsFromStringTest) {
   ColumnFamilyOptions base_cf_opt;
   ColumnFamilyOptions new_cf_opt;
@@ -478,9 +472,7 @@ TEST_F(OptionsTest, GetColumnFamilyOptionsFromStringTest) {
   ASSERT_TRUE(new_cf_opt.memtable_factory != nullptr);
   ASSERT_EQ(std::string(new_cf_opt.memtable_factory->Name()), "SkipListFactory");
 }
-#endif  // !ROCKSDB_LITE
 
-#ifndef ROCKSDB_LITE  // GetBlockBasedTableOptionsFromString is not supported
 TEST_F(OptionsTest, GetBlockBasedTableOptionsFromString) {
   BlockBasedTableOptions table_opt;
   BlockBasedTableOptions new_opt;
@@ -538,10 +530,8 @@ TEST_F(OptionsTest, GetBlockBasedTableOptionsFromString) {
              "filter_policy=bloomfilter:4",
              &new_opt));
 }
-#endif  // !ROCKSDB_LITE
 
 
-#ifndef ROCKSDB_LITE  // GetPlainTableOptionsFromString is not supported
 TEST_F(OptionsTest, GetPlainTableOptionsFromString) {
   PlainTableOptions table_opt;
   PlainTableOptions new_opt;
@@ -572,9 +562,7 @@ TEST_F(OptionsTest, GetPlainTableOptionsFromString) {
              "encoding_type=kPrefixXX",
              &new_opt));
 }
-#endif  // !ROCKSDB_LITE
 
-#ifndef ROCKSDB_LITE  // GetMemTableRepFactoryFromString is not supported
 TEST_F(OptionsTest, GetMemTableRepFactoryFromString) {
   std::unique_ptr<MemTableRepFactory> new_mem_factory = nullptr;
 
@@ -607,9 +595,7 @@ TEST_F(OptionsTest, GetMemTableRepFactoryFromString) {
 
   ASSERT_NOK(GetMemTableRepFactoryFromString("bad_factory", &new_mem_factory));
 }
-#endif  // !ROCKSDB_LITE
 
-#ifndef ROCKSDB_LITE  // GetOptionsFromString is not supported in RocksDB Lite
 TEST_F(OptionsTest, GetOptionsFromStringTest) {
   Options base_options, new_options;
   base_options.write_buffer_size = 20;
@@ -680,13 +666,11 @@ TEST_F(OptionsTest, ColumnFamilyOptionsSerialization) {
   }
 }
 
-#endif  // !ROCKSDB_LITE
 
 Status StringToMap(
     const std::string& opts_str,
     std::unordered_map<std::string, std::string>* opts_map);
 
-#ifndef ROCKSDB_LITE  // StringToMap is not supported in ROCKSDB_LITE
 TEST_F(OptionsTest, StringToMapTest) {
   std::unordered_map<std::string, std::string> opts_map;
   // Regular options
@@ -803,9 +787,7 @@ TEST_F(OptionsTest, StringToMapTest) {
   ASSERT_NOK(StringToMap("k1=v1;k2={{}}{}", &opts_map));
   ASSERT_NOK(StringToMap("k1=v1;k2={{dfdl}adfa}{}", &opts_map));
 }
-#endif  // ROCKSDB_LITE
 
-#ifndef ROCKSDB_LITE  // StringToMap is not supported in ROCKSDB_LITE
 TEST_F(OptionsTest, StringToMapRandomTest) {
   std::unordered_map<std::string, std::string> opts_map;
   // Make sure segfault is not hit by semi-random strings
@@ -850,7 +832,6 @@ TEST_F(OptionsTest, StringToMapRandomTest) {
     opts_map.clear();
   }
 }
-#endif  // !ROCKSDB_LITE
 
 TEST_F(OptionsTest, ConvertOptionsTest) {
   LevelDBOptions leveldb_opt;
@@ -880,7 +861,6 @@ TEST_F(OptionsTest, ConvertOptionsTest) {
   ASSERT_EQ(table_opt.filter_policy.get(), leveldb_opt.filter_policy);
 }
 
-#ifndef ROCKSDB_LITE
 class OptionsParserTest : public RocksDBTest {
  public:
   OptionsParserTest() { env_.reset(new test::StringEnv(Env::Default())); }
@@ -1938,8 +1918,8 @@ TEST_F(OptionsParserTest, DBOptionsAllFieldsSettable) {
       BLACKLIST_ENTRY(DBOptions, block_based_table_mem_tracker),
       BLACKLIST_ENTRY(DBOptions, iterator_replacer),
       BLACKLIST_ENTRY(DBOptions, compaction_file_filter_factory),
-      BLACKLIST_ENTRY(DBOptions, disk_group_no),
       BLACKLIST_ENTRY(DBOptions, priority_thread_pool_metrics),
+      BLACKLIST_ENTRY(DBOptions, disk_group_no),
   };
 
   TestAllFieldsSettable<DBOptions>(kDBOptionsBlacklist);
@@ -1972,7 +1952,6 @@ TEST_F(OptionsParserTest, ColumnFamilyOptionsAllFieldsSettable) {
   TestAllFieldsSettable<ColumnFamilyOptions>(kColumnFamilyOptionsBlacklist);
 }
 #endif // __linux__ && !clang
-#endif // !ROCKSDB_LITE
 
 }  // namespace rocksdb
 

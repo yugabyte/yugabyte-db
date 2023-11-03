@@ -32,8 +32,7 @@
 // These are weird things we need to do to get this compiling on
 // random systems (and on SWIG).
 
-#ifndef YB_GUTIL_PORT_H
-#define YB_GUTIL_PORT_H
+#pragma once
 
 #include <errno.h>
 #include <limits.h>         // So we can set the bounds of our types
@@ -814,7 +813,6 @@ struct AlignType { typedef char result[Size]; };
 #endif
 
 namespace std {}  // Avoid error if we didn't see std.
-using namespace std; // NOLINT
 
 // VC++ doesn't understand "uint"
 #ifndef HAVE_UINT
@@ -845,7 +843,6 @@ typedef int ssize_t;
 // VC++ 6 and before ship without an ostream << operator for 64-bit ints
 #if (_MSC_VER <= 1200)
 #include <iosfwd>
-using std::ostream;
 inline ostream& operator<< (ostream& os, const unsigned __int64& num ) {
   // Fake operator; doesn't actually do anything.
   LOG(FATAL) << "64-bit ostream operator << not supported in VC++ 6";
@@ -1264,7 +1261,6 @@ inline void UnalignedStore(void* dst, const T& src) {
 
 #ifdef PTHREADS_REDHAT_WIN32
 #include <iosfwd>    // NOLINT(build/include)
-using std::ostream;  // NOLINT(build/include)
 #include <pthread.h> // NOLINT(build/include)
 // pthread_t is not a simple integer or pointer on Win32
 std::ostream& operator << (std::ostream& out, const pthread_t& thread_id);
@@ -1296,4 +1292,8 @@ enum { kPlatformUsesOPDSections = 0 };
 #define FUNC_PTR_TO_CHAR_PTR(func)  (reinterpret_cast<char *>(func))
 #endif
 
-#endif  // YB_GUTIL_PORT_H
+#if defined(__clang__)
+#define MUST_TAIL [[clang::musttail]]
+#else
+#define MUST_TAIL
+#endif

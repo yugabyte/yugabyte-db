@@ -1,6 +1,6 @@
 import { isFunction } from 'lodash';
-import React from 'react';
 import { FC } from 'react';
+
 import { YBControlledTextInput } from './YBTextInput';
 import './YBSearchInput.scss';
 

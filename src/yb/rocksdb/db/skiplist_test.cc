@@ -63,13 +63,13 @@ TEST_F(SkipTest, Empty) {
   ASSERT_TRUE(!list.Contains(10));
 
   SkipList<Key, TestComparator>::Iterator iter(&list);
-  ASSERT_TRUE(!iter.Valid());
+  ASSERT_TRUE(!iter.Entry());
   iter.SeekToFirst();
-  ASSERT_TRUE(!iter.Valid());
+  ASSERT_TRUE(!iter.Entry());
   iter.Seek(100);
-  ASSERT_TRUE(!iter.Valid());
+  ASSERT_TRUE(!iter.Entry());
   iter.SeekToLast();
-  ASSERT_TRUE(!iter.Valid());
+  ASSERT_TRUE(!iter.Entry());
 }
 
 TEST_F(SkipTest, InsertAndLookup) {
@@ -98,19 +98,19 @@ TEST_F(SkipTest, InsertAndLookup) {
   // Simple iterator tests
   {
     SkipList<Key, TestComparator>::Iterator iter(&list);
-    ASSERT_TRUE(!iter.Valid());
+    ASSERT_TRUE(!iter.Entry());
 
     iter.Seek(0);
-    ASSERT_TRUE(iter.Valid());
-    ASSERT_EQ(*(keys.begin()), iter.key());
+    ASSERT_TRUE(iter.Entry());
+    ASSERT_EQ(*(keys.begin()), iter.Entry());
 
     iter.SeekToFirst();
-    ASSERT_TRUE(iter.Valid());
-    ASSERT_EQ(*(keys.begin()), iter.key());
+    ASSERT_TRUE(iter.Entry());
+    ASSERT_EQ(*(keys.begin()), iter.Entry());
 
     iter.SeekToLast();
-    ASSERT_TRUE(iter.Valid());
-    ASSERT_EQ(*(keys.rbegin()), iter.key());
+    ASSERT_TRUE(iter.Entry());
+    ASSERT_EQ(*(keys.rbegin()), iter.Entry());
   }
 
   // Forward iteration test
@@ -122,11 +122,11 @@ TEST_F(SkipTest, InsertAndLookup) {
     std::set<Key>::iterator model_iter = keys.lower_bound(i);
     for (int j = 0; j < 3; j++) {
       if (model_iter == keys.end()) {
-        ASSERT_TRUE(!iter.Valid());
+        ASSERT_TRUE(!iter.Entry());
         break;
       } else {
-        ASSERT_TRUE(iter.Valid());
-        ASSERT_EQ(*model_iter, iter.key());
+        ASSERT_TRUE(iter.Entry());
+        ASSERT_EQ(*model_iter, iter.Entry());
         ++model_iter;
         iter.Next();
       }
@@ -142,11 +142,11 @@ TEST_F(SkipTest, InsertAndLookup) {
     for (std::set<Key>::reverse_iterator model_iter = keys.rbegin();
          model_iter != keys.rend();
          ++model_iter) {
-      ASSERT_TRUE(iter.Valid());
-      ASSERT_EQ(*model_iter, iter.key());
+      ASSERT_TRUE(iter.Entry());
+      ASSERT_EQ(*model_iter, iter.Entry());
       iter.Prev();
     }
-    ASSERT_TRUE(!iter.Valid());
+    ASSERT_TRUE(!iter.Entry());
   }
 }
 
@@ -175,10 +175,10 @@ TEST_F(SkipTest, Erase) {
       TestSkipList::Iterator iter(&list);
       iter.SeekToFirst();
       auto j = left_keys.begin();
-      while (iter.Valid()) {
+      while (iter.Entry()) {
         ASSERT_NE(j, left_keys.end());
 
-        ASSERT_EQ(iter.key(), *j);
+        ASSERT_EQ(iter.Entry(), *j);
 
         iter.Next();
         ++j;
@@ -200,7 +200,7 @@ TEST_F(SkipTest, EraseInsert) {
 
     for (size_t i = 0; i != 1000; ++i) {
       if (present_keys.empty() || yb::RandomUniformBool()) {
-        Key key = yb::RandomUniformInt<Key>(0, 100);
+        Key key = yb::RandomUniformInt<Key>(1, 100);
         if (present_keys.count(key)) {
           continue;
         }
@@ -221,8 +221,8 @@ TEST_F(SkipTest, EraseInsert) {
       std::vector<Key> listed;
       TestSkipList::Iterator iter(&list);
       iter.SeekToFirst();
-      while (iter.Valid()) {
-        listed.push_back(iter.key());
+      while (iter.Entry()) {
+        listed.push_back(iter.Entry());
         iter.Next();
       }
       ASSERT_EQ(yb::ToString(listed), yb::ToString(present_keys));
@@ -340,10 +340,10 @@ class ConcurrentTest {
     iter.Seek(pos);
     while (true) {
       Key current;
-      if (!iter.Valid()) {
+      if (!iter.Entry()) {
         current = MakeKey(K, 0);
       } else {
-        current = iter.key();
+        current = iter.Entry();
         ASSERT_TRUE(IsValidKey(current)) << current;
       }
       ASSERT_LE(pos, current) << "should not go backwards";
@@ -369,7 +369,7 @@ class ConcurrentTest {
         }
       }
 
-      if (!iter.Valid()) {
+      if (!iter.Entry()) {
         break;
       }
 
@@ -438,11 +438,9 @@ class TestState {
 static void ConcurrentReader(void* arg) {
   TestState* state = reinterpret_cast<TestState*>(arg);
   Random rnd(state->seed_);
-  int64_t reads = 0;
   state->Change(TestState::RUNNING);
   while (!state->quit_flag_.load(std::memory_order_acquire)) {
     state->t_.ReadStep(&rnd);
-    ++reads;
   }
   state->Change(TestState::DONE);
 }
@@ -472,7 +470,6 @@ TEST_F(SkipTest, Concurrent2) { RunConcurrent(2); }
 TEST_F(SkipTest, Concurrent3) { RunConcurrent(3); }
 TEST_F(SkipTest, Concurrent4) { RunConcurrent(4); }
 TEST_F(SkipTest, Concurrent5) { RunConcurrent(5); }
-
 }  // namespace rocksdb
 
 int main(int argc, char** argv) {

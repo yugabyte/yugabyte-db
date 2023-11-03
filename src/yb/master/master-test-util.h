@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_MASTER_TEST_UTIL_H
-#define YB_MASTER_MASTER_TEST_UTIL_H
+#pragma once
 
 #include "yb/client/client_fwd.h"
 #include "yb/master/master_client.fwd.h"
@@ -44,17 +43,10 @@ namespace master {
 class MiniMaster;
 
 Status WaitForRunningTabletCount(MiniMaster* mini_master,
-                                         const client::YBTableName& table_name,
-                                         int expected_count,
-                                         GetTableLocationsResponsePB* resp);
+                                 const client::YBTableName& table_name,
+                                 int expected_count,
+                                 GetTableLocationsResponsePB* resp);
 
-void CreateTabletForTesting(MiniMaster* mini_master,
-                            const client::YBTableName& table_name,
-                            const Schema& schema,
-                            std::string* tablet_id,
-                            std::string* table_id = nullptr);
 
 } // namespace master
 } // namespace yb
-
-#endif /* YB_MASTER_MASTER_TEST_UTIL_H */

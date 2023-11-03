@@ -13,13 +13,17 @@
 
 package org.yb.pgsql;
 
+import static org.yb.AssertionWrappers.assertTrue;
+
 import java.sql.Statement;
+
+import com.google.common.net.HostAndPort;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
-@RunWith(YBTestRunnerNonTsanOnly.class)
+@RunWith(YBTestRunner.class)
 public class TestPgUniqueConstraint extends BasePgSQLTest {
 
   @Test
@@ -371,11 +375,12 @@ public class TestPgUniqueConstraint extends BasePgSQLTest {
 
   @Test
   public void createIndexViolatingUniqueness() throws Exception {
+    long tableOid;
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE TABLE test(id int PRIMARY KEY, v int)");
 
       // Get the OID of the 'test' table from pg_class
-      long tableOid = getRowList(
+      tableOid = getRowList(
           stmt.executeQuery("SELECT oid FROM pg_class WHERE relname = 'test'")).get(0).getLong(0);
 
       // Two entries in pg_depend table, one for pg_type and the other for pg_constraint
@@ -384,13 +389,38 @@ public class TestPgUniqueConstraint extends BasePgSQLTest {
 
       stmt.executeUpdate("INSERT INTO test VALUES (1, 1)");
       stmt.executeUpdate("INSERT INTO test VALUES (2, 1)");
+    }
 
+    // Disabling transactional DDL GC flag to avoid CREATE UNIQUE INDEX
+    // failure from triggering table deletion. The deletion occurs
+    // as a background thread which can produce inconsistent schema
+    // verison between the Postgres and TServer side. To avoid this issue
+    // DDL transaction will only rollback if it fails but skip the master side
+    // clean up work.
+    for (HostAndPort hp : miniCluster.getMasters().keySet()) {
+      assertTrue(miniCluster.getClient().setFlag(hp,
+          "enable_transactional_ddl_gc", "false"));
+    }
+    for (HostAndPort hp : miniCluster.getTabletServers().keySet()) {
+      assertTrue(miniCluster.getClient().setFlag(hp,
+          "allowed_preview_flags_csv", "ysql_ddl_rollback_enabled=true"));
+      assertTrue(miniCluster.getClient().setFlag(hp,
+          "ysql_ddl_rollback_enabled", "false"));
+    }
+    try (Statement stmt = connection.createStatement()) {
       runInvalidQuery(
           stmt,
           "CREATE UNIQUE INDEX NONCONCURRENTLY test_v on test(v)",
           "duplicate key"
       );
+    }
+    // Reset flags.
+    for (HostAndPort hp : miniCluster.getMasters().keySet()) {
+      assertTrue(miniCluster.getClient().setFlag(hp,
+          "enable_transactional_ddl_gc", "true"));
+    }
 
+    try (Statement stmt = connection.createStatement()) {
       // Make sure index has no leftovers
       runInvalidQuery(stmt, "DROP INDEX test_v", "does not exist");
       assertNoRows(stmt, "SELECT oid FROM pg_class WHERE relname = 'test_v'");

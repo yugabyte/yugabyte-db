@@ -33,13 +33,17 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/flags.h"
 
-DEFINE_bool(use_cassandra_authentication, false, "If to require authentication on startup.");
-DEFINE_bool(ycql_cache_login_info, false, "Use authentication information cached locally.");
-DEFINE_bool(ycql_require_drop_privs_for_truncate, false,
+DEFINE_UNKNOWN_bool(use_cassandra_authentication, false,
+    "If to require authentication on startup.");
+DEFINE_UNKNOWN_bool(ycql_cache_login_info, false, "Use authentication information cached locally.");
+DEFINE_UNKNOWN_bool(ycql_require_drop_privs_for_truncate, false,
             "Require DROP TABLE permission in order to truncate table");
-DEFINE_bool(ycql_use_local_transaction_tables, false,
+DEFINE_UNKNOWN_bool(ycql_use_local_transaction_tables, false,
             "Whether or not to use local transaction tables when possible for YCQL transactions.");
+DEFINE_RUNTIME_bool(ycql_allow_local_calls_in_curr_thread, true,
+                    "Whether or not to allow local calls on the RPC thread.");
 
 namespace yb {
 namespace ql {
@@ -47,14 +51,10 @@ namespace ql {
 using std::string;
 using std::shared_ptr;
 using std::unique_ptr;
-using std::weak_ptr;
 
-using client::TransactionManager;
-using client::YBClient;
 using client::YBSession;
 using client::YBSessionPtr;
 using client::YBTable;
-using client::YBTransaction;
 using client::YBTransactionPtr;
 using client::YBMetaDataCache;
 using client::YBTableCreator;
@@ -115,62 +115,65 @@ Result<YBTransactionPtr> QLEnv::NewTransaction(const YBTransactionPtr& transacti
   return result;
 }
 
-YBSessionPtr QLEnv::NewSession() {
-  return std::make_shared<YBSession>(client_, clock_);
+YBSessionPtr QLEnv::NewSession(CoarseTimePoint deadline) {
+  auto session = std::make_shared<YBSession>(client_, deadline, clock_);
+  session->set_allow_local_calls_in_curr_thread(FLAGS_ycql_allow_local_calls_in_curr_thread);
+  return session;
 }
 
 //------------------------------------------------------------------------------------------------
-shared_ptr<YBTable> QLEnv::GetTableDesc(const YBTableName& table_name, bool* cache_used) {
+client::YBTablePtr QLEnv::GetTableDesc(const YBTableName& table_name, bool* cache_used) {
   // Hide tables in system_redis keyspace.
   if (table_name.is_redis_namespace()) {
     return nullptr;
   }
-  shared_ptr<YBTable> yb_table;
-  Status s = metadata_cache_->GetTable(table_name, &yb_table, cache_used);
+  auto res = metadata_cache_->GetTableEx(table_name);
 
-  if (!s.ok()) {
-    VLOG(3) << "GetTableDesc: Server returns an error: " << s.ToString();
+  if (!res.ok()) {
+    VLOG(3) << "GetTableDesc: Server returns an error: " << res.status().ToString();
     return nullptr;
   }
 
-  return yb_table;
+  *cache_used = res->cache_used;
+  return res->table;
 }
 
-shared_ptr<YBTable> QLEnv::GetTableDesc(const TableId& table_id, bool* cache_used) {
-  shared_ptr<YBTable> yb_table;
-  Status s = metadata_cache_->GetTable(table_id, &yb_table, cache_used);
+client::YBTablePtr QLEnv::GetTableDesc(const TableId& table_id, bool* cache_used) {
+  auto res = metadata_cache_->GetTableEx(table_id);
 
-  if (!s.ok()) {
-    VLOG(3) << "GetTableDesc: Server returns an error: " << s.ToString();
+  if (!res.ok()) {
+    VLOG(3) << "GetTableDesc: Server returns an error: " << res.status().ToString();
     return nullptr;
   }
 
-  return yb_table;
+  *cache_used = res->cache_used;
+  return res->table;
 }
 
-Result<SchemaVersion> QLEnv::GetUpToDateTableSchemaVersion(const YBTableName& table_name) {
-  shared_ptr<YBTable> yb_table;
-  RETURN_NOT_OK(client_->OpenTable(table_name, &yb_table));
+Result<SchemaVersion> QLEnv::GetCachedTableSchemaVersion(const TableId& table_id) {
+  bool cache_used = false;
+  const shared_ptr<YBTable> yb_table = GetTableDesc(table_id, &cache_used);
+  SCHECK_FORMAT(yb_table, NotFound, "Cannot get table $0 from cache", table_id);
+  return yb_table->schema().version();
+}
 
-  if (yb_table) {
-    return yb_table->schema().version();
-  } else {
-    return STATUS_SUBSTITUTE(NotFound, "Cannot get table $0", table_name.ToString());
-  }
+Result<SchemaVersion> QLEnv::GetUpToDateTableSchemaVersion(const TableId& table_id) {
+  // Force update the metadata cache.
+  RemoveCachedTableDesc(table_id);
+  return GetCachedTableSchemaVersion(table_id);
 }
 
 shared_ptr<QLType> QLEnv::GetUDType(const std::string& keyspace_name,
-                                      const std::string& type_name,
-                                      bool* cache_used) {
-  shared_ptr<QLType> ql_type = std::make_shared<QLType>(keyspace_name, type_name);
-  Status s = metadata_cache_->GetUDType(keyspace_name, type_name, &ql_type, cache_used);
+                                    const std::string& type_name,
+                                    bool* cache_used) {
+  auto result = metadata_cache_->GetUDType(keyspace_name, type_name);
 
-  if (!s.ok()) {
-    VLOG(3) << "GetTypeDesc: Server returned an error: " << s.ToString();
+  if (!result) {
+    VLOG(3) << "GetTypeDesc: Server returned an error: " << result.status().ToString();
     return nullptr;
   }
-
-  return ql_type;
+  *cache_used = result->second;
+  return std::move(result->first);
 }
 
 void QLEnv::RemoveCachedTableDesc(const YBTableName& table_name) {

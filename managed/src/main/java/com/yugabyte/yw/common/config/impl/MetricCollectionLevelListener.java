@@ -29,18 +29,27 @@ public class MetricCollectionLevelListener implements RuntimeConfigChangeListene
   @Transactional(batchSize = 40)
   public void processGlobal() {
     Set<Universe> universes = Universe.getAllWithoutResources();
-    universes.forEach(universe -> universe.updateSwamperConfigWritten(false));
+    universes.forEach(
+        universe -> {
+          universe.setSwamperConfigWritten(false);
+          universe.save();
+        });
   }
 
   @Override
   @Transactional(batchSize = 40)
   public void processCustomer(Customer customer) {
     Set<Universe> universes = Universe.getAllWithoutResources(customer);
-    universes.forEach(universe -> universe.updateSwamperConfigWritten(false));
+    universes.forEach(
+        universe -> {
+          universe.setSwamperConfigWritten(false);
+          universe.save();
+        });
   }
 
   @Override
   public void processUniverse(Universe universe) {
-    universe.updateSwamperConfigWritten(false);
+    universe.setSwamperConfigWritten(false);
+    universe.save();
   }
 }

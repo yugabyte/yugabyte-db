@@ -11,26 +11,31 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_MASTER_SERVICE_BASE_H
-#define YB_MASTER_MASTER_SERVICE_BASE_H
+#pragma once
+
+#include <functional>
 
 #include "yb/gutil/macros.h"
+
+#include "yb/master/master_fwd.h"
+#include "yb/rpc/rpc_fwd.h"
+
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
-class Status;
 
-namespace rpc {
-class RpcContext;
-} // namespace rpc
+class Status;
 
 namespace master {
 
 class Master;
 class CatalogManager;
 class FlushManager;
+class YsqlBackendsManager;
 class PermissionsManager;
 class EncryptionManager;
+struct LeaderEpoch;
+class XClusterManager;
 
 // Tells HandleIn/HandleOnLeader to either acquire the lock briefly to check leadership (kFalse)
 // or to hold it throughout the handler invocation (kTrue).
@@ -42,9 +47,8 @@ class MasterServiceBase {
   explicit MasterServiceBase(Master* server) : server_(server) {}
 
  protected:
-  template <class ReqType, class RespType, class FnType>
+  template <class RespType, class FnType>
   void HandleOnLeader(
-      const ReqType* req,
       RespType* resp,
       rpc::RpcContext* rpc,
       FnType f,
@@ -96,10 +100,25 @@ class MasterServiceBase {
       const char* function_name,
       HoldCatalogLock hold_catalog_lock);
 
-  enterprise::CatalogManager* handler(CatalogManager*);
+  template <class HandlerType, class ReqType, class RespType>
+  void HandleIn(
+      const ReqType* req,
+      RespType* resp,
+      rpc::RpcContext* rpc,
+      Status (HandlerType::*f)(
+          const ReqType*, RespType*, rpc::RpcContext*, const LeaderEpoch&),
+      const char* file_name,
+      int line_number,
+      const char* function_name,
+      HoldCatalogLock hold_catalog_lock);
+
+  CatalogManager* handler(CatalogManager*);
   FlushManager* handler(FlushManager*);
+  YsqlBackendsManager* handler(YsqlBackendsManager*);
   PermissionsManager* handler(PermissionsManager*);
   EncryptionManager* handler(EncryptionManager*);
+  XClusterManager* handler(XClusterManager*);
+  TestAsyncRpcManager* handler(TestAsyncRpcManager*);
 
   Master* server_;
 
@@ -109,5 +128,3 @@ class MasterServiceBase {
 
 } // namespace master
 } // namespace yb
-
-#endif // YB_MASTER_MASTER_SERVICE_BASE_H

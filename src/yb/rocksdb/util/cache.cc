@@ -36,13 +36,16 @@
 #include "yb/util/enums.h"
 #include "yb/util/metrics.h"
 #include "yb/util/random_util.h"
+#include "yb/util/flags.h"
+
+using std::shared_ptr;
 
 // 0 value means that there exist no single_touch cache and
 // 1 means that the entire cache is treated as a multi-touch cache.
-DEFINE_double(cache_single_touch_ratio, 0.2,
+DEFINE_UNKNOWN_double(cache_single_touch_ratio, 0.2,
               "Fraction of the cache dedicated to single-touch items");
 
-DEFINE_bool(cache_overflow_single_touch, true,
+DEFINE_UNKNOWN_bool(cache_overflow_single_touch, true,
             "Whether to enable overflow of single touch cache into the multi touch cache "
             "allocation");
 
@@ -236,7 +239,7 @@ class HandleTable {
     }
     LRUHandle** new_list = new LRUHandle*[new_length];
     memset(new_list, 0, sizeof(new_list[0]) * new_length);
-    uint32_t count = 0;
+    uint32_t count __attribute__((unused)) = 0;
     LRUHandle* h;
     LRUHandle* next;
     LRUHandle** ptr;
@@ -838,8 +841,6 @@ void LRUCache::Erase(const Slice& key, uint32_t hash) {
   }
 }
 
-static int kNumShardBits = 4;          // default values, can be overridden
-
 class ShardedLRUCache : public Cache {
  private:
   LRUCache* shards_;
@@ -1017,7 +1018,7 @@ class ShardedLRUCache : public Cache {
 }  // end anonymous namespace
 
 shared_ptr<Cache> NewLRUCache(size_t capacity) {
-  return NewLRUCache(capacity, kNumShardBits, false);
+  return NewLRUCache(capacity, kSharedLRUCacheDefaultNumShardBits, false);
 }
 
 shared_ptr<Cache> NewLRUCache(size_t capacity, int num_shard_bits) {
@@ -1026,7 +1027,7 @@ shared_ptr<Cache> NewLRUCache(size_t capacity, int num_shard_bits) {
 
 shared_ptr<Cache> NewLRUCache(size_t capacity, int num_shard_bits,
                               bool strict_capacity_limit) {
-  if (num_shard_bits >= 20) {
+  if (num_shard_bits > kSharedLRUCacheMaxNumShardBits) {
     return nullptr;  // the cache cannot be sharded into too many fine pieces
   }
   return std::make_shared<ShardedLRUCache>(capacity, num_shard_bits,

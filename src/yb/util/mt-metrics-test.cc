@@ -43,8 +43,9 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
+#include "yb/util/flags.h"
 
-DEFINE_int32(mt_metrics_test_num_threads, 4,
+DEFINE_NON_RUNTIME_int32(mt_metrics_test_num_threads, 4,
              "Number of threads to spawn in mt metrics tests");
 
 METRIC_DEFINE_entity(test_entity);
@@ -53,6 +54,7 @@ namespace yb {
 
 using debug::ScopedLeakCheckDisabler;
 using std::vector;
+using std::string;
 
 class MultiThreadedMetricsTest : public YBTest {
  public:

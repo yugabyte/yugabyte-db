@@ -764,6 +764,7 @@ GetExistingLocalJoinPath(RelOptInfo *joinrel)
 				break;
 
 			case T_NestLoop:
+			case T_YbBatchedNestLoop:
 				{
 					NestPath   *nest_path = makeNode(NestPath);
 

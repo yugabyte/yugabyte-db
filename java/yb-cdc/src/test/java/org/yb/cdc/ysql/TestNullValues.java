@@ -13,78 +13,38 @@
 
 package org.yb.cdc.ysql;
 
-import org.junit.*;
-import org.junit.runner.RunWith;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.yb.Value;
-import org.yb.cdc.CdcService;
-import org.yb.cdc.CdcService.RowMessage.Op;
-import org.yb.cdc.common.CDCBaseClass;
-import org.yb.cdc.util.CDCSubscriber;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertFalse;
+import static org.yb.AssertionWrappers.assertNotNull;
+import static org.yb.AssertionWrappers.assertTrue;
+import static org.yb.AssertionWrappers.fail;
 
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.yb.AssertionWrappers.*;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.yb.Common.DatumMessagePB;
+import org.yb.YBTestRunner;
+import org.yb.cdc.CdcService;
+import org.yb.cdc.CdcService.RowMessage.Op;
+import org.yb.cdc.common.CDCBaseClass;
+import org.yb.cdc.util.CDCSubscriber;
 
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestNullValues extends CDCBaseClass {
   private final static Logger LOG = LoggerFactory.getLogger(TestNullValues.class);
 
   protected int DEFAULT_KEY_VALUE = 1;
-
-  private void assertForNullValues(List<CdcService.CDCSDKProtoRecordPB> outputList) {
-    assertNotNull(outputList);
-
-    for (int i = 0; i < outputList.size(); ++i) {
-      if (outputList.get(i).getRowMessage().getOp() == CdcService.RowMessage.Op.INSERT) {
-        CdcService.RowMessage rm = outputList.get(i).getRowMessage();
-        assertEquals(DEFAULT_KEY_VALUE, rm.getNewTuple(0).getDatumInt32());
-
-        Value.DatumMessagePB dm = rm.getNewTuple(1);
-        // If it is null, no value type is going to be there.
-        assertFalse(dm.hasDatumBool());
-        assertFalse(dm.hasDatumBytes());
-        assertFalse(dm.hasDatumDouble());
-        assertFalse(dm.hasDatumFloat());
-        assertFalse(dm.hasDatumInt32());
-        assertFalse(dm.hasDatumInt64());
-        assertFalse(dm.hasDatumString());
-      }
-    }
-  }
 
   @Before
   public void setUp() throws Exception {
     super.setUp();
     statement = connection.createStatement();
     statement.execute("drop table if exists test;");
-  }
-
-  private void checkNullBehaviourWithType(String type) {
-    try {
-      String createTable = String.format("create table test (a int primary key, b %s);", type);
-      assertFalse(statement.execute(createTable));
-
-      // Creating one stream.
-      CDCSubscriber testSubscriberProto = new CDCSubscriber(getMasterAddresses());
-      testSubscriberProto.createStream("proto");
-
-      int dummyInsert = statement.executeUpdate(String.format("insert into test values (%d);",
-        DEFAULT_KEY_VALUE));
-      assertEquals(1, dummyInsert);
-
-      // Receiving response.
-      List<CdcService.CDCSDKProtoRecordPB> outputListProto = new ArrayList<>();
-      testSubscriberProto.getResponseFromCDC(outputListProto);
-
-      assertForNullValues(outputListProto);
-    } catch (Exception e) {
-      LOG.error("Test to check for null values of column type " + type + " failed", e);
-      fail();
-    }
   }
 
   @Test
@@ -367,20 +327,59 @@ public class TestNullValues extends CDCBaseClass {
       assertEquals(1, rowMessage.getNewTuple(0).getDatumInt32());
       assertEquals("b", rowMessage.getNewTuple(1).getColumnName());
       assertEquals(2, rowMessage.getNewTuple(1).getDatumInt32());
-
-      // UPDATE record for update of column d.
-      rowMessage = outputList.get(4).getRowMessage();
-      assertEquals(Op.UPDATE, rowMessage.getOp());
-      assertEquals("a", rowMessage.getNewTuple(0).getColumnName());
-      assertEquals(1, rowMessage.getNewTuple(0).getDatumInt32());
-      assertEquals("d", rowMessage.getNewTuple(1).getColumnName());
-      assertEquals(4, rowMessage.getNewTuple(1).getDatumInt32());
+      assertEquals("d", rowMessage.getNewTuple(2).getColumnName());
+      assertEquals(4, rowMessage.getNewTuple(2).getDatumInt32());
 
       // COMMIT record.
-      rowMessage = outputList.get(5).getRowMessage();
+      rowMessage = outputList.get(4).getRowMessage();
       assertEquals(Op.COMMIT, rowMessage.getOp());
     } catch (Exception e) {
       LOG.error("Test to verify partial insert of columns failed");
+      fail();
+    }
+  }
+
+  private void assertForNullValues(List<CdcService.CDCSDKProtoRecordPB> outputList) {
+    assertNotNull(outputList);
+
+    for (int i = 0; i < outputList.size(); ++i) {
+      if (outputList.get(i).getRowMessage().getOp() == CdcService.RowMessage.Op.INSERT) {
+        CdcService.RowMessage rm = outputList.get(i).getRowMessage();
+        assertEquals(DEFAULT_KEY_VALUE, rm.getNewTuple(0).getDatumInt32());
+
+        DatumMessagePB dm = rm.getNewTuple(1);
+        // If it is null, no value type is going to be there.
+        assertFalse(dm.hasDatumBool());
+        assertFalse(dm.hasDatumBytes());
+        assertFalse(dm.hasDatumDouble());
+        assertFalse(dm.hasDatumFloat());
+        assertFalse(dm.hasDatumInt32());
+        assertFalse(dm.hasDatumInt64());
+        assertFalse(dm.hasDatumString());
+      }
+    }
+  }
+
+  private void checkNullBehaviourWithType(String type) {
+    try {
+      String createTable = String.format("create table test (a int primary key, b %s);", type);
+      assertFalse(statement.execute(createTable));
+
+      // Creating one stream.
+      CDCSubscriber testSubscriberProto = new CDCSubscriber(getMasterAddresses());
+      testSubscriberProto.createStream("proto");
+
+      int dummyInsert = statement.executeUpdate(String.format("insert into test values (%d);",
+        DEFAULT_KEY_VALUE));
+      assertEquals(1, dummyInsert);
+
+      // Receiving response.
+      List<CdcService.CDCSDKProtoRecordPB> outputListProto = new ArrayList<>();
+      testSubscriberProto.getResponseFromCDC(outputListProto);
+
+      assertForNullValues(outputListProto);
+    } catch (Exception e) {
+      LOG.error("Test to check for null values of column type " + type + " failed", e);
       fail();
     }
   }

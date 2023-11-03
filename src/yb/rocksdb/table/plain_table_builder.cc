@@ -18,7 +18,6 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_LITE
 
 #include "yb/rocksdb/table/plain_table_builder.h"
 
@@ -313,4 +312,3 @@ const std::string& PlainTableBuilder::LastKey() const {
 }
 
 }  // namespace rocksdb
-#endif  // ROCKSDB_LITE

@@ -39,4 +39,3 @@ export * from '@app/components/YBDatePicker/YBDatePickerField';
 export * from '@app/components/YBAccordion/YBAccordion';
 export * from '@app/components/YBDragableAndDropable/YBDragablesAndDropable';
 export * from '@app/components/YBDragableAndDropable/YBDragableAndDropableItem';
-export * from '@app/components/SegmentAnalytics/useSegment';

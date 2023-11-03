@@ -13,7 +13,7 @@
 
 #include <string>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
 #include "yb/encryption/encryption_util.h"
@@ -27,11 +27,11 @@
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"
 
+using std::string;
+
 using yb::tserver::GenerateTestUniverseKeyManager;
 
 namespace yb {
-
-namespace enterprise {
 
 class TestHeaderManagerImpl : public YBTest {};
 
@@ -50,5 +50,4 @@ TEST_F(TestHeaderManagerImpl, FileOps) {
   ASSERT_TRUE(params->Equals(*new_params.get()));
 }
 
-} // namespace enterprise
 } // namespace yb

@@ -16,9 +16,9 @@
 #include "yb/master/master_service_base.h"
 #include "yb/master/master_service_base-internal.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 
-DEFINE_int32(master_inject_latency_on_tablet_lookups_ms, 0,
+DEFINE_UNKNOWN_int32(master_inject_latency_on_tablet_lookups_ms, 0,
              "Number of milliseconds that the master will sleep before responding to "
              "requests for tablet locations.");
 TAG_FLAG(master_inject_latency_on_tablet_lookups_ms, unsafe);
@@ -70,12 +70,6 @@ class MasterClientServiceImpl : public MasterServiceBase, public MasterClientIf 
       }
     }
 
-    // For now all the tables in the cluster share the same replication information.
-    int expected_live_replicas = 0;
-    int expected_read_replicas = 0;
-    server_->catalog_manager_impl()->GetExpectedNumberOfReplicas(
-        &expected_live_replicas, &expected_read_replicas);
-
     if (req->has_table_id()) {
       const auto table_info = server_->catalog_manager_impl()->GetTableInfo(req->table_id());
       if (table_info) {
@@ -87,11 +81,21 @@ class MasterClientServiceImpl : public MasterServiceBase, public MasterClientIf 
     IncludeInactive include_inactive(req->has_include_inactive() && req->include_inactive());
 
     for (const TabletId& tablet_id : req->tablet_ids()) {
+      int expected_live_replicas = 0, expected_read_replicas = 0;
+      auto s = server_->catalog_manager_impl()->GetExpectedNumberOfReplicasForTablet(
+          tablet_id, &expected_live_replicas, &expected_read_replicas);
+      if (!s.ok()) {
+        GetTabletLocationsResponsePB::Error* err = resp->add_errors();
+        err->set_tablet_id(tablet_id);
+        StatusToPB(s, err->mutable_status());
+        continue;
+      }
+
       // TODO: once we have catalog data. ACL checks would also go here, probably.
       TabletLocationsPB* locs_pb = resp->add_tablet_locations();
       locs_pb->set_expected_live_replicas(expected_live_replicas);
       locs_pb->set_expected_read_replicas(expected_read_replicas);
-      Status s = server_->catalog_manager_impl()->GetTabletLocations(
+      s = server_->catalog_manager_impl()->GetTabletLocations(
           tablet_id, locs_pb, include_inactive);
       if (!s.ok()) {
         resp->mutable_tablet_locations()->RemoveLast();
@@ -110,7 +114,7 @@ class MasterClientServiceImpl : public MasterServiceBase, public MasterClientIf 
                          rpc::RpcContext rpc) override {
     // We can't use the HANDLE_ON_LEADER_WITH_LOCK macro here because we have to inject latency
     // before acquiring the leader lock.
-    HandleOnLeader(req, resp, &rpc, [&]() -> Status {
+    HandleOnLeader(resp, &rpc, [&]() -> Status {
       if (PREDICT_FALSE(FLAGS_master_inject_latency_on_tablet_lookups_ms > 0)) {
         SleepFor(MonoDelta::FromMilliseconds(FLAGS_master_inject_latency_on_tablet_lookups_ms));
       }
@@ -124,6 +128,8 @@ class MasterClientServiceImpl : public MasterServiceBase, public MasterClientIf 
     (RedisConfigSet)
     (RedisConfigGet)
     (ReservePgsqlOids)
+    (GetIndexBackfillProgress)
+    (GetStatefulServiceLocation)
   )
 
   MASTER_SERVICE_IMPL_ON_LEADER_WITHOUT_LOCK(

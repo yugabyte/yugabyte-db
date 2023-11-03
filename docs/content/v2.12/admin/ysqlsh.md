@@ -32,7 +32,7 @@ If you prefer, you can install a standalone version using any of the following m
 - Using Homebrew:
 
     ```sh
-    brew tap yugabyte/yugabytedb
+    brew tap yugabyte/tap
     brew install yugabytedb-client
     ysqlsh
     ```
@@ -40,11 +40,16 @@ If you prefer, you can install a standalone version using any of the following m
 - Using a shell script:
 
     ```sh
-    wget -q -O - https://downloads.yugabyte.com/get_clients.sh | sh
-    yugabyte*/bin/ysqlsh
+    $ curl -sSL https://downloads.yugabyte.com/get_clients.sh | bash
     ```
 
-### Example
+    If you have `wget`, you can use the following:
+
+    ```sh
+    wget -q -O - https://downloads.yugabyte.com/get_clients.sh | sh
+    ```
+
+### Starting ysqlsh
 
 ```sh
 $ ./bin/ysqlsh
@@ -57,7 +62,7 @@ Type "help" for help.
 yugabyte=#
 ```
 
-## Online help
+### Online help
 
 Run `ysqlsh --help` to display the online help.
 

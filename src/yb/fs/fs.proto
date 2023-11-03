@@ -51,7 +51,23 @@ message InstanceMetadataPB {
   // initialized.
   required string format_stamp = 2;
 
+  // For all newly created clusters after this field is set, initialize this variable to true.
+  // For existing clusters this will be false. This will be used on the sys catalog restore path
+  // to indicate whether we want to run initdb.
+  optional bool initdb_done_set_after_sys_catalog_restore = 3;
+
+  // Tserver specific metadata.
+  optional TserverInstanceMetadataPB tserver_instance_metadata = 4;
+
   // TODO: add a "node type" (TS/Master?)
+}
+
+message TserverInstanceMetadataPB {
+  // The universe_uuid received from the master leader on the first heartbeat after creation
+  // or an upgrade. This is the identifier for the cluster this server belongs to. It is passed
+  // in every heartbeat request and compared with the value on master leader to ensure a match.
+  // Only set on the tserver.
+  optional string universe_uuid = 1;
 }
 
 // Describes a collection of filesystem path instances and the membership of a

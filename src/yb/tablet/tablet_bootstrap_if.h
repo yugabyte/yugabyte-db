@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TABLET_TABLET_BOOTSTRAP_IF_H
-#define YB_TABLET_TABLET_BOOTSTRAP_IF_H
+#pragma once
 
 #include <memory>
 #include <shared_mutex>
@@ -56,8 +55,6 @@
 namespace yb {
 
 class MetricRegistry;
-class Partition;
-class PartitionSchema;
 class ThreadPool;
 
 namespace consensus {
@@ -93,7 +90,7 @@ class TabletStatusListener {
 
   const std::string table_id() const;
 
-  std::shared_ptr<Partition> partition() const;
+  std::shared_ptr<dockv::Partition> partition() const;
 
   SchemaPtr schema() const;
 
@@ -162,14 +159,18 @@ struct BootstrapTabletData {
   ThreadPool* append_pool = nullptr;
   ThreadPool* allocation_pool = nullptr;
   ThreadPool* log_sync_pool = nullptr;
-  consensus::RetryableRequests* retryable_requests = nullptr;
-
+  consensus::RetryableRequestsManager* retryable_requests_manager = nullptr;
   std::shared_ptr<TabletBootstrapTestHooksIf> test_hooks = nullptr;
+  bool bootstrap_retryable_requests = true;
+  consensus::ConsensusMetadata* consensus_meta = nullptr;
+  log::PreLogRolloverCallback pre_log_rollover_callback = {};
 };
 
 // Bootstraps a tablet, initializing it with the provided metadata. If the tablet
 // has blocks and log segments, this method rebuilds the soft state by replaying
 // the Log.
+// It might update ConsensusMetadata file and will also update data.consensus_meta
+// if it's set.
 //
 // This is a synchronous method, but is typically called within a thread pool by
 // TSTabletManager.
@@ -181,5 +182,3 @@ Status BootstrapTablet(
 
 }  // namespace tablet
 }  // namespace yb
-
-#endif // YB_TABLET_TABLET_BOOTSTRAP_IF_H

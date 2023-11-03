@@ -21,7 +21,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef ROCKSDB_LITE
 
 #include <memory>
 #include <map>
@@ -141,7 +140,6 @@ void TestValueAsSecondaryIndexHelper(std::vector<Entry> entries,
       for (auto pair : data_map) {
         for (auto v : pair.second) {
           ASSERT_OK(iter->status());
-          ASSERT_TRUE(iter->Valid());
           auto write_entry = iter->Entry();
           ASSERT_EQ(pair.first, write_entry.key.ToString());
           ASSERT_EQ(v->type, write_entry.type);
@@ -521,32 +519,52 @@ typedef std::map<std::string, std::string> KVMap;
 class KVIter : public Iterator {
  public:
   explicit KVIter(const KVMap* map) : map_(map), iter_(map_->end()) {}
-  virtual bool Valid() const { return iter_ != map_->end(); }
-  virtual void SeekToFirst() { iter_ = map_->begin(); }
-  virtual void SeekToLast() {
+  const KeyValueEntry& SeekToFirst() override {
+    iter_ = map_->begin();
+    return Entry();
+  }
+  const KeyValueEntry& SeekToLast() override {
     if (map_->empty()) {
       iter_ = map_->end();
     } else {
       iter_ = map_->find(map_->rbegin()->first);
     }
+    return Entry();
   }
-  virtual void Seek(const Slice& k) { iter_ = map_->lower_bound(k.ToString()); }
-  virtual void Next() { ++iter_; }
-  virtual void Prev() {
+  const KeyValueEntry& Seek(Slice k) override {
+    iter_ = map_->lower_bound(k.ToString());
+    return Entry();
+  }
+  const KeyValueEntry& Next() override {
+    ++iter_;
+    return Entry();
+  }
+  const KeyValueEntry& Prev() override {
     if (iter_ == map_->begin()) {
       iter_ = map_->end();
-      return;
+      return Entry();
     }
     --iter_;
+    return Entry();
   }
 
-  virtual Slice key() const { return iter_->first; }
-  virtual Slice value() const { return iter_->second; }
-  virtual Status status() const { return Status::OK(); }
+  const KeyValueEntry& Entry() const override {
+    if (iter_ == map_->end()) {
+      return KeyValueEntry::Invalid();
+    }
+    entry_ = {
+      .key = iter_->first,
+      .value = iter_->second,
+    };
+    return entry_;
+  }
+
+  Status status() const override { return Status::OK(); }
 
  private:
   const KVMap* const map_;
   KVMap::const_iterator iter_;
+  mutable KeyValueEntry entry_;
 };
 
 void AssertIter(Iterator* iter, const std::string& key,
@@ -1358,12 +1376,12 @@ TEST_F(WriteBatchWithIndexTest, MutateWhileIteratingCorrectnessTest) {
 }
 
 void AssertIterKey(std::string key, Iterator* iter) {
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ(key, iter->key().ToString());
 }
 
 void AssertIterValue(std::string value, Iterator* iter) {
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ(value, iter->value().ToString());
 }
 
@@ -1474,12 +1492,12 @@ TEST_F(WriteBatchWithIndexTest, MutateWhileIteratingBaseStressTest) {
         iter->Seek(std::string(2, c));
         break;
       case 6:
-        if (iter->Valid()) {
+        if (ASSERT_RESULT(iter->CheckedValid())) {
           iter->Next();
         }
         break;
       case 7:
-        if (iter->Valid()) {
+        if (ASSERT_RESULT(iter->CheckedValid())) {
           iter->Prev();
         }
         break;
@@ -1528,6 +1546,9 @@ static std::string PrintContents(WriteBatchWithIndex* batch,
     result.append(",");
     iter->Next();
   }
+  if (!iter->status().ok()) {
+    result.append(iter->status().ToString());
+  }
 
   delete iter;
   return result;
@@ -1557,6 +1578,9 @@ static std::string PrintContents(WriteBatchWithIndex* batch, KVMap* base_map,
     result.append(",");
 
     iter->Next();
+  }
+  if (!iter->status().ok()) {
+    result.append(iter->status().ToString());
   }
 
   delete iter;
@@ -1804,13 +1828,3 @@ int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
-
-#else
-#include <stdio.h>
-
-int main() {
-  fprintf(stderr, "SKIPPED\n");
-  return 0;
-}
-
-#endif  // !ROCKSDB_LITE

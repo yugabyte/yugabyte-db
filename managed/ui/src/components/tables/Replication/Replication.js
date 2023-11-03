@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import PropTypes from 'prop-types';
 import moment from 'moment';
 import _, { isEmpty } from 'lodash';
@@ -9,7 +9,7 @@ import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBPanelItem } from '../../panels';
 import { YBLoading } from '../../common/indicators';
 import { YBResourceCount } from '../../common/descriptors';
-import { MetricsPanel } from '../../metrics';
+import { MetricsPanelOld } from '../../metrics';
 import { ReplicationAlertModalBtn } from './ReplicationAlertModalBtn';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 import { CustomDatePicker } from '../../metrics/CustomDatePicker/CustomDatePicker';
@@ -160,8 +160,8 @@ export default class Replication extends Component {
 
       if (replicationNodeMetrics.length > 0) {
         // Get max-value and avg-value metric array
-        let avgArr = null,
-          maxArr = null;
+        let avgArr = null;
+        let maxArr = null;
         replicationNodeMetrics.forEach((metric) => {
           if (!avgArr && !maxArr) {
             avgArr = metric.y.map((v) => parseFloat(v) / replicationNodeMetrics.length);
@@ -196,6 +196,7 @@ export default class Replication extends Component {
 
     let infoBlock = <span />;
     let recentStatBlock = null;
+    // eslint-disable-next-line eqeqeq
     if (latestStat != null) {
       if (parseInt(latestStat) === 0) {
         infoBlock = (
@@ -297,7 +298,7 @@ export default class Replication extends Component {
 
               {showMetrics && metrics[GRAPH_TYPE] && (
                 <div className={`graph-container ${!hideHeader ? 'old-view' : ''}`}>
-                  <MetricsPanel
+                  <MetricsPanelOld
                     currentUser={currentUser}
                     metricKey={METRIC_NAME}
                     metric={JSON.parse(JSON.stringify(aggregatedMetrics))}

@@ -12,8 +12,7 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_BFQL_BFUNC_NAMES_H_
-#define YB_BFQL_BFUNC_NAMES_H_
+#pragma once
 
 namespace yb {
 namespace bfql {
@@ -23,5 +22,3 @@ const char *const kCqlCastFuncName = "cql_cast";
 
 } // namespace bfql
 } // namespace yb
-
-#endif  // YB_BFQL_BFUNC_NAMES_H_

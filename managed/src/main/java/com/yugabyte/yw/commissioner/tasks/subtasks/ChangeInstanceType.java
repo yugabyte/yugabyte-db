@@ -6,7 +6,6 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.Universe;
 import lombok.extern.slf4j.Slf4j;
 
@@ -14,11 +13,15 @@ import lombok.extern.slf4j.Slf4j;
 public class ChangeInstanceType extends NodeTaskBase {
 
   @Inject
-  protected ChangeInstanceType(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected ChangeInstanceType(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
-  public static class Params extends NodeTaskParams {}
+  public static class Params extends NodeTaskParams {
+    public boolean force = false;
+    // Amount of memory to limit the postgres process to via the ysql cgroup (in megabytes)
+    public int cgroupSize = 0;
+  }
 
   @Override
   protected Params taskParams() {
@@ -35,7 +38,7 @@ public class ChangeInstanceType extends NodeTaskBase {
     log.info(
         "Running ChangeInstanceType against node {} to change its type from {} to {}",
         taskParams().nodeName,
-        Universe.getOrBadRequest(taskParams().universeUUID)
+        Universe.getOrBadRequest(taskParams().getUniverseUUID())
             .getNode(taskParams().nodeName)
             .cloudInfo
             .instance_type,
@@ -44,5 +47,10 @@ public class ChangeInstanceType extends NodeTaskBase {
     getNodeManager()
         .nodeCommand(NodeManager.NodeCommandType.Change_Instance_Type, taskParams())
         .processErrors();
+  }
+
+  @Override
+  public int getRetryLimit() {
+    return 2;
   }
 }

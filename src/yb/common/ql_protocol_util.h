@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_QL_PROTOCOL_UTIL_H
-#define YB_COMMON_QL_PROTOCOL_UTIL_H
+#pragma once
 
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
@@ -24,12 +23,10 @@
 
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
+#include "yb/util/write_buffer.h"
 #include "yb/util/yb_partition.h"
 
 namespace yb {
-
-class QLRowBlock;
-class Schema;
 
 #define QL_PROTOCOL_TYPES \
     ((Int8, int8, int8_t)) \
@@ -86,8 +83,6 @@ QLValuePB* QLPrepareCondition(QLConditionPB* condition, int column_id, QLOperato
 
 void QLAddColumns(const Schema& schema, const std::vector<ColumnId>& columns,
                   QLReadRequestPB* req);
-
-std::unique_ptr<QLRowBlock> CreateRowBlock(QLClient client, const Schema& schema, Slice data);
 
 // Does this write request require reading existing data for evaluating expressions before writing?
 bool RequireReadForExpressions(const QLWriteRequestPB& request);
@@ -156,7 +151,7 @@ static inline int32_t CQLDecodeLength(const void* buffer) {
 }
 
 //----------------------------------- CQL value encode functions ---------------------------------
-void CQLEncodeLength(const ssize_t length, faststring* buffer);
+void CQLEncodeLength(const ssize_t length, WriteBuffer* buffer);
 
 // Encode a 32-bit length into the buffer without extending the buffer. Caller should ensure the
 // buffer size is at least 4 bytes.
@@ -167,29 +162,29 @@ void CQLEncodeLength(const ssize_t length, void* buffer);
 // is the coverter's return type. The converter's input type <data_type> is unsigned while
 // <num_type> may be signed or unsigned.
 template<typename num_type, typename data_type>
-static inline void CQLEncodeNum(
-    void (*converter)(void *, data_type), const num_type val, faststring* buffer) {
+inline void CQLEncodeNum(
+    void (*converter)(void *, data_type), const num_type val, WriteBuffer* buffer) {
   static_assert(sizeof(data_type) == sizeof(num_type), "inconsistent num type size");
   CQLEncodeLength(sizeof(num_type), buffer);
   data_type byte_value;
   (*converter)(&byte_value, static_cast<data_type>(val));
-  buffer->append(&byte_value, sizeof(byte_value));
+  buffer->Append(pointer_cast<const char*>(&byte_value), sizeof(byte_value));
 }
 
 // Encode a CQL floating point number (float or double). <float_type> is the floating point type.
 // <converter> converts the number from machine byte-order to network order and <data_type>
 // is the coverter's input type. The converter's input type <data_type> is an integer type.
 template<typename float_type, typename data_type>
-static inline void CQLEncodeFloat(
-    void (*converter)(void *, data_type), const float_type val, faststring* buffer) {
+inline void CQLEncodeFloat(
+    void (*converter)(void *, data_type), const float_type val, WriteBuffer* buffer) {
   static_assert(sizeof(float_type) == sizeof(data_type), "inconsistent floating point type size");
   const data_type value = *reinterpret_cast<const data_type*>(&val);
   CQLEncodeNum(converter, value, buffer);
 }
 
-static inline void CQLEncodeBytes(const std::string& val, faststring* buffer) {
+inline void CQLEncodeBytes(const std::string& val, WriteBuffer* buffer) {
   CQLEncodeLength(val.size(), buffer);
-  buffer->append(val);
+  buffer->Append(Slice(val));
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -200,21 +195,15 @@ static inline void CQLEncodeBytes(const std::string& val, faststring* buffer) {
 
 // Allocates the space in the buffer for writing the correct length later and returns the buffer
 // position after (i.e. where the serialization for the collection value will begin)
-static inline int32_t CQLStartCollection(faststring* buffer) {
+inline WriteBufferPos CQLStartCollection(WriteBuffer* buffer) {
+  auto result = buffer->Position();
   CQLEncodeLength(0, buffer);
-  return static_cast<int32_t>(buffer->size());
+  return result;
 }
 
 // Sets the value for the serialized size of a collection by subtracting the start position to
 // compute length and writing it at the right position in the buffer
-static inline void CQLFinishCollection(int32_t start_pos, faststring* buffer) {
-  // computing collection size (in bytes)
-  int32_t coll_size = static_cast<int32_t>(buffer->size()) - start_pos;
-
-  // writing the collection size in bytes to the length component of the CQL value
-  int32_t pos = start_pos - sizeof(int32_t); // subtracting size of length component
-  NetworkByteOrder::Store32(&(*buffer)[pos], static_cast<uint32_t>(coll_size));
-}
+void CQLFinishCollection(const WriteBufferPos& start_pos, WriteBuffer* buffer);
 
 static inline void Store8(void* p, uint8_t v) {
   *static_cast<uint8_t*>(p) = v;
@@ -226,5 +215,3 @@ static inline uint8_t Load8(const void* p) {
 }
 
 } // namespace yb
-
-#endif // YB_COMMON_QL_PROTOCOL_UTIL_H

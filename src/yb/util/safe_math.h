@@ -33,8 +33,7 @@
 // These should be used when doing bounds checks on user-provided data,
 // for example.
 // See also: https://www.securecoding.cert.org/confluence/display/cplusplus/INT32-CPP.+Ensure+that+operations+on+signed+integers+do+not+result+in+overflow
-#ifndef YB_UTIL_SAFE_MATH_H
-#define YB_UTIL_SAFE_MATH_H
+#pragma once
 
 #include "yb/gutil/mathlimits.h"
 
@@ -80,4 +79,3 @@ inline Type AddWithOverflowCheck(Type a, Type b, bool *overflowed) {
 }
 
 } // namespace yb
-#endif // YB_UTIL_SAFE_MATH_H

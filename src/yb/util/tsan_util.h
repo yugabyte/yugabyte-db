@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_TSAN_UTIL_H
-#define YB_UTIL_TSAN_UTIL_H
+#pragma once
 
 namespace yb {
 
@@ -58,5 +57,3 @@ const int kTimeMultiplier = RegularBuildVsSanitizers(1, 3);
 const float kTimeMultiplierWithFraction = RegularBuildVsSanitizers(1.0f, 3.0f);
 
 }  // namespace yb
-
-#endif  // YB_UTIL_TSAN_UTIL_H

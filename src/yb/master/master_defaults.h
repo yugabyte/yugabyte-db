@@ -11,10 +11,10 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_MASTER_DEFAULTS_H
-#define YB_MASTER_MASTER_DEFAULTS_H
+#pragma once
 
-#include <string>
+#include <stdint.h>
+#include <stddef.h>
 
 namespace yb {
 namespace master {
@@ -30,6 +30,8 @@ static const char* const kSystemAuthNamespaceId = "00000000000000000000000000000
 
 static const char* const kSystemDistributedNamespaceName = "system_distributed";
 static const char* const kSystemTracesNamespaceName = "system_traces";
+
+static const char* const kSystemPlatformNamespace = "system_platform";
 
 static const char* const kSystemPeersTableName = "peers";
 static const char* const kSystemPeersV2TableName = "peers_v2";
@@ -48,36 +50,30 @@ static const char* const kSystemSchemaPartitionsTableName = "partitions";
 static const char* const kSystemSchemaKeyspacesTableName = "keyspaces";
 static const char* const kSystemSchemaTablesTableName = "tables";
 
-static const char* const kCdcStateTableName = "cdc_state";
-static const char* const kCdcTabletId = "tablet_id";
-constexpr size_t kCdcTabletIdIdx = 0;
-static const char* const kCdcStreamId = "stream_id";
-constexpr size_t kCdcStreamIdIdx = 1;
-static const char* const kCdcCheckpoint  = "checkpoint";
-constexpr size_t kCdcCheckpointIdx = 2;
-static const char* const kCdcData = "data";
-static const char* const kCdcLastReplicationTime = "last_replication_time";
-constexpr size_t kCdcLastReplicationTimeIdx = 4;
-static const char* const kCdcStreamIdMappingTableName = "cdc_stream_id_mapping";
-constexpr size_t kCdcTabletIdIdxforStreamIdMap = 1;
-static const char* const kCdcDbStreamId = "db_stream_id";
-constexpr size_t kCdcDbStreamIdIdx = 0;
-static const char* const kCdcTableId = "table_id";
-constexpr size_t kCdcTableIdIdx = 3;
-
-
 static const char* const kXClusterSafeTimeTableName = "xcluster_safe_time";
 static const char* const kXCUniverseId = "universe_id";
 constexpr size_t kXCUniverseIdIdx = 0;
 static const char* const kXCProducerTabletId = "tablet_id";
 constexpr size_t kXCProducerTabletIdIdx = 1;
-static const char* const kXCSafeTime  = "safe_time";
+static const char* const kXCSafeTime = "safe_time";
 constexpr size_t kXCSafeTimeIdx = 2;
+
+static const char* const kPgAutoAnalyzeTableId = "table_id";
+static const char* const kPgAutoAnalyzeMutations = "mutations_since_last_analyze";
+static const char* const kPgAutoAnalyzeLastAnalyzeInfo = "last_analyze_info";
+static const char* const kPgAutoAnalyzeCurrentAnalyzeInfo = "current_analyze_info";
 
 static const char* const kSystemAuthRolesTableName = "roles";
 static const char* const kSystemAuthRolePermissionsTableName = "role_permissions";
 static const char* const kSystemAuthResourceRolePermissionsIndexTableName =
                   "resource_role_permissions_index";
+
+static const char* const kTestEchoTimestamp = "timestamp";
+constexpr size_t kTestEchoTimestampIdx = 0;
+static const char* const kTestEchoNodeId = "node_id";
+constexpr size_t kTestEchoNodeIdIdx = 1;
+static const char* const kTestEchoMessage = "message";
+constexpr size_t kTestEchoMessageIdx = 2;
 
 static const char* const kDefaultSchemaVersion = "00000000-0000-0000-0000-000000000000";
 
@@ -100,5 +96,3 @@ constexpr uint16_t kMasterDefaultWebPort = 7000;
 
 } // namespace master
 } // namespace yb
-
-#endif // YB_MASTER_MASTER_DEFAULTS_H

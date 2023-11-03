@@ -3,26 +3,34 @@
 package com.yugabyte.yw.forms;
 
 import com.yugabyte.yw.models.NodeAgent;
-import com.yugabyte.yw.models.NodeAgent.State;
-import java.util.HashMap;
+import com.yugabyte.yw.models.NodeAgent.ArchType;
+import com.yugabyte.yw.models.NodeAgent.OSType;
 import java.util.UUID;
+import play.data.validation.Constraints;
 
 /** This class is used by NodeAgentController to send request payload. */
 public class NodeAgentForm {
-  public String name;
-  public String ip;
-  public String version;
-  public State state;
+  @Constraints.Required public String name;
+  @Constraints.Required public String ip;
+  @Constraints.Required public String version;
+  @Constraints.Required public String archType;
+  @Constraints.Required public String osType;
+  @Constraints.Required public String home;
+  public String state;
+  @Constraints.Required public int port;
 
   // Helper method to create NodeAgent.
   public NodeAgent toNodeAgent(UUID customerUuid) {
     NodeAgent nodeAgent = new NodeAgent();
-    nodeAgent.customerUuid = customerUuid;
-    nodeAgent.name = name;
-    nodeAgent.ip = ip;
-    nodeAgent.state = state;
-    nodeAgent.version = version;
-    nodeAgent.config = new HashMap<>();
+    nodeAgent.setCustomerUuid(customerUuid);
+    nodeAgent.setName(name);
+    nodeAgent.setIp(ip);
+    nodeAgent.setPort(port);
+    nodeAgent.setVersion(version);
+    nodeAgent.setHome(home);
+    nodeAgent.setArchType(ArchType.parse(archType));
+    nodeAgent.setOsType(OSType.parse(osType));
+    nodeAgent.setConfig(new NodeAgent.Config());
     return nodeAgent;
   }
 }

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_PG_SYSTEM_ATTR_H
-#define YB_COMMON_PG_SYSTEM_ATTR_H
+#pragma once
 
 namespace yb {
 
@@ -44,5 +43,3 @@ enum class PgSystemAttrNum : int {
 };
 
 } // namespace yb
-
-#endif // YB_COMMON_PG_SYSTEM_ATTR_H

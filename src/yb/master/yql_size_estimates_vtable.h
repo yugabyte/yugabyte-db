@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_YQL_SIZE_ESTIMATES_VTABLE_H
-#define YB_MASTER_YQL_SIZE_ESTIMATES_VTABLE_H
+#pragma once
 
 #include "yb/master/yql_virtual_table.h"
 
@@ -24,15 +23,15 @@ class YQLSizeEstimatesVTable : public YQLVirtualTable {
   explicit YQLSizeEstimatesVTable(const TableName& table_name,
                                   const NamespaceName& namespace_name,
                                   Master* const master);
-  Result<std::shared_ptr<QLRowBlock>> RetrieveData(const QLReadRequestPB& request) const override;
+  Result<VTableDataPtr> RetrieveData(const QLReadRequestPB& request) const override;
  protected:
   Schema CreateSchema() const;
  private:
   Status PopulateColumnInformation(const Schema& schema,
-                                           const std::string& keyspace_name,
-                                           const std::string& table_name,
-                                           const size_t col_idx,
-                                           QLRow* const row) const;
+                                   const std::string& keyspace_name,
+                                   const std::string& table_name,
+                                   const size_t col_idx,
+                                   qlexpr::QLRow* const row) const;
   static constexpr const char* const kKeyspaceName = "keyspace_name";
   static constexpr const char* const kTableName = "table_name";
   static constexpr const char* const kRangeStart = "range_start";
@@ -43,4 +42,3 @@ class YQLSizeEstimatesVTable : public YQLVirtualTable {
 
 }  // namespace master
 }  // namespace yb
-#endif // YB_MASTER_YQL_SIZE_ESTIMATES_VTABLE_H

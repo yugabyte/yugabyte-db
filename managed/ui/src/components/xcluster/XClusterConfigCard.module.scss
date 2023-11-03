@@ -1,0 +1,147 @@
+@use '../../_style/colors.scss';
+@use '../../_style/mixins.scss';
+
+.configCard {
+  background: colors.$YB_BG_WHITE_3;
+  box-shadow: 0 0.12em 2px rgba(colors.$YB_DARK_GRAY_2, 0.05),
+    0 0.5em 10px rgba(colors.$YB_DARK_GRAY_2, 0.07);
+  border-radius: 6px;
+  color: colors.$YB_TEXT_COLOR !important;
+
+  a {
+    color: unset;
+  }
+
+  a:hover .configName {
+    color: colors.$YB_ORANGE !important;
+    @include mixins.transition(0.125s);
+  }
+
+  .headerSection {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+    justify-content: flex-start;
+
+    padding: 12px 20px;
+
+    .configNameContainer {
+      align-items: center;
+      display: flex;
+      gap: 8px;
+
+      width: 40%;
+
+      .configName {
+        color: colors.$YB_VIOLET_TEXT;
+        font-size: 18px;
+        font-weight: 500;
+        word-break: break-all;
+        @include mixins.transition(0.35s);
+        a:hover {
+          color: colors.$YB_ORANGE !important;
+          @include mixins.transition(0.125s);
+        }
+      }
+    }
+
+    .metaInfoContainer {
+      display: flex;
+      justify-content: space-between;
+
+      width: 350px;
+      margin-right: auto;
+
+      .metaInfo {
+        font-size: 12px;
+        font-weight: 400;
+
+        .label {
+          margin-right: 10px;
+
+          font-size: 12px;
+          color: #9f9ea7;
+        }
+      }
+    }
+
+    .status {
+      font-size: 16px;
+      text-align: end;
+    }
+  }
+
+  .bodySection {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+
+    padding: 12px 20px;
+
+    border-top: 1px solid colors.$YB_GRAY_HOVER;
+    font-size: 12px;
+
+    .replicationGraph {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 40px;
+
+      .arrowIcon {
+        width: 30px;
+        height: 30px;
+        padding: 6px;
+
+        border-radius: 50%;
+        border: 1px solid #d7dde1;
+        text-align: center;
+      }
+    }
+
+    .configMetricsContainer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+
+      width: 360px;
+
+      .configMetric {
+        .label {
+          font-size: 12px;
+        }
+
+        .value {
+          font-size: 16px;
+          overflow: hidden;
+          white-space: nowrap;
+          text-overflow: ellipsis;
+        }
+
+        &.maxAcceptableLag {
+          .value {
+            max-width: 180px;
+          }
+        }
+
+        &.currentLag {
+          .value {
+            width: 180px;
+          }
+        }
+      }
+    }
+
+    .viewTasksPrompt {
+      font-size: 12px;
+
+      a {
+        color: colors.$YB_VIOLET_TEXT;
+        text-decoration: underline;
+
+        &:hover {
+          color: colors.$YB_ORANGE_HOVER;
+        }
+      }
+    }
+  }
+}

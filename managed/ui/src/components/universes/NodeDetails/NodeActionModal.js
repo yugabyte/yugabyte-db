@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { YBModal } from '../../common/forms/fields';
 import PropTypes from 'prop-types';
 import { browserHistory } from 'react-router';
@@ -23,14 +23,11 @@ export default class NodeActionModal extends Component {
     const { getNodeDetails, getNodeDetailsResponse } = this.props;
     this.interval = setTimeout(() => {
       getNodeDetails(universeUUID, nodeName).then((response) => {
-        if (response.payload && response.payload.data) {
+        if (response.payload?.data) {
           const node = response.payload.data;
-          if (
-            actionType === 'DELETE' ||
-            node.state === nodeActionExpectedResult[actionType]
-          ) {
+          if (actionType === 'DELETE' || node.state === nodeActionExpectedResult[actionType]) {
             clearInterval(this.interval);
-            getNodeDetailsResponse(response.payload)
+            getNodeDetailsResponse(response.payload);
             return;
           }
           getNodeDetailsResponse(response.payload);
@@ -57,12 +54,7 @@ export default class NodeActionModal extends Component {
     const universeUUID = currentUniverse.data.universeUUID;
     performUniverseNodeAction(universeUUID, nodeInfo.name, actionType).then((response) => {
       if (response.error !== true) {
-        this.pollNodeStatusUpdate(
-          universeUUID,
-          actionType,
-          nodeInfo.name,
-          response.payload
-        );
+        this.pollNodeStatusUpdate(universeUUID, actionType, nodeInfo.name, response.payload);
       }
     });
     onHide();

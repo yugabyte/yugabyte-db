@@ -9,9 +9,9 @@ import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
+import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
-import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.helpers.CustomerConfigValidator;
 import java.util.List;
 import java.util.UUID;
@@ -55,7 +55,7 @@ public class DeleteCustomerStorageConfig extends AbstractTaskBase {
         backupList.forEach(backup -> backup.transitionState(BackupState.QueuedForDeletion));
         configValidator.validateConfigRemoval(customerConfig);
       }
-      customerConfig.setState(ConfigState.QueuedForDeletion);
+      customerConfig.updateState(ConfigState.QueuedForDeletion);
     } catch (Exception e) {
       log.error("Error while deleting Configuration {}: ", params().configUUID, e);
       throw new RuntimeException(e.getMessage());

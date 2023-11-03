@@ -3,19 +3,19 @@ package models
 // LiveQueryResponseYcqlQueryItem - Schema for Live Query Response YCQL Query Item
 type LiveQueryResponseYcqlQueryItem struct {
 
-	Id string `json:"id"`
+    Id string `json:"id"`
 
-	NodeName string `json:"node_name"`
+    NodeName string `json:"node_name"`
 
-	Keyspace string `json:"keyspace"`
+    Keyspace string `json:"keyspace"`
 
-	Query string `json:"query"`
+    Query string `json:"query"`
 
-	Type string `json:"type"`
+    Type string `json:"type"`
 
-	ElapsedMillis int64 `json:"elapsed_millis"`
+    ElapsedMillis int64 `json:"elapsed_millis"`
 
-	ClientHost string `json:"client_host"`
+    ClientHost string `json:"client_host"`
 
-	ClientPort string `json:"client_port"`
+    ClientPort string `json:"client_port"`
 }

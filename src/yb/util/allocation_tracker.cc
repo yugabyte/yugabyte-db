@@ -15,7 +15,7 @@
 
 #include "yb/util/allocation_tracker.h"
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/util/debug-util.h"
 
@@ -23,7 +23,7 @@ namespace yb {
 
 AllocationTrackerBase::~AllocationTrackerBase() {
 #ifndef NDEBUG
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   for (auto& pair : objects_) {
     LOG(ERROR) << "Error of type " << name_ << " not destroyed, id: " << pair.second.second
                << ", created at: " << pair.second.first;
@@ -39,7 +39,7 @@ AllocationTrackerBase::~AllocationTrackerBase() {
 void AllocationTrackerBase::DoCreated(void* object) {
   LOG(INFO) << "Created " << name_ << ": " << object;
 #ifndef NDEBUG
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   objects_.emplace(object,
                   std::make_pair(GetStackTrace(StackTraceLineFormat::CLION_CLICKABLE),
                                  ++id_));
@@ -51,7 +51,7 @@ void AllocationTrackerBase::DoCreated(void* object) {
 void AllocationTrackerBase::DoDestroyed(void* object) {
   LOG(INFO) << "Destroyed " << name_ << ": " << object;
 #ifndef NDEBUG
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   objects_.erase(object);
 #else
   --count_;

@@ -18,8 +18,7 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_METADATA_H
-#define YB_ROCKSDB_METADATA_H
+#pragma once
 
 #include <stdint.h>
 
@@ -53,38 +52,6 @@ namespace rocksdb {
 struct ColumnFamilyMetaData;
 struct LevelMetaData;
 struct SstFileMetaData;
-
-// The metadata that describes a column family.
-struct ColumnFamilyMetaData {
-  ColumnFamilyMetaData() : size(0), name("") {}
-
-  // The size of this column family in bytes, which is equal to the sum of
-  // the file size of its "levels".
-  uint64_t size = 0;
-  // The number of files in this column family.
-  size_t file_count = 0;
-  // The name of the column family.
-  std::string name;
-  // The metadata of all levels in this column family.
-  std::vector<LevelMetaData> levels;
-};
-
-// The metadata that describes a level.
-struct LevelMetaData {
-  LevelMetaData(int _level, uint64_t _size,
-                const std::vector<SstFileMetaData>&& _files)
-      : level(_level),
-        size(_size),
-        files(_files) {}
-
-  // The level which this meta data describes.
-  const int level = 0;
-  // The size of this level in bytes, which is equal to the sum of
-  // the file size of its "files".
-  const uint64_t size = 0;
-  // The metadata of all sst files in this level.
-  const std::vector<SstFileMetaData> files;
-};
 
 class UserFrontier;
 
@@ -121,7 +88,9 @@ class UserFrontier {
   virtual bool IsUpdateValid(const UserFrontier& rhs, UpdateUserValueType type) const = 0;
 
   // Should return value that will be passed to iterator replacer.
-  virtual Slice Filter() const = 0;
+  virtual Slice FilterAsSlice() = 0;
+
+  virtual void ResetFilter() = 0;
 
   // Returns true if this frontier dominates another frontier, i.e. if we update this frontier
   // with the values from the other one in the direction specified by update_type, nothing will
@@ -326,7 +295,40 @@ struct SstFileMetaData {
   bool being_compacted = false; // true if the file is currently being compacted.
 
   std::string Name() const;
-  std::string FullName() const;
+  std::string BaseFilePath() const;
+  std::string DataFilePath() const;
+};
+
+// The metadata that describes a level.
+struct LevelMetaData {
+  LevelMetaData(int _level, uint64_t _size,
+                const std::vector<SstFileMetaData>&& _files)
+      : level(_level),
+        size(_size),
+        files(_files) {}
+
+  // The level which this meta data describes.
+  const int level = 0;
+  // The size of this level in bytes, which is equal to the sum of
+  // the file size of its "files".
+  const uint64_t size = 0;
+  // The metadata of all sst files in this level.
+  const std::vector<SstFileMetaData> files;
+};
+
+// The metadata that describes a column family.
+struct ColumnFamilyMetaData {
+  ColumnFamilyMetaData() : size(0), name("") {}
+
+  // The size of this column family in bytes, which is equal to the sum of
+  // the file size of its "levels".
+  uint64_t size = 0;
+  // The number of files in this column family.
+  size_t file_count = 0;
+  // The name of the column family.
+  std::string name;
+  // The metadata of all levels in this column family.
+  std::vector<LevelMetaData> levels;
 };
 
 // The full set of metadata associated with each SST file.
@@ -356,5 +358,3 @@ struct LiveFileMetaData : SstFileMetaData {
 };
 
 }  // namespace rocksdb
-
-#endif  // YB_ROCKSDB_METADATA_H

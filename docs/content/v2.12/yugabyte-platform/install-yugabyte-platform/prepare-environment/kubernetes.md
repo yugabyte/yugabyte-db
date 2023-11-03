@@ -14,43 +14,43 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/aws" class="nav-link">
-      <i class="fab fa-aws" aria-hidden="true"></i>
+    <a href="../aws" class="nav-link">
+      <i class="fa-brands fa-aws" aria-hidden="true"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/gcp" class="nav-link">
-       <i class="fab fa-google" aria-hidden="true"></i>
+    <a href="../gcp" class="nav-link">
+       <i class="fa-brands fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/azure" class="nav-link">
+    <a href="../azure" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       &nbsp;&nbsp; Azure
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/kubernetes" class="nav-link active">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+    <a href="../kubernetes" class="nav-link active">
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
 <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/openshift" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+    <a href="../openshift" class="nav-link">
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       OpenShift
     </a>
  </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/on-premises" class="nav-link">
-      <i class="fas fa-building" aria-hidden="true"></i>
+    <a href="../on-premises" class="nav-link">
+      <i class="fa-solid fa-building" aria-hidden="true"></i>
       On-premises
     </a>
   </li>
@@ -62,7 +62,6 @@ The Yugabyte Platform Helm chart has been tested using the following software ve
 - Kubernetes 1.18 or later.
 - Helm 3.4 or later.
 - Ability to pull Yugabyte Platform Docker image from quay.io repository
-
 
 Before installing the YugabyteDB Admin Console, verify you have the following:
 

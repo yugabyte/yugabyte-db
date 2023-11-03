@@ -1,7 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Fragment, Component } from 'react';
-import Dropzone from 'react-dropzone';
+import { Fragment, Component } from 'react';
+import Dropzone from 'react-dropzone3';
+
 import { YBLabel } from '../../../../components/common/descriptors';
 
 import './stylesheets/YBDropZone.scss';
@@ -59,7 +60,11 @@ export class YBDropZoneWithLabel extends Component {
             touched && error ? 'has-error' : ''
           } ${input.value ? 'has-value' : ''}`}
         >
-          <Dropzone className={this.props.className} name={this.props.input.name} onDrop={this.onDrop}>
+          <Dropzone
+            className={this.props.className}
+            name={this.props.input.name}
+            onDrop={this.onDrop}
+          >
             <p>{title}</p>
           </Dropzone>
           {input.value && <span className="drop-zone-file">{input.value.name}</span>}

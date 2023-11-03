@@ -25,6 +25,7 @@ import com.yugabyte.yw.models.helpers.EntityOperation;
 import com.yugabyte.yw.models.paging.MaintenanceWindowPagedQuery;
 import com.yugabyte.yw.models.paging.MaintenanceWindowPagedResponse;
 import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
+import io.ebean.DB;
 import io.ebean.Query;
 import io.ebean.annotation.Transactional;
 import java.util.Collections;
@@ -58,8 +59,7 @@ public class MaintenanceService {
 
     List<MaintenanceWindow> beforeWindows = Collections.emptyList();
     Set<UUID> windowUuids =
-        maintenanceWindows
-            .stream()
+        maintenanceWindows.stream()
             .filter(alert -> !alert.isNew())
             .map(MaintenanceWindow::getUuid)
             .collect(Collectors.toSet());
@@ -68,13 +68,11 @@ public class MaintenanceService {
       beforeWindows = list(filter);
     }
     Map<UUID, MaintenanceWindow> beforeWindowsMap =
-        beforeWindows
-            .stream()
+        beforeWindows.stream()
             .collect(Collectors.toMap(MaintenanceWindow::getUuid, Function.identity()));
 
     Map<EntityOperation, List<MaintenanceWindow>> toCreateAndUpdate =
-        maintenanceWindows
-            .stream()
+        maintenanceWindows.stream()
             .map(window -> prepareForSave(window, beforeWindowsMap.get(window.getUuid())))
             .filter(window -> filterForSave(window, beforeWindowsMap.get(window.getUuid())))
             .peek(window -> validate(window, beforeWindowsMap.get(window.getUuid())))
@@ -84,13 +82,13 @@ public class MaintenanceService {
         toCreateAndUpdate.getOrDefault(CREATE, Collections.emptyList());
     if (!toCreate.isEmpty()) {
       toCreate.forEach(MaintenanceWindow::generateUUID);
-      MaintenanceWindow.db().saveAll(toCreate);
+      DB.getDefault().saveAll(toCreate);
     }
 
     List<MaintenanceWindow> toUpdate =
         toCreateAndUpdate.getOrDefault(UPDATE, Collections.emptyList());
     if (!toUpdate.isEmpty()) {
-      MaintenanceWindow.db().updateAll(toUpdate);
+      DB.getDefault().updateAll(toUpdate);
     }
 
     log.trace("{} maintenance windows saved", toCreate.size() + toUpdate.size());
@@ -106,8 +104,7 @@ public class MaintenanceService {
     if (uuid == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Can't get maintenance window by null uuid");
     }
-    return list(MaintenanceWindowFilter.builder().uuid(uuid).build())
-        .stream()
+    return list(MaintenanceWindowFilter.builder().uuid(uuid).build()).stream()
         .findFirst()
         .orElse(null);
   }
@@ -121,6 +118,14 @@ public class MaintenanceService {
       throw new PlatformServiceException(BAD_REQUEST, "Invalid Maintenance Window UUID: " + uuid);
     }
     return window;
+  }
+
+  public MaintenanceWindow getOrBadRequest(UUID customerUUID, UUID uuid) {
+    MaintenanceWindow maintenanceWindow = getOrBadRequest(uuid);
+    if (!maintenanceWindow.getCustomerUUID().equals(customerUUID)) {
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Maintenance Window UUID: " + uuid);
+    }
+    return maintenanceWindow;
   }
 
   public List<MaintenanceWindow> list(MaintenanceWindowFilter filter) {

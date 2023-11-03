@@ -1,7 +1,8 @@
 ---
-title: Connect an app
+title: Go PQ Driver for YSQL
+headerTitle: Connect an application
 linkTitle: Connect an app
-description: Go drivers for YSQL
+description: Connect a Go application using PQ driver
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   stable:
@@ -11,13 +12,24 @@ menu:
 type: docs
 ---
 
-For Go Applications, most drivers provide database connectivity through the standard `database/sql` API. YugabyteDB supports the [PGX Driver](https://github.com/jackc/pgx) and the [PQ Driver](https://github.com/lib/pq).
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li class="active">
+    <a href="../yb-pgx/" class="nav-link">
+      YSQL
+    </a>
+  </li>
+  <li>
+    <a href="../ycql/" class="nav-link">
+      YCQL
+    </a>
+  </li>
+</ul>
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../yb-pgx/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YugabyteDB PGX Driver
+      YugabyteDB PGX Smart Driver
     </a>
   </li>
   <li >
@@ -38,11 +50,12 @@ For Go Applications, most drivers provide database connectivity through the stan
 
 The [PQ driver](https://github.com/lib/pq/) is a popular driver for PostgreSQL. Use the driver to connect to YugabyteDB to execute DMLs and DDLs using the standard `database/sql` package.
 
-## CRUD operations with PQ driver
+## CRUD operations
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-pq/) page under the Quick start section.
+For Go Applications, most drivers provide database connectivity through the standard `database/sql` API.
+The following sections break down the example to demonstrate how to perform common tasks required for Go application development using the PQ driver.
 
-The following sections break down the quick start example to demonstrate how to perform common tasks required for Go application development using the PQ driver.
+To start building your application, make sure you have met the [prerequisites](../#prerequisites).
 
 ### Step 1: Import the driver package
 
@@ -52,6 +65,17 @@ Import the PQ driver package by adding the following import statement in your Go
 import (
   _ "github.com/lib/pq"
 )
+```
+
+To install the package locally, run the following commands:
+
+{{< note title="Note">}}
+Set the  environment variable `GO111MODULE` before installing the `lib/pq` package if your Go version is 1.11 or higher.
+{{< /note >}}
+
+```sh
+export GO111MODULE=auto
+go get github.com/lib/pq
 ```
 
 ### Step 2: Set up the database connection
@@ -81,16 +105,16 @@ if err != nil {
 ```
 
 | Parameter | Description | Default |
-| :---------- | :---------- | :------ |
-| host  | hostname of the YugabyteDB instance | localhost
+| :-------- | :---------- | :------ |
+| user | User connecting to the database | yugabyte
+| password | User password | yugabyte
+| host | Hostname of the YugabyteDB instance | localhost
 | port |  Listen port for YSQL | 5433
-| user | user for connecting to the database | yugabyte
-| password | password for connecting to the database | yugabyte
-| dbname | database name | yugabyte
+| dbname | Database name | yugabyte
 
 #### Use SSL
 
-For a YugabyteDB Managed cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below at the client side. SSL/TLS is enabled by default for client-side authentication. Refer to [OpenSSL](../../../quick-start/build-apps/go/ysql-pq/#openssl) for the default and supported modes.
+For a YugabyteDB Managed cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below at the client side. SSL/TLS is enabled by default for client-side authentication. Refer to [Configure SSL/TLS](../../../reference/drivers/go/pq-reference/#ssl-modes) for the default and supported modes.
 
 ```sh
 $ export PGSSLMODE=verify-ca
@@ -102,92 +126,116 @@ $ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded
 | PGSSLMODE |  SSL mode used for the connection |
 | PGSSLROOTCERT | Path to the root certificate on your computer |
 
-### Step 3: Create tables
+### Step 3: Write your application
 
-Execute an SQL statement such as DDL `CREATE TABLE ...` using the `Exec()` function on the `db` instance.
-
-The CREATE DDL statement:
-
-```sql
-CREATE TABLE employee (id int PRIMARY KEY, name varchar, age int, language varchar)
-```
-
-Code snippet:
+Create a file called `QuickStart.go` and add the following contents into it:
 
 ```go
-var createStmt = `CREATE TABLE employee (id int PRIMARY KEY,
-                                         name varchar,
-                                         age int,
-                                         language varchar)`;
-if _, err := db.Exec(createStmt); err != nil {
-    log.Fatal(err)
-}
-```
+package main
 
-The `db.Exec()` function also returns an `error` object which, if not `nil`, needs to be handled in your code.
+import (
+  "database/sql"
+  "fmt"
+  "log"
 
-Read more on designing [Database schemas and tables](../../../explore/ysql-language-features/databases-schemas-tables/).
+  _ "github.com/lib/pq"
+)
 
-### Step 4: Read and write data
+const (
+  host     = "127.0.0.1"
+  port     = 5433
+  user     = "yugabyte"
+  password = "yugabyte"
+  dbname   = "yugabyte"
+)
 
-#### Insert data
-
-To write data into YugabyteDB, execute the `INSERT` statement using the same `db.Exec()` function.
-
-The INSERT DML statement:
-
-```sql
-INSERT INTO employee(id, name, age, language) VALUES (1, 'John', 35, 'Go')
-```
-
-Code snippet:
-
-```go
-var insertStmt string = "INSERT INTO employee(id, name, age, language)" +
-    " VALUES (1, 'John', 35, 'Go')";
-if _, err := db.Exec(insertStmt); err != nil {
-    log.Fatal(err)
-}
-```
-
-#### Query data
-
-To query data from YugabyteDB tables, execute the `SELECT` statement using the function `Query()` on `db` instance.
-
-Query results are returned as `rows` which can be iterated using `rows.next()` method. Use `rows.Scan()` for reading the data.
-
-The SELECT DML statement:
-
-```sql
-SELECT * from employee;
-```
-
-Code snippet:
-
-```go
-var name string
-var age int
-var language string
-rows, err := db.Query(`SELECT name, age, language FROM employee WHERE id = 1`)
-if err != nil {
-    log.Fatal(err)
-}
-defer rows.Close()
-fmt.Printf("Query for id=1 returned: ");
-for rows.Next() {
-    err := rows.Scan(&name, &age, &language)
+func main() {
+    psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s",
+                            host, port, user, password, dbname)
+    // Other connection configs are read from the standard environment variables:
+    // PGSSLMODE, PGSSLROOTCERT, and so on.
+    db, err := sql.Open("postgres", psqlInfo)
     if err != nil {
-       log.Fatal(err)
+        log.Fatal(err)
     }
-    fmt.Printf("Row[%s, %d, %s]\n", name, age, language)
-}
-err = rows.Err()
-if err != nil {
-    log.Fatal(err)
+
+    var dropStmt = `DROP TABLE IF EXISTS employee`;
+    if _, err := db.Exec(dropStmt); err != nil {
+        log.Fatal(err)
+    }
+    // The `conn.Exec()` function also returns an `error` object which,
+    // if not `nil`, needs to be handled in your code.
+    var createStmt = `CREATE TABLE employee (id int PRIMARY KEY,
+                                             name varchar,
+                                             age int,
+                                             language varchar)`;
+    if _, err := db.Exec(createStmt); err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println("Created table employee")
+
+    // Insert data using the conn.Exec() function.
+    var insertStmt string = "INSERT INTO employee(id, name, age, language)" +
+        " VALUES (1, 'John', 35, 'Go')";
+    if _, err := db.Exec(insertStmt); err != nil {
+        log.Fatal(err)
+    }
+    fmt.Printf("Inserted data: %s\n", insertStmt)
+
+    // Execute the `SELECT` statement using the function `Query()` on `db` instance.
+    var name string
+    var age int
+    var language string
+    rows, err := db.Query(`SELECT name, age, language FROM employee WHERE id = 1`)
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer rows.Close()
+    fmt.Printf("Query for id=1 returned: ");
+    // Results are returned as `rows` which can be iterated using `rows.next()` method.
+    for rows.Next() {
+        // Use `rows.Scan()` for reading the data.
+        err := rows.Scan(&name, &age, &language)
+        if err != nil {
+           log.Fatal(err)
+        }
+        fmt.Printf("Row[%s, %d, %s]\n", name, age, language)
+    }
+    err = rows.Err()
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    defer db.Close()
 }
 ```
 
-## Next steps
+The **const** values are set to the defaults for a local installation of YugabyteDB. If you're using YugabyteDB Managed, replace the values as follows:
 
-- Learn how to build Go applications using [GORM](../gorm/).
-- Learn more about [fundamentals](../../../reference/drivers/go/pq-reference/) of the PQ Driver.
+- **host** - The host address of your cluster. The host address is displayed on the cluster **Settings** tab.
+- **user** - Your YugabyteDB database username. In YugabyteDB Managed, the default user is **admin**.
+- **password** - Your YugabyteDB database password.
+- **dbname** - The name of the YugabyteDB database. The default name is **yugabyte**.
+- **port** is set to 5433, which is the default port for the YSQL API.
+
+Run the project `QuickStartApp.go` using the following command:
+
+```go
+go run QuickStartApp.go
+```
+
+You should see output similar to the following:
+
+```output
+Created table employee
+Inserted data: INSERT INTO employee(id, name, age, language) VALUES (1, 'John', 35, 'Go')
+Query for id=1 returned: Row[John, 35, Go]
+```
+
+## Learn more
+
+- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
+- [YugabyteDB PQ driver reference](../../../reference/drivers/go/pq-reference/)
+- [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
+- Build Go applications using [GORM](../gorm/)
+- Build Go applications using [PG](../pg/)

@@ -13,3 +13,4 @@ export { default as YBFormattedNumber } from './YBFormattedNumber';
 export { default as YBCodeBlock } from './YBCodeBlock';
 export { default as YBPanelLegend } from './YBPanelLegend';
 export { default as YBPopover } from './YBPopover';
+export { YBBanner, YBBannerVariant } from './YBBanner';

@@ -173,6 +173,8 @@ public class TestJsonIndex extends BaseCQLTest {
                     "  ( \"j->'a'->>'b'\" INT PRIMARY KEY, \"j->'a'->>'c'\" INT, j JSONB ) " +
                     "  WITH TRANSACTIONS = {'enabled' : true};");
 
+    waitForReadPermsOnAllIndexes("test_json_index_syntax");
+
     // Valid indexes: No name conflict.
     session.execute("CREATE INDEX jidx1 ON test_json_index_syntax(j->'a'->>'d');");
     session.execute("CREATE INDEX jidx2 ON test_json_index_syntax(j->'a'->>'c');");
@@ -214,6 +216,9 @@ public class TestJsonIndex extends BaseCQLTest {
     session.execute(table_stmt);
     session.execute(index_stmt);
 
+    // Wait until the index table has read permissions.
+    waitForReadPermsOnAllIndexes("TestJsonIndex".toLowerCase(), "test_json_index_escape");
+
     // Describe INDEX to test demangling column names.
     KeyspaceMetadata ks_metadata = cluster.getMetadata().getKeyspace("TestJsonIndex");
     TableMetadata tab_metadata = ks_metadata.getTable("test_json_index_escape");
@@ -222,7 +227,7 @@ public class TestJsonIndex extends BaseCQLTest {
 
     // INSERT and SELECT to test using mangled names.
     int rowCount = 10;
-    String rowDesc = "";
+    String[] rows = new String[rowCount];
     for (int i = 0; i < rowCount; i++) {
       String insert_stmt =
         String.format("INSERT INTO TestJsonIndex.test_json_index_escape" +
@@ -239,13 +244,14 @@ public class TestJsonIndex extends BaseCQLTest {
                       "  VALUES(%d, %d, '{ \"\\\"J$_attr->>C$_col\\\"\" : \"%s\" }');",
                       i, 1000 + i, "json_hash_value");
       session.execute(insert_stmt);
-      rowDesc += String.format("Row[%d]", 1000 + i);
+      rows[i] = String.format("Row[%d]", 1000 + i);
     }
 
     // Asserting query result.
-    assertQuery("SELECT \"$_$$_col\" FROM TestJsonIndex.test_json_index_escape" +
-                "  WHERE \"C$_col->>'$J_attr'\"->>'\"J$_attr->>C$_col\"' = 'json_hash_value';",
-                rowDesc);
+    assertQueryRowsUnordered(
+        "SELECT \"$_$$_col\" FROM TestJsonIndex.test_json_index_escape" +
+        "  WHERE \"C$_col->>'$J_attr'\"->>'\"J$_attr->>C$_col\"' = 'json_hash_value';",
+        rows);
   }
 
   @Test

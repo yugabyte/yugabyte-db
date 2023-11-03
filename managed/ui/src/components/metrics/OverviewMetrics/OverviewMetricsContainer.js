@@ -1,23 +1,28 @@
 // Copyright (c) YugaByte, Inc.
 
 import { connect } from 'react-redux';
-
 import { OverviewMetrics } from '../../metrics';
 import {
   queryMetrics,
   queryMetricsSuccess,
   queryMetricsFailure,
+  queryMasterMetricsSuccess,
+  queryMasterMetricsFailure,
   resetMetrics
 } from '../../../actions/graph';
 
 const mapDispatchToProps = (dispatch) => {
   return {
-    queryMetrics: (queryParams, panelType) => {
+    queryMetrics: (queryParams, panelType, isMasterMetrics = false) => {
       dispatch(queryMetrics(queryParams)).then((response) => {
         if (!response.error) {
-          dispatch(queryMetricsSuccess(response.payload, panelType));
+          isMasterMetrics
+            ? dispatch(queryMasterMetricsSuccess(response.payload, panelType))
+            : dispatch(queryMetricsSuccess(response.payload, panelType));
         } else {
-          dispatch(queryMetricsFailure(response.payload, panelType));
+          isMasterMetrics
+            ? dispatch(queryMasterMetricsFailure(response.payload, panelType))
+            : dispatch(queryMetricsFailure(response.payload, panelType));
         }
       });
     },

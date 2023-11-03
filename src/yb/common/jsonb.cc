@@ -25,8 +25,20 @@
 #include "yb/util/status_format.h"
 #include "yb/util/varint.h"
 
+using std::string;
+
 namespace yb {
 namespace common {
+
+string prepareSerializedJsonb(const string& body) {
+     common::Jsonb jsonb;
+     auto s = jsonb.FromString(body);
+     LOG_IF(DFATAL, !s.ok()) << "Unable to parse " << body;
+     return s.ok() ? jsonb.SerializedJsonb() : "";
+}
+
+string Jsonb::kSerializedJsonbNull = prepareSerializedJsonb("null");
+string Jsonb::kSerializedJsonbEmpty = prepareSerializedJsonb("{}");
 
 bool Jsonb::IsScalar(const JEntry& jentry) {
   uint32_t jentry_type = GetJEType(jentry);
@@ -116,7 +128,7 @@ std::pair<size_t, size_t> Jsonb::ComputeOffsetsAndJsonbHeader(size_t num_entries
 }
 
 Status Jsonb::ToJsonbProcessObject(const rapidjson::Value& document,
-                                           std::string* jsonb) {
+                                   std::string* jsonb) {
   DCHECK(document.IsObject());
 
   // Use a map since we need to store the keys in sorted order.
@@ -153,9 +165,9 @@ Status Jsonb::ToJsonbProcessObject(const rapidjson::Value& document,
 }
 
 Status Jsonb::ProcessJsonValueAndMetadata(const rapidjson::Value& value,
-                                                  const size_t data_begin_offset,
-                                                  std::string* jsonb,
-                                                  size_t* metadata_offset) {
+                                          const size_t data_begin_offset,
+                                          std::string* jsonb,
+                                          size_t* metadata_offset) {
   JEntry jentry = 0;
   switch (value.GetType()) {
     case rapidjson::Type::kNullType:
@@ -215,8 +227,8 @@ Status Jsonb::ProcessJsonValueAndMetadata(const rapidjson::Value& value,
 }
 
 Status Jsonb::ToJsonbProcessArray(const rapidjson::Value& document,
-                                          const bool is_scalar,
-                                          std::string* jsonb) {
+                                  const bool is_scalar,
+                                  std::string* jsonb) {
   DCHECK(document.IsArray());
 
   const auto& json_array = document.GetArray();
@@ -670,7 +682,7 @@ Status Jsonb::ApplyJsonbOperatorToArray(const Slice& jsonb, const QLJsonOperatio
   size_t num_array_entries = GetCount(jsonb_header);
 
   // Retrieve the array index and verify.
-  util::VarInt varint;
+  VarInt varint;
   RETURN_NOT_OK(varint.DecodeFromComparable(json_op.operand().value().varint_value()));
   int64_t array_index = VERIFY_RESULT(varint.ToInt64());
 

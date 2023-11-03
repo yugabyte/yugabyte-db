@@ -11,9 +11,9 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_QL_DATATYPE_H
-#define YB_COMMON_QL_DATATYPE_H
+#pragma once
 
+#include "yb/common/common_fwd.h"
 #include "yb/common/value.pb.h"
 
 namespace yb {
@@ -25,5 +25,3 @@ DataType InternalToDataType(InternalType internal_type);
 std::string InternalTypeToCQLString(InternalType internal_type);
 
 } // namespace yb
-
-#endif // YB_COMMON_QL_DATATYPE_H

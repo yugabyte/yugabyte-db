@@ -13,7 +13,7 @@ type: docs
 
 ## Overview
 
-A YugabyteDB cluster consists of two distributed services - the [YB-TServer](../../architecture/concepts/yb-tserver/) service and the [YB-Master](../../architecture/concepts/yb-master/) service. Since the YB-Master service serves the role of the cluster metadata manager, it should be brought up first followed by the YB-TServer service. In order to bring up these distributed services, the respective servers (YB-Master or YB-TServer) need to be started across different nodes. Below are some considerations and recommendations on starting these services. The *deployment configurations* section below has detailed steps on how to setup YugabyteDB clusters.
+A YugabyteDB cluster consists of two distributed services - the [YB-TServer](../../architecture/concepts/yb-tserver/) service and the [YB-Master](../../architecture/concepts/yb-master/) service. Since the YB-Master service serves the role of the cluster metadata manager, it should be brought up first followed by the YB-TServer service. In order to bring up these distributed services, the respective servers (YB-Master or YB-TServer) need to be started across different nodes. Below are some considerations and recommendations on starting these services. The *deployment configurations* section below has detailed steps on how to set up YugabyteDB clusters.
 
 ## Basics
 
@@ -134,7 +134,7 @@ For YugabyteDB to preserve data consistency, the clock drift and clock skew acro
 
 Set a safe value for the maximum clock skew flag (`--max_clock_skew_usec`) for YB-TServers and YB-Masters when starting the YugabyteDB servers. The recommended value is two times the expected maximum clock skew between any two nodes in your deployment.
 
-For example, if the maximum clock skew across nodes is expected to be no more than 250 microseconds, then set the parameter to 500 microseconds (`--max_clock_skew_usec=500000`).
+For example, if the maximum clock skew across nodes is expected to be no more than 250 milliseconds, then set the parameter to 500000 (`--max_clock_skew_usec=500000`).
 
 ### Clock drift
 
@@ -157,8 +157,8 @@ For a list of best practices, see [security checklist](../../secure/security-che
 - Use the `c5` or `i3` instance families.
 - Recommended types are `i3.2xlarge`, `i3.4xlarge`, `c5.2xlarge`, `c5.4xlarge`
 - For the `c5` instance family, use `gp2` EBS (SSD) disks that are **at least 250GB** in size, larger if more IOPS are needed.
-      - The number of IOPS are proportional to the size of the disk.
-      - In our testing, `gp2` EBS SSDs provide the best performance for a given cost among the various EBS disk options.
+  - Scale up the IOPS as you scale up the size of the disk.
+  - In our testing, `gp2` EBS SSDs provide the best performance for a given cost among the various EBS disk options.
 - Avoid running on [`t2` instance types](https://aws.amazon.com/ec2/instance-types/t2/). The `t2` instance types are burstable instance types. Their baseline performance and ability to burst are governed by CPU Credits, and makes it hard to get steady performance.
 
 ### Google Cloud
@@ -166,7 +166,7 @@ For a list of best practices, see [security checklist](../../secure/security-che
 - Use the `n1-highcpu` instance family. As a second choice, `n1-standard` instance family works too.
 - Recommended instance types are `n1-highcpu-8` and `n1-highcpu-16`.
 - [Local SSDs](https://cloud.google.com/compute/docs/disks/#localssds) are the preferred storage option.
-      - Each local SSD is 375 GB in size, but you can attach up to eight local SSD devices for 3 TB of total local SSD storage space per instance.
+  - Each local SSD is 375 GB in size, but you can attach up to eight local SSD devices for 3 TB of total local SSD storage space per instance.
 - As a second choice, [remote persistent SSDs](https://cloud.google.com/compute/docs/disks/#pdspecs) work well. Make sure the size of these SSDs are **at least 250GB** in size, larger if more IOPS are needed.
-      - The number of IOPS are proportional to the size of the disk.
+  - The number of IOPS scale automatically in proportion to the size of the disk.
 - Avoid running on `f1` or `g1` machine families. These are [burstable, shared core machines](https://cloud.google.com/compute/docs/machine-types#sharedcore) that may not deliver steady performance.

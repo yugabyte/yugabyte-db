@@ -1,19 +1,33 @@
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
 .universe-alert-badge {
   float: right;
   position: relative;
   overflow: unset !important;
-  margin: 0 18px;
+  margin: 10px 18px 0px 18px;
+  padding: 2px;
   cursor: pointer;
+  line-height: 0;
+  .icon{
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    position: relative;
+    &:hover{
+      background: #E5E5E9;
+    }
+  }
+  
+
   &.alert-list-view {
     margin: 0px !important;
     .alert-count {
-      top: 0px !important;
+      top: 2px !important;
     }
   }
   .alert-bell-icon{
-    height: 18px;
-    width: 18px;
+    color: #25323D;
+    margin-left: 4px;
+    margin-top: 8px;
   }
   .alert-count {
     background: #DA1515;
@@ -22,8 +36,7 @@
     font-size: 12px;
     padding: 2px 4px;
     position: absolute;
-    top: 14px;
-    right: -5px;
+    right: 1px;
     line-height: 1;
     height: 15px;
   }
@@ -34,14 +47,14 @@
 }
 
 #alert-popover {
-  background: $YB_BG_WHITE_3;
+  background: colors.$YB_BG_WHITE_3;
   border: 1px solid #D7DEE4;
   box-shadow: 0px 0px 8px rgba(0, 0, 0, 0.1);
   border-radius: 8px;
   width: 325px;
   display: flex;
   flex-direction: column;
-  color: $YB_DARKER_GRAY;
+  color: colors.$YB_DARKER_GRAY;
   margin-top: 0px;
   padding: 16px;
 

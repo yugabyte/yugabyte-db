@@ -27,7 +27,7 @@ public class RuntimeConfigEntryTest extends FakeDBApplication {
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
-    defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
   }
 
@@ -45,10 +45,10 @@ public class RuntimeConfigEntryTest extends FakeDBApplication {
     checkAll(scopeUuid);
 
     ScopedRuntimeConfig scopedRuntimeConfig = ScopedRuntimeConfig.get(scopeUuid);
-    assertEquals(scopeUuid, scopedRuntimeConfig.uuid);
-    assertNull(scopedRuntimeConfig.customerUUID);
-    assertNull(scopedRuntimeConfig.providerUUID);
-    assertNull(scopedRuntimeConfig.universeUUID);
+    assertEquals(scopeUuid, scopedRuntimeConfig.getUuid());
+    assertNull(scopedRuntimeConfig.getCustomerUUID());
+    assertNull(scopedRuntimeConfig.getProviderUUID());
+    assertNull(scopedRuntimeConfig.getUniverseUUID());
 
     scopedRuntimeConfig.deletePermanent();
     checkCascadeDelete(scopeUuid);
@@ -56,7 +56,7 @@ public class RuntimeConfigEntryTest extends FakeDBApplication {
 
   @Test
   public void testCreateLookupGetAllValidScopeCascadeDelete_customer() {
-    UUID scopeUuid = defaultCustomer.uuid;
+    UUID scopeUuid = defaultCustomer.getUuid();
     RuntimeConfigEntry.upsert(defaultCustomer, YB_SB_START_YEAR_KEY, "1857");
     checkStartYear(scopeUuid, "1857");
     // Make sure that the config with same scope and path is unique and later update overwrites
@@ -68,10 +68,10 @@ public class RuntimeConfigEntryTest extends FakeDBApplication {
     checkAll(scopeUuid);
 
     ScopedRuntimeConfig scopedRuntimeConfig = ScopedRuntimeConfig.get(scopeUuid);
-    assertEquals(scopeUuid, scopedRuntimeConfig.uuid);
-    assertEquals(scopeUuid, scopedRuntimeConfig.customerUUID);
-    assertNull(scopedRuntimeConfig.providerUUID);
-    assertNull(scopedRuntimeConfig.universeUUID);
+    assertEquals(scopeUuid, scopedRuntimeConfig.getUuid());
+    assertEquals(scopeUuid, scopedRuntimeConfig.getCustomerUUID());
+    assertNull(scopedRuntimeConfig.getProviderUUID());
+    assertNull(scopedRuntimeConfig.getUniverseUUID());
 
     defaultCustomer.deletePermanent();
     checkCascadeDelete(scopeUuid);
@@ -79,7 +79,7 @@ public class RuntimeConfigEntryTest extends FakeDBApplication {
 
   @Test
   public void testCreateLookupGetAllValidScopeCascadeDelete_universe() {
-    UUID scopeUuid = defaultUniverse.universeUUID;
+    UUID scopeUuid = defaultUniverse.getUniverseUUID();
     RuntimeConfigEntry.upsert(defaultUniverse, YB_SB_START_YEAR_KEY, "2021");
     checkStartYear(scopeUuid, "2021");
     // Make sure that the config with same scope and path is unique and later update overwrites
@@ -91,10 +91,10 @@ public class RuntimeConfigEntryTest extends FakeDBApplication {
     checkAll(scopeUuid);
 
     ScopedRuntimeConfig scopedRuntimeConfig = ScopedRuntimeConfig.get(scopeUuid);
-    assertEquals(scopeUuid, scopedRuntimeConfig.uuid);
-    assertEquals(scopeUuid, scopedRuntimeConfig.universeUUID);
-    assertNull(scopedRuntimeConfig.providerUUID);
-    assertNull(scopedRuntimeConfig.customerUUID);
+    assertEquals(scopeUuid, scopedRuntimeConfig.getUuid());
+    assertEquals(scopeUuid, scopedRuntimeConfig.getUniverseUUID());
+    assertNull(scopedRuntimeConfig.getProviderUUID());
+    assertNull(scopedRuntimeConfig.getCustomerUUID());
 
     defaultUniverse.deletePermanent();
     checkCascadeDelete(scopeUuid);
@@ -102,7 +102,7 @@ public class RuntimeConfigEntryTest extends FakeDBApplication {
 
   @Test
   public void testCreateLookupGetAllValidScopeCascadeDelete_provider() {
-    UUID scopeUuid = defaultProvider.uuid;
+    UUID scopeUuid = defaultProvider.getUuid();
     RuntimeConfigEntry.upsert(defaultProvider, YB_SB_START_YEAR_KEY, "1984");
     checkStartYear(scopeUuid, "1984");
     // Make sure that the config with same scope and path is unique and later update overwrites
@@ -114,10 +114,10 @@ public class RuntimeConfigEntryTest extends FakeDBApplication {
     checkAll(scopeUuid);
 
     ScopedRuntimeConfig scopedRuntimeConfig = ScopedRuntimeConfig.get(scopeUuid);
-    assertEquals(scopeUuid, scopedRuntimeConfig.uuid);
-    assertEquals(scopeUuid, scopedRuntimeConfig.providerUUID);
-    assertNull(scopedRuntimeConfig.universeUUID);
-    assertNull(scopedRuntimeConfig.customerUUID);
+    assertEquals(scopeUuid, scopedRuntimeConfig.getUuid());
+    assertEquals(scopeUuid, scopedRuntimeConfig.getProviderUUID());
+    assertNull(scopedRuntimeConfig.getUniverseUUID());
+    assertNull(scopedRuntimeConfig.getCustomerUUID());
 
     defaultProvider.deletePermanent();
     checkCascadeDelete(scopeUuid);
@@ -125,7 +125,7 @@ public class RuntimeConfigEntryTest extends FakeDBApplication {
 
   @Test
   public void testCreateEntryWithHugeValues() {
-    UUID scopeUuid = defaultCustomer.uuid;
+    UUID scopeUuid = defaultCustomer.getUuid();
     String longString =
         Stream.generate(() -> "\u4F60\u597D")
             .limit(1024 * 64 / 2 + 1)

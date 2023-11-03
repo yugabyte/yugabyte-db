@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_WIRE_PROTOCOL_TEST_UTIL_H_
-#define YB_COMMON_WIRE_PROTOCOL_TEST_UTIL_H_
+#pragma once
 
 #include <string>
 
@@ -46,15 +45,16 @@
 namespace yb {
 
 using docdb::KeyValuePairPB;
-using docdb::SubDocKey;
-using docdb::DocKey;
-using docdb::PrimitiveValue;
+using dockv::SubDocKey;
+using dockv::DocKey;
+using dockv::PrimitiveValue;
 
 inline Schema GetSimpleTestSchema() {
-  return Schema({ ColumnSchema("key", INT32, false, true),
-                  ColumnSchema("int_val", INT32),
-                  ColumnSchema("string_val", STRING, true) },
-                1);
+  return Schema({
+      ColumnSchema("key", DataType::INT32, ColumnKind::HASH),
+      ColumnSchema("int_val", DataType::INT32),
+      ColumnSchema("string_val", DataType::STRING, ColumnKind::VALUE, Nullable::kTrue)
+  });
 }
 
 template <class WriteRequestPB, class Type>
@@ -95,7 +95,7 @@ QLWriteRequestPB* AddTestRow(int32_t key,
 template <class Type, class WriteRequestPB>
 void AddTestRow(int32_t key,
                 int32_t int_val,
-                const string& string_val,
+                const std::string& string_val,
                 Type type,
                 WriteRequestPB* req) {
   auto wb = AddTestRow(key, int_val, type, req);
@@ -114,7 +114,7 @@ void AddTestRowInsert(int32_t key,
 template <class WriteRequestPB>
 void AddTestRowInsert(int32_t key,
                       int32_t int_val,
-                      const string& string_val,
+                      const std::string& string_val,
                       WriteRequestPB* req) {
   AddTestRow(key, int_val, string_val, QLWriteRequestPB::QL_STMT_INSERT, req);
 }
@@ -122,16 +122,19 @@ void AddTestRowInsert(int32_t key,
 template <class WriteRequestPB>
 void AddTestRowUpdate(int32_t key,
                       int32_t int_val,
-                      const string& string_val,
+                      const std::string& string_val,
                       WriteRequestPB* req) {
   AddTestRow(key, int_val, string_val, QLWriteRequestPB::QL_STMT_UPDATE, req);
 }
 
 void AddKVToPB(int32_t key_val,
                int32_t int_val,
-               const string& string_val,
+               const std::string& string_val,
                docdb::KeyValueWriteBatchPB* write_batch);
 
-} // namespace yb
+void AddKVToPB(int32_t key_val,
+               int32_t int_val,
+               const std::string& string_val,
+               docdb::LWKeyValueWriteBatchPB* write_batch);
 
-#endif // YB_COMMON_WIRE_PROTOCOL_TEST_UTIL_H_
+} // namespace yb

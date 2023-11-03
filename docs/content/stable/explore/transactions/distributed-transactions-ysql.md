@@ -1,12 +1,12 @@
 ---
-title: Distributed Transactions
-headerTitle: Distributed Transactions
-linkTitle: Distributed Transactions
-description: Distributed Transactions in YugabyteDB.
-headcontent: Distributed Transactions in YugabyteDB.
+title: Distributed transactions in YSQL
+headerTitle: Distributed transactions
+linkTitle: Distributed transactions
+description: Understand distributed transactions in YugabyteDB using YSQL.
+headcontent:
 menu:
   stable:
-    name: Distributed Transactions
+    name: Distributed transactions
     identifier: explore-transactions-distributed-transactions-1-ysql
     parent: explore-transactions
     weight: 230
@@ -31,9 +31,15 @@ type: docs
 
 </ul>
 
-## Overview of transaction control
+The best way to understand distributed transactions in YugabyteDB is through examples.
 
-This section explains how a distributed transaction works in YugabyteDB. We will use the example table below to describe the control flow of a simple transaction.
+To learn about how YugabyteDB handles failures during transactions, see [High availability of transactions](../../fault-tolerance/transaction-availability/).
+
+{{% explore-setup-single %}}
+
+## Create a table
+
+Create the following table:
 
 ```sql
 CREATE TABLE accounts (
@@ -44,7 +50,7 @@ CREATE TABLE accounts (
 );
 ```
 
-Insert some sample data into the table.
+Execute the following statements to insert sample data into the table:
 
 ```sql
 INSERT INTO accounts VALUES ('John', 'savings', 1000);
@@ -53,10 +59,13 @@ INSERT INTO accounts VALUES ('Smith', 'savings', 2000);
 INSERT INTO accounts VALUES ('Smith', 'checking', 50);
 ```
 
-The table should look as follows:
+Display the contents of the table, as follows:
 
+```sql
+yugabyte=# SELECT * FROM accounts;
 ```
-yugabyte=# select * from accounts;
+
+```output
  account_name | account_type | balance
 --------------+--------------+---------
  John         | checking     |     100
@@ -66,7 +75,9 @@ yugabyte=# select * from accounts;
 (4 rows)
 ```
 
-Now, we will run the following transaction and explain what happens at each step.
+## Run a transaction
+
+Run the following transaction:
 
 ```sql
 BEGIN TRANSACTION;
@@ -77,71 +88,13 @@ BEGIN TRANSACTION;
 COMMIT;
 ```
 
+After the transaction succeeds, display the contents of the table:
 
-<table style="margin:0 5px;">
-  <tr>
-   <td style="text-align:center;"><span style="font-size: 22px;">Command</span></td>
-   <td style="text-align:center; border-left:1px solid rgba(158,159,165,0.5);"><span style="font-size: 22px;">Description</span></td>
-  </tr>
-
-  <tr>
-    <td style="width:50%;">
-    <pre><code style="padding: 0 10px;">
-BEGIN TRANSACTION;
-    </code></pre>
-    </td>
-    <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5); font-size: 16px;">
-      The node that receives this statement becomes the transaction coordinator. A new transaction record is created in the <code>transaction status</code> table for the current transaction. It has a unique transaction id with the state <code>PENDING</code>. Note that in practice, these records are pre-created to achieve high performance.
-    </td>
-  </tr>
-
-  <tr>
-    <td style="width:50%;">
-    <pre><code style="padding: 0 10px;">
-UPDATE accounts SET balance = balance - 200
-  WHERE account_name='John'
-  AND account_type='savings';
-    </code></pre>
-    </td>
-    <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5); font-size: 16px;">
-      The transaction coordinator writes a *provisional record* to the tablet that contains this row. The provisional record consists of the transaction id, so the state of the transaction can be determined. If there already exists a provisional record written by another transaction, then the current transaction would use the transaction id that is present in the provisional record to fetch details and check if there is a potential conflict.
-    </td>
-  </tr>
-
-  <tr>
-    <td style="width:50%;">
-    <pre><code style="padding: 0 10px;">
-UPDATE accounts SET balance = balance + 200
-  WHERE account_name='John'
-  AND account_type='checking';
-    </code></pre>
-    </td>
-    <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5); font-size: 16px;">
-      This step is largely the same as the previous step. Note that the rows being accessed can live on different nodes. The transaction coordinator would need to perform a provisional write RPC to the appropriate node for each row.
-    </td>
-  </tr>
-
-  <tr>
-    <td style="width:50%;">
-    <pre><code style="padding: 0 10px;">
-COMMIT;
-    </code></pre>
-    </td>
-    <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5); font-size: 16px;">
-      Note that in order to <code>COMMIT</code>, all the provisional writes must have successfully completed. The <code>COMMIT</code> statement causes the transaction coordinator to update the transaction status in the <code>transaction status</code> table to <code>COMMITED</code>, at which point it is assigned the commit timestamp (which is a *hybrid timestamp* to be precise). At this point, the transaction is completed. In the background, the <code>COMMIT</code> record along with the commit timestamp is applied to each of the rows that participated to make future lookups of these rows efficient.
-    </td>
-  </tr>
-
-</table>
-
-This is shown diagrammatically below.
-![distributed_txn_write_path](/images/architecture/txn/distributed_txn_write_path.svg)
-
-
-After the above transaction succeeds, the table should look as follows.
-
+```sql
+yugabyte=# SELECT * FROM accounts;
 ```
-yugabyte=# select * from accounts;
+
+```output
  account_name | account_type | balance
 --------------+--------------+---------
  John         | checking     |     300
@@ -151,10 +104,51 @@ yugabyte=# select * from accounts;
 (4 rows)
 ```
 
+The transaction can be broken down as follows:
+
+1. Begin:
+
+    ```sql
+    BEGIN TRANSACTION;
+    ```
+
+    The node that receives this statement becomes the transaction coordinator. A new transaction record is created in the `transaction status` table for the current transaction. It has a unique transaction ID with the state `PENDING`. Note that in practice, these records are pre-created to achieve high performance.
+
+1. Update:
+
+    ```sql
+    UPDATE accounts SET balance = balance - 200
+      WHERE account_name='John'
+      AND account_type='savings';
+    ```
+
+    The transaction coordinator writes a provisional record to the tablet that contains this row. The provisional record consists of the transaction ID, so the state of the transaction can be determined. If a provisional record written by another transaction already exists, then the current transaction would use the transaction ID that is present in the provisional record to fetch details and check if there is a potential conflict.
+
+1. Second update:
+
+    ```sql
+    UPDATE accounts SET balance = balance + 200
+      WHERE account_name='John'
+      AND account_type='checking';
+    ```
+
+    This step is largely the same as the previous step. Note that the rows being accessed can be on different nodes. The transaction coordinator would need to perform a provisional write RPC to the appropriate node for each row.
+
+1. Commit:
+
+    ```sql
+    COMMIT;
+    ```
+
+    To commit, all the provisional writes must have successfully completed. The `COMMIT` statement causes the transaction coordinator to update the transaction status in the `transaction status` table to `COMMITED`, at which point it is assigned the commit timestamp (a hybrid timestamp, to be precise). Now the transaction is completed. In the background, the `COMMIT` record along with the commit timestamp is applied to each of the rows that participated to make future lookups of these rows efficient.
+
+The following diagram shows the sequence of events that occur when a transaction is running:
+
+![Distributed transaction write path](/images/architecture/txn/distributed_txn_write_path.svg)
 
 ### Scalability
 
-Since all nodes of the cluster can process transactions by becoming transaction coordinators, horizontal scalability can simply be achieved by distributing the queries evenly across the nodes of the cluster.
+Because all nodes of the universe can process transactions by becoming transaction coordinators, horizontal scalability can be achieved by distributing the queries evenly across the nodes of the universe.
 
 ### Resilience
 
@@ -162,19 +156,19 @@ Each update performed as a part of the transaction is replicated across multiple
 
 ### Concurrency control
 
-[Concurrency control](https://en.wikipedia.org/wiki/Concurrency_control) in databases ensures that multiple transactions can execute concurrently while preserving data integrity. Concurrency control is essential for correctness in environments where two or more transactions can access the same data at the same time. The two primary mechanisms to achieve concurrency control are *optimistic* and *pessimistic*.
+[Concurrency control](../../../architecture/transactions/concurrency-control/) in databases ensures that multiple transactions can execute concurrently while preserving data integrity. Concurrency control is essential for correctness in environments where two or more transactions can access the same data at the same time. The two primary mechanisms to achieve concurrency control are optimistic and pessimistic.
 
-{{< note title="Note" >}}
 YugabyteDB currently supports optimistic concurrency control, with pessimistic concurrency control being worked on actively.
-{{</note >}}
 
+## Transaction options
 
-## Transaction Options
+To view options supported by transactions, execute the following `\h BEGIN` meta-command:
 
-You can see the various options supported by transactions by running the `\h BEGIN` statement, as shown below.
-
-```
+```sql
 yugabyte=# \h BEGIN
+```
+
+```output
 Command:     BEGIN
 Description: start a transaction block
 Syntax:
@@ -187,30 +181,35 @@ where transaction_mode is one of:
   [ NOT ] DEFERRABLE
 ```
 
-### `transaction_mode`
+### transaction_mode
 
-The `transaction_mode` can be set to one of the following options:
+You can set the `transaction_mode` to one of the following:
 
-1. `READ WRITE` – Users can perform read or write operations.
-2. `READ ONLY` – Users can perform read operations only.
+1. `READ WRITE` – You can perform read or write operations.
+2. `READ ONLY` – You can only perform read operations.
 
-As an example, trying to do a write operation such as creating a table or inserting a row in a `READ ONLY` transaction would result in an error as shown below.
+For example, trying to do a write operation such as creating a table or inserting a row in a `READ ONLY` transaction would result in an error:
 
-```
+```sql
 yugabyte=# BEGIN READ ONLY;
-BEGIN
-
-yugabyte=# CREATE TABLE example(k INT PRIMARY KEY);
-ERROR: 25P02: current transaction is aborted, commands ignored until end of
-              transaction block
 ```
 
-### `DEFERRABLE` transactions
+```output
+BEGIN
+```
 
-The `DEFERRABLE` transaction property in YSQL is similar to PostgreSQL in that has no effect unless the transaction is also `SERIALIZABLE` and `READ ONLY`.
+```sql
+yugabyte=# CREATE TABLE example(k INT PRIMARY KEY);
+```
 
-When all three of these properties (`SERIALIZABLE`, `DEFERRABLE` and `READ ONLY`) are set for a transaction, the transaction may block when first acquiring its snapshot, after which it is able to run without the normal overhead of a `SERIALIZABLE` transaction and without any risk of contributing to or being canceled by a serialization failure.
+```output
+ERROR: cannot execute CREATE TABLE in a read-only transaction
+```
 
-{{< tip title="Tip" >}}
-This mode is well suited for long-running reports or backups without being impacting or impacted by other transactions.
-{{< /tip >}}
+### DEFERRABLE transactions
+
+As in PostgreSQL, the `DEFERRABLE` transaction property is not used unless the transaction is also both `SERIALIZABLE` and `READ ONLY`.
+
+When all three of these properties (`SERIALIZABLE`, `DEFERRABLE`, and `READ ONLY`) are set for a transaction, the transaction may block when first acquiring its snapshot, after which it can run without the typical overhead of a `SERIALIZABLE` transaction and without any risk of contributing to or being canceled by a serialization failure.
+
+This mode is well-suited for long-running reports or backups without impacting or being impacted by other transactions.

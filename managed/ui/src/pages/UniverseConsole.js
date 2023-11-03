@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { UniverseConsoleContainer } from '../components/universes';
 
 export default class UniverseConsole extends Component {

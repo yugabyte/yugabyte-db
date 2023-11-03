@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_ERRNO_H
-#define YB_UTIL_ERRNO_H
+#pragma once
 
 #include <string>
 
@@ -98,5 +97,3 @@ Status StatusFromErrnoIfNonZero(const std::string& context, int rv, const char* 
     RETURN_NOT_OK(STATUS_FROM_ERRNO_RV_FN_CALL(__VA_ARGS__))
 
 } // namespace yb
-
-#endif // YB_UTIL_ERRNO_H

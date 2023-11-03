@@ -1,7 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
 import Cookies from 'js-cookie';
-import React from 'react';
 import { Route, IndexRoute, browserHistory } from 'react-router';
 import _ from 'lodash';
 import axios from 'axios';
@@ -11,11 +10,10 @@ import {
   validateFromTokenResponse,
   fetchCustomerCount,
   customerTokenError,
-  resetCustomer,
-  insecureLogin,
-  insecureLoginResponse
+  resetCustomer
 } from './actions/customers';
 import { App } from './app/App';
+import { OIDCJWTToken } from './pages/OIDCJWTToken';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import AuthenticatedArea from './pages/AuthenticatedArea';
@@ -27,29 +25,34 @@ import Alerts from './pages/Alerts';
 import Backups from './pages/Backups';
 import UniverseConsole from './pages/UniverseConsole';
 import Metrics from './pages/Metrics';
-import DataCenterConfiguration from './pages/DataCenterConfiguration';
+import { NodeAgent } from './pages/NodeAgent';
 import TableDetail from './pages/TableDetail';
 import Help from './pages/Help';
 import Profile from './pages/Profile';
 import YugawareLogs from './pages/YugawareLogs';
-import Importer from './pages/Importer';
 import Releases from './pages/Releases';
-import { isDefinedNotNull, isNullOrEmpty } from './utils/ObjectUtils';
-import { CreateUniverse } from './redesign/universe/CreateUniverse';
-import { EditUniverse } from './redesign/universe/EditUniverse';
+import { isDefinedNotNull, isNullOrEmpty, objToQueryParams } from './utils/ObjectUtils';
 import { Administration } from './pages/Administration';
 import ToggleFeaturesInTest from './pages/ToggleFeaturesInTest';
-import { ReplicationDetails } from './components/xcluster';
+import { Replication } from './pages/Replication';
+import UniverseNewView from './pages/UniverseNewView';
+import { DataCenterConfiguration } from './pages/DataCenterConfiguration';
+import { clearRbacCreds, getRbacEnabledVal, isRbacEnabled } from './redesign/features/rbac/common/RbacUtils';
 
 /**
  * Redirects to base url if no queryParmas is set else redirects to path set in queryParam
  */
 const redirectToUrl = () => {
   const searchParam = new URLSearchParams(window.location.search);
-  const pathToRedirect = searchParam.get('redirectUrl');
-  pathToRedirect
-    ? browserHistory.push(`/?redirectUrl=${pathToRedirect}`)
-    : browserHistory.push('/');
+  const orig_url = searchParam.get('orig_url');
+  const user_not_found = searchParam.get('user_not_found');
+  //construct route
+  const paramsObj = {};
+  if (orig_url) paramsObj.orig_url = orig_url;
+  if (user_not_found) paramsObj.user_not_found = user_not_found;
+  const queryString = objToQueryParams(paramsObj);
+
+  browserHistory.push(queryString ? `/?${queryString}` : '/');
 };
 
 export const clearCredentials = () => {
@@ -57,6 +60,8 @@ export const clearCredentials = () => {
   localStorage.removeItem('apiToken');
   localStorage.removeItem('customerId');
   localStorage.removeItem('userId');
+  clearRbacCreds();
+
   /*
    * Remove domain cookies if YW is running on subdomain.
    * For context, see issue: https://github.com/yugabyte/yugabyte-db/issues/7653
@@ -117,18 +122,24 @@ const checkAuthParamsInUrl = (params) => {
 axios.interceptors.response.use(
   (response) => response,
   (error) => {
-    // skip 403 response for "/login" and "/register" endpoints
+    // skip 401 response for "/login" and "/register" endpoints
+    //rbac is not loaded yet or it is enabled
+    if(getRbacEnabledVal() === null || isRbacEnabled()) return Promise.reject(error);
+
     const isAllowedUrl = /.+\/(login|register)$/i.test(error.request.responseURL);
-    const isUnauthorised = error.response?.status === 403;
+    const isUnauthorised = error.response?.status === 401;
     if (isUnauthorised && !isAllowedUrl) {
       //redirect to users current page
       const searchParam = new URLSearchParams(window.location.search);
-      const location = searchParam.get('redirectUrl') || window.location.pathname;
-      browserHistory.push(
-        location && !['/', '/login'].includes(location)
-          ? `/login?redirectUrl=${location}`
-          : '/login'
-      );
+      const location = searchParam.get('orig_url') ?? window.location.pathname;
+      const user_not_found = searchParam.get('user_not_found');
+      //construct route
+      const paramsObj = {};
+      if (location && !['/', '/login'].includes(location)) paramsObj.orig_url = location;
+      if (user_not_found) paramsObj.user_not_found = user_not_found;
+      const queryString = objToQueryParams(paramsObj);
+      //redirect to route
+      browserHistory.push(queryString ? `/login?${queryString}` : '/login');
     }
     return Promise.reject(error);
   }
@@ -137,24 +148,12 @@ axios.interceptors.response.use(
 function validateSession(store, replacePath, callback) {
   // Attempt to route to dashboard if tokens and cUUID exists or if insecure mode is on.
   // Otherwise, go to login/register.
-  const userId = Cookies.get('userId') || localStorage.getItem('userId');
-  const customerId = Cookies.get('customerId') || localStorage.getItem('customerId');
+  const userId = Cookies.get('userId') ?? localStorage.getItem('userId');
+  const customerId = Cookies.get('customerId') ?? localStorage.getItem('customerId');
   const searchParam = new URLSearchParams(window.location.search);
   if (_.isEmpty(customerId) || _.isEmpty(userId)) {
-    const location = searchParam.get('redirectUrl') || window.location.pathname;
-    store.dispatch(insecureLogin()).then((response) => {
-      if (response.payload.status === 200) {
-        store.dispatch(insecureLoginResponse(response));
-        localStorage.setItem('apiToken', response.payload.data.apiToken);
-        localStorage.setItem('customerId', response.payload.data.customerUUID);
-        localStorage.setItem('userId', response.payload.data.userUUID);
-        // Show the intro modal if OSS version
-        if (localStorage.getItem('__yb_new_user__') == null) {
-          localStorage.setItem('__yb_new_user__', true);
-        }
-        browserHistory.push('/');
-      }
-    });
+    const location = searchParam.get('orig_url') ?? window.location.pathname;
+    const user_not_found = searchParam.get('user_not_found');
     store.dispatch(fetchCustomerCount()).then((response) => {
       if (!response.error) {
         const responseData = response.payload.data;
@@ -164,9 +163,14 @@ function validateSession(store, replacePath, callback) {
       }
     });
     store.dispatch(customerTokenError());
-    location && location !== '/'
-      ? browserHistory.push(`/login?redirectUrl=${location}`)
-      : browserHistory.push('/login');
+
+    //construct route
+    const paramsObj = {};
+    if (location && location !== '/') paramsObj.orig_url = location;
+    if (user_not_found) paramsObj.user_not_found = user_not_found;
+    const queryString = objToQueryParams(paramsObj);
+    //redirect to route
+    browserHistory.push(queryString ? `/login?${queryString}` : '/login');
   } else {
     store.dispatch(validateToken()).then((response) => {
       if (response.error) {
@@ -174,10 +178,12 @@ function validateSession(store, replacePath, callback) {
           ? response.payload.response
           : {};
         switch (status) {
-          case 403:
-            store.dispatch(resetCustomer());
-            store.dispatch(customerTokenError());
-            clearCredentials();
+          case 401:
+            if (!isRbacEnabled()) {
+              store.dispatch(resetCustomer());
+              store.dispatch(customerTokenError());
+              clearCredentials();
+            }
             break;
           default:
           // Do nothing
@@ -192,9 +198,9 @@ function validateSession(store, replacePath, callback) {
           localStorage.setItem('customerId', response.payload.data['uuid']);
         }
         localStorage.setItem('userId', userId);
-        if (searchParam.get('redirectUrl')) {
-          browserHistory.push(searchParam.get('redirectUrl'));
-          searchParam.delete('redirectUrl');
+        if (searchParam.get('orig_url')) {
+          browserHistory.push(searchParam.get('orig_url'));
+          searchParam.delete('orig_url');
         }
       } else {
         store.dispatch(resetCustomer());
@@ -209,6 +215,7 @@ function validateSession(store, replacePath, callback) {
   callback();
 }
 
+// eslint-disable-next-line react/display-name
 export default (store) => {
   const authenticatedSession = (nextState, replace, callback) => {
     const params = nextState?.location?.query;
@@ -227,6 +234,7 @@ export default (store) => {
     // rest un-authenticated route
     <Route path="/" component={App}>
       <Route path="/login" component={Login} />
+      <Route path="/jwt_token" component={OIDCJWTToken} />
       <Route path="/register" component={Register} />
       <Route
         onEnter={authenticatedSession}
@@ -236,24 +244,17 @@ export default (store) => {
         <IndexRoute component={Dashboard} />
         <Route path="/universes" component={Universes}>
           <IndexRoute component={UniverseConsole} />
-          <Route path="/universes/import" component={Importer} />
-          <Route path="/universes/create" component={UniverseDetail} />
+          <Route path="/universes/create" component={UniverseNewView} />
           <Route path="/universes/:uuid" component={UniverseDetail} />
-          <Route path="/universes/:uuid/edit" component={UniverseDetail}>
-            <Route path="/universes/:uuid/edit/:type" component={UniverseDetail} />
-          </Route>
-          <Route path="/universes/:uuid/:tab" component={UniverseDetail} />
+          {/* <Route path="/universes/:uuid/edit" component={UniverseDetail}> */}
           <Route path="/universes/:uuid/tables/:tableUUID" component={TableDetail} />
-          <Route
-            path="/universes/:uuid/replication/:replicationUUID"
-            component={ReplicationDetails}
-          />
+          <Route path="/universes/:uuid/replication/:replicationUUID" component={Replication} />
+          <Route path="/universes/:uuid/:mode/:type" component={UniverseNewView} />
+          {/* </Route> */}
+          <Route path="/universes/:uuid/:tab" component={UniverseDetail} />
         </Route>
 
         {/* ------------------------------------------------------------------------*/}
-        <Route path="/universe/create" component={CreateUniverse} />
-        {/* <Route path="/universe/:universeId/create/async" component={CreateUniverse} /> - create async cluster, not supported at the moment */}
-        <Route path="/universe/:universeId/edit/primary" component={EditUniverse} />
 
         {/* <Route path="/universe/:universeId/edit/primary/:wizardStep" component={EditUniverse} /> - jump to particular step on editing primary cluster, not supported at the moment */}
         {/* <Route path="/universe/:universeId/edit/async" component={EditUniverse} /> - edit the only async cluster, not supported at the moment */}
@@ -267,10 +268,11 @@ export default (store) => {
         </Route>
         <Route path="/metrics" component={Metrics} />
         <Route path="/config" component={DataCenterConfiguration}>
-          <Route path="/config/:tab" component={DataCenterConfiguration} />
-          <Route path="/config/:tab/:section" component={DataCenterConfiguration} />
-          <Route path="/config/:tab/:section/:uuid" component={DataCenterConfiguration} />
+          <Route path=":tab" component={DataCenterConfiguration} />
+          <Route path=":tab/:section" component={DataCenterConfiguration} />
+          <Route path=":tab/:section/:uuid" component={DataCenterConfiguration} />
         </Route>
+        <Route path="/nodeagent" component={NodeAgent} />
         <Route path="/alerts" component={Alerts} />
         <Route path="/backups" component={Backups} />
         <Route path="/help" component={Help} />

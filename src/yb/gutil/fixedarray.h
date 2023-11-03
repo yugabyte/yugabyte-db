@@ -34,12 +34,11 @@
 // ---
 //
 
-#ifndef UTIL_GTL_FIXEDARRAY_H__
-#define UTIL_GTL_FIXEDARRAY_H__
+#pragma once
 
 #include <stddef.h>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/logging-inl.h"
 #include "yb/gutil/macros.h"
@@ -191,5 +190,3 @@ inline FixedArray<T, S>::~FixedArray() {
     }
   }
 }
-
-#endif  // UTIL_GTL_FIXEDARRAY_H__

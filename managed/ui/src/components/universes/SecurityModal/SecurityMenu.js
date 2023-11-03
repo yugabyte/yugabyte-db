@@ -1,4 +1,3 @@
-import React from 'react';
 import { MenuItem } from 'react-bootstrap';
 import { useSelector } from 'react-redux';
 import { YBLabelWithIcon } from '../../common/descriptors';

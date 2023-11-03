@@ -29,7 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
 #include "yb/gutil/spinlock.h"
@@ -37,6 +37,8 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/trace.h"
+
+using std::string;
 
 // Can't include gutil/synchronization_profiling.h directly as it'll
 // declare a weak symbol directly in this unit test, which the runtime

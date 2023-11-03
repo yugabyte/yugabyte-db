@@ -15,6 +15,10 @@
 
 #include <iostream>
 
+#if YB_ABSL_ENABLED
+#include "absl/debugging/symbolize.h"
+#endif
+
 #include "yb/util/init.h"
 #include "yb/util/flags.h"
 #include "yb/util/status.h"
@@ -29,10 +33,6 @@
 #include "yb/consensus/consensus_queue.h"
 
 DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
-
-// Deprecated because it's misspelled.  But if set, this flag takes precedence over
-// remote_bootstrap_rate_limit_bytes_per_sec for compatibility.
-DECLARE_int64(remote_boostrap_rate_limit_bytes_per_sec);
 
 namespace yb {
 
@@ -54,18 +54,14 @@ Status MasterTServerParseFlagsAndInit(const std::string& server_type, int* argc,
     return STATUS(InvalidArgument, "Error parsing command-line flags");
   }
 
+#if YB_ABSL_ENABLED
+  // Must be called before installing a failure signal handler (in InitYB).
+  absl::InitializeSymbolizer((*argv)[0]);
+#endif
+
   RETURN_NOT_OK(log::ModifyDurableWriteFlagIfNotODirect());
 
   RETURN_NOT_OK(InitYB(server_type, (*argv)[0]));
-
-  RETURN_NOT_OK(consensus::ValidateFlags());
-
-  if (FLAGS_remote_boostrap_rate_limit_bytes_per_sec > 0) {
-    LOG(WARNING) << "Flag remote_boostrap_rate_limit_bytes_per_sec has been deprecated. "
-                 << "Use remote_bootstrap_rate_limit_bytes_per_sec flag instead";
-    FLAGS_remote_bootstrap_rate_limit_bytes_per_sec =
-        FLAGS_remote_boostrap_rate_limit_bytes_per_sec;
-  }
 
   RETURN_NOT_OK(GetPrivateIpMode());
 
@@ -73,7 +69,8 @@ Status MasterTServerParseFlagsAndInit(const std::string& server_type, int* argc,
 
   DLOG(INFO) << "Process id: " << getpid();
 
-  MemTracker::SetTCMallocCacheMemory();
+  MemTracker::ConfigureTCMalloc();
+  MemTracker::PrintTCMallocConfigs();
 
   return Status::OK();
 }

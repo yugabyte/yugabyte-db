@@ -26,13 +26,13 @@ import org.yb.cdc.CdcService.RowMessage.Op;
 import org.yb.cdc.common.CDCBaseClass;
 import org.yb.cdc.util.CDCSubscriber;
 import org.yb.cdc.common.ExpectedRecordCPKProto;
-import org.yb.cdc.util.TestUtils;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.cdc.util.CDCTestUtils;
+import org.yb.YBTestRunner;
 
 import java.util.ArrayList;
 import java.util.List;
 
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestCompoundKey extends CDCBaseClass {
   private Logger LOG = LoggerFactory.getLogger(TestCompoundKey.class);
 
@@ -42,7 +42,7 @@ public class TestCompoundKey extends CDCBaseClass {
     testSubscriber.createStream("proto");
 
     if (!sqlScript.isEmpty()) {
-      TestUtils.runSqlScript(connection, sqlScript);
+      CDCTestUtils.runSqlScript(connection, sqlScript);
     } else {
       LOG.info("No SQL script specified...");
     }
@@ -69,6 +69,7 @@ public class TestCompoundKey extends CDCBaseClass {
   @Before
   public void setUp() throws Exception {
     super.setUp();
+    setServerFlag(getTserverHostAndPort(), CDC_POPULATE_SAFEPOINT_RECORD, "false");
     statement = connection.createStatement();
     statement.execute("drop table if exists test;");
     statement.execute("create table test (a int, b int, c int, d int, primary key(a, b));");
@@ -79,7 +80,9 @@ public class TestCompoundKey extends CDCBaseClass {
   public void testInsert() {
     try {
       ExpectedRecordCPKProto[] expectedRecords = {
-        new ExpectedRecordCPKProto(1, 2, 3, 4, Op.INSERT)
+        new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.BEGIN),
+        new ExpectedRecordCPKProto(1, 2, 3, 4, Op.INSERT),
+        new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.COMMIT)
       };
 
       executeScriptAssertRecords(expectedRecords, "compound_key_tests/cdc_compound_key.sql");
@@ -93,13 +96,18 @@ public class TestCompoundKey extends CDCBaseClass {
   public void testInsertInBatch() {
     try {
       ExpectedRecordCPKProto[] expectedRecords = {
+        // insert into test values (1, 2, 3, 4), (5, 6, 7, 8);
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.BEGIN),
         new ExpectedRecordCPKProto(1, 2, 3, 4, Op.INSERT),
         new ExpectedRecordCPKProto(5, 6, 7, 8, Op.INSERT),
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.COMMIT),
+
+        // update test set c = c + 1 where a = 1 and b = 2;
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.BEGIN),
         new ExpectedRecordCPKProto(1, 2, 4, 4, Op.UPDATE),
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.COMMIT),
+
+        // update test set a = a + 1 where c = 7;
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.BEGIN),
         new ExpectedRecordCPKProto(5, 6, 0, 0, Op.DELETE),
         new ExpectedRecordCPKProto(6, 6, 7, 8, Op.INSERT),
@@ -119,9 +127,10 @@ public class TestCompoundKey extends CDCBaseClass {
   public void testExecuteALongQuery() {
     try {
       ExpectedRecordCPKProto[] expectedRecords = {
-        new ExpectedRecordCPKProto(1, 2, 3, 4, Op.INSERT),
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.BEGIN),
-        new ExpectedRecordCPKProto(1, 2, 4, 4, Op.UPDATE),
+        new ExpectedRecordCPKProto(1, 2, 3, 4, Op.INSERT),
+        new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.COMMIT),
+        new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.BEGIN),
         new ExpectedRecordCPKProto(1, 2, 4, 5, Op.UPDATE),
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.COMMIT),
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.BEGIN),
@@ -133,11 +142,9 @@ public class TestCompoundKey extends CDCBaseClass {
         new ExpectedRecordCPKProto(3, 3, 4, 5, Op.INSERT),
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.COMMIT),
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.BEGIN),
-        new ExpectedRecordCPKProto(3, 3, 5, 5, Op.UPDATE),
         new ExpectedRecordCPKProto(3, 3, 5, 6, Op.UPDATE),
         new ExpectedRecordCPKProto(7, 8, 9, 10, Op.INSERT),
-        new ExpectedRecordCPKProto(7, 8, 1, 10, Op.UPDATE),
-        new ExpectedRecordCPKProto(7, 8, 1, 11, Op.UPDATE),
+        new ExpectedRecordCPKProto(7, 8, 10, 11, Op.UPDATE),
         new ExpectedRecordCPKProto(7, 8, 0, 0, Op.DELETE),
         new ExpectedRecordCPKProto(8, 8, 10, 11, Op.INSERT),
         new ExpectedRecordCPKProto(8, 8, 0, 0, Op.DELETE),
@@ -151,9 +158,7 @@ public class TestCompoundKey extends CDCBaseClass {
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.COMMIT),
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.BEGIN),
         new ExpectedRecordCPKProto(6, 7, 8, 9, Op.INSERT),
-        new ExpectedRecordCPKProto(6, 7, 17, 9, Op.UPDATE),
         new ExpectedRecordCPKProto(6, 7, 17, 18, Op.UPDATE),
-        new ExpectedRecordCPKProto(6, 7, 26, 18, Op.UPDATE),
         new ExpectedRecordCPKProto(6, 7, 26, 27, Op.UPDATE),
         new ExpectedRecordCPKProto(6, 7, 0, 0, Op.DELETE),
         new ExpectedRecordCPKProto(15, 7, 26, 27, Op.INSERT),
@@ -170,7 +175,6 @@ public class TestCompoundKey extends CDCBaseClass {
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.COMMIT),
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.BEGIN),
         new ExpectedRecordCPKProto(60, 70, 80, 90, Op.INSERT),
-        new ExpectedRecordCPKProto(60, 70, 89, 90, Op.UPDATE),
         new ExpectedRecordCPKProto(60, 70, 89, 99, Op.UPDATE),
         new ExpectedRecordCPKProto(60, 70, 0, 0, Op.DELETE),
         new ExpectedRecordCPKProto(69, 79, 89, 99, Op.INSERT),
@@ -185,7 +189,6 @@ public class TestCompoundKey extends CDCBaseClass {
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.COMMIT),
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.BEGIN),
         new ExpectedRecordCPKProto(11, 12, 13, 14, Op.INSERT),
-        new ExpectedRecordCPKProto(11, 12, 14, 14, Op.UPDATE),
         new ExpectedRecordCPKProto(11, 12, 14, 15, Op.UPDATE),
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.COMMIT),
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.BEGIN),
@@ -203,15 +206,22 @@ public class TestCompoundKey extends CDCBaseClass {
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.BEGIN),
         new ExpectedRecordCPKProto(21, 23, 24, 25, Op.INSERT),
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.COMMIT),
+        new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.BEGIN),
         new ExpectedRecordCPKProto(41, 43, 44, 45, Op.INSERT),
+        new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.COMMIT),
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.BEGIN),
         new ExpectedRecordCPKProto(41, 43, 0, 0, Op.DELETE),
         new ExpectedRecordCPKProto(41, 44, 45, 46, Op.INSERT),
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.COMMIT),
+        new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.BEGIN),
         new ExpectedRecordCPKProto(41, 44, 0, 0, Op.DELETE),
-        new ExpectedRecordCPKProto(41, 44, 45, 46, Op.INSERT)
+        new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.COMMIT),
+        new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.BEGIN),
+        new ExpectedRecordCPKProto(41, 44, 45, 46, Op.INSERT),
+        new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.COMMIT)
       };
 
+      setServerFlag(getTserverHostAndPort(), CDC_ENABLE_CONSISTENT_RECORDS, "false");
       executeScriptAssertRecords(expectedRecords, "compound_key_tests/cdc_cpk_long_script.sql");
     } catch (Exception e) {
       LOG.error("Test to execute a long script failed with exception: ", e);
@@ -228,11 +238,15 @@ public class TestCompoundKey extends CDCBaseClass {
       testSubscriber.createStream("proto");
 
       ExpectedRecordCPKProto[] expectedRecords = {
+        new ExpectedRecordCPKProto(0, 0, 0, 0, Op.BEGIN),
         new ExpectedRecordCPKProto(1, 2, 3, 4, Op.INSERT),
+        new ExpectedRecordCPKProto(0, 0, 0, 0, Op.COMMIT),
         new ExpectedRecordCPKProto(0, 0, 0, 0, Op.BEGIN),
         new ExpectedRecordCPKProto(5, 6, 7, 8, Op.INSERT),
         new ExpectedRecordCPKProto(0, 0, 0, 0, Op.COMMIT),
+        new ExpectedRecordCPKProto(0, 0, 0, 0, Op.BEGIN),
         new ExpectedRecordCPKProto(1, 2, 0, 0, Op.DELETE),
+        new ExpectedRecordCPKProto(0, 0, 0, 0, Op.COMMIT),
         new ExpectedRecordCPKProto(0, 0, 0, 0, Op.BEGIN),
         new ExpectedRecordCPKProto(5, 6, 8, 8, Op.UPDATE),
         new ExpectedRecordCPKProto(0, 0, 0, 0, Op.COMMIT)

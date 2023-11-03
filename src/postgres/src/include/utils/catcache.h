@@ -61,6 +61,7 @@ typedef struct catcache
 	slist_node	cc_next;		/* list link */
 	ScanKeyData cc_skey[CATCACHE_MAXKEYS];	/* precomputed key info for heap
 											 * scans */
+	bool		yb_cc_is_fully_loaded;	/* is relation fully loaded on start/refresh */
 
 	/*
 	 * Keep these at the end, so that compiling catcache.c with CATCACHE_STATS
@@ -79,6 +80,7 @@ typedef struct catcache
 	long		cc_invals;		/* # of entries invalidated from cache */
 	long		cc_lsearches;	/* total # list-searches */
 	long		cc_lhits;		/* # of matches against existing lists */
+	long 		yb_cc_size_bytes;  /* size of this cache in bytes */
 #endif
 } CatCache;
 

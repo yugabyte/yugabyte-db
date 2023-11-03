@@ -18,8 +18,7 @@
 //   Compilation and execution should continue after a warning is raised.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_UTIL_ERRCODES_H_
-#define YB_YQL_CQL_QL_UTIL_ERRCODES_H_
+#pragma once
 
 #include "yb/util/status_ec.h"
 
@@ -103,7 +102,7 @@ enum class ErrorCode : int64_t {
   DUPLICATE_TYPE = -218,
   DUPLICATE_TYPE_FIELD = -219,
   ALTER_KEY_COLUMN = -220,
-  INCOMPATIBLE_COPARTITION_SCHEMA = -221,
+  // reserved code: INCOMPATIBLE_COPARTITION_SCHEMA = -221
   INVALID_ROLE_DEFINITION = -222,
   DUPLICATE_ROLE = -223,
   NULL_IN_COLLECTIONS = -224,
@@ -162,5 +161,3 @@ typedef StatusErrorCodeImpl<QLErrorTag> QLError;
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_UTIL_ERRCODES_H_

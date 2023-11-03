@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import PropTypes from 'prop-types';
 import { YBModal } from '../common/forms/fields';
 
@@ -10,7 +10,8 @@ export default class YBConfirmModal extends Component {
     title: PropTypes.string.isRequired,
     onConfirm: PropTypes.func.isRequired,
     confirmLabel: PropTypes.string,
-    cancelLabel: PropTypes.string
+    cancelLabel: PropTypes.string,
+    modalClassname: PropTypes.string
   };
 
   static defaultProps = {
@@ -27,7 +28,7 @@ export default class YBConfirmModal extends Component {
   };
 
   render() {
-    const { name, title, confirmLabel, cancelLabel, hideConfirmModal } = this.props;
+    const { name, title, confirmLabel, cancelLabel, hideConfirmModal, modalClassname } = this.props;
     return (
       <div className={name} key={name}>
         <YBModal
@@ -39,6 +40,7 @@ export default class YBConfirmModal extends Component {
           submitLabel={confirmLabel}
           onFormSubmit={this.submitConfirmModal}
           submitOnCarriage
+          className={modalClassname}
         >
           {this.props.children}
         </YBModal>

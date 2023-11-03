@@ -84,7 +84,6 @@ const std::unordered_map<ErrorCode, const char*, EnumHash> kQLErrorMessage {
   { ErrorCode::DUPLICATE_TYPE, "Duplicate Type" },
   { ErrorCode::DUPLICATE_TYPE_FIELD, "Duplicate Type Field" },
   { ErrorCode::ALTER_KEY_COLUMN, "Alter key column" },
-  { ErrorCode::INCOMPATIBLE_COPARTITION_SCHEMA, "Incompatible Copartition Schema" },
   { ErrorCode::INVALID_ROLE_DEFINITION, "Invalid Role Definition" },
   { ErrorCode::DUPLICATE_ROLE, "Duplicate Role"},
   { ErrorCode::NULL_IN_COLLECTIONS, "null is not supported inside collections"},

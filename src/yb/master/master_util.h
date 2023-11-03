@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_MASTER_UTIL_H
-#define YB_MASTER_MASTER_UTIL_H
+#pragma once
 
 #include <memory>
 
@@ -28,9 +27,18 @@
 #include "yb/util/status_fwd.h"
 #include "yb/util/monotime.h"
 
-// This file contains utility functions that can be shared between client and master code.
+static constexpr const char* kDBTypePrefixUnknown = "unknown";
+static constexpr const char* kDBTypePrefixCql = "ycql";
+static constexpr const char* kDBTypePrefixYsql = "ysql";
+static constexpr const char* kDBTypePrefixRedis = "yedis";
 
 namespace yb {
+
+const char* DatabasePrefix(YQLDatabase db);
+
+// A short version of the given database type, such as "YCQL" or "YSQL". Used
+// for human-readable messages.
+std::string ShortDatabaseType(YQLDatabase db_type);
 
 namespace consensus {
 
@@ -80,25 +88,6 @@ Status SetupError(MasterErrorPB* error, const Status& s);
 
 // TODO(alex): Merge with stuff in entity_ids?
 
-// Is this a parent dummy table ID created for a colocation group (database/tablegroup)?
-bool IsColocationParentTableId(const TableId& table_id);
-
-// Is this a parent dummy table ID created for a colocated database?
-bool IsColocatedDbParentTableId(const TableId& table_id);
-
-TableId GetColocatedDbParentTableId(const TableId& table_id);
-
-TableName GetColocatedDbParentTableName(const NamespaceId& database_id);
-
-// Is this a parent dummy table ID created for a tablegroup?
-bool IsTablegroupParentTableId(const TableId& table_id);
-
-TableId GetTablegroupParentTableId(const TablegroupId& tablegroup_id);
-
-TableName GetTablegroupParentTableName(const TablegroupId& tablegroup_id);
-
-TablegroupId GetTablegroupIdFromParentTableId(const TableId& table_id);
-
 bool IsBlacklisted(const ServerRegistrationPB& registration, const BlacklistSet& blacklist);
 
 bool IsRunningOn(const ServerRegistrationPB& registration, const HostPortPB& hp);
@@ -107,5 +96,3 @@ BlacklistSet ToBlacklistSet(const BlacklistPB& blacklist);
 
 } // namespace master
 } // namespace yb
-
-#endif // YB_MASTER_MASTER_UTIL_H

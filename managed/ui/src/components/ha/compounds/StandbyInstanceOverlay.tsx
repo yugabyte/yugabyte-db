@@ -1,4 +1,3 @@
-import React from 'react';
 import { useLoadHAConfiguration } from '../hooks/useLoadHAConfiguration';
 import { withRouter } from 'react-router';
 import './StandbyInstanceOverlay.scss';

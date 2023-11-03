@@ -19,7 +19,9 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -43,6 +45,8 @@ import com.google.common.collect.Sets;
 public class TestYsqlDump extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestYsqlDump.class);
 
+  private static enum IncludeYbMetadata { ON, OFF }
+
   @Override
   public int getTestMethodTimeoutSec() {
     return super.getTestMethodTimeoutSec() * 10;
@@ -52,6 +56,7 @@ public class TestYsqlDump extends BasePgSQLTest {
   protected Map<String, String> getMasterFlags() {
     Map<String, String> flagMap = super.getMasterFlags();
     flagMap.put("TEST_sequential_colocation_ids", "true");
+    flagMap.put("ysql_legacy_colocated_database_creation", "false");
     return flagMap;
   }
 
@@ -82,49 +87,110 @@ public class TestYsqlDump extends BasePgSQLTest {
   }
 
   @Test
-  public void ysqlDump() throws Exception {
+  public void ysqlDumpWithYbMetadata() throws Exception {
     ysqlDumpTester(
         "ysql_dump" /* binaryName */,
+        "" /* dumpedDatabaseName */,
         "sql/yb_ysql_dump.sql" /* inputFileRelativePath */,
         "sql/yb_ysql_dump_describe.sql" /* inputDescribeFileRelativePath */,
         "data/yb_ysql_dump.data.sql" /* expectedDumpRelativePath */,
         "expected/yb_ysql_dump_describe.out" /* expectedDescribeFileRelativePath */,
         "results/yb_ysql_dump.out" /* outputFileRelativePath */,
-        "results/yb_ysql_dump_describe.out" /* outputDescribeFileRelativePath */);
+        "results/yb_ysql_dump_describe.out" /* outputDescribeFileRelativePath */,
+        IncludeYbMetadata.ON);
   }
 
   @Test
-  public void ysqlDumpAll() throws Exception {
+  public void ysqlDumpAllWithYbMetadata() throws Exception {
     // Note that we're using the same describe input as for regular ysql_dump!
     ysqlDumpTester(
         "ysql_dumpall" /* binaryName */,
+        "" /* dumpedDatabaseName */,
         "sql/yb_ysql_dumpall.sql" /* inputFileRelativePath */,
         "sql/yb_ysql_dump_describe.sql" /* inputDescribeFileRelativePath */,
         "data/yb_ysql_dumpall.data.sql" /* expectedDumpRelativePath */,
         "expected/yb_ysql_dumpall_describe.out" /* expectedDescribeFileRelativePath */,
         "results/yb_ysql_dumpall.out" /* outputFileRelativePath */,
-        "results/yb_ysql_dumpall_describe.out" /* outputDescribeFileRelativePath */);
+        "results/yb_ysql_dumpall_describe.out" /* outputDescribeFileRelativePath */,
+        IncludeYbMetadata.ON);
+  }
+
+  @Test
+  public void ysqlDumpWithoutYbMetadata() throws Exception {
+    ysqlDumpTester(
+        "ysql_dump" /* binaryName */,
+        "" /* dumpedDatabaseName */,
+        "sql/yb_ysql_dump_without_ybmetadata.sql" /* inputFileRelativePath */,
+        "sql/yb_ysql_dump_without_ybmetadata_describe.sql" /* inputDescribeFileRelativePath */,
+        "data/yb_ysql_dump_without_ybmetadata.data.sql" /* expectedDumpRelativePath */,
+        "expected/yb_ysql_dump_without_ybmetadata_describe.out"
+        /* expectedDescribeFileRelativePath */,
+        "results/yb_ysql_dump_without_ybmetadata.out" /* outputFileRelativePath */,
+        "results/yb_ysql_dump_without_ybmetadata_describe.out"
+        /* outputDescribeFileRelativePath */,
+        IncludeYbMetadata.OFF);
+  }
+
+  @Test
+  public void ysqlDumpColocatedDB() throws Exception {
+    ysqlDumpTester(
+        "ysql_dump" /* binaryName */,
+        "colocated_db" /* dumpedDatabaseName */,
+        "sql/yb_ysql_dump_colocated_database.sql" /* inputFileRelativePath */,
+        "sql/yb_ysql_dump_describe_colocated_database.sql" /* inputDescribeFileRelativePath */,
+        "data/yb_ysql_dump_colocated_database.data.sql" /* expectedDumpRelativePath */,
+        "expected/yb_ysql_dump_describe_colocated_database.out"
+        /* expectedDescribeFileRelativePath */,
+        "results/yb_ysql_dump_colocated_database.out" /* outputFileRelativePath */,
+        "results/yb_ysql_dump_describe_colocated_database.out" /* outputDescribeFileRelativePath */,
+        IncludeYbMetadata.ON);
+  }
+
+  @Test
+  public void ysqlDumpLegacyColocatedDB() throws Exception {
+    markClusterNeedsRecreation();
+    restartClusterWithFlags(Collections.singletonMap("ysql_legacy_colocated_database_creation",
+                                                     "true"),
+                            Collections.emptyMap());
+    // Reuse the same inputFileRelativePath and inputDescribeFileRelativePath
+    // as test ysqlDumpColocatedDB.
+    ysqlDumpTester(
+        "ysql_dump" /* binaryName */,
+        "colocated_db" /* dumpedDatabaseName */,
+        "sql/yb_ysql_dump_colocated_database.sql" /* inputFileRelativePath */,
+        "sql/yb_ysql_dump_describe_colocated_database.sql" /* inputDescribeFileRelativePath */,
+        "data/yb_ysql_dump_legacy_colocated_database.data.sql" /* expectedDumpRelativePath */,
+        "expected/yb_ysql_dump_describe_legacy_colocated_database.out"
+        /* expectedDescribeFileRelativePath */,
+        "results/yb_ysql_dump_legacy_colocated_database.out" /* outputFileRelativePath */,
+        "results/yb_ysql_dump_describe_legacy_colocated_database.out"
+        /* outputDescribeFileRelativePath */,
+        IncludeYbMetadata.ON);
   }
 
   void ysqlDumpTester(final String binaryName,
+                      final String dumpedDatabaseName,
                       final String inputFileRelativePath,
                       final String inputDescribeFileRelativePath,
                       final String expectedDumpRelativePath,
                       final String expectedDescribeFileRelativePath,
                       final String outputFileRelativePath,
-                      final String outputDescribeFileRelativePath) throws Exception {
+                      final String outputDescribeFileRelativePath,
+                      final IncludeYbMetadata includeYbMetadata) throws Exception {
     // Location of Postgres regression tests
     File pgRegressDir = PgRegressBuilder.PG_REGRESS_DIR;
 
     // Create the data
-    List<String> inputLines =
-        FileUtils.readLines(new File(pgRegressDir, inputFileRelativePath),
-                            StandardCharsets.UTF_8);
-    try (Statement statement = connection.createStatement()) {
-      for (String inputLine : inputLines) {
-        statement.execute(inputLine);
-      }
-    }
+    int tserverIndex = 0;
+    File ysqlshExec = new File(pgBinDir, "ysqlsh");
+    File inputFile  = new File(pgRegressDir, inputFileRelativePath);
+    ProcessUtil.executeSimple(Arrays.asList(
+      ysqlshExec.toString(),
+      "-h", getPgHost(tserverIndex),
+      "-p", Integer.toString(getPgPort(tserverIndex)),
+      "-U", TEST_PG_USER,
+      "-f", inputFile.toString()
+    ), "ysqlsh");
 
     // Dump and validate the data
     File pgBinDir     = PgRegressBuilder.getPgBinDir();
@@ -134,20 +200,22 @@ public class TestYsqlDump extends BasePgSQLTest {
     File actual   = new File(pgRegressDir, outputFileRelativePath);
     actual.getParentFile().mkdirs();
 
-    int tserverIndex = 0;
-
-    ProcessUtil.executeSimple(Arrays.asList(
+    List<String> args = new ArrayList<>(Arrays.asList(
       ysqlDumpExec.toString(),
       "-h", getPgHost(tserverIndex),
       "-p", Integer.toString(getPgPort(tserverIndex)),
       "-U", DEFAULT_PG_USER,
-      "-f", actual.toString(),
-      "--include-yb-metadata"
-    ), binaryName);
+      "-f", actual.toString()
+    ));
+    if (includeYbMetadata == IncludeYbMetadata.ON) {
+      args.add("--include-yb-metadata");
+    }
+    if (!dumpedDatabaseName.isEmpty()) {
+      Collections.addAll(args, "-d", dumpedDatabaseName);
+    }
+    ProcessUtil.executeSimple(args, binaryName);
 
     assertOutputFile(expected, actual);
-
-    File ysqlshExec = new File(pgBinDir, "ysqlsh");
 
     File inputDesc    = new File(pgRegressDir, inputDescribeFileRelativePath);
     File expectedDesc = new File(pgRegressDir, expectedDescribeFileRelativePath);
@@ -155,14 +223,18 @@ public class TestYsqlDump extends BasePgSQLTest {
     actualDesc.getParentFile().mkdirs();
 
     // Run some validations
-    ProcessUtil.executeSimple(Arrays.asList(
+    List<String> ysqlsh_args = new ArrayList<>(Arrays.asList(
       ysqlshExec.toString(),
       "-h", getPgHost(tserverIndex),
       "-p", Integer.toString(getPgPort(tserverIndex)),
       "-U", DEFAULT_PG_USER,
       "-f", inputDesc.toString(),
       "-o", actualDesc.toString()
-    ), "ysqlsh (validate describes)");
+    ));
+    if (!dumpedDatabaseName.isEmpty()) {
+      Collections.addAll(ysqlsh_args, "-d", dumpedDatabaseName);
+    }
+    ProcessUtil.executeSimple(ysqlsh_args, "ysqlsh (validate describes)");
 
     assertOutputFile(expectedDesc, actualDesc);
   }
@@ -176,7 +248,7 @@ public class TestYsqlDump extends BasePgSQLTest {
     // The resulting string will be used to provide debug information if the below
     // comparison between the two files fails.
     String message = "Side-by-side diff between expected output and actual output:\n" +
-          new SideBySideDiff(expected, actual).getSideBySideDiff();
+          SideBySideDiff.generate(expected, actual) + "\n";
 
     int i = 0;
     for (; i < expectedLines.size() && i < actualLines.size(); ++i) {

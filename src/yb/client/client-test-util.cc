@@ -43,16 +43,21 @@
 #include <boost/function.hpp>
 
 #include "yb/client/client_fwd.h"
+#include "yb/client/client.h"
 #include "yb/client/error.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/common/common.pb.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 
+#include "yb/master/master_types.pb.h"
+
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
@@ -60,9 +65,41 @@
 #include "yb/util/status_log.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+
+using std::string;
 
 namespace yb {
 namespace client {
+
+namespace {
+  void VerifyNamespace(client::YBClient *client,
+                       const NamespaceName& db_name,
+                       const bool exists,
+                       const int timeout_secs) {
+    ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+      Result<bool> ret = client->NamespaceExists(db_name, YQLDatabase::YQL_DATABASE_PGSQL);
+      WARN_NOT_OK(ResultToStatus(ret), "NamespaceExists call failed");
+      return ret.ok() && ret.get() == exists;
+    }, MonoDelta::FromSeconds(timeout_secs),
+       Format("Verify Namespace $0 $1 exists", db_name, (exists ? "" : "not"))));
+  }
+
+  void VerifyTable(client::YBClient* client,
+                   const string& database_name,
+                   const string& table_name,
+                   const int timeout_secs,
+                   const bool exists) {
+    ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+      auto ret = client->TableExists(
+          client::YBTableName(YQL_DATABASE_PGSQL, database_name, table_name));
+      WARN_NOT_OK(ResultToStatus(ret), "TableExists call failed");
+      return ret.ok() && ret.get() == exists;
+    }, MonoDelta::FromSeconds(timeout_secs),
+       Format("Verify Table $0 $1 exists in database $2",
+              table_name, (exists ? "" : "not"), database_name)));
+  }
+} // namespace
 
 void LogSessionErrorsAndDie(const FlushStatus& flush_status) {
   const auto& s = flush_status.status;
@@ -154,6 +191,56 @@ std::shared_ptr<YBqlReadOp> CreateReadOp(
   rscol_desc->set_name(value_column);
   table.ColumnType(value_column)->ToQLTypePB(rscol_desc->mutable_ql_type());
   return op;
+}
+
+Result<string> GetNamespaceIdByNamespaceName(YBClient* client,
+                                             const string& namespace_name) {
+  const auto namespaces = VERIFY_RESULT(client->ListNamespaces(YQL_DATABASE_PGSQL));
+  for (const auto& ns : namespaces) {
+    if (ns.id.name() == namespace_name) {
+      return ns.id.id();
+    }
+  }
+  return STATUS_SUBSTITUTE(NotFound, "The namespace $0 does not exist", namespace_name);
+}
+
+Result<string> GetTableIdByTableName(client::YBClient* client,
+                                     const string& namespace_name,
+                                     const string& table_name) {
+  const auto tables = VERIFY_RESULT(client->ListTables());
+  for (const auto& t : tables) {
+    if (t.namespace_name() == namespace_name && t.table_name() == table_name) {
+      return t.table_id();
+    }
+  }
+  return STATUS_SUBSTITUTE(NotFound, "The table $0 does not exist in namespace $1",
+      table_name, namespace_name);
+}
+
+void VerifyNamespaceExists(YBClient *client,
+                          const NamespaceName& db_name,
+                          const int timeout_secs) {
+  VerifyNamespace(client, db_name, true /* exists */, timeout_secs);
+}
+
+void VerifyNamespaceNotExists(YBClient *client,
+                              const NamespaceName& db_name,
+                              const int timeout_secs) {
+  VerifyNamespace(client, db_name, false /* exists */, timeout_secs);
+}
+
+void VerifyTableExists(YBClient* client,
+                       const string& database_name,
+                       const string& table_name,
+                       const int timeout_secs) {
+  VerifyTable(client, database_name, table_name, timeout_secs, true /* exists */);
+}
+
+void VerifyTableNotExists(YBClient* client,
+                          const string& database_name,
+                          const string& table_name,
+                          const int timeout_secs) {
+  VerifyTable(client, database_name, table_name, timeout_secs, false /* exists */);
 }
 
 }  // namespace client

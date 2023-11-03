@@ -29,8 +29,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TSERVER_TS_TABLET_MANAGER_H
-#define YB_TSERVER_TS_TABLET_MANAGER_H
+
+#pragma once
 
 #include <memory>
 #include <string>
@@ -52,6 +52,7 @@
 
 #include "yb/docdb/local_waiting_txn_registry.h"
 
+#include "yb/gutil/callback.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stl_util.h"
@@ -83,12 +84,11 @@
 namespace yb {
 
 class GarbageCollector;
-class PartitionSchema;
 class FsManager;
 class HostPort;
-class Partition;
 class Schema;
 class BackgroundTask;
+class XClusterSafeTimeTest;
 
 namespace consensus {
 class RaftConfigPB;
@@ -96,6 +96,7 @@ class RaftConfigPB;
 
 namespace tserver {
 class TabletServer;
+class FullCompactionManager;
 
 using rocksdb::MemoryMonitor;
 
@@ -106,6 +107,8 @@ class TransitionInProgressDeleter;
 struct TabletCreationMetaData;
 typedef boost::container::static_vector<TabletCreationMetaData, kNumSplitParts>
     SplitTabletsCreationMetaData;
+
+typedef Callback<void(tablet::TabletPeerPtr)> ConsensusChangeCallback;
 
 // If 'expr' fails, log a message, tombstone the given tablet, and return the
 // error status.
@@ -120,6 +123,7 @@ typedef boost::container::static_vector<TabletCreationMetaData, kNumSplitParts>
 
 // Type of tablet directory.
 YB_DEFINE_ENUM(TabletDirType, (kData)(kWal));
+YB_DEFINE_ENUM(TabletRemoteSessionType, (kBootstrap)(kSnapshotTransfer));
 
 // Keeps track of the tablets hosted on the tablet server side.
 //
@@ -145,6 +149,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   Status Init();
   Status Start();
 
+  Status RegisterServiceCallback(
+      StatefulServiceKind service_kind, ConsensusChangeCallback callback);
+
   // Waits for all the bootstraps to complete.
   // Returns Status::OK if all tablets bootstrapped successfully. If
   // the bootstrap of any tablet failed returns the failure reason for
@@ -161,6 +168,12 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   ThreadPool* read_pool() const { return read_pool_.get(); }
   ThreadPool* append_pool() const { return append_pool_.get(); }
   ThreadPool* log_sync_pool() const { return log_sync_pool_.get(); }
+  ThreadPool* full_compaction_pool() const { return full_compaction_pool_.get(); }
+  ThreadPool* admin_triggered_compaction_pool() const {
+    return admin_triggered_compaction_pool_.get();
+  }
+  ThreadPool* waiting_txn_pool() const { return waiting_txn_pool_.get(); }
+  ThreadPool* flush_retryable_requests_pool() const { return flush_retryable_requests_pool_.get(); }
 
   // Create a new tablet and register it with the tablet manager. The new tablet
   // is persisted on disk and opened before this method returns.
@@ -171,11 +184,12 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // and returns a bad Status.
   Result<tablet::TabletPeerPtr> CreateNewTablet(
       const tablet::TableInfoPtr& table_info,
-      const string& tablet_id,
-      const Partition& partition,
+      const std::string& tablet_id,
+      const dockv::Partition& partition,
       consensus::RaftConfigPB config,
       const bool colocated = false,
-      const std::vector<SnapshotScheduleId>& snapshot_schedules = {});
+      const std::vector<SnapshotScheduleId>& snapshot_schedules = {},
+      const std::unordered_set<StatefulServiceKind>& hosted_services = {});
 
   Status ApplyTabletSplit(
       tablet::SplitOperation* operation, log::Log* raft_log,
@@ -190,12 +204,14 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // value. If not, 'error_code' is set to CAS_FAILED and a non-OK Status is
   // returned.
   // If `hide_only` is true, then just hide tablet instead of deleting it.
+  // If `keep_data` is true, then on disk data is not deleted.
   Status DeleteTablet(
       const TabletId& tablet_id,
       tablet::TabletDataState delete_type,
       tablet::ShouldAbortActiveTransactions should_abort_active_txns,
       const boost::optional<int64_t>& cas_config_opid_index_less_or_equal,
       bool hide_only,
+      bool keep_data,
       boost::optional<TabletServerErrorPB::Code>* error_code);
 
   // Lookup the given tablet peer by its ID. Returns nullptr if the tablet is not found.
@@ -210,6 +226,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   Result<tablet::TabletPeerPtr> GetTablet(const char* tablet_id) const {
     return GetTablet(Slice(tablet_id));
   }
+
+  Result<consensus::RetryableRequests> GetTabletRetryableRequests(
+      const TabletId& tablet_id) const;
 
   // Lookup the given tablet peer by its ID.
   // Returns NotFound error if the tablet is not found.
@@ -227,6 +246,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // TODO: KUDU-921: Run this procedure on a background thread.
   virtual Status
       StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB& req) override;
+
+  // Initiate remote snapshot transfer of the specified tablet.
+  Status StartRemoteSnapshotTransfer(const StartRemoteSnapshotTransferRequestPB& req);
 
   // Generate a tablet report.
   //
@@ -256,7 +278,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Adjust the max number of tablets that will be included in a single report.
   // This is normally controlled by a master-configured GFLAG.
   void SetReportLimit(int32_t limit) {
-    std::lock_guard<RWMutex> write_lock(mutex_);
+    std::lock_guard write_lock(mutex_);
     report_limit_ = limit;
   }
   int32_t GetReportLimit() {
@@ -266,13 +288,20 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Get all of the tablets currently hosted on this server.
   TabletPeers GetTabletPeers(TabletPtrs* tablet_ptrs = nullptr) const;
+  // Get all of the tablets currently hosted on this server that belong to a given table.
+  TabletPeers GetTabletPeersWithTableId(const TableId& table_id) const;
   void GetTabletPeersUnlocked(TabletPeers* tablet_peers) const REQUIRES_SHARED(mutex_);
   void PreserveLocalLeadersOnly(std::vector<const TabletId*>* tablet_ids) const;
+
+  // Get TabletPeers for all status tablets hosted on this server.
+  TabletPeers GetStatusTabletPeers();
 
   // Callback used for state changes outside of the control of TsTabletManager, such as a consensus
   // role change. They are applied asynchronously internally.
   void ApplyChange(const TabletId& tablet_id,
                    std::shared_ptr<consensus::StateChangeContext> context);
+
+  void NotifyConfigChangeToStatefulServices(const TabletId& tablet_id) EXCLUDES(mutex_);
 
   // Marks tablet with 'tablet_id' dirty.
   // Used for state changes outside of the control of TsTabletManager, such as consensus role
@@ -329,6 +358,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   TabletMemoryManager* tablet_memory_manager() { return mem_manager_.get(); }
 
+  FullCompactionManager* full_compaction_manager() { return full_compaction_manager_.get(); }
+
   Status UpdateSnapshotsInfo(const master::TSSnapshotsInfoPB& info);
 
   // Background task that verifies the data on each tablet for consistency.
@@ -343,12 +374,19 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   tablet::TabletOptions* TEST_tablet_options() { return &tablet_options_; }
 
-  // Trigger asynchronous compactions concurrently on the provided tablets.
-  Status TriggerCompactionAndWait(const TabletPtrs& tablets);
+  // Trigger admin full compactions concurrently on the provided tablets.
+  // should_wait determines whether this function is asynchronous or not.
+  Status TriggerAdminCompaction(const TabletPtrs& tablets, bool should_wait);
+
+  // Create Metadata cache atomically and return the metadata cache object.
+  client::YBMetaDataCache* CreateYBMetaDataCache();
+
+  // Get the metadata cache object.
+  client::YBMetaDataCache* YBMetaDataCache() const;
 
  private:
-  FRIEND_TEST(TsTabletManagerTest, TestPersistBlocks);
   FRIEND_TEST(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered);
+  friend class ::yb::XClusterSafeTimeTest;
 
   // Flag specified when registering a TabletPeer.
   enum RegisterTabletPeerMode {
@@ -425,8 +463,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Calls to this method are expected to be externally synchronized, typically
   // using the transition_in_progress_ map.
   Status RegisterTablet(const TabletId& tablet_id,
-                                const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-                                RegisterTabletPeerMode mode);
+                        const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+                        RegisterTabletPeerMode mode);
 
   // Create and register a new TabletPeer, given tablet metadata.
   // Calls RegisterTablet() with the given 'mode' parameter after constructing
@@ -499,7 +537,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   void CleanupSplitTablets();
 
-  HybridTime AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata);
+  docdb::HistoryCutoff AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata);
 
   template <class Key>
   Result<tablet::TabletPeerPtr> DoGetServingTablet(const Key& tablet_id) const;
@@ -516,6 +554,40 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   void PollWaitingTxnRegistry();
 
+  void FlushDirtySuperblocks();
+
+  // Helper functions to reduce code duplication between RemoteBootstrap and RemoteSnapshotTransfer
+  // flows.
+  typedef std::unordered_map<std::string, int> RemoteSessionSourceAddresses;
+  struct RemoteClients {
+    RemoteSessionSourceAddresses source_addresses_;
+    int32_t num_clients_ = 0;
+  };
+
+  // Registers remote client by incrementing num concurrent clients and adding private_addr to
+  // source address map. Proceeds to call CheckStateAndLookupTabletUnlocked and the callback before
+  // returning the result of the tablet lookup if successful.
+  Result<tablet::TabletPeerPtr> RegisterRemoteClientAndLookupTablet(
+      const TabletId& tablet_id, const std::string& private_addr, const std::string& log_prefix,
+      RemoteClients* remote_clients,
+      std::function<Status()> callback = [] { return Status::OK(); });
+
+  void WaitForRemoteSessionsToEnd(
+      TabletRemoteSessionType session_type, const std::string& debug_session_string) const
+      EXCLUDES(mutex_);
+
+  void DecrementRemoteSessionCount(const std::string& private_addr, RemoteClients* remote_clients);
+
+  // Checks ClosingUnlocked and then returns the result of LookupTabletUnlocked.
+  template <class Key>
+  Result<tablet::TabletPeerPtr> CheckStateAndLookupTabletUnlocked(
+      const Key& tablet_id, const std::string& log_prefix) const REQUIRES_SHARED(mutex_);
+
+  template <class RemoteClient>
+  std::unique_ptr<RemoteClient> InitRemoteClient(
+      const std::string& log_prefix, const TabletId& tablet_id, const PeerId& source_uuid,
+      const std::string& source_addr, const std::string& debug_session_string);
+
   const CoarseTimePoint start_time_;
 
   FsManager* const fs_manager_;
@@ -527,8 +599,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   using TabletMap = std::unordered_map<
       TabletId, std::shared_ptr<tablet::TabletPeer>, StringHash, std::equal_to<void>>;
 
-  // Lock protecting tablet_map_, dirty_tablets_, state_, tablets_blocked_from_lb_ and
-  // tablets_being_remote_bootstrapped_.
+  // Lock protecting tablet_map_, dirty_tablets_, state_, tablets_blocked_from_lb_,
+  // tablets_being_remote_bootstrapped_, remote_bootstrap_clients_ and snapshot_transfer_clients_.
   mutable RWMutex mutex_;
 
   // Map from tablet ID to tablet
@@ -592,11 +664,19 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Thread pool for read ops, that are run in parallel, shared between all tablets.
   std::unique_ptr<ThreadPool> read_pool_;
 
-  // Thread pool for manually triggering compactions for tablets created from a split.
-  std::unique_ptr<ThreadPool> post_split_trigger_compaction_pool_;
+  // Thread pool for flushing retryable requests.
+  std::unique_ptr<ThreadPool> flush_retryable_requests_pool_;
+
+  // Thread pool for manually triggering full compactions for tablets, either via schedule
+  // of tablets created from a split.
+  // This is used by a tablet method to schedule compactions on the child tablets after
+  // a split so each tablet has a reference to this pool.
+  std::unique_ptr<ThreadPool> full_compaction_pool_;
 
   // Thread pool for admin triggered compactions for tablets.
   std::unique_ptr<ThreadPool> admin_triggered_compaction_pool_;
+
+  std::unique_ptr<ThreadPool> waiting_txn_pool_;
 
   std::unique_ptr<rpc::Poller> tablets_cleaner_;
 
@@ -606,7 +686,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Used for cleaning up old metrics.
   std::unique_ptr<rpc::Poller> metrics_cleaner_;
 
-  std::unique_ptr<tablet::LocalWaitingTxnRegistry> waiting_txn_registry_;
+  std::unique_ptr<docdb::LocalWaitingTxnRegistry> waiting_txn_registry_;
 
   std::unique_ptr<rpc::Poller> waiting_txn_registry_poller_;
 
@@ -619,15 +699,17 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   std::shared_ptr<TabletMemoryManager> mem_manager_;
 
-  std::unordered_set<std::string> bootstrap_source_addresses_;
-
-  std::atomic<int32_t> num_tablets_being_remote_bootstrapped_{0};
+  RemoteClients remote_bootstrap_clients_ GUARDED_BY(mutex_);
+  RemoteClients snapshot_transfer_clients_ GUARDED_BY(mutex_);
 
   // Gauge to monitor applied split operations.
   scoped_refptr<yb::AtomicGauge<uint64_t>> ts_split_op_apply_;
 
   // Gauge to monitor post-split compactions that have been started.
-  scoped_refptr<yb::AtomicGauge<uint64_t>> ts_split_compaction_added_;
+  scoped_refptr<yb::AtomicGauge<uint64_t>> ts_post_split_compaction_added_;
+
+  // Gauge for the count of live tablet peers running on this tserver.
+  scoped_refptr<yb::AtomicGauge<uint32_t>> ts_live_tablet_peers_metric_;
 
   mutable simple_spinlock snapshot_schedule_allowed_history_cutoff_mutex_;
   std::unordered_map<SnapshotScheduleId, HybridTime, SnapshotScheduleIdHash>
@@ -639,6 +721,19 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       GUARDED_BY(snapshot_schedule_allowed_history_cutoff_mutex_);
   int64_t snapshot_schedules_version_ = 0;
   HybridTime last_restorations_update_ht_;
+
+  // Background task for periodically flushing the superblocks.
+  std::unique_ptr<BackgroundTask> superblock_flush_bg_task_;
+
+  std::unique_ptr<FullCompactionManager> full_compaction_manager_;
+
+  std::shared_mutex service_registration_mutex_;
+  std::unordered_map<StatefulServiceKind, ConsensusChangeCallback> service_consensus_change_cb_;
+
+  // Metadata cache used by write operations for index requests processing.
+  simple_spinlock metadata_cache_spinlock_;
+  std::shared_ptr<client::YBMetaDataCache> metadata_cache_holder_;
+  std::atomic<client::YBMetaDataCache*> metadata_cache_;
 
   DISALLOW_COPY_AND_ASSIGN(TSTabletManager);
 };
@@ -675,7 +770,8 @@ Status DeleteTabletData(const scoped_refptr<tablet::RaftGroupMetadata>& meta,
                         tablet::TabletDataState delete_type,
                         const std::string& uuid,
                         const yb::OpId& last_logged_opid,
-                        TSTabletManager* ts_manager = nullptr);
+                        TSTabletManager* ts_manager = nullptr,
+                        FsManager* fs_manager = nullptr);
 
 // Return Status::IllegalState if leader_term < last_logged_term.
 // Helper function for use with remote bootstrap.
@@ -698,4 +794,3 @@ Status ShutdownAndTombstoneTabletPeerNotOk(
 
 } // namespace tserver
 } // namespace yb
-#endif /* YB_TSERVER_TS_TABLET_MANAGER_H */

@@ -20,6 +20,7 @@
 #include "yb/gutil/casts.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/random_util.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
@@ -28,6 +29,7 @@ using namespace std::literals;
 
 DECLARE_int64(transaction_rpc_timeout_ms);
 DECLARE_int32(txn_max_apply_batch_records);
+DECLARE_bool(enable_wait_queues);
 
 namespace yb {
 namespace client {
@@ -36,6 +38,9 @@ class SerializableTxnTest
     : public TransactionCustomLogSegmentSizeTest<0, TransactionTestBase<MiniCluster>> {
  protected:
   void SetUp() override {
+    // This test depends on fail-on-conflict concurrency control to perform its validation.
+    // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
     SetIsolationLevel(IsolationLevel::SERIALIZABLE_ISOLATION);
     TransactionTestBase::SetUp();
   }
@@ -237,7 +242,7 @@ void SerializableTxnTest::TestIncrement(int key, bool transactional) {
 // serializable isolation.
 // With retries the resulting value should be equal to number of increments.
 void SerializableTxnTest::TestIncrements(bool transactional) {
-  FLAGS_transaction_rpc_timeout_ms = MonoDelta(1min).ToMilliseconds();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_rpc_timeout_ms) = MonoDelta(1min).ToMilliseconds();
 
   const auto kThreads = RegularBuildVsSanitizers(3, 2);
 
@@ -388,7 +393,7 @@ TEST_F(SerializableTxnTest, Coloring) {
 }
 
 TEST_F(SerializableTxnTest, ColoringWithLongApply) {
-  FLAGS_txn_max_apply_batch_records = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_txn_max_apply_batch_records) = 3;
   TestColoring();
 }
 

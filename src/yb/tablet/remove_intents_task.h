@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_REMOVE_INTENTS_TASK_H
-#define YB_TABLET_REMOVE_INTENTS_TASK_H
+#pragma once
 
 #include "yb/rpc/strand.h"
 
@@ -29,7 +28,7 @@ class RemoveIntentsTask : public rpc::StrandTask {
                     RunningTransactionContext* running_transaction_context,
                     const TransactionId& id);
 
-  bool Prepare(RunningTransactionPtr transaction);
+  bool Prepare(RunningTransactionPtr transaction, RemoveReason reason);
   void Run() override;
   void Done(const Status& status) override;
 
@@ -41,6 +40,7 @@ class RemoveIntentsTask : public rpc::StrandTask {
   TransactionIntentApplier& applier_;
   TransactionParticipantContext& participant_context_;
   RunningTransactionContext& running_transaction_context_;
+  RemoveReason reason_;
   TransactionId id_;
   std::atomic<bool> used_{false};
   RunningTransactionPtr transaction_;
@@ -48,5 +48,3 @@ class RemoveIntentsTask : public rpc::StrandTask {
 
 } // namespace tablet
 } // namespace yb
-
-#endif // YB_TABLET_REMOVE_INTENTS_TASK_H

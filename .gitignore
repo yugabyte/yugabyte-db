@@ -81,9 +81,6 @@ hs_err_pid*.log
 
 compile_commands.json
 
-# This might be added by some editors' Java plugins
-ent/java/yb-cqlent/bin/
-
 test_results.json
 test_failures.json
 *_test_report.json
@@ -113,3 +110,17 @@ submodules/
 
 # Local Netlify folder
 .netlify/
+
+*.log
+!python/yugabyte/test_data/org_yb_pgsql_TestDropTableWithConcurrentTxn_testDmlTxnDrop_1pct_sample.log
+
+managed/yba-installer/bin/yba-ctl
+managed/yba-installer/yba-ctl
+managed/devops/pex/pexEnv/
+managed/src/main/java/com/yugabyte/yw/common/operator/io/*
+
+*.bad_clang_tidy_output.*
+*.compiler_errors.txt
+
+# jenv local version
+**/.java-version

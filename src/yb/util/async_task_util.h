@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_ASYNC_TASK_UTIL_H
-#define YB_UTIL_ASYNC_TASK_UTIL_H
+#pragma once
 
 #include <mutex>
 
@@ -81,5 +80,3 @@ class DynamicAsyncTaskThrottler : public AsyncTaskThrottlerBase {
 };
 
 } // namespace yb
-
-#endif // YB_UTIL_ASYNC_TASK_UTIL_H

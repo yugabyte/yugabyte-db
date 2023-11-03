@@ -25,9 +25,9 @@
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/mutexlock.h"
-#include "yb/rocksdb/util/sync_point.h"
 
 #include "yb/util/result.h"
+#include "yb/util/sync_point.h"
 
 namespace rocksdb {
 
@@ -50,7 +50,7 @@ Status SstFileManagerImpl::OnAddFile(const std::string& file_path) {
     MutexLock l(&mu_);
     OnAddFileImpl(file_path, file_size);
   }
-  TEST_SYNC_POINT("SstFileManagerImpl::OnAddFile");
+  DEBUG_ONLY_TEST_SYNC_POINT("SstFileManagerImpl::OnAddFile");
   return s;
 }
 
@@ -59,7 +59,7 @@ Status SstFileManagerImpl::OnDeleteFile(const std::string& file_path) {
     MutexLock l(&mu_);
     OnDeleteFileImpl(file_path);
   }
-  TEST_SYNC_POINT("SstFileManagerImpl::OnDeleteFile");
+  DEBUG_ONLY_TEST_SYNC_POINT("SstFileManagerImpl::OnDeleteFile");
   return Status::OK();
 }
 
@@ -70,7 +70,7 @@ Status SstFileManagerImpl::OnMoveFile(const std::string& old_path,
     OnAddFileImpl(new_path, tracked_files_[old_path]);
     OnDeleteFileImpl(old_path);
   }
-  TEST_SYNC_POINT("SstFileManagerImpl::OnMoveFile");
+  DEBUG_ONLY_TEST_SYNC_POINT("SstFileManagerImpl::OnMoveFile");
   return Status::OK();
 }
 

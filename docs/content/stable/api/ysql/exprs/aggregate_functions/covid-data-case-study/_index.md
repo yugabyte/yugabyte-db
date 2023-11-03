@@ -30,7 +30,7 @@ The download format, for each  signal, is a comma-separated values file—herein
 
 > We are happy for you to use this [sic] data in products and publications. Please acknowledge us as a source: Data from Delphi COVIDcast, [covidcast.cmu.edu](https://covidcast.cmu.edu/).
 
-This case study shows you how to use the `ysqlsh` `\COPY` metacommand to load each downloaded file into its own table, how to check that the values conform to rules that the COVIDcast team has documented, and how to join the rows in these staging tables into a single table with this format:
+This case study shows you how to use the `ysqlsh` `\COPY` meta-command to load each downloaded file into its own table, how to check that the values conform to rules that the COVIDcast team has documented, and how to join the rows in these staging tables into a single table with this format:
 
 ```
 survey_date                 date     not null } primary

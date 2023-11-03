@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_OPERATIONS_OPERATION_TRACKER_H
-#define YB_TABLET_OPERATIONS_OPERATION_TRACKER_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -84,8 +83,8 @@ class OperationTracker {
   void StartInstrumentation(const scoped_refptr<MetricEntity>& metric_entity);
   void StartMemoryTracking(const std::shared_ptr<MemTracker>& parent_mem_tracker);
 
-  // Post tracker in called when operation tracker finishes tracking memory for corresponding op id.
-  // So post tracker could start tracking this memory in case it is still keeping memory for this
+  // Post-tracker is called when operation tracker finishes tracking memory for corresponding op id.
+  // So post-tracker could start tracking this memory in case it is still keeping memory for this
   // op id.
   void SetPostTracker(std::function<void(const OpId&)> post_tracker) {
     post_tracker_ = std::move(post_tracker);
@@ -124,7 +123,6 @@ class OperationTracker {
     int64_t memory_footprint = 0;
   };
 
-  // Protected by 'lock_'.
   typedef std::unordered_map<
       scoped_refptr<OperationDriver>,
       State,
@@ -143,5 +141,3 @@ class OperationTracker {
 
 }  // namespace tablet
 }  // namespace yb
-
-#endif // YB_TABLET_OPERATIONS_OPERATION_TRACKER_H

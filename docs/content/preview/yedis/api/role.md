@@ -15,32 +15,25 @@ YEDIS only has `master` role as far as Redis compatibility is concerned.
 
 ## Synopsis
 
-<b>`ROLE`</b><br>
+**`ROLE`**
+
 This command provides information of a Redis instance, such as its role, its state of replication, its followers, or its master. Roles are either "master", "follower", or "sentinel".
-<li>Information of a master instance may include the following.
-  <ol>
-  <li>"master"</li>
-  <li>An integer that represents state of replication</li>
-  <li>An array of connected followers { IP address, IP port, State of replication }</li>
-  </ol>
-</li>
 
-<li>Information of a follower instance may include the following.
-  <ol>
-  <li>"follower"</li>
-  <li>Master IP address</li>
-  <li>Master IP port</li>
-  <li>Connection state that is either "disconnected", "connecting", "sync", or "connected"</li>
-  <li>An integer that represents state of replication</li>
-  </ol>
-</li>
+- Information of a master instance may include the following.
+  * "master"
+  * An integer that represents state of replication
+  * An array of connected followers { IP address, IP port, State of replication }
 
-<li>Information of a sentinel instance may include the following.
-  <ol>
-  <li>"sentinel"</li>
-  <li>An array of master names.</li>
-  </ol>
-</li>
+- Information of a follower instance may include the following.
+  * "follower"
+  * Master IP address
+  * Master IP port
+  * Connection state that is either "disconnected", "connecting", "sync", or "connected"
+  * An integer that represents state of replication
+
+- Information of a sentinel instance may include the following.
+  * "sentinel"
+  * An array of master names.
 
 ## Return value
 

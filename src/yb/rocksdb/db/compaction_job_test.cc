@@ -18,8 +18,6 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_LITE
-
 #include <algorithm>
 #include <map>
 #include <string>
@@ -42,6 +40,8 @@
 
 #include "yb/util/string_util.h"
 #include "yb/util/test_util.h"
+
+using std::unique_ptr;
 
 namespace rocksdb {
 
@@ -152,7 +152,7 @@ class CompactionJobTest : public RocksDBTest {
 
     uint64_t file_number = versions_->NewFileNumber();
     EXPECT_OK(mock_table_factory_->CreateMockTable(
-        env_, GenerateFileName(file_number), std::move(contents)));
+        env_, GenerateFileName(file_number), contents));
 
     VersionEdit edit;
     smallest_values.user_values.push_back(
@@ -1044,14 +1044,3 @@ int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
-
-#else
-#include <stdio.h>
-
-int main(int argc, char** argv) {
-  fprintf(stderr,
-          "SKIPPED as CompactionJobStats is not supported in ROCKSDB_LITE\n");
-  return 0;
-}
-
-#endif  // ROCKSDB_LITE

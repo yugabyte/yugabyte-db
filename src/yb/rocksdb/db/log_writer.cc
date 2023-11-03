@@ -24,10 +24,15 @@
 #include "yb/rocksdb/db/log_writer.h"
 
 #include <stdint.h>
+
+#include <memory>
+
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/crc32c.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
+
+using std::unique_ptr;
 
 namespace rocksdb {
 namespace log {

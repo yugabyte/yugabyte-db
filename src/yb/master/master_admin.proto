@@ -19,6 +19,7 @@ option java_package = "org.yb.master";
 import "yb/master/catalog_entity_info.proto";
 import "yb/master/master_types.proto";
 import "yb/rpc/service.proto";
+import "yb/tablet/tablet_types.proto";
 
 // TODO: rename to FlushOrCompact TablesRequestPB
 // https://github.com/YugaByte/yugabyte-db/issues/729
@@ -31,6 +32,9 @@ message FlushTablesRequestPB {
   // Whether we want to include index tables in this flush. If there are index tables in the tables
   // field this field must be set to false, otherwise the request will fail.
   optional bool add_indexes = 3;
+
+  // Whether the operation only applies to regular RocksDB but not intents RocksDB.
+  optional bool regular_only = 4;
 }
 
 message FlushTablesResponsePB {
@@ -67,6 +71,37 @@ message CompactSysCatalogResponsePB{
   optional MasterErrorPB error = 1;
 }
 
+message GetCompactionStatusRequestPB {
+  optional TableIdentifierPB table = 1;
+  optional bool show_tablets = 2;
+}
+
+message TabletReplicaFullCompactionStatus {
+  optional bytes ts_id = 1;
+  optional bytes tablet_id = 2;
+  // Raw representation of a HybridTime.
+  optional fixed64 last_full_compaction_time = 3;
+  optional tablet.FullCompactionState full_compaction_state = 4;
+}
+
+message GetCompactionStatusResponsePB {
+  optional MasterErrorPB error = 1;
+
+  // Time when an admin compaction was last requested by the user.a
+  // Raw representation of a HybridTime.
+  optional fixed64 last_request_time = 2;
+
+  // Time when the most recent full compaction was completed.
+  // Raw representation of a HybridTime.
+  optional fixed64 last_full_compaction_time = 3;
+
+  // Overall full compaction state of the table.
+  optional tablet.FullCompactionState full_compaction_state = 4;
+
+  // Full compaction statuses of all tablet replicas.
+  repeated TabletReplicaFullCompactionStatus replica_statuses = 5;
+}
+
 message IsInitDbDoneRequestPB {
 }
 
@@ -97,6 +132,14 @@ message CreateTransactionStatusTableRequestPB {
 }
 
 message CreateTransactionStatusTableResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message AddTransactionStatusTabletRequestPB {
+  required bytes table_id = 1;
+}
+
+message AddTransactionStatusTabletResponsePB {
   optional MasterErrorPB error = 1;
 }
 
@@ -141,6 +184,31 @@ message CheckIfPitrActiveResponsePB {
   optional bool is_pitr_active = 2;
 }
 
+message AccessYsqlBackendsManagerTestRegisterRequestPB {
+  // Read mode: if value is unset, this mode is used.
+  // Write mode: if value is set, it will be written to the register.
+  optional int32 value = 1;
+}
+
+message AccessYsqlBackendsManagerTestRegisterResponsePB {
+  optional MasterErrorPB error = 1;
+  // Read mode: value is read from the register.
+  // Write mode: value is read from the register before write.
+  optional int32 value = 2; // required
+}
+
+message WaitForYsqlBackendsCatalogVersionRequestPB {
+  optional uint32 database_oid = 1; // required
+  optional uint64 catalog_version = 2; // required
+}
+
+message WaitForYsqlBackendsCatalogVersionResponsePB {
+  optional MasterErrorPB error = 1;
+  // Number of YSQL backends (across all tservers) that have not reached the requested catalog
+  // version.  If the field is -1, the counting is in-progress.
+  optional int32 num_lagging_backends = 2 [default = -1];
+}
+
 service MasterAdmin {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -150,11 +218,15 @@ service MasterAdmin {
   rpc FlushSysCatalog(FlushSysCatalogRequestPB) returns (FlushSysCatalogResponsePB);
   rpc CompactSysCatalog(CompactSysCatalogRequestPB) returns (CompactSysCatalogResponsePB);
 
+  rpc GetCompactionStatus(GetCompactionStatusRequestPB) returns (GetCompactionStatusResponsePB);
+
   rpc IsInitDbDone(IsInitDbDoneRequestPB) returns (IsInitDbDoneResponsePB);
 
   rpc SplitTablet(SplitTabletRequestPB) returns (SplitTabletResponsePB);
   rpc CreateTransactionStatusTable(CreateTransactionStatusTableRequestPB)
       returns (CreateTransactionStatusTableResponsePB);
+  rpc AddTransactionStatusTablet(AddTransactionStatusTabletRequestPB)
+      returns (AddTransactionStatusTabletResponsePB);
   rpc DeleteNotServingTablet(DeleteNotServingTabletRequestPB)
       returns (DeleteNotServingTabletResponsePB);
 
@@ -167,4 +239,9 @@ service MasterAdmin {
 
   rpc CheckIfPitrActive(CheckIfPitrActiveRequestPB)
       returns (CheckIfPitrActiveResponsePB);
+
+  rpc AccessYsqlBackendsManagerTestRegister(AccessYsqlBackendsManagerTestRegisterRequestPB)
+      returns (AccessYsqlBackendsManagerTestRegisterResponsePB);
+  rpc WaitForYsqlBackendsCatalogVersion(WaitForYsqlBackendsCatalogVersionRequestPB)
+      returns (WaitForYsqlBackendsCatalogVersionResponsePB);
 }

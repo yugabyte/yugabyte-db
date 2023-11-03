@@ -3,15 +3,14 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.xcluster;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
-import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
-import java.util.List;
+import com.yugabyte.yw.models.XClusterTableConfig;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.WireProtocol;
 import org.yb.client.DeleteUniverseReplicationResponse;
 import org.yb.client.MasterErrorException;
 import org.yb.client.YBClient;
@@ -21,8 +20,9 @@ import org.yb.master.CatalogEntityInfo;
 public class DeleteReplication extends XClusterConfigTaskBase {
 
   @Inject
-  protected DeleteReplication(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
+  protected DeleteReplication(
+      BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
+    super(baseTaskDependencies, xClusterUniverseService);
   }
 
   public static class Params extends XClusterConfigTaskParams {
@@ -41,7 +41,7 @@ public class DeleteReplication extends XClusterConfigTaskBase {
   public String getName() {
     return String.format(
         "%s (xClusterConfig=%s, ignoreErrors=%s)",
-        super.getName(), taskParams().xClusterConfig, taskParams().ignoreErrors);
+        super.getName(), taskParams().getXClusterConfig(), taskParams().ignoreErrors);
   }
 
   @Override
@@ -50,30 +50,37 @@ public class DeleteReplication extends XClusterConfigTaskBase {
 
     XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
 
-    if (xClusterConfig.targetUniverseUUID == null) {
-      xClusterConfig.setReplicationSetupDone(
-          xClusterConfig.getTables(), false /* replicationSetupDone */);
+    if (xClusterConfig.getTargetUniverseUUID() == null) {
+      xClusterConfig.updateReplicationSetupDone(
+          xClusterConfig.getTableIds(), false /* replicationSetupDone */);
       log.info("Skipped {}: the target universe is destroyed", getName());
       return;
     }
 
     // Ignore errors when it is requested by the user or source universe is deleted.
-    boolean ignoreErrors = taskParams().ignoreErrors || xClusterConfig.sourceUniverseUUID == null;
+    boolean ignoreErrors =
+        taskParams().ignoreErrors || xClusterConfig.getSourceUniverseUUID() == null;
 
-    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID);
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
     String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
     String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
     try (YBClient client =
         ybService.getClient(targetUniverseMasterAddresses, targetUniverseCertificate)) {
-      // Sync the state for the tables in the xCluster config.
+      // Sync the state for the tables.
       CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig =
-          getClusterConfig(client, targetUniverse.universeUUID);
+          getClusterConfig(client, targetUniverse.getUniverseUUID());
       boolean replicationGroupExists =
           syncReplicationSetUpStateForTables(
-              clusterConfig, xClusterConfig, xClusterConfig.getTables());
+              clusterConfig, xClusterConfig, xClusterConfig.getTableIds());
+      if (!replicationGroupExists) {
+        log.warn("No replication group found for {}", xClusterConfig);
+      }
 
-      // If replication group exists, delete it from the cluster config of the target universe.
-      if (replicationGroupExists) {
+      // Catch the `Universe replication NOT_FOUND` exception, and because it already does not
+      // exist, the exception will be ignored. We run the RPC even when the target universe
+      // cluster config did not have the replication group to preserve the old behavior, and it
+      // is useful in case YBDB returns some warnings to be printed in the YBA logs.
+      try {
         DeleteUniverseReplicationResponse resp =
             client.deleteUniverseReplication(
                 xClusterConfig.getReplicationGroupName(), ignoreErrors);
@@ -88,35 +95,37 @@ public class DeleteReplication extends XClusterConfigTaskBase {
           throw new RuntimeException(
               String.format(
                   "Failed to delete replication for XClusterConfig(%s): %s",
-                  xClusterConfig.uuid, resp.errorMessage()));
+                  xClusterConfig.getUuid(), resp.errorMessage()));
         }
-
-        // After the RPC call, the corresponding stream ids on the source universe will be deleted
-        // as well.
-        xClusterConfig
-            .getTablesById(xClusterConfig.getTableIdsWithReplicationSetup())
-            .forEach(
-                tableConfig -> {
-                  tableConfig.streamId = null;
-                });
-        xClusterConfig.update();
-      } else {
+      } catch (MasterErrorException e) {
+        // If it is not `Universe replication NOT_FOUND` exception, rethrow the exception.
+        if (!e.getMessage().contains("NOT_FOUND[code 1]: Universe replication")) {
+          throw new RuntimeException(e);
+        }
         log.warn(
-            "XCluster config {} does not exist on the target universe, RPC to delete the "
-                + "replication group will not be called",
-            xClusterConfig.uuid);
+            "XCluster config {} does not exist on the target universe, NOT_FOUND exception "
+                + "occurred in deleteUniverseReplication RPC call is ignored: {}",
+            xClusterConfig.getUuid(),
+            e.getMessage());
       }
 
-      // Update DB to reflect this change.
-      xClusterConfig.setReplicationSetupDone(
-          xClusterConfig.getTables(), false /* replicationSetupDone */);
+      // After the RPC call, the corresponding stream ids on the source universe will be deleted
+      // as well.
+      xClusterConfig
+          .getTablesById(
+              xClusterConfig.getTableIdsWithReplicationSetup(
+                  xClusterConfig.getTableIds(), true /* done */))
+          .forEach(XClusterTableConfig::reset);
+      xClusterConfig.update();
 
       if (HighAvailabilityConfig.get().isPresent()) {
         getUniverse(true).incrementVersion();
       }
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
-      throw new RuntimeException(e);
+      if (!taskParams().ignoreErrors) {
+        throw new RuntimeException(e);
+      }
     }
 
     log.info("Completed {}", getName());

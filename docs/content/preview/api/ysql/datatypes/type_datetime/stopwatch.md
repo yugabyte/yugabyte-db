@@ -15,7 +15,7 @@ menu:
 type: docs
 ---
 
-You sometimes want to time a sequence of several SQL statements, issued from _ysqlsh_, and to record the time in the spool file. The \\_timing on_ metacommand doesn't help here because it reports the time after every individual statement and, on Unix-like operating systems, does this using _stderr_. The \\_o_ metacommand doesn't redirect _stderr_ to the spool file. This case study shows you how to implement a SQL stopwatch that allows you to start it with a procedure call before starting what you want to time and to read it with a _select_ statement when what you want to time finishes. This reading goes to the spool file along with all other _select_ results.
+You sometimes want to time a sequence of several SQL statements, issued from _ysqlsh_, and to record the time in the spool file. The \\_timing on_ meta-command doesn't help here because it reports the time after every individual statement and, on Unix-like operating systems, does this using _stderr_. The \\_o_ meta-command doesn't redirect _stderr_ to the spool file. This case study shows you how to implement a SQL stopwatch that allows you to start it with a procedure call before starting what you want to time and to read it with a _select_ statement when what you want to time finishes. This reading goes to the spool file along with all other _select_ results.
 
 ## How to read the wall-clock time and calculate the duration of interest
 
@@ -39,7 +39,7 @@ Here's a typical result:
 
 (The _pg_sleep()_ built-in function returns _void_, and the _::text_ typecast of _void_ is the empty string.) You can see that _t1_ is five seconds later than _t0_, just as the invocation of _pg_sleep()_ requests.
 
-The return data type of _clock_timestamp()_ is _timestamptz_. (You can confirm this with the \\_df_ metacommand.) Try this.
+The return data type of _clock_timestamp()_ is _timestamptz_. (You can confirm this with the \\_df_ meta-command.) Try this.
 
 ```plpgsql
 select
@@ -65,7 +65,7 @@ extract(epoch from clock_timestamp())
 
 This evaluates to the number of seconds (as a _double precision_ value with microsecond precision) of the specified moment from the so-called start of the epoch (_00:00:00_ on _1-Jan-1970 UTC_). The [plain _timestamp_ and _timestamptz_ data types](../date-time-data-types-semantics/type-timestamp/) section explains, and demonstrates, that the result of _"extract(epoch from timestamptz_value)"_ is insensitive to the session's _TimeZone_ setting. Try this, using the LAX and HEL results from the previous query as the _timestamptz_ literals.
 
-```ppgsql
+```plpgsql
 with c as (
   select
     '2021-07-30 10:26:39 America/Los_Angeles'::timestamptz as t1,
@@ -128,7 +128,7 @@ The implementation and testing of this function are utterly straightforward—bu
 
 ### Create function duration_as_text()
 
-The return data type of the _extract()_ operator is _double precision_. But it’s better to implement _duration_as_text()_ with a _numeric_ input formal parameter because of this datatype’s greater precision and accuracy. This makes behavior with input values that are very close to the units boundaries that the inequality tests define more accurate than if _double precision_ is used. Of course, this doesn’t matter when the function is used for its ultimate purpose because ordinary stochastic timing variability will drown any concerns about the accuracy of the formatting. But testing is helped when results with synthetic data agree reliably with what you expect.
+The return data type of the _extract()_ operator is _double precision_. But it’s better to implement _duration_as_text()_ with a _numeric_ input formal parameter because of the greater precision and accuracy of this data type. This makes behavior with input values that are very close to the units boundaries that the inequality tests define more accurate than if _double precision_ is used. Of course, this doesn’t matter when the function is used for its ultimate purpose because ordinary stochastic timing variability will drown any concerns about the accuracy of the formatting. But testing is helped when results with synthetic data agree reliably with what you expect.
 
 As is often the case with formatting code, the readability benefits from trivial encapsulations of the SQL built-in functions that it uses—in this case _to_char()_ and _ltrim()_. First create this overload-pair of helpers:
 
@@ -454,9 +454,9 @@ The elapsed times that _"\timing on"_ and the SQL stopwatch report are in good a
 
 Sometimes you want to time operations that are done in two or several successive sessions. Installation scripts do this when they need to create objects with two or several different owners. It won't work, in such scenarios, to record the starting wall-clock time using a user-defined run-time parameter because this has only session duration. Both _psql_ and (therefore) _ysqlsh_ support client-side variables—and these survive across session boundaries.
 
-### Using the \gset and \set ysqlsh metacommands
+### Using the \gset and \set ysqlsh meta-commands
 
-You can assign the result column(s) of a _select_ statement to such variables with the \\_gset_ metacommand. The _select_ statement isn't terminated by the usual semicolon. Rather, the \\_gset_ metacommand acts: _both_ as the directive to assign the value of the select list item _s0_ to the variable _stopwatch_s0_; _and_ as the terminator for the _select_ statement.
+You can assign the result column(s) of a _select_ statement to such variables with the \\_gset_ meta-command. The _select_ statement isn't terminated by the usual semicolon. Rather, the \\_gset_ meta-command acts: _both_ as the directive to assign the value of the select list item _s0_ to the variable _stopwatch_s0_; _and_ as the terminator for the _select_ statement.
 
 ```plpgsql
 select extract(epoch from clock_timestamp())::text as s0
@@ -507,12 +507,12 @@ and:
 
 You can define these shortcuts in the _psqlrc_ file (on the _postgres/etc_ directory under the directory where you've installed the YugabyteDB client code).
 
-{{< tip title="'ysqlsh' metacommand syntax" >}}
-The section [ysqlsh](../../../../../admin/ysqlsh/) describes the \\_gset_ and the \\_set_ metacommands.
+{{< tip title="'ysqlsh' meta-command syntax" >}}
+The section [ysqlsh](../../../../../admin/ysqlsh-meta-commands/) describes the \\_gset_ and the \\_set_ meta-commands.
 
 (\\_gset_ is allowed on the same line as the SQL statement that it terminates, just as a new SQL statement is allowed on the same line as a previous SQL statement that's terminated with a semicolon.)
 
-Such a client-side variable acts like a macro: the text that it stands for is eagerly substituted and only then is the command, as it now stands, processed in the normal way. The argument of the \\_set_ metacommand that follows the variable name needs to be surrounded with single quotes when it contains spaces that you intend to be respected. If you want to include a single quote within the argument, then you escape it with a backslash. And if you want to include a backslash within the argument, then you escape that with a backslash too. Try this:
+Such a client-side variable acts like a macro: the text that it stands for is eagerly substituted and only then is the command, as it now stands, processed in the normal way. The argument of the \\_set_ meta-command that follows the variable name needs to be surrounded with single quotes when it contains spaces that you intend to be respected. If you want to include a single quote within the argument, then you escape it with a backslash. And if you want to include a backslash within the argument, then you escape that with a backslash too. Try this:
 
 ```plpgsql
 \set x 'select \'Hello \\world\' as v;'

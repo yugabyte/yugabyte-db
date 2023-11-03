@@ -18,6 +18,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import java.util.Map;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -32,7 +33,7 @@ public class UpdateAndPersistKubernetesOverrides extends UniverseTaskBase {
   // Parameters for setting and persisting k8s overrides.
   public static class Params extends UniverseTaskParams {
     public String universeOverrides;
-    public String azOverrides;
+    public Map<String, String> azOverrides;
   }
 
   protected Params taskParams() {
@@ -52,7 +53,8 @@ public class UpdateAndPersistKubernetesOverrides extends UniverseTaskBase {
               UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
               // If this universe is not being updated, fail the request.
               if (!universeDetails.updateInProgress) {
-                String msg = "UserUniverse " + taskParams().universeUUID + " is not being updated.";
+                String msg =
+                    "UserUniverse " + taskParams().getUniverseUUID() + " is not being updated.";
                 log.error(msg);
                 throw new RuntimeException(msg);
               }

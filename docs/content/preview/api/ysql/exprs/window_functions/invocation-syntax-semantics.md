@@ -34,29 +34,11 @@ Notice these three different orthography styles:
 
 The following three diagrams, [`select_start`](../../../syntax_resources/grammar_diagrams/#select-start), [`WINDOW` clause](../../../syntax_resources/grammar_diagrams/#window-clause), and [`fn_over_window`](../../../syntax_resources/grammar_diagrams/#fn-over-window) rule, are reproduced from the section that describes the [`SELECT` statement](../../../the-sql-language/statements/dml_select/).
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fas fa-file-alt" aria-hidden="true"></i>
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fas fa-project-diagram" aria-hidden="true"></i>
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/exprs/window_functions/select_start,window_clause,fn_over_window.grammar.md" %}}
-  </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/exprs/window_functions/select_start,window_clause,fn_over_window.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf localrefs="window_definition"%}}
+select_start,
+window_clause,
+fn_over_window
+{{%/ebnf%}}
 
 ### Definition of the window_definition rule
 
@@ -64,55 +46,20 @@ As promised in the `SELECT` statement section, this section explains the [`windo
 
 A [`window_definition`](../../../syntax_resources/grammar_diagrams/#window-definition) can be used only at these two syntax spots, within the enclosing syntax of a subquery.
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar-2" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fas fa-file-alt" aria-hidden="true"></i>
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram-2" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fas fa-project-diagram" aria-hidden="true"></i>
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar-2" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/exprs/window_functions/window_definition.grammar.md" %}}
-  </div>
-  <div id="diagram-2" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/exprs/window_functions/window_definition.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf localrefs="frame_clause" %}}
+window_definition
+{{%/ ebnf %}}
 
 ### The frame_clause
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar-3" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fas fa-file-alt" aria-hidden="true"></i>
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram-3" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fas fa-project-diagram" aria-hidden="true"></i>
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar-3" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/exprs/window_functions/frame_clause,frame_bounds,frame_start,frame_end,frame_bound,frame_exclusion.grammar.md" %}}
-  </div>
-  <div id="diagram-3" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/exprs/window_functions/frame_clause,frame_bounds,frame_start,frame_end,frame_bound,frame_exclusion.diagram.md" %}}
-  </div>
-</div>
+{{% ebnf %}}
+frame_clause,
+frame_bounds,
+frame_start,
+frame_end,
+frame_bound,
+frame_exclusion
+{{%/ ebnf %}}
 
 ## Semantics
 
@@ -122,7 +69,7 @@ A window function can be invoked only at the syntax spot in a subquery that the 
 
 The number, data types, and meanings of a window function's formal parameters are function-specific. The eleven window functions are classified into functional groups, and summarized, in the two tables at the end of the section [Signature and purpose of each window function](../function-syntax-semantics/). Each entry links to the formal account of the function which also provides runnable code examples.
 
-Notice that, among the dedicated window functions (as opposed to aggreagte functions that may be invoked as window functions), only [`ntile()`](../function-syntax-semantics/percent-rank-cume-dist-ntile/#ntile) takes an argument. Every other dedicated window function is invoked with an empty parentheses pair. Some aggregate functions (like, for example, [`jsonb_object_agg()`](../../aggregate_functions/function-syntax-semantics/array-string-jsonb-jsonb-object-agg/#jsonb-object-agg)) take more than one argument. When an aggregate function is invoke as a window function, the keyword `DISTINCT` is not allowed within the parenthesized list of arguments. The attempt causes this error:
+Notice that, among the dedicated window functions (as opposed to aggregate functions that may be invoked as window functions), only [`ntile()`](../function-syntax-semantics/percent-rank-cume-dist-ntile/#ntile) takes an argument. Every other dedicated window function is invoked with an empty parentheses pair. Some aggregate functions (like, for example, [`jsonb_object_agg()`](../../aggregate_functions/function-syntax-semantics/array-string-jsonb-jsonb-object-agg/#jsonb-object-agg)) take more than one argument. When an aggregate function is invoke as a window function, the keyword `DISTINCT` is not allowed within the parenthesized list of arguments. The attempt causes this error:
 
 ```
 0A000: DISTINCT is not implemented for window functions

@@ -59,15 +59,14 @@
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/mutexlock.h"
 #include "yb/rocksdb/util/statistics.h"
-#include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 
 #include "yb/util/string_util.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_util.h"
 
 #if !defined(IOS_CROSS_COMPILE)
-#ifndef ROCKSDB_LITE
 namespace rocksdb {
 
 static std::string RandomString(Random* rnd, int len, double ratio) {
@@ -117,9 +116,9 @@ class CompactionJobStatsTest : public RocksDBTest,
   }
 
   ~CompactionJobStatsTest() {
-    rocksdb::SyncPoint::GetInstance()->DisableProcessing();
-    rocksdb::SyncPoint::GetInstance()->LoadDependency({});
-    rocksdb::SyncPoint::GetInstance()->ClearAllCallBacks();
+    yb::SyncPoint::GetInstance()->DisableProcessing();
+    yb::SyncPoint::GetInstance()->LoadDependency({});
+    yb::SyncPoint::GetInstance()->ClearAllCallBacks();
     Close();
     Options options;
     options.db_paths.emplace_back(dbname_, 0);
@@ -438,7 +437,7 @@ class CompactionJobStatsChecker : public EventListener {
       verify_next_comp_io_stats_ = false;
     }
 
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (expected_stats_.size()) {
       Verify(ci.stats, expected_stats_.front());
       expected_stats_.pop();
@@ -503,7 +502,7 @@ class CompactionJobStatsChecker : public EventListener {
   // verify the CompactionJobStats returned by the OnCompactionCompleted()
   // callback.
   void AddExpectedStats(const CompactionJobStats& stats) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     expected_stats_.push(stats);
   }
 
@@ -805,7 +804,7 @@ TEST_P(CompactionJobStatsTest, CompactionJobStatsTest) {
 
     stats_checker->set_verify_next_comp_io_stats(true);
     std::atomic<bool> first_prepare_write(true);
-    rocksdb::SyncPoint::GetInstance()->SetCallBack(
+    yb::SyncPoint::GetInstance()->SetCallBack(
         "WritableFileWriter::Append:BeforePrepareWrite", [&](void* arg) {
           if (first_prepare_write.load()) {
             options.env->SleepForMicroseconds(3);
@@ -814,7 +813,7 @@ TEST_P(CompactionJobStatsTest, CompactionJobStatsTest) {
         });
 
     std::atomic<bool> first_flush(true);
-    rocksdb::SyncPoint::GetInstance()->SetCallBack(
+    yb::SyncPoint::GetInstance()->SetCallBack(
         "WritableFileWriter::Flush:BeforeAppend", [&](void* arg) {
           if (first_flush.load()) {
             options.env->SleepForMicroseconds(3);
@@ -823,7 +822,7 @@ TEST_P(CompactionJobStatsTest, CompactionJobStatsTest) {
         });
 
     std::atomic<bool> first_sync(true);
-    rocksdb::SyncPoint::GetInstance()->SetCallBack(
+    yb::SyncPoint::GetInstance()->SetCallBack(
         "WritableFileWriter::SyncInternal:0", [&](void* arg) {
           if (first_sync.load()) {
             options.env->SleepForMicroseconds(3);
@@ -832,14 +831,14 @@ TEST_P(CompactionJobStatsTest, CompactionJobStatsTest) {
         });
 
     std::atomic<bool> first_range_sync(true);
-    rocksdb::SyncPoint::GetInstance()->SetCallBack(
+    yb::SyncPoint::GetInstance()->SetCallBack(
         "WritableFileWriter::RangeSync:0", [&](void* arg) {
           if (first_range_sync.load()) {
             options.env->SleepForMicroseconds(3);
             first_range_sync.store(false);
           }
         });
-    rocksdb::SyncPoint::GetInstance()->EnableProcessing();
+    yb::SyncPoint::GetInstance()->EnableProcessing();
 
     Compact(1, smallest_key, largest_key);
 
@@ -848,7 +847,7 @@ TEST_P(CompactionJobStatsTest, CompactionJobStatsTest) {
     ASSERT_TRUE(!first_flush.load());
     ASSERT_TRUE(!first_sync.load());
     ASSERT_TRUE(!first_range_sync.load());
-    rocksdb::SyncPoint::GetInstance()->DisableProcessing();
+    yb::SyncPoint::GetInstance()->DisableProcessing();
   }
   ASSERT_EQ(stats_checker->NumberOfUnverifiedStats(), 0U);
 }
@@ -1031,15 +1030,6 @@ int main(int argc, char** argv) {
   return RUN_ALL_TESTS();
 }
 
-#else
-#include <stdio.h>
-
-int main(int argc, char** argv) {
-  fprintf(stderr, "SKIPPED, not supported in ROCKSDB_LITE\n");
-  return 0;
-}
-
-#endif  // !ROCKSDB_LITE
 
 #else
 

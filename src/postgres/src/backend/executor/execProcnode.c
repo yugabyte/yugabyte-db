@@ -113,6 +113,7 @@
 #include "executor/nodeValuesscan.h"
 #include "executor/nodeWindowAgg.h"
 #include "executor/nodeWorktablescan.h"
+#include "executor/nodeYbBatchedNestloop.h"
 #include "executor/nodeYbSeqscan.h"
 #include "nodes/nodeFuncs.h"
 #include "miscadmin.h"
@@ -298,6 +299,12 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 													estate, eflags);
 			break;
 
+		case T_YbBatchedNestLoop:
+			result = (PlanState *) ExecInitYbBatchedNestLoop(
+				(YbBatchedNestLoop *) node,
+				estate, eflags);
+			break;
+
 		case T_MergeJoin:
 			result = (PlanState *) ExecInitMergeJoin((MergeJoin *) node,
 													 estate, eflags);
@@ -454,6 +461,15 @@ ExecProcNodeFirst(PlanState *node)
 
 
 /*
+ * Update Yugabyte specific run-time statistics.
+ */
+static void
+YbUpdateInstrument(PlanState *node)
+{
+	YbUpdateSessionStats(&node->instrument->yb_instr);
+}
+
+/*
  * ExecProcNode wrapper that performs instrumentation calls.  By keeping
  * this a separate function, we avoid overhead in the normal case where
  * no instrumentation is wanted.
@@ -468,6 +484,7 @@ ExecProcNodeInstr(PlanState *node)
 	result = node->ExecProcNodeReal(node);
 
 	InstrStopNode(node->instrument, TupIsNull(result) ? 0.0 : 1.0);
+	YbUpdateInstrument(node);
 
 	return result;
 }
@@ -684,6 +701,10 @@ ExecEndNode(PlanState *node)
 			 */
 		case T_NestLoopState:
 			ExecEndNestLoop((NestLoopState *) node);
+			break;
+
+		case T_YbBatchedNestLoopState:
+			ExecEndYbBatchedNestLoop((YbBatchedNestLoopState *) node);
 			break;
 
 		case T_MergeJoinState:

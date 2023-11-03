@@ -29,14 +29,11 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_COW_OBJECT_H
-#define YB_UTIL_COW_OBJECT_H
+#pragma once
 
 #include <fcntl.h>
 
 #include <algorithm>
-
-#include <glog/logging.h>
 
 #include "yb/gutil/macros.h"
 
@@ -302,5 +299,3 @@ class CowWriteLock {
 };
 
 } // namespace yb
-
-#endif /* YB_UTIL_COW_OBJECT_H */

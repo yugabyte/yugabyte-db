@@ -36,11 +36,8 @@
 namespace yb {
 namespace redisserver {
 
-using yb::client::YBTable;
 using yb::client::YBRedisWriteOp;
 using yb::client::YBRedisReadOp;
-using std::vector;
-using std::shared_ptr;
 using std::string;
 
 namespace {
@@ -237,8 +234,8 @@ Status ParseZAddOptions(
 
 template <typename AddSubKey>
 Status ParseHMSetLikeCommands(YBRedisWriteOp *op, const RedisClientCommand& args,
-                                      const RedisDataType& type,
-                                      AddSubKey add_sub_key) {
+                              const RedisDataType& type,
+                              AddSubKey add_sub_key) {
   if (args.size() < 4 || (args.size() % 2 == 1 && type == REDIS_TYPE_HASH)) {
     return STATUS_SUBSTITUTE(InvalidArgument,
                              "wrong number of arguments: $0 for command: $1", args.size(),
@@ -377,10 +374,10 @@ Status ParseRPush(YBRedisWriteOp *op, const RedisClientCommand& args) {
 
 template <typename YBRedisOp, typename AddSubKey>
 Status ParseCollection(YBRedisOp *op,
-                               const RedisClientCommand& args,
-                               boost::optional<RedisDataType> type,
-                               AddSubKey add_sub_key,
-                               bool remove_duplicates = true) {
+                       const RedisClientCommand& args,
+                       boost::optional<RedisDataType> type,
+                       AddSubKey add_sub_key,
+                       bool remove_duplicates = true) {
   const auto& key = args[1];
   op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
   if (type) {
@@ -528,8 +525,8 @@ Status ParseGet(YBRedisReadOp* op, const RedisClientCommand& args) {
 //  Used for HGET/HSTRLEN/HEXISTS. Also for HMGet
 //  CMD <KEY> [<SUB-KEY>]*
 Status ParseHGetLikeCommands(YBRedisReadOp* op, const RedisClientCommand& args,
-                                     RedisGetRequestPB_GetRequestType request_type,
-                                     bool remove_duplicates = false) {
+                             RedisGetRequestPB_GetRequestType request_type,
+                             bool remove_duplicates = false) {
   op->mutable_request()->mutable_get_request()->set_request_type(request_type);
   return ParseCollection(op, args, boost::none, add_string_subkey, remove_duplicates);
 }
@@ -544,8 +541,8 @@ Status ParseHGet(YBRedisReadOp* op, const RedisClientCommand& args) {
 }
 
 Status ParseTsBoundArg(const Slice& slice, RedisSubKeyBoundPB* bound_pb,
-                               RedisCollectionGetRangeRequestPB::GetRangeRequestType request_type,
-                               bool exclusive) {
+                       RedisCollectionGetRangeRequestPB::GetRangeRequestType request_type,
+                       bool exclusive) {
   string bound(slice.cdata(), slice.size());
   if (bound == kPositiveInfinity) {
     bound_pb->set_infinity_type(RedisSubKeyBoundPB_InfinityType_POSITIVE);
@@ -883,8 +880,8 @@ Status ParseGetRange(YBRedisReadOp* op, const RedisClientCommand& args) {
 }
 
 Status ParseExpire(YBRedisWriteOp* op,
-                           const RedisClientCommand& args,
-                           const bool using_millis) {
+                   const RedisClientCommand& args,
+                   const bool using_millis) {
   const auto& key = args[1];
   auto ttl = ParseInt64(args[2], "TTL");
   RETURN_NOT_OK(ttl);
@@ -947,8 +944,8 @@ Status ParsePExpireAt(YBRedisWriteOp* op, const RedisClientCommand& args) {
 }
 
 Status ParseSetEx(YBRedisWriteOp* op,
-                          const RedisClientCommand& args,
-                          const bool using_millis) {
+                  const RedisClientCommand& args,
+                  const bool using_millis) {
   const auto& key = args[1];
   const auto value = args[3];
   auto ttl = VERIFY_RESULT(ParseInt64(args[2], "TTL"));
@@ -977,8 +974,8 @@ Status ParsePSetEx(YBRedisWriteOp* op, const RedisClientCommand& args) {
 }
 
 Status ParseTtl(YBRedisReadOp* op,
-                        const RedisClientCommand& args,
-                        const bool return_seconds) {
+                const RedisClientCommand& args,
+                const bool return_seconds) {
   const auto& key = args[1];
   op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
   op->mutable_request()->mutable_get_ttl_request()->set_return_seconds(return_seconds);

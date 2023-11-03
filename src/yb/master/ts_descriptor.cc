@@ -45,10 +45,10 @@
 #include "yb/master/master_heartbeat.pb.h"
 
 #include "yb/util/atomic.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/status_format.h"
 
-DEFINE_int32(tserver_unresponsive_timeout_ms, 60 * 1000,
+DEFINE_UNKNOWN_int32(tserver_unresponsive_timeout_ms, 60 * 1000,
              "The period of time that a Master can go without receiving a heartbeat from a "
              "tablet server before considering it unresponsive. Unresponsive servers are not "
              "selected when assigning replicas during table creation or re-replication.");
@@ -64,7 +64,7 @@ Result<TSDescriptorPtr> TSDescriptor::RegisterNew(
     CloudInfoPB local_cloud_info,
     rpc::ProxyCache* proxy_cache,
     RegisteredThroughHeartbeat registered_through_heartbeat) {
-  auto result = std::make_shared<enterprise::TSDescriptor>(
+  auto result = std::make_shared<TSDescriptor>(
       instance.permanent_uuid(), registered_through_heartbeat);
   RETURN_NOT_OK(result->Register(instance, registration, std::move(local_cloud_info), proxy_cache));
   return std::move(result);
@@ -88,7 +88,7 @@ Status TSDescriptor::Register(const NodeInstancePB& instance,
                               const TSRegistrationPB& registration,
                               CloudInfoPB local_cloud_info,
                               rpc::ProxyCache* proxy_cache) {
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
   return RegisterUnlocked(instance, registration, std::move(local_cloud_info), proxy_cache);
 }
 
@@ -160,7 +160,7 @@ void TSDescriptor::UpdateHeartbeat(const TSHeartbeatRequestPB* req) {
   DCHECK_GE(req->num_live_tablets(), 0);
   DCHECK_GE(req->leader_count(), 0);
   {
-    std::lock_guard<decltype(lock_)> l(lock_);
+    std::lock_guard l(lock_);
     last_heartbeat_ = MonoTime::Now();
     num_live_replicas_ = req->num_live_tablets();
     leader_count_ = req->leader_count();
@@ -194,7 +194,7 @@ bool TSDescriptor::has_tablet_report() const {
 }
 
 void TSDescriptor::set_has_tablet_report(bool has_report) {
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
   has_tablet_report_ = has_report;
 }
 
@@ -225,13 +225,13 @@ void TSDescriptor::DecayRecentReplicaCreationsUnlocked() {
 }
 
 void TSDescriptor::IncrementRecentReplicaCreations() {
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
   DecayRecentReplicaCreationsUnlocked();
   recent_replica_creations_ += 1;
 }
 
 double TSDescriptor::RecentReplicaCreations() {
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
   DecayRecentReplicaCreationsUnlocked();
   return recent_replica_creations_;
 }
@@ -281,11 +281,36 @@ Result<HostPort> TSDescriptor::GetHostPortUnlocked() const {
 }
 
 bool TSDescriptor::IsAcceptingLeaderLoad(const ReplicationInfoPB& replication_info) const {
-  return true;
+  if (IsReadOnlyTS(replication_info)) {
+    // Read-only ts are not voting and therefore cannot be leaders.
+    return false;
+  }
+
+  if (replication_info.affinitized_leaders_size() == 0 &&
+      replication_info.multi_affinitized_leaders_size() == 0) {
+    // If there are no affinitized leaders, all ts can be leaders.
+    return true;
+  }
+
+  for (const auto& zone_set : replication_info.multi_affinitized_leaders()) {
+    for (const CloudInfoPB& cloud_info : zone_set.zones()) {
+      if (MatchesCloudInfo(cloud_info)) {
+        return true;
+      }
+    }
+  }
+
+  // Handle old un-updated config if any
+  for (const CloudInfoPB& cloud_info : replication_info.affinitized_leaders()) {
+    if (MatchesCloudInfo(cloud_info)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 void TSDescriptor::UpdateMetrics(const TServerMetricsPB& metrics) {
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
   ts_metrics_.total_memory_usage = metrics.total_ram_usage();
   ts_metrics_.total_sst_file_size = metrics.total_sst_file_size();
   ts_metrics_.uncompressed_sst_file_size = metrics.uncompressed_sst_file_size();
@@ -336,12 +361,12 @@ std::string TSDescriptor::PendingTabletDeleteToString() const {
 }
 
 void TSDescriptor::AddPendingTabletDelete(const std::string& tablet_id) {
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
   tablets_pending_delete_.insert(tablet_id);
 }
 
 void TSDescriptor::ClearPendingTabletDelete(const std::string& tablet_id) {
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
   tablets_pending_delete_.erase(tablet_id);
 }
 
@@ -365,5 +390,12 @@ std::string TSDescriptor::ToString() const {
                 permanent_uuid_, ts_information_->registration(), placement_id_);
 }
 
+bool TSDescriptor::IsReadOnlyTS(const ReplicationInfoPB& replication_info) const {
+  const PlacementInfoPB& placement_info = replication_info.live_replicas();
+  if (placement_info.has_placement_uuid()) {
+    return placement_info.placement_uuid() != placement_uuid();
+  }
+  return !placement_uuid().empty();
+}
 } // namespace master
 } // namespace yb

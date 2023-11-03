@@ -1,10 +1,10 @@
 import _ from 'lodash';
-import React from 'react';
 import userEvent from '@testing-library/user-event';
 import { render } from '../../../test-utils';
 import { HAInstances } from './HAInstances';
 import { useLoadHAConfiguration } from '../hooks/useLoadHAConfiguration';
 import { HAConfig } from '../../../redesign/helpers/dtos';
+import { MOCK_HA_WS_RUNTIME_CONFIG_WITH_PEER_CERTS } from '../replication/mockUtils';
 
 jest.mock('../hooks/useLoadHAConfiguration');
 
@@ -44,7 +44,21 @@ const mockConfig: HAConfig = {
 
 const setup = (hookResponse: HookReturnType) => {
   (useLoadHAConfiguration as jest.Mock<HookReturnType>).mockReturnValue(hookResponse);
-  return render(<HAInstances />);
+  const fetchRuntimeConfigs = jest.fn();
+  const setRuntimeConfig = jest.fn();
+
+  const mockRuntimeConfigPromise = {
+    data: MOCK_HA_WS_RUNTIME_CONFIG_WITH_PEER_CERTS,
+    error: null,
+    promiseState: 'SUCCESS'
+  };
+  return render(
+    <HAInstances
+      fetchRuntimeConfigs={fetchRuntimeConfigs}
+      setRuntimeConfig={setRuntimeConfig}
+      runtimeConfigs={mockRuntimeConfigPromise}
+    />
+  );
 };
 
 describe('HA instances list', () => {

@@ -28,6 +28,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
@@ -38,12 +39,13 @@ DECLARE_bool(enable_ysql);
 
 using std::unique_ptr;
 using std::shared_ptr;
+using std::vector;
+using std::string;
 
 namespace yb {
 
 using client::YBClient;
 using client::YBClientBuilder;
-using client::YBColumnSchema;
 using client::YBSchemaBuilder;
 using client::YBSession;
 using client::YBTableCreator;
@@ -140,9 +142,10 @@ void YBTableTestBase::SetUp() {
         .num_tablet_servers = num_tablet_servers(),
         .num_drives = num_drives(),
         .master_env = env_.get(),
-        .ts_env = ts_env_.get(),
-        .ts_rocksdb_env = ts_rocksdb_env_.get()
+        .ts_env = ts_env_ ? ts_env_.get() : nullptr,
+        .ts_rocksdb_env = ts_rocksdb_env_ ? ts_rocksdb_env_.get() : nullptr
     };
+    LOG(INFO) << "opts: " << opts.ts_env;
     SetAtomicFlag(enable_ysql(), &FLAGS_enable_ysql);
 
     mini_cluster_.reset(new MiniCluster(opts));
@@ -213,7 +216,7 @@ void YBTableTestBase::CreateAdminClient() {
     }  else {
       addrs = mini_cluster_->GetMasterAddresses();
     }
-    yb_admin_client_ = std::make_unique<tools::enterprise::ClusterAdminClient>(
+    yb_admin_client_ = std::make_unique<tools::ClusterAdminClient>(
         addrs, MonoDelta::FromMilliseconds(client_rpc_timeout_ms()));
 
     ASSERT_OK(yb_admin_client_->Init());
@@ -242,8 +245,8 @@ void YBTableTestBase::CreateTable() {
     ASSERT_OK(client_->CreateNamespaceIfNotExists(tn.namespace_name(), tn.namespace_type()));
 
     YBSchemaBuilder b;
-    b.AddColumn("k")->Type(BINARY)->NotNull()->HashPrimaryKey();
-    b.AddColumn("v")->Type(BINARY)->NotNull();
+    b.AddColumn("k")->Type(DataType::BINARY)->NotNull()->HashPrimaryKey();
+    b.AddColumn("v")->Type(DataType::BINARY)->NotNull();
     ASSERT_OK(b.Build(&schema_));
 
     ASSERT_OK(NewTableCreator()->table_name(tn).schema(&schema_).Create());
@@ -259,20 +262,26 @@ void YBTableTestBase::DeleteTable() {
 }
 
 shared_ptr<YBSession> YBTableTestBase::NewSession() {
-  shared_ptr<YBSession> session = client_->NewSession();
-  session->SetTimeout(MonoDelta::FromMilliseconds(session_timeout_ms()));
-  return session;
+  return client_->NewSession(MonoDelta::FromMilliseconds(session_timeout_ms()));
 }
 
-void YBTableTestBase::PutKeyValue(YBSession* session, string key, string value) {
+Status YBTableTestBase::PutKeyValue(YBSession* session, const string& key, const string& value) {
   auto insert = table_.NewInsertOp();
   QLAddStringHashValue(insert->mutable_request(), key);
   table_.AddStringColumnValue(insert->mutable_request(), "v", value);
-  ASSERT_OK(session->TEST_ApplyAndFlush(insert));
+  return session->TEST_ApplyAndFlush(insert);
 }
 
-void YBTableTestBase::PutKeyValue(string key, string value) {
-  PutKeyValue(session_.get(), key, value);
+void YBTableTestBase::PutKeyValue(const string& key, const string& value) {
+  ASSERT_OK(PutKeyValue(session_.get(), key, value));
+}
+
+void YBTableTestBase::PutKeyValueIgnoreError(const string& key, const string& value) {
+  auto s ATTRIBUTE_UNUSED = PutKeyValue(session_.get(), key, value);
+  if (!s.ok()) {
+    LOG(WARNING) << "PutKeyValueIgnoreError: " << s;
+  }
+  return;
 }
 
 void YBTableTestBase::RestartCluster() {
@@ -306,6 +315,7 @@ Result<uint32_t> YBTableTestBase::GetLoadOnTserver(ExternalTabletServer* server)
       req.mutable_table()->set_table_name(table_name.table_name());
       req.mutable_table()->mutable_namespace_()->set_name(table_name.namespace_name());
     }
+    req.set_max_returned_locations(num_tablets());
     master::GetTableLocationsResponsePB resp;
 
     rpc::RpcController rpc;

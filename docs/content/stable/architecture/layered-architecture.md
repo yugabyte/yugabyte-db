@@ -11,79 +11,70 @@ menu:
 type: docs
 ---
 
-YugabyteDB architecture follows a layered design. It is comprised of 2 logical layers as shown in the diagram below:
-
-* **Yugabyte Query Layer**
-* **DocDB** distributed document store
+YugabyteDB architecture follows a layered design. The logical layers are the Yugabyte Query Layer, and the DocDB distributed document store, as per the following diagram:
 
 ![YugabyteDB Logical Architecture](/images/architecture/yb-arch-new.png)
 
+For more information, see the following:
+
+* [YugabyteDB design goals](../design-goals/)
+* [DocDB architecture](../docdb/)
+* [Transactions in DocDB](../transactions/)
+* [Query layer design](../query-layer/)
+* [Core functions](../core-functions/)
+
 ## Yugabyte Query Layer
 
-The [Yugabyte Query Layer or YQL](../query-layer/) is the upper layer of YugabyteDB. Applications interact directly with YQL using client drivers. This layer deals with the API specific aspects such as query/command compilation and the run-time (data type representations, built-in operations and more). YQL is built with extensibility in mind, and allows for new APIs to be added.
+The [Yugabyte Query Layer](../query-layer/) (YQL) is the upper layer of YugabyteDB. Applications interact directly with YQL using client drivers. This layer deals with the API-specific aspects such as query and command compilation, as well as the run-time (data type representations, built-in operations, and so on). YQL is designed with extensibility in mind, allowing new APIs to be added.
 
-Currently, YQL supports two flavors of distributed SQL APIs.
+YQL supports two types of distributed SQL APIs: Yugabyte SQL (YSQL) and Yugabyte Cloud QL (YCQL).
 
-### Yugabyte SQL (YSQL)
+### YSQL
 
-YSQL is a distributed SQL API that is built by re-using the PostgreSQL language layer code. It is a stateless SQL query engine that is wire-format compatible with PostgreSQL.
+YSQL is a distributed SQL API that is built by reusing the PostgreSQL language layer code. It is a stateless SQL query engine that is wire-format compatible with PostgreSQL.
 
-### Yugabyte Cloud QL (YCQL)
+### YCQL
 
 YCQL is a semi-relational language that has its roots in Cassandra Query Language. It is a SQL-like language built specifically to be aware of clustering of data across nodes.
 
-{{< tip title="Read More" >}}
-Understanding [the design of the query layer](../query-layer/overview/).
-{{< /tip >}}
+For more information, see [The query layer design](../query-layer/overview/).
 
 ## DocDB
 
-[DocDB](../docdb/) is a distributed document store. It has the following properties:
+[DocDB](../docdb/) is a distributed document store with the following properties:
 
 * [Strong write consistency](../docdb-replication/replication/#tablet-peers)
-* Extremely resilient to failures
+* Extreme resiliency to failures
 * Automatic sharding and load balancing
-* Zone/region/cloud aware data placement policies
+* Zone-, region-, and cloud-aware data placement policies
 * [Tunable read consistency](../docdb-replication/replication/#follower-reads)
 
-Data in DocDB is stored in tables. Each table is composed of rows, each row contains a key and a document. Here are some key points:
+Data in DocDB is stored in tables. Each table is composed of rows, with each row containing a key and a document.
 
 ### Sharding
 
-Data is stored inside tables in DocDB. A DocDB table is often sharded into a number of **tablets**. This sharding of tables is transparent to users.
+Data is stored inside tables in DocDB. A DocDB table is often sharded into a number of tablets whose sharding is transparent.
 
-You can read more about [how sharding works in DocDB](../docdb-sharding/).
+For more information, see [DocDB sharding](../docdb-sharding/).
 
 ### Replication
 
 Each tablet consisting of user data is replicated according to some replication factor using the Raft consensus algorithm. Replication is performed at a tablet level, and ensures single row linearizability even in the presence of failures.
 
-You can read more about [how replication works in DocDB](../docdb-replication/).
+For more information, see [DocDB replication](../docdb-replication/).
 
 ### Persistence
 
-In order to persist data, a log-structured row/document-oriented storage is used. It includes several optimizations for handling ever-growing datasets efficiently.
+In order to persist data, a log-structured row- and document-oriented storage is used. It includes several optimizations for handling ever-growing data sets efficiently.
 
-You can read more about [how persistence of data works in DocDB](../docdb/persistence/).
+For more information, see [DocDB persistence](../docdb/persistence/).
 
 ### Transactions
 
-DocDB has support for both single-row and multi-row transactions. This means that DocDB allows modifying multiple keys while preserving ACID properties.
+DocDB supports both single-row and multi-row transactions, therefore allowing to modify multiple keys while preserving atomicity, consistency, isolation, and durability (ACID) properties.
 
-* Read about the [isolation levels supported in DocDB](../transactions/isolation-levels/).
-* [Single-row transactions](../transactions/single-row-transactions/).
-* [Multi-row transactions](../transactions/distributed-txns/).
+For more information, see the following:
 
-## What's next
-
-You can now read about the following:
-
-{{< note title="" >}}
-
-* [The design goals of YugabyteDB](../design-goals/)
-* [Architecture of DocDB](../docdb/)
-* [Transactions in DocDB](../transactions/)
-* [Design of the query layer](../query-layer/)
-* [How various functions work, like the read and write IO paths](../core-functions/)
-
-{{< /note >}}
+* [DocDB isolation levels](../transactions/isolation-levels/)
+* [Single-row transactions](../transactions/single-row-transactions/)
+* [Multi-row transactions](../transactions/distributed-txns/)

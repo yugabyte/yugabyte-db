@@ -14,8 +14,8 @@ import java.util.UUID;
 import java.util.concurrent.Callable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import play.api.Play;
 import play.libs.Json;
+import play.libs.ws.WSClient;
 
 @Slf4j
 public class LiveQueryExecutor implements Callable<JsonNode> {
@@ -27,8 +27,9 @@ public class LiveQueryExecutor implements Callable<JsonNode> {
   private final int port;
   private final QueryHelper.QueryApi apiType;
 
-  public LiveQueryExecutor(String nodeName, String hostName, int port, QueryHelper.QueryApi api) {
-    this(nodeName, hostName, port, api, Play.current().injector().instanceOf(ApiHelper.class));
+  public LiveQueryExecutor(
+      String nodeName, String hostName, int port, QueryHelper.QueryApi api, WSClient wsClient) {
+    this(nodeName, hostName, port, api, new ApiHelper(wsClient));
   }
 
   @VisibleForTesting

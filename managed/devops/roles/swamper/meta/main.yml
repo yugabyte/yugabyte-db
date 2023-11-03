@@ -17,9 +17,9 @@ dependencies:
     become_method: sudo
     prometheus_go_version: 1.7
     prometheus_use_service: true
-    prometheus_node_exporter_version: 1.3.1
+    prometheus_node_exporter_version: 1.6.1
     prometheus_node_exporter_opts: "--web.listen-address=:{{ node_exporter_port }} \
-                                    --collector.textfile.directory=/tmp/yugabyte/metrics"
+                                    --collector.textfile.directory={{ remote_tmp_dir | default('/tmp') }}/yugabyte/metrics"
     prometheus_node_exporter_use_systemd: true
     prometheus_platform_suffix: "{{ 'linux-arm64' if ansible_architecture == 'aarch64' \
                                     else 'linux-amd64'}}"

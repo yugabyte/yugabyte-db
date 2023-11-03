@@ -37,6 +37,8 @@
 #include "yb/util/format.h"
 #include "yb/util/scope_exit.h"
 
+using std::string;
+
 namespace yb {
 namespace rpc {
 

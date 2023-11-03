@@ -69,15 +69,6 @@ int			SessionReplicationRole = SESSION_REPLICATION_ROLE_ORIGIN;
 /* How many levels deep into trigger execution are we? */
 static int	MyTriggerDepth = 0;
 
-/*
- * Note that similar macros also exist in executor/execMain.c.  There does not
- * appear to be any good header to put them into, given the structures that
- * they use, so we let them be duplicated.  Be sure to update all if one needs
- * to be changed, however.
- */
-#define GetUpdatedColumns(relinfo, estate) \
-	(rt_fetch((relinfo)->ri_RangeTableIndex, (estate)->es_range_table)->updatedCols)
-
 /* Local function prototypes */
 static void ConvertTriggerToFK(CreateTrigStmt *stmt, Oid funcoid);
 static void SetTriggerFlags(TriggerDesc *trigdesc, Trigger *trigger);
@@ -359,9 +350,11 @@ CreateTriggerFiringOn(CreateTrigStmt *stmt, const char *queryString,
 	{
 		aclresult = pg_class_aclcheck(RelationGetRelid(rel), GetUserId(),
 									  ACL_TRIGGER);
-		if (aclresult != ACLCHECK_OK)
+		if (aclresult != ACLCHECK_OK && !IsYbDbAdminUser(GetUserId()))
+		{
 			aclcheck_error(aclresult, get_relkind_objtype(rel->rd_rel->relkind),
 						   RelationGetRelationName(rel));
+		}
 
 		if (OidIsValid(constrrelid))
 		{
@@ -1646,7 +1639,7 @@ RangeVarCallbackForRenameTrigger(const RangeVar *rv, Oid relid, Oid oldrelid,
 						rv->relname)));
 
 	/* you must own the table to rename one of its triggers */
-	if (!pg_class_ownercheck(relid, GetUserId()))
+	if (!pg_class_ownercheck(relid, GetUserId()) && !IsYbDbAdminUser(GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, get_relkind_objtype(get_rel_relkind(relid)), rv->relname);
 	if (!allowSystemTableMods && IsSystemClass(relid, form))
 		ereport(ERROR,
@@ -1846,7 +1839,7 @@ EnableDisableTrigger(Relation rel, const char *tgname,
 			/* system trigger ... ok to process? */
 			if (skip_system)
 				continue;
-			if (!superuser())
+			if (!superuser() && !IsYbDbAdminUser(GetUserId()))
 				ereport(ERROR,
 						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 						 errmsg("permission denied: \"%s\" is a system trigger",
@@ -2933,7 +2926,7 @@ ExecBSUpdateTriggers(EState *estate, ResultRelInfo *relinfo)
 								   CMD_UPDATE))
 		return;
 
-	updatedCols = GetUpdatedColumns(relinfo, estate);
+	updatedCols = ExecGetUpdatedCols(relinfo, estate);
 
 	LocTriggerData.type = T_TriggerData;
 	LocTriggerData.tg_event = TRIGGER_EVENT_UPDATE |
@@ -2979,10 +2972,13 @@ ExecASUpdateTriggers(EState *estate, ResultRelInfo *relinfo,
 {
 	TriggerDesc *trigdesc = relinfo->ri_TrigDesc;
 
+	/* statement-level triggers operate on the parent table */
+	Assert(relinfo->ri_RootResultRelInfo == NULL);
+
 	if (trigdesc && trigdesc->trig_update_after_statement)
 		AfterTriggerSaveEvent(estate, relinfo, TRIGGER_EVENT_UPDATE,
 							  false, NULL, NULL, NIL,
-							  GetUpdatedColumns(relinfo, estate),
+							  ExecGetUpdatedCols(relinfo, estate),
 							  transition_capture);
 }
 
@@ -3048,7 +3044,7 @@ ExecBRUpdateTriggers(EState *estate, EPQState *epqstate,
 	LocTriggerData.tg_relation = relinfo->ri_RelationDesc;
 	LocTriggerData.tg_oldtable = NULL;
 	LocTriggerData.tg_newtable = NULL;
-	updatedCols = GetUpdatedColumns(relinfo, estate);
+	updatedCols = ExecGetUpdatedCols(relinfo, estate);
 	for (i = 0; i < trigdesc->numtriggers; i++)
 	{
 		Trigger    *trigger = &trigdesc->triggers[i];
@@ -3138,7 +3134,7 @@ ExecARUpdateTriggers(EState *estate, ResultRelInfo *relinfo,
 
 		AfterTriggerSaveEvent(estate, relinfo, TRIGGER_EVENT_UPDATE,
 							  true, trigtuple, newtuple, recheckIndexes,
-							  GetUpdatedColumns(relinfo, estate),
+							  ExecGetUpdatedCols(relinfo, estate),
 							  transition_capture);
 		if (trigtuple != fdw_trigtuple)
 			heap_freetuple(trigtuple);
@@ -3918,34 +3914,43 @@ static bool afterTriggerCheckState(AfterTriggerShared evtshared);
 static Tuplestorestate *
 GetCurrentFDWTuplestore(AfterTriggerShared evtshared)
 {
-	Tuplestorestate *ret;
-
-	/* Check trigger has subtransaction level tuplestore (deferred trigger). */
+	/* Check trigger has transaction level tuplestore (deferred trigger). */
 	if (evtshared->ybc_txn_fdw_tuplestore)
 		return evtshared->ybc_txn_fdw_tuplestore;
 
 	Assert(afterTriggers.query_depth > -1);
-	AfterTriggersQueryData* trigger_data = &afterTriggers.query_stack[afterTriggers.query_depth];
+	AfterTriggersQueryData *trigger_data = &afterTriggers.query_stack[afterTriggers.query_depth];
 	const bool is_deferred = IsYugaByteEnabled() && afterTriggerCheckState(evtshared);
-	ret = is_deferred ? trigger_data->ybc_txn_fdw_tuplestore : trigger_data->fdw_tuplestore;
+	Tuplestorestate *ret = is_deferred ? trigger_data->ybc_txn_fdw_tuplestore
+									   : trigger_data->fdw_tuplestore;
 	if (ret == NULL)
 	{
 		/*
 		 * Make the tuplestore valid until end of subtransaction.  We really
 		 * only need it until AfterTriggerEndQuery().
-		 * In YugaByte mode deferred trigger will access tuplestore
-		 * at the end of subtransaction (after AfterTriggerEndQuery).
+		 * If deferred, it needs to live longer, as the deferred triggers are
+		 * fired at the end of the top transaction.
 		 */
-		MemoryContext oldcxt = MemoryContextSwitchTo(CurTransactionContext);
+		MemoryContext oldcxt;
 		ResourceOwner saveResourceOwner = CurrentResourceOwner;
-		CurrentResourceOwner = CurTransactionResourceOwner;
+		if (is_deferred)
+		{
+			oldcxt = MemoryContextSwitchTo(TopTransactionContext);
+			CurrentResourceOwner = TopTransactionResourceOwner;
+		}
+		else
+		{
+			oldcxt = MemoryContextSwitchTo(CurTransactionContext);
+			CurrentResourceOwner = CurTransactionResourceOwner;
+		}
 
 		ret = tuplestore_begin_heap(false, false, work_mem);
 
 		if (is_deferred)
 		{
 			trigger_data->ybc_txn_fdw_tuplestore = ret;
-			afterTriggers.ybc_txn_fdw_tuplestores = lappend(afterTriggers.ybc_txn_fdw_tuplestores, ret);
+			afterTriggers.ybc_txn_fdw_tuplestores =
+				lappend(afterTriggers.ybc_txn_fdw_tuplestores, ret);
 		}
 		else
 			trigger_data->fdw_tuplestore = ret;

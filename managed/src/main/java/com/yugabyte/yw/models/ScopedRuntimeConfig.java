@@ -6,6 +6,8 @@ import io.ebean.Model;
 import java.util.UUID;
 import javax.persistence.Entity;
 import javax.persistence.Id;
+import lombok.Getter;
+import lombok.Setter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -16,6 +18,8 @@ import org.slf4j.LoggerFactory;
  * scoped configurations for provider or customer.
  */
 @Entity
+@Getter
+@Setter
 public class ScopedRuntimeConfig extends Model {
   // TODO: delete if not needed by the end of it.
   //  public static final ScopedRuntimeConfig GLOBAL_SCOPE = new ScopedRuntimeConfig();
@@ -28,14 +32,17 @@ public class ScopedRuntimeConfig extends Model {
   // no uuid defined for parent entity we will
   // create a new uuid. At present all the use cases
   // global, provider, universe and customer have a uuid.
-  @VisibleForTesting @Id final UUID uuid;
+  @Id private final UUID uuid;
 
   // ====================================================
   // Foreign keys to scoping entities.
   // At most one of these can be valid.
-  @VisibleForTesting final UUID customerUUID;
-  @VisibleForTesting final UUID universeUUID;
-  @VisibleForTesting final UUID providerUUID;
+  private final UUID customerUUID;
+
+  private final UUID universeUUID;
+
+  private final UUID providerUUID;
+
   // End foreign key fields
   // ====================================================
 
@@ -48,27 +55,27 @@ public class ScopedRuntimeConfig extends Model {
   }
 
   private ScopedRuntimeConfig(Customer customer) {
-    uuid = customer.uuid;
-    customerUUID = customer.uuid;
+    uuid = customer.getUuid();
+    customerUUID = customer.getUuid();
     universeUUID = null;
     providerUUID = null;
-    LOG.info("Created Customer({}) ScopedRuntimeConfig", customerUUID);
+    LOG.info("Created Customer({}) ScopedRuntimeConfig", getCustomerUUID());
   }
 
   private ScopedRuntimeConfig(Universe universe) {
-    uuid = universe.universeUUID;
+    uuid = universe.getUniverseUUID();
     providerUUID = null;
     customerUUID = null;
-    universeUUID = universe.universeUUID;
-    LOG.info("Created Universe({}) ScopedRuntimeConfig", universeUUID);
+    universeUUID = universe.getUniverseUUID();
+    LOG.info("Created Universe({}) ScopedRuntimeConfig", getUniverseUUID());
   }
 
   private ScopedRuntimeConfig(Provider provider) {
-    uuid = provider.uuid;
+    uuid = provider.getUuid();
     customerUUID = null;
     universeUUID = null;
-    providerUUID = provider.uuid;
-    LOG.info("Created Provider({}) ScopedRuntimeConfig", providerUUID);
+    providerUUID = provider.getUuid();
+    LOG.info("Created Provider({}) ScopedRuntimeConfig", getProviderUUID());
   }
 
   private static final Finder<UUID, ScopedRuntimeConfig> finder =
@@ -88,37 +95,37 @@ public class ScopedRuntimeConfig extends Model {
   }
 
   static void ensure(Customer customer) {
-    if (get(customer.uuid) == null) {
+    if (get(customer.getUuid()) == null) {
       new ScopedRuntimeConfig(customer).save();
     }
   }
 
   static void ensure(Universe universe) {
-    if (get(universe.universeUUID) == null) {
+    if (get(universe.getUniverseUUID()) == null) {
       new ScopedRuntimeConfig(universe).save();
     }
   }
 
   static void ensure(Provider provider) {
-    if (get(provider.uuid) == null) {
+    if (get(provider.getUuid()) == null) {
       new ScopedRuntimeConfig(provider).save();
     }
   }
 
   @Override
   public String toString() {
-    if (GLOBAL_SCOPE_UUID.equals(uuid)) {
+    if (GLOBAL_SCOPE_UUID.equals(getUuid())) {
       return "ScopedRuntimeConfig(GLOBAL_SCOPE)";
     } else {
       return "ScopedRuntimeConfig{"
           + "uuid="
-          + uuid
+          + getUuid()
           + ", customerUUID="
-          + customerUUID
+          + getCustomerUUID()
           + ", universeUUID="
-          + universeUUID
+          + getUniverseUUID()
           + ", providerUUID="
-          + providerUUID
+          + getProviderUUID()
           + '}';
     }
   }

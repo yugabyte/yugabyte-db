@@ -12,10 +12,11 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_PGGATE_PG_VALUE_H_
-#define YB_YQL_PGGATE_PG_VALUE_H_
+#pragma once
 
 #include "yb/common/common_fwd.h"
+
+#include "yb/dockv/dockv_fwd.h"
 
 #include "yb/util/status_fwd.h"
 
@@ -25,13 +26,12 @@ namespace yb {
 namespace pggate {
 
 /*
- * Convert a QLValue to a Datum given its type entity.
+ * Convert a PgValue to a Datum given its type entity.
  */
-Status PgValueFromPB(const YBCPgTypeEntity *type_entity,
-                     YBCPgTypeAttrs type_attrs,
-                     const QLValuePB& ql_value,
-                     uint64_t* datum,
-                     bool *is_null);
+Status PgValueToDatum(const YBCPgTypeEntity *type_entity,
+                      YBCPgTypeAttrs type_attrs,
+                      const dockv::PgValue& ql_value,
+                      uint64_t* datum);
 
 /*
  * Convert a Datum to QLValue given its type entity.
@@ -43,5 +43,3 @@ Status PgValueToPB(const YBCPgTypeEntity *type_entity,
 
 }  // namespace pggate
 }  // namespace yb
-
-#endif // YB_YQL_PGGATE_PG_VALUE_H_

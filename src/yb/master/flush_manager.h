@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_MASTER_FLUSH_MANAGER_H
-#define YB_MASTER_FLUSH_MANAGER_H
+#pragma once
 
 #include <set>
 #include <shared_mutex>
@@ -19,13 +18,16 @@
 #include <unordered_set>
 #include <utility>
 
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/master/leader_epoch.h"
 #include "yb/master/master_admin.fwd.h"
 #include "yb/master/master_fwd.h"
+
+#include "yb/rpc/rpc_context.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
@@ -47,10 +49,12 @@ class FlushManager {
 
   // API to start a table flushing.
   Status FlushTables(const FlushTablesRequestPB* req,
-                             FlushTablesResponsePB* resp);
+                     FlushTablesResponsePB* resp,
+                     rpc::RpcContext* rpc,
+                     const LeaderEpoch& epoch);
 
   Status IsFlushTablesDone(const IsFlushTablesDoneRequestPB* req,
-                                   IsFlushTablesDoneResponsePB* resp);
+                           IsFlushTablesDoneResponsePB* resp);
 
   void HandleFlushTabletsResponse(const FlushRequestId& flush_id,
                                   const TabletServerId& ts_uuid,
@@ -62,7 +66,9 @@ class FlushManager {
                                const scoped_refptr<TableInfo>& table,
                                const std::vector<TabletId>& tablet_ids,
                                const FlushRequestId& flush_id,
-                               bool is_compaction);
+                               bool is_compaction,
+                               bool regular_only,
+                               const LeaderEpoch& epoch);
 
   void DeleteCompleteFlushRequests();
 
@@ -95,4 +101,3 @@ class FlushManager {
 
 } // namespace master
 } // namespace yb
-#endif // YB_MASTER_FLUSH_MANAGER_H

@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Fragment, Component } from 'react';
+import { Fragment, Component } from 'react';
 import { Row, Col, Alert } from 'react-bootstrap';
 import {
   YBInputField,
@@ -13,6 +13,7 @@ import {
   YBDropZoneWithLabel,
   YBNumericInputWithLabel
 } from '../../../../components/common/forms/fields';
+import clsx from 'clsx';
 
 import { FlexContainer, FlexGrow, FlexShrink } from '../../../common/flexbox/YBFlexBox';
 import {
@@ -27,12 +28,11 @@ import { reduxForm, formValueSelector, change, FieldArray, Field, getFormValues 
 import { connect } from 'react-redux';
 import AddRegionPopupForm from './AddRegionPopupForm';
 import _ from 'lodash';
-import { regionsData } from './providerRegionsData';
+import { AWS_REGIONS } from './providerRegionsData';
 import { NTPConfig, NTP_TYPES } from './NTPConfig';
+import { ACCEPTABLE_CHARS } from '../../constants';
 
-import clsx from 'clsx';
 import './providerView.scss';
-import { specialChars } from '../../constants';
 
 const validationIsRequired = (value) => (value && value.trim() !== '' ? undefined : 'Required');
 
@@ -51,6 +51,7 @@ class AZInput extends Component {
       </option>,
       ...zones.map((zone, idx) => (
         <option
+          // eslint-disable-next-line react/no-array-index-key
           key={idx + 1}
           disabled={!(zonesAvailable.indexOf(zone) > -1 || zone === zonesAdded[index].zone)}
           value={zone}
@@ -111,10 +112,11 @@ class renderAZMappingForm extends Component {
       fields.push({});
     };
 
-    const zonesAdded = regionFormData && regionFormData.azToSubnetIds;
+    const zonesAdded = regionFormData?.azToSubnetIds;
     const azFieldList = fields.map((item, idx) => (
       <AZInput
         item={item}
+        // eslint-disable-next-line react/no-array-index-key
         key={idx}
         zones={zones}
         index={idx}
@@ -175,20 +177,22 @@ class renderRegions extends Component {
       </option>,
       ...(this.state.editRegionIndex === undefined
         ? //if add new flow - remove already added regions from region select picker
-          _.differenceBy(regionsData, formRegions, 'destVpcRegion').map((region, index) => (
+          _.differenceBy(AWS_REGIONS, formRegions, 'destVpcRegion').map((region, index) => (
+            // eslint-disable-next-line react/no-array-index-key
             <option key={index + 1} value={region.destVpcRegion}>
               {region.destVpcRegion}
             </option>
           ))
         : //if edit flow - remove already added regions from region select picker except one to edit and mark it selected
           _.differenceBy(
-            regionsData,
+            AWS_REGIONS,
             _.filter(
               formRegions,
               (o) => o.destVpcRegion !== formRegions[self.state.editRegionIndex].destVpcRegion
             ),
             'destVpcRegion'
           ).map((region, index) => (
+            // eslint-disable-next-line react/no-array-index-key
             <option key={index + 1} value={region.destVpcRegion}>
               {region.destVpcRegion}
             </option>
@@ -198,7 +202,7 @@ class renderRegions extends Component {
     //depending on selected region fetch zones matching this region
     const optionsZones =
       (self.state.regionName &&
-        _.find(regionsData, function (o) {
+        _.find(AWS_REGIONS, function (o) {
           return o.destVpcRegion === self.state.regionName;
         }).zones) ||
       [];
@@ -339,6 +343,7 @@ class renderRegions extends Component {
             {fields.map((region, index) => {
               return (
                 <li
+                  // eslint-disable-next-line react/no-array-index-key
                   key={index}
                   onClick={() => {
                     // Regions edit popup handler
@@ -422,10 +427,8 @@ class renderRegions extends Component {
                         />
                       </div>
                       <div>
-                        {formRegions &&
-                          formRegions[index].azToSubnetIds &&
-                          formRegions[index].azToSubnetIds.length +
-                            (formRegions[index].azToSubnetIds.length > 1 ? ' zones' : ' zone')}
+                        {formRegions?.[index]?.azToSubnetIds?.length +
+                          (formRegions?.[index]?.azToSubnetIds?.length > 1 ? ' zones' : ' zone')}
                       </div>
                       <div>
                         <button
@@ -495,8 +498,7 @@ class AWSProviderInitView extends Component {
 
   createProviderConfig = (formValues) => {
     const { hostInfo } = this.props;
-    const awsProviderConfig = {
-    };
+    const awsProviderConfig = {};
     if (this.state.credentialInputType === 'custom_keys') {
       awsProviderConfig['AWS_ACCESS_KEY_ID'] = formValues.accessKey;
       awsProviderConfig['AWS_SECRET_ACCESS_KEY'] = formValues.secretKey;
@@ -518,28 +520,28 @@ class AWSProviderInitView extends Component {
 
     const perRegionMetadata = {};
     if (this.state.networkSetupType !== 'new_vpc') {
-      formValues.regionList &&
-        formValues.regionList.forEach(
-          (item) =>
-            (perRegionMetadata[item.destVpcRegion] = {
-              vpcId: item.destVpcId,
-              azToSubnetIds: item.azToSubnetIds.reduce((map, obj) => {
-                map[obj.zone] = obj.subnet;
-                return map;
-              }, {}),
-              customImageId: item.customImageId,
-              customSecurityGroupId: item.customSecurityGroupId
-            })
-        );
+      // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
+      formValues.regionList.forEach(
+        (item) =>
+          (perRegionMetadata[item.destVpcRegion] = {
+            vpcId: item.destVpcId,
+            azToSubnetIds: item.azToSubnetIds.reduce((map, obj) => {
+              map[obj.zone] = obj.subnet;
+              return map;
+            }, {}),
+            customImageId: item.customImageId,
+            customSecurityGroupId: item.customSecurityGroupId
+          })
+      );
     } else {
-      formValues.regionList &&
-        formValues.regionList.forEach(
-          (item) =>
-            (perRegionMetadata[item.destVpcRegion] = {
-              vpcCidr: item.vpcCidr,
-              customImageId: item.customImageId
-            })
-        );
+      // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
+      formValues.regionList.forEach(
+        (item) =>
+          (perRegionMetadata[item.destVpcRegion] = {
+            vpcCidr: item.vpcCidr,
+            customImageId: item.customImageId
+          })
+      );
     }
 
     regionFormVals['perRegionMetadata'] = perRegionMetadata;
@@ -555,7 +557,6 @@ class AWSProviderInitView extends Component {
           regionFormVals['sshPrivateKeyContent'] = reader.result;
         };
       }
-      regionFormVals['overrideKeyValidate'] = formValues.overrideKeyValidate;
       return this.props.createAWSProvider(
         formValues.accountName,
         awsProviderConfig,
@@ -594,7 +595,9 @@ class AWSProviderInitView extends Component {
           <div className="form-item-custom-label">{label}</div>
         </Col>
         <Col lg={7}>
-          <div className={clsx(['form-right-aligned-labels', {'center-align-row' : centerAlign}])}>{field}</div>
+          <div className={clsx(['form-right-aligned-labels', { 'center-align-row': centerAlign }])}>
+            {field}
+          </div>
         </Col>
       </Row>
     );
@@ -780,7 +783,6 @@ class AWSProviderInitView extends Component {
       <Fragment>
         {nameRow}
         {pemContentRow}
-        {this.rowOverrideKeyValidateToggle()}
       </Fragment>
     );
   }
@@ -844,27 +846,10 @@ class AWSProviderInitView extends Component {
           <div className="form-item-custom-label">NTP Setup</div>
         </Col>
         <Col lg={7}>
-          <div>{<NTPConfig onChange={change}/>}</div>
+          <div>{<NTPConfig onChange={change} />}</div>
         </Col>
       </Row>
-    )
-
-  }
-
-  rowOverrideKeyValidateToggle() {
-    const label = 'Override Custom KeyPair Validation'
-    const tooltipContent =
-      'Would you like YugaWare to NOT validate KeyPair with AWS?';
-    return this.generateRow(
-      label,
-      <Field
-        name="overrideKeyValidate"
-        component={YBToggle}
-        defaultChecked={false}
-        infoTitle={label}
-        infoContent={tooltipContent}
-      />
-    )
+    );
   }
 
   render() {
@@ -976,11 +961,8 @@ function validate(values) {
   const errors = {};
   if (!isNonEmptyString(values.accountName)) {
     errors.accountName = 'Account Name is required';
-  }
-  else {
-    if(!specialChars.test(values.accountName)){
-      errors.accountName = 'Account Name cannot have special characters except - and _';
-    }
+  } else if (!ACCEPTABLE_CHARS.test(values.accountName)) {
+    errors.accountName = 'Account Name cannot have special characters except - and _';
   }
 
   if (!isNonEmptyArray(values.regionList)) {
@@ -1015,8 +997,8 @@ function validate(values) {
   if (values.setupHostedZone && !isNonEmptyString(values.hostedZoneId)) {
     errors.hostedZoneId = 'Route53 Zone ID is required';
   }
-  if(values.ntp_option === NTP_TYPES.MANUAL && values.ntpServers.length === 0){
-    errors.ntpServers = 'NTP servers cannot be empty'
+  if (values.ntp_option === NTP_TYPES.MANUAL && values.ntpServers.length === 0) {
+    errors.ntpServers = 'NTP servers cannot be empty';
   }
   return errors;
 }
@@ -1027,7 +1009,7 @@ let awsProviderConfigForm = reduxForm({
   initialValues: {
     ntp_option: NTP_TYPES.PROVIDER,
     ntpServers: [],
-    network_setup : 'existing_vpc'
+    network_setup: 'existing_vpc'
   },
   touchOnChange: true
 })(AWSProviderInitView);

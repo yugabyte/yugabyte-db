@@ -24,7 +24,7 @@ CREATE EXTENSION fuzzystrmatch;
 
 ## Required privileges
 
-In YugabyteDB Managed, extensions can only be loaded by users that are a member of the `yb_extension` role. All `yb_superuser` users, including the default admin user, are members of `yb_extension`.
+In YugabyteDB Managed, extensions can only be loaded by users that are a member of the `yb_extension` role. All `yb_superuser` users, including the default database admin user, are members of `yb_extension`.
 
 Use the `GRANT` statement to assign the role to users. For example, to grant the `yb_extension` role to `user`, use the following command:
 

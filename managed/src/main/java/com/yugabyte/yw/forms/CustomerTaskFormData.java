@@ -2,10 +2,12 @@
 
 package com.yugabyte.yw.forms;
 
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-import com.fasterxml.jackson.databind.JsonNode;
 import java.util.Date;
 import java.util.UUID;
 
@@ -21,12 +23,12 @@ public class CustomerTaskFormData {
   @ApiModelProperty(value = "Customer task percentage completed", example = "100")
   public int percentComplete;
 
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
-  @ApiModelProperty(value = "Customer task creation time", example = "2021-06-17T15:00:05-0400")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  @ApiModelProperty(value = "Customer task creation time", example = "2022-12-12T13:07:18Z")
   public Date createTime;
 
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
-  @ApiModelProperty(value = "Customer task completion time", example = "2021-06-17T15:00:05-0400")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  @ApiModelProperty(value = "Customer task completion time", example = "2022-12-12T13:07:18Z")
   public Date completionTime;
 
   @ApiModelProperty(value = "Customer task target", example = "Universe")
@@ -52,4 +54,10 @@ public class CustomerTaskFormData {
 
   @ApiModelProperty(value = "Customer task retryable")
   public boolean retryable;
+
+  @ApiModelProperty(value = "Correlation id")
+  public String correlationId;
+
+  @ApiModelProperty(value = "Customer Email", accessMode = READ_ONLY)
+  public String userEmail;
 }

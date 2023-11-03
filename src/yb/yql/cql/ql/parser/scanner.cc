@@ -34,6 +34,7 @@ namespace yb {
 namespace ql {
 
 using std::unordered_map;
+using std::string;
 
 //--------------------------------------------------------------------------------------------------
 // Class LexProcessor.

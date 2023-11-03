@@ -2,7 +2,7 @@
 title: LDAP authentication in YCQL
 headerTitle: LDAP authentication in YCQL
 linkTitle: LDAP authentication
-description: Configuring YugabyteDB to use an external LDAP authentication service.
+description: Configuring YugabyteDB to use an external LDAP authentication service using YCQL.
 menu:
   preview:
     identifier: ldap-authentication-2-ycql
@@ -107,7 +107,7 @@ In the above sample configuration, we are using an [online LDAP test server](htt
     $ ./ycqlsh -u cassandra
     ```
 
-    When prompted for the password, enter `cassandra` (default password of `cassandra` user). You should be able to log in and see a response like below.
+    When prompted for the password, enter `cassandra` (default password of `cassandra` user). You should be able to log in and see a response similar to the following:
 
     ```output
     Connected to local cluster at 127.0.0.1:9042.

@@ -1,14 +1,20 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
-import AlertsListContainer from '../components/alerts/AlertList/AlertsListContainer';
+import { Component, Suspense, lazy } from 'react';
+import { YBLoadingCircleIcon } from '../components/common/indicators';
+
+const AlertsListContainer = lazy(() =>
+  import('../components/alerts/AlertList/AlertsListContainer')
+);
 
 export default class Alerts extends Component {
   render() {
     return (
-      <div className="dashboard-container">
-        <AlertsListContainer />
-      </div>
+      <Suspense fallback={YBLoadingCircleIcon}>
+        <div className="dashboard-container">
+          <AlertsListContainer />
+        </div>
+      </Suspense>
     );
   }
 }

@@ -4,10 +4,11 @@ package com.yugabyte.yw.common;
 
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
@@ -54,11 +55,6 @@ public class ApiUtils {
 
   public static Universe.UniverseUpdater mockUniverseUpdater(
       final String nodePrefix, final Common.CloudType cloudType) {
-    return mockUniverseUpdater(nodePrefix, cloudType, false);
-  }
-
-  public static Universe.UniverseUpdater mockUniverseUpdater(
-      final String nodePrefix, final Common.CloudType cloudType, final boolean backupState) {
     return new Universe.UniverseUpdater() {
       @Override
       public void run(Universe universe) {
@@ -80,7 +76,7 @@ public class ApiUtils {
           universeDetails.nodeDetailsSet.add(node);
         }
         universeDetails.nodePrefix = nodePrefix;
-        universeDetails.backupInProgress = backupState;
+        universeDetails.updateInProgress = true;
         universe.setUniverseDetails(universeDetails);
       }
     };
@@ -120,9 +116,29 @@ public class ApiUtils {
       final String nodePrefix,
       final boolean setMasters,
       final boolean updateInProgress) {
+    UniverseDefinitionTaskParams.Cluster cluster =
+        new UniverseDefinitionTaskParams.Cluster(ClusterType.PRIMARY, userIntent);
+    AvailableNodeTracker mockNodeTracker =
+        new AvailableNodeTracker(
+            cluster.uuid, Collections.singletonList(cluster), Collections.emptyList()) {
+          @Override
+          public void acquire(UUID zoneId, UniverseTaskBase.ServerType serverType) {
+            super.acquire(zoneId, serverType);
+          }
+
+          @Override
+          public int getAvailableForZone(UUID zoneId, UniverseTaskBase.ServerType serverType) {
+            return Integer.MAX_VALUE;
+          }
+        };
     PlacementInfo placementInfo =
         PlacementInfoUtil.getPlacementInfo(
-            ClusterType.PRIMARY, userIntent, userIntent.replicationFactor, null);
+            ClusterType.PRIMARY,
+            userIntent,
+            userIntent.replicationFactor,
+            null,
+            Collections.emptyList(),
+            mockNodeTracker);
     return mockUniverseUpdater(userIntent, nodePrefix, setMasters, updateInProgress, placementInfo);
   }
 
@@ -150,8 +166,8 @@ public class ApiUtils {
         universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
         universeDetails.nodeDetailsSet = new HashSet<>();
         universeDetails.updateInProgress = updateInProgress;
-        universeDetails.enableYbc = enableYbc;
-        universeDetails.ybcInstalled = enableYbc;
+        universeDetails.setEnableYbc(enableYbc);
+        universeDetails.setYbcInstalled(enableYbc);
         List<UUID> azUUIDList = null;
         if (placementInfo != null) {
           PlacementCloud placementCloud = placementInfo.cloudList.get(0);
@@ -177,7 +193,7 @@ public class ApiUtils {
             node.azUuid = azUUIDList.get(azIndex);
           }
           if (userIntent.dedicatedNodes) {
-            node.dedicatedTo = UniverseDefinitionTaskBase.ServerType.TSERVER;
+            node.dedicatedTo = UniverseTaskBase.ServerType.TSERVER;
           }
           universeDetails.nodeDetailsSet.add(node);
         }
@@ -187,7 +203,7 @@ public class ApiUtils {
               idx++) {
             NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Live, true);
             node.isTserver = false;
-            node.dedicatedTo = UniverseDefinitionTaskBase.ServerType.MASTER;
+            node.dedicatedTo = UniverseTaskBase.ServerType.MASTER;
             node.placementUuid = universeDetails.getPrimaryCluster().uuid;
             if (azUUIDList != null) {
               int azIndex = (idx - 1) % azUUIDList.size();
@@ -457,7 +473,8 @@ public class ApiUtils {
     AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
     InstanceType i =
-        InstanceType.upsert(p.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+        InstanceType.upsert(
+            p.getUuid(), "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
     UserIntent ui = getTestUserIntent(r, p, i, 3);
     ui.replicationFactor = 3;
     ui.masterGFlags = new HashMap<>();
@@ -469,7 +486,8 @@ public class ApiUtils {
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
     InstanceType i =
-        InstanceType.upsert(p.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+        InstanceType.upsert(
+            p.getUuid(), "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
     UserIntent ui = getTestUserIntent(r, p, i, 3);
     ui.replicationFactor = 3;
     ui.masterGFlags = new HashMap<>();
@@ -479,11 +497,14 @@ public class ApiUtils {
 
   public static UserIntent getTestUserIntent(Region r, Provider p, InstanceType i, int numNodes) {
     UserIntent ui = new UserIntent();
-    ui.regionList = ImmutableList.of(r.uuid);
-    ui.provider = p.uuid.toString();
-    ui.providerType = Common.CloudType.valueOf(p.code);
+    ui.regionList = ImmutableList.of(r.getUuid());
+    ui.provider = p.getUuid().toString();
+    ui.providerType = Common.CloudType.valueOf(p.getCode());
     ui.numNodes = numNodes;
     ui.instanceType = i.getInstanceTypeCode();
+    ui.deviceInfo = getDummyDeviceInfo(1, 100);
+    ui.tserverK8SNodeResourceSpec = new K8SNodeResourceSpec();
+    ui.masterK8SNodeResourceSpec = new K8SNodeResourceSpec();
     return ui;
   }
 
@@ -660,8 +681,8 @@ public class ApiUtils {
   public static UserIntent getDummyUserIntent(
       DeviceInfo deviceInfo, Provider provider, String instanceType) {
     UserIntent userIntent = new UserIntent();
-    userIntent.provider = provider.uuid.toString();
-    userIntent.providerType = Common.CloudType.valueOf(provider.code);
+    userIntent.provider = provider.getUuid().toString();
+    userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
     userIntent.instanceType = instanceType;
     userIntent.deviceInfo = deviceInfo;
     return userIntent;

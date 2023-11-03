@@ -1,8 +1,9 @@
 ---
 title: Deploy read replica clusters
-headerTitle: Read replica clusters
-linkTitle: Read replica clusters
+headerTitle: Read replica deployment
+linkTitle: Read replicas
 description: Deploy read replica clusters to asynchronously replicate data from the primary cluster and guarantee timeline consistency.
+headContent: Deploy read replicas to asynchronously replicate data to different regions
 menu:
   stable:
     parent: multi-dc
@@ -13,9 +14,9 @@ type: docs
 
 In a YugabyteDB deployment, replication of data between nodes of your primary cluster runs synchronously and guarantees strong consistency. Optionally, you can create a read replica cluster that asynchronously replicates data from the primary cluster and guarantees timeline consistency (with bounded staleness). A synchronously replicated primary cluster can accept writes to the system. Using a read replica cluster allows applications to serve low latency reads in remote regions.
 
-In a read replica cluster, read replicas are _observer nodes_ that do not participate in writes, but get a timeline-consistent copy of the data through xCluster replication from the primary cluster.
+In a read replica cluster, read replicas are _observer nodes_ that do not participate in writes, but get a timeline-consistent copy of the data through asynchronous replication from the primary cluster.
 
-This document describes how to deploy a read replica cluster using YugabyteDB. For information on deploying read replica clusters using YugabyteDB Anywhere, see [Read replicas](../../../yugabyte-platform/create-deployments/read-replicas/).
+This document describes how to deploy a read replica cluster using YugabyteDB. For information on deploying read replica clusters using YugabyteDB Anywhere, see [Create a read replica cluster](../../../yugabyte-platform/create-deployments/read-replicas/).
 
 ## Deploy a read replica cluster
 
@@ -39,7 +40,7 @@ You can deploy a read replica cluster that asynchronously replicates data with a
     ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 add_read_replica_placement_info <placement_info> <replication_factor> [placement_uuid]
     ```
 
-    - *placement_info*: Comma-separated list of availability zones, using the format `<cloud1.region1.zone1>:<num_replicas_in_zone1>,<cloud2.region2.zone2>:<num_replicas_in_zone_2>,...` These read replica availability zones must be uniquely different from the primary availability zones defined in step 2. If you want to use the same cloud, region, and availability zone as a primary cluster, one option is to suffix the zone with `_rr` (for read replica): for example, `c1.r1.z1` vs `c1.r1.z1_rr`.
+    - *placement_info*: Comma-separated list of availability zones, using the format `<cloud1.region1.zone1>:<num_replicas_in_zone1>,<cloud2.region2.zone2>:<num_replicas_in_zone_2>,...` These read replica availability zones must be uniquely different from the primary availability zones defined in step 2. If you want to use the same cloud, region, and availability zone as a primary cluster, one option is to suffix the zone with `_rr` (for read replica). For example, `c1.r1.z1_rr:2`.
     - *replication_factor*: The total number of read replicas.
     - *placement_uuid*: The identifier for the read replica cluster, using a meaningful string.
 

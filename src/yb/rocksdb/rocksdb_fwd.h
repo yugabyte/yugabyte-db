@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_ROCKSDB_ROCKSDB_FWD_H
-#define YB_ROCKSDB_ROCKSDB_FWD_H
+#pragma once
 
 #include <memory>
 
@@ -25,6 +24,9 @@ class CompactionFeed;
 class DB;
 class Env;
 class MemTable;
+class InternalIterator;
+class Iterator;
+class ReadFileFilter;
 class Statistics;
 class UserFrontiers;
 class WriteBatch;
@@ -32,12 +34,23 @@ class WriteBatch;
 struct BlockBasedTableOptions;
 struct CompactionContextOptions;
 struct CompactionInputFiles;
+struct KeyValueEntry;
 struct Options;
 struct TableBuilderOptions;
 struct TableProperties;
 
+template<bool kSkipLastEntry>
+class IteratorWrapperBase;
+using IteratorWrapper = IteratorWrapperBase</* kSkipLastEntry = */ false>;
+using IteratorWithoutLastEntryWrapper = IteratorWrapperBase</* kSkipLastEntry = */ true>;
+
+template <typename IteratorWrapperType>
+class MergingIteratorBase;
+
+template <typename IteratorWrapperType>
+class MergeIteratorBuilderBase;
+using MergeIteratorBuilder = MergeIteratorBuilderBase<IteratorWrapper>;
+
 using CompactionContextPtr = std::unique_ptr<CompactionContext>;
 
 } // namespace rocksdb
-
-#endif // YB_ROCKSDB_ROCKSDB_FWD_H

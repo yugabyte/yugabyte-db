@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_CQL_QL_PTREE_PT_DML_USING_CLAUSE_H
-#define YB_YQL_CQL_QL_PTREE_PT_DML_USING_CLAUSE_H
+#pragma once
 
 #include "yb/yql/cql/ql/ptree/pt_dml_using_clause_element.h"
 #include "yb/yql/cql/ql/ptree/list_node.h"
@@ -66,5 +65,3 @@ class PTDmlUsingClause: public TreeListNode<PTDmlUsingClauseElement> {
 
 } // namespace ql
 } // namespace yb
-
-#endif // YB_YQL_CQL_QL_PTREE_PT_DML_USING_CLAUSE_H

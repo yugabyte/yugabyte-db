@@ -20,8 +20,7 @@
 // be included directly.  Clients should instead include
 // "base/atomicops.h".
 
-#ifndef YB_GUTIL_ATOMICOPS_INTERNALS_MACOSX_H
-#define YB_GUTIL_ATOMICOPS_INTERNALS_MACOSX_H
+#pragma once
 
 typedef int32_t Atomic32;
 typedef int64_t Atomic64;
@@ -423,5 +422,3 @@ inline Atomic64 Release_Load(volatile const Atomic64 *ptr) {
 inline void MemoryBarrier() {
   base::subtle::MemoryBarrier();
 }
-
-#endif  // YB_GUTIL_ATOMICOPS_INTERNALS_MACOSX_H

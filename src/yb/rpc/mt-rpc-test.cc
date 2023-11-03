@@ -55,7 +55,6 @@ METRIC_DECLARE_counter(rpcs_queue_overflow);
 
 using std::string;
 using std::shared_ptr;
-using strings::Substitute;
 using namespace std::literals;
 
 namespace yb {
@@ -197,7 +196,10 @@ TEST_F(MultiThreadedRpcTest, TestBlowOutServiceQueue) {
 
   std::unique_ptr<ServiceIf> service(new GenericCalculatorService());
   auto service_name = service->service_name();
-  ThreadPool thread_pool("bogus_pool", kMaxConcurrency, 0UL);
+  ThreadPool thread_pool(ThreadPoolOptions {
+    .name = "bogus_pool",
+    .max_workers = 0UL,
+  });
   scoped_refptr<ServicePool> service_pool(new ServicePool(kMaxConcurrency,
                                                           &thread_pool,
                                                           &server_messenger->scheduler(),
@@ -347,4 +349,3 @@ TEST_F(MultiThreadedRpcTest, MemoryLimit) {
 
 } // namespace rpc
 } // namespace yb
-

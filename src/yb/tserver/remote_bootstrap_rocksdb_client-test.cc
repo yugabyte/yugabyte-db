@@ -17,14 +17,11 @@
 
 #include "yb/tserver/remote_bootstrap_client-test.h"
 
-using std::shared_ptr;
+using std::vector;
 
 namespace yb {
 namespace tserver {
 
-using consensus::GetRaftConfigLeader;
-using consensus::RaftPeerPB;
-using tablet::RaftGroupMetadata;
 using tablet::TabletStatusListener;
 
 class RemoteBootstrapRocksDBClientTest : public RemoteBootstrapClientTest {

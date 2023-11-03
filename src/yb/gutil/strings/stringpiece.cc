@@ -22,18 +22,13 @@
 #include <algorithm>
 #include <string>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/hash/hash.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/memutil.h"
 
-using std::copy;
-using std::max;
 using std::min;
-using std::reverse;
-using std::sort;
-using std::swap;
 using std::string;
 
 namespace std {

@@ -20,10 +20,12 @@
 #include "yb/util/memory/arena.h"
 #include "yb/util/size_literals.h"
 
-#if defined(TCMALLOC_ENABLED)
+// Malloc hooks are not suppported in Google's TCMalloc as of Dec 12 2022.
+// See issue: https://github.com/google/tcmalloc/issues/44.
+#if YB_GPERFTOOLS_TCMALLOC
 #include <gperftools/malloc_hook.h>
 #define MEMORY_USAGE_SUPPORTED
-#endif // defined(TCMALLOC_ENABLED)
+#endif // YB_GPERFTOOLS_TCMALLOC
 
 #if !defined(MEMORY_USAGE_SUPPORTED)
 #include "yb/util/format.h"
@@ -105,7 +107,7 @@ size_t GetHeapRequestedBytes() {
   return 0;
 }
 
-#endif // defined(TCMALLOC_ENABLED) && !defined(ADDRESS_SANITIZER) && !defined(THREAD_SANITIZER)
+#endif // defined(MEMORY_USAGE_SUPPORTED)
 
 std::string DumpMemoryUsage(const MemoryUsage& memory_usage) {
   std::ostringstream ss;

@@ -37,27 +37,9 @@ namespace yb {
 class CompressedStreamTest : public client::KeyValueTableTest<MiniCluster> {
  public:
   void SetUp() override {
-    FLAGS_enable_stream_compression = true;
-    FLAGS_stream_compression_algo = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_stream_compression) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_stream_compression_algo) = 1;
     KeyValueTableTest::SetUp();
-  }
-
-  Status CreateClient() override {
-    auto host = "127.0.0.52";
-    client_ = VERIFY_RESULT(DoCreateClient(host, host));
-    return Status::OK();
-  }
-
-  Result<std::unique_ptr<client::YBClient>> DoCreateClient(
-      const std::string& name, const std::string& host) {
-    rpc::MessengerBuilder messenger_builder("test_client");
-    messenger_builder.SetListenProtocol(rpc::CompressedStreamProtocol());
-    messenger_builder.AddStreamFactory(
-        rpc::CompressedStreamProtocol(),
-        CompressedStreamFactory(rpc::TcpStream::Factory(), MemTracker::GetRootTracker()));
-    auto messenger = VERIFY_RESULT(messenger_builder.Build());
-    messenger->TEST_SetOutboundIpBase(VERIFY_RESULT(HostToAddress(host)));
-    return cluster_->CreateClient(std::move(messenger));
   }
 
   void TestSimpleOps();
@@ -87,8 +69,8 @@ TEST_F(CompressedStreamTest, Simple) {
 
 TEST_F(CompressedStreamTest, BigWrite) {
   client::YBSchemaBuilder builder;
-  builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();
-  builder.AddColumn(kValueColumn)->Type(STRING);
+  builder.AddColumn(kKeyColumn)->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+  builder.AddColumn(kValueColumn)->Type(DataType::STRING);
 
   ASSERT_OK(table_.Create(client::kTableName, 1, client_.get(), &builder));
 

@@ -15,18 +15,20 @@
 #include "yb/master/tasks_tracker.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/flags.h"
+#include "yb/util/shared_lock.h"
 
-DEFINE_int32(tasks_tracker_num_tasks, 100,
+DEFINE_UNKNOWN_int32(tasks_tracker_num_tasks, 100,
              "Number of most recent tasks to track for displaying in utilities UI.");
 
-DEFINE_int32(tasks_tracker_keep_time_multiplier, 300,
+DEFINE_UNKNOWN_int32(tasks_tracker_keep_time_multiplier, 300,
              "How long we should keep tasks before cleaning them up, as a multiple of the "
              "load balancer interval (catalog_manager_bg_task_wait_ms).");
 
-DEFINE_int32(tasks_tracker_num_long_term_tasks, 20,
+DEFINE_UNKNOWN_int32(tasks_tracker_num_long_term_tasks, 20,
              "Number of most recent tasks to track for displaying in utilities UI.");
 
-DEFINE_int32(long_term_tasks_tracker_keep_time_multiplier, 86400,
+DEFINE_UNKNOWN_int32(long_term_tasks_tracker_keep_time_multiplier, 86400,
              "How long we should keep long-term tasks before cleaning them up, "
              "as a multiple of the load balancer interval (catalog_manager_bg_task_wait_ms).");
 
@@ -41,17 +43,17 @@ TasksTracker::TasksTracker(IsUserInitiated user_initiated)
                              : FLAGS_tasks_tracker_num_tasks) {}
 
 void TasksTracker::Reset() {
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
   tasks_.clear();
 }
 
 void TasksTracker::AddTask(std::shared_ptr<server::MonitoredTask> task) {
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
   tasks_.push_back(task);
 }
 
 std::vector<std::shared_ptr<server::MonitoredTask>> TasksTracker::GetTasks() {
-  std::shared_lock<decltype(lock_)> l(lock_);
+  SharedLock l(lock_);
   std::vector<std::shared_ptr<server::MonitoredTask>> tasks;
   for (const auto& task : tasks_) {
     tasks.push_back(task);
@@ -65,7 +67,7 @@ void TasksTracker::CleanupOldTasks() {
       GetAtomicFlag(user_initiated_
                         ? &FLAGS_long_term_tasks_tracker_keep_time_multiplier
                         : &FLAGS_tasks_tracker_keep_time_multiplier);
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
   for (auto iter = tasks_.begin(); iter != tasks_.end(); ) {
     if (MonoTime::Now()
             .GetDeltaSince((*iter)->start_timestamp())
@@ -80,7 +82,7 @@ void TasksTracker::CleanupOldTasks() {
 }
 
 std::string TasksTracker::ToString() {
-  std::shared_lock<decltype(lock_)> l(lock_);
+  SharedLock l(lock_);
   return Substitute("TasksTracker has $0 tasks in buffer.",
                     tasks_.size());
 }

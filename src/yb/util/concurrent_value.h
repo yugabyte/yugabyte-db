@@ -2,8 +2,7 @@
 // Copyright (c) YugaByte, Inc.
 //
 
-#ifndef YB_UTIL_CONCURRENT_VALUE_H
-#define YB_UTIL_CONCURRENT_VALUE_H
+#pragma once
 
 #include <atomic>
 #include <mutex>
@@ -176,7 +175,7 @@ class URCU {
   }
 
   void Synchronize() {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     FlipAndWait();
     FlipAndWait();
   }
@@ -308,5 +307,3 @@ class ConcurrentValue {
 using internal::ConcurrentValue;
 
 } // namespace yb
-
-#endif // YB_UTIL_CONCURRENT_VALUE_H

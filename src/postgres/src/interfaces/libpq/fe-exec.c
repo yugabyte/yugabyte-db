@@ -17,7 +17,7 @@
 #include <ctype.h>
 #include <fcntl.h>
 #include <limits.h>
-
+#include <stdatomic.h>
 #include "libpq-fe.h"
 #include "libpq-int.h"
 
@@ -47,8 +47,8 @@ char	   *const pgresStatus[] = {
  * static state needed by PQescapeString and PQescapeBytea; initialize to
  * values that result in backward-compatible behavior
  */
-static int	static_client_encoding = PG_SQL_ASCII;
-static bool static_std_strings = false;
+static atomic_int	static_client_encoding = PG_SQL_ASCII;
+static atomic_bool static_std_strings = false;
 
 
 static PGEvent *dupEvents(PGEvent *events, int count);

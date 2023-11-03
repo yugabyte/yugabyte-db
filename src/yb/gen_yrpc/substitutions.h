@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_GEN_YRPC_SUBSTITUTIONS_H
-#define YB_GEN_YRPC_SUBSTITUTIONS_H
+#pragma once
 
 #include <map>
 #include <string>
@@ -54,6 +53,7 @@ class FileSubstitutions {
 };
 
 Substitutions CreateSubstitutions(const google::protobuf::Descriptor* message);
+Substitutions CreateSubstitutions(const google::protobuf::EnumDescriptor* enum_desc);
 Substitutions CreateSubstitutions(
     const google::protobuf::MethodDescriptor* method, rpc::RpcSides side);
 Substitutions CreateSubstitutions(const google::protobuf::FieldDescriptor* field);
@@ -61,5 +61,3 @@ Substitutions CreateSubstitutions(const google::protobuf::ServiceDescriptor* ser
 
 } // namespace gen_yrpc
 } // namespace yb
-
-#endif // YB_GEN_YRPC_SUBSTITUTIONS_H

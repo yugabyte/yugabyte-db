@@ -37,7 +37,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_fwd.h"
@@ -46,10 +46,13 @@
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/util/flags.h"
+#include "yb/util/shared_lock.h"
 
 using namespace std::literals;
 
-DEFINE_int64(dns_cache_expiration_ms, 60000, "Time to store DNS resolution results in cache.");
+DEFINE_UNKNOWN_int64(dns_cache_expiration_ms, 60000,
+    "Time to store DNS resolution results in cache.");
 
 namespace yb {
 
@@ -119,7 +122,7 @@ class DnsResolver::Impl {
 
       decltype(waiters) to_notify;
       {
-        std::lock_guard<std::mutex> lock(mutex);
+        std::lock_guard lock(mutex);
         expiration = CoarseMonoClock::now() + FLAGS_dns_cache_expiration_ms * 1ms;
         waiters.swap(to_notify);
       }
@@ -134,7 +137,7 @@ class DnsResolver::Impl {
       std::shared_ptr<std::promise<Result<IpAddress>>> promise;
       std::shared_future<Result<IpAddress>> result;
       {
-        std::lock_guard<std::mutex> lock(mutex);
+        std::lock_guard lock(mutex);
         promise = StartResolve(host);
         result = future;
         if (callback && expiration == CoarseTimePoint::max()) {
@@ -192,14 +195,14 @@ class DnsResolver::Impl {
 
   CacheEntry* ObtainEntry(const std::string& host) {
     {
-      std::shared_lock<decltype(mutex_)> lock(mutex_);
+      SharedLock lock(mutex_);
       auto it = cache_.find(host);
       if (it != cache_.end()) {
         return &it->second;
       }
     }
 
-    std::lock_guard<decltype(mutex_)> lock(mutex_);
+    std::lock_guard lock(mutex_);
     return &cache_[host];
   }
 
@@ -217,11 +220,11 @@ DnsResolver::~DnsResolver() {
 
 namespace {
 
-thread_local Histogram* active_metric_ = nullptr;
+thread_local EventStats* active_metric_ = nullptr;
 
 } // anonymous namespace
 
-ScopedDnsTracker::ScopedDnsTracker(const scoped_refptr<Histogram>& metric)
+ScopedDnsTracker::ScopedDnsTracker(const scoped_refptr<EventStats>& metric)
     : old_metric_(active_metric()), metric_(metric) {
   active_metric_ = metric.get();
 }
@@ -231,7 +234,7 @@ ScopedDnsTracker::~ScopedDnsTracker() {
   active_metric_ = old_metric_;
 }
 
-Histogram* ScopedDnsTracker::active_metric() {
+EventStats* ScopedDnsTracker::active_metric() {
   return active_metric_;
 }
 

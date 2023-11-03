@@ -21,8 +21,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef YB_ROCKSDB_DB_COMPACTION_JOB_H
-#define YB_ROCKSDB_DB_COMPACTION_JOB_H
 
 #pragma once
 
@@ -69,6 +67,8 @@ class Arena;
 class FileNumbersProvider;
 class FileNumbersHolder;
 
+YB_STRONGLY_TYPED_BOOL(ShouldDeleteCorruptedFile);
+
 class CompactionJob {
  public:
   CompactionJob(int job_id, Compaction* compaction, const DBOptions& db_options,
@@ -113,14 +113,16 @@ class CompactionJob {
   // kv-pairs
   void ProcessKeyValueCompaction(FileNumbersHolder* holder, SubcompactionState* sub_compact);
 
-  Status FinishCompactionOutputFile(const Status& input_status,
-                                    SubcompactionState* sub_compact);
+  Status CheckOutputFile(SubcompactionState* sub_compact);
+  Status FinishCompactionOutputFile(
+      const Status& input_status, SubcompactionState* sub_compact,
+      ShouldDeleteCorruptedFile should_delete_corrupted_file);
   Status InstallCompactionResults(const MutableCFOptions& mutable_cf_options);
   void RecordCompactionIOStats();
   Status OpenFile(const std::string table_name, uint64_t file_number,
       const std::string file_type_label, const std::string fname,
       std::unique_ptr<WritableFile>* writable_file);
-  Status OpenCompactionOutputFile(FileNumbersHolder* holder, SubcompactionState* sub_compact);
+  Status OpenCompactionOutputFile(FileNumber file_number, SubcompactionState* sub_compact);
   void CleanupCompaction();
   void UpdateCompactionJobStats(
     const InternalStats::CompactionStats& stats) const;
@@ -185,5 +187,3 @@ class CompactionJob {
 };
 
 }  // namespace rocksdb
-
-#endif // YB_ROCKSDB_DB_COMPACTION_JOB_H

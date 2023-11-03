@@ -25,9 +25,7 @@
 #include "yb/yql/cql/ql/test/ql-test-base.h"
 
 using std::string;
-using std::unique_ptr;
 using std::shared_ptr;
-using strings::Substitute;
 
 namespace yb {
 namespace ql {
@@ -37,7 +35,8 @@ class TestQLStaticColumn : public QLTestBase {
   TestQLStaticColumn() : QLTestBase() {
   }
 
-  std::shared_ptr<QLRowBlock> ExecSelect(TestQLProcessor *processor, int expected_rows = 1) {
+  std::shared_ptr<qlexpr::QLRowBlock> ExecSelect(
+      TestQLProcessor *processor, int expected_rows = 1) {
     auto select = "SELECT c1, c2, c3 FROM test_table WHERE c1 = 1";
     Status s = processor->Run(select);
     CHECK(s.ok());
@@ -110,9 +109,9 @@ TEST_F(TestQLStaticColumn, TestSelect) {
   // Test simple query and result.
   {
     CHECK_VALID_STMT("SELECT h1, h2, r1, r2, s1, s2, c1, c2 FROM t WHERE h1 = 1 AND h2 = 'a';");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 2);
-    const QLRow& row1 = row_block->row(0);
+    const auto& row1 = row_block->row(0);
     CHECK_EQ(row1.column(0).int32_value(), 1);
     CHECK_EQ(row1.column(1).string_value(), "a");
     CHECK_EQ(row1.column(2).int32_value(), 1);
@@ -121,7 +120,7 @@ TEST_F(TestQLStaticColumn, TestSelect) {
     CHECK_EQ(row1.column(5).string_value(), "b");
     CHECK_EQ(row1.column(6).int32_value(), 11);
     CHECK_EQ(row1.column(7).string_value(), "aa");
-    const QLRow& row2 = row_block->row(1);
+    const auto& row2 = row_block->row(1);
     CHECK_EQ(row2.column(0).int32_value(), 1);
     CHECK_EQ(row2.column(1).string_value(), "a");
     CHECK_EQ(row2.column(2).int32_value(), 2);
@@ -135,9 +134,9 @@ TEST_F(TestQLStaticColumn, TestSelect) {
   // Test select distinct.
   {
     CHECK_VALID_STMT("SELECT DISTINCT h1, h2, s1, s2 FROM t WHERE h1 = 1 AND h2 = 'a';");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     CHECK_EQ(row.column(0).int32_value(), 1);
     CHECK_EQ(row.column(1).string_value(), "a");
     CHECK_EQ(row.column(2).int32_value(), 2);
@@ -151,14 +150,14 @@ TEST_F(TestQLStaticColumn, TestSelect) {
   // Test simple query and result.
   {
     CHECK_VALID_STMT("SELECT s1, s2, c1, c2 FROM t WHERE h1 = 1 AND h2 = 'a';");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 2);
-    const QLRow& row1 = row_block->row(0);
+    const auto& row1 = row_block->row(0);
     CHECK_EQ(row1.column(0).int32_value(), 3);
     CHECK_EQ(row1.column(1).string_value(), "c");
     CHECK_EQ(row1.column(2).int32_value(), 11);
     CHECK_EQ(row1.column(3).string_value(), "aa");
-    const QLRow& row2 = row_block->row(1);
+    const auto& row2 = row_block->row(1);
     CHECK_EQ(row2.column(0).int32_value(), 3);
     CHECK_EQ(row2.column(1).string_value(), "c");
     CHECK_EQ(row2.column(2).int32_value(), 22);
@@ -168,12 +167,12 @@ TEST_F(TestQLStaticColumn, TestSelect) {
   // Read all static rows. Verify rows and that they are read in the number of pages expected.
   {
     CHECK_OK(processor->Run("SELECT DISTINCT s1, s2 FROM t;"));
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 2);
-    const QLRow& row1 = row_block->row(0);
+    const auto& row1 = row_block->row(0);
     CHECK_EQ(row1.column(0).int32_value(), 3);
     CHECK_EQ(row1.column(1).string_value(), "c");
-    const QLRow& row2 = row_block->row(1);
+    const auto& row2 = row_block->row(1);
     CHECK_EQ(row2.column(0).int32_value(), 4);
     CHECK_EQ(row2.column(1).string_value(), "d");
   }
@@ -187,14 +186,14 @@ TEST_F(TestQLStaticColumn, TestSelect) {
   // Test simple query and result.
   {
     CHECK_VALID_STMT("SELECT s1, s2, c1, c2 FROM t WHERE h1 = 1 AND h2 = 'a';");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 2);
-    const QLRow& row1 = row_block->row(0);
+    const auto& row1 = row_block->row(0);
     CHECK_EQ(row1.column(0).int32_value(), 5);
     CHECK_EQ(row1.column(1).string_value(), "e");
     CHECK_EQ(row1.column(2).int32_value(), 11);
     CHECK_EQ(row1.column(3).string_value(), "aa");
-    const QLRow& row2 = row_block->row(1);
+    const auto& row2 = row_block->row(1);
     CHECK_EQ(row2.column(0).int32_value(), 5);
     CHECK_EQ(row2.column(1).string_value(), "e");
     CHECK_EQ(row2.column(2).int32_value(), 33);
@@ -204,12 +203,12 @@ TEST_F(TestQLStaticColumn, TestSelect) {
   // Read all static rows. Verify rows and that they are read in the number of pages expected.
   {
     CHECK_OK(processor->Run("SELECT DISTINCT s1, s2 FROM t;"));
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 2);
-    const QLRow& row1 = row_block->row(0);
+    const auto& row1 = row_block->row(0);
     CHECK_EQ(row1.column(0).int32_value(), 5);
     CHECK_EQ(row1.column(1).string_value(), "e");
-    const QLRow& row2 = row_block->row(1);
+    const auto& row2 = row_block->row(1);
     CHECK_EQ(row2.column(0).int32_value(), 6);
     CHECK_EQ(row2.column(1).string_value(), "f");
   }

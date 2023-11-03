@@ -21,14 +21,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef YB_ROCKSDB_UTIL_FILE_READER_WRITER_H
-#define YB_ROCKSDB_UTIL_FILE_READER_WRITER_H
+#pragma once
 
 #include <string.h>
 
 #include <string>
 
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/port/port.h"
@@ -114,9 +113,11 @@ class RandomAccessFileReader {
   RandomAccessFileReader(const RandomAccessFileReader&) = delete;
   RandomAccessFileReader& operator=(const RandomAccessFileReader&) = delete;
 
-  Status Read(uint64_t offset, size_t n, Slice* result, char* scratch) const;
+  Status Read(uint64_t offset, size_t n, Slice* result, char* scratch,
+              Statistics* statistics = nullptr) const;
   Status ReadAndValidate(
-      uint64_t offset, size_t n, Slice* result, char* scratch, const yb::ReadValidator& validator);
+      uint64_t offset, size_t n, Slice* result, char* scratch, const yb::ReadValidator& validator,
+      Statistics* statistics = nullptr);
 
   RandomAccessFile* file() { return file_.get(); }
 };
@@ -205,8 +206,14 @@ class WritableFileWriter {
 };
 
 extern Status NewWritableFile(Env* env, const std::string& fname,
-                              unique_ptr<WritableFile>* result,
+                              std::unique_ptr<WritableFile>* result,
                               const EnvOptions& options);
-}  // namespace rocksdb
 
-#endif // YB_ROCKSDB_UTIL_FILE_READER_WRITER_H
+// Returns an error if file ends with check_size zeros. If check_size is larger than file size it is
+// automatically reset to file size.
+// Returns an error if check_size == 0.
+// Returned error contains size of contiguous zeroed array placed at the end of the file.
+Status CheckFileTailForZeros(
+    Env* env, const EnvOptions& env_options, const std::string& file_path, size_t check_size);
+
+}  // namespace rocksdb

@@ -22,5 +22,5 @@ public class ScheduleFilter {
   UUID customerUUID;
   Set<Schedule.State> status;
   Set<TaskType> taskTypes;
-  private Set<UUID> universeUUIDList;
+  Set<UUID> universeUUIDList;
 }

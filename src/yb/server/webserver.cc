@@ -56,7 +56,7 @@
 
 #include <boost/algorithm/string.hpp>
 #include <cds/init.h>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <squeasel.h>
 
 #include "yb/gutil/dynamic_annotations.h"
@@ -70,7 +70,7 @@
 #include "yb/gutil/strings/strip.h"
 
 #include "yb/util/env.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/scope_exit.h"
@@ -84,26 +84,32 @@
 typedef sig_t sighandler_t;
 #endif
 
-DEFINE_int32(webserver_max_post_length_bytes, 1024 * 1024,
-             "The maximum length of a POST request that will be accepted by "
-             "the embedded web server.");
+DEFINE_RUNTIME_int32(webserver_max_post_length_bytes, 1024 * 1024,
+    "The maximum length of a POST request that will be accepted by "
+    "the embedded web server.");
 TAG_FLAG(webserver_max_post_length_bytes, advanced);
-TAG_FLAG(webserver_max_post_length_bytes, runtime);
 
-DEFINE_int32(webserver_zlib_compression_level, 1,
-             "The zlib compression level."
-             "Lower compression levels result in faster execution, but less compression");
+DEFINE_RUNTIME_int32(webserver_zlib_compression_level, 1,
+    "The zlib compression level."
+    "Lower compression levels result in faster execution, but less compression");
 TAG_FLAG(webserver_zlib_compression_level, advanced);
-TAG_FLAG(webserver_zlib_compression_level, runtime);
 
-DEFINE_uint64(webserver_compression_threshold_kb, 4,
-              "The threshold of response size above which compression is performed."
-              "Default value is 4KB");
+DEFINE_RUNTIME_uint64(webserver_compression_threshold_kb, 4,
+    "The threshold of response size above which compression is performed."
+    "Default value is 4KB");
 TAG_FLAG(webserver_compression_threshold_kb, advanced);
-TAG_FLAG(webserver_compression_threshold_kb, runtime);
 
-DEFINE_test_flag(bool, mini_cluster_mode, false,
-                 "Enable special fixes for MiniCluster test cluster.");
+DEFINE_UNKNOWN_bool(webserver_redirect_http_to_https, false,
+            "Redirect HTTP requests to the embedded webserver to HTTPS if HTTPS is enabled.");
+
+DEFINE_RUNTIME_bool(
+    webserver_strict_transport_security, false,
+    "Header is cached by the browser for the specified 'max-age' and forces it to redirect any "
+    "http request to https to avoid man-in-the-middle attacks. The original http request is never "
+    "sent.");
+
+DEFINE_test_flag(
+    bool, mini_cluster_mode, false, "Enable special fixes for MiniCluster test cluster.");
 
 namespace yb {
 
@@ -137,6 +143,10 @@ class Webserver::Impl {
   void set_footer_html(const std::string& html);
 
   bool IsSecure() const;
+
+  void SetAutoFlags(std::unordered_set<std::string>&& flags);
+
+  bool ContainsAutoFlag(const std::string& flag) const;
 
  private:
   // Container class for a list of path handler callbacks for a single URL.
@@ -238,6 +248,12 @@ class Webserver::Impl {
 
   // Mutex guarding against concurrenct calls to Stop().
   std::mutex stop_mutex_;
+
+  mutable std::mutex auto_flags_mutex_;
+  // The AutoFlags that are associated with this particular server. In LTO builds we use the same
+  // process for both yb-master and yb-tserver, so the process may have more AutoFlags than this
+  // server needs. This is used to filter out the AutoFlags that are shown in the varz path.
+  std::unordered_set<std::string> auto_flags_;
 };
 
 Webserver::Impl::Impl(const WebserverOptions& opts, const std::string& server_name)
@@ -276,6 +292,16 @@ bool Webserver::Impl::IsSecure() const {
   return !opts_.certificate_file.empty();
 }
 
+void Webserver::Impl::SetAutoFlags(std::unordered_set<std::string>&& flags) {
+  std::lock_guard l(auto_flags_mutex_);
+  auto_flags_ = std::move(flags);
+}
+
+bool Webserver::Impl::ContainsAutoFlag(const std::string& flag) const {
+  std::lock_guard l(auto_flags_mutex_);
+  return auto_flags_.contains(flag);
+}
+
 Status Webserver::Impl::BuildListenSpec(string* spec) const {
   std::vector<Endpoint> endpoints;
   RETURN_NOT_OK(ParseAddressList(http_address_, 80, &endpoints));
@@ -285,9 +311,14 @@ Status Webserver::Impl::BuildListenSpec(string* spec) const {
       "No IPs available for address $0", http_address_);
   }
   std::vector<string> parts;
+  std::string suffix;
+  if (IsSecure()) {
+    // Sockets with 's' suffix accept SSL traffic.
+    // Sockets with 'r' suffix redirects non-SSL traffic to a SSL socket.
+    suffix = FLAGS_webserver_redirect_http_to_https ? "rs" : "s";
+  }
   for (const auto& endpoint : endpoints) {
-    // Mongoose makes sockets with 's' suffixes accept SSL traffic only
-    parts.push_back(ToString(endpoint) + (IsSecure() ? "s" : ""));
+    parts.push_back(ToString(endpoint) + suffix);
   }
 
   JoinStrings(parts, ",", spec);
@@ -412,7 +443,7 @@ Status Webserver::Impl::Start() {
 }
 
 void Webserver::Impl::Stop() {
-  std::lock_guard<std::mutex> lock_(stop_mutex_);
+  std::lock_guard lock_(stop_mutex_);
   if (context_ != nullptr) {
     sq_stop(context_);
     context_ = nullptr;
@@ -629,23 +660,25 @@ sq_callback_result_t Webserver::Impl::RunPathHandler(const PathHandler& handler,
     }
   }
 
+  // Generating headers and response.
   string str = output->str();
-  // Without styling, render the page as plain text
-  if (!use_style) {
-    sq_printf(connection, "HTTP/1.1 200 OK\r\n"
-              "Content-Type: text/plain\r\n"
-              "Content-Length: %zd\r\n"
-              "%s"
-              "Access-Control-Allow-Origin: *\r\n"
-              "\r\n", str.length(), is_compressed ? "Content-Encoding: gzip\r\n" : "");
-  } else {
-    sq_printf(connection, "HTTP/1.1 200 OK\r\n"
-              "Content-Type: text/html\r\n"
-              "Content-Length: %zd\r\n"
-              "%s"
-              "Access-Control-Allow-Origin: *\r\n"
-              "\r\n", str.length(), is_compressed ? "Content-Encoding: gzip\r\n" : "");
-  }
+  auto content_type = use_style ? "text/html" : "text/plain";
+  auto content_encoding = is_compressed ? "Content-Encoding: gzip\r\n" : "";
+  auto hsts = IsSecure() && FLAGS_webserver_strict_transport_security
+                  ? "Strict-Transport-Security: max-age=31536000\r\n"
+                  : "";
+
+  sq_printf(
+      connection,
+      "HTTP/1.1 200 OK\r\n"
+      "Content-Type: %s\r\n"
+      "Content-Length: %zd\r\n"
+      "X-Content-Type-Options: nosniff\r\n"
+      "%s"
+      "%s"
+      "Access-Control-Allow-Origin: *\r\n"
+      "\r\n",
+      content_type, str.length(), content_encoding, hsts);
 
   // Make sure to use sq_write for printing the body; sq_printf truncates at 8kb
   sq_write(connection, str.c_str(), str.length());
@@ -658,7 +691,7 @@ void Webserver::Impl::RegisterPathHandler(const string& path,
                                           bool is_styled,
                                           bool is_on_nav_bar,
                                           const std::string icon) {
-  std::lock_guard<std::shared_timed_mutex> lock(lock_);
+  std::lock_guard lock(lock_);
   auto it = path_handlers_.find(path);
   if (it == path_handlers_.end()) {
     it = path_handlers_.insert(
@@ -676,6 +709,8 @@ const char* const PAGE_HEADER = "<!DOCTYPE html>"
 "    <link href='/bootstrap/css/bootstrap-theme.min.css' rel='stylesheet' media='screen' />"
 "    <link href='/font-awesome/css/font-awesome.min.css' rel='stylesheet' media='screen' />"
 "    <link href='/yb.css' rel='stylesheet' media='screen' />"
+"    <script src='/libs/jquery/3.7.0/jquery-3.7.0.min.js'></script>"
+"    <script type='text/javascript' src='/collapse.js'></script>"
 "  </head>"
 "\n"
 "<body>"
@@ -702,7 +737,7 @@ void Webserver::Impl::BootstrapPageHeader(stringstream* output) {
                 << "<a href='" << handler.first << "'>"
                 << "<div><i class='" << handler.second->icon() << "'aria-hidden='true'></i></div>"
                 << handler.second->alias()
-                << "</a></li>" << "\n";
+                << "</a></li>\n";
     }
   }
   (*output) << NAVIGATION_BAR_SUFFIX;
@@ -719,7 +754,7 @@ bool Webserver::Impl::static_pages_available() const {
 }
 
 void Webserver::Impl::set_footer_html(const std::string& html) {
-  std::lock_guard<std::shared_timed_mutex> l(lock_);
+  std::lock_guard l(lock_);
   footer_html_ = html;
 }
 
@@ -731,7 +766,7 @@ void Webserver::Impl::BootstrapPageFooter(stringstream* output) {
     *output << footer_html_;
     *output << "</div></footer>";
   }
-  *output << "</body></html>";
+  *output << "</body></html>\n";
 }
 
 int Webserver::Impl::EnterWorkerThreadCallbackStatic() {
@@ -786,4 +821,11 @@ bool Webserver::IsSecure() const {
   return impl_->IsSecure();
 }
 
+void Webserver::SetAutoFlags(std::unordered_set<std::string>&& flags) {
+  impl_->SetAutoFlags(std::move(flags));
+}
+
+bool Webserver::ContainsAutoFlag(const std::string& flag) const {
+  return impl_->ContainsAutoFlag(flag);
+}
 } // namespace yb

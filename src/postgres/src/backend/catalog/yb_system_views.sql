@@ -14,6 +14,17 @@
  * string literal (including a function body!) or a multiline comment.
  */
 
+CREATE VIEW yb_terminated_queries AS
+SELECT
+    D.datname AS databasename,
+    S.backend_pid AS backend_pid,
+    S.query_text AS query_text,
+    S.termination_reason AS termination_reason,
+    S.query_start AS query_start_time,
+    S.query_end AS query_end_time
+FROM yb_pg_stat_get_queries(NULL) AS S
+LEFT JOIN pg_database AS D ON (S.db_oid = D.oid);
+
 CREATE VIEW pg_roles AS
     SELECT
         rolname,
@@ -263,7 +274,37 @@ CREATE VIEW pg_publication_tables AS
     WHERE C.oid IN (SELECT relid FROM pg_get_publication_tables(P.pubname));
 
 CREATE VIEW pg_locks AS
-    SELECT * FROM pg_lock_status() AS L;
+SELECT l.locktype,
+       l.database,
+       l.relation,
+       null::int                  AS page,
+       null::smallint             AS tuple,
+       null::text                 AS virtualxid,
+       null::xid                  AS transactionid,
+       null::oid                  AS classid,
+       null::oid                  AS objid,
+       null::smallint             AS objsubid,
+       null::text                 AS virtualtransaction,
+       l.pid,
+       array_to_string(mode, ',') AS mode,
+       l.granted,
+       l.fastpath,
+       l.waitstart,
+       l.waitend,
+       jsonb_build_object('node', l.node,
+                          'transactionid', l.transaction_id,
+                          'subtransaction_id', l.subtransaction_id,
+                          'is_explicit', l.is_explicit,
+                          'tablet_id', l.tablet_id,
+                          'blocked_by', l.blocked_by,
+                          'keyrangedetails', jsonb_build_object(
+                                  'cols', to_jsonb(l.hash_cols || l.range_cols),
+                                  'attnum', l.attnum,
+                                  'column_id', l.column_id,
+                                  'multiple_rows_locked', l.multiple_rows_locked
+                              )
+           )                      AS ybdetails
+FROM yb_lock_status(null, null) AS l;
 
 CREATE VIEW pg_cursors AS
     SELECT * FROM pg_cursor() AS C;
@@ -506,6 +547,9 @@ CREATE VIEW pg_config AS
 REVOKE ALL on pg_config FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION pg_config() FROM PUBLIC;
 
+CREATE VIEW pg_backend_memory_contexts AS
+    SELECT * FROM pg_get_backend_memory_contexts();
+
 -- Statistics views
 
 CREATE VIEW pg_stat_all_tables AS
@@ -707,12 +751,18 @@ CREATE VIEW pg_stat_activity AS
             S.wait_event,
             S.state,
             S.backend_xid,
-            s.backend_xmin,
+            S.backend_xmin,
             S.query,
-            S.backend_type
+            S.backend_type,
+            yb_pg_stat_get_backend_catalog_version(B.beid) AS catalog_version,
+            yb_pg_stat_get_backend_allocated_mem_bytes(B.beid) AS allocated_mem_bytes,
+            yb_pg_stat_get_backend_rss_mem_bytes(B.beid) AS rss_mem_bytes,
+            S.yb_backend_xid
     FROM pg_stat_get_activity(NULL) AS S
         LEFT JOIN pg_database AS D ON (S.datid = D.oid)
-        LEFT JOIN pg_authid AS U ON (S.usesysid = U.oid);
+        LEFT JOIN pg_authid AS U ON (S.usesysid = U.oid)
+        LEFT JOIN (pg_stat_get_backend_idset() beid CROSS JOIN
+                   pg_stat_get_backend_pid(beid) pid) B ON B.pid = S.pid;
 
 CREATE VIEW pg_stat_replication AS
     SELECT
@@ -797,7 +847,8 @@ CREATE VIEW pg_replication_slots AS
             L.xmin,
             L.catalog_xmin,
             L.restart_lsn,
-            L.confirmed_flush_lsn
+            L.confirmed_flush_lsn,
+            L.yb_stream_id
     FROM pg_get_replication_slots() AS L
             LEFT JOIN pg_database D ON (L.datoid = D.oid);
 
@@ -925,6 +976,31 @@ CREATE VIEW pg_stat_progress_copy AS
         S.param4 AS tuples_excluded
     FROM pg_stat_get_progress_info('COPY') AS S
         LEFT JOIN pg_database D ON S.datid = D.oid;
+
+CREATE VIEW pg_stat_progress_create_index AS
+	SELECT
+		S.pid AS pid, S.datid AS datid, D.datname AS datname,
+		S.relid AS relid,
+		CAST(S.param7 AS oid) AS index_relid,
+		CASE S.param1 WHEN 1 THEN 'CREATE INDEX NONCONCURRENTLY'
+					  WHEN 2 THEN 'CREATE INDEX CONCURRENTLY'
+					  WHEN 3 THEN 'REINDEX NONCONCURRENTLY'
+					  WHEN 4 THEN 'REINDEX CONCURRENTLY'
+					  END AS command,
+		CASE S.param10 WHEN 0 THEN 'initializing'
+					   WHEN 1 THEN 'backfilling'
+					   END AS phase,
+		S.param4 AS lockers_total,
+		S.param5 AS lockers_done,
+		S.param6 AS current_locker_pid,
+		S.param16 AS blocks_total,
+		S.param17 AS blocks_done,
+		S.param12 AS tuples_total,
+		S.param13 AS tuples_done,
+		S.param14 AS partitions_total,
+		S.param15 AS partitions_done
+	FROM pg_stat_get_progress_info('CREATE INDEX') AS S
+		LEFT JOIN pg_database D ON S.datid = D.oid;
 
 CREATE VIEW pg_user_mappings AS
     SELECT
@@ -1231,6 +1307,13 @@ LANGUAGE INTERNAL
 STRICT STABLE PARALLEL SAFE
 AS 'jsonb_path_query_first_tz';
 
+CREATE OR REPLACE FUNCTION
+  yb_is_database_colocated(check_legacy boolean DEFAULT false)
+RETURNS boolean
+LANGUAGE INTERNAL
+STRICT STABLE PARALLEL SAFE
+AS 'yb_is_database_colocated';
+
 --
 -- The default permissions for functions mean that anyone can execute them.
 -- A number of functions shouldn't be executable by just anyone, but rather
@@ -1286,3 +1369,10 @@ GRANT EXECUTE ON FUNCTION pg_ls_waldir() TO pg_monitor;
 GRANT pg_read_all_settings TO pg_monitor;
 GRANT pg_read_all_stats TO pg_monitor;
 GRANT pg_stat_scan_tables TO pg_monitor;
+
+--
+-- Grant and revoke statements on YB objects.
+--
+REVOKE EXECUTE ON FUNCTION yb_increment_all_db_catalog_versions(boolean) FROM public;
+GRANT EXECUTE ON FUNCTION yb_increment_all_db_catalog_versions(boolean) TO yb_db_admin;
+REVOKE EXECUTE ON FUNCTION yb_fix_catalog_version_table(boolean) FROM public;

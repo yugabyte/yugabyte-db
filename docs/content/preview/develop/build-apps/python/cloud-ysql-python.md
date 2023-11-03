@@ -4,8 +4,6 @@ headerTitle: Build a Python application
 linkTitle: Python
 description: Build a simple Python application using the Python psycopg2 driver and using the YSQL API to connect to and interact with a YugabyteDB Managed cluster.
 headContent: "Client driver: psycopg2"
-aliases:
-  - /preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-python/
 menu:
   preview:
     parent: build-apps
@@ -15,7 +13,7 @@ menu:
 type: docs
 ---
 
-The following tutorial shows a small [Python application](https://github.com/yugabyte/yugabyte-simple-python-app) that connects to a YugabyteDB cluster using the [Python psycopg2 PostgreSQL database adapter](../../../../reference/drivers/ysql-client-drivers/#psycopg2) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Managed in Python.
+The following tutorial shows a small [Python application](https://github.com/yugabyte/yugabyte-simple-python-app) that connects to a YugabyteDB cluster using the [Python psycopg2 PostgreSQL database adapter](../../../../reference/drivers/python/postgres-psycopg2-reference/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Managed in Python.
 
 ## Prerequisites
 
@@ -139,21 +137,11 @@ except Exception as e:
 The `select_accounts` method queries your distributed data using the SQL `SELECT` statement.
 
 ```python
-rows, err := db.Query("SELECT name, age, country, balance FROM DemoAccount")
-checkIfError(err)
-
-defer rows.Close()
-
-var name, country string
-var age, balance int
-
-for rows.Next() {
-    err = rows.Scan(&name, &age, &country, &balance)
-    checkIfError(err)
-
-    fmt.Printf("name = %s, age = %v, country = %s, balance = %v\n",
-        name, age, country, balance)
-}
+with yb.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as yb_cursor:
+        yb_cursor.execute("SELECT name, age, country, balance FROM DemoAccount")
+        results = yb_cursor.fetchall()
+        for row in results:
+            print("name = {name}, age = {age}, country = {country}, balance = {balance}".format(**row))
 ```
 
 ### transfer_money_between_accounts

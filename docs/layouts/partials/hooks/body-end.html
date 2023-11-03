@@ -1,87 +1,31 @@
 <script src="/js/site.js"></script>
+<!-- Add target/rel on external links -->
+<script type="module">
+import detectExternalLink from 'https://cdn.jsdelivr.net/npm/detect-external-link@2/+esm';
+if (typeof detectExternalLink === 'function') {
+  const selectLinks = document.querySelectorAll('.td-content a');
+  selectLinks.forEach(element => {
+    const linkHref = element.getAttribute('href');
+    if (linkHref !== null) {
+      const isExternal = detectExternalLink(linkHref, {
+        'hosts': [
+          'https://docs.yugabyte.com/'
+        ]
+      });
+      if (isExternal) {
+        if (!element.target) {
+          element.target = '_blank';
+          if (!element.rel) {
+            element.rel = 'noopener';
+          }
+        }
+      }
+    }
+  });
+}
+</script>
 
 {{ $layoutType := .Type }}
-{{ with .Site.Params.algolia }}
-  {{ if eq $layoutType "searchpage" }}
-    <script src="https://cdn.jsdelivr.net/algoliasearch/3/algoliasearch.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.js"></script>
-    <script>
-      $(document).ready(function() {
-        let queryStr = document.URL.split('?')[1];
-        let urlParams = new URLSearchParams(window.location.search)
-        if (urlParams.has('q')) {
-          // Get previous page version
-          let prevUrl = document.referrer;
-          const versionRegex = /https:\/\/docs\.yugabyte\.com\/(v\d+\.\d+|preview)\//i;
-          const m = versionRegex.exec(prevUrl);
-          // If no match or version not found or no previous page,
-          // use 'preview' to filter version
-          let searchVersion = 'preview';
-          if (m && m[1] && prevUrl) {
-            searchVersion = m[1];
-          }
-
-          let client = algoliasearch('{{ .appid }}', '{{ .apikey }}');
-          let index = client.initIndex('{{ .index }}');
-          index.search({
-            query: urlParams.get('q'),
-            // filters: `version:${searchVersion}`,
-          }, function(err, content) {
-            let formattedHits = docsearch.formatHits(content.hits);
-            let previousResult = null;
-            let collatedResults = [];
-            formattedHits.forEach(hit => {
-              if (!hit.category || !hit.title) return;
-              if (!previousResult || previousResult.category !== hit.category) {
-                previousResult = {
-                  category: hit.category,
-                  hits: [],
-                  url: hit.url
-                };
-                collatedResults.push(previousResult);
-              }
-              hit.text = hit.title
-                .replace(hit.category, '')
-                .replace('<span class="aa-suggestion-title-separator" aria-hidden="true"> › </span>', '');
-              if (hit.text) {
-                const previousHit = previousResult.hits[previousResult.hits.length - 1];
-                if (!previousHit || previousHit.text !== hit.text) {
-                  previousResult.hits.push(hit);
-                }
-              }
-            });
-            $('#search-results').append(collatedResults.map(result => (
-              '<div class="search-result">\
-                <div class="search-title">\
-                  <a href="' + result.url.replace(/^(?:\/\/|[^/]+)*\//, '/') + '">' + result.category + '</a>\
-                </div>\
-                <div class="search-text">' +
-                result.hits.map(hit => (
-                  '<p>' + hit.text + ' <a href="' + hit.url.replace(/^(?:\/\/|[^/]+)*\//, '/') + '">[more&hellip;]</a></p>'
-                )).join('') +
-              '</div></div>'
-            )).join(''));
-            $('#side-navigation').trigger('sticky_kit:recalc');
-          });
-        }
-      });
-    </script>
-  {{ else }}
-    <script src="https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.js"></script>
-    <script>
-      docsearch({
-        apiKey: '{{ .apikey }}',
-        indexName: '{{ .index }}',
-        appId: '{{ .appid }}',
-        // Replace inputSelector with a CSS selector
-        // matching your search input
-        inputSelector: '.td-search-input',
-        transformData: function (item) {
-          for (const property in item) {
-            item[property].url = item[property].url.replace(/^(?:\/\/|[^/]+)*\//, '/');
-          }
-        }
-      });
-    </script>
-  {{ end }}
+{{ with .Site.Params.algolia_docsearch }}
+  <script src="/js/search.js"></script>
 {{ end }}

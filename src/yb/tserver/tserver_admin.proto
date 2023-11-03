@@ -118,18 +118,6 @@ message BackfillIndexResponsePB {
   optional uint64 number_rows_processed = 5;
 }
 
-message CopartitionTableRequestPB {
-  // UUID of server this request is addressed to.
-  optional bytes dest_uuid = 1;
-  optional bytes table_id = 2;
-  optional bytes tablet_id = 3;
-  optional string table_name = 4;
-}
-
-message CopartitionTableResponsePB {
-  optional TabletServerErrorPB error = 1;
-}
-
 // A create tablet request.
 message CreateTabletRequestPB {
   // UUID of server this request is addressed to.
@@ -162,9 +150,22 @@ message CreateTabletRequestPB {
   optional bool colocated = 13 [ default = false ];
 
   repeated bytes snapshot_schedules = 16;
+
+  repeated StatefulServiceKind hosted_stateful_services = 17;
 }
 
 message CreateTabletResponsePB {
+  optional TabletServerErrorPB error = 1;
+}
+
+message PrepareDeleteTransactionTabletRequestPB {
+  // UUID of server this request is addressed to.
+  optional bytes dest_uuid = 2;
+
+  required bytes tablet_id = 1;
+}
+
+message PrepareDeleteTransactionTabletResponsePB {
   optional TabletServerErrorPB error = 1;
 }
 
@@ -199,6 +200,9 @@ message DeleteTabletRequestPB {
   // Tablet server should trigger abort of all transactions it participates in upon shutting down
   // this tablet. Should generally be set to true in the case of a dropped table.
   optional bool should_abort_active_txns = 7;
+
+  // Do not delete tablet data.
+  optional bool keep_data = 8;
 }
 
 message DeleteTabletResponsePB {
@@ -226,6 +230,9 @@ message FlushTabletsRequestPB {
 
   // Whether we want to flush or compact all tablets in the server.
   optional bool all_tablets = 5;
+
+  // Only flush/compact regular RocksDB, not intents RocksDB.
+  optional bool regular_only = 6;
 }
 
 message FlushTabletsResponsePB {
@@ -270,10 +277,27 @@ message SplitTabletResponsePB {
 }
 
 message UpgradeYsqlRequestPB {
+  // Perform an upgrade unsing just one connection.
+  // This is much slower but does not incur overhead for each database.
+  optional bool use_single_connection = 1 [ default = false ];
 }
 
 message UpgradeYsqlResponsePB {
   optional TabletServerErrorPB error = 1;
+}
+
+message WaitForYsqlBackendsCatalogVersionRequestPB {
+  optional uint32 database_oid = 1; // required
+  optional uint64 catalog_version = 2; // required
+  // Previously known number of YSQL backends that have not reached the requested catalog version.
+  // -1 means unknown.
+  optional int32 prev_num_lagging_backends = 3; // required
+}
+
+message WaitForYsqlBackendsCatalogVersionResponsePB {
+  optional TabletServerErrorPB error = 1;
+  // Number of YSQL backends that have not reached the requested catalog version.
+  optional int32 num_lagging_backends = 2;
 }
 
 message TestRetryRequestPB {
@@ -291,10 +315,23 @@ message TestRetryResponsePB {
   optional fixed64 propagated_hybrid_time = 2;
 }
 
+message UpdateTransactionTablesVersionRequestPB {
+  required uint64 version = 1;
+}
+
+message UpdateTransactionTablesVersionResponsePB {
+  optional TabletServerErrorPB error = 1;
+}
+
 service TabletServerAdminService {
   // Create a new, empty tablet with the specified parameters. Only used for
   // brand-new tablets, not for "moves".
   rpc CreateTablet(CreateTabletRequestPB) returns (CreateTabletResponsePB);
+
+  // Prepare a transasction tablet for deletion. This waits for all relevant intents
+  // to be applied and cleaned up.
+  rpc PrepareDeleteTransactionTablet(PrepareDeleteTransactionTabletRequestPB)
+      returns (PrepareDeleteTransactionTabletResponsePB);
 
   // Delete a tablet replica.
   rpc DeleteTablet(DeleteTabletRequestPB) returns (DeleteTabletResponsePB);
@@ -312,9 +349,6 @@ service TabletServerAdminService {
   // Marks an index table as having completed backfilling.
   rpc BackfillDone(tablet.ChangeMetadataRequestPB) returns (ChangeMetadataResponsePB);
 
-  // Create a co-partitioned table in an existing tablet
-  rpc CopartitionTable(CopartitionTableRequestPB) returns (CopartitionTableResponsePB);
-
   rpc FlushTablets(FlushTabletsRequestPB) returns (FlushTabletsResponsePB);
 
   rpc CountIntents(CountIntentsRequestPB) returns (CountIntentsResponsePB);
@@ -327,6 +361,12 @@ service TabletServerAdminService {
   rpc SplitTablet(tablet.SplitTabletRequestPB) returns (SplitTabletResponsePB);
 
   rpc UpgradeYsql(UpgradeYsqlRequestPB) returns (UpgradeYsqlResponsePB);
+
+  rpc WaitForYsqlBackendsCatalogVersion(WaitForYsqlBackendsCatalogVersionRequestPB)
+      returns (WaitForYsqlBackendsCatalogVersionResponsePB);
+
+  rpc UpdateTransactionTablesVersion(UpdateTransactionTablesVersionRequestPB)
+      returns (UpdateTransactionTablesVersionResponsePB);
 
   // For test purposes: returns TryAgain error until specified number of calls is done.
   rpc TestRetry(TestRetryRequestPB) returns (TestRetryResponsePB);

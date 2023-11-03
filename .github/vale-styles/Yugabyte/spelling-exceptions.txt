@@ -1,5 +1,7 @@
 accessor
 accessors
+airgap
+airgapped
 Akismet
 Alertmanager
 Algolia
@@ -14,6 +16,7 @@ anonymized
 Ansible
 Anthos
 Apdex
+APIs
 Apparmor
 approvers
 architected
@@ -43,6 +46,7 @@ autoscaled
 autoscaler
 autoscales
 autoscaling
+Avro
 awardable
 awardables
 Axios
@@ -108,6 +112,7 @@ Citrix
 Citus
 clonable
 Cloudwatch
+CMake
 Cobertura
 Codepen
 Cognito
@@ -120,7 +125,9 @@ Conda
 Consul
 Contentful
 Corosync
+Couchbase
 Coursier
+CPUs
 cron
 cronjob
 cronjobs
@@ -133,6 +140,8 @@ crosslinks
 Crossplane
 CrowdIn
 CSV
+Cutover
+cutover
 cybersecurity
 Dangerfile
 Datadog
@@ -233,6 +242,7 @@ Getter
 Getters
 gettext
 GFlag
+GFlags
 Git
 Gitaly
 Gitea
@@ -260,6 +270,7 @@ hardcode
 hardcoded
 hardcodes
 Hashicorp
+Hasura
 Haswell
 heatmap
 heatmaps
@@ -269,6 +280,7 @@ Heroku
 Herokuish
 Hexo
 HipChat
+HLCs
 hostname
 hostnames
 hotfix
@@ -480,6 +492,7 @@ pseudonymized
 pseudonymizer
 psql
 Puma
+pushdown
 pytest
 Python
 Qualys
@@ -567,6 +580,8 @@ runtimes
 Salesforce
 sandboxing
 sanitization
+savepoint
+savepoints
 sbt
 scalers
 scatterplot
@@ -611,6 +626,8 @@ sparklines
 spidering
 Splunk
 SpotBugs
+SQLAlchemy
+SSDs
 Stackdriver
 Stackprof
 starrer
@@ -667,6 +684,9 @@ Sysbench
 syscall
 syscalls
 syslog
+systemd
+tablegroup
+tablegroups
 tablespace
 tablespaces
 tanuki
@@ -705,10 +725,14 @@ triaging
 Trivy
 Truststore
 truthy
+TServer
+TServers
 Twilio
 Twitter
 TypeScript
 Ubuntu
+UDTs
+ulimit
 unapplied
 unapprove
 unapproved
@@ -804,20 +828,27 @@ unverify
 unverifying
 uploader
 uploaders
+upsert
 upstreams
 upvote
 upvoted
 upvotes
 URIs
+UUID
+UUIDs
 Vagrantfile
 validator
 validators
+vCPU
+vCPUs
 vendored
 versionless
 viewport
 viewports
 virtualized
 virtualizing
+Vitess
+VPCs
 Vue
 Vuex
 walkthrough
@@ -840,8 +871,10 @@ Wordpress
 worktree
 worktrees
 Worldline
+xCluster
 Xcode
 Xeon
+YBase
 ycqlsh
 YouTrack
 ysqlsh

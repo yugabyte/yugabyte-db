@@ -19,28 +19,17 @@ This page demonstrates how to deploy a GraphQL application on Hasura Cloud and Y
 
 The example has the following prerequisites:
 
-* You have created a cluster on YugabyteDB Managed
-  * For instructions, refer to [Create a cluster](../../cloud-basics/create-clusters/).
-* You have created a Hasura project and connected it to your cluster
-  * For instructions, refer to [Connect Hasura Cloud to YugabyteDB Managed](../hasura-cloud/).
+* You have created a cluster on YugabyteDB Managed. For instructions, refer to [Create your cluster](../../cloud-basics/create-clusters/).
+* You have created a Hasura project and connected it to your cluster. For instructions, refer to [Connect Hasura Cloud to YugabyteDB Managed](../hasura-cloud/).
 
-You will also need the **Admin Secret** of your Hasura project.
+  You will also need the **Admin Secret** of your Hasura project.
 
-For details on using Hasura Cloud, refer to the [Hasura Cloud documentation](https://hasura.io/docs/latest/graphql/cloud/index.html).
+  For details on using Hasura Cloud, refer to the [Hasura Cloud documentation](https://hasura.io/docs/latest/graphql/cloud/index.html).
+* You have installed Hasura CLI. You apply database migrations to the Hasura project using the Hasura CLI. To install Hasura CLI, refer to [Installing the Hasura CLI](https://hasura.io/docs/latest/graphql/core/hasura-cli/install-hasura-cli.html#install-hasura-cli).
 
-## Install Hasura CLI
+### Download the Realtime Poll application
 
-You apply database migrations to the Hasura project using Hasura CLI v.2.0 Beta 2. To install Hasura CLI, refer to [Installing the Hasura CLI](https://hasura.io/docs/latest/graphql/core/hasura-cli/install-hasura-cli.html#install-hasura-cli).
-
-Once installed, update to the v.2 Beta.
-
-```sh
-$ hasura update-cli --version v2.0.0-beta.2
-```
-
-## Download the Realtime Poll application
-
-The Realtime Poll application is available from the Yugabyte GraphQL Apps repo.
+The Realtime Poll application is available from the [YugabyteDB GraphQL Apps](https://github.com/YugabyteDB-Samples/yugabyte-graphql-apps) repository.
 
 ```sh
 $ git clone https://github.com/YugabyteDB-Samples/yugabyte-graphql-apps.git
@@ -51,10 +40,10 @@ $ cd yugabyte-graphql-apps/realtime-poll
 
 You need to configure the Realtime Poll application to use the Hasura Cloud project domain and Admin Secret:
 
-1. On your local computer, navigate to the `hasura` directory in the sample application directory.
+1. On your local computer, navigate to the `hasura` directory in the realtime-poll directory.
 
     ```sh
-    $ cd realtime-poll/hasura
+    $ cd hasura
     ```
 
 1. Edit the `config.yaml` file by changing the following parameters:
@@ -95,7 +84,7 @@ Finally, update the Realtime Poll application with the Hasura Cloud project doma
 
 1. Edit the `apollo.js` file by changing the following parameters:
 
-    * set the `HASURA_GRAPHQL_ENGINE_HOSTNAME` const to the domain of your Hasura project; for example, `yb-realtime-poll.hasura.app`.
+    * set the `HASURA_GRAPHQL_ENGINE_HOSTNAME` constant to the domain of your Hasura project; for example, `yb-realtime-poll.hasura.app`.
     * set the `hasura_secret` variable to the **Admin Secret** you copied from the Hasura Cloud project dashboard.
 
 ## Configure the Hasura project

@@ -9,6 +9,7 @@ import static play.inject.Bindings.bind;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.models.Customer;
 import kamon.instrumentation.play.GuiceModule;
@@ -18,9 +19,8 @@ import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
-import play.test.WithApplication;
 
-public class NodeTaskBaseTest extends WithApplication {
+public class NodeTaskBaseTest extends PlatformGuiceApplicationBaseTest {
   NodeManager mockNodeManager;
   Customer defaultCustomer;
   Commissioner mockCommissioner;

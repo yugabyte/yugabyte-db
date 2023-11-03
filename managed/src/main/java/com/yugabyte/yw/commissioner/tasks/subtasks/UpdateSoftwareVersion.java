@@ -45,7 +45,7 @@ public class UpdateSoftwareVersion extends UniverseTaskBase {
 
   @Override
   public String getName() {
-    return super.getName() + "(" + taskParams().universeUUID + ")";
+    return super.getName() + "(" + taskParams().getUniverseUUID() + ")";
   }
 
   @Override
@@ -62,7 +62,7 @@ public class UpdateSoftwareVersion extends UniverseTaskBase {
               UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
               if (!universeDetails.updateInProgress) {
                 String errMsg =
-                    "UserUniverse " + taskParams().universeUUID + " is not being edited.";
+                    "UserUniverse " + taskParams().getUniverseUUID() + " is not being edited.";
                 log.error(errMsg);
                 throw new RuntimeException(errMsg);
               }
@@ -78,11 +78,11 @@ public class UpdateSoftwareVersion extends UniverseTaskBase {
       // catch as we want to fail.
       saveUniverseDetails(updater);
       // Update useCustomImage to true if software update was via VM otherise false.
-      getUniverse()
-          .updateConfig(
-              ImmutableMap.of(
-                  Universe.USE_CUSTOM_IMAGE,
-                  taskParams().isSoftwareUpdateViaVm ? "true" : "false"));
+      Universe universe = getUniverse();
+      universe.updateConfig(
+          ImmutableMap.of(
+              Universe.USE_CUSTOM_IMAGE, taskParams().isSoftwareUpdateViaVm ? "true" : "false"));
+      universe.save();
     } catch (Exception e) {
       String msg = getName() + " failed with exception " + e.getMessage();
       log.warn(msg, e.getMessage());

@@ -61,6 +61,7 @@ args = parser.parse_args()
 arc_which_cmd = ['arc', 'which']
 if args.base:
     arc_which_cmd += ['--base', 'git:merge-base(origin/master)']
+arc_which_cmd += ['--']  # end of options marker required
 arc_which_out = check_output(arc_which_cmd, cwd=args.repository).decode('utf-8')
 diff_descs = re.findall('D[0-9]+.*', arc_which_out)
 if diff_descs:

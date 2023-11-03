@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_REDIS_REDISSERVER_REDIS_SERVICE_H_
-#define YB_YQL_REDIS_REDISSERVER_REDIS_SERVICE_H_
+#pragma once
 
 #include "yb/yql/redis/redisserver/redis_fwd.h"
 #include "yb/yql/redis/redisserver/redis_service.service.h"
@@ -39,5 +38,3 @@ class RedisServiceImpl : public RedisServerServiceIf {
 
 }  // namespace redisserver
 }  // namespace yb
-
-#endif  // YB_YQL_REDIS_REDISSERVER_REDIS_SERVICE_H_

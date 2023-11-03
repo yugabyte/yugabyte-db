@@ -18,7 +18,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import java.sql.*;
 import java.util.*;
@@ -26,11 +26,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.yb.AssertionWrappers.*;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestPgSequences extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgSequences.class);
 
@@ -41,6 +40,10 @@ public class TestPgSequences extends BasePgSQLTest {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("ysql_sequence_cache_minval", Integer.toString(TURN_OFF_SEQUENCE_CACHE_FLAG));
     return flagMap;
+  }
+
+  protected Connection getConnectionWithNewCache() throws Exception {
+    return getConnectionBuilder().connect();
   }
 
   @After
@@ -106,7 +109,7 @@ public class TestPgSequences extends BasePgSQLTest {
       }
     }
 
-    try (Connection connection2 = getConnectionBuilder().connect();
+    try (Connection connection2 = getConnectionWithNewCache();
         Statement statement = connection2.createStatement()) {
       ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
       assertTrue(rs.next());
@@ -126,7 +129,7 @@ public class TestPgSequences extends BasePgSQLTest {
       }
     }
 
-    try (Connection connection2 = getConnectionBuilder().connect();
+    try (Connection connection2 = getConnectionWithNewCache();
         Statement statement = connection2.createStatement()) {
       ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
       assertTrue(rs.next());
@@ -196,7 +199,7 @@ public class TestPgSequences extends BasePgSQLTest {
       assertEquals(1, rs.getInt("nextval"));
     }
 
-    try (Connection connection2 = getConnectionBuilder().connect();
+    try (Connection connection2 = getConnectionWithNewCache();
         Statement statement = connection2.createStatement()) {
       // Since the previous client already got all the available sequence numbers in its cache,
       // we should get an error when we request another sequence number from another client.
@@ -774,7 +777,7 @@ public class TestPgSequences extends BasePgSQLTest {
       }
     }
 
-    try (Connection connection2 = getConnectionBuilder().connect();
+    try (Connection connection2 = getConnectionWithNewCache();
         Statement statement = connection2.createStatement()) {
       // Because of our current implementation, the first value is 22 for now instead of 21.
       for (int k = 21; k <= 30; k++) {
@@ -963,7 +966,7 @@ public class TestPgSequences extends BasePgSQLTest {
       statement2.execute("ALTER SEQUENCE s1 CYCLE");
 
       WaitUntilTServerGetsNewYSqlCatalogVersion();
-      rs = ExecuteQueryWithRetry(statement,"SELECT nextval('s1')");
+      rs = ExecuteQueryWithRetry(statement2,"SELECT nextval('s1')");
       assertTrue(rs.next());
       assertEquals(Long.MAX_VALUE, rs.getLong("nextval"));
     }

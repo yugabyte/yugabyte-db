@@ -58,6 +58,9 @@
 #include "utils/syscache.h"
 #include "utils/varlena.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 
 /*
  * The namespace search path is a possibly-empty list of namespace OIDs.
@@ -757,13 +760,23 @@ RelationIsVisible(Oid relid)
 
 /*
  * TypenameGetTypid
+ *		Wrapper for binary compatibility.
+ */
+Oid
+TypenameGetTypid(const char *typname)
+{
+	return TypenameGetTypidExtended(typname, true);
+}
+
+/*
+ * TypenameGetTypidExtended
  *		Try to resolve an unqualified datatype name.
  *		Returns OID if type found in search path, else InvalidOid.
  *
  * This is essentially the same as RelnameGetRelid.
  */
 Oid
-TypenameGetTypid(const char *typname)
+TypenameGetTypidExtended(const char *typname, bool temp_ok)
 {
 	Oid			typid;
 	ListCell   *l;
@@ -773,6 +786,9 @@ TypenameGetTypid(const char *typname)
 	foreach(l, activeSearchPath)
 	{
 		Oid			namespaceId = lfirst_oid(l);
+
+		if (!temp_ok && namespaceId == myTempNamespace)
+			continue;			/* do not look in temp namespace */
 
 		typid = GetSysCacheOid2(TYPENAMENSP,
 								PointerGetDatum(typname),
@@ -3431,6 +3447,10 @@ OverrideSearchPathMatchesCurrent(OverrideSearchPath *path)
 /*
  * PushOverrideSearchPath - temporarily override the search path
  *
+ * Do not use this function; almost any usage introduces a security
+ * vulnerability.  It exists for the benefit of legacy code running in
+ * non-security-sensitive environments.
+ *
  * We allow nested overrides, hence the push/pop terminology.  The GUC
  * search_path variable is ignored while an override is active.
  *
@@ -4138,15 +4158,15 @@ RemoveTempRelations(Oid tempNamespaceId)
 	object.objectSubId = 0;
 
 	if (IsYugaByteEnabled())
-		YBIncrementDdlNestingLevel();
+		YBIncrementDdlNestingLevel(false /* is_catalog_version_increment */,
+								   false /* is_breaking_catalog_change */);
 	performDeletion(&object, DROP_CASCADE,
 					PERFORM_DELETION_INTERNAL |
 					PERFORM_DELETION_QUIETLY |
 					PERFORM_DELETION_SKIP_ORIGINAL |
 					PERFORM_DELETION_SKIP_EXTENSIONS);
 	if (IsYugaByteEnabled())
-		YBDecrementDdlNestingLevel(false /* is_catalog_version_increment */,
-								   false /* is_breaking_catalog_change */);
+		YBDecrementDdlNestingLevel();
 }
 
 /*

@@ -553,6 +553,8 @@ public class TestPartialIndex extends BaseCQLTest {
         includeClause, predicate),
       strongConsistency);
 
+    waitForReadPermsOnAllIndexes(testTableName);
+
     // Delete complete row.
     // --------------------
     //       ________________________________________________________________________
@@ -726,6 +728,8 @@ public class TestPartialIndex extends BaseCQLTest {
         isUnique ? "UNIQUE" : "", testTableName, String.join(", ", indexedCols),
         includeClause, predicate),
       strongConsistency);
+
+    waitForReadPermsOnAllIndexes(testTableName);
 
     // Insert (No existing row with same pk)
     // --------------------------------------
@@ -1247,12 +1251,12 @@ public class TestPartialIndex extends BaseCQLTest {
         strongConsistency);
     }
 
+    waitForReadPermsOnAllIndexes(testTableName);
+
     String query = String.format("select %s from %s where %s",
       String.join(",", selectCols), testTableName, whereClause);
     String queryWithoutIndexes = String.format("select %s from %s where %s",
       String.join(",", selectCols), testTableName, whereClauseWithoutIndexes);
-
-    waitForReadPermsOnAllIndexes(testTableName);
 
     // We just execute three SELECT statements to get metadata cache of all tservers on the same
     // schema version post the index creation. If that doesn't happen we might choose a wrong
@@ -2598,11 +2602,13 @@ public class TestPartialIndex extends BaseCQLTest {
     runInvalidStmt("create index idx on " + testTableName + "(v1) where json_col->>'title' = NULL");
     runInvalidStmt("create index idx on " + testTableName + "(v1) where map_col[1] = 1");
     runInvalidStmt("create index idx on " + testTableName + "(v1) where list_col[1] = 1");
+    waitForReadPermsOnAllIndexes(testTableName);
     session.execute("drop table " + testTableName);
   }
 
-  @Test
-  public void testAlterCol() throws Exception {
+  private static enum RenameIndexedColAllowed { ON, OFF };
+
+  private void testAlterCol(RenameIndexedColAllowed renameIndexedColAllowed) throws Exception {
     createTable(String.format("create table %s (h1 int primary key, v1 int, v2 int)",
                               testTableName),
                 true /* strongConsistency */);
@@ -2619,16 +2625,34 @@ public class TestPartialIndex extends BaseCQLTest {
     //   3. New col - Add, rename, drop
     createIndex(String.format("CREATE INDEX idx ON %s(v1) WHERE v2 != NULL", testTableName),
                 true /* strongConsistency */);
+    waitForReadPermsOnAllIndexes(testTableName);
 
     runInvalidStmt(String.format("alter table %s drop v1", testTableName),
                    "Can't drop column used in an index. Remove 'idx' index first and try again");
-    session.execute(String.format("alter table %s rename v1 to v11", testTableName));
-    session.execute(String.format("alter table %s rename v11 to v1", testTableName));
+    boolean renameAllowed = renameIndexedColAllowed == RenameIndexedColAllowed.ON;
+    if (renameAllowed) {
+      session.execute(String.format("alter table %s rename v1 to v11", testTableName));
+      session.execute(String.format("alter table %s rename v11 to v1", testTableName));
+    } else {
+      runInvalidStmt(String.format("alter table %s rename v1 to v11", testTableName),
+          "Can't rename column used in an index. This column is used in 'idx' index");
+      // The above command will fail, so column v11 will not exist.
+      runInvalidStmt(String.format("alter table %s rename v11 to v1", testTableName),
+          "Undefined Column. Column doesn't exist");
+    }
 
     runInvalidStmt(String.format("alter table %s drop v2", testTableName),
                    "Can't drop column used in an index. Remove 'idx' index first and try again");
-    session.execute(String.format("alter table %s rename v2 to v22", testTableName));
-    session.execute(String.format("alter table %s rename v22 to v2", testTableName));
+    if (renameAllowed) {
+      session.execute(String.format("alter table %s rename v2 to v22", testTableName));
+      session.execute(String.format("alter table %s rename v22 to v2", testTableName));
+    } else {
+      runInvalidStmt(String.format("alter table %s rename v2 to v22", testTableName),
+          "Can't rename column used in an index. This column is used in 'idx' index");
+      // The above command will fail, so column v22 will not exist.
+      runInvalidStmt(String.format("alter table %s rename v22 to v2", testTableName),
+          "Undefined Column. Column doesn't exist");
+    }
 
     session.execute(String.format("alter table %s add v3 int", testTableName));
     session.execute(String.format("alter table %s rename v3 to v33", testTableName));
@@ -2643,15 +2667,40 @@ public class TestPartialIndex extends BaseCQLTest {
     session.execute("drop index idx");
     createIndex(String.format("CREATE INDEX idx ON %s(v1)", testTableName),
                 true /* strongConsistency */);
+    waitForReadPermsOnAllIndexes(testTableName);
     runInvalidStmt(String.format("alter table %s drop v1", testTableName),
                    "Can't drop column used in an index. Remove 'idx' index first and try again");
-    session.execute(String.format("alter table %s rename v1 to v11", testTableName));
-    session.execute(String.format("alter table %s rename v11 to v1", testTableName));
-
+    if (renameAllowed) {
+      session.execute(String.format("alter table %s rename v1 to v11", testTableName));
+      session.execute(String.format("alter table %s rename v11 to v1", testTableName));
+    } else {
+      runInvalidStmt(String.format("alter table %s rename v1 to v11", testTableName),
+          "Can't rename column used in an index. This column is used in 'idx' index");
+      // The above command will fail, so column v11 will not exist.
+      runInvalidStmt(String.format("alter table %s rename v11 to v1", testTableName),
+          "Undefined Column. Column doesn't exist");
+    }
     session.execute(String.format("alter table %s rename v2 to v22", testTableName));
     session.execute(String.format("alter table %s rename v22 to v2", testTableName));
+
     session.execute(String.format("alter table %s drop v2", testTableName));
     session.execute(String.format("alter table %s add v2 int", testTableName));
+  }
+
+  @Test
+  public void testAlterCol() throws Exception {
+    testAlterCol(RenameIndexedColAllowed.OFF);
+  }
+
+  @Test
+  public void testAlterColRenameIndexedColAllowed() throws Exception {
+    try {
+      // By default: ycql_enable_alter_rename_column_with_index=false.
+      restartClusterWithFlag("ycql_enable_alter_rename_column_with_index", "true");
+      testAlterCol(RenameIndexedColAllowed.ON);
+    } finally {
+      destroyMiniCluster(); // Destroy the recreated cluster when done.
+    }
   }
 
   @Test
@@ -2661,6 +2710,7 @@ public class TestPartialIndex extends BaseCQLTest {
       String.format("create table test (k int primary key, v int)"), true /* strongConsistency */);
     session.execute("create index idx on test(v) where v != NULL");
     session.execute("create index idx2 on test(v) where v = NULL");
+    waitForReadPermsOnAllIndexes("test");
     session.execute("insert into test (k, v) values (1, 1)");
     assertQueryRowsUnordered("select * from test where v != NULL",
                              "Row[1, 1]");
@@ -2697,6 +2747,7 @@ public class TestPartialIndex extends BaseCQLTest {
             "v4 > -9223372036854775807 and v4 < 9223372036854775806 and " +
         "v5 >= -9999999999999999999 and v5 <= 9999999999999999999 and v5 > 1 and v5 < 2 and " +
         "v6 = true and v7 != 'hello';");
+    waitForReadPermsOnAllIndexes("test");
     assertQueryRowsUnordered("select options from system_schema.indexes where index_name = 'idx'",
         "Row[{target=r1, h1, predicate=v1 >= -128 AND v1 <= 127 AND v1 > -127 AND v1 < 126 AND " +
           "v2 >= -32768 AND v2 <= 32767 AND v2 > -32767 AND v2 < 3276 AND " +

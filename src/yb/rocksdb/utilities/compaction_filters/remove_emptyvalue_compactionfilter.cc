@@ -18,7 +18,6 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_LITE
 
 #include <string>
 
@@ -43,4 +42,3 @@ FilterDecision RemoveEmptyValueCompactionFilter::Filter(
 }
 
 }  // namespace rocksdb
-#endif  // !ROCKSDB_LITE

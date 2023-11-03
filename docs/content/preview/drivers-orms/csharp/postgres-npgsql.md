@@ -1,21 +1,42 @@
 ---
-title: Connect an app
+title: PostgreSQL Npgsql driver for YSQL
+headerTitle: Connect an application
 linkTitle: Connect an app
-description: C# drivers for YSQL
+description: Connect a C# application using PostgreSQL Npgsql driver
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
     identifier: postgres-npgsql-driver
     parent: csharp-drivers
-    weight: 400
+    weight: 420
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li class="active">
+    <a href="../ysql/" class="nav-link">
+      YSQL
+    </a>
+  </li>
+  <li>
+    <a href="../ycql/" class="nav-link">
+      YCQL
+    </a>
+  </li>
+</ul>
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/drivers-orms/csharp/postgres-npgsql/" class="nav-link active">
-      <i class="icon-java-bold" aria-hidden="true"></i>
+    <a href="../ysql/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YugabyteDB Npgsql Smart Driver
+    </a>
+  </li>
+
+  <li >
+    <a href="../postgres-npgsql/" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
       PostgreSQL Npgsql Driver
     </a>
   </li>
@@ -26,11 +47,9 @@ type: docs
 
 ## CRUD operations
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps on the [Build an application](../../../develop/build-apps/csharp/ysql) page.
+The following sections demonstrate how to perform common tasks required for C# application development.
 
-The following section breaks down the example to demonstrate how to perform common tasks required for C# application development using the Npgsql driver.
-
-After completing these steps, you should have a working C# application that uses the Npgsql driver to connect to your cluster, set up tables, run a query, and print out results.
+To start building your application, make sure you have met the [prerequisites](../#prerequisites).
 
 ### Step 1: Add the Npgsql driver dependency
 
@@ -56,17 +75,17 @@ Import Npgsql and use the `NpgsqlConnection` class for getting connection object
 The following table describes the connection parameters required to connect to the YugabyteDB database.
 
 | Parameter | Description | Default |
-| :---------- | :---------- | :------ |
-| host  | Hostname of the YugabyteDB instance | localhost
-| port |  Listen port for YSQL | 5433
-| database | Database name | yugabyte
-| user id| User for connecting to the database | yugabyte
-| password | Password for connecting to the database | yugabyte
+| :-------- | :---------- | :------ |
+| Host      | Host name of the YugabyteDB instance | localhost
+| Port      |  Listen port for YSQL | 5433
+| Database  | Database name | yugabyte
+| Username  | User connecting to the database | yugabyte
+| Password  | Password for the user | yugabyte
 
-The following is an example connection string for connecting to YugabyteDB.
+The following is a basic example connection string for connecting to YugabyteDB.
 
 ```csharp
-var connStringBuilder = "host=localhost;port=5433;database=yugabyte;user id=yugabyte;password="
+var connStringBuilder = "Host=localhost;Port=5433;Database=yugabyte;Username=yugabyte;Password=password"
 NpgsqlConnection conn = new NpgsqlConnection(connStringBuilder)
 ```
 
@@ -86,7 +105,7 @@ var connStringBuilder = new NpgsqlConnectionStringBuilder();
     connStringBuilder.Host = "22420e3a-768b-43da-8dcb-xxxxxx.aws.ybdb.io";
     connStringBuilder.Port = 5433;
     connStringBuilder.SslMode = SslMode.VerifyFull;
-    connStringBuilder.RootCertificate = "/root.crt" //Provide full path to your root CA.
+    connStringBuilder.RootCertificate = "/root.crt"; //Provide full path to your root CA.
     connStringBuilder.Username = "admin";
     connStringBuilder.Password = "xxxxxx";
     connStringBuilder.Database = "yugabyte";
@@ -97,9 +116,19 @@ var connStringBuilder = new NpgsqlConnectionStringBuilder();
 
 Refer to [Configure SSL/TLS](../../../reference/drivers/csharp/postgres-npgsql-reference/#configure-ssl-tls) for more information on Npgsql default and supported SSL modes, and examples for setting up your connection strings when using SSL.
 
-### Step 3: Query the YugabyteDB cluster from your application
+### Step 3: Write your application
 
 Copy the following code to the `Program.cs` file to set up YugbyteDB tables and query the table contents from the C# client. Replace the connection string `connStringBuilder` with the credentials of your cluster, and SSL certificates if required.
+
+{{< warning title="Warning" >}}
+
+On every new connection, the Npgsql driver also makes [extra system table queries to map types](https://github.com/npgsql/npgsql/issues/1486), which adds significant overhead. To turn off this behavior, set the following option in your connection string builder:
+
+```csharp
+connStringBuilder.ServerCompatibilityMode = ServerCompatibilityMode.NoTypeLoading;
+```
+
+{{< /warning >}}
 
 ```csharp
 using System;
@@ -111,7 +140,7 @@ namespace Yugabyte_CSharp_Demo
     {
         static void Main(string[] args)
         {
-            var connStringBuilder = "host=localhost;port=5433;database=yugabyte;user id=yugabyte;password="
+            var connStringBuilder = "host=localhost;port=5433;database=yugabyte;userid=yugabyte;password="
             NpgsqlConnection conn = new NpgsqlConnection(connStringBuilder);
 
             try
@@ -154,7 +183,7 @@ namespace Yugabyte_CSharp_Demo
 }
 ```
 
-When you run the project, `Program.cs` should output something like the following:
+You should see output similar to the following:
 
 ```output
 Created table Employee
@@ -164,9 +193,98 @@ Name  Age  Language
 John  35   CSharp
 ```
 
+### Step 4: Write your application with SSL (optional)
+
+Copy the following code to your `Program.cs` file , and replace the values in the `connStringBuilder` object as appropriate for your cluster if you're using SSL.
+
+```csharp
+using System;
+using Npgsql;
+
+namespace Yugabyte_CSharp_Demo
+{
+   class Program
+   {
+       static void Main(string[] args)
+       {
+          var connStringBuilder = new NpgsqlConnectionStringBuilder();
+           connStringBuilder.Host = "22420e3a-768b-43da-8dcb-xxxxxx.aws.ybdb.io";
+           connStringBuilder.Port = 5433;
+           connStringBuilder.SslMode = SslMode.VerifyFull;
+           connStringBuilder.RootCertificate = "/root.crt" //Provide full path to your root CA.
+           connStringBuilder.Username = "admin";
+           connStringBuilder.Password = "xxxxxx";
+           connStringBuilder.Database = "yugabyte";
+           CRUD(connStringBuilder.ConnectionString);
+       }
+       static void CRUD(string connString)
+       {
+            NpgsqlConnection conn = new NpgsqlConnection(connString);
+           try
+           {
+               conn.Open();
+
+               NpgsqlCommand empDropCmd = new NpgsqlCommand("DROP TABLE if exists employee;", conn);
+               empDropCmd.ExecuteNonQuery();
+               Console.WriteLine("Dropped table Employee");
+
+               NpgsqlCommand empCreateCmd = new NpgsqlCommand("CREATE TABLE employee (id int PRIMARY KEY, name varchar, age int, language varchar);", conn);
+               empCreateCmd.ExecuteNonQuery();
+               Console.WriteLine("Created table Employee");
+
+               NpgsqlCommand empInsertCmd = new NpgsqlCommand("INSERT INTO employee (id, name, age, language) VALUES (1, 'John', 35, 'CSharp');", conn);
+               int numRows = empInsertCmd.ExecuteNonQuery();
+               Console.WriteLine("Inserted data (1, 'John', 35, 'CSharp + SSL')");
+
+               NpgsqlCommand empPrepCmd = new NpgsqlCommand("SELECT name, age, language FROM employee WHERE id = @EmployeeId", conn);
+               empPrepCmd.Parameters.Add("@EmployeeId", NpgsqlTypes.NpgsqlDbType.Integer);
+
+               empPrepCmd.Parameters["@EmployeeId"].Value = 1;
+               NpgsqlDataReader reader = empPrepCmd.ExecuteReader();
+
+               Console.WriteLine("Query returned:\nName\tAge\tLanguage");
+               while (reader.Read())
+               {
+                   Console.WriteLine("{0}\t{1}\t{2}", reader.GetString(0), reader.GetInt32(1), reader.GetString(2));
+               }
+           }
+           catch (Exception ex)
+           {
+               Console.WriteLine("Failure: " + ex.Message);
+           }
+           finally
+           {
+               if (conn.State != System.Data.ConnectionState.Closed)
+               {
+                   conn.Close();
+               }
+           }
+       }
+   }
+}
+```
+
+## Run the application
+
+To run the project `Program.cs` in Visual Studio Code, from the **Run** menu, choose **Start Without Debugging**. If you aren't using an IDE, enter the following command:
+
+```csharp
+dotnet run
+```
+
+You should see output similar to the following if you're using SSL:
+
+```output
+Created table Employee
+Inserted data (1, 'John', 35, 'CSharp + SSL')
+Query returned:
+Name  Age  Language
+John  35   CSharp + SSL
+```
+
 If you receive no output or an error, check the parameters in the connection string.
 
-## Next steps
+## Learn more
 
-- Learn how to build C# applications using [EntityFramework ORM](../entityframework).
-- Learn more about the [fundamentals](../../../reference/drivers/csharp/postgres-npgsql-reference/) of the Npgsql driver.
+- [PostgreSQL Npgsql driver reference](../../../reference/drivers/csharp/postgres-npgsql-reference/)
+- Build C# applications using [EntityFramework ORM](../entityframework)

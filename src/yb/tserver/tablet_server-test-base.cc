@@ -15,13 +15,15 @@
 
 #include "yb/client/yb_table_name.h"
 
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 #include "yb/common/wire_protocol-test-util.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.proxy.h"
 
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
+
+#include "yb/dockv/reader_projection.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
@@ -40,20 +42,25 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
-#include "yb/util/auto_flags.h"
+#include "yb/util/flags.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_graph.h"
 
+using std::string;
+using std::vector;
+
 using namespace std::literals;
 
-DEFINE_int32(rpc_timeout, 1000, "Timeout for RPC calls, in seconds");
-DEFINE_int32(num_updater_threads, 1, "Number of updating threads to launch");
+DEFINE_NON_RUNTIME_int32(rpc_timeout, 1000, "Timeout for RPC calls, in seconds");
+DEFINE_NON_RUNTIME_int32(num_updater_threads, 1, "Number of updating threads to launch");
 DECLARE_bool(durable_wal_write);
 DECLARE_bool(enable_maintenance_manager);
 DECLARE_bool(enable_data_block_fsync);
 DECLARE_int32(heartbeat_rpc_timeout_ms);
 DECLARE_bool(disable_auto_flags_management);
+DECLARE_bool(allow_encryption_at_rest);
 
 METRIC_DEFINE_entity(test);
 
@@ -72,17 +79,17 @@ TabletServerTestBase::TabletServerTestBase(TableType table_type)
                                  &ts_test_metric_registry_, "ts_server-test")) {
   // Disable the maintenance ops manager since we want to trigger our own
   // maintenance operations at predetermined times.
-  FLAGS_enable_maintenance_manager = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_maintenance_manager) = false;
 
   // Decrease heartbeat timeout: we keep re-trying heartbeats when a
   // single master server fails due to a network error. Decreasing
   // the heartbeat timeout to 1 second speeds up unit tests which
   // purposefully specify non-running Master servers.
-  FLAGS_heartbeat_rpc_timeout_ms = 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_rpc_timeout_ms) = 1000;
 
   // Keep unit tests fast, but only if no one has set the flag explicitly.
   if (google::GetCommandLineFlagInfoOrDie("enable_data_block_fsync").is_default) {
-    FLAGS_enable_data_block_fsync = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_data_block_fsync) = false;
   }
 }
 
@@ -99,7 +106,10 @@ void TabletServerTestBase::SetUp() {
 }
 
 void TabletServerTestBase::TearDown() {
-  client_messenger_->Shutdown();
+  if (client_messenger_) {
+    client_messenger_->Shutdown();
+  }
+
   tablet_peer_.reset();
   if (mini_server_) {
     mini_server_->Shutdown();
@@ -112,7 +122,10 @@ void TabletServerTestBase::StartTabletServer() {
 
   // Disable AutoFlags management as we dont have a master. AutoFlags will be enabled based on
   // FLAGS_TEST_promote_all_auto_flags in test_main.cc.
-  FLAGS_disable_auto_flags_management = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_auto_flags_management) = true;
+
+  // Disallow encryption at rest as there is no master.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_encryption_at_rest) = false;
 
   auto mini_ts =
       MiniTabletServer::CreateMiniTabletServer(GetTestPath("TabletServerTest-fsroot"), 0);
@@ -121,7 +134,7 @@ void TabletServerTestBase::StartTabletServer() {
   auto addr = std::make_shared<server::MasterAddresses>();
   addr->push_back({HostPort("255.255.255.255", 1)});
   mini_server_->options()->SetMasterAddresses(addr);
-  CHECK_OK(mini_server_->Start());
+  CHECK_OK(mini_server_->Start(tserver::WaitTabletsBootstrapped::kFalse));
 
   // Set up a tablet inside the server.
   CHECK_OK(mini_server_->AddTestTablet(
@@ -142,7 +155,7 @@ Status TabletServerTestBase::WaitForTabletRunning(const char *tablet_id) {
   // Sometimes the disk can be really slow and hence we need a high timeout to wait for consensus.
   RETURN_NOT_OK(tablet_peer->WaitUntilConsensusRunning(MonoDelta::FromSeconds(60)));
 
-  RETURN_NOT_OK(tablet_peer->consensus()->EmulateElection());
+  RETURN_NOT_OK(VERIFY_RESULT(tablet_peer->GetConsensus())->EmulateElection());
 
   return WaitFor([tablet_manager, tablet_peer, tablet_id]() {
         if (tablet_manager->IsTabletInTransition(tablet_id)) {
@@ -184,7 +197,7 @@ void TabletServerTestBase::ResetClientProxies() {
 
 // Inserts 'num_rows' test rows directly into the tablet (i.e not via RPC)
 void TabletServerTestBase::InsertTestRowsDirect(int32_t start_row, int32_t num_rows) {
-  tablet::LocalTabletWriter writer(tablet_peer_->tablet());
+  tablet::LocalTabletWriter writer(CHECK_RESULT(tablet_peer_->shared_tablet_safe()));
   QLWriteRequestPB req;
   for (int i = 0; i < num_rows; i++) {
     BuildTestRow(start_row + i, &req);
@@ -327,7 +340,6 @@ Status TabletServerTestBase::ShutdownAndRebuildTablet() {
   mini_server_->options()->SetMasterAddresses(addr);
   // this should open the tablet created on StartTabletServer()
   RETURN_NOT_OK(mini_server_->Start());
-  RETURN_NOT_OK(mini_server_->WaitStarted());
 
   tablet_peer_ = VERIFY_RESULT(mini_server_->server()->tablet_manager()->GetTablet(kTabletId));
   // Connect to it.
@@ -340,13 +352,13 @@ Status TabletServerTestBase::ShutdownAndRebuildTablet() {
 
 // Verifies that a set of expected rows (key, value) is present in the tablet.
 void TabletServerTestBase::VerifyRows(const Schema& schema, const vector<KeyValue>& expected) {
-  auto iter = tablet_peer_->tablet()->NewRowIterator(schema);
+  dockv::ReaderProjection projection(schema);
+  auto iter = tablet_peer_->tablet()->NewRowIterator(projection);
   ASSERT_OK(iter);
 
   int count = 0;
-  QLTableRow row;
-  while (ASSERT_RESULT((**iter).HasNext())) {
-    ASSERT_OK_FAST((**iter).NextRow(&row));
+  qlexpr::QLTableRow row;
+  while (ASSERT_RESULT((**iter).FetchNext(&row))) {
     ++count;
   }
   ASSERT_EQ(count, expected.size());

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_NET_TUNNEL_H
-#define YB_UTIL_NET_TUNNEL_H
+#pragma once
 
 #include <boost/asio/io_context.hpp>
 
@@ -35,7 +34,7 @@ class Tunnel {
   // If address_checker is specified, we use it to check whether we originating address of
   // connection is acceptable.
   Status Start(const Endpoint& local, const Endpoint& remote,
-                       AddressChecker address_checker = AddressChecker());
+               AddressChecker address_checker = AddressChecker());
   void Shutdown();
 
  private:
@@ -44,5 +43,3 @@ class Tunnel {
 };
 
 } // namespace yb
-
-#endif // YB_UTIL_NET_TUNNEL_H

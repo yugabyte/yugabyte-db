@@ -41,11 +41,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef YB_UTIL_URL_CODING_H
-#define YB_UTIL_URL_CODING_H
+#pragma once
 
+#include <stdint.h>
+
+#include <sstream>
 #include <string>
 #include <vector>
+
+#include "yb/util/logging.h"
 
 namespace yb {
 
@@ -79,16 +83,34 @@ void Base64Encode(const std::string& in, std::stringstream* out);
 // Returns true unless the string could not be correctly decoded.
 bool Base64Decode(const std::string& in, std::string* out);
 
-// Replaces &, < and > with &amp;, &lt; and &gt; respectively. This is
+// Replaces &, <, > , " with &amp;, &lt;, &gt;, and &quot; respectively. This is
 // not the full set of required encodings, but one that should be
 // added to on a case-by-case basis. Slow, since it necessarily
 // inspects each character in turn, and copies them all to *out; use
 // judiciously.
+template<class Stream>
+void EscapeForHtml(Stream* in, std::stringstream* out) {
+  DCHECK(out != nullptr);
+  for (auto itr = std::istreambuf_iterator<typename Stream::char_type>(*in);
+       itr != std::istreambuf_iterator<typename Stream::char_type>();
+       ++itr) {
+    switch (*itr) {
+      case '<': (*out) << "&lt;";
+                break;
+      case '>': (*out) << "&gt;";
+                break;
+      case '&': (*out) << "&amp;";
+                break;
+      case '"': (*out) << "&quot;";
+                break;
+      default: (*out) << (*itr);
+    }
+  }
+}
+
 void EscapeForHtml(const std::string& in, std::stringstream* out);
 
 // Same as above, but returns a string.
 std::string EscapeForHtmlToString(const std::string& in);
 
 } // namespace yb
-
-#endif // YB_UTIL_URL_CODING_H

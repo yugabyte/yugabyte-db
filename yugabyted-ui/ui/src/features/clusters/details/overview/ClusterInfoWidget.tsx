@@ -1,58 +1,43 @@
 import React, { FC } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Box, Grid, makeStyles, Paper, Typography } from '@material-ui/core';
-import { intlFormat } from 'date-fns';
-// import clsx from 'clsx';
-
-// Local imports
-import { ClusterData, ClusterRegionInfo, useGetRegionsQuery } from '@app/api/src';
-// import { getCloudProviderIcon } from '@app/features/clusters/list/ClusterCard';
-import {
-  roundDecimal,
-  getFaultTolerance,
-  // OPEN_EDIT_INFRASTRUCTURE_MODAL
-} from '@app/helpers';
-// import { YBButton } from '@app/components';
-// import { ClusterContext } from '@app/features/clusters/details/ClusterDetails';
-
-// Icons
-// import PlusIcon from '@app/assets/plus_icon.svg';
+import { Box, Divider, Grid, Link, makeStyles, Paper, Typography } from '@material-ui/core';
+import type { ClusterData } from '@app/api/src';
+import { Link as RouterLink } from 'react-router-dom';
+import { roundDecimal, getFaultTolerance } from '@app/helpers';
+import { STATUS_TYPES, YBStatus } from '@app/components';
+import { YBTextBadge } from '@app/components/YBTextBadge/YBTextBadge';
 
 const useStyles = makeStyles((theme) => ({
   clusterInfo: {
     padding: theme.spacing(2),
-    border: `1px solid ${theme.palette.grey[200]}`
+    border: `1px solid ${theme.palette.grey[200]}`,
+    width: '100%'
   },
-  container: {
-    justifyContent: 'space-between'
+  dividerHorizontal: {
+    width: '100%',
+    marginTop: theme.spacing(2.5),
+    marginBottom: theme.spacing(2.5),
+  },
+  dividerVertical: {
+    marginLeft: theme.spacing(2.5),
+    marginRight: theme.spacing(2.5),
   },
   label: {
     color: theme.palette.grey[600],
     fontWeight: theme.typography.fontWeightMedium as number,
     marginBottom: theme.spacing(0.75),
-    textTransform: 'uppercase'
+    textTransform: 'uppercase',
+    textAlign: 'start'
   },
   value: {
-    paddingTop: theme.spacing(0.57)
+    paddingTop: theme.spacing(0.36),
+    textAlign: 'start'
   },
-  region: {
-    display: 'flex',
-    alignItems: 'center',
-
-    '& > svg': {
-      marginRight: theme.spacing(1)
+  link: {
+    '&:link, &:focus, &:active, &:visited, &:hover': {
+      textDecoration: 'none',
+      color: theme.palette.text.primary
     }
-  },
-  chip: {
-    border: `1px solid ${theme.palette.grey[200]}`,
-    padding: theme.spacing(0.8, 1.5),
-    borderRadius: theme.spacing(0.8),
-    height: 'auto',
-    fontSize: 11.5
-  },
-  btnAddRegion: {
-    padding: theme.spacing(1),
-    color: theme.palette.grey[900]
   }
 }));
 
@@ -60,42 +45,17 @@ interface ClusterInfoWidgetProps {
   cluster: ClusterData;
 }
 
-const getDate = (rawDate?: string): string => {
-  if (rawDate) {
-    return intlFormat(new Date(rawDate), {
-      year: 'numeric',
-      month: 'numeric',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: 'numeric',
-      // @ts-ignore: Parameter is not yet supported by `date-fns` but
-      // is supported by underlying Intl.DateTimeFormat. CLOUDGA-5283
-      hourCycle: 'h23'
-    });
-  }
-  return '-';
-};
-
 export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
   const classes = useStyles();
   const { t } = useTranslation();
   // const context = useContext(ClusterContext);
 
   const clusterSpec = cluster?.spec;
-  const cloud = clusterSpec?.cloud_info?.code;
-  const { data: regions } = useGetRegionsQuery({ cloud });
-
-  const numNodes = clusterSpec?.cluster_info?.num_nodes ?? 0;
-  const totalDiskSize = clusterSpec?.cluster_info?.node_info.disk_size_gb ?? 0;
-  const totalRamUsageMb = clusterSpec?.cluster_info?.node_info.memory_mb ?? 0;
-  const averageCpuUsage = clusterSpec?.cluster_info?.node_info.cpu_usage ?? 0;
-
-  const availableRegions: ClusterRegionInfo[] = clusterSpec?.cluster_region_info ?? [];
-
-  // const editingDisabled =
-  //   isClusterEditingDisabled(cluster) || clusterSpec?.cluster_info?.cluster_tier === ClusterTier.Free;
-
-  // const editingDisabled = true;
+  const replicationFactor = clusterSpec?.cluster_info?.replication_factor ?? 0;
+  const databaseVersion = cluster.info.software_version ?? '';
+  const totalDiskSize = clusterSpec.cluster_info.node_info.disk_size_gb ?? 0;
+  const totalCores = clusterSpec?.cluster_info?.node_info.num_cores ?? 0;
+  const totalRamProvisionedGb = clusterSpec?.cluster_info?.node_info.ram_provisioned_gb ?? 0;
 
   // Convert ram from MB to GB
   // const getTotalRamText = (value: number, numberOfNodes: number) => {
@@ -105,132 +65,121 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
   // };
 
   // Get text for ram usage
-  const getRamUsageText = (ramUsageMb: number) => {
-    ramUsageMb = roundDecimal(ramUsageMb)
-    return t('units.MB', { value: ramUsageMb });
+  const getRamUsageText = (ramUsageGb: number) => {
+    ramUsageGb = roundDecimal(ramUsageGb)
+    return t('units.GB', { value: ramUsageGb });
   }
 
-  // Get text for encryption
-  const getEncryptionText = (encryptionAtRest: boolean, encryptionInTransit: boolean) => {
-    if (encryptionAtRest && encryptionInTransit) {
-      return t('clusters.inTransitAtRest');
-    }
-    if (encryptionAtRest) {
-      return t('clusters.atRest')
-    }
-    if (encryptionInTransit) {
-      t('clusters.inTransit')
-    }
-    return t('clusters.none')
+  // Get text for disk usage
+  const getDiskSizeText = (diskSizeGb: number) => {
+    diskSizeGb = roundDecimal(diskSizeGb)
+    return t('units.GB', { value: diskSizeGb });
   }
 
-  // Open edit infra
-  // const openEditInfraModal = () => {
-  //   if (context?.dispatch) {
-  //     context.dispatch({ type: OPEN_EDIT_INFRASTRUCTURE_MODAL });
-  //   }
-  // };
+  const encryptionAtRest = clusterSpec?.encryption_info?.encryption_at_rest ?? false;
+  const encryptionInTransit = clusterSpec?.encryption_info?.encryption_in_transit ?? false;
+
+  const authentication = encryptionInTransit === true ?
+    t('clusters.password') : t('clusters.none');
 
   return (
     <Paper className={classes.clusterInfo}>
-      <Grid container className={classes.container}>
-        <div>
-          <Typography variant="subtitle2" className={classes.label}>
-            {t('clusterDetail.overview.provider')}
-          </Typography>
-          <Typography variant="body2" className={classes.region}>
-            {/* {getCloudProviderIcon(clusterSpec?.cloud_info?.code)} */}
-            {clusterSpec?.cloud_info?.code}
-          </Typography>
-        </div>
-        <div>
-          <Typography variant="subtitle2" className={classes.label}>
-            {t('clusterDetail.overview.totalNodes')}
-          </Typography>
-          <Typography variant="body2" className={classes.value}>
-            {numNodes}
-          </Typography>
-        </div>
-        <div>
-          <Typography variant="subtitle2" className={classes.label}>
-            {t('clusterDetail.overview.averageCpu')}
-          </Typography>
-          <Typography variant="body2" className={classes.value}>
-            {t('units.percent', { value : roundDecimal(averageCpuUsage) })}
-          </Typography>
-        </div>
-        <div>
-          <Typography variant="subtitle2" className={classes.label}>
-            {t('clusters.faultTolerance')}
-          </Typography>
-          <Typography variant="body2" className={classes.value}>
-            {getFaultTolerance(clusterSpec?.cluster_info?.fault_tolerance, t)}
-          </Typography>
-        </div>
-        <div>
-          <Typography variant="subtitle2" className={classes.label}>
-            {t('clusterDetail.overview.ramUsed')}
-          </Typography>
-          <Typography variant="body2" className={classes.value}>
-            {getRamUsageText(totalRamUsageMb)}
-          </Typography>
-        </div>
-        <div>
-          <Typography variant="subtitle2" className={classes.label}>
-            {t('clusterDetail.totalDiskSize')}
-          </Typography>
-          <Typography variant="body2" className={classes.value}>
-            {t('units.GB', { value: totalDiskSize })}
-          </Typography>
-        </div>
-        <div>
-          <Typography variant="subtitle2" className={classes.label}>
-            {t('clusters.encryption')}
-          </Typography>
-          <Typography variant="body2" className={classes.value}>
-            {getEncryptionText(clusterSpec?.encryption_info?.encryption_at_rest ?? false,
-              clusterSpec?.encryption_info?.encryption_in_transit ?? false)}
-          </Typography>
-        </div>
-        <div>
-          <Typography variant="subtitle2" className={classes.label}>
-            {t('clusters.dateCreated')}
-          </Typography>
-          <Typography variant="body2" className={classes.value}>
-            {getDate(cluster?.info.metadata?.created_on)}
-          </Typography>
-        </div>
-      </Grid>
-
-      <Grid container className={classes.container}>
-        {availableRegions && regions && (
-          <Box mt={4} display="flex">
-            <Box>
-              <Typography variant="subtitle2" className={classes.label}>
-                {t('clusterDetail.overview.regions')}
-              </Typography>
-              <Box display="flex">
-                {availableRegions?.map((region) => (
-                  <Box mr={1} className={classes.chip} key={region?.placement_info?.cloud_info?.region}>
-                    {/* <RegionWithFlag code={region?.placement_info?.cloud_info?.region} regions={regions?.data} /> */}
-                    {region?.placement_info?.cloud_info?.region}
-                  </Box>
-                ))}
-              </Box>
-            </Box>
-            {/* <Box alignSelf="flex-end">
-              <YBButton
-                variant="secondary"
-                onClick={() => openEditInfraModal()}
-                disabled={editingDisabled}
-                className={clsx(classes.chip, classes.btnAddRegion)}
-              >
-                <PlusIcon />
-              </YBButton>
-              </Box> */}
+      <Link className={classes.link} component={RouterLink} to="?tab=tabSettings">
+        <Box display="flex">
+          <Box flexGrow={3}>
+            <Grid container spacing={4}>
+              <Grid item xs={4}>
+                <Typography variant="subtitle2" className={classes.label}>
+                  {t('clusters.faultTolerance')}
+                </Typography>
+                <Typography variant="body2" className={classes.value}>
+                  {getFaultTolerance(clusterSpec?.cluster_info?.fault_tolerance, t)}
+                </Typography>
+              </Grid>
+              <Grid item xs={4}>
+                <Typography variant="subtitle2" className={classes.label}>
+                  {t('clusterDetail.overview.replicationFactor')}
+                </Typography>
+                <Typography variant="body2" className={classes.value}>
+                  {replicationFactor}
+                </Typography>
+              </Grid>
+              <Grid item xs={4}>
+                <Typography variant="subtitle2" className={classes.label}>
+                  {t('clusterDetail.overview.databaseVersion')}
+                </Typography>
+                <Typography variant="body2" className={classes.value}>
+                  {`v${databaseVersion}`}
+                </Typography>
+              </Grid>
+            </Grid>
+            <Divider orientation="horizontal" className={classes.dividerHorizontal} />
+            <Grid container spacing={4}>
+              <Grid item xs={4}>
+                <Typography variant="subtitle2" className={classes.label}>
+                  {t('clusterDetail.overview.totalvCPU')}
+                </Typography>
+                <Typography variant="body2" className={classes.value}>
+                  {totalCores}
+                </Typography>
+              </Grid>
+              <Grid item xs={4}>
+                <Typography variant="subtitle2" className={classes.label}>
+                  {t('clusterDetail.overview.totalMemory')}
+                </Typography>
+                <Typography variant="body2" className={classes.value}>
+                  {getRamUsageText(totalRamProvisionedGb)}
+                </Typography>
+              </Grid>
+              <Grid item xs={4}>
+                <Typography variant="subtitle2" className={classes.label}>
+                  {t('clusterDetail.overview.totalDiskSize')}
+                </Typography>
+                <Typography variant="body2" className={classes.value}>
+                  {getDiskSizeText(totalDiskSize)}
+                </Typography>
+              </Grid>
+            </Grid>
           </Box>
-        )}
-      </Grid>
+          <Divider orientation="vertical" className={classes.dividerVertical} flexItem />
+          <Box flexGrow={1}>
+            <Grid container spacing={4}>
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" className={classes.label}>
+                  {t('clusters.encryption')}
+                </Typography>
+                {!encryptionAtRest && !encryptionInTransit ?
+                  <Box display="flex">
+                    <YBStatus type={STATUS_TYPES.WARNING} />
+                    <Typography variant="body2" className={classes.value}>None</Typography>
+                  </Box>
+                  :
+                  <Box display="flex" gridGap={4} pt={0.3}>
+                    {encryptionInTransit && <YBTextBadge>{t('clusters.inTransit')}</YBTextBadge>}
+                    {encryptionAtRest && <YBTextBadge>{t('clusters.atRest')}</YBTextBadge>}
+                  </Box>
+                }
+              </Grid>
+            </Grid>
+            <Box className={classes.dividerHorizontal} />
+            <Grid container spacing={4}>
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" className={classes.label}>
+                  {t('clusterDetail.overview.authentication')}
+                </Typography>
+                <Box display="flex">
+                  {!encryptionAtRest && !encryptionInTransit &&
+                    <YBStatus type={STATUS_TYPES.WARNING} />
+                  }
+                  <Typography variant="body2" className={classes.value}>
+                    {authentication}
+                  </Typography>
+                </Box>
+              </Grid>
+            </Grid>
+          </Box>
+        </Box>
+      </Link>
     </Paper>
   );
 };

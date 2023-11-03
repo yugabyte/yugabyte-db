@@ -1,11 +1,12 @@
 package org.yb.client;
 
 import com.google.protobuf.Message;
-import java.util.List;
-import org.jboss.netty.buffer.ChannelBuffer;
+import io.netty.buffer.ByteBuf;
 import org.yb.master.MasterReplicationOuterClass;
 import org.yb.master.MasterTypes;
 import org.yb.util.Pair;
+
+import java.util.List;
 
 public class ListCDCStreamsRequest extends YRpc<ListCDCStreamsResponse> {
   private final String tableId;
@@ -23,7 +24,7 @@ public class ListCDCStreamsRequest extends YRpc<ListCDCStreamsResponse> {
   }
 
   @Override
-  ChannelBuffer serialize(Message header) {
+  ByteBuf serialize(Message header) {
     assert header.isInitialized();
 
     final MasterReplicationOuterClass.ListCDCStreamsRequestPB.Builder builder =

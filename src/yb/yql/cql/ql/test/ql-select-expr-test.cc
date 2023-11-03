@@ -8,7 +8,7 @@
 #include <thread>
 
 #include "yb/common/jsonb.h"
-#include "yb/common/ql_serialization.h"
+#include "yb/qlexpr/ql_serialization.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
@@ -25,18 +25,20 @@
 DECLARE_bool(TEST_tserver_timeout);
 
 using std::string;
-using std::unique_ptr;
 using std::shared_ptr;
 using std::numeric_limits;
+using std::vector;
 
 using strings::Substitute;
 using yb::util::Decimal;
 using yb::util::DecimalFromComparable;
-using yb::util::VarInt;
+using yb::VarInt;
 using namespace std::chrono_literals;
 
 namespace yb {
 namespace ql {
+
+using qlexpr::QLRowBlock;
 
 struct CQLQueryParameters : public CQLMessage::QueryParameters {
   typedef CQLMessage::QueryParameters::NameToIndexMap NameToIndexMap;
@@ -67,12 +69,12 @@ struct CQLQueryParameters : public CQLMessage::QueryParameters {
   }
 
   void PushBack(const string& name, const QLValue& qv, const shared_ptr<QLType>& type) {
-    faststring buffer;
-    SerializeValue(type, YQL_CLIENT_CQL, qv.value(), &buffer);
+    WriteBuffer buffer(1024);
+    qlexpr::SerializeValue(type, YQL_CLIENT_CQL, qv.value(), &buffer);
 
     CQLMessage::Value msg_value;
     msg_value.name = name;
-    msg_value.value = buffer.ToString();
+    msg_value.value = buffer.ToBuffer();
     value_map.insert(NameToIndexMap::value_type(name, values.size()));
     values.push_back(msg_value);
   }
@@ -87,12 +89,15 @@ class QLTestSelectedExpr : public QLTestBase {
                         const string& query,
                         const string& expected_row) const {
     CHECK_VALID_STMT(query);
-    shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     EXPECT_EQ(row_block->row_count(), 1);
     if (row_block->row_count() > 0) {
-      const QLRow& row = row_block->row(0);
-      LOG(INFO) << "Got row: " << row.ToString();
-      EXPECT_EQ(row.ToString(), expected_row);
+      std::string row_str = row_block->row(0).ToString();
+      LOG(INFO) << "Got row: " << row_str;
+      if(row_str != expected_row) {
+        DumpDocDB(cluster_.get());
+        EXPECT_EQ(row_str, expected_row);
+      }
     }
   }
 };
@@ -138,7 +143,7 @@ TEST_F(QLTestSelectedExpr, TestAggregateExpr) {
     v6_total += (i + 999.99);
   }
 
-  std::shared_ptr<QLRowBlock> row_block;
+  std::shared_ptr<qlexpr::QLRowBlock> row_block;
 
   //------------------------------------------------------------------------------------------------
   // Test COUNT() aggregate function.
@@ -148,7 +153,7 @@ TEST_F(QLTestSelectedExpr, TestAggregateExpr) {
                      "  FROM test_aggr_expr WHERE h = 1 AND r = 1;");
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const QLRow& sum_0_row = row_block->row(0);
+    const auto& sum_0_row = row_block->row(0);
     CHECK_EQ(sum_0_row.column(0).int64_value(), 0);
     CHECK_EQ(sum_0_row.column(1).int64_value(), 0);
     CHECK_EQ(sum_0_row.column(2).int64_value(), 0);
@@ -159,7 +164,7 @@ TEST_F(QLTestSelectedExpr, TestAggregateExpr) {
                      "  FROM test_aggr_expr WHERE h = 1 AND r = 777;");
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const QLRow& sum_1_row = row_block->row(0);
+    const auto& sum_1_row = row_block->row(0);
     CHECK_EQ(sum_1_row.column(0).int64_value(), 1);
     CHECK_EQ(sum_1_row.column(1).int64_value(), 1);
     CHECK_EQ(sum_1_row.column(2).int64_value(), 1);
@@ -170,7 +175,7 @@ TEST_F(QLTestSelectedExpr, TestAggregateExpr) {
                      "  FROM test_aggr_expr WHERE h = 1;");
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const QLRow& sum_2_row = row_block->row(0);
+    const auto& sum_2_row = row_block->row(0);
     CHECK_EQ(sum_2_row.column(0).int64_value(), 2);
     CHECK_EQ(sum_2_row.column(1).int64_value(), 2);
     CHECK_EQ(sum_2_row.column(2).int64_value(), 2);
@@ -181,7 +186,7 @@ TEST_F(QLTestSelectedExpr, TestAggregateExpr) {
                      "  FROM test_aggr_expr;");
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const QLRow& sum_all_row = row_block->row(0);
+    const auto& sum_all_row = row_block->row(0);
     CHECK_EQ(sum_all_row.column(0).int64_value(), 20);
     CHECK_EQ(sum_all_row.column(1).int64_value(), 20);
     CHECK_EQ(sum_all_row.column(2).int64_value(), 20);
@@ -196,7 +201,7 @@ TEST_F(QLTestSelectedExpr, TestAggregateExpr) {
                      "  FROM test_aggr_expr WHERE h = 1 AND r = 1;");
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const QLRow& sum_0_row = row_block->row(0);
+    const auto& sum_0_row = row_block->row(0);
     CHECK_EQ(sum_0_row.column(0).int64_value(), 0);
     CHECK_EQ(sum_0_row.column(1).int32_value(), 0);
     CHECK_EQ(sum_0_row.column(2).int16_value(), 0);
@@ -209,7 +214,7 @@ TEST_F(QLTestSelectedExpr, TestAggregateExpr) {
                      "  FROM test_aggr_expr WHERE h = 1 AND r = 777;");
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const QLRow& sum_1_row = row_block->row(0);
+    const auto& sum_1_row = row_block->row(0);
     CHECK_EQ(sum_1_row.column(0).int64_value(), 11);
     CHECK_EQ(sum_1_row.column(1).int32_value(), 12);
     CHECK_EQ(sum_1_row.column(2).int16_value(), 13);
@@ -222,7 +227,7 @@ TEST_F(QLTestSelectedExpr, TestAggregateExpr) {
                      "  FROM test_aggr_expr WHERE h = 1;");
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const QLRow& sum_2_row = row_block->row(0);
+    const auto& sum_2_row = row_block->row(0);
     CHECK_EQ(sum_2_row.column(0).int64_value(), 1012);
     CHECK_EQ(sum_2_row.column(1).int32_value(), 113);
     CHECK_EQ(sum_2_row.column(2).int16_value(), 24);
@@ -239,7 +244,7 @@ TEST_F(QLTestSelectedExpr, TestAggregateExpr) {
                      "  FROM test_aggr_expr;");
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const QLRow& sum_all_row = row_block->row(0);
+    const auto& sum_all_row = row_block->row(0);
     CHECK_EQ(sum_all_row.column(0).int64_value(), v1_total);
     CHECK_EQ(sum_all_row.column(1).int32_value(), v2_total);
     CHECK_EQ(sum_all_row.column(2).int16_value(), v3_total);
@@ -258,7 +263,7 @@ TEST_F(QLTestSelectedExpr, TestAggregateExpr) {
                      "  FROM test_aggr_expr WHERE h = 1 AND r = 1;");
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const QLRow& sum_0_row = row_block->row(0);
+    const auto& sum_0_row = row_block->row(0);
     CHECK(sum_0_row.column(0).IsNull());
     CHECK(sum_0_row.column(1).IsNull());
     CHECK(sum_0_row.column(2).IsNull());
@@ -271,7 +276,7 @@ TEST_F(QLTestSelectedExpr, TestAggregateExpr) {
                      "  FROM test_aggr_expr WHERE h = 1 AND r = 777;");
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const QLRow& sum_1_row = row_block->row(0);
+    const auto& sum_1_row = row_block->row(0);
     CHECK_EQ(sum_1_row.column(0).int64_value(), 11);
     CHECK_EQ(sum_1_row.column(1).int32_value(), 12);
     CHECK_EQ(sum_1_row.column(2).int16_value(), 13);
@@ -284,7 +289,7 @@ TEST_F(QLTestSelectedExpr, TestAggregateExpr) {
                      "  FROM test_aggr_expr WHERE h = 1;");
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const QLRow& sum_2_row = row_block->row(0);
+    const auto& sum_2_row = row_block->row(0);
     CHECK_EQ(sum_2_row.column(0).int64_value(), 1001);
     CHECK_EQ(sum_2_row.column(1).int32_value(), 101);
     CHECK_EQ(sum_2_row.column(2).int16_value(), 13);
@@ -301,7 +306,7 @@ TEST_F(QLTestSelectedExpr, TestAggregateExpr) {
                      "  FROM test_aggr_expr;");
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const QLRow& sum_all_row = row_block->row(0);
+    const auto& sum_all_row = row_block->row(0);
     CHECK_EQ(sum_all_row.column(0).int64_value(), 1019);
     CHECK_EQ(sum_all_row.column(1).int32_value(), 119);
     CHECK_EQ(sum_all_row.column(2).int16_value(), 29);
@@ -322,7 +327,7 @@ TEST_F(QLTestSelectedExpr, TestAggregateExpr) {
                      "  FROM test_aggr_expr WHERE h = 1 AND r = 1;");
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const QLRow& sum_0_row = row_block->row(0);
+    const auto& sum_0_row = row_block->row(0);
     CHECK(sum_0_row.column(0).IsNull());
     CHECK(sum_0_row.column(1).IsNull());
     CHECK(sum_0_row.column(2).IsNull());
@@ -335,7 +340,7 @@ TEST_F(QLTestSelectedExpr, TestAggregateExpr) {
                      "  FROM test_aggr_expr WHERE h = 1 AND r = 777;");
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const QLRow& sum_1_row = row_block->row(0);
+    const auto& sum_1_row = row_block->row(0);
     CHECK_EQ(sum_1_row.column(0).int64_value(), 11);
     CHECK_EQ(sum_1_row.column(1).int32_value(), 12);
     CHECK_EQ(sum_1_row.column(2).int16_value(), 13);
@@ -348,7 +353,7 @@ TEST_F(QLTestSelectedExpr, TestAggregateExpr) {
                      "  FROM test_aggr_expr WHERE h = 1;");
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const QLRow& sum_2_row = row_block->row(0);
+    const auto& sum_2_row = row_block->row(0);
     CHECK_EQ(sum_2_row.column(0).int64_value(), 11);
     CHECK_EQ(sum_2_row.column(1).int32_value(), 12);
     CHECK_EQ(sum_2_row.column(2).int16_value(), 11);
@@ -365,7 +370,7 @@ TEST_F(QLTestSelectedExpr, TestAggregateExpr) {
                      "  FROM test_aggr_expr;");
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const QLRow& sum_all_row = row_block->row(0);
+    const auto& sum_all_row = row_block->row(0);
     CHECK_EQ(sum_all_row.column(0).int64_value(), 11);
     CHECK_EQ(sum_all_row.column(1).int32_value(), 12);
     CHECK_EQ(sum_all_row.column(2).int16_value(), 11);
@@ -432,7 +437,7 @@ TEST_F(QLTestSelectedExpr, TestAggregateExprWithNull) {
                      " FROM test_aggr_expr WHERE h = 1 AND r = 1;");
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const QLRow& sum_0_row = row_block->row(0);
+    const auto& sum_0_row = row_block->row(0);
     CHECK_EQ(sum_0_row.column(0).int64_value(), 0);
     CHECK_EQ(sum_0_row.column(1).int64_value(), 0);
     CHECK_EQ(sum_0_row.column(2).int64_value(), 0);
@@ -445,7 +450,7 @@ TEST_F(QLTestSelectedExpr, TestAggregateExprWithNull) {
                      " FROM test_aggr_expr WHERE h = 1 AND r = 777;");
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const QLRow& sum_1_row = row_block->row(0);
+    const auto& sum_1_row = row_block->row(0);
     CHECK_EQ(sum_1_row.column(0).int64_value(), 1);
     CHECK_EQ(sum_1_row.column(1).int64_value(), 1);
     CHECK_EQ(sum_1_row.column(2).int64_value(), 1);
@@ -458,7 +463,7 @@ TEST_F(QLTestSelectedExpr, TestAggregateExprWithNull) {
                      " FROM test_aggr_expr WHERE h = 1;");
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const QLRow& sum_2_row = row_block->row(0);
+    const auto& sum_2_row = row_block->row(0);
     CHECK_EQ(sum_2_row.column(0).int64_value(), 3);
     CHECK_EQ(sum_2_row.column(1).int64_value(), 3);
     CHECK_EQ(sum_2_row.column(2).int64_value(), 3);
@@ -471,7 +476,7 @@ TEST_F(QLTestSelectedExpr, TestAggregateExprWithNull) {
                      " FROM test_aggr_expr;");
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const QLRow& sum_all_row = row_block->row(0);
+    const auto& sum_all_row = row_block->row(0);
     CHECK_EQ(sum_all_row.column(0).int64_value(), 21);
     CHECK_EQ(sum_all_row.column(1).int64_value(), 21);
     CHECK_EQ(sum_all_row.column(2).int64_value(), 21);
@@ -488,7 +493,7 @@ TEST_F(QLTestSelectedExpr, TestAggregateExprWithNull) {
                      "  FROM test_aggr_expr WHERE h = 1 AND r = 1;");
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const QLRow& sum_0_row = row_block->row(0);
+    const auto& sum_0_row = row_block->row(0);
     CHECK_EQ(sum_0_row.column(0).int64_value(), 0);
     CHECK_EQ(sum_0_row.column(1).int32_value(), 0);
     CHECK_EQ(sum_0_row.column(2).int16_value(), 0);
@@ -501,7 +506,7 @@ TEST_F(QLTestSelectedExpr, TestAggregateExprWithNull) {
                      "  FROM test_aggr_expr WHERE h = 1 AND r = 777;");
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const QLRow& sum_1_row = row_block->row(0);
+    const auto& sum_1_row = row_block->row(0);
     CHECK_EQ(sum_1_row.column(0).int64_value(), 0); // Only one NULL value.
     CHECK_EQ(sum_1_row.column(1).int32_value(), 0); // NULL values are not counted.
     CHECK_EQ(sum_1_row.column(2).int16_value(), 13);
@@ -514,7 +519,7 @@ TEST_F(QLTestSelectedExpr, TestAggregateExprWithNull) {
                      "  FROM test_aggr_expr WHERE h = 1;");
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const QLRow& sum_2_row = row_block->row(0);
+    const auto& sum_2_row = row_block->row(0);
     CHECK_EQ(sum_2_row.column(0).int64_value(), 1012);
     CHECK_EQ(sum_2_row.column(1).int32_value(), 0); // NULL values are not counted.
     CHECK_EQ(sum_2_row.column(2).int16_value(), 24);
@@ -531,7 +536,7 @@ TEST_F(QLTestSelectedExpr, TestAggregateExprWithNull) {
                      "  FROM test_aggr_expr;");
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const QLRow& sum_all_row = row_block->row(0);
+    const auto& sum_all_row = row_block->row(0);
     CHECK_EQ(sum_all_row.column(0).int64_value(), v1_total);
     CHECK_EQ(sum_all_row.column(1).int32_value(), 0); // NULL values are not counted.
     CHECK_EQ(sum_all_row.column(2).int16_value(), v3_total);
@@ -550,7 +555,7 @@ TEST_F(QLTestSelectedExpr, TestAggregateExprWithNull) {
                      " FROM test_aggr_expr WHERE h = 1 AND r = 1;");
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const QLRow& sum_0_row = row_block->row(0);
+    const auto& sum_0_row = row_block->row(0);
     CHECK(sum_0_row.column(0).IsNull());
     CHECK(sum_0_row.column(1).IsNull());
     CHECK(sum_0_row.column(2).IsNull());
@@ -564,7 +569,7 @@ TEST_F(QLTestSelectedExpr, TestAggregateExprWithNull) {
                      " FROM test_aggr_expr WHERE h = 1 AND r = 777;");
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const QLRow& sum_1_row = row_block->row(0);
+    const auto& sum_1_row = row_block->row(0);
     CHECK(sum_1_row.column(0).IsNull()); // NULL value.
     CHECK(sum_1_row.column(1).IsNull()); // NULL values.
     CHECK_EQ(sum_1_row.column(2).int16_value(), 13);
@@ -578,7 +583,7 @@ TEST_F(QLTestSelectedExpr, TestAggregateExprWithNull) {
                      " FROM test_aggr_expr WHERE h = 1;");
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const QLRow& sum_2_row = row_block->row(0);
+    const auto& sum_2_row = row_block->row(0);
     CHECK_EQ(sum_2_row.column(0).int64_value(), 1001);
     CHECK(sum_2_row.column(1).IsNull()); // NULL values.
     CHECK_EQ(sum_2_row.column(2).int16_value(), 13);
@@ -596,7 +601,7 @@ TEST_F(QLTestSelectedExpr, TestAggregateExprWithNull) {
                      " FROM test_aggr_expr;");
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const QLRow& sum_all_row = row_block->row(0);
+    const auto& sum_all_row = row_block->row(0);
     CHECK_EQ(sum_all_row.column(0).int64_value(), 1019);
     CHECK(sum_all_row.column(1).IsNull()); // NULL values.
     CHECK_EQ(sum_all_row.column(2).int16_value(), 29);
@@ -618,7 +623,7 @@ TEST_F(QLTestSelectedExpr, TestAggregateExprWithNull) {
                      "  FROM test_aggr_expr WHERE h = 1 AND r = 1;");
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const QLRow& sum_0_row = row_block->row(0);
+    const auto& sum_0_row = row_block->row(0);
     CHECK(sum_0_row.column(0).IsNull());
     CHECK(sum_0_row.column(1).IsNull());
     CHECK(sum_0_row.column(2).IsNull());
@@ -632,7 +637,7 @@ TEST_F(QLTestSelectedExpr, TestAggregateExprWithNull) {
                      "  FROM test_aggr_expr WHERE h = 1 AND r = 777;");
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const QLRow& sum_1_row = row_block->row(0);
+    const auto& sum_1_row = row_block->row(0);
     CHECK(sum_1_row.column(0).IsNull()); // NULL value.
     CHECK(sum_1_row.column(1).IsNull()); // NULL values.
     CHECK_EQ(sum_1_row.column(2).int16_value(), 13);
@@ -646,7 +651,7 @@ TEST_F(QLTestSelectedExpr, TestAggregateExprWithNull) {
                      "  FROM test_aggr_expr WHERE h = 1;");
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const QLRow& sum_2_row = row_block->row(0);
+    const auto& sum_2_row = row_block->row(0);
     CHECK_EQ(sum_2_row.column(0).int64_value(), 11);
     CHECK(sum_2_row.column(1).IsNull()); // NULL values.
     CHECK_EQ(sum_2_row.column(2).int16_value(), 11);
@@ -664,7 +669,7 @@ TEST_F(QLTestSelectedExpr, TestAggregateExprWithNull) {
                      "  FROM test_aggr_expr;");
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const QLRow& sum_all_row = row_block->row(0);
+    const auto& sum_all_row = row_block->row(0);
     CHECK_EQ(sum_all_row.column(0).int64_value(), 11);
     CHECK(sum_all_row.column(1).IsNull()); // NULL values.
     CHECK_EQ(sum_all_row.column(2).int16_value(), 11);
@@ -708,7 +713,7 @@ TEST_F(QLTestSelectedExpr, TestQLSelectNumericExpr) {
   CHECK_VALID_STMT("SELECT * FROM test_numeric_expr WHERE h1 = 1;");
   row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 1);
-  const QLRow& star_row = row_block->row(0);
+  const auto& star_row = row_block->row(0);
   CHECK_EQ(star_row.column(0).int32_value(), 1);
   CHECK_EQ(star_row.column(1).int64_value(), 11);
   CHECK_EQ(star_row.column(2).int32_value(), 12);
@@ -722,7 +727,7 @@ TEST_F(QLTestSelectedExpr, TestQLSelectNumericExpr) {
                    "FROM test_numeric_expr WHERE h1 = 1;");
   row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 1);
-  const QLRow& expr_row = row_block->row(0);
+  const auto& expr_row = row_block->row(0);
   CHECK_EQ(expr_row.column(0).int32_value(), 1);
   CHECK_EQ(expr_row.column(1).int64_value(), 12);
   CHECK_EQ(expr_row.column(2).int64_value(), 14);
@@ -735,7 +740,7 @@ TEST_F(QLTestSelectedExpr, TestQLSelectNumericExpr) {
   CHECK_VALID_STMT("SELECT v1+1 as one, TTL(v2) as two FROM test_numeric_expr WHERE h1 = 1;");
   row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 1);
-  const QLRow& expr_alias_row = row_block->row(0);
+  const auto& expr_alias_row = row_block->row(0);
   CHECK_EQ(expr_alias_row.column(0).int64_value(), 12);
   CHECK(expr_alias_row.column(1).IsNull());
 }
@@ -773,7 +778,7 @@ TEST_F(QLTestSelectedExpr, TestQLSelectToken) {
       "WHERE token(h1, h2, h3) = $0", token1));
   row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 1);
-  const QLRow& row1 = row_block->row(0);
+  const auto& row1 = row_block->row(0);
   CHECK_EQ(row1.column(0).int32_value(), 1);
   CHECK_EQ(row1.column(1).double_value(), 2.0);
   CHECK_EQ(row1.column(2).string_value(), "a");
@@ -793,7 +798,7 @@ TEST_F(QLTestSelectedExpr, TestQLSelectToken) {
       "WHERE token(h1, h2, h3) = $0", token2));
   row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 1);
-  const QLRow& row2 = row_block->row(0);
+  const auto& row2 = row_block->row(0);
   CHECK_EQ(row2.column(0).int32_value(), 11);
   CHECK_EQ(row2.column(1).double_value(), 22.5);
   CHECK_EQ(row2.column(2).string_value(), "bc");
@@ -921,17 +926,49 @@ TEST_F(QLTestSelectedExpr, TestQLSelectToJson) {
   EXPECT_EQ("{\"\\\"V  4\\\"\":44,\"\\\"V2\\\"\":22,\"v  3\":33,\"v1\":11}",
             to_json_str(row_block->row(0).column(0)));
 
-  // Feature Not Supported: UDT field types cannot refer to other user-defined types.
-  // https://github.com/YugaByte/yugabyte-db/issues/1630
-  CHECK_INVALID_STMT("CREATE TYPE udt8(i1 int, u1 udt)");
-  // CHECK_VALID_STMT("CREATE TABLE test_udt_in_udt (h int PRIMARY KEY, u udt8)");
-  // CHECK_VALID_STMT("INSERT INTO test_udt_in_udt (h, u) values (1, {i1:33,u1:{v1:44,v2:55}})");
-  // Apply ToJson() to the UDT<UDT> column.
-  // CHECK_VALID_STMT("SELECT tojson(u) FROM test_udt_in_udt");
-  // row_block = processor->row_block();
-  // CHECK_EQ(row_block->row_count(), 1);
-  // EXPECT_EQ("{\"i1\":33,\"u1\":{\"v1\":44,\"v2\":55}}",
-  //           to_json_str(row_block->row(0).column(0)));
+  // Test UDT field which refers to another user-defined type.
+  CHECK_VALID_STMT("CREATE TYPE udt8(i1 int, u1 frozen<udt>)");
+  CHECK_VALID_STMT("CREATE TABLE test_udt_in_udt (h int PRIMARY KEY, u udt8)");
+  CHECK_VALID_STMT("INSERT INTO test_udt_in_udt (h, u) values (1, {i1:33,u1:{v1:44,v2:55}})");
+  // Apply ToJson() to the UDT< FROZEN<UDT> > column.
+  CHECK_VALID_STMT("SELECT tojson(u) FROM test_udt_in_udt");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ("{\"i1\":33,\"u1\":{\"v1\":44,\"v2\":55}}",
+            to_json_str(row_block->row(0).column(0)));
+
+  // Test UDT field which refers to a FROZEN<LIST>.
+  CHECK_VALID_STMT("CREATE TYPE udt9(i1 int, l1 frozen<list<int>>)");
+  CHECK_VALID_STMT("CREATE TABLE test_list_in_udt (h int PRIMARY KEY, u udt9)");
+  CHECK_VALID_STMT("INSERT INTO test_list_in_udt (h, u) values (1, {i1:77,l1:[4,5,6]})");
+  // Apply ToJson() to the UDT< FROZEN<LIST> > column.
+  CHECK_VALID_STMT("SELECT tojson(u) FROM test_list_in_udt");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ("{\"i1\":77,\"l1\":[4,5,6]}",
+            to_json_str(row_block->row(0).column(0)));
+
+  // Test UDT field which refers to a FROZEN<SET>.
+  CHECK_VALID_STMT("CREATE TYPE udt10(i1 int, s1 frozen<set<int>>)");
+  CHECK_VALID_STMT("CREATE TABLE test_set_in_udt (h int PRIMARY KEY, u udt10)");
+  CHECK_VALID_STMT("INSERT INTO test_set_in_udt (h, u) values (1, {i1:66,s1:{3,2,1}})");
+  // Apply ToJson() to the UDT< FROZEN<SET> > column.
+  CHECK_VALID_STMT("SELECT tojson(u) FROM test_set_in_udt");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ("{\"i1\":66,\"s1\":[1,2,3]}",
+            to_json_str(row_block->row(0).column(0)));
+
+  // Test UDT field which refers to a FROZEN<MAP>.
+  CHECK_VALID_STMT("CREATE TYPE udt11(i1 int, m1 frozen<map<int, text>>)");
+  CHECK_VALID_STMT("CREATE TABLE test_map_in_udt (h int PRIMARY KEY, u udt11)");
+  CHECK_VALID_STMT("INSERT INTO test_map_in_udt (h, u) values (1, {i1:88,m1:{99:'t1',11:'t2'}})");
+  // Apply ToJson() to the UDT< FROZEN<MAP> > column.
+  CHECK_VALID_STMT("SELECT tojson(u) FROM test_map_in_udt");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ("{\"i1\":88,\"m1\":{\"11\":\"t2\",\"99\":\"t1\"}}",
+            to_json_str(row_block->row(0).column(0)));
 }
 
 TEST_F(QLTestSelectedExpr, TestCastDecimal) {
@@ -958,58 +995,58 @@ TEST_F(QLTestSelectedExpr, TestCastDecimal) {
   // Test various selects.
   {
     CHECK_VALID_STMT("SELECT * FROM num_decimal");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 2);
     ASSERT_EQ(row.column(0).int32_value(), 123);
     EXPECT_EQ(DecimalFromComparable(row.column(1).decimal_value()), Decimal("456"));
   }
   {
     CHECK_VALID_STMT("SELECT dc FROM num_decimal");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     EXPECT_EQ(DecimalFromComparable(row.column(0).decimal_value()), Decimal("456"));
   }
   {
     CHECK_VALID_STMT("SELECT CAST(dc as int) FROM num_decimal");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     EXPECT_EQ(row.column(0).int32_value(), 456);
   }
   {
     CHECK_VALID_STMT("SELECT CAST(dc as double) FROM num_decimal");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     EXPECT_EQ(row.column(0).double_value(), 456.);
   }
   {
     CHECK_VALID_STMT("SELECT CAST(dc as float) FROM num_decimal");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     EXPECT_EQ(row.column(0).float_value(), 456.f);
   }
   {
     CHECK_VALID_STMT("SELECT CAST(dc as text) FROM num_decimal");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     EXPECT_EQ(row.column(0).string_value(), "456");
   }
   {
     CHECK_VALID_STMT("SELECT CAST(dc as decimal) FROM num_decimal");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     EXPECT_EQ(DecimalFromComparable(row.column(0).decimal_value()), Decimal("456"));
   }
@@ -1020,35 +1057,35 @@ TEST_F(QLTestSelectedExpr, TestCastDecimal) {
   CHECK_VALID_STMT("INSERT INTO num_decimal (pk, dc) values (1, -9223372036854775807)");
   {
     CHECK_VALID_STMT("SELECT dc FROM num_decimal where pk=1");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     EXPECT_EQ(DecimalFromComparable(row.column(0).decimal_value()),
         Decimal("-9223372036854775807"));
   }
   {
     CHECK_VALID_STMT("SELECT CAST(dc AS bigint) FROM num_decimal where pk=1");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     EXPECT_EQ(row.column(0).int64_value(), -9223372036854775807LL);
   }
   {
     // INT32 overflow.
     CHECK_VALID_STMT("SELECT CAST(dc AS int) FROM num_decimal where pk=1");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     EXPECT_EQ(row.column(0).int32_value(), static_cast<int32_t>(-9223372036854775807LL));
   }
   {
     CHECK_VALID_STMT("SELECT CAST(dc AS decimal) FROM num_decimal where pk=1");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     EXPECT_EQ(DecimalFromComparable(row.column(0).decimal_value()),
               Decimal("-9223372036854775807"));
@@ -1058,18 +1095,18 @@ TEST_F(QLTestSelectedExpr, TestCastDecimal) {
   CHECK_VALID_STMT("INSERT INTO num_decimal (pk, dc) values (2, 123456789012345678901)");
   {
     CHECK_VALID_STMT("SELECT dc FROM num_decimal where pk=2");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     EXPECT_EQ(DecimalFromComparable(row.column(0).decimal_value()),
         Decimal("123456789012345678901"));
   }
   {
     CHECK_VALID_STMT("SELECT CAST(dc AS decimal) FROM num_decimal where pk=2");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     EXPECT_EQ(DecimalFromComparable(row.column(0).decimal_value()),
         Decimal("123456789012345678901"));
@@ -1084,18 +1121,18 @@ TEST_F(QLTestSelectedExpr, TestCastDecimal) {
                    "(3, -123123123123456456456456.789789789789123123123123)");
   {
     CHECK_VALID_STMT("SELECT dc FROM num_decimal where pk=3");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     EXPECT_EQ(DecimalFromComparable(row.column(0).decimal_value()),
         Decimal("-123123123123456456456456.789789789789123123123123"));
   }
   {
     CHECK_VALID_STMT("SELECT CAST(dc AS decimal) FROM num_decimal where pk=3");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     EXPECT_EQ(DecimalFromComparable(row.column(0).decimal_value()),
         Decimal("-123123123123456456456456.789789789789123123123123"));
@@ -1108,34 +1145,34 @@ TEST_F(QLTestSelectedExpr, TestCastDecimal) {
   CHECK_VALID_STMT("INSERT INTO num_decimal (pk, dc) values (4, 5e+308)");
   {
     CHECK_VALID_STMT("SELECT dc FROM num_decimal where pk=4");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     EXPECT_EQ(DecimalFromComparable(row.column(0).decimal_value()), Decimal("5e+308"));
   }
   {
     CHECK_VALID_STMT("SELECT CAST(dc AS decimal) FROM num_decimal where pk=4");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     EXPECT_EQ(DecimalFromComparable(row.column(0).decimal_value()), Decimal("5e+308"));
   }
   {
     CHECK_VALID_STMT("SELECT CAST(dc AS float) FROM num_decimal where pk=4");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     // FLOAT overflow = Infinity.
     EXPECT_EQ(row.column(0).float_value(), numeric_limits<float>::infinity());
   }
   {
     CHECK_VALID_STMT("SELECT CAST(dc AS double) FROM num_decimal where pk=4");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     // DOUBLE overflow = Infinity.
     EXPECT_EQ(row.column(0).double_value(), numeric_limits<double>::infinity());
@@ -1147,33 +1184,33 @@ TEST_F(QLTestSelectedExpr, TestCastDecimal) {
   CHECK_VALID_STMT("INSERT INTO num_decimal (pk, dc) values (5, 5e+38)");
   {
     CHECK_VALID_STMT("SELECT dc FROM num_decimal where pk=5");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     EXPECT_EQ(DecimalFromComparable(row.column(0).decimal_value()), Decimal("5e+38"));
   }
   {
     CHECK_VALID_STMT("SELECT CAST(dc AS decimal) FROM num_decimal where pk=5");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     EXPECT_EQ(DecimalFromComparable(row.column(0).decimal_value()), Decimal("5e+38"));
   }
   {
     CHECK_VALID_STMT("SELECT CAST(dc AS double) FROM num_decimal where pk=5");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     EXPECT_EQ(row.column(0).double_value(), 5.e+38);
   }
   {
     CHECK_VALID_STMT("SELECT CAST(dc AS float) FROM num_decimal where pk=5");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     // FLOAT overflow = Infinity.
     EXPECT_EQ(row.column(0).float_value(), numeric_limits<float>::infinity());
@@ -1190,25 +1227,25 @@ TEST_F(QLTestSelectedExpr, TestCastDecimal) {
   // Test various selects.
   {
     CHECK_VALID_STMT("SELECT flt FROM numbers");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     EXPECT_EQ(row.column(0).float_value(), 456.7f);
   }
   {
     CHECK_VALID_STMT("SELECT CAST(flt as float) FROM numbers");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     EXPECT_EQ(row.column(0).float_value(), 456.7f);
   }
   {
     CHECK_VALID_STMT("SELECT CAST(flt as decimal) FROM numbers");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     double num = EXPECT_RESULT(DecimalFromComparable(row.column(0).decimal_value()).ToDouble());
     EXPECT_LT(fabs(num - 456.7), 0.001);
@@ -1217,25 +1254,25 @@ TEST_F(QLTestSelectedExpr, TestCastDecimal) {
   CHECK_VALID_STMT("INSERT INTO numbers (pk, i64) values (2, -9223372036854775807)");
   {
     CHECK_VALID_STMT("SELECT i64 FROM numbers where pk=2");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     EXPECT_EQ(row.column(0).int64_value(), -9223372036854775807LL);
   }
   {
     CHECK_VALID_STMT("SELECT CAST(i64 as bigint) FROM numbers where pk=2");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     EXPECT_EQ(row.column(0).int64_value(), -9223372036854775807LL);
   }
   {
     CHECK_VALID_STMT("SELECT CAST(i64 as decimal) FROM numbers where pk=2");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     EXPECT_EQ(DecimalFromComparable(row.column(0).decimal_value()),
         Decimal("-9223372036854775807"));
@@ -1245,18 +1282,18 @@ TEST_F(QLTestSelectedExpr, TestCastDecimal) {
                    "-123456789012345678901234567890123456789012345678901234567890)");
   {
     CHECK_VALID_STMT("SELECT vari FROM numbers where pk=3");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     EXPECT_EQ(row.column(0).varint_value(), CHECK_RESULT(VarInt::CreateFromString(
         "-123456789012345678901234567890123456789012345678901234567890")));
   }
   {
     CHECK_VALID_STMT("SELECT CAST(vari as decimal) FROM numbers where pk=3");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     EXPECT_EQ(DecimalFromComparable(row.column(0).decimal_value()),
         Decimal("-123456789012345678901234567890123456789012345678901234567890"));
@@ -1269,25 +1306,25 @@ TEST_F(QLTestSelectedExpr, TestCastDecimal) {
   // Test various selects.
   {
     CHECK_VALID_STMT("SELECT flt FROM numbers where pk=4");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     EXPECT_EQ(row.column(0).float_value(), 3.40282e+38f);
   }
   {
     CHECK_VALID_STMT("SELECT CAST(flt as float) FROM numbers where pk=4");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     EXPECT_EQ(row.column(0).float_value(), 3.40282e+38f);
   }
   {
     CHECK_VALID_STMT("SELECT CAST(flt as decimal) FROM numbers where pk=4");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     double num = EXPECT_RESULT(DecimalFromComparable(row.column(0).decimal_value()).ToDouble());
     EXPECT_LT(fabs(num - 3.40282e+38), 1e+31);
@@ -1298,34 +1335,34 @@ TEST_F(QLTestSelectedExpr, TestCastDecimal) {
   // Test various selects.
   {
     CHECK_VALID_STMT("SELECT dbl FROM numbers where pk=5");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     EXPECT_EQ(row.column(0).double_value(), 1.79769e+308);
   }
   {
     CHECK_VALID_STMT("SELECT CAST(dbl as double) FROM numbers where pk=5");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     EXPECT_EQ(row.column(0).double_value(), 1.79769e+308);
   }
   {
     CHECK_VALID_STMT("SELECT CAST(dbl as decimal) FROM numbers where pk=5");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     double num = EXPECT_RESULT(DecimalFromComparable(row.column(0).decimal_value()).ToDouble());
     EXPECT_EQ(num, 1.79769e+308);
   }
   {
     CHECK_VALID_STMT("SELECT CAST(dbl AS float) FROM numbers where pk=5");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     // FLOAT overflow = Infinity.
     EXPECT_EQ(row.column(0).float_value(), numeric_limits<float>::infinity());
@@ -1350,74 +1387,74 @@ TEST_F(QLTestSelectedExpr, TestCastTinyInt) {
   // Test various selects.
   {
     CHECK_VALID_STMT("SELECT * FROM num_tinyint");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 2);
     ASSERT_EQ(row.column(0).int32_value(), 1);
     ASSERT_EQ(row.column(1).int8_value(), 123);
   }
   {
     CHECK_VALID_STMT("SELECT ti FROM num_tinyint");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     ASSERT_EQ(row.column(0).int8_value(), 123);
   }
   {
     CHECK_VALID_STMT("SELECT CAST(ti as smallint) FROM num_tinyint");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     ASSERT_EQ(row.column(0).int16_value(), 123);
   }
   {
     CHECK_VALID_STMT("SELECT CAST(ti as int) FROM num_tinyint");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     ASSERT_EQ(row.column(0).int32_value(), 123);
   }
   {
     CHECK_VALID_STMT("SELECT CAST(ti as bigint) FROM num_tinyint");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     ASSERT_EQ(row.column(0).int64_value(), 123);
   }
   {
     CHECK_VALID_STMT("SELECT CAST(ti as double) FROM num_tinyint");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     ASSERT_EQ(row.column(0).double_value(), 123.);
   }
   {
     CHECK_VALID_STMT("SELECT CAST(ti as float) FROM num_tinyint");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     ASSERT_EQ(row.column(0).float_value(), 123.f);
   }
   {
     CHECK_VALID_STMT("SELECT CAST(ti as text) FROM num_tinyint");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     ASSERT_EQ(row.column(0).string_value(), "123");
   }
   {
     CHECK_VALID_STMT("SELECT CAST(ti as decimal) FROM num_tinyint");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     ASSERT_EQ(DecimalFromComparable(row.column(0).decimal_value()), Decimal("123"));
   }
@@ -1439,9 +1476,9 @@ TEST_F(QLTestSelectedExpr, TestCastTinyInt) {
   // Test various selects.
   {
     CHECK_VALID_STMT("SELECT i8 FROM numbers");
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     ASSERT_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     ASSERT_EQ(row.column_count(), 1);
     ASSERT_EQ(row.column(0).int8_value(), 123);
   }
@@ -1466,7 +1503,7 @@ TEST_F(QLTestSelectedExpr, TestTserverTimeout) {
   // Make sure a select statement works.
   CHECK_VALID_STMT("SELECT count(*) FROM test_table WHERE h = 1;");
   // Set a flag to simulate tserver timeout and now check that select produces an error.
-  FLAGS_TEST_tserver_timeout = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_timeout) = true;
   CHECK_INVALID_STMT("SELECT count(*) FROM test_table WHERE h = 1;");
 }
 
@@ -1492,17 +1529,17 @@ TEST_F(QLTestSelectedExpr, ScanRangeTest) {
 
   // Checking Row
   CHECK_VALID_STMT("SELECT * FROM test_range WHERE h = 5 AND r1 = 5 AND r2 >= 5 AND r2 <= 6;");
-  std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+  auto row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 2);
   {
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     CHECK_EQ(row.column(0).int32_value(), 5);
     CHECK_EQ(row.column(1).int32_value(), 5);
     CHECK_EQ(row.column(2).int32_value(), 5);
     CHECK_EQ(row.column(3).int32_value(), 5);
   }
   {
-    const QLRow& row = row_block->row(1);
+    const auto& row = row_block->row(1);
     CHECK_EQ(row.column(0).int32_value(), 5);
     CHECK_EQ(row.column(1).int32_value(), 5);
     CHECK_EQ(row.column(2).int32_value(), 6);
@@ -1534,31 +1571,31 @@ TEST_F(QLTestSelectedExpr, ScanRangeTestReverse) {
   CHECK_VALID_STMT(
       "SELECT * FROM test_range WHERE h = 5 AND r1 >= 5 AND r1 <= 6 AND r2 >= 5 AND r2 <= 6 ORDER "
       "BY r1 DESC;");
-  std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+  auto row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 4);
   {
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     CHECK_EQ(row.column(0).int32_value(), 5);
     CHECK_EQ(row.column(1).int32_value(), 6);
     CHECK_EQ(row.column(2).int32_value(), 6);
     CHECK_EQ(row.column(3).int32_value(), 6);
   }
   {
-    const QLRow& row = row_block->row(1);
+    const auto& row = row_block->row(1);
     CHECK_EQ(row.column(0).int32_value(), 5);
     CHECK_EQ(row.column(1).int32_value(), 6);
     CHECK_EQ(row.column(2).int32_value(), 5);
     CHECK_EQ(row.column(3).int32_value(), 5);
   }
   {
-    const QLRow& row = row_block->row(2);
+    const auto& row = row_block->row(2);
     CHECK_EQ(row.column(0).int32_value(), 5);
     CHECK_EQ(row.column(1).int32_value(), 5);
     CHECK_EQ(row.column(2).int32_value(), 6);
     CHECK_EQ(row.column(3).int32_value(), 6);
   }
   {
-    const QLRow& row = row_block->row(3);
+    const auto& row = row_block->row(3);
     CHECK_EQ(row.column(0).int32_value(), 5);
     CHECK_EQ(row.column(1).int32_value(), 5);
     CHECK_EQ(row.column(2).int32_value(), 5);
@@ -1589,17 +1626,17 @@ TEST_F(QLTestSelectedExpr, ScanRangeTestIncDec) {
 
   // Checking Row
   CHECK_VALID_STMT("SELECT * FROM test_range WHERE h = 5 AND r1 = 5 AND r2 >= 5 AND r2 <= 6;");
-  std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+  auto row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 2);
   {
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     CHECK_EQ(row.column(0).int32_value(), 5);
     CHECK_EQ(row.column(1).int32_value(), 5);
     CHECK_EQ(row.column(2).int32_value(), 6);
     CHECK_EQ(row.column(3).int32_value(), 6);
   }
   {
-    const QLRow& row = row_block->row(1);
+    const auto& row = row_block->row(1);
     CHECK_EQ(row.column(0).int32_value(), 5);
     CHECK_EQ(row.column(1).int32_value(), 5);
     CHECK_EQ(row.column(2).int32_value(), 5);
@@ -1632,31 +1669,31 @@ TEST_F(QLTestSelectedExpr, ScanRangeTestIncDecReverse) {
   CHECK_VALID_STMT(
       "SELECT * FROM test_range WHERE h = 5 AND r1 >= 5 AND r1 <= 6 AND r2 >= 5 AND r2 <= 6 ORDER "
       "BY r1 DESC;");
-  std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+  auto row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 4);
   {
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     CHECK_EQ(row.column(0).int32_value(), 5);
     CHECK_EQ(row.column(1).int32_value(), 6);
     CHECK_EQ(row.column(2).int32_value(), 5);
     CHECK_EQ(row.column(3).int32_value(), 5);
   }
   {
-    const QLRow& row = row_block->row(1);
+    const auto& row = row_block->row(1);
     CHECK_EQ(row.column(0).int32_value(), 5);
     CHECK_EQ(row.column(1).int32_value(), 6);
     CHECK_EQ(row.column(2).int32_value(), 6);
     CHECK_EQ(row.column(3).int32_value(), 6);
   }
   {
-    const QLRow& row = row_block->row(2);
+    const auto& row = row_block->row(2);
     CHECK_EQ(row.column(0).int32_value(), 5);
     CHECK_EQ(row.column(1).int32_value(), 5);
     CHECK_EQ(row.column(2).int32_value(), 5);
     CHECK_EQ(row.column(3).int32_value(), 5);
   }
   {
-    const QLRow& row = row_block->row(3);
+    const auto& row = row_block->row(3);
     CHECK_EQ(row.column(0).int32_value(), 5);
     CHECK_EQ(row.column(1).int32_value(), 5);
     CHECK_EQ(row.column(2).int32_value(), 6);
@@ -1686,17 +1723,17 @@ TEST_F(QLTestSelectedExpr, ScanChoicesTest) {
 
   // Checking Row
   CHECK_VALID_STMT("SELECT * FROM test_range WHERE h = 5 AND r1 in (5) and r2 in (5, 6)");
-  std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+  auto row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 2);
   {
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     CHECK_EQ(row.column(0).int32_value(), 5);
     CHECK_EQ(row.column(1).int32_value(), 5);
     CHECK_EQ(row.column(2).int32_value(), 5);
     CHECK_EQ(row.column(3).int32_value(), 5);
   }
   {
-    const QLRow& row = row_block->row(1);
+    const auto& row = row_block->row(1);
     CHECK_EQ(row.column(0).int32_value(), 5);
     CHECK_EQ(row.column(1).int32_value(), 5);
     CHECK_EQ(row.column(2).int32_value(), 6);
@@ -1729,11 +1766,11 @@ TEST_F(QLTestSelectedExpr, ScanRangeTestIncDecAcrossHashCols) {
 
   // Checking Row
   CHECK_VALID_STMT("SELECT h, r1, r2, payload FROM test_range WHERE r1 = 5 AND r2 > 4 AND r2 < 7;");
-  std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+  auto row_block = processor->row_block();
   EXPECT_EQ(row_block->row_count(), 2 * max_h);
   vector<bool> seen(max_h, false);
   for (size_t h = 0; h < row_block->row_count(); h++) {
-    const QLRow& row = row_block->row(h);
+    const auto& row = row_block->row(h);
     LOG(INFO) << "got " << row.ToString();
     seen[row.column(0).int32_value()] = true;
     EXPECT_EQ(row.column(1).int32_value(), 5);
@@ -1776,11 +1813,11 @@ TEST_F(QLTestSelectedExpr, ScanChoicesTestIncDecAcrossHashCols) {
 
   // Checking Row
   CHECK_VALID_STMT("SELECT h, r1, r2, payload FROM test_range WHERE r1 in (5) AND r2 in (5, 6);");
-  std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+  auto row_block = processor->row_block();
   EXPECT_EQ(row_block->row_count(), 2 * max_h);
   vector<bool> seen(max_h, false);
   for (size_t h = 0; h < row_block->row_count(); h++) {
-    const QLRow& row = row_block->row(h);
+    const auto& row = row_block->row(h);
     LOG(INFO) << "got " << row.ToString();
     seen[row.column(0).int32_value()] = true;
     EXPECT_EQ(row.column(1).int32_value(), 5);
@@ -1821,9 +1858,9 @@ TEST_F(QLTestSelectedExpr, TestPreparedStatementWithCollections) {
       &processor->ql_processor(), nullptr /* mem_tracker */, false /* internal */, &result));
   auto vm_binds = result->bind_variable_schemas();
   EXPECT_EQ(vm_binds.size(), 3);
-  EXPECT_EQ(vm_binds[0].ToString(), "h[int32 NOT NULL NOT A PARTITION KEY]");
-  EXPECT_EQ(vm_binds[1].ToString(), "r[int32 NOT NULL NOT A PARTITION KEY]");
-  EXPECT_EQ(vm_binds[2].ToString(), "vm[map NOT NULL NOT A PARTITION KEY]");
+  EXPECT_EQ(vm_binds[0].ToString(), "h[int32 NOT NULL VALUE]");
+  EXPECT_EQ(vm_binds[1].ToString(), "r[int32 NOT NULL VALUE]");
+  EXPECT_EQ(vm_binds[2].ToString(), "vm[map NOT NULL VALUE]");
   EXPECT_EQ(vm_binds[2].type()->ToString(), "map<int, text>");
 
   // Bind and execute the prepared statement with correct values.
@@ -1887,9 +1924,9 @@ TEST_F(QLTestSelectedExpr, TestPreparedStatementWithCollections) {
       &processor->ql_processor(), nullptr /* mem_tracker */, false /* internal */, &result));
   auto vs_binds = result->bind_variable_schemas();
   EXPECT_EQ(vs_binds.size(), 3);
-  EXPECT_EQ(vs_binds[0].ToString(), "h[int32 NOT NULL NOT A PARTITION KEY]");
-  EXPECT_EQ(vs_binds[1].ToString(), "r[int32 NOT NULL NOT A PARTITION KEY]");
-  EXPECT_EQ(vs_binds[2].ToString(), "vs[set NOT NULL NOT A PARTITION KEY]");
+  EXPECT_EQ(vs_binds[0].ToString(), "h[int32 NOT NULL VALUE]");
+  EXPECT_EQ(vs_binds[1].ToString(), "r[int32 NOT NULL VALUE]");
+  EXPECT_EQ(vs_binds[2].ToString(), "vs[set NOT NULL VALUE]");
   EXPECT_EQ(vs_binds[2].type()->ToString(), "set<int>");
 
   // Bind and execute the prepared statement with correct values.
@@ -1932,9 +1969,9 @@ TEST_F(QLTestSelectedExpr, TestPreparedStatementWithCollections) {
       &processor->ql_processor(), nullptr /* mem_tracker */, false /* internal */, &result));
   auto vl_binds = result->bind_variable_schemas();
   EXPECT_EQ(vl_binds.size(), 3);
-  EXPECT_EQ(vl_binds[0].ToString(), "h[int32 NOT NULL NOT A PARTITION KEY]");
-  EXPECT_EQ(vl_binds[1].ToString(), "r[int32 NOT NULL NOT A PARTITION KEY]");
-  EXPECT_EQ(vl_binds[2].ToString(), "vl[list NOT NULL NOT A PARTITION KEY]");
+  EXPECT_EQ(vl_binds[0].ToString(), "h[int32 NOT NULL VALUE]");
+  EXPECT_EQ(vl_binds[1].ToString(), "r[int32 NOT NULL VALUE]");
+  EXPECT_EQ(vl_binds[2].ToString(), "vl[list NOT NULL VALUE]");
   EXPECT_EQ(vl_binds[2].type()->ToString(), "list<text>");
 
   // Bind and execute the prepared statement with correct values.
@@ -1997,10 +2034,10 @@ TEST_F(QLTestSelectedExpr, MultiColumnInTest) {
 
   // Checking Row
   CHECK_VALID_STMT("SELECT * FROM test_range WHERE h = 5 AND (r1, r2) in ((5, 6))");
-  std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+  auto row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 1);
   {
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     CHECK_EQ(row.column(0).int32_value(), 5);
     CHECK_EQ(row.column(1).int32_value(), 5);
     CHECK_EQ(row.column(2).int32_value(), 6);
@@ -2030,10 +2067,10 @@ TEST_F(QLTestSelectedExpr, MultiArgumentMultiColumnInTest) {
 
   // Checking Row
   CHECK_VALID_STMT("SELECT * FROM test_range WHERE h = 5 AND (r1, r2) in ((5, 6), (5, 7))");
-  std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+  auto row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 2);
   {
-    QLRow& row = row_block->row(0);
+    auto& row = row_block->row(0);
     CHECK_EQ(row.column(0).int32_value(), 5);
     CHECK_EQ(row.column(1).int32_value(), 5);
     CHECK_EQ(row.column(2).int32_value(), 6);
@@ -2099,7 +2136,7 @@ TEST_F(QLTestSelectedExpr, EmptyArgMultiColumnInTest) {
 
   // Checking Row
   CHECK_VALID_STMT("SELECT * FROM test_range WHERE h = 5 AND (r1, r2) in ()");
-  std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+  auto row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 0);
 }
 
@@ -2227,10 +2264,10 @@ TEST_F(QLTestSelectedExpr, OrderMultiColumnInTest) {
   CHECK_VALID_STMT(
       "SELECT * FROM test_range WHERE h = 1 AND (r1, r2) IN ((60, '70'), (80, '30'), (10, "
       "'70'), (60, '60'), (80, '10'), (50, '40'), (10, '80'), (10, '0'))");
-  std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+  auto row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 8);
   {
-    QLRow& row = row_block->row(0);
+    auto& row = row_block->row(0);
     CHECK_EQ(row.column(0).int32_value(), 1);
     CHECK_EQ(row.column(1).int32_value(), 80);
     CHECK_EQ(row.column(2).string_value(), "10");
@@ -2286,7 +2323,7 @@ TEST_F(QLTestSelectedExpr, OrderMultiColumnInTest) {
   row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 8);
   {
-    QLRow& row = row_block->row(7);
+    auto& row = row_block->row(7);
     CHECK_EQ(row.column(0).int32_value(), 1);
     CHECK_EQ(row.column(1).int32_value(), 80);
     CHECK_EQ(row.column(2).string_value(), "10");
@@ -2479,8 +2516,8 @@ TEST_F(QLTestSelectedExpr, BindVarsMultiColumnInTest) {
       &processor->ql_processor(), nullptr /* mem_tracker */, false /* internal */, &result));
   auto vl_binds = result->bind_variable_schemas();
   EXPECT_EQ(vl_binds.size(), 2);
-  EXPECT_EQ(vl_binds[0].ToString(), "tup1[tuple NOT NULL NOT A PARTITION KEY]");
-  EXPECT_EQ(vl_binds[1].ToString(), "tup2[tuple NOT NULL NOT A PARTITION KEY]");
+  EXPECT_EQ(vl_binds[0].ToString(), "tup1[tuple NOT NULL VALUE]");
+  EXPECT_EQ(vl_binds[1].ToString(), "tup2[tuple NOT NULL VALUE]");
   EXPECT_EQ(vl_binds[1].type()->ToString(), "tuple<int, text>");
 }
 
@@ -2503,10 +2540,10 @@ TEST_F(QLTestSelectedExpr, TestPreparedStatementWithEmbeddedNull) {
       &processor->ql_processor(), nullptr /* mem_tracker */, false /* internal */, &result));
   auto binds = result->bind_variable_schemas();
   EXPECT_EQ(binds.size(), 4);
-  EXPECT_EQ(binds[0].ToString(), "h[string NOT NULL NOT A PARTITION KEY]");
-  EXPECT_EQ(binds[1].ToString(), "r[string NOT NULL NOT A PARTITION KEY]");
-  EXPECT_EQ(binds[2].ToString(), "v1[string NOT NULL NOT A PARTITION KEY]");
-  EXPECT_EQ(binds[3].ToString(), "v2[int32 NOT NULL NOT A PARTITION KEY]");
+  EXPECT_EQ(binds[0].ToString(), "h[string NOT NULL VALUE]");
+  EXPECT_EQ(binds[1].ToString(), "r[string NOT NULL VALUE]");
+  EXPECT_EQ(binds[2].ToString(), "v1[string NOT NULL VALUE]");
+  EXPECT_EQ(binds[3].ToString(), "v2[int32 NOT NULL VALUE]");
 
   // Bind and execute the prepared statement with values where the text column value
   // embedded null byte.
@@ -2562,10 +2599,10 @@ TEST_F(QLTestSelectedExpr, MapMultiFieldQueryTest) {
   // Checking Row
   CHECK_VALID_STMT("SELECT username, phones['work'], phones['home'] from users;");
 
-  std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+  auto row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 1);
   {
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     CHECK_EQ(row.column(0).string_value(), "foo");
     CHECK_EQ(row.column(1).string_value(), "222-222");
     CHECK_EQ(row.column(2).string_value(), "999-9999");
@@ -2577,7 +2614,7 @@ TEST_F(QLTestSelectedExpr, MapMultiFieldQueryTest) {
   row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 1);
   {
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     CHECK_EQ(row.column(0).string_value(), "foo");
     CHECK_EQ(row.column(1).string_value(), "222-222");
     CHECK_EQ(row.column(2).string_value(), "999-9999");

@@ -9,8 +9,8 @@
  */
 package com.yugabyte.yw.queries;
 
-import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.MatcherAssert.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -19,14 +19,18 @@ import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.queries.QueryHelper.QueryApi;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.Mock;
+import play.libs.ws.WSClient;
 
 public class LiveQueryExecutorTest {
 
+  @Mock WSClient mockClient;
   private LiveQueryExecutor liveQueryExecutor;
 
   @Before
   public void setUp() {
-    liveQueryExecutor = new LiveQueryExecutor("test-node", "test-host", 12000, QueryApi.YCQL, null);
+    liveQueryExecutor =
+        new LiveQueryExecutor("test-node", "test-host", 12000, QueryApi.YCQL, mockClient);
   }
 
   @Test

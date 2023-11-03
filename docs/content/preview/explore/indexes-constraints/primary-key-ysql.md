@@ -1,7 +1,9 @@
 ---
-title: Primary keys
+title: Primary keys in YugabyteDB YSQL
+headerTitle: Primary keys
 linkTitle: Primary keys
 description: Defining Primary key constraint in YSQL
+headContent: Explore primary keys in YugabyteDB using YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
@@ -11,7 +13,6 @@ menu:
 aliases:
   - /preview/explore/ysql-language-features/constraints/
   - /preview/explore/indexes-constraints/constraints/
-  - /preview/explore/indexes-constraints/indexes-1/
 type: docs
 ---
 
@@ -35,7 +36,8 @@ The Primary Key constraint is a means to uniquely identify a specific row in a t
 
 ## Syntax and examples
 
-Create a cluster [locally](../../../quick-start/) or in [YugabyteDB Managed](../../../yugabyte-cloud/cloud-basics/create-clusters-free/) and connect to the cluster using [ysqlsh](../../../admin/ysqlsh/) for local clusters, or [using cloud shell](../../../yugabyte-cloud/cloud-connect/connect-cloud-shell/) for YugabyteDB Managed.
+{{% explore-setup-single %}}
+
 
 ### Primary key for a single column
 
@@ -171,5 +173,5 @@ HINT:  Use OVERRIDING SYSTEM VALUE to override.
 
 - [Primary Key](../../../api/ysql/the-sql-language/statements/ddl_create_table/#primary-key)
 - [Table with Primary Key](../../../api/ysql/the-sql-language/statements/ddl_create_table/#table-with-primary-key)
-- [Natural versus Surrogate Primary Keys in a Distributed SQL Database](https://blog.yugabyte.com/natural-versus-surrogate-primary-keys-in-a-distributed-sql-database/)
+- [Natural versus Surrogate Primary Keys in a Distributed SQL Database](https://www.yugabyte.com/blog/natural-versus-surrogate-primary-keys-in-a-distributed-sql-database/)
 - [Primary Keys in PostgreSQL documentation](https://www.postgresql.org/docs/12/ddl-constraints.html#DDL-CONSTRAINTS-PRIMARY-KEYS)

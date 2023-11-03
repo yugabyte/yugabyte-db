@@ -25,45 +25,72 @@ import type { NodeDataMetrics } from './NodeDataMetrics';
  */
 export interface NodeData  {
   /**
-   *
+   * 
    * @type {string}
    * @memberof NodeData
    */
   name: string;
   /**
-   *
+   * 
+   * @type {string}
+   * @memberof NodeData
+   */
+  host: string;
+  /**
+   * 
    * @type {boolean}
    * @memberof NodeData
    */
   is_node_up: boolean;
   /**
-   *
+   * 
    * @type {boolean}
    * @memberof NodeData
    */
   is_master: boolean;
   /**
-   *
+   * 
    * @type {boolean}
    * @memberof NodeData
    */
   is_tserver: boolean;
   /**
-   *
+   * 
+   * @type {boolean}
+   * @memberof NodeData
+   */
+  is_read_replica: boolean;
+  /**
+   * 
+   * @type {boolean}
+   * @memberof NodeData
+   */
+  is_master_up: boolean;
+  /**
+   * 
+   * @type {boolean}
+   * @memberof NodeData
+   */
+  is_bootstrapping: boolean;
+  /**
+   * 
    * @type {NodeDataMetrics}
    * @memberof NodeData
    */
   metrics: NodeDataMetrics;
   /**
-   *
+   * 
    * @type {NodeDataCloudInfo}
    * @memberof NodeData
    */
   cloud_info: NodeDataCloudInfo;
   /**
-   *
+   * 
    * @type {string}
    * @memberof NodeData
    */
   software_version: string;
 }
+
+
+

@@ -4,10 +4,14 @@
       "10.0.0.3:9000"
     ],
     "labels": {
+      "universe_uuid": "UNIVERSE_UUID",
       "node_prefix": "host",
       "export_type": "tserver_export",
       "exported_instance": "host-n3",
-      "__param_priority_regex": "rocksdb_(number_db_(next|seek)|block_cache_(add|single_touch_add|multi_touch_add)|current_version_(sst_files_size|num_sst_files)|db_([^_]+_micros_[^_]+|mutex_wait_micros)|block_cache_(hit|miss)|bloom_filter_(checked|useful)|stall_micros|flush_write_bytes|compact_[^_]+_bytes|compaction_times_micros_[^_]+|numfiles_in_singlecompaction_[^_]+)|async_replication_[^_]+_lag_micros|transaction_conflicts|majority_sst_files_rejections|expired_transactions|log_(sync_latency_[^_]+|group_commit_latency_[^_]+|append_latency_[^_]+|bytes_logged|reader_bytes_read|append_latency_count|sync_latency_count|cache_size|cache_num_ops)|follower_lag_ms|[^_]+_memory_pressure_rejections"
+      "node_name":"host-n3",
+      "node_address":"10.0.0.3",
+      "__param_priority_regex": "rocksdb_(number_db_(next|seek|prev)|db_iter_bytes_read|block_cache_(add|single_touch_add|multi_touch_add)|current_version_(sst_files_size|num_sst_files)|db_([^_]+_micros_[^_]+|mutex_wait_micros)|block_cache_(hit|miss)|bloom_filter_(checked|useful)|stall_micros|flush_write_bytes|compact_[^_]+_bytes|compaction_times_micros_[^_]+|numfiles_in_singlecompaction_[^_]+)|mem_tracker_(RegularDB_MemTable|IntentsDB_MemTable)|mem_tracker_server_PerTablet_(RegularDB_MemTable|IntentsDB_MemTable)|async_replication_[^_]+_lag_micros|transaction_conflicts|majority_sst_files_rejections|expired_transactions|log_(sync_latency_[^_]+|group_commit_latency_[^_]+|append_latency_[^_]+|bytes_logged|reader_bytes_read|cache_size|cache_num_ops)|follower_lag_ms|[^_]+_memory_pressure_rejections|log_wal_size|ql_read_latency_[^_]+|(all|write)_operations_inflight|ql_write_latency_[^_]+|write_lock_latency_[^_]+|is_raft_leader",
+      "__param_show_help": "false"
     }
   },
   {
@@ -15,10 +19,14 @@
       "10.0.0.3:11000"
     ],
     "labels": {
+      "universe_uuid": "UNIVERSE_UUID",
       "node_prefix": "host",
       "export_type": "redis_export",
       "exported_instance": "host-n3",
-      "__param_priority_regex": "rocksdb_(number_db_(next|seek)|block_cache_(add|single_touch_add|multi_touch_add)|current_version_(sst_files_size|num_sst_files)|db_([^_]+_micros_[^_]+|mutex_wait_micros)|block_cache_(hit|miss)|bloom_filter_(checked|useful)|stall_micros|flush_write_bytes|compact_[^_]+_bytes|compaction_times_micros_[^_]+|numfiles_in_singlecompaction_[^_]+)|async_replication_[^_]+_lag_micros|transaction_conflicts|majority_sst_files_rejections|expired_transactions|log_(sync_latency_[^_]+|group_commit_latency_[^_]+|append_latency_[^_]+|bytes_logged|reader_bytes_read|append_latency_count|sync_latency_count|cache_size|cache_num_ops)|follower_lag_ms|[^_]+_memory_pressure_rejections"
+      "node_name":"host-n3",
+      "node_address":"10.0.0.3",
+      "__param_priority_regex": "rocksdb_(number_db_(next|seek|prev)|db_iter_bytes_read|block_cache_(add|single_touch_add|multi_touch_add)|current_version_(sst_files_size|num_sst_files)|db_([^_]+_micros_[^_]+|mutex_wait_micros)|block_cache_(hit|miss)|bloom_filter_(checked|useful)|stall_micros|flush_write_bytes|compact_[^_]+_bytes|compaction_times_micros_[^_]+|numfiles_in_singlecompaction_[^_]+)|mem_tracker_(RegularDB_MemTable|IntentsDB_MemTable)|mem_tracker_server_PerTablet_(RegularDB_MemTable|IntentsDB_MemTable)|async_replication_[^_]+_lag_micros|transaction_conflicts|majority_sst_files_rejections|expired_transactions|log_(sync_latency_[^_]+|group_commit_latency_[^_]+|append_latency_[^_]+|bytes_logged|reader_bytes_read|cache_size|cache_num_ops)|follower_lag_ms|[^_]+_memory_pressure_rejections|log_wal_size|ql_read_latency_[^_]+|(all|write)_operations_inflight|ql_write_latency_[^_]+|write_lock_latency_[^_]+|is_raft_leader",
+      "__param_show_help": "false"
     }
   },
   {
@@ -26,10 +34,14 @@
       "10.0.0.3:12000"
     ],
     "labels": {
+      "universe_uuid": "UNIVERSE_UUID",
       "node_prefix": "host",
       "export_type": "cql_export",
       "exported_instance": "host-n3",
-      "__param_priority_regex": "rocksdb_(number_db_(next|seek)|block_cache_(add|single_touch_add|multi_touch_add)|current_version_(sst_files_size|num_sst_files)|db_([^_]+_micros_[^_]+|mutex_wait_micros)|block_cache_(hit|miss)|bloom_filter_(checked|useful)|stall_micros|flush_write_bytes|compact_[^_]+_bytes|compaction_times_micros_[^_]+|numfiles_in_singlecompaction_[^_]+)|async_replication_[^_]+_lag_micros|transaction_conflicts|majority_sst_files_rejections|expired_transactions|log_(sync_latency_[^_]+|group_commit_latency_[^_]+|append_latency_[^_]+|bytes_logged|reader_bytes_read|append_latency_count|sync_latency_count|cache_size|cache_num_ops)|follower_lag_ms|[^_]+_memory_pressure_rejections"
+      "node_name":"host-n3",
+      "node_address":"10.0.0.3",
+      "__param_priority_regex": "rocksdb_(number_db_(next|seek|prev)|db_iter_bytes_read|block_cache_(add|single_touch_add|multi_touch_add)|current_version_(sst_files_size|num_sst_files)|db_([^_]+_micros_[^_]+|mutex_wait_micros)|block_cache_(hit|miss)|bloom_filter_(checked|useful)|stall_micros|flush_write_bytes|compact_[^_]+_bytes|compaction_times_micros_[^_]+|numfiles_in_singlecompaction_[^_]+)|mem_tracker_(RegularDB_MemTable|IntentsDB_MemTable)|mem_tracker_server_PerTablet_(RegularDB_MemTable|IntentsDB_MemTable)|async_replication_[^_]+_lag_micros|transaction_conflicts|majority_sst_files_rejections|expired_transactions|log_(sync_latency_[^_]+|group_commit_latency_[^_]+|append_latency_[^_]+|bytes_logged|reader_bytes_read|cache_size|cache_num_ops)|follower_lag_ms|[^_]+_memory_pressure_rejections|log_wal_size|ql_read_latency_[^_]+|(all|write)_operations_inflight|ql_write_latency_[^_]+|write_lock_latency_[^_]+|is_raft_leader",
+      "__param_show_help": "false"
     }
   },
   {
@@ -37,10 +49,14 @@
       "10.0.0.2:9000"
     ],
     "labels": {
+      "universe_uuid": "UNIVERSE_UUID",
       "node_prefix": "host",
       "export_type": "tserver_export",
       "exported_instance": "host-n2",
-      "__param_priority_regex": "rocksdb_(number_db_(next|seek)|block_cache_(add|single_touch_add|multi_touch_add)|current_version_(sst_files_size|num_sst_files)|db_([^_]+_micros_[^_]+|mutex_wait_micros)|block_cache_(hit|miss)|bloom_filter_(checked|useful)|stall_micros|flush_write_bytes|compact_[^_]+_bytes|compaction_times_micros_[^_]+|numfiles_in_singlecompaction_[^_]+)|async_replication_[^_]+_lag_micros|transaction_conflicts|majority_sst_files_rejections|expired_transactions|log_(sync_latency_[^_]+|group_commit_latency_[^_]+|append_latency_[^_]+|bytes_logged|reader_bytes_read|append_latency_count|sync_latency_count|cache_size|cache_num_ops)|follower_lag_ms|[^_]+_memory_pressure_rejections"
+      "node_name":"host-n2",
+      "node_address":"10.0.0.2",
+      "__param_priority_regex": "rocksdb_(number_db_(next|seek|prev)|db_iter_bytes_read|block_cache_(add|single_touch_add|multi_touch_add)|current_version_(sst_files_size|num_sst_files)|db_([^_]+_micros_[^_]+|mutex_wait_micros)|block_cache_(hit|miss)|bloom_filter_(checked|useful)|stall_micros|flush_write_bytes|compact_[^_]+_bytes|compaction_times_micros_[^_]+|numfiles_in_singlecompaction_[^_]+)|mem_tracker_(RegularDB_MemTable|IntentsDB_MemTable)|mem_tracker_server_PerTablet_(RegularDB_MemTable|IntentsDB_MemTable)|async_replication_[^_]+_lag_micros|transaction_conflicts|majority_sst_files_rejections|expired_transactions|log_(sync_latency_[^_]+|group_commit_latency_[^_]+|append_latency_[^_]+|bytes_logged|reader_bytes_read|cache_size|cache_num_ops)|follower_lag_ms|[^_]+_memory_pressure_rejections|log_wal_size|ql_read_latency_[^_]+|(all|write)_operations_inflight|ql_write_latency_[^_]+|write_lock_latency_[^_]+|is_raft_leader",
+      "__param_show_help": "false"
     }
   },
   {
@@ -48,10 +64,14 @@
       "10.0.0.2:11000"
     ],
     "labels": {
+      "universe_uuid": "UNIVERSE_UUID",
       "node_prefix": "host",
       "export_type": "redis_export",
       "exported_instance": "host-n2",
-      "__param_priority_regex": "rocksdb_(number_db_(next|seek)|block_cache_(add|single_touch_add|multi_touch_add)|current_version_(sst_files_size|num_sst_files)|db_([^_]+_micros_[^_]+|mutex_wait_micros)|block_cache_(hit|miss)|bloom_filter_(checked|useful)|stall_micros|flush_write_bytes|compact_[^_]+_bytes|compaction_times_micros_[^_]+|numfiles_in_singlecompaction_[^_]+)|async_replication_[^_]+_lag_micros|transaction_conflicts|majority_sst_files_rejections|expired_transactions|log_(sync_latency_[^_]+|group_commit_latency_[^_]+|append_latency_[^_]+|bytes_logged|reader_bytes_read|append_latency_count|sync_latency_count|cache_size|cache_num_ops)|follower_lag_ms|[^_]+_memory_pressure_rejections"
+      "node_name":"host-n2",
+      "node_address":"10.0.0.2",
+      "__param_priority_regex": "rocksdb_(number_db_(next|seek|prev)|db_iter_bytes_read|block_cache_(add|single_touch_add|multi_touch_add)|current_version_(sst_files_size|num_sst_files)|db_([^_]+_micros_[^_]+|mutex_wait_micros)|block_cache_(hit|miss)|bloom_filter_(checked|useful)|stall_micros|flush_write_bytes|compact_[^_]+_bytes|compaction_times_micros_[^_]+|numfiles_in_singlecompaction_[^_]+)|mem_tracker_(RegularDB_MemTable|IntentsDB_MemTable)|mem_tracker_server_PerTablet_(RegularDB_MemTable|IntentsDB_MemTable)|async_replication_[^_]+_lag_micros|transaction_conflicts|majority_sst_files_rejections|expired_transactions|log_(sync_latency_[^_]+|group_commit_latency_[^_]+|append_latency_[^_]+|bytes_logged|reader_bytes_read|cache_size|cache_num_ops)|follower_lag_ms|[^_]+_memory_pressure_rejections|log_wal_size|ql_read_latency_[^_]+|(all|write)_operations_inflight|ql_write_latency_[^_]+|write_lock_latency_[^_]+|is_raft_leader",
+      "__param_show_help": "false"
     }
   },
   {
@@ -59,10 +79,14 @@
       "10.0.0.2:12000"
     ],
     "labels": {
+      "universe_uuid": "UNIVERSE_UUID",
       "node_prefix": "host",
       "export_type": "cql_export",
       "exported_instance": "host-n2",
-      "__param_priority_regex": "rocksdb_(number_db_(next|seek)|block_cache_(add|single_touch_add|multi_touch_add)|current_version_(sst_files_size|num_sst_files)|db_([^_]+_micros_[^_]+|mutex_wait_micros)|block_cache_(hit|miss)|bloom_filter_(checked|useful)|stall_micros|flush_write_bytes|compact_[^_]+_bytes|compaction_times_micros_[^_]+|numfiles_in_singlecompaction_[^_]+)|async_replication_[^_]+_lag_micros|transaction_conflicts|majority_sst_files_rejections|expired_transactions|log_(sync_latency_[^_]+|group_commit_latency_[^_]+|append_latency_[^_]+|bytes_logged|reader_bytes_read|append_latency_count|sync_latency_count|cache_size|cache_num_ops)|follower_lag_ms|[^_]+_memory_pressure_rejections"
+      "node_name":"host-n2",
+      "node_address":"10.0.0.2",
+      "__param_priority_regex": "rocksdb_(number_db_(next|seek|prev)|db_iter_bytes_read|block_cache_(add|single_touch_add|multi_touch_add)|current_version_(sst_files_size|num_sst_files)|db_([^_]+_micros_[^_]+|mutex_wait_micros)|block_cache_(hit|miss)|bloom_filter_(checked|useful)|stall_micros|flush_write_bytes|compact_[^_]+_bytes|compaction_times_micros_[^_]+|numfiles_in_singlecompaction_[^_]+)|mem_tracker_(RegularDB_MemTable|IntentsDB_MemTable)|mem_tracker_server_PerTablet_(RegularDB_MemTable|IntentsDB_MemTable)|async_replication_[^_]+_lag_micros|transaction_conflicts|majority_sst_files_rejections|expired_transactions|log_(sync_latency_[^_]+|group_commit_latency_[^_]+|append_latency_[^_]+|bytes_logged|reader_bytes_read|cache_size|cache_num_ops)|follower_lag_ms|[^_]+_memory_pressure_rejections|log_wal_size|ql_read_latency_[^_]+|(all|write)_operations_inflight|ql_write_latency_[^_]+|write_lock_latency_[^_]+|is_raft_leader",
+      "__param_show_help": "false"
     }
   },
   {
@@ -70,10 +94,14 @@
       "10.0.0.1:9000"
     ],
     "labels": {
+      "universe_uuid": "UNIVERSE_UUID",
       "node_prefix": "host",
       "export_type": "tserver_export",
       "exported_instance": "host-n1",
-      "__param_priority_regex": "rocksdb_(number_db_(next|seek)|block_cache_(add|single_touch_add|multi_touch_add)|current_version_(sst_files_size|num_sst_files)|db_([^_]+_micros_[^_]+|mutex_wait_micros)|block_cache_(hit|miss)|bloom_filter_(checked|useful)|stall_micros|flush_write_bytes|compact_[^_]+_bytes|compaction_times_micros_[^_]+|numfiles_in_singlecompaction_[^_]+)|async_replication_[^_]+_lag_micros|transaction_conflicts|majority_sst_files_rejections|expired_transactions|log_(sync_latency_[^_]+|group_commit_latency_[^_]+|append_latency_[^_]+|bytes_logged|reader_bytes_read|append_latency_count|sync_latency_count|cache_size|cache_num_ops)|follower_lag_ms|[^_]+_memory_pressure_rejections"
+      "node_name":"host-n1",
+      "node_address":"10.0.0.1",
+      "__param_priority_regex": "rocksdb_(number_db_(next|seek|prev)|db_iter_bytes_read|block_cache_(add|single_touch_add|multi_touch_add)|current_version_(sst_files_size|num_sst_files)|db_([^_]+_micros_[^_]+|mutex_wait_micros)|block_cache_(hit|miss)|bloom_filter_(checked|useful)|stall_micros|flush_write_bytes|compact_[^_]+_bytes|compaction_times_micros_[^_]+|numfiles_in_singlecompaction_[^_]+)|mem_tracker_(RegularDB_MemTable|IntentsDB_MemTable)|mem_tracker_server_PerTablet_(RegularDB_MemTable|IntentsDB_MemTable)|async_replication_[^_]+_lag_micros|transaction_conflicts|majority_sst_files_rejections|expired_transactions|log_(sync_latency_[^_]+|group_commit_latency_[^_]+|append_latency_[^_]+|bytes_logged|reader_bytes_read|cache_size|cache_num_ops)|follower_lag_ms|[^_]+_memory_pressure_rejections|log_wal_size|ql_read_latency_[^_]+|(all|write)_operations_inflight|ql_write_latency_[^_]+|write_lock_latency_[^_]+|is_raft_leader",
+      "__param_show_help": "false"
     }
   },
   {
@@ -81,10 +109,14 @@
       "10.0.0.1:11000"
     ],
     "labels": {
+      "universe_uuid": "UNIVERSE_UUID",
       "node_prefix": "host",
       "export_type": "redis_export",
       "exported_instance": "host-n1",
-      "__param_priority_regex": "rocksdb_(number_db_(next|seek)|block_cache_(add|single_touch_add|multi_touch_add)|current_version_(sst_files_size|num_sst_files)|db_([^_]+_micros_[^_]+|mutex_wait_micros)|block_cache_(hit|miss)|bloom_filter_(checked|useful)|stall_micros|flush_write_bytes|compact_[^_]+_bytes|compaction_times_micros_[^_]+|numfiles_in_singlecompaction_[^_]+)|async_replication_[^_]+_lag_micros|transaction_conflicts|majority_sst_files_rejections|expired_transactions|log_(sync_latency_[^_]+|group_commit_latency_[^_]+|append_latency_[^_]+|bytes_logged|reader_bytes_read|append_latency_count|sync_latency_count|cache_size|cache_num_ops)|follower_lag_ms|[^_]+_memory_pressure_rejections"
+      "node_name":"host-n1",
+      "node_address":"10.0.0.1",
+      "__param_priority_regex": "rocksdb_(number_db_(next|seek|prev)|db_iter_bytes_read|block_cache_(add|single_touch_add|multi_touch_add)|current_version_(sst_files_size|num_sst_files)|db_([^_]+_micros_[^_]+|mutex_wait_micros)|block_cache_(hit|miss)|bloom_filter_(checked|useful)|stall_micros|flush_write_bytes|compact_[^_]+_bytes|compaction_times_micros_[^_]+|numfiles_in_singlecompaction_[^_]+)|mem_tracker_(RegularDB_MemTable|IntentsDB_MemTable)|mem_tracker_server_PerTablet_(RegularDB_MemTable|IntentsDB_MemTable)|async_replication_[^_]+_lag_micros|transaction_conflicts|majority_sst_files_rejections|expired_transactions|log_(sync_latency_[^_]+|group_commit_latency_[^_]+|append_latency_[^_]+|bytes_logged|reader_bytes_read|cache_size|cache_num_ops)|follower_lag_ms|[^_]+_memory_pressure_rejections|log_wal_size|ql_read_latency_[^_]+|(all|write)_operations_inflight|ql_write_latency_[^_]+|write_lock_latency_[^_]+|is_raft_leader",
+      "__param_show_help": "false"
     }
   },
   {
@@ -92,10 +124,14 @@
       "10.0.0.1:12000"
     ],
     "labels": {
+      "universe_uuid": "UNIVERSE_UUID",
       "node_prefix": "host",
       "export_type": "cql_export",
       "exported_instance": "host-n1",
-      "__param_priority_regex": "rocksdb_(number_db_(next|seek)|block_cache_(add|single_touch_add|multi_touch_add)|current_version_(sst_files_size|num_sst_files)|db_([^_]+_micros_[^_]+|mutex_wait_micros)|block_cache_(hit|miss)|bloom_filter_(checked|useful)|stall_micros|flush_write_bytes|compact_[^_]+_bytes|compaction_times_micros_[^_]+|numfiles_in_singlecompaction_[^_]+)|async_replication_[^_]+_lag_micros|transaction_conflicts|majority_sst_files_rejections|expired_transactions|log_(sync_latency_[^_]+|group_commit_latency_[^_]+|append_latency_[^_]+|bytes_logged|reader_bytes_read|append_latency_count|sync_latency_count|cache_size|cache_num_ops)|follower_lag_ms|[^_]+_memory_pressure_rejections"
+      "node_name":"host-n1",
+      "node_address":"10.0.0.1",
+      "__param_priority_regex": "rocksdb_(number_db_(next|seek|prev)|db_iter_bytes_read|block_cache_(add|single_touch_add|multi_touch_add)|current_version_(sst_files_size|num_sst_files)|db_([^_]+_micros_[^_]+|mutex_wait_micros)|block_cache_(hit|miss)|bloom_filter_(checked|useful)|stall_micros|flush_write_bytes|compact_[^_]+_bytes|compaction_times_micros_[^_]+|numfiles_in_singlecompaction_[^_]+)|mem_tracker_(RegularDB_MemTable|IntentsDB_MemTable)|mem_tracker_server_PerTablet_(RegularDB_MemTable|IntentsDB_MemTable)|async_replication_[^_]+_lag_micros|transaction_conflicts|majority_sst_files_rejections|expired_transactions|log_(sync_latency_[^_]+|group_commit_latency_[^_]+|append_latency_[^_]+|bytes_logged|reader_bytes_read|cache_size|cache_num_ops)|follower_lag_ms|[^_]+_memory_pressure_rejections|log_wal_size|ql_read_latency_[^_]+|(all|write)_operations_inflight|ql_write_latency_[^_]+|write_lock_latency_[^_]+|is_raft_leader",
+      "__param_show_help": "false"
     }
   }
 ]

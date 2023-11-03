@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_SNAPSHOT_COORDINATOR_H
-#define YB_TABLET_SNAPSHOT_COORDINATOR_H
+#pragma once
 
 #include "yb/tablet/tablet_fwd.h"
 
@@ -27,11 +26,9 @@ namespace tablet {
 // Interface for snapshot coordinator.
 class SnapshotCoordinator {
  public:
-  virtual Status CreateReplicated(
-      int64_t leader_term, const SnapshotOperation& operation) = 0;
+  virtual Status CreateReplicated(int64_t leader_term, const SnapshotOperation& operation) = 0;
 
-  virtual Status DeleteReplicated(
-      int64_t leader_term, const SnapshotOperation& operation) = 0;
+  virtual Status DeleteReplicated(int64_t leader_term, const SnapshotOperation& operation) = 0;
 
   virtual Status RestoreSysCatalogReplicated(
       int64_t leader_term, const SnapshotOperation& operation, Status* complete_status) = 0;
@@ -45,5 +42,3 @@ class SnapshotCoordinator {
 
 } // namespace tablet
 } // namespace yb
-
-#endif // YB_TABLET_SNAPSHOT_COORDINATOR_H

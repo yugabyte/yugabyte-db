@@ -54,104 +54,104 @@ TEST_F(DocDBRocksDBUtilTest, CaseInsensitiveCompressionType) {
 }
 
 TEST_F(DocDBRocksDBUtilTest, MaxBackgroundFlushesDefault) {
-  FLAGS_num_cpus = 16;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_cpus) = 16;
   auto options = TEST_AutoInitFromRocksDBFlags();
   CHECK_EQ(options.max_background_flushes, 3);
 }
 
 TEST_F(DocDBRocksDBUtilTest, MaxBackgroundFlushesDefaultLimit) {
-  FLAGS_num_cpus = 32;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_cpus) = 32;
   auto options = TEST_AutoInitFromRocksDBFlags();
   CHECK_EQ(options.max_background_flushes, 4);
 }
 
 TEST_F(DocDBRocksDBUtilTest, MaxBackgroundFlushesCompactionsDisabled) {
-  FLAGS_rocksdb_max_background_flushes = 10;
-  FLAGS_rocksdb_disable_compactions = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_background_flushes) = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
   auto options = TEST_AutoInitFromRocksDBFlags();
   CHECK_EQ(options.max_background_flushes, 10);
 }
 
 TEST_F(DocDBRocksDBUtilTest, BaseBackgroundCompactionsDefault) {
-  FLAGS_rocksdb_max_background_compactions = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_background_compactions) = 10;
   auto options = TEST_AutoInitFromRocksDBFlags();
   CHECK_EQ(options.base_background_compactions, 10);
 }
 
 TEST_F(DocDBRocksDBUtilTest, BaseBackgroundCompactionsDisabled) {
-  FLAGS_rocksdb_disable_compactions = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
   auto options = TEST_AutoInitFromRocksDBFlags();
   CHECK_EQ(options.base_background_compactions, -1);
 }
 
 TEST_F(DocDBRocksDBUtilTest, BaseBackgroundCompactionsExplicit) {
-  FLAGS_rocksdb_base_background_compactions = 23;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_base_background_compactions) = 23;
   auto options = TEST_AutoInitFromRocksDBFlags();
   CHECK_EQ(options.base_background_compactions, 23);
 }
 
 TEST_F(DocDBRocksDBUtilTest, MaxBackgroundCompactionsDefault) {
-  FLAGS_num_cpus = 12;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_cpus) = 12;
   auto options = TEST_AutoInitFromRocksDBFlags();
   CHECK_EQ(options.max_background_compactions, 3);
 }
 
 TEST_F(DocDBRocksDBUtilTest, MaxBackgroundCompactionsDisabled) {
-  FLAGS_rocksdb_disable_compactions = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
   auto options = TEST_AutoInitFromRocksDBFlags();
   CHECK_EQ(options.max_background_compactions, 1);
 }
 
 TEST_F(DocDBRocksDBUtilTest, MaxBackgroundCompactionsExplicit) {
-  FLAGS_rocksdb_max_background_compactions = 23;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_background_compactions) = 23;
   auto options = TEST_AutoInitFromRocksDBFlags();
   CHECK_EQ(options.max_background_compactions, 23);
 }
 
 TEST_F(DocDBRocksDBUtilTest, PriorityThreadPoolSizeDefaultLowCpus) {
-  FLAGS_num_cpus = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_cpus) = 3;
   CHECK_EQ(GetGlobalRocksDBPriorityThreadPoolSize(), 1);
 }
 
 TEST_F(DocDBRocksDBUtilTest, PriorityThreadPoolSizeDefaultFewCpus) {
-  FLAGS_num_cpus = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_cpus) = 5;
   CHECK_EQ(GetGlobalRocksDBPriorityThreadPoolSize(), 2);
 }
 
 TEST_F(DocDBRocksDBUtilTest, PriorityThreadPoolSizeDefaultManyCpus) {
-  FLAGS_num_cpus = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_cpus) = 10;
   CHECK_EQ(GetGlobalRocksDBPriorityThreadPoolSize(), 4);
 }
 
 TEST_F(DocDBRocksDBUtilTest, PriorityThreadPoolSizeTakesExplicitSetting) {
-  FLAGS_priority_thread_pool_size = 16;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_priority_thread_pool_size) = 16;
   CHECK_EQ(GetGlobalRocksDBPriorityThreadPoolSize(), 16);
 }
 
 TEST_F(DocDBRocksDBUtilTest, PriorityThreadPoolSizeTakesMaxBackgroundCompaction) {
-  FLAGS_rocksdb_max_background_compactions = 4;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_background_compactions) = 4;
   CHECK_EQ(GetGlobalRocksDBPriorityThreadPoolSize(), 4);
 }
 
 TEST_F(DocDBRocksDBUtilTest, PriorityThreadPoolSizeCompactionDisabled) {
-  FLAGS_rocksdb_disable_compactions = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
   CHECK_EQ(GetGlobalRocksDBPriorityThreadPoolSize(), 1);
 }
 
 TEST_F(DocDBRocksDBUtilTest, MinBlockRestartInterval) {
-  FLAGS_block_restart_interval = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_block_restart_interval) = 0;
   auto blockBasedOptions = TEST_AutoInitFromRocksDbTableFlags();
   CHECK_EQ(blockBasedOptions.block_restart_interval, 16);
 }
 
 TEST_F(DocDBRocksDBUtilTest, MaxBlockRestartInterval) {
-  FLAGS_block_restart_interval = 512;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_block_restart_interval) = 512;
   auto blockBasedOptions = TEST_AutoInitFromRocksDbTableFlags();
   CHECK_EQ(blockBasedOptions.block_restart_interval, 256);
 }
 
 TEST_F(DocDBRocksDBUtilTest, ValidBlockRestartInterval) {
-  FLAGS_block_restart_interval = 8;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_block_restart_interval) = 8;
   auto blockBasedOptions = TEST_AutoInitFromRocksDbTableFlags();
   CHECK_EQ(blockBasedOptions.block_restart_interval, 8);
 }
@@ -162,19 +162,19 @@ TEST_F(DocDBRocksDBUtilTest, DefaultBlockRestartInterval) {
 }
 
 TEST_F(DocDBRocksDBUtilTest, MinIndexBlockRestartInterval) {
-  FLAGS_index_block_restart_interval = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_index_block_restart_interval) = 0;
   auto blockBasedOptions = TEST_AutoInitFromRocksDbTableFlags();
   CHECK_EQ(blockBasedOptions.index_block_restart_interval, 1);
 }
 
 TEST_F(DocDBRocksDBUtilTest, MaxIndexBlockRestartInterval) {
-  FLAGS_index_block_restart_interval = 512;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_index_block_restart_interval) = 512;
   auto blockBasedOptions = TEST_AutoInitFromRocksDbTableFlags();
   CHECK_EQ(blockBasedOptions.index_block_restart_interval, 256);
 }
 
 TEST_F(DocDBRocksDBUtilTest, ValidIndexBlockRestartInterval) {
-  FLAGS_index_block_restart_interval = 8;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_index_block_restart_interval) = 8;
   auto blockBasedOptions = TEST_AutoInitFromRocksDbTableFlags();
   CHECK_EQ(blockBasedOptions.index_block_restart_interval, 8);
 }
@@ -238,18 +238,18 @@ TEST_F(DocDBRocksDBUtilTest, RocksDBRateLimiter) {
     constexpr int64_t kBPS = 64_MB;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec) = kBPS;
     std::shared_ptr<rocksdb::RateLimiter> raw_limiter(rocksdb::NewGenericRateLimiter(kBPS));
-    ASSERT_NOTNULL(raw_limiter.get());
+    ASSERT_ONLY_NOTNULL(raw_limiter.get());
     util_limiter = CreateRocksDBRateLimiter();
-    ASSERT_NOTNULL(util_limiter.get());
+    ASSERT_ONLY_NOTNULL(util_limiter.get());
     ASSERT_EQ(util_limiter->GetSingleBurstBytes(), raw_limiter->GetSingleBurstBytes());
 
     // Decrease bytes per sec
     constexpr auto kFactor = 2;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec)
       = kBPS / kFactor;
-    ASSERT_NOTNULL(raw_limiter.get());
+    ASSERT_ONLY_NOTNULL(raw_limiter.get());
     util_limiter = CreateRocksDBRateLimiter();
-    ASSERT_NOTNULL(util_limiter.get());
+    ASSERT_ONLY_NOTNULL(util_limiter.get());
     ASSERT_EQ(util_limiter->GetSingleBurstBytes(), raw_limiter->GetSingleBurstBytes() / kFactor);
   }
 }

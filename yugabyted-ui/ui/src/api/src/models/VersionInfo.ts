@@ -12,22 +12,20 @@
  */
 
 
-// eslint-disable-next-line no-duplicate-imports
-import type { VersionInfoData } from './VersionInfoData';
 
 
 /**
- * 
+ * YugabyteDB version info
  * @export
  * @interface VersionInfo
  */
 export interface VersionInfo  {
   /**
    * 
-   * @type {VersionInfoData}
+   * @type {string}
    * @memberof VersionInfo
    */
-  data?: VersionInfoData;
+  version?: string;
 }
 
 

@@ -10,6 +10,9 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigValueFactory;
 import com.yugabyte.yw.commissioner.HealthChecker;
+import com.yugabyte.yw.common.CustomWsClientFactory;
+import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
+import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.alerts.AlertsGarbageCollector;
 import com.yugabyte.yw.common.alerts.QueryAlerts;
@@ -18,9 +21,8 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import kamon.instrumentation.play.GuiceModule;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
-import play.test.WithApplication;
 
-public abstract class MDCPropagatingDispatcherTestBase extends WithApplication {
+public abstract class MDCPropagatingDispatcherTestBase extends PlatformGuiceApplicationBaseTest {
 
   private Config mockConfig;
   private HealthChecker mockHealthChecker;
@@ -53,6 +55,8 @@ public abstract class MDCPropagatingDispatcherTestBase extends WithApplication {
         .overrides(bind(QueryAlerts.class).toInstance(mockQueryAlerts))
         .overrides(bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
         .overrides(bind(AlertsGarbageCollector.class).toInstance(mockAlertsGarbageCollector))
+        .overrides(
+            bind(CustomWsClientFactory.class).toProvider(CustomWsClientFactoryProvider.class))
         .build();
   }
 }

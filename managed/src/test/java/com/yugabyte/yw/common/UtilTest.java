@@ -22,19 +22,26 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
+import java.time.Duration;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.converters.Nullable;
 import junitparams.naming.TestCaseName;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -58,7 +65,7 @@ public class UtilTest extends FakeDBApplication {
   @Test
   public void testGetNodePrefix() {
     Customer c = ModelFactory.testCustomer();
-    String nodePrefix = Util.getNodePrefix(c.getCustomerId(), "demo");
+    String nodePrefix = Util.getNodePrefix(c.getId(), "demo");
     assertEquals("yb-tc-demo", nodePrefix);
   }
 
@@ -113,7 +120,7 @@ public class UtilTest extends FakeDBApplication {
     for (int i = 0; i < azCount; i++) {
       azUUIDs[i] = UUID.randomUUID();
     }
-    Cluster cluster = new Cluster(ClusterType.PRIMARY, null);
+    Cluster cluster = new Cluster(ClusterType.PRIMARY, new UserIntent());
     Set<NodeDetails> nodeDetailsSet =
         prepareNodes(cluster, azUUIDs, azCount, countsInAZ, mastersInAZ, stoppedInAZ);
 
@@ -408,5 +415,74 @@ public class UtilTest extends FakeDBApplication {
   @Test
   public void testYsqlRedaction(String output, String input) {
     assertEquals(output, Util.redactYsqlQuery(input));
+  }
+
+  @Test
+  @Parameters({
+    "3ns, 3",
+    "2us, 2000",
+    "5\u00b5s, 5000",
+    "1ms, 1000000",
+    "5s, 5000000000",
+    "1m, 60000000000",
+    "2h, 7200000000000",
+    "1d, 86400000000000",
+    "1h2m3s, 3723000000000",
+    "1ms2us3ns, 1002003"
+  })
+  public void testGoDurationConversion(String goDuration, long expectedNanos) {
+    Duration duration = Util.goDurationToJava(goDuration);
+    long nanos = TimeUnit.SECONDS.toNanos(duration.getSeconds()) + duration.getNano();
+    assertEquals(expectedNanos, nanos);
+  }
+
+  @Test
+  @Parameters({
+    "kg10, abc",
+    "eij0, abcd",
+    "n000, 1",
+    "tdxk, ReallyReallyLongStringStillHashIs4CharactersOnly"
+  })
+  public void testBase36hash(String output, String input) {
+    assertEquals(output, Util.base36hash(input));
+  }
+
+  @Test
+  public void testGetFileSize() {
+    int maxChars = (int) 1e6; // ~ 2 MB
+    int minChars = 1;
+
+    String data = RandomStringUtils.randomAlphabetic(minChars, maxChars);
+    Path tmpFilePath = Paths.get(TestHelper.createTempFile(data));
+
+    long actualFileSize = data.getBytes().length;
+    long fileSize = FileUtils.getFileSize(tmpFilePath.toString());
+
+    org.apache.commons.io.FileUtils.deleteQuietly(new File(tmpFilePath.toString()));
+
+    assertTrue(fileSize == actualFileSize);
+    assertTrue(Files.notExists(tmpFilePath));
+  }
+
+  @Test
+  public void testMaybeGetEmailFromContext() {
+    Customer defaultCustomer = ModelFactory.testCustomer();
+    Users defaultUser = ModelFactory.testUser(defaultCustomer);
+    // Case 1: Happy path
+    TestUtils.setFakeHttpContext(defaultUser, "sg@yftt.com");
+    String userEmail = Util.maybeGetEmailFromContext();
+    assertEquals(userEmail, "sg@yftt.com");
+    // Case 2: getUser is null
+    TestUtils.setFakeHttpContext(null, "ok@g.com");
+    userEmail = Util.maybeGetEmailFromContext();
+    assertEquals(userEmail, "Unknown");
+    // Case 3: getEmail is null
+    TestUtils.setFakeHttpContext(defaultUser, null);
+    userEmail = Util.maybeGetEmailFromContext();
+    assertEquals(userEmail, "Unknown");
+    // Case 4: empty
+    TestUtils.setFakeHttpContext(defaultUser, "");
+    userEmail = Util.maybeGetEmailFromContext();
+    assertEquals(userEmail, "");
   }
 }

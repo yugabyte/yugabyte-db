@@ -1,4 +1,4 @@
-import React, { FC, useState } from 'react';
+import { FC, useState } from 'react';
 import { useQuery } from 'react-query';
 import { MaintenanceWindowSchema } from '.';
 import { fetchUniversesList } from '../../../actions/xClusterReplication';
@@ -7,6 +7,7 @@ import { CreateMaintenanceWindow } from './CreateMaintenanceWindow';
 
 import { MaintenanceWindowsList } from './MaintenanceWindowsList';
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 enum VIEW_STATES {
   CREATE,
   LIST

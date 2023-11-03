@@ -1,8 +1,8 @@
-import React, {useState, useContext, useEffect} from 'react';
+import { useState, useContext, useEffect } from 'react';
 import { YBCheckBox, YBModal } from '../../common/forms/fields';
 import './MetricsComparisonModal.scss';
 import { Col, Panel, Row } from 'react-bootstrap';
-import { panelTypes } from '../GraphPanel/GraphPanel';
+import { MetricTypesWithOperations } from '../../metrics/constants';
 import { FilterContext } from './ComparisonFilterContextProvider';
 import { Input } from '../../../redesign/uikit/Input/Input';
 import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
@@ -43,15 +43,15 @@ export const MetricsSelectorModal = ({ visible, onHide, selectedUniverse }) => {
     //  so that the headings with no matching metrics don't appear
     const lowerSearchString = searchString.replace('_', '').toLowerCase();
     const newMetricsToDisplay = {};
-    Object.keys(panelTypes).forEach((key) => {
+    Object.keys(MetricTypesWithOperations).forEach((key) => {
       const invalidPanelType =
         selectedUniverse && isKubernetesUniverse(selectedUniverse)
-          ? panelTypes[key].title === 'Node'
-          : panelTypes[key].title === 'Container';
+          ? MetricTypesWithOperations[key].title === 'Node'
+          : MetricTypesWithOperations[key].title === 'Container';
       if (!invalidPanelType) {
-        panelTypes[key].metrics.forEach((filter) => {
+        MetricTypesWithOperations[key].metrics.forEach((filter) => {
           if (filter.replace('_', '').toLowerCase().includes(lowerSearchString)) {
-            if (!(newMetricsToDisplay.hasOwnProperty(key))) {
+            if (!Object.prototype.hasOwnProperty.call(newMetricsToDisplay, key)) {
               newMetricsToDisplay[key] = [];
             }
             newMetricsToDisplay[key].push(filter);
@@ -61,7 +61,6 @@ export const MetricsSelectorModal = ({ visible, onHide, selectedUniverse }) => {
     });
     setMetricsToDisplay(newMetricsToDisplay);
   }, [searchString, selectedUniverse]);
-
 
   const submitSelectedMetrics = () => {
     dispatch({
@@ -94,7 +93,7 @@ export const MetricsSelectorModal = ({ visible, onHide, selectedUniverse }) => {
           {Object.keys(metricsToDisplay).map((key) => {
             return (
               <div className="metrics-group-container" key={key}>
-                <h5>{panelTypes[key].title}</h5>
+                <h5>{MetricTypesWithOperations[key].title}</h5>
                 {metricsToDisplay[key].map((filter) => {
                   return (
                     <Row key={filter}>

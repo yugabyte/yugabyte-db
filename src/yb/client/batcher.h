@@ -29,14 +29,14 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_CLIENT_BATCHER_H_
-#define YB_CLIENT_BATCHER_H_
+#pragma once
 
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
 #include "yb/client/async_rpc.h"
+#include "yb/client/client-internal.h"
 #include "yb/client/error_collector.h"
 #include "yb/client/transaction.h"
 
@@ -50,6 +50,7 @@
 #include "yb/util/async_util.h"
 #include "yb/util/atomic.h"
 #include "yb/util/locks.h"
+#include "yb/util/opid.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/threadpool.h"
 
@@ -79,6 +80,16 @@ struct InFlightOpsGroupsWithMetadata {
   boost::container::small_vector<InFlightOpsGroup, kPreallocatedCapacity> groups;
   InFlightOpsTransactionMetadata metadata;
 };
+
+struct RequestDetails {
+  RetryableRequestId min_running_request_id;
+  MicrosTime start_time_micros;
+
+  RequestDetails(RetryableRequestId min_running_request_id_, MicrosTime start_time_micros_) :
+      min_running_request_id(min_running_request_id_), start_time_micros(start_time_micros_) {}
+};
+
+using BatcherRequestsMap = std::unordered_map<RetryableRequestId, RequestDetails>;
 
 class TxnBatcherIf {
  public:
@@ -150,11 +161,13 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
   // Create a new batcher associated with the given session.
   //
   // Creates a weak_ptr to 'session'.
-  Batcher(YBClient* client,
-          const YBSessionPtr& session,
-          YBTransactionPtr transaction,
-          ConsistentReadPoint* read_point,
-          bool force_consistent_read);
+  Batcher(
+      YBClient* client,
+      const YBSessionPtr& session,
+      YBTransactionPtr transaction,
+      ConsistentReadPoint* read_point,
+      bool force_consistent_read,
+      int64_t leader_term_);
   ~Batcher();
 
   // Set the timeout for this batcher.
@@ -169,9 +182,9 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
   // update this when they're implemented.
   //
   // NOTE: If this returns not-OK, does not take ownership of 'write_op'.
-  void Add(std::shared_ptr<YBOperation> yb_op);
+  void Add(YBOperationPtr yb_op);
 
-  bool Has(const std::shared_ptr<YBOperation>& yb_op) const;
+  bool Has(const YBOperationPtr& yb_op) const;
 
   // Return true if any operations are still pending. An operation is no longer considered
   // pending once it has either errored or succeeded.  Operations are considering pending
@@ -224,9 +237,26 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
 
   const ClientId& client_id() const;
 
-  std::pair<RetryableRequestId, RetryableRequestId> NextRequestIdAndMinRunningRequestId(
-      const TabletId& tablet_id);
-  void RequestFinished(const TabletId& tablet_id, RetryableRequestId request_id);
+  server::Clock* Clock() const;
+
+  std::pair<RetryableRequestId, RetryableRequestId> NextRequestIdAndMinRunningRequestId();
+
+  void RequestsFinished();
+
+  void RegisterRequest(
+      RetryableRequestId id, RetryableRequestId min_running_id, MicrosTime start_time_micros) {
+    retryable_requests_.emplace(id, RequestDetails(min_running_id, start_time_micros));
+  }
+
+  void MoveRequestDetailsFrom(const BatcherPtr& other, RetryableRequestId id);
+
+  const RequestDetails& GetRequestDetails(RetryableRequestId id) {
+    const auto it = retryable_requests_.find(id);
+    if (PREDICT_FALSE(it == retryable_requests_.end())) {
+      LOG(FATAL) << "Cannot find retryable request detail of id " << id;
+    }
+    return it->second;
+  }
 
   void SetRejectionScoreSource(RejectionScoreSourcePtr rejection_score_source) {
     rejection_score_source_ = rejection_score_source;
@@ -239,6 +269,8 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
   CollectedErrors GetAndClearPendingErrors();
 
   std::string LogPrefix() const;
+
+  int64_t GetLeaderTerm() const { return leader_term_; }
 
   // This is a status error string used when there are multiple errors that need to be fetched
   // from the error collector.
@@ -275,7 +307,8 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
   // Process RPC status.
   void ProcessRpcStatus(const AsyncRpc &rpc, const Status &s);
 
-  // Async Callbacks.
+  // Tablet lookup and its async callbacks.
+  void LookupTabletFor(InFlightOp* op);
   void TabletLookupFinished(InFlightOp* op, Result<internal::RemoteTabletPtr> result);
 
   void TransactionReady(const Status& status);
@@ -287,7 +320,8 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
 
   void Run() override;
 
-  std::map<PartitionKey, Status> CollectOpsErrors();
+  std::pair<std::map<PartitionKey, Status>, std::map<RetryableRequestId, Status>>
+      CollectOpsErrors();
 
   BatcherState state_ = BatcherState::kGatheringOps;
 
@@ -306,7 +340,7 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
 
   // All buffered or in-flight ops.
   // Added to this set during apply, removed during Finished of AsyncRpc.
-  std::vector<std::shared_ptr<YBOperation>> ops_;
+  std::vector<YBOperationPtr> ops_;
   std::vector<InFlightOp> ops_queue_;
   InFlightOpsGroupsWithMetadata ops_info_;
 
@@ -332,10 +366,20 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
 
   RejectionScoreSourcePtr rejection_score_source_;
 
+  // Map to store retryable request ids used in current batcher.
+  // retryable_request_id => { min_running_request_id, start_time_micros }
+  // When creating WriteRpc, new ids will be registered into this map.
+  // If the batcher has requests to be retried, request id is removed from current batcher
+  // and transmit to the retry batcher.
+  // At destruction of the batcher, all request ids in the map will be removed from the client
+  // running requests.
+  BatcherRequestsMap retryable_requests_;
+
+  const int64_t leader_term_;
+
   DISALLOW_COPY_AND_ASSIGN(Batcher);
 };
 
 }  // namespace internal
 }  // namespace client
 }  // namespace yb
-#endif  // YB_CLIENT_BATCHER_H_

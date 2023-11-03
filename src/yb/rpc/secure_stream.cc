@@ -25,6 +25,7 @@
 
 #include "yb/rpc/outbound_data.h"
 #include "yb/rpc/refined_stream.h"
+#include "yb/rpc/reactor_thread_role.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/errno.h"
@@ -33,21 +34,23 @@
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
 #include "yb/util/unique_lock.h"
+#include "yb/util/flags.h"
 
 using namespace std::literals;
 
-DEFINE_bool(allow_insecure_connections, true, "Whether we should allow insecure connections.");
-DEFINE_bool(dump_certificate_entries, false, "Whether we should dump certificate entries.");
-DEFINE_bool(verify_client_endpoint, false, "Whether client endpoint should be verified.");
-DEFINE_bool(verify_server_endpoint, true, "Whether server endpoint should be verified.");
-DEFINE_string(ssl_protocols, "",
+DEFINE_UNKNOWN_bool(allow_insecure_connections, true,
+    "Whether we should allow insecure connections.");
+DEFINE_UNKNOWN_bool(dump_certificate_entries, false, "Whether we should dump certificate entries.");
+DEFINE_UNKNOWN_bool(verify_client_endpoint, false, "Whether client endpoint should be verified.");
+DEFINE_UNKNOWN_bool(verify_server_endpoint, true, "Whether server endpoint should be verified.");
+DEFINE_UNKNOWN_string(ssl_protocols, "",
               "List of allowed SSL protocols (ssl2, ssl3, tls10, tls11, tls12). "
                   "Empty to allow TLS only.");
 
-DEFINE_string(cipher_list, "",
+DEFINE_UNKNOWN_string(cipher_list, "",
               "Define the list of available ciphers (TLSv1.2 and below).");
 
-DEFINE_string(ciphersuites, "",
+DEFINE_UNKNOWN_string(ciphersuites, "",
               "Define the available TLSv1.3 ciphersuites.");
 
 #define YB_RPC_SSL_TYPE(name) \
@@ -419,7 +422,7 @@ class SecureContext::Impl {
 
   // Generates and uses temporary keys, should be used only during testing.
   Status TEST_GenerateKeys(int bits, const std::string& common_name,
-                                   MatchingCertKeyPair matching_cert_key_pair) EXCLUDES(mutex_);
+                           MatchingCertKeyPair matching_cert_key_pair) EXCLUDES(mutex_);
 
   Result<SSLPtr> Create(rpc::UseCertificateKeyPair use_certificate_key_pair)
       const EXCLUDES(mutex_);
@@ -520,7 +523,7 @@ Result<SSLPtr> SecureContext::Impl::Create(
 }
 
 Status SecureContext::Impl::AddCertificateAuthorityFile(const std::string& file) {
-  UNIQUE_LOCK(lock, mutex_);
+  UniqueLock lock(mutex_);
   return AddCertificateAuthorityFileUnlocked(file);
 }
 
@@ -582,7 +585,7 @@ Status SecureContext::Impl::UseCertificateKeyPair(X509Ptr&& certificate, EVP_PKE
 
 Status SecureContext::Impl::UseCertificates(
     const std::string& ca_cert_file, const Slice& certificate_data, const Slice& pkey_data) {
-  UNIQUE_LOCK(lock, mutex_);
+  UniqueLock lock(mutex_);
 
   RETURN_NOT_OK(AddCertificateAuthorityFileUnlocked(ca_cert_file));
   RETURN_NOT_OK(UseCertificateKeyPair(certificate_data, pkey_data));
@@ -591,7 +594,7 @@ Status SecureContext::Impl::UseCertificates(
 }
 
 std::string SecureContext::Impl::GetCertificateDetails() {
-  UNIQUE_LOCK(lock, mutex_);
+  UniqueLock lock(mutex_);
 
   std::stringstream result;
   if(certificate_) {
@@ -616,7 +619,7 @@ Status SecureContext::Impl::TEST_GenerateKeys(int bits, const std::string& commo
     key = VERIFY_RESULT(GeneratePrivateKey(bits));
   }
 
-  UNIQUE_LOCK(lock, mutex_);
+  UniqueLock lock(mutex_);
   RETURN_NOT_OK(AddCertificateAuthority(ca_cert.get()));
   RETURN_NOT_OK(UseCertificateKeyPair(std::move(cert), std::move(key)));
 
@@ -660,11 +663,11 @@ class SecureRefiner : public StreamRefiner {
     stream_ = stream;
   }
 
-  Status Handshake() override;
+  Status Handshake() ON_REACTOR_THREAD override;
   Status Init();
 
-  Status Send(OutboundDataPtr data) override;
-  Status ProcessHeader() override;
+  Status Send(OutboundDataPtr data) ON_REACTOR_THREAD override;
+  Status ProcessHeader() ON_REACTOR_THREAD override;
   Result<ReadBufferFull> Read(StreamReadBuffer* out) override;
 
   std::string ToString() const override {
@@ -680,10 +683,10 @@ class SecureRefiner : public StreamRefiner {
   bool MatchEndpoint(X509* cert, GENERAL_NAMES* gens);
   bool MatchUid(X509* cert, GENERAL_NAMES* gens);
   bool MatchUidEntry(const Slice& value, const char* name);
-  Result<bool> WriteEncrypted(OutboundDataPtr data);
+  Result<bool> WriteEncrypted(OutboundDataPtr data) ON_REACTOR_THREAD;
   void DecryptReceived();
 
-  Status Established(RefinedStreamState state) {
+  Status Established(RefinedStreamState state) ON_REACTOR_THREAD {
     VLOG_WITH_PREFIX(4) << "Established with state: " << state << ", used cipher: "
                         << SSL_get_cipher_name(ssl_.get());
 
@@ -705,7 +708,7 @@ class SecureRefiner : public StreamRefiner {
 };
 
 Status SecureRefiner::Send(OutboundDataPtr data) {
-  boost::container::small_vector<RefCntBuffer, 10> queue;
+  boost::container::small_vector<RefCntSlice, 10> queue;
   data->Serialize(&queue);
   for (const auto& buf : queue) {
     Slice slice(buf.data(), buf.size());

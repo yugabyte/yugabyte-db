@@ -15,13 +15,20 @@
 // This module is to define a few supporting functions for QLTYPE.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_COMMON_QL_TYPE_H_
-#define YB_COMMON_QL_TYPE_H_
+#pragma once
+
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include <boost/optional.hpp>
 
+#include "yb/util/logging.h"
+
 #include "yb/common/common_fwd.h"
-#include "yb/common/value.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/macros.h"
 #include "yb/util/status_fwd.h"
 
 namespace yb {
@@ -30,8 +37,14 @@ namespace yb {
 // Used internally in QLType and only set for user-defined types.
 class UDTypeInfo {
  public:
-  UDTypeInfo(std::string keyspace_name, std::string name)
-      : keyspace_name_(keyspace_name), name_(name) {
+  UDTypeInfo(std::string&& keyspace_name,
+             std::string&& name,
+             std::string&& id,
+             std::vector<std::string>&& field_names)
+      : keyspace_name_(std::move(keyspace_name)),
+        name_(std::move(name)),
+        id_(std::move(id)),
+        field_names_(std::move(field_names)) {
   }
 
   const std::string& keyspace_name() const {
@@ -54,112 +67,55 @@ class UDTypeInfo {
     return field_names_[index];
   }
 
-  void set_udt_fields(const std::string& type_id,
-                      const std::vector<std::string>& field_names) {
-    id_ = type_id;
-    field_names_ = field_names;
-  }
-
  private:
-  std::string keyspace_name_;
-  std::string name_;
-  std::string id_;
-  std::vector<std::string> field_names_ = {};
+  const std::string keyspace_name_;
+  const std::string name_;
+  const std::string id_;
+  const std::vector<std::string> field_names_;
 };
 
 class QLType {
  public:
-  typedef std::shared_ptr<QLType> SharedPtr;
+  using SharedPtr = std::shared_ptr<QLType>;
+  using Params = std::vector<SharedPtr>;
 
   //------------------------------------------------------------------------------------------------
-  // The Create() functions are to construct QLType objects.
-  template<DataType data_type>
-  static const std::shared_ptr<QLType>& CreatePrimitiveType() {
-    static std::shared_ptr<QLType> ql_type = std::make_shared<QLType>(data_type);
-    return ql_type;
-  }
-
-  template<DataType data_type>
-  static std::shared_ptr<QLType> CreateCollectionType(
-      const std::vector<std::shared_ptr<QLType>>& params) {
-    return std::make_shared<QLType>(data_type, params);
-  }
-
   // Create all builtin types including collection.
-  static std::shared_ptr<QLType> Create(DataType data_type,
-                                        const std::vector<std::shared_ptr<QLType>>& params);
+  static SharedPtr Create(DataType type, Params params);
 
   // Create primitive types, all builtin types except collection.
-  static std::shared_ptr<QLType> Create(DataType data_type);
+  static SharedPtr Create(DataType type);
 
   // Check type methods.
   static bool IsValidPrimaryType(DataType type);
 
   // Create map datatype.
-  static std::shared_ptr<QLType> CreateTypeMap(std::shared_ptr<QLType> key_type,
-                                               std::shared_ptr<QLType> value_type);
-  static std::shared_ptr<QLType> CreateTypeMap(DataType key_type, DataType value_type);
-  static std::shared_ptr<QLType> CreateTypeMap() {
-    // Create default map type: MAP <UNKNOWN -> UNKNOWN>.
-    static const std::shared_ptr<QLType> default_map =
-        CreateTypeMap(QLType::Create(DataType::UNKNOWN_DATA),
-                      QLType::Create(DataType::UNKNOWN_DATA));
-    return default_map;
-  }
+  static SharedPtr CreateTypeMap(SharedPtr key_type, SharedPtr value_type);
+  static SharedPtr CreateTypeMap(DataType key_type, DataType value_type);
 
   // Create list datatype.
-  static std::shared_ptr<QLType> CreateTypeList(std::shared_ptr<QLType> value_type);
-  static std::shared_ptr<QLType> CreateTypeList(DataType val_type);
-  static std::shared_ptr<QLType> CreateTypeList() {
-    // Create default list type: LIST <UNKNOWN>.
-    static const std::shared_ptr<QLType> default_list = CreateTypeList(DataType::UNKNOWN_DATA);
-    return default_list;
-  }
+  static SharedPtr CreateTypeList(SharedPtr value_type);
+  static SharedPtr CreateTypeList(DataType val_type);
 
   // Create set datatype.
-  static std::shared_ptr<QLType> CreateTypeSet(std::shared_ptr<QLType> value_type);
-  static std::shared_ptr<QLType> CreateTypeSet(DataType value_type);
-  static std::shared_ptr<QLType> CreateTypeSet() {
-    // Create default set type: SET <UNKNOWN>.
-    static const std::shared_ptr<QLType> default_set = CreateTypeSet(DataType::UNKNOWN_DATA);
-    return default_set;
-  }
+  static SharedPtr CreateTypeSet(SharedPtr value_type);
+  static SharedPtr CreateTypeSet(DataType value_type);
 
   // Create frozen datatype
-  static std::shared_ptr<QLType> CreateTypeFrozen(std::shared_ptr<QLType> value_type);
-  static std::shared_ptr<QLType> CreateTypeFrozen() {
-  // Create default frozen type: FROZEN <UNKNOWN>.
-    static const std::shared_ptr<QLType> default_frozen =
-        CreateTypeFrozen(QLType::Create(DataType::UNKNOWN_DATA));
-    return default_frozen;
-  }
+  static SharedPtr CreateTypeFrozen(SharedPtr value_type);
 
-  //------------------------------------------------------------------------------------------------
-  // Constructors.
-
-  // Constructor for elementary types
-  explicit QLType(DataType ql_typeid) : id_(ql_typeid), params_(0) {
-  }
-
-  // Constructor for collection types
-  QLType(DataType ql_typeid, const std::vector<std::shared_ptr<QLType>>& params)
-      : id_(ql_typeid), params_(params) {
-  }
-
-  // Constructor for user-defined types
-  QLType(const std::string& keyspace_name, const std::string& type_name)
-      : id_(USER_DEFINED_TYPE), params_(0) {
-    udtype_info_ = std::make_shared<UDTypeInfo>(keyspace_name, type_name);
-  }
-
-  virtual ~QLType() {
-  }
+  static SharedPtr CreateUDType(
+      std::string keyspace_name,
+      std::string type_name,
+      std::string type_id,
+      std::vector<std::string> field_names,
+      Params field_types);
 
   //------------------------------------------------------------------------------------------------
   // Protobuf support.
 
-  void ToQLTypePB(QLTypePB *pb_type) const;
-  static std::shared_ptr<QLType> FromQLTypePB(const QLTypePB& pb_type);
+  void ToQLTypePB(QLTypePB* pb_type) const;
+  static SharedPtr FromQLTypePB(const QLTypePB& pb_type);
 
   //------------------------------------------------------------------------------------------------
   // Access functions.
@@ -168,22 +124,22 @@ class QLType {
     return id_;
   }
 
-  const std::vector<std::shared_ptr<QLType>>& params() const {
+  const Params& params() const {
     return params_;
   }
 
-  std::shared_ptr<QLType> keys_type() const;
+  const SharedPtr& keys_type() const;
 
-  std::shared_ptr<QLType> values_type() const;
+  const SharedPtr& values_type() const;
 
-  const QLType::SharedPtr& param_type(size_t member_index = 0) const;
+  const SharedPtr& param_type(size_t member_index = 0) const;
 
   const TypeInfo* type_info() const;
 
   //------------------------------------------------------------------------------------------------
   // Methods for User-Defined types.
 
-  const std::shared_ptr<UDTypeInfo>& udtype_info() const {
+  const UDTypeInfo* udtype_info() const {
     return udtype_info_;
   }
 
@@ -207,15 +163,8 @@ class QLType {
     return udtype_info_->id();
   }
 
-  void SetUDTypeFields(const std::string &type_id,
-                       const std::vector<std::string> &field_names,
-                       const std::vector<std::shared_ptr<QLType>> &field_types) {
-    udtype_info_->set_udt_fields(type_id, field_names);
-    params_ = field_types;
-  }
-
   // returns position of "field_name" in udtype_field_names() vector if found, otherwise -1
-  boost::optional<size_t> GetUDTypeFieldIdxByName(const std::string &field_name) const;
+  boost::optional<size_t> GetUDTypeFieldIdxByName(const std::string& field_name) const;
 
   // Get the type ids of all UDTs (transitively) referenced by this UDT.
   std::vector<std::string> GetUserDefinedTypeIds() const {
@@ -235,30 +184,31 @@ class QLType {
 
   // Check whether the type id exists among type ids of all UDTs referenced by this UDT.
   static bool DoesUserDefinedTypeIdExist(const QLTypePB& type_pb,
-                                         const bool transitive,
+                                         bool transitive,
                                          const std::string& udt_id);
 
   // Get the type ids of all UDTs referenced by this UDT.
   static void GetUserDefinedTypeIds(const QLTypePB& type_pb,
-                                    const bool transitive,
+                                    bool transitive,
                                     std::vector<std::string>* udt_ids);
 
   // Returns the type of given field, or nullptr if that field is not found in this UDT.R
-  Result<QLType::SharedPtr> GetUDTFieldTypeByName(const std::string& field_name) const;
+  Result<SharedPtr> GetUDTFieldTypeByName(const std::string& field_name) const;
 
   //------------------------------------------------------------------------------------------------
   // Predicates.
 
   bool IsCollection() const {
-    return id_ == MAP || id_ == SET || id_ == LIST || id_ == TUPLE;
+    return id_ == DataType::MAP || id_ == DataType::SET || id_ == DataType::LIST ||
+           id_ == DataType::TUPLE;
   }
 
   bool IsUserDefined() const {
-    return id_ == USER_DEFINED_TYPE;
+    return id_ == DataType::USER_DEFINED_TYPE;
   }
 
   bool IsFrozen() const {
-    return id_ == FROZEN;
+    return id_ == DataType::FROZEN;
   }
 
   bool IsParametric() const {
@@ -300,13 +250,13 @@ class QLType {
       return params_.empty();
     } else {
       // checking number of params
-      if (id_ == MAP && params_.size() != 2) {
+      if (id_ == DataType::MAP && params_.size() != 2) {
         return false; // expect two type parameters for maps
-      } else if ((id_ == SET || id_ == LIST) && params_.size() != 1) {
+      } else if ((id_ == DataType::SET || id_ == DataType::LIST) && params_.size() != 1) {
         return false; // expect one type parameter for set and list
-      } else if (id_ == TUPLE && params_.size() == 0) {
+      } else if (id_ == DataType::TUPLE && params_.size() == 0) {
         return false; // expect at least one type parameters for tuples
-      } else if (id_ == FROZEN && params_.size() != 1) {
+      } else if (id_ == DataType::FROZEN && params_.size() != 1) {
         return false; // expect one type parameter for frozen
       }
       // recursively checking params
@@ -318,12 +268,15 @@ class QLType {
   }
 
   bool Contains(DataType id) const {
-    for (const std::shared_ptr<QLType>& param : params_) {
+    if (id_ == id) {
+      return true;
+    }
+    for (const auto& param : params_) {
       if (param->Contains(id)) {
         return true;
       }
     }
-    return id_ == id;
+    return false;
   }
 
   bool operator ==(const QLType& other) const {
@@ -347,42 +300,37 @@ class QLType {
     return !(*this == other);
   }
 
-  void add_param(std::shared_ptr<QLType> param) {
-    params_.push_back(param);
-    return;
+  // TODO: It is the only non-const method which is used for tuples only.
+  //       It must be removed somehow as the QLType objects are stored in various caches and they
+  //       must be immutable.
+  void add_param(SharedPtr param) {
+    DCHECK(id_ == DataType::TUPLE);
+    params_.push_back(std::move(param));
   }
 
   //------------------------------------------------------------------------------------------------
   // Logging supports.
   std::string ToString() const;
   void ToString(std::stringstream& os) const;
-  static const std::string ToCQLString(const DataType& datatype);
+  static const std::string& ToCQLString(DataType type);
 
   //------------------------------------------------------------------------------------------------
   // static methods
-  static const int kMaxTypeIndex = DataType::JSONB + 1;
-
-  // When a new type is added in the enum "DataType", kMaxTypeIndex should be updated for this
-  // module to work properly. The DCHECKs in this struct would failed if kMaxTypeIndex is wrong.
-  static bool IsValid(DataType type) {
-    return (type >= 0 && type < kMaxTypeIndex);
-  }
-
   static bool IsInteger(DataType t) {
-    return (t >= INT8 && t <= INT64) || t == VARINT;
+    return (t >= DataType::INT8 && t <= DataType::INT64) || t == DataType::VARINT;
   }
 
   static bool IsJson(DataType t) {
-    return t == JSONB;
+    return t == DataType::JSONB;
   }
 
   static bool IsNumeric(DataType t) {
-    return IsInteger(t) || t == FLOAT || t == DOUBLE || t == DECIMAL;
+    return IsInteger(t) || t == DataType::FLOAT || t == DataType::DOUBLE || t == DataType::DECIMAL;
   }
 
   // NULL_VALUE_TYPE represents type of a null value.
   static bool IsNull(DataType t) {
-    return t == NULL_VALUE_TYPE;
+    return t == DataType::NULL_VALUE_TYPE;
   }
 
   // Type is not yet set (VOID).
@@ -430,22 +378,26 @@ class QLType {
     return GetConversionMode(left, right) <= ConversionMode::kExplicit;
   }
 
-  static bool IsImplicitlyConvertible(const std::shared_ptr<QLType>& lhs_type,
-                                      const std::shared_ptr<QLType>& rhs_type);
+  static bool IsImplicitlyConvertible(const SharedPtr& lhs_type,
+                                      const SharedPtr& rhs_type);
 
   static bool IsComparable(DataType left, DataType right);
 
+  struct Internals;
+
  private:
+  QLType(DataType id, Params&& params, const UDTypeInfo* udtype_info)
+      : id_(id), params_(std::move(params)), udtype_info_(udtype_info) {}
+
   //------------------------------------------------------------------------------------------------
   // Data members.
-  DataType id_;
-  std::vector<std::shared_ptr<QLType>> params_;
+  const DataType id_;
+  Params params_;
 
   // Members for User-Defined Types
-  std::shared_ptr<UDTypeInfo> udtype_info_ = nullptr; // default
+  const UDTypeInfo* udtype_info_;
+
+  DISALLOW_COPY_AND_ASSIGN(QLType);
 };
 
-
 }; // namespace yb
-
-#endif  // YB_COMMON_QL_TYPE_H_

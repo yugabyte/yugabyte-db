@@ -30,12 +30,14 @@
 // under the License.
 //
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
 #include "yb/consensus/log_anchor_registry.h"
 
 #include "yb/util/test_util.h"
+
+using std::string;
 
 using strings::Substitute;
 

@@ -1,10 +1,8 @@
 ---
-title: Build a C# application that uses YSQL
+title: Build a C# application using the Npgsql driver
 headerTitle: Build a C# application
 description: Build a small C# application using the Npgsql driver and using the YSQL API to connect to and interact with a YugabyteDB Managed cluster.
 headContent: "Client driver: Npgsql"
-aliases:
-  - /preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-csharp/
 menu:
   preview:
     parent: build-apps
@@ -44,10 +42,10 @@ To do this:
 
 2. Set the following configuration-related parameters:
 
-    - **urlBuilder.Host** - the host name of your YugabyteDB cluster. To obtain a YugabyteDB Managed cluster host name, sign in to YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
-    - **urlBuilder.Port** - the port number that will be used by the driver (the default YugabyteDB YSQL port is 5433).
-    - **urlBuilder.Database** - the name of the database you are connecting to (the default database is named `yugabyte`).
-    - **urlBuilder.Username** and **urlBuilder.Password** - the username and password for the YugabyteDB database. If you are using the credentials you created when deploying a cluster in YugabyteDB Managed, these can be found in the credentials file you downloaded.
+    - **urlBuilder.Host** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
+    - **urlBuilder.Port** - the port number for the driver to use (the default YugabyteDB YSQL port is 5433).
+    - **urlBuilder.Database** - the name of the database you are connecting to (the default is `yugabyte`).
+    - **urlBuilder.Username** and **urlBuilder.Password** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte` and `yugabyte`). For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
     - **urlBuilder.SslMode** - the SSL mode to use. YugabyteDB Managed [requires SSL connections](../../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/); use `SslMode.VerifyFull`.
     - **urlBuilder.RootCertificate** - the full path to the YugabyteDB Managed cluster CA certificate.
 

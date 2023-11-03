@@ -46,8 +46,6 @@
 // The last four implementations are designed for situations in which
 // iteration over the entire collection is rare since doing so requires all the
 // keys to be copied into a sorted data structure.
-#ifndef YB_ROCKSDB_MEMTABLEREP_H
-#define YB_ROCKSDB_MEMTABLEREP_H
 
 #pragma once
 
@@ -104,11 +102,7 @@ class MemTableRep {
   // Like Insert(handle), but may be called concurrent with other calls
   // to InsertConcurrently for other handles
   virtual void InsertConcurrently(KeyHandle handle) {
-#ifndef ROCKSDB_LITE
     throw std::runtime_error("concurrent insert not supported");
-#else
-    abort();
-#endif
   }
 
   virtual bool Erase(KeyHandle handle, const KeyComparator& comparator) {
@@ -156,33 +150,32 @@ class MemTableRep {
     // Initialize an iterator over the specified collection.
     // The returned iterator is not valid.
     // explicit Iterator(const MemTableRep* collection);
-    virtual ~Iterator() {}
+    virtual ~Iterator() = default;
 
-    // Returns true iff the iterator is positioned at a valid node.
-    virtual bool Valid() const = 0;
-
-    // Returns the key at the current position.
-    // REQUIRES: Valid()
-    virtual const char* key() const = 0;
+    // Returns the entry at the current position. Null if iterator is not valid.
+    virtual const char* Entry() const = 0;
 
     // Advances to the next position.
     // REQUIRES: Valid()
-    virtual void Next() = 0;
+    // Returns the same value as would be returned by Entry after this method is invoked.
+    virtual const char* Next() = 0;
 
     // Advances to the previous position.
     // REQUIRES: Valid()
-    virtual void Prev() = 0;
+    virtual const char* Prev() = 0;
 
     // Advance to the first entry with a key >= target
-    virtual void Seek(const Slice& internal_key, const char* memtable_key) = 0;
+    virtual const char* Seek(Slice internal_key) = 0;
+
+    virtual const char* SeekMemTableKey(Slice internal_key, const char* memtable_key) = 0;
 
     // Position at the first entry in collection.
     // Final state of iterator is Valid() iff collection is not empty.
-    virtual void SeekToFirst() = 0;
+    virtual const char* SeekToFirst() = 0;
 
     // Position at the last entry in collection.
     // Final state of iterator is Valid() iff collection is not empty.
-    virtual void SeekToLast() = 0;
+    virtual const char* SeekToLast() = 0;
   };
 
   // Return an iterator over the keys in this representation.
@@ -278,7 +271,6 @@ class CDSSkipListFactory : public MemTableRepFactory {
   bool IsInsertConcurrentlySupported() const override { return true; }
 };
 
-#ifndef ROCKSDB_LITE
 // This creates MemTableReps that are backed by an std::vector. On iteration,
 // the vector is sorted. This is useful for workloads where iteration is very
 // rare and writes are generally not issued after reads begin.
@@ -334,7 +326,4 @@ extern MemTableRepFactory* NewHashLinkListRepFactory(
     bool if_log_bucket_dist_when_flash = true,
     uint32_t threshold_use_skiplist = 256);
 
-#endif  // ROCKSDB_LITE
 }  // namespace rocksdb
-
-#endif // YB_ROCKSDB_MEMTABLEREP_H

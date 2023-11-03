@@ -29,14 +29,13 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_RPC_INBOUND_CALL_H_
-#define YB_RPC_INBOUND_CALL_H_
+#pragma once
 
 #include <string>
 #include <vector>
 
 #include <boost/optional/optional.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/macros.h"
@@ -53,6 +52,7 @@
 
 #include "yb/util/faststring.h"
 #include "yb/util/lockfree.h"
+#include "yb/util/locks.h"
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/monotime.h"
@@ -69,6 +69,7 @@ class Message;
 
 namespace yb {
 
+class EventStats;
 class Histogram;
 class Trace;
 
@@ -110,7 +111,7 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   void SetRpcMethodMetrics(std::reference_wrapper<const RpcMethodMetrics> value);
 
   // Return the serialized request parameter protobuf.
-  const Slice &serialized_request() const {
+  Slice serialized_request() const {
     return serialized_request_;
   }
 
@@ -128,7 +129,9 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   ConnectionPtr connection() const;
   ConnectionContext& connection_context() const;
 
-  Trace* trace();
+  inline Trace* trace() const EXCLUDES(mutex_) {
+    return trace_.load(std::memory_order_relaxed);
+  }
 
   // When this InboundCall was received (instantiated).
   // Should only be called once on a given instance.
@@ -139,7 +142,7 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   // Updates the Histogram with time elapsed since the call was received,
   // and should only be called once on a given instance.
   // Not thread-safe. Should only be called by the current "owner" thread.
-  virtual void RecordHandlingStarted(scoped_refptr<Histogram> incoming_queue_time);
+  virtual void RecordHandlingStarted(scoped_refptr<EventStats> incoming_queue_time);
 
   // When RPC call Handle() completed execution on the server side.
   // Updates the Histogram with time elapsed since the call was started,
@@ -157,7 +160,7 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   // If the client did not specify a deadline, returns MonoTime::Max().
   virtual CoarseTimePoint GetClientDeadline() const = 0;
 
-  virtual void DoSerialize(boost::container::small_vector_base<RefCntBuffer>* output) = 0;
+  virtual void DoSerialize(ByteBlocks* output) = 0;
 
   // Returns the time spent in the service queue -- from the time the call was received, until
   // it gets handled.
@@ -199,14 +202,18 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
 
   template <class T, class ...Args>
   static std::shared_ptr<T> Create(Args&&... args) {
-    auto result = std::make_shared<T>(std::forward<Args>(args)...);
+    // Not using make_shared here to make sure we can deallocate the object while the control block
+    // is still kept allocated due to weak stored by ServicePool::QueuedCheckDeadline.
+    // See #17726 for this bug and #17759 to track the "proper" fix in ServicePoolImpl.
+    auto* call_ptr = new T(std::forward<Args>(args)...);
+    auto result = std::shared_ptr<T>(call_ptr);
     result->RecordCallReceived();
     return result;
   }
 
   size_t DynamicMemoryUsage() const override;
 
-  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) override final;
+  void Serialize(ByteBlocks* output) override final;
 
   const CallData& request_data() const { return request_data_; }
 
@@ -214,12 +221,12 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
 
   // For requests that have requested traces to be collected, we will ensure
   // that trace_ is not null and can be used for collecting the requested data.
-  void EnsureTraceCreated();
+  void EnsureTraceCreated() EXCLUDES(mutex_);
 
  protected:
   ThreadPoolTask* BindTask(InboundCallHandler* handler, int64_t rpc_queue_limit);
 
-  void NotifyTransferred(const Status& status, Connection* conn) override;
+  void NotifyTransferred(const Status& status, const ConnectionPtr& conn) override;
 
   virtual void Clear();
 
@@ -237,10 +244,6 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
 
   // Data source of this call.
   CallData request_data_;
-  std::atomic<size_t> request_data_memory_usage_{0};
-
-  // The trace buffer.
-  scoped_refptr<Trace> trace_;
 
   // Timing information related to this RPC call.
   InboundCallTiming timing_;
@@ -252,7 +255,14 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   scoped_refptr<Counter> rpc_method_response_bytes_;
   scoped_refptr<Histogram> rpc_method_handler_latency_;
 
+  mutable simple_spinlock mutex_;
+  bool cleared_ GUARDED_BY(mutex_) = false;
+
  private:
+  // The trace buffer.
+  scoped_refptr<Trace> trace_holder_ GUARDED_BY(mutex_);
+  std::atomic<Trace*> trace_ = nullptr;
+
   // The connection on which this inbound call arrived. Can be null for LocalYBInboundCall.
   ConnectionPtr conn_ = nullptr;
   RpcMetrics* rpc_metrics_;
@@ -287,5 +297,3 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
 
 }  // namespace rpc
 }  // namespace yb
-
-#endif  // YB_RPC_INBOUND_CALL_H_

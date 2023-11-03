@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_RPC_RPC_CONTEXT_H
-#define YB_RPC_RPC_CONTEXT_H
+#pragma once
 
 #include <string>
 
@@ -57,12 +56,7 @@ class Message;
 namespace yb {
 
 class Trace;
-
-namespace util {
-
-class RefCntBuffer;
-
-}
+class WriteBuffer;
 
 namespace rpc {
 
@@ -72,13 +66,13 @@ class RpcCallParams {
  public:
   virtual ~RpcCallParams() = default;
 
-  virtual Result<size_t> ParseRequest(Slice param) = 0;
+  virtual Result<size_t> ParseRequest(Slice param, const RefCntBuffer& buffer) = 0;
   virtual AnyMessageConstPtr SerializableResponse() = 0;
 };
 
 class RpcCallPBParams : public RpcCallParams {
  public:
-  Result<size_t> ParseRequest(Slice param) override;
+  Result<size_t> ParseRequest(Slice param, const RefCntBuffer& buffer) override;
 
   AnyMessageConstPtr SerializableResponse() override;
 
@@ -113,7 +107,7 @@ class RpcCallPBParamsImpl : public RpcCallPBParams {
 
 class RpcCallLWParams : public RpcCallParams {
  public:
-  Result<size_t> ParseRequest(Slice param) override;
+  Result<size_t> ParseRequest(Slice param, const RefCntBuffer& buffer) override;
   AnyMessageConstPtr SerializableResponse() override;
 
   virtual LightweightMessage& request() = 0;
@@ -122,6 +116,9 @@ class RpcCallLWParams : public RpcCallParams {
   static LightweightMessage* CastMessage(const AnyMessagePtr& msg);
 
   static const LightweightMessage* CastMessage(const AnyMessageConstPtr& msg);
+
+ private:
+  RefCntBuffer buffer_;
 };
 
 template <class Req, class Resp>
@@ -141,7 +138,7 @@ class RpcCallLWParamsImpl : public RpcCallLWParams {
   RpcCallLWParamsImpl() : req_(&arena_), resp_(&arena_) {}
 
  private:
-  Arena arena_;
+  ThreadSafeArena arena_;
   Req req_;
   Resp resp_;
 };
@@ -188,6 +185,7 @@ class RpcContext {
   explicit RpcContext(std::shared_ptr<LocalYBInboundCall> call);
 
   RpcContext(RpcContext&& rhs) = default;
+  RpcContext& operator=(RpcContext&& rhs) = default;
 
   RpcContext(const RpcContext&) = delete;
   void operator=(const RpcContext&) = delete;
@@ -272,21 +270,7 @@ class RpcContext {
   void RespondApplicationError(int error_ext_id, const std::string& message,
                                const google::protobuf::Message& app_error_pb);
 
-  // Adds an RpcSidecar to the response. This is the preferred method for
-  // transferring large amounts of binary data, because this avoids additional
-  // copies made by serializing the protobuf.
-  //
-  // Assumes no changes to the sidecar's data are made after insertion.
-  //
-  // Returns the index of the sidecar.
-  size_t AddRpcSidecar(const Slice& car);
-
-  // Removes all RpcSidecars.
-  void ResetRpcSidecars();
-
-  // Like in STL reserve preallocates buffer, so adding new sidecars would not allocate memory
-  // up to space bytes.
-  void ReserveSidecarSpace(size_t space);
+  Sidecars& sidecars();
 
   // Return the remote endpoint which sent the current RPC call.
   const Endpoint& remote_address() const;
@@ -308,6 +292,10 @@ class RpcContext {
     return *params_;
   }
 
+  const std::shared_ptr<RpcCallParams>& shared_params() const {
+    return params_;
+  }
+
   // Panic the server. This logs a fatal error with the given message, and
   // also includes the current RPC request, requestor, trace information, etc,
   // to make it easier to debug.
@@ -324,6 +312,8 @@ class RpcContext {
 
   std::string ToString() const;
 
+  Result<RefCntSlice> ExtractSidecar(size_t idx) const;
+
  private:
   std::shared_ptr<YBInboundCall> call_;
   std::shared_ptr<RpcCallParams> params_;
@@ -337,6 +327,13 @@ void PanicRpc(RpcContext* context, const char* file, int line_number, const std:
     yb::rpc::PanicRpc((rpc_context), __FILE__, __LINE__, (message)); \
   } while (false)
 
+inline std::string RequestorString(yb::rpc::RpcContext* rpc) {
+  if (rpc) {
+    return rpc->requestor_string();
+  } else {
+    return "internal request";
+  }
+}
+
 } // namespace rpc
 } // namespace yb
-#endif // YB_RPC_RPC_CONTEXT_H

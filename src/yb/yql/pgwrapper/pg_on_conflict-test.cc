@@ -32,6 +32,16 @@ class PgOnConflictTest : public LibPqTestBase {
   void TestOnConflict(bool kill_master, const MonoDelta& duration);
 };
 
+class PgFailOnConflictTest : public PgOnConflictTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    PgOnConflictTest::UpdateMiniClusterOptions(opts);
+    // This test depends on fail-on-conflict concurrency control to perform its validation.
+    // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
+    opts->extra_tserver_flags.push_back("--enable_wait_queues=false");
+  }
+};
+
 namespace {
 
 struct OnConflictKey {
@@ -117,7 +127,7 @@ class OnConflictHelper {
 
   std::pair<int, char> RandomPair() {
     size_t i = RandomUniformInt<size_t>(0, concurrent_keys_ - 1);
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     auto& key = active_keys_[i];
     char append_char;
     if (RandomUniformBool()) {
@@ -133,7 +143,7 @@ class OnConflictHelper {
   }
 
   void Committed(TransactionInfo&& info) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     committed_.push_back(std::move(info));
   }
 
@@ -278,7 +288,7 @@ void PgOnConflictTest::TestOnConflict(bool kill_master, const MonoDelta& duratio
               if (tuples == 1) {
                 ASSERT_EQ(PQnfields(result->get()), 1);
                 current_batch.read_value = ASSERT_RESULT(
-                    GetString(result->get(), 0, 0));
+                    GetValue<std::string>(result->get(), 0, 0));
               } else {
                 ASSERT_EQ(tuples, 0);
               }
@@ -296,7 +306,6 @@ void PgOnConflictTest::TestOnConflict(bool kill_master, const MonoDelta& duratio
               msg.find("Commit of expired transaction") != std::string::npos ||
               msg.find("Catalog Version Mismatch") != std::string::npos ||
               msg.find("Soft memory limit exceeded") != std::string::npos ||
-              msg.find("Missing metadata for transaction") != std::string::npos ||
               msg.find("timed out after deadline expired") != std::string::npos) {
             break;
           }
@@ -358,8 +367,8 @@ void PgOnConflictTest::TestOnConflict(bool kill_master, const MonoDelta& duratio
     ASSERT_EQ(cols, 2);
     int rows = PQntuples(res->get());
     for (int i = 0; i != rows; ++i) {
-      auto key = GetInt32(res->get(), i, 0);
-      auto value = GetString(res->get(), i, 1);
+      auto key = GetValue<int32_t>(res->get(), i, 0);
+      auto value = GetValue<std::string>(res->get(), i, 1);
       LOG(INFO) << "  " << key << ": " << value;
     }
     LOG(INFO) << "Total processed: " << processed.load(std::memory_order_acquire);
@@ -369,18 +378,18 @@ void PgOnConflictTest::TestOnConflict(bool kill_master, const MonoDelta& duratio
   helper.Report();
 }
 
-TEST_F(PgOnConflictTest, YB_DISABLE_TEST_IN_TSAN(OnConflict)) {
+TEST_F_EX(PgOnConflictTest, OnConflict, PgFailOnConflictTest) {
   TestOnConflict(false /* kill_master */, 120s);
 }
 
-TEST_F(PgOnConflictTest, YB_DISABLE_TEST_IN_TSAN(OnConflictWithKillMaster)) {
+TEST_F_EX(PgOnConflictTest, OnConflictWithKillMaster, PgFailOnConflictTest) {
   TestOnConflict(true /* kill_master */, 180s);
 }
 
 // When auto-commit fails block state switched to TBLOCK_ABORT.
 // But correct state in this case is TBLOCK_DEFAULT.
 // https://github.com/YugaByte/yugabyte-db/commit/73e966e5735efc21bf2ad43f9d961a488afbe050
-TEST_F(PgOnConflictTest, YB_DISABLE_TEST_IN_TSAN(NoTxnOnConflict)) {
+TEST_F(PgOnConflictTest, NoTxnOnConflict) {
   constexpr int kWriters = 5;
   constexpr int kKeys = 20;
   auto conn = ASSERT_RESULT(Connect());
@@ -395,7 +404,7 @@ TEST_F(PgOnConflictTest, YB_DISABLE_TEST_IN_TSAN(NoTxnOnConflict)) {
       char value[2] = "0";
       while (!stop.load(std::memory_order_acquire)) {
         int key = RandomUniformInt(1, kKeys);
-        value[0] = RandomUniformInt('A', 'Z');
+        value[0] = RandomUniformInt<uint8_t>('A', 'Z');
         auto status = connection.ExecuteFormat(
             "INSERT INTO test (k, v) VALUES ($0, '$1') ON CONFLICT (K) DO "
             "UPDATE SET v = CONCAT(test.v, '$1')",
@@ -412,7 +421,7 @@ TEST_F(PgOnConflictTest, YB_DISABLE_TEST_IN_TSAN(NoTxnOnConflict)) {
   LogResult(ASSERT_RESULT(conn.Fetch("SELECT * FROM test ORDER BY k")).get());
 }
 
-TEST_F(PgOnConflictTest, YB_DISABLE_TEST_IN_TSAN(ValidSessionAfterTxnCommitConflict)) {
+TEST_F_EX(PgOnConflictTest, ValidSessionAfterTxnCommitConflict, PgFailOnConflictTest) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE test (k int PRIMARY KEY)"));
   ASSERT_OK(conn.Execute("BEGIN"));
@@ -421,9 +430,7 @@ TEST_F(PgOnConflictTest, YB_DISABLE_TEST_IN_TSAN(ValidSessionAfterTxnCommitConfl
   ASSERT_OK(extra_conn.Execute("INSERT INTO test VALUES(1)"));
   ASSERT_NOK(conn.Execute("COMMIT"));
   // Check connection is in valid state after failed COMMIT
-  auto result_ptr = ASSERT_RESULT(conn.Fetch("SELECT * FROM test"));
-  auto value = ASSERT_RESULT(GetInt32(result_ptr.get(), 0, 0));
-  ASSERT_EQ(value, 1);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchValue<int32_t>("SELECT * FROM test")), 1);
 }
 
 } // namespace pgwrapper

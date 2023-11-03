@@ -40,7 +40,6 @@ namespace yb {
 namespace log {
 
 using consensus::kInvalidOpIdIndex;
-using std::pair;
 using std::string;
 using strings::Substitute;
 using strings::SubstituteAndAppend;
@@ -55,13 +54,13 @@ LogAnchorRegistry::~LogAnchorRegistry() {
 void LogAnchorRegistry::Register(int64_t log_index,
                                  const string& owner,
                                  LogAnchor* anchor) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   RegisterUnlocked(log_index, owner, anchor);
 }
 
 Status LogAnchorRegistry::UpdateRegistration(int64_t log_index,
                                              LogAnchor* anchor) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   RETURN_NOT_OK_PREPEND(UnregisterUnlocked(anchor),
                         "Unable to swap registration, anchor not registered")
   RegisterUnlocked(log_index, std::string(), anchor);
@@ -69,18 +68,18 @@ Status LogAnchorRegistry::UpdateRegistration(int64_t log_index,
 }
 
 Status LogAnchorRegistry::Unregister(LogAnchor* anchor) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   return UnregisterUnlocked(anchor);
 }
 
 Status LogAnchorRegistry::UnregisterIfAnchored(LogAnchor* anchor) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   if (!anchor->is_registered) return Status::OK();
   return UnregisterUnlocked(anchor);
 }
 
 Status LogAnchorRegistry::GetEarliestRegisteredLogIndex(int64_t* log_index) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   auto iter = anchors_.begin();
   if (iter == anchors_.end()) {
     static Status no_anchors_status = STATUS(NotFound, "No anchors in registry");
@@ -93,13 +92,13 @@ Status LogAnchorRegistry::GetEarliestRegisteredLogIndex(int64_t* log_index) {
 }
 
 size_t LogAnchorRegistry::GetAnchorCountForTests() const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   return anchors_.size();
 }
 
 std::string LogAnchorRegistry::DumpAnchorInfo() const {
   string buf;
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   MonoTime now = MonoTime::Now();
   for (const AnchorMultiMap::value_type& entry : anchors_) {
     const LogAnchor* anchor = entry.second;

@@ -42,7 +42,7 @@ import org.yb.minicluster.BaseMiniClusterTest;
 import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBDaemon;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import java.net.InetSocketAddress;
 import java.time.Duration;
@@ -51,7 +51,7 @@ import java.util.*;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertTrue;
 
-@RunWith(value= YBTestRunnerNonTsanOnly.class)
+@RunWith(value= YBTestRunner.class)
 public class TestReadReplica extends BaseMiniClusterTest {
 
   protected static final Logger LOG = LoggerFactory.getLogger(TestReadReplica.class);
@@ -96,7 +96,7 @@ public class TestReadReplica extends BaseMiniClusterTest {
       Collections.emptyMap(),
       cb -> {
         cb.perTServerFlags(perTserverFlags);
-      });
+      }, Collections.emptyMap());
     YBClient client = miniCluster.getClient();
     List<PlacementBlockPB> placementBlocksLive = new ArrayList<PlacementBlockPB>();
     for(int i = 0 ; i < 3; i++){
@@ -125,10 +125,12 @@ public class TestReadReplica extends BaseMiniClusterTest {
 
     PlacementInfoPB livePlacementInfo =
       PlacementInfoPB.newBuilder().addAllPlacementBlocks(placementBlocksLive).
+        setNumReplicas(3).
         setPlacementUuid(ByteString.copyFromUtf8(liveTsPlacement)).build();
 
     PlacementInfoPB readOnlyPlacementInfo =
       PlacementInfoPB.newBuilder().addAllPlacementBlocks(placementBlocksReadOnly).
+        setNumReplicas(3).
         setPlacementUuid(ByteString.copyFromUtf8(readOnlyTsPlacement)).build();
 
     List<PlacementInfoPB> readOnlyPlacements = Arrays.asList(readOnlyPlacementInfo);

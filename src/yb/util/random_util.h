@@ -30,13 +30,12 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_RANDOM_UTIL_H
-#define YB_UTIL_RANDOM_UTIL_H
+#pragma once
 
 #include <algorithm>
 #include <random>
 
-#include <glog/logging.h> // For CHECK
+#include "yb/util/logging.h"  // For CHECK
 
 namespace yb {
 
@@ -55,6 +54,8 @@ std::vector<uint8_t> RandomBytes(size_t len, std::mt19937_64* rng = nullptr);
 std::string RandomString(size_t len, std::mt19937_64* rng = nullptr);
 
 std::string RandomHumanReadableString(size_t len, Random* rnd);
+
+bool IsRandomInitializingInThisThread();
 
 class RandomDeviceSequence {
  public:
@@ -148,5 +149,3 @@ typename Collection::const_reference RandomElement(const Collection& collection,
 std::string RandomHumanReadableString(size_t len, std::mt19937_64* rng = nullptr);
 
 } // namespace yb
-
-#endif // YB_UTIL_RANDOM_UTIL_H

@@ -13,9 +13,9 @@ package com.yugabyte.yw.common.kms.services;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
-import static org.mockito.Matchers.anyMap;
-import static org.mockito.Matchers.anyString;
-import static org.mockito.Matchers.eq;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.when;
 
@@ -31,7 +31,7 @@ import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -158,7 +158,8 @@ public class SmartKeyEARServiceTest extends FakeDBApplication {
     boolean createRequest;
 
     TestEncryptionAtRestService(boolean createRequest) {
-      super();
+      // confGetter is not used in parent class, so we can pass null.
+      super(null);
       this.createRequest = createRequest;
     }
 

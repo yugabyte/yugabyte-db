@@ -56,8 +56,7 @@ bool ConnectionContextWithQueue::Idle(std::string* reason_not_idle) {
 }
 
 void ConnectionContextWithQueue::Enqueue(std::shared_ptr<QueueableInboundCall> call) {
-  auto reactor = call->connection()->reactor();
-  DCHECK(reactor->IsCurrentThread());
+  auto* reactor = call->connection()->reactor();
 
   calls_queue_.push_back(call);
   queued_bytes_ += call->weight_in_bytes();
@@ -67,7 +66,7 @@ void ConnectionContextWithQueue::Enqueue(std::shared_ptr<QueueableInboundCall> c
     first_without_reply_.store(call.get(), std::memory_order_release);
   }
   if (size <= max_concurrent_calls_) {
-    reactor->messenger()->Handle(call, Queue::kTrue);
+    reactor->messenger().Handle(call, Queue::kTrue);
   }
 }
 
@@ -84,8 +83,6 @@ void ConnectionContextWithQueue::Shutdown(const Status& status) {
 
 void ConnectionContextWithQueue::CallProcessed(InboundCall* call) {
   ++processed_call_count_;
-  auto reactor = call->connection()->reactor();
-  DCHECK(reactor->IsCurrentThread());
 
   DCHECK(!calls_queue_.empty());
   DCHECK_EQ(calls_queue_.front().get(), call);
@@ -97,32 +94,32 @@ void ConnectionContextWithQueue::CallProcessed(InboundCall* call) {
 
   calls_queue_.pop_front();
   --replies_being_sent_;
+  auto& connection = *call->connection();
   if (calls_queue_.size() >= max_concurrent_calls_) {
     auto call_ptr = calls_queue_[max_concurrent_calls_ - 1];
-    reactor->messenger()->Handle(call_ptr, Queue::kTrue);
+    connection.reactor()->messenger().Handle(call_ptr, Queue::kTrue);
   }
   if (Idle() && idle_listener_) {
     idle_listener_();
   }
 
   if (!could_enqueue && can_enqueue()) {
-    call->connection()->ParseReceived();
+    connection.ParseReceived();
   }
 }
 
-void ConnectionContextWithQueue::QueueResponse(const ConnectionPtr& conn,
-                                               InboundCallPtr call) {
+Status ConnectionContextWithQueue::QueueResponse(const ConnectionPtr& conn, InboundCallPtr call) {
   QueueableInboundCall* queueable_call = down_cast<QueueableInboundCall*>(call.get());
   queueable_call->SetHasReply();
   if (queueable_call == first_without_reply_.load(std::memory_order_acquire)) {
-    auto scheduled = conn->reactor()->ScheduleReactorTask(flush_outbound_queue_task_);
-    LOG_IF(WARNING, !scheduled) << "Failed to schedule flush outbound queue";
+    return conn->reactor()->ScheduleReactorTask(flush_outbound_queue_task_);
   }
+  return Status::OK();
 }
 
 void ConnectionContextWithQueue::FlushOutboundQueue(Connection* conn) {
-  DCHECK(conn->reactor()->IsCurrentThread());
-
+  // This function is only called as a callback on reactor thread.
+  conn->reactor()->CheckCurrentThread();
   const size_t begin = replies_being_sent_;
   size_t end = begin;
   for (;;) {
@@ -135,7 +132,7 @@ void ConnectionContextWithQueue::FlushOutboundQueue(Connection* conn) {
     }
     auto new_first_without_reply = end < queue_size ? calls_queue_[end].get() : nullptr;
     first_without_reply_.store(new_first_without_reply, std::memory_order_release);
-    // It is usual case that we break here, but sometimes there could happen that before updating
+    // It is usual case that we break here, but sometimes it could happen that before updating
     // first_without_reply_ we did QueueResponse for this call.
     if (!new_first_without_reply || !new_first_without_reply->has_reply()) {
       break;
@@ -151,10 +148,11 @@ void ConnectionContextWithQueue::FlushOutboundQueue(Connection* conn) {
   }
 }
 
-void ConnectionContextWithQueue::AssignConnection(const ConnectionPtr& conn) {
+Status ConnectionContextWithQueue::AssignConnection(const ConnectionPtr& conn) {
   flush_outbound_queue_task_ = MakeFunctorReactorTask(
       std::bind(&ConnectionContextWithQueue::FlushOutboundQueue, this, conn.get()), conn,
       SOURCE_LOCATION());
+  return Status::OK();
 }
 
 } // namespace rpc

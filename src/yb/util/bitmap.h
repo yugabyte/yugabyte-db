@@ -30,8 +30,7 @@
 // under the License.
 //
 // Utility functions for dealing with a byte array as if it were a bitmap.
-#ifndef YB_UTIL_BITMAP_H
-#define YB_UTIL_BITMAP_H
+#pragma once
 
 #include <string>
 
@@ -271,5 +270,3 @@ class OneWayBitmap {
 };
 
 } // namespace yb
-
-#endif // YB_UTIL_BITMAP_H

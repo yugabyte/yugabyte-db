@@ -37,6 +37,10 @@
 #include "utils/rel.h"
 #include "utils/sampling.h"
 
+/* YB includes. */
+#include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_pggate.h"
+
 PG_MODULE_MAGIC;
 
 /*
@@ -243,6 +247,8 @@ file_fdw_validator(PG_FUNCTION_ARGS)
 		if (strcmp(def->defname, "filename") == 0 ||
 			strcmp(def->defname, "program") == 0)
 		{
+			YBCheckServerAccessIsAllowed();
+
 			if (filename)
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),

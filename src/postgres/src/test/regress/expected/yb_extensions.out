@@ -88,6 +88,21 @@ select pg_get_userbyid(userid),datname,query,calls,rows,shared_blks_hit,shared_b
  yugabyte        | yugabyte | select pg_stat_statements_reset()                                                                                                                                                                                                                    |     1 |    1 |               0 |                0 |                   0 |                   0 |              0 |               0 |                  0 |                  0 |              0 |                 0 |             0
 (4 rows)
 
+-- SeqScan forces YbSeqScan node with NodeTag near the end of the list in nodes.h
+explain (analyze, costs off, summary off, timing off) /*+SeqScan(test)*/ select a, b from test;
+                QUERY PLAN
+------------------------------------------
+ Seq Scan on test (actual rows=2 loops=1)
+(1 row)
+
+-- GHI 14498: different queryid may indicate NodeTag added to the middle of the list
+-- Please make sure it is appended
+select queryid, query from pg_stat_statements where query like 'explain %';
+       queryid       |                                             query
+---------------------+------------------------------------------------------------------------------------------------
+ -231100365597916323 | explain (analyze, costs off, summary off, timing off) /*+SeqScan(test)*/ select a, b from test
+(1 row)
+
 drop table test;
 -- Testing uuid-ossp
 create extension "uuid-ossp";

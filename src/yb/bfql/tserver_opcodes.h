@@ -26,8 +26,7 @@
 // - Server uses the provided sopcode to process the request appropriately.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_BFQL_TSERVER_OPCODES_H_
-#define YB_BFQL_TSERVER_OPCODES_H_
+#pragma once
 
 #include <stdint.h>
 
@@ -62,5 +61,3 @@ bool IsAggregateOpcode(TSOpcode op);
 
 } // namespace bfql
 } // namespace yb
-
-#endif  // YB_BFQL_TSERVER_OPCODES_H_

@@ -37,6 +37,7 @@
 
 #include "yb/consensus/consensus-test-util.h"
 #include "yb/consensus/log.h"
+#include "yb/consensus/log.messages.h"
 #include "yb/consensus/log_index.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/log_util.h"
@@ -73,16 +74,16 @@ METRIC_DECLARE_entity(tablet);
 
 using std::shared_ptr;
 using std::unique_ptr;
+using std::vector;
+using std::string;
 
 namespace yb {
 
 namespace consensus {
 
 using log::Log;
-using log::LogEntryPB;
 using log::LogOptions;
 using log::LogReader;
-using rpc::RpcContext;
 using strings::Substitute;
 using strings::SubstituteAndAppend;
 
@@ -104,7 +105,7 @@ class RaftConsensusQuorumTest : public YBTest {
           METRIC_ENTITY_tablet.Instantiate(&metric_registry_, "raft-test-tablet")),
       schema_(GetSimpleTestSchema()) {
     options_.tablet_id = kTestTablet;
-    FLAGS_enable_leader_failure_detection = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_leader_failure_detection) = false;
   }
 
   // Builds an initial configuration of 'num' elements.
@@ -161,10 +162,9 @@ class RaftConsensusQuorumTest : public YBTest {
 
       string peer_uuid = Substitute("peer-$0", i);
 
-      std::unique_ptr<ConsensusMetadata> cmeta;
       fs_managers_[i]->SetTabletPathByDataPath(kTestTablet, fs_managers_[i]->GetDataRootDirs()[0]);
-      ASSERT_OK(ConsensusMetadata::Create(fs_managers_[i], kTestTablet, peer_uuid, config_,
-                                         kMinimumTerm, &cmeta));
+      std::unique_ptr<ConsensusMetadata> cmeta = ASSERT_RESULT(ConsensusMetadata::Create(
+          fs_managers_[i], kTestTablet, peer_uuid, config_, kMinimumTerm));
 
       RaftPeerPB local_peer_pb;
       ASSERT_OK(GetRaftConfigMember(config_, peer_uuid, &local_peer_pb));
@@ -190,6 +190,14 @@ class RaftConsensusQuorumTest : public YBTest {
           pool_token.get(),
           nullptr);
 
+      RetryableRequestsManager retryable_requests_manager(
+          options_.tablet_id,
+          fs_managers_[i],
+          fs_managers_[i]->GetWalRootDirs()[0],
+          parent_mem_trackers_[i],
+          "");
+      Status s = retryable_requests_manager.Init(clock_);
+
       shared_ptr<RaftConsensus> peer(new RaftConsensus(
           options_,
           std::move(cmeta),
@@ -206,7 +214,7 @@ class RaftConsensusQuorumTest : public YBTest {
           parent_mem_trackers_[i],
           Bind(&DoNothing),
           DEFAULT_TABLE_TYPE,
-          nullptr /* retryable_requests */));
+          &retryable_requests_manager));
 
       operation_factory->SetConsensus(peer.get());
       operation_factories_.emplace_back(operation_factory);
@@ -263,7 +271,7 @@ class RaftConsensusQuorumTest : public YBTest {
 
   Status AppendDummyMessage(int peer_idx,
                             scoped_refptr<ConsensusRound>* round) {
-    auto msg = std::make_shared<ReplicateMsg>();
+    auto msg = rpc::MakeSharedMessage<LWReplicateMsg>();
     msg->set_op_type(NO_OP);
     msg->mutable_noop_request();
     msg->set_hybrid_time(clock_->Now().ToUint64());
@@ -465,12 +473,12 @@ class RaftConsensusQuorumTest : public YBTest {
     }
   }
 
-  std::vector<OpIdPB> ExtractReplicateIds(const log::LogEntries& entries) {
-    std::vector<OpIdPB> result;
+  std::vector<OpId> ExtractReplicateIds(const log::LogEntries& entries) {
+    std::vector<OpId> result;
     result.reserve(entries.size() / 2);
     for (const auto& entry : entries) {
       if (entry->has_replicate()) {
-        result.push_back(entry->replicate().id());
+        result.push_back(OpId::FromPB(entry->replicate().id()));
       }
     }
     return result;
@@ -482,17 +490,16 @@ class RaftConsensusQuorumTest : public YBTest {
     auto replica_ids = ExtractReplicateIds(replica_entries);
     ASSERT_EQ(leader_ids.size(), replica_ids.size());
     for (size_t i = 0; i < leader_ids.size(); i++) {
-      ASSERT_EQ(leader_ids[i].ShortDebugString(),
-                replica_ids[i].ShortDebugString());
+      ASSERT_EQ(leader_ids[i], replica_ids[i]);
     }
   }
 
   void VerifyNoCommitsBeforeReplicates(const log::LogEntries& entries) {
-    std::unordered_set<OpIdPB, OpIdHashFunctor, OpIdEqualsFunctor> replication_ops;
+    std::unordered_set<OpId, OpIdHash> replication_ops;
 
     for (const auto& entry : entries) {
       if (entry->has_replicate()) {
-        ASSERT_TRUE(InsertIfNotPresent(&replication_ops, entry->replicate().id()))
+        ASSERT_TRUE(InsertIfNotPresent(&replication_ops, OpId::FromPB(entry->replicate().id())))
           << "REPLICATE op id showed up twice: " << entry->ShortDebugString();
       }
     }
@@ -873,8 +880,9 @@ TEST_F(RaftConsensusQuorumTest, TestReplicasEnforceTheLogMatchingProperty) {
 
   // Now replicas should only accept operations with
   // 'last_id' as the preceding id.
-  ConsensusRequestPB req;
-  ConsensusResponsePB resp;
+  auto req_ptr = rpc::MakeSharedMessage<LWConsensusRequestPB>();
+  auto& req = *req_ptr;
+  LWConsensusResponsePB resp(&req.arena());
 
   shared_ptr<RaftConsensus> leader;
   ASSERT_OK(peers_->GetPeerByIdx(2, &leader));
@@ -882,25 +890,25 @@ TEST_F(RaftConsensusQuorumTest, TestReplicasEnforceTheLogMatchingProperty) {
   shared_ptr<RaftConsensus> follower;
   ASSERT_OK(peers_->GetPeerByIdx(0, &follower));
 
-  req.set_caller_uuid(leader->peer_uuid());
+  req.ref_caller_uuid(leader->peer_uuid());
   req.set_caller_term(last_op_id.term());
   req.mutable_preceding_id()->CopyFrom(last_op_id);
   req.mutable_committed_op_id()->CopyFrom(last_op_id);
 
-  ReplicateMsg* replicate = req.add_ops();
+  auto* replicate = req.add_ops();
   replicate->set_hybrid_time(clock_->Now().ToUint64());
-  OpIdPB* id = replicate->mutable_id();
+  auto* id = replicate->mutable_id();
   id->set_term(last_op_id.term());
   id->set_index(last_op_id.index() + 1);
   // Make a copy of the OpId to be TSAN friendly.
-  auto req_copy = req;
-  auto id_copy = req_copy.mutable_ops(0)->mutable_id();
+  LWConsensusRequestPB req_copy(&req.arena(), req);
+  auto* id_copy = req_copy.mutable_ops()->front().mutable_id();
   replicate->set_op_type(NO_OP);
 
   // Appending this message to peer0 should work and update
   // its 'last_received' to 'id'.
-  ASSERT_OK(follower->Update(&req, &resp, CoarseBigDeadline()));
-  ASSERT_TRUE(OpIdEquals(resp.status().last_received(), *id));
+  ASSERT_OK(follower->Update(req_ptr, &resp, CoarseBigDeadline()));
+  ASSERT_EQ(OpId::FromPB(resp.status().last_received()), OpId::FromPB(*id));
 
   // Now skip one message in the same term. The replica should
   // complain with the right error message.
@@ -908,11 +916,11 @@ TEST_F(RaftConsensusQuorumTest, TestReplicasEnforceTheLogMatchingProperty) {
   id_copy->set_index(id_copy->index() + 2);
   // Appending this message to peer0 should return a Status::OK
   // but should contain an error referring to the log matching property.
-  ASSERT_OK(follower->Update(&req_copy, &resp, CoarseBigDeadline()));
+  ASSERT_OK(follower->Update(rpc::SharedField(req_ptr, &req_copy), &resp, CoarseBigDeadline()));
   ASSERT_TRUE(resp.has_status());
   ASSERT_TRUE(resp.status().has_error());
   ASSERT_EQ(resp.status().error().code(), ConsensusErrorPB::PRECEDING_ENTRY_DIDNT_MATCH);
-  ASSERT_STR_CONTAINS(resp.status().error().status().message(),
+  ASSERT_STR_CONTAINS(resp.status().error().status().message().ToBuffer(),
                       "Log matching property violated");
 }
 
@@ -1020,12 +1028,12 @@ TEST_F(RaftConsensusQuorumTest, TestRequestVote) {
   ASSERT_NO_FATALS(AssertDurableTermWithoutVote(kPeerIndex, last_op_id.term() + 3));
 
   // Send a "heartbeat" to the peer. It should be rejected.
-  ConsensusRequestPB req;
-  req.set_caller_term(last_op_id.term());
-  req.set_caller_uuid("peer-0");
-  req.mutable_committed_op_id()->CopyFrom(last_op_id);
-  ConsensusResponsePB res;
-  Status s = peer->Update(&req, &res, CoarseBigDeadline());
+  auto req = rpc::MakeSharedMessage<LWConsensusRequestPB>();
+  req->set_caller_term(last_op_id.term());
+  req->ref_caller_uuid("peer-0");
+  req->mutable_committed_op_id()->CopyFrom(last_op_id);
+  LWConsensusResponsePB res(&req->arena());
+  Status s = peer->Update(req, &res, CoarseBigDeadline());
   ASSERT_EQ(last_op_id.term() + 3, res.responder_term());
   ASSERT_TRUE(res.status().has_error());
   ASSERT_EQ(ConsensusErrorPB::INVALID_TERM, res.status().error().code());

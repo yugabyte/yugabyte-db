@@ -7,7 +7,7 @@ image: /images/section_icons/index/quick_start.png
 headcontent: Build the source code.
 menu:
   preview:
-    identifier: build-from-src-2-centos
+    identifier: build-from-src-3-centos
     parent: core-database
     weight: 2912
 type: docs
@@ -16,22 +16,29 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
+    <a href="{{< relref "./build-from-src-almalinux.md" >}}" class="nav-link">
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
+      AlmaLinux
+    </a>
+  </li>
+
+  <li >
     <a href="{{< relref "./build-from-src-macos.md" >}}" class="nav-link">
-      <i class="fab fa-apple" aria-hidden="true"></i>
+      <i class="fa-brands fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
     <a href="{{< relref "./build-from-src-centos.md" >}}" class="nav-link active">
-      <i class="fab fa-linux" aria-hidden="true"></i>
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
       CentOS
     </a>
   </li>
 
   <li >
     <a href="{{< relref "./build-from-src-ubuntu.md" >}}" class="nav-link">
-      <i class="fab fa-linux" aria-hidden="true"></i>
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
       Ubuntu
     </a>
   </li>
@@ -40,89 +47,115 @@ type: docs
 
 {{< note title="Note" >}}
 
-CentOS 7 is the recommended Linux development and production platform for YugabyteDB.
+AlmaLinux 8 is the recommended Linux development platform for YugabyteDB.
 
 {{< /note >}}
 
+The following instructions are for CentOS 7.
+
 ## Install necessary packages
 
-Update packages on your system, install development tools and additional packages:
+Update and install basic development packages as follows:
 
 ```sh
-sudo yum update
+sudo yum update -y
 sudo yum groupinstall -y 'Development Tools'
-sudo yum install -y ruby perl-Digest epel-release ccache git python2-pip python-devel python3 python3-pip python3-devel which
-sudo yum install -y cmake3 ctest3 ninja-build
+sudo yum install -y centos-release-scl epel-release git libatomic rsync which
 ```
 
-## Prepare build tools
+### /opt/yb-build
 
-Make sure `cmake`/`ctest` binaries are at least version 3. On CentOS, one way to achieve this is to symlink them into `/usr/local/bin`.
+{{% readfile "includes/opt-yb-build.md" %}}
+
+### Python 3
+
+{{% readfile "includes/python.md" %}}
+
+The following example installs Python 3.8.
 
 ```sh
+sudo yum -y install rh-python38
+# Also add the following line to your .bashrc or equivalent.
+source /opt/rh/rh-python38/enable
+```
+
+### CMake 3
+
+{{% readfile "includes/cmake.md" %}}
+
+The package manager has that, but we still need to link the name `cmake` to `cmake3`.
+Do similarly for `ctest`.
+
+```sh
+sudo yum install -y cmake3
 sudo ln -s /usr/bin/cmake3 /usr/local/bin/cmake
 sudo ln -s /usr/bin/ctest3 /usr/local/bin/ctest
 ```
 
-You could also symlink them into another directory that is on your `PATH`.
+### Java
 
-{{< note title="Note" >}}
+{{% readfile "includes/java.md" %}}
 
-We also use [Linuxbrew](https://github.com/linuxbrew/brew) to provide some of the third-party dependencies on CentOS.
-Linuxbrew allows us to create a portable package that contains its own copy of glibc and can be installed on most Linux distributions.
-However, we are transitioning away from using Linuxbrew and towards native toolchains on various platforms.
-
-Our build scripts may automatically install Linuxbrew in a directory such as `/opt/yb-build/brew/linuxbrew-<version>` or `~/.linuxbrew-yb-build/linuxbrew-<version>`.
-There is no need to add any of those directories to PATH.
-
-{{< /note >}}
-
-## Building the code
-
-Assuming this repository is checked out in `~/code/yugabyte-db`, do the following:
+Install the following packages to satisfy the preceding requirements:
 
 ```sh
-cd ~/code/yugabyte-db
-./yb_build.sh release
+sudo yum install -y java-1.8.0-openjdk rh-maven35
+# Also add the following line to your .bashrc or equivalent.
+source /opt/rh/rh-maven35/enable
 ```
 
-{{< note title="Note" >}}
+### yugabyted-ui
 
-If you see errors, such as `g++: internal compiler error: Killed`, the system has probably run out of memory.
-Try again by running the build script with less concurrency, for example, `-j1`.
-
-{{< /note >}}
-
-The command above will build the release configuration, add the C++ binaries into the `build/release-gcc-dynamic-ninja` directory, and create a `build/latest` symlink to that directory.
-
-{{< tip title="Tip" >}}
-
-You can find the binaries you just built in `build/latest` directory, which would be a symbolic link to `build/release-gcc-dynamic-ninja` in this case.
-
-{{< /tip >}}
-
-For Linux, it will first make sure our custom Linuxbrew distribution is installed into `~/.linuxbrew-yb-build/linuxbrew-<version>`.
-
-## Build Java code
-
-YugabyteDB core is written in C++, but the repository contains Java code needed to run sample applications. To build the Java part, you need:
-
-* JDK 8
-* [Apache Maven](https://maven.apache.org/).
-
-Also make sure Maven's bin directory is added to your `PATH` (for example, by adding to your `~/.bashrc`). See the example below (if you've installed Maven into `~/tools/apache-maven-3.6.3`)
+{{% readfile "includes/yugabyted-ui.md" %}}
 
 ```sh
-export PATH=$HOME/tools/apache-maven-3.6.3/bin:$PATH
+sudo yum install -y npm golang
 ```
 
-For building YugabyteDB Java code, you'll need to install Java and Apache Maven.
+### Ninja (optional)
 
-## Build release package
-You can build a release package by executing:
+{{% readfile "includes/ninja.md" %}}
 
-```shell
-$ ./yb_release
-......
-2020-10-27 20:52:27,978 [yb_release.py:283 INFO] Generated a package at '/home/user/code/yugabyte-db/build/yugabyte-2.5.1.0-8696bc05a97c4907b53d6446b5bfa7acb28ceef5-release-centos-x86_64.tar.gz'
+```sh
+sudo yum install -y ninja-build
 ```
+
+### Ccache (optional)
+
+{{% readfile "includes/ccache.md" %}}
+
+```sh
+sudo yum install -y ccache
+# Also add the following line to your .bashrc or equivalent.
+export YB_CCACHE_DIR="$HOME/.cache/yb_ccache"
+```
+
+### GCC (optional)
+
+To compile with GCC, install the following packages, and adjust the version numbers to match the GCC version you plan to use.
+
+```sh
+sudo yum install -y devtoolset-11 devtoolset-11-libatomic-devel
+```
+
+## Build the code
+
+{{% readfile "includes/build-the-code.md" %}}
+
+### Build release package (optional)
+
+Perform the following steps to build a release package:
+
+1. [Satisfy requirements for building yugabyted-ui](#yugabyted-ui).
+1. Run the `yb_release` script using the following command:
+
+   ```sh
+   ./yb_release
+   ```
+
+   ```output.sh
+   ......
+   2023-02-10 23:19:46,459 [yb_release.py:299 INFO] Generated a package at '/home/user/code/yugabyte-db/build/yugabyte-2.17.2.0-44b735cc69998d068d561f4b6f337b318fbc2424-release-clang15-centos-x86_64.tar.gz'
+   ```
+
+{{% readfile "includes/ulimit.md" %}}

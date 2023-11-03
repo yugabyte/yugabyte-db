@@ -21,9 +21,11 @@ SELECT yb_get_range_split_clause('pg_class'::regclass);
 
 (1 row)
 
+-- Control the message level sent to the client to make this test suite more robust for oid changes.
+-- Don't output NOTICE: relation with oid <oid> is not backed by YB for some cases.
+SET client_min_messages = 'WARNING';
 -- Test system view, view, YB materialized view
 SELECT yb_get_range_split_clause('pg_roles'::regclass);
-NOTICE:  relation with oid 12048 is not backed by YB
  yb_get_range_split_clause
 ---------------------------
  (null)
@@ -32,7 +34,6 @@ NOTICE:  relation with oid 12048 is not backed by YB
 CREATE TABLE view_test (a INT);
 CREATE VIEW my_view AS SELECT * FROM view_test;
 SELECT yb_get_range_split_clause('my_view'::regclass);
-NOTICE:  relation with oid 16501 is not backed by YB
  yb_get_range_split_clause
 ---------------------------
  (null)
@@ -41,7 +42,6 @@ NOTICE:  relation with oid 16501 is not backed by YB
 DROP VIEW my_view;
 CREATE MATERIALIZED VIEW my_materialized_view AS SELECT * FROM view_test;
 SELECT yb_get_range_split_clause('my_materialized_view'::regclass);
-NOTICE:  relation with oid 16505 is not range-partitioned
  yb_get_range_split_clause
 ---------------------------
  (null)
@@ -49,14 +49,16 @@ NOTICE:  relation with oid 16505 is not range-partitioned
 
 DROP MATERIALIZED VIEW my_materialized_view;
 DROP TABLE view_test;
+RESET client_min_messages;
+SET yb_enable_create_with_table_oid = true;
 -- Test temp table
 CREATE TEMP TABLE temp_tbl (
   a INT,
   PRIMARY KEY(a ASC)
-) SPLIT AT VALUES((-100), (250));
-WARNING:  Split options on TEMP table will be ignored
+) WITH (table_oid = 20000) SPLIT AT VALUES((-100), (250));
+WARNING:  split options on TEMP table will be ignored
 SELECT yb_get_range_split_clause('temp_tbl'::regclass);
-NOTICE:  relation with oid 16509 is not backed by YB
+NOTICE:  relation with oid 20000 is not backed by YB
  yb_get_range_split_clause
 ---------------------------
  (null)
@@ -67,19 +69,19 @@ DROP TABLE temp_tbl;
 CREATE TABLE no_pk_tbl (
   a INT,
   b TEXT
-);
+) WITH (table_oid = 20003);
 SELECT yb_get_range_split_clause('no_pk_tbl'::regclass);
-NOTICE:  relation with oid 16514 is not range-partitioned
- yb_get_range_split_clause 
+NOTICE:  relation with oid 20003 is not range-partitioned
+ yb_get_range_split_clause
 ---------------------------
  (null)
 (1 row)
 
 DROP TABLE no_pk_tbl;
 -- Test hash-partitioned table.
-CREATE TABLE hash_partitioned_tbl (k INT PRIMARY KEY) SPLIT INTO 5 TABLETS;
+CREATE TABLE hash_partitioned_tbl (k INT PRIMARY KEY) WITH (table_oid = 20006) SPLIT INTO 5 TABLETS;
 SELECT yb_get_range_split_clause('hash_partitioned_tbl'::regclass);
-NOTICE:  relation with oid 16517 is not range-partitioned
+NOTICE:  relation with oid 20006 is not range-partitioned
  yb_get_range_split_clause
 ---------------------------
  (null)
@@ -588,7 +590,7 @@ SELECT yb_get_range_split_clause('tbl_collation_pk3'::regclass);
 
 DROP TABLE tbl_collation_pk3;
 -- Test colocated table
-CREATE DATABASE colocation_test colocated = true;
+CREATE DATABASE colocation_test colocation = true;
 \c colocation_test
 CREATE TABLE tbl_colocated_range (
   a INT,
@@ -619,7 +621,7 @@ CREATE TABLE tbl_group_split_at (
   a INT,
   PRIMARY KEY(a ASC)
 ) SPLIT AT VALUES((-100), (250)) TABLEGROUP tbl_group;
-ERROR:  Cannot use TABLEGROUP with SPLIT.
+ERROR:  cannot use TABLEGROUP with SPLIT
 CREATE TABLE tbl_group_table (
   a INT,
   PRIMARY KEY(a ASC)
@@ -632,3 +634,113 @@ SELECT yb_get_range_split_clause('tbl_group_table'::regclass);
 
 DROP TABLE tbl_group_table;
 DROP TABLEGROUP tbl_group;
+-- Test the scenario where primary key columns' ordering in PRIMARY KEY
+-- constraint is different from the key column's ordering in CREATE TABLE
+-- statement.
+CREATE TABLE column_ordering_mismatch (
+  k2 TEXT,
+  v DOUBLE PRECISION,
+  k1 INT,
+  PRIMARY KEY (k1 ASC, k2 ASC)
+) SPLIT AT VALUES((1, '1'), (100, '100'));
+SELECT yb_get_range_split_clause('column_ordering_mismatch'::regclass);
+        yb_get_range_split_clause
+------------------------------------------
+ SPLIT AT VALUES ((1, '1'), (100, '100'))
+(1 row)
+
+DROP TABLE column_ordering_mismatch;
+-- Test table PRIMARY KEY with INCLUDE clause
+CREATE TABLE tbl_with_include_clause (
+  k2 TEXT,
+  v DOUBLE PRECISION,
+  k1 INT,
+  PRIMARY KEY (k1 ASC, k2 ASC) INCLUDE (v)
+) SPLIT AT VALUES((1, '1'), (100, '100'));
+SELECT yb_get_range_split_clause('tbl_with_include_clause'::regclass);
+        yb_get_range_split_clause
+------------------------------------------
+ SPLIT AT VALUES ((1, '1'), (100, '100'))
+(1 row)
+
+DROP TABLE tbl_with_include_clause;
+-- Test index SPLIT AT with INCLUDE clause
+CREATE TABLE test_tbl (
+  a TEXT,
+  b DOUBLE PRECISION,
+  PRIMARY KEY (a ASC)
+) SPLIT AT VALUES(('11'));
+CREATE INDEX test_idx on test_tbl(
+  b ASC
+) INCLUDE (a) SPLIT AT VALUES ((1.1));
+SELECT yb_get_range_split_clause('test_idx'::regclass);
+ yb_get_range_split_clause 
+---------------------------
+ SPLIT AT VALUES ((1.1))
+(1 row)
+
+DROP INDEX test_idx;
+DROP TABLE test_tbl;
+-- Test index SPLIT AT with INCLUDE clause
+CREATE TABLE test_tbl (
+  a INT,
+  b TEXT,
+  c CHAR,
+  d BOOLEAN,
+  e REAL,
+  PRIMARY KEY (a ASC, b ASC)
+) SPLIT AT VALUES((1, '111'));
+CREATE INDEX test_idx on test_tbl(
+  a ASC,
+  b ASC,
+  c ASC
+) INCLUDE (d, e) SPLIT AT VALUES ((1, '11', '1'));
+SELECT yb_get_range_split_clause('test_idx'::regclass);
+    yb_get_range_split_clause     
+----------------------------------
+ SPLIT AT VALUES ((1, '11', '1'))
+(1 row)
+
+DROP INDEX test_idx;
+DROP TABLE test_tbl;
+-- Test index SPLIT AT with INCLUDE clause
+CREATE TABLE test_tbl (
+  a INT,
+  b INT,
+  c INT,
+  d INT,
+  e INT,
+  PRIMARY KEY (a DESC, b ASC)
+) SPLIT AT VALUES((1, 1));
+CREATE INDEX test_idx on test_tbl(
+  a ASC,
+  b DESC
+) INCLUDE (c, d, e) SPLIT AT VALUES ((1, 1));
+SELECT yb_get_range_split_clause('test_idx'::regclass);
+ yb_get_range_split_clause 
+---------------------------
+ SPLIT AT VALUES ((1, 1))
+(1 row)
+
+DROP INDEX test_idx;
+DROP TABLE test_tbl;
+-- Test secondary index with duplicate columns and backwards order columns
+CREATE TABLE test_tbl (
+  k1 INT,
+  k2 TEXT,
+  k3 DOUBLE PRECISION
+);
+CREATE INDEX test_idx on test_tbl (
+  k3 ASC,
+  k2 ASC,
+  k1 ASC,
+  k3 DESC
+) SPLIT AT VALUES ((1.1, '11', 1, 1.1), (3.3, '33', 3, 3.3));
+SELECT yb_get_range_split_clause('test_idx'::regclass);
+                 yb_get_range_split_clause
+------------------------------------------------------------
+ SPLIT AT VALUES ((1.1, '11', 1, 1.1), (3.3, '33', 3, 3.3))
+(1 row)
+
+DROP INDEX test_idx;
+DROP TABLE test_tbl;

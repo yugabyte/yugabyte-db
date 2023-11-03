@@ -1,4 +1,4 @@
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
 
 .universe-region-marker {
   width: auto;
@@ -20,7 +20,7 @@
   }
 
   &.marker-cluster-outline {
-    border: 4px solid $YB_ORANGE;
+    border: 4px solid colors.$YB_ORANGE;
     background: rgba(255, 255, 255, 0.7);
   }
 }

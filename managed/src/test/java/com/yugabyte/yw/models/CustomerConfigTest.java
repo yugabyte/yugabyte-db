@@ -31,7 +31,7 @@ public class CustomerConfigTest extends FakeDBApplication {
         Json.parse(
             "{\"name\": \"Test\", \"configName\": \"Test\", \"type\": "
                 + "\"STORAGE\", \"data\": {\"foo\": \"bar\"}}");
-    return CustomerConfig.createWithFormData(customer.uuid, formData);
+    return CustomerConfig.createWithFormData(customer.getUuid(), formData);
   }
 
   @Test
@@ -45,8 +45,8 @@ public class CustomerConfigTest extends FakeDBApplication {
   public void testGetAll() {
     createData(defaultCustomer);
     Customer newCustomer = ModelFactory.testCustomer("nc", "new customer");
-    assertEquals(0, CustomerConfig.getAll(newCustomer.uuid).size());
-    assertEquals(1, CustomerConfig.getAll(defaultCustomer.uuid).size());
+    assertEquals(0, CustomerConfig.getAll(newCustomer.getUuid()).size());
+    assertEquals(1, CustomerConfig.getAll(defaultCustomer.getUuid()).size());
   }
 
   @Test
@@ -57,7 +57,7 @@ public class CustomerConfigTest extends FakeDBApplication {
                 + "\"data\": {\"KEY\": \"ABCDEFGHIJ\", \"SECRET\": \"123456789\", "
                 + "\"DATA\": \"HELLO\"}}");
     CustomerConfig customerConfig =
-        CustomerConfig.createWithFormData(defaultCustomer.uuid, formData);
+        CustomerConfig.createWithFormData(defaultCustomer.getUuid(), formData);
 
     JsonNode data = customerConfig.getData();
     assertValue(data, "KEY", "ABCDEFGHIJ");
@@ -73,7 +73,7 @@ public class CustomerConfigTest extends FakeDBApplication {
   @Test
   public void testGetValidID() {
     CustomerConfig cc = createData(defaultCustomer);
-    CustomerConfig fc = CustomerConfig.get(defaultCustomer.uuid, cc.configUUID);
+    CustomerConfig fc = CustomerConfig.get(defaultCustomer.getUuid(), cc.getConfigUUID());
     assertNotNull(fc);
   }
 
@@ -81,7 +81,7 @@ public class CustomerConfigTest extends FakeDBApplication {
   public void testGetInvalidID() {
     Customer newCustomer = ModelFactory.testCustomer("nc", "new@customer.com");
     CustomerConfig cc = createData(newCustomer);
-    CustomerConfig fc = CustomerConfig.get(defaultCustomer.uuid, cc.configUUID);
+    CustomerConfig fc = CustomerConfig.get(defaultCustomer.getUuid(), cc.getConfigUUID());
     assertNull(fc);
   }
 
@@ -96,10 +96,10 @@ public class CustomerConfigTest extends FakeDBApplication {
   @Test
   public void testDeleteStorageConfigWithoutBackupAndSchedule() {
     CustomerConfig cc = createData(defaultCustomer);
-    CustomerConfig fc = CustomerConfig.get(defaultCustomer.uuid, cc.configUUID);
+    CustomerConfig fc = CustomerConfig.get(defaultCustomer.getUuid(), cc.getConfigUUID());
     assertNotNull(fc);
     fc.delete();
-    fc = CustomerConfig.get(defaultCustomer.uuid, cc.configUUID);
+    fc = CustomerConfig.get(defaultCustomer.getUuid(), cc.getConfigUUID());
     assertNull(fc);
   }
 }

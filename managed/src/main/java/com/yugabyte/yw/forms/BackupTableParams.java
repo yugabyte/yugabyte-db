@@ -3,18 +3,25 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.models.Backup.StorageConfigType;
+import com.yugabyte.yw.models.backuprestore.Tablespace;
 import com.yugabyte.yw.models.helpers.TimeUnit;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
+import lombok.ToString;
 import org.apache.commons.collections.CollectionUtils;
 import org.yb.CommonTypes.TableType;
 import play.data.validation.Constraints;
@@ -47,6 +54,9 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Full Table type backup")
   public Boolean isFullBackup = false;
 
+  @ApiModelProperty(value = "Backup all tables in Keyspace")
+  public boolean allTables = false;
+
   @ApiModelProperty(value = "Disable checksum")
   public Boolean disableChecksum = false;
 
@@ -62,10 +72,18 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Table UUIDs")
   public List<UUID> tableUUIDList;
 
+  @ApiModelProperty(hidden = true)
+  @Getter
+  @Setter
+  private Map<String, Set<String>> tablesWithIndexesMap;
+
   // Allows bundling multiple backup params. Used only in the case
   // of backing up an entire universe transactionally
   @ApiModelProperty(value = "Backups")
   public List<BackupTableParams> backupList;
+
+  @ApiModelProperty(hidden = true)
+  public UUID backupParamsIdentifier = null;
 
   @ApiModelProperty(value = "Per region locations")
   public List<BackupUtil.RegionLocations> regionLocations;
@@ -96,7 +114,11 @@ public class BackupTableParams extends TableManagerParams {
 
   // Should the backup be transactional across tables
   @ApiModelProperty(value = "Is backup transactional across tables")
+  @Deprecated
   public boolean transactionalBackup = false;
+
+  @ApiModelProperty(value = "Table by table backup")
+  public boolean tableByTableBackup = false;
 
   // The number of concurrent commands to run on nodes over SSH
   @ApiModelProperty(value = "Number of concurrent commands to run on nodes over SSH")
@@ -112,8 +134,14 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Customer UUID")
   public UUID customerUuid = null;
 
+  @ApiModelProperty(value = "Base backup UUID")
+  public UUID baseBackupUUID = null;
+
   @ApiModelProperty(value = "Backup UUID")
   public UUID backupUuid = null;
+
+  @ApiModelProperty(value = "Schedule Name")
+  public String scheduleName = null;
 
   @ApiModelProperty(value = "Should table backup errors be ignored")
   public Boolean ignoreErrors = false;
@@ -133,11 +161,55 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Backup size in bytes")
   public long backupSizeInBytes = 0L;
 
+  @ApiModelProperty(value = "Incremental backups chain size")
+  public long fullChainSizeInBytes = 0L;
+
   @ApiModelProperty(value = "Type of backup storage config")
   public StorageConfigType storageConfigType = null;
 
   @ApiModelProperty(value = "Time unit for backup expiry time")
   public TimeUnit expiryTimeUnit = TimeUnit.DAYS;
+
+  @ApiModelProperty(value = "Tablespaces info")
+  @Getter
+  @Setter
+  private List<Tablespace> tablespacesList = null;
+
+  // For each list item
+  public long timeTakenPartial = 0L;
+
+  @ApiModelProperty(hidden = true)
+  public long thisBackupSubTaskStartTime = 0L;
+
+  @ApiModelProperty(hidden = true)
+  public final Map<UUID, ParallelBackupState> backupDBStates = new ConcurrentHashMap<>();
+
+  @ToString
+  public static class ParallelBackupState {
+    public String nodeIp;
+    public String currentYbcTaskId;
+    public boolean alreadyScheduled = false;
+
+    public void resetOnComplete() {
+      this.nodeIp = null;
+      this.currentYbcTaskId = null;
+      this.alreadyScheduled = true;
+    }
+
+    public void setIntermediate(String nodeIp, String currentYbcTaskId) {
+      this.nodeIp = nodeIp;
+      this.currentYbcTaskId = currentYbcTaskId;
+    }
+  }
+
+  @JsonIgnore
+  public void initializeBackupDBStates() {
+    this.backupList.parallelStream()
+        .forEach(
+            paramsEntry ->
+                this.backupDBStates.put(
+                    paramsEntry.backupParamsIdentifier, new ParallelBackupState()));
+  }
 
   @JsonIgnore
   public BackupTableParams(BackupRequestParams backupRequestParams) {
@@ -146,7 +218,7 @@ public class BackupTableParams extends TableManagerParams {
     this.ignoreErrors = true;
     //    this.ignoreErrors = backupRequestParams.ignoreErrors;
     this.storageConfigUUID = backupRequestParams.storageConfigUUID;
-    this.universeUUID = backupRequestParams.universeUUID;
+    this.setUniverseUUID(backupRequestParams.getUniverseUUID());
     this.sse = backupRequestParams.sse;
     this.parallelism = backupRequestParams.parallelism;
     this.timeBeforeDelete = backupRequestParams.timeBeforeDelete;
@@ -154,9 +226,13 @@ public class BackupTableParams extends TableManagerParams {
     this.backupType = backupRequestParams.backupType;
     this.isFullBackup = CollectionUtils.isEmpty(backupRequestParams.keyspaceTableList);
     this.scheduleUUID = backupRequestParams.scheduleUUID;
+    this.scheduleName = backupRequestParams.scheduleName;
     this.disableChecksum = backupRequestParams.disableChecksum;
+    this.disableMultipart = backupRequestParams.disableMultipart;
     this.useTablespaces = backupRequestParams.useTablespaces;
     this.disableParallelism = backupRequestParams.disableParallelism;
+    this.baseBackupUUID = backupRequestParams.baseBackupUUID;
+    this.enableVerboseLogs = backupRequestParams.enableVerboseLogs;
   }
 
   @JsonIgnore
@@ -167,6 +243,46 @@ public class BackupTableParams extends TableManagerParams {
     this.tableUUIDList = new ArrayList<>();
     this.setTableName(null);
     this.tableUUID = null;
+  }
+
+  @JsonIgnore
+  public BackupTableParams(BackupTableParams tableParams) {
+    this.customerUuid = tableParams.customerUuid;
+    this.backupUuid = tableParams.backupUuid;
+    this.ignoreErrors = true;
+    this.storageConfigUUID = tableParams.storageConfigUUID;
+    this.storageLocation = tableParams.storageLocation;
+    this.storageConfigType = tableParams.storageConfigType;
+    this.setUniverseUUID(tableParams.getUniverseUUID());
+    this.sse = tableParams.sse;
+    this.parallelism = tableParams.parallelism;
+    this.timeBeforeDelete = tableParams.timeBeforeDelete;
+    this.expiryTimeUnit = tableParams.expiryTimeUnit;
+    this.backupType = tableParams.backupType;
+    this.isFullBackup = tableParams.isFullBackup;
+    this.allTables = tableParams.allTables;
+    this.scheduleUUID = tableParams.scheduleUUID;
+    this.scheduleName = tableParams.scheduleName;
+    this.disableChecksum = tableParams.disableChecksum;
+    this.useTablespaces = tableParams.useTablespaces;
+    this.disableParallelism = tableParams.disableParallelism;
+    this.enableVerboseLogs = tableParams.enableVerboseLogs;
+    this.disableMultipart = tableParams.disableMultipart;
+    this.baseBackupUUID = tableParams.baseBackupUUID;
+    this.setKeyspace(tableParams.getKeyspace());
+    this.tableNameList = new ArrayList<>(tableParams.getTableNameList());
+    this.tableUUIDList = new ArrayList<>(tableParams.getTableUUIDList());
+    this.setTableName(tableParams.getTableName());
+    this.tableUUID = tableParams.tableUUID;
+    this.backupParamsIdentifier = tableParams.backupParamsIdentifier;
+  }
+
+  @JsonIgnore
+  public BackupTableParams(BackupTableParams tableParams, UUID tableUUID, String tableName) {
+    this(tableParams);
+    this.tableUUIDList = Arrays.asList(tableUUID);
+    this.tableNameList = Arrays.asList(tableName);
+    this.setTableName(tableName);
   }
 
   @JsonIgnore
@@ -181,6 +297,24 @@ public class BackupTableParams extends TableManagerParams {
     }
 
     return tableNames;
+  }
+
+  public List<UUID> getTableUUIDList() {
+    if (tableUUIDList != null) {
+      return tableUUIDList;
+    } else if (tableUUID != null) {
+      return Arrays.asList(tableUUID);
+    }
+    return new ArrayList<UUID>();
+  }
+
+  public List<String> getTableNameList() {
+    if (tableNameList != null) {
+      return tableNameList;
+    } else if (getTableName() != null) {
+      return Arrays.asList(getTableName());
+    }
+    return new ArrayList<String>();
   }
 
   public boolean isFullBackup() {

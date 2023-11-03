@@ -1,28 +1,28 @@
 ---
-title: Use an ORM
+title: Django ORM
+headerTitle: Use an ORM
 linkTitle: Use an ORM
-description: Django ORM support for YugabyteDB
+description: Python Django ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   stable:
     identifier: django-orm
     parent: python-drivers
-    weight: 600
+    weight: 700
 type: docs
 ---
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-
-  <li >
-    <a href="../django/" class="nav-link active">
-      <i class="icon-java-bold" aria-hidden="true"></i>
-      Django ORM
+   <li >
+    <a href="../sqlalchemy/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      SQLAlchemy ORM
     </a>
   </li>
 
   <li >
-    <a href="../sqlalchemy/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      SQLAlchemy ORM
+    <a href="../django/" class="nav-link active">
+      <i class="fa-brands fa-java" aria-hidden="true"></i>
+      Django ORM
     </a>
   </li>
 
@@ -32,7 +32,7 @@ type: docs
 
 ## CRUD operations
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/python/ysql-django/) page under the Quick start section.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in [Python ORM example application](../../orms/python/ysql-django/) page.
 
 The following sections demonstrate how to perform common tasks required for Python application development using the Django ORM.
 
@@ -215,6 +215,7 @@ To run the application and insert a new row, execute the following steps.
 
    You can also verify this using the [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh) client shell.
 
-## Next steps
+## Learn more
 
-- Explore [Scaling Python Applications](../../../explore/linear-scalability/) with YugabyteDB.
+- Build Python applications using [SQLAlchemy ORM](../sqlalchemy/)
+- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)

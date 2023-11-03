@@ -96,7 +96,6 @@ extern void RelationCacheInitializePhase3(void);
 
 /*
  * Preload relations cache
- * Requires sys table prefetching to be started by the caller side
  */
 extern void YBPreloadRelCache();
 
@@ -128,6 +127,7 @@ extern void RelationForgetRelation(Oid rid);
 extern void RelationCacheInvalidateEntry(Oid relationId);
 
 extern void RelationCacheInvalidate(void);
+extern void YbRelationCacheInvalidate(void);
 
 extern void RelationCloseSmgrByOid(Oid relationId);
 

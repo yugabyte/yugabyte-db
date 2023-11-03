@@ -17,6 +17,7 @@ OBJS = execAmi.o execCurrent.o execExpr.o execExprInterp.o \
        execMain.o execParallel.o execPartition.o execProcnode.o \
        execReplication.o execScan.o execSRF.o execTuples.o \
        execUtils.o functions.o instrument.o nodeAppend.o nodeAgg.o \
+       nodeYbBatchedNestloop.o \
        nodeBitmapAnd.o nodeBitmapOr.o \
        nodeBitmapHeapscan.o nodeBitmapIndexscan.o \
        nodeCustom.o nodeFunctionscan.o nodeGather.o \
@@ -29,6 +30,7 @@ OBJS = execAmi.o execCurrent.o execExpr.o execExprInterp.o \
        nodeCtescan.o nodeNamedtuplestorescan.o nodeWorktablescan.o \
        nodeGroup.o nodeSubplan.o nodeSubqueryscan.o nodeTidscan.o \
        nodeForeignscan.o nodeWindowAgg.o tstoreReceiver.o tqueue.o spi.o \
-       nodeTableFuncscan.o ybc_fdw.o ybcModifyTable.o ybcExpr.o nodeYbSeqscan.o
+       nodeTableFuncscan.o ybcExpr.o ybcFunction.o ybc_fdw.o ybcModifyTable.o \
+       nodeYbSeqscan.o
 
 include $(top_srcdir)/src/backend/common.mk

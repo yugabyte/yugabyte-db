@@ -2,9 +2,10 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
-import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.MASTER;
+import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -13,11 +14,13 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -43,6 +46,7 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
   private static final List<TaskType> TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.SetNodeState,
+          TaskType.CheckUnderReplicatedTablets,
           TaskType.RunHooks,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
@@ -60,8 +64,8 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
           TaskType.WaitForServerReady,
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.ModifyBlackList,
-          TaskType.WaitForFollowerLag,
-          TaskType.WaitForFollowerLag,
+          TaskType.CheckFollowerLag,
+          TaskType.CheckFollowerLag,
           TaskType.RunHooks,
           TaskType.SetNodeState);
 
@@ -75,6 +79,9 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
     super.setUp();
     attachHooks("ThirdpartySoftwareUpgrade");
     thirdpartySoftwareUpgrade.setUserTaskUUID(UUID.randomUUID());
+
+    setUnderReplicatedTabletsMock();
+    setFollowerLagMock();
   }
 
   private TaskInfo submitTask(ThirdpartySoftwareUpgradeParams requestParams, int version) {
@@ -90,7 +97,7 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
         TaskType taskType = tasks.get(0).getTaskType();
 
         assertEquals(1, tasks.size());
-        assertEquals(type, taskType);
+        assertEquals("At position " + position, type, taskType);
         if (!NON_NODE_TASKS.contains(taskType)) {
           Map<String, Object> assertValues =
               new HashMap<>(ImmutableMap.of("nodeName", nodeName, "nodeCount", 1));
@@ -110,35 +117,35 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
   @Test
   public void testOnpremManualProvisionException() {
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
-    keyInfo.skipProvisioning = true;
-    AccessKey.create(onPremProvider.uuid, ApiUtils.DEFAULT_ACCESS_KEY_CODE, keyInfo);
+    onPremProvider.getDetails().skipProvisioning = true;
+    onPremProvider.save();
     Universe.saveDetails(
-        defaultUniverse.universeUUID,
+        defaultUniverse.getUniverseUUID(),
         details -> {
           UniverseDefinitionTaskParams.UserIntent userIntent =
               details.getUniverseDetails().getPrimaryCluster().userIntent;
-          userIntent.provider = onPremProvider.uuid.toString();
+          userIntent.provider = onPremProvider.getUuid().toString();
           userIntent.providerType = Common.CloudType.onprem;
           userIntent.accessKeyCode = ApiUtils.DEFAULT_ACCESS_KEY_CODE;
         });
     expectedUniverseVersion++;
     ThirdpartySoftwareUpgradeParams taskParams = new ThirdpartySoftwareUpgradeParams();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
-    TaskInfo taskInfo = submitTask(taskParams, expectedUniverseVersion);
-    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertThrows(RuntimeException.class, () -> submitTask(taskParams, expectedUniverseVersion));
     verifyNoMoreInteractions(mockNodeManager);
   }
 
   @Test
   public void testOnpremOK() {
-    AccessKey.create(gcpProvider.uuid, ApiUtils.DEFAULT_ACCESS_KEY_CODE, new AccessKey.KeyInfo());
+    AccessKey.create(
+        gcpProvider.getUuid(), ApiUtils.DEFAULT_ACCESS_KEY_CODE, new AccessKey.KeyInfo());
     Universe.saveDetails(
-        defaultUniverse.universeUUID,
+        defaultUniverse.getUniverseUUID(),
         details -> {
           UniverseDefinitionTaskParams.UserIntent userIntent =
               details.getUniverseDetails().getPrimaryCluster().userIntent;
-          userIntent.provider = onPremProvider.uuid.toString();
+          userIntent.provider = onPremProvider.getUuid().toString();
           userIntent.providerType = Common.CloudType.onprem;
           userIntent.accessKeyCode = ApiUtils.DEFAULT_ACCESS_KEY_CODE;
         });
@@ -147,10 +154,8 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
   }
 
   @Override
-  protected List<Integer> getRollingUpgradeNodeOrder(
-      UniverseDefinitionTaskBase.ServerType serverType) {
-    return super.getRollingUpgradeNodeOrder(serverType)
-        .stream()
+  protected List<Integer> getRollingUpgradeNodeOrder(UniverseTaskBase.ServerType serverType) {
+    return super.getRollingUpgradeNodeOrder(serverType).stream()
         .filter(idx -> !nodesToFilter.contains(idx))
         .collect(Collectors.toList());
   }
@@ -158,7 +163,7 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
   private void testInstanceReprovision(boolean forceAll) {
     ThirdpartySoftwareUpgradeParams taskParams = new ThirdpartySoftwareUpgradeParams();
     taskParams.setForceAll(forceAll);
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
 
     TaskInfo taskInfo = submitTask(taskParams, expectedUniverseVersion);
@@ -171,7 +176,7 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
-
+    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     // Assert that the first task is the pre-upgrade hooks
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
 
@@ -187,5 +192,23 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
     assertEquals(subTasksByPosition.size(), position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testInstanceReprovisionRetries() {
+    ThirdpartySoftwareUpgradeParams taskParams = new ThirdpartySoftwareUpgradeParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.creatingUser = defaultUser;
+    TestUtils.setFakeHttpContext(defaultUser);
+    super.verifyTaskRetries(
+        defaultCustomer,
+        CustomerTask.TaskType.ThirdpartySoftwareUpgrade,
+        CustomerTask.TargetType.Universe,
+        defaultUniverse.getUniverseUUID(),
+        TaskType.ThirdpartySoftwareUpgrade,
+        taskParams,
+        false);
   }
 }

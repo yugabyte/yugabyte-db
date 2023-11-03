@@ -3,9 +3,9 @@ title: Presto
 linkTitle: Presto
 description: Presto
 menu:
-  preview:
+  preview_integrations:
     identifier: presto
-    parent: integrations
+    parent: data-discovery
     weight: 571
 type: docs
 ---
@@ -21,7 +21,7 @@ Follow the [Quick start](../../quick-start/) instructions to run a local Yugabyt
 ## 2. Download and configure Presto
 
 Detailed steps are documented [here](https://prestosql.io/docs/current/installation/deployment.html).
-The following are the minimal setup steps for getting started:
+The following are the minimal steps for getting started:
 
 ```sh
 $ wget https://repo1.maven.org/maven2/io/prestosql/presto-server/309/presto-server-309.tar.gz

@@ -16,10 +16,6 @@
 import type { ClusterFaultTolerance } from './ClusterFaultTolerance';
 // eslint-disable-next-line no-duplicate-imports
 import type { ClusterNodeInfo } from './ClusterNodeInfo';
-// eslint-disable-next-line no-duplicate-imports
-import type { ClusterTier } from './ClusterTier';
-// eslint-disable-next-line no-duplicate-imports
-import type { ClusterType } from './ClusterType';
 
 
 /**
@@ -28,18 +24,6 @@ import type { ClusterType } from './ClusterType';
  * @interface ClusterInfo
  */
 export interface ClusterInfo  {
-  /**
-   * 
-   * @type {ClusterTier}
-   * @memberof ClusterInfo
-   */
-  cluster_tier: ClusterTier;
-  /**
-   * 
-   * @type {ClusterType}
-   * @memberof ClusterInfo
-   */
-  cluster_type?: ClusterType;
   /**
    * How many nodes are in the cluster
    * @type {number}
@@ -52,6 +36,12 @@ export interface ClusterInfo  {
    * @memberof ClusterInfo
    */
   fault_tolerance: ClusterFaultTolerance;
+  /**
+   * The replication factor applied on the cluster
+   * @type {number}
+   * @memberof ClusterInfo
+   */
+  replication_factor?: number;
   /**
    * 
    * @type {ClusterNodeInfo}

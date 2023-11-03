@@ -8,7 +8,15 @@
  */
 
 import React, { FC, useMemo, useState } from 'react';
-import { Col, DropdownButton, MenuItem, OverlayTrigger, Popover, Row } from 'react-bootstrap';
+import {
+  Col,
+  DropdownButton,
+  MenuItem,
+  OverlayTrigger,
+  Popover,
+  Row,
+  Tooltip
+} from 'react-bootstrap';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
 import cronstrue from 'cronstrue';
@@ -22,19 +30,24 @@ import {
   editBackupSchedule,
   getScheduledBackupList
 } from '../common/BackupScheduleAPI';
-import { TABLE_TYPE_MAP } from '../../../redesign/helpers/dtos';
-import { IBackupSchedule } from '../common/IBackupSchedule';
+import { TableType, TableTypeLabel } from '../../../redesign/helpers/dtos';
+import { IBackupSchedule, IBackupScheduleStatus } from '../common/IBackupSchedule';
 import { BackupCreateModal } from '../components/BackupCreateModal';
 
 import { convertScheduleToFormValues, convertMsecToTimeFrame } from './ScheduledBackupUtils';
 
 import { useSelector } from 'react-redux';
 import { Link } from 'react-router';
-import { keyBy } from 'lodash';
-import { FormatUnixTimeStampTimeToTimezone } from '../common/BackupUtils';
+import { find, keyBy } from 'lodash';
 import { ScheduledBackupEmpty } from '../components/BackupEmpty';
 import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
+import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
+import { ITable } from '../common/IBackup';
+import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+
 import './ScheduledBackupList.scss';
+import WarningIcon from '../../users/icons/warning_icon';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 const wrapTableName = (tablesList: string[] | undefined) => {
   if (!Array.isArray(tablesList) || tablesList.length === 0) {
@@ -83,7 +96,7 @@ export const ScheduledBackupList = ({ universeUUID }: { universeUUID: string }) 
     isFetchingNextPage
   } = useInfiniteQuery(
     ['scheduled_backup_list'],
-    ({ pageParam = 0 }) => getScheduledBackupList(pageParam),
+    ({ pageParam = 0 }) => getScheduledBackupList(pageParam, universeUUID),
     {
       getNextPageParam: (lastPage) => lastPage.data.hasNext
     }
@@ -114,6 +127,11 @@ export const ScheduledBackupList = ({ universeUUID }: { universeUUID: string }) 
     }
   };
 
+  const canCreateBackup = hasNecessaryPerm({
+    onResource: universeUUID,
+    ...ApiPermissionMap.CREATE_BACKUP_SCHEDULE
+  });
+
   if (schedules?.length === 0) {
     return (
       <>
@@ -123,8 +141,11 @@ export const ScheduledBackupList = ({ universeUUID }: { universeUUID: string }) 
           }}
           disabled={
             tablesInUniverse?.data.length === 0 ||
-            currentUniverse.data?.universeConfig?.takeBackups === 'false'
+            currentUniverse.data?.universeConfig?.takeBackups === 'false' ||
+            currentUniverse?.data?.universeDetails?.universePaused ||
+            !canCreateBackup
           }
+          hasPerm={canCreateBackup}
         />
         <BackupCreateModal
           visible={showCreateModal}
@@ -146,15 +167,23 @@ export const ScheduledBackupList = ({ universeUUID }: { universeUUID: string }) 
   return (
     <div className="schedule-list-panel">
       <div className="schedule-action">
-        <YBButton
-          btnText="Create Scheduled Backup Policy"
-          btnClass="btn btn-orange"
-          onClick={() => setShowCreateModal(true)}
-          loading={isTableListLoading}
-          disabled={tablesInUniverse?.data.length === 0}
-        />
+        <RbacValidator accessRequiredOn={{
+          onResource: universeUUID,
+          ...ApiPermissionMap.CREATE_BACKUP_SCHEDULE
+        }}
+          isControl
+        >
+          <YBButton
+            btnText="Create Scheduled Backup Policy"
+            btnClass="btn btn-orange"
+            onClick={() => setShowCreateModal(true)}
+            loading={isTableListLoading}
+            disabled={tablesInUniverse?.data.length === 0}
+          />
+        </RbacValidator>
       </div>
       <div className="schedule-backup-list" onScroll={handleScroll}>
+        {/* eslint-disable-next-line react/display-name */}
         {schedules?.map((schedule) => (
           <ScheduledBackupCard
             schedule={schedule}
@@ -164,6 +193,8 @@ export const ScheduledBackupList = ({ universeUUID }: { universeUUID: string }) 
               setShowCreateModal(true);
             }}
             storageConfig={storageConfigsMap[schedule.backupInfo.storageConfigUUID]}
+            tablesInUniverse={tablesInUniverse?.data ?? []}
+            universeUUID={universeUUID}
           />
         ))}
         {isFetchingNextPage && <YBLoading />}
@@ -189,6 +220,8 @@ interface ScheduledBackupCardProps {
   schedule: IBackupSchedule;
   doEditPolicy: (schedule: IBackupSchedule) => void;
   storageConfig: Record<string, string> | undefined;
+  tablesInUniverse: ITable[];
+  universeUUID: string;
 }
 
 type toogleScheduleProps = Partial<IBackupSchedule> & Pick<IBackupSchedule, 'scheduleUUID'>;
@@ -196,7 +229,9 @@ type toogleScheduleProps = Partial<IBackupSchedule> & Pick<IBackupSchedule, 'sch
 const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
   schedule,
   doEditPolicy,
-  storageConfig
+  storageConfig,
+  tablesInUniverse,
+  universeUUID
 }) => {
   const queryClient = useQueryClient();
   const [showDeleteModal, setShowDeleteModal] = useState('');
@@ -236,6 +271,21 @@ const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
       'Every '
     );
   }
+
+  let isTableMissingToDoBackup = false;
+
+  if (
+    schedule.backupInfo.backupType === TableType.YQL_TABLE_TYPE &&
+    !schedule.backupInfo.fullBackup
+  ) {
+    schedule.backupInfo.keyspaceList.forEach((keyspace) => {
+      isTableMissingToDoBackup = !keyspace.tableUUIDList?.every((tableUUID) =>
+        find(tablesInUniverse, { tableUUID, keySpace: keyspace.keyspace })
+      );
+    });
+  }
+
+
   return (
     <div className="schedule-item">
       <Row className="name-and-actions">
@@ -243,23 +293,53 @@ const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
           <span className="schedule-name">{schedule.scheduleName}</span>
           <StatusBadge
             statusType={Badge_Types.DELETED}
-            customLabel={TABLE_TYPE_MAP[schedule.backupInfo.backupType ?? '-']}
+            customLabel={TableTypeLabel[schedule.backupInfo.backupType ?? '-']}
           />
-          <YBToggle
-            name="Enabled"
-            input={{
-              value: schedule.status === 'Active',
-              onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
-                toggleSchedule.mutateAsync({
-                  scheduleUUID: schedule.scheduleUUID,
-                  frequency: schedule.frequency,
-                  cronExpression: schedule.cronExpression,
-                  status: e.target.checked ? 'Active' : 'Stopped',
-                  frequencyTimeUnit: schedule.frequencyTimeUnit
-                })
+          <RbacValidator
+            accessRequiredOn={{
+              ...ApiPermissionMap.MODIFY_SCHEDULE,
+              onResource: universeUUID
             }}
-          />
-          <span>{schedule.status === 'Active' ? 'Enabled' : 'Disabled'}</span>
+            isControl
+            overrideStyle={{
+              display: 'unset',
+              pointerEvents: 'none'
+            }}
+          >
+            <YBToggle
+              name="Enabled"
+              input={{
+                value: schedule.status === IBackupScheduleStatus.ACTIVE,
+                onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
+                  toggleSchedule.mutateAsync({
+                    scheduleUUID: schedule.scheduleUUID,
+                    frequency: schedule.frequency,
+                    cronExpression: schedule.cronExpression,
+                    status: e.target.checked
+                      ? IBackupScheduleStatus.ACTIVE
+                      : IBackupScheduleStatus.STOPPED,
+                    frequencyTimeUnit: schedule.frequencyTimeUnit
+                  })
+              }}
+            />
+          </RbacValidator>
+          <span>{schedule.status === IBackupScheduleStatus.ACTIVE ? 'Enabled' : 'Disabled'}</span>
+          {isTableMissingToDoBackup && (
+            <OverlayTrigger
+              trigger={['hover', 'focus']}
+              placement="top"
+              overlay={
+                <Popover id="more-tables-popover">
+                  One or more of selected tables to backup does not exists in the keyspace.
+                </Popover>
+              }
+            >
+              <span>
+                {' '}
+                <WarningIcon />
+              </span>
+            </OverlayTrigger>
+          )}
         </Col>
         <Col lg={6} className="no-padding">
           <DropdownButton
@@ -269,21 +349,42 @@ const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
             pullRight
             onClick={(e) => e.stopPropagation()}
           >
-            <MenuItem
-              onClick={() => {
-                doEditPolicy(schedule);
+            <RbacValidator
+              accessRequiredOn={{
+                ...ApiPermissionMap.MODIFY_SCHEDULE,
+                onResource: universeUUID
+              }}
+              isControl
+              overrideStyle={{
+                display: 'unset'
               }}
             >
-              <i className="fa fa-pencil"></i> Edit Policy
-            </MenuItem>
-            <MenuItem
-              onClick={() => {
-                setShowDeleteModal(schedule.scheduleUUID);
+              <MenuItem
+                onClick={() => {
+                  if (schedule.status !== IBackupScheduleStatus.ACTIVE) return;
+                  doEditPolicy(schedule);
+                }}
+                disabled={schedule.status !== IBackupScheduleStatus.ACTIVE}
+              >
+                <i className="fa fa-pencil"></i> Edit Policy
+              </MenuItem>
+            </RbacValidator>
+            <RbacValidator
+              accessRequiredOn={ApiPermissionMap.DELETE_SCHEDULE}
+              isControl
+              overrideStyle={{
+                display: 'unset'
               }}
-              className="action-danger"
             >
-              <i className="fa fa-trash"></i> Delete Policy
-            </MenuItem>
+              <MenuItem
+                onClick={() => {
+                  setShowDeleteModal(schedule.scheduleUUID);
+                }}
+                className="action-danger"
+              >
+                <i className="fa fa-trash"></i> Delete Policy
+              </MenuItem>
+            </RbacValidator>
           </DropdownButton>
         </Col>
       </Row>
@@ -336,9 +437,9 @@ const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
               <div className="info-val">
                 {schedule.backupInfo?.timeBeforeDelete
                   ? convertMsecToTimeFrame(
-                      schedule.backupInfo.timeBeforeDelete,
-                      schedule.backupInfo.expiryTimeUnit ?? 'DAYS'
-                    )
+                    schedule.backupInfo.timeBeforeDelete,
+                    schedule.backupInfo.expiryTimeUnit ?? 'DAYS'
+                  )
                   : 'Indefinitely'}
               </div>
             </Col>
@@ -357,21 +458,13 @@ const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
             <Col lg={3}>
               <div className="info-title">Last backup</div>
               <div className="info-val">
-                {schedule.prevCompletedTask ? (
-                  <FormatUnixTimeStampTimeToTimezone timestamp={schedule.prevCompletedTask} />
-                ) : (
-                  '-'
-                )}
+                {schedule.prevCompletedTask ? ybFormatDate(schedule.prevCompletedTask) : '-'}
               </div>
             </Col>
             <Col lg={3}>
               <div className="info-title">Next backup</div>
               <div className="info-val">
-                {schedule.nextExpectedTask ? (
-                  <FormatUnixTimeStampTimeToTimezone timestamp={schedule.nextExpectedTask} />
-                ) : (
-                  '-'
-                )}
+                {schedule.nextExpectedTask ? ybFormatDate(schedule.nextExpectedTask) : '-'}
               </div>
             </Col>
           </Row>

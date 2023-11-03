@@ -20,10 +20,6 @@ import type { ClusterInfo } from './ClusterInfo';
 import type { ClusterRegionInfo } from './ClusterRegionInfo';
 // eslint-disable-next-line no-duplicate-imports
 import type { EncryptionInfo } from './EncryptionInfo';
-// eslint-disable-next-line no-duplicate-imports
-import type { Networking } from './Networking';
-// eslint-disable-next-line no-duplicate-imports
-import type { SoftwareInfo } from './SoftwareInfo';
 
 
 /**
@@ -39,37 +35,25 @@ export interface ClusterSpec  {
    */
   name: string;
   /**
-   *
+   * 
    * @type {CloudInfo}
    * @memberof ClusterSpec
    */
   cloud_info: CloudInfo;
   /**
-   *
+   * 
    * @type {ClusterInfo}
    * @memberof ClusterSpec
    */
   cluster_info: ClusterInfo;
   /**
-   *
-   * @type {Networking}
-   * @memberof ClusterSpec
-   */
-  network_info: Networking;
-  /**
-   *
-   * @type {SoftwareInfo}
-   * @memberof ClusterSpec
-   */
-  software_info: SoftwareInfo;
-  /**
-   *
+   * 
    * @type {ClusterRegionInfo[]}
    * @memberof ClusterSpec
    */
   cluster_region_info?: ClusterRegionInfo[];
   /**
-   *
+   * 
    * @type {EncryptionInfo}
    * @memberof ClusterSpec
    */

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_FILE_SYSTEM_POSIX_H
-#define YB_UTIL_FILE_SYSTEM_POSIX_H
+#pragma once
 
 #include "yb/util/file_system.h"
 
@@ -109,8 +108,7 @@ class PosixWritableFile : public WritableFile {
   Status RangeSync(uint64_t offset, uint64_t nbytes) override;
   size_t GetUniqueId(char* id) const override;
 #endif
+  const std::string& filename() const override { return filename_; }
 };
 
 } // namespace rocksdb
-
-#endif  // YB_UTIL_FILE_SYSTEM_POSIX_H

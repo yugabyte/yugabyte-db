@@ -69,8 +69,7 @@
       Macros are defined as calls to non-inlinable empty functions
       that are intercepted by Valgrind. */
 
-#ifndef YB_GUTIL_DYNAMIC_ANNOTATIONS_H
-#define YB_GUTIL_DYNAMIC_ANNOTATIONS_H
+#pragma once
 
 #include <stddef.h>
 
@@ -811,5 +810,3 @@ void __asan_set_death_callback(void (*callback)(void));
 /* Undefine the macros intended only in this file. */
 #undef ANNOTALYSIS_STATIC_INLINE
 #undef ANNOTALYSIS_SEMICOLON_OR_EMPTY_BODY
-
-#endif  /* YB_GUTIL_DYNAMIC_ANNOTATIONS_H */

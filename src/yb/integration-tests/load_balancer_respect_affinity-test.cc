@@ -28,6 +28,7 @@
 
 #include "yb/tools/yb-admin_client.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/result.h"
 
 using namespace std::literals;
@@ -79,7 +80,7 @@ class LoadBalancerRespectAffinityTest : public YBTableTestBase {
 };
 
 TEST_F(LoadBalancerRespectAffinityTest,
-       YB_DISABLE_TEST_IN_TSAN(TransactionUsePreferredZones)) {
+       TransactionUsePreferredZones) {
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
   ASSERT_OK(yb_admin_client_->SetPreferredZones({"c.r.z1"}));
 

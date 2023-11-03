@@ -13,6 +13,8 @@ type: docs
 
 This section describes how to manipulate data in YugabyteDB using the YSQL `INSERT`, `UPDATE`, and `DELETE` statements.
 
+{{% explore-setup-single %}}
+
 ## Insert rows
 
 Initially, database tables are not populated with data. Using YSQL, you can add one or more rows containing complete or partial data by inserting one row at a time.

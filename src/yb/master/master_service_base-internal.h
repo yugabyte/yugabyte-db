@@ -11,12 +11,12 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_MASTER_SERVICE_BASE_INTERNAL_H
-#define YB_MASTER_MASTER_SERVICE_BASE_INTERNAL_H
+#pragma once
 
 #include <boost/preprocessor/seq/for_each.hpp>
 
 #include "yb/master/flush_manager.h"
+#include "yb/master/leader_epoch.h"
 #include "yb/master/master.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_service_base.h"
@@ -59,9 +59,25 @@ CheckRespErrorOrSetUnknown(const Status& s, RespClass* resp) {
   }
 }
 
-template <class ReqType, class RespType, class FnType>
+// These functions call the passed function, potentially releasing the ScopedLeaderSharedLock first.
+// For most RPC handlers run on the master leader it is important to hold the ScopedLeaderSharedLock
+// for the duration of the handler's runtime. However some do not require holding the lock while
+// running.
+// The semantics are:
+//   1. If f takes a LeaderEpoch parameter, hold the lock and invoke f by passing
+//      ScopedLeaderSharedLock::epoch().
+//   2. Otherwise hold the lock if HoldCatalogLock::true, release it if HoldCatalogLock::false, then
+//      call f.
+Status HandleLockAndCallFunction(
+    const std::function<Status()>& f, HoldCatalogLock hold_catalog_lock, ScopedLeaderSharedLock* l);
+
+Status HandleLockAndCallFunction(
+    const std::function<Status(const LeaderEpoch&)>& f,
+    HoldCatalogLock hold_catalog_lock,
+    ScopedLeaderSharedLock* l);
+
+template <class RespType, class FnType>
 void MasterServiceBase::HandleOnLeader(
-    const ReqType* req,
     RespType* resp,
     rpc::RpcContext* rpc,
     FnType f,
@@ -77,11 +93,7 @@ void MasterServiceBase::HandleOnLeader(
     return;
   }
 
-  if (!hold_catalog_lock) {
-    l.Unlock();
-  }
-
-  const Status s = f();
+  Status s = HandleLockAndCallFunction(f, hold_catalog_lock, &l);
   CheckRespErrorOrSetUnknown(s, resp);
   rpc->RespondSuccess();
 }
@@ -110,7 +122,7 @@ void MasterServiceBase::HandleIn(
     int line_number,
     const char* function_name,
     HoldCatalogLock hold_catalog_lock) {
-  HandleOnLeader(req, resp, rpc, [this, resp, f]() -> Status {
+  HandleOnLeader(resp, rpc, [this, resp, f]() -> Status {
       return (handler(static_cast<HandlerType*>(nullptr))->*f)(resp); },
       file_name, line_number, function_name, hold_catalog_lock);
 }
@@ -127,7 +139,7 @@ void MasterServiceBase::HandleIn(
     HoldCatalogLock hold_catalog_lock) {
   LongOperationTracker long_operation_tracker("HandleIn", std::chrono::seconds(10));
 
-  HandleOnLeader(req, resp, rpc, [this, req, resp, f]() -> Status {
+  HandleOnLeader(resp, rpc, [this, req, resp, f]() -> Status {
       return (handler(static_cast<HandlerType*>(nullptr))->*f)(req, resp); },
       file_name, line_number, function_name, hold_catalog_lock);
 }
@@ -142,9 +154,27 @@ void MasterServiceBase::HandleIn(
     int line_number,
     const char* function_name,
     HoldCatalogLock hold_catalog_lock) {
-  HandleOnLeader(req, resp, rpc, [this, req, resp, f, rpc]() -> Status {
+  HandleOnLeader(resp, rpc, [this, req, resp, f, rpc]() -> Status {
       return (handler(static_cast<HandlerType*>(nullptr))->*f)(req, resp, rpc); },
       file_name, line_number, function_name, hold_catalog_lock);
+}
+
+template <class HandlerType, class ReqType, class RespType>
+void MasterServiceBase::HandleIn(
+    const ReqType* req,
+    RespType* resp,
+    rpc::RpcContext* rpc,
+    Status (HandlerType::*f)(
+        const ReqType*, RespType*, rpc::RpcContext*, const LeaderEpoch&),
+    const char* file_name,
+    int line_number,
+    const char* function_name,
+    HoldCatalogLock hold_catalog_lock) {
+  auto local_f = [this, req, resp, f, rpc](const LeaderEpoch& epoch) -> Status {
+    return (handler(static_cast<HandlerType*>(nullptr))->*f)(req, resp, rpc, epoch);
+  };
+  HandleOnLeader(
+      resp, rpc, std::move(local_f), file_name, line_number, function_name, hold_catalog_lock);
 }
 
 #define COMMON_HANDLER_ARGS(class_name, method_name) \
@@ -198,5 +228,3 @@ void MasterServiceBase::HandleIn(
 
 } // namespace master
 } // namespace yb
-
-#endif // YB_MASTER_MASTER_SERVICE_BASE_INTERNAL_H

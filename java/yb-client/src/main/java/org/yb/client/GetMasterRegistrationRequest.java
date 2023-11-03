@@ -32,15 +32,14 @@
 package org.yb.client;
 
 import com.google.protobuf.Message;
+import io.netty.buffer.ByteBuf;
 import org.yb.CommonTypes.PeerRole;
-import static org.yb.consensus.Metadata.*;
-import static org.yb.master.MasterClusterOuterClass.*;
-import static org.yb.master.MasterTypes.*;
-
 import org.yb.annotations.InterfaceAudience;
 import org.yb.util.Pair;
-import org.jboss.netty.buffer.ChannelBuffer;
 
+import static org.yb.master.MasterClusterOuterClass.GetMasterRegistrationRequestPB;
+import static org.yb.master.MasterClusterOuterClass.GetMasterRegistrationResponsePB;
+import static org.yb.master.MasterTypes.MasterErrorPB;
 /**
  * Package-private RPC that can only go to master.
  */
@@ -53,7 +52,7 @@ public class GetMasterRegistrationRequest extends YRpc<GetMasterRegistrationResp
   }
 
   @Override
-  ChannelBuffer serialize(Message header) {
+  ByteBuf serialize(Message header) {
     assert header.isInitialized();
     final GetMasterRegistrationRequestPB.Builder builder =
         GetMasterRegistrationRequestPB.newBuilder();

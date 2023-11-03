@@ -133,7 +133,7 @@ Result<std::string> HashIndexReader::GetMiddleKey() const {
   return index_block_->GetMiddleKey(kIndexBlockKeyValueEncodingFormat);
 }
 
-class MultiLevelIterator : public InternalIterator {
+class MultiLevelIterator final : public InternalIterator {
  public:
   static constexpr auto kIterChainInitialCapacity = 4;
 
@@ -154,49 +154,43 @@ class MultiLevelIterator : public InternalIterator {
     }
   }
 
-  void Seek(const Slice& target) override {
+  const KeyValueEntry& Seek(Slice target) override {
     if (state_->check_prefix_may_match && !state_->PrefixMayMatch(target)) {
       bottommost_positioned_iter_ = &iter_[0];
-      return;
+      return Entry();
     }
 
-    DoSeek(std::bind(&IteratorWrapper::Seek, std::placeholders::_1, target));
+    return DoSeek(std::bind(&IteratorWrapper::Seek, std::placeholders::_1, target));
   }
 
-  void SeekToFirst() override {
-    DoSeek(std::bind(&IteratorWrapper::SeekToFirst, std::placeholders::_1));
+  const KeyValueEntry& SeekToFirst() override {
+    return DoSeek(std::bind(&IteratorWrapper::SeekToFirst, std::placeholders::_1));
   }
 
-  void SeekToLast() override {
-    DoSeek(std::bind(&IteratorWrapper::SeekToLast, std::placeholders::_1));
+  const KeyValueEntry& SeekToLast() override {
+    return DoSeek(std::bind(&IteratorWrapper::SeekToLast, std::placeholders::_1));
   }
 
-  void Next() override {
-    DoMove(
+  const KeyValueEntry& Next() override {
+    return DoMove(
         std::bind(&IteratorWrapper::Next, std::placeholders::_1),
         std::bind(&IteratorWrapper::SeekToFirst, std::placeholders::_1)
     );
   }
 
-  void Prev() override {
-    DoMove(
+  const KeyValueEntry& Prev() override {
+    return DoMove(
         std::bind(&IteratorWrapper::Prev, std::placeholders::_1),
         std::bind(&IteratorWrapper::SeekToLast, std::placeholders::_1)
     );
   }
 
-  bool Valid() const override {
-    return bottommost_positioned_iter_ == bottom_level_iter_ && bottom_level_iter_->Valid();
-  }
+  const KeyValueEntry& Entry() const override {
+    if (bottommost_positioned_iter_ == bottom_level_iter_) {
+      return bottom_level_iter_->Entry();
+    }
 
-  Slice key() const override {
-    DCHECK(Valid());
-    return bottom_level_iter_->key();
-  }
-
-  Slice value() const override {
-    DCHECK(Valid());
-    return bottom_level_iter_->value();
+    return KeyValueEntry::Invalid();
   }
 
   Status status() const override {
@@ -225,7 +219,7 @@ class MultiLevelIterator : public InternalIterator {
   }
 
   template <typename F>
-  void DoSeek(F seek_function) {
+  const KeyValueEntry& DoSeek(F seek_function) {
     IteratorWrapper* iter = iter_.data();
     seek_function(iter);
     bottommost_positioned_iter_ = iter;
@@ -235,10 +229,11 @@ class MultiLevelIterator : public InternalIterator {
       seek_function(iter);
     }
     bottommost_positioned_iter_ = iter;
+    return Entry();
   }
 
   template <typename F1, typename F2>
-  void DoMove(F1 move_function, F2 lower_levels_init_function) {
+  const KeyValueEntry& DoMove(F1 move_function, F2 lower_levels_init_function) {
     DCHECK(Valid());
     // First try to move iterator starting with bottom level.
     IteratorWrapper* iter = bottom_level_iter_;
@@ -249,7 +244,7 @@ class MultiLevelIterator : public InternalIterator {
     }
     if (!iter->Valid()) {
       bottommost_positioned_iter_ = iter;
-      return;
+      return Entry();
     }
     // Once we've moved iterator at some level, we need to reset iterators at levels below.
     while (iter < bottom_level_iter_) {
@@ -258,6 +253,7 @@ class MultiLevelIterator : public InternalIterator {
       lower_levels_init_function(iter);
     }
     bottommost_positioned_iter_ = bottom_level_iter_;
+    return Entry();
   }
 
   void InitSubIterator(IteratorWrapper* parent_iter) {
@@ -270,6 +266,8 @@ class MultiLevelIterator : public InternalIterator {
         && handle.compare(*child_index_block_handle) == 0) {
       // wrapper is already set to iterator for this handle, no need to change.
     } else {
+      // TODO(index_iter): consider updating existing iterator rather than recreating, measure
+      // potential perf impact.
       InternalIterator* iter = state_->NewSecondaryIterator(handle);
       handle.CopyToBuffer(child_index_block_handle);
       SetSubIterator(sub_iter, iter);

@@ -13,17 +13,21 @@ import static org.junit.Assert.assertTrue;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.collect.ImmutableMap;
-import com.yugabyte.yw.models.MetricConfig;
-import java.util.ArrayList;
+import com.yugabyte.yw.models.MetricConfigDefinition;
+import com.yugabyte.yw.models.MetricConfigDefinition.Layout;
+import com.yugabyte.yw.models.MetricConfigDefinition.Layout.Axis;
 import java.util.List;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class MetricQueryResponseTest {
+
+  private static final String METRIC_NAME = "metric_name";
+  private static final MetricSettings METRIC_SETTINGS = MetricSettings.defaultSettings(METRIC_NAME);
 
   @InjectMocks MetricQueryResponse metricQueryResponse;
 
@@ -32,13 +36,15 @@ public class MetricQueryResponseTest {
     JsonNode responseJson =
         Json.parse(
             "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[{\"metric\":\n"
-                + " {\"node_prefix\": \"1-host\"},\"value\":[1479278137,\"0.027751899056199826\"]},{\"metric\":\n"
-                + " {\"node_prefix\": \"1-host\"}, \"value\":[1479278137,\"0.04329469299783263\"]}]}}");
+                + " {\"node_prefix\":"
+                + " \"1-host\"},\"value\":[1479278137,\"0.027751899056199826\"]},{\"metric\":\n"
+                + " {\"node_prefix\": \"1-host\"},"
+                + " \"value\":[1479278137,\"0.04329469299783263\"]}]}}");
 
     MetricQueryResponse queryResponse = Json.fromJson(responseJson, MetricQueryResponse.class);
 
-    ArrayList<MetricGraphData> data =
-        queryResponse.getGraphData("NOT_NEEDED_HERE", new MetricConfig.Layout());
+    List<MetricGraphData> data =
+        queryResponse.getGraphData(METRIC_NAME, new MetricConfigDefinition(), METRIC_SETTINGS);
 
     assertEquals(data.size(), 2);
     for (int i = 0; i < data.size(); i++) {
@@ -58,8 +64,8 @@ public class MetricQueryResponseTest {
 
     MetricQueryResponse queryResponse = Json.fromJson(responseJson, MetricQueryResponse.class);
 
-    ArrayList<MetricGraphData> data =
-        queryResponse.getGraphData("NOT_NEEDED_HERE", new MetricConfig.Layout());
+    List<MetricGraphData> data =
+        queryResponse.getGraphData(METRIC_NAME, new MetricConfigDefinition(), METRIC_SETTINGS);
     assertEquals(data.size(), 1);
     assertThat(data.get(0).name, allOf(notNullValue(), equalTo("system")));
     assertThat(data.get(0).type, allOf(notNullValue(), equalTo("scatter")));
@@ -77,8 +83,8 @@ public class MetricQueryResponseTest {
                 + " [1479281734,\"139952128\"]]},{\"metric\":{\"memory\":\"used\"},\"values\":[[1479281730,\"4193042432\"],[1479281732,\"4192290133.3333335\"],[1479281734,\"4192290133.3333335\"]]}]}}");
 
     MetricQueryResponse queryResponse = Json.fromJson(responseJson, MetricQueryResponse.class);
-    ArrayList<MetricGraphData> data =
-        queryResponse.getGraphData("NOT_NEEDED_HERE", new MetricConfig.Layout());
+    List<MetricGraphData> data =
+        queryResponse.getGraphData(METRIC_NAME, new MetricConfigDefinition(), METRIC_SETTINGS);
     List<JsonNode> memoryTags = responseJson.findValues("memory");
 
     assertEquals(4, data.size());
@@ -99,16 +105,19 @@ public class MetricQueryResponseTest {
             "{\"status\":\"success\",\"data\":{\"resultType\":\"matrix\",\"result\":[{\"metric\":{\"service_method\":\"ExecuteRequest\"},\"values\":[[1507603405,\"4116.2\"]]},{\"metric\":{\"service_method\":\"ParseRequest\"},\"values\":[[1507603405,\"2.8\"]]},{\"metric\":{\"service_method\":\"ProcessRequest\"},\"values\":[[1507603405,\"4138.099999999999\"]]}]}}");
 
     MetricQueryResponse queryResponse = Json.fromJson(responseJson, MetricQueryResponse.class);
-    MetricConfig.Layout layout = new MetricConfig.Layout();
-    layout.title = "CQL Metrics";
-    layout.yaxis = new MetricConfig.Layout.Axis();
-    layout.yaxis.alias =
-        ImmutableMap.of(
-            "ExecuteRequest", "Execute",
-            "ParseRequest", "Parse",
-            "ProcessRequest", "Process");
+    Layout layout =
+        new Layout()
+            .setTitle("CQL Metrics")
+            .setYaxis(
+                new Axis()
+                    .setAlias(
+                        ImmutableMap.of(
+                            "ExecuteRequest", "Execute",
+                            "ParseRequest", "Parse",
+                            "ProcessRequest", "Process")));
 
-    ArrayList<MetricGraphData> data = queryResponse.getGraphData("NOT_NEEDED_HERE", layout);
+    MetricConfigDefinition config = new MetricConfigDefinition().setLayout(layout);
+    List<MetricGraphData> data = queryResponse.getGraphData(METRIC_NAME, config, METRIC_SETTINGS);
     assertEquals(data.size(), 3);
     assertThat(data.get(0).type, allOf(notNullValue(), equalTo("scatter")));
     assertThat(data.get(0).x, allOf(notNullValue(), instanceOf(ArrayNode.class)));
@@ -125,23 +134,26 @@ public class MetricQueryResponseTest {
             "{\"status\":\"success\",\"data\":{\"resultType\":\"matrix\",\"result\":[{\"metric\":{\"service_method\":\"local\",\"service_type\":\"read\"},\"values\":[[1507603405,\"0.0\"]]},{\"metric\":{\"service_method\":\"local\",\"service_type\":\"write\"},\"values\":[[1507603405,\"0.0\"]]},{\"metric\":{\"service_method\":\"remote\",\"service_type\":\"read\"},\"values\":[[1507603405,\"0.0\"]]},{\"metric\":{\"service_method\":\"remote\",\"service_type\":\"write\"},\"values\":[[1507603405,\"0.0\"]]}]}}");
 
     MetricQueryResponse queryResponse = Json.fromJson(responseJson, MetricQueryResponse.class);
-    MetricConfig.Layout layout = new MetricConfig.Layout();
-    layout.title = "CQL Metrics";
-    layout.yaxis = new MetricConfig.Layout.Axis();
-    layout.yaxis.alias =
-        ImmutableMap.of(
-            "remote,read", "Remote Read",
-            "remote,write", "Remote Write",
-            "local,read", "Local Read",
-            "local,write", "Local Write");
+    Layout layout =
+        new Layout()
+            .setTitle("CQL Metrics")
+            .setYaxis(
+                new Axis()
+                    .setAlias(
+                        ImmutableMap.of(
+                            "remote,read", "Remote Read",
+                            "remote,write", "Remote Write",
+                            "local,read", "Local Read",
+                            "local,write", "Local Write")));
 
-    ArrayList<MetricGraphData> data = queryResponse.getGraphData("NOT_NEEDED_HERE", layout);
+    MetricConfigDefinition config = new MetricConfigDefinition().setLayout(layout);
+    List<MetricGraphData> data = queryResponse.getGraphData(METRIC_NAME, config, METRIC_SETTINGS);
     assertEquals(data.size(), 4);
     assertThat(data.get(0).type, allOf(notNullValue(), equalTo("scatter")));
     assertThat(data.get(0).x, allOf(notNullValue(), instanceOf(ArrayNode.class)));
     assertThat(data.get(0).y, allOf(notNullValue(), instanceOf(ArrayNode.class)));
     for (int i = 0; i < data.size(); ++i) {
-      assertTrue(layout.yaxis.alias.values().contains(data.get(i).name));
+      assertTrue(layout.getYaxis().getAlias().values().contains(data.get(i).name));
     }
   }
 }

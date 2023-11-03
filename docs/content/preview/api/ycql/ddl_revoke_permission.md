@@ -43,7 +43,7 @@ This statement is enabled by setting the YB-TServer flag [`--use_cassandra_authe
 
 ### Grammar
 
-```
+```ebnf
 revoke_permission := REVOKE all_permission | permission ON resource FROM role_name;
 all_permissions := ALL [ PERMISSIONS ]
 permission :=  ( CREATE | ALTER | DROP | SELECT | MODIFY | AUTHORIZE | DESCRIBE | EXECUTE ) [ PERMISSION ]

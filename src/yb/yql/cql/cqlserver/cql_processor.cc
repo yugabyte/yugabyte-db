@@ -19,7 +19,7 @@
 
 #include <boost/algorithm/string.hpp>
 
-#include "yb/common/ql_rowblock.h"
+#include "yb/qlexpr/ql_rowblock.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
@@ -31,46 +31,47 @@
 #include "yb/rpc/messenger.h"
 
 #include "yb/util/crypt.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/trace.h"
 
 #include "yb/yql/cql/cqlserver/cql_service.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
 
 using namespace std::literals;
 
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_CQLServerService_GetProcessor,
     "Time spent to get a processor for processing a CQL query request.",
     yb::MetricUnit::kMicroseconds,
     "Time spent to get a processor for processing a CQL query request.", 60000000LU, 2);
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_CQLServerService_ProcessRequest,
     "Time spent processing a CQL query request. From parsing till executing",
     yb::MetricUnit::kMicroseconds,
     "Time spent processing a CQL query request. From parsing till executing", 60000000LU, 2);
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_CQLServerService_ParseRequest,
     "Time spent parsing CQL query request", yb::MetricUnit::kMicroseconds,
     "Time spent parsing CQL query request", 60000000LU, 2);
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_CQLServerService_QueueResponse,
     "Time spent to queue the response for a CQL query request back on the network",
     yb::MetricUnit::kMicroseconds,
     "Time spent after computing the CQL response to queue it onto the connection.", 60000000LU, 2);
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_CQLServerService_ExecuteRequest,
     "Time spent executing the CQL query request in the handler", yb::MetricUnit::kMicroseconds,
     "Time spent executing the CQL query request in the handler", 60000000LU, 2);
 METRIC_DEFINE_counter(
     server, yb_cqlserver_CQLServerService_ParsingErrors, "Errors encountered when parsing ",
     yb::MetricUnit::kRequests, "Errors encountered when parsing ");
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_CQLServerService_Any,
     "yb.cqlserver.CQLServerService.AnyMethod RPC Time", yb::MetricUnit::kMicroseconds,
     "Microseconds spent handling "
@@ -101,34 +102,47 @@ METRIC_DEFINE_counter(server, cql_parsers_created,
 DECLARE_bool(use_cassandra_authentication);
 DECLARE_bool(ycql_cache_login_info);
 DECLARE_int32(client_read_write_timeout_ms);
+DECLARE_bool(ycql_enable_stat_statements);
+
+DEFINE_RUNTIME_bool(ycql_enable_tracing_flag, true,
+    "If enabled, setting TRACING ON in cqlsh will cause "
+    "the server to enable tracing for the requested RPCs and print them. Use this as a safety flag "
+    "to disable tracing if an errant application has TRACING enabled by mistake.");
 
 // LDAP specific flags
-DEFINE_bool(ycql_use_ldap, false, "Use LDAP for user logins");
-DEFINE_string(ycql_ldap_users_to_skip_csv, "", "Users that are authenticated via the local password"
-  " check instead of LDAP (if ycql_use_ldap=true). This is a comma separated list");
+DEFINE_UNKNOWN_bool(ycql_use_ldap, false, "Use LDAP for user logins");
+DEFINE_UNKNOWN_string(ycql_ldap_users_to_skip_csv, "",
+    "Users that are authenticated via the local password"
+    " check instead of LDAP (if ycql_use_ldap=true). This is a comma separated list");
 TAG_FLAG(ycql_ldap_users_to_skip_csv, sensitive_info);
-DEFINE_string(ycql_ldap_server, "", "LDAP server of the form <scheme>://<ip>:<port>");
-DEFINE_bool(ycql_ldap_tls, false, "Connect to LDAP server using TLS encryption.");
+DEFINE_UNKNOWN_string(ycql_ldap_server, "", "LDAP server of the form <scheme>://<ip>:<port>");
+DEFINE_UNKNOWN_bool(ycql_ldap_tls, false, "Connect to LDAP server using TLS encryption.");
 
 // LDAP flags for simple bind mode
-DEFINE_string(ycql_ldap_user_prefix, "", "String used for prepending the user name when forming "
-  "the DN for binding to the LDAP server");
-DEFINE_string(ycql_ldap_user_suffix, "", "String used for appending the user name when forming the "
-  "DN for binding to the LDAP Server.");
+DEFINE_UNKNOWN_string(ycql_ldap_user_prefix, "",
+    "String used for prepending the user name when forming "
+    "the DN for binding to the LDAP server");
+DEFINE_UNKNOWN_string(ycql_ldap_user_suffix, "",
+    "String used for appending the user name when forming the "
+    "DN for binding to the LDAP Server.");
 
 // Flags for LDAP search + bind mode
-DEFINE_string(ycql_ldap_base_dn, "", "Specifies the base directory to begin the user name search");
-DEFINE_string(ycql_ldap_bind_dn, "", "Specifies the username to perform the initial search when "
-  "doing search + bind authentication");
+DEFINE_UNKNOWN_string(ycql_ldap_base_dn, "",
+    "Specifies the base directory to begin the user name search");
+DEFINE_UNKNOWN_string(ycql_ldap_bind_dn, "",
+    "Specifies the username to perform the initial search when "
+    "doing search + bind authentication");
 TAG_FLAG(ycql_ldap_bind_dn, sensitive_info);
-DEFINE_string(ycql_ldap_bind_passwd, "", "Password for username being used to perform the initial "
-  "search when doing search + bind authentication");
+DEFINE_UNKNOWN_string(ycql_ldap_bind_passwd, "",
+    "Password for username being used to perform the initial "
+    "search when doing search + bind authentication");
 TAG_FLAG(ycql_ldap_bind_passwd, sensitive_info);
-DEFINE_string(ycql_ldap_search_attribute, "", "Attribute to match against the username in the "
-  "search when doing search + bind authentication. If no attribute is specified, the uid attribute "
-  "is used.");
-DEFINE_string(ycql_ldap_search_filter, "", "The search filter to use when doing search + bind "
-  "authentication.");
+DEFINE_UNKNOWN_string(ycql_ldap_search_attribute, "",
+    "Attribute to match against the username in the search when doing search + bind "
+    "authentication. If no attribute is specified, the uid attribute is used.");
+DEFINE_UNKNOWN_string(ycql_ldap_search_filter, "",
+    "The search filter to use when doing search + bind "
+    "authentication.");
 
 namespace yb {
 namespace cqlserver {
@@ -144,15 +158,14 @@ using namespace yb::ql; // NOLINT
 using std::make_unique;
 using std::shared_ptr;
 using std::unique_ptr;
+using std::ostream;
+using std::string;
 
-using client::YBClient;
-using client::YBSession;
 using ql::ExecutedResult;
 using ql::PreparedResult;
 using ql::RowsResult;
 using ql::SetKeyspaceResult;
 using ql::SchemaChangeResult;
-using ql::QLProcessor;
 using ql::ParseTree;
 using ql::Statement;
 using ql::StatementBatch;
@@ -163,8 +176,6 @@ using ql::audit::IsPrepare;
 using ql::audit::ErrorIsFormatted;
 
 using strings::Substitute;
-
-using yb::util::bcrypt_checkpw;
 
 //------------------------------------------------------------------------------------------------
 CQLMetrics::CQLMetrics(const scoped_refptr<yb::MetricEntity>& metric_entity)
@@ -232,8 +243,9 @@ void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
   parse_begin_ = MonoTime::Now();
   const auto& context = static_cast<const CQLConnectionContext&>(call_->connection()->context());
   const auto compression_scheme = context.compression_scheme();
-  if (!CQLRequest::ParseRequest(call_->serialized_request(), compression_scheme,
-                                &request, &response)) {
+  if (!CQLRequest::ParseRequest(
+          call_->serialized_request(), compression_scheme, &request, &response,
+          service_impl_->requests_mem_tracker())) {
     cql_metrics_->num_errors_parsing_cql_->Increment();
     PrepareAndSendResponse(response);
     return;
@@ -246,7 +258,12 @@ void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
   // Execute the request (perhaps asynchronously).
   SetCurrentSession(call_->ql_session());
   request_ = std::move(request);
+  if (GetAtomicFlag(&FLAGS_ycql_enable_tracing_flag) && request_->trace_requested()) {
+    call_->EnsureTraceCreated();
+    call_->trace()->set_end_to_end_traces_requested(true);
+  }
   call_->SetRequest(request_, service_impl_);
+  ADOPT_TRACE(call_->trace());
   retry_count_ = 0;
   response = ProcessRequest(*request_);
   PrepareAndSendResponse(response);
@@ -292,6 +309,16 @@ void CQLProcessor::SendResponse(const CQLResponse& response) {
   }
   cql_metrics_->time_to_queue_cql_response_->Increment(
       response_done.GetDeltaSince(response_begin).ToMicroseconds());
+
+  if (FLAGS_ycql_enable_stat_statements) {
+    const IsPrepare is_prepare(request_ && request_->opcode() == ql::CQLMessage::Opcode::EXECUTE);
+    const string query_id = (is_prepare ? GetPrepQueryId() : GetUnprepQueryId());
+    if (!query_id.empty()) {
+      service_impl_->UpdateStmtCounters(
+          query_id, response_done.GetDeltaSince(execute_begin_).ToSeconds()*1000.,
+          is_prepare);
+    }
+  }
 
   Release();
 }
@@ -383,16 +410,17 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const PrepareRequest& req) 
   VLOG(1) << "PREPARE " << req.query();
   const CQLMessage::QueryId query_id = CQLStatement::GetQueryId(
       ql_env_.CurrentKeyspace(), req.query());
+  VLOG(1) << "Generated Query Id = " << query_id;
   // To prevent multiple clients from preparing the same new statement in parallel and trying to
   // cache the same statement (a typical "login storm" scenario), each caller will try to allocate
   // the statement in the cached statement first. If it already exists, the existing one will be
   // returned instead. Then, each client will try to prepare the statement. The first one will do
   // the actual prepare while the rest wait. As the rest do the prepare afterwards, the statement
   // is already prepared so it will be an no-op (see Statement::Prepare).
-  shared_ptr<CQLStatement> stmt = service_impl_->AllocatePreparedStatement(
-      query_id, req.query(), &ql_env_);
+  shared_ptr<CQLStatement> stmt = service_impl_->AllocateStatement(
+      query_id, req.query(), &ql_env_, IsPrepare::kTrue);
   PreparedResult::UniPtr result;
-  Status s = stmt->Prepare(this, service_impl_->prepared_stmts_mem_tracker(),
+  Status s = stmt->Prepare(this, service_impl_->stmts_mem_tracker(),
                            false /* internal */, &result);
 
   if (s.ok()) {
@@ -410,7 +438,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const PrepareRequest& req) 
   }
 
   if (!s.ok()) {
-    service_impl_->DeletePreparedStatement(stmt);
+    service_impl_->DeleteStatement(stmt, IsPrepare::kTrue);
     return ProcessError(s, stmt->query_id());
   }
 
@@ -442,7 +470,21 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const QueryRequest& req) {
       return nullptr;
     }
   }
-  RunAsync(req.query(), req.params(), statement_executed_cb_);
+  const CQLMessage::QueryId query_id =
+      CQLStatement::GetQueryId(ql_env_.CurrentKeyspace(), req.query());
+  // Allocates space to unprepared statements in the cache.
+  const shared_ptr<CQLStatement> stmt = service_impl_->AllocateStatement(
+      query_id, req.query(), &ql_env_, IsPrepare::kFalse);
+
+  const auto op_code = RunAsync(req.query(), req.params(), statement_executed_cb_);
+
+  // For queries like "USE keyspace_name", the query_id of the query changes after the execution
+  // of the query as query_id is generated by hashing its keyspace and the query text. Since
+  // after the execution the keyspace changes, consequently the query id changes. So its entry in
+  // the unprepared_stmts_map_ becomes stale. So, the corresponding entry is deleted from the cache.
+  if(stmt && op_code == TreeNodeOpcode::kPTUseKeyspace) {
+    service_impl_->DeleteStatement(stmt, IsPrepare::kFalse);
+  }
   return nullptr;
 }
 
@@ -578,7 +620,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessError(const Status& s,
       // we found.
       for (auto stmt : stmts_) {
         if (stmt->stale()) {
-          service_impl_->DeletePreparedStatement(stmt);
+          service_impl_->DeleteStatement(stmt, IsPrepare::kTrue);
         }
         if (stmt->unprepared() || stmt->stale()) {
           query_id = stmt->query_id();

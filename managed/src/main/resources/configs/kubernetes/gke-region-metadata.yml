@@ -1,0 +1,121 @@
+# Copyright (c) YugaByte, Inc.
+
+us-central1:
+  name: "Iowa"
+  latitude: 41.878003
+  longitude: -93.097702
+
+us-east1:
+  name: "South Carolina"
+  latitude: 34.000710
+  longitude: -81.034814
+
+us-east4:
+  name: "Northern Virginia"
+  latitude: 38.907192
+  longitude: -77.036871
+
+us-west1:
+  name: "Oregon"
+  latitude: 45.523064
+  longitude: -122.676483
+
+us-west2:
+  name: "Los Angeles"
+  latitude: 34.052235
+  longitude: -118.243683
+
+us-west3:
+  name: "Salt Lake City"
+  latitude: 40.760780
+  longitude: -111.891045
+
+us-west4:
+  name: "Las Vegas"
+  latitude: 36.169941
+  longitude: -115.139830
+
+northamerica-northeast1:
+  name: "Montreal"
+  latitude: 45.501690
+  longitude: -73.567253
+
+southamerica-east1:
+  name: "Sao Paulo"
+  latitude: -23.550519
+  longitude: -46.633309
+
+europe-north1:
+  name: "Finland"
+  latitude: 60.169856
+  longitude: 24.938379
+
+europe-west1:
+  name: "Belgium"
+  latitude: 50.850346
+  longitude: 4.351721
+
+europe-west2:
+  name: "London"
+  latitude: 51.507351
+  longitude: -0.127758
+
+europe-west3:
+  name: "Frankfurt"
+  latitude: 50.110924
+  longitude: 8.682127
+
+europe-west4:
+  name: "Netherlands"
+  latitude: 52.367984
+  longitude: 4.903561
+
+europe-west6:
+  name: "Zurich"
+  latitude: 47.376888
+  longitude: 8.541694
+
+asia-east1:
+  name: "Taiwan"
+  latitude: 23.697810
+  longitude: 120.960515
+
+asia-east2:
+  name: "Hong Kong"
+  latitude: 22.319304
+  longitude: 114.169361
+
+asia-northeast1:
+  name: "Tokyo"
+  latitude: 35.689487
+  longitude: 139.691711
+
+asia-northeast2:
+  name: "Osaka"
+  latitude: 34.693738
+  longitude: 135.502165
+
+asia-northeast3:
+  name: "Seoul"
+  latitude: 37.566535
+  longitude: 126.977969
+
+asia-southeast1:
+  name: "Singapore"
+  latitude: 1.352083
+  longitude: 103.819839
+
+asia-southeast2:
+  name: "Jakarta"
+  latitude: -6.214620
+  longitude: 106.845130
+
+asia-south1:
+  name: "Mumbai"
+  latitude: 19.0760
+  longitude: 72.8777
+
+australia-southeast1:
+  name: "Sydney"
+  latitude: -33.868820
+  longitude: 151.209296

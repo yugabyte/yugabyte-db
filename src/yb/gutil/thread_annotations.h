@@ -58,8 +58,7 @@
 
 // See https://clang.llvm.org/docs/ThreadSafetyAnalysis.html for thread safety analysis annotations.
 
-#ifndef YB_GUTIL_THREAD_ANNOTATIONS_H
-#define YB_GUTIL_THREAD_ANNOTATIONS_H
+#pragma once
 
 // We don't restrict thread safety analysis to a subset of Clang versions here. Instead, we do that
 // in CMakeLists.txt by conditionally specifying -Wthread-safety-analysis.
@@ -156,5 +155,3 @@
 #define TS_FIXME(x) ""
 
 #define TS_CLANG_ONLY(CLANG_EXPR, GCC_EXPR) CLANG_EXPR
-
-#endif  // YB_GUTIL_THREAD_ANNOTATIONS_H

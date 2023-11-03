@@ -12,15 +12,17 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_PGGATE_PG_DML_H_
-#define YB_YQL_PGGATE_PG_DML_H_
+#pragma once
 
-#include <boost/unordered_map.hpp>
+#include <optional>
+#include <unordered_map>
 
 #include "yb/yql/pggate/pg_doc_op.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_statement.h"
 #include "yb/yql/pggate/pg_table.h"
+
+DECLARE_bool(ysql_enable_db_catalog_version_mode);
 
 namespace yb {
 namespace pggate {
@@ -45,12 +47,13 @@ class PgDml : public PgStatement {
   // If any serialized Postgres expressions appended to other lists require explicit addition
   // of their column references. Those column references should have Postgres type information.
   // Other PgExpr kinds are automatically scanned and their column references are appended.
-  Status AppendColumnRef(PgExpr *colref, bool is_primary);
+  Status AppendColumnRef(PgColumnRef *colref, bool is_primary);
 
   // Prepare column for both ends.
   // - Prepare protobuf to communicate with DocDB.
   // - Prepare PgExpr to send data back to Postgres layer.
   Result<const PgColumn&> PrepareColumnForRead(int attr_num, LWPgsqlExpressionPB *target_pb);
+  Result<const PgColumn&> PrepareColumnForRead(int attr_num, LWQLExpressionPB *target_pb);
   Status PrepareColumnForWrite(PgColumn *pg_col, LWPgsqlExpressionPB *assign_pb);
 
   // Bind a column with an expression.
@@ -70,10 +73,10 @@ class PgDml : public PgStatement {
 
   // Fetch a row and return it to Postgres layer.
   Status Fetch(int32_t natts,
-                       uint64_t *values,
-                       bool *isnulls,
-                       PgSysColumns *syscols,
-                       bool *has_data);
+               uint64_t *values,
+               bool *isnulls,
+               PgSysColumns *syscols,
+               bool *has_data);
 
   // Returns TRUE if docdb replies with more data.
   Result<bool> FetchDataFromServer();
@@ -81,13 +84,15 @@ class PgDml : public PgStatement {
   // Returns TRUE if desired row is found.
   Result<bool> GetNextRow(PgTuple *pg_tuple);
 
-  virtual void SetCatalogCacheVersion(uint64_t catalog_cache_version) = 0;
+  virtual void SetCatalogCacheVersion(std::optional<PgOid> db_oid, uint64_t version) = 0;
 
   // Get column info on whether the column 'attr_num' is a hash key, a range
   // key, or neither.
   Result<YBCPgColumnInfo> GetColumnInfo(int attr_num) const;
 
-  bool has_aggregate_targets();
+  bool has_aggregate_targets() const;
+
+  bool has_system_targets() const;
 
   bool has_doc_op() const {
     return doc_op_ != nullptr;
@@ -113,16 +118,13 @@ class PgDml : public PgStatement {
   virtual LWPgsqlExpressionPB *AllocQualPB() = 0;
 
   // Allocate protobuf for expression whose value is bounded to a column.
-  virtual LWPgsqlExpressionPB *AllocColumnBindPB(PgColumn *col) = 0;
+  virtual Result<LWPgsqlExpressionPB*> AllocColumnBindPB(PgColumn* col, PgExpr* expr) = 0;
 
   // Allocate protobuf for expression whose value is assigned to a column (SET clause).
   virtual LWPgsqlExpressionPB *AllocColumnAssignPB(PgColumn *col) = 0;
 
   // Specify target of the query in protobuf request.
   Status AppendTargetPB(PgExpr *target);
-
-  // Update bind values.
-  Status UpdateBindPBs();
 
   // Update set values.
   Status UpdateAssignPBs();
@@ -147,6 +149,19 @@ class PgDml : public PgStatement {
   // Allocate a PgsqlColRefPB entriy in the protobuf request
   virtual LWPgsqlColRefPB *AllocColRefPB() = 0;
 
+  template<class Request>
+  static void DoSetCatalogCacheVersion(
+      Request* req, std::optional<PgOid> db_oid, uint64_t version) {
+    auto& request = *DCHECK_NOTNULL(req);
+    if (db_oid) {
+      DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
+      request.set_ysql_db_catalog_version(version);
+      request.set_ysql_db_oid(*db_oid);
+    } else {
+      request.set_ysql_catalog_version(version);
+    }
+  }
+
   // -----------------------------------------------------------------------------------------------
   // Data members that define the DML statement.
 
@@ -170,12 +185,9 @@ class PgDml : public PgStatement {
   // - "target_desc_" is the table descriptor where data will be read from.
   // - "targets_" are either selected or returned expressions by DML statements.
   PgTable target_;
-  std::vector<PgExpr*> targets_;
-
-  // Qual is a where clause condition pushed to the DocDB to filter scanned rows
-  // Qual supports PgExprs holding serialized Postgres expressions, and require the column
-  // references used in these Quals to be explicitly added with AppendColumnRef()
-  std::vector<PgExpr*> quals_;
+  std::vector<PgFetchedTarget*> targets_;
+  bool has_aggregate_targets_ = false;
+  bool has_system_targets_ = false;
 
   // bind_desc_ is the descriptor of the table whose key columns' values will be specified by the
   // the DML statement being executed.
@@ -220,7 +232,7 @@ class PgDml : public PgStatement {
   // * Bind values are used to identify the selected rows to be operated on.
   // * Set values are used to hold columns' new values in the selected rows.
   bool ybctid_bind_ = false;
-  boost::unordered_map<LWPgsqlExpressionPB*, PgExpr*> expr_binds_;
+
   std::unordered_map<LWPgsqlExpressionPB*, PgExpr*> expr_assigns_;
 
   // Used for colocated TRUNCATE that doesn't bind any columns.
@@ -250,5 +262,3 @@ class PgDml : public PgStatement {
 
 }  // namespace pggate
 }  // namespace yb
-
-#endif // YB_YQL_PGGATE_PG_DML_H_

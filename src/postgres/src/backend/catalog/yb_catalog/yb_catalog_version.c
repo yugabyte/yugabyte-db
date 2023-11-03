@@ -15,7 +15,10 @@
 
 #include "access/htup_details.h"
 #include "access/sysattr.h"
+#include "access/yb_scan.h"
 #include "catalog/catalog.h"
+#include "catalog/namespace.h"
+#include "catalog/pg_authid_d.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_namespace_d.h"
 #include "catalog/pg_proc.h"
@@ -32,6 +35,7 @@
 #include "utils/rel.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "pg_yb_utils.h"
 
 YbCatalogVersionType yb_catalog_version_type = CATALOG_VERSION_UNSET;
@@ -41,7 +45,6 @@ static FormData_pg_attribute Desc_pg_yb_catalog_version[Natts_pg_yb_catalog_vers
 };
 
 static bool YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version);
-static bool YbIsSystemCatalogChange(Relation rel);
 static Datum YbGetMasterCatalogVersionTableEntryYbctid(
 	Relation catalog_version_rel, Oid db_oid);
 
@@ -53,19 +56,8 @@ uint64_t YbGetMasterCatalogVersion()
 	switch (YbGetCatalogVersionType())
 	{
 		case CATALOG_VERSION_CATALOG_TABLE:
-			/*
-			 * MyDatabaseId is 0 during connection setup time before
-			 * MyDatabaseId is resolved. In per-db mode, we use TemplateDbOid
-			 * during this period to find the catalog version in order to load
-			 * initial catalog cache (needed for resolving MyDatabaseId, auth
-			 * check etc.). Once MyDatabaseId is resolved from then on we'll
-			 * use its catalog version.
-			 */
 			if (YbGetMasterCatalogVersionFromTable(
-				(YBIsDBCatalogVersionMode() && OidIsValid(MyDatabaseId))
-						? MyDatabaseId
-						: TemplateDbOid,
-				&version))
+			    	YbMasterCatalogVersionTableDBOid(), &version))
 				return version;
 			/*
 			 * In spite of the fact the pg_yb_catalog_version table exists it has no actual
@@ -84,17 +76,73 @@ uint64_t YbGetMasterCatalogVersion()
 	}
 	ereport(FATAL,
 			(errcode(ERRCODE_INTERNAL_ERROR),
-			 errmsg("Catalog version type was not set, cannot load system catalog.")));
+			 errmsg("catalog version type was not set, cannot load system catalog.")));
 	return version;
 }
 
 /* Modify Catalog Version */
 
 static void
+YbCallSQLIncrementCatalogVersions(bool is_breaking_change)
+{
+	List* names =
+		list_make2(makeString("pg_catalog"),
+				   makeString("yb_increment_all_db_catalog_versions"));
+	FuncCandidateList clist = FuncnameGetCandidates(
+		names,
+		-1 /* nargs */,
+		NIL /* argnames */,
+		false /* expand_variadic */,
+		false /* expand_defaults */,
+		false /* missing_ok */);
+	/* We expect exactly one candidate. */
+	Assert(clist && clist->next == NULL);
+	Oid functionId = clist->oid;
+	FmgrInfo    flinfo;
+	FunctionCallInfoData fcinfo;
+	fmgr_info(functionId, &flinfo);
+	InitFunctionCallInfoData(fcinfo, &flinfo, 1, InvalidOid, NULL, NULL);
+	fcinfo.arg[0] = BoolGetDatum(is_breaking_change);
+	fcinfo.argnull[0] = false;
+
+	// Save old values and set new values to enable the call.
+	bool saved = yb_non_ddl_txn_for_sys_tables_allowed;
+	yb_non_ddl_txn_for_sys_tables_allowed = true;
+	Oid save_userid;
+	int save_sec_context;
+	GetUserIdAndSecContext(&save_userid, &save_sec_context);
+	SetUserIdAndSecContext(BOOTSTRAP_SUPERUSERID,
+						   SECURITY_RESTRICTED_OPERATION);
+	PG_TRY();
+	{
+		FunctionCallInvoke(&fcinfo);
+		/* Restore old values. */
+		yb_non_ddl_txn_for_sys_tables_allowed = saved;
+		SetUserIdAndSecContext(save_userid, save_sec_context);
+	}
+	PG_CATCH();
+	{
+		/* Restore old values. */
+		yb_non_ddl_txn_for_sys_tables_allowed = saved;
+		SetUserIdAndSecContext(save_userid, save_sec_context);
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+}
+
+static void
 YbIncrementMasterDBCatalogVersionTableEntryImpl(
-	Oid db_oid, bool is_breaking_change)
+	Oid db_oid, bool is_breaking_change, bool is_global_ddl)
 {
 	Assert(YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE);
+
+	if (is_global_ddl)
+	{
+		Assert(YBIsDBCatalogVersionMode());
+		/* Call yb_increment_all_db_catalog_versions(is_breaking_change). */
+		YbCallSQLIncrementCatalogVersions(is_breaking_change);
+		return;
+	}
 
 	YBCPgStatement update_stmt    = NULL;
 	YBCPgTypeAttrs type_attrs = { 0 };
@@ -103,9 +151,9 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(
 	/* The table pg_yb_catalog_version is in template1. */
 	HandleYBStatus(YBCPgNewUpdate(TemplateDbOid,
 								  YBCatalogVersionRelationId,
-								  false /* is_single_row_txn */,
 								  false /* is_region_local */,
-								  &update_stmt));
+								  &update_stmt,
+									YB_TRANSACTIONAL));
 
 	Relation rel = RelationIdGetRelation(YBCatalogVersionRelationId);
 	Datum ybctid = YbGetMasterCatalogVersionTableEntryYbctid(rel, db_oid);
@@ -171,14 +219,28 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(
 						__func__, is_breaking_change ? "" : "non", tmpbuf)));
 	}
 	HandleYBStatus(YBCPgDmlExecWriteOp(update_stmt, &rows_affected_count));
-	Assert(rows_affected_count == 1);
+	/*
+	 * Under normal situation rows_affected_count should be exactly 1. However
+	 * when a connection is established in per-database catalog version mode,
+	 * if the table pg_yb_catalog_version is updated to only have one row
+	 * for database template1 which is part of the process of converting to
+	 * global catalog version mode, this connection remains in per-database
+	 * catalog version mode. In this case rows_affected_count will be 0 unless
+	 * MyDatabaseId is template1 because in pg_yb_catalog_version the row for
+	 * MyDatabaseId no longer exists.
+	 */
+	if (rows_affected_count == 0)
+		Assert(YBIsDBCatalogVersionMode());
+	else
+		Assert(rows_affected_count == 1);
 
 	/* Cleanup. */
 	update_stmt = NULL;
 	RelationClose(rel);
 }
 
-bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change)
+bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change,
+											   bool is_global_ddl)
 {
 	if (YbGetCatalogVersionType() != CATALOG_VERSION_CATALOG_TABLE)
 		return false;
@@ -187,7 +249,7 @@ bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change)
 	 */
 	YbIncrementMasterDBCatalogVersionTableEntryImpl(
 		YBIsDBCatalogVersionMode() ? MyDatabaseId : TemplateDbOid,
-		is_breaking_change);
+		is_breaking_change, is_global_ddl);
 	return true;
 }
 
@@ -239,9 +301,9 @@ void YbCreateMasterDBCatalogVersionTableEntry(Oid db_oid)
 	YBCPgStatement insert_stmt = NULL;
 	HandleYBStatus(YBCPgNewInsert(TemplateDbOid,
 								  YBCatalogVersionRelationId,
-								  true /* is_single_row_txn */,
 								  false /* is_region_local */,
-								  &insert_stmt));
+								  &insert_stmt,
+								  YB_SINGLE_SHARD_TRANSACTION));
 
 	Relation rel = RelationIdGetRelation(YBCatalogVersionRelationId);
 	Datum ybctid = YbGetMasterCatalogVersionTableEntryYbctid(rel, db_oid);
@@ -289,9 +351,9 @@ void YbDeleteMasterDBCatalogVersionTableEntry(Oid db_oid)
 	YBCPgStatement delete_stmt = NULL;
 	HandleYBStatus(YBCPgNewDelete(TemplateDbOid,
 								  YBCatalogVersionRelationId,
-								  true /* is_single_row_txn */,
 								  false /* is_region_local */,
-								  &delete_stmt));
+								  &delete_stmt,
+									YB_SINGLE_SHARD_TRANSACTION));
 
 	Relation rel = RelationIdGetRelation(YBCatalogVersionRelationId);
 	Datum ybctid = YbGetMasterCatalogVersionTableEntryYbctid(rel, db_oid);
@@ -342,7 +404,7 @@ YbCatalogVersionType YbGetCatalogVersionType()
  */
 bool YbIsSystemCatalogChange(Relation rel)
 {
-	return IsSystemRelation(rel) && !IsBootstrapProcessingMode();
+	return IsCatalogRelation(rel) && !IsBootstrapProcessingMode();
 }
 
 
@@ -379,12 +441,27 @@ bool YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version)
 	/* Add scan targets */
 	for (AttrNumber attnum = 1; attnum <= natts; attnum++)
 	{
+		/*
+		 * Before copying the following code, see if YbDmlAppendTargetRegular
+		 * or similar could be used instead.  Reason this doesn't use
+		 * YbDmlAppendTargetRegular is that it doesn't have access to
+		 * TupleDesc.  YbDmlAppendTargetRegular could be changed to take
+		 * Form_pg_attribute instead, but that would make it inconvenient for
+		 * other callers.
+		 */
 		Form_pg_attribute att = &Desc_pg_yb_catalog_version[attnum - 1];
 		YBCPgTypeAttrs type_attrs = { att->atttypmod };
 		YBCPgExpr   expr = YBCNewColumnRef(ybc_stmt, attnum, att->atttypid,
 										   att->attcollation, &type_attrs);
 		HandleYBStatus(YBCPgDmlAppendTarget(ybc_stmt, expr));
 	}
+
+	/*
+	 * Fetching of the YBTupleIdAttributeNumber attribute is required for
+	 * the ability to prefetch data from the pb_yb_catalog_version table via
+	 * PgSysTablePrefetcher.
+	 */
+	YbDmlAppendTargetSystem(YBTupleIdAttributeNumber, ybc_stmt);
 
 	HandleYBStatus(YBCPgExecSelect(ybc_stmt, NULL /* exec_params */));
 
@@ -393,21 +470,57 @@ bool YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version)
 	Datum           *values = (Datum *) palloc0(natts * sizeof(Datum));
 	bool            *nulls  = (bool *) palloc(natts * sizeof(bool));
 	YBCPgSysColumns syscols;
-
-	/* Fetch one row. */
-	HandleYBStatus(YBCPgDmlFetch(ybc_stmt,
-	                             natts,
-	                             (uint64_t *) values,
-	                             nulls,
-	                             &syscols,
-	                             &has_data));
-
 	bool result = false;
-	if (has_data)
+
+	if (!YBIsDBCatalogVersionMode())
 	{
-		*version = (uint64_t) DatumGetInt64(values[current_version_attnum - 1]);
-		result = true;
+		/* Fetch one row. */
+		HandleYBStatus(YBCPgDmlFetch(ybc_stmt,
+									 natts,
+									 (uint64_t *) values,
+									 nulls,
+									 &syscols,
+									 &has_data));
+
+		if (has_data)
+		{
+			*version = (uint64_t) DatumGetInt64(values[current_version_attnum - 1]);
+			result = true;
+		}
 	}
+	else
+	{
+		/*
+		 * When prefetching is enabled we always load all the rows even though
+		 * we bind to the row matching given db_oid. This is a work around to
+		 * pick the row that matches db_oid. This work around should be removed
+		 * when prefetching is enhanced to support filtering.
+		 */
+		while (true) {
+			/* Fetch one row. */
+			HandleYBStatus(YBCPgDmlFetch(ybc_stmt,
+										 natts,
+										 (uint64_t *) values,
+										 nulls,
+										 &syscols,
+										 &has_data));
+
+			if (!has_data)
+				ereport(ERROR,
+					(errcode(ERRCODE_DATABASE_DROPPED),
+					 errmsg("catalog version for database %u was not found.", db_oid),
+					 errhint("Database might have been dropped by another user")));
+
+			uint32_t oid = (uint32_t) DatumGetInt32(values[oid_attnum - 1]);
+			if (oid == db_oid)
+			{
+				*version = (uint64_t) DatumGetInt64(values[current_version_attnum - 1]);
+				result = true;
+				break;
+			}
+ 		}
+	}
+
 	pfree(values);
 	pfree(nulls);
 	return result;
@@ -435,4 +548,19 @@ Datum YbGetMasterCatalogVersionTableEntryYbctid(Relation catalog_version_rel,
 									  values, nulls);
 	return YBCGetYBTupleIdFromTuple(catalog_version_rel, tuple,
 									RelationGetDescr(catalog_version_rel));
+}
+
+Oid YbMasterCatalogVersionTableDBOid()
+{
+	/*
+	 * MyDatabaseId is 0 during connection setup time before
+	 * MyDatabaseId is resolved. In per-db mode, we use TemplateDbOid
+	 * during this period to find the catalog version in order to load
+	 * initial catalog cache (needed for resolving MyDatabaseId, auth
+	 * check etc.). Once MyDatabaseId is resolved from then on we'll
+	 * use its catalog version.
+	 */
+
+	return YBIsDBCatalogVersionMode() && OidIsValid(MyDatabaseId)
+		? MyDatabaseId : TemplateDbOid;
 }

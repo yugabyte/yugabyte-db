@@ -1,19 +1,23 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
-import { Row, Col } from 'react-bootstrap';
+import { useState } from 'react';
 import { Field } from 'formik';
+import { Row, Col } from 'react-bootstrap';
+import { useMutation } from 'react-query';
+import { toast } from 'react-toastify';
 import * as Yup from 'yup';
 
 import { YBFormInput, YBFormSelect } from '../../../components/common/forms/fields';
 import { YBModalForm } from '../../../components/common/forms';
-import { toast } from 'react-toastify';
+import { YBLoading } from '../../common/indicators';
+import { api } from '../../../redesign/helpers/api';
 
 const getValidationSchema = (type) => {
   const shape = {
     version: Yup.string()
       .matches(/^((\d+).(\d+).(\d+).(\d+)(?:-[a-z0-9]+)*)$/, {
-        message: 'Incorrect version format. Valid formats: 1.1.1.1, 1.1.1.1-b1 or 1.1.1.1-b12-remote',
+        message:
+          'Incorrect version format. Valid formats: 1.1.1.1, 1.1.1.1-b1 or 1.1.1.1-b12-remote',
         excludeEmptyString: true
       })
       .required('Release Version is Required'),
@@ -21,7 +25,8 @@ const getValidationSchema = (type) => {
       .matches(/(?:(https|s3|gs):\/\/).+$/, {
         message: 'Path should starts with gs, s3 or https'
       })
-      .required('Path is required')
+      .required('Path is required'),
+    helmChart: Yup.string()
   };
 
   switch (type) {
@@ -33,7 +38,24 @@ const getValidationSchema = (type) => {
       shape['credentialsJson'] = Yup.string().required('Credentials Json is required');
       break;
     case 'http':
-      shape['x86_64_checksum'] = Yup.string().required('Checksum is required');
+      shape['x86_64_checksum'] = Yup.string()
+        .required('Checksum is required')
+        .matches(/(MD5|SHA1|SHA256):\w+/, {
+          message:
+            'Checksum must have a pattern of [MD5|SHA1|SHA256]:[checksum_value];' +
+            ' e.g., MD5:99d42a85b0d2b2813d6cea877aaab919'
+        });
+      shape['helmChartChecksum'] = Yup.string()
+        .when('helmChart', {
+          is: (val) => val && val.length > 0,
+          then: Yup.string().required('Checksum is required'),
+          otherwise: Yup.string()
+        })
+        .matches(/(MD5|SHA1|SHA256):\w+/, {
+          message:
+            'Checksum must have a pattern of [MD5|SHA1|SHA256]:[checksum_value];' +
+            ' e.g., MD5:99d42a85b0d2b2813d6cea877aaab919'
+        });
       break;
     default:
       throw new Error('Unknown import type ' + type);
@@ -47,6 +69,7 @@ const PathField = () => <Field name="x86_64" label="Path" component={YBFormInput
 const S3Fields = () => (
   <>
     <PathField />
+    <Field name="helmChart" label="Helm chart" component={YBFormInput} />
     <Field name="accessKeyId" label="Access key id" component={YBFormInput} />
     <Field name="secretAccessKey" label="Secret access key" component={YBFormInput} />
   </>
@@ -55,6 +78,7 @@ const S3Fields = () => (
 const GcsFields = () => (
   <>
     <PathField />
+    <Field name="helmChart" label="Helm chart" component={YBFormInput} />
     <Field name="credentialsJson" label="Credentials Json" component={YBFormInput} />
   </>
 );
@@ -63,6 +87,8 @@ const HttpFields = () => (
   <>
     <PathField />
     <Field name="x86_64_checksum" component={YBFormInput} label="Checksum" />
+    <Field name="helmChart" label="Helm chart" component={YBFormInput} />
+    <Field name="helmChartChecksum" label="Helm chart checksum" component={YBFormInput} />
   </>
 );
 
@@ -125,67 +151,95 @@ const preparePayload = (values) => {
     };
   }
 
-  return payload;
-};
-export default class ImportRelease extends Component {
-  constructor(props) {
-    super(props);
-    this.state = {
-      importType: props.initialValues.import_type.value
+  if (values['helmChart']) {
+    payload[version][importType]['paths'] = {
+      ...payload[version][importType]['paths'],
+      helmChart: values['helmChart']
     };
   }
 
-  importRelease = (values, { setSubmitting }) => {
-    const { importYugaByteRelease } = this.props;
+  if (values['helmChartChecksum']) {
+    payload[version][importType]['paths'] = {
+      ...payload[version][importType]['paths'],
+      helmChartChecksum: values['helmChartChecksum']
+    };
+  }
+
+  return payload;
+};
+
+export const ImportRelease = (props) => {
+  const [importType, setImportType] = useState(props.initialValues.import_type.value);
+  const { import_types, initialValues, visible, onHide } = props;
+
+  const importRelease = useMutation((queryParams) => api.importReleases(queryParams), {
+    onSuccess: () => {
+      toast.success('Release imported successfully!.');
+    },
+    onError: (error) => {
+      const defaultErrorMessage = 'Import release failed';
+      toast.error(error?.response?.data?.error ?? defaultErrorMessage);
+    }
+  });
+
+  const handleSubmit = async (values, { setSubmitting }) => {
     const payload = preparePayload(values);
     setSubmitting(false);
-    if (!payload) return;
-    importYugaByteRelease(payload);
+    if (!payload) {
+      return;
+    }
+    await importRelease.mutateAsync(payload);
+    props.onModalSubmit();
   };
 
-  render() {
-    const { visible, onHide } = this.props;
-    const { importType } = this.state;
-    return (
-      <div className="universe-apps-modal">
-        <YBModalForm
-          title={'Import Release'}
-          visible={visible}
-          onHide={onHide}
-          showCancelButton={true}
-          cancelLabel={'Cancel'}
-          className="import-release-modal"
-          onFormSubmit={this.importRelease}
-          initialValues={this.props.initialValues}
-          validationSchema={getValidationSchema(importType)}
-          render={({ values }) => (
-            <>
-              <Row>
-                <Col lg={12}>
-                  <Field name="version" component={YBFormInput} label={'Release Version'} />
-                </Col>
-                <Col lg={12}>
-                  <Field
-                    name="import_type"
-                    component={YBFormSelect}
-                    options={this.props.import_types}
-                    label="Import from"
-                    onChange={({ form }, value) => {
-                      form.setFieldValue('import_type', value);
-                      this.setState({
-                        importType: value.value
-                      });
-                    }}
-                  />
-                </Col>
-              </Row>
-              <Row>
-                <Col lg={12}>{getFields(values['import_type'])}</Col>
-              </Row>
-            </>
-          )}
-        ></YBModalForm>
-      </div>
-    );
-  }
-}
+  const isLoading = importRelease.isLoading;
+
+  return (
+    <div className="universe-apps-modal">
+      <YBModalForm
+        isButtonDisabled={!!isLoading}
+        title={'Import Release'}
+        visible={visible}
+        onHide={onHide}
+        showCancelButton={true}
+        cancelLabel={'Cancel'}
+        className="import-release-modal"
+        onFormSubmit={handleSubmit}
+        initialValues={initialValues}
+        validationSchema={getValidationSchema(importType)}
+        render={({ values }) => (
+          <>
+            {isLoading ? (
+              <>
+                <YBLoading text={'Importing Release'} />
+              </>
+            ) : (
+              <>
+                <Row>
+                  <Col lg={12}>
+                    <Field name="version" component={YBFormInput} label={'Release Version'} />
+                  </Col>
+                  <Col lg={12}>
+                    <Field
+                      name="import_type"
+                      component={YBFormSelect}
+                      options={import_types}
+                      label="Import from"
+                      onChange={({ form }, value) => {
+                        form.setFieldValue('import_type', value);
+                        setImportType(value.value);
+                      }}
+                    />
+                  </Col>
+                </Row>
+                <Row>
+                  <Col lg={12}>{getFields(values['import_type'])}</Col>
+                </Row>
+              </>
+            )}
+          </>
+        )}
+      ></YBModalForm>
+    </div>
+  );
+};

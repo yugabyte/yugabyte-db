@@ -24,6 +24,7 @@
 
 using std::string;
 using std::vector;
+using std::ostream;
 
 namespace yb {
 namespace util {
@@ -325,6 +326,13 @@ Status DecodeFromDigitPairs(
   while (!digits->empty() && !digits->back()) {
     digits->pop_back();
   }
+  return Status::OK();
+}
+
+Status Decimal::DecodeFromComparable(Slice* slice) {
+  size_t num_decoded_bytes;
+  RETURN_NOT_OK(DecodeFromComparable(*slice, &num_decoded_bytes));
+  slice->remove_prefix(num_decoded_bytes);
   return Status::OK();
 }
 

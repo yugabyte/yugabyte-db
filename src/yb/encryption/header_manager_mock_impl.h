@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_ENCRYPTION_HEADER_MANAGER_MOCK_IMPL_H
-#define YB_ENCRYPTION_HEADER_MANAGER_MOCK_IMPL_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -28,24 +27,24 @@ class HeaderManagerMockImpl : public HeaderManager {
   HeaderManagerMockImpl();
   void SetFileEncryption(bool file_encrypted);
 
-  Result<string> SerializeEncryptionParams(
+  Result<std::string> SerializeEncryptionParams(
       const EncryptionParams& encryption_info) override;
 
   Result<EncryptionParamsPtr> DecodeEncryptionParamsFromEncryptionMetadata(
-      const Slice& s) override;
+      const Slice& s, std::string* universe_key_id_output) override;
 
   uint32_t GetEncryptionMetadataStartIndex() override;
   Result<FileEncryptionStatus> GetFileEncryptionStatusFromPrefix(const Slice& s) override;
-  bool IsEncryptionEnabled() override;
+  Result<std::string> GetLatestUniverseKeyId() override;
+  Result<bool> IsEncryptionEnabled() override;
 
  private:
   EncryptionParamsPtr encryption_params_;
   bool file_encrypted_ = false;
+  const std::string universe_key_id_ = "0";
 };
 
 std::unique_ptr<HeaderManager> GetMockHeaderManager();
 
 } // namespace encryption
 } // namespace yb
-
-#endif // YB_ENCRYPTION_HEADER_MANAGER_MOCK_IMPL_H

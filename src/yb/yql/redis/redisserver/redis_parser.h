@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_YQL_REDIS_REDISSERVER_REDIS_PARSER_H_
-#define YB_YQL_REDIS_REDISSERVER_REDIS_PARSER_H_
+#pragma once
 
 #include <memory>
 #include <string>
@@ -143,5 +142,3 @@ class RedisParser {
 
 }  // namespace redisserver
 }  // namespace yb
-
-#endif  // YB_YQL_REDIS_REDISSERVER_REDIS_PARSER_H_

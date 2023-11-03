@@ -9,14 +9,15 @@ import { Field } from 'formik';
 
 class YBRadioButtonGroupDefault extends Component {
   render() {
-    const { field, name, segmented, options, ...props } = this.props;
+    const { name, segmented, options, ...props } = this.props;
     return (
       <div
         className={'btn-group btn-group-radio' + (segmented ? ' btn-group-segmented' : '')}
         data-toggle="buttons"
       >
         {options.map((option) => {
-          let value, label;
+          let value;
+          let label;
           if (isNonEmptyArray(option)) {
             [value, label] = option;
           } else if (isObject(option)) {
@@ -45,7 +46,7 @@ class YBRadioButtonGroupDefault extends Component {
 
 export default class YBRadioButtonGroup extends Component {
   render() {
-    const { label, meta, type, ...otherProps } = this.props;
+    const { label, meta, ...otherProps } = this.props;
     if (isDefinedNotNull(label)) {
       return (
         <YBLabel label={label} meta={meta}>
@@ -60,7 +61,7 @@ export default class YBRadioButtonGroup extends Component {
 
 export class YBSegmentedButtonGroup extends Component {
   render() {
-    const { label, meta, type, ...otherProps } = this.props;
+    const { label, meta, ...otherProps } = this.props;
     if (isDefinedNotNull(label)) {
       return (
         <YBLabel label={label} meta={meta}>
@@ -120,6 +121,7 @@ export class YBRadioButtonLine extends Component {
       <YBLabel label={label} meta={meta} classOverrides={'radio-bar'} {...otherProps}>
         <ul className="yb-form-radio" ref={this.radioList}>
           {options.map((value, index) => (
+            // eslint-disable-next-line react/no-array-index-key
             <li key={`option-${index}`}>
               <input
                 type="radio"

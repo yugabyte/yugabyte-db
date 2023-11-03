@@ -7,14 +7,15 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React, { FC, useState } from 'react';
+import { FC, useState } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { useMutation } from 'react-query';
 import { useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
 import { IBackup } from '..';
 import { YBModalForm } from '../../common/forms';
-import { assignStorageConfig } from '../common/BackupAPI';
+// import { assignStorageConfig } from '../../backupv2';
+import { assignStorageConfig } from '../../backupv2/common/BackupAPI';
 import { IStorageConfig } from '../common/IBackup';
 
 import './AssignBackupStorageConfig.scss';
@@ -67,7 +68,8 @@ export const AssignBackupStorageConfig: FC<BackupStorageConfigProps> = ({
       <div className="storage-location-path">
         <div>
           <div className="title">Selected backup location:</div>
-          {backup.responseList[0].defaultLocation ?? backup.responseList[0].storageLocation}
+          {backup.commonBackupInfo.responseList[0].defaultLocation ??
+            backup.commonBackupInfo.responseList[0].storageLocation}
         </div>
       </div>
       <div className="help-text">

@@ -11,10 +11,9 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_YQL_VIRTUAL_TABLE_H
-#define YB_MASTER_YQL_VIRTUAL_TABLE_H
+#pragma once
 
-#include "yb/common/ql_rowblock.h"
+#include "yb/qlexpr/ql_rowblock.h"
 
 #include "yb/docdb/ql_storage_interface.h"
 
@@ -25,6 +24,8 @@
 
 namespace yb {
 namespace master {
+
+using VTableDataPtr = std::shared_ptr<qlexpr::QLRowBlock>;
 
 // A YQL virtual table which is based on in memory data.
 class YQLVirtualTable : public docdb::YQLStorageIf {
@@ -46,17 +47,16 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
 
   // Retrieves all the data for the yql virtual table in form of a QLRowBlock. This data is then
   // used by the iterator.
-  virtual Result<std::shared_ptr<QLRowBlock>> RetrieveData(
-      const QLReadRequestPB& request) const = 0;
+  virtual Result<VTableDataPtr> RetrieveData(const QLReadRequestPB& request) const = 0;
 
   Status GetIterator(
       const QLReadRequestPB& request,
-      const Schema& projection,
+      const dockv::ReaderProjection& projection,
       std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
-      CoarseTimePoint deadline,
-      const ReadHybridTime& read_time,
-      const QLScanSpec& spec,
+      const docdb::ReadOperationData& read_operation_data,
+      const qlexpr::QLScanSpec& spec,
+      std::reference_wrapper<const ScopedRWOperation> pending_op,
       std::unique_ptr<docdb::YQLRowwiseIteratorIf>* iter) const override;
 
   Status BuildYQLScanSpec(
@@ -64,64 +64,70 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
       const ReadHybridTime& read_time,
       const Schema& schema,
       bool include_static_columns,
-      const Schema& static_projection,
-      std::unique_ptr<QLScanSpec>* spec,
-      std::unique_ptr<QLScanSpec>* static_row_spec) const override;
+      std::unique_ptr<qlexpr::QLScanSpec>* spec,
+      std::unique_ptr<qlexpr::QLScanSpec>* static_row_spec) const override;
 
   //------------------------------------------------------------------------------------------------
   // PGSQL Support.
   //------------------------------------------------------------------------------------------------
 
   Status CreateIterator(
-      const Schema& projection,
+      const dockv::ReaderProjection& projection,
       std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
-      CoarseTimePoint deadline,
-      const ReadHybridTime& read_time,
-      std::unique_ptr<docdb::YQLRowwiseIteratorIf>* iter) const override {
+      const docdb::ReadOperationData& read_operation_data,
+      std::reference_wrapper<const ScopedRWOperation> pending_op,
+      std::unique_ptr<docdb::YQLRowwiseIteratorIf>* iter,
+      const docdb::DocDBStatistics* statistics = nullptr) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return Status::OK();
   }
 
-  Status InitIterator(docdb::YQLRowwiseIteratorIf* iter,
-                              const PgsqlReadRequestPB& request,
-                              const Schema& schema,
-                              const QLValuePB& ybctid) const override {
+  Status InitIterator(docdb::DocRowwiseIterator* iter,
+                      const PgsqlReadRequestPB& request,
+                      const Schema& schema,
+                      const QLValuePB& ybctid) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return Status::OK();
   }
 
   Status GetIterator(
       const PgsqlReadRequestPB& request,
-      const Schema& projection,
+      const dockv::ReaderProjection& projection,
       std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
-      CoarseTimePoint deadline,
-      const ReadHybridTime& read_time,
-      const docdb::DocKey& start_doc_key,
-      docdb::YQLRowwiseIteratorIf::UniPtr* iter) const override {
+      const docdb::ReadOperationData& read_operation_data,
+      const dockv::DocKey& start_doc_key,
+      std::reference_wrapper<const ScopedRWOperation> pending_op,
+      docdb::YQLRowwiseIteratorIf::UniPtr* iter,
+      const docdb::DocDBStatistics* statistics = nullptr) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return Status::OK();
   }
 
-  Status GetIterator(
+  Status GetIteratorForYbctid(
       uint64 stmt_id,
-      const Schema& projection,
+      const dockv::ReaderProjection& projection,
       std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
-      CoarseTimePoint deadline,
-      const ReadHybridTime& read_time,
-      const QLValuePB& ybctid,
-      docdb::YQLRowwiseIteratorIf::UniPtr* iter) const override {
+      const docdb::ReadOperationData& read_operation_data,
+      const QLValuePB& min_ybctid,
+      const QLValuePB& max_ybctid,
+      std::reference_wrapper<const ScopedRWOperation> pending_op,
+      docdb::YQLRowwiseIteratorIf::UniPtr* iter,
+      const docdb::DocDBStatistics* statistics = nullptr,
+      docdb::SkipSeek skip_seek = docdb::SkipSeek::kFalse) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return Status::OK();
   }
+
+  std::string ToString() const override { return Format("YQLVirtualTable $0", table_name_); }
 
  protected:
   // Finds the given column name in the schema and updates the specified column in the given row
   // with the provided value.
   template<class T>
-  Status SetColumnValue(const std::string& col_name, const T& value, QLRow* row) const {
+  Status SetColumnValue(const std::string& col_name, const T& value, qlexpr::QLRow* row) const {
     auto p = VERIFY_RESULT(ColumnIndexAndType(col_name));
     row->SetColumn(p.first, util::GetValue(value, p.second));
     return Status::OK();
@@ -147,4 +153,3 @@ extern const std::string kSystemTablesReleaseVersionColumn;
 
 }  // namespace master
 }  // namespace yb
-#endif // YB_MASTER_YQL_VIRTUAL_TABLE_H

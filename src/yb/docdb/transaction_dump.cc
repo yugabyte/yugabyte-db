@@ -13,22 +13,39 @@
 
 #include "yb/docdb/transaction_dump.h"
 
+#include <zlib.h>
+
 #include <condition_variable>
 #include <mutex>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
+
+#include "yb/gutil/casts.h"
 
 #include "yb/util/env.h"
+#include "yb/util/flags.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/path_util.h"
-#include "yb/util/result.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
+#include "yb/util/thread.h"
 
-DEFINE_bool(dump_transactions, false, "Dump transactions data in debug binary format");
+using namespace yb::size_literals;
+
+DEFINE_RUNTIME_bool(dump_transactions, false, "Dump transactions data in debug binary format.");
 // The output dir is tried in the following order (first existing and non empty is taken):
 // Symlink $HOME/logs/latest_test
 // Flag log_dir
+// Flag tmp_dir
 // /tmp
+
+DEFINE_RUNTIME_uint64(dump_transactions_chunk_size, 10_GB,
+                      "Start new transaction dump when current one reaches specified limit.");
+
+DEFINE_RUNTIME_uint64(dump_transactions_gzip, true,
+                      "Whether transaction dump should be compressed in GZip format.");
+
+DECLARE_string(tmp_dir);
 
 namespace yb {
 namespace docdb {
@@ -39,6 +56,51 @@ struct DumpEntry {
   DumpEntry* next = nullptr;
   size_t size;
   char data[0];
+};
+
+class DumpWriter {
+ public:
+  virtual ~DumpWriter() = default;
+
+  virtual void Write(const char* data, size_t size) = 0;
+};
+
+class GZipWriter : public DumpWriter {
+ public:
+  explicit GZipWriter(const std::string& fname) : file_(gzopen(fname.c_str(), "wb")) {
+    if (file_ == nullptr) {
+      auto err = errno;
+      LOG(FATAL) << "Failed to open gzip file: " << fname << ": " << err;
+    }
+  }
+
+  ~GZipWriter() {
+    gzclose_w(file_);
+  }
+
+  void Write(const char* data, size_t size) override {
+    auto written = gzwrite(file_, data, narrow_cast<unsigned>(size));
+    if (written == 0) {
+      auto err = errno;
+      LOG(FATAL) << "Failed to write gzip file: " << err;
+    }
+    CHECK_EQ(written, size);
+  }
+ private:
+  gzFile file_;
+};
+
+class FileWriter : public DumpWriter {
+ public:
+  explicit FileWriter(const std::string& fname) {
+    CHECK_OK(Env::Default()->NewWritableFile(fname, &file_));
+  }
+
+  void Write(const char* data, size_t size) override {
+    CHECK_OK(file_->Append(Slice(data, size)));
+  }
+ private:
+  std::unique_ptr<WritableFile> file_;
 };
 
 void SetNext(DumpEntry* entry, DumpEntry* next) {
@@ -52,9 +114,8 @@ DumpEntry* GetNext(DumpEntry* entry) {
 class Dumper {
  public:
   Dumper() {
-    writer_ = std::thread([this] {
-      this->Execute();
-    });
+    CHECK_OK(Thread::Create(
+        "transaction_Dump", "writer_thread", &Dumper::Execute, this, &writer_thread_));
   }
 
   ~Dumper() {
@@ -63,10 +124,13 @@ class Dumper {
       stop_.store(true, std::memory_order_release);
     }
     cond_.notify_one();
-    writer_.join();
+    if (writer_thread_) {
+      writer_thread_->Join();
+    }
     while (auto* entry = queue_.Pop()) {
       free(entry);
     }
+    writer_ = nullptr;
   }
 
   void Dump(const SliceParts& parts) {
@@ -84,8 +148,13 @@ class Dumper {
     DumpEntry* entry = nullptr;
     for (;;) {
       while (entry) {
-        CHECK_OK(file_->Append(Slice(entry->data, entry->size)));
+        writer_->Write(entry->data, entry->size);
+        current_file_size_ += entry->size;
         free(entry);
+        if (current_file_size_ >= FLAGS_dump_transactions_chunk_size) {
+          writer_ = nullptr;
+          Open();
+        }
         entry = queue_.Pop();
       }
       {
@@ -109,8 +178,15 @@ class Dumper {
     char buffer[32];
     buffer[strftime(buffer, sizeof(buffer), "%Y%m%d-%H%M%S", tm)] = 0;
     auto fname = JoinPathSegments(dir, Format("DUMP.$0.$1", buffer, getpid()));
+    CHECK_OK(Env::Default()->CreateDirs(dir));
+    if (FLAGS_dump_transactions_gzip) {
+      fname += ".gz";
+      writer_ = std::make_unique<GZipWriter>(fname);
+    } else {
+      writer_ = std::make_unique<FileWriter>(fname);
+    }
+    current_file_size_ = 0;
     LOG(INFO) << "Dump transactions to " << fname;
-    CHECK_OK(Env::Default()->NewWritableFile(fname, &file_));
   }
 
   std::string OutDir() {
@@ -129,13 +205,14 @@ class Dumper {
       result = FLAGS_log_dir;
     }
     if (result.empty()) {
-      result = "/tmp";
+      result = FLAGS_tmp_dir;
     }
     return result;
   }
 
-  std::unique_ptr<WritableFile> file_;
-  std::thread writer_;
+  std::unique_ptr<DumpWriter> writer_;
+  size_t current_file_size_ = 0;
+  scoped_refptr<Thread> writer_thread_;
   std::atomic<bool> stop_{false};
   MPSCQueue<DumpEntry> queue_;
   std::mutex mutex_;

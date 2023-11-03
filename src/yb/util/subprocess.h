@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_SUBPROCESS_H
-#define YB_UTIL_SUBPROCESS_H
+#pragma once
 
 #include <signal.h>
 #include <spawn.h>
@@ -41,7 +40,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/thread_annotations.h"
@@ -51,6 +50,14 @@
 #include "yb/util/status.h"
 
 namespace yb {
+namespace util {
+
+// Handle and log the status code from waitpid().
+// The status code is encoded. We need to call the proper macro
+// to decode it to be readable.
+void LogWaitCode(int ret_code, const std::string &process_name);
+
+} // namespace util
 
 YB_DEFINE_ENUM(StdFdType,
                ((kIn, STDIN_FILENO))
@@ -190,7 +197,7 @@ class Subprocess {
   Status Call(std::string* output, StdFdTypes read_fds = StdFdTypes{StdFdType::kOut});
 
   // Writes pid to cgroup specified by path
-  void AddPIDToCGroup(const string& path, pid_t pid);
+  void AddPIDToCGroup(const std::string& path, pid_t pid);
 
  private:
 
@@ -264,4 +271,3 @@ class Subprocess {
 };
 
 } // namespace yb
-#endif /* YB_UTIL_SUBPROCESS_H */

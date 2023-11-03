@@ -17,7 +17,7 @@ type: indexpage
     <a class="section-link icon-offset" href="aws/cloudformation/">
       <div class="head">
         <div class="icon">
-          <i class="icon-aws"></i>
+          <i class="fa-brands fa-aws"></i>
         </div>
         <div class="title">Amazon Web Services (AWS)</div>
       </div>
@@ -31,7 +31,7 @@ type: indexpage
     <a class="section-link icon-offset" href="gcp/terraform/">
       <div class="head">
         <div class="icon">
-          <i class="icon-google"></i>
+          <i class="fa-brands fa-google"></i>
         </div>
         <div class="title">Google Cloud Platform (GCP)</div>
       </div>

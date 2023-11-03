@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_TABLE_FIXED_SIZE_FILTER_BLOCK_H
-#define YB_ROCKSDB_TABLE_FIXED_SIZE_FILTER_BLOCK_H
+#pragma once
 
 #include <stddef.h>
 #include <stdint.h>
@@ -111,5 +110,3 @@ class FixedSizeFilterBlockReader : public FilterBlockReader {
 
 };
 }  // namespace rocksdb
-
-#endif // YB_ROCKSDB_TABLE_FIXED_SIZE_FILTER_BLOCK_H

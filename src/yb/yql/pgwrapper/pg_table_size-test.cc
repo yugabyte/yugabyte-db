@@ -17,16 +17,29 @@
 #include "yb/client/table_info.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/consensus/consensus.h"
+#include "yb/consensus/log.h"
+
+#include "yb/integration-tests/mini_cluster.h"
+
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/mini_master.h"
+
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
+
+#include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/status.h"
 #include "yb/util/test_macros.h"
 
-#include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
+
 namespace yb {
 namespace pgwrapper {
 namespace {
@@ -34,6 +47,7 @@ namespace {
 class PgTableSizeTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 500;
     PgMiniTestBase::SetUp();
   }
 };
@@ -50,24 +64,10 @@ const std::string kColocatedDatabase = "test_colocated_database";
 
 constexpr double kSizeBuffer = 0.4;
 
-constexpr int kByteStringSize = 6; // size of string " bytes", used to parse table size string
-constexpr int kByteUnitStringSize = 3; // size of byte suffix strings (' kB',' MB',' GB',' TB')
-
 // Expected size of each table in bytes
-constexpr int kColocatedTableSize = 0;
-constexpr int kColocatedIndexSize = 0;
-constexpr int kSimpleTableSize = 4763000;
-constexpr int kSimpleIndexSize = 4122000;
-constexpr int kSimplePrimaryIndexSize = 0;
-constexpr int kTempTableSize = 464000;
-constexpr int kPartitionParentTableSize = 3072000;
-constexpr int kPartitionTableSize = 3563000;
-constexpr int kMaterializedViewSize = 3638000;
-constexpr int kMaterializedViewRefreshSize = 4396000;
+constexpr auto kTempTableSize = 464000;
 
-Result<std::string> GetTableSize(PGConn* conn,
-                                 const std::string& relationType,
-                                 const std::string& table_name) {
+std::string GetTableSizeQuery(const std::string& relationType, const std::string& table_name) {
   // query equivalent to \d+ in ysqlsh -E
   std::string relkind = "'r','p','v','m','S','f',''";
   if (relationType == "T") {
@@ -77,9 +77,6 @@ Result<std::string> GetTableSize(PGConn* conn,
   } else if (relationType == "M") {
     relkind = "'m',''";
   }
-
-  // wait for master heartbeat service to run
-  sleep(2);
 
   auto query = Format(R"#(
     SELECT
@@ -97,7 +94,7 @@ Result<std::string> GetTableSize(PGConn* conn,
         WHEN 'I' THEN 'index'
       END as "Type",
       pg_catalog.pg_get_userbyid(c.relowner) as "Owner",
-      pg_catalog.pg_size_pretty(pg_catalog.pg_table_size(c.oid)) as "Size",
+      pg_catalog.pg_table_size(c.oid) as "Size",
       pg_catalog.obj_description(c.oid, 'pg_class') as "Description"
     FROM
       pg_catalog.pg_class c LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
@@ -111,50 +108,75 @@ Result<std::string> GetTableSize(PGConn* conn,
     relkind,
     table_name);
 
-  auto result = VERIFY_RESULT(conn->Fetch(query));
-
-  return PQgetvalue(result.get(), 0, 4);
+  return query;
 }
 
-Status CheckSizeExpectedRange(const std::string& actual_size_string, int64 expected_size) {
-  // actual_size_string: value returned from getTableSize query
-  // expected_size: expected number of the actual_size_string
-  int64 actual_size = 0;
 
-  if (!(actual_size_string.size() > kByteStringSize && actual_size_string.substr(
-        actual_size_string.size() - kByteStringSize, kByteStringSize) == " bytes")) {
-    if (actual_size_string.size() > 0) {
-      std::string units = actual_size_string.substr(
-        actual_size_string.size() - kByteUnitStringSize, kByteUnitStringSize);
-      actual_size =
-        stoi(actual_size_string.substr(0, actual_size_string.size() - kByteUnitStringSize));
-      if (units == " kB") {
-        actual_size <<= 10;
-      } else if (units == " MB") {
-        actual_size <<= 20;
-      } else if (units == " GB") {
-        actual_size <<= 30;
-      } else if (units == " TB") {
-        actual_size <<= 40;
-      }
+Status VerifyTableSize(MiniCluster* cluster,
+                       PGConn* conn,
+                       const std::string& relationType,
+                       const std::string& table_name) {
+  // Wait for heartbeat interval to ensure that the metrics are updated.
+  sleep(5);
+  auto query = GetTableSizeQuery(relationType, table_name);
+  auto result = VERIFY_RESULT(conn->Fetch(query));
+  auto pg_size = VERIFY_RESULT(GetValue<PGUint64>(result.get(), 0, 4));
+
+  // Verify that the actual size in DocDB is the same.
+  uint64_t size_from_ts = 0;
+  auto peers = ListTabletPeers(cluster, ListPeersFilter::kLeaders);
+  for (auto& peer : peers) {
+    auto tablet = peer->shared_tablet();
+    if (tablet && tablet->metadata()->table_name() == table_name) {
+      // Get SST files size from tablet server.
+      size_from_ts += tablet->GetCurrentVersionSstFilesAllSizes().first;
+      // Get WAL files size from tablet server.
+      size_from_ts += peer->log()->OnDiskSize();
     }
-  } else {
-    actual_size = stoi(actual_size_string.substr(0, actual_size_string.size() - kByteStringSize));
   }
+  if (size_from_ts != pg_size) {
+    return STATUS_FORMAT(IllegalState, "Size $0 does not match the size from tablet server $1",
+                         pg_size, size_from_ts);
+  }
+  return Status::OK();
+}
 
-  int64 lower = expected_size - expected_size * kSizeBuffer;
-  int64 upper = expected_size + expected_size * kSizeBuffer;
+Result<uint64_t> GetTempTableSize(
+    MiniCluster* cluster, PGConn* conn, const std::string& table_name) {
+  auto result = VERIFY_RESULT(conn->Fetch(GetTableSizeQuery("T", table_name)));
+  return GetValue<PGUint64>(result.get(), 0, 4);
+}
 
-  EXPECT_GE(actual_size, lower);
-  EXPECT_LE(actual_size, upper);
+// Verify that the size of the table is not set in the output of pg_table_size.
+Status VerifyInvalidTableSize(MiniCluster* cluster,
+                              PGConn* conn,
+                              const std::string& relationType,
+                              const std::string& table_name) {
+  auto query = GetTableSizeQuery(relationType, table_name);
+  auto result = VERIFY_RESULT(conn->Fetch(query));
+  const auto size = std::string(PQgetvalue(result.get(), 0, 4));
+  if (!size.empty()) {
+    return STATUS_FORMAT(IllegalState,
+        "Size of $0 is set to $1 in the output of pg_table_size when invalid expected",
+        table_name, size);
+  }
+  return Status::OK();
+}
 
+Status CheckSizeExpectedRange(uint64_t actual_size, uint64_t expected_size) {
+  const auto lower = expected_size - expected_size * kSizeBuffer;
+  const auto upper = expected_size + expected_size * kSizeBuffer;
+
+  if (actual_size < lower || actual_size > upper) {
+    return STATUS_FORMAT(IllegalState, "Size $0 does not fall into the range $1 - $2",
+                                     actual_size, lower, upper);
+  }
   return Status::OK();
 }
 
 } // namespace
 
-TEST_F(PgTableSizeTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTableSize)) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 500;
+TEST_F(PgTableSizeTest, ColocatedTableSize) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat("Create database $0 with colocated='true'", kColocatedDatabase));
   auto test_conn = ASSERT_RESULT(ConnectToDB(kColocatedDatabase));
@@ -165,18 +187,13 @@ TEST_F(PgTableSizeTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTableSize)) {
       "INSERT INTO $0 SELECT t1.i, 1, 1 FROM generate_series(1, 10000) as t1(i)", kTable));
   ASSERT_OK(test_conn.ExecuteFormat("create index $0 on $1($2)", kIndex, kTable, kCol1));
 
-  ASSERT_OK(cluster_->FlushTablets());
   ASSERT_OK(cluster_->CompactTablets());
 
-  auto table_size = ASSERT_RESULT(GetTableSize(&test_conn, "T", kTable));
-  auto index_size = ASSERT_RESULT(GetTableSize(&test_conn, "I", kIndex));
-
-  ASSERT_OK(CheckSizeExpectedRange(table_size, kColocatedTableSize));
-  ASSERT_OK(CheckSizeExpectedRange(index_size, kColocatedIndexSize));
+  ASSERT_OK(VerifyInvalidTableSize(cluster_.get(), &test_conn, "T", kTable));
+  ASSERT_OK(VerifyInvalidTableSize(cluster_.get(), &test_conn, "I", kIndex));
 }
 
-TEST_F(PgTableSizeTest, YB_DISABLE_TEST_IN_TSAN(TableSize)) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 500;
+TEST_F(PgTableSizeTest, SimpleTableSize) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat("Create database $0", kDatabase));
 
@@ -188,20 +205,14 @@ TEST_F(PgTableSizeTest, YB_DISABLE_TEST_IN_TSAN(TableSize)) {
 
   ASSERT_OK(test_conn.ExecuteFormat("create index $0 on $1($2)", kIndex, kTable, kCol1));
 
-  ASSERT_OK(cluster_->FlushTablets());
   ASSERT_OK(cluster_->CompactTablets());
 
-  auto table_size = ASSERT_RESULT(GetTableSize(&test_conn, "T", kTable));
-  auto index_size = ASSERT_RESULT(GetTableSize(&test_conn, "I", kIndex));
-  auto primary_index_size = ASSERT_RESULT(GetTableSize(&test_conn, "I", kTable + "_pkey"));
-
-  ASSERT_OK(CheckSizeExpectedRange(table_size, kSimpleTableSize));
-  ASSERT_OK(CheckSizeExpectedRange(index_size, kSimpleIndexSize));
-  ASSERT_OK(CheckSizeExpectedRange(primary_index_size, kSimplePrimaryIndexSize));
+  ASSERT_OK(VerifyTableSize(cluster_.get(), &test_conn, "T", kTable));
+  ASSERT_OK(VerifyTableSize(cluster_.get(), &test_conn, "I", kIndex));
+  ASSERT_OK(VerifyInvalidTableSize(cluster_.get(), &test_conn, "I", kTable + "_pkey"));
 }
 
-TEST_F(PgTableSizeTest, YB_DISABLE_TEST_IN_TSAN(TempTableSize)) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 500;
+TEST_F(PgTableSizeTest, TempTableSize) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat("Create database $0", kDatabase));
 
@@ -211,16 +222,11 @@ TEST_F(PgTableSizeTest, YB_DISABLE_TEST_IN_TSAN(TempTableSize)) {
   ASSERT_OK(test_conn.ExecuteFormat(
       "INSERT INTO $0 SELECT t1.i, 1, 1 FROM generate_series(1, 10000) as t1(i)", kTable));
 
-  ASSERT_OK(cluster_->FlushTablets());
-  ASSERT_OK(cluster_->CompactTablets());
-
-  auto table_size = ASSERT_RESULT(GetTableSize(&test_conn, "T", kTable));
-
+  auto table_size = ASSERT_RESULT(GetTempTableSize(cluster_.get(), &test_conn, kTable));
   ASSERT_OK(CheckSizeExpectedRange(table_size, kTempTableSize));
 }
 
-TEST_F(PgTableSizeTest, YB_DISABLE_TEST_IN_TSAN(PartitionedTableSize)) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 500;
+TEST_F(PgTableSizeTest, PartitionedTableSize) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat("Create database $0", kDatabase));
 
@@ -242,21 +248,16 @@ TEST_F(PgTableSizeTest, YB_DISABLE_TEST_IN_TSAN(PartitionedTableSize)) {
   ASSERT_OK(test_conn.ExecuteFormat(
       "INSERT INTO $0 SELECT t1.i, t2.i, 1 FROM generate_series(1, 5000)" \
       "as t1(i), generate_series(1, 4) as t2(i)", kTable));
-  ASSERT_OK(cluster_->FlushTablets());
   ASSERT_OK(cluster_->CompactTablets());
 
   for (int i = 0; i < num_partitions; ++i) {
     std::string partition_name = Format("$0_$1", kTable, i);
-    auto partition_size = ASSERT_RESULT(GetTableSize(&test_conn, "T", partition_name));
-    ASSERT_OK(CheckSizeExpectedRange(partition_size, kPartitionTableSize));
+    ASSERT_OK(VerifyTableSize(cluster_.get(), &test_conn, "T", partition_name));
   }
-
-  auto parent_table_size = ASSERT_RESULT(GetTableSize(&test_conn, "T", kTable));
-  ASSERT_OK(CheckSizeExpectedRange(parent_table_size, kPartitionParentTableSize));
+  ASSERT_OK(VerifyTableSize(cluster_.get(), &test_conn, "T", kTable));
 }
 
-TEST_F(PgTableSizeTest, YB_DISABLE_TEST_IN_TSAN(MaterializedViewSize)) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 500;
+TEST_F(PgTableSizeTest, MaterializedViewSize) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat("Create database $0", kDatabase));
 
@@ -269,23 +270,17 @@ TEST_F(PgTableSizeTest, YB_DISABLE_TEST_IN_TSAN(MaterializedViewSize)) {
   ASSERT_OK(test_conn.ExecuteFormat(
       "CREATE MATERIALIZED VIEW $0 AS SELECT * FROM $1 WHERE $2 > 5000", kView, kTable, kCol1));
 
-  ASSERT_OK(cluster_->FlushTablets());
   ASSERT_OK(cluster_->CompactTablets());
 
-  auto view_size = ASSERT_RESULT(GetTableSize(&test_conn, "M", kView));
-  ASSERT_OK(CheckSizeExpectedRange(view_size, kMaterializedViewSize));
+  ASSERT_OK(VerifyTableSize(cluster_.get(), &test_conn, "M", kView));
 
   ASSERT_OK(test_conn.ExecuteFormat(
       "INSERT INTO $0 SELECT t1.i, 1, 1 FROM generate_series(10001, 20000) as t1(i)", kTable));
   ASSERT_OK(test_conn.ExecuteFormat("REFRESH MATERIALIZED VIEW $0", kView));
 
-  ASSERT_OK(cluster_->FlushTablets());
   ASSERT_OK(cluster_->CompactTablets());
 
-  auto refreshed_view_size = ASSERT_RESULT(GetTableSize(&test_conn, "M", kView));
-  ASSERT_OK(CheckSizeExpectedRange(refreshed_view_size,
-      kMaterializedViewRefreshSize));
-
+  ASSERT_OK(VerifyTableSize(cluster_.get(), &test_conn, "M", kView));
 } // namespace
 
 } // namespace pgwrapper

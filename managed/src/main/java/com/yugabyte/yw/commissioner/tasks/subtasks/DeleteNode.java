@@ -16,7 +16,6 @@ import static com.yugabyte.yw.common.PlacementInfoUtil.updatePlacementInfo;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.NodeInstance;
@@ -29,8 +28,8 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class DeleteNode extends NodeTaskBase {
   @Inject
-  protected DeleteNode(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected DeleteNode(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
   @Override
@@ -39,42 +38,38 @@ public class DeleteNode extends NodeTaskBase {
       log.info("Running {}", getName());
       // Create the update lambda.
       Universe.UniverseUpdater updater =
-          new Universe.UniverseUpdater() {
-            @Override
-            public void run(Universe universe) {
-              // If this universe is not being edited, fail the request.
-              UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-              NodeDetails nodeDetails = universe.getNode(taskParams().nodeName);
-              if (nodeDetails == null) {
-                throw new RuntimeException(
-                    "No node in universe with name " + taskParams().nodeName);
-              }
-              Cluster cluster = universeDetails.getClusterByUuid(nodeDetails.placementUuid);
+          universe -> {
+            // If this universe is not being edited, fail the request.
+            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+            NodeDetails nodeDetails = universe.getNode(taskParams().nodeName);
+            if (nodeDetails == null) {
+              throw new RuntimeException("No node in universe with name " + taskParams().nodeName);
+            }
+            Cluster cluster = universeDetails.getClusterByUuid(nodeDetails.placementUuid);
 
-              if (isNodeRemovable(taskParams().nodeName, universeDetails.nodeDetailsSet)) {
-                // Remove Node from universe node detail set
-                removeNodeByName(taskParams().nodeName, universeDetails.nodeDetailsSet);
-                // Update Placement Info to reflect new nodeDetailSet
-                Set<NodeDetails> clusterNodes = universeDetails.getNodesInCluster(cluster.uuid);
-                updatePlacementInfo(clusterNodes, cluster.placementInfo);
+            if (isNodeRemovable(taskParams().nodeName, universeDetails.nodeDetailsSet)) {
+              // Remove Node from universe node detail set
+              removeNodeByName(taskParams().nodeName, universeDetails.nodeDetailsSet);
+              // Update Placement Info to reflect new nodeDetailSet
+              Set<NodeDetails> clusterNodes = universeDetails.getNodesInCluster(cluster.uuid);
+              updatePlacementInfo(clusterNodes, cluster.placementInfo);
 
-                // Update userIntent to reflect new numNodes
-                cluster.userIntent.numNodes = universeDetails.nodeDetailsSet.size();
-                // If OnPrem Free up the node.
-                if (cluster.userIntent.providerType.equals(Common.CloudType.onprem)) {
-                  try {
-                    NodeInstance node = NodeInstance.getByName(taskParams().nodeName);
-                    node.clearNodeDetails();
-                  } catch (Exception ex) {
-                    log.warn(
-                        "On-prem node {} in universe {} doesn't have a linked instance. "
-                            + "Deletion is skipped.",
-                        taskParams().nodeName,
-                        universe.name);
-                  }
+              // Update userIntent to reflect new numNodes
+              cluster.userIntent.numNodes = universeDetails.nodeDetailsSet.size();
+              // If OnPrem Free up the node.
+              if (cluster.userIntent.providerType.equals(Common.CloudType.onprem)) {
+                try {
+                  NodeInstance node = NodeInstance.getByName(taskParams().nodeName);
+                  node.clearNodeDetails();
+                } catch (Exception ex) {
+                  log.warn(
+                      "On-prem node {} in universe {} doesn't have a linked instance. "
+                          + "Deletion is skipped.",
+                      taskParams().nodeName,
+                      universe.getName());
                 }
-                universe.setUniverseDetails(universeDetails);
               }
+              universe.setUniverseDetails(universeDetails);
             }
           };
       // Perform the update. If unsuccessful, this will throw a runtime exception which we do not

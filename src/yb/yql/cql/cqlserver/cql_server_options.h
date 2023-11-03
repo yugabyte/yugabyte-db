@@ -13,8 +13,7 @@
 //
 // This file contains the CQLServerOptions class that defines the CQL server options.
 
-#ifndef YB_YQL_CQL_CQLSERVER_CQL_SERVER_OPTIONS_H
-#define YB_YQL_CQL_CQLSERVER_CQL_SERVER_OPTIONS_H
+#pragma once
 
 #include "yb/server/server_base_options.h"
 
@@ -32,5 +31,3 @@ class CQLServerOptions : public yb::server::ServerBaseOptions {
 
 } // namespace cqlserver
 } // namespace yb
-
-#endif // YB_YQL_CQL_CQLSERVER_CQL_SERVER_OPTIONS_H

@@ -57,6 +57,7 @@ ADD_YB_LIBRARY(consensus_metadata_proto
 
 YRPC_GENERATE(
   CONSENSUS_YRPC_SRCS CONSENSUS_YRPC_HDRS CONSENSUS_YRPC_TGTS
+  MESSAGES TRUE
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   NO_SERVICE_PROTO_FILES consensus_types.proto
@@ -86,11 +87,12 @@ ADD_YB_LIBRARY(
 # log_proto
 #########################################
 
-PROTOBUF_GENERATE_CPP(
+YRPC_GENERATE(
   LOG_PROTO_SRCS LOG_PROTO_HDRS LOG_PROTO_TGTS
+  MESSAGES TRUE
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  PROTO_FILES log.proto)
+  NO_SERVICE_PROTO_FILES log.proto)
 
 add_library(log_proto ${LOG_PROTO_SRCS} ${LOG_PROTO_HDRS})
 
@@ -104,7 +106,6 @@ set(LOG_SRCS
   log_index.cc
   log_reader.cc
   log_metrics.cc
-  ${LOG_SRCS_EXTENSIONS}
 )
 
 add_library(log ${LOG_SRCS})
@@ -179,5 +180,6 @@ ADD_YB_TEST(raft_consensus-test)
 add_executable(log-dump log-dump.cc)
 target_link_libraries(log-dump
   log
+  yb_docdb
   ${YB_BASE_LIBS})
 add_dependencies(log-dump gen_src_yb_rpc_any_proto)

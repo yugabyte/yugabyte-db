@@ -20,6 +20,7 @@ import "yb/common/common.proto";
 import "yb/common/common_types.proto";
 import "yb/common/transaction.proto";
 import "yb/common/value.proto";
+import "yb/common/wire_protocol.proto";
 import "yb/rpc/lightweight_message.proto";
 
 //--------------------------------------------------------------------------------------------------
@@ -163,6 +164,14 @@ message PgsqlSamplingStatePB {
   optional uint64 rand_state = 6;
 }
 
+message PgsqlFetchSequenceParamsPB {
+  optional uint32 fetch_count = 1;
+  optional int64 inc_by = 2;
+  optional int64 min_value = 3;
+  optional int64 max_value = 4;
+  optional bool cycle = 5;
+}
+
 //--------------------------------------------------------------------------------------------------
 // Data Writing Instructions - INSERT, UPDATE, DELETE, colocated TRUNCATE.
 //--------------------------------------------------------------------------------------------------
@@ -176,6 +185,7 @@ message PgsqlWriteRequestPB {
     PGSQL_DELETE = 3;
     PGSQL_UPSERT = 4;
     PGSQL_TRUNCATE_COLOCATED = 5;
+    PGSQL_FETCH_SEQUENCE = 6;
   }
 
   // Client info
@@ -238,10 +248,19 @@ message PgsqlWriteRequestPB {
   optional PgsqlColumnRefsPB column_refs = 15;
 
   // The version of the ysql system catalog this query was prepared against.
+  // Used when per-db catalog version mode is disabled.
   optional uint64 ysql_catalog_version = 16;
 
+  // The version of the ysql per-db system catalog this query was prepared against.
+  // Used when per-db catalog version mode is enabled.
+  optional uint64 ysql_db_catalog_version = 23;
+
+  // The oid of the database of the Postgres session where this query was issued.
+  // Used when per-db catalog version mode is enabled.
+  optional uint32 ysql_db_oid = 24;
+
   // True only if this changes a system catalog table (or index).
-  optional bool is_ysql_catalog_change = 17 [default = false];
+  optional bool is_ysql_catalog_change_using_protobuf = 17 [default = false];
 
   // Does this request correspond to backfilling an index table?
   optional bool is_backfill = 19 [default = false];
@@ -260,6 +279,8 @@ message PgsqlWriteRequestPB {
 
   // Used only in pg client.
   optional bytes partition_key = 22;
+
+  optional PgsqlFetchSequenceParamsPB fetch_sequence_params = 25;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -320,6 +341,22 @@ message PgsqlBackfillSpecPB {
   // The next row key to read for backfill. Defined/used similar to how it is used in paging state.
   // i.e. The row key (SubDocKey = [DocKey + HybridTimestamp]) of the next row to read.
   optional bytes next_row_key = 3;
+}
+
+// Make sure this is in sync with YBCPgMetricsCaptureType in ybc_pg_typedefs.h.
+enum PgsqlMetricsCaptureType {
+  PGSQL_METRICS_CAPTURE_NONE = 0;
+  PGSQL_METRICS_CAPTURE_ALL = 1;
+}
+
+// TODO(get_table_key_ranges): deprecate after/if separate GetTabletKeyRanges RPC to the tablet
+// leader is used.
+message GetTabletKeyRangesEmbeddedRequestPB {
+  optional bytes lower_bound_key = 1;
+  optional bytes upper_bound_key = 2;
+  optional uint64 range_size_bytes = 3;
+  optional bool is_forward = 4 [ default = true ];
+  optional uint32 max_key_length = 5;
 }
 
 // TODO(neil) The protocol for select needs to be changed accordingly when we introduce and cache
@@ -398,12 +435,17 @@ message PgsqlReadRequestPB {
   // Reading distinct columns?
   optional bool distinct = 11 [default = false];
 
+  // Current only used on SELECT DISTINCT scan. If the value is greater than 0, use the specified
+  // prefix length to scan the table.
+  optional uint64 prefix_length = 39 [default = 0];
+
   // Flag for reading aggregate values.
   optional bool is_aggregate = 12 [default = false];
 
   // Limit number of rows to return. For SELECT, this limit is the smaller of the page size (max
   // (max number of rows to return per fetch) & the LIMIT clause if present in the SELECT statement.
   optional uint64 limit = 13;
+  optional uint64 size_limit = 40;
 
   //------------------------------------------------------------------------------------------------
   // Paging state retrieved from the last response.
@@ -417,19 +459,23 @@ message PgsqlReadRequestPB {
   optional uint32 max_hash_code = 17;
 
   // The version of the ysql system catalog this query was prepared against.
+  // Used when per-db catalog version mode is disabled.
   optional uint64 ysql_catalog_version = 16;
+
+  // The version of the ysql per-db system catalog this query was prepared against.
+  // Used when per-db catalog version mode is enabled.
+  optional uint64 ysql_db_catalog_version = 36;
+
+  // The oid of the database of the Postgres session where this query was issued.
+  // Used when per-db catalog version mode is enabled.
+  optional uint32 ysql_db_oid = 37;
 
   // Row mark as used by postgres for row locking.
   optional RowMarkType row_mark_type = 23;
 
-  // Used to identify 3 possibilities: WAIT_BLOCK, WAIT_SKIP or WAIT_ERROR
-  // TODO(Piyush):
-  // 1. YB doesn't support WAIT_BLOCK as of now. That will be supported with blocking infrastructure
-  //    that is to be implemented for pessmistic locking feature.
-  // 2. Default is set to WAIT_ERROR. For now, WAIT_ERROR denotes the current YB behaviour of
-  //    "abort other txn or raise conflict error when a conflict is found". When pessimistic locking
-  //    is turned on by default on YB, WAIT_ERROR will only denote the behaviour of raising conflict
-  //    error in current txn and not aborting others (like Postgres).
+  // Used only for explicit row-locking to identify 3 possibilities: WAIT_BLOCK, WAIT_SKIP, or
+  // WAIT_ERROR.
+  // See WaitPolicy for detailed information.
   optional WaitPolicy wait_policy = 32 [default = WAIT_ERROR];
 
   // Scan partition boundary.
@@ -465,7 +511,7 @@ message PgsqlReadRequestPB {
   // false the row is skipped.
   repeated PgsqlExpressionPB where_clauses = 33;
 
-  // Columns refereced by this write operation.
+  // Columns referenced by this write operation.
   // Provides mapping between DocDB and Postgres identifiers, and provides Postgres type information
   // to convert between DocDB and Postgres formats.
   // One entry per column referenced.
@@ -473,11 +519,43 @@ message PgsqlReadRequestPB {
 
   // Used only in pg client.
   optional bytes partition_key = 35;
+
+  // What metric changes to return in response.
+  optional PgsqlMetricsCaptureType metrics_capture = 38;
+
+  // TODO(get_table_key_ranges): deprecate this field after separate separate GetTabletKeyRanges
+  // RPC to the tablet leader is used.
+  optional GetTabletKeyRangesEmbeddedRequestPB get_tablet_key_ranges_request = 41;
 }
 
 //--------------------------------------------------------------------------------------------------
 // Responses.
 //--------------------------------------------------------------------------------------------------
+
+message PgsqlRequestGaugeMetricPB {
+  optional uint64 metric = 1;
+  optional int64 value = 2;
+}
+
+message PgsqlRequestCounterMetricPB {
+  optional uint64 metric = 1;
+  optional uint64 value = 2;
+}
+
+message PgsqlRequestEventMetricPB {
+  optional uint64 metric = 1;
+  optional int64 sum = 2;
+  optional uint64 count = 3;
+}
+
+message PgsqlRequestMetricsPB {
+  // Gauge metrics changes as a result of processing the request.
+  repeated PgsqlRequestGaugeMetricPB gauge_metrics = 1;
+  // Counter metrics changes as a result of processing the request.
+  repeated PgsqlRequestCounterMetricPB counter_metrics = 2;
+  // Event stats metrics changes as a result of processing the request.
+  repeated PgsqlRequestEventMetricPB event_metrics = 3;
+}
 
 // Response from tablet server for both read and write.
 message PgsqlResponsePB {
@@ -491,7 +569,6 @@ message PgsqlResponsePB {
     PGSQL_STATUS_DUPLICATE_KEY_ERROR = 5;
   }
 
-  // TODO: AppStatusPB can consolidate status + error_message + pg_error_code
   // Internal Status information
   optional RequestStatus status = 1 [ default = PGSQL_STATUS_OK ]; // required
 
@@ -499,6 +576,7 @@ message PgsqlResponsePB {
   optional bool skipped = 6;
 
   // User readable error message associated with Internal & External Status
+  // DEPRECATED: please use error_status instead
   optional string error_message = 2;
 
   // Sidecar of rows data returned
@@ -528,10 +606,12 @@ message PgsqlResponsePB {
 
   // PostgreSQL error code encoded as in errcodes.h or yb_pg_errcodes.h.
   // See https://www.postgresql.org/docs/11/errcodes-appendix.html
+  // DEPRECATED: please use error_status instead
   optional uint64 pg_error_code = 8;
 
   // Transaction error code, obtained by static_cast of TransactionErrorTag::Decode
   // of Status::ErrorData(TransactionErrorTag::kCategory)
+  // DEPRECATED: please use error_status instead
   optional uint32 txn_error_code = 9;
 
   // Random sample state to hand over to the next block
@@ -544,4 +624,16 @@ message PgsqlResponsePB {
   // that sent out the 'BACKFILL' request statement.
   optional bytes backfill_spec = 13;
   optional bool is_backfill_batch_done = 14;
+
+  // Table's partition list version obtained from YBTable during response preparation.
+  // Table cache should be invalidated on partition list version mismatch detected.
+  optional uint32 partition_list_version = 15;
+
+  // Encapsulates data from a Status instance
+  // Repeated field provides support for multiple Statuses per response, allowing to return
+  // not only detailed error, but also warnings and notices.
+  repeated AppStatusPB error_status = 16;
+
+  // Metrics changes as a result of processing the request.
+  optional PgsqlRequestMetricsPB metrics = 17;
 }

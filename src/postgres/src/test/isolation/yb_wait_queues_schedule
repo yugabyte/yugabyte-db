@@ -1,0 +1,7 @@
+test: yb-wait-queues-single-shard-waiter-unlocks
+test: yb-wait-queues-single-shard-waiters-same-tablet
+test: lock-update-traversal
+test: yb-wait-queues-weak-read-unlocks
+test: yb-wait-queues-serializable-reads
+test: yb-lock-status-waiters
+test: concurrent-inserts-duplicate-key-error

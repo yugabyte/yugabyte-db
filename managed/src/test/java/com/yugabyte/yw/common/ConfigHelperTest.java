@@ -25,27 +25,25 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.error.YAMLException;
-import play.Application;
+import play.Environment;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class ConfigHelperTest extends FakeDBApplication {
-  String TMP_STORAGE_PATH = "/tmp/yugaware_tests/" + getClass().getSimpleName() + "/releases";
+  String TMP_STORAGE_PATH = "/tmp/yugaware_tests/" + getClass().getSimpleName();
 
-  @InjectMocks ConfigHelper configHelper;
+  ConfigHelper configHelper;
 
-  @Mock Util util;
-
-  @Mock Application application;
+  @Mock Environment environment;
 
   @Before
   public void beforeTest() throws IOException {
     new File(TMP_STORAGE_PATH).mkdirs();
+    configHelper = app.injector().instanceOf(ConfigHelper.class);
   }
 
   @After
@@ -55,14 +53,14 @@ public class ConfigHelperTest extends FakeDBApplication {
 
   private InputStream asYamlStream(Map<String, Object> map) throws IOException {
     Yaml yaml = new Yaml();
-    String fileName = createTempFile("file.yml", yaml.dump(map));
+    String fileName = createTempFile(TMP_STORAGE_PATH, "file.yml", yaml.dump(map));
     File initialFile = new File(fileName);
     return new FileInputStream(initialFile);
   }
 
   private InputStream asJsonStream(Map<String, Object> map) throws IOException {
     JsonNode jsonNode = Json.toJson(map);
-    String fileName = createTempFile("file.json", jsonNode.toString());
+    String fileName = createTempFile(TMP_STORAGE_PATH, "file.json", jsonNode.toString());
     File initialFile = new File(fileName);
     return new FileInputStream(initialFile);
   }
@@ -73,8 +71,8 @@ public class ConfigHelperTest extends FakeDBApplication {
     Map<String, Object> jsonMap = new HashMap();
     jsonMap.put("version_number", "1.1.1.1");
     jsonMap.put("build_number", "12345");
-    when(application.resourceAsStream(configFile)).thenReturn(asJsonStream(jsonMap));
-    configHelper.loadSoftwareVersiontoDB(application);
+    when(environment.resourceAsStream(configFile)).thenReturn(asJsonStream(jsonMap));
+    configHelper.loadSoftwareVersiontoDB(environment);
     assertEquals(
         ImmutableMap.of("version", "1.1.1.1-b12345"),
         configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion));
@@ -86,11 +84,14 @@ public class ConfigHelperTest extends FakeDBApplication {
     map.put("config-1", "foo");
     map.put("config-2", "bar");
 
+    when(environment.classLoader()).thenReturn(ClassLoader.getSystemClassLoader());
     for (ConfigHelper.ConfigType configType : ConfigHelper.ConfigType.values()) {
-      when(application.classloader()).thenReturn(ClassLoader.getSystemClassLoader());
-      when(application.resourceAsStream(configType.getConfigFile())).thenReturn(asYamlStream(map));
+      if (configType.getConfigFile() == null) {
+        continue;
+      }
+      when(environment.resourceAsStream(configType.getConfigFile())).thenReturn(asYamlStream(map));
     }
-    configHelper.loadConfigsToDB(application);
+    configHelper.loadConfigsToDB(environment);
 
     for (ConfigHelper.ConfigType configType : ConfigHelper.ConfigType.values()) {
       if (configType.getConfigFile() != null) {
@@ -103,8 +104,8 @@ public class ConfigHelperTest extends FakeDBApplication {
 
   @Test(expected = YAMLException.class)
   public void testLoadConfigsToDBWithoutFile() {
-    when(application.classloader()).thenReturn(ClassLoader.getSystemClassLoader());
-    configHelper.loadConfigsToDB(application);
+    when(environment.classLoader()).thenReturn(ClassLoader.getSystemClassLoader());
+    configHelper.loadConfigsToDB(environment);
   }
 
   @Test

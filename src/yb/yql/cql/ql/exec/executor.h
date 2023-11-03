@@ -15,8 +15,7 @@
 // Entry point for the execution process.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_EXEC_EXECUTOR_H_
-#define YB_YQL_CQL_QL_EXEC_EXECUTOR_H_
+#pragma once
 
 #include <mutex>
 #include <vector>
@@ -26,7 +25,7 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/pgsql_protocol.pb.h"
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 #include "yb/common/ql_type.h"
 
 #include "yb/gutil/callback.h"
@@ -58,7 +57,7 @@ class AuditLogger;
 
 class QLMetrics;
 
-class Executor : public QLExprExecutor {
+class Executor : public qlexpr::QLExprExecutor {
  public:
   //------------------------------------------------------------------------------------------------
   // Public types.
@@ -92,17 +91,19 @@ class Executor : public QLExprExecutor {
     ResetAsyncCalls(ResetAsyncCalls&& rhs);
     void operator=(ResetAsyncCalls&& rhs);
 
-    bool empty() const {
-      return num_async_calls_ == nullptr;
-    }
-
     void Cancel();
     void Perform();
 
     ~ResetAsyncCalls();
 
    private:
-    std::atomic<int64_t>* num_async_calls_;
+    void PerformUnlocked() REQUIRES(num_async_calls_mutex_);
+
+    // Move the pointer out of this object and return it, and make this object empty.
+    std::atomic<int64_t>* Move() EXCLUDES(num_async_calls_mutex_);
+
+    std::atomic<int64_t>* num_async_calls_ GUARDED_BY(num_async_calls_mutex_);
+    std::mutex num_async_calls_mutex_;
   };
 
   ResetAsyncCalls PrepareExecuteAsync();
@@ -141,7 +142,7 @@ class Executor : public QLExprExecutor {
   Status GetOffsetOrLimit(
       const PTSelectStmt* tnode,
       const std::function<PTExprPtr(const PTSelectStmt* tnode)>& get_val,
-      const string& clause_type,
+      const std::string& clause_type,
       int32_t* value);
 
   // Create a table (including index table for CREATE INDEX).
@@ -230,8 +231,8 @@ class Executor : public QLExprExecutor {
 
   // Process the read/write op status.
   Status ProcessOpStatus(const PTDmlStmt* stmt,
-                                 const client::YBqlOpPtr& op,
-                                 ExecContext* exec_context);
+                         const client::YBqlOpPtr& op,
+                         ExecContext* exec_context);
 
   // Process status of FlushAsyncDone.
   using OpErrors = std::unordered_map<const client::YBqlOp*, Status>;
@@ -256,28 +257,28 @@ class Executor : public QLExprExecutor {
   // Fetch rows for a select statement using primary keys selected from an uncovered index.
   Result<bool> FetchRowsByKeys(const PTSelectStmt* tnode,
                                const client::YBqlReadOpPtr& select_op,
-                               const QLRowBlock& keys,
+                               const qlexpr::QLRowBlock& keys,
                                TnodeContext* tnode_context);
 
   // Aggregate all result sets from all tablet servers to form the requested resultset.
   Status AggregateResultSets(const PTSelectStmt* pt_select, TnodeContext* tnode_context);
-  Status EvalCount(const std::shared_ptr<QLRowBlock>& row_block,
-                           int column_index,
-                           QLValue *ql_value);
-  Status EvalMax(const std::shared_ptr<QLRowBlock>& row_block,
-                         int column_index,
-                         QLValue *ql_value);
-  Status EvalMin(const std::shared_ptr<QLRowBlock>& row_block,
-                         int column_index,
-                         QLValue *ql_value);
-  Status EvalSum(const std::shared_ptr<QLRowBlock>& row_block,
-                         int column_index,
-                         DataType data_type,
-                         QLValue *ql_value);
-  Status EvalAvg(const std::shared_ptr<QLRowBlock>& row_block,
-                         int column_index,
-                         DataType data_type,
-                         QLValue *ql_value);
+  Status EvalCount(const std::shared_ptr<qlexpr::QLRowBlock>& row_block,
+                   int column_index,
+                   QLValue *ql_value);
+  Status EvalMax(const std::shared_ptr<qlexpr::QLRowBlock>& row_block,
+                 int column_index,
+                 QLValue *ql_value);
+  Status EvalMin(const std::shared_ptr<qlexpr::QLRowBlock>& row_block,
+                 int column_index,
+                 QLValue *ql_value);
+  Status EvalSum(const std::shared_ptr<qlexpr::QLRowBlock>& row_block,
+                 int column_index,
+                 DataType data_type,
+                 QLValue *ql_value);
+  Status EvalAvg(const std::shared_ptr<qlexpr::QLRowBlock>& row_block,
+                 int column_index,
+                 DataType data_type,
+                 QLValue *ql_value);
 
   // Invoke statement executed callback.
   void StatementExecuted(const Status& s, ResetAsyncCalls* reset_async_calls);
@@ -294,7 +295,7 @@ class Executor : public QLExprExecutor {
 
   // Constant expressions.
   Status PTConstToPB(const PTExprPtr& const_pt, QLValuePB *const_pb,
-                             bool negate = false);
+                     bool negate = false);
   Status PTExprToPB(const PTConstVarInt *const_pt, QLValuePB *const_pb, bool negate);
   Status PTExprToPB(const PTConstDecimal *const_pt, QLValuePB *const_pb, bool negate);
   Status PTExprToPB(const PTConstInt *const_pt, QLValuePB *const_pb, bool negate);
@@ -318,7 +319,7 @@ class Executor : public QLExprExecutor {
   Status PTUMinusToPB(const PTOperator1 *op_pt, QLExpressionPB *op_pb);
   Status PTUMinusToPB(const PTOperator1 *op_pt, QLValuePB *const_pb);
   Status PTJsonOperatorToPB(const PTJsonOperatorPtr& json_pt,
-                                    QLJsonOperationPB *op_pb);
+                            QLJsonOperationPB *op_pb);
 
   // Builtin calls.
   // Even though BFCall and TSCall are processed similarly in executor at this point because they
@@ -364,8 +365,8 @@ class Executor : public QLExprExecutor {
 
   // Convert INSERT JSON clause to protobuf.
   Status InsertJsonClauseToPB(const PTInsertStmt *insert_stmt,
-                                      const PTInsertJsonClause *json_clause,
-                                      QLWriteRequestPB *req);
+                              const PTInsertJsonClause *json_clause,
+                              QLWriteRequestPB *req);
 
   //------------------------------------------------------------------------------------------------
   // Where clause evaluation.
@@ -383,12 +384,12 @@ class Executor : public QLExprExecutor {
 
   // Convert where clause to protobuf for write request.
   Status WhereClauseToPB(QLWriteRequestPB *req,
-                                 const MCVector<ColumnOp>& key_where_ops,
-                                 const MCList<ColumnOp>& where_ops,
-                                 const MCList<SubscriptedColumnOp>& subcol_where_ops);
+                         const MCVector<ColumnOp>& key_where_ops,
+                         const MCList<ColumnOp>& where_ops,
+                         const MCList<SubscriptedColumnOp>& subcol_where_ops);
 
   // Set a primary key in a read request.
-  Status WhereKeyToPB(QLReadRequestPB *req, const Schema& schema, const QLRow& key);
+  Status WhereKeyToPB(QLReadRequestPB *req, const Schema& schema, const qlexpr::QLRow& key);
 
   // Convert an expression op in where clause to protobuf.
   Status WhereColumnOpToPB(QLConditionPB *condition, const ColumnOp &col_op);
@@ -411,11 +412,11 @@ class Executor : public QLExprExecutor {
 
   //------------------------------------------------------------------------------------------------
   Status UpdateIndexes(const PTDmlStmt *tnode,
-                               QLWriteRequestPB *req,
-                               TnodeContext* tnode_context);
+                       QLWriteRequestPB *req,
+                       TnodeContext* tnode_context);
   Status AddIndexWriteOps(const PTDmlStmt *tnode,
-                                  const QLWriteRequestPB& req,
-                                  TnodeContext* tnode_context);
+                          const QLWriteRequestPB& req,
+                          TnodeContext* tnode_context);
 
   int64_t num_async_calls() const {
     return num_async_calls_.load(std::memory_order_acquire);
@@ -540,5 +541,3 @@ QLExpressionPB* CreateQLExpression(QLWriteRequestPB *req, const ColumnDesc& col_
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_EXEC_EXECUTOR_H_

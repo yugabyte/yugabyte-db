@@ -35,8 +35,7 @@
 //   (including numerical values greater than 127)
 //   then the output is the same as the input.
 
-#ifndef STRINGS_ASCII_CTYPE_H_
-#define STRINGS_ASCII_CTYPE_H_
+#pragma once
 
 // Array of character information.  This is an implementation detail.
 // The individual bits do not have names because the array definition is
@@ -85,5 +84,3 @@ extern const unsigned char kAsciiToLower[256];
 static inline char ascii_tolower(unsigned char c) { return kAsciiToLower[c]; }
 extern const unsigned char kAsciiToUpper[256];
 static inline char ascii_toupper(unsigned char c) { return kAsciiToUpper[c]; }
-
-#endif  // STRINGS_ASCII_CTYPE_H_

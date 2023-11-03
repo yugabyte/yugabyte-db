@@ -26,12 +26,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBDaemon;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 /**
  * Runs the pg_regress test suite on YB code.
  */
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestMasterMetrics extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestMasterMetrics.class);
 
@@ -66,7 +66,7 @@ public class TestMasterMetrics extends BasePgSQLTest {
     String line = null;
     int count = 0;
     while ((line = br.readLine()) != null) {
-      if (line.contains(metric + "_count")) {
+      if (line.contains(metric + "_count{")) {
         String inp[] = line.split(" ");
         int val = Integer.parseInt(inp[inp.length - 2].trim());
         count += val;

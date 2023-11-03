@@ -53,10 +53,9 @@
 //   either trace recording or VLOG(n) is enabled. In the case that both are enabled,
 //   the arguments are only evaluated once.
 //
-#ifndef YB_DEBUG_TRACE_LOGGING_H
-#define YB_DEBUG_TRACE_LOGGING_H
+#pragma once
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <string>
 
 #include "yb/gutil/macros.h"
@@ -129,4 +128,3 @@ class TraceVLog {
 
 } // namespace debug
 } // namespace yb
-#endif /* YB_DEBUG_TRACE_LOGGING_H */

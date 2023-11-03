@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_ENCRYPTION_HEADER_MANAGER_H
-#define YB_ENCRYPTION_HEADER_MANAGER_H
+#pragma once
 
 #include <memory>
 
@@ -36,9 +35,9 @@ class HeaderManager {
 
   // Slice starts from GetEncryptionMetadataStartIndex() and has length header_size from calling
   // GetFileEncryptionStatusFromPrefix. Generate encryption params for the given file, used when
-  // creating a readable file.
+  // creating a readable file. It also can extract the universe key id if user need it.
   virtual Result<EncryptionParamsPtr> DecodeEncryptionParamsFromEncryptionMetadata(
-      const Slice& s) = 0;
+      const Slice& s, std::string* universe_key_id_output = nullptr) = 0;
   // Given encryption params, create a file header. Used when creating a writable file.
   virtual Result<std::string> SerializeEncryptionParams(
       const EncryptionParams& encryption_info) = 0;
@@ -48,10 +47,10 @@ class HeaderManager {
   // from 0 and has length GetEncryptionMetadataStartIndex().
   virtual Result<FileEncryptionStatus> GetFileEncryptionStatusFromPrefix(const Slice& s) = 0;
   // Is encryption enabled for new files.
-  virtual bool IsEncryptionEnabled() = 0;
+  virtual Result<bool> IsEncryptionEnabled() = 0;
+
+  virtual Result<std::string> GetLatestUniverseKeyId() = 0;
 };
 
 } // namespace encryption
 } // namespace yb
-
-#endif // YB_ENCRYPTION_HEADER_MANAGER_H

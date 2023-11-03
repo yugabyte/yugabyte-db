@@ -22,7 +22,7 @@ import org.yb.cdc.common.CDCBaseClass;
 import org.yb.cdc.common.ExpectedRecordYSQL;
 import org.yb.cdc.common.HelperValues;
 import org.yb.cdc.util.CDCSubscriber;
-import org.yb.cdc.util.TestUtils;
+import org.yb.cdc.util.CDCTestUtils;
 
 import static org.yb.AssertionWrappers.*;
 import org.junit.Before;
@@ -48,6 +48,10 @@ public class TestAllDatatypes extends CDCBaseClass {
       if (outputList.get(i).getRowMessage().getOp() == Op.DDL) {
         ExpectedRecordYSQL.checkRecord(outputList.get(i),
                                        new ExpectedRecordYSQL<>(-1, "", Op.DDL));
+        continue;
+      }
+      if (outputList.get(i).getRowMessage().getOp() == Op.BEGIN ||
+          outputList.get(i).getRowMessage().getOp() == Op.COMMIT) {
         continue;
       }
 
@@ -99,6 +103,7 @@ public class TestAllDatatypes extends CDCBaseClass {
   @Before
   public void setUp() throws Exception {
     super.setUp();
+    setServerFlag(getTserverHostAndPort(), CDC_POPULATE_SAFEPOINT_RECORD, "false");
     statement = connection.createStatement();
   }
 
@@ -177,20 +182,16 @@ public class TestAllDatatypes extends CDCBaseClass {
       CDCSubscriber udtSub = new CDCSubscriber("testdiscount", getMasterAddresses());
       udtSub.createStream("proto");
 
-      TestUtils.runSqlScript(connection, "sql_datatype_script/complete_datatype_test.sql");
+      CDCTestUtils.runSqlScript(connection, "sql_datatype_script/complete_datatype_test.sql");
 
       // -1 is used as a placeholder only.
       ExpectedRecordYSQL<?>[] expectedRecordsInteger = new ExpectedRecordYSQL[]{
         new ExpectedRecordYSQL<>(1, 2, Op.INSERT),
         new ExpectedRecordYSQL<>(3, 4, Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.BEGIN),
         new ExpectedRecordYSQL<>(3, 5, Op.UPDATE),
-        new ExpectedRecordYSQL<>(-1, "", Op.COMMIT),
-        new ExpectedRecordYSQL<>(-1, "", Op.BEGIN),
         new ExpectedRecordYSQL<>(7, 8, Op.INSERT),
         new ExpectedRecordYSQL<>(7, "", Op.DELETE),
         new ExpectedRecordYSQL<>(8, 8, Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.COMMIT),
         new ExpectedRecordYSQL<>(8, "", Op.DELETE)
       };
       assertRecordsOnly(expectedRecordsInteger, intSub);
@@ -198,9 +199,7 @@ public class TestAllDatatypes extends CDCBaseClass {
       ExpectedRecordYSQL<?>[] expectedRecordsBoolean = new ExpectedRecordYSQL[] {
         new ExpectedRecordYSQL<>(1, false, Op.INSERT),
         new ExpectedRecordYSQL<>(3, true, Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.BEGIN),
         new ExpectedRecordYSQL<>(3, false, Op.UPDATE),
-        new ExpectedRecordYSQL<>(-1, "", Op.COMMIT),
         new ExpectedRecordYSQL<>(1, false, Op.DELETE)
       };
       assertRecordsOnly(expectedRecordsBoolean, booleanSub);
@@ -208,20 +207,16 @@ public class TestAllDatatypes extends CDCBaseClass {
       ExpectedRecordYSQL<?>[] expectedRecordsDouble = new ExpectedRecordYSQL[] {
         new ExpectedRecordYSQL<>(1, 10.42, Op.INSERT),
         new ExpectedRecordYSQL<>(3, 0.5, Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.BEGIN),
         new ExpectedRecordYSQL<>(3, "", Op.DELETE),
-        new ExpectedRecordYSQL<>(4, 0.5, Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.COMMIT)
+        new ExpectedRecordYSQL<>(4, 0.5, Op.INSERT)
       };
       assertRecordsOnly(expectedRecordsDouble, doubleSub);
 
       ExpectedRecordYSQL<?>[] expectedRecordsText = new ExpectedRecordYSQL[] {
         new ExpectedRecordYSQL<>(1, "sample string with pk 1", Op.INSERT),
         new ExpectedRecordYSQL<>(3, "sample string with pk 3", Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.BEGIN),
         new ExpectedRecordYSQL<>(1, "", Op.DELETE),
         new ExpectedRecordYSQL<>(2, "sample string with pk 2", Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.COMMIT),
         new ExpectedRecordYSQL<>(3, "random sample string", Op.UPDATE)
       };
       assertRecordsOnly(expectedRecordsText, textSub);
@@ -229,9 +224,7 @@ public class TestAllDatatypes extends CDCBaseClass {
       ExpectedRecordYSQL<?>[] expectedRecordsUuid = new ExpectedRecordYSQL[] {
         new ExpectedRecordYSQL<>(1, "ffffffff-ffff-ffff-ffff-ffffffffffff", Op.INSERT),
         new ExpectedRecordYSQL<>(3, "ffffffff-ffff-ffff-ffff-ffffffffffff", Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.BEGIN),
         new ExpectedRecordYSQL<>(3, "123e4567-e89b-12d3-a456-426655440000", Op.UPDATE),
-        new ExpectedRecordYSQL<>(-1, "", Op.COMMIT),
         new ExpectedRecordYSQL<>(1, "", Op.DELETE),
         new ExpectedRecordYSQL<>(2, "123e4567-e89b-12d3-a456-426655440000", Op.INSERT)
       };
@@ -250,10 +243,8 @@ public class TestAllDatatypes extends CDCBaseClass {
         new ExpectedRecordYSQL<>(2, "2000-01-01", Op.INSERT),
         new ExpectedRecordYSQL<>(2, "", Op.DELETE),
         new ExpectedRecordYSQL<>(3, "1970-01-01", Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.BEGIN),
         new ExpectedRecordYSQL<>(3, "", Op.DELETE),
-        new ExpectedRecordYSQL<>(4, "1970-01-01", Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.COMMIT)
+        new ExpectedRecordYSQL<>(4, "1970-01-01", Op.INSERT)
       };
       assertRecordsOnly(expectedRecordsDate, dateSub);
 
@@ -269,19 +260,15 @@ public class TestAllDatatypes extends CDCBaseClass {
         new ExpectedRecordYSQL<>(1, "2c:54:91:88:c9:e3", Op.INSERT),
         new ExpectedRecordYSQL<>(1, "2c:54:91:e8:99:d2", Op.UPDATE),
         new ExpectedRecordYSQL<>(1, "", Op.DELETE),
-        new ExpectedRecordYSQL<>(-1, "", Op.BEGIN),
-        new ExpectedRecordYSQL<>(2, "2c:54:91:e8:99:d2", Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.COMMIT)
+        new ExpectedRecordYSQL<>(2, "2c:54:91:e8:99:d2", Op.INSERT)
       };
       assertRecordsOnly(expectedRecordsMacaddr, macaddrSub);
 
       ExpectedRecordYSQL<?>[] expectedRecordsMacaddr8 = new ExpectedRecordYSQL[] {
         new ExpectedRecordYSQL<>(1, "22:00:5c:03:55:08:01:02", Op.INSERT),
         new ExpectedRecordYSQL<>(1, "22:00:5c:04:55:08:01:02", Op.UPDATE),
-        new ExpectedRecordYSQL<>(-1, "", Op.BEGIN),
         new ExpectedRecordYSQL<>(2, "22:00:5c:03:55:08:01:02", Op.INSERT),
         new ExpectedRecordYSQL<>(2, "", Op.DELETE),
-        new ExpectedRecordYSQL<>(-1, "", Op.COMMIT),
         new ExpectedRecordYSQL<>(3, "22:00:5c:05:55:08:01:02", Op.INSERT),
         new ExpectedRecordYSQL<>(3, "", Op.DELETE)
       };
@@ -291,10 +278,8 @@ public class TestAllDatatypes extends CDCBaseClass {
         new ExpectedRecordYSQL<>(1, "{\"first_name\":\"vaibhav\"}", Op.INSERT),
         new ExpectedRecordYSQL<>(2, "{\"last_name\":\"kushwaha\"}", Op.INSERT),
         new ExpectedRecordYSQL<>(2, "{\"name\":\"vaibhav kushwaha\"}", Op.UPDATE),
-        new ExpectedRecordYSQL<>(-1, "", Op.BEGIN),
         new ExpectedRecordYSQL<>(1, "", Op.DELETE),
-        new ExpectedRecordYSQL<>(3, "{\"a\":97, \"b\":\"98\"}", Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.COMMIT)
+        new ExpectedRecordYSQL<>(3, "{\"a\":97, \"b\":\"98\"}", Op.INSERT)
       };
       assertRecordsOnly(expectedRecordsJson, jsonSub);
 
@@ -303,21 +288,17 @@ public class TestAllDatatypes extends CDCBaseClass {
         new ExpectedRecordYSQL<>(1, "{\"first_name\": \"vaibhav\"}", Op.INSERT),
         new ExpectedRecordYSQL<>(2, "{\"last_name\": \"kushwaha\"}", Op.INSERT),
         new ExpectedRecordYSQL<>(2, "{\"name\": \"vaibhav kushwaha\"}", Op.UPDATE),
-        new ExpectedRecordYSQL<>(-1, "", Op.BEGIN),
         new ExpectedRecordYSQL<>(1, "", Op.DELETE),
-        new ExpectedRecordYSQL<>(3, "{\"a\": 97, \"b\": \"98\"}", Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.COMMIT)
+        new ExpectedRecordYSQL<>(3, "{\"a\": 97, \"b\": \"98\"}", Op.INSERT)
       };
       assertRecordsOnly(expectedRecordsJsonb, jsonbSub);
 
       ExpectedRecordYSQL<?>[] expectedRecordsBit = new ExpectedRecordYSQL[] {
         new ExpectedRecordYSQL<>(1, "001111", Op.INSERT),
         new ExpectedRecordYSQL<>(2, "110101", Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.BEGIN),
         new ExpectedRecordYSQL<>(3, "111111", Op.INSERT),
         new ExpectedRecordYSQL<>(1, "", Op.DELETE),
         new ExpectedRecordYSQL<>(0, "000000", Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.COMMIT),
         new ExpectedRecordYSQL<>(2, "", Op.DELETE)
       };
       assertRecordsOnly(expectedRecordsBit, bitSub);
@@ -325,11 +306,9 @@ public class TestAllDatatypes extends CDCBaseClass {
       ExpectedRecordYSQL<?>[] expectedRecordsVarbit = new ExpectedRecordYSQL[] {
         new ExpectedRecordYSQL<>(1, "001111", Op.INSERT),
         new ExpectedRecordYSQL<>(2, "1101011101", Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.BEGIN),
         new ExpectedRecordYSQL<>(3, "11", Op.INSERT),
         new ExpectedRecordYSQL<>(1, "", Op.DELETE),
         new ExpectedRecordYSQL<>(0, "0", Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.COMMIT),
         new ExpectedRecordYSQL<>(2, "", Op.DELETE)
       };
       assertRecordsOnly(expectedRecordsVarbit, varbitSub);
@@ -337,10 +316,8 @@ public class TestAllDatatypes extends CDCBaseClass {
       ExpectedRecordYSQL<?>[] expectedRecordsTime = new ExpectedRecordYSQL[] {
         new ExpectedRecordYSQL<>(1, "11:30:59", Op.INSERT),
         new ExpectedRecordYSQL<>(1, "23:30:59", Op.UPDATE),
-        new ExpectedRecordYSQL<>(-1, "", Op.BEGIN),
         new ExpectedRecordYSQL<>(2, "00:00:01", Op.INSERT),
         new ExpectedRecordYSQL<>(2, "00:01:00", Op.UPDATE),
-        new ExpectedRecordYSQL<>(-1, "", Op.COMMIT),
         new ExpectedRecordYSQL<>(1, "", Op.DELETE),
         new ExpectedRecordYSQL<>(2, "", Op.DELETE)
       };
@@ -349,9 +326,7 @@ public class TestAllDatatypes extends CDCBaseClass {
       ExpectedRecordYSQL<?>[] expectedRecordsTimetz = new ExpectedRecordYSQL[] {
         new ExpectedRecordYSQL<>(1, "11:30:59+05:30", Op.INSERT),
         new ExpectedRecordYSQL<>(1, "23:30:59+05:30", Op.UPDATE),
-        new ExpectedRecordYSQL<>(-1, "", Op.BEGIN),
         new ExpectedRecordYSQL<>(2, "00:00:01+00", Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.COMMIT),
         new ExpectedRecordYSQL<>(1, "", Op.DELETE),
         new ExpectedRecordYSQL<>(2, "", Op.DELETE)
       };
@@ -360,19 +335,15 @@ public class TestAllDatatypes extends CDCBaseClass {
       ExpectedRecordYSQL<?>[] expectedRecordsNumeric = new ExpectedRecordYSQL[] {
         new ExpectedRecordYSQL<>(1, 20.5, Op.INSERT),
         new ExpectedRecordYSQL<>(2, 100.75, Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.BEGIN),
-        new ExpectedRecordYSQL<>(3, 3.456, Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.COMMIT),
+        new ExpectedRecordYSQL<>(3, 3.456, Op.INSERT)
       };
       assertRecordsOnly(expectedRecordsNumeric, numericSub);
 
       ExpectedRecordYSQL<?>[] expectedRecordsMoney = new ExpectedRecordYSQL[] {
         new ExpectedRecordYSQL<>(1, "$100.50", Op.INSERT),
         new ExpectedRecordYSQL<>(2, "$10.12", Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.BEGIN),
         new ExpectedRecordYSQL<>(3, "$1.23", Op.INSERT),
         new ExpectedRecordYSQL<>(1, "$90.50", Op.UPDATE),
-        new ExpectedRecordYSQL<>(-1, "", Op.COMMIT),
         new ExpectedRecordYSQL<>(2, "", Op.DELETE)
       };
       assertRecordsOnly(expectedRecordsMoney, moneySub);
@@ -381,9 +352,7 @@ public class TestAllDatatypes extends CDCBaseClass {
         new ExpectedRecordYSQL<>(1, "10.1.0.0/16", Op.INSERT),
         new ExpectedRecordYSQL<>(1, "12.2.0.0/22", Op.UPDATE),
         new ExpectedRecordYSQL<>(1, "", Op.DELETE),
-        new ExpectedRecordYSQL<>(-1, "", Op.BEGIN),
-        new ExpectedRecordYSQL<>(2, "12.2.0.0/22", Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.COMMIT)
+        new ExpectedRecordYSQL<>(2, "12.2.0.0/22", Op.INSERT)
       };
       assertRecordsOnly(expectedRecordsCidr, cidrSub);
 
@@ -391,9 +360,7 @@ public class TestAllDatatypes extends CDCBaseClass {
         new ExpectedRecordYSQL<>(1, "\\x01", Op.INSERT),
         new ExpectedRecordYSQL<>(1, "\\xdeadbeef", Op.UPDATE),
         new ExpectedRecordYSQL<>(1, "", Op.DELETE),
-        new ExpectedRecordYSQL<>(-1, "", Op.BEGIN),
-        new ExpectedRecordYSQL<>(2, "\\xdeadbeef", Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.COMMIT)
+        new ExpectedRecordYSQL<>(2, "\\xdeadbeef", Op.INSERT)
       };
       assertRecordsOnly(expectedRecordsBytea, byteaSub);
 
@@ -401,9 +368,7 @@ public class TestAllDatatypes extends CDCBaseClass {
         new ExpectedRecordYSQL<>(1, "(8,9),(1,3)", Op.INSERT),
         new ExpectedRecordYSQL<>(1, "(10,31),(8,9)", Op.UPDATE),
         new ExpectedRecordYSQL<>(1, "", Op.DELETE),
-        new ExpectedRecordYSQL<>(-1, "", Op.BEGIN),
-        new ExpectedRecordYSQL<>(2, "(10,31),(8,9)", Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.COMMIT)
+        new ExpectedRecordYSQL<>(2, "(10,31),(8,9)", Op.INSERT)
       };
       assertRecordsOnly(expectedRecordsBox, boxSub);
 
@@ -411,9 +376,7 @@ public class TestAllDatatypes extends CDCBaseClass {
         new ExpectedRecordYSQL<>(10, "<(2,3),32>", Op.INSERT),
         new ExpectedRecordYSQL<>(10, "<(0,0),10>", Op.UPDATE),
         new ExpectedRecordYSQL<>(10, "", Op.DELETE),
-        new ExpectedRecordYSQL<>(-1, "", Op.BEGIN),
-        new ExpectedRecordYSQL<>(1000, "<(0,0),4>", Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.COMMIT)
+        new ExpectedRecordYSQL<>(1000, "<(0,0),4>", Op.INSERT)
       };
       assertRecordsOnly(expectedRecordsCircle, circleSub);
 
@@ -421,9 +384,7 @@ public class TestAllDatatypes extends CDCBaseClass {
         new ExpectedRecordYSQL<>(23, "((1,2),(20,-10))", Op.INSERT),
         new ExpectedRecordYSQL<>(23, "((-1,-1))", Op.UPDATE),
         new ExpectedRecordYSQL<>(23, "", Op.DELETE),
-        new ExpectedRecordYSQL<>(-1, "", Op.BEGIN),
-        new ExpectedRecordYSQL<>(34, "((0,0),(3,4),(5,5),(1,2))", Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.COMMIT)
+        new ExpectedRecordYSQL<>(34, "((0,0),(3,4),(5,5),(1,2))", Op.INSERT)
       };
       assertRecordsOnly(expectedRecordsPath, pathSub);
 
@@ -431,9 +392,7 @@ public class TestAllDatatypes extends CDCBaseClass {
         new ExpectedRecordYSQL<>(11, "(0,-1)", Op.INSERT),
         new ExpectedRecordYSQL<>(11, "(1,3)", Op.UPDATE),
         new ExpectedRecordYSQL<>(11, "", Op.DELETE),
-        new ExpectedRecordYSQL<>(-1, "", Op.BEGIN),
-        new ExpectedRecordYSQL<>(21, "(33,44)", Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.COMMIT)
+        new ExpectedRecordYSQL<>(21, "(33,44)", Op.INSERT)
       };
       assertRecordsOnly(expectedRecordsPoint, pointSub);
 
@@ -441,9 +400,7 @@ public class TestAllDatatypes extends CDCBaseClass {
         new ExpectedRecordYSQL<>(1, "((1,3),(4,12),(2,4))", Op.INSERT),
         new ExpectedRecordYSQL<>(1, "((1,3),(4,12),(2,4),(1,4))", Op.UPDATE),
         new ExpectedRecordYSQL<>(1, "", Op.DELETE),
-        new ExpectedRecordYSQL<>(-1, "", Op.BEGIN),
-        new ExpectedRecordYSQL<>(27, "((1,3),(2,4),(1,4))", Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.COMMIT)
+        new ExpectedRecordYSQL<>(27, "((1,3),(2,4),(1,4))", Op.INSERT)
       };
       assertRecordsOnly(expectedRecordsPolygon, polygonSub);
 
@@ -451,9 +408,7 @@ public class TestAllDatatypes extends CDCBaseClass {
         new ExpectedRecordYSQL<>(1, "{1,2,-8}", Op.INSERT),
         new ExpectedRecordYSQL<>(1, "{1,1,-5}", Op.UPDATE),
         new ExpectedRecordYSQL<>(1, "", Op.DELETE),
-        new ExpectedRecordYSQL<>(-1, "", Op.BEGIN),
-        new ExpectedRecordYSQL<>(29, "{2.5,-1,0}", Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.COMMIT)
+        new ExpectedRecordYSQL<>(29, "{2.5,-1,0}", Op.INSERT)
       };
       assertRecordsOnly(expectedRecordsLine, lineSub);
 
@@ -461,67 +416,53 @@ public class TestAllDatatypes extends CDCBaseClass {
         new ExpectedRecordYSQL<>(1, "[(0,0),(2,4)]", Op.INSERT),
         new ExpectedRecordYSQL<>(1, "[(-1,-1),(10,-8)]", Op.UPDATE),
         new ExpectedRecordYSQL<>(1, "", Op.DELETE),
-        new ExpectedRecordYSQL<>(-1, "", Op.BEGIN),
-        new ExpectedRecordYSQL<>(37, "[(1,3),(3,5)]", Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.COMMIT)
+        new ExpectedRecordYSQL<>(37, "[(1,3),(3,5)]", Op.INSERT)
       };
       assertRecordsOnly(expectedRecordsLseg, lsegSub);
 
       ExpectedRecordYSQL<?>[] expectedRecordsTimestamptz = new ExpectedRecordYSQL[] {
         new ExpectedRecordYSQL<>(1, "1969-12-31 18:40:00+00", Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.BEGIN),
         new ExpectedRecordYSQL<>(1, "2021-12-31 18:40:00+00", Op.UPDATE),
-        new ExpectedRecordYSQL<>(1, "", Op.DELETE),
-        new ExpectedRecordYSQL<>(-1, "", Op.COMMIT)
+        new ExpectedRecordYSQL<>(1, "", Op.DELETE)
       };
       assertRecordsOnly(expectedRecordsTimestamptz, tstzSub);
 
       ExpectedRecordYSQL<?>[] expectedRecordsInt4Range = new ExpectedRecordYSQL[] {
         new ExpectedRecordYSQL<>(1, "[5,14)", Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.BEGIN),
         new ExpectedRecordYSQL<>(1, "[6,43)", Op.UPDATE),
-        new ExpectedRecordYSQL<>(1, "", Op.DELETE),
-        new ExpectedRecordYSQL<>(-1, "", Op.COMMIT)
+        new ExpectedRecordYSQL<>(1, "", Op.DELETE)
       };
       assertRecordsOnly(expectedRecordsInt4Range, int4rangeSub);
 
       ExpectedRecordYSQL<?>[] expectedRecordsInt8Range = new ExpectedRecordYSQL[] {
         new ExpectedRecordYSQL<>(1, "[5,15)", Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.BEGIN),
         new ExpectedRecordYSQL<>(1, "[2,100000)", Op.UPDATE),
-        new ExpectedRecordYSQL<>(1, "", Op.DELETE),
-        new ExpectedRecordYSQL<>(-1, "", Op.COMMIT)
+        new ExpectedRecordYSQL<>(1, "", Op.DELETE)
       };
       assertRecordsOnly(expectedRecordsInt8Range, int8rangeSub);
 
       ExpectedRecordYSQL<?>[] expectedRecordsTsRange = new ExpectedRecordYSQL[] {
         new ExpectedRecordYSQL<>(1, "(\"1970-01-01 00:00:00\",\"2000-01-01 12:00:00\")",
           Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.BEGIN),
         new ExpectedRecordYSQL<>(1, "(\"1970-01-01 00:00:00\",\"2022-11-01 12:00:00\")",
           Op.UPDATE),
-        new ExpectedRecordYSQL<>(1, "", Op.DELETE),
-        new ExpectedRecordYSQL<>(-1, "", Op.COMMIT)
+        new ExpectedRecordYSQL<>(1, "", Op.DELETE)
       };
       assertRecordsOnly(expectedRecordsTsRange, tsrangeSub);
 
       ExpectedRecordYSQL<?>[] expectedRecordsTstzRange = new ExpectedRecordYSQL[] {
         new ExpectedRecordYSQL<>(1,
           "(\"2017-07-04 12:30:30+00\",\"2021-07-04 07:00:30+00\")", Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.BEGIN),
         new ExpectedRecordYSQL<>(1,
           "(\"2017-07-04 12:30:30+00\",\"2021-10-04 07:00:30+00\")", Op.UPDATE),
-        new ExpectedRecordYSQL<>(1, "", Op.DELETE),
-        new ExpectedRecordYSQL<>(-1, "", Op.COMMIT)
+        new ExpectedRecordYSQL<>(1, "", Op.DELETE)
       };
       assertRecordsOnly(expectedRecordsTstzRange, tstzrangeSub);
 
       ExpectedRecordYSQL<?>[] expectedRecordsDateRange = new ExpectedRecordYSQL[] {
         new ExpectedRecordYSQL<>(1, "[2019-10-08,2021-10-07)", Op.INSERT),
-        new ExpectedRecordYSQL<>(-1, "", Op.BEGIN),
         new ExpectedRecordYSQL<>(1, "[2019-10-08,2020-10-07)", Op.UPDATE),
-        new ExpectedRecordYSQL<>(1, "", Op.DELETE),
-        new ExpectedRecordYSQL<>(-1, "", Op.COMMIT)
+        new ExpectedRecordYSQL<>(1, "", Op.DELETE)
       };
       assertRecordsOnly(expectedRecordsDateRange, daterangeSub);
 

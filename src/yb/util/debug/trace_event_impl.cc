@@ -24,7 +24,7 @@
 #include <list>
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/dynamic_annotations.h"
@@ -42,11 +42,12 @@
 #include "yb/util/atomic.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/debug/trace_event_synthetic_delay.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
+#include "yb/util/jsonwriter.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/thread.h"
 
-DEFINE_string(trace_to_console, "",
+DEFINE_UNKNOWN_string(trace_to_console, "",
               "Trace pattern specifying which trace events should be dumped "
               "directly to the console");
 TAG_FLAG(trace_to_console, experimental);
@@ -61,6 +62,7 @@ using base::SpinLockHolder;
 
 using strings::SubstituteAndAppend;
 using std::string;
+using std::vector;
 
 // This is used to avoid generating trace events during global initialization. If we allow that to
 // happen, it may lead to segfaults (https://github.com/yugabyte/yugabyte-db/issues/11033).
@@ -660,44 +662,6 @@ void TraceEvent::UpdateDuration(const MicrosecondsInt64& now,
   duration_ = now - timestamp_;
   thread_duration_ = thread_now - thread_timestamp_;
 }
-
-namespace {
-// Escape the given string using JSON rules.
-void JsonEscape(GStringPiece s, string* out) {
-  out->reserve(out->size() + s.size() * 2);
-  const char* p_end = s.data() + s.size();
-  for (const char* p = s.data(); p != p_end; p++) {
-    // Only the following characters need to be escaped, according to json.org.
-    // In particular, it's illegal to escape the single-quote character, and
-    // JSON does not support the "\x" escape sequence like C/Java.
-    switch (*p) {
-      case '"':
-      case '\\':
-        out->push_back('\\');
-        out->push_back(*p);
-        break;
-      case '\b':
-        out->append("\\b");
-        break;
-      case '\f':
-        out->append("\\f");
-        break;
-      case '\n':
-        out->append("\\n");
-        // The following break statement was missing in the original Kudu code, most likely a bug.
-        break;
-      case '\r':
-        out->append("\\r");
-        break;
-      case '\t':
-        out->append("\\t");
-        break;
-      default:
-        out->push_back(*p);
-    }
-  }
-}
-} // anonymous namespace
 
 // static
 void TraceEvent::AppendValueAsJSON(unsigned char type,

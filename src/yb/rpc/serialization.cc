@@ -41,6 +41,7 @@
 #include "yb/rpc/constants.h"
 #include "yb/rpc/lightweight_message.h"
 
+#include "yb/rpc/call_data.h"
 #include "yb/rpc/rpc_header.pb.h"
 
 #include "yb/util/faststring.h"
@@ -167,7 +168,7 @@ Result<Slice> ParseString(const Slice& buf, const char* name, CodedInputStream* 
 }
 
 Status ParseHeader(
-    const Slice& buf, CodedInputStream* in, ParsedRequestHeader* parsed_header) {
+    Slice buf, CodedInputStream* in, ParsedRequestHeader* parsed_header) {
   while (in->BytesUntilLimit() > 0) {
     auto tag = in->ReadTag();
     auto field = tag >> 3;
@@ -187,6 +188,17 @@ Status ParseHeader(
           return STATUS(Corruption, "Unable to decode timeout_ms field");
         }
         break;
+      case RequestHeader::kSidecarOffsetsFieldNumber: {
+          uint32 length;
+          if (!in->ReadVarint32(&length)) {
+            return STATUS(Corruption, "Unable to decode sidecars field length");
+          }
+          auto start = pointer_cast<const uint32_t*>(buf.data() + in->CurrentPosition());
+          parsed_header->sidecar_offsets = boost::make_iterator_range(
+              start, start + length / sizeof(uint32_t));
+          in->Skip(length);
+        }
+        break;
       default: {
         if (!SkipField(tag & 7, in)) {
           return STATUS_FORMAT(Corruption, "Unable to skip: $0", tag);
@@ -198,7 +210,7 @@ Status ParseHeader(
   return Status::OK();
 }
 
-Status ParseHeader(const Slice& buf, CodedInputStream* in, MessageLite* parsed_header) {
+Status ParseHeader(Slice buf, CodedInputStream* in, MessageLite* parsed_header) {
   if (PREDICT_FALSE(!parsed_header->ParseFromCodedStream(in))) {
     return STATUS(Corruption, "Invalid packet: header too short",
                               buf.ToDebugString());
@@ -210,9 +222,7 @@ Status ParseHeader(const Slice& buf, CodedInputStream* in, MessageLite* parsed_h
 namespace {
 
 template <class Header>
-Status DoParseYBMessage(const Slice& buf,
-                                Header* parsed_header,
-                                Slice* parsed_main_message) {
+Result<Slice> ParseYBHeader(Slice buf, Header* parsed_header) {
   CodedInputStream in(buf.data(), narrow_cast<int>(buf.size()));
   SetupLimit(&in);
 
@@ -244,23 +254,47 @@ Status DoParseYBMessage(const Slice& buf,
       buf.ToDebugString());
   }
 
-  *parsed_main_message = Slice(buf.data() + buf.size() - main_msg_len,
-                              main_msg_len);
+  return buf.Suffix(main_msg_len);
+}
+
+const auto& sidecar_offsets(const ParsedRequestHeader& header) {
+  return header.sidecar_offsets;
+}
+
+auto sidecar_offsets(const ResponseHeader& header) {
+  auto start = header.sidecar_offsets().data();
+  return boost::make_iterator_range(start, start + header.sidecar_offsets_size());
+}
+
+template <class Header>
+Status DoParseYBMessage(
+    const CallData& call_data, Header* header, Slice* serialized_pb, ReceivedSidecars* sidecars) {
+  auto entire_message = VERIFY_RESULT(ParseYBHeader(call_data.buffer().AsSlice(), header));
+
+  // Use information from header to extract the payload slices.
+  auto offsets = sidecar_offsets(*header);
+
+  if (!offsets.empty()) {
+    *serialized_pb = entire_message.Prefix(offsets[0]);
+    RETURN_NOT_OK(sidecars->Parse(entire_message, offsets));
+  } else {
+    *serialized_pb = entire_message;
+  }
   return Status::OK();
 }
 
 } // namespace
 
-Status ParseYBMessage(const Slice& buf,
-                      ParsedRequestHeader* parsed_header,
-                      Slice* parsed_main_message) {
-  return DoParseYBMessage(buf, parsed_header, parsed_main_message);
+Status ParseYBMessage(
+    const CallData& call_data, ResponseHeader* header, Slice* serialized_pb,
+    ReceivedSidecars* sidecars) {
+  return DoParseYBMessage(call_data, header, serialized_pb, sidecars);
 }
 
-Status ParseYBMessage(const Slice& buf,
-                      MessageLite* parsed_header,
-                      Slice* parsed_main_message) {
-  return DoParseYBMessage(buf, parsed_header, parsed_main_message);
+Status ParseYBMessage(
+    const CallData& call_data, ParsedRequestHeader* header, Slice* serialized_pb,
+    ReceivedSidecars* sidecars) {
+  return DoParseYBMessage(call_data, header, serialized_pb, sidecars);
 }
 
 Result<ParsedRemoteMethod> ParseRemoteMethod(const Slice& buf) {

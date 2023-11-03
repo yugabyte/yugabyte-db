@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, Fragment } from 'react';
+import { Component, Fragment } from 'react';
 import PropTypes from 'prop-types';
 import { Grid, Row, Col, Tab } from 'react-bootstrap';
 import { Link } from 'react-router';
@@ -51,6 +51,7 @@ export default class TableDetail extends Component {
       universe: { currentUniverse },
       tables: { currentTableDetail },
       modal: { visibleModal },
+      featureFlags
     } = this.props;
     const width = this.state.dimensions.width;
     if (getPromiseState(currentUniverse).isSuccess()) {
@@ -86,6 +87,7 @@ export default class TableDetail extends Component {
     ) {
       const nodePrefixes = [currentUniverse.data.universeDetails.nodePrefix];
       const tableName = currentTableDetail.tableDetails.tableName;
+
       tableMetricsContent = (
         <CustomerMetricsPanel
           origin={'table'}
@@ -94,6 +96,7 @@ export default class TableDetail extends Component {
           tableName={tableName}
           nodePrefixes={nodePrefixes}
           visibleModal={visibleModal}
+          featureFlags={featureFlags}
         />
       );
     }
@@ -161,6 +164,7 @@ export default class TableDetail extends Component {
               currentUniverse={currentUniverse.data}
               showLabelText={true}
               refreshUniverseData={this.getUniverseInfo}
+              shouldDisplayTaskButton={true}
             />
           </div>
         </Col>
@@ -174,7 +178,7 @@ export default class TableDetail extends Component {
           <Row>
             <Col lg={12}>
               <Measure onMeasure={this.onResize.bind(this)}>
-                <YBTabsPanel defaultTab={'schema'} id={'tables-tab-panel'}>
+                <YBTabsPanel defaultTab={'metrics'} id={'tables-tab-panel'}>
                   {tabElements}
                 </YBTabsPanel>
               </Measure>

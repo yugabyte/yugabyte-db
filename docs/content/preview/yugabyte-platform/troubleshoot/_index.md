@@ -1,7 +1,8 @@
 ---
-title: Troubleshoot
+title: Troubleshoot YugabyteDB Anywhere
+headerTitle: Troubleshoot
 linkTitle: Troubleshoot
-description: Troubleshoot
+description: Troubleshoot issues in YugabyteDB Anywhere
 image: /images/section_icons/troubleshoot/troubleshoot.png
 headcontent: Diagnose and troubleshoot issues that arise from YugabyteDB universes and YugabyteDB Anywhere.
 aliases:
@@ -12,14 +13,14 @@ menu:
   preview_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: troubleshoot-yp
-    weight: 648
+    weight: 680
 type: indexpage
 ---
 
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="install-upgrade-yp-issues/">
+    <a class="section-link icon-offset" href="install-upgrade-issues/vm/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
         <div class="title">Install and upgrade issues</div>
@@ -38,6 +39,30 @@ type: indexpage
       </div>
       <div class="body">
         Troubleshoot a YugabyteDB universe.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="cloud-provider-config-issues/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true" />
+        <div class="title">Cloud provider configuration issues</div>
+      </div>
+      <div class="body">
+        Troubleshoot issues encountered when configuring cloud providers.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="ldap-issues/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
+        <div class="title">LDAP issues</div>
+      </div>
+      <div class="body">
+        Troubleshoot LDAP issues.
       </div>
     </a>
   </div>

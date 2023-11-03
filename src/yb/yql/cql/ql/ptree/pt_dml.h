@@ -15,8 +15,7 @@
 // Tree node definitions for INSERT statement.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_PT_DML_H_
-#define YB_YQL_CQL_QL_PTREE_PT_DML_H_
+#pragma once
 
 #include <iosfwd>
 
@@ -44,20 +43,25 @@ class ColumnOpCounter {
   int lt_count() const { return lt_count_; }
   int eq_count() const { return eq_count_; }
   int in_count() const { return in_count_; }
+  int contains_count() const { return contains_count_; }
+  int contains_key_count() const { return contains_key_count_; }
 
   void increase_gt(bool col_arg = false) { !col_arg ? gt_count_++ : partial_col_gt_count_++; }
   void increase_lt(bool col_arg = false) { !col_arg ? lt_count_++ : partial_col_lt_count_++; }
   void increase_eq(bool col_arg = false) { !col_arg ? eq_count_++ : partial_col_eq_count_++; }
   void increase_in(bool col_arg = false) { !col_arg ? in_count_++ : partial_col_in_count_++; }
+  void increase_contains_key() { contains_key_count_++; }
+  void increase_contains() { contains_count_++; }
 
   bool is_valid() {
-    // A. At most one condition can be set for a column.
+    // A. At most one condition can be set for a column (except for CONTAINS AND CONTAINS KEY).
     // B. More than one condition can be set for a partial column such as col[1] or col->'a'.
     // C. Conditions on a column and its partial member cannot co-exist in the same statement.
+    // Note: we allow adding multiple CONTAINS AND CONTAINS KEY condition on a column
     if (in_count_ + eq_count_ + gt_count_ > 1 || in_count_ + eq_count_ + lt_count_ > 1 ||
         (in_count_ + eq_count_ + gt_count_ + lt_count_ > 0 &&
         partial_col_eq_count_ + partial_col_gt_count_ + partial_col_in_count_ +
-            partial_col_lt_count_ > 0)) {
+            partial_col_lt_count_ + contains_key_count_ + contains_count_ > 0)) {
       return false;
     }
     // D. Both inequality (less and greater) set together.
@@ -68,7 +72,8 @@ class ColumnOpCounter {
   }
 
   bool IsEmpty() const {
-    return gt_count_ == 0 && lt_count_ == 0 && eq_count_ == 0 && in_count_ == 0;
+    return gt_count_ == 0 && lt_count_ == 0 && eq_count_ == 0 && in_count_ == 0 &&
+           contains_key_count_ == 0 && contains_count_ == 0;
   }
 
  private:
@@ -77,6 +82,9 @@ class ColumnOpCounter {
   int lt_count_ = 0;
   int eq_count_ = 0;
   int in_count_ = 0;
+  int contains_key_count_ = 0;
+  int contains_count_ = 0;
+
   // These are counts for partial columns like json(c1->'a') and collection(c1[0]) operators.
   int partial_col_gt_count_ = 0;
   int partial_col_lt_count_ = 0;
@@ -84,8 +92,22 @@ class ColumnOpCounter {
   int partial_col_in_count_ = 0;
 };
 
+class AnalyzeStepState {
+ public:
+  explicit AnalyzeStepState(MCList<PartitionKeyOp> *partition_key_ops)
+      : partition_key_ops_(partition_key_ops) {}
+
+  virtual ~AnalyzeStepState() = default;
+
+  virtual Status AnalyzePartitionKeyOp(SemContext *sem_context,
+                                       const PTRelationExpr *expr,
+                                       PTExprPtr value);
+ private:
+  MCList<PartitionKeyOp> *partition_key_ops_;
+};
+
 // State variables for where clause.
-class WhereExprState {
+class WhereExprState : public AnalyzeStepState {
  public:
   WhereExprState(MCList<ColumnOp> *ops,
                  MCVector<ColumnOp> *key_ops,
@@ -97,11 +119,11 @@ class WhereExprState {
                  TreeNodeOpcode statement_type,
                  MCList<FuncOp> *func_ops,
                  MCList<MultiColumnOp> *multi_col_ops)
-    : ops_(ops),
+    : AnalyzeStepState(partition_key_ops),
+      ops_(ops),
       key_ops_(key_ops),
       subscripted_col_ops_(subscripted_col_ops),
       json_col_ops_(json_col_ops),
-      partition_key_ops_(partition_key_ops),
       op_counters_(op_counters),
       partition_key_counter_(partition_key_counter),
       statement_type_(statement_type),
@@ -110,24 +132,24 @@ class WhereExprState {
   }
 
   Status AnalyzeColumnOp(SemContext *sem_context,
-                                 const PTRelationExpr *expr,
-                                 const ColumnDesc *col_desc,
-                                 PTExprPtr value,
-                                 PTExprListNodePtr args = nullptr);
+                         const PTRelationExpr *expr,
+                         const ColumnDesc *col_desc,
+                         PTExprPtr value,
+                         PTExprListNodePtr args = nullptr);
 
   Status AnalyzeMultiColumnOp(SemContext *sem_context,
-                                      const PTRelationExpr *expr,
-                                      const std::vector<const ColumnDesc *> col_desc,
-                                      PTExprPtr value);
+                              const PTRelationExpr *expr,
+                              const std::vector<const ColumnDesc *> col_desc,
+                              PTExprPtr value);
 
   Status AnalyzeColumnFunction(SemContext *sem_context,
-                                       const PTRelationExpr *expr,
-                                       PTExprPtr value,
-                                       PTBcallPtr call);
+                               const PTRelationExpr *expr,
+                               PTExprPtr value,
+                               PTBcallPtr call);
 
   Status AnalyzePartitionKeyOp(SemContext *sem_context,
-                                       const PTRelationExpr *expr,
-                                       PTExprPtr value);
+                               const PTRelationExpr *expr,
+                               PTExprPtr value) override;
 
   MCList<FuncOp> *func_ops() {
     return func_ops_;
@@ -144,8 +166,6 @@ class WhereExprState {
 
   // Operators on json columns (e.g. c1->'a'->'b'->>'c')
   MCList<JsonColumnOp> *json_col_ops_;
-
-  MCList<PartitionKeyOp> *partition_key_ops_;
 
   // Counters of '=', '<', and '>' operators for each column in the where expression.
   MCVector<ColumnOpCounter> *op_counters_;
@@ -369,7 +389,7 @@ class PTDmlStmt : public PTCollection {
   }
 
   // Access for selected result.
-  const std::shared_ptr<vector<ColumnSchema>>& selected_schemas() const {
+  const std::shared_ptr<std::vector<ColumnSchema>>& selected_schemas() const {
     return selected_schemas_;
   }
 
@@ -511,7 +531,7 @@ class PTDmlStmt : public PTCollection {
   // Selected schema - a vector pair<name, datatype> - is used when describing the result set.
   // NOTE: Only SELECT and DML with RETURN clause statements have outputs.
   //       We prepare this vector once at compile time and use it at execution times.
-  std::shared_ptr<vector<ColumnSchema>> selected_schemas_;
+  std::shared_ptr<std::vector<ColumnSchema>> selected_schemas_;
 
   // The set of indexes that index primary key columns of the indexed table only and the set of
   // indexes that do not.
@@ -531,5 +551,3 @@ class PTDmlStmt : public PTCollection {
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_PTREE_PT_DML_H_

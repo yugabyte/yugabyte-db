@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_ENUMS_H_
-#define YB_UTIL_ENUMS_H_
+#pragma once
 
 #include <bitset>
 #include <string>
@@ -379,6 +378,12 @@ class EnumBitSet {
     return impl_.to_ullong() > rhs.impl_.to_ullong();
   }
 
+  EnumBitSet<Enum> operator~() const {
+    EnumBitSet<Enum> result;
+    result.impl_ = ~impl_;
+    return result;
+  }
+
  private:
   std::bitset<MapSize(static_cast<Enum*>(nullptr))> impl_;
 
@@ -422,7 +427,4 @@ Result<EnumType> ParseEnumInsensitive(const std::string& str) {
   return ParseEnumInsensitive<EnumType>(str.c_str());
 }
 
-
 }  // namespace yb
-
-#endif  // YB_UTIL_ENUMS_H_

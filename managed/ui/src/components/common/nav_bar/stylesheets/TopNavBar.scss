@@ -1,6 +1,6 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../../../_style/colors.scss';
+@use '../../../../_style/colors.scss';
 
 .navbar .container {
   display: flex;
@@ -80,13 +80,13 @@
 
     .dropdown-toggle i,
     .task-list-heading i {
-      color: $YB_VIOLET_TEXT;
+      color: colors.$YB_VIOLET_TEXT;
       vertical-align: middle;
       margin-top: -2px;
     }
 
     &.open .dropdown-toggle {
-      background-color: $YB_BACKGROUND !important;
+      background-color: colors.$YB_BACKGROUND !important;
     }
 
     #profile-dropdown + ul {
@@ -102,7 +102,7 @@
         }
 
         i {
-          color: $YB_ORANGE;
+          color: colors.$YB_ORANGE;
           vertical-align: middle;
           margin-right: 10px;
         }
@@ -116,7 +116,7 @@
   .caret {
     position: relative;
     top: -1px;
-    border-top-color: $YB_VIOLET;
+    border-top-color: colors.$YB_VIOLET;
   }
 }
 
@@ -125,9 +125,9 @@
     a {
       &:hover,
       &:focus {
-        color: $YB_TEXT_COLOR;
+        color: colors.$YB_TEXT_COLOR;
         text-decoration: none;
-        background-color: $YB_BACKGROUND !important;
+        background-color: colors.$YB_BACKGROUND !important;
       }
     }
 
@@ -136,25 +136,25 @@
       &:hover,
       &:focus {
         cursor: not-allowed;
-        background-color: $YB_BACKGROUND !important;
+        background-color: colors.$YB_BACKGROUND !important;
       }
     }
   }
 
   li.disabled {
     i {
-      color: $YB_GRAY_HOVER !important;
+      color: colors.$YB_GRAY_HOVER !important;
     }
   }
 
   .active {
     a {
       background-color: inherit;
-      color: $YB_TEXT_COLOR;
+      color: colors.$YB_TEXT_COLOR;
       &:hover,
       &:focus {
         background-color: inherit;
-        color: $YB_TEXT_COLOR;
+        color: colors.$YB_TEXT_COLOR;
       }
     }
   }
@@ -178,7 +178,7 @@
   padding-top: 20px;
   padding-bottom: 14px;
   &.dropdown-toggle {
-    border-left: 1px solid $YB_BACKGROUND !important;
+    border-left: 1px solid colors.$YB_BACKGROUND !important;
   }
 }
 

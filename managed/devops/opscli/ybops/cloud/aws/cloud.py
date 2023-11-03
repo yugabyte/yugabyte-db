@@ -17,8 +17,9 @@ import subprocess
 import boto3
 from botocore.exceptions import ClientError
 from botocore.utils import InstanceMetadataFetcher
+import requests
 from six.moves.urllib.error import URLError
-from six.moves.urllib.request import urlopen
+from six.moves.urllib.request import urlopen, Request
 from ybops.cloud.aws.command import (AwsAccessCommand, AwsDnsCommand, AwsInstanceCommand,
                                      AwsNetworkCommand, AwsQueryCommand)
 from ybops.cloud.aws.utils import (AwsBootstrapClient, YbVpcComponents,
@@ -26,8 +27,8 @@ from ybops.cloud.aws.utils import (AwsBootstrapClient, YbVpcComponents,
                                    get_clients, get_device_names, get_spot_pricing,
                                    get_vpc_for_subnet, get_zones, has_ephemerals, modify_tags,
                                    query_vpc, update_disk, get_image_arch, get_root_label)
-from ybops.cloud.common.cloud import AbstractCloud
-from ybops.common.exceptions import YBOpsRuntimeError
+from ybops.cloud.common.cloud import AbstractCloud, InstanceState
+from ybops.common.exceptions import YBOpsRecoverableError, YBOpsRuntimeError
 from ybops.utils import is_valid_ip_address
 from ybops.utils.ssh import (format_rsa_key, validated_key_file)
 
@@ -35,7 +36,8 @@ from ybops.utils.ssh import (format_rsa_key, validated_key_file)
 class AwsCloud(AbstractCloud):
     """Subclass specific to AWS cloud related functionality.
     """
-    INSTANCE_METADATA_API = "http://169.254.169.254/2016-09-02/meta-data/"
+    BASE_INSTANCE_METADATA_API = "http://169.254.169.254/"
+    INSTANCE_METADATA_API = os.path.join(BASE_INSTANCE_METADATA_API, "2016-09-02/meta-data/")
     INSTANCE_IDENTITY_API = "http://169.254.169.254/2016-09-02/dynamic/instance-identity/document"
     NETWORK_METADATA_API = os.path.join(INSTANCE_METADATA_API, "network/interfaces/macs/")
     METADATA_API_TIMEOUT_SECONDS = 3
@@ -63,15 +65,19 @@ class AwsCloud(AbstractCloud):
     def get_vpc_for_subnet(self, region, subnet):
         return get_vpc_for_subnet(get_client(region), subnet)
 
-    def get_image(self, region=None):
+    def get_image(self, region=None, architecture="x86_64"):
         regions = [region] if region is not None else self.get_regions()
+        imageKey = "arm_image" if architecture == "aarch64" else "image"
         output = {}
         for r in regions:
-            output[r] = self.metadata["regions"][r]["image"]
+            output[r] = self.metadata["regions"][r][imageKey]
         return output
 
     def get_image_arch(self, args):
         return get_image_arch(args.region, args.machine_image)
+
+    def get_image_root_label(self, args):
+        return get_root_label(args.region, args.machine_image)
 
     def get_spot_pricing(self, args):
         return get_spot_pricing(args.region, args.zone, args.instance_type)
@@ -207,7 +213,6 @@ class AwsCloud(AbstractCloud):
         return output
 
     def network_bootstrap(self, args):
-        result = {}
         # Generate region subset, based on passed in JSON.
         custom_payload = json.loads(args.custom_payload)
         per_region_meta = custom_payload.get("perRegionMetadata")
@@ -229,11 +234,13 @@ class AwsCloud(AbstractCloud):
         # per-item creation and x-region connectivity/glue.
         #
         # For now, let's leave it as a top-level knob to "do everything" vs "do nothing"...
-        user_provided_vpc_ids = 0
-        for r in per_region_meta.values():
-            if r.get("vpcId") is not None:
-                user_provided_vpc_ids += 1
-        if user_provided_vpc_ids > 0 and user_provided_vpc_ids != len(per_region_meta):
+        added_region_codes = custom_payload.get("addedRegionCodes")
+        if added_region_codes is None:
+            added_region_codes = per_region_meta.keys()
+
+        user_provided_vpc_ids = len([r for k, r in per_region_meta.items()
+                                    if k in added_region_codes and r.get("vpcId") is not None])
+        if user_provided_vpc_ids > 0 and user_provided_vpc_ids != len(added_region_codes):
             raise YBOpsRuntimeError("Either no regions or all regions must have vpcId specified.")
 
         components = {}
@@ -244,16 +251,20 @@ class AwsCloud(AbstractCloud):
         else:
             # Bootstrap the individual region items standalone (vpc, subnet, sg, RT, etc).
             for region in metadata_subset:
-                components[region] = client.bootstrap_individual_region(region)
+                if region in added_region_codes:
+                    components[region] = client.bootstrap_individual_region(region)
+                else:
+                    components[region] = YbVpcComponents.from_user_json(
+                        region, per_region_meta.get(region))
             # Cross link all the regions together.
-            client.cross_link_regions(components)
+            client.cross_link_regions(components, added_region_codes)
         return {region: c.as_json() for region, c in components.items()}
 
     def query_vpc(self, args):
         result = {}
         for region in self._get_all_regions_or_arg(args.region):
             result[region] = query_vpc(region)
-            result[region]["default_image"] = self.get_image(region).get(region)
+            result[region]["default_image"] = self.get_image(region, args.architecture).get(region)
         return result
 
     def get_current_host_info(self, args):
@@ -271,6 +282,25 @@ class AwsCloud(AbstractCloud):
         except (URLError, socket.timeout):
             raise YBOpsRuntimeError("Unable to auto-discover AWS provider information")
 
+    def get_and_append_imdsv2_token_header(self, url):
+        # Fetch IMDSv2 token from the instance metadata service
+        try:
+            headers = {'X-aws-ec2-metadata-token-ttl-seconds': '60'}
+            token_url = os.path.join(self.BASE_INSTANCE_METADATA_API, "latest", "api", "token")
+            response = requests.put(token_url, headers=headers, timeout=20)
+            response.raise_for_status()
+            token = response.text
+        except Exception as e:
+            logging.info("[app] Token retrieval via imdsv2 failed, falling back to imds, {}".
+                         format(e))
+            token = None
+
+        request = Request(url)
+        if token:
+            request.add_header('X-aws-ec2-metadata-token', token)
+
+        return request
+
     def get_instance_metadata(self, metadata_type):
         """This method fetches instance metadata using AWS metadata api
         Args:
@@ -280,14 +310,19 @@ class AwsCloud(AbstractCloud):
             raises a runtime exception.
         """
         if metadata_type in ["mac", "instance-id", "security-groups"]:
-            return urlopen(os.path.join(self.INSTANCE_METADATA_API, metadata_type),
+            request = self.get_and_append_imdsv2_token_header(os.path.join(
+                self.INSTANCE_METADATA_API, metadata_type))
+            return urlopen(request,
                            timeout=self.METADATA_API_TIMEOUT_SECONDS).read().decode('utf-8')
         elif metadata_type in ["vpc-id", "subnet-id"]:
             mac = self.get_instance_metadata("mac")
-            return urlopen(os.path.join(self.NETWORK_METADATA_API, mac, metadata_type),
+            request = self.get_and_append_imdsv2_token_header(os.path.join(
+                self.NETWORK_METADATA_API, mac, metadata_type))
+            return urlopen(request,
                            timeout=self.METADATA_API_TIMEOUT_SECONDS).read().decode('utf-8')
         elif metadata_type in ["region", "privateIp"]:
-            identity_data = urlopen(self.INSTANCE_IDENTITY_API,
+            request = self.get_and_append_imdsv2_token_header(self.INSTANCE_IDENTITY_API)
+            identity_data = urlopen(request,
                                     timeout=self.METADATA_API_TIMEOUT_SECONDS) \
                 .read().decode('utf-8')
             return json.loads(identity_data).get(metadata_type) if identity_data else None
@@ -414,16 +449,14 @@ class AwsCloud(AbstractCloud):
                 node_uuid=node_uuid_tags[0] if node_uuid_tags else None,
                 universe_uuid=universe_uuid_tags[0] if universe_uuid_tags else None,
                 vpc=data["VpcId"],
-                ami=data.get("ImageId", None),
                 instance_state=instance_state,
                 is_running=True if instance_state == "running" else False
             )
-
             disks = data.get("BlockDeviceMappings")
-            root_vol = next(d for d in disks if
-                            d.get("DeviceName") == get_root_label(result["region"], result["ami"]))
-            result["root_volume"] = root_vol["Ebs"]["VolumeId"]
-
+            root_vol = next((d for d in disks if
+                            d.get("DeviceName") == data.get("RootDeviceName")), None)
+            ebs = root_vol.get("Ebs") if root_vol else None
+            result["root_volume"] = ebs.get("VolumeId") if ebs else None
             if not get_all:
                 return result
             results.append(result)
@@ -444,10 +477,12 @@ class AwsCloud(AbstractCloud):
         # If we are configuring second NIC, ensure that this only happens for a
         # centOS AMI right now.
         if args.cloud_subnet_secondary:
+            supported_os = ['centos', 'almalinux']
             ec2 = boto3.resource('ec2', args.region)
             image = ec2.Image(args.machine_image)
-            if 'centos' not in image.name.lower():
-                raise YBOpsRuntimeError("Second NIC can only be configured for CentOS right now")
+            if not any(os_type in image.name.lower() for os_type in supported_os):
+                raise YBOpsRuntimeError(
+                    "Second NIC can only be configured for CentOS/Alma right now")
         create_instance(args)
 
     def delete_instance(self, region, instance_id, has_elastic_ip=False):
@@ -473,27 +508,38 @@ class AwsCloud(AbstractCloud):
                             AllocationId=elastic_ip["AllocationId"]
                         )
                 logging.info("[app] Deleted elastic ip {}".format(public_ip_address))
+
+        # persistent spot requests might have more than one instance associated with them
+        # so terminate them all
+        if (instance.spot_instance_request_id):
+            spot_request_id = instance.spot_instance_request_id
+            client = boto3.client('ec2', region)
+            response = client.describe_spot_instance_requests(
+                SpotInstanceRequestIds=[spot_request_id])
+            spot_requests = response['SpotInstanceRequests']
+            instance_ids = [request['InstanceId']
+                            for request in spot_requests if 'InstanceId' in request]
+            if instance_ids:
+                client.terminate_instances(InstanceIds=instance_ids)
+                logging.info(f"Terminated {len(instance_ids)} instances")
+
+            logging.info(f"[app] Deleting spot instance request {spot_request_id}")
+            client.cancel_spot_instance_requests(
+                SpotInstanceRequestIds=[spot_request_id]
+            )
+
         instance.terminate()
         instance.wait_until_terminated()
 
-    def reboot_instance(self, args, ssh_ports):
-        host_info = self.get_host_info_specific_args(
-            args.region,
-            args.search_pattern,
-            get_all=False
+    def reboot_instance(self, host_info, server_ports):
+        boto3.client('ec2', region_name=host_info['region']).reboot_instances(
+            InstanceIds=[host_info["id"]]
         )
-
-        if not host_info:
-            logging.error("Host {} does not exist.".format(args.search_pattern))
-            return
-
-        boto3.client('ec2', region_name=args.region).reboot_instances(
-          InstanceIds=[host_info["id"]]
-        )
-
-        self.wait_for_ssh_ports(host_info['private_ip'], host_info['name'], ssh_ports)
+        self.wait_for_server_ports(host_info["private_ip"], host_info["name"], server_ports)
 
     def mount_disk(self, host_info, vol_id, label):
+        logging.info("Mounting volume {} on host {}; label {}".format(
+                     vol_id, host_info['id'], label))
         ec2 = boto3.client('ec2', region_name=host_info['region'])
         ec2.attach_volume(
             Device=label,
@@ -502,16 +548,27 @@ class AwsCloud(AbstractCloud):
         )
         waiter = ec2.get_waiter('volume_in_use')
         waiter.wait(VolumeIds=[vol_id])
+        logging.info("Setting delete on termination for {} attached to {}"
+                     .format(vol_id, host_info['id']))
+        # Even if this fails, volumes are already tagged for cleanup.
+        ec2.modify_instance_attribute(InstanceId=host_info['id'],
+                                      Attribute='blockDeviceMapping',
+                                      BlockDeviceMappings=[{
+                                          'DeviceName': label,
+                                          'Ebs': {'DeleteOnTermination': True}}])
 
     def unmount_disk(self, host_info, vol_id):
+        logging.info("Unmounting volume {} from host {}".format(vol_id, host_info['id']))
         ec2 = boto3.client('ec2', region_name=host_info['region'])
         ec2.detach_volume(VolumeId=vol_id, InstanceId=host_info['id'])
         waiter = ec2.get_waiter('volume_available')
         waiter.wait(VolumeIds=[vol_id])
 
-    def clone_disk(self, args, volume_id, num_disks):
+    def clone_disk(self, args, volume_id, num_disks,
+                   snapshot_creation_delay=15, snapshot_creation_max_attempts=80):
         output = []
         snapshot = None
+        ec2 = boto3.client('ec2', args.region)
 
         try:
             resource_tags = []
@@ -529,23 +586,27 @@ class AwsCloud(AbstractCloud):
                 'ResourceType': 'volume',
                 'Tags': resource_tags
             }]
-            ec2 = boto3.resource('ec2', args.region)
-            volume = ec2.Volume(volume_id)
+            wait_config = {
+                'Delay': snapshot_creation_delay,
+                'MaxAttempts': snapshot_creation_max_attempts
+            }
             logging.info("==> Going to create a snapshot from {}".format(volume_id))
-            snapshot = volume.create_snapshot(TagSpecifications=snapshot_tag_specs)
-            snapshot.wait_until_completed()
-            logging.info("==> Created a snapshot {}".format(snapshot.id))
+            snapshot = ec2.create_snapshot(VolumeId=volume_id, TagSpecifications=snapshot_tag_specs)
+            snapshot_id = snapshot['SnapshotId']
+            waiter = ec2.get_waiter('snapshot_completed')
+            waiter.wait(SnapshotIds=[snapshot_id], WaiterConfig=wait_config)
+            logging.info("==> Created a snapshot {}".format(snapshot_id))
 
             for _ in range(num_disks):
                 vol = ec2.create_volume(
                     AvailabilityZone=args.zone,
-                    SnapshotId=snapshot.id,
+                    SnapshotId=snapshot_id,
                     TagSpecifications=volume_tag_specs
                 )
-                output.append(vol.id)
+                output.append(vol['VolumeId'])
         finally:
             if snapshot:
-                snapshot.delete()
+                ec2.delete_snapshot(SnapshotId=snapshot['SnapshotId'])
 
         return output
 
@@ -561,32 +622,61 @@ class AwsCloud(AbstractCloud):
             raise YBOpsRuntimeError("Could not find instance {}".format(args.search_pattern))
         update_disk(args, instance["id"])
 
-    def change_instance_type(self, args, newInstanceType):
-        change_instance_type(args["region"], args["id"], newInstanceType)
+    def change_instance_type(self, args, instance_type):
+        change_instance_type(args["region"], args["id"], instance_type)
 
     def stop_instance(self, host_info):
         ec2 = boto3.resource('ec2', host_info["region"])
         try:
             instance = ec2.Instance(id=host_info["id"])
-            instance.stop()
-            instance.wait_until_stopped()
+            if instance.state['Name'] != 'stopped':
+                if instance.state['Name'] != 'stopping':
+                    instance.stop()
+                instance.wait_until_stopped()
         except ClientError as e:
             logging.error(e)
+            raise YBOpsRuntimeError("Failed to stop instance {}: {}".format(host_info["id"], e))
 
-    def start_instance(self, host_info, ssh_ports):
+    def start_instance(self, host_info, server_ports):
         ec2 = boto3.resource('ec2', host_info["region"])
         try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             instance = ec2.Instance(id=host_info["id"])
-            instance.start()
-            instance.wait_until_running()
+            if instance.state['Name'] != 'running':
+                if instance.state['Name'] != 'pending':
+                    instance.start()
+                # Increase wait timeout to 15 * 80 = 1200 seconds
+                # to work around failures in provisioning instances.
+                wait_config = {
+                    'Delay': 15,
+                    'MaxAttempts': 80
+                }
+                instance.wait_until_running(WaiterConfig=wait_config)
             # The OS boot up may take some time,
-            # so retry until the instance allows SSH connection.
-            self.wait_for_ssh_ports(host_info["private_ip"], host_info["id"], ssh_ports)
+            # so retry until the instance allows connection to either SSH or RPC.
+            self.wait_for_server_ports(host_info["private_ip"], host_info["id"], server_ports)
         except ClientError as e:
             logging.error(e)
-        finally:
-            sock.close()
+            if e.response.get("Error", {}).get("code") == "InsufficientInstanceCapacity":
+                raise YBOpsRecoverableError("Aws InsufficientInstanceCapacity error")
+            else:
+                raise YBOpsRuntimeError("Failed to start instance {}: {}".format(
+                    host_info["id"], e))
+
+    def update_user_data(self, args):
+        if args.boot_script is None:
+            return
+        new_user_data = ''
+        with open(args.boot_script, 'r') as script:
+            new_user_data = script.read()
+        instance = self.get_host_info(args)
+        logging.info("[app] Updating the user_data for the instance {}".format(instance['id']))
+        try:
+            ec2 = boto3.client('ec2', region_name=instance['region'])
+            ec2.modify_instance_attribute(InstanceId=instance['id'],
+                                          UserData={'Value': new_user_data})
+        except ClientError as e:
+            logging.exception('Failed to update user_data for {}'.format(args.search_pattern))
+            raise e
 
     def get_console_output(self, args):
         instance = self.get_host_info(args)
@@ -624,10 +714,16 @@ class AwsCloud(AbstractCloud):
                 'Name': "tag:{}".format(tag),
                 'Values': [value]
             })
+        filters.append({
+            'Name': 'status',
+            'Values': ['available']
+        })
         volume_ids = []
         describe_volumes_args = {
             'Filters': filters
         }
+        if args.volume_id:
+            describe_volumes_args.update('VolumeIds', args.volume_id)
         client = boto3.client('ec2', args.region)
         while True:
             response = client.describe_volumes(**describe_volumes_args)
@@ -635,6 +731,7 @@ class AwsCloud(AbstractCloud):
                 status = volume['State']
                 volume_id = volume['VolumeId']
                 present_tags = volume['Tags']
+                logging.info('[app] Volume {} is in state {}'.format(volume_id, status))
                 if status.lower() != 'available':
                     continue
                 tag_match_count = 0
@@ -654,3 +751,18 @@ class AwsCloud(AbstractCloud):
         for volume_id in volume_ids:
             logging.info('[app] Deleting volume {}'.format(volume_id))
             client.delete_volume(VolumeId=volume_id)
+
+    def normalize_instance_state(self, instance_state):
+        if instance_state:
+            instance_state = instance_state.lower()
+            if instance_state in ("pending", "rebooting"):
+                return InstanceState.STARTING
+            if instance_state in ("running"):
+                return InstanceState.RUNNING
+            if instance_state in ("stopping"):
+                return InstanceState.STOPPING
+            if instance_state in ("stopped"):
+                return InstanceState.STOPPED
+            if instance_state in ("terminated"):
+                return InstanceState.TERMINATED
+        return InstanceState.UNKNOWN

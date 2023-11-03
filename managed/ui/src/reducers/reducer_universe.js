@@ -59,10 +59,6 @@ import {
   EDIT_READ_REPLICA_RESPONSE,
   DELETE_READ_REPLICA,
   DELETE_READ_REPLICA_RESPONSE,
-  IMPORT_UNIVERSE,
-  IMPORT_UNIVERSE_RESPONSE,
-  IMPORT_UNIVERSE_RESET,
-  IMPORT_UNIVERSE_INIT,
   UPDATE_BACKUP_STATE,
   UPDATE_BACKUP_STATE_RESPONSE,
   SET_ALERTS_CONFIG,
@@ -113,10 +109,9 @@ const INITIAL_STATE = {
   createUniverseBackup: getInitialState({}),
   universeBackupList: getInitialState({}),
   healthCheck: getInitialState({}),
-  universeImport: getInitialState({}),
   alertsConfig: getInitialState({}),
   backupState: getInitialState({}),
-  supportedReleases: getInitialState({})
+  supportedReleases: getInitialState([])
 };
 
 export default function (state = INITIAL_STATE, action) {
@@ -170,7 +165,7 @@ export default function (state = INITIAL_STATE, action) {
     case FETCH_UNIVERSE_INFO_RESPONSE:
       return setPromiseResponse(state, 'currentUniverse', action);
     case FETCH_SUPPORTED_RELEASES:
-      return setLoadingState(state, 'supportedReleases', {});
+      return setLoadingState(state, 'supportedReleases', []);
     case FETCH_SUPPORTED_RELEASES_RESPONSE:
       return setPromiseResponse(state, 'supportedReleases', action);
     case RESET_UNIVERSE_INFO:
@@ -248,7 +243,7 @@ export default function (state = INITIAL_STATE, action) {
       return { ...state, error: null, rollingUpgrade: getInitialState({}) };
 
     // Universe I/O Metrics Operations
-    case SET_UNIVERSE_METRICS:
+    case SET_UNIVERSE_METRICS: {
       const currentUniverseList = _.clone(state.universeList.data, true);
       if (isNonEmptyObject(action.payload.data.tserver_rpcs_per_sec_by_universe)) {
         const universeReadWriteMetricList =
@@ -268,16 +263,17 @@ export default function (state = INITIAL_STATE, action) {
           });
       }
       return setSuccessState(state, 'universeList', currentUniverseList);
-
+    }
     case SET_PLACEMENT_STATUS:
       return { ...state, currentPlacementStatus: action.payload };
-    case RESET_UNIVERSE_CONFIGURATION:
+    case RESET_UNIVERSE_CONFIGURATION: {
       return {
         ...state,
         currentPlacementStatus: null,
         universeResourceTemplate: getInitialState({}),
         universeConfigTemplate: getInitialState({})
       };
+    }
     case FETCH_UNIVERSE_METADATA:
       return { ...state, fetchUniverseMetadata: true };
 
@@ -304,15 +300,6 @@ export default function (state = INITIAL_STATE, action) {
     case GET_HEALTH_CHECK_RESPONSE:
       return setPromiseResponse(state, 'healthCheck', action);
 
-    // Universe import
-    case IMPORT_UNIVERSE:
-      return setLoadingState(state, 'universeImport', []);
-    case IMPORT_UNIVERSE_INIT:
-      return setLoadingState(state, 'universeImport', []);
-    case IMPORT_UNIVERSE_RESET:
-      return { ...state, universeImport: getInitialState([]) };
-    case IMPORT_UNIVERSE_RESPONSE:
-      return setPromiseResponse(state, 'universeImport', action);
     case SET_ALERTS_CONFIG:
       return { ...state, alertsConfig: getInitialState([]) };
     case SET_ALERTS_CONFIG_RESPONSE:

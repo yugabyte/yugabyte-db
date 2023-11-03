@@ -29,14 +29,13 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_STOPWATCH_H
-#define YB_UTIL_STOPWATCH_H
+#pragma once
 
 #include <sys/resource.h>
 #include <sys/time.h>
 #include <time.h>
 #include <string>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #if defined(__APPLE__)
 #include <mach/clock.h>
 #include <mach/mach.h>
@@ -344,7 +343,7 @@ class LogTiming {
   const char *file_;
   const int line_;
   const google::LogSeverity severity_;
-  const string prefix_;
+  const std::string prefix_;
   const std::string description_;
   const int64_t max_expected_millis_;
   const bool should_print_;
@@ -366,5 +365,3 @@ class LogTiming {
 
 } // namespace sw_internal
 } // namespace yb
-
-#endif  // YB_UTIL_STOPWATCH_H

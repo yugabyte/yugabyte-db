@@ -1,7 +1,7 @@
 ---
-title: Table Partitioning
-linkTitle: Table Partitioning
-description: Table Partitioning in YSQL
+title: Table partitioning
+linkTitle: Table partitioning
+description: Table partitioning in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   stable:
@@ -13,11 +13,13 @@ type: docs
 
 This section describes how to partition tables in YugabyteDB using YSQL.
 
+{{% explore-setup-single %}}
+
 ## Overview
 
 Partitioning is another term for physically dividing large tables in YugabyteDB into smaller, more manageable tables to improve performance. Typically, tables with columns containing timestamps are subject to partitioning because of the historical and predictable nature of their data.
 
-Since partitioned tables do not appear nor act differently from the original table, applications accessing the database are not always aware of the fact that partitioning has taken place.
+Because partitioned tables do not appear nor act differently from the original table, applications accessing the database are not always aware of the fact that partitioning has taken place.
 
 YSQL supports the following types of partitioning:
 
@@ -25,9 +27,9 @@ YSQL supports the following types of partitioning:
 - List partitioning, when a table is partitioned via listing key values to appear in each partition.
 - Hash partitioning, when a table is partitioned by specifying a modulus and remainder for each partition.
 
-For supplementary information on partitioning, see [Row-Level Geo-Partitioning](../../../multi-region-deployments/row-level-geo-partitioning/).
+For supplementary information on partitioning, see [Row-level geo-partitioning](../../../multi-region-deployments/row-level-geo-partitioning/).
 
-## Declarative Table Partitioning
+## Declarative table partitioning
 
 YSQL allows you to specify how exactly to divide a table. You provide a partitioning method and partition key consisting of a list of columns or expressions. The divided table is called a partitioned table, and the resulting tables are called partitions. When you insert rows into a partitioned table, they are redirected to a partition depending on the value of the partition key. You can also directly insert rows into the partition table itself, and those rows can be fetched by querying the parent table.
 
@@ -87,8 +89,7 @@ CREATE TABLE order_changes_2021_01 PARTITION OF order_changes
   FOR VALUES FROM ('2021-01-01') TO ('2021-02-01');
 ```
 
-Partitioning ranges are inclusive at the lower ( `FROM` ) bound and exclusive at the upper ( `TO` ) bound.
-Each month range in the preceding examples includes the start of the month, but does not include the start of the following month.
+Partitioning ranges are inclusive at the lower ( `FROM` ) bound and exclusive at the upper ( `TO` ) bound. Each month range in the preceding examples includes the start of the month, but does not include the start of the following month.
 
 To create a new partition that contains only the rows that don't match the specified partitions, add a default partition as follows:
 
@@ -104,8 +105,11 @@ yugabyte=# CREATE INDEX ON order_changes (change_date);
 
 This automatically creates indexes on each partition, as demonstrated by the following output:
 
-```output
+```sql
 yugabyte=# \d order_changes_2019_02
+```
+
+```output
         Table "public.order_changes_2019_02"
    Column    | Type | Collation | Nullable | Default
 -------------+------+-----------+----------+---------
@@ -115,10 +119,13 @@ yugabyte=# \d order_changes_2019_02
 Partition of: order_changes FOR VALUES FROM ('2019-02-01') TO ('2019-03-01')
 Indexes:
     "order_changes_2019_02_change_date_idx" lsm (change_date HASH)
+```
 
-...
-
+```sql
 yugabyte=# \d order_changes_2021_01
+```
+
+```output
         Table "public.order_changes_2021_01"
    Column    | Type | Collation | Nullable | Default
 -------------+------+-----------+----------+---------
@@ -177,7 +184,7 @@ SELECT count(*) FROM order_changes WHERE change_date >= DATE '2020-01-01';
 
 If the `order_changes` table is partitioned by `change_date`, there is a big chance that only a subset of partitions needs to be queried. When enabled, both partition pruning and constraint exclusion can provide significant performance improvements for such queries by filtering out partitions that do not satisfy the criteria.
 
-Even though partition pruning and constraint exclusion target the same goal, the underlying mechanisms are different. Specifically, constraint exclusion is applied during query planning, and therefore only works if the `WHERE` clause contains constants or externally supplied parameters. For example, a comparison against a non-immutable function such as `CURRENT_TIMESTAMP` cannot be optimized, since the planner cannot know which child table the function's value might fall into at run time. On the other hand, partition pruning is applied during query execution, and therefore can be more flexible. However, it is only used for `SELECT` queries. Updates can only benefit from constraint exclusion.
+Even though partition pruning and constraint exclusion target the same goal, the underlying mechanisms are different. Specifically, constraint exclusion is applied during query planning, and therefore only works if the `WHERE` clause contains constants or externally supplied parameters. For example, a comparison against a non-immutable function such as `CURRENT_TIMESTAMP` cannot be optimized, because the planner cannot know which child table the function's value might fall into at run time. On the other hand, partition pruning is applied during query execution, and therefore can be more flexible. However, it is only used for `SELECT` queries. Updates can only benefit from constraint exclusion.
 
 Both optimizations are enabled by default, which is the recommended setting for the majority of cases. However, if you know for certain that one of your queries will have to scan all the partitions, you can consider disabling the optimizations for that query:
 
@@ -189,4 +196,4 @@ SELECT count(*) FROM order_changes WHERE change_date >= DATE '2019-01-01';
 
 To re-enable partition pruning, set the `enable_partition_pruning` setting to `on`.
 
-For constraint exclusion, the recommended (and default) setting is neither `off` nor `on`, but rather an intermediate value `partition`, which means that it’s applied only to queries that are executed on partitioned tables.
+For constraint exclusion, the recommended (and default) setting is neither `off` nor `on`, but rather an intermediate value `partition`, which means that it's applied only to queries that are executed on partitioned tables.

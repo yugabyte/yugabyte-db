@@ -20,8 +20,6 @@
 namespace yb {
 namespace ql {
 
-using client::YBColumnSpec;
-
 Status Executor::PTUMinusToPB(const PTOperator1 *op_pt, QLExpressionPB *op_pb) {
   return PTUMinusToPB(op_pt, op_pb->mutable_value());
 }
@@ -38,7 +36,7 @@ Status Executor::PTUMinusToPB(const PTOperator1 *op_pt, QLValuePB *const_pb) {
 }
 
 Status Executor::PTJsonOperatorToPB(const PTJsonOperator::SharedPtr& json_pt,
-                                            QLJsonOperationPB *op_pb) {
+                                    QLJsonOperationPB *op_pb) {
   switch (json_pt->json_operator()) {
     case JsonOperator::JSON_TEXT:
       op_pb->set_json_operator(JsonOperatorPB::JSON_TEXT);

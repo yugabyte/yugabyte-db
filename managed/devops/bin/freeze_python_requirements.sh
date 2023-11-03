@@ -32,16 +32,13 @@ fi
 delete_virtualenv
 activate_virtualenv
 
-if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "0" ]]; then
-  # looks like there is some issue with setuptools and virtualenv on python2.
-  # https://github.com/pypa/virtualenv/issues/1493, adding this requirement
-  pip_install "setuptools<45"
-fi
-
 cd "$yb_devops_home"
 
 log "There should be no pre-installed Python modules in the virtualenv"
 ( set -x; run_pip list )
+
+log "Upgrading pip to latest version"
+(set -x; run_pip install --upgrade pip)
 
 log "Installing Python modules according to the ${REQUIREMENTS_FILE_NAME} file"
 ( set -x; run_pip install -r "${REQUIREMENTS_FILE_NAME}" )

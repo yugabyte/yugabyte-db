@@ -37,6 +37,8 @@
 #include <sys/time.h>
 #include <sys/types.h>
 
+#include "yb/util/signal_util.h"
+
 #if defined(__linux__)
 #include <sys/prctl.h>
 #endif // defined(__linux__)
@@ -109,8 +111,11 @@ namespace yb {
 
 using std::endl;
 using std::map;
+using std::vector;
 using std::shared_ptr;
 using std::stringstream;
+using std::string;
+using std::vector;
 using strings::Substitute;
 
 using namespace std::placeholders;
@@ -147,43 +152,64 @@ uint64_t GetInVoluntaryContextSwitches() {
 
 class ThreadCategoryTracker {
  public:
-  ThreadCategoryTracker(const string& name, const scoped_refptr<MetricEntity> &metrics) :
-      name_(name), metrics_(metrics) {}
+  explicit ThreadCategoryTracker(const string& name) : name_(std::move(name)) {}
 
   void IncrementCategory(const string& category);
   void DecrementCategory(const string& category);
-
-  scoped_refptr<AtomicGauge<uint64>> FindOrCreateGauge(const string& category);
+  void RegisterMetricEntity(const scoped_refptr<MetricEntity> &metric_entity);
+  void RegisterGaugeForAllMetricEntities(const string& category);
 
  private:
+  uint64 GetCategory(const string& category);
   string name_;
-  scoped_refptr<MetricEntity> metrics_;
-  map<string, scoped_refptr<AtomicGauge<uint64>>> gauges_;
+  Mutex lock_;
+  map<string, std::unique_ptr<GaugePrototype<uint64>>> gauge_protos_;
+  map<string, uint64_t> metrics_;
+  vector<scoped_refptr<MetricEntity>> metric_entities_;
 };
 
+uint64 ThreadCategoryTracker::GetCategory(const string& category) {
+  MutexLock l(lock_);
+  return metrics_[category];
+}
+
+void ThreadCategoryTracker::RegisterMetricEntity(const scoped_refptr<MetricEntity> &metric_entity) {
+  MutexLock l(lock_);
+  for (const auto& [category, gauge_proto] : gauge_protos_) {
+    gauge_proto->InstantiateFunctionGauge(metric_entity,
+      Bind(&ThreadCategoryTracker::GetCategory, Unretained(this), category));
+  }
+  metric_entities_.push_back(metric_entity);
+}
+
 void ThreadCategoryTracker::IncrementCategory(const string& category) {
-  auto gauge = FindOrCreateGauge(category);
-  gauge->Increment();
+  MutexLock l(lock_);
+  RegisterGaugeForAllMetricEntities(category);
+  metrics_[category]++;
 }
 
 void ThreadCategoryTracker::DecrementCategory(const string& category) {
-  auto gauge = FindOrCreateGauge(category);
-  gauge->Decrement();
+  MutexLock l(lock_);
+  RegisterGaugeForAllMetricEntities(category);
+  metrics_[category]--;
 }
 
-scoped_refptr<AtomicGauge<uint64>> ThreadCategoryTracker::FindOrCreateGauge(
-    const string& category) {
-  if (gauges_.find(category) == gauges_.end()) {
+void ThreadCategoryTracker::RegisterGaugeForAllMetricEntities(const string& category) {
+  if (gauge_protos_.find(category) == gauge_protos_.end()) {
     string id = name_ + "_" + category;
     EscapeMetricNameForPrometheus(&id);
     const string description = id + " metric in ThreadCategoryTracker";
-    std::unique_ptr<GaugePrototype<uint64>> gauge = std::make_unique<OwningGaugePrototype<uint64>>(
-        "server", id, description, yb::MetricUnit::kThreads, description,
-        yb::MetricLevel::kInfo, yb::EXPOSE_AS_COUNTER);
-    gauges_[category] =
-        metrics_->FindOrCreateGauge(std::move(gauge), static_cast<uint64>(0) /* initial_value */);
+    std::unique_ptr<GaugePrototype<uint64>> gauge_proto =
+      std::make_unique<OwningGaugePrototype<uint64>>( "server", id, description,
+      yb::MetricUnit::kThreads, description, yb::MetricLevel::kInfo, yb::EXPOSE_AS_COUNTER);
+
+    for (auto& metric_entity : metric_entities_) {
+      gauge_proto->InstantiateFunctionGauge(metric_entity,
+        Bind(&ThreadCategoryTracker::GetCategory, Unretained(this), category));
+    }
+    gauge_protos_[category] = std::move(gauge_proto);
+    metrics_[category] = static_cast<uint64>(0);
   }
-  return gauges_[category];
 }
 
 // A singleton class that tracks all live threads, and groups them together for easy
@@ -197,6 +223,8 @@ class ThreadMgr {
     cds::Initialize();
     cds::gc::dhp::GarbageCollector::construct();
     cds::threading::Manager::attachThread();
+    started_category_tracker_ = std::make_unique<ThreadCategoryTracker>("threads_started");
+    running_category_tracker_ = std::make_unique<ThreadCategoryTracker>("threads_running");
   }
 
   ~ThreadMgr() {
@@ -293,8 +321,8 @@ Status ThreadMgr::StartInstrumentation(const scoped_refptr<MetricEntity>& metric
                                        WebCallbackRegistry* web) {
   MutexLock l(lock_);
   metrics_enabled_ = true;
-  started_category_tracker_ = std::make_unique<ThreadCategoryTracker>("threads_started", metrics);
-  running_category_tracker_ = std::make_unique<ThreadCategoryTracker>("threads_running", metrics);
+  started_category_tracker_->RegisterMetricEntity(metrics);
+  running_category_tracker_->RegisterMetricEntity(metrics);
 
   // Use function gauges here so that we can register a unique copy of these metrics in
   // multiple tservers, even though the ThreadMgr is itself a singleton.
@@ -555,7 +583,38 @@ void InitThreadingInternal() {
   thread_manager = std::make_shared<ThreadMgr>();
 }
 
+// Thread local prefix used in tests to display the daemon name.
+std::string* TEST_GetThreadFormattedLogPrefix() {
+  BLOCK_STATIC_THREAD_LOCAL(std::string, log_prefix);
+  return log_prefix;
+}
+
+std::string* TEST_GetThreadUnformattedLogPrefix() {
+  BLOCK_STATIC_THREAD_LOCAL(std::string, log_prefix_unformatted);
+  return log_prefix_unformatted;
+}
+
+void TEST_FormatAndSetThreadLogPrefix(const std::string& new_prefix) {
+  *TEST_GetThreadUnformattedLogPrefix() = new_prefix;
+  *TEST_GetThreadFormattedLogPrefix() =
+      new_prefix.empty() ? new_prefix : Format("[$0] ", new_prefix);
+}
+
 } // anonymous namespace
+
+const char* TEST_GetThreadLogPrefix() {
+  return TEST_GetThreadFormattedLogPrefix()->c_str();
+}
+
+TEST_SetThreadPrefixScoped::TEST_SetThreadPrefixScoped(const std::string& prefix)
+    : old_prefix_(*TEST_GetThreadUnformattedLogPrefix()) {
+  TEST_FormatAndSetThreadLogPrefix(
+      Format("$0$1$2", old_prefix_, old_prefix_.empty() ? "" : "-", prefix));
+}
+
+TEST_SetThreadPrefixScoped::~TEST_SetThreadPrefixScoped() {
+  TEST_FormatAndSetThreadLogPrefix(old_prefix_);
+}
 
 void SetThreadName(const std::string& name) {
 #if defined(__linux__)
@@ -659,6 +718,16 @@ Status ThreadJoiner::Join() {
   return STATUS_FORMAT(Aborted, "Timed out after $0 joining on $1", waited, thread_->name_);
 }
 
+Thread::Thread(std::string category, std::string name, ThreadFunctor functor)
+    : thread_(0),
+      category_(std::move(category)),
+      name_(std::move(name)),
+      TEST_log_prefix_(*TEST_GetThreadUnformattedLogPrefix()),
+      tid_(CHILD_WAITING_TID),
+      functor_(std::move(functor)),
+      done_(1),
+      joinable_(false) {}
+
 Thread::~Thread() {
   if (joinable_) {
     int ret = pthread_detach(thread_);
@@ -693,7 +762,14 @@ Status Thread::StartThread(const std::string& category, const std::string& name,
 
   {
     SCOPED_LOG_SLOW_EXECUTION_PREFIX(WARNING, 500 /* ms */, log_prefix, "creating pthread");
+
+    // Block stack trace collection while we create a thread. This also prevents stack trace
+    // collection in the new thread while it is being started since it will inherit our signal
+    // masks. SuperviseThread function will unblock the signal as soon as thread begins to run.
+    auto old_signal = VERIFY_RESULT(ThreadSignalMaskBlock({GetStackTraceSignal()}));
     int ret = pthread_create(&t->thread_, NULL, &Thread::SuperviseThread, t.get());
+    RETURN_NOT_OK(ThreadSignalMaskRestore(old_signal));
+
     if (ret) {
       return STATUS(RuntimeError, "Could not create thread", Errno(ret));
     }
@@ -733,12 +809,15 @@ Status Thread::StartThread(const std::string& category, const std::string& name,
 }
 
 void* Thread::SuperviseThread(void* arg) {
+  CHECK_OK(ThreadSignalMaskUnblock({GetStackTraceSignal()}));
+
   Thread* t = static_cast<Thread*>(arg);
   int64_t system_tid = Thread::CurrentThreadId();
   if (system_tid == -1) {
     string error_msg = ErrnoToString(errno);
     YB_LOG_EVERY_N(INFO, 100) << "Could not determine thread ID: " << error_msg;
   }
+  TEST_FormatAndSetThreadLogPrefix(t->TEST_log_prefix_);
   string name = strings::Substitute("$0-$1", t->name(), system_tid);
 
   // Take an additional reference to the thread manager, which we'll need below.
@@ -801,6 +880,9 @@ void Thread::FinishThread(void* arg) {
 
   VLOG(2) << "Ended thread " << t->tid() << " - "
           << t->category() << ":" << t->name();
+
+  // Its no longer safe to collect stack traces in this thread.
+  CHECK_OK(ThreadSignalMaskBlock({GetStackTraceSignal()}));
 }
 
 CDSAttacher::CDSAttacher() {

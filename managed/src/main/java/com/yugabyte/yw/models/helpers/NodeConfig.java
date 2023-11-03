@@ -2,16 +2,8 @@
 
 package com.yugabyte.yw.models.helpers;
 
-import static com.yugabyte.yw.models.helpers.NodeConfigValidator.PredicateType.GREATER_EQUAL;
-import static com.yugabyte.yw.models.helpers.NodeConfigValidator.PredicateType.JSON_STRINGS_EQUAL;
-import static com.yugabyte.yw.models.helpers.NodeConfigValidator.PredicateType.MIN_VERSION;
-import static com.yugabyte.yw.models.helpers.NodeConfigValidator.PredicateType.STRING_EQUALS;
-
-import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.yugabyte.yw.models.Provider;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-import java.util.function.Predicate;
 import javax.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -19,11 +11,12 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 
 /** Pair of node configuration type and its value. */
 @Data
-@NoArgsConstructor
 @AllArgsConstructor
+@NoArgsConstructor
 @ApiModel(description = "A node configuration.")
 public class NodeConfig {
   @NotNull
@@ -31,57 +24,140 @@ public class NodeConfig {
   public Type type;
 
   @NotNull
-  @ApiModelProperty(value = "unlimited", required = true)
+  @ApiModelProperty(value = "true")
   @EqualsAndHashCode.Exclude
   public String value;
 
-  /**
-   * Checks if the value is accepted according to the predicate in the type.
-   *
-   * @return true if it is accepted or configured, else false.
-   */
-  @JsonIgnore
-  public boolean isConfigured(Provider provider) {
-    return type.isConfigured(PredicateParam.builder().value(value).provider(provider).build());
-  }
-
-  /** Parameter to the predicate to validate a node configuration. */
   @Builder
   @Getter
-  public static class PredicateParam {
+  @ToString
+  @ApiModel(description = "Validation result of a node config")
+  public static class ValidationResult {
+    private Type type;
+    private boolean isValid;
+    private boolean isRequired;
+    private String description;
     private String value;
-    private Provider provider;
   }
 
-  /** Type of the configuration. The predicate can be minimum value comparison like ulimit. */
+  /**
+   * Type of the configuration. The predicate can be minimum value comparison like ulimit. By
+   * default, all the types are enabled in all modes if no specific available type is specified.
+   */
+  @Getter
   public enum Type {
-    NTP_SERVICE_STATUS(STRING_EQUALS.withPathSuffix("ntp_service")),
-    PROMETHEUS_SPACE(GREATER_EQUAL.withPathSuffix("min_prometheus_space_mb")),
-    MOUNT_POINTS(JSON_STRINGS_EQUAL.withPathSuffix("mount_points")),
-    USER(STRING_EQUALS.withPathSuffix("user")),
-    USER_GROUP(STRING_EQUALS.withPathSuffix("user_group")),
-    HOME_DIR_SPACE(GREATER_EQUAL.withPathSuffix("min_home_dir_space_mb")),
-    RAM_SIZE(GREATER_EQUAL.withPathSuffix("min_ram_size_mb")),
-    INTERNET_CONNECTION(STRING_EQUALS.withPathSuffix("internet_connection")),
-    CPU_CORES(GREATER_EQUAL.withPathSuffix("min_cpu_cores")),
-    PROMETHEUS_NO_NODE_EXPORTER(STRING_EQUALS.withPathSuffix("prometheus_no_node_exporter")),
-    TMP_DIR_SPACE(GREATER_EQUAL.withPathSuffix("min_tmp_dir_space_mb")),
-    PAM_LIMITS_WRITABLE(STRING_EQUALS.withPathSuffix("pam_limits_writable")),
-    PORTS(JSON_STRINGS_EQUAL.withPathSuffix("ports")),
-    PYTHON_VERSION(MIN_VERSION.withPathSuffix("min_python_version"));
+    NTP_SERVICE_STATUS("Running status of NTP service"),
 
-    // Predicate to test if a value is acceptable.
-    private final Predicate<PredicateParam> predicate;
+    PROMETHEUS_SPACE("Disk space in MB for prometheus"),
 
-    private Type(Predicate<PredicateParam> predicate) {
-      this.predicate = predicate;
+    MOUNT_POINTS_WRITABLE("Mount points are writable"),
+
+    USER("Existence of user"),
+
+    USER_GROUP("Existence of user group"),
+
+    HOME_DIR_SPACE("Disk space in MB for home directory"),
+
+    HOME_DIR_EXISTS("Home directory exists"),
+
+    RAM_SIZE("Total RAM size in MB"),
+
+    INTERNET_CONNECTION("Internet connectivity"),
+
+    CPU_CORES("Number of CPU cores"),
+
+    PROMETHEUS_NO_NODE_EXPORTER("No running node exporter"),
+
+    TMP_DIR_SPACE("Temp directory disk space in MB"),
+
+    PAM_LIMITS_WRITABLE("PAM limits writable"),
+
+    PYTHON_VERSION("Min python version"),
+
+    MOUNT_POINTS_VOLUME("Disk space in MB for mount points"),
+
+    CHRONYD_RUNNING("Chronyd running"),
+
+    SSH_PORT("SSH port is open"),
+
+    SUDO_ACCESS("Sudo access available"),
+
+    OPENSSL("OpenSSL package is installed"),
+
+    POLICYCOREUTILS("Policycoreutils package is installed"),
+
+    RSYNC("Rsync package is installed"),
+
+    XXHASH("Xxhash package is installed"),
+
+    LIBATOMIC1("Libatomic1 package is installed"),
+
+    LIBNCURSES6("Libncurses6 package is installed"),
+
+    LIBATOMIC("Libatomic package is installed"),
+
+    AZCOPY("Azcopy binary is installed"),
+
+    CHRONYC("Chronyc binary is installed"),
+
+    GSUTIL("Gsutil binary is installed"),
+
+    S3CMD("S3cmd binary is installed"),
+
+    NODE_EXPORTER_RUNNING("Node exporter is running"),
+
+    NODE_EXPORTER_PORT("Node exporter is running on the correct port"),
+
+    SWAPPINESS("Swappiness of memory pages"),
+
+    ULIMIT_CORE("Maximum size of core files created"),
+
+    ULIMIT_OPEN_FILES("Maximum number of open file descriptors"),
+
+    ULIMIT_USER_PROCESSES("Maximum number of processes available to a single user"),
+
+    SYSTEMD_SUDOER_ENTRY("Systemd Sudoer entry"),
+
+    SSH_ACCESS("Ability to ssh into node as yugabyte user with key supplied in provider"),
+
+    NODE_AGENT_ACCESS("Reachability of node agent server"),
+
+    MASTER_HTTP_PORT("Master http port is open"),
+
+    MASTER_RPC_PORT("Master rpc port is open"),
+
+    TSERVER_HTTP_PORT("TServer http port is open"),
+
+    TSERVER_RPC_PORT("TServer rpc port is open"),
+
+    YB_CONTROLLER_HTTP_PORT("YbController http port is open"),
+
+    YB_CONTROLLER_RPC_PORT("YbController rpc port is open"),
+
+    REDIS_SERVER_HTTP_PORT("Redis server http port is open"),
+
+    REDIS_SERVER_RPC_PORT("Redis server rpc port is open"),
+
+    YCQL_SERVER_HTTP_PORT("YCQL server http port is open"),
+
+    YCQL_SERVER_RPC_PORT("YCQL server rpc port is open"),
+
+    YSQL_SERVER_HTTP_PORT("YSQL server http port is open"),
+
+    YSQL_SERVER_RPC_PORT("YSQL server rpc port is open"),
+
+    VM_MAX_MAP_COUNT("VM max memory map count");
+
+    private final String description;
+
+    private Type(String description) {
+      this.description = description;
     }
+  }
 
-    public boolean isConfigured(PredicateParam value) {
-      if (predicate == null) {
-        return true;
-      }
-      return predicate.test(value);
-    }
+  @Getter
+  public enum Operation {
+    PROVISION,
+    CONFIGURE
   }
 }

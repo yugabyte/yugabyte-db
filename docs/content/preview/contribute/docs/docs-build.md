@@ -28,15 +28,18 @@ To run the docs site locally and edit the docs, you'll need:
 
 * [**Homebrew**](https://brew.sh) on macOS or Linux.
 
-* **Node.js** v16.x, installable in several ways:
+* [**Node.js**](https://nodejs.org/en/download/) LTS (16):
 
-  * From the [node.js website](https://nodejs.org/en/download/)
   * Using Homebrew: `brew install node@16`
-  * Using NVM: `nvm use 16`
+  * Using NVM: `nvm install 16`
 
-* **Hugo**: `brew install hugo` gets you the latest version.
+* **Hugo**: `brew install hugo` installs the latest version.
 
-* **Go**: `brew install go` gets you the latest version.
+* **Go**: `brew install go` installs the latest version.
+
+* **Python** (version 3.10 or earlier): You need `python` to be available somewhere in your shell path.
+
+    Recent versions of macOS have only a `python3` executable, as does the Homebrew install. You can use [pyenv](https://github.com/pyenv/pyenv) to manage multiple versions of python on your system. Make sure to point to Python version 3.10 or earlier.
 
 * **A GitHub account**.
 
@@ -56,13 +59,15 @@ Create the folder with `mkdir ~/.hugo-cache`, then start a new terminal session.
 
 ## Fork the repository
 
-1. To make the commands in this section work correctly when you paste them, set an environment variable to store your GitHub username.
+1. To make the commands in this section work correctly when you paste them, set an environment variable to store your GitHub username. (Replace `your-github-id` here with your own GitHub ID.)
 
     ```sh
     export GITHUB_ID=your-github-id
     ```
 
-1. Fork the `yugabyte-db` GitHub repository and create a local clone of your fork with a command like this:
+1. Fork the [`yugabyte-db` GitHub repository](https://github.com/yugabyte/yugabyte-db/).
+
+1. Create a local clone of your fork:
 
     ```sh
     git clone https://github.com/$GITHUB_ID/yugabyte-db.git
@@ -93,8 +98,9 @@ To get the docs site running in a live-reload server on your local machine, run 
 ```sh
 cd yugabyte-db/docs  # Make sure this is YOUR fork.
 npm ci               # Only necessary the first time you clone the repo.
+hugo mod get -u      # Installs Hugo as a dependency of the site.
 hugo mod clean       # Only necessary the first time you clone the repo.
-npm start            # Build the docs and launch the live-reload server.
+npm start            # Do this every time to build the docs and launch the live-reload server.
 ```
 
 The live-reload server runs at <http://localhost:1313/> unless port 1313 is already in use. Check the output from the `npm start` command to verify the port.
@@ -120,8 +126,7 @@ When the build is done, the `yugabyte-db/docs/public` folder contains a full HTM
 
 * If the live-reload server (`npm start`) is returning a Hugo error &mdash; say, about shortcodes &mdash; re-run `hugo mod clean`, followed by `npm start`. Also, be sure you've followed the instructions on this page to [configure Hugo](#configure-hugo).
 
-<!-- I think Docsy fixed this one! -->
-<!-- * If the live-reload site looks odd, stop the server with Ctrl-C and re-run `npm start`. -->
+* Make sure your tools are up-to-date. Run `brew update` periodically, and if it reports anything out of date, run `brew upgrade`.
 
 ## Next steps
 

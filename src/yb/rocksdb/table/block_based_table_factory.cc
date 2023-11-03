@@ -38,6 +38,8 @@
 
 #include "yb/util/logging.h"
 
+using std::unique_ptr;
+
 namespace rocksdb {
 
 BlockBasedTableFactory::BlockBasedTableFactory(

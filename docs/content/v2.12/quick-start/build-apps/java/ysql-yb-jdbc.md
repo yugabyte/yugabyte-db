@@ -2,7 +2,7 @@
 title: Build a Java application that uses YSQL
 headerTitle: Build a Java application
 linkTitle: Java
-description: Build a sample Java application with the Yugabyte JDBC Driver and use the YSQL API to connect to and interact with YugabyteDB.
+description: Build a sample Java application with the YugabyteDB JDBC Driver and use the YSQL API to connect to and interact with YugabyteDB.
 menu:
   v2.12:
     parent: build-apps
@@ -96,7 +96,7 @@ This tutorial assumes that:
     </properties>
     ```
 
-1. Add the following dependencies for the driver HikariPool within the `<dependencies>` element in `pom.xml`.
+1. Add the following dependencies for the driver HikariPool in the `<dependencies>` element in `pom.xml`.
 
     ```xml
     <dependency>
@@ -123,7 +123,7 @@ This tutorial assumes that:
 
 ## Create the sample Java application
 
-You’ll create two java applications, `UniformLoadBalance` and `TopologyAwareLoadBalance`. In each, you can create connections in two ways: using the `DriverManager.getConnection()` API, or using `YBClusterAwareDataSource` and `HikariPool`. This example shows both approaches.
+You'll create two java applications, `UniformLoadBalance` and `TopologyAwareLoadBalance`. In each, you can create connections in two ways: using the `DriverManager.getConnection()` API, or using `YBClusterAwareDataSource` and `HikariPool`. This example shows both approaches.
 
 ### Uniform load balancing
 
@@ -206,7 +206,7 @@ You’ll create two java applications, `UniformLoadBalance` and `TopologyAwareLo
         config.validate();
         HikariDataSource hikariDataSource = new HikariDataSource(config);
 
-        System.out.println("Wait for some time for Hikari Pool to setup and create the connections...");
+        System.out.println("Wait for some time for Hikari Pool to set up and create the connections...");
         System.out.println("You can verify the load balancing by visiting http://<host>:13000/rpcz as discussed before.");
         System.out.println("Enter a integer to continue once verified:");
         int x = new Scanner(System.in).nextInt();
@@ -318,7 +318,7 @@ When using `DriverManager.getConnection()`, you need to include the `load-balanc
         config.validate();
         HikariDataSource hikariDataSource = new HikariDataSource(config);
 
-        System.out.println("Wait for some time for Hikari Pool to setup and create the connections...");
+        System.out.println("Wait for some time for Hikari Pool to set up and create the connections...");
         System.out.println("You can verify the load balancing by visiting http://<host>:13000/rpcz as discussed before.");
         System.out.println("Enter a integer to continue once verified:");
         int x = new Scanner(System.in).nextInt();
@@ -343,4 +343,4 @@ When using `DriverManager.getConnection()`, you need to include the `load-balanc
 
 ## Explore the driver
 
-Learn more about the [Yugabyte JDBC driver](/preview/integrations/jdbc-driver) and explore the [demo apps](https://github.com/yugabyte/pgjdbc/tree/master/examples) to understand the driver's features in depth.
+Learn more about the [YugabyteDB JDBC driver](/preview/reference/drivers/java/yugabyte-jdbc-reference/) and explore the [demo apps](https://github.com/yugabyte/pgjdbc/tree/master/examples) to understand the driver's features in depth.

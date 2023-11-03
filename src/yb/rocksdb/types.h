@@ -18,8 +18,7 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_TYPES_H
-#define YB_ROCKSDB_TYPES_H
+#pragma once
 
 #include <stdint.h>
 
@@ -64,5 +63,3 @@ inline std::string KeyValueEncodingFormatToString(KeyValueEncodingFormat encodin
 }
 
 }  //  namespace rocksdb
-
-#endif // YB_ROCKSDB_TYPES_H

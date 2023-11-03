@@ -30,8 +30,7 @@
 // under the License.
 //
 // This module is internal to the client and not a public API.
-#ifndef YB_MASTER_MASTER_RPC_H
-#define YB_MASTER_MASTER_RPC_H
+#pragma once
 
 #include <stdint.h>
 #include <string.h>
@@ -45,7 +44,7 @@
 #include <boost/container/small_vector.hpp>
 #include <boost/optional/optional_fwd.hpp>
 #include <boost/version.hpp>
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 
 #include "yb/gutil/callback.h"
 #include "yb/gutil/integral_types.h"
@@ -104,12 +103,12 @@ class GetLeaderMasterRpc : public rpc::Rpc {
 
   ~GetLeaderMasterRpc();
 
-  void SendRpc() override;
+  void SendRpc() override EXCLUDES(lock_);
 
   std::string ToString() const override;
 
  private:
-  void Finished(const Status& status) override;
+  void Finished(const Status& status) override EXCLUDES(lock_);
 
   // Invoked when a response comes back from a Master with address
   // 'node_addr'.
@@ -119,7 +118,7 @@ class GetLeaderMasterRpc : public rpc::Rpc {
   // of the Masters.
   void GetMasterRegistrationRpcCbForNode(
       size_t idx, const Status& status, const std::shared_ptr<rpc::RpcCommand>& self,
-      rpc::Rpcs::Handle handle);
+      rpc::Rpcs::Handle handle) EXCLUDES(lock_);
 
   LeaderCallback user_cb_;
   std::vector<HostPort> addrs_;
@@ -157,5 +156,3 @@ class GetLeaderMasterRpc : public rpc::Rpc {
 
 } // namespace master
 } // namespace yb
-
-#endif /* YB_MASTER_MASTER_RPC_H */

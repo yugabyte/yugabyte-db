@@ -1,7 +1,7 @@
 ---
 title: Enable Yugabyte Platform authentication via LDAP
 headerTitle: Enable Yugabyte Platform authentication via LDAP
-description: Use LDAP to enable login to Yugabyte Platform.
+description: Use LDAP to enable log in to Yugabyte Platform.
 linkTitle: Authenticate with LDAP
 menu:
   v2.12_yugabyte-platform:
@@ -138,7 +138,7 @@ To enable LDAP authentication for Yugabyte Platform login, you can perform a num
 
   By default, if neither `ldap.enable_ldaps` or `ldap.enable_ldap_start_tls` is enabled, the connection will be unsecured.
 
-When configured, Yugabyte Platform users are able to login by specifying the common name of the user and the password to bind to the LDAP server.
+When configured, Yugabyte Platform users are able to log in by specifying the common name of the user and the password to bind to the LDAP server.
 
 For more information, see [Update a configuration key](https://yugabyte.stoplight.io/docs/yugabyte-platform/b3A6MTg5NDc2OTY-update-a-configuration-key).
 

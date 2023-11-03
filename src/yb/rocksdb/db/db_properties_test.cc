@@ -28,6 +28,8 @@
 #include "yb/rocksdb/perf_level.h"
 #include "yb/rocksdb/port/stack_trace.h"
 
+using std::unique_ptr;
+
 namespace rocksdb {
 
 class DBPropertiesTest : public DBTestBase {
@@ -35,7 +37,6 @@ class DBPropertiesTest : public DBTestBase {
   DBPropertiesTest() : DBTestBase("/db_properties_test") {}
 };
 
-#ifndef ROCKSDB_LITE
 TEST_F(DBPropertiesTest, Empty) {
   do {
     Options options;
@@ -372,7 +373,7 @@ TEST_F(DBPropertiesTest, ReadLatencyHistogramByLevel) {
   ASSERT_EQ(std::string::npos, prop.find("** Level 2 read latency histogram"));
   {
     unique_ptr<Iterator> iter(db_->NewIterator(ReadOptions()));
-    for (iter->Seek(Key(0)); iter->Valid(); iter->Next()) {
+    for (iter->Seek(Key(0)); ASSERT_RESULT(iter->CheckedValid()); iter->Next()) {
     }
   }
   ASSERT_TRUE(dbfull()->GetProperty("rocksdb.dbstats", &prop));
@@ -895,7 +896,6 @@ TEST_F(DBPropertiesTest, EstimatePendingCompBytes) {
       "rocksdb.estimate-pending-compaction-bytes", &int_num));
   ASSERT_EQ(int_num, 0U);
 }
-#endif  // ROCKSDB_LITE
 
 class CountingUserTblPropCollector : public TablePropertiesCollector {
  public:
@@ -988,7 +988,6 @@ class CountingDeleteTabPropCollectorFactory
   }
 };
 
-#ifndef ROCKSDB_LITE
 TEST_F(DBPropertiesTest, GetUserDefinedTableProperties) {
   Options options = CurrentOptions();
   options.level0_file_num_compaction_trigger = (1 << 30);
@@ -1028,7 +1027,6 @@ TEST_F(DBPropertiesTest, GetUserDefinedTableProperties) {
   ASSERT_OK(dbfull()->TEST_CompactRange(0, nullptr, nullptr));
   ASSERT_GT(collector_factory->num_created_, 0U);
 }
-#endif  // ROCKSDB_LITE
 
 TEST_F(DBPropertiesTest, UserDefinedTablePropertiesContext) {
   Options options = CurrentOptions();
@@ -1091,7 +1089,6 @@ TEST_F(DBPropertiesTest, UserDefinedTablePropertiesContext) {
   ASSERT_GT(collector_factory->num_created_, 0U);
 }
 
-#ifndef ROCKSDB_LITE
 TEST_F(DBPropertiesTest, TablePropertiesNeedCompactTest) {
   Random rnd(301);
 
@@ -1136,7 +1133,7 @@ TEST_F(DBPropertiesTest, TablePropertiesNeedCompactTest) {
     int c = 0;
     std::unique_ptr<Iterator> iter(db_->NewIterator(ReadOptions()));
     iter->Seek(Key(kMaxKey - 100));
-    while (iter->Valid() && iter->key().compare(Key(kMaxKey + 100)) < 0) {
+    while (ASSERT_RESULT(iter->CheckedValid()) && iter->key().compare(Key(kMaxKey + 100)) < 0) {
       iter->Next();
       ++c;
     }
@@ -1158,7 +1155,7 @@ TEST_F(DBPropertiesTest, TablePropertiesNeedCompactTest) {
     int c = 0;
     std::unique_ptr<Iterator> iter(db_->NewIterator(ReadOptions()));
     iter->Seek(Key(kMaxKey - 100));
-    while (iter->Valid() && iter->key().compare(Key(kMaxKey + 100)) < 0) {
+    while (ASSERT_RESULT(iter->CheckedValid()) && iter->key().compare(Key(kMaxKey + 100)) < 0) {
       iter->Next();
     }
     ASSERT_EQ(c, 0);
@@ -1212,7 +1209,7 @@ TEST_F(DBPropertiesTest, NeedCompactHintPersistentTest) {
     perf_context.Reset();
     int c = 0;
     std::unique_ptr<Iterator> iter(db_->NewIterator(ReadOptions()));
-    for (iter->Seek(Key(0)); iter->Valid(); iter->Next()) {
+    for (iter->Seek(Key(0)); ASSERT_RESULT(iter->CheckedValid()); iter->Next()) {
       c++;
     }
     ASSERT_EQ(c, 2);
@@ -1222,7 +1219,6 @@ TEST_F(DBPropertiesTest, NeedCompactHintPersistentTest) {
     SetPerfLevel(PerfLevel::kDisable);
   }
 }
-#endif  // ROCKSDB_LITE
 }  // namespace rocksdb
 
 int main(int argc, char** argv) {

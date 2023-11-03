@@ -34,8 +34,7 @@
 //
 // Memory arena for variable-length datatypes and STL collections.
 
-#ifndef YB_UTIL_MEMORY_ARENA_H_
-#define YB_UTIL_MEMORY_ARENA_H_
+#pragma once
 
 #include <atomic>
 #include <memory>
@@ -44,18 +43,22 @@
 #include <vector>
 
 #include <boost/signals2/dummy_mutex.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/logging-inl.h"
 #include "yb/gutil/macros.h"
 
 #include "yb/util/debug/lock_debug.h"
+#include "yb/util/enums.h"
 #include "yb/util/memory/arena_fwd.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/slice.h"
 
 namespace yb {
+
+YB_DEFINE_ENUM(ResetMode, (kKeepFirst)(kKeepLast));
+
 namespace internal {
 
 struct ThreadSafeArenaTraits {
@@ -168,6 +171,11 @@ class ArenaBase {
   template<class T, class... Args>
   T *NewObject(Args&&... args);
 
+  template<class T, class... Args>
+  T *NewArenaObject(Args&&... args) {
+    return NewObject<T>(this, std::forward<Args>(args)...);
+  }
+
   // Allocate shared_ptr object.
   template<class TObject, typename... TypeArgs>
   std::shared_ptr<TObject> AllocateShared(TypeArgs&&... args);
@@ -200,19 +208,32 @@ class ArenaBase {
     return static_cast<T*>(AllocateBytesAligned(size * sizeof(T), alignof(T)));
   }
 
+  template <class TObject, typename... Args>
+  TObject* CreateArray(size_t size, Args&&... args) {
+    auto result = AllocateArray<TObject>(size);
+    for (size_t idx = 0; idx != size; ++idx) {
+      new (result + idx) TObject(std::forward<Args>(args)...);
+    }
+    return result;
+  }
+
   // Removes all data from the arena. (Invalidates all pointers returned by
   // AddSlice and AllocateBytes). Does not cause memory allocation.
   // May reduce memory footprint, as it discards all allocated buffers but
-  // the last one.
+  // the one specified by mode.
   // Unless allocations exceed max_buffer_size, repetitive filling up and
   // resetting normally lead to quickly settling memory footprint and ceasing
   // buffer allocations, as the arena keeps reusing a single, large buffer.
-  void Reset();
+  void Reset(ResetMode mode);
 
   // Returns the memory footprint of this arena, in bytes, defined as a sum of
   // all buffer sizes. Always greater or equal to the total number of
   // bytes allocated out of the arena.
   size_t memory_footprint() const;
+
+  // Returns how many bytes are used by this arena. This excludes any empty space in the last
+  // component.
+  size_t UsedBytes();
 
  private:
   typedef typename Traits::mutex_type mutex_type;
@@ -253,6 +274,7 @@ class ArenaBase {
   typename Traits::template MakeAtomic<Component*>::type current_{nullptr};
   const size_t max_buffer_size_;
   size_t arena_footprint_ = 0;
+  Component* second_ = nullptr;
 
   // True if this Arena has already emitted a warning about surpassing
   // the global warning size threshold.
@@ -366,6 +388,8 @@ class ArenaComponent {
   size_t size() { return end() - begin(); }
   size_t full_size() { return end() - begin_of_this(); }
 
+  size_t free_bytes() { return end() - position_; }
+
   // Resets used memory of this component, destroys the rest of the component chain.
   // `allocator` should be the same as the one used to allocate memory for this component chain.
   void Reset(BufferAllocator* allocator) {
@@ -389,6 +413,16 @@ class ArenaComponent {
       Buffer buffer(current, size, allocator);
       current = next;
     }
+  }
+
+  ArenaComponent* next() const {
+    return next_;
+  }
+
+  ArenaComponent* SetNext(ArenaComponent* next) {
+    auto* result = next_;
+    next_ = next;
+    return result;
   }
 
  private:
@@ -454,11 +488,11 @@ std::shared_ptr<Result> ArenaMakeShared(
   return std::shared_ptr<Result>(arena, result);
 }
 
+std::shared_ptr<ThreadSafeArena> SharedArena();
+
 } // namespace yb
 
 template<class Traits>
 void* operator new(size_t bytes, yb::internal::ArenaBase<Traits>* arena) noexcept {
   return arena->AllocateBytesAligned(bytes, sizeof(void*));
 }
-
-#endif  // YB_UTIL_MEMORY_ARENA_H_

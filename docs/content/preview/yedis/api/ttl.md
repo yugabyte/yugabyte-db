@@ -14,7 +14,8 @@ type: docs
 
 ## Synopsis
 
-<b>`TTL key`</b><br>
+**`TTL key`**
+
 Returns the remaining time to live of a key that has a timeout, in seconds.
 
 ## Return value

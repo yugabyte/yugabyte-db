@@ -129,6 +129,10 @@ typedef enum DependencyType
  * this: they are protected by the existence of a physical file in the
  * tablespace.)
  *
+ * (f) a SHARED_DEPENDENCY_PROFILE entry means that the referenced object is
+ * a role that is mentioned in a pg_yb_role_profile row.  The referenced object
+ * must be a pg_authid entry.
+ *
  * SHARED_DEPENDENCY_INVALID is a value used as a parameter in internal
  * routines, and is not valid in the catalog itself.
  */
@@ -139,6 +143,7 @@ typedef enum SharedDependencyType
 	SHARED_DEPENDENCY_ACL = 'a',
 	SHARED_DEPENDENCY_POLICY = 'r',
 	SHARED_DEPENDENCY_TABLESPACE = 't',
+	SHARED_DEPENDENCY_PROFILE = 'f',
 	SHARED_DEPENDENCY_INVALID = 0
 } SharedDependencyType;
 
@@ -189,10 +194,12 @@ typedef enum ObjectClass
 	OCLASS_PUBLICATION,			/* pg_publication */
 	OCLASS_PUBLICATION_REL,		/* pg_publication_rel */
 	OCLASS_SUBSCRIPTION,		/* pg_subscription */
-	OCLASS_TRANSFORM			/* pg_transform */
+	OCLASS_TRANSFORM,			/* pg_transform */
+	OCLASS_YBPROFILE,			/* pg_yb_profile */
+	OCLASS_YBROLE_PROFILE,		/* pg_yb_role_profile */
 } ObjectClass;
 
-#define LAST_OCLASS		OCLASS_TRANSFORM
+#define LAST_OCLASS		OCLASS_YBROLE_PROFILE
 
 /* flag bits for performDeletion/performMultipleDeletions: */
 #define PERFORM_DELETION_INTERNAL			0x0001	/* internal action */
@@ -250,7 +257,7 @@ extern void recordMultipleDependencies(const ObjectAddress *depender,
 extern void recordDependencyOnCurrentExtension(const ObjectAddress *object,
 								   bool isReplace);
 
-extern void YBRecordPinDependency(const ObjectAddress *referenced, bool shared_insert);
+extern void YbRecordPinDependency(const ObjectAddress *referenced, bool shared_insert);
 
 extern void checkMembershipInCurrentExtension(const ObjectAddress *object);
 
@@ -314,5 +321,11 @@ extern void dropDatabaseDependencies(Oid databaseId);
 extern void shdepDropOwned(List *relids, DropBehavior behavior);
 
 extern void shdepReassignOwned(List *relids, Oid newrole);
+
+extern void ybRecordDependencyOnProfile(Oid classId, Oid objectId, Oid profile);
+
+extern void ybChangeDependencyOnProfile(Oid roleId, Oid newProfileId);
+
+extern void ybDropDependencyOnProfile(Oid roleId);
 
 #endif							/* DEPENDENCY_H */

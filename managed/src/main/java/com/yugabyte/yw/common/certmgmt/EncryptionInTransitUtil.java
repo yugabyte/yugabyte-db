@@ -14,13 +14,16 @@ package com.yugabyte.yw.common.certmgmt;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.google.api.client.util.Strings;
+import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
+import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.providers.CertificateProviderBase;
 import com.yugabyte.yw.common.certmgmt.providers.CertificateSelfSigned;
 import com.yugabyte.yw.common.certmgmt.providers.VaultPKI;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -40,16 +43,19 @@ import org.springframework.security.crypto.encrypt.TextEncryptor;
 public class EncryptionInTransitUtil {
   public static final String SALT_STR = "hashicorpcert";
 
+  @Inject static RuntimeConfGetter runtimeConfGetter;
+
   public static CertificateProviderBase getCertificateProviderInstance(
       CertificateInfo info, Config config) {
     CertificateProviderBase certProvider;
     try {
-      switch (info.certType) {
+      switch (info.getCertType()) {
         case HashicorpVault:
           certProvider = VaultPKI.getVaultPKIInstance(info);
           break;
         case SelfSigned:
-          certProvider = new CertificateSelfSigned(info, config);
+          certProvider =
+              new CertificateSelfSigned(info, config, new CertificateHelper(runtimeConfGetter));
           break;
         default:
           throw new PlatformServiceException(
@@ -60,14 +66,14 @@ public class EncryptionInTransitUtil {
       throw new PlatformServiceException(BAD_REQUEST, message);
     }
     log.debug(
-        "Returning from getCertificateProviderInstance type is: {}", info.certType.toString());
+        "Returning from getCertificateProviderInstance type is: {}", info.getCertType().toString());
     return certProvider;
   }
 
   public static void fetchLatestCAForHashicorpPKI(CertificateInfo info, Config config)
       throws Exception {
-    UUID custUUID = info.customerUUID;
-    String storagePath = config.getString("yb.storage.path");
+    UUID custUUID = info.getCustomerUUID();
+    String storagePath = AppConfigHelper.getStoragePath();
     CertificateProviderBase provider = getCertificateProviderInstance(info, config);
     provider.dumpCACertBundle(storagePath, custUUID);
   }
@@ -122,7 +128,7 @@ public class EncryptionInTransitUtil {
     CertificateInfo rootCertConfigInfo = CertificateInfo.get(certConfigUUID);
     rootCertConfigInfo.update(dates.getLeft(), dates.getRight(), paths.getLeft(), hcVaultParams);
 
-    return cert.uuid;
+    return cert.getUuid();
   }
 
   public static void editEITHashicorpConfig(
@@ -245,7 +251,7 @@ public class EncryptionInTransitUtil {
       boolean enableNodeToNodeEncrypt,
       boolean enableClientToNodeEncrypt,
       boolean rootAndClientRootCASame) {
-    return enableNodeToNodeEncrypt || (rootAndClientRootCASame && enableClientToNodeEncrypt);
+    return enableNodeToNodeEncrypt;
   }
 
   public static boolean isClientRootCARequired(
@@ -289,6 +295,6 @@ public class EncryptionInTransitUtil {
       boolean enableNodeToNodeEncrypt,
       boolean enableClientToNodeEncrypt,
       boolean rootAndClientRootCASame) {
-    return !rootAndClientRootCASame && enableClientToNodeEncrypt;
+    return enableClientToNodeEncrypt;
   }
 }

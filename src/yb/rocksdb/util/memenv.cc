@@ -28,11 +28,12 @@
 #include "yb/util/file_system_mem.h"
 #include "yb/util/status.h"
 
+using std::unique_ptr;
+
 namespace rocksdb {
 
 typedef yb::InMemoryFileState InMemoryFileState;
 
-#ifndef ROCKSDB_LITE
 
 namespace {
 
@@ -71,6 +72,10 @@ class WritableFileImpl : public WritableFile {
   Status Close() override { return Status::OK(); }
   Status Flush() override { return Status::OK(); }
   Status Sync() override { return Status::OK(); }
+
+  const std::string& filename() const override {
+    return file_->filename();
+  }
 
  private:
   std::shared_ptr<InMemoryFileState> file_;
@@ -257,10 +262,5 @@ Env* NewMemEnv(Env* base_env) {
   return new InMemoryEnv(base_env);
 }
 
-#else  // ROCKSDB_LITE
-
-Env* NewMemEnv(Env* base_env) { return nullptr; }
-
-#endif  // !ROCKSDB_LITE
 
 }  // namespace rocksdb

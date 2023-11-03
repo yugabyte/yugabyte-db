@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_CLIENT_TRANSACTION_H
-#define YB_CLIENT_TRANSACTION_H
+#pragma once
 
 #include <future>
 #include <memory>
@@ -49,6 +48,27 @@ struct ChildTransactionData {
   static Result<ChildTransactionData> FromPB(const ChildTransactionDataPB& data);
 };
 
+template<class T>
+class ConstStaticWrapper {
+ public:
+  const T& Get() const {
+    return ref_.get();
+  }
+
+  template<const T* U>
+  static ConstStaticWrapper Build() {
+    return ConstStaticWrapper(*U);
+  }
+
+ private:
+  explicit ConstStaticWrapper(const T& ref)
+      : ref_(ref) {}
+
+  std::reference_wrapper<const T> ref_;
+};
+
+using LogPrefixName = ConstStaticWrapper<std::string>;
+
 // SealOnly is a special commit mode.
 // I.e. sealed transaction will be committed after seal record and all write batches are replicated.
 YB_STRONGLY_TYPED_BOOL(SealOnly);
@@ -78,6 +98,7 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   ~YBTransaction();
 
   Trace *trace();
+  void EnsureTraceCreated();
   void SetPriority(uint64_t priority);
 
   uint64_t GetPriority() const;
@@ -151,9 +172,20 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   void SetActiveSubTransaction(SubTransactionId id);
 
+  Status SetPgTxnStart(int64_t pg_txn_start_us);
+
   Status RollbackToSubTransaction(SubTransactionId id, CoarseTimePoint deadline);
 
   bool HasSubTransaction(SubTransactionId id);
+
+  void SetLogPrefixTag(const LogPrefixName& name, uint64_t value);
+
+  void IncreaseMutationCounts(
+      SubTransactionId subtxn_id, const TableId& table_id, uint64_t mutation_count);
+
+  // Get aggregated mutations for each table across the whole transaction (exclude aborted
+  // sub-transactions).
+  std::unordered_map<TableId, uint64_t> GetTableMutationCounts() const;
 
  private:
   class Impl;
@@ -172,7 +204,7 @@ class YBSubTransaction {
 
   bool HasSubTransaction(SubTransactionId id) const;
 
-  const SubTransactionMetadata& get();
+  const SubTransactionMetadata& get() const;
 
   std::string ToString() const;
 
@@ -188,5 +220,3 @@ class YBSubTransaction {
 
 } // namespace client
 } // namespace yb
-
-#endif // YB_CLIENT_TRANSACTION_H

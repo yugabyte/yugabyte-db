@@ -107,6 +107,26 @@ CREATE TABLE tr1 (a int, b text, c float, PRIMARY KEY (a ASC)) SPLIT AT VALUES (
 -- Range-partitioned table with multi-column key
 CREATE TABLE tr2 (a int, b text, c float, PRIMARY KEY (a DESC, b ASC, c DESC)) SPLIT AT VALUES ((100, 'a', 2.5), (50, 'n'), (1, 'z', -5.12));
 
+-- Range-partitoned table with a long CREATE TABLE statement
+CREATE TABLE pre_split_range (
+    id int NOT NULL,
+    customer_id int NOT NULL,
+    company_name character varying(40) NOT NULL,
+    contact_name character varying(30),
+    contact_title character varying(30),
+    address character varying(60),
+    city character varying(15),
+    region character varying(15),
+    postal_code character varying(10),
+    country character varying(15),
+    phone character varying(24),
+    fax character varying(24),
+    more_col1 text,
+    more_col2 text,
+    more_col3 text,
+    PRIMARY KEY (customer_id ASC)
+) SPLIT AT VALUES ((1000), (5000), (10000), (15000), (20000), (25000), (30000), (35000), (55000), (85000), (110000), (150000), (250000), (300000), (350000), (400000), (450000), (500000), (1000000));
+
 ------------------------------------
 -- Indexes
 
@@ -125,3 +145,58 @@ CREATE INDEX ON tr2(c ASC, b DESC, a ASC) SPLIT AT VALUES ((-5.12, 'z', 1), (-0.
 ------------------------------------
 -- Extensions
 CREATE EXTENSION pg_hint_plan;
+
+------------------------------------------------
+-- Test alter with add constraint using unique index.
+------------------------------------------------
+
+-- Setting range-partitioned unique index with SPLIT AT clause
+CREATE TABLE p1 (k INT PRIMARY KEY, v TEXT);
+
+CREATE UNIQUE INDEX c1 ON p1 (v ASC) SPLIT AT VALUES (('foo'), ('qux'));
+
+ALTER TABLE p1 ADD UNIQUE USING INDEX c1;
+
+-- Setting hash partitioned unique index with SPLIT INTO clause
+CREATE TABLE p2 (k INT PRIMARY KEY, v TEXT);
+
+CREATE UNIQUE INDEX c2 ON p2 (v) SPLIT INTO 10 TABLETS;
+
+ALTER TABLE p2 ADD UNIQUE USING INDEX c2;
+
+------------------------------------------------
+-- Test included columns with primary key index and included columns with non-primary key index
+------------------------------------------------
+CREATE TABLE range_tbl_pk_with_include_clause (
+  k2 TEXT,
+  v DOUBLE PRECISION,
+  k1 INT,
+  PRIMARY KEY (k1 ASC, k2 ASC) INCLUDE (v)
+) SPLIT AT VALUES((1, '1'), (100, '100'));
+
+CREATE UNIQUE INDEX unique_idx_with_include_clause ON range_tbl_pk_with_include_clause (k1, k2) INCLUDE (v);
+
+CREATE TABLE hash_tbl_pk_with_include_clause (
+  k2 TEXT,
+  v DOUBLE PRECISION,
+  k1 INT,
+  PRIMARY KEY ((k1, k2) HASH) INCLUDE (v)
+) SPLIT INTO 8 TABLETS;
+
+CREATE UNIQUE INDEX non_unique_idx_with_include_clause ON hash_tbl_pk_with_include_clause (k1, k2) INCLUDE (v);
+
+CREATE TABLE range_tbl_pk_with_multiple_included_columns (
+  col1 INT,
+  col2 INT,
+  col3 INT,
+  col4 INT,
+  PRIMARY KEY (col1 ASC, col2 ASC) INCLUDE (col3, col4)
+);
+
+CREATE TABLE hash_tbl_pk_with_multiple_included_columns (
+  col1 INT,
+  col2 INT,
+  col3 INT,
+  col4 INT,
+  PRIMARY KEY (col1 HASH, col2 ASC) INCLUDE (col3, col4)
+);

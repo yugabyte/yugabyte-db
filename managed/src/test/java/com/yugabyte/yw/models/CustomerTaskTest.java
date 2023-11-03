@@ -28,7 +28,6 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
-import play.libs.Json;
 
 public class CustomerTaskTest extends FakeDBApplication {
   private Customer defaultCustomer;
@@ -41,15 +40,14 @@ public class CustomerTaskTest extends FakeDBApplication {
   private static List<CustomerTask> deleteStaleTasks(Customer defaultCustomer, int days) {
     List<CustomerTask> staleTasks =
         CustomerTask.findOlderThan(defaultCustomer, Duration.ofDays(days));
-    return staleTasks
-        .stream()
+    return staleTasks.stream()
         .filter(customerTask -> customerTask.cascadeDeleteCompleted() > 0)
         .collect(Collectors.toList());
   }
 
   private CustomerTask createTask(
       CustomerTask.TargetType targetType, UUID targetUUID, CustomerTask.TaskType taskType) {
-    UUID taskUUID = UUID.randomUUID();
+    UUID taskUUID = buildTaskInfo(null, TaskType.CreateUniverse);
     return CustomerTask.create(defaultCustomer, targetUUID, taskUUID, targetType, taskType, "Foo");
   }
 
@@ -68,18 +66,20 @@ public class CustomerTaskTest extends FakeDBApplication {
       boolean completeSubtasks) {
     UUID rootTaskUUID = null;
     if (depth > 1) {
-      TaskInfo rootTaskInfo = buildTaskInfo(null, TaskType.CreateUniverse);
-      rootTaskUUID = rootTaskInfo.getTaskUUID();
+      rootTaskUUID = buildTaskInfo(null, TaskType.CreateUniverse);
+      TaskInfo rootTaskInfo = TaskInfo.getOrBadRequest(rootTaskUUID);
       completeRoot.ifPresent(rootTaskInfo::setTaskState);
       rootTaskInfo.save();
     }
     if (depth > 2) {
-      TaskInfo subtask0 = buildTaskInfo(rootTaskUUID, TaskType.AnsibleSetupServer);
+      TaskInfo subtask0 =
+          TaskInfo.getOrBadRequest(buildTaskInfo(rootTaskUUID, TaskType.AnsibleSetupServer));
       if (completeSubtasks) {
         subtask0.setTaskState(TaskInfo.State.Failure);
       }
       subtask0.save();
-      TaskInfo subtask1 = buildTaskInfo(rootTaskUUID, TaskType.AnsibleConfigureServers);
+      TaskInfo subtask1 =
+          TaskInfo.getOrBadRequest(buildTaskInfo(rootTaskUUID, TaskType.AnsibleConfigureServers));
       if (completeSubtasks) {
         subtask1.setTaskState(TaskInfo.State.Success);
       }
@@ -87,19 +87,6 @@ public class CustomerTaskTest extends FakeDBApplication {
     }
     return CustomerTask.create(
         defaultCustomer, targetUUID, rootTaskUUID, targetType, taskType, "Foo");
-  }
-
-  private TaskInfo buildTaskInfo(UUID parentUUID, TaskType taskType) {
-    TaskInfo taskInfo;
-    taskInfo = new TaskInfo(taskType);
-    UUID taskUUID = UUID.randomUUID();
-    taskInfo.setTaskUUID(taskUUID);
-    taskInfo.setTaskDetails(Json.newObject());
-    taskInfo.setOwner("");
-    if (parentUUID != null) {
-      taskInfo.setParentUuid(parentUUID);
-    }
-    return taskInfo;
   }
 
   @Test
@@ -115,7 +102,7 @@ public class CustomerTaskTest extends FakeDBApplication {
           th.getFriendlyDescription(),
           is(allOf(notNullValue(), equalTo("Creating " + targetType.toString() + " : Foo"))));
       assertThat(th.getTargetUUID(), is(equalTo(targetUUID)));
-      assertThat(th.getCustomerUUID(), is(equalTo(defaultCustomer.uuid)));
+      assertThat(th.getCustomerUUID(), is(equalTo(defaultCustomer.getUuid())));
     }
   }
 
@@ -132,7 +119,7 @@ public class CustomerTaskTest extends FakeDBApplication {
     for (CustomerTask.TargetType targetType : CustomerTask.TargetType.values()) {
       UUID targetUUID = UUID.randomUUID();
       CustomerTask th = createTask(targetType, targetUUID, Create);
-      assertEquals(th.getTarget(), targetType);
+      assertEquals(th.getTargetType(), targetType);
       assertThat(
           th.getFriendlyDescription(),
           is(allOf(notNullValue(), equalTo("Creating " + targetType.toString() + " : Foo"))));
@@ -201,22 +188,6 @@ public class CustomerTaskTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCascadeDeleteSuccessfulTask_subtasksIncomplete_skipped() {
-    UUID targetUUID = UUID.randomUUID();
-    CustomerTask th =
-        createTaskTree(
-            CustomerTask.TargetType.Table,
-            targetUUID,
-            Create,
-            3,
-            Optional.of(TaskInfo.State.Success),
-            false);
-    th.markAsCompleted();
-    assertEquals(0, th.cascadeDeleteCompleted());
-    assertEquals(th, CustomerTask.findByTaskUUID(th.getTaskUUID()));
-  }
-
-  @Test
   public void testCascadeDeleteFailedTask_subtasksIncomplete_success() {
     UUID targetUUID = UUID.randomUUID();
     CustomerTask th =
@@ -256,14 +227,14 @@ public class CustomerTaskTest extends FakeDBApplication {
     staleTasks = deleteStaleTasks(defaultCustomer, 5);
     assertEquals(4, staleTasks.size());
     for (int i = 0; i < 4; i++) {
-      assertEquals(CustomerTask.TargetType.Universe, staleTasks.get(i).getTarget());
+      assertEquals(CustomerTask.TargetType.Universe, staleTasks.get(i).getTargetType());
     }
     assertEquals(3, CustomerTask.find.all().size());
     assertEquals(9, TaskInfo.find.all().size());
     staleTasks = deleteStaleTasks(defaultCustomer, 0);
     assertEquals(3, staleTasks.size());
     for (int i = 0; i < 3; i++) {
-      assertEquals(CustomerTask.TargetType.Table, staleTasks.get(i).getTarget());
+      assertEquals(CustomerTask.TargetType.Table, staleTasks.get(i).getTargetType());
     }
     assertTrue(CustomerTask.find.all().isEmpty());
     assertTrue(TaskInfo.find.all().isEmpty());

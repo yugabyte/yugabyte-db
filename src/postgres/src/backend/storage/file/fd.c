@@ -2005,10 +2005,17 @@ FileWrite(File file, char *buffer, int amount, uint32 wait_event_info)
 
 			newTotal += newPos - vfdP->fileSize;
 			if (newTotal > (uint64) temp_file_limit * (uint64) 1024)
+			{
+				char query_termination_message[256];
+				snprintf(query_termination_message, sizeof(query_termination_message),
+					"temporary file size exceeds temp_file_limit (%dkB)", temp_file_limit);
+
+				pgstat_report_query_termination(query_termination_message, MyProcPid);
 				ereport(ERROR,
 						(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),
 						 errmsg("temporary file size exceeds temp_file_limit (%dkB)",
 								temp_file_limit)));
+			}
 		}
 	}
 

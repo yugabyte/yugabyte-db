@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 create_operator ::= CREATE OPERATOR operator_name ( 
                     { FUNCTION = function_name
                       | PROCEDURE = procedure_name } 

@@ -10,6 +10,9 @@
 
 package com.yugabyte.yw.common.ha;
 
+import static junit.framework.TestCase.assertTrue;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyInt;
@@ -23,10 +26,15 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.PlatformScheduler;
+import com.yugabyte.yw.common.PrometheusConfigHelper;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.services.FileDataService;
 import java.io.File;
 import java.net.URL;
 import java.nio.file.Path;
@@ -34,7 +42,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import junit.framework.TestCase;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.junit.Before;
@@ -44,7 +51,7 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
 @RunWith(JUnitParamsRunner.class)
-public class PlatformReplicationManagerTest extends TestCase {
+public class PlatformReplicationManagerTest extends FakeDBApplication {
   @Mock Config mockConfig;
 
   @Mock PlatformScheduler mockPlatformScheduler;
@@ -53,23 +60,50 @@ public class PlatformReplicationManagerTest extends TestCase {
 
   @Mock RuntimeConfigFactory mockRuntimeConfigFactory;
 
+  @Mock RuntimeConfGetter runtimeConfGetter;
+
   @Mock PlatformReplicationHelper mockReplicationUtil;
+
+  @Mock ConfigHelper mockConfigHelper;
+
+  @Mock FileDataService mockFileDataService;
+
+  @Mock PrometheusConfigHelper mockPrometheusConfigHelper;
+
+  private static final String STORAGE_PATH = "yb.storage.path";
+  private static final String PG_DUMP_PATH = "/tmp/pg_dump";
+  private static final String PG_RESTORE_PATH = "/tmp/pg_restore";
+  private static final String BASE_INSTALL = "/tmp/yugabyte";
 
   @Before
   public void setUp() {
     MockitoAnnotations.initMocks(this);
-    when(mockConfig.getString("yb.storage.path")).thenReturn("/tmp");
+    when(mockConfig.getString(STORAGE_PATH)).thenReturn("/tmp");
   }
 
   private void setupConfig(
-      String prometheusHost, String dbUsername, String dbPassword, String dbHost, int dbPort) {
+      String prometheusHost,
+      String dbUsername,
+      String dbPassword,
+      String dbHost,
+      int dbPort,
+      boolean isYbaInstaller) {
     when(mockReplicationUtil.getBackupDir()).thenReturn(new File("/tmp/foo.bar").toPath());
-    when(mockReplicationUtil.getPrometheusHost()).thenReturn(prometheusHost);
+    when(mockPrometheusConfigHelper.getPrometheusHost()).thenReturn(prometheusHost);
+    when(mockPrometheusConfigHelper.getPrometheusPort()).thenReturn(9090);
     when(mockReplicationUtil.getDBHost()).thenReturn(dbHost);
     when(mockReplicationUtil.getDBPort()).thenReturn(dbPort);
     when(mockReplicationUtil.getDBUser()).thenReturn(dbUsername);
     when(mockReplicationUtil.getDBPassword()).thenReturn(dbPassword);
     when(mockReplicationUtil.isBackupScriptOutputEnabled()).thenReturn(false);
+    if (isYbaInstaller) {
+      when(mockReplicationUtil.getInstallationType()).thenReturn("yba-installer");
+    } else {
+      when(mockReplicationUtil.getInstallationType()).thenReturn("");
+    }
+    when(mockReplicationUtil.getPGDumpPath()).thenReturn(PG_DUMP_PATH);
+    when(mockReplicationUtil.getPGRestorePath()).thenReturn(PG_RESTORE_PATH);
+    when(mockReplicationUtil.getBaseInstall()).thenReturn(BASE_INSTALL);
   }
 
   private List<String> getExpectedPlatformBackupCommandArgs(
@@ -79,13 +113,22 @@ public class PlatformReplicationManagerTest extends TestCase {
       int dbPort,
       String inputPath,
       boolean isCreate,
-      String backupDir) {
+      String backupDir,
+      boolean isYbaInstaller) {
     List<String> expectedCommandArgs = new ArrayList<>();
     expectedCommandArgs.add("bin/yb_platform_backup.sh");
     if (isCreate) {
       expectedCommandArgs.add("create");
       expectedCommandArgs.add("--exclude_prometheus");
       expectedCommandArgs.add("--exclude_releases");
+      expectedCommandArgs.add("--disable_version_check");
+      if (isYbaInstaller) {
+        expectedCommandArgs.add("--pg_dump_path");
+        expectedCommandArgs.add(PG_DUMP_PATH);
+        expectedCommandArgs.add("--yba_installer");
+        expectedCommandArgs.add("--data_dir");
+        expectedCommandArgs.add(BASE_INSTALL);
+      }
       expectedCommandArgs.add("--output");
       expectedCommandArgs.add(backupDir);
     } else {
@@ -93,6 +136,15 @@ public class PlatformReplicationManagerTest extends TestCase {
       expectedCommandArgs.add("--input");
       expectedCommandArgs.add(inputPath);
       expectedCommandArgs.add("--disable_version_check");
+      if (isYbaInstaller) {
+        expectedCommandArgs.add("--pg_restore_path");
+        expectedCommandArgs.add(PG_RESTORE_PATH);
+        expectedCommandArgs.add("--yba_installer");
+        expectedCommandArgs.add("--data_dir");
+        expectedCommandArgs.add(BASE_INSTALL);
+        expectedCommandArgs.add("--destination");
+        expectedCommandArgs.add(BASE_INSTALL);
+      }
     }
 
     expectedCommandArgs.add("--db_username");
@@ -103,6 +155,8 @@ public class PlatformReplicationManagerTest extends TestCase {
     expectedCommandArgs.add(Integer.toString(dbPort));
     expectedCommandArgs.add("--prometheus_host");
     expectedCommandArgs.add(prometheusHost);
+    expectedCommandArgs.add("--prometheus_port");
+    expectedCommandArgs.add("9090");
     expectedCommandArgs.add("--verbose");
     expectedCommandArgs.add("--skip_restart");
 
@@ -112,10 +166,14 @@ public class PlatformReplicationManagerTest extends TestCase {
   @SuppressWarnings("unused")
   private Object[] parametersToTestCreatePlatformBackupParams() {
     return new Object[][] {
-      {"1.2.3.4", "postgres", "password", "localhost", 5432, new File("/tmp/foo.bar"), true},
-      {"1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, new File("/tmp/foo.bar"), true},
-      {"1.2.3.4", "postgres", "password", "localhost", 5432, new File("/tmp/foo.bar"), false},
-      {"1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, new File("/tmp/foo.bar"), false},
+      {"1.2.3.4", "postgres", "password", "localhost", 5432, new File("/tmp/foo.bar"), true, false},
+      {"1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, new File("/tmp/foo.bar"), true, false},
+      {
+        "1.2.3.4", "postgres", "password", "localhost", 5432, new File("/tmp/foo.bar"), false, false
+      },
+      {"1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, new File("/tmp/foo.bar"), false, false},
+      {"1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, new File("/tmp/foo.bar"), true, true},
+      {"1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, new File("/tmp/foo.bar"), false, true}
     };
   }
 
@@ -128,7 +186,8 @@ public class PlatformReplicationManagerTest extends TestCase {
       String dbHost,
       int dbPort,
       File inputPath,
-      boolean isCreate) {
+      boolean isCreate,
+      boolean isYbaInstaller) {
     Map<String, String> expectedEnvVars = new HashMap<>();
     if (!dbPassword.isEmpty()) {
       expectedEnvVars.put(PlatformReplicationManager.DB_PASSWORD_ENV_VAR_KEY, dbPassword);
@@ -137,13 +196,18 @@ public class PlatformReplicationManagerTest extends TestCase {
     when(shellProcessHandler.run(anyList(), anyMap(), anyBoolean()))
         .thenReturn(new ShellResponse());
     when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
+    when(runtimeConfGetter.getStaticConf()).thenReturn(mockConfig);
     mockReplicationUtil.shellProcessHandler = shellProcessHandler;
     doCallRealMethod()
         .when(mockReplicationUtil)
         .runCommand(any(PlatformReplicationManager.PlatformBackupParams.class));
-    setupConfig(prometheusHost, dbUsername, dbPassword, dbHost, dbPort);
+    setupConfig(prometheusHost, dbUsername, dbPassword, dbHost, dbPort, isYbaInstaller);
     PlatformReplicationManager backupManager =
-        new PlatformReplicationManager(mockPlatformScheduler, mockReplicationUtil);
+        new PlatformReplicationManager(
+            mockPlatformScheduler,
+            mockReplicationUtil,
+            mockFileDataService,
+            mockPrometheusConfigHelper);
 
     List<String> expectedCommandArgs =
         getExpectedPlatformBackupCommandArgs(
@@ -153,7 +217,8 @@ public class PlatformReplicationManagerTest extends TestCase {
             dbPort,
             inputPath.getAbsolutePath(),
             isCreate,
-            "/tmp/foo.bar");
+            "/tmp/foo.bar",
+            isYbaInstaller);
 
     if (isCreate) {
       backupManager.createBackup();
@@ -182,13 +247,19 @@ public class PlatformReplicationManagerTest extends TestCase {
       URL testUrl = new URL(testAddr);
       Path tmpDir = testFile1.toPath().getParent();
       when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
+      when(runtimeConfGetter.getStaticConf()).thenReturn(mockConfig);
       when(mockReplicationUtil.getNumBackupsRetention()).thenReturn(Math.max(0, numToRetain));
       when(mockReplicationUtil.getReplicationDirFor(anyString())).thenReturn(tmpDir);
       doCallRealMethod().when(mockReplicationUtil).cleanupBackups(anyList(), anyInt());
       doCallRealMethod().when(mockReplicationUtil).cleanupReceivedBackups(any(URL.class), anyInt());
       doCallRealMethod().when(mockReplicationUtil).listBackups(any(URL.class));
       PlatformReplicationManager backupManager =
-          spy(new PlatformReplicationManager(mockPlatformScheduler, mockReplicationUtil));
+          spy(
+              new PlatformReplicationManager(
+                  mockPlatformScheduler,
+                  mockReplicationUtil,
+                  mockFileDataService,
+                  mockPrometheusConfigHelper));
 
       List<File> backups = backupManager.listBackups(testUrl);
       assertEquals(3, backups.size());

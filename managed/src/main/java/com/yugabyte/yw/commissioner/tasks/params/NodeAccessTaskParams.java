@@ -1,8 +1,7 @@
 package com.yugabyte.yw.commissioner.tasks.params;
 
-import java.util.UUID;
-
 import com.yugabyte.yw.models.AccessKey;
+import java.util.UUID;
 
 public class NodeAccessTaskParams extends NodeTaskParams {
 
@@ -11,8 +10,6 @@ public class NodeAccessTaskParams extends NodeTaskParams {
   public UUID providerUUID;
 
   public UUID regionUUID;
-
-  public UUID universeUUID;
 
   public AccessKey accessKey;
 
@@ -31,7 +28,7 @@ public class NodeAccessTaskParams extends NodeTaskParams {
     this.customerUUID = customerUUID;
     this.azUuid = azUuid;
     this.providerUUID = providerUUID;
-    this.universeUUID = universeUUID;
+    this.setUniverseUUID(universeUUID);
     this.accessKey = accessKey;
     this.sshUser = sshUser;
   }

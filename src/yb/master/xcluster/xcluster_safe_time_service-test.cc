@@ -14,6 +14,8 @@
 #include "yb/util/test_util.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
 
+using std::string;
+
 namespace yb {
 namespace master {
 
@@ -22,7 +24,7 @@ using OK = Status::OK;
 class XClusterSafeTimeServiceMocked : public XClusterSafeTimeService {
  public:
   XClusterSafeTimeServiceMocked()
-      : XClusterSafeTimeService(nullptr, nullptr), create_table_if_not_found_(false) {}
+      : XClusterSafeTimeService(nullptr, nullptr, nullptr), create_table_if_not_found_(false) {}
 
   ~XClusterSafeTimeServiceMocked() {}
 
@@ -33,7 +35,7 @@ class XClusterSafeTimeServiceMocked : public XClusterSafeTimeService {
     return table_entries_;
   }
 
-  Status RefreshProducerTabletToNamespaceMap() override REQUIRES(mutex_) {
+  Status RefreshProducerTabletToNamespaceMap() REQUIRES(mutex_) override {
     if (producer_tablet_namespace_map_ != consumer_registry_) {
       producer_tablet_namespace_map_ = consumer_registry_;
     }
@@ -46,8 +48,9 @@ class XClusterSafeTimeServiceMocked : public XClusterSafeTimeService {
   }
 
   Status SetXClusterSafeTime(
-      const int64_t leader_term, XClusterNamespaceToSafeTimeMap new_safe_time_map_pb) override {
-    safe_time_map_ = std::move(new_safe_time_map_pb);
+      const int64_t leader_term,
+      const XClusterNamespaceToSafeTimeMap& new_safe_time_map_pb) override {
+    safe_time_map_ = new_safe_time_map_pb;
     return OK();
   }
 
@@ -211,6 +214,33 @@ TEST(XClusterSafeTimeServiceTest, ComputeSafeTime) {
         ASSERT_RESULT(safe_time_service.ComputeSafeTime(dummy_leader_term));
     ASSERT_TRUE(safe_time_service.create_table_if_not_found_);
     ASSERT_TRUE(further_computation_needed);
+  }
+
+  // Lagging transaction status tablet
+  {
+    XClusterSafeTimeServiceMocked safe_time_service;
+    safe_time_service.consumer_registry_ = default_consumer_registry;
+
+    const ProducerTabletInfo t5 = {cluster_uuid, "t5"};
+    safe_time_service.table_entries_[t1] = ht2;
+    safe_time_service.table_entries_[t2] = ht2;
+    safe_time_service.table_entries_[t3] = ht2;
+    safe_time_service.table_entries_[t5] = ht1;
+    safe_time_service.consumer_registry_[t5] = kSystemNamespaceId;
+
+    ASSERT_OK(safe_time_service.ComputeSafeTime(dummy_leader_term));
+    ASSERT_EQ(safe_time_service.safe_time_map_.size(), 3);
+    ASSERT_EQ(safe_time_service.safe_time_map_[db1], ht1);
+    ASSERT_EQ(safe_time_service.safe_time_map_[db2], ht1);
+    ASSERT_EQ(safe_time_service.safe_time_map_[kSystemNamespaceId], ht1);
+    ASSERT_EQ(safe_time_service.entries_to_delete_.size(), 0);
+
+    safe_time_service.table_entries_[t5] = ht2;
+    ASSERT_OK(safe_time_service.ComputeSafeTime(dummy_leader_term));
+    ASSERT_EQ(safe_time_service.safe_time_map_.size(), 3);
+    ASSERT_EQ(safe_time_service.safe_time_map_[db1], ht2);
+    ASSERT_EQ(safe_time_service.safe_time_map_[db2], ht2);
+    ASSERT_EQ(safe_time_service.safe_time_map_[kSystemNamespaceId], ht2);
   }
 }
 

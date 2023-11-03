@@ -85,7 +85,7 @@ public class ProtobufHelper {
                                                 .map(ProtobufHelper::QLTypeToPb)
                                                 .collect(Collectors.toList()));
     // User-defined types have additional information (set declared keyspace and type name).
-    if (yqlType.getMain() == Value.DataType.USER_DEFINED_TYPE) {
+    if (yqlType.getMain() == Value.PersistentDataType.USER_DEFINED_TYPE) {
       Common.QLTypePB.UDTypeInfo.Builder udtBuilder = Common.QLTypePB.UDTypeInfo.newBuilder();
       udtBuilder.setName(yqlType.getUdtName());
       udtBuilder.setKeyspaceName(yqlType.getUdtKeyspaceName());

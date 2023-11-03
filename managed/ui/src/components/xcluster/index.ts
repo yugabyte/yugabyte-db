@@ -1,5 +1,5 @@
-export { ReplicationList } from './ReplicationList';
+export { XClusterConfigList as ReplicationList } from './XClusterConfigList';
 export { ReplicationDetails } from './configDetails/ReplicationDetails';
-export { ReplicationStatus } from './constants';
+export { XClusterConfigStatus } from './constants';
 
-export * from './XClusterReplicationTypes';
+export * from './XClusterTypes';

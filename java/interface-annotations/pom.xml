@@ -21,7 +21,7 @@
   <parent>
     <groupId>org.yb</groupId>
     <artifactId>yb-parent</artifactId>
-    <version>0.8.21-SNAPSHOT</version>
+    <version>0.8.70-SNAPSHOT</version>
   </parent>
 
   <artifactId>interface-annotations</artifactId>
@@ -29,9 +29,9 @@
 
   <dependencies>
     <dependency>
-      <groupId>jdiff</groupId>
-      <artifactId>jdiff</artifactId>
-      <version>1.0.9</version>
+      <groupId>org.apache.yetus</groupId>
+      <artifactId>audience-annotations-jdiff</artifactId>
+      <version>0.13.0</version>
     </dependency>
   </dependencies>
 

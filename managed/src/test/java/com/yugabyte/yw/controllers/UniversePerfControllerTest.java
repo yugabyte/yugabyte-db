@@ -17,8 +17,8 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyObject;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
@@ -27,8 +27,9 @@ import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.CustomWsClientFactory;
+import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeUniverseManager;
@@ -36,8 +37,8 @@ import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.audit.AuditService;
-import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.controllers.handlers.HashedTimestampColumnFinder;
 import com.yugabyte.yw.controllers.handlers.UniversePerfHandler;
 import com.yugabyte.yw.controllers.handlers.UnusedIndexFinder;
@@ -74,8 +75,7 @@ public class UniversePerfControllerTest extends FakeDBApplication {
   private UnusedIndexFinder unusedIndexFinder;
   private NodeUniverseManager mockNodeUniverseManager = mock(NodeUniverseManager.class);
   private PlatformExecutorFactory mockPlatformExecutorFactory = mock(PlatformExecutorFactory.class);
-  private RuntimeConfigFactory mockRuntimeConfigFactory = mock(RuntimeConfigFactory.class);
-  private Config mockConfig;
+  private RuntimeConfGetter mockConfGetter = mock(RuntimeConfGetter.class);
   private Customer customer;
   private Universe universe;
   private OffsetDateTime mockedTime = OffsetDateTime.now();
@@ -85,15 +85,13 @@ public class UniversePerfControllerTest extends FakeDBApplication {
 
   @Override
   protected Application provideApplication() {
-    mockConfig = mock(Config.class);
     mockNodeUniverseManager = mock(NodeUniverseManager.class);
     mockPlatformExecutorFactory = mock(PlatformExecutorFactory.class);
-    mockRuntimeConfigFactory = mock(RuntimeConfigFactory.class);
     hashedTimestampColumnFinder = spy(new HashedTimestampColumnFinder(mockNodeUniverseManager));
     unusedIndexFinder =
         spy(
             new UnusedIndexFinder(
-                mockNodeUniverseManager, mockPlatformExecutorFactory, mockRuntimeConfigFactory));
+                mockNodeUniverseManager, mockPlatformExecutorFactory, mockConfGetter));
     universePerfHandler = spy(new TestUniversePerfHandler(mockNodeUniverseManager));
     universePerfController =
         spy(
@@ -108,8 +106,8 @@ public class UniversePerfControllerTest extends FakeDBApplication {
                 .overrides(
                     bind(PlatformExecutorFactory.class).toInstance(mockPlatformExecutorFactory))
                 .overrides(
-                    bind(RuntimeConfigFactory.class)
-                        .toInstance(new DummyRuntimeConfigFactoryImpl(mockConfig))))
+                    bind(CustomWsClientFactory.class)
+                        .toProvider(CustomWsClientFactoryProvider.class)))
         .build();
   }
 
@@ -157,24 +155,24 @@ public class UniversePerfControllerTest extends FakeDBApplication {
       shellResponsesUnusedIndex.add(shellResponse);
     }
 
-    when(mockRuntimeConfigFactory.forUniverse(any())).thenReturn(mockConfig);
-    when(mockConfig.getInt("yb.perf_advisor.max_threads")).thenReturn(22);
+    when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.maxThreads)))
+        .thenReturn(22);
 
     customer = ModelFactory.testCustomer();
-    universe = createUniverse(customer.getCustomerId());
-    universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
+    universe = createUniverse(customer.getId());
+    universe = Universe.saveDetails(universe.getUniverseUUID(), ApiUtils.mockUniverseUpdater());
   }
 
   @Test
   public void testQueryDistributionNoSuggestion1() {
     // Test case where all nodes of universe have equal query load, and hence no query distribution
     // related suggestions should be given.
-    when(mockNodeUniverseManager.runYsqlCommand(anyObject(), anyObject(), anyObject(), anyObject()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any()))
         .thenReturn(shellResponses.get(0));
 
     Result queryDistributionSuggestions =
         universePerfController.getQueryDistributionSuggestions(
-            customer.uuid, universe.universeUUID);
+            customer.getUuid(), universe.getUniverseUUID());
     JsonNode json = Json.parse(contentAsString(queryDistributionSuggestions));
     assertEquals(OK, queryDistributionSuggestions.status());
     assertTrue(json.isObject());
@@ -198,12 +196,12 @@ public class UniversePerfControllerTest extends FakeDBApplication {
   public void testQueryDistributionNoSuggestion2() {
     // Test case where suggestion would not be given because of minimum query count threshold
     // criteria (MINIMUM_TOTAL_QUERY_THRESHOLD_FOR_SUGGESTIONS=1000) not being satisfied.
-    when(mockNodeUniverseManager.runYsqlCommand(anyObject(), anyObject(), anyObject(), anyObject()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any()))
         .thenReturn(shellResponses.get(2), shellResponses.get(1));
 
     Result queryDistributionSuggestions =
         universePerfController.getQueryDistributionSuggestions(
-            customer.uuid, universe.universeUUID);
+            customer.getUuid(), universe.getUniverseUUID());
     JsonNode json = Json.parse(contentAsString(queryDistributionSuggestions));
     assertEquals(OK, queryDistributionSuggestions.status());
     assertTrue(json.isObject());
@@ -238,12 +236,12 @@ public class UniversePerfControllerTest extends FakeDBApplication {
     // overloaded in last 1 hour, and hence no suggestions.
 
     // Return 1000 numSelect for 1 node, 0 for remaining nodes
-    when(mockNodeUniverseManager.runYsqlCommand(anyObject(), anyObject(), anyObject(), anyObject()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any()))
         .thenReturn(shellResponses.get(0), shellResponses.get(1));
 
     Result queryDistributionSuggestions =
         universePerfController.getQueryDistributionSuggestions(
-            customer.uuid, universe.universeUUID);
+            customer.getUuid(), universe.getUniverseUUID());
     JsonNode json = Json.parse(contentAsString(queryDistributionSuggestions));
     assertEquals(OK, queryDistributionSuggestions.status());
     assertTrue(json.isObject());
@@ -280,11 +278,11 @@ public class UniversePerfControllerTest extends FakeDBApplication {
     mockedTime = mockedTime.plusHours(2);
 
     // Mock the query response such that all nodes had no load in last 2 hours.
-    when(mockNodeUniverseManager.runYsqlCommand(anyObject(), anyObject(), anyObject(), anyObject()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any()))
         .thenReturn(shellResponses.get(3));
     queryDistributionSuggestions =
         universePerfController.getQueryDistributionSuggestions(
-            customer.uuid, universe.universeUUID);
+            customer.getUuid(), universe.getUniverseUUID());
     json = Json.parse(contentAsString(queryDistributionSuggestions));
     assertEquals(OK, queryDistributionSuggestions.status());
     assertTrue(json.isObject());
@@ -301,12 +299,12 @@ public class UniversePerfControllerTest extends FakeDBApplication {
     // Test case when one node is overloaded.
 
     // Return 1000 numSelect for 1 node, 0 for remaining nodes
-    when(mockNodeUniverseManager.runYsqlCommand(anyObject(), anyObject(), anyObject(), anyObject()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any()))
         .thenReturn(shellResponses.get(0), shellResponses.get(1));
 
     Result queryDistributionSuggestions =
         universePerfController.getQueryDistributionSuggestions(
-            customer.uuid, universe.universeUUID);
+            customer.getUuid(), universe.getUniverseUUID());
     JsonNode json = Json.parse(contentAsString(queryDistributionSuggestions));
     assertEquals(OK, queryDistributionSuggestions.status());
     assertTrue(json.isObject());
@@ -345,12 +343,12 @@ public class UniversePerfControllerTest extends FakeDBApplication {
     // Test case where multiple nodes are overloaded, and the most overloaded node is reported.
 
     // Return 1000 numSelect for 1 node, 0 for remaining nodes
-    when(mockNodeUniverseManager.runYsqlCommand(anyObject(), anyObject(), anyObject(), anyObject()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any()))
         .thenReturn(shellResponses.get(0), shellResponses.get(4), shellResponses.get(5));
 
     Result queryDistributionSuggestions =
         universePerfController.getQueryDistributionSuggestions(
-            customer.uuid, universe.universeUUID);
+            customer.getUuid(), universe.getUniverseUUID());
     JsonNode json = Json.parse(contentAsString(queryDistributionSuggestions));
     assertEquals(OK, queryDistributionSuggestions.status());
     assertTrue(json.isObject());
@@ -392,12 +390,12 @@ public class UniversePerfControllerTest extends FakeDBApplication {
 
     // Return 100 numSelect, 200 numDelete, 300 numInsert, 400 numUpdate queries for 1 node. 0 for
     // remaining nodes.
-    when(mockNodeUniverseManager.runYsqlCommand(anyObject(), anyObject(), anyObject(), anyObject()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any()))
         .thenReturn(shellResponses.get(6), shellResponses.get(1));
 
     Result queryDistributionSuggestions =
         universePerfController.getQueryDistributionSuggestions(
-            customer.uuid, universe.universeUUID);
+            customer.getUuid(), universe.getUniverseUUID());
     JsonNode json = Json.parse(contentAsString(queryDistributionSuggestions));
     assertEquals(OK, queryDistributionSuggestions.status());
     assertTrue(json.isObject());
@@ -436,11 +434,11 @@ public class UniversePerfControllerTest extends FakeDBApplication {
   @Test
   public void testHashedTimestampColumnFinder1() {
     // Base case, no hashed timestamp indexes exist and getRangeHash returns an empty list.
-    when(mockNodeUniverseManager.runYsqlCommand(anyObject(), anyObject(), anyObject(), anyObject()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any()))
         .thenReturn(shellResponsesHashTimestamp.get(0), shellResponsesHashTimestamp.get(1));
 
     Result hashedTimestampResponse =
-        universePerfController.getRangeHash(customer.uuid, universe.universeUUID);
+        universePerfController.getRangeHash(customer.getUuid(), universe.getUniverseUUID());
     JsonNode json = Json.parse(contentAsString(hashedTimestampResponse));
 
     assertEquals(OK, hashedTimestampResponse.status());
@@ -451,11 +449,11 @@ public class UniversePerfControllerTest extends FakeDBApplication {
   @Test
   public void testHashedTimestampColumnFinder2() {
     // Simplest case, one DB and one timestamp hash index.
-    when(mockNodeUniverseManager.runYsqlCommand(anyObject(), anyObject(), anyObject(), anyObject()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any()))
         .thenReturn(shellResponsesHashTimestamp.get(0), shellResponsesHashTimestamp.get(2));
 
     Result hashedTimestampResponse =
-        universePerfController.getRangeHash(customer.uuid, universe.universeUUID);
+        universePerfController.getRangeHash(customer.getUuid(), universe.getUniverseUUID());
     JsonNode json = Json.parse(contentAsString(hashedTimestampResponse));
 
     assertEquals(OK, hashedTimestampResponse.status());
@@ -473,14 +471,14 @@ public class UniversePerfControllerTest extends FakeDBApplication {
   @Test
   public void testHashedTimestampColumnFinder3() {
     // 2 DBs and 3 timestamp hash indexes
-    when(mockNodeUniverseManager.runYsqlCommand(anyObject(), anyObject(), anyObject(), anyObject()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any()))
         .thenReturn(
             shellResponsesHashTimestamp.get(4),
             shellResponsesHashTimestamp.get(2),
             shellResponsesHashTimestamp.get(3));
 
     Result hashedTimestampResponse =
-        universePerfController.getRangeHash(customer.uuid, universe.universeUUID);
+        universePerfController.getRangeHash(customer.getUuid(), universe.getUniverseUUID());
     JsonNode json = Json.parse(contentAsString(hashedTimestampResponse));
 
     assertEquals(OK, hashedTimestampResponse.status());
@@ -510,14 +508,14 @@ public class UniversePerfControllerTest extends FakeDBApplication {
   @Test
   public void testHashedTimestampColumnFinder4() {
     // 2 DBs and 1 timestamp hash index, second DB lacks hashed timestamp columns
-    when(mockNodeUniverseManager.runYsqlCommand(anyObject(), anyObject(), anyObject(), anyObject()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any()))
         .thenReturn(
             shellResponsesHashTimestamp.get(4),
             shellResponsesHashTimestamp.get(2),
             shellResponsesHashTimestamp.get(1));
 
     Result hashedTimestampResponse =
-        universePerfController.getRangeHash(customer.uuid, universe.universeUUID);
+        universePerfController.getRangeHash(customer.getUuid(), universe.getUniverseUUID());
     JsonNode json = Json.parse(contentAsString(hashedTimestampResponse));
 
     assertEquals(OK, hashedTimestampResponse.status());
@@ -535,13 +533,13 @@ public class UniversePerfControllerTest extends FakeDBApplication {
   @Test
   public void testUnusedIndexFinder1() {
     // Base case, no unused indexes exist and getUnusedIndexes returns an empty list.
-    when(mockNodeUniverseManager.runYsqlCommand(anyObject(), anyObject(), anyObject(), anyObject()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any()))
         .thenReturn(shellResponsesUnusedIndex.get(0), shellResponsesUnusedIndex.get(1));
     when(mockPlatformExecutorFactory.createFixedExecutor(anyString(), anyInt(), any()))
         .thenReturn(executorService);
 
     Result unusedIndexResponse =
-        universePerfController.getUnusedIndexes(customer.uuid, universe.universeUUID);
+        universePerfController.getUnusedIndexes(customer.getUuid(), universe.getUniverseUUID());
 
     JsonNode json = Json.parse(contentAsString(unusedIndexResponse));
     assertEquals(OK, unusedIndexResponse.status());
@@ -552,14 +550,14 @@ public class UniversePerfControllerTest extends FakeDBApplication {
   @Test
   public void testUnusedIndexFinder2() {
     // 1 unused index, 1 DB
-    when(mockNodeUniverseManager.runYsqlCommand(anyObject(), anyObject(), anyObject(), anyObject()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any()))
         .thenReturn(shellResponsesUnusedIndex.get(0), shellResponsesUnusedIndex.get(2));
     when(mockPlatformExecutorFactory.createFixedExecutor(anyString(), anyInt(), any()))
         .thenReturn(executorService);
     // Seems like there are 3 nodes, and shellResponsesUnusedIndex.get(2) just gets called again for
     // the two nodes following the first because it is the last parameter in thenReturn.
     Result unusedIndexResponse =
-        universePerfController.getUnusedIndexes(customer.uuid, universe.universeUUID);
+        universePerfController.getUnusedIndexes(customer.getUuid(), universe.getUniverseUUID());
 
     JsonNode json = Json.parse(contentAsString(unusedIndexResponse));
     assertEquals(OK, unusedIndexResponse.status());
@@ -577,7 +575,7 @@ public class UniversePerfControllerTest extends FakeDBApplication {
   @Test
   public void testUnusedIndexFinder3() {
     // 3 unused indexes, 2 DBs (3 nodes means 3 of the same command per DB).
-    when(mockNodeUniverseManager.runYsqlCommand(anyObject(), anyObject(), anyObject(), anyObject()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any()))
         .thenReturn(
             shellResponsesUnusedIndex.get(4),
             shellResponsesUnusedIndex.get(2),
@@ -589,7 +587,7 @@ public class UniversePerfControllerTest extends FakeDBApplication {
     when(mockPlatformExecutorFactory.createFixedExecutor(anyString(), anyInt(), any()))
         .thenReturn(executorService, Executors.newFixedThreadPool(1));
     Result unusedIndexResponse =
-        universePerfController.getUnusedIndexes(customer.uuid, universe.universeUUID);
+        universePerfController.getUnusedIndexes(customer.getUuid(), universe.getUniverseUUID());
 
     JsonNode json = Json.parse(contentAsString(unusedIndexResponse));
     assertEquals(OK, unusedIndexResponse.status());
@@ -619,7 +617,7 @@ public class UniversePerfControllerTest extends FakeDBApplication {
   @Test
   public void testUnusedIndexFinder4() {
     // 2 indexes, 1 DB, one index eliminated since it only shows up twice across three nodes
-    when(mockNodeUniverseManager.runYsqlCommand(anyObject(), anyObject(), anyObject(), anyObject()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any()))
         .thenReturn(
             shellResponsesUnusedIndex.get(0),
             shellResponsesUnusedIndex.get(3),
@@ -628,7 +626,7 @@ public class UniversePerfControllerTest extends FakeDBApplication {
     when(mockPlatformExecutorFactory.createFixedExecutor(anyString(), anyInt(), any()))
         .thenReturn(executorService);
     Result unusedIndexResponse =
-        universePerfController.getUnusedIndexes(customer.uuid, universe.universeUUID);
+        universePerfController.getUnusedIndexes(customer.getUuid(), universe.getUniverseUUID());
 
     JsonNode json = Json.parse(contentAsString(unusedIndexResponse));
     assertEquals(OK, unusedIndexResponse.status());

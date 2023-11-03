@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_UTIL_RESULT_H
-#define YB_UTIL_RESULT_H
+#pragma once
 
 #include <string>
 #include <type_traits>
@@ -339,9 +338,9 @@ TValue ResultToValue(Result<TValue>&& result, TValue&& value_for_error) {
  * GNU statement expression extension forces to return value and not rvalue reference.
  * As a result VERIFY_RESULT or similar helpers will call move or copy constructor of T even
  * for Result<T&>/Result<const T&>
- * To void this undesirable behavior for Result<T&>/Result<const T&> the std::reference_wrapper<T>
+ * To avoid this undesirable behavior for Result<T&>/Result<const T&>, the std::reference_wrapper<T>
  * is returned from statement.
- * Next functions are the helps to implement this strategy
+ * The following functions help implement this strategy.
  */
 template<class T>
 T&& WrapMove(Result<T>&& result) {
@@ -364,15 +363,11 @@ struct IsNonConstResultRvalue : std::false_type {};
 template<class T>
 struct IsNonConstResultRvalue<Result<T>&&> : std::true_type {};
 
-// TODO(dmitry): Subsitute __static_assert array with real static_assert when
-//               old compilers (gcc 5.5) will not be used.
-//               static_assert(yb::IsNonConstResultRvalue<decltype(__result)>::value,
-//                             "only non const Result<T> rvalue reference is allowed");
 #define RESULT_CHECKER_HELPER(expr, checker) \
   __extension__ ({ \
     auto&& __result = (expr); \
-    __attribute__((unused)) constexpr char __static_assert[ \
-        ::yb::IsNonConstResultRvalue<decltype(__result)>::value ? 1 : -1] = {0}; \
+    static_assert(yb::IsNonConstResultRvalue<decltype(__result)>::value, \
+                  "only non-const Result<T> rvalue reference is allowed"); \
     checker; \
     WrapMove(std::move(__result)); })
 
@@ -388,23 +383,50 @@ struct IsNonConstResultRvalue<Result<T>&&> : std::true_type {};
 #define VERIFY_RESULT_REF(expr) \
   VERIFY_RESULT(expr).get()
 
-  // Returns if result is not ok, prepending status with provided message,
-// extracts result value is case of success.
+// If expr's result is not ok, returns the error status prepended with provided message.
+// If expr's result is ok returns wrapped value.
 #define VERIFY_RESULT_PREPEND(expr, message) \
   RESULT_CHECKER_HELPER(expr, RETURN_NOT_OK_PREPEND(__result, message))
 
-// Asserts that result is ok, extracts result value is case of success.
-#define ASSERT_RESULT(expr) \
-  RESULT_CHECKER_HELPER(expr, ASSERT_OK(__result))
+template<class T>
+T&& OptionalWrapMove(Result<T>&& result) {
+  return std::move(*result);
+}
 
-// Asserts that result is ok, extracts result value is case of success.
-#define EXPECT_RESULT(expr) \
-  RESULT_CHECKER_HELPER(expr, EXPECT_OK(__result))
+template<class T>
+T&& OptionalWrapMove(T&& result) {
+  return std::move(result);
+}
 
-// Asserts that result is ok, extracts result value is case of success.
-#define ASSERT_RESULT_FAST(expr) \
-  RESULT_CHECKER_HELPER(expr, ASSERT_OK_FAST(__result))
+template<class T>
+bool OptionalResultIsOk(const Result<T>& result) {
+  return result.ok();
+}
+
+template<class T>
+constexpr bool OptionalResultIsOk(const T& result) {
+  return true;
+}
+
+template<class TValue>
+Status&& OptionalMoveStatus(Result<TValue>&& result) {
+  return std::move(result.status());
+}
+
+template<class TValue>
+Status OptionalMoveStatus(TValue&& value) {
+  return Status::OK();
+}
+
+// When expr type is Result, then it works as VERIFY_RESULT. Otherwise, just returns expr.
+// Could be used in templates to work with functions that returns Result in some instantiations,
+// and plain value in others.
+#define OPTIONAL_VERIFY_RESULT(expr) \
+  __extension__ ({ \
+    auto&& __result = (expr); \
+    if (!::yb::OptionalResultIsOk(__result)) { \
+      return ::yb::OptionalMoveStatus(std::move(__result)); \
+    } \
+    ::yb::OptionalWrapMove(std::move(__result)); })
 
 } // namespace yb
-
-#endif // YB_UTIL_RESULT_H

@@ -34,24 +34,6 @@ export interface PlacementInfo  {
    * @memberof PlacementInfo
    */
   num_nodes: number;
-  /**
-   * 
-   * @type {string}
-   * @memberof PlacementInfo
-   */
-  vpc_id?: string;
-  /**
-   * Number of data copies (read replica only)
-   * @type {number}
-   * @memberof PlacementInfo
-   */
-  num_replicas?: number;
-  /**
-   * Whether to spread the nodes in this region across zones
-   * @type {boolean}
-   * @memberof PlacementInfo
-   */
-  multi_zone?: boolean;
 }
 
 

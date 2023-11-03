@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { Tab, Row, Col } from 'react-bootstrap';
 import { connect } from 'react-redux';
 import { withRouter } from 'react-router';
@@ -108,8 +108,7 @@ class StorageConfiguration extends Component {
    * @returns
    */
   addStorageConfig = (values, action, props) => {
-    const type =
-      (props.activeTab && props.activeTab.toUpperCase()) || Object.keys(storageConfigTypes)[0];
+    const type = props.activeTab?.toUpperCase() || Object.keys(storageConfigTypes)[0];
     Object.keys(values).forEach((key) => {
       if (typeof values[key] === 'string' || values[key] instanceof String)
         values[key] = values[key].trim();
@@ -119,46 +118,56 @@ class StorageConfiguration extends Component {
 
     // These conditions will pick only the required JSON keys from the respective tab.
     switch (props.activeTab) {
-      case 'nfs':
+      case 'nfs': {
         configName = dataPayload['NFS_CONFIGURATION_NAME'];
         dataPayload['BACKUP_LOCATION'] = dataPayload['NFS_BACKUP_LOCATION'];
         dataPayload = _.pick(dataPayload, ['BACKUP_LOCATION']);
         break;
+      }
 
-      case 'gcs':
+      case 'gcs': {
         configName = dataPayload['GCS_CONFIGURATION_NAME'];
         dataPayload['BACKUP_LOCATION'] = dataPayload['GCS_BACKUP_LOCATION'];
         dataPayload = _.pick(dataPayload, ['BACKUP_LOCATION', 'GCS_CREDENTIALS_JSON']);
         break;
+      }
 
-      case 'az':
+      case 'az': {
         configName = dataPayload['AZ_CONFIGURATION_NAME'];
         dataPayload['BACKUP_LOCATION'] = dataPayload['AZ_BACKUP_LOCATION'];
         dataPayload = _.pick(dataPayload, ['BACKUP_LOCATION', 'AZURE_STORAGE_SAS_TOKEN']);
         break;
+      }
 
-      default:
+      default: {
+        let FIELDS;
         if (values['IAM_INSTANCE_PROFILE']) {
           configName = dataPayload['S3_CONFIGURATION_NAME'];
           dataPayload['IAM_INSTANCE_PROFILE'] = dataPayload['IAM_INSTANCE_PROFILE'].toString();
           dataPayload['BACKUP_LOCATION'] = dataPayload['S3_BACKUP_LOCATION'];
-          dataPayload = _.pick(dataPayload, [
-            'BACKUP_LOCATION',
-            'AWS_HOST_BASE',
-            'IAM_INSTANCE_PROFILE'
-          ]);
+          FIELDS = ['BACKUP_LOCATION', 'AWS_HOST_BASE', 'IAM_INSTANCE_PROFILE'];
         } else {
           configName = dataPayload['S3_CONFIGURATION_NAME'];
           dataPayload['BACKUP_LOCATION'] = dataPayload['S3_BACKUP_LOCATION'];
-          dataPayload = _.pick(dataPayload, [
+          FIELDS = [
             'AWS_ACCESS_KEY_ID',
             'AWS_SECRET_ACCESS_KEY',
             'BACKUP_LOCATION',
             'AWS_HOST_BASE',
             'PATH_STYLE_ACCESS'
-          ]);
+          ];
         }
+        if (dataPayload?.PROXY_SETTINGS?.PROXY_HOST) FIELDS.push('PROXY_SETTINGS.PROXY_HOST');
+        if (dataPayload?.PROXY_SETTINGS?.PROXY_PORT) FIELDS.push('PROXY_SETTINGS.PROXY_PORT');
+        if (dataPayload?.PROXY_SETTINGS?.PROXY_USERNAME) {
+          FIELDS.push('PROXY_SETTINGS.PROXY_USERNAME');
+          if (dataPayload?.PROXY_SETTINGS?.PROXY_PASSWORD)
+            FIELDS.push('PROXY_SETTINGS.PROXY_PASSWORD');
+        }
+        dataPayload = _.pick(dataPayload, FIELDS);
+
         break;
+      }
     }
 
     if (values.type === 'update') {
@@ -283,6 +292,8 @@ class StorageConfiguration extends Component {
         };
         if (row?.data?.PATH_STYLE_ACCESS)
           initialVal['PATH_STYLE_ACCESS'] = row?.data?.PATH_STYLE_ACCESS;
+        if (row?.data?.PROXY_SETTINGS?.PROXY_HOST)
+          initialVal['PROXY_SETTINGS'] = row?.data?.PROXY_SETTINGS;
         break;
     }
     this.props.setInitialValues(initialVal);
@@ -346,7 +357,13 @@ class StorageConfiguration extends Component {
   };
 
   render() {
-    const { handleSubmit, customerConfigs, initialValues, enablePathStyleAccess } = this.props;
+    const {
+      handleSubmit,
+      customerConfigs,
+      initialValues,
+      enablePathStyleAccess,
+      enableS3BackupProxy
+    } = this.props;
     const { iamRoleEnabled, editView, listView } = this.state;
     const activeTab = this.props.activeTab || Object.keys(storageConfigTypes)[0].toLowerCase();
     const backupListData = customerConfigs.data.filter((list) => {
@@ -372,6 +389,7 @@ class StorageConfiguration extends Component {
               iamInstanceToggle={this.iamInstanceToggle}
               isEdited={editView[activeTab]}
               enablePathStyleAccess={enablePathStyleAccess}
+              enableS3BackupProxy={enableS3BackupProxy}
             />
           )}
         </Tab>
@@ -440,7 +458,8 @@ function mapStateToProps(state) {
   } = state;
 
   return {
-    enablePathStyleAccess: test.enablePathStyleAccess || released.enablePathStyleAccess
+    enablePathStyleAccess: test.enablePathStyleAccess || released.enablePathStyleAccess,
+    enableS3BackupProxy: test.enableS3BackupProxy || released.enableS3BackupProxy
   };
 }
 

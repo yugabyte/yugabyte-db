@@ -19,10 +19,15 @@
 
 #include <memory>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/strings/ascii_ctype.h"
 #include "yb/gutil/strings/escaping.h"
+
+using std::vector;
+using std::string;
+using std::map;
+using std::pair;
 
 // ----------------------------------------------------------------------
 // JoinUsing()

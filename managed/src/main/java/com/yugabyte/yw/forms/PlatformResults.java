@@ -10,13 +10,17 @@
 
 package com.yugabyte.yw.forms;
 
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Results.ok;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
-import com.yugabyte.yw.common.password.RedactingService;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.List;
@@ -39,6 +43,10 @@ public class PlatformResults {
     return Results.ok(rawJson);
   }
 
+  private static Result redactedResult(JsonNode dataObj) {
+    return Results.ok(RedactingService.filterSecretFields(dataObj, RedactionTarget.APIS));
+  }
+
   /**
    * This is a replacement for ApiResponse.success
    *
@@ -46,8 +54,17 @@ public class PlatformResults {
    */
   public static Result withData(Object data) {
     JsonNode dataObj = Json.toJson(data);
-    dataObj = RedactingService.filterSecretFields(dataObj);
-    return Results.ok(dataObj);
+    return redactedResult(dataObj);
+  }
+
+  public static Result withData(Object data, Class<?> view) {
+    try {
+      JsonNode dataObj =
+          Json.parse(Json.mapper().copy().writerWithView(view).writeValueAsString(data));
+      return redactedResult(dataObj);
+    } catch (JsonProcessingException e) {
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+    }
   }
 
   @ApiModel(description = "Generic error response from the YugabyteDB Anywhere API")

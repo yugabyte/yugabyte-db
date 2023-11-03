@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_UTIL_YQL_VTABLE_HELPERS_H
-#define YB_MASTER_UTIL_YQL_VTABLE_HELPERS_H
+#pragma once
 
 #include <future>
 
@@ -22,7 +21,8 @@
 // https://gist.githubusercontent.com/mbautin/ed9e5d17f39fc0066eba77ce15cbbef9/raw
 #include <boost/asio/ip/address.hpp>
 
-#include "yb/common/value.pb.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/value.messages.h"
 
 #include "yb/master/master_heartbeat.fwd.h"
 #include "yb/master/master_fwd.h"
@@ -93,5 +93,3 @@ PublicPrivateIPFutures GetPublicPrivateIPFutures(
 }  // namespace util
 }  // namespace master
 }  // namespace yb
-
-#endif // YB_MASTER_UTIL_YQL_VTABLE_HELPERS_H

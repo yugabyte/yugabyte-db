@@ -18,29 +18,13 @@ Use the `ALTER TABLE` statement to change the definition of a table.
 
 ## Syntax
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fas fa-file-alt" aria-hidden="true"></i>
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fas fa-project-diagram" aria-hidden="true"></i>
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_table,alter_table_action,alter_table_constraint,alter_column_constraint,table_expr.grammar.md" %}}
-  </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_table,alter_table_action,alter_table_constraint,alter_column_constraint,table_expr.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  alter_table,
+  alter_table_action,
+  alter_table_constraint,
+  alter_column_constraint,
+  table_expr
+{{%/ebnf%}}
 
 <a name="table-expr-note"></a></br></br>
 {{< note title="Table inheritance is not yet supported" >}}
@@ -152,7 +136,7 @@ This is the result:
  frog | frog-child-c
 ```
 
-The `\d children` metacommand shows that it has a foreign key that's a dependent object on the column `b` in the `parents` table:
+The `\d children` meta-command shows that it has a foreign key that's a dependent object on the column `b` in the `parents` table:
 
 ```output
 Indexes:
@@ -198,6 +182,64 @@ It quietly succeeds. Now `\d children` shows that the foreign key constraint `ch
 
 Add the specified constraint to the table.
 
+#### [*alter_column_type*]
+
+Change the type of an existing column. The following semantics apply:
+- If data on disk is required to change, a full table rewrite is needed.
+- If the optional `COLLATE` clause is not specified, the default collation for the new column type will be used.
+- If the optional `USING` clause is not provided, the default conversion for the new column value will be the same as an assignment cast from the old type to the new type.
+- A `USING` clause must be included when there is no implicit assignment cast available from the old type to the new type.
+- Alter type is not supported for partitioned tables. See [#16980](https://github.com/yugabyte/yugabyte-db/issues/16980).
+- Alter type is not supported for tables with rules (limitation inherited from PostgreSQL).
+- Alter type is not supported for tables with CDC streams, or xCluster replication when it requires data on disk to change. See [#16625](https://github.com/yugabyte/yugabyte-db/issues/16625).
+
+##### Alter type without table-rewrite
+
+If the change doesn't require data on disk to change, concurrent DMLs to the table can be safely performed as shown in the following example:
+
+
+```sql
+CREATE TABLE test (id BIGSERIAL PRIMARY KEY, a VARCHAR(50));
+ALTER TABLE test ALTER COLUMN a TYPE VARCHAR(51);
+```
+
+##### Alter type with table rewrite
+
+If the change requires data on disk to change, a full table rewrite will be done and the following semantics apply:
+- The action creates an entirely new table under the hood, and concurrent DMLs may not be reflected in the new table which can lead to correctness issues.
+- If the operation fails, it is possible that the existing table is renamed in DocDB. This may lead to issues with yb-admin commands that take table name. For example,`./bin/yb-admin list_tablets`.
+- If the operation fails, a new dangling table may exist in DocDB. Use `yb-admin delete_table` to drop it.
+- Altering the data type of a foreign key column is not supported.
+- If there are concurrent DMLs, you can first rename the table to fail the DMLs, alter the column data type, and then rename the table again.
+- The operation preserves split properties for hash-partitioned tables and hash-partitioned secondary indexes. For range-partitioned tables (and secondary indexes), split properties are only preserved if the altered column is not part of the table's (or secondary index's) range key.
+
+Following is an example of alter type with table rewrite:
+
+```sql
+CREATE TABLE test (id BIGSERIAL PRIMARY KEY, a VARCHAR(50));
+INSERT INTO test(a) VALUES ('1234555');
+ALTER TABLE test ALTER COLUMN a TYPE VARCHAR(40);
+-- try to change type to BIGINT
+ALTER TABLE test ALTER COLUMN a TYPE BIGINT;
+ERROR:  column "a" cannot be cast automatically to type bigint
+HINT:  You might need to specify "USING a::bigint".
+-- use USING clause to cast the values
+ALTER TABLE test ALTER COLUMN a SET DATA TYPE BIGINT USING a::BIGINT;
+```
+
+Another option is to use a custom function as follows:
+
+```sql
+CREATE OR REPLACE FUNCTION myfunc(text) RETURNS BIGINT
+    AS 'select $1::BIGINT;'
+    LANGUAGE SQL
+    IMMUTABLE
+    RETURNS NULL ON NULL INPUT;
+
+ALTER TABLE test ALTER COLUMN a SET DATA TYPE BIGINT USING myfunc(a);
+```
+
+
 #### DROP CONSTRAINT *constraint_name* [ RESTRICT | CASCADE ]
 
 Drop the named constraint from the table.
@@ -208,6 +250,20 @@ Drop the named constraint from the table.
 #### RENAME [ COLUMN ] *column_name* TO *column_name*
 
 Rename a column to the specified name.
+
+#### RENAME CONSTRAINT *constraint_name* TO *constraint_name*
+
+Rename a constraint to the specified name.
+
+##### Example
+
+Create a table with a constraint and rename the constraint:
+
+```sql
+CREATE TABLE test(id BIGSERIAL PRIMARY KEY, a TEXT);
+ALTER TABLE test ADD constraint vague_name unique (a);
+ALTER TABLE test RENAME CONSTRAINT vague_name TO unique_a_constraint;
+```
 
 #### ENABLE / DISABLE ROW LEVEL SECURITY
 

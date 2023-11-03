@@ -23,8 +23,8 @@
 #include "yb/client/table.h"
 
 #include "yb/common/common.pb.h"
-#include "yb/common/index.h"
-#include "yb/common/index_column.h"
+#include "yb/qlexpr/index.h"
+#include "yb/qlexpr/index_column.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 
@@ -41,6 +41,8 @@
 #include "yb/yql/cql/ql/ptree/pt_select.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/ycql_predtest.h"
+
+using std::string;
 
 DECLARE_bool(allow_index_table_read_write);
 DECLARE_bool(use_cassandra_authentication);
@@ -183,7 +185,7 @@ void PTDmlStmt::LoadSchema(SemContext *sem_context,
     string colname = col.name();
     if (is_index && !schema.table_properties().use_mangled_column_name()) {
       // This is an OLD INDEX. We need to mangled its column name to work with new implementation.
-      colname = YcqlName::MangleColumnName(colname);
+      colname = qlexpr::YcqlName::MangleColumnName(colname);
     }
     column_map->emplace(MCString(colname.c_str(), sem_context->PSemMem()),
                         ColumnDesc(idx,
@@ -286,7 +288,7 @@ Status PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr) {
                              &json_col_where_ops_, &partition_key_ops_, &op_counters,
                              &partition_key_counter, opcode(), &func_ops_, &multi_col_where_ops_);
 
-  SemState sem_state(sem_context, QLType::Create(BOOL), InternalType::kBoolValue);
+  SemState sem_state(sem_context, QLType::Create(DataType::BOOL), InternalType::kBoolValue);
   sem_state.SetWhereState(&where_state);
   RETURN_NOT_OK(expr->Analyze(sem_context));
 
@@ -367,7 +369,7 @@ Status PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr) {
 
 Status PTDmlStmt::AnalyzeIfClause(SemContext *sem_context) {
   if (if_clause_) {
-    SemState sem_state(sem_context, QLType::Create(BOOL), InternalType::kBoolValue);
+    SemState sem_state(sem_context, QLType::Create(DataType::BOOL), InternalType::kBoolValue);
     sem_state.set_processing_if_clause(true);
     return if_clause_->Analyze(sem_context);
   }
@@ -387,7 +389,7 @@ Status PTDmlStmt::AnalyzeIndexesForWrites(SemContext *sem_context) {
   const Schema& indexed_schema = table_->InternalSchema();
   for (const auto& itr : table_->index_map()) {
     const TableId& index_id = itr.first;
-    const IndexInfo& index = itr.second;
+    const auto& index = itr.second;
 
     bool primary_key_cols_only = index.PrimaryKeyColumnsOnly(indexed_schema);
 
@@ -516,6 +518,15 @@ bool PTDmlStmt::StaticColumnArgsOnly() const {
 
 //--------------------------------------------------------------------------------------------------
 
+Status AnalyzeStepState::AnalyzePartitionKeyOp(SemContext *sem_context,
+                                               const PTRelationExpr *expr,
+                                               PTExprPtr value) {
+  partition_key_ops_->emplace_back(expr->ql_op(), value);
+  return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+
 Status WhereExprState::AnalyzeMultiColumnOp(
     SemContext* sem_context,
     const PTRelationExpr* expr,
@@ -636,11 +647,10 @@ Status WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
     if (select_stmt->child_select()) {
       // Parent SELECT (of a nested select).
       std::shared_ptr<client::YBTable> table = select_stmt->table();
-      std::unordered_map<TableId, IndexInfo>::const_iterator it =
-        table->index_map().find(select_stmt->child_select()->index_id());
+      auto it = table->index_map().find(select_stmt->child_select()->index_id());
 
       RSTATUS_DCHECK(it != table->index_map().end(), InternalError, "Index should be present");
-      const IndexInfo& idx_info = it->second;
+      const auto& idx_info = it->second;
 
       if (idx_info.where_predicate_spec()) {
         // It is a partial index.
@@ -652,7 +662,7 @@ Status WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
     } else if (!select_stmt->index_id().empty()) {
       // Child SELECT.
       std::shared_ptr<client::YBTable> table = select_stmt->table();
-      const IndexInfo& idx_info = table->index_info();
+      const auto& idx_info = table->index_info();
 
       if (idx_info.where_predicate_spec()) {
         // First attempt to preserve the sub-clause if it might be useful.
@@ -801,6 +811,38 @@ Status WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
       break;
     }
 
+    case QL_OP_CONTAINS_KEY: {
+      if (col_args != nullptr) {
+        return sem_context->Error(
+            expr, "Operator not supported for subscripted column",
+            ErrorCode::CQL_STATEMENT_INVALID);
+      } else {
+        counter.increase_contains_key();
+        if (!counter.is_valid()) {
+          return sem_context->Error(
+              expr, "Illogical condition for where clause", ErrorCode::CQL_STATEMENT_INVALID);
+        }
+        ops_->emplace_back(col_desc, value, expr->ql_op());
+      }
+      break;
+    }
+
+    case QL_OP_CONTAINS: {
+      if (col_args != nullptr) {
+        return sem_context->Error(
+            expr, "Operator not supported for subscripted column",
+            ErrorCode::CQL_STATEMENT_INVALID);
+      } else {
+        counter.increase_contains();
+        if (!counter.is_valid()) {
+          return sem_context->Error(
+              expr, "Illogical condition for where clause", ErrorCode::CQL_STATEMENT_INVALID);
+        }
+        ops_->emplace_back(col_desc, value, expr->ql_op());
+      }
+      break;
+    }
+
     case QL_OP_NOT_EQUAL: FALLTHROUGH_INTENDED;
     case QL_OP_NOT_IN: FALLTHROUGH_INTENDED;
     case QL_OP_IN: {
@@ -902,8 +944,7 @@ Status WhereExprState::AnalyzePartitionKeyOp(SemContext *sem_context,
                               ErrorCode::CQL_STATEMENT_INVALID);
   }
 
-  partition_key_ops_->emplace_back(expr->ql_op(), value);
-  return Status::OK();
+  return AnalyzeStepState::AnalyzePartitionKeyOp(sem_context, expr, value);
 }
 
 std::vector<int64_t> PTDmlStmt::hash_col_indices() const {

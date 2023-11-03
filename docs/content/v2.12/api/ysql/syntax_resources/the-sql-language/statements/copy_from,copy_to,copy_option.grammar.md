@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 copy_from ::= COPY table_name [ ( column_name [ , ... ] ) ]  FROM 
               { 'filename' | PROGRAM 'command' | STDIN } 
               [ [ WITH ] ( option [ , ... ] ) ]

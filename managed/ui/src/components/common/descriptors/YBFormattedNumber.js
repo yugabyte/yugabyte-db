@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { FormattedNumber } from 'react-intl';
 import { isFinite } from 'lodash';
 

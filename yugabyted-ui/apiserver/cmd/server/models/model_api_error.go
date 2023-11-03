@@ -2,5 +2,5 @@ package models
 
 type ApiError struct {
 
-	Error ApiErrorError `json:"error"`
+    Error ApiErrorError `json:"error"`
 }

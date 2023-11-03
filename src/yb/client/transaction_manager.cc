@@ -26,17 +26,22 @@
 
 #include "yb/server/server_base_options.h"
 
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 #include "yb/util/thread_restrictions.h"
 
-DEFINE_uint64(transaction_manager_workers_limit, 50,
+DEFINE_UNKNOWN_uint64(transaction_manager_workers_limit, 50,
               "Max number of workers used by transaction manager");
 
-DEFINE_uint64(transaction_manager_queue_limit, 500,
+DEFINE_UNKNOWN_uint64(transaction_manager_queue_limit, 500,
               "Max number of tasks used by transaction manager");
+
+DEFINE_test_flag(string, transaction_manager_preferred_tablet, "",
+                 "For testing only. If non-empty, transaction manager will try to use the status "
+                 "tablet with id matching this flag, if present in the list of status tablets.");
 
 namespace yb {
 namespace client {
@@ -73,7 +78,7 @@ class TransactionTableState {
 
   void UpdateStatusTablets(uint64_t new_version,
                            TransactionStatusTablets&& tablets) EXCLUDES(mutex_) {
-    std::lock_guard<yb::RWMutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (!initialized_.load() || status_tablets_version_ < new_version) {
       tablets_ = std::move(tablets);
       has_placement_local_tablets_.store(!tablets_.placement_local_tablets.empty());
@@ -87,7 +92,7 @@ class TransactionTableState {
   }
 
   uint64_t GetStatusTabletsVersion() EXCLUDES(mutex_) {
-    std::lock_guard<yb::RWMutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     return status_tablets_version_;
   }
 
@@ -98,6 +103,12 @@ class TransactionTableState {
                           const PickStatusTabletCallback& callback) REQUIRES_SHARED(mutex_) {
     if (tablets.empty()) {
       return false;
+    }
+    if (PREDICT_FALSE(!FLAGS_TEST_transaction_manager_preferred_tablet.empty()) &&
+        std::find(tablets.begin(), tablets.end(),
+                  FLAGS_TEST_transaction_manager_preferred_tablet) != tablets.end()) {
+      callback(FLAGS_TEST_transaction_manager_preferred_tablet);
+      return true;
     }
     if (local_tablet_filter_) {
       std::vector<const TabletId*> ids;
@@ -233,9 +244,10 @@ class TransactionManager::Impl {
       : client_(client),
         clock_(clock),
         table_state_{std::move(local_tablet_filter)},
-        thread_pool_(
-            "TransactionManager", FLAGS_transaction_manager_queue_limit,
-            FLAGS_transaction_manager_workers_limit),
+        thread_pool_(rpc::ThreadPoolOptions {
+          .name = "TransactionManager",
+          .max_workers = FLAGS_transaction_manager_workers_limit,
+        }),
         tasks_pool_(FLAGS_transaction_manager_queue_limit),
         invoke_callback_tasks_(FLAGS_transaction_manager_queue_limit) {
     CHECK(clock);
@@ -245,14 +257,30 @@ class TransactionManager::Impl {
     Shutdown();
   }
 
-  void UpdateTransactionTablesVersion(uint64_t version) {
+  void UpdateTransactionTablesVersion(
+      uint64_t version, UpdateTransactionTablesVersionCallback callback) {
     if (table_state_.GetStatusTabletsVersion() >= version) {
+      if (callback) {
+        callback(Status::OK());
+      }
       return;
     }
 
-    if (!tasks_pool_.Enqueue(&thread_pool_, client_, &table_state_, version)) {
+    PickStatusTabletCallback cb;
+    if (callback) {
+      cb = [callback](const Result<std::string>& result) {
+        return callback(ResultToStatus(result));
+      };
+    }
+
+    if (!tasks_pool_.Enqueue(&thread_pool_, client_, &table_state_, version, std::move(cb))) {
       YB_LOG_EVERY_N_SECS(ERROR, 1) << "Update tasks overflow, number of tasks: "
                                     << tasks_pool_.size();
+      if (callback) {
+        callback(STATUS_FORMAT(ServiceUnavailable,
+                               "Update tasks queue overflow, number of tasks: $0",
+                               tasks_pool_.size()));
+      }
     }
   }
 
@@ -332,8 +360,9 @@ TransactionManager::TransactionManager(
 
 TransactionManager::~TransactionManager() = default;
 
-void TransactionManager::UpdateTransactionTablesVersion(uint64_t version) {
-  impl_->UpdateTransactionTablesVersion(version);
+void TransactionManager::UpdateTransactionTablesVersion(
+    uint64_t version, UpdateTransactionTablesVersionCallback callback) {
+  impl_->UpdateTransactionTablesVersion(version, std::move(callback));
 }
 
 void TransactionManager::PickStatusTablet(

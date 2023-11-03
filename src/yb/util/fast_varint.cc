@@ -21,7 +21,6 @@
 using std::string;
 
 namespace yb {
-namespace util {
 
 namespace {
 
@@ -156,6 +155,16 @@ const uint64_t kVarIntMasks[] = {
     0x3fffffffffffffffULL,
     0xffffffffffffffffULL,
 };
+
+size_t FastDecodeDescendingSignedVarIntSize(Slice src) {
+  if (src.empty()) {
+    return 0;
+  }
+  uint16_t header = src[0] << 8 | (src.size() > 1 ? src[1] : 0);
+  uint64_t negative = -static_cast<uint64_t>((header & 0x8000) == 0);
+  header ^= negative;
+  return __builtin_clz((~header & 0x7fff) | 0x20) - 16;
+}
 
 inline Result<std::pair<int64_t, size_t>> FastDecodeSignedVarInt(
     const uint8_t* const src, size_t src_size, const uint8_t* read_allowed_from) {
@@ -365,5 +374,34 @@ Result<uint64_t> FastDecodeUnsignedVarInt(const Slice& slice) {
   return result;
 }
 
-}  // namespace util
+uint8_t* EncodeFieldLength(uint32_t len, uint8_t* out) {
+  if (len < 0x80) {
+    *out = len << 1;
+    return ++out;
+  }
+
+#ifdef IS_LITTLE_ENDIAN
+  len = (len << 1) | 1;
+  memcpy(out, &len, sizeof(uint32_t));
+  return out + sizeof(uint32_t);
+#else
+  #error "Big endian not implemented"
+#endif
+}
+
+std::pair<uint32_t, const uint8_t*> DecodeFieldLength(const uint8_t* inp) {
+#ifdef IS_LITTLE_ENDIAN
+  uint32_t result;
+  ANNOTATE_IGNORE_READS_BEGIN();
+  memcpy(&result, inp, sizeof(uint32_t));
+  ANNOTATE_IGNORE_READS_END();
+  if ((result & 1) == 0) {
+    return std::pair((result & 0xff) >> 1, ++inp);
+  }
+  return std::pair(result >> 1, inp + sizeof(uint32_t));
+#else
+  #error "Big endian not implemented"
+#endif
+}
+
 }  // namespace yb

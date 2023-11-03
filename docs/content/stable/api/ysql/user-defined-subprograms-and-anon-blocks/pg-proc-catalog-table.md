@@ -1,13 +1,13 @@
 ---
-title: The «pg_proc» catalog table for subprograms [YSQL]
-headerTitle: The «pg_proc» catalog table for subprograms
-linkTitle: The «pg_proc» catalog table
-description: Explains how to use the «pg_proc» catalog table to see subprogram metadata [YSQL].
+title: The 'pg_proc' catalog table for subprograms [YSQL]
+headerTitle: The 'pg_proc' catalog table for subprograms
+linkTitle: The pg_proc catalog table
+description: Explains how to use the 'pg_proc' catalog table to see subprogram metadata [YSQL].
 menu:
   stable:
     identifier: pg-proc-catalog-table
     parent: user-defined-subprograms-and-anon-blocks
-    weight: 999
+    weight: 99
 type: docs
 ---
 
@@ -106,15 +106,15 @@ If you use one of the keywords _volatile_, _stable_, or _immutable_ when you cre
 You might think that it's strange that the _pg_proc_ table shows _volatile_ for a procedure rather than _null_. This is just a matter of convention. The purpose of a procedure is to do something—and so it hardly makes sense to call this a _side_-effect. Nevertheless, it's reasonable to say that a procedure is inevitably _volatile_.
 {{< /note >}}
 
-## The '\df' and '\sf' metacommands
+## The '\df' and '\sf' meta-commands
 
-YSQL's _ysqlsh_ command line interpreter is derived directly from the source code of PostgreSQL's _psql_ and it therefore supports the same set of metacommands.
+YSQL's _ysqlsh_ command line interpreter is derived directly from the source code of PostgreSQL's _psql_ and it therefore supports the same set of meta-commands.
 
-Unlike with, say, the `\echo` metacommand, you can direct the output from `\df` and `\sf` to a file with the `\o` metacommand.
+Unlike with, say, the \\_echo_ meta-command, you can direct the output from \\_df_ and \\_sf_ to a file with the \\_o_ meta-command.
 
 ### '\df'
 
-The `\df` metacommand, when you use it bare, lists pre-determined metadata for every subprogram in the database. This is rarely useful because the number of results is typically large and often uninteresting. You can restrict the results. But you don't use SQL syntax. The rules are explained in the [ysqlsh](../../../../admin/ysqlsh/) section in the dedicated subsection for [`\df`](../../../../admin/ysqlsh/#df-antws-pattern-patterns). This example lists the subprograms in the schema _s2_:
+The \\_df_ meta-command, when you use it bare, lists pre-determined metadata for every subprogram in the database. This is rarely useful because the number of results is typically large and often uninteresting. You can restrict the results. But you don't use SQL syntax. The rules are explained in the [ysqlsh](../../../../admin/ysqlsh/) section in the dedicated subsection for [\\_df_](../../../../admin/ysqlsh-meta-commands/#df-antws-pattern-patterns). This example lists the subprograms in the schema _s2_:
 
 ```plpgsql
 \df s2.*
@@ -130,9 +130,9 @@ This is result (following what you created using the code above):
 
 ### '\sf'
 
-This produces a canonically formatted `create or replace` statement for the nominated subprogram. The optional `+` qualifier shows the line numbers. This can be useful for debugging runtime errors.
+This produces a canonically formatted _create or replace_ statement for the nominated subprogram. The optional `+` qualifier shows the line numbers. This can be useful for debugging runtime errors.
 
-The [`\sf`](../../../../admin/ysqlsh/#sf-function-description) metacommand takes a single argument: the (optionally) fully qualified _[subprogram_name](../../../../api/ysql/syntax_resources/grammar_diagrams/#subprogram-name)_ and its signature. (Its _[subprogram_call_signature](../../../../api/ysql/syntax_resources/grammar_diagrams/#subprogram-call-signature)_ is sufficient—and it's conventional always to use just this.)
+The [\\_sf_](../../../../admin/ysqlsh-meta-commands/#sf-function-description) meta-command takes a single argument: the (optionally) fully qualified _[subprogram_name](../../../../api/ysql/syntax_resources/grammar_diagrams/#subprogram-name)_ and its signature. (Its _[subprogram_call_signature](../../../../api/ysql/syntax_resources/grammar_diagrams/#subprogram-call-signature)_ is sufficient—and it's conventional always to use just this.)
 
 Try this example. Notice that the function _bad(int)_ is contrived to cause a runtime error. Notice, too, that the various attributes besides the source text have been written in an order (following the source text)  that, while it is legal, is unusual.
 
@@ -157,7 +157,7 @@ language plpgsql;
 \sf+ s1.bad(numeric)
 ```
 
-This is the `\sf` output:
+This is the \\_sf_ output:
 
 ```output
         CREATE OR REPLACE FUNCTION s1.bad(i numeric)
@@ -181,11 +181,11 @@ The preamble (up to and including the line that has been numbered _1_) has been 
 
 - Keywords are rendered in upper case.
 - The source text follows the preamble as the final item in the generated text.
-- The ordering of the non-source-text attributes is system-generated and different from the order in the `create` statement that defined the subprogram.
+- The ordering of the non-source-text attributes is system-generated and different from the order in the _create_ statement that defined the subprogram.
 - The syntax of the _set timezone_ attribute has been canonicalized.
 - The _$function$_ dollar-quote has been used to surround the source text. (Correspondingly, _$procedure$_ is used around a procedure's source text.)
 
-You can confirm with an _ad hoc_ test that if you had already used _$function$_ within the statement that created the function that you process with `\sf`, then the generated double quote would be changed to, say, _$function1$_. (The corresponding accommodation is made for procedures.)
+You can confirm with an _ad hoc_ test that if you had already used _$function$_ within the statement that created the function that you process with \\_sf_, then the generated double quote would be changed to, say, _$function1$_. (The corresponding accommodation is made for procedures.)
 
 You might take this as a gentle hint always to place the source text as the very last item—but not to care about the mutual ordering of the other attributes.
 

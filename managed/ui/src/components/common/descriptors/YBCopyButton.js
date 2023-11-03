@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { PureComponent } from 'react';
+import { PureComponent } from 'react';
 import PropTypes from 'prop-types';
 import copy from 'copy-to-clipboard';
 
@@ -41,7 +41,7 @@ export default class YBCopyButton extends PureComponent {
         className={'btn btn-small btn-copy ' + className + additionalClassName}
         onClick={this.onClick}
       >
-        {children || caption}
+        {children ?? caption}
       </button>
     );
   }

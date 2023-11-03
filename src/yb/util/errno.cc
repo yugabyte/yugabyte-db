@@ -35,10 +35,10 @@
 
 #include <string.h>
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/status.h"
 
-DEFINE_bool(suicide_on_eio, true,
+DEFINE_UNKNOWN_bool(suicide_on_eio, true,
             "Kill the process if an I/O operation results in EIO");
 TAG_FLAG(suicide_on_eio, advanced);
 

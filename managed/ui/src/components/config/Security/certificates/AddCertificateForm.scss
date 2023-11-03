@@ -1,5 +1,6 @@
-@import '../../../../_style/mixins.scss';
-@import '../../../../_style/colors.scss';
+@use "sass:color";
+@use '../../../../_style/mixins.scss';
+@use '../../../../_style/colors.scss';
 
 .suggestion {
   position: relative;
@@ -10,7 +11,7 @@
   font-size: 14px;
   font-family: inherit;
   z-index: 0;
-  color: lighten($YB_DARK_GRAY, 10%);
+  color: color.adjust(colors.$YB_DARK_GRAY, $lightness: 10%);
   background: transparent;
   border: 1px solid #fff;
   line-height: 1.42857143;
@@ -32,4 +33,8 @@
 
 .hc-field-c {
   padding-bottom: 5px;
+}
+
+.standard-error {
+  color: colors.$YB_ERROR_TEXT_COLOR;
 }

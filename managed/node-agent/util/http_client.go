@@ -3,40 +3,71 @@ package util
 
 import (
 	"bytes"
+	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"sync"
 	"time"
+)
+
+var (
+	once     sync.Once
+	certPool *x509.CertPool
 )
 
 type HttpClient struct {
 	client *http.Client
-	host   string
-	port   string
+	url    string
 }
 
-func NewHttpClient(timeout int, host string, port string) *HttpClient {
-	client := &http.Client{
-		Timeout: time.Second * time.Duration(timeout),
+func NewHttpClient(timeout int, url string) *HttpClient {
+	config := CurrentConfig()
+	once.Do(func() {
+		caCertPath := config.String(PlatformCaCertPathKey)
+		if caCertPath != "" {
+			certPool := x509.NewCertPool()
+			pem, err := os.ReadFile(caCertPath)
+			if err != nil {
+				panic(err)
+			}
+			certPool.AppendCertsFromPEM(pem)
+		}
+	})
+	var transport *http.Transport
+	if certPool == nil {
+		skipCertVerify := config.Bool(PlatformSkipVerifyCertKey)
+		transport = &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: skipCertVerify},
+		}
+	} else {
+		transport = &http.Transport{
+			TLSClientConfig: &tls.Config{RootCAs: certPool},
+		}
 	}
-	return &HttpClient{client: client, host: host, port: port}
+	client := &http.Client{
+		Timeout:   time.Second * time.Duration(timeout),
+		Transport: transport,
+	}
+	return &HttpClient{client: client, url: url}
 }
 
 func (c *HttpClient) Do(
+	ctx context.Context,
 	method string,
 	url string,
 	headers map[string]string,
 	queryParams map[string]string,
 	data any,
 ) (*http.Response, error) {
-	var (
-		req *http.Request
-		err error
-	)
-	basicUrl := fmt.Sprintf("%s:%s%s", c.host, c.port, url)
-	err = validate(method, queryParams, data)
+	var req *http.Request
+	basicUrl := fmt.Sprintf("%s%s", c.url, url)
+	err := validate(method, queryParams, data)
 	if err != nil {
-		FileLogger.Errorf("Validation failed for the method: %s, err: %s", method, err.Error())
+		FileLogger().Errorf(ctx, "Validation failed for the method: %s, err: %s", method, err.Error())
 		return nil, err
 	}
 	//Add Query parameters to the request
@@ -52,11 +83,12 @@ func (c *HttpClient) Do(
 			basicUrl = fmt.Sprintf("%s%s=%s", basicUrl, k, v)
 		}
 	}
-
+	FileLogger().Infof(ctx, "Sending request to %s", basicUrl)
 	if data == nil {
 		req, err = http.NewRequest(method, basicUrl, nil)
 	} else {
-		dataJson, err := json.Marshal(data)
+		var dataJson []byte
+		dataJson, err = json.Marshal(data)
 		if err != nil {
 			return nil, err
 		}
@@ -64,7 +96,8 @@ func (c *HttpClient) Do(
 	}
 
 	if err != nil {
-		FileLogger.Errorf(
+		FileLogger().Errorf(
+			ctx,
 			"Error while creating new request url: %s, method: %s, err: %s",
 			url,
 			method,
@@ -81,17 +114,17 @@ func (c *HttpClient) Do(
 
 	res, err := c.client.Do(req)
 	if err != nil {
-		FileLogger.Errorf("Http url: %s method: %s call failed %s", url, method, err.Error())
+		FileLogger().Errorf(ctx, "Http url: %s method: %s call failed %s", url, method, err.Error())
 		return nil, err
 	}
 
-	FileLogger.Infof("Http url: %s method: %s call succesful", url, method)
+	FileLogger().Infof(ctx, "Http url: %s method: %s call succesful", url, method)
 
 	return res, nil
 }
 
-//Validation to check if the given http method has correct
-//signature.
+// Validation to check if the given http method has correct
+// signature.
 func validate(method string, queryParams map[string]string, data any) error {
 	if !isValidMethod(method) {
 		return fmt.Errorf("Incorrect Method passed.")
@@ -104,7 +137,7 @@ func validate(method string, queryParams map[string]string, data any) error {
 	return nil
 }
 
-//Validates the method passed.
+// Validates the method passed.
 func isValidMethod(method string) bool {
 	switch method {
 	case http.MethodGet,

@@ -1,13 +1,26 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../../_style/colors.scss';
+@use "sass:color";
+@use '../../../_style/colors.scss';
+@use '../../../_style/mixins.scss';
 
 #config-tab-panel .config-tabs .tab-content {
   min-height: 400px;
   padding-top: 20px;
 
   .tab-pane {
-    padding-bottom: 60px;
+    padding-bottom: 80px;
+  }
+}
+
+#cloud-config-tab-panel.config-tabs.redesign .tab-content {
+  min-height: 400px;
+  padding: 0;
+
+  background-color: colors.$YB_BACKGROUND;
+
+  .tab-pane {
+    padding-bottom: 0px;
   }
 }
 
@@ -42,7 +55,7 @@
 }
 
 .provider-config-container .heading-text {
-  color: $YB_ORANGE;
+  color: colors.$YB_ORANGE;
 }
 
 .detail-text {
@@ -62,11 +75,13 @@
   font-weight: 500;
 }
 
-.provider-config-container button {
-  float: right;
-  margin-bottom: 4px;
-  width: 220px;
-  text-align: center;
+.provider-config-container:not(:has(div.alert-destination-channels)) {
+  button {
+    float: right;
+    margin-bottom: 4px;
+    width: 220px;
+    text-align: center;
+  }
 }
 
 .backup-config-actions {
@@ -80,17 +95,20 @@
 }
 
 .storage-config-tab-panel {
-  ul > li {
+  ul>li {
     width: 220px;
   }
 }
+
 .storage-config-del-err-msg {
   display: flex;
   align-items: flex-start;
   font-size: 14px;
   height: 100px;
+
   span {
     margin-left: 18px;
+
     a {
       text-decoration: underline;
     }
@@ -111,7 +129,6 @@
       width: max-content;
       padding: 10px 15px;
     }
-
   }
 
   .btn-add-region {
@@ -119,8 +136,8 @@
     width: 100%;
     margin: 0 auto;
     height: 60px;
-    border: 1px dotted desaturate(rgba($YB_VIOLET, 0.35), 20%);
-    color: $YB_ORANGE;
+    border: 1px dotted color.adjust(rgba(colors.$YB_VIOLET, 0.35), $saturation: -20%);
+    color: colors.$YB_ORANGE;
     font-weight: 400;
 
     &:focus {
@@ -128,7 +145,7 @@
     }
 
     &:hover {
-      @include transition(0.3s);
+      @include mixins.transition(0.3s);
       transform: scale(1.01, 1.01);
       background-color: #fff;
       transform-origin: 50% 50%;
@@ -139,7 +156,7 @@
     .btn-icon {
       position: relative;
       display: inline-block;
-      background-color: $YB_ORANGE;
+      background-color: colors.$YB_ORANGE;
       height: 30px;
       width: 30px;
       font-weight: 200;
@@ -161,11 +178,11 @@
     }
 
     &.has-error {
-      border: 1px solid desaturate($YB_ERROR_TEXT_COLOR, 20%);
+      border: 1px solid color.adjust(colors.$YB_ERROR_TEXT_COLOR, $saturation: -20%);
     }
 
-    & + .standart-error {
-      color: $YB_ERROR_TEXT_COLOR;
+    &+.standart-error {
+      color: colors.$YB_ERROR_TEXT_COLOR;
       display: block;
       margin-top: 5px;
       margin-bottom: 10px;
@@ -183,7 +200,7 @@
       display: table-row;
       margin-left: 10px;
       margin-right: 10px;
-      @include transition(0.15s);
+      @include mixins.transition(0.15s);
       border-radius: 7px;
       font-size: 14px;
 
@@ -193,27 +210,27 @@
         }
       }
 
-      & > div:first-child {
+      &>div:first-child {
         padding: 0 10px 0 20px;
         border-radius: 7px 0 0 7px;
       }
 
-      & > div:last-child {
+      &>div:last-child {
         border-radius: 0 7px 7px 0;
         width: 50px;
       }
 
       &:not(:first-child) {
-        background-color: $YB_BACKGROUND;
+        background-color: colors.$YB_BACKGROUND;
 
         div {
           padding-top: 6px;
           padding-bottom: 6px;
         }
 
-        & > *:first-child * {
+        &>*:first-child * {
           font-weight: 700;
-          color: $YB_ORANGE !important;
+          color: colors.$YB_ORANGE !important;
         }
       }
 
@@ -222,7 +239,7 @@
         z-index: 2;
         cursor: pointer;
         padding: 0 10px;
-        @include transition(0.3s);
+        @include mixins.transition(0.3s);
         transform: scale(1.01, 1.01);
         background-color: #fff;
         transform-origin: 50% 50%;
@@ -236,7 +253,7 @@
         font-weight: 500;
       }
 
-      & > div {
+      &>div {
         display: table-cell;
       }
 
@@ -297,7 +314,7 @@
 }
 
 .save-btn {
-  background-color: $YB_ORANGE;
+  background-color: colors.$YB_ORANGE;
   color: white;
   border: none;
   float: right;
@@ -312,26 +329,27 @@
 }
 
 .delete-btn {
-  background-color: $YB_FAIL_COLOR;
+  background-color: colors.$YB_FAIL_COLOR;
   border-color: transparent;
   color: white;
 
   i {
-    color: $YB_FAIL_COLOR_ICON;
+    color: colors.$YB_FAIL_COLOR_ICON;
   }
 
   &:hover {
     color: white;
-    background-color: darken($YB_FAIL_COLOR, 5%) !important;
+    background-color: color.adjust(colors.$YB_FAIL_COLOR, $lightness: -5%) !important;
     border-color: transparent;
 
     i {
-      color: $YB_FAIL_COLOR_DARK;
+      color: colors.$YB_FAIL_COLOR_DARK;
     }
   }
 }
 
 .provider-config-container {
+
   .save-btn,
   .delete-btn {
     font-weight: 500;
@@ -351,7 +369,7 @@
 .host-current-file-container {
   font-size: 18px;
   font-weight: 500;
-  color: $YB_DARK_GRAY;
+  color: colors.$YB_DARK_GRAY;
   margin-top: 6px;
   padding: 2px 14px;
 }
@@ -362,22 +380,23 @@
 
 .config-tabs .nav-tabs {
   @media screen and (max-width: 1620px) {
-    > li {
+    >li {
       width: calc(100% / 7);
 
-      > a {
+      >a {
         margin-right: 0px;
       }
     }
   }
 
   @media screen and (min-width: 768px) {
-    > li > a {
+    >li>a {
       min-width: unset;
     }
   }
 
   li:not(.active) {
+
     img,
     svg {
       filter: grayscale(1) brightness(1.2);
@@ -388,7 +407,7 @@
     }
   }
 
-  > li > a {
+  >li>a {
     height: 52px;
     padding: 0 15px;
     display: flex;
@@ -402,7 +421,7 @@
       overflow: hidden;
 
       @media screen and (max-width: 980px) {
-        > span {
+        >span {
           display: none;
         }
       }
@@ -488,7 +507,7 @@
     font-size: inherit;
 
     .fa-ban {
-      color: $YB_FAIL_COLOR;
+      color: colors.$YB_FAIL_COLOR;
     }
   }
 

@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_SERVER_TRACING_PATH_HANDLERS_H
-#define YB_SERVER_TRACING_PATH_HANDLERS_H
+#pragma once
 
 #include <sstream>
 
@@ -54,4 +53,3 @@ class TracingPathHandlers {
 
 } // namespace server
 } // namespace yb
-#endif /* YB_SERVER_TRACING_PATH_HANDLERS_H */

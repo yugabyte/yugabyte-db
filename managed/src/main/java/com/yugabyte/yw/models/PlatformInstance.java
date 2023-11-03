@@ -11,7 +11,9 @@
 package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.annotation.JsonGetter;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
+import com.fasterxml.jackson.annotation.JsonSetter;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.ObjectCodec;
@@ -35,6 +37,9 @@ import javax.persistence.Id;
 import javax.persistence.ManyToOne;
 import javax.persistence.Temporal;
 import javax.persistence.TemporalType;
+import javax.persistence.Transient;
+import lombok.Getter;
+import lombok.Setter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
@@ -42,6 +47,8 @@ import play.data.validation.Constraints;
 @Entity
 @JsonPropertyOrder({"uuid", "config_uuid", "address", "is_leader", "is_local", "last_backup"})
 @JsonDeserialize(using = PlatformInstance.PlatformInstanceDeserializer.class)
+@Getter
+@Setter
 public class PlatformInstance extends Model {
 
   private static final Finder<UUID, PlatformInstance> find =
@@ -65,6 +72,7 @@ public class PlatformInstance extends Model {
 
   @Constraints.Required
   @Temporal(TemporalType.TIMESTAMP)
+  @JsonProperty("last_backup")
   private Date lastBackup;
 
   @Constraints.Required()
@@ -75,39 +83,12 @@ public class PlatformInstance extends Model {
   @Column(unique = true)
   private Boolean isLocal;
 
-  public UUID getUUID() {
-    return this.uuid;
-  }
-
-  public void setUUID(UUID uuid) {
-    this.uuid = uuid;
-  }
-
-  public String getAddress() {
-    return this.address;
-  }
-
-  public void setAddress(String address) {
-    this.address = address;
-  }
+  @Transient private String ybaVersion = null;
 
   @JsonGetter("config_uuid")
   @JsonSerialize(using = HAConfigToUUIDSerializer.class)
   public HighAvailabilityConfig getConfig() {
     return this.config;
-  }
-
-  public void setConfig(HighAvailabilityConfig config) {
-    this.config = config;
-  }
-
-  @JsonGetter("last_backup")
-  public Date getLastBackup() {
-    return this.lastBackup;
-  }
-
-  public void setLastBackup(Date lastBackup) {
-    this.lastBackup = lastBackup;
   }
 
   public boolean updateLastBackup() {
@@ -126,20 +107,22 @@ public class PlatformInstance extends Model {
     return this.isLeader != null;
   }
 
-  public void setIsLeader(Boolean isLeader) {
-    this.isLeader = isLeader ? true : null;
-  }
-
   @JsonGetter("is_local")
   public Boolean getIsLocal() {
     return this.isLocal != null;
   }
 
-  public void setIsLocal(Boolean isLocal) {
+  @JsonSetter("is_leader")
+  public void setIsLeader(boolean isLeader) {
+    this.isLeader = isLeader ? true : null;
+  }
+
+  @JsonSetter("is_local")
+  public void setIsLocal(boolean isLocal) {
     this.isLocal = isLocal ? true : null;
   }
 
-  public void setIsLocalAndUpdate(Boolean isLocal) {
+  public void updateIsLocal(Boolean isLocal) {
     this.setIsLocal(isLocal);
     this.update();
   }
@@ -164,8 +147,8 @@ public class PlatformInstance extends Model {
     model.uuid = UUID.randomUUID();
     model.config = config;
     model.address = address;
-    model.isLeader = isLeader ? true : null;
-    model.isLocal = isLocal ? true : null;
+    model.setIsLeader(isLeader);
+    model.setIsLocal(isLocal);
     model.save();
 
     return model;
@@ -196,7 +179,7 @@ public class PlatformInstance extends Model {
     public void serialize(
         HighAvailabilityConfig value, JsonGenerator gen, SerializerProvider provider)
         throws IOException {
-      gen.writeString(value.getUUID().toString());
+      gen.writeString(value.getUuid().toString());
     }
   }
 

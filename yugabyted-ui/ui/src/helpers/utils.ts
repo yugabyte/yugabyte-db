@@ -75,6 +75,8 @@ export enum RelativeInterval {
   Last7days = 'last7days'
 }
 
+export type ClusterType = 'PRIMARY' | 'READ_REPLICA';
+
 // convert relative interval like "last 6 hours" to exact pair of start/end date objects
 export const getInterval = (relativeInterval: RelativeInterval): Interval => {
   let start: Date;
@@ -338,3 +340,30 @@ export const getTimeZoneAbbreviated = (date: Date): string => {
   }
   return tz;
 };
+
+const regionCountryCodes: { [k: string]: string } = {
+  'us-east-2':      'us',
+  'us-east-1':      'us',
+  'us-west-1':      'us',
+  'us-west-2':      'us',
+  'af-south-1':     'za',
+  'ap-south-1':     'in',
+  'ap-northeast-3': 'jp',
+  'ap-southeast-1': 'sg',
+  'ap-southeast-2': 'au',
+  'ap-northeast-1': 'jp',
+  'ca-central-1':   'ca',
+  'eu-central-1':   'de',
+  'eu-west-1':      'ie',
+  'eu-west-2':      'gb',
+  'eu-south-1':     'it',
+  'eu-west-3':      'fr',
+  'eu-north-1':     'se',
+  'me-south-1':     'bh',
+  'sa-east-1':      'br',
+  'us-gov-east-1':  'us',
+  'us-gov-west-1':  'us',
+}
+
+export const getRegionCode = ({ region, zone }: { region?: string, zone?: string }) => 
+  Object.entries(regionCountryCodes).find(([key]) => zone?.startsWith(key) || (region && key.startsWith(region)))?.[1]

@@ -4,7 +4,6 @@
 //
 // This file will return the set of storage type options.
 
-import React from 'react';
 import { isNonEmptyArray, isNonEmptyObject } from '../../utils/ObjectUtils';
 
 export const BackupStorageOptions = (storageConfigs) => {
@@ -20,7 +19,7 @@ export const BackupStorageOptions = (storageConfigs) => {
         configUUID: indx.configUUID
       };
 
-      val[configType] = [...val[configType] ?? [], currentConfig];
+      val[configType] = [...(val[configType] ?? []), currentConfig];
       return val;
     }, {});
 
@@ -33,7 +32,7 @@ export const BackupStorageOptions = (storageConfigs) => {
           .map((item, arrIdx) => ({
             label: item.configName,
             value: item.configUUID,
-            id: key.toUpperCase(),
+            id: key.toUpperCase()
           }))
       };
     });

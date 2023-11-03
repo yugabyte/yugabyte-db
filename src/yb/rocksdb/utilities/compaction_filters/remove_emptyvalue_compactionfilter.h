@@ -18,10 +18,7 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_UTILITIES_COMPACTION_FILTERS_REMOVE_EMPTYVALUE_COMPACTIONFILTER_H
-#define YB_ROCKSDB_UTILITIES_COMPACTION_FILTERS_REMOVE_EMPTYVALUE_COMPACTIONFILTER_H
 
-#ifndef ROCKSDB_LITE
 
 #pragma once
 
@@ -42,6 +39,3 @@ class RemoveEmptyValueCompactionFilter : public CompactionFilter {
         bool* value_changed) override;
 };
 }  // namespace rocksdb
-#endif // !ROCKSDB_LITE
-
-#endif // YB_ROCKSDB_UTILITIES_COMPACTION_FILTERS_REMOVE_EMPTYVALUE_COMPACTIONFILTER_H

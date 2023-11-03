@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_UTIL_TIMEOUT_ERROR_H
-#define YB_ROCKSDB_UTIL_TIMEOUT_ERROR_H
+#pragma once
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
@@ -34,5 +33,3 @@ typedef yb::StatusErrorCodeImpl<TimeoutErrorTag> TimeoutError;
 
 
 } // namespace rocksdb
-
-#endif // YB_ROCKSDB_UTIL_TIMEOUT_ERROR_H

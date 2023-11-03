@@ -17,12 +17,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ROCKSDB_DB_FORWARD_ITERATOR_H
-#define ROCKSDB_DB_FORWARD_ITERATOR_H
 
 #pragma once
 
-#ifndef ROCKSDB_LITE
 
 #include <string>
 #include <vector>
@@ -73,23 +70,23 @@ class ForwardIterator : public InternalIterator {
                   ColumnFamilyData* cfd, SuperVersion* current_sv = nullptr);
   virtual ~ForwardIterator();
 
-  void SeekToLast() override {
+  const KeyValueEntry& SeekToLast() override {
     status_ = STATUS(NotSupported, "ForwardIterator::SeekToLast()");
-    valid_ = false;
+    entry_.Reset();
+    return entry_;
   }
-  void Prev() override {
+  const KeyValueEntry& Prev() override {
     status_ = STATUS(NotSupported, "ForwardIterator::Prev");
-    valid_ = false;
+    entry_.Reset();
+    return entry_;
   }
 
-  virtual bool Valid() const override;
-  void SeekToFirst() override;
-  virtual void Seek(const Slice& target) override;
-  virtual void Next() override;
-  virtual Slice key() const override;
-  virtual Slice value() const override;
-  virtual Status status() const override;
-  virtual Status GetProperty(std::string prop_name, std::string* prop) override;
+  const KeyValueEntry& Entry() const final;
+  const KeyValueEntry& SeekToFirst() final;
+  const KeyValueEntry& Seek(Slice target) final;
+  const KeyValueEntry& Next() final;
+  Status status() const final;
+  Status GetProperty(std::string prop_name, std::string* prop) final;
 
   bool TEST_CheckDeletedIters(int* deleted_iters, int* num_iters);
 
@@ -123,7 +120,7 @@ class ForwardIterator : public InternalIterator {
   std::vector<InternalIterator*> l0_iters_;
   std::vector<LevelIterator*> level_iters_;
   InternalIterator* current_;
-  bool valid_;
+  KeyValueEntry entry_;
 
   // Internal iterator status; set only by one of the unsupported methods.
   Status status_;
@@ -151,6 +148,3 @@ class ForwardIterator : public InternalIterator {
 };
 
 }  // namespace rocksdb
-#endif  // ROCKSDB_LITE
-
-#endif // ROCKSDB_DB_FORWARD_ITERATOR_H

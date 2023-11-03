@@ -147,9 +147,11 @@ SELECT * FROM FKTABLE ORDER BY ftest1, ftest2, ftest3;
 
 -- Try altering the column type where foreign keys are involved
 ALTER TABLE PKTABLE ALTER COLUMN ptest1 TYPE bigint;
-ERROR:  This ALTER TABLE command is not yet supported.
+ERROR:  Altering type of foreign key is not supported
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/17037. React with thumbs up to raise its priority
 ALTER TABLE FKTABLE ALTER COLUMN ftest1 TYPE bigint;
-ERROR:  This ALTER TABLE command is not yet supported.
+ERROR:  Altering type of foreign key is not supported
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/17037. React with thumbs up to raise its priority
 SELECT * FROM PKTABLE ORDER BY ptest1, ptest2;
  ptest1 | ptest2 | ptest3
 --------+--------+---------
@@ -1059,6 +1061,35 @@ INSERT INTO fktable VALUES (100, 200);
 COMMIT;
 ERROR:  insert or update on table "fktable" violates foreign key constraint "fktable_fk_fkey"
 DETAIL:  Key (fk)=(200) is not present in table "pktable".
+-- deferred in subtransactions
+BEGIN;
+INSERT INTO pktable VALUES (100, 100);
+INSERT INTO pktable VALUES (200, 200);
+SAVEPOINT savept1;
+INSERT INTO fktable VALUES (100, 100);
+-- PK violation
+INSERT INTO fktable VALUES (100, 200);
+ERROR:  duplicate key value violates unique constraint "fktable_pkey"
+ROLLBACK TO SAVEPOINT savept1;
+INSERT INTO fktable VALUES (100, 100);
+-- no error here
+INSERT INTO fktable VALUES (200, 300);
+-- still no error
+RELEASE SAVEPOINT savept1;
+-- error here on commit
+COMMIT;
+ERROR:  insert or update on table "fktable" violates foreign key constraint "fktable_fk_fkey"
+DETAIL:  Key (fk)=(300) is not present in table "pktable".
+SELECT * FROM pktable;
+ id | other
+----+-------
+(0 rows)
+
+SELECT * FROM fktable;
+ id | fk
+----+----
+(0 rows)
+
 DROP TABLE fktable, pktable;
 -- test notice about expensive referential integrity checks,
 -- where the index cannot be used because of type incompatibilities.
@@ -1552,7 +1583,8 @@ CREATE TABLE fk_partitioned_fk_1 PARTITION OF fk_partitioned_fk FOR VALUES FROM 
 INSERT INTO fk_notpartitioned_pk VALUES (1);
 INSERT INTO fk_partitioned_fk VALUES (1);
 ALTER TABLE fk_notpartitioned_pk ALTER COLUMN a TYPE bigint;
-ERROR:  This ALTER TABLE command is not yet supported.
+ERROR:  Altering type of foreign key is not supported
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/17037. React with thumbs up to raise its priority
 DELETE FROM fk_notpartitioned_pk WHERE a = 1;
 ERROR:  update or delete on table "fk_notpartitioned_pk" violates foreign key constraint "fk_partitioned_fk_a_fkey" on table "fk_partitioned_fk"
 DETAIL:  Key (a)=(1) is still referenced from table "fk_partitioned_fk".

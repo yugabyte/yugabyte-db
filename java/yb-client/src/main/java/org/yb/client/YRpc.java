@@ -44,13 +44,13 @@ import com.google.protobuf.CodedOutputStream;
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.Message;
 import com.stumbleupon.async.Deferred;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.util.Pair;
 import org.yb.util.Slice;
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.buffer.ChannelBuffers;
 
 import java.io.IOException;
 
@@ -77,8 +77,10 @@ public abstract class YRpc<R> {
   protected static final String GENERIC_SERVICE_NAME = "yb.server.GenericService";
   protected static final String MASTER_SERVICE_NAME = "yb.master.MasterService";
   protected static final String TABLET_SERVER_SERVICE_NAME = "yb.tserver.TabletServerService";
+  protected static final String TABLET_SERVER_ADMIN_SERVICE = "yb.tserver.TabletServerAdminService";
   protected static final String CONSENSUS_SERVICE_NAME = "yb.consensus.ConsensusService";
   protected static final String CDC_SERVICE_NAME = "yb.cdc.CDCService";
+  protected static final String MASTER_BACKUP_SERVICE_NAME = "yb.master.MasterBackup";
 
   public interface HasKey {
     /**
@@ -113,10 +115,10 @@ public abstract class YRpc<R> {
    * that access this attribute will have a happens-before relationship with
    * the rest of the code, due to other existing synchronization.
    */
-  byte attempt;  // package-private for TabletClient and AsyncYBClient only.
+  int attempt;  // package-private for TabletClient and AsyncYBClient only.
 
   // Maximum number of attempts to try the RPC. Default 100 times.
-  byte maxAttempts = 100;
+  int maxAttempts = 100;
 
   // Whether or not retries for this RPC should always go to the same server. This is required in
   // some cases where we do not want the RPC retries to hit a different server serving the same
@@ -135,7 +137,7 @@ public abstract class YRpc<R> {
    * Notice that this method is package-private, so only classes within this
    * package can use this as a base class.
    */
-  abstract ChannelBuffer serialize(Message header);
+  abstract ByteBuf serialize(Message header);
 
   /**
    * Package private way of getting the name of the RPC service.
@@ -279,10 +281,10 @@ public abstract class YRpc<R> {
     }
   }
 
-  static ChannelBuffer toChannelBuffer(Message header, Message pb) {
+  static ByteBuf toChannelBuffer(Message header, Message pb) {
     int totalSize = IPCUtil.getTotalSizeWhenWrittenDelimited(header, pb);
     byte[] buf = new byte[totalSize+4];
-    ChannelBuffer chanBuf = ChannelBuffers.wrappedBuffer(buf);
+    ByteBuf chanBuf = Unpooled.wrappedBuffer(buf);
     chanBuf.clear();
     chanBuf.writeInt(totalSize);
     final CodedOutputStream out = CodedOutputStream.newInstance(buf, 4, totalSize);
@@ -319,7 +321,7 @@ public abstract class YRpc<R> {
    * @throws IllegalArgumentException if the length is negative or
    * suspiciously large.
    */
-  static void checkArrayLength(final ChannelBuffer buf, final long length) {
+  static void checkArrayLength(final ByteBuf buf, final long length) {
     // 2 checks in 1.  If any of the high bits are set, we know the value is
     // either too large, or is negative (if the most-significant bit is set).
     if ((length & MAX_BYTE_ARRAY_MASK) != 0) {

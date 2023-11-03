@@ -13,8 +13,9 @@
 // Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
 // Portions Copyright (c) 1994, Regents of the University of California
 
-#ifndef YB_UTIL_YB_PG_ERRCODES_H
-#define YB_UTIL_YB_PG_ERRCODES_H
+#pragma once
+
+#include <stdint.h>
 
 #include <string>
 
@@ -388,5 +389,3 @@ inline std::string ToString(YBPgErrorCode code) {
 }
 
 }  // namespace yb
-
-#endif  // YB_UTIL_YB_PG_ERRCODES_H

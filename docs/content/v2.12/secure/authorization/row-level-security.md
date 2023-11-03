@@ -14,7 +14,7 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/preview/secure/authorization/ysql-grant-permissions" class="nav-link active">
+    <a href="../ysql-grant-permissions" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
@@ -40,7 +40,7 @@ $ ./ysqlsh -U yugabyte -W
 ```
 
 
-When prompted for the password, enter the yugabyte password. You should be able to login and see a response like below.
+When prompted for the password, enter the yugabyte password. You should be able to log in and see a response like below.
 
 
 ```

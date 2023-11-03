@@ -1,7 +1,7 @@
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
 
 .schema-definition-header {
-  color: $YB_ORANGE;
+  color: colors.$YB_ORANGE;
   font-size: 14px;
   padding-bottom: 6px;
 }

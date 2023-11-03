@@ -27,11 +27,11 @@
 
 ProtocolVersion FrontendProtocol;
 
-volatile bool InterruptPending = false;
-volatile bool QueryCancelPending = false;
-volatile bool ProcDiePending = false;
-volatile bool ClientConnectionLost = false;
-volatile bool IdleInTransactionSessionTimeoutPending = false;
+volatile sig_atomic_t InterruptPending = false;
+volatile sig_atomic_t QueryCancelPending = false;
+volatile sig_atomic_t ProcDiePending = false;
+volatile sig_atomic_t ClientConnectionLost = false;
+volatile sig_atomic_t IdleInTransactionSessionTimeoutPending = false;
 volatile sig_atomic_t ConfigReloadPending = false;
 volatile uint32 InterruptHoldoffCount = 0;
 volatile uint32 QueryCancelHoldoffCount = 0;
@@ -87,7 +87,22 @@ Oid			MyDatabaseTableSpace = InvalidOid;
 
 bool		MyDatabaseColocated = false;
 
+/*
+ * The OID of the database used as a namespace to allocate a new object
+ * identifier.
+ */
+Oid			YbDatabaseIdForNewObjectId = InvalidOid;
+
+/*
+ * Before we fully deprecate legacy colocated databases, we need this extra
+ * variable to tell whether a colocated database is a legacy colocated
+ * database or a colocated database based on new Colocation GA implementation.
+ */
+bool        MyColocatedDatabaseLegacy = true;
+
 bool		YbTablegroupCatalogExists = false;
+
+bool		YbLoginProfileCatalogsExist = false;
 
 /*
  * DatabasePath is the path (relative to DataDir) of my database's

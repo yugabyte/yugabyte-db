@@ -36,7 +36,7 @@ int main() {
 #include <memory>
 #include <thread>
 #include <vector>
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/util/arena.h"
@@ -50,9 +50,9 @@ int main() {
 
 using GFLAGS::ParseCommandLineFlags;
 
-DEFINE_int32(bits_per_key, 10, "");
-DEFINE_int32(num_probes, 6, "");
-DEFINE_bool(enable_perf, false, "");
+DEFINE_NON_RUNTIME_int32(bits_per_key, 10, "");
+DEFINE_NON_RUNTIME_int32(num_probes, 6, "");
+DEFINE_NON_RUNTIME_bool(enable_perf, false, "");
 
 namespace rocksdb {
 

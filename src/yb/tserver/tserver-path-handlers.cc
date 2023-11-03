@@ -39,6 +39,8 @@
 #include <string>
 #include <vector>
 
+#include "yb/cdc/cdc_service.h"
+#include "yb/cdc/xrepl_stream_stats.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log_anchor_registry.h"
@@ -63,13 +65,44 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
 
+#include "yb/tserver/service_util.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/tserver/xcluster_consumer.h"
+#include "yb/tserver/xcluster_poller_stats.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/url-coding.h"
 #include "yb/util/version_info.h"
 #include "yb/util/version_info.pb.h"
+#include "yb/util/flags.h"
+
+using yb::consensus::GetConsensusRole;
+using yb::consensus::CONSENSUS_CONFIG_COMMITTED;
+using yb::consensus::ConsensusStatePB;
+using yb::consensus::RaftPeerPB;
+using yb::consensus::OperationStatusPB;
+using yb::tablet::MaintenanceManagerStatusPB;
+using yb::tablet::MaintenanceManagerStatusPB_CompletedOpPB;
+using yb::tablet::MaintenanceManagerStatusPB_MaintenanceOpPB;
+using yb::tablet::Tablet;
+using yb::tablet::TabletDataState;
+using yb::tablet::TabletPeer;
+using yb::tablet::TabletStatusPB;
+using yb::tablet::Operation;
+
+using std::endl;
+using std::shared_ptr;
+using std::vector;
+using std::string;
+using strings::Substitute;
+
+using namespace std::placeholders;  // NOLINT(build/namespaces)
+
+DEFINE_UNKNOWN_bool(enable_intentsdb_page, false,
+    "Enable displaying the contents of intentsdb page.");
+
+DECLARE_bool(enable_xcluster_stat_collection);
 
 namespace {
 
@@ -125,6 +158,121 @@ struct TableInfo {
   }
 };
 
+#define PRINT_HEADER_FIELDS(i, table_id, field) \
+  << "<th onclick=\"sortTable('" << #table_id << "_table', " << table_id##_hd_cnt++ << ")\">" \
+  << ::yb::AsString(field) << "</th>"
+#define PRINT_TABLE_WITH_HEADER_ROW(table_id, ...) \
+  *output << GenerateTableFilterBox(#table_id "_filter", #table_id "_table"); \
+  uint32 table_id##_hd_cnt = 0; \
+  *output << "<table class='table table-striped' id='" << #table_id << "_table'>\n"; \
+  *output << "<tr>" BOOST_PP_SEQ_FOR_EACH( \
+                 PRINT_HEADER_FIELDS, table_id, BOOST_PP_VARIADIC_TO_SEQ(__VA_ARGS__)) \
+          << "</tr>\n"
+
+#define PRINT_ROW_FIELDS(i, data, field) "<td>" << ::yb::AsString(field) << "</td>" <<
+#define PRINT_TABLE_ROW(...) \
+  *output << "<tr>" \
+          << BOOST_PP_SEQ_FOR_EACH( \
+                 PRINT_ROW_FIELDS, ~, BOOST_PP_VARIADIC_TO_SEQ(__VA_ARGS__)) "</tr>\n"
+
+const char* const kSortAndFilterTableScript = R"(
+<script>
+function sortTable(table_id, n) {
+  var asc_symb = ' <span style="color: grey">\u25B2</span>';
+  var desc_symb = ' <span style="color: grey">\u25BC</span>';
+  var i, swapCount = 0;
+  var table = document.getElementById(table_id);
+  if (table.rows.length < 3) {
+    return;
+  }
+  var switching = true;
+  var asc = true;
+  if (table.rows[0].getElementsByTagName("TH")[n].innerHTML.includes(asc_symb)) {
+    asc = false;
+  }
+
+  for(var j = 0; j < table.rows[0].getElementsByTagName("TH").length; j++) {
+   table.rows[0].getElementsByTagName("TH")[j].innerHTML =
+    table.rows[0].getElementsByTagName("TH")[j].innerHTML.replace(asc_symb, "").replace(desc_symb,
+      "");
+    if (j == n) {
+      sort_symb = asc ? asc_symb : desc_symb;
+      table.rows[0].getElementsByTagName("TH")[j].innerHTML =
+        table.rows[0].getElementsByTagName("TH")[j].innerHTML.concat(sort_symb);
+    }
+  }
+
+  while (switching) {
+    switching = false;
+    // Ignore header row.
+    for (i = 1; i < (table.rows.length - 1); i++) {
+      var swap = false;
+      var x = table.rows[i].getElementsByTagName("TD")[n];
+      var y = table.rows[i + 1].getElementsByTagName("TD")[n];
+      var cmpX = x.innerHTML.length?
+        isNaN(Number(x.innerHTML))? x.innerHTML.toLowerCase():Number(x.innerHTML):
+        "~";
+      var cmpY = y.innerHTML.length?
+        isNaN(Number(y.innerHTML))?y.innerHTML.toLowerCase():Number(y.innerHTML):
+        "~";
+
+      if (asc) {
+        if (cmpX > cmpY) {
+          swap= true;
+          break;
+        }
+      } else {
+        if (cmpX < cmpY) {
+          swap = true;
+          break;
+        }
+      }
+    }
+
+    if (swap) {
+      table.rows[i].parentNode.insertBefore(table.rows[i + 1], table.rows[i]);
+      switching = true;
+    }
+  }
+}
+
+function filterTableFunction(input_id, table_id) {
+  var filter = document.getElementById(input_id).value.toLowerCase();
+  var table = document.getElementById(table_id);
+  var tr = table.getElementsByTagName("tr");
+  for (var i = 0; i < tr.length; i++) {
+    if (tr[i].getElementsByTagName("th").length > 0) {
+     // Ignore header rows.
+      continue;
+    }
+    var row = tr[i].getElementsByTagName("td");
+    var found = false;
+    for (const td of row) {
+      if (td) {
+        var value = td.textContent || td.innerText;
+        if (value.toLowerCase().indexOf(filter) > -1) {
+          found = true;
+          break;
+        }
+      }
+    }
+
+    if(found) {
+      tr[i].style.display = "";
+    } else {
+      tr[i].style.display = "none";
+    }
+  }
+}
+</script>
+)";
+
+std::string GenerateTableFilterBox(const std::string& input_id, const std::string& table_id) {
+  return Substitute(
+      "<input type='text' id='$0' onkeyup='filterTableFunction(\"$0\", \"$1\")' "
+      "placeholder='Search for ...' title='Type in a text'>\n",
+      input_id, table_id);
+}
 }  // anonymous namespace
 
 namespace std {
@@ -144,26 +292,6 @@ struct less<TableIdentifier> {
 
 namespace yb {
 namespace tserver {
-
-using yb::consensus::GetConsensusRole;
-using yb::consensus::CONSENSUS_CONFIG_COMMITTED;
-using yb::consensus::ConsensusStatePB;
-using yb::consensus::RaftPeerPB;
-using yb::consensus::OperationStatusPB;
-using yb::tablet::MaintenanceManagerStatusPB;
-using yb::tablet::MaintenanceManagerStatusPB_CompletedOpPB;
-using yb::tablet::MaintenanceManagerStatusPB_MaintenanceOpPB;
-using yb::tablet::Tablet;
-using yb::tablet::TabletDataState;
-using yb::tablet::TabletPeer;
-using yb::tablet::TabletStatusPB;
-using yb::tablet::Operation;
-using std::endl;
-using std::shared_ptr;
-using std::vector;
-using strings::Substitute;
-
-using namespace std::placeholders;  // NOLINT(build/namespaces)
 
 namespace {
 
@@ -234,7 +362,10 @@ void HandleTabletPage(
       {"tablet-consensus-status", "Consensus Status"},
       {"log-anchors", "Tablet Log Anchors"},
       {"transactions", "Transactions"},
-      {"rocksdb", "RocksDB" }};
+      {"rocksdb", "RocksDB" },
+      {"waitqueue", "Wait Queue"},
+      {"sharedlockmanager", "In-Memory Locks"},
+      {"preparer", "Preparer"}};
 
   auto encoded_tablet_id = UrlEncodeToString(tablet_id);
   for (const auto& entry : entries) {
@@ -270,14 +401,14 @@ void HandleConsensusStatusPage(
     const std::string& tablet_id, const tablet::TabletPeerPtr& peer,
     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-  shared_ptr<consensus::Consensus> consensus = peer->shared_consensus();
-  if (!consensus) {
+  auto consensus_result = peer->GetConsensus();
+  if (!consensus_result) {
     *output << "Tablet " << EscapeForHtmlToString(tablet_id) << " not running";
     return;
   }
 
   *output << "<h1>Tablet " << EscapeForHtmlToString(tablet_id) << "</h1>\n";
-  consensus->DumpStatusHtml(*output);
+  consensus_result.get()->DumpStatusHtml(*output);
 }
 
 void HandleTransactionsPage(
@@ -332,7 +463,7 @@ void DumpRocksDBOptions(rocksdb::DB* db, std::stringstream* out) {
     if (PREDICT_TRUE(status.ok())) {
       EscapeForHtml(content, out);
     } else {
-      *out << "Failed to get options: " << status << std::endl;
+      *out << "Failed to get options: " << EscapeForHtmlToString(status.ToString()) << std::endl;
     }
     *out << "</pre>" << std::endl;
     delete env;
@@ -347,7 +478,7 @@ void DumpRocksDB(const char* title, rocksdb::DB* db, std::stringstream* out) {
     auto files = db->GetLiveFilesMetaData();
     *out << "<pre>" << std::endl;
     for (const auto& file : files) {
-      *out << file.ToString() << std::endl;
+      *out << EscapeForHtmlToString(file.ToString()) << std::endl;
     }
     *out << "</pre>" << std::endl;
 
@@ -356,10 +487,10 @@ void DumpRocksDB(const char* title, rocksdb::DB* db, std::stringstream* out) {
     if (status.ok()) {
       for (const auto& p : properties) {
         *out << "<h3>" << EscapeForHtmlToString(p.first) << " properties</h3>" << std::endl;
-        *out << "<pre>" << p.second->ToString("\n") << "</pre>" << std::endl;
+        *out << "<pre>" << EscapeForHtmlToString(p.second->ToString("\n")) << "</pre>" << std::endl;
       }
     } else {
-      *out << "Failed to get properties: " << status << std::endl;
+      *out << "Failed to get properties: " << EscapeForHtmlToString(status.ToString()) << std::endl;
     }
   }
 }
@@ -370,9 +501,71 @@ void HandleRocksDBPage(
   std::stringstream *output = &resp->output;
   *output << "<h1>RocksDB for Tablet " << EscapeForHtmlToString(tablet_id) << "</h1>" << std::endl;
 
-  auto doc_db = peer->tablet()->doc_db();
-  DumpRocksDB("Regular", doc_db.regular, output);
-  DumpRocksDB("Intents", doc_db.intents, output);
+  auto tablet_result = peer->shared_tablet_safe();
+  if (!tablet_result.ok()) {
+    *output << EscapeForHtmlToString(tablet_result.status().ToString());
+    return;
+  }
+  DumpRocksDB("Regular", (*tablet_result)->regular_db(), output);
+  DumpRocksDB("Intents", (*tablet_result)->intents_db(), output);
+}
+
+void HandleWaitQueuePage(
+    const std::string& tablet_id, const tablet::TabletPeerPtr& peer,
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *out = &resp->output;
+  *out << "<h1>Waiters for Tablet " << EscapeForHtmlToString(tablet_id) << "</h1>" << std::endl;
+
+  auto tablet_result = peer->shared_tablet_safe();
+  if (!tablet_result.ok()) {
+    *out << EscapeForHtmlToString(tablet_result.status().ToString());
+    return;
+  }
+  auto* tp = (*tablet_result)->transaction_participant();
+  docdb::WaitQueue* wq = nullptr;
+  if (tp) {
+    wq = tp->wait_queue();
+  }
+  if (wq) {
+    wq->DumpStatusHtml(*out);
+  } else {
+    *out << "<h3>" << "No wait queue found" << "</h3>" << std::endl;
+  }
+}
+
+void HandleInMemoryLocksPage(
+    const std::string& tablet_id, const tablet::TabletPeerPtr& peer,
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *out = &resp->output;
+  *out << "<h1>In-Memory Locks for Tablet "
+       << EscapeForHtmlToString(tablet_id) << "</h1>" << std::endl;
+
+  auto tablet_result = peer->shared_tablet_safe();
+  if (!tablet_result.ok()) {
+    *out << EscapeForHtmlToString(tablet_result.status().ToString());
+    return;
+  }
+  auto* shared_lock_manager = (*tablet_result)->shared_lock_manager();
+  if (shared_lock_manager) {
+    shared_lock_manager->DumpStatusHtml(*out);
+  } else {
+    *out << "<h3>" << "No shared lock manager found. This is unexpected." << "</h3>" << std::endl;
+  }
+}
+
+void HandlePreparerPage(
+    const std::string& tablet_id, const tablet::TabletPeerPtr& peer,
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *out = &resp->output;
+  *out << "<h1>Prepare Info for Tablet "
+       << EscapeForHtmlToString(tablet_id) << "</h1>" << std::endl;
+
+  auto* preparer = DCHECK_NOTNULL(peer->DEBUG_GetPreparer());
+  if (preparer) {
+    preparer->DumpStatusHtml(*out);
+  } else {
+    *out << "<h3>" << "No preparer found. This is unexpected." << "</h3>" << std::endl;
+  }
 }
 
 template<class F>
@@ -411,14 +604,29 @@ Status TabletServerPathHandlers::Register(Webserver* server) {
   RegisterTabletPathHandler(server, tserver_, "/log-anchors", &HandleLogAnchorsPage);
   RegisterTabletPathHandler(server, tserver_, "/transactions", &HandleTransactionsPage);
   RegisterTabletPathHandler(server, tserver_, "/rocksdb", &HandleRocksDBPage);
+  RegisterTabletPathHandler(server, tserver_, "/waitqueue", &HandleWaitQueuePage);
+  RegisterTabletPathHandler(server, tserver_, "/sharedlockmanager", &HandleInMemoryLocksPage);
+  RegisterTabletPathHandler(server, tserver_, "/preparer", &HandlePreparerPage);
   server->RegisterPathHandler(
       "/", "Dashboards",
       std::bind(&TabletServerPathHandlers::HandleDashboardsPage, this, _1, _2), true /* styled */,
       true /* is_on_nav_bar */, "fa fa-dashboard");
+#ifndef NDEBUG
+  server->RegisterPathHandler(
+      "/intentsdb", "IntentsDB",
+      std::bind(&TabletServerPathHandlers::HandleIntentsDBPage, this, _1, _2), true /* styled */,
+      true /* is_on_nav_bar */, "fa fa-lock");
+#endif
   server->RegisterPathHandler(
       "/maintenance-manager", "",
       std::bind(&TabletServerPathHandlers::HandleMaintenanceManagerPage, this, _1, _2),
       true /* styled */, false /* is_on_nav_bar */);
+  server->RegisterPathHandler(
+      "/xcluster", "xcluster",
+      std::bind(&TabletServerPathHandlers::HandleXClusterPage, this, _1, _2), true /* styled */,
+      false /* is_on_nav_bar */);
+
+  // APIS.
   server->RegisterPathHandler(
       "/api/v1/health-check", "TServer Health Check",
       std::bind(&TabletServerPathHandlers::HandleHealthCheck, this, _1, _2),
@@ -427,6 +635,18 @@ Status TabletServerPathHandlers::Register(Webserver* server) {
       "/api/v1/version", "YB Version Information",
       std::bind(&TabletServerPathHandlers::HandleVersionInfoDump, this, _1, _2),
       false /* styled */, false /* is_on_nav_bar */);
+  server->RegisterPathHandler(
+      "/api/v1/masters", "Master servers and their role (Leader/Follower)",
+      std::bind(&TabletServerPathHandlers::HandleListMasterServers, this, _1, _2),
+      false /* styled */, false /* is_on_nav_bar */);
+  server->RegisterPathHandler(
+      "/api/v1/tablets", "Tablets",
+      std::bind(&TabletServerPathHandlers::HandleTabletsJSON, this, _1, _2),
+      false /* styled */, false /* is_on_nav_bar */);
+  server->RegisterPathHandler(
+      "/api/v1/xcluster", "xcluster",
+      std::bind(&TabletServerPathHandlers::HandleXClusterJSON, this, _1, _2), false /* styled */,
+      false /* is_on_nav_bar */);
   return Status::OK();
 }
 
@@ -454,17 +674,18 @@ void TabletServerPathHandlers::HandleOperationsPage(const Webserver::WebRequest&
       arg.c_str(), false) ? Operation::TRACE_TXNS : Operation::NO_TRACE_TXNS;
 
   if (!as_text) {
-    *output << "<h1>Transactions</h1>\n";
+    *output << "<h1>Operations</h1>\n";
     *output << "<table class='table table-striped'>\n";
     *output << "   <tr><th>Tablet id</th><th>Op Id</th>"
-      "<th>Transaction Type</th><th>"
+      "<th>Operation Type</th><th>"
       "Total time in-flight</th><th>Description</th></tr>\n";
   }
 
   for (const std::shared_ptr<TabletPeer>& peer : peers) {
     vector<OperationStatusPB> inflight;
 
-    if (peer->tablet() == nullptr) {
+    auto tablet = peer->shared_tablet();
+    if (tablet == nullptr) {
       continue;
     }
 
@@ -548,10 +769,10 @@ std::map<TableIdentifier, TableInfo> GetTablesInfo(
       continue;
     }
 
-    auto consensus = peer->shared_consensus();
+    auto consensus_result = peer->GetConsensus();
     auto raft_role = PeerRole::UNKNOWN_ROLE;
-    if (consensus) {
-      raft_role = consensus->role();
+    if (consensus_result) {
+      raft_role = consensus_result.get()->role();
     } else if (status.tablet_data_state() == TabletDataState::TABLET_DATA_COPYING) {
       raft_role = PeerRole::LEARNER;
     }
@@ -663,7 +884,8 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
     string table_name = status.table_name();
     string table_id = status.table_id();
     string tablet_id_or_link;
-    if (peer->tablet() != nullptr) {
+    auto tablet = peer->shared_tablet();
+    if (tablet != nullptr) {
       tablet_id_or_link = TabletLink(id);
     } else {
       tablet_id_or_link = EscapeForHtmlToString(id);
@@ -672,16 +894,16 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
         yb::tablet::TabletOnDiskSizeInfo::FromPB(status)
     );
 
-    string partition = peer->tablet_metadata()->partition_schema()
+    auto tablet_metadata = peer->tablet_metadata();
+    string partition = tablet_metadata->partition_schema()
                             ->PartitionDebugString(*peer->status_listener()->partition(),
-                                                   *peer->tablet_metadata()->schema());
+                                                   *tablet_metadata->schema());
 
-    auto tablet = peer->shared_tablet();
     uint64_t num_sst_files = (tablet) ? tablet->GetCurrentVersionNumSSTFiles() : 0;
 
     // TODO: would be nice to include some other stuff like memory usage
-    shared_ptr<consensus::Consensus> consensus = peer->shared_consensus();
-    (*output) << Substitute(
+    auto consensus_result = peer->GetConsensus();
+    (*output) << Format(
         // Namespace, Table name, UUID of table, tablet id, partition
         "<tr><td>$0</td><td>$1</td><td>$2</td><td>$3</td><td>$4</td>"
         // State, Hidden, num SST files, on-disk size, consensus configuration, last status
@@ -695,11 +917,25 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
         status.is_hidden(),                                 // $6
         num_sst_files,                                      // $7
         tablets_disk_size_html,                             // $8
-        consensus ? ConsensusStatePBToHtml(consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED))
-                  : "",                                // $9
+        consensus_result ? ConsensusStatePBToHtml(
+                               consensus_result.get()->ConsensusState(CONSENSUS_CONFIG_COMMITTED))
+                         : "",                         // $9
         EscapeForHtmlToString(status.last_status()));  // $10
   }
   *output << "</table>\n";
+}
+
+void TabletServerPathHandlers::HandleListMasterServers(const Webserver::WebRequest& req,
+                                                       Webserver::WebResponse* resp) {
+  // Get the version info.
+  ListMasterServersRequestPB list_masters_req;
+  ListMasterServersResponsePB list_masters_resp;
+
+  const Status s = tserver_->ListMasterServers(&list_masters_req, &list_masters_resp);
+
+  std::stringstream *output = &resp->output;
+  JsonWriter jw(output, JsonWriter::PRETTY);
+  jw.Protobuf(list_masters_resp);
 }
 
 namespace {
@@ -748,6 +984,51 @@ void TabletServerPathHandlers::HandleDashboardsPage(const Webserver::WebRequest&
   *output << GetDashboardLine("maintenance-manager", "Maintenance Manager",
                               "List of operations that are currently running and those "
                               "that are registered.");
+}
+
+void TabletServerPathHandlers::HandleIntentsDBPage(const Webserver::WebRequest& req,
+                                                   Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+  if (!FLAGS_enable_intentsdb_page) {
+    (*output) << "Intentsdb is disabled, please set the gflag enable_intentsdb_page to true "
+                 "to show the content of intentsdb.";
+    return;
+  }
+
+  TSTabletManager::TabletPtrs tablet_ptrs;
+  std::vector<tablet::TabletPeerPtr> tablet_peers;
+
+  auto it = req.parsed_args.find("tablet_id");
+  if (it != req.parsed_args.end()) {
+    auto tablet_id = it->second;
+    auto tablet_peer = LookupTabletPeer(tserver_->tablet_peer_lookup(), tablet_id);
+    if (!tablet_peer.ok()) {
+      (*output) << Format("Unable to lookup tablet with ID {}", tablet_id);
+      return;
+    }
+    auto tablet = tablet_peer.get().tablet;
+    if (tablet == nullptr) {
+      (*output) << Format("Unable to lookup tablet with ID {}", tablet_id);
+      return;
+    }
+    tablet_ptrs.push_back(std::move(tablet));
+  } else {
+    tablet_peers = tserver_->tablet_manager()->GetTabletPeers(&tablet_ptrs);
+  }
+
+  std::vector<std::string> intents;
+  for (const auto& tablet : tablet_ptrs) {
+    auto res = tablet->ReadIntents(&intents);
+    if (!res.ok()) {
+      (*output) << "Got an error when reading intents";
+      return;
+    }
+  }
+
+  (*output) << Format("Intents size: $0<br>", intents.size()) << "\n";
+  for (const auto& item : intents) {
+    (*output) << Format("$0<br>", EscapeForHtmlToString(item));
+  }
 }
 
 string TabletServerPathHandlers::GetDashboardLine(const std::string& link,
@@ -818,6 +1099,210 @@ void TabletServerPathHandlers::HandleMaintenanceManagerPage(const Webserver::Web
   *output << "</table>\n";
 }
 
+namespace {
+
+std::vector<xrepl::StreamTabletStats> GetXClusterOutboundStreamStats(TabletServer* const tserver) {
+  auto cdc_service = tserver->GetCDCService();
+  if (!cdc_service || !cdc_service->CDCEnabled()) {
+    return {};
+  }
+  auto stream_tablet_stats = cdc_service->GetAllStreamTabletStats();
+  if (stream_tablet_stats.empty()) {
+    return {};
+  }
+
+  xrepl::StreamTabletStats agg_stats;
+  agg_stats.stream_id_str = "[Aggregate]";
+
+  std::sort(stream_tablet_stats.begin(), stream_tablet_stats.end());
+  for (const auto& stat : stream_tablet_stats) {
+    agg_stats += stat;
+  }
+  agg_stats /= stream_tablet_stats.size();
+  stream_tablet_stats.emplace_back(std::move(agg_stats));
+
+  return stream_tablet_stats;
+}
+
+std::vector<XClusterPollerStats> GetXClusterInboundStreamStats(TabletServer* const tserver) {
+  auto* xcluster_consumer = tserver->GetXClusterConsumer();
+  if (!xcluster_consumer) {
+    return {};
+  }
+
+  auto pollers_stats = xcluster_consumer->GetPollerStats();
+  if (pollers_stats.empty()) {
+    return pollers_stats;
+  }
+
+  std::sort(pollers_stats.begin(), pollers_stats.end());
+  XClusterPollerStats agg_stats("[Aggregate]");
+  for (const auto& stat : pollers_stats) {
+    agg_stats += stat;
+  }
+  agg_stats /= pollers_stats.size();
+  pollers_stats.emplace_back(std::move(agg_stats));
+  return pollers_stats;
+}
+}  // anonymous namespace
+
+void TabletServerPathHandlers::HandleXClusterPage(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream* output = &resp->output;
+
+  if (!FLAGS_enable_xcluster_stat_collection) {
+    *output << "<h3>xCluster stats collection is not enabled. Set enable_xcluster_stat_collection "
+               "to enable it.</h3 >\n";
+    return;
+  }
+
+  const auto xcluster_outbound_stream_stats = GetXClusterOutboundStreamStats(tserver_);
+  const auto xcluster_inbound_stream_stats = GetXClusterInboundStreamStats(tserver_);
+  if (xcluster_outbound_stream_stats.empty() && xcluster_inbound_stream_stats.empty()) {
+    *output << "<h3>xCluster replication is not enabled</h3 >\n";
+    return;
+  }
+
+  *output << "<h1>xCluster state</h1>\n";
+
+  if (!xcluster_outbound_stream_stats.empty()) {
+    *output << "<h3>xCluster outbound streams</h3>\n";
+
+    PRINT_TABLE_WITH_HEADER_ROW(
+        xcluster_streams, "Stream Id", "Produce Table Id", "Producer Tablet Id", "State",
+        "Avg poll delay (ms)", "Throughput (KiBps)", "Data sent (MiB)", "Records sent",
+        "Avg GetChanges latency (ms)", "WAL index sent", "WAL end index", "Last poll at", "Status");
+
+    for (const auto& stat : xcluster_outbound_stream_stats) {
+      PRINT_TABLE_ROW(
+          stat.stream_id_str, stat.producer_table_id, stat.producer_tablet_id, stat.state,
+          stat.avg_poll_delay_ms, StringPrintf("%.3f", stat.avg_throughput_kbps),
+          StringPrintf("%.3f", stat.mbs_sent), stat.records_sent, stat.avg_get_changes_latency_ms,
+          stat.sent_index, stat.latest_index, stat.last_poll_time.ToFormattedString(), stat.status);
+    }
+
+    *output << "</table>\n\n";
+  }
+
+  if (!xcluster_inbound_stream_stats.empty()) {
+    *output << "<h3>xCluster inbound streams</h3>\n";
+
+    PRINT_TABLE_WITH_HEADER_ROW(
+        xcluster_pollers, "ReplicationGroup Id", "Stream Id", "Consumer Table Id",
+        "Consumer Tablet Id", "Producer Tablet Id", "State", "Avg poll delay (ms)",
+        "Throughput (KiBps)", "Data received (MiB)", "Records received",
+        "Avg GetChanges latency (ms)", "Avg apply latency (ms)", "WAL index received",
+        "Last poll At", "Status");
+
+    for (const auto& stat : xcluster_inbound_stream_stats) {
+      PRINT_TABLE_ROW(
+          stat.replication_group_id, stat.stream_id_str, stat.consumer_table_id,
+          stat.consumer_tablet_id, stat.producer_tablet_id, stat.state, stat.avg_poll_delay_ms,
+          StringPrintf("%.3f", stat.avg_throughput_kbps), StringPrintf("%.3f", stat.mbs_received),
+          stat.records_received, stat.avg_get_changes_latency_ms, stat.avg_apply_latency_ms,
+          stat.received_index, stat.last_poll_time.ToFormattedString(), stat.status);
+    }
+
+    *output << "</table>\n";
+  }
+
+  *output << "\n<aside><h5>Note:</h5><p>This data is collected over the last few polls. Check "
+             "metrics or logs for older and detailed information.</p></aside>";
+  *output << kSortAndFilterTableScript;
+}
+
+void TabletServerPathHandlers::HandleXClusterJSON(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  if (!FLAGS_enable_xcluster_stat_collection) {
+    return;
+  }
+
+  std::stringstream* output = &resp->output;
+  const auto xcluster_outbound_stream_stats = GetXClusterOutboundStreamStats(tserver_);
+  const auto xcluster_inbound_stream_stats = GetXClusterInboundStreamStats(tserver_);
+
+  JsonWriter jw(output, JsonWriter::COMPACT);
+
+  jw.StartObject();
+  if (!xcluster_outbound_stream_stats.empty()) {
+    jw.String("outbound_streams");
+    jw.StartArray();
+
+    for (const auto& stat : xcluster_outbound_stream_stats) {
+      jw.StartObject();
+      jw.String("stream_id");
+      jw.String(stat.stream_id_str);
+      jw.String("producer_table_id");
+      jw.String(stat.producer_table_id);
+      jw.String("producer_tablet_id");
+      jw.String(stat.producer_tablet_id);
+      jw.String("state");
+      jw.String(stat.state);
+      jw.String("avg_poll_delay_ms");
+      jw.Uint64(stat.avg_poll_delay_ms);
+      jw.String("avg_throughput_KiBps");
+      jw.Double(stat.avg_throughput_kbps);
+      jw.String("MiBs_sent");
+      jw.Double(stat.mbs_sent);
+      jw.String("records_sent");
+      jw.Uint64(stat.records_sent);
+      jw.String("avg_get_changes_latency_ms");
+      jw.Uint64(stat.avg_get_changes_latency_ms);
+      jw.String("wal_sent_index");
+      jw.Int64(stat.sent_index);
+      jw.String("wal_end_index");
+      jw.Int64(stat.latest_index);
+      jw.String("last_poll_time");
+      jw.String(stat.last_poll_time.ToFormattedString());
+      jw.String("status");
+      jw.String(stat.status.ToString());
+      jw.EndObject();
+    }
+    jw.EndArray();
+  }
+
+  if (!xcluster_inbound_stream_stats.empty()) {
+    jw.String("inbound_streams");
+    jw.StartArray();
+    for (const auto& stat : xcluster_inbound_stream_stats) {
+      jw.StartObject();
+      jw.String("replication_group_id");
+      jw.String(stat.replication_group_id.ToString());
+      jw.String("stream_id");
+      jw.String(stat.stream_id_str);
+      jw.String("consumer_table_id");
+      jw.String(stat.consumer_table_id);
+      jw.String("consumer_tablet_id");
+      jw.String(stat.consumer_tablet_id);
+      jw.String("producer_tablet_id");
+      jw.String(stat.producer_tablet_id);
+      jw.String("state");
+      jw.String(stat.state);
+      jw.String("avg_poll_delay_ms");
+      jw.Uint64(stat.avg_poll_delay_ms);
+      jw.String("avg_throughput_KiBps");
+      jw.Double(stat.avg_throughput_kbps);
+      jw.String("MiBs_received");
+      jw.Double(stat.mbs_received);
+      jw.String("records_received");
+      jw.Uint64(stat.records_received);
+      jw.String("avg_get_changes_latency_ms");
+      jw.Uint64(stat.avg_get_changes_latency_ms);
+      jw.String("avg_apply_latency_ms");
+      jw.Uint64(stat.avg_apply_latency_ms);
+      jw.String("received_index");
+      jw.Int64(stat.received_index);
+      jw.String("last_poll_time");
+      jw.String(stat.last_poll_time.ToFormattedString());
+      jw.String("status");
+      jw.String(stat.status.ToString());
+      jw.EndObject();
+    }
+    jw.EndArray();
+  }
+  jw.EndObject();
+}
+
 void TabletServerPathHandlers::HandleHealthCheck(const Webserver::WebRequest& req,
                                                  Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
@@ -833,6 +1318,104 @@ void TabletServerPathHandlers::HandleHealthCheck(const Webserver::WebRequest& re
     }
   }
   jw.EndArray();
+  jw.EndObject();
+}
+
+void TabletServerPathHandlers::HandleTabletsJSON(const Webserver::WebRequest& req,
+                                                 Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+  JsonWriter jw(output, JsonWriter::COMPACT);
+
+  auto peers = tserver_->tablet_manager()->GetTabletPeers();
+  std::sort(peers.begin(), peers.end(), &CompareByTabletId);
+  jw.StartObject();
+
+  for (const std::shared_ptr<TabletPeer>& peer : peers) {
+    TabletStatusPB status;
+    peer->GetTabletStatusPB(&status);
+    string id = status.tablet_id();
+    const auto& tablet = peer->shared_tablet();
+    string tablets_disk_size_html = GetOnDiskSizeInHtml(
+        yb::tablet::TabletOnDiskSizeInfo::FromPB(status)
+    );
+
+    const auto& tablet_metadata = peer->tablet_metadata();
+    string partition = tablet_metadata->partition_schema()
+                            ->PartitionDebugString(*peer->status_listener()->partition(),
+                                                   *tablet_metadata->schema());
+
+    uint64_t num_sst_files = (tablet) ? tablet->GetCurrentVersionNumSSTFiles() : 0;
+
+    // TODO: Would be nice to include some other stuff like memory usage.
+    const auto& consensus = peer->GetConsensus();
+
+    jw.String(id);
+    jw.StartObject();
+    jw.String("namespace");
+    jw.String(status.namespace_name());
+    jw.String("table_name");
+    jw.String(status.table_name());
+    jw.String("table_id");
+    jw.String(status.table_id());
+    jw.String("partition");
+    jw.String(partition);
+    jw.String("state");
+    jw.String(peer->HumanReadableState());
+    jw.String("hidden");
+    jw.Bool(status.is_hidden());
+    jw.String("num_sst_files");
+    jw.Uint64(num_sst_files);
+    jw.String("on_disk_size");
+
+    jw.StartObject();
+    const yb::tablet::TabletOnDiskSizeInfo& info = yb::tablet::TabletOnDiskSizeInfo::FromPB(status);
+    jw.String("total_size");
+    jw.String(HumanReadableNumBytes::ToString(info.sum_on_disk_size));
+    jw.String("total_size_bytes");
+    jw.Uint64(info.sum_on_disk_size);
+    jw.String("consensus_metadata_size");
+    jw.String(HumanReadableNumBytes::ToString(info.consensus_metadata_disk_size));
+    jw.String("consensus_metadata_size_bytes");
+    jw.Uint64(info.consensus_metadata_disk_size);
+    jw.String("wal_files_size");
+    jw.String(HumanReadableNumBytes::ToString(info.wal_files_disk_size));
+    jw.String("wal_files_size_bytes");
+    jw.Uint64(info.wal_files_disk_size);
+    jw.String("sst_files_size");
+    jw.String(HumanReadableNumBytes::ToString(info.sst_files_disk_size));
+    jw.String("sst_files_size_bytes");
+    jw.Uint64(info.sst_files_disk_size);
+    jw.String("uncompressed_sst_files_size");
+    jw.String(HumanReadableNumBytes::ToString(info.uncompressed_sst_files_disk_size));
+    jw.String("uncompressed_sst_files_size_bytes");
+    jw.Uint64(info.uncompressed_sst_files_disk_size);
+    jw.EndObject();
+
+    jw.String("raft_config");
+    jw.StartArray();
+    if (consensus) {
+        const ConsensusStatePB& cstate =
+            consensus.get()->ConsensusState(CONSENSUS_CONFIG_COMMITTED);
+        std::vector<RaftPeerPB> sorted_peers;
+        sorted_peers.assign(cstate.config().peers().begin(), cstate.config().peers().end());
+        std::sort(sorted_peers.begin(), sorted_peers.end(), &CompareByMemberType);
+        for (const RaftPeerPB& peer : sorted_peers) {
+          jw.StartObject();
+          std::string peer_addr_or_uuid = !peer.last_known_private_addr().empty()
+              ? peer.last_known_private_addr()[0].host()
+              : peer.permanent_uuid();
+          peer_addr_or_uuid = EscapeForHtmlToString(peer_addr_or_uuid);
+          string role_name = PeerRole_Name(GetConsensusRole(peer.permanent_uuid(), cstate));
+          jw.String(role_name);
+          jw.String(peer_addr_or_uuid);
+          jw.EndObject();
+        }
+    }
+    jw.EndArray();
+    jw.String("status");
+    jw.String(status.last_status());
+    jw.EndObject();
+  }
   jw.EndObject();
 }
 

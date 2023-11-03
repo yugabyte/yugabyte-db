@@ -22,16 +22,6 @@
 #define __STDC_FORMAT_MACROS
 #endif
 
-#if !defined(GFLAGS) || defined(ROCKSDB_LITE)
-#include <cstdio>
-int main() {
-  fprintf(stderr, "Please install gflags to run rocksdb tools\n");
-  return 1;
-}
-#elif defined(OS_MACOSX) || defined(OS_WIN)
-// Block forward_iterator_bench under MAC and Windows
-int main() { return 0; }
-#else
 #include <semaphore.h>
 #include <atomic>
 #include <bitset>
@@ -43,7 +33,7 @@ int main() { return 0; }
 #include <queue>
 #include <random>
 #include <thread>
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/db.h"
@@ -53,17 +43,17 @@ int main() { return 0; }
 
 const int MAX_SHARDS = 100000;
 
-DEFINE_int32(writers, 8, "");
-DEFINE_int32(readers, 8, "");
-DEFINE_int64(rate, 100000, "");
-DEFINE_int64(value_size, 300, "");
-DEFINE_int64(shards, 1000, "");
-DEFINE_int64(memtable_size, 500000000, "");
-DEFINE_int64(block_cache_size, 300000000, "");
-DEFINE_int64(block_size, 65536, "");
-DEFINE_double(runtime, 300.0, "");
-DEFINE_bool(cache_only_first, true, "");
-DEFINE_bool(iterate_upper_bound, true, "");
+DEFINE_UNKNOWN_int32(writers, 8, "");
+DEFINE_UNKNOWN_int32(readers, 8, "");
+DEFINE_UNKNOWN_int64(rate, 100000, "");
+DEFINE_UNKNOWN_int64(value_size, 300, "");
+DEFINE_UNKNOWN_int64(shards, 1000, "");
+DEFINE_UNKNOWN_int64(memtable_size, 500000000, "");
+DEFINE_UNKNOWN_int64(block_cache_size, 300000000, "");
+DEFINE_UNKNOWN_int64(block_size, 65536, "");
+DEFINE_UNKNOWN_double(runtime, 300.0, "");
+DEFINE_UNKNOWN_bool(cache_only_first, true, "");
+DEFINE_UNKNOWN_bool(iterate_upper_bound, true, "");
 
 struct Stats {
   char pad1[128] __attribute__((__unused__));
@@ -121,7 +111,7 @@ struct Reader {
 
       uint64_t shard;
       {
-        std::lock_guard<std::mutex> guard(queue_mutex_);
+        std::lock_guard guard(queue_mutex_);
         assert(!shards_pending_queue_.empty());
         shard = shards_pending_queue_.front();
         shards_pending_queue_.pop();
@@ -189,7 +179,7 @@ struct Reader {
 
   void onWrite(uint64_t shard) {
     {
-      std::lock_guard<std::mutex> guard(queue_mutex_);
+      std::lock_guard guard(queue_mutex_);
       if (!shards_pending_set_.test(shard)) {
         shards_pending_queue_.push(shard);
         shards_pending_set_.set(shard);
@@ -317,7 +307,7 @@ struct StatsThread {
 
   ~StatsThread() {
     {
-      std::lock_guard<std::mutex> guard(cvm_);
+      std::lock_guard guard(cvm_);
       done_.store(true);
     }
     cv_.notify_all();
@@ -386,4 +376,3 @@ int main(int argc, char** argv) {
   writers.clear();
   readers.clear();
 }
-#endif  // !defined(GFLAGS) || defined(ROCKSDB_LITE)

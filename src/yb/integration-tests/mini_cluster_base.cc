@@ -15,15 +15,39 @@
 
 #include "yb/client/client.h"
 
+#include "yb/client/stateful_services/stateful_service_client_base.h"
+#include "yb/server/hybrid_clock.h"
+#include "yb/server/secure.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
+#include "yb/rpc/messenger.h"
+
+DECLARE_bool(use_node_to_node_encryption);
+DECLARE_string(certs_dir);
 
 namespace yb {
+
+namespace {
+Result<std::unique_ptr<client::YBClient>> CreateSecureClientInternal(
+    const std::string& name, const std::string& host,
+    std::unique_ptr<rpc::SecureContext>* secure_context, client::YBClientBuilder* builder) {
+  rpc::MessengerBuilder messenger_builder("test_client");
+  *secure_context = VERIFY_RESULT(server::SetupSecureContext(
+      FLAGS_certs_dir, name, server::SecureContextType::kInternal, &messenger_builder));
+  auto messenger = VERIFY_RESULT(messenger_builder.Build());
+  messenger->TEST_SetOutboundIpBase(VERIFY_RESULT(HostToAddress(host)));
+  auto clock = make_scoped_refptr<server::HybridClock>();
+  RETURN_NOT_OK(clock->Init());
+  return builder->Build(std::move(messenger), clock);
+}
+}  // namespace
 
 Result<std::unique_ptr<client::YBClient>> MiniClusterBase::CreateClient(rpc::Messenger* messenger) {
   client::YBClientBuilder builder;
   ConfigureClientBuilder(&builder);
-  return builder.Build(messenger);
+  auto clock = make_scoped_refptr<server::HybridClock>();
+  RETURN_NOT_OK(clock->Init());
+  return builder.Build(messenger, clock);
 }
 
 // Created client will shutdown messenger on client shutdown.
@@ -33,20 +57,33 @@ Result<std::unique_ptr<client::YBClient>> MiniClusterBase::CreateClient(
     client::YBClientBuilder default_builder;
     return CreateClient(&default_builder);
   }
+
+  if (FLAGS_use_node_to_node_encryption) {
+    const auto host = "127.0.0.52";
+    ConfigureClientBuilder(builder);
+    return CreateSecureClientInternal(host, host, &secure_context_, builder);
+  }
+
   ConfigureClientBuilder(builder);
-  return builder->Build();
+  auto clock = make_scoped_refptr<server::HybridClock>();
+  RETURN_NOT_OK(clock->Init());
+  return builder->Build(nullptr, clock);
 }
 
-// Created client gets messenger ownership and will shutdown messenger on client shutdown.
-Result<std::unique_ptr<client::YBClient>> MiniClusterBase::CreateClient(
-    std::unique_ptr<rpc::Messenger>&& messenger) {
+Result<std::unique_ptr<client::YBClient>> MiniClusterBase::CreateSecureClient(
+    const std::string& name, const std::string& host,
+    std::unique_ptr<rpc::SecureContext>* secure_context) {
   client::YBClientBuilder builder;
   ConfigureClientBuilder(&builder);
-  return builder.Build(std::move(messenger));
+  return CreateSecureClientInternal(name, host, secure_context, &builder);
 }
 
 Result<HostPort> MiniClusterBase::GetLeaderMasterBoundRpcAddr() {
   return DoGetLeaderMasterBoundRpcAddr();
 }
 
+Status MiniClusterBase::InitStatefulServiceClient(client::StatefulServiceClientBase* client) {
+  auto host_port = VERIFY_RESULT(GetLeaderMasterBoundRpcAddr());
+  return client->TESTInit("127.0.0.52", host_port.ToString());
+}
 }  // namespace yb

@@ -6,10 +6,7 @@ description: Build an application using your favorite programming language.
 headcontent: Use your favorite programming language to build an application that uses YSQL or YCQL APIs.
 image: /images/section_icons/develop/api-icon.png
 aliases:
-  - /develop/client-drivers/
-  - /preview/develop/client-drivers/
   - /preview/quick-start/build-apps/
-  - /preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/
 menu:
   preview:
     identifier: build-apps
@@ -26,7 +23,7 @@ The tutorials assume you have deployed a YugabyteDB cluster in YugabyteDB Manage
 
 <div class="row">
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+  <div class="col-12 col-md-12 col-lg-6 col-xl-6">
   <a class="section-link icon-offset" href="cloud-add-ip/">
     <div class="head">
         <img class="icon" src="/images/section_icons/deploy/checklist.png" aria-hidden="true" />
@@ -39,162 +36,85 @@ The tutorials assume you have deployed a YugabyteDB cluster in YugabyteDB Manage
   </div>
 </div>
 
-## Choose your language
+### Choose your language
 
-<div class="row">
+<ul class="nav yb-pills">
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="java/cloud-ysql-yb-jdbc/">
-      <div class="head">
-        <div class="icon">
-          <i class="fa-brands fa-java"></i>
-        </div>
-        <div class="title">Java</div>
-      </div>
-      <div class="body">
-        Build applications using Java.
-      </div>
+  <li>
+    <a href="java/cloud-ysql-yb-jdbc/" class="orange">
+      <i class="fa-brands fa-java"></i>
+      Java
     </a>
-  </div>
+  </li>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="go/cloud-ysql-go/">
-      <div class="head">
-        <div class="icon">
-          <i class="fa-brands fa-golang"></i>
-        </div>
-        <div class="title">Go</div>
-      </div>
-      <div class="body">
-        Build applications using Go.
-      </div>
+  <li>
+    <a href="go/cloud-ysql-go/" class="orange">
+      <i class="fa-brands fa-golang"></i>
+      Go
     </a>
-  </div>
+  </li>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="python/cloud-ysql-python/">
-      <div class="head">
-        <div class="icon">
-          <i class="fa-brands fa-python"></i>
-        </div>
-        <div class="title">Python</div>
-      </div>
-      <div class="body">
-        Build applications using Python.
-      </div>
+  <li>
+    <a href="python/cloud-ysql-python/" class="orange">
+      <i class="fa-brands fa-python"></i>
+      Python
     </a>
-  </div>
+  </li>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="nodejs/cloud-ysql-node/">
-      <div class="head">
-        <div class="icon">
-          <i class="fa-brands fa-node-js"></i>
-        </div>
-        <div class="title">NodeJS</div>
-      </div>
-      <div class="body">
-        Build applications using NodeJS.
-      </div>
+  <li>
+    <a href="nodejs/cloud-ysql-node/" class="orange">
+      <i class="fa-brands fa-node-js"></i>
+      Node.js
     </a>
-  </div>
+  </li>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="c/cloud-ysql-c/">
-      <div class="head">
-        <div class="icon">
-          <i class="icon-c"></i>
-        </div>
-        <div class="title">C</div>
-      </div>
-      <div class="body">
-        Build applications using C.
-      </div>
+  <li>
+    <a href="c/cloud-ysql-c/" class="orange">
+      <i class="icon-c"></i>
+      C
     </a>
-  </div>
+  </li>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="cpp/cloud-ysql-cpp/">
-      <div class="head">
-        <div class="icon">
-          <i class="icon-cplusplus"></i>
-        </div>
-        <div class="title">C++</div>
-      </div>
-      <div class="body">
-        Build applications using C++.
-      </div>
+  <li>
+    <a href="cpp/cloud-ysql-cpp/" class="orange">
+      <i class="icon-cplusplus"></i>
+      C++
     </a>
-  </div>
+  </li>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="csharp/cloud-ysql-csharp/">
-      <div class="head">
-        <div class="icon">
-          <i class="icon-csharp"></i>
-        </div>
-        <div class="title">C#</div>
-      </div>
-      <div class="body">
-        Build applications using C#.
-      </div>
+  <li>
+    <a href="csharp/cloud-ysql-csharp/" class="orange">
+      <i class="icon-csharp"></i>
+      C#
     </a>
-  </div>
+  </li>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="ruby/cloud-ysql-ruby/">
-      <div class="head">
-        <div class="icon">
-          <i class="icon-ruby"></i>
-        </div>
-        <div class="title">Ruby</div>
-      </div>
-      <div class="body">
-        Build applications using Ruby.
-      </div>
+  <li>
+    <a href="ruby/cloud-ysql-ruby/" class="orange">
+      <i class="icon-ruby"></i>
+      Ruby
     </a>
-  </div>
+  </li>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="rust/cloud-ysql-rust/">
-      <div class="head">
-        <div class="icon">
-          <i class="icon-scala"></i>
-        </div>
-        <div class="title">Rust</div>
-      </div>
-      <div class="body">
-        Build applications using Rust.
-      </div>
+  <li>
+    <a href="rust/cloud-ysql-rust/" class="orange">
+      <i class="fa-brands fa-rust"></i>
+      Rust
     </a>
-  </div>
+  </li>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="php/cloud-ysql-php/">
-      <div class="head">
-        <div class="icon">
-          <i class="fa-brands fa-php"></i>
-        </div>
-        <div class="title">PHP</div>
-      </div>
-      <div class="body">
-        Build applications using PHP.
-      </div>
+  <li>
+    <a href="php/cloud-ysql-php/" class="orange">
+      <i class="fa-brands fa-php"></i>
+      PHP
     </a>
-  </div>
+  </li>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="scala/ycql/">
-      <div class="head">
-        <div class="icon">
-          <i class="icon-scala"></i>
-        </div>
-        <div class="title">Scala</div>
-      </div>
-      <div class="body">
-        Build applications using Scala.
-      </div>
+  <li>
+    <a href="scala/ycql/" class="orange">
+      <i class="icon-scala"></i>
+      Scala
     </a>
-  </div>
+  </li>
 
-</div>
+</ul>

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_ENCRYPTION_ENCRYPTION_UTIL_H
-#define YB_ENCRYPTION_ENCRYPTION_UTIL_H
+#pragma once
 
 #include <stdint.h>
 
@@ -100,7 +99,8 @@ template <typename BufType, typename Readable>
 Result<bool> GetEncryptionInfoFromFile(HeaderManager* header_manager,
                                        Readable* underlying_r,
                                        std::unique_ptr<BlockAccessCipherStream>* stream,
-                                       uint32_t* header_size) {
+                                       uint32_t* header_size,
+                                       std::string* universe_key_id = nullptr) {
   if (!header_manager) {
     return STATUS(InvalidArgument, "header_manager must be non-null.");
   }
@@ -120,7 +120,8 @@ Result<bool> GetEncryptionInfoFromFile(HeaderManager* header_manager,
   RETURN_NOT_OK(underlying_r->Read(
       metadata_start, encryption_status.header_size, &encryption_info, buf.get()));
   auto encryption_params = VERIFY_RESULT(
-      header_manager->DecodeEncryptionParamsFromEncryptionMetadata(encryption_info));
+      header_manager->DecodeEncryptionParamsFromEncryptionMetadata(
+          encryption_info, universe_key_id));
 
   *stream = std::make_unique<BlockAccessCipherStream>(std::move(encryption_params));
   RETURN_NOT_OK((*stream)->Init());
@@ -138,7 +139,7 @@ Status CreateEncryptionInfoForWrite(HeaderManager* header_manager,
                                     std::unique_ptr<BlockAccessCipherStream>* stream,
                                     uint32_t* header_size) {
   auto encryption_params = EncryptionParams::NewEncryptionParams();
-  string header = VERIFY_RESULT(
+  std::string header = VERIFY_RESULT(
       header_manager->SerializeEncryptionParams(*encryption_params.get()));
   RETURN_NOT_OK(underlying_w->Append(header));
   return CompleteCreateEncryptionInfoForWrite(
@@ -170,7 +171,7 @@ Status CreateWritableFile(WritablePtr* result,
                           HeaderManager* header_manager,
                           WritablePtr underlying) {
   result->reset();
-  if (!header_manager->IsEncryptionEnabled()) {
+  if (!VERIFY_RESULT(header_manager->IsEncryptionEnabled())) {
     *result = std::move(underlying);
     return Status::OK();
   }
@@ -187,5 +188,3 @@ Result<uint32_t> GetHeaderSize(SequentialFile* file, HeaderManager* header_manag
 
 } // namespace encryption
 } // namespace yb
-
-#endif // YB_ENCRYPTION_ENCRYPTION_UTIL_H

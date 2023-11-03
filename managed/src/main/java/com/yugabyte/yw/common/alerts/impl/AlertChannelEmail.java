@@ -2,17 +2,20 @@
 
 package com.yugabyte.yw.common.alerts.impl;
 
-import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.EmailHelper;
 import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
+import com.yugabyte.yw.common.alerts.AlertTemplateVariableService;
 import com.yugabyte.yw.common.alerts.PlatformNotificationException;
 import com.yugabyte.yw.common.alerts.SmtpData;
+import com.yugabyte.yw.forms.AlertChannelTemplatesExt;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.AlertTemplateVariable;
 import com.yugabyte.yw.models.Customer;
 import java.util.Collections;
 import java.util.List;
+import javax.inject.Inject;
 import javax.mail.MessagingException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
@@ -21,23 +24,36 @@ import org.apache.commons.collections.CollectionUtils;
 @Singleton
 public class AlertChannelEmail extends AlertChannelBase {
 
-  @Inject private EmailHelper emailHelper;
+  private final EmailHelper emailHelper;
+
+  @Inject
+  public AlertChannelEmail(
+      EmailHelper emailHelper, AlertTemplateVariableService alertTemplateVariableService) {
+    super(alertTemplateVariableService);
+    this.emailHelper = emailHelper;
+  }
 
   @Override
-  public void sendNotification(Customer customer, Alert alert, AlertChannel channel)
+  public void sendNotification(
+      Customer customer,
+      Alert alert,
+      AlertChannel channel,
+      AlertChannelTemplatesExt channelTemplates)
       throws PlatformNotificationException {
     log.debug("sendNotification {}", alert);
     AlertChannelEmailParams params = (AlertChannelEmailParams) channel.getParams();
-    String title = getNotificationTitle(alert, channel);
-    String text = getNotificationText(alert, channel);
+    List<AlertTemplateVariable> variables = alertTemplateVariableService.list(customer.getUuid());
+    Context context = new Context(channel, channelTemplates, variables);
+    String title = getNotificationTitle(alert, context, false);
+    String text = getNotificationText(alert, context, true);
 
     SmtpData smtpData =
         params.isDefaultSmtpSettings()
-            ? emailHelper.getSmtpData(customer.uuid)
+            ? emailHelper.getSmtpData(customer.getUuid())
             : params.getSmtpData();
     List<String> recipients =
         params.isDefaultRecipients()
-            ? emailHelper.getDestinations(customer.uuid)
+            ? emailHelper.getDestinations(customer.getUuid())
             : params.getRecipients();
 
     if (CollectionUtils.isEmpty(recipients)) {
@@ -60,7 +76,7 @@ public class AlertChannelEmail extends AlertChannelBase {
           title,
           String.join(", ", recipients),
           smtpData,
-          Collections.singletonMap("text/plain; charset=\"us-ascii\"", text));
+          Collections.singletonMap("text/html; charset=\"us-ascii\"", text));
     } catch (MessagingException e) {
       throw new PlatformNotificationException(
           String.format("Error sending email for alert %s: %s", alert.getName(), e.getMessage()),

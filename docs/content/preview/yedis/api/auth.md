@@ -6,23 +6,23 @@ menu:
   preview:
     parent: api-yedis
     weight: 2020
-aliases:
-  - /preview/api/redis/auth
-  - /preview/api/yedis/auth
 type: docs
 ---
+
 `AUTH` authenticates a client connection to Yugabyte YEDIS API.
 
 ## Synopsis
 
-<b>`AUTH password`</b><br>
+**`AUTH password`**
+
 This command authenticates a client connection to YugabyteDB's YEDIS API.
 
-YugabyteDB can be setup to require a password for clients to authenticate themselves. The password verification can be enforced by using the `CONFIG` command to set the intended password (See `CONFIG`).
+YugabyteDB can be set up to require a password for clients to authenticate themselves. The password verification can be enforced by using the `CONFIG` command to set the intended password (See `CONFIG`).
 
 YEDIS allows for multiple passwords (up to 2) to be accepted.
-<li>If the given `password` matches with any of the server configured password(s), server returns the status string "OK" and begins processing commands from the authenticated client.</li>
-<li>If the given `password` does not match with any of the server configured password(s), an error is raised</li>
+
+- If the given `password` matches with any of the server configured password(s), server returns the status string "OK" and begins processing commands from the authenticated client.
+- If the given `password` does not match with any of the server configured password(s), an error is raised
 
 ## Return value
 

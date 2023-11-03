@@ -51,7 +51,7 @@ class ClockSynchronizationTest : public YBMiniClusterTestBase<MiniCluster> {
   }
 
   void SetUp() override {
-    FLAGS_ht_lease_duration_ms = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ht_lease_duration_ms) = 0;
     SetupFlags();
 
     YBMiniClusterTestBase::SetUp();
@@ -62,8 +62,8 @@ class ClockSynchronizationTest : public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_OK(cluster_->Start());
 
     client::YBSchemaBuilder b;
-    b.AddColumn("key")->Type(INT64)->NotNull()->HashPrimaryKey();
-    b.AddColumn("value")->Type(INT64)->NotNull();
+    b.AddColumn("key")->Type(DataType::INT64)->NotNull()->HashPrimaryKey();
+    b.AddColumn("value")->Type(DataType::INT64)->NotNull();
     CHECK_OK(b.Build(&schema_));
 
     client_ = ASSERT_RESULT(cluster_->CreateClient());
@@ -94,7 +94,7 @@ class ClockSynchronizationTest : public YBMiniClusterTestBase<MiniCluster> {
     google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
     ASSERT_OK(
         client_->GetTablets(*table_name_, 0, &tablets, /* partition_list_version =*/ nullptr));
-    std::shared_ptr<client::YBSession> session =  client_->NewSession();
+    auto session = client_->NewSession(MonoDelta::FromSeconds(60));
     for (int i = 0; i < num_writes_per_tserver; i++) {
       auto ql_write = std::make_shared<client::YBqlWriteOp>(table_);
       auto *const req = ql_write->mutable_request();
@@ -113,7 +113,7 @@ class ClockSynchronizationTest : public YBMiniClusterTestBase<MiniCluster> {
   }
 
   virtual void SetupFlags() {
-    FLAGS_time_source = "mock";
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_time_source) = "mock";
   }
 
   std::unique_ptr<client::YBClient> client_;

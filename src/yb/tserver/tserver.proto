@@ -85,6 +85,10 @@ message WriteRequestPB {
   optional fixed64 external_hybrid_time = 19;
 
   optional uint64 batch_idx = 20;
+
+  optional int64 leader_term = 21;
+
+  optional uint64 start_time_micros = 22;
 }
 
 message WriteResponsePB {
@@ -246,6 +250,22 @@ message ReadResponsePB {
   optional fixed64 local_limit_ht = 10;
 }
 
+message GetTabletKeyRangesRequestPB {
+  optional bytes tablet_id = 1;
+  optional fixed64 propagated_hybrid_time = 2;
+  optional bytes lower_bound_key = 3;
+  optional bytes upper_bound_key = 4;
+  optional uint64 max_num_ranges = 5;
+  optional uint64 range_size_bytes = 6;
+  optional bool is_forward = 7 [ default = true ];
+  optional uint32 max_key_length = 8;
+}
+
+message GetTabletKeyRangesResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional fixed64 propagated_hybrid_time = 2;
+}
+
 // Truncate tablet request.
 message TruncateRequestPB {
   optional bytes tablet_id = 1;
@@ -299,4 +319,32 @@ message IsTabletServerReadyResponsePB {
   optional TabletServerErrorPB error = 1;
   optional int32 num_tablets_not_running = 2;
   optional int32 total_tablets = 3 [default = 0];
+}
+
+// A list master servers request
+message ListMasterServersRequestPB {
+}
+
+// A list master servers response
+message ListMasterServersResponsePB {
+  optional TabletServerErrorPB error = 1;
+
+  message MasterServerAndTypePB {
+    optional string master_server = 1;
+    optional bool is_leader = 2;
+  }
+
+  repeated MasterServerAndTypePB master_server_and_type = 2;
+}
+
+// Gets the schema version of the schema that is compatible with the requested schema.
+message GetCompatibleSchemaVersionRequestPB {
+  optional bytes tablet_id = 1;
+  optional SchemaPB schema = 2;
+}
+
+// Update Schema version mapping response PB.
+message GetCompatibleSchemaVersionResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional uint32 compatible_schema_version = 2;
 }

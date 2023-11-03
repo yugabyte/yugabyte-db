@@ -13,19 +13,12 @@
 
 #include "yb/rpc/rpc_test_util.h"
 
-#include "yb/rpc/messenger.h"
-
 namespace yb {
 namespace rpc {
 
-void MessengerShutdownDeleter::operator()(Messenger* messenger) const {
-  messenger->Shutdown();
-  delete messenger;
-}
-
 AutoShutdownMessengerHolder CreateAutoShutdownMessengerHolder(
     std::unique_ptr<Messenger>&& messenger) {
-  return AutoShutdownMessengerHolder(std::move(messenger).release());
+  return AutoShutdownMessengerHolder(messenger.release());
 }
 
 } // namespace rpc

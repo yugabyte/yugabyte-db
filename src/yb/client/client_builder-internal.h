@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_CLIENT_CLIENT_BUILDER_INTERNAL_H_
-#define YB_CLIENT_CLIENT_BUILDER_INTERNAL_H_
+#pragma once
 
 #include <stdint.h>
 
@@ -47,7 +46,6 @@
 
 #include "yb/common/common_net.pb.h"
 #include "yb/common/entity_ids.h"
-#include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/ref_counted.h"
 
@@ -112,5 +110,3 @@ class YBClientBuilder::Data {
 
 }  // namespace client
 }  // namespace yb
-
-#endif // YB_CLIENT_CLIENT_BUILDER_INTERNAL_H_

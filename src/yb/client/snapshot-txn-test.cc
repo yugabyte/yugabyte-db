@@ -29,6 +29,7 @@
 
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/transaction_error.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
@@ -46,6 +47,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/enums.h"
 #include "yb/util/lockfree.h"
@@ -61,6 +63,7 @@
 
 using namespace std::literals;
 
+DECLARE_bool(enable_lease_revocation);
 DECLARE_bool(TEST_disallow_lmp_failures);
 DECLARE_bool(enable_multi_raft_heartbeat_batcher);
 DECLARE_bool(fail_on_out_of_range_clock_skew);
@@ -74,6 +77,7 @@ DECLARE_int64(transaction_rpc_timeout_ms);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(max_transactions_in_status_request);
 DECLARE_uint64(clock_skew_force_crash_bound_usec);
+DECLARE_bool(enable_load_balancing);
 
 extern double TEST_delay_create_transaction_probability;
 
@@ -152,12 +156,16 @@ void SnapshotTxnTest::TestBankAccountsThread(
           }
           continue;
         }
-        if (result.status().IsTimedOut() || result.status().IsQLError()) {
+        // Transactions could timeout/get aborted when they request for conflicting locks.
+        // Can ignore such errors as there is no correctness issue.
+        if (result.status().IsTimedOut() || result.status().IsQLError() ||
+            result.status().IsIOError() || result.status().IsExpired()) {
+          LOG(WARNING) << Format("TXN: $0 failed with error: $1", txn->id(), result.status());
           txn = nullptr;
           continue;
         }
         ASSERT_TRUE(result.ok())
-            << Format("$0, TXN: $0, key1: $1, key2: $2", result.status(), txn->id(), key1, key2);
+            << Format("$0, TXN: $1, key1: $2, key2: $3", result.status(), txn->id(), key1, key2);
       }
       auto balance2 = *result;
       status = ResultToStatus(WriteRow(session, key1, balance1 - transfer));
@@ -184,7 +192,8 @@ void SnapshotTxnTest::TestBankAccountsThread(
     } else {
       ASSERT_TRUE(
           status.IsTryAgain() || status.IsExpired() || status.IsNotFound() || status.IsTimedOut() ||
-          ql::QLError(status) == ql::ErrorCode::RESTART_REQUIRED) << status;
+          ql::QLError(status) == ql::ErrorCode::RESTART_REQUIRED ||
+          TransactionError(status) == TransactionErrorCode::kConflict) << status;
     }
   }
 }
@@ -327,6 +336,7 @@ void SnapshotTxnTest::TestBankAccounts(
     }
     auto txn_id = txn->id();
     session->SetTransaction(txn);
+    LOG(INFO) << txn_id << ", read start: " << txn->read_point().GetReadTime().ToString();
     auto rows = SelectAllRows(session);
     if (!rows.ok()) {
       if (txn->IsRestartRequired()) {
@@ -347,7 +357,8 @@ void SnapshotTxnTest::TestBankAccounts(
     for (const auto& pair : *rows) {
       sum_balance += pair.second;
     }
-    LOG(INFO) << txn_id << ", read done, values: " << AsString(*rows);
+    LOG(INFO) << txn_id << ", read done, values: " << AsString(*rows)
+              << ", delta: " << sum_balance - kAccounts * kInitialAmount;
     ASSERT_EQ(sum_balance, kAccounts * kInitialAmount);
 
     if (options.Test(BankAccountsOption::kStepDown)) {
@@ -357,7 +368,7 @@ void SnapshotTxnTest::TestBankAccounts(
 }
 
 TEST_F(SnapshotTxnTest, BankAccounts) {
-  FLAGS_TEST_disallow_lmp_failures = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disallow_lmp_failures) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_multi_raft_heartbeat_batcher) = false;
   TestBankAccounts({}, 30s, RegularBuildVsSanitizers(10, 1) /* minimal_updates_per_second */);
 }
@@ -369,8 +380,8 @@ TEST_F(SnapshotTxnTest, BankAccountsPartitioned) {
 }
 
 TEST_F(SnapshotTxnTest, BankAccountsWithTimeStrobe) {
-  FLAGS_fail_on_out_of_range_clock_skew = false;
-  FLAGS_clock_skew_force_crash_bound_usec = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_fail_on_out_of_range_clock_skew) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_clock_skew_force_crash_bound_usec) = 0;
 
   TestBankAccounts(
       BankAccountsOptions{BankAccountsOption::kTimeStrobe}, 300s,
@@ -378,7 +389,7 @@ TEST_F(SnapshotTxnTest, BankAccountsWithTimeStrobe) {
 }
 
 TEST_F(SnapshotTxnTest, BankAccountsWithTimeJump) {
-  FLAGS_fail_on_out_of_range_clock_skew = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_fail_on_out_of_range_clock_skew) = false;
 
   TestBankAccounts(
       BankAccountsOptions{BankAccountsOption::kTimeJump, BankAccountsOption::kStepDown}, 30s,
@@ -386,7 +397,7 @@ TEST_F(SnapshotTxnTest, BankAccountsWithTimeJump) {
 }
 
 TEST_F(SnapshotTxnTest, BankAccountsDelayCreate) {
-  FLAGS_transaction_rpc_timeout_ms = 500 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_rpc_timeout_ms) = 500 * kTimeMultiplier;
   TEST_delay_create_transaction_probability = 0.5;
 
   TestBankAccounts({}, 30s, RegularBuildVsSanitizers(10, 1) /* minimal_updates_per_second */,
@@ -394,9 +405,9 @@ TEST_F(SnapshotTxnTest, BankAccountsDelayCreate) {
 }
 
 TEST_F(SnapshotTxnTest, BankAccountsDelayAddLeaderPending) {
-  FLAGS_TEST_disallow_lmp_failures = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disallow_lmp_failures) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_multi_raft_heartbeat_batcher) = false;
-  FLAGS_TEST_inject_mvcc_delay_add_leader_pending_ms = 20;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_mvcc_delay_add_leader_pending_ms) = 20;
   TestBankAccounts({}, 30s, RegularBuildVsSanitizers(5, 1) /* minimal_updates_per_second */);
 }
 
@@ -600,7 +611,7 @@ Result<PagingReadCounts> SingleTabletSnapshotTxnTest::TestPaging() {
 constexpr auto kExpectedMinCount = RegularBuildVsSanitizers(20, 1);
 
 TEST_F_EX(SnapshotTxnTest, Paging, SingleTabletSnapshotTxnTest) {
-  FLAGS_ycql_consistent_transactional_paging = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_consistent_transactional_paging) = true;
 
   auto counts = ASSERT_RESULT(TestPaging());
 
@@ -610,7 +621,7 @@ TEST_F_EX(SnapshotTxnTest, Paging, SingleTabletSnapshotTxnTest) {
 }
 
 TEST_F_EX(SnapshotTxnTest, InconsistentPaging, SingleTabletSnapshotTxnTest) {
-  FLAGS_ycql_consistent_transactional_paging = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_consistent_transactional_paging) = false;
 
   auto counts = ASSERT_RESULT(TestPaging());
 
@@ -694,13 +705,13 @@ bool IntermittentTxnFailure(const Status& status) {
   return false;
 }
 
-// Concurrently execute multiple transaction, each of them writes the same key multiple times.
+// Concurrently execute multiple transactions, each of them writes the same key multiple times.
 // And perform tserver restarts in parallel to it.
 // This test checks that transaction participant state correctly restored after restart.
 void SnapshotTxnTest::TestMultiWriteWithRestart() {
   constexpr int kNumWritesPerKey = 10;
 
-  FLAGS_TEST_inject_load_transaction_delay_ms = 25;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_load_transaction_delay_ms) = 25;
 
   TestThreadHolder thread_holder;
 
@@ -817,7 +828,7 @@ TEST_F(SnapshotTxnTest, MultiWriteWithRestart) {
 }
 
 TEST_F(SnapshotTxnTest, MultiWriteWithRestartAndLongApply) {
-  FLAGS_txn_max_apply_batch_records = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_txn_max_apply_batch_records) = 3;
   TestMultiWriteWithRestart();
 }
 
@@ -825,7 +836,7 @@ using RemoteBootstrapOnStartBase = TransactionCustomLogSegmentSizeTest<128, Snap
 
 void SnapshotTxnTest::TestRemoteBootstrap() {
   constexpr int kTransactionsCount = RegularBuildVsSanitizers(100, 10);
-  FLAGS_log_min_seconds_to_retain = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 1;
   DisableTransactionTimeout();
 
   for (int iteration = 0; iteration != 4; ++iteration) {
@@ -879,7 +890,7 @@ void SnapshotTxnTest::TestRemoteBootstrap() {
     // Start all servers. Cluster verifier should check that all tablets are synchronized.
     for (auto i = cluster_->num_tablet_servers(); i > 0;) {
       --i;
-      ASSERT_OK(cluster_->mini_tablet_server(i)->Start());
+      ASSERT_OK(cluster_->mini_tablet_server(i)->Start(tserver::WaitTabletsBootstrapped::kFalse));
     }
 
     ASSERT_OK(WaitFor([this] { return CheckAllTabletsRunning(); }, 20s * kTimeMultiplier,
@@ -892,10 +903,10 @@ TEST_F_EX(SnapshotTxnTest, RemoteBootstrapOnStart, RemoteBootstrapOnStartBase) {
 }
 
 TEST_F_EX(SnapshotTxnTest, TruncateDuringShutdown, RemoteBootstrapOnStartBase) {
-  FLAGS_TEST_inject_load_transaction_delay_ms = 50;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_load_transaction_delay_ms) = 50;
 
   constexpr int kTransactionsCount = RegularBuildVsSanitizers(20, 5);
-  FLAGS_log_min_seconds_to_retain = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 1;
   DisableTransactionTimeout();
 
   DisableApplyingIntents();
@@ -926,13 +937,16 @@ TEST_F_EX(SnapshotTxnTest, TruncateDuringShutdown, RemoteBootstrapOnStartBase) {
 
   ASSERT_OK(client_->TruncateTable(table_.table()->id()));
 
-  ASSERT_OK(cluster_->mini_tablet_server(0)->Start());
+  ASSERT_OK(cluster_->mini_tablet_server(0)->Start(tserver::WaitTabletsBootstrapped::kFalse));
 
   ASSERT_OK(WaitFor([this] { return CheckAllTabletsRunning(); }, 20s * kTimeMultiplier,
                     "All tablets running"));
 }
 
 TEST_F_EX(SnapshotTxnTest, ResolveIntents, SingleTabletSnapshotTxnTest) {
+  // Disable load balancing to avoid leader change after getting the leader peer.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+
   SetIgnoreApplyingProbability(0.5);
 
   TransactionPool pool(transaction_manager_.get_ptr(), nullptr /* metric_entity */);
@@ -946,10 +960,11 @@ TEST_F_EX(SnapshotTxnTest, ResolveIntents, SingleTabletSnapshotTxnTest) {
 
     auto peers = ListTabletPeers(
         cluster_.get(), [](const std::shared_ptr<tablet::TabletPeer>& peer) {
-      if (peer->table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+      if (peer->TEST_table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
         return false;
       }
-      return peer->consensus()->GetLeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
+      return CHECK_RESULT(peer->GetConsensus())->GetLeaderStatus() ==
+             consensus::LeaderStatus::LEADER_AND_READY;
     });
     ASSERT_EQ(peers.size(), 1);
     auto peer = peers[0];
@@ -959,7 +974,7 @@ TEST_F_EX(SnapshotTxnTest, ResolveIntents, SingleTabletSnapshotTxnTest) {
     auto current_ht = clock_->Now();
     ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
     bool found = false;
-    auto files = tablet->TEST_db()->GetLiveFilesMetaData();
+    auto files = tablet->regular_db()->GetLiveFilesMetaData();
     for (const auto& meta : files) {
       auto min_ht = down_cast<docdb::ConsensusFrontier&>(
           *meta.smallest.user_frontier).hybrid_time();
@@ -981,7 +996,7 @@ TEST_F_EX(SnapshotTxnTest, ResolveIntents, SingleTabletSnapshotTxnTest) {
 TEST_F(SnapshotTxnTest, DeleteOnLoad) {
   constexpr int kTransactions = 400;
 
-  FLAGS_TEST_inject_status_resolver_delay_ms = 150 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_status_resolver_delay_ms) = 150 * kTimeMultiplier;
 
   DisableApplyingIntents();
 
@@ -998,7 +1013,7 @@ TEST_F(SnapshotTxnTest, DeleteOnLoad) {
   // Wait delete table request to replicate on alive node.
   std::this_thread::sleep_for(1s * kTimeMultiplier);
 
-  ASSERT_OK(cluster_->mini_tablet_server(0)->Start());
+  ASSERT_OK(cluster_->mini_tablet_server(0)->Start(tserver::WaitTabletsBootstrapped::kFalse));
 }
 
 } // namespace client

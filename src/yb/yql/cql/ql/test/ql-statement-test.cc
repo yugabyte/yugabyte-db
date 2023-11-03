@@ -25,9 +25,6 @@
 #include "yb/yql/cql/ql/util/errcodes.h"
 
 using std::string;
-using std::unique_ptr;
-using std::shared_ptr;
-using strings::Substitute;
 
 namespace yb {
 namespace ql {
@@ -221,7 +218,8 @@ TEST_F(TestQLStatement, TestBindVarPositions) {
   prepareAndCheck(processor,
       "DELETE FROM tbl WHERE r2 = ? AND r1 = ? AND h1 = ? AND h2 = ? IF EXISTS;", {2, 3});
 
-  // Test hash column based on json attribute.
+  // Miscellaneous test case with a complex name for the hash column. Note that \"j->>'a'\" is just
+  // another independent column, and in no way related to the jsonb column j.
   EXEC_VALID_STMT("CREATE TABLE tbl_json (\"j->>'a'\" INT, \"j->>'b'\" INT, j JSONB, "
                   "PRIMARY KEY(\"j->>'a'\")) WITH transactions = {'enabled' : true};");
   prepareAndCheck(processor, "SELECT * FROM tbl_json WHERE j = ?;", {});
@@ -237,11 +235,8 @@ TEST_F(TestQLStatement, TestBindVarPositions) {
   WaitForIndex("tbl_json2", "ind");
 
   // Using main table PRIMARY KEY: (h1, j->>'a').
-  // TOFIX: Memory error: out of bounds index: "Bad op index=2 for vector size=2"
-  //        https://github.com/yugabyte/yugabyte-db/issues/13731
-  //        Uncomment following 2 lines to reproduce the error:
-  //  prepareAndCheck(processor,
-  //      "SELECT * FROM tbl_json2 WHERE v1 = ? AND h1 = ? AND \"j->>'a'\" = ?;", {1, 2});
+  prepareAndCheck(processor,
+      "SELECT * FROM tbl_json2 WHERE v1 = ? AND h1 = ? AND \"j->>'a'\" = ?;", {1, 2});
   prepareAndCheck(processor,
       "UPDATE tbl_json2 SET v1 = ? WHERE \"j->>'a'\" = ? AND h1 = ?;", {2, 1});
   prepareAndCheck(processor, "DELETE FROM tbl_json2 WHERE h1 = ? AND \"j->>'a'\" = ?;", {0, 1});

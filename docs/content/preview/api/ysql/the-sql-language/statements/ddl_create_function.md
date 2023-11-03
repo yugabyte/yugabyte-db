@@ -7,10 +7,14 @@ menu:
   preview:
     identifier: ddl_create_function
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/ddl_create_function/
 type: docs
 ---
+
+{{< tip title="See the dedicated 'User-defined subprograms and anonymous blocks' section." >}}
+User-defined functions are part of a larger area of functionality. See this major section:
+
+- [User-defined subprograms and anonymous blocks—"language SQL" and "language plpgsql"](../../../user-defined-subprograms-and-anon-blocks/)
+{{< /tip >}}
 
 ## Synopsis
 
@@ -18,29 +22,21 @@ Use the `CREATE FUNCTION` statement to create a function in a database.
 
 ## Syntax
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li>
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fas fa-file-alt" aria-hidden="true"></i>
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fas fa-project-diagram" aria-hidden="true"></i>
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_function,arg_decl_with_dflt,arg_decl,subprogram_signature,unalterable_fn_attribute,lang_name,implementation_definition,sql_stmt_list,alterable_fn_and_proc_attribute,alterable_fn_only_attribute,volatility,on_null_input,parallel_mode.grammar.md" %}}
-  </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_function,arg_decl_with_dflt,arg_decl,subprogram_signature,unalterable_fn_attribute,lang_name,implementation_definition,sql_stmt_list,alterable_fn_and_proc_attribute,alterable_fn_only_attribute,volatility,on_null_input,parallel_mode.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  create_function,
+  arg_decl_with_dflt,
+  arg_decl,
+  subprogram_signature,
+  unalterable_fn_attribute,
+  lang_name,
+  subprogram_implementation,
+  sql_stmt_list,
+  alterable_fn_and_proc_attribute,
+  alterable_fn_only_attribute,
+  volatility,
+  on_null_input,
+  parallel_mode
+{{%/ebnf%}}
 
 <a name="make-function-returns-mandatory"></a>
 {{< tip title="'Regard the 'RETURNS' clause as mandatory." >}}
@@ -73,6 +69,7 @@ When you write a `CREATE FUNCTION` statement, you will already have decided what
 - In contrast, if you drop and then recreate a function, the new function is not the same entity as the old one. So you will have to drop existing objects that depend upon the old function. (Dropping the function `CASCADE` achieves this.) Alternatively, `ALTER FUNCTION` can be used to change most of the attributes of an existing function.
 - The languages supported by default are `SQL`, `PLPGSQL` and `C`.
 
+<a name="create-function-grants-execute-to-public"></a>
 {{< tip title="'Create function' grants 'execute' to 'public'." >}}
 _Execute_ is granted automatically to _public_ when you create a new function. This is very unlikely to be want you want—and so this behavior presents a disguised security risk. Yugabyte recommends that your standard practice be to revoke this privilege immediately after creating a function.
 {{< /tip >}}
@@ -90,20 +87,22 @@ Use the appropriate variant of the `RETURN` clause to create either a scalar fun
 Try this:
 
 ```plpgsql
-drop type if exists x cascade;
-create type x as (i int, t text);
+create schema s;
 
-drop function if exists f(int, text) cascade;
-create function f(i in int, t in text)
+create type s.x as (i int, t text);
+
+create function s.f(i in int, t in text)
   returns x
+  security invoker
+  set search_path = pg_catalog, pg_temp
   language plpgsql
 as $body$
 begin
-  return (i*2, t||t)::x;
+  return (i*2, t||t)::s.x;
 end;
 $body$;
 
-WITH c as (select f(42, 'dog') as v)
+WITH c as (select s.f(42, 'dog') as v)
 select
   (v).i, (v).t
 FROM c;
@@ -122,43 +121,43 @@ This is the result:
 Try this
 
 ```plpgsql
-drop table if exists t cascade;
-create table t(k serial primary key, v varchar(4));
-insert into t(v) values ('dog'), ('cat'), ('frog');
+create table s.t(k serial primary key, v text);
+insert into s.t(v) values ('dog'), ('cat'), ('frog');
 
-drop function if exists f() cascade;
-create function f()
+create function s.f()
   returns table(z text)
+  security definer
+  set search_path = pg_catalog, pg_temp
   language plpgsql
 as $body$
 begin
   z := 'Starting content of t '; return next;
   z := '----------------------'; return next;
-  for z in (select v from t order by k) loop
+  for z in (select v from s.t order by k) loop
     return next;
   end loop;
 
   begin
-    insert into t(v) values ('mouse');
+    insert into s.t(v) values ('mouse');
   exception
     when string_data_right_truncation then
       z := ''; return next;
       z := 'string_data_right_truncation caught'; return next;
   end;
 
-  insert into t(v) values ('bird');
+  insert into s.t(v) values ('bird');
 
   z := ''; return next;
   z := 'Finishing content of t'; return next;
   z := '----------------------'; return next;
-  for z in (select v from t order by k) loop
+  for z in (select v from s.t order by k) loop
     return next;
   end loop;
 end;
 $body$;
 
 \t on
-select z from f();
+select z from s.f();
 \t off
 ```
 
@@ -183,51 +182,26 @@ This is the result:
 
 This kind of table function provides a convenient way to produce an arbitrarily formatted report that can easily be spooled to a file. This is because the _select_ output is easily accessible (in _ysqlsh_) on _stdout_—and it's correspondingly easily accessible in client-side programming languages that do SQL like say, Python. In contrast, the output from _raise info_ is tricky to capture (and definitely very hard to interleave in proper sequence with _select_ results) because it comes on _stderr_.
 
-## Examples
+{{< tip title="Always name the formal arguments and write the function's body last." >}}
+YSQL inherits from PostgreSQL the ability to specify the arguments only by listing their data types and to reference them in the body using the positional notation `$1`, `$2`, and so on. The earliest versions of PostgreSQL didn't allow named parameters. But the version that YSQL is based on does allow this. Your code will be very much easier to understand if you use named arguments like the example does.
 
-### Define a function using the SQL language.
-
-```plpgsql
-create function mul(integer, integer) returns integer
-    as 'select $1 * $2;'
-    language sql
-    immutable
-    returns null on null input;
-
-select mul(2,3), mul(10, 12);
-```
-
-```output
- mul | mul
------+-----
-   6 | 120
-(1 row)
-```
-
-### Define a function using the PL/pgSQL language.
+The syntax rules allow you to write the alterable and unalterable attributes in any order, like this:
 
 ```plpgsql
-create or replace function inc(i integer)
-  returns integer
-  language plpgsql
+create function s.f(i in int, t in text)
+  returns s.x
+  security invoker
 as $body$
 begin
-  return i + 1;
+  return (i*2, t||t)::s.x;
 end;
-$body$;
-
-select inc(2), inc(5), inc(10);
+$body$
+set search_path = pg_catalog, pg_temp
+language plpgsql;
 ```
 
-```output
-NOTICE:  Incrementing 2
-NOTICE:  Incrementing 5
-NOTICE:  Incrementing 10
- inc | inc | inc
------+-----+-----
-   3 |   6 |  11
-(1 row)
-```
+Yugabyte recommends that you avoid exploiting this freedom and choose a standard order where, especially, you write the body last. For example, it helps readability to specify the language immediately before the body. (Try the \\_sf_ meta-command for a function that you created. It always shows the source text last, no matter what order your _create [or replace]_ used.)  Following this practice will allow you to review, and discuss, your code in a natural way by distinguishing, informally, between the function _header_ (i.e. everything that comes before the body) and the _implementation_ (i.e. the body).
+{{< /tip >}}
 
 ## See also
 

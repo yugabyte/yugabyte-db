@@ -39,7 +39,7 @@ import org.yb.BaseYBTest;
 import org.yb.client.YBClient.Condition;
 import org.yb.util.ConfForTesting;
 import org.yb.util.EnvAndSysPropertyUtil;
-import org.yb.util.RandomNumberUtil;
+import org.yb.util.RandomUtil;
 import org.yb.util.BuildTypeUtil;
 
 import java.io.*;
@@ -58,9 +58,6 @@ public class TestUtils {
 
   private static String ybRootDir = null;
 
-  public static final boolean IS_LINUX =
-      System.getProperty("os.name").toLowerCase().equals("linux");
-
   public static final boolean IS_AARCH64 =
       System.getProperty("os.arch").toLowerCase().equals("aarch64");
 
@@ -69,8 +66,6 @@ public class TestUtils {
   private static final String defaultTestTmpDir =
       "/tmp/ybtest-" + System.getProperty("user.name") + "-" + startTimeMillis + "-" +
           new Random().nextInt(Integer.MAX_VALUE);
-
-  private static boolean isJenkins = System.getProperty("user.name").equals("jenkins");
 
   private static final AtomicBoolean defaultTestTmpDirCleanupHookRegistered = new AtomicBoolean();
 
@@ -101,6 +96,14 @@ public class TestUtils {
    * each line describing a test with this.
    */
   private static final String COLLECTED_TESTS_PREFIX = "YUGABYTE_JAVA_TEST: ";
+
+  /**
+   * An upper bound on test timeout enforced at the JUnit test framework level. This should be
+   * less than timeouts enforced at other levels, such as the process_tree_supervisor.py script
+   * (see PROCESS_TREE_SUPERVISOR_TEST_TIMEOUT_SEC in common-test-env.sh) as well as the
+   * yb.forked.test.process.timeout.sec value in the top-level pom.xml.
+   */
+  private static final int DEFAULT_MAX_TEST_TIMEOUT_SEC = 30 * 60;
 
   /**
    * @return the path of the flags file to pass to daemon processes
@@ -344,7 +347,7 @@ public class TestUtils {
   public static int findFreePort(String bindInterface) throws IOException {
     final InetAddress bindIp = InetAddress.getByName(bindInterface);
     final int MAX_ATTEMPTS = 1000;
-    Random rng = RandomNumberUtil.getRandomGenerator();
+    Random rng = RandomUtil.getRandomGenerator();
     for (int attempt = 0; attempt < MAX_ATTEMPTS; ++attempt) {
       final int port = MIN_PORT_TO_USE + rng.nextInt(MAX_PORT_TO_USE - MIN_PORT_TO_USE);
       if (!isReservedPort(bindIp, port) && isPortFree(bindIp, port, attempt == MAX_ATTEMPTS - 1)) {
@@ -421,20 +424,19 @@ public class TestUtils {
    * @return the adjusted timeout
    */
   public static long finalizeTestTimeoutSec(long timeoutSec) {
-    String minTimeoutStr =
-        EnvAndSysPropertyUtil.getEnvVarOrSystemProperty("YB_MIN_TEST_TIMEOUT_SEC", "0");
-    LOG.info("minTimeoutStr=" + minTimeoutStr);
-    long minTestTimeoutSec;
-    if (minTimeoutStr.toLowerCase().equals("inf")) {
-      minTestTimeoutSec = Integer.MAX_VALUE;
-    } else {
-      minTestTimeoutSec = Long.valueOf(minTimeoutStr);
+    long userSpecifiedMinTimeoutSec = EnvAndSysPropertyUtil.getLongEnvVarOrSystemProperty(
+        "YB_MIN_TEST_TIMEOUT_SEC", -1, true, "user-specified minimum test timeout in seconds");
+    if (userSpecifiedMinTimeoutSec > 0) {
+      timeoutSec = Math.max(userSpecifiedMinTimeoutSec, timeoutSec);
     }
-    if (minTestTimeoutSec <= 0) {
-      return timeoutSec;
+
+    long userSpecifiedMaxTimeoutSec = EnvAndSysPropertyUtil.getLongEnvVarOrSystemProperty(
+        "YB_MAX_TEST_TIMEOUT_SEC", DEFAULT_MAX_TEST_TIMEOUT_SEC, true,
+        "user-specified maximum test timeout in seconds");
+    if (userSpecifiedMaxTimeoutSec > 0) {
+      timeoutSec = Math.min(userSpecifiedMaxTimeoutSec, timeoutSec);
     }
-    // The lower bound on the timeout in seconds is minTestTimeoutSec, as specified by the user.
-    return Math.max(timeoutSec, minTestTimeoutSec);
+    return timeoutSec;
   }
 
   /**
@@ -512,21 +514,6 @@ public class TestUtils {
       return arr[arr.length - 1];
     }
     throw new IllegalArgumentException("No numbers given to firstPositiveNumber");
-  }
-
-  public static <T> List<T> joinLists(List<T> a, List<T> b) {
-    List<T> joinedList = new ArrayList();
-    if (a != null) {
-      joinedList.addAll(a);
-    }
-    if (b != null) {
-      joinedList.addAll(b);
-    }
-    return joinedList;
-  }
-
-  public static boolean isJenkins() {
-    return isJenkins;
   }
 
 }

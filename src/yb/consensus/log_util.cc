@@ -37,11 +37,11 @@
 #include <limits>
 #include <utility>
 
-#include <glog/logging.h>
-
 #include "yb/common/hybrid_time.h"
 
+#include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/opid_util.h"
+#include "yb/consensus/log.messages.h"
 #include "yb/consensus/log_index.h"
 
 #include "yb/fs/fs_manager.h"
@@ -54,68 +54,69 @@
 #include "yb/util/coding-inl.h"
 #include "yb/util/coding.h"
 #include "yb/util/crc.h"
-#include "yb/util/debug/trace_event.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/debug/trace_event.h"
 #include "yb/util/env_util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/to_stream.h"
 
-DEFINE_int32(log_segment_size_mb, 64,
+DEFINE_UNKNOWN_int32(log_segment_size_mb, 64,
              "The default segment size for log roll-overs, in MB");
 TAG_FLAG(log_segment_size_mb, advanced);
 
-DEFINE_uint64(log_segment_size_bytes, 0,
+DEFINE_UNKNOWN_uint64(log_segment_size_bytes, 0,
              "The default segment size for log roll-overs, in bytes. "
              "If 0 then log_segment_size_mb is used.");
 
-DEFINE_uint64(initial_log_segment_size_bytes, 1024 * 1024,
+DEFINE_UNKNOWN_uint64(initial_log_segment_size_bytes, 1024 * 1024,
               "The maximum segment size we want for a new WAL segment, in bytes. "
               "This value keeps doubling (for each subsequent WAL segment) till it gets to the "
               "maximum configured segment size (log_segment_size_bytes or log_segment_size_mb).");
 
-DEFINE_bool(durable_wal_write, false,
+DEFINE_UNKNOWN_bool(durable_wal_write, false,
             "Whether the Log/WAL should explicitly call fsync() after each write.");
 TAG_FLAG(durable_wal_write, stable);
 
-DEFINE_int32(interval_durable_wal_write_ms, 1000,
+DEFINE_UNKNOWN_int32(interval_durable_wal_write_ms, 1000,
             "Interval in ms after which the Log/WAL should explicitly call fsync(). "
             "If 0 fsysnc() is not called.");
 TAG_FLAG(interval_durable_wal_write_ms, stable);
 
-DEFINE_int32(bytes_durable_wal_write_mb, 1,
+DEFINE_UNKNOWN_int32(bytes_durable_wal_write_mb, 1,
              "Amount of data in MB after which the Log/WAL should explicitly call fsync(). "
              "If 0 fsysnc() is not called.");
 TAG_FLAG(bytes_durable_wal_write_mb, stable);
 
-DEFINE_bool(log_preallocate_segments, true,
+DEFINE_UNKNOWN_bool(log_preallocate_segments, true,
             "Whether the WAL should preallocate the entire segment before writing to it");
 TAG_FLAG(log_preallocate_segments, advanced);
 
-DEFINE_bool(log_async_preallocate_segments, true,
+DEFINE_UNKNOWN_bool(log_async_preallocate_segments, true,
             "Whether the WAL segments preallocation should happen asynchronously");
 TAG_FLAG(log_async_preallocate_segments, advanced);
 
 DECLARE_string(fs_data_dirs);
 
-DEFINE_bool(require_durable_wal_write, false, "Whether durable WAL write is required."
+DEFINE_UNKNOWN_bool(require_durable_wal_write, false, "Whether durable WAL write is required."
     "In case you cannot write using O_DIRECT in WAL and data directories and this flag is set true"
     "the system will deliberately crash with the appropriate error. If this flag is set false, "
     "the system will soft downgrade the durable_wal_write flag.");
 TAG_FLAG(require_durable_wal_write, stable);
 
-// We only keep this disabled by default to prevent backward compatibility issues during rolling
-// upgrade. Nodes that don't support log index embedded into WAL segments won't be able to do
-// local bootstrap based on data from nodes that has log index embedded into WAL segments.
-//
-// TODO(logindex): should be switched to DEFINE_AUTO_bool after
-// https://github.com/yugabyte/yugabyte-db/issues/11912.
-DEFINE_bool(
-    save_index_into_wal_segments, yb::IsDebug(), "Whether to save log index into WAL segments.");
+#ifdef NDEBUG
+DEFINE_RUNTIME_AUTO_bool(save_index_into_wal_segments, kLocalPersisted, false, true,
+#else
+// We set it to false in debug builds to keep testing the old approach in auto tests.
+DEFINE_RUNTIME_bool(save_index_into_wal_segments, false,
+#endif
+    "Whether to save log index into WAL segments.");
 TAG_FLAG(save_index_into_wal_segments, hidden);
 TAG_FLAG(save_index_into_wal_segments, advanced);
 
@@ -125,6 +126,7 @@ namespace log {
 using env_util::ReadFully;
 using std::vector;
 using std::shared_ptr;
+using std::string;
 using strings::Substitute;
 using strings::SubstituteAndAppend;
 
@@ -253,13 +255,16 @@ void ReadableLogSegment::UpdateReadableToOffset(const int64_t readable_to_offset
 }
 
 Status ReadableLogSegment::RebuildFooterByScanning() {
+  auto read_entries = ReadEntries();
+  RETURN_NOT_OK(read_entries.status);
+  return RebuildFooterByScanning(read_entries);
+}
+
+Status ReadableLogSegment::RebuildFooterByScanning(const ReadEntriesResult &read_entries) {
   TRACE_EVENT1("log", "ReadableLogSegment::RebuildFooterByScanning",
                "path", path_);
 
   DCHECK(!footer_.IsInitialized());
-  auto read_entries = ReadEntries();
-  RETURN_NOT_OK(read_entries.status);
-
   footer_.set_num_entries(read_entries.entries.size());
 
   uint64_t latest_ht = 0;
@@ -272,17 +277,42 @@ Status ReadableLogSegment::RebuildFooterByScanning() {
   }
 
   DCHECK(footer_.IsInitialized());
-  DCHECK_EQ(read_entries.entries.size(), footer_.num_entries());
   footer_was_rebuilt_ = true;
 
   if (latest_ht > 0) {
-    footer_.set_close_timestamp_micros(yb::HybridTime(latest_ht).GetPhysicalValueMicros());
+    footer_.set_close_timestamp_micros(HybridTime(latest_ht).GetPhysicalValueMicros());
   }
 
   readable_to_offset_.store(read_entries.end_offset, std::memory_order_release);
 
   LOG(INFO) << "Successfully rebuilt footer for segment: " << path_
             << " (valid entries through byte offset " << read_entries.end_offset << ")";
+  return Status::OK();
+}
+
+Status ReadableLogSegment::RestoreFooterBuilderAndLogIndex(LogSegmentFooterPB* footer_builder,
+                                                           LogIndex* log_index,
+                                                           const ReadEntriesResult& read_entries) {
+  DCHECK(!footer_builder->IsInitialized());
+
+  footer_builder->set_num_entries(read_entries.entries.size());
+
+  for (size_t entry_idx = 0; entry_idx < read_entries.entries.size(); ++entry_idx) {
+    const auto& entry = read_entries.entries[entry_idx];
+    if (entry->has_replicate()) {
+      UpdateSegmentFooterIndexes(entry->replicate(), footer_builder);
+      // Entry might has been already added to log_index_ by PlaySegments()
+      // in tablet_bootstrap.cc. If so, it will skip overwriting it.
+      const auto& entry_metadata = read_entries.entry_metadata[entry_idx];
+      RETURN_NOT_OK(log_index->AddEntry(LogIndexEntry {
+        .op_id = OpId::FromPB(entry->replicate().id()),
+        .segment_sequence_number = entry_metadata.active_segment_sequence_number,
+        .offset_in_segment = entry_metadata.offset,
+      }, Overwrite::kFalse));
+    }
+  }
+
+  UpdateReadableToOffset(read_entries.end_offset);
   return Status::OK();
 }
 
@@ -294,7 +324,7 @@ Status ReadableLogSegment::CopyTo(
   std::shared_ptr<WritableFile> shared_dest_file(dest_file.release());
 
   auto dest_segment = std::make_unique<WritableLogSegment>(dest_path, shared_dest_file);
-  RETURN_NOT_OK(dest_segment->WriteHeaderAndOpen(header()));
+  RETURN_NOT_OK(dest_segment->WriteHeader(header()));
   LogSegmentFooterPB footer;
 
   const auto temp_log_index_dir = dest_path + "-index.tmp";
@@ -307,7 +337,6 @@ Status ReadableLogSegment::CopyTo(
   const auto read_up_to = ReadEntriesUpTo();
   auto offset = first_entry_offset();
 
-  faststring read_buf;
   faststring write_buf;
   size_t num_entries = 0;
   uint64_t latest_ht = 0;
@@ -319,30 +348,29 @@ Status ReadableLogSegment::CopyTo(
   index_entry.segment_sequence_number = header().sequence_number();
   while (offset < read_up_to && !hit_limit) {
     index_entry.offset_in_segment = offset;
-    LogEntryBatchPB current_batch;
 
-    if (offset + implicit_cast<ssize_t>(kEntryHeaderSize) < read_up_to) {
-      RETURN_NOT_OK(ReadEntryHeaderAndBatch(&offset, &read_buf, &current_batch));
-    } else {
+    if (offset + implicit_cast<ssize_t>(kEntryHeaderSize) >= read_up_to) {
       return STATUS(Corruption, Format("Truncated log entry at offset $0", offset));
     }
 
-    for (auto it = current_batch.entry().cbegin(); it != current_batch.entry().end(); ++it) {
+    auto current_batch = VERIFY_RESULT(ReadEntryHeaderAndBatch(&offset));
+
+    for (auto it = current_batch->entry().begin(); it != current_batch->entry().end(); ++it) {
       if (!it->has_replicate()) {
         continue;
       }
 
-      index_entry.op_id = yb::OpId::FromPB(it->replicate().id());
+      const auto op_id = OpId::FromPB(it->replicate().id());
+      index_entry.op_id = op_id;
 
       if (has_op_id_limit) {
-        if (OpId::FromPB(current_batch.committed_op_id()) > up_to_op_id) {
-          up_to_op_id.ToPB(current_batch.mutable_committed_op_id());
+        if (OpId::FromPB(current_batch->committed_op_id()) > up_to_op_id) {
+          up_to_op_id.ToPB(current_batch->mutable_committed_op_id());
         }
 
-        const auto op_id = OpId::FromPB(it->replicate().id());
         if (op_id > up_to_op_id) {
           hit_limit = true;
-          current_batch.mutable_entry()->erase(it, current_batch.entry().cend());
+          current_batch->mutable_entry()->erase(it, current_batch->entry().end());
           break;
         }
       }
@@ -352,11 +380,11 @@ Status ReadableLogSegment::CopyTo(
     }
 
     write_buf.clear();
-    write_buf.reserve(current_batch.ByteSize());
-    RETURN_NOT_OK(pb_util::AppendToString(current_batch, &write_buf));
+    write_buf.resize(current_batch->SerializedSize());
+    current_batch->SerializeToArray(write_buf.data());
     RETURN_NOT_OK(dest_segment->WriteEntryBatch(write_buf));
 
-    num_entries += current_batch.entry().size();
+    num_entries += current_batch->entry().size();
   }
   footer.set_num_entries(num_entries);
   if (latest_ht > 0) {
@@ -572,7 +600,7 @@ int64_t ReadableLogSegment::ReadEntriesUpTo() {
 
 namespace {
 
-bool ShouldReadEntry(const LogEntryPB& entry, const EntriesToRead& entries_to_read) {
+bool ShouldReadEntry(const LWLogEntryPB& entry, const EntriesToRead& entries_to_read) {
   switch (entries_to_read) {
     case EntriesToRead::kAll:
       return true;
@@ -600,26 +628,31 @@ ReadEntriesResult ReadableLogSegment::ReadEntries(
 
   int64_t num_entries_read = 0;
   int64_t num_entries_found = 0;
-  LogEntries entries_skipped;
-  faststring tmp_buf;
 
   const auto read_up_to = ReadEntriesUpTo();
   VLOG(1) << "Reading segment entries from " << path_
-          << ": first_entry_offset=" << first_entry_offset() << " file_size=" << file_size()
-          << " readable_to_offset=" << readable_to_offset()
-          << " read_up_to=" << read_up_to
-          << " footer: " << footer_.ShortDebugString();
+          << ": "
+          << YB_EXPR_TO_STREAM_COMMA_SEPARATED(
+              first_entry_offset(),
+              file_size(),
+              readable_to_offset(),
+              read_up_to,
+              footer_.ShortDebugString());
 
   while (offset < read_up_to) {
     const int64_t this_batch_offset = offset;
     recent_offsets[batches_read++ % recent_offsets.size()] = offset;
 
-    LogEntryBatchPB current_batch;
-
     // Read and validate the entry header first.
     Status s;
+    std::shared_ptr<LWLogEntryBatchPB> current_batch;
     if (offset + implicit_cast<ssize_t>(kEntryHeaderSize) < read_up_to) {
-      s = ReadEntryHeaderAndBatch(&offset, &tmp_buf, &current_batch);
+      auto batch_result = ReadEntryHeaderAndBatch(&offset);
+      if (batch_result.ok()) {
+        current_batch = std::move(*batch_result);
+      } else {
+        s = batch_result.status();
+      }
     } else {
       s = STATUS(Corruption, Substitute("Truncated log entry at offset $0", offset));
     }
@@ -670,41 +703,29 @@ ReadEntriesResult ReadableLogSegment::ReadEntries(
       break;
     }
 
-    if (VLOG_IS_ON(3)) {
-      VLOG(3) << "Read Log entry batch: " << current_batch.DebugString();
-    }
-    if (current_batch.has_committed_op_id()) {
-      result.committed_op_id = yb::OpId::FromPB(current_batch.committed_op_id());
+    VLOG(3) << "Read Log entry batch: " << current_batch->ShortDebugString();
+    if (current_batch->has_committed_op_id()) {
+      result.committed_op_id = OpId::FromPB(current_batch->committed_op_id());
     }
 
-    // Number of entries to extract from the protobuf repeated field because the ownership of those
-    // entries will be transferred to the caller.
-    int num_entries_to_extract = 0;
-
-    for (int i = 0; i < current_batch.entry_size(); ++i) {
+    for (auto& entry : *current_batch->mutable_entry()) {
       ++num_entries_found;
-      ++num_entries_to_extract;
-      auto* entry = current_batch.mutable_entry(i);
-      if (!ShouldReadEntry(*entry, entries_to_read)) {
-        // Remember pointer to release memory later, because current_batch would lose ownership
-        // of entries after this loop.
-        entries_skipped.emplace_back(entry);
+      if (!ShouldReadEntry(entry, entries_to_read)) {
         continue;
       }
-      result.entries.emplace_back(entry);
-      DCHECK_NE(current_batch.mono_time(), 0);
+      result.entries.emplace_back(current_batch, &entry);
+      DCHECK_NE(current_batch->mono_time(), 0);
       LogEntryMetadata entry_metadata;
       entry_metadata.offset = this_batch_offset;
       entry_metadata.active_segment_sequence_number = header().sequence_number();
-      entry_metadata.entry_time = RestartSafeCoarseTimePoint::FromUInt64(current_batch.mono_time());
-      result.entry_metadata.emplace_back(std::move(entry_metadata));
+      entry_metadata.entry_time = RestartSafeCoarseTimePoint::FromUInt64(
+          current_batch->mono_time());
+      result.entry_metadata.push_back(std::move(entry_metadata));
       num_entries_read++;
       if (num_entries_read >= max_entries_to_read) {
         break;
       }
     }
-    current_batch.mutable_entry()->ExtractSubrange(
-        0, num_entries_to_extract, /* elements */ nullptr);
     result.end_offset = offset;
     if (num_entries_read >= max_entries_to_read) {
       result.status = Status::OK();
@@ -821,7 +842,7 @@ Status ReadableLogSegment::MakeCorruptionStatus(
     size_t batch_number,
     int64_t batch_offset,
     std::vector<int64_t>* recent_offsets,
-    const std::vector<std::unique_ptr<LogEntryPB>>& entries,
+    const LogEntries& entries,
     const Status& status) const {
 
   string err = Substitute("Failed trying to read batch #$0 at offset $1 for "
@@ -838,11 +859,11 @@ Status ReadableLogSegment::MakeCorruptionStatus(
     const int kNumEntries = 4; // Include up to the last 4 entries in the segment.
     for (size_t i = std::max(0, static_cast<int>(entries.size()) - kNumEntries);
         i < entries.size(); i++) {
-      LogEntryPB* entry = entries[i].get();
-      LogEntryTypePB type = entry->type();
+      auto& entry = *entries[i];
+      LogEntryTypePB type = entry.type();
       string opid_str;
-      if (type == log::REPLICATE && entry->has_replicate()) {
-        opid_str = consensus::OpIdToString(entry->replicate().id());
+      if (type == log::REPLICATE && entry.has_replicate()) {
+        opid_str = OpId::FromPB(entry.replicate().id()).ToString();
       } else {
         opid_str = "<unknown>";
       }
@@ -853,12 +874,11 @@ Status ReadableLogSegment::MakeCorruptionStatus(
   return status.CloneAndAppend(err);
 }
 
-Status ReadableLogSegment::ReadEntryHeaderAndBatch(int64_t* offset, faststring* tmp_buf,
-                                                   LogEntryBatchPB* batch) {
+Result<std::shared_ptr<LWLogEntryBatchPB>> ReadableLogSegment::ReadEntryHeaderAndBatch(
+    int64_t* offset) {
   EntryHeader header;
   RETURN_NOT_OK(ReadEntryHeader(offset, &header));
-  RETURN_NOT_OK(ReadEntryBatch(offset, header, tmp_buf, batch));
-  return Status::OK();
+  return ReadEntryBatch(offset, header);
 }
 
 
@@ -891,10 +911,8 @@ Status ReadableLogSegment::DecodeEntryHeader(const Slice& data, EntryHeader* hea
 }
 
 
-Status ReadableLogSegment::ReadEntryBatch(int64_t *offset,
-                                          const EntryHeader& header,
-                                          faststring *tmp_buf,
-                                          LogEntryBatchPB* entry_batch) {
+Result<std::shared_ptr<LWLogEntryBatchPB>> ReadableLogSegment::ReadEntryBatch(
+    int64_t *offset, const EntryHeader& header) {
   TRACE_EVENT2("log", "ReadableLogSegment::ReadEntryBatch",
                "path", path_,
                "range", Substitute("offset=$0 entry_len=$1",
@@ -912,14 +930,10 @@ Status ReadableLogSegment::ReadEntryBatch(int64_t *offset,
                    header.msg_length, *offset, path_, limit));
   }
 
-  tmp_buf->clear();
-  tmp_buf->resize(header.msg_length);
+  RefCntBuffer buffer(header.msg_length);
   Slice entry_batch_slice;
 
-  Status s =  readable_file()->Read(*offset,
-                                    header.msg_length,
-                                    &entry_batch_slice,
-                                    tmp_buf->data());
+  Status s = readable_file()->Read(*offset, header.msg_length, &entry_batch_slice, buffer.data());
 
   if (!s.ok()) {
     return STATUS_FORMAT(
@@ -936,11 +950,17 @@ Status ReadableLogSegment::ReadEntryBatch(int64_t *offset,
                                          header.msg_crc, read_crc));
   }
 
+  // TODO(lw_uc) embed buffer and first arena block into holder itself.
+  struct DataHolder {
+    RefCntBuffer buffer;
+    ThreadSafeArena arena;
 
-  LogEntryBatchPB read_entry_batch;
-  s = pb_util::ParseFromArray(&read_entry_batch,
-                              entry_batch_slice.data(),
-                              header.msg_length);
+    explicit DataHolder(const RefCntBuffer& buffer_) : buffer(buffer_) {}
+  };
+
+  auto holder = std::make_shared<DataHolder>(buffer);
+  auto batch = holder->arena.NewArenaObject<LWLogEntryBatchPB>();
+  s = batch->ParseFromSlice(entry_batch_slice.Prefix(header.msg_length));
 
   if (!s.ok()) {
     return STATUS_FORMAT(
@@ -949,8 +969,7 @@ Status ReadableLogSegment::ReadEntryBatch(int64_t *offset,
   }
 
   *offset += entry_batch_slice.size();
-  entry_batch->Swap(&read_entry_batch);
-  return Status::OK();
+  return rpc::SharedField(holder, batch);
 }
 
 const LogSegmentHeaderPB& ReadableLogSegment::header() const {
@@ -1011,10 +1030,22 @@ WritableLogSegment::WritableLogSegment(string path,
     : path_(std::move(path)),
       writable_file_(std::move(writable_file)),
       is_header_written_(false),
-      is_footer_written_(false),
-      written_offset_(0) {}
+      is_footer_written_(false) {}
 
-Status WritableLogSegment::WriteHeaderAndOpen(const LogSegmentHeaderPB& new_header) {
+Status WritableLogSegment::ReuseHeader(const LogSegmentHeaderPB& new_header,
+                                              const int64_t first_entry_offset) {
+  DCHECK(!IsHeaderWritten()) << "Can only open header once";
+  DCHECK(new_header.IsInitialized())
+      << "Log segment header must be initialized" << new_header.InitializationErrorString();
+
+  header_.CopyFrom(new_header);
+  first_entry_offset_ = first_entry_offset;
+  is_header_written_ = true;
+  DCHECK_GE(written_offset(), first_entry_offset_);
+  return Status::OK();
+}
+
+Status WritableLogSegment::WriteHeader(const LogSegmentHeaderPB& new_header) {
   DCHECK(!IsHeaderWritten()) << "Can only call WriteHeader() once";
   DCHECK(new_header.IsInitialized())
       << "Log segment header must be initialized" << new_header.InitializationErrorString();
@@ -1030,8 +1061,8 @@ Status WritableLogSegment::WriteHeaderAndOpen(const LogSegmentHeaderPB& new_head
 
   header_.CopyFrom(new_header);
   first_entry_offset_ = buf.size();
-  written_offset_ = first_entry_offset_;
   is_header_written_ = true;
+  DCHECK_EQ(written_offset(), first_entry_offset_);
 
   return Status::OK();
 }
@@ -1075,8 +1106,6 @@ Status WritableLogSegment::WriteIndexWithFooterAndClose(
 
   RETURN_NOT_OK(writable_file_->Close());
 
-  written_offset_ += buf.size();
-
   return Status::OK();
 }
 
@@ -1104,8 +1133,32 @@ Status WritableLogSegment::WriteEntryBatch(const Slice& data) {
 
   // Write the header to the file, followed by the batch data itself.
   RETURN_NOT_OK(writable_file_->AppendSlices(slices.data(), slices.size()));
-  written_offset_ += sizeof(header_buf) + data.size();
 
+  return Status::OK();
+}
+
+Status WritableLogSegment::TEST_WriteCorruptedEntryBatchAndSync() {
+  DCHECK(is_header_written_);
+  DCHECK(!is_footer_written_);
+  std::string data = "some data";
+  uint8_t header_buf[kEntryHeaderSize];
+
+  // First encode the length of the message.
+  auto len = data.size();
+  InlineEncodeFixed32(&header_buf[0], narrow_cast<uint32_t>(len));
+
+  // Then the CRC of the message.
+  uint32_t msg_crc = crc::Crc32c(data.data(), data.size());
+  InlineEncodeFixed32(&header_buf[4], msg_crc);
+
+  // Then the CRC of the header.
+  uint32_t header_crc = crc::Crc32c(&header_buf, 8);
+  InlineEncodeFixed32(&header_buf[8], header_crc);
+
+  // Only append the header.
+  RETURN_NOT_OK(writable_file_->Append(Slice(header_buf, sizeof(header_buf))));
+
+  RETURN_NOT_OK(Sync());
   return Status::OK();
 }
 
@@ -1153,17 +1206,22 @@ Status WritableLogSegment::Sync() {
 // Creates a LogEntryBatchPB from pre-allocated ReplicateMsgs managed using shared pointers. The
 // caller has to ensure these messages are not deleted twice, both by LogEntryBatchPB and by
 // the shared pointers.
-LogEntryBatchPB CreateBatchFromAllocatedOperations(const ReplicateMsgs& msgs) {
-  LogEntryBatchPB result;
-  result.set_mono_time(RestartSafeCoarseMonoClock().Now().ToUInt64());
-  result.mutable_entry()->Reserve(narrow_cast<int>(msgs.size()));
+std::shared_ptr<LWLogEntryBatchPB> CreateBatchFromAllocatedOperations(const ReplicateMsgs& msgs) {
+  std::shared_ptr<LWLogEntryBatchPB> result;
+  if (msgs.empty()) {
+    result = rpc::MakeSharedMessage<LWLogEntryBatchPB>();
+  } else {
+    auto* batch = msgs.front()->arena().NewObject<LWLogEntryBatchPB>(&msgs.front()->arena());
+    result = rpc::SharedField(msgs.front(), batch);
+  }
+  result->set_mono_time(RestartSafeCoarseMonoClock().Now().ToUInt64());
   for (const auto& msg_ptr : msgs) {
-    LogEntryPB* entry_pb = result.add_entry();
+    auto* entry_pb = result->add_entry();
     entry_pb->set_type(log::REPLICATE);
     // entry_pb does not actually own the ReplicateMsg object, even though it thinks it does,
     // because we release it in ~LogEntryBatch. LogEntryBatchPB has a separate vector of shared
     // pointers to messages.
-    entry_pb->set_allocated_replicate(msg_ptr.get());
+    entry_pb->ref_replicate(msg_ptr.get());
   }
   return result;
 }
@@ -1235,7 +1293,7 @@ Status ModifyDurableWriteFlagIfNotODirect() {
 }
 
 void UpdateSegmentFooterIndexes(
-    const consensus::ReplicateMsg& replicate, LogSegmentFooterPB* footer) {
+    const consensus::LWReplicateMsg& replicate, LogSegmentFooterPB* footer) {
   const auto index = replicate.id().index();
   if (!footer->has_min_replicate_index() || index < footer->min_replicate_index()) {
     footer->set_min_replicate_index(index);

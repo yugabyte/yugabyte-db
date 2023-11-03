@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { YBMapLegendItem } from '.';
 import PropTypes from 'prop-types';
 import {
@@ -32,14 +32,14 @@ export default class YBMapLegend extends Component {
       mapLegendItems = (
         <span>
           <YBMapLegendItem
-            providerType={primaryCluster && primaryCluster.userIntent.providerType}
+            providerType={primaryCluster?.userIntent.providerType}
             regions={getPlacementRegions(primaryCluster)}
             provider={primaryCloud}
             title={'Primary Data'}
             type="Root"
           />
           <YBMapLegendItem
-            providerType={readreplicaCluster && readreplicaCluster.userIntent.providerType}
+            providerType={readreplicaCluster?.userIntent.providerType}
             regions={getPlacementRegions(readreplicaCluster)}
             provider={readreplicaCloud}
             title={'Read Replica'}

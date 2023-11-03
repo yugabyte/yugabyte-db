@@ -15,8 +15,7 @@
 // Tree node definitions for database object names such as table, column, or index names.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_PT_NAME_H_
-#define YB_YQL_CQL_QL_PTREE_PT_NAME_H_
+#pragma once
 
 #include "yb/client/yb_table_name.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
@@ -176,5 +175,3 @@ using PTQualifiedNameListNode = TreeListNode<PTQualifiedName>;
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_PTREE_PT_NAME_H_

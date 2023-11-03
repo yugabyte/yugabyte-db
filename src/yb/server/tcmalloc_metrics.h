@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_SERVER_TCMALLOC_METRICS_H_
-#define YB_SERVER_TCMALLOC_METRICS_H_
+#pragma once
 
 #include "yb/gutil/ref_counted.h"
 
@@ -45,5 +44,3 @@ void RegisterMetrics(const scoped_refptr<MetricEntity>& entity);
 
 } // namespace tcmalloc
 } // namespace yb
-
-#endif // YB_SERVER_TCMALLOC_METRICS_H_

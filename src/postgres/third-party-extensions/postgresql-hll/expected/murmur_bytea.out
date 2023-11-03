@@ -1,0 +1,33 @@
+-- ================================================================
+-- Setup the table
+--
+SELECT hll_set_output_version(1);
+ hll_set_output_version 
+------------------------
+                      1
+(1 row)
+
+DROP TABLE IF EXISTS test_qfwzdmoy;
+NOTICE:  table "test_qfwzdmoy" does not exist, skipping
+CREATE TABLE test_qfwzdmoy (
+    recno                       SERIAL,
+    seed                        integer,
+    pre_hash_long               bytea,
+    post_hash_long              bigint
+);
+\copy test_qfwzdmoy (seed, pre_hash_long, post_hash_long) from sql/data/murmur_bytea.csv with csv header
+SELECT COUNT(*) FROM test_qfwzdmoy;
+ count 
+-------
+   600
+(1 row)
+
+SELECT recno, post_hash_long, hll_hash_bytea(pre_hash_long, seed)
+  FROM test_qfwzdmoy
+ WHERE hll_hashval(post_hash_long) != hll_hash_bytea(pre_hash_long, seed)
+ ORDER BY recno;
+ recno | post_hash_long | hll_hash_bytea 
+-------+----------------+----------------
+(0 rows)
+
+DROP TABLE test_qfwzdmoy;

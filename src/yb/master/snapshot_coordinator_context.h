@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_SNAPSHOT_COORDINATOR_CONTEXT_H
-#define YB_MASTER_SNAPSHOT_COORDINATOR_CONTEXT_H
+#pragma once
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids.h"
@@ -20,6 +19,7 @@
 
 #include "yb/docdb/docdb_fwd.h"
 
+#include "yb/master/leader_epoch.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_types.pb.h"
 
@@ -52,7 +52,7 @@ class SnapshotCoordinatorContext {
 
   virtual AsyncTabletSnapshotOpPtr CreateAsyncTabletSnapshotOp(
       const TabletInfoPtr& tablet, const std::string& snapshot_id,
-      tserver::TabletSnapshotOpRequestPB::Operation operation,
+      tserver::TabletSnapshotOpRequestPB::Operation operation, const LeaderEpoch& epoch,
       TabletSnapshotOperationCallback callback) = 0;
 
   virtual void ScheduleTabletSnapshotOp(const AsyncTabletSnapshotOpPtr& operation) = 0;
@@ -67,11 +67,12 @@ class SnapshotCoordinatorContext {
       const std::unordered_map<std::string, SysRowEntryType>& objects,
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables) = 0;
 
-  virtual void CleanupHiddenObjects(const ScheduleMinRestoreTime& schedule_min_restore_time) = 0;
+  virtual void CleanupHiddenObjects(
+      const ScheduleMinRestoreTime& schedule_min_restore_time, const LeaderEpoch& epoch) = 0;
 
   virtual const Schema& schema() = 0;
 
-  virtual void Submit(std::unique_ptr<tablet::Operation> operation, int64_t leader_term) = 0;
+  virtual Status Submit(std::unique_ptr<tablet::Operation> operation, int64_t leader_term) = 0;
 
   virtual void PrepareRestore() = 0;
 
@@ -83,19 +84,19 @@ class SnapshotCoordinatorContext {
 
   virtual Result<size_t> GetNumLiveTServersForActiveCluster() = 0;
 
-  virtual void EnableTabletSplitting(const std::string& feature) = 0;
+  virtual void ReenableTabletSplitting(const std::string& feature) = 0;
 
   virtual Result<scoped_refptr<TableInfo>> GetTableById(const TableId& table_id) const = 0;
 
   virtual void AddPendingBackFill(const TableId& id) = 0;
 
   virtual ~SnapshotCoordinatorContext() = default;
+
+  virtual PitrCount pitr_count() const = 0;
 };
 
-Result<docdb::KeyBytes> EncodedKey(
+Result<dockv::KeyBytes> EncodedKey(
     SysRowEntryType type, const Slice& id, SnapshotCoordinatorContext* context);
 
 } // namespace master
 } // namespace yb
-
-#endif  // YB_MASTER_SNAPSHOT_COORDINATOR_CONTEXT_H

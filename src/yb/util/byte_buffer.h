@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_BYTE_BUFFER_H
-#define YB_UTIL_BYTE_BUFFER_H
+#pragma once
 
 #include <cstddef>
 #include <string>
@@ -37,11 +36,15 @@ class ByteBuffer {
     Assign(str.c_str(), str.size());
   }
 
-  explicit ByteBuffer(const Slice& slice) {
+  explicit ByteBuffer(Slice slice) {
     Assign(slice.cdata(), slice.cend());
   }
 
-  void operator=(const Slice& slice) {
+  ByteBuffer(Slice slice1, Slice slice2) {
+    Assign(slice1, slice2);
+  }
+
+  void operator=(Slice slice) {
     Assign(slice.cdata(), slice.cend());
   }
 
@@ -88,6 +91,14 @@ class ByteBuffer {
     }
   }
 
+  void Assign(Slice slice1, Slice slice2) {
+    auto sum_sizes = slice1.size() + slice2.size();
+    auto* out = EnsureCapacity(sum_sizes, 0);
+    slice1.CopyTo(out);
+    slice2.CopyTo(out + slice1.size());
+    size_ = sum_sizes;
+  }
+
   bool empty() const {
     return size_ == 0;
   }
@@ -124,7 +135,7 @@ class ByteBuffer {
     size_ = new_size;
   }
 
-  void Assign(const Slice& slice) {
+  void Assign(Slice slice) {
     Assign(slice.cdata(), slice.cend());
   }
 
@@ -136,7 +147,7 @@ class ByteBuffer {
     DoAppend(0, a, size);
   }
 
-  void Append(const Slice& slice) {
+  void Append(Slice slice) {
     Append(slice.cdata(), slice.cend());
   }
 
@@ -151,6 +162,19 @@ class ByteBuffer {
 
   void Append(const char* a, size_t size) {
     DoAppend(size_, a, size);
+  }
+
+  void AppendWithPrefix(char prefix, Slice data) {
+    AppendWithPrefix(prefix, data.cdata(), data.size());
+  }
+
+  void AppendWithPrefix(char prefix, const char* data, size_t len) {
+    const size_t old_size = size_;
+    const size_t new_size = old_size + 1 + len;
+    char* out = EnsureCapacity(new_size, old_size) + old_size;
+    *out++ = prefix;
+    memcpy(out, data, len);
+    size_ = new_size;
   }
 
   void Reserve(size_t capacity) {
@@ -181,8 +205,16 @@ class ByteBuffer {
     return Slice(ptr(), size_);
   }
 
+  const uint8_t* data() const {
+    return pointer_cast<const uint8_t*>(ptr());
+  }
+
   uint8_t* mutable_data() {
     return pointer_cast<uint8_t*>(ptr());
+  }
+
+  const uint8_t* end() const {
+    return pointer_cast<const uint8_t*>(ptr()) + size_;
   }
 
   // STL container compatibility
@@ -287,5 +319,3 @@ struct ByteBufferHash {
 };
 
 } // namespace yb
-
-#endif // YB_UTIL_BYTE_BUFFER_H

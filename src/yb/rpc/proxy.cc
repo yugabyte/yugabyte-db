@@ -38,7 +38,7 @@
 #include <sstream>
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/rpc/local_call.h"
 #include "yb/rpc/lightweight_message.h"
@@ -56,16 +56,16 @@
 #include "yb/util/net/socket.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
+#include "yb/util/flags.h"
 
-DEFINE_int32(num_connections_to_server, 8,
+DEFINE_UNKNOWN_int32(num_connections_to_server, 8,
              "Number of underlying connections to each server");
 
-DEFINE_int32(proxy_resolve_cache_ms, 5000,
+DEFINE_UNKNOWN_int32(proxy_resolve_cache_ms, 5000,
              "Time in milliseconds to cache resolution result in Proxy");
 
 using namespace std::literals;
 
-using google::protobuf::Message;
 using std::string;
 using std::shared_ptr;
 
@@ -86,7 +86,7 @@ Proxy::Proxy(ProxyContext* context,
       resolved_ep_(std::chrono::milliseconds(
           resolve_cache_timeout.Initialized() ? resolve_cache_timeout.ToMilliseconds()
                                               : FLAGS_proxy_resolve_cache_ms)),
-      latency_hist_(ScopedDnsTracker::active_metric()),
+      latency_stats_(ScopedDnsTracker::active_metric()),
       // Use the context->num_connections_to_server() here as opposed to directly reading the
       // FLAGS_num_connections_to_server, because the flag value could have changed since then.
       num_connections_to_server_(context_->num_connections_to_server()) {
@@ -156,7 +156,7 @@ ThreadPool* Proxy::GetCallbackThreadPool(
 
 bool Proxy::PrepareCall(AnyMessageConstPtr req, RpcController* controller) {
   auto call = controller->call_.get();
-  Status s = call->SetRequestParam(req, mem_tracker_);
+  Status s = call->SetRequestParam(req, controller->MoveOutboundSidecars(), mem_tracker_);
   if (PREDICT_FALSE(!s.ok())) {
     // Failed to serialize request: likely the request is missing a required
     // field.
@@ -164,8 +164,14 @@ bool Proxy::PrepareCall(AnyMessageConstPtr req, RpcController* controller) {
     return false;
   }
 
-  if (controller->timeout().Initialized() && controller->timeout() > 3600s) {
+  // Sanity check to make sure timeout is setup and has some sensible value (to prevent infinity).
+  if (controller->timeout().Initialized() && controller->timeout() > 7200s) {
     LOG(DFATAL) << "Too big timeout specified: " << controller->timeout();
+  }
+
+  // Propagate the test only flag to OutboundCall.
+  if (controller->TEST_disable_outbound_call_response_processing) {
+    call->TEST_ignore_response();
   }
 
   return true;
@@ -173,10 +179,12 @@ bool Proxy::PrepareCall(AnyMessageConstPtr req, RpcController* controller) {
 
 void Proxy::AsyncLocalCall(
     const RemoteMethod* method, AnyMessageConstPtr req, AnyMessagePtr resp,
-    RpcController* controller, ResponseCallback callback) {
+    RpcController* controller, ResponseCallback callback,
+    const bool force_run_callback_on_reactor) {
   controller->call_ = std::make_shared<LocalOutboundCall>(
-      method, outbound_call_metrics_, resp, controller, context_->rpc_metrics(),
-      std::move(callback));
+      *method, outbound_call_metrics_, resp, controller, context_->rpc_metrics(),
+      std::move(callback),
+      GetCallbackThreadPool(force_run_callback_on_reactor, controller->invoke_callback_mode()));
   if (!PrepareCall(req, controller)) {
     return;
   }
@@ -189,7 +197,7 @@ void Proxy::AsyncLocalCall(
   }
   auto call = controller->call_.get();
   call->SetQueued();
-  call->SetSent();
+  auto ignored [[maybe_unused]] = call->SetSent();  // NOLINT
   // If currrent thread is RPC worker thread, it is ok to call the handler in the current thread.
   // Otherwise, enqueue the call to be handled by the service's handler thread.
   const shared_ptr<LocalYBInboundCall>& local_call =
@@ -202,11 +210,13 @@ void Proxy::AsyncLocalCall(
 void Proxy::AsyncRemoteCall(
     const RemoteMethod* method, std::shared_ptr<const OutboundMethodMetrics> method_metrics,
     AnyMessageConstPtr req, AnyMessagePtr resp, RpcController* controller,
-    ResponseCallback callback, bool force_run_callback_on_reactor) {
-  controller->call_ = std::make_shared<OutboundCall>(
-      method, outbound_call_metrics_, std::move(method_metrics), resp, controller,
+    ResponseCallback callback, const bool force_run_callback_on_reactor) {
+  // Do not use make_shared to allow for long-lived weak OutboundCall pointers without wasting
+  // memory.
+  controller->call_ = std::shared_ptr<OutboundCall>(new OutboundCall(
+      *method, outbound_call_metrics_, std::move(method_metrics), resp, controller,
       context_->rpc_metrics(), std::move(callback),
-      GetCallbackThreadPool(force_run_callback_on_reactor, controller->invoke_callback_mode()));
+      GetCallbackThreadPool(force_run_callback_on_reactor, controller->invoke_callback_mode())));
   if (!PrepareCall(req, controller)) {
     return;
   }
@@ -225,11 +235,12 @@ void Proxy::DoAsyncRequest(const RemoteMethod* method,
                            AnyMessagePtr resp,
                            RpcController* controller,
                            ResponseCallback callback,
-                           bool force_run_callback_on_reactor) {
+                           const bool force_run_callback_on_reactor) {
   CHECK(controller->call_.get() == nullptr) << "Controller should be reset";
 
   if (call_local_service_) {
-    AsyncLocalCall(method, req, resp, controller, std::move(callback));
+    AsyncLocalCall(
+        method, req, resp, controller, std::move(callback), force_run_callback_on_reactor);
   } else {
     AsyncRemoteCall(
         method, std::move(method_metrics), req, resp, controller, std::move(callback),
@@ -270,7 +281,8 @@ void Proxy::Resolve() {
     return;
   }
 
-  auto latency_metric = std::make_shared<ScopedLatencyMetric>(latency_hist_, Auto::kFalse);
+  auto latency_metric = std::make_shared<ScopedLatencyMetric<EventStats>>(
+      latency_stats_, Auto::kFalse);
 
   context_->resolver().AsyncResolve(
       remote_.host(), [this, latency_metric = std::move(latency_metric)](
@@ -368,7 +380,7 @@ scoped_refptr<MetricEntity> Proxy::metric_entity() const {
 ProxyPtr ProxyCache::GetProxy(
     const HostPort& remote, const Protocol* protocol, const MonoDelta& resolve_cache_timeout) {
   ProxyKey key(remote, protocol);
-  std::lock_guard<std::mutex> lock(proxy_mutex_);
+  std::lock_guard lock(proxy_mutex_);
   auto it = proxies_.find(key);
   if (it == proxies_.end()) {
     it = proxies_.emplace(
@@ -379,7 +391,7 @@ ProxyPtr ProxyCache::GetProxy(
 
 ProxyMetricsPtr ProxyCache::GetMetrics(
     const std::string& service_name, ProxyMetricsFactory factory) {
-  std::lock_guard<std::mutex> lock(metrics_mutex_);
+  std::lock_guard lock(metrics_mutex_);
   auto it = metrics_.find(service_name);
   if (it != metrics_.end()) {
     return it->second;

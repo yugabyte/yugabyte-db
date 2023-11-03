@@ -13,12 +13,11 @@
 //
 // This file contains the QLValue class that represents QL values.
 
-#ifndef YB_COMMON_QL_VALUE_H
-#define YB_COMMON_QL_VALUE_H
+#pragma once
 
 #include <stdint.h>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
@@ -32,16 +31,16 @@
 
 // The list of unsupported datatypes to use in switch statements
 #define QL_UNSUPPORTED_TYPES_IN_SWITCH \
-  case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED; \
-  case TYPEARGS: FALLTHROUGH_INTENDED;  \
-  case UNKNOWN_DATA
+  case DataType::NULL_VALUE_TYPE: FALLTHROUGH_INTENDED; \
+  case DataType::TYPEARGS: FALLTHROUGH_INTENDED;  \
+  case DataType::UNKNOWN_DATA
 
 #define QL_INVALID_TYPES_IN_SWITCH     \
-  case UINT8:  FALLTHROUGH_INTENDED;    \
-  case UINT16: FALLTHROUGH_INTENDED;    \
-  case UINT32: FALLTHROUGH_INTENDED;    \
-  case UINT64: FALLTHROUGH_INTENDED;    \
-  case GIN_NULL
+  case DataType::UINT8:  FALLTHROUGH_INTENDED;    \
+  case DataType::UINT16: FALLTHROUGH_INTENDED;    \
+  case DataType::UINT32: FALLTHROUGH_INTENDED;    \
+  case DataType::UINT64: FALLTHROUGH_INTENDED;    \
+  case DataType::GIN_NULL
 
 namespace yb {
 
@@ -218,18 +217,18 @@ class QLValue {
     return timeuuid_value(pb_);
   }
 
-  static util::VarInt varint_value(const QLValuePB& pb);
-  static util::VarInt varint_value(const LWQLValuePB& pb);
+  static VarInt varint_value(const QLValuePB& pb);
+  static VarInt varint_value(const LWQLValuePB& pb);
 
-  static util::VarInt varint_value(const QLValue& value) {
+  static VarInt varint_value(const QLValue& value) {
     return varint_value(value.pb_);
   }
 
-  util::VarInt varint_value() const {
+  VarInt varint_value() const {
     return varint_value(pb_);
   }
 
-  void AppendToKeyBytes(string *bytes) const {
+  void AppendToKeyBytes(std::string *bytes) const {
     AppendToKey(pb_, bytes);
   }
 
@@ -272,6 +271,9 @@ class QLValue {
   }
   void set_jsonb_value(const std::string& val) {
     pb_.set_jsonb_value(val);
+  }
+  void set_jsonb_value(const void* value, size_t size) {
+    pb_.set_jsonb_value(value, size);
   }
   void set_bool_value(bool val) {
     pb_.set_bool_value(val);
@@ -370,7 +372,7 @@ class QLValue {
   static void set_timeuuid_value(const Uuid& val, QLValuePB* out);
   static void set_timeuuid_value(const Uuid& val, QLValue* out);
 
-  void set_varint_value(const util::VarInt& val) {
+  void set_varint_value(const VarInt& val) {
     pb_.set_varint_value(val.EncodeToComparable());
   }
 
@@ -501,8 +503,8 @@ class QLValue {
 
   //----------------------------- serializer / deserializer ---------------------------------
   Status Deserialize(const std::shared_ptr<QLType>& ql_type,
-                             const QLClient& client,
-                             Slice* data);
+                     const QLClient& client,
+                     Slice* data);
 
   //------------------------------------ debug string ---------------------------------------
   // Return a string for debugging.
@@ -596,9 +598,6 @@ void ConcatStrings(const std::string& lhs, const std::string& rhs, QLValuePB* re
 void ConcatStrings(const std::string& lhs, const std::string& rhs, QLValue* result);
 void ConcatStrings(const Slice& lhs, const Slice& rhs, LWQLValuePB* result);
 
-vector<QLValuePB> SortTuplesbyOrdering(
-    const QLSeqValuePB& options, const std::vector<bool>& reverse);
-
 #define YB_SET_INT_VALUE(ql_valuepb, input, bits) \
   case DataType::BOOST_PP_CAT(INT, bits): { \
     auto value = CheckedStoInt<BOOST_PP_CAT(BOOST_PP_CAT(int, bits), _t)>(input); \
@@ -607,5 +606,3 @@ vector<QLValuePB> SortTuplesbyOrdering(
   } break;
 
 } // namespace yb
-
-#endif // YB_COMMON_QL_VALUE_H

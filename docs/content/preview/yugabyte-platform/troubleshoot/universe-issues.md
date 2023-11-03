@@ -22,7 +22,23 @@ A universe's **Metrics** page displays graphs representing information on operat
 
 You access metrics by navigating to **Universes > Universe-Name > Metrics**, as shown in the following illustration:
 
-![Metrics Page](/images/yp/metrics.png)<br>
+![Metrics Page](/images/yp/metrics_main.png)
+
+You can chose to view metrics based on different criteria:
+
+- If your universe has more than one region, cluster, zone, or node, the **Metrics** page allows you to view metrics for a specific region, cluster, zone, or node.
+
+- You can view the overall node metrics which represent an aggregate across the selected nodes. Depending on the metric type, either an average across nodes or a sum of all node values is displayed.
+
+- You can view metrics for up to five top or bottom outlier nodes. For example, to display graphs for the top three nodes with the highest CPU usage, you would select **Outlier Nodes**, then **Top**, and then **3 nodes**. The graph also includes the average for all nodes.
+
+  Note that **Selected Node average** in the graph means the average of all the nodes that you have selected. For example, if you have filtered by region, then the selected node average would be average of all nodes in the selected region.
+
+- You can view metrics for up to seven top or bottom outlier tables, including both system and user tables. For example, to display graphs for two tables with the highest read latency, you would select **Outlier Tables**, then **Top**, and then **2 tables**. The graph also includes the average for all tables.
+
+  Note that the namespace name is appended with the table name and separated by a `.` (dot) operator.
+
+- You can further restrict the outlier nodes or tables graphs to only display metrics for specific operations, events, statuses, and so on. For example, you can find out how many YSQL `SELECT` statements per second have been executed by the top-performing three nodes in the past six hours by selecting **Last 6 hr > Outlier Nodes > Top > 3 nodes > YSQL Ops > Total YSQL Ops / Sec > Select**.
 
 You should do the following on a regular basis:
 
@@ -55,15 +71,15 @@ The following tables describe metrics available via the YugabyteDB Anywhere UI.
 | YCQL Op Latency (Avg) | The average time of DELETE, INSERT, SELECT, and UPDATE transactions, as well as other statements through the YCQL API. | An alert should be issued when latency is close to or higher than your application SLA. | ![img](/images/yp/metrics4.png) |
 | YCQL Op Latency (P99) | The average time of the top 99% of DELETE, INSERT, SELECT, and UPDATE transactions, as well as other statements through the YCQL API. | If this value is significantly higher than expected, then it might be a cause for concern and you might want to issue an alert.<br>You should check whether or not there are consistent spikes in latency. | ![img](/images/yp/metrics5.png) |
 
-### Node
+### Resource
 
-Node metrics should be considered on a per-node basis.
+Resource metrics should be considered on a per-node basis.
 
 | Graph                                 | **Description**                                              | **Alert Guidance**                                           | **Example**                      |
 | :------------------------------------ | ------------------------------------------------------------ | ------------------------------------------------------------ | -------------------------------- |
-| CPU Usage                             | The percentage of CPU utilization on nodes being consumed by the tablet or master server Yugabyte processes, as well as other processes, if any.<br>In general, CPU usage is a measure of all processes running on the server.<br><br>The user CPU time is the amount of time the processor worked on all the processes.<br><br>The system CPU time is the amount of time the processor worked on the operating system’s functions connected to the processes. | If you have alerts enabled, you should check  if you received any high CPU utilization alerts. These alerts could indicate a problem and may require debugging by Yugabyte Support. | ![img](/images/yp/metrics6.png)  |
+| CPU Usage                             | The percentage of CPU utilization on nodes being consumed by the tablet or master server Yugabyte processes, as well as other processes, if any.<br>In general, CPU usage is a measure of all processes running on the server.<br><br>The user CPU time is the amount of time the processor worked on all the processes.<br><br>The system CPU time is the amount of time the processor worked on the operating system's functions connected to the processes. | If you have alerts enabled, you should check  if you received any high CPU utilization alerts. These alerts could indicate a problem and may require debugging by Yugabyte Support. | ![img](/images/yp/metrics6.png)  |
 | Memory Usage (Buffered, Cached, Free) | The amount of RAM (in GB) available to the nodes in the cluster.<br><br>The buffered memory is the size of in-memory block input/output buffers.<br><br>The cached memory is the size of the page cache.<br><br>Free memory is not in use. | An alert should not be issued on memory metrics directly. It is recommended to use another metric to troubleshoot the underlying problem causing any memory bottlenecks.<br>The assumption is that the computer is dedicated to Yugabyte processes, therefore Yugabyte processes aggressively use the memory provided for caches and other operations. | ![img](/images/yp/metrics7.png)  |
-| Disk IOPS / Node                      | The number of disk input / output read and write operations per second averaged over each node. | Large spikes usually indicate large compactions. Rarely, in cases of a spiky workload, this could indicate block cache misses.<br>Since random reads always hit disk, it is recommended to increase IOPS capacity for this type of workload.<br>You should set an alert to a value much greater than your average or as a percentage of your available IOPS.<br>This value is averaged across all nodes in a cluster. An alert should be issued per node to detect source of underlying issues. | ![img](/images/yp/metrics8.png)  |
+| Disk IOPS / Node                      | The number of disk input / output read and write operations per second averaged over each node. | Large spikes usually indicate large compactions. Rarely, in cases of a spiky workload, this could indicate block cache misses.<br>Because random reads always hit disk, it is recommended to increase IOPS capacity for this type of workload.<br>You should set an alert to a value much greater than your average or as a percentage of your available IOPS.<br>This value is averaged across all nodes in a cluster. An alert should be issued per node to detect source of underlying issues. | ![img](/images/yp/metrics8.png)  |
 | Disk Bytes / Sec / Node               | The number of bytes (scale: millions) being read or written to disk per second, averaged over each node. | If the maximum IOPS for the instance volume type has high utilization, you should ensure that the schema and query are optimized.<br>In addition, consider increasing the instance volume IOPS capacity. | ![img](/images/yp/metrics9.png)  |
 | Network Packets / Sec / Node          | The count of network packets received to the server (RX) and transmitted from the server (TX) per second, averaged over nodes. | Provides a view of the intensity of the network activity on the server.<br>This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics10.png) |
 | Network Bytes / Sec / Node            | The size (in bytes; scale: millions) of network packets received (RX) and transmitted (TX) per second, averaged over nodes. | Provides a view of the intensity of the network activity on the server.<br/>This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics11.png) |
@@ -86,9 +102,9 @@ Node metrics should be considered on a per-node basis.
 | YBClient Ops Local vs Remote  | The count of local and remote read and write requests.<br>Local requests are executed on the same node that has received the request.<br>Remote requests are re-routed internally to a different node for executing the operation. | If an application is using a Yugabyte driver that supports local query routing optimization and prepared statements, the expected value for this is close to 100% local for local reads and writes.<br>If using the Cassandra driver or not using prepared statements, expect to see a relatively even split (for example, ~33% local and ~66% remote for a 3-node cluster). | ![img](/images/yp/metrics16.png) |
 | YBClient Latency              | Latency of local and remote read and write requests.<br>Refer to the YBClient Ops Local vs Remote description regarding local and remote requests. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics17.png) |
 | Reactor Delays                | The number of microseconds the incoming CQL requests spend in the worker queue before the beginning of processing. <br><br>Note that Reactor is a software implementation of a ring queue. | This value should be close to zero. If it is increasing or stays high, you should treat it as an indicator of a network issue or that the queues are full. If this is the case, you should investigate throughput and queue size and latency metrics for tuning guidance. | ![img](/images/yp/metrics18.png) |
-| RPC Queue Size                | The number of RPCs in the service queue.                     | The queue size is an indicator of incoming traffic and throughput. Typically, it either shows very low values, which means that YugabyteDB Anywhere is processing requests at a healthy rate, or a flat line at the maximum-configured queue size, which means that YugabyteDB Anywhere has filled the queues and cannot process fast enough. | ![img](/images/yp/metrics19.png) |
+| RPC Queue Size                | The number of RPCs in the service queue.                     | The queue size is an indicator of incoming traffic and throughput. Typically, it either shows very low values, which means that YugabyteDB is processing requests at a healthy rate, or a flat line at the maximum-configured queue size, which means that YugabyteDB has filled the queues and cannot process fast enough. | ![img](/images/yp/metrics19.png) |
 | Response Size (bytes)         | The size of the RPC response.                                | The response size for RPCs should be relatively small.<br>This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics20.png) |
-| Transaction                   | The number of transactions.                                  | This value depends on the application or activity. Since transactions can have batched statements, it is not possible to provide a specific guidance for this metric, as it is purely informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics21.png) |
+| Transaction                   | The number of transactions.                                  | This value depends on the application or activity. Because transactions can have batched statements, it is not possible to provide a specific guidance for this metric, and it is purely informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics21.png) |
 | Inbound RPC Connections Alive | The count of current connections at the CQL API level.       | If this spikes to a number much higher than your average, you should consider that there may be an active DDoS or a security incident. | ![img](/images/yp/metrics22.png) |
 
 ### Tablet server
@@ -101,18 +117,18 @@ Node metrics should be considered on a per-node basis.
 | Threads Running                      | The current number of running threads. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics103.png) |
 | Threads Started | The total number of threads started on this server. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics104.png) |
 | Consensus Ops / Sec                  | Yugabyte implements the RAFT consensus protocol, with minor modifications.<br><br><br>Update: replicas implement an RPC method called UpdateConsensus which allows a leader to replicate a batch of log entries to the follower. Only a leader may call this RPC method, and a follower can only accept an UpdateConsensus call with a term equal to or higher than its currentTerm.<br>Request: replicas also implement an RPC method called RequestConsensusVote, which is invoked by candidates to gather votes.<br>MultiRaftUpdates: information pending. | A high number for the Request Consensus indicates that a lot of replicas are looking for a new election because they have not received a heartbeat from the leader.<br>A high CPU or a network partition can cause this condition, and therefore it should result in issuing an alert. | ![img](/images/yp/metrics27.png) |
-| Total Consensus Change Config        | This metric is related to the RAFT Consensus Process.<br><br>ChangeConfig: the number of times a peer was added or removed from the consensus group.<br>LeaderStepDown: the number of leader changes.<br>LeaderElectionLost:<br/>the number of times a leader election has failed.<br>RunLeaderElection: the count of leader elections due to a node failure or network partition. | You should issue an alert on LeaderElectionLost.<br>An increase in ChangeConfig typically happens when YugabyteDB Anywhere needs to move data around. This may happen as a result of a planned server addition or decommission, or a server crash looping.<br>A LeaderStepDown can indicate a normal change in leader, or it could be an indicator of a high CPU, blocked RPC queues, server retstarts, and so on. You should issue an alert on LeaderStepDown as a proxy for other system issues. | ![img](/images/yp/metrics28.png) |
+| Total Consensus Change Config        | This metric is related to the RAFT Consensus Process.<br><br>ChangeConfig: the number of times a peer was added or removed from the consensus group.<br>LeaderStepDown: the number of leader changes.<br>LeaderElectionLost:<br/>the number of times a leader election has failed.<br>RunLeaderElection: the count of leader elections due to a node failure or network partition. | You should issue an alert on LeaderElectionLost.<br>An increase in ChangeConfig typically happens when YugabyteDB Anywhere needs to move data around. This may happen as a result of a planned server addition or decommission, or a server crash looping.<br>A LeaderStepDown can indicate a normal change in leader, or it could be an indicator of a high CPU, blocked RPC queues, server restarts, and so on. You should issue an alert on LeaderStepDown as a proxy for other system issues. | ![img](/images/yp/metrics28.png) |
 | Remote Bootstraps                    | The total count of remote bootstraps.                        | When a RAFT peer fails, YugabyteDB executes an automatic remote bootstrap to create a new peer from the remaining ones.<br>Bootstrapping can also be a result of planned user activity when adding or decommissioning nodes.<br>It is recommended to issue an alert on a change in this count outside of planned activity. | ![img](/images/yp/metrics29.png) |
 | Consensus RPC Latencies              | RequestConsensus: latency of consensus request operations.<br>UpdateConsensus: latency of consensus update operations.<br>MultiRaftUpdates: information pending. | If the value is high, it is likely that the overall latency is high.<br>This metric should be treated as a starting point in debugging the YB-Master and YB-TServer processes. | ![img](/images/yp/metrics30.png) |
 | Change Config Latency                | Latency of consensus change configuration processes. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics31.png) |
 | Context Switches                     | Voluntary context switches are writer processes that take a lock.<br>Involuntary context switches happen when a writer process has waited longer than a set threshold, which results in other waiting processes taking over. | A large number of involuntary context switches indicates a CPU-bound workload. | ![img](/images/yp/metrics32.png) |
 | Spinlock Time / Server             | Spinlock is a measurement of processes waiting for a server resource and using a CPU to check and wait repeatedly until the resource is available. | This value can become very high on large computers with many cores.<br>The GFlag `tserver_tcmalloc_max_total_thread_cache_bytes` is by default 256 MB, and this is typically sufficient for 16-core computers with less than 32 GB of memory. For larger computers, it is recommended to increase this to 1 GB or 2 GB.<br>You should monitor memory usage, as this requires more memory. | ![img](/images/yp/metrics34.png) |
 | WAL Latency    | This is related to WALs.<br><br>Commit (Log Group Commit Latency): the number of microseconds spent on committing an entire group.<br>Append (Log Append Latency): the number of microseconds spent on appending to the log segment file.<br>Sync (Log Sync Latency): the number of microseconds spent on synchronizing the log segment file. | These metrics provide information on the amount to time spent writing to a disk. You should perform tuning accordingly. | ![img](/images/yp/metrics35.png) |
-| WAL Bytes Written / Sec / Node | The number of bytes written to the WAL since the tablet start. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics36.png) |
-| WAL Bytes Read / Sec / Node    | The number of bytes read from the WAL since the tablet start. | It is recommened to issue an alert on values higher than the normal range. An increase indicates that followers are falling behind and are constantly trying to catch up.<br>In an xCluster replication topology, this can indicate replication latency. | ![img](/images/yp/metrics37.png) |
+| WAL Bytes Written / Sec / Node | The number of bytes written to the WAL after the tablet start. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics36.png) |
+| WAL Bytes Read / Sec / Node    | The number of bytes read from the WAL after the tablet start. | It is recommended to issue an alert on values higher than the normal range. An increase indicates that followers are falling behind and are constantly trying to catch up.<br>In an xCluster replication topology, this can indicate replication latency. | ![img](/images/yp/metrics37.png) |
 | WAL Ops / Sec / Node   | This is related to WALs.<br><br>Commit (Log Group Commit Count): the number of commits of an entire group, per second, per node.<br>Append (Log Append Count): the number of appends to the log segment file, per second, per node.<br>Sync (Log Sync Count): the number of syncs for the log segment file, per second, per node. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics38.png) |
 | TCMalloc Stats               | In Use (Heap Memory Usage): the number of bytes used by the application. Typically, this does not match the memory use reported by the OS because it does not include TCMalloc overhead or memory fragmentation.<br>Total (Reserved Heap Memory): the number of bytes of the system memory reserved by TCMalloc.<br> | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics.<br><br>Also consider the following:<br>Free Heap Memory: the number of bytes in free, mapped pages in a page heap. These bytes can be used to fulfill allocation requests. They always count towards virtual memory usage, and unless the underlying memory is swapped out by the OS, they also count towards physical memory usage.<br>Unmapped Heap Memory: the number of bytes in free, unmapped pages in a page heap. These are bytes that have been released back to the OS, possibly by one of the MallocExtension Release calls. They can be used to fulfill allocation requests, but typically incur a page fault. They always count towards virtual memory usage, and depending on the OS, usually do not count towards physical memory usage.<br>Thread Cache Memory Limit: a limit to the amount of memory that TCMalloc dedicates for small objects. In some cases, larger numbers trade off more memory use for improved efficiency.<br>Thread Cache Memory Usage: a measure of some of the memory TCMalloc is using (for small objects). | ![img](/images/yp/metrics39.png) |
-| WAL Stats / Node               | WAL bytes read: the size (in bytes) of reads from the WAL since the tablet start.<br>WAL cache size: the total per-tablet size of consensus entries kept in memory. The log cache attempts to keep all entries which have not yet been replicated to all followers in memory, but if the total size of those entries exceeds the configured limit within an individual tablet, the oldest is evicted. | If the log cache size is greater than zero, the followers are behind. You should issue an alert if the value spikes or remains above zero for an extended period of time. | ![img](/images/yp/metrics40.png) |
+| WAL Stats / Node               | WAL bytes read: the size (in bytes) of reads from the WAL after the tablet start.<br>WAL cache size: the total per-tablet size of consensus entries kept in memory. The log cache attempts to keep all entries which have not yet been replicated to all followers in memory, but if the total size of those entries exceeds the configured limit in an individual tablet, the oldest is evicted. | If the log cache size is greater than zero, the followers are behind. You should issue an alert if the value spikes or remains above zero for an extended period of time. | ![img](/images/yp/metrics40.png) |
 | WAL Cache Num Ops / Node       | The number of times the log cache is accessed.               | Outside of an xCluster replication deployment, a number greater than zero means some of the followers are behind. | ![img](/images/yp/metrics42.png) |
 | Glog messages                       | The following log levels are available:<br><br>Info: the number of INFO-level log messages emitted by the application.<br>Warning: the number of WARNING-level log messages emitted by the application.<br>Error: the number of ERROR-level log messages emitted by the application. | It is recommended to use a log aggregation tool for log analysis. You should review the ERROR-level log entries on a regular basis. | ![img](/images/yp/metrics43.png) |
 | RPC Queue Size                       | The number of RPCs in service queues for tablet servers:<br><br>CDC service<br>Remote Bootstrap service<br>Consensus service<br>Admin service<br>Generic service<br>Backup service | The queue size is an indicator of the incoming traffic.<br>If the backends get overloaded, requests pile up in the queues. When the queue is full, the system responds with backpressure errors.<br><br>Also consider the following Prometheus metrics:<br>`rpcs_timed_out_in_queue` - the number of RPCs whose timeout elapsed while waiting in the service queue, which resulted in these RPCs not having been processed. This number does not include calls that were expired before an attempt to execute them has been made.<br>`rpcs_timed_out_early_in_queue` - the number of RPCs whose timeout elapsed while waiting in the service queue, which resulted in these RPCs not having been processed. The timeouts for these calls were detected before the calls attempted to execute.<br>`rpcs_queue_overflow` - the number of RPCs dropped because the service queue was full. | ![img](/images/yp/metrics44.png) |
@@ -126,11 +142,11 @@ Node metrics should be considered on a per-node basis.
 | Overall RPCs / sec                  | The number of created RPC inbound calls to the master servers. | The limit is 1000 TPS on the master, but under normal circumstances this number should be much lower than the limit.<br>It is recommended to issue an alert at a range under the limit, yet higher than your average. | ![img](/images/yp/metrics47.png) |
 | Average Latency                     | The average latency of various RPC services, provided by Master server | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics76.png) |
 | GetTabletLocations / sec            | The number of times the locations of the replicas for a given tablet were fetched from the master servers. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics48.png) |
-| Master TSService Reads / sec        | The measure of YSQL reads of the Postgres system tables.     | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics50.png) |
-| Master TSService Reads Latency      | The average latency of YSQL reads of the Postgres system tables. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics77.png) |
-| Master TSService Writes / sec       | The measure of YSQL writes to the Postgres system tables (during DDL). | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics51.png) |
-| Master TSService Writes Latency     | The average latency of YSQL writes to the Postgres system tables (during DDL). | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics78.png) |
-| TS Heartbeats / sec                 | The count of heartbeats received by the master server leader from the tablet servers. This establishes liveness and reports back any status changes. | This measure can be used to determine which master is the leader, since only the leader gets active heartbeats. | ![img](/images/yp/metrics52.png) |
+| Master TSService Reads / sec        | The measure of YSQL reads of the PostgreSQL system tables.     | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics50.png) |
+| Master TSService Reads Latency      | The average latency of YSQL reads of the PostgreSQL system tables. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics77.png) |
+| Master TSService Writes / sec       | The measure of YSQL writes to the PostgreSQL system tables (during DDL). | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics51.png) |
+| Master TSService Writes Latency     | The average latency of YSQL writes to the PostgreSQL system tables (during DDL). | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics78.png) |
+| TS Heartbeats / sec                 | The count of heartbeats received by the master server leader from the tablet servers. This establishes liveness and reports back any status changes. | This measure can be used to determine which master is the leader, as only the leader gets active heartbeats. | ![img](/images/yp/metrics52.png) |
 | RPC Queue Size                      | The number of RPCs in a service queue for master servers.    | The queue size is an indicator of the incoming traffic.<br><br>This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics53.png) |
 | UpdateConsensus / sec               | The number of consensus update operations.                   | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics54.png) |
 | UpdateConsensus Latency             | Latency of consensus update operations.                      | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics79.png) |
@@ -146,8 +162,8 @@ Node metrics should be considered on a per-node basis.
 | ------------------------------ | ------------------------------------------------------------ | ------------------------------------------------------------ | -------------------------------- |
 | Threads Running                | The current number of running threads.                       | This metric is  informational and should not be subject to alerting. You may consider  this information while examining alerts on other metrics. | ![img](/images/yp/metrics83.png) |
 | WAL Latency                    | This is related to WALs.<br><br/>Commit (Log Group Commit Latency): the number of microseconds spent on committing an entire group.<br/>Append (Log Append Latency): the number of microseconds spent on appending to the log segment file.<br/>Sync (Log Sync Latency): the number of microseconds spent on synchronizing the log segment file. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics84.png) |
-| WAL Bytes Written / Sec / Node | The number of bytes written to the WAL since the tablet start. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics85.png) |
-| WAL Bytes Read / Sec / Node    | The number of bytes read from the WAL since the tablet start. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics86.png) |
+| WAL Bytes Written / Sec / Node | The number of bytes written to the WAL after the tablet start. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics85.png) |
+| WAL Bytes Read / Sec / Node    | The number of bytes read from the WAL after the tablet start. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics86.png) |
 | TCMalloc Stats                 | In Use (Heap Memory  Usage): the number of bytes used by the application. Typically, this  does not match the memory use reported by the OS because it does not  include TCMalloc overhead or memory fragmentation.<br/>Total (Reserved Heap Memory): the number of bytes of the system memory reserved by TCMalloc. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics87.png) |
 | Glog Messages                  | The following log levels are available:<br/><br/>Info: the number of INFO-level log messages emitted by the application.<br/>Warning: the number of WARNING-level log messages emitted by the application.<br/>Error: the number of ERROR-level log messages emitted by the application. | It is recommended to use a log aggregation tool for log analysis. You should review the ERROR-level log entries on a regular basis. | ![img](/images/yp/metrics88.png) |
 | LSM-DB Seek / Next Num Ops     | The number of calls to seek / next.                          | Alerting is not required.                                    | ![img](/images/yp/metrics89.png) |
@@ -163,7 +179,7 @@ Node metrics should be considered on a per-node basis.
 
 ### DocDB
 
-DocDB uses a highly customized version of[ RocksDB](http://rocksdb.org/), a log-structured merge tree (LSM)-based key-value store. The majority of the following metrics are used internally by engineers when troubleshooting a deployment, and, therefore, should not be subject to alerting.
+DocDB uses a highly customized version of [RocksDB](http://rocksdb.org/), a log-structured merge tree (LSM)-based key-value store. The majority of the following metrics are used internally by engineers when troubleshooting a deployment, and, therefore, should not be subject to alerting.
 
 | **Graph**                   | **Description**                                              | **Alert Guidance**                                           | **Example**                       |
 | --------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ | --------------------------------- |
@@ -199,13 +215,13 @@ DocDB uses a highly customized version of[ RocksDB](http://rocksdb.org/), a log-
 
 ### Command-line access to metrics
 
-YugabyteDB Anywhere allows you to access all metrics via the command-line interface (CLI). These metrics include those not available from the **Dashboard**.
+YugabyteDB Anywhere allows you to access all metrics via the command-line interface (CLI), including those not available from the **Metrics** page.
 
 You can view YB-TServer and YB-Master server metrics in [Prometheus](https://prometheus.io/) and JSON formats in the browser or via the CLI using curl commands.
 
 The following is the Prometheus command for the YB-TServer:
 
-```output
+```sh
 curl <node_IP>:9000/prometheus-metrics
 ```
 
@@ -215,13 +231,13 @@ Expect an output similar to the following:
 
 The following is the Prometheus command for the YB-Master:
 
-```output
+```sh
 curl <node_IP>:7000/prometheus-metrics
 ```
 
 The following is the JSON command for the YB-TServer:
 
-```output
+```sh
 curl <node_IP>:9000/metrics
 ```
 
@@ -231,17 +247,17 @@ Expect an output similar to the following:
 
 The following is the JSON command for the YB-Master:
 
-```output
+```sh
 curl <node_IP>:7000/metrics
 ```
 
 You can obtain additional information if you request the schema in the metrics URL, as follows:
 
-```
+```sh
 curl <node_IP>:9000/metrics?include_schema=true
 ```
 
-```
+```sh
 curl <node_IP>:7000/metrics?include_schema=true
 ```
 
@@ -280,7 +296,13 @@ The output would be similar to the following:
 ...
 ```
 
-You can also federate metrics from YugabyteDB Anywhere and configure alerting rules to trigger alerts in Prometheus. For details, see the following sections of [Alerts and Notifications in YugabyteDB Anywhere](https://blog.yugabyte.com/yugabytedb-2-8-alerts-and-notifications/):
+{{< note title="Note" >}}
+
+YugabyteDB Anywhere obtains the replication lag using Prometheus metrics from the YB-TServer port 9000. If this port is closed, the xCluster replication still works, but the replication lag would not be available via **Metrics**.
+
+{{< /note >}}
+
+You can also federate metrics from YugabyteDB Anywhere and configure alerting rules to trigger alerts in Prometheus. For details, see the following sections of [Alerts and Notifications in YugabyteDB Anywhere](https://www.yugabyte.com/blog/yugabytedb-2-8-alerts-and-notifications/):
 
 - Scrape metrics from YugabyteDB Anywhere
 - Configurable alerting rules
@@ -352,7 +374,7 @@ A support bundle is an archive generated at a universe level. It contains all th
 - Universe logs, which are the YB-Master and YB-TServer log files from each node in the universe, as well as PostgreSQL logs available under the YB-TServer logs directory.
 - Output files ( `.out` ) files generated by the YB-Master and YB-TServer.
 - Error files ( `.err` ) generated by the YB-Master and YB-TServer.
-- Gflag configuration files containing the gflags set on the universe.
+- G-flag configuration files containing the gflags set on the universe.
 - Instance files that contain the metadata information from the YB-Master and YB-TServer.
 - Consensus meta files containing consensus metadata information from the YB-Master and YB-TServer.
 - Tablet meta files containing the tablet metadata from the YB-Master and YB-TServer.
@@ -365,41 +387,114 @@ You can create a support bundle as follows:
 
 - If the universe already has support bundles, they are displayed by the **Support Bundle** dialog. If there are no bundles for the universe, use the **Support Bundles** dialog to generate a bundle by clicking **Create Support Bundle**, as per the following illustration:
 
-  
-
   ![Create support bundle](/images/yp/support-bundle-1.png)
-
-  <br>
 
 - Select the date range and the types of files to be included in the bundle, as per the following illustration:
 
-  
-
   ![Create support bundle](/images/yp/support-bundle-2.png)
 
-  <br>
-
-- Click **Create Bundle**.<br>
+- Click **Create Bundle**.
 
   YugabyteDB Anywhere starts collecting files from all the nodes in the cluster into an archive. Note that this process might take several minutes. When finished, the bundle's status is displayed as **Ready**, as per the following illustration:
 
-  
-
   ![Create support bundle](/images/yp/support-bundle-3.png)
-
-  <br>
 
   The **Support Bundles** dialog allows you to either download the bundle or delete it if it is no longer needed. By default, bundles expire after ten days to free up space.
 
-## Configure storage class volume binding
+## Debug crashing YugabyteDB pods in Kubernetes
 
-On Kubernetes, it is recommended to set volume binding mode on a StorageClass to `WaitForFirstConsumer` for dynamically provisioned volumes. This will delay provisioning until a pod using the persistent volume claim (PVC) is created. The pod topology or scheduling constraints will be respected. However, scheduling might fail if the storage volume is not accessible from all the nodes in a cluster and the default volume binding mode is set to `Immediate` for certain regional cloud deployments.
+If the YugabyteDB pods of your universe are crashing, you can debug them with the help of following instructions.
 
-For more information, see [Kubernetes: volume binding mode](https://kubernetes.io/docs/concepts/storage/storage-classes/#volume-binding-mode).
+### Collect core dumps in Kubernetes environments
 
-On Google Cloud Provider (GCP), if you choose not to set binding mode to `WaitForFirstConsumer`, you might use regional persistent disks to replicate data between two zones in the same region on Google Kubernetes Engine (GKE). This can be used by the pod, in cases when the pod reschedules to another node in a different  zone.
+When dealing with Kubernetes-based installations of YugabyteDB Anywhere, you might need to retrieve core dump files in case of a crash within the Kubernetes pod. For more information, see [Specify ulimit and remember the location of core dumps](../../install-yugabyte-platform/prepare-environment/kubernetes/#specify-ulimit-and-remember-the-location-of-core-dumps).
 
-For more information, see the following:
+The process of collecting core dumps depends on the value of the sysctl `kernel.core_pattern`, which you can inspect within a Kubernetes pod or node by executing the following command:
 
-- [Google Kubernetes Engine: persistent volumes and dynamic provisioning](https://cloud.google.com/kubernetes-engine/docs/concepts/persistent-volumes)
-- [Google Cloud: regional persistent disks](https://cloud.google.com/compute/docs/disks/high-availability-regional-persistent-disk)
+```sh
+cat /proc/sys/kernel/core_pattern
+```
+
+The value of `core_pattern` can be a literal path or it can contain a pipe symbol:
+
+- If the value of `core_pattern` is a literal path of the form `/var/tmp/core.%p`, cores are copied by the YugabyteDB node to a persistent volume directory that you can inspect using the following command:
+
+  ```sh
+  kubectl exec -it -n <namespace> <pod_name> -c yb-cleanup -- ls -lht /var/yugabyte/cores
+  ```
+
+  In the preceding command, the `yb-cleanup` container of the node is used because the primary YB-Master or YB-TServer container may be in a crash loop.
+
+  To copy a specific core dump file at this location, use the following kubectl `cp` command:
+
+  ```sh
+  kubectl cp -n <namespace> -c yb-cleanup <yb_pod_name>:/var/yugabyte/cores/core.2334 /tmp/core.2334
+  ```
+
+- If the value of `core_pattern` contains a `|` pipe symbol (for example, `|/usr/share/apport/apport -p%p -s%s -c%c -d%d -P%P -u%u -g%g -- %E`), the core dump is being redirected to a specific collector on the underlying Kubernetes node, with the location depending on the exact collector. In this case, it is your responsibility to identify the location to which these files are written and retrieve them.
+
+### Use debug hooks with YugabyteDB in Kubernetes
+
+You can add your own commands to pre- and post-debug hooks to troubleshoot crashing YB-Master or YB-TServer pods. These commands are run before the database process starts and after the database process terminates or crashes.
+
+For example, to modify the debug hooks of a YB-Master, run following command:
+
+```sh
+kubectl edit configmap -n <namespace> ybuni1-asia-south1-a-lbrl-master-hooks
+```
+
+This opens the configmap YAML in your editor.
+
+To add multiple commands to the pre-debug hook of `yb-master-0`, you can modify the `yb-master-0-pre_debug_hook.sh` key as follows:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ybuni1-asia-south1-a-lbrl-master-hooks
+data:
+  yb-master-0-post_debug_hook.sh: 'echo ''hello-from-post'' '
+  yb-master-0-pre_debug_hook.sh: |
+    echo "Running the pre hook"
+    du -sh /mnt/disk0/yb-data/
+    sleep 5m
+    # other commands here…
+  yb-master-1-post_debug_hook.sh: 'echo ''hello-from-post'' '
+  yb-master-1-pre_debug_hook.sh: 'echo ''hello-from-pre'' '
+```
+
+After you save the file, the updated commands will be executed on the next restart of `yb-master-0`.
+
+You can run the following command to check the output of your debug hook:
+
+```sh
+kubectl logs -n <namespace> ybuni1-asia-south1-a-lbrl-yb-master-0 -c yb-master
+```
+
+Expect an output similar to the following:
+
+```output
+...
+2023-03-29 06:40:09,553 [INFO] k8s_parent.py: Executing operation: ybuni1-asia-south1-a-lbrl-yb-master-0_pre_debug_hook filepath: /opt/debug_hooks_config/yb-master-0-pre_debug_hook.sh
+2023-03-29 06:45:09,627 [INFO] k8s_parent.py: Output from hook b'Running the pre hook\n44M\t/mnt/disk0/yb-data/\n'
+```
+
+## Perform the follower lag check during upgrades
+
+You can use the follower lag check to ensure that the YB-Master and YB-TServer process is caught up to its peers. To find this metric on Prometheus, execute the following:
+
+```sh
+max by (instance) (follower_lag_ms{instance='<ip>:<http_port>'})
+```
+
+- *ip* represents the YB-Master IP or the YB-TServer IP.
+- *http_port* represents the HTTP port on which the YB-Master or YB-TServer is listening. The YB-Master default port is 7000 and the YB-TServer default port is 9000.
+
+The result is the maximum follower lag, in milliseconds, of the most recent Prometheus of the specified YB-Master or YB-TServer process.
+
+Typically, the maximum follower lag of a healthy universe is a few seconds at most. The following reasons may contribute to a significant increase in the follower lag, potentially reaching several minutes:
+
+- Node issues, such as network problems between nodes, an unhealthy state of nodes, or inability of the node's YB-Master or YB-TServer process to properly serve requests. The lag usually persists until the issue is resolved.
+- Issues during a rolling upgrade, when the YB-Master or YB-TServer process is stopped, upgrade on the associated process is performed, then the process is restarted. During the downtime, writes to the database continue to occur, but the associated YB-Master or YB-TServer are left behind. The lag gradually decreases after the YB-Master or YB-TServer has restarted and can serve requests again. However, if an upgrade is performed on a universe that is not in a healthy state to begin with (for example, a node is down or is experiencing an unexpected problem), a failure is likely to occur due to the follower lag threshold not being reached within the specified timeframe after the processes have restarted. Note that the default value for the follower lag threshold is 1 minute and the overall time allocated for the process to catch up is 15 minutes. To remedy the situation, perform the following:
+  - Bring the node back to a healthy state by stopping and restarting the node, or removing it and adding a new one).
+  - Ensure that the YB-Master and YB-TServer processes are running correctly on the node.

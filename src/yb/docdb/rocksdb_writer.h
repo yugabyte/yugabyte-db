@@ -11,17 +11,17 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_ROCKSDB_WRITER_H
-#define YB_DOCDB_ROCKSDB_WRITER_H
+#pragma once
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
 
+#include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.fwd.h"
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/intent.h"
+#include "yb/dockv/intent.h"
 
 #include "yb/rocksdb/write_batch.h"
 
@@ -31,14 +31,14 @@ namespace docdb {
 class NonTransactionalWriter : public rocksdb::DirectWriter {
  public:
   NonTransactionalWriter(
-    std::reference_wrapper<const KeyValueWriteBatchPB> put_batch, HybridTime hybrid_time);
+    std::reference_wrapper<const LWKeyValueWriteBatchPB> put_batch, HybridTime hybrid_time);
 
   bool Empty() const;
 
   Status Apply(rocksdb::DirectWriteHandler* handler) override;
 
  private:
-  const docdb::KeyValueWriteBatchPB& put_batch_;
+  const LWKeyValueWriteBatchPB& put_batch_;
   HybridTime hybrid_time_;
 };
 
@@ -62,11 +62,11 @@ class DocHybridTimeBuffer {
 class TransactionalWriter : public rocksdb::DirectWriter {
  public:
   TransactionalWriter(
-      std::reference_wrapper<const docdb::KeyValueWriteBatchPB> put_batch,
+      std::reference_wrapper<const LWKeyValueWriteBatchPB> put_batch,
       HybridTime hybrid_time,
       const TransactionId& transaction_id,
       IsolationLevel isolation_level,
-      PartialRangeKeyIntents partial_range_key_intents,
+      dockv::PartialRangeKeyIntents partial_range_key_intents,
       const Slice& replicated_batches_state,
       IntraTxnWriteId intra_txn_write_id);
 
@@ -76,30 +76,31 @@ class TransactionalWriter : public rocksdb::DirectWriter {
     return intra_txn_write_id_;
   }
 
-  void SetMetadataToStore(const TransactionMetadataPB* value) {
+  void SetMetadataToStore(const LWTransactionMetadataPB* value) {
     metadata_to_store_ = value;
   }
 
-  Status operator()(
-      IntentStrength intent_strength, FullDocKey, Slice value_slice, KeyBytes* key,
-      LastKey last_key);
-
  private:
+  Status operator()(
+      dockv::IntentTypeSet intent_types, dockv::AncestorDocKey ancestor_doc_key,
+      dockv::FullDocKey full_doc_key, Slice value_slice, dockv::KeyBytes* key,
+      dockv::LastKey last_key);
+
   Status Finish();
   Status AddWeakIntent(
-      const std::pair<KeyBuffer, IntentTypeSet>& intent_and_types,
-      const std::array<Slice, 2>& value,
+      const std::pair<KeyBuffer, dockv::IntentTypeSet>& intent_and_types,
+      const std::array<Slice, 4>& value,
       DocHybridTimeBuffer* doc_ht_buffer);
 
-  const docdb::KeyValueWriteBatchPB& put_batch_;
+  const LWKeyValueWriteBatchPB& put_batch_;
   HybridTime hybrid_time_;
   TransactionId transaction_id_;
   IsolationLevel isolation_level_;
-  PartialRangeKeyIntents partial_range_key_intents_;
+  dockv::PartialRangeKeyIntents partial_range_key_intents_;
   Slice replicated_batches_state_;
   IntraTxnWriteId intra_txn_write_id_;
   IntraTxnWriteId write_id_ = 0;
-  const TransactionMetadataPB* metadata_to_store_ = nullptr;
+  const LWTransactionMetadataPB* metadata_to_store_ = nullptr;
 
   // TODO(dtxn) weak & strong intent in one batch.
   // TODO(dtxn) extract part of code knowing about intents structure to lower level.
@@ -107,8 +108,7 @@ class TransactionalWriter : public rocksdb::DirectWriter {
   rocksdb::DirectWriteHandler* handler_;
   RowMarkType row_mark_;
   SubTransactionId subtransaction_id_;
-  IntentTypeSet strong_intent_types_;
-  std::unordered_map<KeyBuffer, IntentTypeSet, ByteBufferHash> weak_intents_;
+  std::unordered_map<KeyBuffer, dockv::IntentTypeSet, ByteBufferHash> weak_intents_;
 };
 
 // Base class used by IntentsWriter to handle found intents.
@@ -150,7 +150,7 @@ class IntentsWriterContext {
 
  protected:
   void SetApplyState(
-      const Slice& key, IntraTxnWriteId write_id, const AbortedSubTransactionSet& aborted) {
+      const Slice& key, IntraTxnWriteId write_id, const SubtxnSet& aborted) {
     apply_state_.key = key.ToBuffer();
     apply_state_.write_id = write_id;
     apply_state_.aborted = aborted;
@@ -174,20 +174,41 @@ class IntentsWriter : public rocksdb::DirectWriter {
   Slice start_key_;
   rocksdb::DB* intents_db_;
   IntentsWriterContext& context_;
-  KeyBytes txn_reverse_index_prefix_;
+  dockv::KeyBytes txn_reverse_index_prefix_;
   Slice reverse_index_upperbound_;
   BoundedRocksDbIterator reverse_index_iter_;
 };
 
-class ApplyIntentsContext : public IntentsWriterContext {
+class FrontierSchemaVersionUpdater {
+ public:
+  explicit FrontierSchemaVersionUpdater(SchemaPackingProvider* schema_packing_provider)
+      : schema_packing_provider_(schema_packing_provider) {}
+
+  void SetFrontiers(ConsensusFrontiers* frontiers) { frontiers_ = frontiers; }
+
+ protected:
+  Status UpdateSchemaVersion(Slice key, Slice value);
+  void FlushSchemaVersion();
+
+ private:
+  SchemaPackingProvider* schema_packing_provider_;
+  Uuid schema_version_table_ = Uuid::Nil();
+  ColocationId schema_version_colocation_id_ = 0;
+  SchemaVersion min_schema_version_ = std::numeric_limits<SchemaVersion>::max();
+  SchemaVersion max_schema_version_ = std::numeric_limits<SchemaVersion>::min();
+  ConsensusFrontiers* frontiers_ = nullptr;
+};
+
+class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVersionUpdater {
  public:
   ApplyIntentsContext(
       const TransactionId& transaction_id,
       const ApplyTransactionState* apply_state,
-      const AbortedSubTransactionSet& aborted,
+      const SubtxnSet& aborted,
       HybridTime commit_ht,
       HybridTime log_ht,
       const KeyBounds* key_bounds,
+      SchemaPackingProvider* schema_packing_provider,
       rocksdb::DB* intents_db);
 
   void Start(const boost::optional<Slice>& first_key) override;
@@ -202,7 +223,7 @@ class ApplyIntentsContext : public IntentsWriterContext {
   Result<bool> StoreApplyState(const Slice& key, rocksdb::DirectWriteHandler* handler);
 
   const ApplyTransactionState* apply_state_;
-  const AbortedSubTransactionSet& aborted_;
+  const SubtxnSet& aborted_;
   HybridTime commit_ht_;
   HybridTime log_ht_;
   IntraTxnWriteId write_id_;
@@ -212,7 +233,7 @@ class ApplyIntentsContext : public IntentsWriterContext {
 
 class RemoveIntentsContext : public IntentsWriterContext {
  public:
-  explicit RemoveIntentsContext(const TransactionId& transaction_id);
+  explicit RemoveIntentsContext(const TransactionId& transaction_id, uint8_t reason);
 
   Result<bool> Entry(
       const Slice& key, const Slice& value, bool metadata,
@@ -220,9 +241,64 @@ class RemoveIntentsContext : public IntentsWriterContext {
 
   void Complete(rocksdb::DirectWriteHandler* handler) override;
  private:
+  uint8_t reason_;
+};
+
+// Usually put_batch contains only records that should be applied to regular DB.
+// So apply_external_transactions will be empty and regular_entry will be true.
+//
+// But in general case on consumer side of CDC put_batch could contain various kinds of records,
+// that should be applied into regular and intents db.
+// They are:
+// apply_external_transactions
+//   The list of external transactions that should be applied.
+//   For each such transaction we should lookup for existing external intents (stored in intents DB)
+//   and convert them to Put command in regular_write_batch plus SingleDelete command in
+//   intents_write_batch.
+// write_pairs
+//   Could contain regular entries, that should be stored into regular DB as is.
+//   Also pair could contain external intents, that should be stored into intents DB.
+//   But if apply_external_transactions contains transaction for those external intents, then
+//   those intents will be applied directly to regular DB, avoiding unnecessary write to intents DB.
+//   This case is very common for short running transactions.
+class ExternalIntentsBatchWriter : public rocksdb::DirectWriter,
+                                   public FrontierSchemaVersionUpdater {
+ public:
+  ExternalIntentsBatchWriter(
+      std::reference_wrapper<const LWKeyValueWriteBatchPB> put_batch, HybridTime write_hybrid_time,
+      HybridTime batch_hybrid_time, rocksdb::DB* intents_db,
+      rocksdb::WriteBatch* intents_write_batch, SchemaPackingProvider* schema_packing_provider);
+  bool Empty() const;
+
+  Status Apply(rocksdb::DirectWriteHandler* handler) override;
+
+ private:
+  // Reads all stored external intents for provided transactions and prepares batches that will
+  // apply them into regular db and remove from intents db.
+  Status PrepareApplyExternalIntents(
+      ExternalTxnApplyState* apply_external_transactions, rocksdb::DirectWriteHandler* handler);
+
+  // Adds external pair to write batch.
+  // Returns true if add was skipped because pair is a regular (non external) record.
+  Result<bool> AddExternalPairToWriteBatch(
+      const yb::docdb::LWKeyValuePairPB& kv_pair,
+      ExternalTxnApplyState* apply_external_transactions,
+      rocksdb::DirectWriteHandler* regular_write_handler, IntraTxnWriteId* write_id);
+
+  // Parse the merged external intent value, and write them to regular writer handler. Also updates
+  // min/max schema version.
+  Status PrepareApplyExternalIntentsBatch(
+      const Slice& original_input_value, ExternalTxnApplyStateData* apply_data,
+      rocksdb::DirectWriteHandler* regular_write_handler);
+
+ private:
+  const LWKeyValueWriteBatchPB& put_batch_;
+  HybridTime write_hybrid_time_;
+  HybridTime batch_hybrid_time_;
+  BoundedRocksDbIterator intents_db_iter_;
+  Slice intents_db_iter_upperbound_;
+  rocksdb::WriteBatch* intents_write_batch_;
 };
 
 } // namespace docdb
 } // namespace yb
-
-#endif // YB_DOCDB_ROCKSDB_WRITER_H

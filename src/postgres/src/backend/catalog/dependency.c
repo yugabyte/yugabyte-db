@@ -59,7 +59,6 @@
 #include "catalog/pg_ts_template.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_user_mapping.h"
-#include "catalog/pg_yb_tablegroup.h"
 #include "commands/comment.h"
 #include "commands/defrem.h"
 #include "commands/event_trigger.h"
@@ -83,7 +82,12 @@
 #include "utils/syscache.h"
 #include "utils/tqual.h"
 
+/* YB includes */
+#include "catalog/pg_yb_profile.h"
+#include "catalog/pg_yb_role_profile.h"
+#include "catalog/pg_yb_tablegroup.h"
 #include "commands/ybccmds.h"
+#include "commands/yb_profile.h"
 #include "pg_yb_utils.h"
 
 /*
@@ -163,7 +167,6 @@ static const Oid object_classes[] = {
 	TSConfigRelationId,			/* OCLASS_TSCONFIG */
 	AuthIdRelationId,			/* OCLASS_ROLE */
 	DatabaseRelationId,			/* OCLASS_DATABASE */
-	YbTablegroupRelationId,		/* OCLASS_TBLGROUP */
 	TableSpaceRelationId,		/* OCLASS_TBLSPACE */
 	ForeignDataWrapperRelationId,	/* OCLASS_FDW */
 	ForeignServerRelationId,	/* OCLASS_FOREIGN_SERVER */
@@ -175,7 +178,12 @@ static const Oid object_classes[] = {
 	PublicationRelationId,		/* OCLASS_PUBLICATION */
 	PublicationRelRelationId,	/* OCLASS_PUBLICATION_REL */
 	SubscriptionRelationId,		/* OCLASS_SUBSCRIPTION */
-	TransformRelationId			/* OCLASS_TRANSFORM */
+	TransformRelationId,		/* OCLASS_TRANSFORM */
+
+	/* YB items */
+	YbProfileRelationId,		/* OCLASS_YBPROFILE */
+	YbRoleProfileRelationId,	/* OCLASS_YBROLE_PROFILE */
+	YbTablegroupRelationId,		/* OCLASS_TBLGROUP */
 };
 
 
@@ -1029,6 +1037,11 @@ deleteOneObject(const ObjectAddress *object, Relation *depRel, int flags)
 	InvokeObjectDropHookArg(object->classId, object->objectId,
 							object->objectSubId, flags);
 
+	 
+	/* Decrement sticky object count if the object being removed is a TEMP TABLE. */
+	if (YbIsClientYsqlConnMgr() && (*depRel)->rd_islocaltemp)
+		decrement_sticky_object_count();
+
 	/*
 	 * Close depRel if we are doing a drop concurrently.  The object deletion
 	 * subroutine will commit the current transaction, so we can't keep the
@@ -1321,6 +1334,8 @@ doDeletion(const ObjectAddress *object, int flags)
 		case OCLASS_DATABASE:
 		case OCLASS_TBLSPACE:
 		case OCLASS_SUBSCRIPTION:
+		case OCLASS_YBPROFILE:
+		case OCLASS_YBROLE_PROFILE:
 			elog(ERROR, "global objects cannot be deleted by doDeletion");
 			break;
 
@@ -2536,9 +2551,6 @@ getObjectClass(const ObjectAddress *object)
 		case DatabaseRelationId:
 			return OCLASS_DATABASE;
 
-		case YbTablegroupRelationId:
-			return OCLASS_TBLGROUP;
-
 		case TableSpaceRelationId:
 			return OCLASS_TBLSPACE;
 
@@ -2574,6 +2586,16 @@ getObjectClass(const ObjectAddress *object)
 
 		case TransformRelationId:
 			return OCLASS_TRANSFORM;
+
+		/* YB cases */
+		case YbProfileRelationId:
+			return OCLASS_YBPROFILE;
+
+		case YbRoleProfileRelationId:
+			return OCLASS_YBROLE_PROFILE;
+
+		case YbTablegroupRelationId:
+			return OCLASS_TBLGROUP;
 	}
 
 	/* shouldn't get here */

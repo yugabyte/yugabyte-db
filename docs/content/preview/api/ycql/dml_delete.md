@@ -25,7 +25,7 @@ Use the `DELETE` statement to remove rows from a specified table that meet a giv
 
 ### Grammar
 
-```
+```ebnf
 delete ::= DELETE FROM table_name
                [ USING TIMESTAMP timestamp_expression ] WHERE
                where_expression [ IF { [ NOT ] EXISTS | if_expression } ]
@@ -35,7 +35,7 @@ delete ::= DELETE FROM table_name
 Where
 
 - `table_name` is an identifier (possibly qualified with a keyspace name).
-- Restrictions on `where_expression` and `if_expression` are covered in the Semantics section below.
+- Restrictions on `where_expression` and `if_expression` are covered in the Semantics section.
 - See [Expressions](..#expressions) for more information on syntax rules.
 
 ## Semantics
@@ -44,7 +44,7 @@ Where
 - The `where_expression` and `if_expression` must evaluate to [boolean](../type_bool) values.
 - The `USING TIMESTAMP` clause indicates you would like to perform the DELETE as if it was done at the
   timestamp provided by the user. The timestamp is the number of microseconds since epoch.
-- **NOTE**: You should either use the `USING TIMESTAMP` clause in all of your statements or none of
+- **Note**: You should either use the `USING TIMESTAMP` clause in all of your statements or none of
    them. Using a mix of statements where some have `USING TIMESTAMP` and others do not will lead to
    very confusing results.
 
@@ -94,7 +94,7 @@ ycqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (
 ycqlsh:example> SELECT * FROM employees;
 ```
 
-```
+```output
  department_id | employee_id | name
 ---------------+-------------+------
              1 |           1 | John
@@ -118,7 +118,7 @@ ycqlsh:example> DELETE FROM employees WHERE department_id = 3 AND employee_id = 
 ycqlsh:example> SELECT * FROM employees;
 ```
 
-```
+```output
  department_id | employee_id | name
 ---------------+-------------+------
              1 |           2 | Jane
@@ -133,7 +133,7 @@ ycqlsh:example> SELECT * FROM employees;
 ycqlsh:example> DELETE FROM employees WHERE department_id = 2 AND employee_id = 1 IF name = 'Joe';
 ```
 
-```
+```output
  [applied]
 -----------
       True
@@ -143,7 +143,7 @@ ycqlsh:example> DELETE FROM employees WHERE department_id = 2 AND employee_id = 
 ycqlsh:example> DELETE FROM employees WHERE department_id = 3 AND employee_id = 1 IF EXISTS;
 ```
 
-```
+```output
  [applied]
 -----------
      False
@@ -153,7 +153,7 @@ ycqlsh:example> DELETE FROM employees WHERE department_id = 3 AND employee_id = 
 ycqlsh:example> SELECT * FROM employees;
 ```
 
-```
+```output
  department_id | employee_id | name
 ---------------+-------------+------
              1 |           2 | Jane
@@ -177,7 +177,7 @@ ycqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (
 ycqlsh:example> SELECT * FROM employees;
 ```
 
-```
+```output
  department_id | employee_id | name
 ---------------+-------------+------
              1 |           1 | John
@@ -196,7 +196,7 @@ ycqlsh:example> DELETE FROM employees WHERE department_id = 1;
 ycqlsh:example> SELECT * FROM employees;
 ```
 
-```
+```output
  department_id | employee_id | name
 ---------------+-------------+------
              2 |           1 |  Joe
@@ -213,7 +213,7 @@ ycqlsh:example> DELETE FROM employees WHERE department_id = 2 AND employee_id >=
 ycqlsh:example> SELECT * FROM employees;
 ```
 
-```
+```output
  department_id | employee_id | name
 ---------------+-------------+------
              2 |           1 |  Joe
@@ -221,7 +221,7 @@ ycqlsh:example> SELECT * FROM employees;
 
 ### Delete with the `USING TIMESTAMP` clause
 
-You can do this as shown below.
+You can do this as follows:
 
 ```sql
 ycqlsh:foo> INSERT INTO employees(department_id, employee_id, name) VALUES (4, 4, 'Ted') USING TIMESTAMP 1000;
@@ -231,7 +231,7 @@ ycqlsh:foo> INSERT INTO employees(department_id, employee_id, name) VALUES (4, 4
 ycqlsh:foo> SELECT * FROM employees;
 ```
 
-```
+```output
  department_id | employee_id | name
 ---------------+-------------+------
              4 |           4 |  Ted
@@ -250,7 +250,7 @@ Not applied since timestamp is lower than 1000
 ycqlsh:foo> SELECT * FROM employees;
 ```
 
-```
+```output
  department_id | employee_id | name
 ---------------+-------------+------
              4 |           4 |  Ted
@@ -269,7 +269,7 @@ Applied since timestamp is higher than 1000.
 ycqlsh:foo> SELECT * FROM employees;
 ```
 
-```
+```output
  department_id | employee_id | name
 ---------------+-------------+------
              2 |           1 |  Joe
@@ -277,13 +277,11 @@ ycqlsh:foo> SELECT * FROM employees;
 (1 rows)
 ```
 
-
 ### RETURNS STATUS AS ROW
 
 When executing a batch in YCQL, the protocol returns only one error or return status. The `RETURNS STATUS AS ROW` feature addresses this limitation and adds a status row for each statement.
 
 See examples in [batch docs](../batch#row-status).
-
 
 ## See also
 

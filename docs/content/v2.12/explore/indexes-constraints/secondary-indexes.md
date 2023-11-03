@@ -114,9 +114,9 @@ Index Cond: (department = 'Operations'::text)
 For additional information, see:
 
 - [CREATE INDEX YSQL API](../../../api/ysql/the-sql-language/statements/ddl_create_index/)
-- [CREATE INDEX YSQL API](../../../api/ycql/ddl_create_index/)
+- [CREATE INDEX YCQL API](../../../api/ycql/ddl_create_index/)
 
-The following example shows how to remove index_employees_department that was created in Create indexes:
+The following example shows how to remove `index_employees_department` that was created in Create indexes:
 
 ```sql
 DROP INDEX index_employees_department;
@@ -124,6 +124,6 @@ DROP INDEX index_employees_department;
 
 ## Learn more
 
-- [Benefits of Index-only scan](https://blog.yugabyte.com/how-a-distributed-sql-database-boosts-secondary-index-queries-with-index-only-scan/)
+- [Benefits of Index-only scan](https://www.yugabyte.com/blog/how-a-distributed-sql-database-boosts-secondary-index-queries-with-index-only-scan/)
 
-- [Pushdown #3: Filtering using index predicates](https://blog.yugabyte.com/5-query-pushdowns-for-distributed-sql-and-how-they-differ-from-a-traditional-rdbms/) discusses the performance boost of distributed SQL queries using indexes.
+- [Pushdown #3: Filtering using index predicates](https://www.yugabyte.com/blog/5-query-pushdowns-for-distributed-sql-and-how-they-differ-from-a-traditional-rdbms/) discusses the performance boost of distributed SQL queries using indexes.

@@ -25,13 +25,8 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(deleteUniverseReadReplica(clusterUUID, universeUUID, isForceDelete)).then(
         (response) => {
           dispatch(deleteUniverseReadReplicaResponse(response.payload));
-          toast.success('Deletion is in progress')
-          if(response.payload?.data?.taskUUID){
-            browserHistory.push(`/tasks/${response.payload?.data.taskUUID}`);
-          }
-          else{
-            browserHistory.push(`/universes/${universeUUID}`);
-          }
+          toast.success('Deletion is in progress');
+          browserHistory.push(`/universes/${universeUUID}/tasks`);
         }
       );
     },

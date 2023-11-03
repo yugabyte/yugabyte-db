@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_CLUSTER_BALANCE_H
-#define YB_MASTER_CLUSTER_BALANCE_H
+#pragma once
 
 #include <atomic>
 #include <map>
@@ -89,7 +88,7 @@ class ClusterLoadBalancer {
 
   // Runs the load balancer once for the live and all read only clusters, in order
   // of the cluster config.
-  virtual void RunLoadBalancer(Options* options = nullptr);
+  virtual void RunLoadBalancer(const LeaderEpoch& epoch, Options* options = nullptr);
 
   // Sets whether to enable or disable the load balancer, on demand.
   void SetLoadBalancerEnabled(bool is_enabled) { is_enabled_ = is_enabled; }
@@ -100,12 +99,17 @@ class ClusterLoadBalancer {
 
   void ReportMetrics();
 
+  MonoTime LastRunTime() const;
+
   Status IsIdle() const;
 
   // Returns the TableInfo of all the tables for whom load balancing is being skipped.
   // As of today, this constitutes all the system tables, colocated user tables
   // and tables which have been marked as DELETING OR DELETED.
-  vector<scoped_refptr<TableInfo>> GetAllTablesLoadBalancerSkipped();
+  // N.B. Currently this function is only used in test code. If using in production be mindful
+  // that this function will not return colocated user tables as those are pre-filtered by the
+  // table API the load balancer uses.
+  std::vector<scoped_refptr<TableInfo>> GetAllTablesLoadBalancerSkipped();
 
   // Return the replication info for 'table'.
   virtual Result<ReplicationInfoPB> GetTableReplicationInfo(
@@ -130,8 +134,9 @@ class ClusterLoadBalancer {
     // Get access to the tablet map across the cluster.
   virtual const TabletInfoMap& GetTabletMap() const REQUIRES_SHARED(catalog_manager_->mutex_);
 
-  // Get access to the table map.
-  virtual const TableInfoMap& GetTableMap() const REQUIRES_SHARED(catalog_manager_->mutex_);
+  // Get an iterator for the tables.
+  virtual TableIndex::TablesRange GetTables() const
+      REQUIRES_SHARED(catalog_manager_->mutex_);
 
   // Get the table info object for given table uuid.
   virtual const scoped_refptr<TableInfo> GetTableInfo(const TableId& table_uuid) const
@@ -150,7 +155,7 @@ class ClusterLoadBalancer {
     REQUIRES_SHARED(catalog_manager_->mutex_);
 
   // Wrapper around CatalogManager::GetPendingTasks so it can be mocked by TestLoadBalancer.
-  virtual void GetPendingTasks(const string& table_uuid,
+  virtual void GetPendingTasks(const std::string& table_uuid,
                                TabletToTabletServerMap* add_replica_tasks,
                                TabletToTabletServerMap* remove_replica_tasks,
                                TabletToTabletServerMap* stepdown_leader_tasks)
@@ -255,7 +260,7 @@ class ClusterLoadBalancer {
 
   virtual void GetAllAffinitizedZones(
       const ReplicationInfoPB& replication_info,
-      vector<AffinitizedZonesSet>* affinitized_zones) const;
+      std::vector<AffinitizedZonesSet>* affinitized_zones) const;
 
   // Go through sorted_leader_load_ one priority at a time and move leaders so as to get an even
   // balance per table and globally.
@@ -301,9 +306,9 @@ class ClusterLoadBalancer {
   // Issue the change config and modify the in-memory state for moving a tablet leader on the
   // specified tablet server to the other specified tablet server.
   Status MoveLeader(const TabletId& tablet_id,
-                            const TabletServerId& from_ts,
-                            const TabletServerId& to_ts,
-                            const std::string& to_ts_path)
+                    const TabletServerId& from_ts,
+                    const TabletServerId& to_ts,
+                    const std::string& to_ts_path)
       REQUIRES_SHARED(catalog_manager_->mutex_);
 
   // Methods called for returning tablet id sets, for figuring out tablets to move around.
@@ -324,6 +329,10 @@ class ClusterLoadBalancer {
       const ReplicationInfoPB& replication_info) const;
 
   virtual const PlacementInfoPB& GetLiveClusterPlacementInfo() const;
+
+  void AddTSIfBlacklisted(
+      const std::shared_ptr<TSDescriptor>& ts_desc, const BlacklistPB& blacklist,
+      const bool leader_blacklist);
 
   //
   // Generic load information methods.
@@ -358,7 +367,7 @@ class ClusterLoadBalancer {
 
   std::shared_ptr<YsqlTablespaceManager> tablespace_manager_;
 
-  template <class ClusterLoadBalancerClass> friend class TestLoadBalancerBase;
+  friend class LoadBalancerMockedBase;
 
  private:
   // Returns true if at least one member in the tablet's configuration is transitioning into a
@@ -373,13 +382,13 @@ class ClusterLoadBalancer {
   void ReportUnusualLoadBalancerState() const;
 
   Result<bool> GetLeaderToMove(
-      const vector<TabletServerId>& sorted_leader_load,
+      const std::vector<TabletServerId>& sorted_leader_load,
       TabletId* moving_tablet_id,
       TabletServerId* from_ts,
       TabletServerId* to_ts,
       std::string* to_ts_path);
 
-  virtual void SetBlacklist() const;
+  virtual void SetBlacklistAndPendingDeleteTS();
 
   // Random number generator for picking items at random from sets, using ReservoirSample.
   ThreadSafeRandom random_;
@@ -422,15 +431,18 @@ class ClusterLoadBalancer {
   // Protected by a readers-writers lock. Only the LB writes to it.
   // Other components such as test, admin UI, etc. should
   // ideally read from it using a shared_lock<>.
-  vector<scoped_refptr<TableInfo>> skipped_tables_ GUARDED_BY(mutex_);
+  std::vector<scoped_refptr<TableInfo>> skipped_tables_ GUARDED_BY(mutex_);
   // Internal to LB structure to keep track of skipped tables.
   // skipped_tables_ is set at the end of each LB run using
   // skipped_tables_per_run_.
-  vector<scoped_refptr<TableInfo>> skipped_tables_per_run_;
+  std::vector<scoped_refptr<TableInfo>> skipped_tables_per_run_;
+
+  std::atomic<MonoTime> last_load_balance_run_;
+
+  LeaderEpoch epoch_;
 
   DISALLOW_COPY_AND_ASSIGN(ClusterLoadBalancer);
 };
 
 }  // namespace master
 }  // namespace yb
-#endif /* YB_MASTER_CLUSTER_BALANCE_H */

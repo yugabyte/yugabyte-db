@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_CONSISTENT_READ_POINT_H
-#define YB_COMMON_CONSISTENT_READ_POINT_H
+#pragma once
 
 #include <mutex>
 #include <set>
@@ -43,6 +42,10 @@ class ConsistentReadPoint {
 
   // Set the current time as the read point.
   void SetCurrentReadTime() EXCLUDES(mutex_);
+
+  // If read point is not set, use the current time as the read point and defer it to the global
+  // limit. If read point was already set, return error if it is not deferred.
+  Status TrySetDeferredCurrentReadTime() EXCLUDES(mutex_);
 
   // Set the read point to the specified read time with local limits.
   void SetReadTime(const ReadHybridTime& read_time, HybridTimeMap&& local_limits) EXCLUDES(mutex_);
@@ -86,6 +89,9 @@ class ConsistentReadPoint {
   void SetInTxnLimit(HybridTime value) EXCLUDES(mutex_);
 
  private:
+  inline void SetReadTimeUnlocked(
+      const ReadHybridTime& read_time, HybridTimeMap* local_limits = nullptr) REQUIRES(mutex_);
+  void SetCurrentReadTimeUnlocked() REQUIRES(mutex_);
   void UpdateLimitsMapUnlocked(
       const TabletId& tablet, const HybridTime& local_limit, HybridTimeMap* map) REQUIRES(mutex_);
   void RestartRequiredUnlocked(const TabletId& tablet, const ReadHybridTime& restart_time)
@@ -109,5 +115,3 @@ class ConsistentReadPoint {
 };
 
 } // namespace yb
-
-#endif // YB_COMMON_CONSISTENT_READ_POINT_H

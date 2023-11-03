@@ -11,17 +11,15 @@ menu:
 type: docs
 ---
 
-Batch operations let you send multiple operations in a single RPC call to the database. The larger the batch size,
-the higher the latency for the entire batch. Although the latency for the entire batch of operations is higher than the latency of any single operation,
-the throughput of the batch of operations is much higher.
+Batch operations let you send multiple operations in a single RPC call to the database. The larger the batch size, the higher the latency for the entire batch. Although the latency for the entire batch of operations is higher than the latency of any single operation, the throughput of the batch of operations is much higher.
 
 ## Example in Java
 
 To perform a batch insert operation in Java:
 
-1.  Create a BatchStatement object.
-2. Add the desired number of prepared and bound insert statements to it.
-3. Execute the batch object.
+1. Create a BatchStatement object.
+1. Add the desired number of prepared and bound insert statements to it.
+1. Execute the batch object.
 
 ```java
 // Create a batch statement object.
@@ -37,8 +35,8 @@ for (...) {
 
 // Execute the batch operation.
 ResultSet resultSet = client.execute(batch);
-
 ```
+
 ## Example in Python using RETURNS AS STATUS
 
 An example using Python client and RETURNS AS STATUS clause:
@@ -102,11 +100,9 @@ and change some parameters for either the entire batch or just the relevant stat
 
 You can address this limitation by using the `RETURNS STATUS AS ROW` feature.
 
-
 If used, the write statement will return its status (whether applied, unapplied, or errored-out with a message) as a regular CQL row that the application can inspect and decide what to do.
 
 For a batch, it is required that either none or all statements use `RETURNS STATUS AS ROW`.
-
 
 When executing `n` statements in a batch with `RETURN STATUS AS ROW`, `n` rows are returned, in the same order as the statements and the application can easily inspect the result.
 
@@ -122,12 +118,14 @@ Conversely, there will be one column for each table column, which will be `null`
 For instance:
 
 1. Set up a simple table:
+
 ```sql
 cqlsh:sample> CREATE TABLE test(h INT, r INT, v LIST<INT>, PRIMARY KEY(h,r)) WITH transactions={'enabled': true};
 cqlsh:sample> INSERT INTO test(h,r,v) VALUES (1,1,[1,2]);
 ```
 
-2. Unapplied update when `IF` condition is false:
+1. Unapplied update when `IF` condition is false:
+
 ```sql
 cqlsh:sample> UPDATE test SET v[2] = 4 WHERE h = 1 AND r = 1 IF v[1] = 3 RETURNS STATUS AS ROW;
  [applied] | [message] | h | r | v
@@ -135,21 +133,26 @@ cqlsh:sample> UPDATE test SET v[2] = 4 WHERE h = 1 AND r = 1 IF v[1] = 3 RETURNS
      False |      null | 1 | 1 | [1, 2]
 ```
 
-3. Unapplied update when `IF` condition true but error:
+1. Unapplied update when `IF` condition true but error:
+
 ```sql
 cqlsh:sample> UPDATE test SET v[20] = 4 WHERE h = 1 AND r = 1 IF v[1] = 2 RETURNS STATUS AS ROW;
  [applied] | [message]                                                                              | h    | r    | v
 -----------+----------------------------------------------------------------------------------------+------+------+------
      False | Unable to replace items into list, expecting index 20, reached end of list with size 2 | null | null | null
 ```
-4. Applied update when `IF` condition true:
+
+1. Applied update when `IF` condition true:
+
 ```sql
 cqlsh:sample> UPDATE test SET v[0] = 4 WHERE h = 1 AND r = 1 IF v[1] = 2 RETURNS STATUS AS ROW;
  [applied] | [message] | h    | r    | v
 -----------+-----------+------+------+------
       True |      null | null | null | null
 ```
-5. Final table result:
+
+1. Final table result:
+
 ```sql
 cqlsh:sample> SELECT * FROM test;
  h | r | v
@@ -158,7 +161,7 @@ cqlsh:sample> SELECT * FROM test;
 (1 rows)
 ```
 
-{{< note Type="Note" >}}
+{{< note title="Note" >}}
 
 `BEGIN/END TRANSACTION` doesn't currently support `RETURNS STATUS AS ROW`.
 

@@ -46,7 +46,6 @@ namespace yb {
 using yb::rpc::DumpRunningRpcsRequestPB;
 using yb::rpc::DumpRunningRpcsResponsePB;
 using yb::rpc::Messenger;
-using std::shared_ptr;
 using std::stringstream;
 
 using namespace std::placeholders;

@@ -15,7 +15,8 @@ Single-key request only. Requests with multiple keys are not yet supported.
 
 ## Synopsis
 
-<b>`EXISTS key [key ...]`</b><br>
+**`EXISTS key [key ...]`**
+
 This command is a predicate to check whether or not the given `key` exists.
 
 ## Return value

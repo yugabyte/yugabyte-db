@@ -24,16 +24,14 @@ else
 fi
 
 if [[ $( uname -m ) == "x86_64" ]]; then
-  build_root_basename="$build_type-clang13-linuxbrew-full-lto-ninja"
-else
-  build_root_basename="$build_type-clang12-full-lto-ninja"
+  build_root_basename="$build_type-clang16-linuxbrew-full-lto-ninja"
 fi
 
 dep_graph_cmd=(
-  "${YB_SRC_ROOT}/python/yb/dependency_graph.py"
+  "$YB_SCRIPT_PATH_DEPENDENCY_GRAPH"
   "--build-root=${YB_SRC_ROOT}/build/${build_root_basename}"
-  "--file-regex=^.*/yb-tserver$"
-  )
+  "--file-regex=^.*/yb-tserver-dynamic$"
+)
 if [[ $build_type == "prof_use" ]]; then
   dep_graph_cmd+=( "--build-args=--pgo-data-path ${pgo_data_path}" )
 fi

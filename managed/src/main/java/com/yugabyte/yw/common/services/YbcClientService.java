@@ -3,15 +3,18 @@
 package com.yugabyte.yw.common.services;
 
 import javax.inject.Singleton;
+import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YbcClient;
 import org.yb.ybc.VersionRequest;
 import org.yb.ybc.VersionResponse;
 
 @Singleton
+@Slf4j
 public class YbcClientService {
 
   private YbcClient getClient(String nodeIp, int ybcPort) {
     try {
+      log.info("Creating ybc client for node: {} on port: {}", nodeIp, ybcPort);
       return new YbcClient(nodeIp, ybcPort);
     } catch (Exception e) {
       throw new RuntimeException(
@@ -21,6 +24,8 @@ public class YbcClientService {
 
   private YbcClient getClient(String nodeIp, int ybcPort, String certFile) {
     try {
+      log.info(
+          "Creating ybc client for node: {} on port: {} with cert: {}", nodeIp, ybcPort, certFile);
       return new YbcClient(nodeIp, ybcPort, certFile);
     } catch (Exception e) {
       throw new RuntimeException(

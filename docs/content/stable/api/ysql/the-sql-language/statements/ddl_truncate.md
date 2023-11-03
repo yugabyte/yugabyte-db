@@ -20,30 +20,46 @@ Applying `TRUNCATE` to a set of tables produces the same ultimate outcome as doe
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fas fa-file-alt" aria-hidden="true"></i>
+    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fas fa-project-diagram" aria-hidden="true"></i>
+    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+      <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
   </li>
 </ul>
 
 <div class="tab-content">
-  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
   {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/truncate.grammar.md" %}}
   </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
   {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/truncate.diagram.md" %}}
   </div>
 </div>
 
 {{< note title="Table inheritance is not yet supported" >}}
 The [table_expr](../../../syntax_resources/grammar_diagrams/#table-expr) rule specifies syntax that is useful only when at least one other table inherits one of the tables that the `truncate` statement lists explicitly. See [this note](../ddl_alter_table#table-expr-note) for more detail. Until inheritance is supported, use a bare [table_name](../../../syntax_resources/grammar_diagrams/#table-name).
+{{< /note >}}
+
+{{< note title="Truncate is not transactional" >}}
+
+`TRUNCATE` in the current implementation is not transactional.
+
+You should avoid using TRUNCATE in the following circumstances:
+
+* inside of a multi-step transaction 
+* concurrently with read and write operations in the same table
+
+If your use case is mostly for CI/CD on smaller datasets, you can use `DELETE FROM table;`.  
+This is heavier weight (and also not recommended for very large data sets) but will be transactional.
+
+Note that even in PostgreSQL truncate is not [MVCC-safe](https://www.postgresql.org/docs/15/sql-truncate.html).
+
 {{< /note >}}
 
 ## Semantics
@@ -112,7 +128,7 @@ This is the result:
  frog      | frog-child-c
 ```
 
-The `\d children` metacommand shows that it has a foreign key constraint to the  `parents` table.  This makes it a (transitive) dependent object of that table:
+The `\d children` meta-command shows that it has a foreign key constraint to the  `parents` table.  This makes it a (transitive) dependent object of that table:
 
 ```output
 Indexes:

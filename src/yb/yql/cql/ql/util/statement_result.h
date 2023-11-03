@@ -15,8 +15,7 @@
 // Different results of processing a statement.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_UTIL_STATEMENT_RESULT_H_
-#define YB_YQL_CQL_QL_UTIL_STATEMENT_RESULT_H_
+#pragma once
 
 #include "yb/client/client_fwd.h"
 #include "yb/client/yb_table_name.h"
@@ -25,6 +24,10 @@
 #include "yb/common/value.pb.h"
 
 #include "yb/gutil/callback_forward.h"
+
+#include "yb/qlexpr/qlexpr_fwd.h"
+
+#include "yb/util/ref_cnt_buffer.h"
 
 namespace yb {
 namespace ql {
@@ -126,7 +129,7 @@ class RowsResult : public ExecutedResult {
   explicit RowsResult(client::YBqlOp *op, const PTDmlStmt *tnode = nullptr);
   RowsResult(const client::YBTableName& table_name,
              const std::shared_ptr<std::vector<ColumnSchema>>& column_schemas,
-             const std::string& rows_data);
+             const RefCntSlice& rows_data);
   virtual ~RowsResult() override;
 
   // Result type.
@@ -136,9 +139,8 @@ class RowsResult : public ExecutedResult {
   const client::YBTableName& table_name() const { return table_name_; }
   const std::vector<ColumnSchema>& column_schemas() const { return *column_schemas_; }
   void set_column_schema(int col_index, const std::shared_ptr<QLType>& type);
-  const std::string& rows_data() const { return rows_data_; }
-  std::string& rows_data() { return rows_data_; }
-  void set_rows_data(const char *str, size_t size) { rows_data_.assign(str, size); }
+  Slice rows_data() const { return rows_data_.AsSlice(); }
+  void set_rows_data(const RefCntSlice& value) { rows_data_ = value; }
   const std::string& paging_state() const { return paging_state_; }
   QLClient client() const { return client_; }
 
@@ -147,18 +149,21 @@ class RowsResult : public ExecutedResult {
   void SetPagingState(client::YBqlOp *op);
   void SetPagingState(const QLPagingStatePB& paging_state);
   void SetPagingState(RowsResult&& other);
+  // Override the schema version in the paging state. This is needed to support sending the schema
+  // version of the main table in the response while keeping the rest of the state from the index.
+  void OverrideSchemaVersionInPagingState(uint32_t schema_version);
   void ClearPagingState();
   bool has_paging_state() { return !paging_state_.empty(); }
 
   // Parse the rows data and return it as a row block. It is the caller's responsibility to free
   // the row block after use.
-  std::unique_ptr<QLRowBlock> GetRowBlock() const;
+  std::unique_ptr<qlexpr::QLRowBlock> GetRowBlock() const;
 
  private:
   const client::YBTableName table_name_;
   std::shared_ptr<std::vector<ColumnSchema>> column_schemas_;
   const QLClient client_;
-  std::string rows_data_;
+  RefCntSlice rows_data_;
   std::string paging_state_;
 };
 
@@ -194,5 +199,3 @@ class SchemaChangeResult : public ExecutedResult {
 
 } // namespace ql
 } // namespace yb
-
-#endif  // YB_YQL_CQL_QL_UTIL_STATEMENT_RESULT_H_

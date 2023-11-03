@@ -14,15 +14,16 @@ type: docs
 
 ## Synopsis
 
-<b>`TSRANGEBYTIME key low_ts high_ts`</b><br>
+**`TSRANGEBYTIME key low_ts high_ts`**
+
 This command fetches the values for the given `low_ts`, `high_ts` range in the time series that is
 specified by the given `key`.
 
-<li>If the given `key` is associated with non-timeseries data, an error is raised.</li>
-<li>If the given `low_ts` or `high_ts` are not a valid signed 64 bit integers, an error is raised.</li>
-<li>`low_ts` and `high_ts` are inclusive unless they are prefixed with `(`, in that case they are
-exclusive.</li>
-<li>Special bounds `-inf` and `+inf` are also supported to retrieve an entire range</li>
+- If the given `key` is associated with non-time series data, an error is raised.
+- If the given `low_ts` or `high_ts` are not a valid signed 64 bit integers, an error is raised.
+- `low_ts` and `high_ts` are inclusive unless they are prefixed with `(`, in that case they are
+exclusive.
+- Special bounds `-inf` and `+inf` are also supported to retrieve an entire range
 
 ## Return value
 

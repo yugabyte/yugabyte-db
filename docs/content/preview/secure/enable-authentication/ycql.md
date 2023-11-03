@@ -33,7 +33,7 @@ type: docs
   </li>
 </ul>
 
-YCQL authentication is based on roles. Roles can be created with superuser, non-superuser and login privileges. New roles can be created, and existing ones altered or dropped by administrators using YCQL commands.
+YCQL authentication is based on roles. Roles can be created with superuser, non-superuser, and login privileges. New roles can be created, and existing ones altered or dropped by administrators using YCQL commands.
 
 ## Enable YCQL authentication
 
@@ -137,6 +137,43 @@ You should see the following output.
 (3 rows)
 ```
 
+#### Reset password for a superuser
+
+Superusers can alter the passwords of other users including the admin user. However, if you have lost or forgotten the password of the only superuser, you can reset the password. To do this, you need to set the [ycql_allow_non_authenticated_password_reset](../../../reference/configuration/yb-tserver/#ycql-allow-non-authenticated-password-reset) YB-TServer flag to true.
+To enable the password reset feature, you must first set the [`use_cassandra_authentication`](../../../reference/configuration/yb-tserver/#use-cassandra-authentication) flag to false.
+
+For example, to reset the password for the admin superuser created in [Create a superuser](#create-a-superuser), do the following:
+
+1. Set `use_cassandra_authentication` to `false` and `ycql_allow_non_authenticated_password_reset` to `true` as follows:
+
+    ```sh
+    ./bin/yb-tserver \
+      --tserver_master_addrs <master addresses> \
+      --use_cassandra_authentication=false \
+      --ycql_allow_non_authenticated_password_reset=true
+    ```
+
+1. Change the password using `ycqlsh` as follows:
+
+    ```cql
+    cassandra@ycqlsh> ALTER ROLE admin WITH PASSWORD = <updatedPassword>
+    ```
+
+1. Set `use_cassandra_authentication` to `true` and `ycql_allow_non_authenticated_password_reset` to `false` as follows:
+
+    ```sh
+    ./bin/yb-tserver \
+      --tserver_master_addrs <master addresses> \
+      --use_cassandra_authentication=true \
+      --ycql_allow_non_authenticated_password_reset=false
+    ```
+
+1. Log in to `ycqlsh` with the updated password as follows:
+
+    ```sh
+    ./bin/ycqlsh -u admin -p <updatedPassword>
+    ```
+
 ## Connect using non-default credentials
 
 You can connect to a YCQL cluster with authentication enabled as follows:
@@ -147,7 +184,7 @@ $ ./bin/ycqlsh -u <username> -p <password>
 
 Alternatively, you can omit the `-p <password>` above and you will be prompted for a password.
 
-As an example of connecting as a user, you can login with the credentials of the user `john` that you created above by running the following command and entering the password when prompted:
+As an example of connecting as a user, you can log in with the credentials of the user `john` that you created above by running the following command and entering the password when prompted:
 
 ```sh
 $ ./bin/ycqlsh -u john
@@ -215,7 +252,7 @@ cassandra@ycqlsh> ALTER ROLE john WITH SUPERUSER = false;
 
 ### Enable and disable login privileges
 
-In the example above, you can verify that `john` is can login to the database by doing the following:
+In the example above, you can verify that `john` can log in to the database by doing the following:
 
 ```cql
 cassandra@ycqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles WHERE role='john';
@@ -249,7 +286,7 @@ cassandra@ycqlsh> SELECT role, can_login, is_superuser, member_of FROM system_au
 (1 rows)
 ```
 
-Trying to login as `john` using `ycqlsh` will throw the following error.
+Trying to log in as `john` using `ycqlsh` will throw the following error.
 
 ```sh
 $ ./bin/ycqlsh -u john

@@ -31,6 +31,7 @@
 //
 #include "yb/server/generic_service.h"
 
+#include <ctype.h>
 #include <functional>
 #include <map>
 #include <mutex>
@@ -41,9 +42,7 @@
 
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
-#include <gflags/gflags.h>
-#include <gflags/gflags_declare.h>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/callback_forward.h"
@@ -51,10 +50,10 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/port.h"
+#include "yb/gutil/strings/split.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/server/clock.h"
 #include "yb/server/server_base.h"
-#include "yb/util/flag_tags.h"
 #include "yb/util/flags.h"
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/monotime.h"
@@ -63,9 +62,9 @@
 #include "yb/util/status_fwd.h"
 
 using std::string;
-using std::unordered_set;
 
 DECLARE_string(flagfile);
+DECLARE_string(vmodule);
 
 #ifdef COVERAGE_BUILD
 extern "C" void __gcov_flush(void);
@@ -86,52 +85,28 @@ GenericServiceImpl::~GenericServiceImpl() {
 void GenericServiceImpl::SetFlag(const SetFlagRequestPB* req,
                                  SetFlagResponsePB* resp,
                                  rpc::RpcContext rpc) {
+  using flags_internal::SetFlagForce;
+  using flags_internal::SetFlagResult;
+  LOG(INFO) << rpc.requestor_string() << " changing flag via RPC: " << req->flag();
+  const auto res = ::yb::flags_internal::SetFlag(
+      req->flag(), req->value(), SetFlagForce(req->force()), resp->mutable_old_value(),
+      resp->mutable_msg());
 
-  // Validate that the flag exists and get the current value.
-  string old_val;
-  if (!google::GetCommandLineOption(req->flag().c_str(),
-                                    &old_val)) {
-    resp->set_result(SetFlagResponsePB::NO_SUCH_FLAG);
-    rpc.RespondSuccess();
-    return;
-  }
-
-  // Validate that the flag is runtime-changeable.
-  unordered_set<FlagTag> tags;
-  GetFlagTags(req->flag(), &tags);
-  if (!ContainsKey(tags, FlagTag::kRuntime)) {
-    if (req->force()) {
-      LOG(WARNING) << rpc.requestor_string() << " forcing change of "
-                   << "non-runtime-safe flag " << req->flag();
-    } else {
+  switch (res) {
+    case SetFlagResult::SUCCESS:
+      resp->set_result(SetFlagResponsePB::SUCCESS);
+      break;
+    case SetFlagResult::NO_SUCH_FLAG:
+      resp->set_result(SetFlagResponsePB::NO_SUCH_FLAG);
+      break;
+    case SetFlagResult::BAD_VALUE:
+      resp->set_result(SetFlagResponsePB::BAD_VALUE);
+      break;
+    case SetFlagResult::NOT_SAFE:
       resp->set_result(SetFlagResponsePB::NOT_SAFE);
-      resp->set_msg("Flag is not safe to change at runtime");
-      rpc.RespondSuccess();
-      return;
-    }
-  }
-
-  resp->set_old_value(old_val);
-
-  // The gflags library sets new values of flags without synchronization.
-  // TODO: patch gflags to use proper synchronization.
-  ANNOTATE_IGNORE_WRITES_BEGIN();
-  // Try to set the new value.
-  string ret = google::SetCommandLineOption(
-      req->flag().c_str(),
-      req->value().c_str());
-  ANNOTATE_IGNORE_WRITES_END();
-
-  if (ret.empty()) {
-    resp->set_result(SetFlagResponsePB::BAD_VALUE);
-    resp->set_msg("Unable to set flag: bad value");
-  } else {
-    bool is_sensitive = ContainsKey(tags, FlagTag::kSensitive_info);
-    LOG(INFO) << rpc.requestor_string() << " changed flags via RPC: "
-              << req->flag() << " from '" << (is_sensitive ? "***" : old_val)
-              << "' to '" << (is_sensitive ? "***" : req->value()) << "'";
-    resp->set_result(SetFlagResponsePB::SUCCESS);
-    resp->set_msg(ret);
+      break;
+    default:
+      FATAL_INVALID_ENUM_VALUE(SetFlagResult, res);
   }
 
   rpc.RespondSuccess();

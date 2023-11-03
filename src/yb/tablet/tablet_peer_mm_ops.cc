@@ -37,7 +37,7 @@
 #include <mutex>
 #include <string>
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet.h"
@@ -50,7 +50,7 @@ METRIC_DEFINE_gauge_uint32(table, log_gc_running,
                            "Log GCs Running",
                            yb::MetricUnit::kOperations,
                            "Number of log GC operations currently running.");
-METRIC_DEFINE_coarse_histogram(table, log_gc_duration,
+METRIC_DEFINE_event_stats(table, log_gc_duration,
                         "Log GC Duration",
                         yb::MetricUnit::kMilliseconds,
                         "Time spent garbage collecting the logs.");
@@ -58,22 +58,20 @@ METRIC_DEFINE_coarse_histogram(table, log_gc_duration,
 namespace yb {
 namespace tablet {
 
-using std::map;
-using strings::Substitute;
-
 //
 // LogGCOp.
 //
 
-LogGCOp::LogGCOp(TabletPeer* tablet_peer)
+LogGCOp::LogGCOp(TabletPeer* tablet_peer, const TabletPtr& tablet)
     : MaintenanceOp(
-          StringPrintf("LogGCOp(%s)", tablet_peer->tablet()->tablet_id().c_str()),
+          StringPrintf("LogGCOp(%s)", tablet->tablet_id().c_str()),
           MaintenanceOp::LOW_IO_USAGE),
+      tablet_(tablet),
       tablet_peer_(tablet_peer),
       log_gc_duration_(
-          METRIC_log_gc_duration.Instantiate(tablet_peer->tablet()->GetTableMetricsEntity())),
+          METRIC_log_gc_duration.Instantiate(tablet->GetTableMetricsEntity())),
       log_gc_running_(
-          METRIC_log_gc_running.Instantiate(tablet_peer->tablet()->GetTableMetricsEntity(), 0)),
+          METRIC_log_gc_running.Instantiate(tablet->GetTableMetricsEntity(), 0)),
       sem_(1) {}
 
 void LogGCOp::UpdateStats(MaintenanceOpStats* stats) {
@@ -106,7 +104,7 @@ void LogGCOp::Perform() {
   sem_.unlock();
 }
 
-scoped_refptr<Histogram> LogGCOp::DurationHistogram() const {
+scoped_refptr<EventStats> LogGCOp::DurationHistogram() const {
   return log_gc_duration_;
 }
 

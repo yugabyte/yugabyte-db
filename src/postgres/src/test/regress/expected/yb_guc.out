@@ -24,6 +24,40 @@ set yb_transaction_priority_upper_bound = 0.3;
 set yb_transaction_priority_upper_bound = 0.6;
 set yb_transaction_priority_lower_bound = 0.4;
 set yb_transaction_priority_lower_bound = 0.6;
+-- Test yb_fetch_row_limit
+set yb_fetch_row_limit = 100;
+show yb_fetch_row_limit;
+ yb_fetch_row_limit
+--------------------
+ 100
+(1 row)
+
+set yb_fetch_row_limit = -1;  -- ERROR since yb_fetch_row_limit must be non-negative.
+ERROR:  -1 is outside the valid range for parameter "yb_fetch_row_limit" (0 .. 2147483647)
+-- Test yb_fetch_size_limit
+set yb_fetch_size_limit = '2MB';
+show yb_fetch_size_limit;
+ yb_fetch_size_limit
+---------------------
+ 2MB
+(1 row)
+
+set yb_fetch_size_limit = 789;
+show yb_fetch_size_limit;
+ yb_fetch_size_limit
+---------------------
+ 789B
+(1 row)
+
+set yb_fetch_size_limit = 2048;
+show yb_fetch_size_limit;
+ yb_fetch_size_limit
+---------------------
+ 2kB
+(1 row)
+
+set yb_fetch_size_limit = -1;  -- ERROR since yb_fetch_size_limit must be non-negative.
+ERROR:  -1 is outside the valid range for parameter "yb_fetch_size_limit" (0 .. 2147483647)
 -- Check enable_seqscan, enable_indexscan, enable_indexonlyscan for YB scans.
 CREATE TABLE test_scan (i int, j int);
 CREATE INDEX NONCONCURRENTLY ON test_scan (j);
@@ -63,7 +97,7 @@ EXPLAIN SELECT * FROM test_scan WHERE j = 1;
                           QUERY PLAN
 --------------------------------------------------------------
  Seq Scan on test_scan  (cost=0.00..102.50 rows=1000 width=8)
-   Filter: (j = 1)
+   Remote Filter: (j = 1)
 (2 rows)
 
 EXPLAIN SELECT j FROM test_scan;

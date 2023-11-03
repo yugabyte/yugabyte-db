@@ -1,7 +1,7 @@
 ---
 title: Aggregations in YugabyteDB YSQL
 headerTitle: Aggregations
-linkTitle: 5. Aggregations
+linkTitle: Aggregations
 description: Learn how YugabyteDB YSQL supports standard aggregation functions.
 aliases:
   - /develop/learn/aggregations/
@@ -12,24 +12,10 @@ menu:
     parent: learn
     weight: 567
 type: docs
+private: true
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
 
-  <li >
-    <a href="../aggregations-ysql/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
+<!-- Page DISABLED for lack of content -->
 
-  <li >
-    <a href="../aggregations-ycql/" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-
-</ul>
-
-YSQL content coming soon.
+{{<api-tabs>}}

@@ -42,8 +42,7 @@
 // limitations under the License.
 
 
-#ifndef YB_UTIL_BIT_STREAM_UTILS_INLINE_H
-#define YB_UTIL_BIT_STREAM_UTILS_INLINE_H
+#pragma once
 
 #include <algorithm>
 
@@ -233,5 +232,3 @@ inline bool BitReader::GetVlqInt(int32_t* v) {
 }
 
 } // namespace yb
-
-#endif // YB_UTIL_BIT_STREAM_UTILS_INLINE_H

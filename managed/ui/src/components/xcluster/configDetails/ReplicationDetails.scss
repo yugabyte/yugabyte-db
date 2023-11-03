@@ -1,4 +1,4 @@
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
 
 .replication-details {
   .content-title {
@@ -13,7 +13,7 @@
   }
   .graph-container {
     .plot-container.plotly {
-      background: $YB_BG_WHITE_3;
+      background: colors.$YB_BG_WHITE_3;
     }
   }
   .replication-label {
@@ -36,6 +36,11 @@
     .replication-actions {
       .more-actions-button {
         margin-left: 10px;
+        .xCluster-dropdown-button {
+          i {
+            margin: 0 4px 0 0;
+          }
+        }
       }
 
       .replication-status-button {
@@ -43,12 +48,32 @@
       }
     }
 
+    .replication-info-banners-container {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+
+      margin: 30px 0 20px;
+      .replication-info-banner-content {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 10px;
+
+        width: 100%;
+
+        .restart-replication-button {
+          margin-left: auto;
+        }
+      }
+    }
+
     .replication-status {
-      background: $YB_WHITE;
+      background: colors.$YB_WHITE;
       padding: 12px;
       border: 1px solid #dde1e6;
       border-radius: 8px;
-      margin-top: 30px;
+      margin-top: 20px;
       display: flex;
       align-items: center;
     }
@@ -63,7 +88,7 @@
       .replication-target-universe {
         margin-left: 35px;
         padding: 20px 5px;
-        background: $YB_WHITE;
+        background: colors.$YB_WHITE;
         border: 1px solid #e8e8e8;
       }
     }
@@ -79,7 +104,7 @@
       }
       .lag-stats {
         min-width: 300px;
-        margin-right: 30px;
+        margin-right: 60px;
       }
     }
   }
@@ -112,6 +137,17 @@
   .details-actions-button {
     display: flex;
     justify-content: flex-end;
+  }
+}
+
+.xCluster-details-error-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+
+  padding: 8px;
+  .delete-config-button {
+    margin-top: 24px;
   }
 }
 

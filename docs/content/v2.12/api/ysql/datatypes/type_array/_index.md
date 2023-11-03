@@ -9,15 +9,8 @@ menu:
     identifier: api-ysql-datatypes-array
     parent: api-ysql-datatypes
 type: indexpage
+showRightNav: true
 ---
-**On this page**<br>
-&#160;&#160;&#160;&#160;[Synopsis](./#synopsis)<br>
-&#160;&#160;&#160;&#160;[Atomically null vs having all values null](./#atomically-null-vs-having-all-values-null)<br>
-&#160;&#160;&#160;&#160;[Type construction](./#type-construction)<br>
-&#160;&#160;&#160;&#160;[Informal sketch of array functionality](./#informal-sketch-of-array-functionality)<br>
-&#160;&#160;&#160;&#160;[Uses of arrays](./#uses-of-arrays)<br>
-&#160;&#160;&#160;&#160;[Example use case: GPS trip data](./#example-use-case-gps-trip-data)<br>
-&#160;&#160;&#160;&#160;[Organization of the remaining array functionality content](./#organization-of-the-remaining-array-functionality-content)
 
 ## Synopsis
 

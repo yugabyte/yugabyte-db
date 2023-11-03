@@ -11,13 +11,13 @@
 // under the License.
 //
 
-#ifndef YB_RPC_CONNECTION_CONTEXT_H
-#define YB_RPC_CONNECTION_CONTEXT_H
+#pragma once
 
 #include <ev++.h>
 
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/rpc_introspection.pb.h"
+#include "yb/rpc/reactor_thread_role.h"
 
 #include "yb/util/net/socket.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -47,29 +47,32 @@ class ConnectionContext {
   // Split data into separate calls and invoke them.
   // Returns number of processed bytes.
   virtual Result<ProcessCallsResult> ProcessCalls(
-      const ConnectionPtr& connection, const IoVecs& data, ReadBufferFull read_buffer_full) = 0;
+      const ConnectionPtr& connection, const IoVecs& data, ReadBufferFull read_buffer_full)
+      ON_REACTOR_THREAD = 0;
 
   // Dump information about status of this connection context to protobuf.
-  virtual void DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) = 0;
+  virtual void DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp)
+      ON_REACTOR_THREAD = 0;
 
   // Checks whether this connection context is idle.
   // If reason is supplied, then human-readable description of why the context is not idle is
   // appended to it.
-  virtual bool Idle(std::string* reason_not_idle = nullptr) = 0;
+  virtual bool Idle(std::string* reason_not_idle = nullptr) ON_REACTOR_THREAD = 0;
 
-  // Listen for when context becomes idle.
+  // Listen for when context becomes idle. The provided callback will be called from the
+  // CallProcessed method of the appropriate connection context.
   virtual void ListenIdle(IdleListener listener) = 0;
 
   // Shutdown this context.
-  virtual void Shutdown(const Status& status) = 0;
+  virtual void Shutdown(const Status& status) ON_REACTOR_THREAD = 0;
 
-  virtual void QueueResponse(const ConnectionPtr& connection, InboundCallPtr call) = 0;
+  virtual Status QueueResponse(const ConnectionPtr& connection, InboundCallPtr call) = 0;
 
   virtual void SetEventLoop(ev::loop_ref* loop) {}
 
-  virtual void AssignConnection(const ConnectionPtr& connection) {}
+  virtual Status AssignConnection(const ConnectionPtr& connection) { return Status::OK(); }
 
-  virtual void Connected(const ConnectionPtr& connection) = 0;
+  virtual Status Connected(const ConnectionPtr& connection) = 0;
 
   virtual uint64_t ProcessedCallCount() = 0;
 
@@ -136,5 +139,3 @@ std::shared_ptr<ConnectionContextFactory> CreateConnectionContextFactory(Args&&.
 
 } // namespace rpc
 } // namespace yb
-
-#endif // YB_RPC_CONNECTION_CONTEXT_H

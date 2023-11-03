@@ -29,6 +29,8 @@
 
 #include "yb/util/status.h"
 
+using std::string;
+
 namespace yb {
 namespace master {
 

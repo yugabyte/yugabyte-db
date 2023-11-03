@@ -35,8 +35,7 @@
 #include <limits>
 #include <memory>
 
-#include <gflags/gflags.h>
-#include <glog/logging.h>
+#include "yb/util/flags.h"
 
 #include "yb/gutil/callback.h"
 #include "yb/gutil/macros.h"
@@ -56,6 +55,7 @@ namespace yb {
 
 using strings::Substitute;
 using std::unique_ptr;
+using std::deque;
 
 
 ThreadPoolMetrics::~ThreadPoolMetrics() = default;
@@ -515,11 +515,11 @@ Status ThreadPool::DoSubmit(const std::shared_ptr<Runnable> task, ThreadPoolToke
   guard.Unlock();
   not_empty_.Signal();
 
-  if (metrics_.queue_length_histogram) {
-    metrics_.queue_length_histogram->Increment(length_at_submit);
+  if (metrics_.queue_length_stats) {
+    metrics_.queue_length_stats->Increment(length_at_submit);
   }
-  if (token->metrics_.queue_length_histogram) {
-    token->metrics_.queue_length_histogram->Increment(length_at_submit);
+  if (token->metrics_.queue_length_stats) {
+    token->metrics_.queue_length_stats->Increment(length_at_submit);
   }
 
   return Status::OK();
@@ -598,11 +598,11 @@ void ThreadPool::DispatchThread(bool permanent) {
     // Update metrics
     MonoTime now(MonoTime::Now());
     int64_t queue_time_us = (now - task.submit_time).ToMicroseconds();
-    if (metrics_.queue_time_us_histogram) {
-      metrics_.queue_time_us_histogram->Increment(queue_time_us);
+    if (metrics_.queue_time_us_stats) {
+      metrics_.queue_time_us_stats->Increment(queue_time_us);
     }
-    if (token->metrics_.queue_time_us_histogram) {
-      token->metrics_.queue_time_us_histogram->Increment(queue_time_us);
+    if (token->metrics_.queue_time_us_stats) {
+      token->metrics_.queue_time_us_stats->Increment(queue_time_us);
     }
 
     // Execute the task
@@ -611,11 +611,11 @@ void ThreadPool::DispatchThread(bool permanent) {
       task.runnable->Run();
       int64_t wall_us = GetMonoTimeMicros() - start_wall_us;
 
-      if (metrics_.run_time_us_histogram) {
-        metrics_.run_time_us_histogram->Increment(wall_us);
+      if (metrics_.run_time_us_stats) {
+        metrics_.run_time_us_stats->Increment(wall_us);
       }
-      if (token->metrics_.run_time_us_histogram) {
-        token->metrics_.run_time_us_histogram->Increment(wall_us);
+      if (token->metrics_.run_time_us_stats) {
+        token->metrics_.run_time_us_stats->Increment(wall_us);
       }
     }
     // Destruct the task while we do not hold the lock.
@@ -711,7 +711,7 @@ void TaskRunner::CompleteTask(const Status& status) {
     }
   }
   if (--running_tasks_ == 0) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     cond_.notify_one();
   }
 }

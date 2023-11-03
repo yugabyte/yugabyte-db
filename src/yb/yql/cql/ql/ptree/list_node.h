@@ -20,8 +20,7 @@
 // which is verified during Analyze step.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_LIST_NODE_H_
-#define YB_YQL_CQL_QL_PTREE_LIST_NODE_H_
+#pragma once
 
 #include "yb/util/math_util.h"
 #include "yb/util/memory/arena.h"
@@ -110,10 +109,10 @@ class TreeListNode : public TreeNode {
   // Apply an operator on each node in the list.
   template<typename ContextType, typename DerivedType = NodeType>
   Status Apply(ContextType *context,
-                       TreeNodePtrOperator<ContextType, DerivedType> node_op,
-                       int max_nested_level = 0,
-                       int max_nested_count = 0,
-                       TreeNodePtrOperator<ContextType, DerivedType> nested_node_op = nullptr) {
+               TreeNodePtrOperator<ContextType, DerivedType> node_op,
+               int max_nested_level = 0,
+               int max_nested_count = 0,
+               TreeNodePtrOperator<ContextType, DerivedType> nested_node_op = nullptr) {
 
     int nested_level = 0;
     int nested_count = 0;
@@ -186,5 +185,3 @@ class PTListNode : public TreeListNode<> {
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_PTREE_LIST_NODE_H_

@@ -1,130 +1,175 @@
 {{ $anchorLink := "" }}
-{{ $activeMenu := "/" }}
 {{ $docDir := "" }}
 {{ $versionDir := "" }}
 
-{{ if .File.Dir }}
+{{- if (and .File .File.Dir) -}}
   {{ $versionDir = index (split .File.Dir "/") 0 }}
   {{ $docDir = index (split .File.Dir "/") 1 }}
-{{ end }}
+{{- end -}}
 
-{{ if eq $versionDir "" }}
+{{ $leftNavName := "home" }}
+{{- if $versionDir -}}
+  {{ $leftNavName = $versionDir }}
+  {{- if $docDir -}}
+    {{ $leftNavName = printf "%s_%s" $versionDir $docDir }}
+  {{- end -}}
+{{- end -}}
+
+{{- if eq $versionDir "" -}}
   {{ $versionDir = .Site.Params.yb.preview_version_slug }}
-{{ end }}
-
-{{ $leftNavName := $versionDir }}
-{{ if $docDir }}
-  {{ $leftNavName = printf "%s_%s" $versionDir $docDir }}
-{{ end }}
+{{- end -}}
 
 {{ $.Scratch.Set "docVersion" $versionDir }}
 {{ $.Scratch.Set "leftNavName" $leftNavName }}
-{{ range .Site.Menus.main.ByWeight.Reverse }}
-  {{ if in .URL $docDir }}
-    {{ $activeMenu = .URL }}
-  {{ end }}
-{{ end }}
+
+{{ $startNow := "" }}
+{{- if .Site.Menus.start_now -}}
+  {{ $startNow = .Site.Menus.start_now }}
+{{- end -}}
 
 <nav id="nav_bar" class="js-navbar-scroll navbar navbar-expand navbar-dark flex-column td-navbar">
   <div class="container-fluid top-nav">
-    {{ if .Site.Params.ui.navbar_logo }}
-      {{ if .Site.Params.yb.navbar_logo.url }}
+    {{- if .Site.Params.ui.navbar_logo -}}
+      {{- if .Site.Params.yb.navbar_logo.url -}}
         <a class="navbar-brand" href="{{ .Site.Params.yb.navbar_logo.url }}"{{- if .Site.Params.yb.navbar_logo.title }} title="{{ .Site.Params.yb.navbar_logo.title }}"{{- end }}{{- if .Site.Params.yb.navbar_logo.newTab }} target="_blank" rel="noopener"{{- end }}>
-      {{ end}}
-
-      <span class="navbar-logo">{{ with resources.Get "icons/logo.svg" }}{{ ( . | minify).Content | safeHTML }}{{ end }}</span>
-      <span class="font-weight-bold">{{ .Site.Title }}</span>
-
-      {{ if .Site.Params.yb.navbar_logo.url }}
+      {{- end -}}
+      <span class="navbar-logo">
+        <img src="{{ .Site.Params.yb.navbar_logo.path }}" alt="YugabyteDB" title="YugabyteDB" width="181" height="30">
+      </span>
+      {{- if .Site.Params.yb.navbar_logo.url -}}
         </a>
-      {{ end}}
-    {{ end}}
+      {{- end -}}
+    {{- end -}}
+
+    <div class="navbar-nav search-container-wrap">
+			<form action="/search" method="GET" id="search-form">
+				{{- partial "search-input.html" . -}}
+			</form>
+		</div>
+
     <div class="td-navbar-nav-scroll ml-md-auto" id="main_navbar">
-      <ul class="navbar-nav mt-2 mt-lg-0">
-        {{ range .Site.Menus.top_nav }}
-          <li class="nav-item mr-4 mb-2 mb-lg-0">
-            <a class="nav-link{{- if .Params.classes }} {{ .Params.classes }}{{- end }}" href="{{ .URL }}" title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}><span>{{ .Name }}</span>{{ .Post }}</a>
+      <ul class="navbar-nav right-nav">
+        {{- range .Site.Menus.top_nav -}}
+          <li class="nav-item">
+            <a {{- if .Params.classes }} class="{{ .Params.classes }}"{{ end }} {{- if .URL }} href="{{ .URL }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}{{- else }} role="button"{{- end }} title="{{ .Name }}">
+              <span>{{ .Name }}</span>
+              {{ .Post }}
+            </a>
+
+            {{- if and (eq .Identifier "start_now") ($startNow) -}}
+              <ul class="header-submenu">
+                {{- range $startNow -}}
+                  <li>
+                    <a href="{{ .URL }}" title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>
+                      {{- if .Params.imageUrl -}}
+                      <div class="icon">
+                        <img src="{{ .Params.imageUrl }}" alt="{{ .Name }}" title="{{ .Name }}">
+                      </div>
+                      {{- end -}}
+                      <div class="title">
+                        <span>{{ .Name }}</span>
+                        {{- if .Params.description -}}
+                          <span class="desc">{{ .Params.description }}</span>
+                        {{- end -}}
+                        {{- if .Params.tagLine -}}
+                          <span class="tag-line">{{ .Params.tagLine }}</span>
+                        {{- end -}}
+                        <span {{- if .Params.classes }} class="{{ .Params.classes }}" {{ end }}>{{ .Params.buttonText }}</span>
+                      </div>
+                    </a>
+                  </li>
+                {{- end -}}
+              </ul>
+            {{- end -}}
           </li>
-        {{ end }}
+        {{- end -}}
       </ul>
 
-      <div class="activity-timeline">
-        <div class="switcher"></div>
-        <script>
-          !function(){let b=document.querySelector("html"),a=function(f){let c=`${f}=`,g=decodeURIComponent(document.cookie),d=g.split(";"),h=d.length,a="",b=0,e="";for(;b<h;){for(a=d[b];a.charAt(0);)if(" "===a.charAt(0))a=a.substring(1);else break;if(0===a.indexOf(c)){e=a.substring(c.length,a.length);break}b+=1}return e}("yb_docs_theme_color");if(b&&a){let d=b.getAttribute("data-theme"),c=document.querySelector(".switcher");d!==a&&(b.setAttribute("data-theme",a),c&&"orange"===a&&c.classList.toggle("change"))}}()
-        </script>
-      </div>
 	  	<div class="mobile-search desktop-hide fas fa-search search-icon"></div>
       <div class="mobile-menu desktop-hide"></div>
     </div>
   </div>
 
   <div class="page-header sticky container-fluid">
-    <button id="controls-header-menu" class="header-menu-mobile hidden-md-up" type="button">
-      <span class="header-menu-text">Documentation</span>
-    </button>
-
     <ul class="header-menu ds-flex hide-mobile" id="header-menu-list">
-      {{ range .Site.Menus.main.ByWeight }}
+      {{- range .Site.Menus.main.ByWeight -}}
         {{ $anchorLink = "" }}
-        {{ if eq .URL "/" }}
+        {{- if eq .URL "/" -}}
           {{ $anchorLink = "/" }}
-        {{ else }}
-          {{ if or (in .URL "https://") (in .URL "http://") (.Params.excludeVersion) }}
-            {{ $anchorLink = .URL }}
-          {{ else }}
+          {{- if not .Params.excludeVersion }}
             {{ $anchorLink = printf "/%s%s" $versionDir .URL }}
-          {{ end }}
-        {{ end }}
+          {{- end -}}
+        {{- else -}}
+          {{- if or (in .URL "https://") (in .URL "http://") (.Params.excludeVersion) -}}
+            {{ $anchorLink = .URL }}
+          {{- else -}}
+            {{ $anchorLink = printf "/%s%s" $versionDir .URL }}
+          {{- end -}}
+        {{- end -}}
 
-        <li class="header-link{{- if eq $activeMenu .URL }} active{{- end }}{{ if .HasChildren }} dropdown{{- end }}">
-          <a class="hover-label"{{ if ne $anchorLink "" }} href="{{ $anchorLink }}"{{ else }} role="button"{{- end }} title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>
-            {{ if .Pre }}
-              {{ $menuIcon := printf "icons/nav-bar/%s.svg" .Pre }}
-              {{ with resources.Get $menuIcon }}
-                {{ ( . | minify).Content | safeHTML }}
-              {{ end }}
-            {{ end }}
+        <li class="header-link{{- if .HasChildren }} dropdown{{- end }}">
+          <a class="hover-label" {{- if ne $anchorLink "" }} href="{{ $anchorLink }}" {{- if .Params.newTab }} target="_blank" rel="noopener"{{ end }}{{- else }} role="button"{{- end }} title="{{ .Name }}">
             <span class="header-menu-text">{{ .Name }}</span>
           </a>
 
-          {{ if .HasChildren }}
-            {{ template "child-nav-section" (dict "childNav" .Children "versionDir" $versionDir) }}
-          {{ end }}
+          {{- if .HasChildren -}}
+            {{- template "child-nav-section" (dict "childNav" .Children "versionDir" $versionDir) -}}
+          {{- end -}}
         </li>
-      {{ end }}
+      {{- end -}}
     </ul>
-    <div class="navbar-nav d-none d-lg-block search-container-wrap">
-			<form action="/search" method="GET" id="search-form">
-				{{ partial "search-input.html" . }}
-			</form>
-		</div>
+    {{- if and .Site.Params.versions (not .Params.unversioned) -}}
+      <div class="header-version-dropdown dropdown-list">
+        <ul class="mt-2 mt-lg-0">
+          <li class="nav-item dropdown d-none d-lg-block">
+            {{- partial "navbar-version-selector.html" . -}}
+          </li>
+        </ul>
+      </div>
+    {{- end -}}
   </div>
 </nav>
 
-{{ define "child-nav-section" -}}
+{{- define "child-nav-section" -}}
   {{ $childNav := .childNav }}
   {{ $versionDir := .versionDir }}
   <ul class="header-submenu">
-    {{ range $childNav }}
+    {{- range $childNav -}}
       {{ $anchorLink := "" }}
-      {{ if eq .URL "/" }}
+      {{- if eq .URL "/" -}}
         {{ $anchorLink = "/" }}
-      {{ else }}
-        {{ if or (in .URL "https://") (in .URL "http://") (.Params.excludeVersion) }}
-          {{ $anchorLink = .URL }}
-        {{ else }}
+        {{- if not .Params.excludeVersion -}}
           {{ $anchorLink = printf "/%s%s" $versionDir .URL }}
-        {{ end }}
-      {{ end }}
+        {{- end -}}
+      {{- else -}}
+        {{- if or (in .URL "https://") (in .URL "http://") (.Params.excludeVersion) -}}
+          {{ $anchorLink = .URL }}
+        {{- else -}}
+          {{ $anchorLink = printf "/%s%s" $versionDir .URL }}
+        {{- end -}}
+      {{- end -}}
 
-      <li{{ if .HasChildren }} class="parent-menu"{{- end }}>
-        <a{{ if ne $anchorLink "" }} href="{{ $anchorLink }}"{{ else }} role="button"{{- end }} title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>{{ .Name }}</a>
+      <li{{- if .Params.classes }} class="{{ .Params.classes }}"{{- end }}>
+        {{- if ne $anchorLink "" -}}
+          <a href="{{ $anchorLink }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }} title="{{ .Name }}">
 
-        {{ if .HasChildren }}
-          {{ template "child-nav-section" (dict "childNav" .Children "versionDir" $versionDir ) }}
-        {{ end }}
+            {{- if .Params.imageUrl -}}
+              <div class="icon">
+                <img src="{{ .Params.imageUrl }}" alt="{{ .Name }}" title="{{ .Name }}" width="24" height="24">
+              </div>
+            {{- end -}}
+
+            <div class="title">
+              <span>{{ .Name }}</span>
+              {{- if .Params.description -}}
+                <span class="desc">{{ .Params.description }}</span>
+              {{- end -}}
+            </div>
+          </a>
+        {{- else -}}
+          <span>{{ .Name }}</span>
+        {{- end -}}
       </li>
-    {{ end }}
+    {{- end -}}
   </ul>
-{{ end }}
+{{- end -}}

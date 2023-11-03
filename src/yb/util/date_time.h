@@ -19,8 +19,7 @@
 //--------------------------------------------------------------------------------------------------
 
 
-#ifndef YB_UTIL_DATE_TIME_H_
-#define YB_UTIL_DATE_TIME_H_
+#pragma once
 
 #include <regex>
 
@@ -55,17 +54,19 @@ class DateTime {
   static const OutputFormat HumanReadableOutputFormat;
 
   //----------------------------------------------------------------------------------------------
-  static Result<Timestamp> TimestampFromString(const std::string& str,
+  static Result<Timestamp> TimestampFromString(const std::string_view& str,
                                                const InputFormat& input_format = CqlInputFormat);
   static Timestamp TimestampFromInt(int64_t val, const InputFormat& input_format = CqlInputFormat);
   static std::string TimestampToString(Timestamp timestamp,
                                        const OutputFormat& output_format = CqlOutputFormat);
   static Timestamp TimestampNow();
 
+  static std::string SystemTimezone();
+
   //----------------------------------------------------------------------------------------------
   // Date represented as the number of days in uint32_t with the epoch (1970-01-01) at the center of
   // the range (2^31). Min and max possible dates are "-5877641-06-23" and "5881580-07-11".
-  static Result<uint32_t> DateFromString(const std::string& str);
+  static Result<uint32_t> DateFromString(const std::string_view& str);
   static Result<uint32_t> DateFromTimestamp(Timestamp timestamp);
   static Result<uint32_t> DateFromUnixTimestamp(int64_t unix_timestamp);
   static Result<std::string> DateToString(uint32_t date);
@@ -78,7 +79,7 @@ class DateTime {
   static constexpr int64_t kMinTime = 0;
   static constexpr int64_t kMaxTime = 24 * 60 * 60 * 1000000000L - 1; // 23:59:59.999999999
 
-  static Result<int64_t> TimeFromString(const std::string& str);
+  static Result<int64_t> TimeFromString(const std::string_view& str);
   static Result<std::string> TimeToString(int64_t time);
   static int64_t TimeNow();
 
@@ -86,7 +87,7 @@ class DateTime {
   // Interval represents a relative span of time, in microseconds.
   // This is normally utilized relative to the current HybridTime.
 
-  static Result<MonoDelta> IntervalFromString(const std::string& str);
+  static Result<MonoDelta> IntervalFromString(const std::string_view& str);
 
   //----------------------------------------------------------------------------------------------
   static int64_t AdjustPrecision(int64_t val, size_t input_precision, size_t output_precision);
@@ -95,5 +96,3 @@ class DateTime {
 };
 
 } // namespace yb
-
-#endif // YB_UTIL_DATE_TIME_H_

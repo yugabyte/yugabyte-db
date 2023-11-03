@@ -16,8 +16,9 @@
 #include "yb/docdb/shared_lock_manager.h"
 
 #include "yb/util/status_format.h"
+#include "yb/util/flags.h"
 
-DEFINE_bool(dump_lock_keys, true,
+DEFINE_UNKNOWN_bool(dump_lock_keys, true,
             "Whether to add keys to error message when lock batch timed out");
 
 namespace yb {
@@ -79,10 +80,17 @@ LockBatch UnlockedBatch::Lock(CoarseTimePoint deadline) && {
   return LockBatch(shared_lock_manager_, std::move(key_to_type_), deadline);
 }
 
-UnlockedBatch LockBatch::Unlock() {
+std::optional<UnlockedBatch> LockBatch::Unlock() {
   DCHECK(!empty());
   DoUnlock();
-  return UnlockedBatch(std::move(data_.key_to_type), data_.shared_lock_manager);
+  return std::make_optional<UnlockedBatch>(std::move(data_.key_to_type), data_.shared_lock_manager);
+}
+
+void UnlockedBatch::MoveFrom(UnlockedBatch* other) {
+  key_to_type_ = std::move(other->key_to_type_);
+  other->key_to_type_.clear();
+  shared_lock_manager_ = other->shared_lock_manager_;
+  other->shared_lock_manager_ = nullptr;
 }
 
 }  // namespace docdb

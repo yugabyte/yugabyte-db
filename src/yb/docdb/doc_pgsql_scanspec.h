@@ -11,34 +11,40 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOC_PGSQL_SCANSPEC_H
-#define YB_DOCDB_DOC_PGSQL_SCANSPEC_H
+#pragma once
 
 #include <functional>
+#include <memory>
+#include <optional>
+#include <vector>
 
-#include "yb/common/ql_scanspec.h"
+#include "yb/qlexpr/ql_scanspec.h"
 
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/key_bytes.h"
+#include "yb/dockv/key_bytes.h"
 
 #include "yb/rocksdb/options.h"
 
-namespace yb {
-namespace docdb {
+#include "yb/util/result.h"
+
+namespace yb::docdb {
+
+YB_STRONGLY_TYPED_BOOL(AddHighestToUpperDocKey);
 
 // DocDB variant of scanspec.
-class DocPgsqlScanSpec : public PgsqlScanSpec {
+class DocPgsqlScanSpec : public qlexpr::PgsqlScanSpec {
  public:
 
   // Scan for the specified doc_key.
   DocPgsqlScanSpec(const Schema& schema,
                    const rocksdb::QueryId query_id,
-                   const DocKey& doc_key,
-                   const boost::optional<int32_t> hash_code = boost::none,
-                   const boost::optional<int32_t> max_hash_code = boost::none,
-                   const DocKey& start_doc_key = DefaultStartDocKey(),
-                   bool is_forward_scan = true);
+                   const dockv::DocKey& doc_key,
+                   const std::optional<int32_t> hash_code = std::nullopt,
+                   const std::optional<int32_t> max_hash_code = std::nullopt,
+                   const dockv::DocKey& start_doc_key = DefaultStartDocKey(),
+                   bool is_forward_scan = true,
+                   const size_t prefix_length = 0);
 
   // Scan for the given hash key, a condition, and optional doc_key.
   //
@@ -48,122 +54,80 @@ class DocPgsqlScanSpec : public PgsqlScanSpec {
   // DocPgsqlScanSpec spec(...{} /* hashed_components */, {} /* range_components */...);
   DocPgsqlScanSpec(const Schema& schema,
                    const rocksdb::QueryId query_id,
-                   std::reference_wrapper<const std::vector<KeyEntryValue>> hashed_components,
-                   std::reference_wrapper<const std::vector<KeyEntryValue>> range_components,
+                   std::reference_wrapper<const dockv::KeyEntryValues> hashed_components,
+                   std::reference_wrapper<const dockv::KeyEntryValues> range_components,
                    const PgsqlConditionPB* condition,
-                   boost::optional<int32_t> hash_code,
-                   boost::optional<int32_t> max_hash_code,
-                   const PgsqlExpressionPB *where_expr,
-                   const DocKey& start_doc_key = DefaultStartDocKey(),
+                   std::optional<int32_t> hash_code,
+                   std::optional<int32_t> max_hash_code,
+                   const dockv::DocKey& start_doc_key = DefaultStartDocKey(),
                    bool is_forward_scan = true,
-                   const DocKey& lower_doc_key = DefaultStartDocKey(),
-                   const DocKey& upper_doc_key = DefaultStartDocKey());
-
-  //------------------------------------------------------------------------------------------------
-  // Access funtions.
-  const rocksdb::QueryId QueryId() const {
-    return query_id_;
-  }
-
-  bool is_forward_scan() const {
-    return is_forward_scan_;
-  }
-
-  //------------------------------------------------------------------------------------------------
-  // Filters.
-  std::shared_ptr<rocksdb::ReadFileFilter> CreateFileFilter() const;
-
-  // Return the inclusive lower and upper bounds of the scan.
-  Result<KeyBytes> LowerBound() const;
-  Result<KeyBytes> UpperBound() const;
+                   const dockv::DocKey& lower_doc_key = DefaultStartDocKey(),
+                   const dockv::DocKey& upper_doc_key = DefaultStartDocKey(),
+                   const size_t prefix_length = 0,
+                   AddHighestToUpperDocKey add_highest_to_upper_doc_key =
+                       AddHighestToUpperDocKey::kFalse);
 
   // Returns the lower/upper range components of the key.
-  std::vector<KeyEntryValue> range_components(const bool lower_bound,
-                                              std::vector<bool> *inclusivities = nullptr,
-                                              bool use_strictness = true) const;
+  dockv::KeyEntryValues RangeComponents(
+      bool lower_bound,
+      std::vector<bool>* inclusivities = nullptr) const override;
 
-  const QLScanRange* range_bounds() const {
-    return range_bounds_.get();
+  const std::shared_ptr<std::vector<qlexpr::OptionList>>& options() const override {
+    return options_;
   }
 
-  const std::shared_ptr<std::vector<OptionList>>& range_options() const { return range_options_; }
+  const std::vector<ColumnId>& options_indexes() const override { return options_col_ids_; }
 
-  const std::vector<ColumnId> range_options_indexes() const {
-    return range_options_indexes_;
-  }
-
-  const std::vector<ColumnId> range_bounds_indexes() const {
-    return range_bounds_indexes_;
-  }
-
-  const std::vector<size_t> range_options_num_cols() const {
-    return range_options_num_cols_;
-  }
+  const ColGroupHolder& options_groups() const override { return options_groups_; }
 
  private:
-  static const DocKey& DefaultStartDocKey();
+  static const dockv::DocKey& DefaultStartDocKey();
 
-  // Return inclusive lower/upper range doc key considering the start_doc_key.
-  Result<KeyBytes> Bound(const bool lower_bound) const;
+  dockv::KeyEntryValues DoRangeComponents(
+      bool lower_bound,
+      std::vector<bool>* inclusivities = nullptr,
+      bool* trivial = nullptr) const;
+
+  void CompleteBounds();
 
   // Returns the lower/upper doc key based on the range components.
-  KeyBytes bound_key(const Schema& schema, const bool lower_bound) const;
+  qlexpr::ScanBounds CalculateBounds(const Schema& schema) const;
 
-  // The scan range within the hash key when a WHERE condition is specified.
-  const std::unique_ptr<const QLScanRange> range_bounds_;
+  // Initialize options_ if range columns have one or more options (i.e. using EQ/IN
+  // conditions). Otherwise options_ will stay null and we will only use the range_bounds for
+  // scanning.
+  void InitOptions(const PgsqlConditionPB& condition);
 
-  // Ids of columns that have range bounds such as c2 < 4 AND c2 >= 1.
-  std::vector<ColumnId> range_bounds_indexes_;
+  // The range/hash value options if set (possibly more than one due to IN conditions).
+  std::shared_ptr<std::vector<qlexpr::OptionList>> options_;
 
-  // Initialize range_options_ if hashed_components_ in set and all range columns have one or more
-  // options (i.e. using EQ/IN conditions). Otherwise range_options_ will stay null and we will
-  // only use the range_bounds for scanning.
-  void InitRangeOptions(const PgsqlConditionPB& condition);
-
-  // The range value options if set. (possibly more than one due to IN conditions).
-  std::shared_ptr<std::vector<OptionList>> range_options_;
-
-  // Ids of columns that have range option filters such as c2 IN (1, 5, 6, 9).
-  std::vector<ColumnId> range_options_indexes_;
-
-  // Stores the number of columns involved in a range option filter.
-  // For filter: A in (..) AND (C, D) in (...) AND E in (...) where A, B, C, D, E are
-  // range columns, range_options_num_cols_ will contain [1, 0, 2, 2, 1]
-  std::vector<size_t> range_options_num_cols_;
-
-  // Schema of the columns to scan.
-  const Schema& schema_;
-
-  // Query ID of this scan.
-  const rocksdb::QueryId query_id_;
+  // Ids of key columns that have filters such as h1 IN (1, 5, 6, 9) or r1 IN (5, 6, 7)
+  std::vector<ColumnId> options_col_ids_;
 
   // The hashed_components are owned by the caller of QLScanSpec.
-  const std::vector<KeyEntryValue> *hashed_components_;
+  const dockv::KeyEntryValues *hashed_components_;
   // The range_components are owned by the caller of QLScanSpec.
-  const std::vector<KeyEntryValue> *range_components_;
+  const dockv::KeyEntryValues *range_components_;
+
+  // Groups of column indexes found from the filters.
+  // Eg: If we had an incoming filter of the form (r1, r3, r4) IN ((1,2,5), (5,4,3), ...)
+  // AND r2 <= 5
+  // where (r1,r2,r3,r4) is the primary key of this table, then
+  // options_groups_ would contain the groups {0,2,3} and {1}.
+  ColGroupHolder options_groups_;
 
   // Hash code is used if hashed_components_ vector is empty.
   // hash values are positive int16_t.
-  const boost::optional<int32_t> hash_code_;
+  const std::optional<int32_t> hash_code_;
 
   // Max hash code is used if hashed_components_ vector is empty.
   // hash values are positive int16_t.
-  const boost::optional<int32_t> max_hash_code_;
+  const std::optional<int32_t> max_hash_code_;
 
   // Starting doc key when requested by the client.
-  const KeyBytes start_doc_key_;
-
-  // Lower and upper keys for range condition.
-  KeyBytes lower_doc_key_;
-  KeyBytes upper_doc_key_;
-
-  // Scan behavior.
-  bool is_forward_scan_;
+  const dockv::KeyBytes start_doc_key_;
 
   DISALLOW_COPY_AND_ASSIGN(DocPgsqlScanSpec);
 };
 
-}  // namespace docdb
-}  // namespace yb
-
-#endif // YB_DOCDB_DOC_PGSQL_SCANSPEC_H
+}  // namespace yb::docdb

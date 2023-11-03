@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_MASTER_MASTER_SERVICE_H
-#define YB_MASTER_MASTER_SERVICE_H
+#pragma once
 
 #include "yb/master/master_fwd.h"
 
@@ -47,8 +46,7 @@ std::unique_ptr<rpc::ServiceIf> MakeMasterDdlService(Master* master);
 std::unique_ptr<rpc::ServiceIf> MakeMasterEncryptionService(Master* master);
 std::unique_ptr<rpc::ServiceIf> MakeMasterHeartbeatService(Master* master);
 std::unique_ptr<rpc::ServiceIf> MakeMasterReplicationService(Master* master);
+std::unique_ptr<rpc::ServiceIf> MakeMasterTestService(Master* master);
 
 } // namespace master
 } // namespace yb
-
-#endif // YB_MASTER_MASTER_SERVICE_H

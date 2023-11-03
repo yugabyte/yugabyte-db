@@ -3,10 +3,10 @@
 package com.yugabyte.yw.common.helm;
 
 import java.util.HashMap;
-import java.util.Map;
-import java.util.function.Function;
 import java.util.Iterator;
+import java.util.Map;
 import java.util.Map.Entry;
+import java.util.function.Function;
 import org.apache.commons.lang3.StringUtils;
 import org.yaml.snakeyaml.Yaml;
 
@@ -39,6 +39,23 @@ public class HelmUtils {
     Map<String, String> flatMap1 = flattenMap(convertYamlToMap(overridesStr1));
     Map<String, String> flatMap2 = flattenMap(convertYamlToMap(overridesStr2));
     return flatMap1.equals(flatMap2);
+  }
+
+  // Recursively traverses the override map and updates or adds the
+  // keys to source map.
+  public static void mergeYaml(Map<String, Object> source, Map<String, Object> override) {
+    for (Entry<String, Object> entry : override.entrySet()) {
+      String key = entry.getKey();
+      if (!source.containsKey(key)) {
+        source.put(key, override.get(key));
+        continue;
+      }
+      if (!(override.get(key) instanceof Map) || !(source.get(key) instanceof Map)) {
+        source.put(key, override.get(key));
+        continue;
+      }
+      mergeYaml((Map<String, Object>) source.get(key), (Map<String, Object>) override.get(key));
+    }
   }
 
   // Flattening logic copied from

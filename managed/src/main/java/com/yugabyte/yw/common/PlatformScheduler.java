@@ -35,7 +35,7 @@ public class PlatformScheduler {
     Cancellable cancellable =
         actorSystem
             .scheduler()
-            .schedule(
+            .scheduleWithFixedDelay(
                 initialDelay,
                 interval,
                 () -> {
@@ -51,10 +51,12 @@ public class PlatformScheduler {
                 },
                 executionContext);
     shutdownHookHandler.addShutdownHook(
-        () -> {
-          if (!cancellable.isCancelled()) {
+        cancellable,
+        (can) -> {
+          // Do not use the cancellable directly as it can create strong reference.
+          if (can != null && !can.isCancelled()) {
             log.debug("Shutting down scheduler - {}", name);
-            boolean isCancelled = cancellable.cancel();
+            boolean isCancelled = can.cancel();
             log.debug("Shutdown status for scheduler - {} is {}", name, isCancelled);
           }
         });

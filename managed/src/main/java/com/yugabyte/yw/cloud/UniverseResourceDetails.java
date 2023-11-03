@@ -19,6 +19,10 @@ import static com.yugabyte.yw.cloud.PublicCloudConstants.IO1_SIZE;
 
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.AWSUtil;
+import com.yugabyte.yw.common.AZUtil;
+import com.yugabyte.yw.common.GCPUtil;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -30,11 +34,14 @@ import com.yugabyte.yw.models.PriceComponentKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.ProviderAndRegion;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -127,57 +134,58 @@ public class UniverseResourceDetails {
     double hourlyPrice = 0.0;
     double hourlyEBSPrice = 0.0;
     UserIntent userIntent = params.getPrimaryCluster().userIntent;
+    Map<Pair<String, String>, Double> spotPrices = new HashMap<>();
     for (NodeDetails nodeDetails : params.nodeDetailsSet) {
       if (nodeDetails.placementUuid != null) {
         userIntent = params.getClusterByUuid(nodeDetails.placementUuid).userIntent;
       }
       Provider provider = context.getProvider(UUID.fromString(userIntent.provider));
-      Region region = context.getRegion(provider.uuid, nodeDetails.cloudInfo.region);
+      Region region = context.getRegion(provider.getUuid(), nodeDetails.cloudInfo.region);
 
       if (region == null) {
         continue;
       }
+      String instanceType = userIntent.getInstanceTypeForNode(nodeDetails);
       PriceComponent instancePrice =
-          context.getPriceComponent(provider.uuid, region.code, userIntent.instanceType);
+          context.getPriceComponent(provider.getUuid(), region.getCode(), instanceType);
       if (instancePrice == null) {
         continue;
       }
-      if (Math.abs(instancePrice.priceDetails.pricePerHour - 0) < EPSILON) {
+      if (Math.abs(instancePrice.getPriceDetails().pricePerHour - 0) < EPSILON) {
         setPricingKnown(false);
       }
-      if (!nodeDetails.isActive()) {
+      if (!context.isNodeCounted(nodeDetails)) {
         continue;
       }
 
-      hourlyPrice += instancePrice.priceDetails.pricePerHour;
+      DeviceInfo deviceInfo = userIntent.getDeviceInfoForNode(nodeDetails);
 
       // Add price of volumes if necessary
       // TODO: Remove aws check once GCP volumes are decoupled from "EBS" designation
       // TODO(wesley): gcp options?
-      if (userIntent.deviceInfo.storageType != null
-          && userIntent.providerType.equals(Common.CloudType.aws)) {
-        Integer numVolumes = userIntent.deviceInfo.numVolumes;
-        Integer diskIops = userIntent.deviceInfo.diskIops;
-        Integer volumeSize = userIntent.deviceInfo.volumeSize;
-        Integer throughput = userIntent.deviceInfo.throughput;
+      if (deviceInfo.storageType != null && userIntent.providerType.equals(Common.CloudType.aws)) {
+        Integer numVolumes = deviceInfo.numVolumes;
+        Integer diskIops = deviceInfo.diskIops;
+        Integer volumeSize = deviceInfo.volumeSize;
+        Integer throughput = deviceInfo.throughput;
         Integer billedDiskIops = null;
         Integer billedThroughput = null;
         PriceComponent sizePrice = null;
         PriceComponent piopsPrice = null;
         PriceComponent mibpsPrice = null;
-        switch (userIntent.deviceInfo.storageType) {
+        switch (deviceInfo.storageType) {
           case IO1:
-            piopsPrice = PriceComponent.get(provider.uuid, region.code, IO1_PIOPS);
-            sizePrice = PriceComponent.get(provider.uuid, region.code, IO1_SIZE);
+            piopsPrice = PriceComponent.get(provider.getUuid(), region.getCode(), IO1_PIOPS);
+            sizePrice = PriceComponent.get(provider.getUuid(), region.getCode(), IO1_SIZE);
             billedDiskIops = diskIops;
             break;
           case GP2:
-            sizePrice = PriceComponent.get(provider.uuid, region.code, GP2_SIZE);
+            sizePrice = PriceComponent.get(provider.getUuid(), region.getCode(), GP2_SIZE);
             break;
           case GP3:
-            piopsPrice = PriceComponent.get(provider.uuid, region.code, GP3_PIOPS);
-            sizePrice = PriceComponent.get(provider.uuid, region.code, GP3_SIZE);
-            mibpsPrice = PriceComponent.get(provider.uuid, region.code, GP3_THROUGHPUT);
+            piopsPrice = PriceComponent.get(provider.getUuid(), region.getCode(), GP3_PIOPS);
+            sizePrice = PriceComponent.get(provider.getUuid(), region.getCode(), GP3_SIZE);
+            mibpsPrice = PriceComponent.get(provider.getUuid(), region.getCode(), GP3_THROUGHPUT);
             billedDiskIops = diskIops > gp3FreePiops ? diskIops - gp3FreePiops : null;
             billedThroughput =
                 throughput > gp3FreeThroughput ? throughput - gp3FreeThroughput : null;
@@ -186,14 +194,70 @@ public class UniverseResourceDetails {
             break;
         }
         if (sizePrice != null) {
-          hourlyEBSPrice += (numVolumes * (volumeSize * sizePrice.priceDetails.pricePerHour));
+          hourlyEBSPrice += (numVolumes * (volumeSize * sizePrice.getPriceDetails().pricePerHour));
         }
         if (piopsPrice != null && billedDiskIops != null) {
-          hourlyEBSPrice += (numVolumes * (billedDiskIops * piopsPrice.priceDetails.pricePerHour));
+          hourlyEBSPrice +=
+              (numVolumes * (billedDiskIops * piopsPrice.getPriceDetails().pricePerHour));
         }
         if (mibpsPrice != null && billedThroughput != null) {
           hourlyEBSPrice +=
-              (numVolumes * (billedThroughput * mibpsPrice.priceDetails.pricePerHour / MIB_IN_GIB));
+              (numVolumes
+                  * (billedThroughput * mibpsPrice.getPriceDetails().pricePerHour / MIB_IN_GIB));
+        }
+      }
+      if (!params.universePaused) {
+        // Node is in Stopped state when universe is paused and when node processes are stopped
+        // - and we need to distinguish between the two.
+        if (!userIntent.useSpotInstance) {
+          hourlyPrice += instancePrice.getPriceDetails().pricePerHour;
+        } else {
+          if (userIntent.spotPrice > 0.0) {
+            hourlyPrice += userIntent.spotPrice;
+          } else {
+            Pair<String, String> spotPair;
+            Double spotPrice;
+            switch (userIntent.providerType) {
+              case aws:
+                spotPair = new Pair<String, String>(nodeDetails.getZone(), instanceType);
+                String providerUUID = userIntent.provider;
+                spotPrice =
+                    spotPrices.computeIfAbsent(
+                        spotPair,
+                        pair -> {
+                          return AWSUtil.getAwsSpotPrice(
+                              pair.getFirst(),
+                              pair.getSecond(),
+                              providerUUID,
+                              nodeDetails.getRegion());
+                        });
+                break;
+              case gcp:
+                spotPair = new Pair<String, String>(nodeDetails.getRegion(), instanceType);
+                spotPrice =
+                    spotPrices.computeIfAbsent(
+                        spotPair,
+                        pair -> {
+                          return GCPUtil.getGcpSpotPrice(pair.getFirst(), pair.getSecond());
+                        });
+                break;
+              case azu:
+                spotPair = new Pair<String, String>(nodeDetails.getRegion(), instanceType);
+                spotPrice =
+                    spotPrices.computeIfAbsent(
+                        spotPair,
+                        pair -> {
+                          return AZUtil.getAzuSpotPrice(pair.getFirst(), pair.getSecond());
+                        });
+                break;
+              default:
+                spotPrice = Double.NaN;
+            }
+            hourlyPrice +=
+                (!spotPrice.equals(Double.NaN)
+                    ? spotPrice
+                    : instancePrice.getPriceDetails().pricePerHour);
+          }
         }
       }
     }
@@ -236,8 +300,20 @@ public class UniverseResourceDetails {
             && userIntent.deviceInfo.volumeSize != null
             && userIntent.deviceInfo.numVolumes != null) {
           details.addVolumeCount(userIntent.deviceInfo.numVolumes);
-          details.addVolumeSizeGB(
-              userIntent.deviceInfo.volumeSize * userIntent.deviceInfo.numVolumes);
+          // Check correct volume size based of type of node
+          if (node.isTserver) {
+            details.addVolumeSizeGB(
+                userIntent.deviceInfo.volumeSize * userIntent.deviceInfo.numVolumes);
+          } else if (node.isMaster) {
+            // if populated masterDeviceInfo use that, else use deviceInfo.
+            if (userIntent.masterDeviceInfo != null) {
+              details.addVolumeSizeGB(
+                  userIntent.masterDeviceInfo.volumeSize * userIntent.masterDeviceInfo.numVolumes);
+            } else {
+              details.addVolumeSizeGB(
+                  userIntent.deviceInfo.volumeSize * userIntent.deviceInfo.numVolumes);
+            }
+          }
 
           if (userIntent.deviceInfo.diskIops != null) {
             details.gp3FreePiops = userIntent.deviceInfo.diskIops;
@@ -246,22 +322,37 @@ public class UniverseResourceDetails {
             details.gp3FreeThroughput = userIntent.deviceInfo.throughput;
           }
         }
-        if (node.cloudInfo != null
-            && node.cloudInfo.az != null
-            && node.cloudInfo.instance_type != null) {
+        if (node.cloudInfo != null && node.cloudInfo.az != null) {
           details.addAz(node.cloudInfo.az);
-          InstanceType instanceType =
-              context.getInstanceType(
-                  UUID.fromString(userIntent.provider), node.cloudInfo.instance_type);
-          if (instanceType == null) {
-            LOG.error(
-                "Couldn't find instance type "
-                    + node.cloudInfo.instance_type
-                    + " for provider "
-                    + userIntent.providerType);
+          // If we have resource spec use that.
+          if (userIntent.tserverK8SNodeResourceSpec != null) {
+            if (node.isTserver) {
+              details.addMemSizeGB(userIntent.tserverK8SNodeResourceSpec.memoryGib);
+              details.addNumCores(userIntent.tserverK8SNodeResourceSpec.cpuCoreCount);
+            }
+            // Check for master and add its resources too
+            if (userIntent.masterK8SNodeResourceSpec != null) {
+              if (node.isMaster) {
+                details.addMemSizeGB(userIntent.masterK8SNodeResourceSpec.memoryGib);
+                details.addNumCores(userIntent.masterK8SNodeResourceSpec.cpuCoreCount);
+              }
+            }
           } else {
-            details.addMemSizeGB(instanceType.memSizeGB);
-            details.addNumCores(instanceType.numCores);
+            if (node.cloudInfo.instance_type != null) {
+              InstanceType instanceType =
+                  context.getInstanceType(
+                      UUID.fromString(userIntent.provider), node.cloudInfo.instance_type);
+              if (instanceType == null) {
+                LOG.error(
+                    "Couldn't find instance type "
+                        + node.cloudInfo.instance_type
+                        + " for provider "
+                        + userIntent.providerType);
+              } else {
+                details.addMemSizeGB(instanceType.getMemSizeGB());
+                details.addNumCores(instanceType.getNumCores());
+              }
+            }
           }
         }
       }
@@ -278,11 +369,12 @@ public class UniverseResourceDetails {
     Map<ProviderAndRegion, Region> regionsMap;
     Map<InstanceTypeKey, InstanceType> instanceTypeMap;
     Map<PriceComponentKey, PriceComponent> priceComponentMap;
+    boolean isCreateOrEdit;
 
     public Context(Config config, Universe universe) {
       this(
           config,
-          Customer.get(universe.customerId),
+          Customer.get(universe.getCustomerId()),
           Collections.singletonList(universe.getUniverseDetails()));
     }
 
@@ -291,65 +383,84 @@ public class UniverseResourceDetails {
     }
 
     public Context(
+        Config config,
+        Customer customer,
+        UniverseDefinitionTaskParams universeParams,
+        boolean isCreateOrEdit) {
+      this(config, customer, Collections.singletonList(universeParams), isCreateOrEdit);
+    }
+
+    public Context(
         Config config, Customer customer, Collection<UniverseDefinitionTaskParams> universeParams) {
+      this(config, customer, universeParams, false);
+    }
+
+    public Context(
+        Config config,
+        Customer customer,
+        Collection<UniverseDefinitionTaskParams> universeParams,
+        boolean isCreateOrEdit) {
       this.config = config;
+      this.isCreateOrEdit = isCreateOrEdit;
       providerMap =
-          Provider.getAll(customer.getUuid())
-              .stream()
-              .collect(Collectors.toMap(provider -> provider.uuid, Function.identity()));
+          Provider.getAll(customer.getUuid()).stream()
+              .collect(Collectors.toMap(provider -> provider.getUuid(), Function.identity()));
 
       Set<InstanceTypeKey> instanceTypes =
-          universeParams
-              .stream()
+          universeParams.stream()
               .filter(ud -> ud.nodeDetailsSet != null)
               .flatMap(
                   ud ->
-                      ud.nodeDetailsSet
-                          .stream()
-                          .filter(NodeDetails::isActive)
+                      ud.nodeDetailsSet.stream()
+                          .filter(this::isNodeCounted)
                           .filter(nodeDetails -> nodeDetails.cloudInfo != null)
                           .filter(nodeDetails -> nodeDetails.cloudInfo.instance_type != null)
                           .map(
                               nodeDetails ->
                                   new InstanceTypeKey()
                                       .setProviderUuid(
-                                          UUID.fromString(
-                                              ud.getPrimaryCluster().userIntent.provider))
+                                          getProviderByPlacementUUID(ud, nodeDetails.placementUuid))
                                       .setInstanceTypeCode(nodeDetails.cloudInfo.instance_type)))
               .collect(Collectors.toSet());
 
       instanceTypeMap =
-          InstanceType.findByKeys(instanceTypes)
-              .stream()
+          InstanceType.findByKeys(instanceTypes).stream()
               .collect(Collectors.toMap(InstanceType::getIdKey, Function.identity()));
 
       Set<ProviderAndRegion> providersAndRegions =
-          universeParams
-              .stream()
+          universeParams.stream()
               .filter(ud -> ud.nodeDetailsSet != null)
               .flatMap(
                   ud ->
-                      ud.nodeDetailsSet
-                          .stream()
-                          .filter(NodeDetails::isActive)
+                      ud.nodeDetailsSet.stream()
+                          .filter(this::isNodeCounted)
                           .filter(nodeDetails -> nodeDetails.cloudInfo != null)
                           .filter(nodeDetails -> nodeDetails.cloudInfo.region != null)
                           .map(
                               nodeDetails ->
                                   new ProviderAndRegion(
-                                      UUID.fromString(ud.getPrimaryCluster().userIntent.provider),
+                                      getProviderByPlacementUUID(ud, nodeDetails.placementUuid),
                                       nodeDetails.getRegion())))
               .collect(Collectors.toSet());
 
       regionsMap =
-          Region.findByKeys(providersAndRegions)
-              .stream()
+          Region.findByKeys(providersAndRegions).stream()
               .collect(Collectors.toMap(ProviderAndRegion::from, Function.identity()));
 
       priceComponentMap =
-          PriceComponent.findByProvidersAndRegions(providersAndRegions)
-              .stream()
+          PriceComponent.findByProvidersAndRegions(providersAndRegions).stream()
               .collect(Collectors.toMap(PriceComponent::getIdKey, Function.identity()));
+    }
+
+    private UUID getProviderByPlacementUUID(UniverseDefinitionTaskParams ud, UUID placementUuid) {
+      String providerUUIDStr =
+          ud.clusters.stream()
+              .filter(c -> c.uuid.equals(placementUuid))
+              .findFirst()
+              .get()
+              .userIntent
+              .provider;
+      return UUID.fromString(providerUUIDStr);
     }
 
     public Provider getProvider(UUID uuid) {
@@ -369,6 +480,17 @@ public class UniverseResourceDetails {
         UUID providerUuid, String regionCode, String componentCode) {
       return priceComponentMap.get(
           PriceComponentKey.create(providerUuid, regionCode, componentCode));
+    }
+
+    public boolean isNodeCounted(NodeDetails nodeDetails) {
+      if (isCreateOrEdit) {
+        // In case we calculate cost for 'to be' universe during create or edit - count nodes,
+        // which will be added and avoid counting ones, which are going to be removed.
+        return (nodeDetails.isNodeRunning() || nodeDetails.state == NodeState.ToBeAdded)
+            && nodeDetails.state != NodeState.ToBeRemoved;
+      } else {
+        return nodeDetails.isNodeRunning();
+      }
     }
   }
 }

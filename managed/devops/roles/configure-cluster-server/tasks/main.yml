@@ -15,6 +15,7 @@
       - placement_zone is defined
       - mount_points is defined
       - systemd_option is defined
+      - yb_num_clean_cores_to_keep is defined
 
 - name: Prepare host
   include: "prepare-configure-server.yml"

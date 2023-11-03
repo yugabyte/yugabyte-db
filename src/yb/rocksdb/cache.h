@@ -33,8 +33,7 @@
 // they want something more sophisticated (like scan-resistance, a
 // custom eviction policy, variable cache sizing, etc.)
 
-#ifndef YB_ROCKSDB_CACHE_H
-#define YB_ROCKSDB_CACHE_H
+#pragma once
 
 #include <stdint.h>
 
@@ -47,7 +46,6 @@
 
 namespace rocksdb {
 
-using std::shared_ptr;
 
 // Classifies the type of the subcache.
 enum SubCacheType {
@@ -63,9 +61,9 @@ class Cache;
 //
 // The parameter num_shard_bits defaults to 4, and strict_capacity_limit
 // defaults to false.
-extern shared_ptr<Cache> NewLRUCache(size_t capacity);
-extern shared_ptr<Cache> NewLRUCache(size_t capacity, int num_shard_bits);
-extern shared_ptr<Cache> NewLRUCache(size_t capacity, int num_shard_bits,
+extern std::shared_ptr<Cache> NewLRUCache(size_t capacity);
+extern std::shared_ptr<Cache> NewLRUCache(size_t capacity, int num_shard_bits);
+extern std::shared_ptr<Cache> NewLRUCache(size_t capacity, int num_shard_bits,
                                      bool strict_capacity_limit);
 
 using QueryId = int64_t;
@@ -75,6 +73,10 @@ constexpr QueryId kDefaultQueryId = 0;
 constexpr QueryId kInMultiTouchId = -1;
 // Query ids to represent values that should not be in any cache.
 constexpr QueryId kNoCacheQueryId = -2;
+// Maximum permissible number of bits to use for sharding the block cache.
+constexpr int kSharedLRUCacheMaxNumShardBits = 19;
+// Default value of number of bits to use for sharding the block cache.
+constexpr int kSharedLRUCacheDefaultNumShardBits = 4;
 
 class Cache {
  public:
@@ -205,5 +207,3 @@ class Cache {
 };
 
 }  // namespace rocksdb
-
-#endif  // YB_ROCKSDB_CACHE_H

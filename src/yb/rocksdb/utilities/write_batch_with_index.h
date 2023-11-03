@@ -22,12 +22,9 @@
 //
 // A WriteBatchWithIndex with a binary searchable index built for all the keys
 // inserted.
-#ifndef ROCKSDB_INCLUDE_ROCKSDB_UTILITIES_WRITE_BATCH_WITH_INDEX_H
-#define ROCKSDB_INCLUDE_ROCKSDB_UTILITIES_WRITE_BATCH_WITH_INDEX_H
 
 #pragma once
 
-#ifndef ROCKSDB_LITE
 
 #include <string>
 
@@ -56,10 +53,8 @@ enum WriteType {
 
 // an entry for Put, Merge, Delete, or SingleDelete entry for write batches.
 // Used in WBWIIterator.
-struct WriteEntry {
+struct WriteEntry : public KeyValueEntry {
   WriteType type;
-  Slice key;
-  Slice value;
 };
 
 // Iterator of one column family out of a WriteBatchWithIndex.
@@ -81,7 +76,7 @@ class WBWIIterator {
 
   // the return WriteEntry is only valid until the next mutation of
   // WriteBatchWithIndex
-  virtual WriteEntry Entry() const = 0;
+  virtual const WriteEntry& Entry() const = 0;
 
   virtual Status status() const = 0;
 };
@@ -217,7 +212,3 @@ class WriteBatchWithIndex : public WriteBatchBase {
 };
 
 }  // namespace rocksdb
-
-#endif  // !ROCKSDB_LITE
-
-#endif // ROCKSDB_INCLUDE_ROCKSDB_UTILITIES_WRITE_BATCH_WITH_INDEX_H

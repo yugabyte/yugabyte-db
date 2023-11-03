@@ -23,8 +23,7 @@
  *--------------------------------------------------------------------------
  */
 
-#ifndef YBGIN_PRIVATE_H
-#define YBGIN_PRIVATE_H
+#pragma once
 
 #include "access/gin_private.h"
 #include "utils/palloc.h"
@@ -51,5 +50,3 @@ typedef YbginScanOpaqueData *YbginScanOpaque;
 
 extern char *ybginNullCategoryToString(GinNullCategory category);
 extern char *ybginSearchModeToString(int32 searchMode);
-
-#endif							/* YBGIN_PRIVATE_H */

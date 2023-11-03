@@ -60,10 +60,10 @@ public class DeleteNodeFromUniverseTest extends CommissionerBaseTest {
     userIntent.numNodes = 3;
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "demo-access";
-    userIntent.regionList = ImmutableList.of(region.uuid);
-    defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
+    userIntent.regionList = ImmutableList.of(region.getUuid());
+    defaultUniverse = createUniverse(defaultCustomer.getId());
     Universe.saveDetails(
-        defaultUniverse.universeUUID,
+        defaultUniverse.getUniverseUUID(),
         ApiUtils.mockUniverseUpdaterWithNodeCallback(
             userIntent,
             node -> {
@@ -99,16 +99,16 @@ public class DeleteNodeFromUniverseTest extends CommissionerBaseTest {
   @Test
   public void testDeleteInvalidState() {
     NodeTaskParams taskParams = new NodeTaskParams();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
 
-    Universe universe = Universe.getOrBadRequest(defaultUniverse.universeUUID);
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     NodeDetails nodeDetails = universe.getNode("host-n2");
     assertNotNull(nodeDetails);
 
     TaskInfo taskInfo = submitTask(taskParams, "host-n2");
     assertEquals(Failure, taskInfo.getTaskState());
 
-    universe = Universe.getOrBadRequest(defaultUniverse.universeUUID);
+    universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     nodeDetails = universe.getNode("host-n2");
     assertNotNull(nodeDetails);
 
@@ -124,11 +124,11 @@ public class DeleteNodeFromUniverseTest extends CommissionerBaseTest {
                 ShellResponse listResponse = new ShellResponse();
                 NodeTaskParams params = invocation.getArgument(1);
                 if (params.nodeUuid == null) {
-                  listResponse.message = "{\"universe_uuid\":\"" + params.universeUUID + "\"}";
+                  listResponse.message = "{\"universe_uuid\":\"" + params.getUniverseUUID() + "\"}";
                 } else {
                   listResponse.message =
                       "{\"universe_uuid\":\""
-                          + params.universeUUID
+                          + params.getUniverseUUID()
                           + "\", "
                           + "\"node_uuid\": \""
                           + params.nodeUuid
@@ -140,17 +140,17 @@ public class DeleteNodeFromUniverseTest extends CommissionerBaseTest {
             });
 
     NodeTaskParams taskParams = new NodeTaskParams();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.nodeName = "host-n1";
 
-    Universe universe = Universe.getOrBadRequest(defaultUniverse.universeUUID);
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     NodeDetails nodeDetails = universe.getNode("host-n1");
     assertNotNull(nodeDetails);
 
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
     assertEquals(Success, taskInfo.getTaskState());
 
-    universe = Universe.getOrBadRequest(defaultUniverse.universeUUID);
+    universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     nodeDetails = universe.getNode("host-n1");
     assertNull(nodeDetails);
 
@@ -168,16 +168,16 @@ public class DeleteNodeFromUniverseTest extends CommissionerBaseTest {
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(new ShellResponse());
 
     NodeTaskParams taskParams = new NodeTaskParams();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
 
-    Universe universe = Universe.getOrBadRequest(defaultUniverse.universeUUID);
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     NodeDetails nodeDetails = universe.getNode("host-n1");
     assertNotNull(nodeDetails);
 
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
     assertEquals(Success, taskInfo.getTaskState());
 
-    universe = Universe.getOrBadRequest(defaultUniverse.universeUUID);
+    universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     nodeDetails = universe.getNode("host-n1");
     assertNull(nodeDetails);
 

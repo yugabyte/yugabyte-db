@@ -112,6 +112,7 @@ public class MiniYBCluster implements AutoCloseable {
   private final List<InetSocketAddress> cqlContactPoints = new ArrayList<>();
   private final List<InetSocketAddress> redisContactPoints = new ArrayList<>();
   private final List<InetSocketAddress> pgsqlContactPoints = new ArrayList<>();
+  private final List<InetSocketAddress> ysqlConnMgrContactPoints = new ArrayList<>();
 
   // Client we can use for common operations.
   private YBClient syncClient;
@@ -283,10 +284,10 @@ public class MiniYBCluster implements AutoCloseable {
    * @return the string representation of a random localhost IP.
    */
   private String getRandomBindAddressOnLinux() throws IllegalArgumentException {
-    assert(TestUtils.IS_LINUX);
+    assert(SystemUtil.IS_LINUX);
     // On Linux we can use 127.x.y.z, so let's just pick a random address.
     final StringBuilder randomLoopbackIp = new StringBuilder("127");
-    final Random rng = RandomNumberUtil.getRandomGenerator();
+    final Random rng = RandomUtil.getRandomGenerator();
     for (int i = 0; i < 3; ++i) {
       // Do not use 0 or 255 for IP components.
       randomLoopbackIp.append("." + (1 + rng.nextInt(254)));
@@ -313,7 +314,7 @@ public class MiniYBCluster implements AutoCloseable {
   }
 
   private String getDaemonBindAddress(MiniYBDaemonType daemonType) throws IOException {
-    if (TestUtils.IS_LINUX && !clusterParameters.useIpWithCertificate) {
+    if (SystemUtil.IS_LINUX && !clusterParameters.useIpWithCertificate) {
       return pickFreeRandomBindIpOnLinux(daemonType);
     }
 
@@ -356,7 +357,7 @@ public class MiniYBCluster implements AutoCloseable {
     // range of x.
     final int nextToLastByteMax = clusterParameters.useIpWithCertificate ? 0 : 3;
 
-    if (TestUtils.IS_LINUX) {
+    if (SystemUtil.IS_LINUX) {
       // We only use even last bytes of the loopback IP in case we are testing TLS encryption.
       final int lastIpByteStep = clusterParameters.useIpWithCertificate ? 2 : 1;
       for (int nextToLastByte = nextToLastByteMin;
@@ -392,7 +393,7 @@ public class MiniYBCluster implements AutoCloseable {
       }
     }
 
-    Collections.shuffle(bindIps, RandomNumberUtil.getRandomGenerator());
+    Collections.shuffle(bindIps, RandomUtil.getRandomGenerator());
 
     for (int i = bindIps.size() - 1; i >= 0; --i) {
       String bindAddress = bindIps.get(i);
@@ -560,6 +561,7 @@ public class MiniYBCluster implements AutoCloseable {
     final int cqlWebPort = TestUtils.findFreePort(tserverBindAddress);
     final int postgresPort = TestUtils.findFreePort(tserverBindAddress);
     final int pgsqlWebPort = TestUtils.findFreePort(tserverBindAddress);
+    final int ysqlConnMgrPort = TestUtils.findFreePort(tserverBindAddress);
 
     // TODO: use a random port here as well.
     final int redisPort = REDIS_PORT;
@@ -598,6 +600,12 @@ public class MiniYBCluster implements AutoCloseable {
       }
     }
 
+    if (clusterParameters.startYsqlConnMgr) {
+      tsCmdLine.add("--ysql_conn_mgr_port=" + Integer.toString(ysqlConnMgrPort));
+      tsCmdLine.add("--enable_ysql_conn_mgr=true");
+      tsCmdLine.add("--allowed_preview_flags_csv=enable_ysql_conn_mgr");
+    }
+
     if (tserverFlags != null) {
       tsCmdLine.addAll(CommandUtil.flagsToArgs(tserverFlags));
     }
@@ -610,6 +618,7 @@ public class MiniYBCluster implements AutoCloseable {
     cqlContactPoints.add(new InetSocketAddress(tserverBindAddress, CQL_PORT));
     redisContactPoints.add(new InetSocketAddress(tserverBindAddress, redisPort));
     pgsqlContactPoints.add(new InetSocketAddress(tserverBindAddress, postgresPort));
+    ysqlConnMgrContactPoints.add(new InetSocketAddress(tserverBindAddress, ysqlConnMgrPort));
 
     if (flagsPath.startsWith(baseDirPath)) {
       // We made a temporary copy of the flags; delete them later.
@@ -1208,6 +1217,14 @@ public class MiniYBCluster implements AutoCloseable {
    */
   public List<InetSocketAddress> getPostgresContactPoints() {
     return pgsqlContactPoints;
+  }
+
+  /**
+   * Returns a list of Ysql Connection Manager contact points.
+   * @return Ysql Connection Manager contact points
+   */
+  public List<InetSocketAddress> getYsqlConnMgrContactPoints() {
+    return ysqlConnMgrContactPoints;
   }
 
   /**

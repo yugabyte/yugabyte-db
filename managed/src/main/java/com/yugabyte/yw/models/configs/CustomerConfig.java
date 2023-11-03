@@ -24,6 +24,7 @@ import com.yugabyte.yw.models.configs.data.CustomerConfigStorageAzureData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data.ProxySetting;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -44,7 +45,6 @@ import javax.persistence.Entity;
 import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
 import javax.persistence.Id;
-import javax.persistence.Transient;
 import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Size;
 import lombok.Data;
@@ -57,8 +57,8 @@ import play.libs.Json;
 
 @Entity
 @Data
-@EqualsAndHashCode(callSuper = false)
 @Accessors(chain = true)
+@EqualsAndHashCode(callSuper = false)
 @ApiModel(
     description =
         "Customer configuration. Includes storage, alerts, password policy, and call-home level.")
@@ -103,29 +103,34 @@ public class CustomerConfig extends Model {
 
   @Id
   @ApiModelProperty(value = "Config UUID", accessMode = READ_ONLY)
-  public UUID configUUID;
+  private UUID configUUID;
 
   @NotNull
   @Size(min = 1, max = 100)
   @Column(length = 100, nullable = true)
   @ApiModelProperty(value = "Config name", example = "backup20-01-2021")
-  public String configName;
+  private String configName;
+
+  public CustomerConfig setConfigName(String configName) {
+    this.configName = configName.trim();
+    return this;
+  }
 
   @NotNull
   @Column(nullable = false)
   @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY)
-  public UUID customerUUID;
+  private UUID customerUUID;
 
   @NotNull
   @Column(length = 25, nullable = false)
   @ApiModelProperty(value = "Config type", example = "STORAGE")
-  public ConfigType type;
+  private ConfigType type;
 
   @NotNull
   @Size(min = 1, max = 50)
   @Column(length = 100, nullable = false)
   @ApiModelProperty(value = "Name", example = "S3")
-  public String name;
+  private String name;
 
   @NotNull
   @Column(nullable = false, columnDefinition = "TEXT")
@@ -136,7 +141,7 @@ public class CustomerConfig extends Model {
       required = true,
       dataType = "Object",
       example = "{\"AWS_ACCESS_KEY_ID\": \"AK****************ZD\"}")
-  public ObjectNode data;
+  private ObjectNode data;
 
   @ApiModelProperty(
       value = "state of the customerConfig. Possible values are Active, QueuedForDeletion.",
@@ -149,14 +154,24 @@ public class CustomerConfig extends Model {
       new Finder<UUID, CustomerConfig>(CustomerConfig.class) {};
 
   public Map<String, String> dataAsMap() {
-    Map<String, String> result = new ObjectMapper().convertValue(data, Map.class);
+    ObjectMapper mapper = new ObjectMapper();
+    Map<String, Object> result = mapper.convertValue(getData(), Map.class);
     // Remove not String values.
     Map<String, String> r = new HashMap<>();
-    for (Entry<String, String> entry : result.entrySet()) {
+    for (Entry<String, Object> entry : result.entrySet()) {
       if (entry.getValue() instanceof String) {
-        r.put(entry.getKey(), entry.getValue());
+        r.put(entry.getKey(), entry.getValue().toString());
+      } else if (entry.getKey().equals("PROXY_SETTINGS")) {
+        r.putAll((mapper.convertValue(entry.getValue(), ProxySetting.class)).toMap());
       }
     }
+
+    if (type.equals(ConfigType.STORAGE)
+        && name.equals(NAME_AZURE)
+        && !r.get("AZURE_STORAGE_SAS_TOKEN").startsWith("?")) {
+      r.put("AZURE_STORAGE_SAS_TOKEN", "?" + r.get("AZURE_STORAGE_SAS_TOKEN"));
+    }
+
     return r;
   }
 
@@ -164,34 +179,13 @@ public class CustomerConfig extends Model {
     return setConfigUUID(UUID.randomUUID());
   }
 
-  public ObjectNode getData() {
-    return data;
-  }
-
-  @Transient
   @JsonIgnore
   public ObjectNode getMaskedData() {
-    return CommonUtils.maskConfig(data);
-  }
-
-  public CustomerConfig setConfigName(String configName) {
-    this.configName = configName.trim();
-    return this;
-  }
-
-  /**
-   * Updates configuration data. If some fields are still masked with asterisks then these fields
-   * remain unchanged.
-   *
-   * @param data
-   */
-  public CustomerConfig setData(ObjectNode data) {
-    this.data = data;
-    return this;
+    return CommonUtils.maskConfig(getData());
   }
 
   public CustomerConfig unmaskAndSetData(ObjectNode data) {
-    this.data = CommonUtils.unmaskJsonObject(this.data, data);
+    this.setData(CommonUtils.unmaskJsonObject(this.getData(), data));
     return this;
   }
 
@@ -203,7 +197,7 @@ public class CustomerConfig extends Model {
 
   public static CustomerConfig createInstance(UUID customerUUID, JsonNode formData) {
     CustomerConfig customerConfig = Json.fromJson(formData, CustomerConfig.class);
-    customerConfig.customerUUID = customerUUID;
+    customerConfig.setCustomerUUID(customerUUID);
     return customerConfig;
   }
 
@@ -245,6 +239,14 @@ public class CustomerConfig extends Model {
     return createConfig(customerUUID, ConfigType.PASSWORD_POLICY, PASSWORD_POLICY, payload);
   }
 
+  public static CustomerConfig createStorageConfig(
+      UUID customerUUID, String name, String configName, JsonNode payload) {
+    // We allow overriding name here because this is used by operator.
+    CustomerConfig c = createConfig(customerUUID, ConfigType.STORAGE, name, payload);
+    c.setConfigName(configName);
+    return c;
+  }
+
   /**
    * Creates customer config of the specified type but doesn't save it into DB.
    *
@@ -257,11 +259,11 @@ public class CustomerConfig extends Model {
   private static CustomerConfig createConfig(
       UUID customerUUID, ConfigType type, String name, JsonNode payload) {
     CustomerConfig customerConfig = new CustomerConfig();
-    customerConfig.type = type;
-    customerConfig.name = name;
-    customerConfig.customerUUID = customerUUID;
-    customerConfig.data = (ObjectNode) payload;
-    customerConfig.configName = name + "-Default";
+    customerConfig.setType(type);
+    customerConfig.setName(name);
+    customerConfig.setCustomerUUID(customerUUID);
+    customerConfig.setData((ObjectNode) payload);
+    customerConfig.setConfigName(name + "-Default");
     return customerConfig;
   }
 
@@ -323,12 +325,12 @@ public class CustomerConfig extends Model {
 
   public static CustomerConfig createCallHomeConfig(UUID customerUUID, String level) {
     CustomerConfig customerConfig = new CustomerConfig();
-    customerConfig.type = ConfigType.CALLHOME;
-    customerConfig.name = CALLHOME_PREFERENCES;
-    customerConfig.customerUUID = customerUUID;
+    customerConfig.setType(ConfigType.CALLHOME);
+    customerConfig.setName(CALLHOME_PREFERENCES);
+    customerConfig.setCustomerUUID(customerUUID);
     ObjectNode callhome_json = Json.newObject().put("callhomeLevel", level);
-    customerConfig.data = callhome_json;
-    customerConfig.configName = "callhome level-Default";
+    customerConfig.setData(callhome_json);
+    customerConfig.setConfigName("callhome level-Default");
     customerConfig.save();
     return customerConfig;
   }
@@ -356,17 +358,13 @@ public class CustomerConfig extends Model {
     if (callhomeConfig == null) {
       callhomeConfig = CustomerConfig.createCallHomeConfig(customerUUID, callhomeLevel);
     } else {
-      callhomeConfig.data = Json.newObject().put("callhomeLevel", callhomeLevel);
+      callhomeConfig.setData(Json.newObject().put("callhomeLevel", callhomeLevel));
       callhomeConfig.update();
     }
     return callhomeConfig;
   }
 
-  public ConfigState getState() {
-    return this.state;
-  }
-
-  public void setState(ConfigState newState) {
+  public void updateState(ConfigState newState) {
     if (this.state == newState) {
       LOG.debug("Invalid State transition as no change requested");
       return;
@@ -377,16 +375,17 @@ public class CustomerConfig extends Model {
     }
     LOG.info("Customer config: transitioned from {} to {}", this.state, newState);
     this.state = newState;
-    save();
+    this.save();
   }
 
   @JsonIgnore
   public CustomerConfigData getDataObject() {
-    Class<? extends CustomerConfigData> expectedClass = getDataClass(type, name);
+    Class<? extends CustomerConfigData> expectedClass = getDataClass(getType(), getName());
     if (expectedClass == null) {
       throw new PlatformServiceException(
           BAD_REQUEST,
-          String.format("Unknown data type in configuration data. Type %s, name %s.", type, name));
+          String.format(
+              "Unknown data type in configuration data. Type %s, name %s.", getType(), getName()));
     }
 
     ObjectMapper mapper = new ObjectMapper();

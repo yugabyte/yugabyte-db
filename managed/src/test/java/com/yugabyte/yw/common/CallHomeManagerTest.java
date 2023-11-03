@@ -7,7 +7,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyZeroInteractions;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -24,9 +24,9 @@ import com.yugabyte.yw.models.Users;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
-import org.asynchttpclient.util.Base64;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -61,22 +61,22 @@ public class CallHomeManagerTest extends FakeDBApplication {
   // Will fix after expectedUniverseVersion change is reviewed
   private JsonNode callHomePayload(Universe universe) {
     ObjectNode expectedPayload = Json.newObject();
-    expectedPayload.put("customer_uuid", defaultCustomer.uuid.toString());
-    expectedPayload.put("code", defaultCustomer.code);
-    expectedPayload.put("email", defaultUser.email);
-    expectedPayload.put("creation_date", defaultCustomer.creationDate.toString());
+    expectedPayload.put("customer_uuid", defaultCustomer.getUuid().toString());
+    expectedPayload.put("code", defaultCustomer.getCode());
+    expectedPayload.put("email", defaultUser.getEmail());
+    expectedPayload.put("creation_date", defaultCustomer.getCreationDate().toString());
     List<UniverseResp> universes = new ArrayList<>();
     if (universe != null) {
       universes.add(new UniverseResp(universe));
     }
     ArrayNode providers = Json.newArray();
     ObjectNode provider = Json.newObject();
-    provider.put("provider_uuid", defaultProvider.uuid.toString());
-    provider.put("code", defaultProvider.code);
-    provider.put("name", defaultProvider.name);
+    provider.put("provider_uuid", defaultProvider.getUuid().toString());
+    provider.put("code", defaultProvider.getCode());
+    provider.put("name", defaultProvider.getName());
     ArrayNode regions = Json.newArray();
-    for (Region r : defaultProvider.regions) {
-      regions.add(Json.toJson(r.details));
+    for (Region r : defaultProvider.getRegions()) {
+      regions.add(Json.toJson(r.getDetails()));
     }
     provider.set("regions", regions);
     providers.add(provider);
@@ -112,7 +112,8 @@ public class CallHomeManagerTest extends FakeDBApplication {
     assertEquals(expectedPayload, params.getValue());
 
     System.out.println(params.getValue());
-    String expectedToken = Base64.encode(defaultCustomer.uuid.toString().getBytes());
+    String expectedToken =
+        Base64.getEncoder().encodeToString(defaultCustomer.getUuid().toString().getBytes());
     assertEquals(expectedToken, headers.getValue().get("X-AUTH-TOKEN"));
     assertEquals("http://yw-diagnostics.yugabyte.com", url.getValue());
   }
@@ -125,10 +126,10 @@ public class CallHomeManagerTest extends FakeDBApplication {
                 "yugaware_uuid", "0146179d-a623-4b2a-a095-bfb0062eae9f",
                 "version", "0.0.1"));
     when(clock.instant()).thenReturn(Instant.parse("2019-01-24T18:46:07.517Z"));
-    Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    Universe u = ModelFactory.createUniverse(defaultCustomer.getId());
     u.getUniverseDetails().expectedUniverseVersion = 1;
     u.update();
-    u = Universe.getOrBadRequest(u.universeUUID);
+    u = Universe.getOrBadRequest(u.getUniverseUUID());
 
     JsonNode expectedPayload = callHomePayload(u);
     JsonNode actualPayload =
@@ -140,6 +141,6 @@ public class CallHomeManagerTest extends FakeDBApplication {
   public void testNoSendDiagnostics() {
     ModelFactory.setCallhomeLevel(defaultCustomer, "NONE");
     callHomeManager.sendDiagnostics(defaultCustomer);
-    verifyZeroInteractions(apiHelper);
+    verifyNoInteractions(apiHelper);
   }
 }

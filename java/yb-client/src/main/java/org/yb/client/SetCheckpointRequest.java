@@ -15,7 +15,7 @@ package org.yb.client;
 
 import com.google.protobuf.ByteString;
 import com.google.protobuf.Message;
-import org.jboss.netty.buffer.ChannelBuffer;
+import io.netty.buffer.ByteBuf;
 import org.yb.Opid;
 import org.yb.cdc.CdcService;
 import org.yb.util.Pair;
@@ -27,6 +27,7 @@ public class SetCheckpointRequest extends YRpc<SetCheckpointResponse>{
   private long term;
   private  boolean initialCheckpoint;
   private boolean bootstrap = false;
+  private Long cdcsdkSafeTime;
 
   public SetCheckpointRequest(YBTable table, String streamId,
                               String tabletId, long term, long index, boolean initialCheckpoint) {
@@ -41,17 +42,19 @@ public class SetCheckpointRequest extends YRpc<SetCheckpointResponse>{
   public SetCheckpointRequest(YBTable table, String streamId,
                               String tabletId, long term, long index, boolean initialCheckpoint,
                               boolean bootstrap) {
-    super(table);
-    this.streamId = streamId;
-    this.tabletId = tabletId;
-    this.term = term;
-    this.index = index;
-    this.initialCheckpoint = initialCheckpoint;
+    this(table, streamId, tabletId, term, index, initialCheckpoint);
     this.bootstrap = bootstrap;
   }
 
+  public SetCheckpointRequest(YBTable table, String streamId,
+                              String tabletId, long term, long index, boolean initialCheckpoint,
+                              boolean bootstrap, Long cdcsdkSafeTime) {
+    this(table, streamId, tabletId, term, index, initialCheckpoint, bootstrap);
+    this.cdcsdkSafeTime = cdcsdkSafeTime;
+  }
+
   @Override
-  ChannelBuffer serialize(Message header) {
+  ByteBuf serialize(Message header) {
     assert header.isInitialized();
     final CdcService.SetCDCCheckpointRequestPB.Builder builder = CdcService
       .SetCDCCheckpointRequestPB.newBuilder();
@@ -63,6 +66,11 @@ public class SetCheckpointRequest extends YRpc<SetCheckpointResponse>{
       .setTerm(this.term).build()).build());
     builder.setInitialCheckpoint(this.initialCheckpoint);
     builder.setBootstrap(this.bootstrap);
+
+    if (cdcsdkSafeTime != null) {
+      builder.setCdcSdkSafeTime(cdcsdkSafeTime);
+    }
+
     return toChannelBuffer(header, builder.build());
   }
 

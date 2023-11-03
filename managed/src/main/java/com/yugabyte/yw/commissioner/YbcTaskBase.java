@@ -3,18 +3,16 @@
 package com.yugabyte.yw.commissioner;
 
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.YbcBackupUtil;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import java.time.Duration;
 import java.util.concurrent.CancellationException;
-
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YbcClient;
 import org.yb.ybc.BackupServiceTaskProgressRequest;
 import org.yb.ybc.BackupServiceTaskProgressResponse;
-import org.yb.ybc.BackupServiceTaskStage;
 import org.yb.ybc.ControllerStatus;
 
 @Slf4j
@@ -24,9 +22,7 @@ public abstract class YbcTaskBase extends AbstractTaskBase {
   public final YbcBackupUtil ybcBackupUtil;
 
   // Time to wait (in millisec) between each poll to ybc.
-  private static final int WAIT_EACH_ATTEMPT_MS = 15000;
-  private static final int WAIT_FIRST_RETRY_MS = 45000;
-  private static final int MAX_TASK_RETRIES = 10;
+  private final int WAIT_EACH_ATTEMPT_MS = 15000;
 
   @Inject
   public YbcTaskBase(
@@ -47,88 +43,72 @@ public abstract class YbcTaskBase extends AbstractTaskBase {
 
     BackupServiceTaskProgressRequest backupServiceTaskProgressRequest =
         ybcBackupUtil.createYbcBackupTaskProgressRequest(taskId);
-    String baseLogMessage = String.format("Task id %s status", taskId);
-    boolean retriesExhausted = false;
-    boolean doingRetries = false;
+    String baseLogMessage = String.format("Task id %s status:", taskId);
     while (true) {
       BackupServiceTaskProgressResponse backupServiceTaskProgressResponse =
           ybcClient.backupServiceTaskProgress(backupServiceTaskProgressRequest);
-      switch (backupServiceTaskProgressResponse.getTaskStatus()) {
-        case NOT_STARTED:
-          log.info(String.format("%s %s", baseLogMessage, ControllerStatus.NOT_STARTED.toString()));
-          break;
-        case IN_PROGRESS:
+
+      if (backupServiceTaskProgressResponse == null) {
+        throw new RuntimeException(
+            String.format("%s %s", baseLogMessage, "Got error checking progress on YB-Controller"));
+      }
+      log.info(
+          "{} Number of retries {}",
+          baseLogMessage,
+          backupServiceTaskProgressResponse.getRetryCount());
+
+      switch (backupServiceTaskProgressResponse.getStage()) {
+        case UPLOAD:
+        case DOWNLOAD:
           logProgressResponse(baseLogMessage, backupServiceTaskProgressResponse);
           break;
-        case COMPLETE:
-        case OK:
-        case NOT_FOUND:
-          log.info(String.format("%s task complete.", baseLogMessage));
+        case TASK_COMPLETE:
+          handleTaskCompleteStage(
+              baseLogMessage, backupServiceTaskProgressResponse.getTaskStatus());
           return;
-        case ABORT:
-          log.info(String.format("%s task aborted on YB-Controller.", baseLogMessage));
-          throw new CancellationException("Yb-Controller task aborted.");
         default:
-          // In-case YB-Controller fails and does not retry, throw exception and come out.
-          if (doingRetries && (backupServiceTaskProgressResponse.getRetryCount() == 0)) {
-            throw new PlatformServiceException(
-                backupServiceTaskProgressResponse.getTaskStatus().getNumber(),
-                String.format(
-                    "%s Failed with error %s",
-                    baseLogMessage, backupServiceTaskProgressResponse.getTaskStatus().name()));
-          }
-          if (!retriesExhausted
-              && backupServiceTaskProgressResponse.getRetryCount() <= MAX_TASK_RETRIES) {
-            log.info(
-                "{} Number of retries {}",
-                baseLogMessage,
-                backupServiceTaskProgressResponse.getRetryCount());
-            log.error(
-                "{} Last error message: {}",
-                baseLogMessage,
-                backupServiceTaskProgressResponse.getTaskStatus().name());
-            retriesExhausted =
-                (backupServiceTaskProgressResponse.getRetryCount() >= MAX_TASK_RETRIES);
-            if (!doingRetries) {
-              doingRetries = true;
-              waitFor(Duration.ofMillis(WAIT_FIRST_RETRY_MS));
-            }
-            break;
-          }
-          throw new PlatformServiceException(
-              backupServiceTaskProgressResponse.getTaskStatus().getNumber(),
-              String.format(
-                  "%s Failed with error %s",
-                  baseLogMessage, backupServiceTaskProgressResponse.getTaskStatus().name()));
+          log.info(
+              "{} Current task stage - {}",
+              baseLogMessage,
+              backupServiceTaskProgressResponse.getStage().name());
       }
       waitFor(Duration.ofMillis(WAIT_EACH_ATTEMPT_MS));
     }
   }
 
+  /** Handle Controller status on task stage TASK_COMPLETE */
+  private void handleTaskCompleteStage(String baseLogMessage, ControllerStatus taskStatus) {
+    switch (taskStatus) {
+      case COMPLETE:
+      case OK:
+        log.info(String.format("%s Task complete.", baseLogMessage));
+        return;
+      case ABORT:
+        log.info(String.format("%s Task aborted on YB-Controller.", baseLogMessage));
+        throw new CancellationException("Task aborted on YB-Controller.");
+      case NOT_FOUND:
+        throw new RuntimeException(
+            String.format("%s %s", baseLogMessage, "Task not found on YB-Controller"));
+      default:
+        throw new PlatformServiceException(
+            taskStatus.getNumber(),
+            String.format("%s Failed with error %s", baseLogMessage, taskStatus.name()));
+    }
+  }
+
   /**
-   * Logging progress response for UPLOAD stage
+   * Logging progress response for UPLOAD/DOWNLOAD stage
    *
    * @param progressResponse
    */
   private void logProgressResponse(
       String baseLogMessage, BackupServiceTaskProgressResponse progressResponse) {
-    BackupServiceTaskStage taskStage = progressResponse.getStage();
-
-    log.info("{} Number of retries {}", baseLogMessage, progressResponse.getRetryCount());
-
-    log.info("{} Current task stage - {}", baseLogMessage, taskStage.name());
-
-    if (taskStage.equals(BackupServiceTaskStage.UPLOAD)) {
-      log.info(
-          "{} {} ops completed out of {} total",
-          baseLogMessage,
-          progressResponse.getCompletedOps(),
-          progressResponse.getTotalOps());
-      log.info("{} {} bytes transferred", baseLogMessage, progressResponse.getBytesTransferred());
-    }
-
-    if (taskStage.equals(BackupServiceTaskStage.TASK_COMPLETE)) {
-      log.info("{} Task is complete.", baseLogMessage);
-    }
+    log.info("{} Current task stage - {}", baseLogMessage, progressResponse.getStage());
+    log.info(
+        "{} {} ops completed out of {} total",
+        baseLogMessage,
+        progressResponse.getCompletedOps(),
+        progressResponse.getTotalOps());
+    log.info("{} {} bytes transferred", baseLogMessage, progressResponse.getBytesTransferred());
   }
 }

@@ -30,4 +30,4 @@ type: docs
 
 </ul>
 
-For details on Jepsen testing of YCQL, see [YugabyteDB 1.2 Passes Jepsen Testing](https://blog.yugabyte.com/yugabyte-db-1-2-passes-jepsen-testing/).
+For details on Jepsen testing of YCQL, see [YugabyteDB 1.2 Passes Jepsen Testing](https://www.yugabyte.com/blog/yugabyte-db-1-2-passes-jepsen-testing/).

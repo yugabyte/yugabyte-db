@@ -16,8 +16,7 @@
 // Notably, this does NOT apply to Reschedule implementation methods, which are called from
 // different ExecContexts, so non-thread-safe fields should not be referenced there.
 //--------------------------------------------------------------------------------------------------
-#ifndef YB_YQL_CQL_QL_QL_PROCESSOR_H_
-#define YB_YQL_CQL_QL_QL_PROCESSOR_H_
+#pragma once
 
 #include "yb/client/client_fwd.h"
 
@@ -80,8 +79,8 @@ class QLProcessor : public Rescheduler {
   // Prepare a SQL statement (parse and analyze). A reference to the statement string is saved in
   // the parse tree.
   Status Prepare(const std::string& stmt, ParseTreePtr* parse_tree,
-                         bool reparsed = false, const MemTrackerPtr& mem_tracker = nullptr,
-                         const bool internal = false);
+                 bool reparsed = false, const MemTrackerPtr& mem_tracker = nullptr,
+                 const bool internal = false);
 
   // Check whether the current user has the required permissions to execute the statment.
   bool CheckPermissions(const ParseTree& parse_tree, StatementExecutedCallback cb);
@@ -94,8 +93,8 @@ class QLProcessor : public Rescheduler {
 
   // Run (parse, analyze and execute) a SQL statement. The statement string and the parameters must
   // not be destroyed until the statement has been executed.
-  void RunAsync(const std::string& stmt, const StatementParameters& params,
-                StatementExecutedCallback cb, bool reparsed = false);
+  TreeNodeOpcode RunAsync(const std::string& stmt, const StatementParameters& params,
+                          StatementExecutedCallback cb, bool reparsed = false);
 
  protected:
   void SetCurrentSession(const QLSessionPtr& ql_session) {
@@ -136,8 +135,8 @@ class QLProcessor : public Rescheduler {
 
   // Parse a SQL statement and generate a parse tree.
   Status Parse(const std::string& stmt, ParseTreePtr* parse_tree,
-                       bool reparsed = false, const MemTrackerPtr& mem_tracker = nullptr,
-                       const bool internal = false);
+               bool reparsed = false, const MemTrackerPtr& mem_tracker = nullptr,
+               const bool internal = false);
 
   // Semantically analyze a parse tree.
   Status Analyze(ParseTreePtr* parse_tree);
@@ -181,5 +180,3 @@ class QLProcessor : public Rescheduler {
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_QL_PROCESSOR_H_

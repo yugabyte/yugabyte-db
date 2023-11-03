@@ -2,6 +2,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.xcluster;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
+import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import java.util.Set;
 import javax.inject.Inject;
@@ -11,8 +12,9 @@ import lombok.extern.slf4j.Slf4j;
 public class CheckBootstrapRequired extends XClusterConfigTaskBase {
 
   @Inject
-  protected CheckBootstrapRequired(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
+  protected CheckBootstrapRequired(
+      BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
+    super(baseTaskDependencies, xClusterUniverseService);
   }
 
   public static class Params extends XClusterConfigTaskParams {
@@ -32,8 +34,8 @@ public class CheckBootstrapRequired extends XClusterConfigTaskBase {
     return String.format(
         "%s(sourceUniverse=%s,xClusterUuid=%s,tableIds=%s)",
         super.getName(),
-        taskParams().universeUUID,
-        taskParams().xClusterConfig,
+        taskParams().getUniverseUUID(),
+        taskParams().getXClusterConfig(),
         taskParams().tableIds);
   }
 

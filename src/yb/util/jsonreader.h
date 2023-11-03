@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_JSONREADER_H_
-#define YB_UTIL_JSONREADER_H_
+#pragma once
 
 #include <stdint.h>
 #include <string>
@@ -41,6 +40,13 @@
 #include "yb/gutil/macros.h"
 
 #include "yb/util/status_fwd.h"
+
+namespace google {
+namespace protobuf {
+class FieldDescriptor;
+class Message;
+} // namespace protobuf
+} // namespace google
 
 namespace yb {
 
@@ -53,7 +59,7 @@ namespace yb {
 class JsonReader {
  public:
   explicit JsonReader(std::string text);
-  ~JsonReader();
+  virtual ~JsonReader();
 
   Status Init();
 
@@ -76,6 +82,14 @@ class JsonReader {
                       const char* field,
                       int64_t* result) const;
 
+  Status ExtractUInt32(const rapidjson::Value* object,
+                       const char* field,
+                       uint32_t* result) const;
+
+  Status ExtractUInt64(const rapidjson::Value* object,
+                       const char* field,
+                       uint64_t* result) const;
+
   Status ExtractString(const rapidjson::Value* object,
                        const char* field,
                        std::string* result) const;
@@ -90,13 +104,29 @@ class JsonReader {
                             const char* field,
                             std::vector<const rapidjson::Value*>* result) const;
 
+  Status ExtractProtobuf(const rapidjson::Value* object,
+                         const char* field,
+                         google::protobuf::Message* pb) const;
+
   const rapidjson::Value* root() const { return &document_; }
 
- private:
+ protected:
   Status ExtractField(const rapidjson::Value* object,
                       const char* field,
                       const rapidjson::Value** result) const;
 
+  Status ExtractProtobufMessage(const rapidjson::Value& value,
+                                google::protobuf::Message* pb) const;
+
+  Status ExtractProtobufField(const rapidjson::Value& value,
+                              google::protobuf::Message* pb,
+                              const google::protobuf::FieldDescriptor* field) const;
+
+  virtual Status ExtractProtobufRepeatedField(const rapidjson::Value& value,
+                                              google::protobuf::Message* pb,
+                                              const google::protobuf::FieldDescriptor* field) const;
+
+ private:
   std::string text_;
   rapidjson::Document document_;
 
@@ -104,5 +134,3 @@ class JsonReader {
 };
 
 } // namespace yb
-
-#endif // YB_UTIL_JSONREADER_H_

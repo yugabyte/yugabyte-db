@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: yb-ts-cli
     parent: admin
-    weight: 2466
+    weight: 50
 type: docs
 ---
 
@@ -22,10 +22,10 @@ yb-ts-cli [ --server_address=<host>:<port> ] <command> <flags>
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
-* *command*: The operation to be performed. See [Commands](#commands) below.
+* *command*: The operation to be performed. See [Commands](#commands).
 * *flags*: The flags to be applied to the command. See [Flags](#flags).
 
-## Command line help
+### Online help
 
 To display the available online help, run `yb-ts-cli` without any commands or flags at the YugabyteDB home directory.
 
@@ -49,8 +49,10 @@ The following commands are available:
 * [flush_tablet](#flush-tablet)
 * [list_tablets](#list-tablets)
 * [reload_certificates](#reload-certificates)
+* [remote_bootstrap](#remote-bootstrap)
 * [set_flag](#set-flag)
 * [status](#status)
+* [refresh_flags](#refresh-flags)
 
 ##### are_tablets_running
 
@@ -202,6 +204,22 @@ yb-ts-cli [ --server_address=<host>:<port> ] reload_certificates
 
 * *host*:*port*: The *host* and *port* of the master or tablet server. Default is `localhost:9100`.
 
+##### remote_bootstrap
+
+Trigger a remote bootstrap of a tablet from another tablet server to the specified tablet server.
+
+**Syntax**
+
+```sh
+yb-ts-cli [ --server_address=<host>:<port> ] remote_bootstrap <source_host> <tablet_id>
+```
+
+* *host*:*port*: The *host* and *port* of the tablet server running the remote bootstrap. Default is `localhost:9100`.
+* *source_host*: The *host* or *host* and *port* of the tablet server to bootstrap from.
+* *tablet_id*: The identifier of the tablet to trigger a remote bootstrap for.
+
+See [Manual remote bootstrap of failed peer](../../troubleshoot/cluster/replace_failed_peers/) for example usage.
+
 ##### set_flag
 
 Sets the specified configuration flag for the tablet server.
@@ -241,6 +259,20 @@ yb-ts-cli [ --server_address=<host>:<port> ] status
 
 For an example, see [Return the status of a tablet server](#return-the-status-of-a-tablet-server)
 
+##### refresh_flags
+
+Refresh flags that are loaded from the configuration file. Works on both YB-Master (port 9100) and YB-TServer (port 7100) process. No parameters needed. 
+
+Each process needs to have the following command issued, for example, issuing the command on one YB-TServer won't update the flags on the other YB-TServers.
+
+**Syntax**
+
+```sh
+yb-ts-cli [ --server_address=<host>:<port> ] refresh_flags
+```
+
+* *host*:*port*: The *host* and *port* of the YB-Master or YB-TServer. Default is `localhost:9100`.
+
 ## Flags
 
 The following flags can be used, when specified, with the commands above.
@@ -263,12 +295,19 @@ The duration, in milliseconds (ms), before the RPC request times out.
 
 Default: `60000` (1000 ms = 1 sec)
 
+##### --certs_dir_name
+
+To connect to a cluster with TLS enabled, you must include the `--certs_dir_name` flag with the directory location where the root certificate is located.
+
+Default: `""`
+
+
 ## Examples
 
 ### Return the status of a tablet server
 
 ```sh
-./bin/yb-ts-cli -server_address=127.0.0.1 status
+./bin/yb-ts-cli --server_address=127.0.0.1 --certs_dir_name="/path/to/dir/name" status
 ```
 
 ```output
@@ -300,7 +339,7 @@ version_info {
 ### Display the current hybrid time
 
 ```sh
-./bin/yb-ts-cli  [ --server_address=yb-tserver-1:9100 ] current_hybrid_time
+./bin/yb-ts-cli  --server_address=yb-tserver-1:9100 current_hybrid_time
 ```
 
 ```output

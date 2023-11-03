@@ -338,6 +338,24 @@ typedef struct PlannerInfo
 	Relids		curOuterRels;	/* outer rels above current node */
 	List	   *curOuterParams; /* not-yet-assigned NestLoopParams */
 
+	/*
+	 * These are used to transfer information about batching in createplan.c
+	 * and indxpath.c
+	 */
+	Relids		yb_cur_batched_relids; /* valid if we are processing a batched
+								  	    * NL join */
+	Relids		yb_cur_unbatched_relids;
+
+	/*
+	 * List of Relids. Each element is a Bitmapset that encodes the batched rels
+	 * available from the outer path of a particular Batched Nested Loop join
+	 * node.
+	 */
+	List		*yb_availBatchedRelids;
+
+	int yb_cur_batch_no;		/* Used in replace_nestloop_params to keep
+								 * track of current batch */
+
 	/* optional private data for join_search_hook, e.g., GEQO */
 	void	   *join_search_private;
 
@@ -1061,7 +1079,45 @@ typedef struct ParamPathInfo
 	Relids		ppi_req_outer;	/* rels supplying parameters used by path */
 	double		ppi_rows;		/* estimated number of result tuples */
 	List	   *ppi_clauses;	/* join clauses available from outer rels */
+	Relids		yb_ppi_req_outer_batched; /* outer rels that can be batched */
+	Relids		yb_ppi_req_outer_unbatched; /* outer rels that cannot
+											 * be batched */
 } ParamPathInfo;
+
+
+/*
+ * Indicates whether locking can happen during an index scan in all isolation
+ * levels, avoiding two RPCs to lock (read, then lock). This is set in all
+ * isolation levels because plans can be executed at a different isolation level
+ * from that of planning.
+ */
+typedef enum YbLockMechanism
+{
+	YB_NO_SCAN_LOCK,		/* no locks taken in this scan */
+	YB_LOCK_CLAUSE_ON_PK,	/* may take locks on PK for locking clause */
+} YbLockMechanism;
+
+/*
+ * Info propagated for YugabyteDB, for scans.
+ *
+ * 'yb_uniqkeys' Set of exprs that the path is distinct on. NIL by default.
+ * NIL signifies that the set is indeterminate.
+ */
+typedef struct YbPathInfo {
+	List		   *yb_uniqkeys;		/* list keys that are distinct */
+} YbPathInfo;
+
+/*
+ * Info propagated for YugabyteDB, for index scans.
+ *
+ * 'yb_lock_mechanism' indicates what kind of lock can or must be taken as part
+ * of a scan.
+ */
+typedef struct YbIndexPathInfo
+{
+	int				yb_distinct_prefixlen;
+	YbLockMechanism yb_lock_mechanism;	/* what lock as part of a scan */
+} YbIndexPathInfo;
 
 
 /*
@@ -1092,6 +1148,8 @@ typedef struct ParamPathInfo
  *
  * "pathkeys" is a List of PathKey nodes (see above), describing the sort
  * ordering of the path's output rows.
+ *
+ * 'yb_path_info' contains info propagated for YugabyteDB.
  */
 typedef struct Path
 {
@@ -1115,6 +1173,8 @@ typedef struct Path
 
 	List	   *pathkeys;		/* sort ordering of path's output */
 	/* pathkeys is a List of PathKey nodes; see above */
+
+	YbPathInfo	yb_path_info;	/* fields used for YugabyteDB */
 } Path;
 
 /* Macro for extracting a path's parameterization relids; beware double eval */
@@ -1171,20 +1231,25 @@ typedef struct Path
  * we need not recompute them when considering using the same index in a
  * bitmap index/heap scan (see BitmapHeapPath).  The costs of the IndexPath
  * itself represent the costs of an IndexScan or IndexOnlyScan plan type.
+ *
+ * 'yb_index_path_info' contains info propagated for YugabyteDB.
  *----------
  */
 typedef struct IndexPath
 {
-	Path		path;
-	IndexOptInfo *indexinfo;
-	List	   *indexclauses;
-	List	   *indexquals;
-	List	   *indexqualcols;
-	List	   *indexorderbys;
-	List	   *indexorderbycols;
-	ScanDirection indexscandir;
-	Cost		indextotalcost;
-	Selectivity indexselectivity;
+	Path				path;
+	IndexOptInfo	   *indexinfo;
+	List			   *indexclauses;
+	List			   *indexquals;
+	List			   *indexqualcols;
+	List			   *indexorderbys;
+	List			   *indexorderbycols;
+	ScanDirection		indexscandir;
+	Cost				indextotalcost;
+	Selectivity			indexselectivity;
+	double				estimated_num_nexts;
+	double				estimated_num_seeks;
+	YbIndexPathInfo		yb_index_path_info;	/* fields used for YugabyteDB */
 } IndexPath;
 
 /*
@@ -1910,6 +1975,10 @@ typedef struct RestrictInfo
 
 	bool		yb_pushable;	/* true if can be pushed down to DocDB */
 
+	List *yb_batched_rinfo; /* If there is a batched version of
+							 * this clause, this is a pointer to
+							 * a list of possible batched versions. */
+
 	Index		security_level; /* see comment above */
 
 	/* The set of relids (varnos) actually referenced in the clause: */
@@ -2022,6 +2091,20 @@ typedef struct PlaceHolderVar
 	Index		phid;			/* ID for PHV (unique within planner run) */
 	Index		phlevelsup;		/* > 0 if PHV belongs to outer query */
 } PlaceHolderVar;
+
+/*
+ * Used to represent a batched version of a Var. Currently used for
+ * batched NL joins. These are replaced by exec params during plan creation.
+ * For example, a join clause of the form (Var_o = Var_i) where Var_o is an
+ * outer relation Var and Var_i is an inner relation Var, might be turned into
+ * (Var_i IN (BVar_o(0),BVar_o(1),BVar_o(0)...)) where BVar_o(i) represents the
+ * ith batched variable of Var_o.
+ */
+typedef struct YbBatchedExpr
+{
+	Expr xpr;
+	Expr *orig_expr; /* Original Var this is a batched version of. */
+} YbBatchedExpr;
 
 /*
  * "Special join" info.

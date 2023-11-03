@@ -17,7 +17,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -26,7 +26,7 @@ import java.util.List;
 
 import static org.yb.AssertionWrappers.assertEquals;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestPgTruncate extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgTruncate.class);
 
@@ -93,6 +93,54 @@ public class TestPgTruncate extends BasePgSQLTest {
         assertEquals(0, rs.getLong(2));
         assertEquals(0, rs.getLong(3));
       }
+    }
+  }
+
+  @Test
+  public void testCountAfterTruncate() throws SQLException {
+    final int numInsertedRows = 10000;
+    final String tableName = "test_truncate";
+    final String insertFormat = "INSERT INTO %s(h, r, vi, vs) SELECT generate_series(1, %d), " +
+          "0.5, generate_series(1, %d), 'constant-string'";
+    final String insertText = String.format(insertFormat, tableName, numInsertedRows,
+          numInsertedRows);
+    final String countRowsStmt = "SELECT COUNT(*) FROM %s";
+    final String countRelTuplesStmt = "SELECT reltuples FROM pg_class WHERE relname = '%s'";
+
+    createSimpleTableWithSingleColumnKey(tableName);
+
+    // Populate the table with rows.
+    try (Statement statement = connection.createStatement()) {
+      // Create a secondary index on vi.
+      statement.execute(String.format("CREATE INDEX on %s (vi)", tableName));
+      statement.execute(insertText);
+      statement.execute(String.format("ANALYZE %s", tableName));
+
+      assertOneRow(statement, String.format(countRowsStmt, tableName), numInsertedRows);
+      assertOneRow(statement, String.format(countRelTuplesStmt, tableName), numInsertedRows);
+      assertOneRow(statement, String.format(countRelTuplesStmt,
+        String.format("%s_pkey", tableName)), numInsertedRows);
+      assertOneRow(statement, String.format(countRelTuplesStmt,
+        String.format("%s_%s_idx", tableName, "vi")), numInsertedRows);
+    }
+
+    // Truncate the table and assert the new row count.
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("TRUNCATE " + tableName);
+
+      assertOneRow(statement, String.format(countRowsStmt, tableName), 0);
+      assertOneRow(statement, String.format(countRelTuplesStmt, tableName), 0);
+      assertOneRow(statement, String.format(countRelTuplesStmt,
+        String.format("%s_pkey", tableName)), 0);
+      assertOneRow(statement, String.format(countRelTuplesStmt,
+        String.format("%s_%s_idx", tableName, "vi")), 0);
+
+    }
+
+    // Ensure that rows can be inserted into the table again.
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(insertText);
+      assertOneRow(statement, "SELECT COUNT(*) FROM " + tableName, numInsertedRows);
     }
   }
 }

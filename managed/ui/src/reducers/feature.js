@@ -16,12 +16,24 @@ const initialStateFeatureInTest = {
   enableOIDC: true,
   supportBundle: false,
   enableThirdpartyUpgrade: false,
-  topNodeMetrics: false,
-  enableYbc: false,
+  enableYbc: true,
   enableMultiRegionConfig: false,
-  enableGcpKMS: false,
-  enableAzuKMS: false,
-  allowOptionalAuth: false
+  enableGcpKMS: true,
+  enableAzuKMS: true,
+  enableRunTimeConfig: true,
+  enablePITR: true,
+  enableNotificationTemplates: false,
+  enableRestore: true,
+  enablePrefillKubeConfig: true,
+  enableNewUI: true, // feature flag to enable new revamped UI,
+  enableCustomEmailTemplates: true,
+  enableAWSProviderValidation: true,
+  enableMKR: true,
+  enableS3BackupProxy: false,
+  enableRRGflags: true,
+  enableLDAPRoleMapping: true,
+  enableNewRestoreModal: true,
+  enableCACertRotation: true
 };
 
 const initialStateFeatureReleased = {
@@ -40,12 +52,17 @@ const initialStateFeatureReleased = {
   enableOIDC: true,
   supportBundle: true,
   enableThirdpartyUpgrade: false,
-  topNodeMetrics: false,
-  enableYbc: false,
+  enableYbc: true,
   enableMultiRegionConfig: false,
-  enableGcpKMS: false,
-  enableAzuKMS: false,
-  allowOptionalAuth: false
+  enableGcpKMS: true,
+  enableAzuKMS: true,
+  enableRunTimeConfig: true,
+  enablePITR: true,
+  enableNotificationTemplates: false,
+  enableRestore: true,
+  enablePrefillKubeConfig: true,
+  enableCustomEmailTemplates: true
+  // enableRRGflags: true
 };
 
 export const FeatureFlag = (

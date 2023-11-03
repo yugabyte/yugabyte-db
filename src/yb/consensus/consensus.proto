@@ -40,6 +40,7 @@ import "yb/common/common_net.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/consensus/consensus_types.proto";
 import "yb/consensus/metadata.proto";
+import "yb/rpc/lightweight_message.proto";
 import "yb/tablet/operations.proto";
 import "yb/tserver/backup.proto";
 import "yb/tserver/tserver_types.proto";
@@ -117,7 +118,16 @@ message ChangeConfigResponsePB {
 
 // Required by HistoryCutoffOperation.
 message HistoryCutoffPB {
-  optional fixed64 history_cutoff = 1;
+  option (yb.rpc.lightweight_message).force_arena = true;
+  // History cutoff of all the tables of this tablet.
+  // On the master, this field is used for the sys catalog table.
+  // For cotables i.e. ysql system tables, the cotables_cutoff_ht field
+  // is used. On tservers, this field is used everywhere i.e. for both
+  // colocated and non-colocated tables. In such cases, the
+  // cotables_cutoff_ht is invalid.
+  optional fixed64 primary_cutoff_ht = 1;
+  // Set only on the master for cotables.
+  optional fixed64 cotables_cutoff_ht = 2;
 }
 
 // A Replicate message, sent to replicas by leader to indicate this operation must be stored in the
@@ -134,14 +144,21 @@ message ReplicateMsg {
   optional int64 monotonic_counter = 9;
 
   required OperationType op_type = 4;
-  optional tablet.WritePB write = 5;
-  optional tablet.ChangeMetadataRequestPB change_metadata_request = 6;
-  optional tablet.TransactionStatePB transaction_state = 10;
-  optional tserver.TabletSnapshotOpRequestPB snapshot_request = 11;
-  optional tablet.TruncatePB truncate = 12;
-  optional tablet.SplitTabletRequestPB split_request = 14;
-  optional ChangeConfigRecordPB change_config_record = 7;
-  optional HistoryCutoffPB history_cutoff = 13;
+  optional tablet.WritePB write = 5 [(yb.rpc.lightweight_field).pointer = true];
+  optional tablet.ChangeMetadataRequestPB change_metadata_request = 6
+      [(yb.rpc.lightweight_field).pointer = true];
+  optional tablet.TransactionStatePB transaction_state = 10
+      [(yb.rpc.lightweight_field).pointer = true];
+  optional tserver.TabletSnapshotOpRequestPB snapshot_request = 11
+      [(yb.rpc.lightweight_field).pointer = true];
+  optional tablet.TruncatePB truncate = 12 [(yb.rpc.lightweight_field).pointer = true];
+  optional tablet.SplitTabletRequestPB split_request = 14
+      [(yb.rpc.lightweight_field).pointer = true];
+  optional ChangeConfigRecordPB change_config_record = 7
+      [(yb.rpc.lightweight_field).pointer = true];
+  optional HistoryCutoffPB history_cutoff = 13 [(yb.rpc.lightweight_field).pointer = true];
+  optional AutoFlagsConfigPB auto_flags_config = 15
+      [(yb.rpc.lightweight_field).pointer = true];
 
   // The Raft operation ID known to the leader to be committed at the time this message was sent.
   // This is used during tablet bootstrap for RocksDB-backed tables.
@@ -333,6 +350,9 @@ message ConsensusRequestPB {
 
   // Hybrid time on the leader when this request was generated.
   optional fixed64 propagated_hybrid_time = 11;
+
+  // If enabled, a trace will be collected for this RPC and returned in the response.
+  optional bool trace_requested = 12;
 }
 
 message ConsensusResponsePB {
@@ -356,6 +376,9 @@ message ConsensusResponsePB {
 
   // Hybrid time on the follower when this request was processed.
   optional fixed64 propagated_hybrid_time = 6;
+
+  // The trace for the RPC as a string, returned only if requested.
+  optional string trace_buffer = 7;
 }
 
 message MultiRaftConsensusRequestPB {
@@ -560,10 +583,36 @@ message UnsafeChangeConfigResponsePB {
   optional tserver.TabletServerErrorPB error = 1;
 }
 
+message ChangeAutoFlagsConfigOpResponsePB {
+  optional tserver.TabletServerErrorPB error = 1;
+}
+
+// Retryable requests.
+message ReplicatedRetryableRequestRangePB {
+  optional int64 first_id = 1;
+  optional int64 last_id = 2;
+  optional OpIdPB min_op_id = 3;
+  optional uint64 min_time = 4;
+  optional uint64 max_time = 5;
+}
+
+message ClientReplicatedRetryableRequestRangesPB {
+  optional fixed64 client_id1 = 1;
+  optional fixed64 client_id2 = 2;
+  repeated ReplicatedRetryableRequestRangePB range = 3;
+}
+
+message RetryableRequestsPB {
+  optional OpIdPB last_op_id = 1;
+  repeated ClientReplicatedRetryableRequestRangesPB client_requests = 2;
+}
+
 // A Raft implementation.
 service ConsensusService {
   // Analogous to AppendEntries in Raft, but only used for followers.
-  rpc UpdateConsensus(ConsensusRequestPB) returns (ConsensusResponsePB);
+  rpc UpdateConsensus(ConsensusRequestPB) returns (ConsensusResponsePB) {
+    option (yb.rpc.lightweight_method).sides = BOTH;
+  };
 
   // Similar to UpdateConsensus but takes a batch of ConsensusRequestPB
   // and returns a batch of ConsensusResponsePB.

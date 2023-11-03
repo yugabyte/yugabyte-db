@@ -19,8 +19,6 @@ This section shows how to use the `GROUPING SETS`, `ROLLUP`, and `CUBE` syntax, 
 
 `ROLLUP (...)` and `CUBE` are each shorthand notations for specifying two common uses of the `GROUPING SET` syntax.
 
-_To_do:_ x-ref to `GROUP BY` in syntax diagrams.
-
 ### GROUPING SETS
 
 Suppose that the list of candidate columns (or expressions) is _"g1"_,... _"g2"_,... _"gN"_ and you want to produce the results from a set of aggregate functions using each individual one in turn as the `GROUP BY` argument and also using no `GROUP BY` clause at all. You can easily simply write several individual queries, like this:

@@ -7,7 +7,7 @@ import static org.hamcrest.Matchers.startsWith;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
-import static org.mockito.Matchers.anyString;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
@@ -26,11 +26,11 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentMatchers;
 import org.mockito.InjectMocks;
-import org.mockito.Matchers;
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
 import play.libs.ws.WSClient;
 import play.libs.ws.WSRequest;
@@ -82,7 +82,8 @@ public class ApiHelperTest {
     headers.put("header", "sample");
     JsonNode result = apiHelper.getRequest("http://foo.com/test", headers);
     Mockito.verify(mockClient, times(1)).url("http://foo.com/test");
-    Mockito.verify(mockRequest).setHeader("header", "sample");
+    Mockito.verify(mockRequest).addHeader("header", "sample");
+    Mockito.verify(mockRequest).setFollowRedirects(true);
     assertEquals(result.get("Foo").asText(), "Bar");
   }
 
@@ -113,7 +114,7 @@ public class ApiHelperTest {
     ObjectNode jsonResponse = Json.newObject();
     jsonResponse.put("Success", true);
 
-    when(mockRequest.post(Matchers.any(JsonNode.class))).thenReturn(mockCompletion);
+    when(mockRequest.post(ArgumentMatchers.any(JsonNode.class))).thenReturn(mockCompletion);
     when(mockResponse.getBody()).thenReturn(jsonResponse.toString());
     JsonNode result = apiHelper.postRequest("http://foo.com/test", postData);
     Mockito.verify(mockClient, times(1)).url("http://foo.com/test");

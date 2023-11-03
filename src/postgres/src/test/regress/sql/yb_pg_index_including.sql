@@ -26,11 +26,21 @@ SELECT pg_get_indexdef(i.indexrelid)
 FROM pg_index i JOIN pg_class c ON i.indexrelid = c.oid
 WHERE i.indrelid = 'tbl_include_unique1'::regclass ORDER BY c.relname;
 
--- Unique index and unique constraint. Both must fail.
+-- Unique index and unique constraint. Both must fail due to duplicate key values.
 CREATE TABLE tbl_include_unique2 (c1 int, c2 int, c3 int, c4 int);
 INSERT INTO tbl_include_unique2 SELECT 1, 2, 3*x, 4 FROM generate_series(1,10) AS x;
 CREATE UNIQUE INDEX tbl_include_unique2_idx_unique ON tbl_include_unique2 using lsm (c1, c2) INCLUDE (c3, c4);
 ALTER TABLE tbl_include_unique2 add UNIQUE (c1, c2) INCLUDE (c3, c4);
+
+-- Unique index and unique constraint. Must fail setting non-unique index as constraint.
+CREATE TABLE tbl_include_non_unique (c1 int, c2 int, c3 int, c4 int);
+CREATE INDEX tbl_include_non_unique_idx on tbl_include_non_unique (c1);
+ALTER TABLE tbl_include_non_unique ADD CONSTRAINT constr_non_unique UNIQUE USING INDEX tbl_include_non_unique_idx;
+
+-- Unique index and unique constraint. Must fail setting DESC unique index as constraint.
+CREATE TABLE tbl_include_desc_unique (c1 int, c2 int, c3 int, c4 int);
+CREATE UNIQUE INDEX tbl_include_desc_unique_idx on tbl_include_desc_unique (c1 DESC);
+ALTER TABLE tbl_include_desc_unique ADD CONSTRAINT constr_desc_unique UNIQUE USING INDEX tbl_include_desc_unique_idx;
 
 -- PK constraint
 CREATE TABLE tbl_include_pk (c1 int, c2 int, c3 int, c4 int);
@@ -211,15 +221,12 @@ UPDATE tbl SET c2 = 2 WHERE c1 = 1;
 DELETE FROM tbl WHERE c1 = 5 OR c3 = 12;
 DROP TABLE tbl;
 
--- NOT SUPPORTED
---
--- /*
---  * 9. Alter column type.
---  */
--- CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 int, UNIQUE(c1, c2) INCLUDE(c3,c4));
--- INSERT INTO tbl SELECT x, 2*x, 3*x, 4 FROM generate_series(1,10) AS x;
--- ALTER TABLE tbl ALTER c1 TYPE bigint;
--- ALTER TABLE tbl ALTER c3 TYPE bigint;
--- \d tbl
--- DROP TABLE tbl;
---
+/*
+ * 9. Alter column type.
+ */
+CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 box, UNIQUE(c1, c2) INCLUDE(c3,c4));
+INSERT INTO tbl SELECT x, 2*x, 3*x, box('4,4,4,4') FROM generate_series(1,10) AS x;
+ALTER TABLE tbl ALTER c1 TYPE bigint;
+ALTER TABLE tbl ALTER c3 TYPE bigint;
+\d tbl
+DROP TABLE tbl;

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_YQL_AUTH_ROLE_PERMISSIONS_VTABLE_H
-#define YB_MASTER_YQL_AUTH_ROLE_PERMISSIONS_VTABLE_H
+#pragma once
 
 #include "yb/master/yql_virtual_table.h"
 
@@ -26,7 +25,7 @@ class YQLAuthRolePermissionsVTable : public YQLVirtualTable {
                                         const NamespaceName& namespace_name,
                                         yb::master::Master * const master);
 
-  Result<std::shared_ptr<QLRowBlock>> RetrieveData(const QLReadRequestPB& request) const override;
+  Result<VTableDataPtr> RetrieveData(const QLReadRequestPB& request) const override;
 
  protected:
   Schema CreateSchema() const;
@@ -40,4 +39,3 @@ class YQLAuthRolePermissionsVTable : public YQLVirtualTable {
 
 }  // namespace master
 }  // namespace yb
-#endif // YB_MASTER_YQL_AUTH_ROLE_PERMISSIONS_VTABLE_H

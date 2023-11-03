@@ -16,8 +16,8 @@
 #include <cstdlib>
 #include <future>
 
-#include <gflags/gflags.h>
-#include <glog/logging.h>
+#include "yb/util/flags.h"
+#include "yb/util/logging.h"
 
 #include "yb/client/callbacks.h"
 #include "yb/client/client.h"
@@ -42,26 +42,9 @@
 using namespace std::literals;
 
 using std::string;
-using std::vector;
-using std::unique_ptr;
-
-using yb::client::YBValue;
-
-using std::shared_ptr;
 
 namespace yb {
 namespace integration_tests {
-
-using client::YBClient;
-using client::YBClientBuilder;
-using client::YBColumnSchema;
-using client::YBSchema;
-using client::YBSchemaBuilder;
-using client::YBSession;
-using client::YBStatusMemberCallback;
-using client::YBTable;
-using client::YBTableCreator;
-using strings::Split;
 
 class FlushUnderLoadTest : public YBTableTestBase {
  protected:

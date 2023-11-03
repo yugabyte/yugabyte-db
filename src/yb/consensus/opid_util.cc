@@ -33,9 +33,9 @@
 
 #include <limits>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
-#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus.messages.h"
 #include "yb/gutil/port.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/opid.h"
@@ -152,19 +152,14 @@ std::string OpIdToString(const OpIdPB& op_id) {
   return strings::Substitute("$0.$1", op_id.term(), op_id.index());
 }
 
-std::string OpsRangeString(const ConsensusRequestPB& req) {
-  std::string ret;
-  ret.reserve(100);
-  ret.push_back('[');
-  if (req.ops_size() > 0) {
-    const OpIdPB& first_op = req.ops(0).id();
-    const OpIdPB& last_op = req.ops(req.ops_size() - 1).id();
-    strings::SubstituteAndAppend(&ret, "$0.$1-$2.$3",
-                                 first_op.term(), first_op.index(),
-                                 last_op.term(), last_op.index());
+std::string OpsRangeString(const LWConsensusRequestPB& req) {
+  if (req.ops().empty()) {
+    return "[]";
   }
-  ret.push_back(']');
-  return ret;
+  const auto& first_op = req.ops().front().id();
+  const auto& last_op = req.ops().back().id();
+  return Format(
+      "[$0.$1-$2.$3]", first_op.term(), first_op.index(), last_op.term(), last_op.index());
 }
 
 OpIdPB MakeOpId(int64_t term, int64_t index) {

@@ -6,7 +6,6 @@ description: Learn about the persistent storage layer of DocDB.
 image: /images/section_icons/architecture/concepts.png
 aliases:
   - /architecture/concepts/docdb/
-  - /preview/architecture/concepts/docdb/
 headcontent: DocDB is YugabyteDB's distributed document store responsible for transactions, sharding, replication, and persistence.
 menu:
   preview:
@@ -36,9 +35,9 @@ type: indexpage
         <div class="title">Performance</div>
       </div>
       <div class="body">
-        Achieving high performance in DocDB.
+        High performance in DocDB.
       </div>
     </a>
-  </div>>
+  </div>
 
 </div>

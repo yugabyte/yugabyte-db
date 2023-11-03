@@ -17,7 +17,7 @@
 
 #include <boost/algorithm/string/case_conv.hpp>
 #include <boost/lockfree/queue.hpp>
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/client/client.h"
 #include "yb/client/error.h"
@@ -29,6 +29,7 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/redis_protocol.pb.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/join.h"
@@ -54,6 +55,9 @@
 #include "yb/yql/redis/redisserver/redis_commands.h"
 #include "yb/yql/redis/redisserver/redis_encoding.h"
 #include "yb/yql/redis/redisserver/redis_rpc.h"
+
+using std::string;
+using std::vector;
 
 using yb::operator"" _MB;
 using namespace std::literals;
@@ -94,24 +98,24 @@ constexpr int32_t kDefaultRedisServiceTimeoutMs = 600000;
 constexpr int32_t kDefaultRedisServiceTimeoutMs = 3000;
 #endif
 
-DEFINE_int32(redis_service_yb_client_timeout_millis, kDefaultRedisServiceTimeoutMs,
+DEFINE_UNKNOWN_int32(redis_service_yb_client_timeout_millis, kDefaultRedisServiceTimeoutMs,
              "Timeout in milliseconds for RPC calls from Redis service to master/tserver");
 
 // In order to support up to three 64MB strings along with other strings,
 // we have the total size of a redis command at 253_MB, which is less than the consensus size
 // to account for the headers in the consensus layer.
-DEFINE_uint64(redis_max_command_size, 253_MB, "Maximum size of the command in redis");
+DEFINE_UNKNOWN_uint64(redis_max_command_size, 253_MB, "Maximum size of the command in redis");
 
 // Maximum value size is 64MB
-DEFINE_uint64(redis_max_value_size, 64_MB, "Maximum size of the value in redis");
-DEFINE_int32(redis_callbacks_threadpool_size, 64,
+DEFINE_UNKNOWN_uint64(redis_max_value_size, 64_MB, "Maximum size of the value in redis");
+DEFINE_UNKNOWN_int32(redis_callbacks_threadpool_size, 64,
              "The maximum size for the threadpool which handles callbacks from the ybclient layer");
 
-DEFINE_int32(redis_password_caching_duration_ms, 5000,
+DEFINE_UNKNOWN_int32(redis_password_caching_duration_ms, 5000,
              "The duration for which we will cache the redis passwords. 0 to disable.");
 
-DEFINE_bool(redis_safe_batch, true, "Use safe batching with Redis service");
-DEFINE_bool(enable_redis_auth, true, "Enable AUTH for the Redis service");
+DEFINE_UNKNOWN_bool(redis_safe_batch, true, "Use safe batching with Redis service");
+DEFINE_UNKNOWN_bool(enable_redis_auth, true, "Enable AUTH for the Redis service");
 
 DECLARE_string(placement_cloud);
 DECLARE_string(placement_region);
@@ -335,9 +339,8 @@ class SessionPool {
   std::shared_ptr<client::YBSession> Take() {
     client::YBSession* result = nullptr;
     if (!queue_.pop(result)) {
-      std::lock_guard<std::mutex> lock(mutex_);
-      auto session = client_->NewSession();
-      session->SetTimeout(
+      std::lock_guard lock(mutex_);
+      auto session = client_->NewSession(
           MonoDelta::FromMilliseconds(FLAGS_redis_service_yb_client_timeout_millis));
       sessions_.push_back(session);
       allocated_sessions_metric_->IncrementBy(1);
@@ -1037,14 +1040,9 @@ RedisServiceImplData::RedisServiceImplData(RedisServer* server, string&& yb_tier
       initialized_(false),
       server_(server) {}
 
-yb::Result<std::shared_ptr<client::YBTable>> RedisServiceImplData::GetYBTableForDB(
-    const string& db_name) {
-  std::shared_ptr<client::YBTable> table;
+Result<client::YBTablePtr> RedisServiceImplData::GetYBTableForDB(const std::string& db_name) {
   YBTableName table_name = GetYBTableNameForRedisDatabase(db_name);
-  bool was_cached = false;
-  auto res = tables_cache_->GetTable(table_name, &table, &was_cached);
-  if (!res.ok()) return res;
-  return table;
+  return tables_cache_->GetTable(table_name);
 }
 
 void RedisServiceImplData::AppendToMonitors(Connection* conn) {
@@ -1294,7 +1292,9 @@ int RedisServiceImplData::PublishToLocalClients(
     // Handle Monitor and Subscribe clients.
     for (auto connection : *clients) {
       DVLOG(3) << "Publishing to subscribed client " << connection->ToString();
-      connection->QueueOutboundData(out);
+      auto queuing_status = connection->QueueOutboundData(out);
+      LOG_IF(DFATAL, !queuing_status.ok())
+          << "Failed to queue outbound data: " << queuing_status;
       num_pushed_to++;
     }
   }
@@ -1310,7 +1310,9 @@ int RedisServiceImplData::PublishToLocalClients(
       OutboundDataPtr out = std::make_shared<yb::rpc::StringOutboundData>(
           PMessageFor(pattern, channel, message), "Publishing to Channel");
       for (auto remote : clients_subscribed_to_pattern) {
-        remote->QueueOutboundData(out);
+        auto queuing_status = remote->QueueOutboundData(out);
+        LOG_IF(DFATAL, !queuing_status.ok())
+            << "Failed to queue outbound data: " << queuing_status;
         num_pushed_to++;
       }
     }
@@ -1366,7 +1368,7 @@ void RedisServiceImplData::CleanYBTableFromCacheForDB(const string& db) {
 Status RedisServiceImplData::GetRedisPasswords(vector<string>* passwords) {
   MonoTime now = MonoTime::Now();
 
-  std::lock_guard<std::mutex> lock(redis_password_mutex_);
+  std::lock_guard lock(redis_password_mutex_);
   if (redis_cached_password_validity_expiry_.Initialized() &&
       now < redis_cached_password_validity_expiry_) {
     *passwords = redis_cached_passwords_;

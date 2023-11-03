@@ -13,6 +13,11 @@
 
 #pragma once
 
+#include <boost/multi_index/hashed_index.hpp>
+#include <boost/multi_index/mem_fun.hpp>
+#include <boost/multi_index/ordered_index.hpp>
+#include <boost/multi_index_container.hpp>
+
 #include "yb/client/client.h"
 
 #include "yb/tserver/tserver_service.pb.h"
@@ -24,14 +29,95 @@
 namespace yb {
 namespace tablet {
 
-using BlockerData = std::vector<BlockingTransactionData>;
+// Structure holding the required data of each blocker transaction.
+struct BlockerTransactionInfo {
+    TransactionId id;
+    TabletId status_tablet;
+    std::shared_ptr<const SubtxnSetAndPB> blocking_subtxn_info = nullptr;
+};
+
+using BlockerData = std::vector<BlockerTransactionInfo>;
+using BlockerDataPtr = std::shared_ptr<BlockerData>;
+
 struct WaiterData {
     HybridTime wait_start_time;
-    BlockerData blockers;
+    BlockerDataPtr blockers;
 };
-using Waiters = std::unordered_map<TransactionId,
-                                   std::shared_ptr<WaiterData>,
-                                   TransactionIdHash>;
+
+// WaiterInfoEntry stores the wait-for dependencies of a waiter transaction received from a
+// TabletServer. For waiter transactions spanning across tablet servers, we create multiple
+// WaiterInfoEntry objects.
+class WaiterInfoEntry {
+ public:
+  WaiterInfoEntry(
+      const TransactionId& txn_id, const std::string& tserver_uuid,
+      const std::shared_ptr<WaiterData>& waiter_data) :
+    txn_id_(txn_id), tserver_uuid_(tserver_uuid), waiter_data_(waiter_data) {}
+
+  const TransactionId& txn_id() const {
+    return txn_id_;
+  }
+
+  const std::string& tserver_uuid() const {
+    return tserver_uuid_;
+  }
+
+  std::pair<const TransactionId, const std::string> txn_id_tserver_uuid_pair() const {
+    return std::pair<const TransactionId, const std::string>(txn_id_, tserver_uuid_);
+  }
+
+  const std::shared_ptr<WaiterData>& waiter_data() const {
+    return waiter_data_;
+  }
+
+  void ResetWaiterData(const std::shared_ptr<WaiterData>& waiter_data) {
+    waiter_data_ = waiter_data;
+  }
+
+  const TransactionId txn_id_;
+  const std::string tserver_uuid_;
+  std::shared_ptr<WaiterData> waiter_data_;
+};
+
+// Waiters is a multi-indexed container storing WaiterInfoEntry records. The records are indexed
+// on 3 aspects -
+// 1. unique hash index for pair<txn_id, tserver_uuid>: necessary for inserting new wait-for
+//      relations on partial updates from the local_waiting_txn_registry of a given tserver.
+// 2. sorted on txn_id: useful for fetching blocker information for a particular transaction across
+//      all tservers. Need to maintain sorted order so as to iterate through the container and prune
+//      inactive transactions. Maintaining a sorted order helps visit each transaction id only once.
+// 3. non-unique hash on tserver_uuid: On full updates from a given tserver, the index helps erase
+//      all exisiting entries corresponding to the given tserver_uuid.
+//
+// The container stores WaiterInfoEntry for each waiter txn and each tserver at which it occurs.
+// A waiter txn can have multiple records when it is waiting on tablets at different tservers.
+//
+// Note: local_waiting_txn_registry sends two kinds of updates to the transaction coordinator, one
+// is a partial update where new txn(s) entering the wait-queue are reported. The other is a
+// full update, where all exisiting waiters at the tserver across all tablets are reported.
+struct TransactionIdTag;
+struct TserverUuidTag;
+typedef boost::multi_index_container<WaiterInfoEntry,
+    boost::multi_index::indexed_by <
+        boost::multi_index::hashed_unique <
+            boost::multi_index::const_mem_fun<WaiterInfoEntry,
+            std::pair<const TransactionId, const std::string>,
+            &WaiterInfoEntry::txn_id_tserver_uuid_pair>
+        >,
+        boost::multi_index::ordered_non_unique <
+            boost::multi_index::tag<TransactionIdTag>,
+            boost::multi_index::const_mem_fun<WaiterInfoEntry,
+            const TransactionId&,
+            &WaiterInfoEntry::txn_id>
+        >,
+        boost::multi_index::hashed_non_unique <
+            boost::multi_index::tag<TserverUuidTag>,
+            boost::multi_index::const_mem_fun<WaiterInfoEntry,
+            const std::string&,
+            &WaiterInfoEntry::tserver_uuid>
+        >
+    >
+> Waiters;
 
 // Specification used by the deadlock detector to interact with the transaction coordinator to abort
 // transactions or determine which transactions are no longer running.
@@ -39,6 +125,8 @@ class TransactionAbortController {
  public:
   virtual void Abort(const TransactionId& transaction_id, TransactionStatusCallback callback) = 0;
   virtual void RemoveInactiveTransactions(Waiters* waiters) = 0;
+  virtual bool IsAnySubtxnActive(const TransactionId& transaction_id,
+                                 const SubtxnSet& subtxn_set) = 0;
   virtual ~TransactionAbortController() = default;
 };
 
@@ -73,7 +161,7 @@ using DeadlockDetectorRpcCallback = std::function<void(const Status&)>;
 // determine how to resolve the deadlock. Currently, this deadlock is resolved by aborting the
 // transaction from which the probe originated.
 //
-// TODO(pessimistic): We can improve resolution of deadlocks by applying some consistent strategy,
+// TODO(wait-queues): We can improve resolution of deadlocks by applying some consistent strategy,
 // e.g. always abort just the lexicographically smallest txn id, to ensure that we don't
 // concurrently abort multiple transactions in a deadlock if the same deadlock is detected by
 // multiple coordinators concurrently.
@@ -82,7 +170,8 @@ class DeadlockDetector {
   DeadlockDetector(
       const std::shared_future<client::YBClient*>& client_future,
       TransactionAbortController* controller,
-      const TabletId& status_tablet_id);
+      const TabletId& status_tablet_id,
+      const MetricEntityPtr& metrics);
 
   ~DeadlockDetector();
 
@@ -99,6 +188,10 @@ class DeadlockDetector {
   void TriggerProbes();
 
   void Shutdown();
+
+  // Returns the deadlock status if the given transaction could have been involved in a deadlock.
+  // Returns Status::OK() in all other cases.
+  Status GetTransactionDeadlockStatus(const TransactionId& txn_id);
 
  private:
   class Impl;

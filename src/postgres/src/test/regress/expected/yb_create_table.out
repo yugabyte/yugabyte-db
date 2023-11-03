@@ -410,7 +410,7 @@ CREATE TABLE tbl3 (
 	a			int4,
 	primary key (a asc)
 ) SPLIT AT VALUES ((25), (100), (4));
-ERROR:  Invalid argument: Split rows ordering does not match column ordering
+ERROR:  Split rows ordering does not match column ordering
 CREATE TABLE tbl4 (
 	a			int4,
 	b			text,
@@ -440,11 +440,11 @@ CREATE TABLE tbl9 (
 	a			int4,
 	primary key (a hash)
 ) SPLIT AT VALUES ((100), (1000), (10000));
-ERROR:  Invalid argument: SPLIT AT option is not yet supported for hash partitioned tables
+ERROR:  SPLIT AT option is not yet supported for hash partitioned tables
 CREATE TEMPORARY TABLE tbl10 (
 	a			int4 primary key
 ) SPLIT INTO 20 TABLETS;
-WARNING:  Split options on TEMP table will be ignored
+WARNING:  split options on TEMP table will be ignored
 CREATE TABLE tbl11 (
 	a			int4,
 	b			int4,
@@ -456,7 +456,7 @@ CREATE TABLE tbl12 (
 	b			text,
 	primary key (b desc)
 ) SPLIT AT VALUES (('bienvenidos'), ('goodbye'), ('hello'), ('hola'));
-ERROR:  Invalid argument: Split rows ordering does not match column ordering
+ERROR:  Split rows ordering does not match column ordering
 CREATE TABLE tbl13 (
 	a			text,
 	b			date,
@@ -478,21 +478,21 @@ CREATE TABLE tbl16(
   b int,
   primary key(a asc, b asc)
 ) SPLIT AT VALUES((100), (200, 5), (200));
-ERROR:  Invalid argument: Split rows ordering does not match column ordering
+ERROR:  Split rows ordering does not match column ordering
 -- This is invalid because split rows do not honor column b's ordering
 CREATE TABLE tbl16(
   a int,
   b int,
   primary key(a asc, b asc nulls first)
 ) SPLIT AT VALUES((100), (200, 5), (200));
-ERROR:  Invalid argument: Split rows ordering does not match column ordering
+ERROR:  Split rows ordering does not match column ordering
 -- This is invalid because split rows do not honor column b's ordering
 CREATE TABLE tbl16(
   a int,
   b int,
   primary key(a asc, b asc nulls last)
 ) SPLIT AT VALUES((100), (200, 5), (200));
-ERROR:  Invalid argument: Split rows ordering does not match column ordering
+ERROR:  Split rows ordering does not match column ordering
 CREATE TABLE tbl16(
   a int,
   b int,
@@ -514,7 +514,20 @@ CREATE TABLE tbl19(
   b int,
   primary key(a asc, b desc nulls last)
 ) SPLIT AT VALUES((100), (200, 5), (200, 5));
-ERROR:  Invalid argument: Cannot have duplicate split rows
+ERROR:  Cannot have duplicate split rows
+CREATE TABLE tbl20 (
+	a			int4,
+	primary key (a hash)
+);
+CREATE INDEX ind20 on tbl20(a) SPLIT AT VALUES ((100));
+ERROR:  SPLIT AT option is not yet supported for hash partitioned indexes
+CREATE TABLE tbl21 (
+	a			int4,
+	b			int4,
+	primary key (a hash)
+);
+CREATE INDEX ind21 on tbl21(b) SPLIT AT VALUES ((100));
+ERROR:  SPLIT AT option is not yet supported for hash partitioned indexes
 -- Test ordering on splitted tables
 CREATE TABLE ordered_asc(
     k INT,
@@ -694,7 +707,7 @@ select relname, oid from pg_class where relname = 'with_table_oid_temp';
 (1 row)
 
 end;
-ERROR:  Illegal state: Transaction for catalog table write operation 'pg_type' not found
+ERROR:  Transaction for catalog table write operation 'pg_type' not found
 -- Creating a new temp table with that oid will fail
 create temp table with_table_oid_temp_2 (a int) with (table_oid = 1234568);
 ERROR:  table OID 1234568 is in use
@@ -718,6 +731,8 @@ BEGIN;
 CREATE TABLE tab_with_unique (i int, UNIQUE (i));
 COMMIT;
 -- Test temp table/view are automatically dropped.
+-- TODO: Remove DISCARD TEMP after the fix of #14519
+DISCARD TEMP;
 \c yugabyte
 create temporary table temp_tab(a int);
 create temporary view temp_view as select * from temp_tab;

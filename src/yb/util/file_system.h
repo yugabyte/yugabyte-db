@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_FILE_SYSTEM_H
-#define YB_UTIL_FILE_SYSTEM_H
+#pragma once
 
 #include <string>
 
@@ -314,6 +313,9 @@ class WritableFile : public FileWithUniqueId {
   // pre-allocation.
   void PrepareWrite(size_t offset, size_t len);
 
+  // Returns the filename provided when the WritableFile was constructed.
+  virtual const std::string& filename() const = 0;
+
  protected:
   /*
    * Pre-allocate space for a file.
@@ -430,6 +432,8 @@ class WritableFileWrapper : public WritableFile {
   }
   Status InvalidateCache(size_t offset, size_t length) override;
 
+  const std::string& filename() const override { return target_->filename(); }
+
  protected:
   Status Allocate(uint64_t offset, uint64_t len) override;
   Status RangeSync(uint64_t offset, uint64_t nbytes) override;
@@ -439,5 +443,3 @@ class WritableFileWrapper : public WritableFile {
 };
 
 } // namespace rocksdb
-
-#endif  // YB_UTIL_FILE_SYSTEM_H

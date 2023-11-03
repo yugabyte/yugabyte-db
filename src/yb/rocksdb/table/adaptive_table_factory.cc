@@ -17,13 +17,14 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_LITE
 
 #include "yb/rocksdb/table/adaptive_table_factory.h"
 
 #include "yb/rocksdb/table/format.h"
 
 #include "yb/rocksdb/table/table_builder.h"
+
+using std::unique_ptr;
 
 namespace rocksdb {
 
@@ -119,4 +120,3 @@ extern TableFactory* NewAdaptiveTableFactory(
 }
 
 }  // namespace rocksdb
-#endif  // ROCKSDB_LITE

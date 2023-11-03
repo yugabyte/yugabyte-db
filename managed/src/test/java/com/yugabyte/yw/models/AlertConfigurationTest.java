@@ -2,47 +2,9 @@
 package com.yugabyte.yw.models;
 
 import static com.yugabyte.yw.common.AlertTemplate.ALERT_CONFIG_WRITING_FAILED;
-import static com.yugabyte.yw.common.AlertTemplate.ALERT_NOTIFICATION_CHANNEL_ERROR;
-import static com.yugabyte.yw.common.AlertTemplate.ALERT_NOTIFICATION_ERROR;
 import static com.yugabyte.yw.common.AlertTemplate.ALERT_QUERY_FAILED;
-import static com.yugabyte.yw.common.AlertTemplate.BACKUP_FAILURE;
-import static com.yugabyte.yw.common.AlertTemplate.BACKUP_SCHEDULE_FAILURE;
-import static com.yugabyte.yw.common.AlertTemplate.CLIENT_TO_NODE_CA_CERT_EXPIRY;
-import static com.yugabyte.yw.common.AlertTemplate.CLIENT_TO_NODE_CERT_EXPIRY;
-import static com.yugabyte.yw.common.AlertTemplate.CLOCK_SKEW;
-import static com.yugabyte.yw.common.AlertTemplate.DB_COMPACTION_OVERLOAD;
-import static com.yugabyte.yw.common.AlertTemplate.DB_CORE_FILES;
-import static com.yugabyte.yw.common.AlertTemplate.DB_ERROR_LOGS;
-import static com.yugabyte.yw.common.AlertTemplate.DB_FATAL_LOGS;
-import static com.yugabyte.yw.common.AlertTemplate.DB_INSTANCE_DOWN;
-import static com.yugabyte.yw.common.AlertTemplate.DB_INSTANCE_RESTART;
-import static com.yugabyte.yw.common.AlertTemplate.DB_MEMORY_OVERLOAD;
-import static com.yugabyte.yw.common.AlertTemplate.DB_QUEUES_OVERFLOW;
-import static com.yugabyte.yw.common.AlertTemplate.DB_REDIS_CONNECTION;
-import static com.yugabyte.yw.common.AlertTemplate.DB_VERSION_MISMATCH;
-import static com.yugabyte.yw.common.AlertTemplate.DB_YCQL_CONNECTION;
-import static com.yugabyte.yw.common.AlertTemplate.DB_YSQL_CONNECTION;
 import static com.yugabyte.yw.common.AlertTemplate.HEALTH_CHECK_ERROR;
-import static com.yugabyte.yw.common.AlertTemplate.HEALTH_CHECK_NOTIFICATION_ERROR;
-import static com.yugabyte.yw.common.AlertTemplate.HIGH_NUM_YCQL_CONNECTIONS;
-import static com.yugabyte.yw.common.AlertTemplate.HIGH_NUM_YEDIS_CONNECTIONS;
-import static com.yugabyte.yw.common.AlertTemplate.INACTIVE_CRON_NODES;
 import static com.yugabyte.yw.common.AlertTemplate.MEMORY_CONSUMPTION;
-import static com.yugabyte.yw.common.AlertTemplate.NODE_CPU_USAGE;
-import static com.yugabyte.yw.common.AlertTemplate.NODE_DISK_USAGE;
-import static com.yugabyte.yw.common.AlertTemplate.NODE_DOWN;
-import static com.yugabyte.yw.common.AlertTemplate.NODE_FILE_DESCRIPTORS_USAGE;
-import static com.yugabyte.yw.common.AlertTemplate.NODE_OOM_KILLS;
-import static com.yugabyte.yw.common.AlertTemplate.NODE_RESTART;
-import static com.yugabyte.yw.common.AlertTemplate.NODE_TO_NODE_CA_CERT_EXPIRY;
-import static com.yugabyte.yw.common.AlertTemplate.NODE_TO_NODE_CERT_EXPIRY;
-import static com.yugabyte.yw.common.AlertTemplate.REPLICATION_LAG;
-import static com.yugabyte.yw.common.AlertTemplate.YCQL_OP_AVG_LATENCY;
-import static com.yugabyte.yw.common.AlertTemplate.YCQL_OP_P99_LATENCY;
-import static com.yugabyte.yw.common.AlertTemplate.YCQL_THROUGHPUT;
-import static com.yugabyte.yw.common.AlertTemplate.YSQL_OP_AVG_LATENCY;
-import static com.yugabyte.yw.common.AlertTemplate.YSQL_OP_P99_LATENCY;
-import static com.yugabyte.yw.common.AlertTemplate.YSQL_THROUGHPUT;
 import static com.yugabyte.yw.common.TestUtils.replaceFirstChar;
 import static com.yugabyte.yw.common.ThrownMatcher.thrown;
 import static org.hamcrest.CoreMatchers.containsString;
@@ -65,7 +27,11 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.alerts.AlertTemplateVariableService;
+import com.yugabyte.yw.common.alerts.AlertTemplateVariableServiceTest;
 import com.yugabyte.yw.common.alerts.MaintenanceService;
+import com.yugabyte.yw.common.alerts.impl.AlertTemplateService;
+import com.yugabyte.yw.common.alerts.impl.AlertTemplateService.AlertTemplateDescription;
 import com.yugabyte.yw.forms.filters.AlertConfigurationApiFilter;
 import com.yugabyte.yw.models.AlertConfiguration.Severity;
 import com.yugabyte.yw.models.AlertConfiguration.SortBy;
@@ -79,7 +45,7 @@ import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.paging.AlertConfigurationPagedQuery;
 import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
 import io.ebean.CallableSql;
-import io.ebean.Ebean;
+import io.ebean.DB;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -108,164 +74,6 @@ import play.libs.Json;
 @RunWith(JUnitParamsRunner.class)
 public class AlertConfigurationTest extends FakeDBApplication {
 
-  private static final Map<AlertTemplate, String> TEST_ALERT_MESSAGE =
-      ImmutableMap.<AlertTemplate, String>builder()
-          .put(
-              REPLICATION_LAG,
-              "Average replication lag for universe 'Test Universe'"
-                  + " is above 180000 ms. Current value is 180001 ms")
-          .put(
-              CLOCK_SKEW,
-              "Max clock skew for universe 'Test Universe'"
-                  + " is above 500 ms. Current value is 501 ms")
-          .put(
-              MEMORY_CONSUMPTION,
-              "Average memory usage for universe 'Test Universe'"
-                  + " is above 90%. Current value is 91%")
-          .put(
-              HEALTH_CHECK_ERROR,
-              "Failed to perform health check for universe 'Test Universe'"
-                  + " - check YB Platform logs for details or contact YB support team")
-          .put(
-              HEALTH_CHECK_NOTIFICATION_ERROR,
-              "Failed to perform health check notification"
-                  + " for universe 'Test Universe' - check Health notification settings and"
-                  + " YB Platform logs for details or contact YB support team")
-          .put(
-              BACKUP_FAILURE,
-              "Last backup task for universe 'Test Universe' failed"
-                  + " - check backup task result for more details")
-          .put(
-              BACKUP_SCHEDULE_FAILURE,
-              "Last attempt to run scheduled backup for universe"
-                  + " 'Test Universe' failed due to other backup or universe operation is"
-                  + " in progress.")
-          .put(INACTIVE_CRON_NODES, "1 node(s) has inactive cronjob for universe 'Test Universe'.")
-          .put(
-              ALERT_QUERY_FAILED,
-              "Last alert query for customer 'Customer' failed"
-                  + " - check YB Platform logs for details or contact YB support team")
-          .put(
-              ALERT_CONFIG_WRITING_FAILED,
-              "Last alert rules sync for customer 'Customer' failed"
-                  + " - check YB Platform logs for details or contact YB support team")
-          .put(
-              ALERT_NOTIFICATION_ERROR,
-              "Last attempt to send alert notifications for customer "
-                  + "'Customer' failed - check YB Platform logs for details"
-                  + " or contact YB support team")
-          .put(
-              ALERT_NOTIFICATION_CHANNEL_ERROR,
-              "Last attempt to send alert notifications to"
-                  + " channel 'Some Channel' failed - try sending test alert to get more details")
-          .put(
-              NODE_DOWN,
-              "1 DB node(s) are down for more than 15 minutes" + " for universe 'Test Universe'.")
-          .put(
-              NODE_RESTART,
-              "Universe 'Test Universe' DB node is restarted 3 times" + " during last 30 minutes")
-          .put(
-              NODE_CPU_USAGE,
-              "Average node CPU usage for universe 'Test Universe' is above 95%" + " on 1 node(s).")
-          .put(
-              NODE_DISK_USAGE,
-              "Node disk usage for universe 'Test Universe'" + " is above 70% on 1 node(s).")
-          .put(
-              NODE_FILE_DESCRIPTORS_USAGE,
-              "Node file descriptors usage for universe"
-                  + " 'Test Universe' is above 70% on 1 node(s).")
-          .put(
-              NODE_OOM_KILLS,
-              "More than 3 OOM kills detected for universe 'Test Universe'" + " on 1 node(s).")
-          .put(
-              DB_VERSION_MISMATCH,
-              "Version mismatch detected for universe 'Test Universe'"
-                  + " for 1 Master/TServer instance(s).")
-          .put(
-              DB_INSTANCE_DOWN,
-              "1 DB Master/TServer instance(s) are down for more than"
-                  + " 15 minutes for universe 'Test Universe'.")
-          .put(
-              DB_INSTANCE_RESTART,
-              "Universe 'Test Universe' Master or TServer is restarted"
-                  + " 3 times during last 30 minutes")
-          .put(
-              DB_FATAL_LOGS,
-              "Fatal logs detected for universe 'Test Universe' on "
-                  + "1 Master/TServer instance(s).")
-          .put(
-              DB_ERROR_LOGS,
-              "Error logs detected for universe 'Test Universe' on "
-                  + "1 Master/TServer instance(s).")
-          .put(
-              DB_CORE_FILES,
-              "Core files detected for universe 'Test Universe' on " + "1 TServer instance(s).")
-          .put(
-              DB_YSQL_CONNECTION,
-              "YSQLSH connection failure detected for universe 'Test Universe'"
-                  + " on 1 TServer instance(s).")
-          .put(
-              DB_YCQL_CONNECTION,
-              "CQLSH connection failure detected for universe 'Test Universe'"
-                  + " on 1 TServer instance(s).")
-          .put(
-              DB_REDIS_CONNECTION,
-              "Redis connection failure detected for universe 'Test Universe'"
-                  + " on 1 TServer instance(s).")
-          .put(DB_MEMORY_OVERLOAD, "DB memory rejections detected for universe 'Test Universe'.")
-          .put(
-              DB_COMPACTION_OVERLOAD,
-              "DB compaction rejections detected for universe" + " 'Test Universe'.")
-          .put(DB_QUEUES_OVERFLOW, "DB queues overflow detected for universe 'Test Universe'.")
-          .put(
-              NODE_TO_NODE_CA_CERT_EXPIRY,
-              "Node to node CA certificate for universe"
-                  + " 'Test Universe' will expire in 29 days.")
-          .put(
-              NODE_TO_NODE_CERT_EXPIRY,
-              "Node to node certificate for universe 'Test Universe'" + " will expire in 29 days.")
-          .put(
-              CLIENT_TO_NODE_CA_CERT_EXPIRY,
-              "Client to node CA certificate for universe"
-                  + " 'Test Universe' will expire in 29 days.")
-          .put(
-              CLIENT_TO_NODE_CERT_EXPIRY,
-              "Client to node certificate for universe 'Test Universe'"
-                  + " will expire in 29 days.")
-          .put(
-              YSQL_OP_AVG_LATENCY,
-              "Average YSQL operations latency for universe 'Test Universe'"
-                  + " is above 10000 ms. Current value is 10001 ms")
-          .put(
-              YCQL_OP_AVG_LATENCY,
-              "Average YCQL operations latency for universe 'Test Universe'"
-                  + " is above 10000 ms. Current value is 10001 ms")
-          .put(
-              YSQL_OP_P99_LATENCY,
-              "YSQL P99 latency for universe 'Test Universe'"
-                  + " is above 60000 ms. Current value is 60001 ms")
-          .put(
-              YCQL_OP_P99_LATENCY,
-              "YCQL P99 latency for universe 'Test Universe'"
-                  + " is above 60000 ms. Current value is 60001 ms")
-          .put(
-              HIGH_NUM_YCQL_CONNECTIONS,
-              "Number of YCQL connections for universe"
-                  + " 'Test Universe' is above 1000. Current value is 1001")
-          .put(
-              HIGH_NUM_YEDIS_CONNECTIONS,
-              "Number of YEDIS connections for universe"
-                  + " 'Test Universe' is above 1000. Current value is 1001")
-          .put(
-              YSQL_THROUGHPUT,
-              "Maximum throughput for YSQL operations for universe"
-                  + " 'Test Universe' is above 100000. Current value is 100001")
-          .put(
-              YCQL_THROUGHPUT,
-              "Maximum throughput for YCQL operations for universe"
-                  + " 'Test Universe' is above 100000. Current value is 100001")
-          .build();
-
   @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
 
   private Customer customer;
@@ -274,6 +82,8 @@ public class AlertConfigurationTest extends FakeDBApplication {
   private AlertDestination alertDestination;
 
   private MaintenanceService maintenanceService;
+  private AlertTemplateService alertTemplateService;
+  private AlertTemplateVariableService alertTemplateVariableService;
 
   @Before
   public void setUp() {
@@ -282,6 +92,8 @@ public class AlertConfigurationTest extends FakeDBApplication {
     otherUniverse = ModelFactory.createUniverse("some other");
 
     maintenanceService = app.injector().instanceOf(MaintenanceService.class);
+    alertTemplateService = app.injector().instanceOf(AlertTemplateService.class);
+    alertTemplateVariableService = app.injector().instanceOf(AlertTemplateVariableService.class);
 
     alertDestination =
         ModelFactory.createAlertDestination(
@@ -366,8 +178,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     assertThat(definitions, hasSize(2));
     Map<UUID, AlertDefinition> definitionMap =
-        definitions
-            .stream()
+        definitions.stream()
             .collect(
                 Collectors.toMap(
                     definition ->
@@ -461,7 +272,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
     assertFind(filter, configuration, configuration2, platformConfiguration);
 
     // Name filter
-    filter = AlertConfigurationFilter.builder().name(MEMORY_CONSUMPTION.getName()).build();
+    filter = AlertConfigurationFilter.builder().name("Memory Consumption").build();
     assertFind(filter, configuration);
 
     // Name starts with
@@ -486,7 +297,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
             .targetType(TargetType.UNIVERSE)
             .target(
                 new AlertConfigurationTarget()
-                    .setAll(false)
+                    .setAll(true)
                     .setUuids(ImmutableSet.of(universe.getUniverseUUID())))
             .build();
     assertFind(filter, configuration, configuration2);
@@ -497,6 +308,16 @@ public class AlertConfigurationTest extends FakeDBApplication {
             .target(
                 new AlertConfigurationTarget()
                     .setAll(false)
+                    .setUuids(ImmutableSet.of(universe.getUniverseUUID())))
+            .build();
+    assertFind(filter, configuration2);
+
+    filter =
+        AlertConfigurationFilter.builder()
+            .targetType(TargetType.UNIVERSE)
+            .target(
+                new AlertConfigurationTarget()
+                    .setAll(true)
                     .setUuids(ImmutableSet.of(UUID.randomUUID())))
             .build();
     assertFind(filter, configuration);
@@ -666,7 +487,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     AlertDefinitionFilter definitionFilter =
         AlertDefinitionFilter.builder()
-            .label(KnownAlertLabels.SOURCE_UUID, universe.universeUUID.toString())
+            .label(KnownAlertLabels.SOURCE_UUID, universe.getUniverseUUID().toString())
             .build();
 
     List<AlertDefinition> universeDefinitions = alertDefinitionService.list(definitionFilter);
@@ -692,7 +513,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     AlertDefinitionFilter definitionFilter =
         AlertDefinitionFilter.builder()
-            .label(KnownAlertLabels.SOURCE_UUID, universe.universeUUID.toString())
+            .label(KnownAlertLabels.SOURCE_UUID, universe.getUniverseUUID().toString())
             .build();
 
     List<AlertDefinition> universeDefinitions = alertDefinitionService.list(definitionFilter);
@@ -703,12 +524,9 @@ public class AlertConfigurationTest extends FakeDBApplication {
     AlertDefinition duplicate =
         new AlertDefinition()
             .setCustomerUUID(customer.getUuid())
-            .setQuery(definition.getQuery())
             .setConfigurationUUID(definition.getConfigurationUUID())
             .setLabels(
-                definition
-                    .getLabels()
-                    .stream()
+                definition.getLabels().stream()
                     .map(label -> new AlertDefinitionLabel(label.getName(), label.getValue()))
                     .collect(Collectors.toList()));
     alertDefinitionService.save(duplicate);
@@ -747,8 +565,8 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     assertThat(universeDefinitions, hasSize(3));
 
-    Universe universe3 = ModelFactory.createUniverse("one more", customer.getCustomerId());
-    Universe universe4 = ModelFactory.createUniverse("another more", customer.getCustomerId());
+    Universe universe3 = ModelFactory.createUniverse("one more", customer.getId());
+    Universe universe4 = ModelFactory.createUniverse("another more", customer.getId());
 
     ExecutorService executor = Executors.newFixedThreadPool(2);
     List<Future<Void>> futures = new ArrayList<>();
@@ -756,7 +574,8 @@ public class AlertConfigurationTest extends FakeDBApplication {
       futures.add(
           executor.submit(
               () -> {
-                alertConfigurationService.save(ImmutableList.of(configuration, configuration2));
+                alertConfigurationService.save(
+                    customer.getUuid(), ImmutableList.of(configuration, configuration2));
                 return null;
               }));
     }
@@ -780,11 +599,11 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     testValidationCreate(
         configuration -> configuration.setCustomerUUID(null),
-        "errorJson: {\"customerUUID\":[\"may not be null\"]}");
+        "errorJson: {\"customerUUID\":[\"must not be null\"]}");
 
     testValidationCreate(
         configuration -> configuration.setName(null),
-        "errorJson: {\"name\":[\"may not be null\"]}");
+        "errorJson: {\"name\":[\"must not be null\"]}");
 
     testValidationCreate(
         configuration -> configuration.setName(StringUtils.repeat("a", 1001)),
@@ -792,11 +611,11 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     testValidationCreate(
         configuration -> configuration.setTargetType(null),
-        "errorJson: {\"targetType\":[\"may not be null\"]}");
+        "errorJson: {\"targetType\":[\"must not be null\"]}");
 
     testValidationCreate(
         configuration -> configuration.setTarget(null),
-        "errorJson: {\"target\":[\"may not be null\"]}");
+        "errorJson: {\"target\":[\"must not be null\"]}");
 
     testValidationCreate(
         configuration ->
@@ -825,7 +644,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     testValidationCreate(
         configuration -> configuration.setTemplate(null),
-        "errorJson: {\"template\":[\"may not be null\"]}");
+        "errorJson: {\"template\":[\"must not be null\"]}");
 
     testValidationCreate(
         configuration -> configuration.setTemplate(ALERT_CONFIG_WRITING_FAILED),
@@ -833,7 +652,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     testValidationCreate(
         configuration -> configuration.setThresholds(null),
-        "errorJson: {\"thresholds\":[\"may not be null\"]}");
+        "errorJson: {\"thresholds\":[\"must not be null\"]}");
 
     testValidationCreate(
         configuration -> configuration.setDestinationUUID(randomUUID),
@@ -849,7 +668,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     testValidationCreate(
         configuration -> configuration.setThresholdUnit(null),
-        "errorJson: {\"thresholdUnit\":[\"may not be null\"]}");
+        "errorJson: {\"thresholdUnit\":[\"must not be null\"]}");
 
     testValidationCreate(
         configuration -> configuration.setThresholdUnit(Unit.STATUS),
@@ -857,11 +676,11 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     testValidationCreate(
         configuration -> configuration.getThresholds().get(Severity.SEVERE).setCondition(null),
-        "errorJson: {\"thresholds[SEVERE].condition\":[\"may not be null\"]}");
+        "errorJson: {\"thresholds[SEVERE].condition\":[\"must not be null\"]}");
 
     testValidationCreate(
         configuration -> configuration.getThresholds().get(Severity.SEVERE).setThreshold(null),
-        "errorJson: {\"thresholds[SEVERE].threshold\":[\"may not be null\"]}");
+        "errorJson: {\"thresholds[SEVERE].threshold\":[\"must not be null\"]}");
 
     testValidationCreate(
         configuration -> configuration.getThresholds().get(Severity.SEVERE).setThreshold(-100D),
@@ -871,6 +690,17 @@ public class AlertConfigurationTest extends FakeDBApplication {
         configuration -> configuration.setDurationSec(-1),
         "errorJson: {\"durationSec\":[\"must be greater than or equal to 0\"]}");
 
+    testValidationCreate(
+        configuration -> configuration.setLabels(ImmutableMap.of("test", "some_value")),
+        "errorJson: {\"labels\":[\"variable 'test' does not exist\"]}");
+
+    AlertTemplateVariable variable =
+        AlertTemplateVariableServiceTest.createTestVariable(customer.getUuid(), "test");
+    alertTemplateVariableService.save(variable);
+    testValidationCreate(
+        configuration -> configuration.setLabels(ImmutableMap.of("test", "some_value")),
+        "errorJson: {\"labels\":[\"variable 'test' does not have value 'some_value'\"]}");
+
     testValidationUpdate(
         configuration -> configuration.setCustomerUUID(randomUUID).setDestinationUUID(null),
         "errorJson: {\"customerUUID\":[\"can't change for configuration 'Memory Consumption'\"]}");
@@ -879,8 +709,8 @@ public class AlertConfigurationTest extends FakeDBApplication {
   @Test
   public void testTransactions() {
     AlertConfiguration configuration = createTestConfiguration();
-    CallableSql dropTable = Ebean.createCallableSql("drop table maintenance_window");
-    Ebean.execute(dropTable);
+    CallableSql dropTable = DB.createCallableSql("drop table maintenance_window");
+    DB.getDefault().execute(dropTable);
 
     configuration.setMaintenanceWindowUuids(ImmutableSet.of(UUID.randomUUID()));
 
@@ -915,26 +745,6 @@ public class AlertConfigurationTest extends FakeDBApplication {
         thrown(PlatformServiceException.class, expectedMessage));
   }
 
-  @Test
-  public void testTestAlertMessage() {
-    TEST_ALERT_MESSAGE.forEach(
-        (template, message) -> {
-          AlertConfiguration configuration =
-              alertConfigurationService
-                  .createConfigurationTemplate(customer, template)
-                  .getDefaultConfiguration();
-          if (configuration.getTargetType() == TargetType.UNIVERSE) {
-            configuration.setTarget(
-                new AlertConfigurationTarget()
-                    .setAll(false)
-                    .setUuids(ImmutableSet.of(universe.getUniverseUUID())));
-          }
-          alertConfigurationService.save(configuration);
-          Alert testAlert = alertConfigurationService.createTestAlert(configuration);
-          assertThat(testAlert.getMessage(), equalTo("[TEST ALERT!!!] " + message));
-        });
-  }
-
   private AlertConfiguration createTestConfiguration() {
     AlertConfiguration configuration =
         alertConfigurationService
@@ -947,13 +757,16 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
   private void assertTestConfiguration(AlertConfiguration configuration) {
     AlertTemplate template = MEMORY_CONSUMPTION;
-    assertThat(configuration.getCustomerUUID(), equalTo(customer.uuid));
-    assertThat(configuration.getName(), equalTo(template.getName()));
-    assertThat(configuration.getDescription(), equalTo(template.getDescription()));
+    AlertTemplateDescription templateDescription =
+        alertTemplateService.getTemplateDescription(template);
+    assertThat(configuration.getCustomerUUID(), equalTo(customer.getUuid()));
+    assertThat(configuration.getName(), equalTo(templateDescription.getName()));
+    assertThat(configuration.getDescription(), equalTo(templateDescription.getDescription()));
     assertThat(configuration.getTemplate(), equalTo(template));
-    assertThat(configuration.getDurationSec(), equalTo(template.getDefaultDurationSec()));
+    assertThat(
+        configuration.getDurationSec(), equalTo(templateDescription.getDefaultDurationSec()));
     assertThat(configuration.getDestinationUUID(), equalTo(alertDestination.getUuid()));
-    assertThat(configuration.getTargetType(), equalTo(template.getTargetType()));
+    assertThat(configuration.getTargetType(), equalTo(templateDescription.getTargetType()));
     assertThat(configuration.getTarget(), equalTo(new AlertConfigurationTarget().setAll(true)));
     assertThat(
         configuration.getThresholds().get(AlertConfiguration.Severity.SEVERE),

@@ -15,12 +15,12 @@ test: yb_pg_rangetypes
 # Chain of dependencies for `yb_pg_rowtypes`
 test: yb_pg_create_function_1
 test: yb_pg_create_type
-test: yb_pg_create_table
-test: yb_pg_copy
-test: yb_pg_create_index
 
 # Dependency for `yb_base_type`
 test: yb_create_function
+
+# Dependency for `yb_pg_rowtypes`
+test: yb_dep_tenk1
 
 # Overall UDTs
 test: yb_create_type
@@ -30,3 +30,6 @@ test: yb_alter_type
 test: yb_pg_rowtypes
 # Base types
 test: yb_base_type
+
+# Operator Class
+test: yb_operator_class

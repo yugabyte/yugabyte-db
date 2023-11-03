@@ -625,7 +625,7 @@ show_XactIsoLevel(void)
 }
 
 const char *
-show_yb_effective_transaction_isolation_level(void)
+yb_fetch_effective_transaction_isolation_level(void)
 {
 	switch (XactIsoLevel)
 	{

@@ -4,12 +4,12 @@ headerTitle: Data types
 linkTitle: Data types
 description: Data types
 summary: YSQL data type overview and specification.
-image: /images/section_icons/api/ysql.png
+image: /images/section_icons/api/subsection.png
 menu:
   preview:
     identifier: api-ysql-datatypes
     parent: api-ysql
-    weight: 400
+    weight: 80
 aliases:
   - /preview/api/ysql/datatypes/
 type: indexpage

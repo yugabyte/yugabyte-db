@@ -1,13 +1,10 @@
 ---
-title: Object-Level Audit Logging in YSQL
-headerTitle: Object-Level Audit Logging in YSQL
-linkTitle: Object-Level Audit Logging in YSQL
-description: Object-Level Audit Logging in YSQL.
-headcontent: Object-Level Audit Logging in YSQL.
-image: /images/section_icons/secure/authentication.png
+title: Object-level audit logging in YSQL
+headerTitle: Object-level audit logging in YSQL
+linkTitle: Object-level audit logging
+description: Object-level audit logging in YSQL.
 menu:
   preview:
-    name: Object-Level Audit Logging
     identifier: object-audit-logging-1-ysql
     parent: audit-logging
     weight: 765
@@ -39,7 +36,7 @@ Open the YSQL shell (ysqlsh), specifying the `yugabyte` user and prompting for t
 $ ./ysqlsh -U yugabyte -W
 ```
 
-When prompted for the password, enter the yugabyte password. You should be able to login and see a response like below.
+When prompted for the password, enter the yugabyte password. You should be able to log in and see a response similar to the following:
 
 ```output
 ysqlsh (11.2-YB-2.5.0.0-b0)

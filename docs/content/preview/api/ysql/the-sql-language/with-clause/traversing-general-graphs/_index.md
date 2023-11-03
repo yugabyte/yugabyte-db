@@ -3,7 +3,7 @@ title: Using a recursive CTE to traverse a general graph
 headerTitle: Using a recursive CTE to traverse graphs of all kinds
 linkTitle: Traversing general graphs
 description: This section shows how to use a recursive CTE to traverse graphs of all kinds.
-image: /images/section_icons/api/ysql.png
+image: /images/section_icons/api/subsection.png
 menu:
   preview:
     identifier: traversing-general-graphs

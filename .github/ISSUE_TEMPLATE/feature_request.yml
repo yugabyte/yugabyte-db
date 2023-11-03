@@ -8,7 +8,20 @@ body:
     label: Description
     placeholder: |
       **Is your feature request related to a problem or an enhancement? Please describe.**
-      
+
       **Provide a brief solution(if any) of what you want to happen.**
   validations:
     required: true
+- type: checkboxes
+  id: warning
+  attributes:
+    label: "Warning: Please confirm that this issue does not contain any sensitive information"
+    description: >
+      Sensitive Information includes any customer names, regulated data (e.g. privacy data,
+      cardholder data, protected health information, etc.), confidential or proprietary information
+      including but not limited to company identifying information, network proprietary information,
+      proprietary database schema information, log data, etc. If you are unsure whether your ticket
+      contains any sensitive information, please reach out to your security team for assistance.
+    options:
+      - label: I confirm this issue does not contain any sensitive information.
+        required: true

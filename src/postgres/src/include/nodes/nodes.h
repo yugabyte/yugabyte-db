@@ -53,7 +53,6 @@ typedef enum NodeTag
 	T_BitmapOr,
 	T_Scan,
 	T_SeqScan,
-	T_YbSeqScan,
 	T_SampleScan,
 	T_IndexScan,
 	T_IndexOnlyScan,
@@ -110,7 +109,6 @@ typedef enum NodeTag
 	T_BitmapOrState,
 	T_ScanState,
 	T_SeqScanState,
-	T_YbSeqScanState,
 	T_SampleScanState,
 	T_IndexScanState,
 	T_IndexOnlyScanState,
@@ -153,6 +151,7 @@ typedef enum NodeTag
 	T_Var,
 	T_Const,
 	T_Param,
+	T_YbBatchedExpr,
 	T_Aggref,
 	T_GroupingFunc,
 	T_WindowFunc,
@@ -519,7 +518,13 @@ typedef enum NodeTag
 	T_YbPgExecOutParam,
 	T_YbBackfillInfo,
 	T_PartitionPruneStepFuncOp,
-	T_YbExprParamDesc
+	T_YbExprColrefDesc,
+	T_YbSeqScan,
+	T_YbSeqScanState,
+	T_YbBatchedNestLoop,
+	T_YbBatchedNestLoopState,
+	T_YbCreateProfileStmt,
+	T_YbDropProfileStmt,
 
 } NodeTag;
 

@@ -15,8 +15,7 @@
 // Tree node definitions for datatypes.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_PT_TYPE_H_
-#define YB_YQL_CQL_QL_PTREE_PT_TYPE_H_
+#pragma once
 
 #include "yb/client/schema.h"
 
@@ -431,5 +430,3 @@ class PTFrozen : public PTPrimitiveType<InternalType::kFrozenValue, DataType::FR
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_PTREE_PT_TYPE_H_

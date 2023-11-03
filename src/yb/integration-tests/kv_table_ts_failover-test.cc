@@ -24,19 +24,13 @@
 #include "yb/integration-tests/yb_table_test_base.h"
 
 #include "yb/util/test_util.h"
+#include "yb/util/flags.h"
 
-DEFINE_int32(test_num_iter,
+DEFINE_NON_RUNTIME_int32(test_num_iter,
              1,
              "Number of iterations for key-value table tablet server failover test");
 
 namespace yb {
-
-using std::unique_ptr;
-
-using client::YBClient;
-using client::YBClientBuilder;
-using client::YBTable;
-using std::shared_ptr;
 
 using integration_tests::YBTableTestBase;
 

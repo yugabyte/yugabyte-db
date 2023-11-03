@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import PropTypes from 'prop-types';
 import { browserHistory, Link, withRouter } from 'react-router';
 import { isNonEmptyArray, isNonEmptyObject, isNonEmptyString } from '../../../utils/ObjectUtils';
@@ -90,7 +90,7 @@ class TaskDetail extends Component {
       return <Highlighter type="json" text={truncatedError} element="pre" />;
     };
 
-    const getErrorMessageDisplay = (errorString, taskUUID, allowRetry) => {
+    const getErrorMessageDisplay = (errorString, taskUUID) => {
       let errorElement = getTruncatedErrorString(errorString);
       let displayMessage = 'Expand';
       let displayIcon = <i className="fa fa-expand"></i>;
@@ -110,16 +110,15 @@ class TaskDetail extends Component {
             {displayMessage}
           </div>
           {/* TODO use API response to check retryable. */}
-          {allowRetry && isNonEmptyString(currentTaskData.title) &&
-            currentTaskData.retryable && (
-              <div
-                className="btn btn-orange text-center pull-right task-detail-button"
-                onClick={() => self.retryTaskClicked(taskUUID)}
-              >
-                <i className="fa fa-refresh"></i>
-                Retry Task
-              </div>
-            )}
+          {isNonEmptyString(currentTaskData.title) && currentTaskData.retryable && (
+            <div
+              className="btn btn-orange text-center pull-right task-detail-button"
+              onClick={() => self.retryTaskClicked(taskUUID)}
+            >
+              <i className="fa fa-refresh"></i>
+              Retry Task
+            </div>
+          )}
         </div>
       );
     };
@@ -141,13 +140,9 @@ class TaskDetail extends Component {
         // Show retry only for the last failed task.
         if (subTask.subTaskState === 'Failure' || subTask.subTaskState === 'Aborted') {
           if (subTask.errorString === 'null') {
-            subTask.errorString = "Task failed";
+            subTask.errorString = 'Task failed';
           }
-          let allowRetry = false;
-          if (universe) {
-            allowRetry = (taskUUID === universe.universeDetails.updatingTaskUUID);
-          }
-          errorString = getErrorMessageDisplay(subTask.errorString, taskUUID, allowRetry);
+          errorString = getErrorMessageDisplay(subTask.errorString, taskUUID);
         }
         return (
           <div className="task-detail-info" key={subTask.creationTime}>
@@ -183,7 +178,7 @@ class TaskDetail extends Component {
           <Link to="/tasks/">Tasks</Link>
           <span>
             <i className="fa fa-chevron-right"></i>
-            {(currentTaskData && currentTaskData.title) || 'Task Details'}
+            {currentTaskData?.title || 'Task Details'}
           </span>
         </h2>
       );
@@ -197,19 +192,24 @@ class TaskDetail extends Component {
             <YBResourceCount
               className="text-align-right pull-right"
               kind="Target universe"
-              size={currentTaskData.title && currentTaskData.title.split(' : ')[1]}
+              size={currentTaskData.title?.split(' : ')[1]}
             />
-            <YBResourceCount
-              kind="Task name"
-              size={currentTaskData.title && currentTaskData.title.split(' : ')[0]}
-            />
+            <YBResourceCount kind="Task name" size={currentTaskData.title?.split(' : ')[0]} />
             {taskTopLevelData}
           </div>
           <div className="task-step-bar-container">{taskProgressBarData}</div>
         </div>
 
         <YBPanelItem
-          header={<h2>Task details</h2>}
+          header={
+            <h2>
+              {currentTaskData.correlationId ? (
+                <Link to={`/logs/?queryRegex=${currentTaskData.correlationId}`}>Task details</Link>
+              ) : (
+                'Task details'
+              )}
+            </h2>
+          }
           body={
             <div className="task-detail-container">
               <Row className="task-heading-row">

@@ -1,6 +1,8 @@
-import React, { FC } from 'react';
+import { FC } from 'react';
 import { useSelector } from 'react-redux';
+
 import { YBConfirmModal } from '../../modals';
+import { XClusterModalName } from '../constants';
 
 interface DeleteModalProps {
   deleteTableName: string;
@@ -19,7 +21,7 @@ const DeleteReplicactionTableModal: FC<DeleteModalProps> = ({
     <YBConfirmModal
       name="delete-replication-modal"
       title="Confirm remove table"
-      currentModal={'DeleteReplicationTableModal'}
+      currentModal={XClusterModalName.REMOVE_TABLE_FROM_CONFIG}
       visibleModal={visibleModal}
       confirmLabel="Delete"
       cancelLabel="Cancel"
@@ -30,7 +32,7 @@ const DeleteReplicactionTableModal: FC<DeleteModalProps> = ({
         onCancel();
       }}
     >
-      Do you want to remove the table "{deleteTableName}"?
+      {`Do you want to remove the table "${deleteTableName}"?`}
     </YBConfirmModal>
   );
 };

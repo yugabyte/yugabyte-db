@@ -27,7 +27,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
-
+import java.io.IOException;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
@@ -68,9 +68,9 @@ public class GcpEARServiceUtilTest extends FakeDBApplication {
   @Mock public CryptoKey mockCryptoKey;
 
   @Before
-  public void setUp() {
+  public void setUp() throws IOException {
     this.customer = ModelFactory.testCustomer();
-    this.universe = ModelFactory.createUniverse(customer.getCustomerId());
+    this.universe = ModelFactory.createUniverse(customer.getId());
 
     // Populate the fake auth config
     fakeAuthConfig.put("name", authConfigName);
@@ -164,7 +164,7 @@ public class GcpEARServiceUtilTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateKeyRing() {
+  public void testCreateKeyRing() throws IOException {
     KeyRing keyRing = mockGcpEARServiceUtil.createKeyRing(fakeAuthConfig);
     assertEquals(keyRing, mockKeyRing);
   }

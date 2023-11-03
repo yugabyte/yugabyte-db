@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_RPC_PROXY_H_
-#define YB_RPC_PROXY_H_
+#pragma once
 
 #include <atomic>
 #include <memory>
@@ -138,16 +137,16 @@ class Proxy {
   // The same as AsyncRequest(), except that the call blocks until the call
   // finishes. If the call fails, returns a non-OK result.
   Status SyncRequest(const RemoteMethod* method,
-                             std::shared_ptr<const OutboundMethodMetrics> method_metrics,
-                             const google::protobuf::Message& req,
-                             google::protobuf::Message* resp,
-                             RpcController* controller);
+                     std::shared_ptr<const OutboundMethodMetrics> method_metrics,
+                     const google::protobuf::Message& req,
+                     google::protobuf::Message* resp,
+                     RpcController* controller);
 
   Status SyncRequest(const RemoteMethod* method,
-                             std::shared_ptr<const OutboundMethodMetrics> method_metrics,
-                             const LightweightMessage& request,
-                             LightweightMessage* resp,
-                             RpcController* controller);
+                     std::shared_ptr<const OutboundMethodMetrics> method_metrics,
+                     const LightweightMessage& request,
+                     LightweightMessage* resp,
+                     RpcController* controller);
 
   // Is the service local?
   bool IsServiceLocal() const { return call_local_service_; }
@@ -174,16 +173,16 @@ class Proxy {
                       bool force_run_callback_on_reactor);
 
   Status DoSyncRequest(const RemoteMethod* method,
-                               std::shared_ptr<const OutboundMethodMetrics> method_metrics,
-                               AnyMessageConstPtr req,
-                               AnyMessagePtr resp,
-                               RpcController* controller);
+                       std::shared_ptr<const OutboundMethodMetrics> method_metrics,
+                       AnyMessageConstPtr req,
+                       AnyMessagePtr resp,
+                       RpcController* controller);
 
   static void NotifyFailed(RpcController* controller, const Status& status);
 
   void AsyncLocalCall(
       const RemoteMethod* method, AnyMessageConstPtr req, AnyMessagePtr resp,
-      RpcController* controller, ResponseCallback callback);
+      RpcController* controller, ResponseCallback callback, bool force_run_callback_on_reactor);
 
   void AsyncRemoteCall(
       const RemoteMethod* method, std::shared_ptr<const OutboundMethodMetrics> method_metrics,
@@ -203,7 +202,7 @@ class Proxy {
   boost::lockfree::queue<RpcController*> resolve_waiters_;
   ConcurrentPod<Endpoint> resolved_ep_;
 
-  scoped_refptr<Histogram> latency_hist_;
+  scoped_refptr<EventStats> latency_stats_;
 
   // Number of outbound connections to create per each destination server address.
   int num_connections_to_server_;
@@ -244,5 +243,3 @@ class ProxyCache {
 
 }  // namespace rpc
 }  // namespace yb
-
-#endif  // YB_RPC_PROXY_H_

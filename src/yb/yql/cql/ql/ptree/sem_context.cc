@@ -18,7 +18,7 @@
 #include "yb/client/table.h"
 #include "yb/common/roles_permissions.h"
 #include "yb/common/schema.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/yql/cql/ql/ptree/column_desc.h"
@@ -34,13 +34,15 @@
 
 DECLARE_bool(use_cassandra_authentication);
 
-DEFINE_bool(allow_index_table_read_write, false, "Allow direct read and write of index tables");
+DEFINE_UNKNOWN_bool(allow_index_table_read_write, false,
+    "Allow direct read and write of index tables");
 TAG_FLAG(allow_index_table_read_write, hidden);
 
 namespace yb {
 namespace ql {
 
 using std::shared_ptr;
+using std::string;
 using client::YBTable;
 using client::YBTableName;
 using client::YBColumnSchema;
@@ -446,6 +448,11 @@ bool SemContext::processing_column_definition() const {
 const MCSharedPtr<MCString>& SemContext::bindvar_name() const {
   DCHECK(sem_state_) << "State variable is not set for the expression";
   return sem_state_->bindvar_name();
+}
+
+const MCSharedPtr<MCVector<MCSharedPtr<MCString>>>& SemContext::alternative_bindvar_names() const {
+  DCHECK(sem_state_) << "State variable is not set for the expression";
+  return sem_state_->alternative_bindvar_names();
 }
 
 const ColumnDesc *SemContext::hash_col() const {

@@ -82,7 +82,7 @@ EXPLAIN SELECT * FROM feature_pk_split WHERE col_text = 'partition 3';
                               QUERY PLAN
 -----------------------------------------------------------------------
  Seq Scan on feature_pk_split  (cost=0.00..102.50 rows=1000 width=262)
-   Filter: (col_text = 'partition 3'::text)
+   Remote Filter: (col_text = 'partition 3'::text)
 (2 rows)
 
 SELECT * FROM feature_pk_split WHERE col_text = 'partition 3';
@@ -117,7 +117,7 @@ EXPLAIN SELECT * FROM feature_pk_split WHERE col_double <= 10;
                               QUERY PLAN
 -----------------------------------------------------------------------
  Seq Scan on feature_pk_split  (cost=0.00..102.50 rows=1000 width=262)
-   Filter: (col_double <= '10'::double precision)
+   Remote Filter: (col_double <= '10'::double precision)
 (2 rows)
 
 SELECT * FROM feature_pk_split WHERE col_double <= 10;
@@ -137,10 +137,10 @@ SELECT * FROM feature_pk_split WHERE col_double <= 10;
 
 -- Operator `AND`
 EXPLAIN SELECT * FROM feature_pk_split WHERE col_text >= 'partition 3' AND col_double <= 10;
-                                        QUERY PLAN
-------------------------------------------------------------------------------------------
+                                           QUERY PLAN
+-------------------------------------------------------------------------------------------------
  Seq Scan on feature_pk_split  (cost=0.00..105.00 rows=1000 width=262)
-   Filter: ((col_text >= 'partition 3'::text) AND (col_double <= '10'::double precision))
+   Remote Filter: ((col_text >= 'partition 3'::text) AND (col_double <= '10'::double precision))
 (2 rows)
 
 SELECT * FROM feature_pk_split WHERE col_text >= 'partition 3' AND col_double <= 10;
@@ -252,10 +252,11 @@ SELECT * FROM feature_pk_split
 EXPLAIN SELECT COUNT(*) FROM feature_pk_split WHERE col_integer = 50 AND col_varchar = 'a';
                                              QUERY PLAN
 ----------------------------------------------------------------------------------------------------
- Aggregate  (cost=4.12..4.13 rows=1 width=8)
+ Finalize Aggregate  (cost=4.12..4.13 rows=1 width=8)
    ->  Index Scan using feature_pk_split_pkey on feature_pk_split  (cost=0.00..4.12 rows=1 width=0)
          Index Cond: ((col_integer = 50) AND ((col_varchar)::text = 'a'::text))
-(3 rows)
+         Partial Aggregate: true
+(4 rows)
 
 SELECT COUNT(*) FROM feature_pk_split WHERE col_integer = 50 AND col_varchar = 'a';
  count
@@ -268,10 +269,11 @@ EXPLAIN SELECT COUNT(*) FROM feature_pk_split
 		  col_varchar >= 'a' AND col_varchar <= 'n';
                                                                      QUERY PLAN
 ----------------------------------------------------------------------------------------------------------------------------------------------------
- Aggregate  (cost=4.12..4.13 rows=1 width=8)
+ Finalize Aggregate  (cost=4.12..4.13 rows=1 width=8)
    ->  Index Scan using feature_pk_split_pkey on feature_pk_split  (cost=0.00..4.12 rows=1 width=0)
          Index Cond: ((col_integer >= 500) AND (col_integer <= 5000) AND ((col_varchar)::text >= 'a'::text) AND ((col_varchar)::text <= 'n'::text))
-(3 rows)
+         Partial Aggregate: true
+(4 rows)
 
 SELECT COUNT(*) FROM feature_pk_split
 	WHERE col_integer >= 500 AND col_integer <= 5000 AND
@@ -343,7 +345,7 @@ EXPLAIN SELECT * FROM feature_pk_split WHERE col_double <= 11;
                               QUERY PLAN
 -----------------------------------------------------------------------
  Seq Scan on feature_pk_split  (cost=0.00..102.50 rows=1000 width=262)
-   Filter: (col_double <= '11'::double precision)
+   Remote Filter: (col_double <= '11'::double precision)
 (2 rows)
 
 SELECT * FROM feature_pk_split WHERE col_double <= 11;
@@ -367,7 +369,7 @@ EXPLAIN SELECT * FROM feature_pk_split WHERE col_double <= 14;
                               QUERY PLAN
 -----------------------------------------------------------------------
  Seq Scan on feature_pk_split  (cost=0.00..102.50 rows=1000 width=262)
-   Filter: (col_double <= '14'::double precision)
+   Remote Filter: (col_double <= '14'::double precision)
 (2 rows)
 
 SELECT * FROM feature_pk_split WHERE col_double <= 14;
@@ -394,7 +396,7 @@ EXPLAIN SELECT * FROM feature_pk_split WHERE col_double <= 17;
                               QUERY PLAN
 -----------------------------------------------------------------------
  Seq Scan on feature_pk_split  (cost=0.00..102.50 rows=1000 width=262)
-   Filter: (col_double <= '17'::double precision)
+   Remote Filter: (col_double <= '17'::double precision)
 (2 rows)
 
 SELECT * FROM feature_pk_split WHERE col_double <= 17;
@@ -424,7 +426,7 @@ EXPLAIN SELECT * FROM feature_pk_split WHERE col_double <= 100;
                               QUERY PLAN
 -----------------------------------------------------------------------
  Seq Scan on feature_pk_split  (cost=0.00..102.50 rows=1000 width=262)
-   Filter: (col_double <= '100'::double precision)
+   Remote Filter: (col_double <= '100'::double precision)
 (2 rows)
 
 SELECT * FROM feature_pk_split WHERE col_double <= 100;

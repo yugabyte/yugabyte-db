@@ -19,6 +19,8 @@
 
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
+using std::vector;
+
 namespace yb {
 namespace pggate {
 

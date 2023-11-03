@@ -104,17 +104,6 @@ static char *ExecBuildSlotValueDescription(Relation rel,
 static void EvalPlanQualStart(EPQState *epqstate, EState *parentestate,
 				  Plan *planTree);
 
-/*
- * Note that GetUpdatedColumns() also exists in commands/trigger.c.  There does
- * not appear to be any good header to put it into, given the structures that
- * it uses, so we let them be duplicated.  Be sure to update both if one needs
- * to be changed, however.
- */
-#define GetInsertedColumns(relinfo, estate) \
-	(rt_fetch((relinfo)->ri_RangeTableIndex, (estate)->es_range_table)->insertedCols)
-#define GetUpdatedColumns(relinfo, estate) \
-	(rt_fetch((relinfo)->ri_RangeTableIndex, (estate)->es_range_table)->updatedCols)
-
 /* end of local decls */
 
 
@@ -523,6 +512,7 @@ standard_ExecutorEnd(QueryDesc *queryDesc)
 	queryDesc->estate = NULL;
 	queryDesc->planstate = NULL;
 	queryDesc->totaltime = NULL;
+	queryDesc->yb_query_stats = NULL;
 }
 
 /* ----------------------------------------------------------------
@@ -1049,6 +1039,8 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		i++;
 	}
 
+	queryDesc->yb_query_stats = InstrAlloc(1, queryDesc->instrument_options);
+
 	/*
 	 * Initialize the private state information for all the nodes in the query
 	 * tree.  This opens files, allocates storage and leaves us ready to start
@@ -1313,7 +1305,7 @@ void
 InitResultRelInfo(ResultRelInfo *resultRelInfo,
 				  Relation resultRelationDesc,
 				  Index resultRelationIndex,
-				  Relation partition_root,
+				  ResultRelInfo *partition_root_rri,
 				  int instrument_options)
 {
 	List	   *partition_check = NIL;
@@ -1374,7 +1366,7 @@ InitResultRelInfo(ResultRelInfo *resultRelInfo,
 	partition_check = RelationGetPartitionQual(resultRelationDesc);
 
 	resultRelInfo->ri_PartitionCheck = partition_check;
-	resultRelInfo->ri_PartitionRoot = partition_root;
+	resultRelInfo->ri_RootResultRelInfo = partition_root_rri;
 	resultRelInfo->ri_PartitionReadyForRouting = false;
 }
 
@@ -1917,25 +1909,27 @@ ExecPartitionCheckEmitError(ResultRelInfo *resultRelInfo,
 							TupleTableSlot *slot,
 							EState *estate)
 {
+	Relation 	root_rel;
 	Relation	rel = resultRelInfo->ri_RelationDesc;
 	Relation	orig_rel = rel;
 	TupleDesc	tupdesc = RelationGetDescr(rel);
 	char	   *val_desc;
 	Bitmapset  *modifiedCols;
-	Bitmapset  *insertedCols;
-	Bitmapset  *updatedCols;
 
 	/*
 	 * Need to first convert the tuple to the root partitioned table's row
 	 * type. For details, check similar comments in ExecConstraints().
 	 */
-	if (resultRelInfo->ri_PartitionRoot)
+	if (resultRelInfo->ri_RootResultRelInfo)
 	{
-		TupleDesc	old_tupdesc = RelationGetDescr(rel);
+		ResultRelInfo *rootrel = resultRelInfo->ri_RootResultRelInfo;
+		TupleDesc	old_tupdesc;
 		AttrNumber *map;
 
-		rel = resultRelInfo->ri_PartitionRoot;
-		tupdesc = RelationGetDescr(rel);
+		root_rel = rootrel->ri_RelationDesc;
+		tupdesc = RelationGetDescr(rootrel->ri_RelationDesc);
+
+		old_tupdesc = RelationGetDescr(resultRelInfo->ri_RelationDesc);
 		/* a reverse map */
 		map = convert_tuples_by_name_map_if_req(old_tupdesc, tupdesc,
 												gettext_noop("could not convert row type"));
@@ -1947,12 +1941,18 @@ ExecPartitionCheckEmitError(ResultRelInfo *resultRelInfo,
 		if (map != NULL)
 			slot = execute_attr_map_slot(map, slot,
 										 MakeTupleTableSlot(tupdesc));
+		modifiedCols = bms_union(ExecGetInsertedCols(rootrel, estate),
+								 ExecGetUpdatedCols(rootrel, estate));
+	}
+	else
+	{
+		root_rel = resultRelInfo->ri_RelationDesc;
+		tupdesc = RelationGetDescr(resultRelInfo->ri_RelationDesc);
+		modifiedCols = bms_union(ExecGetInsertedCols(resultRelInfo, estate),
+								 ExecGetUpdatedCols(resultRelInfo, estate));
 	}
 
-	insertedCols = GetInsertedColumns(resultRelInfo, estate);
-	updatedCols = GetUpdatedColumns(resultRelInfo, estate);
-	modifiedCols = bms_union(insertedCols, updatedCols);
-	val_desc = ExecBuildSlotValueDescription(rel,
+	val_desc = ExecBuildSlotValueDescription(root_rel,
 											 slot,
 											 tupdesc,
 											 modifiedCols,
@@ -1985,14 +1985,8 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 	TupleDesc	tupdesc = RelationGetDescr(rel);
 	TupleConstr *constr = tupdesc->constr;
 	Bitmapset  *modifiedCols;
-	Bitmapset  *insertedCols;
-	Bitmapset  *updatedCols;
 
 	Assert(constr || resultRelInfo->ri_PartitionCheck);
-
-	insertedCols = GetInsertedColumns(resultRelInfo, estate);
-	updatedCols = GetUpdatedColumns(resultRelInfo, estate);
-	modifiedCols = bms_union(insertedCols, updatedCols);
 
 	if (constr && constr->has_not_null)
 	{
@@ -2003,14 +1997,35 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 		{
 			Form_pg_attribute att = TupleDescAttr(tupdesc, attrChk - 1);
 
-			if (mtstate && mtstate->yb_mt_is_single_row_update_or_delete &&
-			    !bms_is_member(att->attnum - YBGetFirstLowInvalidAttributeNumber(rel), modifiedCols))
+			/*
+			 * Below we check if attribute belongs to the modified columns for
+			 * the NOT NULL constraint and if so, performs single-row updates.
+			 * Thus modified columns must be calculated beforehand.
+			 */
+			if (resultRelInfo->ri_RootResultRelInfo)
+			{
+				ResultRelInfo *rootrel = resultRelInfo->ri_RootResultRelInfo;
+				modifiedCols = bms_union(ExecGetInsertedCols(rootrel, estate),
+										 ExecGetUpdatedCols(rootrel, estate));
+			}
+			else
+			{
+				modifiedCols = bms_union(ExecGetInsertedCols(resultRelInfo, estate),
+										 ExecGetUpdatedCols(resultRelInfo, estate));
+			}
+
+			bool att_in_modified_cols = bms_is_member(
+				att->attnum - YBGetFirstLowInvalidAttributeNumber(rel),
+				modifiedCols);
+
+			if (mtstate && !mtstate->yb_fetch_target_tuple && !att_in_modified_cols)
 			{
 				/*
-				 * For single-row-updates, we only know the values of the
+				 * Without a target tuple, we only know the values of the
 				 * modified columns. But in this case it is safe to skip the
 				 * unmodified columns anyway.
 				 */
+				bms_free(modifiedCols);
 				continue;
 			}
 
@@ -2027,12 +2042,12 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 				 * rowtype so that val_desc shown error message matches the
 				 * input tuple.
 				 */
-				if (resultRelInfo->ri_PartitionRoot)
+				if (resultRelInfo->ri_RootResultRelInfo)
 				{
+					ResultRelInfo *rootrel = resultRelInfo->ri_RootResultRelInfo;
 					AttrNumber *map;
 
-					rel = resultRelInfo->ri_PartitionRoot;
-					tupdesc = RelationGetDescr(rel);
+					tupdesc = RelationGetDescr(rootrel->ri_RelationDesc);
 					/* a reverse map */
 					map = convert_tuples_by_name_map_if_req(orig_tupdesc,
 															tupdesc,
@@ -2045,6 +2060,7 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 					if (map != NULL)
 						slot = execute_attr_map_slot(map, slot,
 													 MakeTupleTableSlot(tupdesc));
+					rel = rootrel->ri_RelationDesc;
 				}
 
 				val_desc = ExecBuildSlotValueDescription(rel,
@@ -2060,6 +2076,7 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 						 val_desc ? errdetail("Failing row contains %s.", val_desc) : 0,
 						 errtablecol(orig_rel, attrChk)));
 			}
+			bms_free(modifiedCols);
 		}
 	}
 
@@ -2073,13 +2090,13 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 			Relation	orig_rel = rel;
 
 			/* See the comment above. */
-			if (resultRelInfo->ri_PartitionRoot)
+			if (resultRelInfo->ri_RootResultRelInfo)
 			{
+				ResultRelInfo *rootrel = resultRelInfo->ri_RootResultRelInfo;
 				TupleDesc	old_tupdesc = RelationGetDescr(rel);
 				AttrNumber *map;
 
-				rel = resultRelInfo->ri_PartitionRoot;
-				tupdesc = RelationGetDescr(rel);
+				tupdesc = RelationGetDescr(rootrel->ri_RelationDesc);
 				/* a reverse map */
 				map = convert_tuples_by_name_map_if_req(old_tupdesc,
 														tupdesc,
@@ -2092,11 +2109,14 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 				if (map != NULL)
 					slot = execute_attr_map_slot(map, slot,
 												 MakeTupleTableSlot(tupdesc));
+				modifiedCols = bms_union(ExecGetInsertedCols(rootrel, estate),
+										 ExecGetUpdatedCols(rootrel, estate));
+				rel = rootrel->ri_RelationDesc;
 			}
+			else
+				modifiedCols = bms_union(ExecGetInsertedCols(resultRelInfo, estate),
+										 ExecGetUpdatedCols(resultRelInfo, estate));
 
-			insertedCols = GetInsertedColumns(resultRelInfo, estate);
-			updatedCols = GetUpdatedColumns(resultRelInfo, estate);
-			modifiedCols = bms_union(insertedCols, updatedCols);
 			val_desc = ExecBuildSlotValueDescription(rel,
 													 slot,
 													 tupdesc,
@@ -2165,8 +2185,6 @@ ExecWithCheckOptions(WCOKind kind, ResultRelInfo *resultRelInfo,
 		{
 			char	   *val_desc;
 			Bitmapset  *modifiedCols;
-			Bitmapset  *insertedCols;
-			Bitmapset  *updatedCols;
 
 			switch (wco->kind)
 			{
@@ -2181,13 +2199,13 @@ ExecWithCheckOptions(WCOKind kind, ResultRelInfo *resultRelInfo,
 					 */
 				case WCO_VIEW_CHECK:
 					/* See the comment in ExecConstraints(). */
-					if (resultRelInfo->ri_PartitionRoot)
+					if (resultRelInfo->ri_RootResultRelInfo)
 					{
+						ResultRelInfo *rootrel = resultRelInfo->ri_RootResultRelInfo;
 						TupleDesc	old_tupdesc = RelationGetDescr(rel);
 						AttrNumber *map;
 
-						rel = resultRelInfo->ri_PartitionRoot;
-						tupdesc = RelationGetDescr(rel);
+						tupdesc = RelationGetDescr(rootrel->ri_RelationDesc);
 						/* a reverse map */
 						map = convert_tuples_by_name_map_if_req(old_tupdesc,
 																tupdesc,
@@ -2200,11 +2218,13 @@ ExecWithCheckOptions(WCOKind kind, ResultRelInfo *resultRelInfo,
 						if (map != NULL)
 							slot = execute_attr_map_slot(map, slot,
 														 MakeTupleTableSlot(tupdesc));
+						modifiedCols = bms_union(ExecGetInsertedCols(rootrel, estate),
+												 ExecGetUpdatedCols(rootrel, estate));
+						rel = rootrel->ri_RelationDesc;
 					}
-
-					insertedCols = GetInsertedColumns(resultRelInfo, estate);
-					updatedCols = GetUpdatedColumns(resultRelInfo, estate);
-					modifiedCols = bms_union(insertedCols, updatedCols);
+					else
+						modifiedCols = bms_union(ExecGetInsertedCols(resultRelInfo, estate),
+												 ExecGetUpdatedCols(resultRelInfo, estate));
 					val_desc = ExecBuildSlotValueDescription(rel,
 															 slot,
 															 tupdesc,
@@ -2285,7 +2305,7 @@ ExecBuildSlotValueDescription(Relation rel,
 	AclResult	aclresult;
 	bool		table_perm = false;
 	bool		any_perm = false;
-	Oid 		reloid = RelationGetRelid(rel);
+	Oid     reloid = RelationGetRelid(rel);
 
 	/*
 	 * Check if RLS is enabled and should be active for the relation; if so,
@@ -2419,7 +2439,7 @@ ExecUpdateLockMode(EState *estate, ResultRelInfo *relinfo)
 	 * been modified, then we can use a weaker lock, allowing for better
 	 * concurrency.
 	 */
-	updatedCols = GetUpdatedColumns(relinfo, estate);
+	updatedCols = ExecGetUpdatedCols(relinfo, estate);
 	keyCols = RelationGetIndexAttrBitmap(relinfo->ri_RelationDesc,
 										 INDEX_ATTR_BITMAP_KEY);
 

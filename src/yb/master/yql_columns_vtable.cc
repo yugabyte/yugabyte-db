@@ -15,9 +15,9 @@
 
 #include <stdint.h>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
-#include "yb/common/ql_name.h"
+#include "yb/qlexpr/ql_name.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 
@@ -30,8 +30,29 @@
 #include "yb/util/status_log.h"
 #include "yb/util/uuid.h"
 
-namespace yb {
-namespace master {
+using std::string;
+
+namespace yb::master {
+
+namespace {
+
+std::string SortingTypeToString(SortingType sorting_type) {
+  switch (sorting_type) {
+    case SortingType::kNotSpecified:
+      return "none";
+    case SortingType::kAscending:
+      return "asc";
+    case SortingType::kDescending:
+      return "desc";
+    case SortingType::kAscendingNullsLast:
+      return "asc nulls last";
+    case SortingType::kDescendingNullsLast:
+      return "desc nulls last";
+  }
+  FATAL_INVALID_ENUM_VALUE(SortingType, sorting_type);
+}
+
+} // namespace
 
 YQLColumnsVTable::YQLColumnsVTable(const TableName& table_name,
                                    const NamespaceName& namespace_name,
@@ -43,27 +64,27 @@ Status YQLColumnsVTable::PopulateColumnInformation(const Schema& schema,
                                                    const string& keyspace_name,
                                                    const string& table_name,
                                                    const size_t col_idx,
-                                                   QLRow* const row) const {
+                                                   qlexpr::QLRow* const row) const {
   RETURN_NOT_OK(SetColumnValue(kKeyspaceName, keyspace_name, row));
   RETURN_NOT_OK(SetColumnValue(kTableName, table_name, row));
   if (schema.table_properties().use_mangled_column_name()) {
     RETURN_NOT_OK(SetColumnValue(kColumnName,
-                                 YcqlName::DemangleName(schema.column(col_idx).name()),
+                                 qlexpr::YcqlName::DemangleName(schema.column(col_idx).name()),
                                  row));
   } else {
     RETURN_NOT_OK(SetColumnValue(kColumnName, schema.column(col_idx).name(), row));
   }
-  RETURN_NOT_OK(SetColumnValue(kClusteringOrder, schema.column(col_idx).sorting_type_string(),
-                               row));
+  RETURN_NOT_OK(SetColumnValue(
+      kClusteringOrder, SortingTypeToString(schema.column(col_idx).sorting_type()), row));
   const ColumnSchema& column = schema.column(col_idx);
   RETURN_NOT_OK(SetColumnValue(kType, column.is_counter() ? "counter" : column.type()->ToString(),
                                row));
   return Status::OK();
 }
 
-Result<std::shared_ptr<QLRowBlock>> YQLColumnsVTable::RetrieveData(
+Result<VTableDataPtr> YQLColumnsVTable::RetrieveData(
     const QLReadRequestPB& request) const {
-  auto vtable = std::make_shared<QLRowBlock>(schema());
+  auto vtable = std::make_shared<qlexpr::QLRowBlock>(schema());
   auto tables = catalog_manager().GetTables(GetTablesMode::kVisibleToClient);
   for (scoped_refptr<TableInfo> table : tables) {
 
@@ -85,7 +106,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLColumnsVTable::RetrieveData(
     // Fill in the hash keys first.
     auto num_hash_columns = narrow_cast<int32_t>(schema.num_hash_key_columns());
     for (int32_t i = 0; i < num_hash_columns; i++) {
-      QLRow& row = vtable->Extend();
+      auto& row = vtable->Extend();
       RETURN_NOT_OK(PopulateColumnInformation(schema, keyspace_name, table_name, i, &row));
       // kind (always partition_key for hash columns)
       RETURN_NOT_OK(SetColumnValue(kKind, "partition_key", &row));
@@ -95,7 +116,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLColumnsVTable::RetrieveData(
     // Now fill in the range columns
     auto num_range_columns = narrow_cast<int32_t>(schema.num_range_key_columns());
     for (int32_t i = num_hash_columns; i < num_hash_columns + num_range_columns; i++) {
-      QLRow& row = vtable->Extend();
+      auto& row = vtable->Extend();
       RETURN_NOT_OK(PopulateColumnInformation(schema, keyspace_name, table_name, i, &row));
       // kind (always clustering for range columns)
       RETURN_NOT_OK(SetColumnValue(kKind, "clustering", &row));
@@ -105,7 +126,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLColumnsVTable::RetrieveData(
     // Now fill in the rest of the columns.
     auto num_columns = narrow_cast<int32_t>(schema.num_columns());
     for (auto i = num_hash_columns + num_range_columns; i < num_columns; i++) {
-      QLRow &row = vtable->Extend();
+      auto& row = vtable->Extend();
       RETURN_NOT_OK(PopulateColumnInformation(schema, keyspace_name, table_name, i, &row));
       // kind (always regular for regular columns)
       const ColumnSchema& column = schema.column(i);
@@ -131,5 +152,4 @@ Schema YQLColumnsVTable::CreateSchema() const {
   return builder.Build();
 }
 
-}  // namespace master
-}  // namespace yb
+}  // namespace yb::master

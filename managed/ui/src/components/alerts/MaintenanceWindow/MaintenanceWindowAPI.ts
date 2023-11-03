@@ -11,7 +11,7 @@ const DATE_FORMAT = 'YYYY-MM-DD HH:mm:ss';
  */
 const getCustomerId = (): string => {
   const customerId = localStorage.getItem('customerId');
-  return customerId || '';
+  return customerId ?? '';
 };
 
 /**

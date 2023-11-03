@@ -78,9 +78,14 @@ void ConsensusFrontier::ToPB(google::protobuf::Any* any) const {
   ConsensusFrontierPB pb;
   op_id_.ToPB(pb.mutable_op_id());
   pb.set_hybrid_time(hybrid_time_.ToUint64());
-  pb.set_history_cutoff(history_cutoff_.ToUint64());
-  if (hybrid_time_filter_.is_valid()) {
-    pb.set_hybrid_time_filter(hybrid_time_filter_.ToUint64());
+  pb.set_primary_cutoff_ht(history_cutoff_.primary_cutoff_ht.ToUint64());
+  pb.set_cotables_cutoff_ht(history_cutoff_.cotables_cutoff_ht.ToUint64());
+  int64_t ht = ExtractGlobalFilter(hybrid_time_filter_.AsSlice());
+  // Global HT filter can be invalid in two cases:
+  // 1. when only the per db filters then the first 8 bytes of hybrid_time_filter_ are invalid
+  // 2. when the entire hybrid_time_filter_ is empty
+  if (HybridTime::FromPB(ht).is_valid()) {
+    pb.set_hybrid_time_filter(ht);
   }
   pb.set_max_value_level_ttl_expiration_time(max_value_level_ttl_expiration_time_.ToUint64());
   if (primary_schema_version_) {
@@ -89,6 +94,12 @@ void ConsensusFrontier::ToPB(google::protobuf::Any* any) const {
   for (const auto& p : cotable_schema_versions_) {
     AddTableSchemaVersion(p.first, p.second, &pb);
   }
+  IterateCotablesFilter(hybrid_time_filter_.AsSlice(), [&pb](uint32_t db_oid, uint64_t ht) {
+    auto* db_filter = pb.mutable_db_oid_to_ht_filter()->Add();
+    db_filter->set_db_oid(db_oid);
+    db_filter->set_ht_filter(ht);
+  });
+  VLOG(3) << "ConsensusFrontierPB: " << pb.ShortDebugString();
   any->PackFrom(pb);
 }
 
@@ -99,11 +110,13 @@ Status ConsensusFrontier::FromPB(const google::protobuf::Any& any) {
   }
   op_id_ = OpId::FromPB(pb.op_id());
   hybrid_time_ = HybridTime(pb.hybrid_time());
-  history_cutoff_ = NormalizeHistoryCutoff(HybridTime(pb.history_cutoff()));
-  if (pb.has_hybrid_time_filter()) {
-    hybrid_time_filter_ = HybridTime(pb.hybrid_time_filter());
-  } else {
-    hybrid_time_filter_ = HybridTime();
+  if (pb.has_primary_cutoff_ht()) {
+    history_cutoff_.primary_cutoff_ht =
+        NormalizeHistoryCutoff(HybridTime(pb.primary_cutoff_ht()));
+  }
+  if (pb.has_cotables_cutoff_ht()) {
+    history_cutoff_.cotables_cutoff_ht =
+        NormalizeHistoryCutoff(HybridTime(pb.cotables_cutoff_ht()));
   }
   max_value_level_ttl_expiration_time_ =
       HybridTime::FromPB(pb.max_value_level_ttl_expiration_time());
@@ -115,7 +128,29 @@ Status ConsensusFrontier::FromPB(const google::protobuf::Any& any) {
           VERIFY_RESULT(Uuid::FromSlice(p.table_id())), p.schema_version());
     }
   }
+  // See the declaration of hybrid_time_filter_ to understand its layout.
+  hybrid_time_filter_.clear();
+  // If global filter is not present then we might still need to append invalid hybrid time
+  // if cotables filter is present.
+  if (pb.has_hybrid_time_filter()) {
+    AppendGlobalFilter(pb.hybrid_time_filter());
+  } else if (!pb.db_oid_to_ht_filter().empty()) {
+    AppendGlobalFilter(HybridTime::kInvalid.ToUint64());
+  }
+  // First append all the db oids.
+  for (const auto& per_db_filter : pb.db_oid_to_ht_filter()) {
+    AppendDbOidToCotablesFilter(per_db_filter.db_oid());
+  }
+  // Next append all the hybrid times.
+  for (const auto& per_db_filter : pb.db_oid_to_ht_filter()) {
+    AppendHybridTimeToCotablesFilter(per_db_filter.ht_filter());
+  }
+  VLOG(3) << "ConsensusFrontier: " << ToString();
   return Status::OK();
+}
+
+HybridTime ConsensusFrontier::GlobalFilter() const {
+  return HybridTime::FromPB(ExtractGlobalFilter(hybrid_time_filter_.AsSlice()));
 }
 
 void ConsensusFrontier::FromOpIdPBDeprecated(const OpIdPB& pb) {
@@ -123,9 +158,77 @@ void ConsensusFrontier::FromOpIdPBDeprecated(const OpIdPB& pb) {
 }
 
 std::string ConsensusFrontier::ToString() const {
-  return YB_CLASS_TO_STRING(
-      op_id, hybrid_time, history_cutoff, hybrid_time_filter, max_value_level_ttl_expiration_time,
+  auto global_ht = GlobalFilter();
+  std::string filter = Format("Global filter: $0, ", global_ht);
+  filter += "Cotables filter: [";
+  IterateCotablesFilter(hybrid_time_filter_.AsSlice(), [&filter](uint32_t db_oid, uint64_t ht) {
+    filter += Format("$0:$1, ", db_oid, HybridTime(ht));
+  });
+  filter += "]";
+  return filter + YB_CLASS_TO_STRING(
+      op_id, hybrid_time, history_cutoff, max_value_level_ttl_expiration_time,
       primary_schema_version, cotable_schema_versions);
+}
+
+void ConsensusFrontier::SetCoTablesFilter(
+    std::vector<std::pair<uint32_t, HybridTime>> db_oid_to_ht_filter) {
+  // Filter is always sorted by db oid for a faster search.
+  std::sort(db_oid_to_ht_filter.begin(), db_oid_to_ht_filter.end());
+  // Preserve the current global filter.
+  if (!hybrid_time_filter_.empty()) {
+    DCHECK_GE(hybrid_time_filter_.size(), HybridTime::SizeOfHybridTimeRepr);
+    hybrid_time_filter_.Truncate(HybridTime::SizeOfHybridTimeRepr);
+  } else {
+    AppendGlobalFilter(HybridTime::kInvalid.ToUint64());
+  }
+  // First append all the db oids.
+  for (const auto& per_db_filter : db_oid_to_ht_filter) {
+    AppendDbOidToCotablesFilter(per_db_filter.first);
+  }
+  // Next append all the hybrid times.
+  for (const auto& per_db_filter : db_oid_to_ht_filter) {
+    AppendHybridTimeToCotablesFilter(per_db_filter.second.ToUint64());
+  }
+}
+
+void ConsensusFrontier::SetGlobalFilter(HybridTime value) {
+  if (hybrid_time_filter_.empty()) {
+    AppendGlobalFilter(value.ToUint64());
+    return;
+  }
+  DCHECK_GE(hybrid_time_filter_.size(), HybridTime::SizeOfHybridTimeRepr);
+  uint64_t ht = value.ToUint64();
+  memcpy(hybrid_time_filter_.mutable_data(), pointer_cast<uint8*>(&ht), sizeof(ht));
+}
+
+uint64_t ExtractGlobalFilter(Slice filter) {
+  if (filter.empty()) {
+    return HybridTime::kInvalid.ToUint64();
+  }
+  DCHECK_GE(filter.size(), HybridTime::SizeOfHybridTimeRepr);
+  uint64_t ht;
+  memcpy(&ht, filter.data(), sizeof(ht));
+  return ht;
+}
+
+void IterateCotablesFilter(
+    Slice filter, const std::function<void(uint32_t, uint64_t)>& callback) {
+  // The first 8 bytes (if any) is the global hybrid time filter.
+  // Every per db entry has 4 bytes of db_oid and 8 bytes of Hybrid Time.
+  const uint8* input = filter.data() + HybridTime::SizeOfHybridTimeRepr;
+  // See the declaration of hybrid_time_filter_ to understand its layout.
+  size_t num_filters = (filter.size() - HybridTime::SizeOfHybridTimeRepr) / kSizePerDbFilter;
+  const uint8* db_oid_ptr = input;
+  const uint8* ht_ptr = input + (kSizeDbOid * num_filters);
+  while (ht_ptr < filter.end()) {
+    uint32_t db_oid;
+    memcpy(&db_oid, db_oid_ptr, sizeof(db_oid));
+    db_oid_ptr += sizeof(db_oid);
+    uint64_t ht;
+    memcpy(&ht, ht_ptr, sizeof(ht));
+    ht_ptr += sizeof(ht);
+    callback(db_oid, ht);
+  }
 }
 
 namespace {
@@ -170,9 +273,12 @@ void ConsensusFrontier::Update(
   const ConsensusFrontier& rhs = down_cast<const ConsensusFrontier&>(pre_rhs);
   UpdateField(&op_id_, rhs.op_id_, update_type);
   UpdateField(&hybrid_time_, rhs.hybrid_time_, update_type);
-  UpdateField(&history_cutoff_, rhs.history_cutoff_, update_type);
-  // Reset filter after compaction.
-  hybrid_time_filter_ = HybridTime();
+  UpdateField(
+      &history_cutoff_.primary_cutoff_ht, rhs.history_cutoff_.primary_cutoff_ht, update_type);
+  UpdateField(&history_cutoff_.cotables_cutoff_ht,
+              rhs.history_cutoff_.cotables_cutoff_ht, update_type);
+  // Reset filters after compaction.
+  hybrid_time_filter_.clear();
   UpdateField(&max_value_level_ttl_expiration_time_,
               rhs.max_value_level_ttl_expiration_time_, update_type);
   UpdateField(&primary_schema_version_, rhs.primary_schema_version_, update_type);
@@ -186,10 +292,17 @@ void ConsensusFrontier::Update(
   }
 }
 
-Slice ConsensusFrontier::Filter() const {
-  return hybrid_time_filter_.is_valid()
-      ? Slice(pointer_cast<const char*>(&hybrid_time_filter_), sizeof(hybrid_time_filter_))
-      : Slice();
+Slice ConsensusFrontier::FilterAsSlice() {
+  return hybrid_time_filter_.AsSlice();
+}
+
+void ConsensusFrontier::CotablesFilter(
+    std::vector<std::pair<uint32_t, HybridTime>>* cotables_filter) {
+  IterateCotablesFilter(hybrid_time_filter_.AsSlice(),
+      [cotables_filter](uint32_t db_oid, uint64_t ht) {
+        cotables_filter->emplace_back(db_oid, ht);
+      }
+  );
 }
 
 bool ConsensusFrontier::IsUpdateValid(
@@ -201,6 +314,20 @@ bool ConsensusFrontier::IsUpdateValid(
   // FLAGS_timestamp_history_retention_interval_sec increases.
   return IsUpdateValidForField(op_id_, rhs.op_id_, update_type) &&
          IsUpdateValidForField(hybrid_time_, rhs.hybrid_time_, update_type);
+}
+
+void ConsensusFrontier::UpdateSchemaVersion(
+    const Uuid& table_id, SchemaVersion version, rocksdb::UpdateUserValueType type) {
+  if (table_id.IsNil()) {
+    UpdateField(&primary_schema_version_, std::optional(version), type);
+  } else {
+    auto it = cotable_schema_versions_.find(table_id);
+    if (it == cotable_schema_versions_.end()) {
+      cotable_schema_versions_[table_id] = version;
+    } else {
+      UpdateField(&it->second, version, type);
+    }
+  }
 }
 
 void ConsensusFrontier::AddSchemaVersion(const Uuid& table_id, SchemaVersion version) {
@@ -224,6 +351,15 @@ void ConsensusFrontier::MakeExternalSchemaVersionsAtMost(
   for (const auto& p : cotable_schema_versions_) {
     yb::MakeAtMost(p.first, p.second, min_schema_versions);
   }
+}
+
+void AddTableSchemaVersion(
+    const Uuid& table_id, SchemaVersion schema_version, ConsensusFrontierPB* pb) {
+  auto* out = pb->add_table_schema_version();
+  if (!table_id.IsNil()) {
+    out->set_table_id(table_id.cdata(), table_id.size());
+  }
+  out->set_schema_version(schema_version);
 }
 
 } // namespace docdb

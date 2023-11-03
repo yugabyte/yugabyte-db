@@ -21,7 +21,7 @@ Options:
 EOT
 }
 
-num_cores_to_keep=5
+num_cores_to_keep={{ yb_num_clean_cores_to_keep }}
 YB_CRASH_DIR=({{ yb_cores_dir }}/)
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -46,7 +46,7 @@ if [[ "$(id -u)" != "0" && "$USER" != "yugabyte" ]]; then
   exit 1
 fi
 
-find_core_files="find $YB_CRASH_DIR -name 'core_yb*' -type f -printf '%T+\t%p\n' | sort |
+find_core_files="find $YB_CRASH_DIR -name 'core_*' -type f -printf '%T+\t%p\n' | sort |
   awk '{print \$2}'"
 num_core_files=$(eval $find_core_files | wc -l)
 if [ $num_core_files -gt $num_cores_to_keep ]; then

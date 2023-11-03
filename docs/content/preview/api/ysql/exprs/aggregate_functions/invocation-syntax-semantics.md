@@ -17,29 +17,11 @@ type: docs
 
 The following six diagrams, [`select_start`](../../../syntax_resources/grammar_diagrams/#select-start), [`ordinary_aggregate_fn_invocation`](../../../syntax_resources/grammar_diagrams/#ordinary-aggregate-fn-invocation), [`within_group_aggregate_fn_invocation`](../../../syntax_resources/grammar_diagrams/#within-group-aggregate-fn-invocation), [`group_by_clause`](../../../syntax_resources/grammar_diagrams/#group-by-clause), [`grouping_element`](../../../syntax_resources/grammar_diagrams/#grouping-element), and [`having_clause`](../../../syntax_resources/grammar_diagrams/#having-clause) are reproduced from the section that describes the [`SELECT` statement](../../../the-sql-language/statements/dml_select/).
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fas fa-file-alt" aria-hidden="true"></i>
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fas fa-project-diagram" aria-hidden="true"></i>
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/exprs/aggregate_functions/select_start,ordinary_aggregate_fn_invocation,within_group_aggregate_fn_invocation.grammar.md" %}}
-  </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/exprs/aggregate_functions/select_start,ordinary_aggregate_fn_invocation,within_group_aggregate_fn_invocation.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  select_start,
+  ordinary_aggregate_fn_invocation,
+  within_group_aggregate_fn_invocation
+{{%/ebnf%}}
 These rules govern the invocation of aggregate functions as `SELECT` list items.
 
 The aggregate functions listed in the sections [General-purpose aggregate functions](../function-syntax-semantics/#general-purpose-aggregate-functions) and [Statistical aggregate functions](../function-syntax-semantics/#statistical-aggregate-functions) are governed by the `ordinary_aggregate_fn_invocation` rule.  These functions may also be invoked as window functions. See the account of the `fn_over_window` rule, and everything else that qualifies this, in the section [Window function invocation—SQL syntax and semantics](../../window_functions/invocation-syntax-semantics/).
@@ -48,55 +30,16 @@ The aggregate functions listed in the sections [Within-group ordered-set aggrega
 
 When aggregate functions are invoked using the syntax specified by either the `ordinary_aggregate_fn_invocation` rule or the `within_group_aggregate_fn_invocation` rule, users very often determine the result set with the `GROUP BY` clause.
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar-2" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fas fa-file-alt" aria-hidden="true"></i>
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram-2" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fas fa-project-diagram" aria-hidden="true"></i>
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar-2" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/exprs/aggregate_functions/group_by_clause,grouping_element.grammar.md" %}}
-  </div>
-  <div id="diagram-2" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/exprs/aggregate_functions/group_by_clause,grouping_element.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  group_by_clause,
+  grouping_element
+{{%/ebnf%}}
 
 The result set may be restricted by the `HAVING` clause:
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar-3" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fas fa-file-alt" aria-hidden="true"></i>
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram-3" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fas fa-project-diagram" aria-hidden="true"></i>
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar-3" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/exprs/aggregate_functions/having_clause.grammar.md" %}}
-  </div>
-  <div id="diagram-3" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/exprs/aggregate_functions/having_clause.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  having_clause
+{{%/ebnf%}}
 
 ## Semantics
 
@@ -238,7 +181,7 @@ This is the result:
 
 Because _"k"_ happens to be unique, the modal value is chosen arbitrarily from the set of candidate values. It might appear that the `ORBER BY` clause determines which value is chosen. Don't rely on this—it's an undocumented effect of the implementation and might change at some future release boundary.
 
-Notice that the expression for which the modal value for each value of _"class"_, as the `GROUP BY` clause requests,  is specified not as the argument of the [`mode()`](../function-syntax-semantics/mode-percentile-disc-percentile-cont/#mode) function but, rather, as the argument of the invocation's `ORDER BY` clause. This explains why the `within_group_aggregate_fn_invocation` rule specifies that `ORDER BY` is mandatory. If you execute the `\df mode` metacommand in `ysqlsh`, you'll see that both the argument data type and the result data type is `anyelement`. In other words, the argument of the `ORDER BY` clause in the invocation of the [`mode()`](../function-syntax-semantics/mode-percentile-disc-percentile-cont/#mode) aggregate function must be just a single scalar expression. Notice that this is more restrictive than the general case for the `ORDER BY` clause that you use at top level in a subquery or within the window definition for the `OVER` clause that you use to invoke a window function.
+Notice that the expression for which the modal value for each value of _"class"_, as the `GROUP BY` clause requests,  is specified not as the argument of the [`mode()`](../function-syntax-semantics/mode-percentile-disc-percentile-cont/#mode) function but, rather, as the argument of the invocation's `ORDER BY` clause. This explains why the `within_group_aggregate_fn_invocation` rule specifies that `ORDER BY` is mandatory. If you execute the `\df mode` meta-command in `ysqlsh`, you'll see that both the argument data type and the result data type is `anyelement`. In other words, the argument of the `ORDER BY` clause in the invocation of the [`mode()`](../function-syntax-semantics/mode-percentile-disc-percentile-cont/#mode) aggregate function must be just a single scalar expression. Notice that this is more restrictive than the general case for the `ORDER BY` clause that you use at top level in a subquery or within the window definition for the `OVER` clause that you use to invoke a window function.
 
 The expression need not correspond just to a bare column, as this example shows:
 

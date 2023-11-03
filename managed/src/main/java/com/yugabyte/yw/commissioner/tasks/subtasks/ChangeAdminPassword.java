@@ -1,3 +1,5 @@
+// Copyright (c) YugaByte, Inc.
+
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -11,6 +13,7 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import play.mvc.Http;
 
 @Slf4j
@@ -35,6 +38,7 @@ public class ChangeAdminPassword extends UniverseTaskBase {
     public String ycqlCurrentPassword;
     public String ycqlNewPassword;
     public String ysqlDbName;
+    public boolean validateCurrentPassword;
   }
 
   protected Params taskParams() {
@@ -43,7 +47,7 @@ public class ChangeAdminPassword extends UniverseTaskBase {
 
   @Override
   public String getName() {
-    return super.getName() + "(" + taskParams().universeUUID + ")";
+    return super.getName() + "(" + taskParams().getUniverseUUID() + ")";
   }
 
   @Override
@@ -52,12 +56,25 @@ public class ChangeAdminPassword extends UniverseTaskBase {
       log.info("Running {}", getName());
 
       DatabaseSecurityFormData dbData = new DatabaseSecurityFormData();
-      Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
-      if (taskParams().primaryCluster.userIntent.enableYCQL
-          && taskParams().primaryCluster.userIntent.enableYCQLAuth) {
+      Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+      Cluster primaryCluster = taskParams().primaryCluster;
+      if (primaryCluster == null) {
+        primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+      }
+      if (primaryCluster.userIntent.enableYCQL
+          && primaryCluster.userIntent.enableYCQLAuth
+          && !StringUtils.isEmpty(taskParams().ycqlNewPassword)) {
         dbData.ycqlCurrAdminPassword = taskParams().ycqlCurrentPassword;
         dbData.ycqlAdminUsername = taskParams().ycqlUserName;
         dbData.ycqlAdminPassword = taskParams().ycqlNewPassword;
+
+        if (taskParams().validateCurrentPassword) {
+          DatabaseSecurityFormData testDBCreds = new DatabaseSecurityFormData();
+          testDBCreds.ycqlAdminPassword = dbData.ycqlCurrAdminPassword;
+          testDBCreds.ycqlAdminUsername = dbData.ycqlAdminUsername;
+          ycqlQueryExecutor.validateAdminPassword(universe, testDBCreds);
+        }
+
         try {
           // Check if the password already works.
           ycqlQueryExecutor.validateAdminPassword(universe, dbData);
@@ -71,12 +88,22 @@ public class ChangeAdminPassword extends UniverseTaskBase {
           }
         }
       }
-      if (taskParams().primaryCluster.userIntent.enableYSQL
-          && taskParams().primaryCluster.userIntent.enableYSQLAuth) {
+      if (primaryCluster.userIntent.enableYSQL
+          && primaryCluster.userIntent.enableYSQLAuth
+          && !StringUtils.isEmpty(taskParams().ysqlNewPassword)) {
         dbData.dbName = taskParams().ysqlDbName;
         dbData.ysqlCurrAdminPassword = taskParams().ysqlCurrentPassword;
         dbData.ysqlAdminUsername = taskParams().ysqlUserName;
         dbData.ysqlAdminPassword = taskParams().ysqlNewPassword;
+
+        if (taskParams().validateCurrentPassword) {
+          DatabaseSecurityFormData testDBCreds = new DatabaseSecurityFormData();
+          testDBCreds.ysqlAdminPassword = dbData.ysqlCurrAdminPassword;
+          testDBCreds.dbName = dbData.dbName;
+          testDBCreds.ysqlAdminUsername = dbData.ysqlAdminUsername;
+          ysqlQueryExecutor.validateAdminPassword(universe, testDBCreds);
+        }
+
         try {
           // Check if the password already works.
           ysqlQueryExecutor.validateAdminPassword(universe, dbData);
@@ -90,7 +117,6 @@ public class ChangeAdminPassword extends UniverseTaskBase {
           }
         }
       }
-
     } catch (Exception e) {
       String msg = getName() + " failed with exception " + e.getMessage();
       log.warn(msg, e.getMessage());

@@ -31,6 +31,8 @@
 
 #include "yb/gutil/macros.h"
 
+using std::unique_ptr;
+
 namespace rocksdb {
 namespace log {
 

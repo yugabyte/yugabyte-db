@@ -29,13 +29,12 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_CONSENSUS_PEER_MANAGER_H
-#define YB_CONSENSUS_PEER_MANAGER_H
+#pragma once
 
 #include <string>
 #include <unordered_map>
 
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 
 #include "yb/consensus/log_fwd.h"
 #include "yb/consensus/consensus_util.h"
@@ -91,6 +90,8 @@ class PeerManager {
   // Closes connections to those peers that are not in config.
   virtual void ClosePeersNotInConfig(const RaftConfigPB& config);
 
+  virtual void DumpToHtml(std::ostream& out) const;
+
  private:
   std::string LogPrefix() const;
 
@@ -110,5 +111,3 @@ class PeerManager {
 
 } // namespace consensus
 } // namespace yb
-
-#endif /* YB_CONSENSUS_PEER_MANAGER_H */

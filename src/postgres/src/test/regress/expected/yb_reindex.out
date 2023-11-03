@@ -122,10 +122,10 @@ EXPLAIN (costs off)
 /*+SeqScan(pg_depend) */
 SELECT deptype FROM pg_depend
     WHERE classid = 'pg_class'::regclass and objid = 'yb'::regclass;
-                           QUERY PLAN
-----------------------------------------------------------------
- YB Seq Scan on pg_depend
-   Filter: ((classid = '1259'::oid) AND (objid = '54321'::oid))
+                              QUERY PLAN
+-----------------------------------------------------------------------
+ Seq Scan on pg_depend
+   Remote Filter: ((classid = '1259'::oid) AND (objid = '54321'::oid))
 (2 rows)
 
 /*+SeqScan(pg_depend) */
@@ -191,10 +191,10 @@ SELECT i FROM tmp WHERE j = -5;
 EXPLAIN (costs off)
 /*+SeqScan(yb) */
 SELECT i FROM yb WHERE j = -5;
-          QUERY PLAN
--------------------------------
- YB Seq Scan on yb
-   Filter: (j = '-5'::integer)
+              QUERY PLAN
+--------------------------------------
+ Seq Scan on yb
+   Remote Filter: (j = '-5'::integer)
 (2 rows)
 
 /*+SeqScan(yb) */
@@ -233,7 +233,7 @@ SET yb_non_ddl_txn_for_sys_tables_allowed TO on;
 UPDATE pg_yb_catalog_version SET current_version = current_version + 1;
 UPDATE pg_yb_catalog_version SET last_breaking_version = current_version;
 RESET yb_non_ddl_txn_for_sys_tables_allowed;
-SELECT current_version = last_breaking_version from pg_yb_catalog_version;
+SELECT distinct(current_version = last_breaking_version) from pg_yb_catalog_version;
  ?column?
 ----------
  t
@@ -249,7 +249,7 @@ SET yb_non_ddl_txn_for_sys_tables_allowed TO on;
 UPDATE pg_yb_catalog_version SET current_version = current_version + 1;
 UPDATE pg_yb_catalog_version SET last_breaking_version = current_version;
 RESET yb_non_ddl_txn_for_sys_tables_allowed;
-SELECT current_version = last_breaking_version from pg_yb_catalog_version;
+SELECT distinct(current_version = last_breaking_version) from pg_yb_catalog_version;
  ?column?
 ----------
  t
@@ -277,7 +277,7 @@ SET yb_non_ddl_txn_for_sys_tables_allowed TO on;
 UPDATE pg_yb_catalog_version SET current_version = current_version + 1;
 UPDATE pg_yb_catalog_version SET last_breaking_version = current_version;
 RESET yb_non_ddl_txn_for_sys_tables_allowed;
-SELECT current_version = last_breaking_version from pg_yb_catalog_version;
+SELECT distinct(current_version = last_breaking_version) from pg_yb_catalog_version;
  ?column?
 ----------
  t
@@ -361,7 +361,7 @@ SELECT deptype FROM pg_depend
 /*+IndexScan(pg_depend_depender_index) */
 SELECT deptype FROM pg_depend
     WHERE classid = 'pg_class'::regclass and objid = 'yb'::regclass;
-ERROR:  Query error: ybctid not found in indexed table
+ERROR:  ybctid not found in indexed table
 /*+SeqScan(yb) */
 SELECT i FROM yb WHERE j = -5;
  i
@@ -390,10 +390,10 @@ EXPLAIN (costs off)
 /*+SeqScan(pg_depend) */
 SELECT deptype FROM pg_depend
     WHERE classid = 'pg_class'::regclass and objid = 'yb'::regclass;
-                           QUERY PLAN
-----------------------------------------------------------------
- YB Seq Scan on pg_depend
-   Filter: ((classid = '1259'::oid) AND (objid = '54321'::oid))
+                              QUERY PLAN
+-----------------------------------------------------------------------
+ Seq Scan on pg_depend
+   Remote Filter: ((classid = '1259'::oid) AND (objid = '54321'::oid))
 (2 rows)
 
 /*+SeqScan(pg_depend) */
@@ -425,10 +425,10 @@ SELECT deptype FROM pg_depend
 EXPLAIN (costs off)
 /*+SeqScan(yb) */
 SELECT i FROM yb WHERE j = -5;
-          QUERY PLAN
--------------------------------
- YB Seq Scan on yb
-   Filter: (j = '-5'::integer)
+              QUERY PLAN
+--------------------------------------
+ Seq Scan on yb
+   Remote Filter: (j = '-5'::integer)
 (2 rows)
 
 /*+SeqScan(yb) */
@@ -533,10 +533,14 @@ SELECT i FROM ing WHERE j < -8 ORDER BY i;
          Index Cond: (j < '-8'::integer)
 (4 rows)
 
--- TODO(#12899): fix output
 /*+IndexScan(ing_j_idx)*/
 SELECT i FROM ing WHERE j < -8 ORDER BY i;
-ERROR:  Query error: Cannot decode value type kGroupEnd from the key encoding format: "!"
+ i
+----
+  9
+ 10
+(2 rows)
+
 EXPLAIN (costs off)
 /*+IndexScan(ing_j_idx)*/
 SELECT i FROM ing WHERE j = -9;

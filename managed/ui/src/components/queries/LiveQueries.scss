@@ -1,6 +1,7 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../_style/colors.scss';
+@use "sass:color";
+@use '../../_style/colors.scss';
 
 .live-queries {
   &__loading-indicator > .yb-loader-circle {
@@ -76,7 +77,7 @@
       pre {
         margin: 0 15px 0 0 !important;
         .hljs {
-          background: $YB_SUCCESS_COLOR_LIGHT;
+          background: colors.$YB_SUCCESS_COLOR_LIGHT;
         }
       }
     }
@@ -94,14 +95,14 @@
 }
 #universe-tab-panel-pane-queries {
   .side-panel {
-    background: $YB_BG_WHITE_2;
+    background: colors.$YB_BG_WHITE_2;
     height: 100%;
-    width: 400px;
+    width: 725px;
     position: fixed;
     z-index: 9999;
     top: 0;
     right: 0;
-    border-left: 1px solid darken($YB_BACKGROUND, 10%);
+    border-left: 1px solid color.adjust(colors.$YB_BACKGROUND, $lightness: -10%);
     max-height: 100%;
     transition: right 0.5s ease-in-out;
 
@@ -123,8 +124,8 @@
 
       .side-panel__title {
         padding: 20px 20px 20px 30px;
-        color: $YB_ORANGE;
-        border-bottom: 1px solid darken($YB_BACKGROUND, 10%);
+        color: colors.$YB_ORANGE;
+        border-bottom: 1px solid color.adjust(colors.$YB_BACKGROUND, $lightness: -10%);
         flex: 1 0 33%;
         text-align: left;
         font-weight: 700;
@@ -135,12 +136,12 @@
       padding: 15px 30px;
 
       .side-panel__query {
-        background: $YB_WHITE;
+        background: colors.$YB_WHITE;
         overflow-y: auto;
         max-height: 400px;
         width: 100%;
         padding: 5px 10px;
-        border: 1px solid $YB_GRAY_BORDER;
+        border: 1px solid colors.$YB_GRAY_BORDER;
         border-radius: 7px;
 
         pre {
@@ -155,7 +156,7 @@
 
         li {
           display: flex;
-          border-bottom: 1px solid darken($YB_BACKGROUND, 10%);
+          border-bottom: 1px solid color.adjust(colors.$YB_BACKGROUND, $lightness: -10%);
           padding: 7px 0 3px 0;
 
           span {
@@ -432,8 +433,8 @@
 
   .search-bar {
     width: 100%;
-    background: $YB_WHITE;
-    border: 1px solid $YB_GRAY_BORDER;
+    background: colors.$YB_WHITE;
+    border: 1px solid colors.$YB_GRAY_BORDER;
     border-radius: 7px;
     height: 44px !important;
     padding: 7px 40px 7px 15px;
@@ -454,13 +455,13 @@
       padding-right: 24px;
       margin: 0 5px 0 0;
       display: inline-block;
-      color: $YB_TEXT_BLACK;
+      color: colors.$YB_TEXT_BLACK;
       position: relative;
       background-color: rgba(0, 0, 0, 0.08);
       border-radius: 12px;
 
       .key {
-        color: $YB_DARK_GRAY;
+        color: colors.$YB_DARK_GRAY;
       }
 
       .remove-chip {
@@ -472,13 +473,13 @@
       }
 
       .remove-chip:hover {
-        color: $YB_TEXT_BLACK;
+        color: colors.$YB_TEXT_BLACK;
       }
     }
   }
 
   .fa-times {
-    color: $YB_DARK_GRAY;
+    color: colors.$YB_DARK_GRAY;
     position: absolute;
     top: 0;
     right: 0;
@@ -492,14 +493,14 @@
     cursor: pointer;
 
     &:hover {
-      color: $YB_DARK_GRAY_2;
+      color: colors.$YB_DARK_GRAY_2;
     }
   }
 
   .autocomplete-wrapper {
-    background: $YB_WHITE;
+    background: colors.$YB_WHITE;
     z-index: 700;
-    border: 1px solid $YB_GRAY_BORDER;
+    border: 1px solid colors.$YB_GRAY_BORDER;
     position: relative;
     width: 300px;
 

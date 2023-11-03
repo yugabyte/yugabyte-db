@@ -42,7 +42,6 @@
 
 namespace rocksdb {
 
-#ifndef ROCKSDB_LITE
 bool isSpecialChar(const char c) {
   if (c == '\\' || c == '#' || c == ':' || c == '\r' || c == '\n') {
     return true;
@@ -1467,5 +1466,4 @@ ColumnFamilyOptions BuildColumnFamilyOptions(
   return cf_opts;
 }
 
-#endif  // !ROCKSDB_LITE
 }  // namespace rocksdb

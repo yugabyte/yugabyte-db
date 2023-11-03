@@ -11,13 +11,13 @@
 // under the License.
 //
 
-#ifndef YB_CLIENT_YB_TABLE_NAME_H_
-#define YB_CLIENT_YB_TABLE_NAME_H_
+#pragma once
 
 #include <string>
 #include <boost/optional.hpp>
 
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
+#include "yb/util/memory/memory_usage.h"
 
 #include "yb/common/common_types.pb.h"
 
@@ -138,6 +138,10 @@ class YBTableName {
     return namespace_type_ == YQL_DATABASE_CQL;
   }
 
+  bool is_pgsql_namespace() const {
+    return namespace_type_ == YQL_DATABASE_PGSQL;
+  }
+
   bool is_redis_namespace() const {
     return namespace_type_ == YQL_DATABASE_REDIS;
   }
@@ -164,6 +168,12 @@ class YBTableName {
 
   void SetIntoNamespaceIdentifierPB(master::NamespaceIdentifierPB* id) const;
   void GetFromNamespaceIdentifierPB(const master::NamespaceIdentifierPB& id);
+
+  size_t DynamicMemoryUsage() const {
+    return sizeof(*this) +
+           DynamicMemoryUsageOf(
+               namespace_id_, namespace_name_, table_id_, table_name_ + pgschema_name_);
+  }
 
  private:
   void check_db_type();
@@ -192,5 +202,3 @@ size_t hash_value(const YBTableName& table_name);
 
 }  // namespace client
 }  // namespace yb
-
-#endif  // YB_CLIENT_YB_TABLE_NAME_H_

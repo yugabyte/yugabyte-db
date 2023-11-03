@@ -32,6 +32,9 @@
 
 #include "yb/integration-tests/create-table-itest-base.h"
 
+using std::string;
+using std::vector;
+
 namespace yb {
 
 Status CreateTableITestBase::CreateTableWithPlacement(

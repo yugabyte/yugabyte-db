@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_MASTER_CATALOG_MANAGER_INTERNAL_H
-#define YB_MASTER_CATALOG_MANAGER_INTERNAL_H
+#pragma once
 
 #include "yb/common/wire_protocol.h"
 
@@ -40,6 +39,9 @@
 namespace yb {
 
 namespace master {
+
+static const std::string kRelnamespaceNotFoundErrorStr =
+    "Not found or invalid relnamespace oid for table oid ";
 
 inline Status SetupError(MasterErrorPB* error,
                                  MasterErrorPB::Code code,
@@ -79,7 +81,23 @@ Status CheckIfNoLongerLeaderAndSetupError(const Status& s, RespClass* resp) {
   return s;
 }
 
+inline Status CheckStatus(const Status& status, const char* action) {
+  if (status.ok()) {
+    return status;
+  }
+
+  const Status s = status.CloneAndPrepend(std::string("An error occurred while ") + action);
+  LOG(WARNING) << s;
+  return s;
+}
+
+inline Status CheckLeaderStatus(const Status& status, const char* action) {
+  return CheckIfNoLongerLeader(CheckStatus(status, action));
+}
+
+template <class RespClass>
+Status CheckLeaderStatusAndSetupError(const Status& status, const char* action, RespClass* resp) {
+  return CheckIfNoLongerLeaderAndSetupError(CheckStatus(status, action), resp);
+}
 }  // namespace master
 }  // namespace yb
-
-#endif // YB_MASTER_CATALOG_MANAGER_INTERNAL_H

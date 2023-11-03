@@ -1,66 +1,76 @@
-//--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
-// in compliance with the License.  You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software distributed under the License
-// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
-// or implied.  See the License for the specific language governing permissions and limitations
-// under the License.
-//--------------------------------------------------------------------------------------------------
+/*-------------------------------------------------------------------------
+ *
+ * ybgate_api.c
+ *	  YbGate interface functions.
+ *	  YbGate allows to execute Postgres code from DocDB
+ *
+ * Copyright (c) Yugabyte, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ * use this file except in compliance with the License.  You may obtain a copy
+ * of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
+ *
+ * IDENTIFICATION
+ *	  src/backend/ybgate/ybgate_api.c
+ *
+ *-------------------------------------------------------------------------
+ */
 
 #include "postgres.h"
 
-#include <setjmp.h>
-
 #include "ybgate/ybgate_api.h"
 
+#include "access/htup_details.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_type_d.h"
 #include "catalog/yb_type.h"
 #include "common/int.h"
 #include "executor/execExpr.h"
 #include "executor/executor.h"
+#include "mb/pg_wchar.h"
 #include "nodes/execnodes.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "nodes/primnodes.h"
 #include "utils/memutils.h"
 #include "utils/numeric.h"
+#include "utils/rowtypes.h"
 #include "utils/sampling.h"
 #include "utils/syscache.h"
 #include "utils/lsyscache.h"
 #include "funcapi.h"
+#include "pg_yb_utils.h"
+
+YbgStatus YbgInit()
+{
+	PG_SETUP_ERROR_REPORTING();
+
+	SetDatabaseEncoding(PG_UTF8);
+
+	PG_STATUS_OK();
+}
 
 //-----------------------------------------------------------------------------
 // Memory Context
 //-----------------------------------------------------------------------------
 
 
-YbgStatus YbgGetCurrentMemoryContext(YbgMemoryContext *memctx)
+YbgMemoryContext YbgGetCurrentMemoryContext()
 {
-	PG_SETUP_ERROR_REPORTING();
-
-	*memctx = GetThreadLocalCurrentMemoryContext();
-
-	return PG_STATUS_OK;
+	return GetThreadLocalCurrentMemoryContext();
 }
 
-YbgStatus YbgSetCurrentMemoryContext(YbgMemoryContext memctx,
-									 YbgMemoryContext *oldctx)
+YbgMemoryContext YbgSetCurrentMemoryContext(YbgMemoryContext memctx)
 {
-	PG_SETUP_ERROR_REPORTING();
-
-	YbgMemoryContext prev = SetThreadLocalCurrentMemoryContext(memctx);
-	if (oldctx != NULL)
-	{
-		*oldctx = prev;
-	}
-
-	return PG_STATUS_OK;
+	return SetThreadLocalCurrentMemoryContext(memctx);
 }
 
 YbgStatus YbgCreateMemoryContext(YbgMemoryContext parent,
@@ -69,9 +79,9 @@ YbgStatus YbgCreateMemoryContext(YbgMemoryContext parent,
 {
 	PG_SETUP_ERROR_REPORTING();
 
-	*memctx = CreateThreadLocalCurrentMemoryContext(parent, name);
+	*memctx = CreateThreadLocalMemoryContext(parent, name);
 
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 YbgStatus YbgPrepareMemoryContext()
@@ -80,7 +90,7 @@ YbgStatus YbgPrepareMemoryContext()
 
 	PrepareThreadLocalCurrentMemoryContext();
 
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 YbgStatus YbgResetMemoryContext()
@@ -89,7 +99,7 @@ YbgStatus YbgResetMemoryContext()
 
 	ResetThreadLocalCurrentMemoryContext();
 
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 YbgStatus YbgDeleteMemoryContext()
@@ -98,7 +108,7 @@ YbgStatus YbgDeleteMemoryContext()
 
 	DeleteThreadLocalCurrentMemoryContext();
 
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 //-----------------------------------------------------------------------------
@@ -111,7 +121,7 @@ YbgStatus YbgGetTypeTable(const YBCPgTypeEntity **type_table, int *count)
 
 	YbGetTypeTable(type_table, count);
 
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 YbgStatus
@@ -120,7 +130,7 @@ YbgGetPrimitiveTypeOid(uint32_t type_oid, char typtype, uint32_t typbasetype,
 {
 	PG_SETUP_ERROR_REPORTING();
 	*primitive_type_oid = YbGetPrimitiveTypeOid(type_oid, typtype, typbasetype);
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 //-----------------------------------------------------------------------------
@@ -340,7 +350,7 @@ YbgStatus YbgExprContextCreate(int32_t min_attno, int32_t max_attno, YbgExprCont
 	ctx->attr_nulls = NULL;
 
 	*expr_ctx = ctx;
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 YbgStatus YbgExprContextReset(YbgExprContext expr_ctx)
@@ -351,7 +361,7 @@ YbgStatus YbgExprContextReset(YbgExprContext expr_ctx)
 	memset(expr_ctx->attr_vals, 0, sizeof(Datum) * num_attrs);
 	expr_ctx->attr_nulls = NULL;
 
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 YbgStatus YbgExprContextAddColValue(YbgExprContext expr_ctx,
@@ -370,42 +380,42 @@ YbgStatus YbgExprContextAddColValue(YbgExprContext expr_ctx,
 		expr_ctx->attr_vals[attno - expr_ctx->min_attno] = (Datum) datum;
 	}
 
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 YbgStatus YbgPrepareExpr(char* expr_cstring, YbgPreparedExpr *expr)
 {
 	PG_SETUP_ERROR_REPORTING();
 	*expr = (YbgPreparedExpr) stringToNode(expr_cstring);
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 YbgStatus YbgExprType(const YbgPreparedExpr expr, int32_t *typid)
 {
 	PG_SETUP_ERROR_REPORTING();
 	*typid = exprType((Node *) expr);
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 YbgStatus YbgExprTypmod(const YbgPreparedExpr expr, int32_t *typmod)
 {
 	PG_SETUP_ERROR_REPORTING();
 	*typmod = exprTypmod((Node *) expr);
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 YbgStatus YbgExprCollation(const YbgPreparedExpr expr, int32_t *collid)
 {
 	PG_SETUP_ERROR_REPORTING();
 	*collid = exprCollation((Node *) expr);
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 YbgStatus YbgEvalExpr(YbgPreparedExpr expr, YbgExprContext expr_ctx, uint64_t *datum, bool *is_null)
 {
 	PG_SETUP_ERROR_REPORTING();
 	*datum = (uint64_t) evalExpr(expr_ctx, expr, is_null);
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 YbgStatus YbgSplitArrayDatum(uint64_t datum,
@@ -417,7 +427,9 @@ YbgStatus YbgSplitArrayDatum(uint64_t datum,
 	ArrayType  *arr = DatumGetArrayTypeP((Datum)datum);
 
 	if (ARR_NDIM(arr) != 1 || ARR_HASNULL(arr) || ARR_ELEMTYPE(arr) != type)
-		return PG_STATUS(ERROR, "Type of given datum array does not match the given type");
+		return YbgStatusCreateError(
+				"Type of given datum array does not match the given type",
+				__FILE__, __LINE__);
 
 	int32 elmlen;
 	bool elmbyval;
@@ -740,11 +752,13 @@ YbgStatus YbgSplitArrayDatum(uint64_t datum,
 			break;
 		/* TODO: Extend support to other types as well. */
 		default:
-			return PG_STATUS(ERROR, "Only Text type supported for split of datum of array types");
+			return YbgStatusCreateError(
+					"Only Text type supported for split of datum of array types",
+					__FILE__, __LINE__);
 	}
 	deconstruct_array(arr, type, elmlen, elmbyval, elmalign,
 			  (Datum**)result_datum_array, NULL /* nullsp */, nelems);
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 //-----------------------------------------------------------------------------
@@ -762,7 +776,7 @@ YbgStatus YbgSamplerCreate(double rstate_w, uint64_t randstate, YbgReservoirStat
 	rstate->rs.W = rstate_w;
 	Uint64ToSamplerRandomState(rstate->rs.randstate, randstate);
 	*yb_rs = rstate;
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 YbgStatus YbgSamplerGetState(YbgReservoirState yb_rs, double *rstate_w, uint64_t *randstate)
@@ -770,7 +784,7 @@ YbgStatus YbgSamplerGetState(YbgReservoirState yb_rs, double *rstate_w, uint64_t
 	PG_SETUP_ERROR_REPORTING();
 	*rstate_w = yb_rs->rs.W;
 	*randstate = SamplerRandomStateToUint64(yb_rs->rs.randstate);
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 YbgStatus YbgSamplerRandomFract(YbgReservoirState yb_rs, double *value)
@@ -778,14 +792,14 @@ YbgStatus YbgSamplerRandomFract(YbgReservoirState yb_rs, double *value)
 	PG_SETUP_ERROR_REPORTING();
 	ReservoirState rs = &yb_rs->rs;
 	*value = sampler_random_fract(rs->randstate);
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 YbgStatus YbgReservoirGetNextS(YbgReservoirState yb_rs, double t, int n, double *s)
 {
 	PG_SETUP_ERROR_REPORTING();
 	*s = reservoir_get_next_S(&yb_rs->rs, t, n);
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 char* DecodeDatum(char const* fn_name, uintptr_t datum)
@@ -925,4 +939,542 @@ char* DecodeRangeArrayDatum(char const* arr_fn_name, uintptr_t datum,
 	char* tmp = DatumGetCString(FunctionCall2(arr_finfo, (uintptr_t)datum,
 				PointerGetDatum(&arr_decodeOptions)));
 	return tmp;
+}
+
+char *
+DecodeRecordDatum(uintptr_t datum, void *attrs, size_t natts)
+{
+	FmgrInfo *finfo = palloc0(sizeof(FmgrInfo));
+
+	HeapTupleHeader rec = DatumGetHeapTupleHeader(datum);
+	Oid				tupType = HeapTupleHeaderGetTypeId(rec);
+	int32			tupTypmod = HeapTupleHeaderGetTypMod(rec);
+	TupleDesc		tupdesc = CreateTupleDesc(natts, true, attrs);
+	finfo->fn_extra = MemoryContextAlloc(GetCurrentMemoryContext(),
+										 offsetof(RecordIOData, columns) +
+											 natts * sizeof(ColumnIOData));
+	RecordIOData *my_extra = (RecordIOData *) finfo->fn_extra;
+	my_extra->record_type = tupType;
+	my_extra->record_typmod = tupTypmod;
+	my_extra->ncolumns = natts;
+	for (size_t i = 0; i < natts; i++)
+	{
+		ColumnIOData	 *column_info = &my_extra->columns[i];
+		Form_pg_attribute att = TupleDescAttr(tupdesc, i);
+		column_info->typiofunc =
+			fmgr_internal_function(GetOutFuncName(att->atttypid));
+		fmgr_info(column_info->typiofunc, &column_info->proc);
+		column_info->column_type = att->atttypid;
+	}
+	return DatumGetCString(record_out_internal(rec, &tupdesc, finfo));
+}
+
+char *
+GetOutFuncName(const int pg_data_type)
+{
+	char *func_name;
+	switch (pg_data_type)
+	{
+		case BOOLOID:
+			func_name = "boolout";
+			break;
+		case BYTEAOID:
+			func_name = "byteaout";
+			break;
+		case CHAROID:
+			func_name = "charout";
+			break;
+		case NAMEOID:
+			func_name = "nameout";
+			break;
+		case INT8OID:
+			func_name = "int8out";
+			break;
+		case INT2OID:
+			func_name = "int2out";
+			break;
+		case INT4OID:
+			func_name = "int4out";
+			break;
+		case REGPROCOID:
+			func_name = "regprocout";
+			break;
+		case TEXTOID:
+			func_name = "textout";
+			break;
+		case OIDOID:
+			func_name = "oidout";
+			break;
+		case TIDOID:
+			func_name = "tidout";
+			break;
+		case XIDOID:
+			func_name = "xidout";
+			break;
+		case CIDOID:
+			func_name = "cidout";
+			break;
+		case JSONOID:
+			func_name = "json_out";
+			break;
+		case XMLOID:
+			func_name = "xml_out";
+			break;
+		case PGNODETREEOID:
+			func_name = "pg_node_tree_out";
+			break;
+		case PGNDISTINCTOID:
+			func_name = "pg_ndistinct_out";
+			break;
+		case PGDEPENDENCIESOID:
+			func_name = "pg_dependencies_out";
+			break;
+		case PGDDLCOMMANDOID:
+			func_name = "pg_ddl_command_out";
+			break;
+		case SMGROID:
+			func_name = "smgrout";
+			break;
+		case POINTOID:
+			func_name = "point_out";
+			break;
+		case LSEGOID:
+			func_name = "lseg_out";
+			break;
+		case PATHOID:
+			func_name = "path_out";
+			break;
+		case BOXOID:
+			func_name = "box_out";
+			break;
+		case LINEOID:
+			func_name = "line_out";
+			break;
+		case FLOAT4OID:
+			func_name = "float4out";
+			break;
+		case FLOAT8OID:
+			func_name = "float8out";
+			break;
+		case CIRCLEOID:
+			func_name = "circle_out";
+			break;
+		case CASHOID:
+			func_name = "cash_out";
+			break;
+		case MACADDROID:
+			func_name = "macaddr_out";
+			break;
+		case INETOID:
+			func_name = "inet_out";
+			break;
+		case CIDROID:
+			func_name = "cidr_out";
+			break;
+		case MACADDR8OID:
+			func_name = "macaddr8_out";
+			break;
+		case ACLITEMOID:
+			func_name = "aclitemout";
+			break;
+		case BPCHAROID:
+			func_name = "bpcharout";
+			break;
+		case VARCHAROID:
+			func_name = "varcharout";
+			break;
+		case DATEOID:
+			func_name = "date_out";
+			break;
+		case TIMEOID:
+			func_name = "time_out";
+			break;
+		case TIMESTAMPOID:
+			func_name = "timestamp_out";
+			break;
+		case TIMESTAMPTZOID:
+			func_name = "timestamptz_out";
+			break;
+		case INTERVALOID:
+			func_name = "interval_out";
+			break;
+		case TIMETZOID:
+			func_name = "timetz_out";
+			break;
+		case BITOID:
+			func_name = "bit_out";
+			break;
+		case VARBITOID:
+			func_name = "varbit_out";
+			break;
+		case NUMERICOID:
+			func_name = "numeric_out";
+			break;
+		case REGPROCEDUREOID:
+			func_name = "regprocedureout";
+			break;
+		case REGOPEROID:
+			func_name = "regoperout";
+			break;
+		case REGOPERATOROID:
+			func_name = "regoperatorout";
+			break;
+		case REGCLASSOID:
+			func_name = "regclassout";
+			break;
+		case REGTYPEOID:
+			func_name = "regtypeout";
+			break;
+		case REGROLEOID:
+			func_name = "regroleout";
+			break;
+		case REGNAMESPACEOID:
+			func_name = "regnamespaceout";
+			break;
+		case UUIDOID:
+			func_name = "uuid_out";
+			break;
+		case LSNOID:
+			func_name = "pg_lsn_out";
+			break;
+		case TSQUERYOID:
+			func_name = "tsqueryout";
+			break;
+		case REGCONFIGOID:
+			func_name = "regconfigout";
+			break;
+		case REGDICTIONARYOID:
+			func_name = "regdictionaryout";
+			break;
+		case JSONBOID:
+			func_name = "jsonb_out";
+			break;
+		case TXID_SNAPSHOTOID:
+			func_name = "txid_snapshot_out";
+			break;
+		case RECORDOID:
+			func_name = "record_out";
+			break;
+		case CSTRINGOID:
+			func_name = "cstring_out";
+			break;
+		case ANYOID:
+			func_name = "any_out";
+			break;
+		case VOIDOID:
+			func_name = "void_out";
+			break;
+		case TRIGGEROID:
+			func_name = "trigger_out";
+			break;
+		case EVTTRIGGEROID:
+			func_name = "event_trigger_out";
+			break;
+		case LANGUAGE_HANDLEROID:
+			func_name = "language_handler_out";
+			break;
+		case INTERNALOID:
+			func_name = "internal_out";
+			break;
+		case OPAQUEOID:
+			func_name = "opaque_out";
+			break;
+		case ANYELEMENTOID:
+			func_name = "anyelement_out";
+			break;
+		case ANYNONARRAYOID:
+			func_name = "anynonarray_out";
+			break;
+		case ANYENUMOID:
+			func_name = "anyenum_out";
+			break;
+		case FDW_HANDLEROID:
+			func_name = "fdw_handler_out";
+			break;
+		case INDEX_AM_HANDLEROID:
+			func_name = "index_am_handler_out";
+			break;
+		case TSM_HANDLEROID:
+			func_name = "tsm_handler_out";
+			break;
+		case ANYRANGEOID:
+			func_name = "anyrange_out";
+			break;
+		case INT2VECTOROID:
+			func_name = "int2vectorout";
+			break;
+		case OIDVECTOROID:
+			func_name = "oidvectorout";
+			break;
+		case TSVECTOROID:
+			func_name = "tsvectorout";
+			break;
+		case GTSVECTOROID:
+			func_name = "gtsvectorout";
+			break;
+		case POLYGONOID:
+			func_name = "poly_out";
+			break;
+		case INT4RANGEOID:
+			func_name = "int4out";
+			break;
+		case NUMRANGEOID:
+			func_name = "numeric_out";
+			break;
+		case TSRANGEOID:
+			func_name = "timestamp_out";
+			break;
+		case TSTZRANGEOID:
+			func_name = "timestamptz_out";
+			break;
+		case DATERANGEOID:
+			func_name = "date_out";
+			break;
+		case INT8RANGEOID:
+			func_name = "int8out";
+			break;
+		case XMLARRAYOID:
+			func_name = "xml_out";
+			break;
+		case LINEARRAYOID:
+			func_name = "line_out";
+			break;
+		case CIRCLEARRAYOID:
+			func_name = "circle_out";
+			break;
+		case MONEYARRAYOID:
+			func_name = "cash_out";
+			break;
+		case BOOLARRAYOID:
+			func_name = "boolout";
+			break;
+		case BYTEAARRAYOID:
+			func_name = "byteaout";
+			break;
+		case CHARARRAYOID:
+			func_name = "charout";
+			break;
+		case NAMEARRAYOID:
+			func_name = "nameout";
+			break;
+		case INT2ARRAYOID:
+			func_name = "int2out";
+			break;
+		case INT2VECTORARRAYOID:
+			func_name = "int2vectorout";
+			break;
+		case INT4ARRAYOID:
+			func_name = "int4out";
+			break;
+		case REGPROCARRAYOID:
+			func_name = "regprocout";
+			break;
+		case TEXTARRAYOID:
+			func_name = "textout";
+			break;
+		case OIDARRAYOID:
+			func_name = "oidout";
+			break;
+		case CIDRARRAYOID:
+			func_name = "cidr_out";
+			break;
+		case TIDARRAYOID:
+			func_name = "tidout";
+			break;
+		case XIDARRAYOID:
+			func_name = "xidout";
+			break;
+		case CIDARRAYOID:
+			func_name = "cidout";
+			break;
+		case OIDVECTORARRAYOID:
+			func_name = "oidvectorout";
+			break;
+		case BPCHARARRAYOID:
+			func_name = "bpcharout";
+			break;
+		case VARCHARARRAYOID:
+			func_name = "varcharout";
+			break;
+		case INT8ARRAYOID:
+			func_name = "int8out";
+			break;
+		case POINTARRAYOID:
+			func_name = "point_out";
+			break;
+		case LSEGARRAYOID:
+			func_name = "lseg_out";
+			break;
+		case PATHARRAYOID:
+			func_name = "path_out";
+			break;
+		case BOXARRAYOID:
+			func_name = "box_out";
+			break;
+		case FLOAT4ARRAYOID:
+			func_name = "float4out";
+			break;
+		case FLOAT8ARRAYOID:
+			func_name = "float8out";
+			break;
+		case ABSTIMEARRAYOID:
+			func_name = "abstimeout";
+			break;
+		case RELTIMEARRAYOID:
+			func_name = "reltimeout";
+			break;
+		case TINTERVALARRAYOID:
+			func_name = "tintervalout";
+			break;
+		case ACLITEMARRAYOID:
+			func_name = "aclitemout";
+			break;
+		case MACADDRARRAYOID:
+			func_name = "macaddr_out";
+			break;
+		case MACADDR8ARRAYOID:
+			func_name = "macaddr8_out";
+			break;
+		case INETARRAYOID:
+			func_name = "inet_out";
+			break;
+		case CSTRINGARRAYOID:
+			func_name = "cstring_out";
+			break;
+		case TIMESTAMPARRAYOID:
+			func_name = "timestamp_out";
+			break;
+		case DATEARRAYOID:
+			func_name = "date_out";
+			break;
+		case TIMEARRAYOID:
+			func_name = "time_out";
+			break;
+		case TIMESTAMPTZARRAYOID:
+			func_name = "timestamptz_out";
+			break;
+		case INTERVALARRAYOID:
+			func_name = "interval_out";
+			break;
+		case NUMERICARRAYOID:
+			func_name = "numeric_out";
+			break;
+		case TIMETZARRAYOID:
+			func_name = "timetz_out";
+			break;
+		case BITARRAYOID:
+			func_name = "bit_out";
+			break;
+		case VARBITARRAYOID:
+			func_name = "varbit_out";
+			break;
+		case REGPROCEDUREARRAYOID:
+			func_name = "regprocedureout";
+			break;
+		case REGOPERARRAYOID:
+			func_name = "regoperout";
+			break;
+		case REGOPERATORARRAYOID:
+			func_name = "regoperatorout";
+			break;
+		case REGCLASSARRAYOID:
+			func_name = "regclassout";
+			break;
+		case REGTYPEARRAYOID:
+			func_name = "regtypeout";
+			break;
+		case REGROLEARRAYOID:
+			func_name = "regroleout";
+			break;
+		case REGNAMESPACEARRAYOID:
+			func_name = "regnamespaceout";
+			break;
+		case UUIDARRAYOID:
+			func_name = "uuid_out";
+			break;
+		case PG_LSNARRAYOID:
+			func_name = "pg_lsn_out";
+			break;
+		case TSVECTORARRAYOID:
+			func_name = "tsvectorout";
+			break;
+		case GTSVECTORARRAYOID:
+			func_name = "gtsvectorout";
+			break;
+		case TSQUERYARRAYOID:
+			func_name = "tsqueryout";
+			break;
+		case REGCONFIGARRAYOID:
+			func_name = "regconfigout";
+			break;
+		case REGDICTIONARYARRAYOID:
+			func_name = "regdictionaryout";
+			break;
+		case JSONARRAYOID:
+			func_name = "json_out";
+			break;
+		case JSONBARRAYOID:
+			func_name = "jsonb_out";
+			break;
+		case TXID_SNAPSHOTARRAYOID:
+			func_name = "txid_snapshot_out";
+			break;
+		case RECORDARRAYOID:
+			func_name = "record_out";
+			break;
+		case ANYARRAYOID:
+			func_name = "any_out";
+			break;
+		case POLYGONARRAYOID:
+			func_name = "poly_out";
+			break;
+		case INT4RANGEARRAYOID:
+			func_name = "int4out";
+			break;
+		case NUMRANGEARRAYOID:
+			func_name = "numeric_out";
+			break;
+		case TSRANGEARRAYOID:
+			func_name = "timestamp_out";
+			break;
+		case TSTZRANGEARRAYOID:
+			func_name = "timestamptz_out";
+			break;
+		case DATERANGEARRAYOID:
+			func_name = "date_out";
+			break;
+		case INT8RANGEARRAYOID:
+			func_name = "int8out";
+			break;
+	}
+	return func_name;
+}
+
+uint32_t
+GetRecordTypeId(uintptr_t datum)
+{
+	HeapTupleHeader rec = DatumGetHeapTupleHeader(datum);
+	return HeapTupleHeaderGetTypeId(rec);
+}
+
+uintptr_t
+HeapFormTuple(void *attrs, size_t natts, uintptr_t *values, bool *nulls)
+{
+	TupleDesc tupdesc = CreateTupleDesc(natts, true, attrs);
+	PG_RETURN_HEAPTUPLEHEADER(heap_form_tuple(tupdesc, values, nulls)->t_data);
+}
+
+void
+HeapDeformTuple(uintptr_t datum, void *attrs, size_t natts, uintptr_t *values,
+				bool *nulls)
+{
+	HeapTupleHeader rec = DatumGetHeapTupleHeader(datum);
+	HeapTupleData	tuple;
+	tuple.t_len = HeapTupleHeaderGetDatumLength(rec);
+	ItemPointerSetInvalid(&(tuple.t_self));
+	tuple.t_tableOid = InvalidOid;
+	tuple.t_data = rec;
+	TupleDesc tupdesc = CreateTupleDesc(natts, true, attrs);
+	/* Break down the tuple into fields */
+	heap_deform_tuple(&tuple, tupdesc, values, nulls);
 }

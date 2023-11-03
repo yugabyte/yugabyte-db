@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_CQL_QL_PTREE_PT_PROPERTY_H_
-#define YB_YQL_CQL_QL_PTREE_PT_PROPERTY_H_
+#pragma once
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/yql/cql/ql/ptree/list_node.h"
@@ -72,21 +71,21 @@ class PTProperty : public TreeNode {
   }
 
   static Status GetIntValueFromExpr(PTExprPtr expr,
-                                            const string& property_name,
+                                            const std::string& property_name,
                                             int64_t *val);
 
   static Status GetDoubleValueFromExpr(PTExprPtr expr,
-                                               const string& property_name,
+                                               const std::string& property_name,
                                                long double *val);
 
   static Status GetBoolValueFromExpr(PTExprPtr expr,
-                                             const string& property_name,
+                                             const std::string& property_name,
                                              bool *val);
 
   static Status GetStringValueFromExpr(PTExprPtr expr,
                                                bool to_lower_case,
-                                               const string& property_name,
-                                               string *val);
+                                               const std::string& property_name,
+                                               std::string *val);
 
  protected:
   // Parts of an expression 'lhs_ = rhs_' where lhs stands for left-hand side, and rhs for
@@ -132,5 +131,3 @@ class PTPropertyListNode : public TreeListNode<PTProperty> {
 
 } // namespace ql
 } // namespace yb
-
-#endif // YB_YQL_CQL_QL_PTREE_PT_PROPERTY_H_

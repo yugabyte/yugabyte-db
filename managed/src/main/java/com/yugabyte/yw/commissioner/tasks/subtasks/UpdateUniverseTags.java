@@ -22,6 +22,7 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
+@Deprecated
 public class UpdateUniverseTags extends UniverseTaskBase {
 
   @Inject
@@ -40,7 +41,7 @@ public class UpdateUniverseTags extends UniverseTaskBase {
 
   @Override
   public String getName() {
-    return super.getName() + "(" + taskParams().universeUUID + ")";
+    return super.getName() + "(" + taskParams().getUniverseUUID() + ")";
   }
 
   @Override
@@ -54,7 +55,8 @@ public class UpdateUniverseTags extends UniverseTaskBase {
             UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
             // If this universe is not being updated, fail the request.
             if (!universeDetails.updateInProgress) {
-              String msg = "UserUniverse " + taskParams().universeUUID + " is not being updated.";
+              String msg =
+                  "UserUniverse " + taskParams().getUniverseUUID() + " is not being updated.";
               log.error(msg);
               throw new RuntimeException(msg);
             }

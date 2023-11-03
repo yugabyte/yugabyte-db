@@ -15,8 +15,7 @@
 // This module is to define a few supporting functions for QLTYPE.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_COMMON_QL_TYPE_UTIL_H_
-#define YB_COMMON_QL_TYPE_UTIL_H_
+#pragma once
 
 #include "yb/common/common.pb.h"
 #include "yb/common/value.pb.h"
@@ -53,5 +52,3 @@ Status IterateAndDoForUDT(QLTypePB* pb_type, Fn fn) {
 }
 
 }; // namespace yb
-
-#endif  // YB_COMMON_QL_TYPE_UTIL_H_

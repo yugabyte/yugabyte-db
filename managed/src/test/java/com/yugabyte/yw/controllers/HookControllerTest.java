@@ -2,62 +2,67 @@
 
 package com.yugabyte.yw.controllers;
 
-import static com.yugabyte.yw.models.Hook.ExecutionLang.*;
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
-import static com.yugabyte.yw.common.AssertHelper.assertUnauthorized;
+import static com.yugabyte.yw.common.AssertHelper.assertForbiddenWithException;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
+import static com.yugabyte.yw.common.AssertHelper.assertUnauthorized;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
+import static com.yugabyte.yw.models.Hook.ExecutionLang.Bash;
+import static com.yugabyte.yw.models.Hook.ExecutionLang.Python;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
-import static play.test.Helpers.contentAsString;
-import static org.mockito.Mockito.any;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
+import static play.test.Helpers.contentAsString;
 
 import akka.stream.javadsl.FileIO;
 import akka.stream.javadsl.Source;
 import akka.util.ByteString;
-import com.typesafe.config.Config;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.HealthChecker;
-import com.yugabyte.yw.common.FakeApiHelper;
+import com.yugabyte.yw.common.CustomWsClientFactory;
+import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
+import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Audit;
-import com.yugabyte.yw.models.Hook.ExecutionLang;
-import com.yugabyte.yw.models.Hook;
-import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.models.Users.Role;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.Hook;
+import com.yugabyte.yw.models.Hook.ExecutionLang;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.Users.Role;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.HashMap;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.junit.MockitoJUnitRunner;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnitRunner;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
-import play.mvc.Result;
 import play.mvc.Http;
-import play.test.WithApplication;
+import play.mvc.Result;
 
 @RunWith(MockitoJUnitRunner.class)
-public class HookControllerTest extends WithApplication {
+public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
 
   @Mock Config mockConfig;
   @Mock Commissioner mockCommissioner;
@@ -79,6 +84,8 @@ public class HookControllerTest extends WithApplication {
                 .toInstance(new DummyRuntimeConfigFactoryImpl(mockConfig)))
         .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
         .overrides(bind(HealthChecker.class).toInstance(mock(HealthChecker.class)))
+        .overrides(
+            bind(CustomWsClientFactory.class).toProvider(CustomWsClientFactoryProvider.class))
         .build();
   }
 
@@ -88,7 +95,7 @@ public class HookControllerTest extends WithApplication {
     defaultUser = ModelFactory.testUser(defaultCustomer);
     superAdminUser =
         ModelFactory.testUser(defaultCustomer, "superadmin@customer.com", Role.SuperAdmin);
-    baseRoute = "/api/customers/" + defaultCustomer.uuid + "/hooks";
+    baseRoute = "/api/customers/" + defaultCustomer.getUuid() + "/hooks";
     defaultArgs = new HashMap<>();
     defaultArgs.put("KEY1", "123456789");
     defaultArgs.put("OPTION1", "ABCDEFGH");
@@ -134,7 +141,7 @@ public class HookControllerTest extends WithApplication {
       Users user) {
     List<Http.MultipartFormData.Part<Source<ByteString, ?>>> bodyData =
         getCreateHookMultiPartData(name, executionLang, hookText, useSudo, runtimeArgs);
-    return FakeApiHelper.doRequestWithAuthTokenAndMultipartData(
+    return doRequestWithAuthTokenAndMultipartData(
         "POST", baseRoute, user.createAuthToken(), bodyData, mat);
   }
 
@@ -152,19 +159,19 @@ public class HookControllerTest extends WithApplication {
 
     // Ensure persistence
     String hookUUID = json.get("uuid").asText();
-    Hook hook = Hook.getOrBadRequest(defaultCustomer.uuid, UUID.fromString(hookUUID));
-    assertTrue(hook.name.equals("test.py"));
-    assertTrue(hook.hookText.equals("DEFAULT\nTEXT\n"));
-    assertTrue(hook.useSudo == true);
-    assertTrue(hook.executionLang == ExecutionLang.Python);
-    Map<String, String> persistedArgs = hook.runtimeArgs;
+    Hook hook = Hook.getOrBadRequest(defaultCustomer.getUuid(), UUID.fromString(hookUUID));
+    assertTrue(hook.getName().equals("test.py"));
+    assertTrue(hook.getHookText().equals("DEFAULT\nTEXT\n"));
+    assertTrue(hook.isUseSudo() == true);
+    assertTrue(hook.getExecutionLang() == ExecutionLang.Python);
+    Map<String, String> persistedArgs = hook.getRuntimeArgs();
     assertTrue(persistedArgs.size() == 2);
     assertTrue(persistedArgs.get("KEY1").equals("123456789"));
     assertTrue(persistedArgs.get("OPTION1").equals("ABCDEFGH"));
 
     // Ensure audit entry has the runtime args redacted and the hook text logged.
-    assertAuditEntry(1, defaultCustomer.uuid);
-    List<Audit> entries = Audit.getAll(defaultCustomer.uuid);
+    assertAuditEntry(1, defaultCustomer.getUuid());
+    List<Audit> entries = Audit.getAll(defaultCustomer.getUuid());
     JsonNode payload = entries.get(0).getPayload();
     assertValue(payload, "hookText", "DEFAULT\nTEXT\n");
     assertValue(payload.get("runtimeArgs"), "KEY1", "123456789");
@@ -180,7 +187,7 @@ public class HookControllerTest extends WithApplication {
     assertUnauthorized(
         result,
         "Creating custom hooks with superuser privileges is not enabled on this Anywhere instance");
-    assertAuditEntry(0, defaultCustomer.uuid);
+    assertAuditEntry(0, defaultCustomer.getUuid());
   }
 
   @Test
@@ -190,7 +197,7 @@ public class HookControllerTest extends WithApplication {
         assertPlatformException(
             () -> createHook("test.py", Python, "NEW\nTEXT\n", false, superAdminUser));
     assertBadRequest(result, "Hook with this name already exists: test.py");
-    assertAuditEntry(1, defaultCustomer.uuid);
+    assertAuditEntry(1, defaultCustomer.getUuid());
   }
 
   @Test
@@ -198,16 +205,15 @@ public class HookControllerTest extends WithApplication {
     Result result =
         assertPlatformException(
             () -> createHook("test.py", Python, "NEW\nTEXT\n", false, defaultUser));
-    assertUnauthorized(result, "Only Super Admins can perform this operation.");
-    assertAuditEntry(0, defaultCustomer.uuid);
+    assertForbiddenWithException(result, "Only Super Admins can perform this operation.");
+    assertAuditEntry(0, defaultCustomer.getUuid());
   }
 
   @Test
   public void testListHooks() {
     createHook("test.py", Python, "DEFAULT\nTEXT\n", true, superAdminUser);
     createHook("test2.sh", Bash, "DEFAULT\nTEXT\n", false, superAdminUser);
-    Result result =
-        FakeApiHelper.doRequestWithAuthToken("GET", baseRoute, superAdminUser.createAuthToken());
+    Result result = doRequestWithAuthToken("GET", baseRoute, superAdminUser.createAuthToken());
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
     assertTrue(json.size() == 2);
@@ -219,10 +225,8 @@ public class HookControllerTest extends WithApplication {
     createHook("test2.sh", Bash, "DEFAULT\nTEXT\n", false, superAdminUser);
     Result result =
         assertPlatformException(
-            () ->
-                FakeApiHelper.doRequestWithAuthToken(
-                    "GET", baseRoute, defaultUser.createAuthToken()));
-    assertUnauthorized(result, "Only Super Admins can perform this operation.");
+            () -> doRequestWithAuthToken("GET", baseRoute, defaultUser.createAuthToken()));
+    assertForbiddenWithException(result, "Only Super Admins can perform this operation.");
   }
 
   @Test
@@ -231,10 +235,9 @@ public class HookControllerTest extends WithApplication {
     JsonNode json = Json.parse(contentAsString(createResult));
     String uuid = json.get("uuid").asText();
     String uri = baseRoute + "/" + uuid;
-    Result deleteResult =
-        FakeApiHelper.doRequestWithAuthToken("DELETE", uri, superAdminUser.createAuthToken());
+    Result deleteResult = doRequestWithAuthToken("DELETE", uri, superAdminUser.createAuthToken());
     assertOk(deleteResult);
-    assertAuditEntry(2, defaultCustomer.uuid);
+    assertAuditEntry(2, defaultCustomer.getUuid());
   }
 
   @Test
@@ -245,10 +248,9 @@ public class HookControllerTest extends WithApplication {
     String uri = baseRoute + "/" + uuid;
     Result deleteResult =
         assertPlatformException(
-            () ->
-                FakeApiHelper.doRequestWithAuthToken("DELETE", uri, defaultUser.createAuthToken()));
-    assertUnauthorized(deleteResult, "Only Super Admins can perform this operation.");
-    assertAuditEntry(1, defaultCustomer.uuid);
+            () -> doRequestWithAuthToken("DELETE", uri, defaultUser.createAuthToken()));
+    assertForbiddenWithException(deleteResult, "Only Super Admins can perform this operation.");
+    assertAuditEntry(1, defaultCustomer.getUuid());
   }
 
   @Test
@@ -261,7 +263,7 @@ public class HookControllerTest extends WithApplication {
     List<Http.MultipartFormData.Part<Source<ByteString, ?>>> bodyData =
         getCreateHookMultiPartData("test2.sh", Bash, "UPDATED\nTEXT\n", false, alternateArgs);
     Result updateResult =
-        FakeApiHelper.doRequestWithAuthTokenAndMultipartData(
+        doRequestWithAuthTokenAndMultipartData(
             "PUT", uri, superAdminUser.createAuthToken(), bodyData, mat);
     JsonNode updateResultJson = Json.parse(contentAsString(updateResult));
 
@@ -273,18 +275,18 @@ public class HookControllerTest extends WithApplication {
     assertOk(updateResult);
 
     // Ensure persistence
-    Hook hook = Hook.getOrBadRequest(defaultCustomer.uuid, UUID.fromString(uuid));
-    assertTrue(hook.name.equals("test2.sh"));
-    assertTrue(hook.hookText.equals("UPDATED\nTEXT\n"));
-    assertTrue(hook.useSudo == false);
-    assertTrue(hook.executionLang == Bash);
-    Map<String, String> persistedArgs = hook.runtimeArgs;
+    Hook hook = Hook.getOrBadRequest(defaultCustomer.getUuid(), UUID.fromString(uuid));
+    assertTrue(hook.getName().equals("test2.sh"));
+    assertTrue(hook.getHookText().equals("UPDATED\nTEXT\n"));
+    assertTrue(hook.isUseSudo() == false);
+    assertTrue(hook.getExecutionLang() == Bash);
+    Map<String, String> persistedArgs = hook.getRuntimeArgs();
     assertTrue(persistedArgs.size() == 1);
     assertTrue(persistedArgs.get("KEY2").equals("QWERTYUIOP"));
 
     // Ensure audit entry has the runtime args redacted and hook text logged
-    assertAuditEntry(2, defaultCustomer.uuid);
-    List<Audit> entries = Audit.getAll(defaultCustomer.uuid);
+    assertAuditEntry(2, defaultCustomer.getUuid());
+    List<Audit> entries = Audit.getAll(defaultCustomer.getUuid());
     JsonNode payload = entries.get(1).getPayload();
     assertValue(payload, "hookText", "UPDATED\nTEXT\n");
     assertValue(payload.get("runtimeArgs"), "KEY2", "QWERTYUIOP");
@@ -303,10 +305,10 @@ public class HookControllerTest extends WithApplication {
     Result updateResult =
         assertPlatformException(
             () ->
-                FakeApiHelper.doRequestWithAuthTokenAndMultipartData(
+                doRequestWithAuthTokenAndMultipartData(
                     "PUT", uri, superAdminUser.createAuthToken(), bodyData, mat));
     assertBadRequest(updateResult, "Hook with this name already exists: test2.sh");
-    assertAuditEntry(2, defaultCustomer.uuid);
+    assertAuditEntry(2, defaultCustomer.getUuid());
   }
 
   @Test
@@ -319,7 +321,7 @@ public class HookControllerTest extends WithApplication {
     List<Http.MultipartFormData.Part<Source<ByteString, ?>>> bodyData =
         getCreateHookMultiPartData("test.py", Python, "UPDATED\nTEXT\n", false, alternateArgs);
     Result updateResult =
-        FakeApiHelper.doRequestWithAuthTokenAndMultipartData(
+        doRequestWithAuthTokenAndMultipartData(
             "PUT", uri, superAdminUser.createAuthToken(), bodyData, mat);
     JsonNode updateResultJson = Json.parse(contentAsString(updateResult));
 
@@ -328,7 +330,7 @@ public class HookControllerTest extends WithApplication {
     assertValue(updateResultJson, "executionLang", "Python");
     assertValue(updateResultJson, "useSudo", "false");
     assertOk(updateResult);
-    assertAuditEntry(2, defaultCustomer.uuid);
+    assertAuditEntry(2, defaultCustomer.getUuid());
   }
 
   @Test
@@ -343,33 +345,59 @@ public class HookControllerTest extends WithApplication {
     Result updateResult =
         assertPlatformException(
             () ->
-                FakeApiHelper.doRequestWithAuthTokenAndMultipartData(
+                doRequestWithAuthTokenAndMultipartData(
                     "PUT", uri, defaultUser.createAuthToken(), bodyData, mat));
-    assertUnauthorized(updateResult, "Only Super Admins can perform this operation.");
-    assertAuditEntry(1, defaultCustomer.uuid);
+    assertForbiddenWithException(updateResult, "Only Super Admins can perform this operation.");
+    assertAuditEntry(1, defaultCustomer.getUuid());
   }
 
   @Test
   public void testRunApiTriggeredHooks() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.RunHooks);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Universe universe = ModelFactory.createUniverse();
     String uri =
         "/api/customers/"
-            + defaultCustomer.uuid
+            + defaultCustomer.getUuid()
             + "/universes/"
-            + universe.universeUUID
+            + universe.getUniverseUUID()
             + "/run_hooks";
-    Result result =
-        FakeApiHelper.doRequestWithAuthToken("POST", uri, superAdminUser.createAuthToken());
+    Result result = doRequestWithAuthToken("POST", uri, superAdminUser.createAuthToken());
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertValue(json, "taskUUID", fakeTaskUUID.toString());
     CustomerTask customerTask =
         CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(customerTask);
-    assertTrue(customerTask.getCustomerUUID().equals(defaultCustomer.uuid));
-    assertAuditEntry(1, defaultCustomer.uuid);
+    assertTrue(customerTask.getCustomerUUID().equals(defaultCustomer.getUuid()));
+    assertAuditEntry(1, defaultCustomer.getUuid());
+  }
+
+  @Test
+  public void runApiTriggeredHooksForCluster() {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.RunHooks);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    Universe universe = ModelFactory.createUniverse();
+    UUID clusterUUID = universe.getUniverseDetails().clusters.get(0).uuid;
+    String uri =
+        "/api/customers/"
+            + defaultCustomer.getUuid()
+            + "/universes/"
+            + universe.getUniverseUUID()
+            + "/run_hooks"
+            + "?clusterUUID="
+            + clusterUUID;
+
+    Result result = doRequestWithAuthToken("POST", uri, superAdminUser.createAuthToken());
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertValue(json, "taskUUID", fakeTaskUUID.toString());
+    CustomerTask customerTask =
+        CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
+    assertNotNull(customerTask);
+    assertTrue(customerTask.getCustomerUUID().equals(defaultCustomer.getUuid()));
+    assertTrue(customerTask.getTargetType().equals(CustomerTask.TargetType.Cluster));
+    assertAuditEntry(1, defaultCustomer.getUuid());
   }
 
   @Test
@@ -378,19 +406,17 @@ public class HookControllerTest extends WithApplication {
     Universe universe = ModelFactory.createUniverse();
     String uri =
         "/api/customers/"
-            + defaultCustomer.uuid
+            + defaultCustomer.getUuid()
             + "/universes/"
-            + universe.universeUUID
+            + universe.getUniverseUUID()
             + "/run_hooks";
     Result result =
         assertPlatformException(
-            () ->
-                FakeApiHelper.doRequestWithAuthToken(
-                    "POST", uri, superAdminUser.createAuthToken()));
+            () -> doRequestWithAuthToken("POST", uri, superAdminUser.createAuthToken()));
     assertUnauthorized(
         result,
         "The execution of API Triggered custom hooks is not enabled on this Anywhere instance");
-    assertAuditEntry(0, defaultCustomer.uuid);
+    assertAuditEntry(0, defaultCustomer.getUuid());
   }
 
   @Test
@@ -400,6 +426,6 @@ public class HookControllerTest extends WithApplication {
         assertPlatformException(
             () -> createHook("test.py", Python, "DEFAULT\nTEXT\n", true, superAdminUser));
     assertUnauthorized(result, "Custom hooks is not enabled on this Anywhere instance");
-    assertAuditEntry(0, defaultCustomer.uuid);
+    assertAuditEntry(0, defaultCustomer.getUuid());
   }
 }

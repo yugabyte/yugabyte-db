@@ -35,6 +35,7 @@
 
 using std::numeric_limits;
 using std::vector;
+using std::string;
 
 
 namespace strings {
@@ -1785,13 +1786,13 @@ string b2a_hex(const char* b, size_t len) {
   return result;
 }
 
-string b2a_hex(const GStringPiece& b) {
+std::string b2a_hex(const std::string_view& b) {
   return b2a_hex(b.data(), b.size());
 }
 
-string a2b_hex(const string& a) {
-  string result;
-  a2b_hex(a.c_str(), &result, a.size()/2);
+std::string a2b_hex(const std::string_view& a) {
+  std::string result;
+  a2b_hex(a.data(), &result, a.size()/2);
 
   return result;
 }
@@ -1870,8 +1871,9 @@ void ByteStringToAscii(string const &binary_string, size_t bytes_to_read, string
   string::iterator out = ascii_string->begin();
 
   for (size_t i = 0; i < bytes_to_read; i++) {
-    *out++ = kHexTable[(*in)*2];
-    *out++ = kHexTable[(*in)*2 + 1];
+    const unsigned char c = *in; // '*in' is 'signed char'.
+    *out++ = kHexTable[c*2];
+    *out++ = kHexTable[c*2 + 1];
     ++in;
   }
 }

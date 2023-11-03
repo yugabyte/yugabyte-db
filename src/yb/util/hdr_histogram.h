@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_HDR_HISTOGRAM_H
-#define YB_UTIL_HDR_HISTOGRAM_H
+#pragma once
 
 // C++ (TR1) port of HdrHistogram.
 // Original java implementation: http://giltene.github.io/HdrHistogram/
@@ -74,9 +73,9 @@ class RecordedValuesIterator;
 // digits) to support in an instance of a histogram. The class takes care of
 // the rest. At this time, only uint64_t values are supported.
 //
-// An HdrHistogram consists of a set of buckets, which bucket the magnitude of
-// a value stored, and a set of sub-buckets, which implement the tunable
-// precision of the storage. So if you specify 3 significant digits of
+// An HdrHistogram consists of a set of buckets (which bucket the magnitude of
+// a value stored), and a set of sub-buckets (which implement the tunable
+// precision of the storage). So if you specify 3 significant digits of
 // precision, then you will get about 10^3 sub-buckets (as a power of 2) for
 // each level of magnitude. Magnitude buckets are tracked in powers of 2.
 //
@@ -118,7 +117,7 @@ class HdrHistogram {
   uint64_t TotalCount() const { return base::subtle::NoBarrier_Load(&total_count_); }
 
   // Count of all events recorded since last Reset. Resets to 0 after
-  // ResetPercentiles.
+  // Reset().
   uint64_t CurrentCount() const {
     return base::subtle::NoBarrier_Load(&current_count_);
   }
@@ -127,7 +126,7 @@ class HdrHistogram {
   uint64_t TotalSum() const { return base::subtle::NoBarrier_Load(&total_sum_); }
 
   // Sum of all events recorded since last Reset. Resets to 0 after
-  // ResetPercentiles.
+  // Reset().
   uint64_t CurrentSum() const {
     return base::subtle::NoBarrier_Load(&current_sum_);
   }
@@ -183,7 +182,7 @@ class HdrHistogram {
 
   // Resets the counts_ array to reset the percentiles information.
   // Preserves the values for TotalSum and TotalCount.
-  void ResetPercentiles();
+  void Reset();
 
   // Get the percentile at a given value
   // TODO: implement
@@ -196,6 +195,8 @@ class HdrHistogram {
 
   // Dump a formatted, multiline string describing this histogram to 'out'.
   void DumpHumanReadable(std::ostream* out) const;
+
+  size_t DynamicMemoryUsage() const;
 
  private:
   friend class AbstractHistogramIterator;
@@ -381,5 +382,3 @@ class PercentileIterator : public AbstractHistogramIterator {
 };
 
 } // namespace yb
-
-#endif // YB_UTIL_HDR_HISTOGRAM_H

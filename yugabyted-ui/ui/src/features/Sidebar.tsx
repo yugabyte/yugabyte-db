@@ -3,21 +3,22 @@ import clsx from 'clsx';
 import { Link, NavLink, NavLinkProps, useRouteMatch } from 'react-router-dom';
 import { makeStyles, Typography, Link as MUILink, Box } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
-import { createGlobalState } from 'react-use';
 import { browserStorage } from '@app/helpers';
 
-import YBLogo from '@app/assets/yb-logo-dark.svg';
-import ClusterIcon from '@app/assets/cluster.svg';
+import YBLogoFull from '@app/assets/yugabyteDB-logo.svg';
+import YBLogo from '@app/assets/yb-logo.svg';
+import RocketIcon from '@app/assets/rocket.svg';
 import SettingsIcon from '@app/assets/cog.svg';
 import DbSecurityIcon from '@app/assets/database-security.svg';
 import MetricsIcon from '@app/assets/stats.svg';
 import DoubleArrowIcon from '@app/assets/double-arrow-left.svg';
 import AlertsIcon from '@app/assets/bell.svg';
-import PerformanceIcon from '@app/assets/rocket.svg'
+import DatabaseIcon from '@app/assets/database.svg'
 import { themeVariables } from '@app/theme/variables';
+import { useAlerts } from './clusters/details/alerts/alerts';
 
 // Global state for setting and getting new alert flag that can be used on alerts list page
-export const useAlertGlobalValue = createGlobalState<boolean>(() => false);
+// export const useAlertGlobalValue = createGlobalState<boolean>(() => false);
 
 const useStyles = makeStyles((theme) => ({
   filler: {
@@ -50,10 +51,15 @@ const useStyles = makeStyles((theme) => ({
     }
   },
   logoIcon: {
-    width: themeVariables.sidebarWidthMin,
-    minWidth: themeVariables.sidebarWidthMin,
-    padding: theme.spacing(1),
-    marginRight: theme.spacing(0.5)
+    width: "100%",
+    height: themeVariables.sidebarWidthMin,
+    minHeight: themeVariables.sidebarWidthMin,
+    padding: theme.spacing(2.5),
+    marginRight: theme.spacing(3)
+  },
+  logoIconCollapsed: {
+    padding: theme.spacing(2),
+    marginRight: 0
   },
   claimShirtIcon: {
     display: 'flex',
@@ -132,7 +138,7 @@ const useStyles = makeStyles((theme) => ({
     background: theme.palette.error[500],
     width: 9,
     position: 'absolute',
-    right: theme.spacing(2.4),
+    right: theme.spacing(3),
     top: theme.spacing(-0.3),
     height: 9
   }
@@ -164,7 +170,7 @@ export const Sidebar: FC<{ projectId: string }> = ({ projectId }) => {
     browserStorage.sidebarCollapsed = newValue;
   };
 
-  const [isNewAlert] = useAlertGlobalValue();
+  const { data: alerts } = useAlerts(true);
 
   // const { data: runtimeConfig } = useRuntimeConfig();
  
@@ -205,11 +211,12 @@ export const Sidebar: FC<{ projectId: string }> = ({ projectId }) => {
     <>
       <div className={clsx(classes.filler, isCollapsed && classes.collapsed)} />
       <div className={clsx(classes.sidebar, isCollapsed && classes.collapsed)}>
-        <Link to="/cluster/tabOverview" className={classes.linkRow}>
-          <YBLogo className={classes.logoIcon} />
-          <Typography variant="body2" noWrap className={clsx(isCollapsed && classes.fadeOut)}>
-            {t('common.appTitle')}
-          </Typography>
+        <Link to="/" className={classes.linkRow}>
+          {!isCollapsed ?
+            <YBLogoFull className={classes.logoIcon} />
+            :
+            <YBLogo className={clsx(classes.logoIcon, classes.logoIconCollapsed)} />
+          }
         </Link>
         {/* {!runtimeConfig?.PLGOnboardingPhase1 && (
           <NavLinkWithDisable
@@ -227,15 +234,28 @@ export const Sidebar: FC<{ projectId: string }> = ({ projectId }) => {
         )} */}
         <NavLinkWithDisable
           disabled={isDisabled}
-          to={`/cluster/tabOverview`}
-          isActive={(_, location) => /^\/cluster/.test(location.pathname)}
+          to={`/`}
+          isActive={(_, location) => /^\/$/.test(location.pathname)}
           className={classes.link}
           activeClassName={classes.linkActive}
-          data-testid="SidebarLinkClusters"
+          data-testid="SidebarLinkCluster"
         >
-          <ClusterIcon className={classes.icon} />
+          <RocketIcon className={classes.icon} />
           <Typography variant="body2" noWrap className={clsx(isCollapsed && classes.fadeOut)}>
             {t('common.cluster')}
+          </Typography>
+        </NavLinkWithDisable>
+        <NavLinkWithDisable
+          disabled={isDisabled}
+          to={`/databases/tabYsql`}
+          isActive={(_, location) => /^\/databases/.test(location.pathname)}
+          className={classes.link}
+          activeClassName={classes.linkActive}
+          data-testid="SidebarLinkDatabases"
+        >
+          <DatabaseIcon className={classes.icon} />
+          <Typography variant="body2" noWrap className={clsx(isCollapsed && classes.fadeOut)}>
+            {t('common.databases')}
           </Typography>
         </NavLinkWithDisable>
         <NavLinkWithDisable
@@ -244,9 +264,9 @@ export const Sidebar: FC<{ projectId: string }> = ({ projectId }) => {
           isActive={(_, location) => /^\/performance/.test(location.pathname)}
           className={classes.link}
           activeClassName={classes.linkActive}
-          data-testid="SidebarLinkClusters"
+          data-testid="SidebarLinkPerformance"
         >
-          <PerformanceIcon className={classes.icon} />
+          <MetricsIcon className={classes.icon} />
           <Typography variant="body2" noWrap className={clsx(isCollapsed && classes.fadeOut)}>
             {t('clusterDetail.tabPerformance')}
           </Typography>
@@ -254,14 +274,14 @@ export const Sidebar: FC<{ projectId: string }> = ({ projectId }) => {
         {isAlertsEnabled && (
           <NavLinkWithDisable
             disabled={isDisabled}
-            to={`/alerts`}
+            to={`/alerts/tabNotifications`}
             isActive={(_, location) => /^\/alerts/.test(location.pathname)}
             className={classes.link}
             activeClassName={classes.linkActive}
             data-testid="alertsPageNav"
           >
             <Box position="relative">
-              {isNewAlert && <Box className={classes.newAlerts}></Box>}
+              {alerts.length > 0 && <Box className={classes.newAlerts}></Box>}
               <AlertsIcon className={classes.icon} />
             </Box>
             <Typography variant="body2" noWrap className={clsx(isCollapsed && classes.fadeOut)}>
@@ -300,15 +320,15 @@ export const Sidebar: FC<{ projectId: string }> = ({ projectId }) => {
         </div>
         <NavLinkWithDisable
           disabled={isDisabled}
-          to={`/admin`}
-          isActive={(_, location) => /^\/admin/.test(location.pathname)}
+          to={`/debug`}
+          isActive={(_, location) => /^\/debug/.test(location.pathname)}
           className={classes.link}
           activeClassName={classes.linkActive}
-          data-testid="SidebarLinkAdmin"
+          data-testid="SidebarLinkDebug"
         >
           <SettingsIcon className={classes.icon} />
           <Typography variant="body2" noWrap className={clsx(isCollapsed && classes.fadeOut)}>
-            {t('common.admin')}
+            {t('common.debug')}
           </Typography>
         </NavLinkWithDisable>
 

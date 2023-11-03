@@ -13,13 +13,11 @@
 
 package org.yb.client;
 
-import com.google.protobuf.ByteString;
 import com.google.protobuf.Message;
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.yb.util.Pair;
-
+import io.netty.buffer.ByteBuf;
 import org.yb.master.MasterEncryptionOuterClass;
 import org.yb.master.MasterTypes;
+import org.yb.util.Pair;
 
 public class HasUniverseKeyInMemoryRequest extends YRpc<HasUniverseKeyInMemoryResponse> {
   private String universeKeyId;
@@ -30,7 +28,7 @@ public class HasUniverseKeyInMemoryRequest extends YRpc<HasUniverseKeyInMemoryRe
   }
 
   @Override
-  ChannelBuffer serialize(Message header) {
+  ByteBuf serialize(Message header) {
     assert header.isInitialized();
     final MasterEncryptionOuterClass.HasUniverseKeyInMemoryRequestPB.Builder builder =
             MasterEncryptionOuterClass.HasUniverseKeyInMemoryRequestPB.newBuilder();

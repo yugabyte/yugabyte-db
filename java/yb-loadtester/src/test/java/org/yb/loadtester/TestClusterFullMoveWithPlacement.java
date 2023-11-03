@@ -3,7 +3,7 @@ package org.yb.loadtester;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.client.ModifyClusterConfigAffinitizedLeaders;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -12,7 +12,7 @@ import java.util.Map;
 
 import static org.yb.AssertionWrappers.assertTrue;
 
-@RunWith(value= YBTestRunnerNonTsanOnly.class)
+@RunWith(value= YBTestRunner.class)
 public class TestClusterFullMoveWithPlacement extends TestClusterBase {
 
   @Override

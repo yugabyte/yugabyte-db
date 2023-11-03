@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_RPC_SCHEDULER_H
-#define YB_RPC_SCHEDULER_H
+#pragma once
 
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/util/net/net_fwd.h"
@@ -162,5 +161,3 @@ class ScheduledTaskTracker {
 
 } // namespace rpc
 } // namespace yb
-
-#endif // YB_RPC_SCHEDULER_H

@@ -30,7 +30,7 @@ import { getKMSConfigs, restoreEntireBackup } from '../common/BackupAPI';
 import { BACKUP_API_TYPES, IBackup, IStorageConfig } from '../common/IBackup';
 import { TableType } from '../../../redesign/helpers/dtos';
 
-import { KEYSPACE_VALIDATION_REGEX, PARALLEL_THREADS_RANGE } from '../common/BackupUtils';
+import { KEYSPACE_VALIDATION_REGEX, ParallelThreads } from '../common/BackupUtils';
 
 import { toast } from 'react-toastify';
 import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
@@ -39,6 +39,7 @@ import clsx from 'clsx';
 
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import { isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
+import { handleCACertErrMsg } from '../../customCACerts';
 import './BackupAdvancedRestore.scss';
 
 const TEXT_RESTORE = 'Restore';
@@ -54,6 +55,7 @@ const STEPS = [
     title: 'Restore Backup',
     submitLabel: TEXT_RESTORE,
     component: RenameSingleKeyspace,
+    // eslint-disable-next-line react/display-name
     footer: (onClick: Function) => (
       <YBButton
         btnClass={`btn btn-default pull-right restore-wth-rename-but`}
@@ -135,7 +137,7 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
       onError: (resp: any) => {
         onHide();
         setCurrentStep(0);
-        toast.error(resp.response.data.error);
+        !handleCACertErrMsg(resp) && toast.error(resp.response.data.error);
       }
     }
   );
@@ -143,8 +145,7 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
   const primaryCluster = find(universeDetails?.clusters, { clusterType: 'PRIMARY' });
 
   initialValues['parallelThreads'] =
-    Math.min(primaryCluster?.userIntent?.numNodes, PARALLEL_THREADS_RANGE.MAX) ||
-    PARALLEL_THREADS_RANGE.MIN;
+    Math.min(primaryCluster?.userIntent?.numNodes, ParallelThreads.MAX) || ParallelThreads.MIN;
 
   const kmsConfigList = kmsConfigs
     ? kmsConfigs.map((config: any) => {
@@ -155,13 +156,13 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
 
   const groupedStorageConfigs = useMemo(() => {
     // if user has only one storage config, select it by default
-    if (storageConfigs.data.length === 1) {
+    if (storageConfigs?.data?.length === 1) {
       const { configUUID, configName, name } = storageConfigs.data[0];
       initialValues['storage_config'] = { value: configUUID, label: configName, name: name };
     }
 
-    const configs = storageConfigs.data
-      .filter((c: IStorageConfig) => c.type === 'STORAGE')
+    const configs = storageConfigs?.data
+      ?.filter((c: IStorageConfig) => c.type === 'STORAGE')
       .map((c: IStorageConfig) => {
         return { value: c.configUUID, label: c.configName, name: c.name };
       });
@@ -191,12 +192,12 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
         : Yup.array(Yup.string()),
     parallelThreads: Yup.number()
       .min(
-        PARALLEL_THREADS_RANGE.MIN,
-        `Parallel threads should be greater than or equal to ${PARALLEL_THREADS_RANGE.MIN}`
+        ParallelThreads.MIN,
+        `Parallel threads should be greater than or equal to ${ParallelThreads.MIN}`
       )
       .max(
-        PARALLEL_THREADS_RANGE.MAX,
-        `Parallel threads should be less than or equal to ${PARALLEL_THREADS_RANGE.MAX}`
+        ParallelThreads.MAX,
+        `Parallel threads should be less than or equal to ${ParallelThreads.MAX}`
       ),
     new_keyspace_name: Yup.string().when('should_rename_keyspace', {
       is: (should_rename_keyspace) => currentStep === STEPS.length - 1 && should_rename_keyspace,
@@ -204,28 +205,36 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
     })
   });
 
-  const doRestore = (values: typeof initialValues) => {
+  const doRestore = (
+    values: typeof initialValues,
+    setSubmitting: (isSubmitting: boolean) => void
+  ) => {
     values['keyspaces'] = [
       values['should_rename_keyspace'] ? values['new_keyspace_name'] : values['keyspace_name']
     ];
 
     values['targetUniverseUUID'] = { value: currentUniverseUUID };
 
-    const backup: Partial<IBackup> = {
+    const backup: Partial<IBackup & Record<string, any>> = {
       backupType: (values['api_type'].value as unknown) as TableType,
-      storageConfigUUID: values['storage_config'].value,
-      sse: values['storage_config'].name === 'S3',
-      responseList: [
-        {
-          keyspace: values['should_rename_keyspace']
-            ? values['new_keyspace_name']
-            : values['keyspace_name'],
-          tablesList: [],
-          storageLocation: values['backup_location']
-        }
-      ]
+      commonBackupInfo: {
+        storageConfigUUID: values['storage_config'].value,
+        sse: values['storage_config'].name === 'S3',
+        responseList: [
+          {
+            keyspace: values['should_rename_keyspace']
+              ? values['new_keyspace_name']
+              : values['keyspace_name'],
+            tablesList: [],
+            storageLocation: values['backup_location']
+          }
+        ]
+      } as any
     };
-    restore.mutateAsync({ backup_details: backup as any, values });
+    restore.mutate(
+      { backup_details: backup as any, values },
+      { onSettled: () => setSubmitting(false) }
+    );
   };
 
   if (!visible) return null;
@@ -243,12 +252,15 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
       validationSchema={validationSchema}
       dialogClassName="advanced-restore-modal"
       submitLabel={overrideSubmitLabel ?? STEPS[currentStep].submitLabel}
-      onFormSubmit={(values: any, { setSubmitting }: { setSubmitting: Function }) => {
-        setSubmitting(false);
+      onFormSubmit={(
+        values: any,
+        { setSubmitting }: { setSubmitting: (isSubmitting: boolean) => void }
+      ) => {
         if (values['should_rename_keyspace'] && currentStep < STEPS.length - 1) {
           setCurrentStep(currentStep + 1);
+          setSubmitting(false);
         } else {
-          doRestore(values);
+          doRestore(values, setSubmitting);
         }
       }}
       headerClassName={clsx({
@@ -357,6 +369,7 @@ function RestoreForm({
               label="Backup config"
               options={storageConfigs}
               components={{
+                // eslint-disable-next-line react/display-name
                 SingleValue: ({ data }: { data: any }) => (
                   <>
                     <span className="storage-cfg-name">{data.label}</span>
@@ -386,10 +399,10 @@ function RestoreForm({
                   values['api_type'].value === BACKUP_API_TYPES.YSQL ? 'Database' : 'Keyspace'
                 } name`}
                 validate={(name: string) => {
-                  // Restoring with duplicate keyspace name is supported in redis
+                  // Restoring with duplicate keyspace name is supported in redis and YCQL
                   if (
                     Array.isArray(tablesInUniverse) &&
-                    values['api_type'].value !== BACKUP_API_TYPES.YEDIS &&
+                    values['api_type'].value === BACKUP_API_TYPES.YSQL &&
                     find(tablesInUniverse, { tableType: values['api_type'].value, keySpace: name })
                   ) {
                     setFieldValue('should_rename_keyspace', true, false);
@@ -439,6 +452,11 @@ function RestoreForm({
               options={kmsConfigList}
               isClearable
             />
+            <span className="kms-helper-text">
+              For a successful restore, the KMS configuration used for restore should be the same{' '}
+              <br />
+              KMS configuration used during backup creation.
+            </span>
           </Col>
         </Row>
       </div>

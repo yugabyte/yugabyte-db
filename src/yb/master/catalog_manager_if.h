@@ -11,16 +11,16 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_CATALOG_MANAGER_IF_H
-#define YB_MASTER_CATALOG_MANAGER_IF_H
+#pragma once
 
 #include "yb/common/common_fwd.h"
-#include "yb/common/common_types.pb.h"
 
+#include "yb/common/schema.h"
 #include "yb/consensus/consensus_fwd.h"
 
 #include "yb/docdb/docdb_fwd.h"
 
+#include "yb/master/leader_epoch.h"
 #include "yb/master/master_admin.fwd.h"
 #include "yb/master/master_client.fwd.h"
 #include "yb/master/master_cluster.fwd.h"
@@ -30,6 +30,7 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/server/monitored_task.h"
 #include "yb/server/server_fwd.h"
 
 #include "yb/tablet/tablet_fwd.h"
@@ -55,12 +56,24 @@ YB_DEFINE_ENUM(GetTablesMode, (kAll) // All tables
                               (kVisibleToClient) // All tables visible to the client
                );
 
+YB_STRONGLY_TYPED_BOOL(HideOnly);
+YB_STRONGLY_TYPED_BOOL(KeepData);
+
 class CatalogManagerIf {
  public:
-  virtual void CheckTableDeleted(const TableInfoPtr& table) = 0;
+  virtual void CheckTableDeleted(const TableInfoPtr& table, const LeaderEpoch& epoch) = 0;
+
+  virtual void DeleteTabletReplicas(
+      TabletInfo* tablet, const std::string& msg, HideOnly hide_only, KeepData keep_data,
+      const LeaderEpoch& epoch) = 0;
+
+  virtual void NotifyPrepareDeleteTransactionTabletFinished(
+      const scoped_refptr<TabletInfo>& tablet, const std::string& msg, HideOnly hide_only,
+      const LeaderEpoch& epoch) = 0;
 
   virtual void NotifyTabletDeleteFinished(
-      const TabletServerId& tserver_uuid, const TableId& table_id, const TableInfoPtr& table) = 0;
+      const TabletServerId& tserver_uuid, const TabletId& tablet_id,
+      const TableInfoPtr& table, const LeaderEpoch& epoch) = 0;
 
   virtual std::string GenerateId() = 0;
 
@@ -78,10 +91,11 @@ class CatalogManagerIf {
 
   virtual ThreadPool* AsyncTaskPool() = 0;
 
-  virtual Status ScheduleTask(std::shared_ptr<RetryingTSRpcTask> task) = 0;
+  virtual Status ScheduleTask(std::shared_ptr<server::RunnableMonitoredTask> task) = 0;
 
   virtual Status HandleTabletSchemaVersionReport(
-      TabletInfo *tablet, uint32_t version, const scoped_refptr<TableInfo>& table = nullptr) = 0;
+      TabletInfo* tablet, uint32_t version, const LeaderEpoch& epoch,
+      const scoped_refptr<TableInfo>& table = nullptr) = 0;
 
   virtual std::vector<TableInfoPtr> GetTables(GetTablesMode mode) = 0;
 
@@ -100,10 +114,15 @@ class CatalogManagerIf {
   virtual Status GetYsqlCatalogVersion(
       uint64_t* catalog_version, uint64_t* last_breaking_version) = 0;
   virtual Status GetYsqlAllDBCatalogVersions(
-      std::map<uint32_t, std::pair<uint64_t, uint64_t>>* versions) = 0;
+      bool use_cache,
+      DbOidToCatalogVersionMap* versions,
+      uint64_t* fingerprint) = 0;
+  virtual Status GetYsqlDBCatalogVersion(
+      uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version) = 0;
 
   virtual Status GetClusterConfig(GetMasterClusterConfigResponsePB* resp) = 0;
   virtual Status GetClusterConfig(SysClusterConfigEntryPB* config) = 0;
+
 
   virtual Status SetClusterConfig(
     const ChangeMasterClusterConfigRequestPB* req, ChangeMasterClusterConfigResponsePB* resp) = 0;
@@ -127,20 +146,25 @@ class CatalogManagerIf {
       const ReplicationInfoPB& table_replication_info,
       const TablespaceId& tablespace_id) = 0;
 
+  virtual Result<ReplicationInfoPB> GetTableReplicationInfo(const TableInfoPtr& table) = 0;
+
   virtual std::vector<std::shared_ptr<server::MonitoredTask>> GetRecentJobs() = 0;
 
   virtual bool IsSystemTable(const TableInfo& table) const = 0;
 
-  virtual Result<scoped_refptr<NamespaceInfo>> FindNamespaceById(
-      const NamespaceId& id) const = 0;
+  virtual Result<scoped_refptr<NamespaceInfo>> FindNamespaceById(const NamespaceId& id) const = 0;
+
+  virtual Result<scoped_refptr<NamespaceInfo>> FindNamespace(
+      const NamespaceIdentifierPB& ns_identifier) const = 0;
 
   virtual scoped_refptr<TableInfo> GetTableInfoFromNamespaceNameAndTableName(
-      YQLDatabase db_type, const NamespaceName& namespace_name, const TableName& table_name) = 0;
+      YQLDatabase db_type, const NamespaceName& namespace_name, const TableName& table_name,
+      const PgSchemaName pg_schema_name = {}) = 0;
 
   virtual std::vector<std::shared_ptr<server::MonitoredTask>> GetRecentTasks() = 0;
 
   virtual Result<boost::optional<TablespaceId>> GetTablespaceForTable(
-      const scoped_refptr<TableInfo>& table) = 0;
+      const scoped_refptr<TableInfo>& table) const = 0;
 
   virtual bool IsLoadBalancerEnabled() = 0;
 
@@ -150,7 +174,7 @@ class CatalogManagerIf {
 
   virtual bool IsUserCreatedTable(const TableInfo& table) const = 0;
 
-  virtual Status GetAllAffinitizedZones(vector<AffinitizedZonesSet>* affinitized_zones) = 0;
+  virtual Status GetAllAffinitizedZones(std::vector<AffinitizedZonesSet>* affinitized_zones) = 0;
 
   virtual Result<BlacklistSet> BlacklistSetFromPB(bool leader_blacklist = false) const = 0;
 
@@ -166,6 +190,9 @@ class CatalogManagerIf {
       TabletLocationsPB* locs_pb,
       IncludeInactive include_inactive = IncludeInactive::kFalse) = 0;
 
+  virtual Status ListSnapshotRestorations(
+      const ListSnapshotRestorationsRequestPB* req, ListSnapshotRestorationsResponsePB* resp) = 0;
+
   virtual void HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool error) = 0;
 
   virtual void HandleRestoreTabletSnapshotResponse(TabletInfo *tablet, bool error) = 0;
@@ -179,18 +206,22 @@ class CatalogManagerIf {
   virtual Status IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
                                            IsCreateTableDoneResponsePB* resp) = 0;
 
-  virtual Status CreateTable(const CreateTableRequestPB* req,
-                                     CreateTableResponsePB* resp,
-                                     rpc::RpcContext* rpc) = 0;
+  virtual Status CreateTable(
+      const CreateTableRequestPB* req,
+      CreateTableResponsePB* resp,
+      rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch) = 0;
 
-  virtual Status CreateNamespace(const CreateNamespaceRequestPB* req,
-                                         CreateNamespaceResponsePB* resp,
-                                         rpc::RpcContext* rpc) = 0;
+  virtual Status CreateNamespace(
+      const CreateNamespaceRequestPB* req, CreateNamespaceResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch) = 0;
 
   virtual Status GetTableSchema(
       const GetTableSchemaRequestPB* req, GetTableSchemaResponsePB* resp) = 0;
 
   virtual Status TEST_IncrementTablePartitionListVersion(const TableId& table_id) = 0;
+
+  virtual LeaderEpoch GetLeaderEpochInternal() const = 0;
 
   virtual Result<scoped_refptr<TabletInfo>> GetTabletInfo(const TabletId& tablet_id) = 0;
 
@@ -203,6 +234,9 @@ class CatalogManagerIf {
   virtual Status ListCDCStreams(
       const ListCDCStreamsRequestPB* req, ListCDCStreamsResponsePB* resp) = 0;
 
+  virtual Status IsObjectPartOfXRepl(
+      const IsObjectPartOfXReplRequestPB* req, IsObjectPartOfXReplResponsePB* resp) = 0;
+
   virtual Status GetCDCDBStreamInfo(
     const GetCDCDBStreamInfoRequestPB* req, GetCDCDBStreamInfoResponsePB* resp) = 0;
 
@@ -214,12 +248,14 @@ class CatalogManagerIf {
 
   virtual void DumpState(std::ostream* out, bool on_disk_dump = false) const = 0;
 
-  virtual Status VisitSysCatalog(int64_t term) = 0;
+  virtual scoped_refptr<TableInfo> NewTableInfo(TableId id, bool colocated) = 0;
 
-  virtual scoped_refptr<TableInfo> NewTableInfo(TableId id) = 0;
+  virtual Status AreLeadersOnPreferredOnly(const AreLeadersOnPreferredOnlyRequestPB* req,
+                                   AreLeadersOnPreferredOnlyResponsePB* resp) = 0;
 
   // If is_manual_split is true, we will not call ShouldSplitValidCandidate.
-  virtual Status SplitTablet(const TabletId& tablet_id, ManualSplit is_manual_split) = 0;
+  virtual Status SplitTablet(
+      const TabletId& tablet_id, ManualSplit is_manual_split, const LeaderEpoch& epoch) = 0;
 
   virtual Status TEST_SplitTablet(
       const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code) = 0;
@@ -236,11 +272,15 @@ class CatalogManagerIf {
 
   virtual PermissionsManager* permissions_manager() = 0;
 
-  virtual int64_t leader_ready_term() = 0;
+  virtual int64_t leader_ready_term() const = 0;
 
   virtual ClusterLoadBalancer* load_balancer() = 0;
 
   virtual TabletSplitManager* tablet_split_manager() = 0;
+
+  virtual XClusterManagerIf* GetXClusterManager() = 0;
+
+  virtual XClusterManager* GetXClusterManagerImpl() = 0;
 
   virtual std::shared_ptr<tablet::TabletPeer> tablet_peer() const = 0;
 
@@ -249,6 +289,14 @@ class CatalogManagerIf {
   virtual intptr_t tablet_locations_version() const = 0;
 
   virtual tablet::SnapshotCoordinator& snapshot_coordinator() = 0;
+
+  virtual Status UpdateLastFullCompactionRequestTime(
+      const TableId& table_id, const LeaderEpoch& epoch) = 0;
+
+  virtual Status GetCompactionStatus(
+      const GetCompactionStatusRequestPB* req, GetCompactionStatusResponsePB* resp) = 0;
+
+  virtual Status PromoteTableToRunningState(TableInfoPtr table_info, const LeaderEpoch& epoch) = 0;
 
   virtual ~CatalogManagerIf() = default;
 };
@@ -261,5 +309,3 @@ bool IsYcqlTable(const TableInfo& table);
 
 }  // namespace master
 }  // namespace yb
-
-#endif  // YB_MASTER_CATALOG_MANAGER_IF_H

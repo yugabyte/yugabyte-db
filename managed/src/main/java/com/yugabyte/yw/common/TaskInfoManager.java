@@ -3,10 +3,10 @@
 package com.yugabyte.yw.common;
 
 import com.yugabyte.yw.models.TaskInfo;
-import javax.inject.Singleton;
-import org.apache.commons.collections.CollectionUtils;
 import java.util.List;
 import java.util.UUID;
+import javax.inject.Singleton;
+import org.apache.commons.collections.CollectionUtils;
 
 @Singleton
 public class TaskInfoManager {

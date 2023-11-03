@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CLIENT_TABLE_ALTERER_H
-#define YB_CLIENT_TABLE_ALTERER_H
+#pragma once
 
 #include <boost/optional.hpp>
 
@@ -36,7 +35,7 @@ namespace client {
 //
 // Sample usage:
 //   YBTableAlterer* alterer = client->NewTableAlterer("table-name");
-//   alterer->AddColumn("foo")->Type(INT32)->NotNull();
+//   alterer->AddColumn("foo")->Type(DataType::INT32)->NotNull();
 //   Status s = alterer->Alter();
 //   delete alterer;
 class YBTableAlterer {
@@ -130,5 +129,3 @@ class YBTableAlterer {
 
 } // namespace client
 } // namespace yb
-
-#endif // YB_CLIENT_TABLE_ALTERER_H

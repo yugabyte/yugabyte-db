@@ -2,27 +2,25 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
-import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeAgentClient;
+import com.yugabyte.yw.common.NodeAgentManager;
+import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
-import com.yugabyte.yw.common.ConfigHelper.ConfigType;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.NodeAgentForm;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.NodeAgent;
+import com.yugabyte.yw.models.NodeAgent.ArchType;
+import com.yugabyte.yw.models.NodeAgent.OSType;
 import com.yugabyte.yw.models.NodeAgent.State;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -41,21 +39,30 @@ import org.mockito.junit.MockitoJUnitRunner;
 public class NodeAgentHandlerTest extends FakeDBApplication {
   @Mock private Config mockAppConfig;
   @Mock private ConfigHelper mockConfigHelper;
+  @Mock private PlatformExecutorFactory mockPlatformExecutorFactory;
   @Mock private PlatformScheduler mockPlatformScheduler;
+  @Mock private NodeAgentClient mockNodeAgentClient;
+
+  private CertificateHelper certificateHelper;
+
+  private NodeAgentManager nodeAgentManager;
   private NodeAgentHandler nodeAgentHandler;
   private Customer customer;
 
   @Before
   public void setup() {
     customer = ModelFactory.testCustomer();
-    nodeAgentHandler = new NodeAgentHandler(mockAppConfig, mockConfigHelper, mockPlatformScheduler);
-    when(mockAppConfig.getString(eq("yb.storage.path"))).thenReturn("/tmp");
+    certificateHelper = new CertificateHelper(app.injector().instanceOf(RuntimeConfGetter.class));
+    nodeAgentManager = new NodeAgentManager(mockAppConfig, mockConfigHelper, certificateHelper);
+    nodeAgentHandler =
+        new NodeAgentHandler(mockCommissioner, nodeAgentManager, mockNodeAgentClient);
+    nodeAgentHandler.enableConnectionValidation(false);
   }
 
   private void verifyKeys(UUID nodeAgentUuid) {
     // sign using the private key
-    PublicKey publicKey = nodeAgentHandler.getNodeAgentPublicKey(nodeAgentUuid);
-    PrivateKey privateKey = nodeAgentHandler.getNodeAgentPrivateKey(nodeAgentUuid);
+    PublicKey publicKey = NodeAgentManager.getNodeAgentPublicKey(nodeAgentUuid);
+    PrivateKey privateKey = NodeAgentManager.getNodeAgentPrivateKey(nodeAgentUuid);
 
     try {
       Signature sig = Signature.getInstance("SHA256withRSA");
@@ -80,120 +87,29 @@ public class NodeAgentHandlerTest extends FakeDBApplication {
     payload.version = "2.12.0";
     payload.name = "node1";
     payload.ip = "10.20.30.40";
-    NodeAgent nodeAgent = nodeAgentHandler.register(customer.uuid, payload);
-    assertNotNull(nodeAgent.uuid);
-    UUID nodeAgentUuid = nodeAgent.uuid;
-    verify(mockAppConfig, times(1)).getString(eq("yb.storage.path"));
-    String serverCert = nodeAgent.config.get(NodeAgent.SERVER_CERT_PROPERTY);
+    payload.osType = OSType.LINUX.name();
+    payload.archType = ArchType.AMD64.name();
+    payload.home = "/home/yugabyte/node-agent";
+    NodeAgent nodeAgent = nodeAgentHandler.register(customer.getUuid(), payload);
+    assertNotNull(nodeAgent.getUuid());
+    UUID nodeAgentUuid = nodeAgent.getUuid();
+    String serverCert = nodeAgent.getConfig().getServerCert();
     assertNotNull(serverCert);
-    Path serverCertPath = nodeAgent.getFilePath(NodeAgent.SERVER_CERT_NAME);
+    Path serverCertPath = nodeAgent.getServerCertFilePath();
     assertNotNull(serverCertPath);
     assertTrue(Files.exists(serverCertPath));
-    String serverKey = nodeAgent.config.get(NodeAgent.SERVER_KEY_PROPERTY);
+    String serverKey = nodeAgent.getConfig().getServerKey();
     assertNotNull(serverKey);
-    Path serverKeyPath = nodeAgent.getFilePath(NodeAgent.SERVER_KEY_NAME);
+    Path serverKeyPath = nodeAgent.getServerKeyFilePath();
     assertNotNull(serverKeyPath);
     assertTrue(Files.exists(serverCertPath));
     // With a real agent, the files are saved locally and ack is sent to the platform.
     // Complete registration.
-    payload.state = State.LIVE;
-    nodeAgentHandler.updateState(customer.uuid, nodeAgentUuid, payload);
+    payload.state = State.READY.name();
+    nodeAgentHandler.updateState(customer.getUuid(), nodeAgentUuid, payload);
     verifyKeys(nodeAgentUuid);
-  }
-
-  @Test
-  public void testUpdateRegistration() {
-    NodeAgentForm payload = new NodeAgentForm();
-    payload.version = "2.12.0";
-    payload.name = "node1";
-    payload.ip = "10.20.30.40";
-    NodeAgent nodeAgent = nodeAgentHandler.register(customer.uuid, payload);
-    String certPath = nodeAgent.config.get(NodeAgent.CERT_DIR_PATH_PROPERTY);
-    assertNotNull(nodeAgent.uuid);
-    UUID nodeAgentUuid = nodeAgent.uuid;
-    verify(mockAppConfig, times(1)).getString(eq("yb.storage.path"));
-    String serverCert = nodeAgent.config.get(NodeAgent.SERVER_CERT_PROPERTY);
-    assertNotNull(serverCert);
-    Path serverCertPath = nodeAgent.getFilePath(NodeAgent.SERVER_CERT_NAME);
-    assertNotNull(serverCertPath);
-    assertTrue(Files.exists(serverCertPath));
-    String serverKey = nodeAgent.config.get(NodeAgent.SERVER_KEY_PROPERTY);
-    assertNotNull(serverKey);
-    Path serverKeyPath = nodeAgent.getFilePath(NodeAgent.SERVER_KEY_NAME);
-    assertNotNull(serverKeyPath);
-    assertTrue(Files.exists(serverCertPath));
-    // With a real node agent, the files are saved locally and ack is sent to the platform.
-    payload.state = State.LIVE;
-    nodeAgentHandler.updateState(customer.uuid, nodeAgentUuid, payload);
-    assertThrows(
-        "Invalid current state LIVE, expected state UPGRADING",
-        IllegalStateException.class,
-        () -> nodeAgentHandler.updateRegistration(customer.uuid, nodeAgentUuid));
-    // Initiate upgrade.
-    nodeAgent = NodeAgent.getOrBadRequest(customer.uuid, nodeAgentUuid);
-    nodeAgent.state = State.UPGRADE;
-    nodeAgent.save();
-    // Start upgrading.
-    payload.state = State.UPGRADING;
-    nodeAgentHandler.updateState(customer.uuid, nodeAgentUuid, payload);
-    nodeAgent = nodeAgentHandler.updateRegistration(customer.uuid, nodeAgentUuid);
-    assertEquals(certPath, nodeAgent.config.get(NodeAgent.CERT_DIR_PATH_PROPERTY));
-    verifyKeys(nodeAgentUuid);
-    // Complete upgrading.
-    payload.state = State.UPGRADED;
-    nodeAgent = nodeAgentHandler.updateState(customer.uuid, nodeAgentUuid, payload);
-    assertNotEquals(certPath, nodeAgent.config.get(NodeAgent.CERT_DIR_PATH_PROPERTY));
-    certPath = nodeAgent.config.get(NodeAgent.CERT_DIR_PATH_PROPERTY);
-    // Restart the node agent and report live to the server.
-    payload.state = State.LIVE;
-    nodeAgent = nodeAgentHandler.updateState(customer.uuid, nodeAgentUuid, payload);
-    assertEquals(certPath, nodeAgent.config.get(NodeAgent.CERT_DIR_PATH_PROPERTY));
-    verifyKeys(nodeAgentUuid);
-  }
-
-  @Test
-  public void testUpdaterServiceNewVersion() {
-    when(mockConfigHelper.getConfig(eq(ConfigType.SoftwareVersion)))
-        .thenReturn(ImmutableMap.of("version", "2.13.0"));
-    NodeAgentForm payload = new NodeAgentForm();
-    payload.version = "2.12.0";
-    payload.name = "node1";
-    payload.ip = "10.20.30.40";
-    NodeAgent nodeAgent = nodeAgentHandler.register(customer.uuid, payload);
-    assertNotNull(nodeAgent.uuid);
-    UUID nodeAgentUuid = nodeAgent.uuid;
-    nodeAgentHandler.updaterService();
-    nodeAgent = NodeAgent.getOrBadRequest(customer.uuid, nodeAgentUuid);
-    assertEquals(State.REGISTERING, nodeAgent.state);
-    // With a real agent, the files are saved locally and ack is sent to the platform.
-    // Complete registration.
-    payload.state = State.LIVE;
-    nodeAgentHandler.updateState(customer.uuid, nodeAgentUuid, payload);
-    nodeAgentHandler.updaterService();
-    nodeAgent = NodeAgent.getOrBadRequest(customer.uuid, nodeAgentUuid);
-    assertEquals(State.UPGRADE, nodeAgent.state);
-  }
-
-  @Test
-  public void testUpdaterServiceSameVersion() {
-    when(mockConfigHelper.getConfig(eq(ConfigType.SoftwareVersion)))
-        .thenReturn(ImmutableMap.of("version", "2.12.0"));
-    NodeAgentForm payload = new NodeAgentForm();
-    payload.version = "2.12.0";
-    payload.name = "node1";
-    payload.ip = "10.20.30.40";
-    NodeAgent nodeAgent = nodeAgentHandler.register(customer.uuid, payload);
-    assertNotNull(nodeAgent.uuid);
-    UUID nodeAgentUuid = nodeAgent.uuid;
-    nodeAgentHandler.updaterService();
-    nodeAgent = NodeAgent.getOrBadRequest(customer.uuid, nodeAgentUuid);
-    assertEquals(State.REGISTERING, nodeAgent.state);
-    // With a real agent, the files are saved locally and ack is sent to the platform.
-    // Complete registration.
-    payload.state = State.LIVE;
-    nodeAgentHandler.updateState(customer.uuid, nodeAgentUuid, payload);
-    nodeAgentHandler.updaterService();
-    nodeAgent = NodeAgent.getOrBadRequest(customer.uuid, nodeAgentUuid);
-    assertEquals(State.LIVE, nodeAgent.state);
+    nodeAgentHandler.unregister(nodeAgentUuid);
+    Path certPath = nodeAgentManager.getNodeAgentBaseCertDirectory(nodeAgent);
+    assertTrue(!certPath.toFile().exists());
   }
 }

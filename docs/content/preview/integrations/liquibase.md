@@ -1,11 +1,11 @@
 ---
-title: Using Liquibase with YugabyteDB
+title: Liquibase
 linkTitle: Liquibase
 description: Using Liquibase with YugabyteDB
 menu:
-  preview:
+  preview_integrations:
     identifier: liquibase
-    parent: integrations
+    parent: schema-migration
     weight: 571
 type: docs
 ---
@@ -14,25 +14,15 @@ This document describes how to migrate data using [Liquibase](https://www.liquib
 
 ## Prerequisites
 
-Before you can start using Liquibase, ensure that you have the following installed and configured:
+To use Liquibase with YugabyteDB, you need the following:
 
 - JDK version 8 or later.
-
-- YugabyteDB version 2.6 (see [Quick Start](../../quick-start/)).
-
-To check the status, execute the following command:
-
-  ```sh
-  ./bin/yugabyted status
-  ```
-
+- YugabyteDB version 2.6 or later (see [Quick start](../../quick-start/)).
 - Liquibase (see [Download Liquibase](https://www.liquibase.org/download)). For information on how to extract the package and configure Liquibase, see [Configuring Liquibase](#configuring-liquibase).
-
 - Liquibase-YugabyteDB extension JAR (access [liquibase-yugabytedb repository](https://github.com/liquibase/liquibase-yugabytedb) and download the latest `liquibase-yugabytedb-.jar`). The driver must be located in the `/lib` sub-directory of the directory to which you extracted Liquibase.
+- PostgreSQL JDBC driver (see [PostgreSQL JDBC driver](https://jdbc.postgresql.org)). The driver must be located in the `/lib` sub-directory of the directory to which you extracted Liquibase.
 
-- PostgreSQL JDBC driver (see [Download PostgreSQL JDBC driver](https://jdbc.postgresql.org/download.html)). The driver must be located in the `/lib` sub-directory of the directory to which you extracted Liquibase.
-
-## Configuring Liquibase
+## Configure Liquibase
 
 You configure Liquibase as follows:
 
@@ -66,9 +56,9 @@ You configure Liquibase as follows:
 
   Liquibase uses this file to perform changes on the database schema. This file contains a list of instructions (changesets) that are executed against the database. Note that currently, the following changesets are not supported by Yugabyte: `addUniqueConstraint`, `alterSequence`, `dropPrimaryKey`, `dropUniqueConstraint`, `renameSequence`; in addition, Liquibase Pro changesets have not been tested against YugabyteDB.
 
-  <br>Changelog files can be created as `.xml`, `.sql`, `.yaml`, `.json`.
+  Changelog files can be created as `.xml`, `.sql`, `.yaml`, and `.json`.
 
-  <br><br>Add the following code to the `master-changelog.xml` file:
+  Add the following code to the `master-changelog.xml` file:
 
   ```xml
   <?xml version="1.1" encoding="UTF-8" standalone="no"?>
@@ -107,15 +97,15 @@ You configure Liquibase as follows:
 
   Defining the classpath is necessary if you have placed the JAR files in a folder other than `/lib`. For more information, see [Creating and configuring the liquibase.properties file](https://docs.liquibase.com/workflows/liquibase-community/creating-config-properties.html).
 
-  <br>When using the YugabyteDB on-premises and specifying the URL, enter your IP address or host name, and then include the port followed by the database name, as per the following format:
+  When using the YugabyteDB on-premises and specifying the URL, enter your IP address or host name, and then include the port followed by the database name, as per the following format:
 
   ```sh
   jdbc:postgresql://<IP_OR_HOSTNAME>:<PORT>/<DATABASE>
   ```
 
-  When specifying the classpath for the PostgreSQL driver, esure that the version matches the version of the downloaded driver.  <br>The default username and password is `yugabyte`.
+  When specifying the classpath for the PostgreSQL driver, ensure that the version matches the version of the downloaded driver. The default username and password is `yugabyte`.
 
-## Using Liquibase
+## Use Liquibase
 
 You can run Liquibase to perform migration by executing the following command:
 
@@ -129,8 +119,8 @@ Optionally, you may run a different changelog than the one provided in the `liqu
 liquibase --changeLogFile=different_changelog.xml update
 ```
 
-Upon successful migration, the following is displayed :
+Upon successful migration, the following is displayed:
 
-![img](/images/ee/liquibase.png)
+![Liquibase startup](/images/ee/liquibase.png)
 
-After migration of the first changelog, among other artifacts Liquibase creates a `databasechangelog` table within the database. This table keeps a detailed track of all the changesets that have been successfully completed.
+After migration of the first changelog, among other artifacts Liquibase creates a `databasechangelog` table in the database. This table keeps a detailed track of all the changesets that have been successfully completed.

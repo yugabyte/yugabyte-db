@@ -63,9 +63,6 @@ using namespace std::literals;
 namespace yb {
 
 using client::YBClient;
-using client::YBClientBuilder;
-using client::YBTableType;
-using client::YBError;
 using client::YBqlWriteOp;
 using client::YBSchema;
 using client::YBSchemaBuilder;
@@ -74,12 +71,12 @@ using client::YBTable;
 using client::YBTableAlterer;
 using client::YBTableCreator;
 using client::YBTableName;
-using client::YBValue;
 using std::shared_ptr;
 using std::make_pair;
 using std::map;
 using std::pair;
 using std::vector;
+using std::string;
 using strings::SubstituteAndAppend;
 
 static const YBTableName kTableName(YQL_DATABASE_CQL, "my_keyspace", "test-table");
@@ -242,7 +239,7 @@ struct MirrorTable {
                                                       kTableName.namespace_type()));
     YBSchema schema;
     YBSchemaBuilder b;
-    b.AddColumn("key")->Type(INT32)->HashPrimaryKey()->NotNull();
+    b.AddColumn("key")->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
     CHECK_OK(b.Build(&schema));
     std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     return table_creator->table_name(kTableName)
@@ -317,7 +314,7 @@ struct MirrorTable {
     // Add to the real table.
     std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
 
-    table_alterer->AddColumn(name)->Type(INT32);
+    table_alterer->AddColumn(name)->Type(DataType::INT32);
     ASSERT_OK(table_alterer->Alter());
 
     // Add to the mirror state.
@@ -367,8 +364,7 @@ struct MirrorTable {
 
   Status DoRealOp(const vector<pair<string, int32_t>>& data, OpType op_type) {
     auto deadline = MonoTime::Now() + 15s;
-    shared_ptr<YBSession> session = client_->NewSession();
-    session->SetTimeout(15s);
+    auto session = client_->NewSession(15s);
     shared_ptr<YBTable> table;
     RETURN_NOT_OK(client_->OpenTable(kTableName, &table));
     for (;;) {

@@ -32,8 +32,7 @@
 // Simple pool of objects that will be deallocated when the pool is
 // destroyed
 
-#ifndef YB_UTIL_AUTO_RELEASE_POOL_H
-#define YB_UTIL_AUTO_RELEASE_POOL_H
+#pragma once
 
 #include <vector>
 
@@ -110,5 +109,3 @@ class AutoReleasePool {
 
 
 } // namespace yb
-
-#endif // YB_UTIL_AUTO_RELEASE_POOL_H

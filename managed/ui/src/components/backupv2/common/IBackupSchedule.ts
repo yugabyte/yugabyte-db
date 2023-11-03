@@ -9,7 +9,7 @@
 
 import { IBackup } from './IBackup';
 
-interface Schedule_Task_Params extends Pick<IBackup, 'backupType' | 'sse' | 'storageConfigUUID'> {
+interface ScheduleTaskParams {
   firstTry: boolean;
   encryptionAtRestConfig: {
     encryptionAtRestEnabled: boolean;
@@ -22,10 +22,19 @@ interface Schedule_Task_Params extends Pick<IBackup, 'backupType' | 'sse' | 'sto
   tableUUIDList: string[];
   universeUUID: string;
   fullBackup: boolean;
-  keyspaceList: IBackup['responseList'];
+  backupType: IBackup['backupType'];
+  sse: IBackup['commonBackupInfo']['sse'];
+  storageConfigUUID: IBackup['commonBackupInfo']['storageConfigUUID'];
+  keyspaceList: IBackup['commonBackupInfo']['responseList'];
+  isTableByTableBackup: IBackup['isTableByTableBackup']
   expiryTimeUnit: string;
 }
 
+export enum IBackupScheduleStatus {
+  ACTIVE = 'Active',
+  STOPPED = 'Stopped',
+  PAUSED = 'Paused'
+}
 export interface IBackupSchedule extends Pick<IBackup, 'customerUUID' | 'universeUUID'> {
   scheduleUUID: string;
   taskType: 'BackupUniverse' | 'MultiTableBackup';
@@ -33,10 +42,13 @@ export interface IBackupSchedule extends Pick<IBackup, 'customerUUID' | 'univers
   frequency: number;
   runningState: boolean;
   cronExpression: string;
-  status: 'Active' | 'Stopped' | 'Paused';
-  backupInfo: Schedule_Task_Params;
+  status: IBackupScheduleStatus;
+  backupInfo: ScheduleTaskParams;
   scheduleName: string;
   prevCompletedTask: number;
   nextExpectedTask: number;
   frequencyTimeUnit: string;
+  incrementalBackupFrequency: number;
+  incrementalBackupFrequencyTimeUnit: string;
+  tableByTableBackup: boolean;
 }

@@ -21,11 +21,12 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_UTIL_TASK_METRICS_H
-#define YB_ROCKSDB_UTIL_TASK_METRICS_H
+#pragma once
 
 #include <memory>
 #include <string>
+
+#include "yb/rocksdb/listener.h"
 
 #include "yb/util/metrics.h"
 
@@ -34,6 +35,7 @@ namespace rocksdb {
 struct CompactionInfo {
   uint64_t input_files_count;
   uint64_t input_bytes_count;
+  CompactionReason compaction_reason;
 };
 
 // Contains metrics related to a particular task state in the priority thread pool.
@@ -75,73 +77,142 @@ struct RocksDBTaskMetrics {
   }
 };
 
-// Contains metrics related to tasks of each particular state in a PriorityThreadPool.
-struct RocksDBPriorityThreadPoolMetrics {
-  RocksDBTaskMetrics queued;
-  RocksDBTaskMetrics paused;
-  RocksDBTaskMetrics active;
+// Contains metrics related to compaction tasks started for particular compaction reasons.
+struct RocksDBTaskStateMetrics {
+  RocksDBTaskMetrics background;
+  RocksDBTaskMetrics full;
+  RocksDBTaskMetrics postsplit;
+  RocksDBTaskMetrics total; // deprecated, TODO remove as part of GI-15048
+
+  // Returns a pointer to the RocksDBTaskMetrics struct that corresponds to the
+  // given CompactionReason.
+  RocksDBTaskMetrics* TaskMetricsByCompactionReason(const CompactionReason reason) {
+    switch (reason) {
+      // Background compactions.
+      case CompactionReason::kUnknown:
+        FALLTHROUGH_INTENDED;
+      case CompactionReason::kLevelL0FilesNum:
+        FALLTHROUGH_INTENDED;
+      case CompactionReason::kLevelMaxLevelSize:
+        FALLTHROUGH_INTENDED;
+      case CompactionReason::kUniversalSizeAmplification:
+        FALLTHROUGH_INTENDED;
+      case CompactionReason::kUniversalSizeRatio:
+        FALLTHROUGH_INTENDED;
+      case CompactionReason::kUniversalSortedRunNum:
+        FALLTHROUGH_INTENDED;
+      case CompactionReason::kUniversalDirectDeletion:
+        FALLTHROUGH_INTENDED;
+      case CompactionReason::kFIFOMaxSize:
+        FALLTHROUGH_INTENDED;
+      case CompactionReason::kFilesMarkedForCompaction:
+        return &background;
+      // Full compactions.
+      case CompactionReason::kManualCompaction:
+        FALLTHROUGH_INTENDED;
+      case CompactionReason::kAdminCompaction:
+        FALLTHROUGH_INTENDED;
+      case CompactionReason::kScheduledFullCompaction:
+        return &full;
+      // Post-split compactions.
+      case CompactionReason::kPostSplitCompaction:
+        return &postsplit;
+    }
+    FATAL_INVALID_ENUM_VALUE(CompactionReason, reason);
+  }
 };
 
-// ROCKSDB_TASK_METRICS_DEFINE / ROCKSDB_PRIORITY_THREAD_POOL_METRICS_DEFINE are helpers which
+// Contains metrics related to tasks of each particular state in a PriorityThreadPool.
+struct RocksDBPriorityThreadPoolMetrics {
+  RocksDBTaskStateMetrics queued; // deprecated, TODO remove as part of GI-15048
+  RocksDBTaskStateMetrics paused; // deprecated, TODO remove as part of GI-15048
+  RocksDBTaskStateMetrics active;
+  RocksDBTaskStateMetrics nonactive;
+};
+
+// ROCKSDB_TASK_METRICS_DEFINE, ROCKSDB_COMPACTION_TASK_METRICS_TYPE_DEFINE,
+// and ROCKSDB_PRIORITY_THREAD_POOL_METRICS_DEFINE are helpers which
 // define the metrics required for a PriorityTaskMetrics object. Example usage:
-// // At the top of the file:
+//
+// At the top of the file:
 // ROCKSDB_PRIORITY_THREAD_POOL_METRICS_DEFINE(server);
 #define ROCKSDB_TASK_METRICS_DEFINE(entity, name, label) \
-    METRIC_DEFINE_gauge_uint64(entity, BOOST_PP_CAT(name, _compaction_tasks_added), \
-        label " Compaction Tasks Added", yb::MetricUnit::kTasks, \
+    METRIC_DEFINE_gauge_uint64(entity, BOOST_PP_CAT(name, _tasks_added), \
+        label " Tasks Added", yb::MetricUnit::kTasks, \
         label " - compaction tasks added gauge."); \
-    METRIC_DEFINE_gauge_uint64(entity, BOOST_PP_CAT(name, _compaction_tasks_removed), \
-        label " Compaction Tasks Removed", yb::MetricUnit::kTasks, \
+    METRIC_DEFINE_gauge_uint64(entity, BOOST_PP_CAT(name, _tasks_removed), \
+        label " Tasks Removed", yb::MetricUnit::kTasks, \
         label " - compaction tasks removed gauge."); \
-    METRIC_DEFINE_gauge_uint64(entity, BOOST_PP_CAT(name, _compaction_input_files_added), \
-        label " Total Compaction Files Added", yb::MetricUnit::kFiles, \
+    METRIC_DEFINE_gauge_uint64(entity, BOOST_PP_CAT(name, _input_files_added), \
+        label " Total Files Added", yb::MetricUnit::kFiles, \
         label " - total files in added by compaction tasks."); \
-    METRIC_DEFINE_gauge_uint64(entity, BOOST_PP_CAT(name, _compaction_input_files_removed), \
-        label " Total Compaction Files Removed", yb::MetricUnit::kFiles, \
+    METRIC_DEFINE_gauge_uint64(entity, BOOST_PP_CAT(name, _input_files_removed), \
+        label " Total Files Removed", yb::MetricUnit::kFiles, \
         label " - total files in removed by compaction tasks."); \
-    METRIC_DEFINE_gauge_uint64(entity, BOOST_PP_CAT(name, _compaction_input_bytes_added), \
-        label " Total Compaction Bytes Added", yb::MetricUnit::kBytes, \
+    METRIC_DEFINE_gauge_uint64(entity, BOOST_PP_CAT(name, _input_bytes_added), \
+        label " Total Bytes Added", yb::MetricUnit::kBytes, \
         label " - total file size added by compaction tasks, bytes."); \
-    METRIC_DEFINE_gauge_uint64(entity, BOOST_PP_CAT(name, _compaction_input_bytes_removed), \
-        label " Total Compaction Bytes Removed", yb::MetricUnit::kBytes, \
+    METRIC_DEFINE_gauge_uint64(entity, BOOST_PP_CAT(name, _input_bytes_removed), \
+        label " Total Bytes Removed", yb::MetricUnit::kBytes, \
         label " - total file size removed by compaction tasks, bytes.")
 
-#define ROCKSDB_PRIORITY_THREAD_POOL_METRICS_DEFINE(entity) \
-    ROCKSDB_TASK_METRICS_DEFINE( \
-        entity, queued_task_metrics, "Queued RocksDB compactions in priority thread pool."); \
-    ROCKSDB_TASK_METRICS_DEFINE( \
-        entity, paused_task_metrics, "Paused RocksDB compactions in priority thread pool."); \
-    ROCKSDB_TASK_METRICS_DEFINE( \
-        entity, active_task_metrics, "Active RocksDB compactions in priority thread pool.");
+#define ROCKSDB_COMPACTION_TASK_METRICS_TYPE_DEFINE(entity, name, label) \
+    ROCKSDB_TASK_METRICS_DEFINE(entity, BOOST_PP_CAT(name, _background_compaction), \
+        label " RocksDB Background Compaction"); \
+    ROCKSDB_TASK_METRICS_DEFINE(entity, BOOST_PP_CAT(name, _full_compaction), \
+        label " RocksDB Full Compaction"); \
+    ROCKSDB_TASK_METRICS_DEFINE(entity, BOOST_PP_CAT(name, _post_split_compaction), \
+        label " RocksDB Post-Split Compaction"); \
+    ROCKSDB_TASK_METRICS_DEFINE(entity, BOOST_PP_CAT(name, _task_metrics_compaction), \
+        label " RocksDB total compactions (DEPRECATED)");
 
-// ROCKSDB_TASK_METRICS_INSTANCE / ROCKSDB_PRIORITY_THREAD_POOL_METRICS_INSTANCE are helpers which
+#define ROCKSDB_PRIORITY_THREAD_POOL_METRICS_DEFINE(entity) \
+    ROCKSDB_COMPACTION_TASK_METRICS_TYPE_DEFINE( \
+        entity, queued, "Queued (DEPRECATED)"); \
+    ROCKSDB_COMPACTION_TASK_METRICS_TYPE_DEFINE( \
+        entity, paused, "Paused (DEPRECATED)"); \
+    ROCKSDB_COMPACTION_TASK_METRICS_TYPE_DEFINE( \
+        entity, active, "Active"); \
+    ROCKSDB_COMPACTION_TASK_METRICS_TYPE_DEFINE( \
+        entity, nonactive, "Non-Active");
+
+// ROCKSDB_TASK_METRICS_INSTANCE, ROCKSDB_COMPACTION_TASK_METRICS_TYPE_INSTANCE,
+// and ROCKSDB_PRIORITY_THREAD_POOL_METRICS_INSTANCE are helpers which
 // instantiate the metrics required for a RocksDBPriorityThreadPoolMetrics object. Example usage:
 //
 // auto priority_thread_pool_metrics =
 //     std::make_shared<rocksdb::RocksDBPriorityThreadPoolMetrics>(
 //          ROCKSDB_PRIORITY_THREAD_POOL_METRICS_INSTANCE(metric_entity));
 #define ROCKSDB_TASK_METRICS_INSTANCE(entity, name) { \
-    entity->FindOrCreateGauge(&BOOST_PP_CAT(METRIC_, \
-        BOOST_PP_CAT(name, _compaction_tasks_added)), uint64_t(0)), \
-    entity->FindOrCreateGauge(&BOOST_PP_CAT(METRIC_, \
-        BOOST_PP_CAT(name, _compaction_tasks_removed)), uint64_t(0)), \
-    entity->FindOrCreateGauge(&BOOST_PP_CAT(METRIC_, \
-        BOOST_PP_CAT(name, _compaction_input_files_added)), uint64_t(0)), \
-    entity->FindOrCreateGauge(&BOOST_PP_CAT(METRIC_, \
-        BOOST_PP_CAT(name, _compaction_input_files_removed)), uint64_t(0)), \
-    entity->FindOrCreateGauge(&BOOST_PP_CAT(METRIC_, \
-        BOOST_PP_CAT(name, _compaction_input_bytes_added)), uint64_t(0)), \
-    entity->FindOrCreateGauge(&BOOST_PP_CAT(METRIC_, \
-        BOOST_PP_CAT(name, _compaction_input_bytes_removed)), uint64_t(0)) \
+    entity->FindOrCreateMetric<AtomicGauge<uint64_t>>(&BOOST_PP_CAT(METRIC_, \
+        BOOST_PP_CAT(name, _tasks_added)), uint64_t(0)), \
+    entity->FindOrCreateMetric<AtomicGauge<uint64_t>>(&BOOST_PP_CAT(METRIC_, \
+        BOOST_PP_CAT(name, _tasks_removed)), uint64_t(0)), \
+    entity->FindOrCreateMetric<AtomicGauge<uint64_t>>(&BOOST_PP_CAT(METRIC_, \
+        BOOST_PP_CAT(name, _input_files_added)), uint64_t(0)), \
+    entity->FindOrCreateMetric<AtomicGauge<uint64_t>>(&BOOST_PP_CAT(METRIC_, \
+        BOOST_PP_CAT(name, _input_files_removed)), uint64_t(0)), \
+    entity->FindOrCreateMetric<AtomicGauge<uint64_t>>(&BOOST_PP_CAT(METRIC_, \
+        BOOST_PP_CAT(name, _input_bytes_added)), uint64_t(0)), \
+    entity->FindOrCreateMetric<AtomicGauge<uint64_t>>(&BOOST_PP_CAT(METRIC_, \
+        BOOST_PP_CAT(name, _input_bytes_removed)), uint64_t(0)) \
 }
+
+#define ROCKSDB_COMPACTION_TASK_METRICS_TYPE_INSTANCE(entity, name) \
+  rocksdb::RocksDBTaskStateMetrics { \
+    ROCKSDB_TASK_METRICS_INSTANCE(entity, BOOST_PP_CAT(name, _background_compaction)), \
+    ROCKSDB_TASK_METRICS_INSTANCE(entity, BOOST_PP_CAT(name, _full_compaction)), \
+    ROCKSDB_TASK_METRICS_INSTANCE(entity, BOOST_PP_CAT(name, _post_split_compaction)), \
+    ROCKSDB_TASK_METRICS_INSTANCE(entity, BOOST_PP_CAT(name, _task_metrics_compaction)) \
+  }
+
 
 #define ROCKSDB_PRIORITY_THREAD_POOL_METRICS_INSTANCE(entity) \
     rocksdb::RocksDBPriorityThreadPoolMetrics { \
-        ROCKSDB_TASK_METRICS_INSTANCE(entity, queued_task_metrics), \
-        ROCKSDB_TASK_METRICS_INSTANCE(entity, paused_task_metrics), \
-        ROCKSDB_TASK_METRICS_INSTANCE(entity, active_task_metrics) \
+        ROCKSDB_COMPACTION_TASK_METRICS_TYPE_INSTANCE(entity, queued), \
+        ROCKSDB_COMPACTION_TASK_METRICS_TYPE_INSTANCE(entity, paused), \
+        ROCKSDB_COMPACTION_TASK_METRICS_TYPE_INSTANCE(entity, active), \
+        ROCKSDB_COMPACTION_TASK_METRICS_TYPE_INSTANCE(entity, nonactive) \
     }
 
 }  // namespace rocksdb
-
-#endif  // YB_ROCKSDB_UTIL_TASK_METRICS_H

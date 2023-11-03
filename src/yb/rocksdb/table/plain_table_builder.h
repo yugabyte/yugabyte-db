@@ -20,7 +20,6 @@
 
 #pragma once
 
-#ifndef ROCKSDB_LITE
 #include <stdint.h>
 #include <vector>
 #include "yb/rocksdb/options.h"
@@ -153,5 +152,3 @@ class PlainTableBuilder: public TableBuilder {
 };
 
 }  // namespace rocksdb
-
-#endif  // ROCKSDB_LITE

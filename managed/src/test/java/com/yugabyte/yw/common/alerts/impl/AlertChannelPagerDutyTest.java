@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common.alerts.impl;
 
+import static com.yugabyte.yw.common.ThrownMatcher.thrown;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
@@ -9,11 +10,16 @@ import static org.hamcrest.Matchers.is;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.WSClientRefresher;
 import com.yugabyte.yw.common.alerts.AlertChannelPagerDutyParams;
+import com.yugabyte.yw.common.alerts.AlertChannelTemplateService;
+import com.yugabyte.yw.common.alerts.AlertTemplateVariableService;
 import com.yugabyte.yw.common.alerts.PlatformNotificationException;
+import com.yugabyte.yw.forms.AlertChannelTemplatesExt;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.AlertChannel.ChannelType;
 import com.yugabyte.yw.models.Customer;
 import java.io.IOException;
 import java.nio.charset.Charset;
@@ -23,26 +29,27 @@ import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class AlertChannelPagerDutyTest extends FakeDBApplication {
 
-  @Rule public ExpectedException exceptionGrabber = ExpectedException.none();
-
   private static final String PAGERDUTY_PATH = "/test/path";
 
   private Customer defaultCustomer;
 
-  @InjectMocks private AlertChannelPagerDuty channel;
+  private AlertChannelPagerDuty channel;
 
   private MockWebServer server;
+
+  AlertChannelTemplateService alertChannelTemplateService;
+
+  AlertTemplateVariableService alertTemplateVariableService;
+
+  AlertChannelTemplatesExt alertChannelTemplatesExt;
 
   @Before
   public void setUp() throws IOException {
@@ -50,7 +57,15 @@ public class AlertChannelPagerDutyTest extends FakeDBApplication {
     server = new MockWebServer();
     server.start();
     HttpUrl baseUrl = server.url(PAGERDUTY_PATH);
-    channel = new AlertChannelPagerDuty(baseUrl.toString());
+    WSClientRefresher refresher = app.injector().instanceOf(WSClientRefresher.class);
+
+    alertTemplateVariableService = app.injector().instanceOf(AlertTemplateVariableService.class);
+    alertChannelTemplateService = app.injector().instanceOf(AlertChannelTemplateService.class);
+    alertChannelTemplatesExt =
+        alertChannelTemplateService.getWithDefaults(
+            defaultCustomer.getUuid(), ChannelType.PagerDuty);
+    channel =
+        new AlertChannelPagerDuty(baseUrl.toString(), refresher, alertTemplateVariableService);
   }
 
   @Test
@@ -64,7 +79,7 @@ public class AlertChannelPagerDutyTest extends FakeDBApplication {
     channelConfig.setParams(params);
 
     Alert alert = ModelFactory.createAlert(defaultCustomer);
-    channel.sendNotification(defaultCustomer, alert, channelConfig);
+    channel.sendNotification(defaultCustomer, alert, channelConfig, alertChannelTemplatesExt);
 
     RecordedRequest request = server.takeRequest();
     assertThat(request.getPath(), is(PAGERDUTY_PATH));
@@ -76,13 +91,17 @@ public class AlertChannelPagerDutyTest extends FakeDBApplication {
     JsonNode payloadJson = requestJson.get("payload");
     assertThat(
         payloadJson.get("summary").asText(),
-        equalTo("alertConfiguration Alert for test@customer.com is firing.\n\nUniverse on fire!"));
+        equalTo(
+            "alertConfiguration alert with severity level 'SEVERE'"
+                + " for customer 'test@customer.com' is firing.\n\nUniverse on fire!"));
     assertThat(payloadJson.get("source").asText(), equalTo("YB Platform test@customer.com"));
     assertThat(payloadJson.get("severity").asText(), equalTo("error"));
     assertThat(payloadJson.get("group").asText(), equalTo("UNIVERSE"));
     assertThat(
         payloadJson.get("class").asText(),
-        equalTo("YugabyteDB Anywhere Alert - <[test@customer.com][tc]>"));
+        equalTo(
+            "YugabyteDB Anywhere SEVERE alert alertConfiguration firing"
+                + " for test@customer.com"));
   }
 
   @Test
@@ -97,7 +116,7 @@ public class AlertChannelPagerDutyTest extends FakeDBApplication {
 
     Alert alert = ModelFactory.createAlert(defaultCustomer);
     alert.setState(State.RESOLVED);
-    channel.sendNotification(defaultCustomer, alert, channelConfig);
+    channel.sendNotification(defaultCustomer, alert, channelConfig, alertChannelTemplatesExt);
 
     RecordedRequest request = server.takeRequest();
     assertThat(request.getPath(), is(PAGERDUTY_PATH));
@@ -120,8 +139,13 @@ public class AlertChannelPagerDutyTest extends FakeDBApplication {
 
     Alert alert = ModelFactory.createAlert(defaultCustomer);
 
-    exceptionGrabber.expect(PlatformNotificationException.class);
-    channel.sendNotification(defaultCustomer, alert, channelConfig);
+    assertThat(
+        () ->
+            channel.sendNotification(
+                defaultCustomer, alert, channelConfig, alertChannelTemplatesExt),
+        thrown(
+            PlatformNotificationException.class,
+            "Error sending PagerDuty event for alert Alert 1: {\"error\":\"not_ok\"}"));
   }
 
   @After

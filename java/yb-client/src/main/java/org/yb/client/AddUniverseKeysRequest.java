@@ -15,7 +15,7 @@ package org.yb.client;
 
 import com.google.protobuf.ByteString;
 import com.google.protobuf.Message;
-import org.jboss.netty.buffer.ChannelBuffer;
+import io.netty.buffer.ByteBuf;
 import java.util.Map;
 import java.util.Iterator;
 import org.yb.util.Pair;
@@ -33,7 +33,7 @@ public class AddUniverseKeysRequest extends YRpc<AddUniverseKeysResponse> {
   }
 
   @Override
-  ChannelBuffer serialize(Message header) {
+  ByteBuf serialize(Message header) {
     assert header.isInitialized();
     final MasterEncryptionOuterClass.AddUniverseKeysRequestPB.Builder builder =
             MasterEncryptionOuterClass.AddUniverseKeysRequestPB.newBuilder();

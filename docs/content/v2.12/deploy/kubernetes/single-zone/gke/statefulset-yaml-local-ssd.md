@@ -14,20 +14,20 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/preview/deploy/kubernetes/single-zone/gke/helm-chart" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+    <a href="../helm-chart" class="nav-link">
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       Helm Chart
     </a>
   </li>
   <li >
-    <a href="/preview/deploy/kubernetes/single-zone/gke/statefulset-yaml" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+    <a href="../statefulset-yaml" class="nav-link">
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       YAML (remote disk)
     </a>
   </li>
    <li >
-    <a href="/preview/deploy/kubernetes/single-zone/gke/statefulset-yaml-local-ssd" class="nav-link active">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+    <a href="../statefulset-yaml-local-ssd" class="nav-link active">
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       YAML (local disk)
     </a>
   </li>

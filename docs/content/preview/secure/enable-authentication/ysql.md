@@ -95,7 +95,7 @@ A YugabyteDB cluster with authentication enabled starts with the default admin u
 $ ./bin/ysqlsh -U yugabyte
 ```
 
-You are prompted to enter the password. Upon successful login to the YSQL shell, you should see the following output:
+You are prompted to enter the password. After logging in, you should see the following output:
 
 ```output
 ysqlsh (11.2-YB-2.7.0.0-b0)
@@ -190,7 +190,7 @@ You should see a table output similar to the following:
 
 In this table, you can see that `postgres`, `admin`, and `yugabyte` users can log in and have `SUPERUSER` status.
 
-As an easier alternative, you can run the `\du` [meta-command](../../../admin/ysqlsh/#meta-commands) to see this information in a simpler format:
+As an easier alternative, you can run the `\du` [meta-command](../../../admin/ysqlsh-meta-commands/) to see this information in a simpler format:
 
 ```sql
 yugabyte=# \du
@@ -251,7 +251,7 @@ yugabyte=# SELECT rolname, rolsuper, rolcanlogin FROM pg_roles WHERE rolname='jo
 (1 row)
 ```
 
-To grant `SUPERUSER` privileges to `john`, login as a superuser and run the following `ALTER ROLE` command:
+To grant `SUPERUSER` privileges to `john`, log in as a superuser and run the following `ALTER ROLE` command:
 
 ```sql
 yugabyte=# ALTER ROLE john SUPERUSER;
@@ -287,7 +287,7 @@ yugabyte=# ALTER ROLE john WITH NOSUPERUSER;
 
 ### Enable and disable login privileges
 
-To verify that `john` can login to the database, do the following:
+To verify that `john` can log in to the database, do the following:
 
 ```sql
 yugabyte=# SELECT rolname, rolcanlogin FROM pg_roles WHERE rolname='john';

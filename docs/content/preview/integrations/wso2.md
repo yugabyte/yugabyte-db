@@ -3,14 +3,14 @@ title: WSO2 Identity Server
 linkTitle: WSO2 Identity Server
 description: WSO2 Identity Server
 menu:
-  preview:
+  preview_integrations:
     identifier: wso2
-    parent: integrations
+    parent: integrations-security
     weight: 571
 type: docs
 ---
 
-This document describes how to use [WSO2 Identity Server](https://wso2.com/identity-and-access-management/) to manage access to YugabyteDB.
+This document describes how to use [WSO2 Identity Server](https://wso2.com/identity-server/) to manage access to YugabyteDB.
 
 ## Prerequisites
 
@@ -69,11 +69,11 @@ You update the database configuration as follows:
 
 ### Set Up the Database Driver
 
-You need to download the [Postgres JDBC driver](https://jdbc.postgresql.org/download.html) into the `lib/` directory.
+You need to download the [PostgreSQL JDBC driver](https://jdbc.postgresql.org/download/) into the `lib/` directory.
 
 ### Apply the Yugabyte Patch for WSO2
 
-WSO2 default carbon kernel code violates REPEATABLE READ semantics. Since YugabyteDB has stricter transaction semantics and does not allow unrepeatable read anomaly, you need to do the following in order to be able to use a patch of the critical JAR for YugabyteDB compatibility:
+WSO2 default carbon kernel code violates REPEATABLE READ semantics. Because YugabyteDB has stricter transaction semantics and does not allow unrepeatable read anomaly, you need to do the following in order to be able to use a patch of the critical JAR for YugabyteDB compatibility:
 
 - Download the patched [JAR](https://github.com/m-iancu/carbon-kernel/releases/download/4.6.x-yb-1/org.wso2.carbon.registry.core_4.6.2.SNAPSHOT.jar) from [GitHub](https://github.com/m-iancu/carbon-kernel/releases/tag/4.6.x-yb-1) by executing the following command:
 
@@ -97,7 +97,7 @@ You can initialize WSO2 Identity Server and YugabyteDB as follows:
     wget https://gist.githubusercontent.com/m-iancu/8e892e7257efcd0c37c8e459e2a4066d/raw/489ee3eeb06a05ab2f2896bdd6d2480eb864a8ff/wso2_is_5.11.0.sql
     ```
 
-  - Download and start YugabyteDB by following instructions provided in [Downloading YugabyteDB](https://download.yugabyte.com/) and [YugabyteDB Quick Start Guide](/preview/quick-start/).
+  - Download and start YugabyteDB by following instructions in [Quick Start](../../quick-start/).
 
   - Load the SQL dump into YugabyteDB by executing the following command:
 

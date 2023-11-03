@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TSERVER_FACTORY_H
-#define YB_TSERVER_FACTORY_H
+#pragma once
 
 #include "yb/tserver/ts_tablet_manager.h"
 
@@ -26,16 +25,10 @@ class Factory {
   }
 
   std::unique_ptr<cqlserver::CQLServer> CreateCQLServer(
-      const cqlserver::CQLServerOptions& options, rpc::IoService* io,
-      tserver::TabletServer* tserver) {
-    return std::make_unique<cqlserver::CQLServer>(
-        options, io, tserver,
-        std::bind(&TSTabletManager::PreserveLocalLeadersOnly, tserver->tablet_manager(),
-                  std::placeholders::_1));
+      const cqlserver::CQLServerOptions& options, IoService* io, tserver::TabletServer* tserver) {
+    return std::make_unique<cqlserver::CQLServer>(options, io, tserver);
   }
 };
 
 } // namespace tserver
 } // namespace yb
-
-#endif // YB_TSERVER_FACTORY_H

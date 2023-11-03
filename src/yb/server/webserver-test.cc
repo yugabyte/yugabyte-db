@@ -53,10 +53,13 @@
 #include "yb/util/zlib.h"
 
 using std::string;
+using std::vector;
 using strings::Substitute;
 
 DECLARE_int32(webserver_max_post_length_bytes);
 DECLARE_uint64(webserver_compression_threshold_kb);
+DECLARE_string(webserver_ca_certificate_file);
+DECLARE_bool(webserver_strict_transport_security);
 
 namespace yb {
 
@@ -109,10 +112,30 @@ TEST_F(WebserverTest, TestIndexPage) {
   ASSERT_STR_CONTAINS(buf_.ToString(), "Home");
 }
 
+TEST_F(WebserverTest, TestHSTSOnHttp) {
+  // Default behaviour should not included HSTS flag.
+  curl_.set_return_headers(true);
+  ASSERT_OK(curl_.FetchURL(url_, &buf_));
+
+  // Check expected headers.
+  ASSERT_STR_CONTAINS(buf_.ToString(), "X-Content-Type-Options: nosniff");
+  ASSERT_STR_NOT_CONTAINS(buf_.ToString(), "Strict-Transport-Security: max-age=31536000");
+
+  // Turning on HSTS flag shouldn't work on HTTP.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_webserver_strict_transport_security) = true;
+  curl_.set_return_headers(true);
+
+  ASSERT_OK(curl_.FetchURL(url_, &buf_));
+
+  // Check expected headers.
+  ASSERT_STR_CONTAINS(buf_.ToString(), "X-Content-Type-Options: nosniff");
+  ASSERT_STR_NOT_CONTAINS(buf_.ToString(), "Strict-Transport-Security: max-age=31536000");
+}
+
 TEST_F(WebserverTest, TestHttpCompression) {
   std::ostringstream oss;
   string decoded_str;
-  FLAGS_webserver_compression_threshold_kb = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_webserver_compression_threshold_kb) = 0;
 
   // Curl with gzip compression enabled.
   ASSERT_OK(curl_.FetchURL(url_, &buf_, EasyCurl::kDefaultTimeoutSec,
@@ -130,13 +153,15 @@ TEST_F(WebserverTest, TestHttpCompression) {
   ASSERT_OK(curl_.FetchURL(url_, &buf_, EasyCurl::kDefaultTimeoutSec,
                           {"Accept-Encoding: deflate, megaturbogzip,  gzip , br"}));
   ASSERT_STR_CONTAINS(buf_.ToString(), "Content-Encoding: gzip");
-
+  ASSERT_STR_CONTAINS(buf_.ToString(), "X-Content-Type-Options: nosniff");
 
   // Curl with compression disabled.
   curl_.set_return_headers(true);
   ASSERT_OK(curl_.FetchURL(url_, &buf_));
+
   // Check expected header.
   ASSERT_STR_CONTAINS(buf_.ToString(), "Content-Type:");
+  ASSERT_STR_CONTAINS(buf_.ToString(), "X-Content-Type-Options: nosniff");
 
   // Check unexpected header.
   ASSERT_STR_NOT_CONTAINS(buf_.ToString(), "Content-Encoding: gzip");
@@ -148,8 +173,9 @@ TEST_F(WebserverTest, TestHttpCompression) {
   curl_.set_return_headers(true);
   ASSERT_OK(curl_.FetchURL(url_, &buf_, EasyCurl::kDefaultTimeoutSec,
                            {"Accept-Encoding: megaturbogzip, deflate, xz"}));
-  // Check expected header.
+  // Check expected headers.
   ASSERT_STR_CONTAINS(buf_.ToString(), "HTTP/1.1 200 OK");
+  ASSERT_STR_CONTAINS(buf_.ToString(), "X-Content-Type-Options: nosniff");
 
   // Check unexpected header.
   ASSERT_STR_NOT_CONTAINS(buf_.ToString(), "Content-Encoding: gzip");
@@ -163,7 +189,7 @@ TEST_F(WebserverTest, TestDefaultPaths) {
   // Test memz
   ASSERT_OK(curl_.FetchURL(strings::Substitute("http://$0/memz?raw=1", ToString(addr_)),
                            &buf_));
-#ifdef TCMALLOC_ENABLED
+#if YB_TCMALLOC_ENABLED
   ASSERT_STR_CONTAINS(buf_.ToString(), "Bytes in use by application");
 #else
   ASSERT_STR_CONTAINS(buf_.ToString(), "not available unless tcmalloc is enabled");
@@ -235,7 +261,7 @@ TEST_F(WebserverTest, TestPprofPaths) {
 // Send a POST request with too much data. It should reject
 // the request with the correct HTTP error code.
 TEST_F(WebserverTest, TestPostTooBig) {
-  FLAGS_webserver_max_post_length_bytes = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_webserver_max_post_length_bytes) = 10;
   string req(10000, 'c');
   Status s = curl_.PostToURL(strings::Substitute("http://$0/pprof/symbol", ToString(addr_)),
                              req, &buf_);
@@ -270,11 +296,11 @@ class WebserverSecureTest : public WebserverTest {
     auto opts = WebserverTest::ServerOptions();
     opts.bind_interface = "127.0.0.2";
 
-    const auto sub_dir = JoinPathSegments("ent", "test_certs");
-    const auto certs_dir = JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir);
+    const auto certs_dir = GetCertsDir();
     opts.certificate_file = JoinPathSegments(certs_dir, Format("node.$0.crt", opts.bind_interface));
     opts.private_key_file = JoinPathSegments(certs_dir, Format("node.$0.key", opts.bind_interface));
-    ca_cert_ = JoinPathSegments(certs_dir, "ca.crt");
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_webserver_ca_certificate_file) =
+        JoinPathSegments(certs_dir, "ca.crt");
     return opts;
   }
 
@@ -282,15 +308,30 @@ class WebserverSecureTest : public WebserverTest {
     WebserverTest::SetUp();
 
     url_ = Substitute("https://$0", ToString(addr_));
+    curl_.set_ca_cert(FLAGS_webserver_ca_certificate_file);
   }
-
- protected:
-  std::string ca_cert_;
 };
 
 // Test HTTPS endpoint.
 TEST_F(WebserverSecureTest, TestIndexPage) {
-  ASSERT_OK(curl_.FetchURL(url_, &buf_, EasyCurl::kDefaultTimeoutSec, {} /* headers */, ca_cert_));
+  ASSERT_OK(curl_.FetchURL(url_, &buf_, EasyCurl::kDefaultTimeoutSec, {} /* headers */));
+}
+
+// Test HSTS behaviour.
+TEST_F(WebserverSecureTest, TestStrictTransportSecurity) {
+  // Check that HSTS should not be present by default.
+  curl_.set_return_headers(true);
+
+  ASSERT_OK(curl_.FetchURL(url_, &buf_, EasyCurl::kDefaultTimeoutSec, {} /* headers */));
+  ASSERT_STR_CONTAINS(buf_.ToString(), "X-Content-Type-Options: nosniff");
+  ASSERT_STR_NOT_CONTAINS(buf_.ToString(), "Strict-Transport-Security: max-age=31536000");
+
+  // Turn on HSTS GFlag and check headers.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_webserver_strict_transport_security) = true;
+  curl_.set_return_headers(true);
+  ASSERT_OK(curl_.FetchURL(url_, &buf_, EasyCurl::kDefaultTimeoutSec, {} /* headers */));
+  ASSERT_STR_CONTAINS(buf_.ToString(), "X-Content-Type-Options: nosniff");
+  ASSERT_STR_CONTAINS(buf_.ToString(), "Strict-Transport-Security: max-age=31536000");
 }
 
 } // namespace yb

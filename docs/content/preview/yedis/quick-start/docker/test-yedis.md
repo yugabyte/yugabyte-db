@@ -1,3 +1,8 @@
+<!--
++++
+private = true
++++
+-->
 
 * The `yb-docker-ctl` utility initializes the YEDIS API automatically.
 
@@ -7,7 +12,7 @@
 $ docker exec -it yb-tserver-n1 /home/yugabyte/bin/redis-cli
 ```
 
-```
+```output
 127.0.0.1:6379>
 ```
 
@@ -17,6 +22,6 @@ $ docker exec -it yb-tserver-n1 /home/yugabyte/bin/redis-cli
 127.0.0.1:6379> PING
 ```
 
-```
+```output
 "PONG"
 ```

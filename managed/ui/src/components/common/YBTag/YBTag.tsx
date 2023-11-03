@@ -7,7 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React, { FC } from 'react';
+import { FC } from 'react';
 import clsx from 'clsx';
 
 import './YBTag.scss';
@@ -15,7 +15,8 @@ import './YBTag.scss';
 export enum YBTag_Types {
   PRIMARY = 'primary',
   YB_ORANGE = 'yb-orange',
-  PLAIN_TEXT = 'plain-text'
+  PLAIN_TEXT = 'plain-text',
+  YB_GRAY = 'yb-gray'
 }
 
 interface YBTagProps {

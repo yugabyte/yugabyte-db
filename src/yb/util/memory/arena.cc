@@ -39,17 +39,11 @@
 
 #include "yb/util/alignment.h"
 #include "yb/util/debug-util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 
-using std::copy;
-using std::max;
-using std::min;
-using std::reverse;
 using std::shared_ptr;
-using std::sort;
-using std::swap;
 
-DEFINE_uint64(arena_warn_threshold_bytes, 256*1024*1024,
+DEFINE_UNKNOWN_uint64(arena_warn_threshold_bytes, 256*1024*1024,
              "Number of bytes beyond which to emit a warning for a large arena");
 TAG_FLAG(arena_warn_threshold_bytes, hidden);
 
@@ -86,7 +80,7 @@ uint8_t* ArenaComponent<Traits>::AllocateBytesAligned(const size_t size, const s
 template <class Traits>
 inline void ArenaComponent<Traits>::AsanUnpoison(const void* addr, size_t size) {
 #ifdef ADDRESS_SANITIZER
-  std::lock_guard<mutex_type> l(asan_lock_);
+  std::lock_guard l(asan_lock_);
   ASAN_UNPOISON_MEMORY_REGION(addr, size);
 #endif
 }
@@ -146,7 +140,7 @@ ArenaBase<Traits>::~ArenaBase() {
 
 template <class Traits>
 void *ArenaBase<Traits>::AllocateBytesFallback(const size_t size, const size_t align) {
-  std::lock_guard<mutex_type> lock(component_lock_);
+  std::lock_guard lock(component_lock_);
 
   // It's possible another thread raced with us and already allocated
   // a new component, in which case we should try the "fast path" again
@@ -224,6 +218,9 @@ void ArenaBase<Traits>::AddComponentUnlocked(Buffer buffer, Component* component
 
   buffer.Release();
   ReleaseStoreCurrent(component);
+  if (!second_ && component->next()) {
+    second_ = component;
+  }
   arena_footprint_ += component->full_size();
   if (PREDICT_FALSE(arena_footprint_ > FLAGS_arena_warn_threshold_bytes) && !warned_) {
     LOG(WARNING) << "Arena " << reinterpret_cast<const void *>(this)
@@ -235,29 +232,48 @@ void ArenaBase<Traits>::AddComponentUnlocked(Buffer buffer, Component* component
 }
 
 template <class Traits>
-void ArenaBase<Traits>::Reset() {
-  std::lock_guard<mutex_type> lock(component_lock_);
+void ArenaBase<Traits>::Reset(ResetMode mode) {
+  std::lock_guard lock(component_lock_);
 
-  auto* current = CHECK_NOTNULL(AcquireLoadCurrent());
-  current->Reset(buffer_allocator_);
-  arena_footprint_ = current->full_size();
+  Component* current = CHECK_NOTNULL(AcquireLoadCurrent());
+  if (mode == ResetMode::kKeepFirst && second_) {
+    auto* first = second_->SetNext(nullptr);
+    current->Destroy(buffer_allocator_);
+    current = first;
+    ReleaseStoreCurrent(first);
+    second_ = nullptr;
+  }
+
   warned_ = false;
+  if (current) {
+    current->Reset(buffer_allocator_);
 
 #ifndef NDEBUG
-  // In debug mode release the last component too for (hopefully) better
-  // detection of memory-related bugs (invalid shallow copies, etc.).
-  size_t last_size = current->full_size();
-  current->Destroy(buffer_allocator_);
-  arena_footprint_ = 0;
-  ReleaseStoreCurrent(nullptr);
-  AddComponentUnlocked(NewBuffer(last_size, 0));
+    // In debug mode release the last component too for (hopefully) better
+    // detection of memory-related bugs (invalid shallow copies, etc.).
+    size_t last_size = current->full_size();
+    current->Destroy(buffer_allocator_);
+    arena_footprint_ = 0;
+    ReleaseStoreCurrent(nullptr);
+    AddComponentUnlocked(NewBuffer(last_size, 0));
+#else
+    arena_footprint_ = current->full_size();
 #endif
+  } else {
+    arena_footprint_ = 0;
+  }
 }
 
 template <class Traits>
 size_t ArenaBase<Traits>::memory_footprint() const {
-  std::lock_guard<mutex_type> lock(component_lock_);
+  std::lock_guard lock(component_lock_);
   return arena_footprint_;
+}
+
+template <class Traits>
+size_t ArenaBase<Traits>::UsedBytes() {
+  std::lock_guard lock(component_lock_);
+  return arena_footprint_ - AcquireLoadCurrent()->free_bytes();
 }
 
 // Explicit instantiation.
@@ -265,4 +281,95 @@ template class ArenaBase<ThreadSafeArenaTraits>;
 template class ArenaBase<ArenaTraits>;
 
 }  // namespace internal
+
+namespace {
+
+struct AllocatedBuffer {
+  char* address = nullptr;
+  size_t size = std::numeric_limits<size_t>::max();
+
+  char* Allocate(size_t bytes, size_t alignment) {
+    auto allocation_size = Arena::kStartBlockSize;
+    auto* allocated = static_cast<char*>(malloc(allocation_size));
+    auto* result = align_up(allocated, alignment);
+    address = align_up(pointer_cast<char*>(result + bytes), 16);
+    size = allocated + allocation_size - address;
+    return result;
+  }
+};
+
+template <class T>
+class SharedArenaAllocator {
+ public:
+  using value_type = T;
+  using size_type = size_t;
+  using difference_type = ptrdiff_t;
+
+  using pointer = T*;
+  using const_pointer = const T*;
+  using reference = T&;
+  using const_reference = const T&;
+
+  template <class U>
+  struct rebind {
+    using other = SharedArenaAllocator<U>;
+  };
+
+  explicit SharedArenaAllocator(AllocatedBuffer* buffer) : buffer_(buffer) {}
+
+  template<class U>
+  SharedArenaAllocator(const SharedArenaAllocator<U>& other) : buffer_(other.buffer()) {
+  }
+
+  pointer allocate(size_type n) {
+    auto result = pointer_cast<pointer>(buffer_->Allocate(n * sizeof(T), alignof(T)));
+    buffer_ = nullptr; // this allocation could be used only once.
+    return result;
+  }
+
+  void deallocate(pointer p, size_type n) {
+    free(p);
+  }
+
+  template<class... Args>
+  void construct(pointer p, Args&&... args) {
+    new (static_cast<void*>(p)) T(std::forward<Args>(args)...);
+  }
+
+  void destroy(pointer p) { p->~T(); }
+
+  AllocatedBuffer* buffer() const {
+    return buffer_;
+  }
+
+ private:
+  AllocatedBuffer* buffer_;
+};
+
+class PreallocatedArena {
+ public:
+  explicit PreallocatedArena(const AllocatedBuffer& buffer)
+      : allocator_(HeapBufferAllocator::Get(), buffer.address, buffer.size),
+        arena_(&allocator_, buffer.size) {
+  }
+
+  ThreadSafeArena& arena() {
+    return arena_;
+  }
+
+ private:
+  PreallocatedBufferAllocator allocator_;
+  ThreadSafeArena arena_;
+};
+
+} // namespace
+
+std::shared_ptr<ThreadSafeArena> SharedArena() {
+  AllocatedBuffer buffer;
+  SharedArenaAllocator<Arena> allocator(&buffer);
+  auto preallocated_arena = std::allocate_shared<PreallocatedArena>(allocator, buffer);
+  return std::shared_ptr<ThreadSafeArena>(
+      std::move(preallocated_arena), &preallocated_arena->arena());
+}
+
 }  // namespace yb

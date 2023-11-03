@@ -11,10 +11,9 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_STATUS_LOG_H
-#define YB_UTIL_STATUS_LOG_H
+#pragma once
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/util/status.h"
 
@@ -33,24 +32,24 @@
 
 // Emit a warning if 'to_call' returns a bad status.
 #define YB_WARN_NOT_OK(to_call, warning_prefix) do { \
-    ::yb::Status _s = (to_call); \
+    auto&& _s = (to_call); \
     if (PREDICT_FALSE(!_s.ok())) { \
-      YB_LOG(WARNING) << (warning_prefix) << ": " << _s.ToString();  \
+      YB_LOG(WARNING) << (warning_prefix) << ": " << StatusToString(_s);  \
     } \
   } while (0);
 
 #define WARN_WITH_PREFIX_NOT_OK(to_call, warning_prefix) do { \
-    ::yb::Status _s = (to_call); \
+    auto&& _s = (to_call); \
     if (PREDICT_FALSE(!_s.ok())) { \
-      YB_LOG(WARNING) << LogPrefix() << (warning_prefix) << ": " << _s; \
+      YB_LOG(WARNING) << LogPrefix() << (warning_prefix) << ": " << StatusToString(_s); \
     } \
   } while (0);
 
 // Emit a error if 'to_call' returns a bad status.
 #define ERROR_NOT_OK(to_call, error_prefix) do { \
-    ::yb::Status _s = (to_call); \
+    auto&& _s = (to_call); \
     if (PREDICT_FALSE(!_s.ok())) { \
-      YB_LOG(ERROR) << (error_prefix) << ": " << _s.ToString();  \
+      YB_LOG(ERROR) << (error_prefix) << ": " << StatusToString(_s);  \
     } \
   } while (0);
 
@@ -86,5 +85,3 @@
 // Checks that result is ok, extracts result value is case of success.
 #define CHECK_RESULT(expr) \
   RESULT_CHECKER_HELPER(expr, CHECK_OK(__result))
-
-#endif  // YB_UTIL_STATUS_LOG_H

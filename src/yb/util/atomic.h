@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_ATOMIC_H
-#define YB_UTIL_ATOMIC_H
+#pragma once
 
 #include <algorithm>
 #include <atomic>
@@ -39,7 +38,7 @@
 
 #include <boost/atomic.hpp>
 #include <boost/type_traits/make_signed.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/macros.h"
@@ -394,7 +393,7 @@ void SetAtomicFlag(U value, T* flag) {
 template <class T>
 void AtomicFlagSleepMs(T* flag) {
   auto value = GetAtomicFlag(flag);
-  if (value != 0) {
+  if (PREDICT_FALSE(value != 0)) {
     std::this_thread::sleep_for(std::chrono::milliseconds(value));
   }
 }
@@ -479,4 +478,3 @@ bool IsAcceptableAtomicImpl(const std::atomic<T>& atomic_variable) {
 }
 
 } // namespace yb
-#endif /* YB_UTIL_ATOMIC_H */

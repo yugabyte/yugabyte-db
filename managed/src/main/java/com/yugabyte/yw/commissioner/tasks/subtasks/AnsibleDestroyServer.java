@@ -27,9 +27,8 @@ import lombok.extern.slf4j.Slf4j;
 public class AnsibleDestroyServer extends NodeTaskBase {
 
   @Inject
-  protected AnsibleDestroyServer(
-      BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected AnsibleDestroyServer(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
   public static class Params extends NodeTaskParams {
@@ -49,7 +48,7 @@ public class AnsibleDestroyServer extends NodeTaskBase {
   }
 
   private void removeNodeFromUniverse(final String nodeName) {
-    Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     if (u.getNode(nodeName) == null) {
       log.error("No node in universe with name " + nodeName);
       return;
@@ -61,7 +60,8 @@ public class AnsibleDestroyServer extends NodeTaskBase {
           public void run(Universe universe) {
             UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
             universeDetails.removeNode(nodeName);
-            log.debug("Removing node " + nodeName + " from universe " + taskParams().universeUUID);
+            log.debug(
+                "Removing node " + nodeName + " from universe " + taskParams().getUniverseUUID());
           }
         };
 
@@ -86,7 +86,7 @@ public class AnsibleDestroyServer extends NodeTaskBase {
       }
     }
 
-    Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     UserIntent userIntent =
         u.getUniverseDetails()
             .getClusterByUuid(u.getNode(taskParams().nodeName).placementUuid)
@@ -111,6 +111,19 @@ public class AnsibleDestroyServer extends NodeTaskBase {
     }
 
     NodeDetails univNodeDetails = u.getNode(taskParams().nodeName);
+
+    try {
+      deleteNodeAgent(univNodeDetails);
+    } catch (Exception e) {
+      if (!taskParams().isForceDelete) {
+        throw e;
+      } else {
+        log.debug(
+            "Ignoring error deleting node agent {} due to isForceDelete being set.",
+            taskParams().nodeName,
+            e);
+      }
+    }
 
     if (userIntent.providerType.equals(Common.CloudType.onprem)
         && univNodeDetails.state != NodeDetails.NodeState.Decommissioned) {

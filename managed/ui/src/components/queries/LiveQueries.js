@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 // Can't use `useLocation` hook because this component is the child
 // of a component that calls withRouter: https://github.com/ReactTraining/react-router/issues/7015
 import { withRouter } from 'react-router';
@@ -7,12 +7,15 @@ import { Dropdown, MenuItem, Alert } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { Highlighter } from '../../helpers/Highlighter';
 import { YBPanelItem } from '../panels';
-import { QueryInfoSidePanel } from './QueryInfoSidePanel';
 import { YBButtonLink } from '../common/forms/fields';
 import { useLiveQueriesApi, filterBySearchTokens } from './helpers/queriesHelper';
 import { YBLoadingCircleIcon } from '../common/indicators';
 import { getProxyNodeAddress } from '../../utils/UniverseUtils';
 import { QuerySearchInput } from './QuerySearchInput';
+import { QueryType } from './helpers/constants';
+import { QueryInfoSidePanel } from './QueryInfoSidePanel';
+import { QueryApi } from '../../redesign/helpers/constants';
+
 import './LiveQueries.scss';
 
 const dropdownColKeys = {
@@ -63,7 +66,7 @@ const dropdownColKeys = {
 };
 
 const LiveQueriesComponent = ({ location }) => {
-  const [type, setType] = useState('');
+  const [type, setType] = useState('YSQL');
   const [searchTokens, setSearchTokens] = useState([]);
   const [selectedRow, setSelectedRow] = useState([]);
   const currentUniverse = useSelector((state) => state.universe.currentUniverse);
@@ -94,17 +97,6 @@ const LiveQueriesComponent = ({ location }) => {
       setSelectedRow([]);
     }
   }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    // Default to showing YSQL if YSQL tables are present
-    if (!type) {
-      if (ysqlQueries.length) {
-        setType('YSQL');
-      } else if (ycqlQueries.length) {
-        setType('YCQL');
-      }
-    }
-  }, [type, ycqlQueries, ysqlQueries]);
 
   const getTserverLink = (cell, row) => {
     const tserverPort = currentUniverse?.data?.universeDetails?.communicationPorts?.tserverHttpPort;
@@ -170,7 +162,6 @@ const LiveQueriesComponent = ({ location }) => {
     ? filterBySearchTokens(ysqlQueries, searchTokens, dropdownColKeys)
     : filterBySearchTokens(ycqlQueries, searchTokens, dropdownColKeys);
 
-  const hasQueryData = !!(ysqlQueries.length || ycqlQueries.length);
   let failedQueries = null;
   if (isYSQL) {
     if (errors.ysql > 0) {
@@ -181,15 +172,13 @@ const LiveQueriesComponent = ({ location }) => {
         </Alert>
       );
     }
-  } else {
-    if (errors.ycql > 0) {
-      const percentFailed = parseFloat(errors.ycql) / (errors.ycql + ycqlQueries.length);
-      failedQueries = (
-        <Alert bsStyle={percentFailed > 0.8 ? 'danger' : 'warning'}>
-          Number of failed queries: {errors.ycql}/{errors.ycql + ycqlQueries.length}
-        </Alert>
-      );
-    }
+  } else if (errors.ycql > 0) {
+    const percentFailed = parseFloat(errors.ycql) / (errors.ycql + ycqlQueries.length);
+    failedQueries = (
+      <Alert bsStyle={percentFailed > 0.8 ? 'danger' : 'warning'}>
+        Number of failed queries: {errors.ycql}/{errors.ycql + ycqlQueries.length}
+      </Alert>
+    );
   }
 
   return (
@@ -198,7 +187,7 @@ const LiveQueriesComponent = ({ location }) => {
         header={
           <div className="live-queries__container-title clearfix spacing-top">
             <div className="pull-left">
-              <h2 className="content-title pull-left">
+              <h2 className="content-title pull-left" data-testid="LiveQueries-Header">
                 Live Queries
                 {loading && !universePaused && (
                   <span className="live-queries__loading-indicator">
@@ -214,25 +203,23 @@ const LiveQueriesComponent = ({ location }) => {
                 btnClass="btn btn-default refresh-btn"
                 onClick={getLiveQueries}
               />
-              {hasQueryData && (
-                <div>
-                  <div className="live-queries__dropdown-label">Show live queries</div>
-                  <Dropdown id="queries-filter-dropdown" pullRight={true}>
-                    <Dropdown.Toggle>
-                      <i className="fa fa-database"></i>&nbsp;
-                      {type}
-                    </Dropdown.Toggle>
-                    <Dropdown.Menu>
-                      <MenuItem key="YCQL" active={!isYSQL} onClick={() => setType('YCQL')}>
-                        YCQL
-                      </MenuItem>
-                      <MenuItem key="YSQL" active={isYSQL} onClick={() => setType('YSQL')}>
-                        YSQL
-                      </MenuItem>
-                    </Dropdown.Menu>
-                  </Dropdown>
-                </div>
-              )}
+              <div>
+                <div className="live-queries__dropdown-label">Show live queries</div>
+                <Dropdown id="queries-filter-dropdown" pullRight={true}>
+                  <Dropdown.Toggle>
+                    <i className="fa fa-database"></i>&nbsp;
+                    {type}
+                  </Dropdown.Toggle>
+                  <Dropdown.Menu>
+                    <MenuItem key="YCQL" active={!isYSQL} onClick={() => setType('YCQL')}>
+                      YCQL
+                    </MenuItem>
+                    <MenuItem key="YSQL" active={isYSQL} onClick={() => setType('YSQL')}>
+                      YSQL
+                    </MenuItem>
+                  </Dropdown.Menu>
+                </Dropdown>
+              </div>
             </div>
           </div>
         }
@@ -300,9 +287,11 @@ const LiveQueriesComponent = ({ location }) => {
         }
       />
       <QueryInfoSidePanel
-        visible={selectedRow.length}
         onHide={() => setSelectedRow([])}
-        data={displayedQueries.find((x) => selectedRow.length && x.id === selectedRow[0])}
+        queryData={displayedQueries.find((x) => selectedRow.length && x.id === selectedRow[0])}
+        queryType={QueryType.LIVE}
+        queryApi={isYSQL ? QueryApi.YSQL : QueryApi.YCQL}
+        visible={selectedRow.length}
       />
     </div>
   );

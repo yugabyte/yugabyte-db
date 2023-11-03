@@ -14,48 +14,48 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws" class="nav-link">
-      <i class="fab fa-aws"></i>
+    <a href="../aws" class="nav-link">
+      <i class="fa-brands fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp" class="nav-link">
-      <i class="fab fa-google" aria-hidden="true"></i>
+    <a href="../gcp" class="nav-link">
+      <i class="fa-brands fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure" class="nav-link">
+    <a href="../azure" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       Azure
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+    <a href="../kubernetes" class="nav-link">
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/vmware-tanzu" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+    <a href="../vmware-tanzu" class="nav-link">
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
     </a>
   </li>
 
 <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/openshift" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>OpenShift</a>
+    <a href="../openshift" class="nav-link">
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>OpenShift</a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises" class="nav-link active">
-      <i class="fas fa-building"></i>
+    <a href="../on-premises" class="nav-link active">
+      <i class="fa-solid fa-building"></i>
       On-premises
     </a>
   </li>
@@ -120,7 +120,7 @@ Enable this option if you want the Node Exporter installed. You can skip this st
 
 #### Node Exporter User
 
-Override the default Prometheus user. This is useful when the user is pre-provisioned on nodes (in case user creation is disabled). If overridden, the installer checks whether or not the user exists and creates the user if it does not exist.
+Override the default Prometheus user. This is helpful when the user is pre-provisioned on nodes (in case user creation is disabled). If overridden, the installer checks whether or not the user exists and creates the user if it does not exist.
 
 ### Configure hardware for YugabyteDB nodes
 
@@ -178,7 +178,7 @@ This step is only required if you set **Manually Provision Nodes** to true and t
 
 You can manually provision each node using the pre-provisioning Python script, as follows:
 
-1. Login to Yugabyte Platform virtual machine via SSH.
+1. Log in to Yugabyte Platform virtual machine via SSH.
 
 1. Access the docker `yugaware` container, as follows:
 
@@ -251,11 +251,11 @@ The preceding table is based on the information on the [default ports page](/pre
 
 ##### Pre-provision nodes manually
 
-This process carries out all provisioning tasks on the database nodes which require elevated privileges. Once the database nodes have been prepared in this way, the universe creation process from Yugabyte Platform will connect with the nodes only via the `yugabyte` user, and not require any elevation of privileges to deploy and operate the YugabyteDB universe.
+This process carries out all provisioning tasks on the database nodes which require elevated privileges. After the database nodes have been prepared in this way, the universe creation process from Yugabyte Platform will connect with the nodes only via the `yugabyte` user, and not require any elevation of privileges to deploy and operate the YugabyteDB universe.
 
 Physical nodes (or cloud instances) are installed with a standard Centos 7 server image. The following steps are to be performed on each physical node, prior to universe creation:
 
-1. Login to each database node as a user with sudo enabled (the `centos` user in centos7 images).
+1. Log in to each database node as a user with sudo enabled (the `centos` user in centos7 images).
 
 1. Add the following line to `/etc/chrony.conf` (sudo is required):
 
@@ -263,9 +263,8 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
     server <your-time-server-IP-address> prefer iburst
     ```
 
+    Then, run the following command:
 
-    <br>Then, run the following command:
-    
     ```sh
     $ sudo chronyc makestep   # (force instant sync to NTP server)
     ```
@@ -278,11 +277,10 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
     $ sudo su - yugabyte   # (change to yugabyte user for convenient execution of next steps)
     ```
 
-    <br>Ensure that the `yugabyte` user has permissions to SSH into the YugabyteDB nodes (as defined in `/etc/ssh/sshd_config`).
+    Ensure that the `yugabyte` user has permissions to SSH into the YugabyteDB nodes (as defined in `/etc/ssh/sshd_config`).
 
 1. Copy the SSH public key to each DB node.
 
-    \
     This public key should correspond to the private key entered into the Yugabyte Platform provider.
 
 1. Run the following commands as the `yugabyte` user, after copying the SSH public key file to the user home directory:
@@ -321,7 +319,6 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
 
 1. Install the rsync and OpenSSL packages (sudo is required).
 
-    \
     Note that most Linux distributions include rsync and openssl. If your distribution is missing these packages, install them using the following commands:
 
     ```sh
@@ -329,7 +326,6 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
     $ sudo yum install rsync
     ```
 
-    \
     For airgapped environments, make sure your yum repository mirror contains these packages.
 
 1. If running on a virtual machine, tune kernel settings (sudo is required):
@@ -391,13 +387,13 @@ On each node, perform the following as a user with sudo access:
    sudo mkdir /var/log/prometheus
    sudo mkdir /var/run/prometheus
    sudo mv /tmp/node_exporter-1.3.1.linux-amd64.tar  /opt/prometheus
-   sudo adduser prometheus # (also adds group “prometheus”)
+   sudo adduser prometheus # (also adds group "prometheus")
    sudo chown -R prometheus:prometheus /opt/prometheus
    sudo chown -R prometheus:prometheus /etc/prometheus
    sudo chown -R prometheus:prometheus /var/log/prometheus
    sudo chown -R prometheus:prometheus /var/run/prometheus
    sudo chmod +r /opt/prometheus/node_exporter-1.3.1.linux-amd64.tar
-   sudo su - prometheus (user session is now as user “prometheus”)
+   sudo su - prometheus (user session is now as user "prometheus")
    ```
 
 1. Run the following commands as user `prometheus`:
@@ -414,7 +410,6 @@ On each node, perform the following as a user with sudo access:
    sudo vi /etc/systemd/system/node_exporter.service
    ```
 
-
    Add the following to the `/etc/systemd/system/node_exporter.service` file:
 
      ```conf
@@ -422,16 +417,16 @@ On each node, perform the following as a user with sudo access:
      Description=node_exporter - Exporter for machine metrics.
      Documentation=https://github.com/William-Yeh/ansible-prometheus
      After=network.target
-   
+
      [Install]
      WantedBy=multi-user.target
-   
+
      [Service]
      Type=simple
-   
+
      User=prometheus
      Group=prometheus
-   
+
      ExecStart=/opt/prometheus/node_exporter-1.3.1.linux-amd64/node_exporter  --web.listen-address=:9300 --collector.textfile.directory=/tmp/yugabyte/metrics
      ```
 
@@ -522,7 +517,7 @@ Yugabyte Platform supports performing YugabyteDB liveness checks, log file manag
 
 **Sudo is required to set up these services!**
 
-If Platform will be using **cron jobs**, make sure the yugabyte user is allowed to run crontab. If you’re using the cron.allow file to manage crontab access, add the yugabyte user to this file. If you’re using the cron.deny file, remove the yugabyte user from this file.
+If Platform will be using **cron jobs**, make sure the yugabyte user is allowed to run crontab. If you’re using the cron.allow file to manage crontab access, add the yugabyte user to this file. If you're using the cron.deny file, remove the yugabyte user from this file.
 
 If you plan to have Platform use **systemd services** to perform the monitoring operations mentioned above, then make sure ...
 -->
@@ -579,7 +574,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    /bin/systemctl daemon-reload
    ```
 
-2. Ensure that you have root access and add the following service and timer files to the `/etc/systemd/system` directory (set their ownerships to the `yugabyte` user and 0644 permissions):<br><br>
+2. Ensure that you have root access and add the following service and timer files to the `/etc/systemd/system` directory (set their ownerships to the `yugabyte` user and 0644 permissions):
 
    `yb-master.service`
 
@@ -620,8 +615,6 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    WantedBy=default.target
    ```
 
-   <br><br>
-
    `yb-tserver.service`
 
    ```sh
@@ -661,7 +654,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    WantedBy=default.target
    ```
 
-   <br><br>`yb-zip_purge_yb_logs.service`
+   `yb-zip_purge_yb_logs.service`
 
    ```sh
    [Unit]
@@ -678,8 +671,6 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    [Install]
    WantedBy=multi-user.target
    ```
-
-   <br><br>
 
    `yb-zip_purge_yb_logs.timer`
 
@@ -699,8 +690,6 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    WantedBy=timers.target
    ```
 
-   <br><br>
-
    `yb-clean_cores.service`
 
    ```sh
@@ -718,8 +707,6 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    [Install]
    WantedBy=multi-user.target
    ```
-
-   <br><br>
 
    `yb-clean_cores.timer`
 
@@ -739,8 +726,6 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    WantedBy=timers.target
    ```
 
-   <br><br>
-
    `yb-collect_metrics.service`
 
    ```sh
@@ -759,8 +744,6 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    WantedBy=multi-user.target
    ```
 
-   <br><br>
-
    `yb-collect_metrics.timer`
 
    ```sh
@@ -778,5 +761,3 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    [Install]
    WantedBy=timers.target
    ```
-
-##

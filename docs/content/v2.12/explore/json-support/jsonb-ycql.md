@@ -4,7 +4,7 @@ headerTitle: JSON Support
 linkTitle: JSON support
 description: JSON Support in YugabyteDB.
 headcontent: JSON Support in YugabyteDB.
-image: <div class="icon"><i class="fas fa-file-invoice"></i></div>
+image: <div class="icon"><i class="fa-solid fa-file-invoice"></i></div>
 menu:
   v2.12:
     name: JSON support
@@ -19,14 +19,14 @@ JSON data types are for storing JSON (JavaScript Object Notation) data, as speci
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/explore/json-support/jsonb-ysql/" class="nav-link">
+    <a href="../jsonb-ysql/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/preview/explore/json-support/jsonb-ycql/" class="nav-link active">
+    <a href="../jsonb-ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>

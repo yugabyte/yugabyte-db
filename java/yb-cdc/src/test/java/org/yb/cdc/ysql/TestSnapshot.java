@@ -21,16 +21,16 @@ import org.yb.cdc.CdcService.RowMessage.Op;
 import org.yb.cdc.common.CDCBaseClass;
 import org.yb.cdc.common.ExpectedRecord3Proto;
 import org.yb.cdc.util.CDCSubscriber;
-import org.yb.cdc.util.TestUtils;
+import org.yb.cdc.util.CDCTestUtils;
 
 import java.util.*;
 
 import static org.yb.AssertionWrappers.*;
 import org.junit.Before;
 import org.junit.Test;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestSnapshot extends CDCBaseClass {
   private final static Logger LOG = LoggerFactory.getLogger(TestSnapshot.class);
 
@@ -83,6 +83,7 @@ public class TestSnapshot extends CDCBaseClass {
     try {
       setServerFlag(getTserverHostAndPort(), CDC_BATCH_SIZE_GFLAG,
         String.valueOf(DEFAULT_BATCH_SIZE));
+        setServerFlag(getTserverHostAndPort(), CDC_POPULATE_SAFEPOINT_RECORD, "false");
     } catch (Exception e) {
       LOG.error("Error while setting up default flag value for " + CDC_BATCH_SIZE_GFLAG, e);
       System.exit(-1);
@@ -91,7 +92,7 @@ public class TestSnapshot extends CDCBaseClass {
 
   private CDCSubscriber smallSnapshot() throws Exception {
     // First execute a script to fill the table with some data.
-    TestUtils.runSqlScript(connection, "cdc_snapshot_init.sql");
+    CDCTestUtils.runSqlScript(connection, "cdc_snapshot_init.sql");
 
     // Check for records in snapshot response from CDC.
     List<CdcService.CDCSDKProtoRecordPB> outputList = new ArrayList<>();
@@ -109,7 +110,7 @@ public class TestSnapshot extends CDCBaseClass {
   }
 
   private CDCSubscriber largeSnapshot() throws Exception {
-    TestUtils.runSqlScript(connection, "cdc_large_snapshot.sql");
+    CDCTestUtils.runSqlScript(connection, "cdc_large_snapshot.sql");
 
     List<CdcService.CDCSDKProtoRecordPB> outputList = new ArrayList<>();
     CDCSubscriber testSubscriber = new CDCSubscriber(getMasterAddresses());
@@ -136,7 +137,7 @@ public class TestSnapshot extends CDCBaseClass {
   public void testDefaultSnapshotBatchSize() {
     try {
       // Default batch size is 250.
-      TestUtils.runSqlScript(connection, "cdc_large_snapshot.sql");
+      CDCTestUtils.runSqlScript(connection, "cdc_large_snapshot.sql");
 
       List<CdcService.CDCSDKProtoRecordPB> outputList = new ArrayList<>();
       CDCSubscriber testSubscriber = new CDCSubscriber(getMasterAddresses());
@@ -175,12 +176,13 @@ public class TestSnapshot extends CDCBaseClass {
   @Test
   public void testSnapshotGFlag() {
     try {
-      TestUtils.runSqlScript(connection, "cdc_large_snapshot.sql");
+      CDCTestUtils.runSqlScript(connection, "cdc_large_snapshot.sql");
 
       List<CdcService.CDCSDKProtoRecordPB> outputList = new ArrayList<>();
       CDCSubscriber testSubscriber = new CDCSubscriber(getMasterAddresses());
 
       setServerFlag(getTserverHostAndPort(), CDC_BATCH_SIZE_GFLAG, "2500");
+      setServerFlag(getTserverHostAndPort(), CDC_POPULATE_SAFEPOINT_RECORD, "false");
       testSubscriber.createStreamAndGetSnapshot(outputList);
 
       // We get one extra record in outputList, that record is the initial DDL containing the
@@ -237,7 +239,9 @@ public class TestSnapshot extends CDCBaseClass {
       int idx = 0;
       int recordsAsserted = 0;
       ExpectedRecord3Proto[] postSnapshotRecords = {
+        new ExpectedRecord3Proto(-1, -1, -1, Op.BEGIN),
         new ExpectedRecord3Proto(10000, 11, 12, Op.INSERT),
+        new ExpectedRecord3Proto(-1, -1, -1, Op.COMMIT),
         new ExpectedRecord3Proto(-1, -1, -1, Op.BEGIN),
         new ExpectedRecord3Proto(10000, 11, 22, Op.UPDATE),
         new ExpectedRecord3Proto(-1, -1, -1, Op.COMMIT),

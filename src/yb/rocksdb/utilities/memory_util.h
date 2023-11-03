@@ -18,7 +18,6 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_LITE
 
 #pragma once
 
@@ -62,4 +61,3 @@ class MemoryUtil {
       std::map<MemoryUtil::UsageType, uint64_t>* usage_by_type);
 };
 }  // namespace rocksdb
-#endif  // !ROCKSDB_LITE

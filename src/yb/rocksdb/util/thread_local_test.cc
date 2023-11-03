@@ -22,14 +22,18 @@
 #include <atomic>
 #include <string>
 
+#include <gtest/gtest.h>
+
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/util/autovector.h"
-#include "yb/rocksdb/util/sync_point.h"
-#include <gtest/gtest.h>
 #include "yb/rocksdb/util/thread_local.h"
 #include "yb/rocksdb/util/testutil.h"
+
+#include "yb/util/sync_point.h"
 #include "yb/util/tostring.h"
+
+using std::vector;
 
 namespace rocksdb {
 
@@ -74,7 +78,7 @@ class IDChecker : public ThreadLocalPtr {
 
 }  // anonymous namespace
 
-TEST_F(ThreadLocalTest, UniqueIdTest) {
+TEST_F(ThreadLocalTest, UniqueIdTestAndSequentialReadWriteTest) {
   {
     port::Mutex mu;
     port::CondVar cv(&mu);
@@ -122,9 +126,10 @@ TEST_F(ThreadLocalTest, UniqueIdTest) {
   }
   // After exit, id sequence in queue:
   ASSERT_EQ("[3, 1, 2, 0]", yb::ToString(IDChecker::PeekIds()));
-}
 
-TEST_F(ThreadLocalTest, SequentialReadWriteTest) {
+  // What follows used to be SequentialReadWriteTest. But it relies on the state
+  // that is set up by UniqueIdTest.
+
   ASSERT_EQ(0u, IDChecker::PeekId());
   ASSERT_EQ("[3, 1, 2, 0]", yb::ToString(IDChecker::PeekIds()));
 
@@ -511,25 +516,21 @@ void* AccessThreadLocal(void* arg) {
 // this test and only see an ASAN error on SyncPoint, it means you pass the
 // test.
 TEST_F(ThreadLocalTest, DISABLED_MainThreadDiesFirst) {
-  rocksdb::SyncPoint::GetInstance()->LoadDependency(
+  yb::SyncPoint::GetInstance()->LoadDependency(
       {{"AccessThreadLocal:Start", "MainThreadDiesFirst:End"},
        {"PosixEnv::~PosixEnv():End", "AccessThreadLocal:End"}});
 
   // Triggers the initialization of singletons.
   Env::Default();
 
-#ifndef ROCKSDB_LITE
   try {
-#endif  // ROCKSDB_LITE
     std::thread th(&AccessThreadLocal, nullptr);
     th.detach();
     TEST_SYNC_POINT("MainThreadDiesFirst:End");
-#ifndef ROCKSDB_LITE
   } catch (const std::system_error& ex) {
     std::cerr << "Start thread: " << ex.code() << std::endl;
     ASSERT_TRUE(false);
   }
-#endif  // ROCKSDB_LITE
 }
 
 }  // namespace rocksdb

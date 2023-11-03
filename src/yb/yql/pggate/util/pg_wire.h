@@ -11,13 +11,20 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGGATE_UTIL_PG_WIRE_H_
-#define YB_YQL_PGGATE_UTIL_PG_WIRE_H_
+#pragma once
 
 #include <bitset>
+
+#include "yb/gutil/casts.h"
+#include "yb/gutil/endian.h"
+
 #include "yb/util/slice.h"
+#include "yb/util/write_buffer.h"
 
 namespace yb {
+
+class WriteBuffer;
+
 namespace pggate {
 
 // This class represent how YugaByte sends data over the wire. See also file
@@ -29,54 +36,44 @@ class PgWire {
  public:
   //------------------------------------------------------------------------------------------------
   // Read Numeric Data
-  template<typename num_type>
-  static size_t ReadNumericValue(num_type (*reader)(const void*), Slice *cursor, num_type *value) {
-    *value = reader(cursor->data());
-    return sizeof(num_type);
+
+  template <class Out>
+  static Out ReadNumber(Slice *cursor) {
+    auto data = cursor->data();
+    cursor->remove_prefix(sizeof(Out));
+    return Load<Out, NetworkByteOrder>(data);
   }
 
-  static size_t ReadNumber(Slice *cursor, bool *value);
-  static size_t ReadNumber(Slice *cursor, uint8 *value);
-  static size_t ReadNumber(Slice *cursor, int8 *value);
-  static size_t ReadNumber(Slice *cursor, uint16 *value);
-  static size_t ReadNumber(Slice *cursor, int16 *value);
-  static size_t ReadNumber(Slice *cursor, uint32 *value);
-  static size_t ReadNumber(Slice *cursor, int32 *value);
-  static size_t ReadNumber(Slice *cursor, uint64 *value);
-  static size_t ReadNumber(Slice *cursor, int64 *value);
-  static size_t ReadNumber(Slice *cursor, float *value);
-  static size_t ReadNumber(Slice *cursor, double *value);
-
   // Read Text Data
-  static size_t ReadBytes(Slice *cursor, char *value, int64_t bytes);
-  static size_t ReadString(Slice *cursor, std::string *value, int64_t bytes);
+  static void ReadBytes(Slice *cursor, char *value, int64_t bytes);
+  static void ReadString(Slice *cursor, std::string *value, int64_t bytes);
 
   //------------------------------------------------------------------------------------------------
   // Write Numeric Data
   template<typename num_type>
-  static void WriteInt(void (*writer)(void *, num_type), num_type value, faststring *buffer) {
+  static void WriteInt(void (*writer)(void *, num_type), num_type value, WriteBuffer *buffer) {
     num_type bytes;
     writer(&bytes, value);
-    buffer->append(&bytes, sizeof(num_type));
+    buffer->Append(pointer_cast<const char*>(&bytes), sizeof(num_type));
   }
 
-  static void WriteBool(bool value, faststring *buffer);
-  static void WriteInt8(int8_t value, faststring *buffer);
-  static void WriteUint8(uint8_t value, faststring *buffer);
-  static void WriteUint16(uint16_t value, faststring *buffer);
-  static void WriteInt16(int16_t value, faststring *buffer);
-  static void WriteUint32(uint32_t value, faststring *buffer);
-  static void WriteInt32(int32_t value, faststring *buffer);
-  static void WriteUint64(uint64_t value, faststring *buffer);
-  static void WriteInt64(int64_t value, faststring *buffer);
-  static void WriteFloat(float value, faststring *buffer);
-  static void WriteDouble(double value, faststring *buffer);
+  static void WriteBool(bool value, WriteBuffer *buffer);
+  static void WriteInt8(int8_t value, WriteBuffer *buffer);
+  static void WriteUint8(uint8_t value, WriteBuffer *buffer);
+  static void WriteUint16(uint16_t value, WriteBuffer *buffer);
+  static void WriteInt16(int16_t value, WriteBuffer *buffer);
+  static void WriteUint32(uint32_t value, WriteBuffer *buffer);
+  static void WriteInt32(int32_t value, WriteBuffer *buffer);
+  static void WriteUint64(uint64_t value, WriteBuffer *buffer);
+  static void WriteInt64(int64_t value, WriteBuffer *buffer);
+  static void WriteFloat(float value, WriteBuffer *buffer);
+  static void WriteDouble(double value, WriteBuffer *buffer);
 
   // Write Text Data
-  static void WriteText(const std::string& value, faststring *buffer);
+  static void WriteText(const std::string& value, WriteBuffer *buffer);
 
   // Write Text Data
-  static void WriteBinary(const std::string& value, faststring *buffer);
+  static void WriteBinary(const std::string& value, WriteBuffer *buffer);
 };
 
 // Just in case we change the serialization format. Different versions of DocDB and Postgres
@@ -94,6 +91,8 @@ class PgWire {
 //   ....
 class PgWireDataHeader {
  public:
+  static constexpr size_t kSerializedSize = sizeof(uint8_t);
+
   PgWireDataHeader() {
   }
 
@@ -101,10 +100,15 @@ class PgWireDataHeader {
   }
 
   void set_null() {
-    data_[0] = 1;
+    data_.set(0);
   }
+
   bool is_null() const {
-    return data_[0] == 1;
+    return data_[0];
+  }
+
+  void SerializeTo(char* out) {
+    *out = ToUint8();
   }
 
   uint8_t ToUint8() const {
@@ -117,5 +121,3 @@ class PgWireDataHeader {
 
 }  // namespace pggate
 }  // namespace yb
-
-#endif // YB_YQL_PGGATE_UTIL_PG_WIRE_H_

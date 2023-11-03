@@ -8,6 +8,7 @@
  */
 
 import { Field, FieldArray, FormikValues } from 'formik';
+import _ from 'lodash';
 import React, { FC, useState } from 'react';
 import { YBControlledTextInput, YBFormInput, YBFormToggle } from '../../../../common/forms/fields';
 import { StorageConfigCreationForm, YBReduxFormSelect } from '../common/StorageConfigCreationForm';
@@ -52,6 +53,12 @@ interface InitialValuesTypes {
   MULTI_REGION_AWS_ENABLED: boolean;
   multi_regions: configs[];
   default_bucket: string;
+  PROXY_SETTINGS?: {
+    PROXY_PORT?: string;
+    PROXY_HOST?: string;
+    PROXY_USERNAME?: string;
+    PROXY_PASSWORD?: string;
+  };
 }
 
 const MUTLI_REGION_DEFAULT_VALUES = {
@@ -95,6 +102,9 @@ export const CreateAWSConfigForm: FC<CreateAWSConfigFormProps> = ({
       .filter((p: any) => p.code === CloudType.aws)
       .map((t: any) => t.regions)
   );
+  const featureFlags = useSelector((state: any) => state.featureFlags);
+  const enableS3BackupProxy =
+    featureFlags.test.enableS3BackupProxy || featureFlags.released.enableS3BackupProxy;
 
   const isEditMode = !isEmpty(editInitialValues);
 
@@ -176,7 +186,13 @@ export const CreateAWSConfigForm: FC<CreateAWSConfigFormProps> = ({
     AWS_SECRET_KEY: '',
     MULTI_REGION_AWS_ENABLED: false,
     multi_regions: [MUTLI_REGION_DEFAULT_VALUES],
-    default_bucket: '0'
+    default_bucket: '0',
+    PROXY_SETTINGS: {
+      PROXY_HOST: '',
+      PROXY_PORT: '',
+      PROXY_PASSWORD: '',
+      PROXY_USERNAME: ''
+    }
   };
 
   if (isEditMode) {
@@ -184,6 +200,9 @@ export const CreateAWSConfigForm: FC<CreateAWSConfigFormProps> = ({
 
     initialValues.AWS_SECRET_KEY = editInitialValues.data['AWS_SECRET_ACCESS_KEY'];
     initialValues.AWS_CONFIGURATION_NAME = editInitialValues.configName;
+
+    if (editInitialValues.data?.PROXY_SETTINGS?.PROXY_HOST)
+      initialValues.PROXY_SETTINGS = editInitialValues.data['PROXY_SETTINGS'];
 
     if (editInitialValues.data.REGION_LOCATIONS?.length > 0) {
       initialValues.MULTI_REGION_AWS_ENABLED = true;
@@ -232,10 +251,10 @@ export const CreateAWSConfigForm: FC<CreateAWSConfigFormProps> = ({
   let hostBase: OptionTypeBase[] = [];
 
   if (resp?.data) {
-    buckets = uniq(Object.values(resp.data)).map((e) => {
+    buckets = uniq(Object.keys(resp.data)).map((e) => {
       return { value: e, label: e };
     });
-    hostBase = uniq(Object.keys(resp.data)).map((e) => {
+    hostBase = uniq(Object.values(resp.data)).map((e) => {
       return { value: e, label: e };
     });
   }
@@ -287,6 +306,20 @@ export const CreateAWSConfigForm: FC<CreateAWSConfigFormProps> = ({
       values['multi_regions'][default_bucket_index]?.bucket?.value
     }/${values['multi_regions'][default_bucket_index].folder ?? ''}`;
 
+    if (values?.PROXY_SETTINGS?.PROXY_HOST) {
+      payload['data']['PROXY_SETTINGS'] = {};
+      payload['data']['PROXY_SETTINGS']['PROXY_HOST'] = values.PROXY_SETTINGS.PROXY_HOST;
+
+      if (values?.PROXY_SETTINGS?.PROXY_PORT)
+        payload['data']['PROXY_SETTINGS']['PROXY_PORT'] = values.PROXY_SETTINGS.PROXY_PORT;
+      if (values?.PROXY_SETTINGS?.PROXY_USERNAME) {
+        payload['data']['PROXY_SETTINGS']['PROXY_USERNAME'] = values.PROXY_SETTINGS.PROXY_USERNAME;
+        if (values?.PROXY_SETTINGS?.PROXY_PASSWORD)
+          payload['data']['PROXY_SETTINGS']['PROXY_PASSWORD'] =
+            values.PROXY_SETTINGS.PROXY_PASSWORD;
+      }
+    }
+
     if (isEditMode) {
       doUpdateStorageConfig.mutate({ configUUID: editInitialValues['configUUID'], ...payload });
     } else {
@@ -306,12 +339,11 @@ export const CreateAWSConfigForm: FC<CreateAWSConfigFormProps> = ({
             region: Yup.object().shape({
               value: Yup.string().required('Region is required').typeError('Region is required')
             }),
-            bucket:
-              Yup.object()
-                .shape({
-                  value: Yup.string().required('Bucket is required').typeError('Bucket is required')
-                })
-                .typeError('Bucket is required'),
+            bucket: Yup.object()
+              .shape({
+                value: Yup.string().required('Bucket is required').typeError('Bucket is required')
+              })
+              .typeError('Bucket is required'),
             folder: Yup.string()
           })
         )
@@ -327,16 +359,25 @@ export const CreateAWSConfigForm: FC<CreateAWSConfigFormProps> = ({
         is: (enabled) => !enabled,
         then: Yup.array(
           Yup.object().shape({
-            bucket:
-              Yup.object()
-                .shape({
-                  value: Yup.string().required('Bucket is required').nullable()
-                })
-                .typeError('Bucket is required'),
+            bucket: Yup.object()
+              .shape({
+                value: Yup.string().required('Bucket is required').nullable()
+              })
+              .typeError('Bucket is required'),
             folder: Yup.string()
           })
         )
+      }),
+    PROXY_SETTINGS: Yup.object().shape({
+      PROXY_PORT: Yup.string().when('PROXY_HOST', {
+        is: (value: string) => !_.isEmpty(value),
+        then: Yup.string().required('Port is a required')
+      }),
+      PROXY_PASSWORD: Yup.string().when('PROXY_USERNAME', {
+        is: (value: string) => !_.isEmpty(value),
+        then: Yup.string().required('Password is a required')
       })
+    })
   });
 
   return (
@@ -361,7 +402,7 @@ export const CreateAWSConfigForm: FC<CreateAWSConfigFormProps> = ({
                 <Col lg={9}>
                   <Field
                     name="AWS_CONFIGURATION_NAME"
-                    placeHolder="Configuration Name"
+                    placeholder="Configuration Name"
                     component={YBFormInput}
                     onValueChanged={(value: string) =>
                       setFieldValue('AWS_CONFIGURATION_NAME', value)
@@ -391,7 +432,7 @@ export const CreateAWSConfigForm: FC<CreateAWSConfigFormProps> = ({
                 <Col lg={9}>
                   <Field
                     name="AWS_ACCESS_KEY"
-                    placeHolder="AWS Access Key"
+                    placeholder="AWS Access Key"
                     component={YBFormInput}
                     onValueChanged={(value: string) => setFieldValue('AWS_ACCESS_KEY', value)}
                     disabled={values['IAM_ROLE_ENABLED']}
@@ -406,7 +447,7 @@ export const CreateAWSConfigForm: FC<CreateAWSConfigFormProps> = ({
                 <Col lg={9}>
                   <Field
                     name="AWS_SECRET_KEY"
-                    placeHolder="AWS Secret Key"
+                    placeholder="AWS Secret Key"
                     component={YBFormInput}
                     onValueChanged={(value: string) => setFieldValue('AWS_SECRET_KEY', value)}
                     disabled={values['IAM_ROLE_ENABLED']}
@@ -529,6 +570,96 @@ export const CreateAWSConfigForm: FC<CreateAWSConfigFormProps> = ({
               )}
               {typeof errors.multi_regions === 'string' && (
                 <span className="field-error">{errors.multi_regions}</span>
+              )}
+              {enableS3BackupProxy && (
+                <>
+                  <Row className="config-provider-row backup-proxy-config">
+                    <h4>Proxy Configuration</h4>
+                  </Row>
+                  <div className="divider"></div>
+
+                  <Row className="config-provider-row backup-proxy-config">
+                    <Col lg={2} className="form-item-custom-label">
+                      Host
+                    </Col>
+                    <Col lg={9}>
+                      <Field
+                        name="PROXY_SETTINGS.PROXY_HOST"
+                        placeholder="Proxy Host"
+                        component={YBFormInput}
+                        onValueChanged={(value: string) =>
+                          setFieldValue('PROXY_SETTINGS.PROXY_HOST', value)
+                        }
+                      />
+                    </Col>
+                    <Col lg={1} className="config-zone-tooltip">
+                      <YBInfoTip title="Host" content="Host address of the proxy server" />
+                    </Col>
+                  </Row>
+
+                  <Row className="config-provider-row">
+                    <Col lg={2} className="form-item-custom-label">
+                      Port
+                    </Col>
+                    <Col lg={9}>
+                      <Field
+                        name="PROXY_SETTINGS.PROXY_PORT"
+                        placeholder="Proxy Port"
+                        component={YBFormInput}
+                        type="number"
+                        onValueChanged={(value: string) =>
+                          setFieldValue('PROXY_SETTINGS.PROXY_PORT', value)
+                        }
+                      />
+                    </Col>
+                    <Col lg={1} className="config-zone-tooltip">
+                      <YBInfoTip
+                        title="Port"
+                        content="Port number at which the proxy server is running"
+                      />
+                    </Col>
+                  </Row>
+
+                  <Row className="config-provider-row">
+                    <Col lg={2} className="form-item-custom-label">
+                      Username (Optional)
+                    </Col>
+                    <Col lg={9}>
+                      <Field
+                        name="PROXY_SETTINGS.PROXY_USERNAME"
+                        placeholder="Proxy Username"
+                        component={YBFormInput}
+                        onValueChanged={(value: string) =>
+                          setFieldValue('PROXY_SETTINGS.PROXY_USERNAME', value)
+                        }
+                      />
+                    </Col>
+                    <Col lg={1} className="config-zone-tooltip">
+                      <YBInfoTip title="Username" content="Username for authentication" />
+                    </Col>
+                  </Row>
+
+                  <Row className="config-provider-row">
+                    <Col lg={2} className="form-item-custom-label">
+                      Password (Optional)
+                    </Col>
+                    <Col lg={9}>
+                      <Field
+                        name="PROXY_SETTINGS.PROXY_PASSWORD"
+                        placeHolder="Proxy Password"
+                        component={YBFormInput}
+                        type="password"
+                        onValueChanged={(value: string) =>
+                          setFieldValue('PROXY_SETTINGS.PROXY_PASSWORD', value)
+                        }
+                        autocomplete="new-password"
+                      />
+                    </Col>
+                    <Col lg={1} className="config-zone-tooltip">
+                      <YBInfoTip title="Password" content="Password for authentication" />
+                    </Col>
+                  </Row>
+                </>
               )}
             </Col>
           </Row>

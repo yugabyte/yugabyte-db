@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_CONSENSUS_LOG_CACHE_H
-#define YB_CONSENSUS_LOG_CACHE_H
+#pragma once
 
 #include <pthread.h>
 #include <sys/types.h>
@@ -45,7 +44,7 @@
 
 #include <boost/container/small_vector.hpp>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <gtest/gtest_prod.h>
 
 #include "yb/consensus/consensus_fwd.h"
@@ -61,6 +60,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/mutex.h"
 #include "yb/util/opid.h"
+#include "yb/util/trace.h"
 #include "yb/util/restart_safe_clock.h"
 #include "yb/util/status_callback.h"
 
@@ -78,9 +78,7 @@ class ReplicateMsg;
 
 struct ReadOpsResult {
   ReplicateMsgs messages;
-  yb::OpId preceding_op;
-  yb::SchemaPB header_schema;
-  uint32_t header_schema_version;
+  OpId preceding_op;
   HaveMoreMessages have_more_messages = HaveMoreMessages::kFalse;
   int64_t read_from_disk_size = 0;
 };
@@ -128,10 +126,12 @@ class LogCache {
   // until 'to_op_index' (inclusive).
   //
   // If 'to_op_index' is 0, then all operations after 'after_op_index' will be included.
-  Result<ReadOpsResult> ReadOps(int64_t after_op_index,
-                                int64_t to_op_index,
-                                size_t max_size_bytes,
-                                CoarseTimePoint deadline = CoarseTimePoint::max());
+  Result<ReadOpsResult> ReadOps(
+      int64_t after_op_index,
+      int64_t to_op_index,
+      size_t max_size_bytes,
+      CoarseTimePoint deadline = CoarseTimePoint::max(),
+      bool fetch_single_entry = false);
 
   // Append the operations into the log and the cache.  When the messages have completed writing
   // into the on-disk log, fires 'callback'.
@@ -141,8 +141,8 @@ class LogCache {
   //
   // Returns non-OK if the Log append itself fails.
   Status AppendOperations(const ReplicateMsgs& msgs, const yb::OpId& committed_op_id,
-                                  RestartSafeCoarseTimePoint batch_mono_time,
-                                  const StatusCallback& callback);
+                          RestartSafeCoarseTimePoint batch_mono_time,
+                          const StatusCallback& callback);
 
   // Return true if an operation with the given index has been written through the cache. The
   // operation may not necessarily be durable yet -- it could still be en route to the log.
@@ -196,7 +196,7 @@ class LogCache {
     ReplicateMsgPtr msg;
     // The cached value of msg->SpaceUsedLong(). This method is expensive
     // to compute, so we compute it only once upon insertion.
-    int64_t mem_usage = 0;
+    size_t mem_usage = 0;
 
     // Did we start memory tracking for this entry.
     bool tracked = false;
@@ -226,6 +226,7 @@ class LogCache {
 
   void LogCallback(bool overwrite,
                    int64_t last_idx_in_batch,
+                   yb::TracePtr trace,
                    const StatusCallback& user_callback,
                    const Status& log_status);
 
@@ -299,4 +300,3 @@ class LogCache {
 
 } // namespace consensus
 } // namespace yb
-#endif /* YB_CONSENSUS_LOG_CACHE_H */

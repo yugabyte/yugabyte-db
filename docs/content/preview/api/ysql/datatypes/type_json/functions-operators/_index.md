@@ -4,7 +4,7 @@ headerTitle: JSON functions and operators
 linkTitle: Functions & operators
 summary: Functions and operators
 description: Learn about JSON functions and operators categorized by the goal you want to accomplish.
-image: /images/section_icons/api/ysql.png
+image: /images/section_icons/api/subsection.png
 menu:
   preview:
     identifier: json-functions-operators
@@ -22,7 +22,7 @@ Most of the operators are overloaded so that they can be used on both `json` and
 
 Some of the functions have just a `jsonb` variant and a couple have just a `json` variant. Function names reflect this by starting with `jsonb_` or ending with `_jsonb`—and, correspondingly, for the `json` variants. The reason that this naming convention is used, rather than ordinary overloading, is that YSQL can distinguish between same-named functions when the specification of their formal parameters differ but not when their return types differ. Some of the JSON functions for a specific purpose differ only by returning a `json` value or a `jsonb` value. This is why a single consistent naming convention, a `b` variant and a plain variant, is used throughout.
 
-When an operator or function has both a JSON value input and a JSON value output, the `jsonb` variant takes a `jsonb` input and produces a `jsonb` output; and, correspondingly, the `json` variant takes a `json` input and produces a `json` output. You can use the `ysqlsh` [`\df`](../../../../../admin/ysqlsh/#df-antws-pattern) metacommand to show the signature (that is, the data types of the formal parameters and the return value) of any of the JSON functions; but you cannot do this for the operators.
+When an operator or function has both a JSON value input and a JSON value output, the `jsonb` variant takes a `jsonb` input and produces a `jsonb` output; and, correspondingly, the `json` variant takes a `json` input and produces a `json` output. You can use the `ysqlsh` [`\df`](../../../../../admin/ysqlsh-meta-commands/#df-antws-pattern) meta-command to show the signature (that is, the data types of the formal parameters and the return value) of any of the JSON functions; but you cannot do this for the operators.
 
 Check the full account of each to find its variant status. When an operator or function has both a `jsonb` and `json` variant, then only the `jsonb` variant is described. The functionality of the `json` variant can be trivially understood from the account of the `jsonb` functionality.
 

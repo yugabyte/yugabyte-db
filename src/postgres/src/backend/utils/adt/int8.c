@@ -172,12 +172,13 @@ int8recv(PG_FUNCTION_ARGS)
 Datum
 int8send(PG_FUNCTION_ARGS)
 {
-	int64		arg1 = PG_GETARG_INT64(0);
-	StringInfoData buf;
+	uint64 arg1 = pg_hton64(PG_GETARG_INT64(0));
 
-	pq_begintypsend(&buf);
-	pq_sendint64(&buf, arg1);
-	PG_RETURN_BYTEA_P(pq_endtypsend(&buf));
+	bytea* data = (bytea *) palloc(VARHDRSZ + sizeof(arg1));
+	memcpy(data->vl_dat, &arg1, sizeof(arg1));
+	SET_VARSIZE(data, VARHDRSZ + sizeof(arg1));
+
+	PG_RETURN_BYTEA_P(data);
 }
 
 

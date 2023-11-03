@@ -4,8 +4,8 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
-import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
@@ -18,34 +18,28 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.HealthChecker;
-import com.yugabyte.yw.common.FakeApiHelper;
-import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.CustomWsClientFactory;
+import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
+import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
+import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.PackagesRequestParams;
 import com.yugabyte.yw.forms.PackagesRequestParams.ArchitectureType;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.util.UUID;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
-import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.Mockito;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.mvc.Result;
-import play.test.WithApplication;
 
 @RunWith(MockitoJUnitRunner.class)
-public class PackagesControllerTest extends WithApplication {
+public class PackagesControllerTest extends PlatformGuiceApplicationBaseTest {
 
   @Mock Config mockConfig;
   @Mock Commissioner mockCommissioner;
@@ -61,6 +55,8 @@ public class PackagesControllerTest extends WithApplication {
                 .toInstance(new DummyRuntimeConfigFactoryImpl(mockConfig)))
         .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
         .overrides(bind(HealthChecker.class).toInstance(mock(HealthChecker.class)))
+        .overrides(
+            bind(CustomWsClientFactory.class).toProvider(CustomWsClientFactoryProvider.class))
         .build();
   }
 
@@ -71,7 +67,7 @@ public class PackagesControllerTest extends WithApplication {
 
   private Result fetchPackage(ObjectNode body) {
     String uri = "/api/fetch_package";
-    return FakeApiHelper.doRequestWithBodyAndWithoutAuthToken("POST", uri, body);
+    return doRequestWithBodyAndWithoutAuthToken("POST", uri, body);
   }
 
   @Test

@@ -1,7 +1,7 @@
-@import '../../_style/colors.scss';
+@use '../../_style/colors.scss';
 
 .user-tab-logo {
-  fill: $YB_TEXT_BLACK;
+  fill: colors.$YB_TEXT_BLACK;
   margin-right: 5px;
   font-size: medium;
   vertical-align: middle;
@@ -80,14 +80,21 @@
   .ua-sec-divider {
     display: flex;
     opacity: 0.1;
-    border: 1px solid $YB_TEXT_BLACK;
+    border: 1px solid colors.$YB_TEXT_BLACK;
+  }
+
+  .ua-divider {
+    display: flex;
+    width: 100%;
+    opacity: 0.1;
+    border: 1px solid colors.$YB_TEXT_BLACK;
   }
 
   .ua-tab-item {
     display: flex;
     width: 220px;
     height: 40px;
-    background: $YB_WHITE;
+    background: colors.$YB_WHITE;
     box-sizing: border-box;
     border-radius: 8px;
     margin: 5px 20px 10px 10px;
@@ -97,7 +104,30 @@
   }
 
   .ua-active-tab {
-    border: 1px solid $YB_BG_WHITE_4;
+    border: 1px solid colors.$YB_BG_WHITE_4;
+  }
+
+  .ua-provider-meta {
+    display: flex;
+    width: 100%;
+    height: 40px;
+    background: colors.$YB_WHITE;
+    box-sizing: border-box;
+    border-radius: 8px;
+    padding: 5px 20px 10px 10px;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border: 1px solid colors.$YB_BG_WHITE_4;
+  }
+
+  .ua-btn-disabled {
+    cursor: not-allowed !important;
+    background-color: #eeeeee;
+  }
+
+  .clear-btn {
+    margin-left: 16px;
   }
 
   .ua-field-row-c {
@@ -163,8 +193,13 @@
   }
 
   .ua-auth-radio-field {
+    display: flex;
+    align-items: center;
     flex-shrink: 1;
     margin-right: 16px;
+    input {
+      margin: unset;
+    }
   }
 
   .ua-field {
@@ -205,17 +240,17 @@
 
 .ldap-cancel-btn,
 .oidc-cancel-btn {
-  background: $YB_WHITE;
-  border: 1px solid $YB_BLACK;
+  background: colors.$YB_WHITE;
+  border: 1px solid colors.$YB_BLACK;
   border-radius: 8px;
   font-size: 16px;
-  color: $YB_TEXT_BLACK_2;
+  color: colors.$YB_TEXT_BLACK_2;
   font-weight: 500;
 }
 
 .ldap-cancel-btn:hover,
 .oidc-cancel-btn:hover {
-  border: 1px solid $YB_BLACK;
+  border: 1px solid colors.$YB_BLACK;
 }
 
 .ldap-modal-c {
@@ -250,8 +285,8 @@
   height: fit-content;
   display: inline-flex;
   align-items: flex-start;
-  border: 1px solid $YB_LIGHT_GRAY_BORDER;
-  background: $YB_LIGHT_BLUE_BACKGROUND;
+  border: 1px solid colors.$YB_LIGHT_GRAY_BORDER;
+  background: colors.$YB_LIGHT_BLUE_BACKGROUND;
   border-radius: 8px;
   padding: 12px;
   font-weight: normal;
@@ -269,4 +304,272 @@
   min-height: 70px;
   flex-direction: row;
   align-items: flex-start;
+}
+
+.ldap-btn {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  padding: 11px 15px;
+  gap: 5px;
+
+  min-width: 174px;
+  height: 40px;
+  border: 1px solid #c8c8c8;
+  background: #ffffff;
+  border-radius: 8px;
+  color: #232329;
+  font-style: normal;
+  font-weight: 400;
+  font-size: 15px;
+  z-index: 0 !important;
+}
+
+.test-ldap {
+  justify-content: flex-end;
+}
+.test-ldap-btn {
+  height: 30px;
+  font-weight: 500;
+  font-size: 12px;
+}
+
+.edit-roles-btn {
+  min-width: 80px;
+}
+
+.ua-title-optional {
+  font-weight: 600;
+  font-size: 14px;
+  color: #67666c;
+}
+
+.ua-box-c {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  border: 1px solid #e5e5e6;
+  border-radius: 8px;
+  box-sizing: border-box;
+
+  .box-title {
+    display: flex;
+    align-items: center;
+    padding: 24px 24px 0px 24px;
+    font-weight: 500;
+    font-size: 13px;
+    color: #232329;
+  }
+  .box-content {
+    display: flex;
+    flex-direction: column;
+
+    .box-content-row {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      height: 72px;
+      margin-left: 24px;
+
+      .col-1 {
+        display: flex;
+        width: 100px;
+      }
+
+      .col-2 {
+        display: flex;
+        margin-left: 32px;
+        margin-right: 32px;
+      }
+
+      .col-3 {
+        display: flex;
+      }
+    }
+  }
+}
+
+.ua-flex-box {
+  display: flex;
+  width: 100%;
+}
+
+.ldap-service-account {
+  .ua-box-c {
+    padding: 8px 24px;
+  }
+  .ua-field-row-c {
+    width: 100%;
+    min-width: unset;
+  }
+}
+
+.map-roles {
+  .ua-box-c {
+    padding: 8px 24px;
+    border: unset;
+  }
+  .ua-field-row-c {
+    width: 100%;
+    min-width: unset;
+  }
+}
+
+.ldap-config {
+  .ua-box-c {
+    padding: 16px;
+  }
+  .ua-field-row-c {
+    width: 100%;
+    min-width: unset;
+  }
+}
+
+.add-serv-acc-no-toggle {
+  padding: 16px 0px !important;
+}
+
+.config-membership {
+  .form-item-label {
+    font-weight: 400;
+    font-size: 13px;
+  }
+  .ua-field-row {
+    padding: 0 24px;
+  }
+  .attrib-name input {
+    width: 400px;
+  }
+  .scope-selector {
+    width: 280px;
+    .form-group {
+      width: 100%;
+    }
+  }
+  .filter_query {
+    width: 100%;
+    .form-group {
+      width: 100%;
+    }
+  }
+  .filter_query {
+    .ua-field-row-c {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    .helper-text {
+      padding: 0 24px;
+      font-size: 12px;
+    }
+    .helper-text-1 {
+      font-weight: 500;
+      color: #818182;
+    }
+    .helper-text-2 {
+      font-weight: 400;
+    }
+  }
+}
+
+.ua-table {
+  // padding: 16px;
+  border: 1px solid #e5e5e6;
+  border-radius: 8px;
+
+  .react-bs-container-body {
+    max-height: 274px !important;
+    overflow: scroll !important;
+  }
+
+  .ua-table-header {
+    // padding: 0px 16px;
+    // display: flex;
+    border-bottom: 1px solid #e5e5e6;
+  }
+  .react-bs-table {
+    padding: 16px 0px 16px 16px;
+  }
+}
+
+.def-role-c {
+  height: 56px;
+  .box-content {
+    padding-left: 24px;
+  }
+  .ua-field-row-c {
+    width: 100%;
+    height: 100%;
+    padding-left: 24px;
+  }
+  .ua-field {
+    flex-direction: row;
+  }
+  .ua-field-row {
+    align-items: center;
+  }
+  .ua-radio-c,
+  .ua-label-c {
+    padding-bottom: 0;
+  }
+}
+
+.role-mapping-c {
+  .ua-field-row-c {
+    width: 100%;
+    padding-left: 24px;
+  }
+}
+
+.mapping-toggle,
+.serv-acc-toggle {
+  .yb-field-group {
+    padding-bottom: unset;
+  }
+}
+
+.default-ldap-role-c {
+  margin-bottom: 15px;
+}
+
+.default-ldap-role-b {
+  padding-bottom: 0px;
+  padding-top: 15px;
+  padding-left: 15px;
+}
+
+.edit-map-c {
+  justify-content: flex-end;
+}
+
+.ldap-sec-container {
+  margin: 48px 0px;
+}
+
+.adv-settings {
+  align-items: flex-start !important;
+  flex-direction: column;
+
+  .adv-settings-header {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+  }
+
+  .group-preview {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 10px 16px;
+    height: 40px;
+    border-radius: 8px;
+    background: #f7f7f7;
+    width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    min-width: 0;
+  }
 }

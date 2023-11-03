@@ -15,10 +15,9 @@
 // Structure definitions for a Postgres table descriptor.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_PGGATE_PG_TABLEDESC_H_
-#define YB_YQL_PGGATE_PG_TABLEDESC_H_
+#pragma once
 
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/pgsql_protocol.messages.h"
 #include "yb/common/schema.h"
@@ -35,12 +34,13 @@ namespace yb {
 namespace pggate {
 
 //--------------------------------------------------------------------------------------------------
+class PgClient;
 
 // This class can be used to describe any reference of a column.
 class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
  public:
   PgTableDesc(const PgObjectId& id, const master::GetTableSchemaResponsePB& resp,
-              std::shared_ptr<client::VersionedTablePartitionList> partitions);
+              client::VersionedTablePartitionList partition_list);
 
   Status Init();
 
@@ -50,7 +50,7 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
 
   const client::YBTableName& table_name() const;
 
-  const PartitionSchema& partition_schema() const;
+  const dockv::PartitionSchema& partition_schema() const;
 
   size_t num_range_key_columns() const;
   size_t num_hash_key_columns() const;
@@ -66,24 +66,31 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
 
   bool IsRangePartitioned() const;
 
-  const std::vector<std::string>& GetPartitions() const;
+  const client::TablePartitionList& GetPartitionList() const;
 
-  const std::string& LastPartition() const;
+  size_t GetPartitionListSize() const;
 
-  size_t GetPartitionCount() const;
+  client::PartitionListVersion GetPartitionListVersion() const;
+
+  void SetLatestKnownPartitionListVersion(client::PartitionListVersion version);
+
+  Status EnsurePartitionListIsUpToDate(PgClient* client);
 
   // When reading a row given its associated ybctid, the ybctid value is decoded to the row.
-  Result<string> DecodeYbctid(const Slice& ybctid) const;
+  Result<std::string> DecodeYbctid(const Slice& ybctid) const;
 
   // Seek the tablet partition where the row whose "ybctid" value was given can be found.
   Result<size_t> FindPartitionIndex(const Slice& ybctid) const;
 
+  // Check if boundaries set on request define valid (not empty) range
+  static Result<bool> CheckScanBoundary(LWPgsqlReadRequestPB* req);
   // These values are set by  PgGate to optimize query to narrow the scanning range of a query.
-  Status SetScanBoundary(LWPgsqlReadRequestPB *req,
-                                 const string& partition_lower_bound,
-                                 bool lower_bound_is_inclusive,
-                                 const string& partition_upper_bound,
-                                 bool upper_bound_is_inclusive);
+  // Returns false if new boundary makes request range empty.
+  static Result<bool> SetScanBoundary(LWPgsqlReadRequestPB* req,
+                                      const std::string& partition_lower_bound,
+                                      bool lower_bound_is_inclusive,
+                                      const std::string& partition_upper_bound,
+                                      bool upper_bound_is_inclusive);
 
   const Schema& schema() const;
 
@@ -101,11 +108,12 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
  private:
   PgObjectId id_;
   master::GetTableSchemaResponsePB resp_;
-  const std::shared_ptr<const client::VersionedTablePartitionList> table_partitions_;
+  client::VersionedTablePartitionList table_partition_list_;
+  client::PartitionListVersion latest_known_table_partition_list_version_;
 
   client::YBTableName table_name_;
   Schema schema_;
-  PartitionSchema partition_schema_;
+  dockv::PartitionSchema partition_schema_;
 
   // Attr number to column index map.
   std::unordered_map<int, size_t> attr_num_map_;
@@ -114,5 +122,3 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
 
 }  // namespace pggate
 }  // namespace yb
-
-#endif  // YB_YQL_PGGATE_PG_TABLEDESC_H_

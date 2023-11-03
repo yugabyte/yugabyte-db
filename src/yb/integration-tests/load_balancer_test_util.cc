@@ -13,25 +13,25 @@
 
 #include "yb/integration-tests/load_balancer_test_util.h"
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 namespace yb {
 namespace integration_tests {
 
 bool AreLoadsBalanced(const std::vector<uint32_t>& tserver_loads) {
-    if (tserver_loads.empty()) {
-      return true;
+  if (tserver_loads.empty()) {
+    return true;
+  }
+  auto min_load = tserver_loads[0];
+  auto max_load = min_load;
+  for (size_t i = 1; i < tserver_loads.size(); ++i) {
+    if (tserver_loads[i] < min_load) {
+      min_load = tserver_loads[i];
+    } else if (tserver_loads[i] > max_load) {
+      max_load = tserver_loads[i];
     }
-    auto min_load = tserver_loads[0];
-    auto max_load = min_load;
-    for (size_t i = 1; i < tserver_loads.size(); ++i) {
-      if (tserver_loads[i] < min_load) {
-        min_load = tserver_loads[i];
-      } else if (tserver_loads[i] > max_load) {
-        max_load = tserver_loads[i];
-      }
-    }
-    return (max_load - min_load) < 2;
+  }
+  return (max_load - min_load) < 2;
 }
 
 bool AreLoadsAsExpected(const std::unordered_map<TabletServerId, int>& tserver_loads,

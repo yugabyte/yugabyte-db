@@ -1,142 +1,76 @@
 ---
-title: Explore fault tolerance on macOS
-headerTitle: Fault tolerance
-linkTitle: Fault tolerance
-description: Simulate fault tolerance and resilience in a local three-node YugabyteDB cluster on macOS.
-aliases:
-  - /explore/fault-tolerance/
-  - /preview/explore/fault-tolerance/
-  - /preview/explore/cloud-native/fault-tolerance/
-  - /preview/explore/postgresql/fault-tolerance/
-  - /preview/explore/fault-tolerance-macos/
+title: High availability during failures in a local universe
+headerTitle: High availability during node and zone failures
+linkTitle: HA during failures
+description: Simulate fault tolerance and resilience in a local YugabyteDB database.
+headcontent: Keep serving requests through node, zone, and region failures
 menu:
   preview:
-    identifier: fault-tolerance-1-macos
-    parent: explore
-    weight: 215
+    identifier: node-failure-1-macos
+    parent: fault-tolerance
+    weight: 10
 type: docs
 ---
 
+The following example demonstrates how YugabyteDB can continue to perform reads and writes even in case of node failures. In this scenario, you create a universe with a replication factor (RF) of 3, which allows a [fault tolerance](../../../architecture/docdb-replication/replication/#fault-tolerance) of 1. This means the universe remains available for both reads and writes even if a fault domain fails. However, if another were to fail (bringing the number of failures to two), writes would become unavailable on the universe to preserve data consistency.
+
+The examples are based on the YB Workload Simulator application, which uses the YugabyteDB JDBC [Smart Driver](../../../drivers-orms/smart-drivers/) configured with connection load balancing. The driver automatically balances application connections across the nodes in a universe and re-balances connections when a node fails.
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-
-  <li >
+  <li>
     <a href="../macos/" class="nav-link active">
-      <i class="fab fa-apple" aria-hidden="true"></i>
-      macOS
+      <img src="/icons/database.svg" alt="Server Icon">
+      Local
     </a>
   </li>
-
-  <li >
-    <a href="../linux/" class="nav-link">
-      <i class="fab fa-linux" aria-hidden="true"></i>
-      Linux
+  <li>
+    <a href="../macos-yba/" class="nav-link">
+      <img src="/icons/server.svg" alt="Server Icon">
+      YugabyteDB Anywhere
     </a>
   </li>
-
-  <li >
-    <a href="../docker/" class="nav-link">
-      <i class="fab fa-docker" aria-hidden="true"></i>
-      Docker
-    </a>
-  </li>
-
-  <li >
-    <a href="../kubernetes/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
-      Kubernetes
-    </a>
-  </li>
-
 </ul>
 
-YugabyteDB can automatically handle failures and therefore provides [high availability](../../../architecture/core-functions/high-availability/). In this section, you'll see how YugabyteDB can continue to do reads and writes even in case of node failures. You will create YSQL tables with a replication factor (RF) of `3` that allows a [fault tolerance](../../../architecture/docdb-replication/replication/) of 1. This means the cluster will remain available for both reads and writes even if one node fails. However, if another node fails bringing the number of failures to two, then writes will become unavailable on the cluster in order to preserve data consistency.
+## Set up a universe
 
-This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted/) cluster management utility.
+Follow the [setup instructions](../../#set-up-yugabytedb-universe) to start a single region three-node universe, connect the [YB Workload Simulator](../../#set-up-yb-workload-simulator) application, and run a read-write workload. To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the universe network diagram, as well as latency and throughput charts for the running workload.
 
-## 1. Create a universe
+## Observe even load across all nodes
 
-Start a new local three-node cluster with a replication factor of `3`. First create a single node cluster.
+To view a table of per-node statistics for the universe, navigate to the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page. The following illustration shows the total read and write IOPS per node:
 
-```sh
-./bin/yugabyted start \
-                --listen=127.0.0.1 \
-                --base_dir=/tmp/ybd1
-```
+![Read and write IOPS with 3 nodes](/images/ce/fault-tolerance-evenly-distributed.png)
 
-Next, create a 3 node cluster by joining two more nodes with the previous node. By default, [yugabyted](../../../reference/configuration/yugabyted/) creates a cluster with a replication factor of `3` on starting a 3 node cluster.
+Notice that both the reads and the writes are approximately the same across all nodes, indicating uniform load.
 
-```sh
-./bin/yugabyted start \
-                --listen=127.0.0.2 \
-                --base_dir=/tmp/ybd2 \
-                --join=127.0.0.1
-```
+To view the latency and throughput on the universe while the workload is running, navigate to the [simulation application UI](http://127.0.0.1:8080/), as per the following illustration:
+
+![Latency and throughput with 3 nodes](/images/ce/fault-tolerance-latency-throughput.png)
+
+## Simulate a node failure
+
+Stop one of the nodes to simulate the loss of a zone, as follows:
 
 ```sh
-./bin/yugabyted start \
-                --listen=127.0.0.3 \
-                --base_dir=/tmp/ybd3 \
-                --join=127.0.0.1
+./bin/yugabyted stop --base_dir=/tmp/ybd2
 ```
 
-## 2. Run the sample key-value app
+## Observe workload remains available
 
-Download the YugabyteDB workload generator JAR file (`yb-sample-apps.jar`).
+Refresh the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page to see the statistics update.
 
-```sh
-$ wget https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.9/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
-```
+The `Time since heartbeat` value for that node starts to increase. When that number reaches 60s (1 minute), YugabyteDB changes the status of that node from ALIVE to DEAD. Observe the load (tablets) and IOPS getting moved off the removed node and redistributed to the other nodes, as per the following illustration:
 
-Run the `SqlInserts` workload against the local universe using the following command.
+![Read and write IOPS with one node stopped](/images/ce/fault-tolerance-dead-node.png)
 
-```sh
-$ java -jar ./yb-sample-apps.jar --workload SqlInserts \
-                                 --nodes 127.0.0.1:5433 \
-                                 --num_threads_write 1 \
-                                 --num_threads_read 4
-```
+With the loss of the node, which also represents the loss of an entire fault domain, the universe is now in an under-replicated state.
 
-The `SqlInserts` workload prints some statistics while running, which is also shown below. You can read more details about the output of the workload applications at the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps).
+Navigate to the [simulation application UI](http://127.0.0.1:8080/) to see the node removed from the network diagram when it is stopped, as per the following illustration:
 
-```output
-32001 [Thread-1] INFO com.yugabyte.sample.common.metrics.MetricsTracker  - Read: 4508.59 ops/sec (0.88 ms/op), 121328 total ops  |  Write: 658.11 ops/sec (1.51 ms/op), 18154 total ops  |  Uptime: 30024 ms | ...
-37006 [Thread-1] INFO com.yugabyte.sample.common.metrics.MetricsTracker  - Read: 4342.41 ops/sec (0.92 ms/op), 143061 total ops  |  Write: 635.59 ops/sec (1.58 ms/op), 21335 total ops  |  Uptime: 35029 ms | ...
-```
+![Latency and throughput graph after dropping a node](/images/ce/fault-tolerance-latency-stoppednode.png)
 
-## 3. Observe even load across all nodes
+It may take close to 60 seconds to display the updated network diagram. You can also notice a spike and drop in the latency and throughput, both of which resume immediately.
 
-You can check a lot of the per-node statistics by browsing to the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page. It should look like this. The total read and write IOPS per node are highlighted in the screenshot below. Note that both the reads and the writes are roughly the same across all the nodes indicating uniform usage across the nodes.
+Despite the loss of an entire fault domain, there is no impact on the application because no data is lost; previously replicated data on the remaining nodes is used to serve application requests.
 
-![Read and write IOPS with 3 nodes](/images/ce/fault-tolerance_evenly_distributed.png)
-
-## 4. Remove a node and observe continuous write availability
-
-Remove a node from the universe.
-
-```sh
-$ ./bin/yugabyted stop \
-                  --base_dir=/tmp/ybd3
-```
-
-Refresh the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page to see the stats update. The `Time since heartbeat` value for that node will keep increasing. Once that number reaches 60s (1 minute), YugabyteDB will change the status of that node from `ALIVE` to `DEAD`. Note that at this time the universe is running in an under-replicated state for some subset of tablets.
-
-![Read and write IOPS with 3rd node dead](/images/ce/fault_tolerance_dead_node.png)
-
-## 6. [Optional] Clean up
-
-Optionally, you can shut down the local cluster you created earlier.
-
-```sh
-$ ./bin/yugabyted destroy \
-                  --base_dir=/tmp/ybd1
-```
-
-```sh
-$ ./bin/yugabyted destroy \
-                  --base_dir=/tmp/ybd2
-```
-
-```sh
-$ ./bin/yugabyted destroy \
-                  --base_dir=/tmp/ybd3
-```
+{{% explore-cleanup-local %}}

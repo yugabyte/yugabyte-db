@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_BOUNDED_ROCKSDB_ITERATOR_H_
-#define YB_DOCDB_BOUNDED_ROCKSDB_ITERATOR_H_
+#pragma once
 
 #include <stdint.h>
 
@@ -27,7 +26,7 @@
 namespace yb {
 namespace docdb {
 
-class BoundedRocksDbIterator : public rocksdb::Iterator {
+class BoundedRocksDbIterator final : public rocksdb::Iterator {
  public:
   BoundedRocksDbIterator() = default;
 
@@ -42,21 +41,17 @@ class BoundedRocksDbIterator : public rocksdb::Iterator {
 
   bool Initialized() const { return iterator_ != nullptr; }
 
-  bool Valid() const override;
+  const rocksdb::KeyValueEntry& Entry() const override;
 
-  void SeekToFirst() override;
+  const rocksdb::KeyValueEntry& SeekToFirst() override;
 
-  void SeekToLast() override;
+  const rocksdb::KeyValueEntry& SeekToLast() override;
 
-  void Seek(const Slice& target) override;
+  const rocksdb::KeyValueEntry& Seek(Slice target) override;
 
-  void Next() override;
+  const rocksdb::KeyValueEntry& Next() override;
 
-  void Prev() override;
-
-  Slice key() const override;
-
-  Slice value() const override;
+  const rocksdb::KeyValueEntry& Prev() override;
 
   Status status() const override;
 
@@ -76,12 +71,14 @@ class BoundedRocksDbIterator : public rocksdb::Iterator {
     iterator_.reset();
   }
 
+  void UseFastNext(bool value) override;
+
  private:
+  const rocksdb::KeyValueEntry& FilterEntry(const rocksdb::KeyValueEntry& entry) const;
+
   std::unique_ptr<rocksdb::Iterator> iterator_;
   const KeyBounds* key_bounds_;
 };
 
 } // namespace docdb
 } // namespace yb
-
-#endif // YB_DOCDB_BOUNDED_ROCKSDB_ITERATOR_H_

@@ -32,15 +32,14 @@
 
 #include "yb/tserver/remote_bootstrap_client.h"
 
-#include <glog/logging.h>
-
-#include "yb/common/index.h"
-#include "yb/common/schema.h"
-#include "yb/common/wire_protocol.h"
+#include "yb/qlexpr/index.h"
+#include "yb/common/schema_pbutil.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_meta.h"
+#include "yb/consensus/consensus_util.h"
 #include "yb/consensus/metadata.pb.h"
+#include "yb/consensus/retryable_requests.h"
 
 #include "yb/fs/fs_manager.h"
 
@@ -62,7 +61,7 @@
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/fault_injection.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
@@ -72,24 +71,17 @@
 
 using namespace yb::size_literals;
 
-DEFINE_int32(remote_bootstrap_begin_session_timeout_ms, 5000,
-             "Tablet server RPC client timeout for BeginRemoteBootstrapSession calls.");
-TAG_FLAG(remote_bootstrap_begin_session_timeout_ms, hidden);
+DECLARE_int32(remote_bootstrap_begin_session_timeout_ms);
 
-DEFINE_int32(remote_bootstrap_end_session_timeout_sec, 15,
-             "Tablet server RPC client timeout for EndRemoteBootstrapSession calls. "
-             "The timeout is usually a large value because we have to wait for the remote server "
-             "to get a CHANGE_ROLE config change accepted.");
-TAG_FLAG(remote_bootstrap_end_session_timeout_sec, hidden);
+DECLARE_int32(remote_bootstrap_end_session_timeout_sec);
 
-DEFINE_bool(remote_bootstrap_save_downloaded_metadata, false,
-            "Save copies of the downloaded remote bootstrap files for debugging purposes. "
-            "Note: This is only intended for debugging and should not be normally used!");
+DEFINE_RUNTIME_bool(remote_bootstrap_save_downloaded_metadata, false,
+    "Save copies of the downloaded remote bootstrap files for debugging purposes. "
+    "Note: This is only intended for debugging and should not be normally used!");
 TAG_FLAG(remote_bootstrap_save_downloaded_metadata, advanced);
 TAG_FLAG(remote_bootstrap_save_downloaded_metadata, hidden);
-TAG_FLAG(remote_bootstrap_save_downloaded_metadata, runtime);
 
-DEFINE_int32(committed_config_change_role_timeout_sec, 30,
+DEFINE_RUNTIME_int32(committed_config_change_role_timeout_sec, 30,
              "Number of seconds to wait for the CHANGE_ROLE to be in the committed config before "
              "timing out. ");
 TAG_FLAG(committed_config_change_role_timeout_sec, hidden);
@@ -110,53 +102,32 @@ DEFINE_test_flag(bool, pause_rbs_before_download_wal, false, "Pause RBS before d
 
 DECLARE_int32(bytes_remote_bootstrap_durable_write_mb);
 
+DECLARE_bool(enable_flush_retryable_requests);
+
 namespace yb {
 namespace tserver {
 
 using consensus::ConsensusMetadata;
-using consensus::ConsensusStatePB;
 using consensus::PeerMemberType;
 using consensus::RaftConfigPB;
-using consensus::RaftPeerPB;
 using env_util::CopyFile;
-using rpc::Messenger;
 using std::shared_ptr;
 using std::string;
 using std::vector;
+using std::min;
 using strings::Substitute;
 using tablet::TabletDataState;
 using tablet::TabletDataState_Name;
 using tablet::RaftGroupMetadata;
 using tablet::RaftGroupMetadataPtr;
 using tablet::TabletStatusListener;
-using tablet::RaftGroupReplicaSuperBlockPB;
 
-std::atomic<int32_t> remote_bootstrap_clients_started_{0};
-
-RemoteBootstrapClient::RemoteBootstrapClient(std::string tablet_id, FsManager* fs_manager)
-    : tablet_id_(std::move(tablet_id)),
-      log_prefix_(Format("T $0 P $1: Remote bootstrap client: ", tablet_id_, fs_manager->uuid())),
-      downloader_(&log_prefix_, fs_manager) {
+RemoteBootstrapClient::RemoteBootstrapClient(const TabletId& tablet_id, FsManager* fs_manager)
+    : RemoteClientBase(tablet_id, fs_manager) {
   AddComponent<RemoteBootstrapSnapshotsComponent>();
 }
 
-RemoteBootstrapClient::~RemoteBootstrapClient() {
-  // Note: Ending the remote bootstrap session releases anchors on the remote.
-  // This assumes that succeeded_ only gets set to true in Finish() just before calling
-  // EndRemoteSession. If this didn't happen, then close the session here.
-  if (!succeeded_) {
-    LOG_WITH_PREFIX(INFO) << "Closing remote bootstrap session " << session_id()
-                          << " in RemoteBootstrapClient destructor.";
-    WARN_NOT_OK(EndRemoteSession(),
-                LogPrefix() + "Unable to close remote bootstrap session " + session_id());
-  }
-  if (started_) {
-    auto old_count = remote_bootstrap_clients_started_.fetch_sub(1, std::memory_order_acq_rel);
-    if (old_count < 1) {
-      LOG_WITH_PREFIX(DFATAL) << "Invalid number of remote bootstrap sessions: " << old_count;
-    }
-  }
-}
+RemoteBootstrapClient::~RemoteBootstrapClient() {}
 
 Status RemoteBootstrapClient::SetTabletToReplace(const RaftGroupMetadataPtr& meta,
                                                  int64_t caller_term) {
@@ -203,20 +174,21 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
   CHECK(!started_);
   start_time_micros_ = GetCurrentTimeMicros();
 
-  LOG_WITH_PREFIX(INFO) << "Beginning remote bootstrap session"
-                        << " from remote peer at address " << bootstrap_peer_addr.ToString();
-
   // Set up an RPC proxy for the RemoteBootstrapService.
   proxy_.reset(new RemoteBootstrapServiceProxy(proxy_cache, bootstrap_peer_addr));
 
+  auto rbs_source_role = "LEADER";
   BeginRemoteBootstrapSessionRequestPB req;
   req.set_requestor_uuid(permanent_uuid());
   req.set_tablet_id(tablet_id_);
-  // if tablet_leader_conn_info is populated, then propagate it through
-  // the BeginRemoteBootstrapSessionRequestPB req.
   if (tablet_leader_conn_info.has_cloud_info()) {
+    // If tablet_leader_conn_info is populated, propagate it to the RBS source (which is a follower
+    // in this case) as it will have to request the leader peer to anchor its logs.
     *req.mutable_tablet_leader_conn_info() = tablet_leader_conn_info;
+    rbs_source_role = "FOLLOWER";
   }
+  LOG_WITH_PREFIX(INFO) << "Beginning remote bootstrap session from peer " << bootstrap_peer_uuid
+                        << " [" << rbs_source_role << "] at " << bootstrap_peer_addr.ToString();
 
   rpc::RpcController controller;
   controller.set_timeout(MonoDelta::FromMilliseconds(
@@ -228,10 +200,14 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
       UnwindRemoteError(proxy_->BeginRemoteBootstrapSession(req, &resp, &controller), controller);
 
   if (!status.ok()) {
-    status = status.CloneAndPrepend("Unable to begin remote bootstrap session");
+    status = status.CloneAndPrepend(
+        Format("Unable to begin remote bootstrap session $0", resp.session_id()));
     LOG_WITH_PREFIX(WARNING) << status;
     return status;
   }
+
+  download_retryable_requests_ = GetAtomicFlag(&FLAGS_enable_flush_retryable_requests) &&
+      resp.has_retryable_requests_file_flushed() && resp.retryable_requests_file_flushed();
 
   remote_tablet_data_state_ = resp.superblock().tablet_data_state();
   if (!CanServeTabletData(remote_tablet_data_state_)) {
@@ -256,6 +232,16 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
 
   const TableId table_id = resp.superblock().primary_table_id();
   const bool colocated = resp.superblock().colocated();
+  auto& hosted_stateful_services = resp.superblock().hosted_stateful_services();
+  std::unordered_set<StatefulServiceKind> hosted_services;
+  hosted_services.reserve(hosted_stateful_services.size());
+  for (auto& service_kind : hosted_stateful_services) {
+    SCHECK(
+        StatefulServiceKind_IsValid(service_kind), InvalidArgument,
+        Format("Invalid stateful service kind: $0", service_kind));
+    hosted_services.insert((StatefulServiceKind)service_kind);
+  }
+
   const tablet::TableInfoPB* table_ptr = nullptr;
   for (auto& table_pb : kv_store->tables()) {
     if (table_pb.table_id() == table_id) {
@@ -272,7 +258,8 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
 
   downloader_.Start(
       proxy_, resp.session_id(), MonoDelta::FromMilliseconds(resp.session_idle_timeout_millis()));
-  LOG_WITH_PREFIX(INFO) << "Began remote bootstrap session " << session_id();
+  LOG_WITH_PREFIX(INFO) << "Began remote bootstrap session " << session_id()
+                        << " [Bootstrapping from " << rbs_source_role << "]";
 
   superblock_.reset(resp.release_superblock());
 
@@ -334,10 +321,11 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
                                         wal_root_dir);
     }
   } else {
-    Partition partition;
-    Partition::FromPB(superblock_->partition(), &partition);
-    PartitionSchema partition_schema;
-    RETURN_NOT_OK(PartitionSchema::FromPB(table.partition_schema(), schema, &partition_schema));
+    dockv::Partition partition;
+    dockv::Partition::FromPB(superblock_->partition(), &partition);
+    dockv::PartitionSchema partition_schema;
+    RETURN_NOT_OK(dockv::PartitionSchema::FromPB(
+        table.partition_schema(), schema, &partition_schema));
     // Create the superblock on disk.
     if (ts_manager != nullptr) {
       ts_manager->GetAndRegisterDataAndWalDir(&fs_manager(),
@@ -347,13 +335,15 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
                                               &wal_root_dir);
     }
     auto table_info = std::make_shared<tablet::TableInfo>(
+        consensus::MakeTabletLogPrefix(tablet_id_, fs_manager().uuid()),
         tablet::Primary::kTrue, table_id, table.namespace_name(), table.table_name(),
-        table.table_type(), schema, IndexMap(table.indexes()),
-        table.has_index_info() ? boost::optional<IndexInfo>(table.index_info()) : boost::none,
+        table.table_type(), schema, qlexpr::IndexMap(table.indexes()),
+        table.has_index_info() ? boost::optional<qlexpr::IndexInfo>(table.index_info())
+                               : boost::none,
         table.schema_version(), partition_schema);
     fs_manager().SetTabletPathByDataPath(tablet_id_, data_root_dir);
     auto create_result = RaftGroupMetadata::CreateNew(
-        tablet::RaftGroupMetadataData {
+        tablet::RaftGroupMetadataData{
             .fs_manager = &fs_manager(),
             .table_info = table_info,
             .raft_group_id = tablet_id_,
@@ -361,6 +351,7 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
             .tablet_data_state = tablet::TABLET_DATA_COPYING,
             .colocated = colocated,
             .snapshot_schedules = {},
+            .hosted_services = hosted_services,
         },
         data_root_dir, wal_root_dir);
     if (ts_manager != nullptr && !create_result.ok()) {
@@ -375,10 +366,13 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
       RETURN_NOT_OK(DeletedColumn::FromPB(col_pb, &col));
       deleted_cols.push_back(col);
     }
+    // OpId::Invalid() is used to indicate the callee to not
+    // set last_applied_change_metadata_op_id field of tablet metadata.
     meta_->SetSchema(schema,
-                     IndexMap(table.indexes()),
+                     qlexpr::IndexMap(table.indexes()),
                      deleted_cols,
-                     table.schema_version());
+                     table.schema_version(),
+                     OpId::Invalid());
 
     // Replace rocksdb_dir in the received superblock with our rocksdb_dir.
     kv_store->set_rocksdb_dir(meta_->rocksdb_dir());
@@ -387,12 +381,7 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
     superblock_->set_wal_dir(meta_->wal_dir());
   }
 
-  started_ = true;
-  auto old_count = remote_bootstrap_clients_started_.fetch_add(1, std::memory_order_acq_rel);
-  if (old_count < 0) {
-    LOG_WITH_PREFIX(DFATAL) << "Invalid number of remote bootstrap sessions: " << old_count;
-    remote_bootstrap_clients_started_.store(0, std::memory_order_release);
-  }
+  Started();
 
   if (meta) {
     *meta = meta_;
@@ -414,6 +403,9 @@ Status RemoteBootstrapClient::FetchAll(TabletStatusListener* status_listener) {
   TEST_PAUSE_IF_FLAG_WITH_PREFIX(
       TEST_pause_rbs_before_download_wal, LogPrefix() + tablet_id_ + ": ");
   RETURN_NOT_OK(DownloadWALs());
+  if (download_retryable_requests_) {
+    RETURN_NOT_OK(DownloadRetryableRequestsFile());
+  }
   for (const auto& component : components_) {
     RETURN_NOT_OK(component->Download());
   }
@@ -502,65 +494,6 @@ void RemoteBootstrapClient::UpdateStatusMessage(const string& message) {
   if (status_listener_ != nullptr) {
     status_listener_->StatusMessage("RemoteBootstrap: " + message);
   }
-}
-
-Status RemoteBootstrapClient::EndRemoteSession() {
-  if (!started_) {
-    return Status::OK();
-  }
-
-  rpc::RpcController controller;
-  controller.set_timeout(MonoDelta::FromSeconds(FLAGS_remote_bootstrap_end_session_timeout_sec));
-
-  EndRemoteBootstrapSessionRequestPB req;
-  req.set_session_id(session_id());
-  req.set_is_success(succeeded_);
-  req.set_keep_session(succeeded_);
-  EndRemoteBootstrapSessionResponsePB resp;
-
-  LOG_WITH_PREFIX(INFO) << "Ending remote bootstrap session " << session_id();
-  auto status = proxy_->EndRemoteBootstrapSession(req, &resp, &controller);
-  if (status.ok()) {
-    remove_required_ = resp.session_kept();
-    LOG_WITH_PREFIX(INFO) << "Remote bootstrap session " << session_id()
-                          << " ended successfully";
-    return Status::OK();
-  }
-
-  if (status.IsTimedOut()) {
-    // Ignore timeout errors since the server could have sent the ChangeConfig request and died
-    // before replying. We need to check the config to verify that this server's role changed as
-    // expected, in which case, the remote bootstrap was completed successfully.
-    LOG_WITH_PREFIX(INFO) << "Remote bootstrap session " << session_id() << " timed out";
-    return Status::OK();
-  }
-
-  status = UnwindRemoteError(status, controller);
-  return status.CloneAndPrepend(
-      Format("Failed to end remote bootstrap session $0", session_id()));
-}
-
-Status RemoteBootstrapClient::Remove() {
-  if (!remove_required_) {
-    return Status::OK();
-  }
-
-  rpc::RpcController controller;
-  controller.set_timeout(MonoDelta::FromSeconds(FLAGS_remote_bootstrap_end_session_timeout_sec));
-
-  RemoveRemoteBootstrapSessionRequestPB req;
-  req.set_session_id(session_id());
-  RemoveRemoteBootstrapSessionResponsePB resp;
-
-  LOG_WITH_PREFIX(INFO) << "Removing remote bootstrap session " << session_id();
-  const auto status = proxy_->RemoveRemoteBootstrapSession(req, &resp, &controller);
-  if (status.ok()) {
-    LOG_WITH_PREFIX(INFO) << "Remote bootstrap session " << session_id() << " removed successfully";
-    return Status::OK();
-  }
-
-  return UnwindRemoteError(status, controller).CloneAndPrepend(
-      Format("Failure removing remote bootstrap session $0", session_id()));
 }
 
 Status RemoteBootstrapClient::DownloadWALs() {
@@ -706,10 +639,8 @@ Status RemoteBootstrapClient::DownloadWAL(uint64_t wal_segment_seqno) {
     }
   });
 
-  WritableFileOptions opts;
-  opts.sync_on_close = true;
   std::unique_ptr<WritableFile> writer;
-  RETURN_NOT_OK_PREPEND(env().NewWritableFile(opts, temp_dest_path, &writer),
+  RETURN_NOT_OK_PREPEND(env().NewWritableFile(temp_dest_path, &writer),
                         "Unable to open file for writing");
 
   auto start = MonoTime::Now();
@@ -726,14 +657,43 @@ Status RemoteBootstrapClient::DownloadWAL(uint64_t wal_segment_seqno) {
   return Status::OK();
 }
 
+Status RemoteBootstrapClient::DownloadRetryableRequestsFile() {
+  VLOG_WITH_PREFIX(1) << "Downloading retryable requests file";
+  DataIdPB data_id;
+  data_id.set_type(DataIdPB::RETRYABLE_REQUESTS);
+  auto dest_path = consensus::RetryableRequestsManager::FilePath(meta_->wal_dir());
+  const auto temp_dest_path = dest_path + ".tmp";
+  bool ok = false;
+  auto se = ScopeExit([this, &temp_dest_path, &ok] {
+    if (!ok) {
+      WARN_NOT_OK(env().DeleteFile(temp_dest_path),
+                  "Failed to delete temporary retryable requests file");
+    }
+  });
+
+  std::unique_ptr<WritableFile> writer;
+  RETURN_NOT_OK_PREPEND(env().NewWritableFile(temp_dest_path, &writer),
+                        "Unable to open file for writing");
+
+  auto start = MonoTime::Now();
+  RETURN_NOT_OK_PREPEND(downloader_.DownloadFile(data_id, writer.get()),
+                        "Unable to download retryable requests file");
+  RETURN_NOT_OK(env().RenameFile(temp_dest_path, dest_path));
+  auto elapsed = MonoTime::Now().GetDeltaSince(start);
+  LOG_WITH_PREFIX(INFO) << "Downloaded retryable requests file of size " << writer->Size()
+                        << " in " << elapsed.ToSeconds() << " seconds";
+  ok = true;
+
+  return Status::OK();
+}
+
 Status RemoteBootstrapClient::WriteConsensusMetadata() {
   // If we didn't find a previous consensus meta file, create one.
   if (!cmeta_) {
-    std::unique_ptr<ConsensusMetadata> cmeta;
-    return ConsensusMetadata::Create(&fs_manager(), tablet_id_, fs_manager().uuid(),
-                                     remote_committed_cstate_->config(),
-                                     remote_committed_cstate_->current_term(),
-                                     &cmeta);
+    cmeta_ = VERIFY_RESULT(ConsensusMetadata::Create(
+        &fs_manager(), tablet_id_, fs_manager().uuid(), remote_committed_cstate_->config(),
+        remote_committed_cstate_->current_term()));
+    return Status::OK();
   }
 
   // Otherwise, update the consensus metadata to reflect the config and term
@@ -750,14 +710,6 @@ Status RemoteBootstrapClient::WriteConsensusMetadata() {
   }
 
   return Status::OK();
-}
-
-Env& RemoteBootstrapClient::env() const {
-  return *fs_manager().env();
-}
-
-const std::string& RemoteBootstrapClient::permanent_uuid() const {
-  return fs_manager().uuid();
 }
 
 } // namespace tserver

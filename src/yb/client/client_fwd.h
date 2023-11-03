@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_CLIENT_CLIENT_FWD_H
-#define YB_CLIENT_CLIENT_FWD_H
+#pragma once
 
 #include <functional>
 #include <memory>
@@ -23,6 +22,8 @@
 #include <vector>
 
 #include <boost/function/function_fwd.hpp>
+
+#include "yb/cdc/cdc_types.h"
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids_types.h"
@@ -36,6 +37,7 @@ template <class T>
 class scoped_refptr;
 
 YB_STRONGLY_TYPED_BOOL(RequireTabletsRunning);
+YB_STRONGLY_TYPED_BOOL(PartitionsOnly);
 
 namespace yb {
 namespace client {
@@ -69,6 +71,7 @@ typedef std::shared_ptr<YBSession> YBSessionPtr;
 struct FlushStatus;
 using FlushCallback = boost::function<void(FlushStatus*)>;
 using CommitCallback = boost::function<void(const Status&)>;
+using CreateCallback = boost::function<void(const Status&)>;
 
 class YBTable;
 typedef std::shared_ptr<YBTable> YBTablePtr;
@@ -104,15 +107,19 @@ struct YBqlWritePrimaryKeyComparator;
 
 using LocalTabletFilter = std::function<void(std::vector<const TabletId*>*)>;
 using VersionedTablePartitionListPtr = std::shared_ptr<const VersionedTablePartitionList>;
+using TablePartitionListPtr = std::shared_ptr<const TablePartitionList>;
 using TabletServersInfo = std::vector<YBTabletServerPlacementInfo>;
 using YBqlOpPtr = std::shared_ptr<YBqlOp>;
 using YBqlReadOpPtr = std::shared_ptr<YBqlReadOp>;
 using YBqlWriteOpPtr = std::shared_ptr<YBqlWriteOp>;
+using YBPgsqlReadOpPtr = std::shared_ptr<YBPgsqlReadOp>;
+using YBPgsqlWriteOpPtr = std::shared_ptr<YBPgsqlWriteOp>;
 
 enum class YBTableType;
 
 YB_DEFINE_ENUM(GrantRevokeStatementType, (GRANT)(REVOKE));
 YB_STRONGLY_TYPED_BOOL(ForceConsistentRead);
+YB_STRONGLY_TYPED_BOOL(ForceGlobalTransaction);
 YB_STRONGLY_TYPED_BOOL(Initial);
 YB_STRONGLY_TYPED_BOOL(UseCache);
 
@@ -151,10 +158,13 @@ YB_STRONGLY_TYPED_BOOL(IsWithinTransactionRetry);
 typedef std::function<void(const Result<internal::RemoteTabletPtr>&)> LookupTabletCallback;
 typedef std::function<void(const Result<std::vector<internal::RemoteTabletPtr>>&)>
         LookupTabletRangeCallback;
-typedef std::function<void(const Result<CDCStreamId>&)> CreateCDCStreamCallback;
+typedef std::function<void(const Result<xrepl::StreamId>&)> CreateCDCStreamCallback;
+typedef Result<std::tuple<
+    std::vector<TableId> /* table_ids */, std::vector<std::string> /* bootstrap_ids */,
+    HybridTime /* bootstrap_time */>>
+    BootstrapProducerResult;
+typedef std::function<void(BootstrapProducerResult)> BootstrapProducerCallback;
 class AsyncClientInitialiser;
 
 } // namespace client
 } // namespace yb
-
-#endif // YB_CLIENT_CLIENT_FWD_H

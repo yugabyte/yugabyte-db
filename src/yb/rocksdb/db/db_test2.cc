@@ -61,6 +61,7 @@ TEST_F(DBTest2, IteratorPropertyVersionNumber) {
   ASSERT_EQ(version_number2, version_number3);
 
   iter1->SeekToFirst();
+  ASSERT_TRUE(ASSERT_RESULT(iter1->CheckedValid()));
   ASSERT_OK(
       iter1->GetProperty("rocksdb.iterator.super-version-number", &prop_value));
   uint64_t version_number1_new =

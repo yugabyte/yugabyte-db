@@ -37,6 +37,7 @@
 #include "yb/rocksdb/util/random.h"
 #include "yb/rocksdb/util/testutil.h"
 
+#include "yb/util/env.h"
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
 #include "yb/util/test_macros.h"
@@ -252,7 +253,7 @@ void CheckBlockContents(
     iter->Seek(higher_key);
     ASSERT_OK(iter->status());
     if (j == keys.size()) {
-      ASSERT_FALSE(iter->Valid());
+      ASSERT_FALSE(ASSERT_RESULT(iter->CheckedValid()));
       continue;
     }
     ASSERT_TRUE(iter->Valid());
@@ -637,7 +638,7 @@ TEST_F(BlockTest, EncodeThreeSharedPartsSizes) {
     EXPECT_EQ(result, buffer.data() + encoded_sizes_end_offset);
 
     if (testing::Test::HasFailure()) {
-      FLAGS_v = 4;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_v) = 4;
       EncodeThreeSharedPartsSizes(
           shared_prefix_size, last_internal_component_reuse_size, is_last_internal_component_inc,
           rest_sizes, prev_key_size, key_size, value_size, &buffer);
@@ -671,7 +672,7 @@ TEST_F(BlockTest, EncodeThreeSharedParts) {
   };
   auto append_random_string = [](std::string* buf, size_t size) {
     while (size > 0) {
-      *buf += yb::RandomUniformInt<char>();
+      *buf += yb::RandomUniformInt<uint8_t>();
       size--;
     }
   };
@@ -750,6 +751,105 @@ TEST_F(BlockTest, EncodeThreeSharedParts) {
 
     CheckBlockContents(std::move(contents), kKeyValueEncodingFormat, keys, values);
   }
+}
+
+void TestBlockScanPerf(
+    const KeyValueEncodingFormat key_value_encoding_format,
+    const bool use_delta_encoding,
+    const size_t block_size = 32 * 1024 /*32_KB*/,
+    int key_size = 32,
+    int value_size = 0) {
+  constexpr auto kRestarts = 16;
+  constexpr auto kIterations = 10;
+
+  BlockBuilder builder(kRestarts, key_value_encoding_format, use_delta_encoding);
+
+  Random rnd(302);
+  std::string value;
+  if (value_size > 0) rocksdb::RandomString(&rnd, value_size);
+  Slice value_slize(value);
+  int key_count = 0;
+  do {
+    /*10 digits value is generated for primary and secondary key by GenerateKey*/
+    auto key = GenerateKey(key_count, key_count + 1000, key_size - 10, &rnd);
+    builder.Add(key, value_slize);
+    key_count++;
+  } while (builder.CurrentSizeEstimate() < block_size);
+
+  auto rawblock = builder.Finish();
+  LOG(INFO) << "KeyValueEncodingFormat: "
+            << KeyValueEncodingFormatToString(key_value_encoding_format)
+            << ", UseDeltaEncoding: " << use_delta_encoding
+            << ", BlockSize: " << rawblock.size()
+            << ", KeysCount: " << key_count;
+
+  BlockContents contents(rawblock, false, kNoCompression);
+  Block reader(std::move(contents));
+
+  uint64_t total_time = 0;
+  uint64_t min_time = std::numeric_limits<uint64_t>::max();
+  uint64_t max_time = 0;
+  for (size_t i = 0; i < kIterations; i++) {
+    auto start = yb::Env::Default()->NowNanos();
+    std::unique_ptr<InternalIterator> iter(
+        reader.NewIterator(BytewiseComparator(), key_value_encoding_format));
+
+    // Scan through the block and validate the number of keys.
+    {
+      size_t keys = 0;
+      for (iter->SeekToFirst(); iter->Valid(); keys++, iter->Next()) {
+        /*const auto k =*/ iter->key();
+        /*const auto v =*/ iter->value();
+      }
+      ASSERT_EQ(key_count, keys);
+    }
+    auto t = (yb::Env::Default()->NowNanos() - start);
+    min_time = std::min(t, min_time);
+    max_time = std::max(t, max_time);
+    total_time += t;
+  }
+
+  LOG(INFO) << "Next performance (ns): Avg: " << (total_time / kIterations)
+            << ", Min: " << min_time
+            << ", Max: " << max_time
+            << ", TotalTime: " << total_time;
+
+  total_time = max_time = 0;
+  min_time = std::numeric_limits<uint64_t>::max();
+  for (size_t i = 0; i < kIterations; i++) {
+    auto start = yb::Env::Default()->NowNanos();
+    std::unique_ptr<InternalIterator> iter(
+        reader.NewIterator(BytewiseComparator(), key_value_encoding_format));
+
+    // Scan through the block and validate the number of keys.
+    {
+      size_t keys = 0;
+      for (iter->SeekToLast(); iter->Valid(); keys++, iter->Prev()) {
+        /*const auto k =*/ iter->key();
+        /*const auto v =*/ iter->value();
+      }
+      ASSERT_EQ(key_count, keys);
+    }
+    auto t = (yb::Env::Default()->NowNanos() - start);
+    min_time = std::min(t, min_time);
+    max_time = std::max(t, max_time);
+    total_time += t;
+  }
+
+  LOG(INFO) << "Prev performance (ns): Avg: " << (total_time / kIterations)
+            << ", Min: " << min_time
+            << ", Max: " << max_time
+            << ", TotalTime: " << total_time;
+}
+
+TEST_F(BlockTest, IterPerfDisabledDeltaEncoding) {
+  constexpr auto kKeyValueEncodingFormat =
+      KeyValueEncodingFormat::kKeyDeltaEncodingSharedPrefix;
+  constexpr auto kUseDeltaEncoding = false;
+
+  TestBlockScanPerf(KeyValueEncodingFormat::kKeyDeltaEncodingSharedPrefix, false);
+  TestBlockScanPerf(KeyValueEncodingFormat::kKeyDeltaEncodingSharedPrefix, true);
+  TestBlockScanPerf(KeyValueEncodingFormat::kKeyDeltaEncodingThreeSharedParts, true);
 }
 
 }  // namespace rocksdb

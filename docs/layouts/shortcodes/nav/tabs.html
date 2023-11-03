@@ -1,0 +1,29 @@
+{{- $tabs := default "local,cloud,anywhere" (.Get "list") -}}
+{{- $mode := default "local" (.Get "active") -}}
+<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
+    {{if strings.Contains $tabs "local"}}
+    <li>
+        <a href="#local" class="nav-link {{if (eq $mode "local")}}active{{end}}" id="local-tab" data-toggle="tab" role="tab" aria-controls="local" aria-selected="{{if (eq $mode "local")}}true{{end}}">
+        <img src="/icons/database.svg" alt="Local Cluster"/>
+        Local
+        </a>
+    </li>
+    {{end}}
+    {{if strings.Contains $tabs "cloud"}}
+    <li>
+        <a href="#cloud" class="nav-link {{if (eq $mode "cloud")}}active{{end}}" id="cloud-tab" data-toggle="tab" role="tab" aria-controls="cloud" aria-selected="{{if (eq $mode "cloud")}}true{{end}}">
+        <img src="/icons/cloud.svg" alt="Cloud Cluster"/>
+        YB Managed
+        </a>
+    </li>
+    {{end}}
+    {{if strings.Contains $tabs "anywhere"}}
+    <li>
+        <a href="#anywhere" class="nav-link {{if (eq $mode "anywhere")}}active{{end}}" id="anywhere-tab" data-toggle="tab" role="tab" aria-controls="anywhere" aria-selected="{{if (eq $mode "anywhere")}}true{{end}}">
+        <img src="/icons/server.svg" alt="Anywhere Cluster"/>
+        YB Anywhere
+        </a>
+    </li>
+    {{end}}
+{{.Inner}}
+</ul>

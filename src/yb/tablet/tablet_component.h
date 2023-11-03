@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_TABLET_COMPONENT_H
-#define YB_TABLET_TABLET_COMPONENT_H
+#pragma once
 
 #include <mutex>
 
@@ -41,11 +40,13 @@ class TabletComponent {
   }
 
  protected:
-  Result<TabletScopedRWOperationPauses> StartShutdownRocksDBs(
-      DisableFlushOnShutdown disable_flush_on_shutdown);
+  TabletScopedRWOperationPauses StartShutdownRocksDBs(
+      DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops);
 
-  Status CompleteShutdownRocksDBs(
-      Destroy destroy, TabletScopedRWOperationPauses* ops_pauses);
+  std::vector<std::string> CompleteShutdownRocksDBs(
+      const TabletScopedRWOperationPauses& ops_pauses);
+
+  Status DeleteRocksDBs(const std::vector<std::string>& db_paths);
 
   Status OpenRocksDBs();
 
@@ -53,7 +54,7 @@ class TabletComponent {
 
   RaftGroupMetadata& metadata() const;
 
-  RWOperationCounter& pending_op_counter() const;
+  RWOperationCounter& pending_op_counter_blocking_rocksdb_shutdown_start() const;
 
   rocksdb::DB& regular_db() const;
 
@@ -75,5 +76,3 @@ class TabletComponent {
 
 } // namespace tablet
 } // namespace yb
-
-#endif // YB_TABLET_TABLET_COMPONENT_H

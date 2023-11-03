@@ -5397,12 +5397,6 @@ int8_sum(PG_FUNCTION_ARGS)
  * we need to count the inputs.
  */
 
-typedef struct Int8TransTypeData
-{
-	int64		count;
-	int64		sum;
-} Int8TransTypeData;
-
 Datum
 int2_avg_accum(PG_FUNCTION_ARGS)
 {

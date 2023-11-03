@@ -17,8 +17,9 @@
 #include "yb/rpc/rpc_header.pb.h"
 
 #include "yb/util/logging.h"
+#include "yb/util/flags.h"
 
-DEFINE_int64(reset_master_leader_timeout_ms, 15000,
+DEFINE_UNKNOWN_int64(reset_master_leader_timeout_ms, 15000,
              "Timeout to reset master leader in milliseconds.");
 
 using namespace std::literals;
@@ -70,11 +71,12 @@ void ClientMasterRpcBase::NewLeaderMasterDeterminedCb(const Status& status) {
 }
 
 void ClientMasterRpcBase::Finished(const Status& status) {
+  ADOPT_TRACE(trace_.get());
   auto resp_status = ResponseStatus();
   if (status.ok() && !resp_status.ok()) {
-    LOG_WITH_PREFIX(INFO) << "Failed, got resp error: " << resp_status;
+    YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 1) << "Failed, got resp error: " << resp_status;
   } else if (!status.ok()) {
-    LOG_WITH_PREFIX(INFO) << "Failed: " << status;
+    YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 1) << "Failed: " << status;
   }
 
   Status new_status = status;
@@ -119,7 +121,11 @@ void ClientMasterRpcBase::Finished(const Status& status) {
       new_status = STATUS_FORMAT(
           TimedOut, "$0 timed out after deadline expired, passed $1 of $2",
           *this, now - retrier().start(), retrier().deadline() - retrier().start());
-      ResetMasterLeader(Retry::kFalse);
+      // If RPC start time >= deadline, this RPC was doomed to timeout and timeout reason is not in
+      // master.
+      if (retrier().start() < retrier().deadline()) {
+        ResetMasterLeader(Retry::kFalse);
+      }
     }
   }
 

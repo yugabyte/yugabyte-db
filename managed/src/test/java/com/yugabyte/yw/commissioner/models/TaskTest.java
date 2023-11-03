@@ -29,7 +29,7 @@ public class TaskTest extends FakeDBApplication {
     details.put("description", "Test task");
     details.put("key1", "val1");
     details.put("key2", "val2");
-    taskInfo.setTaskDetails(Json.toJson(details));
+    taskInfo.setDetails(Json.toJson(details));
     // Set the owner info.
     String hostname = "";
     try {
@@ -44,9 +44,9 @@ public class TaskTest extends FakeDBApplication {
     // Check the various fields.
     assertNotNull(taskInfo.getTaskUUID());
     assertEquals(taskInfo.getTaskType(), TaskType.CreateUniverse);
-    assertNotNull(taskInfo.getCreationTime());
-    assertNotNull(taskInfo.getLastUpdateTime());
-    assertEquals(taskInfo.getLastUpdateTime(), taskInfo.getCreationTime());
+    assertNotNull(taskInfo.getCreateTime());
+    assertNotNull(taskInfo.getUpdateTime());
+    assertEquals(taskInfo.getUpdateTime(), taskInfo.getCreateTime());
 
     // Sleep so that the last updated time will be different.
     try {
@@ -57,6 +57,6 @@ public class TaskTest extends FakeDBApplication {
     // Update the task, make sure its last update time is changed.
     taskInfo.markAsDirty();
     taskInfo.save();
-    assertNotEquals(taskInfo.getLastUpdateTime(), taskInfo.getCreationTime());
+    assertNotEquals(taskInfo.getUpdateTime(), taskInfo.getCreateTime());
   }
 }

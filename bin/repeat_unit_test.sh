@@ -229,7 +229,7 @@ if [[ $test_filter != "all_tests" ]]; then
   gtest_filter_arg="--gtest_filter=$test_filter"
 fi
 
-if ! "$is_java_test"; then
+if [[ $is_java_test == "false" ]]; then
   abs_test_binary_path=$( find_test_binary "$test_binary_name" )
   rel_test_binary=${abs_test_binary_path#$BUILD_ROOT/}
   if [[ $rel_test_binary == "$abs_test_binary_path" ]]; then
@@ -248,7 +248,7 @@ fi
 failure_flag_file_path="$log_dir/failure_flag"
 
 if [[ $iteration -gt 0 ]]; then
-  if "$stop_at_failure" && [[ -f $failure_flag_file_path ]]; then
+  if [[ $stop_at_failure == "true" && -f $failure_flag_file_path ]]; then
     exit
   fi
   # One iteration with a specific "id" ($iteration).
@@ -264,7 +264,7 @@ if [[ $iteration -gt 0 ]]; then
   export TEST_TMPDIR=/tmp/yb_tests__${current_timestamp}__$RANDOM.$RANDOM.$RANDOM
   mkdir -p "$TEST_TMPDIR"
   set_expected_core_dir "$TEST_TMPDIR"
-  if ! "$is_java_test"; then
+  if [[ $is_java_test == "false" ]]; then
     determine_test_timeout
   fi
 
@@ -302,10 +302,10 @@ if [[ $iteration -gt 0 ]]; then
   keep_log=$keep_all_logs
   pass_or_fail="PASSED"
   if ! did_test_succeed "$exit_code" "$test_log_path"; then
-    if ! "$is_java_test"; then
+    if [[ $is_java_test == "false" ]]; then
       process_core_file
     fi
-    if "$skip_address_already_in_use" && \
+    if [[ $skip_address_already_in_use == "true" ]] && \
        ( grep -Eq '\bAddress already in use\b' "$test_log_path" ||
          grep -Eq '\bWebserver: Could not start on address\b' "$test_log_path" ); then
       # TODO: perhaps we should not skip some types of errors that did_test_succeed finds in the
@@ -317,7 +317,7 @@ if [[ $iteration -gt 0 ]]; then
     fi
   fi
   if [[ ${keep_log} == "true" ]]; then
-    if ! "$skip_log_compression"; then
+    if [[ $skip_log_compression == "false" ]]; then
       if [[ ${is_java_test} == "true" ]]; then
         # Compress Java test log.
         mv "$test_log_path" "$YB_SUREFIRE_REPORTS_DIR"

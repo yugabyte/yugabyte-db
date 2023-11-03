@@ -11,7 +11,7 @@ returning_clause ::= RETURNING { * | { output_expression
 
 update_item ::= column_name = column_value
                 | ( column_names ) = [ ROW ] ( column_values )
-                | ( column_names ) = ( query )
+                | ( column_names ) = ( subquery )
 
 column_values ::= { expression | DEFAULT } [ , ... ]
 

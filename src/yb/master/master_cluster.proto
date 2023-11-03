@@ -27,6 +27,14 @@ import "yb/rpc/service.proto";
 message ListTabletServersRequestPB {
   // If set to true, return only the tservers which are in the primary/sync cluster.
   optional bool primary_only = 1 [default = false];
+  // If replication_info is not provided, tablespace ID will be
+  // used to fetch the replication config on user tables that
+  // are geo-partitioned within a tablespace.
+  optional bytes tablespace_id = 2;
+  // Replication config will be used on user tables that are located
+  // in geo-partitioned tablepsace to filter TServers based
+  // on their placement ID and cloud config.
+  optional ReplicationInfoPB replication_info = 3;
 }
 
 message ListTabletServersResponsePB {
@@ -180,6 +188,14 @@ message GetMasterClusterConfigResponsePB {
   optional SysClusterConfigEntryPB cluster_config = 2;
 }
 
+message GetMasterXClusterConfigRequestPB {
+}
+
+message GetMasterXClusterConfigResponsePB {
+  optional MasterErrorPB error = 1;
+  optional SysXClusterConfigEntryPB xcluster_config = 2;
+}
+
 message ChangeMasterClusterConfigRequestPB {
   optional SysClusterConfigEntryPB cluster_config = 1;
 }
@@ -246,6 +262,54 @@ message GetAutoFlagsConfigResponsePB {
   optional MasterErrorPB error = 3;
 }
 
+message PromoteAutoFlagsRequestPB {
+  required string max_flag_class = 1;
+  required bool promote_non_runtime_flags = 2;
+  // When force is set, the config version is bumped up even if no new flags are
+  // eligible for promote.
+  required bool force = 3;
+}
+
+message PromoteAutoFlagsResponsePB {
+  optional uint32 new_config_version = 1;
+  optional bool non_runtime_flags_promoted = 2;
+  optional MasterErrorPB error = 3;
+  optional bool flags_promoted = 4;
+}
+
+message RollbackAutoFlagsRequestPB {
+  required uint32 rollback_version = 1;
+}
+
+message RollbackAutoFlagsResponsePB {
+  optional uint32 new_config_version = 1;
+  optional bool flags_rolledback = 2;
+  optional MasterErrorPB error = 3;
+}
+
+message PromoteSingleAutoFlagRequestPB {
+  required string process_name = 1;
+  required string auto_flag_name = 2;
+}
+
+message PromoteSingleAutoFlagResponsePB {
+  optional uint32 new_config_version = 1;
+  optional bool flag_promoted = 2;
+  optional bool non_runtime_flag_promoted = 3;
+  optional MasterErrorPB error = 4;
+}
+
+message DemoteSingleAutoFlagRequestPB {
+  required string process_name = 1;
+  required string auto_flag_name = 2;
+}
+
+message DemoteSingleAutoFlagResponsePB {
+  optional uint32 new_config_version = 1;
+  optional bool flag_demoted = 2;
+  optional MasterErrorPB error = 3;
+}
+
 service MasterCluster {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -255,9 +319,15 @@ service MasterCluster {
       returns (ListLiveTabletServersResponsePB);
   rpc ListMasters(ListMastersRequestPB) returns (ListMastersResponsePB);
   rpc ListMasterRaftPeers(ListMasterRaftPeersRequestPB) returns (ListMasterRaftPeersResponsePB);
-  rpc GetMasterRegistration(GetMasterRegistrationRequestPB) returns
-    (GetMasterRegistrationResponsePB);
+  rpc GetMasterRegistration(GetMasterRegistrationRequestPB)
+      returns (GetMasterRegistrationResponsePB);
   rpc GetAutoFlagsConfig(GetAutoFlagsConfigRequestPB) returns (GetAutoFlagsConfigResponsePB);
+  rpc PromoteAutoFlags(PromoteAutoFlagsRequestPB) returns (PromoteAutoFlagsResponsePB);
+  rpc RollbackAutoFlags(RollbackAutoFlagsRequestPB) returns (RollbackAutoFlagsResponsePB);
+  rpc PromoteSingleAutoFlag(PromoteSingleAutoFlagRequestPB)
+      returns (PromoteSingleAutoFlagResponsePB);
+  rpc DemoteSingleAutoFlag(DemoteSingleAutoFlagRequestPB)
+      returns (DemoteSingleAutoFlagResponsePB);
 
   // Get the ready status from the catalog manager for this master.
   // NOTE: Should be used only for unit testing purposes.
@@ -276,6 +346,8 @@ service MasterCluster {
   rpc SetPreferredZones(SetPreferredZonesRequestPB) returns (SetPreferredZonesResponsePB);
   rpc GetMasterClusterConfig(GetMasterClusterConfigRequestPB)
       returns (GetMasterClusterConfigResponsePB);
+  rpc GetMasterXClusterConfig(GetMasterXClusterConfigRequestPB)
+      returns (GetMasterXClusterConfigResponsePB);
   rpc ChangeMasterClusterConfig(ChangeMasterClusterConfigRequestPB)
       returns (ChangeMasterClusterConfigResponsePB);
   rpc GetLoadMoveCompletion(GetLoadMovePercentRequestPB)

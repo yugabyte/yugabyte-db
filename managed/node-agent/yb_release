@@ -12,17 +12,23 @@ Options:
     Show usage.
   -d, --destination
     Directory into which the binary should be copied.
+  -l, --local
+    Generate pre-release packages in /opt/yugabyte/node-agent/releases.
+  -p, --rebuild_pex
+    Build ansible only pex for node agent.
 EOT
 }
 
 export DEVOPS_HOME="${BASH_SOURCE%/*}"/../devops
-export YB_MANAGED_DEVOPS_USE_PYTHON3=1
 
 . "$DEVOPS_HOME/bin/"/common.sh
 
 readonly node_agent_home=$( cd "${BASH_SOURCE%/*}" && pwd )
 
 destination=""
+local=""
+pre_release=""
+include_pex=""
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help)
@@ -32,13 +38,27 @@ while [ $# -gt 0 ]; do
     -d|--destination)
       destination="$2"
       shift
+    ;;
+    -l|--local)
+      local="true"
+    ;;
+    -p|--include_pex)
+      include_pex="--include_pex"
+    ;;
   esac
   shift
 done
 
-if [[ ! -d $destination ]]; then
+if [[ "$local" == "true" ]]; then
+  pre_release="--pre_release"
+  if [[ ! -d $destination ]]; then
+    destination="/opt/yugabyte/node-agent/releases"
+    mkdir -p "$destination"
+  fi
+elif [[ ! -d $destination ]]; then
   fatal "No destination directory found ('$destination')"
 fi
 
 activate_virtualenv
-$node_agent_home/yb_release.py --source_dir $node_agent_home --destination $destination
+$node_agent_home/yb_release.py --source_dir $node_agent_home --destination $destination \
+                                                            $pre_release $include_pex

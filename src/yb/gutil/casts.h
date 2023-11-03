@@ -21,8 +21,7 @@
 // any changes here, make sure that you're not breaking any platforms.
 //
 
-#ifndef YB_GUTIL_CASTS_H
-#define YB_GUTIL_CASTS_H
+#pragma once
 
 #include <assert.h>         // for use with down_cast<>
 #include <string.h>         // for memcpy
@@ -438,5 +437,3 @@ using yb::down_cast;
 using yb::implicit_cast;
 using yb::narrow_cast;
 using yb::trim_cast;
-
-#endif // YB_GUTIL_CASTS_H

@@ -89,6 +89,7 @@ typedef struct
 	List	   *ckconstraints;	/* CHECK constraints */
 	List	   *fkconstraints;	/* FOREIGN KEY constraints */
 	List	   *ixconstraints;	/* index-creating constraints */
+	List	   *yb_likepkconstraint; /* PRIMARY KEY constraints from LIKE clause */
 	List	   *inh_indexes;	/* cloned indexes from INCLUDING INDEXES */
 	List	   *extstats;		/* cloned extended statistics */
 	List	   *blist;			/* "before list" of things to do before
@@ -264,6 +265,7 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	cxt.ckconstraints = NIL;
 	cxt.fkconstraints = NIL;
 	cxt.ixconstraints = NIL;
+	cxt.yb_likepkconstraint = NIL;
 	cxt.inh_indexes = NIL;
 	cxt.extstats = NIL;
 	cxt.blist = NIL;
@@ -378,6 +380,8 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 
 	/* Validate the storage options from the WITH clause */
 	ListCell *cell;
+	bool colocation_option_specified = false;
+	bool colocated_option_specified = false;
 	foreach(cell, stmt->options)
 	{
 		DefElem *def = (DefElem*) lfirst(cell);
@@ -398,7 +402,15 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 							errmsg("users cannot create system catalog tables")));
 		}
 		else if (strcmp(def->defname, "colocated") == 0)
+		{
 			(void) defGetBoolean(def);
+			colocated_option_specified = true;
+		}
+		else if (strcmp(def->defname, "colocation") == 0)
+		{
+			(void) defGetBoolean(def);
+			colocation_option_specified = true;
+		}
 		else if (strcmp(def->defname, "table_oid") == 0)
 		{
 			if (!yb_enable_create_with_table_oid && !IsYsqlUpgrade)
@@ -416,7 +428,8 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 						 hintmsg ? errhint("%s", _(hintmsg)) : 0));
 
 			Oid max_system_relid = (yb_test_system_catalogs_creation
-									? FirstNormalObjectId : YB_MIN_UNUSED_OID) - 1;
+									? FirstNormalObjectId - 1
+									: YB_LAST_USED_OID);
 			if (!cxt.isSystem && cxt.relOid < FirstNormalObjectId)
 			{
 				ereport(ERROR,
@@ -452,6 +465,17 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("storage parameter %s is unsupported, ignoring", def->defname)));
 	}
+
+	if (colocation_option_specified && colocated_option_specified)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("cannot specify both of 'colocation' and 'colocated' options"),
+				 errhint("Use 'colocation' instead of 'colocated'.")));
+	else if (colocated_option_specified)
+		ereport(WARNING,
+				(errcode(ERRCODE_WARNING_DEPRECATED_FEATURE),
+				 errmsg("'colocated' syntax is deprecated and will be removed in a future release"),
+				 errhint("Use 'colocation' instead of 'colocated'.")));
 
 	if (IsYsqlUpgrade && cxt.isSystem &&
 		(!OidIsValid(cxt.relOid) || !specifies_type_oid))
@@ -502,6 +526,16 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	if (IsYugaByteEnabled())
 	{
 		stmt->constraints = list_concat(stmt->constraints, cxt.ixconstraints);
+	}
+
+	/*
+	 * If YB is enabled, add the primary key constraint from the like clause to
+	 * the statement so it will be passed down to DocDB.
+	 */
+	if (IsYugaByteEnabled() && like_found)
+	{
+		stmt->constraints =
+			list_concat(stmt->constraints, cxt.yb_likepkconstraint);
 	}
 
 	result = lappend(cxt.blist, stmt);
@@ -1403,6 +1437,19 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 												 parent_index,
 												 attmap, tupleDesc->natts, NULL);
 
+			/*
+			 * For Yugabyte clusters, the primary key index is a dummy
+			 * object. Its tablespace or location must always match that of
+			 * the table being indexed.
+			 */
+			if (IsYugaByteEnabled() && index_stmt->primary)
+			{
+				index_stmt->tableSpace = NULL;
+				if (cxt->tablespaceOid != InvalidOid)
+					index_stmt->tableSpace =
+						get_tablespace_name(cxt->tablespaceOid);
+			}
+
 			/* Copy comment on index, if requested */
 			if (table_like_clause->options & CREATE_TABLE_LIKE_COMMENTS)
 			{
@@ -1417,6 +1464,36 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 
 			/* Save it in the inh_indexes list for the time being */
 			cxt->inh_indexes = lappend(cxt->inh_indexes, index_stmt);
+
+			/*
+			 * If index is a primary key index save the primary key
+			 * constraint.
+			 */
+			if (IsYugaByteEnabled() &&
+					((Form_pg_index)
+					 GETSTRUCT(parent_index->rd_indextuple))->indisprimary)
+			{
+				Constraint *primary_key = makeNode(Constraint);
+				primary_key->contype = CONSTR_PRIMARY;
+				primary_key->conname = index_stmt->idxname;
+				primary_key->options = index_stmt->options;
+				primary_key->indexspace = NULL;
+				if (cxt->tablespaceOid != InvalidOid)
+					primary_key->indexspace =
+						get_tablespace_name(cxt->tablespaceOid);
+
+				ListCell *idxcell;
+				foreach(idxcell, index_stmt->indexParams)
+				{
+					IndexElem* ielem = lfirst(idxcell);
+					primary_key->keys =
+						lappend(primary_key->keys, makeString(ielem->name));
+					primary_key->yb_index_params =
+						lappend(primary_key->yb_index_params, ielem);
+				}
+				cxt->yb_likepkconstraint =
+					lappend(cxt->yb_likepkconstraint, primary_key);
+			}
 
 			index_close(parent_index, AccessShareLock);
 		}
@@ -2129,7 +2206,8 @@ transformIndexConstraints(CreateStmtContext *cxt)
 							"(exactly as defined in indexing.h header file!)");
 
 			Oid max_system_relid = (yb_test_system_catalogs_creation
-									? FirstNormalObjectId : YB_MIN_UNUSED_OID) - 1;
+									? FirstNormalObjectId - 1
+									: YB_LAST_USED_OID);
 			if (oid > max_system_relid)
 				elog(ERROR, "system indexes must have an OID <= %d "
 							"(exactly as defined in indexing.h header file!)",
@@ -2871,7 +2949,8 @@ transformIndexStmt(Oid relid, IndexStmt *stmt, const char *queryString)
 			Oid table_oid = strtol(defGetString(def), NULL, 10);
 
 			Oid max_system_relid = (yb_test_system_catalogs_creation
-									? FirstNormalObjectId : YB_MIN_UNUSED_OID) - 1;
+									? FirstNormalObjectId - 1
+									: YB_LAST_USED_OID);
 
 			if (!is_system && table_oid < FirstNormalObjectId)
 			{
@@ -3332,6 +3411,7 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 	cxt.ckconstraints = NIL;
 	cxt.fkconstraints = NIL;
 	cxt.ixconstraints = NIL;
+	cxt.yb_likepkconstraint = NIL;
 	cxt.inh_indexes = NIL;
 	cxt.extstats = NIL;
 	cxt.blist = NIL;
@@ -4308,6 +4388,16 @@ transformPartitionBoundValue(ParseState *pstate, A_Const *con,
 				 parser_errposition(pstate, con->location)));
 
 	return (Const *) value;
+}
+
+/*
+ * YB wrapper for invoking the static generateClonedExtStatsStmt function.
+ */
+CreateStatsStmt *
+YbGenerateClonedExtStatsStmt(RangeVar *heapRel, Oid heapRelid,
+							 Oid source_statsid)
+{
+	return generateClonedExtStatsStmt(heapRel, heapRelid, source_statsid);
 }
 
 void

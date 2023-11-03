@@ -1,19 +1,7 @@
-//  Licensed to the Apache Software Foundation (ASF) under one
-//  or more contributor license agreements.  See the NOTICE file
-//  distributed with this work for additional information
-//  regarding copyright ownership.  The ASF licenses this file
-//  to you under the Apache License, Version 2.0 (the
-//  "License"); you may not use this file except in compliance
-//  with the License.  You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-//  Unless required by applicable law or agreed to in writing,
-//  software distributed under the License is distributed on an
-//  "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-//  KIND, either express or implied.  See the License for the
-//  specific language governing permissions and limitations
-//  under the License.
+//  Copyright (c) 2011-present, Facebook, Inc.  All rights reserved.
+//  This source code is licensed under the BSD-style license found in the
+//  LICENSE file in the root directory of this source tree. An additional grant
+//  of patent rights can be found in the PATENTS file in the same directory.
 //
 // The following only applies to changes made to this file as part of YugaByte development.
 //
@@ -29,44 +17,38 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-//  Copyright (c) 2014, Facebook, Inc.  All rights reserved.
-//  This source code is licensed under the BSD-style license found in the
-//  LICENSE file in the root directory of this source tree. An additional grant
-//  of patent rights can be found in the PATENTS file in the same directory.
 
+#include "yb/util/flags.h"
+#include "yb/util/logging.h"
 #include "yb/util/sync_point.h"
 
-using std::string;
-using std::vector;
+DEFINE_test_flag(bool, enable_sync_points, false, "Enable sync points for testing.");
 
-#ifndef NDEBUG
 namespace yb {
-
-SyncPoint::Dependency::Dependency(string predecessor, string successor)
-    : predecessor_(std::move(predecessor)), successor_(std::move(successor)) {}
-
-SyncPoint::SyncPoint()
-  : cv_(&mutex_),
-    enabled_(false) {
-}
 
 SyncPoint* SyncPoint::GetInstance() {
   static SyncPoint sync_point;
   return &sync_point;
 }
 
-void SyncPoint::LoadDependency(const vector<Dependency>& dependencies) {
+void SyncPoint::LoadDependency(const std::vector<Dependency>& dependencies) {
+  std::unique_lock lock(mutex_);
   successors_.clear();
   predecessors_.clear();
   cleared_points_.clear();
-  for (const Dependency& dependency : dependencies) {
-    successors_[dependency.predecessor_].push_back(dependency.successor_);
-    predecessors_[dependency.successor_].push_back(dependency.predecessor_);
+  for (const auto& dependency : dependencies) {
+    successors_[dependency.predecessor].push_back(dependency.successor);
+    predecessors_[dependency.successor].push_back(dependency.predecessor);
   }
+  cv_.notify_all();
 }
 
-bool SyncPoint::PredecessorsAllCleared(const string& point) {
-  for (const string& pred : predecessors_[point]) {
+bool SyncPoint::PredecessorsAllCleared(const std::string& point) {
+  if (!enabled_) {
+    return true;
+  }
+
+  for (const auto& pred : predecessors_[point]) {
     if (cleared_points_.count(pred) == 0) {
       return false;
     }
@@ -74,33 +56,65 @@ bool SyncPoint::PredecessorsAllCleared(const string& point) {
   return true;
 }
 
+void SyncPoint::SetCallBack(const std::string& point, std::function<void(void*)> callback) {
+  std::unique_lock lock(mutex_);
+  callbacks_[point] = callback;
+}
+
+void SyncPoint::ClearAllCallBacks() {
+  std::unique_lock lock(mutex_);
+  while (num_callbacks_running_ > 0) {
+    cv_.wait(lock);
+  }
+  callbacks_.clear();
+}
+
 void SyncPoint::EnableProcessing() {
-  MutexLock lock(mutex_);
+  std::unique_lock lock(mutex_);
   enabled_ = true;
 }
 
 void SyncPoint::DisableProcessing() {
-  MutexLock lock(mutex_);
-  enabled_ = false;
+  {
+    std::unique_lock lock(mutex_);
+    enabled_ = false;
+  }
+  cv_.notify_all();
 }
 
 void SyncPoint::ClearTrace() {
-  MutexLock lock(mutex_);
+  std::unique_lock lock(mutex_);
   cleared_points_.clear();
 }
 
-void SyncPoint::Process(const string& point) {
-  MutexLock lock(mutex_);
+void SyncPoint::Process(const std::string& point, void* cb_arg) {
+  std::unique_lock lock(mutex_);
 
   if (!enabled_) return;
 
-  while (!PredecessorsAllCleared(point)) {
-    cv_.Wait();
+  const auto callback_pair = callbacks_.find(point);
+  if (callback_pair != callbacks_.end()) {
+    ++num_callbacks_running_;
+    lock.unlock();
+    callback_pair->second(cb_arg);
+    lock.lock();
+    --num_callbacks_running_;
+    cv_.notify_all();
+  }
+
+  if (!PredecessorsAllCleared(point)) {
+    LOG(INFO) << "Entered SyncPoint wait: " << point;
+    cv_.wait(lock, [this, &point]() { return PredecessorsAllCleared(point); });
+    LOG(INFO) << "Leaving SyncPoint wait: " << point;
   }
 
   cleared_points_.insert(point);
-  cv_.Broadcast();
+  cv_.notify_all();
 }
 
+void TEST_sync_point(const std::string& point, void* cb_arg) {
+  if (PREDICT_FALSE(FLAGS_TEST_enable_sync_points)) {
+    yb::SyncPoint::GetInstance()->Process(point, cb_arg);
+  }
+}
 }  // namespace yb
-#endif  // NDEBUG

@@ -21,8 +21,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef YB_ROCKSDB_DB_COMPACTION_PICKER_H
-#define YB_ROCKSDB_DB_COMPACTION_PICKER_H
 
 #pragma once
 
@@ -55,17 +53,18 @@ class CompactionPicker {
   // Pick level and inputs for a new compaction.
   // Returns nullptr if there is no compaction to be done.
   // Otherwise returns a pointer to a heap-allocated object that
-  // describes the compaction.  Caller should delete the result.
+  // describes the compaction. Caller is responsible for the resulting pointer.
   virtual std::unique_ptr<Compaction> PickCompaction(
       const std::string& cf_name,
       const MutableCFOptions& mutable_cf_options,
       VersionStorageInfo* vstorage,
       LogBuffer* log_buffer) = 0;
 
-  // Return a compaction object for compacting the range [begin,end] in
-  // the specified level.  Returns nullptr if there is nothing in that
-  // level that overlaps the specified range.  Caller should delete
-  // the result.
+  // Return a compaction object for compacting the range [begin, end] in
+  // the specified level. Returns nullptr if there is nothing in that
+  // level that overlaps the specified range.
+  //
+  // Refer to struct CompactRangeOptions for most of parameters description.
   //
   // The returned Compaction might not include the whole requested range.
   // In that case, compaction_end will be set to the next key that needs
@@ -75,8 +74,9 @@ class CompactionPicker {
   // *compaction_end should point to valid InternalKey!
   virtual std::unique_ptr<Compaction> CompactRange(
       const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
-      VersionStorageInfo* vstorage, int input_level, int output_level,
-      uint32_t output_path_id, const InternalKey* begin, const InternalKey* end,
+      VersionStorageInfo* vstorage, int input_level, int output_level, uint32_t output_path_id,
+      const InternalKey* begin, const InternalKey* end, CompactionReason compaction_reason,
+      uint64_t file_number_upper_bound, uint64_t input_size_limit,
       InternalKey** compaction_end, bool* manual_conflict);
 
   // The maximum allowed output level.  Default value is NumberLevels() - 1.
@@ -92,12 +92,10 @@ class CompactionPicker {
   // files.  If it's not possible to conver an invalid input_files
   // into a valid one by adding more files, the function will return a
   // non-ok status with specific reason.
-#ifndef ROCKSDB_LITE
   Status SanitizeCompactionInputFiles(
       std::unordered_set<uint64_t>* input_files,
       const ColumnFamilyMetaData& cf_meta,
       const int output_level) const;
-#endif  // ROCKSDB_LITE
 
   // Free up the files that participated in a compaction
   //
@@ -136,6 +134,15 @@ class CompactionPicker {
 
  protected:
   int NumberLevels() const { return ioptions_.num_levels; }
+
+  std::unique_ptr<Compaction> CompactRangeAllLevels(
+      const MutableCFOptions& mutable_cf_options, VersionStorageInfo* vstorage, int output_level,
+      uint32_t output_path_id, CompactionReason compaction_reason, bool* manual_conflict);
+
+  std::unique_ptr<Compaction> CompactRangeLevel0WithSizeLimit(
+      const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
+      VersionStorageInfo* vstorage, uint32_t output_path_id, uint64_t file_number_upper_bound,
+      uint64_t input_size_limit, CompactionReason compaction_reason);
 
   // Stores the minimal range that covers all entries in inputs in
   // *smallest, *largest.
@@ -192,12 +199,10 @@ class CompactionPicker {
 
   // A helper function to SanitizeCompactionInputFiles() that
   // sanitizes "input_files" by adding necessary files.
-#ifndef ROCKSDB_LITE
   virtual Status SanitizeCompactionInputFilesForAllLevels(
       std::unordered_set<uint64_t>* input_files,
       const ColumnFamilyMetaData& cf_meta,
       const int output_level) const;
-#endif  // ROCKSDB_LITE
 
   // Keeps track of all compactions that are running on Level0.
   // It is protected by DB mutex
@@ -245,7 +250,6 @@ class LevelCompactionPicker : public CompactionPicker {
                                                 int* level, int* output_level);
 };
 
-#ifndef ROCKSDB_LITE
 class UniversalCompactionPicker : public CompactionPicker {
  public:
   UniversalCompactionPicker(const ImmutableCFOptions& ioptions,
@@ -325,7 +329,9 @@ class FIFOCompactionPicker : public CompactionPicker {
       const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
       VersionStorageInfo* vstorage, int input_level, int output_level,
       uint32_t output_path_id, const InternalKey* begin, const InternalKey* end,
-      InternalKey** compaction_end, bool* manual_conflict) override;
+      CompactionReason compaction_reason, uint64_t file_number_upper_bound,
+      uint64_t input_size_limit, InternalKey** compaction_end,
+      bool* manual_conflict) override;
 
   // The maximum allowed output level.  Always returns 0.
   virtual int MaxOutputLevel() const override {
@@ -359,6 +365,9 @@ class NullCompactionPicker : public CompactionPicker {
       VersionStorageInfo* vstorage, int input_level,
       int output_level, uint32_t output_path_id,
       const InternalKey* begin, const InternalKey* end,
+      CompactionReason compaction_reason,
+      uint64_t file_number_upper_bound,
+      uint64_t input_size_limit,
       InternalKey** compaction_end,
       bool* manual_conflict) override {
     return nullptr;
@@ -370,7 +379,6 @@ class NullCompactionPicker : public CompactionPicker {
     return false;
   }
 };
-#endif  // !ROCKSDB_LITE
 
 // Test whether two files have overlapping key-ranges.
 bool HaveOverlappingKeyRanges(const Comparator* c,
@@ -382,5 +390,3 @@ CompressionType GetCompressionType(const ImmutableCFOptions& ioptions,
                                    const bool enable_compression = true);
 
 }  // namespace rocksdb
-
-#endif // YB_ROCKSDB_DB_COMPACTION_PICKER_H

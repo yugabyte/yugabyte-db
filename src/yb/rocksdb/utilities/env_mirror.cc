@@ -21,13 +21,13 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_LITE
-
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/rocksdb/utilities/env_mirror.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+
+using std::unique_ptr;
 
 namespace rocksdb {
 
@@ -219,6 +219,8 @@ class WritableFileMirror : public WritableFile {
     assert(as.code() == bs.code());
     return as;
   }
+
+  const std::string& filename() const override { return fname; }
 
  protected:
   Status Allocate(uint64_t offset, uint64_t length) override {
@@ -413,4 +415,3 @@ Status EnvMirror::UnlockFile(FileLock* l) {
 }
 
 }  // namespace rocksdb
-#endif

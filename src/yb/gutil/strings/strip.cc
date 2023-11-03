@@ -25,10 +25,6 @@
 
 #include <algorithm>
 
-using std::copy;
-using std::max;
-using std::min;
-using std::swap;
 using std::string;
 
 string StripPrefixString(GStringPiece str, const GStringPiece& prefix) {

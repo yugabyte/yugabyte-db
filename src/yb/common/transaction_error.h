@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_TRANSACTION_ERROR_H
-#define YB_COMMON_TRANSACTION_ERROR_H
+#pragma once
 
 #include "yb/util/enums.h"
 #include "yb/util/math_util.h"
@@ -27,7 +26,8 @@ YB_DEFINE_ENUM(TransactionErrorCode,
     (kReadRestartRequired)
     (kConflict)
     (kSnapshotTooOld)
-    (kSkipLocking));
+    (kSkipLocking)
+    (kDeadlock));
 
 struct TransactionErrorTag : IntegralErrorTag<TransactionErrorCode> {
   // It is part of the wire protocol and should not be changed once released.
@@ -41,5 +41,3 @@ struct TransactionErrorTag : IntegralErrorTag<TransactionErrorCode> {
 typedef StatusErrorCodeImpl<TransactionErrorTag> TransactionError;
 
 } // namespace yb
-
-#endif // YB_COMMON_TRANSACTION_ERROR_H

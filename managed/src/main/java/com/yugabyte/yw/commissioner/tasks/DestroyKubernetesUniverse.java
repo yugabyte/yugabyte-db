@@ -11,28 +11,50 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
+@Abortable
+@Retryable
 public class DestroyKubernetesUniverse extends DestroyUniverse {
 
+  private final XClusterUniverseService xClusterUniverseService;
+  private final OperatorStatusUpdater kubernetesStatus;
+
   @Inject
-  public DestroyKubernetesUniverse(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
+  public DestroyKubernetesUniverse(
+      BaseTaskDependencies baseTaskDependencies,
+      XClusterUniverseService xClusterUniverseService,
+      OperatorStatusUpdaterFactory statusUpdaterFactory) {
+    super(baseTaskDependencies, xClusterUniverseService);
+    this.xClusterUniverseService = xClusterUniverseService;
+    this.kubernetesStatus = statusUpdaterFactory.create();
   }
 
   @Override
@@ -46,6 +68,28 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
         universe = forceLockUniverseForUpdate(-1);
       } else {
         universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
+      }
+      kubernetesStatus.createYBUniverseEventStatus(
+          universe, params().getKubernetesResourceDetails(), getName(), getUserTaskUUID());
+      // Delete xCluster configs involving this universe and put the locked universes to
+      // lockedUniversesUuidList.
+      createDeleteXClusterConfigSubtasksAndLockOtherUniverses();
+
+      // Promote auto flags on all universes which were blocked due to the xCluster config.
+      // No need to pass excludeXClusterConfigSet as they are updated with status DeletedUniverse.
+      createPromoteAutoFlagsAndLockOtherUniversesForUniverseSet(
+          lockedXClusterUniversesUuidSet,
+          Stream.of(universe.getUniverseUUID()).collect(Collectors.toSet()),
+          xClusterUniverseService,
+          new HashSet<>() /* excludeXClusterConfigSet */,
+          params().isForceDelete);
+
+      if (params().isDeleteBackups) {
+        List<Backup> backupList =
+            Backup.fetchBackupToDeleteByUniverseUUID(
+                params().customerUUID, universe.getUniverseUUID());
+        createDeleteBackupYbTasks(backupList, params().customerUUID)
+            .setSubTaskGroupType(SubTaskGroupType.DeletingBackup);
       }
 
       preTaskActions();
@@ -62,24 +106,18 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
       // Try to unify this with the edit remove pods/deployments flow. Currently delete is
       // tied down to a different base class which makes params porting not straight-forward.
       SubTaskGroup helmDeletes =
-          getTaskExecutor()
-              .createSubTaskGroup(
-                  KubernetesCommandExecutor.CommandType.HELM_DELETE.getSubTaskGroupName(),
-                  executor);
+          createSubTaskGroup(
+              KubernetesCommandExecutor.CommandType.HELM_DELETE.getSubTaskGroupName());
       helmDeletes.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
 
       SubTaskGroup volumeDeletes =
-          getTaskExecutor()
-              .createSubTaskGroup(
-                  KubernetesCommandExecutor.CommandType.VOLUME_DELETE.getSubTaskGroupName(),
-                  executor);
+          createSubTaskGroup(
+              KubernetesCommandExecutor.CommandType.VOLUME_DELETE.getSubTaskGroupName());
       volumeDeletes.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
 
       SubTaskGroup namespaceDeletes =
-          getTaskExecutor()
-              .createSubTaskGroup(
-                  KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE.getSubTaskGroupName(),
-                  executor);
+          createSubTaskGroup(
+              KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE.getSubTaskGroupName());
       namespaceDeletes.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
 
       for (UniverseDefinitionTaskParams.Cluster cluster : universe.getUniverseDetails().clusters) {
@@ -90,12 +128,12 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
 
         Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
 
-        Map<UUID, Map<String, String>> azToConfig = PlacementInfoUtil.getConfigPerAZ(pi);
+        Map<UUID, Map<String, String>> azToConfig = KubernetesUtil.getConfigPerAZ(pi);
         boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
 
         for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
           UUID azUUID = entry.getKey();
-          String azName = isMultiAz ? AvailabilityZone.getOrBadRequest(azUUID).code : null;
+          String azName = isMultiAz ? AvailabilityZone.getOrBadRequest(azUUID).getCode() : null;
 
           Map<String, String> config = entry.getValue();
 
@@ -106,6 +144,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
             helmDeletes.addSubTask(
                 createDestroyKubernetesTask(
                     universe.getUniverseDetails().nodePrefix,
+                    universe.getName(),
                     universe.getUniverseDetails().useNewHelmNamingStyle,
                     azName,
                     config,
@@ -118,6 +157,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
           volumeDeletes.addSubTask(
               createDestroyKubernetesTask(
                   universe.getUniverseDetails().nodePrefix,
+                  universe.getName(),
                   universe.getUniverseDetails().useNewHelmNamingStyle,
                   azName,
                   config,
@@ -141,6 +181,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
             namespaceDeletes.addSubTask(
                 createDestroyKubernetesTask(
                     universe.getUniverseDetails().nodePrefix,
+                    universe.getName(),
                     universe.getUniverseDetails().useNewHelmNamingStyle,
                     azName,
                     config,
@@ -164,7 +205,15 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
 
       // Run all the tasks.
       getRunnableTask().runSubTasks();
+      kubernetesStatus.updateYBUniverseStatus(
+          getUniverse(),
+          params().getKubernetesResourceDetails(),
+          getName(),
+          getUserTaskUUID(),
+          null);
     } catch (Throwable t) {
+      kubernetesStatus.updateYBUniverseStatus(
+          getUniverse(), params().getKubernetesResourceDetails(), getName(), getUserTaskUUID(), t);
       // If for any reason destroy fails we would just unlock the universe for update
       try {
         unlockUniverseForUpdate();
@@ -173,12 +222,15 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
       }
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
+    } finally {
+      unlockXClusterUniverses(lockedXClusterUniversesUuidSet, params().isForceDelete);
     }
     log.info("Finished {} task.", getName());
   }
 
   protected KubernetesCommandExecutor createDestroyKubernetesTask(
       String nodePrefix,
+      String universeName,
       boolean newNamingStyle,
       String az,
       Map<String, String> config,
@@ -189,18 +241,21 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
     params.commandType = commandType;
     params.providerUUID = providerUUID;
     params.isReadOnlyCluster = isReadOnlyCluster;
+    params.universeName = universeName;
+    params.azCode = az;
     params.helmReleaseName =
-        PlacementInfoUtil.getHelmReleaseName(nodePrefix, az, isReadOnlyCluster);
+        KubernetesUtil.getHelmReleaseName(
+            nodePrefix, universeName, az, isReadOnlyCluster, newNamingStyle);
     if (config != null) {
       params.config = config;
       // This assumes that the config is az config. It is true in this
       // particular case, all callers just pass az config.
       // params.namespace remains null if config is not passed.
       params.namespace =
-          PlacementInfoUtil.getKubernetesNamespace(
+          KubernetesUtil.getKubernetesNamespace(
               nodePrefix, az, config, newNamingStyle, isReadOnlyCluster);
     }
-    params.universeUUID = taskParams().universeUUID;
+    params.setUniverseUUID(params().getUniverseUUID());
     KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
     task.initialize(params);
     return task;

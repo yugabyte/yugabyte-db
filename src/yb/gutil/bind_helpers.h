@@ -155,8 +155,7 @@
 //                        In most cases MessageLoop::DeleteSoon() is a better
 //                        fit.
 
-#ifndef YB_GUTIL_BIND_HELPERS_H_
-#define YB_GUTIL_BIND_HELPERS_H_
+#pragma once
 
 #include <assert.h>
 
@@ -563,5 +562,3 @@ void DeletePointer(T* obj) {
 }
 
 }  // namespace yb
-
-#endif  // YB_GUTIL_BIND_HELPERS_H_

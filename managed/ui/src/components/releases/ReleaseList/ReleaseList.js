@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { DropdownButton } from 'react-bootstrap';
 
@@ -11,10 +11,17 @@ import { YBLoadingCircleIcon } from '../../../components/common/indicators';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { isAvailable, showOrRedirect } from '../../../utils/LayoutUtils';
 
+import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { isRbacEnabled } from '../../../redesign/features/rbac/common/RbacUtils';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import './ReleaseList.scss';
 
 const versionReg = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-(\S*)$/;
-// Sort descending
+/**
+ * Sort YB software versions in decsending order for UI displays.
+ *
+ * This function sorts b{n} tags before custom build tags.
+ */
 export const sortVersion = (a, b) => {
   const matchA = versionReg.exec(a);
   const matchB = versionReg.exec(b);
@@ -78,7 +85,7 @@ export default class ReleaseList extends Component {
       this.setState({ searchResults: null, searchTerm: '' });
     } else {
       this.setState({
-        searchResults: Object.keys(releases.data).filter((x) => x.indexOf(term) > -1),
+        searchResults: Object.keys(releases.data).filter((x) => x.includes(term)),
         searchTerm: term
       });
     }
@@ -108,13 +115,14 @@ export default class ReleaseList extends Component {
       return <YBLoadingCircleIcon size="medium" />;
     }
     let releaseStrList = [];
+    // eslint-disable-next-line eqeqeq
     if (searchResults != null) {
       releaseStrList = searchResults;
     } else if (releases.data) {
       releaseStrList = Object.keys(releases.data).sort(sortVersion);
     }
     const releaseInfos = releaseStrList
-      .filter((version) => releases.data && releases.data[version])
+      .filter((version) => releases.data?.[version])
       .map((version) => {
         const releaseInfo = releases.data[version];
         releaseInfo.version = version;
@@ -142,6 +150,18 @@ export default class ReleaseList extends Component {
         return;
       }
 
+      const canToggleStatus = hasNecessaryPerm(ApiPermissionMap.MODIFY_RELEASE);
+
+      const canDeleteRelease = hasNecessaryPerm(ApiPermissionMap.DELETE_RELEASE_BY_NAME);
+
+      const getDisabledStatus = (action) => {
+        if (!isRbacEnabled) {
+          return !isAvailable(currentCustomer.data.features, 'universes.actions');
+        }
+        if (action === 'DELETE') return !canDeleteRelease;
+        return !canToggleStatus;
+      };
+
       return (
         <DropdownButton
           className="btn btn-default"
@@ -157,7 +177,7 @@ export default class ReleaseList extends Component {
                 currentRow={row}
                 actionType={actionType}
                 onModalSubmit={self.onModalSubmit}
-                disabled={!isAvailable(currentCustomer.data.features, 'universes.actions')}
+                disabled={getDisabledStatus()}
               />
             );
           })}
@@ -185,14 +205,22 @@ export default class ReleaseList extends Component {
                   onClick={this.refreshRelease}
                   disabled={!isAvailable(currentCustomer.data.features, 'universes.actions')}
                 />
-                <TableAction
-                  className="table-action"
-                  btnClass={'btn-default'}
-                  actionType="import-release"
-                  isMenuItem={false}
-                  onSubmit={self.onModalSubmit}
-                  disabled={!isAvailable(currentCustomer.data.features, 'universes.actions')}
-                />
+                <RbacValidator
+                  accessRequiredOn={ApiPermissionMap.CREATE_RELEASE}
+                  isControl
+                  overrideStyle={{
+                    float: 'right',
+                  }}
+                >
+                  <TableAction
+                    className="table-action"
+                    btnClass={'btn-default'}
+                    actionType="import-release"
+                    isMenuItem={false}
+                    onSubmit={self.onModalSubmit}
+                    disabled={!isAvailable(currentCustomer.data.features, 'universes.actions') || !hasNecessaryPerm(ApiPermissionMap.CREATE_RELEASE)}
+                  />
+                </RbacValidator>
               </div>
             </div>
             <h2 className="content-title">{title}</h2>

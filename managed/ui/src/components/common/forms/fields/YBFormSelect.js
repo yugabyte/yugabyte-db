@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { YBLabel } from '../../../../components/common/descriptors';
 import { isDefinedNotNull } from '../../../../utils/ObjectUtils';
 

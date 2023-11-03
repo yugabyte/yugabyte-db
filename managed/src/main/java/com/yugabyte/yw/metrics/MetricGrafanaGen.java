@@ -8,6 +8,8 @@ import com.fasterxml.jackson.databind.ObjectWriter;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.models.MetricConfig;
+import com.yugabyte.yw.models.MetricConfigDefinition;
+import com.yugabyte.yw.models.MetricConfigDefinition.Layout;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -19,6 +21,8 @@ import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
+import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.CustomClassLoaderConstructor;
 import play.Environment;
@@ -56,8 +60,12 @@ public class MetricGrafanaGen {
   }
 
   public void loadMetricConfigs() {
+    LoaderOptions loaderOptions = new LoaderOptions();
+
     try (InputStream is = environment.classLoader().getResourceAsStream(METRICS_CONFIG_PATH)) {
-      Yaml yaml = new Yaml(new CustomClassLoaderConstructor(environment.classLoader()));
+      Yaml yaml =
+          new Yaml(new CustomClassLoaderConstructor(environment.classLoader(), loaderOptions));
+
       Map<String, Object> configs = (HashMap<String, Object>) yaml.load(is);
       MetricConfig.loadConfig(configs);
     } catch (Exception exception) {
@@ -83,9 +91,7 @@ public class MetricGrafanaGen {
         new TreeMap<String, ArrayList<ObjectNode>>();
 
     List<String> allMetrics =
-        MetricConfig.find
-            .all()
-            .stream()
+        MetricConfig.find.all().stream()
             .map(MetricConfig::getKey)
             .sorted()
             .collect(Collectors.toList());
@@ -93,9 +99,9 @@ public class MetricGrafanaGen {
     int id = 0;
     for (String metric_key : allMetrics) {
       MetricConfig metricConfig = MetricConfig.get(metric_key);
-      MetricConfig.Layout layout = metricConfig.getLayout();
-      String title = layout.title;
-      String panel_group = metricConfig.getConfig().panel_group;
+      MetricConfigDefinition.Layout layout = metricConfig.getConfig().getLayout();
+      String title = layout.getTitle();
+      String panel_group = metricConfig.getConfig().getPanelGroup();
       if (panel_group == null) {
         panel_group = "Misc";
       }
@@ -103,8 +109,8 @@ public class MetricGrafanaGen {
         title = metric_key;
       }
       String ticksuffix = "";
-      if (layout.yaxis != null && layout.yaxis.ticksuffix != null) {
-        ticksuffix = layout.yaxis.ticksuffix;
+      if (layout.getYaxis() != null && layout.getYaxis().getTicksuffix() != null) {
+        ticksuffix = layout.getYaxis().getTicksuffix();
         String[] ticksplit = ticksuffix.split(";");
         if (ticksplit.length > 1) {
           ticksuffix = ticksplit[1];
@@ -159,7 +165,7 @@ public class MetricGrafanaGen {
   }
 
   public ObjectNode createTemplate(String templatePath) {
-    ObjectNode template = Json.newObject();
+    ObjectNode template;
     ObjectMapper mapper = new ObjectMapper();
     try (InputStream templateStream = environment.classLoader().getResourceAsStream(templatePath)) {
       template = mapper.readValue(templateStream, ObjectNode.class);
@@ -180,14 +186,15 @@ public class MetricGrafanaGen {
     Map<String, String> queries = new HashMap<>();
     Map<String, String> additionalFilters = new HashMap<>();
     additionalFilters.put("node_prefix", "$dbcluster");
-    MetricConfig.Layout layout = metricConfig.getLayout();
-    String group_by_filter = metricConfig.getConfig().group_by;
+    MetricConfigDefinition configDefinition = metricConfig.getConfig();
+    Layout layout = configDefinition.getLayout();
+    String group_by_filter = configDefinition.getGroupBy();
 
     // Case 1: Queries created for each "|" separated filter value
     if (group_by_filter != null
         && !group_by_filter.contains(",")
-        && metricConfig.getConfig().filters.containsKey(group_by_filter)) {
-      Map<String, String> filters = metricConfig.getConfig().filters;
+        && configDefinition.getFilters().containsKey(group_by_filter)) {
+      Map<String, String> filters = configDefinition.getFilters();
       String groupedFilters = filters.get(group_by_filter);
       String[] filterValues = new String[] {};
       if (groupedFilters != null) {
@@ -197,7 +204,7 @@ public class MetricGrafanaGen {
       for (String filterValue : filterValues) {
         additionalFilters.put(group_by_filter, filterValue);
         Map<String, String> filterQueries =
-            metricConfig.getQueries(additionalFilters, DEFAULT_RANGE_SECS);
+            configDefinition.getQueries(additionalFilters, DEFAULT_RANGE_SECS);
         for (String key : filterQueries.keySet()) {
           queries.put(key + "|" + filterValue, filterQueries.get(key));
         }
@@ -217,10 +224,10 @@ public class MetricGrafanaGen {
         targetVar.put("hide", false);
         legendFormat = "";
 
-        if (layout.yaxis != null && layout.yaxis.alias != null) {
-          legendFormat = layout.yaxis.alias.get(filterValue);
+        if (layout.getYaxis() != null && layout.getYaxis().getAlias() != null) {
+          legendFormat = layout.getYaxis().getAlias().get(filterValue);
         }
-        if (legendFormat == null || legendFormat == "") {
+        if (StringUtils.isBlank(legendFormat)) {
           legendFormat = filterValue;
         }
         targetVar.put("legendFormat", legendFormat);
@@ -228,7 +235,7 @@ public class MetricGrafanaGen {
       }
     } else {
       // Case 2: No "|" separated filters present
-      queries = metricConfig.getQueries(additionalFilters, DEFAULT_RANGE_SECS);
+      queries = configDefinition.getQueries(additionalFilters, DEFAULT_RANGE_SECS);
       char refID = 'A';
       for (String metric : queries.keySet()) {
         String query = queries.get(metric);
@@ -240,8 +247,8 @@ public class MetricGrafanaGen {
           refID += 1;
         }
         targetVar.put("hide", false);
-        if (layout.yaxis != null && layout.yaxis.alias != null) {
-          legendFormat = layout.yaxis.alias.get(metric);
+        if (layout.getYaxis() != null && layout.getYaxis().getAlias() != null) {
+          legendFormat = layout.getYaxis().getAlias().get(metric);
         }
         targetVar.put("legendFormat", legendFormat);
         targets.add(mapper.valueToTree(targetVar));
@@ -253,14 +260,14 @@ public class MetricGrafanaGen {
   Map<String, Integer> getNextGridPos(int x, int y, String type) {
     Map<String, Integer> gridPos = new HashMap<String, Integer>();
     int h = 9, w = 12;
-    if (type == "panel") {
+    if (type.equals("panel")) {
       if (x == 0) {
         x = 12;
       } else {
         x = 0;
         y += 9;
       }
-    } else if (type == "header") {
+    } else if (type.equals("header")) {
       x = 0;
       y += 1;
       h = 1;

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGWRAPPER_PG_WRAPPER_TEST_BASE_H
-#define YB_YQL_PGWRAPPER_PG_WRAPPER_TEST_BASE_H
+#pragma once
 
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
@@ -35,6 +34,8 @@ class PgWrapperTestBase : public MiniClusterTestWithClient<ExternalMiniCluster> 
 
   Result<TabletId> GetSingleTabletId(const TableName& table_name);
 
+  Result<std::string> RunYbAdminCommand(const std::string& cmd);
+
   // Tablet server to use to perform PostgreSQL operations.
   ExternalTabletServer* pg_ts = nullptr;
 };
@@ -47,6 +48,11 @@ class PgCommandTestBase : public PgWrapperTestBase {
   void SetDbName(const std::string& db_name) {
     db_name_ = db_name;
   }
+
+  YB_STRONGLY_TYPED_BOOL(TuplesOnly);
+
+  Result<std::string> RunPsqlCommand(
+      const std::string &statement, TuplesOnly tuples_only = TuplesOnly::kFalse);
 
   void RunPsqlCommand(
       const std::string &statement, const std::string &expected_output, bool tuples_only = false);
@@ -102,5 +108,3 @@ class PgCommandTestBase : public PgWrapperTestBase {
 
 } // namespace pgwrapper
 } // namespace yb
-
-#endif // YB_YQL_PGWRAPPER_PG_WRAPPER_TEST_BASE_H

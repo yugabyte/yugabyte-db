@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGGATE_PG_OPERATION_BUFFER_H_
-#define YB_YQL_PGGATE_PG_OPERATION_BUFFER_H_
+#pragma once
 
 #include <functional>
 #include <memory>
@@ -28,6 +27,8 @@
 
 namespace yb {
 namespace pggate {
+
+class PgDocMetrics;
 
 struct BufferingSettings {
   size_t max_batch_size;
@@ -50,7 +51,10 @@ class PgOperationBuffer {
  public:
   using Flusher = std::function<Result<PerformFuture>(BufferableOperations, bool)>;
 
-  PgOperationBuffer(const Flusher& flusher, const BufferingSettings& buffering_settings);
+  PgOperationBuffer(
+    const Flusher& flusher,
+    const BufferingSettings& buffering_settings,
+    PgDocMetrics* metrics);
   ~PgOperationBuffer();
   Status Add(const PgTableDesc& table, PgsqlWriteOpPtr op, bool transactional);
   Status Flush();
@@ -66,5 +70,3 @@ class PgOperationBuffer {
 
 } // namespace pggate
 } // namespace yb
-
-#endif // YB_YQL_PGGATE_PG_OPERATION_BUFFER_H_

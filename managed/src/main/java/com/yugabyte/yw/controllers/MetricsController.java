@@ -4,13 +4,23 @@ package com.yugabyte.yw.controllers;
 
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ApiHelper;
+import com.yugabyte.yw.common.AppInit;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.metrics.MetricService;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.models.Metric;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.prometheus.client.Collector;
 import io.prometheus.client.Collector.MetricFamilySamples;
 import io.prometheus.client.CollectorRegistry;
@@ -45,38 +55,53 @@ public class MetricsController extends Controller {
       "kamon.prometheus.embedded-server.hostname";
   private static final String KAMON_EMBEDDED_SERVER_PORT = "kamon.prometheus.embedded-server.port";
 
+  @Inject
+  public MetricsController(AppInit appInit) {
+    // Bind AppInit so that the metrics are not published before the app initialisation completes.
+    // No-op performed.
+  }
+
   @Inject private MetricService metricService;
 
   @Inject ApiHelper apiHelper;
 
   @Inject Config config;
 
+  private Date lastErrorPrinted = null;
+
   private Date lastKamonErrorPrinted = null;
 
   @ApiOperation(
-      value = "Get Prometheus metrics",
+      value = "Available since YBA version 2.8.0.0. Get Prometheus metrics",
       response = String.class,
       nickname = "MetricsDetail")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.8.0.0")
   public Result index() {
-    final ByteArrayOutputStream response = new ByteArrayOutputStream(1 << 20);
-    try {
-      final OutputStreamWriter osw = new OutputStreamWriter(response);
+    try (ByteArrayOutputStream response = new ByteArrayOutputStream(1 << 20);
+        OutputStreamWriter osw = new OutputStreamWriter(response)) {
       // Write runtime metrics
       TextFormat.write004(osw, CollectorRegistry.defaultRegistry.metricFamilySamples());
       // Write persisted metrics
       TextFormat.write004(osw, Collections.enumeration(getPrecalculatedMetrics()));
       // Write Kamon metrics
       osw.write(getKamonMetrics());
-
       osw.flush();
-      osw.close();
       response.flush();
-      response.close();
+      return Results.status(OK, response.toString());
     } catch (Exception e) {
+      if (lastErrorPrinted == null
+          || lastErrorPrinted.before(CommonUtils.nowMinus(1, ChronoUnit.HOURS))) {
+        log.error("Failed to retrieve metrics", e);
+        lastErrorPrinted = new Date();
+      }
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
-
-    return Results.status(OK, response.toString());
   }
 
   private String getKamonMetrics() {
@@ -100,8 +125,7 @@ public class MetricsController extends Controller {
     List<Metric> allMetrics = metricService.list(MetricFilter.builder().expired(false).build());
 
     Map<String, List<Metric>> metricsByName =
-        allMetrics
-            .stream()
+        allMetrics.stream()
             .collect(Collectors.groupingBy(Metric::getName, TreeMap::new, Collectors.toList()));
 
     Map<String, PlatformMetrics> platformMetricsMap =

@@ -12,8 +12,7 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_QL_FWD_H_
-#define YB_YQL_CQL_QL_QL_FWD_H_
+#pragma once
 
 #include <memory>
 
@@ -32,5 +31,3 @@ using QLSessionPtr = std::shared_ptr<QLSession>;
 
 } // namespace ql
 } // namespace yb
-
-#endif // YB_YQL_CQL_QL_QL_FWD_H_

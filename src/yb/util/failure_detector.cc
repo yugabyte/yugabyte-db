@@ -35,7 +35,7 @@
 #include <mutex>
 #include <unordered_map>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
@@ -48,6 +48,7 @@
 namespace yb {
 
 using std::unordered_map;
+using std::string;
 using strings::Substitute;
 
 const int64_t RandomizedFailureMonitor::kMinWakeUpTimeMillis = 10;
@@ -62,7 +63,7 @@ TimedFailureDetector::~TimedFailureDetector() {
 Status TimedFailureDetector::Track(const string& name,
                                    const MonoTime& now,
                                    const FailureDetectedCallback& callback) {
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   auto node = std::make_unique<Node>();
   node->permanent_name = name;
   node->callback = callback;
@@ -77,7 +78,7 @@ Status TimedFailureDetector::Track(const string& name,
 }
 
 Status TimedFailureDetector::UnTrack(const string& name) {
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   Node* node = EraseKeyReturnValuePtr(&nodes_, name);
   if (PREDICT_FALSE(node == NULL)) {
     return STATUS(NotFound, Substitute("Node with name '$0' not found", name));
@@ -87,13 +88,13 @@ Status TimedFailureDetector::UnTrack(const string& name) {
 }
 
 bool TimedFailureDetector::IsTracking(const std::string& name) {
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   return ContainsKey(nodes_, name);
 }
 
 Status TimedFailureDetector::MessageFrom(const std::string& name, const MonoTime& now) {
   VLOG(3) << "Received message from " << name << " at " << now.ToString();
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   Node* node = FindPtrOrNull(nodes_, name);
   if (node == NULL) {
     VLOG(1) << "Not tracking node: " << name;
@@ -116,7 +117,7 @@ FailureDetector::NodeStatus TimedFailureDetector::GetNodeStatusUnlocked(const st
 void TimedFailureDetector::CheckForFailures(const MonoTime& now) {
   unordered_map<string, FailureDetectedCallback> callbacks;
   {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     for (const auto& entry : nodes_) {
       if (GetNodeStatusUnlocked(entry.first, now) == DEAD) {
         InsertOrDie(&callbacks, entry.first, entry.second->callback);
@@ -160,7 +161,7 @@ void RandomizedFailureMonitor::Shutdown() {
   }
 
   {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     if (shutdown_) {
       return;
     }
@@ -174,7 +175,7 @@ void RandomizedFailureMonitor::Shutdown() {
 
 Status RandomizedFailureMonitor::MonitorFailureDetector(const string& name,
                                                         const scoped_refptr<FailureDetector>& fd) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   bool inserted = InsertIfNotPresent(&fds_, name, fd);
   if (PREDICT_FALSE(!inserted)) {
     return STATUS(AlreadyPresent, Substitute("Already monitoring failure detector '$0'", name));
@@ -183,7 +184,7 @@ Status RandomizedFailureMonitor::MonitorFailureDetector(const string& name,
 }
 
 Status RandomizedFailureMonitor::UnmonitorFailureDetector(const string& name) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   auto count = fds_.erase(name);
   if (PREDICT_FALSE(count == 0)) {
     return STATUS(NotFound, Substitute("Failure detector '$0' not found", name));
@@ -204,7 +205,7 @@ void RandomizedFailureMonitor::RunThread() {
     VLOG(3) << "RandomizedFailureMonitor sleeping for: " << wait_delta.ToString();
     if (run_latch_.WaitFor(wait_delta)) {
       // CountDownLatch reached 0.
-      std::lock_guard<simple_spinlock> lock(lock_);
+      std::lock_guard lock(lock_);
       // Check if we were told to shutdown.
       if (shutdown_) {
         // Latch fired: exit loop.
@@ -216,7 +217,7 @@ void RandomizedFailureMonitor::RunThread() {
     // Take a copy of the FD map under the lock.
     FDMap fds_copy;
     {
-      std::lock_guard<simple_spinlock> l(lock_);
+      std::lock_guard l(lock_);
       fds_copy = fds_;
     }
 

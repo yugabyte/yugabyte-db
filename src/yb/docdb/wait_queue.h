@@ -11,13 +11,19 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_WAIT_QUEUE_H
-#define YB_DOCDB_WAIT_QUEUE_H
+#pragma once
+
+#include <stdint.h>
+
+#include "yb/client/client.h"
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/transaction.h"
 
+#include "yb/docdb/conflict_data.h"
 #include "yb/docdb/lock_batch.h"
+
+#include "yb/server/server_fwd.h"
 
 #include "yb/util/threadpool.h"
 
@@ -28,7 +34,7 @@ class ScopedWaitingTxnRegistration {
  public:
   virtual Status Register(
     const TransactionId& waiting,
-    std::vector<BlockingTransactionData>&& blocking,
+    std::shared_ptr<ConflictDataManager> blockers,
     const TabletId& status_tablet) = 0;
   virtual int64 GetDataUseCount() const = 0;
   virtual ~ScopedWaitingTxnRegistration() = default;
@@ -42,7 +48,7 @@ class WaitingTxnRegistry {
 
 // Callback used by the WaitQueue to signal the result of waiting. Can be used by conflict
 // resolution to signal failure to client or retry conflict resolution.
-using WaitDoneCallback = std::function<void(const Status&)>;
+using WaitDoneCallback = std::function<void(const Status&, HybridTime)>;
 
 // This class is responsible for coordinating conflict transactions which are still running. A
 // running transaction can enter the wait queue while blocking on other running transactions in
@@ -52,7 +58,11 @@ class WaitQueue {
   WaitQueue(
       TransactionStatusManager* txn_status_manager,
       const std::string& permanent_uuid,
-      WaitingTxnRegistry* waiting_txn_registry);
+      WaitingTxnRegistry* waiting_txn_registry,
+      const std::shared_future<client::YBClient*>& client_future,
+      const server::ClockPtr& clock,
+      const MetricEntityPtr& metrics,
+      std::unique_ptr<ThreadPoolToken> thread_pool_token);
 
   ~WaitQueue();
 
@@ -64,8 +74,20 @@ class WaitQueue {
   // callback, re-lock the provided locks. If re-locking fails, signal failure to the provided
   // callback.
   Status WaitOn(
-      const TransactionId& waiter, LockBatch* locks,
-      std::vector<BlockingTransactionData>&& blockers, const TabletId& status_tablet_id,
+      const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
+      std::shared_ptr<ConflictDataManager> blockers, const TabletId& status_tablet_id,
+      uint64_t serial_no, int64_t txn_start_us, WaitDoneCallback callback);
+
+  // Check the wait queue for any active blockers which would conflict with locks. This method
+  // should be called as the first step in conflict resolution when processing a new request to
+  // ensure incoming requests do not starve existing blocked requests which are about to resume.
+  // Returns true if this call results in the request entering the wait queue, in which case the
+  // provided callback is used as described in the comment of WaitOn() above. Returns false in case
+  // the request is not entered into the wait queue and the callback is never invoked. Returns
+  // status in case of some unresolvable error.
+  Result<bool> MaybeWaitOnLocks(
+      const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
+      const TabletId& status_tablet_id, uint64_t serial_no, int64_t txn_start_us,
       WaitDoneCallback callback);
 
   void Poll(HybridTime now);
@@ -74,6 +96,33 @@ class WaitQueue {
 
   void CompleteShutdown();
 
+  // Accept a signal that the given transaction was committed at the given commit_ht.
+  void SignalCommitted(const TransactionId& id, HybridTime commit_ht);
+
+  // Accept a signal that the given transaction was aborted.
+  void SignalAborted(const TransactionId& id);
+
+  // Accept a signal that the given transaction was promoted.
+  void SignalPromoted(const TransactionId& id, TransactionStatusResult&& res);
+
+  // Provides access to a monotonically increasing serial number to be used by waiting requests to
+  // enforce fairness in a best effort manner. Incoming requests should retain a serial number as
+  // soon as they begin conflict resolution, and the same serial number should be used any time the
+  // request enters the wait queue, to ensure it is resolved before any requests which arrived later
+  // than it did to this tserver.
+  uint64_t GetSerialNo();
+
+  // Output html to display information to an admin page about the internal state of this wait
+  // queue. Useful for debugging.
+  void DumpStatusHtml(std::ostream& out);
+
+  // Populate tablet_locks_info with awaiting lock information corresponding to waiter transactions
+  // from this wait queue. If transactions is not empty, restrict returned information to locks
+  // which are requested by the given set of transactions.
+  Status GetLockStatus(const std::map<TransactionId, SubtxnSet>& transactions,
+                       const TableInfoProvider& table_info_provider,
+                       TransactionLockInfoManager* lock_info_manager) const;
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;
@@ -81,5 +130,3 @@ class WaitQueue {
 
 } // namespace docdb
 } // namespace yb
-
-#endif // YB_DOCDB_WAIT_QUEUE_H

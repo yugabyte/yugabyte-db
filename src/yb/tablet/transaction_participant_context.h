@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_TABLET_TRANSACTION_PARTICIPANT_CONTEXT_H
-#define YB_TABLET_TRANSACTION_PARTICIPANT_CONTEXT_H
+#pragma once
 
 #include <future>
 
@@ -32,6 +31,7 @@ class TransactionParticipantContext {
   virtual const std::string& permanent_uuid() const = 0;
   virtual const std::string& tablet_id() const = 0;
   virtual const std::shared_future<client::YBClient*>& client_future() const = 0;
+  virtual Result<client::YBClient*> client() const = 0;
   virtual const server::ClockPtr& clock_ptr() const = 0;
   virtual rpc::Scheduler& scheduler() const = 0;
 
@@ -42,7 +42,7 @@ class TransactionParticipantContext {
   virtual void StrandEnqueue(rpc::StrandTask* task) = 0;
   virtual void UpdateClock(HybridTime hybrid_time) = 0;
   virtual bool IsLeader() = 0;
-  virtual void SubmitUpdateTransaction(
+  virtual Status SubmitUpdateTransaction(
       std::unique_ptr<UpdateTxnOperation> state, int64_t term) = 0;
 
   // Returns hybrid time that lower than any future transaction apply record.
@@ -60,5 +60,3 @@ class TransactionParticipantContext {
 
 } // namespace tablet
 } // namespace yb
-
-#endif // YB_TABLET_TRANSACTION_PARTICIPANT_CONTEXT_H

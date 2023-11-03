@@ -25,10 +25,10 @@
 #include "yb/master/mini_master.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/metrics.h"
 #include "yb/util/random_util.h"
 #include "yb/util/test_thread_holder.h"
-#include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
 using namespace std::literals;
@@ -64,8 +64,8 @@ class NetworkFailureTest : public MiniClusterTestWithClient<MiniCluster> {
     ASSERT_OK(client_->CreateNamespace(kKeyspaceName));
 
     client::YBSchemaBuilder builder;
-    builder.AddColumn("key")->Type(INT32)->NotNull()->HashPrimaryKey();
-    builder.AddColumn("value")->Type(INT32)->NotNull();
+    builder.AddColumn("key")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
+    builder.AddColumn("value")->Type(DataType::INT32)->NotNull();
 
     ASSERT_OK(table_.Create(kTableName, kNumTablets, client_.get(), &builder));
 
@@ -81,7 +81,7 @@ int64_t CountLookups(MiniCluster* cluster) {
   int64_t result = 0;
   for (size_t i = 0; i != cluster->num_masters(); ++i) {
     auto new_leader_master = cluster->mini_master(i);
-    auto histogram = new_leader_master->master()->metric_entity()->FindOrCreateHistogram(
+    auto histogram = new_leader_master->master()->metric_entity()->FindOrCreateMetric<Histogram>(
         &METRIC_handler_latency_yb_master_MasterClient_GetTabletLocations);
     result += histogram->TotalCount();
   }
@@ -89,8 +89,8 @@ int64_t CountLookups(MiniCluster* cluster) {
 }
 
 TEST_F(NetworkFailureTest, DisconnectMasterLeader) {
-  FLAGS_meta_cache_lookup_throttling_max_delay_ms = 10000;
-  FLAGS_meta_cache_lookup_throttling_step_ms = 50;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_meta_cache_lookup_throttling_max_delay_ms) = 10000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_meta_cache_lookup_throttling_step_ms) = 50;
 
   constexpr int kWriteRows = RegularBuildVsSanitizers(5000, 500);
   constexpr int kReportRows = kWriteRows / 5;
@@ -100,10 +100,9 @@ TEST_F(NetworkFailureTest, DisconnectMasterLeader) {
 
   std::atomic<int> written(0);
   std::atomic<CoarseTimePoint> prev_report{CoarseTimePoint()};
-  thread_holder.AddThreadFunctor([
-      this, &written, &stop_flag = thread_holder.stop_flag(), &prev_report]() {
-    auto session = client_->NewSession();
-    session->SetTimeout(30s);
+  thread_holder.AddThreadFunctor([this, &written, &stop_flag = thread_holder.stop_flag(),
+                                  &prev_report]() {
+    auto session = client_->NewSession(30s);
 
     std::deque<std::future<client::FlushStatus>> futures;
     std::deque<client::YBOperationPtr> ops;

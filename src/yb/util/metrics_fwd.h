@@ -13,14 +13,15 @@
 //
 //
 
-#ifndef YB_UTIL_METRICS_FWD_H
-#define YB_UTIL_METRICS_FWD_H
+#pragma once
 
 #include "yb/gutil/ref_counted.h"
 
 namespace yb {
 
 class AtomicMillisLag;
+class EventStats;
+class EventStatsPrototype;
 class Counter;
 class CounterPrototype;
 class Gauge;
@@ -36,6 +37,7 @@ class MillisLag;
 class MillisLagPrototype;
 class NMSWriter;
 class PrometheusWriter;
+class StatsOnlyHistogram;
 
 struct MetricJsonOptions;
 struct MetricPrometheusOptions;
@@ -51,5 +53,3 @@ template<typename T>
 class GaugePrototype;
 
 } // namespace yb
-
-#endif // YB_UTIL_METRICS_FWD_H

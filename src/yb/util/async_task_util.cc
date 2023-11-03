@@ -13,7 +13,7 @@
 
 #include "yb/util/async_task_util.h"
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 namespace yb {
 
@@ -38,7 +38,7 @@ void AsyncTaskTracker::Abort() {
 // AsyncTaskThrottlerBase methods.
 
 bool AsyncTaskThrottlerBase::Throttle() {
-  std::lock_guard<std::mutex> l(mutex_);
+  std::lock_guard l(mutex_);
   if (ShouldThrottle()) {
     return true;
   }
@@ -47,7 +47,7 @@ bool AsyncTaskThrottlerBase::Throttle() {
 }
 
 bool AsyncTaskThrottlerBase::RemoveOutstandingTask() {
-  std::lock_guard<std::mutex> l(mutex_);
+  std::lock_guard l(mutex_);
   DCHECK_GT(current_outstanding_task_count_, 0);
   current_outstanding_task_count_--;
   return current_outstanding_task_count_ == 0;
@@ -72,7 +72,7 @@ AsyncTaskThrottler::AsyncTaskThrottler(uint64_t limit)
 }
 
 void AsyncTaskThrottler::RefreshLimit(const uint64_t limit) {
-  std::lock_guard<std::mutex> l(mutex_);
+  std::lock_guard l(mutex_);
   outstanding_task_count_limit_ = limit;
 }
 

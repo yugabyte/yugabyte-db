@@ -10,7 +10,7 @@ TEST_SUFFIX = "_test"
 CMAKE_FILE = "CMakeLists.txt"
 IGNORED_HEADERS = re.compile(
     R"^google/protobuf/generated_enum_reflection\.h$")
-SRC_DIRS = ['src/yb', 'ent/src/yb']
+SRC_DIR = 'src/yb'
 BUILD_DIR = os.path.join('build', 'latest')
 
 parsed_files = {}
@@ -170,34 +170,33 @@ class GenPch:
             lib.generate(path)
 
     def collect_instantiations(self):
-        for root in SRC_DIRS:
-            for (path, dirs, files) in os.walk(os.path.join(BUILD_DIR, root)):
-                library: typing.Union[None, LibraryData] = None
-                for file in files:
-                    if not file.endswith('.json'):
+        for (path, dirs, files) in os.walk(os.path.join(BUILD_DIR, SRC_DIR)):
+            library: typing.Union[None, LibraryData] = None
+            for file in files:
+                if not file.endswith('.json'):
+                    continue
+                if library is None:
+                    lib_path = self.lib_for_path(path, strip=True)
+                    if lib_path not in self.libs:
+                        raise ValueError("Library not yet defined for {}: {}".format(
+                            path, lib_path))
+                    library = self.libs[lib_path]
+                library.num_files += 1
+                with open(os.path.join(path, file), 'r') as inp:
+                    times = json.load(inp)
+                current: typing.List[typing.Tuple[int, int, str]] = []
+                for evt in times['traceEvents']:
+                    if evt['name'] != 'InstantiateClass' or 'args' not in evt:
                         continue
-                    if library is None:
-                        lib_path = self.lib_for_path(path, strip=True)
-                        if lib_path not in self.libs:
-                            raise ValueError("Library not yet defined for {}: {}".format(
-                                path, lib_path))
-                        library = self.libs[lib_path]
-                    library.num_files += 1
-                    with open(os.path.join(path, file), 'r') as inp:
-                        times = json.load(inp)
-                    current: typing.List[typing.Tuple[int, int, str]] = []
-                    for evt in times['traceEvents']:
-                        if evt['name'] != 'InstantiateClass' or 'args' not in evt:
-                            continue
-                        current.append((evt['ts'], evt['dur'], evt['args']['detail']))
-                    finish = 0
-                    for entry in sorted(current):
-                        if entry[0] >= finish:
-                            finish = entry[0] + entry[1]
-                            if entry[2] in library.instantiations:
-                                library.instantiations[entry[2]] += 1
-                            else:
-                                library.instantiations[entry[2]] = 1
+                    current.append((evt['ts'], evt['dur'], evt['args']['detail']))
+                finish = 0
+                for entry in sorted(current):
+                    if entry[0] >= finish:
+                        finish = entry[0] + entry[1]
+                        if entry[2] in library.instantiations:
+                            library.instantiations[entry[2]] += 1
+                        else:
+                            library.instantiations[entry[2]] = 1
 
     def lib_for_path(self, path: str, **kwargs) -> typing.Union[None, str]:
         if 'strip' in kwargs and kwargs['strip']:
@@ -216,31 +215,27 @@ class GenPch:
             return path
 
         while len(path) != 0:
-            if path.startswith('ent/'):
-                path = path[4:]
-            else:
-                path = os.path.dirname(path)
+            path = os.path.dirname(path)
             if path in self.libs:
                 return path
         return None
 
     def collect_libs(self):
         # Enumerate all files and group them by library.
-        for root in SRC_DIRS:
-            for (path, dirs, files) in os.walk(root):
-                if path.startswith(("src/yb/rocksdb/port/win", "src/yb/rocksdb/examples",
-                                    "src/yb/rocksdb/tools/rdb")):
-                    continue
-                lib_path = self.lib_for_path(path, has_cmake=CMAKE_FILE in files)
-                logging.info("Library determined for {}: {}".format(path, lib_path))
-                if lib_path is None:
-                    continue
-                if lib_path not in self.libs:
-                    self.libs[lib_path] = LibraryData()
-                lib = self.libs[lib_path]
-                for file in files:
-                    if file.endswith('.cc'):
-                        lib.sources.append(os.path.join(path, file))
+        for (path, dirs, files) in os.walk(SRC_DIR):
+            if path.startswith(("src/yb/rocksdb/port/win", "src/yb/rocksdb/examples",
+                                "src/yb/rocksdb/tools/rdb")):
+                continue
+            lib_path = self.lib_for_path(path, has_cmake=CMAKE_FILE in files)
+            logging.info("Library determined for {}: {}".format(path, lib_path))
+            if lib_path is None:
+                continue
+            if lib_path not in self.libs:
+                self.libs[lib_path] = LibraryData()
+            lib = self.libs[lib_path]
+            for file in files:
+                if file.endswith('.cc'):
+                    lib.sources.append(os.path.join(path, file))
 
 
 def main():

@@ -6,12 +6,15 @@ package util
 import "testing"
 
 func TestConfig(t *testing.T) {
-	config, err := GetTestConfig()
-	if err != nil {
-		t.Errorf("Error while loading test config")
-	}
-	want, got := "nodeName", config.GetString(NodeName)
+	config := CurrentConfig()
+	want, got := "nodeName", config.String(NodeNameKey)
 	if want != got {
-		t.Errorf("Expected %s but got %s", want, got)
+		t.Fatalf("Expected %s but got %s", want, got)
+	}
+	config.Update("test1.test2", "value2")
+	config.Remove("test1.test2")
+	want, got = "", config.String("test1.test2")
+	if want != got {
+		t.Fatalf("Expected %s but got %s", want, got)
 	}
 }

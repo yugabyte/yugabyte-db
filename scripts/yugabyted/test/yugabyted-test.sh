@@ -11,7 +11,7 @@ readonly DEFAULT_TSERVER_RPC_PORT="9100"
 readonly DEFAULT_MASTER_WEBSERVER_PORT="7000"
 readonly DEFAULT_TSERVER_WEBSERVER_PORT="9000"
 readonly DEFAULT_UI=false
-readonly DEFAULT_LISTEN_ADDR="0.0.0.0"
+# readonly DEFAULT_LISTEN_ADDR="0.0.0.0"
 
 # YSQL
 readonly DEFAULT_YSQL_PORT="5433"
@@ -42,6 +42,11 @@ readonly DOWNLOADED_TAR="${PARENT_TEST_DIR}/tar"
 readonly TEST_BASE_DIR="${PARENT_TEST_DIR}/base_dir"
 
 TEST_IMAGE="yugabyted-test:latest"
+DEFAULT_LISTEN_ADDR="127.0.0.1"
+if [[ $OSTYPE == linux* ]]; then
+    interface=$(ip route show default | awk '/default/ {print $5}')
+    DEFAULT_LISTEN_ADDR=$(ip addr show $interface | awk '/inet / {print $2}' | cut -d '/' -f1)
+fi
 
 declare -a CONTAINER_IDS
 declare -a DOCKER_ENV_VARS

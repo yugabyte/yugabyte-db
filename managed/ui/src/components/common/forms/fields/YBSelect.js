@@ -1,7 +1,9 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { isFunction } from 'lodash';
+import clsx from 'clsx';
+
 import { YBLabel } from '../../../../components/common/descriptors';
 
 import './stylesheets/YBSelect.scss';
@@ -11,11 +13,19 @@ import './stylesheets/YBSelect.scss';
 
 export class YBControlledSelect extends Component {
   render() {
-    const { selectVal, input, options, defaultValue, onInputChanged, isReadOnly } = this.props;
+    const {
+      selectVal,
+      input,
+      options,
+      defaultValue,
+      onInputChanged,
+      isReadOnly,
+      className
+    } = this.props;
     return (
       <select
         {...input}
-        className="form-control"
+        className={clsx('form-control', className)}
         onChange={onInputChanged}
         defaultValue={defaultValue}
         value={selectVal}

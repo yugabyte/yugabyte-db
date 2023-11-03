@@ -156,9 +156,9 @@ class LogCacheTest : public YBTest {
   Status AppendReplicateMessageToCache(int64_t term, int64_t index, size_t payload_size = 0) {
     ReplicateMsgs msgs = { CreateDummyReplicate(term, index, clock_->Now(), payload_size) };
     RETURN_NOT_OK(cache_->AppendOperations(
-        msgs, yb::OpId() /* committed_op_id */, RestartSafeCoarseMonoClock().Now(),
+        msgs, OpId() /* committed_op_id */, RestartSafeCoarseMonoClock().Now(),
         Bind(&FatalOnError)));
-    cache_->TrackOperationsMemory({yb::OpId::FromPB(msgs[0]->id())});
+    cache_->TrackOperationsMemory({OpId::FromPB(msgs[0]->id())});
     return Status::OK();
   }
 
@@ -188,7 +188,7 @@ TEST_F(LogCacheTest, TestAppendAndGetMessages) {
   read_result = ASSERT_RESULT(cache_->ReadOps(kMessageIndex1, 8_MB));
   EXPECT_EQ(kNumMessages - kMessageIndex1, read_result.messages.size());
   EXPECT_EQ(OpIdStrForIndex(kMessageIndex1), OpIdToString(read_result.preceding_op));
-  EXPECT_EQ(OpIdStrForIndex(kMessageIndex1 + 1), OpIdToString(read_result.messages[0]->id()));
+  EXPECT_EQ(MakeOpIdForIndex(kMessageIndex1 + 1), OpId::FromPB(read_result.messages[0]->id()));
 
   // Get at the end of the cache.
   read_result = ASSERT_RESULT(cache_->ReadOps(kNumMessages, 8_MB));
@@ -199,13 +199,13 @@ TEST_F(LogCacheTest, TestAppendAndGetMessages) {
   read_result = ASSERT_RESULT(cache_->ReadOps(0, kMessageIndex1, 8_MB));
   EXPECT_EQ(kMessageIndex1, read_result.messages.size());
   EXPECT_EQ(OpIdStrForIndex(0), OpIdToString(read_result.preceding_op));
-  EXPECT_EQ(OpIdStrForIndex(1), OpIdToString(read_result.messages[0]->id()));
+  EXPECT_EQ(MakeOpIdForIndex(1), OpId::FromPB(read_result.messages[0]->id()));
 
   // Get messages from some point in the middle of the cache until another point.
   read_result = ASSERT_RESULT(cache_->ReadOps(kMessageIndex1, kMessageIndex2, 8_MB));
   EXPECT_EQ(kMessageIndex2 - kMessageIndex1, read_result.messages.size());
   EXPECT_EQ(OpIdStrForIndex(kMessageIndex1), OpIdToString(read_result.preceding_op));
-  EXPECT_EQ(OpIdStrForIndex(kMessageIndex1 + 1), OpIdToString(read_result.messages[0]->id()));
+  EXPECT_EQ(MakeOpIdForIndex(kMessageIndex1 + 1), OpId::FromPB(read_result.messages[0]->id()));
 
   // Evict some and verify that the eviction took effect.
   cache_->EvictThroughOp(kNumMessages / 2);
@@ -216,7 +216,7 @@ TEST_F(LogCacheTest, TestAppendAndGetMessages) {
   read_result = ASSERT_RESULT(cache_->ReadOps(start, 8_MB));
   EXPECT_EQ(kNumMessages - start, read_result.messages.size());
   EXPECT_EQ(OpIdStrForIndex(start), OpIdToString(read_result.preceding_op));
-  EXPECT_EQ(OpIdStrForIndex(start + 1), OpIdToString(read_result.messages[0]->id()));
+  EXPECT_EQ(MakeOpIdForIndex(start + 1), OpId::FromPB(read_result.messages[0]->id()));
 }
 
 // Test cache entry shouldn't be evicted until it's synced to disk.
@@ -226,6 +226,7 @@ TEST_F(LogCacheTest, ShouldNotEvictUnsyncedOpFromCache) {
   cache_->EvictThroughOp(1);
   ASSERT_EQ(cache_->num_cached_ops(), 0);
 
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_set_pause_before_wal_sync) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_wal_sync) = true;
 
   // Append (1.2).
@@ -234,8 +235,10 @@ TEST_F(LogCacheTest, ShouldNotEvictUnsyncedOpFromCache) {
   ASSERT_OK(AppendReplicateMessageToCache(/* term = */ 2, /* index = */ 1));
   ASSERT_EQ(cache_->num_cached_ops(), 1);
 
+  // Wait several seconds for actaully pausing at Log::Sync().
+  SleepFor(MonoDelta::FromSeconds(3 * kTimeMultiplier));
+
   // Resume Log::Sync and set FLAGS_TEST_pause_before_wal_sync to true again.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_set_pause_before_wal_sync) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_wal_sync) = false;
   SleepFor(MonoDelta::FromSeconds(2 * kTimeMultiplier));
 
@@ -319,7 +322,7 @@ TEST_F(LogCacheTest, TestCacheEdgeCases) {
 
 
 TEST_F(LogCacheTest, TestMemoryLimit) {
-  FLAGS_log_cache_size_limit_mb = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_cache_size_limit_mb) = 1;
   CloseAndReopenCache(MinimumOpId());
 
   const int kPayloadSize = 400_KB;
@@ -383,8 +386,8 @@ TEST_F(LogCacheTest, TestGlobalMemoryLimitMB) {
 }
 
 TEST_F(LogCacheTest, TestGlobalMemoryLimitPercentage) {
-  FLAGS_global_log_cache_size_limit_mb = INT32_MAX;
-  FLAGS_global_log_cache_size_limit_percentage = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_global_log_cache_size_limit_mb) = INT32_MAX;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_global_log_cache_size_limit_percentage) = 5;
   const int64_t root_mem_limit = MemTracker::GetRootTracker()->limit();
 
   CloseAndReopenCache(MinimumOpId());

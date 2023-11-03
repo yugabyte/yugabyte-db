@@ -16,16 +16,18 @@ import static com.yugabyte.yw.models.helpers.CommonUtils.setUniqueListValue;
 import static com.yugabyte.yw.models.helpers.CommonUtils.setUniqueListValues;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.yugabyte.yw.common.alerts.impl.AlertTemplateService.AlertTemplateDescription;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.PersistenceContextScope;
-import java.text.DecimalFormat;
-import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -47,17 +49,9 @@ import lombok.experimental.Accessors;
 @EqualsAndHashCode(callSuper = false)
 public class AlertDefinition extends Model {
 
-  private static final String QUERY_THRESHOLD_PLACEHOLDER = "{{ query_threshold }}";
-  private static final String QUERY_CONDITION_PLACEHOLDER = "{{ query_condition }}";
-  private static final DecimalFormat THRESHOLD_FORMAT = new DecimalFormat("0.#");
-
   @Id
   @Column(nullable = false, unique = true)
   private UUID uuid;
-
-  @NotNull
-  @Column(columnDefinition = "Text", nullable = false)
-  private String query;
 
   @NotNull
   @Column(nullable = false)
@@ -121,34 +115,51 @@ public class AlertDefinition extends Model {
     return uuid == null;
   }
 
-  public List<AlertDefinitionLabel> getEffectiveLabels(
-      AlertConfiguration configuration, AlertConfiguration.Severity severity) {
-    List<AlertDefinitionLabel> effectiveLabels = new ArrayList<>();
-    effectiveLabels.add(
-        new AlertDefinitionLabel(
-            this, KnownAlertLabels.CONFIGURATION_UUID, configuration.getUuid().toString()));
-    effectiveLabels.add(
-        new AlertDefinitionLabel(
-            this, KnownAlertLabels.CONFIGURATION_TYPE, configuration.getTargetType().name()));
-    effectiveLabels.add(
-        new AlertDefinitionLabel(this, KnownAlertLabels.DEFINITION_UUID, uuid.toString()));
-    effectiveLabels.add(
-        new AlertDefinitionLabel(this, KnownAlertLabels.DEFINITION_NAME, configuration.getName()));
-    effectiveLabels.add(
-        new AlertDefinitionLabel(this, KnownAlertLabels.CUSTOMER_UUID, customerUUID.toString()));
-    effectiveLabels.add(new AlertDefinitionLabel(this, KnownAlertLabels.SEVERITY, severity.name()));
-    effectiveLabels.add(
-        new AlertDefinitionLabel(
-            this,
-            KnownAlertLabels.THRESHOLD,
-            doubleToString(configuration.getThresholds().get(severity).getThreshold())));
-    effectiveLabels.add(
-        new AlertDefinitionLabel(
-            this,
-            KnownAlertLabels.ALERT_EXPRESSION,
-            getQueryWithThreshold(configuration.getThresholds().get(severity))));
-    effectiveLabels.addAll(labels);
-    return effectiveLabels;
+  public Collection<AlertDefinitionLabel> getEffectiveLabels(
+      AlertTemplateDescription templateDescription,
+      AlertConfiguration configuration,
+      AlertTemplateSettings templateSettings,
+      AlertConfiguration.Severity severity) {
+    Map<String, AlertDefinitionLabel> effectiveLabels = new LinkedHashMap<>();
+    if (templateSettings != null) {
+      templateSettings
+          .getLabels()
+          .forEach((label, value) -> putLabel(effectiveLabels, label, value));
+    }
+    if (configuration.getLabels() != null) {
+      configuration.getLabels().forEach((label, value) -> putLabel(effectiveLabels, label, value));
+    }
+    // Don't allow to override default labels with template settings
+    putLabel(
+        effectiveLabels, KnownAlertLabels.CONFIGURATION_UUID, configuration.getUuid().toString());
+    putLabel(
+        effectiveLabels, KnownAlertLabels.CONFIGURATION_TYPE, configuration.getTargetType().name());
+    putLabel(effectiveLabels, KnownAlertLabels.ALERT_TYPE, configuration.getTemplate().name());
+    putLabel(effectiveLabels, KnownAlertLabels.DEFINITION_UUID, uuid.toString());
+    putLabel(effectiveLabels, KnownAlertLabels.DEFINITION_NAME, configuration.getName());
+    putLabel(effectiveLabels, KnownAlertLabels.CUSTOMER_UUID, customerUUID.toString());
+    putLabel(effectiveLabels, KnownAlertLabels.SEVERITY, severity.name());
+    putLabel(
+        effectiveLabels,
+        KnownAlertLabels.THRESHOLD,
+        doubleToString(configuration.getThresholds().get(severity).getThreshold()));
+    putLabel(
+        effectiveLabels,
+        KnownAlertLabels.ALERT_EXPRESSION,
+        templateDescription.getQueryWithThreshold(
+            this, configuration.getThresholds().get(severity)));
+
+    labels.forEach(label -> putLabel(effectiveLabels, label.getName(), label.getValue()));
+    return effectiveLabels.values();
+  }
+
+  private void putLabel(
+      Map<String, AlertDefinitionLabel> labelMap, KnownAlertLabels label, String value) {
+    putLabel(labelMap, label.labelName(), value);
+  }
+
+  private void putLabel(Map<String, AlertDefinitionLabel> labelMap, String label, String value) {
+    labelMap.put(label, new AlertDefinitionLabel(this, label, value));
   }
 
   public UUID getUniverseUUID() {
@@ -163,8 +174,7 @@ public class AlertDefinition extends Model {
   }
 
   public String getLabelValue(String name) {
-    return getLabels()
-        .stream()
+    return getLabels().stream()
         .filter(label -> name.equals(label.getName()))
         .map(AlertDefinitionLabel::getValue)
         .findFirst()
@@ -189,8 +199,7 @@ public class AlertDefinition extends Model {
 
   public AlertDefinition removeLabel(KnownAlertLabels labelName) {
     AlertDefinitionLabel toRemove =
-        labels
-            .stream()
+        labels.stream()
             .filter(label -> label.getName().equals(labelName.labelName()))
             .findFirst()
             .orElse(null);
@@ -203,15 +212,8 @@ public class AlertDefinition extends Model {
   }
 
   public List<AlertDefinitionLabel> getLabels() {
-    return labels
-        .stream()
+    return labels.stream()
         .sorted(Comparator.comparing(AlertDefinitionLabel::getName))
         .collect(Collectors.toList());
-  }
-
-  public String getQueryWithThreshold(AlertConfigurationThreshold threshold) {
-    return query
-        .replace(QUERY_THRESHOLD_PLACEHOLDER, THRESHOLD_FORMAT.format(threshold.getThreshold()))
-        .replace(QUERY_CONDITION_PLACEHOLDER, threshold.getCondition().getValue());
   }
 }

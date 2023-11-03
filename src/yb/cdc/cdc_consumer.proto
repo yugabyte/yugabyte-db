@@ -51,6 +51,15 @@ message ProducerSchemaPB {
   // The upcoming Producer schema for ingest.  If present, Consumer needs ALTER for compatibility.
   uint32 pending_schema_version = 2;
   SchemaPB pending_schema = 3;
+  // The last Consumer schema version that was EquivalentForDataCopy with this Producer
+  uint32 last_compatible_consumer_schema_version = 4;
+}
+
+message SchemaVersionsPB {
+  uint32 current_producer_schema_version = 1;
+  uint32 current_consumer_schema_version = 2;
+  uint32 old_producer_schema_version = 3;
+  uint32 old_consumer_schema_version = 4;
 }
 
 message StreamEntryPB {
@@ -60,6 +69,12 @@ message StreamEntryPB {
   string producer_table_id = 3;
   bool local_tserver_optimized = 4;
   ProducerSchemaPB producer_schema = 5;
+
+  // Producer consumer schema versions
+  SchemaVersionsPB schema_versions = 6;
+
+  // Mapping of colocation_id to producer/consumer schema versions
+  map<uint32, SchemaVersionsPB> colocated_schema_versions = 7;
 }
 
 message ProducerEntryPB {
@@ -70,7 +85,17 @@ message ProducerEntryPB {
   bool disable_stream = 4; // [default = false] implicit in proto3
 }
 
+enum XClusterRole {
+  ACTIVE = 0;
+  STANDBY = 1;
+}
+
 message ConsumerRegistryPB {
   // Map from producer universe uuid to metadata for that producer.
   map<string, ProducerEntryPB> producer_map = 1;
+  // Reserved for deprecated enable_replicate_transaction_status_table field.
+  reserved 2;
+  XClusterRole role = 3;
+  // Does this replication group support consistent transactions.
+  bool transactional = 4;
 }

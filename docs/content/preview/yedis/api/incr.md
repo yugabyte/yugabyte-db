@@ -14,10 +14,12 @@ type: docs
 
 ## Synopsis
 
-<b>`INCR key`</b><br>
+**`INCR key`**
+
 This command adds 1 to the number that is associated with the given `key`. The numeric value must a 64-bit signed integer.
-<li>If the `key` does not exist, the associated string is set to "0".</li>
-<li>If the given `key` is associated with a non-string value, or if its associated string cannot be converted to an integer, an error is raised.</li>
+
+- If the `key` does not exist, the associated string is set to "0".
+- If the given `key` is associated with a non-string value, or if its associated string cannot be converted to an integer, an error is raised.
 
 ## Return value
 

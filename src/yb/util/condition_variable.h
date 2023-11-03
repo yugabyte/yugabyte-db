@@ -77,8 +77,7 @@
 // For a discussion of the many very subtle implementation details, see the FAQ
 // at the end of condition_variable_win.cc.
 
-#ifndef YB_UTIL_CONDITION_VARIABLE_H
-#define YB_UTIL_CONDITION_VARIABLE_H
+#pragma once
 
 #include <pthread.h>
 
@@ -127,5 +126,3 @@ class ConditionVariable {
 };
 
 }  // namespace yb
-
-#endif  // YB_UTIL_CONDITION_VARIABLE_H

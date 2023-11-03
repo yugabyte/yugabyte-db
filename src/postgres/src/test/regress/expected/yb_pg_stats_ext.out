@@ -478,22 +478,21 @@ EXPLAIN (COSTS OFF)
 
 -- check change of column type doesn't break it
 ALTER TABLE functional_dependencies ALTER COLUMN c TYPE numeric;
-ERROR:  This ALTER TABLE command is not yet supported.
 EXPLAIN (COSTS OFF)
  SELECT * FROM functional_dependencies WHERE a = 1 AND b = '1' AND c = 1;
-                        QUERY PLAN
------------------------------------------------------------
+                             QUERY PLAN
+--------------------------------------------------------------------
  Index Scan using fdeps_abc_idx on functional_dependencies
-   Index Cond: ((a = 1) AND (b = '1'::text) AND (c = 1))
+   Index Cond: ((a = 1) AND (b = '1'::text) AND (c = '1'::numeric))
 (2 rows)
 
 ANALYZE functional_dependencies;
 EXPLAIN (COSTS OFF)
  SELECT * FROM functional_dependencies WHERE a = 1 AND b = '1' AND c = 1;
-                        QUERY PLAN
------------------------------------------------------------
+                             QUERY PLAN
+--------------------------------------------------------------------
  Index Scan using fdeps_abc_idx on functional_dependencies
-   Index Cond: ((a = 1) AND (b = '1'::text) AND (c = 1))
+   Index Cond: ((a = 1) AND (b = '1'::text) AND (c = '1'::numeric))
 (2 rows)
 
 RESET random_page_cost;

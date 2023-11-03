@@ -1,3 +1,5 @@
+// Copyright (c) Yugabyte, Inc.
+
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -13,15 +15,18 @@ import play.libs.Json;
 
 public class CreateRootVolumes extends NodeTaskBase {
 
+  private static final String BOOT_DISK_KEY = "boot_disks_per_zone";
+  private static final String ROOT_DEVICE_KEY = "root_device_name";
+
   @Inject
-  protected CreateRootVolumes(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected CreateRootVolumes(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
   public static class Params extends AnsibleCreateServer.Params {
     public int numVolumes;
-    public String machineImage;
     public Map<UUID, List<String>> bootDisksPerZone;
+    public Map<UUID, String> rootDevicePerZone;
   }
 
   @Override
@@ -36,7 +41,14 @@ public class CreateRootVolumes extends NodeTaskBase {
             .nodeCommand(NodeManager.NodeCommandType.Create_Root_Volumes, taskParams())
             .processErrors();
     JsonNode parsedResponse = parseShellResponseAsJson(response);
-    List<String> disks = Json.fromJson(parsedResponse, CopyOnWriteArrayList.class);
-    taskParams().bootDisksPerZone.putIfAbsent(taskParams().azUuid, disks);
+    JsonNode parsedBootDisks = parsedResponse.get(BOOT_DISK_KEY);
+    if (parsedBootDisks != null) {
+      List<String> disks = Json.fromJson(parsedBootDisks, CopyOnWriteArrayList.class);
+      taskParams().bootDisksPerZone.putIfAbsent(taskParams().azUuid, disks);
+    }
+    JsonNode parsedRootDevice = parsedResponse.get(ROOT_DEVICE_KEY);
+    if (parsedRootDevice != null) {
+      taskParams().rootDevicePerZone.putIfAbsent(taskParams().azUuid, parsedRootDevice.asText());
+    }
   }
 }

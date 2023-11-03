@@ -10,13 +10,8 @@ menu:
     parent: with-clause
     weight: 50
 type: indexpage
+showRightNav: true
 ---
-
-**On this page**<br>
-&#160;&#160;&#160;&#160;&#160;&#160;&#160;[Undirected cyclic graph](./#undirected-cyclic-graph)<br>
-&#160;&#160;&#160;&#160;&#160;&#160;&#160;[Directed cyclic graph](./#directed-cyclic-graph)<br>
-&#160;&#160;&#160;&#160;&#160;&#160;&#160;[Directed acyclic graph](./#directed-acyclic-graph)<br>
-&#160;&#160;&#160;&#160;&#160;&#160;&#160;[Rooted tree](./#rooted-tree)
 
 {{< tip title="Download a zip of scripts that include all the code examples that this section uses" >}}
 

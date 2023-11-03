@@ -69,4 +69,47 @@ ADD_YB_LIBRARY(cdc_service_proto
   DEPS ${CDC_YRPC_LIBS}
   NONLINK_DEPS ${CDC_YRPC_TGTS})
 
-YB_INCLUDE_EXTENSIONS()
+#########################################
+# xcluster_producer_proto
+#########################################
+
+YRPC_GENERATE(
+  XCLUSTER_PRODUCER_YRPC_SRCS XCLUSTER_PRODUCER_YRPC_HDRS XCLUSTER_PRODUCER_YRPC_TGTS
+  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
+  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
+  NO_SERVICE_MESSAGES_PROTO_FILES xcluster_producer.proto)
+
+set(XCLUSTER_PRODUCER_YRPC_LIBS
+  yrpc
+  protobuf)
+
+ADD_YB_LIBRARY(xcluster_producer_proto
+  SRCS ${XCLUSTER_PRODUCER_YRPC_SRCS}
+  DEPS ${XCLUSTER_PRODUCER_YRPC_LIBS}
+  NONLINK_DEPS ${XCLUSTER_PRODUCER_YRPC_TGTS})
+
+ADD_YB_LIBRARY(
+    cdc_util
+    SRCS cdc_util.cc
+    DEPS yb_client ql_util)
+
+#########################################
+# cdc_service
+#########################################
+
+set(CDC_SRCS
+  cdc_service.cc
+  cdc_metrics.cc
+  xcluster_producer.cc
+  xcluster_producer_bootstrap.cc
+  cdcsdk_producer.cc
+  xcluster_rpc.cc
+  cdc_state_table.cc
+  xrepl_stream_metadata.cc
+  xrepl_stream_stats.cc)
+
+ADD_YB_LIBRARY(
+    cdc
+    SRCS ${CDC_SRCS}
+    DEPS protobuf cdc_service_proto cdc_util master_proto consensus_proto log_proto log consensus
+         yrpc server_common server_process tablet yb_util ql_util gutil yb_client)

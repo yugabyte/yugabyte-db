@@ -61,9 +61,7 @@ $ sudo apt install default-jre
 
 The [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) was downloaded on to these machines as shown below.
 
-```sh
-$ wget -P target https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.9/yb-sample-apps.jar
-```
+{{% yb-sample-apps-path %}}
 
 This benchmark program can take a list of servers in the database cluster, and then perform random operations across these servers. In order to do this, we set up an environment variable with the list of comma-separated `host:port` entries of the 100 database servers as shown below.
 
@@ -172,7 +170,7 @@ The architecture of a YugabyteDB cluster is shown in the figure below. The YB-TS
 
 ![CPU usage](/images/benchmark/scalability/yugabytedb-cluster.png)
 
-To those new to the Raft consensus protocol, the simplest explanation is that it is a protocol with which a cluster of nodes can agree on values. It is arguably the most popular distributed consensus protocol in use today. Business-critical cloud-native systems like `etcd` (the configuration store for Kubernetes) and `consul` (HashiCorp’s popular service discovery solution) are built on Raft as a foundation. YugabyteDB uses Raft for both leader election as well as the actual data replication. The benefits of YugabyteDB’s use of Raft including rapid scaling (with fully-automatic rebalancing) are highlighted in the Yugabyte blog on [“How Does the Raft Consensus-Based Replication Protocol Work in YugabyteDB?”](https://blog.yugabyte.com/how-does-the-raft-consensus-based-replication-protocol-work-in-yugabyte-db/). Raft is tightly integrated with a high-performance document store (extended from RocksDB) to deliver on the promise of massive write scalability combined with strong consistency and low latency.
+To those new to the Raft consensus protocol, the simplest explanation is that it is a protocol with which a cluster of nodes can agree on values. It is arguably the most popular distributed consensus protocol in use today. Business-critical cloud-native systems like `etcd` (the configuration store for Kubernetes) and `consul` (HashiCorp’s popular service discovery solution) are built on Raft as a foundation. YugabyteDB uses Raft for both leader election as well as the actual data replication. The benefits of YugabyteDB’s use of Raft including rapid scaling (with fully-automatic rebalancing) are highlighted in the Yugabyte blog on [“How Does the Raft Consensus-Based Replication Protocol Work in YugabyteDB?”](https://www.yugabyte.com/blog/how-does-the-raft-consensus-based-replication-protocol-work-in-yugabyte-db/). Raft is tightly integrated with a high-performance document store (extended from RocksDB) to deliver on the promise of massive write scalability combined with strong consistency and low latency.
 
 ## Next steps
 

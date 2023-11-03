@@ -22,6 +22,8 @@
 
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
 
+using std::string;
+
 namespace yb {
 namespace ql {
 

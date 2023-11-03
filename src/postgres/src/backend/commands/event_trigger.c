@@ -47,6 +47,9 @@
 #include "utils/syscache.h"
 #include "tcop/utility.h"
 
+/* YB includes. */
+#include "pg_yb_utils.h"
+
 typedef struct EventTriggerQueryState
 {
 	/* memory context for this state's objects */
@@ -1120,9 +1123,6 @@ EventTriggerSupportsObjectType(ObjectType obtype)
 		case OBJECT_EVENT_TRIGGER:
 			/* no support for event triggers on event triggers */
 			return false;
-		case OBJECT_YBTABLEGROUP:
-			/* no support for event triggers on tablegroups */
-			return false;
 		case OBJECT_ACCESS_METHOD:
 		case OBJECT_AGGREGATE:
 		case OBJECT_AMOP:
@@ -1171,6 +1171,14 @@ EventTriggerSupportsObjectType(ObjectType obtype)
 		case OBJECT_VIEW:
 			return true;
 
+		/* YB cases */
+		case OBJECT_YBPROFILE:
+			/* no support for event triggers on profiles */
+			return false;
+		case OBJECT_YBTABLEGROUP:
+			/* no support for event triggers on tablegroups */
+			return false;
+
 			/*
 			 * There's intentionally no default: case here; we want the
 			 * compiler to warn if a new ObjectType hasn't been handled above.
@@ -1196,9 +1204,6 @@ EventTriggerSupportsObjectClass(ObjectClass objclass)
 			return false;
 		case OCLASS_EVENT_TRIGGER:
 			/* no support for event triggers on event triggers */
-			return false;
-		case OCLASS_TBLGROUP:
-			/* no support for event triggers on tablegroups */
 			return false;
 		case OCLASS_CLASS:
 		case OCLASS_PROC:
@@ -1235,6 +1240,15 @@ EventTriggerSupportsObjectClass(ObjectClass objclass)
 		case OCLASS_SUBSCRIPTION:
 		case OCLASS_TRANSFORM:
 			return true;
+
+		/* YB cases */
+		case OCLASS_TBLGROUP:
+			/* no support for event triggers on tablegroups */
+			return false;
+		case OCLASS_YBPROFILE:
+		case OCLASS_YBROLE_PROFILE:
+			/* no support for event triggers on profiles */
+			return false;
 
 			/*
 			 * There's intentionally no default: case here; we want the
@@ -2266,8 +2280,6 @@ stringify_grant_objtype(ObjectType objtype)
 			return "PROCEDURE";
 		case OBJECT_ROUTINE:
 			return "ROUTINE";
-		case OBJECT_YBTABLEGROUP:
-			return "TABLEGROUP";
 		case OBJECT_TABLESPACE:
 			return "TABLESPACE";
 		case OBJECT_TYPE:
@@ -2309,6 +2321,12 @@ stringify_grant_objtype(ObjectType objtype)
 		case OBJECT_USER_MAPPING:
 		case OBJECT_VIEW:
 			elog(ERROR, "unsupported object type: %d", (int) objtype);
+
+		/* YB cases */
+		case OBJECT_YBPROFILE:
+			return "PROFILE";
+		case OBJECT_YBTABLEGROUP:
+			return "TABLEGROUP";
 	}
 
 	return "???";				/* keep compiler quiet */
@@ -2350,8 +2368,6 @@ stringify_adefprivs_objtype(ObjectType objtype)
 			return "PROCEDURES";
 		case OBJECT_ROUTINE:
 			return "ROUTINES";
-		case OBJECT_YBTABLEGROUP:
-			return "TABLEGROUPS";
 		case OBJECT_TABLESPACE:
 			return "TABLESPACES";
 		case OBJECT_TYPE:
@@ -2393,6 +2409,12 @@ stringify_adefprivs_objtype(ObjectType objtype)
 		case OBJECT_USER_MAPPING:
 		case OBJECT_VIEW:
 			elog(ERROR, "unsupported object type: %d", (int) objtype);
+
+		/* YB cases */
+		case OBJECT_YBPROFILE:
+			return "PROFILES";
+		case OBJECT_YBTABLEGROUP:
+			return "TABLEGROUPS";
 	}
 
 	return "???";				/* keep compiler quiet */

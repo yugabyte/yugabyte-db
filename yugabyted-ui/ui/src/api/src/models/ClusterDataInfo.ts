@@ -35,24 +35,6 @@ export interface ClusterDataInfo  {
    */
   state: string;
   /**
-   * Endpoint to connect to the cluster
-   * @type {string}
-   * @memberof ClusterDataInfo
-   */
-  endpoint?: string;
-  /**
-   * Endpoints to connect to the cluster by region
-   * @type {{ [key: string]: string; }}
-   * @memberof ClusterDataInfo
-   */
-  endpoints?: { [key: string]: string; };
-  /**
-   * ID of the associated project
-   * @type {string}
-   * @memberof ClusterDataInfo
-   */
-  project_id: string;
-  /**
    * The current version of YugabyteDB installed on the cluster
    * @type {string}
    * @memberof ClusterDataInfo

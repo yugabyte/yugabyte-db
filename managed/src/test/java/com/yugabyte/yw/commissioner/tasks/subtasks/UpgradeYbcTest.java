@@ -1,8 +1,8 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.Assert.assertNull;
-import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -37,7 +37,7 @@ public class UpgradeYbcTest extends FakeDBApplication {
         ModelFactory.createUniverse(
             "Test-Universe-1",
             UUID.randomUUID(),
-            defaultCustomer.getCustomerId(),
+            defaultCustomer.getId(),
             CloudType.aws,
             null,
             null,
@@ -52,13 +52,13 @@ public class UpgradeYbcTest extends FakeDBApplication {
   @Test
   public void testUpgradeSuccess() {
     UpgradeYbc.Params params = new UpgradeYbc.Params();
-    params.universeUUID = defaultUniverse.universeUUID;
+    params.universeUUID = defaultUniverse.getUniverseUUID();
     params.validateOnlyMasterLeader = false;
     params.ybcVersion = TARGET_YBC_VERSION;
     UpgradeYbc upgradeYbcTask = AbstractTaskBase.createTask(UpgradeYbc.class);
     upgradeYbcTask.initialize(params);
     try {
-      doNothing().when(mockYbcUpgrade).upgradeYBC(any(), any());
+      doNothing().when(mockYbcUpgrade).upgradeYBC(any(), any(), anyBoolean());
     } catch (Exception e) {
       assertNull(e);
     }
@@ -71,13 +71,13 @@ public class UpgradeYbcTest extends FakeDBApplication {
   @Test
   public void testUpgradeRequestFailure() {
     UpgradeYbc.Params params = new UpgradeYbc.Params();
-    params.universeUUID = defaultUniverse.universeUUID;
+    params.universeUUID = defaultUniverse.getUniverseUUID();
     params.validateOnlyMasterLeader = false;
     params.ybcVersion = TARGET_YBC_VERSION;
     UpgradeYbc upgradeYbcTask = AbstractTaskBase.createTask(UpgradeYbc.class);
     upgradeYbcTask.initialize(params);
     try {
-      doNothing().when(mockYbcUpgrade).upgradeYBC(any(), any());
+      doNothing().when(mockYbcUpgrade).upgradeYBC(any(), any(), anyBoolean());
     } catch (Exception e) {
       assertNull(e);
     }
@@ -85,8 +85,7 @@ public class UpgradeYbcTest extends FakeDBApplication {
     when(mockYbcUpgrade.pollUpgradeTaskResult(any(), any(), anyBoolean())).thenReturn(false);
     RuntimeException re = assertThrows(RuntimeException.class, () -> upgradeYbcTask.run());
     assertThat(
-        re.getMessage(),
-        containsString("YBC Upgrade task failed as ybc does not upgraded on master leader."));
+        re.getMessage(), containsString("YBC Upgrade task did not complete in expected time."));
   }
 
   @Test
@@ -97,18 +96,18 @@ public class UpgradeYbcTest extends FakeDBApplication {
             ModelFactory.createUniverse(
                 "Test-Universe-2",
                 UUID.randomUUID(),
-                defaultCustomer.getCustomerId(),
+                defaultCustomer.getId(),
                 CloudType.aws,
                 null,
                 null,
                 false);
-    params.universeUUID = universe.universeUUID;
+    params.universeUUID = universe.getUniverseUUID();
     params.validateOnlyMasterLeader = false;
     params.ybcVersion = TARGET_YBC_VERSION;
     UpgradeYbc upgradeYbcTask = AbstractTaskBase.createTask(UpgradeYbc.class);
     upgradeYbcTask.initialize(params);
     try {
-      doNothing().when(mockYbcUpgrade).upgradeYBC(any(), any());
+      doNothing().when(mockYbcUpgrade).upgradeYBC(any(), any(), anyBoolean());
     } catch (Exception e) {
       assertNull(e);
     }
@@ -118,19 +117,19 @@ public class UpgradeYbcTest extends FakeDBApplication {
     assertThat(
         re.getMessage(),
         containsString(
-            "Cannot upgrade YBC as it is not enabled on universe " + universe.universeUUID));
+            "Cannot upgrade YBC as it is not enabled on universe " + universe.getUniverseUUID()));
   }
 
   @Test
   public void testUpgradeSameYbcVersion() {
     UpgradeYbc.Params params = new UpgradeYbc.Params();
-    params.universeUUID = defaultUniverse.universeUUID;
+    params.universeUUID = defaultUniverse.getUniverseUUID();
     params.validateOnlyMasterLeader = false;
-    params.ybcVersion = defaultUniverse.getUniverseDetails().ybcSoftwareVersion;
+    params.ybcVersion = defaultUniverse.getUniverseDetails().getYbcSoftwareVersion();
     UpgradeYbc upgradeYbcTask = AbstractTaskBase.createTask(UpgradeYbc.class);
     upgradeYbcTask.initialize(params);
     try {
-      doNothing().when(mockYbcUpgrade).upgradeYBC(any(), any());
+      doNothing().when(mockYbcUpgrade).upgradeYBC(any(), any(), anyBoolean());
     } catch (Exception e) {
       assertNull(e);
     }
@@ -141,20 +140,20 @@ public class UpgradeYbcTest extends FakeDBApplication {
         "YBC version "
             + params.ybcVersion
             + " is already installed on universe "
-            + defaultUniverse.universeUUID;
+            + defaultUniverse.getUniverseUUID();
     assertThat(re.getMessage(), containsString(errMsg));
   }
 
   @Test
   public void testPartialUpgradeSuccess() {
     UpgradeYbc.Params params = new UpgradeYbc.Params();
-    params.universeUUID = defaultUniverse.universeUUID;
+    params.universeUUID = defaultUniverse.getUniverseUUID();
     params.validateOnlyMasterLeader = true;
     params.ybcVersion = TARGET_YBC_VERSION;
     UpgradeYbc upgradeYbcTask = AbstractTaskBase.createTask(UpgradeYbc.class);
     upgradeYbcTask.initialize(params);
     try {
-      doNothing().when(mockYbcUpgrade).upgradeYBC(any(), any());
+      doNothing().when(mockYbcUpgrade).upgradeYBC(any(), any(), anyBoolean());
     } catch (Exception e) {
       assertNull(e);
     }

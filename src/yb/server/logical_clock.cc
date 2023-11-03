@@ -47,8 +47,6 @@ METRIC_DEFINE_gauge_uint64(server, logical_clock_hybrid_time,
                            "Logical clock hybrid time.");
 
 using base::subtle::Atomic64;
-using base::subtle::Barrier_AtomicIncrement;
-using base::subtle::NoBarrier_CompareAndSwap;
 
 Status LogicalClock::Init() {
   return Status::OK();
@@ -89,4 +87,3 @@ void LogicalClock::RegisterMetrics(const scoped_refptr<MetricEntity>& metric_ent
 
 }  // namespace server
 }  // namespace yb
-

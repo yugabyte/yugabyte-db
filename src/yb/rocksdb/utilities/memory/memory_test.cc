@@ -18,7 +18,6 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_LITE
 
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/cache.h"
@@ -279,12 +278,3 @@ int main(int argc, char** argv) {
   return 0;
 #endif
 }
-
-#else
-#include <cstdio>
-
-int main(int argc, char** argv) {
-  printf("Skipped in RocksDBLite as utilities are not supported.\n");
-  return 0;
-}
-#endif  // !ROCKSDB_LITE

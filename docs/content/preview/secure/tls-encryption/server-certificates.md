@@ -16,37 +16,43 @@ menu:
 type: docs
 ---
 
-Before you can enable server-to-server and client-to-server encryptions using Transport Security Layer (TLS), you need to prepare each node in a YugabyteDB cluster.
+Before you can enable server-to-server and client-to-server encryption using Transport Security Layer (TLS), you need to prepare each node in a YugabyteDB cluster.
 
-## Create the server certificates
+## Create server certificates
+
+Creating server certificates involves a number of steps.
 
 ### Create a secure data directory
 
-To generate and store the secure information, such as the root certificate, create a directory, `secure-data`, in your root directory. After completing the preparation, you will copy this data into a secure location and then delete this directory.
+To generate and store the secure information, such as the root certificate, create a directory, `secure-data`, in your root directory by running the following command:
 
 ```sh
-$ mkdir secure-data
+mkdir secure-data
 ```
+
+After completing the preparation, you will copy this data into a secure location and then delete this directory.
 
 ### Create temporary node directories
 
-Now create one directory for each node and put all the required data in that directory. This files added to each directory will be copied into the `tls-cert` directory on each node.
+Create one directory for each node to put all the required data in that directory, as follows:
 
 ```sh
-$ mkdir 127.0.0.1/ 127.0.0.2/ 127.0.0.3/
+mkdir 127.0.0.1/ 127.0.0.2/ 127.0.0.3/
 ```
+
+The files added to each directory will be copied into the `tls-cert` directory on each node.
 
 You should now have three directories, named `127.0.0.1`, `127.0.0.2`, and `127.0.0.3`, representing the three nodes of your YugabyteDB cluster.
 
 ### Create the root configuration file
 
-Create the file `ca.conf` in the `secure-data` directory with the OpenSSL CA configuration.
+Create the file `ca.conf` in the `secure-data` directory with the OpenSSL CA configuration, as follows:
 
 ```sh
-$ cat > secure-data/ca.conf
+cat > secure-data/ca.conf
 ```
 
-Paste the following example root configuration into the file.
+Paste the following example root configuration into the file:
 
 ```sh
 ####################################
@@ -57,27 +63,27 @@ Paste the following example root configuration into the file.
 default_ca = my_ca
 
 [ my_ca ]
-# Validity of the signed certificate in days.
+# Validity of the signed certificate in days
 default_days = 3650
 
-# Text file with next hex serial number to use.
+# Text file with next hex serial number to use
 serial = secure-data/serial.txt
 
-# Text database file to use, initially empty.
+# Text database file to use, initially empty
 database = secure-data/index.txt
 
-# Message digest algorithm. Do not use MD5.
+# Message digest algorithm. Do not use MD5
 default_md = sha256
 
-# a section with a set of variables corresponding to DN fields
+# Section with a set of variables corresponding to DN fields
 policy = my_policy
 
 [ my_policy ]
 
-# Policy for nodes and users. If the value is "match" then
+# Policy for nodes and users. If the value is "match", then
 # field value must match the same field in the CA certificate.
-# If the value is "supplied" then it must be present. Optional
-# means it may be present.
+# If the value is "supplied", then it must be present. Optional
+# means it may be present
 organizationName = supplied
 commonName = supplied
 
@@ -99,63 +105,64 @@ To save and close the file, enter `Ctl+D`.
 
 ### Add required files
 
-Create the index file (`index.txt`) and database file (`serial.txt`) by running the following commands.
+Create the index file `index.txt` and database file `serial.txt` by running the following commands:
 
 ```sh
-$ touch index.txt
-$ echo '01' > serial.txt
+touch index.txt
+echo '01' > serial.txt
 ```
 
-### Generate the root key (ca.key)
+### Generate the root key
 
-To generate the root private key file (`ca.key`) in the `secure-data` directory, run the following `openssl genrsa` command.
+To generate the root private key file `ca.key` in the `secure-data` directory, run the following `openssl genrsa` command:
 
 ```sh
-$ openssl genrsa -out secure-data/ca.key
+openssl genrsa -out secure-data/ca.key
 ```
 
-You should see output like this:
+You should see an output similar to the following:
 
-```
+```output
 Generating RSA private key, 2048 bit long modulus (2 primes)
 ......................+++++
 .................+++++
 e is 65537 (0x010001)
 ```
 
-Change the access permissions of the generated private key to allow read-only privileges by running the `chmod` command.
+Change the access permissions of the generated private key to allow read-only privileges by running the `chmod` command, as follows:
 
 ```sh
-$ chmod 400 secure-data/ca.key
+chmod 400 secure-data/ca.key
 ```
 
 ## Generate the root certificate file
 
-Next, generate the root certificate file (`ca.crt`) by running the following `openssl req` command.
+Generate the root certificate file `ca.crt` by running the following `openssl req` command:
 
 ```sh
-$ openssl req -new                      \
-            -x509                       \
+openssl req -new \
+            -x509 \
+            -days 3650 \
             -config secure-data/ca.conf \
-            -key secure-data/ca.key     \
+            -key secure-data/ca.key \
             -out secure-data/ca.crt
 ```
 
 In the `secure-data` directory, you should now have the following three files:
 
-- `ca.conf` - root configuration file
-- `ca.key` - root key file
-- `ca.crt` - root certificate file
+1. `ca.conf` - root configuration file
+2. `ca.key` - root key file
+3. `ca.crt` - root certificate file
 
-You can verify the root certificate by running the following `openssl x509` command.
+You can verify the root certificate by running the following `openssl x509` command:
 
 ```sh
-$ openssl x509 -in secure-data/ca.crt -text -noout
+openssl x509 -in secure-data/ca.crt -text -noout
 ```
 
-You should see output similar to this:
+You should see an output similar to the following:
 
-```
+```output
 Certificate:
     Data:
         Version: 3 (0x2)
@@ -215,12 +222,12 @@ Certificate:
 
 ## Copy the root certificate to each node directory
 
-Copy the generated root certificate file (`ca.crt`) to all three node directories.
+Copy the generated root certificate file `ca.crt` to all three node directories, as follows:
 
 ```sh
-$ cp secure-data/ca.crt 127.0.0.1
-$ cp secure-data/ca.crt 127.0.0.2
-$ cp secure-data/ca.crt 127.0.0.3
+cp secure-data/ca.crt 127.0.0.1
+cp secure-data/ca.crt 127.0.0.2
+cp secure-data/ca.crt 127.0.0.3
 ```
 
 ## Generate key and certificate files for each node
@@ -229,87 +236,84 @@ Now you can generate the node key `node.key` and node certificate `node.crt` for
 
 ### Generate configuration for each node
 
-Repeat the steps in this section once for each node.
-The IP address of each node is `<node-ip-address>`
+Repeat the following steps for each node, replacing `<node-ip-address>` with the IP address of the subject node:
 
-1. Generate a configuration file (`node.conf`) for a node, using the node's IP address (`<node-ip-address>`) as the directory name.
+1. Generate a configuration file `node.conf` for a node, using the node's IP address `<node-ip-address>` as the directory name, as follows:
 
-```sh
-$ cat > <node-ip-address>/node.conf
-```
+   ```sh
+   cat > <node-ip-address>/node.conf
+   ```
 
-2. Add the following sample configuration content (use as-is, or customize as needed).
+2. Add the following sample configuration content (use as-is, or customize as needed):
 
-{{< note title="Note" >}}
+   ```sh
+   #################################
+   # Example node configuration file
+   #################################
 
-Remember to replace the `<node-ip-address>` entry in the example configuration file below with the IP address for each node.
+   [ req ]
+   prompt=no
+   distinguished_name = my_distinguished_name
 
-{{< /note >}}
+   [ my_distinguished_name ]
+   organizationName = Yugabyte
+   # Required value for commonName, do not change
+   commonName = <node-ip-address>
 
-```sh
-#################################
-# Example node configuration file
-#################################
-
-[ req ]
-prompt=no
-distinguished_name = my_distinguished_name
-
-[ my_distinguished_name ]
-organizationName = Yugabyte
-# Required value for commonName, do not change.
-commonName = <node-ip-address>
-```
+   # Multiple subject alternative names (SANs) such as IP Address,
+   # DNS Name, Email, URI, and so on, can be specified under this section
+   [ req_ext]
+   SubjectAltName = @alt_names
+   [alt_names]
+   IP.1 = <IP Address>
+   IP.2 = <IP Address>
+   DNS.1 = <DNS Name>
+   DNS.2 = <DNS Name>
+   ```
 
 3. After pasting the content in step 2 and replacing `<node-ip-address>` with the node IP address, save and close the file by entering `Ctl+D`.
 
-Repeat these three steps for each of the three nodes. You should then have a copy of `node.conf` in the `127.0.0.1`, `127.0.0.2`, and `127.0.0.3` directories.
+You should have a copy of `node.conf` in the `127.0.0.1`, `127.0.0.2`, and `127.0.0.3` directories.
 
 ### Generate private key files for each node
 
-For each of the three nodes, generate the node private key by running the following command, replacing `<node-ip-address>` with the node IP address.
-
-{{< note title="Note" >}}
-
-For YugabyteDB to recognize the file, it must be of the format `node.<commonName>.key`. In this example,
-you are using the `<node-ip-address>` for the `<commonName>`, so the file names should be `node.127.0.0.1.key`,
-`node.127.0.0.2.key`, and `node.127.0.0.3.key`.
-
-{{< /note >}}
+For each of the three nodes, generate the node private key by running the following command, replacing `<node-ip-address>` with the node IP address:
 
 ```sh
-$ openssl genrsa -out <node-ip-address>/node.<node-ip-address>.key
-$ chmod 400 <node-ip-address>/node.<node-ip-address>.key
+openssl genrsa -out <node-ip-address>/node.<node-ip-address>.key
+chmod 400 <node-ip-address>/node.<node-ip-address>.key
 ```
+
+For YugabyteDB to recognize the file, it must be of the format `node.<commonName>.key`. In the preceding example, you have used the `<node-ip-address>` for the `<commonName>`, so the file names should be `node.127.0.0.1.key`, `node.127.0.0.2.key`, and `node.127.0.0.3.key`.
 
 ### Generate the node certificates
 
-Next, you need to generate the node certificate. This has two steps. First, create the certificate signing request (CSR) for each node, changing `<node-ip-address>`to the node IP address.
+You need to generate the node certificate by creating the certificate signing request (CSR) for each node, as follows:
 
 ```sh
-$ openssl req -new \
-              -config <node-ip-address>/node.conf \
-              -key <node-ip-address>/node.<node-ip-address>.key \
-              -out <node-ip-address>/node.csr
+openssl req -new \
+            -config <node-ip-address>/node.conf \
+            -key <node-ip-address>/node.<node-ip-address>.key \
+            -out <node-ip-address>/node.csr
 ```
 
-Sign each node CSR using the root key (`ca.key`) and root certificate (`ca.crt`). Run the following `openssl ca` command, changing `<node-ip-address>`to the node IP address.
+Sign each node CSR using the root key `ca.key` and root certificate `ca.crt`. Run the following `openssl ca` command:
 
 ```sh
-$ openssl ca -config secure-data/ca.conf \
-             -keyfile secure-data/ca.key \
-             -cert secure-data/ca.crt \
-             -policy my_policy \
-             -out <node-ip-address>/node.<node-ip-address>.crt \
-             -outdir <node-ip-address>/ \
-             -in <node-ip-address>/node.csr \
-             -days 3650 \
-             -batch
+openssl ca -config secure-data/ca.conf \
+           -keyfile secure-data/ca.key \
+           -cert secure-data/ca.crt \
+           -policy my_policy \
+           -out <node-ip-address>/node.<node-ip-address>.crt \
+           -outdir <node-ip-address>/ \
+           -in <node-ip-address>/node.csr \
+           -days 3650 \
+           -batch
 ```
 
-For the `127.0.0.1` node, you should see the following output.
+For the `127.0.0.1` node, you should see an output similar to the following:
 
-```
+```output
 Using configuration from secure-data/ca.conf
 Check that the request matches the signature
 Signature ok
@@ -322,21 +326,17 @@ Write out database with 1 new entries
 Data Base Updated
 ```
 
-{{< note title="Note" >}}
-
 Each node key and certificate should use the `node.<commonName>.[crt | key]` naming format.
-
-{{< /note >}}
 
 You can verify the signed certificate for each of the nodes by running the following `openssl verify` command:
 
 ```sh
-$ openssl verify -CAfile secure-data/ca.crt <node-ip-address>/node.<node-ip-address>.crt
+openssl verify -CAfile secure-data/ca.crt <node-ip-address>/node.<node-ip-address>.crt
 ```
 
 You should see the following output, displaying the node IP address:
 
-```
+```output
 X.X.X.X/node.X.X.X.X.crt: OK
 ```
 
@@ -344,32 +344,32 @@ X.X.X.X/node.X.X.X.X.crt: OK
 
 The files needed for each node are:
 
-- `ca.crt`
-- `node.<commonName>.crt` (Example: `node.127.0.0.1.crt`)
-- `node.<commonName>.key` (Example: `node.127.0.0.1.key`)
+1. `ca.crt`
+2. `node.<commonName>.crt` (for example, `node.127.0.0.1.crt`)
+3. `node.<commonName>.key` (for example, `node.127.0.0.1.key`)
 
-You can remove all other files in the node directories as they are unnecessary.
+You can remove all other files in the node directories, as they are unnecessary.
 
 Upload the necessary information to each target node.
 
-Create the directory that will contain the configuration files.
+Create the directory that will contain the configuration files, as follows:
 
 ```sh
-$ ssh <username>@<node-ip-address> mkdir ~/certs
+ssh <username>@<node-ip-address> mkdir ~/certs
 ```
 
-Copy all the configuration files into the above directory by running the following commands, changing `<node-ip-address>`to match the node IP address.
+Copy all the configuration files into the preceding directory by running the following commands:
 
 ```sh
-$ scp <node-ip-address>/ca.crt <user>@<node-ip-address>:~/certs/<node-ip-address>
-```
-
-```sh
-$ scp <node-ip-address>/node.<node-ip-address>.crt <user>@<node-ip-address>:~/certs/<node-ip-address>
+scp <node-ip-address>/ca.crt <user>@<node-ip-address>:~/certs/<node-ip-address>
 ```
 
 ```sh
-$ scp <node-ip-address>/node.<node-ip-address>.key <user>@<node-ip-address>:~/certs/<node-ip-address>
+scp <node-ip-address>/node.<node-ip-address>.crt <user>@<node-ip-address>:~/certs/<node-ip-address>
+```
+
+```sh
+scp <node-ip-address>/node.<node-ip-address>.key <user>@<node-ip-address>:~/certs/<node-ip-address>
 ```
 
 You can now delete, or appropriately secure, the directories you created for the nodes on the local machine.

@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
 
 .prometheus-link-tooltip {
   font-size: 14px;
@@ -10,14 +10,67 @@
 
 .metrics-panel {
   padding: 1px;
-  background-color: $YB_GRAY;
+  background-color: colors.$YB_GRAY;
   margin: 5px 7.5px;
   position: relative;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 
   .prometheus-link {
     position: absolute;
     top: 15px;
     right: 15px;
+    margin-left: 17px;
+    margin-top: 5px;
+  }
+
+  .outlier-buttons-container {
+    position: absolute;
+    top: 20px;
+    right: 50px;
+    display: flex;
+    flex: 1;
+    flex-direction: row;
+
+    .btn-default.active {
+      color: colors.$YB_LABEL_IN_PROGRESS_ICON;
+      background: rgba(43, 89, 195, 0.1);
+    }
+
+    .outlier-chart-button {
+      border-radius: 0;
+
+      &__penultimate {
+        border-radius: 0;
+      }
+
+      &__only {
+        border-radius: 8px;
+      }
+
+      &__first {
+        border-radius: 8px 0 0 8px;
+      }
+
+      &__last {
+        border-radius: 0 8px 8px 0;
+      }
+    }
+
+    .outlier-dropdown {
+      border-radius: 0 8px 8px 0;
+    }
+
+    .btn {
+      font-family: 'Inter';
+      font-style: normal;
+      font-weight: 400;
+      font-size: 13px;
+      line-height: 16px;
+      height: 26px;
+      padding: 4px 12px;
+    }
   }
 }
 
@@ -26,6 +79,7 @@
     padding: 0;
     background-color: transparent;
     margin: 0;
+    transform: scale(0.9, 0.9);
 
     .main-svg {
       .hoverlayer {
@@ -37,20 +91,88 @@
   }
 
   .metrics-padded-panel {
+    margin-top: 25px;
     padding: 15px 20px;
+    .empty-state {
+      margin-top: 20px;
+    }
+
+    .node-type-label {
+      float: left;
+      font-weight: 600;
+      font-size: 13px;
+      color: colors.$YB_DARKER_GRAY;
+    }
+
+    .cpu {
+      margin-top: -25px;
+    }
+
+    .disk {
+      margin-top: -35px;
+    }
+  }
+
+  .colocated-mode-panel {
+    .yb-resource-count-size {
+      float: inherit;
+      font-size: 32px;
+    }
+    .yb-resource-count-kind {
+      font-size: 18px;
+    }
+  }
+
+  .dedicated-mode-panel {
+    margin-top: -15px !important;
+    .dedicated-mode-space {
+      font-size: 24px !important;
+      font-weight: 700 !important;
+    }
+    .dedicated-mode-empty {
+      float: left;
+    }
+    .yb-resource-count-size {
+      float: right;
+      font-size: 28px;
+    }
+    .yb-resource-count-kind {
+      font-size: 12px;
+    }
   }
 
   .disk-usage-panel {
-    span.metric-subtitle {
+    .master-section {
+      margin-top: 16px;
+    }
+    span.metric-left-subtitle {
       display: block;
-      margin: 10px 0;
+      float: left;
+      font-size: 32px;
+      font-weight: 600;
+      color: colors.$YB_VIOLET_TEXT_NEW;
+      font-weight: 600;
+
+      &__label {
+        font-weight: 600;
+        font-size: 12px;
+        color: colors.$YB_SUBTITLE_COLOR;
+        margin-right: 5px;
+      }
+    }
+    span.metric-right-subtitle {
+      display: block;
+      float: right;
+      margin-top: 20px;
     }
   }
+
   .cpu-usage-panel {
     .graph-body {
       margin-top: 15px !important;
       margin-bottom: 5px !important;
     }
+
     .yb-resource-count {
       text-align: center;
     }
@@ -69,7 +191,7 @@
     margin-top: 15px;
 
     thead {
-      border-bottom: 1px solid $YB_GRAY;
+      border-bottom: 1px solid colors.$YB_GRAY;
     }
 
     td {
@@ -88,15 +210,15 @@
       top: 50%;
       transform: translateY(-50%);
     }
+
     .whiskers-plot {
       position: absolute;
-      border-right: 1px solid $YB_BRAND_ORANGE;
-      border-left: 1px solid $YB_BRAND_ORANGE;
+      border-right: 1px solid colors.$YB_BRAND_ORANGE;
+      border-left: 1px solid colors.$YB_BRAND_ORANGE;
       background: linear-gradient(180deg,
-        rgba(0,0,0,0) calc(50% - 1px),
-        $YB_BRAND_ORANGE calc(50%),
-        rgba(0,0,0,0) calc(50% + 1px)
-      );
+          rgba(0, 0, 0, 0) calc(50% - 1px),
+          colors.$YB_BRAND_ORANGE calc(50%),
+          rgba(0, 0, 0, 0) calc(50% + 1px));
       height: 8px;
       width: 200px;
       top: 50%;

@@ -14,7 +14,7 @@
 
 #include <thread>
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/status.h"
 
 DEFINE_test_flag(int32, strand_done_inject_delay_ms, 0,

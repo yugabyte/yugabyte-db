@@ -12,7 +12,7 @@
 [
 
 # For better version control conflict detection, list latest migration filename
-# here: V22__11906__yb_servers_function_uuid.sql
-{ major => '22', minor => '0', name => '<baseline>', time_applied => '_null_' }
+# here: V44__19211__yb_stream_id_in_pg_replication_slots.sql
+{ major => '44', minor => '0', name => '<baseline>', time_applied => '_null_' }
 
 ]

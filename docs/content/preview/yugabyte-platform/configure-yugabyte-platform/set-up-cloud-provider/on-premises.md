@@ -1,8 +1,9 @@
 ---
 title: Configure the on-premises cloud provider
-headerTitle: Configure the on-premises cloud provider
-linkTitle: Configure cloud providers
-description: Configure the on-premises cloud provider.
+headerTitle: Create provider configuration
+linkTitle: Create provider configuration
+description: Configure the on-premises provider configuration.
+headContent: Configure an on-premises provider configuration
 aliases:
   - /preview/deploy/enterprise-edition/configure-cloud-providers/onprem
 menu:
@@ -14,17 +15,16 @@ type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-
   <li>
     <a href="../aws/" class="nav-link">
-      <i class="fab fa-aws"></i>
+      <i class="fa-brands fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
     <a href="../gcp/" class="nav-link">
-      <i class="fab fa-google" aria-hidden="true"></i>
+      <i class="fa-brands fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
@@ -38,809 +38,206 @@ type: docs
 
   <li>
     <a href="../kubernetes/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
     <a href="../vmware-tanzu/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
     </a>
   </li>
 
-<li>
+  <li>
     <a href="../openshift/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>OpenShift</a>
+      <i class="fa-brands fa-redhat" aria-hidden="true"></i>
+      OpenShift
+    </a>
   </li>
 
   <li>
     <a href="../on-premises/" class="nav-link active">
-      <i class="fas fa-building"></i>
+      <i class="fa-solid fa-building"></i>
       On-premises
     </a>
   </li>
 
 </ul>
 
-You can configure the on-premises cloud provider for YugabyteDB using YugabyteDB Anywhere. If no cloud providers are configured, the main **Dashboard** prompts you to configure at least one cloud provider.
+Before you can deploy universes using YugabyteDB Anywhere, you must create a provider configuration.
+
+A provider configuration describes your cloud environment (such as its regions and availability zones, NTP server, certificates that may be used to SSH to VMs, whether YugabyteDB database software will be manually installed by the user or auto-provisioned by YugabyteDB Anywhere, and so on). The provider configuration is used as an input when deploying a universe, and can be reused for many universes.
+
+With on-premises providers, VMs are _not_ auto-created by YugabyteDB Anywhere; you must manually create your VMs and add them to the free pool of the on-premises provider. Only after VM instances are added can YugabyteDB Anywhere auto-provision or can you manually provision the YugabyteDB database software and create universes from these database nodes.
+
+Creating an on-premises provider requires the following steps:
+
+- Create your VMs. Do this using your hypervisor or cloud provider. You will need the IP addresses of the VMs.
+- [Create the on-premises provider configuration](#create-a-provider). The provider configuration includes details such as the SSH user you will use to access your VMs while setting up the provider, and the regions where the nodes are located.
+- Specify the compute [instance types](#add-instance-types) that will be used in this provider.
+- [Add the compute instances](#add-instances) by provisioning each of the node instances that the provider will use for deploying YugabyteDB universes with the necessary software, and then adding them to the pool of nodes.
 
 ## Configure the on-premises provider
 
-Configuring the on-premises provider consists of a number of steps.
+Navigate to **Configs > Infrastructure > On-Premises Datacenters** to see a list of all currently configured on-premises providers.
 
-### Complete the provider information
+### View and edit providers
 
-You need to navigate to **Configs > Infrastructure > On-Premises Datacenters**, click either **Add Configuration** or **Edit Provider**, and then complete the fields of the **Provider Info** form shown in the following illustration:
+To view a provider, select it in the list of On Prem Configs to display the **Overview**.
 
-![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-1.png)
+To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that, depending on whether the provider has been used to create a universe, you can only edit a subset of options.
 
-- In the **Provider Name** field, supply the provider name, which is an internal tag that helps with organizing your providers, so you know where you want to deploy your YugabyteDB universes.
+To view the universes created using the provider, select **Universes**.
 
-- In the **SSH User** field, enter the name of the user that has SSH privileges on your instances. This is required because to provision on-premises nodes with YugabyteDB, YugabyteDB Anywhere needs SSH access to these nodes. Unless you plan to provision the database nodes manually, the user needs to have password-free sudo permissions to complete a few tasks.
+To delete the provider, click **Actions** and choose **Delete Configuration**. You can only delete providers that are not in use by a universe.
 
-  If the SSH user requires a password for sudo access or the SSH user does not have sudo access, follow the steps described in [Manually provision nodes](#manually-provision-nodes).
+### Create a provider
 
-- In the **SSH Port** field, provide the port number of SSH client connections.
+To create an on-premises provider:
 
-- Enable the **Manually Provision Nodes** field if you choose to manually set up your database nodes. Otherwise, YugabyteDB Anywhere will use the sudo user to set up YugabyteDB nodes. For manual provisioning, you would be prompted to run a Python script at a later stage or to run a set of commands on the database nodes.
+1. Click **Create Config** to open the **OnPrem Provider Configuration** page.
 
-  If any of the following statements are applicable to your use case, you need to [provision the nodes manually](#provision-nodes-manually):
+    ![Create On-Premises provider](/images/yb-platform/config/yba-onp-config-create.png)
 
-  - Preprovisioned `yugabyte:yugabyte` user and group.
-  - Sudo user requires a password.
-  - The SSH user is not a sudo user.
+1. Enter the provider details. Refer to [Provider settings](#provider-settings).
 
-- Use the **SSH Key** field to enter the full content of the private key available to the SSH user for gaining access via SSH into your instances.
+1. Click **Create Provider Configuration** when you are done and wait for the configuration to complete.
 
-  Ensure that the SSH key is pasted correctly in the RSA format: you need to paste the SSH RSA PEM key entry including the RSA key header such as `-----BEGIN RSA PRIVATE KEY-----` and footer such as `-----END RSA PRIVATE KEY-----`.
+After the provider is created, configure the provider hardware. Refer to [Configure hardware for YugabyteDB nodes](#configure-hardware-for-yugabytedb-nodes).
 
-- Enable the **Air Gap Install** field if you want the installation to run in an air-gapped mode without expecting any internet access.
+## Provider settings
 
-- Optionally, you may enable **Advanced** and complete the following:
+### Provider Name
 
-  - Use the **Desired Home Directory** field to specify the home directory of the `yugabyte` user. The default value is `/home/yugabyte`.
-  - Use the **Node Exporter Port** field to specify the port number for the node exporter. The default value is 9300.
-  - Enable **Install Node Exporter** if you want the node exporter installed. You can skip this step if you have node exporter already installed on the nodes. Ensure you have provided the correct port number for skipping the installation.
-  - The **Node Exporter User** field allows you to override the default Prometheus user. This is useful when the user is preprovisioned on nodes (when the user creation is disabled). If overridden, the installer checks whether or not the user exists and creates the user if it does not exist.
+Enter a Provider name. The Provider name is an internal tag used for organizing cloud providers.
 
-- **NTP Setup** lets you to customize the Network Time Protocol server, as follows:
+### Regions
 
-  - Select **Manually add NTP Servers** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
-  - Select **Don’t set up NTP** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
+To add regions for the provider, do the following:
 
-### Configure hardware for YugabyteDB nodes
+1. Click **Add Region**.
 
-Complete the **Instance Types** fields, as per the following illustration, to provide node hardware configuration (CPU, memory, and volume information):
+1. Enter a name for the region.
 
-![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-2.png)
+1. Select the region location.
 
-- Use the **Machine Type** field to define a value to be used internally as an identifier in the **Instance Type** universe field.
-- Use the **Num Cores** field to define the number of cores to be assigned to a node.
-- Use the **Mem Size GB** field to define the memory allocation of a node.
-- Use the **Vol Size GB** field to define the disk volume of a node.
-- Use the **Mount Paths** field to define a mount point with enough space to contain your node density. Use `/data`. If you have multiple drives, add these as a comma-separated list, such as, for example, `/mnt/d0,/mnt/d1`.
+1. To add a zone, click **Add Zone** and enter a name for the zone.
 
-### Define regions and zones
+1. Click **Add Region**.
 
-Complete the **Regions and Zones** fields, as per the following illustration, to provide the location of YugabyteDB nodes:
+### SSH Key Pairs
 
-![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-3.png)
+In the **SSH User** field, enter the name of the user that has SSH privileges on your instances. This is required because to provision on-premises nodes with YugabyteDB, YugabyteDB Anywhere needs SSH access to these nodes. Unless you plan to provision the database nodes manually, the user needs to have password-free sudo permissions to complete a few tasks.
 
-YugabyteDB Anywhere will use these values during the universe creation.
+If the SSH user requires a password for sudo access or the SSH user does not have sudo access, you must enable the **Manually Provision Nodes** option (under **Advanced**) and [manually provision the instances](../on-premises-script/).
 
-## Add YugabyteDB nodes
+{{< tip title="SSH access" >}}
+After you have provisioned and added the instances to the provider (including installing the node agent), YugabyteDB Anywhere no longer requires SSH or sudo access to nodes.
+{{< /tip >}}
 
-After finishing the provider configuration, click **Manage Instances** to provision as many nodes as your application requires.
+In the **SSH Port** field, provide the port number of SSH client connections.
 
-![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-4.png)
+In the **SSH Keypair Name** field, provide the name of the key pair.
 
-For each node you want to add, click **Add Instances** to add a YugabyteDB node. You can use DNS names or IP addresses when adding instances (instance ID is an optional user-defined identifier).
+Use the **SSH Private Key Content** field to upload the private key PEM file available to the SSH user for gaining access via SSH into your instances.
 
-![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-5.png)
+### Advanced
 
-<br>Note that if you provide a hostname, the universe might experience issues communicating. To resolve this, you need to delete the failed universe and then recreate it with the `use_node_hostname_for_local_tserver ` g-flag enabled.
+Disable the **DB Nodes have public internet access** option if you want the installation to run in an air-gapped mode without expecting any internet access.
 
-### Provision nodes manually
+YugabyteDB Anywhere uses the sudo user to set up YugabyteDB nodes. However, if any of the following statements are applicable to your use case, you need to enable the **Manually Provision Nodes** option:
 
-To provision your nodes manually, you have the following two options:
+- Pre-provisioned `yugabyte:yugabyte` user and group.
+- Sudo user requires a password.
+- The SSH user is not a sudo user.
 
-1. If the SSH user you provided has sudo privileges but requires a password, you can [run the preprovisioning script](#running-the-preprovisioning-script).
-2. If the SSH user does not have any sudo privileges, you need to [set up the database nodes manually](#setting-up-database-nodes-manually).
+For manual provisioning, you are prompted to run a Python pre-provisioning script at a later stage to provision the database instances. Refer to [Add instances](#add-instances).
 
-#### Running the preprovisioning script
+Optionally, use the **YB Nodes Home Directory** field to specify the home directory of the `yugabyte` user. The default value is `/home/yugabyte`.
 
-This step is only required if you set **Manually Provision Nodes** to true and the SSH user has sudo privileges which require a password; otherwise you skip this step.
+Enable **Install Node Exporter** if you want the node exporter installed. You can skip this step if you have node exporter already installed on the nodes. Ensure you have provided the correct port number for skipping the installation.
 
-You can manually provision each node using the preprovisioning Python script, as follows:
+The **Node Exporter User** field allows you to override the default `prometheus` user. This is helpful when the user is pre-provisioned on nodes (when the user creation is disabled). If overridden, the installer checks whether or not the user exists and creates the user if it does not exist.
 
-1. Login to YugabyteDB Anywhere virtual machine via SSH.
+Use the **Node Exporter Port** field to specify the port number for the node exporter. The default value is 9300.
 
-1. Access the Docker `yugaware` container, as follows:
+**NTP Setup** lets you to customize the Network Time Protocol server, as follows:
 
-    ```sh
-    sudo docker exec -it yugaware bash
-    ```
+- Select **Specify Custom NTP Server(s)** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
+- Select **Assume NTP server configured in machine image** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
 
-1. Copy and paste the Python script prompted via the UI and substitute for a node IP address and mount points.
-Optionally, use the `--ask_password` flag if the sudo user requires password authentication, as follows:
+## Configure hardware for YugabyteDB nodes
 
-    ```bash
-   bash-4.4# /opt/yugabyte/yugaware/data/provision/9cf26f3b-4c7c-451a-880d-593f2f76efce/provision_instance.py --ip 10.9.116.65 --mount_points /data --ask_password
-    ```
+After the provider has been created, you can configure the hardware for the on-premises configuration by navigating to **Configs > Infrastructure > On-Premises Datacenters**, selecting the on-prem configuration you created, and choosing **Instances**. This displays the configured instance types and instances for the selected provider.
 
-   Expect the following output and prompt:
+![Configure on-prem instances](/images/yb-platform/config/yba-onprem-config-instances.png)
 
-    ```output
-    Executing provision now for instance with IP 10.9.116.65...
-    SUDO password:
-    ```
+To configure the hardware, do the following:
 
-1. Wait for the script to finish successfully.
+1. Specify the compute [instance types](#add-instance-types) that will be used in this provider.
+1. [Add the compute instances](#add-instances).
 
-1. Repeat step 3 for every node that will participate in the universe.
+### Add instance types
 
-This completes the on-premises cloud provider configuration. You can proceed to [Configure the backup target](../../backup-target/) or [Create deployments](../../../create-deployments/).
+An instance type defines some basic properties of a VM.
 
-#### Setting up database nodes manually
+To add an instance type, do the following:
 
-This step is only required if you set **Manually Provision Nodes** to true and the SSH user does not have sudo privileges at all; otherwise you skip this step.
+1. On the configuration **Instances** page, click **Add Instance Type**.
 
-If the SSH user configured in the on-premises provider does not have sudo privileges, then you can set up each of the database nodes manually. Note that you need access to a user with sudo privileges in order to complete these steps.
+1. Complete the **Add Instance Type** dialog fields, as follows:
 
-For each node, perform the following:
+    - Use the **Machine Type** field to define a value to be used internally as an identifier in the **Instance Type** universe field.
+    - Use the **Number of Cores** field to define the number of cores to be assigned to a node.
+    - Use the **Memory Size (GB)** field to define the memory allocation of a node.
+    - Use the **Volume Size (GB)** field to define the disk volume of a node.
+    - Use the **Mount Paths** field to define a mount point with enough space to contain your node density. Use `/data`. If you have multiple drives, add these as a comma-separated list, such as, for example, `/mnt/d0,/mnt/d1`.
 
-* [Set up time synchronization](#set-up-time-synchronization)
-* [Open incoming TCP ports](#open-incoming-tcp-ip-ports)
-* [Preprovision the node](#preprovision-nodes-manually)
-* [Install Prometheus node exporter](#install-prometheus-node-exporter)
-* [Install backup utilities](#install-backup-utilities)
-* [Set crontab permissions](#set-crontab-permissions)
-* [Install systemd-related database service unit files (optional)](#install-systemd-related-database-service-unit-files)
+1. Click **Add Instance Type**.
 
-##### Set up time synchronization
+### Add instances
 
-A local Network Time Protocol (NTP) server or equivalent must be available.
+You can add instances to an on-prem provider using the YugabyteDB Anywhere UI.
 
-Ensure an NTP-compatible time service client is installed in the node OS (chrony is installed by default in the standard CentOS 7 instance used in this example). Then, configure the time service client to use the available time server. The procedure includes this step and assumes chrony is the installed client.
+#### Prerequisites
 
-##### Open incoming TCP/IP ports
+Before you add instances, you need the following:
 
-Database servers need incoming TCP/IP access enabled to the following ports, for communications between themselves and YugabyteDB Anywhere:
+- The IP addresses of your VMs. Before you can add instances, you need to create your VMs. You do this using your hypervisor or cloud provider.
+- Instance type to assign each instance. The instance types define properties of the instances, along with the mount points. See [Add instance types](#add-instance-types).
 
-| Protocol | Port | Description |
-| :------- | :--- | :---------- |
-| TCP | 22 | SSH (for automatic administration) |
-| TCP | 5433 | YSQL client |
-| TCP | 6379 | YEDIS client |
-| TCP | 7000 | YB master webserver |
-| TCP | 7100 | YB master RPC |
-| TCP | 9000 | YB tablet server webserver |
-| TCP | 9042 | YCQL client |
-| TCP | 9090 | Prometheus server |
-| TCP | 9100 | YB tablet server RPC |
-| TCP | 9300 | Prometheus node exporter |
-| TCP | 12000 | YCQL HTTP (for DB statistics gathering) |
-| TCP | 13000 | YSQL HTTP (for DB statistics gathering) |
+In addition, if either of the following conditions is true (and **Manually Provision Nodes** is enabled in the on-prem provider configuration), you must manually provision instances with the necessary software before you can add them to the on-premises provider:
 
-The preceding table is based on the information on the [default ports page](/preview/reference/configuration/default-ports/).
+- Your [SSH user](#ssh-key-pairs) has sudo privileges that require a password. See [Manual setup with script](../on-premises-script/).
+- Your SSH user does not have sudo privileges. See [Fully manual setup](../on-premises-manual/).
 
-##### Preprovision nodes manually
+#### Add instances to the on-prem provider
 
-This process carries out all provisioning tasks on the database nodes which require elevated privileges. Once the database nodes have been prepared in this way, the universe creation process from YugabyteDB Anywhere will connect with the nodes only via the `yugabyte` user, and not require any elevation of privileges to deploy and operate the YugabyteDB universe.
+To add the instances, do the following:
 
-Physical nodes (or cloud instances) are installed with a standard Centos 7 server image. The following steps are to be performed on each physical node, prior to universe creation:
+1. On the configuration **Instances** page, click **Add Instances**.
 
-1. Login to each database node as a user with sudo enabled (the `centos` user in centos7 images).
+    ![On-prem Add Instance Types dialog](/images/yb-platform/config/yba-onprem-config-add-instances.png)
 
-1. Add the following line to the `/etc/chrony.conf` file:
+1. For each node in each region, provide the following:
 
-    ```text
-    server <your-time-server-IP-address> prefer iburst
-    ```
+    - Select the zone.
+    - Select the instance type.
+    - Enter the IP address of the node. You can use DNS names or IP addresses when adding instances.
+    - Optionally, enter an Instance ID; this is a user-defined identifier.
 
-    Then run the following command:
+    Note that if you provide a hostname, the universe might experience issues communicating. To resolve this, you need to delete the failed universe and then recreate it with the `use_node_hostname_for_local_tserver` flag enabled.
 
-    ```sh
-    sudo chronyc makestep   # (force instant sync to NTP server)
-    ```
+1. Click **+ Add** to add additional nodes in a region.
 
-1. Add a new `yugabyte:yugabyte` user and group with the default login shell `/bin/bash` that you set via the `-s` flag, as follows:
+1. Click **Add** when you are done.
 
-    ```bash
-    sudo useradd -s /bin/bash -m yugabyte   # (add user yugabyte and create /home/yugabyte)
-    sudo passwd yugabyte   # (add a password to the yugabyte user)
-    sudo su - yugabyte   # (change to yugabyte user for execution of next steps)
-    ```
+    The instances are added to the **Instances** list.
 
-    Ensure that the `yugabyte` user has permissions to SSH into the YugabyteDB nodes (as defined in `/etc/ssh/sshd_config`).
+1. After the instances are available in the **Instances** list, validate them by performing a preflight check. For each instance, click **Actions**, choose **Perform check**, and click **Apply**.
 
-1. Copy the SSH public key to each DB node.
-This public key should correspond to the private key entered into the YugabyteDB Anywhere provider.
-   
-1. Run the following commands as the `yugabyte` user, after copying the SSH public key file to the user home directory:
+YugabyteDB Anywhere runs the check and displays the status in the **Preflight Check** column. Click in the column to view details; you can also view the results under **Tasks**.
 
-    ```sh
-    cd ~yugabyte
-    mkdir .ssh
-    chmod 700 .ssh
-    cat <pubkey file> >> .ssh/authorized_keys
-    chmod 400 .ssh/authorized_keys
-    exit   # (exit from the yugabyte user back to previous user)
-    ```
-
-1. Add the following lines to the `/etc/security/limits.conf` file (sudo is required):
-
-    ```text
-    *                -       core            unlimited
-    *                -       data            unlimited
-    *                -       fsize           unlimited
-    *                -       sigpending      119934
-    *                -       memlock         64
-    *                -       rss             unlimited
-    *                -       nofile          1048576
-    *                -       msgqueue        819200
-    *                -       stack           8192
-    *                -       cpu             unlimited
-    *                -       nproc           12000
-    *                -       locks           unlimited
-    ```
-
-1. Modify the following line in the `/etc/security/limits.d/20-nproc.conf` file:
-
-    ```text
-    *          soft    nproc     12000
-    ```
-
-1. Install the rsync, OpenSSL, and xxHash packages (if not already included with your Linux distribution) using the following commands:
-
-    ```sh
-    sudo yum install openssl
-    sudo yum install rsync
-    sudo yum install xxhash
-    ```
-    
-
-For airgapped environments, make sure your Yum repository mirror contains these packages.    
-1. If running on a virtual machine, execute the following to tune kernel settings:
-
-    ```sh
-    sudo bash -c 'sysctl vm.swappiness=0 >> /etc/sysctl.conf'
-    sysctl kernel.core_pattern=/home/yugabyte/cores/core_%e.%p >> /etc/sysctl.conf
-    ```
-
-1. Perform the following to prepare and mount the data volume (separate partition for database data):
-
-    * List the available storage volumes, as follows:
-
-      ```sh
-      lsblk
-      ```
-
-    * Perform the following steps for each available volume (all listed volumes other than the root volume):
-
-      ```sh
-      sudo mkdir /data   # (or /data1, /data2 etc)
-      sudo mkfs -t xfs /dev/nvme1n1   # (create xfs filesystem over entire volume)
-      sudo vi /etc/fstab
-      ```
-
-    * Add the following line to `/etc/fstab`:
-
-      ```text
-      /dev/nvme1n1   /data   xfs   noatime   0   0
-      ```
-
-    * Exit from vi, and continue, as follows:
-
-      ```sh
-      sudo mount -av # (mounts the new volume using the fstab entry, to validate)
-      sudo chown yugabyte:yugabyte /data
-      sudo chmod 755 /data
-      ```
-
-##### Install Prometheus node exporter
-
-Download the 1.3.1 version of the Prometheus node exporter, as follows:
-
-```sh
-wget https://github.com/prometheus/node_exporter/releases/download/v1.3.1/node_exporter-1.3.1.linux-amd64.tar.gz
-```
-
-If you are doing an airgapped installation, download the node exporter using a computer connected to the internet and copy it over to the database nodes.
-
-On each node, perform the following as a user with sudo access:
-
-1. Copy the `node_exporter-1.3.1.linux-amd64.gz` package file that you downloaded into the `/tmp` directory on each of the YugabyteDB nodes. Ensure that this file is readable by the user (for example, `centos`).
-
-1. Run the following commands:
-
-    ```sh
-    sudo mkdir /opt/prometheus
-    sudo mkdir /etc/prometheus
-    sudo mkdir /var/log/prometheus
-    sudo mkdir /var/run/prometheus
-    sudo mv /tmp/node_exporter-1.3.1.linux-amd64.tar  /opt/prometheus
-    sudo adduser --shell /bin/bash prometheus # (also adds group “prometheus”)
-    sudo chown -R prometheus:prometheus /opt/prometheus
-    sudo chown -R prometheus:prometheus /etc/prometheus
-    sudo chown -R prometheus:prometheus /var/log/prometheus
-    sudo chown -R prometheus:prometheus /var/run/prometheus
-    sudo chmod +r /opt/prometheus/node_exporter-1.3.1.linux-amd64.tar
-    sudo su - prometheus (user session is now as user “prometheus”)
-    ```
-
-1. Run the following commands as user `prometheus`:
-
-    ```sh
-    cd /opt/prometheus
-    tar zxf node_exporter-1.3.1.linux-amd64.tar.gz
-    exit   # (exit from prometheus user back to previous user)
-    ```
-
-1. Edit the following file:
-
-    ```sh
-    sudo vi /etc/systemd/system/node_exporter.service
-    ```
-
-    
-    Add the following to the `/etc/systemd/system/node_exporter.service` file:
-
-    ```conf
-      [Unit]
-      Description=node_exporter - Exporter for machine metrics.
-      Documentation=https://github.com/William-Yeh/ansible-prometheus
-      After=network.target
-
-      [Install]
-      WantedBy=multi-user.target
-
-      [Service]
-      Type=simple
-
-      User=prometheus
-      Group=prometheus
-      
-      ExecStart=/opt/prometheus/node_exporter-1.3.1.linux-amd64/node_exporter  --web.listen-address=:9300 --collector.textfile.directory=/tmp/yugabyte/metrics
-    
-    ```
-    
-1. Exit from vi, and continue, as follows:
-
-    ```sh
-    sudo systemctl daemon-reload
-    sudo systemctl enable node_exporter
-    sudo systemctl start node_exporter
-    ```
-
-1. Check the status of the `node_exporter` service with the following command:
-
-    ```sh
-    sudo systemctl status node_exporter
-    ```
-
-##### Install backup utilities
-
-YugabyteDB Anywhere supports backing up YugabyteDB to Amazon S3, Azure Storage, Google Cloud Storage, and Network File System (NFS). For more information, see [Configure backup storage](../../../back-up-restore-universes/configure-backup-storage/).
-
-You can install the backup utility for the backup storage you plan to use, as follows:
-
-- NFS: Install rsync, which YugabyteDB Anywhere uses to perform NFS backups installed during one of the previous steps.
-
-- Amazon S3: Install s3cmd, on which YugabyteDB Anywhere relies to support copying backups to Amazon S3. You have the following installation options:
-  - For a regular installation, execute the following:
-
-      ```sh
-      sudo yum install s3cmd
-      ```
-
-  - For an airgapped installation, copy `/opt/third-party/s3cmd-2.0.1.tar.gz` from the YugabyteDB Anywhere node to the database node, and then extract it into the `/usr/local` directory on the database node, as follows:
-
-      ```sh
-      cd /usr/local
-      sudo tar xvfz path-to-s3cmd-2.0.1.tar.gz
-      sudo ln -s /usr/local/s3cmd-2.0.1/s3cmd /usr/local/bin/s3cmd
-      ```
-
-- Azure Storage: Install azcopy using one of the following options:
-  - Download `azcopy_linux_amd64_10.13.0.tar.gz` using the following command:
-
-      ```sh
-      wget https://azcopyvnext.azureedge.net/release20211027/azcopy_linux_amd64_10.13.0.tar.gz
-      ```
-
-  - For airgapped installations, copy `/opt/third-party/azcopy_linux_amd64_10.13.0.tar.gz` from the YugabyteDB Anywhere node, as follows:
-
-      ```sh
-      cd /usr/local
-      sudo tar xfz path-to-azcopy_linux_amd64_10.13.0.tar.gz -C /usr/local/bin azcopy_linux_amd64_10.13.0/azcopy --strip-components 1
-      ```
-
-- Google Cloud Storage: Install gsutil using one of the following options:
-  - Download `gsutil_4.60.tar.gz` using the following command:
-
-      ```sh
-      wget https://storage.googleapis.com/pub/gsutil_4.60.tar.gz
-      ```
-
-  - For airgapped installations, copy `/opt/third-party/gsutil_4.60.tar.gz` from the YugabyteDB Anywhere node, as follows:
-
-      ```sh
-      cd /usr/local
-      sudo tar xvfz gsutil_4.60.tar.gz
-      sudo ln -s /usr/local/gsutil/gsutil /usr/local/bin/gsutil
-      ```
-
-##### Set crontab permissions
-
-YugabyteDB Anywhere supports performing YugabyteDB liveness checks, log file management, and core file management using cron jobs.
-
-Note that sudo is required to set up this service.
-
-If YugabyteDB Anywhere will be using cron jobs, ensure that the `yugabyte` user is allowed to run crontab:
-
-* If you are using the `cron.allow` file to manage crontab access, add the `yugabyte` user to this file.
-* If you are using the `cron.deny` file, remove the `yugabyte` user from this file.
-
-If you are not using either file, no changes are required.
-
-<!--
-
-##### Manage liveness checks, logs, and cores
-
-YugabyteDB Anywhere supports performing YugabyteDB liveness checks, log file management, and core file management using cron jobs or systemd services.
-
-**Sudo is required to set up these services**
-
-If YugabyteDB Anywhere will be using **cron jobs**, make sure the yugabyte user is allowed to run crontab. If you're using the cron.allow file to manage crontab access, add the yugabyte user to this file. If you're using the cron.deny file, remove the yugabyte user from this file.
-
-YugabyteDB Anywhere **systemd services** to perform the monitoring operations mentioned above, then make sure ...
--->
-
-You have finished configuring your on-premises cloud provider. Proceed to [Configure the backup target](../../backup-target/) or [Create deployments](../../../create-deployments/).
-
-##### Install systemd-related database service unit files
-
-As an alternative to setting crontab permissions, you can install systemd-specific database service unit files, as follows:
-
-1. Enable the `yugabyte` user to run the following commands as sudo or root:
-
-   ```sh
-   yugabyte ALL=(ALL:ALL) NOPASSWD: /bin/systemctl start yb-master, \
-   /bin/systemctl stop yb-master, \
-   /bin/systemctl restart yb-master, \
-   /bin/systemctl enable yb-master, \
-   /bin/systemctl disable yb-master, \
-   /bin/systemctl start yb-tserver, \
-   /bin/systemctl stop yb-tserver, \
-   /bin/systemctl restart yb-tserver, \
-   /bin/systemctl enable yb-tserver, \
-   /bin/systemctl disable yb-tserver, \
-   /bin/systemctl start yb-zip_purge_yb_logs.timer, \
-   /bin/systemctl stop yb-zip_purge_yb_logs.timer, \
-   /bin/systemctl restart yb-zip_purge_yb_logs.timer, \
-   /bin/systemctl enable yb-zip_purge_yb_logs.timer, \
-   /bin/systemctl disable yb-zip_purge_yb_logs.timer, \
-   /bin/systemctl start yb-clean_cores.timer, \
-   /bin/systemctl stop yb-clean_cores.timer, \
-   /bin/systemctl restart yb-clean_cores.timer, \
-   /bin/systemctl enable yb-clean_cores.timer, \
-   /bin/systemctl disable yb-clean_cores.timer, \
-   /bin/systemctl start yb-collect_metrics.timer, \
-   /bin/systemctl stop yb-collect_metrics.timer, \
-   /bin/systemctl restart yb-collect_metrics.timer, \
-   /bin/systemctl enable yb-collect_metrics.timer, \
-   /bin/systemctl disable yb-collect_metrics.timer, \
-   /bin/systemctl start yb-zip_purge_yb_logs, \
-   /bin/systemctl stop yb-zip_purge_yb_logs, \
-   /bin/systemctl restart yb-zip_purge_yb_logs, \
-   /bin/systemctl enable yb-zip_purge_yb_logs, \
-   /bin/systemctl disable yb-zip_purge_yb_logs, \
-   /bin/systemctl start yb-clean_cores, \
-   /bin/systemctl stop yb-clean_cores, \
-   /bin/systemctl restart yb-clean_cores, \
-   /bin/systemctl enable yb-clean_cores, \
-   /bin/systemctl disable yb-clean_cores, \
-   /bin/systemctl start yb-collect_metrics, \
-   /bin/systemctl stop yb-collect_metrics, \
-   /bin/systemctl restart yb-collect_metrics, \
-   /bin/systemctl enable yb-collect_metrics, \
-   /bin/systemctl disable yb-collect_metrics, \
-   /bin/systemctl daemon-reload
-   ```
-
-2. Ensure that you have root access and add the following service and timer files to the `/etc/systemd/system` directory (set their ownerships to the `yugabyte` user and 0644 permissions):<br><br>
-
-   `yb-master.service`
-
-   ```sh
-   [Unit]
-   Description=Yugabyte master service
-   Requires=network-online.target
-   After=network.target network-online.target multi-user.target
-   StartLimitInterval=100
-   StartLimitBurst=10
-
-   [Path]
-   PathExists=/home/yugabyte/master/bin/yb-master
-   PathExists=/home/yugabyte/master/conf/server.conf
-
-   [Service]
-   User=yugabyte
-   Group=yugabyte
-   # Start
-   ExecStart=/home/yugabyte/master/bin/yb-master --flagfile /home/yugabyte/master/conf/server.conf
-   Restart=on-failure
-   RestartSec=5
-   # Stop -> SIGTERM - 10s - SIGKILL (if not stopped) [matches existing cron behavior]
-   KillMode=process
-   TimeoutStopFailureMode=terminate
-   KillSignal=SIGTERM
-   TimeoutStopSec=10
-   FinalKillSignal=SIGKILL
-   # Logs
-   StandardOutput=syslog
-   StandardError=syslog
-   # ulimit
-   LimitCORE=infinity
-   LimitNOFILE=1048576
-   LimitNPROC=12000
-
-   [Install]
-   WantedBy=default.target
-   ```
-
-   
-
-   `yb-tserver.service`
-
-   ```sh
-   [Unit]
-   Description=Yugabyte tserver service
-   Requires=network-online.target
-   After=network.target network-online.target multi-user.target
-   StartLimitInterval=100
-   StartLimitBurst=10
-
-   [Path]
-   PathExists=/home/yugabyte/tserver/bin/yb-tserver
-   PathExists=/home/yugabyte/tserver/conf/server.conf
-
-   [Service]
-   User=yugabyte
-   Group=yugabyte
-   # Start
-   ExecStart=/home/yugabyte/tserver/bin/yb-tserver --flagfile /home/yugabyte/tserver/conf/server.conf
-   Restart=on-failure
-   RestartSec=5
-   # Stop -> SIGTERM - 10s - SIGKILL (if not stopped) [matches existing cron behavior]
-   KillMode=process
-   TimeoutStopFailureMode=terminate
-   KillSignal=SIGTERM
-   TimeoutStopSec=10
-   FinalKillSignal=SIGKILL
-   # Logs
-   StandardOutput=syslog
-   StandardError=syslog
-   # ulimit
-   LimitCORE=infinity
-   LimitNOFILE=1048576
-   LimitNPROC=12000
-
-   [Install]
-   WantedBy=default.target
-   ```
-
-   <br>`yb-zip_purge_yb_logs.service`
-
-   ```sh
-   [Unit]
-   Description=Yugabyte logs
-   Wants=yb-zip_purge_yb_logs.timer
-
-   [Service]
-   User=yugabyte
-   Group=yugabyte
-   Type=oneshot
-   WorkingDirectory=/home/yugabyte/bin
-   ExecStart=/bin/sh /home/yugabyte/bin/zip_purge_yb_logs.sh
-
-   [Install]
-   WantedBy=multi-user.target
-   ```
-
-   <br>
-
-   `yb-zip_purge_yb_logs.timer`
-
-   ```sh
-   [Unit]
-   Description=Yugabyte logs
-   Requires=yb-zip_purge_yb_logs.service
-
-   [Timer]
-   User=yugabyte
-   Group=yugabyte
-   Unit=yb-zip_purge_yb_logs.service
-   # Run hourly at minute 0 (beginning) of every hour
-   OnCalendar=00/1:00
-
-   [Install]
-   WantedBy=timers.target
-   ```
-
-   <br>
-
-   `yb-clean_cores.service`
-
-   ```sh
-   [Unit]
-   Description=Yugabyte clean cores
-   Wants=yb-clean_cores.timer
-
-   [Service]
-   User=yugabyte
-   Group=yugabyte
-   Type=oneshot
-   WorkingDirectory=/home/yugabyte/bin
-   ExecStart=/bin/sh /home/yugabyte/bin/clean_cores.sh
-
-   [Install]
-   WantedBy=multi-user.target
-   ```
-
-   <br>
-
-   `yb-clean_cores.timer`
-
-   ```sh
-   [Unit]
-   Description=Yugabyte clean cores
-   Requires=yb-clean_cores.service
-
-   [Timer]
-   User=yugabyte
-   Group=yugabyte
-   Unit=yb-clean_cores.service
-   # Run every 10 minutes offset by 5 (5, 15, 25...)
-   OnCalendar=*:0/10:30
-
-   [Install]
-   WantedBy=timers.target
-   ```
-
-   <br>
-
-   `yb-collect_metrics.service`
-
-   ```sh
-   [Unit]
-   Description=Yugabyte collect metrics
-   Wants=yb-collect_metrics.timer
-
-   [Service]
-   User=yugabyte
-   Group=yugabyte
-   Type=oneshot
-   WorkingDirectory=/home/yugabyte/bin
-   ExecStart=/bin/bash /home/yugabyte/bin/collect_metrics_wrapper.sh
-
-   [Install]
-   WantedBy=multi-user.target
-   ```
-
-   <br>
-
-   `yb-collect_metrics.timer`
-
-   ```sh
-   [Unit]
-   Description=Yugabyte collect metrics
-   Requires=yb-collect_metrics.service
-
-   [Timer]
-   User=yugabyte
-   Group=yugabyte
-   Unit=yb-collect_metrics.service
-   # Run every 1 minute
-   OnCalendar=*:0/1:0
-
-   [Install]
-   WantedBy=timers.target
-   ```
-
-## Remove YugabyteDB components from the server
-
-As described in [Eliminate an unresponsive node](../../../manage-deployments/remove-nodes/), when a node enters an undesirable state, you can delete such node, with YugabyteDB Anywhere clearing up all the remaining artifacts except the `prometheus` and `yugabyte` user.
-
-You can manually remove Yugabyte components from existing server images. Before attempting this, you have to determine whether or not YugabyteDB Anywhere is operational. If it is, you either need to delete the universe or delete the nodes from the universe.
-
-In order to completely eliminate all traces of YugabyteDB Anywhere and configuration, you should consider reinstalling the operating system image (or rolling back to a previous image, if available).
-
-### Delete database server nodes
-
-You can remove YugabyteDB components and configuration from the database server nodes as follows:
-
-- Login to the server node as the `yugabyte` user.
-
-- Navigate to the `/home/yugabyte/bin` directory that contains a number of scripts including `yb-server-ctl.sh`. The arguments set in this script allow you to perform various functions on the YugabyteDB processes running on the node.
-
-- Execute the following command:
-
-  ```shell
-  ./bin/yb-server-ctl.sh clean-instance
-  ```
-
-  This removes all YugabyteDB code and settings from the node, removing it from the Universe.
-  
-  If you cannot find the `bin` directory, it means YugabyteDB Anywhere already cleared it during a successful deletion of the universe.
-
-You shoud also erase the data from the volume mounted under the `/data` subdirectory, unless this volume is to be permanently erased by the underlying storage subsystem when the volume is deleted.
-
-To erase this data, execute the following commands from the `centos` user on the node (or any user with access to sudo):
-
-```sh
-sudo umount /data
-```
-
-```sh
-sudo dd if=/dev/zero of=/dev/sdb bs=1M
-```
-
-The preceding commands assume the data volume is attached to the server as `/dev/sdb`.
-
-If there is a requirement to remove the `yugabyte` user, execute the following command:
-
-```sh
-sudo userdel -r yugabyte
-```
-
-If there is a requirement to remove the `prometheus` user, execute the following command:
-
-```sh
-sudo rm -rf /opt/prometheus
-```
-
-You may now choose to reverse the system settings that you configured in [Provision nodes manually](#provision-nodes-manually).
-
-### Delete YugabyteDB Anywhere from the server
-
-To remove YugabyteDB Anywhere and Replicated components from the host server, execute the following commands as the `root` user (or prepend `sudo` to each command) :
-
-```sh
-systemctl stop replicated replicated-ui replicated-operator
-service replicated stop
-service replicated-ui stop
-service replicated-operator stop
-docker stop replicated-premkit
-docker stop replicated-statsd
-```
-
-```sh
-docker rm -f replicated replicated-ui replicated-operator \ replicated-premkit replicated-statsd retraced-api retraced-processor \ retraced-cron retraced-nsqd retraced-postgres
-```
-
-```sh
-docker images | grep "quay.io/replicated" | awk '{print $3}' | xargs sudo docker rmi -f
-```
-
-```sh
-docker images | grep "registry.replicated.com/library/retraced" | awk '{print $3}' | xargs sudo docker rmi -f
-```
-
-```sh
-yum remove -y replicated replicated-ui replicated-operator
-```
-
-```sh
-rm -rf /var/lib/replicated* /etc/replicated* /etc/init/replicated* \ /etc/default/replicated* /etc/systemd/system/replicated* \ /etc/sysconfig/replicated* \ /etc/systemd/system/multi-user.target.wants/replicated* \ /run/replicated*
-```
-
-```sh
-rpm -qa | grep -i docker
-yum remove docker-ce
-rpm -qa | grep -i docker
-yum remove docker-ce-cli
-```
+If all your instances successfully pass the preflight check, your on-premises cloud provider configuration is ready, and you can proceed to [Configure the backup target](../../backup-target/) or [Create deployments](../../../create-deployments/).

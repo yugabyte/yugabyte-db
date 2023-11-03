@@ -39,12 +39,13 @@
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/thread.h"
+#include "yb/util/flags.h"
 
-DEFINE_int32(num_inserter_threads, 8, "Number of inserter threads to run");
-DEFINE_int32(num_inserts_per_thread, 0, "Number of inserts from each thread");
+DEFINE_NON_RUNTIME_int32(num_inserter_threads, 8, "Number of inserter threads to run");
+DEFINE_NON_RUNTIME_int32(num_inserts_per_thread, 0, "Number of inserts from each thread");
 DECLARE_bool(enable_maintenance_manager);
 
-METRIC_DEFINE_coarse_histogram(test, insert_latency,
+METRIC_DEFINE_event_stats(test, insert_latency,
                         "Insert Latency",
                         yb::MetricUnit::kMicroseconds,
                         "TabletServer single threaded insert latency.");
@@ -58,20 +59,20 @@ class TSStressTest : public TabletServerTestBase {
     : start_latch_(FLAGS_num_inserter_threads) {
 
     if (FLAGS_num_inserts_per_thread == 0) {
-      FLAGS_num_inserts_per_thread = AllowSlowTests() ? 100000 : 1000;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_inserts_per_thread) = AllowSlowTests() ? 100000 : 1000;
     }
 
     // Re-enable the maintenance manager which is disabled by default
     // in TS tests. We want to stress the whole system including
     // flushes, etc.
-    FLAGS_enable_maintenance_manager = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_maintenance_manager) = true;
   }
 
   void SetUp() override {
     TabletServerTestBase::SetUp();
     StartTabletServer();
 
-    histogram_ = METRIC_insert_latency.Instantiate(ts_test_metric_entity_);
+    stats_ = METRIC_insert_latency.Instantiate(ts_test_metric_entity_);
   }
 
   void StartThreads() {
@@ -92,7 +93,7 @@ class TSStressTest : public TabletServerTestBase {
   void InserterThread(int thread_idx);
 
  protected:
-  scoped_refptr<Histogram> histogram_;
+  scoped_refptr<EventStats> stats_;
   CountDownLatch start_latch_;
   std::vector<scoped_refptr<yb::Thread> > threads_;
 };
@@ -110,7 +111,7 @@ void TSStressTest::InserterThread(int thread_idx) {
     InsertTestRowsRemote(thread_idx, i, 1);
     MonoTime after = MonoTime::Now();
     MonoDelta delta = after.GetDeltaSince(before);
-    histogram_->Increment(delta.ToMicroseconds());
+    stats_->Increment(delta.ToMicroseconds());
   }
   LOG(INFO) << "Inserter thread " << thread_idx << " complete";
 }
@@ -130,7 +131,7 @@ TEST_F(TSStressTest, TestMTInserts) {
   // Generate the JSON.
   std::stringstream out;
   JsonWriter writer(&out, JsonWriter::PRETTY);
-  ASSERT_OK(histogram_->WriteAsJson(&writer, MetricJsonOptions()));
+  ASSERT_OK(stats_->WriteAsJson(&writer, MetricJsonOptions()));
 
   LOG(INFO) << out.str();
 }

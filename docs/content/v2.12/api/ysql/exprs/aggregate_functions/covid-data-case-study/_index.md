@@ -53,7 +53,7 @@ The remaining account of this case-study is divided into three parts:
 
 {{< tip title="Download a zip of all the files that this case study uses" >}}
 
-All of the `.sql` scripts that this case-study presents for copy-and-paste at the `ysqlsh` prompt are included for download in a zip-file. The zip also includes the three `csv` files that you will download from the <a href="https://covidcast.cmu.edu/" target="_blank">Carnegie Mellon’s COVIDcast <i class="fas fa-external-link-alt"></i></a> site. This will allow you, after you've studied the account of the case study and run the files one by one, then to run everything by starting a single master script that will ingest the data and spool the reports the this study explains to files. It will allow you easily to re-run the analysis on newer data as these become available.
+All of the `.sql` scripts that this case-study presents for copy-and-paste at the `ysqlsh` prompt are included for download in a zip-file. The zip also includes the three `csv` files that you will download from the <a href="https://covidcast.cmu.edu/" target="_blank">Carnegie Mellon’s COVIDcast <i class="fa-solid fa-up-right-from-square"></i></a> site. This will allow you, after you've studied the account of the case study and run the files one by one, then to run everything by starting a single master script that will ingest the data and spool the reports the this study explains to files. It will allow you easily to re-run the analysis on newer data as these become available.
 
 It is expected that the raw data will be available from the COVIDcast site into the indefinite future. But the downloadable self-contained zip-fie of the complete case study assures readers of the longevity of this study's pedagogy.
 

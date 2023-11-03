@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import PropTypes from 'prop-types';
 import moment from 'moment';
 import { YBFormattedNumber } from '../descriptors';
@@ -8,7 +8,7 @@ import { YBFormattedNumber } from '../descriptors';
 import './stylesheets/YBCost.css';
 
 const HOURS_IN_DAY = 24;
-const UNKNOWN_COST = "$ -";
+const UNKNOWN_COST = '$ -';
 
 const timeFactor = (base, target) => {
   const timeInHours = {};
@@ -33,10 +33,14 @@ export default class YBCost extends Component {
   };
 
   render() {
-    const { value, multiplier, base = 'hour', isPricingKnown } = this.props;
+    const { value, multiplier, base = 'hour', isPricingKnown, runtimeConfigs } = this.props;
+    const showUICost = runtimeConfigs?.data?.configEntries?.find(
+      (c) => c.key === 'yb.ui.show_cost'
+    );
     const finalCost = value ? value * timeFactor(base, multiplier) : 0;
+    const shouldShowPrice = isPricingKnown && showUICost?.value === 'true';
 
-    return !!isPricingKnown ? (
+    return shouldShowPrice ? (
       <YBFormattedNumber
         value={finalCost}
         maximumFractionDigits={2}

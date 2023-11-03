@@ -11,15 +11,18 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.LoadBalancerConfig;
+import com.yugabyte.yw.models.helpers.LoadBalancerPlacement;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -60,10 +63,10 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       }
 
       Cluster primaryCluster = taskParams().getPrimaryCluster();
+      boolean isYSQLEnabled = primaryCluster.userIntent.enableYSQL;
       boolean isYCQLAuthEnabled =
           primaryCluster.userIntent.enableYCQL && primaryCluster.userIntent.enableYCQLAuth;
-      boolean isYSQLAuthEnabled =
-          primaryCluster.userIntent.enableYSQL && primaryCluster.userIntent.enableYSQLAuth;
+      boolean isYSQLAuthEnabled = isYSQLEnabled && primaryCluster.userIntent.enableYSQLAuth;
 
       // Store the passwords in the temporary variables first.
       // DB does not store the actual passwords.
@@ -89,24 +92,6 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
                   // Fetch the task params from the DB to start from fresh on retry.
                   // Otherwise, some operations like name assignment can fail.
                   fetchTaskDetailsFromDB();
-                  boolean dedicatedNodes =
-                      taskParams().getPrimaryCluster().userIntent.dedicatedNodes;
-                  if (dedicatedNodes) {
-                    taskParams()
-                        .nodeDetailsSet
-                        .forEach(
-                            node -> {
-                              if (node.isTserver) {
-                                node.dedicatedTo = ServerType.TSERVER;
-                                if (node.isMaster) {
-                                  node.isMaster = false;
-                                }
-                              }
-                              if (node.isMaster) {
-                                node.dedicatedTo = ServerType.MASTER;
-                              }
-                            });
-                  }
                   // Select master nodes and apply isMaster flags immediately.
                   selectAndApplyMasters();
                   // Set all the in-memory node names.
@@ -117,30 +102,34 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
                   // Update on-prem node UUIDs.
                   updateOnPremNodeUuidsOnTaskParams();
                   // Set the prepared data to universe in-memory.
-                  setUserIntentToUniverse(u, taskParams(), false);
+                  updateUniverseNodesAndSettings(u, taskParams(), false);
+                  for (Cluster cluster : taskParams().clusters) {
+                    u.getUniverseDetails()
+                        .upsertCluster(cluster.userIntent, cluster.placementInfo, cluster.uuid);
+                  }
                   // There is a rare possibility that this succeeds and
                   // saving the Universe fails. It is ok because the retry
                   // will just fail.
                   updateTaskDetailsInDB(taskParams());
                 }
               });
-
-      if (isYCQLAuthEnabled || isYSQLAuthEnabled) {
+      boolean cacheYCQLAuthPass =
+          primaryCluster.userIntent.enableYCQL
+              && primaryCluster.userIntent.enableYCQLAuth
+              && !primaryCluster.userIntent.defaultYcqlPassword;
+      boolean cacheYSQLAuthPass =
+          primaryCluster.userIntent.enableYSQL
+              && primaryCluster.userIntent.enableYSQLAuth
+              && !primaryCluster.userIntent.defaultYsqlPassword;
+      if (cacheYCQLAuthPass || cacheYSQLAuthPass) {
         if (isFirstTry()) {
-          if (isYCQLAuthEnabled) {
-            taskParams().getPrimaryCluster().userIntent.ycqlPassword =
-                Util.redactString(ycqlPassword);
-          }
-          if (isYSQLAuthEnabled) {
-            taskParams().getPrimaryCluster().userIntent.ysqlPassword =
-                Util.redactString(ysqlPassword);
-          }
           log.debug("Storing passwords in memory");
-          passwordStore.put(universe.universeUUID, new AuthPasswords(ycqlPassword, ysqlPassword));
+          passwordStore.put(
+              universe.getUniverseUUID(), new AuthPasswords(ycqlPassword, ysqlPassword));
         } else {
-          log.debug("Reading password for {}", universe.universeUUID);
+          log.debug("Reading password for {}", universe.getUniverseUUID());
           // Read from the in-memory store on retry.
-          AuthPasswords passwords = passwordStore.getIfPresent(universe.universeUUID);
+          AuthPasswords passwords = passwordStore.getIfPresent(universe.getUniverseUUID());
           if (passwords == null) {
             throw new RuntimeException(
                 "Auth passwords are not found. Platform might have restarted"
@@ -151,7 +140,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
         }
       }
 
-      createInstanceExistsCheckTasks(universe.universeUUID, universe.getNodes());
+      createInstanceExistsCheckTasks(universe.getUniverseUUID(), universe.getNodes());
 
       // Create preflight node check tasks for on-prem nodes.
       createPreflightNodeCheckTasks(universe, taskParams().clusters);
@@ -167,31 +156,41 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
 
       Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
 
+      // Make sure clock skew is low enough.
+      createWaitForClockSyncTasks(universe, taskParams().nodeDetailsSet)
+          .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
+
       // Get the new masters from the node list.
       Set<NodeDetails> newMasters = PlacementInfoUtil.getMastersToProvision(primaryNodes);
 
       // Get the new tservers from the node list.
-      Set<NodeDetails> newTservers = PlacementInfoUtil.getTserversToProvision(primaryNodes);
+      Set<NodeDetails> newTservers =
+          PlacementInfoUtil.getTserversToProvision(taskParams().nodeDetailsSet);
 
       // Start masters.
       createStartMasterProcessTasks(newMasters);
 
       // Start tservers on tserver nodes.
-      createStartTserverProcessTasks(newTservers);
+      createStartTserverProcessTasks(newTservers, isYSQLEnabled);
 
       // Set the node state to live.
       createSetNodeStateTasks(taskParams().nodeDetailsSet, NodeDetails.NodeState.Live)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Start ybc process on all the nodes
-      if (taskParams().enableYbc) {
+      if (taskParams().isEnableYbc()) {
         createStartYbcProcessTasks(
             taskParams().nodeDetailsSet, taskParams().getPrimaryCluster().userIntent.useSystemd);
-        createUpdateYbcTask(taskParams().ybcSoftwareVersion)
+        createUpdateYbcTask(taskParams().getYbcSoftwareVersion())
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
       createConfigureUniverseTasks(primaryCluster);
+
+      // Create Load Balancer map to add nodes to load balancer
+      Map<LoadBalancerPlacement, LoadBalancerConfig> loadBalancerMap =
+          createLoadBalancerMap(taskParams(), null, null, null);
+      createManageLoadBalancerTasks(loadBalancerMap);
 
       // Run all the tasks.
       getRunnableTask().runSubTasks();
@@ -201,10 +200,17 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
     } finally {
       // Mark the update of the universe as done. This will allow future edits/updates to the
       // universe to happen.
+      log.debug("Unlocking universe {}", getUniverse().getUniverseUUID());
       Universe universe = unlockUniverseForUpdate();
       if (universe != null && universe.getUniverseDetails().updateSucceeded) {
-        log.debug("Removing passwords for {}", universe.universeUUID);
-        passwordStore.invalidate(universe.universeUUID);
+        log.debug("Removing passwords for {}", universe.getUniverseUUID());
+        passwordStore.invalidate(universe.getUniverseUUID());
+        if (universe.getConfig().getOrDefault(Universe.USE_CUSTOM_IMAGE, "false").equals("true")
+            && taskParams().overridePrebuiltAmiDBVersion) {
+          universe.updateConfig(
+              ImmutableMap.of(Universe.USE_CUSTOM_IMAGE, Boolean.toString(false)));
+          universe.save();
+        }
       }
     }
     log.info("Finished {} task.", getName());

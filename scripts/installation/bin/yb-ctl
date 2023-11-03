@@ -597,6 +597,7 @@ class ClusterOptions:
         self.force = False
         self.use_cassandra_authentication = False
         self.ysql_hba_conf_csv = None
+        self.ysql_ident_conf_csv = None
         self.ysql_pg_conf_csv = None
         self.node_type = DAEMON_TYPE_TSERVER
         self.is_shell_master = False
@@ -680,6 +681,9 @@ class ClusterOptions:
 
         if hasattr(args, "ysql_hba_conf_csv"):
             self.ysql_hba_conf_csv = args.ysql_hba_conf_csv
+
+        if hasattr(args, "ysql_ident_conf_csv"):
+            self.ysql_ident_conf_csv = args.ysql_ident_conf_csv
 
         if hasattr(args, "ysql_pg_conf_csv"):
             self.ysql_pg_conf_csv = args.ysql_pg_conf_csv
@@ -1169,6 +1173,10 @@ class ClusterControl:
             subparsers[cmd].add_argument("--ysql_hba_conf_csv",
                                          help="Set HBA configuration for YSQL API in CSV format")
 
+            subparsers[cmd].add_argument("--ysql_ident_conf_csv",
+                                         help="Set user name mapping (ident) configuration for "
+                                         "YSQL API in CSV format")
+
             subparsers[cmd].add_argument("--ysql_pg_conf_csv",
                                          help="Set configuration for YSQL API in CSV format")
 
@@ -1402,6 +1410,9 @@ class ClusterControl:
             if (self.options.ysql_hba_conf_csv is not None):
                 command_list.append(
                     "--ysql_hba_conf_csv='{}'".format(self.options.ysql_hba_conf_csv))
+            if (self.options.ysql_ident_conf_csv is not None):
+                command_list.append(
+                    "--ysql_ident_conf_csv='{}'".format(self.options.ysql_ident_conf_csv))
             if (self.options.ysql_pg_conf_csv is not None):
                 command_list.append(
                     "--ysql_pg_conf_csv='{}'".format(self.options.ysql_pg_conf_csv))
@@ -1878,8 +1889,6 @@ class ClusterControl:
             self.cluster_config["installation_dir"] = self.options.installation_dir
         self.save_cluster_config()
 
-        if self.is_ysql_enabled():
-            self.run_cluster_wide_ysql_initdb()
         self.cluster_status()
 
     # Starts as well as creates. Check if the cluster exists.
@@ -1901,8 +1910,6 @@ class ClusterControl:
                     # To prevent YSQL from showing up in the status.
                     self.options.enable_ysql = False
                 else:
-                    print("YSQL has been enabled on an existing cluster, running initdb")
-                    self.run_cluster_wide_ysql_initdb()
                     self.cluster_config["enable_ysql"] = True
                     self.save_cluster_config()
 
@@ -2011,49 +2018,6 @@ class ClusterControl:
             logging.error(result)
             raise RuntimeError("Failed to Setup Redis.")
         print("Setup Redis successful.")
-
-    def run_cluster_wide_ysql_initdb(self):
-        initdb_binary_path = self.options.get_binary_path("initdb")
-
-        logging.info("Running initdb to initialize YSQL metadata in the YugaByte DB cluster.")
-        env = {'FLAGS_pggate_master_addresses': self.options.master_addresses,
-               'YB_ENABLED_IN_POSTGRES': '1'}
-        certs_dir = self.get_certs_dir()
-        if certs_dir:
-            env.update({'FLAGS_use_client_to_server_encryption': '1',
-                        'FLAGS_certs_dir': certs_dir})
-        with SetAndRestoreEnv(env):
-            adjust_env_for_ysql()
-
-            tmp_pg_data_dir = os.path.join(self.args.data_dir, 'yb-ctl_tmp_pg_data_{}'.format(
-                ''.join([random.choice('0123456789abcdef') for _ in range(32)])))
-
-            initdb_log_path = os.path.join(self.args.data_dir, "initdb.log")
-            if os.path.exists(initdb_log_path):
-                os.remove(initdb_log_path)
-            succeeded = False
-            try:
-                with open(initdb_log_path, 'w') as initdb_stdout_file:
-                    proc = subprocess.Popen([
-                        initdb_binary_path,
-                        '-D', tmp_pg_data_dir,
-                        '-U', 'postgres'
-                    ], stdout=initdb_stdout_file, stderr=subprocess.STDOUT)
-                    wait_for_proc_report_progress(proc)
-                    succeeded = proc.returncode == 0
-            finally:
-                if os.path.exists(tmp_pg_data_dir):
-                    logging.info("Deleting temporary YSQL data directory: %s",
-                                 tmp_pg_data_dir)
-                    shutil.rmtree(tmp_pg_data_dir, ignore_errors=True)
-                if not succeeded and os.path.exists(initdb_log_path):
-                    logging.info("initdb log file (from %s):", initdb_log_path)
-                    with open(initdb_log_path) as initdb_log_input_file:
-                        for line in initdb_log_input_file:
-                            logging.info(line.rstrip())
-
-        logging.info(
-            "Successfully ran initdb to initialize YSQL data in the YugaByte cluster")
 
     def get_certs_dir(self):
         # We split parameters containing multiple '='s like 'vmodule=meta_cache=5,tablet=5' into

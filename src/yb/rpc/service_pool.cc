@@ -45,7 +45,6 @@
 #include <boost/optional/optional.hpp>
 #include <cds/container/basket_queue.h>
 #include <cds/gc/dhp.h>
-#include <glog/logging.h>
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/ref_counted.h"
@@ -56,7 +55,7 @@
 #include "yb/rpc/service_if.h"
 
 #include "yb/util/countdown_latch.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -68,24 +67,20 @@
 
 using namespace std::literals;
 using namespace std::placeholders;
-using std::shared_ptr;
-using strings::Substitute;
+using std::string;
 
-DEFINE_int64(max_time_in_queue_ms, 6000,
-             "Fail calls that get stuck in the queue longer than the specified amount of time "
-                 "(in ms)");
+DEFINE_RUNTIME_int64(max_time_in_queue_ms, 6000,
+    "Fail calls that get stuck in the queue longer than the specified amount of time (in ms)");
 TAG_FLAG(max_time_in_queue_ms, advanced);
-TAG_FLAG(max_time_in_queue_ms, runtime);
-DEFINE_int64(backpressure_recovery_period_ms, 600000,
-             "Once we hit a backpressure/service-overflow we will consider dropping stale requests "
-             "for this duration (in ms)");
+DEFINE_RUNTIME_int64(backpressure_recovery_period_ms, 600000,
+    "Once we hit a backpressure/service-overflow we will consider dropping stale requests "
+    "for this duration (in ms)");
 TAG_FLAG(backpressure_recovery_period_ms, advanced);
-TAG_FLAG(backpressure_recovery_period_ms, runtime);
 DEFINE_test_flag(bool, enable_backpressure_mode_for_testing, false,
             "For testing purposes. Enables the rpc's to be considered timed out in the queue even "
             "when we have not had any backpressure in the recent past.");
 
-METRIC_DEFINE_coarse_histogram(server, rpc_incoming_queue_time,
+METRIC_DEFINE_event_stats(server, rpc_incoming_queue_time,
                         "RPC Queue Time",
                         yb::MetricUnit::kMicroseconds,
                         "Number of microseconds incoming RPC requests spend in the worker queue");
@@ -143,7 +138,7 @@ class ServicePoolImpl final : public InboundCallHandler {
           auto id = Format("rpcs_in_queue_$0", service_->service_name());
           EscapeMetricNameForPrometheus(&id);
           string description = id + " metric for ServicePoolImpl";
-          rpcs_in_queue_ = entity->FindOrCreateGauge(
+          rpcs_in_queue_ = entity->FindOrCreateMetric<AtomicGauge<int64_t>>(
               std::unique_ptr<GaugePrototype<int64_t>>(new OwningGaugePrototype<int64_t>(
                   entity->prototype().name(), std::move(id),
                   description, MetricUnit::kRequests, description, MetricLevel::kInfo)),
@@ -238,10 +233,6 @@ class ServicePoolImpl final : public InboundCallHandler {
       return;
     }
 
-    if (status.IsServiceUnavailable()) {
-      Overflow(call, "global", thread_pool_.options().queue_limit);
-      return;
-    }
     YB_LOG_EVERY_N_SECS(WARNING, 1)
         << LogPrefix()
         << call->method_name() << " request on " << service_->service_name() << " from "
@@ -264,9 +255,8 @@ class ServicePoolImpl final : public InboundCallHandler {
     } else if (PREDICT_FALSE(ShouldDropRequestDuringHighLoad(incoming))) {
       error_message = "The server is overloaded. Call waited in the queue past max_time_in_queue.";
     } else {
-      TRACE_TO(incoming->trace(), "Handling call $0", yb::ToString(incoming->method_name()));
-
       if (incoming->TryStartProcessing()) {
+        TRACE_TO(incoming->trace(), "Handling call $0", AsString(incoming->method_name()));
         service_->Handle(std::move(incoming));
       }
       return;
@@ -412,7 +402,7 @@ class ServicePoolImpl final : public InboundCallHandler {
   ThreadPool& thread_pool_;
   Scheduler& scheduler_;
   ServiceIfPtr service_;
-  scoped_refptr<Histogram> incoming_queue_time_;
+  scoped_refptr<EventStats> incoming_queue_time_;
   scoped_refptr<Counter> rpcs_timed_out_in_queue_;
   scoped_refptr<Counter> rpcs_timed_out_early_in_queue_;
   scoped_refptr<Counter> rpcs_queue_overflow_;

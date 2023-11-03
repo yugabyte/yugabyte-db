@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_YQL_PARTITIONS_VTABLE_H
-#define YB_MASTER_YQL_PARTITIONS_VTABLE_H
+#pragma once
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/yql_virtual_table.h"
@@ -31,11 +30,11 @@ class YQLPartitionsVTable : public YQLVirtualTable {
   explicit YQLPartitionsVTable(const TableName& table_name,
                                const NamespaceName& namespace_name,
                                Master* const master);
-  Result<std::shared_ptr<QLRowBlock>> RetrieveData(const QLReadRequestPB& request) const;
-  Result<std::shared_ptr<QLRowBlock>> GenerateAndCacheData() const;
+  Result<VTableDataPtr> RetrieveData(const QLReadRequestPB& request) const;
+  Result<VTableDataPtr> GenerateAndCacheData() const;
 
-  // Remove a table from the system.partitions vtable.
-  void RemoveFromCache(const TableId& table_id) const;
+  // Remove tables from the system.partitions vtable.
+  void RemoveFromCache(const std::vector<TableId>& table_ids) const;
 
   // Filter only tablets that have relevant system.partitions changes from a list of tablets that
   // have heartbeated in and are being processed.
@@ -50,15 +49,15 @@ class YQLPartitionsVTable : public YQLVirtualTable {
   // Used to check if all of a table's partitions are present during a CreateTable call.
   bool CheckTableIsPresent(const TableId& table_id, size_t expected_num_tablets) const;
 
+  // Just reset the cache versions, will trigger a rebuild on the next GenerateAndCacheData().
+  void InvalidateCache() const;
+
   // Reset the cache versions and fully regenerate the vtable.
   void ResetAndRegenerateCache() const;
 
-  // Called by bg task if both generate_partitions_vtable_on_changes and
-  // partitions_vtable_cache_refresh_secs are set.
-  Status UpdateCache() const;
+  static bool ShouldGeneratePartitionsVTableWithBgTask();
+  static bool ShouldGeneratePartitionsVTableOnChanges();
 
-  static bool GeneratePartitionsVTableWithBgTask();
-  static bool GeneratePartitionsVTableOnChanges();
  protected:
   struct TabletData {
     NamespaceName namespace_name;
@@ -75,26 +74,36 @@ class YQLPartitionsVTable : public YQLVirtualTable {
       DnsLookupMap* dns_lookups,
       google::protobuf::Arena* arena) const;
 
-  Status InsertTabletIntoRowUnlocked(const TabletData& tablet, QLRow* row,
+  Status InsertTabletIntoRowUnlocked(const TabletData& tablet, qlexpr::QLRow* row,
       const std::unordered_map<std::string, InetAddress>& dns_results) const;
 
   Schema CreateSchema() const;
 
   mutable std::shared_timed_mutex mutex_;
-  mutable std::shared_ptr<QLRowBlock> cache_ GUARDED_BY(mutex_);
+  mutable VTableDataPtr cache_ GUARDED_BY(mutex_);
   mutable intptr_t cached_tablets_version_ GUARDED_BY(mutex_) = kInvalidCache;
   mutable intptr_t cached_tablet_locations_version_ GUARDED_BY(mutex_) = kInvalidCache;
-  // Generate the cache from the map lazily (only when there's a request and update_cache_ is true).
-  mutable bool update_cache_ GUARDED_BY(mutex_) = true;
+
+  // Check that cached versions are not kInvalidCache.
+  bool CachedVersionsAreValid() const REQUIRES_SHARED(mutex_);
 
   // Store the table as a map for more efficient modifications.
-  mutable std::map<TableId, std::map<string, QLRow>> table_to_partition_start_to_row_map_
-      GUARDED_BY(mutex_);
+  mutable std::map<TableId, std::map<std::string, qlexpr::QLRow>>
+      table_to_partition_start_to_row_map_ GUARDED_BY(mutex_);
 
   // Convert the map to the expected vtable format.
-  Result<std::shared_ptr<QLRowBlock>> GetTableFromMap() const REQUIRES(mutex_);
+  Result<VTableDataPtr> GetTableFromMap() const REQUIRES(mutex_);
+
+  // State machine for cache validation. States are as follows:
+  // INVALID - cache is invalid and needs either:
+  //  - a full rebuild if using bg task rebuild
+  //  - rebuild from the map if generating table on changes
+  // INVALID_BUT_REBUILDING - have started rebuilding the cache, when we have completed we will set
+  //  the state to valid iff we have not been invalidated.
+  // VALID - cache is valid for usage.
+  enum CacheState { INVALID, INVALID_BUT_REBUILDING, VALID };
+  mutable std::atomic<CacheState> cache_state_{INVALID};
 };
 
 }  // namespace master
 }  // namespace yb
-#endif // YB_MASTER_YQL_PARTITIONS_VTABLE_H

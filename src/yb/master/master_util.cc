@@ -13,7 +13,7 @@
 
 #include "yb/master/master_util.h"
 
-#include <boost/container/stable_vector.hpp>
+#include <deque>
 
 #include "yb/common/redis_constants_common.h"
 #include "yb/common/wire_protocol.h"
@@ -28,20 +28,38 @@
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/util/countdown_latch.h"
+#include "yb/util/format.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 
 namespace yb {
+
+const char* DatabasePrefix(YQLDatabase db) {
+  switch(db) {
+    case YQL_DATABASE_UNKNOWN: break;
+    case YQL_DATABASE_CQL: return kDBTypePrefixCql;
+    case YQL_DATABASE_PGSQL: return kDBTypePrefixYsql;
+    case YQL_DATABASE_REDIS: return kDBTypePrefixRedis;
+  }
+  CHECK(false) << "Unexpected db type " << db;
+  return kDBTypePrefixUnknown;
+}
+
+std::string ShortDatabaseType(YQLDatabase db_type) {
+  switch(db_type) {
+    case YQL_DATABASE_UNKNOWN: return "UNKNOWN";
+    case YQL_DATABASE_CQL: return "YCQL";
+    case YQL_DATABASE_PGSQL: return "YSQL";
+    case YQL_DATABASE_REDIS: return "YEDIS";
+  }
+  return Format("<invalid database type $0>", to_underlying(db_type));
+}
+
 namespace master {
 
 namespace {
-
-static constexpr const char* kColocatedDbParentTableIdSuffix = ".colocated.parent.uuid";
-static constexpr const char* kColocatedDbParentTableNameSuffix = ".colocated.parent.tablename";
-static constexpr const char* kTablegroupParentTableIdSuffix = ".tablegroup.parent.uuid";
-static constexpr const char* kTablegroupParentTableNameSuffix = ".tablegroup.parent.tablename";
 
 struct GetMasterRegistrationData {
   GetMasterRegistrationRequestPB req;
@@ -78,8 +96,7 @@ Status GetMasterEntryForHosts(rpc::ProxyCache* proxy_cache,
                               ServerEntryPB* e) {
   CHECK(!hostports.empty());
 
-  boost::container::stable_vector<GetMasterRegistrationData> datas;
-  datas.reserve(hostports.size());
+  std::deque<GetMasterRegistrationData> datas;
   std::atomic<GetMasterRegistrationData*> last_data{nullptr};
   CountDownLatch latch(hostports.size());
   for (size_t i = 0; i != hostports.size(); ++i) {
@@ -222,45 +239,6 @@ Status SetupError(MasterErrorPB* error, const Status& s) {
   StatusToPB(s, error->mutable_status());
   error->set_code(MasterError::ValueFromStatus(s).get_value_or(MasterErrorPB::UNKNOWN_ERROR));
   return s;
-}
-
-bool IsColocationParentTableId(const TableId& table_id) {
-  return IsColocatedDbParentTableId(table_id) || IsTablegroupParentTableId(table_id);
-}
-
-bool IsColocatedDbParentTableId(const TableId& table_id) {
-  return table_id.find(kColocatedDbParentTableIdSuffix) == 32 &&
-      boost::algorithm::ends_with(table_id, kColocatedDbParentTableIdSuffix);
-}
-
-TableId GetColocatedDbParentTableId(const NamespaceId& database_id) {
-  DCHECK(IsIdLikeUuid(database_id)) << database_id;
-  return database_id + kColocatedDbParentTableIdSuffix;
-}
-
-TableName GetColocatedDbParentTableName(const NamespaceId& database_id) {
-  DCHECK(IsIdLikeUuid(database_id)) << database_id;
-  return database_id + kColocatedDbParentTableNameSuffix;
-}
-
-bool IsTablegroupParentTableId(const TableId& table_id) {
-  return table_id.find(kTablegroupParentTableIdSuffix) == 32 &&
-      boost::algorithm::ends_with(table_id, kTablegroupParentTableIdSuffix);
-}
-
-TableId GetTablegroupParentTableId(const TablegroupId& tablegroup_id) {
-  DCHECK(IsIdLikeUuid(tablegroup_id)) << tablegroup_id;
-  return tablegroup_id + kTablegroupParentTableIdSuffix;
-}
-
-TableName GetTablegroupParentTableName(const TablegroupId& tablegroup_id) {
-  DCHECK(IsIdLikeUuid(tablegroup_id)) << tablegroup_id;
-  return tablegroup_id + kTablegroupParentTableNameSuffix;
-}
-
-TablegroupId GetTablegroupIdFromParentTableId(const TableId& table_id) {
-  DCHECK(IsTablegroupParentTableId(table_id)) << table_id;
-  return table_id.substr(0, 32);
 }
 
 bool IsBlacklisted(const ServerRegistrationPB& registration, const BlacklistSet& blacklist) {

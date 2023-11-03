@@ -1,27 +1,27 @@
----
+<!---
 title: Using GORM with YugabyteDB
 linkTitle: GORM
 description: Using GORM with YugabyteDB
 aliases:
 menu:
-  preview:
+  preview_integrations:
     identifier: gorm
     parent: integrations
     weight: 571
 type: docs
----
+--->
 
 This document describes how to use [GORM](https://gorm.io/index.html), an object-relational mapping library for Golang, with YugabyteDB.
 
 ## Prerequisites
 
-Before you can start using GORM, ensure that you have the following available:
+To use GORM with YugabyteDB, you need the following:
 
 - YugabyteDB version 2.6 or later (see [Quick Start](../../quick-start/)).
 - Python version 2.7 or later.
 - Go version 1.8 or later.
 
-## Configuring GORM
+## Configure GORM
 
 You configure GORM as follows:
 
@@ -44,14 +44,14 @@ You configure GORM as follows:
   ```
 
 - Install the required GORM components by executing the following:
+
   ```shell
   go get github.com/lib/pq
   go get github.com/jinzhu/gorm
   go get github.com/jinzhu/gorm/dialects/postgres
   ```
 
-
-## Using GORM
+## Use GORM
 
 You can start using GORM with YugabyteDB as follows:
 
@@ -114,7 +114,7 @@ You can start using GORM with YugabyteDB as follows:
   }
   ```
 
-- Configure YugabyteDB properties, as per your requirements. The default user and password for YugabyteDB is yugabyte, and the default port is 5433.
+- Configure YugabyteDB properties, as per your requirements. The default user and password for YugabyteDB is `yugabyte`, and the default port is 5433.
 
 - Run GORM by executing the following command:
 
@@ -124,7 +124,7 @@ You can start using GORM with YugabyteDB as follows:
 
 If the execution is successful, the following will be displayed on your terminal:
 
-![img](/images/ee/gorm1.png)
+![image](/images/ee/gorm1.png)
 
 Another way to test the code is to open the ysqlsh client and execute the following statement:
 

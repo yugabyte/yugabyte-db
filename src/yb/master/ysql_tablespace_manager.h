@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_MASTER_YSQL_TABLESPACE_MANAGER_H
-#define YB_MASTER_YSQL_TABLESPACE_MANAGER_H
+#pragma once
 
 #include <unordered_map>
 
@@ -82,4 +81,3 @@ class YsqlTablespaceManager {
 
 }  // namespace master
 }  // namespace yb
-#endif // YB_MASTER_YSQL_TABLESPACE_MANAGER_H

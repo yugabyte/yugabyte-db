@@ -38,14 +38,14 @@
 #include <limits>
 #include <string>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/stringprintf.h"
 
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/errno.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
@@ -54,13 +54,13 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
-DEFINE_string(local_ip_for_outbound_sockets, "",
+DEFINE_UNKNOWN_string(local_ip_for_outbound_sockets, "",
               "IP to bind to when making outgoing socket connections. "
               "This must be an IP address of the form A.B.C.D, not a hostname. "
               "Advanced parameter, subject to change.");
 TAG_FLAG(local_ip_for_outbound_sockets, experimental);
 
-DEFINE_bool(socket_inject_short_recvs, false,
+DEFINE_UNKNOWN_bool(socket_inject_short_recvs, false,
             "Inject short recv() responses which return less data than "
             "requested");
 TAG_FLAG(socket_inject_short_recvs, hidden);

@@ -8,13 +8,14 @@ import {
   deleteRunTimeConfig,
   deleteRunTimeConfigResponse,
   setRunTimeConfig,
-  setRunTimeConfigResponse
+  setRunTimeConfigResponse,
+  DEFAULT_RUNTIME_GLOBAL_SCOPE
 } from '../../../actions/customers';
 
 const mapDispatchToProps = (dispatch) => {
   return {
     fetchRunTimeConfigs: () => {
-      return dispatch(fetchRunTimeConfigs()).then((response) =>
+      return dispatch(fetchRunTimeConfigs(DEFAULT_RUNTIME_GLOBAL_SCOPE, true)).then((response) =>
         dispatch(fetchRunTimeConfigsResponse(response.payload))
       );
     },

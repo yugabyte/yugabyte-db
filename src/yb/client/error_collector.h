@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_CLIENT_ERROR_COLLECTOR_H
-#define YB_CLIENT_ERROR_COLLECTOR_H
+#pragma once
 
 #include <memory>
 #include <vector>
@@ -70,4 +69,3 @@ class ErrorCollector {
 } // namespace internal
 } // namespace client
 } // namespace yb
-#endif /* YB_CLIENT_ERROR_COLLECTOR_H */

@@ -14,6 +14,7 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.forms.TableTaskParams;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YBClient;
@@ -47,15 +48,19 @@ public class DeleteTableFromUniverse extends AbstractTaskBase {
   @Override
   public void run() {
     Params params = taskParams();
-    Universe universe = Universe.getOrBadRequest(params.universeUUID);
+    Universe universe = Universe.getOrBadRequest(params.getUniverseUUID());
     String certificate = universe.getCertificateNodetoNode();
     YBClient client = null;
     try {
       client = ybService.getClient(params.masterAddresses, certificate);
       client.deleteTable(params.keyspace, params.tableName);
-      log.info("Dropped table {}", params.getFullName());
+      log.info("Dropped table {}", CommonUtils.logTableName(params.getFullName()));
     } catch (Exception e) {
-      String msg = "Error " + e.getMessage() + " while dropping table " + params.getFullName();
+      String msg =
+          "Error "
+              + e.getMessage()
+              + " while dropping table "
+              + CommonUtils.logTableName(params.getFullName());
       log.error(msg, e);
       throw new RuntimeException(msg);
     } finally {

@@ -18,11 +18,6 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_LITE
-#ifndef __STDC_FORMAT_MACROS
-#define __STDC_FORMAT_MACROS
-#endif
-
 #include <inttypes.h>
 
 #include <cctype>
@@ -40,12 +35,15 @@
 #include "yb/util/test_util.h"
 
 #ifndef GFLAGS
-bool FLAGS_enable_print = false;
+bool ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_print) = false;
 #else
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
+
 using GFLAGS::ParseCommandLineFlags;
-DEFINE_bool(enable_print, false, "Print options generated to console.");
+DEFINE_NON_RUNTIME_bool(enable_print, false, "Print options generated to console.");
 #endif  // GFLAGS
+
+using std::unique_ptr;
 
 namespace rocksdb {
 class OptionsUtilTest : public RocksDBTest {
@@ -374,12 +372,3 @@ int main(int argc, char** argv) {
 #endif  // GFLAGS
   return RUN_ALL_TESTS();
 }
-
-#else
-#include <cstdio>
-
-int main(int argc, char** argv) {
-  printf("Skipped in RocksDBLite as utilities are not supported.\n");
-  return 0;
-}
-#endif  // !ROCKSDB_LITE

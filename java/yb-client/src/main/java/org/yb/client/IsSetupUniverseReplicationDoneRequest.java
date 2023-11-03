@@ -2,7 +2,7 @@ package org.yb.client;
 
 import com.google.protobuf.Message;
 import java.util.UUID;
-import org.jboss.netty.buffer.ChannelBuffer;
+import io.netty.buffer.ByteBuf;
 import org.yb.WireProtocol.AppStatusPB;
 import org.yb.master.MasterReplicationOuterClass;
 import org.yb.master.MasterTypes;
@@ -19,7 +19,7 @@ public class IsSetupUniverseReplicationDoneRequest
   }
 
   @Override
-  ChannelBuffer serialize(Message header) {
+  ByteBuf serialize(Message header) {
     assert header.isInitialized();
 
     final MasterReplicationOuterClass.IsSetupUniverseReplicationDoneRequestPB.Builder builder =

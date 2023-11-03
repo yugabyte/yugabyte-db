@@ -18,6 +18,9 @@
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
 
+using std::string;
+using std::vector;
+
 namespace yb {
 namespace tserver {
 
@@ -39,7 +42,7 @@ TEST_F(RemoteBootstrapRocksDBTest, TestCheckpointDirectory) {
   {
     auto temp_session = make_scoped_refptr<RemoteBootstrapSession>(
         tablet_peer_, "TestTempSession", "FakeUUID", nullptr /* nsessions */);
-    CHECK_OK(temp_session->Init());
+    CHECK_OK(temp_session->InitBootstrapSession());
     checkpoint_dir = temp_session->checkpoint_dir_;
     ASSERT_FALSE(checkpoint_dir.empty());
     ASSERT_TRUE(env_->FileExists(checkpoint_dir));

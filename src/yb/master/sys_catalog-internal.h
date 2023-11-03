@@ -11,19 +11,21 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_SYS_CATALOG_INTERNAL_H_
-#define YB_MASTER_SYS_CATALOG_INTERNAL_H_
+#pragma once
 
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 
 #include "yb/docdb/doc_read_context.h"
 
 #include "yb/gutil/strings/substitute.h"
 
-#include "yb/master/sys_catalog_writer.h"
+#include "yb/master/leader_epoch.h"
 #include "yb/master/sys_catalog_constants.h"
+#include "yb/master/sys_catalog_writer.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/shared_lock.h"
 
 namespace yb {
 namespace master {
@@ -72,23 +74,61 @@ Status SysCatalogTable::Upsert(int64_t leader_term, Items&&... items) {
 }
 
 template <class... Items>
+Status SysCatalogTable::Upsert(const LeaderEpoch& epoch, Items&&... items) {
+  return Mutate(
+      QLWriteRequestPB::QL_STMT_UPDATE, epoch, std::forward<Items>(items)...);
+}
+
+template <class... Items>
+Status SysCatalogTable::ForceUpsert(int64_t leader_term, Items&&... items) {
+  return ForceMutate(QLWriteRequestPB::QL_STMT_UPDATE, leader_term, std::forward<Items>(items)...);
+}
+
+template <class... Items>
 Status SysCatalogTable::Delete(int64_t leader_term, Items&&... items) {
   return Mutate(QLWriteRequestPB::QL_STMT_DELETE, leader_term, std::forward<Items>(items)...);
+}
+
+template <class... Items>
+Status SysCatalogTable::Delete(const LeaderEpoch& epoch, Items&&... items) {
+  return Mutate(
+      QLWriteRequestPB::QL_STMT_DELETE, epoch, std::forward<Items>(items)...);
 }
 
 template <class... Items>
 Status SysCatalogTable::Mutate(
       QLWriteRequestPB::QLStmtType op_type, int64_t leader_term, Items&&... items) {
   auto w = NewWriter(leader_term);
-  RETURN_NOT_OK(w->Mutate(op_type, std::forward<Items>(items)...));
+  RETURN_NOT_OK(w->Mutate<true>(op_type, std::forward<Items>(items)...));
+  return SyncWrite(w.get());
+}
+
+// todo(zdrudi): do we need to check the namespace generation on this function as well?
+template <class... Items>
+Status SysCatalogTable::ForceMutate(
+      QLWriteRequestPB::QLStmtType op_type, int64_t leader_term, Items&&... items) {
+  auto w = NewWriter(leader_term);
+  RETURN_NOT_OK(w->ForceMutate(op_type, std::forward<Items>(items)...));
+  return SyncWrite(w.get());
+}
+
+template <class... Items>
+Status SysCatalogTable::Mutate(
+    QLWriteRequestPB::QLStmtType op_type, const LeaderEpoch& epoch, Items&&... items) {
+  // Acquire pitr_count_lock_ to ensure the sys catalog write completes before a PITR
+  // changes any sys catalog state.
+  SharedLock<std::shared_mutex> l(pitr_count_lock_);
+  if (epoch.pitr_count != pitr_count_.load()) {
+    return STATUS(Aborted, "Trying to write data read before a restore was initiated.");
+  }
+  auto w = NewWriter(epoch.leader_term);
+  RETURN_NOT_OK(w->Mutate<false>(op_type, std::forward<Items>(items)...));
   return SyncWrite(w.get());
 }
 
 std::unique_ptr<SysCatalogWriter> SysCatalogTable::NewWriter(int64_t leader_term) {
-  return std::make_unique<SysCatalogWriter>(doc_read_context_->schema, leader_term);
+  return std::make_unique<SysCatalogWriter>(doc_read_context_->schema(), leader_term);
 }
 
 } // namespace master
 } // namespace yb
-
-#endif // YB_MASTER_SYS_CATALOG_INTERNAL_H_

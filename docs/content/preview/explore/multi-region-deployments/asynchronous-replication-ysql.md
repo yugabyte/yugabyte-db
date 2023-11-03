@@ -1,8 +1,8 @@
 ---
-title: xCluster replication (2+ regions) in YSQL
+title: xCluster replication (2+ regions) in YugabyteDB
 headerTitle: xCluster (2+ regions)
 linkTitle: xCluster (2+ regions)
-description: Multi-region deployment using asynchronous replication across two or more data centers in YSQL.
+description: Multi-region deployment using asynchronous replication across two or more data centers.
 headContent: Unidirectional (master-follower) and bidirectional (multi-master) replication
 aliases:
   - /preview/explore/two-data-centers-linux/
@@ -16,158 +16,111 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+By default, YugabyteDB provides synchronous replication and strong consistency across geo-distributed data centers. However, many use cases do not require synchronous replication or justify the additional complexity and operation costs associated with managing three or more data centers. A cross-cluster (xCluster) deployment provides asynchronous replication across two data centers or cloud regions.
 
-  <li >
-    <a href="../asynchronous-replication-ysql/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
+This exercise simulates a geo-distributed two-data-center (2DC) deployment using two local YugabyteDB clusters, one representing "Data Center - East" and another representing "Data Center - West".
 
-  <li >
-    <a href="../asynchronous-replication-ycql/" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
+For more information, see the following:
 
-</ul>
+- [xCluster replication architecture](../../../architecture/docdb-replication/async-replication/)
+- [xCluster replication commands](../../../admin/yb-admin/#xcluster-replication-commands)
+- [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/)
 
-By default, YugabyteDB provides synchronous replication and strong consistency across geo-distributed data centers. However, many use cases do not require synchronous replication or justify the additional complexity and operation costs associated with managing three or more data centers. An xCluster deployment provides asynchronous replication across two data centers or cloud regions. For more information, see [xCluster replication](../../../architecture/docdb-replication/async-replication/) in the Architecture section.
+## Create two data centers
 
-This tutorial simulates a geo-distributed two data center deployment using two local YugabyteDB clusters, one representing "Data Center - East" and the other representing "Data Center - West." You can explore unidirectional (master-follower) xCluster replication and bidirectional (multi-master) xCluster replication using the [yugabyted](../../../reference/configuration/yugabyted/) and [yb-admin](../../../admin/yb-admin/) utilities.
+Create the two data centers as follows:
 
-## Prerequisites
+1. Create and start the local cluster that simulates "Data Center - East" by running the following command from your YugabyteDB home directory:
 
-For the tutorial, use the default database `yugabyte` and the default user `yugabyte`.
+    ```sh
+    ./bin/yugabyted start \
+                    --advertise_address=127.0.0.1 \
+                    --base_dir=/tmp/ybd1
+    ```
 
-## 1. Create two "data centers"
+    This starts a single-node local cluster using the IP address of `127.0.0.1` and creates `/tmp/ybd1` as the base directory.
 
-Create and start your first local cluster that will simulate "Data Center - East" by running the following `yugabyted start` command from your YugabyteDB home directory.
+1. If you are running on macOS and haven't created any loopback addresses, configure one as follows:
 
-```sh
-$ ./bin/yugabyted start \
-                  --base_dir=datacenter-east \
-                  --listen=127.0.0.1
-```
+    ```sh
+    sudo ifconfig lo0 alias 127.0.0.2
+    ```
 
-This will start up a one-node local cluster using the IP address of `127.0.0.1` and create `datacenter-east` as the base directory. Upon starting, you should see a screen similar to the following.
+1. Create and start the second local cluster that simulates "Data Center - West" by running the following command:
 
-```output
-Starting yugabyted...
-✅ System checks
+    ```sh
+    ./bin/yugabyted start \
+                    --advertise_address=127.0.0.2 \
+                    --base_dir=/tmp/ybd2
+    ```
 
-+--------------------------------------------------------------------------------------------------+
-|                                            yugabyted                                             |
-+--------------------------------------------------------------------------------------------------+
-| Status              : Running. Leader Master is present                                          |
-| Web console         : http://127.0.0.1:7000                                                      |
-| JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte  |
-| YSQL                : bin/ysqlsh   -U yugabyte -d yugabyte                                       |
-| YCQL                : bin/ycqlsh   -u cassandra                                                  |
-| Data Dir            : /Users/myuser/yugabyte-2.7.2.0/datacenter-east/data                        |
-| Log Dir             : /Users/myuser/yugabyte-2.7.2.0/datacenter-east/logs                        |
-| Universe UUID       : 4fb04760-4b6d-46a7-83cf-a89b2a056579                                       |
-+--------------------------------------------------------------------------------------------------+
-🚀 yugabyted started successfully! To load a sample dataset, try 'yugabyted demo'.
-🎉 Join us on Slack at https://www.yugabyte.com/slack
-👕 Claim your free t-shirt at https://www.yugabyte.com/community-rewards/
-```
+    This starts a single-node cluster using IP address of `127.0.0.2` and creates `/tmp/ybd2` as the base directory.
 
-Create and start your second local cluster that will simulate "Data Center = West" by running the following `yugabyted start` command from your YugabyteDB home directory.
+## Create tables
 
-```sh
-$ ./bin/yugabyted start \
-                  --base_dir=datacenter-west \
-                  --listen=127.0.0.2
-```
+In the default `yugabyte` database, you can create the table `users` on the "Data Center - East" cluster:
 
-This will start up a one-node cluster using IP address of `127.0.0.2` and create `datacenter-west` as the base directory. Upon starting, you should see a screen similar to the following.
+1. Open `ysqlsh` by specifying the host IP address of `127.0.0.1`, as follows:
 
-```output
-Starting yugabyted...
-✅ System checks
+    ```sh
+    ./bin/ysqlsh -h 127.0.0.1
+    ```
 
-+--------------------------------------------------------------------------------------------------+
-|                                            yugabyted                                             |
-+--------------------------------------------------------------------------------------------------+
-| Status              : Running. Leader Master is present                                          |
-| Web console         : http://127.0.0.2:7000                                                      |
-| JDBC                : jdbc:postgresql://127.0.0.2:5433/yugabyte?user=yugabyte&password=yugabyte  |
-| YSQL                : bin/ysqlsh -h 127.0.0.2  -U yugabyte -d yugabyte                           |
-| YCQL                : bin/ycqlsh 127.0.0.2 9042 -u cassandra                                     |
-| Data Dir            : /Users/myuser/yugabyte-2.7.2.0/datacenter-west/data                        |
-| Log Dir             : /Users/myuser/yugabyte-2.7.2.0/datacenter-west/logs                        |
-| Universe UUID       : ad78f70c-0741-4c7e-b610-315d55d7f248                                       |
-+--------------------------------------------------------------------------------------------------+
-🚀 yugabyted started successfully! To load a sample dataset, try 'yugabyted demo'.
-🎉 Join us on Slack at https://www.yugabyte.com/slack
-👕 Claim your free t-shirt at https://www.yugabyte.com/community-rewards/
-```
+1. Create the table `users`, as follows:
 
-## 2. Create database tables
+    ```sql
+    CREATE TABLE users (
+        email varchar PRIMARY KEY,
+        username varchar
+        );
+    ```
 
-In the default `yugabyte` database, create the database table `users` on the "Data Center - East" cluster.
+Create an identical table on your second cluster:
 
-Open `ysqlsh` specifying the host IP address of `127.0.0.1`.
+1. Open `ysqlsh` for "Data Center - West" by specifying the host IP address of `127.0.0.2`, as follows:
 
-```sh
-$ ./bin/ysqlsh -h 127.0.0.1
-```
+    ```sh
+    ./bin/ysqlsh -h 127.0.0.2
+    ```
 
-Create the table `users`.
+1. Create the table `users`, as follows
 
-```sql
-CREATE TABLE users (
-    email varchar PRIMARY KEY,
-    username varchar
-    );
-```
+    ```sql
+    CREATE TABLE users (
+      email varchar(35) PRIMARY KEY,
+      username varchar(20)
+      );
+    ```
 
-Now create the identical database table on cluster B.
+Having two identical tables on your clusters allows you to set up xCluster replication across two data centers.
 
-Open `ysqlsh` for "Data Center - West" by specifying the host IP address of `127.0.0.2`.
+## Configure unidirectional replication
 
-```sh
-$ ./bin/ysqlsh -h 127.0.0.2
-```
+To configure "Data Center - West" to be the target of data changes from the "Data Center - East" cluster, you need to use the [yb-admin](../../../admin/yb-admin/) utility [setup_universe_replication](../../../admin/yb-admin/#xcluster-replication-commands) command. The syntax is as follows:
 
-Create the table `users`.
-
-```sql
-CREATE TABLE users (
-    email varchar(35) PRIMARY KEY,
-    username varchar(20)
-    );
-```
-
-You now have the identical database table on each of your clusters and can now set up xCluster replication across the two data centers.
-
-## 3. Configure unidirectional replication
-
-To configure "Data Center - West" to be the target of data changes from the "Data Center - East" cluster, you need to use the `yb-admin` `setup_universe_replication` command. Review the syntax and then you can run the command:
-
-```sh
+```sh.output
 yb-admin -master_addresses <target-master-addresses> \
-setup_universe_replication <source-universe_uuid> <source_master_addresses> <source-table-ids>
+    setup_universe_replication <source-universe_uuid> \
+    <source_master_addresses> <source-table-ids>
 ```
 
-- *target-master-addresses*: a comma-separated list of the YB-Master servers. For this simulation, you have one YB-Master server for each cluster (typically, there are three).
-- *source-universe-uuid*: a unique identifier for the source cluster. The UUID can be found in the YB-Master UI (`<yb-master-ip>:7000`).
-- *source-table-ids*: A comma-separated list of `table_id` values. The generated UUIDs can be found in the YB-Master UI (`<yb-master-ip>:7000`/tables).
+- *target-master-addresses*: a comma-separated list of the target YB-Master servers. For this simulation, you have one YB-Master server for the target, 127.0.0.2:7100.
+- *source-universe-uuid*: a unique identifier for the source cluster. Look up the UUID in the source YB-Master UI (<http://127.0.0.1:7000>).
+- *source-master-addresses*: a comma-separated list of the source YB-Master servers. For this simulation, you have one YB-Master server for the source, 127.0.0.1:7100.
+- *source-table-ids*: A comma-separated list of table UUIDs. For this simulation, the `users` table; look up the UUID in the YB-Master UI (<http://127.0.0.1:7000/tables>).
 
-Based on your actual values (which you got from the YB-Master UI page at `yb-master-ip>:7000`), run the `yb-admin` `setup_universe_replication` command similar to the one shown in the following example:
+Based on actual values you obtained from the YB-Master UI, run the yb-admin `setup_universe_replication` command from your YugabyteDB home directory similar to the one shown in the following example:
 
 ```sh
-$ ./bin/yb-admin -master_addresses 127.0.0.2:7100 \
-setup_universe_replication 7acd6399-657d-42dc-a90a-646869898c2d 127.0.0.1:7100 000030a9000030008000000000004000
+./bin/yb-admin -master_addresses 127.0.0.2:7100 \
+    setup_universe_replication 7acd6399-657d-42dc-a90a-646869898c2d \
+    127.0.0.1:7100 000033e8000030008000000000004000
 ```
 
 - *target-master-addresses*: `127.0.0.2:7100`
 - *source-universe-uuid*: `7acd6399-657d-42dc-a90a-646869898c2d`
 - *source-master-addresses*: `127.0.0.1:7100`
-- *source-table-ids*: `000030a9000030008000000000004000`
+- *source-table-ids*: `000033e8000030008000000000004000`
 
 You should see the following message:
 
@@ -175,49 +128,54 @@ You should see the following message:
 Replication setup successfully
 ```
 
-## 4. Verify unidirectional replication
+## Verify unidirectional replication
 
-Now that you've configured unidirectional replication, you can add data to the `users` table on the "Data Center - East" cluster and see the data appear in the `users` table on "Data Center - West" cluster.
+To check replication, you can add data to the `users` table on one cluster and see that data appear in the `users` table on your second cluster.
 
-To add data to the "Data Center - East" cluster, open `ysqlsh` by running the following commands, making sure you are pointing to the new source host:
+1. Use the following commands to add data to the "Data Center - East" cluster, making sure you are pointing to the new source host:
 
-```sh
-$ ./bin/ysqlsh -h 127.0.0.1
-```
+    ```sh
+    ./bin/ysqlsh -h 127.0.0.1
+    ```
 
-```plpgsql
-yugabyte=# INSERT INTO users(email, username) VALUES ('hector@example.com', 'hector'), ('steve@example.com', 'steve');
-```
+    ```sql
+    INSERT INTO users(email, username) VALUES ('hector@example.com', 'hector'), ('steve@example.com', 'steve');
+    ```
 
-On the target "Data Center - West" cluster, open `ysqlsh` and run the following to see that data has been replicated between clusters:
+1. On the target "Data Center - West" cluster, run the following commands to see that data has been replicated between clusters:
 
-```sh
-$ ./bin/ysqlsh -h 127.0.0.2
-```
+    ```sh
+    ./bin/ysqlsh -h 127.0.0.2
+    ```
 
-```plpgsql
-yugabyte=# SELECT * FROM users;
-```
+    ```sql
+    SELECT * FROM users;
+    ```
 
-You should see the following output:
+    Expect the following output:
 
-```output
-       email         | username
----------------------+----------
- hector@example.com  | hector
- steve@example.com   | steve
-(2 rows)
-```
+    ```output
+            email         | username
+    ---------------------+----------
+      hector@example.com  | hector
+      steve@example.com   | steve
+    (2 rows)
+    ```
 
-## 5. Configure bidirectional replication (optional)
+## Configure bidirectional replication
 
 Bidirectional xCluster replication lets you insert data into the same table on either of the clusters and have the data changes added to the other cluster.
 
-To configure bidirectional xCluster replication for the same table, you need to run the following `yb-admin` `setup_universe_replication` command to set up the "Data Center - East" cluster to be the target of the "Data Center - West" cluster:
+To configure bidirectional replication for the same table, you run the `yb-admin` `setup_universe_replication` command to make the "Data Center - East" cluster the target of the "Data Center - West" cluster. This time, the target is 127.0.0.1:7100, and the source is 127.0.0.2:7100.
+
+Look up the source UUID in the source YB-Master UI (<http://127.0.0.2:7000>), and source table UUID at <http://127.0.0.2:7000/tables>.
+
+Based on actual values you obtained from the YB-Master UI, run the yb-admin `setup_universe_replication` command similar to the one shown in the following example:
 
 ```sh
-$ ./bin/yb-admin -master_addresses 127.0.0.1:7100 \
-setup_universe_replication 0a315687-e9bd-430f-b6f4-ac831193a394  127.0.0.2:7100 000030a9000030008000000000004000
+./bin/yb-admin -master_addresses 127.0.0.1:7100 \
+    setup_universe_replication 0a315687-e9bd-430f-b6f4-ac831193a394 \
+    127.0.0.2:7100 000030a9000030008000000000004000
 ```
 
 - *target-master-addresses*: `127.0.0.1:7100`
@@ -231,67 +189,60 @@ You should see the following message:
 Replication setup successfully
 ```
 
-## 6. Verify bidirectional replication (optional)
+## Verify bidirectional replication
 
-Now that you've configured bidirectional replication, you can add data to the `users` table on the "Data Center - West" cluster and see the data appear in the `users` table on "Data Center - East" cluster.
+When the bidirectional replication has been configured, you can add data to the `users` table on the "Data Center - West" cluster and see the data appear in the `users` table on "Data Center - East" cluster.
 
-To add data to the "Data Center - West" cluster, open `ysqlsh` by running the following commands, making sure you are pointing to the new source host:
+1. Use the following commands to add data to the "Data Center - West" cluster, making sure you are pointing to the new source host:
+
+    ```sh
+    ./bin/ysqlsh -h 127.0.0.2
+    ```
+
+    ```sql
+    INSERT INTO users(email, username) VALUES ('neha@example.com', 'neha'), ('mikhail@example.com', 'mikhail');
+    ```
+
+2. On the new target cluster, run the following commands to see that data has been replicated between clusters:
+
+    ```sh
+    ./bin/ysqlsh -h 127.0.0.1
+    ```
+
+    ```sql
+    SELECT * FROM users;
+     ```
+
+    You should see the following output:
+
+    ```output
+            email         | username
+    ---------------------+----------
+      hector@example.com  | hector
+      steve@example.com   | steve
+      neha@example.com    | neha
+      mikhail@example.com | mikhail
+    (4 rows)
+    ```
+
+## Add tables
+
+You can add more tables to an existing replication using the yb-admin command `alter_universe_replication` `add_table`:
+
+```sh.output
+yb-admin -master_addresses <target-master-addresses> \
+        alter_universe_replication <source-universe_uuid> \
+        add_table <source-table-ids>
+```
+
+The following is an example command:
 
 ```sh
-$ ./bin/ysqlsh -h 127.0.0.2
+./bin/yb-admin -master_addresses 127.0.0.2:7100 \
+    alter_universe_replication 7acd6399-657d-42dc-a90a-646869898c2d \
+    add_table 000030a9000030008000000000004000
 ```
 
-```plpgsql
-yugabyte=# INSERT INTO users(email, username) VALUES ('neha@example.com', 'neha'), ('mikhail@example.com', 'mikhail');
-```
+For details, see [alter_universe_replication](../../../admin/yb-admin/#alter-universe-replication).
 
-On the new target cluster, open `ysqlsh` and run the following to see that data has been replicated between clusters:
-
-```sh
-$ ./bin/ysqlsh -h 127.0.0.1
-```
-
-```plpgsql
-yugabyte=# SELECT * FROM users;
-```
-
-You should see the following output:
-
-```output
-       email         | username
----------------------+----------
- hector@example.com  | hector
- steve@example.com   | steve
- neha@example.com    | neha
- mikhail@example.com | mikhail
-(4 rows)
-```
-
-## 7. Clean up
-
-At this point, you've finished the tutorial. You can either stop and save your examples or destroy and remove the clusters and their associated directories.
-
-To stop the simulated data centers, use the `yugabyted stop` commands using the `--base_dir` option to specify the cluster.
-
-**Example - stopping "Data Center - East"**
-
-```sh
-$ ./bin/yugabyted stop \
-                  --base_dir=datacenter-east
-```
-
-To destroy a simulated data center and remove its associated directory, use the `yugabyted destroy` command with the `--base_dir` option to specify the cluster.
-
-**Example — destroying and removing the "Data Center - West"**
-
-```sh
-$ ./bin/yugabyted destroy \
-                  --base_dir=datacenter-west
-```
-
-## What's next?
-
-For more information, see the following:
-
-- [xCluster replication](../../../architecture/docdb-replication/async-replication/)
-- [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/)
+{{% explore-cleanup-local %}}

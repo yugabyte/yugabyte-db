@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_PERMISSIONS_MANAGER_H
-#define YB_MASTER_PERMISSIONS_MANAGER_H
+#pragma once
 
 #include <stdint.h>
 
@@ -20,8 +19,8 @@
 #include <type_traits>
 #include <utility>
 
-#include <gflags/gflags_declare.h>
-#include <glog/logging.h>
+#include "yb/util/flags.h"
+#include "yb/util/logging.h"
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/roles_permissions.h"
@@ -52,24 +51,24 @@ class PermissionsManager final {
   // The RPC context is provided for logging/tracing purposes.
   // but this function does not itself respond to the RPC.
   Status CreateRole(const CreateRoleRequestPB* req,
-                            CreateRoleResponsePB* resp,
-                            rpc::RpcContext* rpc) EXCLUDES(mutex_);
+                    CreateRoleResponsePB* resp,
+                    rpc::RpcContext* rpc) EXCLUDES(mutex_);
 
   // Alter an existing role for authentication/authorization.
   //
   // The RPC context is provided for logging/tracing purposes,
   // but this function does not itself respond to the RPC.
   Status AlterRole(const AlterRoleRequestPB* req,
-                           AlterRoleResponsePB* resp,
-                           rpc::RpcContext* rpc) EXCLUDES(mutex_);
+                   AlterRoleResponsePB* resp,
+                   rpc::RpcContext* rpc) EXCLUDES(mutex_);
 
   // Delete the role.
   //
   // The RPC context is provided for logging/tracing purposes,
   // but this function does not itself respond to the RPC.
   Status DeleteRole(const DeleteRoleRequestPB* req,
-                            DeleteRoleResponsePB* resp,
-                            rpc::RpcContext* rpc) EXCLUDES(mutex_);
+                    DeleteRoleResponsePB* resp,
+                    rpc::RpcContext* rpc) EXCLUDES(mutex_);
 
   // Generic Create Role function for both default roles and user defined roles.
   Status CreateRoleUnlocked(
@@ -84,18 +83,18 @@ class PermissionsManager final {
 
   // Grant one role to another role.
   Status GrantRevokeRole(const GrantRevokeRoleRequestPB* req,
-                                 GrantRevokeRoleResponsePB* resp,
-                                 rpc::RpcContext* rpc) EXCLUDES(mutex_);
+                         GrantRevokeRoleResponsePB* resp,
+                         rpc::RpcContext* rpc) EXCLUDES(mutex_);
 
   // Grant/Revoke a permission to a role.
   Status GrantRevokePermission(const GrantRevokePermissionRequestPB* req,
-                                       GrantRevokePermissionResponsePB* resp,
-                                       rpc::RpcContext* rpc) EXCLUDES(mutex_);
+                               GrantRevokePermissionResponsePB* resp,
+                               rpc::RpcContext* rpc) EXCLUDES(mutex_);
 
   // Get all the permissions granted to resources.
   Status GetPermissions(const GetPermissionsRequestPB* req,
-                                GetPermissionsResponsePB* resp,
-                                rpc::RpcContext* rpc) EXCLUDES(mutex_);
+                        GetPermissionsResponsePB* resp,
+                        rpc::RpcContext* rpc) EXCLUDES(mutex_);
 
   void BuildResourcePermissionsUnlocked() REQUIRES(mutex_);
 
@@ -125,7 +124,7 @@ class PermissionsManager final {
 
   template<class RespClass>
   Status RemoveAllPermissionsForResource(const std::string& canonical_resource,
-                                                 RespClass* resp) EXCLUDES(mutex_);
+                                         RespClass* resp) EXCLUDES(mutex_);
 
   Status PrepareDefaultRoles(int64_t term) EXCLUDES(mutex_);
 
@@ -134,7 +133,7 @@ class PermissionsManager final {
   // Find all the roles for which 'role' is a member of the list 'member_of'.
   std::vector<std::string> DirectMemberOf(const RoleName& role) REQUIRES_SHARED(mutex_);
 
-  void TraverseRole(const string& role_name, std::unordered_set<RoleName>* granted_roles)
+  void TraverseRole(const std::string& role_name, std::unordered_set<RoleName>* granted_roles)
       REQUIRES_SHARED(mutex_);
 
   // Build the recursive map of roles (recursive_granted_roles_). If r1 is granted to r2, and r2
@@ -201,5 +200,3 @@ class PermissionsManager final {
 
 }  // namespace master
 }  // namespace yb
-
-#endif  // YB_MASTER_PERMISSIONS_MANAGER_H

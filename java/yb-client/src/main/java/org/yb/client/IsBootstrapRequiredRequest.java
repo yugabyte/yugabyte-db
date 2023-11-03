@@ -1,15 +1,16 @@
 package org.yb.client;
 
 import com.google.protobuf.Message;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import org.jboss.netty.buffer.ChannelBuffer;
+import io.netty.buffer.ByteBuf;
 import org.yb.master.MasterReplicationOuterClass;
 import org.yb.master.MasterReplicationOuterClass.IsBootstrapRequiredResponsePB.TableResult;
 import org.yb.master.MasterTypes.MasterErrorPB;
 import org.yb.util.Pair;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 public class IsBootstrapRequiredRequest extends YRpc<IsBootstrapRequiredResponse> {
 
@@ -22,7 +23,7 @@ public class IsBootstrapRequiredRequest extends YRpc<IsBootstrapRequiredResponse
   }
 
   @Override
-  ChannelBuffer serialize(Message header) {
+  ByteBuf serialize(Message header) {
     assert header.isInitialized();
 
     List<String> tableIds = new ArrayList<>();

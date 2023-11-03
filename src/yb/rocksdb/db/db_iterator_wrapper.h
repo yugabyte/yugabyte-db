@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_ROCKSDB_DB_DB_ITERATOR_WRAPPER_H
-#define YB_ROCKSDB_DB_DB_ITERATOR_WRAPPER_H
+#pragma once
 
 #include <memory>
 
@@ -26,36 +25,28 @@ class DBIteratorWrapper : public Iterator {
 
   virtual ~DBIteratorWrapper() {}
 
-  bool Valid() const override {
-    return wrapped_->Valid();
+  const KeyValueEntry& Entry() const override {
+    return wrapped_->Entry();
   }
 
-  void SeekToFirst() override {
-    wrapped_->SeekToFirst();
+  const KeyValueEntry& SeekToFirst() override {
+    return wrapped_->SeekToFirst();
   }
 
-  void SeekToLast() override {
-    wrapped_->SeekToLast();
+  const KeyValueEntry& SeekToLast() override {
+    return wrapped_->SeekToLast();
   }
 
-  void Seek(const Slice& target) override {
-    wrapped_->Seek(target);
+  const KeyValueEntry& Seek(Slice target) override {
+    return wrapped_->Seek(target);
   }
 
-  void Next() override {
-    wrapped_->Next();
+  const KeyValueEntry& Next() override {
+    return wrapped_->Next();
   }
 
-  void Prev() override {
-    wrapped_->Prev();
-  }
-
-  Slice key() const override {
-    return wrapped_->key();
-  }
-
-  Slice value() const override {
-    return wrapped_->value();
+  const KeyValueEntry& Prev() override {
+    return wrapped_->Prev();
   }
 
   Status status() const override {
@@ -64,6 +55,16 @@ class DBIteratorWrapper : public Iterator {
 
   Status GetProperty(std::string prop_name, std::string* prop) override {
     return wrapped_->GetProperty(prop_name, prop);
+  }
+
+  bool ScanForward(
+      Slice upperbound, KeyFilterCallback* key_filter_callback,
+      ScanCallback* scan_callback) override {
+    return wrapped_->ScanForward(upperbound, key_filter_callback, scan_callback);
+  }
+
+  void UseFastNext(bool value) override {
+    wrapped_->UseFastNext(value);
   }
 
  protected:
@@ -79,11 +80,11 @@ class TransitionLoggingIteratorWrapper : public DBIteratorWrapper {
       : DBIteratorWrapper(wrapped),
         rocksdb_log_prefix_(rocksdb_log_prefix) {}
 
-  void SeekToFirst() override;
-  void SeekToLast() override;
-  void Seek(const Slice& target) override;
-  void Next() override;
-  void Prev() override;
+  const KeyValueEntry& SeekToFirst() override;
+  const KeyValueEntry& SeekToLast() override;
+  const KeyValueEntry& Seek(Slice target) override;
+  const KeyValueEntry& Next() override;
+  const KeyValueEntry& Prev() override;
 
  private:
   std::string LogPrefix() const;
@@ -96,5 +97,3 @@ class TransitionLoggingIteratorWrapper : public DBIteratorWrapper {
 };
 
 }  // namespace rocksdb
-
-#endif  // YB_ROCKSDB_DB_DB_ITERATOR_WRAPPER_H

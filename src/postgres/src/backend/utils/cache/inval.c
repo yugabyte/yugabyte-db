@@ -681,7 +681,7 @@ InvalidateSystemCaches(void)
 		// In case of YugaByte it is necessary to refresh YB caches by calling 'YBRefreshCache'.
 		// But it can't be done here as 'YBRefreshCache' can't be called from within the transaction.
 		// Resetting catalog version will force cache refresh as soon as possible.
-		YBResetCatalogVersion();
+		YbResetCatalogCacheVersion();
 		return;
 	}
 	InvalidateCatalogSnapshot();
@@ -965,6 +965,11 @@ ProcessCommittedInvalidationMessages(SharedInvalidationMessage *msgs,
  * about CurrentCmdInvalidMsgs too, since those changes haven't touched
  * the caches yet.
  *
+ * YB Note: The above message for handling not isCommit is not true for YB
+ * as we use aggressive caching. Any changes made as part of
+ * CurrentCmdInvalidMsgs would have been applied to the cache and will need to
+ * be invalidated as well.
+ *
  * In any case, reset the various lists to empty.  We need not physically
  * free memory here, since TopTransactionContext is about to be emptied
  * anyway.
@@ -1003,6 +1008,15 @@ AtEOXact_Inval(bool isCommit)
 	}
 	else
 	{
+		/*
+		 * Yugabyte uses aggressive caching, therefore even modifications
+		 * in CurrentCmdInvalidMsgs would have been applied to the cache.
+		 */
+		if (IsYugaByteEnabled())
+		{
+			AppendInvalidationMessages(&transInvalInfo->PriorCmdInvalidMsgs,
+									   &transInvalInfo->CurrentCmdInvalidMsgs);
+		}
 		ProcessInvalidationMessages(&transInvalInfo->PriorCmdInvalidMsgs,
 									LocalExecuteInvalidationMessage);
 	}

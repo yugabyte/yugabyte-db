@@ -12,10 +12,6 @@
  */
 
 
-// eslint-disable-next-line no-duplicate-imports
-import type { BuildInfo } from './BuildInfo';
-// eslint-disable-next-line no-duplicate-imports
-import type { RuntimeInfo } from './RuntimeInfo';
 
 
 /**
@@ -25,17 +21,29 @@ import type { RuntimeInfo } from './RuntimeInfo';
  */
 export interface HealthCheckInfo  {
   /**
-   * 
-   * @type {BuildInfo}
+   * UUIDs of dead nodes
+   * @type {string[]}
    * @memberof HealthCheckInfo
    */
-  build_info: BuildInfo;
+  dead_nodes: string[];
   /**
    * 
-   * @type {RuntimeInfo}
+   * @type {number}
    * @memberof HealthCheckInfo
    */
-  runtime_info: RuntimeInfo;
+  most_recent_uptime: number;
+  /**
+   * UUIDs of under-replicated tablets
+   * @type {string[]}
+   * @memberof HealthCheckInfo
+   */
+  under_replicated_tablets: string[];
+  /**
+   * UUIDs of leaderless tablets
+   * @type {string[]}
+   * @memberof HealthCheckInfo
+   */
+  leaderless_tablets: string[];
 }
 
 

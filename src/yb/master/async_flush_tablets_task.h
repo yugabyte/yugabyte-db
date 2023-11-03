@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_MASTER_ASYNC_FLUSH_TABLETS_TASK_H
-#define YB_MASTER_ASYNC_FLUSH_TABLETS_TASK_H
+#pragma once
 
 #include "yb/master/async_rpc_tasks.h"
 
@@ -20,7 +19,7 @@ namespace master {
 
 // Send the "Flush Tablets" request to the specified Tablet Server.
 // Keeps retrying until we get an "ok" response.
-class AsyncFlushTablets : public RetrySpecificTSRpcTask {
+class AsyncFlushTablets : public RetrySpecificTSRpcTaskWithTable {
  public:
   AsyncFlushTablets(Master* master,
                     ThreadPool* callback_pool,
@@ -28,9 +27,13 @@ class AsyncFlushTablets : public RetrySpecificTSRpcTask {
                     const scoped_refptr<TableInfo>& table,
                     const std::vector<TabletId>& tablet_ids,
                     const FlushRequestId& flush_id,
-                    bool is_compaction);
+                    bool is_compaction,
+                    bool regular_only,
+                    LeaderEpoch epoch);
 
-  Type type() const override { return ASYNC_FLUSH_TABLETS; }
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kFlushTablets;
+  }
 
   std::string type_name() const override { return "Flush Tablets"; }
 
@@ -47,9 +50,8 @@ class AsyncFlushTablets : public RetrySpecificTSRpcTask {
   const FlushRequestId flush_id_;
   tserver::FlushTabletsResponsePB resp_;
   bool is_compaction_ = false;
+  bool regular_only_ = false;
 };
 
 } // namespace master
 } // namespace yb
-
-#endif // YB_MASTER_ASYNC_FLUSH_TABLETS_TASK_H

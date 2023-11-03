@@ -19,9 +19,17 @@ yb_home_dir="/home/yugabyte"
 result_kvs=""
 YB_SUDO_PASS=""
 ports_to_check=""
+tmp_dir="/tmp"
 PROMETHEUS_FREE_SPACE_MB=100
 HOME_FREE_SPACE_MB=2048
+VM_MAX_MAP_COUNT=262144
 PYTHON_EXECUTABLES=('python3.6' 'python3' 'python3.7' 'python3.8' 'python')
+LINUX_OS_NAME=""
+
+set_linux_os_name() {
+  LINUX_OS_NAME=$(awk -F= -v key="NAME" '$1==key {gsub(/"/, "", $2); print $2}'\
+  /etc/os-release 2>/dev/null)
+}
 
 preflight_provision_check() {
   # Check python is installed.
@@ -55,15 +63,20 @@ preflight_provision_check() {
     fi
     update_result_json "(Prometheus) No Pre-existing Node Exporter Running" "$no_node_exporter"
 
-    # Check prometheus files are writable.
     filepaths="/opt/prometheus /etc/prometheus /var/log/prometheus /var/run/prometheus \
-      /var/lib/prometheus /lib/systemd/system/node_exporter.service"
+      /var/lib/prometheus"
+    # Check prometheus files are writable.
+    if [[ $LINUX_OS_NAME = "SLES" ]]; then
+      filepaths="$filepaths /usr/lib/systemd/system/node_exporter.service"
+    else
+      filepaths="$filepaths /lib/systemd/system/node_exporter.service"
+    fi
     for path in $filepaths; do
       check_filepath "Prometheus" "$path" true
     done
 
     check_free_space "/opt/prometheus" $PROMETHEUS_FREE_SPACE_MB
-    check_free_space "/tmp" $PROMETHEUS_FREE_SPACE_MB # for downloading folder
+    check_free_space $tmp_dir $PROMETHEUS_FREE_SPACE_MB # for downloading folder
   fi
 
   # Check ulimit settings.
@@ -160,6 +173,15 @@ preflight_configure_check() {
 
   # Check home directory exists.
   check_filepath "Home Directory" "$yb_home_dir" false
+
+  # Check virtual memory max map limit.
+  vm_max_map_count=$(cat /proc/sys/vm/max_map_count 2> /dev/null)
+  test ${vm_max_map_count:-0} -ge $VM_MAX_MAP_COUNT
+  update_result_json_with_rc "vm_max_map_count" "$?"
+
+  # Check for chronyc utility.
+  command -v chronyc >/dev/null 2>&1
+  update_result_json_with_rc "chronyc_installed" "$?"
 }
 
 # Checks for an available python executable
@@ -241,6 +263,8 @@ Options:
     Bash file containing the sudo password variable.
   --ports_to_check PORTS_TO_CHECK
     Comma-separated list of ports to check availability
+  --tmp_dir TMP_DIRECTORY
+    Tmp Directory on the specified node.
   --cleanup
     Deletes this script after being run. Allows `scp` commands to port over new preflight scripts.
   -h, --help
@@ -290,6 +314,10 @@ while [[ $# -gt 0 ]]; do
       yb_home_dir="$2"
       shift
     ;;
+    --tmp_dir)
+      tmp_dir="$2"
+      shift
+    ;;
     --sudo_pass_file)
       if [ -f $2 ]; then
         . $2
@@ -314,6 +342,7 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
+set_linux_os_name
 if [[ "$check_type" == "provision" ]]; then
   preflight_provision_check >/dev/null 2>&1
 else

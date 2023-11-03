@@ -23,6 +23,7 @@ import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
 import "yb/master/master_types.proto";
 import "yb/rpc/service.proto";
+import "yb/tablet/tablet_types.proto";
 
 // Info about a single tablet server, returned to the client as part
 // of the GetTabletLocations response. This can be used on the client
@@ -49,6 +50,7 @@ message TabletLocationsPB {
     required TSInfoPB ts_info = 1;
     required PeerRole role = 2;
     optional consensus.PeerMemberType member_type = 3;
+    optional tablet.RaftGroupStatePB state = 4;
   }
 
   required bytes tablet_id = 1;
@@ -81,6 +83,20 @@ message TabletLocationsPB {
 
   // Number of expected read replicas.
   optional int32 expected_read_replicas = 11;
+
+  // Whether or not this tablet has been deleted.
+  optional bool is_deleted = 14;
+}
+
+message GetIndexBackfillProgressRequestPB {
+  repeated string index_ids = 1;
+}
+
+message GetIndexBackfillProgressResponsePB {
+  optional MasterErrorPB error = 1;
+  // The ordering of the indexes' results here is expected to be the same as the ordering in the
+  // corresponding request PB (GetIndexBackfillProgressRequestPB).
+  repeated uint64 rows_processed_entries = 2;
 }
 
 message GetTabletLocationsRequestPB {
@@ -92,6 +108,10 @@ message GetTabletLocationsRequestPB {
 
   // If true, then return any hidden tablets as well. Does not work with partition key ranges.
   optional bool include_inactive = 3;
+
+  // If true, then return any deleted tablets as well (marked with is_deleted in the returned
+  // tablet locations).
+  optional bool include_deleted = 4;
 }
 
 message GetTabletLocationsResponsePB {
@@ -123,6 +143,11 @@ message GetTableLocationsRequestPB {
 
   // If true, then return any hidden tablets as well. Does not work with partition key ranges.
   optional bool include_inactive = 7;
+
+  // When set, the TabletLocationsPBs in the response will only have basic fields and
+  // partition-related fields set. The fields set are table_id, tablet_id, partition, split_depth,
+  // split_parent_tablet_id, and stale.
+  optional bool partitions_only = 8;
 }
 
 message GetTableLocationsResponsePB {
@@ -192,6 +217,26 @@ message RedisConfigGetResponsePB {
   optional MasterErrorPB error = 3;
 }
 
+message GetStatefulServiceLocationRequestPB {
+  optional StatefulServiceKind service_kind = 1;
+}
+
+message StatefulServiceInfoPB {
+  optional bytes permanent_uuid = 1;
+
+  repeated HostPortPB private_rpc_addresses = 2;
+
+  repeated HostPortPB broadcast_addresses = 3;
+
+  optional CloudInfoPB cloud_info = 4;
+}
+
+message GetStatefulServiceLocationResponsePB {
+  optional MasterErrorPB error = 1;
+
+  optional StatefulServiceInfoPB service_info = 2;
+}
+
 service MasterClient {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -207,7 +252,13 @@ service MasterClient {
   rpc ReservePgsqlOids(ReservePgsqlOidsRequestPB) returns (ReservePgsqlOidsResponsePB);
   rpc GetYsqlCatalogConfig(GetYsqlCatalogConfigRequestPB) returns (GetYsqlCatalogConfigResponsePB);
 
+  rpc GetIndexBackfillProgress(GetIndexBackfillProgressRequestPB)
+      returns (GetIndexBackfillProgressResponsePB);
+
   // Redis Config
   rpc RedisConfigSet(RedisConfigSetRequestPB) returns (RedisConfigSetResponsePB);
   rpc RedisConfigGet(RedisConfigGetRequestPB) returns (RedisConfigGetResponsePB);
+
+  rpc GetStatefulServiceLocation(GetStatefulServiceLocationRequestPB)
+      returns (GetStatefulServiceLocationResponsePB);
 }

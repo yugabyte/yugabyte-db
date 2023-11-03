@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_CLIENT_SCHEMA_INTERNAL_H
-#define YB_CLIENT_SCHEMA_INTERNAL_H
+#pragma once
 
 #include <string>
 
@@ -43,50 +42,30 @@ namespace client {
 class YBColumnSpec::Data {
  public:
   explicit Data(std::string name)
-      : name(std::move(name)),
-        has_type(false),
-        has_order(false),
-        sorting_type(SortingType::kNotSpecified),
-        has_nullable(false),
-        primary_key(false),
-        hash_primary_key(false),
-        static_column(false),
-        is_counter(false),
-        pg_type_oid(kPgInvalidOid),
-        has_rename_to(false) {
-  }
-
-  ~Data() {
+      : name(std::move(name)) {
   }
 
   const std::string name;
 
-  bool has_type;
-  std::shared_ptr<QLType> type;
+  QLTypePtr type;
 
-  bool has_order;
-  int32_t order;
+  int32_t order = 0;
 
-  SortingType sorting_type;
+  yb::Nullable nullable = Nullable::kTrue;
 
-  bool has_nullable;
-  bool nullable;
+  ColumnKind kind = ColumnKind::VALUE;
 
-  bool primary_key;
-  bool hash_primary_key;
+  bool static_column = false;
 
-  bool static_column;
+  bool is_counter = false;
 
-  bool is_counter;
+  int32_t pg_type_oid = kPgInvalidOid;
 
-  int32_t pg_type_oid;
-  bool has_pg_type_oid;
+  QLValuePB missing_value;
 
   // For ALTER
-  bool has_rename_to;
-  std::string rename_to;
+  std::optional<std::string> rename_to;
 };
 
 } // namespace client
 } // namespace yb
-#endif // YB_CLIENT_SCHEMA_INTERNAL_H

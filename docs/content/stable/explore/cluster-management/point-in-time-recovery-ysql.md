@@ -30,13 +30,13 @@ Point-in-time recovery (PITR) allows you to restore the state of your cluster's 
 
 For more information, see [Point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/#features). For details on the `yb-admin` commands, refer to the [Backup and snapshot commands](../../../admin/yb-admin/#backup-and-snapshot-commands) section of the yb-admin documentation.
 
-You can try out the PITR feature by creating a database and populating it, creating a snapshot schedule, and restoring from a snapshot on the schedule.
+The following examples show how you can use the PITR feature by creating a database and populating it, creating a snapshot schedule, and restoring from a snapshot on the schedule.
 
-{{< note title="Note" >}}
+Note that the examples are deliberately simplified. In many of the scenarios, you could drop the index or table to recover. Consider the examples as part of an effort to undo a larger schema change, such as a database migration, which has performed several operations.
 
-This document contains examples that are deliberately simplified. In many of the scenarios, you could drop the index or table to recover. Consider the examples as part of an effort to undo a larger schema change, such as a database migration, which has performed several operations.
+## Set up universe
 
-{{< /note >}}
+The examples run on a local multi-node YugabyteDB universe. To create a universe, see [Set up YugabyteDB universe](../../#set-up-yugabytedb-universe).
 
 ## Undo data changes
 
@@ -44,9 +44,7 @@ The process of undoing data changes involves creating and taking a snapshot of a
 
 Before attempting a restore, you need to confirm that there is no restore in progress for the subject keyspace or table; if multiple restore commands are issued, the data might enter an inconsistent state. For details, see [Restore to a point in time](../../../manage/backup-restore/point-in-time-recovery/#restore-to-a-point-in-time).
 
-### Create and snapshot a table
-
-Create and populate a table, look at a timestamp to which you'll restore, and then write a row.
+### Create a table
 
 1. Start the YSQL shell and connect to your local instance:
 
@@ -84,10 +82,16 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
     (4 rows)
     ```
 
+### Create a snapshot
+
+Create a snapshot as follows:
+
 1. At a terminal prompt, create a snapshot schedule for the database from a shell prompt. In the following example, the schedule is one snapshot every minute, and each snapshot is retained for ten minutes:
 
     ```sh
-    ./bin/yb-admin create_snapshot_schedule 1 10 ysql.yugabyte
+    ./bin/yb-admin \
+        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        create_snapshot_schedule 1 10 ysql.yugabyte
     ```
 
     ```output.json
@@ -99,7 +103,9 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 1. Verify that a snapshot has happened:
 
     ```sh
-    ./bin/yb-admin list_snapshot_schedules
+    ./bin/yb-admin \
+        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        list_snapshot_schedules
     ```
 
     ```output.json
@@ -158,7 +164,9 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 1. Restore the snapshot schedule to the timestamp you obtained before you added the data, at a terminal prompt:
 
     ```sh
-    ./bin/yb-admin restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca 1620418817729963
+    ./bin/yb-admin \
+        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca 1620418817729963
     ```
 
     ```output.json
@@ -171,20 +179,22 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 1. Next, verify the restoration is in `RESTORED` state (you'll see more snapshots in the list, as well):
 
     ```sh
-    ./bin/yb-admin list_snapshots
+    ./bin/yb-admin \
+        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        list_snapshots
     ```
 
     ```output
-    Snapshot UUID                         State
-    8d588cb7-13f2-4bda-b584-e9be47a144c5  COMPLETE
-    1f4db0e2-0706-45db-b157-e577702a648a  COMPLETE
-    b91c734b-5c57-4276-851e-f982bee73322  COMPLETE
-    04fc6f05-8775-4b43-afbd-7a11266da110  COMPLETE
-    e7bc7b48-351b-4713-b46b-dd3c9c028a79  COMPLETE
-    2287921b-1cf9-4bbc-ad38-e309f86f72e9  COMPLETE
-    97aa2968-6b56-40ce-b2c5-87d2e54e9786  COMPLETE
-    Restoration UUID                      State
-    1c5ef7c3-a33a-46b5-a64e-3fa0c72709eb  RESTORED
+    Snapshot UUID                           State       Creation Time
+    8d588cb7-13f2-4bda-b584-e9be47a144c5    COMPLETE    2023-04-20 00:24:58.246932
+    1f4db0e2-0706-45db-b157-e577702a648a    COMPLETE    2023-04-20 00:26:03.257519
+    b91c734b-5c57-4276-851e-f982bee73322    COMPLETE    2023-04-20 00:27:08.272905
+    04fc6f05-8775-4b43-afbd-7a11266da110    COMPLETE    2023-04-20 00:28:13.287202
+    e7bc7b48-351b-4713-b46b-dd3c9c028a79    COMPLETE    2023-04-20 00:29:18.294031
+    2287921b-1cf9-4bbc-ad38-e309f86f72e9    COMPLETE    2023-04-20 00:30:23.306355
+    97aa2968-6b56-40ce-b2c5-87d2e54e9786    COMPLETE    2023-04-20 00:31:28.319685
+    Restoration UUID                        State
+    1c5ef7c3-a33a-46b5-a64e-3fa0c72709eb    RESTORED
     ```
 
 1. In the YSQL shell, verify the data is restored, without a row for employee 9999:
@@ -227,44 +237,50 @@ Refer to the yb-admin [_restore-snapshot-schedule_ command](../../../admin/yb-ad
 
 In addition to data changes, you can also use PITR to recover from metadata changes, such as creating, altering, and deleting tables and indexes.
 
+Before you begin, if a local universe is currently running, first [destroy it](../../../reference/configuration/yugabyted/#destroy-a-local-cluster), and create a local multi-node YugabyteDB universe as described in [Set up YugabyteDB universe](../../#set-up-yugabytedb-universe).
+
 ### Undo table creation
 
 1. At a terminal prompt, create a snapshot schedule for the database. In this example, the schedule is on the default `yugabyte` database, one snapshot every minute, and each snapshot is retained for ten minutes:
 
     ```sh
-    ./bin/yb-admin create_snapshot_schedule 1 10 ysql.yugabyte
+    ./bin/yb-admin \
+        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        create_snapshot_schedule 1 10 ysql.yugabyte
     ```
 
     ```output.json
     {
-      "schedule_id": "1ccb7e8b-4032-48b9-ac94-9f425d270a97"
+      "schedule_id": "1fb2d85a-3608-4cb1-af63-3e4062300dc1"
     }
     ```
 
 1. Verify that a snapshot has happened:
 
     ```sh
-    ./bin/yb-admin list_snapshot_schedules
+    ./bin/yb-admin \
+        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        list_snapshot_schedules
     ```
 
     ```output.json
     {
-      "schedules": [
-          {
-              "id": "1ccb7e8b-4032-48b9-ac94-9f425d270a97",
-              "options": {
-                  "filter": "ysql.yugabyte",
-                  "interval": "1 min",
-                  "retention": "10 min"
-              },
-              "snapshots": [
-                  {
-                      "id": "94052190-1f39-44f3-b66f-87e40e1eca04",
-                      "snapshot_time": "2021-08-02 22:22:55.251562"
-                  }
-              ]
-          }
-      ]
+        "schedules": [
+            {
+                "id": "1fb2d85a-3608-4cb1-af63-3e4062300dc1",
+                "options": {
+                    "filter": "ysql.yugabyte",
+                    "interval": "1 min",
+                    "retention": "10 min"
+                },
+                "snapshots": [
+                    {
+                        "id": "34b44c96-c340-4648-a764-7965fdcbd9f1",
+                        "snapshot_time": "2023-04-20 00:20:38.214201"
+                    }
+                ]
+            }
+        ]
     }
     ```
 
@@ -275,74 +291,43 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     ```
 
     ```output
-    1627943076717734
+    1681964544554620
     ```
 
-1. Start the YSQL shell and connect to your local instance:
-
-    ```sh
-    ./bin/ysqlsh -h 127.0.0.1
-    ```
-
-1. Create a table and populate some sample data:
-
-    ```sql
-    CREATE TABLE employees (
-      employee_no integer PRIMARY KEY,
-      name text,
-      department text,
-      salary integer
-    );
-
-    INSERT INTO employees (employee_no, name, department, salary)
-      VALUES
-      (1221, 'John Smith', 'Marketing', 50000),
-      (1222, 'Bette Davis', 'Sales', 55000),
-      (1223, 'Lucille Ball', 'Operations', 70000),
-      (1224, 'John Zimmerman', 'Sales', 60000);
-
-    SELECT * from employees;
-    ```
-
-    ```output
-     employee_no |      name      | department | salary
-    -------------+----------------+------------+--------
-            1223 | Lucille Ball   | Operations |  70000
-            1224 | John Zimmerman | Sales      |  60000
-            1221 | John Smith     | Marketing  |  50000
-            1222 | Bette Davis    | Sales      |  55000
-    (4 rows)
-    ```
+1. Start the YSQL shell and create a table as described in [Create a table](#create-a-table).
 
 1. Restore the snapshot schedule to the timestamp you obtained before you created the table, at a terminal prompt:
 
     ```sh
-    ./bin/yb-admin restore_snapshot_schedule 1ccb7e8b-4032-48b9-ac94-9f425d270a97 1627943076717734
+    ./bin/yb-admin \
+        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        restore_snapshot_schedule 1fb2d85a-3608-4cb1-af63-3e4062300dc1 1681964544554620
     ```
 
     ```output.json
     {
-      "snapshot_id": "5911ba63-9bde-4170-917e-2ee06a686e12",
-      "restoration_id": "e059741e-1cff-4cf7-99c5-3c351c0ce22b"
+        "snapshot_id": "0f1582ea-c10d-4ad9-9cbf-e2313156002c",
+        "restoration_id": "a61046a2-8b77-4d6e-87e1-1dc44b5ebc69"
     }
     ```
 
 1. Verify the restoration is in `RESTORED` state (you'll see more snapshots in the list, as well):
 
     ```sh
-    ./bin/yb-admin list_snapshots
+    ./bin/yb-admin \
+        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        list_snapshots
     ```
 
     ```output
-    Snapshot UUID                           State
-    94052190-1f39-44f3-b66f-87e40e1eca04    COMPLETE
-    d4e9879d-1873-4533-9a09-c0cd1aa34317    COMPLETE
-    5911ba63-9bde-4170-917e-2ee06a686e12    COMPLETE
-    05ae7198-a2a3-4374-b4ee-49ba38c8bc74    COMPLETE
-    6926fdd4-7cec-408e-b247-511b504499c1    COMPLETE
-    eec02516-c10a-4369-8ff5-ed1c7f129749    COMPLETE
+    Snapshot UUID                           State       Creation Time
+    34b44c96-c340-4648-a764-7965fdcbd9f1    COMPLETE    2023-04-20 00:20:38.214201
+    bacd0b53-6a51-4628-b898-e35116860735    COMPLETE    2023-04-20 00:21:43.221612
+    0f1582ea-c10d-4ad9-9cbf-e2313156002c    COMPLETE    2023-04-20 00:22:48.231456
+    617f9df8-3087-4b04-9187-399b52e738ee    COMPLETE    2023-04-20 00:23:53.239147
+    489e6903-2848-478b-9519-577084e49adf    COMPLETE    2023-04-20 00:24:58.246932
     Restoration UUID                        State
-    e059741e-1cff-4cf7-99c5-3c351c0ce22b    RESTORED
+    a61046a2-8b77-4d6e-87e1-1dc44b5ebc69    RESTORED
     ```
 
 1. Verify that the table no longer exists:
@@ -360,89 +345,47 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     ```
 
 ### Undo table deletion
-1. At a terminal prompt, create a snapshot schedule for the database. In this example, the schedule is on the default `yugabyte` database, one snapshot every minute, and each snapshot is retained for ten minutes:
 
-    ```sh
-    ./bin/yb-admin create_snapshot_schedule 1 10 ysql.yugabyte
-    ```
-
-    ```output.json
-    {
-      "schedule_id": "b4217ea5-56dc-4daf-afea-743460ece241"
-    }
-    ```
-
-1. Start the YSQL shell and connect to your local instance:
-
-    ```sh
-    ./bin/ysqlsh -h 127.0.0.1
-    ```
-
-1. Create a table and populate some sample data:
-
-    ```sql
-    CREATE TABLE employees (
-      employee_no integer PRIMARY KEY,
-      name text,
-      department text,
-      salary integer
-    );
-
-    INSERT INTO employees (employee_no, name, department, salary)
-      VALUES
-      (1221, 'John Smith', 'Marketing', 50000),
-      (1222, 'Bette Davis', 'Sales', 55000),
-      (1223, 'Lucille Ball', 'Operations', 70000),
-      (1224, 'John Zimmerman', 'Sales', 60000);
-
-    SELECT * from employees;
-    ```
-
-    ```output
-     employee_no |      name      | department | salary
-    -------------+----------------+------------+--------
-            1223 | Lucille Ball   | Operations |  70000
-            1224 | John Zimmerman | Sales      |  60000
-            1221 | John Smith     | Marketing  |  50000
-            1222 | Bette Davis    | Sales      |  55000
-    (4 rows)
-    ```
+1. Start the YSQL shell and create a table as described in [Create a table](#create-a-table).
 
 1. Verify that a snapshot has happened since table creation:
 
     ```sh
-    ./bin/yb-admin list_snapshot_schedules
+    ./bin/yb-admin \
+        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        list_snapshot_schedules
     ```
 
     ```output.json
-      {
-      "schedules": [
-          {
-              "id": "b4217ea5-56dc-4daf-afea-743460ece241",
-              "options": {
-                  "filter": "ysql.yugabyte",
-                  "interval": "1 min",
-                  "retention": "10 min"
-              },
-              "snapshots": [
-                  {
-                      "id": "2739695f-7b61-4996-98b3-c2a4052fd840",
-                      "snapshot_time": "2021-08-03 11:24:28.632182"
-                  },
-                  {
-                      "id": "0894192c-6326-4110-a5c3-fbdaaaac7d98",
-                      "snapshot_time": "2021-08-03 11:25:33.641747",
-                      "previous_snapshot_time": "2021-08-03 11:24:28.632182"
-                  },
-                  {
-                      "id": "17364e01-e0e3-4ec5-a0e7-d69c45622351",
-                      "snapshot_time": "2021-08-03 11:26:38.652024",
-                      "previous_snapshot_time": "2021-08-03 11:25:33.641747"
-                  }
-              ]
-          }
-      ]
-      }
+    {
+        "schedules": [
+            {
+                "id": "1fb2d85a-3608-4cb1-af63-3e4062300dc1",
+                "options": {
+                    "filter": "ysql.yugabyte",
+                    "interval": "1 min",
+                    "retention": "10 min"
+                },
+                "snapshots": [
+                    {
+                        "id": "34b44c96-c340-4648-a764-7965fdcbd9f1",
+                        "snapshot_time": "2023-04-20 00:20:38.214201"
+                    },
+                    {
+                        "id": "bacd0b53-6a51-4628-b898-e35116860735",
+                        "snapshot_time": "2023-04-20 00:21:43.221612",
+                        "previous_snapshot_time": "2023-04-20 00:20:38.214201"
+                    },
+                    [...]
+                    {
+                        "id": "c98c890a-97ae-49f0-9c73-8d27c430874f",
+                        "snapshot_time": "2023-04-20 00:28:13.287202",
+                        "previous_snapshot_time": "2023-04-20 00:27:08.272905"
+                    }
+                ]
+            }
+        ]
+    }
     ```
 
 1. To restore from an absolute time, get a timestamp from the command prompt. You'll delete the table, then restore to this time to undo the delete:
@@ -452,45 +395,56 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     ```
 
     ```output
-    1627990118725202
+    1681965106732671
     ```
 
-1. Drop this table:
+1. In ysqlsh, drop this table:
 
     ```sql
     drop table employees;
     ```
 
+    ```output
+    DROP TABLE
+    ```
+
 1. Restore the snapshot schedule to the timestamp you obtained before you deleted the table, at a terminal prompt:
 
     ```sh
-    ./bin/yb-admin restore_snapshot_schedule b4217ea5-56dc-4daf-afea-743460ece241 1627990118725202
+    ./bin/yb-admin \
+        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        restore_snapshot_schedule 1fb2d85a-3608-4cb1-af63-3e4062300dc1 1681965106732671
     ```
 
     ```output.json
     {
-      "snapshot_id": "663cec5d-48e7-4f27-89ac-94c2dd0a3c32",
-      "restoration_id": "eda28aa5-10bc-431d-ade9-44c9b8d1810e"
+        "snapshot_id": "fc95304a-b713-4468-a128-d5155c85333a",
+        "restoration_id": "2bc005ca-c842-4c7c-9cc7-34e1f75ca467"
     }
     ```
 
 1. Verify the restoration is in `RESTORED` state (you'll see more snapshots in the list, as well):
 
     ```sh
-    ./bin/yb-admin list_snapshots
+    ./bin/yb-admin \
+        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        list_snapshots
     ```
 
     ```output
-    Snapshot UUID                           State
-    2739695f-7b61-4996-98b3-c2a4052fd840    COMPLETE
-    0894192c-6326-4110-a5c3-fbdaaaac7d98    COMPLETE
-    17364e01-e0e3-4ec5-a0e7-d69c45622351    COMPLETE
-    feff81c1-3d28-4712-9066-8bd889bbf970    COMPLETE
-    663cec5d-48e7-4f27-89ac-94c2dd0a3c32    COMPLETE
-    5b1e14d7-7ec2-42bc-bd8b-12dd17e0b452    COMPLETE
-    11113719-ee1e-4052-a170-1a784e9cce0c    COMPLETE
+    Snapshot UUID                           State       Creation Time
+    489e6903-2848-478b-9519-577084e49adf    COMPLETE    2023-04-20 00:24:58.246932
+    e4c12e39-6b15-49f2-97d1-86f777650d6b    COMPLETE    2023-04-20 00:26:03.257519
+    3d1176d0-f56d-44f3-bb29-2fcb9b08186b    COMPLETE    2023-04-20 00:27:08.272905
+    c98c890a-97ae-49f0-9c73-8d27c430874f    COMPLETE    2023-04-20 00:28:13.287202
+    17e9c8f7-2965-48d0-8459-c9dc90b8ed93    COMPLETE    2023-04-20 00:29:18.294031
+    e1900004-9a89-4c3a-b60b-4b570058c4da    COMPLETE    2023-04-20 00:30:23.306355
+    15ac0ae6-8ac2-4248-af69-756bb0abf534    COMPLETE    2023-04-20 00:31:28.319685
+    fc95304a-b713-4468-a128-d5155c85333a    COMPLETE    2023-04-20 00:32:33.332482
+    4a42a175-8065-4def-969a-b33ddc1bbdba    COMPLETE    2023-04-20 00:33:38.345533
     Restoration UUID                        State
-    eda28aa5-10bc-431d-ade9-44c9b8d1810e    RESTORED
+    a61046a2-8b77-4d6e-87e1-1dc44b5ebc69    RESTORED
+    2bc005ca-c842-4c7c-9cc7-34e1f75ca467    RESTORED
     ```
 
 1. Verify that the table exists with the data:
@@ -517,94 +471,45 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 
 #### Undo column addition
 
-1. At a terminal prompt, create a snapshot schedule for the database. In this example, the schedule is on the default `yugabyte` database, one snapshot every minute, and each snapshot is retained for ten minutes:
+1. Verify that a snapshot has happened since table restoration:
 
     ```sh
-    ./bin/yb-admin create_snapshot_schedule 1 10 ysql.yugabyte
+    ./bin/yb-admin \
+        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        list_snapshot_schedules
     ```
 
     ```output.json
     {
-      "schedule_id": "47fd40c3-1c2f-4e1b-b64b-6c2c9f698946"
+        "schedules": [
+            {
+                "id": "1fb2d85a-3608-4cb1-af63-3e4062300dc1",
+                "options": {
+                    "filter": "ysql.yugabyte",
+                    "interval": "1 min",
+                    "retention": "10 min"
+                },
+                "snapshots": [
+                    {
+                        "id": "e4c12e39-6b15-49f2-97d1-86f777650d6b",
+                        "snapshot_time": "2023-04-20 00:26:03.257519",
+                        "previous_snapshot_time": "2023-04-20 00:24:58.246932"
+                    },
+                    {
+                        "id": "3d1176d0-f56d-44f3-bb29-2fcb9b08186b",
+                        "snapshot_time": "2023-04-20 00:27:08.272905",
+                        "previous_snapshot_time": "2023-04-20 00:26:03.257519"
+                    },
+                    [...]
+                    {
+                        "id": "d30fb638-6315-466a-a080-a6050e0dbb04",
+                        "snapshot_time": "2023-04-20 00:34:43.358691",
+                        "previous_snapshot_time": "2023-04-20 00:33:38.345533"
+                    }
+                ]
+            }
+        ]
     }
-    ```
-
-1. Start the YSQL shell and connect to your local instance:
-
-    ```sh
-    ./bin/ysqlsh -h 127.0.0.1
-    ```
-
-1. Create a table and populate some sample data:
-
-    ```sql
-    CREATE TABLE employees (
-      employee_no integer PRIMARY KEY,
-      name text,
-      department text,
-      salary integer
-    );
-
-    INSERT INTO employees (employee_no, name, department, salary)
-      VALUES
-      (1221, 'John Smith', 'Marketing', 50000),
-      (1222, 'Bette Davis', 'Sales', 55000),
-      (1223, 'Lucille Ball', 'Operations', 70000),
-      (1224, 'John Zimmerman', 'Sales', 60000);
-
-    SELECT * from employees;
-    ```
-
-    ```output
-     employee_no |      name      | department | salary
-    -------------+----------------+------------+--------
-            1223 | Lucille Ball   | Operations |  70000
-            1224 | John Zimmerman | Sales      |  60000
-            1221 | John Smith     | Marketing  |  50000
-            1222 | Bette Davis    | Sales      |  55000
-    (4 rows)
-    ```
-
-1. Verify that a snapshot has happened since table creation:
-
-    ```sh
-    ./bin/yb-admin list_snapshot_schedules
-    ```
-
-    ```output.json
-    {
-      "schedules": [
-          {
-              "id": "47fd40c3-1c2f-4e1b-b64b-6c2c9f698946",
-              "options": {
-                  "filter": "ysql.yugabyte",
-                  "interval": "1 min",
-                  "retention": "10 min"
-              },
-              "snapshots": [
-                  {
-                      "id": "ded348d6-a046-4778-8574-edb793739c37",
-                      "snapshot_time": "2021-08-03 11:59:20.979156"
-                  },
-                  {
-                      "id": "e2bfb948-8f24-4a0a-877f-a792ee9c969d",
-                      "snapshot_time": "2021-08-03 12:00:25.988691",
-                      "previous_snapshot_time": "2021-08-03 11:59:20.979156"
-                  },
-                  {
-                      "id": "93a58196-d758-4bc8-93f7-72db8d334864",
-                      "snapshot_time": "2021-08-03 12:01:30.999535",
-                      "previous_snapshot_time": "2021-08-03 12:00:25.988691"
-                  },
-                  {
-                      "id": "3f29453c-1159-4199-b2b5-558ebf14702f",
-                      "snapshot_time": "2021-08-03 12:02:36.009326",
-                      "previous_snapshot_time": "2021-08-03 12:01:30.999535"
-                  }
-              ]
-          }
-      ]
-      }
     ```
 
 1. To restore from an absolute time, get a timestamp from the command prompt. You'll add a column to the table, then restore to this time in order to undo the column addition:
@@ -614,7 +519,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     ```
 
     ```output
-    1627992256752809
+    1681965472490517
     ```
 
 1. Using the same database, alter your table by adding a column:
@@ -637,35 +542,41 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. At a terminal prompt, restore the snapshot schedule to the timestamp you obtained before you added the column:
 
     ```sh
-    ./bin/yb-admin restore_snapshot_schedule 47fd40c3-1c2f-4e1b-b64b-6c2c9f698946 1627992256752809
+    ./bin/yb-admin \
+        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        restore_snapshot_schedule 1fb2d85a-3608-4cb1-af63-3e4062300dc1 1681965472490517
     ```
 
     ```output.json
     {
-      "snapshot_id": "db876700-d553-49e4-a0d1-4c88e52d8a78",
-      "restoration_id": "c240d26c-cbeb-46eb-b9ea-0a3e6a734ecf"
+        "snapshot_id": "b3c12c51-e7a3-41a5-bf0d-77cde8520527",
+        "restoration_id": "470a8e0b-9fe4-418f-a13a-773bdedca013"
     }
     ```
 
 1. Verify the restoration is in `RESTORED` state (you'll see more snapshots in the list, as well):
 
     ```sh
-    ./bin/yb-admin list_snapshots
+    ./bin/yb-admin \
+        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        list_snapshots
     ```
 
     ```output
-    Snapshot UUID                           State
-    e2bfb948-8f24-4a0a-877f-a792ee9c969d    COMPLETE
-    93a58196-d758-4bc8-93f7-72db8d334864    COMPLETE
-    3f29453c-1159-4199-b2b5-558ebf14702f    COMPLETE
-    24081a33-b6a4-4a98-a725-08410f7fcb03    COMPLETE
-    db876700-d553-49e4-a0d1-4c88e52d8a78    COMPLETE
-    0751efd2-5af1-4859-b07a-06ea1a3310e6    COMPLETE
-    f6f656e1-1df9-4c73-8613-2dce2ba36f51    COMPLETE
-    a35c4f76-0df2-4a15-b32f-d1410aac4c55    COMPLETE
-    f394ecc2-b0bd-4118-b5f5-67ee4c42ea1d    COMPLETE
+    Snapshot UUID                           State       Creation Time
+    e1900004-9a89-4c3a-b60b-4b570058c4da    COMPLETE    2023-04-20 00:30:23.306355
+    15ac0ae6-8ac2-4248-af69-756bb0abf534    COMPLETE    2023-04-20 00:31:28.319685
+    fc95304a-b713-4468-a128-d5155c85333a    COMPLETE    2023-04-20 00:32:33.332482
+    4a42a175-8065-4def-969a-b33ddc1bbdba    COMPLETE    2023-04-20 00:33:38.345533
+    d30fb638-6315-466a-a080-a6050e0dbb04    COMPLETE    2023-04-20 00:34:43.358691
+    d228210b-cd87-4a74-bff6-42108f73456f    COMPLETE    2023-04-20 00:35:48.372783
+    390e4fec-8aa6-466d-827d-6bee435af5aa    COMPLETE    2023-04-20 00:36:53.394833
+    b3c12c51-e7a3-41a5-bf0d-77cde8520527    COMPLETE    2023-04-20 00:37:58.408458
+    d99317fe-6d20-4c7f-b469-ffb16409fbcf    COMPLETE    2023-04-20 00:39:03.419109
     Restoration UUID                        State
-    c240d26c-cbeb-46eb-b9ea-0a3e6a734ecf    RESTORED
+    a61046a2-8b77-4d6e-87e1-1dc44b5ebc69    RESTORED
+    2bc005ca-c842-4c7c-9cc7-34e1f75ca467    RESTORED
+    470a8e0b-9fe4-418f-a13a-773bdedca013    RESTORED
     ```
 
 1. Check that the v2 column is gone:
@@ -687,91 +598,6 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 
 #### Undo column deletion
 
-1. At a terminal prompt, create a snapshot schedule for the database. In this example, the schedule is on the default `yugabyte` database, one snapshot every minute, and each snapshot is retained for ten minutes:
-
-    ```sh
-    ./bin/yb-admin create_snapshot_schedule 1 10 ysql.yugabyte
-    ```
-
-    ```output.json
-    {
-      "schedule_id": "064d1734-377c-4842-a95e-88ce68c93ca9"
-    }
-    ```
-
-1. Start the YSQL shell and connect to your local instance:
-
-    ```sh
-    bin/ysqlsh -h 127.0.0.1
-    ```
-
-1. Create a table and populate some sample data:
-
-    ```sql
-    CREATE TABLE employees (
-      employee_no integer PRIMARY KEY,
-      name text,
-      department text,
-      salary integer
-    );
-
-    INSERT INTO employees (employee_no, name, department, salary)
-      VALUES
-      (1221, 'John Smith', 'Marketing', 50000),
-      (1222, 'Bette Davis', 'Sales', 55000),
-      (1223, 'Lucille Ball', 'Operations', 70000),
-      (1224, 'John Zimmerman', 'Sales', 60000);
-
-    SELECT * from employees;
-    ```
-
-    ```output
-     employee_no |      name      | department | salary
-    -------------+----------------+------------+--------
-            1223 | Lucille Ball   | Operations |  70000
-            1224 | John Zimmerman | Sales      |  60000
-            1221 | John Smith     | Marketing  |  50000
-            1222 | Bette Davis    | Sales      |  55000
-    (4 rows)
-    ```
-
-1. Verify that a snapshot has happened since table creation:
-
-    ```sh
-    ./bin/yb-admin list_snapshot_schedules
-    ```
-
-    ```output.json
-    {
-      "schedules": [
-          {
-              "id": "064d1734-377c-4842-a95e-88ce68c93ca9",
-              "options": {
-                  "filter": "ysql.yugabyte",
-                  "interval": "1 min",
-                  "retention": "10 min"
-              },
-              "snapshots": [
-                  {
-                      "id": "967843c0-58b6-4bd1-943a-5a75a6d2588d",
-                      "snapshot_time": "2021-08-03 12:17:47.471817"
-                  },
-                  {
-                      "id": "6b77a0a2-1ecc-4d5d-8e13-4bb7b57cca1e",
-                      "snapshot_time": "2021-08-03 12:18:52.482001",
-                      "previous_snapshot_time": "2021-08-03 12:17:47.471817"
-                  },
-                  {
-                      "id": "99ab0e01-af59-4a6a-8870-9de6bd535f6d",
-                      "snapshot_time": "2021-08-03 12:19:57.492521",
-                      "previous_snapshot_time": "2021-08-03 12:18:52.482001"
-                  }
-              ]
-          }
-      ]
-    }
-    ```
-
 1. To restore from an absolute time, get a timestamp from the command prompt. You'll remove a column from the table, then restore to this time to get the column back:
 
     ```sh
@@ -779,7 +605,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     ```
 
     ```output
-    1627993283589019
+    1681965684502460
     ```
 
 1. Using the same database, alter your table by dropping a column:
@@ -803,32 +629,42 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. Restore the snapshot schedule to the timestamp you obtained before you dropped the column, at a terminal prompt.
 
     ```sh
-    ./bin/yb-admin restore_snapshot_schedule 064d1734-377c-4842-a95e-88ce68c93ca9 1627993283589019
+    ./bin/yb-admin \
+        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        restore_snapshot_schedule 1fb2d85a-3608-4cb1-af63-3e4062300dc1 1681965684502460
     ```
 
     ```output
     {
-      "snapshot_id": "814982b2-2d86-425a-8ea1-29e356e5de1f",
-      "restoration_id": "3601225d-21ff-45e8-bebc-ff84c058d290"
+        "snapshot_id": "49311e65-cc5b-4d41-9f87-e84d630016a9",
+        "restoration_id": "fe08826b-9b1d-4621-99ca-505d1d58e184"
     }
     ```
 
 1. Verify the restoration is in `RESTORED` state (you'll see more snapshots in the list, as well):
 
     ```sh
-    ./bin/yb-admin list_snapshots
+    ./bin/yb-admin \
+        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        list_snapshots
     ```
 
     ```output
-    Snapshot UUID                           State
-    967843c0-58b6-4bd1-943a-5a75a6d2588d    COMPLETE
-    6b77a0a2-1ecc-4d5d-8e13-4bb7b57cca1e    COMPLETE
-    99ab0e01-af59-4a6a-8870-9de6bd535f6d    COMPLETE
-    e798b0c5-607c-4662-8b70-beb7ef672ab6    COMPLETE
-    814982b2-2d86-425a-8ea1-29e356e5de1f    COMPLETE
-    980a86e3-88f3-4ed9-815f-6ff7923d2bff    COMPLETE
+    Snapshot UUID                           State       Creation Time
+    4a42a175-8065-4def-969a-b33ddc1bbdba    COMPLETE    2023-04-20 00:33:38.345533
+    d30fb638-6315-466a-a080-a6050e0dbb04    COMPLETE    2023-04-20 00:34:43.358691
+    d228210b-cd87-4a74-bff6-42108f73456f    COMPLETE    2023-04-20 00:35:48.372783
+    390e4fec-8aa6-466d-827d-6bee435af5aa    COMPLETE    2023-04-20 00:36:53.394833
+    b3c12c51-e7a3-41a5-bf0d-77cde8520527    COMPLETE    2023-04-20 00:37:58.408458
+    d99317fe-6d20-4c7f-b469-ffb16409fbcf    COMPLETE    2023-04-20 00:39:03.419109
+    3f6651a5-00b2-4a9d-99e2-63b8b8e75ccf    COMPLETE    2023-04-20 00:40:08.432723
+    7aa1054a-1c96-4d33-bd37-02cdefaa5cad    COMPLETE    2023-04-20 00:41:13.445282
+    49311e65-cc5b-4d41-9f87-e84d630016a9    COMPLETE    2023-04-20 00:42:18.454674
     Restoration UUID                        State
-    3601225d-21ff-45e8-bebc-ff84c058d290    RESTORED
+    a61046a2-8b77-4d6e-87e1-1dc44b5ebc69    RESTORED
+    2bc005ca-c842-4c7c-9cc7-34e1f75ca467    RESTORED
+    470a8e0b-9fe4-418f-a13a-773bdedca013    RESTORED
+    fe08826b-9b1d-4621-99ca-505d1d58e184    RESTORED
     ```
 
 1. Verify that the salary column is back:
@@ -850,91 +686,6 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 
 ### Undo index creation
 
-1. At a terminal prompt, create a snapshot schedule for the database. In this example, the schedule is on the default `yugabyte` database, one snapshot every minute, and each snapshot is retained for ten minutes:
-
-    ```sh
-    ./bin/yb-admin create_snapshot_schedule 1 10 ysql.yugabyte
-    ```
-
-    ```output.json
-    {
-      "schedule_id": "dcbe46e3-8108-4d50-8601-423b27d230b1"
-    }
-    ```
-
-1. Start the YSQL shell and connect to your local instance:
-
-    ```sh
-    ./bin/ysqlsh -h 127.0.0.1
-    ```
-
-1. Create a table and populate some sample data:
-
-    ```sql
-    CREATE TABLE employees (
-      employee_no integer PRIMARY KEY,
-      name text,
-      department text,
-      salary integer
-    );
-
-    INSERT INTO employees (employee_no, name, department, salary)
-      VALUES
-      (1221, 'John Smith', 'Marketing', 50000),
-      (1222, 'Bette Davis', 'Sales', 55000),
-      (1223, 'Lucille Ball', 'Operations', 70000),
-      (1224, 'John Zimmerman', 'Sales', 60000);
-
-    SELECT * from employees;
-    ```
-
-    ```output
-     employee_no |      name      | department | salary
-    -------------+----------------+------------+--------
-            1223 | Lucille Ball   | Operations |  70000
-            1224 | John Zimmerman | Sales      |  60000
-            1221 | John Smith     | Marketing  |  50000
-            1222 | Bette Davis    | Sales      |  55000
-    (4 rows)
-    ```
-
-1. Verify that a snapshot has happened since table creation:
-
-    ```sh
-    ./bin/yb-admin list_snapshot_schedules
-    ```
-
-    ```output.json
-    {
-      "schedules": [
-          {
-              "id": "dcbe46e3-8108-4d50-8601-423b27d230b1",
-              "options": {
-                  "filter": "ysql.yugabyte",
-                  "interval": "1 min",
-                  "retention": "10 min"
-              },
-              "snapshots": [
-                  {
-                      "id": "b4316e4e-a7c2-49a3-af16-d928aef5630e",
-                      "snapshot_time": "2021-08-03 12:36:56.212541"
-                  },
-                  {
-                      "id": "c318b620-490c-4294-b495-a7f0349017d0",
-                      "snapshot_time": "2021-08-03 12:38:01.221749",
-                      "previous_snapshot_time": "2021-08-03 12:36:56.212541"
-                  },
-                  {
-                      "id": "85dc006f-ebf5-464e-81f7-a406a3322942",
-                      "snapshot_time": "2021-08-03 12:39:06.232231",
-                      "previous_snapshot_time": "2021-08-03 12:38:01.221749"
-                  }
-              ]
-          }
-      ]
-    }
-    ```
-
 1. To restore from an absolute time, get a timestamp from the command prompt. You'll create an index on the table, then restore to this time to undo the index creation:
 
     ```sh
@@ -942,7 +693,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     ```
 
     ```output
-    1627994453375139
+    1681965868912921
     ```
 
 1. Create an index on the table:
@@ -968,34 +719,43 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. Restore the snapshot schedule to the timestamp you obtained before you created the index, at a terminal prompt:
 
     ```sh
-    ./bin/yb-admin restore_snapshot_schedule dcbe46e3-8108-4d50-8601-423b27d230b1 1627994453375139
+    ./bin/yb-admin \
+        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        restore_snapshot_schedule 1fb2d85a-3608-4cb1-af63-3e4062300dc1 1681965868912921
     ```
 
     ```output
     {
-      "snapshot_id": "d57114c1-c8cd-42b2-83b2-66960112d5c9",
-      "restoration_id": "f7943fe6-d6fb-45e1-9086-2de864543d62"
+        "snapshot_id": "6a014fd7-5aad-4da0-883b-0c59a9261ed6",
+        "restoration_id": "6698a1c4-58f4-48cb-8ec7-fa7b31ecca72"
     }
     ```
 
 1. Verify the restoration is in `RESTORED` state (you'll see more snapshots in the list, as well):
 
     ```sh
-    ./bin/yb-admin list_snapshots
+    ./bin/yb-admin \
+        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        list_snapshots
     ```
 
     ```output
-    Snapshot UUID                           State
-    b4316e4e-a7c2-49a3-af16-d928aef5630e    COMPLETE
-    c318b620-490c-4294-b495-a7f0349017d0    COMPLETE
-    85dc006f-ebf5-464e-81f7-a406a3322942    COMPLETE
-    d48af5a1-0f59-4e43-a24f-f40fa4e278d6    COMPLETE
-    d57114c1-c8cd-42b2-83b2-66960112d5c9    COMPLETE
-    5b1a1eae-3205-412f-a998-7db604900cdb    COMPLETE
-    87a47c86-c3bc-4871-996a-c288bb2b5c4f    COMPLETE
-    1114026c-8504-4f37-8179-4798ff6008e2    COMPLETE
+    Snapshot UUID                           State       Creation Time
+    390e4fec-8aa6-466d-827d-6bee435af5aa    COMPLETE    2023-04-20 00:36:53.394833
+    b3c12c51-e7a3-41a5-bf0d-77cde8520527    COMPLETE    2023-04-20 00:37:58.408458
+    d99317fe-6d20-4c7f-b469-ffb16409fbcf    COMPLETE    2023-04-20 00:39:03.419109
+    3f6651a5-00b2-4a9d-99e2-63b8b8e75ccf    COMPLETE    2023-04-20 00:40:08.432723
+    7aa1054a-1c96-4d33-bd37-02cdefaa5cad    COMPLETE    2023-04-20 00:41:13.445282
+    49311e65-cc5b-4d41-9f87-e84d630016a9    COMPLETE    2023-04-20 00:42:18.454674
+    c6d37ea5-002e-4dff-b691-94d458f4b1f9    COMPLETE    2023-04-20 00:43:23.469233
+    98879e83-d507-496c-aa69-368fc2de8cf8    COMPLETE    2023-04-20 00:44:28.476244
+    6a014fd7-5aad-4da0-883b-0c59a9261ed6    COMPLETE    2023-04-20 00:45:33.467234
     Restoration UUID                        State
-    f7943fe6-d6fb-45e1-9086-2de864543d62    RESTORED
+    a61046a2-8b77-4d6e-87e1-1dc44b5ebc69    RESTORED
+    2bc005ca-c842-4c7c-9cc7-34e1f75ca467    RESTORED
+    470a8e0b-9fe4-418f-a13a-773bdedca013    RESTORED
+    fe08826b-9b1d-4621-99ca-505d1d58e184    RESTORED
+    6698a1c4-58f4-48cb-8ec7-fa7b31ecca72    RESTORED
     ```
 
 1. Verify that the index is gone:

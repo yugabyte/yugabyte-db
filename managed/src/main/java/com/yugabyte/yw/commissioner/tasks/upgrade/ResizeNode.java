@@ -3,26 +3,35 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Objects;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
+@Retryable
 public class ResizeNode extends UpgradeTaskBase {
 
   @Inject
@@ -46,146 +55,355 @@ public class ResizeNode extends UpgradeTaskBase {
   }
 
   @Override
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    taskParams().verifyParams(getUniverse(), !isFirstTry() ? getNodeState() : null, isFirstTry);
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
           Universe universe = getUniverse();
-          // Verify the request params and fail if invalid.
-          taskParams().verifyParams(universe);
-          LinkedHashSet<NodeDetails> nodes = fetchNodesForCluster();
-          // Create task sequence to resize nodes.
+
+          UserIntent userIntentForFlags = getUserIntent();
+
+          boolean flagsProvided = taskParams().flagsProvided(universe);
+
+          LinkedHashSet<NodeDetails> allNodes = fetchNodesForCluster();
+          // Since currently gflags are global (primary and read-replica nodes use the same gflags),
+          // we will need to roll all servers that weren't upgraded as part of the resize.
+          LinkedHashSet<NodeDetails> nodesNotUpdated = new LinkedHashSet<>(allNodes);
+          Map<UUID, UniverseDefinitionTaskParams.Cluster> newVersionsOfClusters =
+              taskParams().getNewVersionsOfClusters(universe);
+          AtomicBoolean applyGFlagsToAllNodes = new AtomicBoolean();
+          // Create task sequence to resize allNodes.
           for (UniverseDefinitionTaskParams.Cluster cluster : taskParams().clusters) {
+            if (flagsProvided) {
+              Map<String, String> masterGFlags =
+                  GFlagsUtil.getBaseGFlags(
+                      ServerType.MASTER,
+                      newVersionsOfClusters.get(cluster.uuid),
+                      newVersionsOfClusters.values());
+              Map<String, String> tserverGFlags =
+                  GFlagsUtil.getBaseGFlags(
+                      ServerType.TSERVER,
+                      newVersionsOfClusters.get(cluster.uuid),
+                      newVersionsOfClusters.values());
+              boolean updatedByMasterFlags =
+                  GFlagsUtil.syncGflagsToIntent(masterGFlags, userIntentForFlags);
+              boolean updatedByTserverFlags =
+                  GFlagsUtil.syncGflagsToIntent(tserverGFlags, userIntentForFlags);
+              applyGFlagsToAllNodes.set(updatedByMasterFlags || updatedByTserverFlags);
+            }
             LinkedHashSet<NodeDetails> clusterNodes =
-                nodes
-                    .stream()
+                allNodes.stream()
                     .filter(n -> cluster.uuid.equals(n.placementUuid))
                     .collect(Collectors.toCollection(LinkedHashSet::new));
 
             final UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
 
-            String newInstanceType = userIntent.instanceType;
             UniverseDefinitionTaskParams.UserIntent currentIntent =
                 universe.getUniverseDetails().getClusterByUuid(cluster.uuid).userIntent;
 
-            final boolean instanceTypeIsChanging =
-                !Objects.equals(newInstanceType, currentIntent.instanceType)
-                    || taskParams().isForceResizeNode();
-
-            if (instanceTypeIsChanging) {
-              createPreResizeNodeTasks(nodes, currentIntent.instanceType, currentIntent.deviceInfo);
-              createRollingNodesUpgradeTaskFlow(
-                  (nodez, processTypes) ->
-                      createResizeNodeTasks(nodez, universe, instanceTypeIsChanging, cluster),
-                  clusterNodes,
-                  UpgradeContext.builder()
-                      .reconfigureMaster(userIntent.replicationFactor > 1)
-                      .runBeforeStopping(false)
-                      .processInactiveMaster(false)
-                      .postAction(
-                          node -> {
-                            if (instanceTypeIsChanging) {
-                              // Persist the new instance type in the node details.
-                              node.cloudInfo.instance_type = newInstanceType;
-                              createNodeDetailsUpdateTask(node, false)
-                                  .setSubTaskGroupType(
-                                      UserTaskDetails.SubTaskGroupType.ChangeInstanceType);
-                            }
-                          })
-                      .build(),
-                  taskParams().ybcInstalled);
-            } else {
-              // Only disk resizing, could be done without restarts.
-              createNonRestartUpgradeTaskFlow(
-                  (nodez, processTypes) ->
-                      createUpdateDiskSizeTasks(nodez)
-                          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ResizingDisk),
-                  new ArrayList<>(nodes),
-                  ServerType.EITHER,
-                  DEFAULT_CONTEXT);
+            List<NodeDetails> justModifyDeviceNodes = new ArrayList<>();
+            LinkedHashSet<NodeDetails> instanceChangingNodes = new LinkedHashSet<>();
+            for (NodeDetails node : clusterNodes) {
+              if (isInstanceChanging(node, userIntent)) {
+                instanceChangingNodes.add(node);
+              } else if (isModifyingDevice(node, userIntent, currentIntent)) {
+                justModifyDeviceNodes.add(node);
+              }
             }
+            // The nodes that are being resized will be restarted, so the gflags can be
+            // upgraded in one go.
+            nodesNotUpdated.removeAll(instanceChangingNodes);
 
-            Integer newDiskSize = null;
-            if (cluster.userIntent.deviceInfo != null) {
-              newDiskSize = cluster.userIntent.deviceInfo.volumeSize;
-            }
+            createPreResizeNodeTasks(instanceChangingNodes, currentIntent);
+            createRollingNodesUpgradeTaskFlow(
+                (nodes, processTypes) -> {
+                  createResizeNodeTasks(nodes, userIntent, currentIntent);
+                  if (flagsProvided) {
+                    createGFlagsUpgradeTasks(
+                        userIntentForFlags,
+                        processTypes,
+                        nodes,
+                        universe,
+                        newVersionsOfClusters,
+                        applyGFlagsToAllNodes.get());
+                  }
+                },
+                instanceChangingNodes,
+                UpgradeContext.builder()
+                    .reconfigureMaster(userIntent.replicationFactor > 1)
+                    .runBeforeStopping(false)
+                    .processInactiveMaster(false)
+                    .postAction(
+                        node -> {
+                          // Persist the new instance type in the node details.
+                          node.cloudInfo.instance_type = userIntent.getInstanceTypeForNode(node);
+                          createNodeDetailsUpdateTask(node, false)
+                              .setSubTaskGroupType(
+                                  UserTaskDetails.SubTaskGroupType.ChangeInstanceType);
+                        })
+                    .build(),
+                taskParams().isYbcInstalled());
+            // Only disk modification, could be done without restarts.
+            createNonRestartUpgradeTaskFlow(
+                (nodes, processTypes) ->
+                    createUpdateDiskSizeTasks(nodes)
+                        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ResizingDisk),
+                justModifyDeviceNodes,
+                ServerType.EITHER,
+                DEFAULT_CONTEXT);
+
             // Persist changes in the universe.
-            createPersistResizeNodeTask(
-                    newInstanceType, newDiskSize, Collections.singletonList(cluster.uuid))
+            createPersistResizeNodeTask(userIntent, cluster.uuid)
                 .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ChangeInstanceType);
+          }
+          // Need to run gflag upgrades for the nodes that weren't updated.
+          if (flagsProvided) {
+            List<NodeDetails> masterNodes =
+                nodesNotUpdated.stream()
+                    .filter(n -> n.isMaster)
+                    .filter(
+                        n -> {
+                          UniverseDefinitionTaskParams.Cluster curCluster =
+                              universe.getCluster(n.placementUuid);
+                          UniverseDefinitionTaskParams.Cluster newCluster =
+                              newVersionsOfClusters.get(n.placementUuid);
+                          return applyGFlagsToAllNodes.get()
+                              || GFlagsUpgradeParams.nodeHasGflagsChanges(
+                                  n,
+                                  ServerType.MASTER,
+                                  curCluster,
+                                  universe.getUniverseDetails().clusters,
+                                  newCluster,
+                                  newVersionsOfClusters.values());
+                        })
+                    .collect(Collectors.toList());
+            List<NodeDetails> tserverNodes =
+                nodesNotUpdated.stream()
+                    .filter(n -> n.isTserver)
+                    .filter(
+                        n -> {
+                          UniverseDefinitionTaskParams.Cluster curCluster =
+                              universe.getCluster(n.placementUuid);
+                          UniverseDefinitionTaskParams.Cluster newCluster =
+                              newVersionsOfClusters.get(n.placementUuid);
+                          return applyGFlagsToAllNodes.get()
+                              || GFlagsUpgradeParams.nodeHasGflagsChanges(
+                                  n,
+                                  ServerType.TSERVER,
+                                  curCluster,
+                                  universe.getUniverseDetails().clusters,
+                                  newCluster,
+                                  newVersionsOfClusters.values());
+                        })
+                    .collect(Collectors.toList());
+            // Only rolling restart supported.
+            createRollingUpgradeTaskFlow(
+                (nodes, processTypes) ->
+                    createGFlagsUpgradeTasks(
+                        userIntentForFlags,
+                        processTypes,
+                        nodes,
+                        universe,
+                        newVersionsOfClusters,
+                        applyGFlagsToAllNodes.get()),
+                masterNodes,
+                tserverNodes,
+                RUN_BEFORE_STOPPING,
+                taskParams().isYbcInstalled());
+
+            // Update the list of parameter key/values in the universe with the new ones.
+            for (UniverseDefinitionTaskParams.Cluster cluster : taskParams().clusters) {
+              updateGFlagsPersistTasks(
+                      cluster,
+                      taskParams().masterGFlags,
+                      taskParams().tserverGFlags,
+                      cluster.userIntent.specificGFlags)
+                  .setSubTaskGroupType(getTaskSubGroupType());
+            }
           }
         });
   }
 
+  private void createGFlagsUpgradeTasks(
+      UserIntent userIntentForFlags,
+      Set<ServerType> processTypes,
+      List<NodeDetails> nodes,
+      Universe universe,
+      Map<UUID, UniverseDefinitionTaskParams.Cluster> newVersionsOfClusters,
+      boolean applyToAll) {
+
+    for (NodeDetails node : nodes) {
+      UUID clusterUUID = node.placementUuid;
+      UniverseDefinitionTaskParams.Cluster oldCluster = universe.getCluster(clusterUUID);
+      UniverseDefinitionTaskParams.Cluster newCluster = newVersionsOfClusters.get(clusterUUID);
+
+      for (ServerType processType : processTypes) {
+        if (applyToAll
+            || GFlagsUpgradeParams.nodeHasGflagsChanges(
+                node,
+                processType,
+                oldCluster,
+                universe.getUniverseDetails().clusters,
+                newCluster,
+                newVersionsOfClusters.values())) {
+          createServerConfFileUpdateTasks(
+              userIntentForFlags,
+              nodes,
+              Collections.singleton(processType),
+              oldCluster,
+              universe.getUniverseDetails().clusters,
+              newCluster,
+              newVersionsOfClusters.values());
+        }
+      }
+    }
+  }
+
+  private boolean isInstanceChanging(
+      NodeDetails node, UniverseDefinitionTaskParams.UserIntent newIntent) {
+    if (taskParams().isForceResizeNode()) {
+      return true;
+    }
+    String currentInstanceType = node.cloudInfo.instance_type;
+    return !currentInstanceType.equals(newIntent.getInstanceTypeForNode(node));
+  }
+
+  private boolean isModifyingDevice(
+      NodeDetails node,
+      UniverseDefinitionTaskParams.UserIntent newIntent,
+      UniverseDefinitionTaskParams.UserIntent currentIntent) {
+    if (taskParams().isForceResizeNode()) {
+      return true;
+    }
+    DeviceInfo currentDeviceInfo = currentIntent.getDeviceInfoForNode(node);
+    DeviceInfo newDeviceInfo = newIntent.getDeviceInfoForNode(node);
+    return isModifyingDevice(currentDeviceInfo, newDeviceInfo);
+  }
+
+  private boolean isModifyingDevice(DeviceInfo currentDeviceInfo, DeviceInfo newDeviceInfo) {
+    // Disk will not be modified if the cluster has no currently defined device info.
+    if (currentDeviceInfo == null) {
+      log.warn("Cannot modify disk since the cluster has no defined device info");
+      return false;
+    }
+    boolean modifySize =
+        newDeviceInfo.volumeSize != null
+            && !newDeviceInfo.volumeSize.equals(currentDeviceInfo.volumeSize);
+    boolean modifyIops =
+        newDeviceInfo.diskIops != null
+            && !newDeviceInfo.diskIops.equals(currentDeviceInfo.diskIops);
+    boolean modifyThroughput =
+        newDeviceInfo.throughput != null
+            && !newDeviceInfo.throughput.equals(currentDeviceInfo.throughput);
+    return modifySize || modifyIops || modifyThroughput;
+  }
+
   private void createPreResizeNodeTasks(
-      Collection<NodeDetails> nodes, String currentInstanceType, DeviceInfo currentDeviceInfo) {
+      Collection<NodeDetails> nodes, UniverseDefinitionTaskParams.UserIntent currentIntent) {
     // Update mounted disks.
     for (NodeDetails node : nodes) {
       if (!node.disksAreMountedByUUID) {
-        createUpdateMountedDisksTask(node, currentInstanceType, currentDeviceInfo)
+        createUpdateMountedDisksTask(
+                node, node.getInstanceType(), currentIntent.getDeviceInfoForNode(node))
             .setSubTaskGroupType(getTaskSubGroupType());
       }
     }
   }
 
   private void createResizeNodeTasks(
+      List<NodeDetails> allNodes,
+      UniverseDefinitionTaskParams.UserIntent newIntent,
+      UniverseDefinitionTaskParams.UserIntent currentIntent) {
+    Map<ServerType, List<NodeDetails>> byServerType = new HashMap<>();
+    if (currentIntent.dedicatedNodes) {
+      byServerType = allNodes.stream().collect(Collectors.groupingBy(n -> n.dedicatedTo));
+    } else {
+      byServerType.put(ServerType.EITHER, allNodes);
+    }
+    byServerType.forEach(
+        (type, nodes) -> {
+          for (NodeDetails node : nodes) {
+            DeviceInfo newDeviceInfo = newIntent.getDeviceInfoForNode(node);
+            String newInstanceType = newIntent.getInstanceType(type, node.getAzUuid());
+            String currentInstanceType = node.cloudInfo.instance_type;
+            DeviceInfo currentDeviceInfo = currentIntent.getDeviceInfoForNode(node);
+            createResizeNodeTasks(
+                Collections.singletonList(node),
+                newInstanceType,
+                newDeviceInfo,
+                currentInstanceType,
+                currentDeviceInfo);
+          }
+        });
+  }
+
+  /**
+   * @param nodes list of nodes that are guaranteed to have the same instance type and device.
+   * @param newInstanceType
+   * @param newDeviceInfo
+   * @param currentInstanceType
+   * @param currentDeviceInfo
+   */
+  private void createResizeNodeTasks(
       List<NodeDetails> nodes,
-      Universe universe,
-      boolean instanceTypeIsChanging,
-      UniverseDefinitionTaskParams.Cluster cluster) {
-
-    UniverseDefinitionTaskParams.UserIntent currUserIntent =
-        universe.getUniverseDetails().getClusterByUuid(cluster.uuid).userIntent;
-
-    Integer currDiskSize = currUserIntent.deviceInfo.volumeSize;
-    String currInstanceType = currUserIntent.instanceType;
+      String newInstanceType,
+      DeviceInfo newDeviceInfo,
+      String currentInstanceType,
+      DeviceInfo currentDeviceInfo) {
     // Todo: Add preflight checks here
 
-    // Change disk size.
-    DeviceInfo deviceInfo = cluster.userIntent.deviceInfo;
-    if (deviceInfo != null) {
-      Integer newDiskSize = deviceInfo.volumeSize;
-      // Check if the storage needs to be resized.
-      if (taskParams().isForceResizeNode() || !currDiskSize.equals(newDiskSize)) {
-        log.info("Resizing disk from {} to {}", currDiskSize, newDiskSize);
-
-        // Resize the nodes' disks.
-        createUpdateDiskSizeTasks(nodes)
-            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ResizingDisk);
-      } else {
-        log.info(
-            "Skipping resizing disk as both old and new sizes are {}, "
-                + "and forceResizeNode flag is false",
-            currDiskSize);
-      }
-    }
-
     // Change instance type
-    String newInstanceType = cluster.userIntent.instanceType;
-    if (instanceTypeIsChanging) {
+    if (!newInstanceType.equals(currentInstanceType) || taskParams().isForceResizeNode()) {
       for (NodeDetails node : nodes) {
         // Check if the node needs to be resized.
         if (!taskParams().isForceResizeNode()
             && node.cloudInfo.instance_type.equals(newInstanceType)) {
-          log.info("Skipping node {} as its type is already {}", node.nodeName, currInstanceType);
+          log.info("Skipping node {} as its type is already {}", node.nodeName, newInstanceType);
           continue;
         }
 
         // Change the instance type.
-        createChangeInstanceTypeTask(node, cluster.userIntent.instanceType)
+        createChangeInstanceTypeTask(node, newInstanceType)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ChangeInstanceType);
+      }
+    }
+
+    // Modify disk.
+    log.info("Existing device info: {}", currentDeviceInfo);
+    if (newDeviceInfo != null) {
+      // Check if the storage needs to be modified.
+      if (taskParams().isForceResizeNode() || isModifyingDevice(currentDeviceInfo, newDeviceInfo)) {
+        // Resize the nodes' disks.
+        log.info("New device info: {}", newDeviceInfo);
+        createUpdateDiskSizeTasks(nodes, taskParams().isForceResizeNode())
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ResizingDisk);
+      } else {
+        log.info(
+            "No storage device properties were changed and forceResizeNode flag is false."
+                + " Skipping disk modification.");
       }
     }
   }
 
   private SubTaskGroup createChangeInstanceTypeTask(NodeDetails node, String instanceType) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("ChangeInstanceType", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("ChangeInstanceType");
     ChangeInstanceType.Params params = new ChangeInstanceType.Params();
 
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+
     params.nodeName = node.nodeName;
-    params.universeUUID = taskParams().universeUUID;
+    params.setUniverseUUID(taskParams().getUniverseUUID());
     params.azUuid = node.azUuid;
     params.instanceType = instanceType;
+    params.force = taskParams().isForceResizeNode();
+    params.useSystemd = universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
+    params.placementUuid = node.placementUuid;
+    params.cgroupSize = getCGroupSize(node);
 
     ChangeInstanceType changeInstanceTypeTask = createTask(ChangeInstanceType.class);
     changeInstanceTypeTask.initialize(params);

@@ -19,47 +19,50 @@ Select your cloud provider to see the steps for configuration of database nodes.
 
   <li>
     <a href="../aws" class="nav-link">
-      <i class="fab fa-aws"></i>
+      <i class="fa-brands fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
     <a href="../gcp" class="nav-link">
-      <i class="fab fa-google" aria-hidden="true"></i>
+      <i class="fa-brands fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
     <a href="../azure" class="nav-link">
-      <i class="fab fa-windows" aria-hidden="true"></i>
+      <i class="fa-brands fa-windows" aria-hidden="true"></i>
       Azure
     </a>
   </li>
 
   <li>
     <a href="../kubernetes" class="nav-link active">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
     <a href="../onprem" class="nav-link">
-      <i class="fas fa-building"></i>
+      <i class="fa-solid fa-building"></i>
       On-premises
     </a>
   </li>
 
 </ul>
 
+The following diagram depicts the configuration process for Kubernetes.
+
+<div class="image-with-map">
 <img src="/images/ee/flowchart/yb-configure-k8s.png" usemap="#image-map">
 
 <map name="image-map">
-    <area target="_blank" alt="Configure cloud provider" title="Configure cloud provider" href="/preview/yugabyte-platform/configure-yugabyte-platform/" coords="390,70,521,192" shape="rect">
-    <area target="_blank" alt="create admin user" title="create admin user" href="/preview/yugabyte-platform/configure-yugabyte-platform/create-admin-user/" coords="286,259,617,319" shape="rect">
-    <area target="_blank" alt="configure K8s provider" title="configure K8s provider" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes/" coords="230,369,666,426" shape="rect">
-    <area target="_blank" alt="K8s pre reqs" title="K8s pre reqs" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#prerequisites" coords="225,475,679,613" shape="rect">
-    <area target="_blank" alt="K8s cloud" title="K8s cloud" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#configure-the-cloud-provider" coords="304,670,599,758" shape="rect">
+    <area alt="create admin user" title="create admin user" href="../../create-admin-user/" coords="286,259,617,319" shape="rect" style=" width: 38%; height: 6%; top: 27%; left: 31%; ">
+    <area alt="configure K8s provider" title="configure K8s provider" href="../../set-up-cloud-provider/kubernetes/" coords="230,369,666,426" shape="rect" style=" width: 50%; height: 7%; top: 38%; left: 25%; ">
+    <area alt="K8s pre reqs" title="K8s pre reqs" href="../../set-up-cloud-provider/kubernetes/#prerequisites" coords="225,475,679,613" shape="rect" style="width: 50%;height: 15%;top: 49%;left: 25%;">
+    <area alt="K8s cloud" title="K8s cloud" href="../../set-up-cloud-provider/kubernetes/#configure-the-cloud-provider" coords="304,670,599,758" shape="rect" style="top: 69%;height: 10%;left: 33%;width: 34%;">
 </map>
+</div>

@@ -10,6 +10,8 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -17,9 +19,12 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import java.time.Duration;
 import javax.inject.Inject;
+import lombok.Builder;
+import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.YBClient;
+import play.libs.Json;
 
 @Slf4j
 public class WaitForDataMove extends AbstractTaskBase {
@@ -53,17 +58,17 @@ public class WaitForDataMove extends AbstractTaskBase {
     double percent = 0;
     int numIters = 0;
     // Get the master addresses and certificate info.
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String masterAddresses = universe.getMasterAddresses();
     String certificate = universe.getCertificateNodetoNode();
     log.info("Running {} on masterAddress = {}.", getName(), masterAddresses);
 
     try {
-
       client = ybService.getClient(masterAddresses, certificate);
       log.info("Leader Master UUID={}.", client.getLeaderMasterUUID());
+      ObjectMapper objectMapper = Json.mapper();
+      String taskUUIDString = getTaskUUID().toString();
 
-      // TODO: Have a mechanism to send this percent to the parent task completion.
       while (percent < 100) {
         GetLoadMovePercentResponse response = client.getLoadMoveCompletion();
 
@@ -79,7 +84,25 @@ public class WaitForDataMove extends AbstractTaskBase {
           continue;
         }
 
+        // Tablet movement.
+        TabletProgressInfo tabletProgressInfo =
+            TabletProgressInfo.builder()
+                .numTotalTablets(response.getTotal())
+                .numRemainingTablets(response.getRemaining())
+                .numMovedTablets(response.getTotal() - response.getRemaining())
+                .tabletMovePercentCompleted(response.getPercentCompleted())
+                .tabletMoveElapsedMilliSecs(response.getElapsedMillis())
+                .build();
+        JsonNode tabletProgress = objectMapper.valueToTree(tabletProgressInfo);
+        if (log.isTraceEnabled()) {
+          log.trace("Adding tablet movement data {} in the task cache", tabletProgress.asText());
+        }
+
+        // Update the cache
+        getTaskCache().put(taskUUIDString, tabletProgress);
+
         percent = response.getPercentCompleted();
+
         // No need to wait if completed (as in, percent == 100).
         if (percent < 100) {
           waitFor(Duration.ofMillis(getSleepMultiplier() * WAIT_EACH_ATTEMPT_MS));
@@ -102,5 +125,16 @@ public class WaitForDataMove extends AbstractTaskBase {
       log.error(errorMsg);
       throw new RuntimeException(errorMsg);
     }
+  }
+
+  @Builder
+  @Data
+  private static class TabletProgressInfo {
+    // Ignoring field tsUUID. An example value is "tsUUID" : "YB Master - 10.9.194.23:7100"
+    private long numTotalTablets;
+    private long numRemainingTablets;
+    private long numMovedTablets;
+    private double tabletMovePercentCompleted;
+    private long tabletMoveElapsedMilliSecs;
   }
 }

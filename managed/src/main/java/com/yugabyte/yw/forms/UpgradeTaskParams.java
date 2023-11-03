@@ -7,6 +7,9 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Map;
@@ -17,6 +20,7 @@ import play.mvc.Http.Status;
 public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
 
   public UpgradeOption upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+  protected RuntimeConfGetter runtimeConfGetter;
 
   public enum UpgradeTaskType {
     Everything,
@@ -28,7 +32,8 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
     Certs,
     ToggleTls,
     ResizeNode,
-    Reboot
+    Reboot,
+    ThirdPartyPackages,
   }
 
   public enum UpgradeTaskSubType {
@@ -40,7 +45,8 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
     Round2GFlagsUpdate,
     PackageReInstall,
     YbcInstall,
-    YbcGflagsUpdate
+    YbcGflagsUpdate,
+    InstallThirdPartyPackages,
   }
 
   public enum UpgradeOption {
@@ -56,15 +62,34 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
     return false;
   }
 
-  public void verifyParams(Universe universe) {
+  public void verifyParams(Universe universe, boolean isFirstTry) {
+    verifyParams(universe, null, isFirstTry);
+  }
+
+  public void verifyParams(Universe universe, NodeDetails.NodeState nodeState, boolean isFirstTry) {
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     Map<String, String> universeConfig = universe.getConfig();
 
-    if (upgradeOption == UpgradeOption.ROLLING_UPGRADE && universe.nodesInTransit()) {
+    if (upgradeOption == UpgradeOption.ROLLING_UPGRADE && universe.nodesInTransit(nodeState)) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST,
           "Cannot perform a rolling upgrade on universe "
-              + universe.universeUUID
+              + universe.getUniverseUUID()
+              + " as it has nodes in one of "
+              + NodeDetails.IN_TRANSIT_STATES
+              + " states.");
+    }
+
+    runtimeConfGetter = StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
+
+    if (upgradeOption == UpgradeOption.NON_ROLLING_UPGRADE
+        && universe.nodesInTransit(nodeState)
+        && !runtimeConfGetter.getConfForScope(
+            universe, UniverseConfKeys.allowUpgradeOnTransitUniverse)) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST,
+          "Cannot perform a non-rolling upgrade on universe "
+              + universe.getUniverseUUID()
               + " as it has nodes in one of "
               + NodeDetails.IN_TRANSIT_STATES
               + " states.");
@@ -75,7 +100,7 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
         throw new PlatformServiceException(
             Status.BAD_REQUEST,
             "Cannot perform upgrade on universe. "
-                + universe.universeUUID
+                + universe.getUniverseUUID()
                 + " as it is not helm 3 compatible. "
                 + "Manually migrate the deployment to helm3 "
                 + "and then mark the universe as helm 3 compatible.");

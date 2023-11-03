@@ -1,11 +1,12 @@
 ---
-title: Build a Python application using Apache Spark and YugabyteDB
+title: Build Python applications using Apache Spark and YugabyteDB YCQL
+headerTitle: Build a Python application using Apache Spark and YugabyteDB
 linkTitle: YCQL
-description: Build a Python application using Apache Spark and YugabyteDB
+description: Learn how to build a Python application using Apache Spark and YugabyteDB YCQL
 aliases:
   - /preview/integrations/apache-spark/python/
 menu:
-  preview:
+  preview_integrations:
     identifier: apache-spark-3-python-ycql
     parent: apache-spark
     weight: 576
@@ -16,7 +17,7 @@ type: docs
 
   <li >
     <a href="../java-ycql/" class="nav-link">
-      <i class="icon-java-bold" aria-hidden="true"></i>
+      <i class="fa-brands fa-java" aria-hidden="true"></i>
       Java
     </a>
   </li>

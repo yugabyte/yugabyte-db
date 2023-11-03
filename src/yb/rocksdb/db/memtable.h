@@ -21,8 +21,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef YB_ROCKSDB_DB_MEMTABLE_H
-#define YB_ROCKSDB_DB_MEMTABLE_H
 
 #pragma once
 
@@ -88,6 +86,8 @@ struct PreparedAdd {
   SequenceNumber min_seq_no = 0;
   size_t total_encoded_len = 0;
   size_t num_deletes = 0;
+  Slice last_key;
+  Slice last_value;
 };
 
 // Note:  Many of the methods in this class have comments indicating that
@@ -356,7 +356,7 @@ class MemTable {
   const MemTableOptions* GetMemTableOptions() const { return &moptions_; }
 
   void UpdateFrontiers(const UserFrontiers& value) {
-    std::lock_guard<SpinMutex> l(frontiers_mutex_);
+    std::lock_guard l(frontiers_mutex_);
     if (frontiers_) {
       frontiers_->MergeFrontiers(value);
     } else {
@@ -364,6 +364,8 @@ class MemTable {
     }
   }
 
+  // Frontiers accessors might return stale frontiers if invoked after records have been written to
+  // the memtable, but before frontiers are updated.
   UserFrontierPtr GetFrontier(UpdateUserValueType type) const;
 
   const UserFrontiers* Frontiers() const { return frontiers_.get(); }
@@ -387,7 +389,7 @@ class MemTable {
   const size_t kArenaBlockSize;
   ConcurrentArena arena_;
   MemTableAllocator allocator_;
-  unique_ptr<MemTableRep> table_;
+  std::unique_ptr<MemTableRep> table_;
 
   // Total data size of all data inserted
   std::atomic<uint64_t> data_size_;
@@ -448,5 +450,3 @@ class MemTable {
 extern const char* EncodeKey(std::string* scratch, const Slice& target);
 
 }  // namespace rocksdb
-
-#endif // YB_ROCKSDB_DB_MEMTABLE_H

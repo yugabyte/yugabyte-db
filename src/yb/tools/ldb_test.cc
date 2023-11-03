@@ -36,16 +36,17 @@
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
 
+using std::string;
+using std::vector;
+
 using namespace std::literals;
 
 namespace yb {
 namespace tools {
 
 using client::YBClient;
-using client::YBClientBuilder;
 using client::YBSchema;
 using client::YBSchemaBuilder;
-using client::YBTableCreator;
 using client::YBTableName;
 using client::YBTable;
 
@@ -71,7 +72,7 @@ class YBTabletUtilTest : public YBMiniClusterTestBase<MiniCluster> {
 
     YBSchema schema;
     YBSchemaBuilder b;
-    b.AddColumn("k")->Type(INT64)->NotNull()->HashPrimaryKey();
+    b.AddColumn("k")->Type(DataType::INT64)->NotNull()->HashPrimaryKey();
     ASSERT_OK(b.Build(&schema));
 
     client_ = ASSERT_RESULT(cluster_->CreateClient());
@@ -101,8 +102,7 @@ class YBTabletUtilTest : public YBMiniClusterTestBase<MiniCluster> {
  protected:
 
   Status WriteData() {
-    auto session = client_->NewSession();
-    session->SetTimeout(5s);
+    auto session = client_->NewSession(5s);
 
     std::shared_ptr<client::YBqlWriteOp> insert(table_->NewQLWrite());
     auto req = insert->mutable_request();
@@ -115,7 +115,7 @@ class YBTabletUtilTest : public YBMiniClusterTestBase<MiniCluster> {
 
   Result<string> GetTabletDbPath() {
     for (const auto& peer : cluster_->GetTabletPeers(0)) {
-      if (peer->table_type() == TableType::YQL_TABLE_TYPE) {
+      if (peer->TEST_table_type() == TableType::YQL_TABLE_TYPE) {
         return peer->tablet_metadata()->rocksdb_dir();
       }
     }
@@ -143,6 +143,22 @@ TEST_F(YBTabletUtilTest, VerifySingleKeyIsFound) {
   ASSERT_OK(Subprocess::Call(argv, &output));
 
   ASSERT_NE(output.find("Keys in range: 1"), string::npos);
+}
+
+TEST_F(YBTabletUtilTest, DumpManifestFile) {
+    string output;
+  ASSERT_OK(WriteData());
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kAllDbs));
+  string db_path = ASSERT_RESULT(GetTabletDbPath());
+
+  vector<string> argv = {
+    GetToolPath(kTabletUtilToolName),
+    "manifest_dump",
+    "--db=" + db_path
+  };
+
+  // Make sure LDB is not crashing
+  ASSERT_OK(Subprocess::Call(argv, &output));
 }
 
 } // namespace tools

@@ -26,7 +26,7 @@ public class ManageAlertDefinitionsTest extends FakeDBApplication {
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
-    u = ModelFactory.createUniverse(customer.getCustomerId());
+    u = ModelFactory.createUniverse(customer.getId());
   }
 
   @Test
@@ -34,7 +34,7 @@ public class ManageAlertDefinitionsTest extends FakeDBApplication {
     AlertConfiguration configuration = ModelFactory.createAlertConfiguration(customer, u);
     AlertDefinition universeDefinition =
         ModelFactory.createAlertDefinition(customer, u, configuration);
-    Universe otherUniverse = ModelFactory.createUniverse("Other", customer.getCustomerId());
+    Universe otherUniverse = ModelFactory.createUniverse("Other", customer.getId());
     AlertDefinition otherUniverseDefinition =
         ModelFactory.createAlertDefinition(customer, otherUniverse, configuration);
     AlertDefinition customerDefinition =
@@ -45,7 +45,7 @@ public class ManageAlertDefinitionsTest extends FakeDBApplication {
     assertTrue(customerDefinition.isActive());
 
     ManageAlertDefinitions.Params params = new ManageAlertDefinitions.Params();
-    params.universeUUID = u.universeUUID;
+    params.setUniverseUUID(u.getUniverseUUID());
     params.active = false;
 
     ManageAlertDefinitions manageAlertDefinitions =
@@ -63,7 +63,7 @@ public class ManageAlertDefinitionsTest extends FakeDBApplication {
 
     manageAlertDefinitions = app.injector().instanceOf(ManageAlertDefinitions.class);
     params = new ManageAlertDefinitions.Params();
-    params.universeUUID = u.universeUUID;
+    params.setUniverseUUID(u.getUniverseUUID());
     params.active = true;
     manageAlertDefinitions.initialize(params);
 

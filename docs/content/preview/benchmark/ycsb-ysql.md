@@ -1,9 +1,9 @@
 ---
-title: Benchmark YSQL performance with YCSB
+title: Benchmark YSQL performance using YCSB
 headerTitle: YCSB
 linkTitle: YCSB
-description: Benchmark YSQL performance with YCSB using the new YSQL binding.
-headcontent: Benchmark YSQL performance using YCSB.
+description: Learn how to test the YSQL api using the new YSQL binding.
+headcontent: Benchmark YSQL performance using YCSB
 menu:
   preview:
     identifier: ycsb-2-ysql
@@ -17,21 +17,21 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="{{< relref "./ycsb-jdbc.md" >}}" class="nav-link">
+    <a href="../ycsb-jdbc/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       JDBC Binding
     </a>
   </li>
 
   <li >
-    <a href="{{< relref "./ycsb-ysql.md" >}}" class="nav-link active">
+    <a href="../ycsb-ysql/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL Binding
     </a>
   </li>
 
   <li >
-    <a href="{{< relref "./ycsb-ycql.md" >}}" class="nav-link">
+    <a href="../ycsb-ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL Binding
     </a>
@@ -39,28 +39,22 @@ type: docs
 
 </ul>
 
-{{< note title="Note" >}}
+This document describes how to use a YSQL-specific binding to test the YSQL API using the YCSB benchmark.
 
-For more information about YCSB, see:
+For additional information about YCSB, refer to the following:
 
 * [YCSB Wiki](https://github.com/brianfrankcooper/YCSB/wiki)
 * [Workload info](https://github.com/brianfrankcooper/YCSB/wiki/Core-Workloads)
 
-{{< /note >}}
-
-## Overview
-
-This uses a YSQL-specific binding to test the YSQL API using the YCSB benchmark.
-
 ## Running the benchmark
 
-### 1. Prerequisites
+To run the benchmark, ensure that you meet the prerequisites and complete steps such as starting YugabyteDB and configuring its properties.
 
-{{< note title="Note" >}}
+### Prerequisites
+
 The binaries are compiled with Java 13 and it is recommended to run these binaries with that version.
-{{< /note >}}
 
-Download the YCSB binaries. You can do this by running the following commands.
+Run the following commands to download the YCSB binaries:
 
 ```sh
 $ cd $HOME
@@ -69,23 +63,19 @@ $ tar -zxvf ycsb.tar.gz
 $ cd YCSB
 ```
 
-Make sure you have the YSQL shell `ysqlsh` exported to the `PATH` variable. You can download [`ysqlsh`](https://download.yugabyte.com/) if you do not have it.
+Ensure that you have the YSQL shell [ysqlsh](../../admin/ysqlsh/) and that its location is included in the `PATH` variable, as follows:
 
 ```sh
 $ export PATH=$PATH:/path/to/ysqlsh
 ```
 
-### 2. Start YugabyteDB
+### Start YugabyteDB
 
-Start your YugabyteDB cluster by following the steps for [manual deployment](../../deploy/manual-deployment/).
+Start your YugabyteDB cluster by following the procedure described in [Manual deployment](../../deploy/manual-deployment/). Note the IP addresses of the nodes in the cluster, as these addresses are required when configuring the properties file.
 
-{{< tip title="Tip" >}}
-You will need the IP addresses of the nodes in the cluster for the next step.
-{{< /tip>}}
+### Configure the properties file
 
-### 3. Configure `db.properties`
-
-Update the file `db.properties` in the YCSB directory with the following contents. Remember to put the correct values for the IP addresses in the `db.url` field.
+Update the file `db.properties` in the YCSB directory with the following contents, replacing values for the IP addresses in the `db.url` field with the correct values for all the nodes that are part of the cluster:
 
 ```sh
 db.driver=org.postgresql.Driver
@@ -94,108 +84,102 @@ db.user=yugabyte
 db.passwd=
 ```
 
-Details about other configuration parameters are described in [Core Properties](https://github.com/brianfrankcooper/YCSB/wiki/Core-Properties) on the [YCSB](https://github.com/brianfrankcooper/YCSB/) repository.
+The other configuration parameters are described in [Core Properties](https://github.com/brianfrankcooper/YCSB/wiki/Core-Properties).
 
-{{< note title="Note" >}}
-The db.url field should be populated with the IPs of all the nodes that are part of the cluster.
-{{< /note >}}
+### Run the benchmark
 
-### 4. Run the benchmark
-
-There is a handy script `run_ysql.sh` that loads and runs all the workloads.
+Use the following script `run_ysql.sh` to load and run all the workloads:
 
 ```sh
 $ ./run_ysql.sh --ip <ip>
 ```
 
-The above command workload will run the workload on a table with 1 million rows. If you want to run the benchmark on a table with a different row count:
+The preceding command runs the workload on a table with a million rows. To run the benchmark on a table with a different row count, use the following command:
 
 ```sh
 $ ./run_ysql.sh --ip <ip> --recordcount <number of rows>
 ```
 
-{{< note title="Note" >}}
-To get the maximum performance out of the system, you would have to tune the threadcount parameter in the script. As a reference, for a c5.4xlarge instance with 16 cores and 32GB RAM, you used a threadcount of 32 for the loading phase and 256 for the execution phase.
-{{< /note >}}
+To get the maximum performance out of the system, you would have to tune the `threadcount` parameter in the script. As a reference, for a c5.4xlarge instance with 16 cores and 32GB RAM, you used a `thread count` of 32 for the loading phase and 256 for the execution phase.
 
-### 5. Verify results
+### Verify results
 
-The script creates 2 result files per workload, one for the loading and one for the execution phase with the details of throughput and latency.
-For example for `workloada` it creates `workloada-ysql-load.dat` and `workloada-ysql-transaction.dat`
+The `run_ysql.sh` script creates two result files per workload: one for the loading, and one for the execution phase with the details of throughput and latency.
 
-### 6. Run individual workloads (optional)
+For example, for a workload it creates, inspect the `workloada-ysql-load.dat` and `workloada-ysql-transaction.dat` files.
 
-Connect to the database using `ysqlsh`.
+### Run individual workloads (optional)
 
-```sh
-$ ./bin/ysqlsh -h <ip>
-```
+Optionally, you can run workloads individually using the following steps:
 
-Create the `ycsb` database.
+1. Start the YSQL shell using the following command:
 
-```sql
-yugabyte=# CREATE DATABASE ycsb;
-```
+    ```sh
+    $ ./bin/ysqlsh -h <ip>
+    ```
 
-Connect to the created database.
+1. Create the `ycsb` database as follows:
 
-```sql
-yugabyte=# \c ycsb
-```
+    ```sql
+    yugabyte=# CREATE DATABASE ycsb;
+    ```
 
-Create the table.
+1. Connect to the database as follows:
 
-```sql
-ycsb=# CREATE TABLE usertable (
-           YCSB_KEY VARCHAR(255) PRIMARY KEY,
-           FIELD0 TEXT, FIELD1 TEXT, FIELD2 TEXT, FIELD3 TEXT,
-           FIELD4 TEXT, FIELD5 TEXT, FIELD6 TEXT, FIELD7 TEXT,
-           FIELD8 TEXT, FIELD9 TEXT);
-```
+    ```sql
+    yugabyte=# \c ycsb
+    ```
 
-Before starting the `yugabyteSQL` workload, you will need to load the data first.
+1. Create the table as follows:
 
-```sh
-$ ./bin/ycsb load yugabyteSQL -s \
-      -P db.properties           \
-      -P workloads/workloada     \
-      -p recordcount=1000000     \
-      -p operationcount=10000000 \
-      -p threadcount=32          \
-      -p maxexecutiontime=180
-```
+    ```sql
+    ycsb=# CREATE TABLE usertable (
+               YCSB_KEY VARCHAR(255) PRIMARY KEY,
+               FIELD0 TEXT, FIELD1 TEXT, FIELD2 TEXT, FIELD3 TEXT,
+               FIELD4 TEXT, FIELD5 TEXT, FIELD6 TEXT, FIELD7 TEXT,
+               FIELD8 TEXT, FIELD9 TEXT);
+    ```
 
-Then, you can run the workload:
+1. Load the data before you start the `yugabyteSQL` workload:
 
-```sh
-$ ./bin/ycsb run yugabyteSQL -s  \
-      -P db.properties           \
-      -P workloads/workloada     \
-      -p recordcount=1000000     \
-      -p operationcount=10000000 \
-      -p threadcount=256         \
-      -p maxexecutiontime=180
-```
+    ```sh
+    $ ./bin/ycsb load yugabyteSQL -s \
+          -P db.properties           \
+          -P workloads/workloada     \
+          -p recordcount=1000000     \
+          -p operationcount=10000000 \
+          -p threadcount=32
+    ```
 
-To run the other workloads (for example, `workloadb`), all you need to do is change that argument in the above command.
+1. Run the workload as follows:
 
-```sh
-$ ./bin/ycsb run yugabyteSQL -s  \
-      -P db.properties           \
-      -P workloads/workloadb     \
-      -p recordcount=1000000     \
-      -p operationcount=10000000 \
-      -p threadcount=256         \
-      -p maxexecutiontime=180
-```
+    {{< note title="Note" >}}
+The `recordcount` parameter in the following `ycsb` commands should match the number of rows in the table.
+    {{< /note >}}
+
+    ```sh
+    $ ./bin/ycsb run yugabyteSQL -s  \
+          -P db.properties           \
+          -P workloads/workloada     \
+          -p recordcount=1000000     \
+          -p operationcount=10000000 \
+          -p threadcount=256
+    ```
+
+1. Run other workloads (for example, `workloadb`) by changing the corresponding argument in the preceding command, as follows:
+
+    ```sh
+    $ ./bin/ycsb run yugabyteSQL -s  \
+          -P db.properties           \
+          -P workloads/workloadb     \
+          -p recordcount=1000000     \
+          -p operationcount=10000000 \
+          -p threadcount=256
+    ```
 
 ## Expected results
 
-### Setup
-
-When run on a 3-node cluster with each node on a c5.4xlarge AWS instance (16 cores, 32 GB of RAM, and 2 EBS volumes), all belonging to the same AZ with the client VM running in the same AZ, you get the following results:
-
-### 1 Million Rows
+When run on a 3-node cluster with each node on a c5.4xlarge AWS instance (16 cores, 32 GB of RAM, and 2 EBS volumes), all belonging to the same availability zone with the client VM running in the same availability zone, you get the following results for _1 million rows_:
 
 | Workload | Throughput (ops/sec) | Read Latency | Write Latency |
 | :------- | :------------------- | :------------| :------------ |

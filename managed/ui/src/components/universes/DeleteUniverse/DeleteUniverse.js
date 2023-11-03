@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import 'react-bootstrap-multiselect/css/bootstrap-multiselect.css';
 import { browserHistory } from 'react-router';
@@ -53,8 +53,11 @@ export default class DeleteUniverse extends Component {
           <>
             Are you sure you want to delete the universe?
             <Alert bsStyle="danger">
-              <strong>Note: </strong>Terminating paused universes won't delete backup objects. If
-              you want to delete backup objects, resume this universe and then delete it.
+              <strong>Note: </strong>
+              {
+                "Terminating paused universes won't delete backup objects. If \
+              you want to delete backup objects, resume this universe and then delete it."
+              }
             </Alert>
           </>
         ) : (

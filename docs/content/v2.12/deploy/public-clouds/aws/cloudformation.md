@@ -58,7 +58,7 @@ Create CloudFormation template:
 $ aws cloudformation create-stack \
   --stack-name <stack-name> \
   --template-body file://yugabyte_cloudformation.yaml \
-  --parameters  ParameterKey=DBVersion,ParameterValue=2.1.6.0 ParameterKey=KeyName,ParameterValue=<ssh-key-name> \
+  --parameters  ParameterKey=DBVersion,ParameterValue=2.1.6.0-b17 ParameterKey=KeyName,ParameterValue=<ssh-key-name> \
   --region <aws-region>
 ```
 

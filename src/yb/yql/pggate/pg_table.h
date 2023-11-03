@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGGATE_PG_TABLE_H
-#define YB_YQL_PGGATE_PG_TABLE_H
+#pragma once
 
 #include <memory>
 #include <vector>
@@ -57,7 +56,8 @@ class PgTable {
   }
 
   Result<PgColumn&> ColumnForAttr(int attr_num);
-  PgColumn& ColumnForIndex(size_t index);
+  [[nodiscard]] PgColumn& ColumnForIndex(size_t index);
+  [[nodiscard]] const PgColumn& ColumnForIndex(size_t index) const;
 
  private:
   PgTableDescPtr desc_;
@@ -66,5 +66,3 @@ class PgTable {
 
 }  // namespace pggate
 }  // namespace yb
-
-#endif  // YB_YQL_PGGATE_PG_TABLE_H

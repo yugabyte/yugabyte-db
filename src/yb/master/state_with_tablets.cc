@@ -14,7 +14,7 @@
 #include "yb/master/state_with_tablets.h"
 
 #include "yb/util/enums.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
@@ -54,7 +54,7 @@ SysSnapshotEntryPB::State InitialStateToTerminalState(SysSnapshotEntryPB::State 
 StateWithTablets::StateWithTablets(
     SnapshotCoordinatorContext* context, SysSnapshotEntryPB::State initial_state,
     std::string log_prefix)
-    : context_(*context), initial_state_(initial_state), log_prefix_(std::move(log_prefix)) {
+    : initial_state_(initial_state), context_(*context), log_prefix_(std::move(log_prefix)) {
 }
 
 Result<SysSnapshotEntryPB::State> StateWithTablets::AggregatedState() const {
@@ -122,6 +122,7 @@ std::vector<TabletId> StateWithTablets::TabletIdsInState(SysSnapshotEntryPB::Sta
   return result;
 }
 
+
 void StateWithTablets::Done(const TabletId& tablet_id, Status status) {
   VLOG_WITH_PREFIX_AND_FUNC(4) << tablet_id << ", " << status;
 
@@ -132,6 +133,7 @@ void StateWithTablets::Done(const TabletId& tablet_id, Status status) {
         << tablet_id << ": " << status;
     return;
   }
+
   if (!it->running) {
     LOG_WITH_PREFIX(DFATAL)
         << "Finished " << InitialStateName() <<  " at " << tablet_id
@@ -139,36 +141,44 @@ void StateWithTablets::Done(const TabletId& tablet_id, Status status) {
         << ": " << status;
     return;
   }
+
   tablets_.modify(it, [](TabletData& data) { data.running = false; });
+
+  if (it->aborted) {
+    LOG_WITH_PREFIX(INFO) << Format("Tablet $0 was aborted before task finished.", tablet_id);
+    DecrementTablets();
+    return;
+  }
+
   const auto& state = it->state;
   if (state == initial_state_) {
     status = CheckDoneStatus(status);
     if (status.ok()) {
       tablets_.modify(
           it, [terminal_state = InitialStateToTerminalState(initial_state_)](TabletData& data) {
-        data.state = terminal_state;
-      });
+            data.state = terminal_state;
+          });
       LOG_WITH_PREFIX(INFO) << "Finished " << InitialStateName() << " at " << tablet_id << ", "
                             << num_tablets_in_initial_state_ << " was running";
     } else {
       auto full_status = status.CloneAndPrepend(
           Format("Failed to $0 snapshot at $1", InitialStateName(), tablet_id));
-      bool terminal = IsTerminalFailure(status);
-      tablets_.modify(it, [&full_status, terminal](TabletData& data) {
-        if (terminal) {
-          data.state = SysSnapshotEntryPB::FAILED;
+      auto maybe_terminal_state = GetTerminalStateForStatus(status);
+      tablets_.modify(it, [&full_status, maybe_terminal_state](TabletData& data) {
+        if (maybe_terminal_state) {
+          data.state = maybe_terminal_state.value();
         }
         data.last_error = full_status;
       });
-      LOG_WITH_PREFIX(WARNING)
-          << full_status << ", terminal: " << terminal << ", " << num_tablets_in_initial_state_
-          << " was running";
-      if (!terminal) {
+
+      LOG_WITH_PREFIX(WARNING) << Format(
+          "$0, terminal: $1, $2 was running", full_status, maybe_terminal_state.has_value(),
+          num_tablets_in_initial_state_);
+      if (!maybe_terminal_state) {
         return;
       }
     }
-    --num_tablets_in_initial_state_;
-    CheckCompleteness();
+    DecrementTablets();
   } else {
     LOG_WITH_PREFIX(DFATAL)
         << "Finished " << InitialStateName() << " at tablet " << tablet_id << " in a wrong state "
@@ -176,7 +186,7 @@ void StateWithTablets::Done(const TabletId& tablet_id, Status status) {
   }
 }
 
-bool StateWithTablets::AllInState(SysSnapshotEntryPB::State state) {
+bool StateWithTablets::AllInState(SysSnapshotEntryPB::State state) const {
   for (const auto& tablet : tablets_) {
     if (tablet.state != state) {
       return false;

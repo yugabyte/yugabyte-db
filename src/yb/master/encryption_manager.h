@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_ENCRYPTION_MANAGER_H
-#define YB_MASTER_ENCRYPTION_MANAGER_H
+#pragma once
 
 #include <unordered_set>
 
@@ -46,25 +45,29 @@ class EncryptionManager {
   EncryptionManager();
 
   Status AddUniverseKeys(const AddUniverseKeysRequestPB* req,
-                                 AddUniverseKeysResponsePB* resp);
+                         AddUniverseKeysResponsePB* resp);
 
   Status GetUniverseKeyRegistry(const GetUniverseKeyRegistryRequestPB* req,
-                                        GetUniverseKeyRegistryResponsePB* resp);
+                                GetUniverseKeyRegistryResponsePB* resp);
+
+  Status GetFullUniverseKeyRegistry(const EncryptionInfoPB& encryption_info,
+                                    GetFullUniverseKeyRegistryResponsePB* resp);
+
 
   Status HasUniverseKeyInMemory(const HasUniverseKeyInMemoryRequestPB* req,
-                                        HasUniverseKeyInMemoryResponsePB* resp);
+                                HasUniverseKeyInMemoryResponsePB* resp);
 
   Status ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
-                                      EncryptionInfoPB* encryption_info);
+                              EncryptionInfoPB* encryption_info);
 
   Status IsEncryptionEnabled(const EncryptionInfoPB& encryption_info,
-                                     IsEncryptionEnabledResponsePB* resp);
+                             IsEncryptionEnabledResponsePB* resp);
 
   EncryptionState GetEncryptionState(
       const EncryptionInfoPB& encryption_info, IsEncryptionEnabledResponsePB* encryption_resp);
 
   Status FillHeartbeatResponseEncryption(const EncryptionInfoPB& encryption_info,
-                                                 TSHeartbeatResponsePB* resp);
+                                         TSHeartbeatResponsePB* resp);
 
   Status GetUniverseKeyRegistry(rpc::ProxyCache* proxy_cache);
 
@@ -90,5 +93,3 @@ class EncryptionManager {
 
 } // namespace master
 } // namespace yb
-
-#endif // YB_MASTER_ENCRYPTION_MANAGER_H

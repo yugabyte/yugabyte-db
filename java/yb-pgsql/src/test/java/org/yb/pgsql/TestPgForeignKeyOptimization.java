@@ -1,19 +1,15 @@
 package org.yb.pgsql;
 
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.util.YBTestRunnerNonTsanOnly;
-import org.yb.minicluster.Metrics;
+import org.yb.YBTestRunner;
 
 import java.sql.Connection;
 import java.sql.Statement;
 
 import static org.yb.AssertionWrappers.assertEquals;
 
-@RunWith(YBTestRunnerNonTsanOnly.class)
+@RunWith(YBTestRunner.class)
 public class TestPgForeignKeyOptimization extends BasePgSQLTest {
   // Start server in RF=1 mode to simplify metrics analysis.
   @Override
@@ -59,7 +55,7 @@ public class TestPgForeignKeyOptimization extends BasePgSQLTest {
     // 5 or 6 reads are expected, they are:
     // - PERFORM makes one read from tbl table for SERIALIZABLE level. Two in case of REPEATABLE
     //   READ even though we specify pk because a separate RPC is used to lock tuples.
-    //   TODO(Piyush): Optimize to ensure we use only 1 rpc for locking if pk is specified in
+    //   TODO(foucher): Optimize to ensure we use only 1 rpc for locking if pk is specified in
     //   REPEATABLE READ level.
     // - DELETE makes 3 reads:
     //   - first read from 'tbl' to get row's ybctid as it is not single row update (due to FK)
@@ -133,16 +129,6 @@ public class TestPgForeignKeyOptimization extends BasePgSQLTest {
   }
 
   private long getReadOpsCount() throws Exception {
-    JsonArray[] metrics = getRawTSMetric();
-    assertEquals(1, metrics.length);
-    for (JsonElement el : metrics[0]) {
-      JsonObject obj = el.getAsJsonObject();
-      String metricType = obj.get("type").getAsString();
-      if (metricType.equals("server") && obj.get("id").getAsString().equals("yb.tabletserver")) {
-        return new Metrics(obj).getHistogram(
-            "handler_latency_yb_tserver_TabletServerService_Read").totalCount;
-      }
-    }
-    throw new Exception("handler_latency_yb_tserver_TabletServerService_Read metrict not found");
+    return getReadRPCMetric(getTSMetricSources()).count;
   }
 }

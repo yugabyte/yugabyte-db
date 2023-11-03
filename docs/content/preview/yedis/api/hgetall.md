@@ -14,11 +14,12 @@ type: docs
 
 ## Synopsis
 
-<b>`HGETALL key`</b><br>
+**`HGETALL key`**
+
 This command fetches the full content of all fields and all values of the hash that is associated with the given `key`.
 
-<li>If the given `key` does not exist, and empty list is returned.</li>
-<li>If the given `key` is associated with non-hash data, an error is raised.</li>
+- If the given `key` does not exist, and empty list is returned.
+- If the given `key` is associated with non-hash data, an error is raised.
 
 ## Return value
 

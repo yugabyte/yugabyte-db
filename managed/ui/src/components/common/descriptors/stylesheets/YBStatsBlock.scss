@@ -1,6 +1,6 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../../../_style/colors.scss';
+@use '../../../../_style/colors.scss';
 
 .tile_stats_count {
   text-align: left;
@@ -18,7 +18,7 @@
   font-size: 28px;
   line-height: 30px;
   font-weight: 500;
-  color: $YB_VIOLET_TEXT;
+  color: colors.$YB_VIOLET_TEXT;
 }
 .tile_stats_count span {
   font-size: 12px;

@@ -1,17 +1,18 @@
-@import '../../../_style/colors.scss';
+@use "sass:color";
+@use '../../../_style/colors.scss';
 
 .alert-details {
   border-radius: 2px;
   padding: 24px;
   box-shadow: 0 0.12em 2px rgba(35, 35, 41, 0.05), 0 0.5em 10px rgba(35, 35, 41, 0.07);
-  background: $YB_BG_WHITE_2;
+  background: colors.$YB_BG_WHITE_2;
   height: 100%;
   width: 700px;
   position: fixed;
   z-index: 9999;
   top: 0;
   right: 0%;
-  border-left: 1px solid darken($YB_BACKGROUND, 10%);
+  border-left: 1px solid color.adjust(colors.$YB_BACKGROUND, $lightness: -10%);
   max-height: 100%;
   .side-panel {
     width: 700px !important;
@@ -24,9 +25,9 @@
   .side-panel__content{
     padding: 15px 20px !important;
     .panel-highlight{
-      background: $YB_BACKGROUND;
+      background: colors.$YB_BACKGROUND;
       padding: 16px;
-      border: 1px solid $YB_LIGHT_GRAY_BORDER;
+      border: 1px solid colors.$YB_LIGHT_GRAY_BORDER;
     }
   }
   .close-button {
@@ -95,7 +96,7 @@
 
     li {
       list-style: none;
-      border-left: 1px dashed $YB_ORANGE;
+      border-left: 1px dashed colors.$YB_ORANGE;
       padding: 0 0 0 10px;
       position: relative;
       min-height: 50px;
@@ -108,9 +109,9 @@
         position: absolute;
         left: -5px;
         content: ' ';
-        border: 2px solid $YB_ORANGE;
+        border: 2px solid colors.$YB_ORANGE;
         border-radius: 50%;
-        background: $YB_WHITE;
+        background: colors.$YB_WHITE;
         height: 9px;
         width: 9px;
       }

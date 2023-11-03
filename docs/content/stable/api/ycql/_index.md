@@ -8,9 +8,11 @@ image: /images/section_icons/api/ycql.png
 headcontent:
 menu:
   stable:
-    identifier: api-cassandra
     parent: api
-    weight: 3000
+    identifier: api-cassandra
+    weight: 10
+    params:
+      classes: separator
 type: indexpage
 ---
 
@@ -54,10 +56,10 @@ Statement | Description |
 
 Security statements are instructions for managing and restricting operations on the database objects.
 
-This feature is enabled by setting the YB-TServer configuration flag [`--use_cassandra_authentication`](../../reference/configuration/yb-tserver/#use-cassandra-authentication) to `true`.
-
 - Create, grant, and revoke users and roles
 - Grant, and revoke permissions on database objects
+
+This feature is enabled by setting the YB-TServer configuration flag [`--use_cassandra_authentication`](../../reference/configuration/yb-tserver/#use-cassandra-authentication) to `true`.
 
 Statement | Description |
 ----------|-------------|
@@ -69,9 +71,9 @@ Statement | Description |
 [`GRANT ROLE`](ddl_grant_role) | Grant a role to another role |
 [`REVOKE ROLE`](ddl_revoke_role) | Revoke a role from another role |
 
-- The following table lists all security statements that are not yet implemented.
+The following table lists all security statements that are not yet implemented.
 
-Primitive Type |
+Statement |
 ---------------|
 `LIST ROLES` |
 `LIST PERMISSIONS` |
@@ -110,7 +112,7 @@ Expression | Description |
 
 ## Data types
 
-- The following table lists all supported primitive types.
+The following table lists all supported primitive types.
 
 Primitive Type | Allowed in Key | Type Parameters | Description |
 ---------------|----------------|-----------------|-------------|
@@ -138,9 +140,9 @@ Primitive Type | Allowed in Key | Type Parameters | Description |
 [`VARINT`](type_int) | Yes | - | Arbitrary-precision integer |
 [`JSONB`](type_jsonb) | No | - | JSON data type similar to PostgreSQL jsonb |
 
-- [User-defined data types](ddl_create_type) are also supported.
+[User-defined data types](ddl_create_type) are also supported.
 
-- The following table lists all YCQL primitive types that are not yet implemented.
+The following table lists all YCQL primitive types that are not yet implemented.
 
 Primitive Type |
 ---------------|

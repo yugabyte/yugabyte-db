@@ -35,8 +35,6 @@
 #include <functional>
 #include <mutex>
 
-#include <glog/logging.h>
-
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus_peers.h"
@@ -185,7 +183,7 @@ LeaderElection::LeaderElection(const RaftConfigPB& config,
 }
 
 LeaderElection::~LeaderElection() {
-  std::lock_guard<Lock> guard(lock_);
+  std::lock_guard guard(lock_);
   DCHECK(has_responded_); // We must always call the callback exactly once.
   voter_state_.clear();
 }
@@ -201,7 +199,7 @@ void LeaderElection::Run() {
   for (const std::string& voter_uuid : voting_follower_uuids_) {
     VoterState* state = nullptr;
     {
-      std::lock_guard<Lock> guard(lock_);
+      std::lock_guard guard(lock_);
       if (result_.decided()) { // Already have result.
         break;
       }
@@ -235,7 +233,7 @@ void LeaderElection::Run() {
 void LeaderElection::CheckForDecision() {
   bool to_respond = false;
   {
-    std::lock_guard<Lock> guard(lock_);
+    std::lock_guard guard(lock_);
     // Check if the vote has been newly decided.
     auto decision = vote_counter_->GetDecision();
     if (!result_.decided() && decision != ElectionVote::kUnknown) {
@@ -262,7 +260,7 @@ void LeaderElection::CheckForDecision() {
 void LeaderElection::VoteResponseRpcCallback(const std::string& voter_uuid,
                                              const LeaderElectionPtr& self) {
   {
-    std::lock_guard<Lock> guard(lock_);
+    std::lock_guard guard(lock_);
 
     if (has_responded_) {
       return;

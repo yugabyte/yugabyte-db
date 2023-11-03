@@ -18,7 +18,7 @@ import org.yb.consensus.Metadata;
 import org.yb.WireProtocol;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.util.Pair;
-import org.jboss.netty.buffer.ChannelBuffer;
+import io.netty.buffer.ByteBuf;
 import org.yb.server.ServerBase;
 
 @InterfaceAudience.Public
@@ -28,7 +28,7 @@ class PingRequest extends YRpc<PingResponse> {
   }
 
   @Override
-  ChannelBuffer serialize(Message header) {
+  ByteBuf serialize(Message header) {
     assert header.isInitialized();
     final ServerBase.PingRequestPB.Builder builder =
       ServerBase.PingRequestPB.newBuilder();

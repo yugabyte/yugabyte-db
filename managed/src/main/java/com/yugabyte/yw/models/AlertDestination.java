@@ -2,11 +2,16 @@
 
 package com.yugabyte.yw.models;
 
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
+
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -35,19 +40,23 @@ import lombok.experimental.Accessors;
 @Accessors(chain = true)
 @EqualsAndHashCode(callSuper = false, doNotUseGetters = true)
 @Entity
+@ApiModel(description = "Alert notification destination")
 public class AlertDestination extends Model {
 
   @Id
   @Column(nullable = false, unique = true)
+  @ApiModelProperty(value = "Destination UUID", accessMode = READ_ONLY)
   private UUID uuid;
 
   @NotNull
   @Column(nullable = false)
+  @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY)
   private UUID customerUUID;
 
   @NotNull
   @Size(min = 1, max = 63)
   @Column(columnDefinition = "Text", nullable = false)
+  @ApiModelProperty(value = "Name", accessMode = READ_WRITE)
   private String name;
 
   @ToString.Exclude
@@ -72,10 +81,12 @@ public class AlertDestination extends Model {
             nullable = false,
             updatable = false)
       })
+  @ApiModelProperty(value = "Alert notification channels", accessMode = READ_WRITE)
   private Set<AlertChannel> channels;
 
   @NotNull
   @Column(nullable = false)
+  @ApiModelProperty(value = "Default alert notification destination", accessMode = READ_WRITE)
   private boolean defaultDestination = false;
 
   private static final Finder<UUID, AlertDestination> find =

@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_CATALOG_LOADERS_H
-#define YB_MASTER_CATALOG_LOADERS_H
+#pragma once
 
 #include <type_traits>
 
@@ -45,22 +44,38 @@
 namespace yb {
 namespace master {
 
+struct SysCatalogLoadingState {
+  std::unordered_map<TableId, std::vector<TableId>> parent_to_child_tables;
+  std::vector<std::pair<std::function<void()>, std::string>> post_load_tasks;
+  const LeaderEpoch epoch;
+
+  void AddPostLoadTask(std::function<void()>&& func, std::string&& msg) {
+    post_load_tasks.push_back({std::move(func), std::move(msg)});
+  }
+
+  void Reset() {
+    parent_to_child_tables.clear();
+    post_load_tasks.clear();
+  }
+};
+
 #define DECLARE_LOADER_CLASS(name, key_type, entry_pb_name, mutex) \
   class BOOST_PP_CAT(name, Loader) : \
       public Visitor<BOOST_PP_CAT(BOOST_PP_CAT(Persistent, name), Info)> { \
   public: \
     explicit BOOST_PP_CAT(name, Loader)( \
-        CatalogManager* catalog_manager, int64_t term = OpId::kUnknownTerm) \
-        : catalog_manager_(catalog_manager), term_(term) {} \
+                                         CatalogManager* catalog_manager, \
+                                         SysCatalogLoadingState* state) \
+      : catalog_manager_(catalog_manager), state_(state) {} \
     \
   private: \
     Status Visit( \
         const key_type& key, \
-        const entry_pb_name& metadata) override REQUIRES(mutex); \
+        const entry_pb_name& metadata) REQUIRES(mutex) override; \
     \
     CatalogManager *catalog_manager_; \
     \
-    int64_t term_; \
+    SysCatalogLoadingState* state_; \
     \
     DISALLOW_COPY_AND_ASSIGN(BOOST_PP_CAT(name, Loader)); \
   };
@@ -96,7 +111,6 @@ DECLARE_LOADER_CLASS(Role,       RoleName,    SysRoleEntryPB,
     catalog_manager_->permissions_manager()->mutex());
 DECLARE_LOADER_CLASS(SysConfig,     std::string, SysConfigEntryPB,
     catalog_manager_->permissions_manager()->mutex());
-DECLARE_LOADER_CLASS(XClusterSafeTime, std::string, XClusterSafeTimePB, catalog_manager_->mutex_);
 
 #undef DECLARE_LOADER_CLASS
 
@@ -106,5 +120,3 @@ bool ShouldLoadObject(const SysTabletsEntryPB& pb);
 
 }  // namespace master
 }  // namespace yb
-
-#endif  // YB_MASTER_CATALOG_LOADERS_H

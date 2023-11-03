@@ -27,12 +27,10 @@
 namespace yb {
 namespace ql {
 
-using std::shared_ptr;
-
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::PTExprToPBValidated(const PTExprPtr& expr,
-                                             QLExpressionPB *expr_pb) {
+                                     QLExpressionPB *expr_pb) {
   RETURN_NOT_OK(PTExprToPB(expr, expr_pb));
   if (expr_pb->has_value() && IsNull(expr_pb->value())) {
     return exec_context_->Error(expr, "Value cannot be null.", ErrorCode::INVALID_ARGUMENTS);

@@ -1,14 +1,18 @@
 // Copyright (c) YugaByte, Inc.
+import { Component, lazy, Suspense } from 'react';
+import { YBLoadingCircleIcon } from '../components/common/indicators';
 
-import React, { Component } from 'react';
-
-import { UniverseDetailContainer } from '../components/universes';
+const UniverseDetailContainer = lazy(() =>
+  import('../components/universes/UniverseDetail/UniverseDetailContainer')
+);
 
 class UniverseDetail extends Component {
   render() {
     return (
       <div>
-        <UniverseDetailContainer uuid={this.props.params.uuid} {...this.props} />
+        <Suspense fallback={YBLoadingCircleIcon}>
+          <UniverseDetailContainer uuid={this.props.params.uuid} {...this.props} />
+        </Suspense>
       </div>
     );
   }

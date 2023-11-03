@@ -25,11 +25,8 @@ EOT
 }
 
 export DEVOPS_HOME="${BASH_SOURCE%/*}"/../devops
-export YB_MANAGED_DEVOPS_USE_PYTHON3=1
 
 . "$DEVOPS_HOME/bin/"/common.sh
-
-readonly yba_installer_home=$( cd "${BASH_SOURCE%/*}" && pwd )
 
 destination=""
 
@@ -46,54 +43,28 @@ while [ $# -gt 0 ]; do
   shift
 done
 
+
+echo Starting yb_release for yba-installer > /dev/stderr
+
 # verify that the destination directory exists
 if [[ ! -d $destination ]]; then
   fatal "No destination directory found ('$destination')"
 fi
-
-BINARY_NAME=$yba_installer_home/"yba-ctl"
-CONFIG_FILE_FOLDER=$yba_installer_home/"configFiles"
-CRONTAB_SCRIPT_FOLDER=$yba_installer_home/"crontabScripts"
-CONFIG_INPUT_FILE_NAME=$yba_installer_home/"yba-installer-input.yml"
-VERSION_METADATA_JSON=$yba_installer_home/"version_metadata.json"
-VERSION_TXT=$yba_installer_home/"version.txt"
-POSTGRES_BINARY_NAME="postgresql-9.6.24-1-linux-x64-binaries.tar.gz"
-PEM_TO_KEY_STORE_CONVERTER="pemtokeystore-linux-amd64"
-JDK_BINARY_NAME="OpenJDK8U-jdk_x64_linux_hotspot_8u345b01.tar.gz"
 VERSION_FULL=$(<version.txt)
 BUILD_NUMBER=${YB_RELEASE_BUILD_NUMBER:-0}
-IFS='-'
-read -ra VERSION_NUMBER <<< "$VERSION_FULL"
-IFS=" "
-VERSION="$VERSION_NUMBER-b$BUILD_NUMBER"
-FOLDER_NAME="yba_installer-"$VERSION
-FOLDER_PATH=$yba_installer_home/$FOLDER_NAME
-#Need underscore in the PACKAGE_NAME for proper file parsing.
-PACKAGE_NAME=$FOLDER_NAME"-centos.tar.gz"
+# IFS splits input according to delimiter.
+IFS='-' read -ra VERSION_NUMBER <<< "$VERSION_FULL"
+VERSION="${VERSION_NUMBER[0]}-b${BUILD_NUMBER}"
+GOOS="linux"
+GOARCH="amd64"
+PACKAGE_NAME="yba_installer-$VERSION-$GOOS-$GOARCH.tar.gz"
 
-go mod tidy
-go build -o $BINARY_NAME
+echo "Starting make"  > /dev/stderr
+make VERSION="${VERSION}" PACKAGE_NAME="${PACKAGE_NAME}" GOOS="${GOOS}" GOARCH="${GOARCH}"
+echo "Completed make"  > /dev/stderr
 
-# Ensure that the yba-installer directory exists.
-if [[ ! -d $FOLDER_PATH ]]; then
-  mkdir -p $FOLDER_PATH
-fi
-
-cd $FOLDER_PATH
-
-wget -qi $yba_installer_home/externalDependencies.txt
-
-# For providing executable permissions to the Pem to Keystore
-# converter for enabling HTTPS through the Play framework.
-chmod u+x $PEM_TO_KEY_STORE_CONVERTER
-
-cd $yba_installer_home
-
-cp -R $BINARY_NAME $CONFIG_FILE_FOLDER $CRONTAB_SCRIPT_FOLDER \
-$CONFIG_INPUT_FILE_NAME  $VERSION_METADATA_JSON $VERSION_TXT $FOLDER_PATH
-
-tar -czvf $PACKAGE_NAME $FOLDER_NAME
-
-command="--package $PACKAGE_NAME --destination $destination"
 activate_virtualenv
-"$( dirname "${BASH_SOURCE[0]}" )"/yb_release.py $command
+echo "Invoking yb_release.py" > /dev/stderr
+"$( dirname "${BASH_SOURCE[0]}" )"/yb_release.py --package "${PACKAGE_NAME}" \
+                                                 --destination "${destination}"
+echo "Completed yb_release.py" > /dev/stderr

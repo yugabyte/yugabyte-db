@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_KEY_ENCODER_H
-#define YB_COMMON_KEY_ENCODER_H
+#pragma once
 
 #include <arpa/inet.h>
 
@@ -182,9 +181,9 @@ struct KeyEncoderTraits<Type,
 };
 
 template<typename Buffer>
-struct KeyEncoderTraits<BINARY, Buffer> {
+struct KeyEncoderTraits<DataType::BINARY, Buffer> {
 
-  static const DataType key_type = BINARY;
+  static const DataType key_type = DataType::BINARY;
 
   static void Encode(const void* key, Buffer* dst) {
     Encode(*reinterpret_cast<const Slice*>(key), dst);
@@ -368,9 +367,9 @@ struct KeyEncoderTraits<BINARY, Buffer> {
 };
 
 template<typename Buffer>
-struct KeyEncoderTraits<BOOL, Buffer> {
+struct KeyEncoderTraits<DataType::BOOL, Buffer> {
 
-  static const DataType key_type = BOOL;
+  static const DataType key_type = DataType::BOOL;
 
   static void Encode(const void* key, Buffer* dst) {
     dst->push_back(*reinterpret_cast<const bool*>(key) ? 1 : 0);
@@ -432,9 +431,9 @@ class KeyEncoder {
   // of the composite key.
   // Any indirect data (eg strings) are allocated out of 'arena'.
   Status Decode(Slice* encoded_key,
-                        bool is_last,
-                        Arena* arena,
-                        uint8_t* cell_ptr) const {
+                bool is_last,
+                Arena* arena,
+                uint8_t* cell_ptr) const {
     return decode_key_portion_func_(encoded_key, is_last, arena, cell_ptr);
   }
 
@@ -458,5 +457,3 @@ extern const KeyEncoder<Buffer>& GetKeyEncoder(const TypeInfo* typeinfo);
 extern bool IsTypeAllowableInKey(const TypeInfo* typeinfo);
 
 } // namespace yb
-
-#endif // YB_COMMON_KEY_ENCODER_H

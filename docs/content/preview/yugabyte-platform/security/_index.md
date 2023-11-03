@@ -1,5 +1,5 @@
 ---
-title: Security
+title: YugabyteDB Anywhere Security
 headerTitle: Security
 linkTitle: Security
 description: Secure YugabyteDB Anywhere and YugabyteDB universes.
@@ -9,7 +9,7 @@ menu:
   preview_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: security
-weight: 645
+weight: 650
 type: indexpage
 ---
 
@@ -22,7 +22,7 @@ type: indexpage
         <div class="title">Security checklist</div>
       </div>
       <div class="body">
-        Security considerations for YugabyteDB Anywhere and YugabyteDB universes.
+        Address security requirements for YugabyteDB Anywhere and YugabyteDB universes.
       </div>
     </a>
   </div>
@@ -31,10 +31,10 @@ type: indexpage
     <a class="section-link icon-offset" href="customize-ports/">
       <div class="head">
        <img class="icon" src="/images/section_icons/index/secure.png" />
-        <div class="title">Customize ports</div>
+        <div class="title">Configure ports</div>
       </div>
       <div class="body">
-        Customize ports.
+        Configure YugabyteDB ports for security purposes.
       </div>
     </a>
   </div>

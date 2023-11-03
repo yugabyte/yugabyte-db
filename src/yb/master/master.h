@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_MASTER_MASTER_H
-#define YB_MASTER_MASTER_H
+#pragma once
 
 #include <atomic>
 #include <memory>
@@ -68,6 +67,12 @@ struct RpcServerOptions;
 
 }
 
+namespace rpc {
+
+class SecureContext;
+
+}
+
 namespace master {
 
 class Master : public tserver::DbServerBase {
@@ -98,9 +103,21 @@ class Master : public tserver::DbServerBase {
 
   CatalogManagerIf* catalog_manager() const;
 
-  enterprise::CatalogManager* catalog_manager_impl() const { return catalog_manager_.get(); }
+  CatalogManager* catalog_manager_impl() const { return catalog_manager_.get(); }
+
+  XClusterManagerIf* xcluster_manager() const;
+
+  XClusterManager* xcluster_manager_impl() const;
 
   FlushManager* flush_manager() const { return flush_manager_.get(); }
+
+  TestAsyncRpcManager* test_async_rpc_manager() const { return test_async_rpc_manager_.get(); }
+
+  YsqlBackendsManager* ysql_backends_manager() const {
+    return ysql_backends_manager_.get();
+  }
+
+  AutoFlagsManager* auto_flags_manager() { return auto_flags_manager_.get(); }
 
   PermissionsManager& permissions_manager();
 
@@ -155,7 +172,7 @@ class Master : public tserver::DbServerBase {
   SysCatalogTable& sys_catalog() const;
 
   uint32_t GetAutoFlagConfigVersion() const override;
-  AutoFlagsConfigPB GetAutoFlagConfig() const;
+  AutoFlagsConfigPB GetAutoFlagsConfig() const;
 
   yb::client::AsyncClientInitialiser& async_client_initializer() {
     return *async_client_init_;
@@ -181,10 +198,22 @@ class Master : public tserver::DbServerBase {
       return &master_metrics_;
   }
 
+  Status get_ysql_db_oid_to_cat_version_info_map(
+      const tserver::GetTserverCatalogVersionInfoRequestPB& req,
+      tserver::GetTserverCatalogVersionInfoResponsePB *resp) const;
+
+  Status ReloadKeysAndCertificates() override;
+
+  std::string GetCertificateDetails() override;
+
  protected:
-  virtual Status RegisterServices();
+  Status RegisterServices();
 
   void DisplayGeneralInfoIcons(std::stringstream* output) override;
+
+  Status SetupMessengerBuilder(rpc::MessengerBuilder* builder) override;
+
+  Result<std::unordered_set<std::string>> GetAvailableAutoFlagsForServer() const override;
 
  private:
   friend class MasterTest;
@@ -210,13 +239,16 @@ class Master : public tserver::DbServerBase {
 
   void SetupAsyncClientInit(client::AsyncClientInitialiser* async_client_init) override;
 
-  MasterState state_;
+  std::atomic<MasterState> state_;
 
   std::unique_ptr<AutoFlagsManager> auto_flags_manager_;
   std::unique_ptr<TSManager> ts_manager_;
-  std::unique_ptr<enterprise::CatalogManager> catalog_manager_;
+  std::unique_ptr<CatalogManager> catalog_manager_;
+  std::unique_ptr<YsqlBackendsManager> ysql_backends_manager_;
   std::unique_ptr<MasterPathHandlers> path_handlers_;
   std::unique_ptr<FlushManager> flush_manager_;
+
+  std::unique_ptr<TestAsyncRpcManager> test_async_rpc_manager_;
 
   // For initializing the catalog manager.
   std::unique_ptr<ThreadPool> init_pool_;
@@ -243,9 +275,10 @@ class Master : public tserver::DbServerBase {
   std::mutex master_metrics_mutex_;
   std::map<std::string, scoped_refptr<Histogram>> master_metrics_ GUARDED_BY(master_metrics_mutex_);
 
+  std::unique_ptr<rpc::SecureContext> secure_context_;
+
   DISALLOW_COPY_AND_ASSIGN(Master);
 };
 
 } // namespace master
 } // namespace yb
-#endif // YB_MASTER_MASTER_H

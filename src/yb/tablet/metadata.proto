@@ -37,7 +37,7 @@ option java_package = "org.yb.tablet";
 
 import "yb/common/common.proto";
 import "yb/common/common_types.proto";
-import "yb/docdb/docdb.proto";
+import "yb/dockv/dockv.proto";
 import "yb/tablet/tablet_types.proto";
 import "yb/util/opid.proto";
 
@@ -50,6 +50,7 @@ message TableInfoPB {
   // Table id, name, and type.
   optional bytes table_id = 1;
   optional string namespace_name = 10;
+  optional string namespace_id = 13;
   optional string table_name = 2;
   optional TableType table_type = 3 [ default = DEFAULT_TABLE_TYPE ];
 
@@ -69,7 +70,7 @@ message TableInfoPB {
   // Deleted column IDs with timestamps so that memory can be cleaned up.
   repeated DeletedColumnPB deleted_cols = 9;
 
-  repeated docdb.SchemaPackingPB old_schema_packings = 11;
+  repeated dockv.SchemaPackingPB old_schema_packings = 11;
 
   // CDC WAL retention time in secs of the table.
   optional uint32 wal_retention_secs = 12;
@@ -100,12 +101,25 @@ message KvStoreInfoPB {
   optional bytes lower_bound_key = 6;
   optional bytes upper_bound_key = 7;
 
-  // Whether KV-store regular DB has been fully compacted since creation.
-  // We don't split not yet fully compacted post-split tablets as of 2020-06-23, since
+  // Whether KV-store regular DB parent files have been compacted since creation.
+  // We don't split post-split tablets which have uncompacted parent data as of 2020-06-23, since
   // detecting effective middle key and tablet size for such tablets is not yet implemented.
-  optional bool has_been_fully_compacted = 8;
+  optional bool parent_data_compacted = 8;
 
   repeated bytes snapshot_schedules = 9;
+
+  // Uint64 representation of a HybridTime indicating the last time the tablet was fully
+  // compacted. Defaults to 0 (i.e. HybridTime::kMin).
+  optional uint64 last_full_compaction_time = 10;
+
+  // Indicates the upper bound for a set of files, which should be included into post-split
+  // compaction. In this case post-split compaction picks a subset of files whose file number is
+  // limited by post_split_compaction_file_number_upper_bound exclusively and whose total size is
+  // less or equal than FLAGS_post_split_compaction_input_size_threshold_bytes. The parameter is
+  // not taken into account if FLAGS_post_split_compaction_input_size_threshold_bytes is set to 0.
+  // The value of post_split_compaction_file_number_upper_bound is set to 0 when post-split
+  // compaction is done for all the files in the selected subset.
+  optional uint64 post_split_compaction_file_number_upper_bound = 11;
 }
 
 // The super-block keeps track of the Raft group.
@@ -182,8 +196,8 @@ message RaftGroupReplicaSuperBlockPB {
   // retaining any log files unnecessarily.
   optional int64 cdc_min_replicated_index = 26 [ default = 9223372036854775807 ];
 
-  // Is this tablet currently a consumer tablet for 2dc replication.
-  optional bool is_under_twodc_replication = 27;
+  // Is this tablet currently a consumer tablet for xcluster replication.
+  optional bool is_under_xcluster_replication = 27;
 
   // Reject client queries (read and write) to this tablet like it does not present.
   optional bool hidden = 28;
@@ -201,6 +215,19 @@ message RaftGroupReplicaSuperBlockPB {
   // Minimum checkpoint op id for cdcsdk streams. This value is used to retain intents
   // with op id larger than this one.
   optional OpIdPB cdc_sdk_min_checkpoint_op_id = 33;
+
+  optional fixed64 cdc_sdk_safe_time = 34;
+
+  // List of stateful services hosted by this tablet.
+  repeated StatefulServiceKind hosted_stateful_services = 35;
+
+  // Is this tablet currently a being replicated with cdc.
+  optional bool is_under_cdc_sdk_replication = 36;
+
+  // OpId of the last change metadata operation performed on this tablet that has been flushed to
+  // disk. This value is used to determine if a particular raft op should be replayed
+  // during local tablet bootstrap of the tablet.
+  optional OpIdPB last_flushed_change_metadata_op_id = 37;
 }
 
 message FilePB {

@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import PropTypes from 'prop-types';
 import { isNonEmptyString } from '../../../utils/ObjectUtils';
 
@@ -27,7 +27,9 @@ export default class DescriptionList extends Component {
       if (Array.isArray(item.data)) {
         const arrData = item.data.map(function (data, dataIdx) {
           return (
+            // eslint-disable-next-line react/no-array-index-key
             <span key={dataIdx}>
+              {/* eslint-disable-next-line react/no-array-index-key */}
               <dd key={dataIdx}>{data.name}</dd>
             </span>
           );
@@ -35,6 +37,7 @@ export default class DescriptionList extends Component {
         itemData = <dl className="dl-nested">{arrData}</dl>;
       }
       return (
+        // eslint-disable-next-line react/no-array-index-key
         <span key={idx}>
           {isNonEmptyString(item.name) && <dt className={item.nameClass}>{item.name}:</dt>}
           <dd className={item.dataClass}>{itemData}</dd>

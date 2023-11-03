@@ -32,12 +32,16 @@ public class MetricSettings {
 
   @ApiModelProperty(
       value =
-          "Controls if we split nodes into own lines OR aggregate across nodes"
-              + " and how we select nodes in case of split query")
-  NodeSplitMode nodeSplitMode = NodeSplitMode.NONE;
+          "Controls if we split nodes, tables, etc. into own lines OR aggregate "
+              + " and how we select lines in case of split query")
+  SplitMode splitMode = SplitMode.NONE;
 
-  @ApiModelProperty(value = "Defines how many node lines we return in case we split nodes")
-  int nodeSplitCount;
+  @ApiModelProperty(value = "Defines set of labels, which we use for a split query")
+  SplitType splitType = SplitType.NONE;
+
+  @ApiModelProperty(
+      value = "Defines how many node lines we return in case we split by nodes/tables/etc.")
+  int splitCount;
 
   @ApiModelProperty(
       value = "Defines if we return 'mean' line with node lines in case we split nodes")
@@ -59,8 +63,9 @@ public class MetricSettings {
         .setMetric(metricName)
         .setNodeAggregation(nodeAggregation)
         .setTimeAggregation(timeAggregation)
-        .setNodeSplitMode(nodeSplitMode)
-        .setNodeSplitCount(nodeSplitCount)
+        .setSplitType(splitType)
+        .setSplitMode(splitMode)
+        .setSplitCount(splitCount)
         .setReturnAggregatedValue(returnAggregatedValue);
   }
 }

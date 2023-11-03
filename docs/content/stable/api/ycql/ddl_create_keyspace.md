@@ -28,7 +28,7 @@ Use the `CREATE KEYSPACE` statement to create a `keyspace` that functions as a g
 
 ### Grammar
 
-```
+```ebnf
 create_keyspace ::= CREATE { KEYSPACE | SCHEMA } [ IF NOT EXISTS ] keyspace_name
                        [ WITH REPLICATION '=' '{' keyspace_property '}']
                        [ AND DURABLE_WRITES '=' { true | false } ]
@@ -56,7 +56,7 @@ ycqlsh> CREATE KEYSPACE example;
 ycqlsh> DESCRIBE KEYSPACES;
 ```
 
-```
+```output
 example  system_schema  system_auth  system
 ```
 
@@ -72,7 +72,7 @@ CREATE KEYSPACE example WITH REPLICATION = {'class': 'SimpleStrategy', 'replicat
 ycqlsh> CREATE SCHEMA example;
 ```
 
-```
+```output
 SQL error: Keyspace Already Exists
 CREATE SCHEMA example;
 ^^^^^^

@@ -52,11 +52,10 @@
 #include "yb/util/logging.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/fault_injection.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/atomic.h"
 
-#include "yb/rocksdb/db/auto_roll_logger.h"
 #include "yb/rocksdb/db/builder.h"
 #include "yb/rocksdb/db/compaction_job.h"
 #include "yb/rocksdb/db/compaction_picker.h"
@@ -88,12 +87,14 @@
 #include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
+#include "yb/rocksdb/listener.h"
 #include "yb/rocksdb/sst_file_writer.h"
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/status.h"
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/wal_filter.h"
 #include "yb/rocksdb/table/block_based_table_factory.h"
+#include "yb/rocksdb/table/index_iterator.h"
 #include "yb/rocksdb/table/merger.h"
 #include "yb/rocksdb/table/scoped_arena_iterator.h"
 #include "yb/rocksdb/table/table_builder.h"
@@ -111,53 +112,54 @@
 #include "yb/rocksdb/util/options_parser.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
 #include "yb/rocksdb/util/stop_watch.h"
-#include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/task_metrics.h"
-#include "yb/rocksdb/util/xfunc.h"
 #include "yb/rocksdb/db/db_iterator_wrapper.h"
 
+#include "yb/util/compare_util.h"
+#include "yb/util/enums.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stats/iostats_context_imp.h"
-#include "yb/util/compare_util.h"
+#include "yb/util/sync_point.h"
+
+using std::unique_ptr;
+using std::shared_ptr;
 
 using namespace std::literals;
 
-DEFINE_bool(dump_dbimpl_info, false, "Dump RocksDB info during constructor.");
-DEFINE_bool(flush_rocksdb_on_shutdown, true,
+DEFINE_UNKNOWN_bool(dump_dbimpl_info, false, "Dump RocksDB info during constructor.");
+DEFINE_UNKNOWN_bool(flush_rocksdb_on_shutdown, true,
             "Safely flush RocksDB when instance is destroyed, disabled for crash tests.");
-DEFINE_double(fault_crash_after_rocksdb_flush, 0.0,
+DEFINE_UNKNOWN_double(fault_crash_after_rocksdb_flush, 0.0,
               "Fraction of time to crash right after a successful RocksDB flush in tests.");
 
-DEFINE_bool(use_priority_thread_pool_for_flushes, false,
-            "When true priority thread pool will be used for flushes, otherwise "
-            "Env thread pool with Priority::HIGH will be used.");
-TAG_FLAG(use_priority_thread_pool_for_flushes, runtime);
+DEFINE_RUNTIME_bool(use_priority_thread_pool_for_flushes, false,
+    "When true priority thread pool will be used for flushes, otherwise "
+    "Env thread pool with Priority::HIGH will be used.");
 
-DEFINE_bool(use_priority_thread_pool_for_compactions, true,
-            "When true priority thread pool will be used for compactions, otherwise "
-            "Env thread pool with Priority::LOW will be used.");
-TAG_FLAG(use_priority_thread_pool_for_compactions, runtime);
+DEFINE_RUNTIME_bool(use_priority_thread_pool_for_compactions, true,
+    "When true priority thread pool will be used for compactions, otherwise "
+    "Env thread pool with Priority::LOW will be used.");
 
-DEFINE_int32(compaction_priority_start_bound, 10,
+DEFINE_UNKNOWN_int32(compaction_priority_start_bound, 10,
              "Compaction task of DB that has number of SST files less than specified will have "
              "priority 0.");
 
-DEFINE_int32(compaction_priority_step_size, 5,
+DEFINE_UNKNOWN_int32(compaction_priority_step_size, 5,
              "Compaction task of DB that has number of SST files greater that "
              "compaction_priority_start_bound will get 1 extra priority per every "
              "compaction_priority_step_size files.");
 
-DEFINE_int32(small_compaction_extra_priority, 1,
+DEFINE_UNKNOWN_int32(small_compaction_extra_priority, 1,
              "Small compaction will get small_compaction_extra_priority extra priority.");
 
-DEFINE_int32(automatic_compaction_extra_priority, 50,
+DEFINE_UNKNOWN_int32(automatic_compaction_extra_priority, 50,
              "Assigns automatic compactions extra priority when automatic tablet splits are "
              "enabled. This deprioritizes manual compactions including those induced by the "
              "tserver (e.g. post-split compactions). Suggested value between 0 and 50.");
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 
-DEFINE_bool(rocksdb_use_logging_iterator, false,
+DEFINE_UNKNOWN_bool(rocksdb_use_logging_iterator, false,
             "Wrap newly created RocksDB iterators in a logging wrapper");
 
 DEFINE_test_flag(int32, max_write_waiters, std::numeric_limits<int32_t>::max(),
@@ -247,6 +249,38 @@ constexpr int kShuttingDownPriority = 200;
 constexpr int kFlushPriority = 100;
 constexpr int kNoJobId = -1;
 
+// Returns a pointer to the set of task state metrics based on the current task state.
+RocksDBTaskStateMetrics* GetRocksDBTaskStateMetrics(
+    RocksDBPriorityThreadPoolMetrics* metrics,
+    const yb::PriorityThreadPoolTaskState state) {
+  switch (state) {
+    case yb::PriorityThreadPoolTaskState::kNotStarted:
+      FALLTHROUGH_INTENDED;
+    case yb::PriorityThreadPoolTaskState::kPaused:
+      return &metrics->nonactive;
+    case yb::PriorityThreadPoolTaskState::kRunning:
+      return &metrics->active;
+  }
+  FATAL_INVALID_ENUM_VALUE(yb::PriorityThreadPoolTaskState, state);
+}
+
+// TODO remove in GI-15048.
+// Returns a pointer to the set of paused or queued task state metrics if the current state
+// is either Paused or Queued. Otherwise, returns a nullptr.
+RocksDBTaskStateMetrics* GetRocksDBPausedOrQueuedMetrics(
+    RocksDBPriorityThreadPoolMetrics* metrics,
+    const yb::PriorityThreadPoolTaskState state) {
+  switch (state) {
+    case yb::PriorityThreadPoolTaskState::kNotStarted:
+      return &metrics->queued;
+    case yb::PriorityThreadPoolTaskState::kPaused:
+      return &metrics->paused;
+    case yb::PriorityThreadPoolTaskState::kRunning:
+      return nullptr;
+  }
+  FATAL_INVALID_ENUM_VALUE(yb::PriorityThreadPoolTaskState, state);
+}
+
 class DBImpl::CompactionTask : public ThreadPoolTask {
  public:
   CompactionTask(
@@ -257,7 +291,7 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
         priority_(CalcSizePriority()),
         metrics_(db_impl->priority_thread_pool_metrics_) {
     db_impl->mutex_.AssertHeld();
-    SetFileAndByteCount();
+    SetTaskInfo();
   }
 
   CompactionTask(
@@ -269,7 +303,7 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
         priority_(CalcSizePriority()),
         metrics_(db_impl->priority_thread_pool_metrics_) {
     db_impl->mutex_.AssertHeld();
-    SetFileAndByteCount();
+    SetTaskInfo();
   }
 
   bool ShouldRemoveWithKey(void* key) override {
@@ -321,40 +355,18 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
           ((job_id_value == kNoJobId) ? "None" : std::to_string(job_id_value)));
   }
 
-  void UpdateStatsStateChangedTo(yb::PriorityThreadPoolTaskState state) const override {
-    if (!metrics_) {
-      return;
-    }
-    switch (state) {
-      case yb::PriorityThreadPoolTaskState::kNotStarted:
-        metrics_->queued.CompactionTaskAdded(compaction_info_);
-        return;
-      case yb::PriorityThreadPoolTaskState::kPaused:
-        metrics_->paused.CompactionTaskAdded(compaction_info_);
-        return;
-      case yb::PriorityThreadPoolTaskState::kRunning:
-        metrics_->active.CompactionTaskAdded(compaction_info_);
-        return;
-    }
-    FATAL_INVALID_ENUM_VALUE(yb::PriorityThreadPoolTaskState, state);
+  void UpdateStatsStateChangedTo(yb::PriorityThreadPoolTaskState state) override {
+    UpdateStats(state,
+        [this](RocksDBTaskMetrics* task_metrics) {
+          task_metrics->CompactionTaskAdded(compaction_info_);
+        });
   }
 
-  void UpdateStatsStateChangedFrom(yb::PriorityThreadPoolTaskState state) const override {
-    if (!metrics_) {
-      return;
-    }
-    switch (state) {
-      case yb::PriorityThreadPoolTaskState::kNotStarted:
-        metrics_->queued.CompactionTaskRemoved(compaction_info_);
-        return;
-      case yb::PriorityThreadPoolTaskState::kPaused:
-        metrics_->paused.CompactionTaskRemoved(compaction_info_);
-        return;
-      case yb::PriorityThreadPoolTaskState::kRunning:
-        metrics_->active.CompactionTaskRemoved(compaction_info_);
-        return;
-    }
-    FATAL_INVALID_ENUM_VALUE(yb::PriorityThreadPoolTaskState, state);
+  void UpdateStatsStateChangedFrom(yb::PriorityThreadPoolTaskState state) override {
+    UpdateStats(state,
+        [this](RocksDBTaskMetrics* task_metrics) {
+          task_metrics->CompactionTaskRemoved(compaction_info_);
+        });
   }
 
   void SetJobID(JobContext* job_context) {
@@ -391,6 +403,34 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
   }
 
  private:
+  // TODO GI-15048 This function probably won't be necessary once we remove the deprecated
+  // metrics. For now, it is needed because up to four metrics are updated with each state
+  // change rather than just one.
+  void UpdateStats(yb::PriorityThreadPoolTaskState state,
+      std::function<void(RocksDBTaskMetrics* metrics)> update_metrics) {
+    if (!metrics_) {
+      return;
+    }
+
+    auto* state_metrics = GetRocksDBTaskStateMetrics(metrics_.get(), state);
+    // TODO GI-15048 Temporarily maintains total compactions.
+    update_metrics(&state_metrics->total);
+    auto* task_metrics =
+        state_metrics->TaskMetricsByCompactionReason(compaction_info_.compaction_reason);
+    update_metrics(task_metrics);
+
+    // TODO GI-15048 Paused and queued metrics is deprecated.
+    // Temporarily maintained to not break the graph in YB-Anywhere.
+    auto* paused_or_queued_metrics = GetRocksDBPausedOrQueuedMetrics(metrics_.get(), state);
+    if (paused_or_queued_metrics) {
+      // TODO GI-15048 Temporarily maintains total compactions.
+      update_metrics(&paused_or_queued_metrics->total);
+      task_metrics = paused_or_queued_metrics->TaskMetricsByCompactionReason(
+          compaction_info_.compaction_reason);
+      update_metrics(task_metrics);
+    }
+  }
+
   int CalcSizePriority() const {
     db_impl_->mutex_.AssertHeld();
 
@@ -422,13 +462,16 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
     return result;
   }
 
-  void SetFileAndByteCount() {
+  void SetTaskInfo() {
     size_t levels = compaction_->num_input_levels();
     uint64_t file_count = 0;
     for (size_t i = 0; i < levels; i++) {
         file_count += compaction_->num_input_files(i);
     }
-    compaction_info_ = CompactionInfo{file_count, compaction_->CalculateTotalInputSize()};
+    compaction_info_ = CompactionInfo{
+        file_count,
+        compaction_->CalculateTotalInputSize(),
+        compaction_->compaction_reason()};
   }
 
   DBImpl::ManualCompaction* const manual_compaction_;
@@ -692,9 +735,7 @@ DBImpl::DBImpl(const DBOptions& options, const std::string& dbname)
       next_job_id_(1),
       has_unpersisted_data_(false),
       env_options_(db_options_),
-#ifndef ROCKSDB_LITE
       wal_manager_(db_options_, env_options_),
-#endif  // ROCKSDB_LITE
       event_logger_(db_options_.info_log.get()),
       bg_work_paused_(0),
       bg_compaction_paused_(0),
@@ -1204,13 +1245,11 @@ void DBImpl::PurgeObsoleteFiles(const JobContext& state) {
           db_options_.wal_dir : dbname_) + "/" + to_delete;
     }
 
-#ifndef ROCKSDB_LITE
     if (type == kLogFile && (db_options_.WAL_ttl_seconds > 0 ||
                               db_options_.WAL_size_limit_MB > 0)) {
       wal_manager_.ArchiveWALFile(fname, number);
       continue;
     }
-#endif  // !ROCKSDB_LITE
     Status file_deletion_status;
     if (type == kTableFile) {
       file_deletion_status = DeleteSSTFile(&db_options_, fname, path_id);
@@ -1280,9 +1319,7 @@ void DBImpl::PurgeObsoleteFiles(const JobContext& state) {
       }
     }
   }
-#ifndef ROCKSDB_LITE
   wal_manager_.PurgeObsoleteWALFiles();
-#endif  // ROCKSDB_LITE
   LogFlush(db_options_.info_log);
 }
 
@@ -1606,7 +1643,6 @@ Status DBImpl::RecoverLogFiles(const std::vector<uint64_t>& log_numbers,
       }
       WriteBatchInternal::SetContents(&batch, record);
 
-#ifndef ROCKSDB_LITE
       if (db_options_.wal_filter != nullptr) {
         WriteBatch new_batch;
         bool batch_changed = false;
@@ -1678,7 +1714,6 @@ Status DBImpl::RecoverLogFiles(const std::vector<uint64_t>& log_numbers,
           batch = new_batch;
         }
       }
-#endif  // ROCKSDB_LITE
 
       // If column family was not found, it might mean that the WAL write
       // batch references to the column family that was dropped after the
@@ -1852,7 +1887,7 @@ Status DBImpl::WriteLevel0TableForRecovery(int job_id, ColumnFamilyData* cfd,
             snapshots_.GetAll(&earliest_write_conflict_snapshot);
 
         s = BuildTable(dbname_,
-                       env_,
+                       db_options_,
                        *cfd->ioptions(),
                        env_options_,
                        cfd->table_cache(),
@@ -1867,7 +1902,6 @@ Status DBImpl::WriteLevel0TableForRecovery(int job_id, ColumnFamilyData* cfd,
                        cfd->ioptions()->compression_opts,
                        paranoid_file_checks,
                        cfd->internal_stats(),
-                       db_options_.boundary_extractor.get(),
                        yb::IOPriority::kHigh,
                        &info.table_properties);
         LogFlush(db_options_.info_log);
@@ -1966,11 +2000,9 @@ Result<FileNumbersHolder> DBImpl::FlushMemTableToOutputFile(
   }
   RETURN_NOT_OK(file_number_holder);
   MAYBE_FAULT(FLAGS_fault_crash_after_rocksdb_flush);
-#ifndef ROCKSDB_LITE
   // may temporarily unlock and lock the mutex.
   NotifyOnFlushCompleted(cfd, &file_meta, mutable_cf_options,
                          job_context->job_id, flush_job.GetTableProperties());
-#endif  // ROCKSDB_LITE
   auto sfm =
       static_cast<SstFileManagerImpl*>(db_options_.sst_file_manager.get());
   if (sfm) {
@@ -1983,8 +2015,7 @@ Result<FileNumbersHolder> DBImpl::FlushMemTableToOutputFile(
     }
     if (sfm->IsMaxAllowedSpaceReached() && bg_error_.ok()) {
       bg_error_ = STATUS(IOError, "Max allowed space was reached");
-      TEST_SYNC_POINT(
-          "DBImpl::FlushMemTableToOutputFile:MaxAllowedSpaceReached");
+      DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::FlushMemTableToOutputFile:MaxAllowedSpaceReached");
     }
   }
   return file_number_holder;
@@ -2056,7 +2087,6 @@ void DBImpl::NotifyOnFlushCompleted(ColumnFamilyData* cfd,
                                     FileMetaData* file_meta,
                                     const MutableCFOptions& mutable_cf_options,
                                     int job_id, TableProperties prop) {
-#ifndef ROCKSDB_LITE
   mutex_.AssertHeld();
   if (IsShuttingDown()) {
     return;
@@ -2094,7 +2124,6 @@ void DBImpl::NotifyOnFlushCompleted(ColumnFamilyData* cfd,
   mutex_.Lock();
   // no need to signal bg_cv_ as it will be signaled at the end of the
   // flush process.
-#endif  // ROCKSDB_LITE
 }
 
 Status DBImpl::CompactRange(const CompactRangeOptions& options,
@@ -2135,7 +2164,9 @@ Status DBImpl::CompactRange(const CompactRangeOptions& options,
     // Always compact all files together.
     s = RunManualCompaction(cfd, ColumnFamilyData::kCompactAllLevels,
                             cfd->NumberLevels() - 1, options.target_path_id,
-                            begin, end, exclusive);
+                            begin, end, exclusive, options.compaction_reason,
+                            options.file_number_upper_bound,
+                            options.input_size_limit_per_job);
     final_output_level = cfd->NumberLevels() - 1;
   } else {
     for (int level = 0; level <= max_level_with_files; level++) {
@@ -2170,7 +2201,9 @@ Status DBImpl::CompactRange(const CompactRangeOptions& options,
         }
       }
       s = RunManualCompaction(cfd, level, output_level, options.target_path_id,
-                              begin, end, exclusive);
+                              begin, end, exclusive, options.compaction_reason,
+                              options.file_number_upper_bound,
+                              options.input_size_limit_per_job);
       if (!s.ok()) {
         break;
       }
@@ -2179,8 +2212,8 @@ Status DBImpl::CompactRange(const CompactRangeOptions& options,
       } else if (output_level > final_output_level) {
         final_output_level = output_level;
       }
-      TEST_SYNC_POINT("DBImpl::RunManualCompaction()::1");
-      TEST_SYNC_POINT("DBImpl::RunManualCompaction()::2");
+      DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::RunManualCompaction()::1");
+      DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::RunManualCompaction()::2");
     }
   }
   if (!s.ok()) {
@@ -2224,10 +2257,6 @@ Status DBImpl::CompactFiles(
     ColumnFamilyHandle* column_family,
     const std::vector<std::string>& input_file_names,
     const int output_level, const int output_path_id) {
-#ifdef ROCKSDB_LITE
-    // not supported in lite version
-  return STATUS(NotSupported, "Not supported in ROCKSDB LITE");
-#else
   if (column_family == nullptr) {
     return STATUS(InvalidArgument, "ColumnFamilyHandle must be non-null.");
   }
@@ -2277,10 +2306,8 @@ Status DBImpl::CompactFiles(
   }
 
   return s;
-#endif  // ROCKSDB_LITE
 }
 
-#ifndef ROCKSDB_LITE
 Status DBImpl::CompactFilesImpl(
     const CompactionOptions& compact_options, ColumnFamilyData* cfd,
     Version* version, const std::vector<std::string>& input_file_names,
@@ -2392,8 +2419,8 @@ Status DBImpl::CompactFilesImpl(
       listener->OnCompactionStarted();
     }
     auto file_numbers_holder = compaction_job.Run();
-    TEST_SYNC_POINT("CompactFilesImpl:2");
-    TEST_SYNC_POINT("CompactFilesImpl:3");
+    DEBUG_ONLY_TEST_SYNC_POINT("CompactFilesImpl:2");
+    DEBUG_ONLY_TEST_SYNC_POINT("CompactFilesImpl:3");
     mutex_.Lock();
 
     status = compaction_job.Install(*c->mutable_cf_options());
@@ -2427,7 +2454,6 @@ Status DBImpl::CompactFilesImpl(
 
   return status;
 }
-#endif  // ROCKSDB_LITE
 
 Status DBImpl::PauseBackgroundWork() {
   InstrumentedMutexLock guard_lock(&mutex_);
@@ -2460,7 +2486,6 @@ void DBImpl::NotifyOnCompactionCompleted(
     ColumnFamilyData* cfd, Compaction *c, const Status &st,
     const CompactionJobStats& compaction_job_stats,
     const int job_id) {
-#ifndef ROCKSDB_LITE
   mutex_.AssertHeld();
   if (IsShuttingDown()) {
     return;
@@ -2508,7 +2533,33 @@ void DBImpl::NotifyOnCompactionCompleted(
   mutex_.Lock();
   // no need to signal bg_cv_ as it will be signaled at the end of the
   // flush process.
-#endif  // ROCKSDB_LITE
+}
+
+void DBImpl::NotifyOnNoOpCompactionCompleted(
+    const ColumnFamilyData& cfd, const CompactionReason compaction_reason) {
+  mutex_.AssertHeld();
+  if (IsShuttingDown()) {
+    return;
+  }
+
+  // If current version has no files it is considered as fully compacted.
+  const bool is_full_compaction = cfd.current()->storage_info()->num_non_empty_levels() == 0;
+
+  // Release lock while notifying events.
+  mutex_.Unlock();
+  if (db_options_.listeners.size() > 0) {
+    CompactionJobInfo info;
+    info.cf_name = cfd.GetName();
+    info.status = Status::OK();
+    info.thread_id = env_->GetThreadID();
+    info.compaction_reason = compaction_reason;
+    info.is_full_compaction = is_full_compaction;
+    info.is_no_op_compaction = true;
+    for (auto listener : db_options_.listeners) {
+      listener->OnCompactionCompleted(this, info);
+    }
+  }
+  mutex_.Lock();
 }
 
 void DBImpl::SetDisableFlushOnShutdown(bool disable_flush_on_shutdown) {
@@ -2526,9 +2577,6 @@ Status DBImpl::SetOptions(
     ColumnFamilyHandle* column_family,
     const std::unordered_map<std::string, std::string>& options_map,
     bool dump_options) {
-#ifdef ROCKSDB_LITE
-  return STATUS(NotSupported, "Not supported in ROCKSDB LITE");
-#else
   auto* cfd = down_cast<ColumnFamilyHandleImpl*>(column_family)->cfd();
   if (options_map.empty()) {
     RLOG(InfoLogLevel::WARN_LEVEL,
@@ -2583,7 +2631,6 @@ Status DBImpl::SetOptions(
   }
   LogFlush(db_options_.info_log);
   return s;
-#endif  // ROCKSDB_LITE
 }
 
 // return the same level if it cannot be moved
@@ -2763,8 +2810,8 @@ Status DBImpl::SyncWAL() {
     status = directories_.GetWalDir()->Fsync();
   }
 
-  TEST_SYNC_POINT("DBImpl::SyncWAL:BeforeMarkLogsSynced:1");
-  TEST_SYNC_POINT("DBImpl::SyncWAL:BeforeMarkLogsSynced:2");
+  DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::SyncWAL:BeforeMarkLogsSynced:1");
+  DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::SyncWAL:BeforeMarkLogsSynced:2");
 
   {
     InstrumentedMutexLock l(&mutex_);
@@ -2802,6 +2849,10 @@ SequenceNumber DBImpl::GetLatestSequenceNumber() const {
   return versions_->LastSequence();
 }
 
+uint64_t DBImpl::GetNextFileNumber() const {
+  return versions_->current_next_file_number();
+}
+
 void DBImpl::SubmitCompactionOrFlushTask(std::unique_ptr<ThreadPoolTask> task) {
   mutex_.AssertHeld();
   if (task->Type() == BgTaskType::kCompaction) {
@@ -2814,11 +2865,11 @@ void DBImpl::SubmitCompactionOrFlushTask(std::unique_ptr<ThreadPoolTask> task) {
   }
 }
 
-Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level,
-                                   int output_level, uint32_t output_path_id,
-                                   const Slice* begin, const Slice* end,
-                                   bool exclusive, bool disallow_trivial_move) {
-  TEST_SYNC_POINT("DBImpl::RunManualCompaction");
+Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level, int output_level,
+    uint32_t output_path_id, const Slice* begin, const Slice* end, bool exclusive,
+    CompactionReason compaction_reason, uint64_t file_number_upper_bound,
+    uint64_t input_size_limit_per_job, bool disallow_trivial_move) {
+  DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::RunManualCompaction");
 
   DCHECK(input_level == ColumnFamilyData::kCompactAllLevels ||
          input_level >= 0);
@@ -2828,6 +2879,7 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level,
 
   bool scheduled = false;
   bool manual_conflict = false;
+
   ManualCompaction manual_compaction;
   manual_compaction.cfd = cfd;
   manual_compaction.input_level = input_level;
@@ -2838,6 +2890,8 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level,
   manual_compaction.incomplete = false;
   manual_compaction.exclusive = exclusive;
   manual_compaction.disallow_trivial_move = disallow_trivial_move;
+  manual_compaction.has_input_size_limit = input_size_limit_per_job > 0;
+
   // For universal compaction, we enforce every manual compaction to compact
   // all files.
   if (begin == nullptr ||
@@ -2876,10 +2930,10 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level,
   // others will wait on a condition variable until it completes.
 
   AddManualCompaction(&manual_compaction);
-  TEST_SYNC_POINT_CALLBACK("DBImpl::RunManualCompaction:NotScheduled", &mutex_);
+  DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("DBImpl::RunManualCompaction:NotScheduled", &mutex_);
   if (exclusive) {
     while (unscheduled_compactions_ + bg_compaction_scheduled_ + compaction_tasks_.size() > 0) {
-      TEST_SYNC_POINT("DBImpl::RunManualCompaction()::Conflict");
+      DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::RunManualCompaction()::Conflict");
       MaybeScheduleFlushOrCompaction();
       while (bg_compaction_scheduled_ + compaction_tasks_.size() > 0) {
         RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
@@ -2895,8 +2949,8 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level,
   }
 
   RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
-      "[%s] Manual compaction starting",
-      cfd->GetName().c_str());
+      "[%s] Manual compaction starting, reason: %s",
+      cfd->GetName().c_str(), ToString(compaction_reason).c_str());
 
   size_t compaction_task_serial_no = 0;
   // We don't check bg_error_ here, because if we get the error in compaction,
@@ -2912,15 +2966,19 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level,
                   *manual_compaction.cfd->GetLatestMutableCFOptions(),
                   manual_compaction.input_level, manual_compaction.output_level,
                   manual_compaction.output_path_id, manual_compaction.begin, manual_compaction.end,
-                  &manual_compaction.manual_end, &manual_conflict)) ==
-             nullptr) &&
+                  compaction_reason, file_number_upper_bound, input_size_limit_per_job,
+                  &manual_compaction.manual_end, &manual_conflict)) == nullptr) &&
          manual_conflict)) {
       DCHECK(!exclusive || !manual_conflict)
           << "exclusive manual compactions should not see a conflict during CompactRange";
       if (manual_conflict) {
-        TEST_SYNC_POINT("DBImpl::RunManualCompaction()::Conflict");
+        DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::RunManualCompaction()::Conflict");
       }
-      // Running either this or some other manual compaction
+
+      // TODO(pscompact): what if the system has only one compaction ever and it is finished
+      // right after submitting corresponding compaction task before reaching this point? Seems
+      // we will hang forever here.
+      // Running either this or some other manual compaction.
       bg_cv_.Wait();
       if (IsShuttingDown()) {
         if (!scheduled) {
@@ -2937,7 +2995,7 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level,
         }
       }
 
-      if (scheduled && manual_compaction.incomplete == true) {
+      if (scheduled && manual_compaction.incomplete) {
         DCHECK(!manual_compaction.in_progress);
         scheduled = false;
         manual_compaction.incomplete = false;
@@ -2945,9 +3003,21 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level,
     } else if (!scheduled) {
       if (manual_compaction.compaction == nullptr) {
         manual_compaction.done = true;
+
+        // Let's still notify if there's nothing to compact, however a callback should not be
+        // triggered if compactions are disabled (yes, we still can hit this point, but compaction
+        // picker is initialized as an instance of NullCompactionPicker class).
+        if (cfd->options()->compaction_style != rocksdb::CompactionStyle::kCompactionStyleNone) {
+          RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
+              "[%s] Manual compaction completed with no op, reason: %s",
+              cfd->GetName().c_str(), ToString(compaction_reason).c_str());
+          NotifyOnNoOpCompactionCompleted(*cfd, compaction_reason);
+        }
+
         bg_cv_.SignalAll();
         continue;
       }
+
       manual_compaction.incomplete = false;
       if (db_options_.priority_thread_pool_for_compactions_and_flushes &&
           FLAGS_use_priority_thread_pool_for_compactions) {
@@ -3063,7 +3133,7 @@ Status DBImpl::WaitForFlushMemTable(ColumnFamilyData* cfd) {
 
 Status DBImpl::EnableAutoCompaction(
     const std::vector<ColumnFamilyHandle*>& column_family_handles) {
-  TEST_SYNC_POINT("DBImpl::EnableAutoCompaction");
+  DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::EnableAutoCompaction");
   Status s;
   for (auto cf_ptr : column_family_handles) {
     Status status =
@@ -3236,21 +3306,21 @@ void DBImpl::SchedulePendingCompaction(ColumnFamilyData* cfd) {
       ++unscheduled_compactions_;
     }
   }
-  TEST_SYNC_POINT("DBImpl::SchedulePendingCompaction:Done");
+  DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::SchedulePendingCompaction:Done");
 }
 
 void DBImpl::BGWorkFlush(void* db) {
   IOSTATS_SET_THREAD_POOL_ID(Env::Priority::HIGH);
-  TEST_SYNC_POINT("DBImpl::BGWorkFlush");
+  DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::BGWorkFlush");
   reinterpret_cast<DBImpl*>(db)->BackgroundCallFlush(nullptr /* cfd */);
-  TEST_SYNC_POINT("DBImpl::BGWorkFlush:done");
+  DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::BGWorkFlush:done");
 }
 
 void DBImpl::BGWorkCompaction(void* arg) {
   CompactionArg ca = *(reinterpret_cast<CompactionArg*>(arg));
   delete reinterpret_cast<CompactionArg*>(arg);
   IOSTATS_SET_THREAD_POOL_ID(Env::Priority::LOW);
-  TEST_SYNC_POINT("DBImpl::BGWorkCompaction");
+  DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::BGWorkCompaction");
   reinterpret_cast<DBImpl*>(ca.db)->BackgroundCallCompaction(ca.m);
 }
 
@@ -3260,7 +3330,7 @@ void DBImpl::UnscheduleCallback(void* arg) {
   if (ca.m != nullptr) {
     ca.m->compaction.reset();
   }
-  TEST_SYNC_POINT("DBImpl::UnscheduleCallback");
+  DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::UnscheduleCallback");
 }
 
 Result<FileNumbersHolder> DBImpl::BackgroundFlush(
@@ -3441,7 +3511,7 @@ void DBImpl::BackgroundCallCompaction(ManualCompaction* m, std::unique_ptr<Compa
     }
 
     s = yb::ResultToStatus(file_numbers_holder);
-    TEST_SYNC_POINT("BackgroundCallCompaction:1");
+    DEBUG_ONLY_TEST_SYNC_POINT("BackgroundCallCompaction:1");
     WaitAfterBackgroundError(s, "compaction", &log_buffer);
   }
 
@@ -3517,16 +3587,16 @@ Result<FileNumbersHolder> DBImpl::BackgroundCompaction(
   }
 
   if (is_manual) {
-    // another thread cannot pick up the same work
+    // Another thread cannot pick up the same work.
     manual_compaction->in_progress = true;
   }
 
-  unique_ptr<Compaction> c;
+  std::unique_ptr<Compaction> c;
   // InternalKey manual_end_storage;
   // InternalKey* manual_end = &manual_end_storage;
   if (is_manual) {
     ManualCompaction* m = manual_compaction;
-    assert(m->in_progress);
+    DCHECK(m->in_progress);
     c = std::move(m->compaction);
     if (!c) {
       m->done = true;
@@ -3571,8 +3641,7 @@ Result<FileNumbersHolder> DBImpl::BackgroundCompaction(
     ColumnFamilyData* cfd = c->column_family_data();
 
     // We unreference here because the following code will take a Ref() on
-    // this cfd if it is going to use it (Compaction class holds a
-    // reference).
+    // this cfd if it is going to use it (Compaction class holds a reference).
     // This will all happen under a mutex so we don't have to be afraid of
     // somebody else deleting it.
     if (cfd->Unref()) {
@@ -3584,9 +3653,9 @@ Result<FileNumbersHolder> DBImpl::BackgroundCompaction(
 
     if (is_large_compaction) {
       num_running_large_compactions_++;
-      TEST_SYNC_POINT("DBImpl:BackgroundCompaction:LargeCompaction");
+      DEBUG_ONLY_TEST_SYNC_POINT("DBImpl:BackgroundCompaction:LargeCompaction");
     } else {
-      TEST_SYNC_POINT("DBImpl:BackgroundCompaction:SmallCompaction");
+      DEBUG_ONLY_TEST_SYNC_POINT("DBImpl:BackgroundCompaction:SmallCompaction");
     }
 
     if (c != nullptr) {
@@ -3638,7 +3707,7 @@ Result<FileNumbersHolder> DBImpl::BackgroundCompaction(
                 c->num_input_files(0));
     *made_progress = true;
   } else if (!trivial_move_disallowed && c->IsTrivialMove()) {
-    TEST_SYNC_POINT("DBImpl::BackgroundCompaction:TrivialMove");
+    DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::BackgroundCompaction:TrivialMove");
 
     compaction_job_stats.num_input_files = c->num_input_files(0);
 
@@ -3689,8 +3758,7 @@ Result<FileNumbersHolder> DBImpl::BackgroundCompaction(
     *made_progress = true;
   } else {
     int output_level  __attribute__((unused)) = c->output_level();
-    TEST_SYNC_POINT_CALLBACK("DBImpl::BackgroundCompaction:NonTrivial",
-                             &output_level);
+    DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("DBImpl::BackgroundCompaction:NonTrivial", &output_level);
 
     SequenceNumber earliest_write_conflict_snapshot;
     std::vector<SequenceNumber> snapshot_seqs =
@@ -3710,7 +3778,7 @@ Result<FileNumbersHolder> DBImpl::BackgroundCompaction(
 
     mutex_.Unlock();
     result = compaction_job.Run();
-    TEST_SYNC_POINT("DBImpl::BackgroundCompaction:NonTrivial:AfterRun");
+    DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::BackgroundCompaction:NonTrivial:AfterRun");
     mutex_.Lock();
 
     status = compaction_job.Install(*c->mutable_cf_options());
@@ -3754,6 +3822,7 @@ Result<FileNumbersHolder> DBImpl::BackgroundCompaction(
       m->status = status;
       m->done = true;
     }
+
     // For universal compaction:
     //   Because universal compaction always happens at level 0, so one
     //   compaction will pick up all overlapped files. No files will be
@@ -3768,21 +3837,27 @@ Result<FileNumbersHolder> DBImpl::BackgroundCompaction(
     // that we compacted the whole range. manual_end should always point
     // to nullptr in case of universal compaction
     if (m->manual_end == nullptr) {
-      m->done = true;
+      // If manual compaction has input size limit per job, we would like to check whether we have
+      // more files to compact.
+      m->done = !m->has_input_size_limit;
     }
     if (!m->done) {
-      // We only compacted part of the requested range.  Update *m
-      // to the range that is left to be compacted.
-      // Universal and FIFO compactions should always compact the whole range
-      assert(m->cfd->ioptions()->compaction_style !=
-                 kCompactionStyleUniversal ||
-             m->cfd->ioptions()->num_levels > 1);
-      assert(m->cfd->ioptions()->compaction_style != kCompactionStyleFIFO);
-      m->tmp_storage = *m->manual_end;
-      m->begin = &m->tmp_storage;
+      if (m->manual_end != nullptr) {
+        LOG_IF(FATAL, m->has_input_size_limit)
+            << "Compaction input size limit is only supported for universal compaction.";
+        // We only compacted part of the requested range.  Update *m
+        // to the range that is left to be compacted.
+        // Universal and FIFO compactions should always compact the whole range
+        assert(m->cfd->ioptions()->compaction_style !=
+                  kCompactionStyleUniversal ||
+              m->cfd->ioptions()->num_levels > 1);
+        assert(m->cfd->ioptions()->compaction_style != kCompactionStyleFIFO);
+        m->tmp_storage = *m->manual_end;
+        m->begin = &m->tmp_storage;
+      }
       m->incomplete = true;
     }
-    m->in_progress = false; // not being processed anymore
+    m->in_progress = false; // Not being processed anymore.
   }
 
   if (is_large_compaction) {
@@ -3936,6 +4011,20 @@ InternalIterator* DBImpl::NewInternalIterator(const ReadOptions& read_options,
   internal_iter->RegisterCleanup(CleanupIteratorState, cleanup, nullptr);
 
   return internal_iter;
+}
+
+template <bool kSkipLastEntry>
+std::unique_ptr<InternalIterator> DBImpl::NewInternalIndexIterator(
+    const ReadOptions& read_options, ColumnFamilyData* cfd, SuperVersion* super_version) {
+  std::unique_ptr<InternalIterator> merge_iter;
+  MergeIteratorInHeapBuilder<IteratorWrapperBase<kSkipLastEntry>> merge_iter_builder(
+      cfd->internal_comparator().get());
+  super_version->current->AddIndexIterators(read_options, env_options_, &merge_iter_builder);
+  merge_iter = merge_iter_builder.Finish();
+
+  IterState* cleanup = new IterState(this, &mutex_, super_version);
+  merge_iter->RegisterCleanup(CleanupIteratorState, cleanup, nullptr);
+  return merge_iter;
 }
 
 ColumnFamilyHandle* DBImpl::DefaultColumnFamily() const {
@@ -4179,7 +4268,6 @@ std::vector<Status> DBImpl::MultiGet(
   return stat_list;
 }
 
-#ifndef ROCKSDB_LITE
 Status DBImpl::AddFile(ColumnFamilyHandle* column_family,
                        const std::string& file_path, bool move_file) {
   Status status;
@@ -4362,7 +4450,7 @@ Status DBImpl::AddFile(ColumnFamilyHandle* column_family,
       }
     }
 
-    TEST_SYNC_POINT("DBImpl::AddFile:FileCopied");
+    DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::AddFile:FileCopied");
     if (!status.ok()) {
       return status;
     }
@@ -4445,20 +4533,19 @@ Status DBImpl::AddFile(ColumnFamilyHandle* column_family,
   }
   return status;
 }
-#endif  // ROCKSDB_LITE
 
 std::function<void()> DBImpl::GetFilesChangedListener() const {
-  std::lock_guard<std::mutex> lock(files_changed_listener_mutex_);
+  std::lock_guard lock(files_changed_listener_mutex_);
   return files_changed_listener_;
 }
 
 bool DBImpl::HasFilesChangedListener() const {
-  std::lock_guard<std::mutex> lock(files_changed_listener_mutex_);
+  std::lock_guard lock(files_changed_listener_mutex_);
   return files_changed_listener_ != nullptr;
 }
 
 void DBImpl::ListenFilesChanged(std::function<void()> files_changed_listener) {
-  std::lock_guard<std::mutex> lock(files_changed_listener_mutex_);
+  std::lock_guard lock(files_changed_listener_mutex_);
   files_changed_listener_ = std::move(files_changed_listener);
 }
 
@@ -4661,15 +4748,7 @@ Iterator* DBImpl::NewIterator(const ReadOptions& read_options,
   auto cfh = down_cast<ColumnFamilyHandleImpl*>(column_family);
   auto cfd = cfh->cfd();
 
-  XFUNC_TEST("", "managed_new", managed_new1, xf_manage_new,
-             reinterpret_cast<DBImpl*>(this),
-             const_cast<ReadOptions*>(&read_options), is_snapshot_supported_);
   if (read_options.managed) {
-#ifdef ROCKSDB_LITE
-    // not supported in lite version
-    return NewErrorIterator(STATUS(InvalidArgument,
-        "Managed Iterators not supported in RocksDBLite."));
-#else
     if ((read_options.tailing) || (read_options.snapshot != nullptr) ||
         (is_snapshot_supported_)) {
       return new ManagedIterator(this, read_options, cfd);
@@ -4677,12 +4756,7 @@ Iterator* DBImpl::NewIterator(const ReadOptions& read_options,
     // Managed iter not supported
     return NewErrorIterator(STATUS(InvalidArgument,
         "Managed Iterators not supported without snapshots."));
-#endif
   } else if (read_options.tailing) {
-#ifdef ROCKSDB_LITE
-    // not supported in lite version
-    return nullptr;
-#else
     SuperVersion* sv = cfd->GetReferencedSuperVersion(&mutex_);
     auto iter = new ForwardIterator(this, read_options, cfd, sv);
     return NewDBIterator(
@@ -4690,8 +4764,8 @@ Iterator* DBImpl::NewIterator(const ReadOptions& read_options,
         kMaxSequenceNumber,
         sv->mutable_cf_options.max_sequential_skip_in_iterations,
         sv->version_number, read_options.iterate_upper_bound,
-        read_options.prefix_same_as_start, read_options.pin_data);
-#endif
+        read_options.prefix_same_as_start, read_options.pin_data,
+        read_options.statistics);
   } else {
     SequenceNumber latest_snapshot = versions_->LastSequence();
     SuperVersion* sv = cfd->GetReferencedSuperVersion(&mutex_);
@@ -4748,7 +4822,7 @@ Iterator* DBImpl::NewIterator(const ReadOptions& read_options,
         env_, *cfd->ioptions(), cfd->user_comparator(), snapshot,
         sv->mutable_cf_options.max_sequential_skip_in_iterations,
         sv->version_number, read_options.iterate_upper_bound,
-        read_options.prefix_same_as_start, read_options.pin_data);
+        read_options.prefix_same_as_start, read_options.pin_data, read_options.statistics);
 
     InternalIterator* internal_iter =
         NewInternalIterator(read_options, cfd, sv, db_iter->GetArena());
@@ -4763,6 +4837,41 @@ Iterator* DBImpl::NewIterator(const ReadOptions& read_options,
   return nullptr;
 }
 
+std::unique_ptr<Iterator> DBImpl::NewIndexIterator(
+    const ReadOptions& read_options, SkipLastEntry skip_last_index_entry,
+    ColumnFamilyHandle* column_family) {
+  if (read_options.read_tier != kReadAllTier) {
+    return std::unique_ptr<Iterator>(NewErrorIterator(
+        STATUS(NotSupported, "Only ReadTier::kReadAllTier is supported for NewIndexIterator()")));
+  }
+  if (read_options.managed) {
+    return std::unique_ptr<Iterator>(NewErrorIterator(
+        STATUS(NotSupported, "Managed iterator is not supported for NewIndexIterator()")));
+  }
+  if (read_options.tailing) {
+    return std::unique_ptr<Iterator>(NewErrorIterator(
+        STATUS(NotSupported, "Tailing iterator is not supported for NewIndexIterator()")));
+  }
+
+  auto cfh = down_cast<ColumnFamilyHandleImpl*>(column_family);
+  auto cfd = cfh->cfd();
+
+  const auto latest_snapshot_number = versions_->LastSequence();
+  SuperVersion* sv = cfd->GetReferencedSuperVersion(&mutex_);
+
+  const auto snapshot_number =
+      read_options.snapshot != nullptr
+          ? reinterpret_cast<const SnapshotImpl*>(read_options.snapshot)->number_
+          : latest_snapshot_number;
+
+  auto internal_index_iter =
+      skip_last_index_entry
+          ? NewInternalIndexIterator</* kSkipLastEntry = */ true>(read_options, cfd, sv)
+          : NewInternalIndexIterator</* kSkipLastEntry = */ false>(read_options, cfd, sv);
+
+  return std::make_unique<IndexIterator>(std::move(internal_index_iter), latest_snapshot_number);
+}
+
 Status DBImpl::NewIterators(
     const ReadOptions& read_options,
     const std::vector<ColumnFamilyHandle*>& column_families,
@@ -4773,14 +4882,7 @@ Status DBImpl::NewIterators(
   }
   iterators->clear();
   iterators->reserve(column_families.size());
-  XFUNC_TEST("", "managed_new", managed_new1, xf_manage_new,
-             reinterpret_cast<DBImpl*>(this),
-             const_cast<ReadOptions*>(&read_options), is_snapshot_supported_);
   if (read_options.managed) {
-#ifdef ROCKSDB_LITE
-    return STATUS(InvalidArgument,
-        "Managed interator not supported in RocksDB lite");
-#else
     if ((!read_options.tailing) && (read_options.snapshot == nullptr) &&
         (!is_snapshot_supported_)) {
       return STATUS(InvalidArgument,
@@ -4791,12 +4893,7 @@ Status DBImpl::NewIterators(
       auto iter = new ManagedIterator(this, read_options, cfd);
       iterators->push_back(iter);
     }
-#endif
   } else if (read_options.tailing) {
-#ifdef ROCKSDB_LITE
-    return STATUS(InvalidArgument,
-        "Tailing interator not supported in RocksDB lite");
-#else
     for (auto cfh : column_families) {
       auto cfd = down_cast<ColumnFamilyHandleImpl*>(cfh)->cfd();
       SuperVersion* sv = cfd->GetReferencedSuperVersion(&mutex_);
@@ -4807,7 +4904,6 @@ Status DBImpl::NewIterators(
           sv->mutable_cf_options.max_sequential_skip_in_iterations,
           sv->version_number, nullptr, false, read_options.pin_data));
     }
-#endif
   } else {
     SequenceNumber latest_snapshot = versions_->LastSequence();
 
@@ -4837,11 +4933,9 @@ Status DBImpl::NewIterators(
 
 const Snapshot* DBImpl::GetSnapshot() { return GetSnapshotImpl(false); }
 
-#ifndef ROCKSDB_LITE
 const Snapshot* DBImpl::GetSnapshotForWriteConflictBoundary() {
   return GetSnapshotImpl(true);
 }
-#endif  // ROCKSDB_LITE
 
 const Snapshot* DBImpl::GetSnapshotImpl(bool is_write_conflict_boundary) {
   int64_t unix_time = 0;
@@ -4898,13 +4992,11 @@ Status DBImpl::Write(const WriteOptions& write_options, WriteBatch* my_batch) {
   return WriteImpl(write_options, my_batch, nullptr);
 }
 
-#ifndef ROCKSDB_LITE
 Status DBImpl::WriteWithCallback(const WriteOptions& write_options,
                                  WriteBatch* my_batch,
                                  WriteCallback* callback) {
   return WriteImpl(write_options, my_batch, callback);
 }
-#endif  // ROCKSDB_LITE
 
 Status DBImpl::WriteImpl(const WriteOptions& write_options,
                          WriteBatch* my_batch, WriteCallback* callback) {
@@ -4917,16 +5009,6 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
   }
 
   Status status;
-
-  bool xfunc_attempted_write = false;
-  XFUNC_TEST("transaction", "transaction_xftest_write_impl",
-             xf_transaction_write1, xf_transaction_write, write_options,
-             db_options_, my_batch, callback, this, &status,
-             &xfunc_attempted_write);
-  if (xfunc_attempted_write) {
-    // Test already did the write
-    return status;
-  }
 
   PERF_TIMER_GUARD(write_pre_and_post_process_time);
   WriteThread::Writer w;
@@ -5360,7 +5442,7 @@ Status DBImpl::DelayWrite(uint64_t num_bytes) {
     if (delay > 0) {
       mutex_.Unlock();
       delayed = true;
-      TEST_SYNC_POINT("DBImpl::DelayWrite:Sleep");
+      DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::DelayWrite:Sleep");
       // hopefully we don't have to sleep more than 2 billion microseconds
       env_->SleepForMicroseconds(static_cast<int>(delay));
       mutex_.Lock();
@@ -5371,7 +5453,7 @@ Status DBImpl::DelayWrite(uint64_t num_bytes) {
     // in this case.
     while (bg_error_.ok() && write_controller_.IsStopped() && !IsShuttingDown()) {
       delayed = true;
-      TEST_SYNC_POINT("DBImpl::DelayWrite:Wait");
+      DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::DelayWrite:Wait");
       bg_cv_.Wait();
     }
   }
@@ -5495,7 +5577,6 @@ Status DBImpl::SwitchMemtable(ColumnFamilyData* cfd, WriteContext* context) {
   return s;
 }
 
-#ifndef ROCKSDB_LITE
 Status DBImpl::GetPropertiesOfAllTables(ColumnFamilyHandle* column_family,
                                         TablePropertiesCollection* props) {
   auto cfh = down_cast<ColumnFamilyHandleImpl*>(column_family);
@@ -5560,7 +5641,6 @@ void DBImpl::GetColumnFamiliesOptionsUnlocked(
       BuildColumnFamilyOptions(*cfd->options(), *cfd->GetLatestMutableCFOptions()));
   }
 }
-#endif  // ROCKSDB_LITE
 
 const std::string& DBImpl::GetName() const {
   return dbname_;
@@ -5808,7 +5888,7 @@ yb::Result<TableReader*> DBImpl::TEST_GetLargestSstTableReader() {
 }
 
 void DBImpl::TEST_SwitchMemtable() {
-  std::lock_guard<InstrumentedMutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   WriteContext context;
   CHECK_OK(SwitchMemtable(default_cf_handle_->cfd(), &context));
 }
@@ -5836,7 +5916,6 @@ void DBImpl::GetApproximateSizes(ColumnFamilyHandle* column_family,
   ReturnAndCleanupSuperVersion(cfd, sv);
 }
 
-#ifndef ROCKSDB_LITE
 Status DBImpl::GetUpdatesSince(
     SequenceNumber seq, unique_ptr<TransactionLogIterator>* iter,
     const TransactionLogIterator::ReadOptions& read_options) {
@@ -5930,7 +6009,7 @@ Status DBImpl::DeleteFile(std::string name) {
       return STATUS(InvalidArgument, "File in level 0, but not oldest");
     }
 
-    TEST_SYNC_POINT("DBImpl::DeleteFile:DecidedToDelete");
+    DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::DeleteFile:DecidedToDelete");
 
     metadata->being_deleted = true;
 
@@ -6078,12 +6157,11 @@ UserFrontierPtr DBImpl::GetMutableMemTableFrontier(UpdateUserValueType type) {
       if (mem) {
         if (!cfd->IsDropped() && cfd->imm()->NumNotFlushed() == 0 && !mem->IsEmpty()) {
           auto frontier = mem->GetFrontier(type);
+          // Non-empty MemTable could have no (or stale) frontier if we've written to the MemTable,
+          // but not yet updated frontiers (this happens in scope of WriteThread::Writer, but not
+          // under lock).
           if (frontier) {
             UserFrontier::Update(frontier.get(), type, &accumulated);
-          } else {
-            YB_LOG_EVERY_N_SECS(DFATAL, 5)
-                << db_options_.log_prefix << "[" << cfd->GetName()
-                << "] " << ToString(type) << " frontier is not initialized for non-empty MemTable";
           }
         }
       } else {
@@ -6137,7 +6215,6 @@ void DBImpl::GetColumnFamilyMetaData(
   ReturnAndCleanupSuperVersion(cfd, sv);
 }
 
-#endif  // ROCKSDB_LITE
 
 Status DBImpl::CheckConsistency() {
   mutex_.AssertHeld();
@@ -6146,7 +6223,7 @@ Status DBImpl::CheckConsistency() {
 
   std::string corruption_messages;
   for (const auto& md : metadata) {
-    std::string base_file_path = md.FullName();
+    std::string base_file_path = md.BaseFilePath();
     uint64_t base_fsize = 0;
     Status s = env_->GetFileSize(base_file_path, &base_fsize);
     if (!s.ok() &&
@@ -6429,7 +6506,7 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
       }
     }
   }
-  TEST_SYNC_POINT("DBImpl::Open:Opened");
+  DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::Open:Opened");
   Status persist_options_status;
   if (s.ok()) {
     // Persist RocksDB Options before scheduling the compaction.
@@ -6609,7 +6686,6 @@ Status DestroyDB(const std::string& dbname, const Options& options) {
 }
 
 Status DBImpl::WriteOptionsFile() {
-#ifndef ROCKSDB_LITE
   mutex_.AssertHeld();
 
   std::vector<std::string> cf_names;
@@ -6632,12 +6708,8 @@ Status DBImpl::WriteOptionsFile() {
   }
   mutex_.Lock();
   return s;
-#else
-  return Status::OK();
-#endif  // !ROCKSDB_LITE
 }
 
-#ifndef ROCKSDB_LITE
 namespace {
 void DeleteOptionsFilesHelper(const std::map<uint64_t, std::string>& filenames,
                               const size_t num_files_to_keep,
@@ -6654,10 +6726,8 @@ void DeleteOptionsFilesHelper(const std::map<uint64_t, std::string>& filenames,
   }
 }
 }  // namespace
-#endif  // !ROCKSDB_LITE
 
 Status DBImpl::DeleteObsoleteOptionsFiles() {
-#ifndef ROCKSDB_LITE
   std::vector<std::string> filenames;
   // use ordered map to store keep the filenames sorted from the newest
   // to the oldest.
@@ -6682,13 +6752,9 @@ Status DBImpl::DeleteObsoleteOptionsFiles() {
   DeleteOptionsFilesHelper(options_filenames, kNumOptionsFilesKept,
                            db_options_.info_log, GetEnv());
   return Status::OK();
-#else
-  return Status::OK();
-#endif  // !ROCKSDB_LITE
 }
 
 Status DBImpl::RenameTempFileToOptionsFile(const std::string& file_name) {
-#ifndef ROCKSDB_LITE
   Status s;
   std::string options_file_name =
       OptionsFileName(GetName(), versions_->NewFileNumber());
@@ -6697,12 +6763,8 @@ Status DBImpl::RenameTempFileToOptionsFile(const std::string& file_name) {
 
   WARN_NOT_OK(DeleteObsoleteOptionsFiles(), "Failed to cleanup obsolete options file");
   return s;
-#else
-  return Status::OK();
-#endif  // !ROCKSDB_LITE
 }
 
-#ifndef ROCKSDB_LITE
 SequenceNumber DBImpl::GetEarliestMemTableSequenceNumber(SuperVersion* sv,
                                                          bool include_history) {
   // Find the earliest sequence number that we know we can rely on reading
@@ -6716,9 +6778,7 @@ SequenceNumber DBImpl::GetEarliestMemTableSequenceNumber(SuperVersion* sv,
 
   return earliest_seq;
 }
-#endif  // ROCKSDB_LITE
 
-#ifndef ROCKSDB_LITE
 Status DBImpl::GetLatestSequenceForKey(SuperVersion* sv, const Slice& key,
                                        bool cache_only, SequenceNumber* seq,
                                        bool* found_record_for_key) {
@@ -6806,7 +6866,6 @@ Status DBImpl::GetLatestSequenceForKey(SuperVersion* sv, const Slice& key,
 
   return Status::OK();
 }
-#endif  // ROCKSDB_LITE
 
 const std::string& DBImpl::LogPrefix() const {
   static const std::string kEmptyString;

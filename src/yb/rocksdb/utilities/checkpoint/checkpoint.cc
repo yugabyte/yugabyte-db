@@ -21,7 +21,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef ROCKSDB_LITE
 
 #include "yb/rocksdb/utilities/checkpoint.h"
 
@@ -42,6 +41,8 @@
 #include "yb/util/random_util.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
+
+using std::unique_ptr;
 
 namespace rocksdb {
 namespace checkpoint {
@@ -216,5 +217,3 @@ Status CreateCheckpoint(DB* db, const std::string& checkpoint_dir) {
 
 }  // namespace checkpoint
 }  // namespace rocksdb
-
-#endif  // ROCKSDB_LITE

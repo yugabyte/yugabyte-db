@@ -41,17 +41,17 @@
 #include "yb/util/status_log.h"
 
 #include "yb/yql/cql/ql/test/ql-test-base.h"
+#include "yb/util/flags.h"
 
 using std::cout;
 using std::cin;
 using std::endl;
-using std::make_shared;
 using std::string;
 using yb::client::YBClientBuilder;
 
-DEFINE_bool(ybcmd_run, false, "Not to run this test unless instructed");
+DEFINE_NON_RUNTIME_bool(ybcmd_run, false, "Not to run this test unless instructed");
 
-DEFINE_string(ybcmd_master_addresses, "",
+DEFINE_NON_RUNTIME_string(ybcmd_master_addresses, "",
               "Comma-separated addresses of the existing masters ybcmd to connect to. If unset, "
               "ybcmd will start a simulated cluster instead.");
 
@@ -135,7 +135,7 @@ TEST_F(TestQLCmd, TestQLCmd) {
               break;
             case ExecutedResult::Type::ROWS: {
               RowsResult* rows_result = static_cast<RowsResult*>(result.get());
-              std::unique_ptr<QLRowBlock> row_block(rows_result->GetRowBlock());
+              auto row_block = rows_result->GetRowBlock();
               cout << row_block->ToString();
               // Extract the paging state from the result (if present) and populate it in the
               // statement parameters to retrieve the next set of rows until the end is reached

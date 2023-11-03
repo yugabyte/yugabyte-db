@@ -18,24 +18,24 @@ Use the `COPY` statement to transfer data between tables and files. `COPY TO` co
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fas fa-file-alt" aria-hidden="true"></i>
+    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fas fa-project-diagram" aria-hidden="true"></i>
+    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+      <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
   </li>
 </ul>
 
 <div class="tab-content">
-  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
   {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/copy_from,copy_to,copy_option.grammar.md" %}}
   </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
   {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/copy_from,copy_to,copy_option.diagram.md" %}}
   </div>
 </div>
@@ -60,7 +60,7 @@ Specify the path of the file to be copied. An input file name can be an absolute
 
 To work with files that reside on the client, nominate `stdin` as the argument for `FROM` or `stdout` as the argument for `TO`.
 
-Alternatively, you can use the `\copy` metacommand in [`ysqlsh`](../../../../../admin/ysqlsh#copy-table-column-list-query-from-to-filename-program-command-stdin-stdout-pstdin-pstdout-with-option).
+Alternatively, you can use the `\copy` meta-command in [`ysqlsh`](../../../../../admin/ysqlsh#copy-table-column-list-query-from-to-filename-program-command-stdin-stdout-pstdin-pstdout-with-option).
 
 ### *stdin* and *stdout*
 
@@ -92,6 +92,43 @@ For example, the _"psycopg2"_ PostgreSQL driver for Python (and of course this w
 
 {{< /note >}}
 
+## Copy options
+
+### ROWS_PER_TRANSACTION
+
+The ROWS_PER_TRANSACTION option defines the transaction size to be used by the `COPY` command.
+
+Default: 20000 for YugabyteDB versions 2.14 and 2.15 or later, and 1000 for prior versions.
+
+For example, if the total tuples to be copied are 5000 and `ROWS_PER_TRANSACTION` is set to 1000, then the database will create 5 transactions and each transaction will insert 1000 rows. If there is an error during the execution of the copy command, then some tuples can be persisted based on the already completed transaction. This implies that if an error occurs after inserting the 3500th row, then the first 3000 rows will be persisted in the database.
+
+- 1 to 1000 →  Transaction_1
+- 1001 to 2000 → Transaction_2
+- 2001 to 3000 → Transaction_3
+- 3001 to 3500 → Error
+
+First 3000 rows will be persisted to the table and `tuples_processed` will show 3000.
+
+### REPLACE
+
+The `REPLACE` option replaces the existing row in the table if the new row's primary/unique key conflicts with that of the existing row.
+
+Note that `REPLACE` doesn't work on tables that have more than 1 unique constraints (see [#13687](https://github.com/yugabyte/yugabyte-db/issues/13687) for explanation)
+
+Default: by default conflict error is reported.
+
+### DISABLE_FK_CHECK
+
+The `DISABLE_FK_CHECK` option skips the foreign key check when copying new rows to the table.
+
+Default: by default, foreign key check is always performed when `DISABLE_FK_CHECK` option is not provided.
+
+### SKIP n
+
+The `SKIP n` option skips the first `n` rows of the file. `n` must be a non-negative integer ().
+
+Default: 0, no rows are skipped.
+
 ## Examples
 
 The examples below assume a table like this:
@@ -120,7 +157,6 @@ yugabyte=# COPY users TO '/home/yuga/Desktop/users.txt.sql' DELIMITER ',' CSV HE
 
 In the following example, a `WHERE` clause is used to filter the rows and only the `name` column.
 
-
 ```plpgsql
 yugabyte=# COPY (SELECT name FROM users where name='Dorian Gray') TO '/home/yuga/Desktop/users.txt.sql' DELIMITER
  ',' CSV HEADER;
@@ -134,10 +170,42 @@ In the following example, the data exported in the previous examples are importe
 yugabyte=# COPY users FROM '/home/yuga/Desktop/users.txt.sql' DELIMITER ',' CSV HEADER;
 ```
 
-### Performance tips for large tables
+### Import with skipping rows
 
-The following copy options may help to speed up copying, or allow for faster recovery from a partial state:
+Assume we ran the command one time, and it failed in the middle, as if the server had crashed.
+Since we use `ROWS_PER_TRANSACTION=5000`, we can resume importing at multiples of 5000:
 
-* `DISABLE_FK_CHECK` skips the foreign key check when copying new rows to the table.
-* `REPLACE` replaces the existing row in the table if the new row's primary/unique key conflicts with that of the existing row.
-* `SKIP n` skips the first `n` rows of the file. `n` must be a nonnegative integer.
+```plpgsql
+yugabyte=# COPY users FROM '/home/yuga/Desktop/users.txt.sql' WITH (FORMAT CSV,
+HEADER, DELIMITER ',', ROWS_PER_TRANSACTION 5000, SKIP 50000);
+```
+
+
+### Import with replacing rows
+
+If duplicate rows exist in the database, we can use `REPLACE` to upsert new rows:
+
+```plpgsql
+yugabyte=# COPY users FROM '/home/yuga/Desktop/users.txt.sql' WITH (FORMAT CSV,
+HEADER, DELIMITER ',', REPLACE);
+```
+
+### Import with disabling foreign key checks
+
+If we're certain that rows referred by foreign keys already exist, we can disable checking for them to make the import faster:
+
+```plpgsql
+yugabyte=# COPY users FROM '/home/yuga/Desktop/users.txt.sql' WITH (FORMAT CSV,
+HEADER, DELIMITER ',', DISABLE_FK_CHECK);
+```
+
+### Using all options
+
+In the following example, we use all of the `COPY` command's options:
+
+```plpgsql
+yugabyte=# COPY users FROM '/home/yuga/Desktop/users.txt.sql' WITH (FORMAT CSV,
+HEADER, DELIMITER ',', ROWS_PER_TRANSACTION 5000, DISABLE_FK_CHECK, REPLACE, SKIP 50);
+```
+
+For COPY operation examples using the `pg_stat_progress_copy` view, refer to [View COPY status with pg_stat_progress_copy](../../../../../explore/query-1-performance/pg-stat-progress-copy/).

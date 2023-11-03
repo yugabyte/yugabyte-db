@@ -1,17 +1,21 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { Marker, FeatureGroup, Polygon } from 'react-leaflet';
 import { divIcon } from 'leaflet';
 import MapMarker from './MapMarker';
-import { getPointsOnCircle, isDefinedNotNull } from '../../utils/ObjectUtils';
+import {
+  getPointsOnCircle,
+  isDefinedNotNull,
+  isNonEmptyObject,
+  isNonEmptyArray
+} from '../../utils/ObjectUtils';
 import './stylesheets/universeRegionMarkerLayer.scss';
 import {
   getPrimaryCluster,
   getReadOnlyCluster,
   getPlacementRegions
 } from '../../utils/UniverseUtils';
-import { isNonEmptyObject, isNonEmptyArray } from '../../utils/ObjectUtils';
 
 export default class UniverseRegionMarkerLayer extends Component {
   getMarkers = (clusters, type) => {

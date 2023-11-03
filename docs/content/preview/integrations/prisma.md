@@ -3,9 +3,9 @@ title: Prisma
 linkTitle: Prisma
 description: Prisma
 menu:
-  preview:
+  preview_integrations:
     identifier: prisma-integration
-    parent: integrations
+    parent: schema-migration
     weight: 571
 type: docs
 ---
@@ -14,10 +14,7 @@ type: docs
 
 This tutorial uses [Prisma 1](https://v1.prisma.io/docs/1.34/) which is in maintenance mode. If you are new to Prisma, check out the [Prisma ORM](https://www.prisma.io/).
 
-The following YugabyteDB documentation uses the current Prisma ORM:
-
-- [Hello World Example](../../drivers-orms/nodejs/prisma/)
-- [CRUD Example](../../develop/build-apps/nodejs/ysql-prisma/)
+The [Hello World Example](../../drivers-orms/nodejs/prisma/) uses the current Prisma ORM.
 
 {{< /warning >}}
 
@@ -25,7 +22,7 @@ Explore how you can use Prisma and its GraphQL support to interact with Yugabyte
 
 [Prisma](https://prisma.io) is an [open source](https://github.com/prisma/prisma) suite of database tools that simplify database workflows by easing database access, migrations, and data management. Prisma replaces traditional ORMs and can be used to build GraphQL servers, REST APIs, microservices, and more.
 
-For more information, see [Prisma Basics: Datamodel, Prisma Client & Server](https://www.prisma.io/docs/understand-prisma/prisma-basics-datamodel-client-and-server-fgz4/).
+For more information, see [What is Prisma?](https://www.prisma.io/docs/concepts/overview/what-is-prisma/).
 
 ## Before you begin
 
@@ -52,7 +49,7 @@ To install the Prisma CLI using `npm`, run the following command:
 npm i -g prisma
 ```
 
-For more information, see [Set up Prisma (for a new database)](https://www.prisma.io/docs/get-started/01-setting-up-prisma-new-database-JAVASCRIPT-a002/) in the Prisma documentation.
+For more information, see [Set up Prisma (for a new database)](https://v1.prisma.io/docs/1.34/get-started/01-setting-up-prisma-new-database-JAVASCRIPT-a002/) in the Prisma documentation.
 
 ## 1. Set up and connect Prisma with the `prisma-yb` database
 
@@ -62,7 +59,7 @@ To set up a Prisma project, named `prisma-yb`, run the following command:
 prisma init prisma-yb
 ```
 
-In order to quickly explore using Prisma with YugabyteDB, use the default database and user in the PostgreSQL-compatible YugabyteDB.
+To quickly explore using Prisma with YugabyteDB, use the default database and user in the PostgreSQL-compatible YugabyteDB.
 
 When prompted, enter or select the following values:
 
@@ -129,71 +126,71 @@ The Prisma service is now connected to the `postgres` database and the Prisma UI
 
 ## 5. Create sample data
 
-Use the Prisma client to create the following sample data. Paste the following code examples, using Prisma's `createUser` method, into the left side of a tab, and then click the arrow to process your requests.
+Use the Prisma client to create the following sample data. Paste the following code examples, using the Prisma `createUser` method, into the left side of a tab, and then click the arrow to process your requests.
 
-For details on writing data with the Prisma client, see [Writing Data (JavaScript)](https://www.prisma.io/docs/prisma-client/basic-data-access/writing-data-JAVASCRIPT-rsc6/).
+For details on writing data with the Prisma client, see [Writing Data (JavaScript)](https://v1.prisma.io/docs/prisma-client/basic-data-access/writing-data-JAVASCRIPT-rsc6/).
 
 1. Create a user Jane with three postings:
 
-```graphql
-mutation {
-  createUser(data: {
-    name: "Jane Doe"
-    handle: "jane"
-    posts: {
-      create: [
-        {
-           text: "Jane's First Post"
-           views: 10
-        },
-        {
-           text:"Jane's Second Post"
-	         views: 80
-        },
-        {
-           text:"Jane's Third Post"
-           views: 25
+    ```graphql
+    mutation {
+      createUser(data: {
+        name: "Jane Doe"
+        handle: "jane"
+        posts: {
+          create: [
+            {
+              text: "Jane's First Post"
+              views: 10
+            },
+            {
+              text:"Jane's Second Post"
+              views: 80
+            },
+            {
+              text:"Jane's Third Post"
+              views: 25
+            }
+          ]
         }
-      ]
+      }) {
+        id
+      }
     }
-  }) {
-    id
-  }
-}
-```
+    ```
 
-2. Create a user John with two postings:
+1. Create a user John with two postings:
 
-```graphql
-mutation {
-  createUser(data: {
-    name: "John Doe"
-    handle: "john"
-    posts: {
-      create: [
-        {
-           text: "John's First Post"
-           views: 15
-        },
-        {
-           text:"John's Second Post"
-           views: 20
+    ```graphql
+    mutation {
+      createUser(data: {
+        name: "John Doe"
+        handle: "john"
+        posts: {
+          create: [
+            {
+              text: "John's First Post"
+              views: 15
+            },
+            {
+              text:"John's Second Post"
+              views: 20
+            }
+          ]
         }
-      ]
+      }) {
+        id
+      }
     }
-  }) {
-    id
-  }
-}
-```
+    ```
 
-![Create user John with two postings](/images/develop/graphql/prisma/create-user-john.png)
+    ![Create user John with two postings](/images/develop/graphql/prisma/create-user-john.png)
 
 ## 6. Query the data
 
 Now that you have created some sample data, you can run some queries to get a taste of using Prisma to query YugabyteDB. In the following examples, you use the Prisma client to retrieve data. Paste the following code examples into the left side of a tab, and then click the arrow to process your requests.
 
-For details on using the Prisma client to read data, see [Reading Data (JavaScript)](https://www.prisma.io/docs/prisma-client/basic-data-access/reading-data-JAVASCRIPT-rsc2/).
+For details on using the Prisma client to read data, see [Reading Data (JavaScript)](https://v1.prisma.io/docs/prisma-client/basic-data-access/reading-data-JAVASCRIPT-rsc2/).
 
 ### Get all users
 
@@ -241,7 +238,7 @@ For details on using the Prisma client to read data, see [Reading Data (JavaScri
 
 ![Results - get all posts, ordered alphabetically](/images/develop/graphql/prisma/query-get-all-users-alpha.png)
 
-### Get all posts – ordered by popularity.
+### Get all posts – ordered by popularity
 
 ```graphql
 {
@@ -273,48 +270,48 @@ npm install --save prisma-client-lib
 
 1. Create a file:
 
-```sh
-touch index.js
-```
+    ```sh
+    touch index.js
+    ```
 
-2. Add the following JavaScript code to `index.js`:
+1. Add the following JavaScript code to `index.js`:
 
-```js
-const { prisma } = require('./generated/prisma-client')
+    ```js
+    const { prisma } = require('./generated/prisma-client')
 
-// A `main` function so that you can use async/await
-async function main() {
+    // A `main` function so that you can use async/await
+    async function main() {
 
-  // Create a new user called `Alice`
-  const alice = await prisma.createUser({ name: 'Alice Doe', handle: 'alice' })
-  console.log(`Created new user: ${alice.name} (ID: ${alice.id})`)
+      // Create a new user called `Alice`
+      const alice = await prisma.createUser({ name: 'Alice Doe', handle: 'alice' })
+      console.log(`Created new user: ${alice.name} (ID: ${alice.id})`)
 
-  // Create a new post for 'Alice'
+      // Create a new post for 'Alice'
 
-  const alicesPost = await prisma.createPost({ text: 'Alice\'s First Post', views: 0, author: {connect: {id : alice.id} }})
-  console.log(`Created new post: ${alicesPost.text} (ID: ${alicesPost.id})`)
+      const alicesPost = await prisma.createPost({ text: 'Alice\'s First Post', views: 0, author: {connect: {id : alice.id} }})
+      console.log(`Created new post: ${alicesPost.text} (ID: ${alicesPost.id})`)
 
-  // Get all users ordered by name and print them to the console
-  console.log("All Users:")
-  console.log(await prisma.users({ orderBy: 'name_DESC' }))
+      // Get all users ordered by name and print them to the console
+      console.log("All Users:")
+      console.log(await prisma.users({ orderBy: 'name_DESC' }))
 
-  // Get all of Alice's posts (just one)
-  console.log("Alice's Posts:")
-  console.log(await prisma.user( {handle : 'alice'}).posts());
-}
+      // Get all of Alice's posts (just one)
+      console.log("Alice's Posts:")
+      console.log(await prisma.user( {handle : 'alice'}).posts());
+    }
 
-main().catch(e => console.error(e))
-```
+    main().catch(e => console.error(e))
+    ```
 
-The preceding code creates a new user `Alice` and a new post for that user. Finally, it lists all users, and then all posts by the new user Alice.
+    The preceding code creates a new user `Alice` and a new post for that user. Finally, it lists all users, and then all posts by the new user Alice.
 
-3. Run the file:
+1. Run the file:
 
-```sh
-node index.js
-```
+    ```sh
+    node index.js
+    ```
 
-![Prisma ORM results](/images/develop/graphql/prisma/prisma-orm-results.png)
+    ![Prisma ORM results](/images/develop/graphql/prisma/prisma-orm-results.png)
 
 ## Clean up
 

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_DEBUG_LONG_OPERATION_TRACKER_H
-#define YB_UTIL_DEBUG_LONG_OPERATION_TRACKER_H
+#pragma once
 
 #include <memory>
 
@@ -42,5 +41,3 @@ class LongOperationTracker {
 };
 
 } // namespace yb
-
-#endif // YB_UTIL_DEBUG_LONG_OPERATION_TRACKER_H

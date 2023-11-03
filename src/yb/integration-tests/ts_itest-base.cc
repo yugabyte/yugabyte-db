@@ -33,12 +33,15 @@
 #include "yb/util/opid.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status_log.h"
+#include "yb/util/flags.h"
 
-DEFINE_string(ts_flags, "", "Flags to pass through to tablet servers");
-DEFINE_string(master_flags, "", "Flags to pass through to masters");
+using std::pair;
 
-DEFINE_int32(num_tablet_servers, 3, "Number of tablet servers to start");
-DEFINE_int32(num_replicas, 3, "Number of replicas per tablet server");
+DEFINE_NON_RUNTIME_string(ts_flags, "", "Flags to pass through to tablet servers");
+DEFINE_NON_RUNTIME_string(master_flags, "", "Flags to pass through to masters");
+
+DEFINE_NON_RUNTIME_int32(num_tablet_servers, 3, "Number of tablet servers to start");
+DEFINE_NON_RUNTIME_int32(num_replicas, 3, "Number of replicas per tablet server");
 
 namespace yb {
 namespace tserver {
@@ -150,6 +153,10 @@ void TabletServerIntegrationTestBase::WaitForReplicasAndUpdateLocations() {
       tablet_replicas_ = tablet_replicas;
     }
   } while (replicas_missing && num_retries < kMaxRetries);
+
+  tablet_id_ = (*tablet_replicas_.begin()).first;
+  CHECK_OK(WaitUntilAllTabletReplicasRunning(TServerDetailsVector(tablet_replicas_), tablet_id_,
+                                               10s * kTimeMultiplier));
 }
 
 // Returns the last committed leader of the consensus configuration. Tries to get it from master
@@ -424,7 +431,6 @@ void TabletServerIntegrationTestBase::BuildAndStart(
   ASSERT_NO_FATALS(CreateTable());
   WaitForTSAndReplicas();
   CHECK_GT(tablet_replicas_.size(), 0);
-  tablet_id_ = (*tablet_replicas_.begin()).first;
 }
 
 void TabletServerIntegrationTestBase::AssertAllReplicasAgree(size_t expected_result_count) {

@@ -86,7 +86,7 @@ class OperationTrackerTest : public YBTest {
       return std::make_shared<consensus::ReplicateMsg>();
     }
 
-    Status Prepare() override { return Status::OK(); }
+    Status Prepare(IsLeaderSide is_leader_side) override { return Status::OK(); }
     void Start() override {}
     Status Apply() override {
       return Status::OK();
@@ -234,7 +234,7 @@ static void CheckMemTracker(const shared_ptr<MemTracker>& t) {
 // Test that if too many operations are added, eventually the tracker starts
 // rejecting new ones.
 TEST_F(OperationTrackerTest, TestTooManyOperations) {
-  FLAGS_tablet_operation_memory_limit_mb = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_operation_memory_limit_mb) = 1;
   shared_ptr<MemTracker> t = MemTracker::CreateTracker("test");
   tracker_.StartMemoryTracking(t);
 

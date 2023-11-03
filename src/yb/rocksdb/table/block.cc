@@ -30,7 +30,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/table/block_hash_index.h"
@@ -130,12 +130,13 @@ static inline const char* DecodeRestartEntry(
   FATAL_INVALID_ENUM_VALUE(KeyValueEncodingFormat, key_value_encoding_format);
 }
 
-void BlockIter::Next() {
+const KeyValueEntry& BlockIter::Next() {
   assert(Valid());
   ParseNextKey();
+  return Entry();
 }
 
-void BlockIter::Prev() {
+const KeyValueEntry& BlockIter::Prev() {
   assert(Valid());
 
   // Scan backwards to a restart point before current_
@@ -145,7 +146,7 @@ void BlockIter::Prev() {
       // No more entries
       current_ = restarts_;
       restart_index_ = num_restarts_;
-      return;
+      return Entry();
     }
     restart_index_--;
   }
@@ -154,6 +155,7 @@ void BlockIter::Prev() {
   do {
     // Loop until end of current entry hits the start of original entry
   } while (ParseNextKey() && NextEntryOffset() < original);
+  return Entry();
 }
 
 void BlockIter::Initialize(
@@ -175,11 +177,10 @@ void BlockIter::Initialize(
   prefix_index_ = prefix_index;
 }
 
-
-void BlockIter::Seek(const Slice& target) {
+const KeyValueEntry& BlockIter::Seek(Slice target) {
   PERF_TIMER_GUARD(block_seek_nanos);
   if (data_ == nullptr) {  // Not init yet
-    return;
+    return Entry();
   }
   uint32_t index = 0;
   bool ok = false;
@@ -191,34 +192,33 @@ void BlockIter::Seek(const Slice& target) {
   }
 
   if (!ok) {
-    return;
+    return Entry();
   }
   SeekToRestartPoint(index);
   // Linear search (within restart block) for first key >= target
 
-  while (true) {
-    if (!ParseNextKey() || Compare(key_.GetKey(), target) >= 0) {
-      return;
-    }
-  }
+  while (ParseNextKey() && Compare(key_.GetKey(), target) < 0) {}
+  return Entry();
 }
 
-void BlockIter::SeekToFirst() {
+const KeyValueEntry& BlockIter::SeekToFirst() {
   if (data_ == nullptr) {  // Not init yet
-    return;
+    return Entry();
   }
   SeekToRestartPoint(0);
   ParseNextKey();
+  return Entry();
 }
 
-void BlockIter::SeekToLast() {
+const KeyValueEntry& BlockIter::SeekToLast() {
   if (data_ == nullptr) {  // Not init yet
-    return;
+    return Entry();
   }
   SeekToRestartPoint(num_restarts_ - 1);
   while (ParseNextKey() && NextEntryOffset() < restarts_) {
     // Keep skipping
   }
+  return Entry();
 }
 
 void BlockIter::SeekToRestart(uint32_t index) {
@@ -231,6 +231,40 @@ void BlockIter::SeekToRestart(uint32_t index) {
 
   SeekToRestartPoint(index);
   ParseNextKey();
+}
+
+ScanForwardResult BlockIter::ScanForward(
+    const Comparator* user_key_comparator, const Slice& upperbound,
+    KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) {
+  LOG_IF(DFATAL, !Valid()) << "Iterator should be valid.";
+
+  ScanForwardResult result;
+  do {
+    const auto user_key = ExtractUserKey(key_.GetKey());
+    if (!upperbound.empty() && user_key_comparator->Compare(user_key, upperbound) >= 0) {
+      break;
+    }
+
+    bool skip_key = false;
+    if (key_filter_callback) {
+      auto kf_result =
+          (*key_filter_callback)(/*prefixed_key=*/ Slice(), /*shared_bytes=*/ 0, user_key);
+      skip_key = kf_result.skip_key;
+    }
+
+    if (!skip_key) {
+      if (!(*scan_callback)(user_key, entry_.value)) {
+        result.reached_upperbound = false;
+        return result;
+      }
+    }
+
+    result.number_of_keys_visited++;
+    Next();
+  } while (Valid());
+
+  result.reached_upperbound = true;
+  return result;
 }
 
 namespace {
@@ -250,7 +284,7 @@ void BlockIter::SetError(const Status& error) {
   restart_index_ = num_restarts_;
   status_ = error;
   key_.Clear();
-  value_.clear();
+  entry_.Reset();
 }
 
 void BlockIter::CorruptionError(const std::string& error_details) {
@@ -352,15 +386,19 @@ bool BlockIter::ParseNextKey() {
         // This key share `shared` bytes with prev key, we need to decode it
         key_.TrimAppend(shared, p, non_shared);
       }
-      value_ = Slice(p + non_shared, value_length);
+      entry_ = KeyValueEntry {
+        .key = key_.GetKey(),
+        .value = Slice(p + non_shared, value_length),
+      };
       break;
     }
     case KeyValueEncodingFormat::kKeyDeltaEncodingThreeSharedParts: {
       valid_encoding_type = true;
-      if (!ParseNextKeyThreeSharedParts(p, limit, data_, &key_, &value_)) {
+      if (!ParseNextKeyThreeSharedParts(p, limit, data_, &key_, &entry_.value)) {
         CorruptionError("ParseNextKeyThreeSharedParts failed");
         return false;
       }
+      entry_.key = key_.GetKey();
       break;
     }
   }

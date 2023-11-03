@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOC_READER_REDIS_H_
-#define YB_DOCDB_DOC_READER_REDIS_H_
+#pragma once
 
 #include <string>
 #include <vector>
@@ -22,8 +21,10 @@
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_types.h"
-#include "yb/docdb/expiration.h"
-#include "yb/docdb/value.h"
+#include "yb/docdb/read_operation_data.h"
+
+#include "yb/dockv/expiration.h"
+#include "yb/dockv/value.h"
 
 #include "yb/rocksdb/cache.h"
 
@@ -105,23 +106,23 @@ class IndexBound {
 struct GetRedisSubDocumentData {
   GetRedisSubDocumentData(
     const Slice& subdoc_key,
-    SubDocument* result_,
+    dockv::SubDocument* result_,
     bool* doc_found_ = nullptr,
-    MonoDelta default_ttl = ValueControlFields::kMaxTtl)
+    MonoDelta default_ttl = dockv::ValueControlFields::kMaxTtl)
       : subdocument_key(subdoc_key),
         result(result_),
         doc_found(doc_found_),
         exp(default_ttl) {}
 
   Slice subdocument_key;
-  SubDocument* result;
+  dockv::SubDocument* result;
   bool* doc_found;
 
   DeadlineInfo* deadline_info = nullptr;
 
   // The TTL and hybrid time are return values external to the SubDocument
   // which occasionally need to be accessed for TTL calculation.
-  mutable Expiration exp;
+  mutable dockv::Expiration exp;
   bool return_type_only = false;
 
   // Represent bounds on the first and last subkey to be considered.
@@ -139,7 +140,7 @@ struct GetRedisSubDocumentData {
   mutable size_t record_count = 0;
 
   GetRedisSubDocumentData Adjusted(
-      const Slice& subdoc_key, SubDocument* result_, bool* doc_found_ = nullptr) const {
+      const Slice& subdoc_key, dockv::SubDocument* result_, bool* doc_found_ = nullptr) const {
     GetRedisSubDocumentData result(subdoc_key, result_, doc_found_);
     result.deadline_info = deadline_info;
     result.exp = exp;
@@ -174,7 +175,7 @@ inline std::ostream& operator<<(std::ostream& out, const GetRedisSubDocumentData
 Status GetRedisSubDocument(
     IntentAwareIterator *db_iter,
     const GetRedisSubDocumentData& data,
-    const std::vector<KeyEntryValue>* projection = nullptr,
+    const dockv::KeyEntryValues* projection = nullptr,
     SeekFwdSuffices seek_fwd_suffices = SeekFwdSuffices::kTrue);
 
 // This version of GetRedisSubDocument creates a new iterator every time. This is not recommended
@@ -185,10 +186,7 @@ Status GetRedisSubDocument(
     const GetRedisSubDocumentData& data,
     const rocksdb::QueryId query_id,
     const TransactionOperationContext& txn_op_context,
-    CoarseTimePoint deadline,
-    const ReadHybridTime& read_time = ReadHybridTime::Max());
+    const ReadOperationData& read_operation_data = {});
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif  // YB_DOCDB_DOC_READER_REDIS_H_

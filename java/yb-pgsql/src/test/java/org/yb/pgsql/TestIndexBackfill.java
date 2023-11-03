@@ -36,9 +36,9 @@ import org.slf4j.LoggerFactory;
 
 import org.yb.util.BuildTypeUtil;
 import org.yb.util.ThreadUtil;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestIndexBackfill extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestIndexBackfill.class);
 
@@ -218,6 +218,10 @@ public class TestIndexBackfill extends BasePgSQLTest {
     String msgLc = ex.getMessage().toLowerCase();
     return msgLc.contains("schema version mismatch")
         || msgLc.contains("catalog version mismatch")
-        || (msgLc.contains("resource unavailable") && msgLc.contains("rocksdb"));
+        || (msgLc.contains("resource unavailable") && (msgLc.contains("rocksdb")
+                                                       || msgLc.contains("null")))
+        || msgLc.contains("expired or aborted by a conflict")
+        || msgLc.contains("operation expired: transaction aborted:")
+        || msgLc.contains("transaction was recently aborted");
   }
 }

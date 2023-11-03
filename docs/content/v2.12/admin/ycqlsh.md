@@ -21,9 +21,32 @@ The YCQL shell was previously named `cqlsh`. Although the `cqlsh` binary is avai
 
 {{< /note >}}
 
-### Installation
-
 `ycqlsh` is installed as part of YugabyteDB and is located in the `bin` directory of YugabyteDB home. You can also download it from the [cqlsh GitHub repository](https://github.com/yugabyte/cqlsh/releases).
+
+If you prefer, you can install a standalone version using a shell script:
+
+```sh
+curl -sSL https://downloads.yugabyte.com/get_clients.sh | bash
+```
+
+If you have `wget`, you can use the following:
+
+```sh
+wget -q -O - https://downloads.yugabyte.com/get_clients.sh | sh
+```
+
+### Starting ycqlsh
+
+```sh
+./bin/ycqlsh
+```
+
+```output
+Connected to local cluster at 127.0.0.1:9042.
+[ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
+Use HELP for help.
+ycqlsh>
+```
 
 ### Online help
 
@@ -43,7 +66,7 @@ Where
 ### Example
 
 ```sh
-$ ./bin/ycqlsh --execute "select cluster_name, data_center, rack from system.local" 127.0.0.1
+./bin/ycqlsh --execute "select cluster_name, data_center, rack from system.local" 127.0.0.1
 ```
 
 ```output
@@ -54,23 +77,24 @@ $ ./bin/ycqlsh --execute "select cluster_name, data_center, rack from system.loc
 
 ### Flags
 
-| Flag               | Short Form | Default | Description                                                  |
-| ------------------- | ---------- | ------- | ------------------------------------------------------------ |
-| `--color`           | `-C`       |         | Force color output.                                          |
-| `--no-color`        |            |         | Disable color output.                                        |
-| `--browser`         |            |         | Specify the browser to use for displaying `ycqlsh` help. This can be one of the [supported browser names](https://docs.python.org/2/library/webbrowser.html) (for example, firefox) or a browser path followed by `%s` (for example, `/usr/bin/google-chrome-stable %s`). |
-| `--ssl`             |            |         | Use SSL when connecting to YugabyteDB.                      |
-| `--user`            | `-u`       |         | Username to authenticate against YugabyteDB with.           |
-| `--password`        | `-p`       |         | Password to authenticate against YugabyteDB with, should be used in conjunction with `--user`. |
-| `--keyspace`        | `-k`       |         | Keyspace to authenticate to, should be used in conjunction with `--user`. |
-| `--file`            | `-f`       |         | Execute commands from the given file, then exit.             |
-| `--debug`           |            |         | Print additional debugging information.                      |
-| `--encoding`        |            | UTF-8   | Specify a non-default encoding for output.                   |
-| `--cqlshrc`         |            |         | Specify the location for the `cqlshrc` file. The `cqlshrc` file holds configuration options for `ycqlsh`. By default this is in the user home directory at `~/.cassandra/cqlsh`. |
-| `--execute`         | `-e`       |         | Execute the given statement, then exit.                      |
-| `--connect-timeout` |            | 2       | Specify the connection timeout in seconds.                   |
-| `--request-timeout` |            | 10      | Specify the request timeout in seconds.                      |
-| `--tty`             | `-t`       |         | Force tty mode (command prompt).                             |
+| Flag | Short Form | Default | Description |
+| :------| :--------- | :------ | :-----------|
+| `--color` | `-C` | | Force color output. |
+| `--no-color` | | | Disable color output. |
+| `--browser` | | | Specify the browser to use for displaying `ycqlsh` help. This can be one of the [supported browser names](https://docs.python.org/2/library/webbrowser.html) (for example, Firefox) or a browser path followed by `%s` (for example, `/usr/bin/google-chrome-stable %s`). |
+| `--ssl`  | | | Use SSL when connecting to YugabyteDB. |
+| `--user`  | `-u` | | Username to authenticate against YugabyteDB with. |
+| `--password` | `-p` |  | Password to authenticate against YugabyteDB with, should be used in conjunction with `--user`. |
+| `--keyspace` | `-k` | | Keyspace to authenticate to, should be used in conjunction with `--user`. |
+| `--file`  | `-f` |  | Execute commands from the given file, then exit. |
+| `--debug` | | | Print additional debugging information. |
+| `--encoding` | | UTF-8   | Specify a non-default encoding for output. |
+| `--cqlshrc` | | | Specify the location for the `cqlshrc` file. The `cqlshrc` file holds configuration options for `ycqlsh`. By default this is in the user home directory at `~/.cassandra/cqlsh`. |
+| `--execute` | `-e` | | Execute the given statement, then exit. |
+| `--connect-timeout` | | 2 | Specify the connection timeout in seconds. |
+| `--request-timeout` | | 10 | Specify the request timeout in seconds. |
+| `--tty`  | `-t` | | Force tty mode (command prompt). |
+| `--refresh_on_describe` | `-r` | | Force a refresh of the schema metadata on [DESCRIBE](#describe). |
 
 ### Save YCQL output to a file
 
@@ -79,7 +103,7 @@ To save output from a YCQL statement to a file, run the statement using the --ex
 For example, to save the output of a `SELECT` statement:
 
 ```sh
-$ ./bin/ycqlsh -e "SELECT * FROM mytable" > output.txt
+./bin/ycqlsh -e "SELECT * FROM mytable" > output.txt
 ```
 
 ## Special commands

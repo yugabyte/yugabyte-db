@@ -2,98 +2,66 @@
 
 package com.yugabyte.yw.common.alerts.impl;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.google.common.collect.ImmutableMap;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.common.alerts.AlertChannelInterface;
+import com.yugabyte.yw.common.WSClientRefresher;
 import com.yugabyte.yw.common.alerts.AlertChannelWebHookParams;
+import com.yugabyte.yw.common.alerts.AlertTemplateVariableService;
 import com.yugabyte.yw.common.alerts.PlatformNotificationException;
-import com.yugabyte.yw.common.alerts.impl.AlertManagerWebHookV4.Status;
+import com.yugabyte.yw.forms.AlertChannelTemplatesExt;
 import com.yugabyte.yw.models.Alert;
-import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.AlertChannel;
-import com.yugabyte.yw.models.AlertLabel;
+import com.yugabyte.yw.models.AlertTemplateVariable;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.helpers.KnownAlertLabels;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
-import java.util.Collections;
-import java.util.stream.Collectors;
+import java.util.List;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.http.HttpResponse;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.entity.StringEntity;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClients;
+import org.apache.http.HttpStatus;
+import play.libs.Json;
+import play.libs.ws.WSResponse;
 
 @Slf4j
 @Singleton
-public class AlertChannelWebHook implements AlertChannelInterface {
+public class AlertChannelWebHook extends AlertChannelWebBase {
+
+  public static final String WEBHOOK_WS_KEY = "yb.alert.webhook.ws";
 
   @Inject
-  public AlertChannelWebHook() {}
+  public AlertChannelWebHook(
+      WSClientRefresher wsClientRefresher,
+      AlertTemplateVariableService alertTemplateVariableService) {
+    super(wsClientRefresher, alertTemplateVariableService);
+  }
 
   @Override
-  public void sendNotification(Customer customer, Alert alert, AlertChannel channel)
+  public void sendNotification(
+      Customer customer,
+      Alert alert,
+      AlertChannel channel,
+      AlertChannelTemplatesExt channelTemplates)
       throws PlatformNotificationException {
     log.trace("sendNotification {}", alert);
     AlertChannelWebHookParams params = (AlertChannelWebHookParams) channel.getParams();
+    List<AlertTemplateVariable> variables = alertTemplateVariableService.list(customer.getUuid());
+    Context context = new Context(channel, channelTemplates, variables);
+    String text = getNotificationText(alert, context, false);
+    JsonNode body = Json.parse(text);
 
     try {
-      Status status = alert.getState() == State.ACTIVE ? Status.firing : Status.resolved;
-      ZonedDateTime startAt = alert.getCreateTime().toInstant().atZone(ZoneId.systemDefault());
-      ZonedDateTime endAt =
-          alert.getResolvedTime() != null
-              ? alert.getResolvedTime().toInstant().atZone(ZoneId.systemDefault())
-              : null;
-      AlertManagerWebHookV4 message =
-          AlertManagerWebHookV4.builder()
-              .status(status)
-              .receiver(channel.getName())
-              .groupLabels(
-                  ImmutableMap.of(
-                      KnownAlertLabels.CONFIGURATION_UUID.labelName(),
-                      alert.getLabelValue(KnownAlertLabels.CONFIGURATION_UUID),
-                      KnownAlertLabels.DEFINITION_NAME.labelName(),
-                      alert.getName()))
-              .alerts(
-                  Collections.singletonList(
-                      AlertManagerWebHookV4.Alert.builder()
-                          .status(status)
-                          .labels(
-                              alert
-                                  .getLabels()
-                                  .stream()
-                                  .collect(
-                                      Collectors.toMap(AlertLabel::getName, AlertLabel::getValue)))
-                          .annotations(
-                              ImmutableMap.of(
-                                  KnownAlertLabels.MESSAGE.labelName(), alert.getMessage()))
-                          .startsAt(startAt)
-                          .endsAt(endAt)
-                          .build()))
-              .build();
-      HttpPost httpPost = new HttpPost(params.getWebhookUrl());
-      try (CloseableHttpClient client = HttpClients.createDefault()) {
-        ObjectMapper objectMapper = new ObjectMapper();
-        objectMapper.registerModule(new JavaTimeModule());
-        String json = objectMapper.writeValueAsString(message);
+      WSResponse response =
+          sendRequest(WEBHOOK_WS_KEY, params.getWebhookUrl(), body, params.getHttpAuth());
 
-        httpPost.setEntity(new StringEntity(json));
-        httpPost.setHeader("Accept", "application/json");
-        httpPost.setHeader("Content-type", "application/json");
-
-        HttpResponse response = client.execute(httpPost);
-
-        if (response.getStatusLine().getStatusCode() != 200) {
-          throw new PlatformNotificationException(
-              String.format(
-                  "Error sending WebHook message for alert %s: error response %s received",
-                  alert.getName(), response.getStatusLine().getStatusCode()));
-        }
+      // To be on the safe side - just accept all 2XX responses as success
+      if (response.getStatus() < HttpStatus.SC_OK
+          || response.getStatus() >= HttpStatus.SC_MULTIPLE_CHOICES) {
+        throw new PlatformNotificationException(
+            String.format(
+                "Error sending WebHook message for alert %s:"
+                    + " error response %s received with body %s",
+                alert.getName(), response.getStatus(), response.getBody()));
       }
+    } catch (PlatformNotificationException pne) {
+      throw pne;
     } catch (Exception e) {
       throw new PlatformNotificationException(
           String.format(

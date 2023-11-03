@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.common;
 
-import java.util.List;
+import com.cronutils.utils.VisibleForTesting;
 import java.util.concurrent.CancellationException;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
@@ -11,7 +11,7 @@ import org.apache.commons.lang3.StringUtils;
 @Slf4j
 public class ShellResponse {
   // Some known error codes for shell process.
-  private static final String RUN_COMMAND_OUTPUT_PREFIX = "Command output:";
+  @VisibleForTesting public static final String RUN_COMMAND_OUTPUT_PREFIX = "Command output:";
   private static final String ERROR_OUTPUT_PREFIX = "ERROR:";
   public static final int ERROR_CODE_SUCCESS = 0;
   public static final int ERROR_CODE_GENERIC_ERROR = -1;
@@ -28,10 +28,6 @@ public class ShellResponse {
     sr.code = code;
     sr.message = message;
     return sr;
-  }
-
-  public void setDescription(List<String> command) {
-    description = StringUtils.abbreviateMiddle(String.join(" ", command), " ... ", 140);
   }
 
   public boolean isSuccess() {

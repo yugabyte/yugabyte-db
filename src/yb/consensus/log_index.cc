@@ -54,6 +54,7 @@
 #include <boost/algorithm/string/predicate.hpp>
 
 #include "yb/consensus/log_util.h"
+#include "yb/consensus/log.messages.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
@@ -62,11 +63,11 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/env.h"
 #include "yb/util/file_util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 
-DEFINE_int32(
+DEFINE_UNKNOWN_int32(
     entries_per_index_block, 10000, "Number of entries per index block stored in WAL segment file");
 TAG_FLAG(entries_per_index_block, advanced);
 
@@ -76,7 +77,7 @@ DEFINE_test_flag(
     "GetEntriesPerIndexChunk() for testing purposes.");
 
 using std::string;
-using strings::Substitute;
+using std::vector;
 
 #define RETRY_ON_EINTR(ret, expr) do { \
   ret = expr; \
@@ -170,6 +171,8 @@ class LogIndex::IndexChunk : public RefCountedThreadSafe<LogIndex::IndexChunk> {
   const string path_;
   int fd_;
   uint8_t* mapping_;
+  // Lock to ensure that only one reader/writer is performing operation on mapping_.
+  simple_spinlock entry_lock_;
 };
 
 namespace  {
@@ -207,7 +210,7 @@ Status LogIndex::IndexChunk::Open() {
                                         MAP_SHARED, fd_, 0));
   if (mapping_ == MAP_FAILED) {
     mapping_ = nullptr;
-    return STATUS(IOError, "Unable to mmap()", Errno(err));
+    return STATUS(IOError, "Unable to mmap()", Errno(errno));
   }
 
   return Status::OK();
@@ -221,12 +224,14 @@ uint8_t* LogIndex::IndexChunk::GetPhysicalEntryPtr(int entry_index) {
 }
 
 void LogIndex::IndexChunk::GetEntry(int entry_index, PhysicalEntry* ret) {
+  std::lock_guard l(entry_lock_);
   memcpy(ret, GetPhysicalEntryPtr(entry_index), sizeof(PhysicalEntry));
 }
 
 void LogIndex::IndexChunk::SetEntry(int entry_index, const PhysicalEntry& phys) {
   DVLOG_WITH_FUNC(4) << "path: " << path_ << " index_in_chunk: " << entry_index
-                    << " entry: " << phys.ToString();
+                     << " entry: " << phys.ToString();
+  std::lock_guard l(entry_lock_);
   memcpy(GetPhysicalEntryPtr(entry_index), &phys, sizeof(PhysicalEntry));
 }
 
@@ -315,7 +320,7 @@ Status LogIndex::GetChunkForIndex(int64_t log_index, bool create,
   DVLOG_WITH_FUNC(4) << "op_index: " << log_index << " chunk_idx: " << chunk_idx;
 
   {
-    std::lock_guard<simple_spinlock> l(open_chunks_lock_);
+    std::lock_guard l(open_chunks_lock_);
     if (FindCopy(open_chunks_, chunk_idx, chunk)) {
       DVLOG_WITH_FUNC(4) << "chunk_idx: " << chunk_idx << " path: " << (*chunk)->path();
       return Status::OK();
@@ -330,7 +335,7 @@ Status LogIndex::GetChunkForIndex(int64_t log_index, bool create,
                         "Couldn't open index chunk");
   DVLOG_WITH_FUNC(4) << "chunk_idx: " << chunk_idx << " path: " << (*chunk)->path();
   {
-    std::lock_guard<simple_spinlock> l(open_chunks_lock_);
+    std::lock_guard l(open_chunks_lock_);
     if (PREDICT_FALSE(ContainsKey(open_chunks_, chunk_idx))) {
       // Someone else opened the chunk in the meantime.
       // We'll just return that one.
@@ -357,7 +362,6 @@ Status LogIndex::AddEntry(const LogIndexEntry& entry, const Overwrite overwrite)
   phys.term = entry.op_id.term;
   phys.segment_sequence_number = entry.segment_sequence_number;
   phys.offset_in_segment = entry.offset_in_segment;
-  std::lock_guard<simple_spinlock> l(open_chunks_lock_);
   if (PREDICT_FALSE(!overwrite)) {
     // Check if destination entry at operation index inside chunk is empty (memory mapped file
     // content is zero-initialized), so we can load into it and won't overwrite existing index
@@ -394,7 +398,6 @@ Status LogIndex::GetEntry(int64_t index, LogIndexEntry* entry) {
   RETURN_NOT_OK(s);
   int index_in_chunk = index % GetEntriesPerIndexChunk();
   PhysicalEntry phys;
-  std::lock_guard<simple_spinlock> l(open_chunks_lock_);
   chunk->GetEntry(index_in_chunk, &phys);
 
   // We never write any real entries to offset 0, because there's a header
@@ -419,7 +422,7 @@ void LogIndex::GC(int64_t min_index_to_retain) {
   // Enumerate which chunks to delete.
   vector<int64_t> chunks_to_delete;
   {
-    std::lock_guard<simple_spinlock> l(open_chunks_lock_);
+    std::lock_guard l(open_chunks_lock_);
     for (auto it = open_chunks_.begin();
          it != open_chunks_.lower_bound(min_chunk_to_retain); ++it) {
       chunks_to_delete.push_back(it->first);
@@ -436,7 +439,7 @@ void LogIndex::GC(int64_t min_index_to_retain) {
     }
     LOG(INFO) << "Deleted log index segment " << path;
     {
-      std::lock_guard<simple_spinlock> l(open_chunks_lock_);
+      std::lock_guard l(open_chunks_lock_);
       open_chunks_.erase(chunk_idx);
     }
   }

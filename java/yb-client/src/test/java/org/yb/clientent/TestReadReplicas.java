@@ -80,7 +80,8 @@ public class TestReadReplicas extends TestYBClient {
           // Enable YSQL to generate the txn status table
           // (in order to test txn status leader spread).
           cb.enablePgTransactions(true);
-        });
+        },
+        Collections.emptyMap());
 
     // Create the cluster config pb to be sent to the masters
     org.yb.CommonNet.CloudInfoPB cloudInfo0 = org.yb.CommonNet.CloudInfoPB.newBuilder()
@@ -102,10 +103,12 @@ public class TestReadReplicas extends TestYBClient {
 
     CatalogEntityInfo.PlacementInfoPB livePlacementInfo = CatalogEntityInfo.PlacementInfoPB.
         newBuilder().addAllPlacementBlocks(placementBlocksLive).
+        setNumReplicas(3).
         setPlacementUuid(ByteString.copyFromUtf8(liveTsPlacement)).build();
 
     CatalogEntityInfo.PlacementInfoPB readOnlyPlacementInfo = CatalogEntityInfo.PlacementInfoPB.
         newBuilder().addAllPlacementBlocks(placementBlocksReadOnly).
+        setNumReplicas(3).
         setPlacementUuid(ByteString.copyFromUtf8(readOnlyTsPlacement)).build();
 
     List<CatalogEntityInfo.PlacementInfoPB> readOnlyPlacements = Arrays.asList(
@@ -185,6 +188,7 @@ public class TestReadReplicas extends TestYBClient {
     CatalogEntityInfo.PlacementInfoPB readOnlyPlacementInfoNew =
             CatalogEntityInfo.PlacementInfoPB.newBuilder().
                     addAllPlacementBlocks(placementBlocksreadOnlyNew).
+                    setNumReplicas(3).
                     setPlacementUuid(ByteString.copyFromUtf8(readOnlyNewTsPlacement)).build();
 
     List<CatalogEntityInfo.PlacementInfoPB> readOnlyPlacementsNew =

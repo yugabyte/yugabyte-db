@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_MASTER_TS_MANAGER_H
-#define YB_MASTER_TS_MANAGER_H
+#pragma once
 
 #include <limits>
 #include <memory>
@@ -61,6 +60,8 @@ class NodeInstancePB;
 
 namespace master {
 
+class TSInformationPB;
+
 typedef std::string TabletServerId;
 
 // A callback that is called when the number of tablet servers reaches a certain number.
@@ -86,7 +87,7 @@ class TSManager {
   // current instance ID for the TS, then a NotFound status is returned.
   // Otherwise, *desc is set and OK is returned.
   Status LookupTS(const NodeInstancePB& instance,
-                          TSDescriptorPtr* desc);
+                  TSDescriptorPtr* desc);
 
   // Lookup the tablet server descriptor for the given UUID.
   // Returns false if the TS has never registered.
@@ -98,10 +99,10 @@ class TSManager {
   //
   // If successful, *desc reset to the registered descriptor.
   Status RegisterTS(const NodeInstancePB& instance,
-                            const TSRegistrationPB& registration,
-                            CloudInfoPB local_cloud_info,
-                            rpc::ProxyCache* proxy_cache,
-                            RegisteredThroughHeartbeat registered_through_heartbeat =
+                    const TSRegistrationPB& registration,
+                    CloudInfoPB local_cloud_info,
+                    rpc::ProxyCache* proxy_cache,
+                    RegisteredThroughHeartbeat registered_through_heartbeat =
                                 RegisteredThroughHeartbeat::kTrue);
 
   // Return all of the currently registered TS descriptors into the provided list.
@@ -148,6 +149,13 @@ class TSManager {
   void GetDescriptorsUnlocked(std::function<bool(const TSDescriptorPtr&)> condition,
                       TSDescriptorVector* descs) const REQUIRES_SHARED(lock_);
 
+  // Returns the registered ts descriptors whose hostport matches the hostport in the
+  // registration argument.
+  std::vector<std::pair<TSDescriptor*, std::shared_ptr<TSInformationPB>>> FindHostPortMatches(
+      const NodeInstancePB& instance,
+      const TSRegistrationPB& registration,
+      const CloudInfoPB& local_cloud_info) const REQUIRES_SHARED(lock_);
+
   size_t GetCountUnlocked() const REQUIRES_SHARED(lock_);
 
   mutable rw_spinlock lock_;
@@ -164,5 +172,3 @@ class TSManager {
 
 } // namespace master
 } // namespace yb
-
-#endif // YB_MASTER_TS_MANAGER_H

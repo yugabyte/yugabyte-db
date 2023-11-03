@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_DECIMAL_H
-#define YB_UTIL_DECIMAL_H
+#pragma once
 
 #include <vector>
 #include <limits>
@@ -149,6 +148,8 @@ class Decimal {
 
   Status DecodeFromComparable(const Slice& string);
 
+  Status DecodeFromComparable(Slice* slice);
+
   // Encode the decimal by using to Cassandra serialization format, as described above.
   std::string EncodeToSerializedBigDecimal(bool* is_out_of_range) const;
 
@@ -236,5 +237,3 @@ inline double CanonicalizeDouble(double d) {
 
 } // namespace util
 } // namespace yb
-
-#endif // YB_UTIL_DECIMAL_H

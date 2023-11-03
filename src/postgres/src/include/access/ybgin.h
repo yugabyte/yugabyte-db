@@ -22,8 +22,7 @@
  *--------------------------------------------------------------------------
  */
 
-#ifndef YBGIN_H
-#define YBGIN_H
+#pragma once
 
 #include "access/amapi.h"
 #include "nodes/execnodes.h"
@@ -65,5 +64,5 @@ extern IndexBuildResult *ybginbackfill(Relation heap, Relation index,
 									   struct IndexInfo *indexInfo,
 									   struct YbBackfillInfo *bfinfo,
 									   struct YbPgExecOutParam *bfresult);
-
-#endif							/* YBGIN_H */
+extern bool ybginmightrecheck(Relation heapRelation, Relation indexRelation,
+							  bool xs_want_itup, ScanKey keys, int nkeys);

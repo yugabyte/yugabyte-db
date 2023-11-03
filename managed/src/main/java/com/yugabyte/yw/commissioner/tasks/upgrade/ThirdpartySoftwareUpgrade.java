@@ -3,18 +3,22 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.LinkedHashSet;
-import java.util.stream.Collectors;
 import javax.inject.Inject;
+import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
+@EqualsAndHashCode(callSuper = false)
+@Retryable
+@Abortable
 public class ThirdpartySoftwareUpgrade extends UpgradeTaskBase {
 
   @Inject
@@ -38,33 +42,30 @@ public class ThirdpartySoftwareUpgrade extends UpgradeTaskBase {
   }
 
   @Override
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    taskParams().verifyParams(getUniverse(), isFirstTry);
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
           LinkedHashSet<NodeDetails> nodesToUpdate = fetchAllNodes(taskParams().upgradeOption);
-          // Verify the request params and fail if invalid
-          Universe universe = getUniverse();
-          taskParams().clusters =
-              taskParams()
-                  .clusters
-                  .stream()
-                  .map(c -> universe.getCluster(c.uuid))
-                  .collect(Collectors.toList());
-          taskParams().rootCA = universe.getUniverseDetails().rootCA;
-          taskParams().clientRootCA = universe.getUniverseDetails().clientRootCA;
-          taskParams().verifyParams(universe);
 
           createRollingNodesUpgradeTaskFlow(
               (nodes, processTypes) -> {
                 createSetupServerTasks(nodes, params -> {});
                 createConfigureServerTasks(nodes, params -> {});
                 for (ServerType processType : processTypes) {
-                  createGFlagsOverrideTasks(nodes, processType);
+                  if (!processType.equals(ServerType.CONTROLLER)) {
+                    createGFlagsOverrideTasks(nodes, processType);
+                  }
                 }
               },
               nodesToUpdate,
               DEFAULT_CONTEXT,
-              taskParams().ybcInstalled);
+              taskParams().isYbcInstalled());
         });
   }
 }

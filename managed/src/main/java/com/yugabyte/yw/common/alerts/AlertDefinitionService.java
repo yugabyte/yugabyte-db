@@ -20,6 +20,7 @@ import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.EntityOperation;
+import io.ebean.DB;
 import io.ebean.annotation.Transactional;
 import java.util.Collections;
 import java.util.List;
@@ -54,8 +55,7 @@ public class AlertDefinitionService {
     }
 
     Set<UUID> definitionUuids =
-        definitions
-            .stream()
+        definitions.stream()
             .filter(definition -> !definition.isNew())
             .map(AlertDefinition::getUuid)
             .collect(Collectors.toSet());
@@ -63,28 +63,26 @@ public class AlertDefinitionService {
     if (definitionUuids.size() > 0) {
       AlertDefinitionFilter filter = AlertDefinitionFilter.builder().uuids(definitionUuids).build();
       beforeDefinitions =
-          list(filter)
-              .stream()
+          list(filter).stream()
               .collect(Collectors.toMap(AlertDefinition::getUuid, Function.identity()));
     } else {
       beforeDefinitions = Collections.emptyMap();
     }
 
     Map<EntityOperation, List<AlertDefinition>> toCreateAndUpdate =
-        definitions
-            .stream()
+        definitions.stream()
             .peek(definition -> validate(definition, beforeDefinitions.get(definition.getUuid())))
             .collect(Collectors.groupingBy(definition -> definition.isNew() ? CREATE : UPDATE));
 
     if (toCreateAndUpdate.containsKey(CREATE)) {
       List<AlertDefinition> toCreate = toCreateAndUpdate.get(CREATE);
       toCreate.forEach(AlertDefinition::generateUUID);
-      AlertDefinition.db().saveAll(toCreate);
+      DB.getDefault().saveAll(toCreate);
     }
 
     if (toCreateAndUpdate.containsKey(UPDATE)) {
       List<AlertDefinition> toUpdate = toCreateAndUpdate.get(UPDATE);
-      AlertDefinition.db().updateAll(toUpdate);
+      DB.getDefault().updateAll(toUpdate);
     }
 
     log.debug("{} alert definitions saved", definitions.size());
@@ -100,8 +98,7 @@ public class AlertDefinitionService {
     if (uuid == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Can't get alert definition by null uuid");
     }
-    return list(AlertDefinitionFilter.builder().uuid(uuid).build())
-        .stream()
+    return list(AlertDefinitionFilter.builder().uuid(uuid).build()).stream()
         .findFirst()
         .orElse(null);
   }

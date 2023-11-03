@@ -56,6 +56,7 @@
 #include "optimizer/placeholder.h"
 #include "rewrite/rewriteManip.h"
 
+int yb_bnl_batch_size = 1;
 
 /*
  * Select a PARAM_EXEC number to identify the given Var as a parameter for
@@ -333,6 +334,16 @@ replace_nestloop_param_var(PlannerInfo *root, Var *var)
 			param->paramtypmod = var->vartypmod;
 			param->paramcollid = var->varcollid;
 			param->location = var->location;
+
+			/*
+			 * This refers to a batched var. Offset by the appropriate
+			 * batch no.
+			 */
+			if (root->yb_cur_batch_no >= 0 &&
+				 bms_is_member(var->varno, root->yb_cur_batched_relids))
+			{
+				param->paramid += root->yb_cur_batch_no;
+			}
 			return param;
 		}
 	}
@@ -348,7 +359,25 @@ replace_nestloop_param_var(PlannerInfo *root, Var *var)
 	nlp = makeNode(NestLoopParam);
 	nlp->paramno = param->paramid;
 	nlp->paramval = copyObject(var);
+	nlp->yb_batch_size = 1;
 	root->curOuterParams = lappend(root->curOuterParams, nlp);
+	
+	if (bms_is_member(var->varno, root->yb_cur_batched_relids) &&
+		root->yb_cur_batch_no >= 0)
+	{
+		/* 
+		 * If this is a param for a batched var then reserve the next
+		 * yb_bnl_batch_size params for batched instances of this var.
+		 */
+		for (size_t i = 1; i < yb_bnl_batch_size; i++)
+		{
+			generate_new_exec_param(root,
+									var->vartype,
+									var->vartypmod,
+									var->varcollid);
+		}
+		nlp->yb_batch_size = yb_bnl_batch_size;
+	}
 
 	/* And return the replacement Param */
 	return param;
@@ -396,6 +425,7 @@ replace_nestloop_param_placeholdervar(PlannerInfo *root, PlaceHolderVar *phv)
 	nlp = makeNode(NestLoopParam);
 	nlp->paramno = param->paramid;
 	nlp->paramval = (Var *) copyObject(phv);
+	nlp->yb_batch_size = 1;
 	root->curOuterParams = lappend(root->curOuterParams, nlp);
 
 	/* And return the replacement Param */
@@ -461,6 +491,7 @@ process_subquery_nestloop_params(PlannerInfo *root, List *subplan_params)
 				nlp = makeNode(NestLoopParam);
 				nlp->paramno = pitem->paramId;
 				nlp->paramval = copyObject(var);
+				nlp->yb_batch_size = 1;
 				root->curOuterParams = lappend(root->curOuterParams, nlp);
 			}
 		}
@@ -492,6 +523,7 @@ process_subquery_nestloop_params(PlannerInfo *root, List *subplan_params)
 				nlp = makeNode(NestLoopParam);
 				nlp->paramno = pitem->paramId;
 				nlp->paramval = (Var *) copyObject(phv);
+				nlp->yb_batch_size = 1;
 				root->curOuterParams = lappend(root->curOuterParams, nlp);
 			}
 		}

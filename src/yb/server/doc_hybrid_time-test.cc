@@ -26,12 +26,10 @@
 
 using std::string;
 using std::vector;
-using std::tuple;
 using std::cout;
 using std::endl;
 
 using yb::server::HybridClock;
-using yb::FormatBytesAsStr;
 using yb::util::sgn;
 using strings::Substitute;
 
@@ -52,9 +50,7 @@ TEST(DocHybridTimeTest, TestDocDbFormatEncodeDecode) {
     const IntraTxnWriteId write_id = rand_r(&seed) % 1000 + 1;
 
     timestamps.emplace_back(
-        HybridClock::AddPhysicalTimeToHybridTime(
-            clock->Now(),
-            MonoDelta::FromSeconds(kAddNumYears * 3600 * 24 * 365)),
+        clock->Now().AddSeconds(kAddNumYears * 3600 * 24 * 365),
         write_id);
     timestamps.pop_back();
     timestamps.push_back(DocHybridTime(1492469267789800, 0, 1));

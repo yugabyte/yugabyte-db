@@ -14,14 +14,13 @@
 //
 // This class represents a QL session of a client connection (e.g. CQL client connection).
 //--------------------------------------------------------------------------------------------------
-#ifndef YB_YQL_CQL_QL_QL_SESSION_H_
-#define YB_YQL_CQL_QL_QL_SESSION_H_
+#pragma once
 
 #include <memory>
 #include <string>
 
 #include <boost/thread/locks.hpp>
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/util/shared_lock.h"
 
@@ -95,5 +94,3 @@ class QLSession {
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_QL_SESSION_H_

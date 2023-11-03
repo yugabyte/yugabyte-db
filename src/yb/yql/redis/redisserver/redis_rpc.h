@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_YQL_REDIS_REDISSERVER_REDIS_RPC_H
-#define YB_YQL_REDIS_REDISSERVER_REDIS_RPC_H
+#pragma once
 
 #include <stdint.h>
 
@@ -28,6 +27,7 @@
 #include "yb/rpc/connection_context.h"
 #include "yb/rpc/growable_buffer.h"
 #include "yb/rpc/rpc_with_queue.h"
+#include "yb/rpc/reactor_thread_role.h"
 
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/size_literals.h"
@@ -74,29 +74,31 @@ class RedisConnectionContext : public rpc::ConnectionContextWithQueue {
   void SetCleanupHook(std::function<void()> hook) { cleanup_hook_ = std::move(hook); }
 
   // Shutdown this context. Clean up the subscriptions if any.
-  void Shutdown(const Status& status) override;
+  void Shutdown(const Status& status) ON_REACTOR_THREAD override;
 
   Status ReportPendingWriteBytes(size_t bytes_in_queue) override;
 
  private:
-  void Connected(const rpc::ConnectionPtr& connection) override {}
+  Status Connected(const rpc::ConnectionPtr& connection) override { return Status::OK(); }
 
   rpc::RpcConnectionPB::StateType State() override {
     return rpc::RpcConnectionPB::OPEN;
   }
 
-  Result<rpc::ProcessCallsResult> ProcessCalls(const rpc::ConnectionPtr& connection,
-                                               const IoVecs& bytes_to_process,
-                                               rpc::ReadBufferFull read_buffer_full) override;
+  Result<rpc::ProcessCallsResult> ProcessCalls(
+      const rpc::ConnectionPtr& connection,
+      const IoVecs& bytes_to_process,
+      rpc::ReadBufferFull read_buffer_full) ON_REACTOR_THREAD override;
 
   rpc::StreamReadBuffer& ReadBuffer() override {
     return read_buffer_;
   }
 
   // Takes ownership of data content.
-  Status HandleInboundCall(const rpc::ConnectionPtr& connection,
-                                   size_t commands_in_batch,
-                                   rpc::CallData* data);
+  Status HandleInboundCall(
+      const rpc::ConnectionPtr& connection,
+      size_t commands_in_batch,
+      rpc::CallData* data) ON_REACTOR_THREAD;
 
   std::unique_ptr<RedisParser> parser_;
   rpc::GrowableBuffer read_buffer_;
@@ -124,7 +126,7 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
 
   // Serialize the response packet for the finished call.
   // The resulting slices refer to memory in this object.
-  void DoSerialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
+  void DoSerialize(rpc::ByteBlocks* output) override;
   void GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_pb) const;
   void LogTrace() const override;
   std::string ToString() const override;
@@ -178,5 +180,3 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
 
 } // namespace redisserver
 } // namespace yb
-
-#endif // YB_YQL_REDIS_REDISSERVER_REDIS_RPC_H

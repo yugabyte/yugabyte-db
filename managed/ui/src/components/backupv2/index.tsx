@@ -9,7 +9,9 @@
 
 export * from './common/IBackup';
 export * from './common/IBackupSchedule';
-export * from './common/BackupAPI';
+// export * from './common/BackupAPI';
 export * from './Account/AccountLevelBackup';
 export * from './components/BackupList';
 export * from './scheduled/ScheduledBackup';
+export * from './restore';
+export * from './pitr/PointInTimeRecovery';

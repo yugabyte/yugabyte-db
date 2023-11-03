@@ -1,8 +1,8 @@
-import React from 'react';
 import { Tab } from 'react-bootstrap';
 import { YBTabsPanel } from '../panels';
 import { LiveQueries } from './index';
 import { SlowQueries } from './SlowQueries';
+import { PerfAdvisor } from './PerfAdvisor.tsx';
 
 export const QueriesViewer = (props) => {
   return (
@@ -14,6 +14,16 @@ export const QueriesViewer = (props) => {
         <Tab eventKey="slow-queries" title="Slow Queries" key="slow-queries">
           <SlowQueries />
         </Tab>
+        {props.isPerfAdvisorEnabled && (
+          <Tab
+            eventKey="perf-advisor"
+            title="Performance Advisor"
+            key="perf-advisor"
+            unmountOnExit={true}
+          >
+            <PerfAdvisor />
+          </Tab>
+        )}
       </YBTabsPanel>
     </div>
   );

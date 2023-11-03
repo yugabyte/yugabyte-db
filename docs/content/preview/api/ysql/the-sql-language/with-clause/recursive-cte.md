@@ -80,29 +80,9 @@ The [Semantics](#semantics) section explains how a recursive CTE is evaluated. W
 
 The `WITH` clause syntax (see the section [WITH clause—SQL syntax and semantics](../with-clause-syntax-semantics/) implies a pair of restrictions.
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fas fa-file-alt" aria-hidden="true"></i>
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fas fa-project-diagram" aria-hidden="true"></i>
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/with-clause/with_clause.grammar.md" %}}
-  </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/with-clause/with_clause.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  with_clause
+{{%/ebnf%}}
 
 It shows that you can use the `RECURSIVE` keyword only immediately after the keyword `WITH` and that, therefore only the first CTE in a `WITH` clause can be a recursive CTE. These restrictions are illustrated in the immediately following sections [Maximum one recursive CTE](#maximum-one-recursive-cte) and [The recursive CTE must be first in the clause](#the-recursive-cte-must-be-first-in-the-clause).
 

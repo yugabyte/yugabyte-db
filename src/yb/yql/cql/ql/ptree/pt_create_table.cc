@@ -20,7 +20,7 @@
 #include "yb/client/schema.h"
 #include "yb/common/schema.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 
 #include "yb/yql/cql/ql/ptree/pt_column_definition.h"
 #include "yb/yql/cql/ql/ptree/pt_option.h"
@@ -32,7 +32,7 @@
 
 DECLARE_bool(use_cassandra_authentication);
 
-DEFINE_bool(cql_table_is_transactional_by_default, false,
+DEFINE_UNKNOWN_bool(cql_table_is_transactional_by_default, false,
             "When the 'transactions' property is not specified at CREATE TABLE time "
             "for a YCQL table, this flag determines the default setting for whether "
             "the table is transactional or not.");
@@ -40,10 +40,6 @@ TAG_FLAG(cql_table_is_transactional_by_default, advanced);
 
 namespace yb {
 namespace ql {
-
-using std::shared_ptr;
-using std::to_string;
-using client::YBColumnSchema;
 
 //--------------------------------------------------------------------------------------------------
 
@@ -170,8 +166,8 @@ bool PTCreateTable::ColumnExists(const MCList<PTColumnDefinition *>& columns,
 }
 
 Status PTCreateTable::AppendColumn(SemContext *sem_context,
-                                           PTColumnDefinition *column,
-                                           const bool check_duplicate) {
+                                   PTColumnDefinition *column,
+                                   const bool check_duplicate) {
   if (check_duplicate && ColumnExists(columns_, column)) {
     return sem_context->Error(column, ErrorCode::DUPLICATE_COLUMN);
   }
@@ -184,8 +180,8 @@ Status PTCreateTable::AppendColumn(SemContext *sem_context,
 }
 
 Status PTCreateTable::AppendPrimaryColumn(SemContext *sem_context,
-                                                  PTColumnDefinition *column,
-                                                  const bool check_duplicate) {
+                                          PTColumnDefinition *column,
+                                          const bool check_duplicate) {
   // The column and its datatype should already have been analyzed at this point.
   // Check if the column can be used as primary column.
   RETURN_NOT_OK(CheckPrimaryType(sem_context, column));
@@ -198,8 +194,8 @@ Status PTCreateTable::AppendPrimaryColumn(SemContext *sem_context,
 }
 
 Status PTCreateTable::AppendHashColumn(SemContext *sem_context,
-                                               PTColumnDefinition *column,
-                                               const bool check_duplicate) {
+                                       PTColumnDefinition *column,
+                                       const bool check_duplicate) {
   // The column and its datatype should already have been analyzed at this point.
   // Check if the column can be used as hash column.
   RETURN_NOT_OK(CheckPrimaryType(sem_context, column));
@@ -212,7 +208,7 @@ Status PTCreateTable::AppendHashColumn(SemContext *sem_context,
 }
 
 Status PTCreateTable::CheckPrimaryType(SemContext *sem_context,
-                                               const PTColumnDefinition *column) const {
+                                       const PTColumnDefinition *column) const {
   // Column must have been analyzed. Check if its datatype is allowed for primary column.
   if (!QLType::IsValidPrimaryType(column->ql_type()->main())) {
     return sem_context->Error(column, ErrorCode::INVALID_PRIMARY_COLUMN_TYPE);

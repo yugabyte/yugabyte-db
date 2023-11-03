@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_YQL_LOCAL_VTABLE_H
-#define YB_MASTER_YQL_LOCAL_VTABLE_H
+#pragma once
 
 #include "yb/master/yql_virtual_table.h"
 
@@ -25,7 +24,7 @@ class LocalVTable : public YQLVirtualTable {
   explicit LocalVTable(const TableName &table_name,
                        const NamespaceName &namespace_name,
                        Master * const master);
-  Result<std::shared_ptr<QLRowBlock>> RetrieveData(const QLReadRequestPB& request) const override;
+  Result<VTableDataPtr> RetrieveData(const QLReadRequestPB& request) const override;
 
  private:
   Schema CreateSchema() const;
@@ -33,4 +32,3 @@ class LocalVTable : public YQLVirtualTable {
 
 }  // namespace master
 }  // namespace yb
-#endif // YB_MASTER_YQL_LOCAL_VTABLE_H

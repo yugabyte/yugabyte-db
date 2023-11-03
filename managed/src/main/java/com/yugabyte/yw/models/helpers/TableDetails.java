@@ -31,7 +31,8 @@ public class TableDetails {
   // The default table-level time to live (in seconds).
   @ApiModelProperty(
       value =
-          "The default table-level time to live, in seconds. A value of `-1` represents an infinite TTL.")
+          "The default table-level time to live, in seconds. A value of `-1` represents an infinite"
+              + " TTL.")
   public long ttlInSeconds = -1;
 
   // Details of the columns that make up the table (to be used to create ColumnSchemas).
@@ -69,21 +70,18 @@ public class TableDetails {
     String queryTemplate = "CREATE TABLE %s\"%s\" (%s%s)%s;";
     String ifNotExistsPart = ifNotExists ? "IF NOT EXISTS " : "";
     String fieldsPart =
-        columns
-            .stream()
+        columns.stream()
             .map(column -> "\"" + column.name + "\" " + column.type.type)
             .collect(Collectors.joining(", "));
     List<ColumnDetails> primaryKeys =
-        columns
-            .stream()
+        columns.stream()
             .filter(columnDetails -> columnDetails.isPartitionKey || columnDetails.isClusteringKey)
             .collect(Collectors.toList());
     String primaryKeysPart = "";
     if (!primaryKeys.isEmpty()) {
       primaryKeysPart =
           ", primary key ("
-              + primaryKeys
-                  .stream()
+              + primaryKeys.stream()
                   .map(
                       key ->
                           key.isClusteringKey && key.sortOrder != SortOrder.NONE
@@ -96,8 +94,7 @@ public class TableDetails {
     if (CollectionUtils.isNotEmpty(splitValues)) {
       splitValuesPart =
           " SPLIT AT VALUES ("
-              + splitValues
-                  .stream()
+              + splitValues.stream()
                   .map(value -> "(" + value + ")")
                   .collect(Collectors.joining(", "))
               + ")";

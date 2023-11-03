@@ -87,7 +87,7 @@ export const useSlowQueriesApi = ({ universeUUID, enabled, defaultStaleTime = 60
   };
 };
 
-const hasSubstringMatch = (textString, patternString, caseSensitive = false) => {
+export const hasSubstringMatch = (textString, patternString, caseSensitive = false) => {
   if (!caseSensitive) {
     textString = textString.toLowerCase();
     patternString = patternString.toLowerCase();
@@ -127,7 +127,7 @@ const hasTokenMatch = (query, token, keyMap) => {
         if (lowerRange === '*' && !Number.isNaN(parseFloat(upperRange))) {
           return query[column.value] <= parseFloat(upperRange);
         } else if (upperRange === '*' && !Number.isNaN(parseFloat(lowerRange))) {
-          return query[column.value] <= parseFloat(upperRange);
+          return query[column.value] >= parseFloat(lowerRange);
         } else if (!Number.isNaN(parseFloat(lowerRange)) && !Number.isNaN(parseFloat(upperRange))) {
           return (
             query[column.value] >= parseFloat(lowerRange) &&
@@ -177,7 +177,7 @@ const hasTokenMatch = (query, token, keyMap) => {
     }
   } else {
     // Search through all properties for token value
-    return Object.values(query).some((val) => hasSubstringMatch(String(val), token.value));
+    return Object.values(query).some((val) => hasSubstringMatch(String(val), token.value?.trim()));
   }
 };
 

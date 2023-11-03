@@ -21,8 +21,7 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_DB_BUILDER_H
-#define YB_ROCKSDB_DB_BUILDER_H
+#pragma once
 
 #include <string>
 #include <utility>
@@ -79,7 +78,7 @@ std::unique_ptr<TableBuilder> NewTableBuilder(
 // zero, and no Table file will be produced.
 extern Status BuildTable(
     const std::string& dbname,
-    Env* env,
+    const DBOptions& db_options,
     const ImmutableCFOptions& options,
     const EnvOptions& env_options,
     TableCache* table_cache,
@@ -94,10 +93,13 @@ extern Status BuildTable(
     const CompressionOptions& compression_opts,
     bool paranoid_file_checks,
     InternalStats* internal_stats,
-    BoundaryValuesExtractor* boundary_values_extractor,
     const yb::IOPriority io_priority = yb::IOPriority::kHigh,
     TableProperties* table_properties = nullptr);
 
-}  // namespace rocksdb
+// Check SST file to end with FLAGS_rocksdb_check_sst_file_tail_for_zeros zeros and log+return error
+// if this is the case.
+Status CheckSstTailForZeros(
+    const DBOptions& db_options, const EnvOptions& env_options, const std::string& file_path,
+    size_t check_size);
 
-#endif  // YB_ROCKSDB_DB_BUILDER_H
+}  // namespace rocksdb

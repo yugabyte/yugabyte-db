@@ -596,7 +596,7 @@ GenerateTypeDependencies(Oid typeObjectId,
 		if (rebuild)
 			elog(ERROR, "cannot rebuild dependencies for a system relation rowtype");
 
-		YBRecordPinDependency(&myself, ybRelationIsShared);
+		YbRecordPinDependency(&myself, ybRelationIsShared);
 		return;
 	}
 

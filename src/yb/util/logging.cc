@@ -41,8 +41,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "yb/util/logging.h"
-
 #include <signal.h>
 #include <stdio.h>
 
@@ -52,30 +50,34 @@
 
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/callback.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/spinlock.h"
 
 #include "yb/util/debug-util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
+#include "yb/util/symbolize.h"
+#include "yb/util/thread.h"
 
-DEFINE_string(log_filename, "",
+DEFINE_UNKNOWN_string(log_filename, "",
     "Prefix of log filename - "
     "full path is <log_dir>/<log_filename>.[INFO|WARN|ERROR|FATAL]");
 TAG_FLAG(log_filename, stable);
 
-DEFINE_string(fatal_details_path_prefix, "",
+DEFINE_UNKNOWN_string(fatal_details_path_prefix, "",
               "A prefix to use for the path of a file to save fatal failure stack trace and "
               "other details to.");
-DEFINE_string(minicluster_daemon_id, "",
+DEFINE_UNKNOWN_string(minicluster_daemon_id, "",
               "A human-readable 'daemon id', e.g. 'm-1' or 'ts-2', used in tests.");
 
-DEFINE_string(ref_counted_debug_type_name_regex, "",
+DEFINE_UNKNOWN_string(ref_counted_debug_type_name_regex, "",
               "Regex for type names for debugging RefCounted / scoped_refptr based classes. "
               "An empty string disables RefCounted debug logging.");
+
+DECLARE_bool(TEST_running_test);
 
 const char* kProjName = "yb";
 
@@ -204,6 +206,10 @@ void InitializeGoogleLogging(const char *arg) {
 
   google::InstallFailureFunction(DumpStackTraceAndExit);
 
+  if (FLAGS_TEST_running_test) {
+    google::SetLogPrefix(&TEST_GetThreadLogPrefix);
+  }
+
   log_fatal_handler_sink = std::make_unique<LogFatalHandlerSink>();
 }
 
@@ -214,7 +220,7 @@ void InitGoogleLoggingSafe(const char* arg) {
   google::InstallFailureSignalHandler();
 
   // Set the logbuflevel to -1 so that all logs are printed out in unbuffered.
-  FLAGS_logbuflevel = -1;
+  CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(logbuflevel, -1));
 
   if (!FLAGS_log_filename.empty()) {
     for (int severity = google::INFO; severity <= google::FATAL; ++severity) {
@@ -227,7 +233,7 @@ void InitGoogleLoggingSafe(const char* arg) {
   // can reliably construct the log file name without duplicating the
   // complex logic that glog uses to guess at a temporary dir.
   if (FLAGS_log_dir.empty()) {
-    FLAGS_log_dir = "/tmp";
+    CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(log_dir, "/tmp"));
   }
 
   if (!FLAGS_logtostderr) {
@@ -478,7 +484,7 @@ bool LogRateThrottler::TooMany() {
   const auto now = CoarseMonoClock::Now();
   const auto drop_limit = now - duration_;
   const auto queue_size = queue_.size();
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   while (count_ > 0 && queue_[head_] < drop_limit) {
     ++head_;
     if (head_ >= queue_size) {

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_LRU_CACHE_H
-#define YB_UTIL_LRU_CACHE_H
+#pragma once
 
 #include <boost/multi_index_container.hpp>
 #include <boost/multi_index/hashed_index.hpp>
@@ -21,7 +20,7 @@
 namespace yb {
 
 // The cache that stores at most specified number of recently added entries.
-template <class Value>
+template <class Value, class KeyIndex = boost::multi_index::identity<Value>>
 class LRUCache {
  private:
   class IdTag;
@@ -32,29 +31,34 @@ class LRUCache {
         boost::multi_index::sequenced<>,
         boost::multi_index::hashed_unique<
           boost::multi_index::tag<IdTag>,
-          boost::multi_index::identity<Value>
+          KeyIndex
         >
       >
   >;
 
  public:
-  typedef typename Impl::const_iterator const_iterator;
+  using const_iterator = typename Impl::const_iterator;
+  using iterator = typename Impl::const_iterator;
 
   explicit LRUCache(size_t capacity) : capacity_(capacity) {}
 
   // Insert entry in cache.
-  void insert(const Value& value) {
-    auto p = impl_.push_front(value);
-
-    if (!p.second) {
-      impl_.relocate(impl_.begin(), p.first);
-    } else if (impl_.size() > capacity_) {
-      impl_.pop_back();
-    }
+  template<class V>
+  iterator insert(V&& value) {
+    return FinalizeInsertion(impl_.push_front(std::forward<V>(value)));
   }
 
-  void Insert(const Value& value) {
-    insert(value);
+  iterator Insert(const Value& value) {
+    return insert(value);
+  }
+
+  iterator Insert(Value&& value) {
+    return insert(std::move(value));
+  }
+
+  template<class... Args>
+  iterator emplace(Args&&... args) {
+    return FinalizeInsertion(impl_.emplace_front(std::forward<Args>(args)...));
   }
 
   // Erase entry from cache. Returns number of removed entries.
@@ -63,25 +67,44 @@ class LRUCache {
     return impl_.template get<IdTag>().erase(key);
   }
 
-  // Erase entry from cache. Returns true if entry was removed.
+  // Erase entry from cache. Returns number of removed entries.
   template <class Key>
   size_t Erase(const Key& key) {
     return erase(key);
   }
 
+  // Erase by usage order iterator
+  const_iterator erase(const_iterator pos) {
+    return impl_.erase(pos);
+  }
+
+  // Erase by usage order iterators
+  const_iterator erase(const_iterator first, const_iterator last) {
+    return impl_.erase(first, last);
+  }
+
+  // Begin of usage order
   const_iterator begin() const {
     return impl_.begin();
   }
 
+  // End of usage order
   const_iterator end() const {
     return impl_.end();
   }
 
  private:
+  iterator FinalizeInsertion(const std::pair<iterator, bool>& insertion_result) {
+    if (!insertion_result.second) {
+      impl_.relocate(impl_.begin(), insertion_result.first);
+    } else if (impl_.size() > capacity_) {
+      impl_.pop_back();
+    }
+    return insertion_result.first;
+  }
+
   const size_t capacity_;
   Impl impl_;
 };
 
 } // namespace yb
-
-#endif // YB_UTIL_LRU_CACHE_H

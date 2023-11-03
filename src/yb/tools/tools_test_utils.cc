@@ -20,8 +20,11 @@
 #include "yb/util/status_log.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
+#include "yb/util/flags.h"
 
-DEFINE_bool(verbose_yb_backup, false, "Add --verbose flag to yb_backup.py.");
+using std::string;
+
+DEFINE_NON_RUNTIME_bool(verbose_yb_backup, false, "Add --verbose flag to yb_backup.py.");
 
 namespace yb {
 namespace tools {
@@ -31,7 +34,8 @@ Status RunBackupCommand(
     const std::string& tserver_http_addresses, const std::string& tmp_dir,
     const std::vector<std::string>& extra_args) {
   std::vector <std::string> args = {
-      "python3", GetToolPath("../../../managed/devops/bin", "yb_backup.py"),
+      GetToolPath("../../../build-support", "run_in_build_python_venv.sh"),
+      GetToolPath("../../../managed/devops/bin", "yb_backup.py"),
       "--masters", master_addresses,
       "--ts_web_hosts_ports", tserver_http_addresses,
       "--remote_yb_admin_binary", GetToolPath("yb-admin"),
@@ -114,8 +118,10 @@ std::string TmpDirProvider::operator*() {
   if (dir_.empty()) {
     std::string temp;
     CHECK_OK(Env::Default()->GetTestDirectory(&temp));
+    auto test_name = std::string(CURRENT_TEST_CASE_NAME());
+    std::replace(test_name.begin(), test_name.end(), '/', '_');
     dir_ = JoinPathSegments(
-        temp, std::string(CURRENT_TEST_CASE_NAME()) + '_' + RandomHumanReadableString(8));
+        temp, test_name + '_' + RandomHumanReadableString(8));
   }
   // Create the directory if it doesn't exist.
   if (!Env::Default()->DirExists(dir_)) {

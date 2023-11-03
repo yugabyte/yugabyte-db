@@ -24,8 +24,8 @@
 #include "yb/yql/cql/ql/test/ql-test-base.h"
 
 using std::string;
-using std::unique_ptr;
 using std::shared_ptr;
+using std::vector;
 using strings::Substitute;
 
 namespace yb {
@@ -57,7 +57,7 @@ TEST_F(TestQLQuery, TestQLQuerySimple) {
   CHECK_VALID_STMT("SELECT * FROM test_table");
   CHECK_VALID_STMT("SELECT * FROM test_table"
                    "  WHERE h0 = 0 AND h1 = 0 AND h2 = 0 AND h3 = 0 AND h4 = 'zero' AND h5 = 0;");
-  std::shared_ptr<QLRowBlock> empty_row_block = processor->row_block();
+  auto empty_row_block = processor->row_block();
   CHECK_EQ(empty_row_block->row_count(), 0);
 
   // Insert 10 rows into the table.
@@ -85,21 +85,21 @@ TEST_F(TestQLQuery, TestQLQuerySimple) {
   CHECK_VALID_STMT("SELECT * FROM test_table "
                    "  WHERE h0 = 7 AND h1 = 7 AND h2 = 7 AND h3 = 7 AND h4 = 'h7' AND h5 = 7;");
 
-  std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+  auto row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 1);
-  const QLRow& row = row_block->row(0);
+  const auto& row = row_block->row(0);
   CHECK_EQ(row.column(0).int8_value(), 7);
   CHECK_EQ(row.column(1).int16_value(), 7);
   CHECK_EQ(row.column(2).int32_value(), 7);
   CHECK_EQ(row.column(3).int64_value(), 7);
   CHECK_EQ(row.column(4).string_value(), "h7");
-  CHECK_EQ(row.column(5).varint_value(), util::VarInt(7));
+  CHECK_EQ(row.column(5).varint_value(), VarInt(7));
   CHECK_EQ(row.column(6).int8_value(), 107);
   CHECK_EQ(row.column(7).int16_value(), 107);
   CHECK_EQ(row.column(8).int32_value(), 107);
   CHECK_EQ(row.column(9).int64_value(), 107);
   CHECK_EQ(row.column(10).string_value(), "r107");
-  CHECK_EQ(row.column(11).varint_value(), util::VarInt(107));
+  CHECK_EQ(row.column(11).varint_value(), VarInt(107));
   CHECK_EQ(row.column(12).int8_value(), 7);
   CHECK_EQ(row.column(13).int16_value(), 207);
   CHECK_EQ(row.column(14).int32_value(), 207);
@@ -110,12 +110,12 @@ TEST_F(TestQLQuery, TestQLQuerySimple) {
   ival = row.column(18).double_value();;
   CHECK(ival >= 206 && ival <= 207);
   CHECK_EQ(row.column(19).bool_value(), false);
-  CHECK_EQ(row.column(20).varint_value(), util::VarInt(207));
+  CHECK_EQ(row.column(20).varint_value(), VarInt(207));
 }
 
 #define CHECK_EXPECTED_ROW_DECIMAL(processor, name, balance, rate)                               \
 do {                                                                                             \
-  std::shared_ptr<QLRowBlock> row_block = processor->row_block();                                \
+  auto row_block = processor->row_block();                                                       \
   CHECK_EQ(row_block->row_count(), 1);                                                           \
   CHECK_EQ(row_block->row(0).column(0).string_value(), name);                                    \
   util::Decimal expected_decimal(balance), ret_decimal;                                          \
@@ -127,11 +127,11 @@ do {                                                                            
 
 #define CHECK_EXPECTED_ROW_VARINT(processor, name, balance, rate)                                \
 do {                                                                                             \
-  std::shared_ptr<QLRowBlock> row_block = processor->row_block();                                \
+  auto row_block = processor->row_block();                                                       \
   CHECK_EQ(row_block->row_count(), 1);                                                           \
   CHECK_EQ(row_block->row(0).column(0).string_value(), name);                                    \
-  util::VarInt expected_varint = CHECK_RESULT(util::VarInt::CreateFromString(balance));          \
-  util::VarInt ret_varint;                                                                       \
+  VarInt expected_varint = CHECK_RESULT(VarInt::CreateFromString(balance));          \
+  VarInt ret_varint;                                                                       \
   ret_varint = row_block->row(0).column(1).varint_value();                                       \
   CHECK_EQ(ret_varint, expected_varint);                                                         \
   CHECK_EQ(row_block->row(0).column(2).double_value(), rate);                                    \

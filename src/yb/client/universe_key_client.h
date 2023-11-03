@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CLIENT_UNIVERSE_KEY_CLIENT_H
-#define YB_CLIENT_UNIVERSE_KEY_CLIENT_H
+#pragma once
 
 #include <condition_variable>
 #include <mutex>
@@ -25,10 +24,13 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/net/net_util.h"
 
 namespace yb {
+
+class FsManager;
 
 namespace client {
 
@@ -38,31 +40,30 @@ class UniverseKeyClient {
                     rpc::ProxyCache* proxy_cache,
                     std::function<void(const encryption::UniverseKeysPB&)> callback)
         : hps_(hps), proxy_cache_(proxy_cache), callback_(std::move(callback)) {}
-
+  // Asynchronous call from master Init to get the latest universe key from other masters' in-memory
+  // state.
   void GetUniverseKeyRegistryAsync();
 
-  void GetUniverseKeyRegistrySync();
-
+  // Synchronous call from tserver Init to get the full universe key registry from master
+  // leader.
+  static Result<encryption::UniverseKeyRegistryPB> GetFullUniverseKeyRegistry(
+      const std::string& local_hosts,
+      const std::string& master_addresses,
+      const FsManager& fs_manager);
  private:
 
   void ProcessGetUniverseKeyRegistryResponse(
-    std::shared_ptr<master::GetUniverseKeyRegistryResponsePB> resp,
-    std::shared_ptr<rpc::RpcController> rpc,
-    HostPort hp);
+      std::shared_ptr<master::GetUniverseKeyRegistryResponsePB> resp,
+      std::shared_ptr<rpc::RpcController> rpc,
+      HostPort hp,
+      CoarseBackoffWaiter backoff_waiter);
 
-  void SendAsyncRequest(HostPort host_port);
-
-  mutable std::mutex mutex_;
-  mutable std::condition_variable cond_;
+  void SendAsyncRequest(HostPort host_port, CoarseBackoffWaiter backoff_waiter);
 
   std::vector<HostPort> hps_;
   rpc::ProxyCache* proxy_cache_;
   std::function<void(const encryption::UniverseKeysPB&)> callback_;
-
-  bool callback_triggered_ = false;
 };
 
 } // namespace client
 } // namespace yb
-
-#endif // YB_CLIENT_UNIVERSE_KEY_CLIENT_H

@@ -487,6 +487,21 @@ CREATE TABLE tbl19(
   primary key(a asc, b desc nulls last)
 ) SPLIT AT VALUES((100), (200, 5), (200, 5));
 
+CREATE TABLE tbl20 (
+	a			int4,
+	primary key (a hash)
+);
+
+CREATE INDEX ind20 on tbl20(a) SPLIT AT VALUES ((100));
+
+CREATE TABLE tbl21 (
+	a			int4,
+	b			int4,
+	primary key (a hash)
+);
+
+CREATE INDEX ind21 on tbl21(b) SPLIT AT VALUES ((100));
+
 -- Test ordering on splitted tables
 CREATE TABLE ordered_asc(
     k INT,
@@ -551,6 +566,8 @@ CREATE TABLE tab_with_unique (i int, UNIQUE (i));
 COMMIT;
 
 -- Test temp table/view are automatically dropped.
+-- TODO: Remove DISCARD TEMP after the fix of #14519
+DISCARD TEMP;
 \c yugabyte
 create temporary table temp_tab(a int);
 create temporary view temp_view as select * from temp_tab;

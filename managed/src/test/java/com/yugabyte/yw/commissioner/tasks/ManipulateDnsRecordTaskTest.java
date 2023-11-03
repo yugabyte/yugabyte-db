@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
@@ -16,32 +17,40 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.UUID;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
 public class ManipulateDnsRecordTaskTest extends CommissionerBaseTest {
 
   private TaskInfo submitTask() {
-    Universe u = ModelFactory.createUniverse("test_universe", defaultCustomer.getCustomerId());
+    Customer customer = ModelFactory.testCustomer();
+    Users defaultUser = ModelFactory.testUser(customer);
+    Universe universe = createUniverse(customer.getId());
     AbstractTaskBase.createTask(ManipulateDnsRecordTask.class);
     ManipulateDnsRecordTask.Params params = new ManipulateDnsRecordTask.Params();
-    params.universeUUID = u.universeUUID;
+    params.setUniverseUUID(universe.getUniverseUUID());
     params.type = DnsManager.DnsCommandType.Create;
     params.providerUUID = UUID.randomUUID();
     params.hostedZoneId = "";
     params.domainNamePrefix = "";
+
+    // Set http context
+    TestUtils.setFakeHttpContext(defaultUser);
     try {
       UUID taskUUID = commissioner.submit(TaskType.ManipulateDnsRecordTask, params);
       CustomerTask.create(
-          defaultCustomer,
-          u.universeUUID,
+          customer,
+          universe.getUniverseUUID(),
           taskUUID,
           CustomerTask.TargetType.Universe,
           CustomerTask.TaskType.Create,

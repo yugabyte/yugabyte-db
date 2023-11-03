@@ -1,28 +1,31 @@
 ---
-title: Use an ORM
+title: GORM ORM
+headerTitle: Use an ORM
 linkTitle: Use an ORM
-description: Go ORM support for YugabyteDB
+description: Go GORM support for YugabyteDB
 headcontent: Go ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
+aliases:
+  - /integrations/gorm/
 menu:
   preview:
     identifier: go-orm
     parent: go-drivers
-    weight: 400
+    weight: 600
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/drivers-orms/go/gorm/" class="nav-link active">
+    <a href="../gorm/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       GORM ORM
     </a>
   </li>
 
   <li >
-    <a href="/preview/drivers-orms/go/pg/" class="nav-link">
+    <a href="../pg/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       PG ORM
     </a>
@@ -34,7 +37,7 @@ type: docs
 
 ## CRUD operations
 
-Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the steps on the [Build an application](../../../develop/build-apps/go/ysql-gorm) page.
+Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the steps on the [Go ORM example application](../../orms/go/ysql-gorm/) page.
 
 The following sections break down the example to demonstrate how to perform common tasks required for Go application development using GORM.
 
@@ -112,6 +115,7 @@ for _, employee := range employees {
 }
 ```
 
-## Next steps
+## Learn more
 
-Explore [Scaling Go Applications](../../../explore/linear-scalability) with YugabyteDB.
+- Build Go applications using [PG](../pg/)
+- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)

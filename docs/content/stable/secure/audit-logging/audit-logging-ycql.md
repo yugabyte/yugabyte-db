@@ -29,9 +29,9 @@ type: docs
 
 Audit logging can be used to record information about YCQL statements or events (such as login events) and log the records on a per-node basis into the YB-Tserver logs. Audit logging can be enabled on YugabyteDB cluster by setting the `ycql_enable_audit_log` TServer flag to `true`. By default, each TServer records all login events and YCQL commands issued to the server.
 
-Audit record is logged before an operation attempts to be executed, failures are audited as well. Hence, if an operation fails to execute, both operation execution and failure are logged. However, an error that happens during parsing or analysis of YCQL statements results in only an error audit record being logged.
+Audit record is logged before an operation attempts to be executed, and failures are audited as well. If an operation fails to execute, both operation execution and failure are logged. However, an error that happens during parsing or analysis of YCQL statement results only in an error audit record to be logged.
 
-YCQL audit logging can be further customized by additional TServer flags described below.
+YCQL audit logging can be further customized using additional YB-TServer flags.
 
 ## Enable audit logging
 
@@ -43,19 +43,23 @@ $ yb-tserver <options> --ycql_enable_audit_log=true
 
 ## Configure audit logging
 
-* Statements or events are recorded if they match _all_ auditing filters described by the flags above. That is, only the configured categories in the configured keyspaces by the configured users are recorded.
-* For the `included` flags the default value (empty) means everything is included, while for the `excluded` flags the default value (empty) means nothing is excluded. By default everything is logged except events in system keyspaces.
-* If both the inclusion and exclusion flags are set for the same dimension (for example, users) then statements or events are recorded only if both match: if they are in the set-difference between included entries and excluded entries. So that is allowed although it is redundant: the same semantics can be achieved by setting only the inclusion flag to the resulting set-difference.
-* The `ycql_audit_log_level` determines the log file where the audit records are written (that is, `yb-tserver.INFO`, `yb-tserver.WARNING`, or `yb-tserver.ERROR`). \
-Note that only `ERROR`-level logs are immediately flushed to disk, lower levels might be buffered.
+Statements or events are recorded if they match _all_ [audit filters](#audit-filters). That is, only the configured categories in the configured keyspaces by the configured users are recorded.
+
+For the `included` flags, the default value (empty) means everything is included, while for the `excluded` flags the default value (empty) means nothing is excluded. By default everything is logged except events in system keyspaces.
+
+If both the inclusion and exclusion flags are set for the same dimension (for example, users) then statements or events are recorded only if both match; that is, if they are in the set-difference between included entries and excluded entries. So that is allowed although it is redundant: the same semantics can be achieved by setting only the inclusion flag to the resulting set-difference.
+
+The `ycql_audit_log_level` determines the log file where the audit records are written (that is, `yb-tserver.INFO`, `yb-tserver.WARNING`, or `yb-tserver.ERROR`).
+
+Only `ERROR`-level logs are immediately flushed to disk, lower levels might be buffered.
 
 ## Audit filters
 
 ### Objects being audited
 
-TServer flags can be configured to determine which statements and events should be logged, audit logging can be configured along three different dimensions: categories (statement or event_)_ , users, and keyspaces.
+YB-TServer flags can be configured to determine which statements and events should be logged, audit logging can be configured along three different dimensions: categories (statement or event_)_ , users, and keyspaces.
 
-Each of them can be configured either by inclusion (listing all statement categories, users or keyspaces to be audited) or by exclusion of CQL commands (listing all statement categories, user, or keyspaces to be excluded from auditing).
+Each can be configured either by inclusion (listing all statement categories, users, or keyspaces to be audited) or by exclusion of CQL commands (listing all statement categories, user, or keyspaces to be excluded from auditing).
 
 The available flags are described in the following table:
 
@@ -69,40 +73,40 @@ The available flags are described in the following table:
   <tr>
    <td><code>ycql_enable_audit_log</code></td>
    <td><code>true</code>/<code>false</code></td>
-   <td>Whether to enable YCQL audit</td>
+   <td>Enable YCQL audit</td>
    <td><code>false</code></td>
   </tr>
   <tr>
    <td><code>ycql_audit_included_categories</code></td>
-   <td rowspan="2" >comma-separated list of statement categories.</td>
-   <td>categories to be audited.</td>
+   <td rowspan="2" >Comma-separated list of statement categories.</td>
+   <td>Categories to audit</td>
    <td>empty</td>
   </tr>
   <tr>
    <td><code>ycql_audit_excluded_categories</code></td>
-   <td>categories to be excluded from auditing.</td>
+   <td>Categories to exclude</td>
    <td>empty</td>
   </tr>
   <tr>
    <td><code>ycql_audit_included_users</code></td>
-   <td rowspan="2" >comma-separated list of users.</td>
-   <td>users to be audited.</td>
+   <td rowspan="2" >Comma-separated list of users.</td>
+   <td>Users to audit</td>
    <td>empty</td>
   </tr>
   <tr>
    <td><code>ycql_audit_excluded_users</code></td>
-   <td>users to be excluded from auditing.</td>
+   <td>Users to exclude</td>
    <td>empty</td>
   </tr>
   <tr>
    <td><code>ycql_audit_included_keyspaces</code></td>
-   <td rowspan="2" >comma-separated list of keyspaces.</td>
-   <td>keyspaces to be audited.</td>
+   <td rowspan="2" >Comma-separated list of keyspaces.</td>
+   <td>keyspaces to audit</td>
    <td>empty</td>
   </tr>
   <tr>
    <td><code>ycql_audit_excluded_keyspaces</code></td>
-   <td>keyspaces to be excluded from auditing.</td>
+   <td>keyspaces to exclude</td>
    <td><code>system,system_schema,system_virtual_schema,system_auth</code></td>
   </tr>
   <tr>
@@ -113,7 +117,7 @@ The available flags are described in the following table:
   </tr>
 </table>
 
-All the flags above are `runtime` flags, so they can be set without requiring `yb-tserver` restart.
+All the preceding flags are `runtime` flags, so they can be set without requiring `yb-tserver` restart.
 
 ### Statements being audited
 

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_SNAPSHOT_SCHEDULE_STATE_H
-#define YB_MASTER_SNAPSHOT_SCHEDULE_STATE_H
+#pragma once
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/snapshot.h"
@@ -89,8 +88,8 @@ class SnapshotScheduleState {
   Result<SnapshotScheduleOperation> ForceCreateSnapshot(HybridTime last_snapshot_time);
   void SnapshotFinished(const TxnSnapshotId& snapshot_id, const Status& status);
 
-  Result<docdb::KeyBytes> EncodedKey() const;
-  static Result<docdb::KeyBytes> EncodedKey(
+  Result<dockv::KeyBytes> EncodedKey() const;
+  static Result<dockv::KeyBytes> EncodedKey(
       const SnapshotScheduleId& schedule_id, SnapshotCoordinatorContext* context);
 
   Status StoreToWriteBatch(docdb::KeyValueWriteBatchPB* write_batch) const;
@@ -125,5 +124,3 @@ class SnapshotScheduleState {
 
 } // namespace master
 } // namespace yb
-
-#endif  // YB_MASTER_SNAPSHOT_SCHEDULE_STATE_H

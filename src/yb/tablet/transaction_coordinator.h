@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_TABLET_TRANSACTION_COORDINATOR_H
-#define YB_TABLET_TRANSACTION_COORDINATOR_H
+#pragma once
 
 #include <future>
 #include <memory>
@@ -64,12 +63,12 @@ class TransactionCoordinatorContext {
 
   // Returns current hybrid time lease expiration.
   // Valid only if we are leader.
-  virtual HybridTime HtLeaseExpiration() const = 0;
+  virtual Result<HybridTime> HtLeaseExpiration() const = 0;
 
   virtual void UpdateClock(HybridTime hybrid_time) = 0;
   virtual std::unique_ptr<UpdateTxnOperation> CreateUpdateTransaction(
-      TransactionStatePB* request) = 0;
-  virtual void SubmitUpdateTransaction(
+      std::shared_ptr<LWTransactionStatePB> request) = 0;
+  virtual Status SubmitUpdateTransaction(
       std::unique_ptr<UpdateTxnOperation> operation, int64_t term) = 0;
 
   server::Clock& clock() const {
@@ -90,13 +89,14 @@ class TransactionCoordinator {
  public:
   TransactionCoordinator(const std::string& permanent_uuid,
                          TransactionCoordinatorContext* context,
-                         Counter* expired_metric);
+                         TabletMetrics* tablet_metrics,
+                         const MetricEntityPtr& metrics);
   ~TransactionCoordinator();
 
   // Used to pass arguments to ProcessReplicated.
   struct ReplicatedData {
     int64_t leader_term;
-    const TransactionStatePB& state;
+    const LWTransactionStatePB& state;
     const OpId& op_id;
     HybridTime hybrid_time;
 
@@ -107,7 +107,7 @@ class TransactionCoordinator {
   Status ProcessReplicated(const ReplicatedData& data);
 
   struct AbortedData {
-    const TransactionStatePB& state;
+    const LWTransactionStatePB& state;
     const OpId& op_id;
 
     std::string ToString() const;
@@ -115,7 +115,6 @@ class TransactionCoordinator {
 
   // Process transaction state replication aborted.
   void ProcessAborted(const AbortedData& data);
-
   // Handles new request for transaction update.
   void Handle(std::unique_ptr<tablet::UpdateTxnOperation> request, int64_t term);
 
@@ -129,11 +128,31 @@ class TransactionCoordinator {
   // And like most of other Shutdowns in our codebase it wait until shutdown completes.
   void Shutdown();
 
-  Status GetStatus(const google::protobuf::RepeatedPtrField<std::string>& transaction_ids,
-                           CoarseTimePoint deadline,
-                           tserver::GetTransactionStatusResponsePB* response);
+  // Prepares tablet for deletion. This waits until the transaction coordinator has stopped
+  // accepting new transactions, all running transactions have finished, and all intents
+  // for committed transactions have been applied. This does not ensure that all aborted
+  // transactions' intents have been cleaned up.
+  Status PrepareForDeletion(const CoarseTimePoint& deadline);
 
-  void Abort(const std::string& transaction_id, int64_t term, TransactionAbortCallback callback);
+  Status GetStatus(const google::protobuf::RepeatedPtrField<std::string>& transaction_ids,
+                   CoarseTimePoint deadline,
+                   tserver::GetTransactionStatusResponsePB* response);
+
+  void Abort(const TransactionId& transaction_id, int64_t term, TransactionAbortCallback callback);
+
+  // CancelTransactionIfFound returns true if the transaction is found in the list of managed txns
+  // at the coordinator, and invokes the callback with the cancelation status. If the txn isn't
+  // found, it returns false and the callback is not invoked.
+  bool CancelTransactionIfFound(
+      const TransactionId& transaction_id, int64_t term, TransactionAbortCallback callback);
+
+  // Populates old transactions and their metadata (involved tablets, active subtransactions) based
+  // on the arguments in the request. Used by pg_client_service to determine which transactions to
+  // display in pg_locks/yb_lock_status.
+  Status GetOldTransactions(
+      const tserver::GetOldTransactionsRequestPB* req,
+      tserver::GetOldTransactionsResponsePB* resp,
+      CoarseTimePoint deadline);
 
   std::string DumpTransactions();
 
@@ -157,5 +176,3 @@ class TransactionCoordinator {
 
 } // namespace tablet
 } // namespace yb
-
-#endif // YB_TABLET_TRANSACTION_COORDINATOR_H

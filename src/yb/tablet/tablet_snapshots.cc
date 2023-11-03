@@ -15,10 +15,10 @@
 
 #include <boost/algorithm/string/predicate.hpp>
 
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 #include "yb/common/snapshot.h"
-#include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
@@ -33,7 +33,9 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/file_util.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/operation_counter.h"
@@ -41,7 +43,17 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
+using std::string;
+
 using namespace std::literals;
+
+DEFINE_test_flag(int32, delay_tablet_split_metadata_restore_secs, 0,
+                 "How much time in secs to delay restoring tablet split metadata after restoring "
+                 "checkpoint.");
+
+DEFINE_test_flag(int32, delay_tablet_export_metadata_ms, 0,
+                 "How much time in milliseconds to delay before exporting tablet metadata during "
+                 "snapshot creation.");
 
 namespace yb {
 namespace tablet {
@@ -59,7 +71,7 @@ std::string TabletMetadataFile(const std::string& dir) {
 
 struct TabletSnapshots::RestoreMetadata {
   boost::optional<Schema> schema;
-  boost::optional<IndexMap> index_map;
+  boost::optional<qlexpr::IndexMap> index_map;
   uint32_t schema_version;
   bool hide;
   google::protobuf::RepeatedPtrField<ColocatedTableMetadata> colocated_tables_metadata;
@@ -67,7 +79,7 @@ struct TabletSnapshots::RestoreMetadata {
 
 struct TabletSnapshots::ColocatedTableMetadata {
   boost::optional<Schema> schema;
-  boost::optional<IndexMap> index_map;
+  boost::optional<qlexpr::IndexMap> index_map;
   uint32_t schema_version;
   std::string table_id;
 };
@@ -99,7 +111,7 @@ Status TabletSnapshots::Create(SnapshotOperation* operation) {
 Status TabletSnapshots::Create(const CreateSnapshotData& data) {
   LongOperationTracker long_operation_tracker("Create snapshot", 5s);
 
-  ScopedRWOperation scoped_read_operation(&pending_op_counter());
+  ScopedRWOperation scoped_read_operation(&pending_op_counter_blocking_rocksdb_shutdown_start());
   RETURN_NOT_OK(scoped_read_operation);
 
   Status s = regular_db().Flush(rocksdb::FlushOptions());
@@ -159,6 +171,8 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
     }
   });
 
+  DisableSchemaGC disable_schema_gc(tablet().metadata());
+
   // Note: checkpoint::CreateCheckpoint() calls DisableFileDeletions()/EnableFileDeletions()
   //       for the RocksDB object.
   s = CreateCheckpoint(tmp_snapshot_dir);
@@ -173,8 +187,10 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
     docdb::RocksDBPatcher patcher(tmp_snapshot_dir, rocksdb_options);
 
     RETURN_NOT_OK(patcher.Load());
-    RETURN_NOT_OK(patcher.SetHybridTimeFilter(snapshot_hybrid_time));
+    RETURN_NOT_OK(patcher.SetHybridTimeFilter(std::nullopt, snapshot_hybrid_time));
   }
+
+  AtomicFlagSleepMs(&FLAGS_TEST_delay_tablet_export_metadata_ms);
 
   bool need_flush = data.schedule_id && tablet().metadata()->AddSnapshotSchedule(data.schedule_id);
 
@@ -243,8 +259,9 @@ Status TabletSnapshots::Restore(SnapshotOperation* operation) {
   RestoreMetadata restore_metadata;
   if (request.has_schema()) {
     restore_metadata.schema.emplace();
-    RETURN_NOT_OK(SchemaFromPB(request.schema(), restore_metadata.schema.get_ptr()));
-    restore_metadata.index_map.emplace(request.indexes());
+    RETURN_NOT_OK(SchemaFromPB(
+        request.schema().ToGoogleProtobuf(), restore_metadata.schema.get_ptr()));
+    restore_metadata.index_map.emplace(ToRepeatedPtrField(request.indexes()));
     restore_metadata.schema_version = request.schema_version();
     restore_metadata.hide = request.hide();
   }
@@ -253,14 +270,20 @@ Status TabletSnapshots::Restore(SnapshotOperation* operation) {
     auto* table_metadata = restore_metadata.colocated_tables_metadata.Add();
     table_metadata->schema_version = entry.schema_version();
     table_metadata->schema.emplace();
-    RETURN_NOT_OK(SchemaFromPB(entry.schema(), table_metadata->schema.get_ptr()));
-    table_metadata->index_map.emplace(entry.indexes());
-    table_metadata->table_id = entry.table_id();
+    RETURN_NOT_OK(SchemaFromPB(
+        entry.schema().ToGoogleProtobuf(), table_metadata->schema.get_ptr()));
+    table_metadata->index_map.emplace(ToRepeatedPtrField(entry.indexes()));
+    table_metadata->table_id = entry.table_id().ToBuffer();
   }
-
-  Status s = RestoreCheckpoint(snapshot_dir, restore_at, restore_metadata, frontier);
+  Status s = RestoreCheckpoint(
+      snapshot_dir, restore_at, restore_metadata, frontier,
+      !request.schedule_id().empty(), operation->op_id());
   VLOG_WITH_PREFIX(1) << "Complete checkpoint restoring with result " << s << " in folder: "
                       << metadata().rocksdb_dir();
+  int32 delay_time_secs = GetAtomicFlag(&FLAGS_TEST_delay_tablet_split_metadata_restore_secs);
+  if (delay_time_secs > 0) {
+    SleepFor(MonoDelta::FromSeconds(delay_time_secs));
+  }
   if (s.ok() && restoration_id) {
     s = tablet().RestoreStarted(restoration_id);
   }
@@ -268,58 +291,73 @@ Status TabletSnapshots::Restore(SnapshotOperation* operation) {
 }
 
 Status TabletSnapshots::RestorePartialRows(SnapshotOperation* operation) {
-  // Restore snapshot to temporary folder and create rocksdb out of it.
-  const auto& request = *operation->request();
-  LOG_WITH_PREFIX(INFO) << "Restoring only rows with db oid " << request.db_oid();
-  auto snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(request.snapshot_id()));
-  auto restore_at = HybridTime::FromPB(request.snapshot_hybrid_time());
-  auto dir = VERIFY_RESULT(RestoreToTemporary(snapshot_id, restore_at));
-  rocksdb::Options rocksdb_options;
-  std::string log_prefix = LogPrefix();
-  // Remove ": " to patch suffix.
-  log_prefix.erase(log_prefix.size() - 2);
-  tablet().InitRocksDBOptions(&rocksdb_options, log_prefix + " [TMP]: ");
-  auto db = VERIFY_RESULT(rocksdb::DB::Open(rocksdb_options, dir));
-  auto doc_db = docdb::DocDB::FromRegularUnbounded(db.get());
-
+  ScopedRWOperation pending_op(&pending_op_counter_blocking_rocksdb_shutdown_start());
   docdb::DocWriteBatch write_batch(
-      tablet().doc_db(), docdb::InitMarkerBehavior::kOptional);
-  FetchState restoring_state(doc_db, ReadHybridTime::SingleTime(restore_at));
-  FetchState existing_state(tablet().doc_db(), ReadHybridTime::Max());
+      tablet().doc_db(), docdb::InitMarkerBehavior::kOptional, pending_op, nullptr);
 
-  RETURN_NOT_OK(restoring_state.SetPrefix(""));
-  RETURN_NOT_OK(existing_state.SetPrefix(""));
-
-  TabletRestorePatch restore_patch(
-      &existing_state, &restoring_state, &write_batch, request.db_oid());
-
-  RETURN_NOT_OK(restore_patch.PatchCurrentStateFromRestoringState());
-
-  size_t total_changes = restore_patch.TotalTickerCount();
-
-  if (total_changes != 0 || VLOG_IS_ON(3)) {
+  auto restore_patch = VERIFY_RESULT(GenerateRestoreWriteBatch(
+      operation->request()->ToGoogleProtobuf(), &write_batch));
+  if (restore_patch.TotalTickerCount() != 0 || VLOG_IS_ON(3)) {
     LOG(INFO) << "PITR: Sequences data tablet: " << tablet().tablet_id()
               << ", " << restore_patch.TickersToString();
   }
 
   WriteToRocksDB(
       &write_batch, operation->WriteHybridTime(), operation->op_id(), &tablet(), std::nullopt);
-
   return Status::OK();
+}
+
+Result<TabletRestorePatch> TabletSnapshots::GenerateRestoreWriteBatch(
+    const tserver::TabletSnapshotOpRequestPB& request, docdb::DocWriteBatch* write_batch) {
+  FetchState existing_state(tablet().doc_db(), ReadHybridTime::Max());
+  RETURN_NOT_OK(existing_state.SetPrefix(""));
+
+  // The non-empty snapshot id means the snapshot being used to restore contains this sequences data
+  // tablet, so we construct a restore patch based on db_oid. Otherwise, we clean up current state.
+  if (!request.snapshot_id().empty()) {
+    // Restore snapshot to temporary folder and create rocksdb out of it.
+    LOG_WITH_PREFIX(INFO) << "Restoring only rows with db oid " << request.db_oid();
+    auto snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(request.snapshot_id()));
+    auto restore_at = HybridTime::FromPB(request.snapshot_hybrid_time());
+    auto dir = VERIFY_RESULT(RestoreToTemporary(snapshot_id, restore_at));
+    rocksdb::Options rocksdb_options;
+    std::string log_prefix = LogPrefix();
+    // Remove ": " to patch suffix.
+    log_prefix.erase(log_prefix.size() - 2);
+    tablet().InitRocksDBOptions(&rocksdb_options, log_prefix + " [TMP]: ");
+    auto db = VERIFY_RESULT(rocksdb::DB::Open(rocksdb_options, dir));
+    auto doc_db = docdb::DocDB::FromRegularUnbounded(db.get());
+
+    FetchState restoring_state(doc_db, ReadHybridTime::SingleTime(restore_at));
+    RETURN_NOT_OK(restoring_state.SetPrefix(""));
+
+    TabletRestorePatch restore_patch(
+        &existing_state, &restoring_state, write_batch,
+        tablet().metadata()->primary_table_info().get(), request.db_oid());
+    RETURN_NOT_OK(restore_patch.PatchCurrentStateFromRestoringState());
+    RETURN_NOT_OK(restore_patch.Finish());
+    return std::move(restore_patch);
+  } else {
+    LOG_WITH_PREFIX(INFO) << "Cleaning only rows with db oid " << request.db_oid();
+    TabletRestorePatch restore_patch(
+        &existing_state, nullptr, write_batch,
+        tablet().metadata()->primary_table_info().get(), request.db_oid());
+    RETURN_NOT_OK(restore_patch.PatchCurrentStateFromRestoringState());
+    RETURN_NOT_OK(restore_patch.Finish());
+    return std::move(restore_patch);
+  }
 }
 
 Status TabletSnapshots::RestoreCheckpoint(
     const std::string& dir, HybridTime restore_at, const RestoreMetadata& restore_metadata,
-    const docdb::ConsensusFrontier& frontier) {
+    const docdb::ConsensusFrontier& frontier, bool is_pitr_restore, const OpId& op_id) {
   LongOperationTracker long_operation_tracker("Restore checkpoint", 5s);
-
-  const auto destroy = !dir.empty();
 
   // The following two lines can't just be changed to RETURN_NOT_OK(PauseReadWriteOperations()):
   // op_pause has to stay in scope until the end of the function.
-  auto op_pauses = VERIFY_RESULT(StartShutdownRocksDBs(DisableFlushOnShutdown(destroy)));
+  auto op_pauses = StartShutdownRocksDBs(DisableFlushOnShutdown(!dir.empty()), AbortOps::kTrue);
 
-  std::lock_guard<std::mutex> lock(create_checkpoint_lock());
+  std::lock_guard lock(create_checkpoint_lock());
 
   const string db_dir = regular_db().GetName();
   const std::string intents_db_dir = has_intents_db() ? intents_db().GetName() : std::string();
@@ -327,11 +365,11 @@ Status TabletSnapshots::RestoreCheckpoint(
   if (dir.empty()) {
     // Just change rocksdb hybrid time limit, because it should be in retention interval.
     // TODO(pitr) apply transactions and reset intents.
-    RETURN_NOT_OK(CompleteShutdownRocksDBs(Destroy(destroy), &op_pauses));
+    CompleteShutdownRocksDBs(op_pauses);
   } else {
     // Destroy DB object.
     // TODO: snapshot current DB and try to restore it in case of failure.
-    RETURN_NOT_OK(CompleteShutdownRocksDBs(Destroy(destroy), &op_pauses));
+    RETURN_NOT_OK(DeleteRocksDBs(CompleteShutdownRocksDBs(op_pauses)));
 
     auto s = CopyDirectory(
         &rocksdb_env(), dir, db_dir, UseHardLinks::kTrue, CreateIfMissing::kTrue);
@@ -353,7 +391,7 @@ Status TabletSnapshots::RestoreCheckpoint(
     RETURN_NOT_OK(patcher.Load());
     RETURN_NOT_OK(patcher.ModifyFlushedFrontier(frontier));
     if (restore_at) {
-      RETURN_NOT_OK(patcher.SetHybridTimeFilter(restore_at));
+      RETURN_NOT_OK(patcher.SetHybridTimeFilter(std::nullopt, restore_at));
     }
   }
 
@@ -361,9 +399,11 @@ Status TabletSnapshots::RestoreCheckpoint(
 
   if (restore_metadata.schema) {
     // TODO(pitr) check deleted columns
+    // OpId::Invalid() is used to indicate the callee to not
+    // set last_applied_change_metadata_op_id field of tablet metadata.
     tablet().metadata()->SetSchema(
         *restore_metadata.schema, *restore_metadata.index_map, {} /* deleted_columns */,
-        restore_metadata.schema_version);
+        restore_metadata.schema_version, op_id);
     tablet().metadata()->SetHidden(restore_metadata.hide);
     need_flush = true;
   }
@@ -371,10 +411,13 @@ Status TabletSnapshots::RestoreCheckpoint(
   for (const auto& colocated_table_metadata : restore_metadata.colocated_tables_metadata) {
     LOG(INFO) << "Setting schema, index information and schema version for table "
               << colocated_table_metadata.table_id;
+    // OpId::Invalid() is used to indicate the callee to not
+    // set last_applied_change_metadata_op_id field of tablet metadata.
     tablet().metadata()->SetSchema(
         *colocated_table_metadata.schema, *colocated_table_metadata.index_map,
         {} /* deleted_columns */,
-        colocated_table_metadata.schema_version, colocated_table_metadata.table_id);
+        colocated_table_metadata.schema_version, op_id,
+        colocated_table_metadata.table_id);
     need_flush = true;
   }
 
@@ -382,8 +425,13 @@ Status TabletSnapshots::RestoreCheckpoint(
     auto tablet_metadata_file = TabletMetadataFile(dir);
     // Old snapshots could lack tablet metadata, so just do nothing in this case.
     if (env().FileExists(tablet_metadata_file)) {
-      LOG_WITH_PREFIX(INFO) << "Merging metadata with restored: " << tablet_metadata_file;
-      RETURN_NOT_OK(tablet().metadata()->MergeWithRestored(tablet_metadata_file));
+      LOG_WITH_PREFIX(INFO) << "Merging metadata with restored: " << tablet_metadata_file
+                            << " , force overwrite of schema packing " << !is_pitr_restore;
+      RETURN_NOT_OK(tablet().metadata()->MergeWithRestored(
+          tablet_metadata_file,
+          is_pitr_restore ? dockv::OverwriteSchemaPacking::kFalse
+              : dockv::OverwriteSchemaPacking::kTrue));
+      need_flush = true;
     }
   }
 
@@ -402,11 +450,14 @@ Status TabletSnapshots::RestoreCheckpoint(
 
   LOG_WITH_PREFIX(INFO) << "Checkpoint restored from " << dir;
   LOG_WITH_PREFIX(INFO) << "Re-enabling compactions";
-  s = tablet().EnableCompactions(&op_pauses.non_abortable);
+  s = tablet().EnableCompactions(&op_pauses.blocking_rocksdb_shutdown_start);
   if (!s.ok()) {
     LOG_WITH_PREFIX(WARNING) << "Failed to enable compactions after restoring a checkpoint";
     return s;
   }
+
+  // Schedule post split compaction after compaction enabled on the tablet.
+  tablet().TriggerPostSplitCompactionIfNeeded();
 
   // Ensure that op_pauses stays in scope throughout this function.
   for (auto* op_pause : op_pauses.AsArray()) {
@@ -431,7 +482,7 @@ Result<std::string> TabletSnapshots::RestoreToTemporary(
     docdb::RocksDBPatcher patcher(dest_dir, rocksdb_options);
 
     RETURN_NOT_OK(patcher.Load());
-    RETURN_NOT_OK(patcher.SetHybridTimeFilter(restore_at));
+    RETURN_NOT_OK(patcher.SetHybridTimeFilter(std::nullopt, restore_at));
   }
 
   return dest_dir;
@@ -442,9 +493,9 @@ Status TabletSnapshots::Delete(const SnapshotOperation& operation) {
   const auto& snapshot_id = operation.request()->snapshot_id();
   auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(snapshot_id);
   const std::string snapshot_dir = JoinPathSegments(
-      top_snapshots_dir, !txn_snapshot_id ? snapshot_id : txn_snapshot_id.ToString());
+      top_snapshots_dir, !txn_snapshot_id ? snapshot_id.ToBuffer() : txn_snapshot_id.ToString());
 
-  std::lock_guard<std::mutex> lock(create_checkpoint_lock());
+  std::lock_guard lock(create_checkpoint_lock());
   Env* const env = metadata().fs_manager()->env();
 
   if (env->FileExists(snapshot_dir)) {
@@ -477,13 +528,13 @@ Status TabletSnapshots::Delete(const SnapshotOperation& operation) {
 
 Status TabletSnapshots::CreateCheckpoint(
     const std::string& dir, const CreateIntentsCheckpointIn create_intents_checkpoint_in) {
-  ScopedRWOperation scoped_read_operation(&pending_op_counter());
+  ScopedRWOperation scoped_read_operation(&pending_op_counter_blocking_rocksdb_shutdown_start());
   RETURN_NOT_OK(scoped_read_operation);
 
   auto temp_intents_dir = dir + kIntentsDBSuffix;
   auto final_intents_dir = JoinPathSegments(dir, kIntentsSubdir);
 
-  std::lock_guard<std::mutex> lock(create_checkpoint_lock());
+  std::lock_guard lock(create_checkpoint_lock());
 
   if (!has_regular_db()) {
     LOG_WITH_PREFIX(INFO) << "Skipped creating checkpoint in " << dir;
@@ -535,15 +586,118 @@ Status TabletSnapshots::RestoreFinished(SnapshotOperation* operation) {
 Result<bool> TabletRestorePatch::ShouldSkipEntry(const Slice& key, const Slice& value) {
   KeyBuffer key_copy;
   key_copy = key;
-  docdb::SubDocKey sub_doc_key;
+  dockv::SubDocKey sub_doc_key;
   RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(
-      key_copy.AsSlice(), docdb::HybridTimeRequired::kFalse));
+      key_copy.AsSlice(), dockv::HybridTimeRequired::kFalse));
   // Get the db_oid.
   int64_t db_oid = sub_doc_key.doc_key().hashed_group()[0].GetInt64();
   if (db_oid != db_oid_) {
     return true;
   }
   return false;
+}
+
+Status TabletRestorePatch::UpdateColumnValueInMap(
+    const Slice& key, const Slice& value,
+    std::map<dockv::DocKey, SequencesDataInfo>* key_to_seq_info_map) {
+  dockv::SubDocKey decoded_key;
+  RETURN_NOT_OK(decoded_key.FullyDecodeFrom(key, dockv::HybridTimeRequired::kFalse));
+
+  auto last_value_opt = VERIFY_RESULT(GetInt64ColumnValue(
+      decoded_key, value, table_info_, "last_value"));
+  auto is_called_opt = VERIFY_RESULT(GetBoolColumnValue(
+      decoded_key, value, table_info_, "is_called"));
+
+  if (!last_value_opt && !is_called_opt) {
+    return Status::OK();
+  }
+  std::optional<int64_t> updated_last_value = last_value_opt;
+  std::optional<bool> updated_is_called = is_called_opt;
+  const auto& doc_key = decoded_key.doc_key();
+  auto it = key_to_seq_info_map->find(doc_key);
+  if (it != key_to_seq_info_map->end()) {
+    // Only update if last_value has increased.
+    if (it->second.last_value) {
+      if (!last_value_opt || *(it->second.last_value) >= *last_value_opt) {
+        updated_last_value = *(it->second.last_value);
+      }
+    }
+    // Only update if is_called has changed from false to true.
+    if (it->second.is_called) {
+      if (!is_called_opt || *(it->second.is_called) == true) {
+        updated_is_called = *(it->second.is_called);
+      }
+    }
+    key_to_seq_info_map->erase(doc_key);
+  }
+  SequencesDataInfo seq_values(updated_last_value, updated_is_called);
+  key_to_seq_info_map->emplace(doc_key, seq_values);
+  VLOG_WITH_FUNC(3) << "Inserted in map " << doc_key.ToString() << ": " << seq_values;
+  return Status::OK();
+}
+
+Status TabletRestorePatch::ProcessCommonEntry(
+    const Slice& key, const Slice& existing_value, const Slice& restoring_value) {
+  RETURN_NOT_OK(RestorePatch::ProcessCommonEntry(key, existing_value, restoring_value));
+  RETURN_NOT_OK(UpdateColumnValueInMap(
+      key, existing_value, &existing_key_to_seq_info_map_));
+  return UpdateColumnValueInMap(
+      key, restoring_value, &restoring_key_to_seq_info_map_);
+}
+
+Status TabletRestorePatch::ProcessRestoringOnlyEntry(
+    const Slice& restoring_key, const Slice& restoring_value) {
+  RETURN_NOT_OK(RestorePatch::ProcessRestoringOnlyEntry(restoring_key, restoring_value));
+  return UpdateColumnValueInMap(
+      restoring_key, restoring_value, &restoring_key_to_seq_info_map_);
+}
+
+Status TabletRestorePatch::ProcessExistingOnlyEntry(
+    const Slice& existing_key, const Slice& existing_value) {
+  RETURN_NOT_OK(RestorePatch::ProcessExistingOnlyEntry(existing_key, existing_value));
+  return UpdateColumnValueInMap(
+      existing_key, existing_value, &existing_key_to_seq_info_map_);
+}
+
+Status TabletRestorePatch::Finish() {
+  for (const auto& doc_key_and_value : restoring_key_to_seq_info_map_) {
+    auto value_to_insert = doc_key_and_value.second;
+    auto it = existing_key_to_seq_info_map_.find(doc_key_and_value.first);
+    if (it != existing_key_to_seq_info_map_.end()) {
+      value_to_insert = it->second;
+    }
+    // Insert this kv into the write batch.
+    if (value_to_insert.last_value) {
+      QLValuePB value_pb;
+      value_pb.set_int64_value(*(value_to_insert.last_value));
+      VLOG_WITH_FUNC(3) << doc_key_and_value.first << ": " << *(value_to_insert.last_value);
+      auto column_id = VERIFY_RESULT(table_info_->schema().ColumnIdByName("last_value"));
+      auto doc_path = dockv::DocPath(
+          doc_key_and_value.first.Encode(), dockv::KeyEntryValue::MakeColumnId(column_id));
+      RETURN_NOT_OK(DocBatch()->SetPrimitive(
+          doc_path, docdb::ValueRef(value_pb, SortingType::kNotSpecified)));
+      IncrementTicker(RestoreTicker::kInserts);
+    }
+    if (value_to_insert.is_called) {
+      QLValuePB value_pb;
+      value_pb.set_bool_value(*(value_to_insert.is_called));
+      VLOG_WITH_FUNC(3) << doc_key_and_value.first << ": " << *(value_to_insert.is_called);
+      auto column_id = VERIFY_RESULT(table_info_->schema().ColumnIdByName("is_called"));
+      auto doc_path = dockv::DocPath(
+          doc_key_and_value.first.Encode(), dockv::KeyEntryValue::MakeColumnId(column_id));
+      RETURN_NOT_OK(DocBatch()->SetPrimitive(
+          doc_path, docdb::ValueRef(value_pb, SortingType::kNotSpecified)));
+      IncrementTicker(RestoreTicker::kInserts);
+    }
+  }
+  return Status::OK();
+}
+
+std::ostream& operator<<(std::ostream& out, const SequencesDataInfo& value) {
+  out << "[last_value: " << (value.last_value ? std::to_string(*(value.last_value)) : "none")
+      << ", is_called: " << (value.is_called ? (*(value.is_called) ? "true" : "false") : "none")
+      << "]";
+  return out;
 }
 
 } // namespace tablet

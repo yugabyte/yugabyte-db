@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import PropTypes from 'prop-types';
 
 import YBLoadingCircleIcon from './YBLoadingCircleIcon';
@@ -14,7 +14,7 @@ export default class YBLoading extends Component {
     return (
       <div className="text-center loading-icon-container">
         <YBLoadingCircleIcon size={this.props.size} />
-        <div>Loading</div>
+        <div>{this.props.text ? this.props.text : 'Loading'}</div>
       </div>
     );
   }

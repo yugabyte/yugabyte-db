@@ -11,16 +11,16 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_IN_MEM_DOCDB_H_
-#define YB_DOCDB_IN_MEM_DOCDB_H_
+#pragma once
 
 #include <map>
 
 #include "yb/rocksdb/db.h"
 
-#include "yb/docdb/subdocument.h"
-#include "yb/docdb/doc_path.h"
-#include "yb/docdb/value.h"
+#include "yb/dockv/subdocument.h"
+#include "yb/dockv/doc_path.h"
+#include "yb/docdb/key_bounds.h"
+#include "yb/dockv/value.h"
 #include "yb/util/status_fwd.h"
 
 namespace yb {
@@ -29,12 +29,12 @@ namespace docdb {
 // An in-memory single-versioned single-threaded DocDB representation for testing.
 class InMemDocDbState {
  public:
-  Status SetPrimitive(const DocPath& doc_path, const PrimitiveValue& value);
-  Status DeleteSubDoc(const DocPath& doc_path);
+  Status SetPrimitive(const dockv::DocPath& doc_path, const dockv::PrimitiveValue& value);
+  Status DeleteSubDoc(const dockv::DocPath& doc_path);
 
-  void SetDocument(const KeyBytes& encoded_doc_key, SubDocument&& doc);
-  const SubDocument* GetSubDocument(const SubDocKey &subdoc_key) const;
-  const SubDocument* GetDocument(const DocKey& doc_key) const;
+  void SetDocument(const dockv::KeyBytes& encoded_doc_key, dockv::SubDocument&& doc);
+  const dockv::SubDocument* GetSubDocument(const dockv::SubDocKey &subdoc_key) const;
+  const dockv::SubDocument* GetDocument(const dockv::DocKey& doc_key) const;
 
   // Capture all documents present in the given RocksDB database at the given hybrid_time and save
   // them into this in-memory DocDB. All current contents of this object are overwritten.
@@ -63,7 +63,7 @@ class InMemDocDbState {
  private:
   // We reuse SubDocument for the top-level map, as this is only being used in testing. We wrap
   // encoded DocKeys into PrimitiveValues of type string.
-  SubDocument root_;
+  dockv::SubDocument root_;
 
   // We use this field when capturing a DocDB state into an InMemDocDbState. This is the latest
   // write hybrid_time at which the capture happened.
@@ -72,5 +72,3 @@ class InMemDocDbState {
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif  // YB_DOCDB_IN_MEM_DOCDB_H_

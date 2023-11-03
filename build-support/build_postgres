@@ -21,10 +21,11 @@ if [[ -z ${YB_BUILD_ROOT:-} ]]; then
 fi
 export BUILD_ROOT=$YB_BUILD_ROOT
 predefined_build_root=${YB_BUILD_ROOT}
+handle_predefined_build_root_quietly=true
 handle_predefined_build_root
 
 activate_virtualenv
 set_sanitizer_runtime_options
 
 set_pythonpath
-"$YB_SRC_ROOT"/python/yb/build_postgres.py "$@"
+python3 "$YB_SCRIPT_PATH_BUILD_POSTGRES" "$@"

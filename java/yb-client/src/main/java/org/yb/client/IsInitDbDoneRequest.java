@@ -12,12 +12,11 @@
 //
 package org.yb.client;
 
-import com.google.protobuf.ByteString;
 import com.google.protobuf.Message;
+import io.netty.buffer.ByteBuf;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.master.MasterAdminOuterClass;
 import org.yb.util.Pair;
-import org.jboss.netty.buffer.ChannelBuffer;
 
 /**
  * Package-private RPC that can only go to a master.
@@ -59,7 +58,7 @@ class IsInitDbDoneRequest extends YRpc<IsInitDbDoneResponse> {
   }
 
   @Override
-  ChannelBuffer serialize(Message header) {
+  ByteBuf serialize(Message header) {
     assert header.isInitialized();
     final MasterAdminOuterClass.IsInitDbDoneRequestPB.Builder builder = MasterAdminOuterClass
         .IsInitDbDoneRequestPB.newBuilder();

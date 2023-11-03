@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_CLONE_PTR_H
-#define YB_UTIL_CLONE_PTR_H
+#pragma once
 
 #include <memory>
 
@@ -105,5 +104,3 @@ class clone_ptr {
 };
 
 } // namespace yb
-
-#endif // YB_UTIL_CLONE_PTR_H

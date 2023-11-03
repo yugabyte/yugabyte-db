@@ -41,11 +41,12 @@
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/metric_entity.h"
+#include "yb/util/flags.h"
 
-DEFINE_int32(yb_client_num_reactors, 16,
+DEFINE_UNKNOWN_int32(yb_client_num_reactors, 16,
              "Number of reactor threads for the yb client to communicate with different tservers.");
 
-DEFINE_int32(yb_client_admin_operation_timeout_sec, 120,
+DEFINE_UNKNOWN_int32(yb_client_admin_operation_timeout_sec, 120,
              "The number of seconds after which an admin operation should timeout.");
 
 namespace yb {

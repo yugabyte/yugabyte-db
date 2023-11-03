@@ -49,7 +49,8 @@ public class UniverseSetTlsParams extends UniverseTaskBase {
             // If this universe is not being edited, fail the request.
             UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
             if (!universeDetails.updateInProgress) {
-              String errMsg = "UserUniverse " + taskParams().universeUUID + " is not being edited.";
+              String errMsg =
+                  "UserUniverse " + taskParams().getUniverseUUID() + " is not being edited.";
               log.error(errMsg);
               throw new RuntimeException(errMsg);
             }
@@ -63,13 +64,17 @@ public class UniverseSetTlsParams extends UniverseTaskBase {
 
             universeDetails.allowInsecure = taskParams().allowInsecure;
             universeDetails.rootCA = null;
-            universeDetails.clientRootCA = null;
+            universeDetails.setClientRootCA(null);
             universeDetails.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
             if (EncryptionInTransitUtil.isRootCARequired(taskParams())) {
               universeDetails.rootCA = taskParams().rootCA;
             }
             if (EncryptionInTransitUtil.isClientRootCARequired(taskParams())) {
-              universeDetails.clientRootCA = taskParams().clientRootCA;
+              UUID clientRootCA =
+                  taskParams().rootAndClientRootCASame
+                      ? taskParams().rootCA
+                      : taskParams().clientRootCA;
+              universeDetails.setClientRootCA(clientRootCA);
             }
             universe.setUniverseDetails(universeDetails);
           };

@@ -18,7 +18,6 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_LITE
 
 #include "yb/rocksdb/util/options_sanity_check.h"
 
@@ -49,5 +48,3 @@ OptionsSanityCheckLevel BBTOptionSanityCheckLevel(
 }
 
 }  // namespace rocksdb
-
-#endif  // !ROCKSDB_LITE

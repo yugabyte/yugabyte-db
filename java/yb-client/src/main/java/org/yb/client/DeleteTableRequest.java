@@ -32,11 +32,11 @@
 package org.yb.client;
 
 import com.google.protobuf.Message;
+import io.netty.buffer.ByteBuf;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterTypes;
 import org.yb.util.Pair;
-import org.jboss.netty.buffer.ChannelBuffer;
 
 /**
  * RPC to delete tables
@@ -56,7 +56,7 @@ class DeleteTableRequest extends YRpc<DeleteTableResponse> {
   }
 
   @Override
-  ChannelBuffer serialize(Message header) {
+  ByteBuf serialize(Message header) {
     assert header.isInitialized();
     final MasterDdlOuterClass.DeleteTableRequestPB.Builder builder =
         MasterDdlOuterClass.DeleteTableRequestPB.newBuilder();

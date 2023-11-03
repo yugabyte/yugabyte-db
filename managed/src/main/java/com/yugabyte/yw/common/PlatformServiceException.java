@@ -16,7 +16,7 @@ import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPStructuredError;
 import lombok.Getter;
 import play.libs.Json;
-import play.mvc.Http.Context;
+import play.mvc.Http.RequestHeader;
 import play.mvc.Result;
 import play.mvc.Results;
 
@@ -30,15 +30,6 @@ public class PlatformServiceException extends RuntimeException {
   // TODO: also accept throwable and expose stack trace in when in dev server mode
   PlatformServiceException(int httpStatus, String userVisibleMessage, JsonNode errJson) {
     super(userVisibleMessage);
-    Context c = Context.current.get();
-    if (c == null) {
-      // no request context. This can only happen in a unittest
-      method = "TEST";
-      uri = "/test";
-    } else {
-      method = c.request().method();
-      uri = c.request().uri();
-    }
     this.httpStatus = httpStatus;
     this.userVisibleMessage = userVisibleMessage;
     this.errJson = errJson;
@@ -52,18 +43,26 @@ public class PlatformServiceException extends RuntimeException {
     this(httpStatus, "errorJson: " + errJson.toString(), errJson);
   }
 
-  public Result buildResult() {
-    return buildResult(this.method, this.uri);
+  public Result buildResult(RequestHeader request) {
+    return buildResult(request.method(), request.uri());
+  }
+
+  public JsonNode getContentJson() {
+    return getContentJson(method, uri);
+  }
+
+  private JsonNode getContentJson(String method, String uri) {
+    Object ybpError;
+    if (errJson == null) {
+      ybpError = new YBPError(method, uri, userVisibleMessage, null);
+    } else {
+      ybpError = new YBPStructuredError(errJson);
+    }
+    return Json.toJson(ybpError);
   }
 
   @VisibleForTesting() // for routeWithYWErrHandler
   Result buildResult(String method, String uri) {
-    if (errJson == null) {
-      YBPError ybpError = new YBPError(method, uri, userVisibleMessage, null);
-      return Results.status(httpStatus, Json.toJson(ybpError));
-    } else {
-      YBPStructuredError ybpError = new YBPStructuredError(errJson);
-      return Results.status(httpStatus, Json.toJson(ybpError));
-    }
+    return Results.status(httpStatus, getContentJson(method, uri));
   }
 }

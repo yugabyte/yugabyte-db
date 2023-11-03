@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TSERVER_METRICS_SNAPSHOTTER_H
-#define YB_TSERVER_METRICS_SNAPSHOTTER_H
+#pragma once
 
 #include <memory>
 
@@ -42,5 +41,3 @@ class MetricsSnapshotter {
 
 } // namespace tserver
 } // namespace yb
-
-#endif // YB_TSERVER_METRICS_SNAPSHOTTER_H

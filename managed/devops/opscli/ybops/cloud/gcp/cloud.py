@@ -12,7 +12,7 @@ import json
 import logging
 import time
 
-from ybops.cloud.common.cloud import AbstractCloud
+from ybops.cloud.common.cloud import AbstractCloud, InstanceState
 from ybops.cloud.gcp.command import (GcpAccessCommand, GcpInstanceCommand, GcpNetworkCommand,
                                      GcpQueryCommand)
 from ybops.cloud.gcp.utils import (GCP_SCRATCH, GcpMetadata, GoogleCloudAdmin)
@@ -74,21 +74,25 @@ class GcpCloud(AbstractCloud):
         if args.cloud_subnet_secondary:
             # GCP machine image for centos is of the form:
             # https://www.googleapis.com/compute/beta/projects/centos-cloud/global/images/*
-            if 'centos' not in machine_image:
-                raise YBOpsRuntimeError("Second NIC can only be configured for CentOS right now")
+            supported_os = ['centos', 'almalinux']
+            if not any(os_type in machine_image for os_type in supported_os):
+                raise YBOpsRuntimeError(
+                    "Second NIC can only be configured for CentOS/Alma right now")
 
         self.get_admin().create_instance(
             args.region, args.zone, args.cloud_subnet, args.search_pattern, args.instance_type,
-            server_type, args.use_preemptible, can_ip_forward, machine_image, args.num_volumes,
+            server_type, args.use_spot_instance, can_ip_forward, machine_image, args.num_volumes,
             args.volume_type, args.volume_size, args.boot_disk_size_gb, args.assign_public_ip,
             args.assign_static_public_ip, ssh_keys, boot_script=args.boot_script,
             auto_delete_boot_disk=args.auto_delete_boot_disk, tags=args.instance_tags,
-            cloud_subnet_secondary=args.cloud_subnet_secondary)
+            cloud_subnet_secondary=args.cloud_subnet_secondary,
+            gcp_instance_template=args.instance_template)
 
     def create_disk(self, args, body):
         self.get_admin().create_disk(args.zone, args.instance_tags, body)
 
-    def clone_disk(self, args, volume_id, num_disks):
+    def clone_disk(self, args, volume_id, num_disks,
+                   snapshot_creation_delay=15, snapshot_creation_max_attempts=80):
         output = []
         # disk names must match regex https://cloud.google.com/compute/docs/reference/rest/v1/disks
         name = args.search_pattern[:58] if len(args.search_pattern) > 58 else args.search_pattern
@@ -107,27 +111,51 @@ class GcpCloud(AbstractCloud):
         return output
 
     def mount_disk(self, args, body):
+        logging.info("Mounting disk on host {} in zone {}; volume info is {}".format(
+                     args['search_pattern'], args['zone'], body))
         self.get_admin().mount_disk(args['zone'], args['search_pattern'], body)
 
     def unmount_disk(self, args, name):
+        logging.info("Unmounting disk {} from host {} in zone {}".format(
+                     name, args['search_pattern'], args['zone']))
         self.get_admin().unmount_disk(args['zone'], args['search_pattern'], name)
 
     def stop_instance(self, args):
-        instance = self.get_admin().get_instances(args['zone'], args['search_pattern'],
-                                                  filters="(status = \"RUNNING\")")
+        instance = self.get_admin().get_instances(args['zone'], args['search_pattern'])
         if not instance:
-            logging.error("Host {} does not exist or not running".format(args['search_pattern']))
+            logging.error("Host {} does not exist".format(args['search_pattern']))
             return
-        self.admin.stop_instance(instance['zone'], instance['name'])
+        instance_state = instance['instance_state']
+        if instance_state == 'TERMINATED':
+            pass
+        elif instance_state == 'RUNNING':
+            self.admin.stop_instance(instance['zone'], instance['name'])
+        elif instance_state == 'STOPPING':
+            self.admin.wait_for_operation(zone=instance['zone'],
+                                          instance=instance['name'],
+                                          operation_type='stop')
+        else:
+            raise YBOpsRuntimeError("Host {} cannot be stopped while in '{}' state".format(
+                instance['name'], instance_state))
 
-    def start_instance(self, args, ssh_ports):
-        instance = self.get_admin().get_instances(args['zone'], args['search_pattern'],
-                                                  filters="(status = \"TERMINATED\")")
+    def start_instance(self, args, server_ports):
+        instance = self.get_admin().get_instances(args['zone'], args['search_pattern'])
         if not instance:
-            logging.error("Host {} does not exist or not stopped".format(args['search_pattern']))
+            logging.error("Host {} does not exist".format(args['search_pattern']))
             return
-        self.admin.start_instance(instance['zone'], instance['name'])
-        self.wait_for_ssh_ports(instance['private_ip'], instance['name'], ssh_ports)
+        instance_state = instance['instance_state']
+        if instance_state == 'RUNNING':
+            pass
+        elif instance_state == 'TERMINATED':
+            self.admin.start_instance(instance['zone'], instance['name'])
+        elif instance_state in ('PROVISIONING', 'STAGING'):
+            self.admin.wait_for_operation(zone=instance['zone'],
+                                          instance=instance['name'],
+                                          operation_type='start')
+        else:
+            raise YBOpsRuntimeError("Host {} cannot be started while in '{}' state".format(
+                instance['name'], instance_state))
+        self.wait_for_server_ports(instance['private_ip'], instance['name'], server_ports)
 
     def delete_instance(self, args, filters=None):
         host_info = self.get_host_info(args, filters=filters)
@@ -144,10 +172,19 @@ class GcpCloud(AbstractCloud):
         self.get_admin().delete_instance(
             args.region, args.zone, args.search_pattern, has_static_ip=args.delete_static_public_ip)
 
-    def reboot_instance(self, args, ssh_ports):
-        args_as_dict = vars(args)
-        self.stop_instance(args_as_dict)
-        self.start_instance(args_as_dict, ssh_ports)
+    def reboot_instance(self, host_info, server_ports):
+        self.admin.reboot_instance(host_info['zone'], host_info['name'])
+        self.wait_for_server_ports(host_info["private_ip"], host_info["id"], server_ports)
+
+    def update_user_data(self, args):
+        if args.boot_script is None:
+            return
+        boot_script = ''
+        with open(args.boot_script, 'r') as script:
+            boot_script = script.read()
+        instance = self.get_host_info(args)
+        logging.info("[app] Updating the user_data for the instance {}".format(instance['id']))
+        self.get_admin().update_boot_script(args, instance, boot_script)
 
     def get_regions(self, args):
         regions_we_know_of = self.get_admin().get_regions()
@@ -283,7 +320,9 @@ class GcpCloud(AbstractCloud):
         dest_vpc_id = custom_payload.get("destVpcId")
         host_vpc_id = custom_payload.get("hostVpcId")
         per_region_meta = custom_payload.get("perRegionMetadata")
-        return self.get_admin().network(dest_vpc_id, host_vpc_id, per_region_meta).bootstrap()
+        create_new_vpc = custom_payload.get("createNewVpc")
+        return self.get_admin().network(
+            dest_vpc_id, host_vpc_id, per_region_meta, create_new_vpc).bootstrap()
 
     def network_cleanup(self, args):
         custom_payload = json.loads(args.custom_payload)
@@ -319,8 +358,8 @@ class GcpCloud(AbstractCloud):
         instance = self.get_host_info(args)
         self.get_admin().update_disk(args, instance['id'])
 
-    def change_instance_type(self, args, newInstanceType):
-        self.get_admin().change_instance_type(args['zone'], args['search_pattern'], newInstanceType)
+    def change_instance_type(self, args, instance_type):
+        self.get_admin().change_instance_type(args['zone'], args['search_pattern'], instance_type)
 
     def get_per_region_meta(self, args):
         if hasattr(args, "custom_payload") and args.custom_payload:
@@ -334,8 +373,21 @@ class GcpCloud(AbstractCloud):
 
     def delete_volumes(self, args):
         tags = json.loads(args.instance_tags) if args.instance_tags is not None else {}
-        return self.get_admin().delete_disks(args.zone, tags)
+        return self.get_admin().delete_disks(args.zone, tags, args.volume_id)
 
     def modify_tags(self, args):
         instance = self.get_host_info(args)
         self.get_admin().modify_tags(args, instance['id'], args.instance_tags, args.remove_tags)
+
+    def normalize_instance_state(self, instance_state):
+        if instance_state:
+            instance_state = instance_state.lower()
+            if instance_state in ("provisioning", "staging", "repairing"):
+                return InstanceState.STARTING
+            if instance_state in ("running"):
+                return InstanceState.RUNNING
+            if instance_state in ("suspending", "suspended", "stopping"):
+                return InstanceState.STOPPING
+            if instance_state in ("terminated"):
+                return InstanceState.STOPPED
+        return InstanceState.UNKNOWN

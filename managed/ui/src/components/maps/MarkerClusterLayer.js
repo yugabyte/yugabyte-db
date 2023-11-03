@@ -11,11 +11,11 @@ import {
   isValidObject,
   sortByLengthOfArrayProperty
 } from '../../utils/ObjectUtils';
-import React, { Component } from 'react';
+import { Component } from 'react';
 import './stylesheets/MarkerClusterLayer.scss';
 import ReactDOMServer from 'react-dom/server';
 
-require('leaflet.markercluster');
+import 'leaflet.markercluster';
 
 class MarkerDetail extends Component {
   render() {

@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_CDC_CDC_ERROR_H
-#define YB_CDC_CDC_ERROR_H
+#pragma once
 
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/common/wire_protocol.h"
@@ -56,5 +55,3 @@ typedef StatusErrorCodeImpl<CDCErrorTag> CDCError;
 
 } // namespace cdc
 } // namespace yb
-
-#endif // YB_CDC_CDC_ERROR_H

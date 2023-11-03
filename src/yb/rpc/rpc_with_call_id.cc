@@ -62,8 +62,6 @@ void ConnectionContextWithCallId::Shutdown(const Status& status) {
 }
 
 void ConnectionContextWithCallId::CallProcessed(InboundCall* call) {
-  DCHECK(call->connection()->reactor()->IsCurrentThreadOrStartedClosing());
-
   ++processed_call_count_;
   auto id = ExtractCallId(call);
   auto it = calls_being_handled_.find(id);
@@ -79,9 +77,9 @@ void ConnectionContextWithCallId::CallProcessed(InboundCall* call) {
   }
 }
 
-void ConnectionContextWithCallId::QueueResponse(const ConnectionPtr& conn,
-                                                InboundCallPtr call) {
-  conn->QueueOutboundData(std::move(call));
+Status ConnectionContextWithCallId::QueueResponse(
+    const ConnectionPtr& conn, InboundCallPtr call) {
+  return conn->QueueOutboundData(std::move(call));
 }
 
 } // namespace rpc

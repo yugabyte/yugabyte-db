@@ -11,24 +11,26 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DEADLINE_INFO_H
-#define YB_DOCDB_DEADLINE_INFO_H
+#pragma once
 
 #include "yb/util/monotime.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace docdb {
 
+constexpr auto kDeadlineCheckGranulatiryFactor = 10;
+constexpr auto kDeadlineCheckGranularity = 1 << kDeadlineCheckGranulatiryFactor;
+
 class DeadlineInfo {
  public:
   explicit DeadlineInfo(CoarseTimePoint deadline);
-  bool CheckAndSetDeadlinePassed();
+  Status CheckDeadlinePassed();
   std::string ToString() const;
 
  private:
   CoarseTimePoint deadline_;
   uint32_t counter_ = 0;
-  bool deadline_passed_ = false;
 };
 
 // If TEST_tserver_timeout is true, set the deadline to now and sleep for 100ms to simulate a
@@ -37,5 +39,3 @@ void SimulateTimeoutIfTesting(CoarseTimePoint* deadline);
 
 } // namespace docdb
 } // namespace yb
-
-#endif // YB_DOCDB_DEADLINE_INFO_H

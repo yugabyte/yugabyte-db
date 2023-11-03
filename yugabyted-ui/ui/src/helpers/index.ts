@@ -7,4 +7,3 @@ export * from '@app/helpers/const';
 export * from '@app/helpers/useQuery';
 export * from '@app/helpers/reducer';
 export * from '@app/helpers/cron';
-export * from '@app/helpers/useRuntimeConfig'

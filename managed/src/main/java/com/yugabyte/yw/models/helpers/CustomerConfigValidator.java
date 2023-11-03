@@ -16,23 +16,15 @@ import com.yugabyte.yw.common.AWSUtil;
 import com.yugabyte.yw.common.AZUtil;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.GCPUtil;
+import com.yugabyte.yw.common.StorageUtilFactory;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.configs.CloudClientsFactory;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigType;
-import com.yugabyte.yw.models.configs.data.CustomerConfigData;
-import com.yugabyte.yw.models.configs.data.CustomerConfigPasswordPolicyData;
-import com.yugabyte.yw.models.configs.data.CustomerConfigStorageAzureData;
-import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
-import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
-import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
-import com.yugabyte.yw.models.configs.validators.ConfigDataValidator;
-import com.yugabyte.yw.models.configs.validators.CustomerConfigPasswordPolicyValidator;
-import com.yugabyte.yw.models.configs.validators.CustomerConfigStorageAzureValidator;
-import com.yugabyte.yw.models.configs.validators.CustomerConfigStorageGCSValidator;
-import com.yugabyte.yw.models.configs.validators.CustomerConfigStorageNFSValidator;
-import com.yugabyte.yw.models.configs.validators.CustomerConfigStorageS3Validator;
+import com.yugabyte.yw.models.configs.data.*;
+import com.yugabyte.yw.models.configs.validators.*;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.util.HashMap;
@@ -41,44 +33,52 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.validator.routines.DomainValidator;
 
 @Singleton
 public class CustomerConfigValidator extends BaseBeanValidator {
 
-  private static final String[] TLD_OVERRIDE = {"local"};
-
   private final CloudClientsFactory factory;
+  private final StorageUtilFactory storageUtilFactory;
 
-  static {
-    DomainValidator.updateTLDOverride(DomainValidator.ArrayType.LOCAL_PLUS, TLD_OVERRIDE);
-  }
+  private final RuntimeConfGetter runtimeConfGetter;
+  public final AWSUtil awsUtil;
 
   private final Map<Class<? extends CustomerConfigData>, ConfigDataValidator> validators =
       new HashMap<>();
 
   @Inject
-  public CustomerConfigValidator(BeanValidator beanValidator) {
+  public CustomerConfigValidator(
+      BeanValidator beanValidator,
+      StorageUtilFactory storageUtilFactory,
+      RuntimeConfGetter runtimeConfGetter,
+      AWSUtil awsUtil,
+      GCPUtil gcpUtil) {
     super(beanValidator);
     this.factory = createCloudFactory();
+    this.storageUtilFactory = storageUtilFactory;
+    this.runtimeConfGetter = runtimeConfGetter;
+    this.awsUtil = awsUtil;
 
     validators.put(
         CustomerConfigStorageGCSData.class,
-        new CustomerConfigStorageGCSValidator(beanValidator, factory));
+        new CustomerConfigStorageGCSValidator(beanValidator, factory, gcpUtil));
     validators.put(
         CustomerConfigStorageS3Data.class,
-        new CustomerConfigStorageS3Validator(beanValidator, factory));
+        new CustomerConfigStorageS3Validator(beanValidator, factory, runtimeConfGetter, awsUtil));
     validators.put(
         CustomerConfigStorageNFSData.class, new CustomerConfigStorageNFSValidator(beanValidator));
     validators.put(
         CustomerConfigStorageAzureData.class,
-        new CustomerConfigStorageAzureValidator(beanValidator, factory));
+        new CustomerConfigStorageAzureValidator(beanValidator, factory, storageUtilFactory));
     validators.put(
         CustomerConfigStorageGCSData.class,
-        new CustomerConfigStorageGCSValidator(beanValidator, factory));
+        new CustomerConfigStorageGCSValidator(beanValidator, factory, gcpUtil));
     validators.put(
         CustomerConfigPasswordPolicyData.class,
         new CustomerConfigPasswordPolicyValidator(beanValidator));
+    validators.put(
+        CustomerConfigAlertsPreferencesData.class,
+        new CustomerConfigAlertsPreferencesValidator(beanValidator));
   }
 
   /**
@@ -99,7 +99,8 @@ public class CustomerConfigValidator extends BaseBeanValidator {
     beanValidator.validate(customerConfig);
 
     String configName = customerConfig.getConfigName();
-    CustomerConfig existentConfig = CustomerConfig.get(customerConfig.customerUUID, configName);
+    CustomerConfig existentConfig =
+        CustomerConfig.get(customerConfig.getCustomerUUID(), configName);
     if (existentConfig != null) {
       if (!existentConfig.getConfigUUID().equals(customerConfig.getConfigUUID())) {
         beanValidator
@@ -131,8 +132,7 @@ public class CustomerConfigValidator extends BaseBeanValidator {
     if (customerConfig.getType() == ConfigType.STORAGE) {
       List<Backup> backupList = Backup.getInProgressAndCompleted(customerConfig.getCustomerUUID());
       backupList =
-          backupList
-              .stream()
+          backupList.stream()
               .filter(
                   b -> b.getBackupInfo().storageConfigUUID.equals(customerConfig.getConfigUUID()))
               .collect(Collectors.toList());
@@ -149,8 +149,7 @@ public class CustomerConfigValidator extends BaseBeanValidator {
           Schedule.getActiveBackupSchedules(customerConfig.getCustomerUUID());
       // This should be safe to do since storageConfigUUID is a required constraint.
       scheduleList =
-          scheduleList
-              .stream()
+          scheduleList.stream()
               .filter(
                   s ->
                       s.getTaskParams()
@@ -186,7 +185,7 @@ public class CustomerConfigValidator extends BaseBeanValidator {
     @Override
     public AmazonS3 createS3Client(CustomerConfigStorageS3Data configData)
         throws AmazonS3Exception {
-      return AWSUtil.createS3Client(configData);
+      return awsUtil.createS3Client(configData);
     }
   }
 

@@ -17,7 +17,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ROCKSDB_LITE
 #include <unordered_set>
 #include <set>
 #include <memory>
@@ -61,7 +60,7 @@ class VectorRep : public MemTableRep {
 
   ~VectorRep() override { }
 
-  class Iterator : public MemTableRep::Iterator {
+  class Iterator final : public MemTableRep::Iterator {
     class VectorRep* vrep_;
     std::shared_ptr<std::vector<const char*>> bucket_;
     std::vector<const char*>::const_iterator mutable cit_;
@@ -77,33 +76,32 @@ class VectorRep : public MemTableRep {
     // Initialize an iterator over the specified collection.
     // The returned iterator is not valid.
     // explicit Iterator(const MemTableRep* collection);
-    ~Iterator() override { };
+    ~Iterator() override = default;
 
-    // Returns true iff the iterator is positioned at a valid node.
-    bool Valid() const override;
-
-    // Returns the key at the current position.
-    // REQUIRES: Valid()
-    const char* key() const override;
+    const char* Entry() const override;
 
     // Advances to the next position.
     // REQUIRES: Valid()
-    void Next() override;
+    // Returns the same value as would be returned by Entry after this method is invoked.
+    const char* Next() override;
 
     // Advances to the previous position.
     // REQUIRES: Valid()
-    void Prev() override;
+    const char* Prev() override;
 
     // Advance to the first entry with a key >= target
-    void Seek(const Slice& user_key, const char* memtable_key) override;
+    const char* Seek(Slice user_key) override;
+
+    // Advance to the first entry with a key >= target, using externally specified memtable_key.
+    const char* SeekMemTableKey(Slice user_key, const char* memtable_key) override;
 
     // Position at the first entry in collection.
     // Final state of iterator is Valid() iff collection is not empty.
-    void SeekToFirst() override;
+    const char* SeekToFirst() override;
 
     // Position at the last entry in collection.
     // Final state of iterator is Valid() iff collection is not empty.
-    void SeekToLast() override;
+    const char* SeekToLast() override;
   };
 
   // Return an iterator over the keys in this representation.
@@ -183,32 +181,26 @@ void VectorRep::Iterator::DoSort() const {
   assert(vrep_ == nullptr || vrep_->sorted_);
 }
 
-// Returns true iff the iterator is positioned at a valid node.
-bool VectorRep::Iterator::Valid() const {
+const char* VectorRep::Iterator::Entry() const {
   DoSort();
-  return cit_ != bucket_->end();
-}
-
-// Returns the key at the current position.
-// REQUIRES: Valid()
-const char* VectorRep::Iterator::key() const {
-  assert(sorted_);
-  return *cit_;
+  return cit_ != bucket_->end() ? *cit_ : nullptr;
 }
 
 // Advances to the next position.
 // REQUIRES: Valid()
-void VectorRep::Iterator::Next() {
+// Returns the same value as would be returned by Entry after this method is invoked.
+const char* VectorRep::Iterator::Next() {
   assert(sorted_);
   if (cit_ == bucket_->end()) {
-    return;
+    return nullptr;
   }
   ++cit_;
+  return Entry();
 }
 
 // Advances to the previous position.
 // REQUIRES: Valid()
-void VectorRep::Iterator::Prev() {
+const char* VectorRep::Iterator::Prev() {
   assert(sorted_);
   if (cit_ == bucket_->begin()) {
     // If you try to go back from the first element, the iterator should be
@@ -218,38 +210,43 @@ void VectorRep::Iterator::Prev() {
   } else {
     --cit_;
   }
+  return Entry();
 }
 
 // Advance to the first entry with a key >= target
-void VectorRep::Iterator::Seek(const Slice& user_key,
-                               const char* memtable_key) {
+const char* VectorRep::Iterator::Seek(Slice user_key) {
+  return SeekMemTableKey(user_key, EncodeKey(&tmp_, user_key));
+}
+
+const char* VectorRep::Iterator::SeekMemTableKey(Slice user_key, const char* memtable_key) {
   DoSort();
   // Do binary search to find first value not less than the target
-  const char* encoded_key =
-      (memtable_key != nullptr) ? memtable_key : EncodeKey(&tmp_, user_key);
   cit_ = std::equal_range(bucket_->begin(),
                           bucket_->end(),
-                          encoded_key,
+                          memtable_key,
                           [this] (const char* a, const char* b) {
                             return compare_(a, b) < 0;
                           }).first;
+  return Entry();
 }
 
 // Position at the first entry in collection.
 // Final state of iterator is Valid() iff collection is not empty.
-void VectorRep::Iterator::SeekToFirst() {
+const char* VectorRep::Iterator::SeekToFirst() {
   DoSort();
   cit_ = bucket_->begin();
+  return Entry();
 }
 
 // Position at the last entry in collection.
 // Final state of iterator is Valid() iff collection is not empty.
-void VectorRep::Iterator::SeekToLast() {
+const char* VectorRep::Iterator::SeekToLast() {
   DoSort();
   cit_ = bucket_->end();
   if (bucket_->size() != 0) {
     --cit_;
   }
+  return Entry();
 }
 
 void VectorRep::Get(const LookupKey& k, void* callback_args,
@@ -266,8 +263,11 @@ void VectorRep::Get(const LookupKey& k, void* callback_args,
   VectorRep::Iterator iter(vector_rep, immutable_ ? bucket_ : bucket, compare_);
   rwlock_.ReadUnlock();
 
-  for (iter.Seek(k.user_key(), k.memtable_key().cdata());
-       iter.Valid() && callback_func(callback_args, iter.key()); iter.Next()) {
+  for (iter.SeekMemTableKey(k.user_key(), k.memtable_key().cdata());; iter.Next()) {
+    auto entry = iter.Entry();
+    if (!entry || !callback_func(callback_args, entry)) {
+      break;
+    }
   }
 }
 
@@ -303,4 +303,3 @@ MemTableRep* VectorRepFactory::CreateMemTableRep(
   return new VectorRep(compare, allocator, count_);
 }
 } // namespace rocksdb
-#endif  // ROCKSDB_LITE

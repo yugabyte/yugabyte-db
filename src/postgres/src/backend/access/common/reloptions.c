@@ -163,6 +163,17 @@ static relopt_bool boolRelOpts[] =
 	},
 	{
 		{
+			"colocation",
+			"opt-out of colocation if set to false",
+			RELOPT_KIND_HEAP,
+			AccessExclusiveLock
+		},
+		/* true by default so that table created in colocated database will be
+		 * colocated. This option will be ignored in non-colocation database. */
+		true
+	},
+	{
+		{
 			"use_initdb_acl",
 			"Initialize view's permissions as if it was created by initdb via yb_system_views.sql",
 			RELOPT_KIND_VIEW,
@@ -381,7 +392,7 @@ static relopt_oid oidRelOpts[] =
 		{
 			"colocation_id",
 			"Colocation ID to distinguish a table within a colocation group. Used during backup/restore.",
-			RELOPT_KIND_HEAP | RELOPT_KIND_INDEX,
+			RELOPT_KIND_HEAP | RELOPT_KIND_INDEX | RELOPT_KIND_PARTITIONED,
 			AccessExclusiveLock
 		},
 		InvalidOid,
@@ -1582,6 +1593,8 @@ default_reloptions(Datum reloptions, bool validate, relopt_kind kind)
 		offsetof(StdRdOptions, vacuum_cleanup_index_scale_factor)},
 		{"colocated", RELOPT_TYPE_BOOL,
 		offsetof(StdRdOptions, colocated)},
+		/* Reuse colocated field in StdRdOptions. */
+		{"colocation", RELOPT_TYPE_BOOL, offsetof(StdRdOptions, colocated)},
 		{"colocation_id", RELOPT_TYPE_OID, offsetof(StdRdOptions, colocation_id)},
 		{"table_oid", RELOPT_TYPE_OID, offsetof(StdRdOptions, table_oid)},
 		{"row_type_oid", RELOPT_TYPE_OID, offsetof(StdRdOptions, row_type_oid)},

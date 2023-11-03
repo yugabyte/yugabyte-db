@@ -321,11 +321,11 @@ public class MetricServiceTest extends FakeDBApplication {
     assertThat(metric.getName(), equalTo(PlatformMetrics.ALERT_MANAGER_STATUS.getMetricName()));
     assertThat(metric.getValue(), equalTo(value));
     assertThat(metric.getLabelValue(KnownAlertLabels.SOURCE_TYPE), equalTo("universe"));
-    assertThat(metric.getLabelValue(KnownAlertLabels.SOURCE_NAME), equalTo(universe.name));
+    assertThat(metric.getLabelValue(KnownAlertLabels.SOURCE_NAME), equalTo(universe.getName()));
     assertThat(
         metric.getLabelValue(KnownAlertLabels.SOURCE_UUID),
         equalTo(universe.getUniverseUUID().toString()));
-    assertThat(metric.getLabelValue(KnownAlertLabels.UNIVERSE_NAME), equalTo(universe.name));
+    assertThat(metric.getLabelValue(KnownAlertLabels.UNIVERSE_NAME), equalTo(universe.getName()));
     assertThat(
         metric.getLabelValue(KnownAlertLabels.UNIVERSE_UUID),
         equalTo(universe.getUniverseUUID().toString()));

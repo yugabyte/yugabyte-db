@@ -46,27 +46,21 @@
 #include "yb/rpc/service_pool.h"
 
 #include "yb/util/atomic.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/metric_entity.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/status.h"
 
 using yb::rpc::Messenger;
-using yb::rpc::ServiceIf;
-using std::shared_ptr;
 using std::string;
-using std::vector;
-using strings::Substitute;
-using std::unique_ptr;
-using std::make_unique;
 
-DEFINE_string(rpc_bind_addresses, "0.0.0.0",
+DEFINE_UNKNOWN_string(rpc_bind_addresses, "0.0.0.0",
               "Comma-separated list of addresses to bind to for RPC connections. "
               "Currently, ephemeral ports (i.e. port 0) are not allowed.");
 TAG_FLAG(rpc_bind_addresses, stable);
 
-DEFINE_bool(rpc_server_allow_ephemeral_ports, false,
+DEFINE_UNKNOWN_bool(rpc_server_allow_ephemeral_ports, false,
             "Allow binding to ephemeral ports. This can cause problems, so currently "
             "only allowed in tests.");
 TAG_FLAG(rpc_server_allow_ephemeral_ports, unsafe);

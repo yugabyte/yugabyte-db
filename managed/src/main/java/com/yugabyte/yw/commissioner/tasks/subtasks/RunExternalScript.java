@@ -1,12 +1,13 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import static com.yugabyte.yw.models.helpers.ExternalScriptHelper.EXT_SCRIPT_RUNTIME_CONFIG_PATH;
+import static com.yugabyte.yw.models.helpers.ExternalScriptHelper.EXT_SCRIPT_CONTENT_CONF_PATH;
+import static com.yugabyte.yw.models.helpers.ExternalScriptHelper.EXT_SCRIPT_PARAMS_CONF_PATH;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
+import com.typesafe.config.ConfigException;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.ShellProcessHandler;
@@ -30,6 +31,11 @@ import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class RunExternalScript extends AbstractTaskBase {
+
+  @VisibleForTesting
+  static final String STALE_TASK_RAN_ERR =
+      "External Script Task failed as the schedule is stopped and this is an old task";
+
   @Inject private ShellProcessHandler shellProcessHandler;
 
   @Inject
@@ -61,16 +67,12 @@ public class RunExternalScript extends AbstractTaskBase {
     try {
       Universe universe = Universe.getOrBadRequest(params().universeUUID);
       RuntimeConfig<Universe> config = sConfigFactory.forUniverse(universe);
-      Config configObj;
       String content, params;
       try {
-        String actualObjValue = config.getValue(EXT_SCRIPT_RUNTIME_CONFIG_PATH).render();
-        configObj = ConfigFactory.parseString(actualObjValue);
-        content = configObj.getString("content");
-        params = configObj.getString("params");
-      } catch (Exception e) {
-        throw new RuntimeException(
-            "External Script Task failed as the schedule is stopped and this is a old task");
+        content = config.getString(EXT_SCRIPT_CONTENT_CONF_PATH);
+        params = config.getString(EXT_SCRIPT_PARAMS_CONF_PATH);
+      } catch (ConfigException.Missing e) {
+        throw new IllegalStateException(STALE_TASK_RAN_ERR);
       }
 
       // Create a temporary file to store script and make it executable.
@@ -97,7 +99,7 @@ public class RunExternalScript extends AbstractTaskBase {
       List<String> commandList = new ArrayList<>();
       commandList.add(SCRIPT_DIR + tempScriptFile.getName());
       commandList.add("--universe_name");
-      commandList.add(universe.name);
+      commandList.add(universe.getName());
       commandList.add("--universe_uuid");
       commandList.add(params().universeUUID.toString());
       commandList.add("--platform_url");

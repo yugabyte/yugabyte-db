@@ -23,7 +23,7 @@ The main components of YSQL include the data definition language (DDL), the data
 
 {{< note title="Note" >}}
 
-If you don't find what you're looking for in the YSQL documentation, you might find answers in the relevant <a href="https://www.postgresql.org/docs/11/index.html" target="_blank">PostgreSQL documentation <i class="fas fa-external-link-alt"></i></a>. Successive YugabyteDB releases honor PostgreSQL syntax and semantics, although some features (for example those that are specific to the PostgreSQL monolithic SQL database architecture) might not be supported for distributed SQL. The YSQL documentation specifies the supported syntax and extensions.
+If you don't find what you're looking for in the YSQL documentation, you might find answers in the relevant <a href="https://www.postgresql.org/docs/11/index.html" target="_blank">PostgreSQL documentation <i class="fa-solid fa-up-right-from-square"></i></a>. Successive YugabyteDB releases honor PostgreSQL syntax and semantics, although some features (for example those that are specific to the PostgreSQL monolithic SQL database architecture) might not be supported for distributed SQL. The YSQL documentation specifies the supported syntax and extensions.
 
 To find the version of the PostgreSQL processing layer used in YugabyteDB, you can use the `version()` function. The following YSQL query displays only the first part of the returned value:
 

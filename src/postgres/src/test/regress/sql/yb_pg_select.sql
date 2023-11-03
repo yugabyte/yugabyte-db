@@ -56,6 +56,47 @@ SELECT onek.unique1, onek.string4 FROM onek
    ORDER BY unique1 using <, string4 using >;
 
 --
+-- test partial btree indexes
+--
+-- As of 7.2, planner probably won't pick an indexscan without stats,
+-- so ANALYZE first.  Also, we want to prevent it from picking a bitmapscan
+-- followed by sort, because that could hide index ordering problems.
+--
+ANALYZE onek2;
+
+SET enable_seqscan TO off;
+SET enable_bitmapscan TO off;
+SET enable_sort TO off;
+
+--
+-- awk '{if($1<10){print $0;}else{next;}}' onek.data | sort +0n -1
+-- YB edit: add ORDER BY 1 for consistent ordering.
+--
+SELECT onek2.* FROM onek2 WHERE onek2.unique1 < 10 ORDER BY 1;
+
+--
+-- awk '{if($1<20){print $1,$14;}else{next;}}' onek.data | sort +0nr -1
+--
+SELECT onek2.unique1, onek2.stringu1 FROM onek2
+    WHERE onek2.unique1 < 20
+    ORDER BY unique1 using >;
+
+--
+-- awk '{if($1>980){print $1,$14;}else{next;}}' onek.data | sort +1d -2
+-- YB edit: add ORDER BY 1 for consistent ordering.
+--
+SELECT onek2.unique1, onek2.stringu1 FROM onek2
+   WHERE onek2.unique1 > 980 ORDER BY 1;
+
+RESET enable_seqscan;
+RESET enable_bitmapscan;
+RESET enable_sort;
+
+
+SELECT two, stringu1, ten, string4
+   INTO TABLE tmp
+   FROM onek;
+--
 -- Test ORDER BY options
 --
 
@@ -95,10 +136,61 @@ SELECT * FROM foo ORDER BY f1 DESC;
 SELECT * FROM foo ORDER BY f1 DESC NULLS LAST;
 
 --
--- For https://github.com/YugaByte/yugabyte-db/issues/10254
+-- Test planning of some cases with partial indexes
 --
-CREATE TABLE t(h INT, r INT, PRIMARY KEY(h, r ASC));
-INSERT INTO t VALUES(1, 1), (1, 3);
-SELECT * FROM t WHERE h = 1 AND r in(1, 3) FOR KEY SHARE;
--- On this query postgres process stucked in an infinite loop.
-SELECT * FROM t WHERE h = 1 AND r IN (1, 2, 3) FOR KEY SHARE;
+
+-- partial index is usable
+explain (costs off)
+select * from onek2 where unique2 = 11 and stringu1 = 'ATAAAA';
+select * from onek2 where unique2 = 11 and stringu1 = 'ATAAAA';
+-- actually run the query with an analyze to use the partial index
+explain (costs off, analyze on, timing off, summary off)
+select * from onek2 where unique2 = 11 and stringu1 = 'ATAAAA';
+explain (costs off)
+select unique2 from onek2 where unique2 = 11 and stringu1 = 'ATAAAA';
+select unique2 from onek2 where unique2 = 11 and stringu1 = 'ATAAAA';
+-- partial index predicate implies clause, so no need for retest
+explain (costs off)
+select * from onek2 where unique2 = 11 and stringu1 < 'B';
+select * from onek2 where unique2 = 11 and stringu1 < 'B';
+explain (costs off)
+select unique2 from onek2 where unique2 = 11 and stringu1 < 'B';
+select unique2 from onek2 where unique2 = 11 and stringu1 < 'B';
+-- but if it's an update target, must retest anyway
+explain (costs off)
+select unique2 from onek2 where unique2 = 11 and stringu1 < 'B' for update;
+select unique2 from onek2 where unique2 = 11 and stringu1 < 'B' for update;
+-- partial index is not applicable
+explain (costs off)
+select unique2 from onek2 where unique2 = 11 and stringu1 < 'C';
+select unique2 from onek2 where unique2 = 11 and stringu1 < 'C';
+-- partial index implies clause, but bitmap scan must recheck predicate anyway
+SET enable_indexscan TO off;
+-- TODO(#4634): bitmap scan should be used when implemented.
+explain (costs off)
+select unique2 from onek2 where unique2 = 11 and stringu1 < 'B';
+select unique2 from onek2 where unique2 = 11 and stringu1 < 'B';
+RESET enable_indexscan;
+-- check multi-index cases too
+-- TODO(#4634): bitmap scan should be used when implemented.
+-- YB edit: add "ORDER BY unique2" for consistent ordering.
+explain (costs off)
+SELECT * FROM (
+select unique1, unique2 from onek2
+  where (unique2 = 11 or unique1 = 0) and stringu1 < 'B'
+LIMIT ALL) ybview ORDER BY unique2;
+SELECT * FROM (
+select unique1, unique2 from onek2
+  where (unique2 = 11 or unique1 = 0) and stringu1 < 'B'
+LIMIT ALL) ybview ORDER BY unique2;
+-- TODO(#4634): bitmap scan should be used when implemented.
+-- YB edit: add "ORDER BY unique2" for consistent ordering.
+explain (costs off)
+SELECT * FROM (
+select unique1, unique2 from onek2
+  where (unique2 = 11 and stringu1 < 'B') or unique1 = 0
+LIMIT ALL) ybview ORDER BY unique2;
+SELECT * FROM (
+select unique1, unique2 from onek2
+  where (unique2 = 11 and stringu1 < 'B') or unique1 = 0
+LIMIT ALL) ybview ORDER BY unique2;

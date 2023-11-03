@@ -27,7 +27,9 @@
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/sst_file_manager_impl.h"
 #include "yb/rocksdb/util/mutexlock.h"
-#include "yb/rocksdb/util/sync_point.h"
+
+#include "yb/util/sync_point.h"
+#include "yb/util/thread.h"
 
 namespace rocksdb {
 
@@ -42,12 +44,9 @@ DeleteScheduler::DeleteScheduler(Env* env, const std::string& trash_dir,
       cv_(&mu_),
       info_log_(info_log),
       sst_file_manager_(sst_file_manager) {
-  if (rate_bytes_per_sec_ <= 0) {
-    // Rate limiting is disabled
-    bg_thread_.reset();
-  } else {
-    bg_thread_.reset(
-        new std::thread(&DeleteScheduler::BackgroundEmptyTrash, this));
+  if (rate_bytes_per_sec_ > 0) {
+    CHECK_OK(yb::Thread::Create(
+        "rocksdb", "empty_trash", &DeleteScheduler::BackgroundEmptyTrash, this, &bg_thread_));
   }
 }
 
@@ -58,7 +57,7 @@ DeleteScheduler::~DeleteScheduler() {
     cv_.SignalAll();
   }
   if (bg_thread_) {
-    bg_thread_->join();
+    bg_thread_->Join();
   }
 }
 
@@ -145,7 +144,7 @@ Status DeleteScheduler::MoveToTrash(const std::string& file_path,
 }
 
 void DeleteScheduler::BackgroundEmptyTrash() {
-  TEST_SYNC_POINT("DeleteScheduler::BackgroundEmptyTrash");
+  DEBUG_ONLY_TEST_SYNC_POINT("DeleteScheduler::BackgroundEmptyTrash");
 
   while (true) {
     MutexLock l(&mu_);
@@ -180,8 +179,8 @@ void DeleteScheduler::BackgroundEmptyTrash() {
       uint64_t total_penlty =
           ((total_deleted_bytes * kMicrosInSecond) / rate_bytes_per_sec_);
       while (!closing_ && !cv_.TimedWait(start_time + total_penlty)) {}
-      TEST_SYNC_POINT_CALLBACK("DeleteScheduler::BackgroundEmptyTrash:Wait",
-                               &total_penlty);
+      DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK(
+          "DeleteScheduler::BackgroundEmptyTrash:Wait", &total_penlty);
 
       pending_files_--;
       if (pending_files_ == 0) {
@@ -198,7 +197,7 @@ Status DeleteScheduler::DeleteTrashFile(const std::string& path_in_trash,
   uint64_t file_size;
   Status s = env_->GetFileSize(path_in_trash, &file_size);
   if (s.ok()) {
-    TEST_SYNC_POINT("DeleteScheduler::DeleteTrashFile:DeleteFile");
+    DEBUG_ONLY_TEST_SYNC_POINT("DeleteScheduler::DeleteTrashFile:DeleteFile");
     s = env_->DeleteFile(path_in_trash);
   }
 

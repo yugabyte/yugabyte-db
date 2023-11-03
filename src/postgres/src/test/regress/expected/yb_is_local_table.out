@@ -213,32 +213,36 @@ CREATE TABLE multikey4 PARTITION OF multikey FOR VALUES FROM (2, 1) TO (2, maxva
 CREATE TABLE multikey5 PARTITION OF multikey FOR VALUES FROM (2, maxvalue) TO (maxvalue, maxvalue);
 -- Query with one partition key and function.
 EXPLAIN (COSTS OFF) SELECT * FROM multikey WHERE a < 2 AND yb_is_local_table(tableoid);
-                        QUERY PLAN
------------------------------------------------------------
+                 QUERY PLAN
+---------------------------------------------
  Append
    ->  Seq Scan on multikey1_local
-         Filter: ((a < 2) AND yb_is_local_table(tableoid))
+         Remote Filter: (a < 2)
+         Filter: yb_is_local_table(tableoid)
    ->  Seq Scan on multikey_default_local
-         Filter: ((a < 2) AND yb_is_local_table(tableoid))
-(5 rows)
+         Remote Filter: (a < 2)
+         Filter: yb_is_local_table(tableoid)
+(7 rows)
 
 -- Query with both partition keys.
 EXPLAIN (COSTS OFF) SELECT * FROM multikey WHERE a = 2 AND b < 1 AND yb_is_local_table(tableoid);
-                              QUERY PLAN
------------------------------------------------------------------------
+                  QUERY PLAN
+----------------------------------------------
  Append
    ->  Seq Scan on multikey3_local
-         Filter: ((b < 1) AND yb_is_local_table(tableoid) AND (a = 2))
-(3 rows)
+         Remote Filter: ((b < 1) AND (a = 2))
+         Filter: yb_is_local_table(tableoid)
+(4 rows)
 
 -- Query with null check.
 EXPLAIN (COSTS OFF) SELECT * FROM multikey WHERE b is null AND yb_is_local_table(tableoid);
-                          QUERY PLAN
----------------------------------------------------------------
+                 QUERY PLAN
+---------------------------------------------
  Append
    ->  Seq Scan on multikey_default_local
-         Filter: ((b IS NULL) AND yb_is_local_table(tableoid))
-(3 rows)
+         Remote Filter: (b IS NULL)
+         Filter: yb_is_local_table(tableoid)
+(4 rows)
 
 -- Sanity Test for 3 types of JOINs.
 -- Create prt1, a partition hierarchy with multiples of 20 in the range 0 to 600.
@@ -256,22 +260,23 @@ INSERT INTO prt2 SELECT i FROM generate_series(0, 599) i WHERE i % 30 = 0;
 -- Inner Join. Pick local tables with a < 450.
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t2.b FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.a < 450 AND yb_is_local_table(t1.tableoid) ORDER BY t1.a, t2.b;
-                               QUERY PLAN
--------------------------------------------------------------------------
+                       QUERY PLAN
+---------------------------------------------------------
  Merge Join
    Merge Cond: (t1.a = t2.b)
    ->  Sort
          Sort Key: t1.a
          ->  Append
                ->  Seq Scan on prt1_p2_local t1
-                     Filter: ((a < 450) AND yb_is_local_table(tableoid))
+                     Remote Filter: (a < 450)
+                     Filter: yb_is_local_table(tableoid)
    ->  Sort
          Sort Key: t2.b
          ->  Append
                ->  Seq Scan on prt2_p1 t2
                ->  Seq Scan on prt2_p2_local t2_1
                ->  Seq Scan on prt2_p3 t2_2
-(13 rows)
+(14 rows)
 
 SELECT t1.a, t2.b FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.a < 450 AND yb_is_local_table(t1.tableoid) ORDER BY t1.a, t2.b;
   a  |  b
@@ -299,9 +304,9 @@ SELECT t1.a, t2.b FROM (SELECT * FROM prt1 WHERE a < 450) t1 LEFT JOIN (SELECT *
                Sort Key: prt1_p1.a
                ->  Append
                      ->  Seq Scan on prt1_p1
-                           Filter: (a < 450)
+                           Remote Filter: (a < 450)
                      ->  Seq Scan on prt1_p2_local
-                           Filter: (a < 450)
+                           Remote Filter: (a < 450)
 (16 rows)
 
 SELECT t1.a, t2.b FROM (SELECT * FROM prt1 WHERE a < 450) t1 LEFT JOIN (SELECT * FROM prt2 WHERE yb_is_local_table(prt2.tableoid)) t2 ON t1.a = t2.b ORDER BY t1.a, t2.b;
@@ -350,9 +355,9 @@ SELECT t1.a, t2.b FROM (SELECT * FROM prt1 WHERE yb_is_local_table(prt1.tableoid
                Sort Key: prt2_p2_local.b
                ->  Append
                      ->  Seq Scan on prt2_p2_local
-                           Filter: (b > 250)
+                           Remote Filter: (b > 250)
                      ->  Seq Scan on prt2_p3
-                           Filter: (b > 250)
+                           Remote Filter: (b > 250)
 (16 rows)
 
 SELECT t1.a, t2.b FROM (SELECT * FROM prt1 WHERE yb_is_local_table(prt1.tableoid)) t1 FULL JOIN (SELECT * FROM prt2 WHERE b > 250) t2 ON t1.a = t2.b ORDER BY t1.a, t2.b;

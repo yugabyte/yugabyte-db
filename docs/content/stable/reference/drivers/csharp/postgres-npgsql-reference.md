@@ -1,7 +1,8 @@
 ---
-title: C# Drivers
+title: PostgreSQL Npgsql Driver
+headerTitle: C# Drivers
 linkTitle: C# Drivers
-description: C# Drivers for YSQL
+description: C# PostgreSQL Npgsql Driver for YSQL
 headcontent: C# Drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
@@ -9,26 +10,29 @@ menu:
     name: C# Drivers
     identifier: ref-postgres-npgsql-driver
     parent: drivers
-    weight: 600
+    weight: 620
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/reference/drivers/csharp/postgres-npgsql-reference/" class="nav-link active">
+    <a href="../yb-npgsql-reference/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      PostgreSQL Npgsql
+      YugabyteDB Npgsql Smart Driver
+    </a>
+  </li>
+
+  <li >
+    <a href="../postgres-npgsql-reference/" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      PostgreSQL Npgsql Driver
     </a>
   </li>
 
 </ul>
 
 Npgsql is an open source ADO.NET Data Provider for PostgreSQL; it allows programs written in C#, Visual Basic, and F# to access the YugabyteDB server.
-
-## Quick start
-
-Learn how to establish a connection to YugabyteDB database and begin CRUD operations using the steps from [Build a C# application](../../../../quick-start/build-apps/csharp/ysql).
 
 ## Download the driver dependency
 
@@ -55,22 +59,23 @@ After setting up the dependencies, implement the C# client application that uses
 
 Import Npgsql and use the `NpgsqlConnection` class to create the connection object to perform DDLs and DMLs against the database.
 
-The following table describes the connection parameters required to connect to the YugabyteDB database.
+The following table describes the connection parameters for connecting to the YugabyteDB database.
 
 | Parameters | Description | Default |
 | :---------- | :---------- | :------ |
-| host  | hostname of the YugabyteDB instance | localhost
-| port |  Listen port for YSQL | 5433
-| database | Database name | yugabyte
-| user | User connecting to the database | yugabyte
-| password | Password for the user | yugabyte
+| Host  | Host name of the YugabyteDB instance | localhost
+| Port |  Listen port for YSQL | 5433
+| Database | Database name | yugabyte
+| Username | User connecting to the database | yugabyte
+| Password | Password for the user | yugabyte
 
-The following is an example connection string for connecting to YugabyteDB.
+The following is a basic example connection string for connecting to YugabyteDB.
 
 ```csharp
-var connStringBuilder = "host=localhost;port=5433;database=yugabyte;user id=yugabyte;password="
+var connStringBuilder = "Host=localhost;Port=5433;Database=yugabyte;Username=yugabyte;Password=password"
 NpgsqlConnection conn = new NpgsqlConnection(connStringBuilder);
 ```
+
 ### Create table
 
 Tables can be created in YugabyteDB by passing the `CREATE TABLE` DDL statement to the `NpgsqlCommand` class and getting a command object, then calling the `ExecuteNonQuery()` method using this command object.
@@ -124,31 +129,32 @@ while (reader.Read())
 
 ### Configure SSL/TLS
 
-For Npgsql versions before 6.0, the client driver supports the following SSL modes:
+The following table describes the additional parameters the .NET Npgsql driver requires as part of the connection string when using SSL.
 
-| SSL mode | Client driver behavior |
-| :------- | :--------------------- |
-| disable | Supported |
-| allow | Not Supported |
-| prefer | Supported |
-| require | Supported <br/> (Self-signed certificates aren't supported.) |
-| verify-ca | Not Supported  |
-| verify-full | Not Supported |
+| Npgsql Parameter | Description |
+| :---------- | :---------- |
+| SslMode     | SSL Mode |
+| RootCertificate | Path to the root certificate on your computer |
+| TrustServerCertificate | For use with the Require SSL mode |
 
-The .NET Npgsql driver validates certificates differently from other PostgreSQL drivers. When you specify SSL mode `require`, the driver verifies the certificate by default (like the `verify-ca` or `verify-full` modes), and fails for self-signed certificates. You can override this by specifying "Trust Server Certificate=true", in which case it bypasses walking the certificate chain to validate trust and hence works like other drivers' `require` mode. In this case, the Root-CA certificate is not required to be configured.
+Npgsql supports SSL modes in different ways depending on the driver version, as shown in the following table.
 
-For versions 6.0 or later, the client driver supports the following SSL modes:
+| SSL mode | Versions before 6.0 | Version 6.0 or later |
+| :------- | :------------------------ | :----|
+| Disable  | Supported (default) | Supported |
+| Allow    | Not Supported | Supported |
+| Prefer   | Supported | Supported (default) |
+| Require  | Supported<br/>For self-signed certificates, set `TrustServerCertificate` to true | Supported<br/>Set `TrustServerCertificate` to true |
+| VerifyCA | Not Supported - use Require | Supported |
+| VerifyFull | Not Supported - use Require | Supported |
 
-| SSL mode | Client driver behavior |
-| :------- | :--------------------- |
-| disable | Supported |
-| allow | Supported |
-| prefer(default) | Supported |
-| require | Supported  |
-| verify-ca | Supported  |
-| verify-full | Supported |
+The .NET Npgsql driver validates certificates differently from other PostgreSQL drivers as follows:
 
-The `Require` SSL mode currently requires explicitly setting the `TrustServerCertificate=true` field.
+- Prior to version 6.0, when you specify SSL mode `Require`, you also need to specify `RootCertificate`, and the driver verifies the certificate by default (like the verify CA or verify full modes on other drivers), and fails for self-signed certificates.
+
+  To use self-signed certificates, specify `TrustServerCertificate=true`, which bypasses walking the certificate chain to validate trust and hence works like other drivers' require mode. In this case, you don't need to specify the `RootCertificate`.
+
+- For version 6.0 and later, the `Require` SSL mode requires explicitly setting the `TrustServerCertificate` field to true.
 
 The following example shows how to build a connection string for connecting to a YugabyteDB cluster using the `Require` SSL mode.
 
@@ -172,12 +178,14 @@ var connStringBuilder = new NpgsqlConnectionStringBuilder();
     connStringBuilder.Port = 5433;
     connStringBuilder.SslMode = SslMode.VerifyCA;
     //or connStringBuilder.SslMode = SslMode.VerifyFull;
-    connStringBuilder.RootCertificate = "/root.crt";
+    connStringBuilder.RootCertificate = "/root.crt"; //Provide full path to your root CA.
     connStringBuilder.Username = "admin";
     connStringBuilder.Password = "xxxxxx";
     connStringBuilder.Database = "yugabyte";
     CRUD(connStringBuilder.ConnectionString);
 ```
+
+For more information on TLS/SSL support, see [Security and Encryption](https://www.npgsql.org/doc/security.html?tabs=tabid-1) in the Npgsql documentation.
 
 ## Compatibility matrix
 
@@ -186,7 +194,3 @@ var connStringBuilder = new NpgsqlConnectionStringBuilder();
 | 6.0.3 | 2.11 (preview) | full
 | 6.0.3 |  2.8 (stable) | full
 | 6.0.3 | 2.6 | full
-
-## Other usage examples
-
-[Sample C# application with SSL](/preview/quick-start/build-apps/csharp/ysql/#create-a-sample-c-application-with-ssl)

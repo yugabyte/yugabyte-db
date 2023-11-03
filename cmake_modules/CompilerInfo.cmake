@@ -52,9 +52,13 @@ execute_process(COMMAND "${CMAKE_CXX_COMPILER}" -v
                 ERROR_VARIABLE COMPILER_VERSION_FULL)
 message("Compiler version information:\n${COMPILER_VERSION_FULL}")
 
+set(IS_APPLE_CLANG OFF)
 if("${COMPILER_VERSION_FULL}" MATCHES ".*clang version ([0-9]+([.][0-9]+)*)[ -].*")
   set(COMPILER_FAMILY "clang")
   set(COMPILER_VERSION "${CMAKE_MATCH_1}")
+  if("${COMPILER_VERSION_FULL}" MATCHES ".*Apple clang.*")
+    set(IS_APPLE_CLANG ON)
+  endif()
 elseif("${COMPILER_VERSION_FULL}" MATCHES ".*gcc [(]GCC[)] ([0-9]+([.][0-9]+)*)[ -].*")
   # E.g. gcc (GCC) 8.3.1 20190311 (Red Hat 8.3.1-3)
   set(COMPILER_FAMILY "gcc")
@@ -70,11 +74,6 @@ elseif("${COMPILER_VERSION_FULL}" MATCHES ".*based on LLVM.*")
   string(REGEX REPLACE ".*based on LLVM ([0-9]+\\.[0.9]+).*" "\\1"
     COMPILER_VERSION "${COMPILER_VERSION_FULL}")
 
-# clang on Mac OS X, XCode 7.
-elseif("${COMPILER_VERSION_FULL}" MATCHES ".*clang-700\\..*")
-  set(COMPILER_FAMILY "clang")
-  set(COMPILER_VERSION "3.7.0svn")
-
 # a different version of clang
 elseif("${COMPILER_VERSION_FULL}" MATCHES "Apple LLVM version ([0-9]+([.][0-9]+)*) .*")
   set(COMPILER_FAMILY "clang")
@@ -85,10 +84,6 @@ elseif("${COMPILER_VERSION_FULL}" MATCHES ".*[(]clang-[0-9.]+[)].*")
     COMPILER_VERSION "${COMPILER_VERSION_FULL}")
 
 # gcc
-elseif("${COMPILER_VERSION_FULL}" MATCHES ".*gcc version 8.*")
-  set(COMPILER_FAMILY "gcc")
-  string(REGEX REPLACE ".*gcc version ([0-9\\.]+).*" "\\1"
-    COMPILER_VERSION "${COMPILER_VERSION_FULL}")
 elseif("${COMPILER_VERSION_FULL}" MATCHES ".*gcc version.*")
   set(COMPILER_FAMILY "gcc")
   string(REGEX REPLACE ".*gcc version ([0-9\\.]+).*" "\\1"
@@ -106,4 +101,22 @@ endif()
 set(IS_GCC FALSE)
 if("${COMPILER_FAMILY}" STREQUAL "gcc")
   set(IS_GCC TRUE)
+endif()
+
+yb_put_string_vars_into_cache(
+  COMPILER_FAMILY
+  COMPILER_VERSION
+  IS_APPLE_CLANG
+  IS_CLANG
+  IS_GCC
+  YB_COMPILER_TYPE
+)
+
+# Explicitly put these into the cache to avoid a warning about manually-specified variables not
+# being used.
+if(DEFINED YB_RESOLVED_C_COMPILER)
+  yb_put_string_vars_into_cache(YB_RESOLVED_C_COMPILER)
+endif()
+if(DEFINED YB_RESOLVED_CXX_COMPILER)
+  yb_put_string_vars_into_cache(YB_RESOLVED_CXX_COMPILER)
 endif()

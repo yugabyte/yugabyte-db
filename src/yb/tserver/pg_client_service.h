@@ -11,45 +11,65 @@
 // under the License.
 //
 
-#ifndef YB_TSERVER_PG_CLIENT_SERVICE_H
-#define YB_TSERVER_PG_CLIENT_SERVICE_H
+#pragma once
 
+#include <functional>
 #include <future>
+#include <memory>
+#include <optional>
 
 #include "yb/client/client_fwd.h"
+
+#include "yb/gutil/ref_counted.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/pg_client.service.h"
+#include "yb/tserver/xcluster_context.h"
 
 namespace yb {
+
+class MemTracker;
+
 namespace tserver {
 
+class PgMutationCounter;
+
+// Forwards call to corresponding PgClientSession sync method (see PG_CLIENT_SESSION_METHODS).
 #define YB_PG_CLIENT_METHODS \
     (AlterDatabase) \
     (AlterTable) \
     (BackfillIndex) \
     (CreateDatabase) \
+    (CreateReplicationSlot) \
     (CreateSequencesDataTable) \
     (CreateTable) \
     (CreateTablegroup) \
     (DeleteDBSequences) \
     (DeleteSequenceTuple) \
     (DropDatabase) \
+    (DropReplicationSlot) \
     (DropTable) \
     (DropTablegroup) \
+    (FetchSequenceTuple) \
     (FinishTransaction) \
     (GetCatalogMasterVersion) \
     (GetDatabaseInfo) \
+    (GetIndexBackfillProgress) \
+    (GetLockStatus) \
     (GetTableDiskSize) \
+    (GetTablePartitionList) \
     (Heartbeat) \
     (InsertSequenceTuple) \
     (IsInitDbDone) \
+    (IsObjectPartOfXRepl) \
     (ListLiveTabletServers) \
+    (ListReplicationSlots) \
     (OpenTable) \
     (ReadSequenceTuple) \
     (ReserveOids) \
+    (GetNewObjectId) \
     (RollbackToSubTransaction) \
     (SetActiveSubTransaction) \
     (TabletServerCount) \
@@ -57,21 +77,40 @@ namespace tserver {
     (UpdateSequenceTuple) \
     (ValidatePlacement) \
     (CheckIfPitrActive) \
+    (GetTserverCatalogVersionInfo) \
+    (WaitForBackendsCatalogVersion) \
+    (CancelTransaction) \
+    (GetActiveTransactionList) \
+    /**/
+
+// Forwards call to corresponding PgClientSession async method (see
+// PG_CLIENT_SESSION_ASYNC_METHODS).
+#define YB_PG_CLIENT_ASYNC_METHODS \
+    (GetTableKeyRanges) \
     /**/
 
 class PgClientServiceImpl : public PgClientServiceIf {
  public:
   explicit PgClientServiceImpl(
+      std::reference_wrapper<const TabletServerIf> tablet_server,
       const std::shared_future<client::YBClient*>& client_future,
       const scoped_refptr<ClockBase>& clock,
       TransactionPoolProvider transaction_pool_provider,
+      const std::shared_ptr<MemTracker>& parent_mem_tracker,
       const scoped_refptr<MetricEntity>& entity,
-      rpc::Scheduler* scheduler);
+      rpc::Scheduler* scheduler,
+      const std::optional<XClusterContext>& xcluster_context = std::nullopt,
+      PgMutationCounter* pg_node_level_mutation_counter = nullptr);
 
   ~PgClientServiceImpl();
 
   void Perform(
       const PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext context) override;
+
+  void InvalidateTableCache();
+  void CheckObjectIdAllocators(const std::unordered_set<uint32_t>& db_oids);
+
+  size_t TEST_SessionsCount();
 
 #define YB_PG_CLIENT_METHOD_DECLARE(r, data, method) \
   void method( \
@@ -80,6 +119,7 @@ class PgClientServiceImpl : public PgClientServiceIf {
       rpc::RpcContext context) override;
 
   BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DECLARE, ~, YB_PG_CLIENT_METHODS);
+  BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DECLARE, ~, YB_PG_CLIENT_ASYNC_METHODS);
 
  private:
   class Impl;
@@ -89,5 +129,3 @@ class PgClientServiceImpl : public PgClientServiceIf {
 
 }  // namespace tserver
 }  // namespace yb
-
-#endif  // YB_TSERVER_PG_CLIENT_SERVICE_H

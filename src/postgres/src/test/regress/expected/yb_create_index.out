@@ -1,9 +1,3 @@
-CREATE INDEX onek_two_idx ON onek USING lsm(two);
-DROP INDEX onek_two_idx;
-DROP INDEX onek_two_idx;
-ERROR:  index "onek_two_idx" does not exist
-DROP INDEX IF EXISTS onek_two_idx;
-NOTICE:  index "onek_two_idx" does not exist, skipping
 --
 -- Create index on existing table with data
 --
@@ -224,12 +218,12 @@ SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) ORDER BY r;
 (3 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE h > 1 ORDER BY h, r;
-       QUERY PLAN
--------------------------
+           QUERY PLAN
+--------------------------------
  Sort
    Sort Key: h, r
    ->  Seq Scan on t1
-         Filter: (h > 1)
+         Remote Filter: (h > 1)
 (4 rows)
 
 SELECT * FROM t1 WHERE h > 1 ORDER BY h, r;
@@ -287,13 +281,14 @@ SELECT * FROM t1 WHERE v1 = 11 ORDER BY h, r;
 -- EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE v1 = 11 AND v2 = 11;
 -- SELECT * FROM t1 WHERE v1 = 11 AND v2 = 11;
 EXPLAIN (COSTS OFF) SELECT t1.h, t1.r, t1.v1, t2.v1 FROM t1, t2 WHERE t1.h = t2.h AND t1.r = t2.r;
-                   QUERY PLAN
--------------------------------------------------
- Nested Loop
+                                                       QUERY PLAN
+------------------------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: ((t1.h = t2.h) AND (t1.r = t2.r))
    ->  Seq Scan on t1
    ->  Index Scan using t2_pkey on t2
-         Index Cond: ((h = t1.h) AND (r = t1.r))
-(4 rows)
+         Index Cond: (ROW(h, r) = ANY (ARRAY[ROW(t1.h, t1.r), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
+(5 rows)
 
 SELECT t1.h, t1.r, t1.v1, t2.v1 FROM t1, t2 WHERE t1.h = t2.h AND t1.r = t2.r;
  h | r | v1 | v1
@@ -356,12 +351,12 @@ EXPLAIN(COSTS OFF) SELECT * FROM null_unique_index WHERE k IS NULL ORDER BY k;
 (4 rows)
 
 EXPLAIN(COSTS OFF) SELECT * FROM null_unique_index WHERE k IS NOT NULL ORDER BY k;
-             QUERY PLAN
--------------------------------------
+               QUERY PLAN
+----------------------------------------
  Sort
    Sort Key: k
    ->  Seq Scan on null_unique_index
-         Filter: (k IS NOT NULL)
+         Remote Filter: (k IS NOT NULL)
 (4 rows)
 
 SELECT * FROM null_unique_index WHERE k = 4;
@@ -415,11 +410,11 @@ SELECT * FROM null_unique_index ORDER BY v;
 
 INSERT INTO null_unique_index values (NULL, 2), (3, 3), (NULL, 5);
 EXPLAIN(COSTS OFF) UPDATE null_unique_index SET k = NULL WHERE k IS NOT NULL;
-             QUERY PLAN
--------------------------------------
+               QUERY PLAN
+----------------------------------------
  Update on null_unique_index
    ->  Seq Scan on null_unique_index
-         Filter: (k IS NOT NULL)
+         Remote Filter: (k IS NOT NULL)
 (3 rows)
 
 UPDATE null_unique_index SET k = NULL WHERE k IS NOT NULL;
@@ -535,7 +530,7 @@ CREATE TABLE test_include (c1 int, c2 int, c3 int);
 INSERT INTO test_include VALUES (1, 1, 1), (1, 2, 2), (2, 2, 2), (3, 3, 3);
 -- Expect duplicate key error
 CREATE UNIQUE INDEX ON test_include (c1) include (c2);
-ERROR:  Aborted: ERROR:  duplicate key value violates unique constraint "test_include_c1_c2_idx"
+ERROR:  ERROR:  duplicate key value violates unique constraint "test_include_c1_c2_idx"
 \d test_include
             Table "public.test_include"
  Column |  Type   | Collation | Nullable | Default
@@ -578,11 +573,11 @@ Indexes:
 UPDATE test_include SET c2 = 22 WHERE c1 = 2;
 EXPLAIN (COSTS OFF) SELECT c1, c2 FROM test_include WHERE c1 > 0 ORDER BY c2;
            QUERY PLAN
---------------------------------
+---------------------------------
  Sort
    Sort Key: c2
    ->  Seq Scan on test_include
-         Filter: (c1 > 0)
+         Remote Filter: (c1 > 0)
 (4 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM test_include ORDER BY c2;
@@ -656,7 +651,7 @@ ERROR:  HASH columns must be present to split by number of tablets
 CREATE INDEX ON test_split (h2 ASC, r1) SPLIT INTO 20 TABLETS;
 ERROR:  HASH columns must be present to split by number of tablets
 CREATE INDEX ON test_split (h1 HASH) SPLIT INTO 10000 TABLETS;
-ERROR:  Invalid argument: num_tablets exceeds system limit
+ERROR:  num_tablets exceeds system limit
 -- Test hash methods
 CREATE TABLE test_method (
   h1 int, h2 int, r1 int, r2 int, v1 int, v2 int,
@@ -790,7 +785,7 @@ DROP INDEX test_method_h1_idx3;
 -- Test should not issue NOTICE
 CREATE INDEX ON test_method (r1 ASC NULLS FIRST, r2 ASC NULLS LAST);
 CREATE INDEX ON test_method (r1 DESC NULLS FIRST, r2 DESC NULLS LAST);
-CREATE DATABASE colocation_test colocated = true;
+CREATE DATABASE colocation_test colocation = true;
 \c colocation_test
 CREATE TABLE test_method (r1 int, r2 int, v1 int, v2 int,
   PRIMARY KEY (r1, r2));
@@ -805,9 +800,10 @@ CREATE INDEX ON test_method (r1 NULLS LAST);
  v1     | integer |           |          |
  v2     | integer |           |          |
 Indexes:
-    "test_method_pkey" PRIMARY KEY, lsm (r1 ASC, r2 ASC)
-    "test_method_r1_idx" lsm (r1 ASC NULLS FIRST)
-    "test_method_r1_idx1" lsm (r1 ASC)
+    "test_method_pkey" PRIMARY KEY, lsm (r1 ASC, r2 ASC), colocation: true
+    "test_method_r1_idx" lsm (r1 ASC NULLS FIRST), colocation: true
+    "test_method_r1_idx1" lsm (r1 ASC), colocation: true
+Colocation: true
 
 \c yugabyte
 DROP DATABASE colocation_test;
@@ -944,12 +940,12 @@ SELECT * FROM test_method ORDER BY r1, r2;
 (10 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE v1 > 5ORDER BY v1, v2;
-          QUERY PLAN
--------------------------------
+           QUERY PLAN
+---------------------------------
  Sort
    Sort Key: v1, v2
    ->  Seq Scan on test_method
-         Filter: (v1 > 5)
+         Remote Filter: (v1 > 5)
 (4 rows)
 
 SELECT * FROM test_method WHERE v1 > 5ORDER BY v1, v2;
@@ -1160,6 +1156,7 @@ SELECT * FROM test_method WHERE h2 = 258;
   2 | 258 |  1 |  2 | 10 | 20
 (1 row)
 
+DROP TABLE test_method;
 -- Test more HASH key cases in PRIMARY KEY
 CREATE TABLE test_hash (
   h1 int, h2 int, r1 int, r2 int, v1 int, v2 int);
@@ -1479,6 +1476,56 @@ INSERT INTO test_index_nonconcurrently VALUES (1, 'b');
 CREATE UNIQUE INDEX NONCONCURRENTLY ON test_index_nonconcurrently (i);
 ERROR:  duplicate key value violates unique constraint "test_index_nonconcurrently_i_idx"
 DROP TABLE test_index_nonconcurrently;
+-- Verify that creating indexes on a YB table does not update table stats.
+CREATE TABLE test_stats (i INT);
+INSERT INTO test_stats VALUES (1), (2), (3);
+ANALYZE test_stats;
+SELECT reltuples FROM pg_class WHERE relname = 'test_stats';
+ reltuples 
+-----------
+         3
+(1 row)
+
+CREATE INDEX CONCURRENTLY ON test_stats(i);
+SELECT reltuples FROM pg_class WHERE relname = 'test_stats';
+ reltuples 
+-----------
+         3
+(1 row)
+
+CREATE INDEX NONCONCURRENTLY ON test_stats(i);
+SELECT reltuples FROM pg_class WHERE relname = 'test_stats';
+ reltuples 
+-----------
+         3
+(1 row)
+
+DROP TABLE test_stats;
+-- Split options on a partitioned table or its indexes should not be copied
+-- for a newly attached partition.
+CREATE TABLE test_part (a INT, PRIMARY KEY(a ASC)) PARTITION BY RANGE (a)
+    SPLIT AT VALUES ((5), (10)); -- split options are ignored.
+CREATE TABLE test_part_1 PARTITION OF test_part FOR VALUES FROM (1) TO (5);
+SELECT yb_get_range_split_clause('test_part_1'::regclass);
+ yb_get_range_split_clause 
+---------------------------
+ 
+(1 row)
+
+CREATE INDEX test_part_idx ON test_part(a) SPLIT INTO 5 TABLETS;
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('test_part_1_a_idx'::regclass);
+ num_tablets | num_hash_key_columns 
+-------------+----------------------
+           5 |                    1
+(1 row)
+
+CREATE TABLE test_part_2 PARTITION OF test_part DEFAULT;
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('test_part_2_a_idx'::regclass);
+ num_tablets | num_hash_key_columns 
+-------------+----------------------
+           3 |                    1
+(1 row)
+
 -- Test creating temp index using lsm.
 CREATE TEMP TABLE test_temp_lsm (i int);
 CREATE INDEX ON test_temp_lsm USING lsm (i);

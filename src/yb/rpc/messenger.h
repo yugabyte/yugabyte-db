@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_RPC_MESSENGER_H_
-#define YB_RPC_MESSENGER_H_
+#pragma once
 
 #include <stdint.h>
 
@@ -138,8 +137,7 @@ class MessengerBuilder {
     return connection_context_factory_;
   }
 
-  MessengerBuilder& set_thread_pool_options(size_t queue_limit, size_t workers_limit) {
-    queue_limit_ = queue_limit;
+  MessengerBuilder& set_thread_pool_options(size_t workers_limit) {
     workers_limit_ = workers_limit;
     return *this;
   }
@@ -166,7 +164,6 @@ class MessengerBuilder {
   ConnectionContextFactoryPtr connection_context_factory_;
   StreamFactories stream_factories_;
   const Protocol* listen_protocol_;
-  size_t queue_limit_;
   size_t workers_limit_;
   int num_connections_to_server_;
   std::shared_ptr<MemTracker> last_used_parent_mem_tracker_;
@@ -227,9 +224,13 @@ class Messenger : public ProxyContext {
   Status QueueEventOnAllReactors(
       ServerEventListPtr server_event, const SourceLocation& source_location);
 
+  Status QueueEventOnFilteredConnections(
+      ServerEventListPtr server_event, const SourceLocation& source_location,
+      ConnectionFilter connection_filter);
+
   // Dump the current RPCs into the given protobuf.
   Status DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
-                                 DumpRunningRpcsResponsePB* resp);
+                         DumpRunningRpcsResponsePB* resp);
 
   void RemoveScheduledTask(ScheduledTaskId task_id);
 
@@ -241,10 +242,8 @@ class Messenger : public ProxyContext {
   //
   // The status argument conveys whether 'func' was run correctly (i.e. after the elapsed time) or
   // not.
-  MUST_USE_RESULT ScheduledTaskId ScheduleOnReactor(
-      StatusFunctor func, MonoDelta when,
-      const SourceLocation& source_location,
-      rpc::Messenger* msgr);
+  Result<ScheduledTaskId> ScheduleOnReactor(
+      StatusFunctor func, MonoDelta when, const SourceLocation& source_location);
 
   std::string name() const {
     return name_;
@@ -304,13 +303,17 @@ class Messenger : public ProxyContext {
 
   Status TEST_GetReactorMetrics(size_t reactor_idx, ReactorMetrics* metrics);
 
+  ScheduledTaskId TEST_next_task_id() const {
+    return next_task_id_.load(std::memory_order_acquire);
+  }
+
  private:
   friend class DelayedTask;
 
   explicit Messenger(const MessengerBuilder &bld);
 
   Reactor* RemoteToReactor(const Endpoint& remote, uint32_t idx = 0);
-  Status Init();
+  Status Init(const MessengerBuilder &bld);
 
   void BreakConnectivity(const IpAddress& address, bool incoming, bool outgoing);
   void RestoreConnectivity(const IpAddress& address, bool incoming, bool outgoing);
@@ -329,13 +332,13 @@ class Messenger : public ProxyContext {
 
   const Protocol* const listen_protocol_;
 
-  // Protects closing_, acceptor_pools_.
-  mutable percpu_rwlock lock_;
+  mutable PerCpuRwMutex lock_;
 
-  bool closing_ = false;
+  std::atomic_bool closing_ = false;
 
   // RPC services that handle inbound requests.
   mutable RWOperationCounter rpc_services_counter_;
+  std::atomic_bool rpc_services_counter_stopped_ = false;
   std::unordered_multimap<std::string, RpcServicePtr> rpc_services_;
   RpcEndpointMap rpc_endpoints_;
 
@@ -345,7 +348,7 @@ class Messenger : public ProxyContext {
   const scoped_refptr<Histogram> outgoing_queue_time_;
 
   // Acceptor which is listening on behalf of this messenger.
-  std::unique_ptr<Acceptor> acceptor_;
+  std::unique_ptr<Acceptor> acceptor_ GUARDED_BY(lock_);
   IpAddress outbound_address_v4_;
   IpAddress outbound_address_v6_;
 
@@ -355,14 +358,15 @@ class Messenger : public ProxyContext {
 
   std::mutex mutex_scheduled_tasks_;
 
-  std::unordered_map<ScheduledTaskId, std::shared_ptr<DelayedTask>> scheduled_tasks_;
+  std::unordered_map<ScheduledTaskId, std::shared_ptr<DelayedTask>> scheduled_tasks_
+      GUARDED_BY(mutex_scheduled_tasks_);
 
   // Flag that we have at least on address with artificially broken connectivity.
   std::atomic<bool> has_broken_connectivity_ = {false};
 
   // Set of addresses with artificially broken connectivity.
-  std::unordered_set<IpAddress, IpAddressHash> broken_connectivity_from_;
-  std::unordered_set<IpAddress, IpAddressHash> broken_connectivity_to_;
+  std::unordered_set<IpAddress, IpAddressHash> broken_connectivity_from_ GUARDED_BY(lock_);
+  std::unordered_set<IpAddress, IpAddressHash> broken_connectivity_to_ GUARDED_BY(lock_);
 
   IoThreadPool io_thread_pool_;
   Scheduler scheduler_;
@@ -396,5 +400,3 @@ class Messenger : public ProxyContext {
 
 }  // namespace rpc
 }  // namespace yb
-
-#endif  // YB_RPC_MESSENGER_H_

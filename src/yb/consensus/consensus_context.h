@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CONSENSUS_CONSENSUS_CONTEXT_H
-#define YB_CONSENSUS_CONSENSUS_CONTEXT_H
+#pragma once
 
 #include "yb/common/common_fwd.h"
 
@@ -55,7 +54,7 @@ class ConsensusContext {
   // This is called every time majority-replicated watermarks (OpId / leader leases) change. This is
   // used for updating the "propagated safe time" value in MvccManager and unblocking readers
   // waiting for it to advance.
-  virtual void MajorityReplicated() = 0;
+  virtual Status MajorityReplicated() = 0;
 
   // This is called every time the Raft config was changed and replicated.
   // This is used to notify the higher layer about the config change. Currently it's
@@ -79,5 +78,3 @@ class ConsensusContext {
 
 } // namespace consensus
 } // namespace yb
-
-#endif // YB_CONSENSUS_CONSENSUS_CONTEXT_H

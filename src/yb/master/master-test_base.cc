@@ -36,11 +36,11 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/strings/substitute.h"
 
-#include "yb/master/master-test-util.h"
 #include "yb/master/master.h"
 #include "yb/master/master_client.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
@@ -53,13 +53,16 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-#include "yb/util/test_util.h"
+
+using std::make_shared;
 
 DECLARE_bool(catalog_manager_check_ts_count_for_create_table);
 DECLARE_bool(TEST_disable_cdc_state_insert_on_setup);
+DECLARE_bool(TEST_create_table_in_running_state);
 
 namespace yb {
 namespace master {
@@ -76,9 +79,11 @@ void MasterTestBase::SetUp() {
 
   // In this test, we create tables to test catalog manager behavior,
   // but we have no tablet servers. Typically this would be disallowed.
-  FLAGS_catalog_manager_check_ts_count_for_create_table = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_check_ts_count_for_create_table) = false;
   // Since this is a master-only test, don't do any operations on cdc state for xCluster tests.
-  FLAGS_TEST_disable_cdc_state_insert_on_setup = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_cdc_state_insert_on_setup) = true;
+  // Since this is a master-only test, don't wait for tablet creation of tables.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_create_table_in_running_state) = true;
 
   // Start master with the create flag on.
   mini_master_.reset(new MiniMaster(Env::Default(), GetTestPath("Master"),
@@ -125,8 +130,25 @@ Status MasterTestBase::CreateTable(const NamespaceName& namespace_name,
 Status MasterTestBase::CreatePgsqlTable(const NamespaceId& namespace_id,
                                         const TableName& table_name,
                                         const Schema& schema) {
-  CreateTableRequestPB req, *request;
-  request = &req;
+  CreateTableRequestPB req;
+  return CreatePgsqlTable(namespace_id, table_name, schema, &req);
+}
+
+Status MasterTestBase::CreatePgsqlTable(
+    const NamespaceId& namespace_id, const TableName& table_name, const TableId& table_id,
+    const Schema& schema) {
+  CreateTableRequestPB req;
+
+  // PGSQL OIDs have a specific format. The table_id must be of the same format otherwise it can
+  // lead to failures such as during Alter table.
+  // See IsPgsqlId inside src/yb/common/entity_ids.cc for the exact format.
+  req.set_table_id(table_id);
+  return CreatePgsqlTable(namespace_id, table_name, schema, &req);
+}
+
+Status MasterTestBase::CreatePgsqlTable(
+    const NamespaceId& namespace_id, const TableName& table_name, const Schema& schema,
+    CreateTableRequestPB* request) {
   CreateTableResponsePB resp;
 
   request->set_table_type(TableType::PGSQL_TABLE_TYPE);
@@ -138,6 +160,7 @@ Status MasterTestBase::CreatePgsqlTable(const NamespaceId& namespace_id,
   }
   request->mutable_partition_schema()->set_hash_schema(PartitionSchemaPB::PGSQL_HASH_SCHEMA);
   request->mutable_schema()->mutable_table_properties()->set_num_tablets(8);
+  request->mutable_schema()->set_pgschema_name("public");
 
   // Dereferencing as the RPCs require const ref for request. Keeping request param as pointer
   // though, as that helps with readability and standardization.
@@ -339,6 +362,21 @@ Status MasterTestBase::CreateNamespace(const NamespaceName& ns_name,
   return CreateNamespaceWait(resp->id(), database_type);
 }
 
+Status MasterTestBase::CreatePgsqlNamespace(
+    const NamespaceName& ns_name, const NamespaceId& ns_id, CreateNamespaceResponsePB* resp) {
+  CreateNamespaceRequestPB req;
+  req.set_name(ns_name);
+  req.set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+
+  // PGSQL OIDs have a specific format. The namespace id must be of the same format otherwise it can
+  // lead to failures such as during Alter table.
+  // See IsPgsqlId inside src/yb/common/entity_ids.cc for the exact format.
+  req.set_namespace_id(ns_id);
+
+  *resp = VERIFY_RESULT(CreateNamespaceAsync(req));
+  return CreateNamespaceWait(resp->id(), YQLDatabase::YQL_DATABASE_PGSQL);
+}
+
 Status MasterTestBase::CreateNamespaceAsync(const NamespaceName& ns_name,
                                             const boost::optional<YQLDatabase>& database_type,
                                             CreateNamespaceResponsePB* resp) {
@@ -348,11 +386,18 @@ Status MasterTestBase::CreateNamespaceAsync(const NamespaceName& ns_name,
     req.set_database_type(*database_type);
   }
 
-  RETURN_NOT_OK(proxy_ddl_->CreateNamespace(req, resp, ResetAndGetController()));
-  if (resp->has_error()) {
-    RETURN_NOT_OK(StatusFromPB(resp->error().status()));
-  }
+  *resp = VERIFY_RESULT(CreateNamespaceAsync(req));
   return Status::OK();
+}
+
+Result<CreateNamespaceResponsePB> MasterTestBase::CreateNamespaceAsync(
+    const CreateNamespaceRequestPB& req) {
+  CreateNamespaceResponsePB resp;
+  RETURN_NOT_OK(proxy_ddl_->CreateNamespace(req, &resp, ResetAndGetController()));
+  if (resp.has_error()) {
+    RETURN_NOT_OK(StatusFromPB(resp.error().status()));
+  }
+  return resp;
 }
 
 Status MasterTestBase::CreateNamespaceWait(const NamespaceId& ns_id,

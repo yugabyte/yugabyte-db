@@ -28,8 +28,7 @@
 // All Env implementations are safe for concurrent access from
 // multiple threads without any external synchronization.
 
-#ifndef YB_ROCKSDB_ENV_H
-#define YB_ROCKSDB_ENV_H
+#pragma once
 
 #include <stdint.h>
 
@@ -80,8 +79,6 @@ class RateLimiter;
 typedef yb::SequentialFile SequentialFile;
 typedef yb::RandomAccessFile RandomAccessFile;
 
-using std::unique_ptr;
-using std::shared_ptr;
 
 using Status = yb::Status;
 
@@ -122,16 +119,16 @@ struct EnvOptions : public yb::FileSystemOptions {
 class RocksDBFileFactory {
  public:
   virtual ~RocksDBFileFactory() {}
-  virtual Status NewSequentialFile(const std::string& f, unique_ptr<SequentialFile>* r,
+  virtual Status NewSequentialFile(const std::string& f, std::unique_ptr<SequentialFile>* r,
                                            const EnvOptions& options) = 0;
   virtual Status NewRandomAccessFile(const std::string& f,
-                                             unique_ptr<RandomAccessFile>* r,
+                                             std::unique_ptr<RandomAccessFile>* r,
                                              const EnvOptions& options) = 0;
-  virtual Status NewWritableFile(const std::string& f, unique_ptr<WritableFile>* r,
+  virtual Status NewWritableFile(const std::string& f, std::unique_ptr<WritableFile>* r,
                                          const EnvOptions& options) = 0;
   virtual Status ReuseWritableFile(const std::string& fname,
                                    const std::string& old_fname,
-                                   unique_ptr<WritableFile>* result,
+                                   std::unique_ptr<WritableFile>* result,
                                    const EnvOptions& options) = 0;
   virtual Status GetFileSize(const std::string& fname, uint64_t* size) = 0;
 
@@ -146,17 +143,17 @@ class RocksDBFileFactoryWrapper : public rocksdb::RocksDBFileFactory {
   virtual ~RocksDBFileFactoryWrapper() {}
 
   // The following text is boilerplate that forwards all methods to target()
-  Status NewSequentialFile(const std::string& f, unique_ptr<SequentialFile>* r,
+  Status NewSequentialFile(const std::string& f, std::unique_ptr<SequentialFile>* r,
                            const rocksdb::EnvOptions& options) override;
   Status NewRandomAccessFile(const std::string& f,
-                             unique_ptr <rocksdb::RandomAccessFile>* r,
+                             std::unique_ptr <rocksdb::RandomAccessFile>* r,
                              const EnvOptions& options) override;
-  Status NewWritableFile(const std::string& f, unique_ptr <rocksdb::WritableFile>* r,
+  Status NewWritableFile(const std::string& f, std::unique_ptr <rocksdb::WritableFile>* r,
                          const EnvOptions& options) override;
 
   Status ReuseWritableFile(const std::string& fname,
                            const std::string& old_fname,
-                           unique_ptr<WritableFile>* result,
+                           std::unique_ptr<WritableFile>* result,
                            const EnvOptions& options) override;
 
   Status GetFileSize(const std::string& fname, uint64_t* size) override;
@@ -226,13 +223,13 @@ class Env {
   //
   // The returned file will only be accessed by one thread at a time.
   virtual Status NewWritableFile(const std::string& fname,
-                                 unique_ptr<WritableFile>* result,
+                                 std::unique_ptr<WritableFile>* result,
                                  const EnvOptions& options) = 0;
 
   // Reuse an existing file by renaming it and opening it as writable.
   virtual Status ReuseWritableFile(const std::string& fname,
                                    const std::string& old_fname,
-                                   unique_ptr<WritableFile>* result,
+                                   std::unique_ptr<WritableFile>* result,
                                    const EnvOptions& options);
 
   // Create an object that represents a directory. Will fail if directory
@@ -243,7 +240,7 @@ class Env {
   // *result and returns OK. On failure stores nullptr in *result and
   // returns non-OK.
   virtual Status NewDirectory(const std::string& name,
-                              unique_ptr<Directory>* result) = 0;
+                              std::unique_ptr<Directory>* result) = 0;
 
   // Returns OK if the named file exists.
   //         NotFound if the named file does not exist,
@@ -276,7 +273,8 @@ class Env {
   virtual Status DeleteFile(const std::string& fname) = 0;
 
   // Delete file, print warning on failure.
-  void CleanupFile(const std::string& fname);
+  // Returns true iff file has been deleted.
+  bool CleanupFile(const std::string& fname, const std::string& log_prefix = "");
 
   // Create the specified directory. Returns error if directory exists.
   virtual Status CreateDir(const std::string& dirname) = 0;
@@ -365,7 +363,7 @@ class Env {
 
   // Create and return a log file for storing informational messages.
   virtual Status NewLogger(const std::string& fname,
-                           shared_ptr<Logger>* result) = 0;
+                           std::shared_ptr<Logger>* result) = 0;
 
   // Returns the number of micro-seconds since some fixed point in time. Only
   // useful for computing deltas of time.
@@ -525,12 +523,12 @@ class FileLock {
   void operator=(const FileLock&);
 };
 
-extern void LogFlush(const shared_ptr<Logger>& info_log);
+extern void LogFlush(const std::shared_ptr<Logger>& info_log);
 
 extern void LogWithContext(const char* file,
                            const int line,
                            const InfoLogLevel log_level,
-                           const shared_ptr<Logger>& info_log,
+                           const std::shared_ptr<Logger>& info_log,
                            const char* format,
                            ...);
 
@@ -538,39 +536,39 @@ extern void LogWithContext(const char* file,
 extern void HeaderWithContext(
     const char* file,
     const int line,
-    const shared_ptr<Logger> &info_log,
+    const std::shared_ptr<Logger> &info_log,
     const char *format, ...);
 extern void DebugWithContext(
     const char* file,
     const int line,
-    const shared_ptr<Logger> &info_log,
+    const std::shared_ptr<Logger> &info_log,
     const char *format, ...);
 extern void InfoWithContext(
     const char* file,
     const int line,
-    const shared_ptr<Logger> &info_log,
+    const std::shared_ptr<Logger> &info_log,
     const char *format, ...);
 extern void WarnWithContext(
     const char* file,
     const int line,
-    const shared_ptr<Logger> &info_log,
+    const std::shared_ptr<Logger> &info_log,
     const char *format, ...);
 extern void ErrorWithContext(
     const char* file,
     const int line,
-    const shared_ptr<Logger> &info_log,
+    const std::shared_ptr<Logger> &info_log,
     const char *format, ...);
 extern void FatalWithContext(
     const char* file,
     const int line,
-    const shared_ptr<Logger> &info_log,
+    const std::shared_ptr<Logger> &info_log,
     const char *format, ...);
 
 // Log the specified data to *info_log if info_log is non-nullptr.
 // The default info log level is InfoLogLevel::ERROR.
 extern void LogWithContext(const char* file,
                            const int line,
-                           const shared_ptr<Logger>& info_log,
+                           const std::shared_ptr<Logger>& info_log,
                            const char* format,
                            ...)
 #   if defined(__GNUC__) || defined(__clang__)
@@ -637,16 +635,16 @@ class EnvWrapper : public Env {
   Status NewSequentialFile(const std::string& f, std::unique_ptr<SequentialFile>* r,
                            const EnvOptions& options) override;
   Status NewRandomAccessFile(const std::string& f,
-                             unique_ptr<RandomAccessFile>* r,
+                             std::unique_ptr<RandomAccessFile>* r,
                              const EnvOptions& options) override;
-  Status NewWritableFile(const std::string& f, unique_ptr<WritableFile>* r,
+  Status NewWritableFile(const std::string& f, std::unique_ptr<WritableFile>* r,
                          const EnvOptions& options) override;
   Status ReuseWritableFile(const std::string& fname,
                            const std::string& old_fname,
-                           unique_ptr<WritableFile>* r,
+                           std::unique_ptr<WritableFile>* r,
                            const EnvOptions& options) override;
   virtual Status NewDirectory(const std::string& name,
-                              unique_ptr<Directory>* result) override;
+                              std::unique_ptr<Directory>* result) override;
   Status FileExists(const std::string& f) override;
 
   bool DirExists(const std::string& f) override {
@@ -693,7 +691,7 @@ class EnvWrapper : public Env {
   }
   virtual Status GetTestDirectory(std::string* path) override;
   virtual Status NewLogger(const std::string& fname,
-                           shared_ptr<Logger>* result) override;
+                           std::shared_ptr<Logger>* result) override;
   uint64_t NowMicros() override { return target_->NowMicros(); }
   void SleepForMicroseconds(int micros) override {
     target_->SleepForMicroseconds(micros);
@@ -736,10 +734,4 @@ class EnvWrapper : public Env {
 // *base_env must remain live while the result is in use.
 Env* NewMemEnv(Env* base_env);
 
-// Returns a new environment that is used for HDFS environment.
-// This is a factory method for HdfsEnv declared in hdfs/env_hdfs.h
-Status NewHdfsEnv(Env** hdfs_env, const std::string& fsname);
-
 }  // namespace rocksdb
-
-#endif // YB_ROCKSDB_ENV_H

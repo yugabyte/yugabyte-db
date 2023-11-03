@@ -14,11 +14,12 @@ type: docs
 
 ## Synopsis
 
-<b>`HGET key field`</b><br>
+**`HGET key field`**
+
 This command fetches the value for the given `field` in the hash that is specified by the given `key`.
 
-<li>If the given `key` or `field` does not exist, nil is returned.</li>
-<li>If the given `key` is associated with non-hash data, an error is raised.</li>
+- If the given `key` or `field` does not exist, nil is returned.
+- If the given `key` is associated with non-hash data, an error is raised.
 
 ## Return value
 

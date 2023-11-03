@@ -35,7 +35,6 @@ package yb.tserver;
 
 option java_package = "org.yb.tserver";
 
-import "yb/common/common_net.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
 import "yb/rpc/rpc_header.proto";
@@ -47,6 +46,11 @@ service RemoteBootstrapService {
   // Establish a remote bootstrap session.
   rpc BeginRemoteBootstrapSession(BeginRemoteBootstrapSessionRequestPB)
       returns (BeginRemoteBootstrapSessionResponsePB);
+
+  // Establish a remote snapshot transfer session.
+  rpc BeginRemoteSnapshotTransferSession(
+      BeginRemoteSnapshotTransferSessionRequestPB)
+      returns (BeginRemoteSnapshotTransferSessionResponsePB);
 
   // Check whether the specified session is active.
   rpc CheckRemoteBootstrapSessionActive(CheckRemoteBootstrapSessionActiveRequestPB)
@@ -172,6 +176,31 @@ message BeginRemoteBootstrapSessionResponsePB {
   // A snapshot of the committed Consensus state at the time that the
   // remote bootstrap session was started.
   required consensus.ConsensusStatePB initial_committed_cstate = 5;
+
+  // If the tablet has a retryable requests file flushed to disk.
+  optional bool retryable_requests_file_flushed = 7 [default = false];
+}
+
+message BeginRemoteSnapshotTransferSessionRequestPB {
+  // permanent_uuid of the requesting peer.
+  required bytes requestor_uuid = 1;
+
+  // tablet_id of the tablet the requester desires to bootstrap from.
+  required bytes tablet_id = 2;
+}
+
+message BeginRemoteSnapshotTransferSessionResponsePB {
+  // Opaque session id assigned by the server.
+  // No guarantees are made as to the format of the session id.
+  required bytes session_id = 1;
+
+  // Maximum session idle timeout between requests.
+  // Learners will have to start over again if they reach this timeout.
+  // A value of 0 means there is no timeout.
+  required uint64 session_idle_timeout_millis = 2;
+
+  // Active superblock at the time of the request.
+  required tablet.RaftGroupReplicaSuperBlockPB superblock = 3;
 }
 
 message CheckRemoteBootstrapSessionActiveRequestPB {
@@ -195,6 +224,7 @@ message DataIdPB {
     LOG_SEGMENT = 2;
     ROCKSDB_FILE = 3;
     SNAPSHOT_FILE = 4;
+    RETRYABLE_REQUESTS = 5;
   }
 
   // Indicator whether it's a block or log segment id.
@@ -283,7 +313,8 @@ message RegisterLogAnchorRequestPB {
   // tablet_id of the tablet the requester desires to bootstrap from.
   required bytes tablet_id = 2;
 
-  // op id where the log anchor needs to be dropped.
+  // The 'index' field of op_id should be set to the log index where the anchor needs to be
+  // registered at. The 'term' field of op_id is ignored.
   required OpIdPB op_id = 3;
 }
 
@@ -294,7 +325,8 @@ message UpdateLogAnchorRequestPB {
   // RemoteBootstrapAnchor request.
   required bytes owner_info = 1;
 
-  // op id to which the log anchor needs to be updated to.
+  // The 'index' field of op_id should be set to the log index where the anchor needs to be
+  // updated to. The 'term' field of op_id is ignored.
   required OpIdPB op_id = 2;
 }
 

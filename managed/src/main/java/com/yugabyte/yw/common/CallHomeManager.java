@@ -10,18 +10,15 @@ import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import java.time.Clock;
-import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
-import org.asynchttpclient.util.Base64;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -59,20 +56,22 @@ public class CallHomeManager {
     this.apiHelper = apiHelper;
     this.configHelper = configHelper;
   }
+
   // Email address from YugaByte to which to send diagnostics, if enabled.
   private final String YB_CALLHOME_URL = "http://yw-diagnostics.yugabyte.com";
 
   public static final Logger LOG = LoggerFactory.getLogger(CallHomeManager.class);
 
   public void sendDiagnostics(Customer c) {
-    CollectionLevel callhomeLevel = CustomerConfig.getOrCreateCallhomeLevel(c.uuid);
+    CollectionLevel callhomeLevel = CustomerConfig.getOrCreateCallhomeLevel(c.getUuid());
     if (!callhomeLevel.isDisabled()) {
       LOG.info("Starting collecting diagnostics");
       JsonNode payload = CollectDiagnostics(c, callhomeLevel);
       LOG.info("Sending collected diagnostics to " + YB_CALLHOME_URL);
       // Api Helper handles exceptions
       Map<String, String> headers = new HashMap<>();
-      headers.put("X-AUTH-TOKEN", Base64.encode(c.uuid.toString().getBytes()));
+      headers.put(
+          "X-AUTH-TOKEN", Base64.getEncoder().encodeToString(c.getUuid().toString().getBytes()));
       JsonNode response = apiHelper.postRequest(YB_CALLHOME_URL, payload, headers);
       LOG.info("Response: " + response.toString());
     }
@@ -82,10 +81,10 @@ public class CallHomeManager {
   JsonNode CollectDiagnostics(Customer c, CollectionLevel callhomeLevel) {
     ObjectNode payload = Json.newObject();
     // Build customer details json
-    payload.put("customer_uuid", c.uuid.toString());
-    payload.put("code", c.code);
-    payload.put("email", Users.getAllEmailsForCustomer(c.uuid));
-    payload.put("creation_date", c.creationDate.toString());
+    payload.put("customer_uuid", c.getUuid().toString());
+    payload.put("code", c.getCode());
+    payload.put("email", Users.getAllEmailsForCustomer(c.getUuid()));
+    payload.put("creation_date", c.getCreationDate().toString());
     ArrayNode errors = Json.newArray();
 
     // Build universe details json
@@ -95,14 +94,14 @@ public class CallHomeManager {
     payload.set("universes", Json.toJson(universes));
     // Build provider details json
     ArrayNode providers = Json.newArray();
-    for (Provider p : Provider.getAll(c.uuid)) {
+    for (Provider p : Provider.getAll(c.getUuid())) {
       ObjectNode provider = Json.newObject();
-      provider.put("provider_uuid", p.uuid.toString());
-      provider.put("code", p.code);
-      provider.put("name", p.name);
+      provider.put("provider_uuid", p.getUuid().toString());
+      provider.put("code", p.getCode());
+      provider.put("name", p.getName());
       ArrayNode regions = Json.newArray();
-      for (Region r : p.regions) {
-        regions.add(r.name);
+      for (Region r : p.getRegions()) {
+        regions.add(r.getName());
       }
       provider.set("regions", regions);
       providers.add(provider);

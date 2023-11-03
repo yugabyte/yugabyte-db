@@ -13,7 +13,7 @@
 
 #include <gtest/gtest.h>
 
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
@@ -30,13 +30,13 @@
 namespace yb {
 namespace tablet {
 
-class TabletDataIntegrityTest : public TabletTestBase<IntKeyTestSetup<INT32>> {
-  typedef TabletTestBase<IntKeyTestSetup<INT32>> superclass;
+class TabletDataIntegrityTest : public TabletTestBase<IntKeyTestSetup<DataType::INT32>> {
+  typedef TabletTestBase<IntKeyTestSetup<DataType::INT32>> superclass;
  public:
   void SetUp() override {
     superclass::SetUp();
 
-    const auto& tablet = this->tablet().get();
+    auto tablet = this->tablet();
     LocalTabletWriter writer(tablet);
     ASSERT_OK(this->InsertTestRow(&writer, 12345, 0));
     ASSERT_OK(tablet->Flush(FlushMode::kSync));
@@ -44,7 +44,7 @@ class TabletDataIntegrityTest : public TabletTestBase<IntKeyTestSetup<INT32>> {
 
  protected:
   Result<std::string> GetFirstSstFilePath() {
-    const auto& tablet = this->tablet().get();
+    auto tablet = this->tablet();
     auto dir = tablet->metadata()->rocksdb_dir();
     auto list = VERIFY_RESULT(tablet->metadata()->fs_manager()->ListDir(dir));
     if (std::find(list.begin(), list.end(), "CURRENT") == list.end()) {
@@ -62,12 +62,12 @@ class TabletDataIntegrityTest : public TabletTestBase<IntKeyTestSetup<INT32>> {
 };
 
 TEST_F(TabletDataIntegrityTest, TestNoCorruption) {
-  const auto& tablet = this->tablet().get();
+  auto tablet = this->tablet();
   ASSERT_OK(tablet->VerifyDataIntegrity());
 }
 
 TEST_F(TabletDataIntegrityTest, TestDeletedFile) {
-  const auto& tablet = this->tablet().get();
+  auto tablet = this->tablet();
 
   auto sst_path = ASSERT_RESULT(GetFirstSstFilePath());
   ASSERT_OK(env_->DeleteFile(sst_path));
@@ -78,7 +78,7 @@ TEST_F(TabletDataIntegrityTest, TestDeletedFile) {
 }
 
 TEST_F(TabletDataIntegrityTest, TestFileTruncate) {
-  const auto& tablet = this->tablet().get();
+  auto tablet = this->tablet();
 
   auto sst_path = ASSERT_RESULT(GetFirstSstFilePath());
   faststring data;
@@ -94,7 +94,7 @@ TEST_F(TabletDataIntegrityTest, TestFileTruncate) {
 // Skipping as we currently don't have any block checks in place.
 // TODO: enable this test once we add those. (See issue #7904)
 TEST_F(TabletDataIntegrityTest, DISABLED_TestFileGarbageOverwrite) {
-  const auto& tablet = this->tablet().get();
+  auto tablet = this->tablet();
 
   auto sst_path = ASSERT_RESULT(GetFirstSstFilePath());
   faststring data;

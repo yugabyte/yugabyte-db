@@ -21,6 +21,7 @@
 
 #include "yb/rpc/thread_pool.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
@@ -30,13 +31,15 @@ using namespace std::literals;
 
 using std::string;
 using std::vector;
-using std::stack;
 using std::thread;
 
 DECLARE_bool(dump_lock_keys);
 
 namespace yb {
 namespace docdb {
+
+using dockv::IntentType;
+using dockv::IntentTypeSet;
 
 const RefCntPrefix kKey1("foo"s);
 const RefCntPrefix kKey2("bar"s);
@@ -162,12 +165,15 @@ TEST_F(SharedLockManagerTest, QuickLockUnlock) {
 }
 
 TEST_F(SharedLockManagerTest, LockConflicts) {
-  rpc::ThreadPool tp(rpc::ThreadPoolOptions{"test_pool"s, 10, 1});
+  rpc::ThreadPool tp(rpc::ThreadPoolOptions{
+    .name = "test_pool"s,
+    .max_workers = 1,
+  });
 
-  for (size_t idx1 = 0; idx1 != kIntentTypeSetMapSize; ++idx1) {
+  for (size_t idx1 = 0; idx1 != dockv::kIntentTypeSetMapSize; ++idx1) {
     IntentTypeSet set1(idx1);
     SCOPED_TRACE(Format("Set1: $0", set1));
-    for (size_t idx2 = 0; idx2 != kIntentTypeSetMapSize; ++idx2) {
+    for (size_t idx2 = 0; idx2 != dockv::kIntentTypeSetMapSize; ++idx2) {
       IntentTypeSet set2(idx2);
       SCOPED_TRACE(Format("Set2: $0", set2));
       LockBatch lb1(&lm_, {{kKey1, set1}}, CoarseTimePoint::max());
@@ -187,7 +193,7 @@ TEST_F(SharedLockManagerTest, LockConflicts) {
 }
 
 TEST_F(SharedLockManagerTest, DumpKeys) {
-  FLAGS_dump_lock_keys = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_dump_lock_keys) = true;
 
   auto lb1 = TestLockBatch();
   ASSERT_OK(lb1.status());

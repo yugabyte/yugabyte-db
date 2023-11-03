@@ -4,7 +4,7 @@
 # YB Feature Testsuite: Used for reporting supported and unsupported features.
 #   This testsuite walks through the syntax rules and quickly checks
 #   whether or not a feature is supported.
-#################################################################################################### 
+####################################################################################################
 test: yb_feature_types
 test: yb_feature_insert
 test: yb_feature_delete
@@ -14,6 +14,4 @@ test: yb_feature_config
 test: yb_feature_copy
 test: yb_feature_copyselect
 test: yb_feature_alter_table
-test: yb_feature_alter_rename
 test: yb_feature_temp
-test: yb_feature_db

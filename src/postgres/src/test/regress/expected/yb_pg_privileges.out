@@ -560,6 +560,83 @@ ERROR:  new row for relation "t1" violates check constraint "t1_c3_check"
 DETAIL:  Failing row contains (c1, c3) = (1, 10).
 SET SESSION AUTHORIZATION regress_priv_user1;
 DROP TABLE t1;
+-- check error reporting with column privs on a partitioned table
+CREATE TABLE errtst(a text, b text NOT NULL, c text, secret1 text, secret2 text) PARTITION BY LIST (a);
+CREATE TABLE errtst_part_1(secret2 text, c text, a text, b text NOT NULL, secret1 text);
+CREATE TABLE errtst_part_2(secret1 text, secret2 text, a text, c text, b text NOT NULL);
+ALTER TABLE errtst ATTACH PARTITION errtst_part_1 FOR VALUES IN ('aaa');
+ALTER TABLE errtst ATTACH PARTITION errtst_part_2 FOR VALUES IN ('aaaa');
+GRANT SELECT (a, b, c) ON TABLE errtst TO regress_priv_user2;
+GRANT UPDATE (a, b, c) ON TABLE errtst TO regress_priv_user2;
+GRANT INSERT (a, b, c) ON TABLE errtst TO regress_priv_user2;
+INSERT INTO errtst_part_1 (a, b, c, secret1, secret2)
+VALUES ('aaa', 'bbb', 'ccc', 'the body', 'is in the attic');
+SET SESSION AUTHORIZATION regress_priv_user2;
+-- Perform a few updates that violate the NOT NULL constraint. Make sure
+-- the error messages don't leak the secret fields.
+-- simple insert.
+INSERT INTO errtst (a, b) VALUES ('aaa', NULL);
+ERROR:  null value in column "b" violates not-null constraint
+DETAIL:  Failing row contains (a, b, c) = (aaa, null, null).
+-- simple update.
+UPDATE errtst SET b = NULL;
+ERROR:  null value in column "b" violates not-null constraint
+DETAIL:  Failing row contains (b) = (null).
+-- partitioning key is updated, doesn't move the row.
+UPDATE errtst SET a = 'aaa', b = NULL;
+ERROR:  null value in column "b" violates not-null constraint
+DETAIL:  Failing row contains (a, b, c) = (aaa, null, ccc).
+-- row is moved to another partition.
+UPDATE errtst SET a = 'aaaa', b = NULL;
+ERROR:  null value in column "b" violates not-null constraint
+DETAIL:  Failing row contains (a, b, c) = (aaaa, null, ccc).
+-- row is moved to another partition. This differs from the previous case in
+-- that the new partition is excluded by constraint exclusion, so its
+-- ResultRelInfo is not created at ExecInitModifyTable, but needs to be
+-- constructed on the fly when the updated tuple is routed to it.
+UPDATE errtst SET a = 'aaaa', b = NULL WHERE a = 'aaa';
+ERROR:  null value in column "b" violates not-null constraint
+DETAIL:  Failing row contains (a, b, c) = (aaaa, null, ccc).
+SET SESSION AUTHORIZATION regress_priv_user1;
+DROP TABLE errtst;
+-- check error reporting with column privs on inherited tables.
+-- Once INHERIT feature is enabled via GH #1124 uncomment the below commands.
+CREATE TABLE errtst_parent (a int, b text NOT NULL, c text);
+CREATE TABLE errtst_inh_child1 (secret2 text, c text, a int, b text NOT NULL, secret1 text, CONSTRAINT c CHECK (a > 0)) INHERITS (errtst_parent);
+ERROR:  INHERITS not supported yet
+LINE 1: ...T NULL, secret1 text, CONSTRAINT c CHECK (a > 0)) INHERITS (...
+                                                             ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
+CREATE TABLE errtst_inh_child2 (secret1 text, secret2 text, a int, c text, b text NOT NULL, CONSTRAINT c CHECK (a < 0)) INHERITS (errtst_parent);
+ERROR:  INHERITS not supported yet
+LINE 1: ...ext, b text NOT NULL, CONSTRAINT c CHECK (a < 0)) INHERITS (...
+                                                             ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
+-- GRANT SELECT (a, b, c) ON TABLE errtst_parent TO regress_priv_user2;
+-- GRANT UPDATE (a, b, c) ON TABLE errtst_parent TO regress_priv_user2;
+-- GRANT INSERT (a, b, c) ON TABLE errtst_parent TO regress_priv_user2;
+-- INSERT INTO errtst_inh_child1 (a, b, c, secret1, secret2)
+-- VALUES (1, 'bbb', 'ccc', 'the body', 'is in the attic');
+-- SET SESSION AUTHORIZATION regress_priv_user2;
+-- -- Perform a few updates that violate the NOT NULL constraint. Make sure
+-- -- the error messages don't leak the secret fields.
+-- -- simple insert.
+-- INSERT INTO errtst_parent (a, b) VALUES (1, NULL);
+-- -- simple update.
+-- UPDATE errtst_parent SET b = NULL;
+-- -- when parent is updated, child will be attempted to be updated.
+-- UPDATE errtst_parent SET a = 1, b = NULL;
+-- -- when parent is updated, another child will be attempted to be updated.
+-- UPDATE errtst_parent SET a = -1, b = NULL;
+-- -- row is moved to another child. This differs from the previous case in
+-- -- that the new inheritance is excluded by constraint exclusion, so its
+-- -- ResultRelInfo is not created at ExecInitModifyTable, but needs to be
+-- -- constructed on the fly when the updated tuple is routed to it.
+-- UPDATE errtst_parent SET a = -1, b = NULL WHERE a = 1;
+SET SESSION AUTHORIZATION regress_priv_user1;
+-- DROP TABLE errtst_inh_child1;
+-- DROP TABLE errtst_inh_child2;
+DROP TABLE errtst_parent;
 -- test column-level privileges when involved with DELETE
 SET SESSION AUTHORIZATION regress_priv_user1;
 ALTER TABLE atest6 ADD COLUMN three integer;
@@ -776,8 +853,10 @@ ERROR:  permission denied for type priv_testtype1
 CREATE TABLE test10a (a int[], b priv_testtype1[]);
 ERROR:  permission denied for type priv_testtype1
 CREATE TABLE test9a (a int, b int);
--- ALTER TABLE test9a ADD COLUMN c priv_testdomain1;
--- ALTER TABLE test9a ALTER COLUMN b TYPE priv_testdomain1;
+ALTER TABLE test9a ADD COLUMN c priv_testdomain1;
+ERROR:  permission denied for type priv_testdomain1
+ALTER TABLE test9a ALTER COLUMN b TYPE priv_testdomain1;
+ERROR:  permission denied for type priv_testdomain1
 CREATE TYPE test7a AS (a int, b priv_testdomain1);
 ERROR:  permission denied for type priv_testdomain1
 CREATE TYPE test8a AS (a int, b int);
@@ -803,9 +882,7 @@ CREATE TABLE test6b OF priv_testtype1;
 CREATE TABLE test10b (a int[], b priv_testtype1[]);
 CREATE TABLE test9b (a int, b int);
 ALTER TABLE test9b ADD COLUMN c priv_testdomain1;
--- NOT SUPPORTED
---
--- ALTER TABLE test9b ALTER COLUMN b TYPE priv_testdomain1;
+ALTER TABLE test9b ALTER COLUMN b TYPE priv_testdomain1;
 -- IF THIS LINE CAUSES A FAILURE, THIS REGION MAY BE SUPPORTED
 CREATE TYPE test7b AS (a int, b priv_testdomain1);
 CREATE TYPE test8b AS (a int, b int);

@@ -28,9 +28,9 @@ import org.junit.Before;
 import org.junit.Test;
 
 import org.yb.cdc.CdcService.RowMessage.Op;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestColumnRenaming extends CDCBaseClass {
   private final static Logger LOG = LoggerFactory.getLogger(TestColumnRenaming.class);
 
@@ -112,14 +112,19 @@ public class TestColumnRenaming extends CDCBaseClass {
       };
 
 
+      int expectedRecordCount = 0;
       for (int i = 0; i < outputList.size(); ++i) {
         switch (outputList.get(i).getRowMessage().getOp()) {
           case DDL:
-            verifyColNameInDDLRecord(outputList.get(i), expectedRecords[i]);
+            verifyColNameInDDLRecord(outputList.get(i), expectedRecords[expectedRecordCount]);
+            expectedRecordCount++;
             break;
           case INSERT:
-            verifyColNameInInsertRecord(outputList.get(i), expectedRecords[i]);
+            verifyColNameInInsertRecord(outputList.get(i), expectedRecords[expectedRecordCount]);
+            expectedRecordCount++;
             break;
+          case BEGIN:
+          case COMMIT: break;
         }
       }
 

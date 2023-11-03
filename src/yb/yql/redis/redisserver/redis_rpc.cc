@@ -33,6 +33,9 @@
 
 #include "yb/yql/redis/redisserver/redis_encoding.h"
 #include "yb/yql/redis/redisserver/redis_parser.h"
+#include "yb/util/flags.h"
+
+using std::string;
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -40,19 +43,19 @@ using namespace yb::size_literals;
 
 DECLARE_bool(rpc_dump_all_traces);
 DECLARE_int32(rpc_slow_query_threshold_ms);
-DEFINE_uint64(redis_max_concurrent_commands, 1,
+DEFINE_UNKNOWN_uint64(redis_max_concurrent_commands, 1,
               "Max number of redis commands received from single connection, "
               "that could be processed concurrently");
-DEFINE_uint64(redis_max_batch, 500, "Max number of redis commands that forms batch");
-DEFINE_int32(rpcz_max_redis_query_dump_size, 4_KB,
+DEFINE_UNKNOWN_uint64(redis_max_batch, 500, "Max number of redis commands that forms batch");
+DEFINE_UNKNOWN_int32(rpcz_max_redis_query_dump_size, 4_KB,
              "The maximum size of the Redis query string in the RPCZ dump.");
-DEFINE_uint64(redis_max_read_buffer_size, 128_MB,
+DEFINE_UNKNOWN_uint64(redis_max_read_buffer_size, 128_MB,
               "Max read buffer size for Redis connections.");
 
-DEFINE_uint64(redis_max_queued_bytes, 128_MB,
+DEFINE_UNKNOWN_uint64(redis_max_queued_bytes, 128_MB,
               "Max number of bytes in queued redis commands.");
 
-DEFINE_int32(
+DEFINE_UNKNOWN_int32(
     redis_connection_soft_limit_grace_period_sec, 60,
     "The duration for which the outbound data needs to exceeed the softlimit "
     "before the connection gets closed down.");
@@ -123,9 +126,6 @@ Result<rpc::ProcessCallsResult> RedisConnectionContext::ProcessCalls(
 Status RedisConnectionContext::HandleInboundCall(const rpc::ConnectionPtr& connection,
                                                  size_t commands_in_batch,
                                                  rpc::CallData* data) {
-  auto reactor = connection->reactor();
-  DCHECK(reactor->IsCurrentThread());
-
   auto call = rpc::InboundCall::Create<RedisInboundCall>(connection, data->size(), this);
 
   Status s = call->ParseFrom(call_mem_tracker_, commands_in_batch, data);
@@ -197,17 +197,15 @@ RedisInboundCall::RedisInboundCall(rpc::ConnectionPtr conn,
     : QueueableInboundCall(std::move(conn), weight_in_bytes, call_processed_listener) {}
 
 RedisInboundCall::~RedisInboundCall() {
-  Status status;
+  Status status =
+      STATUS(ServiceUnavailable, "Shutdown connection", "" /* msg2 */, Errno(ESHUTDOWN));
   if (quit_.load(std::memory_order_acquire)) {
     rpc::ConnectionPtr conn = connection();
     rpc::Reactor* reactor = conn->reactor();
-    auto scheduled = reactor->ScheduleReactorTask(
-        MakeFunctorReactorTask(std::bind(&rpc::Reactor::DestroyConnection,
-                                         reactor,
-                                         conn.get(),
-                                         status),
-                               conn, SOURCE_LOCATION()));
-    LOG_IF(WARNING, !scheduled) << "Failed to schedule destroy";
+    auto scheduling_status = reactor->ScheduleReactorTask(MakeFunctorReactorTask(
+        std::bind(&rpc::Reactor::DestroyConnection, reactor, conn.get(), status), conn,
+        SOURCE_LOCATION()));
+    LOG_IF(DFATAL, !scheduling_status.ok()) << "Failed to schedule destroy";
   }
 }
 
@@ -218,7 +216,6 @@ Status RedisInboundCall::ParseFrom(
 
   consumption_ = ScopedTrackedConsumption(mem_tracker, data->size());
 
-  request_data_memory_usage_.store(data->size(), std::memory_order_release);
   request_data_ = std::move(*data);
   serialized_request_ = Slice(request_data_.data(), request_data_.size());
 
@@ -285,6 +282,7 @@ void RedisInboundCall::LogTrace() const {
   MonoTime now = MonoTime::Now();
   auto total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
 
+  auto trace_ = trace();
   if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces
           || (trace_ && trace_->must_print())
           || total_time > FLAGS_rpc_slow_query_threshold_ms)) {
@@ -304,6 +302,7 @@ string RedisInboundCall::ToString() const {
 
 bool RedisInboundCall::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
                               rpc::RpcCallInProgressPB* resp) {
+  auto trace_ = trace();
   if (req.include_traces() && trace_) {
     resp->set_trace_buffer(trace_->DumpToString(true));
   }
@@ -374,8 +373,8 @@ RefCntBuffer SerializeResponses(const Collection& responses) {
   return result;
 }
 
-void RedisInboundCall::DoSerialize(boost::container::small_vector_base<RefCntBuffer>* output) {
-  output->push_back(SerializeResponses(responses_));
+void RedisInboundCall::DoSerialize(rpc::ByteBlocks* output) {
+  output->emplace_back(SerializeResponses(responses_));
 }
 
 RedisConnectionContext& RedisInboundCall::connection_context() const {

@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 
 import './stylesheets/YBPanelLegend.scss';
 
@@ -10,6 +10,7 @@ export default class YBPanelLegend extends Component {
     return (
       <div className="panel-legend">
         {data.map((item, index) => (
+          // eslint-disable-next-line react/no-array-index-key
           <div key={index} className="panel-legend-item">
             <span style={{ backgroundColor: item.color }}></span>
             {item.title}

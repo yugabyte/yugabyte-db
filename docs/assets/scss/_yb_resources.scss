@@ -1,0 +1,30 @@
+body {
+  .resources {
+    margin-bottom: 40px;
+
+    ul {
+      display: flex;
+      flex-wrap: wrap;
+      padding: 0;
+      list-style: none;
+      gap: 10px 15px;
+      font-size: 14px;
+    }
+
+    a {
+      padding: 4px 8px;
+      font-weight: 400 !important;
+      font-size: 13px;
+      line-height: 16px;
+      color: #4e5f6d !important;
+      height: 24px;
+      background: rgba(165, 166, 246, 0.2);
+      border-radius: 6px;
+      text-decoration: none !important;
+
+      &:hover {
+        background: rgba(165, 166, 246, 0.3);
+      }
+    }
+  }
+}

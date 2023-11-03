@@ -51,7 +51,7 @@ public class ManipulateDnsRecordTask extends UniverseTaskBase {
   public void run() {
     try {
       List<NodeDetails> tserverNodes =
-          Universe.getOrBadRequest(taskParams().universeUUID).getTServers();
+          Universe.getOrBadRequest(taskParams().getUniverseUUID()).getTServers();
       String nodeIpCsv =
           tserverNodes.stream().map(nd -> nd.cloudInfo.private_ip).collect(Collectors.joining(","));
       // Create the process to fetch information about the node from the cloud provider.

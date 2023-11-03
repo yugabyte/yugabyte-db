@@ -20,7 +20,7 @@
 #include "c.h"
 #include "nodes/memnodes.h"
 
-#include "yb/common/ybc_util.h"
+#include "yb/yql/pggate/util/ybc_util.h"
 
 /*
  * MaxAllocSize, MaxAllocHugeSize
@@ -238,10 +238,9 @@ typedef struct YbPgMemTracker
 	 */
 	Size pg_cur_mem_bytes;
 	/*
-	 * The maximum memory since this backend connection is established including
-	 * PG and pggate
+	 * The current allocated memory including PG, pggate and cached memory.
 	 */
-	Size backend_max_mem_bytes;
+	int64_t backend_cur_allocated_mem_bytes;
 	/*
 	 * The maximum memory ever allocated by current statement including PG and
 	 * pggate
@@ -266,13 +265,6 @@ typedef struct YbPgMemTracker
 extern YbPgMemTracker PgMemTracker;
 
 /*
- * Update current memory usage in MemTracker, when there is no PG
- * memory allocation activities. This is currently supposed to be
- * used by the MemTracker in pggate as a callback.
- */
-extern void YbPgMemUpdateMax();
-
-/*
  * Add memory consumption to PgMemTracker in bytes.
  * sz can be negative. In this case, the max values are not
  * updated.
@@ -290,5 +282,11 @@ extern void YbPgMemSubConsumption(const Size sz);
  * track peak memory usage for a new statement.
  */
 extern void YbPgMemResetStmtConsumption();
+
+/*
+ * Returns the resident set size (physical memory use) of a process
+ * measured in bytes, or -1 if the value cannot be determined on this OS.
+ */
+extern int64_t YbPgGetCurRSSMemUsage(int pid);
 
 #endif							/* MEMUTILS_H */

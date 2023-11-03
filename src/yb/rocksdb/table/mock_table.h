@@ -19,8 +19,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_ROCKSDB_TABLE_MOCK_TABLE_H
-#define YB_ROCKSDB_TABLE_MOCK_TABLE_H
+#pragma once
 
 #include <algorithm>
 #include <atomic>
@@ -55,10 +54,16 @@ class MockTableReader : public TableReader {
 
   bool IsSplitSst() const override { return false; }
 
-  void SetDataFileReader(unique_ptr<RandomAccessFileReader>&& data_file) override { assert(false); }
+  void SetDataFileReader(std::unique_ptr<RandomAccessFileReader>&& data_file) override {
+    assert(false);
+  }
 
   InternalIterator* NewIterator(const ReadOptions&, Arena* arena,
                                 bool skip_filters = false) override;
+
+  InternalIterator* NewIndexIterator(const ReadOptions& read_options) override {
+    return nullptr;
+  }
 
   Status Get(const ReadOptions&, const Slice& key, GetContext* get_context,
              bool skip_filters = false) override;
@@ -83,39 +88,54 @@ class MockTableIterator : public InternalIterator {
     itr_ = table_.end();
   }
 
-  bool Valid() const override { return itr_ != table_.end(); }
+  const KeyValueEntry& SeekToFirst() override {
+    itr_ = table_.begin();
+    return Entry();
+  }
 
-  void SeekToFirst() override { itr_ = table_.begin(); }
-
-  void SeekToLast() override {
+  const KeyValueEntry& SeekToLast() override {
     itr_ = table_.end();
     --itr_;
+    return Entry();
   }
 
-  void Seek(const Slice& target) override {
+  const KeyValueEntry& Seek(Slice target) override {
     std::string str_target(target.cdata(), target.size());
     itr_ = table_.lower_bound(str_target);
+    return Entry();
   }
 
-  void Next() override { ++itr_; }
+  const KeyValueEntry& Next() override {
+    ++itr_;
+    return Entry();
+  }
 
-  void Prev() override {
+  const KeyValueEntry& Prev() override {
     if (itr_ == table_.begin()) {
       itr_ = table_.end();
     } else {
       --itr_;
     }
+    return Entry();
   }
 
-  Slice key() const override { return Slice(itr_->first); }
-
-  Slice value() const override { return Slice(itr_->second); }
+  const KeyValueEntry& Entry() const override {
+    if (itr_ == table_.end()) {
+      return KeyValueEntry::Invalid();
+    }
+    entry_ = {
+      .key = Slice(itr_->first),
+      .value = Slice(itr_->second),
+    };
+    return entry_;
+  }
 
   Status status() const override { return Status::OK(); }
 
  private:
   const stl_wrappers::KVMap& table_;
   stl_wrappers::KVMap::const_iterator itr_;
+  mutable KeyValueEntry entry_;
 };
 
 class MockTableBuilder : public TableBuilder {
@@ -171,9 +191,9 @@ class MockTableFactory : public TableFactory {
   MockTableFactory();
   const char* Name() const override { return "MockTable"; }
   Status NewTableReader(const TableReaderOptions& table_reader_options,
-                        unique_ptr<RandomAccessFileReader>&& file,
+                        std::unique_ptr<RandomAccessFileReader>&& file,
                         uint64_t file_size,
-                        unique_ptr<TableReader>* table_reader) const override;
+                        std::unique_ptr<TableReader>* table_reader) const override;
 
   bool IsSplitSstForWriteSupported() const override { return false; }
 
@@ -212,5 +232,3 @@ class MockTableFactory : public TableFactory {
 
 }  // namespace mock
 }  // namespace rocksdb
-
-#endif  // YB_ROCKSDB_TABLE_MOCK_TABLE_H

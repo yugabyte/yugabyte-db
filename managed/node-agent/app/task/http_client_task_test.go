@@ -15,15 +15,11 @@ import (
 var dummyApiToken = "123456"
 
 func TestHandleAgentRegistration(t *testing.T) {
-	config, err := util.GetTestConfig()
-	InitHttpClient(config)
-	if err != nil {
-		t.Errorf("Failed to load test config")
-	}
-	t.Logf("cuuid: %s", config.GetString(util.CustomerId))
-	testRegistrationHandler := HandleAgentRegistration(dummyApiToken)
+	config := util.CurrentConfig()
+	t.Logf("cuuid: %s", config.String(util.CustomerIdKey))
+	testRegistrationHandler := NewAgentRegistrationHandler(dummyApiToken)
 	ctx := context.Background()
-	result, err := testRegistrationHandler(ctx)
+	result, err := testRegistrationHandler.Handle(ctx)
 
 	if err != nil {
 		t.Errorf("Error while running test registration handler - %s", err.Error())
@@ -43,18 +39,13 @@ func TestHandleAgentRegistration(t *testing.T) {
 }
 
 func TestHandleAgentRegistrationFailure(t *testing.T) {
-	config, err := util.GetTestConfig()
-	InitHttpClient(config)
-	if err != nil {
-		t.Errorf("Failed to load test config")
-	}
-
-	cuid := config.GetString(util.CustomerId)
-	config.Update(util.CustomerId, "dummy")
-	defer config.Update(util.CustomerId, cuid)
-	testRegistrationHandler := HandleAgentRegistration(dummyApiToken)
+	config := util.CurrentConfig()
+	cuid := config.String(util.CustomerIdKey)
+	config.Update(util.CustomerIdKey, "dummy")
+	defer config.Update(util.CustomerIdKey, cuid)
+	testRegistrationHandler := NewAgentRegistrationHandler(dummyApiToken)
 	ctx := context.Background()
-	_, err = testRegistrationHandler(ctx)
+	_, err := testRegistrationHandler.Handle(ctx)
 
 	if err == nil {
 		t.Errorf("Expected error")
@@ -67,29 +58,22 @@ func TestHandleAgentRegistrationFailure(t *testing.T) {
 }
 
 func TestHandleAgentUnregistration(t *testing.T) {
-	config, err := util.GetTestConfig()
-	InitHttpClient(config)
-	if err != nil {
-		t.Errorf("Failed to load test config")
-	}
-	testUnregistrationHandler := HandleAgentUnregister(true, dummyApiToken)
+	testUnregistrationHandler := NewAgentUnregistrationHandler(dummyApiToken)
 	ctx := context.Background()
-	result, err := testUnregistrationHandler(ctx)
+	result, err := testUnregistrationHandler.Handle(ctx)
 
 	if err != nil {
-		t.Errorf("Error while running test registration handler - %s", err.Error())
-		return
+		t.Fatalf("Error while running test registration handler - %s", err.Error())
 	}
 
-	//Test Success Response.
-	data, ok := result.(*model.RegisterResponseEmpty)
+	// Test Success Response.
+	data, ok := result.(*model.ResponseMessage)
 	if !ok {
-		t.Errorf("Error while inferencing data to Register response success")
-		return
+		t.Fatalf("Error while inferencing data to Register response success")
 	}
 
 	if data.SuccessStatus != true {
-		t.Errorf("Error in the response data.")
+		t.Fatalf("Error in the response data.")
 	}
 }
 
@@ -99,31 +83,26 @@ func TestUnmarshalResponse(t *testing.T) {
 		StatusCode: 200,
 	}
 	var testValue map[string]string
-	data, err := UnmarshalResponse(&testValue, &res)
+	data, err := UnmarshalResponse(context.TODO(), &testValue, &res)
 	if err != nil {
-		t.Errorf("Unmarshaling error.")
-		return
+		t.Fatalf("Unmarshaling error.")
 	}
 
 	dataVal, ok := data.(*map[string]string)
 
 	if !ok {
-		t.Errorf("Unmarshaling inference error.")
-		return
+		t.Fatalf("Unmarshaling inference error.")
 	}
 
 	if (*dataVal)["test"] != "success" {
-		t.Errorf("Unmarshaling assertion error.")
+		t.Fatalf("Unmarshaling assertion error.")
 	}
 }
 
 func TestGetNodeConfig(t *testing.T) {
-	data := getTestPreflightCheckVal()
-
-	testNodeConfigList := getNodeConfig(data)
-
+	testNodeConfigList := getTestPreflightCheckOutput()
 	mp, po, hds := false, false, false
-	for _, v := range testNodeConfigList {
+	for _, v := range *testNodeConfigList {
 		switch v.Type {
 		case "PORT_AVAILABLE":
 			po = true
@@ -135,59 +114,48 @@ func TestGetNodeConfig(t *testing.T) {
 		}
 	}
 	if !(mp && po && hds) {
-		t.Errorf("Did not receive all the expected keys")
+		t.Fatalf("Did not receive all the expected keys")
 	}
 
 }
 
-func TestHandleGetPlatformConfig(t *testing.T) {
-	config, err := util.GetTestConfig()
+func TestHandleGetInstanceType(t *testing.T) {
+	handler := NewGetInstanceTypeHandler()
+	response, err := handler.Handle(context.Background())
 	if err != nil {
-		t.Errorf("Failed to load test config")
-	}
-	InitHttpClient(config)
-	handler := HandleGetPlatformConfig()
-	response, err := handler(context.Background())
-	if err != nil {
-		t.Errorf("Unexpected error %s", err.Error())
+		t.Fatalf("Unexpected error %s", err.Error())
 	}
 
 	if _, ok := response.(*model.NodeInstanceType); !ok {
-		t.Errorf("Unexpected Type Inference Error")
+		t.Fatalf("Unexpected Type Inference Error")
 	}
 }
 
-func TestHandleNodeCapability(t *testing.T) {
-	data := getTestPreflightCheckVal()
-
-	config, err := util.GetTestConfig()
+func TestHandlePostNodeInstance(t *testing.T) {
+	output := getTestPreflightCheckOutput()
+	handler := NewPostNodeInstanceHandler(*output)
+	testResponseData, err := handler.Handle(context.Background())
 	if err != nil {
-		t.Errorf("Failed to load test config")
-	}
-	InitHttpClient(config)
-	handler := HandleSendNodeCapability(data)
-	testResponseData, err := handler(context.Background())
-	if err != nil {
-		t.Errorf("Unexpected Error %s ", err.Error())
+		t.Fatalf("Unexpected Error %s ", err.Error())
 	}
 
-	testResponseDataMap, ok := testResponseData.(*map[string]model.NodeCapabilityResponse)
+	testResponseDataMap, ok := testResponseData.(*map[string]model.NodeInstanceResponse)
 	if !ok {
-		t.Errorf("Unexpected Type Inference Error")
+		t.Fatalf("Unexpected Type Inference Error")
 	}
 
 	if _, ok := (*testResponseDataMap)["127.0.0.1"]; !ok {
-		t.Errorf("Unexpected Type Inference Error")
+		t.Fatalf("Unexpected Type Inference Error")
 	}
 }
 
-func getTestPreflightCheckVal() map[string]model.PreflightCheckVal {
+func getTestPreflightCheckOutput() *[]model.NodeConfig {
 	data := make(map[string]model.PreflightCheckVal)
-	data["port_available:1"] = model.PreflightCheckVal{Value: "false", Error: "none"}
-	data["port_available:2"] = model.PreflightCheckVal{Value: "true", Error: "none"}
-	data["port_available:3"] = model.PreflightCheckVal{Value: "none", Error: "test error"}
-	data["home_dir_space"] = model.PreflightCheckVal{Value: "100", Error: "none"}
-	data["mount_point:/opt"] = model.PreflightCheckVal{Value: "true", Error: "none"}
-	data["mount_point:/tmp"] = model.PreflightCheckVal{Value: "true", Error: "none"}
-	return data
+	data["port_available:1"] = model.PreflightCheckVal{Value: "false"}
+	data["port_available:2"] = model.PreflightCheckVal{Value: "true"}
+	data["port_available:3"] = model.PreflightCheckVal{Value: "none"}
+	data["home_dir_space"] = model.PreflightCheckVal{Value: "100"}
+	data["mount_point:/opt"] = model.PreflightCheckVal{Value: "true"}
+	data["mount_point:/tmp"] = model.PreflightCheckVal{Value: "true"}
+	return getNodeConfig(data)
 }

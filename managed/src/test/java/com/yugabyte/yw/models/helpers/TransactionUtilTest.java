@@ -13,6 +13,8 @@ import static play.inject.Bindings.bind;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.CustomWsClientFactory;
+import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -46,13 +48,15 @@ public class TransactionUtilTest extends PlatformGuiceApplicationBaseTest {
         .overrides(
             bind(RuntimeConfigFactory.class)
                 .toInstance(new DummyRuntimeConfigFactoryImpl(mockConfig)))
+        .overrides(
+            bind(CustomWsClientFactory.class).toProvider(CustomWsClientFactoryProvider.class))
         .build();
   }
 
   @Test
   public void testTransactionRollback() {
     TaskInfo taskInfo = new TaskInfo(TaskType.CreateUniverse);
-    taskInfo.setTaskDetails(mapper.createObjectNode());
+    taskInfo.setDetails(mapper.createObjectNode());
     taskInfo.setOwner("test");
     taskInfo.setTaskState(State.Created);
     taskInfo.save();
@@ -76,7 +80,7 @@ public class TransactionUtilTest extends PlatformGuiceApplicationBaseTest {
   @Test
   public void testTransactionCommit() {
     TaskInfo taskInfo = new TaskInfo(TaskType.CreateUniverse);
-    taskInfo.setTaskDetails(mapper.createObjectNode());
+    taskInfo.setDetails(mapper.createObjectNode());
     taskInfo.setOwner("test");
     taskInfo.setTaskState(State.Created);
     taskInfo.save();
@@ -123,7 +127,7 @@ public class TransactionUtilTest extends PlatformGuiceApplicationBaseTest {
     List<TaskInfo> tasks = new ArrayList<>();
     for (int i = 0; i < 5; i++) {
       TaskInfo taskInfo = new TaskInfo(TaskType.CreateUniverse);
-      taskInfo.setTaskDetails(mapper.createObjectNode());
+      taskInfo.setDetails(mapper.createObjectNode());
       taskInfo.setOwner("test" + i);
       taskInfo.setTaskState(State.Created);
       taskInfo.save();

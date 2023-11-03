@@ -2,14 +2,13 @@
 
 package com.yugabyte.yw.forms;
 
-import java.util.HashMap;
-import java.util.Map;
-
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
-
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.HashMap;
+import java.util.Map;
 import lombok.NoArgsConstructor;
 
 @ApiModel(description = "YB-Controller throttle parameters")
@@ -17,15 +16,19 @@ import lombok.NoArgsConstructor;
 public class YbcThrottleParameters {
 
   @ApiModelProperty(value = "Max concurrent uploads per node")
+  @JsonAlias("max_concurrent_uploads")
   public int maxConcurrentUploads = 0;
 
   @ApiModelProperty(value = "Max objects per upload per node")
+  @JsonAlias("per_upload_num_objects")
   public int perUploadNumObjects = 0;
 
   @ApiModelProperty(value = "Max concurrent downloads per node")
+  @JsonAlias("max_concurrent_downloads")
   public int maxConcurrentDownloads = 0;
 
   @ApiModelProperty(value = "Max objects per download per node")
+  @JsonAlias("per_download_num_objects")
   public int perDownloadNumObjects = 0;
 
   @ApiModelProperty(value = "Unset Throttle parameters in YB-Controller")

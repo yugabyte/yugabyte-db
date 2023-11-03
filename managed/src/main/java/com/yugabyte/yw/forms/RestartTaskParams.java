@@ -7,7 +7,6 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.Universe;
-
 import play.mvc.Http.Status;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -20,8 +19,8 @@ public class RestartTaskParams extends UpgradeTaskParams {
   }
 
   @Override
-  public void verifyParams(Universe universe) {
-    super.verifyParams(universe);
+  public void verifyParams(Universe universe, boolean isFirstTry) {
+    super.verifyParams(universe, isFirstTry);
 
     // Only a "Rolling Upgrade" type of restart is allowed on a K8S universe
     CloudType currCloudType =
@@ -30,7 +29,8 @@ public class RestartTaskParams extends UpgradeTaskParams {
         && currCloudType.equals(CloudType.kubernetes)) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST,
-          "Can perform only a rolling upgrade on a Kubernetes universe " + universe.universeUUID);
+          "Can perform only a rolling upgrade on a Kubernetes universe "
+              + universe.getUniverseUUID());
     }
   }
 

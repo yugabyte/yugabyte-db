@@ -32,11 +32,13 @@ LINE 2:     a int COLLATE "C",
 CREATE TABLE collate_test_like (
     LIKE collate_test1
 );
-ERROR:  LIKE clause not supported yet
-LINE 2:     LIKE collate_test1
-            ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 \d collate_test_like
+      Table "collate_tests.collate_test_like"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ a      | integer |           |          |
+ b      | text    | C         | not null |
+
 CREATE TABLE collate_test2 (
     a int,
     b text COLLATE "POSIX"
@@ -422,9 +424,22 @@ SELECT a, b FROM collate_test2 EXCEPT SELECT a, b FROM collate_test2 WHERE a < 2
 SELECT a, b FROM collate_test1 UNION ALL SELECT a, b FROM collate_test2 ORDER BY 2; -- fail
 ERROR:  could not determine which collation to use for string comparison
 HINT:  Use the COLLATE clause to set the collation explicitly.
-SELECT a, b FROM collate_test1 UNION ALL SELECT a, b FROM collate_test2 ORDER BY 2; -- ok
-ERROR:  could not determine which collation to use for string comparison
-HINT:  Use the COLLATE clause to set the collation explicitly.
+-- YB edit: add consistent ordering.
+SELECT * FROM (
+SELECT a, b FROM collate_test1 UNION ALL SELECT a, b FROM collate_test2 -- ok
+LIMIT ALL) ybview ORDER BY a;
+ a |  b
+---+-----
+ 1 | abc
+ 1 | abc
+ 2 | Abc
+ 2 | Abc
+ 3 | bbc
+ 3 | bbc
+ 4 | ABD
+ 4 | ABD
+(8 rows)
+
 SELECT a, b FROM collate_test1 UNION SELECT a, b FROM collate_test2 ORDER BY 2; -- fail
 ERROR:  collation mismatch between implicit collations "C" and "POSIX"
 LINE 1: SELECT a, b FROM collate_test1 UNION SELECT a, b FROM collat...
@@ -456,11 +471,16 @@ HINT:  Use the COLLATE clause to set the collation explicitly.
 select x < y from collate_test10; -- fail
 ERROR:  could not determine which collation to use for string comparison
 HINT:  Use the COLLATE clause to set the collation explicitly.
-select x || y from collate_test10 ORDER BY 1; -- ok, because || is not collation aware
-ERROR:  collation mismatch between implicit collations "C" and "POSIX"
-LINE 1: select x || y from collate_test10 ORDER BY 1;
-                    ^
-HINT:  You can choose the collation by applying the COLLATE clause to one or both expressions.
+-- YB edit: add consistent ordering.
+SELECT xy AS "?column?" FROM (
+select x || y from collate_test10 -- ok, because || is not collation aware
+LIMIT ALL) ybview(xy) ORDER BY xy COLLATE "C" DESC;
+ ?column?
+----------
+ hijhij
+ HIJHIJ
+(2 rows)
+
 select x, y from collate_test10 order by x || y; -- not so ok
 ERROR:  collation mismatch between implicit collations "C" and "POSIX"
 LINE 1: select x, y from collate_test10 order by x || y;

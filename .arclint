@@ -1,25 +1,40 @@
 {
   "exclude": [
-     "(\\.l$)",
+     "([.]l$)",
      "(Makefile$)",
-     "(src/yb/common/ql_type.cc$)",
-     "(src/yb/gutil/valgrind.h$)",
-     "(\\.ipynb$)",
-     "(\\.sql$)",
-     "(\\.txt$)",
+     "(src/yb/common/ql_type[.]cc$)",
+     "(src/yb/gutil/valgrind[.]h$)",
+     "([.]ipynb$)",
+     "([.]sql$)",
+     "([.]txt$)",
+     "(^src/odyssey/.*$)",
      "(^src/postgres/.*$)",
      "(^[.]gitmodules$)",
-     "(^managed/src/main/resources/v1.routes$)",
+     "(^managed/src/main/resources/alert/alert_templates[.]yml$)",
+     "(^managed/src/main/resources/alert/.*[.]template$)",
+     "(^managed/src/main/resources/v1[.]routes$)",
      "(^managed/src/main/public/swagger-ui/)",
-     "(^managed/src/main/resources/swagger.json$)",
-     "(^managed/build.sbt$)",
+     "(^managed/src/main/resources/swagger[.]json$)",
+     "(^managed/src/main/resources/swagger-strict[.]json$)",
+     "(^managed/src/test/resources/alert/test_alert_definition[.]yml$)",
+     "(^managed/src/test/resources/metric/targets_.*[.]json$)",
+     "(^managed/src/test/resources/backup/ybc_success_file_with_index_tables.json$)",
+     "(^managed/build[.]sbt$)",
      "(^managed/src/main/resources/aws_pricing/.*$)",
-     "(^python/yb/test_data/.*[.](log|out)$)"
+     "(^python/yugabyte/test_data/.*[.](log|out|json)$)",
+     "(^managed/src/main/resources/metric/Dashboard[.]json$)",
+     "(^managed/src/main/resources/metric/recording_rules[.]yml$)",
+     "(^managed/devops/replicated[.]yml$)",
+     "(^managed/devops/roles/.*$)",
+     "(^python/yb/py[.]typed$)",
+     "(^managed/RUNTIME-FLAGS[.]md$)",
+     "(^[.]clang-tidy)",
+     "(.*/py.typed)"
   ],
   "linters": {
     "go-files": {
         "type": "golint",
-        "include": "(^managed/.*\\.go$)",
+        "include": "(^managed/.*[.]go$)",
         "exclude": [
             "(^managed/.*/third-party$)",
             "(^managed/.*/generated$)"
@@ -28,27 +43,30 @@
     "go-files-length": {
         "type": "text",
         "text.max-line-length": 100,
-        "include": "(^managed/.*\\.go$)",
+        "include": "(^managed/.*[.]go$)",
         "severity": {
             "2": "disabled"
         }
     },
     "script-and-regex.script": {
       "type": "script-and-regex",
-      "include": "(^managed/.*\\.java$)",
+      "include": "(^managed/.*[.]java$)",
       "script-and-regex.script":
-      "cd managed; sbt javafmtCheckAll; echo ",
+      "managed/lint/lint-java.sh",
       "script-and-regex.regex":
-        "/^.*(?P<error>javafmtCheck).*(?P<message>Unformatted.*javafmt)\\:\\ (?P<file>.*)$/m"
+        "/(?P<message>.*)/is"
     },
     "text": {
       "type": "text",
       "text.max-line-length": 100,
       "exclude": [
-        "(^managed/.*\\.go$)",
-        "(^managed/.*/go.mod)",
-        "(^managed/.*/go.sum)",
+        "(^managed/.*[.]go$)",
+        "(^managed/.*/go[.]mod)",
+        "(^managed/.*/go[.]sum)",
         "(^managed/ui/)",
+        "(^yugabyted-ui/.*/go[.]mod)",
+        "(^yugabyted-ui/.*/go[.]sum)",
+        "(^yugabyted-ui/ui/src/api/)",
         "(^thirdparty/thirdparty_src_checksums[.]txt$)",
         "(^java/yb-client/src/test/java/org/yb/client/TestYBClient[.]java$)",
         "(^cmake_modules/cotire[.]cmake$)",
@@ -59,12 +77,14 @@
         "(java/yb-cdc/pom.xml)",
         "(java/yb-cdc/README.md)",
         "(^docs/.*[.]md$)",
-        "(^[.]fossa[.]yml$)"
+        "(^[.]fossa[.]yml$)",
+        "(^managed/.*[.]conf)",
+        "(^[.]gitignore$)"
       ]
     },
     "pycodestyle": {
       "type": "pep8",
-      "include": "(\\.py$)",
+      "include": "([.]py$)",
       "exclude": "(^thirdparty/|^[.]ycm_extra_conf[.]py$)",
       "bin": "pycodestyle",
       "flags": ["--max-line-length=100"]
@@ -80,11 +100,11 @@
         "(^src/yb/rocksdb/util/murmurhash[.]cc$)"
       ],
       "include": [
-        "(\\.cpp$)",
-        "(\\.cc$)",
-        "(\\.c$)",
-        "(\\.hpp$)",
-        "(\\.h$)"
+        "([.]cpp$)",
+        "([.]cc$)",
+        "([.]c$)",
+        "([.]hpp$)",
+        "([.]h$)"
       ],
       "cpplint.header_guard_root_dir": "src",
       "cpplint.max_line_length": 100,

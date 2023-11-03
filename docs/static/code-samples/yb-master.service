@@ -1,0 +1,37 @@
+# /etc/systemd/system/yugabyte-master.service
+[Unit]
+Wants=network-online.target
+After=network-online.target
+Description=yugabyte-master
+
+[Service]
+RestartForceExitStatus=SIGPIPE
+EnvironmentFile=/etc/sysconfig/mycompany_env
+StartLimitInterval=0
+ExecStart=/bin/bash -c '/opt/misc/yugabyte/bin/yb-master \
+--fs_data_dirs=/opt/data/1/yugabyte \
+--rpc_bind_addresses=n1.node.gce-us-east1.mycompany:7100 \
+--server_broadcast_addresses=n1.node.gce-us-east1.mycompany:7100 \
+--webserver_interface=n1.node.gce-us-east1.mycompany \
+--webserver_port=7000 \
+--use_private_ip=never \
+--placement_cloud=gce \
+--placement_region=gce-us-east1 \
+--placement_zone=us-east1-c \
+--callhome_collection_level=low \
+--logtostderr '
+
+LimitCORE=infinity
+TimeoutStartSec=30
+WorkingDirectory=/opt/data/1/yugabyte
+LimitNOFILE=1048576
+LimitNPROC=12000
+RestartSec=5
+ExecStartPre=/usr/bin/su -c "mkdir -p /opt/data/1/yugabyte && chown yugabyte:yugabyte /opt/data/1/yugabyte"
+PermissionsStartOnly=True
+User=yugabyte
+TimeoutStopSec=300
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

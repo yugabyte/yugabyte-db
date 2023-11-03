@@ -3,5 +3,5 @@
 ####################################################################################################
 # Postgres Testsuites: This suite includes tests on expression pushdown.
 ####################################################################################################
-test: yb_dml_pushdown
-test: yb_select_pushdown
+test: yb_dml_single_row
+test: yb_select_no_pushdown

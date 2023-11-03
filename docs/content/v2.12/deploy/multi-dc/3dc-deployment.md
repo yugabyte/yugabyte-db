@@ -13,7 +13,7 @@ type: docs
 
 {{< tip title="Recommended Reading" >}}
 
-[9 Techniques to Build Cloud-Native, Geo-Distributed SQL Apps with Low Latency](https://blog.yugabyte.com/9-techniques-to-build-cloud-native-geo-distributed-sql-apps-with-low-latency/) highlights the various multi-DC deployment strategies (including 3DC deployments) for a distributed SQL database like YugabyteDB.
+[9 Techniques to Build Cloud-Native, Geo-Distributed SQL Apps with Low Latency](https://www.yugabyte.com/blog/9-techniques-to-build-cloud-native-geo-distributed-sql-apps-with-low-latency/) highlights the various multi-DC deployment strategies (including 3DC deployments) for a distributed SQL database like YugabyteDB.
 
 {{< /tip >}}
 

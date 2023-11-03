@@ -21,113 +21,113 @@ explain (costs off) select * from lp;
 (7 rows)
 
 explain (costs off) select * from lp where a > 'a' and a < 'd';
-                        QUERY PLAN
------------------------------------------------------------
+                            QUERY PLAN
+------------------------------------------------------------------
  Append
    ->  Seq Scan on lp_bc
-         Filter: ((a > 'a'::bpchar) AND (a < 'd'::bpchar))
+         Remote Filter: ((a > 'a'::bpchar) AND (a < 'd'::bpchar))
    ->  Seq Scan on lp_default
-         Filter: ((a > 'a'::bpchar) AND (a < 'd'::bpchar))
+         Remote Filter: ((a > 'a'::bpchar) AND (a < 'd'::bpchar))
 (5 rows)
 
 explain (costs off) select * from lp where a > 'a' and a <= 'd';
-                         QUERY PLAN
-------------------------------------------------------------
+                            QUERY PLAN
+-------------------------------------------------------------------
  Append
    ->  Seq Scan on lp_ad
-         Filter: ((a > 'a'::bpchar) AND (a <= 'd'::bpchar))
+         Remote Filter: ((a > 'a'::bpchar) AND (a <= 'd'::bpchar))
    ->  Seq Scan on lp_bc
-         Filter: ((a > 'a'::bpchar) AND (a <= 'd'::bpchar))
+         Remote Filter: ((a > 'a'::bpchar) AND (a <= 'd'::bpchar))
    ->  Seq Scan on lp_default
-         Filter: ((a > 'a'::bpchar) AND (a <= 'd'::bpchar))
+         Remote Filter: ((a > 'a'::bpchar) AND (a <= 'd'::bpchar))
 (7 rows)
 
 explain (costs off) select * from lp where a = 'a';
-            QUERY PLAN
------------------------------------
+                QUERY PLAN
+------------------------------------------
  Append
    ->  Seq Scan on lp_ad
-         Filter: (a = 'a'::bpchar)
+         Remote Filter: (a = 'a'::bpchar)
 (3 rows)
 
 explain (costs off) select * from lp where 'a' = a;	/* commuted */
-            QUERY PLAN
------------------------------------
+                QUERY PLAN
+------------------------------------------
  Append
    ->  Seq Scan on lp_ad
-         Filter: ('a'::bpchar = a)
+         Remote Filter: ('a'::bpchar = a)
 (3 rows)
 
 explain (costs off) select * from lp where a is not null;
-           QUERY PLAN
----------------------------------
+               QUERY PLAN
+----------------------------------------
  Append
    ->  Seq Scan on lp_ad
-         Filter: (a IS NOT NULL)
+         Remote Filter: (a IS NOT NULL)
    ->  Seq Scan on lp_bc
-         Filter: (a IS NOT NULL)
+         Remote Filter: (a IS NOT NULL)
    ->  Seq Scan on lp_ef
-         Filter: (a IS NOT NULL)
+         Remote Filter: (a IS NOT NULL)
    ->  Seq Scan on lp_g
-         Filter: (a IS NOT NULL)
+         Remote Filter: (a IS NOT NULL)
    ->  Seq Scan on lp_default
-         Filter: (a IS NOT NULL)
+         Remote Filter: (a IS NOT NULL)
 (11 rows)
 
 explain (costs off) select * from lp where a is null;
-         QUERY PLAN
------------------------------
- Append
-   ->  Seq Scan on lp_null
-         Filter: (a IS NULL)
-(3 rows)
-
-explain (costs off) select * from lp where a = 'a' or a = 'c';
-                        QUERY PLAN
-----------------------------------------------------------
- Append
-   ->  Seq Scan on lp_ad
-         Filter: ((a = 'a'::bpchar) OR (a = 'c'::bpchar))
-   ->  Seq Scan on lp_bc
-         Filter: ((a = 'a'::bpchar) OR (a = 'c'::bpchar))
-(5 rows)
-
-explain (costs off) select * from lp where a is not null and (a = 'a' or a = 'c');
-                                   QUERY PLAN
---------------------------------------------------------------------------------
- Append
-   ->  Seq Scan on lp_ad
-         Filter: ((a IS NOT NULL) AND ((a = 'a'::bpchar) OR (a = 'c'::bpchar)))
-   ->  Seq Scan on lp_bc
-         Filter: ((a IS NOT NULL) AND ((a = 'a'::bpchar) OR (a = 'c'::bpchar)))
-(5 rows)
-
-explain (costs off) select * from lp where a <> 'g';
              QUERY PLAN
 ------------------------------------
  Append
+   ->  Seq Scan on lp_null
+         Remote Filter: (a IS NULL)
+(3 rows)
+
+explain (costs off) select * from lp where a = 'a' or a = 'c';
+                           QUERY PLAN
+-----------------------------------------------------------------
+ Append
    ->  Seq Scan on lp_ad
-         Filter: (a <> 'g'::bpchar)
+         Remote Filter: ((a = 'a'::bpchar) OR (a = 'c'::bpchar))
    ->  Seq Scan on lp_bc
-         Filter: (a <> 'g'::bpchar)
+         Remote Filter: ((a = 'a'::bpchar) OR (a = 'c'::bpchar))
+(5 rows)
+
+explain (costs off) select * from lp where a is not null and (a = 'a' or a = 'c');
+                                      QUERY PLAN
+---------------------------------------------------------------------------------------
+ Append
+   ->  Seq Scan on lp_ad
+         Remote Filter: ((a IS NOT NULL) AND ((a = 'a'::bpchar) OR (a = 'c'::bpchar)))
+   ->  Seq Scan on lp_bc
+         Remote Filter: ((a IS NOT NULL) AND ((a = 'a'::bpchar) OR (a = 'c'::bpchar)))
+(5 rows)
+
+explain (costs off) select * from lp where a <> 'g';
+                QUERY PLAN
+-------------------------------------------
+ Append
+   ->  Seq Scan on lp_ad
+         Remote Filter: (a <> 'g'::bpchar)
+   ->  Seq Scan on lp_bc
+         Remote Filter: (a <> 'g'::bpchar)
    ->  Seq Scan on lp_ef
-         Filter: (a <> 'g'::bpchar)
+         Remote Filter: (a <> 'g'::bpchar)
    ->  Seq Scan on lp_default
-         Filter: (a <> 'g'::bpchar)
+         Remote Filter: (a <> 'g'::bpchar)
 (9 rows)
 
 explain (costs off) select * from lp where a <> 'a' and a <> 'd';
-                         QUERY PLAN
--------------------------------------------------------------
+                             QUERY PLAN
+--------------------------------------------------------------------
  Append
    ->  Seq Scan on lp_bc
-         Filter: ((a <> 'a'::bpchar) AND (a <> 'd'::bpchar))
+         Remote Filter: ((a <> 'a'::bpchar) AND (a <> 'd'::bpchar))
    ->  Seq Scan on lp_ef
-         Filter: ((a <> 'a'::bpchar) AND (a <> 'd'::bpchar))
+         Remote Filter: ((a <> 'a'::bpchar) AND (a <> 'd'::bpchar))
    ->  Seq Scan on lp_g
-         Filter: ((a <> 'a'::bpchar) AND (a <> 'd'::bpchar))
+         Remote Filter: ((a <> 'a'::bpchar) AND (a <> 'd'::bpchar))
    ->  Seq Scan on lp_default
-         Filter: ((a <> 'a'::bpchar) AND (a <> 'd'::bpchar))
+         Remote Filter: ((a <> 'a'::bpchar) AND (a <> 'd'::bpchar))
 (9 rows)
 
 explain (costs off) select * from lp where a not in ('a', 'd');
@@ -151,24 +151,24 @@ create table coll_pruning_a partition of coll_pruning for values in ('a');
 create table coll_pruning_b partition of coll_pruning for values in ('b');
 create table coll_pruning_def partition of coll_pruning default;
 explain (costs off) select * from coll_pruning where a collate "C" = 'a' collate "C";
-                 QUERY PLAN
----------------------------------------------
+                     QUERY PLAN
+----------------------------------------------------
  Append
    ->  Seq Scan on coll_pruning_a
-         Filter: (a = 'a'::text COLLATE "C")
+         Remote Filter: (a = 'a'::text COLLATE "C")
 (3 rows)
 
 -- collation doesn't match the partitioning collation, no pruning occurs
 explain (costs off) select * from coll_pruning where a collate "POSIX" = 'a' collate "POSIX";
-                       QUERY PLAN
----------------------------------------------------------
+                           QUERY PLAN
+----------------------------------------------------------------
  Append
    ->  Seq Scan on coll_pruning_a
-         Filter: ((a)::text = 'a'::text COLLATE "POSIX")
+         Remote Filter: ((a)::text = 'a'::text COLLATE "POSIX")
    ->  Seq Scan on coll_pruning_b
-         Filter: ((a)::text = 'a'::text COLLATE "POSIX")
+         Remote Filter: ((a)::text = 'a'::text COLLATE "POSIX")
    ->  Seq Scan on coll_pruning_def
-         Filter: ((a)::text = 'a'::text COLLATE "POSIX")
+         Remote Filter: ((a)::text = 'a'::text COLLATE "POSIX")
 (7 rows)
 
 create table rlp (a int, b varchar) partition by range (a);
@@ -193,81 +193,81 @@ create table rlp5 partition of rlp for values from (31) to (maxvalue) partition 
 create table rlp5_default partition of rlp5 default;
 create table rlp5_1 partition of rlp5 for values from (31) to (40);
 explain (costs off) select * from rlp where a < 1;
-       QUERY PLAN
--------------------------
+           QUERY PLAN
+--------------------------------
  Append
    ->  Seq Scan on rlp1
-         Filter: (a < 1)
+         Remote Filter: (a < 1)
 (3 rows)
 
 explain (costs off) select * from rlp where 1 > a;	/* commuted */
-       QUERY PLAN
--------------------------
+           QUERY PLAN
+--------------------------------
  Append
    ->  Seq Scan on rlp1
-         Filter: (1 > a)
+         Remote Filter: (1 > a)
 (3 rows)
 
 explain (costs off) select * from rlp where a <= 1;
-        QUERY PLAN
---------------------------
+           QUERY PLAN
+---------------------------------
  Append
    ->  Seq Scan on rlp1
-         Filter: (a <= 1)
+         Remote Filter: (a <= 1)
    ->  Seq Scan on rlp2
-         Filter: (a <= 1)
+         Remote Filter: (a <= 1)
 (5 rows)
 
 explain (costs off) select * from rlp where a = 1;
-       QUERY PLAN
--------------------------
+           QUERY PLAN
+--------------------------------
  Append
    ->  Seq Scan on rlp2
-         Filter: (a = 1)
+         Remote Filter: (a = 1)
 (3 rows)
 
 explain (costs off) select * from rlp where a = 1::bigint;		/* same as above */
-            QUERY PLAN
------------------------------------
+                QUERY PLAN
+------------------------------------------
  Append
    ->  Seq Scan on rlp2
-         Filter: (a = '1'::bigint)
+         Remote Filter: (a = '1'::bigint)
 (3 rows)
 
 explain (costs off) select * from rlp where a = 1::numeric;		/* no pruning */
-                  QUERY PLAN
------------------------------------------------
+                      QUERY PLAN
+------------------------------------------------------
  Append
    ->  Seq Scan on rlp1
-         Filter: ((a)::numeric = '1'::numeric)
+         Remote Filter: ((a)::numeric = '1'::numeric)
    ->  Seq Scan on rlp2
-         Filter: ((a)::numeric = '1'::numeric)
+         Remote Filter: ((a)::numeric = '1'::numeric)
    ->  Seq Scan on rlp3abcd
-         Filter: ((a)::numeric = '1'::numeric)
+         Remote Filter: ((a)::numeric = '1'::numeric)
    ->  Seq Scan on rlp3efgh
-         Filter: ((a)::numeric = '1'::numeric)
+         Remote Filter: ((a)::numeric = '1'::numeric)
    ->  Seq Scan on rlp3nullxy
-         Filter: ((a)::numeric = '1'::numeric)
+         Remote Filter: ((a)::numeric = '1'::numeric)
    ->  Seq Scan on rlp3_default
-         Filter: ((a)::numeric = '1'::numeric)
+         Remote Filter: ((a)::numeric = '1'::numeric)
    ->  Seq Scan on rlp4_1
-         Filter: ((a)::numeric = '1'::numeric)
+         Remote Filter: ((a)::numeric = '1'::numeric)
    ->  Seq Scan on rlp4_2
-         Filter: ((a)::numeric = '1'::numeric)
+         Remote Filter: ((a)::numeric = '1'::numeric)
    ->  Seq Scan on rlp4_default
-         Filter: ((a)::numeric = '1'::numeric)
+         Remote Filter: ((a)::numeric = '1'::numeric)
    ->  Seq Scan on rlp5_1
-         Filter: ((a)::numeric = '1'::numeric)
+         Remote Filter: ((a)::numeric = '1'::numeric)
    ->  Seq Scan on rlp5_default
-         Filter: ((a)::numeric = '1'::numeric)
+         Remote Filter: ((a)::numeric = '1'::numeric)
    ->  Seq Scan on rlp_default_10
-         Filter: ((a)::numeric = '1'::numeric)
+         Remote Filter: ((a)::numeric = '1'::numeric)
    ->  Seq Scan on rlp_default_30
-         Filter: ((a)::numeric = '1'::numeric)
+         Remote Filter: ((a)::numeric = '1'::numeric)
    ->  Seq Scan on rlp_default_null
-         Filter: ((a)::numeric = '1'::numeric)
+         Remote Filter: ((a)::numeric = '1'::numeric)
    ->  Seq Scan on rlp_default_default
-         Filter: ((a)::numeric = '1'::numeric)
+         Remote Filter: ((a)::numeric = '1'::numeric)
 (31 rows)
 
 explain (costs off) select * from rlp where a <= 10;
@@ -275,13 +275,13 @@ explain (costs off) select * from rlp where a <= 10;
 ---------------------------------------
  Append
    ->  Seq Scan on rlp1
-         Filter: (a <= 10)
+         Remote Filter: (a <= 10)
    ->  Seq Scan on rlp2
-         Filter: (a <= 10)
+         Remote Filter: (a <= 10)
    ->  Seq Scan on rlp_default_10
-         Filter: (a <= 10)
+         Remote Filter: (a <= 10)
    ->  Seq Scan on rlp_default_default
-         Filter: (a <= 10)
+         Remote Filter: (a <= 10)
 (9 rows)
 
 explain (costs off) select * from rlp where a > 10;
@@ -289,27 +289,27 @@ explain (costs off) select * from rlp where a > 10;
 ---------------------------------------
  Append
    ->  Seq Scan on rlp3abcd
-         Filter: (a > 10)
+         Remote Filter: (a > 10)
    ->  Seq Scan on rlp3efgh
-         Filter: (a > 10)
+         Remote Filter: (a > 10)
    ->  Seq Scan on rlp3nullxy
-         Filter: (a > 10)
+         Remote Filter: (a > 10)
    ->  Seq Scan on rlp3_default
-         Filter: (a > 10)
+         Remote Filter: (a > 10)
    ->  Seq Scan on rlp4_1
-         Filter: (a > 10)
+         Remote Filter: (a > 10)
    ->  Seq Scan on rlp4_2
-         Filter: (a > 10)
+         Remote Filter: (a > 10)
    ->  Seq Scan on rlp4_default
-         Filter: (a > 10)
+         Remote Filter: (a > 10)
    ->  Seq Scan on rlp5_1
-         Filter: (a > 10)
+         Remote Filter: (a > 10)
    ->  Seq Scan on rlp5_default
-         Filter: (a > 10)
+         Remote Filter: (a > 10)
    ->  Seq Scan on rlp_default_30
-         Filter: (a > 10)
+         Remote Filter: (a > 10)
    ->  Seq Scan on rlp_default_default
-         Filter: (a > 10)
+         Remote Filter: (a > 10)
 (23 rows)
 
 explain (costs off) select * from rlp where a < 15;
@@ -317,13 +317,13 @@ explain (costs off) select * from rlp where a < 15;
 ---------------------------------------
  Append
    ->  Seq Scan on rlp1
-         Filter: (a < 15)
+         Remote Filter: (a < 15)
    ->  Seq Scan on rlp2
-         Filter: (a < 15)
+         Remote Filter: (a < 15)
    ->  Seq Scan on rlp_default_10
-         Filter: (a < 15)
+         Remote Filter: (a < 15)
    ->  Seq Scan on rlp_default_default
-         Filter: (a < 15)
+         Remote Filter: (a < 15)
 (9 rows)
 
 explain (costs off) select * from rlp where a <= 15;
@@ -331,105 +331,106 @@ explain (costs off) select * from rlp where a <= 15;
 ---------------------------------------
  Append
    ->  Seq Scan on rlp1
-         Filter: (a <= 15)
+         Remote Filter: (a <= 15)
    ->  Seq Scan on rlp2
-         Filter: (a <= 15)
+         Remote Filter: (a <= 15)
    ->  Seq Scan on rlp3abcd
-         Filter: (a <= 15)
+         Remote Filter: (a <= 15)
    ->  Seq Scan on rlp3efgh
-         Filter: (a <= 15)
+         Remote Filter: (a <= 15)
    ->  Seq Scan on rlp3nullxy
-         Filter: (a <= 15)
+         Remote Filter: (a <= 15)
    ->  Seq Scan on rlp3_default
-         Filter: (a <= 15)
+         Remote Filter: (a <= 15)
    ->  Seq Scan on rlp_default_10
-         Filter: (a <= 15)
+         Remote Filter: (a <= 15)
    ->  Seq Scan on rlp_default_default
-         Filter: (a <= 15)
+         Remote Filter: (a <= 15)
 (17 rows)
 
 explain (costs off) select * from rlp where a > 15 and b = 'ab';
-                       QUERY PLAN
----------------------------------------------------------
+                           QUERY PLAN
+----------------------------------------------------------------
  Append
    ->  Seq Scan on rlp3abcd
-         Filter: ((a > 15) AND ((b)::text = 'ab'::text))
+         Remote Filter: ((a > 15) AND ((b)::text = 'ab'::text))
    ->  Seq Scan on rlp4_1
-         Filter: ((a > 15) AND ((b)::text = 'ab'::text))
+         Remote Filter: ((a > 15) AND ((b)::text = 'ab'::text))
    ->  Seq Scan on rlp4_2
-         Filter: ((a > 15) AND ((b)::text = 'ab'::text))
+         Remote Filter: ((a > 15) AND ((b)::text = 'ab'::text))
    ->  Seq Scan on rlp4_default
-         Filter: ((a > 15) AND ((b)::text = 'ab'::text))
+         Remote Filter: ((a > 15) AND ((b)::text = 'ab'::text))
    ->  Seq Scan on rlp5_1
-         Filter: ((a > 15) AND ((b)::text = 'ab'::text))
+         Remote Filter: ((a > 15) AND ((b)::text = 'ab'::text))
    ->  Seq Scan on rlp5_default
-         Filter: ((a > 15) AND ((b)::text = 'ab'::text))
+         Remote Filter: ((a > 15) AND ((b)::text = 'ab'::text))
    ->  Seq Scan on rlp_default_30
-         Filter: ((a > 15) AND ((b)::text = 'ab'::text))
+         Remote Filter: ((a > 15) AND ((b)::text = 'ab'::text))
    ->  Seq Scan on rlp_default_default
-         Filter: ((a > 15) AND ((b)::text = 'ab'::text))
+         Remote Filter: ((a > 15) AND ((b)::text = 'ab'::text))
 (17 rows)
 
 explain (costs off) select * from rlp where a = 16;
            QUERY PLAN
---------------------------------
+---------------------------------
  Append
    ->  Seq Scan on rlp3abcd
-         Filter: (a = 16)
+         Remote Filter: (a = 16)
    ->  Seq Scan on rlp3efgh
-         Filter: (a = 16)
+         Remote Filter: (a = 16)
    ->  Seq Scan on rlp3nullxy
-         Filter: (a = 16)
+         Remote Filter: (a = 16)
    ->  Seq Scan on rlp3_default
-         Filter: (a = 16)
+         Remote Filter: (a = 16)
 (9 rows)
 
 explain (costs off) select * from rlp where a = 16 and b in ('not', 'in', 'here');
-                                 QUERY PLAN
-----------------------------------------------------------------------------
+                         QUERY PLAN
+-------------------------------------------------------------
  Append
    ->  Seq Scan on rlp3_default
-         Filter: ((a = 16) AND ((b)::text = ANY ('{not,in,here}'::text[])))
-(3 rows)
+         Remote Filter: (a = 16)
+         Filter: ((b)::text = ANY ('{not,in,here}'::text[]))
+(4 rows)
 
 explain (costs off) select * from rlp where a = 16 and b < 'ab';
-                       QUERY PLAN
----------------------------------------------------------
+                           QUERY PLAN
+----------------------------------------------------------------
  Append
    ->  Seq Scan on rlp3_default
-         Filter: (((b)::text < 'ab'::text) AND (a = 16))
+         Remote Filter: (((b)::text < 'ab'::text) AND (a = 16))
 (3 rows)
 
 explain (costs off) select * from rlp where a = 16 and b <= 'ab';
-                        QUERY PLAN
-----------------------------------------------------------
+                           QUERY PLAN
+-----------------------------------------------------------------
  Append
    ->  Seq Scan on rlp3abcd
-         Filter: (((b)::text <= 'ab'::text) AND (a = 16))
+         Remote Filter: (((b)::text <= 'ab'::text) AND (a = 16))
    ->  Seq Scan on rlp3_default
-         Filter: (((b)::text <= 'ab'::text) AND (a = 16))
+         Remote Filter: (((b)::text <= 'ab'::text) AND (a = 16))
 (5 rows)
 
 explain (costs off) select * from rlp where a = 16 and b is null;
-                 QUERY PLAN
---------------------------------------------
+                    QUERY PLAN
+---------------------------------------------------
  Append
    ->  Seq Scan on rlp3nullxy
-         Filter: ((b IS NULL) AND (a = 16))
+         Remote Filter: ((b IS NULL) AND (a = 16))
 (3 rows)
 
 explain (costs off) select * from rlp where a = 16 and b is not null;
-                   QUERY PLAN
-------------------------------------------------
+                      QUERY PLAN
+-------------------------------------------------------
  Append
    ->  Seq Scan on rlp3abcd
-         Filter: ((b IS NOT NULL) AND (a = 16))
+         Remote Filter: ((b IS NOT NULL) AND (a = 16))
    ->  Seq Scan on rlp3efgh
-         Filter: ((b IS NOT NULL) AND (a = 16))
+         Remote Filter: ((b IS NOT NULL) AND (a = 16))
    ->  Seq Scan on rlp3nullxy
-         Filter: ((b IS NOT NULL) AND (a = 16))
+         Remote Filter: ((b IS NOT NULL) AND (a = 16))
    ->  Seq Scan on rlp3_default
-         Filter: ((b IS NOT NULL) AND (a = 16))
+         Remote Filter: ((b IS NOT NULL) AND (a = 16))
 (9 rows)
 
 explain (costs off) select * from rlp where a is null;
@@ -437,41 +438,41 @@ explain (costs off) select * from rlp where a is null;
 ------------------------------------
  Append
    ->  Seq Scan on rlp_default_null
-         Filter: (a IS NULL)
+         Remote Filter: (a IS NULL)
 (3 rows)
 
 explain (costs off) select * from rlp where a is not null;
-              QUERY PLAN
----------------------------------------
+               QUERY PLAN
+----------------------------------------
  Append
    ->  Seq Scan on rlp1
-         Filter: (a IS NOT NULL)
+         Remote Filter: (a IS NOT NULL)
    ->  Seq Scan on rlp2
-         Filter: (a IS NOT NULL)
+         Remote Filter: (a IS NOT NULL)
    ->  Seq Scan on rlp3abcd
-         Filter: (a IS NOT NULL)
+         Remote Filter: (a IS NOT NULL)
    ->  Seq Scan on rlp3efgh
-         Filter: (a IS NOT NULL)
+         Remote Filter: (a IS NOT NULL)
    ->  Seq Scan on rlp3nullxy
-         Filter: (a IS NOT NULL)
+         Remote Filter: (a IS NOT NULL)
    ->  Seq Scan on rlp3_default
-         Filter: (a IS NOT NULL)
+         Remote Filter: (a IS NOT NULL)
    ->  Seq Scan on rlp4_1
-         Filter: (a IS NOT NULL)
+         Remote Filter: (a IS NOT NULL)
    ->  Seq Scan on rlp4_2
-         Filter: (a IS NOT NULL)
+         Remote Filter: (a IS NOT NULL)
    ->  Seq Scan on rlp4_default
-         Filter: (a IS NOT NULL)
+         Remote Filter: (a IS NOT NULL)
    ->  Seq Scan on rlp5_1
-         Filter: (a IS NOT NULL)
+         Remote Filter: (a IS NOT NULL)
    ->  Seq Scan on rlp5_default
-         Filter: (a IS NOT NULL)
+         Remote Filter: (a IS NOT NULL)
    ->  Seq Scan on rlp_default_10
-         Filter: (a IS NOT NULL)
+         Remote Filter: (a IS NOT NULL)
    ->  Seq Scan on rlp_default_30
-         Filter: (a IS NOT NULL)
+         Remote Filter: (a IS NOT NULL)
    ->  Seq Scan on rlp_default_default
-         Filter: (a IS NOT NULL)
+         Remote Filter: (a IS NOT NULL)
 (29 rows)
 
 explain (costs off) select * from rlp where a > 30;
@@ -479,11 +480,11 @@ explain (costs off) select * from rlp where a > 30;
 ---------------------------------------
  Append
    ->  Seq Scan on rlp5_1
-         Filter: (a > 30)
+         Remote Filter: (a > 30)
    ->  Seq Scan on rlp5_default
-         Filter: (a > 30)
+         Remote Filter: (a > 30)
    ->  Seq Scan on rlp_default_default
-         Filter: (a > 30)
+         Remote Filter: (a > 30)
 (7 rows)
 
 explain (costs off) select * from rlp where a = 30;	/* only default is scanned */
@@ -491,7 +492,7 @@ explain (costs off) select * from rlp where a = 30;	/* only default is scanned *
 ----------------------------------
  Append
    ->  Seq Scan on rlp_default_30
-         Filter: (a = 30)
+         Remote Filter: (a = 30)
 (3 rows)
 
 explain (costs off) select * from rlp where a <= 31;
@@ -499,93 +500,87 @@ explain (costs off) select * from rlp where a <= 31;
 ---------------------------------------
  Append
    ->  Seq Scan on rlp1
-         Filter: (a <= 31)
+         Remote Filter: (a <= 31)
    ->  Seq Scan on rlp2
-         Filter: (a <= 31)
+         Remote Filter: (a <= 31)
    ->  Seq Scan on rlp3abcd
-         Filter: (a <= 31)
+         Remote Filter: (a <= 31)
    ->  Seq Scan on rlp3efgh
-         Filter: (a <= 31)
+         Remote Filter: (a <= 31)
    ->  Seq Scan on rlp3nullxy
-         Filter: (a <= 31)
+         Remote Filter: (a <= 31)
    ->  Seq Scan on rlp3_default
-         Filter: (a <= 31)
+         Remote Filter: (a <= 31)
    ->  Seq Scan on rlp4_1
-         Filter: (a <= 31)
+         Remote Filter: (a <= 31)
    ->  Seq Scan on rlp4_2
-         Filter: (a <= 31)
+         Remote Filter: (a <= 31)
    ->  Seq Scan on rlp4_default
-         Filter: (a <= 31)
+         Remote Filter: (a <= 31)
    ->  Seq Scan on rlp5_1
-         Filter: (a <= 31)
-   ->  Seq Scan on rlp5_default
-         Filter: (a <= 31)
+         Remote Filter: (a <= 31)
    ->  Seq Scan on rlp_default_10
-         Filter: (a <= 31)
+         Remote Filter: (a <= 31)
    ->  Seq Scan on rlp_default_30
-         Filter: (a <= 31)
+         Remote Filter: (a <= 31)
    ->  Seq Scan on rlp_default_default
-         Filter: (a <= 31)
-(29 rows)
+         Remote Filter: (a <= 31)
+(27 rows)
 
 explain (costs off) select * from rlp where a = 1 or a = 7;
-              QUERY PLAN
---------------------------------------
+                 QUERY PLAN
+---------------------------------------------
  Append
    ->  Seq Scan on rlp2
-         Filter: ((a = 1) OR (a = 7))
+         Remote Filter: ((a = 1) OR (a = 7))
 (3 rows)
 
 explain (costs off) select * from rlp where a = 1 or b = 'ab';
-                      QUERY PLAN
--------------------------------------------------------
+                          QUERY PLAN
+--------------------------------------------------------------
  Append
    ->  Seq Scan on rlp1
-         Filter: ((a = 1) OR ((b)::text = 'ab'::text))
+         Remote Filter: ((a = 1) OR ((b)::text = 'ab'::text))
    ->  Seq Scan on rlp2
-         Filter: ((a = 1) OR ((b)::text = 'ab'::text))
+         Remote Filter: ((a = 1) OR ((b)::text = 'ab'::text))
    ->  Seq Scan on rlp3abcd
-         Filter: ((a = 1) OR ((b)::text = 'ab'::text))
+         Remote Filter: ((a = 1) OR ((b)::text = 'ab'::text))
    ->  Seq Scan on rlp4_1
-         Filter: ((a = 1) OR ((b)::text = 'ab'::text))
+         Remote Filter: ((a = 1) OR ((b)::text = 'ab'::text))
    ->  Seq Scan on rlp4_2
-         Filter: ((a = 1) OR ((b)::text = 'ab'::text))
+         Remote Filter: ((a = 1) OR ((b)::text = 'ab'::text))
    ->  Seq Scan on rlp4_default
-         Filter: ((a = 1) OR ((b)::text = 'ab'::text))
+         Remote Filter: ((a = 1) OR ((b)::text = 'ab'::text))
    ->  Seq Scan on rlp5_1
-         Filter: ((a = 1) OR ((b)::text = 'ab'::text))
+         Remote Filter: ((a = 1) OR ((b)::text = 'ab'::text))
    ->  Seq Scan on rlp5_default
-         Filter: ((a = 1) OR ((b)::text = 'ab'::text))
+         Remote Filter: ((a = 1) OR ((b)::text = 'ab'::text))
    ->  Seq Scan on rlp_default_10
-         Filter: ((a = 1) OR ((b)::text = 'ab'::text))
+         Remote Filter: ((a = 1) OR ((b)::text = 'ab'::text))
    ->  Seq Scan on rlp_default_30
-         Filter: ((a = 1) OR ((b)::text = 'ab'::text))
+         Remote Filter: ((a = 1) OR ((b)::text = 'ab'::text))
    ->  Seq Scan on rlp_default_null
-         Filter: ((a = 1) OR ((b)::text = 'ab'::text))
+         Remote Filter: ((a = 1) OR ((b)::text = 'ab'::text))
    ->  Seq Scan on rlp_default_default
-         Filter: ((a = 1) OR ((b)::text = 'ab'::text))
+         Remote Filter: ((a = 1) OR ((b)::text = 'ab'::text))
 (25 rows)
 
 explain (costs off) select * from rlp where a > 20 and a < 27;
-               QUERY PLAN
------------------------------------------
+                   QUERY PLAN
+------------------------------------------------
  Append
    ->  Seq Scan on rlp4_1
-         Filter: ((a > 20) AND (a < 27))
+         Remote Filter: ((a > 20) AND (a < 27))
    ->  Seq Scan on rlp4_2
-         Filter: ((a > 20) AND (a < 27))
-   ->  Seq Scan on rlp4_default
-         Filter: ((a > 20) AND (a < 27))
-   ->  Seq Scan on rlp_default_default
-         Filter: ((a > 20) AND (a < 27))
-(9 rows)
+         Remote Filter: ((a > 20) AND (a < 27))
+(5 rows)
 
 explain (costs off) select * from rlp where a = 29;
            QUERY PLAN
---------------------------------
+---------------------------------
  Append
    ->  Seq Scan on rlp4_default
-         Filter: (a = 29)
+         Remote Filter: (a = 29)
 (3 rows)
 
 explain (costs off) select * from rlp where a >= 29;
@@ -593,52 +588,62 @@ explain (costs off) select * from rlp where a >= 29;
 ---------------------------------------
  Append
    ->  Seq Scan on rlp4_default
-         Filter: (a >= 29)
+         Remote Filter: (a >= 29)
    ->  Seq Scan on rlp5_1
-         Filter: (a >= 29)
+         Remote Filter: (a >= 29)
    ->  Seq Scan on rlp5_default
-         Filter: (a >= 29)
+         Remote Filter: (a >= 29)
    ->  Seq Scan on rlp_default_30
-         Filter: (a >= 29)
+         Remote Filter: (a >= 29)
    ->  Seq Scan on rlp_default_default
-         Filter: (a >= 29)
+         Remote Filter: (a >= 29)
 (11 rows)
+
+explain (costs off) select * from rlp where a < 1 or (a > 20 and a < 25);
+                         QUERY PLAN
+-------------------------------------------------------------
+ Append
+   ->  Seq Scan on rlp1
+         Remote Filter: ((a < 1) OR ((a > 20) AND (a < 25)))
+   ->  Seq Scan on rlp4_1
+         Remote Filter: ((a < 1) OR ((a > 20) AND (a < 25)))
+(5 rows)
 
 -- redundant clauses are eliminated
 explain (costs off) select * from rlp where a > 1 and a = 10;	/* only default */
-               QUERY PLAN
-----------------------------------------
+                  QUERY PLAN
+-----------------------------------------------
  Append
    ->  Seq Scan on rlp_default_10
-         Filter: ((a > 1) AND (a = 10))
+         Remote Filter: ((a > 1) AND (a = 10))
 (3 rows)
 
 explain (costs off) select * from rlp where a > 1 and a >=15;	/* rlp3 onwards, including default */
-               QUERY PLAN
------------------------------------------
+                   QUERY PLAN
+------------------------------------------------
  Append
    ->  Seq Scan on rlp3abcd
-         Filter: ((a > 1) AND (a >= 15))
+         Remote Filter: ((a > 1) AND (a >= 15))
    ->  Seq Scan on rlp3efgh
-         Filter: ((a > 1) AND (a >= 15))
+         Remote Filter: ((a > 1) AND (a >= 15))
    ->  Seq Scan on rlp3nullxy
-         Filter: ((a > 1) AND (a >= 15))
+         Remote Filter: ((a > 1) AND (a >= 15))
    ->  Seq Scan on rlp3_default
-         Filter: ((a > 1) AND (a >= 15))
+         Remote Filter: ((a > 1) AND (a >= 15))
    ->  Seq Scan on rlp4_1
-         Filter: ((a > 1) AND (a >= 15))
+         Remote Filter: ((a > 1) AND (a >= 15))
    ->  Seq Scan on rlp4_2
-         Filter: ((a > 1) AND (a >= 15))
+         Remote Filter: ((a > 1) AND (a >= 15))
    ->  Seq Scan on rlp4_default
-         Filter: ((a > 1) AND (a >= 15))
+         Remote Filter: ((a > 1) AND (a >= 15))
    ->  Seq Scan on rlp5_1
-         Filter: ((a > 1) AND (a >= 15))
+         Remote Filter: ((a > 1) AND (a >= 15))
    ->  Seq Scan on rlp5_default
-         Filter: ((a > 1) AND (a >= 15))
+         Remote Filter: ((a > 1) AND (a >= 15))
    ->  Seq Scan on rlp_default_30
-         Filter: ((a > 1) AND (a >= 15))
+         Remote Filter: ((a > 1) AND (a >= 15))
    ->  Seq Scan on rlp_default_default
-         Filter: ((a > 1) AND (a >= 15))
+         Remote Filter: ((a > 1) AND (a >= 15))
 (23 rows)
 
 explain (costs off) select * from rlp where a = 1 and a = 3;	/* empty */
@@ -649,19 +654,19 @@ explain (costs off) select * from rlp where a = 1 and a = 3;	/* empty */
 (2 rows)
 
 explain (costs off) select * from rlp where (a = 1 and a = 3) or (a > 1 and a = 15);
-                            QUERY PLAN
--------------------------------------------------------------------
+                                QUERY PLAN
+--------------------------------------------------------------------------
  Append
    ->  Seq Scan on rlp2
-         Filter: (((a = 1) AND (a = 3)) OR ((a > 1) AND (a = 15)))
+         Remote Filter: (((a = 1) AND (a = 3)) OR ((a > 1) AND (a = 15)))
    ->  Seq Scan on rlp3abcd
-         Filter: (((a = 1) AND (a = 3)) OR ((a > 1) AND (a = 15)))
+         Remote Filter: (((a = 1) AND (a = 3)) OR ((a > 1) AND (a = 15)))
    ->  Seq Scan on rlp3efgh
-         Filter: (((a = 1) AND (a = 3)) OR ((a > 1) AND (a = 15)))
+         Remote Filter: (((a = 1) AND (a = 3)) OR ((a > 1) AND (a = 15)))
    ->  Seq Scan on rlp3nullxy
-         Filter: (((a = 1) AND (a = 3)) OR ((a > 1) AND (a = 15)))
+         Remote Filter: (((a = 1) AND (a = 3)) OR ((a > 1) AND (a = 15)))
    ->  Seq Scan on rlp3_default
-         Filter: (((a = 1) AND (a = 3)) OR ((a > 1) AND (a = 15)))
+         Remote Filter: (((a = 1) AND (a = 3)) OR ((a > 1) AND (a = 15)))
 (11 rows)
 
 -- multi-column keys
@@ -680,263 +685,263 @@ explain (costs off) select * from mc3p where a = 1;
 --------------------------------
  Append
    ->  Seq Scan on mc3p0
-         Filter: (a = 1)
+         Remote Filter: (a = 1)
    ->  Seq Scan on mc3p1
-         Filter: (a = 1)
+         Remote Filter: (a = 1)
    ->  Seq Scan on mc3p_default
-         Filter: (a = 1)
+         Remote Filter: (a = 1)
 (7 rows)
 
 explain (costs off) select * from mc3p where a = 1 and abs(b) < 1;
-                 QUERY PLAN
---------------------------------------------
+                    QUERY PLAN
+---------------------------------------------------
  Append
    ->  Seq Scan on mc3p0
-         Filter: ((a = 1) AND (abs(b) < 1))
+         Remote Filter: ((a = 1) AND (abs(b) < 1))
    ->  Seq Scan on mc3p_default
-         Filter: ((a = 1) AND (abs(b) < 1))
+         Remote Filter: ((a = 1) AND (abs(b) < 1))
 (5 rows)
 
 explain (costs off) select * from mc3p where a = 1 and abs(b) = 1;
-                 QUERY PLAN
---------------------------------------------
+                    QUERY PLAN
+---------------------------------------------------
  Append
    ->  Seq Scan on mc3p0
-         Filter: ((a = 1) AND (abs(b) = 1))
+         Remote Filter: ((a = 1) AND (abs(b) = 1))
    ->  Seq Scan on mc3p1
-         Filter: ((a = 1) AND (abs(b) = 1))
+         Remote Filter: ((a = 1) AND (abs(b) = 1))
    ->  Seq Scan on mc3p_default
-         Filter: ((a = 1) AND (abs(b) = 1))
+         Remote Filter: ((a = 1) AND (abs(b) = 1))
 (7 rows)
 
 explain (costs off) select * from mc3p where a = 1 and abs(b) = 1 and c < 8;
-                       QUERY PLAN
---------------------------------------------------------
+                          QUERY PLAN
+---------------------------------------------------------------
  Append
    ->  Seq Scan on mc3p0
-         Filter: ((c < 8) AND (a = 1) AND (abs(b) = 1))
+         Remote Filter: ((c < 8) AND (a = 1) AND (abs(b) = 1))
    ->  Seq Scan on mc3p1
-         Filter: ((c < 8) AND (a = 1) AND (abs(b) = 1))
+         Remote Filter: ((c < 8) AND (a = 1) AND (abs(b) = 1))
 (5 rows)
 
 explain (costs off) select * from mc3p where a = 10 and abs(b) between 5 and 35;
-                           QUERY PLAN
------------------------------------------------------------------
+                               QUERY PLAN
+------------------------------------------------------------------------
  Append
    ->  Seq Scan on mc3p1
-         Filter: ((a = 10) AND (abs(b) >= 5) AND (abs(b) <= 35))
+         Remote Filter: ((a = 10) AND (abs(b) >= 5) AND (abs(b) <= 35))
    ->  Seq Scan on mc3p2
-         Filter: ((a = 10) AND (abs(b) >= 5) AND (abs(b) <= 35))
+         Remote Filter: ((a = 10) AND (abs(b) >= 5) AND (abs(b) <= 35))
    ->  Seq Scan on mc3p3
-         Filter: ((a = 10) AND (abs(b) >= 5) AND (abs(b) <= 35))
+         Remote Filter: ((a = 10) AND (abs(b) >= 5) AND (abs(b) <= 35))
    ->  Seq Scan on mc3p4
-         Filter: ((a = 10) AND (abs(b) >= 5) AND (abs(b) <= 35))
+         Remote Filter: ((a = 10) AND (abs(b) >= 5) AND (abs(b) <= 35))
    ->  Seq Scan on mc3p_default
-         Filter: ((a = 10) AND (abs(b) >= 5) AND (abs(b) <= 35))
+         Remote Filter: ((a = 10) AND (abs(b) >= 5) AND (abs(b) <= 35))
 (11 rows)
 
 explain (costs off) select * from mc3p where a > 10;
            QUERY PLAN
---------------------------------
+---------------------------------
  Append
    ->  Seq Scan on mc3p5
-         Filter: (a > 10)
+         Remote Filter: (a > 10)
    ->  Seq Scan on mc3p6
-         Filter: (a > 10)
+         Remote Filter: (a > 10)
    ->  Seq Scan on mc3p7
-         Filter: (a > 10)
+         Remote Filter: (a > 10)
    ->  Seq Scan on mc3p_default
-         Filter: (a > 10)
+         Remote Filter: (a > 10)
 (9 rows)
 
 explain (costs off) select * from mc3p where a >= 10;
-           QUERY PLAN
---------------------------------
+            QUERY PLAN
+----------------------------------
  Append
    ->  Seq Scan on mc3p1
-         Filter: (a >= 10)
+         Remote Filter: (a >= 10)
    ->  Seq Scan on mc3p2
-         Filter: (a >= 10)
+         Remote Filter: (a >= 10)
    ->  Seq Scan on mc3p3
-         Filter: (a >= 10)
+         Remote Filter: (a >= 10)
    ->  Seq Scan on mc3p4
-         Filter: (a >= 10)
+         Remote Filter: (a >= 10)
    ->  Seq Scan on mc3p5
-         Filter: (a >= 10)
+         Remote Filter: (a >= 10)
    ->  Seq Scan on mc3p6
-         Filter: (a >= 10)
+         Remote Filter: (a >= 10)
    ->  Seq Scan on mc3p7
-         Filter: (a >= 10)
+         Remote Filter: (a >= 10)
    ->  Seq Scan on mc3p_default
-         Filter: (a >= 10)
+         Remote Filter: (a >= 10)
 (17 rows)
 
 explain (costs off) select * from mc3p where a < 10;
            QUERY PLAN
---------------------------------
+---------------------------------
  Append
    ->  Seq Scan on mc3p0
-         Filter: (a < 10)
+         Remote Filter: (a < 10)
    ->  Seq Scan on mc3p1
-         Filter: (a < 10)
+         Remote Filter: (a < 10)
    ->  Seq Scan on mc3p_default
-         Filter: (a < 10)
+         Remote Filter: (a < 10)
 (7 rows)
 
 explain (costs off) select * from mc3p where a <= 10 and abs(b) < 10;
-                  QUERY PLAN
------------------------------------------------
- Append
-   ->  Seq Scan on mc3p0
-         Filter: ((a <= 10) AND (abs(b) < 10))
-   ->  Seq Scan on mc3p1
-         Filter: ((a <= 10) AND (abs(b) < 10))
-   ->  Seq Scan on mc3p2
-         Filter: ((a <= 10) AND (abs(b) < 10))
-   ->  Seq Scan on mc3p_default
-         Filter: ((a <= 10) AND (abs(b) < 10))
-(9 rows)
-
-explain (costs off) select * from mc3p where a = 11 and abs(b) = 0;
-                 QUERY PLAN
----------------------------------------------
- Append
-   ->  Seq Scan on mc3p_default
-         Filter: ((a = 11) AND (abs(b) = 0))
-(3 rows)
-
-explain (costs off) select * from mc3p where a = 20 and abs(b) = 10 and c = 100;
-                         QUERY PLAN
-------------------------------------------------------------
- Append
-   ->  Seq Scan on mc3p6
-         Filter: ((a = 20) AND (c = 100) AND (abs(b) = 10))
-(3 rows)
-
-explain (costs off) select * from mc3p where a > 20;
-           QUERY PLAN
---------------------------------
- Append
-   ->  Seq Scan on mc3p7
-         Filter: (a > 20)
-   ->  Seq Scan on mc3p_default
-         Filter: (a > 20)
-(5 rows)
-
-explain (costs off) select * from mc3p where a >= 20;
-           QUERY PLAN
---------------------------------
- Append
-   ->  Seq Scan on mc3p5
-         Filter: (a >= 20)
-   ->  Seq Scan on mc3p6
-         Filter: (a >= 20)
-   ->  Seq Scan on mc3p7
-         Filter: (a >= 20)
-   ->  Seq Scan on mc3p_default
-         Filter: (a >= 20)
-(9 rows)
-
-explain (costs off) select * from mc3p where (a = 1 and abs(b) = 1 and c = 1) or (a = 10 and abs(b) = 5 and c = 10) or (a > 11 and a < 20);
-                                                           QUERY PLAN
----------------------------------------------------------------------------------------------------------------------------------
- Append
-   ->  Seq Scan on mc3p1
-         Filter: (((a = 1) AND (abs(b) = 1) AND (c = 1)) OR ((a = 10) AND (abs(b) = 5) AND (c = 10)) OR ((a > 11) AND (a < 20)))
-   ->  Seq Scan on mc3p2
-         Filter: (((a = 1) AND (abs(b) = 1) AND (c = 1)) OR ((a = 10) AND (abs(b) = 5) AND (c = 10)) OR ((a > 11) AND (a < 20)))
-   ->  Seq Scan on mc3p5
-         Filter: (((a = 1) AND (abs(b) = 1) AND (c = 1)) OR ((a = 10) AND (abs(b) = 5) AND (c = 10)) OR ((a > 11) AND (a < 20)))
-   ->  Seq Scan on mc3p_default
-         Filter: (((a = 1) AND (abs(b) = 1) AND (c = 1)) OR ((a = 10) AND (abs(b) = 5) AND (c = 10)) OR ((a > 11) AND (a < 20)))
-(9 rows)
-
-explain (costs off) select * from mc3p where (a = 1 and abs(b) = 1 and c = 1) or (a = 10 and abs(b) = 5 and c = 10) or (a > 11 and a < 20) or a < 1;
-                                                                 QUERY PLAN
---------------------------------------------------------------------------------------------------------------------------------------------
- Append
-   ->  Seq Scan on mc3p0
-         Filter: (((a = 1) AND (abs(b) = 1) AND (c = 1)) OR ((a = 10) AND (abs(b) = 5) AND (c = 10)) OR ((a > 11) AND (a < 20)) OR (a < 1))
-   ->  Seq Scan on mc3p1
-         Filter: (((a = 1) AND (abs(b) = 1) AND (c = 1)) OR ((a = 10) AND (abs(b) = 5) AND (c = 10)) OR ((a > 11) AND (a < 20)) OR (a < 1))
-   ->  Seq Scan on mc3p2
-         Filter: (((a = 1) AND (abs(b) = 1) AND (c = 1)) OR ((a = 10) AND (abs(b) = 5) AND (c = 10)) OR ((a > 11) AND (a < 20)) OR (a < 1))
-   ->  Seq Scan on mc3p5
-         Filter: (((a = 1) AND (abs(b) = 1) AND (c = 1)) OR ((a = 10) AND (abs(b) = 5) AND (c = 10)) OR ((a > 11) AND (a < 20)) OR (a < 1))
-   ->  Seq Scan on mc3p_default
-         Filter: (((a = 1) AND (abs(b) = 1) AND (c = 1)) OR ((a = 10) AND (abs(b) = 5) AND (c = 10)) OR ((a > 11) AND (a < 20)) OR (a < 1))
-(11 rows)
-
-explain (costs off) select * from mc3p where (a = 1 and abs(b) = 1 and c = 1) or (a = 10 and abs(b) = 5 and c = 10) or (a > 11 and a < 20) or a < 1 or a = 1;
-                                                                      QUERY PLAN
--------------------------------------------------------------------------------------------------------------------------------------------------------
- Append
-   ->  Seq Scan on mc3p0
-         Filter: (((a = 1) AND (abs(b) = 1) AND (c = 1)) OR ((a = 10) AND (abs(b) = 5) AND (c = 10)) OR ((a > 11) AND (a < 20)) OR (a < 1) OR (a = 1))
-   ->  Seq Scan on mc3p1
-         Filter: (((a = 1) AND (abs(b) = 1) AND (c = 1)) OR ((a = 10) AND (abs(b) = 5) AND (c = 10)) OR ((a > 11) AND (a < 20)) OR (a < 1) OR (a = 1))
-   ->  Seq Scan on mc3p2
-         Filter: (((a = 1) AND (abs(b) = 1) AND (c = 1)) OR ((a = 10) AND (abs(b) = 5) AND (c = 10)) OR ((a > 11) AND (a < 20)) OR (a < 1) OR (a = 1))
-   ->  Seq Scan on mc3p5
-         Filter: (((a = 1) AND (abs(b) = 1) AND (c = 1)) OR ((a = 10) AND (abs(b) = 5) AND (c = 10)) OR ((a > 11) AND (a < 20)) OR (a < 1) OR (a = 1))
-   ->  Seq Scan on mc3p_default
-         Filter: (((a = 1) AND (abs(b) = 1) AND (c = 1)) OR ((a = 10) AND (abs(b) = 5) AND (c = 10)) OR ((a > 11) AND (a < 20)) OR (a < 1) OR (a = 1))
-(11 rows)
-
-explain (costs off) select * from mc3p where a = 1 or abs(b) = 1 or c = 1;
                       QUERY PLAN
 ------------------------------------------------------
  Append
    ->  Seq Scan on mc3p0
-         Filter: ((a = 1) OR (abs(b) = 1) OR (c = 1))
+         Remote Filter: ((a <= 10) AND (abs(b) < 10))
    ->  Seq Scan on mc3p1
-         Filter: ((a = 1) OR (abs(b) = 1) OR (c = 1))
+         Remote Filter: ((a <= 10) AND (abs(b) < 10))
    ->  Seq Scan on mc3p2
-         Filter: ((a = 1) OR (abs(b) = 1) OR (c = 1))
-   ->  Seq Scan on mc3p3
-         Filter: ((a = 1) OR (abs(b) = 1) OR (c = 1))
-   ->  Seq Scan on mc3p4
-         Filter: ((a = 1) OR (abs(b) = 1) OR (c = 1))
-   ->  Seq Scan on mc3p5
-         Filter: ((a = 1) OR (abs(b) = 1) OR (c = 1))
-   ->  Seq Scan on mc3p6
-         Filter: ((a = 1) OR (abs(b) = 1) OR (c = 1))
-   ->  Seq Scan on mc3p7
-         Filter: ((a = 1) OR (abs(b) = 1) OR (c = 1))
+         Remote Filter: ((a <= 10) AND (abs(b) < 10))
    ->  Seq Scan on mc3p_default
-         Filter: ((a = 1) OR (abs(b) = 1) OR (c = 1))
+         Remote Filter: ((a <= 10) AND (abs(b) < 10))
+(9 rows)
+
+explain (costs off) select * from mc3p where a = 11 and abs(b) = 0;
+                     QUERY PLAN
+----------------------------------------------------
+ Append
+   ->  Seq Scan on mc3p_default
+         Remote Filter: ((a = 11) AND (abs(b) = 0))
+(3 rows)
+
+explain (costs off) select * from mc3p where a = 20 and abs(b) = 10 and c = 100;
+                            QUERY PLAN
+-------------------------------------------------------------------
+ Append
+   ->  Seq Scan on mc3p6
+         Remote Filter: ((a = 20) AND (c = 100) AND (abs(b) = 10))
+(3 rows)
+
+explain (costs off) select * from mc3p where a > 20;
+           QUERY PLAN
+---------------------------------
+ Append
+   ->  Seq Scan on mc3p7
+         Remote Filter: (a > 20)
+   ->  Seq Scan on mc3p_default
+         Remote Filter: (a > 20)
+(5 rows)
+
+explain (costs off) select * from mc3p where a >= 20;
+            QUERY PLAN
+----------------------------------
+ Append
+   ->  Seq Scan on mc3p5
+         Remote Filter: (a >= 20)
+   ->  Seq Scan on mc3p6
+         Remote Filter: (a >= 20)
+   ->  Seq Scan on mc3p7
+         Remote Filter: (a >= 20)
+   ->  Seq Scan on mc3p_default
+         Remote Filter: (a >= 20)
+(9 rows)
+
+explain (costs off) select * from mc3p where (a = 1 and abs(b) = 1 and c = 1) or (a = 10 and abs(b) = 5 and c = 10) or (a > 11 and a < 20);
+                                                               QUERY PLAN
+----------------------------------------------------------------------------------------------------------------------------------------
+ Append
+   ->  Seq Scan on mc3p1
+         Remote Filter: (((a = 1) AND (abs(b) = 1) AND (c = 1)) OR ((a = 10) AND (abs(b) = 5) AND (c = 10)) OR ((a > 11) AND (a < 20)))
+   ->  Seq Scan on mc3p2
+         Remote Filter: (((a = 1) AND (abs(b) = 1) AND (c = 1)) OR ((a = 10) AND (abs(b) = 5) AND (c = 10)) OR ((a > 11) AND (a < 20)))
+   ->  Seq Scan on mc3p5
+         Remote Filter: (((a = 1) AND (abs(b) = 1) AND (c = 1)) OR ((a = 10) AND (abs(b) = 5) AND (c = 10)) OR ((a > 11) AND (a < 20)))
+   ->  Seq Scan on mc3p_default
+         Remote Filter: (((a = 1) AND (abs(b) = 1) AND (c = 1)) OR ((a = 10) AND (abs(b) = 5) AND (c = 10)) OR ((a > 11) AND (a < 20)))
+(9 rows)
+
+explain (costs off) select * from mc3p where (a = 1 and abs(b) = 1 and c = 1) or (a = 10 and abs(b) = 5 and c = 10) or (a > 11 and a < 20) or a < 1;
+                                                                    QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------------------------------------
+ Append
+   ->  Seq Scan on mc3p0
+         Remote Filter: (((a = 1) AND (abs(b) = 1) AND (c = 1)) OR ((a = 10) AND (abs(b) = 5) AND (c = 10)) OR ((a > 11) AND (a < 20)) OR (a < 1))
+   ->  Seq Scan on mc3p1
+         Remote Filter: (((a = 1) AND (abs(b) = 1) AND (c = 1)) OR ((a = 10) AND (abs(b) = 5) AND (c = 10)) OR ((a > 11) AND (a < 20)) OR (a < 1))
+   ->  Seq Scan on mc3p2
+         Remote Filter: (((a = 1) AND (abs(b) = 1) AND (c = 1)) OR ((a = 10) AND (abs(b) = 5) AND (c = 10)) OR ((a > 11) AND (a < 20)) OR (a < 1))
+   ->  Seq Scan on mc3p5
+         Remote Filter: (((a = 1) AND (abs(b) = 1) AND (c = 1)) OR ((a = 10) AND (abs(b) = 5) AND (c = 10)) OR ((a > 11) AND (a < 20)) OR (a < 1))
+   ->  Seq Scan on mc3p_default
+         Remote Filter: (((a = 1) AND (abs(b) = 1) AND (c = 1)) OR ((a = 10) AND (abs(b) = 5) AND (c = 10)) OR ((a > 11) AND (a < 20)) OR (a < 1))
+(11 rows)
+
+explain (costs off) select * from mc3p where (a = 1 and abs(b) = 1 and c = 1) or (a = 10 and abs(b) = 5 and c = 10) or (a > 11 and a < 20) or a < 1 or a = 1;
+                                                                          QUERY PLAN
+--------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Append
+   ->  Seq Scan on mc3p0
+         Remote Filter: (((a = 1) AND (abs(b) = 1) AND (c = 1)) OR ((a = 10) AND (abs(b) = 5) AND (c = 10)) OR ((a > 11) AND (a < 20)) OR (a < 1) OR (a = 1))
+   ->  Seq Scan on mc3p1
+         Remote Filter: (((a = 1) AND (abs(b) = 1) AND (c = 1)) OR ((a = 10) AND (abs(b) = 5) AND (c = 10)) OR ((a > 11) AND (a < 20)) OR (a < 1) OR (a = 1))
+   ->  Seq Scan on mc3p2
+         Remote Filter: (((a = 1) AND (abs(b) = 1) AND (c = 1)) OR ((a = 10) AND (abs(b) = 5) AND (c = 10)) OR ((a > 11) AND (a < 20)) OR (a < 1) OR (a = 1))
+   ->  Seq Scan on mc3p5
+         Remote Filter: (((a = 1) AND (abs(b) = 1) AND (c = 1)) OR ((a = 10) AND (abs(b) = 5) AND (c = 10)) OR ((a > 11) AND (a < 20)) OR (a < 1) OR (a = 1))
+   ->  Seq Scan on mc3p_default
+         Remote Filter: (((a = 1) AND (abs(b) = 1) AND (c = 1)) OR ((a = 10) AND (abs(b) = 5) AND (c = 10)) OR ((a > 11) AND (a < 20)) OR (a < 1) OR (a = 1))
+(11 rows)
+
+explain (costs off) select * from mc3p where a = 1 or abs(b) = 1 or c = 1;
+                         QUERY PLAN
+-------------------------------------------------------------
+ Append
+   ->  Seq Scan on mc3p0
+         Remote Filter: ((a = 1) OR (abs(b) = 1) OR (c = 1))
+   ->  Seq Scan on mc3p1
+         Remote Filter: ((a = 1) OR (abs(b) = 1) OR (c = 1))
+   ->  Seq Scan on mc3p2
+         Remote Filter: ((a = 1) OR (abs(b) = 1) OR (c = 1))
+   ->  Seq Scan on mc3p3
+         Remote Filter: ((a = 1) OR (abs(b) = 1) OR (c = 1))
+   ->  Seq Scan on mc3p4
+         Remote Filter: ((a = 1) OR (abs(b) = 1) OR (c = 1))
+   ->  Seq Scan on mc3p5
+         Remote Filter: ((a = 1) OR (abs(b) = 1) OR (c = 1))
+   ->  Seq Scan on mc3p6
+         Remote Filter: ((a = 1) OR (abs(b) = 1) OR (c = 1))
+   ->  Seq Scan on mc3p7
+         Remote Filter: ((a = 1) OR (abs(b) = 1) OR (c = 1))
+   ->  Seq Scan on mc3p_default
+         Remote Filter: ((a = 1) OR (abs(b) = 1) OR (c = 1))
 (19 rows)
 
 explain (costs off) select * from mc3p where (a = 1 and abs(b) = 1) or (a = 10 and abs(b) = 10);
-                                  QUERY PLAN
-------------------------------------------------------------------------------
+                                     QUERY PLAN
+-------------------------------------------------------------------------------------
  Append
    ->  Seq Scan on mc3p0
-         Filter: (((a = 1) AND (abs(b) = 1)) OR ((a = 10) AND (abs(b) = 10)))
+         Remote Filter: (((a = 1) AND (abs(b) = 1)) OR ((a = 10) AND (abs(b) = 10)))
    ->  Seq Scan on mc3p1
-         Filter: (((a = 1) AND (abs(b) = 1)) OR ((a = 10) AND (abs(b) = 10)))
+         Remote Filter: (((a = 1) AND (abs(b) = 1)) OR ((a = 10) AND (abs(b) = 10)))
    ->  Seq Scan on mc3p2
-         Filter: (((a = 1) AND (abs(b) = 1)) OR ((a = 10) AND (abs(b) = 10)))
+         Remote Filter: (((a = 1) AND (abs(b) = 1)) OR ((a = 10) AND (abs(b) = 10)))
    ->  Seq Scan on mc3p3
-         Filter: (((a = 1) AND (abs(b) = 1)) OR ((a = 10) AND (abs(b) = 10)))
+         Remote Filter: (((a = 1) AND (abs(b) = 1)) OR ((a = 10) AND (abs(b) = 10)))
    ->  Seq Scan on mc3p4
-         Filter: (((a = 1) AND (abs(b) = 1)) OR ((a = 10) AND (abs(b) = 10)))
+         Remote Filter: (((a = 1) AND (abs(b) = 1)) OR ((a = 10) AND (abs(b) = 10)))
    ->  Seq Scan on mc3p_default
-         Filter: (((a = 1) AND (abs(b) = 1)) OR ((a = 10) AND (abs(b) = 10)))
+         Remote Filter: (((a = 1) AND (abs(b) = 1)) OR ((a = 10) AND (abs(b) = 10)))
 (13 rows)
 
 explain (costs off) select * from mc3p where (a = 1 and abs(b) = 1) or (a = 10 and abs(b) = 9);
-                                 QUERY PLAN
------------------------------------------------------------------------------
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
  Append
    ->  Seq Scan on mc3p0
-         Filter: (((a = 1) AND (abs(b) = 1)) OR ((a = 10) AND (abs(b) = 9)))
+         Remote Filter: (((a = 1) AND (abs(b) = 1)) OR ((a = 10) AND (abs(b) = 9)))
    ->  Seq Scan on mc3p1
-         Filter: (((a = 1) AND (abs(b) = 1)) OR ((a = 10) AND (abs(b) = 9)))
+         Remote Filter: (((a = 1) AND (abs(b) = 1)) OR ((a = 10) AND (abs(b) = 9)))
    ->  Seq Scan on mc3p2
-         Filter: (((a = 1) AND (abs(b) = 1)) OR ((a = 10) AND (abs(b) = 9)))
+         Remote Filter: (((a = 1) AND (abs(b) = 1)) OR ((a = 10) AND (abs(b) = 9)))
    ->  Seq Scan on mc3p_default
-         Filter: (((a = 1) AND (abs(b) = 1)) OR ((a = 10) AND (abs(b) = 9)))
+         Remote Filter: (((a = 1) AND (abs(b) = 1)) OR ((a = 10) AND (abs(b) = 9)))
 (9 rows)
 
 -- a simpler multi-column keys case
@@ -953,21 +958,21 @@ explain (costs off) select * from mc2p where a < 2;
 --------------------------------
  Append
    ->  Seq Scan on mc2p0
-         Filter: (a < 2)
+         Remote Filter: (a < 2)
    ->  Seq Scan on mc2p1
-         Filter: (a < 2)
+         Remote Filter: (a < 2)
    ->  Seq Scan on mc2p2
-         Filter: (a < 2)
+         Remote Filter: (a < 2)
    ->  Seq Scan on mc2p_default
-         Filter: (a < 2)
+         Remote Filter: (a < 2)
 (9 rows)
 
 explain (costs off) select * from mc2p where a = 2 and b < 1;
-              QUERY PLAN
----------------------------------------
+                  QUERY PLAN
+----------------------------------------------
  Append
    ->  Seq Scan on mc2p3
-         Filter: ((b < 1) AND (a = 2))
+         Remote Filter: ((b < 1) AND (a = 2))
 (3 rows)
 
 explain (costs off) select * from mc2p where a > 1;
@@ -975,64 +980,64 @@ explain (costs off) select * from mc2p where a > 1;
 --------------------------------
  Append
    ->  Seq Scan on mc2p2
-         Filter: (a > 1)
+         Remote Filter: (a > 1)
    ->  Seq Scan on mc2p3
-         Filter: (a > 1)
+         Remote Filter: (a > 1)
    ->  Seq Scan on mc2p4
-         Filter: (a > 1)
+         Remote Filter: (a > 1)
    ->  Seq Scan on mc2p5
-         Filter: (a > 1)
+         Remote Filter: (a > 1)
    ->  Seq Scan on mc2p_default
-         Filter: (a > 1)
+         Remote Filter: (a > 1)
 (11 rows)
 
 explain (costs off) select * from mc2p where a = 1 and b > 1;
-              QUERY PLAN
----------------------------------------
+                  QUERY PLAN
+----------------------------------------------
  Append
    ->  Seq Scan on mc2p2
-         Filter: ((b > 1) AND (a = 1))
+         Remote Filter: ((b > 1) AND (a = 1))
 (3 rows)
 
 -- all partitions but the default one should be pruned
 explain (costs off) select * from mc2p where a = 1 and b is null;
-                QUERY PLAN
--------------------------------------------
+                    QUERY PLAN
+--------------------------------------------------
  Append
    ->  Seq Scan on mc2p_default
-         Filter: ((b IS NULL) AND (a = 1))
+         Remote Filter: ((b IS NULL) AND (a = 1))
 (3 rows)
 
 explain (costs off) select * from mc2p where a is null and b is null;
-                  QUERY PLAN
------------------------------------------------
+                      QUERY PLAN
+------------------------------------------------------
  Append
    ->  Seq Scan on mc2p_default
-         Filter: ((a IS NULL) AND (b IS NULL))
+         Remote Filter: ((a IS NULL) AND (b IS NULL))
 (3 rows)
 
 explain (costs off) select * from mc2p where a is null and b = 1;
-                QUERY PLAN
--------------------------------------------
+                    QUERY PLAN
+--------------------------------------------------
  Append
    ->  Seq Scan on mc2p_default
-         Filter: ((a IS NULL) AND (b = 1))
+         Remote Filter: ((a IS NULL) AND (b = 1))
 (3 rows)
 
 explain (costs off) select * from mc2p where a is null;
-           QUERY PLAN
---------------------------------
+             QUERY PLAN
+------------------------------------
  Append
    ->  Seq Scan on mc2p_default
-         Filter: (a IS NULL)
+         Remote Filter: (a IS NULL)
 (3 rows)
 
 explain (costs off) select * from mc2p where b is null;
-           QUERY PLAN
---------------------------------
+             QUERY PLAN
+------------------------------------
  Append
    ->  Seq Scan on mc2p_default
-         Filter: (b IS NULL)
+         Remote Filter: (b IS NULL)
 (3 rows)
 
 -- boolean partitioning
@@ -1159,7 +1164,7 @@ EXPLAIN (COSTS OFF) SELECT tableoid::regclass as part, a, b FROM part WHERE a IS
    Sort Key: ((part_p2_p1.tableoid)::regclass), part_p2_p1.a, part_p2_p1.b
    ->  Append
          ->  Seq Scan on part_p2_p1
-               Filter: (a IS NULL)
+               Remote Filter: (a IS NULL)
 (5 rows)
 
 --
@@ -1170,77 +1175,77 @@ EXPLAIN (COSTS OFF) SELECT tableoid::regclass as part, a, b FROM part WHERE a IS
 --
 -- pruning won't work for mc3p, because some keys are Params
 explain (costs off) select * from mc2p t1, lateral (select count(*) from mc3p t2 where t2.a = t1.b and abs(t2.b) = 1 and t2.c = 1) s where t1.a = 1;
-                              QUERY PLAN
------------------------------------------------------------------------
+                                  QUERY PLAN
+------------------------------------------------------------------------------
  Nested Loop
    ->  Append
          ->  Seq Scan on mc2p1 t1
-               Filter: (a = 1)
+               Remote Filter: (a = 1)
          ->  Seq Scan on mc2p2 t1_1
-               Filter: (a = 1)
+               Remote Filter: (a = 1)
          ->  Seq Scan on mc2p_default t1_2
-               Filter: (a = 1)
+               Remote Filter: (a = 1)
    ->  Aggregate
          ->  Append
                ->  Seq Scan on mc3p0 t2
-                     Filter: ((a = t1.b) AND (c = 1) AND (abs(b) = 1))
+                     Remote Filter: ((a = t1.b) AND (c = 1) AND (abs(b) = 1))
                ->  Seq Scan on mc3p1 t2_1
-                     Filter: ((a = t1.b) AND (c = 1) AND (abs(b) = 1))
+                     Remote Filter: ((a = t1.b) AND (c = 1) AND (abs(b) = 1))
                ->  Seq Scan on mc3p2 t2_2
-                     Filter: ((a = t1.b) AND (c = 1) AND (abs(b) = 1))
+                     Remote Filter: ((a = t1.b) AND (c = 1) AND (abs(b) = 1))
                ->  Seq Scan on mc3p3 t2_3
-                     Filter: ((a = t1.b) AND (c = 1) AND (abs(b) = 1))
+                     Remote Filter: ((a = t1.b) AND (c = 1) AND (abs(b) = 1))
                ->  Seq Scan on mc3p4 t2_4
-                     Filter: ((a = t1.b) AND (c = 1) AND (abs(b) = 1))
+                     Remote Filter: ((a = t1.b) AND (c = 1) AND (abs(b) = 1))
                ->  Seq Scan on mc3p5 t2_5
-                     Filter: ((a = t1.b) AND (c = 1) AND (abs(b) = 1))
+                     Remote Filter: ((a = t1.b) AND (c = 1) AND (abs(b) = 1))
                ->  Seq Scan on mc3p6 t2_6
-                     Filter: ((a = t1.b) AND (c = 1) AND (abs(b) = 1))
+                     Remote Filter: ((a = t1.b) AND (c = 1) AND (abs(b) = 1))
                ->  Seq Scan on mc3p7 t2_7
-                     Filter: ((a = t1.b) AND (c = 1) AND (abs(b) = 1))
+                     Remote Filter: ((a = t1.b) AND (c = 1) AND (abs(b) = 1))
                ->  Seq Scan on mc3p_default t2_8
-                     Filter: ((a = t1.b) AND (c = 1) AND (abs(b) = 1))
+                     Remote Filter: ((a = t1.b) AND (c = 1) AND (abs(b) = 1))
 (28 rows)
 
 -- pruning should work fine, because values for a prefix of keys (a, b) are
 -- available
 explain (costs off) select * from mc2p t1, lateral (select count(*) from mc3p t2 where t2.c = t1.b and abs(t2.b) = 1 and t2.a = 1) s where t1.a = 1;
-                              QUERY PLAN
------------------------------------------------------------------------
+                                  QUERY PLAN
+------------------------------------------------------------------------------
  Nested Loop
    ->  Append
          ->  Seq Scan on mc2p1 t1
-               Filter: (a = 1)
+               Remote Filter: (a = 1)
          ->  Seq Scan on mc2p2 t1_1
-               Filter: (a = 1)
+               Remote Filter: (a = 1)
          ->  Seq Scan on mc2p_default t1_2
-               Filter: (a = 1)
+               Remote Filter: (a = 1)
    ->  Aggregate
          ->  Append
                ->  Seq Scan on mc3p0 t2
-                     Filter: ((c = t1.b) AND (a = 1) AND (abs(b) = 1))
+                     Remote Filter: ((c = t1.b) AND (a = 1) AND (abs(b) = 1))
                ->  Seq Scan on mc3p1 t2_1
-                     Filter: ((c = t1.b) AND (a = 1) AND (abs(b) = 1))
+                     Remote Filter: ((c = t1.b) AND (a = 1) AND (abs(b) = 1))
                ->  Seq Scan on mc3p_default t2_2
-                     Filter: ((c = t1.b) AND (a = 1) AND (abs(b) = 1))
+                     Remote Filter: ((c = t1.b) AND (a = 1) AND (abs(b) = 1))
 (16 rows)
 
 -- also here, because values for all keys are provided
 explain (costs off) select * from mc2p t1, lateral (select count(*) from mc3p t2 where t2.a = 1 and abs(t2.b) = 1 and t2.c = 1) s where t1.a = 1;
-                             QUERY PLAN
---------------------------------------------------------------------
+                                QUERY PLAN
+---------------------------------------------------------------------------
  Nested Loop
    ->  Aggregate
          ->  Append
                ->  Seq Scan on mc3p1 t2
-                     Filter: ((a = 1) AND (c = 1) AND (abs(b) = 1))
+                     Remote Filter: ((a = 1) AND (c = 1) AND (abs(b) = 1))
    ->  Append
          ->  Seq Scan on mc2p1 t1
-               Filter: (a = 1)
+               Remote Filter: (a = 1)
          ->  Seq Scan on mc2p2 t1_1
-               Filter: (a = 1)
+               Remote Filter: (a = 1)
          ->  Seq Scan on mc2p_default t1_2
-               Filter: (a = 1)
+               Remote Filter: (a = 1)
 (12 rows)
 
 --
@@ -1252,44 +1257,44 @@ create table rp0 partition of rp for values from (minvalue) to (1);
 create table rp1 partition of rp for values from (1) to (2);
 create table rp2 partition of rp for values from (2) to (maxvalue);
 explain (costs off) select * from rp where a <> 1;
-        QUERY PLAN
---------------------------
+           QUERY PLAN
+---------------------------------
  Append
    ->  Seq Scan on rp0
-         Filter: (a <> 1)
+         Remote Filter: (a <> 1)
    ->  Seq Scan on rp1
-         Filter: (a <> 1)
+         Remote Filter: (a <> 1)
    ->  Seq Scan on rp2
-         Filter: (a <> 1)
+         Remote Filter: (a <> 1)
 (7 rows)
 
 explain (costs off) select * from rp where a <> 1 and a <> 2;
-               QUERY PLAN
------------------------------------------
+                   QUERY PLAN
+------------------------------------------------
  Append
    ->  Seq Scan on rp0
-         Filter: ((a <> 1) AND (a <> 2))
+         Remote Filter: ((a <> 1) AND (a <> 2))
    ->  Seq Scan on rp1
-         Filter: ((a <> 1) AND (a <> 2))
+         Remote Filter: ((a <> 1) AND (a <> 2))
    ->  Seq Scan on rp2
-         Filter: ((a <> 1) AND (a <> 2))
+         Remote Filter: ((a <> 1) AND (a <> 2))
 (7 rows)
 
 -- null partition should be eliminated due to strict <> clause.
 explain (costs off) select * from lp where a <> 'a';
-             QUERY PLAN
-------------------------------------
+                QUERY PLAN
+-------------------------------------------
  Append
    ->  Seq Scan on lp_ad
-         Filter: (a <> 'a'::bpchar)
+         Remote Filter: (a <> 'a'::bpchar)
    ->  Seq Scan on lp_bc
-         Filter: (a <> 'a'::bpchar)
+         Remote Filter: (a <> 'a'::bpchar)
    ->  Seq Scan on lp_ef
-         Filter: (a <> 'a'::bpchar)
+         Remote Filter: (a <> 'a'::bpchar)
    ->  Seq Scan on lp_g
-         Filter: (a <> 'a'::bpchar)
+         Remote Filter: (a <> 'a'::bpchar)
    ->  Seq Scan on lp_default
-         Filter: (a <> 'a'::bpchar)
+         Remote Filter: (a <> 'a'::bpchar)
 (11 rows)
 
 -- ensure we detect contradictions in clauses; a can't be NULL and NOT NULL.
@@ -1301,32 +1306,32 @@ explain (costs off) select * from lp where a <> 'a' and a is null;
 (2 rows)
 
 explain (costs off) select * from lp where (a <> 'a' and a <> 'd') or a is null;
-                                  QUERY PLAN
-------------------------------------------------------------------------------
+                                     QUERY PLAN
+-------------------------------------------------------------------------------------
  Append
    ->  Seq Scan on lp_bc
-         Filter: (((a <> 'a'::bpchar) AND (a <> 'd'::bpchar)) OR (a IS NULL))
+         Remote Filter: (((a <> 'a'::bpchar) AND (a <> 'd'::bpchar)) OR (a IS NULL))
    ->  Seq Scan on lp_ef
-         Filter: (((a <> 'a'::bpchar) AND (a <> 'd'::bpchar)) OR (a IS NULL))
+         Remote Filter: (((a <> 'a'::bpchar) AND (a <> 'd'::bpchar)) OR (a IS NULL))
    ->  Seq Scan on lp_g
-         Filter: (((a <> 'a'::bpchar) AND (a <> 'd'::bpchar)) OR (a IS NULL))
+         Remote Filter: (((a <> 'a'::bpchar) AND (a <> 'd'::bpchar)) OR (a IS NULL))
    ->  Seq Scan on lp_null
-         Filter: (((a <> 'a'::bpchar) AND (a <> 'd'::bpchar)) OR (a IS NULL))
+         Remote Filter: (((a <> 'a'::bpchar) AND (a <> 'd'::bpchar)) OR (a IS NULL))
    ->  Seq Scan on lp_default
-         Filter: (((a <> 'a'::bpchar) AND (a <> 'd'::bpchar)) OR (a IS NULL))
+         Remote Filter: (((a <> 'a'::bpchar) AND (a <> 'd'::bpchar)) OR (a IS NULL))
 (11 rows)
 
 -- check that it also works for a partitioned table that's not root,
 -- which in this case are partitions of rlp that are themselves
 -- list-partitioned on b
 explain (costs off) select * from rlp where a = 15 and b <> 'ab' and b <> 'cd' and b <> 'xy' and b is not null;
-                                                                QUERY PLAN
-------------------------------------------------------------------------------------------------------------------------------------------
+                                                                   QUERY PLAN
+-------------------------------------------------------------------------------------------------------------------------------------------------
  Append
    ->  Seq Scan on rlp3efgh
-         Filter: ((b IS NOT NULL) AND ((b)::text <> 'ab'::text) AND ((b)::text <> 'cd'::text) AND ((b)::text <> 'xy'::text) AND (a = 15))
+         Remote Filter: ((b IS NOT NULL) AND ((b)::text <> 'ab'::text) AND ((b)::text <> 'cd'::text) AND ((b)::text <> 'xy'::text) AND (a = 15))
    ->  Seq Scan on rlp3_default
-         Filter: ((b IS NOT NULL) AND ((b)::text <> 'ab'::text) AND ((b)::text <> 'cd'::text) AND ((b)::text <> 'xy'::text) AND (a = 15))
+         Remote Filter: ((b IS NOT NULL) AND ((b)::text <> 'ab'::text) AND ((b)::text <> 'cd'::text) AND ((b)::text <> 'xy'::text) AND (a = 15))
 (5 rows)
 
 --
@@ -1338,35 +1343,35 @@ create table coll_pruning_multi2 partition of coll_pruning_multi for values from
 create table coll_pruning_multi3 partition of coll_pruning_multi for values from ('b', 'a') to ('b', 'e');
 -- no pruning, because no value for the leading key
 explain (costs off) select * from coll_pruning_multi where substr(a, 1) = 'e' collate "C";
-                       QUERY PLAN
---------------------------------------------------------
+                          QUERY PLAN
+---------------------------------------------------------------
  Append
    ->  Seq Scan on coll_pruning_multi1
-         Filter: (substr(a, 1) = 'e'::text COLLATE "C")
+         Remote Filter: (substr(a, 1) = 'e'::text COLLATE "C")
    ->  Seq Scan on coll_pruning_multi2
-         Filter: (substr(a, 1) = 'e'::text COLLATE "C")
+         Remote Filter: (substr(a, 1) = 'e'::text COLLATE "C")
    ->  Seq Scan on coll_pruning_multi3
-         Filter: (substr(a, 1) = 'e'::text COLLATE "C")
+         Remote Filter: (substr(a, 1) = 'e'::text COLLATE "C")
 (7 rows)
 
 -- pruning, with a value provided for the leading key
 explain (costs off) select * from coll_pruning_multi where substr(a, 1) = 'a' collate "POSIX";
-                         QUERY PLAN
-------------------------------------------------------------
+                            QUERY PLAN
+-------------------------------------------------------------------
  Append
    ->  Seq Scan on coll_pruning_multi1
-         Filter: (substr(a, 1) = 'a'::text COLLATE "POSIX")
+         Remote Filter: (substr(a, 1) = 'a'::text COLLATE "POSIX")
    ->  Seq Scan on coll_pruning_multi2
-         Filter: (substr(a, 1) = 'a'::text COLLATE "POSIX")
+         Remote Filter: (substr(a, 1) = 'a'::text COLLATE "POSIX")
 (5 rows)
 
 -- pruning, with values provided for both keys
 explain (costs off) select * from coll_pruning_multi where substr(a, 1) = 'e' collate "C" and substr(a, 1) = 'a' collate "POSIX";
-                                               QUERY PLAN
----------------------------------------------------------------------------------------------------------
+                                                   QUERY PLAN
+----------------------------------------------------------------------------------------------------------------
  Append
    ->  Seq Scan on coll_pruning_multi2
-         Filter: ((substr(a, 1) = 'e'::text COLLATE "C") AND (substr(a, 1) = 'a'::text COLLATE "POSIX"))
+         Remote Filter: ((substr(a, 1) = 'e'::text COLLATE "C") AND (substr(a, 1) = 'a'::text COLLATE "POSIX"))
 (3 rows)
 
 --
@@ -1376,13 +1381,13 @@ create table like_op_noprune (a text) partition by list (a);
 create table like_op_noprune1 partition of like_op_noprune for values in ('ABC');
 create table like_op_noprune2 partition of like_op_noprune for values in ('BCD');
 explain (costs off) select * from like_op_noprune where a like '%BC';
-             QUERY PLAN
-------------------------------------
+                QUERY PLAN
+-------------------------------------------
  Append
    ->  Seq Scan on like_op_noprune1
-         Filter: (a ~~ '%BC'::text)
+         Remote Filter: (a ~~ '%BC'::text)
    ->  Seq Scan on like_op_noprune2
-         Filter: (a ~~ '%BC'::text)
+         Remote Filter: (a ~~ '%BC'::text)
 (5 rows)
 
 --
@@ -1412,11 +1417,11 @@ explain (costs off) select * from rparted_by_int2 where a > 100000000000000;
 create table rparted_by_int2_maxvalue partition of rparted_by_int2 for values from (16384) to (maxvalue);
 -- all partitions but rparted_by_int2_maxvalue pruned
 explain (costs off) select * from rparted_by_int2 where a > 100000000000000;
-                   QUERY PLAN
--------------------------------------------------
+                       QUERY PLAN
+--------------------------------------------------------
  Append
    ->  Seq Scan on rparted_by_int2_maxvalue
-         Filter: (a > '100000000000000'::bigint)
+         Remote Filter: (a > '100000000000000'::bigint)
 (3 rows)
 
 drop table lp, rlp, mc3p, mc2p, boolpart, rp, like_op_noprune, lparted_by_int2, rparted_by_int2;
@@ -1469,163 +1474,163 @@ select tableoid::regclass, * from hp order by 1,2;
 
 -- partial keys won't prune, nor would non-equality conditions
 explain (costs off) select * from hp where a = 1;
-       QUERY PLAN
--------------------------
+           QUERY PLAN
+--------------------------------
  Append
    ->  Seq Scan on hp0
-         Filter: (a = 1)
+         Remote Filter: (a = 1)
    ->  Seq Scan on hp1
-         Filter: (a = 1)
+         Remote Filter: (a = 1)
    ->  Seq Scan on hp2
-         Filter: (a = 1)
+         Remote Filter: (a = 1)
    ->  Seq Scan on hp3
-         Filter: (a = 1)
+         Remote Filter: (a = 1)
 (9 rows)
 
 explain (costs off) select * from hp where b = 'xxx';
-            QUERY PLAN
------------------------------------
+                QUERY PLAN
+------------------------------------------
  Append
    ->  Seq Scan on hp0
-         Filter: (b = 'xxx'::text)
+         Remote Filter: (b = 'xxx'::text)
    ->  Seq Scan on hp1
-         Filter: (b = 'xxx'::text)
+         Remote Filter: (b = 'xxx'::text)
    ->  Seq Scan on hp2
-         Filter: (b = 'xxx'::text)
+         Remote Filter: (b = 'xxx'::text)
    ->  Seq Scan on hp3
-         Filter: (b = 'xxx'::text)
+         Remote Filter: (b = 'xxx'::text)
 (9 rows)
 
 explain (costs off) select * from hp where a is null;
-         QUERY PLAN
------------------------------
+             QUERY PLAN
+------------------------------------
  Append
    ->  Seq Scan on hp0
-         Filter: (a IS NULL)
+         Remote Filter: (a IS NULL)
    ->  Seq Scan on hp1
-         Filter: (a IS NULL)
+         Remote Filter: (a IS NULL)
    ->  Seq Scan on hp2
-         Filter: (a IS NULL)
+         Remote Filter: (a IS NULL)
    ->  Seq Scan on hp3
-         Filter: (a IS NULL)
+         Remote Filter: (a IS NULL)
 (9 rows)
 
 explain (costs off) select * from hp where b is null;
-         QUERY PLAN
------------------------------
+             QUERY PLAN
+------------------------------------
  Append
    ->  Seq Scan on hp0
-         Filter: (b IS NULL)
+         Remote Filter: (b IS NULL)
    ->  Seq Scan on hp1
-         Filter: (b IS NULL)
+         Remote Filter: (b IS NULL)
    ->  Seq Scan on hp2
-         Filter: (b IS NULL)
+         Remote Filter: (b IS NULL)
    ->  Seq Scan on hp3
-         Filter: (b IS NULL)
+         Remote Filter: (b IS NULL)
 (9 rows)
 
 explain (costs off) select * from hp where a < 1 and b = 'xxx';
-                   QUERY PLAN
--------------------------------------------------
+                       QUERY PLAN
+--------------------------------------------------------
  Append
    ->  Seq Scan on hp0
-         Filter: ((a < 1) AND (b = 'xxx'::text))
+         Remote Filter: ((a < 1) AND (b = 'xxx'::text))
    ->  Seq Scan on hp1
-         Filter: ((a < 1) AND (b = 'xxx'::text))
+         Remote Filter: ((a < 1) AND (b = 'xxx'::text))
    ->  Seq Scan on hp2
-         Filter: ((a < 1) AND (b = 'xxx'::text))
+         Remote Filter: ((a < 1) AND (b = 'xxx'::text))
    ->  Seq Scan on hp3
-         Filter: ((a < 1) AND (b = 'xxx'::text))
+         Remote Filter: ((a < 1) AND (b = 'xxx'::text))
 (9 rows)
 
 explain (costs off) select * from hp where a <> 1 and b = 'yyy';
-                    QUERY PLAN
---------------------------------------------------
+                       QUERY PLAN
+---------------------------------------------------------
  Append
    ->  Seq Scan on hp0
-         Filter: ((a <> 1) AND (b = 'yyy'::text))
+         Remote Filter: ((a <> 1) AND (b = 'yyy'::text))
    ->  Seq Scan on hp1
-         Filter: ((a <> 1) AND (b = 'yyy'::text))
+         Remote Filter: ((a <> 1) AND (b = 'yyy'::text))
    ->  Seq Scan on hp2
-         Filter: ((a <> 1) AND (b = 'yyy'::text))
+         Remote Filter: ((a <> 1) AND (b = 'yyy'::text))
    ->  Seq Scan on hp3
-         Filter: ((a <> 1) AND (b = 'yyy'::text))
+         Remote Filter: ((a <> 1) AND (b = 'yyy'::text))
 (9 rows)
 
 explain (costs off) select * from hp where a <> 1 and b <> 'xxx';
-                    QUERY PLAN
----------------------------------------------------
+                        QUERY PLAN
+----------------------------------------------------------
  Append
    ->  Seq Scan on hp0
-         Filter: ((a <> 1) AND (b <> 'xxx'::text))
+         Remote Filter: ((a <> 1) AND (b <> 'xxx'::text))
    ->  Seq Scan on hp1
-         Filter: ((a <> 1) AND (b <> 'xxx'::text))
+         Remote Filter: ((a <> 1) AND (b <> 'xxx'::text))
    ->  Seq Scan on hp2
-         Filter: ((a <> 1) AND (b <> 'xxx'::text))
+         Remote Filter: ((a <> 1) AND (b <> 'xxx'::text))
    ->  Seq Scan on hp3
-         Filter: ((a <> 1) AND (b <> 'xxx'::text))
+         Remote Filter: ((a <> 1) AND (b <> 'xxx'::text))
 (9 rows)
 
 -- pruning should work if either a value or a IS NULL clause is provided for
 -- each of the keys
 explain (costs off) select * from hp where a is null and b is null;
-                  QUERY PLAN
------------------------------------------------
+                      QUERY PLAN
+------------------------------------------------------
  Append
    ->  Seq Scan on hp0
-         Filter: ((a IS NULL) AND (b IS NULL))
+         Remote Filter: ((a IS NULL) AND (b IS NULL))
 (3 rows)
 
 explain (costs off) select * from hp where a = 1 and b is null;
-                QUERY PLAN
--------------------------------------------
+                    QUERY PLAN
+--------------------------------------------------
  Append
    ->  Seq Scan on hp1
-         Filter: ((b IS NULL) AND (a = 1))
+         Remote Filter: ((b IS NULL) AND (a = 1))
 (3 rows)
 
 explain (costs off) select * from hp where a = 1 and b = 'xxx';
-                   QUERY PLAN
--------------------------------------------------
+                       QUERY PLAN
+--------------------------------------------------------
  Append
    ->  Seq Scan on hp0
-         Filter: ((a = 1) AND (b = 'xxx'::text))
+         Remote Filter: ((a = 1) AND (b = 'xxx'::text))
 (3 rows)
 
 explain (costs off) select * from hp where a is null and b = 'xxx';
-                     QUERY PLAN
------------------------------------------------------
+                         QUERY PLAN
+------------------------------------------------------------
  Append
    ->  Seq Scan on hp2
-         Filter: ((a IS NULL) AND (b = 'xxx'::text))
+         Remote Filter: ((a IS NULL) AND (b = 'xxx'::text))
 (3 rows)
 
 explain (costs off) select * from hp where a = 2 and b = 'xxx';
-                   QUERY PLAN
--------------------------------------------------
+                       QUERY PLAN
+--------------------------------------------------------
  Append
    ->  Seq Scan on hp3
-         Filter: ((a = 2) AND (b = 'xxx'::text))
+         Remote Filter: ((a = 2) AND (b = 'xxx'::text))
 (3 rows)
 
 explain (costs off) select * from hp where a = 1 and b = 'abcde';
-                    QUERY PLAN
----------------------------------------------------
+                        QUERY PLAN
+----------------------------------------------------------
  Append
    ->  Seq Scan on hp2
-         Filter: ((a = 1) AND (b = 'abcde'::text))
+         Remote Filter: ((a = 1) AND (b = 'abcde'::text))
 (3 rows)
 
 explain (costs off) select * from hp where (a = 1 and b = 'abcde') or (a = 2 and b = 'xxx') or (a is null and b is null);
-                                                       QUERY PLAN
--------------------------------------------------------------------------------------------------------------------------
+                                                           QUERY PLAN
+--------------------------------------------------------------------------------------------------------------------------------
  Append
    ->  Seq Scan on hp0
-         Filter: (((a = 1) AND (b = 'abcde'::text)) OR ((a = 2) AND (b = 'xxx'::text)) OR ((a IS NULL) AND (b IS NULL)))
+         Remote Filter: (((a = 1) AND (b = 'abcde'::text)) OR ((a = 2) AND (b = 'xxx'::text)) OR ((a IS NULL) AND (b IS NULL)))
    ->  Seq Scan on hp2
-         Filter: (((a = 1) AND (b = 'abcde'::text)) OR ((a = 2) AND (b = 'xxx'::text)) OR ((a IS NULL) AND (b IS NULL)))
+         Remote Filter: (((a = 1) AND (b = 'abcde'::text)) OR ((a = 2) AND (b = 'xxx'::text)) OR ((a IS NULL) AND (b IS NULL)))
    ->  Seq Scan on hp3
-         Filter: (((a = 1) AND (b = 'abcde'::text)) OR ((a = 2) AND (b = 'xxx'::text)) OR ((a IS NULL) AND (b IS NULL)))
+         Remote Filter: (((a = 1) AND (b = 'abcde'::text)) OR ((a = 2) AND (b = 'xxx'::text)) OR ((a IS NULL) AND (b IS NULL)))
 (7 rows)
 
 drop table hp;
@@ -1679,35 +1684,35 @@ execute ab_q1 (1, 8, 3);
 (0 rows)
 
 explain (analyze, costs off, summary off, timing off) execute ab_q1 (2, 2, 3);
-                       QUERY PLAN
----------------------------------------------------------
+                           QUERY PLAN
+----------------------------------------------------------------
  Append (actual rows=0 loops=1)
    Subplans Removed: 6
    ->  Seq Scan on ab_a2_b1 (actual rows=0 loops=1)
-         Filter: ((a >= $1) AND (a <= $2) AND (b <= $3))
+         Remote Filter: ((a >= $1) AND (a <= $2) AND (b <= $3))
    ->  Seq Scan on ab_a2_b2 (actual rows=0 loops=1)
-         Filter: ((a >= $1) AND (a <= $2) AND (b <= $3))
+         Remote Filter: ((a >= $1) AND (a <= $2) AND (b <= $3))
    ->  Seq Scan on ab_a2_b3 (actual rows=0 loops=1)
-         Filter: ((a >= $1) AND (a <= $2) AND (b <= $3))
+         Remote Filter: ((a >= $1) AND (a <= $2) AND (b <= $3))
 (8 rows)
 
 explain (analyze, costs off, summary off, timing off) execute ab_q1 (1, 2, 3);
-                       QUERY PLAN
----------------------------------------------------------
+                           QUERY PLAN
+----------------------------------------------------------------
  Append (actual rows=0 loops=1)
    Subplans Removed: 3
    ->  Seq Scan on ab_a1_b1 (actual rows=0 loops=1)
-         Filter: ((a >= $1) AND (a <= $2) AND (b <= $3))
+         Remote Filter: ((a >= $1) AND (a <= $2) AND (b <= $3))
    ->  Seq Scan on ab_a1_b2 (actual rows=0 loops=1)
-         Filter: ((a >= $1) AND (a <= $2) AND (b <= $3))
+         Remote Filter: ((a >= $1) AND (a <= $2) AND (b <= $3))
    ->  Seq Scan on ab_a1_b3 (actual rows=0 loops=1)
-         Filter: ((a >= $1) AND (a <= $2) AND (b <= $3))
+         Remote Filter: ((a >= $1) AND (a <= $2) AND (b <= $3))
    ->  Seq Scan on ab_a2_b1 (actual rows=0 loops=1)
-         Filter: ((a >= $1) AND (a <= $2) AND (b <= $3))
+         Remote Filter: ((a >= $1) AND (a <= $2) AND (b <= $3))
    ->  Seq Scan on ab_a2_b2 (actual rows=0 loops=1)
-         Filter: ((a >= $1) AND (a <= $2) AND (b <= $3))
+         Remote Filter: ((a >= $1) AND (a <= $2) AND (b <= $3))
    ->  Seq Scan on ab_a2_b3 (actual rows=0 loops=1)
-         Filter: ((a >= $1) AND (a <= $2) AND (b <= $3))
+         Remote Filter: ((a >= $1) AND (a <= $2) AND (b <= $3))
 (14 rows)
 
 deallocate ab_q1;
@@ -1742,29 +1747,29 @@ execute ab_q1 (1, 8);
 (0 rows)
 
 explain (analyze, costs off, summary off, timing off) execute ab_q1 (2, 2);
-                      QUERY PLAN
--------------------------------------------------------
+                          QUERY PLAN
+--------------------------------------------------------------
  Append (actual rows=0 loops=1)
    Subplans Removed: 4
    ->  Seq Scan on ab_a2_b1 (actual rows=0 loops=1)
-         Filter: ((a >= $1) AND (a <= $2) AND (b < 3))
+         Remote Filter: ((a >= $1) AND (a <= $2) AND (b < 3))
    ->  Seq Scan on ab_a2_b2 (actual rows=0 loops=1)
-         Filter: ((a >= $1) AND (a <= $2) AND (b < 3))
+         Remote Filter: ((a >= $1) AND (a <= $2) AND (b < 3))
 (6 rows)
 
 explain (analyze, costs off, summary off, timing off) execute ab_q1 (2, 4);
-                      QUERY PLAN
--------------------------------------------------------
+                          QUERY PLAN
+--------------------------------------------------------------
  Append (actual rows=0 loops=1)
    Subplans Removed: 2
    ->  Seq Scan on ab_a2_b1 (actual rows=0 loops=1)
-         Filter: ((a >= $1) AND (a <= $2) AND (b < 3))
+         Remote Filter: ((a >= $1) AND (a <= $2) AND (b < 3))
    ->  Seq Scan on ab_a2_b2 (actual rows=0 loops=1)
-         Filter: ((a >= $1) AND (a <= $2) AND (b < 3))
+         Remote Filter: ((a >= $1) AND (a <= $2) AND (b < 3))
    ->  Seq Scan on ab_a3_b1 (actual rows=0 loops=1)
-         Filter: ((a >= $1) AND (a <= $2) AND (b < 3))
+         Remote Filter: ((a >= $1) AND (a <= $2) AND (b < 3))
    ->  Seq Scan on ab_a3_b2 (actual rows=0 loops=1)
-         Filter: ((a >= $1) AND (a <= $2) AND (b < 3))
+         Remote Filter: ((a >= $1) AND (a <= $2) AND (b < 3))
 (10 rows)
 
 -- Ensure a mix of PARAM_EXTERN and PARAM_EXEC Params work together at
@@ -1797,18 +1802,18 @@ execute ab_q2 (1, 8);
 (0 rows)
 
 explain (analyze, costs off, summary off, timing off) execute ab_q2 (2, 2);
-                       QUERY PLAN
---------------------------------------------------------
+                          QUERY PLAN
+---------------------------------------------------------------
  Append (actual rows=0 loops=1)
    InitPlan 1 (returns $0)
      ->  Result (actual rows=1 loops=1)
    Subplans Removed: 6
    ->  Seq Scan on ab_a2_b1 (actual rows=0 loops=1)
-         Filter: ((a >= $1) AND (a <= $2) AND (b < $0))
+         Remote Filter: ((a >= $1) AND (a <= $2) AND (b < $0))
    ->  Seq Scan on ab_a2_b2 (actual rows=0 loops=1)
-         Filter: ((a >= $1) AND (a <= $2) AND (b < $0))
+         Remote Filter: ((a >= $1) AND (a <= $2) AND (b < $0))
    ->  Seq Scan on ab_a2_b3 (never executed)
-         Filter: ((a >= $1) AND (a <= $2) AND (b < $0))
+         Remote Filter: ((a >= $1) AND (a <= $2) AND (b < $0))
 (10 rows)
 
 -- As above, but swap the PARAM_EXEC Param to the first partition level
@@ -1840,18 +1845,18 @@ execute ab_q3 (1, 8);
 (0 rows)
 
 explain (analyze, costs off, summary off, timing off) execute ab_q3 (2, 2);
-                       QUERY PLAN
---------------------------------------------------------
+                          QUERY PLAN
+---------------------------------------------------------------
  Append (actual rows=0 loops=1)
    InitPlan 1 (returns $0)
      ->  Result (actual rows=1 loops=1)
    Subplans Removed: 6
    ->  Seq Scan on ab_a1_b2 (actual rows=0 loops=1)
-         Filter: ((b >= $1) AND (b <= $2) AND (a < $0))
+         Remote Filter: ((b >= $1) AND (b <= $2) AND (a < $0))
    ->  Seq Scan on ab_a2_b2 (actual rows=0 loops=1)
-         Filter: ((b >= $1) AND (b <= $2) AND (a < $0))
+         Remote Filter: ((b >= $1) AND (b <= $2) AND (a < $0))
    ->  Seq Scan on ab_a3_b2 (never executed)
-         Filter: ((b >= $1) AND (b <= $2) AND (a < $0))
+         Remote Filter: ((b >= $1) AND (b <= $2) AND (a < $0))
 (10 rows)
 
 -- Test a backwards Append scan
@@ -2165,24 +2170,47 @@ select * from tbl1 join tprt on tbl1.col1 > tprt.col1;
 */
 explain (analyze, costs off, summary off, timing off)
 select * from tbl1 join tprt on tbl1.col1 = tprt.col1;
-                                QUERY PLAN
---------------------------------------------------------------------------
- Nested Loop (actual rows=2 loops=1)
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ YB Batched Nested Loop Join (actual rows=2 loops=1)
+   Join Filter: (tbl1.col1 = tprt_1.col1)
    ->  Seq Scan on tbl1 (actual rows=2 loops=1)
-   ->  Append (actual rows=1 loops=2)
+   ->  Append (actual rows=2 loops=1)
          ->  Index Scan using tprt1_idx on tprt_1 (never executed)
-               Index Cond: (col1 = tbl1.col1)
-         ->  Index Scan using tprt2_idx on tprt_2 (actual rows=1 loops=2)
-               Index Cond: (col1 = tbl1.col1)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+         ->  Index Scan using tprt2_idx on tprt_2 (actual rows=2 loops=1)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
          ->  Index Scan using tprt3_idx on tprt_3 (never executed)
-               Index Cond: (col1 = tbl1.col1)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
          ->  Index Scan using tprt4_idx on tprt_4 (never executed)
-               Index Cond: (col1 = tbl1.col1)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
          ->  Index Scan using tprt5_idx on tprt_5 (never executed)
-               Index Cond: (col1 = tbl1.col1)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
          ->  Index Scan using tprt6_idx on tprt_6 (never executed)
-               Index Cond: (col1 = tbl1.col1)
-(15 rows)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+(16 rows)
+
+/*+Set(yb_bnl_batch_size 1024)*/ explain (analyze, costs off, summary off, timing off)
+select * from tbl1 join tprt on tbl1.col1 = tprt.col1;
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ YB Batched Nested Loop Join (actual rows=2 loops=1)
+   Join Filter: (tbl1.col1 = tprt_1.col1)
+   ->  Seq Scan on tbl1 (actual rows=2 loops=1)
+   ->  Append (actual rows=2 loops=1)
+         ->  Index Scan using tprt1_idx on tprt_1 (never executed)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+         ->  Index Scan using tprt2_idx on tprt_2 (actual rows=2 loops=1)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+         ->  Index Scan using tprt3_idx on tprt_3 (never executed)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+         ->  Index Scan using tprt4_idx on tprt_4 (never executed)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+         ->  Index Scan using tprt5_idx on tprt_5 (never executed)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+         ->  Index Scan using tprt6_idx on tprt_6 (never executed)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+(16 rows)
 
 select tbl1.col1, tprt.col1 from tbl1
 inner join tprt on tbl1.col1 > tprt.col1
@@ -2214,24 +2242,47 @@ select * from tbl1 inner join tprt on tbl1.col1 > tprt.col1;
 */
 explain (analyze, costs off, summary off, timing off)
 select * from tbl1 inner join tprt on tbl1.col1 = tprt.col1;
-                                QUERY PLAN
---------------------------------------------------------------------------
- Nested Loop (actual rows=3 loops=1)
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ YB Batched Nested Loop Join (actual rows=3 loops=1)
+   Join Filter: (tbl1.col1 = tprt_1.col1)
    ->  Seq Scan on tbl1 (actual rows=5 loops=1)
-   ->  Append (actual rows=1 loops=5)
+   ->  Append (actual rows=3 loops=1)
          ->  Index Scan using tprt1_idx on tprt_1 (never executed)
-               Index Cond: (col1 = tbl1.col1)
-         ->  Index Scan using tprt2_idx on tprt_2 (actual rows=1 loops=2)
-               Index Cond: (col1 = tbl1.col1)
-         ->  Index Scan using tprt3_idx on tprt_3 (actual rows=0 loops=3)
-               Index Cond: (col1 = tbl1.col1)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+         ->  Index Scan using tprt2_idx on tprt_2 (actual rows=2 loops=1)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+         ->  Index Scan using tprt3_idx on tprt_3 (actual rows=1 loops=1)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
          ->  Index Scan using tprt4_idx on tprt_4 (never executed)
-               Index Cond: (col1 = tbl1.col1)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
          ->  Index Scan using tprt5_idx on tprt_5 (never executed)
-               Index Cond: (col1 = tbl1.col1)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
          ->  Index Scan using tprt6_idx on tprt_6 (never executed)
-               Index Cond: (col1 = tbl1.col1)
-(15 rows)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+(16 rows)
+
+/*+Set(yb_bnl_batch_size 1024)*/ explain (analyze, costs off, summary off, timing off)
+select * from tbl1 inner join tprt on tbl1.col1 = tprt.col1;
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ YB Batched Nested Loop Join (actual rows=3 loops=1)
+   Join Filter: (tbl1.col1 = tprt_1.col1)
+   ->  Seq Scan on tbl1 (actual rows=5 loops=1)
+   ->  Append (actual rows=3 loops=1)
+         ->  Index Scan using tprt1_idx on tprt_1 (never executed)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+         ->  Index Scan using tprt2_idx on tprt_2 (actual rows=2 loops=1)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+         ->  Index Scan using tprt3_idx on tprt_3 (actual rows=1 loops=1)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+         ->  Index Scan using tprt4_idx on tprt_4 (never executed)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+         ->  Index Scan using tprt5_idx on tprt_5 (never executed)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+         ->  Index Scan using tprt6_idx on tprt_6 (never executed)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+(16 rows)
 
 select tbl1.col1, tprt.col1 from tbl1
 inner join tprt on tbl1.col1 > tprt.col1
@@ -2293,24 +2344,47 @@ delete from tbl1;
 insert into tbl1 values (10000);
 explain (analyze, costs off, summary off, timing off)
 select * from tbl1 join tprt on tbl1.col1 = tprt.col1;
-                            QUERY PLAN
--------------------------------------------------------------------
- Nested Loop (actual rows=0 loops=1)
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ YB Batched Nested Loop Join (actual rows=0 loops=1)
+   Join Filter: (tbl1.col1 = tprt_1.col1)
    ->  Seq Scan on tbl1 (actual rows=1 loops=1)
    ->  Append (actual rows=0 loops=1)
          ->  Index Scan using tprt1_idx on tprt_1 (never executed)
-               Index Cond: (col1 = tbl1.col1)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
          ->  Index Scan using tprt2_idx on tprt_2 (never executed)
-               Index Cond: (col1 = tbl1.col1)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
          ->  Index Scan using tprt3_idx on tprt_3 (never executed)
-               Index Cond: (col1 = tbl1.col1)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
          ->  Index Scan using tprt4_idx on tprt_4 (never executed)
-               Index Cond: (col1 = tbl1.col1)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
          ->  Index Scan using tprt5_idx on tprt_5 (never executed)
-               Index Cond: (col1 = tbl1.col1)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
          ->  Index Scan using tprt6_idx on tprt_6 (never executed)
-               Index Cond: (col1 = tbl1.col1)
-(15 rows)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+(16 rows)
+
+/*+Set(yb_bnl_batch_size 1024)*/ explain (analyze, costs off, summary off, timing off)
+select * from tbl1 join tprt on tbl1.col1 = tprt.col1;
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ YB Batched Nested Loop Join (actual rows=0 loops=1)
+   Join Filter: (tbl1.col1 = tprt_1.col1)
+   ->  Seq Scan on tbl1 (actual rows=1 loops=1)
+   ->  Append (actual rows=0 loops=1)
+         ->  Index Scan using tprt1_idx on tprt_1 (never executed)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+         ->  Index Scan using tprt2_idx on tprt_2 (never executed)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+         ->  Index Scan using tprt3_idx on tprt_3 (never executed)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+         ->  Index Scan using tprt4_idx on tprt_4 (never executed)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+         ->  Index Scan using tprt5_idx on tprt_5 (never executed)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+         ->  Index Scan using tprt6_idx on tprt_6 (never executed)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+(16 rows)
 
 select tbl1.col1, tprt.col1 from tbl1
 inner join tprt on tbl1.col1 = tprt.col1
@@ -2359,11 +2433,11 @@ execute part_abc_q1 (1, 2, 3);
 
 -- Single partition should be scanned.
 explain (analyze, costs off, summary off, timing off) execute part_abc_q1 (1, 2, 3);
-                      QUERY PLAN
--------------------------------------------------------
+                         QUERY PLAN
+-------------------------------------------------------------
  Append (actual rows=0 loops=1)
    ->  Seq Scan on part_abc_p1 (actual rows=0 loops=1)
-         Filter: ((a = $1) AND (b = $2) AND (c = $3))
+         Remote Filter: ((a = $1) AND (b = $2) AND (c = $3))
 (3 rows)
 
 deallocate part_abc_q1;
@@ -2468,24 +2542,26 @@ execute q1 (1,2,3,4);
 
 -- Both partitions allowed by IN clause, but one disallowed by <> clause
 explain (analyze, costs off, summary off, timing off)  execute q1 (1,2,2,0);
-                               QUERY PLAN
--------------------------------------------------------------------------
+                     QUERY PLAN
+-----------------------------------------------------
  Append (actual rows=0 loops=1)
    Subplans Removed: 1
    ->  Seq Scan on listp_1_1 (actual rows=0 loops=1)
-         Filter: ((b = ANY (ARRAY[$1, $2])) AND ($3 <> b) AND ($4 <> b))
-(4 rows)
+         Remote Filter: (($3 <> b) AND ($4 <> b))
+         Filter: (b = ANY (ARRAY[$1, $2]))
+(5 rows)
 
 -- Both partitions allowed by IN clause, then both excluded again by <> clauses.
 -- One subplan will remain in this case, but it should not be executed.
 explain (analyze, costs off, summary off, timing off)  execute q1 (1,2,2,1);
-                               QUERY PLAN
--------------------------------------------------------------------------
+                    QUERY PLAN
+--------------------------------------------------
  Append (actual rows=0 loops=1)
    Subplans Removed: 1
    ->  Seq Scan on listp_1_1 (never executed)
-         Filter: ((b = ANY (ARRAY[$1, $2])) AND ($3 <> b) AND ($4 <> b))
-(4 rows)
+         Remote Filter: (($3 <> b) AND ($4 <> b))
+         Filter: (b = ANY (ARRAY[$1, $2]))
+(5 rows)
 
 -- Ensure Params that evaluate to NULL properly prune away all partitions
 explain (analyze, costs off, summary off, timing off)
@@ -2496,9 +2572,9 @@ select * from listp where a = (select null::int);
    InitPlan 1 (returns $0)
      ->  Result (actual rows=1 loops=1)
    ->  Seq Scan on listp_1_1 (never executed)
-         Filter: (a = $0)
+         Remote Filter: (a = $0)
    ->  Seq Scan on listp_2_1 (never executed)
-         Filter: (a = $0)
+         Remote Filter: (a = $0)
 (7 rows)
 
 drop table listp;
@@ -2515,13 +2591,12 @@ select * from boolp where a = (select value from boolvalues where value);
  Append (actual rows=0 loops=1)
    InitPlan 1 (returns $0)
      ->  Seq Scan on boolvalues (actual rows=1 loops=1)
-           Filter: value
-           Rows Removed by Filter: 1
+           Remote Filter: value
    ->  Seq Scan on boolp_f (never executed)
-         Filter: (a = $0)
+         Remote Filter: (a = $0)
    ->  Seq Scan on boolp_t (actual rows=0 loops=1)
-         Filter: (a = $0)
-(9 rows)
+         Remote Filter: (a = $0)
+(8 rows)
 
 explain (analyze, costs off, summary off, timing off)
 select * from boolp where a = (select value from boolvalues where not value);
@@ -2530,13 +2605,12 @@ select * from boolp where a = (select value from boolvalues where not value);
  Append (actual rows=0 loops=1)
    InitPlan 1 (returns $0)
      ->  Seq Scan on boolvalues (actual rows=1 loops=1)
-           Filter: (NOT value)
-           Rows Removed by Filter: 1
+           Remote Filter: (NOT value)
    ->  Seq Scan on boolp_f (actual rows=0 loops=1)
-         Filter: (a = $0)
+         Remote Filter: (a = $0)
    ->  Seq Scan on boolp_t (never executed)
-         Filter: (a = $0)
-(9 rows)
+         Remote Filter: (a = $0)
+(8 rows)
 
 drop table boolp;
 reset enable_indexonlyscan;
@@ -2703,100 +2777,100 @@ create table pp_lp (a int, value int) partition by list (a);
 create table pp_lp1 partition of pp_lp for values in(1);
 create table pp_lp2 partition of pp_lp for values in(2);
 explain (costs off) select * from pp_lp where a = 1;
-        QUERY PLAN
---------------------------
+           QUERY PLAN
+--------------------------------
  Append
    ->  Seq Scan on pp_lp1
-         Filter: (a = 1)
+         Remote Filter: (a = 1)
 (3 rows)
 
 explain (costs off) update pp_lp set value = 10 where a = 1;
-        QUERY PLAN
---------------------------
+           QUERY PLAN
+--------------------------------
  Update on pp_lp
    Update on pp_lp1
    ->  Seq Scan on pp_lp1
-         Filter: (a = 1)
+         Remote Filter: (a = 1)
 (4 rows)
 
 explain (costs off) delete from pp_lp where a = 1;
-        QUERY PLAN
---------------------------
+           QUERY PLAN
+--------------------------------
  Delete on pp_lp
    Delete on pp_lp1
    ->  Seq Scan on pp_lp1
-         Filter: (a = 1)
+         Remote Filter: (a = 1)
 (4 rows)
 
 set enable_partition_pruning = off;
 set constraint_exclusion = 'partition'; -- this should not affect the result.
 explain (costs off) select * from pp_lp where a = 1;
-        QUERY PLAN
---------------------------
+           QUERY PLAN
+--------------------------------
  Append
    ->  Seq Scan on pp_lp1
-         Filter: (a = 1)
+         Remote Filter: (a = 1)
    ->  Seq Scan on pp_lp2
-         Filter: (a = 1)
+         Remote Filter: (a = 1)
 (5 rows)
 
 explain (costs off) update pp_lp set value = 10 where a = 1;
-        QUERY PLAN
---------------------------
+           QUERY PLAN
+--------------------------------
  Update on pp_lp
    Update on pp_lp1
    Update on pp_lp2
    ->  Seq Scan on pp_lp1
-         Filter: (a = 1)
+         Remote Filter: (a = 1)
    ->  Seq Scan on pp_lp2
-         Filter: (a = 1)
+         Remote Filter: (a = 1)
 (7 rows)
 
 explain (costs off) delete from pp_lp where a = 1;
-        QUERY PLAN
---------------------------
+           QUERY PLAN
+--------------------------------
  Delete on pp_lp
    Delete on pp_lp1
    Delete on pp_lp2
    ->  Seq Scan on pp_lp1
-         Filter: (a = 1)
+         Remote Filter: (a = 1)
    ->  Seq Scan on pp_lp2
-         Filter: (a = 1)
+         Remote Filter: (a = 1)
 (7 rows)
 
 set constraint_exclusion = 'off'; -- this should not affect the result.
 explain (costs off) select * from pp_lp where a = 1;
-        QUERY PLAN
---------------------------
+           QUERY PLAN
+--------------------------------
  Append
    ->  Seq Scan on pp_lp1
-         Filter: (a = 1)
+         Remote Filter: (a = 1)
    ->  Seq Scan on pp_lp2
-         Filter: (a = 1)
+         Remote Filter: (a = 1)
 (5 rows)
 
 explain (costs off) update pp_lp set value = 10 where a = 1;
-        QUERY PLAN
---------------------------
+           QUERY PLAN
+--------------------------------
  Update on pp_lp
    Update on pp_lp1
    Update on pp_lp2
    ->  Seq Scan on pp_lp1
-         Filter: (a = 1)
+         Remote Filter: (a = 1)
    ->  Seq Scan on pp_lp2
-         Filter: (a = 1)
+         Remote Filter: (a = 1)
 (7 rows)
 
 explain (costs off) delete from pp_lp where a = 1;
-        QUERY PLAN
---------------------------
+           QUERY PLAN
+--------------------------------
  Delete on pp_lp
    Delete on pp_lp1
    Delete on pp_lp2
    ->  Seq Scan on pp_lp1
-         Filter: (a = 1)
+         Remote Filter: (a = 1)
    ->  Seq Scan on pp_lp2
-         Filter: (a = 1)
+         Remote Filter: (a = 1)
 (7 rows)
 
 drop table pp_lp;
@@ -2906,13 +2980,13 @@ create table listp2 partition of listp for values in(2) partition by list(b);
 create table listp2_10 partition of listp2 for values in (10);
 explain (analyze, costs off, summary off, timing off)
 select * from listp where a = (select 2) and b <> 10;
-                QUERY PLAN
--------------------------------------------
+                   QUERY PLAN
+-------------------------------------------------
  Append (actual rows=0 loops=1)
    InitPlan 1 (returns $0)
      ->  Result (actual rows=1 loops=1)
    ->  Seq Scan on listp1 (never executed)
-         Filter: ((b <> 10) AND (a = $0))
+         Remote Filter: ((b <> 10) AND (a = $0))
 (5 rows)
 
 drop table listp;

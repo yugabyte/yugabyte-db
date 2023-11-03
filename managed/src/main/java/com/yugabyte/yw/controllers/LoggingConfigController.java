@@ -4,13 +4,22 @@ package com.yugabyte.yw.controllers;
 
 import ch.qos.logback.core.joran.spi.JoranException;
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.logging.LogUtil;
-import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.AuditLoggingConfig;
 import com.yugabyte.yw.forms.PlatformLoggingConfig;
 import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -18,17 +27,19 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.text.SimpleDateFormat;
 import org.slf4j.LoggerFactory;
-import play.mvc.Controller;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
     value = "LoggingConfig",
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
-public class LoggingConfigController extends Controller {
+public class LoggingConfigController extends AuthenticatedController {
 
   public static final org.slf4j.Logger LOG = LoggerFactory.getLogger(LoggingConfigController.class);
 
   @Inject ValidatingFormFactory formFactory;
+
+  @Inject BeanValidator validator;
 
   @Inject SettableRuntimeConfigFactory sConfigFactory;
 
@@ -44,9 +55,15 @@ public class LoggingConfigController extends Controller {
         dataType = "com.yugabyte.yw.forms.PlatformLoggingConfig",
         paramType = "body")
   })
-  public Result setLoggingSettings() throws JoranException {
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result setLoggingSettings(Http.Request request) throws JoranException {
     PlatformLoggingConfig data =
-        formFactory.getFormDataOrBadRequest(PlatformLoggingConfig.class).get();
+        formFactory.getFormDataOrBadRequest(request, PlatformLoggingConfig.class).get();
     String newLevel = data.getLevel().toString();
     String newRolloverPattern = data.getRolloverPattern();
     if (newRolloverPattern != null) {
@@ -75,8 +92,16 @@ public class LoggingConfigController extends Controller {
         dataType = "com.yugabyte.yw.forms.AuditLoggingConfig",
         paramType = "body")
   })
-  public Result setAuditLoggingSettings() throws JoranException {
-    AuditLoggingConfig data = formFactory.getFormDataOrBadRequest(AuditLoggingConfig.class).get();
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result setAuditLoggingSettings(Http.Request request) throws JoranException {
+    AuditLoggingConfig data =
+        formFactory.getFormDataOrBadRequest(request, AuditLoggingConfig.class).get();
+    data.validate(validator);
     LogUtil.updateAuditLoggingContext(data);
     LogUtil.updateAuditLoggingConfig(sConfigFactory, data);
     return PlatformResults.withData(data);

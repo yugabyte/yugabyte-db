@@ -21,8 +21,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef YB_ROCKSDB_DB_COMPACTION_H
-#define YB_ROCKSDB_DB_COMPACTION_H
 
 #pragma once
 
@@ -85,7 +83,8 @@ struct FdWithBoundaries {
   FileDescriptor fd;
   LightweightBoundaries smallest; // smallest boundaries in this file
   LightweightBoundaries largest;  // largest boundaries in this file
-  Slice user_filter_data; // Data provided by user that will be passed to iterator replacer.
+  // Data provided by user that will be passed to iterator replacer.
+  Slice user_filter_data;
 
   FdWithBoundaries(Arena* arena, const FileMetaData& source);
 };
@@ -294,7 +293,7 @@ class Compaction {
 
   Slice GetLargestUserKey() const { return largest_user_key_; }
 
-  CompactionReason compaction_reason() { return compaction_reason_; }
+  CompactionReason compaction_reason() const { return compaction_reason_; }
 
   yb::PriorityThreadPoolSuspender* suspender() { return suspender_; }
   void SetSuspender(yb::PriorityThreadPoolSuspender* value) { suspender_ = value; }
@@ -394,5 +393,3 @@ class Compaction {
 extern uint64_t TotalFileSize(const std::vector<FileMetaData*>& files);
 
 }  // namespace rocksdb
-
-#endif // YB_ROCKSDB_DB_COMPACTION_H

@@ -38,16 +38,16 @@ public class UpgradeYbc extends AbstractTaskBase {
   }
 
   private void preChecks(Universe universe, String ybcVersion) {
-    if (!universe.getUniverseDetails().enableYbc) {
+    if (!universe.getUniverseDetails().isEnableYbc()) {
       throw new RuntimeException(
-          "Cannot upgrade YBC as it is not enabled on universe " + universe.universeUUID);
+          "Cannot upgrade YBC as it is not enabled on universe " + universe.getUniverseUUID());
     }
-    if (universe.getUniverseDetails().ybcSoftwareVersion.equals(ybcVersion)) {
+    if (universe.getUniverseDetails().getYbcSoftwareVersion().equals(ybcVersion)) {
       throw new RuntimeException(
           "YBC version "
               + ybcVersion
               + " is already installed on universe "
-              + universe.universeUUID);
+              + universe.getUniverseUUID());
     }
   }
 
@@ -56,38 +56,30 @@ public class UpgradeYbc extends AbstractTaskBase {
     try {
       Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
       preChecks(universe, taskParams().ybcVersion);
-      ybcUpgrade.upgradeYBC(taskParams().universeUUID, taskParams().ybcVersion);
-      int numRetries = 0;
-      while (numRetries < ybcUpgrade.MAX_YBC_UPGRADE_POLL_RESULT_TRIES) {
-        numRetries++;
-        if (!ybcUpgrade.checkYBCUpgradeProcessExists(taskParams().universeUUID)) {
-          break;
-        } else {
+      ybcUpgrade.upgradeYBC(taskParams().universeUUID, taskParams().ybcVersion, true /* force */);
+      waitForYbcUpgrade();
+      boolean success =
           ybcUpgrade.pollUpgradeTaskResult(
-              taskParams().universeUUID, taskParams().ybcVersion, false);
-        }
-        waitFor(Duration.ofMillis(ybcUpgrade.YBC_UPGRADE_POLL_RESULT_SLEEP_MS));
+              taskParams().universeUUID, taskParams().ybcVersion, true /* verbose */);
+
+      if (!success && !taskParams().validateOnlyMasterLeader) {
+        throw new RuntimeException("YBC Upgrade task did not complete in expected time.");
       }
 
-      if (!ybcUpgrade.pollUpgradeTaskResult(
-          taskParams().universeUUID, taskParams().ybcVersion, true)) {
-        if (numRetries == ybcUpgrade.MAX_YBC_UPGRADE_POLL_RESULT_TRIES) {
-          throw new RuntimeException("YBC upgrade task did not complete in expected time.");
-        } else if (!taskParams().validateOnlyMasterLeader) {
-          throw new RuntimeException(
-              "YBC Upgrade task failed as ybc does not upgraded on master leader.");
-        }
-      }
-
+      // Even if the ybc upgrade fails for the universe, we will validate the ybc version
+      // on master leader separately.
       String sourceYbcVersion;
       if (taskParams().validateOnlyMasterLeader) {
+        // Fetch ybc version from master leader node.
         sourceYbcVersion =
             ybcClientService.getYbcServerVersion(
                 universe.getMasterLeaderHostText(),
                 universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort,
                 universe.getCertificateNodetoNode());
       } else {
-        sourceYbcVersion = ybcUpgrade.getUniverseYbcVersion(universe.universeUUID);
+        // Fetch ybc version from universe details as we update ybc version as soon as ybc
+        // is upgraded on each node during poll task result itself.
+        sourceYbcVersion = ybcUpgrade.getUniverseYbcVersion(universe.getUniverseUUID());
       }
       if (!sourceYbcVersion.equals(taskParams().ybcVersion)) {
         throw new RuntimeException(
@@ -101,5 +93,20 @@ public class UpgradeYbc extends AbstractTaskBase {
     } finally {
       ybcUpgrade.removeYBCUpgradeProcess(taskParams().universeUUID);
     }
+  }
+
+  private int waitForYbcUpgrade() {
+    int numRetries = 0;
+    while (numRetries < ybcUpgrade.MAX_YBC_UPGRADE_POLL_RESULT_TRIES) {
+      numRetries++;
+      if (!ybcUpgrade.checkYBCUpgradeProcessExists(taskParams().universeUUID)) {
+        break;
+      } else if (ybcUpgrade.pollUpgradeTaskResult(
+          taskParams().universeUUID, taskParams().ybcVersion, false /* verbose */)) {
+        break;
+      }
+      waitFor(Duration.ofMillis(ybcUpgrade.YBC_UPGRADE_POLL_RESULT_SLEEP_MS));
+    }
+    return numRetries;
   }
 }

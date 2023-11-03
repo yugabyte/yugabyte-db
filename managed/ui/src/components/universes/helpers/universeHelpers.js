@@ -1,5 +1,4 @@
-import React from 'react';
-import { isNonEmptyArray } from '../../../utils/ObjectUtils';
+import { isDefinedNotNull, isNonEmptyArray } from '../../../utils/ObjectUtils';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 
 import _ from 'lodash';
@@ -7,7 +6,7 @@ import _ from 'lodash';
 /**
  * A mapping from universe state to display text and className.
  */
-export const universeState = {
+export const UniverseState = {
   GOOD: {
     text: 'Ready',
     className: 'good'
@@ -36,53 +35,56 @@ export const universeState = {
 
 /**
  * Returns a universe status object with:
- *  - state - A universe state from the universe state mapping {@link universeState}
+ *  - state - A universe state from the universe state mapping {@link UniverseState}
  *  - error - The error string from the current universe
  */
 export const getUniverseStatus = (universe) => {
   const {
     updateInProgress,
-    backupInProgress,
     updateSucceeded,
     universePaused,
+    placementModificationTaskUuid,
     errorString
   } = universe.universeDetails;
-
-  const taskInProgress = updateInProgress || backupInProgress;
-  if (!taskInProgress && updateSucceeded && !universePaused) {
-    return { state: universeState.GOOD, error: errorString };
+  /* TODO: Using placementModificationTaskUuid is a short term fix to not clear universe error
+   * state because updateSucceeded reports the state of the latest task only. This will be
+   * replaced by backend driven APIs in future.
+   */
+  const allUpdatesSucceeded = updateSucceeded && !isDefinedNotNull(placementModificationTaskUuid);
+  if (!updateInProgress && allUpdatesSucceeded && !universePaused) {
+    return { state: UniverseState.GOOD, error: errorString };
   }
-  if (!taskInProgress && updateSucceeded && universePaused) {
-    return { state: universeState.PAUSED, error: errorString };
+  if (!updateInProgress && allUpdatesSucceeded && universePaused) {
+    return { state: UniverseState.PAUSED, error: errorString };
   }
-  if (taskInProgress) {
-    return { state: universeState.PENDING, error: errorString };
+  if (updateInProgress) {
+    return { state: UniverseState.PENDING, error: errorString };
   }
-  if (!taskInProgress && !updateSucceeded) {
+  if (!updateInProgress && !allUpdatesSucceeded) {
     return errorString === 'Preflight checks failed.'
-      ? { state: universeState.WARNING, error: errorString }
-      : { state: universeState.BAD, error: errorString };
+      ? { state: UniverseState.WARNING, error: errorString }
+      : { state: UniverseState.BAD, error: errorString };
   }
-  return { state: universeState.UNKNOWN, error: errorString };
+  return { state: UniverseState.UNKNOWN, error: errorString };
 };
 
 export const getUniverseStatusIcon = (curStatus) => {
-  if (_.isEqual(curStatus, universeState.GOOD)) {
+  if (_.isEqual(curStatus, UniverseState.GOOD)) {
     return <i className="fa fa-check-circle" />;
   }
-  if (_.isEqual(curStatus, universeState.PAUSED)) {
+  if (_.isEqual(curStatus, UniverseState.PAUSED)) {
     return <i className="fa fa-pause-circle-o" />;
   }
-  if (_.isEqual(curStatus, universeState.PENDING)) {
+  if (_.isEqual(curStatus, UniverseState.PENDING)) {
     return <i className="fa fa-hourglass-half" />;
   }
-  if (_.isEqual(curStatus, universeState.WARNING)) {
+  if (_.isEqual(curStatus, UniverseState.WARNING)) {
     return <i className="fa fa-warning" />;
   }
-  if (_.isEqual(curStatus, universeState.BAD)) {
+  if (_.isEqual(curStatus, UniverseState.BAD)) {
     return <i className="fa fa-warning" />;
   }
-  if (_.isEqual(curStatus, universeState.UNKNOWN)) {
+  if (_.isEqual(curStatus, UniverseState.UNKNOWN)) {
     return <YBLoadingCircleIcon size="small" />;
   }
 };

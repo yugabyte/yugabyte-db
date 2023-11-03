@@ -48,13 +48,13 @@ import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBClusterBuilder;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
 import com.google.protobuf.ByteString;
 
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestTablespaceProperties extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestTablespaceProperties.class);
 
@@ -195,6 +195,29 @@ public class TestTablespaceProperties extends BasePgSQLTest {
 
     // Wait for load balancer to become idle.
     assertTrue(miniCluster.getClient().waitForLoadBalance(Long.MAX_VALUE, expectedTServers));
+  }
+
+  /**
+   * Negative test: Create an index for a table (created inside a tablegroup) and specify its
+   * tablespace. This would throw an error as we do not support tablespaces for indexes on
+   * Colocated tables.
+   */
+  @Test
+  public void disallowTableSpaceForIndexOnColocatedTables() throws Exception {
+    String customTablegroup =  "test_custom_tablegroup";
+    try (Statement setupStatement = connection.createStatement()) {
+      setupStatement.execute("CREATE TABLEGROUP " +  customTablegroup +
+          " TABLESPACE testTablespace");
+      setupStatement.execute("CREATE TABLE t (a INT, b FLOAT) TABLEGROUP " + customTablegroup);
+
+      // Create index without specifying tablespace.
+      setupStatement.execute("CREATE INDEX t_idx1 ON t(a)");
+
+      // Create an index and also specify its tablespace.
+      String errorMsg = "TABLESPACE is not supported for indexes on colocated tables.";
+      executeAndAssertErrorThrown("CREATE INDEX t_idx2 ON t(b) TABLESPACE testTablespace",
+                                  errorMsg);
+    }
   }
 
   @Test
@@ -420,7 +443,8 @@ public class TestTablespaceProperties extends BasePgSQLTest {
         // Increase the interval between subsequent runs of bg thread so that
         // it assigns replicas for tablets of both the tables concurrently.
         assertTrue(client.setFlag(hp, "catalog_manager_bg_task_wait_ms", "10000"));
-        assertTrue(client.setFlag(hp, "TEST_skip_placement_validation_createtable_api", "true"));
+        assertTrue(client.setFlag(
+              hp, "TEST_skip_placement_validation_createtable_api", "true", true));
       }
       LOG.info("Increased the delay between successive runs of bg threads.");
       // Create tablespace with valid placement.
@@ -503,9 +527,10 @@ public class TestTablespaceProperties extends BasePgSQLTest {
 
       // Reset the bg threads delay.
       for (HostAndPort hp : miniCluster.getMasters().keySet()) {
-        assertTrue(client.setFlag(hp, "catalog_manager_bg_task_wait_ms",
-                                Integer.toString(previousBGWait)));
-        assertTrue(client.setFlag(hp, "TEST_skip_placement_validation_createtable_api", "false"));
+        assertTrue(client.setFlag(
+              hp, "catalog_manager_bg_task_wait_ms", Integer.toString(previousBGWait)));
+        assertTrue(client.setFlag(
+              hp, "TEST_skip_placement_validation_createtable_api", "false", true));
       }
       // Verify that the transaction DDL garbage collector removes this table.
       assertTrue(client.waitForTableRemoval(30000, "invalidplacementtable"));
@@ -690,7 +715,7 @@ public class TestTablespaceProperties extends BasePgSQLTest {
         setPlacementUuid(ByteString.copyFromUtf8("")).build();
 
     CatalogEntityInfo.PlacementInfoPB readOnlyPlacementInfo = CatalogEntityInfo.PlacementInfoPB.
-        newBuilder().addAllPlacementBlocks(placementBlocksReadOnly).
+        newBuilder().addAllPlacementBlocks(placementBlocksReadOnly).setNumReplicas(1).
         setPlacementUuid(ByteString.copyFromUtf8("readcluster")).build();
 
     List<CatalogEntityInfo.PlacementInfoPB> readOnlyPlacements = Arrays.asList(

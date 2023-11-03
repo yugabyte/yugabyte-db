@@ -16,7 +16,6 @@ import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.hamcrest.CoreMatchers.allOf;
@@ -28,20 +27,23 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
-import static play.mvc.Http.Status.FORBIDDEN;
+import static play.mvc.Http.Status.UNAUTHORIZED;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.net.URLEncoder;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -81,11 +83,11 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
     String universesPath = isList ? "/universes" : "/universes/" + UUID.randomUUID();
     String url = "/api/customers/" + invalidCustomerUUID + universesPath + urlSuffix;
     Result result = doRequestWithAuthToken(httpMethod, url, authToken);
-    assertEquals(url, FORBIDDEN, result.status());
+    assertEquals(url, UNAUTHORIZED, result.status());
 
     String resultString = contentAsString(result);
     assertThat(resultString, allOf(notNullValue(), equalTo("Unable To Authenticate User")));
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   // TODO(vineeth) Decide: Should these result in FORBIDDEN after RBAC?
@@ -101,11 +103,11 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
   })
   public void invalidUniverseUUID(String testDescription, String urlSuffix, String httpMethod) {
     UUID randomUUID = UUID.randomUUID();
-    String url = "/api/customers/" + customer.uuid + "/universes/" + randomUUID + urlSuffix;
+    String url = "/api/customers/" + customer.getUuid() + "/universes/" + randomUUID + urlSuffix;
     Result result =
         assertPlatformException(() -> doRequestWithAuthToken(httpMethod, url, authToken));
     assertBadRequest(result, "Cannot find universe " + randomUUID);
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -115,25 +117,25 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
     JsonNode json = Json.parse(contentAsString(result));
     assertTrue(json.isArray());
     assertEquals(json.size(), 0);
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
   public void testUniverseListWithValidUUID() {
-    Universe u = createUniverse(customer.getCustomerId());
+    Universe u = createUniverse(customer.getId());
     Result result = listUniverses();
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertNotNull(json);
     assertTrue(json.isArray());
     assertEquals(1, json.size());
-    assertValue(json.get(0), "universeUUID", u.universeUUID.toString());
-    assertAuditEntry(0, customer.uuid);
+    assertValue(json.get(0), "universeUUID", u.getUniverseUUID().toString());
+    assertAuditEntry(0, customer.getUuid());
   }
 
   private Result listUniverses() {
     return doRequestWithAuthToken(
-        "GET", "/api/customers/" + customer.uuid + "/universes", authToken);
+        "GET", "/api/customers/" + customer.getUuid() + "/universes", authToken);
   }
 
   @Test
@@ -143,25 +145,25 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
   })
   public void testUniverseFindByName(String name, int expected) {
     UniverseDefinitionTaskParams.UserIntent ui = getDefaultUserIntent(customer);
-    UUID uUUID = createUniverse(customer.getCustomerId()).universeUUID;
+    UUID uUUID = createUniverse(customer.getId()).getUniverseUUID();
     Universe.saveDetails(uUUID, ApiUtils.mockUniverseUpdater(ui));
     String findUrl =
-        "/api/customers/" + customer.uuid + "/universes?name=" + URLEncoder.encode(name);
+        "/api/customers/" + customer.getUuid() + "/universes?name=" + URLEncoder.encode(name);
     Result result = doRequestWithAuthToken("GET", findUrl, authToken);
 
     JsonNode json = Json.parse(contentAsString(result));
     assertTrue(json.isArray());
     assertEquals(expected, json.size());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
   public void testUniverseGetWithValidUniverseUUID() {
     UniverseDefinitionTaskParams.UserIntent ui = getDefaultUserIntent(customer);
-    UUID uUUID = createUniverse(customer.getCustomerId()).universeUUID;
+    UUID uUUID = createUniverse(customer.getId()).getUniverseUUID();
     Universe.saveDetails(uUUID, ApiUtils.mockUniverseUpdater(ui));
 
-    String url = "/api/customers/" + customer.uuid + "/universes/" + uUUID;
+    String url = "/api/customers/" + customer.getUuid() + "/universes/" + uUUID;
     Result result = doRequestWithAuthToken("GET", url, authToken);
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
@@ -183,14 +185,14 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
       int nodeIdx = node.get("nodeIdx").asInt();
       assertValue(node, "nodeName", "host-n" + nodeIdx);
     }
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
   public void testUniverseDestroyValidUUID() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.DestroyUniverse);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    Universe u = createUniverse(customer.getCustomerId());
+    Universe u = createUniverse(customer.getId());
 
     // Add the cloud info into the universe.
     Universe.UniverseUpdater updater =
@@ -203,9 +205,9 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
           universe.setUniverseDetails(universeDetails);
         };
     // Save the updates to the universe.
-    Universe.saveDetails(u.universeUUID, updater);
+    Universe.saveDetails(u.getUniverseUUID(), updater);
 
-    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID;
+    String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
     Result result = doRequestWithAuthToken("DELETE", url, authToken);
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
@@ -213,7 +215,7 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
 
     CustomerTask th = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(th);
-    assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
     assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Delete)));
 
@@ -223,19 +225,21 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
     // universe UUID is not stored in the customer and the getUniverseUUIDs()
     // makes a call to the DB, this starts failing.
     // assertTrue(customer.getUniverseUUIDs().isEmpty());
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
   public void testUniverseDestroyValidUUIDIsForceDelete() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.DestroyUniverse);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    Universe u = createUniverse(customer.getCustomerId());
+    Universe u = createUniverse(customer.getId());
 
-    UUID randUUID = UUID.randomUUID();
+    // Set http context
+    TestUtils.setFakeHttpContext(user);
+    UUID randUUID = FakeDBApplication.buildTaskInfo(null, TaskType.DestroyUniverse);
     CustomerTask.create(
         customer,
-        u.universeUUID,
+        u.getUniverseUUID(),
         randUUID,
         CustomerTask.TargetType.Backup,
         CustomerTask.TaskType.Create,
@@ -252,10 +256,14 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
           universe.setUniverseDetails(universeDetails);
         };
     // Save the updates to the universe.
-    Universe.saveDetails(u.universeUUID, updater);
+    Universe.saveDetails(u.getUniverseUUID(), updater);
 
     String url =
-        "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "?isForceDelete=true";
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + u.getUniverseUUID()
+            + "?isForceDelete=true";
     Result result = doRequestWithAuthToken("DELETE", url, authToken);
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
@@ -263,7 +271,7 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
 
     CustomerTask th = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(th);
-    assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
     assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Delete)));
     assertNotNull(CustomerTask.findByTaskUUID(randUUID).getCompletionTime());
@@ -274,7 +282,7 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
     // universe UUID is not stored in the customer and the getUniverseUUIDs()
     // makes a call to the DB, this starts failing.
     // assertTrue(customer.getUniverseUUIDs().isEmpty());
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -289,8 +297,8 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
   // @formatter:on
   public void testUniverseDestroyValidUUIDIsForceDeleteAndDeleteBackup(
       Boolean isDeleteBackups, Boolean isForceDelete, Boolean isDeleteAssociatedCerts) {
-    UUID fakeTaskUUID = UUID.randomUUID();
     String url;
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.DestroyUniverse);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
 
     String certificate = createTempFile("universe_controller_test_ca.crt", "test data");
@@ -303,7 +311,7 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
 
     }
 
-    Universe u = createUniverse(customer.getCustomerId(), certInfo.uuid);
+    Universe u = createUniverse(customer.getId(), certInfo.getUuid());
 
     // Add the cloud info into the universe.
     Universe.UniverseUpdater updater =
@@ -316,16 +324,18 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
           universe.setUniverseDetails(universeDetails);
         };
     // Save the updates to the universe.
-    Universe.saveDetails(u.universeUUID, updater);
+    Universe.saveDetails(u.getUniverseUUID(), updater);
 
-    Backup b = ModelFactory.createBackup(customer.uuid, u.universeUUID, s3StorageConfig.configUUID);
+    Backup b =
+        ModelFactory.createBackup(
+            customer.getUuid(), u.getUniverseUUID(), s3StorageConfig.getConfigUUID());
     b.transitionState(Backup.BackupState.Completed);
     if (isDeleteBackups == null) {
       url =
           "/api/customers/"
-              + customer.uuid
+              + customer.getUuid()
               + "/universes/"
-              + u.universeUUID
+              + u.getUniverseUUID()
               + "?isForceDelete="
               + isForceDelete
               + "&isDeleteAssociatedCerts="
@@ -333,9 +343,9 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
     } else {
       url =
           "/api/customers/"
-              + customer.uuid
+              + customer.getUuid()
               + "/universes/"
-              + u.universeUUID
+              + u.getUniverseUUID()
               + "?isForceDelete="
               + isForceDelete
               + "&isDeleteBackups="
@@ -351,7 +361,7 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
     CustomerTask customerTask =
         CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(customerTask);
-    assertThat(customerTask.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
-    assertAuditEntry(1, customer.uuid);
+    assertThat(customerTask.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
+    assertAuditEntry(1, customer.getUuid());
   }
 }

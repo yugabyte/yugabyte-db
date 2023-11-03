@@ -41,6 +41,7 @@
 #include "yb/client/table_creator.h"
 
 #include "yb/common/json_util.h"
+#include "yb/common/transaction.h"
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
@@ -57,6 +58,8 @@
 
 #include "yb/tools/admin-test-base.h"
 
+#include "yb/util/backoff_waiter.h"
+#include "yb/util/date_time.h"
 #include "yb/util/format.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/net/net_util.h"
@@ -65,7 +68,6 @@
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
-#include "yb/util/test_util.h"
 
 using namespace std::literals;
 
@@ -152,6 +154,9 @@ class BlacklistChecker {
 
 } // namespace
 
+const auto kRollbackAutoFlagsCmd = "rollback_auto_flags";
+const auto kPromoteAutoFlagsCmd = "promote_auto_flags";
+
 class AdminCliTest : public AdminTestBase {
 };
 
@@ -162,8 +167,8 @@ class AdminCliTest : public AdminTestBase {
 // 4. Wait until the new server bootstraps.
 // 5. Profit!
 TEST_F(AdminCliTest, TestChangeConfig) {
-  FLAGS_num_tablet_servers = 3;
-  FLAGS_num_replicas = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 2;
 
   std::vector<std::string> master_flags = {
     "--catalog_manager_wait_for_new_tablets_to_elect_leader=false"s,
@@ -258,8 +263,8 @@ TEST_F(AdminCliTest, TestChangeConfig) {
 }
 
 TEST_F(AdminCliTest, TestDeleteTable) {
-  FLAGS_num_tablet_servers = 1;
-  FLAGS_num_replicas = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
 
   vector<string> ts_flags, master_flags;
   master_flags.push_back("--replication_factor=1");
@@ -282,8 +287,8 @@ TEST_F(AdminCliTest, TestDeleteTable) {
 }
 
 TEST_F(AdminCliTest, TestDeleteIndex) {
-  FLAGS_num_tablet_servers = 1;
-  FLAGS_num_replicas = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
 
   vector<string> ts_flags, master_flags;
   master_flags.push_back("--replication_factor=1");
@@ -306,7 +311,7 @@ TEST_F(AdminCliTest, TestDeleteIndex) {
 
   YBSchema index_schema;
   YBSchemaBuilder b;
-  b.AddColumn("C$_key")->Type(INT32)->NotNull()->HashPrimaryKey();
+  b.AddColumn("C$_key")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
   ASSERT_OK(b.Build(&index_schema));
 
   // Create index.
@@ -421,11 +426,11 @@ TEST_F(AdminCliTest, TestSnapshotCreation) {
   const auto extra_table = YBTableName(YQLDatabase::YQL_DATABASE_CQL,
                                        kTableName.namespace_name(),
                                        "extra-table");
-  YBSchemaBuilder schemaBuilder;
-  schemaBuilder.AddColumn("k")->HashPrimaryKey()->Type(yb::BINARY)->NotNull();
-  schemaBuilder.AddColumn("v")->Type(yb::BINARY)->NotNull();
+  YBSchemaBuilder schema_builder;
+  schema_builder.AddColumn("k")->HashPrimaryKey()->Type(DataType::BINARY)->NotNull();
+  schema_builder.AddColumn("v")->Type(DataType::BINARY)->NotNull();
   YBSchema schema;
-  ASSERT_OK(schemaBuilder.Build(&schema));
+  ASSERT_OK(schema_builder.Build(&schema));
   ASSERT_OK(client_->NewTableCreator()->table_name(extra_table)
       .schema(&schema).table_type(yb::client::YBTableType::YQL_TABLE_TYPE).Create());
   const auto tables = ASSERT_RESULT(client_->ListTables(kTableName.table_name(),
@@ -665,8 +670,8 @@ TEST_F(AdminCliTest, TestModifyPlacementPolicy) {
 
 TEST_F(AdminCliTest, TestModifyTablePlacementPolicy) {
   // Start a cluster with 3 tservers, each corresponding to a different zone.
-  FLAGS_num_tablet_servers = 3;
-  FLAGS_num_replicas = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 2;
   std::vector<std::string> master_flags;
   master_flags.push_back("--enable_load_balancing=true");
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
@@ -779,8 +784,8 @@ TEST_F(AdminCliTest, TestModifyTablePlacementPolicy) {
 
 TEST_F(AdminCliTest, TestCreateTransactionStatusTablesWithPlacements) {
   // Start a cluster with 3 tservers, each corresponding to a different zone.
-  FLAGS_num_tablet_servers = 3;
-  FLAGS_num_replicas = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 3;
   std::vector<std::string> master_flags;
   master_flags.push_back("--enable_load_balancing=true");
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
@@ -862,8 +867,8 @@ TEST_F(AdminCliTest, TestCreateTransactionStatusTablesWithPlacements) {
 
 TEST_F(AdminCliTest, TestClearPlacementPolicy) {
   // Start a cluster with 3 tservers.
-  FLAGS_num_tablet_servers = 3;
-  FLAGS_num_replicas = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 2;
   std::vector<std::string> master_flags;
   master_flags.push_back("--enable_load_balancing=true");
   std::vector<std::string> ts_flags;
@@ -932,7 +937,7 @@ TEST_F(AdminCliTest, DdlLog) {
   }
   ASSERT_EQ(actions[0], "Drop column text_column");
   ASSERT_EQ(actions[1], "Drop index test_idx");
-  ASSERT_EQ(actions[2], "Add column int_column[int32 NULLABLE NOT A PARTITION KEY]");
+  ASSERT_EQ(actions[2], "Add column int_column[int32 NULLABLE VALUE]");
 }
 
 TEST_F(AdminCliTest, FlushSysCatalog) {
@@ -1006,6 +1011,424 @@ TEST_F(AdminCliTest, SetWalRetentionSecsTest) {
     ASSERT_FALSE(output_getter.ok());
     ASSERT_TRUE(output_getter.status().IsRuntimeError());
   }
+}
+
+TEST_F(AdminCliTest, AddTransactionStatusTablet) {
+  const std::string kNamespaceName = "test_namespace";
+  const std::string kTableName = "test_table";
+  const auto kWaitNewTabletReadyTimeout = MonoDelta::FromMilliseconds(10000);
+
+  BuildAndStart({}, {});
+
+  string master_address = ToString(cluster_->master()->bound_rpc_addr());
+  auto client = ASSERT_RESULT(YBClientBuilder().add_master_server_addr(master_address).Build());
+
+  // Force creation of system.transactions.
+  auto session = ASSERT_RESULT(CqlConnect());
+  ASSERT_OK(session.ExecuteQueryFormat(
+      "CREATE KEYSPACE IF NOT EXISTS $0", kNamespaceName));
+  ASSERT_OK(session.ExecuteQueryFormat("USE $0", kNamespaceName));
+  ASSERT_OK(session.ExecuteQueryFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY) "
+      "WITH transactions = { 'enabled' : true }", kTableName));
+
+  auto global_txn_table = YBTableName(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
+  auto global_txn_table_id = ASSERT_RESULT(client::GetTableId(client_.get(), global_txn_table));
+
+  auto tablets_before = ASSERT_RESULT(CallAdmin(
+      "list_tablets", master::kSystemNamespaceName, kGlobalTransactionsTableName));
+  auto num_tablets_before = std::count(tablets_before.begin(), tablets_before.end(), '\n');
+  LOG(INFO) << "Tablets before adding transaction tablet: " << AsString(tablets_before);
+
+  ASSERT_OK(CallAdmin("add_transaction_tablet", global_txn_table_id));
+
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto tablets = VERIFY_RESULT(CallAdmin(
+        "list_tablets", master::kSystemNamespaceName, kGlobalTransactionsTableName));
+    auto num_tablets = std::count(tablets.begin(), tablets.end(), '\n');
+    LOG(INFO) << "Tablets: " << AsString(tablets);
+    return num_tablets == num_tablets_before + 1;
+  }, kWaitNewTabletReadyTimeout, "Timeout waiting for new status tablet to be ready"));
+}
+
+class AdminCliListTabletsTest : public AdminCliTest {
+ public:
+  template <class... Args>
+  Status ListTabletsWithFailure(const std::string& expected_error_substr, Args&&... args) {
+    auto result = ListTablets(std::forward<Args>(args)...);
+    SCHECK(!result.ok(), IllegalState, "list_tablets command expected to fail");
+    auto error = result.status().ToUserMessage();
+    SCHECK(
+        error.find(expected_error_substr) != std::string::npos,
+        IllegalState,
+        Format("$0 substring was not found in $1", expected_error_substr, error));
+    return Status::OK();
+  }
+
+  template <class... Args>
+  Result<std::size_t> GetListTabletsCount(Args&&... args) {
+    JsonReader reader(VERIFY_RESULT(ListTablets(std::forward<Args>(args)..., "json")));
+    RETURN_NOT_OK(reader.Init());
+    vector<const rapidjson::Value*> tablets;
+    RETURN_NOT_OK(reader.ExtractObjectArray(reader.root(), "tablets", &tablets));
+    return tablets.size();
+  }
+
+ private:
+  template <class... Args>
+  Result<std::string> ListTablets(Args&&... args) {
+    return CallAdminVec(ToStringVector(
+        GetAdminToolPath(), "-master_addresses", GetMasterAddresses(), "list_tablets",
+        std::forward<Args>(args)...));
+  }
+};
+
+TEST_F_EX(AdminCliTest, CheckTableNameAndNamespaceUsage, AdminCliListTabletsTest) {
+  ASSERT_NO_FATALS(BuildAndStart());
+
+  // Check table name is missing.
+  ASSERT_OK(ListTabletsWithFailure("Empty list of tables", kTableName.namespace_name()));
+
+  // Check namespace does not exist.
+  const auto kBadNamespaceName = kTableName.namespace_name() + "bad";
+  ASSERT_OK(ListTabletsWithFailure(
+      Format("Namespace '$0' of type 'ycql' not found", kBadNamespaceName), kBadNamespaceName,
+      kTableName.table_name()));
+
+  // Check wrong keyspace of a table when called with table name.
+  const auto client =
+      ASSERT_RESULT(YBClientBuilder().add_master_server_addr(GetMasterAddresses()).Build());
+  ASSERT_OK(client->CreateNamespace(kBadNamespaceName, YQL_DATABASE_CQL));
+  ASSERT_OK(ListTabletsWithFailure(
+      Format(
+          "Table with name '$0' not found in namespace 'ycql.$1'",
+          kTableName.table_name(),
+          kBadNamespaceName),
+      kBadNamespaceName, kTableName.table_name()));
+
+  // Check wrong keyspace of a table when called with table id.
+  const auto tables =
+      ASSERT_RESULT(client->ListTables(kTableName.table_name(), /* exclude_ysql */ true));
+  ASSERT_EQ(1, tables.size());
+  const auto& table_id = tables.front().table_id();
+  ASSERT_OK(ListTabletsWithFailure(
+      Format(
+          "Table with id '$0' belongs to different namespace 'ycql.$1'",
+          table_id,
+          kBadNamespaceName),
+      kBadNamespaceName,
+      Format("tableid.$0", table_id)));
+}
+
+TEST_F_EX(AdminCliTest, ListTabletDefaultTenTablets, AdminCliListTabletsTest) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
+
+  ASSERT_NO_FATALS(BuildAndStart({}, {"--replication_factor=1"}));
+
+  YBSchema schema;
+  YBSchemaBuilder schema_builder;
+  schema_builder.AddColumn("k")->HashPrimaryKey()->Type(DataType::BINARY)->NotNull();
+  schema_builder.AddColumn("v")->Type(DataType::BINARY)->NotNull();
+  ASSERT_OK(schema_builder.Build(&schema));
+
+  const auto client =
+      ASSERT_RESULT(YBClientBuilder().add_master_server_addr(GetMasterAddresses()).Build());
+  // Default table that gets created.
+  const auto& keyspace = kTableName.namespace_name();
+  // Create table with 20 tablets.
+  constexpr auto* kTestTableName = "t20";
+  ASSERT_OK(client->NewTableCreator()
+      ->table_name(YBTableName(YQL_DATABASE_CQL, keyspace, kTestTableName))
+      .table_type(YBTableType::YQL_TABLE_TYPE)
+      .schema(&schema)
+      .num_tablets(20)
+      .Create());
+
+  // Test 10 tablets should be listed by default
+  auto count = ASSERT_RESULT(GetListTabletsCount(keyspace, kTestTableName));
+  ASSERT_EQ(count, 10);
+
+  // Test all tablets should be listed when value is 0
+  count = ASSERT_RESULT(GetListTabletsCount(keyspace, kTestTableName, 0));
+  ASSERT_EQ(count, 20);
+}
+
+TEST_F(AdminCliTest, PromoteAutoFlags) {
+  BuildAndStart();
+  const auto master_address = ToString(cluster_->master()->bound_rpc_addr());
+
+  auto status = CallAdmin(kPromoteAutoFlagsCmd, "invalid");
+  ASSERT_NOK(status);
+  ASSERT_TRUE(HasSubstring(status.ToString(), "Invalid value provided for max_flags_class"));
+
+  status = CallAdmin(kPromoteAutoFlagsCmd, "kExternal", "invalid");
+  ASSERT_NOK(status);
+  ASSERT_TRUE(
+      HasSubstring(status.ToString(), "Invalid value provided for promote_non_runtime_flags"));
+
+  status = CallAdmin(kPromoteAutoFlagsCmd, "kExternal", "true", "invalid");
+  ASSERT_NOK(status);
+  ASSERT_TRUE(HasSubstring(status.ToString(), "Invalid arguments for operation"));
+
+  ASSERT_OK(CallAdmin(kPromoteAutoFlagsCmd, "kLocalVolatile", "false"));
+  ASSERT_OK(CallAdmin(kPromoteAutoFlagsCmd, "kLocalVolatile", "true"));
+
+  ASSERT_OK(CallAdmin(kPromoteAutoFlagsCmd, "kLocalPersisted", "false"));
+  ASSERT_OK(CallAdmin(kPromoteAutoFlagsCmd, "kLocalPersisted", "true"));
+
+  ASSERT_OK(CallAdmin(kPromoteAutoFlagsCmd, "kExternal", "false"));
+  ASSERT_OK(CallAdmin(kPromoteAutoFlagsCmd, "kExternal", "true"));
+
+  auto result = ASSERT_RESULT(CallAdmin(kPromoteAutoFlagsCmd, "kLocalVolatile", "false"));
+  ASSERT_TRUE(HasSubstring(
+      result,
+      "PromoteAutoFlags completed successfully\n"
+      "No new AutoFlags eligible to promote\n"
+      "Current config version: 1"));
+
+  result = ASSERT_RESULT(CallAdmin(kPromoteAutoFlagsCmd, "kLocalVolatile", "false", "force"));
+  ASSERT_TRUE(HasSubstring(
+      result,
+      "PromoteAutoFlags completed successfully\n"
+      "New AutoFlags were promoted\n"
+      "New config version: 2"));
+
+  status = CallAdmin(kPromoteAutoFlagsCmd, "kNewInstallsOnly", "true", "force");
+  ASSERT_NOK(status);
+  ASSERT_TRUE(HasSubstring(
+      status.ToString(),
+      "Unable to promote AutoFlags: max_class cannot be set to kNewInstallsOnly."));
+}
+
+TEST_F(AdminCliTest, RollbackAutoFlags) {
+  BuildAndStart(
+      /* ts_flags = */ {}, /* master_flags = */ {"--limit_auto_flag_promote_for_new_universe=0"});
+  const auto master_address = ToString(cluster_->master()->bound_rpc_addr());
+
+  auto status = CallAdmin(kRollbackAutoFlagsCmd);
+  ASSERT_NOK(status);
+  ASSERT_NE(status.ToString().find("Invalid arguments for operation"), std::string::npos);
+
+  status = CallAdmin(kRollbackAutoFlagsCmd, "invalid");
+  ASSERT_NOK(status);
+  ASSERT_NE(status.ToString().find("invalid is not a valid number"), std::string::npos);
+
+  status = CallAdmin(kRollbackAutoFlagsCmd, std::numeric_limits<int64_t>::max());
+  ASSERT_NOK(status);
+  ASSERT_TRUE(HasSubstring(status.ToString(), "rollback_version exceeds bounds"));
+
+  auto result = ASSERT_RESULT(CallAdmin(kRollbackAutoFlagsCmd, 0));
+  ASSERT_TRUE(HasSubstring(
+      status.ToString(),
+      "RollbackAutoFlags completed successfully\n"
+      "No AutoFlags have been promoted since version 0\n"
+      "Current config version: 0"))
+      << status;
+
+  result = ASSERT_RESULT(CallAdmin(kPromoteAutoFlagsCmd, "kLocalVolatile"));
+  ASSERT_TRUE(HasSubstring(
+      result,
+      "New AutoFlags were promoted\n"
+      "New config version:"))
+      << result;
+
+  result = ASSERT_RESULT(CallAdmin(kRollbackAutoFlagsCmd, 0));
+  ASSERT_TRUE(HasSubstring(
+      result,
+      "RollbackAutoFlags completed successfully\n"
+      "AutoFlags that were promoted after config version 0 were successfully rolled back\n"
+      "New config version: 2"))
+      << result;
+
+  result = ASSERT_RESULT(CallAdmin(kRollbackAutoFlagsCmd, 0));
+  ASSERT_TRUE(HasSubstring(
+      result,
+      "RollbackAutoFlags completed successfully\n"
+      "No AutoFlags have been promoted since version 0\n"
+      "Current config version: 2"))
+      << result;
+
+  result = ASSERT_RESULT(CallAdmin(kPromoteAutoFlagsCmd));
+  ASSERT_TRUE(HasSubstring(
+      result,
+      "PromoteAutoFlags completed successfully\n"
+      "New AutoFlags were promoted\n"
+      "New config version: 3"))
+      << result;
+
+  // Rollback external AutoFlags should fail.
+  status = CallAdmin(kRollbackAutoFlagsCmd, 0);
+  ASSERT_NOK(status);
+  ASSERT_TRUE(HasSubstring(status.ToString(), "is not eligible for rollback")) << status;
+}
+
+TEST_F(AdminCliTest, PromoteDemoteSingleAutoFlag) {
+  BuildAndStart();
+  const auto kPromoteSingleFlaCmd = "promote_single_auto_flag";
+  const auto kDemoteSingleFlagCmd = "demote_single_auto_flag";
+
+  // Promote a single AutoFlag
+  auto status = CallAdmin(kPromoteSingleFlaCmd, "NAProcess", "NAFlag");
+  ASSERT_NOK(status);
+  ASSERT_TRUE(HasSubstring(status.ToString(), "Process NAProcess not found"));
+
+  status = CallAdmin(kPromoteSingleFlaCmd, "yb-master", "NAFlag");
+  ASSERT_NOK(status);
+  ASSERT_TRUE(HasSubstring(status.ToString(), "AutoFlag NAFlag not found in process yb-master"));
+
+  status = CallAdmin(kPromoteSingleFlaCmd, "yb-master", "TEST_auto_flags_initialized");
+  ASSERT_OK(status);
+  ASSERT_TRUE(HasSubstring(
+      status.ToString(),
+      "AutoFlag TEST_auto_flags_initialized from process yb-master was not promoted. Check the "
+      "logs for more information\n"
+      "Current config version: 2"));
+
+  // Demote a single AutoFlag
+  status = CallAdmin(kDemoteSingleFlagCmd, "NAProcess", "NAFlag", "force");
+  ASSERT_OK(status);
+  ASSERT_TRUE(HasSubstring(
+      status.ToString(),
+      "AutoFlag NAFlag from process NAProcess was not demoted. Either the flag does not exist or "
+      "it is not promoted\n"
+      "Current config version: 1"));
+
+  status = CallAdmin(kDemoteSingleFlagCmd, "yb-master", "NAFlag", "force");
+  ASSERT_OK(status);
+  ASSERT_TRUE(HasSubstring(
+      status.ToString(),
+      "AutoFlag NAFlag from process yb-master was not demoted. Either the flag does not exist or "
+      "it is not promoted\n"
+      "Current config version: 1"));
+
+  status = CallAdmin(kDemoteSingleFlagCmd, "yb-master", "TEST_auto_flags_initialized", "force");
+  ASSERT_OK(status);
+  ASSERT_TRUE(HasSubstring(
+      status.ToString(),
+      "AutoFlag TEST_auto_flags_initialized from process yb-master was successfully demoted\n"
+      "New config version: 2"));
+
+  status = CallAdmin(kPromoteSingleFlaCmd, "yb-master", "TEST_auto_flags_initialized");
+  ASSERT_OK(status);
+  ASSERT_TRUE(HasSubstring(
+      status.ToString(),
+      "AutoFlag TEST_auto_flags_initialized from process yb-master was successfully promoted\n"
+      "New config version: 3"));
+}
+
+TEST_F(AdminCliTest, TestListNamespaces) {
+  BuildAndStart();
+  ASSERT_OK(client_->CreateNamespaceIfNotExists("a_user_namespace"));
+  auto status = CallAdmin("list_namespaces");
+  ASSERT_OK(status);
+
+  std::string output = status.ToString();
+
+  ASSERT_STR_CONTAINS(output, "User Namespaces");
+  auto user_namespaces_pos = output.find("User Namespaces");
+  ASSERT_STR_CONTAINS(output, "System Namespaces");
+  auto system_namespaces_pos = output.find("System Namespaces");
+
+  std::regex system_namespace_regex("system .* ycql [a-zA-Z_]+ [a-zA-Z_]+");
+  std::smatch system_namespace_match;
+  std::regex_search(output, system_namespace_match, system_namespace_regex);
+  ASSERT_FALSE(system_namespace_match.empty());
+  // We expect the "system" keyspace to be under "System Keyspaces".
+  ASSERT_GT(system_namespace_match.position(0), system_namespaces_pos);
+
+  std::smatch user_namespace_match;
+  std::regex user_namespace_regex("a_user_namespace");
+  std::regex_search(output, user_namespace_match, user_namespace_regex);
+  ASSERT_FALSE(user_namespace_match.empty());
+  /* Because we compare their character positions, we expect "User Namespaces:" to be outputted
+  before "System Namespaces:" to simplify testing of whether "a_user_namespace" is under
+  "User Namespaces:" and not "System Namespaces:". */
+  ASSERT_LT(user_namespaces_pos, system_namespaces_pos);
+  ASSERT_GT(user_namespace_match.position(0), user_namespaces_pos);
+  ASSERT_LT(user_namespace_match.position(0), system_namespaces_pos);
+}
+
+TEST_F(AdminCliTest, PrintArgumentExpressions) {
+  const auto namespace_expression = "<namespace>:\n [(ycql|ysql).]<namespace_name> (default ycql.)";
+  const auto table_expression = "<table>:\n <namespace> <table_name> | tableid.<table_id>";
+  const auto index_expression = "<index>:\n  <namespace> <index_name> | tableid.<index_id>";
+
+  BuildAndStart();
+  auto status = CallAdmin("delete_table");
+  ASSERT_NOK(status);
+  ASSERT_NE(status.ToString().find(table_expression), std::string::npos);
+
+  status = CallAdmin("delete_namespace");
+  ASSERT_NOK(status);
+  ASSERT_NE(status.ToString().find(namespace_expression), std::string::npos);
+
+  status = CallAdmin("delete_index");
+  ASSERT_NOK(status);
+  ASSERT_NE(status.ToString().find(index_expression), std::string::npos);
+
+  status = CallAdmin("add_universe_key_to_all_masters");
+  ASSERT_NOK(status);
+  ASSERT_EQ(status.ToString().find(namespace_expression), std::string::npos);
+  ASSERT_EQ(status.ToString().find(table_expression), std::string::npos);
+  ASSERT_EQ(status.ToString().find(index_expression), std::string::npos);
+}
+
+TEST_F(AdminCliTest, TestCompactionStatusBeforeCompaction) {
+  BuildAndStart();
+  const string master_address = ToString(cluster_->master()->bound_rpc_addr());
+  auto client = ASSERT_RESULT(YBClientBuilder().add_master_server_addr(master_address).Build());
+
+  ASSERT_OK(WaitFor(
+      [this]() -> Result<bool> {
+        const string output = VERIFY_RESULT(
+            CallAdmin("compaction_status", kTableName.namespace_name(), kTableName.table_name()));
+
+        std::smatch match;
+        const std::regex regex(
+            "No full compaction taking place\n"
+            "A full compaction has never been completed\n"
+            "An admin compaction has never been requested");
+        std::regex_search(output, match, regex);
+        return !match.empty();
+      },
+      30s, "Wait for initial metrics heartbeats to report full compaction statuses"));
+}
+
+TEST_F(AdminCliTest, TestCompactionStatusAfterCompactionFinishes) {
+  BuildAndStart();
+  const string master_address = ToString(cluster_->master()->bound_rpc_addr());
+  auto client = ASSERT_RESULT(YBClientBuilder().add_master_server_addr(master_address).Build());
+
+  const auto time_before_compaction = DateTime::TimestampNow();
+  ASSERT_OK(CallAdmin("compact_table", kTableName.namespace_name(), kTableName.table_name()));
+
+  string output;
+  std::smatch match;
+  ASSERT_OK(WaitFor(
+      [&]() {
+        const auto result =
+            CallAdmin("compaction_status", kTableName.namespace_name(), kTableName.table_name());
+        if (!result.ok()) {
+          return false;
+        }
+        output = *result;
+        const std::regex regex("No full compaction taking place");
+        std::regex_search(output, match, regex);
+        return !match.empty();
+      },
+      30s /* timeout */, "Wait for compaction status to report no compaction"));
+
+  const std::regex regex(
+      "Last full compaction completion time: (.+)\nLast admin compaction request time: (.+)");
+  std::regex_search(output, match, regex);
+  ASSERT_FALSE(match.empty());
+  const auto last_full_compaction_time =
+      ASSERT_RESULT(DateTime::TimestampFromString(match[1].str()));
+  ASSERT_GT(last_full_compaction_time, time_before_compaction);
+  const auto last_request_time = ASSERT_RESULT(DateTime::TimestampFromString(match[2].str()));
+  ASSERT_GT(last_request_time, time_before_compaction);
 }
 
 }  // namespace tools

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_INTEGRATION_TESTS_CDC_TEST_UTIL_H
-#define YB_INTEGRATION_TESTS_CDC_TEST_UTIL_H
+#pragma once
 
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_service.proxy.h"
@@ -25,10 +24,10 @@ namespace cdc {
 void AssertIntKey(const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>& key,
                   int32_t value);
 
-void CreateCDCStream(const std::unique_ptr<CDCServiceProxy>& cdc_proxy,
-                     const TableId& table_id,
-                     CDCStreamId* stream_id,
-                     cdc::CDCRequestSource source_type = XCLUSTER);
+Result<xrepl::StreamId> CreateCDCStream(
+    const std::unique_ptr<CDCServiceProxy>& cdc_proxy,
+    const TableId& table_id,
+    cdc::CDCRequestSource source_type = XCLUSTER);
 
 // For any tablet that belongs to a table whose name starts with 'table_name_start', this method
 // will verify that its WAL retention time matches the provided time.
@@ -41,5 +40,3 @@ Status CorrectlyPollingAllTablets(
     MiniCluster* cluster, size_t num_producer_tablets, MonoDelta timeout);
 } // namespace cdc
 } // namespace yb
-
-#endif // YB_INTEGRATION_TESTS_CDC_TEST_UTIL_H

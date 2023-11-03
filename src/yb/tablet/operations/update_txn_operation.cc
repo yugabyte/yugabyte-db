@@ -15,7 +15,7 @@
 
 #include "yb/tablet/operations/update_txn_operation.h"
 
-#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus.messages.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/transaction_coordinator.h"
@@ -29,30 +29,32 @@ namespace yb {
 namespace tablet {
 
 template <>
-void RequestTraits<TransactionStatePB>::SetAllocatedRequest(
-    consensus::ReplicateMsg* replicate, TransactionStatePB* request) {
-  replicate->set_allocated_transaction_state(request);
+void RequestTraits<LWTransactionStatePB>::SetAllocatedRequest(
+    consensus::LWReplicateMsg* replicate, LWTransactionStatePB* request) {
+  replicate->ref_transaction_state(request);
 }
 
 template <>
-TransactionStatePB* RequestTraits<TransactionStatePB>::MutableRequest(
-    consensus::ReplicateMsg* replicate) {
+LWTransactionStatePB* RequestTraits<LWTransactionStatePB>::MutableRequest(
+    consensus::LWReplicateMsg* replicate) {
   return replicate->mutable_transaction_state();
 }
 
-Status UpdateTxnOperation::Prepare() {
+Status UpdateTxnOperation::Prepare(IsLeaderSide is_leader_side) {
   VLOG_WITH_PREFIX(2) << "Prepare";
   return Status::OK();
 }
 
-TransactionCoordinator& UpdateTxnOperation::transaction_coordinator() const {
-  return *tablet()->transaction_coordinator();
+// TODO(txn_coordinator_ptr): use shared pointer for transaction coordinator.
+Result<TransactionCoordinator*> UpdateTxnOperation::transaction_coordinator() const {
+  return VERIFY_RESULT(tablet_safe())->transaction_coordinator();
 }
 
 Status UpdateTxnOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
   VLOG_WITH_PREFIX(2) << "Replicated";
 
-  auto transaction_participant = tablet()->transaction_participant();
+  auto tablet = VERIFY_RESULT(tablet_safe());
+  auto transaction_participant = tablet->transaction_participant();
   if (transaction_participant) {
     TransactionParticipant::ReplicatedData data = {
         .leader_term = leader_term,
@@ -63,25 +65,26 @@ Status UpdateTxnOperation::DoReplicated(int64_t leader_term, Status* complete_st
         .already_applied_to_regular_db = AlreadyAppliedToRegularDB::kFalse
     };
     return transaction_participant->ProcessReplicated(data);
-  } else {
-    TransactionCoordinator::ReplicatedData data = {
-        leader_term,
-        *request(),
-        op_id(),
-        hybrid_time()
-    };
-    return transaction_coordinator().ProcessReplicated(data);
   }
+  TransactionCoordinator::ReplicatedData data = {
+      .leader_term = leader_term,
+      .state = *request(),
+      .op_id = op_id(),
+      .hybrid_time = hybrid_time()
+  };
+  return tablet->transaction_coordinator()->ProcessReplicated(data);
 }
 
 Status UpdateTxnOperation::DoAborted(const Status& status) {
-  if (tablet()->transaction_coordinator()) {
+  auto tablet = VERIFY_RESULT(tablet_safe());
+  TransactionCoordinator* txn_coordinator = tablet->transaction_coordinator();
+  if (txn_coordinator) {
     LOG_WITH_PREFIX(INFO) << "Aborted: " << status;
     TransactionCoordinator::AbortedData data = {
       .state = *request(),
       .op_id = op_id(),
     };
-    transaction_coordinator().ProcessAborted(data);
+    txn_coordinator->ProcessAborted(data);
   }
 
   return status;

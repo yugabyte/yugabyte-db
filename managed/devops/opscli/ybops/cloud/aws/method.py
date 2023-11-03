@@ -12,11 +12,12 @@ from ybops.cloud.common.method import ListInstancesMethod, CreateInstancesMethod
     ProvisionInstancesMethod, DestroyInstancesMethod, AbstractMethod, \
     AbstractAccessMethod, AbstractNetworkMethod, AbstractInstancesMethod, AccessDeleteKeyMethod, \
     CreateRootVolumesMethod, ReplaceRootVolumeMethod, ChangeInstanceTypeMethod, \
-    UpdateMountedDisksMethod, ConsoleLoggingErrorHandler, DeleteRootVolumesMethod
+    UpdateMountedDisksMethod, ConsoleLoggingErrorHandler, DeleteRootVolumesMethod, \
+    UpdateDiskMethod, HardRebootInstancesMethod
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 from ybops.cloud.aws.utils import get_yb_sg_name, create_dns_record_set, edit_dns_record_set, \
     delete_dns_record_set, list_dns_record_set, get_root_label
-
+from ybops.utils.ssh import DEFAULT_SSH_PORT
 import json
 import os
 import logging
@@ -26,12 +27,23 @@ class AwsReplaceRootVolumeMethod(ReplaceRootVolumeMethod):
     def __init__(self, base_command):
         super(AwsReplaceRootVolumeMethod, self).__init__(base_command)
 
+    def add_extra_args(self):
+        super(AwsReplaceRootVolumeMethod, self).add_extra_args()
+        self.parser.add_argument("--root_device_name",
+                                 required=True,
+                                 help="The path where to attach the root device.")
+
+    def _replace_root_volume(self, args, host_info, current_root_volume):
+        # update specifically for AWS
+        host_info["root_device_name"] = args.root_device_name if args.root_device_name else None
+        return super(AwsReplaceRootVolumeMethod, self)._replace_root_volume(
+            args, host_info, current_root_volume)
+
     def _mount_root_volume(self, host_info, volume):
-        self.cloud.mount_disk(host_info, volume,
-                              get_root_label(host_info["region"], host_info["ami"]))
+        self.cloud.mount_disk(host_info, volume, host_info["root_device_name"])
 
     def _host_info_with_current_root_volume(self, args, host_info):
-        return (host_info, host_info["root_volume"])
+        return (host_info, host_info.get("root_volume"))
 
 
 class AwsListInstancesMethod(ListInstancesMethod):
@@ -146,6 +158,19 @@ class AwsCreateRootVolumesMethod(CreateRootVolumesMethod):
     def delete_instance(self, args, instance_id):
         self.cloud.delete_instance(args.region, instance_id, args.assign_static_public_ip)
 
+    def add_extra_args(self):
+        super(AwsCreateRootVolumesMethod, self).add_extra_args()
+        self.parser.add_argument("--snapshot_creation_delay",
+                                 required=False,
+                                 default=15,
+                                 help="Time in seconds to wait for snapshot creation per attempt.",
+                                 type=int)
+        self.parser.add_argument("--snapshot_creation_max_attempts",
+                                 required=False,
+                                 default=80,
+                                 help="Max number of wait attempts to try for snapshot creation.",
+                                 type=int)
+
 
 class AwsDeleteRootVolumesMethod(DeleteRootVolumesMethod):
     """Subclass for deleting root volumes in AWS.
@@ -232,23 +257,30 @@ class AwsResumeInstancesMethod(AbstractInstancesMethod):
                                  help="The ip of the instance to resume.")
 
     def callback(self, args):
-        filters = [
-            {
-                "Name": "instance-state-name",
-                "Values": ["stopped"]
-            }
-        ]
         host_info = self.cloud.get_host_info_specific_args(
             args.region,
             args.search_pattern,
             get_all=False,
-            private_ip=args.node_ip,
-            filters=filters
+            private_ip=args.node_ip
         )
+
         if not host_info:
             logging.error("Host {} does not exist.".format(args.search_pattern))
             return
-        self.cloud.start_instance(host_info, [int(args.custom_ssh_port)])
+
+        if host_info["instance_state"] != "stopped":
+            logging.warning(f"Expected instance {args.search_pattern} to be stopped, "
+                            f"got {host_info['instance_state']}")
+        self.update_ansible_vars_with_args(args)
+        server_ports = self.get_server_ports_to_check(args)
+        self.cloud.start_instance(host_info, server_ports)
+
+
+class AwsHardRebootInstancesMethod(HardRebootInstancesMethod):
+    def __init__(self, base_command):
+        super(AwsHardRebootInstancesMethod, self).__init__(base_command)
+        self.valid_states = ('running', 'stopping', 'stopped', 'pending')
+        self.valid_stoppable_states = ('running', 'stopping')
 
 
 class AwsTagsMethod(AbstractInstancesMethod):
@@ -270,7 +302,9 @@ class AwsAccessAddKeyMethod(AbstractAccessMethod):
 
     def callback(self, args):
         (private_key_file, public_key_file) = self.validate_key_files(args)
-        delete_remote = self.cloud.add_key_pair(args)
+        delete_remote = False
+        if not args.skip_add_keypair_aws:
+            delete_remote = self.cloud.add_key_pair(args)
         print(json.dumps({"private_key": private_key_file,
                           "public_key": public_key_file,
                           "delete_remote": delete_remote}))
@@ -515,6 +549,18 @@ class AwsChangeInstanceTypeMethod(ChangeInstanceTypeMethod):
     # We have to use this to uniform accessing host_info for AWS and GCP
     def _host_info(self, args, host_info):
         return host_info
+
+
+class AwsUpdateDiskMethod(UpdateDiskMethod):
+    def __init__(self, base_command):
+        super(AwsUpdateDiskMethod, self).__init__(base_command)
+
+    def add_extra_args(self):
+        super(AwsUpdateDiskMethod, self).add_extra_args()
+        self.parser.add_argument("--disk_iops", type=int, default=None,
+                                 help="Disk IOPS to provision on EBS-backed instances.")
+        self.parser.add_argument("--disk_throughput", type=int, default=None,
+                                 help="Disk throughput to provision on EBS-backed instances.")
 
 
 class AwsUpdateMountedDisksMethod(UpdateMountedDisksMethod):

@@ -12,8 +12,7 @@
 // under the License.
 //
 //
-#ifndef YB_UTIL_SIZE_LITERALS_H
-#define YB_UTIL_SIZE_LITERALS_H
+#pragma once
 
 #include <stddef.h>
 
@@ -40,5 +39,3 @@ using size_literals::operator"" _MB;
 using size_literals::operator"" _GB;
 
 } // namespace yb
-
-#endif // YB_UTIL_SIZE_LITERALS_H

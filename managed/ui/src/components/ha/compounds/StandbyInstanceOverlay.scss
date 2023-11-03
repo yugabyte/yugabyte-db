@@ -1,12 +1,13 @@
-@import '../../../_style/colors';
+@use '../../../_style/colors';
+@use '../../../_style/variables.scss';
 
 .standby-instance-overlay {
   position: absolute;
-  left: $YB_SIDEBAR_WIDTH;
+  left: variables.$YB_SIDEBAR_WIDTH;
   right: 0;
-  top: $YB_HEADER_HEIGHT;
-  bottom: $YB_FOOTER_HEIGHT;
-  background-color: $YB_TEXT_COLOR;
+  top: variables.$YB_HEADER_HEIGHT;
+  bottom: variables.$YB_FOOTER_HEIGHT;
+  background-color: colors.$YB_TEXT_COLOR;
   opacity: 0.75;
   z-index: 1030;
   backdrop-filter: blur(5px);
@@ -14,16 +15,16 @@
 
 .standby-instance-text {
   z-index: 1030;
-  left: $YB_SIDEBAR_WIDTH;
-  top: $YB_HEADER_HEIGHT;
-  width: calc(100% - #{$YB_SIDEBAR_WIDTH});
-  height: calc(100% - #{$YB_HEADER_HEIGHT} - #{$YB_FOOTER_HEIGHT});
+  left: variables.$YB_SIDEBAR_WIDTH;
+  top: variables.$YB_HEADER_HEIGHT;
+  width: calc(100% - #{variables.$YB_SIDEBAR_WIDTH});
+  height: calc(100% - #{variables.$YB_HEADER_HEIGHT} - #{variables.$YB_FOOTER_HEIGHT});
   position: fixed;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 60px;
   font-weight: 500;
-  color: $YB_WHITE;
+  color: colors.$YB_WHITE;
   text-align: center;
 }

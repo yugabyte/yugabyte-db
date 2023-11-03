@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { FormControl } from 'react-bootstrap';
 import { isFunction } from 'lodash';
 import { YBLabel } from '../../../../components/common/descriptors';
@@ -26,7 +26,8 @@ export class YBTextInput extends Component {
       placeHolder,
       onValueChanged,
       isReadOnly,
-      normalizeOnBlur
+      normalizeOnBlur,
+      autocomplete = 'on'
     } = this.props;
 
     function onChange(event) {
@@ -40,7 +41,7 @@ export class YBTextInput extends Component {
 
     function onBlur(event) {
       if (isDefinedNotNull(self.props.input) && isFunction(self.props.input.onBlur)) {
-        const trimmedValue = trimString(event.target.value)
+        const trimmedValue = trimString(event.target.value);
         event.target.value = trimmedValue;
         if (isFunction(normalizeOnBlur)) {
           self.props.input.onBlur(normalizeOnBlur(trimmedValue));
@@ -59,6 +60,7 @@ export class YBTextInput extends Component {
         onChange={onChange}
         readOnly={isReadOnly}
         onBlur={onBlur}
+        autocomplete={autocomplete}
       />
     );
   }
@@ -73,6 +75,7 @@ export default class YBTextInputWithLabel extends Component {
       infoContent,
       infoTitle,
       infoPlacement,
+      containerClassName,
       ...otherProps
     } = this.props;
     return (
@@ -83,6 +86,7 @@ export default class YBTextInputWithLabel extends Component {
         infoContent={infoContent}
         infoTitle={infoTitle}
         infoPlacement={infoPlacement}
+        classOverrides={containerClassName}
       >
         <YBTextInput {...otherProps} />
       </YBLabel>

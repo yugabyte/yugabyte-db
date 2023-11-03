@@ -17,39 +17,18 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ROCKSDB_LITE
 
 #include "yb/docdb/docdb_debug.h"
-#include "yb/docdb/schema_packing.h"
+#include "yb/dockv/schema_packing.h"
+
+#include "yb/tablet/kv_formatter.h"
 
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/sst_dump_tool.h"
 
-namespace yb {
-namespace {
-
-class DocDBKVFormatterImpl : public rocksdb::DocDBKVFormatter {
-  std::string Format(
-      const Slice& key, const Slice& value, docdb::StorageDbType type) const override {
-    return docdb::EntryToString(rocksdb::ExtractUserKey(key), value, schema_packing_storage_, type);
-  }
-
-  docdb::SchemaPackingStorage schema_packing_storage_;
-};
-
-}  // namespace
-} // namespace yb
-
 int main(int argc, char** argv) {
-  yb::DocDBKVFormatterImpl docdb_kv_formatter;
+  yb::tablet::KVFormatter docdb_kv_formatter;
   rocksdb::SSTDumpTool tool(&docdb_kv_formatter);
   tool.Run(argc, argv);
   return 0;
 }
-#else
-#include <stdio.h>
-int main(int argc, char** argv) {
-  fprintf(stderr, "Not supported in lite mode.\n");
-  return 1;
-}
-#endif  // ROCKSDB_LITE

@@ -4,14 +4,14 @@ linkTitle: KairosDB
 description: Use KairosDB with YCQL API
 aliases:
 menu:
-  preview:
+  preview_integrations:
     identifier: kairosdb
-    parent: integrations
+    parent: integrations-other
     weight: 571
 type: docs
 ---
 
-[KairosDB](http://kairosdb.github.io/) is a Java-based time-series metrics API that leverages Cassandra as its underlying distributed database. This page shows how it can be integrated with YugabyteDB's Cassandra-compatible YCQL API.
+[KairosDB](http://kairosdb.github.io/) is a Java-based time series metrics API that leverages Cassandra as its underlying distributed database. This page shows how it can be integrated with YugabyteDB's Cassandra-compatible YCQL API.
 
 ## Prerequisites
 
@@ -24,21 +24,23 @@ Before you start using the KairosDB plugin, ensure that you have:
 - [Postman API Platform](https://www.postman.com/downloads/).
 - (Optional) YugabyteDB [cassandra-driver-core-3.10.3-yb-2.jar](https://repo1.maven.org/maven2/com/yugabyte/cassandra-driver-core/3.10.3-yb-2/cassandra-driver-core-3.10.3-yb-2.jar), for better performance.
 
-## Start KairosDB
+## Configure and start KairosDB
+
+To configure KairosDB, do the following:
 
 - Copy the YugabyteDB plugin for KairosDB jar to the `lib` folder of your downloaded `kairosdb` directory.
-- (Optional) For better performance, replace the `cassandra-driver-core-3.10.2.jar` with the YugabyteDB `cassandra-driver-core-3.10.3-yb-2.jar` in the `kairosdb/lib` directory.
+- Optionally, for better performance, replace the `cassandra-driver-core-3.10.2.jar` with the YugabyteDB `cassandra-driver-core-3.10.3-yb-2.jar` in the `kairosdb/lib` directory.
 - Add YugabyteDB datastore as the `service.datastore` entry in your `kairosdb/conf/kairosdb.conf file`.
 
-```sh
-#Configure the datastore
+    ```sh
+    #Configure the datastore
 
-#service.datastore: "org.kairosdb.datastore.h2.H2Module"
-#service.datastore: "org.kairosdb.datastore.cassandra.CassandraModule"
-service.datastore: "com.yugabyte.kairosdb.datastore.yugabytedb.YugabyteDBModule"
-```
+    #service.datastore: "org.kairosdb.datastore.h2.H2Module"
+    #service.datastore: "org.kairosdb.datastore.cassandra.CassandraModule"
+    service.datastore: "com.yugabyte.kairosdb.datastore.yugabytedb.YugabyteDBModule"
+    ```
 
-- Start KairosDB in the foreground.
+To start KairosDB in the foreground, do the following:
 
 ```sh
 $ ./bin/kairosdb.sh run
@@ -56,7 +58,7 @@ The KairosDB API server should be available at `localhost:8080`.
 
 ## Verify the integration using ycqlsh
 
-- Run [ycqlsh](/preview/admin/ycqlsh/) to connect to your database using the YCQL API.
+Run [ycqlsh](/preview/admin/ycqlsh/) to connect to your database using the YCQL API as follows:
 
 ```sh
 $ ./bin/ycqlsh localhost
@@ -69,7 +71,7 @@ Use HELP for help.
 ycqlsh>
 ```
 
-- Run the following YCQL commands, and connect to the `kairosdb` keyspace to verify it is working:
+Connect to the `kairosdb` keyspace to verify it is working as follows:
 
 ```cql
 ycqlsh> describe keyspaces;
@@ -94,26 +96,27 @@ row_keys              data_points    string_index   spec
 
 ## Test KairosDB
 
-- Launch Postman via the app or web and create a new workspace from the homepage.
+Launch Postman via the app or web and create a new workspace from the homepage.
 
-![kairosdb workspace](/images/develop/ecosystem-integrations/kairosdb/kairosdb-workspace.png)
+![KairosDB workspace](/images/develop/ecosystem-integrations/kairosdb/kairosdb-workspace.png)
 
-- Select the workspace and click the `+` button to create an HTTP request.
+Select the workspace and click the `+` button to create an HTTP request.
 
-![kairosdb request](/images/develop/ecosystem-integrations/kairosdb/kairosdb-http-request.png)
+![KairosDB request](/images/develop/ecosystem-integrations/kairosdb/kairosdb-http-request.png)
+
 ### Push data
 
-- Select the POST API request in the dropdown as follows:
+Select the POST API request in the dropdown as follows:
 
-![kairosdb request type](/images/develop/ecosystem-integrations/kairosdb/kairosdb-request-type.png)
+![KairosDB request type](/images/develop/ecosystem-integrations/kairosdb/kairosdb-request-type.png)
 
-- Add the following URL in the `Enter request URL` box:
+Add the following URL in the `Enter request URL` box:
 
 ```text
 http://localhost:8080/api/v1/datapoints
 ```
 
-- In the body of the request, add the following JSON, then click **Send**.
+In the body of the request, add the following JSON, then click **Send**.
 
 ```json
 [
@@ -139,21 +142,21 @@ http://localhost:8080/api/v1/datapoints
 
 Your request should look like:
 
-![kairosdb POST request](/images/develop/ecosystem-integrations/kairosdb/kairosdb-request1.png)
+![KairosDB POST request](/images/develop/ecosystem-integrations/kairosdb/kairosdb-request1.png)
 
 Your response should return a status code of 204 with no body.
 
-![kairosdb response](/images/develop/ecosystem-integrations/kairosdb/kairosdb-response.png)
+![KairosDB response](/images/develop/ecosystem-integrations/kairosdb/kairosdb-response.png)
 
 ### Query the data
 
-- To query the data you [inserted using the POST API](#push-data), enter the following URL in the `Enter request URL` box:
+To query the data you [inserted using the POST API](#push-data), enter the following URL in the `Enter request URL` box:
 
 ```text
 http://localhost:8080/api/v1/datapoints/query
 ```
 
-- In the body of the request, add the following JSON, and send it.
+In the body of the request, add the following JSON, and send it.
 
 ```json
 {

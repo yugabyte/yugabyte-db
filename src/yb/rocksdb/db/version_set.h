@@ -31,8 +31,6 @@
 // Version,VersionSet are thread-compatible, but require external
 // synchronization on all accesses.
 
-#ifndef YB_ROCKSDB_DB_VERSION_SET_H
-#define YB_ROCKSDB_DB_VERSION_SET_H
 
 #pragma once
 
@@ -45,6 +43,8 @@
 #include <string>
 #include <utility>
 #include <vector>
+
+#include "yb/rocksdb/rocksdb_fwd.h"
 
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/version_builder.h"
@@ -65,20 +65,19 @@ namespace log {
 class Writer;
 }
 
+class ColumnFamilyData;
+class ColumnFamilySet;
 class Compaction;
+class FileNumbersProvider;
 class InternalIterator;
 class LogBuffer;
 class LookupKey;
 class MemTable;
+class MergeContext;
+class TableCache;
 class Version;
 class VersionSet;
 class WriteBuffer;
-class MergeContext;
-class ColumnFamilyData;
-class ColumnFamilySet;
-class TableCache;
-class MergeIteratorBuilder;
-class FileNumbersProvider;
 
 // Return the smallest index i such that file_level.files[i]->largest >= key.
 // Return file_level.num_files if there is no such file.
@@ -444,6 +443,10 @@ class Version {
   // REQUIRES: This version has been saved (see VersionSet::SaveTo)
   void AddIterators(const ReadOptions&, const EnvOptions& soptions,
                     MergeIteratorBuilder* merger_iter_builder);
+  template<typename MergeIteratorBuilderType>
+  void AddIndexIterators(
+      const ReadOptions& read_options, const EnvOptions& soptions,
+      MergeIteratorBuilderType* merge_iter_builder);
 
   // Lookup the value for key.  If found, store it in *val and
   // return OK.  Else return a non-OK status.
@@ -517,7 +520,8 @@ class Version {
 
   size_t GetMemoryUsageByTableReaders();
 
-  // Returns approximate middle key of the largest SST file (see TableReader::GetMiddleKey).
+  // Returns weighted middle key of the approximate middle keys of the SST files
+  // (see TableReader::GetMiddleKey).
   // Returns Status(Incomplete) if there are no SST files for this version.
   Result<std::string> GetMiddleKey();
 
@@ -573,6 +577,15 @@ class Version {
   void UpdateFilesByCompactionPri();
 
   Result<TableCache::TableReaderWithHandle> GetLargestSstTableReader();
+  Result<std::string> GetMiddleOfMiddleKeys();
+
+  template <typename IteratorBuilder, typename CreateIteratorFunc>
+  void AddLevel0Iterators(
+      const ReadOptions& read_options,
+      const EnvOptions& soptions,
+      IteratorBuilder* merge_iter_builder,
+      Arena* arena,
+      const CreateIteratorFunc& create_iterator_func);
 
   ColumnFamilyData* cfd_;  // ColumnFamilyData to which this Version belongs
   Logger* info_log_;
@@ -644,7 +657,6 @@ class VersionSet {
                                    BoundaryValuesExtractor* extractor,
                                    Env* env);
 
-#ifndef ROCKSDB_LITE
   // Try to reduce the number of levels. This call is valid when
   // only one level from the new max level to the old
   // max level containing files.
@@ -663,7 +675,6 @@ class VersionSet {
   Status DumpManifest(const Options& options, const std::string& manifestFileName,
                       bool verbose, bool hex = false);
 
-#endif  // ROCKSDB_LITE
 
   // Return the current manifest file number
   uint64_t manifest_file_number() const { return manifest_file_number_; }
@@ -843,5 +854,3 @@ class VersionSet {
 };
 
 }  // namespace rocksdb
-
-#endif // YB_ROCKSDB_DB_VERSION_SET_H

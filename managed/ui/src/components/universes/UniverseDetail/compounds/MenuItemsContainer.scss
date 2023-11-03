@@ -1,16 +1,20 @@
-@import '../../../../_style/colors.scss';
+@use '../../../../_style/colors.scss';
 
 .menu-items-container {
-  $menu-width: 250px;
+  $menu-width: 280px;
 
   display: flex;
   width: $menu-width;
 
   &__main-frame {
-    border-right: 1px solid $YB_GRAY_HOVER;
+    border-right: 1px solid colors.$YB_GRAY_HOVER;
     min-width: 100%;
     transition: margin-left 250ms ease;
     will-change: margin-left;
+
+    li.disabled > a {
+      cursor: not-allowed;
+    }
 
     &--slide-left {
       margin-left: -$menu-width;
@@ -25,4 +29,3 @@
     min-width: 100%;
   }
 }
-

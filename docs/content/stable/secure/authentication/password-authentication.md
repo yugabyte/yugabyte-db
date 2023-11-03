@@ -22,13 +22,24 @@ type: docs
 
 By default, password authentication is disabled, allowing users and clients to connect to and interact with YugabyteDB with minimal effort. For production clusters, password authentication is important for maximizing security. The password authentication methods work similarly, but differ in how user passwords are stored on the server and how the password provided by the client is sent across the connection.
 
+## YugabyteDB database passwords
+
+YugabyteDB database passwords are separate from operating system passwords. The password for each database user is stored in the `pg_authid` system catalog.
+
+Database passwords can be managed using the following:
+
+- YSQL API: [CREATE ROLE](../../../api/ysql/the-sql-language/statements/dcl_create_role) and [ALTER ROLE](../../../api/ysql/the-sql-language/statements/dcl_alter_role)
+- `ysqlsh` meta-command: [\password](../../../admin/ysqlsh-meta-commands/#password-username)
+
+The [passwordcheck extension](../../../explore/ysql-language-features/pg-extensions/#passwordcheck-example) can be used to enforce strong passwords whenever they are set with `CREATE ROLE` or `ALTER ROLE`. passwordcheck only works for passwords that are provided in plain text. For more information, refer to the [PostgreSQL passwordcheck documentation](https://www.postgresql.org/docs/11/passwordcheck.html).
+
 ## Password authentication methods
 
 The following password authentication methods are supported by YugabyteDB.
 
 ### MD5
 
-The MD5 method (`md5`) prevents password sniffing and avoids storing passwords on the server in plain text, but provides no protection if an attacker obtains password hashes from the server or from clients (by sniffing, man-in-the-middle, or by brute force).  This method is the default password encryption for YugabyteDB clusters.
+The MD5 method (`md5`) prevents password sniffing and avoids storing passwords on the server in plain text, but provides no protection if an attacker obtains password hashes from the server or from clients (by sniffing, man-in-the-middle, or by brute force). MD5 is the default password encryption for YugabyteDB clusters.
 
 The MD5 hash algorithm is not considered secure against determined attacks. Some of the security risks include:
 
@@ -48,31 +59,22 @@ For additional security, SCRAM-SHA-256 password encryption can also be used with
 
 {{< /note >}}
 
-## YugabyteDB database passwords
-
-YugabyteDB database passwords are separate from operating system passwords. The password for each database user is stored in the `pg_authid` system catalog.
-
-Database passwords can be managed using the following:
-
-- YSQL API: [CREATE ROLE](../../../api/ysql/the-sql-language/statements/dcl_create_role) and [ALTER ROLE](../../../api/ysql/the-sql-language/statements/dcl_alter_role)
-- `ysqlsh` meta-command: [`\password`](../../../admin/ysqlsh/#password-username)
-
 ## Enable SCRAM-SHA-256 authentication
 
 To configure a YugabyteDB cluster to use SCRAM-SHA-256 authentication for databases, follow these steps.
 
 1. Change the password encryption to use SCRAM-SHA-256.
 
-    To change the default MD5 password encryption to use SCRAM-SHA-256, add the YB-TServer [`--ysql_pg_conf`](../../../reference/configuration/yb-tserver/#ysql-pg-conf) flag and set the value to `scram-sha-256`:
+    To change the default MD5 password encryption to use SCRAM-SHA-256, add the YB-TServer [`--ysql_pg_conf_csv`](../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) flag and set the value to `scram-sha-256`:
 
     ```sh
-    --ysql_pg_conf="password_encryption=scram-sha-256"
+    --ysql_pg_conf_csv="password_encryption=scram-sha-256"
     ```
 
     or in the `yb-tserver.conf`, add the following line:
 
     ```sh
-    --ysql_pg_conf=password_encryption=scram-sha-256
+    --ysql_pg_conf_csv=password_encryption=scram-sha-256
     ```
 
 2. Specify the rules for host-based authentication.
@@ -100,7 +102,7 @@ To use SCRAM-SHA-256 password authentication on a new YugabyteDB cluster, follow
 1. In the YB-TServer configuration file (flagfile), add the following two lines:
 
     ```sh
-    --ysql_pg_conf=password_encryption=scram-sha-256
+    --ysql_pg_conf_csv=password_encryption=scram-sha-256
     --ysql_hba_conf_csv=host all all 0.0.0.0/0 md5,host all all ::0/0 md5,host all all 0.0.0.0/0 scram-sha-256,host all all ::0/0 scram-sha-256
     ```
 
@@ -167,7 +169,7 @@ When you [enable SCRAM-SHA-256 authentication](#enable-scram-sha-256-authenticat
 - All new, or changed, passwords will be encrypted using the SCRAM-SHA-256 hashing algorithm.
 - All existing passwords were encrypted using the MD5 hashing algorithm.
 
-Because all existing passwords must be changed, you can manage the migration of these user and role passwords from MD5 to SCRAM-SHA-256 by maintaining rules in the `--ysql_hba_conf_csv` setting to allow both MD5 passwords and SCRAM-SHA-256 passwords to work until all passwords have been migrated to SCRAM-SHA-256. For an example, see [Create a cluster that uses SCRAM-SHA-256 password authentication](#Create-a-cluster-that-uses-scram-sha-256-password-authentication) above.
+Because all existing passwords must be changed, you can manage the migration of these user and role passwords from MD5 to SCRAM-SHA-256 by maintaining rules in the `--ysql_hba_conf_csv` setting to allow both MD5 passwords and SCRAM-SHA-256 passwords to work until all passwords have been migrated to SCRAM-SHA-256. For an example, see [Create a cluster that uses SCRAM-SHA-256 password authentication](#Create-a-cluster-that-uses-scram-sha-256-password-authentication).
 
 If you follow a similar approach for an existing cluster, you can enhance your cluster security, track and migrate passwords, and then remove the much weaker MD5 rules after all passwords have been updated.
 

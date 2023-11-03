@@ -27,19 +27,21 @@
 
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/cql_operation.h"
+#include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb-internal.h"
-#include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_debug.h"
-#include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_types.h"
-#include "yb/docdb/intent.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/rocksdb_writer.h"
-#include "yb/docdb/subdocument.h"
-#include "yb/docdb/value.h"
-#include "yb/docdb/value_type.h"
+
+#include "yb/dockv/doc_kv_util.h"
+#include "yb/dockv/intent.h"
+#include "yb/dockv/subdocument.h"
+#include "yb/dockv/value.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
@@ -48,11 +50,13 @@
 
 #include "yb/server/hybrid_clock.h"
 
+#include "yb/tablet/tablet_metrics.h"
+
 #include "yb/util/bitmap.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/enums.h"
 #include "yb/util/fast_varint.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/pb_util.h"
@@ -62,52 +66,33 @@
 
 #include "yb/yql/cql/ql/util/errcodes.h"
 
-using std::endl;
-using std::list;
 using std::string;
 using std::stringstream;
 using std::unique_ptr;
-using std::shared_ptr;
-using std::stack;
 using std::vector;
-using std::make_shared;
-
-using yb::HybridTime;
-using yb::FormatBytesAsStr;
-using strings::Substitute;
 
 using namespace std::placeholders;
 
-DEFINE_int32(cdc_max_stream_intent_records, 1000,
+DEFINE_UNKNOWN_int32(cdc_max_stream_intent_records, 1680,
              "Max number of intent records allowed in single cdc batch. ");
 
 namespace yb {
 namespace docdb {
 
+using dockv::KeyBytes;
+using dockv::KeyEntryType;
+using dockv::KeyEntryTypeAsChar;
+
 namespace {
 
-// key should be valid prefix of doc key, ending with some complete pritimive value or group end.
-Status ApplyIntent(RefCntPrefix key,
-                           const IntentTypeSet intent_types,
-                           LockBatchEntries *keys_locked) {
+// key should be valid prefix of doc key, ending with some complete primitive value or group end.
+Status ApplyIntent(
+    RefCntPrefix key, dockv::IntentTypeSet intent_types, LockBatchEntries* keys_locked) {
+  RSTATUS_DCHECK(!intent_types.None(), InternalError, "Empty intent types is not allowed");
   // Have to strip kGroupEnd from end of key, because when only hash key is specified, we will
   // get two kGroupEnd at end of strong intent.
-  size_t size = key.size();
-  if (size > 0) {
-    if (key.data()[0] == KeyEntryTypeAsChar::kGroupEnd) {
-      if (size != 1) {
-        return STATUS_FORMAT(Corruption, "Key starting with group end: $0",
-            key.as_slice().ToDebugHexString());
-      }
-      size = 0;
-    } else {
-      while (key.data()[size - 1] == KeyEntryTypeAsChar::kGroupEnd) {
-        --size;
-      }
-    }
-  }
-  key.Resize(size);
-  keys_locked->push_back({key, intent_types});
+  RETURN_NOT_OK(dockv::RemoveGroupEndSuffix(&key));
+  keys_locked->push_back({std::move(key), intent_types});
   return Status::OK();
 }
 
@@ -122,56 +107,60 @@ struct DetermineKeysToLockResult {
 
 Result<DetermineKeysToLockResult> DetermineKeysToLock(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
-    const google::protobuf::RepeatedPtrField<KeyValuePairPB>& read_pairs,
-    const IsolationLevel isolation_level,
-    const OperationKind operation_kind,
-    const RowMarkType row_mark_type,
+    const ArenaList<LWKeyValuePairPB>& read_pairs,
+    IsolationLevel isolation_level,
+    RowMarkType row_mark_type,
     bool transactional_table,
-    PartialRangeKeyIntents partial_range_key_intents) {
+    dockv::PartialRangeKeyIntents partial_range_key_intents) {
   DetermineKeysToLockResult result;
   boost::container::small_vector<RefCntPrefix, 8> doc_paths;
   boost::container::small_vector<size_t, 32> key_prefix_lengths;
   result.need_read_snapshot = false;
-  for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
+  for (const auto& doc_op : doc_write_ops) {
     doc_paths.clear();
     IsolationLevel level;
     RETURN_NOT_OK(doc_op->GetDocPaths(GetDocPathsMode::kLock, &doc_paths, &level));
     if (isolation_level != IsolationLevel::NON_TRANSACTIONAL) {
       level = isolation_level;
     }
-    IntentTypeSet strong_intent_types = GetStrongIntentTypeSet(level, operation_kind,
-                                                               row_mark_type);
+    auto intent_types = dockv::GetIntentTypesForWrite(level);
     if (isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION &&
-        operation_kind == OperationKind::kWrite &&
         doc_op->RequireReadSnapshot()) {
-      strong_intent_types = IntentTypeSet({IntentType::kStrongRead, IntentType::kStrongWrite});
+      intent_types = dockv::IntentTypeSet(
+          {dockv::IntentType::kStrongRead, dockv::IntentType::kStrongWrite});
     }
 
     for (const auto& doc_path : doc_paths) {
       key_prefix_lengths.clear();
-      RETURN_NOT_OK(SubDocKey::DecodePrefixLengths(doc_path.as_slice(), &key_prefix_lengths));
+      auto doc_path_slice = doc_path.as_slice();
+      RETURN_NOT_OK(dockv::SubDocKey::DecodePrefixLengths(doc_path_slice, &key_prefix_lengths));
       // At least entire doc_path should be returned, so empty key_prefix_lengths is an error.
       if (key_prefix_lengths.empty()) {
         return STATUS_FORMAT(Corruption, "Unable to decode key prefixes from: $0",
-                             doc_path.as_slice().ToDebugHexString());
+                             doc_path_slice.ToDebugHexString());
       }
       // We will acquire strong lock on the full doc_path, so remove it from list of weak locks.
       key_prefix_lengths.pop_back();
       auto partial_key = doc_path;
-      // Acquire weak lock on empty key for transactional tables,
-      // unless specified key is already empty.
-      if (doc_path.size() > 0 && transactional_table) {
+      // Acquire weak lock on empty key for transactional tables, unless specified key is already
+      // empty.
+      // For doc paths having cotable id/colocation id, a weak lock on the colocated table would be
+      // acquired as part of acquiring weak locks on the prefixes. We should not acquire weak lock
+      // on the empty key since it would lead to a weak lock on the parent table of the host tablet.
+      auto has_cotable_id = doc_path_slice.starts_with(KeyEntryTypeAsChar::kTableId);
+      auto has_colocation_id = doc_path_slice.starts_with(KeyEntryTypeAsChar::kColocationId);
+      if (doc_path.size() > 0 && transactional_table && !(has_cotable_id || has_colocation_id)) {
         partial_key.Resize(0);
         RETURN_NOT_OK(ApplyIntent(
-            partial_key, StrongToWeak(strong_intent_types), &result.lock_batch));
+            partial_key, MakeWeak(intent_types), &result.lock_batch));
       }
-      for (size_t prefix_length : key_prefix_lengths) {
+      for (auto prefix_length : key_prefix_lengths) {
         partial_key.Resize(prefix_length);
         RETURN_NOT_OK(ApplyIntent(
-            partial_key, StrongToWeak(strong_intent_types), &result.lock_batch));
+            partial_key, MakeWeak(intent_types), &result.lock_batch));
       }
 
-      RETURN_NOT_OK(ApplyIntent(doc_path, strong_intent_types, &result.lock_batch));
+      RETURN_NOT_OK(ApplyIntent(doc_path, intent_types, &result.lock_batch));
     }
 
     if (doc_op->RequireReadSnapshot()) {
@@ -180,18 +169,15 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
   }
 
   if (!read_pairs.empty()) {
-    const auto strong_read_intent_types = GetStrongIntentTypeSet(
-        isolation_level, OperationKind::kRead, row_mark_type);
     RETURN_NOT_OK(EnumerateIntents(
         read_pairs,
-        [&result, &strong_read_intent_types](
-            IntentStrength strength, FullDocKey, Slice value, KeyBytes* key, LastKey) {
-          RefCntPrefix prefix(key->AsSlice());
-          return ApplyIntent(prefix,
-                             strength == IntentStrength::kStrong
-                                ? strong_read_intent_types
-                                : StrongToWeak(strong_read_intent_types),
-                             &result.lock_batch);
+        [&result, intent_types = dockv:: GetIntentTypesForRead(isolation_level, row_mark_type)](
+            auto ancestor_doc_key, auto, auto, auto* key, auto, auto is_row_lock) {
+          auto actual_intents = GetIntentTypes(intent_types, is_row_lock);
+          return ApplyIntent(
+              RefCntPrefix(key->AsSlice()),
+              ancestor_doc_key ? MakeWeak(actual_intents) : actual_intents,
+              &result.lock_batch);
         }, partial_range_key_intents));
   }
 
@@ -242,25 +228,24 @@ void FilterKeysToLock(LockBatchEntries *keys_locked) {
 
 Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
-    const google::protobuf::RepeatedPtrField<KeyValuePairPB>& read_pairs,
-    const scoped_refptr<Histogram>& write_lock_latency,
-    const IsolationLevel isolation_level,
-    const OperationKind operation_kind,
-    const RowMarkType row_mark_type,
+    const ArenaList<LWKeyValuePairPB>& read_pairs,
+    tablet::TabletMetrics* tablet_metrics,
+    IsolationLevel isolation_level,
+    RowMarkType row_mark_type,
     bool transactional_table,
     bool write_transaction_metadata,
     CoarseTimePoint deadline,
-    PartialRangeKeyIntents partial_range_key_intents,
+    dockv::PartialRangeKeyIntents partial_range_key_intents,
     SharedLockManager *lock_manager) {
   PrepareDocWriteOperationResult result;
 
   auto determine_keys_to_lock_result = VERIFY_RESULT(DetermineKeysToLock(
-      doc_write_ops, read_pairs, isolation_level, operation_kind, row_mark_type,
+      doc_write_ops, read_pairs, isolation_level, row_mark_type,
       transactional_table, partial_range_key_intents));
   VLOG_WITH_FUNC(4) << "determine_keys_to_lock_result=" << determine_keys_to_lock_result.ToString();
   if (determine_keys_to_lock_result.lock_batch.empty() && !write_transaction_metadata) {
     LOG(ERROR) << "Empty lock batch, doc_write_ops: " << yb::ToString(doc_write_ops)
-               << ", read pairs: " << yb::ToString(read_pairs);
+               << ", read pairs: " << AsString(read_pairs);
     return STATUS(Corruption, "Empty lock batch");
   }
   result.need_read_snapshot = determine_keys_to_lock_result.need_read_snapshot;
@@ -268,67 +253,69 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
   FilterKeysToLock(&determine_keys_to_lock_result.lock_batch);
   VLOG_WITH_FUNC(4) << "filtered determine_keys_to_lock_result="
                     << determine_keys_to_lock_result.ToString();
-  const MonoTime start_time = (write_lock_latency != nullptr) ? MonoTime::Now() : MonoTime();
+  const MonoTime start_time = (tablet_metrics != nullptr) ? MonoTime::Now() : MonoTime();
   result.lock_batch = LockBatch(
       lock_manager, std::move(determine_keys_to_lock_result.lock_batch), deadline);
-  RETURN_NOT_OK_PREPEND(
-      result.lock_batch.status(), Format("Timeout: $0", deadline - ToCoarse(start_time)));
-  if (write_lock_latency != nullptr) {
+  auto lock_status = result.lock_batch.status();
+  if (!lock_status.ok()) {
+    if (tablet_metrics != nullptr) {
+      tablet_metrics->Increment(tablet::TabletCounters::kFailedBatchLock);
+    }
+    return lock_status.CloneAndAppend(
+        Format("Timeout: $0", deadline - ToCoarse(start_time)));
+  }
+  if (tablet_metrics != nullptr) {
     const MonoDelta elapsed_time = MonoTime::Now().GetDeltaSince(start_time);
-    write_lock_latency->Increment(elapsed_time.ToMicroseconds());
+    tablet_metrics->Increment(
+        tablet::TabletEventStats::kWriteLockLatency,
+        make_unsigned(elapsed_time.ToMicroseconds()));
   }
 
   return result;
 }
 
-Status SetDocOpQLErrorResponse(DocOperation* doc_op, string err_msg) {
-  switch (doc_op->OpType()) {
-    case DocOperation::Type::QL_WRITE_OPERATION: {
-      const auto &resp = down_cast<QLWriteOperation *>(doc_op)->response();
-      resp->set_status(QLResponsePB::YQL_STATUS_QUERY_ERROR);
-      resp->set_error_message(err_msg);
-      break;
-    }
-    case DocOperation::Type::PGSQL_WRITE_OPERATION: {
-      const auto &resp = down_cast<PgsqlWriteOperation *>(doc_op)->response();
-      resp->set_status(PgsqlResponsePB::PGSQL_STATUS_USAGE_ERROR);
-      resp->set_error_message(err_msg);
-      break;
-    }
-    default:
-      return STATUS_FORMAT(InternalError,
-                           "Invalid status (QLError) for doc operation %d",
-                           doc_op->OpType());
-  }
-  return Status::OK();
-}
-
 Status AssembleDocWriteBatch(const vector<unique_ptr<DocOperation>>& doc_write_ops,
-                                CoarseTimePoint deadline,
-                                const ReadHybridTime& read_time,
-                                const DocDB& doc_db,
-                                KeyValueWriteBatchPB* write_batch,
-                                InitMarkerBehavior init_marker_behavior,
-                                std::atomic<int64_t>* monotonic_counter,
-                                HybridTime* restart_read_ht,
-                                const string& table_name) {
+                             const ReadOperationData& read_operation_data,
+                             const DocDB& doc_db,
+                             SchemaPackingProvider* schema_packing_provider /*null okay*/,
+                             std::reference_wrapper<const ScopedRWOperation> pending_op,
+                             LWKeyValueWriteBatchPB* write_batch,
+                             InitMarkerBehavior init_marker_behavior,
+                             std::atomic<int64_t>* monotonic_counter,
+                             HybridTime* restart_read_ht,
+                             const string& table_name) {
   DCHECK_ONLY_NOTNULL(restart_read_ht);
-  DocWriteBatch doc_write_batch(doc_db, init_marker_behavior, monotonic_counter);
-  DocOperationApplyData data = {&doc_write_batch, deadline, read_time, restart_read_ht};
+  DocWriteBatch doc_write_batch(doc_db, init_marker_behavior, pending_op, monotonic_counter);
+
+  DocOperationApplyData data = {
+    .doc_write_batch = &doc_write_batch,
+    .read_operation_data = read_operation_data,
+    .restart_read_ht = restart_read_ht,
+    .iterator = nullptr,
+    .restart_seek = true,
+    .schema_packing_provider = schema_packing_provider,
+  };
+
+  std::optional<DocRowwiseIterator> iterator;
+  DocOperation* prev_operation = nullptr;
+  SingleOperation single_operation(doc_write_ops.size() == 1);
   for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
+    RETURN_NOT_OK(doc_op->UpdateIterator(&data, prev_operation, single_operation, &iterator));
+    prev_operation = doc_op.get();
     Status s = doc_op->Apply(data);
-    if (s.IsQLError()) {
-      string error_msg;
+    if (s.IsQLError() && doc_op->OpType() == DocOperation::Type::QL_WRITE_OPERATION) {
+      std::string error_msg;
       if (ql::GetErrorCode(s) == ql::ErrorCode::CONDITION_NOT_SATISFIED) {
         // Generating the error message here because 'table_name'
         // is not available on the lower level - in doc_op->Apply().
         error_msg = Format("Condition on table $0 was not satisfied.", table_name);
       } else {
-        error_msg =  s.message().ToBuffer();
+        error_msg = s.message().ToBuffer();
       }
-
       // Ensure we set appropriate error in the response object for QL errors.
-      RETURN_NOT_OK(SetDocOpQLErrorResponse(doc_op.get(), error_msg));
+      const auto& resp = down_cast<QLWriteOperation*>(doc_op.get())->response();
+      resp->set_status(QLResponsePB::YQL_STATUS_QUERY_ERROR);
+      resp->set_error_message(std::move(error_msg));
       continue;
     }
 
@@ -338,427 +325,27 @@ Status AssembleDocWriteBatch(const vector<unique_ptr<DocOperation>>& doc_write_o
   return Status::OK();
 }
 
-namespace {
-
-Status NotEnoughBytes(size_t present, size_t required, const Slice& full) {
-  return STATUS_FORMAT(
-      Corruption, "Not enough bytes in external intents $0 while $1 expected, full: $2",
-      present, required, full.ToDebugHexString());
-}
-
-Status PrepareApplyExternalIntentsBatch(
-    HybridTime commit_ht,
-    const Slice& original_input_value,
-    rocksdb::WriteBatch* regular_batch,
-    IntraTxnWriteId* write_id) {
-  auto input_value = original_input_value;
-  DocHybridTimeBuffer doc_ht_buffer;
-  RETURN_NOT_OK(input_value.consume_byte(KeyEntryTypeAsChar::kUuid));
-  RETURN_NOT_OK(Uuid::FromSlice(input_value.Prefix(kUuidSize)));
-  input_value.remove_prefix(kUuidSize);
-  RETURN_NOT_OK(input_value.consume_byte(KeyEntryTypeAsChar::kExternalIntents));
-  for (;;) {
-    auto key_size = VERIFY_RESULT(util::FastDecodeUnsignedVarInt(&input_value));
-    if (key_size == 0) {
-      break;
-    }
-    if (input_value.size() < key_size) {
-      return NotEnoughBytes(input_value.size(), key_size, original_input_value);
-    }
-    auto output_key = input_value.Prefix(key_size);
-    input_value.remove_prefix(key_size);
-    auto value_size = VERIFY_RESULT(util::FastDecodeUnsignedVarInt(&input_value));
-    if (input_value.size() < value_size) {
-      return NotEnoughBytes(input_value.size(), value_size, original_input_value);
-    }
-    auto output_value = input_value.Prefix(value_size);
-    input_value.remove_prefix(value_size);
-    std::array<Slice, 2> key_parts = {{
-        output_key,
-        doc_ht_buffer.EncodeWithValueType(commit_ht, *write_id),
-    }};
-    std::array<Slice, 1> value_parts = {{
-        output_value,
-    }};
-    regular_batch->Put(key_parts, value_parts);
-    ++*write_id;
-  }
-
-  return Status::OK();
-}
-
-// Reads all stored external intents for provided transactions and prepares batches that will apply
-// them into regular db and remove from intents db.
-Status PrepareApplyExternalIntents(
-    ExternalTxnApplyState* apply_external_transactions,
-    rocksdb::WriteBatch* regular_batch,
-    rocksdb::DB* intents_db,
-    rocksdb::WriteBatch* intents_batch) {
-  if (apply_external_transactions->empty()) {
+Status EnumerateIntents(
+    const ArenaList<LWKeyValuePairPB>& kv_pairs,
+    const dockv::EnumerateIntentsCallback& functor,
+    dockv::PartialRangeKeyIntents partial_range_key_intents) {
+  if (kv_pairs.empty()) {
     return Status::OK();
   }
-
-  KeyBytes key_prefix;
-  KeyBytes key_upperbound;
-  Slice key_upperbound_slice;
-
-  auto iter = CreateRocksDBIterator(
-      intents_db, &KeyBounds::kNoBounds, BloomFilterMode::DONT_USE_BLOOM_FILTER,
-      /* user_key_for_filter= */ boost::none,
-      rocksdb::kDefaultQueryId, /* read_filter= */ nullptr, &key_upperbound_slice);
-
-  for (auto& apply : *apply_external_transactions) {
-    key_prefix.Clear();
-    key_prefix.AppendKeyEntryType(KeyEntryType::kExternalTransactionId);
-    key_prefix.AppendRawBytes(apply.first.AsSlice());
-
-    key_upperbound = key_prefix;
-    key_upperbound.AppendKeyEntryType(KeyEntryType::kMaxByte);
-    key_upperbound_slice = key_upperbound.AsSlice();
-
-    IntraTxnWriteId& write_id = apply.second.write_id;
-
-    iter.Seek(key_prefix);
-    while (iter.Valid()) {
-      const Slice input_key(iter.key());
-
-      if (!input_key.starts_with(key_prefix.AsSlice())) {
-        break;
-      }
-
-      if (regular_batch) {
-        RETURN_NOT_OK(PrepareApplyExternalIntentsBatch(
-            apply.second.commit_ht, iter.value(), regular_batch, &write_id));
-      }
-      if (intents_batch) {
-        intents_batch->SingleDelete(input_key);
-      }
-
-      iter.Next();
-    }
-  }
-
-  return Status::OK();
-}
-
-ExternalTxnApplyState ProcessApplyExternalTransactions(const KeyValueWriteBatchPB& put_batch) {
-  ExternalTxnApplyState result;
-  for (const auto& apply : put_batch.apply_external_transactions()) {
-    auto txn_id = CHECK_RESULT(FullyDecodeTransactionId(apply.transaction_id()));
-    auto commit_ht = HybridTime(apply.commit_hybrid_time());
-    result.emplace(
-        txn_id,
-        ExternalTxnApplyStateData{
-          .commit_ht = commit_ht
-        });
-  }
-
-  return result;
-}
-
-} // namespace
-
-IntraTxnWriteId ExternalTxnIntentsState::GetWriteIdAndIncrement(const TransactionId& txn_id) {
-  std::lock_guard<decltype(mutex_)> lock(mutex_);
-  return map_[txn_id]++;
-}
-
-void ExternalTxnIntentsState::EraseEntry(const TransactionId& txn_id) {
-  std::lock_guard<decltype(mutex_)> lock(mutex_);
-  map_.erase(txn_id);
-}
-
-bool AddExternalPairToWriteBatch(
-    const KeyValuePairPB& kv_pair,
-    HybridTime hybrid_time,
-    ExternalTxnApplyState* apply_external_transactions,
-    rocksdb::WriteBatch* regular_write_batch,
-    rocksdb::WriteBatch* intents_write_batch,
-    ExternalTxnIntentsState* external_txns_intents_state) {
-  DocHybridTimeBuffer doc_ht_buffer;
-  DocHybridTimeWordBuffer inverted_doc_ht_buffer;
-
-  CHECK(!kv_pair.key().empty());
-  CHECK(!kv_pair.value().empty());
-
-  if (kv_pair.key()[0] != KeyEntryTypeAsChar::kExternalTransactionId) {
-    return true;
-  }
-
-  // We replicate encoded SubDocKeys without a HybridTime at the end, and only append it here.
-  // The reason for this is that the HybridTime timestamp is only picked at the time of
-  // appending  an entry to the tablet's Raft log. Also this is a good way to save network
-  // bandwidth.
-  //
-  // "Write id" is the final component of our HybridTime encoding (or, to be more precise,
-  // DocHybridTime encoding) that helps disambiguate between different updates to the
-  // same key (row/column) within a transaction. We set it based on the position of the write
-  // operation in its write batch.
-  Slice key_value = kv_pair.value();
-  // This entry contains external intents.
-  Slice key = kv_pair.key();
-  key.consume_byte();
-  auto txn_id = CHECK_RESULT(DecodeTransactionId(&key));
-  auto it = apply_external_transactions->find(txn_id);
-  if (it != apply_external_transactions->end()) {
-    // The same write operation could contain external intents and instruct us to apply them.
-    CHECK_OK(PrepareApplyExternalIntentsBatch(
-        it->second.commit_ht, key_value, regular_write_batch, &it->second.write_id));
-    if (external_txns_intents_state) {
-      external_txns_intents_state->EraseEntry(txn_id);
-    }
-    return false;
-  }
-
-  int write_id = 0;
-  if (external_txns_intents_state) {
-    write_id = external_txns_intents_state->GetWriteIdAndIncrement(txn_id);
-  }
-
-  hybrid_time = kv_pair.has_external_hybrid_time() ?
-      HybridTime(kv_pair.external_hybrid_time()) : hybrid_time;
-  std::array<Slice, 2> key_parts = {{
-      Slice(kv_pair.key()),
-      doc_ht_buffer.EncodeWithValueType(hybrid_time, write_id),
-  }};
-  key_parts[1] = InvertEncodedDocHT(key_parts[1], &inverted_doc_ht_buffer);
-  constexpr size_t kNumValueParts = 1;
-  intents_write_batch->Put(key_parts, { &key_value, kNumValueParts });
-
-  return false;
-}
-
-// Usually put_batch contains only records that should be applied to regular DB.
-// So apply_external_transactions will be empty and regular_entry will be true.
-//
-// But in general case on consumer side of CDC put_batch could contain various kinds of records,
-// that should be applied into regular and intents db.
-// They are:
-// apply_external_transactions
-//   The list of external transactions that should be applied.
-//   For each such transaction we should lookup for existing external intents (stored in intents DB)
-//   and convert them to Put command in regular_write_batch plus SingleDelete command in
-//   intents_write_batch.
-// write_pairs
-//   Could contain regular entries, that should be stored into regular DB as is.
-//   Also pair could contain external intents, that should be stored into intents DB.
-//   But if apply_external_transactions contains transaction for those external intents, then
-//   those intents will be applied directly to regular DB, avoiding unnecessary write to intents DB.
-//   This case is very common for short running transactions.
-bool PrepareExternalWriteBatch(
-    const KeyValueWriteBatchPB& put_batch,
-    HybridTime hybrid_time,
-    rocksdb::DB* intents_db,
-    rocksdb::WriteBatch* regular_write_batch,
-    rocksdb::WriteBatch* intents_write_batch,
-    ExternalTxnIntentsState* external_txns_intents_state) {
-  CHECK(put_batch.read_pairs().empty());
-
-  auto apply_external_transactions = ProcessApplyExternalTransactions(put_batch);
-
-  CHECK_OK(PrepareApplyExternalIntents(
-      &apply_external_transactions, regular_write_batch, intents_db, intents_write_batch));
-
-  bool has_non_external_kvs = false;
-  for (const auto& write_pair : put_batch.write_pairs()) {
-    has_non_external_kvs = AddExternalPairToWriteBatch(
-        write_pair, hybrid_time, &apply_external_transactions, regular_write_batch,
-        intents_write_batch, external_txns_intents_state) || has_non_external_kvs;
-  }
-  return has_non_external_kvs;
-}
-
-namespace {
-
-// Checks if the given slice points to the part of an encoded SubDocKey past all of the subkeys
-// (and definitely past all the hash/range keys). The only remaining part could be a hybrid time.
-inline bool IsEndOfSubKeys(const Slice& key) {
-  return key[0] == KeyEntryTypeAsChar::kGroupEnd &&
-         (key.size() == 1 || key[1] == KeyEntryTypeAsChar::kHybridTime);
-}
-
-// Enumerates weak intent keys generated by considering specified prefixes of the given key and
-// invoking the provided callback with each combination considered, stored in encoded_key_buffer.
-// On return, *encoded_key_buffer contains the corresponding strong intent, for which the callback
-// has not yet been called. It is left to the caller to use the final state of encoded_key_buffer.
-//
-// The prefixes of the key considered are as follows:
-// 1. Up to and including the whole hash key.
-// 2. Up to and including the whole range key, or if partial_range_key_intents is
-//    PartialRangeKeyIntents::kTrue, then enumerate the prefix up to the end of each component of
-//    the range key separately.
-// 3. Up to and including each subkey component, separately.
-//
-// In any case, we stop short of enumerating the last intent key generated based on the above, as
-// this represents the strong intent key and will be stored in encoded_key_buffer at the end of this
-// call.
-//
-// The beginning of each intent key will also include any cotable_id or colocation_id,
-// if present.
-Status EnumerateWeakIntents(
-    Slice key,
-    const EnumerateIntentsCallback& functor,
-    KeyBytes* encoded_key_buffer,
-    PartialRangeKeyIntents partial_range_key_intents) {
-  static const Slice kEmptyIntentValue;
-
-  encoded_key_buffer->Clear();
-  if (key.empty()) {
-    return STATUS(Corruption, "An empty slice is not a valid encoded SubDocKey");
-  }
-
-  const bool has_cotable_id    = *key.cdata() == KeyEntryTypeAsChar::kTableId;
-  const bool has_colocation_id = *key.cdata() == KeyEntryTypeAsChar::kColocationId;
-  {
-    bool is_table_root_key = false;
-    if (has_cotable_id) {
-      const auto kMinExpectedSize = kUuidSize + 2;
-      if (key.size() < kMinExpectedSize) {
-        return STATUS_FORMAT(
-            Corruption,
-            "Expected an encoded SubDocKey starting with a cotable id to be at least $0 bytes long",
-            kMinExpectedSize);
-      }
-      encoded_key_buffer->AppendRawBytes(key.cdata(), kUuidSize + 1);
-      is_table_root_key = key[kUuidSize + 1] == KeyEntryTypeAsChar::kGroupEnd;
-    } else if (has_colocation_id) {
-      const auto kMinExpectedSize = sizeof(ColocationId) + 2;
-      if (key.size() < kMinExpectedSize) {
-        return STATUS_FORMAT(
-            Corruption,
-            "Expected an encoded SubDocKey starting with a colocation id to be"
-            " at least $0 bytes long",
-            kMinExpectedSize);
-      }
-      encoded_key_buffer->AppendRawBytes(key.cdata(), sizeof(ColocationId) + 1);
-      is_table_root_key = key[sizeof(ColocationId) + 1] == KeyEntryTypeAsChar::kGroupEnd;
-    } else {
-      is_table_root_key = *key.cdata() == KeyEntryTypeAsChar::kGroupEnd;
-    }
-
-    encoded_key_buffer->AppendKeyEntryType(KeyEntryType::kGroupEnd);
-
-    if (is_table_root_key) {
-      // This must be a "table root" (or "tablet root") key (no hash components, no range
-      // components, but the cotable might still be there). We are not really considering the case
-      // of any subkeys under the empty key, so we can return here.
-      return Status::OK();
-    }
-  }
-
-  // For any non-empty key we already know that the empty key intent is weak.
-  RETURN_NOT_OK(functor(
-      IntentStrength::kWeak, FullDocKey::kFalse, kEmptyIntentValue, encoded_key_buffer,
-      LastKey::kFalse));
-
-  auto hashed_part_size = VERIFY_RESULT(DocKey::EncodedSize(key, DocKeyPart::kUpToHash));
-
-  // Remove kGroupEnd that we just added to generate a weak intent.
-  encoded_key_buffer->RemoveLastByte();
-
-  if (hashed_part_size != encoded_key_buffer->size()) {
-    // A hash component is present. Note that if cotable id is present, hashed_part_size would
-    // also include it, so we only need to append the new bytes.
-    encoded_key_buffer->AppendRawBytes(
-        key.cdata() + encoded_key_buffer->size(), hashed_part_size - encoded_key_buffer->size());
-    key.remove_prefix(hashed_part_size);
-    if (key.empty()) {
-      return STATUS(Corruption, "Range key part missing, expected at least a kGroupEnd");
-    }
-
-    // Append the kGroupEnd at the end for the empty range part to make this a valid encoded DocKey.
-    encoded_key_buffer->AppendKeyEntryType(KeyEntryType::kGroupEnd);
-    if (IsEndOfSubKeys(key)) {
-      // This means the key ends at the hash component -- no range keys and no subkeys.
-      return Status::OK();
-    }
-
-    // Generate a weak intent that only includes the hash component.
-    RETURN_NOT_OK(functor(
-        IntentStrength::kWeak, FullDocKey(key[0] == KeyEntryTypeAsChar::kGroupEnd),
-        kEmptyIntentValue, encoded_key_buffer, LastKey::kFalse));
-
-    // Remove the kGroupEnd we added a bit earlier so we can append some range components.
-    encoded_key_buffer->RemoveLastByte();
-  } else {
-    // No hash component.
-    key.remove_prefix(hashed_part_size);
-  }
-
-  // Range components.
-  auto range_key_start = key.cdata();
-  while (VERIFY_RESULT(ConsumePrimitiveValueFromKey(&key))) {
-    // Append the consumed primitive value to encoded_key_buffer.
-    encoded_key_buffer->AppendRawBytes(range_key_start, key.cdata() - range_key_start);
-    // We always need kGroupEnd at the end to make this a valid encoded DocKey.
-    encoded_key_buffer->AppendKeyEntryType(KeyEntryType::kGroupEnd);
-    if (key.empty()) {
-      return STATUS(Corruption, "Range key part is not terminated with a kGroupEnd");
-    }
-    if (IsEndOfSubKeys(key)) {
-      // This is the last range key and there are no subkeys.
-      return Status::OK();
-    }
-    FullDocKey full_doc_key(key[0] == KeyEntryTypeAsChar::kGroupEnd);
-    if (partial_range_key_intents || full_doc_key) {
-      RETURN_NOT_OK(functor(
-          IntentStrength::kWeak, full_doc_key, kEmptyIntentValue, encoded_key_buffer,
-          LastKey::kFalse));
-    }
-    encoded_key_buffer->RemoveLastByte();
-    range_key_start = key.cdata();
-  }
-
-  // We still need to append the kGroupEnd byte that closes the range portion to our buffer.
-  // The corresponding kGroupEnd has already been consumed from the key slice by the last call to
-  // ConsumePrimitiveValueFromKey, which returned false.
-  encoded_key_buffer->AppendKeyEntryType(KeyEntryType::kGroupEnd);
-
-  // Subkey components.
-  auto subkey_start = key.cdata();
-  while (VERIFY_RESULT(SubDocKey::DecodeSubkey(&key))) {
-    // Append the consumed value to encoded_key_buffer.
-    encoded_key_buffer->AppendRawBytes(subkey_start, key.cdata() - subkey_start);
-    if (key.empty() || *key.cdata() == KeyEntryTypeAsChar::kHybridTime) {
-      // This was the last subkey.
-      return Status::OK();
-    }
-    RETURN_NOT_OK(functor(
-        IntentStrength::kWeak, FullDocKey::kTrue, kEmptyIntentValue, encoded_key_buffer,
-        LastKey::kFalse));
-    subkey_start = key.cdata();
-  }
-
-  return STATUS(
-      Corruption,
-      "Expected to reach the end of the key after decoding last valid subkey");
-}
-
-}  // anonymous namespace
-
-Status EnumerateIntents(
-    Slice key, const Slice& intent_value, const EnumerateIntentsCallback& functor,
-    KeyBytes* encoded_key_buffer, PartialRangeKeyIntents partial_range_key_intents,
-    LastKey last_key) {
-  RETURN_NOT_OK(EnumerateWeakIntents(
-      key, functor, encoded_key_buffer, partial_range_key_intents));
-  return functor(
-      IntentStrength::kStrong, FullDocKey::kTrue, intent_value, encoded_key_buffer, last_key);
-}
-
-Status EnumerateIntents(
-    const google::protobuf::RepeatedPtrField<KeyValuePairPB> &kv_pairs,
-    const EnumerateIntentsCallback& functor, PartialRangeKeyIntents partial_range_key_intents) {
   KeyBytes encoded_key;
 
-  for (int index = 0; index < kv_pairs.size(); ) {
-    const auto &kv_pair = kv_pairs.Get(index);
-    ++index;
+  auto it = kv_pairs.begin();
+  for (;;) {
+    const auto& kv_pair = *it;
+    dockv::LastKey last_key(++it == kv_pairs.end());
     CHECK(!kv_pair.key().empty());
     CHECK(!kv_pair.value().empty());
-    RETURN_NOT_OK(EnumerateIntents(
+    RETURN_NOT_OK(dockv::EnumerateIntents(
         kv_pair.key(), kv_pair.value(), functor, &encoded_key, partial_range_key_intents,
-        LastKey(index == kv_pairs.size())));
+        last_key));
+    if (last_key) {
+      break;
+    }
   }
 
   return Status::OK();
@@ -804,8 +391,8 @@ Result<ApplyTransactionState> GetIntentsBatch(
     write_id = stream_state->write_id;
     reverse_index_iter.Next();
   }
-  const uint64_t max_records = FLAGS_cdc_max_stream_intent_records;
-  const uint64_t write_id_limit = write_id + max_records;
+  const uint64_t& max_records = FLAGS_cdc_max_stream_intent_records;
+  uint64_t cur_records = 0;
 
   while (reverse_index_iter.Valid()) {
     const Slice key_slice(reverse_index_iter.key());
@@ -824,16 +411,14 @@ Result<ApplyTransactionState> GetIntentsBatch(
       // Value of reverse index is a key of original intent record, so seek it and check match.
       if ((!key_bounds || key_bounds->IsWithinBounds(reverse_index_iter.value()))) {
         // return when we have reached the batch limit.
-        if (write_id >= write_id_limit) {
+        if (cur_records >= max_records) {
           return ApplyTransactionState{
-              .key = key_slice.ToBuffer(),
-              .write_id = write_id,
-              .aborted = {},
-          };
+              .key = key_slice.ToBuffer(), .write_id = write_id, .aborted = {}};
         }
         {
           intent_iter.Seek(reverse_index_value);
-          if (!intent_iter.Valid() || intent_iter.key() != reverse_index_value) {
+          if (!VERIFY_RESULT(intent_iter.CheckedValid()) ||
+              intent_iter.key() != reverse_index_value) {
             LOG(WARNING) << "Unable to find intent: " << reverse_index_value.ToDebugHexString()
                          << " for " << key_slice.ToDebugHexString()
                          << ", transactionId: " << transaction_id;
@@ -842,12 +427,13 @@ Result<ApplyTransactionState> GetIntentsBatch(
 
           auto intent = VERIFY_RESULT(ParseIntentKey(intent_iter.key(), transaction_id_slice));
 
-          if (intent.types.Test(IntentType::kStrongWrite)) {
-            auto decoded_value =
-                VERIFY_RESULT(DecodeIntentValue(intent_iter.value(), &transaction_id_slice));
+          if (intent.types.Test(dockv::IntentType::kStrongWrite)) {
+            auto decoded_value = VERIFY_RESULT(dockv::DecodeIntentValue(
+                intent_iter.value(), &transaction_id_slice));
             write_id = decoded_value.write_id;
 
-            if (decoded_value.body.starts_with(KeyEntryTypeAsChar::kRowLock)) {
+            if (decoded_value.body.starts_with(dockv::ValueEntryTypeAsChar::kRowLock)) {
+              reverse_index_iter.Next();
               continue;
             }
 
@@ -855,18 +441,29 @@ Result<ApplyTransactionState> GetIntentsBatch(
                 intent.doc_path,
             }};
             std::array<Slice, 1> value_parts = {{
-                decoded_value.body,
+                  decoded_value.body,
+            }};
+            std::array<Slice, 1> ht_parts = {{
+                intent.doc_ht,
             }};
 
+            auto doc_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(intent.doc_ht));
+
             IntentKeyValueForCDC intent_metadata;
-            intent_metadata.key = Slice(key_parts, &(intent_metadata.key_buf));
-            intent_metadata.value = Slice(value_parts, &(intent_metadata.value_buf));
+            Slice(key_parts, &(intent_metadata.key_buf));
+            intent_metadata.key = intent.doc_path;
+            Slice(value_parts, &(intent_metadata.value_buf));
+            intent_metadata.value = decoded_value.body;
             intent_metadata.reverse_index_key = key_slice.ToBuffer();
             intent_metadata.write_id = write_id;
+            intent_metadata.intent_ht = doc_ht;
+            intent_metadata.ht = Slice(ht_parts, &intent_metadata.ht_buf);
+
             (*key_value_intents).push_back(intent_metadata);
 
             VLOG(4) << "The size of intentKeyValues in GetIntentList "
-                      << (*key_value_intents).size();
+                    << (*key_value_intents).size();
+            ++cur_records;
             ++write_id;
           }
         }
@@ -874,6 +471,7 @@ Result<ApplyTransactionState> GetIntentsBatch(
     }
     reverse_index_iter.Next();
   }
+  RETURN_NOT_OK(reverse_index_iter.status());
 
   return ApplyTransactionState{};
 }
@@ -885,19 +483,26 @@ std::string ApplyTransactionState::ToString() const {
 
 void CombineExternalIntents(
     const TransactionId& txn_id,
+    SubTransactionId subtransaction_id,
     ExternalIntentsProvider* provider) {
   // External intents are stored in the following format:
-  // key: kExternalTransactionId, txn_id
-  // value: size(intent1_key), intent1_key, size(intent1_value), intent1_value, size(intent2_key)...
+  //   key:   kExternalTransactionId, txn_id
+  //   value: kUuid involved_tablet [kSubTransactionId subtransaction_ID]
+  //          kExternalIntents size(intent1_key), intent1_key, size(intent1_value), intent1_value,
+  //          size(intent2_key)...  0
   // where size is encoded as varint.
 
-  docdb::KeyBytes buffer;
+  dockv::KeyBytes buffer;
   buffer.AppendKeyEntryType(KeyEntryType::kExternalTransactionId);
   buffer.AppendRawBytes(txn_id.AsSlice());
   provider->SetKey(buffer.AsSlice());
   buffer.Clear();
   buffer.AppendKeyEntryType(KeyEntryType::kUuid);
   buffer.AppendRawBytes(provider->InvolvedTablet().AsSlice());
+  if (subtransaction_id != kMinSubTransactionId) {
+    buffer.AppendKeyEntryType(KeyEntryType::kSubTransactionId);
+    buffer.AppendUInt32(subtransaction_id);
+  }
   buffer.AppendKeyEntryType(KeyEntryType::kExternalIntents);
   while (auto key_value = provider->Next()) {
     buffer.AppendUInt64AsVarInt(key_value->first.size());

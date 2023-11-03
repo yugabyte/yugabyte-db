@@ -73,6 +73,7 @@ extern Oid index_create(Relation heapRelation,
 			 Oid *constraintId,
 			 OptSplit *split_options,
 			 const bool skip_index_backfill,
+			 bool is_colocated,
 			 Oid tablegroupId,
 			 Oid colocationId);
 
@@ -188,5 +189,7 @@ typedef enum
 	YB_INDEX_PERM_DELETE_ONLY_WHILE_REMOVING = 10,
 	YB_INDEX_PERM_INDEX_UNUSED = 12,
 } YBIndexPermissions;
+
+extern bool YBRelationHasPrimaryKey(Relation rel);
 
 #endif							/* INDEX_H */

@@ -14,10 +14,12 @@ type: docs
 
 ## Synopsis
 
-<b>`SMEMBERS key`</b><br>
+**`SMEMBERS key`**
+
 This command selects all members of the set that is associated with the given `key`.
-<li>If `key` is associated with a value that is not a set, an error is raised.</li>
-<li>If `key` does not exist, no value is returned.</li>
+
+- If `key` is associated with a value that is not a set, an error is raised.
+- If `key` does not exist, no value is returned.
 
 ## Return value
 

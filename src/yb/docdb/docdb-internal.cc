@@ -17,7 +17,7 @@
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/shared_lock_manager_fwd.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/value_type.h"
 
 namespace yb {
 namespace docdb {
@@ -31,14 +31,14 @@ KeyType GetKeyType(const Slice& slice, StorageDbType db_type) {
     return KeyType::kPlainSubDocKey;
   }
 
-  if (slice[0] == KeyEntryTypeAsChar::kTransactionId) {
+  if (slice[0] == dockv::KeyEntryTypeAsChar::kTransactionId) {
     if (slice.size() == TransactionId::StaticSize() + 1) {
       return KeyType::kTransactionMetadata;
     } else {
       return KeyType::kReverseTxnKey;
     }
   }
-  if (slice[0] == KeyEntryTypeAsChar::kExternalTransactionId) {
+  if (slice[0] == dockv::KeyEntryTypeAsChar::kExternalTransactionId) {
     return KeyType::kExternalIntents;
   }
 

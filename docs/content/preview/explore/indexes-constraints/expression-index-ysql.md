@@ -1,7 +1,9 @@
 ---
-title: Expression indexes
+title: Expression indexes in YugabyteDB YSQL
+headerTitle: Expression indexes
 linkTitle: Expression indexes
 description: Using expression indexes in YSQL
+headContent: Explore expression indexes in YugabyteDB using YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
@@ -33,6 +35,8 @@ You can omit the parentheses around the expression where the expression is a sim
 Once defined, the index is used when the expression that defines the index is included in the `WHERE` or `ORDER BY` clause in the YSQL statement.
 
 ## Example
+
+{{% explore-setup-single %}}
 
 A common use case of an expression index is to support case-insensitive text to enable efficient searchability.
 
@@ -79,9 +83,9 @@ The following example uses the `employees` table from the Secondary indexes [exa
 ## Explore covering indexes
 
 - Learn how [covering indexes](../../indexes-constraints/covering-index-ysql/) can optimize query performance by covering all the columns needed by a query.
-- [Benefits of an Index-only scan](https://blog.yugabyte.com/how-a-distributed-sql-database-boosts-secondary-index-queries-with-index-only-scan/)
+- [Benefits of an Index-only scan](https://www.yugabyte.com/blog/how-a-distributed-sql-database-boosts-secondary-index-queries-with-index-only-scan/)
 
 ## Learn more
 
 - [Partial and expression indexes](../../json-support/jsonb-ysql/#partial-and-expression-indexes)
-- [SQL Puzzle: Partial Versus Expression Indexes](https://blog.yugabyte.com/sql-puzzle-partial-versus-expression-indexes/)
+- [SQL Puzzle: Partial Versus Expression Indexes](https://www.yugabyte.com/blog/sql-puzzle-partial-versus-expression-indexes/)

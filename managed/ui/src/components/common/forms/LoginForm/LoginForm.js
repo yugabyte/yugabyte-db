@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import clsx from 'clsx';
 import { PageHeader } from 'react-bootstrap';
 import { YBButton } from '../fields';
@@ -11,9 +11,10 @@ import { browserHistory } from 'react-router';
 import { Field, Form, Formik } from 'formik';
 import * as Yup from 'yup';
 import _ from 'lodash';
-import { ROOT_URL, isSSOEnabled } from '../../../../config';
+import { ROOT_URL, isSSOEnabled, shouldShowJWTTokenInfo } from '../../../../config';
 import { clearCredentials } from '../../../../routes';
 import { trimString } from '../../../../utils/ObjectUtils';
+import { LDAP_CA_CERT_ERR_MSG, handleCACertErrMsg } from '../../../customCACerts';
 
 class LoginForm extends Component {
   constructor(props) {
@@ -23,6 +24,10 @@ class LoginForm extends Component {
     };
     clearCredentials();
   }
+
+  componentDidMount = () => {
+    this.props.getYugaWareVersion();
+  };
 
   submitLogin = (formValues) => {
     const { loginCustomer } = this.props;
@@ -48,17 +53,31 @@ class LoginForm extends Component {
     }
   }
 
+  fetchJWTToken() {
+    const pathToRedirect = '/jwt_token';
+    window.location.replace(`${ROOT_URL}/fetch_jwt_token?orig_url=${pathToRedirect}`);
+  }
+
   runSSO() {
+    const searchParam = new URLSearchParams(window.location.search);
+    const pathToRedirect = searchParam.get('orig_url');
     if (localStorage.getItem('__yb_intro_dialog__') !== 'hidden') {
       localStorage.setItem('__yb_intro_dialog__', 'new');
     }
-    window.location.replace(`${ROOT_URL}/third_party_login`);
+    window.location.replace(
+      pathToRedirect
+        ? `${ROOT_URL}/third_party_login?orig_url=${pathToRedirect}`
+        : `${ROOT_URL}/third_party_login`
+    );
   }
 
   render() {
     const {
-      customer: { authToken }
+      customer: { authToken, yugawareVersion }
     } = this.props;
+    const version = getPromiseState(yugawareVersion).isSuccess()
+      ? yugawareVersion.data?.version
+      : null;
 
     const validationSchema = Yup.object().shape({
       email: Yup.string().required('Enter Email or Username'),
@@ -71,7 +90,12 @@ class LoginForm extends Component {
       password: ''
     };
 
+    const searchParam = new URLSearchParams(window.location.search);
+    const user_not_found = searchParam.get('user_not_found');
+
     const showLoginFrom = !isSSOEnabled() || this.state.showLoginFrom;
+
+    const errMsg = handleCACertErrMsg({ message: authToken.error }, { hideToast: true }) ? LDAP_CA_CERT_ERR_MSG : JSON.stringify(authToken.error);
 
     return (
       <div className="container full-height dark-background flex-vertical-middle">
@@ -86,6 +110,19 @@ class LoginForm extends Component {
               <div className="divider-c">
                 <div className="divider-ic divider"></div>
               </div>
+              {user_not_found && !authToken.error && (
+                <div
+                  className={`alert alert-danger form-error-alert ${user_not_found ? '' : 'hide'}`}
+                >
+                  {
+                    <strong>
+                      {JSON.stringify(
+                        `User not found: ${user_not_found}. Please contact administrator.`
+                      )}
+                    </strong>
+                  }
+                </div>
+              )}
               <div>
                 <YBButton
                   btnClass="btn btn-orange login-btns sso-btn"
@@ -102,6 +139,13 @@ class LoginForm extends Component {
                     }}
                   >
                     Super Admin Login
+                  </div>
+                </div>
+              )}
+              {shouldShowJWTTokenInfo() && (
+                <div>
+                  <div className="align-center link-text" onClick={this.fetchJWTToken}>
+                    Get JSON Web Token
                   </div>
                 </div>
               )}
@@ -125,11 +169,10 @@ class LoginForm extends Component {
                     </div>
                   )}
                   <div
-                    className={`alert alert-danger form-error-alert ${
-                      authToken.error ? '' : 'hide'
-                    }`}
+                    className={`alert alert-danger form-error-alert ${authToken.error ? '' : 'hide'
+                      }`}
                   >
-                    {<strong>{JSON.stringify(authToken.error)}</strong>}
+                    {<strong>{errMsg}</strong>}
                   </div>
                   <div className="clearfix login-fields">
                     <Field name="email">
@@ -172,6 +215,9 @@ class LoginForm extends Component {
                 </Form>
               )}
             </Formik>
+          )}
+          {version && (
+            <span className="align-center yba-version"> Platform Version: {version}</span>
           )}
         </div>
       </div>

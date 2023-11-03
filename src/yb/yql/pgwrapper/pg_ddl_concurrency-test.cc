@@ -12,38 +12,31 @@
 
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
+#include "yb/util/countdown_latch.h"
 #include "yb/util/test_thread_holder.h"
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
 
-namespace yb {
-namespace pgwrapper {
+namespace yb::pgwrapper {
 namespace {
 
-Status AllowedStatus(const Status& s) {
-  if (!s.ok()) {
-    static const std::initializer_list<std::string> retryable_markers = {
-        STATUS(TryAgain, "").CodeAsString(),
-        "Restart read required at"
-    };
-    const auto msg = s.ToString();
-    for (const auto& marker : retryable_markers) {
-      if (msg.find(marker) != std::string::npos) {
-        return Status::OK();
-      }
-    }
+Status SuppressAllowedErrors(const Status& s) {
+  if (HasTransactionError(s) || IsRetryable(s)) {
+    return Status::OK();
   }
   return s;
 }
 
-Status RunIndexCreationQueries(PGConn* conn, const std::string table_name) {
+Status RunIndexCreationQueries(PGConn* conn, const std::string& table_name) {
   static const std::initializer_list<std::string> queries = {
       "DROP TABLE IF EXISTS $0",
       "CREATE TABLE IF NOT EXISTS $0(k int PRIMARY KEY, v int)",
       "CREATE INDEX IF NOT EXISTS $0_v ON $0(v)"
   };
   for (const auto& query : queries) {
-    RETURN_NOT_OK(AllowedStatus(conn->ExecuteFormat(query, table_name)));
+    RETURN_NOT_OK(SuppressAllowedErrors(conn->ExecuteFormat(query, table_name)));
   }
   return Status::OK();
 }
@@ -61,24 +54,30 @@ class PgDDLConcurrencyTest : public LibPqTestBase {
  * in case transaction can't be committed (due to massive retry errors
  * caused by aggressive running of DDL in parallel).
  */
-TEST_F(PgDDLConcurrencyTest, YB_DISABLE_TEST_IN_TSAN(IndexCreation)) {
+TEST_F(PgDDLConcurrencyTest, IndexCreation) {
   TestThreadHolder thread_holder;
-  for (size_t i = 0; i < 3; ++i) {
-    thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), idx = i] {
-      const auto table_name = Format("t$0", idx);
-      auto conn = ASSERT_RESULT(Connect());
-      while (!stop.load(std::memory_order_acquire)) {
-        ASSERT_OK(RunIndexCreationQueries(&conn, table_name));
-      }
-    });
+  constexpr size_t kThreadsCount = 3;
+  CountDownLatch start_latch(kThreadsCount + 1);
+  for (size_t i = 0; i < kThreadsCount; ++i) {
+    thread_holder.AddThreadFunctor(
+        [this, &stop = thread_holder.stop_flag(), idx = i, &start_latch] {
+          const auto table_name = Format("t$0", idx);
+          auto conn = ASSERT_RESULT(Connect());
+          start_latch.CountDown();
+          start_latch.Wait();
+          while (!stop.load(std::memory_order_acquire)) {
+            ASSERT_OK(RunIndexCreationQueries(&conn, table_name));
+          }
+        });
   }
 
   const std::string table_name("t");
   auto conn = ASSERT_RESULT(Connect());
+  start_latch.CountDown();
+  start_latch.Wait();
   for (size_t i = 0; i < 3; ++i) {
     ASSERT_OK(RunIndexCreationQueries(&conn, table_name));
   }
 }
 
-} // namespace pgwrapper
-} // namespace yb
+} // namespace yb::pgwrapper

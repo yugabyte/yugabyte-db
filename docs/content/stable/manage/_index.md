@@ -1,10 +1,10 @@
 ---
 title: Manage YugabyteDB
-headerTitle: Manage
+headerTitle: Manage YugabyteDB
 linkTitle: Manage
-description:
+description: Manging YugabyteDB deployments
 image: /images/section_icons/quick_start/sample_apps.png
-headcontent:
+headcontent: Manage your YugabyteDB deployment
 menu:
   stable:
     identifier: manage
@@ -31,7 +31,7 @@ type: indexpage
         <div class="title">Migrate data</div>
       </div>
       <div class="body">
-        Bulk data import and export in the context of YugabyteDB.
+        Bulk data export and import in the context of YugabyteDB.
       </div>
     </a>
   </div>

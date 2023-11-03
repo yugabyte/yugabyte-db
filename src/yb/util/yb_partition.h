@@ -13,10 +13,11 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_UTIL_YB_PARTITION_H
-#define YB_UTIL_YB_PARTITION_H
+#pragma once
 
 #include <string>
+#include <string_view>
+
 #include "yb/util/status_fwd.h"
 #include "yb/gutil/endian.h"
 
@@ -41,9 +42,7 @@ class YBPartition {
     encoded_key->append(reinterpret_cast<char *>(&uval), sizeof(uval));
   }
 
-  static uint16_t HashColumnCompoundValue(const std::string &compound);
+  static uint16_t HashColumnCompoundValue(std::string_view compound);
 };
 
 } // namespace yb
-
-#endif // YB_UTIL_YB_PARTITION_H

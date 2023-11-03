@@ -18,7 +18,7 @@
 #include "yb/common/hybrid_time.h"
 
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/docdb/doc_ttl_util.h"
+#include "yb/dockv/doc_ttl_util.h"
 #include "yb/docdb/docdb_compaction_context.h"
 
 #include "yb/gutil/casts.h"
@@ -26,25 +26,23 @@
 #include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/db/version_edit.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 
-DEFINE_bool(file_expiration_ignore_value_ttl, false,
-             "When deciding whether a file has expired, assume that it is safe to ignore "
-             "value-level TTL and expire based on table TTL only. CAUTION - Shoule only be "
-             "used for expiration of older SST files without value-level TTL metadata, or "
-             "for expiring files with incorrect value-level expiration. Misuse can result "
-             "in the deletion of live data!");
+DEFINE_RUNTIME_bool(file_expiration_ignore_value_ttl, false,
+    "When deciding whether a file has expired, assume that it is safe to ignore "
+    "value-level TTL and expire based on table TTL only. CAUTION - Shoule only be "
+    "used for expiration of older SST files without value-level TTL metadata, or "
+    "for expiring files with incorrect value-level expiration. Misuse can result "
+    "in the deletion of live data!");
 TAG_FLAG(file_expiration_ignore_value_ttl, unsafe);
-TAG_FLAG(file_expiration_ignore_value_ttl, runtime);
 
-DEFINE_bool(file_expiration_value_ttl_overrides_table_ttl, false,
-            "When deciding whether a file has expired, assume that any file with "
-            "value-level TTL metadata can be expired solely on that metadata. Useful for "
-            "the expiration of files earlier than the table-level TTL that is set. "
-            "CAUTION - Should only be used in workloads where the user is certain all data is "
-            "written with a value-level TTL. Misuse can result in the deletion of live data!");
+DEFINE_RUNTIME_bool(file_expiration_value_ttl_overrides_table_ttl, false,
+    "When deciding whether a file has expired, assume that any file with "
+    "value-level TTL metadata can be expired solely on that metadata. Useful for "
+    "the expiration of files earlier than the table-level TTL that is set. "
+    "CAUTION - Should only be used in workloads where the user is certain all data is "
+    "written with a value-level TTL. Misuse can result in the deletion of live data!");
 TAG_FLAG(file_expiration_value_ttl_overrides_table_ttl, unsafe);
-TAG_FLAG(file_expiration_value_ttl_overrides_table_ttl, runtime);
 
 namespace yb {
 namespace docdb {
@@ -75,7 +73,7 @@ ExpirationTime ExtractExpirationTime(const FileMetaData* file) {
   // If the TTL expiration time is uninitialized, return a max expiration time with the
   // frontier's hybrid time.
   const auto ttl_expiry_ht =
-      consensus_frontier.max_value_level_ttl_expiration_time().GetValueOr(kNoExpiration);
+      consensus_frontier.max_value_level_ttl_expiration_time().GetValueOr(dockv::kNoExpiration);
 
   return ExpirationTime{
     .ttl_expiration_ht = ttl_expiry_ht,
@@ -90,15 +88,16 @@ bool TtlIsExpired(const ExpirationTime expiry,
   // If FLAGS_file_expiration_ignore_value_ttl is set, ignore the value level TTL
   // entirely and use only the default table TTL.
   const auto ttl_expiry_ht =
-      mode == EXP_TABLE_ONLY ? kUseDefaultTTL : expiry.ttl_expiration_ht;
+      mode == EXP_TABLE_ONLY ? dockv::kUseDefaultTTL : expiry.ttl_expiration_ht;
 
-  if (mode == EXP_TRUST_VALUE && ttl_expiry_ht.is_valid() && ttl_expiry_ht != kUseDefaultTTL) {
-    return HasExpiredTTL(ttl_expiry_ht, now);
+  if (mode == EXP_TRUST_VALUE && ttl_expiry_ht.is_valid() &&
+      ttl_expiry_ht != dockv::kUseDefaultTTL) {
+    return dockv::HasExpiredTTL(ttl_expiry_ht, now);
   }
 
-  auto file_expiry_ht = MaxExpirationFromValueAndTableTTL(
+  auto file_expiry_ht = dockv::MaxExpirationFromValueAndTableTTL(
       expiry.created_ht, table_ttl, ttl_expiry_ht);
-  return HasExpiredTTL(file_expiry_ht, now);
+  return dockv::HasExpiredTTL(file_expiry_ht, now);
 }
 
 bool IsLastKeyCreatedBeforeHistoryCutoff(ExpirationTime expiry, HybridTime history_cutoff) {
@@ -159,7 +158,21 @@ unique_ptr<CompactionFileFilter> DocDBCompactionFileFilterFactory::CreateCompact
   const HybridTime filter_ht = clock_->Now();
   auto history_retention = retention_policy_->GetRetentionDirective();
   MonoDelta table_ttl = history_retention.table_ttl;
-  HybridTime history_cutoff = history_retention.history_cutoff;
+  // For the sys catalog tablet, the expiration time is never set
+  // since it does not have TTL so the chosen
+  // history cutoff does not matter since the files will never expire. For tablets
+  // on tserver, only the primary_cutoff_ht will be valid and that can
+  // be used to detect expiration. Still, to be safe here we simply take the minimum
+  // of both.
+  HybridTime history_cutoff = HybridTime::kMax;
+  if (history_retention.history_cutoff.cotables_cutoff_ht) {
+    history_cutoff.MakeAtMost(
+        history_retention.history_cutoff.cotables_cutoff_ht);
+  }
+  if (history_retention.history_cutoff.primary_cutoff_ht) {
+    history_cutoff.MakeAtMost(
+        history_retention.history_cutoff.primary_cutoff_ht);
+  }
   HybridTime min_kept_ht = HybridTime::kMax;
   const ExpiryMode mode = CurrentExpiryMode();
 

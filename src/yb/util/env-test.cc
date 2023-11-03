@@ -36,7 +36,7 @@
 #include <memory>
 #include <string>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
 #include "yb/gutil/bind.h"
@@ -55,6 +55,7 @@
 #include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
 
 DECLARE_int32(o_direct_block_size_bytes);
@@ -348,6 +349,59 @@ TEST_P(TestEnv, TestPreallocate) {
   ASSERT_EQ(kOneMb, size);
 }
 
+// PosixDirectIOWritableFile is only avaliable on linux
+#if defined(__linux__)
+TEST_F(TestEnv, TestReopenDirectIOWritableFile) {
+  string test_path = GetTestPath("test_env_wf");
+  Random rnd(SeedRandom());
+  const size_t data_size = FLAGS_o_direct_block_size_bytes + 1;
+  std::unique_ptr<uint8_t[]> scratch(new uint8_t[data_size]);
+  RandomString(scratch.get(), data_size, &rnd);
+  Slice data(scratch.get(), data_size);
+
+  // Create the file and write data to it.
+  shared_ptr<WritableFile> writer;
+  WritableFileOptions open_opts = WritableFileOptions();
+  open_opts.o_direct = true;
+  ASSERT_OK(env_util::OpenFileForWrite(open_opts,
+                                       env_.get(), test_path, &writer));
+  ASSERT_OK(writer->Append(data));
+  ASSERT_OK(writer->Sync());
+  // There should be two blocks on disk. The first full blocks has size
+  // FLAGS_o_direct_block_size_bytes, and second incomplete block has size 1.
+  ASSERT_EQ(data_size, writer->Size());
+  // The file size on disk should be FLAGS_o_direct_block_size_bytes * 2,
+  // since every sync will write a multiple of the block size.
+  uint64_t size = ASSERT_RESULT(env_->GetFileSize(test_path));
+  ASSERT_EQ(FLAGS_o_direct_block_size_bytes * 2, size);
+  ASSERT_OK(writer->Close());
+
+  // Reopen the file with size that is not a multiple of the block size.
+  shared_ptr<WritableFile> writer2;
+  open_opts.mode = Env::OPEN_EXISTING;
+  open_opts.initial_offset = data_size;
+  ASSERT_OK(env_util::OpenFileForWrite(open_opts,
+                                       env_.get(), test_path, &writer2));
+  ASSERT_EQ(data_size, writer2->Size());
+  uint8_t scratch_one_byte[1] = {0x55};
+  Slice one_byte(scratch_one_byte, 1);
+  ASSERT_OK(writer2->Append(one_byte));
+  ASSERT_OK(writer2->Sync());
+  ASSERT_EQ(data_size + 1, writer2->Size());
+  size = ASSERT_RESULT(env_->GetFileSize(test_path));
+  ASSERT_EQ(FLAGS_o_direct_block_size_bytes * 2, size);
+
+  // Verify the data.
+  std::unique_ptr<RandomAccessFile> readable_file;
+  ASSERT_OK(Env::Default()->NewRandomAccessFile(test_path, &readable_file));
+  std::unique_ptr<uint8_t[]> scratch_after_reopen(new uint8_t[data_size+1]);
+  Slice data_after_reopen;
+  ASSERT_OK(env_util::ReadFully(readable_file.get(), 0, data_size+1,
+                                &data_after_reopen, scratch_after_reopen.get()));
+  ASSERT_EQ(data.ToBuffer()+one_byte.ToBuffer(), data_after_reopen.ToBuffer());
+}
+#endif
+
 // To test consecutive pre-allocations we need higher pre-allocations since the
 // mmapped regions grow in size until 2MBs (so smaller pre-allocations will easily
 // be smaller than the mmapped regions size).
@@ -587,6 +641,49 @@ TEST_F(TestEnv, TestOverwrite) {
   ASSERT_TRUE(s.IsAlreadyPresent());
 }
 
+TEST_F(TestEnv, TestReopenWritableFileWithInitialOffsetOption) {
+  LOG(INFO) << "Testing opening behavior with setting initial offset";
+  string test_path = GetTestPath("test_env_wf");
+  string data = "The quick brown fox";
+
+  // Create the file and write data to it.
+  shared_ptr<WritableFile> writer;
+  WritableFileOptions open_opts = WritableFileOptions();
+  ASSERT_OK(env_util::OpenFileForWrite(open_opts,
+                                       env_.get(), test_path, &writer));
+  ASSERT_OK(writer->PreAllocate(kOneMb));
+  ASSERT_OK(writer->Append(data));
+  ASSERT_EQ(data.length(), writer->Size());
+
+  // Open the file, we should expect the writer2 begin with OneMb size
+  // because of the preallocate.
+  shared_ptr<WritableFile> writer2;
+  open_opts.mode = Env::OPEN_EXISTING;
+  ASSERT_OK(env_util::OpenFileForWrite(open_opts,
+                                       env_.get(), test_path, &writer2));
+  ASSERT_EQ(kOneMb, writer2->Size());
+  // Now open the file again with having initial offset, we should expect
+  // the file start at data.length().
+  ASSERT_OK(writer2->Close());
+  open_opts.initial_offset = data.length();
+  ASSERT_OK(env_util::OpenFileForWrite(open_opts,
+                                       env_.get(), test_path, &writer2));
+  ASSERT_EQ(data.length(), writer2->Size());
+  // Check the actual size on disk, it should be kOneMb.
+  uint64_t size_on_disk = ASSERT_RESULT(env_->GetFileSize(test_path));
+  ASSERT_EQ(kOneMb, size_on_disk);
+  ASSERT_OK(writer2->Close());
+
+  // Specified offset is less than the data.length()
+  open_opts.initial_offset = data.length()-1;
+  ASSERT_OK(env_util::OpenFileForWrite(open_opts,
+                                       env_.get(), test_path, &writer2));
+  ASSERT_EQ(data.length()-1, writer2->Size());
+  // Previous Close() has truncated file to size data.length().
+  size_on_disk = ASSERT_RESULT(env_->GetFileSize(test_path));
+  ASSERT_EQ(data.length(), size_on_disk);
+}
+
 TEST_F(TestEnv, TestReopen) {
   LOG(INFO) << "Testing reopening behavior";
   string test_path = GetTestPath("test_env_wf");
@@ -779,6 +876,34 @@ TEST_F(TestEnv, TestRWFile) {
   ASSERT_OK(env_->NewRWFile(opts, GetTestPath("foo"), &file));
   ASSERT_OK(file->Read(0, kNewTestData.length(), &result, scratch2.get()));
   ASSERT_EQ(result, kNewTestData);
+}
+
+TEST_F(TestEnv, NonblockWritableFile) {
+  string path = GetTestPath("test_nonblock");
+  mkfifo(path.c_str(), 0644);
+
+  WritableFileOptions opts;
+  opts.mode = Env::CREATE_NONBLOCK_IF_NON_EXISTING;
+  std::shared_ptr<WritableFile> writer;
+  ASSERT_OK(env_util::OpenFileForWrite(opts, env_.get(), path, &writer));
+
+  TestThreadHolder threads;
+
+  auto read_data = [this, &path] {
+    std::shared_ptr<SequentialFile> reader;
+    ASSERT_OK(env_util::OpenFileForSequential(env_.get(), path, &reader));
+    Slice s;
+    std::vector<uint8_t> scratch(kOneMb);
+    ASSERT_OK(reader->Read(kOneMb, &s, scratch.data()));
+    ASSERT_EQ(s.size(), kOneMb);
+  };
+
+  threads.AddThreadFunctor(read_data);
+
+  // Write 1 MB
+  uint8_t scratch[kOneMb] = {};
+  Slice slice(scratch, kOneMb);
+  ASSERT_OK(writer->Append(slice));
 }
 
 TEST_F(TestEnv, TestCanonicalize) {

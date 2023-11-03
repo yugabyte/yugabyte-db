@@ -22,7 +22,7 @@ import org.junit.runner.RunWith;
 @RunWith(value=YBTestRunner.class)
 public class TestQLType extends BaseYBClientTest {
 
-    private void checkType(QLType yqlType, Value.DataType dataType, QLType... params) {
+    private void checkType(QLType yqlType, Value.PersistentDataType dataType, QLType... params) {
         // Creating QLTypePB from DataType (no parameters for simple types).
         QLTypePB.Builder typeBuilder = QLTypePB.newBuilder();
         typeBuilder.setMain(dataType);
@@ -39,21 +39,21 @@ public class TestQLType extends BaseYBClientTest {
 
     @Test
     public void testSimpleTypes() {
-        checkType(QLType.INT8, Value.DataType.INT8);
-        checkType(QLType.INT16, Value.DataType.INT16);
-        checkType(QLType.INT32, Value.DataType.INT32);
-        checkType(QLType.INT64, Value.DataType.INT64);
-        checkType(QLType.STRING, Value.DataType.STRING);
-        checkType(QLType.BOOL, Value.DataType.BOOL);
-        checkType(QLType.FLOAT, Value.DataType.FLOAT);
-        checkType(QLType.DOUBLE, Value.DataType.DOUBLE);
-        checkType(QLType.BINARY, Value.DataType.BINARY);
-        checkType(QLType.TIMESTAMP, Value.DataType.TIMESTAMP);
-        checkType(QLType.DECIMAL, Value.DataType.DECIMAL);
-        checkType(QLType.VARINT, Value.DataType.VARINT);
-        checkType(QLType.INET, Value.DataType.INET);
-        checkType(QLType.UUID, Value.DataType.UUID);
-        checkType(QLType.TIMEUUID, Value.DataType.TIMEUUID);
+        checkType(QLType.INT8, Value.PersistentDataType.INT8);
+        checkType(QLType.INT16, Value.PersistentDataType.INT16);
+        checkType(QLType.INT32, Value.PersistentDataType.INT32);
+        checkType(QLType.INT64, Value.PersistentDataType.INT64);
+        checkType(QLType.STRING, Value.PersistentDataType.STRING);
+        checkType(QLType.BOOL, Value.PersistentDataType.BOOL);
+        checkType(QLType.FLOAT, Value.PersistentDataType.FLOAT);
+        checkType(QLType.DOUBLE, Value.PersistentDataType.DOUBLE);
+        checkType(QLType.BINARY, Value.PersistentDataType.BINARY);
+        checkType(QLType.TIMESTAMP, Value.PersistentDataType.TIMESTAMP);
+        checkType(QLType.DECIMAL, Value.PersistentDataType.DECIMAL);
+        checkType(QLType.VARINT, Value.PersistentDataType.VARINT);
+        checkType(QLType.INET, Value.PersistentDataType.INET);
+        checkType(QLType.UUID, Value.PersistentDataType.UUID);
+        checkType(QLType.TIMEUUID, Value.PersistentDataType.TIMEUUID);
     }
 
     @Test
@@ -62,7 +62,7 @@ public class TestQLType extends BaseYBClientTest {
         // Testing basic UDT.
         {
             QLTypePB.Builder typeBuilder = QLTypePB.newBuilder();
-            typeBuilder.setMain(Value.DataType.USER_DEFINED_TYPE);
+            typeBuilder.setMain(Value.PersistentDataType.USER_DEFINED_TYPE);
             QLTypePB.UDTypeInfo.Builder udtBuilder = QLTypePB.UDTypeInfo.newBuilder();
             udtBuilder.setKeyspaceName("foo");
             udtBuilder.setName("bar");
@@ -81,7 +81,7 @@ public class TestQLType extends BaseYBClientTest {
         // Testing empty namespace.
         {
             QLTypePB.Builder typeBuilder = QLTypePB.newBuilder();
-            typeBuilder.setMain(Value.DataType.USER_DEFINED_TYPE);
+            typeBuilder.setMain(Value.PersistentDataType.USER_DEFINED_TYPE);
             QLTypePB.UDTypeInfo.Builder udtBuilder = QLTypePB.UDTypeInfo.newBuilder();
             udtBuilder.setKeyspaceName("");
             udtBuilder.setName("test");
@@ -119,15 +119,15 @@ public class TestQLType extends BaseYBClientTest {
 
         for (int i = 0; i < typeParams.size(); i++) {
             checkType(QLType.createSetType(typeParams.get(i)),
-                      Value.DataType.SET, typeParams.get(i));
+                      Value.PersistentDataType.SET, typeParams.get(i));
 
             checkType(QLType.createListType(typeParams.get(i)),
-                      Value.DataType.LIST, typeParams.get(i));
+                      Value.PersistentDataType.LIST, typeParams.get(i));
 
             // Ensure map keys and values types are different
             int j = (i + 1) % typeParams.size();
             checkType(QLType.createMapType(typeParams.get(i), typeParams.get(j)),
-                      Value.DataType.MAP, typeParams.get(i), typeParams.get(j));
+                      Value.PersistentDataType.MAP, typeParams.get(i), typeParams.get(j));
         }
     }
 }

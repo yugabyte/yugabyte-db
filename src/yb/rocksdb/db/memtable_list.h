@@ -17,8 +17,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_ROCKSDB_DB_MEMTABLE_LIST_H
-#define YB_ROCKSDB_DB_MEMTABLE_LIST_H
 
 #pragma once
 
@@ -27,6 +25,8 @@
 #include <set>
 #include <string>
 #include <vector>
+
+#include "yb/rocksdb/rocksdb_fwd.h"
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/db/dbformat.h"
@@ -43,7 +43,6 @@ namespace rocksdb {
 class ColumnFamilyData;
 class InternalKeyComparator;
 class InstrumentedMutex;
-class MergeIteratorBuilder;
 
 // keeps a list of immutable memtables in a vector. the list is immutable
 // if refcount is bigger than one. It is used as a state for Get() and
@@ -199,7 +198,8 @@ class MemTableList {
   // Returns the earliest memtables that needs to be flushed. The returned
   // memtables are guaranteed to be in the ascending order of created time.
   void PickMemtablesToFlush(autovector<MemTable*>* mems,
-                            const MemTableFilter& filter = MemTableFilter());
+                            const MemTableFilter& filter = MemTableFilter(),
+                            const MutableCFOptions* mutable_cf_options = nullptr);
 
   // Reset status of the given memtable list back to pending state so that
   // they can get picked up again on the next round of flush.
@@ -261,5 +261,3 @@ class MemTableList {
 };
 
 }  // namespace rocksdb
-
-#endif // YB_ROCKSDB_DB_MEMTABLE_LIST_H

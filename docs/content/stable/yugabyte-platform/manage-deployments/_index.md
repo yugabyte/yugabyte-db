@@ -48,7 +48,7 @@ YugabyteDB Anywhere can create a YugabyteDB universe with many instances (virtua
         <div class="title">Start and stop processes</div>
       </div>
       <div class="body">
-        Start and stop processes.
+        Start and stop the node processes.
       </div>
     </a>
   </div>
@@ -73,18 +73,6 @@ YugabyteDB Anywhere can create a YugabyteDB universe with many instances (virtua
       </div>
       <div class="body">
         Recover removed nodes in your YugabyteDB universe.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="high-availability/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/manual-deployment.png" aria-hidden="true" />
-        <div class="title">Enable high availability</div>
-      </div>
-      <div class="body">
-        Enable YugabyteDB Anywhere's high-availability features.
       </div>
     </a>
   </div>
@@ -144,7 +132,7 @@ YugabyteDB Anywhere can create a YugabyteDB universe with many instances (virtua
         <div class="title">Upgrade YugabyteDB software</div>
       </div>
       <div class="body">
-        Upgrade YugabyteDB software.
+        Upgrade YugabyteDB software powering your universes.
       </div>
     </a>
   </div>
@@ -160,5 +148,4 @@ YugabyteDB Anywhere can create a YugabyteDB universe with many instances (virtua
       </div>
     </a>
   </div>
-
 </div>

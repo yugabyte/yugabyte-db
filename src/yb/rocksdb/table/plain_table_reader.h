@@ -17,10 +17,8 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_TABLE_PLAIN_TABLE_READER_H
-#define YB_ROCKSDB_TABLE_PLAIN_TABLE_READER_H
+#pragma once
 
-#ifndef ROCKSDB_LITE
 #include <stdint.h>
 #include <unordered_map>
 #include <memory>
@@ -58,18 +56,15 @@ class PlainTableKeyDecoder;
 class GetContext;
 class InternalIterator;
 
-using std::unique_ptr;
-using std::unordered_map;
-using std::vector;
 extern const uint32_t kPlainTableVariableLength;
 
 struct PlainTableReaderFileInfo {
   bool is_mmap_mode;
   Slice file_data;
   uint32_t data_end_offset;
-  unique_ptr<RandomAccessFileReader> file;
+  std::unique_ptr<RandomAccessFileReader> file;
 
-  PlainTableReaderFileInfo(unique_ptr<RandomAccessFileReader>&& _file,
+  PlainTableReaderFileInfo(std::unique_ptr<RandomAccessFileReader>&& _file,
                            const EnvOptions& storage_options,
                            uint32_t _data_size_offset)
       : is_mmap_mode(storage_options.use_mmap_reads),
@@ -90,15 +85,17 @@ class PlainTableReader: public TableReader {
   static Status Open(const ImmutableCFOptions& ioptions,
                      const EnvOptions& env_options,
                      const InternalKeyComparatorPtr& internal_comparator,
-                     unique_ptr<RandomAccessFileReader>&& file,
-                     uint64_t file_size, unique_ptr<TableReader>* table,
+                     std::unique_ptr<RandomAccessFileReader>&& file,
+                     uint64_t file_size, std::unique_ptr<TableReader>* table,
                      const int bloom_bits_per_key, double hash_table_ratio,
                      size_t index_sparseness, size_t huge_page_tlb_size,
                      bool full_scan_mode);
 
   bool IsSplitSst() const override { return false; }
 
-  void SetDataFileReader(unique_ptr<RandomAccessFileReader>&& data_file) override { assert(false); }
+  void SetDataFileReader(std::unique_ptr<RandomAccessFileReader>&& data_file) override {
+    LOG(FATAL) << "PlainTableReader::SetDataFileReader is not supported";
+  }
 
   InternalIterator* NewIterator(const ReadOptions&, Arena* arena = nullptr,
                                 bool skip_filters = false) override;
@@ -121,8 +118,10 @@ class PlainTableReader: public TableReader {
     return arena_.MemoryAllocatedBytes();
   }
 
+  InternalIterator* NewIndexIterator(const ReadOptions& read_options) override;
+
   PlainTableReader(const ImmutableCFOptions& ioptions,
-                   unique_ptr<RandomAccessFileReader>&& file,
+                   std::unique_ptr<RandomAccessFileReader>&& file,
                    const EnvOptions& env_options,
                    const InternalKeyComparatorPtr& internal_comparator,
                    EncodingType encoding_type, uint64_t file_size,
@@ -220,14 +219,14 @@ class PlainTableReader: public TableReader {
   // If bloom_ is not null, all the keys' full-key hash will be added to the
   // bloom filter.
   Status PopulateIndexRecordList(PlainTableIndexBuilder* index_builder,
-                                 vector<uint32_t>* prefix_hashes);
+                                 std::vector<uint32_t>* prefix_hashes);
 
   // Internal helper function to allocate memory for bloom filter and fill it
   void AllocateAndFillBloom(int bloom_bits_per_key, int num_prefixes,
                             size_t huge_page_tlb_size,
-                            vector<uint32_t>* prefix_hashes);
+                            std::vector<uint32_t>* prefix_hashes);
 
-  void FillBloom(vector<uint32_t>* prefix_hashes);
+  void FillBloom(std::vector<uint32_t>* prefix_hashes);
 
   // Read the key and value at `offset` to parameters for keys, the and
   // `seekable`.
@@ -254,6 +253,3 @@ class PlainTableReader: public TableReader {
   void operator=(const TableReader&) = delete;
 };
 }  // namespace rocksdb
-#endif  // ROCKSDB_LITE
-
-#endif  // YB_ROCKSDB_TABLE_PLAIN_TABLE_READER_H

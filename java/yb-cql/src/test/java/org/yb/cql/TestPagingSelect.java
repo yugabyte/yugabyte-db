@@ -292,4 +292,68 @@ public class TestPagingSelect extends BaseCQLTest {
     assertFalse(rows2.hasNext());
   }
 
+  @Test
+  public void testSelectWithIndex() throws Exception {
+    session.execute("CREATE TABLE test_table (h INT PRIMARY KEY, a int, b varchar) WITH " +
+        "tablets = 100 AND default_time_to_live = 0 AND transactions = {'enabled': 'true'};");
+    session.execute("CREATE INDEX test_index_ab ON test_table (a) include (b);");
+
+    // Allow the index back-fill process to complete as it can alter the schema due to which we can
+    // get schema-mismatch errors. See https://github.com/yugabyte/yugabyte-db/issues/15806.
+    waitForReadPermsOnAllIndexes("test_table");
+
+    // Insert dummy data.
+    for (int i = 0; i < 15; i++) {
+      session.execute(
+          String.format("INSERT INTO test_table (h, a, b) VALUES (%d, 10, 'varstr%d')", i, i));
+    }
+
+    // Index only scan.
+    {
+      HashSet<String> expectedRows = new HashSet<>(Arrays.asList(
+          "Row[10, varstr0]", "Row[10, varstr1]", "Row[10, varstr2]", "Row[10, varstr3]",
+          "Row[10, varstr4]", "Row[10, varstr5]", "Row[10, varstr6]", "Row[10, varstr7]",
+          "Row[10, varstr8]", "Row[10, varstr9]", "Row[10, varstr10]", "Row[10, varstr11]",
+          "Row[10, varstr12]", "Row[10, varstr13]", "Row[10, varstr14]"));
+      String query = "SELECT a, b FROM test_table WHERE a = 10";
+
+      // Prepared statement.
+      PreparedStatement prepared = session.prepare(query);
+      assertQuery(prepared.bind().setFetchSize(1), expectedRows);
+
+      // Direct select.
+      assertQuery(new SimpleStatement(query).setFetchSize(1), expectedRows);
+    }
+
+    HashSet<String> expectedRows = new HashSet<>(Arrays.asList(
+        "Row[0, 10, varstr0]", "Row[1, 10, varstr1]", "Row[2, 10, varstr2]",
+        "Row[3, 10, varstr3]", "Row[4, 10, varstr4]", "Row[5, 10, varstr5]",
+        "Row[6, 10, varstr6]", "Row[7, 10, varstr7]", "Row[8, 10, varstr8]",
+        "Row[9, 10, varstr9]", "Row[10, 10, varstr10]", "Row[11, 10, varstr11]",
+        "Row[12, 10, varstr12]", "Row[13, 10, varstr13]", "Row[14, 10, varstr14]"));
+
+    // Index + Base table.
+    {
+      String query = "SELECT * FROM test_table WHERE a = 10";
+
+      // Prepared statement.
+      PreparedStatement prepared = session.prepare(query);
+      assertQuery(prepared.bind().setFetchSize(1),expectedRows);
+
+      // Direct select.
+      assertQuery(new SimpleStatement(query).setFetchSize(1), expectedRows);
+    }
+
+    // Base table only.
+    {
+      String query = "SELECT * FROM test_table";
+
+      // Prepared statement.
+      PreparedStatement prepared = session.prepare(query);
+      assertQuery(prepared.bind().setFetchSize(1), expectedRows);
+
+      // Direct select.
+      assertQuery(new SimpleStatement(query).setFetchSize(1), expectedRows);
+    }
+  }
 }

@@ -16,11 +16,9 @@
 // under the License.
 //
 
-#ifndef BASE_INT128_H_
-#define BASE_INT128_H_
+#pragma once
 
 #include <iosfwd>
-using std::ostream;
 #include "yb/gutil/integral_types.h"
 
 struct uint128_pod;
@@ -342,5 +340,3 @@ inline uint128& uint128::operator--() {
   *this -= 1;
   return *this;
 }
-
-#endif  // BASE_INT128_H_

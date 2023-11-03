@@ -75,6 +75,18 @@ type: indexpage
     </a>
   </div>  
   
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link glyphicon-floppy-disk" href="disk-full/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
+        <div class="title">Handle disk full</div>
+      </div>
+      <div class="body">
+        Address disk full issue.
+      </div>
+    </a>
+  </div>
+  
   
   
 </div>

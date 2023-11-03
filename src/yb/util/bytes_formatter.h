@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_BYTES_FORMATTER_H
-#define YB_UTIL_BYTES_FORMATTER_H
+#pragma once
 
 #include <limits>
 #include <string>
@@ -46,21 +45,19 @@ std::string FormatBytesAsStr(const char* data,
                              size_t max_length = std::numeric_limits<size_t>::max());
 
 // Similar to FormatBytesAsStr(const char*, size_t, quote_type), but takes std::string.
-std::string FormatBytesAsStr(const std::string& s,
+std::string FormatBytesAsStr(const std::string_view& s,
                              QuotesType quote_type = QuotesType::kDefaultQuoteType,
                              size_t max_length = std::numeric_limits<size_t>::max());
 
 // Similar to FormatBytesAsStr(const char*, size_t, quote_type), but takes a yb::util::Slice.
-std::string FormatSliceAsStr(const yb::Slice& slice,
+std::string FormatSliceAsStr(const Slice& slice,
                              QuotesType quote_type = QuotesType::kDefaultQuoteType,
                              size_t max_length = std::numeric_limits<size_t>::max());
 
 std::string FormatSliceAsStr(
-    const yb::Slice& slice,
+    const Slice& slice,
     BinaryOutputFormat output_format,
     QuotesType quote_type = QuotesType::kDefaultQuoteType,
     size_t max_length = std::numeric_limits<size_t>::max());
 
 }  // namespace yb
-
-#endif  // YB_UTIL_BYTES_FORMATTER_H

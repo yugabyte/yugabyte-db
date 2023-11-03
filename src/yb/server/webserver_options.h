@@ -29,8 +29,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_SERVER_WEBSERVER_OPTIONS_H
-#define YB_SERVER_WEBSERVER_OPTIONS_H
+#pragma once
+
+#include <stdint.h>
 
 #include <string>
 
@@ -57,4 +58,3 @@ struct WebserverOptions {
 };
 
 } // namespace yb
-#endif /* YB_SERVER_WEBSERVER_OPTIONS_H */

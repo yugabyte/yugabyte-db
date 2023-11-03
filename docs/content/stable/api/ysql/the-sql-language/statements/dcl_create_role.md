@@ -24,24 +24,24 @@ You can use `GRANT`/`REVOKE` commands to set/remove permissions for roles.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fas fa-file-alt" aria-hidden="true"></i>
+    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fas fa-project-diagram" aria-hidden="true"></i>
+    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+      <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
   </li>
 </ul>
 
 <div class="tab-content">
-  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
   {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_role,role_option.grammar.md" %}}
   </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
   {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_role,role_option.diagram.md" %}}
   </div>
 </div>
@@ -56,10 +56,10 @@ Only roles with SUPERUSER privilege can create other SUPERUSER roles. If not spe
 - `INHERIT`, `NOINHERIT` determine whether the new role inherits privileges of the roles that it is a member of.
 Without INHERIT, membership in another role only grants the ability to SET ROLE to that other role. The privileges of the other role are only available after having done so.
 If not specified, INHERIT is the default.
-- `LOGIN`, `NOLOGIN` determine whether the new role is allowed to login or not. Only roles with login privilege can be used during client connection.
+- `LOGIN`, `NOLOGIN` determine whether the new role is allowed to log in or not. Only roles with login privilege can be used during client connection.
 A role with LOGIN can be thought of as a user. If not specified, NOLOGIN is the default. Note that if `CREATE USER` statement is used instead of `CREATE ROLE`, then default is LOGIN.
-- `CONNECTION LIMIT` specifies how many concurrent connections the role can make. Default is -1 which means unlimited. This only applies to roles that can login.
-- `[ENCRYPTED] PASSWORD` sets the password for the new role. This only applies to roles that can login.
+- `CONNECTION LIMIT` specifies how many concurrent connections the role can make. Default is -1 which means unlimited. This only applies to roles that can log in.
+- `[ENCRYPTED] PASSWORD` sets the password for the new role. This only applies to roles that can log in.
 If no password is specified, the password will be set to null and password authentication will always fail for that user.
 Note that password is always stored encrypted in system catalogs and the optional keyword ENCRYPTED is only present for compatibility with Postgres.
 - `VALID UNTIL` sets a date and time after which the role's password is no longer valid. If this clause is omitted the password will be valid for all time.
@@ -70,13 +70,13 @@ Note that password is always stored encrypted in system catalogs and the optiona
 
 ## Examples
 
-- Create a role that can login.
+- Create a role that can log in.
 
 ```plpgsql
 yugabyte=# CREATE ROLE John LOGIN;
 ```
 
-- Create a role that can login and has a password.
+- Create a role that can log in and has a password.
 
 ```plpgsql
 yugabyte=# CREATE ROLE Jane LOGIN PASSWORD 'password';

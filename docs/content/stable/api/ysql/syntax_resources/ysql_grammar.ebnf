@@ -6,9 +6,9 @@ alter_database =
   'ALTER' 'DATABASE' name ( [ [ 'WITH' ]  alter_database_option { alter_database_option } ]
                         | 'RENAME' 'TO' name
                         | 'OWNER' 'TO' ( new_owner | 'CURRENT_USER' | 'SESSION_USER' )
-                        | 'SET' configuration_parameter ( 'TO' | '=' ) ( value | 'DEFAULT' )
-                        | 'SET' configuration_parameter 'FROM' 'CURRENT'
-                        | 'RESET' configuration_parameter
+                        | 'SET' run_time_parameter ( 'TO' | '=' ) ( value | 'DEFAULT' )
+                        | 'SET' run_time_parameter 'FROM' 'CURRENT'
+                        | 'RESET' run_time_parameter
                         | 'RESET' 'ALL' ) ;
 
 alter_database_option =
@@ -101,17 +101,11 @@ alter_function = 'ALTER' 'FUNCTION' subprogram_name '(' [ subprogram_signature ]
                  ( special_fn_and_proc_attribute |
                    ( ( alterable_fn_and_proc_attribute | alterable_fn_only_attribute ) { ( alterable_fn_and_proc_attribute | alterable_fn_only_attribute ) } ['RESTRICT'] ) ) ;
 
-
 special_fn_and_proc_attribute = (
     'RENAME' 'TO' subprogram_name
     | ( 'OWNER' 'TO' ( role_name | 'CURRENT_ROLE' | 'CURRENT_USER' | 'SESSION_USER' ) )
     | 'SET' 'SCHEMA' schema_name
     | ['NO'] 'DEPENDS' 'ON' 'EXTENSION' extension_name ) ;
-
-(* 'ALTER' 'GROUP' *)
-alter_group = 'ALTER' 'GROUP' role_specification ( 'ADD' | 'DROP' ) 'USER' role_name { ',' role_name } ;
-
-alter_group_rename = 'ALTER' 'GROUP' role_name 'RENAME' 'TO' new_role_name ;
 
 (* 'ALTER' 'FOREIGN' 'DATA' 'WRAPPER' *)
 alter_foreign_data_wrapper = 'ALTER' 'FOREIGN' 'DATA' 'WRAPPER' fdw_name 
@@ -192,16 +186,15 @@ config_value = '<Text Literal>' ;
 alter_sequence = 'ALTER' 'SEQUENCE' [ 'IF' 'EXISTS' ] sequence_name alter_sequence_options ;
 
 alter_sequence_options = [ 'AS' seq_data_type ]
-                           [ 'INCREMENT' [ 'BY' ] increment ]
-                           [ 'MINVALUE' minvalue | 'NO' 'MINVALUE' ]
+                           [ 'INCREMENT' [ 'BY' ] int_literal ]
+                           [ 'MINVALUE' int_literal | 'NO' 'MINVALUE' ]
                            [ 'MAXVALUE' maxvalue | 'NO' 'MAXVALUE' ]
-                           [ 'START' [ 'WITH' ] start ]
-                           [ 'RESTART' [ [ 'WITH' ] restart ] ]
+                           [ 'START' [ 'WITH' ] int_literal ]
+                           [ 'RESTART' [ [ 'WITH' ] int_literal ] ]
                            [ 'CACHE' cache ]
                            [ 'OWNED BY' table_name.table_column | 'NONE' ] ;
 
 seq_data_type = ( 'smallint' | 'integer' | 'bigint' ) ;
-restart = '<Integer Literal>';
 
 (* 'ALTER' 'SERVER' *) 
 alter_server = 'ALTER' 'SERVER' server_name 
@@ -314,11 +307,11 @@ commit = 'COMMIT' [ 'TRANSACTION' | 'WORK' ] ;
 (* 'COPY' *)
 copy_from = 'COPY' table_name [ '(' column_name { ',' column_name } ')' ] \
               'FROM' ( 'filename' | 'PROGRAM' 'command' | 'STDIN' )
-              [ [ 'WITH' ] '(' option { ',' option } ')' ] ;
+              [ [ 'WITH' ] '(' option { ',' copy_option } ')' ] ;
 
-copy_to = 'COPY' ( table_name [ '(' column_names ')' ] | '(' query ')' ) \
+copy_to = 'COPY' ( table_name [ '(' column_names ')' ] | '(' subquery ')' ) \
             'TO' ( 'filename' | 'PROGRAM' 'command' | 'STDOUT' )
-            [ [ 'WITH' ] '(' option { ',' option } ')' ] ;
+            [ [ 'WITH' ] '(' option { ',' copy_option } ')' ] ;
 
 copy_option =
   ( 'FORMAT' format_name
@@ -333,10 +326,10 @@ copy_option =
     | 'FORCE_NOT_NULL' '(' column_names ')'
     | 'FORCE_NULL' '(' column_names ')'
     | 'ENCODING' 'encoding_name'
-    | 'ROWS_PER_TRANSACTION' integer
+    | 'ROWS_PER_TRANSACTION' int_literal
     | 'DISABLE_FK_CHECK'
     | 'REPLACE'
-    | 'SKIP' integer ) ;
+    | 'SKIP' int_literal ) ;
 
 (* 'CREATE' 'AGGREGATE' *)
 create_aggregate = create_aggregate_normal
@@ -438,7 +431,7 @@ create_database_options =  [ 'WITH' ] [ 'OWNER' [ '=' ] user_name ]  \
                              [ 'ALLOW_CONNECTIONS' [ '=' ] allowconn ]  \
                              [ 'CONNECTION' 'LIMIT' [ '=' ] connlimit ]  \
                              [ 'IS_TEMPLATE' [ '=' ] istemplate ] \
-                             [ 'COLOCATED' [ '=' ] ('true' | 'false') ] ;
+                             [ 'COLOCATION' [ '=' ] ('true' | 'false') ] ;
 
 create_domain = 'CREATE' 'DOMAIN' name [ 'AS' ] data_type
     [ 'DEFAULT' expression ]
@@ -472,11 +465,9 @@ fn_invocation = subprogram_name '(' [ subprogram_arg { ',' subprogram_arg } ] ')
 
 subprogram_call_signature = arg_type { ',' arg_type } ;
 
-unalterable_fn_attribute = 'WINDOW'
-                            (* | ( 'TRANSFORM' ( 'FOR' 'TYPE' type_name ) { ',' ( 'FOR' 'TYPE' type_name ) } bllewell: n/a except with implementation langauges like C *)
-                            | 'LANGUAGE' lang_name
-                            | 'AS' implementation_definition
-;
+(* | ( 'TRANSFORM' ( 'FOR' 'TYPE' type_name ) { ',' ( 'FOR' 'TYPE' type_name ) } bllewell: n/a except with implementation langauges like C *)
+unalterable_fn_attribute = 'WINDOW' | 'LANGUAGE' lang_name | 'AS' implementation_definition;
+
 lang_name = 'SQL' | 'PLPGSQL' | 'C' ;
 
 implementation_definition := "'" sql_stmt_list "'" |"'" plpgsql_block_stmt "'" | ( "'" obj_file"'" [ ',' "'" link_symbol "'" ] ) ;
@@ -484,8 +475,8 @@ implementation_definition := "'" sql_stmt_list "'" |"'" plpgsql_block_stmt "'" |
 sql_stmt_list = sql_stmt ';' { sql_stmt ';' } ;
 
 alterable_fn_and_proc_attribute =  ( 
-                      'SET' configuration_parameter ( 'TO' value | '=' value | 'FROM' 'CURRENT' )
-                      | 'RESET' configuration_parameter
+                      'SET' run_time_parameter ( 'TO' value | '=' value | 'FROM' 'CURRENT' )
+                      | 'RESET' run_time_parameter
                       | 'RESET' 'ALL'
                       | [ 'EXTERNAL' ] 'SECURITY' ( 'INVOKER' | 'DEFINER' )
                       ) ;
@@ -541,7 +532,7 @@ create_matview = 'CREATE' 'MATERIALIZED' 'VIEW' [ 'IF' 'NOT' 'EXISTS' ] \
                            matview_name [ '(' column_name { ',' column_name } ')' ] \
                            [ 'WITH' '(' storage_parameters ')' ] \
                            [ 'TABLESPACE' tablespace ] \
-                           'AS' query [ 'WITH' [ 'NO' ] 'DATA' ] ;
+                           'AS' subquery [ 'WITH' [ 'NO' ] 'DATA' ] ;
 
 (* 'CREATE' 'OPERATOR' *)
 create_operator = 'CREATE' 'OPERATOR' operator_name '('
@@ -580,12 +571,11 @@ create_policy = 'CREATE' 'POLICY' name 'ON' table_name
 (* 'CREATE' 'PROCEDURE' *)
 create_procedure =  'CREATE' [ 'OR' 'REPLACE' ] 'PROCEDURE'
                     subprogram_name '(' [ arg_decl_with_dflt { ',' arg_decl_with_dflt } ] ')' \
-                    ( unalterable_proc_attribute |  alterable_fn_and_proc_attribute )
+                    ( unalterable_proc_attribute | alterable_fn_and_proc_attribute )
                     { ( unalterable_proc_attribute |  alterable_fn_and_proc_attribute ) } ;
 
-unalterable_proc_attribute =  (* ( 'TRANSFORM' ( 'FOR' 'TYPE' type_name ) { ',' ( 'FOR' 'TYPE' type_name ) } bllewell: n/a except with implementation langauges like C *)
-                              | 'LANGUAGE' lang_name
-                              | 'AS' implementation_definition;
+(* ( 'TRANSFORM' ( 'FOR' 'TYPE' type_name ) { ',' ( 'FOR' 'TYPE' type_name ) } bllewell: n/a except with implementation langauges like C *)
+unalterable_proc_attribute = 'LANGUAGE' lang_name | 'AS' implementation_definition;
 
 (* 'CREATE' 'RULE' *)
 create_rule = 'CREATE' [ 'OR' 'REPLACE' ] 'RULE' rule_name 'AS' 'ON' rule_event
@@ -626,7 +616,7 @@ role_option = 'SUPERUSER'
 role_name = name ;
 password = '<Text Literal>' ;
 timestamp = '<DateTime Literal>' ;
-connlimit = '<Integer Literal>';
+connlimit = int_literal;
 uid = '<Text Literal>';
 
 (* 'CREATE' 'SCHEMA' *)
@@ -641,22 +631,16 @@ create_schema_role = 'CREATE' 'SCHEMA' [ 'IF' 'NOT' 'EXISTS']
 schema_element = '<YSQL DDL statement>' ;
 
 (* 'CREATE' 'SEQUENCE' *)
-create_sequence = 'CREATE' 'SEQUENCE' [ 'IF' 'NOT' 'EXISTS' ] sequence_name  sequence_options ;
+create_sequence = 'CREATE' [ 'TEMPORARY' | 'TEMP' ] 'SEQUENCE' [ 'IF' 'NOT' 'EXISTS' ] sequence_name  sequence_options ;
 
 sequence_name = qualified_name ;
 
-sequence_options = [ 'INCREMENT' [ 'BY' ] increment ]
-                     [ 'MINVALUE' minvalue | 'NO' 'MINVALUE' ]
-                     [ 'MAXVALUE' maxvalue | 'NO' 'MAXVALUE' ]
-                     [ 'START' [ 'WITH' ] start ]
-                     [ 'CACHE' cache ]
+sequence_options = [ 'INCREMENT' [ 'BY' ] int_literal ]
+                     [ 'MINVALUE' int_literal | 'NO' 'MINVALUE' ]
+                     [ 'MAXVALUE' int_literal | 'NO' 'MAXVALUE' ]
+                     [ 'START' [ 'WITH' ] int_literal ]
+                     [ 'CACHE' positive_int_literal ]
                      [ [ 'NO' ] 'CYCLE' ] ;
-
-increment = '<Integer Literal>' ;
-minvalue = '<Integer Literal>' ;
-maxvalue = '<Integer Literal>' ;
-start = '<Integer Literal>' ;
-cache = '<Integer Literal>' ;
 
 (* 'CREATE' 'SERVER' *)
 create_server = 'CREATE' 'SERVER' [ 'IF' 'NOT' 'EXISTS' ] server_name [ 'TYPE' server_type ]
@@ -666,10 +650,10 @@ create_server = 'CREATE' 'SERVER' [ 'IF' 'NOT' 'EXISTS' ] server_name [ 'TYPE' s
 (* 'CREATE' 'TABLE' *)
 create_table = 'CREATE' [ 'TEMPORARY' | 'TEMP' ] 'TABLE' [ 'IF' 'NOT' 'EXISTS' ] table_name
                  '(' [ table_elem { ',' table_elem } ] ')'
-                 [ 'WITH' '(' ( 'COLOCATED' '=' ('true' | 'false') | storage_parameters ) ')'
+                 [ 'WITH' '(' ( 'COLOCATION' '=' ('true' | 'false') | storage_parameters ) ')'
                       | 'WITHOUT' 'OIDS' ] \
                  [ TABLESPACE tablespace_name ]
-                 [ 'SPLIT' ( 'INTO' integer 'TABLETS'
+                 [ 'SPLIT' ( 'INTO' positive_int_literal 'TABLETS'
                       | 'AT' 'VALUES' '(' split_row { ',' split_row } ')' ) ] ;
 
 split_row = '(' column_value { ',' column_value } ')';
@@ -716,9 +700,9 @@ index_parameters = [ 'INCLUDE' '(' column_names ')' ]
                      [ USING INDEX TABLESPACE tablespace_name ] ;
 
 (* 'CREATE' 'TABLE' 'AS' *)
-create_table_as = 'CREATE' 'TABLE' [ 'IF' 'NOT' 'EXISTS' ] \
+create_table_as = 'CREATE' [ 'TEMPORARY' | 'TEMP' ] 'TABLE' [ 'IF' 'NOT' 'EXISTS' ] \
                            table_name [ '(' column_name { ',' column_name } ')' ] \
-                           'AS' query [ 'WITH' [ 'NO' ] 'DATA' ] ;
+                           'AS' subquery [ 'WITH' [ 'NO' ] 'DATA' ] ;
 
 
 (* CREATE TRIGGER *)
@@ -786,11 +770,36 @@ user = ( user_name
        | 'PUBLIC' ) ;
 
 (* 'CREATE' 'VIEW' *)
-create_view = 'CREATE' [ 'OR' 'REPLACE' ] 'VIEW' qualified_name [ '(' name { ',' name } ')' ] 'AS' select ;
+create_view = 'CREATE' [ 'OR' 'REPLACE' ] [ 'TEMPORARY' | 'TEMP' ] 'VIEW' qualified_name [ '(' name { ',' name } ')' ] 'AS' select ;
 
 
 (* 'DEALLOCATE' *)
 deallocate = 'DEALLOCATE' [ 'PREPARE' ] ( name | 'ALL' ) ;
+
+(* 'DECLARE' *)
+declare = 'DECLARE' name [ 'BINARY' ] [ 'INSENSITIVE' ] [ [ 'NO' ] 'SCROLL' ] \
+          'CURSOR' [ ( 'WITH' | 'WITHOUT' ) 'HOLD' ] 'FOR' subquery ;
+
+(* 'MOVE' *)
+move = 'MOVE' [ move_to_one_row | move_over_many_rows ] [ 'FROM' | 'IN' ] name ;
+
+move_to_one_row     =  ( 'FIRST' | 'LAST' | 'ABSOLUTE' int_literal |
+                         'NEXT' | 'FORWARD' | 'PRIOR' | 'BACKWARD' | 'RELATIVE' int_literal ) ;
+
+move_over_many_rows =  ( 'ALL' | 'FORWARD' 'ALL' | 'FORWARD' int_literal | int_literal |
+                         'BACKWARD' 'ALL' | 'BACKWARD' int_literal ) ;
+
+(* 'FETCH' *)
+fetch = 'FETCH' [ fetch_one_row | fetch_many_rows ] [ 'FROM' | 'IN' ] name ;
+
+fetch_one_row   =  ( 'FIRST' | 'LAST' | 'ABSOLUTE' int_literal |
+                     'NEXT' | 'FORWARD' | 'PRIOR' | 'BACKWARD' | 'RELATIVE' int_literal ) ;
+
+fetch_many_rows =  ( 'ALL' | 'FORWARD' 'ALL' | 'FORWARD' int_literal | int_literal |
+                     'BACKWARD' 'ALL' | 'BACKWARD' int_literal ) ;
+
+(* 'CLOSE' *)
+close = 'CLOSE' ( name | 'ALL' ) ;
 
 (* 'DELETE' *)
 delete = [ 'WITH' [ 'RECURSIVE' ] ( common_table_expression { ',' common_table_expression } ) ] \
@@ -804,7 +813,7 @@ returning_clause = 'RETURNING' ( '*' | ( output_expression [ [ 'AS' ] output_nam
 returning_expression = output_expression [ [ 'AS' ] output_name ] ;
 
 (* 'DO' *)
-do = 'DO' [ 'LANGUAGE' lang_name ] code ;
+do = 'DO' "'" plpgsql_block_stmt "'";
 
 (* 'DROP' 'AGGREGATE' *)
 drop_aggregate = 'DROP' 'AGGREGATE' [ 'IF' 'EXISTS' ] ( aggregate_name '(' aggregate_signature ')' )
@@ -821,6 +830,9 @@ drop_cast = 'DROP' 'CAST' [ 'IF' 'EXISTS' ] '(' cast_signature ')' [ 'CASCADE' |
 
 (* 'DROP' 'DATABASE' *)
 drop_database = 'DROP' 'DATABASE' [ 'IF' 'EXISTS' ] database_name ;
+
+(* 'DROP' 'SCHEMA' *)
+drop_schema = 'DROP' 'SCHEMA' [ 'IF' 'EXISTS' ] schema_name { ',' schema_name } [ 'CASCADE' | 'RESTRICT' ] ;
 
 (* 'DROP' 'DOMAIN' *)
 drop_domain = 'DROP' 'DOMAIN' [ 'IF' 'EXISTS' ] name { ',' name }  [ 'CASCADE' | 'RESTRICT' ] ;
@@ -890,6 +902,9 @@ drop_server = 'DROP' 'SERVER' [ 'IF' 'EXISTS' ] server_name [ 'CASCADE' | 'RESTR
 (* 'DROP' 'TABLE' *)
 drop_table = 'DROP' 'TABLE' [ 'IF' 'EXISTS' ] table_name { ',' table_name}
                   [ 'CASCADE' | 'RESTRICT' ] ;
+
+(* 'DROP' 'INDEX' *)
+drop_index = 'DROP' 'INDEX' [ 'IF' 'EXISTS' ] index_name [ 'CASCADE' | 'RESTRICT' ] ;
 
 (* 'DROP' 'TYPE' *)
 drop_type = 'DROP' 'TYPE' [ 'IF' 'EXISTS' ] type_name { ',' type_name }
@@ -984,6 +999,8 @@ insert = [ 'WITH' [ 'RECURSIVE' ] ( common_table_expression { ',' common_table_e
                [ 'ON' 'CONFLICT' [ conflict_target ] conflict_action ] \
                [ returning_clause ] ;
 
+subquery = select | values ;
+
 column_values = ( expression | 'DEFAULT' ) { ',' ( expression | 'DEFAULT' ) } ;
 
 
@@ -1007,7 +1024,7 @@ lockmode = ( 'ACCESS' 'SHARE'
                | 'ACCESS' 'EXCLUSIVE' ) ;
 
 (* 'PREPARE' *)
-prepare_statement = 'PREPARE' name [ '(' data_type { ',' data_type } ')' ] 'AS' sql_stmt ;
+prepare_statement = 'PREPARE' name [ '(' data_type { ',' data_type } ')' ] 'AS' subquery ;
 
 (* 'REASSIGN' 'OWNED' *)
 reassign_owned = 'REASSIGN' 'OWNED' 'BY' role_specification { ',' role_specification }
@@ -1018,7 +1035,7 @@ refresh_matview = 'REFRESH' 'MATERIALIZED' 'VIEW' [ 'CONCURRENTLY' ] \
                   matview_name [ 'WITH' [ 'NO' ] 'DATA' ] ;
 
 (* 'RESET' *)
-reset_stmt := 'RESET' ( name | 'ALL' ) ;
+reset_stmt := 'RESET' ( run_time_parameter | 'ALL' ) ;
 
 (* 'RESET' 'ROLE' *)
 reset_role = 'RESET' 'ROLE' ;
@@ -1095,9 +1112,9 @@ select = [ 'WITH' [ 'RECURSIVE' ] ( common_table_expression { ',' common_table_e
                [ 'WINDOW' ( ( name 'AS' window_definition ) { ',' ( name 'AS' window_definition ) } ) ] \
                [ ( 'UNION' | 'INTERSECT' | 'EXCEPT' ) [ 'ALL' | 'DISTINCT' ] select ] \
                [ 'ORDER' 'BY' ( order_expr { ',' order_expr } ) ] \
-               [ 'LIMIT' ( integer | 'ALL' ) ] \
-               [ 'OFFSET' integer [ 'ROW' | 'ROWS' ] ] \
-               [ 'FETCH' ( FIRST | NEXT ) integer ( ROW | ROWS ) ONLY ] \
+               [ 'LIMIT' ( int_expression | 'ALL' ) ] \
+               [ 'OFFSET' int_expression [ 'ROW' | 'ROWS' ] ] \
+               [ 'FETCH' ( FIRST | NEXT ) int_expression ( ROW | ROWS ) ONLY ] \
                { 'FOR' ( 'UPDATE' | 'NO KEY UPDATE' | 'SHARE' | 'KEY SHARE' ) [ 'OF' table_name { ',' table_name} ] [ 'NOWAIT' | 'SKIP LOCKED' ] };
 
 with_clause = [ 'WITH' [ 'RECURSIVE' ] ( common_table_expression { ',' common_table_expression } ) ] ;
@@ -1111,7 +1128,7 @@ order_expr = expression [ 'ASC' | 'DESC' | 'USING' operator_name ]
 
 (* 'SET' variable *)
 set = 'SET' [ 'SESSION' | 'LOCAL' ]
-        ( configuration_parameter ( 'TO' | '=' ) ( value | 'DEFAULT' )
+        ( run_time_parameter ( 'TO' | '=' ) ( value | 'DEFAULT' )
           | 'TIME' 'ZONE' ( timezone | 'LOCAL' | 'DEFAULT' ) ) ;
 
 (* 'SET' 'CONSTRAINTS' *)
@@ -1140,10 +1157,13 @@ read_write_mode = 'READ' 'ONLY' | 'READ' 'WRITE' ;
 deferrable_mode = [ 'NOT' ] 'DEFERRABLE' ;
 
 (* 'SHOW' variable *)
-show_stmt = 'SHOW' ( name | 'ALL' ) ;
+show_stmt = 'SHOW' ( run_time_parameter | 'ALL' ) ;
 
 (* 'SHOW' 'TRANSACTION' *)
 show_transaction = 'SHOW' 'TRANSACTION' 'ISOLATION' 'LEVEL' ;
+
+(* 'START' 'TRANSACTION' *)
+start_transaction = 'START' 'TRANSACTION' { transaction_mode } ;
 
 (* 'TRUNCATE' *)
 
@@ -1161,16 +1181,16 @@ update = [ 'WITH' [ 'RECURSIVE' ] ( common_table_expression { ',' common_table_e
 
 update_item = ( column_name '=' column_value
                   | '(' column_names ')' '=' [ 'ROW' ] '(' column_values ')'
-                  | '(' column_names ')' '=' '(' query ')' ) ;
+                  | '(' column_names ')' '=' '(' subquery ')' ) ;
 
 column_value = expression | 'DEFAULT' ;
 
 (* 'VALUES' *)
 values = 'VALUES' '(' expression_list ')' { ',' '(' expression_list ')' } \
             [ 'ORDER' 'BY' ( order_expr { ',' order_expr } ) ] \
-            [ 'LIMIT' ( integer | 'ALL' ) ] \
-            [ 'OFFSET' integer [ 'ROW' | 'ROWS' ] ] \
-            [ 'FETCH' ( FIRST | NEXT ) integer ( ROW | ROWS ) ONLY ] ;
+            [ 'LIMIT' ( int_expression | 'ALL' ) ] \
+            [ 'OFFSET' int_expression [ 'ROW' | 'ROWS' ] ] \
+            [ 'FETCH' ( FIRST | NEXT ) int_expression ( ROW | ROWS ) ONLY ] ;
 
 expression_list = expression { ',' expression } ;
 
@@ -1266,16 +1286,18 @@ arg_type = type_name ;
 
 text_literal = '<Text Literal>' ;
 
+int_expression = '<Integer Expression>' ;
 int_literal = '<Integer Literal>' ;
-integer = '<Integer Literal>' ;
+positive_int_literal = '<Positive Integer Literal>' ;
+non_neg_int_literal = '<Non-negative Integer Literal>' ;
 
 numeric_literal = '<Numeric Literal>' ;
 
 value = text_literal | numeric_literal | boolean ;
 
-configuration_parameter = text_literal ;
+run_time_parameter = text_literal ;
 
-large_object_oid = '<Integer Literal>' ;
+large_object_oid = int_literal ;
 
 left_type = ( qualified_name | 'NONE' ) ;
 right_type = ( qualified_name | 'NONE' ) ;
@@ -1307,7 +1329,7 @@ receive_function = subprogram_name ;
 send_function = subprogram_name ;
 type_modifier_input_function = subprogram_name ;
 type_modifier_output_function = subprogram_name ;
-internallength = ( '-2' | '-1' | '<non-negative integer>' ) ;
+internallength = ( '-2' | '-1' | non_neg_int_literal ) ;
 alignment = ( 'CHAR' | 'INT2' | 'INT4' | 'DOUBLE' ) ;
 storage = ( 'PLAIN' | 'EXTERNAL' | 'EXTENDED' | 'MAIN' ) ;
 like_type = type_name ;
@@ -1324,7 +1346,7 @@ aggregate_arg_mode = 'IN' | 'VARIADIC' ;
 sfunc = subprogram_name ;
 state_data_type = type_name ;
 base_type = type_name ;
-state_data_size = '<non-negative integer>' ;
+state_data_size = non_neg_int_literal ;
 ffunc = subprogram_name ;
 combinefunc = subprogram_name ;
 serialfunc = subprogram_name ;
@@ -1333,7 +1355,7 @@ initial_condition = '<Text Literal>' ;
 msfunc = subprogram_name ;
 minvfunc = subprogram_name ;
 mstate_data_type = type_name ;
-mstate_data_size = '<non-negative integer>' ;
+mstate_data_size = non_neg_int_literal ;
 mffunc = subprogram_name ;
 minitial_condition = '<Text literal>' ;
 sort_operator = operator_name ;
@@ -1343,8 +1365,8 @@ com_op = operator_name ;
 neg_op = operator_name ;
 res_proc = subprogram_name ;
 join_proc = subprogram_name ;
-strategy_number = '<positive integer>' ;
-support_number = '<positive integer>' ;
+strategy_number = positive_int_literal ;
+support_number = positive_int_literal ;
 op_type = data_type ;
 storage_type = data_type ;
 using_expression = expression ;
@@ -1361,7 +1383,7 @@ fdw_name = '<Text Literal>' ;
 handler_name = '<Text Literal>' ;
 validator_name = '<DateTime Literal>' ;
 fdw_options = option_name option_value { ',' fdw_options } ;
-option_name = '<Integer Literal>';
+option_name = int_literal;
 option_value = '<Text Literal>';
 
 (*
@@ -1388,21 +1410,44 @@ savepoint_release := ( 'RELEASE' [ 'SAVEPOINT' ] name ) ;
 savepoint_rollback := ( 'ROLLBACK' ['WORK' | 'TRANSACTION' ] 'TO' [ 'SAVEPOINT' ] name ) ;
 
 (* -------------------------------------------------------------------------------------------------------------------------------------- *)
-(* PL/pgSQL language                                                                                                                      *)
+(* PL/pgSQL language *)
 
 (* bllewell W.i.P. Not harmful to expose just on the "Grammar Diagrams" page *)
 
-plpgsql_block_stmt = [ '<<' name '>>' ] [ plpgsql_declaration_section ] plpgsql_executable_section [ plpgsql_exception_section ] 'END' [name] ';' ;
+plpgsql_block_stmt = [ '<<' name '>>' ] \
+                     [ plpgsql_declaration_section ] \
+                     plpgsql_executable_section \
+                     [ plpgsql_exception_section ] 'END' [name] ';' ;
 
 plpgsql_declaration_section = 'DECLARE' [ plpgsql_declaration { plpgsql_declaration } ] ;
 
-plpgsql_declaration = [name] [ 'CONSTANT' ] [data_type] ['NOT' 'NULL' ]  [ ':=' expression ] ';' ;
+plpgsql_declaration = ( plpgsql_regular_declaration | plpgsql_bound_refcursor_declaration );
+
+plpgsql_regular_declaration = [name] [ 'CONSTANT' ] [data_type] ['NOT' 'NULL' ]  [ ':=' expression ] ';' ;
+
+plpgsql_bound_refcursor_declaration = name 'CURSOR' [ '(' data_type { ',' data_type } ')' ] 'FOR' subquery ';' ;
 
 plpgsql_executable_section = 'BEGIN' [ plpgsql_stmt { plpgsql_stmt } ] ;
 
 plpgsql_stmt = ( plpgsql_basic_stmt | plpgsql_compound_stmt ) ;
 
-plpgsql_basic_stmt := ( [ 'NULL' | regular_sql_stmt | embedded_sql_stmt | plpgsql_assignment_stmt | plpgsql_perform_stmt | plpgsql_assert_stmt | plpgsql_raise_stmt | plpgsql_get_diagnostics_stmt | plpgsql_return_stmt ] ) ';' ;
+plpgsql_basic_stmt := (
+    'NULL' | 
+    plpgsql_assignment_stmt |
+    plpgsql_assert_stmt     |
+    static_sql_stmt         |
+    dynamic_sql_stmt        |
+    perform_stmt            |
+    exit_stmt               |
+    continue_stmt           |
+    open_cursor_stmt        |
+    move_in_cursor_stmt     |
+    fetch_from_cursor_stmt  |
+    close_cursor_stmt       |
+    raise_stmt              |
+    get_diagnostics_stmt    |
+    return_stmt
+  ) ';' ;
 
 plpgsql_compound_stmt = ( plpgsql_block_stmt | plpgsql_loop_stmt | plpgsql_if_stmt | plpgsql_case_stmt ) ';' ;
 

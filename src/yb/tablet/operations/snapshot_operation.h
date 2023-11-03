@@ -11,17 +11,19 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_OPERATIONS_SNAPSHOT_OPERATION_H
-#define YB_TABLET_OPERATIONS_SNAPSHOT_OPERATION_H
+#pragma once
 
 #include <mutex>
 #include <string>
 
-#include "yb/tablet/tablet_fwd.h"
 #include "yb/gutil/macros.h"
+
+#include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/operation_filter.h"
+#include "yb/tablet/operations.messages.h"
 #include "yb/tablet/operations/operation.h"
-#include "yb/tserver/backup.pb.h"
+
+#include "yb/tserver/backup.messages.h"
 #include "yb/util/locks.h"
 
 namespace yb {
@@ -31,7 +33,7 @@ namespace tablet {
 // Keeps track of the Operation states (request, result, ...)
 // Executes the TabletSnapshotOp operation.
 class SnapshotOperation :
-    public ExclusiveSchemaOperation<OperationType::kSnapshot, tserver::TabletSnapshotOpRequestPB>,
+    public ExclusiveSchemaOperation<OperationType::kSnapshot, tserver::LWTabletSnapshotOpRequestPB>,
     public OperationFilter {
  public:
   template <class... Args>
@@ -54,7 +56,7 @@ class SnapshotOperation :
 
   static Status RejectionStatus(OpId rejected_op_id, consensus::OperationType op_type);
 
-  Status Prepare() override;
+  Status Prepare(IsLeaderSide is_leader_side) override;
 
  private:
   // Starts the TabletSnapshotOp operation by assigning it a timestamp.
@@ -62,8 +64,8 @@ class SnapshotOperation :
   Status DoAborted(const Status& status) override;
   Status Apply(int64_t leader_term, Status* complete_status);
 
-  void AddedAsPending() override;
-  void RemovedFromPending() override;
+  void AddedAsPending(const TabletPtr& tablet) override;
+  void RemovedFromPending(const TabletPtr& tablet) override;
 
   bool NeedOperationFilter() const;
 
@@ -75,5 +77,3 @@ class SnapshotOperation :
 
 }  // namespace tablet
 }  // namespace yb
-
-#endif  // YB_TABLET_OPERATIONS_SNAPSHOT_OPERATION_H

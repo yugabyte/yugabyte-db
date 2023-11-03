@@ -40,11 +40,11 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#ifndef YB_SERVER_WEBSERVER_H
-#define YB_SERVER_WEBSERVER_H
+#pragma once
 
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "yb/server/webserver_options.h"
@@ -92,11 +92,13 @@ class Webserver : public WebCallbackRegistry {
   // True if serving all traffic over SSL, false otherwise
   bool IsSecure() const;
 
+  void SetAutoFlags(std::unordered_set<std::string>&& flags);
+
+  bool ContainsAutoFlag(const std::string& flag) const;
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;
 };
 
 } // namespace yb
-
-#endif // YB_SERVER_WEBSERVER_H

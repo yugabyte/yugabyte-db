@@ -10,9 +10,8 @@ func (state NodeState) Name() string {
 
 const (
 	Registering NodeState = "REGISTERING"
-	Live        NodeState = "LIVE"
+	Ready       NodeState = "READY"
 	Upgrade     NodeState = "UPGRADE"
-	Upgrading   NodeState = "UPGRADING"
 	Upgraded    NodeState = "UPGRADED"
 )
 

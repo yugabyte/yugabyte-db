@@ -13,9 +13,12 @@
 
 #include "yb/common/roles_permissions.h"
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/strings/substitute.h"
+
+using std::string;
+using std::vector;
 
 namespace yb {
 

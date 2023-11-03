@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.metrics;
 
+import static com.yugabyte.yw.common.SwamperHelper.getScrapeIntervalSeconds;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
@@ -8,40 +9,28 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.ImmutableSet;
 import com.google.inject.Singleton;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.PlatformExecutorFactory;
-import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.MetricQueryParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.metrics.data.AlertData;
 import com.yugabyte.yw.metrics.data.AlertsResponse;
 import com.yugabyte.yw.metrics.data.ResponseStatus;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import org.apache.commons.collections.CollectionUtils;
@@ -49,8 +38,8 @@ import org.apache.commons.lang3.StringUtils;
 import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.Configuration;
 import play.libs.Json;
+import play.libs.ws.WSClient;
 
 @Singleton
 public class MetricQueryHelper {
@@ -63,20 +52,39 @@ public class MetricQueryHelper {
   public static final String ALERTS_PATH = "alerts";
 
   public static final String MANAGEMENT_COMMAND_RELOAD = "reload";
-  private static final String PROMETHEUS_METRICS_URL_PATH = "yb.metrics.url";
-  private static final String PROMETHEUS_MANAGEMENT_URL_PATH = "yb.metrics.management.url";
   public static final String PROMETHEUS_MANAGEMENT_ENABLED = "yb.metrics.management.enabled";
+  public static final String WS_CLIENT_KEY = "yb.metrics.ws";
 
   private static final String CONTAINER_METRIC_PREFIX = "container";
   private static final String NODE_PREFIX = "node_prefix";
   private static final String NAMESPACE = "namespace";
   public static final String EXPORTED_INSTANCE = "exported_instance";
+  public static final String TABLE_ID = "table_id";
+  public static final String TABLE_NAME = "table_name";
+  public static final String NAMESPACE_NAME = "namespace_name";
   private static final String POD_NAME = "pod_name";
   private static final String CONTAINER_NAME = "container_name";
   private static final String PVC = "persistentvolumeclaim";
-  private final play.Configuration appConfig;
 
-  private final ApiHelper apiHelper;
+  private static final String DEFAULT_MOUNT_POINTS = "/mnt/d[0-9]+";
+
+  private static final Set<String> DATA_DISK_USAGE_METRICS =
+      ImmutableSet.of(
+          "disk_usage", "disk_used_size_total", "disk_capacity_size_total", "disk_usage_percent");
+
+  private static final Set<String> DISK_USAGE_METRICS =
+      ImmutableSet.<String>builder()
+          .addAll(DATA_DISK_USAGE_METRICS)
+          .add("disk_volume_usage_percent")
+          .add("disk_volume_used")
+          .add("disk_volume_capacity")
+          .build();
+
+  private final Config appConfig;
+
+  private final RuntimeConfGetter confGetter;
+
+  private final WSClientRefresher wsClientRefresher;
 
   private final MetricUrlProvider metricUrlProvider;
 
@@ -84,19 +92,21 @@ public class MetricQueryHelper {
 
   @Inject
   public MetricQueryHelper(
-      Configuration appConfig,
-      ApiHelper apiHelper,
+      Config appConfig,
+      RuntimeConfGetter confGetter,
+      WSClientRefresher wsClientRefresher,
       MetricUrlProvider metricUrlProvider,
       PlatformExecutorFactory platformExecutorFactory) {
     this.appConfig = appConfig;
-    this.apiHelper = apiHelper;
+    this.confGetter = confGetter;
+    this.wsClientRefresher = wsClientRefresher;
     this.metricUrlProvider = metricUrlProvider;
     this.platformExecutorFactory = platformExecutorFactory;
   }
 
   @VisibleForTesting
   public MetricQueryHelper() {
-    this(null, null, null, null);
+    this(null, null, null, null, null);
   }
 
   /**
@@ -123,9 +133,7 @@ public class MetricQueryHelper {
   public JsonNode query(Customer customer, MetricQueryParams metricQueryParams) {
     Map<String, MetricSettings> metricSettingsMap = new LinkedHashMap<>();
     if (CollectionUtils.isNotEmpty(metricQueryParams.getMetrics())) {
-      metricQueryParams
-          .getMetrics()
-          .stream()
+      metricQueryParams.getMetrics().stream()
           .map(MetricSettings::defaultSettings)
           .forEach(
               metricSettings -> metricSettingsMap.put(metricSettings.getMetric(), metricSettings));
@@ -157,18 +165,14 @@ public class MetricQueryHelper {
     ObjectNode filterJson = Json.newObject();
     if (StringUtils.isEmpty(metricQueryParams.getNodePrefix())) {
       String universePrefixes =
-          customer
-              .getUniverses()
-              .stream()
+          customer.getUniverses().stream()
               .map((universe -> universe.getUniverseDetails().nodePrefix))
               .collect(Collectors.joining("|"));
       filterJson.put(universeFilterLabel, universePrefixes);
     } else {
       final String nodePrefix = metricQueryParams.getNodePrefix();
       List<Universe> universes =
-          customer
-              .getUniverses()
-              .stream()
+          customer.getUniverses().stream()
               .filter(universe -> universe.getUniverseDetails().nodePrefix.equals(nodePrefix))
               .collect(Collectors.toList());
       if (universes.isEmpty()) {
@@ -185,12 +189,21 @@ public class MetricQueryHelper {
       if (CollectionUtils.isNotEmpty(metricQueryParams.getClusterUuids())
           || CollectionUtils.isNotEmpty(metricQueryParams.getRegionCodes())
           || CollectionUtils.isNotEmpty(metricQueryParams.getAvailabilityZones())
-          || CollectionUtils.isNotEmpty(metricQueryParams.getNodeNames())) {
+          || CollectionUtils.isNotEmpty(metricQueryParams.getNodeNames())
+          || metricQueryParams.getServerType() != null) {
         // Need to get matching nodes
         universe
             .getNodes()
             .forEach(
                 node -> {
+                  if (metricQueryParams.getServerType() == UniverseTaskBase.ServerType.MASTER
+                      && !node.isMaster) {
+                    return;
+                  }
+                  if (metricQueryParams.getServerType() == UniverseTaskBase.ServerType.TSERVER
+                      && !node.isTserver) {
+                    return;
+                  }
                   if (CollectionUtils.isNotEmpty(metricQueryParams.getClusterUuids())
                       && !metricQueryParams.getClusterUuids().contains(node.placementUuid)) {
                     return;
@@ -227,17 +240,8 @@ public class MetricQueryHelper {
           Set<String> pvcNames = new HashSet<>();
           Set<String> namespaces = new HashSet<>();
           for (NodeDetails node : nodesToFilter) {
-            String podFQDN = node.cloudInfo.private_ip;
-            if (StringUtils.isBlank(podFQDN)) {
-              throw new PlatformServiceException(
-                  INTERNAL_SERVER_ERROR, node.getNodeName() + " has a blank FQDN");
-            }
-
-            String podName = podFQDN.split("\\.")[0];
-            String namespace = podFQDN.split("\\.")[2];
-            // The pod name is of the format
-            // <helm_prefix>-yb-<server>-<replica_num> and we just need
-            // the container, which is yb-<server>.
+            String podName = node.getK8sPodName();
+            String namespace = node.getK8sNamespace();
             String containerName = podName.contains("yb-master") ? "yb-master" : "yb-tserver";
             String pvcName = String.format("(.*)-%s", podName);
             podNames.add(podName);
@@ -254,10 +258,26 @@ public class MetricQueryHelper {
               universeFilterLabel, getNamespacesFilter(universe, nodePrefix, newNamingStyle));
           // Check if the universe is using newNamingStyle.
           if (newNamingStyle) {
-            // TODO(bhavin192): account for max character limit in
-            // Helm release name, which is 53 characters.
-            // The default value in metrics.yml is yb-tserver-(.*)
-            filterJson.put(nodeFilterLabel, nodePrefix + "-(.*)-yb-tserver-(.*)");
+            Set<String> nodePrefixes = new HashSet<String>();
+            for (Cluster cluster : universe.getUniverseDetails().clusters) {
+              Provider provider =
+                  Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+              for (Region r : provider.getRegions()) {
+                for (AvailabilityZone az : r.getZones()) {
+                  boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
+                  String helmRelease =
+                      KubernetesUtil.getHelmReleaseName(
+                          isMultiAZ,
+                          nodePrefix,
+                          universe.getName(),
+                          az.getName(),
+                          cluster.clusterType == ClusterType.ASYNC,
+                          newNamingStyle);
+                  nodePrefixes.add(helmRelease + "-yb-tserver-(.*)");
+                }
+              }
+            }
+            filterJson.put(nodeFilterLabel, StringUtils.join(nodePrefixes, '|'));
           }
         }
       } else {
@@ -278,11 +298,18 @@ public class MetricQueryHelper {
     if (StringUtils.isNotEmpty(metricQueryParams.getTableId())) {
       filterJson.put("table_id", metricQueryParams.getTableId());
     }
+    if (StringUtils.isNotEmpty(metricQueryParams.getStreamId())) {
+      filterJson.put("stream_id", metricQueryParams.getStreamId() + "|");
+    }
     if (metricQueryParams.getXClusterConfigUuid() != null) {
       XClusterConfig xClusterConfig =
           XClusterConfig.getOrBadRequest(metricQueryParams.getXClusterConfigUuid());
-      String tableIdRegex = String.join("|", xClusterConfig.getTables());
+      String tableIdRegex = String.join("|", xClusterConfig.getTableIds());
       filterJson.put("table_id", tableIdRegex);
+      String streamIdRegex = String.join("|", xClusterConfig.getStreamIdsWithReplicationSetup());
+      // We add `|` to the end of streamIdRegex for backward compatibility where a YBDB version
+      // does not have stream id as a label matcher.
+      filterJson.put("stream_id", streamIdRegex + "|");
     }
     params.put("filters", Json.stringify(filterJson));
     return query(
@@ -308,6 +335,7 @@ public class MetricQueryHelper {
       throw new PlatformServiceException(BAD_REQUEST, "Empty metricsWithSettings data provided.");
     }
 
+    long scrapeInterval = getScrapeIntervalSeconds(appConfig);
     long timeDifference;
     if (params.get("end") != null) {
       timeDifference = Long.parseLong(params.get("end")) - Long.parseLong(params.get("start"));
@@ -319,15 +347,15 @@ public class MetricQueryHelper {
       timeDifference = endTime - Long.parseLong(startTime);
     }
 
-    params.put("range", Long.toString(timeDifference));
+    long range = Math.max(scrapeInterval * 3, timeDifference);
+    params.put("range", Long.toString(range));
 
     String step = params.get("step");
     if (step == null) {
-      if (timeDifference <= STEP_SIZE) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "Should be at least " + STEP_SIZE + " seconds between start and end time");
+      if (timeDifference <= 0) {
+        throw new PlatformServiceException(BAD_REQUEST, "Queried time interval should be positive");
       }
-      int resolution = Math.round(timeDifference / STEP_SIZE);
+      long resolution = Math.max(scrapeInterval * 3, Math.round(timeDifference / STEP_SIZE));
       params.put("step", String.valueOf(resolution));
     } else {
       try {
@@ -361,12 +389,6 @@ public class MetricQueryHelper {
       }
     }
 
-    String metricsUrl = appConfig.getString(PROMETHEUS_METRICS_URL_PATH);
-    if ((null == metricsUrl || metricsUrl.isEmpty())) {
-      LOG.error("Error fetching metrics data: no prometheus metrics URL configured");
-      return Json.newObject();
-    }
-
     ExecutorService threadPool =
         platformExecutorFactory.createFixedExecutor(
             getClass().getSimpleName(),
@@ -378,18 +400,17 @@ public class MetricQueryHelper {
         Map<String, String> queryParams = params;
         queryParams.put("queryKey", metricSettings.getMetric());
 
-        Map<String, String> specificFilters =
-            filterOverrides.getOrDefault(metricSettings.getMetric(), null);
-        if (specificFilters != null) {
-          additionalFilters.putAll(specificFilters);
-        }
+        Map<String, String> metricAdditionalFilters =
+            filterOverrides.getOrDefault(metricSettings.getMetric(), new HashMap<>());
+        metricAdditionalFilters.putAll(additionalFilters);
 
         Callable<JsonNode> callable =
             new MetricQueryExecutor(
                 metricUrlProvider,
-                apiHelper,
+                getApiHelper(),
+                getAuthHeaders(),
                 queryParams,
-                additionalFilters,
+                metricAdditionalFilters,
                 metricSettings,
                 isRecharts);
         Future<JsonNode> future = threadPool.submit(callable);
@@ -432,8 +453,7 @@ public class MetricQueryHelper {
 
     HashMap<String, String> getParams = new HashMap<>();
     getParams.put("query", promQueryExpression);
-    final JsonNode responseJson =
-        apiHelper.getRequest(queryUrl, new HashMap<>(), /*headers*/ getParams);
+    final JsonNode responseJson = getApiHelper().getRequest(queryUrl, getAuthHeaders(), getParams);
     final MetricQueryResponse metricResponse =
         Json.fromJson(responseJson, MetricQueryResponse.class);
     if (metricResponse.error != null || metricResponse.data == null) {
@@ -446,7 +466,7 @@ public class MetricQueryHelper {
   public List<AlertData> queryAlerts() {
     final String queryUrl = getPrometheusQueryUrl(ALERTS_PATH);
 
-    final JsonNode responseJson = apiHelper.getRequest(queryUrl);
+    final JsonNode responseJson = getApiHelper().getRequest(queryUrl, getAuthHeaders());
     final AlertsResponse response = Json.fromJson(responseJson, AlertsResponse.class);
     if (response.getStatus() != ResponseStatus.success) {
       throw new RuntimeException("Error querying prometheus alerts: " + response);
@@ -459,8 +479,8 @@ public class MetricQueryHelper {
   }
 
   public void postManagementCommand(String command) {
-    final String queryUrl = getPrometheusManagementUrl(command);
-    if (!apiHelper.postRequest(queryUrl)) {
+    final String queryUrl = metricUrlProvider.getMetricsManagementUrl() + "/" + command;
+    if (!getApiHelper().postRequest(queryUrl, getAuthHeaders())) {
       throw new RuntimeException(
           "Failed to perform " + command + " on prometheus instance " + queryUrl);
     }
@@ -470,20 +490,8 @@ public class MetricQueryHelper {
     return appConfig.getBoolean(PROMETHEUS_MANAGEMENT_ENABLED);
   }
 
-  private String getPrometheusManagementUrl(String path) {
-    final String prometheusManagementUrl = appConfig.getString(PROMETHEUS_MANAGEMENT_URL_PATH);
-    if (StringUtils.isEmpty(prometheusManagementUrl)) {
-      throw new RuntimeException(PROMETHEUS_MANAGEMENT_URL_PATH + " not set");
-    }
-    return prometheusManagementUrl + "/" + path;
-  }
-
   private String getPrometheusQueryUrl(String path) {
-    final String metricsUrl = appConfig.getString(PROMETHEUS_METRICS_URL_PATH);
-    if (StringUtils.isEmpty(metricsUrl)) {
-      throw new RuntimeException(PROMETHEUS_METRICS_URL_PATH + " not set");
-    }
-    return metricsUrl + "/" + path;
+    return metricUrlProvider.getMetricsApiUrl() + "/" + path;
   }
 
   // Return a regex string for filtering the metrics based on
@@ -497,15 +505,16 @@ public class MetricQueryHelper {
 
     for (UniverseDefinitionTaskParams.Cluster cluster : universe.getUniverseDetails().clusters) {
       Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-      for (Region r : Region.getByProvider(provider.uuid)) {
-        for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(r.uuid)) {
+      for (Region r : Region.getByProvider(provider.getUuid())) {
+        for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(r.getUuid())) {
           boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
+          Map<String, String> zoneConfig = CloudInfoInterface.fetchEnvVars(az);
           namespaces.add(
-              PlacementInfoUtil.getKubernetesNamespace(
+              KubernetesUtil.getKubernetesNamespace(
                   isMultiAZ,
                   nodePrefix,
-                  az.code,
-                  az.getUnmaskedConfig(),
+                  az.getCode(),
+                  zoneConfig,
                   newNamingStyle,
                   cluster.clusterType == ClusterType.ASYNC));
         }
@@ -521,44 +530,31 @@ public class MetricQueryHelper {
     HashMap<String, HashMap<String, String>> filterOverrides = new HashMap<>();
     // For a disk usage metric query, the mount point has to be modified to match the actual
     // mount point for an onprem universe.
-    if (metricNames.contains("disk_usage")) {
-      List<Universe> universes =
-          customer
-              .getUniverses()
-              .stream()
-              .filter(
-                  u ->
-                      u.getUniverseDetails().nodePrefix != null
-                          && u.getUniverseDetails().nodePrefix.equals(nodePrefix))
-              .collect(Collectors.toList());
-      if (CollectionUtils.isEmpty(universes)) {
-        LOG.warn(
-            "Failed to find universe with node prefix {}, will not add mount point filter",
-            nodePrefix);
-        return filterOverrides;
-      }
-      if (universes.get(0).getUniverseDetails().getPrimaryCluster().userIntent.providerType
-          == CloudType.onprem) {
-        final String mountRoots =
-            universes
-                .get(0)
-                .getNodes()
-                .stream()
-                .filter(MetricQueryHelper::checkNonNullMountRoots)
-                .map(n -> n.cloudInfo.mount_roots)
-                .findFirst()
-                .orElse("");
-        // TODO: technically, this code is based on the primary cluster being onprem
-        // and will return inaccurate results if the universe has a read replica that is
-        // not onprem.
-        if (!mountRoots.isEmpty()) {
-          HashMap<String, String> mountFilters = new HashMap<>();
-          mountFilters.put("mountpoint", mountRoots.replace(',', '|'));
-          // convert "/storage1,/bar" to the filter "/storage1|/bar"
-          filterOverrides.put("disk_usage", mountFilters);
-        } else {
-          LOG.debug("No mount points found in onprem universe {}", nodePrefix);
+    for (String metricName : metricNames) {
+      if (DISK_USAGE_METRICS.contains(metricName)) {
+        List<Universe> universes =
+            customer.getUniverses().stream()
+                .filter(
+                    u ->
+                        u.getUniverseDetails().nodePrefix != null
+                            && u.getUniverseDetails().nodePrefix.equals(nodePrefix))
+                .collect(Collectors.toList());
+        if (CollectionUtils.isEmpty(universes)) {
+          LOG.warn(
+              "Failed to find universe with node prefix {}, will not add mount point filter",
+              nodePrefix);
+          return filterOverrides;
         }
+        Universe universe = universes.get(0);
+        String dataMountPoints = getDataMountPoints(universe);
+        String otherMountPoints = getOtherMountPoints(confGetter, universe);
+        HashMap<String, String> mountFilters = new HashMap<>();
+        if (DATA_DISK_USAGE_METRICS.contains(metricName)) {
+          mountFilters.put("mountpoint", dataMountPoints);
+        } else {
+          mountFilters.put("mountpoint", otherMountPoints + "|" + dataMountPoints);
+        }
+        filterOverrides.put(metricName, mountFilters);
       }
     }
     return filterOverrides;
@@ -568,5 +564,57 @@ public class MetricQueryHelper {
     return n.cloudInfo != null
         && n.cloudInfo.mount_roots != null
         && !n.cloudInfo.mount_roots.isEmpty();
+  }
+
+  public static String getDataMountPoints(Universe universe) {
+    if (universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType
+        == CloudType.onprem) {
+      final String mountRoots =
+          universe.getNodes().stream()
+              .filter(MetricQueryHelper::checkNonNullMountRoots)
+              .map(n -> n.cloudInfo.mount_roots)
+              .findFirst()
+              .orElse("");
+      // TODO: technically, this code is based on the primary cluster being onprem
+      // and will return inaccurate results if the universe has a read replica that is
+      // not onprem.
+      if (!mountRoots.isEmpty()) {
+        HashMap<String, String> mountFilters = new HashMap<>();
+        return mountRoots;
+      } else {
+        LOG.debug(
+            "No mount points found in onprem universe {}",
+            universe.getUniverseDetails().nodePrefix);
+      }
+    }
+    return DEFAULT_MOUNT_POINTS;
+  }
+
+  public static String getOtherMountPoints(RuntimeConfGetter confGetter, Universe universe) {
+    UUID providerUuid =
+        UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider);
+    Provider provider = Provider.getOrBadRequest(providerUuid);
+    String otherMountPoints =
+        confGetter.getConfForScope(provider, ProviderConfKeys.monitoredMountRoots);
+    if (StringUtils.isBlank(otherMountPoints)) {
+      // Special value to make sure no metric values are returned for the query
+      return "#";
+    }
+    return otherMountPoints.replaceAll(",", "|");
+  }
+
+  protected ApiHelper getApiHelper() {
+    WSClient wsClient = wsClientRefresher.getClient(WS_CLIENT_KEY);
+    return new ApiHelper(wsClient);
+  }
+
+  private Map<String, String> getAuthHeaders() {
+    Boolean authEnabled = confGetter.getGlobalConf(GlobalConfKeys.metricsAuth);
+    if (!authEnabled) {
+      return Collections.emptyMap();
+    }
+    String username = confGetter.getGlobalConf(GlobalConfKeys.metricsAuthUsername);
+    String password = confGetter.getGlobalConf(GlobalConfKeys.metricsAuthPassword);
+    return AuthUtil.getBasicAuthHeader(username, password);
   }
 }

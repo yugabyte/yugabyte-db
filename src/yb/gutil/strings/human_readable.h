@@ -17,8 +17,7 @@
 // A collection of methods to convert back and forth between a number
 // and a human-readable string representing the number.
 
-#ifndef YB_GUTIL_STRINGS_HUMAN_READABLE_H
-#define YB_GUTIL_STRINGS_HUMAN_READABLE_H
+#pragma once
 
 #include <functional>
 #include <string>
@@ -26,9 +25,6 @@
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/macros.h"
 
-using std::binary_function;
-using std::less;
-using std::string;
 
 
 //                                 WARNING
@@ -56,16 +52,16 @@ class HumanReadableNumBytes {
   // e.g. 1000000 -> "976.6K".
   //  Note that calling these two functions in succession isn't a
   //  noop, since ToString() may round.
-  static bool ToInt64(const string &str, int64 *num_bytes);
-  static string ToString(int64 num_bytes);
+  static bool ToInt64(const std::string &str, int64 *num_bytes);
+  static std::string ToString(int64 num_bytes);
   // Like ToString but without rounding.  For example 1025 would return
   // "1025B" rather than "1.0K".  Uses the largest common denominator.
-  static string ToStringWithoutRounding(int64 num_bytes);
+  static std::string ToStringWithoutRounding(int64 num_bytes);
 
-  static bool ToDouble(const string &str, double *num_bytes);
+  static bool ToDouble(const std::string &str, double *num_bytes);
   // Function overloading this with a function that takes an int64 is just
   // asking for trouble.
-  static string DoubleToString(double num_bytes);
+  static std::string DoubleToString(double num_bytes);
 
   // TODO(user): Maybe change this class to use SIPrefix?
 
@@ -86,27 +82,10 @@ class HumanReadableNumBytes {
   //        3.02P
   //        0.007E
   // ----------------------------------------------------------------------
-  static bool LessThan(const string &a, const string &b);
+  static bool LessThan(const std::string &a, const std::string &b);
 
  private:
   DISALLOW_IMPLICIT_CONSTRUCTORS(HumanReadableNumBytes);
-};
-
-
-// See documentation at HumanReadableNumBytes::LessThan().
-struct humanreadablebytes_less
-    : public binary_function<const string&, const string&, bool> {
-  bool operator()(const string& a, const string &b) const {
-    return HumanReadableNumBytes::LessThan(a, b);
-  }
-};
-
-// See documentation at HumanReadableNumBytes::LessThan().
-struct humanreadablebytes_greater
-    : public binary_function<const string&, const string&, bool> {
-  bool operator()(const string& a, const string &b) const {
-    return HumanReadableNumBytes::LessThan(b, a);
-  }
 };
 
 class HumanReadableInt {
@@ -114,11 +93,11 @@ class HumanReadableInt {
   // Similar to HumanReadableNumBytes::ToInt64(), but uses decimal
   // rather than binary expansions - so M = 1 million, B = 1 billion,
   // etc. Numbers beyond 1T are expressed as "3E14" etc.
-  static string ToString(int64 value);
+  static std::string ToString(int64 value);
 
   // Reverses ToString(). Note that calling these two functions in
   // succession isn't a noop, since ToString() may round.
-  static bool ToInt64(const string &str, int64 *value);
+  static bool ToInt64(const std::string &str, int64 *value);
 
  private:
   DISALLOW_IMPLICIT_CONSTRUCTORS(HumanReadableInt);
@@ -127,16 +106,16 @@ class HumanReadableInt {
 class HumanReadableNum {
  public:
   // Same as HumanReadableInt::ToString().
-  static string ToString(int64 value);
+  static std::string ToString(int64 value);
 
   // Similar to HumanReadableInt::ToString(), but prints 2 decimal
   // places for numbers with absolute value < 10.0 and 1 decimal place
   // for numbers >= 10.0 and < 100.0.
-  static string DoubleToString(double value);
+  static std::string DoubleToString(double value);
 
   // Reverses DoubleToString(). Note that calling these two functions in
   // succession isn't a noop, since there may be rounding errors.
-  static bool ToDouble(const string &str, double *value);
+  static bool ToDouble(const std::string &str, double *value);
 
  private:
   DISALLOW_IMPLICIT_CONSTRUCTORS(HumanReadableNum);
@@ -151,7 +130,7 @@ class HumanReadableElapsedTime {
   //   933120.0    -> "10.8 days"
   //   39420000.0  -> "1.25 years"
   //   -10         -> "-10 s"
-  static string ToShortString(double seconds);
+  static std::string ToShortString(double seconds);
 
   // Reverses ToShortString(). Note that calling these two functions in
   // succession isn't a noop, since ToShortString() may round.
@@ -168,10 +147,8 @@ class HumanReadableElapsedTime {
   //   "-10 sec"    -> -10
   //   "18.3"       -> 18.3
   //   "1M"         -> 2592000 (1 month = 30 days)
-  static bool ToDouble(const string& str, double* value);
+  static bool ToDouble(const std::string& str, double* value);
 
  private:
   DISALLOW_IMPLICIT_CONSTRUCTORS(HumanReadableElapsedTime);
 };
-
-#endif  // YB_GUTIL_STRINGS_HUMAN_READABLE_H

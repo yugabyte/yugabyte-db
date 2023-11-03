@@ -29,12 +29,12 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_COMMON_ID_MAPPING_H
-#define YB_COMMON_ID_MAPPING_H
+#pragma once
 
+#include <optional>
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 namespace yb {
 
@@ -58,46 +58,26 @@ namespace yb {
 // as a special identifier indicating that the slot is unused or that the key
 // was not found.
 class IdMapping {
- private:
-  enum {
-    kInitialCapacity = 64,
-    kNumProbes = 2
-  };
-  typedef std::pair<int, int> value_type;
-
  public:
-  static const int kNoEntry;
+  static constexpr int kNoEntry = -1;
 
-  IdMapping() :
-    mask_(kInitialCapacity - 1),
-    entries_(kInitialCapacity) {
-    clear();
+  IdMapping() : entries_(kInitialCapacity, EmptyEntry()) {}
+
+  size_t size() const {
+    return size_;
   }
-
-  explicit IdMapping(const IdMapping& other)
-  : mask_(other.mask_),
-    entries_(other.entries_) {
-  }
-
-  ~IdMapping() {}
 
   void clear() {
-    ClearMap(&entries_);
+    std::fill(entries_.begin(), entries_.end(), EmptyEntry());
+    size_ = 0;
   }
 
   // NOLINT on this function definition because it thinks we're calling
   // std::swap instead of defining it.
   void swap(IdMapping& other) { // NOLINT(*)
-    uint64_t tmp = other.mask_;
-    other.mask_ = mask_;
-    mask_ = tmp;
+    std::swap(other.mask_, mask_);
+    std::swap(other.size_, size_);
     other.entries_.swap(entries_);
-  }
-
-  IdMapping& operator=(const IdMapping& other) {
-    mask_ = other.mask_;
-    entries_ = other.entries_;
-    return *this;
   }
 
   int operator[](int key) const {
@@ -106,30 +86,49 @@ class IdMapping {
 
   int get(int key) const {
     DCHECK_GE(key, 0);
-    for (int i = 0; i < kNumProbes; i++) {
-      int s = slot(key + i);
-      if (entries_[s].first == key || entries_[s].first == kNoEntry) {
-        return entries_[s].second;
+    for (int i = 0; i != kNumProbes; i++) {
+      const auto& entry = slot(key + i);
+      if (entry.first == key || entry.first == kNoEntry) {
+        return entry.second;
       }
     }
     return kNoEntry;
   }
 
+  std::optional<int> find(int key) const {
+    DCHECK_GE(key, 0);
+    for (int i = 0; i != kNumProbes; i++) {
+      const auto& entry = slot(key + i);
+      if (entry.first == key) {
+        return entry.second;
+      }
+    }
+    return std::nullopt;
+  }
+
   void set(int key, int val) {
     DCHECK_GE(key, 0);
-    DCHECK_GE(val, 0);
-    while (true) {
+    for (;;) {
       for (int i = 0; i < kNumProbes; i++) {
-        int s = slot(key + i);
-        CHECK_NE(entries_[s].first, key) << "Cannot insert duplicate keys";
-        if (entries_[s].first == kNoEntry) {
-          entries_[s].first = key;
-          entries_[s].second = val;
+        auto& entry = slot(key + i);
+        CHECK_NE(entry.first, key) << "Cannot insert duplicate keys";
+        if (entry.first == kNoEntry) {
+          entry = value_type(key, val);
+          ++size_;
           return;
         }
       }
       // Didn't find a spot.
       DoubleCapacity();
+    }
+  }
+
+  template <class F>
+  void ForEach(const F& f) const {
+    for (const auto& [key, value] : entries_) {
+      if (key != kNoEntry) {
+        f(key, value);
+      }
     }
   }
 
@@ -145,15 +144,22 @@ class IdMapping {
   // Should be used when allocated on the heap.
   size_t memory_footprint_including_this() const;
 
+  friend bool operator==(const IdMapping& lhs, const IdMapping& rhs);
+
  private:
-  int slot(int key) const {
-    return key & mask_;
+  using value_type = std::pair<int, int>;
+
+  const value_type& slot(int key) const {
+    return entries_[key & mask_];
+  }
+
+  value_type& slot(int key) {
+    return entries_[key & mask_];
   }
 
   void DoubleCapacity() {
     auto new_capacity = capacity() * 2;
-    std::vector<value_type> entries(new_capacity);
-    ClearMap(&entries);
+    std::vector<value_type> entries(new_capacity, EmptyEntry());
     mask_ = new_capacity - 1;
     entries.swap(entries_);
 
@@ -164,15 +170,16 @@ class IdMapping {
     }
   }
 
-  static void ClearMap(std::vector<value_type>* v) {
-    for (auto& entry : *v) {
-      entry = std::make_pair(kNoEntry, kNoEntry);
-    }
+  static constexpr size_t kInitialCapacity = 16;
+  static constexpr int kNumProbes = 2;
+
+  static value_type EmptyEntry() {
+    return value_type(kNoEntry, kNoEntry);
   }
 
-  uint64_t mask_;
+  uint64_t mask_ = kInitialCapacity - 1;
   std::vector<value_type> entries_;
+  size_t size_ = 0;
 };
 
 } // namespace yb
-#endif /* YB_COMMON_ID_MAPPING_H */

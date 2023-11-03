@@ -275,6 +275,13 @@ export function createRegion(providerUUID, formValues) {
   };
 }
 
+export function getKubeConfig() {
+  const customerUUID = localStorage.getItem('customerId');
+
+  const url = `${ROOT_URL}/customers/${customerUUID}/providers/suggested_kubernetes_config`;
+  return axios.get(url);
+}
+
 export function createRegionResponse(result) {
   return {
     type: CREATE_REGION_RESPONSE,
@@ -522,10 +529,10 @@ export function listAccessKeysResponse(response) {
   };
 }
 
-export function listAccessKeysReqCompleted(){
+export function listAccessKeysReqCompleted() {
   return {
     type: LIST_ACCESS_KEYS_REQUEST_COMPLETED
-  }
+  };
 }
 
 export function getEBSTypeList() {

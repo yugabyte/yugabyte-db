@@ -17,7 +17,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ROCKSDB_LITE
 
 #include "yb/rocksdb/tools/sst_dump_tool_imp.h"
 
@@ -61,6 +60,8 @@ using yb::docdb::StorageDbType;
 namespace rocksdb {
 
 using std::dynamic_pointer_cast;
+using std::unique_ptr;
+using std::shared_ptr;
 
 std::string DocDBKVFormatter::Format(
     const yb::Slice&, const yb::Slice&, yb::docdb::StorageDbType) const {
@@ -373,7 +374,7 @@ Status SstFileReader::ReadSequential(bool print_kv,
           auto storage_type =
               (output_format_ == OutputFormat::kDecodedRegularDB ? StorageDbType::kRegular
                                                                  : StorageDbType::kIntents);
-          fprintf(stdout, "%s", docdb_kv_formatter_->Format(key, value, storage_type).c_str());
+          fprintf(stdout, "%s\n", docdb_kv_formatter_->Format(key, value, storage_type).c_str());
           break;
       }
     }
@@ -403,6 +404,7 @@ void print_help() {
           "sst_dump [--command=check|scan|none|raw] [--verify_checksum] "
           "--file=data_dir_OR_sst_file"
           " [--output_format=raw|hex|decoded_regulardb|decoded_intentsdb]"
+          " [--formatter_tablet_metadata=<path_to_tablet_metadata>"
           " [--input_key_hex]"
           " [--from=<user_key>]"
           " [--to=<user_key>]"
@@ -473,10 +475,16 @@ int SSTDumpTool::Run(int argc, char** argv) {
       block_size_str = argv[i] + 17;
       std::istringstream iss(block_size_str);
       if (iss.fail()) {
-        fprintf(stderr, "block size must be numeric");
+        fprintf(stderr, "block size must be numeric\n");
         exit(1);
       }
       iss >> block_size;
+    } else if (strncmp(argv[i], "--formatter_", 12) == 0) {
+      auto status = formatter_->ProcessArgument(argv[i] + 12);
+      if (!status.ok()) {
+        fprintf(stderr, "%s\n", status.ToString().c_str());
+        exit(1);
+      }
     } else {
       print_help();
       exit(1);
@@ -603,5 +611,3 @@ int SSTDumpTool::Run(int argc, char** argv) {
   return 0;
 }
 }  // namespace rocksdb
-
-#endif  // ROCKSDB_LITE

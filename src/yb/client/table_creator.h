@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CLIENT_TABLE_CREATOR_H
-#define YB_CLIENT_TABLE_CREATOR_H
+#pragma once
 
 #include <boost/optional/optional.hpp>
 
@@ -21,6 +20,8 @@
 
 #include "yb/common/constants.h"
 #include "yb/common/common_fwd.h"
+
+#include "yb/dockv/dockv_fwd.h"
 
 #include "yb/gutil/macros.h"
 
@@ -53,7 +54,7 @@ class YBTableCreator {
   YBTableCreator& is_pg_shared_table();
 
   // Sets the partition hash schema.
-  YBTableCreator& hash_schema(YBHashSchema hash_schema);
+  YBTableCreator& hash_schema(dockv::YBHashSchema hash_schema);
 
   // Number of tablets that should be used for this table. If tablet_count is not given, YBClient
   // will calculate this value (num_shards_per_tserver * num_of_tservers).
@@ -82,7 +83,7 @@ class YBTableCreator {
   YBTableCreator& part_of_transaction(const TransactionMetadata* txn);
 
   // Adds a partitions to the table.
-  YBTableCreator& add_partition(const Partition& partition);
+  YBTableCreator& add_partition(const dockv::Partition& partition);
 
   // Adds a set of hash partitions to the table.
   //
@@ -165,8 +166,6 @@ class YBTableCreator {
   // returned.
   Status Create();
 
-  Result<int> NumTabletsForUserTable();
-
  private:
   friend class YBClient;
 
@@ -192,7 +191,7 @@ class YBTableCreator {
 
   std::unique_ptr<PartitionSchemaPB> partition_schema_;
 
-  std::vector<Partition> partitions_;
+  std::vector<dockv::Partition> partitions_;
 
   int num_replicas_ = 0;
 
@@ -231,5 +230,3 @@ class YBTableCreator {
 
 } // namespace client
 } // namespace yb
-
-#endif // YB_CLIENT_TABLE_CREATOR_H

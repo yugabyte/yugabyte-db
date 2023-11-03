@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TSERVER_TSERVER_FWD_H
-#define YB_TSERVER_TSERVER_FWD_H
+#pragma once
 
 #include <functional>
 
@@ -27,6 +26,7 @@ namespace yb {
 namespace client {
 
 class TransactionPool;
+class YBPgsqlOp;
 
 }
 
@@ -36,7 +36,10 @@ class Heartbeater;
 class LocalTabletServer;
 class MetricsSnapshotter;
 class PgTableCache;
+class PgResponseCache;
+class PgSequenceCache;
 class TSTabletManager;
+class TableMutationCountSender;
 class TabletPeerLookupIf;
 class TabletServer;
 class TabletServerAdminServiceProxy;
@@ -55,5 +58,3 @@ using TransactionPoolProvider = std::function<client::TransactionPool&()>;
 
 } // namespace tserver
 } // namespace yb
-
-#endif // YB_TSERVER_TSERVER_FWD_H

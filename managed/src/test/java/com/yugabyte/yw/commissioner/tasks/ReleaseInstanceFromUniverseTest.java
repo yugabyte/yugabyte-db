@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -65,7 +66,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
           }
           universe.setUniverseDetails(universeDetails);
         };
-    Universe.saveDetails(defaultUniverse.universeUUID, updater);
+    Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
   }
 
   @Override
@@ -79,14 +80,14 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
     // create default universe
     userIntent = new UniverseDefinitionTaskParams.UserIntent();
     userIntent.numNodes = 3;
-    userIntent.provider = defaultProvider.uuid.toString();
+    userIntent.provider = defaultProvider.getUuid().toString();
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "demo-access";
     userIntent.replicationFactor = 3;
-    userIntent.regionList = ImmutableList.of(region.uuid);
-    defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
+    userIntent.regionList = ImmutableList.of(region.getUuid());
+    defaultUniverse = createUniverse(defaultCustomer.getId());
     Universe.saveDetails(
-        defaultUniverse.universeUUID,
+        defaultUniverse.getUniverseUUID(),
         ApiUtils.mockUniverseUpdater(userIntent, false /* setMasters */));
 
     setDefaultNodeState(NodeState.Removed);
@@ -113,11 +114,11 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
                 ShellResponse listResponse = new ShellResponse();
                 NodeTaskParams params = invocation.getArgument(1);
                 if (params.nodeUuid == null) {
-                  listResponse.message = "{\"universe_uuid\":\"" + params.universeUUID + "\"}";
+                  listResponse.message = "{\"universe_uuid\":\"" + params.getUniverseUUID() + "\"}";
                 } else {
                   listResponse.message =
                       "{\"universe_uuid\":\""
-                          + params.universeUUID
+                          + params.getUniverseUUID()
                           + "\", "
                           + "\"node_uuid\": \""
                           + params.nodeUuid
@@ -171,7 +172,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
       assertEquals(taskType, tasks.get(0).getTaskType());
       JsonNode expectedResults = RELEASE_INSTANCE_TASK_EXPECTED_RESULTS.get(position);
       List<JsonNode> taskDetails =
-          tasks.stream().map(TaskInfo::getTaskDetails).collect(Collectors.toList());
+          tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
       assertJsonEqual(expectedResults, taskDetails.get(0));
       position++;
     }
@@ -191,7 +192,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
 
     NodeTaskParams taskParams = new NodeTaskParams();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
 
     TaskInfo taskInfo = submitTask(taskParams, DEFAULT_NODE_NAME, 3);
     assertEquals(Success, taskInfo.getTaskState());
@@ -207,7 +208,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
   public void testReleaseStoppedInstanceSuccess() {
     setDefaultNodeState(NodeState.Removed);
     NodeTaskParams taskParams = new NodeTaskParams();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
 
     TaskInfo taskInfo = submitTask(taskParams, DEFAULT_NODE_NAME, 4);
     assertEquals(Success, taskInfo.getTaskState());
@@ -222,7 +223,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
   @Test
   public void testReleaseUnknownNode() {
     NodeTaskParams taskParams = new NodeTaskParams();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     TaskInfo taskInfo = submitTask(taskParams, "host-n9", 3);
     assertEquals(Failure, taskInfo.getTaskState());
   }
@@ -237,5 +238,31 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
             NodeState.Removed,
             NodeState.Terminating);
     assertEquals(expectedStates, allowedStates);
+  }
+
+  @Test
+  public void testReleaseInstanceRetries() {
+    CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =
+        CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder().setVersion(3);
+    GetMasterClusterConfigResponse mockConfigResponse =
+        new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
+
+    try {
+      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
+    } catch (Exception e) {
+    }
+    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+
+    NodeTaskParams taskParams = new NodeTaskParams();
+    taskParams.expectedUniverseVersion = 3;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.nodeName = DEFAULT_NODE_NAME;
+    super.verifyTaskRetries(
+        defaultCustomer,
+        CustomerTask.TaskType.Release,
+        CustomerTask.TargetType.Universe,
+        defaultUniverse.getUniverseUUID(),
+        TaskType.ReleaseInstanceFromUniverse,
+        taskParams);
   }
 }

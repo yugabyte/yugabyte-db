@@ -22,7 +22,7 @@ Use the `CREATE TYPE` statement to create a new user-defined data type in a keys
 
 ### Grammar
 
-```
+```ebnf
 create_type ::= CREATE TYPE [ IF NOT EXISTS ] type_name
                     (field_name field_type [ ',' field_name field_type ...]);
 ```
@@ -50,7 +50,7 @@ ycqlsh:example> CREATE TYPE person(first_name TEXT, last_name TEXT, emails FROZE
 ycqlsh:example> DESCRIBE TYPE person;
 ```
 
-```
+```output
 CREATE TYPE example.person (
     first_name text,
     last_name text,
@@ -71,7 +71,7 @@ ycqlsh:example> INSERT INTO employees(employee_id, employee)
 ycqlsh:example> SELECT * FROM employees;
 ```
 
-```
+```output
  employee_id | employee
 -------------+---------------------------------------------------------------------------
            1 | {first_name: 'John', last_name: 'Doe', emails: ['john.doe@yugabyte.com']}
@@ -81,4 +81,4 @@ ycqlsh:example> SELECT * FROM employees;
 ## See also
 
 - [`CREATE TABLE`](../ddl_create_table)
-- [`DROP TYPE`](../ddl_drop_keyspace)
+- [`DROP TYPE`](../ddl_drop_type)

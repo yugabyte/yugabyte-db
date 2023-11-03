@@ -30,8 +30,7 @@
 // under the License.
 //
 // Shared fields and methods for querying local files and directories
-#ifndef YB_TOOLS_FS_TOOL_H
-#define YB_TOOLS_FS_TOOL_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -112,5 +111,3 @@ class FsTool {
 
 } // namespace tools
 } // namespace yb
-
-#endif // YB_TOOLS_FS_TOOL_H

@@ -31,7 +31,7 @@
 #
 
 set(YB_PCH_PREFIX util)
-set(YB_PCH_DEP_LIBS cds gmock gutil icui18n icuuc libev protoc)
+set(YB_PCH_DEP_LIBS cds gmock gtest gutil icui18n icuuc libev protoc)
 
 #######################################
 # protoc-gen-insertions
@@ -106,7 +106,7 @@ ADD_YB_LIBRARY(opid_proto
 # the build directory.
 set(VERSION_STAMP_FILE ${CMAKE_BINARY_DIR}/version_metadata.json)
 
-list(APPEND GEN_VERSION_INFO_COMMAND "${BUILD_SUPPORT_DIR}/gen_version_info.py")
+list(APPEND GEN_VERSION_INFO_COMMAND "${YB_SRC_ROOT}/python/yugabyte/gen_version_info.py")
 list(APPEND GEN_VERSION_INFO_COMMAND "--build-type=${CMAKE_BUILD_TYPE}")
 if(YB_GIT_HASH)
   message(STATUS "Provided git hash: ${YB_GIT_HASH}")
@@ -129,12 +129,15 @@ endif()
 
 set(UTIL_SRCS
   ${SEMAPHORE_CC}
+  aggregate_stats.cc
   allocation_tracker.cc
-  auto_flags.cc
-  auto_flags_util.cc
+  async_util.cc
+  flags/auto_flags.cc
+  flags/auto_flags_util.cc
   async_task_util.cc
   atomic.cc
   background_task.cc
+  backoff_waiter.cc
   bitmap.cc
   bitmap.cc
   bloom_filter.cc
@@ -151,6 +154,9 @@ set(UTIL_SRCS
   curl_util.cc
   date_time.cc
   debug-util.cc
+  symbolize.cc
+  libbacktrace_util.cc
+  source_location.cc
   debug/lock_debug.cc
   debug/long_operation_tracker.cc
   debug/trace_event_impl.cc
@@ -171,13 +177,16 @@ set(UTIL_SRCS
   file_system.cc
   file_system_mem.cc
   file_system_posix.cc
-  flag_tags.cc
-  flags.cc
+  flags/flag_tags.cc
+  flags/flags.cc
+  flags/flags_callback.cc
   hdr_histogram.cc
   hexdump.cc
   init.cc
   jsonreader.cc
   jsonwriter.cc
+  jwt_util.cc
+  jwtcpp_util.cc
   locks.cc
   logging.cc
   malloc.cc
@@ -224,11 +233,12 @@ set(UTIL_SRCS
   shared_mem.cc
   signal_util.cc
   slice.cc
+  slice_parts.cc
   spinlock_profiling.cc
   split.cc
   stack_trace.cc
-  stats/perf_level_imp.cc
   stats/iostats_context_imp.cc
+  stats/perf_level_imp.cc
   status.cc
   status_callback.cc
   stol_utils.cc
@@ -238,6 +248,8 @@ set(UTIL_SRCS
   striped64.cc
   subprocess.cc
   sync_point.cc
+  tcmalloc_trace.cc
+  tcmalloc_util.cc
   test_graph.cc
   test_kill.cc
   thread.cc
@@ -247,7 +259,6 @@ set(UTIL_SRCS
   timestamp.cc
   tostring.cc
   trace.cc
-  trilean.cc
   ulimit.cc
   ulimit_util.cc
   url-coding.cc
@@ -255,9 +266,9 @@ set(UTIL_SRCS
   uuid.cc
   varint.cc
   version_info.cc
+  write_buffer.cc
   yb_partition.cc
   zlib.cc
-  async_util.cc
   )
 
 set(UTIL_LIBS
@@ -289,12 +300,9 @@ if(NOT APPLE)
     libbacktrace)
 endif()
 
-if("${YB_TCMALLOC_ENABLED}" STREQUAL "1")
-  message("Adding tcmalloc as a dependency of yb_util")
-  list(APPEND UTIL_LIBS tcmalloc)
-else()
-  message("Not adding tcmalloc as a dependency of yb_util")
-endif()
+# We used to add tcmalloc as a dependency of yb_util here, but in D20382 we started linking tcmalloc
+# as a static library directy into each executable, to ensure that it is initialized earlier than
+# any shared library.
 
 # We need libdl for accessing library load addresses.
 list(APPEND UTIL_LIBS curl dl)
@@ -313,7 +321,7 @@ ADD_YB_TEST_LIBRARY(
   yb_test_util
   SRCS logging_test_util.cc memory/memory_usage_test_util.cc test_util.cc test_thread_holder.cc
        multi_drive_test_env.cc
-  DEPS gflags glog gmock yb_util)
+  DEPS gflags glog gmock gtest yb_util)
 
 #######################################
 # yb_test_main
@@ -321,7 +329,7 @@ ADD_YB_TEST_LIBRARY(
 
 ADD_YB_TEST_LIBRARY(yb_test_main
                     SRCS test_main.cc
-                    DEPS gflags glog gmock yb_util yb_test_util)
+                    DEPS gflags glog gmock gtest yb_util yb_test_util)
 
 if(NOT APPLE)
   target_link_libraries(yb_test_main rt)
@@ -331,10 +339,12 @@ endif()
 # Unit tests
 #######################################
 
-set(YB_TEST_LINK_LIBS yb_test_util gutil gmock ${YB_TEST_LINK_LIBS_EXTENSIONS} ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS yb_test_util gutil gmock gtest
+    ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(atomic-test)
-ADD_YB_TEST(auto_flags-test)
+ADD_YB_TEST(flags/auto_flags-test)
 ADD_YB_TEST(background_task-test)
+ADD_YB_TEST(backoff_waiter-test)
 ADD_YB_TEST(bit-util-test)
 ADD_YB_TEST(bitmap-test)
 ADD_YB_TEST(blocking_queue-test)
@@ -348,13 +358,16 @@ ADD_YB_TEST(debug-util-test)
 ADD_YB_TEST(env-test LABELS no_tsan)
 ADD_YB_TEST(errno-test)
 ADD_YB_TEST(failure_detector-test)
-ADD_YB_TEST(flag_tags-test)
-ADD_YB_TEST(flags-test)
+ADD_YB_TEST(flags/flag_tags-test)
+ADD_YB_TEST(flags/flags-test)
+ADD_YB_TEST(flags/flags_callback-test)
 ADD_YB_TEST(format-test RUN_SERIAL true)
 ADD_YB_TEST(hash_util-test)
 ADD_YB_TEST(hdr_histogram-test)
 ADD_YB_TEST(inline_slice-test)
 ADD_YB_TEST(jsonreader-test)
+ADD_YB_TEST(jwt_util-test)
+ADD_YB_TEST(jwtcpp_util-test)
 ADD_YB_TEST(lockfree-test)
 ADD_YB_TEST(lru_cache-test)
 ADD_YB_TEST(map-util-test)
@@ -381,9 +394,10 @@ ADD_YB_TEST(path_util-test)
 ADD_YB_TEST(priority_queue-test)
 ADD_YB_TEST(priority_thread_pool-test)
 ADD_YB_TEST(pstack_watcher-test)
-ADD_YB_TEST(ref_cnt_buffer-test)
 ADD_YB_TEST(random-test)
 ADD_YB_TEST(random_util-test)
+ADD_YB_TEST(range-test)
+ADD_YB_TEST(ref_cnt_buffer-test)
 ADD_YB_TEST(result-test)
 ADD_YB_TEST(rolling_log-test)
 ADD_YB_TEST(rw_mutex-test)
@@ -421,6 +435,8 @@ ADD_YB_TEST(net/inetaddress-test)
 ADD_YB_TEST(uuid-test)
 ADD_YB_TEST(fast_varint-test)
 ADD_YB_TEST(shared_mem-test)
+ADD_YB_TEST(operation_counter-test)
+ADD_YB_TEST(write_buffer-test)
 
 #######################################
 # jsonwriter_test_proto

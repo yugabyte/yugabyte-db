@@ -25,9 +25,9 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/common/ql_name.h"
+#include "yb/qlexpr/ql_name.h"
 #include "yb/common/ql_value.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/schema.h"
 
 #include "yb/gutil/casts.h"
@@ -44,7 +44,11 @@
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
+using std::string;
+
 DECLARE_bool(enable_ysql);
+
+using yb::test::Partitioning;
 
 using namespace std::literals;
 
@@ -192,8 +196,8 @@ void CreateTable(
                                                table_name.namespace_type()));
 
   YBSchemaBuilder builder;
-  builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();
-  builder.AddColumn(kValueColumn)->Type(INT32);
+  builder.AddColumn(kKeyColumn)->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+  builder.AddColumn(kValueColumn)->Type(DataType::INT32);
   if (transactional) {
     TableProperties table_properties;
     table_properties.SetTransactional(true);
@@ -206,12 +210,13 @@ void CreateTable(
 void BuildSchema(Partitioning partitioning, Schema* schema) {
   switch (partitioning) {
     case Partitioning::kHash:
-      *schema = Schema({ ColumnSchema(kKeyColumn, INT32, false, true),
-                         ColumnSchema(kValueColumn, INT32) }, 1);
+      *schema = Schema({ ColumnSchema(kKeyColumn, DataType::INT32, ColumnKind::HASH),
+                         ColumnSchema(kValueColumn, DataType::INT32) });
       return;
     case Partitioning::kRange:
-      *schema = Schema({ ColumnSchema(kKeyColumn, INT32),
-                         ColumnSchema(kValueColumn, INT32) }, 1);
+      *schema = Schema({
+          ColumnSchema(kKeyColumn, DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+          ColumnSchema(kValueColumn, DataType::INT32) });
       return;
   }
   FATAL_INVALID_ENUM_VALUE(Partitioning, partitioning);
@@ -271,11 +276,11 @@ void InitIndex(
 
   auto* column = index_info->add_columns();
   const string name = schema.Column(indexed_column_index).name();
-  column->set_column_name(use_mangled_names ? YcqlName::MangleColumnName(name) : name);
+  column->set_column_name(use_mangled_names ? qlexpr::YcqlName::MangleColumnName(name) : name);
   column->set_indexed_column_id(schema.ColumnId(indexed_column_index));
 
   // Setup Index table schema.
-  builder->AddColumn(use_mangled_names ? YcqlName::MangleColumnName(name) : name)
+  builder->AddColumn(use_mangled_names ? qlexpr::YcqlName::MangleColumnName(name) : name)
       ->Type(schema.Column(indexed_column_index).type())
       ->NotNull()
       ->HashPrimaryKey();
@@ -284,13 +289,13 @@ void InitIndex(
   for (size_t i = 0; i < schema.num_hash_key_columns(); ++i) {
     if (i != indexed_column_index) {
       const string name = schema.Column(i).name();
-      builder->AddColumn(use_mangled_names ? YcqlName::MangleColumnName(name) : name)
+      builder->AddColumn(use_mangled_names ? qlexpr::YcqlName::MangleColumnName(name) : name)
           ->Type(schema.Column(i).type())
           ->NotNull()
           ->PrimaryKey();
 
       column = index_info->add_columns();
-      column->set_column_name(use_mangled_names ? YcqlName::MangleColumnName(name) : name);
+      column->set_column_name(use_mangled_names ? qlexpr::YcqlName::MangleColumnName(name) : name);
       column->set_indexed_column_id(schema.ColumnId(i));
       ++num_range_keys;
     }
@@ -401,6 +406,7 @@ Result<int32_t> SelectRow(
       LOG(WARNING) << "Error: " << error->status() << ", op: " << error->failed_op().ToString();
     }
   }
+  RETURN_NOT_OK(flush_status.status);
   RETURN_NOT_OK(CheckOp(op.get()));
   auto rowblock = yb::ql::RowsResult(op.get()).GetRowBlock();
   if (rowblock->row_count() == 0) {
@@ -488,11 +494,11 @@ int KeyValueTableTest<MiniClusterType>::NumTablets() {
 template <class MiniClusterType>
 YBSessionPtr KeyValueTableTest<MiniClusterType>::CreateSession(
     const YBTransactionPtr& transaction, const server::ClockPtr& clock) {
-  auto session = std::make_shared<YBSession>(client_.get(), clock);
+  auto session =
+      std::make_shared<YBSession>(client_.get(), RegularBuildVsSanitizers(15s, 60s), clock);
   if (transaction) {
     session->SetTransaction(transaction);
   }
-  session->SetTimeout(RegularBuildVsSanitizers(15s, 60s));
   return session;
 }
 
@@ -508,6 +514,39 @@ Status CheckOp(YBqlOp* op) {
   }
 
   return Status::OK();
+}
+
+Result<size_t> CountRows(const YBSessionPtr& session, const TableHandle& table, MonoDelta timeout) {
+  LOG(INFO) << "Running full scan on table " << table.name().ToString() << "...";
+  session->SetTimeout(timeout);
+  QLPagingStatePB paging_state;
+  bool has_paging_state = false;
+  size_t row_count = 0;
+  for (;;) {
+    const auto op = table.NewReadOp();
+    auto* const req = op->mutable_request();
+    req->set_return_paging_state(true);
+    if (has_paging_state) {
+      if (paging_state.has_read_time()) {
+        ReadHybridTime read_time = ReadHybridTime::FromPB(paging_state.read_time());
+        if (read_time) {
+          session->SetReadPoint(read_time);
+        }
+      }
+      session->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
+      *req->mutable_paging_state() = std::move(paging_state);
+    }
+    RETURN_NOT_OK(session->TEST_ApplyAndFlush(op));
+    RETURN_NOT_OK(CheckOp(op.get()));
+    auto rowblock = VERIFY_RESULT(op->MakeRowBlock());
+    row_count += rowblock.row_count();
+    if (!op->response().has_paging_state()) {
+      break;
+    }
+    paging_state = std::move(op->response().paging_state());
+    has_paging_state = true;
+  }
+  return row_count;
 }
 
 } // namespace client

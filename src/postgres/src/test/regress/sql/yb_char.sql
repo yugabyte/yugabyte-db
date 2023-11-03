@@ -37,6 +37,12 @@ SELECT * FROM yb_char_in_key ORDER BY ck;
 SELECT * FROM yb_char_in_key WHERE ck = 'a';
 SELECT * FROM yb_char_in_key WHERE ck = chr(1042);
 
+set yb_enable_expression_pushdown to off;
+SELECT * FROM yb_char_in_key ORDER BY ck;
+SELECT * FROM yb_char_in_key WHERE ck = 'a';
+SELECT * FROM yb_char_in_key WHERE ck = chr(1042);
+set yb_enable_expression_pushdown to on;
+
 DROP TABLE yb_char_in_key;
 
 --

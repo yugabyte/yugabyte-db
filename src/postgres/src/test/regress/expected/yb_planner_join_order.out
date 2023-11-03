@@ -37,40 +37,44 @@ select pg_sleep(1);
 (1 row)
 
 EXPLAIN (COSTS false) SELECT * FROM t_1000, t_100 WHERE t_1000.id = t_100.id;
-                  QUERY PLAN
-----------------------------------------------
- Nested Loop
+                              QUERY PLAN
+----------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t_1000.id = t_100.id)
    ->  Seq Scan on t_100
    ->  Index Scan using t_1000_pkey on t_1000
-         Index Cond: (id = t_100.id)
-(4 rows)
+         Index Cond: (id = ANY (ARRAY[t_100.id, $1, $2, ..., $1023]))
+(5 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM t_100, t_1000 WHERE t_100.id = t_1000.id;
-                  QUERY PLAN
-----------------------------------------------
- Nested Loop
+                              QUERY PLAN
+----------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t_100.id = t_1000.id)
    ->  Seq Scan on t_100
    ->  Index Scan using t_1000_pkey on t_1000
-         Index Cond: (id = t_100.id)
-(4 rows)
+         Index Cond: (id = ANY (ARRAY[t_100.id, $1, $2, ..., $1023]))
+(5 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM t_10000, t_1000000 WHERE t_10000.id = t_1000000.id;
-                     QUERY PLAN
-----------------------------------------------------
- Nested Loop
+                               QUERY PLAN
+------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t_10000.id = t_1000000.id)
    ->  Seq Scan on t_10000
    ->  Index Scan using t_1000000_pkey on t_1000000
-         Index Cond: (id = t_10000.id)
-(4 rows)
+         Index Cond: (id = ANY (ARRAY[t_10000.id, $1, $2, ..., $1023]))
+(5 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM t_1000000, t_10000 WHERE t_1000000.id = t_10000.id;
-                     QUERY PLAN
-----------------------------------------------------
- Nested Loop
+                               QUERY PLAN
+------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t_1000000.id = t_10000.id)
    ->  Seq Scan on t_10000
    ->  Index Scan using t_1000000_pkey on t_1000000
-         Index Cond: (id = t_10000.id)
-(4 rows)
+         Index Cond: (id = ANY (ARRAY[t_10000.id, $1, $2, ..., $1023]))
+(5 rows)
 
 -- Here we, reset the table size to 0. In this situation, query planner is unaware of table sizes
 -- Hence, it will choose the inner table based on the order in which it appears in the query
@@ -83,42 +87,46 @@ select pg_sleep(1);
 (1 row)
 
 EXPLAIN (COSTS false) SELECT * FROM t_1000, t_100 WHERE t_1000.id = t_100.id;
-                 QUERY PLAN
---------------------------------------------
- Nested Loop
+                              QUERY PLAN
+-----------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t_1000.id = t_100.id)
    ->  Seq Scan on t_1000
    ->  Index Scan using t_100_pkey on t_100
-         Index Cond: (id = t_1000.id)
-(4 rows)
+         Index Cond: (id = ANY (ARRAY[t_1000.id, $1, $2, ..., $1023]))
+(5 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM t_100, t_1000 WHERE t_100.id = t_1000.id;
-                  QUERY PLAN
-----------------------------------------------
- Nested Loop
+                              QUERY PLAN
+----------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t_100.id = t_1000.id)
    ->  Seq Scan on t_100
    ->  Index Scan using t_1000_pkey on t_1000
-         Index Cond: (id = t_100.id)
-(4 rows)
+         Index Cond: (id = ANY (ARRAY[t_100.id, $1, $2, ..., $1023]))
+(5 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM t_10000, t_1000000 WHERE t_10000.id = t_1000000.id;
-                     QUERY PLAN
-----------------------------------------------------
- Nested Loop
+                               QUERY PLAN
+------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t_10000.id = t_1000000.id)
    ->  Seq Scan on t_10000
    ->  Index Scan using t_1000000_pkey on t_1000000
-         Index Cond: (id = t_10000.id)
-(4 rows)
+         Index Cond: (id = ANY (ARRAY[t_10000.id, $1, $2, ..., $1023]))
+(5 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM t_1000000, t_10000 WHERE t_1000000.id = t_10000.id;
-                   QUERY PLAN
-------------------------------------------------
- Nested Loop
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t_1000000.id = t_10000.id)
    ->  Seq Scan on t_1000000
    ->  Index Scan using t_10000_pkey on t_10000
-         Index Cond: (id = t_1000000.id)
-(4 rows)
+         Index Cond: (id = ANY (ARRAY[t_1000000.id, $1, $2, ..., $1023]))
+(5 rows)
 
--- Updating table sizes arranges join orders based on table sizes. Updating costs enables the query
+-- Updating table sizes arranges join orders based on table sizes. Updating costs enables the query
 -- planner to prioritize NestedLoop vs HashJoins during different occasions based on the size of
 -- the tables. In the second example, due to varying sizes of the table, the join order changes.
 -- The query planner tries to optimize the join by prioritizing joining smaller tables with larger
@@ -135,35 +143,39 @@ select pg_sleep(1);
 EXPLAIN (COSTS false) SELECT * FROM t_1000000 t4 INNER JOIN t_100 t1 ON t4.id = t1.id
                                                  INNER JOIN t_1000 t2 ON t1.id = t2.id
                                                  INNER JOIN t_10000 t3 ON t2.id = t3.id;
-                            QUERY PLAN
--------------------------------------------------------------------
- Nested Loop
-   ->  Nested Loop
-         ->  Nested Loop
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t4.id = t3.id)
+   ->  YB Batched Nested Loop Join
+         Join Filter: (t4.id = t2.id)
+         ->  YB Batched Nested Loop Join
+               Join Filter: (t4.id = t1.id)
                ->  Seq Scan on t_100 t1
                ->  Index Scan using t_1000000_pkey on t_1000000 t4
-                     Index Cond: (id = t1.id)
-         ->  Index Scan using t_10000_pkey on t_10000 t3
-               Index Cond: (id = t4.id)
-   ->  Index Scan using t_1000_pkey on t_1000 t2
-         Index Cond: (id = t4.id)
-(10 rows)
+                     Index Cond: (id = ANY (ARRAY[t1.id, $1, $2, ..., $1023]))
+         ->  Index Scan using t_1000_pkey on t_1000 t2
+               Index Cond: (id = ANY (ARRAY[t4.id, $1025, $1026, ..., $2047]))
+   ->  Index Scan using t_10000_pkey on t_10000 t3
+         Index Cond: (id = ANY (ARRAY[t4.id, $2049, $2050, ..., $3071]))
+(13 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM t_10000 t3 INNER JOIN t_1000 t2 ON t3.id = t2.id
                                                INNER JOIN t_100 t1 ON t2.val = t1.val
                                                WHERE t3.id < 10;
-                    QUERY PLAN
----------------------------------------------------
- Nested Loop
+                            QUERY PLAN
+-------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t2.id = t3.id)
    ->  Hash Join
          Hash Cond: (t2.val = t1.val)
          ->  Seq Scan on t_1000 t2
          ->  Hash
                ->  Seq Scan on t_100 t1
    ->  Index Scan using t_10000_pkey on t_10000 t3
-         Index Cond: (id = t2.id)
-         Filter: (id < 10)
-(9 rows)
+         Index Cond: (id = ANY (ARRAY[t2.id, $1, $2, ..., $1023]))
+         Remote Filter: (id < 10)
+(10 rows)
 
 call update_sizes(0, 0, 0, 0);
 select pg_sleep(1);
@@ -175,35 +187,39 @@ select pg_sleep(1);
 EXPLAIN (COSTS false) SELECT * FROM t_1000000 t4 INNER JOIN t_100 t1 ON t4.id = t1.id
                                                  INNER JOIN t_1000 t2 ON t1.id = t2.id
                                                  INNER JOIN t_10000 t3 ON t2.id = t3.id;
-                        QUERY PLAN
------------------------------------------------------------
- Nested Loop
-   ->  Nested Loop
-         ->  Nested Loop
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t4.id = t3.id)
+   ->  YB Batched Nested Loop Join
+         Join Filter: (t4.id = t2.id)
+         ->  YB Batched Nested Loop Join
+               Join Filter: (t4.id = t1.id)
                ->  Seq Scan on t_1000000 t4
                ->  Index Scan using t_100_pkey on t_100 t1
-                     Index Cond: (id = t4.id)
+                     Index Cond: (id = ANY (ARRAY[t4.id, $1, $2, ..., $1023]))
          ->  Index Scan using t_1000_pkey on t_1000 t2
-               Index Cond: (id = t4.id)
+               Index Cond: (id = ANY (ARRAY[t4.id, $1025, $1026, ..., $2047]))
    ->  Index Scan using t_10000_pkey on t_10000 t3
-         Index Cond: (id = t4.id)
-(10 rows)
+         Index Cond: (id = ANY (ARRAY[t4.id, $2049, $2050, ..., $3071]))
+(13 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM t_10000 t3 INNER JOIN t_1000 t2 ON t3.id = t2.id
                                                INNER JOIN t_100 t1 ON t2.val = t1.val
                                                WHERE t3.id < 10;
-                         QUERY PLAN
--------------------------------------------------------------
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
  Merge Join
    Merge Cond: (t2.val = t1.val)
    ->  Sort
          Sort Key: t2.val
-         ->  Nested Loop
+         ->  YB Batched Nested Loop Join
+               Join Filter: (t3.id = t2.id)
                ->  Seq Scan on t_10000 t3
-                     Filter: (id < 10)
+                     Remote Filter: (id < 10)
                ->  Index Scan using t_1000_pkey on t_1000 t2
-                     Index Cond: (id = t3.id)
+                     Index Cond: (id = ANY (ARRAY[t3.id, $1, $2, ..., $1023]))
    ->  Sort
          Sort Key: t1.val
          ->  Seq Scan on t_100 t1
-(12 rows)
+(13 rows)

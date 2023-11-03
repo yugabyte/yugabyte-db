@@ -15,8 +15,11 @@ import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
+import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BackupTableParams.ActionType;
@@ -41,6 +44,7 @@ import play.libs.Json;
 
 @Slf4j
 @Abortable
+@Retryable
 public class BackupUniverse extends UniverseTaskBase {
 
   // Counter names
@@ -94,7 +98,8 @@ public class BackupUniverse extends UniverseTaskBase {
 
   @Override
   public void run() {
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
     MetricLabelsBuilder metricLabelsBuilder = MetricLabelsBuilder.create().appendSource(universe);
 
     BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
@@ -102,29 +107,37 @@ public class BackupUniverse extends UniverseTaskBase {
       checkUniverseVersion();
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
-      lockUniverse(-1 /* expectedUniverseVersion */);
+      universe = lockUniverseForUpdate(-1);
 
-      // Update universe 'backupInProgress' flag to true or throw an exception if universe is
-      // already having a backup in progress.
-      if (taskParams().actionType == BackupTableParams.ActionType.CREATE) {
-        lockedUpdateBackupState(true);
-      } else {
-        // Check if the backup is in progress while other backup operations.
-        if (universe.getUniverseDetails().backupInProgress) {
-          throw new RuntimeException("A backup for this universe is already in progress.");
-        }
-      }
-      if (taskParams().alterLoadBalancer) {
-        createLoadBalancerStateChangeTask(false)
-            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
-      }
       try {
+
+        // If this is a retry and keyspace to restore to already exists, drop it.
+        if (!isFirstTry() && taskParams().actionType == ActionType.RESTORE) {
+          createDeleteKeySpaceTask(taskParams().getKeyspace(), taskParams().backupType)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+        }
+
+        if (taskParams().alterLoadBalancer) {
+          createLoadBalancerStateChangeTask(false)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+        }
+
+        if (cloudType != CloudType.kubernetes) {
+          // Ansible Configure Task for copying xxhsum binaries from
+          // third_party directory to the DB nodes.
+          installThirdPartyPackagesTask(universe)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InstallingThirdPartySoftware);
+        } else {
+          installThirdPartyPackagesTaskK8s(
+                  universe, InstallThirdPartySoftwareK8s.SoftwareUpgradeType.XXHSUM)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InstallingThirdPartySoftware);
+        }
+
         UserTaskDetails.SubTaskGroupType groupType;
-        if (taskParams().actionType == BackupTableParams.ActionType.CREATE) {
+        if (taskParams().actionType == ActionType.CREATE) {
           groupType = UserTaskDetails.SubTaskGroupType.CreatingTableBackup;
           createEncryptedUniverseKeyBackupTask().setSubTaskGroupType(groupType);
-          unlockUniverseForUpdate();
-        } else if (taskParams().actionType == BackupTableParams.ActionType.RESTORE) {
+        } else if (taskParams().actionType == ActionType.RESTORE) {
           groupType = UserTaskDetails.SubTaskGroupType.RestoringTableBackup;
 
           // Handle case of backup being encrypted at rest
@@ -132,11 +145,11 @@ public class BackupUniverse extends UniverseTaskBase {
             // Download universe keys backup file for encryption at rest
             BackupTableParams restoreKeysParams = new BackupTableParams();
             restoreKeysParams.storageLocation = taskParams().storageLocation;
-            restoreKeysParams.universeUUID = taskParams().universeUUID;
+            restoreKeysParams.setUniverseUUID(taskParams().getUniverseUUID());
             restoreKeysParams.storageConfigUUID = taskParams().storageConfigUUID;
             restoreKeysParams.kmsConfigUUID = taskParams().kmsConfigUUID;
             restoreKeysParams.restoreTimeStamp = taskParams().restoreTimeStamp;
-            restoreKeysParams.actionType = BackupTableParams.ActionType.RESTORE_KEYS;
+            restoreKeysParams.actionType = ActionType.RESTORE_KEYS;
             createTableBackupTask(restoreKeysParams).setSubTaskGroupType(groupType);
 
             // Restore universe keys backup file for encryption at rest
@@ -149,7 +162,8 @@ public class BackupUniverse extends UniverseTaskBase {
         createTableBackupTask(taskParams()).setSubTaskGroupType(groupType);
 
         Backup backup = Backup.create(taskParams().customerUuid, taskParams());
-        backup.setTaskUUID(userTaskUUID);
+        backup.setTaskUUID(getUserTaskUUID());
+        backup.save();
 
         // Marks the update of this universe as a success only if all the tasks before it succeeded.
         if (taskParams().alterLoadBalancer) {
@@ -160,9 +174,7 @@ public class BackupUniverse extends UniverseTaskBase {
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
         Set<String> tableNames =
-            taskParams()
-                .getTableNames()
-                .stream()
+            taskParams().getTableNames().stream()
                 .map(tableName -> taskParams().getKeyspace() + ":" + tableName)
                 .collect(Collectors.toSet());
 
@@ -176,39 +188,30 @@ public class BackupUniverse extends UniverseTaskBase {
           metricService.setOkStatusMetric(
               buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
         }
-        if (taskParams().actionType != BackupTableParams.ActionType.CREATE) {
+        if (taskParams().actionType != ActionType.CREATE) {
           unlockUniverseForUpdate();
         }
       } catch (Throwable t) {
         if (taskParams().alterLoadBalancer) {
-          // Clear previous subtasks if any.
-          getRunnableTask().reset();
           // If the task failed, we don't want the loadbalancer to be
           // disabled, so we enable it again in case of errors.
-          createLoadBalancerStateChangeTask(true)
-              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
-          getRunnableTask().runSubTasks();
+          setTaskQueueAndRun(
+              () ->
+                  createLoadBalancerStateChangeTask(true)
+                      .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse));
         }
         throw t;
-      } finally {
-        if (taskParams().actionType == BackupTableParams.ActionType.CREATE) {
-          lockedUpdateBackupState(false);
-        }
       }
     } catch (Throwable t) {
-      try {
-        log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
-        if (taskParams().actionType == ActionType.CREATE) {
-          BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
-          metricService.setFailureStatusMetric(
-              buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
-        }
-      } finally {
-        // Run an unlock in case the task failed before getting to the unlock. It is okay if it
-        // errors out.
-        unlockUniverseForUpdate();
+      log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      if (taskParams().actionType == ActionType.CREATE) {
+        BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+        metricService.setFailureStatusMetric(
+            buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
       }
       throw t;
+    } finally {
+      unlockUniverseForUpdate();
     }
 
     log.info("Finished {} task.", getName());
@@ -220,9 +223,9 @@ public class BackupUniverse extends UniverseTaskBase {
     Customer customer = Customer.get(customerUUID);
     JsonNode params = schedule.getTaskParams();
     BackupTableParams taskParams = Json.fromJson(params, BackupTableParams.class);
-    taskParams.scheduleUUID = schedule.scheduleUUID;
+    taskParams.scheduleUUID = schedule.getScheduleUUID();
     taskParams.customerUuid = customerUUID;
-    Universe universe = Universe.maybeGet(taskParams.universeUUID).orElse(null);
+    Universe universe = Universe.maybeGet(taskParams.getUniverseUUID()).orElse(null);
     if (universe == null) {
       schedule.stopSchedule();
       return;
@@ -230,12 +233,11 @@ public class BackupUniverse extends UniverseTaskBase {
     MetricLabelsBuilder metricLabelsBuilder = MetricLabelsBuilder.create().appendSource(universe);
     SCHEDULED_BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
     if (alreadyRunning
-        || universe.getUniverseDetails().backupInProgress
         || universe.getUniverseDetails().updateInProgress
         || universe.getUniverseDetails().universePaused) {
       if (!universe.getUniverseDetails().universePaused) {
         schedule.updateBacklogStatus(true);
-        log.debug("Schedule {} backlog status is set to true", schedule.scheduleUUID);
+        log.debug("Schedule {} backlog status is set to true", schedule.getScheduleUUID());
         SCHEDULED_BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
         metricService.setFailureStatusMetric(
             buildMetricTemplate(PlatformMetrics.SCHEDULE_BACKUP_STATUS, universe));
@@ -244,24 +246,24 @@ public class BackupUniverse extends UniverseTaskBase {
       String stateLogMsg = CommonUtils.generateStateLogMsg(universe, alreadyRunning);
       log.warn(
           "Cannot run Backup task on universe {} due to the state {}",
-          taskParams.universeUUID.toString(),
+          taskParams.getUniverseUUID().toString(),
           stateLogMsg);
       return;
     }
     UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
     ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
-    if (schedule.getBacklogStatus()) {
+    if (schedule.isBacklogStatus()) {
       schedule.updateBacklogStatus(false);
-      log.debug("Schedule {} backlog status is set to false", schedule.scheduleUUID);
+      log.debug("Schedule {} backlog status is set to false", schedule.getScheduleUUID());
     }
     log.info(
         "Submitted task to backup table {}:{}, task uuid = {}.",
         taskParams.tableUUID,
-        taskParams.getTableName(),
+        CommonUtils.logTableName(taskParams.getTableName()),
         taskUUID);
     CustomerTask.create(
         customer,
-        taskParams.universeUUID,
+        taskParams.getUniverseUUID(),
         taskUUID,
         CustomerTask.TargetType.Backup,
         CustomerTask.TaskType.Create,
@@ -271,7 +273,7 @@ public class BackupUniverse extends UniverseTaskBase {
         taskUUID,
         taskParams.tableUUID,
         taskParams.getKeyspace(),
-        taskParams.getTableName());
+        CommonUtils.logTableName(taskParams.getTableName()));
     SCHEDULED_BACKUP_SUCCESS_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
     metricService.setOkStatusMetric(
         buildMetricTemplate(PlatformMetrics.SCHEDULE_BACKUP_STATUS, universe));

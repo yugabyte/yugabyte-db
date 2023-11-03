@@ -25,7 +25,6 @@
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
 #include "commands/cluster.h"
-#include "commands/dbcommands.h"
 #include "commands/matview.h"
 #include "commands/tablecmds.h"
 #include "commands/tablespace.h"
@@ -45,8 +44,10 @@
 #include "utils/syscache.h"
 
 /* YB includes. */
+#include "commands/dbcommands.h"
 #include "commands/ybccmds.h"
 #include "executor/ybcModifyTable.h"
+#include "pg_yb_utils.h"
 
 typedef struct
 {
@@ -330,6 +331,12 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 	else
 	{
 		refresh_by_heap_swap(matviewOid, OIDNewHeap, relpersistence);
+		
+		if (YBIsRefreshMatviewFailureInjected())
+		{
+			elog(ERROR, "Injecting error.");
+		}
+	
 		/*
 		 * In YB mode, we must also rename the relation in DocDB.
 		 *

@@ -69,7 +69,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/concurrent_value.h"
 #include "yb/util/env.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
@@ -78,32 +78,35 @@
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/rolling_log.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/spinlock_profiling.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
 #include "yb/util/timestamp.h"
 #include "yb/util/thread.h"
 #include "yb/util/version_info.h"
+#include "yb/util/tcmalloc_util.h"
 
-DEFINE_int32(num_reactor_threads, -1,
+DEFINE_UNKNOWN_int32(num_reactor_threads, -1,
              "Number of libev reactor threads to start. If -1, the value is automatically set.");
 TAG_FLAG(num_reactor_threads, advanced);
 
 DECLARE_bool(use_hybrid_clock);
 
-DEFINE_int32(generic_svc_num_threads, 10,
+DEFINE_UNKNOWN_int32(generic_svc_num_threads, 10,
              "Number of RPC worker threads to run for the generic service");
 TAG_FLAG(generic_svc_num_threads, advanced);
 
-DEFINE_int32(generic_svc_queue_length, 50,
+DEFINE_UNKNOWN_int32(generic_svc_queue_length, 50,
              "RPC Queue length for the generic service");
 TAG_FLAG(generic_svc_queue_length, advanced);
 
-DEFINE_string(yb_test_name, "",
+DEFINE_UNKNOWN_string(yb_test_name, "",
               "Specifies test name this daemon is running as part of.");
 
-DEFINE_bool(TEST_check_broadcast_address, true, "Break connectivity in test mini cluster to "
-            "check broadcast address.");
+DEFINE_UNKNOWN_bool(TEST_check_broadcast_address, true,
+    "Break connectivity in test mini cluster to "
+    "check broadcast address.");
 
 DEFINE_test_flag(string, public_hostname_suffix, ".ip.yugabyte", "Suffix for public hostnames.");
 
@@ -140,7 +143,7 @@ struct CommonMemTrackers {
   std::vector<MemTrackerPtr> trackers;
 
   ~CommonMemTrackers() {
-#if defined(TCMALLOC_ENABLED)
+#if YB_TCMALLOC_ENABLED
     // Prevent root mem tracker from accessing common mem trackers.
     auto root = MemTracker::GetRootTracker();
     root->SetPollChildrenConsumptionFunctors(nullptr);
@@ -161,10 +164,10 @@ std::shared_ptr<MemTracker> CreateMemTrackerForServer() {
   return MemTracker::CreateTracker(id_str);
 }
 
-#if defined(TCMALLOC_ENABLED)
+#if YB_TCMALLOC_ENABLED
 void RegisterTCMallocTracker(const char* name, const char* prop) {
   common_mem_trackers->trackers.push_back(MemTracker::CreateTracker(
-      -1, "TCMalloc "s + name, std::bind(&MemTracker::GetTCMallocProperty, prop)));
+      -1, "TCMalloc "s + name, std::bind(&::yb::GetTCMallocProperty, prop)));
 }
 #endif
 
@@ -181,16 +184,25 @@ RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
       stop_metrics_logging_latch_(1) {
   mem_tracker_->SetMetricEntity(metric_entity_);
 
-#if defined(TCMALLOC_ENABLED)
+#if YB_TCMALLOC_ENABLED
   // When mem tracker for first server is created we register mem trackers that report tc malloc
   // status.
   if (mem_tracker_->id() == kServerMemTrackerName) {
     common_mem_trackers = std::make_unique<CommonMemTrackers>();
 
-    RegisterTCMallocTracker("Thread Cache", "tcmalloc.thread_cache_free_bytes");
-    RegisterTCMallocTracker("Central Cache", "tcmalloc.central_cache_free_bytes");
-    RegisterTCMallocTracker("Transfer Cache", "tcmalloc.transfer_cache_free_bytes");
-    RegisterTCMallocTracker("PageHeap Free", "tcmalloc.pageheap_free_bytes");
+#if YB_GOOGLE_TCMALLOC
+    RegisterTCMallocTracker("Sum of CPU Cache Freelists", "tcmalloc.cpu_free");
+    RegisterTCMallocTracker("Central Cache Freelist", "tcmalloc.central_cache_free");
+    RegisterTCMallocTracker("Transfer Cache Freelist", "tcmalloc.transfer_cache_free");
+    RegisterTCMallocTracker("Sharded Transfer Cache Freelist",
+        "tcmalloc.sharded_transfer_cache_free");
+#else
+    RegisterTCMallocTracker("Sum of Thread Cache Freelists", "tcmalloc.thread_cache_free_bytes");
+    RegisterTCMallocTracker("Central Cache Freelist", "tcmalloc.central_cache_free_bytes");
+    RegisterTCMallocTracker("Transfer Cache Freelist", "tcmalloc.transfer_cache_free_bytes");
+#endif  // YB_GOOGLE_TCMALLOC
+    RegisterTCMallocTracker("PageHeap Freelist (Mapped)", "tcmalloc.pageheap_free_bytes");
+    RegisterTCMallocTracker("PageHeap Freelist (Unmapped)", "tcmalloc.pageheap_unmapped_bytes");
 
     auto root = MemTracker::GetRootTracker();
     root->SetPollChildrenConsumptionFunctors([]() {
@@ -199,7 +211,7 @@ RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
           }
         });
   }
-#endif
+#endif  // YB_TCMALLOC_ENABLED
 
   if (clock) {
     clock_ = clock;
@@ -253,8 +265,8 @@ const NodeInstancePB& RpcServerBase::instance_pb() const {
 Status RpcServerBase::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
   if (FLAGS_num_reactor_threads == -1) {
     // Auto set the number of reactors based on the number of cores.
-    FLAGS_num_reactor_threads =
-        std::min(16, static_cast<int>(base::NumCPUs()));
+    auto count = std::min(16, static_cast<int>(base::NumCPUs()));
+    RETURN_NOT_OK(SET_FLAG_DEFAULT_AND_CURRENT(num_reactor_threads, count));
     LOG(INFO) << "Auto setting FLAGS_num_reactor_threads to " << FLAGS_num_reactor_threads;
   }
 
@@ -473,7 +485,8 @@ void RpcAndWebServerBase::GenerateInstanceID() {
   instance_pb_->set_permanent_uuid(fs_manager_->uuid());
   auto now = Env::Default()->NowMicros();
 
-  server_uptime_ms_metric_ = metric_entity_->FindOrCreateAtomicMillisLag(&METRIC_server_uptime_ms);
+  server_uptime_ms_metric_ = metric_entity_->FindOrCreateMetric<AtomicMillisLag>(
+      &METRIC_server_uptime_ms);
 
   // TODO: maybe actually bump a sequence number on local disk instead of
   // using time.
@@ -503,6 +516,18 @@ Status RpcAndWebServerBase::Init() {
   RETURN_NOT_OK(RpcServerBase::Init());
 
   return Status::OK();
+}
+
+Status RpcAndWebServerBase::InitAutoFlags() {
+  auto process_auto_flags_result = GetAvailableAutoFlagsForServer();
+  if (!process_auto_flags_result) {
+    LOG(WARNING) << "Unable to get the AutoFlags for this process: "
+                 << process_auto_flags_result.status();
+  } else {
+    web_server_->SetAutoFlags(std::move(*process_auto_flags_result));
+  }
+
+  return RpcServerBase::InitAutoFlags();
 }
 
 void RpcAndWebServerBase::GetStatusPB(ServerStatusPB* status) const {
@@ -605,18 +630,41 @@ void RpcAndWebServerBase::DisplayGeneralInfoIcons(std::stringstream* output) {
   DisplayIconTile(output, "fa-files-o", "Logs", "/logs");
   // GFlags.
   DisplayIconTile(output, "fa-flag-o", "GFlags", "/varz");
-  // Memory trackers.
-  DisplayIconTile(output, "fa-bar-chart", "Memory Breakdown", "/mem-trackers");
-  // Total memory.
-  DisplayIconTile(output, "fa-cog", "Total Memory", "/memz");
   // Metrics.
-  DisplayIconTile(output, "fa-line-chart", "Metrics", "/prometheus-metrics");
+  DisplayIconTile(
+      output, "fa-line-chart", "Metrics",
+      "/prometheus-metrics?reset_histograms=false&show_help=true");
   // Threads.
   DisplayIconTile(output, "fa-microchip", "Threads", "/threadz");
   // Drives.
   DisplayIconTile(output, "fa-hdd-o", "Drives", "/drives");
   // TLS.
   DisplayIconTile(output, "fa-lock", "TLS", "/tls");
+}
+
+void RpcAndWebServerBase::DisplayMemoryIcons(std::stringstream* output) {
+  // Memory trackers.
+  DisplayIconTile(output, "fa-bar-chart", "Memory Breakdown", "/mem-trackers");
+  // Total memory.
+  DisplayIconTile(output, "fa-cog", "Total Memory", "/memz");
+
+#if YB_GPERFTOOLS_TCMALLOC
+  DisplayIconTile(output, "fa-camera", "Heap Snapshot",
+      "/pprof/heap_snapshot?peak_heap=false&order_by=count");
+#endif // YB_GPERFTOOLS_TCMALLOC
+
+#if YB_GOOGLE_TCMALLOC
+  DisplayIconTile(output, "fa-camera", "Heap Snapshot",
+      "/pprof/heap_snapshot?peak_heap=false&order_by=estimated_bytes");
+
+  // Heap profile. Set the defaults very conservatively to avoid adverse affects to DB when a user
+  // clicks this endpoint without thinking.
+  const auto default_profiling_sample_freq_bytes = 10_MB;
+  DisplayIconTile(output, "fa-pencil-square-o", "Heap Profile",
+      "/pprof/heap?only_growth=false&seconds=1&sample_freq_bytes=" +
+      std::to_string(default_profiling_sample_freq_bytes) +
+      "&order_by=estimated_bytes");
+#endif // YB_GOOGLE_TCMALLOC
 }
 
 Status RpcAndWebServerBase::DisplayRpcIcons(std::stringstream* output) {
@@ -634,6 +682,12 @@ Status RpcAndWebServerBase::HandleDebugPage(const Webserver::WebRequest& req,
   *output << "<h2> General Info </h2>";
   DisplayGeneralInfoIcons(output);
   *output << "</div> <!-- row -->\n";
+
+  *output << "<h2> Memory </h2>";
+  *output << "<div class='row debug-tiles'>\n";
+  DisplayMemoryIcons(output);
+  *output << "</div> <!-- row -->\n";
+
   *output << "<h2> RPCs In Progress </h2>";
   *output << "<div class='row debug-tiles'>\n";
   RETURN_NOT_OK(DisplayRpcIcons(output));

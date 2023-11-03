@@ -13,10 +13,10 @@
 
 #include "yb/yql/redis/redisserver/redis_server_options.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/yql/redis/redisserver/redis_server.h"
 
-DEFINE_int32(redis_rpc_keepalive_time_ms, 0,
+DEFINE_UNKNOWN_int32(redis_rpc_keepalive_time_ms, 0,
              "If an RPC connection from a client is idle for this amount of time, the server "
              "will disconnect the client. Setting flag to 0 disables this clean up.");
 TAG_FLAG(redis_rpc_keepalive_time_ms, advanced);

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CLIENT_TRANSACTION_POOL_H
-#define YB_CLIENT_TRANSACTION_POOL_H
+#pragma once
 
 #include "yb/client/client_fwd.h"
 
@@ -24,8 +23,6 @@ namespace yb {
 class MetricEntity;
 
 namespace client {
-
-YB_STRONGLY_TYPED_BOOL(ForceGlobalTransaction);
 
 // Pool that maintains set of preallocated ready transactions.
 // The size of the pool is auto adjusted, i.e. the more transactions we request - the more
@@ -66,5 +63,3 @@ class TransactionPool {
 
 } // namespace client
 } // namespace yb
-
-#endif // YB_CLIENT_TRANSACTION_POOL_H

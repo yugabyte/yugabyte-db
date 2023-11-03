@@ -12,7 +12,8 @@ package com.yugabyte.yw.models;
 
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 
-import io.ebean.Ebean;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import io.ebean.DB;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.SqlUpdate;
@@ -28,6 +29,8 @@ import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
 import javax.persistence.Temporal;
 import javax.persistence.TemporalType;
+import lombok.Getter;
+import lombok.Setter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
@@ -36,6 +39,8 @@ import play.libs.Json;
 @Entity
 // @IdClass(KmsHistoryId.class)
 @ApiModel(description = "KMS history")
+@Getter
+@Setter
 public class KmsHistory extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(KmsHistory.class);
 
@@ -43,45 +48,115 @@ public class KmsHistory extends Model {
 
   @EmbeddedId
   @ApiModelProperty(value = "KMS history UUID", accessMode = READ_ONLY)
-  public KmsHistoryId uuid;
+  private KmsHistoryId uuid;
 
   @Constraints.Required
   @Temporal(TemporalType.TIMESTAMP)
   @Column(nullable = false)
   @ApiModelProperty(value = "Timestamp of KMS history", accessMode = READ_ONLY)
-  public Date timestamp;
+  private Date timestamp;
 
   @Constraints.Required
   @Column(nullable = false)
   @ApiModelProperty(value = "Version of KMS history", accessMode = READ_ONLY)
-  public int version;
+  private int version;
 
   @Constraints.Required
   @Column(nullable = false)
   @ApiModelProperty(value = "KMS configuration UUID", accessMode = READ_ONLY)
-  public UUID configUuid;
+  private UUID configUuid;
 
   @Constraints.Required
   @Column(nullable = false)
   @ApiModelProperty(value = "True if the KMS is active", accessMode = READ_ONLY)
-  public boolean active;
+  private boolean active;
+
+  @Constraints.Required
+  @Column(name = "db_key_id")
+  @ApiModelProperty(
+      value = "The key ref of the initial re-encrypted universe key",
+      accessMode = READ_ONLY)
+  public String dbKeyId;
 
   public static final Finder<KmsHistoryId, KmsHistory> find =
       new Finder<KmsHistoryId, KmsHistory>(KmsHistory.class) {};
 
+  public static int getLatestReEncryptionCount(UUID targetUUID) {
+    // If there is no universe with universe key, return 0.
+    int latestReEncryptionCount =
+        KmsHistory.find
+            .query()
+            .where()
+            .eq("target_uuid", targetUUID)
+            .eq("type", KmsHistoryId.TargetType.UNIVERSE_KEY)
+            .findList()
+            .stream()
+            .mapToInt(kmsHistory -> kmsHistory.uuid.getReEncryptionCount())
+            .max()
+            .orElse(0);
+    return latestReEncryptionCount;
+  }
+
   public static KmsHistory createKmsHistory(
-      UUID configUUID, UUID targetUUID, KmsHistoryId.TargetType targetType, String keyRef) {
+      UUID configUUID,
+      UUID targetUUID,
+      KmsHistoryId.TargetType targetType,
+      String keyRef,
+      String dbKeyId) {
+    return createKmsHistory(
+        configUUID,
+        targetUUID,
+        targetType,
+        keyRef,
+        getLatestReEncryptionCount(targetUUID),
+        dbKeyId,
+        true);
+  }
+
+  public static KmsHistory createKmsHistory(
+      UUID configUUID,
+      UUID targetUUID,
+      KmsHistoryId.TargetType targetType,
+      String keyRef,
+      int reEncryptionCount,
+      String dbKeyId) {
+    return createKmsHistory(
+        configUUID, targetUUID, targetType, keyRef, reEncryptionCount, dbKeyId, false);
+  }
+
+  public static KmsHistory createKmsHistory(
+      UUID configUUID,
+      UUID targetUUID,
+      KmsHistoryId.TargetType targetType,
+      String keyRef,
+      int reEncryptionCount,
+      String dbKeyId,
+      Boolean saveToDb) {
     KmsHistory keyHistory = new KmsHistory();
-    keyHistory.uuid = new KmsHistoryId(keyRef, targetUUID, targetType);
-    keyHistory.timestamp = new Date();
-    keyHistory.version = SCHEMA_VERSION;
-    keyHistory.active = false;
-    keyHistory.configUuid = configUUID;
-    keyHistory.save();
+    keyHistory.uuid = new KmsHistoryId(keyRef, targetUUID, targetType, reEncryptionCount);
+    keyHistory.setTimestamp(new Date());
+    keyHistory.setVersion(SCHEMA_VERSION);
+    keyHistory.setActive(false);
+    keyHistory.setConfigUuid(configUUID);
+    keyHistory.dbKeyId = dbKeyId;
+    if (saveToDb) {
+      keyHistory.save();
+    }
     return keyHistory;
   }
 
-  public static void setKeyRefStatus(
+  public static void addAllKmsHistory(List<KmsHistory> kmsHistoryList) {
+    DB.beginTransaction();
+    try {
+      DB.saveAll(kmsHistoryList);
+      DB.commitTransaction();
+    } finally {
+      DB.endTransaction();
+    }
+  }
+
+  @JsonIgnore
+  public static void updateKeyRefStatus(
       UUID targetUUID,
       UUID confidUUID,
       KmsHistoryId.TargetType targetType,
@@ -95,7 +170,7 @@ public class KmsHistory extends Model {
             + " AND type = ?"
             + " AND key_ref = ?";
     SqlUpdate update =
-        Ebean.createSqlUpdate(sql)
+        DB.sqlUpdate(sql)
             .setParameter(1, active)
             .setParameter(2, targetUUID)
             .setParameter(3, confidUUID)
@@ -108,25 +183,25 @@ public class KmsHistory extends Model {
 
   public static void activateKeyRef(
       UUID targetUUID, UUID configUUID, KmsHistoryId.TargetType targetType, String keyRef) {
-    Ebean.beginTransaction();
+    DB.beginTransaction();
     try {
       KmsHistory currentlyActiveKeyRef = KmsHistory.getActiveHistory(targetUUID, targetType);
       if (currentlyActiveKeyRef != null) {
-        setKeyRefStatus(
+        updateKeyRefStatus(
             targetUUID,
-            currentlyActiveKeyRef.configUuid,
+            currentlyActiveKeyRef.getConfigUuid(),
             targetType,
-            currentlyActiveKeyRef.uuid.keyRef,
+            currentlyActiveKeyRef.getUuid().keyRef,
             false);
       }
       KmsHistory toBeActiveKeyRef =
           KmsHistory.getKeyRefConfig(targetUUID, configUUID, keyRef, targetType);
       if (toBeActiveKeyRef != null) {
-        setKeyRefStatus(targetUUID, toBeActiveKeyRef.configUuid, targetType, keyRef, true);
+        updateKeyRefStatus(targetUUID, toBeActiveKeyRef.getConfigUuid(), targetType, keyRef, true);
       }
-      Ebean.commitTransaction();
+      DB.commitTransaction();
     } finally {
-      Ebean.endTransaction();
+      DB.endTransaction();
     }
   }
 
@@ -155,14 +230,37 @@ public class KmsHistory extends Model {
         .findList();
   }
 
+  public static List<KmsHistory> getAllUniverseKeysWithActiveMasterKey(UUID targetUUID) {
+    // Get the latest reEncryptionCount value. This represents the most active master key.
+    int latestReEncryptionCount = getLatestReEncryptionCount(targetUUID);
+    return KmsHistory.find
+        .query()
+        .where()
+        .eq("target_uuid", targetUUID)
+        .eq("type", KmsHistoryId.TargetType.UNIVERSE_KEY)
+        .eq("re_encryption_count", latestReEncryptionCount)
+        .orderBy()
+        .desc("timestamp")
+        .findList();
+  }
+
   public static KmsHistory getKeyRefConfig(
       UUID targetUUID, UUID configUUID, String keyRef, KmsHistoryId.TargetType type) {
     return KmsHistory.find
         .query()
         .where()
-        .idEq(new KmsHistoryId(keyRef, targetUUID, type))
+        .idEq(new KmsHistoryId(keyRef, targetUUID, type, getLatestReEncryptionCount(targetUUID)))
         .eq("config_uuid", configUUID)
         .eq("type", type)
+        .findOne();
+  }
+
+  public static KmsHistory getKmsHistory(
+      UUID targetUUID, String keyRef, KmsHistoryId.TargetType type) {
+    return KmsHistory.find
+        .query()
+        .where()
+        .idEq(new KmsHistoryId(keyRef, targetUUID, type, getLatestReEncryptionCount(targetUUID)))
         .findOne();
   }
 
@@ -184,8 +282,31 @@ public class KmsHistory extends Model {
     return KmsHistory.find
         .query()
         .where()
-        .idEq(new KmsHistoryId(keyRef, targetUUID, type))
+        .idEq(new KmsHistoryId(keyRef, targetUUID, type, getLatestReEncryptionCount(targetUUID)))
         .exists();
+  }
+
+  public static boolean dbKeyIdExists(
+      UUID targetUUID, String dbKeyId, KmsHistoryId.TargetType type) {
+    return KmsHistory.find
+        .query()
+        .where()
+        .eq("target_uuid", targetUUID)
+        .eq("db_key_id", dbKeyId)
+        .eq("type", type)
+        .exists();
+  }
+
+  public static KmsHistory getLatestKmsHistoryWithDbKeyId(
+      UUID targetUUID, String dbKeyId, KmsHistoryId.TargetType type) {
+    return KmsHistory.find
+        .query()
+        .where()
+        .eq("target_uuid", targetUUID)
+        .eq("db_key_id", dbKeyId)
+        .eq("type", type)
+        .eq("re_encryption_count", getLatestReEncryptionCount(targetUUID))
+        .findOne();
   }
 
   public static KmsHistory getLatestConfigHistory(
@@ -234,18 +355,35 @@ public class KmsHistory extends Model {
         .eq("config_uuid", configUUID)
         .eq("type", type)
         .findList()
-        .forEach(n -> universeUUIDs.add(n.uuid.targetUuid));
+        .forEach(n -> universeUUIDs.add(n.getUuid().targetUuid));
     return Universe.getAllPresent(universeUUIDs);
+  }
+
+  public static Set<UUID> getDistinctKmsConfigUUIDs(UUID targetUUID) {
+    Set<UUID> KmsConfigUUIDs = new HashSet<>();
+    KmsHistory.find
+        .query()
+        .where()
+        .eq("target_uuid", targetUUID)
+        .eq("type", KmsHistoryId.TargetType.UNIVERSE_KEY)
+        .findList()
+        .forEach(kh -> KmsConfigUUIDs.add(kh.getConfigUuid()));
+    return KmsConfigUUIDs;
+  }
+
+  public KmsConfig getAssociatedKmsConfig() {
+    return KmsConfig.getOrBadRequest(this.configUuid);
   }
 
   @Override
   public String toString() {
     return Json.newObject()
-        .put("uuid", uuid.toString())
-        .put("config_uuid", configUuid.toString())
-        .put("timestamp", timestamp.toString())
-        .put("version", version)
-        .put("active", active)
+        .put("uuid", getUuid().toString())
+        .put("config_uuid", getConfigUuid().toString())
+        .put("timestamp", getTimestamp().toString())
+        .put("version", getVersion())
+        .put("active", isActive())
+        .put("re_encryption_count", uuid.reEncryptionCount)
         .toString();
   }
 }

@@ -13,6 +13,8 @@ type: docs
 
 This document describes how to use boolean, numeric, and date expressions, as well as basic operators. In addition, it provides information on conditional expression and operators.
 
+{{% explore-setup-single %}}
+
 ## Basic operators
 
 A large number of YSQL types have corresponding mathematical operators that are typically used for performing comparisons and mathematical operations. Operators allow you to specify conditions in YSQL statements and create links between conditions.

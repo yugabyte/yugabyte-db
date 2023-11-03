@@ -20,7 +20,7 @@ type: indexpage
       <div class="head">
         <img class="icon" src="/images/section_icons/introduction/core_features.png" aria-hidden="true" />
         <div class="title">Design Goals</div>
-      </div>git
+      </div>
       <div class="body">
           The design goals around which YugabyteDB is built.
       </div>

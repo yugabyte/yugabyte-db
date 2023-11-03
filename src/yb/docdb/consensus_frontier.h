@@ -11,14 +11,16 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_CONSENSUS_FRONTIER_H
-#define YB_DOCDB_CONSENSUS_FRONTIER_H
+#pragma once
 
 #include <unordered_map>
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids_types.h"
 
+#include "yb/docdb/docdb.fwd.h"
+
+#include "yb/docdb/docdb_compaction_context.h"
 #include "yb/rocksdb/metadata.h"
 
 #include "yb/util/uuid.h"
@@ -33,6 +35,9 @@ inline HybridTime NormalizeHistoryCutoff(HybridTime history_cutoff) {
   return history_cutoff;
 }
 
+const size_t kSizeDbOid = sizeof(uint32_t);
+const size_t kSizePerDbFilter = kSizeDbOid + HybridTime::SizeOfHybridTimeRepr;
+
 // DocDB implementation of RocksDB UserFrontier. Contains an op id and a hybrid time. The difference
 // between this and user boundary values is that here hybrid time is taken from committed Raft log
 // entries, whereas user boundary values extract hybrid time from keys in a memtable. This is
@@ -45,8 +50,11 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
     return std::make_unique<ConsensusFrontier>(*this);
   }
   ConsensusFrontier() {}
-  ConsensusFrontier(const OpId& op_id, HybridTime ht, HybridTime history_cutoff)
-      : op_id_(op_id), hybrid_time_(ht), history_cutoff_(NormalizeHistoryCutoff(history_cutoff)) {}
+  ConsensusFrontier(const OpId& op_id, HybridTime ht, HistoryCutoff history_cutoff)
+      : op_id_(op_id), hybrid_time_(ht) {
+    history_cutoff_.primary_cutoff_ht = NormalizeHistoryCutoff(history_cutoff.primary_cutoff_ht);
+    history_cutoff_.cotables_cutoff_ht = NormalizeHistoryCutoff(history_cutoff.cotables_cutoff_ht);
+  }
 
   virtual ~ConsensusFrontier();
 
@@ -58,7 +66,13 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
       override;
   Status FromPB(const google::protobuf::Any& pb) override;
   void FromOpIdPBDeprecated(const OpIdPB& pb) override;
-  Slice Filter() const override;
+  Slice FilterAsSlice() override;
+
+  void CotablesFilter(std::vector<std::pair<uint32_t, HybridTime>>* cotables_filter);
+
+  void ResetFilter() override {
+    hybrid_time_filter_.clear();
+  }
 
   const OpId& op_id() const { return op_id_; }
   void set_op_id(const OpId& value) { op_id_ = value; }
@@ -69,16 +83,40 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
   HybridTime hybrid_time() const { return hybrid_time_; }
   void set_hybrid_time(HybridTime ht) { hybrid_time_ = ht; }
 
-  HybridTime history_cutoff() const { return history_cutoff_; }
-  void set_history_cutoff(HybridTime history_cutoff) {
-    history_cutoff_ = NormalizeHistoryCutoff(history_cutoff);
+  void SetCoTablesFilter(std::vector<std::pair<uint32_t, HybridTime>> db_oid_to_ht_filter);
+
+  HistoryCutoff history_cutoff() const {
+    return history_cutoff_;
   }
 
-  HybridTime hybrid_time_filter() const { return hybrid_time_filter_; }
-  void set_hybrid_time_filter(HybridTime value) {
-    hybrid_time_filter_ = value;
+  bool history_cutoff_valid() const {
+    return history_cutoff_.primary_cutoff_ht.is_valid() ||
+           history_cutoff_.cotables_cutoff_ht.is_valid();
   }
 
+  void set_history_cutoff_information(HistoryCutoff history_cutoff) {
+    history_cutoff_ = history_cutoff;
+  }
+
+  void AppendGlobalFilter(uint64_t value) {
+    hybrid_time_filter_.Append(pointer_cast<char*>(&value), sizeof(value));
+  }
+
+  void AppendDbOidToCotablesFilter(uint32_t db_oid) {
+    hybrid_time_filter_.Append(pointer_cast<char*>(&db_oid), sizeof(db_oid));
+  }
+
+  void AppendHybridTimeToCotablesFilter(uint64_t ht) {
+    hybrid_time_filter_.Append(pointer_cast<char*>(&ht), sizeof(ht));
+  }
+
+  bool HasFilter() const { return !hybrid_time_filter_.empty(); }
+
+  HybridTime GlobalFilter() const;
+  void SetGlobalFilter(HybridTime value);
+
+  void UpdateSchemaVersion(
+      const Uuid& table_id, SchemaVersion version, rocksdb::UpdateUserValueType type);
   void AddSchemaVersion(const Uuid& table_id, SchemaVersion version);
   void ResetSchemaVersion();
 
@@ -100,10 +138,8 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
 
   // We use this to keep track of the maximum history cutoff hybrid time used in any compaction, and
   // refuse to perform reads at a hybrid time at which we don't have a valid snapshot anymore. Only
-  // the largest frontier of this parameter is being used.
-  HybridTime history_cutoff_;
-
-  HybridTime hybrid_time_filter_;
+  // the largest frontier of this parameter is being used..
+  HistoryCutoff history_cutoff_;
 
   // Used to track the boundary expiration timestamp for any doc in the file. Tracks value-level
   // TTL expiration (generated at write-time), table-level TTL is calculated at read-time based
@@ -112,6 +148,26 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
 
   std::optional<SchemaVersion> primary_schema_version_;
   std::unordered_map<Uuid, SchemaVersion, UuidHash> cotable_schema_versions_;
+
+  // Serialized filter that is set only for the largest frontier of sst files
+  // during restore. There are two types of filter - a global filter
+  // that applies to all entries of the sst file and per db filters
+  // that apply to keys that have the given db_oid as the prefix. The per db
+  // filter is only set for the sys catalog tablet of the master while
+  // the global filter can be set for user tablets also. The global filter
+  // is just a single Hybrid Time. If an entry has a write hybrid time > this HT
+  // then it is ignored during reads. The per db filter has two components - a db oid
+  // and a Hybrid Time. If a key has cotable prefix that consists of this db oid then it
+  // is ignored if it was written at ht > filter ht. On the other hand if it's db oid is
+  // not present in this filter then it is always not ignored. The layout of this byte buffer
+  // is as follows:
+  /*
+  ------------------------------------------------------------------------------------------------
+  |  Global HT filter  |    db1 oid    |    db2 oid    |     | db1 HT filter | db2 HT filter |
+  | <--- 8 bytes --->  | <- 4 bytes -> | <- 4 bytes -> | ... | <- 8 bytes -> | <- 8 bytes -> | ...
+  ------------------------------------------------------------------------------------------------
+  */
+  ByteBuffer<64> hybrid_time_filter_;
 };
 
 typedef rocksdb::UserFrontiersBase<ConsensusFrontier> ConsensusFrontiers;
@@ -126,22 +182,21 @@ inline void set_hybrid_time(HybridTime hybrid_time, ConsensusFrontiers* frontier
   frontiers->Largest().set_hybrid_time(hybrid_time);
 }
 
-inline void set_history_cutoff(HybridTime history_cutoff, ConsensusFrontiers* frontiers) {
-  frontiers->Smallest().set_history_cutoff(history_cutoff);
-  frontiers->Largest().set_history_cutoff(history_cutoff);
-}
-
 template <class PB>
 void AddTableSchemaVersion(
     const Uuid& table_id, SchemaVersion schema_version, PB* pb) {
-  auto* out = pb->mutable_table_schema_version()->Add();
+  auto* out = pb->add_table_schema_version();
   if (!table_id.IsNil()) {
-    out->set_table_id(table_id.cdata(), table_id.size());
+    out->dup_table_id(table_id.AsSlice());
   }
   out->set_schema_version(schema_version);
 }
 
+void AddTableSchemaVersion(
+    const Uuid& table_id, SchemaVersion schema_version, ConsensusFrontierPB* pb);
+
+uint64_t ExtractGlobalFilter(Slice filter);
+void IterateCotablesFilter(Slice filter, const std::function<void(uint32_t, uint64_t)>& callback);
+
 } // namespace docdb
 } // namespace yb
-
-#endif // YB_DOCDB_CONSENSUS_FRONTIER_H

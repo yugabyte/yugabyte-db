@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TABLET_MAINTENANCE_MANAGER_H
-#define YB_TABLET_MAINTENANCE_MANAGER_H
+#pragma once
 
 #include <stdint.h>
 
@@ -55,7 +54,7 @@ namespace yb {
 
 template<class T>
 class AtomicGauge;
-class Histogram;
+class EventStats;
 class MaintenanceManager;
 class MemTracker;
 
@@ -185,7 +184,7 @@ class MaintenanceOp {
   virtual void Perform() = 0;
 
   // Returns the histogram for this op that tracks duration. Cannot be NULL.
-  virtual scoped_refptr<Histogram> DurationHistogram() const = 0;
+  virtual scoped_refptr<EventStats> DurationHistogram() const = 0;
 
   // Returns the gauge for this op that tracks when this op is running. Cannot be NULL.
   virtual scoped_refptr<AtomicGauge<uint32_t> > RunningGauge() const = 0;
@@ -320,5 +319,3 @@ class ScopedMaintenanceOpRun {
 };
 
 } // namespace yb
-
-#endif // YB_TABLET_MAINTENANCE_MANAGER_H

@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TABLET_TABLET_FWD_H
-#define YB_TABLET_TABLET_FWD_H
+#pragma once
 
 #include <memory>
 
@@ -36,12 +35,14 @@ typedef scoped_refptr<RaftGroupMetadata> RaftGroupMetadataPtr;
 
 class Tablet;
 typedef std::shared_ptr<Tablet> TabletPtr;
+typedef std::weak_ptr<Tablet> TabletWeakPtr;
 
 struct TableInfo;
 typedef std::shared_ptr<TableInfo> TableInfoPtr;
 
 class TabletPeer;
 typedef std::shared_ptr<TabletPeer> TabletPeerPtr;
+typedef std::weak_ptr<TabletPeer> TabletPeerWeakPtr;
 
 class ChangeMetadataOperation;
 class Operation;
@@ -49,6 +50,7 @@ class OperationFilter;
 class SnapshotCoordinator;
 class SnapshotOperation;
 class SplitOperation;
+class TabletMetrics;
 class TabletSnapshots;
 class TabletSplitter;
 class TabletStatusListener;
@@ -71,12 +73,12 @@ struct PgsqlReadRequestResult;
 struct QLReadRequestResult;
 struct RemoveIntentsData;
 struct TabletInitData;
-struct TabletMetrics;
 struct TransactionApplyData;
 struct TransactionStatusInfo;
 
 YB_DEFINE_ENUM(FlushMode, (kSync)(kAsync));
 YB_DEFINE_ENUM(RequireLease, (kFalse)(kTrue)(kFallbackToFollower));
+YB_STRONGLY_TYPED_BOOL(AbortOps);
 YB_STRONGLY_TYPED_BOOL(Destroy);
 YB_STRONGLY_TYPED_BOOL(DisableFlushOnShutdown);
 YB_STRONGLY_TYPED_BOOL(IsSysCatalogTablet);
@@ -100,5 +102,3 @@ enum class FlushFlags {
 
 }  // namespace tablet
 }  // namespace yb
-
-#endif  // YB_TABLET_TABLET_FWD_H

@@ -1,13 +1,13 @@
-@import '../../../../_style/colors.scss';
+@use '../../../../_style/colors.scss';
 
 .search-input {
     display: flex;
     align-items: center;
-    background: $YB_BG_WHITE_3;
+    background: colors.$YB_BG_WHITE_3;
     justify-content: flex-start;
     padding: 0px 0px 0px 10px;
     border-radius: 8px;
-    border: 1px solid $YB_BG_WHITE_4;
+    border: 1px solid colors.$YB_BG_WHITE_4;
     height: 40px;
     i {
       color: #808080;

@@ -11,10 +11,9 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks.nodes;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.NodeTaskBase;
-import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -25,14 +24,14 @@ import lombok.extern.slf4j.Slf4j;
 public class UpdateNodeProcess extends NodeTaskBase {
 
   @Inject
-  protected UpdateNodeProcess(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected UpdateNodeProcess(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
   // Parameters for updateProcess type
   public static class Params extends NodeTaskParams {
     public Boolean isAdd;
-    public UniverseDefinitionTaskBase.ServerType processType;
+    public UniverseTaskBase.ServerType processType;
   }
 
   protected UpdateNodeProcess.Params params() {
@@ -55,7 +54,7 @@ public class UpdateNodeProcess extends NodeTaskBase {
               UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
               for (NodeDetails currentNode : universeDetails.nodeDetailsSet) {
                 if (currentNode.nodeName.equals(params().nodeName)) {
-                  if (params().processType == UniverseDefinitionTaskBase.ServerType.MASTER) {
+                  if (params().processType == UniverseTaskBase.ServerType.MASTER) {
                     currentNode.isMaster = params().isAdd;
                   } else {
                     currentNode.isTserver = params().isAdd;

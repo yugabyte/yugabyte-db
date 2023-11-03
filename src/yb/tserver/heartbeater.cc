@@ -42,7 +42,6 @@
 #include <vector>
 
 #include <boost/function.hpp>
-#include <glog/logging.h>
 
 #include "yb/common/common_flags.h"
 #include "yb/common/hybrid_time.h"
@@ -81,7 +80,7 @@
 #include "yb/util/capabilities.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/enums.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
@@ -96,35 +95,28 @@
 
 using namespace std::literals;
 
-DEFINE_int32(heartbeat_rpc_timeout_ms, 15000,
-             "Timeout used for the TS->Master heartbeat RPCs.");
+DEFINE_RUNTIME_int32(heartbeat_rpc_timeout_ms, 15000,
+    "Timeout used for the TS->Master heartbeat RPCs.");
 TAG_FLAG(heartbeat_rpc_timeout_ms, advanced);
-TAG_FLAG(heartbeat_rpc_timeout_ms, runtime);
 
-DEFINE_int32(heartbeat_interval_ms, 1000,
-             "Interval at which the TS heartbeats to the master.");
+DEFINE_RUNTIME_int32(heartbeat_interval_ms, 1000,
+    "Interval at which the TS heartbeats to the master.");
 TAG_FLAG(heartbeat_interval_ms, advanced);
-TAG_FLAG(heartbeat_interval_ms, runtime);
 
-DEFINE_int32(heartbeat_max_failures_before_backoff, 3,
+DEFINE_UNKNOWN_int32(heartbeat_max_failures_before_backoff, 3,
              "Maximum number of consecutive heartbeat failures until the "
              "Tablet Server backs off to the normal heartbeat interval, "
              "rather than retrying.");
 TAG_FLAG(heartbeat_max_failures_before_backoff, advanced);
 
 DEFINE_test_flag(bool, tserver_disable_heartbeat, false, "Should heartbeat be disabled");
-TAG_FLAG(TEST_tserver_disable_heartbeat, runtime);
 
 DEFINE_CAPABILITY(TabletReportLimit, 0xb1a2a020);
 
-using google::protobuf::RepeatedPtrField;
-using yb::HostPortPB;
-using yb::consensus::RaftPeerPB;
 using yb::master::GetLeaderMasterRpc;
 using yb::rpc::RpcController;
 using std::shared_ptr;
 using std::vector;
-using strings::Substitute;
 
 namespace yb {
 namespace tserver {
@@ -146,14 +138,20 @@ class Heartbeater::Thread {
   void TriggerASAP();
 
   void set_master_addresses(server::MasterAddressesPtr master_addresses) {
-    std::lock_guard<std::mutex> l(master_addresses_mtx_);
+    std::lock_guard l(master_meta_mtx_);
     master_addresses_ = std::move(master_addresses);
     VLOG_WITH_PREFIX(1) << "Setting master addresses to " << yb::ToString(master_addresses_);
   }
 
+  std::string get_leader_master_hostport() {
+    std::lock_guard l(master_meta_mtx_);
+    return leader_master_hostport_.ToString();
+  }
+
  private:
   void RunThread();
-  Status FindLeaderMaster(CoarseTimePoint deadline, HostPort* leader_hostport);
+  Status FindLeaderMaster(CoarseTimePoint deadline,
+                          HostPort* leader_hostport) REQUIRES(master_meta_mtx_);;
   Status ConnectToMaster();
   int GetMinimumHeartbeatMillis() const;
   int GetMillisUntilNextHeartbeat() const;
@@ -162,19 +160,22 @@ class Heartbeater::Thread {
   Status SetupRegistration(master::TSRegistrationPB* reg);
   void SetupCommonField(master::TSToMasterCommonPB* common);
   bool IsCurrentThread() const;
-
   const std::string& LogPrefix() const {
     return server_->LogPrefix();
   }
 
-  server::MasterAddressesPtr get_master_addresses() {
-    std::lock_guard<std::mutex> l(master_addresses_mtx_);
+  server::MasterAddressesPtr get_master_addresses_unlocked() {
     CHECK_NOTNULL(master_addresses_.get());
     return master_addresses_;
   }
 
-  // Protecting master_addresses_.
-  std::mutex master_addresses_mtx_;
+  server::MasterAddressesPtr get_master_addresses() {
+    std::lock_guard l(master_meta_mtx_);
+    return get_master_addresses_unlocked();
+  }
+
+  // Protecting master list and leader.
+  std::mutex master_meta_mtx_;
 
   // The hosts/ports of masters that we may heartbeat to.
   //
@@ -245,6 +246,11 @@ void Heartbeater::set_master_addresses(server::MasterAddressesPtr master_address
   thread_->set_master_addresses(std::move(master_addresses));
 }
 
+std::string Heartbeater::get_leader_master_hostport() {
+  return thread_->get_leader_master_hostport();
+}
+
+
 ////////////////////////////////////////////////////////////
 // Heartbeater::Thread
 ////////////////////////////////////////////////////////////
@@ -281,9 +287,10 @@ void LeaderMasterCallback(const std::shared_ptr<FindLeaderMasterData>& data,
 
 } // anonymous namespace
 
-Status Heartbeater::Thread::FindLeaderMaster(CoarseTimePoint deadline, HostPort* leader_hostport) {
+Status Heartbeater::Thread::FindLeaderMaster(CoarseTimePoint deadline,
+                                             HostPort* leader_hostport) {
   Status s = Status::OK();
-  const auto master_addresses = get_master_addresses();
+  const auto master_addresses = get_master_addresses_unlocked();
   if (master_addresses->size() == 1 && (*master_addresses)[0].size() == 1) {
     // "Shortcut" the process when a single master is specified.
     *leader_hostport = (*master_addresses)[0][0];
@@ -312,6 +319,7 @@ Status Heartbeater::Thread::FindLeaderMaster(CoarseTimePoint deadline, HostPort*
 }
 
 Status Heartbeater::Thread::ConnectToMaster() {
+  std::lock_guard l(master_meta_mtx_);
   auto deadline = CoarseMonoClock::Now() + FLAGS_heartbeat_rpc_timeout_ms * 1ms;
   // TODO send heartbeats without tablet reports to non-leader masters.
   Status s = FindLeaderMaster(deadline, &leader_master_hostport_);
@@ -390,6 +398,15 @@ Status Heartbeater::Thread::TryHeartbeat() {
     auto capabilities = Capabilities();
     *req.mutable_registration()->mutable_capabilities() =
         google::protobuf::RepeatedField<CapabilityId>(capabilities.begin(), capabilities.end());
+    auto* resources = req.mutable_registration()->mutable_resources();
+    resources->set_core_count(base::NumCPUs());
+    auto tracker =
+        server_->tablet_manager()->tablet_memory_manager()->tablets_overhead_mem_tracker();
+    // Only set the tablet overhead limit if the tablet overheads memory tracker exists and has a
+    // limit set.  The flag to set the memory tracker's limit is tablet_overhead_size_percentage.
+    if (tracker && tracker->has_limit()) {
+      resources->set_tablet_overhead_ram_in_bytes(tracker->limit());
+    }
   }
 
   if (last_hb_response_.needs_full_tablet_report()) {
@@ -405,10 +422,25 @@ Status Heartbeater::Thread::TryHeartbeat() {
     server_->tablet_manager()->GenerateTabletReport(req.mutable_tablet_report(),
                                                     !sending_full_report_ /* include_bootstrap */);
   }
+
+  auto universe_uuid = VERIFY_RESULT(
+      server_->fs_manager()->GetUniverseUuidFromTserverInstanceMetadata());
+  if (!universe_uuid.empty()) {
+    req.set_universe_uuid(universe_uuid);
+  }
+
   req.mutable_tablet_report()->set_is_incremental(!sending_full_report_);
+  // We rely on the heartbeat thread calling GetNumLiveTablets regularly to keep the
+  // ts_live_tablet_peers metric up to date. If you remove this call, add another mechanism to
+  // update the metric.
   req.set_num_live_tablets(server_->tablet_manager()->GetNumLiveTablets());
   req.set_leader_count(server_->tablet_manager()->GetLeaderCount());
-
+  if (FLAGS_ysql_enable_db_catalog_version_mode) {
+    auto fingerprint = server_->GetCatalogVersionsFingerprint();
+    if (fingerprint.has_value()) {
+      req.set_ysql_db_catalog_versions_fingerprint(*fingerprint);
+    }
+  }
   for (auto& data_provider : data_providers_) {
     data_provider->AddData(last_hb_response_, &req);
   }
@@ -418,6 +450,12 @@ Status Heartbeater::Thread::TryHeartbeat() {
 
   req.set_config_index(server_->GetCurrentMasterIndex());
   req.set_cluster_config_version(server_->cluster_config_version());
+  auto result = server_->XClusterConfigVersion();
+  if (result.ok()) {
+    req.set_xcluster_config_version(*result);
+  } else if (!result.status().IsNotFound()) {
+    return result.status();
+  }
   req.set_rtt_us(heartbeat_rtt_.ToMicroseconds());
   if (server_->has_faulty_drive()) {
     req.set_faulty_drive(true);
@@ -440,6 +478,8 @@ Status Heartbeater::Thread::TryHeartbeat() {
     req.set_ts_physical_time(0);
   }
 
+  req.set_auto_flags_config_version(server_->GetAutoFlagConfigVersion());
+
   {
     VLOG_WITH_PREFIX(2) << "Sending heartbeat:\n" << req.DebugString();
     heartbeat_rtt_ = MonoDelta::kZero;
@@ -448,17 +488,26 @@ Status Heartbeater::Thread::TryHeartbeat() {
     RETURN_NOT_OK_PREPEND(proxy_->TSHeartbeat(req, &resp, &rpc),
                           "Failed to send heartbeat");
     MonoTime end_time = MonoTime::Now();
+    if (!resp.universe_uuid().empty()) {
+      auto universe_uuid = VERIFY_RESULT(UniverseUuid::FromString(resp.universe_uuid()));
+      RETURN_NOT_OK(server_->ValidateAndMaybeSetUniverseUuid(universe_uuid));
+    }
+
     if (resp.has_error()) {
-      if (resp.error().code() != master::MasterErrorPB::NOT_THE_LEADER) {
-        return StatusFromPB(resp.error().status());
-      } else {
-        DCHECK(!resp.leader_master());
-        // Treat a not-the-leader error code as leader_master=false.
-        if (resp.leader_master()) {
-          LOG_WITH_PREFIX(WARNING) << "Setting leader master to false for "
-                                   << resp.error().code() << " code.";
-          resp.set_leader_master(false);
+      switch (resp.error().code()) {
+        case master::MasterErrorPB::NOT_THE_LEADER: {
+          DCHECK(!resp.leader_master());
+          // Treat a not-the-leader error code as leader_master=false.
+          if (resp.leader_master()) {
+            LOG_WITH_PREFIX(WARNING) << "Setting leader master to false for "
+                                    << resp.error().code() << " code.";
+            resp.set_leader_master(false);
+          }
+          break;
         }
+        default:
+          return StatusFromPB(resp.error().status());
+
       }
     }
 
@@ -491,17 +540,24 @@ Status Heartbeater::Thread::TryHeartbeat() {
       } else {
         cluster_config_version = resp.cluster_config_version();
       }
-      RETURN_NOT_OK(static_cast<enterprise::TabletServer*>(server_)->
-          SetConfigVersionAndConsumerRegistry(cluster_config_version, &resp.consumer_registry()));
+      RETURN_NOT_OK(server_->SetConfigVersionAndConsumerRegistry(
+          cluster_config_version, &resp.consumer_registry()));
+      server_->SetXClusterDDLOnlyMode(resp.consumer_registry().role() != cdc::XClusterRole::ACTIVE);
     } else if (resp.has_cluster_config_version()) {
-      RETURN_NOT_OK(static_cast<enterprise::TabletServer*>(server_)->
-          SetConfigVersionAndConsumerRegistry(resp.cluster_config_version(), nullptr));
+      RETURN_NOT_OK(
+          server_->SetConfigVersionAndConsumerRegistry(resp.cluster_config_version(), nullptr));
     }
 
     // Check whether the cluster is a producer of a CDC stream.
     if (resp.has_xcluster_enabled_on_producer() &&
         resp.xcluster_enabled_on_producer()) {
-      RETURN_NOT_OK(static_cast<enterprise::TabletServer*>(server_)->SetCDCServiceEnabled());
+      RETURN_NOT_OK(server_->SetCDCServiceEnabled());
+    }
+
+    if (resp.has_xcluster_producer_registry() && resp.has_xcluster_config_version()) {
+      RETURN_NOT_OK(server_->SetPausedXClusterProducerStreams(
+          resp.xcluster_producer_registry().paused_producer_stream_ids(),
+          resp.xcluster_config_version()));
     }
 
     // At this point we know resp is a successful heartbeat response from the master so set it as
@@ -534,8 +590,8 @@ Status Heartbeater::Thread::TryHeartbeat() {
   sending_full_report_ = sending_full_report_ && !all_processed;
 
   // Update the master's YSQL catalog version (i.e. if there were schema changes for YSQL objects).
-  if (FLAGS_TEST_enable_db_catalog_version_mode) {
-    // We never expect rolling gflag change of --TEST_enable_db_catalog_version_mode. In per-db
+  if (FLAGS_ysql_enable_db_catalog_version_mode) {
+    // We never expect rolling gflag change of --ysql_enable_db_catalog_version_mode. In per-db
     // mode, we do not use ysql_catalog_version.
     DCHECK(!last_hb_response_.has_ysql_catalog_version());
     if (last_hb_response_.has_db_catalog_version_data()) {
@@ -544,9 +600,21 @@ Status Heartbeater::Thread::TryHeartbeat() {
                           << last_hb_response_.db_catalog_version_data().ShortDebugString();
       }
       server_->SetYsqlDBCatalogVersions(last_hb_response_.db_catalog_version_data());
+    } else {
+      // The master does not pass back any catalog versions. This can happen in
+      // several cases:
+      // * The fingerprints matched at master side which we assume tserver and
+      //   master have identical catalog versions.
+      // * If catalog versions cache is used, the cache is empty, either becuase it
+      //   has never been populated yet, or because master reading of the table
+      //   pg_yb_catalog_version has failed so the cache is cleared.
+      // * If catalog versions cache is not used, master reading of the table
+      //   pg_yb_catalog_version has failed, this is an unexpected case that is
+      //   ignored by the heartbeat service at the master side.
+      VLOG_WITH_FUNC(2) << "got no master catalog version data";
     }
   } else {
-    // We never expect rolling gflag change of --TEST_enable_db_catalog_version_mode. In
+    // We never expect rolling gflag change of --ysql_enable_db_catalog_version_mode. In
     // non-per-db mode, we do not use db_catalog_version_data.
     DCHECK(!last_hb_response_.has_db_catalog_version_data());
     if (last_hb_response_.has_ysql_catalog_version()) {
@@ -576,6 +644,10 @@ Status Heartbeater::Thread::TryHeartbeat() {
   }
 
   server_->UpdateXClusterSafeTime(last_hb_response_.xcluster_namespace_to_safe_time());
+
+  if (last_hb_response_.has_auto_flags_config()) {
+    RETURN_NOT_OK(server_->SetAutoFlagConfig(last_hb_response_.auto_flags_config()));
+  }
 
   // Update the live tserver list.
   return server_->PopulateLiveTServers(last_hb_response_);
@@ -650,7 +722,7 @@ void Heartbeater::Thread::RunThread() {
     if (!s.ok()) {
       const auto master_addresses = get_master_addresses();
       LOG_WITH_PREFIX(WARNING)
-          << "Failed to heartbeat to " << leader_master_hostport_.ToString()
+          << "Failed to heartbeat to " << get_leader_master_hostport()
           << ": " << s << " tries=" << consecutive_failed_heartbeats_
           << ", num=" << master_addresses->size()
           << ", masters=" << yb::ToString(master_addresses)
@@ -694,6 +766,9 @@ Status Heartbeater::Thread::Stop() {
     should_run_ = false;
     cond_.Signal();
   }
+
+  rpcs_.Shutdown();
+
   RETURN_NOT_OK(ThreadJoiner(thread_.get()).Join());
   thread_ = nullptr;
   return Status::OK();

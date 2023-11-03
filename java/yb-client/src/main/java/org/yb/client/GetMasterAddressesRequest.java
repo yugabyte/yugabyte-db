@@ -13,12 +13,11 @@
 
 package org.yb.client;
 
-import org.jboss.netty.buffer.ChannelBuffer;
+import com.google.protobuf.Message;
+import io.netty.buffer.ByteBuf;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.tserver.Tserver;
 import org.yb.util.Pair;
-
-import com.google.protobuf.Message;
 
 @InterfaceAudience.Public
 class GetMasterAddressesRequest extends YRpc<GetMasterAddressesResponse> {
@@ -27,7 +26,7 @@ class GetMasterAddressesRequest extends YRpc<GetMasterAddressesResponse> {
   }
 
   @Override
-  ChannelBuffer serialize(Message header) {
+  ByteBuf serialize(Message header) {
     assert header.isInitialized();
     final Tserver.GetMasterAddressesRequestPB.Builder builder =
         Tserver.GetMasterAddressesRequestPB.newBuilder();

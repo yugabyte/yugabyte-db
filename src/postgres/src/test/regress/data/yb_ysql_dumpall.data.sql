@@ -42,8 +42,8 @@ CREATE TABLESPACE tsp_unused OWNER yugabyte_test LOCATION '' WITH (replica_place
 -- YSQL database dump
 --
 
--- Dumped from database version 11.2-YB-2.11.3.0-b0
--- Dumped by ysql_dump version 11.2-YB-2.11.3.0-b0
+-- Dumped from database version 11.2-YB-2.21.0.0-b0
+-- Dumped by ysql_dump version 11.2-YB-2.21.0.0-b0
 
 SET yb_binary_restore = true;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
@@ -85,8 +85,8 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 -- YSQL database dump
 --
 
--- Dumped from database version 11.2-YB-2.11.3.0-b0
--- Dumped by ysql_dump version 11.2-YB-2.11.3.0-b0
+-- Dumped from database version 11.2-YB-2.21.0.0-b0
+-- Dumped by ysql_dump version 11.2-YB-2.21.0.0-b0
 
 SET yb_binary_restore = true;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
@@ -126,8 +126,8 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 -- YSQL database dump
 --
 
--- Dumped from database version 11.2-YB-2.11.3.0-b0
--- Dumped by ysql_dump version 11.2-YB-2.11.3.0-b0
+-- Dumped from database version 11.2-YB-2.21.0.0-b0
+-- Dumped by ysql_dump version 11.2-YB-2.21.0.0-b0
 
 SET yb_binary_restore = true;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
@@ -197,8 +197,8 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 -- YSQL database dump
 --
 
--- Dumped from database version 11.2-YB-2.11.3.0-b0
--- Dumped by ysql_dump version 11.2-YB-2.11.3.0-b0
+-- Dumped from database version 11.2-YB-2.21.0.0-b0
+-- Dumped by ysql_dump version 11.2-YB-2.21.0.0-b0
 
 SET yb_binary_restore = true;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
@@ -248,6 +248,9 @@ SET default_tablespace = tsp1;
 -- Name: grp_with_spc; Type: TABLEGROUP; Schema: -; Owner: yugabyte_test; Tablespace: tsp1
 --
 
+
+-- For YB tablegroup backup, must preserve pg_yb_tablegroup oid
+SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16393'::pg_catalog.oid);
 CREATE TABLEGROUP grp_with_spc;
 
 
@@ -259,6 +262,9 @@ SET default_tablespace = '';
 -- Name: grp_without_spc; Type: TABLEGROUP; Schema: -; Owner: yugabyte_test
 --
 
+
+-- For YB tablegroup backup, must preserve pg_yb_tablegroup oid
+SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16392'::pg_catalog.oid);
 CREATE TABLEGROUP grp_without_spc;
 
 
@@ -274,11 +280,11 @@ SET default_with_oids = false;
 
 
 -- For binary upgrade, must preserve pg_type oid
-SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16391'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16386'::pg_catalog.oid);
 
 
 -- For binary upgrade, must preserve pg_type array oid
-SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16390'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16385'::pg_catalog.oid);
 
 CREATE TABLE public.table1 (
     id integer
@@ -296,11 +302,11 @@ SET default_tablespace = tsp2;
 
 
 -- For binary upgrade, must preserve pg_type oid
-SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16395'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16390'::pg_catalog.oid);
 
 
 -- For binary upgrade, must preserve pg_type array oid
-SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16394'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16389'::pg_catalog.oid);
 
 CREATE TABLE public.table2 (
     name character varying
@@ -318,11 +324,11 @@ SET default_tablespace = '';
 
 
 -- For binary upgrade, must preserve pg_type oid
-SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16401'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16396'::pg_catalog.oid);
 
 
 -- For binary upgrade, must preserve pg_type array oid
-SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16400'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16395'::pg_catalog.oid);
 
 CREATE TABLE public.tbl_with_grp_with_spc (
     a integer
@@ -363,7 +369,7 @@ SET default_tablespace = tsp2;
 -- Name: idx1; Type: INDEX; Schema: public; Owner: yugabyte_test; Tablespace: tsp2
 --
 
-CREATE INDEX idx1 ON public.table1 USING lsm (id HASH) SPLIT INTO 3 TABLETS;
+CREATE INDEX NONCONCURRENTLY idx1 ON public.table1 USING lsm (id HASH) SPLIT INTO 3 TABLETS;
 
 
 SET default_tablespace = tsp1;
@@ -372,7 +378,7 @@ SET default_tablespace = tsp1;
 -- Name: idx2; Type: INDEX; Schema: public; Owner: yugabyte_test; Tablespace: tsp1
 --
 
-CREATE INDEX idx2 ON public.table2 USING lsm (name HASH) SPLIT INTO 3 TABLETS;
+CREATE INDEX NONCONCURRENTLY idx2 ON public.table2 USING lsm (name HASH) SPLIT INTO 3 TABLETS;
 
 
 --

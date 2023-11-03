@@ -13,13 +13,13 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/preview/explore/cluster-management/point-in-time-recovery-ysql" class="nav-link">
+    <a href="../point-in-time-recovery-ysql" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
   <li >
-    <a href="/preview/explore/cluster-management/point-in-time-recovery-ycql" class="nav-link active">
+    <a href="../point-in-time-recovery-ycql" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -86,7 +86,7 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 1. Create a snapshot schedule for the new `pitr` keyspace from a shell prompt. In this example, the schedule is one snapshot every minute, and each snapshot is retained for ten minutes.
 
     ```sh
-    $ ./bin/yb-admin create_snapshot_schedule 1 10 ycql.pitr
+    $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 create_snapshot_schedule 1 10 ycql.pitr
     ```
 
     ```output
@@ -98,7 +98,7 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 1. Verify that a snapshot has happened:
 
     ```sh
-    $ ./bin/yb-admin list_snapshot_schedules
+    $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 list_snapshot_schedules
     ```
 
     ```output
@@ -156,7 +156,7 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 1. Restore the snapshot schedule to the timestamp you obtained before you added the data, at a terminal prompt:
 
     ```sh
-    $ ./bin/yb-admin restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca 1620418817729963
+    $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca 1620418817729963
     ```
 
     ```output
@@ -169,7 +169,7 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 1. Next, verify the restoration is in `RESTORED` state (you'll observe more snapshots in the list, as well):
 
     ```sh
-    $ ./bin/yb-admin list_snapshots
+    $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 list_snapshots
     ```
 
     ```output

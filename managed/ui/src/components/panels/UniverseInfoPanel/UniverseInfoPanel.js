@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import PropTypes from 'prop-types';
 import { FormattedDate } from 'react-intl';
 import { getUniverseEndpoint } from '../../../actions/common';
@@ -30,7 +30,7 @@ export default class UniverseInfoPanel extends Component {
       }
     } = this.props;
     const primaryCluster = getPrimaryCluster(clusters);
-    const userIntent = primaryCluster && primaryCluster.userIntent;
+    const userIntent = primaryCluster?.userIntent;
     const universeId = universeInfo.universeUUID;
     const formattedCreationDate = (
       <FormattedDate

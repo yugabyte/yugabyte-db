@@ -130,13 +130,13 @@ The pq driver is ready for building Go applications that connect to and interact
 
 ## Java
 
-### Yugabyte JDBC driver
+### YugabyteDB JDBC driver
 
-The Yugabyte JDBC driver is a distributed JDBC driver for YSQL built on the PostgreSQL JDBC driver, with features that eliminate the need for external load balancers.
+The YugabyteDB JDBC driver is a distributed JDBC driver for YSQL built on the PostgreSQL JDBC driver, with features that eliminate the need for external load balancers.
 
-For information on the Yugabyte JDBC driver and its load balancing features, see [Yugabyte JDBC driver](../../../integrations/jdbc-driver).
+For information on the YugabyteDB JDBC driver and its load balancing features, see [YugabyteDB JDBC driver](/preview/reference/drivers/java/yugabyte-jdbc-reference/).
 
-For a tutorial on building a sample Java application with the Yugabyte JDBC driver, see [Build a Java application](../../../quick-start/build-apps/java/ysql-yb-jdbc/).
+For a tutorial on building a sample Java application with the YugabyteDB JDBC driver, see [Build a Java application](../../../quick-start/build-apps/java/ysql-yb-jdbc/).
 
 ### PostgreSQL JDBC driver (PgJDBC)
 
@@ -146,7 +146,7 @@ For a tutorial on building a sample Java application with the PostgreSQL JDBC Dr
 
 #### Install the PostgreSQL JDBC driver
 
-To download binary JAR files, go to [PostgreSQL JDBC driver – Downloads](https://jdbc.postgresql.org/download.html). Because Java is platform neutral, download the appropriate JAR file and drop it into the classpath.
+To download binary JAR files, go to [PostgreSQL JDBC driver – Downloads](https://jdbc.postgresql.org/download/). Because Java is platform neutral, download the appropriate JAR file and drop it into the classpath.
 
 To get the latest versions for projects using [Apache Maven](https://maven.apache.org), see [Maven Central Repository Search](https://search.maven.org/artifact/org.postgresql/postgresql/42.2.14.jre7/jar).
 

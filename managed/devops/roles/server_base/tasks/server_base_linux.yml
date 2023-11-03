@@ -6,7 +6,7 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 #
-# Common server configuration tasks for Linux (currently Debian and RedHat families).
+# Common server configuration tasks for Linux (currently Debian, RedHat, SUSE families).
 #
 # **** NOTE!! *****
 # This file handles requirements that are common across build/dev environment and prod/test
@@ -98,24 +98,6 @@
     apt:
       update_cache: yes
     when: ansible_pkg_mgr == "apt"
-
-  - name: Set Azure packages to Install
-    set_fact:
-      linux_packages: "{{ linux_packages + azure_packages }}"
-    when: cloud_type == "azu"
-
-  - name: Install epel-release repo on centos if not present
-    become: yes
-    become_method: sudo
-    yum:
-      name: epel-release
-      state: latest
-      update_cache: yes
-    register: result
-    until: result.rc == 0
-    retries: "{{ yum_retry_count }}"
-    when: ansible_os_family == 'RedHat' and "epel-release not in ansible_facts.packages"
-    tags: yb-prebuilt-ami
 
   - block:
     - name: Find all yum repos

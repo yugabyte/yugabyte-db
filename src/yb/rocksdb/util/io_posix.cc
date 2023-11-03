@@ -21,8 +21,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifdef ROCKSDB_LIB_IO_POSIX
-
 #include "yb/rocksdb/util/io_posix.h"
 #include <errno.h>
 #include <fcntl.h>
@@ -43,7 +41,6 @@
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/posix_logger.h"
-#include "yb/rocksdb/util/sync_point.h"
 
 #include "yb/util/file_system_posix.h"
 #include "yb/util/malloc.h"
@@ -53,6 +50,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/std_util.h"
 #include "yb/util/string_util.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_kill.h"
 
 DECLARE_bool(never_fsync);
@@ -382,4 +380,3 @@ Status PosixDirectory::Fsync() {
   return Status::OK();
 }
 }  // namespace rocksdb
-#endif

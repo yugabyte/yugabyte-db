@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertRuleSeverityEnum, AlertRuleSourceEnum, CloudEnum } from '@app/api/src';
+import { CloudEnum } from '@app/api/src';
 import config from '@app/config.json';
 import AWSLogoIcon from '@app/assets/logo-aws.svg';
 import GCPLogoIcon from '@app/assets/logo-gcp.svg';
@@ -51,13 +51,6 @@ export const clouds = [
 ];
 
 export const TEST_CAPTCHA_SITEKEY = '10000000-ffff-ffff-ffff-000000000001';
-
-export const ALERT_LABELS: Record<string, string> = {
-  BILLING: AlertRuleSourceEnum.Billing,
-  CLUSTER: AlertRuleSourceEnum.Cluster,
-  SEVERE: AlertRuleSeverityEnum.Severe,
-  WARNING: AlertRuleSeverityEnum.Warning
-};
 
 //TODO: Port all other links here
 export const EXTERNAL_LINKS: Record<string, string> = {

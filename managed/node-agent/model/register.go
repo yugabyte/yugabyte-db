@@ -2,7 +2,10 @@
 
 package model
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 type RegisterRequest struct {
 	CommonInfo
@@ -12,7 +15,7 @@ type NodeAgent struct {
 	CommonInfo
 	Uuid         string          `json:"uuid"`
 	CustomerUuid string          `json:"customerUuid"`
-	UpdatedAt    int             `json:"updatedAt"`
+	UpdatedAt    time.Time       `json:"updatedAt"`
 	Config       NodeAgentConfig `json:"config"`
 }
 
@@ -25,16 +28,20 @@ type ResponseError struct {
 	Message       string `json:"error"`
 }
 
-type RegisterResponseEmpty struct {
+type ResponseMessage struct {
 	SuccessStatus bool   `json:"success"`
 	Message       string `json:"message"`
 }
 
 type CommonInfo struct {
-	Name    string `json:"name"`
-	IP      string `json:"ip"`
-	State   string `json:"state"`
-	Version string `json:"version"`
+	Name     string `json:"name"`
+	IP       string `json:"ip"`
+	State    string `json:"state"`
+	Version  string `json:"version"`
+	ArchType string `json:"archType"`
+	OSType   string `json:"osType"`
+	Home     string `json:"home"`
+	Port     int    `json:"port"`
 }
 
 type NodeAgentConfig struct {
@@ -54,15 +61,33 @@ type User struct {
 	Role       string `json:"role"`
 }
 
-type DisplayInterface interface {
-	ToString() string
+type SessionInfo struct {
+	CustomerId string `json:"customerUUID"`
+	UserId     string `json:"UserUUID"`
 }
 
-func (c Customer) ToString() string {
+type DisplayInterface interface {
+	Id() string
+	String() string
+}
+
+// Id implements the method in DisplayInterface.
+func (c Customer) Id() string {
+	return c.CustomerId
+}
+
+// String implements the method in DisplayInterface.
+func (c Customer) String() string {
 	return fmt.Sprintf("Customer ID: %s, Customer Name: %s", c.CustomerId, c.CustomerCode)
 }
 
-func (u User) ToString() string {
+// Id implements the method in DisplayInterface.
+func (u User) Id() string {
+	return u.UserId
+}
+
+// String implements the method in DisplayInterface.
+func (u User) String() string {
 	return fmt.Sprintf("User ID: %s, Role: %s", u.UserId, u.Role)
 }
 

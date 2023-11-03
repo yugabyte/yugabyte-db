@@ -13,8 +13,8 @@
 
 #include "yb/master/yql_indexes_vtable.h"
 
-#include "yb/common/index_column.h"
-#include "yb/common/ql_name.h"
+#include "yb/qlexpr/index_column.h"
+#include "yb/qlexpr/ql_name.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
@@ -23,6 +23,8 @@
 #include "yb/master/catalog_manager_if.h"
 
 #include "yb/util/status_log.h"
+
+using std::string;
 
 namespace yb {
 namespace master {
@@ -90,9 +92,9 @@ string QLExpressionPBToPredicateString(const QLExpressionPB& where_expr, const S
 
 } // namespace
 
-Result<std::shared_ptr<QLRowBlock>> YQLIndexesVTable::RetrieveData(
+Result<VTableDataPtr> YQLIndexesVTable::RetrieveData(
     const QLReadRequestPB& request) const {
-  auto vtable = std::make_shared<QLRowBlock>(schema());
+  auto vtable = std::make_shared<qlexpr::QLRowBlock>(schema());
   auto* catalog_manager = &this->catalog_manager();
 
   auto tables = catalog_manager->GetTables(GetTablesMode::kVisibleToClient);
@@ -119,19 +121,19 @@ Result<std::shared_ptr<QLRowBlock>> YQLIndexesVTable::RetrieveData(
     auto ns_info = VERIFY_RESULT(catalog_manager->FindNamespaceById(table->namespace_id()));
 
     // Create appropriate row for the table;
-    QLRow& row = vtable->Extend();
+    auto& row = vtable->Extend();
     RETURN_NOT_OK(SetColumnValue(kKeyspaceName, ns_info->name(), &row));
     RETURN_NOT_OK(SetColumnValue(kTableName, indexed_table->name(), &row));
     RETURN_NOT_OK(SetColumnValue(kIndexName, table->name(), &row));
     RETURN_NOT_OK(SetColumnValue(kKind, "COMPOSITES", &row));
 
     string target;
-    IndexInfo index_info = indexed_table->GetIndexInfo(table->id());
+    auto index_info = indexed_table->GetIndexInfo(table->id());
     for (size_t i = 0; i < index_info.hash_column_count(); i++) {
       if (index_info.use_mangled_column_name()) {
         // Newer IndexInfo uses mangled name of expression instead of column ID of the table
         // that was indexed.
-        target += YcqlName::DemangleName(index_info.columns()[i].column_name);
+        target += qlexpr::YcqlName::DemangleName(index_info.columns()[i].column_name);
       } else {
         target += ColumnName(indexed_schema, index_info.columns()[i].indexed_column_id);
       }
@@ -148,7 +150,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLIndexesVTable::RetrieveData(
       if (index_info.use_mangled_column_name()) {
         // Newer IndexInfo uses mangled name of expression instead of column ID of the table
         // that was indexed.
-        target += YcqlName::DemangleName(index_info.columns()[i].column_name);
+        target += qlexpr::YcqlName::DemangleName(index_info.columns()[i].column_name);
       } else {
         target += ColumnName(indexed_schema, index_info.columns()[i].indexed_column_id);
       }
@@ -160,7 +162,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLIndexesVTable::RetrieveData(
       if (index_info.use_mangled_column_name()) {
         // Newer IndexInfo uses mangled name of expression instead of column ID of the table
         // that was indexed.
-        include += YcqlName::DemangleName(index_info.columns()[i].column_name);
+        include += qlexpr::YcqlName::DemangleName(index_info.columns()[i].column_name);
       } else {
         include += ColumnName(indexed_schema, index_info.columns()[i].indexed_column_id);
       }

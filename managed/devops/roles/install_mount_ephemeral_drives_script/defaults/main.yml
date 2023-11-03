@@ -9,3 +9,5 @@
 generic_mount_points:
   - "/dev/sdb"
   - "/dev/sdc"
+
+lun_indexes: ""

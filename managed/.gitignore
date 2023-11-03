@@ -2,6 +2,7 @@
 build
 logs
 target
+.bsp
 .idea
 .idea_modules
 jacoco.exec
@@ -52,3 +53,9 @@ ui/junit.xml
 src/public/*
 
 client/*/generated
+lib
+
+devops/pex/pexEnv
+
+# This is for people using pyenv with a local version for YBA set.
+.python-version

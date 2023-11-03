@@ -39,7 +39,7 @@
 #include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
 
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.proxy.h"
@@ -71,10 +71,14 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/test_util.h"
+#include "yb/util/flags.h"
+
+using std::vector;
+using std::string;
 
 DECLARE_bool(enable_leader_failure_detection);
 DECLARE_bool(catalog_manager_wait_for_new_tablets_to_elect_leader);
-DEFINE_int32(num_election_test_loops, 3,
+DEFINE_NON_RUNTIME_int32(num_election_test_loops, 3,
              "Number of random EmulateElection() loops to execute in "
              "TestReportNewLeaderOnLeaderChange");
 DECLARE_bool(enable_ysql);
@@ -89,7 +93,6 @@ using client::YBTable;
 using client::YBTableCreator;
 using client::YBTableName;
 using consensus::GetConsensusRole;
-using consensus::RaftPeerPB;
 using itest::SimpleIntKeyYBSchema;
 using master::ReportedTabletPB;
 using master::TabletReportPB;
@@ -147,9 +150,9 @@ void TsTabletManagerITest::TearDown() {
 TEST_F(TsTabletManagerITest, TestReportNewLeaderOnLeaderChange) {
   // We need to control elections precisely for this test since we're using
   // EmulateElection() with a distributed consensus configuration.
-  FLAGS_enable_leader_failure_detection = false;
-  FLAGS_catalog_manager_wait_for_new_tablets_to_elect_leader = false;
-  FLAGS_use_create_table_leader_hint = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_leader_failure_detection) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_wait_for_new_tablets_to_elect_leader) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_create_table_leader_hint) = false;
 
   // Run a few more iters in slow-test mode.
   OverrideFlagForSlowTests("num_election_test_loops", "10");
@@ -161,7 +164,7 @@ TEST_F(TsTabletManagerITest, TestReportNewLeaderOnLeaderChange) {
   std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   ASSERT_OK(table_creator->table_name(kTableName)
             .schema(&schema_)
-            .hash_schema(YBHashSchema::kMultiColumnHash)
+            .hash_schema(dockv::YBHashSchema::kMultiColumnHash)
             .num_tablets(1)
             .Create());
   ASSERT_OK(client_->OpenTable(kTableName, &table));
@@ -197,7 +200,7 @@ TEST_F(TsTabletManagerITest, TestReportNewLeaderOnLeaderChange) {
     SCOPED_TRACE(Substitute("Iter: $0", i));
     int new_leader_idx = rand_r(&seed) % 2;
     LOG(INFO) << "Electing peer " << new_leader_idx << "...";
-    consensus::Consensus* con = CHECK_NOTNULL(tablet_peers[new_leader_idx]->consensus());
+    auto con = CHECK_RESULT(tablet_peers[new_leader_idx]->GetConsensus());
     ASSERT_OK(con->EmulateElection());
     LOG(INFO) << "Waiting for servers to agree...";
     ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(5),

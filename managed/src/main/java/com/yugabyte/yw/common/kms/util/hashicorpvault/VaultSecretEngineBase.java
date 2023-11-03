@@ -11,14 +11,12 @@
 
 package com.yugabyte.yw.common.kms.util.hashicorpvault;
 
-import io.ebean.annotation.EnumValue;
 import com.bettercloud.vault.VaultException;
-import java.util.ArrayList;
-import java.util.Map;
-import java.util.List;
-
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.KeyType;
-
+import io.ebean.annotation.EnumValue;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -57,6 +55,7 @@ public abstract class VaultSecretEngineBase {
       }
     }
   }
+
   /** Operations enum : key operations related to usage of secret engine keys */
   public enum VaultOperations {
     @EnumValue("keys")
@@ -158,6 +157,7 @@ public abstract class VaultSecretEngineBase {
   }
 
   public abstract void checkForPermissions() throws Exception;
+
   /**
    * @param engineKeyName name of the "vault key" to be created. Vault key is then further used to
    *     encrypt universekey.

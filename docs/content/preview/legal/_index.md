@@ -12,6 +12,8 @@ menu:
     weight: 3000
 type: indexpage
 showRightNav: true
+cascade:
+  unversioned: true
 ---
 
 ## Licenses

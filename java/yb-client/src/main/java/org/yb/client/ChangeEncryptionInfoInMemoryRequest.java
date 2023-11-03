@@ -13,7 +13,7 @@
 
 package org.yb.client;
 
-import org.jboss.netty.buffer.ChannelBuffer;
+import io.netty.buffer.ByteBuf;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.master.MasterEncryptionOuterClass;
 import org.yb.util.Pair;
@@ -33,7 +33,7 @@ class ChangeEncryptionInfoInMemoryRequest extends YRpc<ChangeEncryptionInfoInMem
   }
 
   @Override
-  ChannelBuffer serialize(Message header) {
+  ByteBuf serialize(Message header) {
     assert header.isInitialized();
     final MasterEncryptionOuterClass.ChangeEncryptionInfoRequestPB.Builder builder =
             MasterEncryptionOuterClass.ChangeEncryptionInfoRequestPB.newBuilder()

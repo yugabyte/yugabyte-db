@@ -10,7 +10,6 @@
 
 from __future__ import print_function
 
-import distro
 import json
 import logging
 import os
@@ -20,26 +19,21 @@ import random
 import re
 import socket
 import string
-import stat
 import subprocess
 import sys
-import time
 
 from enum import Enum
 
+from ybops.common.release import ReleasePackage, RELEASE_VERSION_PATTERN
 from ybops.common.colors import Colors
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.utils.remote_shell import RemoteShell
-from ybops.utils.ssh import SSH_RETRY_DELAY, SSHClient
 
 BLOCK_SIZE = 4096
 HOME_FOLDER = os.environ["HOME"]
 YB_FOLDER_PATH = os.path.join(HOME_FOLDER, ".yugabyte")
 
 RELEASE_VERSION_FILENAME = "version.txt"
-RELEASE_VERSION_PATTERN = "\d+.\d+.\d+.\d+"
-RELEASE_REPOS = set(["devops", "yugaware", "yugabyte", "yugabundle_support",
-                    "yba_installer", "node_agent"])
 
 # Home directory of node instances. Try to read home dir from env, else assume it's /home/yugabyte.
 YB_HOME_DIR = os.environ.get("YB_HOME_DIR") or "/home/yugabyte"
@@ -64,118 +58,6 @@ DEFAULT_YSQL_PROXY_RPC_PORT = 5433
 DEFAULT_REDIS_PROXY_HTTP_PORT = 11000
 DEFAULT_REDIS_PROXY_RPC_PORT = 6379
 DEFAULT_NODE_EXPORTER_HTTP_PORT = 9300
-
-
-class ReleasePackage(object):
-    def __init__(self):
-        self.repo = None
-        self.version = None
-        self.commit = None
-        self.build_number = None
-        self.build_type = None
-        self.system = None
-        self.machine = None
-        self.compiler = None
-
-    @classmethod
-    def from_pieces(cls, repo, version, commit, build_type=None, os_type=None, arch_type=None):
-        obj = cls()
-        obj.repo = repo
-        obj.version = version
-        obj.commit = commit
-        obj.build_type = build_type
-        obj.system = os_type
-        obj.machine = arch_type
-        if obj.system is None:
-            obj.system = platform.system().lower()
-            if obj.system == "linux":
-                # We recently moved from centos7 to almalinux8 as the build host for our universal
-                # x86_64 linux build. This changes the name of the release tarball we create.
-                # Unfortunately, we have a lot of hard coded references to the centos package
-                # names in our downsstream release code. So here we munge the name to 'centos' to
-                # keep things working while we fix downstream code.
-                # TODO(jharveymsith): Remove the almalinux to centos mapping once downstream is
-                # fixed.
-                if distro.id() == "centos" and distro.major_version() == "7" \
-                        or distro.id() == "almalinux" and platform.machine().lower() == "x86_64":
-                    obj.system = "centos"
-                elif distro.id == "ubuntu":
-                    obj.system = distro.id() + distro.version()
-                else:
-                    obj.system = distro.id() + distro.major_version()
-        if len(obj.system) == 0:
-            raise YBOpsRuntimeError("Cannot release on this system type: " + platform.system())
-        if obj.machine is None:
-            obj.machine = platform.machine().lower()
-
-        obj.validate()
-        return obj
-
-    @classmethod
-    def from_package_name(cls, package_name, is_official_release=False):
-        obj = cls()
-        obj.extract_components_from_package_name(package_name, is_official_release)
-
-        obj.validate()
-        return obj
-
-    def extract_components_from_package_name(self, package_name, is_official_release):
-        """
-        There are two possible formats for our package names:
-        - RC format, containing git hash and build type
-          eg: <repo>[-ee]-<A.B.C.D>-<commit>[-<build_type>]-<system>-<machine>.tar.gz
-        - Release format (is always release, so no need for build_type):
-          eg: <repo>[-ee]-<A.B.C.D>-b<build_number>-<system>-<machine>.tar.gz
-
-        Note that each of these types has an optional -ee for backwards compatibility to our
-        previous enterprise vs community split. Also the yugabyte package has an optional build
-        type, ie: -release, -debug, etc.
-        """
-        # Expect <repo>-<version>.
-        pattern = "^(?P<repo>[^-]+)(?:-[^-]+)?-(?P<version>{})".format(RELEASE_VERSION_PATTERN)
-        # If this is an official release, we expect a commit hash and maybe a build_type, else we
-        # expect a "-b" and a build number.
-        if is_official_release:
-            # Add build number.
-            pattern += "-b(?P<build_number>[0-9]+)"
-        else:
-            # Add commit hash and maybe build type.
-            pattern += "-(?P<commit_hash>[^-]+)(-(?P<build_type>[^-]+))?"
-        pattern += "(-(?P<compiler>[^-]+))?-(?P<system>[^-]+)-(?P<machine>[^-]+)\.tar\.gz$"
-        match = re.match(pattern, package_name)
-        if not match:
-            raise YBOpsRuntimeError("Invalid package name format: {}".format(package_name))
-        self.repo = match.group("repo")
-        self.version = match.group("version")
-        self.build_number = match.group("build_number") if is_official_release else None
-        self.commit = match.group("commit_hash") if not is_official_release else None
-        self.build_type = match.group("build_type") if not is_official_release else None
-        self.compiler = match.group("compiler")
-        self.system = match.group("system")
-        self.machine = match.group("machine")
-
-    def validate(self):
-        if self.repo not in RELEASE_REPOS:
-            raise YBOpsRuntimeError("Invalid repo {}".format(self.repo))
-
-    def get_release_package_name(self):
-        return "{repo}-{release_name}-{system}-{machine}.tar.gz".format(
-            repo=self.repo,
-            release_name=self.get_release_name(),
-            system=self.system,
-            machine=self.machine)
-
-    def get_release_name(self):
-        # If we have a build number set, prioritize that to get the release version name, rather
-        # than the internal commit hash name.
-        release_name = self.version
-        if self.build_number is not None:
-            release_name += "-b{}".format(self.build_number)
-        else:
-            release_name += "-{}".format(self.commit)
-            if self.build_type is not None:
-                release_name += "-{}".format(self.build_type)
-        return release_name
 
 
 def get_path_from_yb(path):
@@ -411,105 +293,79 @@ class ValidationResult(Enum):
         return json.dumps({"state": self.name, "message": self.value})
 
 
-def validate_instance(host_name, port, username, ssh_key_file, mount_paths, **kwargs):
-    """This method tries to ssh to the host with the username provided on the port, executes a
+def validate_instance(connect_options, mount_paths, **kwargs):
+    """This method tries to connect to the host with the username provided on the port, executes a
     simple ls statement on the provided mount path and checks that the OS is centos-7. It returns
     0 if succeeded, 1 if ssh failed, 2 if mount path failed, or 3 if the OS was incorrect.
     Args:
-        host_name (str): SSH host IP address
-        port (int): SSH port
-        username (str): SSH username
-        ssh_key_file (str): SSH key file
-        mount_paths (tuple): String paths to the mount points of each drive on the instance
+        connect_options (dict): See RemoteShell for details.
     Returns:
         (dict): return success/failure code and corresponding message (0 = success, 1-3 = failure)
     """
     try:
-        ssh2_enabled = kwargs.get('ssh2_enabled', False)
-        ssh_client = SSHClient(ssh2_enabled=ssh2_enabled)
-        ssh_client.connect(host_name, username, ssh_key_file, port)
+        remote_shell = RemoteShell(connect_options)
         for path in [mount_path.strip() for mount_path in mount_paths]:
             path = '"' + re.sub('[`"]', '', path) + '"'
-            stdout = ssh_client.exec_command("ls -a " + path + "", output_only=True)
+            stdout = remote_shell.exec_command("ls -a " + path + "", output_only=True)
             if len(stdout) == 0:
                 return ValidationResult.INVALID_MOUNT_POINTS
 
         os_check_cmd = "source /etc/os-release && echo \"$NAME $VERSION_ID\""
-        _, output, _ = ssh_client.exec_command(os_check_cmd)
+        _, output, _ = remote_shell.exec_command(os_check_cmd)
         if len(output) == 0 or output[0].strip().lower() != "centos linux 7":
             return ValidationResult.INVALID_OS
 
         # If we get this far, then we succeeded
         return ValidationResult.VALID
     except YBOpsRuntimeError as ex:
-        logging.error("[app] lol in validation Failed to execute remote command: {}".format(ex))
+        logging.error("[app] Failed to execute remote command: {}".format(ex))
         return ValidationResult.UNREACHABLE
     finally:
-        ssh_client.close_connection()
+        if remote_shell:
+            remote_shell.close()
 
 
-def validate_cron_status(host_name, port, username, ssh_key_file, **kwargs):
-    """This method tries to ssh to the host with the username provided on the port, checks if
-    our expected cronjobs are present, and returns true if they are. Any failure, including SSH
-    issues will cause it to return false.
+def validate_cron_status(connect_options, **kwargs):
+    """This method tries to connect to the host with the username provided on the port, checks if
+    our expected cronjobs are present, and returns true if they are. Any failure, including
+    connection issues will cause it to return false.
     Args:
-        host_name (str): SSH host IP address
-        port (int): SSH port
-        username (str): SSH username
-        ssh_key_file (str): SSH key file
+        connect_options (dict): See RemoteShell for details.
     Returns:
         bool: true if all cronjobs are present, false otherwise (or if errored)
     """
     try:
-        ssh2_enabled = kwargs.get('ssh2_enabled', False)
-        ssh_client = SSHClient(ssh2_enabled=ssh2_enabled)
-        ssh_client.connect(host_name, username, ssh_key_file, port)
-        stdout = ssh_client.exec_command("crontab -l", output_only=True)
+        remote_shell = RemoteShell(connect_options)
+        stdout = remote_shell.exec_command("crontab -l", output_only=True)
         cronjobs = ["clean_cores.sh", "zip_purge_yb_logs.sh", "yb-server-ctl.sh tserver"]
         return all(c in stdout for c in cronjobs)
     except YBOpsRuntimeError as ex:
         logging.error("Failed to validate cronjobs: {}".format(ex))
         return False
     finally:
-        ssh_client.close_connection()
+        if remote_shell:
+            remote_shell.close()
 
 
-def remote_exec_command(host_name, port, username, ssh_key_file, cmd,
-                        retries_on_failure=3, retry_delay=SSH_RETRY_DELAY, **kwargs):
+def remote_exec_command(connect_options, cmd, **kwargs):
     """This method will execute the given cmd on remote host and return the output.
     Args:
-        host_name (str): SSH host IP address
-        port (int): SSH port
-        username (str): SSH username
-        ssh_key_file (str): SSH key file
-        cmd (str): Command to run
-        timeout (int): Time in seconds to wait before aborting
-        retries_on_failure (int): Number of times to retry
-        retry_delay (int): Time in seconds to wait between subsequent retries
+        connect_options (dict): See RemoteShell for details.
     Returns:
         rc (int): returncode
         stdout (str): output log
         stderr (str): error logs
     """
-    attempts = retries_on_failure + 1
-
-    while retries_on_failure >= 0:
-        logging.info("[app] Attempt #{} to execute remote command..."
-                     .format(attempts - retries_on_failure))
-        try:
-            ssh2_enabled = kwargs.get('ssh2_enabled', False)
-            ssh_client = SSHClient(ssh2_enabled=ssh2_enabled)
-            ssh_client.connect(host_name, username, ssh_key_file, port)
-            rc, stdout, stderr = ssh_client.exec_command(cmd)
-            return rc, stdout, stderr
-        except YBOpsRuntimeError as e:
-            logging.error("Failed to execute remote command: {}".format(e))
-            retries_on_failure -= 1
-            time.sleep(retry_delay)
-        finally:
-            ssh_client.close_connection()
-
-    return 1, None, None  # treat this as a non-zero return code
+    try:
+        remote_shell = RemoteShell(connect_options)
+        rc, stdout, stderr = remote_shell.exec_command(cmd)
+        return rc, stdout, stderr
+    except YBOpsRuntimeError as e:
+        logging.error("Failed to execute remote command: {}".format(e))
+        return 1, None, None  # treat this as a non-zero return code
+    finally:
+        if remote_shell:
+            remote_shell.close()
 
 
 def get_or_create(getter):
@@ -571,10 +427,10 @@ def linux_get_ip_address(ifname):
 
 
 # Given a comma separated string of paths on a remote host
-# and ssh_options to connect to the remote host
+# and connect_options to connect to the remote host
 # returns a comma separated string of the root mount paths for those paths
-def get_mount_roots(ssh_options, paths):
-    remote_shell = RemoteShell(ssh_options)
+def get_mount_roots(connect_options, paths):
+    remote_shell = RemoteShell(connect_options)
     remote_cmd = 'df --output=target {}'.format(" ".join(paths.split(",")))
     # Example output of the df cmd
     # $ df --output=target /bar/foo/rnd /storage/abc

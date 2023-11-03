@@ -54,33 +54,54 @@
   when: use_chrony
   tags: yb-prebuilt-ami
 
-- name: Provision | Set swappiness off
-  sysctl:
-    name: vm.swappiness
-    value: 0
-    state: present
-  tags: yb-prebuilt-ami
+# Set sysctl values
+- block:
+  - name: Provision | Set swappiness off
+    sysctl:
+      name: vm.swappiness
+      value: 0
+      state: present
+    tags: yb-prebuilt-ami
 
-- name: Provision | Create core dump kernel pattern
-  sysctl:
-    name: kernel.core_pattern
-    value: "{{ yb_home_dir }}/cores/core_%e.%p"
-    state: present
-  tags: yb-prebuilt-ami
+  - name: Provision | Create core dump kernel pattern
+    sysctl:
+      name: kernel.core_pattern
+      value: "{{ yb_home_dir }}/cores/core_%p_%t_%E"
+      state: present
+    tags: yb-prebuilt-ami
+
+  - name: "Provision | Set max map count to {{ vm_max_map_count }}"
+    sysctl:
+      name: vm.max_map_count
+      value: "{{ vm_max_map_count }}"
+      state: present
+    tags: yb-prebuilt-ami
+
+- name: Provision | Ensure mount paths exist.
+  shell: |
+    mkdir -p {{ item }}
+  become: yes
+  become_method: sudo
+  with_items: "{{ mount_points.split(',') }}"
+
+- name: Provision | Ensure proper ownership for mount paths.
+  shell: |
+    chown -R {{ user_name }}:{{ user_name }} {{ item }}
+  become: yes
+  become_method: sudo
+  with_items: "{{ mount_points.split(',') }}"
 
 - name: Provision | Ensure proper permissions for mount paths.
-  file:
-    mode: 0755
-    path: "{{ item }}"
-    state: directory
-    owner: "{{ user_name }}"
-    group: "{{ user_name }}"
-    recurse: yes
+  shell: |
+    chmod -R 755 {{ item }}
+  become: yes
+  become_method: sudo
   with_items: "{{ mount_points.split(',') }}"
 
 - name: setup-postgres-cgroups
   include_role:
     name: setup-cgroup
+  when: not systemd_option
 
 # Give yugabyte user sudo access to start/stop/restart master and tserver
 - name: Add yugabyte sudo user without password for metric collection operations
@@ -106,6 +127,8 @@
       lineinfile:
         dest: "{{ yb_home_dir }}/.bash_profile"
         line: ". {{ yb_home_dir }}/.bashrc"
+        owner: "{{ user_name }}"
+        group: "{{ user_name }}"
         create: yes
         state: present
 
@@ -113,6 +136,8 @@
       lineinfile:
         dest: "{{ yb_home_dir }}/.bashrc"
         line: "export XDG_RUNTIME_DIR=/run/user/{{ output.stdout }}"
+        owner: "{{ user_name }}"
+        group: "{{ user_name }}"
         create: yes
         state: present
 
@@ -132,7 +157,8 @@
       become_method: sudo
       shell:
         cmd: "loginctl enable-linger {{ user_name }}"
-    when: ansible_os_family != 'RedHat' or ansible_distribution_major_version != '7'
+    # Do not configure user scope for setting up systemd in centos7/amazonLinux:2.
+    when: ansible_os_family != 'RedHat' or (ansible_distribution_major_version != '7' and not (ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2'))
   - block:
     # Give yugabyte user sudo access to start/stop/restart master and tserver
     - name: Add yugabyte sudo user without password
@@ -153,6 +179,11 @@
               /bin/systemctl restart yb-controller,
               /bin/systemctl enable yb-controller,
               /bin/systemctl disable yb-controller,
+              /bin/systemctl start yb-bind_check.service,
+              /bin/systemctl stop yb-bind_check.service,
+              /bin/systemctl restart yb-bind_check.service,
+              /bin/systemctl enable yb-bind_check.service,
+              /bin/systemctl disable yb-bind_check.service,
               /bin/systemctl start yb-zip_purge_yb_logs.timer,
               /bin/systemctl stop yb-zip_purge_yb_logs.timer,
               /bin/systemctl restart yb-zip_purge_yb_logs.timer,
@@ -197,6 +228,10 @@
         validate: "/usr/sbin/visudo -cf %s"
       when: ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7'
 
+  - name: setup-postgres-cgroups
+    include_role:
+      name: setup-cgroup
+
   # Adding systemd service files for yb-master and yb-tserver
   - name: Add yb-master.service
     template:
@@ -219,6 +254,15 @@
     template:
       src: "yb-controller.service"
       dest: "{{ systemd_dir }}/yb-controller.service"
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
+      mode: 0644
+
+  # Adding yb-bind_check service files for the availability of the port
+  - name: Add yb-bind_check.service
+    template:
+      src: "yb-bind_check.service"
+      dest: "{{ systemd_dir }}/yb-bind_check.service"
       owner: "{{ user_name }}"
       group: "{{ user_name }}"
       mode: 0644
@@ -272,6 +316,24 @@
       dest: "{{ systemd_dir }}/yb-collect_metrics.timer"
       owner: "{{ user_name }}"
       group: "{{ user_name }}"
+      mode: 0644
+
+  - name: Create or Update .bashrc file to display systemd mode upon ssh login
+    blockinfile:
+      dest: "{{ yb_home_dir }}/.bash_profile"
+      block: |
+        ORANGE='\033[0;33m'
+        NC='\033[0m' # No Color
+
+        if [[ $- == *i* ]]
+            then export PS1="[\u@\h ~]\$ "
+            if [ "$EUID" -eq 0 ]
+                then echo -e "Use ${ORANGE}'sudo systemctl'${NC} to manage YB software"
+                else echo -e "Use ${ORANGE}'systemctl --user'${NC} to manage YB software"
+            fi
+        fi
+      create: yes
+      state: present
       mode: 0644
 
   tags: systemd_upgrade

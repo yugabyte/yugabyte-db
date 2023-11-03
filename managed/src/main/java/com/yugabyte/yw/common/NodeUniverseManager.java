@@ -1,38 +1,72 @@
+// Copyright (c) Yugabyte, Inc.
+
 package com.yugabyte.yw.common;
 
+import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.NodeAgentPoller;
 import com.yugabyte.yw.common.concurrent.KeyLock;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.ImageBundle;
+import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.MapUtils;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.StringUtils;
+import play.libs.Json;
 
+@Slf4j
 @Singleton
 public class NodeUniverseManager extends DevopsBase {
   private static final ShellProcessContext DEFAULT_CONTEXT =
       ShellProcessContext.builder().logCmdOutput(true).build();
-  public static final long YSQL_COMMAND_DEFAULT_TIMEOUT_SEC = TimeUnit.MINUTES.toSeconds(3);
   public static final String NODE_ACTION_SSH_SCRIPT = "bin/run_node_action.py";
   public static final String CERTS_DIR = "/yugabyte-tls-config";
   public static final String K8S_CERTS_DIR = "/opt/certs/yugabyte";
+  public static final String NODE_UTILS_SCRIPT = "bin/node_utils.sh";
 
   private final KeyLock<UUID> universeLock = new KeyLock<>();
 
+  @Inject ImageBundleUtil imageBundleUtil;
+  @Inject NodeAgentClient nodeAgentClient;
+  @Inject NodeAgentPoller nodeAgentPoller;
+  @Inject RuntimeConfGetter confGetter;
+  @Inject LocalNodeManager localNodeManager;
+
   @Override
   protected String getCommandType() {
-    return null;
+    return "node";
   }
 
   public ShellResponse downloadNodeLogs(
@@ -51,28 +85,127 @@ public class NodeUniverseManager extends DevopsBase {
     }
   }
 
+  public String getLocalTmpDir() {
+    String localTmpDir = confGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath);
+    if (localTmpDir == null || localTmpDir.isEmpty()) {
+      localTmpDir = "/tmp";
+    }
+    return localTmpDir;
+  }
+
+  public String getRemoteTmpDir(NodeDetails node, Universe universe) {
+    String remoteTmpDir = GFlagsUtil.getCustomTmpDirectory(node, universe);
+    if (remoteTmpDir == null || remoteTmpDir.isEmpty()) {
+      remoteTmpDir = "/tmp";
+    }
+    return remoteTmpDir;
+  }
+
+  public String createTempFileWithSourceFiles(List<String> sourceNodeFiles) {
+    String tempFilePath =
+        getLocalTmpDir() + "/" + UUID.randomUUID().toString() + "-source-files.txt";
+    try {
+      Files.createFile(Paths.get(tempFilePath));
+    } catch (IOException e) {
+      log.error("Error creating file: " + e.getMessage());
+      return null;
+    }
+
+    try (PrintWriter out = new PrintWriter(new FileWriter(tempFilePath))) {
+      for (String value : sourceNodeFiles) {
+        out.println(value);
+        log.info(value);
+      }
+      log.info("Above values written to file.");
+    } catch (IOException e) {
+      log.error("Error writing to file: " + e.getMessage());
+      return null;
+    }
+    return tempFilePath;
+  }
+
   public ShellResponse downloadNodeFile(
       NodeDetails node,
       Universe universe,
       String ybHomeDir,
-      String sourceNodeFile,
+      List<String> sourceNodeFiles,
       String targetLocalFile) {
     universeLock.acquireLock(universe.getUniverseUUID());
+    String filesListFilePath = "";
     try {
       List<String> actionArgs = new ArrayList<>();
       // yb_home_dir denotes a custom starting directory for the remote file. (Eg: ~/, /mnt/d0,
       // etc.)
       actionArgs.add("--yb_home_dir");
       actionArgs.add(ybHomeDir);
-      actionArgs.add("--source_node_files");
-      actionArgs.add(sourceNodeFile);
+
+      filesListFilePath = createTempFileWithSourceFiles(sourceNodeFiles);
+      if (filesListFilePath == null) {
+        throw new RuntimeException(
+            "Could not create temp file while downloading node file for universe "
+                + universe.getUniverseUUID().toString());
+      }
+      actionArgs.add("--source_node_files_path");
+      actionArgs.add(filesListFilePath);
+
       actionArgs.add("--target_local_file");
       actionArgs.add(targetLocalFile);
       return executeNodeAction(
           UniverseNodeAction.DOWNLOAD_FILE, universe, node, actionArgs, DEFAULT_CONTEXT);
     } finally {
+      FileUtils.deleteQuietly(new File(filesListFilePath));
       universeLock.releaseLock(universe.getUniverseUUID());
     }
+  }
+
+  public ShellResponse copyFileFromNode(
+      NodeDetails node, Universe universe, String remoteFile, String localFile) {
+    return copyFileFromNode(node, universe, remoteFile, localFile, DEFAULT_CONTEXT);
+  }
+
+  public ShellResponse copyFileFromNode(
+      NodeDetails node,
+      Universe universe,
+      String remoteFile,
+      String localFile,
+      ShellProcessContext context) {
+    List<String> actionArgs = new ArrayList<>();
+    actionArgs.add("--remote_file");
+    actionArgs.add(remoteFile);
+    actionArgs.add("--local_file");
+    actionArgs.add(localFile);
+    return executeNodeAction(UniverseNodeAction.COPY_FILE, universe, node, actionArgs, context);
+  }
+
+  public ShellResponse bulkCheckFilesExist(
+      NodeDetails node,
+      Universe universe,
+      String ybDir,
+      String sourceFilesPath,
+      String targetLocalFilePath) {
+    universeLock.acquireLock(universe.getUniverseUUID());
+    try {
+      List<String> actionArgs = new ArrayList<>();
+      actionArgs.add("--yb_dir");
+      actionArgs.add(ybDir);
+      actionArgs.add("--source_files_to_check_path");
+      actionArgs.add(sourceFilesPath);
+      actionArgs.add("--target_local_file_path");
+      actionArgs.add(targetLocalFilePath);
+      return executeNodeAction(
+          UniverseNodeAction.BULK_CHECK_FILES_EXIST, universe, node, actionArgs, DEFAULT_CONTEXT);
+    } finally {
+      universeLock.releaseLock(universe.getUniverseUUID());
+    }
+  }
+
+  public ShellResponse uploadFileToNode(
+      NodeDetails node,
+      Universe universe,
+      String sourceFile,
+      String targetFile,
+      String permissions) {
+    return uploadFileToNode(node, universe, sourceFile, targetFile, permissions, DEFAULT_CONTEXT);
   }
 
   public ShellResponse uploadFileToNode(
@@ -110,6 +243,24 @@ public class NodeUniverseManager extends DevopsBase {
     actionArgs.add("--command");
     actionArgs.addAll(command);
     return executeNodeAction(UniverseNodeAction.RUN_COMMAND, universe, node, actionArgs, context);
+  }
+
+  /**
+   * Runs a script on the node to test if the given directory is writable
+   *
+   * @param directoryPath Full directory path ending in '/'
+   * @param node Node on which to test the directory
+   * @param universe Universe in which the node exists
+   * @return Whether the given directory can be written to.
+   */
+  public boolean isDirectoryWritable(String directoryPath, NodeDetails node, Universe universe) {
+    List<String> actionArgs = new ArrayList<>();
+    actionArgs.add("--test_directory");
+    actionArgs.add(directoryPath);
+    return executeNodeAction(
+            UniverseNodeAction.TEST_DIRECTORY, universe, node, actionArgs, DEFAULT_CONTEXT)
+        .getMessage()
+        .equals("Directory is writable");
   }
 
   /**
@@ -151,7 +302,11 @@ public class NodeUniverseManager extends DevopsBase {
   }
 
   public ShellResponse runYbAdminCommand(
-      NodeDetails node, Universe universe, String ybAdminCommand, long timeoutSec) {
+      NodeDetails node,
+      Universe universe,
+      String ybAdminCommand,
+      List<String> args,
+      long timeoutSec) {
     List<String> command = new ArrayList<>();
     command.add(getYbHomeDir(node, universe) + "/master/bin/yb-admin");
     command.add("--master_addresses");
@@ -164,6 +319,7 @@ public class NodeUniverseManager extends DevopsBase {
     command.add("-timeout_ms");
     command.add(String.valueOf(TimeUnit.SECONDS.toMillis(timeoutSec)));
     command.add(ybAdminCommand);
+    command.addAll(args);
     ShellProcessContext context =
         ShellProcessContext.builder().logCmdOutput(true).timeoutSecs(timeoutSec).build();
     return runCommand(node, universe, command, context);
@@ -171,23 +327,53 @@ public class NodeUniverseManager extends DevopsBase {
 
   public ShellResponse runYsqlCommand(
       NodeDetails node, Universe universe, String dbName, String ysqlCommand) {
-    return runYsqlCommand(node, universe, dbName, ysqlCommand, YSQL_COMMAND_DEFAULT_TIMEOUT_SEC);
+    return runYsqlCommand(
+        node,
+        universe,
+        dbName,
+        ysqlCommand,
+        confGetter.getConfForScope(universe, UniverseConfKeys.ysqlTimeoutSecs));
   }
 
   public ShellResponse runYsqlCommand(
       NodeDetails node, Universe universe, String dbName, String ysqlCommand, long timeoutSec) {
+    boolean authEnabled =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.isYSQLAuthEnabled();
+    return runYsqlCommand(
+        node,
+        universe,
+        dbName,
+        ysqlCommand,
+        confGetter.getConfForScope(universe, UniverseConfKeys.ysqlTimeoutSecs),
+        authEnabled);
+  }
+
+  public ShellResponse runYsqlCommand(
+      NodeDetails node,
+      Universe universe,
+      String dbName,
+      String ysqlCommand,
+      long timeoutSec,
+      boolean authEnabled) {
+    Cluster curCluster = universe.getCluster(node.placementUuid);
+    if (curCluster.userIntent.providerType == CloudType.local) {
+      return localNodeManager.runYsqlCommand(node, universe, dbName, ysqlCommand, timeoutSec);
+    }
     List<String> command = new ArrayList<>();
     command.add("bash");
     command.add("-c");
     List<String> bashCommand = new ArrayList<>();
     Cluster cluster = universe.getUniverseDetails().getPrimaryCluster();
+    String customTmpDirectory = GFlagsUtil.getCustomTmpDirectory(node, universe);
     if (cluster.userIntent.enableClientToNodeEncrypt && !cluster.userIntent.enableYSQLAuth) {
       bashCommand.add("export sslmode=\"require\";");
     }
     bashCommand.add(getYbHomeDir(node, universe) + "/tserver/bin/ysqlsh");
     bashCommand.add("-h");
-    if (cluster.userIntent.isYSQLAuthEnabled()) {
-      bashCommand.add("$(dirname \"$(ls /tmp/.yb.*/.s.PGSQL.* | head -1)\")");
+    if (authEnabled) {
+      bashCommand.add(
+          String.format(
+              "$(dirname \"$(ls -t %s/.yb.*/.s.PGSQL.* | head -1)\")", customTmpDirectory));
     } else {
       bashCommand.add(node.cloudInfo.private_ip);
     }
@@ -195,11 +381,14 @@ public class NodeUniverseManager extends DevopsBase {
     bashCommand.add(String.valueOf(node.ysqlServerRpcPort));
     bashCommand.add("-U");
     bashCommand.add("yugabyte");
-    bashCommand.add("-d");
-    bashCommand.add(dbName);
+    if (StringUtils.isNotEmpty(dbName)) {
+      bashCommand.add("-d");
+      bashCommand.add(dbName);
+    }
     bashCommand.add("-c");
-    // Escaping double quotes at first.
+    // Escaping double quotes and $ at first.
     String escapedYsqlCommand = ysqlCommand.replace("\"", "\\\"");
+    escapedYsqlCommand = escapedYsqlCommand.replace("$", "\\$");
     // Escaping single quotes after for non k8s deployments.
     if (!universe.getNodeDeploymentMode(node).equals(Common.CloudType.kubernetes)) {
       escapedYsqlCommand = escapedYsqlCommand.replace("'", "'\"'\"'");
@@ -220,18 +409,6 @@ public class NodeUniverseManager extends DevopsBase {
     return runCommand(node, universe, command, context);
   }
 
-  /** returns (location of) access key for a particular node in a universe */
-  private String getAccessKey(NodeDetails node, Universe universe) {
-    if (node == null) {
-      throw new RuntimeException("node must be nonnull");
-    }
-    UniverseDefinitionTaskParams.Cluster cluster =
-        universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
-    UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
-    AccessKey ak = AccessKey.get(providerUUID, cluster.userIntent.accessKeyCode);
-    return ak.getKeyInfo().privateKey;
-  }
-
   /**
    * Returns yb home directory for node
    *
@@ -243,8 +420,101 @@ public class NodeUniverseManager extends DevopsBase {
     UUID providerUUID =
         UUID.fromString(
             universe.getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent.provider);
-    Provider provider = Provider.get(providerUUID);
+    Provider provider = Provider.getOrBadRequest(providerUUID);
     return provider.getYbHome();
+  }
+
+  /**
+   * Placeholder method to get tmp directory for node
+   *
+   * @return tmp directory
+   */
+  public String getYbTmpDir() {
+    return "/tmp";
+  }
+
+  private void addConnectionParams(
+      Universe universe,
+      NodeDetails node,
+      List<String> commandArgs,
+      Map<String, String> redactedVals,
+      ShellProcessContext context) {
+    UniverseDefinitionTaskParams.Cluster cluster =
+        universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
+    CloudType cloudType = universe.getNodeDeploymentMode(node);
+    if (cloudType == CloudType.kubernetes) {
+      Map<String, String> k8sConfig =
+          KubernetesUtil.getKubernetesConfigPerPod(
+                  cluster.placementInfo,
+                  universe.getUniverseDetails().getNodesInCluster(cluster.uuid))
+              .get(node.cloudInfo.private_ip);
+      if (k8sConfig == null) {
+        throw new RuntimeException("Kubernetes config cannot be null");
+      }
+      commandArgs.add("k8s");
+      commandArgs.add("--k8s_config");
+      commandArgs.add(Json.stringify(Json.toJson(k8sConfig)));
+    } else if (cloudType != Common.CloudType.unknown) {
+      UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
+      Provider provider = Provider.getOrBadRequest(providerUUID);
+      ProviderDetails providerDetails = provider.getDetails();
+      AccessKey accessKey =
+          AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
+      Optional<NodeAgent> optional =
+          getNodeAgentClient().maybeGetNodeAgent(node.cloudInfo.private_ip, provider);
+      String sshPort = providerDetails.sshPort.toString();
+      String sshUser = providerDetails.sshUser;
+      UUID imageBundleUUID = null;
+      if (cluster.userIntent.imageBundleUUID != null) {
+        imageBundleUUID = cluster.userIntent.imageBundleUUID;
+      } else {
+        List<ImageBundle> bundles = ImageBundle.getDefaultForProvider(provider.getUuid());
+        if (bundles.size() > 0) {
+          Architecture arch = universe.getUniverseDetails().arch;
+          ImageBundle defaultBundle = ImageBundleUtil.getDefaultBundleForUniverse(arch, bundles);
+          imageBundleUUID = defaultBundle.getUuid();
+        }
+      }
+      if (imageBundleUUID != null) {
+        ImageBundle.NodeProperties toOverwriteNodeProperties =
+            imageBundleUtil.getNodePropertiesOrFail(
+                imageBundleUUID, node.cloudInfo.region, cluster.userIntent.providerType.toString());
+        sshPort = toOverwriteNodeProperties.getSshPort().toString();
+        sshUser = toOverwriteNodeProperties.getSshUser();
+      }
+      if (optional.isPresent()) {
+        NodeAgent nodeAgent = optional.get();
+        commandArgs.add("rpc");
+        if (nodeAgentPoller.upgradeNodeAgent(nodeAgent.getUuid(), true)) {
+          nodeAgent.refresh();
+        }
+        nodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
+      } else {
+        commandArgs.add("ssh");
+        // Default SSH port can be the custom port for custom images.
+        if (context.isDefaultSshPort() && Util.isAddressReachable(node.cloudInfo.private_ip, 22)) {
+          sshPort = "22";
+        }
+        commandArgs.add("--port");
+        commandArgs.add(sshPort);
+        commandArgs.add("--ip");
+        commandArgs.add(node.cloudInfo.private_ip);
+        commandArgs.add("--key");
+        commandArgs.add(accessKey.getKeyInfo().privateKey);
+        if (confGetter.getGlobalConf(GlobalConfKeys.ssh2Enabled)) {
+          commandArgs.add("--ssh2_enabled");
+        }
+      }
+      if (context.isCustomUser()) {
+        // It is for backward compatibility after a platform upgrade as custom user is null in prior
+        // versions.
+        String user = StringUtils.isNotBlank(sshUser) ? sshUser : cloudType.getSshUser();
+        if (StringUtils.isNotBlank(user)) {
+          commandArgs.add("--user");
+          commandArgs.add(user);
+        }
+      }
+    }
   }
 
   private ShellResponse executeNodeAction(
@@ -254,50 +524,21 @@ public class NodeUniverseManager extends DevopsBase {
       List<String> actionArgs,
       ShellProcessContext context) {
     List<String> commandArgs = new ArrayList<>();
-
+    Map<String, String> redactedVals = new HashMap<>();
     commandArgs.add(PY_WRAPPER);
     commandArgs.add(NODE_ACTION_SSH_SCRIPT);
-    UniverseDefinitionTaskParams.Cluster cluster =
-        universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
-    UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
     if (node.isMaster) {
       commandArgs.add("--is_master");
     }
     commandArgs.add("--node_name");
     commandArgs.add(node.nodeName);
-    if (universe.getNodeDeploymentMode(node).equals(Common.CloudType.kubernetes)) {
-      String kubeconfig =
-          PlacementInfoUtil.getKubernetesConfigPerPod(
-                  cluster.placementInfo,
-                  universe.getUniverseDetails().getNodesInCluster(cluster.uuid))
-              .get(node.cloudInfo.private_ip);
-      if (kubeconfig == null) {
-        throw new RuntimeException("kubeconfig cannot be null");
-      }
-
-      commandArgs.add("k8s");
-      commandArgs.add("--pod_fqdn");
-      commandArgs.add(node.cloudInfo.private_ip);
-      commandArgs.add("--kubeconfig");
-      commandArgs.add(kubeconfig);
-    } else if (!universe.getNodeDeploymentMode(node).equals(Common.CloudType.unknown)) {
-      AccessKey accessKey =
-          AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
-      commandArgs.add("ssh");
-      commandArgs.add("--port");
-      commandArgs.add(accessKey.getKeyInfo().sshPort.toString());
-      commandArgs.add("--ip");
-      commandArgs.add(node.cloudInfo.private_ip);
-      commandArgs.add("--key");
-      commandArgs.add(getAccessKey(node, universe));
-      if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.ssh2_enabled")) {
-        commandArgs.add("--ssh2_enabled");
-      }
-    } else {
-      throw new RuntimeException("Cloud type unknown");
-    }
+    addConnectionParams(universe, node, commandArgs, redactedVals, context);
     commandArgs.add(nodeAction.name().toLowerCase());
     commandArgs.addAll(actionArgs);
+    if (MapUtils.isNotEmpty(redactedVals)) {
+      // Create a new context as a context is immutable.
+      context = context.toBuilder().redactedVals(redactedVals).build();
+    }
     return shellProcessHandler.run(commandArgs, context);
   }
 
@@ -308,11 +549,85 @@ public class NodeUniverseManager extends DevopsBase {
     return getYbHomeDir(node, universe) + CERTS_DIR;
   }
 
+  /**
+   * Checks if a file or directory exists on the node in the universe
+   *
+   * @param node
+   * @param universe
+   * @param remotePath
+   * @return true if file/directory exists, else false
+   */
+  public boolean checkNodeIfFileExists(NodeDetails node, Universe universe, String remotePath) {
+    List<String> params = new ArrayList<>();
+    params.add("check_file_exists");
+    params.add(remotePath);
+
+    ShellResponse scriptOutput = runScript(node, universe, NODE_UTILS_SCRIPT, params);
+
+    if (scriptOutput.extractRunCommandOutput().trim().equals("1")) {
+      return true;
+    } else {
+      return false;
+    }
+  }
+
+  /**
+   * Gets a list of all the absolute file paths at a given remote directory
+   *
+   * @param node
+   * @param universe
+   * @param remoteDirPath
+   * @param maxDepth
+   * @param fileType
+   * @return list of strings of all the absolute file paths
+   */
+  public List<Path> getNodeFilePaths(
+      NodeDetails node, Universe universe, String remoteDirPath, int maxDepth, String fileType) {
+    String localTempFilePath =
+        getLocalTmpDir() + "/" + UUID.randomUUID().toString() + "-source-files-unfiltered.txt";
+    String remoteTempFilePath =
+        getRemoteTmpDir(node, universe)
+            + "/"
+            + UUID.randomUUID().toString()
+            + "-source-files-unfiltered.txt";
+
+    List<String> findCommandParams = new ArrayList<>();
+    findCommandParams.add("find_paths_in_dir");
+    findCommandParams.add(remoteDirPath);
+    findCommandParams.add(String.valueOf(maxDepth));
+    findCommandParams.add(fileType);
+    findCommandParams.add(remoteTempFilePath);
+
+    runScript(node, universe, NODE_UTILS_SCRIPT, findCommandParams);
+    // Download the files list.
+    copyFileFromNode(node, universe, remoteTempFilePath, localTempFilePath);
+
+    // Delete file from remote server after copying to local.
+    List<String> removeCommand = new ArrayList<>();
+    removeCommand.add("rm");
+    removeCommand.add(remoteTempFilePath);
+    runCommand(node, universe, removeCommand);
+
+    // Populate the text file into array.
+    List<String> nodeFilePathStrings = Arrays.asList();
+    try {
+      nodeFilePathStrings = Files.readAllLines(Paths.get(localTempFilePath));
+    } catch (IOException e) {
+      log.error("Error occurred", e);
+    } finally {
+      FileUtils.deleteQuietly(new File(localTempFilePath));
+    }
+    return nodeFilePathStrings.stream().map(Paths::get).collect(Collectors.toList());
+  }
+
   public enum UniverseNodeAction {
     RUN_COMMAND,
     RUN_SCRIPT,
     DOWNLOAD_LOGS,
     DOWNLOAD_FILE,
-    UPLOAD_FILE
+    COPY_FILE,
+    UPLOAD_FILE,
+    TEST_DIRECTORY,
+    BULK_CHECK_FILES_EXIST
   }
 }

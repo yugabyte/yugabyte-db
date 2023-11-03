@@ -35,7 +35,7 @@
 #include <mutex>
 #include <unordered_set>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"
@@ -47,6 +47,7 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
+#include "yb/util/flags.h"
 
 namespace yb {
 namespace tools {
@@ -55,12 +56,13 @@ using std::ostream;
 using std::shared_ptr;
 using std::string;
 using std::unordered_map;
+using std::vector;
 using strings::Substitute;
 
-DEFINE_int32(checksum_timeout_sec, 120,
+DEFINE_UNKNOWN_int32(checksum_timeout_sec, 120,
              "Maximum total seconds to wait for a checksum scan to complete "
              "before timing out.");
-DEFINE_int32(checksum_scan_concurrency, 4,
+DEFINE_UNKNOWN_int32(checksum_scan_concurrency, 4,
              "Number of concurrent checksum scans to execute per tablet server.");
 
 ChecksumOptions::ChecksumOptions()
@@ -206,7 +208,7 @@ class ChecksumResultReporter : public RefCountedThreadSafe<ChecksumResultReporte
                     const std::string& replica_uuid,
                     const Status& status,
                     uint64_t checksum) {
-    std::lock_guard<simple_spinlock> guard(lock_);
+    std::lock_guard guard(lock_);
     unordered_map<string, TableResults>& replica_results =
         LookupOrInsert(&checksums_, tablet_id, unordered_map<string, TableResults>());
     if (replica_results.find(replica_uuid) == replica_results.end()) {
@@ -230,7 +232,7 @@ class ChecksumResultReporter : public RefCountedThreadSafe<ChecksumResultReporte
 
   // Get reported results.
   TabletResultMap checksums() const {
-    std::lock_guard<simple_spinlock> guard(lock_);
+    std::lock_guard guard(lock_);
     return checksums_;
   }
 

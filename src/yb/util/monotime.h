@@ -29,11 +29,12 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_MONOTIME_H
-#define YB_UTIL_MONOTIME_H
+
+#pragma once
 
 #include <chrono>
 #include <cstdint>
+#include <optional>
 #include <string>
 
 #include <gtest/gtest_prod.h>
@@ -51,6 +52,8 @@ class MonoTime;
 // may not be used for any operation.
 class MonoDelta {
  public:
+  static MonoDelta FromDays(double days);
+  static MonoDelta FromHours(double hours);
   static MonoDelta FromMinutes(double minutes);
   static MonoDelta FromSeconds(double seconds);
   static MonoDelta FromMilliseconds(int64_t ms);
@@ -75,6 +78,8 @@ class MonoDelta {
   std::string ToString() const;
   double ToSeconds() const;
   double ToMinutes() const;
+  double ToHours() const;
+  double ToDays() const;
   int64_t ToMilliseconds() const;
   int64_t ToMicroseconds() const;
   int64_t ToNanoseconds() const;
@@ -149,18 +154,32 @@ class MonoTime {
   static constexpr int64_t kMillisecondsPerSecond = 1000L;
   static constexpr int64_t kSecondsPerMinute = 60L;
   static constexpr int64_t kSecondsPerHour = 60L * kSecondsPerMinute;
+  static constexpr int64_t kMinutesPerHour = 60L;
+  static constexpr int64_t kHoursPerDay = 24L;
 
-  static constexpr int64_t kNanosecondsPerMillisecond =
-      kNanosecondsPerMicrosecond * kMicrosecondsPerMillisecond;
+  static constexpr int64_t kMillisecondsPerMinute =
+      kMillisecondsPerSecond * kSecondsPerMinute;
+
+  static constexpr int64_t kMillisecondsPerHour =
+      kMillisecondsPerMinute * kMinutesPerHour;
 
   static constexpr int64_t kMicrosecondsPerSecond =
       kMillisecondsPerSecond * kMicrosecondsPerMillisecond;
+
+  static constexpr int64_t kNanosecondsPerMillisecond =
+      kNanosecondsPerMicrosecond * kMicrosecondsPerMillisecond;
 
   static constexpr int64_t kNanosecondsPerSecond =
       kNanosecondsPerMillisecond * kMillisecondsPerSecond;
 
   static constexpr int64_t kNanosecondsPerMinute =
       kNanosecondsPerSecond * kSecondsPerMinute;
+
+  static constexpr int64_t kNanosecondsPerHour =
+      kNanosecondsPerMinute * kMinutesPerHour;
+
+  static constexpr int64_t kNanosecondsPerDay =
+      kNanosecondsPerHour * kHoursPerDay;
 
   static const MonoTime kMin;
   static const MonoTime kMax;
@@ -190,6 +209,7 @@ class MonoTime {
   void SubtractDelta(const MonoDelta &delta);
   bool ComesBefore(const MonoTime &rhs) const;
   std::string ToString() const;
+  std::string ToFormattedString(const std::string& format = "%Y-%m-%d %H:%M:%S %Z") const;
   bool Equals(const MonoTime& other) const;
   bool IsMax() const;
   bool IsMin() const;
@@ -221,6 +241,12 @@ inline MonoTime& operator+=(MonoTime& lhs, const MonoDelta& rhs) { // NOLINT
   return lhs;
 }
 
+template <class Clock>
+inline auto operator+=(std::chrono::time_point<Clock>& lhs, const MonoDelta& rhs) { // NOLINT
+  lhs += rhs.ToSteadyDuration();
+  return lhs;
+}
+
 inline MonoTime operator+(MonoTime lhs, const MonoDelta& rhs) {
   lhs += rhs;
   return lhs;
@@ -233,6 +259,11 @@ inline auto operator+(const std::chrono::time_point<Clock>& lhs, const MonoDelta
 
 inline MonoDelta operator-(const MonoTime& lhs, const MonoTime& rhs) {
   return lhs.GetDeltaSince(rhs);
+}
+
+template <class Clock>
+inline auto operator-(const std::chrono::time_point<Clock>& lhs, const MonoDelta& rhs) {
+  return lhs - rhs.ToSteadyDuration();
 }
 
 inline MonoTime& operator-=(MonoTime& lhs, const MonoDelta& rhs) { // NOLINT
@@ -325,8 +356,26 @@ std::string ToString(CoarseMonoClock::TimePoint value);
 CoarseTimePoint ToCoarse(MonoTime monotime);
 std::chrono::steady_clock::time_point ToSteady(CoarseTimePoint time_point);
 
+// Returns false if the given time point is the minimum possible value of CoarseTimePoint. The
+// implementation is consistent with MonoDelta's notion of being initialized, looking at the time
+// since epoch. Note that CoarseTimePoint::min() is not the default value of a CoarseTimePoint.
+// Its default value is a time point represented by zero, which may be an arbitrary point in time,
+// since CLOCK_MONOTONIC represents monotonic time since some unspecified starting point.
 bool IsInitialized(CoarseTimePoint time_point);
 
-} // namespace yb
+// Returns true if the given time point is either the minimum or maximum possible value.
+bool IsExtremeValue(CoarseTimePoint time_point);
 
-#endif // YB_UTIL_MONOTIME_H
+// Formats the given time point in the form "<time> (<relation_to_now>)" where <relation_to_now>
+// is either "<interval> from now" or "<interval> ago", depending on whether the given point in
+// time is before or after the current moment, passed in as "now".
+std::string ToStringRelativeToNow(CoarseTimePoint t, CoarseTimePoint now);
+
+// The same as above but skips the relative part if `now` is not specified.
+std::string ToStringRelativeToNow(CoarseTimePoint t, std::optional<CoarseTimePoint> now);
+
+// Only returns the relation of t to now (the parenthesized part of the ToStringRelativeToNow
+// return value, without the parentheses).
+std::string ToStringRelativeToNowOnly(CoarseTimePoint t, CoarseTimePoint now);
+
+} // namespace yb

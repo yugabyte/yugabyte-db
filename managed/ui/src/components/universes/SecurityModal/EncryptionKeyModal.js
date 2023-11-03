@@ -1,12 +1,14 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { Row, Col, Alert } from 'react-bootstrap';
 import { Field, Formik } from 'formik';
 import * as Yup from 'yup';
 import 'react-bootstrap-multiselect/css/bootstrap-multiselect.css';
 import { YBModal, YBFormToggle, YBFormSelect } from '../../common/forms/fields';
 import { isNonEmptyObject } from '../../../utils/ObjectUtils';
+import { RBAC_ERR_MSG_NO_PERM, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
 import './SecurityModal.scss';
 
 const ALERT_MESSAGES = {
@@ -42,9 +44,7 @@ export default class EncryptionKeyModal extends Component {
       handleSubmitKey,
       fetchCurrentUniverse
     } = this.props;
-    const encryptionAtRestEnabled =
-      universeDetails.encryptionAtRestConfig &&
-      universeDetails.encryptionAtRestConfig.encryptionAtRestEnabled;
+    const encryptionAtRestEnabled = universeDetails.encryptionAtRestConfig?.encryptionAtRestEnabled;
 
     // When both the encryption enabled and key values didn't change
     // we don't submit the form
@@ -81,8 +81,7 @@ export default class EncryptionKeyModal extends Component {
       data: { universeDetails }
     } = currentUniverse;
     const encryptionAtRestConfig = universeDetails.encryptionAtRestConfig;
-    const encryptionAtRestEnabled =
-      encryptionAtRestConfig && encryptionAtRestConfig.encryptionAtRestEnabled;
+    const encryptionAtRestEnabled = encryptionAtRestConfig?.encryptionAtRestEnabled;
     const labelText = currentUniverse.data.name
       ? `Enable Encryption-at-Rest for ${this.props.name} ?`
       : 'Enable Encryption-at-Rest ?';
@@ -115,6 +114,11 @@ export default class EncryptionKeyModal extends Component {
       })
     });
 
+    const canEditEAR = hasNecessaryPerm({
+      onResource: universeUUID,
+      ...UserPermissionMap.editEncryptionInTransit
+    });
+
     return (
       <Formik
         initialValues={initialValues}
@@ -123,6 +127,12 @@ export default class EncryptionKeyModal extends Component {
         onSubmit={(values) => {
           this.handleSubmitForm(values);
         }}
+        buttonProps={{
+          primary: {
+            disabled: !canEditEAR
+          }
+        }}
+        submitButtonTooltip={!canEditEAR ? RBAC_ERR_MSG_NO_PERM : ''}
       >
         {(props) => (
           <YBModal

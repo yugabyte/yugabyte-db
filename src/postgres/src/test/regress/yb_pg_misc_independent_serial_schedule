@@ -5,7 +5,6 @@
 # This includes miscellaneous tests that are not yet characterized to a proper testsuite.  Unlike
 # yb_pg_misc_serial_schedule, the tests in this schedule have no dependencies.
 ####################################################################################################
-test: yb_pg_insert
 test: yb_pg_copydml
 test: yb_pg_index_including
 test: yb_pg_create_function_3
@@ -18,10 +17,6 @@ test: yb_pg_alter_generic
 test: yb_pg_alter_operator
 test: yb_pg_dbsize
 test: yb_pg_prepare
-test: yb_sequence
 test: yb_pg_truncate
-test: yb_truncate
+test: yb_pg_sequence
 test: yb_pg_identity
-
-# Features that are explicitly disabled and therefore should not work
-test: yb_disabled

@@ -27,7 +27,6 @@
 namespace yb {
 namespace rpc {
 
-using std::shared_ptr;
 using namespace std::placeholders;
 using namespace std::literals;
 

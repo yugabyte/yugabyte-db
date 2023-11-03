@@ -1,0 +1,104 @@
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: YBUniverse
+metadata:
+  name: universe-cr
+spec:
+  numNodes: 3
+  replicationFactor: 3
+  instanceType: small
+  assignPublicIP: true
+  useTimeSync: true
+  enableYSQL: true
+  enableYEDIS: false
+  enableNodeToNodeEncrypt: true
+  enableClientToNodeEncrypt: true
+  enableVolumeEncryption: false
+  ybSoftwareVersion: 2.17.1.0-b439
+  enableYSQLAuth: true
+  enableYCQL: true
+  enableYCQLAuth: true
+  enableIPV6: false
+  enableExposingService: NONE
+  accessKeyCode: ''
+  useSystemd: true
+  dedicatedNodes: false
+  deviceInfo:
+    volumeSize: 100
+    numVolumes: 1
+    storageClass: "standard"
+  kubernetesOverrides:
+    resource:
+      master:
+        requests:
+          cpu: "2"
+          memory: 2Gi
+        limits:
+          cpu: "2"
+          memory: 2Gi
+      tserver:
+        requests:
+          cpu: 2
+          memory: 4Gi
+        limits:
+          cpu: 2
+          memory: 4Gi
+    master:
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: security
+                operator: In
+                values:
+                - S1
+            topologyKey: topology.kubernetes.io/zone
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: security
+                  operator: In
+                  values:
+                  - S2
+              topologyKey: topology.kubernetes.io/zone
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - "yb-tserver"
+            topologyKey: kubernetes.io/hostname
+    tserver:
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: security
+                operator: In
+                values:
+                - S1
+            topologyKey: topology.kubernetes.io/zone
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: security
+                  operator: In
+                  values:
+                  - S2
+              topologyKey: topology.kubernetes.io/zone
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - "yb-tserver"
+            topologyKey: kubernetes.io/hostname

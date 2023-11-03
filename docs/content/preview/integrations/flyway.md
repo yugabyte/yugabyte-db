@@ -4,9 +4,9 @@ linkTitle: Flyway
 description: Using Flyway with YugabyteDB
 aliases:
 menu:
-  preview:
+  preview_integrations:
     identifier: flyway
-    parent: integrations
+    parent: schema-migration
     weight: 571
 type: docs
 ---
@@ -17,7 +17,7 @@ The YugabyteDB-specific implementation of the Flyway APIs has been added to the 
 
 ## Prerequisites
 
-Before you can start using Flyway, ensure that you have the following installed and configured:
+To use Flyway with YugabyteDB, you need the following:
 
 - YugabyteDB version 2.4 or later (see [Quick Start](../../quick-start/)).
 
@@ -31,7 +31,7 @@ Before you can start using Flyway, ensure that you have the following installed 
   flyway.password=yugabyte
   ```
 
-## Migrating schema
+## Migrate schema
 
 Flyway allows you to specify migrations using either SQL or Java.
 
@@ -41,7 +41,7 @@ By default, Flyway runs migrations inside a transaction. In case of failures, th
 
 {{< /note >}}
 
-### How to use SQL
+### Use SQL
 
 You can specify migrations as SQL statements in `.sql` files that are placed in the `<FLYWAY_INSTALL_DIR>/sql/` directory by default. You can change the location of these files by placing them in a different directory and then editing the `flyway.locations` property in the `flyway.conf` file accordingly.
 
@@ -75,7 +75,7 @@ To migrate schema using SQL, perform the following:
    ./flyway migrate
   ```
 
-### How to use Java
+### Use Java
 
 You can define Flyway migrations as Java classes by extending the `BaseJavaMigration` class and overriding the `migrate()` method.
 

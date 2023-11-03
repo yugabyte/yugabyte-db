@@ -31,6 +31,7 @@
 //
 package org.yb.client;
 
+import com.google.common.annotations.VisibleForTesting;
 import org.yb.CommonTypes.TableType;
 import org.yb.IndexInfo;
 import org.yb.Schema;
@@ -50,21 +51,26 @@ public class GetTableSchemaResponse extends YRpcResponse {
   private final TableType tableType;
   private final List<IndexInfo> indexes;
 
+  private final boolean colocated;
+
   /**
    * @param ellapsedMillis Time in milliseconds since RPC creation to now
    * @param schema the table's schema
    * @param partitionSchema the table's partition schema
    */
-  GetTableSchemaResponse(long ellapsedMillis,
-                         String tsUUID,
-                         Schema schema,
-                         String namespace,
-                         String tableName,
-                         String tableId,
-                         PartitionSchema partitionSchema,
-                         boolean createTableDone,
-                         TableType tableType,
-                         List<IndexInfo> indexes) {
+  @VisibleForTesting
+  public GetTableSchemaResponse(
+      long ellapsedMillis,
+      String tsUUID,
+      Schema schema,
+      String namespace,
+      String tableName,
+      String tableId,
+      PartitionSchema partitionSchema,
+      boolean createTableDone,
+      TableType tableType,
+      List<IndexInfo> indexes,
+      boolean colocated) {
     super(ellapsedMillis, tsUUID);
     this.schema = schema;
     this.partitionSchema = partitionSchema;
@@ -74,6 +80,7 @@ public class GetTableSchemaResponse extends YRpcResponse {
     this.tableId = tableId;
     this.tableType = tableType;
     this.indexes = indexes;
+    this.colocated = colocated;
   }
 
   /**
@@ -114,6 +121,14 @@ public class GetTableSchemaResponse extends YRpcResponse {
    */
   public String getNamespace() {
     return namespace;
+  }
+
+  /**
+   * Get whether table is colocated or not.
+   * @return true if table is colocated, false otherwise
+   */
+  public boolean isColocated() {
+    return this.colocated;
   }
 
   /**

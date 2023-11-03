@@ -9,17 +9,20 @@
  */
 package com.yugabyte.yw.common.config.impl;
 
-import com.yugabyte.yw.common.config.RuntimeConfigPreChangeValidator;
-import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
-import com.yugabyte.yw.models.RuntimeConfigEntry;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.RuntimeConfigPreChangeValidator;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
+import java.util.Optional;
 import java.util.UUID;
 import javax.inject.Singleton;
-import static play.mvc.Http.Status.BAD_REQUEST;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Singleton
 public class SSH2EnabledKeyValidator implements RuntimeConfigPreChangeValidator {
+  private static final Logger LOG = LoggerFactory.getLogger(SSH2EnabledKeyValidator.class);
 
   public String getKeyPath() {
     return "yb.security.ssh2_enabled";
@@ -27,12 +30,21 @@ public class SSH2EnabledKeyValidator implements RuntimeConfigPreChangeValidator 
 
   @Override
   public void validateConfigGlobal(UUID scopeUUID, String path, String newValue) {
-    RuntimeConfigEntry runtimeConfigEntry = RuntimeConfigEntry.getOrBadRequest(scopeUUID, path);
 
-    String value = runtimeConfigEntry.getValue();
+    String value = null;
+    Optional<RuntimeConfigEntry> runtimeConfigEntry = RuntimeConfigEntry.maybeGet(scopeUUID, path);
+    if (runtimeConfigEntry.isPresent()) {
+      value = runtimeConfigEntry.get().getValue();
+    }
+
     if (value != null) {
       throw new PlatformServiceException(
           BAD_REQUEST, "yb.security.ssh2_enabled cannot be reinitialised");
     }
+  }
+
+  @Override
+  public void validateDeleteConfig(UUID scopeUUID, String path) {
+    throw new PlatformServiceException(BAD_REQUEST, "Cannot delete 'yb.security.ssh2_enabled'.");
   }
 }

@@ -20,8 +20,7 @@
  *--------------------------------------------------------------------------------------------------
  */
 
-#ifndef YBCPLAN_H
-#define YBCPLAN_H
+#pragma once
 
 #include "postgres.h"
 #include "nodes/plannodes.h"
@@ -31,10 +30,6 @@
 
 bool YBCIsSingleRowModify(PlannedStmt *pstmt);
 
-bool YBCIsSingleRowUpdateOrDelete(ModifyTable *modifyTable);
+bool YbCanSkipFetchingTargetTupleForModifyTable(ModifyTable *modifyTable);
 
 bool YBCAllPrimaryKeysProvided(Relation rel, Bitmapset *attrs);
-
-#endif // YBCPLAN_H
-
-

@@ -45,6 +45,7 @@
 #include "commands/schemacmds.h"
 #include "miscadmin.h"
 #include "parser/parse_utilcmd.h"
+#include "parser/scansup.h"
 #include "tcop/utility.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
@@ -71,14 +72,16 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString,
 {
 	const char *schemaName = stmt->schemaname;
 	Oid			namespaceId;
-	OverrideSearchPath *overridePath;
 	List	   *parsetree_list;
 	ListCell   *parsetree_item;
 	Oid			owner_uid;
 	Oid			saved_uid;
 	int			save_sec_context;
+	int			save_nestlevel;
+	char	   *nsp = namespace_search_path;
 	AclResult	aclresult;
 	ObjectAddress address;
+	StringInfoData pathbuf;
 
 	GetUserIdAndSecContext(&saved_uid, &save_sec_context);
 
@@ -171,14 +174,26 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString,
 	CommandCounterIncrement();
 
 	/*
-	 * Temporarily make the new namespace be the front of the search path, as
-	 * well as the default creation target namespace.  This will be undone at
-	 * the end of this routine, or upon error.
+	 * Prepend the new schema to the current search path.
+	 *
+	 * We use the equivalent of a function SET option to allow the setting to
+	 * persist for exactly the duration of the schema creation.  guc.c also
+	 * takes care of undoing the setting on error.
 	 */
-	overridePath = GetOverrideSearchPath(GetCurrentMemoryContext());
-	overridePath->schemas = lcons_oid(namespaceId, overridePath->schemas);
-	/* XXX should we clear overridePath->useTemp? */
-	PushOverrideSearchPath(overridePath);
+	save_nestlevel = NewGUCNestLevel();
+
+	initStringInfo(&pathbuf);
+	appendStringInfoString(&pathbuf, quote_identifier(schemaName));
+
+	while (scanner_isspace(*nsp))
+		nsp++;
+
+	if (*nsp != '\0')
+		appendStringInfo(&pathbuf, ", %s", nsp);
+
+	(void) set_config_option("search_path", pathbuf.data,
+							 PGC_USERSET, PGC_S_SESSION,
+							 GUC_ACTION_SAVE, true, 0, false);
 
 	/*
 	 * Report the new schema to possibly interested event triggers.  Note we
@@ -236,8 +251,10 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString,
 		CommandCounterIncrement();
 	}
 
-	/* Reset search path to normal state */
-	PopOverrideSearchPath();
+	/*
+	 * Restore the GUC variable search_path we set above.
+	 */
+	AtEOXact_GUC(true, save_nestlevel);
 
 	/* Reset current user and security context */
 	SetUserIdAndSecContext(saved_uid, save_sec_context);
@@ -442,7 +459,7 @@ AlterSchemaOwner_internal(HeapTuple tup, Relation rel, Oid newOwnerId)
 			aclresult = pg_database_aclcheck(MyDatabaseId, GetUserId(),
 													ACL_CREATE);
 		}
-		
+
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, OBJECT_DATABASE,
 						   get_database_name(MyDatabaseId));

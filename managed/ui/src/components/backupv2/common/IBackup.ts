@@ -8,6 +8,7 @@
  */
 
 import { TableType } from '../../../redesign/helpers/dtos';
+import { OptionTypeBase } from 'react-select';
 
 export enum Backup_States {
   IN_PROGRESS = 'InProgress',
@@ -16,6 +17,7 @@ export enum Backup_States {
   DELETED = 'Deleted',
   SKIPPED = 'Skipped',
   FAILED_TO_DELETE = 'FailedToDelete',
+  STOPPING = 'Stopping',
   STOPPED = 'Stopped',
   DELETE_IN_PROGRESS = 'DeleteInProgress',
   QUEUED_FOR_DELETION = 'QueuedForDeletion'
@@ -28,38 +30,69 @@ export const BACKUP_LABEL_MAP: Record<Backup_States, string> = {
   Deleted: 'Deleted',
   Skipped: 'Cancelled',
   FailedToDelete: 'Deletion failed',
+  Stopping: 'Cancelling',
   Stopped: 'Cancelled',
   DeleteInProgress: 'Deleting',
   QueuedForDeletion: 'Queued for deletion'
 };
 
 export interface Keyspace_Table {
+  allTables: boolean;
   keyspace: string;
   tablesList: string[];
   storageLocation?: string;
   defaultLocation?: string;
+  tableNameList?: string[];
+  tableUUIDList?: string[]
+}
+
+export interface ICommonBackupInfo {
+  backupUUID: string;
+  baseBackupUUID: string;
+  completionTime: string;
+  createTime: string;
+  responseList: Keyspace_Table[];
+  sse: boolean;
+  state: Backup_States;
+  storageConfigUUID: string;
+  taskUUID: string;
+  totalBackupSizeInBytes?: number;
+  updateTime: string;
+  parallelism: number;
+  kmsConfigUUID?: string;
+  tableByTableBackup: boolean;
 }
 
 export interface IBackup {
-  state: Backup_States;
-  backupUUID: string;
+  commonBackupInfo: ICommonBackupInfo;
+  isFullBackup: boolean;
+  hasIncrementalBackups: boolean;
+  lastIncrementalBackupTime: number;
+  lastBackupState: Backup_States;
   backupType: TableType;
-  storageConfigUUID: string;
+  category: 'YB_BACKUP_SCRIPT' | 'YB_CONTROLLER';
   universeUUID: string;
   scheduleUUID: string;
   customerUUID: string;
   universeName: string;
   isStorageConfigPresent: boolean;
+  isTableByTableBackup: boolean;
   isUniversePresent: boolean;
   onDemand: boolean;
-  createTime: number;
-  updateTime: number;
-  completionTime: number;
-  expiryTime: number;
-  responseList: Keyspace_Table[];
-  sse: boolean;
-  totalBackupSizeInBytes?: number;
+  updateTime: string;
+  expiryTime: string;
+  expiryTimeUnit: string;
+  fullChainSizeInBytes: number;
   kmsConfigUUID?: null | string;
+  scheduleName: string;
+  useTablespaces: boolean;
+}
+
+export interface IBackupEditParams {
+  backupUUID: string;
+  timeBeforeDeleteFromPresentInMillis: number;
+  storageConfigUUID: string;
+  expiryTimeUnit: string;
 }
 
 export interface IUniverse {
@@ -113,9 +146,25 @@ export enum Backup_Options_Type {
   CUSTOM = 'custom'
 }
 
+export type ThrottleParamsVal = {
+  currentValue: number;
+  presetValues: {
+    defaultValue: number;
+    minValue: number;
+    maxValue: number;
+  };
+};
 export interface ThrottleParameters {
-  max_concurrent_uploads: number;
-  per_upload_num_objects: number;
-  max_concurrent_downloads: number;
-  per_download_num_objects: number;
+  throttleParamsMap: {
+    per_download_num_objects: ThrottleParamsVal;
+    max_concurrent_downloads: ThrottleParamsVal;
+    max_concurrent_uploads: ThrottleParamsVal;
+    per_upload_num_objects: ThrottleParamsVal;
+  };
 }
+
+interface IOptionType extends OptionTypeBase {
+  value: string;
+  label: string;
+}
+export type SELECT_VALUE_TYPE = IOptionType;

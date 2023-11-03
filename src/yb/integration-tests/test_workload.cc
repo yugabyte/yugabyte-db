@@ -74,12 +74,9 @@ using namespace std::literals;
 namespace yb {
 
 using client::YBClient;
-using client::YBClientBuilder;
 using client::YBSchema;
-using client::YBSchemaBuilder;
 using client::YBSchemaFromSchema;
 using client::YBSession;
-using client::YBTable;
 using client::YBTableCreator;
 using client::YBTableType;
 using client::YBTableName;
@@ -248,8 +245,7 @@ void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
   }
   auto table = *table_result;
 
-  shared_ptr<YBSession> session = client_->NewSession();
-  session->SetTimeout(options.write_timeout);
+  auto session = client_->NewSession(options.write_timeout);
 
   WaitAllThreads();
 
@@ -267,7 +263,7 @@ void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
       if (options.sequential_write && options.read_only_written_keys) {
         // In this case we want to complete writing of keys_in_write_progress_, so we don't have
         // gaps after workload is stopped.
-        std::lock_guard<std::mutex> lock(keys_in_write_progress_mutex_);
+        std::lock_guard lock(keys_in_write_progress_mutex_);
         if (keys_in_write_progress_.empty()) {
           break;
         }
@@ -304,7 +300,7 @@ void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
       int32_t key;
       if (options.sequential_write) {
         if (options.read_only_written_keys) {
-          std::lock_guard<std::mutex> lock(keys_in_write_progress_mutex_);
+          std::lock_guard lock(keys_in_write_progress_mutex_);
           key = ++next_key_;
           keys_in_write_progress_.insert(key);
         } else {
@@ -347,7 +343,7 @@ void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
       if (op->response().status() == QLResponsePB::YQL_STATUS_OK) {
         VLOG(2) << "Op succeeded: " << op->ToString();
         if (options.read_only_written_keys) {
-          std::lock_guard<std::mutex> lock(keys_in_write_progress_mutex_);
+          std::lock_guard lock(keys_in_write_progress_mutex_);
           keys_in_write_progress_.erase(
               op->request().hashed_column_values(0).value().int32_value());
         }
@@ -390,8 +386,7 @@ void TestWorkload::State::ReadThread(const TestWorkloadOptions& options) {
   }
   auto table = *table_result;
 
-  shared_ptr<YBSession> session = client_->NewSession();
-  session->SetTimeout(options.default_rpc_timeout);
+  auto session = client_->NewSession(options.default_rpc_timeout);
 
   WaitAllThreads();
 
@@ -411,7 +406,7 @@ void TestWorkload::State::ReadThread(const TestWorkloadOptions& options) {
         if (!options.read_only_written_keys) {
           break;
         }
-        std::lock_guard<std::mutex> lock(keys_in_write_progress_mutex_);
+        std::lock_guard lock(keys_in_write_progress_mutex_);
         if (keys_in_write_progress_.count(key) == 0) {
           break;
         }

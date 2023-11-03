@@ -51,6 +51,7 @@ class TransactionCleanup : public std::enable_shared_from_this<TransactionCleanu
           tablet_id,
           /* table =*/ nullptr,
           master::IncludeInactive::kFalse,
+          master::IncludeDeleted::kFalse,
           TransactionRpcDeadline(),
           std::bind(&TransactionCleanup::LookupTabletDone, this, _1, self),
           client::UseCache::kTrue);
@@ -74,7 +75,7 @@ class TransactionCleanup : public std::enable_shared_from_this<TransactionCleanu
 
     const auto& tablet_id = (**remote_tablet).tablet_id();
 
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     calls_.reserve(calls_.size() + remote_tablet_servers.size());
     for (auto* server : remote_tablet_servers) {
       if (type_ == CleanupType::kGraceful && !server->HasCapability(CAPABILITY_GracefulCleanup)) {

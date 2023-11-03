@@ -135,6 +135,8 @@
 #define SIG_THRESHOLD (MAXNUMMESSAGES / 2)
 #define WRITE_QUANTUM 64
 
+struct SISeg *shmInvalBuffer;	/* pointer to the shared inval buffer */
+
 /* Per-backend state in shared invalidation structure */
 typedef struct ProcState
 {
@@ -189,12 +191,8 @@ typedef struct SISeg
 	ProcState	procState[FLEXIBLE_ARRAY_MEMBER];
 } SISeg;
 
-static SISeg *shmInvalBuffer;	/* pointer to the shared inval buffer */
-
 
 static LocalTransactionId nextLocalTransactionId;
-
-static void CleanupInvalidationState(int status, Datum arg);
 
 
 /*
@@ -327,15 +325,10 @@ SharedInvalBackendInit(bool sendOnly)
 /*
  * CleanupInvalidationState
  *		Mark the current backend as no longer active.
- *
- * This function is called via on_shmem_exit() during backend shutdown.
- *
- * arg is really of type "SISeg*".
  */
 static void
-CleanupInvalidationState(int status, Datum arg)
+CleanupInvalidationStateInternal(SISeg *segP, PGPROC *proc)
 {
-	SISeg	   *segP = (SISeg *) DatumGetPointer(arg);
 	ProcState  *stateP;
 	int			i;
 
@@ -343,7 +336,7 @@ CleanupInvalidationState(int status, Datum arg)
 
 	LWLockAcquire(SInvalWriteLock, LW_EXCLUSIVE);
 
-	stateP = &segP->procState[MyBackendId - 1];
+	stateP = &segP->procState[proc->backendId - 1];
 
 	/* Update next local transaction ID for next holder of this backendID */
 	stateP->nextLXID = nextLocalTransactionId;
@@ -364,6 +357,34 @@ CleanupInvalidationState(int status, Datum arg)
 	segP->lastBackend = i;
 
 	LWLockRelease(SInvalWriteLock);
+}
+
+/*
+ * CleanupInvalidationState
+ *		Mark the current backend as no longer active.
+ *
+ * This function is called via on_shmem_exit() during backend shutdown.
+ *
+ * arg is really of type "SISeg*".
+ */
+void
+CleanupInvalidationState(int status, Datum arg)
+{
+	SISeg	   *segP = (SISeg *) DatumGetPointer(arg);
+	CleanupInvalidationStateInternal(segP, MyProc);
+}
+
+/*
+ * CleanupInvalidationStateForProc
+ *		Mark the current backend as no longer active.
+ *
+ * This function is called from reaper() when the parent is notified that its
+ * child died unexpectedly.
+ */
+void
+CleanupInvalidationStateForProc(PGPROC *proc)
+{
+	CleanupInvalidationStateInternal(shmInvalBuffer, proc);
 }
 
 /*

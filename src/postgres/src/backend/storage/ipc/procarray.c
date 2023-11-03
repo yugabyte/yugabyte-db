@@ -384,9 +384,8 @@ ProcArrayRemove(PGPROC *proc, TransactionId latestXid)
 	/* Oops */
 	LWLockRelease(ProcArrayLock);
 
-	elog(LOG, "failed to find proc %p in ProcArray", proc);
+	elog(WARNING, "failed to find process with pid %d in ProcArray", proc->pid);
 }
-
 
 /*
  * ProcArrayEndTransaction -- mark a transaction as no longer running

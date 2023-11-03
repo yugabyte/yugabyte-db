@@ -83,7 +83,6 @@ void EventHelpers::LogAndNotifyTableFileCreation(
 
   event_logger->Log(jwriter);
 
-#ifndef ROCKSDB_LITE
   if (listeners.size() == 0) {
     return;
   }
@@ -91,7 +90,6 @@ void EventHelpers::LogAndNotifyTableFileCreation(
   for (auto listener : listeners) {
     listener->OnTableFileCreated(info);
   }
-#endif  // !ROCKSDB_LITE
 }
 
 void EventHelpers::LogAndNotifyTableFileDeletion(
@@ -114,7 +112,6 @@ void EventHelpers::LogAndNotifyTableFileDeletion(
 
   event_logger->Log(jwriter);
 
-#ifndef ROCKSDB_LITE
   TableFileDeletionInfo info;
   info.db_name = dbname;
   info.job_id = job_id;
@@ -123,7 +120,6 @@ void EventHelpers::LogAndNotifyTableFileDeletion(
   for (auto listener : listeners) {
     listener->OnTableFileDeleted(info);
   }
-#endif  // !ROCKSDB_LITE
 }
 
 }  // namespace rocksdb

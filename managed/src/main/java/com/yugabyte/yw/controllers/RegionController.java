@@ -3,50 +3,54 @@
 package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
-import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.CloudQueryHelper;
-import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.NetworkManager;
-import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
+import com.yugabyte.yw.controllers.handlers.RegionHandler;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
-import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.forms.RegionEditFormData;
 import com.yugabyte.yw.forms.RegionFormData;
 import com.yugabyte.yw.models.Audit;
-import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiResponses;
 import io.swagger.annotations.Authorization;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
 import play.libs.Json;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
     value = "Region management",
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class RegionController extends AuthenticatedController {
-  @Inject ConfigHelper configHelper;
 
-  @Inject NetworkManager networkManager;
-
-  @Inject CloudQueryHelper cloudQueryHelper;
+  @Inject RegionHandler regionHandler;
 
   public static final Logger LOG = LoggerFactory.getLogger(RegionController.class);
+
   // This constant defines the minimum # of PlacementAZ we need to tag a region as Multi-PlacementAZ
   // complaint
 
@@ -60,6 +64,12 @@ public class RegionController extends AuthenticatedController {
           code = 500,
           message = "If there was a server or database issue when listing the regions",
           response = YBPError.class))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result list(UUID customerUUID, UUID providerUUID) {
     List<Region> regionList;
 
@@ -72,21 +82,28 @@ public class RegionController extends AuthenticatedController {
       value = "List regions for all providers",
       response = Region.class,
       responseContainer = "List")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   // todo: include provider field in response
   public Result listAllRegions(UUID customerUUID) {
-    List<Provider> providerList = Provider.getAll(customerUUID);
-    ArrayNode resultArray = Json.newArray();
-    for (Provider provider : providerList) {
-      List<Region> regionList = Region.fetchValidRegions(customerUUID, provider.uuid, 1);
-      for (Region region : regionList) {
-        ObjectNode regionNode = (ObjectNode) Json.toJson(region);
-        ObjectNode providerForRegion = (ObjectNode) Json.toJson(provider);
-        providerForRegion.remove("regions"); // to Avoid recursion
-        regionNode.set("provider", providerForRegion);
-        resultArray.add(regionNode);
-      }
-    }
-    return ok(resultArray);
+    Set<UUID> providerUuids =
+        Provider.getAll(customerUUID).stream().map(Provider::getUuid).collect(Collectors.toSet());
+    List<Region> regionList = Region.getFullByProviders(providerUuids);
+    List<JsonNode> result =
+        regionList.stream()
+            .peek(region -> CloudInfoInterface.mayBeMassageResponse(region.getProvider(), region))
+            .map(
+                region -> {
+                  ObjectNode regionNode = (ObjectNode) Json.toJson(region);
+                  regionNode.set("provider", Json.toJson(region.getProvider()));
+                  return regionNode;
+                })
+            .collect(Collectors.toList());
+    return PlatformResults.withData(result);
   }
 
   /**
@@ -94,7 +111,13 @@ public class RegionController extends AuthenticatedController {
    *
    * @return JSON response of newly created region
    */
-  @ApiOperation(value = "Create a new region", response = Region.class, nickname = "createRegion")
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.18.2.0")
+  @ApiOperation(
+      value =
+          "Deprecated since YBA version 2.18.2.0, "
+              + "Use /api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions instead",
+      response = Region.class,
+      nickname = "createRegion")
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "region",
@@ -102,113 +125,157 @@ public class RegionController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.RegionFormData",
           required = true))
-  public Result create(UUID customerUUID, UUID providerUUID) {
-    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
-    Form<RegionFormData> formData = formFactory.getFormDataOrBadRequest(RegionFormData.class);
+  @Deprecated
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result create(UUID customerUUID, UUID providerUUID, Http.Request request) {
+    Form<RegionFormData> formData =
+        formFactory.getFormDataOrBadRequest(request, RegionFormData.class);
     RegionFormData form = formData.get();
-    String regionCode = form.code;
+    Region region = regionHandler.createRegion(customerUUID, providerUUID, form);
 
-    if (Region.getByCode(provider, regionCode) != null) {
-      throw new PlatformServiceException(BAD_REQUEST, "Region code already exists: " + regionCode);
-    }
-
-    Map<String, Object> regionMetadata =
-        configHelper.getRegionMetadata(Common.CloudType.valueOf(provider.code));
-
-    Region region;
-    // If we have region metadata we create the region with that metadata or else we assume
-    // some metadata is passed in (esp for onprem case).
-    if (regionMetadata.containsKey(regionCode)) {
-      JsonNode metaData = Json.toJson(regionMetadata.get(regionCode));
-      region = Region.createWithMetadata(provider, regionCode, metaData);
-
-      if (provider.code.equals("gcp")) {
-        JsonNode zoneInfo = getZoneInfoOrFail(provider, region);
-        // TODO(bogdan): change this and add test...
-        List<String> zones = Json.fromJson(zoneInfo.get(regionCode).get("zones"), List.class);
-        List<String> subnetworks =
-            Json.fromJson(zoneInfo.get(regionCode).get("subnetworks"), List.class);
-        if (subnetworks.size() != 1) {
-          region.delete(); // don't really need this anymore due to @Transactional
-          throw new PlatformServiceException(
-              INTERNAL_SERVER_ERROR,
-              "Region Bootstrap failed. Invalid number of subnets for region " + regionCode);
-        }
-        String subnet = subnetworks.get(0);
-        region.zones = new ArrayList<>();
-        zones.forEach(
-            zone -> region.zones.add(AvailabilityZone.createOrThrow(region, zone, zone, subnet)));
-      } else {
-        // TODO: Move this to commissioner framework, Bootstrap the region with VPC, subnet etc.
-        // TODO(bogdan): is this even used???
-        /*
-        JsonNode vpcInfo = networkManager.bootstrap(
-            region.uuid, null, form.hostVpcId, form.destVpcId, form.hostVpcRegion);
-        */
-        JsonNode vpcInfo = getVpcInfoOrFail(region);
-        Map<String, String> zoneSubnets =
-            Json.fromJson(vpcInfo.get(regionCode).get("zones"), Map.class);
-        region.zones = new ArrayList<>();
-        zoneSubnets.forEach(
-            (zone, subnet) ->
-                region.zones.add(AvailabilityZone.createOrThrow(region, zone, zone, subnet)));
-      }
-    } else {
-      region =
-          Region.create(
-              provider, regionCode, form.name, form.ybImage, form.latitude, form.longitude);
-    }
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Region,
-            Objects.toString(region.uuid, null),
-            Audit.ActionType.Create,
-            Json.toJson(formData.rawData()));
+            Objects.toString(region.getUuid(), null),
+            Audit.ActionType.Create);
     return PlatformResults.withData(region);
   }
 
   /**
-   * DELETE endpoint for deleting a existing Region.
+   * POST endpoint for creating new region
+   *
+   * @return JSON response of newly created region
+   */
+  @ApiOperation(
+      value = "WARNING: This is a preview API that could change. Create a new region",
+      response = Region.class,
+      nickname = "createProviderRegion")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "region",
+          value = "Specification of Region to be created",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.models.Region",
+          required = true))
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.2.0")
+  public Result createRegionNew(UUID customerUUID, UUID providerUUID, Http.Request request) {
+    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
+    Region region = formFactory.getFormDataOrBadRequest(request.body().asJson(), Region.class);
+    region.setProviderCode(provider.getCode());
+    region = regionHandler.createRegion(customerUUID, providerUUID, region);
+
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.Region,
+            Objects.toString(region.getUuid(), null),
+            Audit.ActionType.Create);
+    return PlatformResults.withData(region);
+  }
+
+  /**
+   * PUT endpoint for modifying an existing Region.
    *
    * @param customerUUID Customer UUID
    * @param providerUUID Provider UUID
    * @param regionUUID Region UUID
-   * @return JSON response on whether or not delete region was sucessful or not.
+   * @return JSON response on whether or not the operation was successful.
+   */
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.18.2.0")
+  @ApiOperation(
+      value =
+          "Deprecated since YBA version 2.18.2.0, "
+              + "Use /api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions instead",
+      response = Object.class,
+      nickname = "editRegion")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "region",
+          value = "region edit form data",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.RegionFormData",
+          required = true))
+  @Deprecated
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result edit(UUID customerUUID, UUID providerUUID, UUID regionUUID, Http.Request request) {
+    RegionEditFormData form =
+        formFactory.getFormDataOrBadRequest(request, RegionEditFormData.class).get();
+    Region region = regionHandler.editRegion(customerUUID, providerUUID, regionUUID, form);
+
+    auditService()
+        .createAuditEntry(
+            request, Audit.TargetType.Region, regionUUID.toString(), Audit.ActionType.Edit);
+    return PlatformResults.withData(region);
+  }
+
+  /**
+   * PUT endpoint for modifying an existing Region.
+   *
+   * @param customerUUID Customer UUID
+   * @param providerUUID Provider UUID
+   * @param regionUUID Region UUID
+   * @return JSON response on whether or not the operation was successful.
+   */
+  @ApiOperation(
+      value = "WARNING: This is a preview API that could change. Modify a region",
+      response = Region.class,
+      nickname = "editProviderRegion")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "region",
+          value = "Specification of Region to be edited",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.models.Region",
+          required = true))
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.2.0")
+  public Result editRegionNew(
+      UUID customerUUID, UUID providerUUID, UUID regionUUID, Http.Request request) {
+    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
+
+    Region region = formFactory.getFormDataOrBadRequest(request.body().asJson(), Region.class);
+    region.setProviderCode(provider.getCode());
+    region = regionHandler.editRegion(customerUUID, providerUUID, regionUUID, region);
+
+    auditService()
+        .createAuditEntry(
+            request, Audit.TargetType.Region, regionUUID.toString(), Audit.ActionType.Edit);
+    return PlatformResults.withData(region);
+  }
+
+  /**
+   * DELETE endpoint for deleting an existing Region.
+   *
+   * @param customerUUID Customer UUID
+   * @param providerUUID Provider UUID
+   * @param regionUUID Region UUID
+   * @return JSON response on whether the region was successfully deleted.
    */
   @ApiOperation(value = "Delete a region", response = Object.class, nickname = "deleteRegion")
-  public Result delete(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
-    Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
-    region.disableRegionAndZones();
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result delete(
+      UUID customerUUID, UUID providerUUID, UUID regionUUID, Http.Request request) {
+    Provider.getOrBadRequest(customerUUID, providerUUID);
+    Region region = regionHandler.deleteRegion(customerUUID, providerUUID, regionUUID);
+
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(), Audit.TargetType.Region, regionUUID.toString(), Audit.ActionType.Delete);
-    return YBPSuccess.empty();
-  }
-
-  // TODO: Use @Transactionally on controller method to get rid of region.delete()
-  // TODO: Move this to CloudQueryHelper after getting rid of region.delete()
-  private JsonNode getZoneInfoOrFail(Provider provider, Region region) {
-    JsonNode zoneInfo =
-        cloudQueryHelper.getZones(
-            region.uuid, provider.getUnmaskedConfig().get("CUSTOM_GCE_NETWORK"));
-    if (zoneInfo.has("error") || !zoneInfo.has(region.code)) {
-      region.delete();
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR,
-          "Region Bootstrap failed. Unable to fetch zones for " + region.code);
-    }
-    return zoneInfo;
-  }
-
-  // TODO: Use @Transactionally on controller method to get rid of region.delete()
-  // TODO: Move this to NetworkManager after getting rid of region.delete()
-  private JsonNode getVpcInfoOrFail(Region region) {
-    JsonNode vpcInfo = networkManager.bootstrap(region.uuid, null, null /* customPayload */);
-    if (vpcInfo.has("error") || !vpcInfo.has(region.code)) {
-      region.delete();
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Region Bootstrap failed.");
-    }
-    return vpcInfo;
+        .createAuditEntry(
+            request, Audit.TargetType.Region, regionUUID.toString(), Audit.ActionType.Delete);
+    return PlatformResults.withData(region);
   }
 }

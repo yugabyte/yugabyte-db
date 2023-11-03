@@ -25,7 +25,7 @@ const TARGET_TYPE = ['Platform', 'Universe'];
 const STATE = ['Active', 'Inactive'];
 const SEVERITY = ['Severe', 'Warning'];
 
-export const formatString = (text:string) => startCase(lowerCase(text))
+export const formatString = (text:string) => startCase(lowerCase(text));
 
 interface MetricsSchema {
   template: string;
@@ -111,7 +111,7 @@ const getSelectControl = (
   updateFilters: UpdateFiltersFunction
 ) => {
   //Only format for metric names
-  const label = filtersMap[filterType] ? (filterType === FILTER_TYPE_METRIC_NAME ? formatString(filtersMap[filterType]): filtersMap[filterType]) : null
+  const label = filtersMap[filterType] ? (filterType === FILTER_TYPE_METRIC_NAME ? formatString(filtersMap[filterType]): filtersMap[filterType]) : null;
   return (
     <Row className="field">
       <div className="field-label">{title}</div>
@@ -119,9 +119,9 @@ const getSelectControl = (
         value={
           filtersMap[filterType]
             ? {
-                value: filtersMap[filterType],
-                label 
-              }
+              value: filtersMap[filterType],
+              label 
+            }
             : null
         }
         isMulti={false}
@@ -154,7 +154,7 @@ export const AlertListsWithFilter: FC<AlertsFilterProps> = ({
 }) => {
   const metricNames = useMemo(
     () =>
-      Array.from(new Set(metrics.map((metric) => metric.template))).map((template) => {
+      Array.from(new Set(metrics?.map((metric) => metric.template))).map((template) => {
         return { label: formatString(template), value: template };
       }),
     [metrics]
@@ -164,7 +164,7 @@ export const AlertListsWithFilter: FC<AlertsFilterProps> = ({
     () =>
       Array.from(
         new Set(
-          [...NO_DESTINATION_OPTION, ...DEFAULT_DESTINATION_OPTION, ...alertDestinationList].map(
+          [...NO_DESTINATION_OPTION, ...DEFAULT_DESTINATION_OPTION, ...alertDestinationList ?? []].map(
             (destination) => destination.name
           )
         )

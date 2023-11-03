@@ -1,13 +1,11 @@
 ---
-title: Session-Level Audit Logging in YSQL
-headerTitle: Session-Level Audit Logging in YSQL
-linkTitle: Session-Level Audit Logging in YSQL
-description: Session-Level Audit Logging in YSQL.
-headcontent: Session-Level Audit Logging in YSQL.
+title: Session-level audit logging in YSQL
+headerTitle: Session-level audit logging in YSQL
+linkTitle: Session-level audit logging
+description: Session-level audit logging in YSQL.
 image: /images/section_icons/secure/authentication.png
 menu:
   v2.12:
-    name: Session-Level Audit Logging
     identifier: session-audit-logging-1-ysql
     parent: audit-logging
     weight: 760
@@ -16,7 +14,7 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/preview/secure/audit-logging/audit-logging-ysql" class="nav-link active">
+    <a href="../session-audit-logging-ysql" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
@@ -27,17 +25,16 @@ type: docs
 
 Session logging is enabled for per user session basis. Enable session logging for all DML and DDL statements and log all relations in DML statements.
 
-```
+```sql
 set pgaudit.log = 'write, ddl';
 set pgaudit.log_relation = on;
 ```
-
 
 Enable session logging for all commands except MISC and raise audit log messages as NOTICE.
 
 ## Example
 
-In this example session audit logging is used for logging DDL and SELECT statements. Note that the insert statement is not logged since the WRITE class is not enabled.
+In this example session audit logging is used for logging DDL and SELECT statements. Note that the insert statement is not logged because the WRITE class is not enabled.
 
 SQL statements are shown below.
 
@@ -45,47 +42,42 @@ SQL statements are shown below.
 
 Open the YSQL shell (ysqlsh), specifying the `yugabyte` user and prompting for the password.
 
-```
+```sh
 $ ./ysqlsh -U yugabyte -W
 ```
 
-When prompted for the password, enter the yugabyte password. You should be able to login and see a response like below.
+When prompted for the password, enter the yugabyte password. You should be able to log in and see a response like below.
 
-
-```
+```output
 ysqlsh (11.2-YB-2.5.0.0-b0)
 Type "help" for help.
 
 yugabyte=#
 ```
 
-
 ### Step 2. Enable `pgaudit` extension
 
 Enable `pgaudit` extension on the YugabyteDB cluster.
 
-```
+```sql
 yugabyte=> \c yugabyte yugabyte;
 You are now connected to database "yugabyte" as user "yugabyte".
 
 yugabyte=# CREATE EXTENSION IF NOT EXISTS pgaudit;
 CREATE EXTENSION
-
 ```
-
-
 
 ### Step 3. Enable session audit logging
 
 Enable session audit logging in YugabyteDB cluster.
 
-```
+```sql
 set pgaudit.log = 'read, ddl';
 ```
 
 ### Step 4. Perform statements
 
-```
+```sql
 create table account
 (
     id int,
@@ -101,13 +93,11 @@ select *
     from account;
 ```
 
-
 ### Step 5. Verify output
 
 You should see the following output in the logs:
 
-
-```
+```output
 2020-11-09 19:19:09.262 UTC [3710] LOG:  AUDIT: SESSION,1,1,DDL,CREATE
 TABLE,TABLE,public.account,"create table account
         (

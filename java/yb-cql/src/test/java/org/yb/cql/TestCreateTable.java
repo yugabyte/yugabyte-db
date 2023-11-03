@@ -12,6 +12,8 @@
 //
 package org.yb.cql;
 
+import java.util.HashMap;
+
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 
@@ -170,6 +172,9 @@ public class TestCreateTable extends BaseCQLTest {
                     keyword + " double, c2 varchar, primary key (c1)) " +
                     "WITH transactions = { 'enabled' : true };");
     session.execute("CREATE INDEX ON test_create_keyword_reg(" + keyword + ");");
+
+    waitForReadPermsOnAllIndexes("test_create_keyword_reg");
+
     session.execute("SELECT c1, " + keyword + ", c2 FROM test_create_keyword_reg;");
     session.execute("UPDATE test_create_keyword_reg SET " + keyword + " = 3 WHERE c1 = 2;");
     session.execute("DROP TABLE test_create_keyword_reg;");
@@ -204,6 +209,8 @@ public class TestCreateTable extends BaseCQLTest {
 
   @Test
   public void testCreateTableNumTablets() throws Exception {
+    restartClusterWithTSFlags(new HashMap<String, String>());
+    
     // Test default number of tablets.
     session.execute("CREATE TABLE test_num_tablets_1 (id int PRIMARY KEY);");
     Set<String> ids =
@@ -225,6 +232,9 @@ public class TestCreateTable extends BaseCQLTest {
     assertTrue(miniCluster.getClient().tableExists("system", "transactions"));
     // Test index table with tablets table property set.
     session.execute("CREATE INDEX on test_num_tablets_3 (id) WITH tablets = 5;");
+
+    waitForReadPermsOnAllIndexes("test_num_tablets_3");
+
     ids =
       miniCluster.getClient().getTabletUUIDs(DEFAULT_TEST_KEYSPACE, "test_num_tablets_3_id_idx");
     assertEquals(ids.size(), 5);

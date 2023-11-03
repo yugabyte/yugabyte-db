@@ -55,7 +55,7 @@ If you are connecting to YugabyteDB Managed, open the [ysqlsh cloud shell](../..
 
 ### Create a database
 
-You can do this as shown below.
+You can do this as follows:
 
 ```sql
 yugabyte=# CREATE DATABASE yb_demo;
@@ -126,7 +126,7 @@ yb_demo=# SELECT count(*) FROM products;
 (1 row)
 ```
 
-The following query selects the `id`, `title`, `category`, and `price` columns for the first five products.
+The following query selects the `id`, `title`, `category`, `price`, and `rating` columns for the first five products.
 
 ```sql
 yb_demo=# SELECT id, title, category, price, rating
@@ -385,77 +385,5 @@ yb_demo=# SELECT source,
   source  |  percent_sales
 ----------+------------------
  Facebook | 20.8927150492159
-(1 row)
-```
-
-## More queries
-
-### How are users signing up for my site?
-
-```sql
-yb_demo=# SELECT DISTINCT(source) FROM users;
-```
-
-```output
-source
------------
- Facebook
- Twitter
- Organic
- Affiliate
- Google
-(5 rows)
-```
-
-### What is the most effective channel for user sign ups?
-
-```sql
-yb_demo=# SELECT source, count(*) AS num_user_signups
-          FROM users
-          GROUP BY source
-          ORDER BY num_user_signups DESC;
-```
-
-```output
-source     | num_user_signups
------------+------------------
- Facebook  |              512
- Affiliate |              506
- Google    |              503
- Twitter   |              495
- Organic   |              484
-(5 rows)
-```
-
-### What are the most effective channels for product sales by revenue?
-
-```sql
-yb_demo=# SELECT source, ROUND(SUM(orders.total)) AS total_sales
-          FROM users, orders WHERE users.id=orders.user_id
-          GROUP BY source
-          ORDER BY total_sales DESC;
-```
-
-```output
-source     | total_sales
------------+-------------
- Facebook  |      333454
- Google    |      325184
- Organic   |      319637
- Twitter   |      319449
- Affiliate |      297605
-(5 rows)
-```
-
-### What is the min, max and average price of products in the store?
-
-```sql
-yb_demo=# SELECT MIN(price), MAX(price), AVG(price) FROM products;
-```
-
-```output
-min               |       max        |       avg
-------------------+------------------+------------------
- 15.6919436739704 | 98.8193368436819 | 55.7463996679207
 (1 row)
 ```

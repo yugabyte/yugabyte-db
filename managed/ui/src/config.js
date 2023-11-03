@@ -8,12 +8,11 @@ export const IN_DEVELOPMENT_MODE = process.env.NODE_ENV === 'development';
 // set auth cookies for API host domain and redirect to API host root instead of localhost:3000/
 // Need to manually set "userId", "customerId" and "PLAY_SESSION" cookies for localhost:3000
 export const ROOT_URL =
-  process.env.REACT_APP_YUGAWARE_API_URL ||
+  process.env.REACT_APP_YUGAWARE_API_URL ??
   (IN_DEVELOPMENT_MODE ? 'http://localhost:9000/api/v1' : '/api/v1');
 
 // Allow requests made to endpoints in ‘routes’ file.
-export const BASE_URL =
-  (IN_DEVELOPMENT_MODE ? "http://localhost:9000" : '');
+export const BASE_URL = IN_DEVELOPMENT_MODE ? 'http://localhost:9000' : '';
 
 export const MAP_SERVER_URL = IN_DEVELOPMENT_MODE
   ? `https://s3-us-west-2.amazonaws.com/${process.env.REACT_APP_YB_MAP_URL}/map`
@@ -22,11 +21,17 @@ export const MAP_SERVER_URL = IN_DEVELOPMENT_MODE
 // get SSO flag from global config loaded in index.html before UI app started
 export const USE_SSO = _.get(window, 'YB_Platform_Config.use_oauth', false);
 
-export const isSSOLogin = () => Cookies.get('apiToken') || localStorage.getItem('apiToken');
+export const isSSOLogin = () => Cookies.get('apiToken') ?? localStorage.getItem('apiToken');
 
 export const isSSOEnabled = () => _.get(window, 'YB_Platform_Config.use_oauth', false);
 
 export const setSSO = (value) => _.set(window, 'YB_Platform_Config.use_oauth', value);
+
+export const setShowJWTTokenInfo = (value) =>
+  _.set(window, 'YB_Platform_Config.show_jwt_token_info', value);
+
+export const shouldShowJWTTokenInfo = () =>
+  _.get(window, 'YB_Platform_Config.show_jwt_token_info', false);
 
 // TODO : probably fetch the provider metadata (name and code from backend)
 export const PROVIDER_TYPES = [
@@ -40,11 +45,17 @@ export const PROVIDER_TYPES = [
   { code: 'other', name: 'Other', label: 'Custom Datacenter' }
 ];
 
+// The following region array is used in the old kubernetes provider form.
+// Please also add any new K8s regions and zones to:
+// src/components/configRedesign/providerRedesign/providerRegionsData.ts
+// so that the new kubernetes provider UI stays in sync.
+// The old provider UI and its related components/constants/types will be removed once
+// it is no longer used as a fallback option.
 export const REGION_METADATA = [
   { code: 'us-west-1', name: 'US West (N. California)', latitude: 37, longitude: -121 },
   { code: 'us-west-2', name: 'US West (Oregon)', latitude: 44, longitude: -121 },
   { code: 'us-east-1', name: 'US East (N. Virginia)', latitude: 36.8, longitude: -79 },
-  { code: 'us-east-2', name: 'US East (Ohio)', latitude: 40, longitude:-83 },
+  { code: 'us-east-2', name: 'US East (Ohio)', latitude: 40, longitude: -83 },
   { code: 'us-south', name: 'US South', latitude: 28, longitude: -99 },
   { code: 'us-north', name: 'US North', latitude: 48, longitude: -118 },
   { code: 'south-asia', name: 'South Asia', latitude: 18.4, longitude: 78.4 },
@@ -54,6 +65,7 @@ export const REGION_METADATA = [
   { code: 'eu-west-1', name: 'Europe (Ireland)', latitude: 53, longitude: -9 },
   { code: 'eu-west-2', name: 'Europe (London)', latitude: 51, longitude: 0 },
   { code: 'eu-west-3', name: 'Europe (Paris)', latitude: 48, longitude: 3 },
+  { code: 'eu-west-4', name: 'Europe (Amsterdam)', latitude: 52, longitude: 5 },
   { code: 'eu-central-1', name: 'Europe (Frankfurt)', latitude: 50, longitude: 9 },
   { code: 'ap-southeast-1', name: 'Asia Pacific (Singapore)', latitude: 5, longitude: 104 },
   { code: 'ap-southeast-2', name: 'Asia Pacific (Sydney)', latitude: -34, longitude: 151 },

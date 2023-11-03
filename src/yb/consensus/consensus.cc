@@ -42,7 +42,6 @@ namespace yb {
 namespace consensus {
 
 using std::shared_ptr;
-using strings::Substitute;
 
 std::string LeaderElectionData::ToString() const {
   return YB_STRUCT_TO_STRING(mode, originator_uuid, pending_commit, must_be_committed_opid);

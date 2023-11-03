@@ -36,8 +36,8 @@
 #include <string>
 #include <vector>
 
-#include <gflags/gflags.h>
-#include <glog/logging.h>
+#include "yb/util/flags.h"
+#include "yb/util/logging.h"
 
 #include "yb/gutil/casts.h"
 
@@ -84,17 +84,17 @@
 using namespace std::literals;
 
 // Test size parameters
-DEFINE_int32(concurrent_inserts, -1, "Number of inserting clients to launch");
-DEFINE_int32(inserts_per_client, -1,
+DEFINE_NON_RUNTIME_int32(concurrent_inserts, -1, "Number of inserting clients to launch");
+DEFINE_NON_RUNTIME_int32(inserts_per_client, -1,
              "Number of rows inserted by each inserter client");
-DEFINE_int32(rows_per_batch, -1, "Number of rows per client batch");
+DEFINE_NON_RUNTIME_int32(rows_per_batch, -1, "Number of rows per client batch");
 
 // Perf-related FLAGS_perf_stat
-DEFINE_bool(perf_record_scan, false, "Call \"perf record --call-graph\" "
+DEFINE_NON_RUNTIME_bool(perf_record_scan, false, "Call \"perf record --call-graph\" "
             "for the duration of the scan, disabled by default");
-DEFINE_bool(perf_stat_scan, false, "Print \"perf stat\" results during"
+DEFINE_NON_RUNTIME_bool(perf_stat_scan, false, "Print \"perf stat\" results during"
             "scan to stdout, disabled by default");
-DEFINE_bool(perf_fp_flag, false, "Only applicable with --perf_record_scan,"
+DEFINE_NON_RUNTIME_bool(perf_fp_flag, false, "Only applicable with --perf_record_scan,"
             " provides argument \"fp\" to the --call-graph flag");
 DECLARE_bool(enable_maintenance_manager);
 
@@ -107,13 +107,9 @@ namespace tablet {
 
 using client::YBClient;
 using client::YBClientBuilder;
-using client::YBColumnSchema;
 using client::YBSchema;
 using client::YBSchemaBuilder;
 using client::YBSession;
-using client::YBStatusMemberCallback;
-using client::YBTable;
-using client::YBTableCreator;
 using client::YBTableName;
 using strings::Split;
 using strings::Substitute;
@@ -184,8 +180,7 @@ class FullStackInsertScanTest : public YBMiniClusterTestBase<MiniCluster> {
       ASSERT_OK(table->Open(kTableName, client_.get()));
       tables_.push_back(std::move(table));
     }
-    std::shared_ptr<YBSession> session = client_->NewSession();
-    session->SetTimeout(kSessionTimeout);
+    auto session = client_->NewSession(kSessionTimeout);
     sessions_[id] = session;
   }
 
@@ -266,7 +261,7 @@ const YBTableName FullStackInsertScanTest::kTableName(
     YQL_DATABASE_CQL, "my_keyspace", "full-stack-mrs-test-tbl");
 
 TEST_F(FullStackInsertScanTest, MRSOnlyStressTest) {
-  FLAGS_enable_maintenance_manager = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_maintenance_manager) = false;
   ASSERT_NO_FATALS(CreateTable());
   ASSERT_NO_FATALS(DoConcurrentClientInserts());
   ASSERT_NO_FATALS(DoTestScans());
@@ -358,13 +353,13 @@ void FullStackInsertScanTest::CreateTable() {
                                                 kTableName.namespace_type()));
 
   YBSchemaBuilder b;
-  b.AddColumn("key")->Type(INT64)->NotNull()->HashPrimaryKey();
-  b.AddColumn("string_val")->Type(STRING)->NotNull();
+  b.AddColumn("key")->Type(DataType::INT64)->NotNull()->HashPrimaryKey();
+  b.AddColumn("string_val")->Type(DataType::STRING)->NotNull();
   for (auto& col : Int32ColumnNames()) {
-    b.AddColumn(col)->Type(INT32)->NotNull();
+    b.AddColumn(col)->Type(DataType::INT32)->NotNull();
   }
   for (auto& col : Int64ColumnNames()) {
-    b.AddColumn(col)->Type(INT64)->NotNull();
+    b.AddColumn(col)->Type(DataType::INT64)->NotNull();
   }
   ASSERT_OK(reader_table_.Create(kTableName, CalcNumTablets(1), client_.get(), &b));
   schema_ = reader_table_.schema();

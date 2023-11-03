@@ -20,8 +20,6 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
-#ifndef YB_ROCKSDB_UTIL_IO_POSIX_H
-#define YB_ROCKSDB_UTIL_IO_POSIX_H
 
 #pragma once
 #include <unistd.h>
@@ -90,6 +88,8 @@ class PosixMmapFile : public WritableFile {
   Status UnmapCurrentRegion();
   Status Msync();
 
+  const std::string& filename() const override { return filename_; }
+
  public:
   PosixMmapFile(const std::string& fname, int fd, size_t page_size,
                 const EnvOptions& options);
@@ -121,5 +121,3 @@ class PosixDirectory : public Directory {
 };
 
 }  // namespace rocksdb
-
-#endif // YB_ROCKSDB_UTIL_IO_POSIX_H

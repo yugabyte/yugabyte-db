@@ -41,6 +41,8 @@
 #include "yb/gutil/strings/strip.h"
 #include "yb/gutil/strings/substitute.h"
 
+using std::string;
+
 using google::protobuf::io::ZeroCopyOutputStream;
 using google::protobuf::io::Printer;
 

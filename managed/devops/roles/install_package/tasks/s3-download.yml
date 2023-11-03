@@ -27,7 +27,7 @@
     executable: /usr/bin/pip3
 
 - name: Download-itest | Download from s3 bucket
-  shell: "aws s3 cp {{ itest_s3_package_path }} /tmp"
+  shell: "aws s3 cp {{ itest_s3_package_path }} {{ remote_tmp_dir | default('/tmp') }}"
   environment:
     AWS_ACCESS_KEY_ID: "{{ cluster_server_vault | get_value('AWS_ACCESS_KEY_ID') }}"
     AWS_SECRET_ACCESS_KEY: "{{ cluster_server_vault | get_value('AWS_SECRET_ACCESS_KEY') }}"
@@ -37,7 +37,7 @@
   become_method: sudo
   file:
     mode: 0755
-    path: "/tmp/{{ itest_s3_package_path | basename }}"
+    path: "{{ remote_tmp_dir | default('/tmp') }}/{{ itest_s3_package_path | basename }}"
     owner: yugabyte
     group: yugabyte
     state: file

@@ -11,16 +11,19 @@
 // under the License.
 //
 
-#ifndef YB_CLIENT_TABLE_H
-#define YB_CLIENT_TABLE_H
+#pragma once
 
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/common_fwd.h"
 
+#include "yb/dockv/dockv_fwd.h"
+
 #include "yb/master/master_fwd.h"
+
+#include "yb/qlexpr/qlexpr_fwd.h"
 
 #include "yb/util/locks.h"
 #include "yb/util/status_callback.h"
@@ -84,7 +87,7 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
 
   const YBSchema& schema() const;
   const Schema& InternalSchema() const;
-  const PartitionSchema& partition_schema() const;
+  const dockv::PartitionSchema& partition_schema() const;
   bool IsHashPartitioned() const;
   bool IsRangePartitioned() const;
 
@@ -95,10 +98,10 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   VersionedTablePartitionListPtr GetVersionedPartitions() const;
   TablePartitionList GetPartitionsCopy() const;
   int32_t GetPartitionCount() const;
-  int32_t GetPartitionListVersion() const;
+  PartitionListVersion GetPartitionListVersion() const;
 
   // Indexes available on the table.
-  const IndexMap& index_map() const;
+  const qlexpr::IndexMap& index_map() const;
 
   // Is this an index?
   bool IsIndex() const;
@@ -106,7 +109,7 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   bool IsUniqueIndex() const;
 
   // For index table: information about this index.
-  const IndexInfo& index_info() const;
+  const qlexpr::IndexInfo& index_info() const;
 
   // True if the table is colocated (including tablegroups, excluding YSQL system tables).
   bool colocated() const;
@@ -136,6 +139,8 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   // Asynchronously refreshes table partitions.
   void RefreshPartitions(YBClient* client, StdStatusCallback callback);
 
+  size_t DynamicMemoryUsage() const;
+
  private:
   friend class YBClient;
   friend class internal::GetTableSchemaRpc;
@@ -162,7 +167,7 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
 };
 
 size_t FindPartitionStartIndex(
-    const TablePartitionList& partitions, const PartitionKey& partition_key, size_t group_by = 1);
+    const TablePartitionList& partitions, std::string_view partition_key, size_t group_by = 1);
 
 PartitionKeyPtr FindPartitionStart(
     const VersionedTablePartitionListPtr& versioned_partitions, const PartitionKey& partition_key,
@@ -170,5 +175,3 @@ PartitionKeyPtr FindPartitionStart(
 
 } // namespace client
 } // namespace yb
-
-#endif // YB_CLIENT_TABLE_H

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_INTEGRATION_TESTS_BACKFILL_TEST_UTIL_H
-#define YB_INTEGRATION_TESTS_BACKFILL_TEST_UTIL_H
+#pragma once
 
 #include <algorithm>
 #include <string>
@@ -25,8 +24,8 @@
 
 #include "yb/rpc/rpc_controller.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/result.h"
-#include "yb/util/test_util.h"
 
 namespace yb {
 
@@ -152,5 +151,3 @@ Status WaitForBackfillSafeTimeOn(
 }
 
 }  // namespace yb
-
-#endif  // YB_INTEGRATION_TESTS_BACKFILL_TEST_UTIL_H

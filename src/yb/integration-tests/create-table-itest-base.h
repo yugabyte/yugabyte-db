@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_INTEGRATION_TESTS_CREATE_TABLE_ITEST_BASE_H
-#define YB_INTEGRATION_TESTS_CREATE_TABLE_ITEST_BASE_H
+#pragma once
 
 #include <map>
 #include <memory>
@@ -65,10 +64,6 @@
 #include "yb/util/string_util.h"
 #include "yb/util/tsan_util.h"
 
-using std::multimap;
-using std::set;
-using std::string;
-using std::vector;
 using strings::Substitute;
 using yb::client::YBTableName;
 using yb::client::YBTableType;
@@ -80,7 +75,7 @@ static const YBTableName kTableName(YQL_DATABASE_CQL, "my_keyspace", "test-table
 class CreateTableITestBase : public ExternalMiniClusterITestBase {
  public:
   Status CreateTableWithPlacement(
-      const master::ReplicationInfoPB& replication_info, const string& table_suffix,
+      const master::ReplicationInfoPB& replication_info, const std::string& table_suffix,
       const YBTableType table_type = YBTableType::YQL_TABLE_TYPE);
 
   Result<bool> VerifyTServerTablets(
@@ -88,12 +83,10 @@ class CreateTableITestBase : public ExternalMiniClusterITestBase {
       bool verify_leaders);
 
   void PreparePlacementInfo(
-      const std::unordered_map<string, int>& zone_to_replica_count, int num_replicas,
+      const std::unordered_map<std::string, int>& zone_to_replica_count, int num_replicas,
       master::PlacementInfoPB* placement_info);
 
-  void AddTServerInZone(const string& zone);
+  void AddTServerInZone(const std::string& zone);
 };
 
 }  // namespace yb
-
-#endif  // YB_INTEGRATION_TESTS_CREATE_TABLE_ITEST_BASE_H

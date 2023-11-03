@@ -26,6 +26,13 @@
           "namespace_id": "000033df000030008000000000000000",
           "namespace_name": "bar"
         }
+      },
+      {
+        "type": "udtype",
+        "id": "9a42005b95f3432f86069b9404961e05",
+        "data": {
+          "name": "sample_type"
+        }
       }
     ],
     "cloud_store_spec": {

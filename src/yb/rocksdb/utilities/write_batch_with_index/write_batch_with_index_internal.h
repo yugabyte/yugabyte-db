@@ -19,7 +19,6 @@
 //
 #pragma once
 
-#ifndef ROCKSDB_LITE
 
 #include <limits>
 #include <string>
@@ -111,4 +110,3 @@ class WriteBatchWithIndexInternal {
 };
 
 }  // namespace rocksdb
-#endif  // !ROCKSDB_LITE

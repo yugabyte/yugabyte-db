@@ -19,10 +19,12 @@
 
 #include <algorithm>
 #include <atomic>
+#include <bitset>
 #include <cassert>
 #include <cfloat>
 #include <chrono>
 #include <cmath>
+#include <compare>
 #include <cstdint>
 #include <ctime>
 #include <deque>
@@ -35,19 +37,30 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <regex>
 #include <set>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include <boost/algorithm/string/predicate.hpp>
+#include <boost/core/demangle.hpp>
 #include <boost/mpl/and.hpp>
+#include <boost/optional.hpp>
 #include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/expr_if.hpp>
 #include <boost/preprocessor/facilities/apply.hpp>
+#include <boost/preprocessor/if.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
+#include <boost/preprocessor/seq/transform.hpp>
 #include <boost/preprocessor/stringize.hpp>
 #include <boost/preprocessor/variadic/to_seq.hpp>
 #include <boost/range/iterator_range.hpp>

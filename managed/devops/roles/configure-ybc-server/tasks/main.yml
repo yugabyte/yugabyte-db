@@ -20,7 +20,6 @@
     group: "{{ user_name }}"
   tags:
     - ybc-install
-    - yb-prebuilt-ami
 
 - name: Install | Create symlink to ybc package folder
   file:
@@ -32,7 +31,6 @@
     state: link
   tags:
     - ybc-install
-    - yb-prebuilt-ami
 
 - block:
   - set_fact:
@@ -47,7 +45,6 @@
       owner: "{{ user_name }}"
       group: "{{ user_name }}"
     tags:
-      - yb-prebuilt-ami
       - ybc-install
 
   - name: Setup | Symlink {{ yb_process_type }} logs directory
@@ -60,7 +57,6 @@
       state: link
       force: yes
     tags:
-      - yb-prebuilt-ami
       - ybc-install
 
   - name: Remove existing ybc conf file
@@ -93,10 +89,6 @@
       dest: "{{ yb_bin_dir }}/yb-server-ctl.sh"
       owner: "{{ user_name }}"
       mode: 0755
-    when: not systemd_option
-    tags:
-      - ybc-install
-      - yb-prebuilt-ami
 
   # Cronjob approach for starting yb-controller
   - name: Setup cron to check liveness of controller
@@ -111,10 +103,9 @@
     failed_when:
       - cron_result is failed
       - cloud_type != "onprem"
-    when: not systemd_option
-    tags:
-      - ybc-install
-      - yb-prebuilt-ami
+  when: not systemd_option
+  tags:
+    - ybc-install
 
 - block:
   # Remove old cron job and its tasks that start yb-controller
@@ -123,6 +114,18 @@
       name: "Check liveness of controller"
       user: "yugabyte"
       state: absent
+    tags:
+      - override_ybc_gflags
+      - systemd_upgrade
+      - ybc-install
+  when: systemd_option
+
+- block:
+  - set_fact:
+      systemd_unit_dir: "/usr/lib/systemd/system"
+    when:
+      ansible_os_family == "Suse"
+    tags: always
 
   - name: Determine system or user scope
     stat:
@@ -146,12 +149,18 @@
     # User units need to be linked if waiting on system units
     - name: Link network-online.target
       shell:
-        cmd: "systemctl --user link /lib/systemd/system/network-online.target"
+        cmd: "systemctl --user link {{ systemd_unit_dir }}/network-online.target"
 
     - name: Start network-online.target
       systemd:
         name: network-online.target
         state: started
+        enabled: yes
+        scope: user
+
+    - name: Enable yb-bind check service
+      systemd:
+        name: yb-bind_check
         enabled: yes
         scope: user
 
@@ -188,7 +197,6 @@
     when: systemd_system.stat.exists
 
   tags:
-    - override_ybc_gflags
     - systemd_upgrade
     - ybc-install
   when: systemd_option

@@ -63,21 +63,22 @@ void CleanupAbortsTask::Run() {
   const MonoDelta kMaxTotalSleep = 10s;
   VLOG_WITH_PREFIX(1) << "CleanupAbortsTask waiting for applier safe time to reach " << now;
   auto safetime = applier_->ApplierSafeTime(now, CoarseMonoClock::now() + kMaxTotalSleep);
-  if (!safetime.ok()) {
-    LOG_WITH_PREFIX(WARNING) << "Tablet application did not catch up in " << kMaxTotalSleep << ": "
-                             << safetime.status();
+  if (!safetime) {
+    LOG_WITH_PREFIX(WARNING) << "Tablet application did not catch up in " << kMaxTotalSleep;
     return;
   }
-  VLOG_WITH_PREFIX(1) << "CleanupAbortsTask: applier safe time reached " << *safetime
+  VLOG_WITH_PREFIX(1) << "CleanupAbortsTask: applier safe time reached " << safetime
                       << " (was waiting for " << now << ")";
 
-  for (const TransactionId& transaction_id : transactions_to_cleanup_) {
+  for (auto it = transactions_to_cleanup_.begin(); it != transactions_to_cleanup_.end();) {
     // If transaction is committed, no action required
     // TODO(dtxn) : Do batch processing of transactions,
     // because LocalCommitData will acquire lock per each call.
-    auto commit_time = status_manager_.LocalCommitTime(transaction_id);
+    auto commit_time = status_manager_.LocalCommitTime(*it);
     if (commit_time.is_valid()) {
-      transactions_to_cleanup_.erase(transaction_id);
+      it = transactions_to_cleanup_.erase(it);
+    } else {
+      ++it;
     }
   }
 
@@ -87,7 +88,8 @@ void CleanupAbortsTask::Run() {
     LOG_WITH_PREFIX(INFO) << "Failed to get last replicated data: " << status;
     return;
   }
-  WARN_NOT_OK(applier_->RemoveIntents(data, transactions_to_cleanup_),
+  WARN_NOT_OK(applier_->RemoveIntents(
+                  data, RemoveReason::kCleanupAborts, transactions_to_cleanup_),
               "RemoveIntents for transaction cleanup in compaction failed.");
   LOG_WITH_PREFIX(INFO)
       << "Number of aborted transactions cleaned up: " << transactions_to_cleanup_.size()

@@ -46,6 +46,78 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
 
+// Scale the ru_maxrss value according to the platform.
+// On Linux, the maxrss is in kilobytes.
+// On OSX, the maxrss is in bytes and scale it to kilobytes.
+// https://www.manpagez.com/man/2/getrusage/osx-10.12.3.php
+static long
+scale_rss_to_kb(long maxrss)
+{
+#ifdef __APPLE__
+	maxrss = maxrss / 1024;
+#endif
+	return maxrss;
+}
+/*
+ * Dump the current connection heap stats, including TCMalloc, PG, and PgGate.
+ * The exact definition for the output columns are as followed:
+ * total_heap_usage                	-> TCMalloc physical usage
+ * total_heap_allocation           	-> TCMalloc current allocated bytes
+ * total_heap_requested            	-> TCMalloc heap size
+ * cached_free_memory              	-> TCMalloc freed bytes
+ * total_heap_released             	-> TCMalloc unmapped bytes
+ * PostgreSQL_memory_usage         	-> PG current total bytes
+ * PostgreSQL_storage_gateway_usage	-> PgGate current total bytes
+ *
+ * Example usage:
+ * SELECT * FROM yb_heap_stats();
+ */
+Datum
+yb_heap_stats(PG_FUNCTION_ARGS)
+{
+	const static size_t kRetArgNum = 7;
+
+	Datum		values[kRetArgNum];
+	bool		isnull[kRetArgNum];
+	TupleDesc	tupdesc = CreateTemplateTupleDesc(kRetArgNum, false);
+
+	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "TCMalloc heap_size_bytes",
+					   INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "TCMalloc total_physical_bytes",
+					   INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 3,
+					   "TCMalloc current_allocated_size", INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 4, "TCMalloc pageheap_free_bytes",
+					   INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 5,
+					   "TCMalloc pageheap_unmapped_bytes", INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 6,
+					   "Postgres current allocated bytes", INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 7,
+					   "PGGate current allocated bytes", INT8OID, -1, 0);
+	BlessTupleDesc(tupdesc);
+
+	if (yb_enable_memory_tracking)
+	{
+		YbTcmallocStats tcmallocStats;
+		YBCGetHeapConsumption(&tcmallocStats);
+
+		values[0] = Int64GetDatum(tcmallocStats.heap_size_bytes);
+		values[1] = Int64GetDatum(tcmallocStats.total_physical_bytes);
+		values[2] = Int64GetDatum(tcmallocStats.current_allocated_bytes);
+		values[3] = Int64GetDatum(tcmallocStats.pageheap_free_bytes);
+		values[4] = Int64GetDatum(tcmallocStats.pageheap_unmapped_bytes);
+		values[5] = Int64GetDatum(PgMemTracker.pg_cur_mem_bytes);
+		values[6] = Int64GetDatum(tcmallocStats.current_allocated_bytes -
+					PgMemTracker.pg_cur_mem_bytes);
+	}
+
+	memset(isnull, !yb_enable_memory_tracking, sizeof(isnull));
+
+	// Return tuple.
+	return HeapTupleGetDatum(heap_form_tuple(tupdesc, values, isnull));
+}
+
 /*
  * Get memory usage of the current session.
  * - The return value is a ROW of unix getrusage().
@@ -116,7 +188,7 @@ yb_getrusage(PG_FUNCTION_ARGS)
 }
 
 /*
- * Get memory usage of the current session 
+ * Get memory usage of the current session
  * - The return value RSS value from getrusage().
  * - User command:
  *     SELECT yb_mem_usage_kb();
@@ -129,7 +201,7 @@ yb_mem_usage(PG_FUNCTION_ARGS)
 
 	// Get usage.
 	getrusage(RUSAGE_SELF, &r);
-	sprintf(a, "Session memory usage = %ld kbs", r.ru_maxrss);
+	sprintf(a, "Session memory usage = %ld kbs", scale_rss_to_kb(r.ru_maxrss));
 	PG_RETURN_TEXT_P(cstring_to_text(a));
 }
 
@@ -138,7 +210,7 @@ yb_mem_usage_kb(PG_FUNCTION_ARGS)
 {
 	struct rusage r;
 	getrusage(RUSAGE_SELF, &r);
-	PG_RETURN_INT64(r.ru_maxrss);
+	PG_RETURN_INT64(scale_rss_to_kb(r.ru_maxrss));
 }
 
 /*

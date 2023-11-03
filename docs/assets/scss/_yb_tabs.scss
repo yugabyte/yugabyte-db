@@ -1,0 +1,217 @@
+.content-child {
+  .td-content .nav-tabs-yb {
+    li {
+      vertical-align: middle;
+      margin: 0 !important;
+
+      a.nav-link {
+        min-height: 24px;
+        text-decoration: none;
+        color: #25323d;
+        background: #fff;
+        display: flex;
+        align-items: center;
+        position: static;
+
+        i {
+          font-size: 24px;
+          margin: 3px 16px -3px 0;
+          align-items: center;
+        }
+      }
+    }
+  }
+}
+
+// for jquery inline tabs
+.td-content {
+  .nav-tabs:not(.nav-tabs-yb) {
+    margin-bottom: 16px;
+    border: 0;
+
+    > li {
+      margin-bottom: 0;
+
+      .nav-link {
+        font-weight: 400;
+        font-size: 13px;
+        line-height: 16px;
+        border: 0;
+        color: $yb-font-dark;
+        padding: 8px 16px;
+
+        &.active {
+          color: $yb-font-dark;
+          background: #e9eef2;
+          border-radius: 8px;
+        }
+      }
+    }
+
+    & + .tab-content {
+      .tab-pane {
+        background: rgba(240, 244, 247, 0.2);
+        border: 1px solid #e9eef2;
+        border-radius: 8px;
+        padding: 25px 27px;
+      }
+    }
+  }
+}
+
+.tab-content .tab-pane {
+  max-width: 100%;
+  border: 0;
+
+  .highlight {
+    margin: 20px 0;
+  }
+
+  pre {
+    border: none;
+  }
+}
+
+ul.nav.nav-tabs-yb:not(.yb-pills) {
+  border: none;
+  margin: 20px 0 29px;
+  position: relative;
+  padding: 0 8px 6px;
+  gap: 0;
+  display: block;
+  white-space: nowrap;
+  width: calc(100%);
+  overflow: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+
+  &::after {
+    content: "";
+    width: 100%;
+    height: 1px;
+    background: #e9eef2;
+    position: absolute;
+    left: 0;
+    bottom: 6px;
+  }
+
+  &::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: #b7c3cb;
+    border-radius: 6px;
+  }
+
+  li {
+    padding: 0;
+    display: inline-block;
+    font-size: 15px;
+    line-height: 16px;
+    color: #0b1117;
+    width: auto !important;
+    position: relative;
+    z-index: 1;
+
+    &.active {
+      a {
+        &::before {
+          content: "";
+          position: absolute;
+          left: 0;
+          bottom: 0;
+          width: 100%;
+          height: 3px;
+          background: #0b1117;
+        }
+      }
+    }
+
+    &:not(.active) {
+      .active {
+        &::before {
+          content: "";
+          position: absolute;
+          left: 0;
+          bottom: 0;
+          width: 100%;
+          height: 3px;
+          background: #0b1117;
+        }
+      }
+    }
+
+    &:not(:first-child) {
+      margin-left: 24px !important;
+    }
+
+    a {
+      border: none;
+      color: inherit;
+      font-size: inherit;
+      text-decoration: none;
+      display: block;
+      margin: 21px 0;
+      padding: 0 5px;
+      font-weight: 500;
+      line-height: 16px;
+      position: static;
+
+      img,
+      i {
+        margin: 0 10px 0 0;
+        color: inherit;
+        border-radius: 0;
+        width: 24px;
+        height: 24px;
+        line-height: 24px;
+        display: inline-block;
+        text-align: center;
+      }
+
+      &::after {
+        content: "";
+        width: calc(100% + 24px);
+        height: 1px;
+        background: #e9eef2;
+        position: absolute;
+        z-index: -1;
+        left: 0;
+        bottom: 0;
+      }
+    }
+  }
+}
+
+ul.nav.nav-tabs-yb:not(.yb-pills) ~ .nav-tabs-yb:not(.yb-pills) {
+  li {
+    font-size: 13px;
+    line-height: 16px;
+
+    &:not(:first-child) {
+      margin-left: 8px !important;
+    }
+
+    a {
+      line-height: 8px;
+
+      img,
+      i {
+        width: 16px;
+        height: 16px;
+        font-size: 16px;
+        line-height: 16px;
+      }
+
+      i {
+        margin: 0 13px 0 0;
+
+        &.icon-postgres {
+          margin: 0 13px -4px 0;
+        }
+      }
+    }
+  }
+}

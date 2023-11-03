@@ -16,6 +16,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/env_util.h"
+#include "yb/util/os-util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/string_trim.h"
@@ -24,10 +25,16 @@
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
 using std::unique_ptr;
+using std::string;
+using std::vector;
 
 using yb::util::TrimStr;
 using yb::util::TrimTrailingWhitespaceFromEveryLine;
 using yb::util::LeftShiftTextBlock;
+
+using namespace std::literals;
+
+DECLARE_int32(replication_factor);
 
 namespace yb {
 namespace pgwrapper {
@@ -53,6 +60,7 @@ void PgWrapperTestBase::SetUp() {
 
   opts.extra_master_flags.emplace_back("--client_read_write_timeout_ms=120000");
   opts.extra_master_flags.emplace_back(Format("--memory_limit_hard_bytes=$0", 2_GB));
+  opts.extra_master_flags.emplace_back(Format("--replication_factor=$0", FLAGS_replication_factor));
 
   UpdateMiniClusterOptions(&opts);
 
@@ -81,34 +89,38 @@ Result<TabletId> PgWrapperTestBase::GetSingleTabletId(const TableName& table_nam
   return STATUS(NotFound, Format("No tablet found for table $0.", table_name));
 }
 
+Result<string> PgWrapperTestBase::RunYbAdminCommand(const string& cmd) {
+  const auto yb_admin = "yb-admin"s;
+  auto command = GetToolPath(yb_admin) +
+    " --master_addresses " + cluster_->GetMasterAddresses() +
+    " " + cmd;
+  LOG(INFO) << "Running " << command;
+  string output;
+  if (RunShellProcess(command, &output)) {
+    return output;
+  }
+  return STATUS_FORMAT(RuntimeError, "Failed to execute $0 command", yb_admin);
+}
+
 namespace {
 
 string TrimSqlOutput(string output) {
   return TrimStr(TrimTrailingWhitespaceFromEveryLine(LeftShiftTextBlock(output)));
 }
 
-string CertsDir() {
-  const auto sub_dir = JoinPathSegments("ent", "test_certs");
-  return JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir);
-}
-
 } // namespace
 
-void PgCommandTestBase::RunPsqlCommand(
-    const string& statement, const string& expected_output, bool tuples_only) {
+Result<std::string> PgCommandTestBase::RunPsqlCommand(
+    const std::string& statement, TuplesOnly tuples_only) {
   string tmp_dir;
-  ASSERT_OK(Env::Default()->GetTestDirectory(&tmp_dir));
+  RETURN_NOT_OK(Env::Default()->GetTestDirectory(&tmp_dir));
 
   unique_ptr<WritableFile> tmp_file;
   string tmp_file_name;
-  ASSERT_OK(
-      Env::Default()->NewTempWritableFile(
-          WritableFileOptions(),
-          tmp_dir + "/psql_statementXXXXXX",
-          &tmp_file_name,
-          &tmp_file));
-  ASSERT_OK(tmp_file->Append(statement));
-  ASSERT_OK(tmp_file->Close());
+  RETURN_NOT_OK(Env::Default()->NewTempWritableFile(
+      WritableFileOptions(), tmp_dir + "/psql_statementXXXXXX", &tmp_file_name, &tmp_file));
+  RETURN_NOT_OK(tmp_file->Append(statement));
+  RETURN_NOT_OK(tmp_file->Close());
 
   vector<string> argv{
       GetPostgresInstallRoot() + "/bin/ysqlsh",
@@ -126,7 +138,7 @@ void PgCommandTestBase::RunPsqlCommand(
   if (encrypt_connection_) {
     argv.push_back(Format(
         "sslmode=require sslcert=$0/ysql.crt sslrootcert=$0/ca.crt sslkey=$0/ysql.key",
-        CertsDir()));
+        GetCertsDir()));
   }
 
   if (tuples_only) {
@@ -141,17 +153,25 @@ void PgCommandTestBase::RunPsqlCommand(
 
   string psql_stdout;
   LOG(INFO) << "Executing statement: " << statement;
-  ASSERT_OK(proc.Call(&psql_stdout));
+  RETURN_NOT_OK(proc.Call(&psql_stdout));
   LOG(INFO) << "Output from statement {{ " << statement << " }}:\n"
             << psql_stdout;
+
+  return TrimSqlOutput(psql_stdout);
+}
+
+void PgCommandTestBase::RunPsqlCommand(
+    const string& statement, const string& expected_output, bool tuples_only) {
+  string psql_stdout = ASSERT_RESULT(
+      RunPsqlCommand(statement, tuples_only ? TuplesOnly::kTrue : TuplesOnly::kFalse));
   ASSERT_EQ(TrimSqlOutput(expected_output), TrimSqlOutput(psql_stdout));
 }
 
 void PgCommandTestBase::UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) {
   PgWrapperTestBase::UpdateMiniClusterOptions(options);
   if (encrypt_connection_) {
-    const vector<string> common_flags{"--use_node_to_node_encryption=true",
-                                      "--certs_dir=" + CertsDir()};
+    const vector<string> common_flags{
+        "--use_node_to_node_encryption=true", "--certs_dir=" + GetCertsDir()};
     for (auto flags : {&options->extra_master_flags, &options->extra_tserver_flags}) {
       flags->insert(flags->begin(), common_flags.begin(), common_flags.end());
     }

@@ -10,19 +10,8 @@ menu:
     parent: api-ysql-datatypes-array
     weight: 90
 type: indexpage
+showRightNav: true
 ---
-
-**On this page**<br>
-&#160;&#160;&#160;&#160;[Functions for creating arrays from scratch](./#functions-for-creating-arrays-from-scratch)<br>
-&#160;&#160;&#160;&#160;[Functions for reporting the geometric properties of an array](./#functions-for-reporting-the-geometric-properties-of-an-array)<br>
-&#160;&#160;&#160;&#160;[Functions to find a value in an array](./#functions-to-find-a-value-in-an-array)<br>
-&#160;&#160;&#160;&#160;[Operators to test whether a value is in an array](./#operators-to-test-whether-a-value-is-in-an-array)<br>
-&#160;&#160;&#160;&#160;[Operators for comparing two arrays](./#operators-for-comparing-two-arrays)<br>
-&#160;&#160;&#160;&#160;[The slice operator](./#the-slice-operator)<br>
-&#160;&#160;&#160;&#160;[Functions and operators for concatenating an array with an array or an element](./#functions-and-operators-for-concatenating-an-array-with-an-array-or-an-element)<br>
-&#160;&#160;&#160;&#160;[Functions and operators to change values in an array](./#functions-and-operators-to-change-values-in-an-array)<br>
-&#160;&#160;&#160;&#160;[Function to convert an array to a text value](./#function-to-convert-an-array-to-a-text-value)<br>
-&#160;&#160;&#160;&#160;[Table function to transform an array into a `SETOF anyelement`](./#table-function-to-transform-an-array-into-a-setof-anyelement)
 
 **Note:** For an alphabetical listing of the array functions and operators, see the listing in the navigation bar.
 

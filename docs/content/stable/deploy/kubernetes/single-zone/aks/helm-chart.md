@@ -1,8 +1,8 @@
 ---
-title: Deploy on Azure Kubernetes Service (AKS) using Helm Chart
+title: Deploy on Azure Kubernetes Service (AKS) using Helm chart
 headerTitle: Azure Kubernetes Service (AKS)
 linkTitle: Azure Kubernetes Service (AKS)
-description: Use Helm Chart to deploy a single-zone YugabyteDB cluster on Azure Kubernetes Service (AKS).
+description: Use Helm chart to deploy a single-zone YugabyteDB cluster on Azure Kubernetes Service (AKS).
 menu:
   stable:
     parent: deploy-kubernetes-sz
@@ -16,25 +16,25 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../helm-chart/" class="nav-link active">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Helm chart
     </a>
   </li>
   <li >
     <a href="../statefulset-yaml/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       StatefulSet YAML
     </a>
   </li>
 </ul>
 
-Deploy a single-zone YugabyteDB cluster on Azure Kubernetes Service (AKS) by following the steps below.
+You can deploy a YugabyteDB cluster on Azure Kubernetes Service (AKS).
 
-Microsoft's [Azure Kubernetes Service](https://azure.microsoft.com/en-au/services/kubernetes-service/) offers a highly available, secure, and fully-managed Kubernetes service for developers looking to host their applications on containers in the cloud. AKS features elastic provisioning, an integrated developer experience for rapid application development, enterprise security features, and the most available regions of any cloud provider.
+Microsoft's [Azure Kubernetes Service](https://azure.microsoft.com/en-au/services/kubernetes-service/) provides a fully-managed Kubernetes service able to host their applications on containers in the cloud.
 
 ## Prerequisites
 
-Before you can deploy YugabyteDB on AKS, you need to verify that the following are installed and configured:
+Before deploying YugabyteDB on AKS, verify that the following components are installed and configured:
 
 - `kubectl`
   - For more information, see [Install and Set Up kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl/).
@@ -42,42 +42,42 @@ Before you can deploy YugabyteDB on AKS, you need to verify that the following a
 - Helm 3.4 or later
   - For more information, see [Installing Helm](https://helm.sh/docs/intro/install/).
 
-- [Microsoft Azure](https://azure.microsoft.com/en-au/pricing/purchase-options/pay-as-you-go/) account
-  - “Pay As You Go” enabled
+- [Microsoft Azure](https://azure.microsoft.com/en-au/pricing/purchase-options/pay-as-you-go/) account with Pay As You Go enabled.
 
 ## Deploy YugabyteDB on an Azure Kubernetes cluster
 
-Follow the steps below to get YugabyteDB up and running on an Azure Kubernetes cluster. The examples below are based on using the macOS.
+The following examples are based on using macOS.
 
 ### Step 1: Install the Azure CLI
 
-To install the Azure CLI on your local operating system, follow the instructions in [Install the Azure CLI](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli?view=azure-cli-latest).
+To install the Azure CLI on your local operating system, follow the instructions provided in [Install the Azure CLI](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli?view=azure-cli-latest).
 
-On your Mac, you can run the following Homebrew command to install Azure CLI:
+On macOS, you can run the following Homebrew command to install Azure CLI:
 
 ```sh
-$ brew install azure-cli
+brew install azure-cli
 ```
 
 After the Azure CLI is installed, use the following command to log in at the command line:
 
 ```sh
-$ az login
+az login
 ```
 
 After entering this command, a browser window appears for you to select the Azure credentials you are using.
+
 You are logged into Microsoft Azure and can use the Azure CLI with your subscription.
 For more information, see [Azure CLI documentation](https://docs.microsoft.com/en-us/cli/azure/?view=azure-cli-latest).
 
-### Step 2: Create a Resource Group**
+### Step 2: Create a Resource Group
 
-To create a resource group, we’ll need to first choose the location where it will be hosted. Run the following command to retrieve a list of the available locations:
+To create a resource group, you need to choose the location to host it. Run the following command to retrieve a list of the available locations:
 
 ```sh
-$ az account list-locations
+az account list-locations
 ```
 
-For the purposes of this demo we are going to choose the “West US” location.
+For the purposes of this example, the location is “West US”:
 
 ```output.json
 {
@@ -90,10 +90,10 @@ For the purposes of this demo we are going to choose the “West US” location.
 },
 ```
 
-Next, create the resource group by running the following command, specifying the location:
+Create the resource group by running the following command, specifying the location:
 
 ```sh
-$ az group create --name yugabytedbRG --location westus
+az group create --name yugabytedbRG --location westus
 ```
 
 ```output.json
@@ -110,22 +110,16 @@ $ az group create --name yugabytedbRG --location westus
 }
 ```
 
-You should now be able to view showing the “yugabytedbRG” resource group in the Azure Portal by clicking **Resource Groups**.
+You should be able to see the yugabytedbRG resource group in the Azure portal by clicking **Resource groups**, as per the following illustration:
 
 ![Resource Groups at Microsoft Azure Portal](/images/deploy/kubernetes/aks/aks-resource-groups.png)
 
 ### Step 3: Create the Kubernetes cluster
 
-You can now create a Kubernetes cluster by running the following command.
-
-{{< note title="Note" >}}
-
-Because you have not [specified any zones](https://docs.microsoft.com/en-us/azure/aks/availability-zones) in the command below, the AKS control plane components for the cluster will essentially be deployed in a single zone.
-
-{{< /note >}}
+Create a Kubernetes cluster by running the following command:
 
 ```sh
-$ az aks create \
+az aks create \
 --resource-group yugabytedbRG \
 --name yugabytedbAKSCluster \
 --node-count 3 \
@@ -134,29 +128,31 @@ $ az aks create \
 --generate-ssh-keys
 ```
 
-The `--generate-ssh-keys` argument auto-generates SSH public and private key files that will be stored in the `~/.ssh` directory.
+Note that because you have not [specified any zones](https://docs.microsoft.com/en-us/azure/aks/availability-zones) in the preceding command, the AKS control plane components for the cluster will be deployed in a single zone.
 
-You should see the following output:
+The `--generate-ssh-keys` argument auto-generates SSH public and private key files to be stored in the `~/.ssh` directory.
+
+Expect to see the following output:
 
 ```output
 Finished service principal creation[###################]  100.0000%
  - Running ..
 ```
 
-You should now see ”yugabytedbAKSCluster” in the UI.
+`yugabytedbAKSCluster` should be available in the Azure UI, as per the following illustration:
 
 ![yugabytedbRG](/images/deploy/kubernetes/aks/aks-resource-group-cluster.png)
 
 To create the cluster and use your own SSH keys, run the following command:
 
 ```sh
-$ ssh-keygen -t rsa -b 2048
+ssh-keygen -t rsa -b 2048
 ```
 
-Follow the prompts to create the` id_rsa `and `id_rsa.pub` files and note the location where they are stored. Now, run the following command:
+Follow the prompts to create the ` id_rsa ` and `id_rsa.pub` files, and record their location. Run the following command:
 
 ```sh
-$ az aks create \
+az aks create \
 --resource-group yugabytedbRG \
 --name yugabytedbAKSCluster \
 --node-count 3 \
@@ -168,10 +164,10 @@ $ az aks create \
 After the cluster is installed, point `kubectl` to the cluster by running the following command:
 
 ```sh
-$ az aks get-credentials --resource-group yugabytedbRG --name yugabytedbAKSCluster
+az aks get-credentials --resource-group yugabytedbRG --name yugabytedbAKSCluster
 ```
 
-You should see output similar to the following:
+You should see an output similar to the following:
 
 ```output
 Merged "yugabytedbAKSCluster" as current context in /Users/yugabyte-user/.kube/config
@@ -180,125 +176,111 @@ Merged "yugabytedbAKSCluster" as current context in /Users/yugabyte-user/.kube/c
 If you generated your own SSH keys, point `kubectl` to the cluster by running the following command instead:
 
 ```sh
-$ az aks get-credentials --resource-group yugabytedbRG --name yugabytedbAKSCluster -ssh-key-file <path_to>id_rsa
+az aks get-credentials --resource-group yugabytedbRG --name yugabytedbAKSCluster -ssh-key-file <path_to>id_rsa
 ```
 
 Verify that the cluster nodes are running using the following command:
 
 ```sh
-$ kubectl get nodes
+kubectl get nodes
 ```
 
-You should see output similar to:
+You should see an output similar to the following:
 
 ![alt_text](/images/deploy/kubernetes/aks/aks-kubectl-get-nodes.png)
 
-You can also view the details of the cluster in the Kubernetes Dashboard by running the following commands:
-
-First, run the following `kubectl` command:
+You can also view the details of the cluster in the Kubernetes dashboard by running the following two commands:
 
 ```sh
-$ kubectl create clusterrolebinding yb-kubernetes-dashboard --clusterrole=cluster-admin --serviceaccount=kube-system:kubernetes-dashboard --user=clusterUser
+kubectl create clusterrolebinding yb-kubernetes-dashboard --clusterrole=cluster-admin --serviceaccount=kube-system:kubernetes-dashboard --user=clusterUser
 ```
-
-And then run the following Azure CLI command:
 
 ```sh
-$ az aks browse --resource-group yugabytedbRG --name yugabytedbAKSCluster
+az aks browse --resource-group yugabytedbRG --name yugabytedbAKSCluster
 ```
 
-A browser window appears where you can view the Kubernetes Dashboard:
+A browser window appears where you can view the Kubernetes dashboard, as per the following illustration:
 
 ![Kubernetes Dashboard](/images/deploy/kubernetes/aks/aks-kubernetes-dashboard.png)
 
-### Step 4: Install YugabyteDB using Helm Chart
+### Step 4: Install YugabyteDB using Helm chart
 
-Now that we have our Kubernetes cluster up and running, we'll need to perform the following steps to get YugabyteDB deployed using Helm Chart:
+You need to perform a number of steps to deploy YugabyteDB using Helm chart:
 
-#### Add the Yugabyte charts repository
+1. Add the YugabyteDB `charts` repository by running the following commands:
 
-Let’s first add the YugabyteDB `charts` repository by running the following commands:
+   ```sh
+   helm repo add yugabytedb https://charts.yugabyte.com
+   ```
 
-```sh
-$ helm repo add yugabytedb https://charts.yugabyte.com
-```
+   Get the latest update from the `charts` repository by running the following `helm` command:
 
-"yugabytedb" has been added to your repositories.
+   ```sh
+   helm repo update
+   ```
 
-Now, make sure that you get the latest update from the `charts` repository by running the following `helm` command:
+   ```output
+   Hang tight while we grab the latest from your chart repositories...
+   ...Successfully got an update from the "yugabytedb" chart repository
+   ```
 
-```sg
-$ helm repo update
-```
+   ```sh
+   helm search repo yugabytedb/yugabyte --version {{<yb-version version="stable" format="short">}}
+   ```
 
-```output
-Hang tight while we grab the latest from your chart repositories...
-...Successfully got an update from the "yugabytedb" chart repository
-```
+   ```output
+   NAME                 CHART VERSION  APP VERSION   DESCRIPTION
+   yugabytedb/yugabyte  {{<yb-version version="stable" format="short">}}          {{<yb-version version="stable" format="build">}}  YugabyteDB is the high-performance distributed ...
+   ```
 
-```sh
-$ helm search repo yugabytedb/yugabyte --version {{<yb-version version="stable" format="short">}}
-```
+1. To create the `yb-demo` namespace, run the following command.
 
-```output
-NAME                 CHART VERSION  APP VERSION   DESCRIPTION
-yugabytedb/yugabyte  {{<yb-version version="stable" format="short">}}          {{<yb-version version="stable" format="build">}}  YugabyteDB is the high-performance distributed ...
-```
+   ```sh
+   kubectl create namespace yb-demo
+   ```
 
-#### Create the namespace
+   The following message should appear:
 
-To create the `yb-demo` namespace, run the following command.
+   ```output
+   namespace/yb-demo created
+   ```
 
-```sh
-$ kubectl create namespace yb-demo
-```
+1. Install YugabyteDB in the `yb-demo` namespace by running the following commands to specify settings for resource constrained environments:
 
-The following message should appear:
+   ```sh
+   helm install yb-demo -n yb-demo yugabytedb/yugabyte \
+    --version {{<yb-version version="stable" format="short">}} \
+    --set storage.master.count=1 \
+    --set storage.tserver.count=1 \
+    --set storage.master.storageClass=default \
+    --set storage.tserver.storageClass=default \
+    --set resource.master.requests.cpu=1 \
+    --set resource.master.requests.memory=1Gi \
+    --set resource.tserver.requests.cpu=1 \
+    --set resource.tserver.requests.memory=1Gi \
+    --set resource.master.limits.cpu=1 \
+    --set resource.master.limits.memory=1Gi \
+    --set resource.tserver.limits.cpu=1 \
+    --set resource.tserver.limits.memory=1Gi \
+    --timeout=15m
+   ```
 
-```output
-namespace/yb-demo created
-```
+   Depending on your resources, it may take some time to get everything installed, deployed, and configured.
 
-#### Install YugabyteDB
+   After you see a `success` message, you can verify that the YugabyteDB pods are running by using the following command:
 
-Next, install YugabyteDB in the `yb-demo` namespace by running the following commands to specify settings for resource constrained environments.
+   ```sh
+   kubectl get pods --namespace yb-demo
+   ```
 
-```sh
-$ helm install yb-demo -n yb-demo yugabytedb/yugabyte \
- --version {{<yb-version version="stable" format="short">}} \
- --set storage.master.count=1 \
- --set storage.tserver.count=1 \
- --set storage.master.storageClass=default \
- --set storage.tserver.storageClass=default \
- --set resource.master.requests.cpu=1 \
- --set resource.master.requests.memory=1Gi \
- --set resource.tserver.requests.cpu=1 \
- --set resource.tserver.requests.memory=1Gi \
- --set resource.master.limits.cpu=1 \
- --set resource.master.limits.memory=1Gi \
- --set resource.tserver.limits.cpu=1 \
- --set resource.tserver.limits.memory=1Gi \
- --timeout=15m
-```
+   ![Verify pods are running](/images/deploy/kubernetes/aks/aks-verify-pods-running.png)
 
-Depending on your resources, it may take some time to get everything installed, deployed, and configured.
+   To access the YugabyteDB Admin UI, run the following command to locate the **External IP** entry associated with `yb-master-ui` and port `7000`:
 
-After you see a `success` message, you can verify that the YugabyteDB pods are running by running the following command:
+   ```sh
+   kubectl get services --namespace yb-demo
+   ```
 
-```sh
-$ kubectl get pods --namespace yb-demo
-```
+   Navigate to `http://<EXTERNAL_IP>:7000`, replacing `<EXTERNAL_IP>` with your external IP address. You should see the following:
 
-![Verify pods are running](/images/deploy/kubernetes/aks/aks-verify-pods-running.png)
-
-To access the YugabyteDB Admin UI, run the following command to locate the **External IP** entry associated with `yb-master-ui` and port `7000`.
-
-```sh
-$ kubectl get services --namespace yb-demo
-```
-
-Now, go to `http://<EXTERNAL_IP>:7000` (replacing `<EXTERNAL_IP>` with your external IP address). You should see the following:
-
-![YugabyteDB Admin UI](/images/deploy/kubernetes/aks/aks-admin-ui.png)
-
-You have successfully deployed YugabyteDB on an Azure Kubernetes cluster.
+   ![YugabyteDB Admin UI](/images/deploy/kubernetes/aks/aks-admin-ui.png)

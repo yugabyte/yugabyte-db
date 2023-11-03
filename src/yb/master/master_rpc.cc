@@ -41,20 +41,18 @@
 #include "yb/master/master_cluster.proxy.h"
 
 #include "yb/util/async_util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/net/net_util.h"
 
 using std::shared_ptr;
 using std::string;
 using std::vector;
 
-using yb::consensus::RaftPeerPB;
 using yb::rpc::Messenger;
-using yb::rpc::Rpc;
 
 using namespace std::placeholders;
 
-DEFINE_int32(master_leader_rpc_timeout_ms, 500,
+DEFINE_RUNTIME_int32(master_leader_rpc_timeout_ms, 500,
              "Number of milliseconds that the tserver will keep querying for master leader before"
              "selecting a follower.");
 TAG_FLAG(master_leader_rpc_timeout_ms, advanced);
@@ -185,15 +183,13 @@ void GetLeaderMasterRpc::SendRpc() {
   std::vector<rpc::Rpcs::Handle> handles;
   handles.reserve(size);
   {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     pending_responses_ = size;
-    for (size_t i = 0; i < size; i++) {
-      auto handle = rpcs_.Prepare();
-      if (handle == rpcs_.InvalidHandle()) {
-        GetMasterRegistrationRpcCbForNode(i, STATUS(Aborted, "Stopping"), self, handle);
-        continue;
-      }
-      *handle = std::make_shared<GetMasterRegistrationRpc>(
+  }
+
+  for (size_t i = 0; i < size; i++) {
+    auto handle = rpcs_.RegisterConstructed([this, i, self](const rpc::Rpcs::Handle& handle) {
+      return std::make_shared<GetMasterRegistrationRpc>(
           std::bind(
               &GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode, this, i, _1, self, handle),
           addrs_[i],
@@ -201,8 +197,12 @@ void GetLeaderMasterRpc::SendRpc() {
           retrier().messenger(),
           &retrier().proxy_cache(),
           &responses_[i]);
-      handles.push_back(handle);
+    });
+    if (handle == rpcs_.InvalidHandle()) {
+      GetMasterRegistrationRpcCbForNode(i, STATUS(Aborted, "Stopping"), self, handle);
+      continue;
     }
+    handles.push_back(handle);
   }
 
   for (const auto& handle : handles) {
@@ -229,7 +229,7 @@ void GetLeaderMasterRpc::Finished(const Status& status) {
   VLOG(4) << "Completed GetLeaderMasterRpc, calling callback with status "
           << status.ToString();
   {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     // 'completed_' prevents 'user_cb_' from being invoked twice.
     if (completed_) {
       return;
@@ -255,7 +255,7 @@ void GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode(
   // pick the one with the highest term/index as the leader.
   Status new_status = status;
   {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     --pending_responses_;
     if (completed_) {
       // If 'user_cb_' has been invoked (see Finished above), we can

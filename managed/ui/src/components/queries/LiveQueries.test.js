@@ -1,5 +1,7 @@
-import React from 'react';
 import axios from 'axios';
+import userEvent from '@testing-library/user-event';
+import { MuiThemeProvider } from '@material-ui/core';
+
 import { filterBySearchTokens } from './helpers/queriesHelper';
 import { LiveQueries } from './LiveQueries';
 import {
@@ -9,9 +11,24 @@ import {
   mockSearchTokens
 } from './helpers/mockQueryData';
 import { render, screen } from '../../test-utils';
-import userEvent from '@testing-library/user-event';
+import { mainTheme } from '../../redesign/theme/mainTheme';
 
 jest.mock('axios');
+jest.mock('react-i18next', () => ({
+  // this mock makes sure any components using the translate hook can use it without a warning being shown
+  useTranslation: () => {
+    return {
+      t: (str) => str,
+      i18n: {
+        changeLanguage: () => new Promise(() => {})
+      }
+    };
+  },
+  initReactI18next: {
+    type: '3rdParty',
+    init: () => {}
+  }
+}));
 
 describe('Live query search bar tests', () => {
   it('Search Bar: single filter on column and value', () => {
@@ -64,12 +81,16 @@ beforeEach(() => {
     }
   };
   axios.get.mockResolvedValue(resp);
-  render(<LiveQueries location={mockLocation} />);
+  render(
+    <MuiThemeProvider theme={mainTheme}>
+      <LiveQueries location={mockLocation} />
+    </MuiThemeProvider>
+  );
 });
 
 describe('Live query dashboard tests', () => {
   it('render the Live Queries component', () => {
-    expect(screen.getByRole('heading')).toHaveTextContent('Live Queries');
+    expect(screen.getByTestId('LiveQueries-Header')).toHaveTextContent('Live Queries');
   });
 
   // "1" in tests below corresponds to table header row

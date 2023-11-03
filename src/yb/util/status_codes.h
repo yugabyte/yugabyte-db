@@ -46,3 +46,4 @@ YB_STATUS_CODE(Combined, COMBINED_ERROR, 29,
                "Combined status representing multiple status failures")
 YB_STATUS_CODE(SnapshotTooOld, SNAPSHOT_TOO_OLD, 30, "Snapshot too old")
 YB_STATUS_CODE(CacheMissError, CACHE_MISS_ERROR, 32, "Cache miss error")
+YB_STATUS_CODE(TabletSplit, TABLET_SPLIT, 33, "Tablet split has occured")

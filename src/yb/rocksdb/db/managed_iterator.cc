@@ -18,7 +18,6 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_LITE
 
 #include "yb/rocksdb/db/managed_iterator.h"
 
@@ -31,7 +30,8 @@
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/slice_transform.h"
-#include "yb/rocksdb/util/xfunc.h"
+
+using std::unique_ptr;
 
 namespace rocksdb {
 
@@ -53,8 +53,6 @@ class MILock {
   }
   ~MILock() {
     this->mu_->unlock();
-    XFUNC_TEST("managed_xftest_release", "managed_unlock", managed_unlock1,
-               xf_manage_release, mi_);
   }
   ManagedIterator* GetManagedIterator() { return mi_; }
 
@@ -85,7 +83,6 @@ ManagedIterator::ManagedIterator(DBImpl* db, const ReadOptions& read_options,
       cfd_(cfd),
       svnum_(cfd->GetSuperVersionNumber()),
       mutable_iter_(nullptr),
-      valid_(false),
       snapshot_created_(false),
       release_supported_(true) {
   read_options_.managed = false;
@@ -95,8 +92,6 @@ ManagedIterator::ManagedIterator(DBImpl* db, const ReadOptions& read_options,
   }
   cfh_.SetCFD(cfd);
   mutable_iter_ = unique_ptr<Iterator>(db->NewIterator(read_options_, &cfh_));
-  XFUNC_TEST("managed_xftest_dropold", "managed_create", xf_managed_create1,
-             xf_manage_create, this);
 }
 
 ManagedIterator::~ManagedIterator() {
@@ -109,9 +104,7 @@ ManagedIterator::~ManagedIterator() {
   UnLock();
 }
 
-bool ManagedIterator::Valid() const { return valid_; }
-
-void ManagedIterator::SeekToLast() {
+const KeyValueEntry& ManagedIterator::SeekToLast() {
   MILock l(&in_use_, this);
   if (NeedToRebuild()) {
     RebuildIterator();
@@ -121,16 +114,19 @@ void ManagedIterator::SeekToLast() {
   if (mutable_iter_->status().ok()) {
     UpdateCurrent();
   }
+  return entry_;
 }
 
-void ManagedIterator::SeekToFirst() {
+const KeyValueEntry& ManagedIterator::SeekToFirst() {
   MILock l(&in_use_, this);
   SeekInternal(Slice(), true);
+  return entry_;
 }
 
-void ManagedIterator::Seek(const Slice& user_key) {
+const KeyValueEntry& ManagedIterator::Seek(Slice user_key) {
   MILock l(&in_use_, this);
   SeekInternal(user_key, false);
+  return entry_;
 }
 
 void ManagedIterator::SeekInternal(const Slice& user_key, bool seek_to_first) {
@@ -146,10 +142,10 @@ void ManagedIterator::SeekInternal(const Slice& user_key, bool seek_to_first) {
   UpdateCurrent();
 }
 
-void ManagedIterator::Prev() {
-  if (!valid_) {
+const KeyValueEntry& ManagedIterator::Prev() {
+  if (!entry_) {
     status_ = STATUS(InvalidArgument, "Iterator value invalid");
-    return;
+    return entry_;
   }
   MILock l(&in_use_, this);
   if (NeedToRebuild()) {
@@ -158,13 +154,13 @@ void ManagedIterator::Prev() {
     RebuildIterator();
     SeekInternal(old_key, false);
     UpdateCurrent();
-    if (!valid_) {
-      return;
+    if (!entry_) {
+      return entry_;
     }
     if (key().compare(old_key) != 0) {
-      valid_ = false;
+      entry_.Reset();
       status_ = STATUS(Incomplete, "Cannot do Prev now");
-      return;
+      return entry_;
     }
   }
   mutable_iter_->Prev();
@@ -174,12 +170,13 @@ void ManagedIterator::Prev() {
   } else {
     status_ = mutable_iter_->status();
   }
+  return entry_;
 }
 
-void ManagedIterator::Next() {
-  if (!valid_) {
+const KeyValueEntry& ManagedIterator::Next() {
+  if (!entry_) {
     status_ = STATUS(InvalidArgument, "Iterator value invalid");
-    return;
+    return entry_;
   }
   MILock l(&in_use_, this);
   if (NeedToRebuild()) {
@@ -188,27 +185,22 @@ void ManagedIterator::Next() {
     RebuildIterator();
     SeekInternal(old_key, false);
     UpdateCurrent();
-    if (!valid_) {
-      return;
+    if (!entry_) {
+      return entry_;
     }
     if (key().compare(old_key) != 0) {
-      valid_ = false;
+      entry_.Reset();
       status_ = STATUS(Incomplete, "Cannot do Next now");
-      return;
+      return entry_;
     }
   }
   mutable_iter_->Next();
   UpdateCurrent();
+  return entry_;
 }
 
-Slice ManagedIterator::key() const {
-  assert(valid_);
-  return cached_key_.GetKey();
-}
-
-Slice ManagedIterator::value() const {
-  assert(valid_);
-  return cached_value_.GetKey();
+const KeyValueEntry& ManagedIterator::Entry() const {
+  return entry_;
 }
 
 Status ManagedIterator::status() const { return status_; }
@@ -221,7 +213,8 @@ void ManagedIterator::RebuildIterator() {
 void ManagedIterator::UpdateCurrent() {
   assert(mutable_iter_ != nullptr);
 
-  if (!(valid_ = mutable_iter_->Valid())) {
+  if (!mutable_iter_->Valid()) {
+    entry_.Reset();
     status_ = mutable_iter_->status();
     return;
   }
@@ -229,6 +222,8 @@ void ManagedIterator::UpdateCurrent() {
   status_ = Status::OK();
   cached_key_.SetKey(mutable_iter_->key());
   cached_value_.SetKey(mutable_iter_->value());
+  entry_.key = cached_key_.GetKey();
+  entry_.value = cached_value_.GetKey();
 }
 
 void ManagedIterator::ReleaseIter(bool only_old) {
@@ -261,10 +256,6 @@ bool ManagedIterator::TryLock() { return in_use_.try_lock(); }
 
 void ManagedIterator::UnLock() {
   in_use_.unlock();
-  XFUNC_TEST("managed_xftest_release", "managed_unlock", managed_unlock1,
-             xf_manage_release, this);
 }
 
 }  // namespace rocksdb
-
-#endif  // ROCKSDB_LITE

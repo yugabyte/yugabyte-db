@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CLIENT_ASYNC_RPC_H_
-#define YB_CLIENT_ASYNC_RPC_H_
+#pragma once
 
 #include <boost/range/iterator_range_core.hpp>
 #include <boost/version.hpp>
@@ -22,6 +21,7 @@
 
 #include "yb/common/common_types.pb.h"
 #include "yb/common/read_hybrid_time.h"
+#include "yb/common/retryable_request.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -46,11 +46,11 @@ class RemoteTabletServer;
 struct AsyncRpcMetrics {
   explicit AsyncRpcMetrics(const scoped_refptr<MetricEntity>& metric_entity);
 
-  scoped_refptr<Histogram> remote_write_rpc_time;
-  scoped_refptr<Histogram> remote_read_rpc_time;
-  scoped_refptr<Histogram> local_write_rpc_time;
-  scoped_refptr<Histogram> local_read_rpc_time;
-  scoped_refptr<Histogram> time_to_send;
+  scoped_refptr<EventStats> remote_write_rpc_time;
+  scoped_refptr<EventStats> remote_read_rpc_time;
+  scoped_refptr<EventStats> local_write_rpc_time;
+  scoped_refptr<EventStats> local_read_rpc_time;
+  scoped_refptr<EventStats> time_to_send;
   scoped_refptr<Counter> consistent_prefix_successful_reads;
   scoped_refptr<Counter> consistent_prefix_failed_reads;
 };
@@ -89,7 +89,7 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
   virtual ~AsyncRpc();
 
   void SendRpc() override;
-  string ToString() const override;
+  std::string ToString() const override;
 
   std::shared_ptr<const YBTable> table() const;
   const RemoteTablet& tablet() const { return *tablet_invoker_.tablet(); }
@@ -109,12 +109,19 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
   // See FlushExtraResult for details.
   virtual FlushExtraResult MakeFlushExtraResult() = 0;
 
-  virtual void SwapResponses() = 0;
+  virtual Status SwapResponses() = 0;
 
   void Failed(const Status& status) override;
 
   // Is this a local call?
   bool IsLocalCall() const;
+
+  Status CheckResponseCount(
+      const char* op, const char* name, int found, int expected);
+
+  Status CheckResponseCount(
+      const char* op, int redis_found, int redis_expected, int ql_found, int ql_expected,
+      int pgsql_found, int pgsql_expected);
 
   // Pointer back to the batcher. Processes the write response when it
   // completes, regardless of success or failure.
@@ -168,10 +175,9 @@ class WriteRpc : public AsyncRpcBase<tserver::WriteRequestPB, tserver::WriteResp
   virtual ~WriteRpc();
 
  private:
-  void SwapResponses() override;
+  Status SwapResponses() override;
   void CallRemoteMethod() override;
   void NotifyBatcher(const Status& status) override;
-  bool ShouldRetryExpiredRequest() override;
 };
 
 class ReadRpc : public AsyncRpcBase<tserver::ReadRequestPB, tserver::ReadResponsePB> {
@@ -182,7 +188,7 @@ class ReadRpc : public AsyncRpcBase<tserver::ReadRequestPB, tserver::ReadRespons
   virtual ~ReadRpc();
 
  private:
-  void SwapResponses() override;
+  Status SwapResponses() override;
   void CallRemoteMethod() override;
   void NotifyBatcher(const Status& status) override;
 };
@@ -190,5 +196,3 @@ class ReadRpc : public AsyncRpcBase<tserver::ReadRequestPB, tserver::ReadRespons
 }  // namespace internal
 }  // namespace client
 }  // namespace yb
-
-#endif  // YB_CLIENT_ASYNC_RPC_H_

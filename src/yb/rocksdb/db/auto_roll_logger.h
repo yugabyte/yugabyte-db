@@ -20,8 +20,6 @@
 // Logger implementation that can be shared by all environments
 // where enough posix functionality is available.
 
-#ifndef YB_ROCKSDB_DB_AUTO_ROLL_LOGGER_H
-#define YB_ROCKSDB_DB_AUTO_ROLL_LOGGER_H
 
 #pragma once
 
@@ -39,9 +37,9 @@
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/port/util_logger.h"
 #include "yb/rocksdb/util/mutexlock.h"
-#include "yb/rocksdb/util/sync_point.h"
 
 #include "yb/util/cache_metrics.h"
+#include "yb/util/sync_point.h"
 
 namespace rocksdb {
 
@@ -83,7 +81,7 @@ class AutoRollLogger : public Logger {
       // pin down the current logger_ instance before releasing the mutex.
       logger = logger_;
     }
-    TEST_SYNC_POINT("AutoRollLogger::Flush:PinnedLogger");
+    DEBUG_ONLY_TEST_SYNC_POINT("AutoRollLogger::Flush:PinnedLogger");
     if (logger) {
       logger->Flush();
     }
@@ -138,5 +136,3 @@ Status CreateLoggerFromOptions(const std::string& dbname,
                                std::shared_ptr<Logger>* logger);
 
 }  // namespace rocksdb
-
-#endif // YB_ROCKSDB_DB_AUTO_ROLL_LOGGER_H

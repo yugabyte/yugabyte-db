@@ -47,6 +47,7 @@
 #include <cfloat>
 #include <chrono>
 #include <cmath>
+#include <compare>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
@@ -54,6 +55,7 @@
 #include <cstring>
 #include <ctime>
 #include <deque>
+#include <filesystem>
 #include <fstream>
 #include <functional>
 #include <future>
@@ -68,6 +70,7 @@
 #include <mutex>
 #include <new>
 #include <numeric>
+#include <optional>
 #include <ostream>
 #include <queue>
 #include <random>
@@ -77,6 +80,7 @@
 #include <sstream>
 #include <stack>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <tuple>
 #include <type_traits>
@@ -86,7 +90,9 @@
 #include <vector>
 
 #include <boost/algorithm/string.hpp>
+#include <boost/algorithm/string/classification.hpp>
 #include <boost/algorithm/string/predicate.hpp>
+#include <boost/algorithm/string/split.hpp>
 #include <boost/algorithm/string/trim.hpp>
 #include <boost/archive/iterators/base64_from_binary.hpp>
 #include <boost/archive/iterators/binary_from_base64.hpp>
@@ -122,6 +128,7 @@
 #include <boost/optional/optional.hpp>
 #include <boost/optional/optional_fwd.hpp>
 #include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/config/config.hpp>
 #include <boost/preprocessor/expr_if.hpp>
 #include <boost/preprocessor/facilities/apply.hpp>
 #include <boost/preprocessor/if.hpp>
@@ -142,6 +149,7 @@
 #include <boost/tti/has_type.hpp>
 #include <boost/type_traits/is_const.hpp>
 #include <boost/type_traits/make_signed.hpp>
+#include <boost/unordered_map.hpp>
 #include <boost/utility/binary.hpp>
 #include <boost/uuid/detail/sha1.hpp>
 #include <boost/uuid/nil_generator.hpp>

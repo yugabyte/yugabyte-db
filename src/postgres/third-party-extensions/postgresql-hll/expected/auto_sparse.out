@@ -1,0 +1,171 @@
+-- ----------------------------------------------------------------
+-- Tests automatic sparse to compressed threshold assignment.
+-- ----------------------------------------------------------------
+SELECT hll_set_output_version(1);
+ hll_set_output_version 
+------------------------
+                      1
+(1 row)
+
+-- Empty
+SELECT hll_empty(5,5,-1,1);
+ hll_empty 
+-----------
+ \x11857f
+(1 row)
+
+-- Explicit
+SELECT hll_add(hll_empty(5,5,-1,1),
+           hll_hash_integer(1,0));
+         hll_add          
+--------------------------
+ \x12857f8895a3f5af28cafe
+(1 row)
+
+SELECT hll_add(
+       hll_add(hll_empty(5,5,-1,1),
+           hll_hash_integer(2,0)),
+           hll_hash_integer(1,0));
+                 hll_add                  
+------------------------------------------
+ \x12857f8895a3f5af28cafeda0ce907e4355b60
+(1 row)
+
+-- Sparse
+SELECT hll_add(
+       hll_add(
+       hll_add(hll_empty(5,5,-1,1),
+           hll_hash_integer(3,0)),
+           hll_hash_integer(2,0)),
+           hll_hash_integer(1,0));
+     hll_add      
+------------------
+ \x13857f00761f04
+(1 row)
+
+-- Sparse, has 15 filled
+SELECT hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(hll_empty(5,5,-1,1),
+           hll_hash_integer(17,0)),
+           hll_hash_integer(15,0)),
+           hll_hash_integer(14,0)),
+           hll_hash_integer(13,0)),
+           hll_hash_integer(12,0)),
+           hll_hash_integer(11,0)),
+           hll_hash_integer(10,0)),
+           hll_hash_integer(9,0)),
+           hll_hash_integer(8,0)),
+           hll_hash_integer(7,0)),
+           hll_hash_integer(6,0)),
+           hll_hash_integer(5,0)),
+           hll_hash_integer(4,0)),
+           hll_hash_integer(3,0)),
+           hll_hash_integer(2,0)),
+           hll_hash_integer(1,0));
+                    hll_add                     
+------------------------------------------------
+ \x13857f00421204e18064298ae6c1722d0b61e13c1f84
+(1 row)
+
+-- Compressed, has 16 filled
+SELECT hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(hll_empty(5,5,-1,1),
+           hll_hash_integer(20,0)),
+           hll_hash_integer(17,0)),
+           hll_hash_integer(15,0)),
+           hll_hash_integer(14,0)),
+           hll_hash_integer(13,0)),
+           hll_hash_integer(12,0)),
+           hll_hash_integer(11,0)),
+           hll_hash_integer(10,0)),
+           hll_hash_integer(9,0)),
+           hll_hash_integer(8,0)),
+           hll_hash_integer(7,0)),
+           hll_hash_integer(6,0)),
+           hll_hash_integer(5,0)),
+           hll_hash_integer(4,0)),
+           hll_hash_integer(3,0)),
+           hll_hash_integer(2,0)),
+           hll_hash_integer(1,0));
+                     hll_add                      
+--------------------------------------------------
+ \x14857f0840008001000020000008042000062884120021
+(1 row)
+
+-- Same with fixed sparse of 128
+SELECT hll_set_max_sparse(128);
+ hll_set_max_sparse 
+--------------------
+                 -1
+(1 row)
+
+SELECT hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(hll_empty(5,5,-1,1),
+           hll_hash_integer(20,0)),
+           hll_hash_integer(17,0)),
+           hll_hash_integer(15,0)),
+           hll_hash_integer(14,0)),
+           hll_hash_integer(13,0)),
+           hll_hash_integer(12,0)),
+           hll_hash_integer(11,0)),
+           hll_hash_integer(10,0)),
+           hll_hash_integer(9,0)),
+           hll_hash_integer(8,0)),
+           hll_hash_integer(7,0)),
+           hll_hash_integer(6,0)),
+           hll_hash_integer(5,0)),
+           hll_hash_integer(4,0)),
+           hll_hash_integer(3,0)),
+           hll_hash_integer(2,0)),
+           hll_hash_integer(1,0));
+                     hll_add                      
+--------------------------------------------------
+ \x13857f00421204e158a0190a62b9b05c8b42d8784f07e1
+(1 row)
+
+-- Notice that sparse result is not shorter than the compressed
+-- result.

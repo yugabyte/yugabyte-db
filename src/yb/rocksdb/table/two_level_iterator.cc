@@ -23,14 +23,17 @@
 
 #include "yb/rocksdb/table/two_level_iterator.h"
 
+#include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/table/iterator_wrapper.h"
 #include "yb/rocksdb/util/arena.h"
+
+#include "yb/rocksdb/db/dbformat.h"
 
 namespace rocksdb {
 
 namespace {
 
-class TwoLevelIterator : public InternalIterator {
+class TwoLevelIterator final : public InternalIterator {
  public:
   explicit TwoLevelIterator(TwoLevelIteratorState* state,
                             InternalIterator* first_level_iter,
@@ -46,21 +49,14 @@ class TwoLevelIterator : public InternalIterator {
     }
   }
 
-  void Seek(const Slice& target) override;
-  void SeekToFirst() override;
-  void SeekToLast() override;
-  void Next() override;
-  void Prev() override;
+  const KeyValueEntry& Seek(Slice target) override;
+  const KeyValueEntry& SeekToFirst() override;
+  const KeyValueEntry& SeekToLast() override;
+  const KeyValueEntry& Next() override;
+  const KeyValueEntry& Prev() override;
 
-  bool Valid() const override { return second_level_iter_.Valid(); }
-  Slice key() const override {
-    assert(Valid());
-    return second_level_iter_.key();
-  }
-  Slice value() const override {
-    assert(Valid());
-    return second_level_iter_.value();
-  }
+  const KeyValueEntry& Entry() const override { return second_level_iter_.Entry(); }
+
   Status status() const override {
     // It'd be nice if status() returned a const Status& instead of a Status
     if (!first_level_iter_.status().ok()) {
@@ -72,6 +68,7 @@ class TwoLevelIterator : public InternalIterator {
       return status_;
     }
   }
+
   Status PinData() override { return second_level_iter_.PinData(); }
   Status ReleasePinnedData() override {
     return second_level_iter_.ReleasePinnedData();
@@ -79,15 +76,25 @@ class TwoLevelIterator : public InternalIterator {
   bool IsKeyPinned() const override {
     return second_level_iter_.iter() ? second_level_iter_.IsKeyPinned() : false;
   }
+  ScanForwardResult ScanForward(
+      const Comparator* user_key_comparator, const Slice& upperbound,
+      KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) override;
 
  private:
   void SaveError(const Status& s) {
     if (status_.ok() && !s.ok()) status_ = s;
   }
-  void SkipEmptyDataBlocksForward();
+  const KeyValueEntry& DoSkipEmptyDataBlocksForward(const KeyValueEntry* entry);
   void SkipEmptyDataBlocksBackward();
   void SetSecondLevelIterator(InternalIterator* iter);
-  void InitDataBlock();
+  bool InitDataBlock();
+
+  const KeyValueEntry& SkipEmptyDataBlocksForward(const KeyValueEntry& entry) {
+    if (PREDICT_TRUE(entry.Valid())) {
+      return entry;
+    }
+    return DoSkipEmptyDataBlocksForward(&entry);
+  }
 
   TwoLevelIteratorState* state_;
   IteratorWrapper first_level_iter_;
@@ -106,66 +113,92 @@ TwoLevelIterator::TwoLevelIterator(TwoLevelIteratorState* state,
       first_level_iter_(first_level_iter),
       need_free_iter_and_state_(need_free_iter_and_state) {}
 
-void TwoLevelIterator::Seek(const Slice& target) {
+const KeyValueEntry& TwoLevelIterator::Seek(Slice target) {
   if (state_->check_prefix_may_match &&
       !state_->PrefixMayMatch(target)) {
     SetSecondLevelIterator(nullptr);
-    return;
+    return Entry();
   }
   first_level_iter_.Seek(target);
 
-  InitDataBlock();
-  if (second_level_iter_.iter() != nullptr) {
-    second_level_iter_.Seek(target);
+  if (!InitDataBlock()) {
+    return KeyValueEntry::Invalid();
   }
-  SkipEmptyDataBlocksForward();
+  return SkipEmptyDataBlocksForward(second_level_iter_.Seek(target));
 }
 
-void TwoLevelIterator::SeekToFirst() {
+const KeyValueEntry& TwoLevelIterator::SeekToFirst() {
   first_level_iter_.SeekToFirst();
-  InitDataBlock();
-  if (second_level_iter_.iter() != nullptr) {
-    second_level_iter_.SeekToFirst();
+  if (!InitDataBlock()) {
+    return KeyValueEntry::Invalid();
   }
-  SkipEmptyDataBlocksForward();
+  return SkipEmptyDataBlocksForward(second_level_iter_.SeekToFirst());
 }
 
-void TwoLevelIterator::SeekToLast() {
+const KeyValueEntry& TwoLevelIterator::SeekToLast() {
   first_level_iter_.SeekToLast();
   InitDataBlock();
   if (second_level_iter_.iter() != nullptr) {
     second_level_iter_.SeekToLast();
   }
   SkipEmptyDataBlocksBackward();
+  return Entry();
 }
 
-void TwoLevelIterator::Next() {
+const KeyValueEntry& TwoLevelIterator::Next() {
   assert(Valid());
-  second_level_iter_.Next();
-  SkipEmptyDataBlocksForward();
+  return SkipEmptyDataBlocksForward(second_level_iter_.Next());
 }
 
-void TwoLevelIterator::Prev() {
+const KeyValueEntry& TwoLevelIterator::Prev() {
   assert(Valid());
   second_level_iter_.Prev();
   SkipEmptyDataBlocksBackward();
+  return Entry();
 }
 
+ScanForwardResult TwoLevelIterator::ScanForward(
+    const Comparator* user_key_comparator, const Slice& upperbound,
+    KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) {
+  LOG_IF(DFATAL, !Valid()) << "Iterator should be valid.";
 
-void TwoLevelIterator::SkipEmptyDataBlocksForward() {
-  while (second_level_iter_.iter() == nullptr ||
-         (!second_level_iter_.Valid() &&
-         !second_level_iter_.status().IsIncomplete())) {
+  ScanForwardResult result;
+  do {
+    if (!upperbound.empty() &&
+        user_key_comparator->Compare(ExtractUserKey(second_level_iter_.key()), upperbound) >= 0) {
+      break;
+    }
+
+    auto current_result = second_level_iter_.ScanForward(
+        user_key_comparator, upperbound, key_filter_callback, scan_callback);
+    result.number_of_keys_visited += current_result.number_of_keys_visited;
+    if (!current_result.reached_upperbound) {
+      result.reached_upperbound = false;
+      return result;
+    }
+
+    SkipEmptyDataBlocksForward(second_level_iter_.Entry());
+  } while (Valid());
+
+  result.reached_upperbound = true;
+  return result;
+}
+
+const KeyValueEntry& TwoLevelIterator::DoSkipEmptyDataBlocksForward(const KeyValueEntry* entry) {
+  for (;;) {
+    if (entry->Valid() || second_level_iter_.status().IsIncomplete()) {
+      return *entry;
+    }
     // Move to next block
     if (!first_level_iter_.Valid()) {
       SetSecondLevelIterator(nullptr);
-      return;
+      return KeyValueEntry::Invalid();
     }
     first_level_iter_.Next();
-    InitDataBlock();
-    if (second_level_iter_.iter() != nullptr) {
-      second_level_iter_.SeekToFirst();
+    if (!InitDataBlock()) {
+      return KeyValueEntry::Invalid();
     }
+    entry = &second_level_iter_.SeekToFirst();
   }
 }
 
@@ -179,8 +212,7 @@ void TwoLevelIterator::SkipEmptyDataBlocksBackward() {
       return;
     }
     first_level_iter_.Prev();
-    InitDataBlock();
-    if (second_level_iter_.iter() != nullptr) {
+    if (InitDataBlock()) {
       second_level_iter_.SeekToLast();
     }
   }
@@ -193,22 +225,27 @@ void TwoLevelIterator::SetSecondLevelIterator(InternalIterator* iter) {
   second_level_iter_.Set(iter);
 }
 
-void TwoLevelIterator::InitDataBlock() {
-  if (!first_level_iter_.Valid()) {
+bool TwoLevelIterator::InitDataBlock() {
+  if (PREDICT_FALSE(!first_level_iter_.Valid())) {
     SetSecondLevelIterator(nullptr);
-  } else {
-    Slice handle = first_level_iter_.value();
-    if (second_level_iter_.iter() != nullptr &&
-        !second_level_iter_.status().IsIncomplete() &&
-        handle.compare(data_block_handle_) == 0) {
-      // second_level_iter is already constructed with this iterator, so
-      // no need to change anything
-    } else {
-      InternalIterator* iter = state_->NewSecondaryIterator(handle);
-      data_block_handle_.assign(handle.cdata(), handle.size());
-      SetSecondLevelIterator(iter);
-    }
+    return false;
   }
+
+  Slice handle = first_level_iter_.value();
+  if (second_level_iter_.iter() != nullptr &&
+      !second_level_iter_.status().IsIncomplete() &&
+      handle.compare(data_block_handle_) == 0) {
+    // second_level_iter is already constructed with this iterator, so
+    // no need to change anything
+  } else {
+    // TODO(secondary_iter): consider updating existing iterator rather than recreating, measure
+    // potential perf impact.
+    InternalIterator* iter = state_->NewSecondaryIterator(handle);
+    data_block_handle_.assign(handle.cdata(), handle.size());
+    SetSecondLevelIterator(iter);
+  }
+
+  return true;
 }
 
 }  // namespace

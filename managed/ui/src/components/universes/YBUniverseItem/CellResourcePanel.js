@@ -1,6 +1,5 @@
 // Copyright (c) YugaByte, Inc.
 
-import React from 'react';
 import { Row, Col } from 'react-bootstrap';
 
 import { UniverseReadWriteMetrics } from '../../metrics';

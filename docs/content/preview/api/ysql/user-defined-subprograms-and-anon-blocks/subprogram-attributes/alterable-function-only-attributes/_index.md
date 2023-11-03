@@ -16,7 +16,7 @@ showRightNav: true
 
 ## Volatility
 
-The _[volatility](../../../syntax_resources/grammar_diagrams/#volatility)_ attribute as these allowed values:
+The _[volatility](../../../syntax_resources/grammar_diagrams/#volatility)_ attribute has these allowed values:
 
 - _volatile_
 - _stable_
@@ -62,7 +62,7 @@ This is a typical result:
 ```output
                   v1                  |                  v2
 --------------------------------------+--------------------------------------
-  bf4b4d1d-081a-4186-adc6-173016e0f485 | f9b210dc-d42b-4a88-bdd9-cca1949e0319
+ 0869edfa-af63-4308-8b80-d9d5a58491b8 | 55589cf4-5441-4582-9cf1-688481b37f55
 ```
 
 The function _volatile_result()_ returns different results upon successive evaluations even during the execution of a single SQL statement.
@@ -118,12 +118,13 @@ Further, if you want to create an expression-based index that references a user-
 ```
 
 Marking a function as _immutable_ expresses a promise that must hold good for the lifetime of the function's existence (in other words, from the moment it's created to the moment that it's dropped) thus:
+
 - The function has no side effects.
 - The function is mathematically deterministic—that is, the vector of actual arguments uniquely determines the function's return value.
 
 Nothing prevents you from lying. But doing so will, sooner or later, bring wrong results.
 
-See the section [Immutable function examples](../immutable-function-examples/).
+See the section [Immutable function examples](immutable-function-examples/).
 
 ## On_null_input
 
@@ -239,7 +240,7 @@ You must mark a function as parallel unsafe:
 - If it makes any changes to the transaction such as using sub-transactions.
 - If it accesses sequences or attempts to make persistent changes to settings.
 
-Notice that, because a function ought not to have side-effects, you should consider using a procedure instead. If it needs to return a value, then use an _inout_ argument.
+Notice that, because a function ought not to have side effects, you should consider using a procedure instead. If it needs to return a value, then use an _inout_ argument.
 
 #### restricted
 
@@ -259,7 +260,7 @@ This tells YSQL that the function is safe to run in parallel mode without restri
 
 The default for this attribute is _not leakproof_. Only a _superuser_ may mark a function as _leakproof_.
 
-Functions and operators marked as _leakproof_ are assumed to be trustworthy, and may be executed before conditions from security policies and security barrier views. This is a component of the [Rules and Privileges](https://www.postgresql.org/docs/11/rules-privileges.html) functionality. See the account of [`create view`](https://www.postgresql.org/docs/11/sql-createview.html) in the PostgreSQL documentation for the syntax for the _security_barrier_ attribute.
+Functions and operators marked as _leakproof_ are assumed to be trustworthy, and may be executed before conditions from security policies and security barrier views. This is a component of the [Rules and Privileges](https://www.postgresql.org/docs/11/rules-privileges.html) functionality. See the account of _[create view](https://www.postgresql.org/docs/11/sql-createview.html)_ in the PostgreSQL documentation for the syntax for the _security_barrier_ attribute.
 
 The _leakproof_ attribute indicates whether or not the function has any side effects. A function is considered to be _leakproof_ only if:
 
@@ -279,7 +280,6 @@ The following demonstration assumes that you can connect to some database as a r
 
 ```plpgsql
 \c demo u1
-set client_min_messages = warning;
 
 drop schema if exists s1 cascade;
 create schema s1;
@@ -349,7 +349,6 @@ Now connect as _postgres_ and execute _mark_f_leakproof()_ again:
 
 ```plpgsql
 \c demo postgres
-set client_min_messages = warning;
 call s1.mark_f_leakproof('');
 ```
 
@@ -365,7 +364,6 @@ Re-connect as _u1_ and check the _leakproof_ status:
 
 ```plpgsql
 \c demo u1
-set client_min_messages = warning;
 select leakproof from s1.f_leakproof_status;
 ```
 

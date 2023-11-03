@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOC_OPERATION_H_
-#define YB_DOCDB_DOC_OPERATION_H_
+#pragma once
 
 #include <boost/container/small_vector.hpp>
 
@@ -20,6 +19,7 @@
 #include "yb/common/transaction.pb.h"
 
 #include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/read_operation_data.h"
 
 #include "yb/util/monotime.h"
 #include "yb/util/ref_cnt_buffer.h"
@@ -29,12 +29,23 @@ namespace docdb {
 
 struct DocOperationApplyData {
   DocWriteBatch* doc_write_batch;
-  CoarseTimePoint deadline;
-  ReadHybridTime read_time;
+  ReadOperationData read_operation_data;
   HybridTime* restart_read_ht;
+  DocRowwiseIterator* iterator;
+  // Whether we should restart seek while fetching entry from doc key.
+  bool restart_seek;
+  SchemaPackingProvider* schema_packing_provider;  // null okay
+
+  CoarseTimePoint deadline() const {
+    return read_operation_data.deadline;
+  }
+
+  const ReadHybridTime& read_time() const {
+    return read_operation_data.read_time;
+  }
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(deadline, read_time, restart_read_ht);
+    return YB_STRUCT_TO_STRING(read_operation_data, restart_read_ht);
   }
 };
 
@@ -46,6 +57,7 @@ typedef boost::container::small_vector_base<RefCntPrefix> DocPathsToLock;
 YB_DEFINE_ENUM(GetDocPathsMode, (kLock)(kIntents));
 YB_DEFINE_ENUM(DocOperationType,
                (PGSQL_WRITE_OPERATION)(QL_WRITE_OPERATION)(REDIS_WRITE_OPERATION));
+YB_STRONGLY_TYPED_BOOL(SingleOperation);
 
 class DocOperation {
  public:
@@ -72,6 +84,16 @@ class DocOperation {
   virtual Type OpType() = 0;
   virtual void ClearResponse() = 0;
 
+  // Update iterator stored in iterator, and setup data to use it.
+  // prev - The operation before this one, that works with the current iterator.
+  //        Should be used to check whether iterators are compatible.
+  // single_operation - is this operation is the only operation in batch.
+  virtual Status UpdateIterator(
+      DocOperationApplyData* data, DocOperation* prev, SingleOperation single_operation,
+      std::optional<DocRowwiseIterator>* iterator) {
+    return Status::OK();
+  }
+
   virtual std::string ToString() const = 0;
 };
 
@@ -96,5 +118,3 @@ typedef std::vector<std::unique_ptr<DocOperation>> DocOperations;
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif // YB_DOCDB_DOC_OPERATION_H_

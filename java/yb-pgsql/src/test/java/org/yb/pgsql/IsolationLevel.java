@@ -16,16 +16,23 @@ package org.yb.pgsql;
 import java.sql.Connection;
 
 public enum IsolationLevel {
-  READ_UNCOMMITTED(Connection.TRANSACTION_READ_UNCOMMITTED),
-  READ_COMMITTED(Connection.TRANSACTION_READ_COMMITTED),
-  REPEATABLE_READ(Connection.TRANSACTION_REPEATABLE_READ),
-  SERIALIZABLE(Connection.TRANSACTION_SERIALIZABLE);
+  // In stronger to weaker order:
 
-  IsolationLevel(int pgIsolationLevel) {
-    this.pgIsolationLevel = pgIsolationLevel;
-  }
+  SERIALIZABLE(Connection.TRANSACTION_SERIALIZABLE, "SERIALIZABLE"),
+  /** PG's/YB's REPEATABLE_READ is DocDB's SNAPSHOT under the hood. */
+  REPEATABLE_READ(Connection.TRANSACTION_REPEATABLE_READ, "REPEATABLE READ"),
+  READ_COMMITTED(Connection.TRANSACTION_READ_COMMITTED, "READ COMMITTED"),
+  READ_UNCOMMITTED(Connection.TRANSACTION_READ_UNCOMMITTED, "READ UNCOMMITTED");
 
   public final int pgIsolationLevel;
+
+  /** Name by which this isolation referenced in YSQL queries. */
+  public final String sql;
+
+  IsolationLevel(int pgIsolationLevel, String sql) {
+    this.pgIsolationLevel = pgIsolationLevel;
+    this.sql = sql;
+  }
 
   public final static IsolationLevel DEFAULT = REPEATABLE_READ;
 }

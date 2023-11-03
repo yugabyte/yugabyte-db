@@ -11,11 +11,9 @@ menu:
   preview_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: administer-yugabyte-platform
-    weight: 649
+    weight: 690
 type: indexpage
 ---
-
-YugabyteDB Anywhere can create a YugabyteDB universe with many instances (virtual machines, pods, machines, and so on, provided by IaaS), grouped together to form one logical distributed database. Each universe includes one primary cluster and, optionally, one or more read replica clusters. All instances belonging to a cluster run on the same type of cloud provider instance type.<br><br>
 
 <div class="row">
 
@@ -26,7 +24,7 @@ YugabyteDB Anywhere can create a YugabyteDB universe with many instances (virtua
         <div class="title">Back up and restore YugabyteDB Anywhere</div>
       </div>
       <div class="body">
-        Back up and restore YugabyteDB Anywhere server.
+        Back up and restore the YugabyteDB Anywhere server.
       </div>
     </a>
   </div>
@@ -39,6 +37,30 @@ YugabyteDB Anywhere can create a YugabyteDB universe with many instances (virtua
       </div>
       <div class="body">
        Configure LDAP or OIDC authentication for YugabyteDB Anywhere login.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="high-availability/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/deploy/manual-deployment.png" aria-hidden="true" />
+        <div class="title">Enable high availability</div>
+      </div>
+      <div class="body">
+        Configure standby instances of YugabyteDB Anywhere.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="manage-runtime-config/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />
+        <div class="title">Manage runtime configuration settings</div>
+      </div>
+      <div class="body">
+        Customize YugabyteDB Anywhere by changing default settings for the application, universes, and providers.
       </div>
     </a>
   </div>

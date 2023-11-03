@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TABLET_TABLET_BOOTSTRAP_H
-#define YB_TABLET_TABLET_BOOTSTRAP_H
+#pragma once
 
 #include "yb/tablet/tablet_bootstrap_if.h"
 
@@ -48,5 +47,3 @@ Status BootstrapTabletImpl(
 
 }  // namespace tablet
 }  // namespace yb
-
-#endif // YB_TABLET_TABLET_BOOTSTRAP_H

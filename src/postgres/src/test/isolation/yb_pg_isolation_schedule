@@ -6,12 +6,17 @@ test: yb_read_committed_test_internal_savepoint
 test: yb_read_committed_test_do_call
 
 # Skip locked related tests from Pg
-test: yb_pg_skip-locked
-test: yb_pg_skip-locked-2
+test: skip-locked
+test: skip-locked-2
 
 # Skip locked related tests newly added at YB
 test: yb-modification-followed-by-lock
 test: yb-skip-locked-after-update
+test: yb-skip-locked-single-shard-transaction
+
+# TODO: Re-enable after memory leak fixed
+# Refer https://github.com/yugabyte/yugabyte-db/issues/18324 for details.
+# test: yb-lock-status
 
 # TODO:
 # 1. Test to ensure that new sub txns inherit ybDataSentForCurrQuery and parent txns
@@ -27,14 +32,18 @@ test: insert-conflict-do-nothing
 test: insert-conflict-do-update-2
 test: insert-conflict-do-update
 test: multixact-no-deadlock
+# TODO: Once Github issues #14985 & #14991 are fixed,
+# tuplelock-partition should be tested.
+# test: tuplelock-partition
 test: read-only-anomaly
+test: nowait
 test: nowait-2
 test: nowait-3
 test: aborted-keyrevoke
 test: delete-abort-savept-2
 test: ignore-intent-of-rolled-back-savepoint-cross-txn
 test: ensure-lock-only-conflict-always-ignored
-
-# Below test is just for checking the uuid masking functionality in test output. Remove it when some
-# tests actually start using it.
-test: check-uuid-masking
+test: skip-locked-3
+test: tuplelock-conflict
+test: multixact-no-forget
+test: drop-probe-waiting-on-aborted-blocker-subtxn

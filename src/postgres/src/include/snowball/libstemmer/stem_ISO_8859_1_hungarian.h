@@ -13,4 +13,3 @@ extern int hungarian_ISO_8859_1_stem(struct SN_env * z);
 #ifdef __cplusplus
 }
 #endif
-

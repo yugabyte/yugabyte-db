@@ -41,7 +41,7 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           UserIntent userIntent = cluster.userIntent;
 
           // Verify the request params and fail if invalid
-          taskParams().verifyParams(getUniverse());
+          taskParams().verifyParams(getUniverse(), isFirstTry());
 
           // Update the rootCA in platform to have both old cert and new cert
           // Here in the temporary multi-cert we will have old cert first and new cert later
@@ -64,15 +64,20 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           createUniverseUpdateRootCertTask(UpdateRootCertAction.Reset);
           createUniverseSetTlsParamsTask();
           // Create kubernetes upgrade task to rotate certs
-          createUpgradeTask(getUniverse(), userIntent.ybSoftwareVersion, true, true);
+          createUpgradeTask(
+              getUniverse(),
+              userIntent.ybSoftwareVersion,
+              true,
+              true,
+              getUniverse().isYbcEnabled(),
+              getUniverse().getUniverseDetails().getYbcSoftwareVersion());
         });
   }
 
   private void createUniverseUpdateRootCertTask(UpdateRootCertAction updateAction) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("UniverseUpdateRootCert", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("UniverseUpdateRootCert");
     UniverseUpdateRootCert.Params params = new UniverseUpdateRootCert.Params();
-    params.universeUUID = taskParams().universeUUID;
+    params.setUniverseUUID(taskParams().getUniverseUUID());
     params.rootCA = taskParams().rootCA;
     params.action = updateAction;
     UniverseUpdateRootCert task = createTask(UniverseUpdateRootCert.class);
@@ -83,15 +88,14 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
   }
 
   private void createUniverseSetTlsParamsTask() {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("UniverseSetTlsParams", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("UniverseSetTlsParams");
     UniverseSetTlsParams.Params params = new UniverseSetTlsParams.Params();
-    params.universeUUID = taskParams().universeUUID;
+    params.setUniverseUUID(taskParams().getUniverseUUID());
     params.enableNodeToNodeEncrypt = getUserIntent().enableNodeToNodeEncrypt;
     params.enableClientToNodeEncrypt = getUserIntent().enableClientToNodeEncrypt;
     params.allowInsecure = getUniverse().getUniverseDetails().allowInsecure;
     params.rootCA = taskParams().rootCA;
-    params.clientRootCA = getUniverse().getUniverseDetails().clientRootCA;
+    params.clientRootCA = getUniverse().getUniverseDetails().getClientRootCA();
     params.rootAndClientRootCASame = getUniverse().getUniverseDetails().rootAndClientRootCASame;
     UniverseSetTlsParams task = createTask(UniverseSetTlsParams.class);
     task.initialize(params);

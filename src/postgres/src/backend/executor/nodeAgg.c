@@ -221,7 +221,6 @@
 #include "catalog/pg_aggregate.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
-#include "catalog/yb_type.h"
 #include "executor/executor.h"
 #include "executor/nodeAgg.h"
 #include "miscadmin.h"
@@ -233,13 +232,18 @@
 #include "parser/parse_coerce.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
-#include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
-#include "utils/rel.h"
 #include "utils/syscache.h"
 #include "utils/tuplesort.h"
 #include "utils/datum.h"
+
+/* YB includes. */
+#include "catalog/yb_type.h"
+#include "pg_yb_utils.h"
+#include "utils/fmgroids.h"
+#include "utils/numeric.h"
+#include "utils/rel.h"
 
 
 static void select_current_set(AggState *aggstate, int setno, bool is_hash);
@@ -1529,7 +1533,7 @@ lookup_hash_entries(AggState *aggstate)
 static void
 yb_agg_pushdown_supported(AggState *aggstate)
 {
-	ForeignScanState *scan_state;
+	ScanState *ss;
 	ListCell *lc_agg;
 	ListCell *lc_arg;
 	bool check_outer_plan;
@@ -1549,19 +1553,38 @@ yb_agg_pushdown_supported(AggState *aggstate)
 	if (aggstate->phase->numsets != 0)
 		return;
 
-	/* Foreign scan outer plan. */
-	if (!IsA(outerPlanState(aggstate), ForeignScanState))
+	/* Supported outer plan. */
+	if (!(IsA(outerPlanState(aggstate), ForeignScanState) ||
+		  IsA(outerPlanState(aggstate), IndexOnlyScanState) ||
+		  IsA(outerPlanState(aggstate), IndexScanState) ||
+		  IsA(outerPlanState(aggstate), YbSeqScanState)))
 		return;
+	ss = (ScanState *) outerPlanState(aggstate);
 
-	scan_state = castNode(ForeignScanState, outerPlanState(aggstate));
-
-	/* Foreign relation we are scanning is a YB table. */
-	if (!IsYBRelation(scan_state->ss.ss_currentRelation))
+	/* Relation we are scanning is a YB table. */
+	if (!IsYBRelation(ss->ss_currentRelation))
 		return;
 
 	/* No WHERE quals. */
-	if (scan_state->ss.ps.qual)
+	if (ss->ps.qual)
 		return;
+	/* No indexquals that might be rechecked. */
+	if (IsA(ss, IndexScanState))
+	{
+		/* Also check the GUC here. */
+		if (!yb_enable_index_aggregate_pushdown)
+			return;
+
+		IndexScanState *iss = castNode(IndexScanState, ss);
+		if (iss->yb_iss_might_recheck)
+			return;
+	}
+	else if (IsA(ss, IndexOnlyScanState))
+	{
+		IndexOnlyScanState *ioss = castNode(IndexOnlyScanState, ss);
+		if (ioss->yb_ioss_might_recheck)
+			return;
+	}
 
 	check_outer_plan = false;
 
@@ -1575,7 +1598,8 @@ yb_agg_pushdown_supported(AggState *aggstate)
 		if (strcmp(func_name, "count") != 0 &&
 			strcmp(func_name, "min") != 0 &&
 			strcmp(func_name, "max") != 0 &&
-			strcmp(func_name, "sum") != 0)
+			strcmp(func_name, "sum") != 0 &&
+			strcmp(func_name, "avg") != 0)
 			return;
 
 		/* No ORDER BY. */
@@ -1606,11 +1630,20 @@ yb_agg_pushdown_supported(AggState *aggstate)
 		if (aggref->aggsplit != AGGSPLIT_SIMPLE)
 			return;
 
+
 		/* Aggtranstype is a supported YB key type and is not INTERNAL or NUMERIC. */
 		if (!YbDataTypeIsValidForKey(aggref->aggtranstype) ||
 			aggref->aggtranstype == INTERNALOID ||
 			aggref->aggtranstype == NUMERICOID)
-			return;
+		{
+			/*
+			 * However, AVG with INT8ARRAYOID is a special case
+			 * that we support.
+			 */
+			if (!(strcmp(func_name, "avg") == 0 &&
+				aggref->aggtranstype == INT8ARRAYOID))
+				return;
+		}
 
 		/*
 		 * The builtin functions max and min imply comparison. Character type
@@ -1675,16 +1708,17 @@ yb_agg_pushdown_supported(AggState *aggstate)
 		 *   select sum(1) from (select random() as r from foo) as res;
 		 *   select sum(1) from (select (null=random())::int as r from foo) as res;
 		 * and pushdown will still be supported.
-		 * For simplicity, we do not try to match Var between aggref->args and outplan
-		 * targetlist and simply reject once we see any item that is not a simple column
-		 * reference.
+		 * TODO(#18122): For simplicity, we do not try to match Var between
+		 * aggref->args and outplan targetlist and simply reject once we see
+		 * any item that is not a simple column reference.  This should be
+		 * improved.
 		 */
 		ListCell   *t;
 		foreach(t, outerPlanState(aggstate)->plan->targetlist)
 		{
 			TargetEntry *tle = lfirst_node(TargetEntry, t);
 
-			if (!IsA(tle->expr, Var) || IS_SPECIAL_VARNO(castNode(Var, tle->expr)->varno))
+			if (!IsA(tle->expr, Var))
 				return;
 		}
 	}
@@ -1694,24 +1728,49 @@ yb_agg_pushdown_supported(AggState *aggstate)
 }
 
 /*
- * Populates aggregate pushdown information in the YB foreign scan state.
+ * Populates aggregate pushdown information in the scan state.
  */
 static void
 yb_agg_pushdown(AggState *aggstate)
 {
-	ForeignScanState *scan_state = castNode(ForeignScanState, outerPlanState(aggstate));
-	List *pushdown_aggs = NIL;
-	int aggno;
+	PlanState  *ps = outerPlanState(aggstate);
+	List	  **aggrefs = YbPlanStateTryGetAggrefs(ps);
 
-	for (aggno = 0; aggno < aggstate->numaggs; aggno++)
+	/* List of aggrefs should exist uninitialized. */
+	Assert(aggrefs && *aggrefs == NIL);
+
+	for (int aggno = 0; aggno < aggstate->numaggs; ++aggno)
 	{
 		Aggref *aggref = aggstate->peragg[aggno].aggref;
+		const char *func_name = get_func_name(aggref->aggfnoid);
 
-		pushdown_aggs = lappend(pushdown_aggs, aggref);
+		if (strcmp(func_name, "avg") == 0)
+		{
+			Aggref *count_aggref = makeNode(Aggref);
+			Aggref *sum_aggref = makeNode(Aggref);
+
+			count_aggref->aggfnoid = 2147;
+			count_aggref->aggtranstype = INT8OID;
+			count_aggref->aggcollid = aggref->aggcollid;
+			count_aggref->aggstar = aggref->aggstar;
+			count_aggref->args = aggref->args;
+
+			sum_aggref->aggfnoid = 2108;
+			sum_aggref->aggtranstype = INT8OID;
+			sum_aggref->aggcollid = aggref->aggcollid;
+			sum_aggref->aggstar = aggref->aggstar;
+			sum_aggref->args = aggref->args;
+
+			*aggrefs = lappend(*aggrefs, sum_aggref);
+			*aggrefs = lappend(*aggrefs, count_aggref);
+		}
+		else
+		{
+			*aggrefs = lappend(*aggrefs, aggref);
+		}
 	}
-	scan_state->yb_fdw_aggs = pushdown_aggs;
 	/* Disable projection for tuples produced by pushed down aggregate operators. */
-	scan_state->ss.ps.ps_ProjInfo = NULL;
+	ps->ps_ProjInfo = NULL;
 }
 
 /*
@@ -1948,6 +2007,9 @@ agg_retrieve_direct(AggState *aggstate)
 			 *
 			 * We special case for COUNT and sum values so it returns the proper count
 			 * aggregated across all responses.
+			 *
+			 * We also special case AVG, which is pushed down as two values:
+			 * a count and a sum.
 			 */
 			for (;;)
 			{
@@ -1958,7 +2020,12 @@ agg_retrieve_direct(AggState *aggstate)
 					break;
 				}
 
-				Assert(aggstate->numaggs == outerslot->tts_nvalid);
+				/*
+				 * Each AVG is responsible for two values, so the
+				 * index into the input values is no longer aligned
+				 * with aggno. So, we keep track of it separately
+				 */
+				int valno = 0;
 
 				for (aggno = 0; aggno < aggstate->numaggs; aggno++)
 				{
@@ -1970,8 +2037,10 @@ agg_retrieve_direct(AggState *aggstate)
 					AggStatePerGroup pergroupstate = &pergroup[transno];
 					AggStatePerTrans pertrans = &aggstate->pertrans[transno];
 					FunctionCallInfo fcinfo = &pertrans->transfn_fcinfo;
-					Datum value = outerslot->tts_values[aggno];
-					bool isnull = outerslot->tts_isnull[aggno];
+
+					Assert(valno < outerslot->tts_nvalid);
+					Datum value = outerslot->tts_values[valno];
+					bool isnull = outerslot->tts_isnull[valno];
 
 					if (strcmp(func_name, "count") == 0)
 					{
@@ -1984,6 +2053,39 @@ agg_retrieve_direct(AggState *aggstate)
 						pergroupstate->transValue += value;
 						MemoryContextSwitchTo(oldContext);
 					}
+					else if (strcmp(func_name, "avg") == 0)
+					{
+						++valno;
+						Assert(valno < outerslot->tts_nvalid);
+						Datum count_value = outerslot->tts_values[valno];
+						bool count_isnull = outerslot->tts_isnull[valno];
+
+						if (isnull || count_isnull)
+							continue;
+
+						/*
+						 * Like COUNT, add the sum and count values directly.
+						 * The datum is guaranteed to be an Int8TransTypeData.
+						 * The checking code is taken from int8_avg()
+						 * in numeric.c.
+						 */
+						oldContext = MemoryContextSwitchTo(
+							aggstate->curaggcontext->ecxt_per_tuple_memory);
+						Int8TransTypeData *transdata;
+						ArrayType *transarray = (ArrayType *)(pergroupstate->transValue);
+
+						if (ARR_HASNULL(transarray) ||
+							ARR_SIZE(transarray) != ARR_OVERHEAD_NONULLS(1) +
+							sizeof(Int8TransTypeData))
+							elog(ERROR, "expected 2-element int8 array");
+
+						transdata = (Int8TransTypeData *) ARR_DATA_PTR(transarray);
+
+						transdata->sum += value;
+						transdata->count += count_value;
+
+						MemoryContextSwitchTo(oldContext);
+					}
 					else
 					{
 						/* Set slot result as argument, then advance the transition function. */
@@ -1991,6 +2093,7 @@ agg_retrieve_direct(AggState *aggstate)
 						fcinfo->argnull[1] = isnull;
 						advance_transition_function(aggstate, pertrans, pergroupstate);
 					}
+					++valno;
 				}
 
 				/* Reset per-input-tuple context after each tuple */
@@ -2485,7 +2588,22 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	if (node->aggstrategy == AGG_HASHED)
 		eflags &= ~EXEC_FLAG_REWIND;
 	outerPlan = outerPlan(node);
-	outerPlanState(aggstate) = ExecInitNode(outerPlan, estate, eflags);
+
+	/*
+	 * For YB IndexScan/IndexOnlyScan outer plan, we need to collect recheck
+	 * information, so set that eflag.  Ideally, the flag is only set for YB
+	 * relations since, later on, agg pushdown is disabled anyway for non-YB
+	 * relations, but we don't have that information at this point: the
+	 * relation is opened in the IndexScan/IndexOnlyScan node.  So set the flag
+	 * in all cases, and move the YB-relation check down there.
+	 */
+	int yb_eflags = 0;
+	if (IsYugaByteEnabled() &&
+		(IsA(outerPlan, IndexScan) || IsA(outerPlan, IndexOnlyScan)))
+		yb_eflags |= EXEC_FLAG_YB_AGG_PARENT;
+
+	outerPlanState(aggstate) = ExecInitNode(outerPlan, estate,
+											eflags | yb_eflags);
 
 	/*
 	 * initialize source tuple type.

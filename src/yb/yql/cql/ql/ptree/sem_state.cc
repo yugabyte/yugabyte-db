@@ -14,7 +14,7 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/client/table.h"
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 #include "yb/yql/cql/ql/ptree/column_desc.h"
 #include "yb/yql/cql/ql/ptree/pt_column_definition.h"
 #include "yb/yql/cql/ql/ptree/pt_dml.h"
@@ -41,6 +41,8 @@ SemState::SemState(SemContext *sem_context,
       allow_null_ql_type_(allow_null),
       expected_internal_type_(expected_internal_type),
       bindvar_name_(bindvar_name),
+      alternative_bindvar_names_(
+          MCMakeShared<MCVector<MCSharedPtr<MCString>>>(sem_context->PSemMem())),
       lhs_col_(lhs_col) {
   // Passing down state variables that stay the same until they are set or reset.
   if (sem_context->sem_state() != nullptr) {
@@ -105,6 +107,7 @@ void SemState::CopyPreviousStates() {
     allow_null_ql_type_ = previous_state_->allow_null_ql_type_;
     expected_internal_type_ = previous_state_->expected_internal_type_;
     bindvar_name_ = previous_state_->bindvar_name_;
+    alternative_bindvar_names_ = previous_state_->alternative_bindvar_names_;
     where_state_ = previous_state_->where_state_;
   }
 }
@@ -123,6 +126,11 @@ void SemState::CopyPreviousIfState() {
 
 void SemState::set_bindvar_name(std::string name) {
   bindvar_name_ = MCMakeShared<MCString>(sem_context_->PSemMem(), name.data(), name.size());
+}
+
+void SemState::add_alternate_bindvar_name(std::string name) {
+  alternative_bindvar_names_->push_back(
+      MCMakeShared<MCString>(sem_context_->PSemMem(), name.data(), name.size()));
 }
 
 void SemState::add_index_column_ref(int32_t col_id) {
@@ -149,7 +157,7 @@ bool SemState::is_partial_index_select() const {
   if (select_stmt->index_id().empty()) return false;
 
   std::shared_ptr<client::YBTable> table = select_stmt->table();
-  const IndexInfo& idx_info = table->index_info();
+  const auto& idx_info = table->index_info();
   return idx_info.where_predicate_spec() != nullptr;
 }
 
@@ -158,7 +166,7 @@ const ColumnDesc *SemState::hash_col() const {
 }
 
 const QLTypePtr& SemState::DefaultQLType() {
-  static const auto result = QLType::Create(UNKNOWN_DATA);
+  static const auto result = QLType::Create(DataType::UNKNOWN_DATA);
   return result;
 }
 

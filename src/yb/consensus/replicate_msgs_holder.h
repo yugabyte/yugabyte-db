@@ -11,14 +11,14 @@
 // under the License.
 //
 
-#ifndef YB_CONSENSUS_REPLICATE_MSGS_HOLDER_H
-#define YB_CONSENSUS_REPLICATE_MSGS_HOLDER_H
+#pragma once
 
 #include <google/protobuf/repeated_field.h>
 
 #include "yb/consensus/consensus_fwd.h"
 
 #include "yb/util/mem_tracker.h"
+#include "yb/util/memory/arena.h"
 
 namespace yb {
 namespace consensus {
@@ -58,7 +58,20 @@ class ReplicateMsgsHolder {
   ScopedTrackedConsumption consumption_;
 };
 
+class LWReplicateMsgsHolder {
+ public:
+  LWReplicateMsgsHolder() = default;
+
+  explicit LWReplicateMsgsHolder(ReplicateMsgs messages, ScopedTrackedConsumption consumption);
+  LWReplicateMsgsHolder(LWReplicateMsgsHolder&& rhs);
+  void operator=(LWReplicateMsgsHolder&& rhs);
+
+  void Reset();
+ private:
+  ReplicateMsgs messages_;
+
+  ScopedTrackedConsumption consumption_;
+};
+
 }  // namespace consensus
 }  // namespace yb
-
-#endif // YB_CONSENSUS_REPLICATE_MSGS_HOLDER_H

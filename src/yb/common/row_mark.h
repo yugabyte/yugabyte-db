@@ -11,10 +11,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_COMMON_ROW_MARK_H
-#define YB_COMMON_ROW_MARK_H
+#pragma once
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/common/transaction.pb.h"
 
@@ -47,5 +46,3 @@ bool IsValidRowMarkType(RowMarkType row_mark_type);
 bool RowMarkNeedsHigherPriority(RowMarkType row_mark_type);
 
 } // namespace yb
-
-#endif // YB_COMMON_ROW_MARK_H

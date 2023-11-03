@@ -29,13 +29,14 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
+#include "yb/util/flags.h"
 
 DECLARE_int32(partitions_vtable_cache_refresh_secs);
 
-DEFINE_bool(use_cache_for_partitions_vtable, true,
+DEFINE_RUNTIME_bool(use_cache_for_partitions_vtable, true,
             "Whether we should use caching for system.partitions table.");
 
-DEFINE_bool(generate_partitions_vtable_on_changes, true,
+DEFINE_RUNTIME_bool(generate_partitions_vtable_on_changes, false,
             "Whether we should generate the system.partitions vtable whenever relevant partition "
             "changes occur.");
 
@@ -53,13 +54,14 @@ const std::string kReplicaAddresses = "replica_addresses";
 
 }  // namespace
 
-bool YQLPartitionsVTable::GeneratePartitionsVTableWithBgTask() {
-  return FLAGS_partitions_vtable_cache_refresh_secs > 0 &&
+bool YQLPartitionsVTable::ShouldGeneratePartitionsVTableWithBgTask() {
+  return FLAGS_use_cache_for_partitions_vtable &&
+         FLAGS_partitions_vtable_cache_refresh_secs > 0 &&
          !FLAGS_generate_partitions_vtable_on_changes;
 }
 
-bool YQLPartitionsVTable::GeneratePartitionsVTableOnChanges() {
-  return FLAGS_generate_partitions_vtable_on_changes;
+bool YQLPartitionsVTable::ShouldGeneratePartitionsVTableOnChanges() {
+  return FLAGS_use_cache_for_partitions_vtable && FLAGS_generate_partitions_vtable_on_changes;
 }
 
 YQLPartitionsVTable::YQLPartitionsVTable(const TableName& table_name,
@@ -68,75 +70,75 @@ YQLPartitionsVTable::YQLPartitionsVTable(const TableName& table_name,
     : YQLVirtualTable(table_name, namespace_name, master, CreateSchema()) {
 }
 
-Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::RetrieveData(
-    const QLReadRequestPB& request) const {
-  if (GeneratePartitionsVTableWithBgTask()) {
+Result<VTableDataPtr> YQLPartitionsVTable::RetrieveData(const QLReadRequestPB& request) const {
+  // There are two main approaches for generating the system.partitions cache:
+  // 1. ShouldGeneratePartitionsVTableWithBgTask
+  //  This approach uses a background task that runs every partitions_vtable_cache_refresh_secs to
+  //  regenerate the entire cache if it is stale / invalid. Any reads that come in will just grab
+  //  a read lock and read the current cached table which may be stale.
+  // 2. ShouldGeneratePartitionsVTableOnChanges
+  //  This approach uses tablet reports to update the base table_to_partition_start_to_row_map_ as
+  //  well as removing entries on table drops. This sets update_cache_ to false, and the next query
+  //  to the table will regenerate the table cache from the base map. Hence, reads will never be
+  //  stale, although there is extra contention on the master lock (GH #12950).
+  //  (Note if partitions_vtable_cache_refresh_secs > 0, then the bg task will also do this
+  //  cache rebuild from the map).
+  //  Note that this method only uses the cached_x_version_ values to build the base map on the very
+  //  first request. Since we update on changes, we don't need to check for tablet version matches.
+
+  if (ShouldGeneratePartitionsVTableWithBgTask()) {
     SharedLock<std::shared_timed_mutex> read_lock(mutex_);
-    // The cached versions are initialized to -1, so if there is a race, we may still generate the
-    // cache on the calling thread.
-    if (cached_tablets_version_ >= 0 && cached_tablet_locations_version_ >= 0) {
+    if (cache_state_ == VALID) {
       // Don't need a version match here, since we have a bg task handling cache refreshing.
+
+      // There is a possibility that cache_state_ gets invalidated before we return here, but that
+      // is ok, as this current cache_ value was valid when the request came through - relevant for
+      // new table creates, as that means that the new table would be in this current cache_.
       return cache_;
-    }
-  } else if (GeneratePartitionsVTableOnChanges()) {
-    bool require_full_vtable_reset = false;
-    {
-      SharedLock<std::shared_timed_mutex> read_lock(mutex_);
-      // If we don't need to update the cache, then a read lock is enough.
-      if (!update_cache_) {
-        return cache_;
-      }
-      // If we have just reset the table, then we need to do regenerate the entire vtable.
-      require_full_vtable_reset = cached_tablets_version_ == kInvalidCache ||
-                                  cached_tablet_locations_version_ == kInvalidCache;
-    }
-    if (!require_full_vtable_reset) {
-      std::lock_guard<std::shared_timed_mutex> lock(mutex_);
-      // If we don't need to regenerate the entire vtable, then we can just update it using the map.
-      return GetTableFromMap();
     }
   }
 
   return GenerateAndCacheData();
 }
 
-Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::GenerateAndCacheData() const {
+Result<VTableDataPtr> YQLPartitionsVTable::GenerateAndCacheData() const {
   auto* catalog_manager = &this->catalog_manager();
   {
     SharedLock<std::shared_timed_mutex> read_lock(mutex_);
-    if (FLAGS_use_cache_for_partitions_vtable &&
-        catalog_manager->tablets_version() == cached_tablets_version_ &&
-        catalog_manager->tablet_locations_version() == cached_tablet_locations_version_ &&
-        !update_cache_) {
-      // Cache is up to date, so we could use it.
-      return cache_;
+    if (FLAGS_use_cache_for_partitions_vtable && cache_state_ == VALID) {
+      if ((ShouldGeneratePartitionsVTableOnChanges() && CachedVersionsAreValid()) ||
+          (catalog_manager->tablets_version() == cached_tablets_version_ &&
+           catalog_manager->tablet_locations_version() == cached_tablet_locations_version_)) {
+        // Cache is up to date, so we can use it.
+        return cache_;
+      }
     }
   }
 
-  std::lock_guard<std::shared_timed_mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   auto new_tablets_version = catalog_manager->tablets_version();
   auto new_tablet_locations_version = catalog_manager->tablet_locations_version();
-  {
-    if (FLAGS_use_cache_for_partitions_vtable &&
-        new_tablets_version == cached_tablets_version_ &&
-        new_tablet_locations_version == cached_tablet_locations_version_) {
+  if (FLAGS_use_cache_for_partitions_vtable && cache_state_ == VALID) {
+    if ((ShouldGeneratePartitionsVTableOnChanges() && CachedVersionsAreValid()) ||
+        (new_tablets_version == cached_tablets_version_ &&
+         new_tablet_locations_version == cached_tablet_locations_version_)) {
       // Cache was updated between locks, and now it is up to date.
       return GetTableFromMap();
     }
   }
 
-  if (GeneratePartitionsVTableOnChanges() &&
-      cached_tablets_version_ >= 0 &&
-      cached_tablet_locations_version_ >= 0) {
-    // Only need to generate on first call, all later calls can just return here (need write lock
-    // in case of update_cache_).
+  // Cache is still invalid, time to rebuild it.
+  cache_state_ = INVALID_BUT_REBUILDING;
+
+  // If generating on changes, then only need to generate the full cache on the first request.
+  // Afterwards, all future updates to the cache will happen on changes, so new requests will only
+  // need to update the cached table from the mapping (ie will return here).
+  if (ShouldGeneratePartitionsVTableOnChanges() && CachedVersionsAreValid()) {
     return GetTableFromMap();
   }
 
-  // Fully regenerate the entire vtable.
+  // Fully regenerate the entire vtable and its base map.
   table_to_partition_start_to_row_map_.clear();
-  update_cache_ = true;
-
   auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kVisibleToClient);
 
   for (const scoped_refptr<TableInfo>& table : tables) {
@@ -193,8 +195,6 @@ Status YQLPartitionsVTable::ProcessTablets(const std::vector<TabletInfoPtr>& tab
         std::forward_as_tuple(data.locations->partition().partition_key_start()),
         std::forward_as_tuple(std::make_shared<const Schema>(*schema_)));
     RETURN_NOT_OK(InsertTabletIntoRowUnlocked(data, &row.first->second, dns_results));
-    // Will need to update the cache as the map has been modified.
-    update_cache_ = true;
   }
 
   return Status::OK();
@@ -204,12 +204,22 @@ Result<YQLPartitionsVTable::TabletData> YQLPartitionsVTable::GetTabletData(
     const scoped_refptr<TabletInfo>& tablet,
     DnsLookupMap* dns_lookups,
     google::protobuf::Arena* arena) const {
-  auto data = TabletData {
-    .namespace_name = tablet->table()->namespace_name(),
-    .table_name = tablet->table()->name(),
-    .table_id = tablet->table()->id(),
-    .tablet_id = tablet->tablet_id(),
-    .locations = google::protobuf::Arena::Create<TabletLocationsPB>(arena),
+  // Resolve namespace name - namespace name field was introduced in 2.3.0, therefore tables created
+  // with older version will not have namespace_name set (GH17713 tracks the fix for
+  // migration/backfill in memory state). This workaround ensures that we send correct information
+  // to client as part of system.partition request.
+  auto namespace_name = tablet->table()->namespace_name();
+  if (namespace_name.empty()) {
+    namespace_name = VERIFY_RESULT(master_->catalog_manager()->FindNamespaceById(
+                                       tablet->table()->namespace_id()))->name();
+  }
+
+  auto data = TabletData{
+      .namespace_name = namespace_name,
+      .table_name = tablet->table()->name(),
+      .table_id = tablet->table()->id(),
+      .tablet_id = tablet->tablet_id(),
+      .locations = google::protobuf::Arena::Create<TabletLocationsPB>(arena),
   };
 
   auto s = master_->catalog_manager()->GetTabletLocations(tablet, data.locations);
@@ -226,7 +236,7 @@ Result<YQLPartitionsVTable::TabletData> YQLPartitionsVTable::GetTabletData(
 }
 
 Status YQLPartitionsVTable::InsertTabletIntoRowUnlocked(
-    const TabletData& tablet, QLRow* row,
+    const TabletData& tablet, qlexpr::QLRow* row,
     const std::unordered_map<std::string, InetAddress>& dns_results) const {
   RETURN_NOT_OK(SetColumnValue(kKeyspaceName, tablet.namespace_name, row));
   RETURN_NOT_OK(SetColumnValue(kTableName, tablet.table_name, row));
@@ -257,11 +267,17 @@ Status YQLPartitionsVTable::InsertTabletIntoRowUnlocked(
   return Status::OK();
 }
 
-void YQLPartitionsVTable::RemoveFromCache(const TableId& table_id) const {
-  std::lock_guard<std::shared_timed_mutex> lock(mutex_);
-  table_to_partition_start_to_row_map_.erase(table_id);
+void YQLPartitionsVTable::RemoveFromCache(const std::vector<TableId>& table_ids) const {
+  if (!ShouldGeneratePartitionsVTableOnChanges() || table_ids.empty()) {
+    return;
+  }
+
+  std::lock_guard lock(mutex_);
+  for (const auto& table_id : table_ids) {
+    table_to_partition_start_to_row_map_.erase(table_id);
+  }
   // Need to update the cache as the map has been modified.
-  update_cache_ = true;
+  InvalidateCache();
 }
 
 bool HasRelevantPbChanges(const SysTabletsEntryPB& old_pb, const SysTabletsEntryPB& new_pb) {
@@ -284,7 +300,7 @@ bool HasRelevantPbChanges(const SysTabletsEntryPB& old_pb, const SysTabletsEntry
 Result<std::vector<TabletInfoPtr>> YQLPartitionsVTable::FilterRelevantTablets(
     const std::vector<TabletInfo*>& mutated_tablets) const {
   std::vector<TabletInfoPtr> tablets;
-  if (!GeneratePartitionsVTableOnChanges()) {
+  if (!ShouldGeneratePartitionsVTableOnChanges()) {
     return tablets;
   }
 
@@ -303,17 +319,19 @@ Result<std::vector<TabletInfoPtr>> YQLPartitionsVTable::FilterRelevantTablets(
 Status YQLPartitionsVTable::ProcessMutatedTablets(
     const std::vector<TabletInfoPtr>& mutated_tablets,
     const std::map<TabletId, TabletInfo::WriteLock>& tablet_write_locks) const {
-  if (GeneratePartitionsVTableOnChanges() && !mutated_tablets.empty()) {
-    std::lock_guard<std::shared_timed_mutex> lock(mutex_);
+  if (ShouldGeneratePartitionsVTableOnChanges() && !mutated_tablets.empty()) {
+    std::lock_guard lock(mutex_);
     RETURN_NOT_OK(ProcessTablets(mutated_tablets));
+    // Mapping has been updated, so need to recreate cache_ on next request.
+    InvalidateCache();
   }
 
   return Status::OK();
 }
 
-Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::GetTableFromMap() const {
-  if (update_cache_) {
-    auto vtable = std::make_shared<QLRowBlock>(*schema_);
+Result<VTableDataPtr> YQLPartitionsVTable::GetTableFromMap() const {
+  if (cache_state_ != VALID) {
+    auto vtable = std::make_shared<qlexpr::QLRowBlock>(*schema_);
 
     for (const auto& partition_start_to_row_map : table_to_partition_start_to_row_map_) {
       for (const auto& row : partition_start_to_row_map.second) {
@@ -322,7 +340,11 @@ Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::GetTableFromMap() const
     }
 
     cache_ = vtable;
-    update_cache_ = false;
+    // Only go from rebuilding state to valid. If we were invalidated while rebuilding, return this
+    // current cache (is valid for when it was requested), but force a rebuild on next request and
+    // stay in the INVALID state.
+    auto rebuilding_state = INVALID_BUT_REBUILDING;
+    cache_state_.compare_exchange_strong(rebuilding_state, VALID);
   }
 
   return cache_;
@@ -336,26 +358,19 @@ bool YQLPartitionsVTable::CheckTableIsPresent(
          it->second.size() == expected_num_tablets;
 }
 
+void YQLPartitionsVTable::InvalidateCache() const { cache_state_ = INVALID; }
+
 void YQLPartitionsVTable::ResetAndRegenerateCache() const {
   {
-    std::lock_guard<std::shared_timed_mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
+    InvalidateCache();
+    // Also need to clear the cache versions in order to force a full reset of the cache.
     cached_tablets_version_ = kInvalidCache;
     cached_tablet_locations_version_ = kInvalidCache;
-    update_cache_ = true;
   }
-  WARN_NOT_OK(ResultToStatus(GenerateAndCacheData()),
-              "Error while regenerating YQL system.partitions cache");
-}
-
-Status YQLPartitionsVTable::UpdateCache() const {
-  {
-    SharedLock<std::shared_timed_mutex> read_lock(mutex_);
-    if (!update_cache_) {
-      return Status::OK();
-    }
-  }
-  std::lock_guard<std::shared_timed_mutex> lock(mutex_);
-  return ResultToStatus(GetTableFromMap());
+  WARN_NOT_OK(
+      ResultToStatus(GenerateAndCacheData()),
+      "Error while regenerating YQL system.partitions cache");
 }
 
 Schema YQLPartitionsVTable::CreateSchema() const {
@@ -368,6 +383,10 @@ Schema YQLPartitionsVTable::CreateSchema() const {
   CHECK_OK(builder.AddColumn(kReplicaAddresses,
                              QLType::CreateTypeMap(DataType::INET, DataType::STRING)));
   return builder.Build();
+}
+
+bool YQLPartitionsVTable::CachedVersionsAreValid() const {
+  return cached_tablets_version_ >= 0 && cached_tablet_locations_version_ >= 0;
 }
 
 }  // namespace master

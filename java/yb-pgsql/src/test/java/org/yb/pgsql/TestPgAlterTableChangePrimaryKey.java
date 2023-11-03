@@ -22,6 +22,7 @@ import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.text.MessageFormat;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,9 +33,9 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestPgAlterTableChangePrimaryKey extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgAlterTableChangePrimaryKey.class);
 
@@ -445,9 +446,14 @@ public class TestPgAlterTableChangePrimaryKey extends BasePgSQLTest {
   }
 
   @Test
-  public void tablesInColocatedDb() throws Exception {
+  public void tablesInLegacyColocatedDb() throws Exception {
+    markClusterNeedsRecreation();
+    // Change the default flag value to allow to create legacy colocated database.
+    restartClusterWithFlags(Collections.singletonMap("ysql_legacy_colocated_database_creation",
+                                                     "true"),
+                            Collections.emptyMap());
     try (Statement stmt = connection.createStatement()) {
-      stmt.executeUpdate("CREATE DATABASE clc WITH colocated = true");
+      stmt.executeUpdate("CREATE DATABASE clc WITH colocation = true");
     }
 
     try (Connection conn2 = getConnectionBuilder().withDatabase("clc").connect();
@@ -460,7 +466,7 @@ public class TestPgAlterTableChangePrimaryKey extends BasePgSQLTest {
       stmt.executeUpdate("INSERT INTO nopk_c VALUES (3)");
       stmt.executeUpdate("INSERT INTO nopk_c VALUES (4)");
 
-      stmt.executeUpdate("CREATE TABLE nopk_nc (id int) WITH (colocated=false)");
+      stmt.executeUpdate("CREATE TABLE nopk_nc (id int) WITH (colocation=false)");
       stmt.executeUpdate("INSERT INTO nopk_nc VALUES (5)");
       stmt.executeUpdate("INSERT INTO nopk_nc VALUES (6)");
 
@@ -482,7 +488,7 @@ public class TestPgAlterTableChangePrimaryKey extends BasePgSQLTest {
           0 /* expectedNumHashKeyCols */,
           1 /* expectedNumTablets */);
       alterAddPrimaryKeyId(stmt, "nopk_nc");
-      assertEquals(1, getNumTablets(stmt, "normal_table"));
+      assertEquals(1, getNumTablets(stmt, "nopk_c"));
 
       // Colocation IDs are not persisted.
       assertRowList(stmt, colocatedPropsSql, Arrays.asList(
@@ -512,6 +518,85 @@ public class TestPgAlterTableChangePrimaryKey extends BasePgSQLTest {
           new Row("normal_table_pkey", null, null, null),
           new Row("nopk_c", true, null, 20003),
           new Row("nopk_nc", false, null, null)));
+    }
+  }
+
+  @Test
+  public void tablesInColocatedDb() throws Exception {
+    markClusterNeedsRecreation();
+    try (Statement stmt = connection.createStatement()) {
+      stmt.executeUpdate("CREATE DATABASE clc WITH colocation = true");
+    }
+
+    try (Connection conn2 = getConnectionBuilder().withDatabase("clc").connect();
+         Statement stmt = conn2.createStatement()) {
+      stmt.executeUpdate("CREATE TABLE normal_table (id int PRIMARY KEY)");
+      stmt.executeUpdate("INSERT INTO normal_table VALUES (1)");
+      stmt.executeUpdate("INSERT INTO normal_table VALUES (2)");
+
+      stmt.executeUpdate("CREATE TABLE nopk_c (id int) WITH (colocation_id=100500)");
+      stmt.executeUpdate("INSERT INTO nopk_c VALUES (3)");
+      stmt.executeUpdate("INSERT INTO nopk_c VALUES (4)");
+
+      stmt.executeUpdate("CREATE TABLE nopk_nc (id int) WITH (colocation=false)");
+      stmt.executeUpdate("INSERT INTO nopk_nc VALUES (5)");
+      stmt.executeUpdate("INSERT INTO nopk_nc VALUES (6)");
+
+      assertEquals(1, getNumTablets(stmt, "normal_table"));
+      assertEquals(1, getNumTablets(stmt, "nopk_c"));
+      assertEquals(NUM_TABLET_SERVERS, getNumTablets(stmt, "nopk_nc"));
+
+      assertRowList(stmt, colocatedPropsSql, Arrays.asList(
+          new Row("normal_table", true, "default", 20001),
+          new Row("normal_table_pkey", null, null, null),
+          new Row("nopk_c", true, "default", 100500),
+          new Row("nopk_nc", false, null, null)));
+
+      runInvalidQuery(stmt, "ALTER TABLE nopk_c ADD PRIMARY KEY (id HASH)",
+          "cannot colocate hash partitioned index");
+
+      alterAddPrimaryKey(stmt, "nopk_c",
+          "(id)",
+          0 /* expectedNumHashKeyCols */,
+          1 /* expectedNumTablets */);
+      alterAddPrimaryKeyId(stmt, "nopk_nc");
+      assertEquals(1, getNumTablets(stmt, "nopk_c"));
+
+      // Colocation IDs are not persisted.
+      assertRowList(stmt, colocatedPropsSql, Arrays.asList(
+          new Row("normal_table", true, "default", 20001),
+          new Row("normal_table_pkey", null, null, null),
+          new Row("nopk_c", true, "default", 20002),
+          new Row("nopk_c_pkey", null, null, null),
+          new Row("nopk_nc", false, null, null),
+          new Row("nopk_nc_pkey", null, null, null)));
+
+      assertRowList(stmt, "SELECT * FROM normal_table ORDER BY id", Arrays.asList(
+          new Row(1),
+          new Row(2)));
+      assertRowList(stmt, "SELECT * FROM nopk_c ORDER BY id", Arrays.asList(
+          new Row(3),
+          new Row(4)));
+      assertRowList(stmt, "SELECT * FROM nopk_nc ORDER BY id", Arrays.asList(
+          new Row(5),
+          new Row(6)));
+
+      alterDropPrimaryKey(stmt, "nopk_c", "nopk_c_pkey", 1 /* expectedNumTablets */);
+      alterDropPrimaryKey(stmt, "nopk_nc");
+
+      // Colocation IDs are not persisted.
+      assertRowList(stmt, colocatedPropsSql, Arrays.asList(
+          new Row("normal_table", true, "default", 20001),
+          new Row("normal_table_pkey", null, null, null),
+          new Row("nopk_c", true, "default", 20003),
+          new Row("nopk_nc", false, null, null)));
+
+      assertRowList(stmt, "SELECT * FROM nopk_c ORDER BY id", Arrays.asList(
+          new Row(3),
+          new Row(4)));
+      assertRowList(stmt, "SELECT * FROM nopk_nc ORDER BY id", Arrays.asList(
+          new Row(5),
+          new Row(6)));
     }
   }
 
@@ -835,6 +920,31 @@ public class TestPgAlterTableChangePrimaryKey extends BasePgSQLTest {
     }
   }
 
+  /** Altered table referenced by a partitioned FK table. */
+  @Test
+  public void foreignKeys3() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.executeUpdate("CREATE TABLE test (id int unique)");
+      stmt.executeUpdate("CREATE TABLE test_part (id int REFERENCES test(id))"
+        + " PARTITION BY RANGE(id)");
+      stmt.executeUpdate("CREATE TABLE test_part_1 PARTITION OF test_part"
+        + " FOR VALUES FROM (1) TO (100)");
+      stmt.executeUpdate("INSERT INTO test VALUES (1)");
+      stmt.executeUpdate("INSERT INTO test_part VALUES (1)");
+
+      alterAddPrimaryKeyId(stmt, "test");
+
+      assertQuery(stmt, "SELECT * FROM test", new Row(1));
+      assertQuery(stmt, "SELECT * FROM test_part ORDER BY id", new Row(1));
+
+      // Verify that the foreign key constraints are preserved.
+      runInvalidQuery(stmt, "INSERT INTO test_part VALUES (2)",
+        "violates foreign key constraint \"test_part_id_fkey\"");
+      runInvalidQuery(stmt, "INSERT INTO test_part_1 VALUES (2)",
+        "violates foreign key constraint \"test_part_id_fkey\"");
+    }
+  }
+
   @Test
   public void otherConstraintsAndIndexes() throws Exception {
     try (Statement stmt = connection.createStatement()) {
@@ -917,6 +1027,44 @@ public class TestPgAlterTableChangePrimaryKey extends BasePgSQLTest {
     }
   }
 
+  private void policiesAndPermissionsVerification(Statement stmt1,
+                                                  Statement stmt2) throws Exception {
+    assertQuery(stmt1, "SELECT * FROM nopk", new Row(2, "user1"));
+    runInvalidQuery(stmt2, "SELECT * FROM nopk", "permission denied for table nopk");
+    assertQuery(stmt2, "SELECT id FROM nopk", new Row(3));
+  }
+
+  @Test
+  public void policiesAndPermissions() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.executeUpdate("CREATE TABLE nopk (id int, drop_me int, username text)");
+      stmt.executeUpdate("CREATE USER user1");
+      stmt.executeUpdate("CREATE USER user2");
+      // user1 can perform all DMLs on nopk.
+      stmt.executeUpdate("GRANT ALL ON nopk TO user1");
+      // user2 can only SELECT id from nopk.
+      stmt.executeUpdate("GRANT SELECT (id) ON nopk TO user2");
+      stmt.executeUpdate(
+            "INSERT INTO nopk(id, username) VALUES (1, 'yugabyte'), (2, 'user1'), (3, 'user2')");
+      // create policy p that only lets users see rows which have the username col set to their
+      // user.
+      stmt.executeUpdate("CREATE POLICY p ON nopk FOR SELECT TO user1, user2 USING" +
+                         "(username = CURRENT_USER)");
+      stmt.executeUpdate("ALTER TABLE nopk ENABLE ROW LEVEL SECURITY");
+      stmt.executeUpdate("ALTER TABLE nopk DROP COLUMN drop_me");
+      try (Connection conn1 = getConnectionBuilder().withUser("user1").connect();
+           Connection conn2 = getConnectionBuilder().withUser("user2").connect();) {
+            Statement stmt1 = conn1.createStatement();
+            Statement stmt2 = conn2.createStatement();
+            policiesAndPermissionsVerification(stmt1, stmt2);
+            alterAddPrimaryKeyId(stmt, "nopk");
+            policiesAndPermissionsVerification(stmt1, stmt2);
+            alterDropPrimaryKey(stmt, "nopk");
+            policiesAndPermissionsVerification(stmt1, stmt2);
+      }
+    }
+  }
+
   @Test
   public void triggers() throws Exception {
     try (Statement stmt = connection.createStatement()) {
@@ -967,14 +1115,45 @@ public class TestPgAlterTableChangePrimaryKey extends BasePgSQLTest {
   }
 
   @Test
-  public void splitInto() throws Exception {
+  public void splitOptions() throws Exception {
     try (Statement stmt = connection.createStatement()) {
-      stmt.executeUpdate("CREATE TABLE nopk (id int) SPLIT INTO 2 TABLETS");
+      // Verify split options are preserved when we add or drop a hash key.
+      stmt.executeUpdate("CREATE TABLE nopk (id int, a int, b text, c float, d timestamp, e money)"
+          + " SPLIT INTO 2 TABLETS");
+      stmt.executeUpdate("CREATE INDEX nopk_idx ON nopk(id) SPLIT INTO 2 TABLETS");
+      stmt.executeUpdate(
+          "CREATE INDEX nopk_idx2 ON nopk(id ASC, a ASC, b ASC, c ASC, d ASC, e ASC)"
+          + " SPLIT AT VALUES ((10, 20, E'test123\"\"''\\\\\\u0068\\u0069',"
+          + " '-Infinity', '1999-01-01', '12.34'), (20, 30,"
+          + " E'test123\"\"''\\\\\\u0068\\u0069z', 'Infinity', '2023-01-01',"
+          + " '56.78'))");
       alterAddPrimaryKey(stmt, "nopk",
           "(id)",
           1 /* expectedNumHashKeyCols */,
           2 /* expectedNumTablets */);
+      assertQuery(stmt, "SELECT num_tablets, num_hash_key_columns"
+        + " FROM yb_table_properties('nopk_idx'::regclass)", new Row(2,1));
+      assertQuery(stmt, "SELECT yb_get_range_split_clause('nopk_idx2'::regclass)",
+          new Row("SPLIT AT VALUES ((10, 20, E'test123\"\"''\\\\hi', '-Infinity',"
+              + " '1999-01-01 00:00:00', '$12.34'), (20, 30, E'test123\"\"''\\\\hiz',"
+              + " 'Infinity', '2023-01-01 00:00:00', '$56.78'))"));
       alterDropPrimaryKey(stmt, "nopk", "nopk_pkey", 2 /* expectedNumTablets */);
+      assertQuery(stmt, "SELECT num_tablets, num_hash_key_columns"
+        + " FROM yb_table_properties('nopk_idx'::regclass)", new Row(2,1));
+      assertQuery(stmt, "SELECT yb_get_range_split_clause('nopk_idx2'::regclass)",
+          new Row("SPLIT AT VALUES ((10, 20, E'test123\"\"''\\\\hi', '-Infinity',"
+              + " '1999-01-01 00:00:00', '$12.34'), (20, 30, E'test123\"\"''\\\\hiz', 'Infinity',"
+              + " '2023-01-01 00:00:00', '$56.78'))"));
+      // Verify split options are not preserved when we add a range key, and only the number of
+      // tablets is preserved when we drop a range key.
+      stmt.executeUpdate("CREATE TABLE nopk2 (id int) SPLIT INTO 5 TABLETS");
+      alterAddPrimaryKey(stmt, "nopk2",
+          "(id ASC)",
+          0 /* expectedNumHashKeyCols */,
+          1 /* expectedNumTablets */);
+      stmt.executeUpdate("CREATE TABLE range_pk (id int, primary key(id asc))"
+          + " SPLIT AT VALUES ((5), (10))");
+      alterDropPrimaryKey(stmt, "range_pk", "range_pk_pkey", 3 /* expectedNumTablets */);
     }
   }
 
@@ -993,6 +1172,51 @@ public class TestPgAlterTableChangePrimaryKey extends BasePgSQLTest {
       assertQuery(stmt, "SELECT pg_get_userbyid(relowner) FROM pg_class WHERE relname = 'nopk'",
           new Row("new_user"));
     }
+  }
+
+  @Test
+  public void statistics() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.executeUpdate("CREATE TABLE nopk (id int, drop_me int, t int)");
+      stmt.executeUpdate("INSERT INTO nopk VALUES (1, 1, 1)");
+      stmt.executeUpdate("CREATE STATISTICS s1(dependencies) on id, t from nopk");
+      stmt.executeUpdate("ALTER TABLE nopk ALTER id SET STATISTICS 1234");
+      stmt.executeUpdate("ANALYZE nopk");
+      stmt.executeUpdate("ALTER TABLE nopk DROP COLUMN drop_me");
+      statisticsVerification(stmt);
+      alterAddPrimaryKeyId(stmt, "nopk");
+      statisticsVerification(stmt);
+      alterDropPrimaryKey(stmt, "nopk");
+      statisticsVerification(stmt);
+    }
+  }
+
+  private void statisticsVerification(Statement stmt) throws Exception {
+    assertQuery(stmt, "SELECT stxname FROM pg_statistic_ext", new Row("s1"));
+    String getOid = "SELECT 'nopk'::regclass::oid";
+    long Oid = getSingleRow(stmt.executeQuery(getOid)).getLong(0);
+    assertRowList(stmt, "SELECT starelid FROM pg_statistic",
+        Arrays.asList(new Row(Oid), new Row(Oid)));
+  }
+
+  @Test
+  public void viewsAndMaterializedViews() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.executeUpdate("CREATE TABLE nopk (id int)");
+      stmt.executeUpdate("INSERT INTO nopk VALUES (1)");
+      stmt.executeUpdate("CREATE VIEW v AS SELECT * FROM nopk");
+      stmt.executeUpdate("CREATE MATERIALIZED VIEW mv AS SELECT * FROM nopk");
+      viewsAndMaterializedViewsVerification(stmt);
+      alterAddPrimaryKeyId(stmt, "nopk");
+      viewsAndMaterializedViewsVerification(stmt);
+      alterDropPrimaryKey(stmt, "nopk");
+      viewsAndMaterializedViewsVerification(stmt);
+    }
+  }
+
+  private void viewsAndMaterializedViewsVerification(Statement stmt) throws Exception {
+    assertQuery(stmt, "SELECT * FROM v", new Row(1));
+    assertQuery(stmt, "SELECT * FROM mv", new Row(1));
   }
 
   /**

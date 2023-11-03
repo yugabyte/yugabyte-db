@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.commissioner.tasks.params;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import io.ebean.annotation.JsonIgnore;
@@ -9,6 +11,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
+@JsonIgnoreProperties(ignoreUnknown = true)
+@JsonDeserialize(converter = NodeTaskParams.Converter.class)
 public class NodeTaskParams extends UniverseDefinitionTaskParams implements INodeTaskParams {
   // The AZ in which the node should be. This can be used to find the region.
   public UUID azUuid;
@@ -17,17 +21,22 @@ public class NodeTaskParams extends UniverseDefinitionTaskParams implements INod
   public String nodeName;
 
   // The UUID of the node that we have selected.
-  // TODO: currently only used for onprem cloud.
   public UUID nodeUuid;
 
   // The UUID of the primary/read-replica cluster to which the node belongs.
   public UUID placementUuid;
 
-  // The type of instance for this node
-  // TODO: currently only used for onprem cloud.
+  // The type of instance for this node.
   public String instanceType;
 
   public boolean useSystemd;
+  // Using custom ssh user
+
+  public String sshUserOverride;
+
+  public Integer sshPortOverride;
+
+  public Map<String, String> tags;
 
   @JsonIgnore private AvailabilityZone zone;
 
@@ -63,4 +72,6 @@ public class NodeTaskParams extends UniverseDefinitionTaskParams implements INod
   public String getProperty(String key) {
     return properties.getOrDefault(key, null);
   }
+
+  public static class Converter extends BaseConverter<NodeTaskParams> {}
 }

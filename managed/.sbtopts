@@ -1,7 +1,7 @@
 -J-XX:MinHeapFreeRatio=10
 -J-XX:MaxHeapFreeRatio=20
 -J-Xmx2g
--J-XX:MaxMetaspaceSize=700m
--J-XX:MetaspaceSize=200m
--Djdk.tls.client.protocols=TLSv1.2
--Dhttps.protocols=TLSv1.2
+-J-XX:MaxMetaspaceSize=1g
+-J-XX:MetaspaceSize=500m
+-Dlogback.configurationFile=logback-sbt.xml
+-Dakka.logger-startup-timeout=30s

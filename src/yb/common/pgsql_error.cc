@@ -41,5 +41,15 @@ const std::string kAuxilaryMessageCategoryName = "aux msg";
 StatusCategoryRegisterer auxilary_message_category_registerer(
     StatusCategoryDescription::Make<AuxilaryMessageTag>(&kAuxilaryMessageCategoryName));
 
+static const std::string kPgsqlMessageArgsCategoryName = "pgsql msg args";
+
+StatusCategoryRegisterer pgsql_message_args_category_registerer(
+    StatusCategoryDescription::Make<PgsqlMessageArgsTag>(&kPgsqlMessageArgsCategoryName));
+
+static const std::string kFuncNameCategoryName = "function name";
+
+StatusCategoryRegisterer func_name_category_registerer(
+    StatusCategoryDescription::Make<FuncNameTag>(&kFuncNameCategoryName));
+
 } // namespace
 } // namespace yb

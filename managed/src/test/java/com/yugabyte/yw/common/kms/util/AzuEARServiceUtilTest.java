@@ -14,11 +14,11 @@ package com.yugabyte.yw.common.kms.util;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
-import com.azure.core.credential.TokenCredential;
 import com.azure.security.keyvault.keys.KeyClient;
 import com.azure.security.keyvault.keys.cryptography.CryptographyClient;
 import com.azure.security.keyvault.keys.cryptography.models.KeyWrapAlgorithm;
@@ -30,6 +30,7 @@ import com.azure.security.keyvault.keys.models.KeyVaultKey;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil.AzuKmsAuthConfigField;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
@@ -38,7 +39,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.Spy;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -99,7 +100,7 @@ public class AzuEARServiceUtilTest extends FakeDBApplication {
         .unwrapKey(KeyWrapAlgorithm.RSA_OAEP, fakeWrappedUniverseKey);
     doReturn(mockCryptographyClient)
         .when(mockAzuEARServiceUtil)
-        .getCryptographyClient(fakeAuthConfig);
+        .getCryptographyClient(eq(fakeAuthConfig), any());
     KeyProperties fakeKeyProperties = new KeyProperties();
     fakeKeyProperties.setEnabled(true).setExpiresOn(null).setNotBefore(null);
     doReturn(fakeKeyProperties).when(mockKeyVaultKey).getProperties();
@@ -112,7 +113,7 @@ public class AzuEARServiceUtilTest extends FakeDBApplication {
   public void testGetConfigClientId() {
     String clientId =
         mockAzuEARServiceUtil.getConfigFieldValue(
-            fakeAuthConfig, AzuEARServiceUtil.CLIENT_ID_FIELDNAME);
+            fakeAuthConfig, AzuKmsAuthConfigField.CLIENT_ID.fieldName);
     assertEquals(clientId, authConfigClientId);
   }
 
@@ -120,7 +121,7 @@ public class AzuEARServiceUtilTest extends FakeDBApplication {
   public void testGetConfigClientSecret() {
     String clientSecret =
         mockAzuEARServiceUtil.getConfigFieldValue(
-            fakeAuthConfig, AzuEARServiceUtil.CLIENT_SECRET_FIELDNAME);
+            fakeAuthConfig, AzuKmsAuthConfigField.CLIENT_SECRET.fieldName);
     assertEquals(clientSecret, authConfigClientSecret);
   }
 
@@ -128,7 +129,7 @@ public class AzuEARServiceUtilTest extends FakeDBApplication {
   public void testGetConfigTenantId() {
     String tenantId =
         mockAzuEARServiceUtil.getConfigFieldValue(
-            fakeAuthConfig, AzuEARServiceUtil.TENANT_ID_FIELDNAME);
+            fakeAuthConfig, AzuKmsAuthConfigField.TENANT_ID.fieldName);
     assertEquals(tenantId, authConfigTenantId);
   }
 
@@ -136,7 +137,7 @@ public class AzuEARServiceUtilTest extends FakeDBApplication {
   public void testGetConfigVaultUrl() {
     String vaultUrl =
         mockAzuEARServiceUtil.getConfigFieldValue(
-            fakeAuthConfig, AzuEARServiceUtil.AZU_VAULT_URL_FIELDNAME);
+            fakeAuthConfig, AzuKmsAuthConfigField.AZU_VAULT_URL.fieldName);
     assertEquals(vaultUrl, authConfigAzuVaultUrl);
   }
 
@@ -144,7 +145,7 @@ public class AzuEARServiceUtilTest extends FakeDBApplication {
   public void testGetConfigKeyName() {
     String keyName =
         mockAzuEARServiceUtil.getConfigFieldValue(
-            fakeAuthConfig, AzuEARServiceUtil.AZU_KEY_NAME_FIELDNAME);
+            fakeAuthConfig, AzuKmsAuthConfigField.AZU_KEY_NAME.fieldName);
     assertEquals(keyName, authConfigAzuKeyName);
   }
 
@@ -152,7 +153,7 @@ public class AzuEARServiceUtilTest extends FakeDBApplication {
   public void testGetConfigKeyAlgorithm() {
     String keyAlgorithm =
         mockAzuEARServiceUtil.getConfigFieldValue(
-            fakeAuthConfig, AzuEARServiceUtil.AZU_KEY_ALGORITHM_FIELDNAME);
+            fakeAuthConfig, AzuKmsAuthConfigField.AZU_KEY_ALGORITHM.fieldName);
     assertEquals(keyAlgorithm, authConfigAzuKeyAlgorithm);
   }
 

@@ -133,7 +133,7 @@ show_compiler_command_line() {
 
   local command_line_filter=cat
   if [[ -n ${YB_SPLIT_LONG_COMPILER_CMD_LINES:-} ]]; then
-    command_line_filter=$YB_SRC_ROOT/build-support/split_long_command_line.py
+    command_line_filter=$YB_SCRIPT_PATH_SPLIT_LONG_COMMAND_LINE
   fi
 
   # Split the failed compilation command over multiple lines for easier reading.
@@ -234,6 +234,7 @@ check_compiler_exit_code() {
     if grep -Eq 'error: linker command failed with exit code [0-9]+ \(use -v to see invocation\)' \
          "$stderr_path" || \
        grep -Eq 'error: ld returned' "$stderr_path"; then
+      local determine_compiler_cmdline_rv
       determine_compiler_cmdline
       generate_build_debug_script rerun_failed_link_step "$determine_compiler_cmdline_rv -v"
     fi
@@ -248,9 +249,39 @@ check_compiler_exit_code() {
   fi
 }
 
+remove_duplicate_rpath_args() {
+  local filtered_args=()
+  local rpath_args=()
+  local skip_arg
+  for arg in "${compiler_args[@]}"; do
+    if [[ $arg == -Wl,-rpath,* ]]; then
+      skip_arg=false
+      if [[ ${#rpath_args[@]} -gt 0 ]]; then
+        for existing_rpath_arg in "${rpath_args[@]}"; do
+          if [[ $existing_rpath_arg == "$arg" ]]; then
+            if [[ ${YB_FAIL_ON_DUPLICATE_RPATH:-0} == "1" ]]; then
+              fatal "Duplicate RPATH argument: $arg. Compiler arguments: ${compiler_args_str}"
+            fi
+            skip_arg=true
+            break
+          fi
+        done
+      fi
+      if [[ $skip_arg == "false" ]]; then
+        filtered_args+=( "$arg" )
+        rpath_args+=( "$arg" )
+      fi
+    else
+      filtered_args+=( "$arg" )
+    fi
+  done
+  compiler_args=( "${filtered_args[@]}" )
+}
+
 # -------------------------------------------------------------------------------------------------
 # Common setup for remote and local build.
 # We parse command-line arguments in both cases.
+# -------------------------------------------------------------------------------------------------
 
 cc_or_cxx=${0##*/}
 
@@ -259,7 +290,9 @@ stderr_path=/tmp/yb-$cc_or_cxx.$RANDOM-$RANDOM-$RANDOM.$$.stderr
 compiler_args=( "$@" )
 set +u
 # The same as one string. We allow undefined variables for this line because an empty array is
-# treated as such.
+# treated as such. When performing checks against compiler_args_str, note that that compiler_args
+# can be modified after this line, and compiler_args_str might not be an exact match compared to
+# the compiler command actually being executed.
 compiler_args_str="${compiler_args[*]}"
 set -u
 
@@ -279,16 +312,16 @@ input_files=()
 compiling_pch=false
 yb_pch=false
 
-rpath_found=false
 num_output_files_found=0
 has_yb_c_files=false
 
 compiler_args_no_output=()
-analyzer_checkers_specified=false
 
 linking=false
 use_lld=false
 lld_linking=false
+
+num_times_tcmalloc_linked=0
 
 while [[ $# -gt 0 ]]; do
   is_output_arg=false
@@ -305,6 +338,10 @@ while [[ $# -gt 0 ]]; do
       is_output_arg=true
     ;;
     *.c|*.cc|*.h|*.o|*.a|*.so|*.dylib)
+      if [[ $1 == */libtcmalloc.a ]]; then
+        (( num_times_tcmalloc_linked+=1 ))
+      fi
+
       # Do not include arguments that look like compiler options into the list of input files,
       # even if they have plausible extensions.
       if [[ ! $1 =~ ^[-] ]]; then
@@ -315,9 +352,6 @@ while [[ $# -gt 0 ]]; do
           has_yb_c_files=true
         fi
       fi
-    ;;
-    -Wl,-rpath,*)
-      rpath_found=true
     ;;
     c++-header)
       compiling_pch=true
@@ -335,14 +369,11 @@ while [[ $# -gt 0 ]]; do
         export YB_COMPILER_TYPE=$compiler_type_from_cmd_line
       fi
     ;;
-    -analyzer-checker=*)
-      analyzer_checkers_specified=true
-    ;;
     -fuse-ld=lld)
       use_lld=true
     ;;
   esac
-  if ! "$is_output_arg"; then
+  if [[ ${is_output_arg} == "false" ]]; then
     compiler_args_no_output+=( "$1" )
   fi
   shift
@@ -355,6 +386,15 @@ else
   linking=true
 fi
 
+if [[ ${linking} == "true" &&
+      ${output_file} =~ .*[.](so|dylib).* &&
+      ${num_times_tcmalloc_linked} -gt 0 ]]; then
+  fatal "Error linking ${output_file}." \
+        "The tcmalloc static library cannot be linked into shared libraries. This can result in" \
+        "subtle runtime errors, because we also link libtcmalloc.a into each executable, and we" \
+        "will end up with two copies of tcmalloc loaded. Command line: ${compiler_args[*]}"
+fi
+
 if [[ $linking == "true" && $use_lld == "true" ]]; then
   lld_linking=true
 fi
@@ -365,8 +405,16 @@ if [[ $YB_COMPILER_TYPE == clang* && $output_file == "jsonpath_gram.o" ]]; then
   compiler_args+=( -Wno-error=implicit-fallthrough )
 fi
 
+remove_duplicate_rpath_args
+
+if [[ ${num_times_tcmalloc_linked} -gt 1 ]]; then
+  fatal "libtcmalloc.a static library linked multiple times (${num_times_tcmalloc_linked} times)." \
+        "This could lead to subtle bugs. Command line: ${compiler_args[*]}."
+fi
+
 # -------------------------------------------------------------------------------------------------
 # Remote build
+# -------------------------------------------------------------------------------------------------
 
 local_build_only=false
 for arg in "$@"; do
@@ -385,7 +433,8 @@ fi
 if [[ $local_build_only == "false" &&
       ${YB_REMOTE_COMPILATION:-} == "1" &&
       $is_build_worker == "false" &&
-      $lld_linking == "false" ]]; then
+      $lld_linking == "false" ]] &&
+   ! is_configure_mode_invocation; then
 
   trap remote_build_exit_handler EXIT
 
@@ -484,6 +533,7 @@ fi
 
 # -------------------------------------------------------------------------------------------------
 # Functions for local build
+# -------------------------------------------------------------------------------------------------
 
 local_build_exit_handler() {
   local exit_code=$?
@@ -533,7 +583,7 @@ local_build_exit_handler() {
                 echo "Output file (from -o): $output_file"
               fi
 
-            ) | "$YB_SRC_ROOT/build-support/fix_paths_in_compile_errors.py"
+            ) | "$YB_SCRIPT_PATH_FIX_PATHS_IN_COMPILE_ERRORS"
 
             unset IFS
             echo "\-------------------------------------------------------------------------------"
@@ -572,8 +622,9 @@ run_compiler_and_save_stderr() {
 
 # -------------------------------------------------------------------------------------------------
 # Local build
+# -------------------------------------------------------------------------------------------------
 
-if [[ $output_file =~ libyb_pgbackend*  ]]; then
+if [[ $output_file == libyb_pgbackend* || $output_file == postgres ]]; then
   # We record the linker command used for the libyb_pgbackend library so we can use it when
   # producing the LTO build for yb-tserver.
   echo "${compiler_args[*]}" >"link_cmd_${output_file}.txt"
@@ -690,46 +741,12 @@ if [[ ${#compiler_args[@]} -gt 0 ]]; then
   cmd+=( "${compiler_args[@]}" )
 fi
 
-if "$has_yb_c_files" && [[ $PWD == $BUILD_ROOT/postgres_build/* ]]; then
+if [[ $has_yb_c_files == "true" && $PWD == $BUILD_ROOT/postgres_build/* ]]; then
   # Custom build flags for YB files inside of the PostgreSQL source tree. This re-enables some flags
   # that we had to disable by default in build_postgres.py.
   cmd+=( "-Werror=unused-function" )
 fi
 add_brew_bin_to_path
-
-# Make RPATHs relative whenever possible. This is an effort towards being able to relocate the
-# entire build root to a different path and still be able to run tests. Currently disabled for
-# PostgreSQL code because to do it correctly we need to know the eventual "installation" locations
-# of PostgreSQL binaries and libraries, which requires a bit more work.
-if [[ ${YB_DISABLE_RELATIVE_RPATH:-0} == "0" ]] &&
-   is_linux &&
-   "$rpath_found" &&
-   # In case BUILD_ROOT is defined (should be in all cases except for when we're determining the
-   # compilier type), and we know we are building inside of the PostgreSQL dir, we don't want to
-   # make RPATHs relative.
-   [[ -z $BUILD_ROOT || $PWD != $BUILD_ROOT/postgres_build/* ]]; then
-  if [[ $num_output_files_found -ne 1 ]]; then
-    # Ideally this will only happen as part of running PostgreSQL's configure and will be hidden.
-    log "RPATH options found on the command line, but could not find exactly one output file " \
-        "to make RPATHs relative to. Found $num_output_files_found output files. Command args: " \
-        "$compiler_args_str"
-  else
-    new_cmd=()
-    for arg in "${cmd[@]}"; do
-      case $arg in
-        -Wl,-rpath,*)
-          new_rpath_arg=$(
-            "$YB_BUILD_SUPPORT_DIR/make_rpath_relative.py" "$output_file" "$arg"
-          )
-          new_cmd+=( "$new_rpath_arg" )
-        ;;
-        *)
-          new_cmd+=( "$arg" )
-      esac
-    done
-    cmd=( "${new_cmd[@]}" )
-  fi
-fi
 
 if [[ $PWD == $BUILD_ROOT/postgres_build ||
       $PWD == $BUILD_ROOT/postgres_build/* ]]; then
@@ -904,41 +921,4 @@ check_compiler_exit_code
 if grep -Eq 'ld: warning: directory not found for option' "$stderr_path"; then
   log "Linker failed to find a directory (probably a library directory) that should exist."
   exit 1
-fi
-
-if is_clang &&
-    [[ ${YB_ENABLE_STATIC_ANALYZER:-0} == "1" ]] &&
-    [[ ${YB_PG_BUILD_STEP:-} != "configure" ]] &&
-    ! is_configure_mode_invocation &&
-    [[ $output_file == *.o ]] &&
-    is_linux; then
-  if ! "$analyzer_checkers_specified"; then
-    log "No -analyzer-checker=... option found on compiler command line. It is possible that" \
-        "cmake was run without the YB_ENABLE_STATIC_ANALYZER environment variable set to 1. " \
-        "Command: $compiler_args_str"
-    echo "$compiler_args_str" >>/tmp/compiler_args.log
-  fi
-  compilation_step_name="STATIC ANALYSIS"
-  output_prefix=${output_file%.o}
-  stderr_path=$output_prefix.analyzer.err
-  html_output_dir="$output_prefix.html.d"
-  if [[ -e $html_output_dir ]]; then
-    rm -rf "$html_output_dir"
-  fi
-
-  # The error handler will delete the .o file on analyzer failure to keep the combined compilation
-  # and analysis process repeatable. Re-running the build should result in the same error if the
-  # analyzer fails.
-  delete_output_file_on_failure=true
-  delete_stderr_file=false
-
-  # TODO: the output redirection here does not quite work. clang might be doing something unusual
-  # with the tty. As of 01/2019 all stderr output might still go to the terminal/log.
-  set +e
-  "$compiler_executable" "${compiler_args_no_output[@]}" --analyze \
-    -Xanalyzer -analyzer-output=html -fno-color-diagnostics -o "$html_output_dir" \
-    2>"$stderr_path"
-
-  compiler_exit_code=$?
-  set -e
 fi

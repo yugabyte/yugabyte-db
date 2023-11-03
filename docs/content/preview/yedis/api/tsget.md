@@ -14,13 +14,14 @@ type: docs
 
 ## Synopsis
 
-<b>`TSGET key timestamp`</b><br>
+**`TSGET key timestamp`**
+
 This command fetches the value for the given `timestamp` in the time series that is specified by the
 given `key`.
 
-<li>If the given `key` or `timestamp` does not exist, nil is returned.</li>
-<li>If the given `key` is associated with non-timeseries data, an error is raised.</li>
-<li>If the given `timestamp` is not a valid signed 64 bit integer, an error is raised.</li>
+- If the given `key` or `timestamp` does not exist, nil is returned.
+- If the given `key` is associated with non-time series data, an error is raised.
+- If the given `timestamp` is not a valid signed 64 bit integer, an error is raised.
 
 ## Return value
 

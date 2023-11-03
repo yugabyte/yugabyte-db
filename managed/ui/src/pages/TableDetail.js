@@ -1,17 +1,23 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component, lazy, Suspense } from 'react';
 import Universes from './Universes';
-import { TableDetailContainer } from '../components/tables';
+import { YBLoadingCircleIcon } from '../components/common/indicators';
+
+const TableDetailContainer = lazy(() =>
+  import('../components/tables/TableDetail/TableDetailContainer')
+);
 
 export default class TableDetail extends Component {
   render() {
     return (
       <Universes>
-        <TableDetailContainer
-          universeUUID={this.props.params.uuid}
-          tableUUID={this.props.params.tableUUID}
-        />
+        <Suspense fallback={YBLoadingCircleIcon}>
+          <TableDetailContainer
+            universeUUID={this.props.params.uuid}
+            tableUUID={this.props.params.tableUUID}
+          />
+        </Suspense>
       </Universes>
     );
   }

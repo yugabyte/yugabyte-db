@@ -13,14 +13,13 @@
 //
 //
 
-#ifndef YB_CLIENT_TABLET_RPC_H
-#define YB_CLIENT_TABLET_RPC_H
+#pragma once
 
 #include <memory>
 #include <string>
 #include <unordered_set>
 
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 #include <gtest/gtest_prod.h>
 
 #include "yb/client/client_fwd.h"
@@ -55,8 +54,6 @@ class TabletRpc {
   // attempt_num starts with 1.
   virtual void SendRpcToTserver(int attempt_num) = 0;
 
-  virtual bool ShouldRetryExpiredRequest() { return false; }
-
  protected:
   ~TabletRpc() {}
 };
@@ -76,8 +73,8 @@ class TabletInvoker {
                          const std::shared_ptr<const YBTable>& table,
                          rpc::RpcRetrier* retrier,
                          Trace* trace,
-                         master::IncludeInactive include_inactive =
-                            master::IncludeInactive::kFalse);
+                         master::IncludeInactive include_inactive = master::IncludeInactive::kFalse,
+                         master::IncludeDeleted include_deleted = master::IncludeDeleted::kFalse);
 
   virtual ~TabletInvoker();
 
@@ -114,7 +111,7 @@ class TabletInvoker {
   // Marks all replicas on current_ts_ as failed and retries the write on a
   // new replica.
   Status FailToNewReplica(const Status& reason,
-                                  const tserver::TabletServerErrorPB* error_code = nullptr);
+                          const tserver::TabletServerErrorPB* error_code = nullptr);
 
   // Called when we finish a lookup (to find the new consensus leader). Retries
   // the rpc after a short delay.
@@ -124,11 +121,13 @@ class TabletInvoker {
 
   // If we receive TABLET_NOT_FOUND and current_ts_ is set, that means we contacted a tserver
   // with a tablet_id, but the tserver no longer has that tablet.
-  bool TabletNotFoundOnTServer(const tserver::TabletServerErrorPB* error_code,
-                               const Status& status) {
-    return status.IsNotFound() &&
+  // If we receive ShutdownInProgress status then the tablet is about to shutdown and such tablet
+  // should also be considered as not found.
+  bool IsTabletConsideredNotFound(
+      const tserver::TabletServerErrorPB* error_code, const Status& status) {
+    return (status.IsNotFound() &&
         ErrorCode(error_code) == tserver::TabletServerErrorPB::TABLET_NOT_FOUND &&
-        current_ts_ != nullptr;
+        current_ts_ != nullptr) || status.IsShutdownInProgress();
   }
 
   YBClient* const client_;
@@ -151,7 +150,10 @@ class TabletInvoker {
   Trace* const trace_;
 
   // Whether or not to allow lookups of inactive (hidden) tablets.
-  master::IncludeInactive const include_inactive_;
+  const master::IncludeInactive include_inactive_;
+
+  // Whether or not to allow deleted tablets.
+  const master::IncludeDeleted include_deleted_;
 
   // Used to retry some failed RPCs.
   // Tablet servers that refused the write because they were followers at the time.
@@ -190,5 +192,3 @@ HybridTime GetPropagatedHybridTime(const Response& response) {
 } // namespace internal
 } // namespace client
 } // namespace yb
-
-#endif // YB_CLIENT_TABLET_RPC_H

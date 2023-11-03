@@ -13,13 +13,9 @@ type: docs
 
 This section describes how to use stored procedures to perform transactions.
 
-## Overview
-
-Stored procedures, in large part, are just functions that support transactions. PostgreSQL 11 introduced stored procedures, and Yugabyte supports them as well.
-
 ## Create a stored procedure
 
-To create a stored procedure in YSQL, use the [`CREATE PROCEDURE`](../../../api/ysql/the-sql-language/statements/ddl_create_procedure/) statement, which has the following syntax:
+Stored procedures, in large part, are just functions that support transactions. To create a stored procedure in YSQL, use the [`CREATE PROCEDURE`](../../../api/ysql/the-sql-language/statements/ddl_create_procedure/) statement, which has the following syntax:
 
 ```sql
 CREATE [OR REPLACE] PROCEDURE procedure_name(parameter_list)
@@ -73,6 +69,8 @@ yugabyte=# drop procedure move_money(integer, integer, decimal);
 If the name of the stored procedure is not unique (for example, if you had two `insert_data()` procedures, one of which accepted two integers and another which accepted an integer and a varchar), you must specify the data types in the `DROP PROCEDURE` statement. Otherwise, you can omit the data types.
 
 ## Example workflow
+
+{{% explore-setup-single %}}
 
 In the following example, you create a new table and a stored procedure to perform operations on that table. Finally, you clean up by removing the procedure and the table.
 

@@ -11,8 +11,10 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_RANGE_H
-#define YB_UTIL_RANGE_H
+#pragma once
+
+#include <iterator>
+#include <type_traits>
 
 namespace yb {
 
@@ -112,22 +114,44 @@ class RangeObject {
   using const_iterator = RangeIterator<Int>;
 
   RangeObject(Int start, Int stop, Int step)
-      : start_(start), stop_(start + (stop - start + step - 1) / step * step), step_(step) {}
+      : start_(start), stop_(NormalizedStop(start, stop, step)), step_(step) {
+  }
 
-  const_iterator begin() const {
+  [[nodiscard]] size_t size() const {
+    return (stop_ - start_) / step_;
+  }
+
+  [[nodiscard]] const_iterator begin() const {
     return const_iterator(start_, step_);
   }
 
-  const_iterator end() const {
+  [[nodiscard]] const_iterator end() const {
     return const_iterator(stop_, step_);
   }
 
   template <class T>
-  auto operator[](const T& container) const {
+  [[nodiscard]] auto operator[](const T& container) const {
     return ContainerRangeObject<RangeObject<Int>, T>(*this, container);
   }
 
+  [[nodiscard]] RangeObject<Int> Reversed() const {
+    static_assert(std::is_signed_v<Int>);
+    const auto new_step = -step_;
+    auto new_start = stop_ - (new_step > 0 ? -1 : 1);
+    auto new_stop = new_start + static_cast<Int>(size()) * new_step;
+    return {new_start, new_stop, new_step};
+  }
+
  private:
+  [[nodiscard]] static Int NormalizedStop(Int start, Int stop, Int step) {
+    auto diff = stop - start;
+    auto step_count = diff / step;
+    if (diff % step) {
+      ++step_count;
+    }
+    return start + step_count * step;
+  }
+
   Int start_;
   Int stop_;
   Int step_;
@@ -151,5 +175,3 @@ RangeObject<Int> RangeOfSize(Int start, Int size, Int step = 1) {
 }
 
 }  // namespace yb
-
-#endif  // YB_UTIL_RANGE_H

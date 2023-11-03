@@ -12,8 +12,7 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_PGGATE_UTIL_PG_TUPLE_H_
-#define YB_YQL_PGGATE_UTIL_PG_TUPLE_H_
+#pragma once
 
 #include "yb/yql/pggate/util/pg_wire.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -32,13 +31,10 @@ class PgTuple {
   PgTuple(uint64_t *datums, bool *isnulls, PgSysColumns *syscols);
 
   // Write null value.
-  void WriteNull(int index, const PgWireDataHeader& header);
+  void WriteNull(int index);
 
   // Write datum to tuple slot.
   void WriteDatum(int index, uint64_t datum);
-
-  // Write data in Postgres format.
-  void Write(uint8_t **pgbuf, const PgWireDataHeader& header, const uint8_t *value, int64_t bytes);
 
   // Get returning-space for system columns. Tuple writer will save values in this struct.
   PgSysColumns *syscols() {
@@ -53,5 +49,3 @@ class PgTuple {
 
 }  // namespace pggate
 }  // namespace yb
-
-#endif // YB_YQL_PGGATE_UTIL_PG_TUPLE_H_

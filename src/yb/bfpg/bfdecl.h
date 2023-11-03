@@ -16,81 +16,22 @@
 // metadata of a builtin function.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_BFPG_BFDECL_H
-#define YB_BFPG_BFDECL_H
+#pragma once
 
+#include "yb/bfcommon/bfdecl.h"
 #include "yb/bfpg/tserver_opcodes.h"
 
+#include "yb/common/value.fwd.h"
 #include "yb/common/value.pb.h"
 
 #include "yb/gutil/macros.h"
 
+#include "yb/util/memory/arena_fwd.h"
+
 namespace yb {
 namespace bfpg {
 
-// This class contains the metadata of a builtin function, which has to principal components.
-// 1. Specification of a builtin function.
-//    - A PGSQL name: This is the name of the builtin function.
-//    - A PGSQL parameter types: This is the signature of the builtin function.
-//    - A PGSQL return type.
-// 2. Definition or body of a builtin function.
-//    - A C++ function name: This represents the implementation of the builtin function in C++.
-class BFDecl {
- public:
-  BFDecl(const char *cpp_name,
-         const char *ql_name,
-         DataType return_type,
-         std::initializer_list<DataType> param_types,
-         TSOpcode tsopcode = TSOpcode::kNoOp,
-         bool implemented = true)
-      : cpp_name_(cpp_name),
-        ql_name_(ql_name),
-        return_type_(return_type),
-        param_types_(param_types),
-        tsopcode_(tsopcode),
-        implemented_(implemented) {
-  }
-
-  const char *cpp_name() const {
-    return cpp_name_;
-  }
-
-  const char *ql_name() const {
-    return ql_name_;
-  }
-
-  const DataType& return_type() const {
-    return return_type_;
-  }
-
-  const std::vector<DataType>& param_types() const {
-    return param_types_;
-  }
-
-  size_t param_count() const {
-    return param_types_.size();
-  }
-
-  TSOpcode tsopcode() const {
-    return tsopcode_;
-  }
-
-  bool is_server_operator() const {
-    return tsopcode_ != TSOpcode::kNoOp;
-  }
-
-  bool implemented() const {
-    return implemented_;
-  }
-
-  bool is_collection_bcall() const {
-    return is_collection_op(tsopcode_);
-  }
-
-  bool is_aggregate_bcall() const {
-    return is_aggregate_op(tsopcode_);
-  }
-
+struct BFDeclTraits {
   static bool is_collection_op(TSOpcode tsopcode) {
     switch (tsopcode) {
       case TSOpcode::kMapExtend: FALLTHROUGH_INTENDED;
@@ -123,17 +64,16 @@ class BFDecl {
         return false;
     }
   }
-
- private:
-  const char *cpp_name_;
-  const char *ql_name_;
-  DataType return_type_;
-  std::vector<DataType> param_types_;
-  TSOpcode tsopcode_;
-  bool implemented_;
 };
+
+using BFDecl = bfcommon::BFDecl<TSOpcode, BFDeclTraits>;
+
+using bfcommon::BFValue;
+using bfcommon::BFRetValue;
+using bfcommon::BFParam;
+using bfcommon::BFParams;
+using bfcommon::BFFunctions;
+using bfcommon::BFFactory;
 
 } // namespace bfpg
 } // namespace yb
-
-#endif  // YB_BFPG_BFDECL_H

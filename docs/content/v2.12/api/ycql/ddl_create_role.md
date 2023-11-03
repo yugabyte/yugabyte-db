@@ -30,8 +30,8 @@ This statement is enabled by setting the YB-TServer flag [`--use_cassandra_authe
 
 ### Grammar
 
-```
-create_table ::= CREATE ROLE [ IF NOT EXISTS ] role_name [ WITH role_property [ AND role_property ...] ];
+```ebnf
+create_role ::= CREATE ROLE [ IF NOT EXISTS ] role_name [ WITH role_property [ AND role_property ...] ];
 
 role_property ::=  PASSWORD = <Text Literal>
                  | LOGIN = <Boolean Literal>
@@ -63,7 +63,7 @@ ycqlsh:example> CREATE ROLE role1;
 ycqlsh:example> CREATE ROLE role2 WITH SUPERUSER = true;
 ```
 
-### Create a regular user with ability to login
+### Create a regular user with ability to log in
 
 You can create a regular user with login privileges as shown below. Note the `SUPERUSER` set to `false`.
 

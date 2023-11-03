@@ -17,9 +17,11 @@
 #include "yb/client/client.h"
 #include "yb/client/table_info.h"
 
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
-#include "yb/common/wire_protocol.h"
+
+#include "yb/dockv/partition.h"
 
 #include "yb/master/master_ddl.pb.h"
 
@@ -28,7 +30,15 @@
 
 #include "yb/yql/redis/redisserver/redis_constants.h"
 
+using std::string;
+
 DECLARE_bool(client_suppress_created_logs);
+DECLARE_uint32(change_metadata_backoff_max_jitter_ms);
+DECLARE_uint32(change_metadata_backoff_init_exponent);
+DECLARE_bool(ysql_ddl_rollback_enabled);
+
+DEFINE_test_flag(bool, duplicate_create_table_request, false,
+                 "Whether a table creator should send duplicate CreateTableRequestPB to master.");
 
 namespace yb {
 namespace client {
@@ -70,15 +80,15 @@ YBTableCreator& YBTableCreator::is_pg_shared_table() {
   return *this;
 }
 
-YBTableCreator& YBTableCreator::hash_schema(YBHashSchema hash_schema) {
+YBTableCreator& YBTableCreator::hash_schema(dockv::YBHashSchema hash_schema) {
   switch (hash_schema) {
-    case YBHashSchema::kMultiColumnHash:
+    case dockv::YBHashSchema::kMultiColumnHash:
       partition_schema_->set_hash_schema(PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA);
       break;
-    case YBHashSchema::kRedisHash:
+    case dockv::YBHashSchema::kRedisHash:
       partition_schema_->set_hash_schema(PartitionSchemaPB::REDIS_HASH_SCHEMA);
       break;
-    case YBHashSchema::kPgsqlHash:
+    case dockv::YBHashSchema::kPgsqlHash:
       partition_schema_->set_hash_schema(PartitionSchemaPB::PGSQL_HASH_SCHEMA);
       break;
   }
@@ -130,7 +140,7 @@ YBTableCreator& YBTableCreator::part_of_transaction(const TransactionMetadata* t
   return *this;
 }
 
-YBTableCreator &YBTableCreator::add_partition(const Partition& partition) {
+YBTableCreator &YBTableCreator::add_partition(const dockv::Partition& partition) {
     partitions_.push_back(partition);
     return *this;
 }
@@ -233,7 +243,7 @@ Status YBTableCreator::Create() {
     CHECK(!schema_) << "Schema should not be set for redis table creation";
     redis_schema.reset(new YBSchema());
     YBSchemaBuilder b;
-    b.AddColumn(kRedisKeyColumnName)->Type(BINARY)->NotNull()->HashPrimaryKey();
+    b.AddColumn(kRedisKeyColumnName)->Type(DataType::BINARY)->NotNull()->HashPrimaryKey();
     RETURN_NOT_OK(b.Build(redis_schema.get()));
     schema(redis_schema.get());
   }
@@ -293,6 +303,7 @@ Status YBTableCreator::Create() {
 
   if (txn_) {
     txn_->ToPB(req.mutable_transaction());
+    req.set_ysql_ddl_rollback_enabled(FLAGS_ysql_ddl_rollback_enabled);
   }
 
   // Setup the number splits (i.e. number of splits).
@@ -307,7 +318,18 @@ Status YBTableCreator::Create() {
       num_tablets_ = 1;
       VLOG(1) << "num_tablets=1: using one tablet for a system table";
     } else {
-      num_tablets_ = VERIFY_RESULT(client_->NumTabletsForUserTable(table_type_));
+      if (table_type_ == TableType::PGSQL_TABLE_TYPE && !is_pg_catalog_table_) {
+        LOG(INFO) << "Get number of tablet for YSQL user table";
+        if (replication_info_ && !tablespace_id_.empty())
+          return STATUS(InvalidArgument,
+                        "Both replication info and tablespace ID cannot "
+                        "be set when calculating number of tablets.");
+        num_tablets_ = VERIFY_RESULT(client_->NumTabletsForUserTable(
+            table_type_, &tablespace_id_, replication_info_.get()));
+      } else {
+        num_tablets_ = VERIFY_RESULT(client_->NumTabletsForUserTable(
+            table_type_));
+      }
     }
   }
   req.set_num_tablets(num_tablets_);
@@ -347,6 +369,18 @@ Status YBTableCreator::Create() {
                                                    object_type, table_name_.ToString()));
   }
 
+  // A client is possible to send out duplicate CREATE TABLE requests to master due to network
+  // latency issue, server too busy issue or other reasons.
+  if (PREDICT_FALSE(FLAGS_TEST_duplicate_create_table_request)) {
+    s = client_->data_->CreateTable(
+        client_, req, *schema_, deadline, &table_id_);
+
+    if (!s.ok() && !s.IsAlreadyPresent()) {
+        RETURN_NOT_OK_PREPEND(s, strings::Substitute("Error creating $0 $1 on the master",
+                                                      object_type, table_name_.ToString()));
+    }
+  }
+
   // We are here because the create request succeeded or we received an IsAlreadyPresent error.
   // Although the table is already in the catalog manager, it doesn't mean that the table is
   // ready to receive requests. So we will call WaitForCreateTableToFinish to ensure that once
@@ -355,8 +389,16 @@ Status YBTableCreator::Create() {
 
   // Spin until the table is fully created, if requested.
   if (wait_) {
-    RETURN_NOT_OK(client_->data_->WaitForCreateTableToFinish(
-        client_, YBTableName(), table_id_, deadline));
+    if (req.has_tablegroup_id()) {
+        RETURN_NOT_OK(client_->data_->WaitForCreateTableToFinish(
+            client_, YBTableName(), table_id_, deadline,
+            FLAGS_change_metadata_backoff_max_jitter_ms,
+            FLAGS_change_metadata_backoff_init_exponent));
+    } else {
+        // TODO: Should we make the backoff loop aggresive for regular tables as well?
+        RETURN_NOT_OK(client_->data_->WaitForCreateTableToFinish(
+            client_, YBTableName(), table_id_, deadline));
+    }
   }
 
   if (s.ok() && !FLAGS_client_suppress_created_logs) {

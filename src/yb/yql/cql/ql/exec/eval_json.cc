@@ -152,7 +152,8 @@ Result<PTExpr::SharedPtr> Executor::ConvertJsonToExprInner(const rapidjson::Valu
     }
     case rapidjson::Type::kArrayType: {
       // All of these collections are represented as JSON lists
-      if (type->main() != LIST && type->main() != SET) { // TODO: Add tuple during #936
+      // TODO: Add tuple during #936
+      if (type->main() != DataType::LIST && type->main() != DataType::SET) {
         return exec_context_->Error(*loc,
                                     GetCoercionErr(DataType::LIST, type->main()),
                                     ErrorCode::DATATYPE_MISMATCH);
@@ -165,14 +166,14 @@ Result<PTExpr::SharedPtr> Executor::ConvertJsonToExprInner(const rapidjson::Valu
     }
     case rapidjson::Type::kObjectType: {
       // Could be either Map or UDT
-      if (type->main() != MAP && type->main() != USER_DEFINED_TYPE) {
+      if (type->main() != DataType::MAP && type->main() != DataType::USER_DEFINED_TYPE) {
         return exec_context_->Error(*loc,
                                     GetCoercionErr(DataType::MAP, type->main()),
                                     ErrorCode::DATATYPE_MISMATCH);
       }
       auto result =  PTCollectionExpr::MakeShared(memctx, loc, type);
       for (const auto& member : json_value.GetObject()) {
-        if (type->main() == MAP) {
+        if (type->main() == DataType::MAP) {
           const PTExpr::SharedPtr processed_key =
               VERIFY_RESULT(ConvertJsonToExpr(member.name, type->keys_type(), loc));
           const PTExpr::SharedPtr processed_value =
@@ -197,7 +198,7 @@ Result<PTExpr::SharedPtr> Executor::ConvertJsonToExprInner(const rapidjson::Valu
           result->AddKeyValuePair(processed_key, processed_value);
         }
       }
-      if (type->main() == USER_DEFINED_TYPE) {
+      if (type->main() == DataType::USER_DEFINED_TYPE) {
         RETURN_NOT_OK(result->InitializeUDTValues(type, exec_context_));
       }
       return result;
@@ -236,8 +237,8 @@ Status Executor::PreExecTreeNode(PTInsertJsonClause* json_clause) {
 }
 
 Status Executor::InsertJsonClauseToPB(const PTInsertStmt* insert_stmt,
-                                              const PTInsertJsonClause* json_clause,
-                                              QLWriteRequestPB* req) {
+                                      const PTInsertJsonClause* json_clause,
+                                      QLWriteRequestPB* req) {
   const auto& column_map = insert_stmt->column_map();
   const auto& loc        = json_clause->Expr()->loc_ptr();
 

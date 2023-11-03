@@ -1,4 +1,4 @@
-import React, { FC, useEffect, useState } from 'react';
+import { FC, useEffect, useState } from 'react';
 import { YBButton } from '../../common/forms/fields';
 import { DeleteModal } from '../modals/DeleteModal';
 import './HAErrorPlaceholder.scss';

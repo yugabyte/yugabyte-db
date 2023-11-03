@@ -77,6 +77,8 @@ message SetFlagResponsePB {
 
     // The flag is not safe to change at runtime without the 'force' flag.
     NOT_SAFE = 4;
+
+    PG_SET_FAILED = 5;
   }
 
   required Code result = 1;

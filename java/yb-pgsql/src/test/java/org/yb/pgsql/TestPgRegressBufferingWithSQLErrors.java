@@ -15,12 +15,12 @@ package org.yb.pgsql;
 import java.util.Map;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 /**
  * Runs the pg_regress test suite on YB code.
  */
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestPgRegressBufferingWithSQLErrors extends BasePgSQLTest {
   @Override
   protected Map<String, String> getTServerFlags() {

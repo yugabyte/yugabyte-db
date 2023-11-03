@@ -59,7 +59,7 @@ export const QueryDetailsPanel: FC<QueryDetailsProps> = ({ open, onClose, title,
   return (
     <YBModal size="xl" isSidePanel title={title} titleSeparator cancelLabel={'Close'} onClose={onClose} open={open}>
       <Box mt={2}>
-        <YBCodeBlock text={currentEntry?.query ?? ''} preClassName={classes.codeBlock} />
+        <YBCodeBlock text={currentEntry?.query || 'No query data'} preClassName={classes.codeBlock} />
         <Box py={1} pr={0.5} textAlign="right">
           <YBButton onClick={copyStatement} startIcon={<CopyIcon />}>
             {'Copy Statement'}
@@ -71,7 +71,7 @@ export const QueryDetailsPanel: FC<QueryDetailsProps> = ({ open, onClose, title,
               if (key !== 'id' && key !== 'queryid' && key !== 'query') {
                 let data = currentEntry[key];
                 const isTimeData = ['min_time', 'max_time', 'total_time', 'mean_time', 'elapsed_millis'].includes(key);
-                if (key === 'query_start_time' && typeof data === 'string') {
+                if (key === 'query_start_time' && typeof data === 'string' && data !== '') {
                   data = intlFormat(Date.parse(data), {
                     year: 'numeric',
                     month: '2-digit',

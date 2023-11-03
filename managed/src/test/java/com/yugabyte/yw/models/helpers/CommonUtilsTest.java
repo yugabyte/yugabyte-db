@@ -151,7 +151,13 @@ public class CommonUtilsTest {
 
   @Test
   @Parameters({
-    "1.2.3.4sdfdsf, 1.2.3.4wqerq, true",
+    "1.2.3.4, 1.2.3.4, true",
+    "1.2.3.4, 1.2.3.4wqerq, true",
+    "1.2.3.4-b15, 1.2.3.4, true",
+    "1.2.3.4-b15, 1.2.3.4wqerq, true",
+    "1.2.3.4-b15, 1.2.3.4-b14, false",
+    "1.2.3.4-b15, 1.2.3.4-b15, true",
+    "1.2.3.4-b15, 1.2.3.4-b16, true",
     "1.2.3.3sdfdsf, 1.2.3.4wqerq, true",
     "1.2.3.5sdfdsf, 1.2.3.4wqerq, false",
     "1.2.2.6sdfdsf, 1.2.3.4wqerq, true",
@@ -165,7 +171,13 @@ public class CommonUtilsTest {
 
   @Test
   @Parameters({
-    "1.2.3.4sdfdsf, 1.2.3.4wqerq, false",
+    "1.2.3.4, 1.2.3.4, false",
+    "1.2.3.4, 1.2.3.4wqerq, false",
+    "1.2.3.4-b15, 1.2.3.4, false",
+    "1.2.3.4-b15, 1.2.3.4wqerq, false",
+    "1.2.3.4-b15, 1.2.3.4-b14, true",
+    "1.2.3.4-b15, 1.2.3.4-b15, false",
+    "1.2.3.4-b15, 1.2.3.4-b16, false",
     "1.2.3.3sdfdsf, 1.2.3.4wqerq, false",
     "1.2.3.5sdfdsf, 1.2.3.4wqerq, true",
     "1.2.2.6sdfdsf, 1.2.3.4wqerq, false",
@@ -219,5 +231,28 @@ public class CommonUtilsTest {
     assertFalse(
         CommonUtils.isEqualIgnoringOrder(Arrays.asList("a", "b", "c"), Arrays.asList("a", "b")));
     assertFalse(CommonUtils.isEqualIgnoringOrder(Arrays.asList("a", "b", "c"), null));
+  }
+
+  @Test
+  public void testReplaceBeginningPathChanged() {
+    String pathToModify = "/opt/yugaware/path/to/opt/yugaware/file";
+    String initialRootPath = "/opt/yugaware";
+    String finalRootPath = "/root/data";
+    String expectedModifiedPath = "/root/data/path/to/opt/yugaware/file";
+
+    String modifiedPath =
+        CommonUtils.replaceBeginningPath(pathToModify, initialRootPath, finalRootPath);
+    assertEquals(expectedModifiedPath, modifiedPath);
+  }
+
+  @Test
+  public void testReplaceBeginningPathUnChanged() {
+    String pathToModify = "/opt/yugaware/path/to/opt/path/file";
+    String initialRootPath = "/opt/yugaware";
+    String finalRootPath = "/opt/yugaware";
+
+    String modifiedPath =
+        CommonUtils.replaceBeginningPath(pathToModify, initialRootPath, finalRootPath);
+    assertEquals(pathToModify, modifiedPath);
   }
 }

@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_TEST_MACROS_H
-#define YB_UTIL_TEST_MACROS_H
+#pragma once
 
 #include <set>
 #include <sstream>
@@ -40,8 +39,12 @@
 
 #include <gtest/gtest.h> // For SUCCEED/FAIL
 
-#include "yb/util/tostring.h"
 #include "yb/gutil/stl_util.h"  // For VectorToSet
+
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/string_trim.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 namespace util {
@@ -128,7 +131,7 @@ std::string TEST_SetDifferenceStr(const std::set<T>& expected, const std::set<T>
     } \
   } while (0)
 
-#define EXPECT_NOT_OK(s) EXPECT_FALSE((s).ok())
+#define EXPECT_NOK(s) EXPECT_FALSE((s).ok())
 
 // Like the above, but doesn't record successful
 // tests.
@@ -158,6 +161,18 @@ std::string TEST_SetDifferenceStr(const std::set<T>& expected, const std::set<T>
       ADD_FAILURE() << "Unexpected error: " << ec.message(); \
     } \
   } while (false)
+
+// Asserts that result is ok, extracts result value is case of success.
+#define ASSERT_RESULT(expr) \
+  RESULT_CHECKER_HELPER(expr, ASSERT_OK(__result))
+
+// Expects that result is ok, extracts result value is case of success.
+#define EXPECT_RESULT(expr) \
+  RESULT_CHECKER_HELPER(expr, EXPECT_OK(__result))
+
+// Asserts that result is ok, extracts result value is case of success.
+#define ASSERT_RESULT_FAST(expr) \
+  RESULT_CHECKER_HELPER(expr, ASSERT_OK_FAST(__result))
 
 #ifdef THREAD_SANITIZER
 #define ASSERT_PERF_LE(lhs, rhs) do { (void)(lhs); (void)(rhs); } while(false)
@@ -264,7 +279,7 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
     auto expected_set = ::yb::VectorToSet(expected_vector_computed); \
     auto actual_set = ::yb::VectorToSet(actual_vector_computed); \
     GTEST_ASSERT_( \
-        ::testing::internal::EqHelper<GTEST_IS_NULL_LITERAL_(expected_vector)>::Compare( \
+        ::testing::internal::EqHelper::Compare( \
             BOOST_PP_STRINGIZE(expected_vector), \
             BOOST_PP_STRINGIZE(actual_vector), \
             expected_vector_computed, \
@@ -321,6 +336,24 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
   }) \
   /**/
 
+// Similar to ASSERT_NOTNULL but does not return anything.
+#define ASSERT_ONLY_NOTNULL(expr) \
+  do { \
+    auto&& result = (expr); \
+    if (result == nullptr) { \
+      FAIL() << "Unexpected nullptr"; \
+    } \
+  } while (false)
+  /**/
+
+#define ASSERT_QUERY_FAIL(query_exec, expected_failure_substr) \
+  do { \
+    auto&& status = (query_exec); \
+    ASSERT_NOK(status); \
+    ASSERT_STR_CONTAINS(status.ToString(), expected_failure_substr); \
+  } while (false) \
+  /**/
+
 #define CURRENT_TEST_NAME() \
   ::testing::UnitTest::GetInstance()->current_test_info()->name()
 
@@ -329,6 +362,10 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
 
 #define CURRENT_TEST_CASE_AND_TEST_NAME_STR() \
   (std::string(CURRENT_TEST_CASE_NAME()) + '.' + CURRENT_TEST_NAME())
+
+// Macros to disable tests in certain build types. Cannot be used in a parameterized test with
+// TEST_P or extended test fixtures with TEST_F_EX. For these, please use GTEST_SKIP or
+// YB_SKIP_TEST_IN_TSAN macros.
 
 #define YB_DISABLE_TEST(test_name) BOOST_PP_CAT(DISABLED_, test_name)
 
@@ -350,18 +387,29 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
 #define YB_DISABLE_TEST_IN_SANITIZERS(test_name) test_name
 #endif
 
+#ifdef FASTDEBUG
+#define YB_DISABLE_TEST_IN_FASTDEBUG(test_name) YB_DISABLE_TEST(test_name)
+#else
+#define YB_DISABLE_TEST_IN_FASTDEBUG(test_name) test_name
+#endif
+
 #if defined(__APPLE__) || defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)
 #define YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(test_name) YB_DISABLE_TEST(test_name)
 #else
 #define YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(test_name) test_name
 #endif
 
-// TODO: use GTEST_SKIP() here when we upgrade gtest.
-#define YB_SKIP_TEST_IN_TSAN() do { \
+#if !defined(NDEBUG) || defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)
+#define YB_DISABLE_TEST_EXCEPT_RELEASE(test_name) YB_DISABLE_TEST(test_name)
+#else
+#define YB_DISABLE_TEST_EXCEPT_RELEASE(test_name) test_name
+#endif
+
+// Can be used in individual test cases or in the SetUp() method to skip all tests for a fixture.
+#define YB_SKIP_TEST_IN_TSAN() \
+  do { \
     if (::yb::IsTsan()) { \
-      LOG(INFO) << "This test is skipped in TSAN"; \
+      GTEST_SKIP() << "Skipping test in TSAN"; \
       return; \
     } \
   } while (false)
-
-#endif  // YB_UTIL_TEST_MACROS_H

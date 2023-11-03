@@ -13,10 +13,9 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_TEST_QL_TEST_BASE_H_
-#define YB_YQL_CQL_QL_TEST_QL_TEST_BASE_H_
+#pragma once
 
-#include "yb/common/ql_rowblock.h"
+#include "yb/qlexpr/ql_rowblock.h"
 
 #include "yb/gutil/bind.h"
 
@@ -126,7 +125,7 @@ class TestQLProcessor : public ClockHolder {
   }
 
   void RunAsync(
-      const string& stmt, const StatementParameters& params, Callback<void(const Status&)> cb);
+      const std::string& stmt, const StatementParameters& params, Callback<void(const Status&)> cb);
 
   // Execute a QL statement.
   Status Run(
@@ -135,7 +134,7 @@ class TestQLProcessor : public ClockHolder {
   Status Run(const Statement& stmt, const StatementParameters& params);
 
   // Construct a row_block and send it back.
-  std::shared_ptr<QLRowBlock> row_block() const;
+  std::shared_ptr<qlexpr::QLRowBlock> row_block() const;
 
   const ExecutedResultPtr& result() const { return result_; }
 
@@ -190,7 +189,7 @@ class QLTestBase : public YBTest {
   Status TestParser(const std::string& stmt);
 
   // Tests parser and analyzer
-  Status TestAnalyzer(const string& stmt, ParseTreePtr* parse_tree);
+  Status TestAnalyzer(const std::string& stmt, ParseTreePtr* parse_tree);
 
   //------------------------------------------------------------------------------------------------
   // Create simulated cluster.
@@ -204,9 +203,9 @@ class QLTestBase : public YBTest {
   // Utility functions for QL tests.
 
   void VerifyPaginationSelect(TestQLProcessor* processor,
-                              const string &select_query,
+                              const std::string &select_query,
                               int page_size,
-                              const string expected_rows);
+                              const std::string expected_rows);
 
  protected:
   //------------------------------------------------------------------------------------------------
@@ -226,5 +225,3 @@ class QLTestBase : public YBTest {
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_TEST_QL_TEST_BASE_H_

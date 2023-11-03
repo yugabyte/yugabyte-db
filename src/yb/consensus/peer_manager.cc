@@ -46,9 +46,6 @@ DECLARE_bool(enable_multi_raft_heartbeat_batcher);
 namespace yb {
 namespace consensus {
 
-using log::Log;
-using strings::Substitute;
-
 PeerManager::PeerManager(
     const std::string tablet_id,
     const std::string local_uuid,
@@ -71,7 +68,7 @@ PeerManager::~PeerManager() {
 void PeerManager::UpdateRaftConfig(const RaftConfigPB& config) {
   VLOG_WITH_PREFIX(1) << "Updating peers from new config: " << config.ShortDebugString();
 
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   // Create new peers.
   for (const RaftPeerPB& peer_pb : config.peers()) {
     if (peers_.find(peer_pb.permanent_uuid()) != peers_.end()) {
@@ -101,7 +98,7 @@ void PeerManager::UpdateRaftConfig(const RaftConfigPB& config) {
 }
 
 void PeerManager::SignalRequest(RequestTriggerMode trigger_mode) {
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   for (auto iter = peers_.begin(); iter != peers_.end();) {
     Status s = iter->second->SignalRequest(trigger_mode);
     if (PREDICT_FALSE(s.IsIllegalState())) {
@@ -121,7 +118,7 @@ void PeerManager::SignalRequest(RequestTriggerMode trigger_mode) {
 }
 
 void PeerManager::Close() {
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   for (const auto& entry : peers_) {
     entry.second->Close();
   }
@@ -134,7 +131,7 @@ void PeerManager::ClosePeersNotInConfig(const RaftConfigPB& config) {
     InsertOrDie(&peers_in_config, peer_pb.permanent_uuid(), peer_pb);
   }
 
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   for (auto iter = peers_.begin(); iter != peers_.end();) {
     auto peer = iter->second.get();
 
@@ -151,6 +148,18 @@ void PeerManager::ClosePeersNotInConfig(const RaftConfigPB& config) {
       iter++;
     }
   }
+}
+
+void PeerManager::DumpToHtml(std::ostream& out) const {
+  out << "<h2>Peer Manager</h2>" << std::endl;
+  out << "<ul>" << std::endl;
+  std::lock_guard lock(lock_);
+  for (const auto& entry : peers_) {
+    out << "<li>" << std::endl;
+    entry.second->DumpToHtml(out);
+    out << "</li>" << std::endl;
+  }
+  out << "</ul>" << std::endl;
 }
 
 std::string PeerManager::LogPrefix() const {

@@ -16,6 +16,8 @@
 #include "yb/yql/cql/ql/ptree/column_desc.h"
 #include "yb/yql/cql/ql/ptree/pt_bcall.h"
 
+using std::string;
+
 namespace yb {
 namespace ql {
 

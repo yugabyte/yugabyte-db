@@ -33,11 +33,29 @@ export interface ClusterNodeInfo  {
    */
   disk_size_gb: number;
   /**
+   * The total size of used disk space (GB)
+   * @type {number}
+   * @memberof ClusterNodeInfo
+   */
+  disk_size_used_gb?: number;
+  /**
    * The average CPU usage over all nodes
    * @type {number}
    * @memberof ClusterNodeInfo
    */
   cpu_usage?: number;
+  /**
+   * The number of CPU cores per node
+   * @type {number}
+   * @memberof ClusterNodeInfo
+   */
+  num_cores: number;
+  /**
+   * The total size of provisioned ram (GB)
+   * @type {number}
+   * @memberof ClusterNodeInfo
+   */
+  ram_provisioned_gb: number;
 }
 
 

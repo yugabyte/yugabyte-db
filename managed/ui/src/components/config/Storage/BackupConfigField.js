@@ -6,7 +6,6 @@
 // configuration input fields.
 
 import { Field } from 'redux-form';
-import React from 'react';
 import { Col, Row } from 'react-bootstrap';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
 
@@ -38,13 +37,17 @@ export const BackupConfigField = (props) => {
   const { configName, isEdited, field } = props;
 
   // This is the tool tip for all the backup configuration names.
-  const configNameToolTip = field.label === "Configuration Name"
-    ? <Col lg={1} className="config-zone-tooltip">
-      <YBInfoTip
-        title="Configuration Name"
-        content="The backup configuration name is required."
-      />
-    </Col> : "";
+  const configNameToolTip =
+    field.label === 'Configuration Name' ? (
+      <Col lg={1} className="config-zone-tooltip">
+        <YBInfoTip
+          title="Configuration Name"
+          content="The backup configuration name is required."
+        />
+      </Col>
+    ) : (
+      ''
+    );
 
   return (
     <Row className="config-provider-row" key={configName + field.id}>

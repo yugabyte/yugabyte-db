@@ -24,10 +24,10 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
-#include "yb/util/test_util.h"
 
 #include "yb/util/tsan_util.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
@@ -50,15 +50,13 @@ class PgLoadBalancerTest : public PgMiniTestBase {
   }
 };
 
-TEST_F(PgLoadBalancerTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceDuringLongRunningTransaction)) {
+TEST_F(PgLoadBalancerTest, LoadBalanceDuringLongRunningTransaction) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 100;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 1000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_initial_delay_secs) = 20;
 
   auto conn = ASSERT_RESULT(Connect());
-
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
 
   ASSERT_OK(conn.Execute("CREATE TABLE t(k INT, v INT) SPLIT INTO 2 TABLETS;"));
 
@@ -76,7 +74,7 @@ TEST_F(PgLoadBalancerTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceDuringLongRunningT
   ASSERT_OK(cluster_->AddTabletServer());
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    auto x = client->IsLoadBalanced(2);
+    auto x = client_->IsLoadBalanced(2);
     return x;
   }, 15s * kTimeMultiplier, "Wait for load balancer to balance to second tserver."));
 
@@ -90,7 +88,7 @@ TEST_F(PgLoadBalancerTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceDuringLongRunningT
     auto peers = cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTabletPeers();
     for (const auto& peer : peers) {
       if (peer->tablet() &&
-          peer->table_type() == PGSQL_TABLE_TYPE &&
+          peer->TEST_table_type() == PGSQL_TABLE_TYPE &&
           peer->data_state() == tablet::TABLET_DATA_TOMBSTONED) {
         return false;
       }

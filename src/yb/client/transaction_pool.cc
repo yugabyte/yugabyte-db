@@ -15,7 +15,7 @@
 
 #include <deque>
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/client/batcher.h"
 #include "yb/client/client.h"
@@ -27,7 +27,6 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/scheduler.h"
 
-#include "yb/util/flag_tags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/trace.h"
@@ -35,20 +34,20 @@
 using namespace std::literals;
 using namespace std::placeholders;
 
-DEFINE_int32(transaction_pool_cleanup_interval_ms, 5000,
+DEFINE_UNKNOWN_int32(transaction_pool_cleanup_interval_ms, 5000,
              "How frequently we should cleanup transaction pool");
 
-DEFINE_double(transaction_pool_reserve_factor, 2,
+DEFINE_UNKNOWN_double(transaction_pool_reserve_factor, 2,
               "During cleanup we will preserve number of transactions in pool that equals to"
                   " average number or take requests during prepration multiplied by this factor");
 
-DEFINE_bool(force_global_transactions, false,
+DEFINE_UNKNOWN_bool(force_global_transactions, false,
             "Force all transactions to be global transactions");
 
 DEFINE_test_flag(bool, track_last_transaction, false,
                  "Keep track of the last transaction taken from pool for testing");
 
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
     server, transaction_pool_cache, "Rate of hitting transaction pool cache",
     yb::MetricUnit::kCacheHits, "Rate of hitting transaction pool cache");
 
@@ -81,7 +80,7 @@ class SingleLocalityPool {
                      TransactionLocality locality)
       : manager_(*manager), locality_(locality) {
     if (metric_entity) {
-      cache_histogram_ = METRIC_transaction_pool_cache.Instantiate(metric_entity);
+      cache_stats_ = METRIC_transaction_pool_cache.Instantiate(metric_entity);
       cache_hits_ = METRIC_transaction_pool_cache_hits.Instantiate(metric_entity);
       cache_queries_ = METRIC_transaction_pool_cache_queries.Instantiate(metric_entity);
       gauge_preparing_ = METRIC_transaction_pool_preparing.Instantiate(metric_entity, 0);
@@ -106,7 +105,7 @@ class SingleLocalityPool {
     uint64_t old_taken;
     IncrementCounter(cache_queries_);
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       old_taken = taken_transactions_;
       ++taken_transactions_;
       // We create new transaction on each take request, does not matter whether is was
@@ -116,12 +115,12 @@ class SingleLocalityPool {
         // Transaction is automatically prepared when batcher is executed, so we don't have to
         // prepare newly created transaction, since it is anyway too late.
         result = std::make_shared<YBTransaction>(&manager_, locality_);
-        IncrementHistogram(cache_histogram_, 0);
+        IncrementStats(cache_stats_, 0);
       } else {
         result = Pop();
         // Cache histogram should show number of cache hits in percents, so we put 100 in case of
         // hit.
-        IncrementHistogram(cache_histogram_, 100);
+        IncrementStats(cache_stats_, 100);
         IncrementCounter(cache_hits_);
       }
       new_txn = std::make_shared<YBTransaction>(&manager_, locality_);
@@ -145,7 +144,7 @@ class SingleLocalityPool {
     }
     DecrementGauge(gauge_preparing_);
 
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (status.ok()) {
       uint64_t taken_during_preparation = taken_transactions_ - taken_before_creation;
       taken_during_preparation_sum_ += taken_during_preparation;
@@ -167,7 +166,7 @@ class SingleLocalityPool {
   }
 
   void Cleanup(const Status& status) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     scheduled_task_ = rpc::kUninitializedScheduledTaskId;
     if (CheckClosing()) {
       return;
@@ -247,7 +246,7 @@ class SingleLocalityPool {
 
   TransactionManager& manager_;
   TransactionLocality locality_;
-  scoped_refptr<Histogram> cache_histogram_;
+  scoped_refptr<EventStats> cache_stats_;
   scoped_refptr<Counter> cache_hits_;
   scoped_refptr<Counter> cache_queries_;
   scoped_refptr<AtomicGauge<uint32_t>> gauge_preparing_;
@@ -281,7 +280,7 @@ class TransactionPool::Impl {
                            !manager_->PlacementLocalTransactionsPossible();
     auto transaction = (is_global ? &global_pool_ : &local_pool_)->Take(deadline);
     if (FLAGS_TEST_track_last_transaction) {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       last_transaction_ = transaction;
     }
     TRACE_TO(transaction->trace(), "Take");
@@ -289,7 +288,7 @@ class TransactionPool::Impl {
   }
 
   YBTransactionPtr TEST_GetLastTransaction() EXCLUDES(mutex_) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     return last_transaction_;
   }
  private:

@@ -11,7 +11,19 @@
 set -e
 . "${BASH_SOURCE%/*}"/common.sh
 
-activate_virtualenv
-cd "$yb_devops_home"
+detect_os
 
-"$PYTHON_EXECUTABLE" "$(which ybcloud.py)" "$@"
+# Use the PEX environment when we are not executing on macOS, and if the environment variable
+# YB_USE_VIRTUAL_ENV is unset. Also, the pexEnv folder should exist before activating the
+# PEX virtual environment.
+if [ "$is_mac" == false ] && \
+   [[ -z ${YB_USE_VIRTUAL_ENV:-} ]] && \
+   [ -d "$yb_devops_home/pex/pexEnv" ]; then
+    activate_pex
+    $PYTHON_EXECUTABLE $SCRIPT_PATH "$@"
+# The virtual environment is used in all other cases.
+else
+    activate_virtualenv
+    cd "$yb_devops_home"
+    "$PYTHON_EXECUTABLE" "$(which ybcloud.py)" "$@"
+fi

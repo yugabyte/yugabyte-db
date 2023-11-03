@@ -7,8 +7,6 @@ menu:
   preview:
     identifier: ddl_create_table
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/ddl_create_table/
 type: docs
 ---
 
@@ -18,29 +16,20 @@ Use the `CREATE TABLE` statement to create a table in a database. It defines the
 
 ## Syntax
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fas fa-file-alt" aria-hidden="true"></i>
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fas fa-project-diagram" aria-hidden="true"></i>
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_table,table_elem,column_constraint,table_constraint,key_columns,hash_columns,range_columns,storage_parameters,storage_parameter,index_parameters,references_clause,split_row.grammar.md" %}}
-  </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_table,table_elem,column_constraint,table_constraint,key_columns,hash_columns,range_columns,storage_parameters,storage_parameter,index_parameters,references_clause,split_row.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  create_table,
+  table_elem,
+  column_constraint,
+  table_constraint,
+  key_columns,
+  hash_columns,
+  range_columns,
+  storage_parameters,
+  storage_parameter,
+  index_parameters,
+  references_clause,
+  split_row
+{{%/ebnf%}}
 
 ## Semantics
 
@@ -59,6 +48,15 @@ By default, only the first column is treated as the hash-partition column. But t
 For example, if the primary key specification is `PRIMARY KEY ((a, b) HASH, c DESC)`, then columns `a` & `b` are used together to hash partition the table, and rows that share the same values for `a` and `b` are stored in descending order of their value for `c`.
 
 If the primary key specification is `PRIMARY KEY(a, b)`, then column `a` is used to hash partition the table, and rows that share the same value for `a` are stored in ascending order of their value for `b`.
+
+{{<note title="Tables always have a primary key">}}
+
+PostgreSQL's table storage is heap-oriented—so a table with no primary key is viable. 
+But YugabyteDB's table storage is index-oriented (see [DocDB Persistence](../../../../../architecture/docdb/persistence/))—so a table isn't viable without a primary key. 
+Therefore, if you don't specify a primary key at table-creation time, YugabyteDB will use the internal `ybrowid` column as `PRIMARY KEY` and the table will be sharded on `ybrowid HASH`.
+
+{{</note>}}
+
 
 ### Foreign key
 
@@ -80,16 +78,16 @@ This clause is used to specify a default value for the column. If an `INSERT` st
 
 Constraints can be deferred using the `DEFERRABLE` clause. Currently, only foreign key constraints
 can be deferred in YugabyteDB. A constraint that is not deferrable will be checked after every row
-within a statement. In the case of deferrable constraints, the checking of the constraint can be postponed
+in a statement. In the case of deferrable constraints, the checking of the constraint can be postponed
 until the end of the transaction.
 
-Constraints marked as `INITIALLY IMMEDIATE` will be checked after every row within a statement.
+Constraints marked as `INITIALLY IMMEDIATE` will be checked after every row in a statement.
 
 Constraints marked as `INITIALLY DEFERRED` will be checked at the end of the transaction.
 
-### Temporary or Temp
+### TEMPORARY or TEMP
 
-Using this qualifier will create a temporary table. Temporary tables are only visible in the current client session or transaction in which they are created and are automatically dropped at the end of the session or transaction. Any indexes created on temporary tables are temporary as well.
+Using this qualifier will create a temporary table. Temporary tables are visible only in the current client session or transaction in which they are created and are automatically dropped at the end of the session or transaction. Any indexes created on temporary tables are temporary as well. See the section [Creating and using temporary schema-objects](../../creating-and-using-temporary-schema-objects/).
 
 ### TABLESPACE
 
@@ -128,12 +126,25 @@ In the example above, there are three split points and so four tablets will be c
 - tablet 3: `a=200, b=<lowest>` to `a=200, b=5`
 - tablet 4: `a=200, b=5` to `a=<highest>, b=<highest>`
 
-### COLOCATED
+### COLOCATION
 
-For colocated databases, specify `false` to opt this table out of colocation. This means that the table won't be stored on the same tablet as the rest of the tables for this database, but instead, will have its own set of tablets.
-Use this option for large tables that need to be scaled out. See [colocated tables architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-colocated-tables.md) for more details on when colocation is useful.
+To create a colocated table, use the following command:
 
-Note that `COLOCATED = true` has no effect if the database that this table is part of is not colocated since colocation today is supported only at the database level.
+```sql
+CREATE TABLE <name> (columns) WITH (COLOCATION = true);
+```
+
+In a colocated database, all tables are colocated by default. To opt a specific table out of colocation, use the following command:
+
+```sql
+CREATE TABLE <name> (columns) WITH (COLOCATION = false);
+```
+
+This ensures that the table is not stored on the same tablet as the rest of the tables for this database, but instead has its own set of tablets. Use this option for large tables that need to be scaled out.
+
+{{<note>}}
+Setting `COLOCATION = true` has no effect if the database that the table is part of is not colocated, as currently colocation is supported only at the database level. See [Colocated tables](../../../../../architecture/docdb-sharding/colocated-tables/) for more details.
+{{</note>}}
 
 ### Storage parameters
 
@@ -153,7 +164,7 @@ yugabyte=# CREATE TABLE sample(k1 int,
 
 In this example, the first column `k1` will be `HASH`, while second column `k2` will be `ASC`.
 
-```output.sql
+```sql{.nocopy}
 yugabyte=# \d sample
                Table "public.sample"
  Column |  Type   | Collation | Nullable | Default
@@ -217,8 +228,8 @@ yugabyte=# INSERT INTO orders VALUES (1, 1, 3), (2, 1, 3), (3, 2, 2);
 yugabyte=# SELECT o.id AS order_id, p.id as product_id, p.descr, o.amount FROM products p, orders o WHERE o.pid = p.id;
 ```
 
-```output
-order_id | product_id |  descr   | amount
+```sql{.nocopy}
+ order_id | product_id |  descr   | amount
 ----------+------------+----------+--------
         1 |          1 | Phone X  |      3
         2 |          1 | Phone X  |      3
@@ -232,7 +243,7 @@ Inserting a row referencing a non-existent product is not allowed.
 yugabyte=# INSERT INTO orders VALUES (1, 3, 3);
 ```
 
-```output
+```sql{.nocopy}
 ERROR:  insert or update on table "orders" violates foreign key constraint "orders_pid_fkey"
 DETAIL:  Key (pid)=(3) is not present in table "products".
 ```
@@ -244,7 +255,7 @@ yugabyte=# DELETE from products where id = 1;
 yugabyte=# SELECT o.id AS order_id, p.id as product_id, p.descr, o.amount FROM products p, orders o WHERE o.pid = p.id;
 ```
 
-```output
+```sql{.nocopy}
  order_id | product_id |  descr   | amount
 ----------+------------+----------+--------
         3 |          2 | Tablet Z |      2
@@ -269,9 +280,9 @@ yugabyte=# CREATE TABLE tracking (id int PRIMARY KEY) SPLIT INTO 10 TABLETS;
 ### Opt a table out of colocation
 
 ```plpgsql
-yugabyte=# CREATE DATABASE company WITH colocated = true;
+yugabyte=# CREATE DATABASE company WITH COLOCATION = true;
 
-yugabyte=# CREATE TABLE employee(id INT PRIMARY KEY, name TEXT) WITH (colocated = false);
+yugabyte=# CREATE TABLE employee(id INT PRIMARY KEY, name TEXT) WITH (COLOCATION = false);
 ```
 
 In this example, database `company` is colocated and all tables other than the `employee` table are stored on a single tablet.

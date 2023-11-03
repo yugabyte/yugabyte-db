@@ -6,6 +6,7 @@ import { Link } from 'react-router';
 import { Dropdown, Tooltip, OverlayTrigger } from 'react-bootstrap';
 import { useQuery } from 'react-query';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
+import { useSelector } from 'react-redux';
 import moment from 'moment';
 import _ from 'lodash';
 
@@ -14,7 +15,7 @@ import {
   getUniverseStatus,
   getUniverseStatusIcon,
   hasPendingTasksForUniverse,
-  universeState
+  UniverseState
 } from '../helpers/universeHelpers';
 import {
   YBCost,
@@ -51,10 +52,12 @@ import { isEphemeralAwsStorageInstance } from '../UniverseDetail/UniverseDetail'
 import { YBMenuItem } from '../UniverseDetail/compounds/YBMenuItem';
 import ellipsisIcon from '../../common/media/more.svg';
 
-import 'react-bootstrap-table/css/react-bootstrap-table.css';
-import './UniverseView.scss';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { UniverseAlertBadge } from '../YBUniverseItem/UniverseAlertBadge';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import 'react-bootstrap-table/css/react-bootstrap-table.css';
+import './UniverseView.scss';
 
 /**
  * The tableData key allows us to use a different field from the universe
@@ -116,7 +119,7 @@ const tableDataValueToKey = {
 
 const toggleTooltip = (view) => <Tooltip id="tooltip">Switch to {view} view.</Tooltip>;
 
-const { UNKNOWN, WARNING, ...filterStatuses } = universeState;
+const { ...filterStatuses } = UniverseState;
 const filterStatusesArr = Object.values(filterStatuses).map((status) => ({
   value: status.text,
   label: status.text
@@ -143,6 +146,7 @@ export const UniverseView = (props) => {
   const [curView, setCurView] = useState(view.LIST);
   const [curStatusFilter, setCurStatusFilter] = useState([]);
   const [focusedUniverse, setFocusedUniverse] = useState();
+  const runtimeConfigs = useSelector((state) => state.customer.runtimeConfigs);
 
   const {
     universe: { universeList },
@@ -155,17 +159,18 @@ export const UniverseView = (props) => {
     featureFlags
   } = props;
 
-  const universeUUIDs =
-    universeList && universeList.data
-      ? universeList.data.map((universe) => universe.universeUUID)
-      : [];
+  const universeUUIDs = universeList?.data
+    ? universeList.data.map((universe) => universe.universeUUID)
+    : [];
   const prevUniverseUUIDs = usePrevious(universeUUIDs);
   const prevCustomerTaskList = usePrevious(customerTaskList);
 
   useEffect(() => {
+    if (!runtimeConfigs) {
+      props.fetchGlobalRunTimeConfigs();
+    }
     props.fetchUniverseMetadata();
     props.fetchUniverseTasks();
-
     return () => props.resetUniverseTasks();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -226,11 +231,22 @@ export const UniverseView = (props) => {
   };
 
   const formatUniverseState = (status, row) => {
+    const currentUniverseFailedTask = customerTaskList?.filter((task) => {
+      return (
+        task.targetUUID === row.universeUUID &&
+        (task.status === 'Failure' || task.status === 'Aborted')
+      );
+    });
+    const failedTask = currentUniverseFailedTask?.[0];
     return (
       <div className={`universe-status-cell ${status.className}`}>
         <div>
           {getUniverseStatusIcon(status)}
-          <span>{status.text}</span>
+          <span>
+            {status.text === 'Error' && failedTask
+              ? `${failedTask.type} ${failedTask.target} failed`
+              : status.text}
+          </span>
         </div>
         <UniverseAlertBadge universeUUID={row.universeUUID} listView />
       </div>
@@ -246,6 +262,7 @@ export const UniverseView = (props) => {
           multiplier="month"
           base="month"
           isPricingKnown={isPricingKnown}
+          runtimeConfigs={runtimeConfigs}
         />
       </div>
     );
@@ -270,36 +287,52 @@ export const UniverseView = (props) => {
           {isPausableUniverse(row) &&
             !isEphemeralAwsStorage &&
             (featureFlags.test['pausedUniverse'] || featureFlags.released['pausedUniverse']) && (
-              <YBMenuItem
-                onClick={() => {
-                  setFocusedUniverse(row);
-                  showToggleUniverseStateModal();
+              <RbacValidator
+                isControl
+                accessRequiredOn={{
+                  onResource: row.universeUUID,
+                  ...ApiPermissionMap.RESUME_UNIVERSE
                 }}
-                availability={getFeatureState(
-                  currentCustomer.data.features,
-                  'universes.details.overview.pausedUniverse'
-                )}
               >
-                <YBLabelWithIcon
-                  icon={universePaused ? 'fa fa-play-circle-o' : 'fa fa-pause-circle-o'}
+                <YBMenuItem
+                  onClick={() => {
+                    setFocusedUniverse(row);
+                    showToggleUniverseStateModal();
+                  }}
+                  availability={getFeatureState(
+                    currentCustomer.data.features,
+                    'universes.details.overview.pausedUniverse'
+                  )}
                 >
-                  {universePaused ? 'Resume Universe' : 'Pause Universe'}
-                </YBLabelWithIcon>
-              </YBMenuItem>
+                  <YBLabelWithIcon
+                    icon={universePaused ? 'fa fa-play-circle-o' : 'fa fa-pause-circle-o'}
+                  >
+                    {universePaused ? 'Resume Universe' : 'Pause Universe'}
+                  </YBLabelWithIcon>
+                </YBMenuItem>
+              </RbacValidator>
             )}
-
-          <YBMenuItem
-            onClick={() => {
-              setFocusedUniverse(row);
-              showDeleteUniverseModal();
+          <RbacValidator
+            isControl
+            accessRequiredOn={{
+              onResource: row.universeUUID,
+              ...ApiPermissionMap.DELETE_UNIVERSE
             }}
-            availability={getFeatureState(
-              currentCustomer.data.features,
-              'universes.details.overview.deleteUniverse'
-            )}
+            overrideStyle={{ display: 'block' }}
           >
-            <YBLabelWithIcon icon="fa fa-trash-o fa-fw">Delete Universe</YBLabelWithIcon>
-          </YBMenuItem>
+            <YBMenuItem
+              onClick={() => {
+                setFocusedUniverse(row);
+                showDeleteUniverseModal();
+              }}
+              availability={getFeatureState(
+                currentCustomer.data.features,
+                'universes.details.overview.deleteUniverse'
+              )}
+            >
+              <YBLabelWithIcon icon="fa fa-trash-o fa-fw">Delete Universe</YBLabelWithIcon>
+            </YBMenuItem>
+          </RbacValidator>
         </Dropdown.Menu>
       </Dropdown>
     );
@@ -327,8 +360,9 @@ export const UniverseView = (props) => {
       .slice((activePage - 1) * pageSize, activePage * pageSize)
       .map((item, idx) => {
         return (
+          // eslint-disable-next-line react/no-unknown-property
           <li className="universe-list-item" key={item.universeUUID} idx={idx}>
-            <YBUniverseItem {...props} universe={item} />
+            <YBUniverseItem {...props} universe={item} runtimeConfigs={runtimeConfigs} />
           </li>
         );
       });
@@ -337,7 +371,9 @@ export const UniverseView = (props) => {
   const renderView = (universes) => {
     const curSortObj = dropdownFieldKeys[sortField];
     const tableOptions = {
-      sortName: curSortObj.hasOwnProperty('tableData') ? curSortObj.tableData : curSortObj.value,
+      sortName: Object.prototype.hasOwnProperty.call(curSortObj, 'tableData')
+        ? curSortObj.tableData
+        : curSortObj.value,
       sortOrder: sortOrder,
       onSortChange: (sortName, sortOrder) => {
         handleSortFieldChange(tableDataValueToKey[sortName]);
@@ -528,11 +564,13 @@ export const UniverseView = (props) => {
   );
 
   let numNodes = 0;
+  let numOfCores = 0;
   let totalCost = 0;
   if (universes) {
     universes.forEach(function (universeItem) {
       if (isNonEmptyObject(universeItem.universeDetails)) {
         numNodes += getUniverseNodeCount(universeItem.universeDetails.nodeDetailsSet);
+        numOfCores += universeItem.resources.numCores;
       }
       if (isDefinedNotNull(universeItem.pricePerHour)) {
         totalCost += universeItem.pricePerHour * 24 * moment().daysInMonth();
@@ -567,25 +605,23 @@ export const UniverseView = (props) => {
           searchTerms={searchTokens}
           onSubmitSearchTerms={handleSearchTokenChange}
         />
-        {isNotHidden(currentCustomer.data.features, 'universe.import') && (
-          <Link to="/universes/import">
-            <YBButton
-              btnClass="universe-button btn btn-lg btn-default"
-              disabled={isDisabled(currentCustomer.data.features, 'universe.import')}
-              btnText="Import Universe"
-              btnIcon="fa fa-mail-forward"
-            />
-          </Link>
-        )}
         {isNotHidden(currentCustomer.data.features, 'universe.create') && (
-          <Link to="/universes/create">
-            <YBButton
-              btnClass="universe-button btn btn-lg btn-orange"
-              disabled={isDisabled(currentCustomer.data.features, 'universe.create')}
-              btnText="Create Universe"
-              btnIcon="fa fa-plus"
-            />
-          </Link>
+          <RbacValidator
+            accessRequiredOn={{
+              ...ApiPermissionMap.CREATE_UNIVERSE
+            }}
+            isControl
+          >
+            <Link to="/universes/create">
+              <YBButton
+                btnClass="universe-button btn btn-lg btn-orange"
+                disabled={isDisabled(currentCustomer.data.features, 'universe.create')}
+                btnText="Create Universe"
+                btnIcon="fa fa-plus"
+                data-testid="UniverseList-CreateUniverse"
+              />
+            </Link>
+          </RbacValidator>
         )}
       </div>
       <div className="universes-stats-container">
@@ -602,6 +638,13 @@ export const UniverseView = (props) => {
           separatorLine
           icon="fa-braille"
           size={numNodes}
+        />
+        <YBResourceCount
+          kind="Core"
+          pluralizeKind
+          separatorLine
+          icon="fa-microchip"
+          size={numOfCores}
         />
         <YBResourceCount
           kind="per Month"

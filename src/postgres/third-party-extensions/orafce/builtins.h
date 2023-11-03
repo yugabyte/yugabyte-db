@@ -229,7 +229,7 @@ extern PGDLLEXPORT Datum plvchr_is_kind_a(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum plvchr_char_name(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum oracle_substr2(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum oracle_substr3(PG_FUNCTION_ARGS);
- 
+
 /* from plvsubst.c */
 extern PGDLLEXPORT Datum plvsubst_string_array(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum plvsubst_string_string(PG_FUNCTION_ARGS);

@@ -32,6 +32,8 @@
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 
+using std::unique_ptr;
+
 namespace rocksdb {
 namespace test {
 

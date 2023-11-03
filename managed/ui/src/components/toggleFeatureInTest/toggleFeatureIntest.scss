@@ -1,9 +1,9 @@
-@import '../../_style/colors.scss';
+@use '../../_style/colors.scss';
 
 .features-page {
   height: 100vh;
   width: calc(100vw - 138px);
-  background: $YB_WHITE;
+  background: colors.$YB_WHITE;
   padding: 24px;
   margin: 24px;
 

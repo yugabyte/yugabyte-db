@@ -20,14 +20,15 @@
 #include "yb/util/memory/memory_usage_test_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/test_util.h"
+#include "yb/util/flags.h"
 
-DEFINE_bool(print_memory_usage, false, "Print real memory usage instead of assert.");
+DEFINE_NON_RUNTIME_bool(print_memory_usage, false, "Print real memory usage instead of assert.");
 
 namespace yb {
 
 class MemoryUsageTest : public YBTest {};
 
-#if !defined(ADDRESS_SANITIZER) && !defined(THREAD_SANITIZER)
+#if !defined(ADDRESS_SANITIZER) && !defined(THREAD_SANITIZER) && YB_GPERFTOOLS_TCMALLOC
 TEST_F(MemoryUsageTest, String) {
 #else
 TEST_F(MemoryUsageTest, DISABLED_String) {

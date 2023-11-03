@@ -464,8 +464,8 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 				YbSeqScan    *splan = (YbSeqScan *) plan;
 
 				splan->scan.scanrelid += rtoffset;
-				splan->remote.qual =
-					fix_scan_list(root, splan->remote.qual, rtoffset);
+				splan->yb_pushdown.quals =
+					fix_scan_list(root, splan->yb_pushdown.quals, rtoffset);
 				splan->scan.plan.targetlist =
 					fix_scan_list(root, splan->scan.plan.targetlist, rtoffset);
 				splan->scan.plan.qual =
@@ -496,17 +496,17 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 					fix_scan_list(root, splan->scan.plan.targetlist, rtoffset);
 				splan->scan.plan.qual =
 					fix_scan_list(root, splan->scan.plan.qual, rtoffset);
-				splan->rel_remote.qual =
-					fix_scan_list(root, splan->rel_remote.qual, rtoffset);
-				splan->index_remote.qual = (List *)
+				splan->yb_rel_pushdown.quals =
+					fix_scan_list(root, splan->yb_rel_pushdown.quals, rtoffset);
+				splan->yb_idx_pushdown.quals = (List *)
 					fix_upper_expr(root,
-								   (Node *) splan->index_remote.qual,
+								   (Node *) splan->yb_idx_pushdown.quals,
 								   index_itlist,
 								   INDEX_VAR,
 								   rtoffset);
-				splan->index_remote.colrefs = (List *)
+				splan->yb_idx_pushdown.colrefs = (List *)
 					fix_upper_expr(root,
-								   (Node *) splan->index_remote.colrefs,
+								   (Node *) splan->yb_idx_pushdown.colrefs,
 								   index_itlist,
 								   INDEX_VAR,
 								   rtoffset);
@@ -652,6 +652,7 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 			break;
 
 		case T_NestLoop:
+		case T_YbBatchedNestLoop:
 		case T_MergeJoin:
 		case T_HashJoin:
 			set_join_references(root, (Join *) plan, rtoffset);
@@ -1065,15 +1066,15 @@ set_indexonlyscan_references(PlannerInfo *root,
 					   index_itlist,
 					   INDEX_VAR,
 					   rtoffset);
-	plan->remote.qual = (List *)
+	plan->yb_pushdown.quals = (List *)
 		fix_upper_expr(root,
-					   (Node *) plan->remote.qual,
+					   (Node *) plan->yb_pushdown.quals,
 					   index_itlist,
 					   INDEX_VAR,
 					   rtoffset);
-	plan->remote.colrefs = (List *)
+	plan->yb_pushdown.colrefs = (List *)
 		fix_upper_expr(root,
-					   (Node *) plan->remote.colrefs,
+					   (Node *) plan->yb_pushdown.colrefs,
 					   index_itlist,
 					   INDEX_VAR,
 					   rtoffset);
@@ -1628,6 +1629,23 @@ fix_scan_expr_walker(Node *node, fix_scan_expr_context *context)
 								  (void *) context);
 }
 
+static int
+YbBNL_hinfo_cmp_inner_att(const void *arg_1,
+						  const void *arg_2)
+{
+	const YbBNLHashClauseInfo *hinfo_1 = (const YbBNLHashClauseInfo *) arg_1;
+	const YbBNLHashClauseInfo *hinfo_2 = (const YbBNLHashClauseInfo *) arg_2;
+
+	if (!OidIsValid(hinfo_1->hashOp))
+		return -1;
+	
+	if (!OidIsValid(hinfo_2->hashOp))
+		return 1;
+	
+	return (hinfo_1->innerHashAttNo > hinfo_2->innerHashAttNo) -
+		   (hinfo_1->innerHashAttNo < hinfo_2->innerHashAttNo);
+}
+
 /*
  * set_join_references
  *	  Modify the target list and quals of a join node to reference its
@@ -1662,9 +1680,11 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 								   rtoffset);
 
 	/* Now do join-type-specific stuff */
-	if (IsA(join, NestLoop))
+	if (IsA(join, NestLoop) || IsA(join, YbBatchedNestLoop))
 	{
-		NestLoop   *nl = (NestLoop *) join;
+		NestLoop   *nl = IsA(join, NestLoop) 
+						 ? (NestLoop *) join
+						 : &((YbBatchedNestLoop *) join)->nl;
 		ListCell   *lc;
 
 		foreach(lc, nl->nestParams)
@@ -1681,6 +1701,75 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 				  nlp->paramval->varno == OUTER_VAR))
 				elog(ERROR, "NestLoopParam was not reduced to a simple Var");
 		}
+
+		ListCell *l;
+		if (IsA(join, YbBatchedNestLoop))
+		{
+			YbBatchedNestLoop *batchednl = (YbBatchedNestLoop *) join;
+
+			YbBNLHashClauseInfo *current_hinfo = batchednl->hashClauseInfos;
+
+			foreach(l, join->joinqual)
+			{
+				Expr *clause = (Expr *) lfirst(l);
+				Oid hashOp = current_hinfo->hashOp;
+				
+				if (OidIsValid(hashOp))
+				{
+					Assert(IsA(clause, OpExpr));
+					OpExpr *opexpr = (OpExpr *) clause;
+					Assert(list_length(opexpr->args) == 2);
+					Expr *leftArg = linitial(opexpr->args);
+					Expr *rightArg = lsecond(opexpr->args);
+
+					if (IsA(leftArg, RelabelType))
+						leftArg = ((RelabelType *) leftArg)->arg;
+					
+					if (IsA(rightArg, RelabelType))
+						rightArg = ((RelabelType *) rightArg)->arg;
+
+					Var *innerArg;
+					Expr *outerArg;
+
+					if (IsA((Expr*) leftArg, Var) &&
+						((Var*) leftArg)->varno == INNER_VAR)
+					{
+						innerArg = (Var *) leftArg;
+						outerArg = rightArg;
+					}
+					else
+					{
+						outerArg = leftArg;
+						innerArg = (Var *) rightArg;
+					}
+					
+					Assert(innerArg->varno = INNER_VAR);
+
+					current_hinfo->innerHashAttNo =
+						((Var *) innerArg)->varattno;
+					current_hinfo->outerParamExpr = outerArg;
+				}
+				current_hinfo++;
+			}
+
+			qsort(batchednl->hashClauseInfos, join->joinqual->length,
+				  sizeof(YbBNLHashClauseInfo), YbBNL_hinfo_cmp_inner_att);
+
+			YbBNLHashClauseInfo *valid_bnl_hinfos = batchednl->hashClauseInfos;
+			int num_invalid = 0;
+			while(num_invalid < batchednl->num_hashClauseInfos &&
+				  !OidIsValid(valid_bnl_hinfos->hashOp))
+			{
+				valid_bnl_hinfos++;
+				num_invalid++;
+			}
+			if (num_invalid == batchednl->num_hashClauseInfos)
+				valid_bnl_hinfos = NULL;
+
+			batchednl->hashClauseInfos = valid_bnl_hinfos;
+			batchednl->num_hashClauseInfos -= num_invalid;
+		}
+
 	}
 	else if (IsA(join, MergeJoin))
 	{
@@ -2473,9 +2562,9 @@ fix_upper_expr_mutator(Node *node, fix_upper_expr_context *context)
 	/* Special cases (apply only AFTER failing to match to lower tlist) */
 	if (IsA(node, Param))
 		return fix_param_node(context->root, (Param *) node);
-	if (IsA(node, YbExprParamDesc))
+	if (IsA(node, YbExprColrefDesc))
 	{
-		YbExprParamDesc *colref = castNode(YbExprParamDesc, node);
+		YbExprColrefDesc *colref = castNode(YbExprColrefDesc, node);
 		AttrNumber	varattno = colref->attno;
 		tlist_vinfo *vinfo;
 		int			i;
@@ -2487,7 +2576,7 @@ fix_upper_expr_mutator(Node *node, fix_upper_expr_context *context)
 			if (vinfo->varattno == varattno)
 			{
 				/* Found a match */
-				YbExprParamDesc *newcolref = makeNode(YbExprParamDesc);
+				YbExprColrefDesc *newcolref = makeNode(YbExprColrefDesc);
 				*newcolref = *colref;
 				newcolref->attno = vinfo->resno;
 				return (Node *) newcolref;

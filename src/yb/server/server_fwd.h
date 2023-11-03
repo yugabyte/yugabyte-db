@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_SERVER_SERVER_FWD_H
-#define YB_SERVER_SERVER_FWD_H
+#pragma once
 
 #include "yb/gutil/ref_counted.h"
 
@@ -29,5 +28,3 @@ using ClockPtr = scoped_refptr<Clock>;
 
 } // namespace server
 } // namespace yb
-
-#endif // YB_SERVER_SERVER_FWD_H

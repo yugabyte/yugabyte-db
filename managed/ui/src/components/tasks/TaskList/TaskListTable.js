@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import PropTypes from 'prop-types';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { Link } from 'react-router';
@@ -9,6 +9,8 @@ import { YBPanelItem } from '../../panels';
 import { timeFormatter, successStringFormatter } from '../../../utils/TableFormatters';
 import { YBConfirmModal } from '../../modals';
 
+import { hasNecessaryPerm, RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import './TasksList.scss';
 
 export default class TaskListTable extends Component {
@@ -17,36 +19,30 @@ export default class TaskListTable extends Component {
   };
   static propTypes = {
     taskList: PropTypes.array.isRequired,
-    overrideContent: PropTypes.object,
-    isCommunityEdition: PropTypes.bool
+    overrideContent: PropTypes.object
   };
 
   render() {
-    const {
-      taskList,
-      title,
-      overrideContent,
-      isCommunityEdition,
-      visibleModal,
-      hideTaskAbortModal,
-      showTaskAbortModal
-    } = this.props;
+    const { taskList, title, visibleModal, hideTaskAbortModal, showTaskAbortModal } = this.props;
 
     function nameFormatter(cell, row) {
       return <span>{row.title.replace(/.*:\s*/, '')}</span>;
     }
 
     function typeFormatter(cell, row) {
-      return (
-        <span>
+      return row.correlationId && hasNecessaryPerm(ApiPermissionMap.GET_LOGS) ? (
+        <Link to={`/logs/?queryRegex=${row.correlationId}&startDate=${row.createTime}`}>
           {row.typeName} {row.target}
-        </span>
+        </Link>
+      ) : (
+        `${row.typeName} ${row.target}`
       );
     }
 
     const abortTaskClicked = (taskUUID) => {
-      this.props.abortCurrentTask(taskUUID).then((response) => {
+      this.props.abortTask(taskUUID).then((response) => {
         const taskResponse = response?.payload?.response;
+        // eslint-disable-next-line no-empty
         if (taskResponse && (taskResponse.status === 200 || taskResponse.status === 201)) {
         } else {
           const toastMessage = taskResponse?.data?.error
@@ -60,6 +56,7 @@ export default class TaskListTable extends Component {
     const taskDetailLinkFormatter = function (cell, row) {
       if (row.status === 'Failure' || row.status === 'Aborted') {
         return <Link to={`/tasks/${row.id}`}>See Details</Link>;
+        // eslint-disable-next-line eqeqeq
       } else if (row.type === 'UpgradeSoftware' && row.details != null) {
         return (
           <span>
@@ -83,10 +80,14 @@ export default class TaskListTable extends Component {
             >
               Are you sure you want to abort the task?
             </YBConfirmModal>
-            <div className="task-abort-view yb-pending-color" onClick={showTaskAbortModal}>
-              <i className="fa fa-chevron-right"></i>
-              Abort Task
-            </div>
+            <RbacValidator
+              accessRequiredOn={ApiPermissionMap.ABORT_TASK}
+              isControl
+            >
+              <div className="task-abort-view yb-pending-color" onClick={showTaskAbortModal}>
+                Abort Task
+              </div>
+            </RbacValidator>
           </>
         );
       } else {
@@ -95,12 +96,12 @@ export default class TaskListTable extends Component {
     };
     const tableBodyContainer = { marginBottom: '1%', paddingBottom: '1%' };
     return (
-      <YBPanelItem
-        header={<h2 className="task-list-header content-title">{title}</h2>}
-        body={
-          isCommunityEdition ? (
-            overrideContent
-          ) : (
+      <RbacValidator
+        accessRequiredOn={ApiPermissionMap.GET_TASKS_LIST}
+      >
+        <YBPanelItem
+          header={<h2 className="task-list-header content-title">{title}</h2>}
+          body={
             <BootstrapTable
               data={taskList}
               bodyStyle={tableBodyContainer}
@@ -137,6 +138,14 @@ export default class TaskListTable extends Component {
                 Status
               </TableHeaderColumn>
               <TableHeaderColumn
+                dataField="userEmail"
+                dataSort
+                columnClassName="no-border name-column"
+                className="no-border"
+              >
+                User
+              </TableHeaderColumn>
+              <TableHeaderColumn
                 dataField="createTime"
                 dataFormat={timeFormatter}
                 dataSort
@@ -159,9 +168,9 @@ export default class TaskListTable extends Component {
                 Notes
               </TableHeaderColumn>
             </BootstrapTable>
-          )
-        }
-      />
+          }
+        />
+      </RbacValidator>
     );
   }
 }

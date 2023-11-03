@@ -1,13 +1,15 @@
 import React, { FC } from 'react';
-import { Switch, Route, Redirect } from 'react-router-dom';
+import { Switch, Route } from 'react-router-dom';
 import { Container, makeStyles } from '@material-ui/core';
 import { Header } from '@app/features/Header';
 import { Footer } from '@app/features/Footer';
 import { Sidebar } from '@app/features/Sidebar';
-import { ClustersRouting } from '@app/features/clusters/ClustersRouting';
 import { themeVariables } from '@app/theme/variables';
 import { PerformanceRouting } from './clusters/PerformanceRouting';
 import { GettingStarted } from './welcome/GettingStarted';
+import { ClusterRouting } from '@app/features/clusters/ClusterRouting';
+import { DatabasesRouting } from '@app/features/clusters/DatabasesRouting';
+import { AlertsRouting } from './clusters/AlertsRouting';
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -86,17 +88,17 @@ export const MainLayout: FC = () => {
           <Announcement />
           */}
           <Switch>
-              <Route path={'/cluster'} component={ClustersRouting} />
+              <Route path={'/databases'} component={DatabasesRouting} />
               <Route path={'/performance'} component={PerformanceRouting} />
-              <Route path={'/alerts'} component={GettingStarted} />
-              <Route path={'/admin'} component={GettingStarted} />
-              <Route exact path={'/'} render={() => {
-                  return (
-                    <Redirect to="/cluster/tabOverview" />
-                  )
-              }
-
-              } />
+              <Route path={'/alerts'} component={AlertsRouting} />
+              <Route path={'/debug'} component={GettingStarted} />
+              <Route path={'/'} component={ClusterRouting} />
+              {/* <Route exact path={'/'} render={() => {
+                    return (
+                      <Redirect to="/cluster/tabOverview" />
+                    )
+                }
+              } /> */}
             {/* <Route path={'/a/:accountId/p/:projectId/network/:tab?'} render={verifyPathParamsMemo(Network)} />
             <Route path={'/a/:accountId/profile'} render={verifyPathParamsMemo(Profile)} />
             <Route path={'/a/:accountId/p/:projectId/analytics'} render={verifyPathParamsMemo(AnalyticsRouting)} />

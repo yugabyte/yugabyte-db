@@ -12,8 +12,7 @@
 
 // Utilities to be used in the main() function.
 
-#ifndef YB_UTIL_MAIN_UTIL_H
-#define YB_UTIL_MAIN_UTIL_H
+#pragma once
 
 #include <fcntl.h>
 #include <string.h>
@@ -60,5 +59,3 @@ Status ToStatus(const Result<T>& result) {
 }
 
 } // namespace yb
-
-#endif // YB_UTIL_MAIN_UTIL_H

@@ -22,11 +22,11 @@ import org.slf4j.LoggerFactory;
 
 import org.yb.util.YBBackupException;
 import org.yb.util.YBBackupUtil;
-import org.yb.util.YBTestRunnerNonSanitizersOrMac;
+import org.yb.util.YBTestRunnerNonTsanAsan;
 
 import static org.yb.AssertionWrappers.fail;
 
-@RunWith(value=YBTestRunnerNonSanitizersOrMac.class)
+@RunWith(value=YBTestRunnerNonTsanAsan.class)
 public class TestYbBackup extends BaseYbBackupTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestYbBackup.class);
 
@@ -85,6 +85,8 @@ public class TestYbBackup extends BaseYbBackupTest {
     session.execute("create table test_json_tbl (h int primary key, j jsonb) " +
                     "with transactions = { 'enabled' : true };");
     session.execute("create index json_idx on test_json_tbl (j->'a'->>'b');");
+
+    waitForReadPermsOnAllIndexes("test_json_tbl");
 
     for (int i = 1; i <= 2000; ++i) {
       String s = String.valueOf(i);

@@ -29,125 +29,113 @@ EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT val1 FROM s_10000 WHERE val1 <
                                        QUERY PLAN
 -----------------------------------------------------------------------------------------
  Seq Scan on s_10000  (cost=0.00..1025.00 rows=10000 width=4) (actual rows=4000 loops=1)
-   Filter: (val1 <= 4000)
-   Rows Removed by Filter: 6000
-(3 rows)
+   Remote Filter: (val1 <= 4000)
+(2 rows)
 
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT val FROM s_1000  WHERE val <= 4000;
                                       QUERY PLAN
 --------------------------------------------------------------------------------------
  Seq Scan on s_1000  (cost=0.00..102.50 rows=1000 width=4) (actual rows=1000 loops=1)
-   Filter: (val <= 4000)
+   Remote Filter: (val <= 4000)
 (2 rows)
 
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT val FROM s_100   WHERE val <= 4000;
                                     QUERY PLAN
 ----------------------------------------------------------------------------------
  Seq Scan on s_100  (cost=0.00..10.25 rows=100 width=4) (actual rows=100 loops=1)
-   Filter: (val <= 4000)
+   Remote Filter: (val <= 4000)
 (2 rows)
 
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT val1 FROM s_10000 WHERE val1 <= 40;
                                       QUERY PLAN
 ---------------------------------------------------------------------------------------
  Seq Scan on s_10000  (cost=0.00..1025.00 rows=10000 width=4) (actual rows=40 loops=1)
-   Filter: (val1 <= 40)
-   Rows Removed by Filter: 9960
-(3 rows)
+   Remote Filter: (val1 <= 40)
+(2 rows)
 
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT val FROM s_1000  WHERE val <= 40;
                                      QUERY PLAN
 ------------------------------------------------------------------------------------
  Seq Scan on s_1000  (cost=0.00..102.50 rows=1000 width=4) (actual rows=40 loops=1)
-   Filter: (val <= 40)
-   Rows Removed by Filter: 960
-(3 rows)
+   Remote Filter: (val <= 40)
+(2 rows)
 
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT val FROM s_100   WHERE val <= 40;
                                    QUERY PLAN
 ---------------------------------------------------------------------------------
  Seq Scan on s_100  (cost=0.00..10.25 rows=100 width=4) (actual rows=40 loops=1)
-   Filter: (val <= 40)
-   Rows Removed by Filter: 60
-(3 rows)
+   Remote Filter: (val <= 40)
+(2 rows)
 
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT val1 FROM s_10000 WHERE val1 <= 40 AND val1 > 20;
                                       QUERY PLAN
 ---------------------------------------------------------------------------------------
  Seq Scan on s_10000  (cost=0.00..1050.00 rows=10000 width=4) (actual rows=20 loops=1)
-   Filter: ((val1 <= 40) AND (val1 > 20))
-   Rows Removed by Filter: 9980
-(3 rows)
+   Remote Filter: ((val1 <= 40) AND (val1 > 20))
+(2 rows)
 
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT val1 FROM s_10000 WHERE val1 <= 40 AND val1 > 20 AND val1 > 10;
                                       QUERY PLAN
 ---------------------------------------------------------------------------------------
  Seq Scan on s_10000  (cost=0.00..1075.00 rows=10000 width=4) (actual rows=20 loops=1)
-   Filter: ((val1 <= 40) AND (val1 > 20) AND (val1 > 10))
-   Rows Removed by Filter: 9980
-(3 rows)
+   Remote Filter: ((val1 <= 40) AND (val1 > 20) AND (val1 > 10))
+(2 rows)
 
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT id FROM s_10000 WHERE id <= 4000;
                                        QUERY PLAN
 -----------------------------------------------------------------------------------------
  Seq Scan on s_10000  (cost=0.00..1025.00 rows=10000 width=4) (actual rows=4000 loops=1)
-   Filter: (id <= 4000)
-   Rows Removed by Filter: 6000
-(3 rows)
+   Remote Filter: (id <= 4000)
+(2 rows)
 
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT id FROM s_1000  WHERE id <= 4000;
                                       QUERY PLAN
 --------------------------------------------------------------------------------------
  Seq Scan on s_1000  (cost=0.00..102.50 rows=1000 width=4) (actual rows=1000 loops=1)
-   Filter: (id <= 4000)
+   Remote Filter: (id <= 4000)
 (2 rows)
 
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT id FROM s_100   WHERE id <= 4000;
                                     QUERY PLAN
 ----------------------------------------------------------------------------------
  Seq Scan on s_100  (cost=0.00..10.25 rows=100 width=4) (actual rows=100 loops=1)
-   Filter: (id <= 4000)
+   Remote Filter: (id <= 4000)
 (2 rows)
 
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT id FROM s_10000 WHERE id <= 40;
                                       QUERY PLAN
 ---------------------------------------------------------------------------------------
  Seq Scan on s_10000  (cost=0.00..1025.00 rows=10000 width=4) (actual rows=40 loops=1)
-   Filter: (id <= 40)
-   Rows Removed by Filter: 9960
-(3 rows)
+   Remote Filter: (id <= 40)
+(2 rows)
 
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT id FROM s_1000  WHERE id <= 40;
                                      QUERY PLAN
 ------------------------------------------------------------------------------------
  Seq Scan on s_1000  (cost=0.00..102.50 rows=1000 width=4) (actual rows=40 loops=1)
-   Filter: (id <= 40)
-   Rows Removed by Filter: 960
-(3 rows)
+   Remote Filter: (id <= 40)
+(2 rows)
 
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT id FROM s_100   WHERE id <= 40;
                                    QUERY PLAN
 ---------------------------------------------------------------------------------
  Seq Scan on s_100  (cost=0.00..10.25 rows=100 width=4) (actual rows=40 loops=1)
-   Filter: (id <= 40)
-   Rows Removed by Filter: 60
-(3 rows)
+   Remote Filter: (id <= 40)
+(2 rows)
 
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT id FROM s_10000 WHERE id <= 40 AND id > 20;
                                       QUERY PLAN
 ---------------------------------------------------------------------------------------
  Seq Scan on s_10000  (cost=0.00..1050.00 rows=10000 width=4) (actual rows=20 loops=1)
-   Filter: ((id <= 40) AND (id > 20))
-   Rows Removed by Filter: 9980
-(3 rows)
+   Remote Filter: ((id <= 40) AND (id > 20))
+(2 rows)
 
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT id FROM s_10000 WHERE id <= 40 AND id > 20 AND id > 10;
                                       QUERY PLAN
 ---------------------------------------------------------------------------------------
  Seq Scan on s_10000  (cost=0.00..1075.00 rows=10000 width=4) (actual rows=20 loops=1)
-   Filter: ((id <= 40) AND (id > 20) AND (id > 10))
-   Rows Removed by Filter: 9980
-(3 rows)
+   Remote Filter: ((id <= 40) AND (id > 20) AND (id > 10))
+(2 rows)
 
 CREATE INDEX s_10000_val1 on s_10000(val1);
 CREATE INDEX s_10000_val2 on s_10000(val2);
@@ -157,11 +145,11 @@ CREATE INDEX s_10000_val3 on s_10000(val3);
 -- IndexScan and not an Index only scan if necessary columns are not included.
 -- a. SINGLE ROW SELECTIVITY
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT * FROM s_10000 WHERE id = 2200 AND r = 2200 AND val2 = 200;
-                                              QUERY PLAN
-------------------------------------------------------------------------------------------------------
- Index Scan using s_10000_pkey on s_10000  (cost=0.00..5.20 rows=10 width=24) (actual rows=1 loops=1)
+                                             QUERY PLAN
+-----------------------------------------------------------------------------------------------------
+ Index Scan using s_10000_pkey on s_10000  (cost=0.00..4.12 rows=1 width=24) (actual rows=1 loops=1)
    Index Cond: ((id = 2200) AND (r = 2200))
-   Filter: (val2 = 200)
+   Remote Filter: (val2 = 200)
 (3 rows)
 
 -- b. SINGLE KEY SELECTIVITY
@@ -170,9 +158,8 @@ EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT * FROM s_10000 WHERE id = 2200
 --------------------------------------------------------------------------------------------------------
  Index Scan using s_10000_val2 on s_10000  (cost=0.00..16.75 rows=100 width=24) (actual rows=1 loops=1)
    Index Cond: (val2 = 200)
-   Filter: (id = 2200)
-   Rows Removed by Filter: 9
-(4 rows)
+   Remote Filter: (id = 2200)
+(3 rows)
 
 -- When you have multiple secondary indexes, the default cost model chooses the index that first
 -- present in the list of qualifiers as a part of the query. This is because, both the indexes have
@@ -183,9 +170,8 @@ EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT * FROM s_10000 WHERE val3 = 20
 ---------------------------------------------------------------------------------------------------------
  Index Scan using s_10000_val3 on s_10000  (cost=0.00..16.75 rows=100 width=24) (actual rows=10 loops=1)
    Index Cond: (val3 = 20)
-   Filter: (val2 = 220)
-   Rows Removed by Filter: 90
-(4 rows)
+   Remote Filter: (val2 = 220)
+(3 rows)
 
 DROP INDEX s_10000_val1;
 DROP INDEX s_10000_val2;
@@ -217,144 +203,132 @@ SET yb_enable_optimizer_statistics = TRUE;
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT * FROM s_10000;
                                         QUERY PLAN
 -------------------------------------------------------------------------------------------
- Seq Scan on s_10000  (cost=0.00..1000.00 rows=10000 width=24) (actual rows=10000 loops=1)
+ Seq Scan on s_10000  (cost=4.00..1004.00 rows=10000 width=24) (actual rows=10000 loops=1)
 (1 row)
 
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT * FROM s_1000;
                                       QUERY PLAN
 --------------------------------------------------------------------------------------
- Seq Scan on s_1000  (cost=0.00..100.00 rows=1000 width=8) (actual rows=1000 loops=1)
+ Seq Scan on s_1000  (cost=4.00..104.00 rows=1000 width=8) (actual rows=1000 loops=1)
 (1 row)
 
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT * FROM s_100;
                                     QUERY PLAN
 ----------------------------------------------------------------------------------
- Seq Scan on s_100  (cost=0.00..10.00 rows=100 width=8) (actual rows=100 loops=1)
+ Seq Scan on s_100  (cost=4.00..14.00 rows=100 width=8) (actual rows=100 loops=1)
 (1 row)
 
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT val1 FROM s_10000 WHERE val1 <= 4000;
                                        QUERY PLAN
 ----------------------------------------------------------------------------------------
- Seq Scan on s_10000  (cost=0.00..1025.00 rows=4000 width=4) (actual rows=4000 loops=1)
-   Filter: (val1 <= 4000)
-   Rows Removed by Filter: 6000
-(3 rows)
+ Seq Scan on s_10000  (cost=4.00..1029.00 rows=4000 width=4) (actual rows=4000 loops=1)
+   Remote Filter: (val1 <= 4000)
+(2 rows)
 
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT val FROM s_1000  WHERE val <= 4000;
                                       QUERY PLAN
 --------------------------------------------------------------------------------------
- Seq Scan on s_1000  (cost=0.00..102.50 rows=1000 width=4) (actual rows=1000 loops=1)
-   Filter: (val <= 4000)
+ Seq Scan on s_1000  (cost=4.00..106.50 rows=1000 width=4) (actual rows=1000 loops=1)
+   Remote Filter: (val <= 4000)
 (2 rows)
 
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT val FROM s_100   WHERE val <= 4000;
                                     QUERY PLAN
 ----------------------------------------------------------------------------------
- Seq Scan on s_100  (cost=0.00..10.25 rows=100 width=4) (actual rows=100 loops=1)
-   Filter: (val <= 4000)
+ Seq Scan on s_100  (cost=4.00..14.25 rows=100 width=4) (actual rows=100 loops=1)
+   Remote Filter: (val <= 4000)
 (2 rows)
 
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT val1 FROM s_10000 WHERE val1 <= 40;
                                      QUERY PLAN
 ------------------------------------------------------------------------------------
- Seq Scan on s_10000  (cost=0.00..1025.00 rows=40 width=4) (actual rows=40 loops=1)
-   Filter: (val1 <= 40)
-   Rows Removed by Filter: 9960
-(3 rows)
+ Seq Scan on s_10000  (cost=4.00..1029.00 rows=40 width=4) (actual rows=40 loops=1)
+   Remote Filter: (val1 <= 40)
+(2 rows)
 
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT val FROM s_1000  WHERE val <= 40;
                                     QUERY PLAN
 ----------------------------------------------------------------------------------
- Seq Scan on s_1000  (cost=0.00..102.50 rows=40 width=4) (actual rows=40 loops=1)
-   Filter: (val <= 40)
-   Rows Removed by Filter: 960
-(3 rows)
+ Seq Scan on s_1000  (cost=4.00..106.50 rows=40 width=4) (actual rows=40 loops=1)
+   Remote Filter: (val <= 40)
+(2 rows)
 
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT val FROM s_100   WHERE val <= 40;
                                    QUERY PLAN
 --------------------------------------------------------------------------------
- Seq Scan on s_100  (cost=0.00..10.25 rows=39 width=4) (actual rows=40 loops=1)
-   Filter: (val <= 40)
-   Rows Removed by Filter: 60
-(3 rows)
+ Seq Scan on s_100  (cost=4.00..14.25 rows=39 width=4) (actual rows=40 loops=1)
+   Remote Filter: (val <= 40)
+(2 rows)
 
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT val1 FROM s_10000 WHERE val1 <= 40 AND val1 > 20;
                                      QUERY PLAN
 ------------------------------------------------------------------------------------
- Seq Scan on s_10000  (cost=0.00..1050.00 rows=20 width=4) (actual rows=20 loops=1)
-   Filter: ((val1 <= 40) AND (val1 > 20))
-   Rows Removed by Filter: 9980
-(3 rows)
+ Seq Scan on s_10000  (cost=4.00..1054.00 rows=20 width=4) (actual rows=20 loops=1)
+   Remote Filter: ((val1 <= 40) AND (val1 > 20))
+(2 rows)
 
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT val1 FROM s_10000 WHERE val1 <= 40 AND val1 > 20 AND val1 > 10;
                                      QUERY PLAN
 ------------------------------------------------------------------------------------
- Seq Scan on s_10000  (cost=0.00..1075.00 rows=20 width=4) (actual rows=20 loops=1)
-   Filter: ((val1 <= 40) AND (val1 > 20) AND (val1 > 10))
-   Rows Removed by Filter: 9980
-(3 rows)
+ Seq Scan on s_10000  (cost=4.00..1079.00 rows=20 width=4) (actual rows=20 loops=1)
+   Remote Filter: ((val1 <= 40) AND (val1 > 20) AND (val1 > 10))
+(2 rows)
 
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT id FROM s_10000 WHERE id <= 4000;
                                        QUERY PLAN
 ----------------------------------------------------------------------------------------
- Seq Scan on s_10000  (cost=0.00..1025.00 rows=4000 width=4) (actual rows=4000 loops=1)
-   Filter: (id <= 4000)
-   Rows Removed by Filter: 6000
-(3 rows)
+ Seq Scan on s_10000  (cost=4.00..1029.00 rows=4000 width=4) (actual rows=4000 loops=1)
+   Remote Filter: (id <= 4000)
+(2 rows)
 
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT id FROM s_1000  WHERE id <= 4000;
                                       QUERY PLAN
 --------------------------------------------------------------------------------------
- Seq Scan on s_1000  (cost=0.00..102.50 rows=1000 width=4) (actual rows=1000 loops=1)
-   Filter: (id <= 4000)
+ Seq Scan on s_1000  (cost=4.00..106.50 rows=1000 width=4) (actual rows=1000 loops=1)
+   Remote Filter: (id <= 4000)
 (2 rows)
 
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT id FROM s_100   WHERE id <= 4000;
                                     QUERY PLAN
 ----------------------------------------------------------------------------------
- Seq Scan on s_100  (cost=0.00..10.25 rows=100 width=4) (actual rows=100 loops=1)
-   Filter: (id <= 4000)
+ Seq Scan on s_100  (cost=4.00..14.25 rows=100 width=4) (actual rows=100 loops=1)
+   Remote Filter: (id <= 4000)
 (2 rows)
 
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT id FROM s_10000 WHERE id <= 40;
                                      QUERY PLAN
 ------------------------------------------------------------------------------------
- Seq Scan on s_10000  (cost=0.00..1025.00 rows=40 width=4) (actual rows=40 loops=1)
-   Filter: (id <= 40)
-   Rows Removed by Filter: 9960
-(3 rows)
+ Seq Scan on s_10000  (cost=4.00..1029.00 rows=40 width=4) (actual rows=40 loops=1)
+   Remote Filter: (id <= 40)
+(2 rows)
 
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT id FROM s_1000  WHERE id <= 40;
                                     QUERY PLAN
 ----------------------------------------------------------------------------------
- Seq Scan on s_1000  (cost=0.00..102.50 rows=40 width=4) (actual rows=40 loops=1)
-   Filter: (id <= 40)
-   Rows Removed by Filter: 960
-(3 rows)
+ Seq Scan on s_1000  (cost=4.00..106.50 rows=40 width=4) (actual rows=40 loops=1)
+   Remote Filter: (id <= 40)
+(2 rows)
 
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT id FROM s_100   WHERE id <= 40;
                                    QUERY PLAN
 --------------------------------------------------------------------------------
- Seq Scan on s_100  (cost=0.00..10.25 rows=39 width=4) (actual rows=40 loops=1)
-   Filter: (id <= 40)
-   Rows Removed by Filter: 60
-(3 rows)
+ Seq Scan on s_100  (cost=4.00..14.25 rows=39 width=4) (actual rows=40 loops=1)
+   Remote Filter: (id <= 40)
+(2 rows)
 
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT id FROM s_10000 WHERE id <= 40 AND id > 20;
                                      QUERY PLAN
 ------------------------------------------------------------------------------------
- Seq Scan on s_10000  (cost=0.00..1050.00 rows=20 width=4) (actual rows=20 loops=1)
-   Filter: ((id <= 40) AND (id > 20))
-   Rows Removed by Filter: 9980
-(3 rows)
+ Seq Scan on s_10000  (cost=4.00..1054.00 rows=20 width=4) (actual rows=20 loops=1)
+   Remote Filter: ((id <= 40) AND (id > 20))
+(2 rows)
 
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT id FROM s_10000 WHERE id <= 40 AND id > 20 AND id > 10;
                                      QUERY PLAN
 ------------------------------------------------------------------------------------
- Seq Scan on s_10000  (cost=0.00..1075.00 rows=20 width=4) (actual rows=20 loops=1)
-   Filter: ((id <= 40) AND (id > 20) AND (id > 10))
-   Rows Removed by Filter: 9980
-(3 rows)
+ Seq Scan on s_10000  (cost=4.00..1079.00 rows=20 width=4) (actual rows=20 loops=1)
+   Remote Filter: ((id <= 40) AND (id > 20) AND (id > 10))
+(2 rows)
 
 CREATE INDEX s_10000_val1 on s_10000(val1);
 CREATE INDEX s_10000_val2 on s_10000(val2);
@@ -366,18 +340,18 @@ CREATE INDEX s_10000_val3 on s_10000(val3);
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT * FROM s_10000 WHERE id = 2200 AND r = 2200 AND val2 = 200;
                                              QUERY PLAN
 -----------------------------------------------------------------------------------------------------
- Index Scan using s_10000_pkey on s_10000  (cost=0.00..4.01 rows=1 width=24) (actual rows=1 loops=1)
+ Index Scan using s_10000_pkey on s_10000  (cost=4.00..8.01 rows=1 width=24) (actual rows=1 loops=1)
    Index Cond: ((id = 2200) AND (r = 2200))
-   Filter: (val2 = 200)
+   Remote Filter: (val2 = 200)
 (3 rows)
 
 -- b. SINGLE KEY SELECTIVITY
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT * FROM s_10000 WHERE id = 2200 AND val2 = 200;
                                              QUERY PLAN
 -----------------------------------------------------------------------------------------------------
- Index Scan using s_10000_pkey on s_10000  (cost=0.00..4.12 rows=1 width=24) (actual rows=1 loops=1)
+ Index Scan using s_10000_pkey on s_10000  (cost=4.00..8.12 rows=1 width=24) (actual rows=1 loops=1)
    Index Cond: (id = 2200)
-   Filter: (val2 = 200)
+   Remote Filter: (val2 = 200)
 (3 rows)
 
 -- When you have multiple secondary indexes, the default cost model chooses the index that first
@@ -387,9 +361,9 @@ EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT * FROM s_10000 WHERE id = 2200
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT * FROM s_10000 WHERE val3 = 20 AND val2 = 220;
                                               QUERY PLAN
 -------------------------------------------------------------------------------------------------------
- Index Scan using s_10000_val2 on s_10000  (cost=0.00..5.27 rows=10 width=24) (actual rows=10 loops=1)
+ Index Scan using s_10000_val2 on s_10000  (cost=4.00..9.27 rows=10 width=24) (actual rows=10 loops=1)
    Index Cond: (val2 = 220)
-   Filter: (val3 = 20)
+   Remote Filter: (val3 = 20)
 (3 rows)
 
 DROP INDEX s_10000_val1;
@@ -418,28 +392,28 @@ DROP EXTENSION file_fdw;
 EXPLAIN SELECT * FROM s_10000 WHERE val1 < -100000;
                         QUERY PLAN
 -----------------------------------------------------------
- Seq Scan on s_10000  (cost=0.00..1025.00 rows=1 width=24)
-   Filter: (val1 < '-100000'::integer)
+ Seq Scan on s_10000  (cost=4.00..1029.00 rows=1 width=24)
+   Remote Filter: (val1 < '-100000'::integer)
 (2 rows)
 
 EXPLAIN SELECT * FROM s_10000 WHERE id < -100000;
                         QUERY PLAN
 -----------------------------------------------------------
- Seq Scan on s_10000  (cost=0.00..1025.00 rows=1 width=24)
-   Filter: (id < '-100000'::integer)
+ Seq Scan on s_10000  (cost=4.00..1029.00 rows=1 width=24)
+   Remote Filter: (id < '-100000'::integer)
 (2 rows)
 
 SET enable_indexscan = FALSE;
 EXPLAIN SELECT * FROM s_10000 WHERE val1 < -100000;
                         QUERY PLAN
 -----------------------------------------------------------
- Seq Scan on s_10000  (cost=0.00..1025.00 rows=1 width=24)
-   Filter: (val1 < '-100000'::integer)
+ Seq Scan on s_10000  (cost=4.00..1029.00 rows=1 width=24)
+   Remote Filter: (val1 < '-100000'::integer)
 (2 rows)
 
 EXPLAIN SELECT * FROM s_10000 WHERE id < -100000;
                         QUERY PLAN
 -----------------------------------------------------------
- Seq Scan on s_10000  (cost=0.00..1025.00 rows=1 width=24)
-   Filter: (id < '-100000'::integer)
+ Seq Scan on s_10000  (cost=4.00..1029.00 rows=1 width=24)
+   Remote Filter: (id < '-100000'::integer)
 (2 rows)

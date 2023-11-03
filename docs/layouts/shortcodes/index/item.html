@@ -1,0 +1,18 @@
+{{- $icon := .Get "icon" -}}
+<div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="{{.Get "href"}}">
+      <div class="head">
+        {{ if in $icon "/" }}
+        <img class="icon" src="{{ $icon }}" aria-hidden="true" />
+        {{ else }}
+        <div class="icon">
+            <i class="{{ $icon }}"></i>
+          </div>
+        {{ end }}
+        <div class="title">{{.Get "title"}}</div>
+      </div>
+      <div class="body">
+        {{.Get "body"}}
+      </div>
+    </a>
+  </div>

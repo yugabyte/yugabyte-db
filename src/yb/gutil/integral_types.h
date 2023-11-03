@@ -21,8 +21,7 @@
 // any changes here, make sure that you're not breaking any platforms.
 //
 
-#ifndef BASE_INTEGRAL_TYPES_H_
-#define BASE_INTEGRAL_TYPES_H_
+#pragma once
 
 #include <inttypes.h>
 
@@ -114,5 +113,3 @@ static const  int64 kint64max  = (( int64) GG_LONGLONG(0x7FFFFFFFFFFFFFFF));
 typedef uint64 Fprint;
 static const Fprint kIllegalFprint = 0;
 static const Fprint kMaxFprint = GG_ULONGLONG(0xFFFFFFFFFFFFFFFF);
-
-#endif  // BASE_INTEGRAL_TYPES_H_

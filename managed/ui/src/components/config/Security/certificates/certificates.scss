@@ -1,6 +1,6 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../../../_style/colors';
+@use '../../../../_style/colors';
 
 .bs-table-certs {
   .form-group.react-bs-table-search-form {
@@ -34,22 +34,22 @@
       border-radius: 5px;
 
       &:not(.DayPicker-Day--disabled):not(.DayPicker-Day--selected):not(.DayPicker-Day--outside):hover {
-        background-color: rgba($YB_SIDEBAR_TEXT, 0.2);
+        background-color: rgba(colors.$YB_SIDEBAR_TEXT, 0.2);
       }
 
       &.DayPicker-Day--selected {
         &:not(.DayPicker-Day--disabled):not(.DayPicker-Day--outside) {
-          background-color: $YB_SIDEBAR_ACTIVE;
+          background-color: colors.$YB_SIDEBAR_ACTIVE;
           color: #fff;
 
           &:hover {
-            background-color: $YB_VIOLET_TEXT;
+            background-color: colors.$YB_VIOLET_TEXT;
           }
         }
       }
 
       &.DayPicker-Day--today {
-        color: $YB_ORANGE;
+        color: colors.$YB_ORANGE;
       }
     }
   }

@@ -1301,6 +1301,16 @@ pg_available_extensions| SELECT e.name,
     e.comment
    FROM (pg_available_extensions() e(name, default_version, comment)
      LEFT JOIN pg_extension x ON ((e.name = x.extname)));
+pg_backend_memory_contexts| SELECT pg_get_backend_memory_contexts.name,
+    pg_get_backend_memory_contexts.ident,
+    pg_get_backend_memory_contexts.parent,
+    pg_get_backend_memory_contexts.level,
+    pg_get_backend_memory_contexts.total_bytes,
+    pg_get_backend_memory_contexts.total_nblocks,
+    pg_get_backend_memory_contexts.free_bytes,
+    pg_get_backend_memory_contexts.free_chunks,
+    pg_get_backend_memory_contexts.used_bytes
+   FROM pg_get_backend_memory_contexts() pg_get_backend_memory_contexts(name, ident, parent, level, total_bytes, total_nblocks, free_bytes, free_chunks, used_bytes);
 pg_config| SELECT pg_config.name,
     pg_config.setting
    FROM pg_config() pg_config(name, setting);
@@ -1350,19 +1360,22 @@ pg_indexes| SELECT n.nspname AS schemaname,
 pg_locks| SELECT l.locktype,
     l.database,
     l.relation,
-    l.page,
-    l.tuple,
-    l.virtualxid,
-    l.transactionid,
-    l.classid,
-    l.objid,
-    l.objsubid,
-    l.virtualtransaction,
+    NULL::integer AS page,
+    NULL::smallint AS tuple,
+    NULL::text AS virtualxid,
+    NULL::xid AS transactionid,
+    NULL::oid AS classid,
+    NULL::oid AS objid,
+    NULL::smallint AS objsubid,
+    NULL::text AS virtualtransaction,
     l.pid,
-    l.mode,
+    array_to_string(l.mode, ','::text) AS mode,
     l.granted,
-    l.fastpath
-   FROM pg_lock_status() l(locktype, database, relation, page, tuple, virtualxid, transactionid, classid, objid, objsubid, virtualtransaction, pid, mode, granted, fastpath);
+    l.fastpath,
+    l.waitstart,
+    l.waitend,
+    jsonb_build_object('node', l.node, 'transactionid', l.transaction_id, 'subtransaction_id', l.subtransaction_id, 'is_explicit', l.is_explicit, 'tablet_id', l.tablet_id, 'blocked_by', l.blocked_by, 'keyrangedetails', jsonb_build_object('cols', to_jsonb((l.hash_cols || l.range_cols)), 'attnum', l.attnum, 'column_id', l.column_id, 'multiple_rows_locked', l.multiple_rows_locked)) AS ybdetails
+   FROM yb_lock_status(NULL::oid, NULL::uuid) l(locktype, database, relation, pid, mode, granted, fastpath, waitstart, waitend, node, tablet_id, transaction_id, subtransaction_id, status_tablet_id, is_explicit, hash_cols, range_cols, attnum, column_id, multiple_rows_locked, blocked_by);
 pg_matviews| SELECT n.nspname AS schemaname,
     c.relname AS matviewname,
     pg_get_userbyid(c.relowner) AS matviewowner,
@@ -1439,8 +1452,9 @@ pg_replication_slots| SELECT l.slot_name,
     l.xmin,
     l.catalog_xmin,
     l.restart_lsn,
-    l.confirmed_flush_lsn
-   FROM (pg_get_replication_slots() l(slot_name, plugin, slot_type, datoid, temporary, active, active_pid, xmin, catalog_xmin, restart_lsn, confirmed_flush_lsn)
+    l.confirmed_flush_lsn,
+    l.yb_stream_id
+   FROM (pg_get_replication_slots() l(slot_name, plugin, slot_type, datoid, temporary, active, active_pid, xmin, catalog_xmin, restart_lsn, confirmed_flush_lsn, yb_stream_id)
      LEFT JOIN pg_database d ON ((l.datoid = d.oid)));
 pg_roles| SELECT pg_authid.rolname,
     pg_authid.rolsuper,
@@ -1718,10 +1732,16 @@ pg_stat_activity| SELECT s.datid,
     s.backend_xid,
     s.backend_xmin,
     s.query,
-    s.backend_type
-   FROM ((pg_stat_get_activity(NULL::integer) s(datid, pid, usesysid, application_name, state, query, wait_event_type, wait_event, xact_start, query_start, backend_start, state_change, client_addr, client_hostname, client_port, backend_xid, backend_xmin, backend_type, ssl, sslversion, sslcipher, sslbits, sslcompression, sslclientdn)
+    s.backend_type,
+    yb_pg_stat_get_backend_catalog_version(b.beid) AS catalog_version,
+    yb_pg_stat_get_backend_allocated_mem_bytes(b.beid) AS allocated_mem_bytes,
+    yb_pg_stat_get_backend_rss_mem_bytes(b.beid) AS rss_mem_bytes,
+    s.yb_backend_xid
+   FROM (((pg_stat_get_activity(NULL::integer) s(datid, pid, usesysid, application_name, state, query, wait_event_type, wait_event, xact_start, query_start, backend_start, state_change, client_addr, client_hostname, client_port, backend_xid, backend_xmin, backend_type, ssl, sslversion, sslcipher, sslbits, sslcompression, sslclientdn, yb_backend_xid)
      LEFT JOIN pg_database d ON ((s.datid = d.oid)))
-     LEFT JOIN pg_authid u ON ((s.usesysid = u.oid)));
+     LEFT JOIN pg_authid u ON ((s.usesysid = u.oid)))
+     LEFT JOIN (pg_stat_get_backend_idset() beid(beid)
+     CROSS JOIN LATERAL pg_stat_get_backend_pid(beid.beid) pid(pid)) b ON ((b.pid = s.pid)));
 pg_stat_all_indexes| SELECT c.oid AS relid,
     i.oid AS indexrelid,
     n.nspname AS schemaname,
@@ -1835,7 +1855,35 @@ pg_stat_progress_copy| SELECT s.pid,
     s.param2 AS bytes_total,
     s.param3 AS tuples_processed,
     s.param4 AS tuples_excluded
-   FROM (pg_stat_get_progress_info('COPY'::text) s(pid, datid, relid, param1, param2, param3, param4, param5, param6, param7, param8, param9, param10)
+   FROM (pg_stat_get_progress_info('COPY'::text) s(pid, datid, relid, param1, param2, param3, param4, param5, param6, param7, param8, param9, param10, param11, param12, param13, param14, param15, param16, param17)
+     LEFT JOIN pg_database d ON ((s.datid = d.oid)));
+pg_stat_progress_create_index| SELECT s.pid,
+    s.datid,
+    d.datname,
+    s.relid,
+    (s.param7)::oid AS index_relid,
+        CASE s.param1
+            WHEN 1 THEN 'CREATE INDEX NONCONCURRENTLY'::text
+            WHEN 2 THEN 'CREATE INDEX CONCURRENTLY'::text
+            WHEN 3 THEN 'REINDEX NONCONCURRENTLY'::text
+            WHEN 4 THEN 'REINDEX CONCURRENTLY'::text
+            ELSE NULL::text
+        END AS command,
+        CASE s.param10
+            WHEN 0 THEN 'initializing'::text
+            WHEN 1 THEN 'backfilling'::text
+            ELSE NULL::text
+        END AS phase,
+    s.param4 AS lockers_total,
+    s.param5 AS lockers_done,
+    s.param6 AS current_locker_pid,
+    s.param16 AS blocks_total,
+    s.param17 AS blocks_done,
+    s.param12 AS tuples_total,
+    s.param13 AS tuples_done,
+    s.param14 AS partitions_total,
+    s.param15 AS partitions_done
+   FROM (pg_stat_get_progress_info('CREATE INDEX'::text) s(pid, datid, relid, param1, param2, param3, param4, param5, param6, param7, param8, param9, param10, param11, param12, param13, param14, param15, param16, param17)
      LEFT JOIN pg_database d ON ((s.datid = d.oid)));
 pg_stat_progress_vacuum| SELECT s.pid,
     s.datid,
@@ -1857,7 +1905,7 @@ pg_stat_progress_vacuum| SELECT s.pid,
     s.param5 AS index_vacuum_count,
     s.param6 AS max_dead_tuples,
     s.param7 AS num_dead_tuples
-   FROM (pg_stat_get_progress_info('VACUUM'::text) s(pid, datid, relid, param1, param2, param3, param4, param5, param6, param7, param8, param9, param10)
+   FROM (pg_stat_get_progress_info('VACUUM'::text) s(pid, datid, relid, param1, param2, param3, param4, param5, param6, param7, param8, param9, param10, param11, param12, param13, param14, param15, param16, param17)
      LEFT JOIN pg_database d ON ((s.datid = d.oid)));
 pg_stat_replication| SELECT s.pid,
     s.usesysid,
@@ -1878,7 +1926,7 @@ pg_stat_replication| SELECT s.pid,
     w.replay_lag,
     w.sync_priority,
     w.sync_state
-   FROM ((pg_stat_get_activity(NULL::integer) s(datid, pid, usesysid, application_name, state, query, wait_event_type, wait_event, xact_start, query_start, backend_start, state_change, client_addr, client_hostname, client_port, backend_xid, backend_xmin, backend_type, ssl, sslversion, sslcipher, sslbits, sslcompression, sslclientdn)
+   FROM ((pg_stat_get_activity(NULL::integer) s(datid, pid, usesysid, application_name, state, query, wait_event_type, wait_event, xact_start, query_start, backend_start, state_change, client_addr, client_hostname, client_port, backend_xid, backend_xmin, backend_type, ssl, sslversion, sslcipher, sslbits, sslcompression, sslclientdn, yb_backend_xid)
      JOIN pg_stat_get_wal_senders() w(pid, state, sent_lsn, write_lsn, flush_lsn, replay_lsn, write_lag, flush_lag, replay_lag, sync_priority, sync_state) ON ((s.pid = w.pid)))
      LEFT JOIN pg_authid u ON ((s.usesysid = u.oid)));
 pg_stat_ssl| SELECT s.pid,
@@ -1888,7 +1936,7 @@ pg_stat_ssl| SELECT s.pid,
     s.sslbits AS bits,
     s.sslcompression AS compression,
     s.sslclientdn AS clientdn
-   FROM pg_stat_get_activity(NULL::integer) s(datid, pid, usesysid, application_name, state, query, wait_event_type, wait_event, xact_start, query_start, backend_start, state_change, client_addr, client_hostname, client_port, backend_xid, backend_xmin, backend_type, ssl, sslversion, sslcipher, sslbits, sslcompression, sslclientdn);
+   FROM pg_stat_get_activity(NULL::integer) s(datid, pid, usesysid, application_name, state, query, wait_event_type, wait_event, xact_start, query_start, backend_start, state_change, client_addr, client_hostname, client_port, backend_xid, backend_xmin, backend_type, ssl, sslversion, sslcipher, sslbits, sslcompression, sslclientdn, yb_backend_xid);
 pg_stat_statements| SELECT pg_stat_statements.userid,
     pg_stat_statements.dbid,
     pg_stat_statements.queryid,
@@ -1911,8 +1959,9 @@ pg_stat_statements| SELECT pg_stat_statements.userid,
     pg_stat_statements.temp_blks_read,
     pg_stat_statements.temp_blks_written,
     pg_stat_statements.blk_read_time,
-    pg_stat_statements.blk_write_time
-   FROM pg_stat_statements(true) pg_stat_statements(userid, dbid, queryid, query, calls, total_time, min_time, max_time, mean_time, stddev_time, rows, shared_blks_hit, shared_blks_read, shared_blks_dirtied, shared_blks_written, local_blks_hit, local_blks_read, local_blks_dirtied, local_blks_written, temp_blks_read, temp_blks_written, blk_read_time, blk_write_time);
+    pg_stat_statements.blk_write_time,
+    pg_stat_statements.yb_latency_histogram
+   FROM pg_stat_statements(true) pg_stat_statements(userid, dbid, queryid, query, calls, total_time, min_time, max_time, mean_time, stddev_time, rows, shared_blks_hit, shared_blks_read, shared_blks_dirtied, shared_blks_written, local_blks_hit, local_blks_read, local_blks_dirtied, local_blks_written, temp_blks_read, temp_blks_written, blk_read_time, blk_write_time, yb_latency_histogram);
 pg_stat_subscription| SELECT su.oid AS subid,
     su.subname,
     st.pid,
@@ -2368,6 +2417,14 @@ shoelace_obsolete| SELECT shoelace.sl_name,
   WHERE (NOT (EXISTS ( SELECT shoe.shoename
            FROM shoe
           WHERE (shoe.slcolor = shoelace.sl_color))));
+yb_terminated_queries| SELECT d.datname AS databasename,
+    s.backend_pid,
+    s.query_text,
+    s.termination_reason,
+    s.query_start AS query_start_time,
+    s.query_end AS query_end_time
+   FROM (yb_pg_stat_get_queries(NULL::oid) s(db_oid, backend_pid, query_text, termination_reason, query_start, query_end)
+     LEFT JOIN pg_database d ON ((s.db_oid = d.oid)));
 SELECT tablename, rulename, definition FROM pg_rules
 	ORDER BY tablename, rulename;
 pg_settings|pg_settings_n|CREATE RULE pg_settings_n AS

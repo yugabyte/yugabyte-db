@@ -18,9 +18,12 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.PrometheusConfigHelper;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
@@ -40,6 +43,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 @Singleton
 @Slf4j
@@ -57,11 +61,20 @@ public class PlatformReplicationManager {
 
   private final PlatformReplicationHelper replicationHelper;
 
+  private final FileDataService fileDataService;
+
+  private final PrometheusConfigHelper prometheusConfigHelper;
+
   @Inject
   public PlatformReplicationManager(
-      PlatformScheduler platformScheduler, PlatformReplicationHelper replicationHelper) {
+      PlatformScheduler platformScheduler,
+      PlatformReplicationHelper replicationHelper,
+      FileDataService fileDataService,
+      PrometheusConfigHelper prometheusConfigHelper) {
     this.platformScheduler = platformScheduler;
     this.replicationHelper = replicationHelper;
+    this.fileDataService = fileDataService;
+    this.prometheusConfigHelper = prometheusConfigHelper;
     this.schedule = new AtomicReference<>(null);
   }
 
@@ -164,12 +177,12 @@ public class PlatformReplicationManager {
     }
 
     // Update which instance should be local.
-    previousLocal.get().setIsLocalAndUpdate(false);
+    previousLocal.get().updateIsLocal(false);
     config
         .getInstances()
         .forEach(
             i -> {
-              i.setIsLocalAndUpdate(i.getUUID().equals(newLeader.getUUID()));
+              i.updateIsLocal(i.getUuid().equals(newLeader.getUuid()));
               try {
                 // Clear out any old backups.
                 replicationHelper.cleanupReceivedBackups(new URL(i.getAddress()), 0);
@@ -219,14 +232,12 @@ public class PlatformReplicationManager {
 
     // Delete any instances that exist locally but aren't included in the sync request.
     Set<String> instanceAddrsToDelete = Sets.difference(existingAddrs, newAddrs);
-    existingInstances
-        .stream()
+    existingInstances.stream()
         .filter(i -> instanceAddrsToDelete.contains(i.getAddress()))
         .forEach(PlatformInstance::delete);
 
     // Import the new instances, or update existing ones.
-    return newInstances
-        .stream()
+    return newInstances.stream()
         .map(replicationHelper::processImportedInstance)
         .filter(Optional::isPresent)
         .map(Optional::get)
@@ -294,8 +305,7 @@ public class PlatformReplicationManager {
 
                             // Send the platform backup to all followers.
                             Set<PlatformInstance> instancesToSync =
-                                remoteInstances
-                                    .stream()
+                                remoteInstances.stream()
                                     .filter(this::sendBackup)
                                     .collect(Collectors.toSet());
 
@@ -305,7 +315,7 @@ public class PlatformReplicationManager {
                             instancesToSync.forEach(replicationHelper::syncToRemoteInstance);
                           });
                 } catch (Exception e) {
-                  log.error("Error running sync for HA config {}", config.getUUID(), e);
+                  log.error("Error running sync for HA config {}", config.getUuid(), e);
                 } finally {
                   // Remove locally created backups since they have already been sent to followers.
                   replicationHelper.cleanupCreatedBackups();
@@ -320,13 +330,13 @@ public class PlatformReplicationManager {
     replicationHelper.cleanupReceivedBackups(leader, replicationHelper.getNumBackupsRetention());
   }
 
-  public boolean saveReplicationData(String fileName, File uploadedFile, URL leader, URL sender) {
+  public boolean saveReplicationData(String fileName, Path uploadedFile, URL leader, URL sender) {
     Path replicationDir = replicationHelper.getReplicationDirFor(leader.getHost());
     Path saveAsFile = Paths.get(replicationDir.toString(), fileName).normalize();
     if ((replicationDir.toFile().exists() || replicationDir.toFile().mkdirs())
         && saveAsFile.toString().startsWith(replicationDir.toString())) {
       try {
-        FileUtils.moveFile(uploadedFile.toPath(), saveAsFile);
+        FileUtils.moveFile(uploadedFile, saveAsFile);
         log.debug(
             "Store platform backup received from leader {} via {} as {}.",
             leader.toString(),
@@ -335,7 +345,7 @@ public class PlatformReplicationManager {
 
         return true;
       } catch (IOException ioException) {
-        log.error("File move failed from {} as {}", uploadedFile.toPath(), saveAsFile, ioException);
+        log.error("File move failed from {} as {}", uploadedFile, saveAsFile, ioException);
       }
     } else {
       log.error(
@@ -357,9 +367,12 @@ public class PlatformReplicationManager {
 
     // The addr that the prometheus server is running on.
     private final String prometheusHost;
-    // The username that YW uses to connect to it's DB.
+
+    // The port that the prometheus server is running on.
+    private final int prometheusPort;
+    // The username that YW uses to connect to its DB.
     private final String dbUsername;
-    // The password that YW uses to authenticate connections to it's DB.
+    // The password that YW uses to authenticate connections to its DB.
     private final String dbPassword;
     // The addr that the DB is listening to connection requests on.
     private final String dbHost;
@@ -367,7 +380,8 @@ public class PlatformReplicationManager {
     private final int dbPort;
 
     protected PlatformBackupParams() {
-      this.prometheusHost = replicationHelper.getPrometheusHost();
+      this.prometheusHost = prometheusConfigHelper.getPrometheusHost();
+      this.prometheusPort = prometheusConfigHelper.getPrometheusPort();
       this.dbUsername = replicationHelper.getDBUser();
       this.dbPassword = replicationHelper.getDBPassword();
       this.dbHost = replicationHelper.getDBHost();
@@ -388,6 +402,8 @@ public class PlatformReplicationManager {
       commandArgs.add(Integer.toString(dbPort));
       commandArgs.add("--prometheus_host");
       commandArgs.add(prometheusHost);
+      commandArgs.add("--prometheus_port");
+      commandArgs.add(String.valueOf(prometheusPort));
       commandArgs.add("--verbose");
       commandArgs.add("--skip_restart");
 
@@ -403,6 +419,15 @@ public class PlatformReplicationManager {
       }
 
       return extraVars;
+    }
+
+    List<String> getYbaInstallerArgs() {
+      List<String> commandArgs = new ArrayList<>();
+      commandArgs.add("--yba_installer");
+      commandArgs.add("--data_dir");
+      commandArgs.add(replicationHelper.getBaseInstall());
+
+      return commandArgs;
     }
   }
 
@@ -429,9 +454,16 @@ public class PlatformReplicationManager {
       if (excludePrometheus) {
         commandArgs.add("--exclude_prometheus");
       }
-
       if (excludeReleases) {
         commandArgs.add("--exclude_releases");
+      }
+      commandArgs.add("--disable_version_check");
+
+      String installation = replicationHelper.getInstallationType();
+      if (StringUtils.isNotBlank(installation) && installation.trim().equals("yba-installer")) {
+        commandArgs.add("--pg_dump_path");
+        commandArgs.add(replicationHelper.getPGDumpPath());
+        commandArgs.addAll(getYbaInstallerArgs());
       }
 
       commandArgs.add("--output");
@@ -457,6 +489,14 @@ public class PlatformReplicationManager {
       commandArgs.add("--input");
       commandArgs.add(input.getAbsolutePath());
       commandArgs.add("--disable_version_check");
+      String installation = replicationHelper.getInstallationType();
+      if (StringUtils.isNotBlank(installation) && installation.trim().equals("yba-installer")) {
+        commandArgs.add("--pg_restore_path");
+        commandArgs.add(replicationHelper.getPGRestorePath());
+        commandArgs.addAll(getYbaInstallerArgs());
+        commandArgs.add("--destination");
+        commandArgs.add(replicationHelper.getBaseInstall());
+      }
 
       return commandArgs;
     }
@@ -492,6 +532,9 @@ public class PlatformReplicationManager {
     ShellResponse response = replicationHelper.runCommand(new RestorePlatformBackupParams(input));
     if (response.code != 0) {
       log.error("Restore failed: " + response.message);
+    } else {
+      // Sync the files stored in DB to FS in case restore is successful.
+      fileDataService.syncFileData(AppConfigHelper.getStoragePath(), true);
     }
 
     return response.code == 0;

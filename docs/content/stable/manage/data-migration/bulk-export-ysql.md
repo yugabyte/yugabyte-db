@@ -1,5 +1,5 @@
 ---
-title: Bulk export
+title: Bulk export YSQL
 headerTitle: Bulk export for YSQL
 linkTitle: Bulk export
 description: Bulk export for YSQL using ysql_dump.
@@ -26,7 +26,7 @@ type: docs
   </li>
 </ul>
 
-This page describes the following steps required to export PostgreSQL data to YugabyteDB.
+This page describes the following steps required to export PostgreSQL data to YugabyteDB:
 
 - [Convert a PostgreSQL schema](#convert-a-postgresql-schema)
 - [Migrate a PostgreSQL application](#migrate-a-postgresql-application)
@@ -44,7 +44,7 @@ The `ysql_dump` tool can simplify some steps of your schema migration, refer to 
 
 ### Specify `PRIMARY KEY` inline
 
-YugabyteDB (as of v2.2) does not support the PostgreSQL syntax of first declaring a table, and subsequently running an ALTER TABLE command to add the primary key. This is because the data in YugabyteDB tables are index-organized according to the primary key specification. There is a significant performance difference in a distributed SQL database between a table that is organized by row ID with an added primary key constraint, versus a table whose data layout is index-organized from the get go.
+YugabyteDB supports the PostgreSQL syntax of first declaring a table, and subsequently running an ALTER TABLE command to add the primary key. Note that the ALTER TABLE operation requires a disk re-write and may be resource intensive, so it is recommended to set the primary key inline as part of the CREATE TABLE operation.
 
 ### Use `HASH` sort order
 
@@ -58,12 +58,11 @@ To overcome the above issues, YugabyteDB supports `HASH` ordering in addition to
 - The table can be pre-split to utilize all nodes of a cluster right from the start.
 - Range queries **cannot** be efficiently supported on the index.
 
-<!-- Commenting out this section which can be introduced again when we can recommend colocation.
- ### Optimize databases with many objects
+### Optimize databases with many objects
 
 {{< tip title="Tip" >}}
 
-Databases with over 500 objects (tables, indexes and unique constraints mainly) would benefit from the colocation optimization here. Colocation also improves join performance for smaller tables.
+Databases with more than 500 objects (tables, indexes and unique constraints mainly) can benefit from colocation. Colocation also improves join performance for smaller tables.
 
 {{< /tip >}}
 
@@ -71,11 +70,7 @@ In many scenarios, there may be a large number of database objects (tables and i
 
 Enabling the colocation property at a database level causes all tables created in this database to be colocated by default. Tables in this database that hold a large dataset or those that are expected to grow in size over time can be opted out of the colocation group, which would cause them to be split into multiple tablets.
 
-{{< note title="Note" >}}
-
-Making colocation the default for all databases is [work in progress](https://github.com/yugabyte/yugabyte-db/issues/5239).
-
-{{< /note >}} -->
+For more information, refer to [Colocated tables](../../../architecture/docdb-sharding/colocated-tables/).
 
 ### Pre-split large tables
 
@@ -253,7 +248,7 @@ The recommended way to export data from PostgreSQL for purposes of importing it 
 However, for exporting an entire database that consists of smaller datasets, you can use the YugabyteDB [`ysql_dump`](../../../admin/ysql-dump/) utility.
 
 {{< tip title="Migrate using YugabyteDB Voyager" >}}
-To automate your migration from PostgreSQL to YugabyteDB, use [YugabyteDB Voyager](../../../migrate/). To learn more, refer to the [export schema](../../../migrate/migrate-steps/#export-and-analyze-schema) and [export data](../../../migrate/migrate-steps/#export-data) steps.
+To automate your migration from PostgreSQL to YugabyteDB, use [YugabyteDB Voyager](/preview/yugabyte-voyager/). To learn more, refer to the [export schema](/preview/yugabyte-voyager/migrate/migrate-steps/#export-schema) and [export data](/preview/yugabyte-voyager/migrate/migrate-steps/#export-data) steps.
 {{< /tip >}}
 
 ### Export data into CSV files using the COPY command
@@ -263,7 +258,7 @@ To export the data, connect to the source PostgreSQL database using the psql too
 ```sql
 COPY <table_name>
     TO '<table_name>.csv'
-    WITH (FORMAT CSV DELIMITER ',' HEADER);
+    WITH (FORMAT CSV, HEADER false, DELIMITER ',');
 ```
 
 {{< note title="Note" >}}
@@ -280,7 +275,7 @@ COPY (
     WHERE <condition>
 )
 TO '<table_name>.csv'
-WITH (FORMAT CSV DELIMITER ',' HEADER);
+WITH (FORMAT CSV, HEADER false, DELIMITER ',');
 ```
 
 For all available options provided by the COPY TO command, refer to the [PostgreSQL documentation](https://www.postgresql.org/docs/current/sql-copy.html).
@@ -296,7 +291,7 @@ COPY (
     LIMIT num_rows_per_export OFFSET 0
 )
 TO '<table_name>_1.csv'
-WITH (FORMAT CSV DELIMITER ',' HEADER);
+WITH (FORMAT CSV, HEADER false, DELIMITER ',');
 ```
 
 ```sql
@@ -306,7 +301,7 @@ COPY (
     LIMIT num_rows_per_export OFFSET num_rows_per_export
 )
 TO '<table_name>_2.csv'
-WITH (FORMAT CSV DELIMITER ',' HEADER);
+WITH (FORMAT CSV, HEADER false, DELIMITER ',');
 ```
 
 ```sql
@@ -316,7 +311,7 @@ COPY (
     LIMIT num_rows_per_export OFFSET num_rows_per_export * 2
 )
 TO '<table_name>_3.csv'
-WITH (FORMAT CSV DELIMITER ',' HEADER);
+WITH (FORMAT CSV, HEADER false, DELIMITER ',');
 ```
 
 You can run the above commands in parallel to speed up the process. This approach will also produce multiple CSV files, allowing for parallel import on the YugabyteDB side.

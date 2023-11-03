@@ -11,21 +11,24 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_SHARED_LOCK_MANAGER_H
-#define YB_DOCDB_SHARED_LOCK_MANAGER_H
+#pragma once
 
 #include <string>
 #include <vector>
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/shared_lock_manager_fwd.h"
-#include "yb/docdb/intent.h"
+#include "yb/dockv/intent.h"
 
 #include "yb/util/monotime.h"
 
 namespace yb {
 namespace docdb {
 
+// Lock state stores the number of locks acquired for each intent type.
+// The count for each intent type resides in sequential bits (block) in lock state.
+// For example the count of locks on a particular intent type could be received as:
+// (lock_state >> (to_underlying(intent_type) * kIntentTypeBits)) & kFirstIntentTypeMask.
 typedef uint64_t LockState;
 
 // This class manages six types of locks on string keys. On each key, the possibilities are:
@@ -52,6 +55,8 @@ class SharedLockManager {
   // Whether or not the state is possible
   static std::string ToString(const LockState& state);
 
+  void DumpStatusHtml(std::ostream& out);
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;
@@ -59,13 +64,11 @@ class SharedLockManager {
 
 // Masks of intent type sets.
 // I.e. bits that related to any of intents from this set is filled with 1, others are 0.
-extern const std::array<LockState, kIntentTypeSetMapSize> kIntentTypeSetMask;
+extern const std::array<LockState, dockv::kIntentTypeSetMapSize> kIntentTypeSetMask;
 // Conflicts of intent types. I.e. combination of masks of intent type sets that conflict with it.
-extern const std::array<LockState, kIntentTypeSetMapSize> kIntentTypeSetConflicts;
+extern const std::array<LockState, dockv::kIntentTypeSetMapSize> kIntentTypeSetConflicts;
 
-bool IntentTypeSetsConflict(IntentTypeSet lhs, IntentTypeSet rhs);
+bool IntentTypeSetsConflict(dockv::IntentTypeSet lhs, dockv::IntentTypeSet rhs);
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif // YB_DOCDB_SHARED_LOCK_MANAGER_H

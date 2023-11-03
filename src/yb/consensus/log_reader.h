@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_CONSENSUS_LOG_READER_H
-#define YB_CONSENSUS_LOG_READER_H
+#pragma once
 
 #include <map>
 #include <string>
@@ -40,6 +39,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/log.fwd.h"
 #include "yb/consensus/log_metrics.h"
 #include "yb/consensus/log_fwd.h"
 
@@ -86,7 +86,7 @@ class LogReader {
   Status GetSegmentPrefixNotIncluding(int64_t index, SegmentSequence* segments) const;
 
   Status GetSegmentPrefixNotIncluding(int64_t index, int64_t cdc_replicated_index,
-                                              SegmentSequence* segments) const;
+                                      SegmentSequence* segments) const;
 
   // Return the minimum replicate index that is retained in the currently available
   // logs. May return -1 if no replicates have been logged.
@@ -119,9 +119,7 @@ class LogReader {
       const int64_t up_to,
       int64_t max_bytes_to_read,
       consensus::ReplicateMsgs* replicates,
-      int64_t *starting_op_segment_seq_num,
-      yb::SchemaPB* modified_schema,
-      uint32_t *schema_version,
+      int64_t* starting_op_segment_seq_num,
       CoarseTimePoint deadline = CoarseTimePoint::max()) const;
 
   static const int64_t kNoSizeLimit;
@@ -186,6 +184,11 @@ class LogReader {
   // if no footer is present.
   Status AppendSegmentUnlocked(const scoped_refptr<ReadableLogSegment>& segment);
 
+  // Appends segment which doesn't have a footer to the segment sequence.
+  // This function is used in the case that, during rebooting the tablet, we reusing the last
+  // segment (that was left in-progress from a crash) as active writable segment at bootstrap.
+  Status AppendUnclosedSegmentUnlocked(const scoped_refptr<ReadableLogSegment>& segment);
+
   // Used by Log to update its LogReader on how far it is possible to read
   // the current segment. Requires that the reader has at least one segment
   // and that the last segment has no footer, meaning it is currently being
@@ -194,9 +197,8 @@ class LogReader {
 
   // Read the LogEntryBatch pointed to by the provided index entry.
   // 'tmp_buf' is used as scratch space to avoid extra allocation.
-  Status ReadBatchUsingIndexEntry(const LogIndexEntry& index_entry,
-                                          faststring* tmp_buf,
-                                          LogEntryBatchPB* batch) const;
+  Result<std::shared_ptr<LWLogEntryBatchPB>> ReadBatchUsingIndexEntry(
+      const LogIndexEntry& index_entry) const;
 
   LogReader(Env* env, const scoped_refptr<LogIndex>& index,
             std::string log_prefix,
@@ -230,7 +232,7 @@ class LogReader {
   // Metrics
   scoped_refptr<Counter> bytes_read_;
   scoped_refptr<Counter> entries_read_;
-  scoped_refptr<Histogram> read_batch_latency_;
+  scoped_refptr<EventStats> read_batch_latency_;
 
   // The sequence of all current log segments in increasing sequence number order.
   SegmentSequence segments_;
@@ -252,5 +254,3 @@ class LogReader {
 
 }  // namespace log
 }  // namespace yb
-
-#endif // YB_CONSENSUS_LOG_READER_H

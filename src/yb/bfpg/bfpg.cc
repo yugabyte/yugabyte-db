@@ -23,7 +23,7 @@
 
 using std::function;
 using std::vector;
-using std::unordered_map;
+using std::string;
 using strings::Substitute;
 
 namespace yb {

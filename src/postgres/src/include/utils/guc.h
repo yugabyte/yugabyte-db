@@ -117,7 +117,8 @@ typedef enum
 	PGC_S_OVERRIDE,				/* special case to forcibly set default */
 	PGC_S_INTERACTIVE,			/* dividing line for error reporting */
 	PGC_S_TEST,					/* test per-database or per-user setting */
-	PGC_S_SESSION				/* SET command */
+	PGC_S_SESSION,				/* SET command */
+	YSQL_CONN_MGR				/* SET SESSION PARAMETER packet */
 } GucSource;
 
 /*
@@ -248,12 +249,21 @@ extern bool log_btree_build_stats;
 extern PGDLLIMPORT bool check_function_bodies;
 extern bool default_with_oids;
 extern bool session_auth_is_superuser;
+extern bool yb_enable_memory_tracking;
 
 extern int	log_min_error_statement;
 extern PGDLLIMPORT int log_min_messages;
 extern PGDLLIMPORT int client_min_messages;
+extern int	log_min_duration_sample;
 extern int	log_min_duration_statement;
 extern int	log_temp_files;
+extern double log_statement_sample_rate;
+extern double log_xact_sample_rate;
+
+extern int	yb_bnl_batch_size;
+extern bool  yb_bnl_enable_hashing;
+
+extern bool yb_lock_pk_single_rpc;
 
 extern int	temp_file_limit;
 

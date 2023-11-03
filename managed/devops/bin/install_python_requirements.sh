@@ -12,6 +12,7 @@
 should_create_package="0"
 should_use_package="0"
 use_dynamic_paths="0"
+should_use_pex="0"
 show_usage() {
   cat <<-EOT
 Usage: ${0##*/} [<options>]
@@ -72,11 +73,8 @@ if [[ $should_use_package == "1" && -f "$YB_PYTHON_MODULES_PACKAGE" ]]; then
   log "Found virtualenv package $YB_PYTHON_MODULES_PACKAGE"
   tar -xf $YB_PYTHON_MODULES_PACKAGE
 else
-  if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "0" ]]; then
-    # looks like there is some issue with setuptools and virtualenv on python2.
-    # https://github.com/pypa/virtualenv/issues/1493, adding this requirement
-    pip_install "setuptools<45"
-  fi
+
+  run_pip install --upgrade pip > /dev/null
 
   # faster pip install of yb-cassandra-driver without a full compilation
   # https://docs.datastax.com/en/developer/python-driver/3.16/installation/
@@ -104,7 +102,10 @@ else
   if should_use_virtual_env; then
     log "Expecting there to be no differences between the output of 'pip freeze' and the contents" \
         "of $FROZEN_REQUIREMENTS_FILE"
-    if grep -Fxvf <(run_pip freeze | grep -v ybops) "$FROZEN_REQUIREMENTS_FILE" >/dev/null; then
+    # We will skip grpcio in this check, as it has addition python version requirements included in
+    # the requirements.txt, and this data is not stored by pip.
+    if grep -Fvf <(run_pip freeze | grep -v ybops) <(egrep -v 'grpcio|protobuf' \
+        $FROZEN_REQUIREMENTS_FILE); then
       log_warn "WARNING: discrepancies found between the contents of '$FROZEN_REQUIREMENTS_FILE'" \
               "and what's installed in the virtualenv $virtualenv_dir."
       log_error "Showing full diff output, but please ignore extra modules that were installed."
@@ -118,4 +119,8 @@ else
           "$virtualenv_dir."
     fi
   fi
+
+  log "Activating pex environment $pex_venv_dir"
+  activate_pex
+  rm $pex_lock
 fi

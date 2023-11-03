@@ -91,7 +91,9 @@ test_compiler_detection_by_jenkins_job_name() {
     unset YB_COMPILER_TYPE
     JOB_NAME="$jenkins_job_name"
     set_compiler_type_based_on_jenkins_job_name
-    assert_equals "$expected_compiler_type" "$YB_COMPILER_TYPE" "compiler type"
+    if [[ ${YB_COMPILER_TYPE_WAS_ADJUSTED:-false} == "false" ]]; then
+      assert_equals "$expected_compiler_type" "$YB_COMPILER_TYPE" "compiler type"
+    fi
   )
 }
 
@@ -141,8 +143,10 @@ test_set_cmake_build_type_and_compiler_type() {
     set_cmake_build_type_and_compiler_type
     assert_equals "$expected_cmake_build_type" "$cmake_build_type" "$test_case_details" \
                   "Note: comparing CMake build type."
-    assert_equals "$expected_compiler_type" "$YB_COMPILER_TYPE" "$test_case_details" \
-                  "Note: comparing compiler type."
+    if [[ ${YB_COMPILER_TYPE_WAS_ADJUSTED:-false} == "false" ]]; then
+      assert_equals "$expected_compiler_type" "$YB_COMPILER_TYPE" "$test_case_details" \
+                    "Note: comparing compiler type."
+    fi
   )
   local exit_code=$?
   set -e
@@ -160,46 +164,61 @@ arch=$( uname -m )
 test_set_cmake_build_type_and_compiler_type   asan       darwin    auto       fastdebug  clang   0
 test_set_cmake_build_type_and_compiler_type   asan       darwin    clang      fastdebug  clang   0
 test_set_cmake_build_type_and_compiler_type   asan       darwin    gcc        N/A        N/A     1
-test_set_cmake_build_type_and_compiler_type   asan       linux-gnu clang7     fastdebug  clang7  0
+test_set_cmake_build_type_and_compiler_type   asan       linux-gnu clang14    fastdebug  clang14 0
 test_set_cmake_build_type_and_compiler_type   asan       linux-gnu gcc        N/A        N/A     1
-test_set_cmake_build_type_and_compiler_type   asan       linux-gnu gcc8       N/A        gcc8    1
-test_set_cmake_build_type_and_compiler_type   asan       linux-gnu gcc9       N/A        gcc9    1
-test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu auto       fastdebug  clang12 0
-test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu clang7     fastdebug  clang7  0
+test_set_cmake_build_type_and_compiler_type   asan       linux-gnu gcc11      N/A        gcc11   1
+test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu clang14    fastdebug  clang14 0
 test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu gcc        N/A        N/A     1
-test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu gcc8       N/A        gcc8    1
-test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu gcc9       N/A        gcc9    1
+test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu gcc11      N/A        gcc11   1
 test_set_cmake_build_type_and_compiler_type   debug      darwin    auto       debug      clang   0
 test_set_cmake_build_type_and_compiler_type   debug      darwin    clang      debug      clang   0
-test_set_cmake_build_type_and_compiler_type   debug      darwin    gcc        N/A        N/A     1
 test_set_cmake_build_type_and_compiler_type   debug      linux-gnu clang      debug      clang   0
 test_set_cmake_build_type_and_compiler_type   debug      linux-gnu gcc        debug      gcc     0
-test_set_cmake_build_type_and_compiler_type   debug      linux-gnu gcc8       debug      gcc8    0
-test_set_cmake_build_type_and_compiler_type   debug      linux-gnu gcc9       debug      gcc9    0
+test_set_cmake_build_type_and_compiler_type   debug      linux-gnu gcc11      debug      gcc11   0
 test_set_cmake_build_type_and_compiler_type   FaStDeBuG  darwin    auto       fastdebug  clang   0
 test_set_cmake_build_type_and_compiler_type   FaStDeBuG  darwin    clang      fastdebug  clang   0
-test_set_cmake_build_type_and_compiler_type   FaStDeBuG  darwin    gcc        N/A        N/A     1
 test_set_cmake_build_type_and_compiler_type   FaStDeBuG  linux-gnu clang      fastdebug  clang   0
 test_set_cmake_build_type_and_compiler_type   FaStDeBuG  linux-gnu gcc        fastdebug  gcc     0
 test_set_cmake_build_type_and_compiler_type   release    darwin    auto       release    clang   0
 test_set_cmake_build_type_and_compiler_type   release    darwin    clang      release    clang   0
-test_set_cmake_build_type_and_compiler_type   release    darwin    gcc        N/A        N/A     1
 test_set_cmake_build_type_and_compiler_type   release    linux-gnu clang      release    clang   0
 test_set_cmake_build_type_and_compiler_type   release    linux-gnu gcc        release    gcc     0
-test_set_cmake_build_type_and_compiler_type   release    linux-gnu gcc8       release    gcc8    0
-test_set_cmake_build_type_and_compiler_type   release    linux-gnu gcc9       release    gcc9    0
-test_set_cmake_build_type_and_compiler_type   asan       linux-gnu auto       fastdebug  clang12 0
+test_set_cmake_build_type_and_compiler_type   release    linux-gnu gcc11      release    gcc11   0
+test_set_cmake_build_type_and_compiler_type   debug      linux-gnu auto       debug      clang16 0
+test_set_cmake_build_type_and_compiler_type   FaStDeBuG  linux-gnu auto       fastdebug  clang16 0
+test_set_cmake_build_type_and_compiler_type   release    linux-gnu auto       release    clang16 0
+test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu auto       fastdebug  clang16 0
+test_set_cmake_build_type_and_compiler_type   asan       linux-gnu auto       fastdebug  clang16 0
 
-# Test cases where there is difference between architectures.
-if [[ $arch == "x86_64" ]]; then
-  clangN=clang13
-else
-  clangN=clang12
-fi
+# -------------------------------------------------------------------------------------------------
+# Test existence of scripts pointed to by specical "script path" variables.
+# -------------------------------------------------------------------------------------------------
 
-test_set_cmake_build_type_and_compiler_type   debug      linux-gnu auto       debug      $clangN 0
-test_set_cmake_build_type_and_compiler_type   FaStDeBuG  linux-gnu auto       fastdebug  $clangN 0
-test_set_cmake_build_type_and_compiler_type   release    linux-gnu auto       release    $clangN 0
+list_yb_script_path_var_names() {
+  env | grep -E '^YB_SCRIPT_PATH_' | sed 's/=.*//g'
+}
+
+# Unset all script path variables in case some of them are set from outside.
+for script_path_var_name in $( list_yb_script_path_var_names ); do
+  unset "${script_path_var_name}"
+done
+
+# Then set them again from scratch.
+yb_script_paths_are_set=false
+set_script_paths
+
+# Verify that the script pointed to by each of these variables exists.
+for script_path_var_name in $( list_yb_script_path_var_names ); do
+  script_path_var_value=${!script_path_var_name}
+  if [[ ! -f ${script_path_var_value} ]]; then
+    fatal "Script path variable '$script_path_var_name' points to a non-existent file: " \
+          "'$script_path_var_value'"
+  fi
+  if [[ ! -x ${script_path_var_value} ]]; then
+    fatal "Script path variable '$script_path_var_name' points to a non-executable file: " \
+          "'$script_path_var_value'"
+  fi
+done
 
 # -------------------------------------------------------------------------------------------------
 

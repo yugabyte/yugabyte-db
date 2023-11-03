@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_MASTER_TABLET_SERVICE_H
-#define YB_MASTER_MASTER_TABLET_SERVICE_H
+#pragma once
 
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_tserver.h"
@@ -62,4 +61,3 @@ class MasterTabletServiceImpl : public tserver::TabletServiceImpl {
 
 } // namespace master
 } // namespace yb
-#endif // YB_MASTER_MASTER_TABLET_SERVICE_H

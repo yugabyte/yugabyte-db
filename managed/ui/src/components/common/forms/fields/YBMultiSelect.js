@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { isFunction } from 'lodash';
 import Select, { components } from 'react-select';
 import makeAnimated from 'react-select/animated';
@@ -32,10 +32,10 @@ const colourStyles = {
     backgroundColor: '#E5E5E9',
     borderRadius: '6px',
     padding: '5px 8px',
-    maxWidth: "calc(100% - 10px)",
-    position: "relative",
-    top: "initial",
-    transform: "none",
+    maxWidth: 'calc(100% - 10px)',
+    position: 'relative',
+    top: 'initial',
+    transform: 'none'
   }),
   multiValue: (styles) => ({
     ...styles,
@@ -64,9 +64,9 @@ const colourStyles = {
   }),
   menu: (base) => ({
     ...base,
-    width: "max-content",
-    minWidth: "100%"
-}),
+    width: 'max-content',
+    minWidth: '100%'
+  }),
   dropdownIndicator: (styles) => ({
     ...styles,
     cursor: 'pointer',
@@ -85,11 +85,13 @@ const Control = ({ children, hasValue, menuIsOpen, ...props }) => {
     fontStyle: 'normal',
     fontSize: '14px'
   };
-  const { selectProps: { customLabel} } = props;
+  const {
+    selectProps: { customLabel }
+  } = props;
 
   return (
     <components.Control {...props}>
-      {hasValue && customLabel && <span style={labelStyle}>{customLabel}</span> }
+      {hasValue && customLabel && <span style={labelStyle}>{customLabel}</span>}
       {children}
     </components.Control>
   );
@@ -108,7 +110,7 @@ const MultiValueRemove = (props) => {
 
 const SingleValue = (props) => {
   return <components.SingleValue className="YBSingleValue" {...props} />;
-}
+};
 
 const DropdownIndicator = (props) => {
   const indicatorStyle = {
@@ -150,7 +152,17 @@ const animatedComponents = makeAnimated({
 });
 
 export const YBMultiSelectRedesiged = (props) => {
-  const { options, value, onChange, placeholder, name, className, isMulti = true, customLabel, isClearable = false } = props;
+  const {
+    options,
+    value,
+    onChange,
+    placeholder,
+    name,
+    className,
+    isMulti = true,
+    customLabel,
+    isClearable = false
+  } = props;
   return (
     <Select
       className={className}

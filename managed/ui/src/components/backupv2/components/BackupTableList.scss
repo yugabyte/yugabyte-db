@@ -1,10 +1,10 @@
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
 
 .backup-table-list {
   margin-top: 24px !important;
-  background: $YB_BG_WHITE_3;
+  background: colors.$YB_BG_WHITE_3;
   min-height: 300px;
-  border: 1px solid $YB_LIGHT_GRAY_BORDER;
+  border: 1px solid colors.$YB_LIGHT_GRAY_BORDER;
   border-radius: 8px;
   padding: 16px;
 
@@ -42,6 +42,7 @@
   .inset-table {
     margin-left: 75px;
     margin-top: 15px;
+
     thead th,
     tbody td {
       padding-left: 8px !important;
@@ -71,5 +72,98 @@
     thead {
       border-bottom: 1px solid rgba(0, 0, 0, 0.2);
     }
+  }
+}
+
+.incremental-backup-list {
+  margin-top: 24px;
+  height: 400px;
+  overflow-y: auto;
+}
+
+.incremental-card {
+  border: 1px solid colors.$YB_GRAY_HOVER;
+  background: colors.$YB_BG_WHITE_3;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+
+  .backup-info {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+
+    .backup-type {
+      color: #545454;
+      background: #f1f1f1;
+      padding: 2px 6px;
+      border: 1px solid colors.$YB_GRAY_HOVER;
+      border-radius: 4px;
+      margin-left: 10px;
+      font-style: normal;
+      font-weight: 500;
+      font-size: 11px;
+    }
+
+    .backup-pill {
+      color: colors.$YB_DARKER_GRAY;
+      margin-left: 8px;
+      padding: 2px 6px;
+      border: 1px solid colors.$YB_GRAY_HOVER;
+      border-radius: 4px;
+      font-style: normal;
+      font-weight: 500;
+      font-size: 11px;
+      display: flex;
+      align-items: center;
+    }
+
+    .backup-duration {
+      img {
+        margin-right: 4px;
+      }
+
+      span {
+        margin-top: 1px;
+      }
+    }
+
+    .expand-keyspace-icon {
+      margin-right: 20px;
+      font-size: 20px;
+    }
+  }
+
+  .incremental-backup-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .incremental-backup-action-button {
+    height: 30px;
+    background: #ffffff;
+    border: 1px solid #c8c8c8;
+    border-radius: 6px;
+    font-weight: 500;
+    font-size: 12px;
+    line-height: 15px;
+    padding: 8px 10px;
+  }
+  .incremental-backup-restore-button {
+    width: 136px;
+  }
+
+  .incremental-backup-delete-button {
+    padding: 4px 10px;
+  }
+
+  .break {
+    flex-basis: 100%;
+    height: 0;
   }
 }

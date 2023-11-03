@@ -36,7 +36,7 @@
 
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/casts.h"
 
@@ -80,16 +80,14 @@ EasyCurl::~EasyCurl() {
 Status EasyCurl::FetchURL(const string& url,
                           faststring* buf,
                           int64_t timeout_sec,
-                          const std::vector<std::string>& headers,
-                          const std::string& ca_cert) {
-  return DoRequest(url, boost::none, boost::none, timeout_sec, buf, headers, ca_cert);
+                          const std::vector<std::string>& headers) {
+  return DoRequest(url, boost::none, boost::none, timeout_sec, buf, headers);
 }
 
 Status EasyCurl::PostToURL(
-    const string& url, const string& post_data, faststring* dst, int64_t timeout_sec,
-    const string& ca_cert) {
+    const string& url, const string& post_data, faststring* dst, int64_t timeout_sec) {
   return DoRequest(url, post_data, string("application/x-www-form-urlencoded"), timeout_sec, dst,
-                   {} /* headers */, ca_cert);
+                   {} /* headers */);
 }
 
 Status EasyCurl::PostToURL(
@@ -97,9 +95,8 @@ Status EasyCurl::PostToURL(
     const string& post_data,
     const string& content_type,
     faststring* dst,
-    int64_t timeout_sec,
-    const std::string& ca_cert) {
-  return DoRequest(url, post_data, content_type, timeout_sec, dst, {} /* headers */, ca_cert);
+    int64_t timeout_sec) {
+  return DoRequest(url, post_data, content_type, timeout_sec, dst, {} /* headers */);
 }
 
 string EasyCurl::EscapeString(const string& data) {
@@ -118,8 +115,7 @@ Status EasyCurl::DoRequest(
     const boost::optional<const string>& content_type,
     int64_t timeout_sec,
     faststring* dst,
-    const std::vector<std::string>& headers,
-    const std::string& ca_cert) {
+    const std::vector<std::string>& headers) {
   CHECK_NOTNULL(dst)->clear();
 
   // Add headers if specified.
@@ -140,9 +136,11 @@ Status EasyCurl::DoRequest(
   RETURN_NOT_OK(TranslateError(curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION, WriteCallback)));
   RETURN_NOT_OK(TranslateError(curl_easy_setopt(curl_, CURLOPT_WRITEDATA,
                                                 static_cast<void *>(dst))));
-
-  if (!ca_cert.empty()) {
-    RETURN_NOT_OK(TranslateError(curl_easy_setopt(curl_, CURLOPT_CAINFO, ca_cert.c_str())));
+  if (!ca_cert_.empty()) {
+    RETURN_NOT_OK(TranslateError(curl_easy_setopt(curl_, CURLOPT_CAINFO, ca_cert_.c_str())));
+  }
+  if (follow_redirects_) {
+    RETURN_NOT_OK(TranslateError(curl_easy_setopt(curl_, CURLOPT_FOLLOWLOCATION, 1)));
   }
 
   typedef std::unique_ptr<curl_slist, std::function<void(curl_slist*)>> CurlSlistPtr;

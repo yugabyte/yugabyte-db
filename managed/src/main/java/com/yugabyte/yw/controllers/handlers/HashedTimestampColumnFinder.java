@@ -9,17 +9,15 @@
  */
 package com.yugabyte.yw.controllers.handlers;
 
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static com.yugabyte.yw.common.TableSpaceStructures.HashedTimestampColumnFinderResponse;
 import static com.yugabyte.yw.common.TableSpaceStructures.QueryUniverseDBListResponse;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -28,9 +26,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import javax.inject.Inject;
+import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
+@Singleton
 public class HashedTimestampColumnFinder {
 
   private NodeUniverseManager nodeUniverseManager;
@@ -114,7 +114,7 @@ public class HashedTimestampColumnFinder {
         log.trace(
             "Hashed timestamp indexes for node {}, database {}: {} -- json: {}, json length: {}",
             randomTServer.nodeName,
-            dbname.datname,
+            CommonUtils.logTableName(dbname.datname),
             response.message,
             responseJSON,
             responseJSON.length());
@@ -129,7 +129,7 @@ public class HashedTimestampColumnFinder {
             "Final JSON responses: current_database: {}, "
                 + "table_name: {}, index_name: {}, index_command: {}, description: {}",
             res.currentDatabase,
-            res.tableName,
+            CommonUtils.logTableName(res.tableName),
             res.indexName,
             res.indexCommand,
             res.description);

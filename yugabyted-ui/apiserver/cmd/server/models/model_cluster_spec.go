@@ -10,10 +10,6 @@ type ClusterSpec struct {
 
     ClusterInfo ClusterInfo `json:"cluster_info"`
 
-    NetworkInfo Networking `json:"network_info"`
-
-    SoftwareInfo SoftwareInfo `json:"software_info"`
-
     ClusterRegionInfo *[]ClusterRegionInfo `json:"cluster_region_info"`
 
     EncryptionInfo EncryptionInfo `json:"encryption_info"`

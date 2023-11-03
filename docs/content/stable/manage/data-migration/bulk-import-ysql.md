@@ -1,5 +1,5 @@
 ---
-title: Bulk import
+title: Bulk import YSQL
 headerTitle: Bulk import for YSQL
 linkTitle: Bulk import
 description: Import data from PostgreSQL into YugabyteDB for YSQL.
@@ -79,7 +79,7 @@ While loading data that is exported from another RDBMS, the source data set may 
 ## Import PostgreSQL data
 
 {{< tip title="Migrate using YugabyteDB Voyager" >}}
-To automate your migration from PostgreSQL to YugabyteDB, use [YugabyteDB Voyager](../../../migrate/). To learn more, refer to the [import schema](../../../migrate/migrate-steps/#import-schema) and [import data](../../../migrate/migrate-steps/#import-data) steps.
+To automate your migration from PostgreSQL to YugabyteDB, use [YugabyteDB Voyager](/preview/yugabyte-voyager/). To learn more, refer to the [import schema](/preview/yugabyte-voyager/migrate/migrate-steps/#import-schema) and [import data](/preview/yugabyte-voyager/migrate/migrate-steps/#import-data) steps.
 {{< /tip >}}
 
 ### Import data from CSV files
@@ -89,16 +89,16 @@ To import data that was previously exported into CSV files, use the `COPY FROM` 
 ```sql
 COPY <table_name>
     FROM '<table_name>.csv'
-    WITH (FORMAT CSV DELIMITER ',', HEADER, ROWS_PER_TRANSACTION 1000, DISABLE_FK_CHECK);
+    WITH (FORMAT CSV DELIMITER ',', HEADER, DISABLE_FK_CHECK);
 ```
 
-In the command above, the `ROWS_PER_TRANSACTION` parameter splits the load into smaller transactions (1000 rows each in this example), instead of running a single transaction spawning across all the data in the file. Additionally, the `DISABLE_FK_CHECK` parameter skips the foreign key checks for the duration of the import process.
+In the command above, the `DISABLE_FK_CHECK` parameter skips the foreign key checks for the duration of the import process. Providing `DISABLE_FK_CHECK` parameter is recommended for the initial import of the data, especially for large tables, because it reduces the total time required to import the data.
 
-Both `ROWS_PER_TRANSACTION` and `DISABLE_FK_CHECK` parameters are recommended for the initial import of the data, especially for large tables, because they significantly reduce the total time required to import the data. You can import multiple files in a single `COPY` command to further speed up the process. Following is a sample example:
+To further speed up the process, you can import multiple files in a single COPY command. Following is a sample example:
 
 ```sql
 yugabyte=# \! ls t*.txt
-t1.txt	t2.txt	t3.txt
+t1.txt t2.txt t3.txt
 ```
 
 ```output
@@ -132,7 +132,7 @@ yugabyte=# SELECT * FROM t;
 ```
 
 ```sql
-yugabyte=# COPY t FROM PROGRAM 'cat /home/yugabyte/t*.txt' WITH (FORMAT CSV, DELIMITER ',', ROWS_PER_TRANSACTION 1000, DISABLE_FK_CHECK);
+yugabyte=# COPY t FROM PROGRAM 'cat /home/yugabyte/t*.txt' WITH (FORMAT CSV, DELIMITER ',', DISABLE_FK_CHECK);
 COPY 3
 ```
 
@@ -153,14 +153,14 @@ For detailed information on the COPY FROM command, refer to the [COPY](../../../
 
 #### Error handling
 
-If the `COPY FROM` command fails during the process, you should try rerunning it. However, you don’t have to rerun the entire file. `COPY FROM` imports data into rows individually, starting from the top of the file. So if you know that some of the rows have been successfully imported prior to the failure, you can safely ignore those rows by adding the `SKIP` parameter.
+If the `COPY FROM` command fails during the process, you should try rerunning it. However, you don't have to rerun the entire file. `COPY FROM` imports data into rows individually, starting from the top of the file. So if you know that some of the rows have been successfully imported prior to the failure, you can safely ignore those rows by adding the `SKIP` parameter.
 
 For example, to skip the first 5000 rows in a file, run the command as follows:
 
 ```sql
 COPY <table_name>
     FROM '<table_name>.csv'
-    WITH (FORMAT CSV DELIMITER ',', HEADER, ROWS_PER_TRANSACTION 1000, DISABLE_FK_CHECK, SKIP 5000);
+    WITH (FORMAT CSV DELIMITER ',', HEADER, DISABLE_FK_CHECK, SKIP 5000);
 ```
 
 ### Import data from SQL script
@@ -188,40 +188,40 @@ Following are some steps that can be verified to ensure that the migration was s
 
 ### Verify row counts for tables
 
-Run a `COUNT(*)` command to verify that the total number of rows match between the source database and YugabyteDB. This can be done as shown below using a PLPGSQL function.
+Run a `COUNT(*)` command to verify that the total number of rows match between the source database and YugabyteDB.
 
-**Step 1.** Create the following function to print the number of rows in a single table.
+Use a PLPGSQL function to do the following:
 
-```sql
-create function
-cnt_rows(schema text, tablename text) returns integer
-as
-$body$
-declare
-  result integer;
-  query varchar;
-begin
-  query := 'SELECT count(1) FROM ' || schema || '.' || tablename;
-  execute query into result;
-  return result;
-end;
-$body$
-language plpgsql;
-```
+1. Create the following function to print the number of rows in a single table:
 
-**Step 2.** Run the following command to print the sizes of all tables in the database.
+    ```sql
+    create function
+    cnt_rows(schema text, tablename text) returns integer
+    as
+    $body$
+    declare
+      result integer;
+      query varchar;
+    begin
+      query := 'SELECT count(1) FROM ' || schema || '.' || tablename;
+      execute query into result;
+      return result;
+    end;
+    $body$
+    language plpgsql;
+    ```
 
-```sql
-SELECT cnt_rows(table_schema, table_name)
-    FROM information_schema.tables
-    WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
-    AND table_type='BASE TABLE'
-    ORDER BY 3 DESC;
-```
+1. Run the following command to print the sizes of all tables in the database.
 
-#### Example
+    ```sql
+    SELECT cnt_rows(table_schema, table_name)
+        FROM information_schema.tables
+        WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+        AND table_type='BASE TABLE'
+        ORDER BY 3 DESC;
+    ```
 
-Following is an example illustrating the output of running the previous example on the [Northwind](../../../sample-data/northwind/#about-the-northwind-sample-database) database.
+The following example shows the output of running the previous example on the [Northwind](../../../sample-data/northwind/#about-the-northwind-sample-database) database.
 
 ```sql
 example=# SELECT cnt_rows(table_schema, table_name)
@@ -250,3 +250,57 @@ example=# SELECT cnt_rows(table_schema, table_name)
  public       | customer_demographics  |        0
 (14 rows)
 ```
+
+#### Timeouts
+
+The `COUNT(*)` query may time out in case of large tables. The following two options are recommended for such use cases:
+
+**Option 1**: Create a function and execute the query using the function which uses an implicit cursor.
+
+```sql
+CREATE OR REPLACE FUNCTION row_count(tbl regclass)
+    RETURNS setof int AS
+$func$
+DECLARE
+    _id int;
+BEGIN
+    FOR _id IN
+        EXECUTE 'SELECT 1 FROM ' || tbl
+    LOOP
+        RETURN NEXT _id;
+    END LOOP;
+END
+$func$ LANGUAGE plpgsql;
+```
+
+In this case, the query would be:
+
+```sql
+select count(*) from row_count('tablename');
+```
+
+This query may take some time to complete. You can increase the client-side timeout to something higher, such as 10 minutes, using the YB-TServer flag `--client_read_write_timeout_ms=600000`.
+
+The following example is another workaround for running `COUNT(*)` in ysqlsh:
+
+```sql
+create table test (id int primary key, fname text);
+insert into test select i, 'jon' || i from generate_series(1, 1000000) as i;
+create table dual (test int);
+insert into dual values (1);
+explain select count(*) from test cross join dual;
+```
+
+```output
+                                QUERY PLAN
+---------------------------------------------------------------------------
+ Aggregate  (cost=15202.50..15202.51 rows=1 width=8)
+   ->  Nested Loop  (cost=0.00..12702.50 rows=1000000 width=0)
+         ->  Seq Scan on test  (cost=0.00..100.00 rows=1000 width=0)
+         ->  Materialize  (cost=0.00..105.00 rows=1000 width=0)
+               ->  Seq Scan on dual  (cost=0.00..100.00 rows=1000 width=0)
+```
+
+**Option 2**: Use [`yb_hash_code()`](../../../api/ysql/exprs/func_yb_hash_code/) to run different queries that work on different parts of the table and control the parallelism at the application level.
+
+Refer to [Distributed parallel queries](../../../api/ysql/exprs/func_yb_hash_code/#distributed-parallel-queries) for additional information on running `COUNT(*)` on tables using `yb_hash_code()`.

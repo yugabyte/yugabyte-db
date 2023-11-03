@@ -72,6 +72,9 @@
 #include "include/hypopg.h"
 #include "include/hypopg_index.h"
 
+/* YB includes. */
+#include "pg_yb_utils.h"
+
 #if PG_VERSION_NUM >= 90600
 /* this will be updated, when needed, by hypo_discover_am */
 static Oid	BLOOM_AM_OID = InvalidOid;
@@ -154,6 +157,8 @@ hypo_newIndex(Oid relid, char *accessMethod, int nkeycolumns, int ninccolumns,
 	entry = palloc0(sizeof(hypoIndex));
 
 	entry->relam = oid;
+	if (!IsYBRelationById(relid))
+		elog(ERROR, "hypothetical index is not supported on temp table");
 
 #if PG_VERSION_NUM >= 90600
 
@@ -262,6 +267,7 @@ hypo_newIndex(Oid relid, char *accessMethod, int nkeycolumns, int ninccolumns,
 			 * changed the disk space allocation.
 			 */
 			 && entry->relam != HASH_AM_OID
+			 && entry->relam != LSM_AM_OID
 #endif
 			)
 		{
@@ -346,7 +352,25 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 				ninccolumns;
 	ListCell   *lc;
 	int			attn;
+	char	   *accessMethod;
+	bool		is_colocated = false;
+	Oid			tablegroupId = InvalidOid;
 
+	accessMethod = node->accessMethod;
+	/*
+	 * When access method is absent (missing access_method_clause in gram.y),
+	 * use LSM.
+	 */
+	if (accessMethod == NULL)
+		accessMethod = "lsm";
+	/*
+	 * This mirrors the transformation done in yugabyte db for btree and hash
+	 * access methods.
+	 */
+	else if (strcmp(accessMethod, "btree") == 0)
+		accessMethod = "lsm";
+	else if (strcmp(accessMethod, "hash") == 0)
+		accessMethod = "lsm";
 	/*
 	 * Support for hypothetical BRIN indexes is broken in some minor versions
 	 * of pg10, pg11 and pg12.  For simplicity, check PG_VERSION_NUM rather
@@ -357,7 +381,7 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 #if ((PG_VERSION_NUM >= 100000 && PG_VERSION_NUM < 100012) || \
 	(PG_VERSION_NUM >= 110000 && PG_VERSION_NUM < 110007) || \
 	(PG_VERSION_NUM >= 120000 && PG_VERSION_NUM < 120002))
-	if (get_am_oid(node->accessMethod, true) == BRIN_AM_OID)
+	if (get_am_oid(accessMethod, true) == BRIN_AM_OID)
 	{
 		elog(ERROR, "hypopg: BRIN hypothetical indexes are only supported"
 				" with PostgreSQL "
@@ -424,7 +448,7 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 			 INDEX_MAX_KEYS);
 
 	initStringInfo(&indexRelationName);
-	appendStringInfo(&indexRelationName, "%s", node->accessMethod);
+	appendStringInfo(&indexRelationName, "%s", accessMethod);
 	appendStringInfo(&indexRelationName, "_");
 
 	if (node->relation->schemaname != NULL &&
@@ -437,7 +461,7 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 	appendStringInfo(&indexRelationName, "%s", node->relation->relname);
 
 	/* now create the hypothetical index entry */
-	entry = hypo_newIndex(relid, node->accessMethod, nkeycolumns, ninccolumns,
+	entry = hypo_newIndex(relid, accessMethod, nkeycolumns, ninccolumns,
 						  node->options);
 
 	PG_TRY();
@@ -449,19 +473,19 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("hypopg: access method \"%s\" does not support unique indexes",
-							node->accessMethod)));
+							accessMethod)));
 		if (nkeycolumns > 1 && !entry->amcanmulticol)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("hypopg: access method \"%s\" does not support multicolumn indexes",
-							node->accessMethod)));
+							accessMethod)));
 
 #if PG_VERSION_NUM >= 110000
 		if (node-> indexIncludingParams != NIL && !entry->amcaninclude)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("hypopg: access method \"%s\" does not support included columns",
-							node->accessMethod)));
+							accessMethod)));
 #endif
 
 		entry->unique = node->unique;
@@ -638,12 +662,12 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 #if PG_VERSION_NUM < 100000
 			opclass = GetIndexOpClass(attribute->opclass,
 									  atttype,
-									  node->accessMethod,
+									  accessMethod,
 									  entry->relam);
 #else
 			opclass = ResolveOpClass(attribute->opclass,
 									  atttype,
-									  node->accessMethod,
+									  accessMethod,
 									  entry->relam);
 #endif
 			entry->opclass[attn] = opclass;
@@ -683,13 +707,35 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 				 * only be used with GiST am, which cannot do IOS prior pg 9.5
 				 */
 				entry->canreturn = hypo_can_return(entry, atttype, 0,
-												   node->accessMethod);
+												   accessMethod);
 			}
 #else
 			/* per-column IOS information */
 			entry->canreturn[attn] = hypo_can_return(entry, atttype, attn,
-													 node->accessMethod);
+													 accessMethod);
 #endif
+			/*
+			 * We assume the index has the colocation status of the table.
+			 * That is, table and index would both be colocated or,
+			 * they would both be not colocated.
+			 */
+			if (IsYBRelationById(relid))
+			{
+				YbTableProperties yb_props = YbGetTablePropertiesById(relid);
+
+				is_colocated    = yb_props->is_colocated;
+				tablegroupId    = yb_props->tablegroup_oid;
+			}
+			if (attribute->ordering == SORTBY_HASH)
+				entry->nhashcolumns++;
+			/*
+			 * In Yugabyte, use HASH as the default for the first column of
+			 * non-colocated tables
+			 */
+			else if (attn == 0 &&
+				attribute->ordering == SORTBY_DEFAULT &&
+				!is_colocated && tablegroupId == InvalidOid)
+				entry->nhashcolumns++;
 
 			attn++;
 		}
@@ -778,7 +824,7 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 
 			/* per-column IOS information */
 			entry->canreturn[attn] = hypo_can_return(entry, atttype, attn,
-													 node->accessMethod);
+													 accessMethod);
 
 			attn++;
 		}
@@ -1013,21 +1059,17 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 #endif
 
 	index->indexkeys = (int *) palloc(sizeof(int) * ncolumns);
-	index->indexcollations = (Oid *) palloc(sizeof(int) * ncolumns);
-	index->opfamily = (Oid *) palloc(sizeof(int) * ncolumns);
-	index->opcintype = (Oid *) palloc(sizeof(int) * ncolumns);
-
-#if PG_VERSION_NUM >= 90500
-	index->canreturn = (bool *) palloc(sizeof(bool) * ncolumns);
-#endif
+	index->indexcollations = (Oid *) palloc(sizeof(int) * nkeycolumns);
+	index->opfamily = (Oid *) palloc(sizeof(int) * nkeycolumns);
+	index->opcintype = (Oid *) palloc(sizeof(int) * nkeycolumns);
 
 	if ((index->relam == BTREE_AM_OID) || entry->amcanorder)
 	{
 		if (index->relam != BTREE_AM_OID)
-			index->sortopfamily = palloc0(sizeof(Oid) * ncolumns);
+			index->sortopfamily = palloc0(sizeof(Oid) * nkeycolumns);
 
-		index->reverse_sort = (bool *) palloc(sizeof(bool) * ncolumns);
-		index->nulls_first = (bool *) palloc(sizeof(bool) * ncolumns);
+		index->reverse_sort = (bool *) palloc(sizeof(bool) * nkeycolumns);
+		index->nulls_first = (bool *) palloc(sizeof(bool) * nkeycolumns);
 	}
 	else
 	{
@@ -1035,6 +1077,10 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 		index->reverse_sort = NULL;
 		index->nulls_first = NULL;
 	}
+
+#if PG_VERSION_NUM >= 90500
+	index->canreturn = (bool *) palloc(sizeof(bool) * ncolumns);
+#endif
 
 	for (i = 0; i < ncolumns; i++)
 	{
@@ -1046,9 +1092,9 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 
 	for (i = 0; i < nkeycolumns; i++)
 	{
+		index->indexcollations[i] = entry->indexcollations[i];
 		index->opfamily[i] = entry->opfamily[i];
 		index->opcintype[i] = entry->opcintype[i];
-		index->indexcollations[i] = entry->indexcollations[i];
 	}
 
 	/*
@@ -1064,7 +1110,7 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 		 */
 		index->sortopfamily = index->opfamily;
 
-		for (i = 0; i < ncolumns; i++)
+		for (i = 0; i < nkeycolumns; i++)
 		{
 			index->reverse_sort[i] = entry->reverse_sort[i];
 			index->nulls_first[i] = entry->nulls_first[i];
@@ -1074,7 +1120,7 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 	{
 		if (entry->sortopfamily)
 		{
-			for (i = 0; i < ncolumns; i++)
+			for (i = 0; i < nkeycolumns; i++)
 			{
 				index->sortopfamily[i] = entry->sortopfamily[i];
 				index->reverse_sort[i] = entry->reverse_sort[i];
@@ -1135,6 +1181,7 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 	 * hypothetical indexes *ONLY* in an explain-no-analyze command.
 	 */
 	index->hypothetical = true;
+	index->nhashcolumns = entry->nhashcolumns;
 
 	/* add our hypothetical index in the relation's indexlist */
 	rel->indexlist = lcons(index, rel->indexlist);
@@ -1973,6 +2020,9 @@ hypo_estimate_index(hypoIndex * entry, RelOptInfo *rel)
 	entry->pages = num_buckets + num_overflow + num_bitmap + 1;
 	}
 #endif
+	/* pages and tree_height don't apply to LSM index. */
+	else if (entry->relam == LSM_AM_OID)
+		;
 	else
 	{
 		/* we shouldn't raise this error */
@@ -2067,7 +2117,14 @@ hypo_can_return(hypoIndex * entry, Oid atttype, int i, char *amname)
 	switch (entry->relam)
 	{
 		case BTREE_AM_OID:
-			/* btree always support Index-Only scan */
+			/*
+			 * btree always support Index-Only scan
+			 */
+		case LSM_AM_OID:
+			/*
+			 * lsm supports Index-Only scan.
+			 * This aligns with ybcincanreturn() for non-primary index
+			 */
 			return true;
 			break;
 		case GIST_AM_OID:

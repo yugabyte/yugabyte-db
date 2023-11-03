@@ -64,7 +64,7 @@
       /* 4.3BSD-style crontab */
 #define SYSCRONTAB  "/etc/crontab"
 #ifdef DEBIAN
-                        /* where package specific crontabs live */ 
+                        /* where package specific crontabs live */
 #define SYSCRONDIR      "/etc/cron.d"
 #endif
       /* what editor to use if no EDITOR or VISUAL
@@ -106,6 +106,6 @@
 #ifndef SPOOL_DIR_GROUP
       /* Chown SPOOL_DIR to this group (needed by Debian's
        * SGID crontab feature)
-       */ 
+       */
 #define SPOOL_DIR_GROUP "crontab"
 #endif

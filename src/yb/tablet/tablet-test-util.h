@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TABLET_TABLET_TEST_UTIL_H
-#define YB_TABLET_TABLET_TEST_UTIL_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -105,13 +104,11 @@ class YBTabletTest : public YBTest {
 };
 
 Status IterateToStringList(
-    docdb::YQLRowwiseIteratorIf* iter, std::vector<std::string>* out, int limit = INT_MAX);
+    docdb::YQLRowwiseIteratorIf* iter, const Schema& schema, std::vector<std::string>* out,
+    int limit = INT_MAX);
 
 // Dump all of the rows of the tablet into the given vector.
-Status DumpTablet(
-    const Tablet& tablet, const Schema& projection, std::vector<std::string>* out);
+Status DumpTablet(const Tablet& tablet, std::vector<std::string>* out);
 
 } // namespace tablet
 } // namespace yb
-
-#endif // YB_TABLET_TABLET_TEST_UTIL_H

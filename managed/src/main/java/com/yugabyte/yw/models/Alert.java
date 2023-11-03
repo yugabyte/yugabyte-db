@@ -53,6 +53,8 @@ import org.apache.commons.lang3.StringUtils;
 @ApiModel(description = "Alert definition. Used to send an alert notification.")
 public class Alert extends Model implements AlertLabelsProvider {
 
+  private static final String MESSAGE_ANNOTATION = "message";
+
   public enum State {
     ACTIVE("firing", true),
     ACKNOWLEDGED("acknowledged", true),
@@ -116,16 +118,25 @@ public class Alert extends Model implements AlertLabelsProvider {
 
   @NotNull
   @Column(nullable = false)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
-  @ApiModelProperty(value = "Alert creation timestamp", accessMode = READ_ONLY)
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  @ApiModelProperty(
+      value = "Alert creation timestamp",
+      accessMode = READ_ONLY,
+      example = "2022-12-12T13:07:18Z")
   private Date createTime = nowWithoutMillis();
 
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
-  @ApiModelProperty(value = "Timestamp at which the alert was acknowledged", accessMode = READ_ONLY)
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  @ApiModelProperty(
+      value = "Timestamp at which the alert was acknowledged",
+      accessMode = READ_ONLY,
+      example = "2022-12-12T13:07:18Z")
   private Date acknowledgedTime;
 
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
-  @ApiModelProperty(value = "Timestamp at which the alert was resolved", accessMode = READ_ONLY)
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  @ApiModelProperty(
+      value = "Timestamp at which the alert was resolved",
+      accessMode = READ_ONLY,
+      example = "2022-12-12T13:07:18Z")
   private Date resolvedTime;
 
   @NotNull
@@ -185,18 +196,25 @@ public class Alert extends Model implements AlertLabelsProvider {
   private UUID configurationUuid;
 
   @NotNull
+  @Enumerated(EnumType.STRING)
   @ApiModelProperty(value = "Alert configuration type", accessMode = READ_ONLY)
   private AlertConfiguration.TargetType configurationType;
 
   @OneToMany(mappedBy = "alert", cascade = CascadeType.ALL, orphanRemoval = true)
   private List<AlertLabel> labels;
 
-  @ApiModelProperty(value = "Time of the last notification attempt", accessMode = READ_ONLY)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
+  @ApiModelProperty(
+      value = "Time of the last notification attempt",
+      accessMode = READ_ONLY,
+      example = "2022-12-12T13:07:18Z")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   private Date notificationAttemptTime;
 
-  @ApiModelProperty(value = "Time of the next notification attempt", accessMode = READ_ONLY)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
+  @ApiModelProperty(
+      value = "Time of the next notification attempt",
+      accessMode = READ_ONLY,
+      example = "2022-12-12T13:07:18Z")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   private Date nextNotificationTime = nowWithoutMillis();
 
   @ApiModelProperty(value = "Count of failures to send a notification", accessMode = READ_ONLY)
@@ -230,16 +248,23 @@ public class Alert extends Model implements AlertLabelsProvider {
   }
 
   public String getLabelValue(String name) {
-    // TODO Remove once notifications sent through AlertManager
-    if (KnownAlertLabels.ALERT_STATE.labelName().equals(name)) {
-      return state.getAction();
-    }
-    return labels
-        .stream()
+    return labels.stream()
         .filter(label -> name.equals(label.getName()))
         .map(AlertLabel::getValue)
         .findFirst()
         .orElse(null);
+  }
+
+  @Override
+  public String getAnnotationValue(String name) {
+    if (name.equals(MESSAGE_ANNOTATION)) {
+      if (state != State.RESOLVED) {
+        return message;
+      } else {
+        return StringUtils.EMPTY;
+      }
+    }
+    return null;
   }
 
   public Alert setLabel(KnownAlertLabels label, String value) {
@@ -259,8 +284,7 @@ public class Alert extends Model implements AlertLabelsProvider {
   }
 
   public List<AlertLabel> getLabels() {
-    return labels
-        .stream()
+    return labels.stream()
         .sorted(Comparator.comparing(AlertLabel::getName))
         .collect(Collectors.toList());
   }

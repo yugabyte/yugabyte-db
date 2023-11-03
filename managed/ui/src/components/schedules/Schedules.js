@@ -1,4 +1,4 @@
-import React, { Component, Fragment } from 'react';
+import { Component, Fragment } from 'react';
 import { YBPanelItem } from '../panels';
 import { Row, Col, Alert, DropdownButton, MenuItem } from 'react-bootstrap';
 import { getPromiseState } from '../../utils/PromiseUtils';
@@ -69,15 +69,15 @@ class ScheduleDisplayItem extends Component {
     } else {
       console.error(`Unknown task type: ${schedule.taskType}`);
       taskType = 'Unknown';
-      keyspace = (schedule.taskParams && schedule.taskParams.keyspace) || 'N/A';
-      tableDetails = (schedule.taskParams && schedule.taskParams.tableName) || 'N/A';
+      keyspace = schedule.taskParams?.keyspace || 'N/A';
+      tableDetails = schedule.taskParams?.tableName || 'N/A';
     }
 
     const retentionTime =
       !schedule.taskParams.timeBeforeDelete || schedule.taskParams.timeBeforeDelete === 0
         ? 'Unlimited'
         : moment.duration(schedule.taskParams.timeBeforeDelete).humanize();
-    
+
     // Assign YSQl or YCQL backup type to distinguish between backups.
     switch (schedule?.taskParams?.backupType) {
       case 'YQL_TABLE_TYPE':
@@ -121,7 +121,7 @@ class ScheduleDisplayItem extends Component {
             <DescriptionItem title={'Schedule (UTC)'}>
               <span>{schedule.frequency || schedule.cronExpression}</span>
             </DescriptionItem>
-            <DescriptionItem title='Backup Type'>
+            <DescriptionItem title="Backup Type">
               <span>{backupType}</span>
             </DescriptionItem>
             <DescriptionItem title={'Encrypt Backup'}>
@@ -197,7 +197,10 @@ class Schedules extends Component {
       getPromiseState(universeList).isSuccess()
     ) {
       const filteredSchedules = schedules.data.filter((item) => {
-        return item.taskParams.universeUUID === currentUniverse.data.universeUUID && item.taskType !== 'ExternalScript';
+        return (
+          item.taskParams.universeUUID === currentUniverse.data.universeUUID &&
+          item.taskType !== 'ExternalScript'
+        );
       });
       if (filteredSchedules.length) {
         schedulesList = filteredSchedules.map((scheduleItem, idx) => {
@@ -233,14 +236,14 @@ class Schedules extends Component {
               <div className="pull-right">
                 {isAvailable(currentCustomer.data.features, 'universes.backup') && (
                   <div className="backup-action-btn-group">
-                    {!universePaused &&
+                    {!universePaused && (
                       <TableAction
                         className="table-action"
                         btnClass={'btn-orange'}
                         actionType="create-scheduled-backup"
                         isMenuItem={false}
                       />
-                    }
+                    )}
                   </div>
                 )}
               </div>
@@ -261,12 +264,12 @@ class Schedules extends Component {
                 {this.state.scheduleUUID}
                 {getPromiseState(deleteSchedule).isError() &&
                   isNonEmptyObject(deleteSchedule.error) && (
-                  <Alert bsStyle={'danger'} variant={'danger'}>
-                    Schedule deleting went wrong:
-                    <br />
-                    {JSON.stringify(deleteSchedule.error)}
-                  </Alert>
-                )}
+                    <Alert bsStyle={'danger'} variant={'danger'}>
+                      Schedule deleting went wrong:
+                      <br />
+                      {JSON.stringify(deleteSchedule.error)}
+                    </Alert>
+                  )}
               </YBModalForm>
               <Row>{schedulesList}</Row>
             </Fragment>

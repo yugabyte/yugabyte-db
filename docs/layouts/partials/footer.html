@@ -1,62 +1,37 @@
-{{ $links := .Site.Params.links }}
-<footer class="row d-print-none">
-  <div class="container">
-    <div class="row">
-      <div class="footer_top">
-        <div class="col-6 col-sm-4 text-xs-center order-sm-2">
-          {{- if .Site.Params.yb.footer_logo.path }}
-            {{ if .Site.Params.yb.footer_logo.url }}
-              <a href="{{ .Site.Params.yb.footer_logo.url }}"{{- if .Site.Params.yb.footer_logo.title }} title="{{ .Site.Params.yb.footer_logo.title }}"{{- end }}{{- if .Site.Params.yb.footer_logo.newTab }} target="_blank" rel="noopener"{{- end }}>
-            {{- end}}
+<footer>
+  <div class="footer-top">
+    {{- if .Site.Params.yb.footer_logo.path -}}
+      {{- if .Site.Params.yb.footer_logo.url -}}
+        <a href="{{ .Site.Params.yb.footer_logo.url }}"{{- if .Site.Params.yb.footer_logo.title }} title="{{ .Site.Params.yb.footer_logo.title }}"{{- end }}{{- if .Site.Params.yb.footer_logo.newTab }} target="_blank" rel="noopener"{{- end }}>
+      {{- end -}}
 
-            <img src="{{ .Site.Params.yb.footer_logo.path }}" alt="Yugabyte logo" title="Yugabyte logo" class="nav-logo">
+      <img src="{{ .Site.Params.yb.footer_logo.path }}" alt="YugabyteDB" title="YugabyteDB" width="184" height="34">
 
-            {{ if .Site.Params.yb.footer_logo.url }}
-              </a>
-            {{- end}}
-          {{- end}}
+      {{- if .Site.Params.yb.footer_logo.url -}}
+        </a>
+      {{- end -}}
+    {{- end -}}
 
-          {{ with $links }}
-          {{ with index . "user"}}
-          {{ template "footer-links-block"  . }}
-          {{ end }}
-          {{ end }}
-        </div>
-
-        <div class="text-right text-xs-center order-sm-3">
-          {{ with $links }}
-          {{ with index . "developer"}}
-          {{ template "footer-links-block"  . }}
-          {{ end }}
-          {{ end }}
-        </div>
+    {{- if .Site.Params.links.developer -}}
+      <div class="footer-socials">
+        {{- range .Site.Params.links.developer -}}
+          <a target="_blank" rel="noopener" href="{{ .url }}" aria-label="{{ .name }}" title="{{ .name }}"><i class="{{ .icon }}"></i></a>
+        {{- end -}}
       </div>
-      <div class="col-12 py-2 order-sm-2 footer-bottom">
-        {{ with .Site.Params.copyright }}
-          <small>&copy; {{ now.Year}} {{ .}} {{ T "footer_all_rights_reserved" }}</small>
-        {{ end }}
-        {{ with .Site.Params.privacy_policy }}
-          <small class="ml-1"><a href="{{ . }}" target="_blank" rel="noopener" class="text-white">{{ T "footer_privacy_policy" }}</a></small>
-        {{ end }}
-        {{ with .Site.Params.yb.terms_of_service }}
-          <small class="ml-1"><a href="{{ . }}" target="_blank" rel="noopener" class="text-white">Terms of Service</a></small>
-        {{ end }}
+    {{- end -}}
+  </div>
+  <div class="footer-bottom">
+    {{- with .Site.Params.copyright -}}
+      <span>&copy; {{ now.Year }} {{ .}} {{ T "footer_all_rights_reserved" }}</span>
+    {{- end -}}
 
-        {{ if not .Site.Params.ui.footer_about_disable }}
-          {{ with .Site.GetPage "about" }}<p class="mt-2"><a href="{{ .RelPermalink }}">{{ .Title }}</a></p>{{ end }}
-        {{ end }}
-      </div>
-    </div>
+    {{- with .Site.Params.privacy_policy -}}
+      <a href="{{ . }}" target="_blank" rel="noopener">{{ T "footer_privacy_policy" }}</a>
+    {{- end -}}
+
+    {{- with .Site.Params.yb.terms_of_service -}}
+      <span> | </span>
+      <a href="{{ . }}" target="_blank" rel="noopener">Terms of Service</a>
+    {{- end -}}
   </div>
 </footer>
-{{ define "footer-links-block" }}
-<ul class="list-inline mb-0 social-icons">
-  {{ range . }}
-  <li class="list-inline-item h3" data-toggle="tooltip" data-placement="top" title="{{ .name }}" aria-label="{{ .name }}">
-    <a class="social text-white" target="_blank" rel="noopener" href="{{ .url }}" aria-label="{{ .name }}">
-      <i class="{{ .icon }}"></i>
-    </a>
-  </li>
-  {{ end }}
-</ul>
-{{ end }}

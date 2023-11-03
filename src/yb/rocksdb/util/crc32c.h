@@ -20,8 +20,6 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
-#ifndef ROCKSDB_UTIL_CRC32C_H
-#define ROCKSDB_UTIL_CRC32C_H
 
 #pragma once
 #include <stddef.h>
@@ -70,5 +68,3 @@ inline uint32_t Unmask(uint32_t masked_crc) {
 
 }  // namespace crc32c
 }  // namespace rocksdb
-
-#endif // ROCKSDB_UTIL_CRC32C_H

@@ -1,5 +1,5 @@
 import { Field } from 'formik';
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { YBModalForm } from '../../common/forms';
 import { YBControlledSelectWithLabel, YBFormInput, YBToggle } from '../../common/forms/fields';
@@ -8,15 +8,21 @@ import * as Yup from 'yup';
 
 import './AddDestinationChannelForm.scss';
 
+const WebHookAuthTypesList = ['None', 'Basic', 'Token'];
+
 export const AddDestinationChannelForm = (props) => {
-  const { customer, visible, onHide, onError, defaultChannel } = props;
+  const { customer, visible, onHide, onError, defaultChannel, enableNotificationTemplates } = props;
   const [channelType, setChannelType] = useState(defaultChannel);
-  const [customSMTP, setCustomSMTP] = useState(props.customSmtp ? props.customSmtp : false);
+  const [defaultSMTP, setDefaultSMTP] = useState(props.defaultSmtp ? props.defaultSmtp : false);
   const [defaultRecipients, setDefaultRecipients] = useState(
     props.defaultRecipients ? props.defaultRecipients : false
   );
-  const isReadOnly = isNonAvailable(
-    customer.data.features, 'alert.channels.actions');
+
+  const [webhookAuthType, setWebhookAuthType] = useState(
+    props.editValues?.webhookAuthType ?? WebHookAuthTypesList[0]
+  );
+
+  const isReadOnly = isNonAvailable(customer.data.features, 'alert.channels.actions');
 
   const channelTypeList = [
     <option key={1} value="email">
@@ -37,7 +43,7 @@ export const AddDestinationChannelForm = (props) => {
    */
   const onModalHide = () => {
     setChannelType(defaultChannel);
-    setCustomSMTP(false);
+    setDefaultSMTP(false);
     setDefaultRecipients(false);
     onHide();
   };
@@ -51,6 +57,9 @@ export const AddDestinationChannelForm = (props) => {
       name: '',
       params: {}
     };
+
+    payload['params']['titleTemplate'] = values['notificationTitle'];
+    payload['params']['textTemplate'] = values['notificationText'];
 
     switch (values.CHANNEL_TYPE) {
       case 'slack':
@@ -67,7 +76,7 @@ export const AddDestinationChannelForm = (props) => {
         } else {
           payload['params']['defaultRecipients'] = true;
         }
-        if (customSMTP) {
+        if (!defaultSMTP) {
           payload['params']['smtpData'] = values.smtpData;
           payload['params']['smtpData']['useSSL'] = values.smtpData.useSSL || false;
           payload['params']['smtpData']['useTLS'] = values.smtpData.useTLS || false;
@@ -81,11 +90,28 @@ export const AddDestinationChannelForm = (props) => {
         payload['params']['apiKey'] = values.apiKey;
         payload['params']['routingKey'] = values.routingKey;
         break;
-      case 'webhook':
+      case 'webhook': {
         payload['name'] = values['webHook_name'];
         payload['params']['channelType'] = 'WebHook';
         payload['params']['webhookUrl'] = values.webhookURL;
+
+        const httpAuth = {
+          type: webhookAuthType.toUpperCase()
+        };
+
+        if (webhookAuthType === 'Basic') {
+          httpAuth['username'] = values['webhookBasicUsername'];
+          httpAuth['password'] = values['webhookBasicPassword'];
+        }
+
+        if (webhookAuthType === 'Token') {
+          httpAuth['tokenHeader'] = values['webhookTokenHeader'];
+          httpAuth['tokenValue'] = values['webhookTokenValue'];
+        }
+
+        payload['params']['httpAuth'] = httpAuth;
         break;
+      }
       default:
         break;
     }
@@ -122,8 +148,8 @@ export const AddDestinationChannelForm = (props) => {
   const handleOnToggle = (event) => {
     const name = event.target.name;
     const value = event.target.checked;
-    if (name === 'customSmtp') {
-      setCustomSMTP(value);
+    if (name === 'defaultSmtp') {
+      setDefaultSMTP(value);
     }
     if (name === 'defaultRecipients') {
       setDefaultRecipients(value);
@@ -152,8 +178,129 @@ export const AddDestinationChannelForm = (props) => {
 
   const validationSchemaWebHook = Yup.object().shape({
     webHook_name: Yup.string().required('Name is Required'),
-    webhookURL: Yup.string().required('Web hook Url is Required')
+    webhookURL: Yup.string().required('Web hook Url is Required'),
+    webhookBasicUsername: Yup.string().when('webhookAuthType', {
+      is: () => webhookAuthType === 'Basic',
+      then: Yup.string().required('Username is required')
+    }),
+    webhookBasicPassword: Yup.string().when('webhookAuthType', {
+      is: () => webhookAuthType === 'Basic',
+      then: Yup.string().required('Password is required')
+    }),
+    webhookTokenHeader: Yup.string().when('webhookAuthType', {
+      is: () => webhookAuthType === 'Token',
+      then: Yup.string().required('Token Header is required')
+    }),
+    webhookTokenValue: Yup.string().when('webhookAuthType', {
+      is: () => webhookAuthType === 'Token',
+      then: Yup.string().required('Token Value is required')
+    })
   });
+
+  const getNotificationTemplateRows = () => {
+    if (!enableNotificationTemplates) {
+      return <span />;
+    }
+    const defaultNotificationTitle =
+      'YugabyteDB Anywhere {{ $labels.severity }} alert' +
+      ' {{ $labels.definition_name }} {{ $labels.alert_state }} for {{ $labels.source_name }}';
+    const defaultNotificationText =
+      '{{ $labels.definition_name }} alert with severity level' +
+      " '{{ $labels.severity }}' for {{ $labels.source_type }} '{{ $labels.source_name }}'" +
+      ' is {{ $labels.alert_state }}.\n\n{{ $annotations.message }}';
+    return (
+      <>
+        <Row>
+          <Col lg={12}>
+            <Field
+              name="notificationTitle"
+              type="text"
+              label="Notification Title Template"
+              placeholder={defaultNotificationTitle}
+              component={YBFormInput}
+              disabled={isReadOnly}
+            />
+          </Col>
+        </Row>
+        <Row>
+          <Col lg={12}>
+            <Field
+              name="notificationText"
+              type="text"
+              label="Notification Template"
+              placeholder={defaultNotificationText}
+              component={YBFormInput}
+              disabled={isReadOnly}
+            />
+          </Col>
+        </Row>
+      </>
+    );
+  };
+
+  const getWebhookAuthForm = () => {
+    if (webhookAuthType === 'Basic') {
+      return (
+        <>
+          <Row key="BasicUsername">
+            <Col lg={12}>
+              <Field
+                name="webhookBasicUsername"
+                type="text"
+                placeholder="Enter Username"
+                label="Username"
+                component={YBFormInput}
+                disabled={isReadOnly}
+              />
+            </Col>
+          </Row>
+          <Row key="BasicPassword">
+            <Col lg={12}>
+              <Field
+                name="webhookBasicPassword"
+                type="text"
+                placeholder="Enter Password"
+                label="Password"
+                component={YBFormInput}
+                disabled={isReadOnly}
+              />
+            </Col>
+          </Row>
+        </>
+      );
+    }
+    if (webhookAuthType === 'Token') {
+      return (
+        <>
+          <Row>
+            <Col lg={12}>
+              <Field
+                name="webhookTokenHeader"
+                type="text"
+                placeholder="Enter Token Header"
+                label="Token Header"
+                component={YBFormInput}
+                disabled={isReadOnly}
+              />
+            </Col>
+          </Row>
+          <Row>
+            <Col lg={12}>
+              <Field
+                name="webhookTokenValue"
+                type="text"
+                placeholder="Enter Token value"
+                label="Token Value"
+                component={YBFormInput}
+                disabled={isReadOnly}
+              />
+            </Col>
+          </Row>
+        </>
+      );
+    }
+    return null;
+  };
 
   const getChannelForm = () => {
     switch (channelType) {
@@ -196,6 +343,7 @@ export const AddDestinationChannelForm = (props) => {
                 />
               </Col>
             </Row>
+            {getNotificationTemplateRows()}
           </>
         );
       case 'webhook':
@@ -225,6 +373,25 @@ export const AddDestinationChannelForm = (props) => {
                 />
               </Col>
             </Row>
+            <Row>
+              <Col lg={12}>
+                <Field
+                  name="webhookAuthType"
+                  label="Authentication Type"
+                  component={YBControlledSelectWithLabel}
+                  disabled={isReadOnly}
+                  selectVal={webhookAuthType}
+                  onInputChanged={(v) => setWebhookAuthType(v.target.value)}
+                  options={WebHookAuthTypesList.map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                />
+              </Col>
+            </Row>
+            {getWebhookAuthForm()}
+            {getNotificationTemplateRows()}
           </>
         );
       case 'slack':
@@ -254,6 +421,7 @@ export const AddDestinationChannelForm = (props) => {
                 />
               </Col>
             </Row>
+            {getNotificationTemplateRows()}
           </>
         );
       case 'email':
@@ -290,7 +458,7 @@ export const AddDestinationChannelForm = (props) => {
                     </Field>
                   </Col>
                   <Col lg={11} className="component-label">
-                    <strong>Use Default Recipients</strong>
+                    <strong>Use Recipients specified on &quot;Health&quot; tab</strong>
                   </Col>
                 </Row>
 
@@ -310,11 +478,11 @@ export const AddDestinationChannelForm = (props) => {
               <Col lg={12}>
                 <Row className="component-flex">
                   <Col lg={1} className="noLeftPadding">
-                    <Field name="customSmtp">
+                    <Field name="defaultSmtp">
                       {({ field }) => (
                         <YBToggle
                           onToggle={handleOnToggle}
-                          name="customSmtp"
+                          name="defaultSmtp"
                           isReadOnly={isReadOnly}
                           input={{
                             value: field.value,
@@ -325,11 +493,11 @@ export const AddDestinationChannelForm = (props) => {
                     </Field>
                   </Col>
                   <Col lg={11} className="component-label">
-                    <strong>Custom SMTP Configuration</strong>
+                    <strong>Use SMTP server specified on &quot;Health&quot; tab</strong>
                   </Col>
                 </Row>
 
-                {customSMTP && (
+                {!defaultSMTP && (
                   <>
                     <Field
                       name="smtpData.smtpServer"
@@ -422,6 +590,7 @@ export const AddDestinationChannelForm = (props) => {
                 )}
               </Col>
             </Row>
+            {getNotificationTemplateRows()}
           </>
         );
       default:
@@ -429,14 +598,21 @@ export const AddDestinationChannelForm = (props) => {
     }
   };
 
-  const title = isReadOnly ? 'Alert channel details' :
-    props.type === 'edit' ? 'Edit alert channel' : 'Create new alert channel';
+  const title = isReadOnly
+    ? 'Alert channel details'
+    : props.type === 'edit'
+    ? 'Edit alert channel'
+    : 'Create new alert channel';
   const validationSchema =
-    channelType === 'email' ? validationSchemaEmail :
-    channelType === 'slack' ? validationSchemaSlack :
-    channelType === 'pagerduty' ? validationSchemaPagerDuty :
-    channelType === 'webhook' ? validationSchemaWebHook :
-    null;
+    channelType === 'email'
+      ? validationSchemaEmail
+      : channelType === 'slack'
+      ? validationSchemaSlack
+      : channelType === 'pagerduty'
+      ? validationSchemaPagerDuty
+      : channelType === 'webhook'
+      ? validationSchemaWebHook
+      : null;
   return (
     <YBModalForm
       formName="alertDestinationForm"
@@ -447,14 +623,18 @@ export const AddDestinationChannelForm = (props) => {
       initialValues={props.editValues || {}}
       submitLabel={props.type === 'edit' ? 'Save' : 'Create'}
       validationSchema={validationSchema}
-      onFormSubmit={!isReadOnly ? (values, { setSubmitting }) => {
-        const payload = {
-          ...values,
-          CHANNEL_TYPE: channelType
-        };
+      onFormSubmit={
+        !isReadOnly
+          ? (values, { setSubmitting }) => {
+              const payload = {
+                ...values,
+                CHANNEL_TYPE: channelType
+              };
 
-        handleAddDestination(payload, setSubmitting);
-      } : null}
+              handleAddDestination(payload, setSubmitting);
+            }
+          : null
+      }
     >
       <Row>
         <Row>

@@ -26,7 +26,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -34,7 +34,7 @@ public class CloudCleanupTestTest extends CommissionerBaseTest {
 
   private UUID submitTask(List<String> regionList) {
     CloudCleanup.Params taskParams = new CloudCleanup.Params();
-    taskParams.providerUUID = defaultProvider.uuid;
+    taskParams.providerUUID = defaultProvider.getUuid();
     taskParams.regionList = regionList;
     return commissioner.submit(TaskType.CloudCleanup, taskParams);
   }
@@ -59,8 +59,8 @@ public class CloudCleanupTestTest extends CommissionerBaseTest {
   }
 
   private void assertAccessKeyAndProvider(boolean exists) {
-    List<AccessKey> accessKeyList = AccessKey.getAll(defaultProvider.uuid);
-    defaultProvider = Provider.get(defaultProvider.uuid);
+    List<AccessKey> accessKeyList = AccessKey.getAll(defaultProvider.getUuid());
+    defaultProvider = Provider.get(defaultProvider.getUuid());
     if (exists) {
       assertFalse(accessKeyList.isEmpty());
       assertNotNull(defaultProvider);
@@ -76,10 +76,10 @@ public class CloudCleanupTestTest extends CommissionerBaseTest {
     AvailabilityZone.createOrThrow(region, "az-1", "az 1", "subnet-1");
     AvailabilityZone.createOrThrow(region, "az-2", "az 2", "subnet-2");
     JsonNode vpcInfo = Json.parse("{\"us-west-1\": \"VPC Deleted\"}");
-    when(mockNetworkManager.cleanupOrFail(region.uuid)).thenReturn(vpcInfo);
+    when(mockNetworkManager.cleanupOrFail(region.getUuid())).thenReturn(vpcInfo);
     UUID taskUUID = submitTask(ImmutableList.of("us-west-1"));
     TaskInfo taskInfo = waitForTask(taskUUID);
-    verify(mockAccessManager, times(1)).deleteKey(region.uuid, "yb-amazon-key");
+    verify(mockAccessManager, times(1)).deleteKey(region.getUuid(), "yb-amazon-key");
     assertEquals(Success, taskInfo.getTaskState());
     assertRegionZones("us-west-1", ImmutableList.of("az-1", "az-2"), false);
     assertAccessKeyAndProvider(false);
@@ -93,12 +93,12 @@ public class CloudCleanupTestTest extends CommissionerBaseTest {
     Region region2 = Region.create(defaultProvider, "us-west-2", "us west 2", "yb-image");
     AvailabilityZone.createOrThrow(region2, "az-3", "az 3", "subnet-3");
     AvailabilityZone.createOrThrow(region2, "az-4", "az 4", "subnet-4");
-    AccessKey.create(defaultProvider.uuid, "access-key", new AccessKey.KeyInfo());
+    AccessKey.create(defaultProvider.getUuid(), "access-key", new AccessKey.KeyInfo());
     JsonNode vpcInfo = Json.parse("{\"us-west-1\": \"VPC Deleted\"}");
-    when(mockNetworkManager.cleanupOrFail(region1.uuid)).thenReturn(vpcInfo);
+    when(mockNetworkManager.cleanupOrFail(region1.getUuid())).thenReturn(vpcInfo);
     UUID taskUUID = submitTask(ImmutableList.of("us-west-1"));
     TaskInfo taskInfo = waitForTask(taskUUID);
-    verify(mockAccessManager, times(1)).deleteKey(region1.uuid, "yb-amazon-key");
+    verify(mockAccessManager, times(1)).deleteKey(region1.getUuid(), "yb-amazon-key");
     assertEquals(Success, taskInfo.getTaskState());
     assertRegionZones("us-west-1", ImmutableList.of("az-1", "az-2"), false);
     assertRegionZones("us-west-2", ImmutableList.of("az-3", "az-4"), true);
@@ -116,8 +116,8 @@ public class CloudCleanupTestTest extends CommissionerBaseTest {
   public void testCloudCleanupError() throws InterruptedException {
     Region region = Region.create(defaultProvider, "us-west-1", "us west 1", "yb-image");
     JsonNode vpcInfo = Json.parse("{\"error\": \"Something failed\"}");
-    when(mockNetworkManager.cleanupOrFail(region.uuid)).thenReturn(vpcInfo);
-    UUID taskUUID = submitTask(ImmutableList.of(region.code));
+    when(mockNetworkManager.cleanupOrFail(region.getUuid())).thenReturn(vpcInfo);
+    UUID taskUUID = submitTask(ImmutableList.of(region.getCode()));
     TaskInfo taskInfo = waitForTask(taskUUID);
     assertEquals(Failure, taskInfo.getTaskState());
   }

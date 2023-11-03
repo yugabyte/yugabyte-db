@@ -30,7 +30,7 @@
 // under the License.
 //
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
 #include "yb/server/logical_clock.h"
@@ -78,4 +78,3 @@ TEST_F(LogicalClockTest, TestUpdate_LogicalValueDoesNotIncrease) {
 
 }  // namespace server
 }  // namespace yb
-

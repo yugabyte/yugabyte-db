@@ -18,17 +18,18 @@
 #include "utils/relcache.h"
 
 /*
- * This OID corresponds to the next unused OID in the block of OIDs that are
- * used by YB specific catalog additions, starting at 8000. When making changes
- * to the catalog by adding a new OID in 'pg_*.dat', 'pg_*.h', 'toasting.h', or
+ * This OID corresponds to the last used OID in the block of OIDs that are used
+ * by YB specific catalog additions, starting at 8000. When making changes to
+ * the catalog by adding a new OID in 'pg_*.dat', 'pg_*.h', 'toasting.h', or
  * 'indexing.h', make sure to increment this value. Additionally, the script
  * 'catalog/unused_oids' will help by outputting the blocks of unused OIDs to
  * validate that this value is up to date.
+ * TODO(#14536): add a test to validate the block of unused OIDs.
  *
  * If you increment it, make sure you didn't forget to add a new SQL migration
  * (see pg_yb_migration.dat and src/yb/yql/pgwrapper/ysql_migrations/README.md)
  */
-#define YB_MIN_UNUSED_OID 8041
+#define YB_LAST_USED_OID 8064
 
 extern bool IsSystemRelation(Relation relation);
 extern bool IsToastRelation(Relation relation);

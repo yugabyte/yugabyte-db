@@ -17,6 +17,14 @@
     _mount_logs_dir: "{{ _mount_points[0] }}/yb-data/{{ yb_process_type }}/logs"
   tags: always
 
+- name: Deleting files and directories
+  file:
+    path: "{{ item }}"
+    state: absent
+  with_items: "{{ delete_paths }}"
+  tags: always
+  when: delete_paths is defined
+
 - name: Setup | Create {{ yb_process_type }} logs directory
   file:
     path: "{{ _mount_logs_dir }}"
@@ -36,23 +44,52 @@
     force: yes
   tags: yb-prebuilt-ami
 
-# Remove existing gflags present in conf file
-- name: Configure | Remove {{ yb_process_type }} gflags
-  file:
-    path: "{{ yb_conf_file }}"
-    state: absent
-  tags:
-    - override_gflags
-
 # Set the gflags in conf file
 # gflags has greater precedence over extra_gflags
-- name: Configure | Set {{ yb_process_type }} gflags
-  lineinfile:
-    dest: "{{ yb_conf_file }}"
-    regexp: "^--{{ item.key }}=(.*)"
-    line: "--{{item.key}}={{item.value}}"
-    create: yes
-  with_dict: "{{ extra_gflags | combine(gflags | default({})) }}"
+- block:
+  # Remove existing gflags present in conf file
+  - name: Configure | Remove {{ yb_process_type }} gflags
+    file:
+      path: "{{ yb_conf_file }}"
+      state: absent
+  - name: Configure | Set {{ yb_process_type }} gflags
+    lineinfile:
+      dest: "{{ yb_conf_file }}"
+      regexp: "^--{{ item.key }}=(.*)"
+      line: "--{{item.key}}={{item.value}}"
+      create: yes
+    with_dict: "{{ extra_gflags | combine(gflags | default({})) }}"
+    when: item.key != 'postmaster_cgroup'
+
+  # postmaster_cgroup gflag, which gets handled seperately.
+  - block:
+    - name: Determine cgroup version
+      ansible.builtin.shell:
+        cmd: "stat -fc %T /sys/fs/cgroup/"
+      register: cgroup_output
+    - name: Get yugabyte user id
+      ansible.builtin.shell:
+        cmd: "id -u {{ user_name }}"
+      register: id_output
+
+    - name: Set cgroupv1 path
+      ansible.builtin.set_fact:
+        postmaster_cgroup_path: /sys/fs/cgroup/memory/ysql
+      when: cgroup_output.stdout != 'cgroup2fs'
+    - name: Set cgroupv2 path
+      ansible.builtin.set_fact:
+        postmaster_cgroup_path: "/sys/fs/cgroup/user.slice/user-{{ id_output.stdout }}.slice/user\
+                                 @{{ id_output.stdout }}.service/ysql"
+      when: cgroup_output.stdout == 'cgroup2fs'
+
+    - name: Configure | Set postmaster_cgroup gflag
+      lineinfile:
+        dest: "{{ yb_conf_file }}"
+        regexp: "^--postmaster_cgroup=(.*)"
+        line: "--postmaster_cgroup={{ postmaster_cgroup_path }}"
+        create: yes
+    when:
+      - gflags.postmaster_cgroup is defined or extra_gflags.postmaster_cgroup is defined
   tags:
     - override_gflags
 
@@ -85,69 +122,6 @@
       name: "Check liveness of tserver"
       user: "yugabyte"
       state: absent
-
-  - name: Determine system or user scope
-    stat:
-      path: /etc/systemd/system/yb-{{ yb_process_type }}.service
-    register: systemd_system
-
-  - name: User mode systemd
-    block:
-    - name: Stop existing running {{ yb_process_type }}
-      systemd:
-        name: yb-{{ yb_process_type }}
-        state: stopped
-        enabled: no
-        scope: user
-
-    - name: Reload systemd user daemon
-      systemd:
-        daemon_reload: yes
-        scope: user
-
-    # User units need to be linked if waiting on system units
-    - name: Link network-online.target
-      shell:
-        cmd: "systemctl --user link /lib/systemd/system/network-online.target"
-
-    - name: Start network-online.target
-      systemd:
-        name: network-online.target
-        state: started
-        enabled: yes
-        scope: user
-
-    - name: Enable and start {{ yb_process_type }}
-      systemd:
-        name: yb-{{ yb_process_type }}
-        state: started
-        enabled: yes
-        scope: user
-    when: not systemd_system.stat.exists
-
-  - name: System (RHEL7) systemd units
-    block:
-    - name: Stop existing running {{ yb_process_type }}
-      shell:
-        cmd: "sudo systemctl stop yb-{{ yb_process_type }}"
-
-    - name: Stop existing running {{ yb_process_type }}
-      shell:
-        cmd: "sudo systemctl disable yb-{{ yb_process_type }}"
-
-    # Systemd daemon-reload for yb-master and yb-tserver service files
-    - name: Perform daemon-reload for the new services
-      shell:
-        cmd: "sudo systemctl daemon-reload"
-
-    - name: Enable {{ yb_process_type }}
-      shell:
-        cmd: "sudo systemctl enable yb-{{ yb_process_type }}"
-
-    - name: Start {{ yb_process_type }}
-      shell:
-        cmd: "sudo systemctl start yb-{{ yb_process_type }}"
-    when: systemd_system.stat.exists
 
   tags:
     - override_gflags

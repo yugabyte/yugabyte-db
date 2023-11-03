@@ -32,11 +32,20 @@
 
 #include "yb/common/id_mapping.h"
 
+#include <algorithm>
+
 #include "yb/util/malloc.h"
 
 namespace yb {
 
-const int IdMapping::kNoEntry = -1;
+namespace {
+
+size_t NumKeys(const std::vector<std::pair<int, int>>& entries) {
+  return std::count_if(entries.begin(), entries.end(),
+                       [](const auto& p) { return p.first != IdMapping::kNoEntry; });
+}
+
+} // namespace
 
 size_t IdMapping::memory_footprint_excluding_this() const {
   if (entries_.capacity() > 0) {
@@ -48,6 +57,18 @@ size_t IdMapping::memory_footprint_excluding_this() const {
 
 size_t IdMapping::memory_footprint_including_this() const {
   return malloc_usable_size(this) + memory_footprint_excluding_this();
+}
+
+bool operator==(const IdMapping& lhs, const IdMapping& rhs) {
+  if (NumKeys(lhs.entries_) != NumKeys(rhs.entries_)) {
+    return false;
+  }
+  for (const auto& e : lhs.entries_) {
+    if (e.first != IdMapping::kNoEntry && rhs[e.first] != e.second) {
+      return false;
+    }
+  }
+  return true;
 }
 
 } // namespace yb

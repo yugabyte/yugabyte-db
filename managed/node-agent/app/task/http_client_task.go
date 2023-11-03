@@ -10,284 +10,496 @@ import (
 	"net/http"
 	"node-agent/model"
 	"node-agent/util"
+	"runtime"
+	"sort"
 	"strings"
 )
 
-const (
-	mountPoints   = "mount_points"
-	portAvailable = "ports"
-)
-
-var (
-	config     *util.Config
-	httpClient *util.HttpClient
-)
-
-func InitHttpClient(httpConfig *util.Config) {
-	config = httpConfig
-	httpClient = util.NewHttpClient(
-		config.GetInt(util.RequestTimeout),
-		config.GetString(util.PlatformHost),
-		config.GetString(util.PlatformPort),
+func httpClient() *util.HttpClient {
+	config := util.CurrentConfig()
+	return util.NewHttpClient(
+		config.Int(util.RequestTimeoutKey),
+		config.String(util.PlatformUrlKey),
 	)
 }
 
-func HandleAgentRegistration(apiToken string) func(ctx context.Context) (any, error) {
-	return func(ctx context.Context) (any, error) {
-		//Call the platform to register the node-agent in the platform.
-		res, err := httpClient.Do(
-			http.MethodPost,
-			util.PlatformRegisterAgentEndpoint(config.GetString(util.CustomerId)),
-			getPlatformHeadersWithAPIToken(apiToken),
-			nil,
-			createRegisterAgentRequest(config),
-		)
-		if err != nil {
-			return nil, err
-		}
-		return UnmarshalResponse(&model.RegisterResponseSuccess{}, res)
-	}
+type AgentRegistrationHandler struct {
+	apiToken string
+	result   *model.RegisterResponseSuccess
 }
 
-func HandleAgentUnregister(useJWT bool, apiToken string) func(ctx context.Context) (any, error) {
-	return func(ctx context.Context) (any, error) {
-		var headers map[string]string
-		var err error
-		//Call the platform to unregister the node-agent in the platform.
-		//Check whether to use JWT or Api Token to call the api.
-		if useJWT {
-			headers, err = getPlatformHeadersWithJWT(config)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			headers = getPlatformHeadersWithAPIToken(apiToken)
-		}
-		res, err := httpClient.Do(
-			http.MethodDelete,
-			util.PlatformUnregisterAgentEndpoint(
-				config.GetString(util.CustomerId),
-				config.GetString(util.NodeAgentId),
-			),
-			headers,
-			nil,
-			nil,
-		)
-		if err != nil {
-			return nil, err
-		}
-		return UnmarshalResponse(&model.RegisterResponseEmpty{}, res)
-	}
+func NewAgentRegistrationHandler(apiToken string) *AgentRegistrationHandler {
+	return &AgentRegistrationHandler{apiToken: apiToken}
 }
 
-func HandleGetPlatformConfig() func(ctx context.Context) (any, error) {
-	return func(ctx context.Context) (any, error) {
-		headers, err := getPlatformHeadersWithJWT(config)
-		if err != nil {
-			return nil, err
-		}
-		res, err := httpClient.Do(
-			http.MethodGet,
-			util.PlatformGetConfigEndpoint(
-				config.GetString(util.CustomerId),
-				config.GetString(util.ProviderId),
-				config.GetString(util.NodeInstanceType),
-			),
-			headers,
-			nil,
-			nil,
-		)
-		if err != nil {
-			return nil, err
-		}
-		return UnmarshalResponse(&model.NodeInstanceType{}, res)
+func (handler *AgentRegistrationHandler) Handle(ctx context.Context) (any, error) {
+	config := util.CurrentConfig()
+	// Call the platform to register the node-agent in the platform.
+	res, err := httpClient().Do(
+		ctx,
+		http.MethodPost,
+		util.PlatformRegisterAgentEndpoint(config.String(util.CustomerIdKey)),
+		platformHeadersWithAPIToken(handler.apiToken),
+		nil,
+		createRegisterAgentRequest(config),
+	)
+	if err != nil {
+		return nil, err
 	}
+	defer res.Body.Close()
+	handler.result = &model.RegisterResponseSuccess{}
+	return UnmarshalResponse(ctx, handler.result, res)
 }
 
-func HandleSendNodeCapability(
-	data map[string]model.PreflightCheckVal,
-) func(ctx context.Context) (any, error) {
-	return func(ctx context.Context) (any, error) {
-		headers, err := getPlatformHeadersWithJWT(config)
-		if err != nil {
-			return nil, err
-		}
-		res, err := httpClient.Do(
-			http.MethodPost,
-			util.PlatformPostNodeCapabilitiesEndpoint(
-				config.GetString(util.CustomerId),
-				config.GetString(util.NodeAzId),
-			),
-			headers,
-			nil,
-			createNodeCapabilitesRequest(config, data),
-		)
-		if err != nil {
-			return nil, err
-		}
-		var result map[string]model.NodeCapabilityResponse
-		return UnmarshalResponse(&result, res)
-	}
+func (handler *AgentRegistrationHandler) Result() *model.RegisterResponseSuccess {
+	return handler.result
 }
 
-func HandleGetCustomers(apiToken string) func(ctx context.Context) (any, error) {
-	return func(ctx context.Context) (any, error) {
-		headers := getPlatformHeadersWithAPIToken(apiToken)
-		res, err := httpClient.Do(http.MethodGet, util.GetCustomersApiEndpoint, headers, nil, nil)
-		if err != nil {
-			return nil, err
-		}
-		return UnmarshalResponse(&[]model.Customer{}, res)
-	}
+type AgentUnregistrationHandler struct {
+	apiToken string
+	result   *model.ResponseMessage
 }
 
-func HandleGetProviders(apiToken string) func(ctx context.Context) (any, error) {
-	return func(ctx context.Context) (any, error) {
-		headers := getPlatformHeadersWithAPIToken(apiToken)
-		res, err := httpClient.Do(
-			http.MethodGet,
-			util.PlatformGetProvidersEndpoint(config.GetString(util.CustomerId)),
-			headers,
-			nil,
-			nil,
-		)
-		if err != nil {
-			return nil, err
-		}
-		return UnmarshalResponse(&[]model.Provider{}, res)
-	}
+func NewAgentUnregistrationHandler(apiToken string) *AgentUnregistrationHandler {
+	return &AgentUnregistrationHandler{apiToken: apiToken}
 }
 
-func HandleGetUsers(apiToken string) func(ctx context.Context) (any, error) {
-	return func(ctx context.Context) (any, error) {
-		headers := getPlatformHeadersWithAPIToken(apiToken)
-		res, err := httpClient.Do(
-			http.MethodGet,
-			util.PlatformGetUsersEndpoint(config.GetString(util.CustomerId)),
-			headers,
-			nil,
-			nil,
-		)
-		if err != nil {
-			return nil, err
-		}
-		return UnmarshalResponse(&[]model.User{}, res)
+func (handler *AgentUnregistrationHandler) Handle(ctx context.Context) (any, error) {
+	config := util.CurrentConfig()
+	headers, err := platformHeadersWithAuth(ctx, config, handler.apiToken)
+	if err != nil {
+		return nil, err
 	}
+	res, err := httpClient().Do(
+		ctx,
+		http.MethodDelete,
+		util.PlatformUnregisterAgentEndpoint(
+			config.String(util.CustomerIdKey),
+			config.String(util.NodeAgentIdKey),
+		),
+		headers,
+		nil,
+		nil,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	handler.result = &model.ResponseMessage{}
+	return UnmarshalResponse(ctx, handler.result, res)
 }
 
-func HandleGetInstanceTypes(apiToken string) func(ctx context.Context) (any, error) {
-	return func(ctx context.Context) (any, error) {
-		headers := getPlatformHeadersWithAPIToken(apiToken)
-		res, err := httpClient.Do(
-			http.MethodGet,
-			util.PlatformGetInstanceTypesEndpoint(
-				config.GetString(util.CustomerId),
-				config.GetString(util.ProviderId),
-			),
-			headers,
-			nil,
-			nil,
-		)
-		if err != nil {
-			return nil, err
-		}
-		return UnmarshalResponse(&[]model.NodeInstanceType{}, res)
-	}
+func (handler *AgentUnregistrationHandler) Result() *model.ResponseMessage {
+	return handler.result
 }
 
-func HandleGetAgentState() func(ctx context.Context) (any, error) {
-	return func(ctx context.Context) (any, error) {
-		res, err := httpClient.Do(
-			http.MethodGet,
-			util.PlatformGetAgentStateEndpoint(
-				config.GetString(util.CustomerId),
-				config.GetString(util.NodeAgentId),
-			),
-			nil,
-			nil,
-			nil,
-		)
-		if err != nil {
-			return nil, err
-		}
-		var state string
-		return UnmarshalResponse(&state, res)
-	}
+type GetInstanceTypeHandler struct {
+	result *model.NodeInstanceType
 }
 
-func HandlePutAgentState(
-	state model.NodeState,
-	versionToSend string,
-) func(ctx context.Context) (any, error) {
-	return func(ctx context.Context) (any, error) {
-		headers, err := getPlatformHeadersWithJWT(config)
-		if err != nil {
-			return nil, err
-		}
-		res, err := httpClient.Do(
-			http.MethodPut,
-			util.PlatformPutAgentStateEndpoint(
-				config.GetString(util.CustomerId),
-				config.GetString(util.NodeAgentId),
-			),
-			headers,
-			nil,
-			createUpdateAgentStateRequest(config, state, versionToSend),
-		)
-		if err != nil {
-			return nil, err
-		}
-		return UnmarshalResponse(&model.NodeAgent{}, res)
-	}
+func NewGetInstanceTypeHandler() *GetInstanceTypeHandler {
+	return &GetInstanceTypeHandler{}
 }
 
-func HandlePutAgent() func(ctx context.Context) (any, error) {
-	return func(ctx context.Context) (any, error) {
-		headers, err := getPlatformHeadersWithJWT(config)
-		if err != nil {
-			return nil, err
-		}
-		res, err := httpClient.Do(
-			http.MethodPut,
-			util.PlatformPutAgentEndpoint(
-				config.GetString(util.CustomerId),
-				config.GetString(util.NodeAgentId),
-			),
-			headers,
-			nil,
-			createUpdateAgentRequest(config),
-		)
-		if err != nil {
-			return nil, err
-		}
-		return UnmarshalResponse(&model.NodeAgent{}, res)
+func (handler *GetInstanceTypeHandler) Handle(ctx context.Context) (any, error) {
+	config := util.CurrentConfig()
+	headers, err := platformHeadersWithJWT(ctx, config)
+	if err != nil {
+		return nil, err
 	}
+	res, err := httpClient().Do(
+		ctx,
+		http.MethodGet,
+		util.PlatformGetInstanceTypeEndpoint(
+			config.String(util.CustomerIdKey),
+			config.String(util.ProviderIdKey),
+			config.String(util.NodeInstanceTypeKey),
+		),
+		headers,
+		nil,
+		nil,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	handler.result = &model.NodeInstanceType{}
+	return UnmarshalResponse(ctx, handler.result, res)
 }
 
-func HandleGetVersion() func(ctx context.Context) (any, error) {
-	return func(ctx context.Context) (any, error) {
-		res, err := httpClient.Do(http.MethodGet, util.GetVersionEndpoint, nil, nil, nil)
-		if err != nil {
-			return nil, err
-		}
-		return UnmarshalResponse(&model.VersionRequest{}, res)
-	}
+func (handler *GetInstanceTypeHandler) Result() *model.NodeInstanceType {
+	return handler.result
 }
 
-//Unmarshals the response body to the provided target.
-//Tries to unmarshal the response into model.ResponseError if
-//the response status code is not 200.
-//If the unmarshaling fails, converts the response body to string.
-func UnmarshalResponse(successTarget any, res *http.Response) (any, error) {
+type ValidateNodeInstanceHandler struct {
+	data   []model.NodeConfig
+	result *map[string]model.NodeInstanceValidationResponse
+}
+
+func NewValidateNodeInstanceHandler(data []model.NodeConfig) *ValidateNodeInstanceHandler {
+	return &ValidateNodeInstanceHandler{data: data}
+}
+
+func (handler *ValidateNodeInstanceHandler) Handle(ctx context.Context) (any, error) {
+	config := util.CurrentConfig()
+	headers, err := platformHeadersWithJWT(ctx, config)
+	if err != nil {
+		return nil, err
+	}
+	res, err := httpClient().Do(
+		ctx,
+		http.MethodPost,
+		util.PlatformValidateNodeInstanceEndpoint(
+			config.String(util.CustomerIdKey),
+			config.String(util.NodeAzIdKey),
+		),
+		headers,
+		nil,
+		createNodeDetailsRequest(config, handler.data),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	handler.result = &map[string]model.NodeInstanceValidationResponse{}
+	return UnmarshalResponse(ctx, handler.result, res)
+}
+
+func (handler *ValidateNodeInstanceHandler) Result() *map[string]model.NodeInstanceValidationResponse {
+	return handler.result
+}
+
+type PostNodeInstanceHandler struct {
+	data   []model.NodeConfig
+	result *map[string]model.NodeInstanceResponse
+}
+
+func NewPostNodeInstanceHandler(data []model.NodeConfig) *PostNodeInstanceHandler {
+	return &PostNodeInstanceHandler{data: data}
+}
+
+func (handler *PostNodeInstanceHandler) Handle(ctx context.Context) (any, error) {
+	config := util.CurrentConfig()
+	headers, err := platformHeadersWithJWT(ctx, config)
+	if err != nil {
+		return nil, err
+	}
+	res, err := httpClient().Do(
+		ctx,
+		http.MethodPost,
+		util.PlatformPostNodeInstancesEndpoint(
+			config.String(util.CustomerIdKey),
+			config.String(util.NodeAzIdKey),
+		),
+		headers,
+		nil,
+		createNodeInstancesRequest(config, handler.data),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	handler.result = &map[string]model.NodeInstanceResponse{}
+	return UnmarshalResponse(ctx, handler.result, res)
+}
+
+func (handler *PostNodeInstanceHandler) Result() *map[string]model.NodeInstanceResponse {
+	return handler.result
+}
+
+type GetProvidersHandler struct {
+	apiToken string
+	result   *[]model.Provider
+}
+
+func NewGetProvidersHandler(apiToken string) *GetProvidersHandler {
+	return &GetProvidersHandler{apiToken: apiToken}
+}
+
+func (handler *GetProvidersHandler) Handle(ctx context.Context) (any, error) {
+	config := util.CurrentConfig()
+	headers, err := platformHeadersWithAuth(ctx, config, handler.apiToken)
+	if err != nil {
+		return nil, err
+	}
+	res, err := httpClient().Do(
+		ctx,
+		http.MethodGet,
+		util.PlatformGetProvidersEndpoint(config.String(util.CustomerIdKey)),
+		headers,
+		nil,
+		nil,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	handler.result = &[]model.Provider{}
+	return UnmarshalResponse(ctx, handler.result, res)
+}
+
+func (handler *GetProvidersHandler) Result() *[]model.Provider {
+	return handler.result
+}
+
+type GetProviderHandler struct {
+	result *model.Provider
+}
+
+func NewGetProviderHandler() *GetProviderHandler {
+	return &GetProviderHandler{}
+}
+
+func (handler *GetProviderHandler) Handle(ctx context.Context) (any, error) {
+	config := util.CurrentConfig()
+	headers, err := platformHeadersWithJWT(ctx, config)
+	if err != nil {
+		return nil, err
+	}
+	res, err := httpClient().Do(
+		ctx,
+		http.MethodGet,
+		util.PlatformGetProviderEndpoint(config.String(util.CustomerIdKey), config.String(util.ProviderIdKey)),
+		headers,
+		nil,
+		nil,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	handler.result = &model.Provider{}
+	return UnmarshalResponse(ctx, handler.result, res)
+}
+
+func (handler *GetProviderHandler) Result() *model.Provider {
+	return handler.result
+}
+
+type GetAccessKeysHandler struct {
+	result *model.AccessKey
+}
+
+func NewGetAccessKeysHandler() *GetAccessKeysHandler {
+	return &GetAccessKeysHandler{}
+}
+
+func (handler *GetAccessKeysHandler) Handle(ctx context.Context) (any, error) {
+	config := util.CurrentConfig()
+	headers, err := platformHeadersWithJWT(ctx, config)
+	if err != nil {
+		return nil, err
+	}
+	res, err := httpClient().Do(
+		ctx,
+		http.MethodGet,
+		util.PlatformGetAccessKeysEndpoint(config.String(util.CustomerIdKey), config.String(util.ProviderIdKey)),
+		headers,
+		nil,
+		nil,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	accessKeys := []model.AccessKey{}
+	_, err = UnmarshalResponse(ctx, &accessKeys, res)
+	if err != nil {
+		return nil, err
+	}
+	// Sort to get the latest access key as done in platform.
+	sort.Sort(model.AccessKeys(accessKeys))
+	handler.result = &accessKeys[0]
+	return handler.result, nil
+}
+
+func (handler *GetAccessKeysHandler) Result() *model.AccessKey {
+	return handler.result
+}
+
+type GetSessionInfoHandler struct {
+	apiToken string
+	result   *model.SessionInfo
+}
+
+func NewGetSessionInfoHandler(apiToken string) *GetSessionInfoHandler {
+	return &GetSessionInfoHandler{apiToken: apiToken}
+}
+
+func (handler *GetSessionInfoHandler) Handle(ctx context.Context) (any, error) {
+	config := util.CurrentConfig()
+	headers, err := platformHeadersWithAuth(ctx, config, handler.apiToken)
+	if err != nil {
+		return nil, err
+	}
+	res, err := httpClient().Do(
+		ctx,
+		http.MethodGet,
+		util.PlatformGetSessionInfoEndpoint(),
+		headers,
+		nil,
+		nil,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	handler.result = &model.SessionInfo{}
+	return UnmarshalResponse(ctx, handler.result, res)
+}
+
+func (handler *GetSessionInfoHandler) Result() *model.SessionInfo {
+	return handler.result
+}
+
+type GetUserHandler struct {
+	apiToken string
+	result   *model.User
+}
+
+func NewGetUserHandler(apiToken string) *GetUserHandler {
+	return &GetUserHandler{apiToken: apiToken}
+}
+
+func (handler *GetUserHandler) Handle(ctx context.Context) (any, error) {
+	config := util.CurrentConfig()
+	headers, err := platformHeadersWithAuth(ctx, config, handler.apiToken)
+	if err != nil {
+		return nil, err
+	}
+	res, err := httpClient().Do(
+		ctx,
+		http.MethodGet,
+		util.PlatformGetUserEndpoint(config.String(util.CustomerIdKey), config.String(util.UserIdKey)),
+		headers,
+		nil,
+		nil,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	handler.result = &model.User{}
+	return UnmarshalResponse(ctx, handler.result, res)
+}
+
+func (handler *GetUserHandler) Result() *model.User {
+	return handler.result
+}
+
+type GetInstanceTypesHandler struct {
+	apiToken string
+	result   *[]model.NodeInstanceType
+}
+
+func NewGetInstanceTypesHandler(apiToken string) *GetInstanceTypesHandler {
+	return &GetInstanceTypesHandler{apiToken: apiToken}
+}
+
+func (handler *GetInstanceTypesHandler) Handle(ctx context.Context) (any, error) {
+	config := util.CurrentConfig()
+	headers, err := platformHeadersWithAuth(ctx, config, handler.apiToken)
+	if err != nil {
+		return nil, err
+	}
+	res, err := httpClient().Do(
+		ctx,
+		http.MethodGet,
+		util.PlatformGetInstanceTypesEndpoint(
+			config.String(util.CustomerIdKey),
+			config.String(util.ProviderIdKey),
+		),
+		headers,
+		nil,
+		nil,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	handler.result = &[]model.NodeInstanceType{}
+	return UnmarshalResponse(ctx, handler.result, res)
+}
+
+func (handler *GetInstanceTypesHandler) Result() *[]model.NodeInstanceType {
+	return handler.result
+}
+
+type PutAgentStateHandler struct {
+	state   model.NodeState
+	version string
+	result  *model.NodeAgent
+}
+
+func NewPutAgentStateHandler(state model.NodeState, version string) *PutAgentStateHandler {
+	return &PutAgentStateHandler{state: state, version: version}
+}
+
+func (handler *PutAgentStateHandler) Handle(ctx context.Context) (any, error) {
+	config := util.CurrentConfig()
+	headers, err := platformHeadersWithJWT(ctx, config)
+	if err != nil {
+		return nil, err
+	}
+	res, err := httpClient().Do(
+		ctx,
+		http.MethodPut,
+		util.PlatformPutAgentStateEndpoint(
+			config.String(util.CustomerIdKey),
+			config.String(util.NodeAgentIdKey),
+		),
+		headers,
+		nil,
+		createUpdateAgentStateRequest(config, handler.state, handler.version),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	handler.result = &model.NodeAgent{}
+	return UnmarshalResponse(ctx, handler.result, res)
+}
+
+func (handler *PutAgentStateHandler) Result() *model.NodeAgent {
+	return handler.result
+}
+
+type GetVersionHandler struct {
+	result *model.VersionRequest
+}
+
+func NewGetVersionHandler() *GetVersionHandler {
+	return &GetVersionHandler{}
+}
+
+func (handler *GetVersionHandler) Handle(ctx context.Context) (any, error) {
+	res, err := httpClient().Do(ctx, http.MethodGet, util.GetVersionEndpoint, nil, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	handler.result = &model.VersionRequest{}
+	return UnmarshalResponse(ctx, handler.result, res)
+}
+
+func (handler *GetVersionHandler) Result() *model.VersionRequest {
+	return handler.result
+}
+
+// Unmarshals the response body to the provided target.
+// Tries to unmarshal the response into model.ResponseError if
+// the response status code is not 200.
+// If the unmarshaling fails, converts the response body to string.
+func UnmarshalResponse(ctx context.Context, successTarget any, res *http.Response) (any, error) {
 	body, err := ioutil.ReadAll(res.Body)
 	res.Body.Close()
 	if err != nil {
-		errStr := errors.New("Error reading the response body")
-		util.FileLogger.Errorf(err.Error())
-		return nil, errStr
+		err = errors.New("Error reading the response body - " + err.Error())
+		util.FileLogger().Errorf(ctx, err.Error())
+		return nil, err
 	}
 	if res.StatusCode != 200 {
-		util.FileLogger.Errorf(
+		util.FileLogger().Errorf(ctx,
 			"API returned an error %s with %d status code",
 			string(body),
 			res.StatusCode,
@@ -298,34 +510,47 @@ func UnmarshalResponse(successTarget any, res *http.Response) (any, error) {
 			return nil, errors.New(failTarget.Error())
 		}
 
-		//Unmarshal the error response into a string
+		// Unmarshal the error response into a string.
 		errStr := string(body)
 		return nil, errors.New(errStr)
 	}
 	err = json.Unmarshal(body, successTarget)
 	if err != nil {
-		errStr := errors.New("Error while unmarshaling the response body - " + err.Error())
-		util.FileLogger.Errorf(errStr.Error())
-		return nil, errStr
+		err = errors.New("Error while unmarshaling the response body - " + err.Error())
+		util.FileLogger().Errorf(ctx, err.Error())
+		return nil, err
 	}
 	return successTarget, nil
 }
 
-//Creates Platform headers using JWT
-func getPlatformHeadersWithJWT(config *util.Config) (map[string]string, error) {
+// Creates platform headers with either the API token if it is set or JWT token.
+func platformHeadersWithAuth(
+	ctx context.Context,
+	config *util.Config,
+	apiToken string,
+) (map[string]string, error) {
+	apiToken = strings.TrimSpace(apiToken)
+	if apiToken == "" {
+		return platformHeadersWithJWT(ctx, config)
+	}
+	return platformHeadersWithAPIToken(apiToken), nil
+}
+
+// Creates platform headers using JWT.
+func platformHeadersWithJWT(ctx context.Context, config *util.Config) (map[string]string, error) {
 	m := make(map[string]string)
 	m["Content-Type"] = "application/json"
-	jwtToken, err := util.GenerateJWT(config)
+	jwtToken, err := util.GenerateJWT(ctx, config)
 	if err != nil {
-		util.FileLogger.Errorf("Error while creating the JWT - %s", err.Error())
+		util.FileLogger().Errorf(ctx, "Error while creating the JWT - %s", err.Error())
 		return m, err
 	}
 	m[util.PlatformJwtTokenHeader] = jwtToken
 	return m, nil
 }
 
-//Creates Platform headers using API Token
-func getPlatformHeadersWithAPIToken(apiToken string) map[string]string {
+// Creates platform headers using API Token.
+func platformHeadersWithAPIToken(apiToken string) map[string]string {
 	m := make(map[string]string)
 	m["Content-Type"] = "application/json"
 	m[util.PlatformApiTokenHeader] = apiToken
@@ -333,12 +558,12 @@ func getPlatformHeadersWithAPIToken(apiToken string) map[string]string {
 }
 
 func createRegisterAgentRequest(config *util.Config) model.RegisterRequest {
-	req := model.RegisterRequest{}
-	req.Name = config.GetString(util.NodeName)
-	req.IP = config.GetString(util.NodeIP)
-	req.Version = config.GetString(util.PlatformVersion)
-	req.State = model.Registering.Name()
-	return req
+	return model.RegisterRequest{
+		CommonInfo: createNodeAgentCommonInfo(
+			config, model.Registering,
+			config.String(util.PlatformVersionKey),
+		),
+	}
 }
 
 func createUpdateAgentStateRequest(
@@ -346,90 +571,44 @@ func createUpdateAgentStateRequest(
 	state model.NodeState,
 	version string,
 ) model.StateUpdateRequest {
-	req := model.StateUpdateRequest{}
-	req.Name = config.GetString(util.NodeName)
-	req.IP = config.GetString(util.NodeIP)
-	req.Version = version
-	req.State = state.Name()
-	return req
+	return model.StateUpdateRequest{
+		CommonInfo: createNodeAgentCommonInfo(config, state, version),
+	}
 }
 
-func createUpdateAgentRequest(config *util.Config) model.StateUpdateRequest {
-	req := model.StateUpdateRequest{}
-	req.Name = config.GetString(util.NodeName)
-	req.IP = config.GetString(util.NodeIP)
-	req.Version = config.GetString(util.PlatformVersion)
-	req.State = model.Upgrading.Name()
-	return req
-}
-
-func createNodeCapabilitesRequest(
+func createNodeAgentCommonInfo(
 	config *util.Config,
-	data map[string]model.PreflightCheckVal,
-) model.NodeCapabilityRequest {
-	req := model.NodeCapabilityRequest{}
-	nodeDetails := model.NodeDetails{}
-	nodeDetails.IP = config.GetString(util.NodeIP)
-	nodeDetails.Region = config.GetString(util.NodeRegion)
-	nodeDetails.Zone = config.GetString(util.NodeZone)
-	nodeDetails.InstanceType = config.GetString(util.NodeInstanceType)
-	nodeDetails.InstanceName = config.GetString(util.NodeInstanceName)
-	nodeDetails.NodeConfigs = getNodeConfig(data)
-	nodeDetailsList := [...]model.NodeDetails{nodeDetails}
-	req.Nodes = nodeDetailsList[:]
-	return req
+	state model.NodeState,
+	version string) model.CommonInfo {
+	info := model.CommonInfo{}
+	info.Name = config.String(util.NodeNameKey)
+	info.IP = config.String(util.NodeIpKey)
+	info.Port = config.Int(util.NodePortKey)
+	info.Version = version
+	info.ArchType = runtime.GOARCH
+	info.OSType = runtime.GOOS
+	info.State = state.Name()
+	info.Home = util.MustGetHomeDirectory()
+	return info
 }
 
-func getNodeConfig(data map[string]model.PreflightCheckVal) []model.NodeConfig {
-	mountPointsMap := make(map[string]string)
-	portsMap := make(map[string]string)
-	result := make([]model.NodeConfig, 0)
-	for k, v := range data {
-		if v.Error == "none" {
-			kSplit := strings.Split(k, ":")
-			switch kSplit[0] {
-			case mountPoints:
-				mountPointsMap[kSplit[1]] = v.Value
-			case portAvailable:
-				portsMap[kSplit[1]] = v.Value
-			default:
-				//Try Getting Python Version.
-				vSplit := strings.Split(v.Value, " ")
-				if len(vSplit) > 0 && strings.EqualFold(vSplit[0], "Python") {
-					result = append(
-						result,
-						model.NodeConfig{Type: strings.ToUpper(kSplit[0]), Value: vSplit[1]},
-					)
-				} else {
-					result = append(result, model.NodeConfig{Type: strings.ToUpper(kSplit[0]), Value: v.Value})
-				}
-			}
-		}
-	}
+func createNodeDetailsRequest(
+	config *util.Config,
+	data []model.NodeConfig,
+) model.NodeDetails {
+	nodeDetails := model.NodeDetails{}
+	nodeDetails.IP = config.String(util.NodeIpKey)
+	nodeDetails.Region = config.String(util.NodeRegionKey)
+	nodeDetails.Zone = config.String(util.NodeZoneKey)
+	nodeDetails.InstanceType = config.String(util.NodeInstanceTypeKey)
+	nodeDetails.InstanceName = config.String(util.NodeNameKey)
+	nodeDetails.NodeConfigs = data
+	return nodeDetails
+}
 
-	//Marshal the mount points in the request.
-	if len(mountPointsMap) > 0 {
-		mountPointsJson, err := json.Marshal(mountPointsMap)
-		if err != nil {
-			panic("Error while marshaling mount points map")
-		}
-		result = append(
-			result,
-			model.NodeConfig{Type: strings.ToUpper(mountPoints), Value: string(mountPointsJson)},
-		)
-	}
-
-	//Marshal the ports in the request.
-	if len(portsMap) > 0 {
-		portsJson, err := json.Marshal(portsMap)
-		if err != nil {
-			panic("Error while marshaling ports map")
-		}
-		result = append(
-			result,
-			model.NodeConfig{Type: strings.ToUpper(portAvailable), Value: string(portsJson)},
-		)
-	}
-
-	return result
+func createNodeInstancesRequest(
+	config *util.Config,
+	data []model.NodeConfig,
+) model.NodeInstances {
+	return model.NodeInstances{Nodes: []model.NodeDetails{createNodeDetailsRequest(config, data)}}
 }

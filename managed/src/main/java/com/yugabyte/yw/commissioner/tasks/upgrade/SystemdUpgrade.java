@@ -4,10 +4,8 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.forms.SystemdUpgradeParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.List;
@@ -37,16 +35,19 @@ public class SystemdUpgrade extends UpgradeTaskBase {
   }
 
   @Override
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    taskParams().verifyParams(getUniverse(), isFirstTry);
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
           // Fetch node lists
           Pair<List<NodeDetails>, List<NodeDetails>> nodes = fetchNodes(taskParams().upgradeOption);
 
-          // Verify the request params and fail if invalid
-          taskParams().verifyParams(getUniverse());
-
-          if (taskParams().ybcInstalled) {
+          if (taskParams().isYbcInstalled()) {
             createServerControlTasks(nodes.getRight(), ServerType.CONTROLLER, "stop")
                 .setSubTaskGroupType(getTaskSubGroupType());
           }
@@ -54,7 +55,12 @@ public class SystemdUpgrade extends UpgradeTaskBase {
           createRollingUpgradeTaskFlow(
               (nodes1, processTypes) -> createSystemdUpgradeTasks(nodes1, getSingle(processTypes)),
               nodes,
-              DEFAULT_CONTEXT,
+              UpgradeContext.builder()
+                  .reconfigureMaster(false)
+                  .runBeforeStopping(false)
+                  .processInactiveMaster(false)
+                  .skipStartingProcesses(true)
+                  .build(),
               false);
 
           // Persist useSystemd changes
@@ -74,15 +80,11 @@ public class SystemdUpgrade extends UpgradeTaskBase {
     createSetupServerTasks(nodes, p -> p.isSystemdUpgrade = true)
         .setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
-    UniverseDefinitionTaskParams universeDetails = getUniverse().getUniverseDetails();
-    taskParams().rootCA = universeDetails.rootCA;
-    taskParams().clientRootCA = universeDetails.clientRootCA;
-    taskParams().rootAndClientRootCASame = universeDetails.rootAndClientRootCASame;
-    taskParams().allowInsecure = universeDetails.allowInsecure;
-    taskParams().setTxnTableWaitCountFlag = universeDetails.setTxnTableWaitCountFlag;
-
     // Conditional Configuring
     createConfigureServerTasks(nodes, params -> params.isSystemdUpgrade = true)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+    // Start using SystemD
+    createServerControlTasks(nodes, processType, "start", params -> params.useSystemd = true);
   }
 }

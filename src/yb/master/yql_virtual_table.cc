@@ -13,8 +13,10 @@
 
 #include "yb/master/yql_virtual_table.h"
 
-#include "yb/common/ql_scanspec.h"
 #include "yb/common/schema.h"
+
+#include "yb/dockv/key_entry_value.h"
+#include "yb/docdb/doc_ql_scanspec.h"
 
 #include "yb/master/master.h"
 #include "yb/master/scoped_leader_shared_lock.h"
@@ -48,19 +50,19 @@ YQLVirtualTable::YQLVirtualTable(const TableName& table_name,
                 "server", metricName, metricDescription,
                 MetricUnit::kMicroseconds, metricDescription,
                 MetricLevel::kInfo, 0, 10000000, 2);
-    histogram_ = master->metric_entity()->FindOrCreateHistogram(std::move(prototype));
+    histogram_ = master->metric_entity()->FindOrCreateMetric<Histogram>(std::move(prototype));
 }
 
 YQLVirtualTable::~YQLVirtualTable() = default;
 
 Status YQLVirtualTable::GetIterator(
     const QLReadRequestPB& request,
-    const Schema& projection,
+    const dockv::ReaderProjection& projection,
       std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
     const TransactionOperationContext& txn_op_context,
-    CoarseTimePoint deadline,
-    const ReadHybridTime& read_time,
-    const QLScanSpec& spec,
+    const docdb::ReadOperationData& read_operation_data,
+    const qlexpr::QLScanSpec& spec,
+    std::reference_wrapper<const ScopedRWOperation> pending_op,
     std::unique_ptr<docdb::YQLRowwiseIteratorIf>* iter) const {
   // Acquire shared lock on catalog manager to verify it is still the leader and metadata will
   // not change.
@@ -79,16 +81,17 @@ Status YQLVirtualTable::BuildYQLScanSpec(
     const ReadHybridTime& read_time,
     const Schema& schema,
     const bool include_static_columns,
-    const Schema& static_projection,
-    std::unique_ptr<QLScanSpec>* spec,
-    std::unique_ptr<QLScanSpec>* static_row_spec) const {
+    std::unique_ptr<qlexpr::QLScanSpec>* spec,
+    std::unique_ptr<qlexpr::QLScanSpec>* static_row_spec) const {
   // There should be no static columns in system tables so we are not handling it.
   if (include_static_columns) {
     return STATUS(IllegalState, "system table contains no static columns");
   }
-  spec->reset(new QLScanSpec(
+  const dockv::KeyEntryValues empty_vec;
+  spec->reset(new docdb::DocQLScanSpec(
+      schema, /* hash_code = */ boost::none, /* max_hash_code = */ boost::none, empty_vec,
       request.has_where_expr() ? &request.where_expr().condition() : nullptr,
-      request.has_if_expr() ? &request.if_expr().condition() : nullptr,
+      request.has_if_expr() ? &request.if_expr().condition() : nullptr, rocksdb::kDefaultQueryId,
       request.is_forward_scan()));
   return Status::OK();
 }

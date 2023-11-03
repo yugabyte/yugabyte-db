@@ -15,18 +15,17 @@
 
 #include <boost/functional/hash.hpp>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/common/redis_constants_common.h"
 
 #include "yb/master/master_util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 
 namespace yb {
 namespace client {
 
-DEFINE_bool(yb_system_namespace_readonly, true, "Set system keyspace read-only.");
-TAG_FLAG(yb_system_namespace_readonly, runtime);
+DEFINE_RUNTIME_bool(yb_system_namespace_readonly, true, "Set system keyspace read-only.");
 
 using std::string;
 

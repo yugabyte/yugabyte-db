@@ -21,8 +21,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef YB_ROCKSDB_TABLE_TABLE_READER_H
-#define YB_ROCKSDB_TABLE_TABLE_READER_H
+#pragma once
 
 #include <memory>
 
@@ -67,6 +66,10 @@ class TableReader {
   virtual InternalIterator* NewIterator(const ReadOptions&,
                                         Arena* arena = nullptr,
                                         bool skip_filters = false) = 0;
+
+  // TODO(index_iter): consider allocating index iterator on arena, try and measure potential
+  // performance improvements.
+  virtual InternalIterator* NewIndexIterator(const ReadOptions& read_options) = 0;
 
   // Given a key, return an approximate byte offset in the file where
   // the data for that key begins (or would begin if the key were
@@ -127,5 +130,3 @@ class TableReader {
 };
 
 }  // namespace rocksdb
-
-#endif  // YB_ROCKSDB_TABLE_TABLE_READER_H

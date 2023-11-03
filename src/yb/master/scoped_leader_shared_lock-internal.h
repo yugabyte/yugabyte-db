@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_SCOPED_LEADER_SHARED_LOCK_INTERNAL_H
-#define YB_MASTER_SCOPED_LEADER_SHARED_LOCK_INTERNAL_H
+#pragma once
 
 #include "yb/common/wire_protocol.h"
 
@@ -119,15 +118,5 @@ bool ScopedLeaderSharedLock::CheckIsInitializedAndIsLeaderOrRespondTServer(
       (resp, rpc);
 }
 
-inline std::string RequestorString(yb::rpc::RpcContext* rpc) {
-  if (rpc) {
-    return rpc->requestor_string();
-  } else {
-    return "internal request";
-  }
-}
-
 }  // namespace master
 }  // namespace yb
-
-#endif  // YB_MASTER_SCOPED_LEADER_SHARED_LOCK_INTERNAL_H

@@ -3,12 +3,14 @@
 #pragma once
 
 #include <assert.h>
+#include <ctype.h>
 #include <dirent.h>
 #include <float.h>
 #include <inttypes.h>
 #include <math.h>
 #include <openssl/ossl_typ.h>
 #include <pthread.h>
+#include <signal.h>
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -30,6 +32,7 @@
 #include <cfloat>
 #include <chrono>
 #include <cmath>
+#include <compare>
 #include <condition_variable>
 #include <cstdarg>
 #include <cstddef>
@@ -46,12 +49,14 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <random>
 #include <set>
 #include <shared_mutex>
 #include <sstream>
 #include <stack>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <type_traits>
 #include <unordered_map>
@@ -68,7 +73,6 @@
 #include <boost/core/demangle.hpp>
 #include <boost/function.hpp>
 #include <boost/functional/hash.hpp>
-#include <boost/lexical_cast.hpp>
 #include <boost/lockfree/queue.hpp>
 #include <boost/mpl/and.hpp>
 #include <boost/mpl/if.hpp>
@@ -90,7 +94,9 @@
 #include <boost/smart_ptr/detail/yield_k.hpp>
 #include <boost/tti/has_type.hpp>
 #include <boost/type_traits/is_const.hpp>
+#include <boost/type_traits/is_detected.hpp>
 #include <boost/type_traits/make_signed.hpp>
+#include <boost/unordered_map.hpp>
 #include <boost/uuid/uuid.hpp>
 #include <boost/version.hpp>
 #include <cds/init.h>
@@ -112,6 +118,8 @@
 #include <gtest/gtest.h>
 #include <gtest/gtest_prod.h>
 #include <rapidjson/document.h>
+#include <rapidjson/reader.h>
+#include <rapidjson/writer.h>
 #include <squeasel.h>
 
 #include "yb/gutil/atomicops.h"
@@ -170,6 +178,7 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/cross_thread_mutex.h"
 #include "yb/util/curl_util.h"
+#include "yb/util/debug/lock_debug.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event_impl.h"
 #include "yb/util/enums.h"
@@ -178,9 +187,14 @@
 #include "yb/util/errno.h"
 #include "yb/util/faststring.h"
 #include "yb/util/file_system.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/file_util.h"
 #include "yb/util/flags.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/flags/flags_callback.h"
 #include "yb/util/format.h"
+#include "yb/util/io.h"
+#include "yb/util/jsonreader.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
@@ -224,6 +238,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/status_log.h"
+#include "yb/util/std_util.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/striped64.h"
@@ -232,11 +247,14 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
+#include "yb/util/thread_annotations_util.h"
 #include "yb/util/threadlocal.h"
+#include "yb/util/timestamp.h"
 #include "yb/util/tostring.h"
 #include "yb/util/type_traits.h"
 #include "yb/util/ulimit.h"
 #include "yb/util/url-coding.h"
+#include "yb/util/user.h"
 #include "yb/util/uuid.h"
 #include "yb/util/version_info.h"
 #include "yb/util/version_info.pb.h"

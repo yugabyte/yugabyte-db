@@ -13,11 +13,15 @@
 
 #include <boost/uuid/nil_generator.hpp>
 
+#include "yb/cdc/cdc_types.h"
+
 #include "yb/common/entity_ids.h"
 
 #include "yb/gutil/strings/escaping.h"
 #include "yb/util/cast.h"
 #include "yb/util/result.h"
+
+using std::string;
 
 using boost::uuids::uuid;
 
@@ -172,8 +176,16 @@ Result<uint32_t> GetPgsqlDatabaseOidByTableId(const TableId& table_id) {
   return GetPgsqlOid(table_id, 0, "table id");
 }
 
+Result<uint32_t> GetPgsqlDatabaseOidByTablegroupId(const TablegroupId& tablegroup_id) {
+  return GetPgsqlOid(tablegroup_id, 0, "tablegroup id");
+}
+
 Result<uint32_t> GetPgsqlTablespaceOid(const TablespaceId& tablespace_id) {
   return GetPgsqlOid(tablespace_id, 0, "tablespace id");
+}
+
+namespace xrepl {
+YB_STRONGLY_TYPED_HEX_UUID_IMPL(StreamId);
 }
 
 }  // namespace yb

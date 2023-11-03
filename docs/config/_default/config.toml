@@ -1,22 +1,33 @@
 baseurl = 'https://docs.yugabyte.com'
 languageCode = 'en-us'
 title = 'YugabyteDB Docs'
-googleAnalytics = 'UA-104956980-3'
 # Highlighting config (Pygments)
 pygmentsCodefences = true
 pygmentsStyle = 'pygments'
 resourceDir = 'docs/resources'
 
+enableGitInfo = true
+
 [frontmatter]
-  date = [ ':git', ':default' ]
+  date = [ "lastmod", ":default" ]
+# lastmod = [ ":git", ":default" ]
+
+[params]
+  regenerateDiagrams = false
 
 [module]
   [module.hugoVersion]
     extended = true
-    min = "0.73.0"
+    min = "0.104.3"
   [[module.imports]]
     path = "github.com/google/docsy"
     disable = false
   [[module.imports]]
     path = "github.com/google/docsy/dependencies"
     disable = false
+  [[module.imports]]
+    path = "github.com/trunkcode/hugo-seo"
+    disable = false
+
+[markup.goldmark.parser.attribute]
+    block = true

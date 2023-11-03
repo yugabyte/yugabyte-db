@@ -25,7 +25,7 @@ Use the `DROP KEYSPACE` statement to remove a keyspace from the system.
 
 ### Grammar
 
-```
+```ebnf
 drop_keyspace ::= DROP { KEYSPACE | SCHEMA } [ IF EXISTS ] keyspace_name;
 ```
 
@@ -39,8 +39,6 @@ Where
 - An error is raised if the specified keyspace is non-empty (contains tables or types).
 
 ## Examples
-
-You can do this as shown below.
 
 ```sql
 ycqlsh> CREATE KEYSPACE example;

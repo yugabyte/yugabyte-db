@@ -40,7 +40,6 @@
 #include "catalog/pg_subscription.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
-#include "catalog/pg_yb_catalog_version.h"
 #include "catalog/toasting.h"
 #include "commands/defrem.h"
 #include "miscadmin.h"
@@ -51,6 +50,9 @@
 
 /* YB includes. */
 #include "access/htup_details.h"
+#include "catalog/pg_yb_catalog_version.h"
+#include "catalog/pg_yb_profile.h"
+#include "catalog/pg_yb_role_profile.h"
 #include "utils/syscache.h"
 #include "pg_yb_utils.h"
 
@@ -254,7 +256,9 @@ IsSharedRelation(Oid relationId)
 		relationId == DbRoleSettingRelationId ||
 		relationId == ReplicationOriginRelationId ||
 		relationId == SubscriptionRelationId ||
-		relationId == YBCatalogVersionRelationId)
+		relationId == YBCatalogVersionRelationId ||
+		relationId == YbProfileRelationId ||
+		relationId == YbRoleProfileRelationId)
 		return true;
 	/* These are their indexes (see indexing.h) */
 	if (relationId == AuthIdRolnameIndexId ||
@@ -275,7 +279,10 @@ IsSharedRelation(Oid relationId)
 		relationId == ReplicationOriginNameIndex ||
 		relationId == SubscriptionObjectIndexId ||
 		relationId == SubscriptionNameIndexId ||
-		relationId == YBCatalogVersionDbOidIndexId)
+		relationId == YBCatalogVersionDbOidIndexId ||
+		relationId == YbProfileOidIndexId ||
+		relationId == YbProfileRolnameIndexId ||
+		relationId == YbRoleProfileOidIndexId)
 		return true;
 	/* These are their toast tables and toast indexes (see toasting.h) */
 	if (relationId == PgShdescriptionToastTable ||
@@ -432,6 +439,14 @@ GetNewOid(Relation relation)
 	/* If relation doesn't have OIDs at all, caller is confused */
 	Assert(relation->rd_rel->relhasoids);
 
+	if (IsYugaByteEnabled())
+	{
+		if (relation->rd_rel->relisshared)
+			YbDatabaseIdForNewObjectId = TemplateDbOid;
+		else
+			YbDatabaseIdForNewObjectId = MyDatabaseId;
+	}
+
 	/* In bootstrap mode, we don't have any indexes to use */
 	if (IsBootstrapProcessingMode())
 		return GetNewObjectId();
@@ -490,6 +505,14 @@ GetNewOidWithIndex(Relation relation, Oid indexId, AttrNumber oidcolumn)
 	 */
 	Assert(!IsBinaryUpgrade || yb_binary_restore || RelationGetRelid(relation) != TypeRelationId);
 
+	if (IsYugaByteEnabled())
+	{
+		if (relation->rd_rel->relisshared)
+			YbDatabaseIdForNewObjectId = TemplateDbOid;
+		else
+			YbDatabaseIdForNewObjectId = MyDatabaseId;
+	}
+
 	/* Generate new OIDs until we find one not in the table */
 	do
 	{
@@ -539,6 +562,17 @@ GetNewRelFileNode(Oid reltablespace, Relation pg_class, char relpersistence)
 	 * are properly detected.
 	 */
 	rnode.backend = GetBackendOidFromRelPersistence(relpersistence);;
+
+	/*
+	 * All the shared relations have relfilenode value as 0, which suggests
+	 * that relfilenode is only used for non-shared relations. That's why
+	 * MyDatabaseId should be used for new relfilenode OID allocation.
+	 */
+	if (IsYugaByteEnabled())
+	{
+		Assert(!pg_class || !pg_class->rd_rel->relisshared);
+		YbDatabaseIdForNewObjectId = MyDatabaseId;
+	}
 
 	do
 	{

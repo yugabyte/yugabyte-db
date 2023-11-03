@@ -8,8 +8,13 @@ export const RESET_GRAPH_QUERY_PERIOD = 'RESET_GRAPH_QUERY_PERIOD';
 
 export const QUERY_METRICS = 'QUERY_METRICS';
 export const QUERY_METRICS_SUCCESS = 'QUERY_METRICS_SUCCESS';
+export const QUERY_MASTER_METRICS_SUCCESS = 'QUERY_MASTER_METRICS_SUCCESS';
+export const QUERY_MASTER_METRICS_FAILURE = 'QUERY_MASTER_METRICS_FAILURE';
 export const QUERY_METRICS_FAILURE = 'QUERY_METRICS_FAILURE';
+export const SET_GRAPH_FILTER = 'SET_GRAPH_FILTER';
 export const RESET_METRICS = 'RESET_METRICS';
+export const RESET_GRAPH_FILTER = 'RESET_GRAPH_FILTER';
+export const SELECTED_METRIC_TYPE_TAB = 'SELECTED_METRIC_TYPE_TAB';
 
 export const TOGGLE_PROMETHEUS_QUERY = 'TOGGLE_PROMETHEUS_QUERY';
 
@@ -50,6 +55,14 @@ export function queryMetricsSuccess(result, panelType) {
   };
 }
 
+export function queryMasterMetricsSuccess(result, panelType) {
+  return {
+    type: QUERY_MASTER_METRICS_SUCCESS,
+    payload: result,
+    panelType: panelType
+  };
+}
+
 export function queryMetricsFailure(error, panelType) {
   return {
     type: QUERY_METRICS_FAILURE,
@@ -58,9 +71,37 @@ export function queryMetricsFailure(error, panelType) {
   };
 }
 
+export function queryMasterMetricsFailure(error, panelType) {
+  return {
+    type: QUERY_MASTER_METRICS_FAILURE,
+    payload: error,
+    panelType: panelType
+  };
+}
+
+export function currentTabSelected(tabName) {
+  return {
+    type: SELECTED_METRIC_TYPE_TAB,
+    tabName: tabName
+  };
+}
+
 export function resetMetrics() {
   return {
     type: RESET_METRICS
+  };
+}
+
+export function setGraphFilter(filter) {
+  return {
+    type: SET_GRAPH_FILTER,
+    payload: filter
+  };
+}
+
+export function resetGraphFilter() {
+  return {
+    type: RESET_GRAPH_FILTER
   };
 }
 
@@ -71,6 +112,5 @@ export function togglePrometheusQuery() {
 }
 
 export function getGrafanaJson() {
-  return axios
-    .get(`${ROOT_URL}/grafana_dashboard`);
+  return axios.get(`${ROOT_URL}/grafana_dashboard`);
 }

@@ -13,7 +13,7 @@
 package org.yb.client;
 
 import com.google.protobuf.Message;
-import org.jboss.netty.buffer.ChannelBuffer;
+import io.netty.buffer.ByteBuf;
 import org.yb.master.MasterReplicationOuterClass;
 import org.yb.master.MasterTypes;
 import org.yb.util.Pair;
@@ -34,7 +34,7 @@ public class SetUniverseReplicationEnabledRequest
   }
 
   @Override
-  ChannelBuffer serialize(Message header) {
+  ByteBuf serialize(Message header) {
     assert header.isInitialized();
 
     final MasterReplicationOuterClass.SetUniverseReplicationEnabledRequestPB.Builder builder =

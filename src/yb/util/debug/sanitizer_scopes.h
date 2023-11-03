@@ -31,8 +31,7 @@
 //
 // Wrappers around the annotations from gutil/dynamic_annotations.h,
 // provided as C++-style scope guards.
-#ifndef YB_UTIL_DEBUG_SANITIZER_SCOPES_H_
-#define YB_UTIL_DEBUG_SANITIZER_SCOPES_H_
+#pragma once
 
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/macros.h"
@@ -55,7 +54,20 @@ class ScopedTSANIgnoreReadsAndWrites {
   DISALLOW_COPY_AND_ASSIGN(ScopedTSANIgnoreReadsAndWrites);
 };
 
+// Scope guard which instructs TSAN to ignore all synchronization events
+// on the current thread as long as it is alive. These may be safely
+// nested.
+class ScopedTSANIgnoreSync {
+ public:
+  ScopedTSANIgnoreSync() {
+    ANNOTATE_IGNORE_SYNC_BEGIN();
+  }
+  ~ScopedTSANIgnoreSync() {
+    ANNOTATE_IGNORE_SYNC_END();
+  }
+ private:
+  DISALLOW_COPY_AND_ASSIGN(ScopedTSANIgnoreSync);
+};
+
 } // namespace debug
 } // namespace yb
-
-#endif // YB_UTIL_DEBUG_SANITIZER_SCOPES_H_

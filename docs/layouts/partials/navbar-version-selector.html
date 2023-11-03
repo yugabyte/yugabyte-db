@@ -1,0 +1,42 @@
+{{ $versionName := .Site.Params.version_menu }}
+{{ $pagePermalink := .Page.RelPermalink }}
+<a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+  {{ range .Site.Params.versions }}
+    {{ if hasPrefix $pagePermalink .url }}
+      {{ $versionName = .version }}
+      {{- if in .version "(Preview)" -}}
+        {{ $versionName = replace .version "(Preview)" "<span class='metadata-tag-gray'>Preview</span>" }}
+      {{- else if in .version "(STS)" -}}
+        {{ $versionName = replace .version "(STS)" "<span class='metadata-tag-green'>STS</span>" }}
+      {{- else if in .version "(LTS)" -}}
+        {{ $versionName = replace .version "(LTS)" "<span class='metadata-tag-green'>LTS</span>" }}
+      {{ end }}
+    {{ end }}
+  {{ end }}
+  {{ $versionName | safeHTML }}
+</a>
+<div class="dropdown-menu" aria-labelledby="navbarDropdownMenuLink">
+  {{ $path := "" }}
+  {{ if .Site.Params.version_menu_pagelinks }}
+    {{ $pathArray := split .Page.RelPermalink "/" }}
+    {{ $path = path.Join (after 2 $pathArray) }}
+    {{- if eq $path "" -}}
+      {{ $path = add $path "/" }}
+    {{- else }}
+      {{ $path = add (add "/" $path) "/" }}
+    {{ end }}
+  {{ end }}
+  {{ range .Site.Params.versions }}
+    {{ $versionName := .version }}
+    {{- if in .version "(Preview)" -}}
+      {{ $versionName = replace .version "(Preview)" "<span class='metadata-tag-gray'>Preview</span>" }}
+    {{- else if in .version "(STS)" -}}
+      {{ $versionName = replace .version "(STS)" "<span class='metadata-tag-green'>STS</span>" }}
+    {{- else if in .version "(LTS)" -}}
+      {{ $versionName = replace .version "(LTS)" "<span class='metadata-tag-green'>LTS</span>" }}
+    {{- else if in .version "Unsupported" -}}
+      {{ $path = "/" }}
+    {{ end }}
+    <a class="dropdown-item" href="{{ .url }}{{ $path }}"{{- if .newTab }} target="_blank" rel="noopener"{{- end }}>{{ $versionName | safeHTML }}</a>
+  {{ end }}
+</div>

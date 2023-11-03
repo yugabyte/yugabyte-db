@@ -14,10 +14,13 @@
   vars:
     script_to_run: "{{ yb_home_dir | default('/home/yugabyte') }}/bin/yb-server-ctl.sh"
     systemd_option: "{{ systemd_services | default(false) }}"
+    is_clean_command: "{{ command == 'clean' or command == 'clean-logs'}}"
   tasks:
     - name: Call the ctl script with appropriate args
       shell: "{{ script_to_run }} {{ process }} {{ command }}"
-      when: not systemd_option and process != "thirdparty" and process != "platform-services"
+      when:
+        - not systemd_option or is_clean_command
+        - process != "thirdparty" and process != "platform-services"
 
     - name: Control the master and tserver with systemd
       block:
@@ -28,14 +31,19 @@
 
         - name: Systemd system scope
           block:
+            - name: Reload daemon
+              shell: "sudo systemctl daemon-reload"
             - name: Enable the {{ process }}
               shell: "sudo systemctl enable yb-{{ process }}"
               when: command == 'start'
             - name: Perform {{ command }} on the {{ process }}
               shell: "sudo systemctl {{ command }} yb-{{ process }}"
+              when: command == 'start' or command == 'stop'
             - name: Disable the {{ process }}
               shell: "sudo systemctl disable yb-{{ process }}"
               when: command == 'stop'
+            - name: Reload daemon
+              shell: "sudo systemctl daemon-reload"
           when: systemd_system.stat.exists
 
         - name: Systemd user scope
@@ -46,6 +54,7 @@
               state: started
               enabled: yes
               scope: user
+              daemon_reload: yes
             when: command == 'start'
           - name: Stop the {{ process }}
             systemd:
@@ -53,29 +62,50 @@
               state: stopped
               enabled: no
               scope: user
+              daemon_reload: yes
             when: command == 'stop'
           when: not systemd_system.stat.exists
       when: systemd_option and process != "thirdparty" and process != "platform-services"
 
-
-- name: Stopping thirdparty services
+- name: Removing thirdparty services
   hosts: "{{ instance_search_pattern }}"
-  gather_facts: "{{ process == 'thirdparty' and command == 'stop-services'}}"
+  gather_facts: "{{ process == 'thirdparty' and command == 'remove-services'}}"
   vars_files:
     - "{{ vars_file | default(placeholder_vars_file) }}"
   tasks:
-    - name: Stop node exporter service
-      service:
-        enabled: no
-        name: node_exporter
-        state: stopped
-      become: yes
-      become_method: sudo
-      when: process == "thirdparty" and command == "stop-services"
+    - block:
+      - set_fact:
+          prometheus_systemd_unit_dir: "/lib/systemd/system"
+      - set_fact:
+          prometheus_systemd_unit_dir: "/usr/lib/systemd/system"
+          when: ansible_os_family == "Suse"
 
-- name: Stopping platform services
+      - name: Stop node exporter service
+        service:
+          enabled: yes
+          name: node_exporter
+          state: stopped
+        become: yes
+        become_method: sudo
+
+      - name: Delete node exporter service
+        file:
+          path: "{{ prometheus_systemd_unit_dir }}/node_exporter.service"
+          state: absent
+        become: yes
+        become_method: sudo
+
+      - name: Perform daemon-reload for removed services
+        shell:
+          cmd: "systemctl daemon-reload"
+        become: yes
+        become_method: sudo
+
+      when: process == "thirdparty" and command == "remove-services"
+
+- name: Removing platform services
   hosts: "{{ instance_search_pattern }}"
-  gather_facts: "{{ process == 'platform-services' and command == 'stop-services'}}"
+  gather_facts: "{{ process == 'platform-services' and command == 'remove-services'}}"
   vars_files:
     - "{{ vars_file | default(placeholder_vars_file) }}"
   tasks:
@@ -89,6 +119,9 @@
 
       - set_fact:
           systemd_dir: "/etc/systemd/system"
+      - set_fact:
+          systemd_dir: "/usr/lib/systemd/system"
+        when: ansible_os_family == "Suse"
       - set_fact:
           systemd_dir: "{{ yb_home_dir | default('/home/yugabyte') }}/.config/systemd/user"
         when: systemd_user.stat.exists
@@ -117,6 +150,13 @@
       - name: Delete purge logs service
         file:
           path: "{{ systemd_dir }}/yb-zip_purge_yb_logs.service"
+          state: absent
+        become: yes
+        become_method: sudo
+
+      - name: Delete yb-bind check service
+        file:
+          path: "{{ systemd_dir }}/yb-bind_check.service"
           state: absent
         become: yes
         become_method: sudo
@@ -178,7 +218,7 @@
 
       - name: Remove old cron job that cleans cores
         cron:
-          name: "cleanup core files hourly"
+          name: "cleanup core files every 5 minutes"
           user: "yugabyte"
           state: absent
         become: yes
@@ -186,9 +226,9 @@
 
       - name: Remove old cron job that purges logs
         cron:
-          name: "cleanup yb log files hourly"
+          name: "cleanup yb log files every 5 minutes"
           user: "yugabyte"
           state: absent
         become: yes
         become_method: sudo
-      when: process == "platform-services" and command == "stop-services"
+      when: process == "platform-services" and command == "remove-services"

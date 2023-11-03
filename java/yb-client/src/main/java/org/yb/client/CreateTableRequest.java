@@ -39,7 +39,7 @@ import org.yb.annotations.InterfaceAudience;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterTypes;
 import org.yb.util.Pair;
-import org.jboss.netty.buffer.ChannelBuffer;
+import io.netty.buffer.ByteBuf;
 
 /**
  * RPC to create new tables
@@ -67,7 +67,7 @@ class CreateTableRequest extends YRpc<CreateTableResponse> {
   }
 
   @Override
-  ChannelBuffer serialize(Message header) {
+  ByteBuf serialize(Message header) {
     assert header.isInitialized();
     this.builder.setName(this.name);
     MasterTypes.NamespaceIdentifierPB.Builder nsBuilder =

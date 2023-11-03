@@ -53,6 +53,10 @@ ForeignNext(ForeignScanState *node)
 	if (plan->operation != CMD_SELECT)
 		slot = node->fdwroutine->IterateDirectModify(node);
 	else
+		/*
+		 * YB note: for YB FDW, see comment in ybcIterateForeignScan for why
+		 * YbInstantiatePushdownParams is not called at this level.
+		 */
 		slot = node->fdwroutine->IterateForeignScan(node);
 	MemoryContextSwitchTo(oldcontext);
 

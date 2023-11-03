@@ -11,12 +11,13 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_COMPARE_UTIL_H
-#define YB_UTIL_COMPARE_UTIL_H
+#pragma once
 
+#include <unordered_map>
 #include <vector>
 
 #include <boost/preprocessor/config/config.hpp>
+#include <boost/unordered_map.hpp>
 
 namespace yb {
 namespace util {
@@ -49,9 +50,44 @@ int CompareVectors(const std::vector<T>& a, const std::vector<T>& b) {
 }
 
 // http://stackoverflow.com/questions/1903954/is-there-a-standard-sign-function-signum-sgn-in-c-c
-template <typename T>
+template<typename T>
 inline int sgn(T val) {
   return (T(0) < val) - (val < T(0));
+}
+
+// Whether dereferencables (pointers, optionals, etc.) are equal by value
+// using the given equality function.
+template<class T, class EqualityFn>
+[[nodiscard]]
+bool DereferencedEqual(const T& t1, const T& t2, EqualityFn equality_fn) {
+  return !t1 ? !t2 : t2 && equality_fn(*t1, *t2);
+}
+
+template<class... Args>
+struct is_unordered_map : std::false_type {};
+
+template<class... Args>
+struct is_unordered_map<std::unordered_map<Args...>> : std::true_type {};
+
+template<class... Args>
+struct is_unordered_map<boost::unordered_map<Args...>> : std::true_type {};
+
+template<class Map> concept UnorderedMap = is_unordered_map<Map>::value;
+
+// Whether unordered maps contains elements that are equal by value, order of elements is ignored.
+template<UnorderedMap UM, class EqualityFn>
+[[nodiscard]]
+bool MapsEqual(const UM& map1, const UM& map2, EqualityFn equality_fn) {
+  if (map1.size() != map2.size()) {
+    return false;
+  }
+  for (const auto& e1 : map1) {
+    const auto e2iter = map2.find(e1.first);
+    if (e2iter == map2.end() || !equality_fn(e1.second, e2iter->second)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 #if BOOST_PP_VARIADICS
@@ -73,5 +109,3 @@ inline int sgn(T val) {
 
 }  // namespace util
 }  // namespace yb
-
-#endif  // YB_UTIL_COMPARE_UTIL_H

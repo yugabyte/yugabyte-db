@@ -30,7 +30,7 @@
 // under the License.
 //
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <glog/stl_logging.h>
 #include <gtest/gtest.h>
 
@@ -40,6 +40,10 @@
 #include "yb/util/stopwatch.h" // Required in NDEBUG mode
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+
+using std::pair;
+using std::make_pair;
+using std::vector;
 
 namespace yb {
 

@@ -35,19 +35,45 @@ import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
 
 /**
- * Represents a secondary index.
+ * It represents a secondary index.
  */
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
-public class IndexInfo {
+final public class IndexInfo {
+  private final String tableId;
+  private final int version;
+  private final boolean isLocal;
+  private final boolean isUnique;
+  private final String indexedTableId;
   private final CommonTypes.IndexPermissions indexPermissions;
 
-  /**
-   * Constructs an IndexInfo java object using IndexInfoPB.
-   * @param index_info_pb
-   */
-  public IndexInfo(Common.IndexInfoPB index_info_pb) {
-    this.indexPermissions = index_info_pb.getIndexPermissions();
+  public IndexInfo(Common.IndexInfoPB indexInfoPB) {
+    this.tableId = indexInfoPB.getTableId().toStringUtf8();
+    this.version = indexInfoPB.getVersion();
+    this.isLocal = indexInfoPB.getIsLocal();
+    this.isUnique = indexInfoPB.getIsUnique();
+    this.indexedTableId = indexInfoPB.getIndexedTableId().toStringUtf8();
+    this.indexPermissions = indexInfoPB.getIndexPermissions();
+  }
+
+  public String getTableId() {
+    return tableId;
+  }
+
+  public int getVersion() {
+    return version;
+  }
+
+  public boolean isLocal() {
+    return isLocal;
+  }
+
+  public boolean isUnique() {
+    return isUnique;
+  }
+
+  public String getIndexedTableId() {
+    return indexedTableId;
   }
 
   public CommonTypes.IndexPermissions getIndexPermissions() {

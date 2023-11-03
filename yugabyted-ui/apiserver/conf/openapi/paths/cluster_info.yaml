@@ -1,51 +1,3 @@
-'/public/accounts/{accountId}/projects/{projectId}/cluster_metrics':
-  get:
-    description: Get bulk cluster metrics
-    tags:
-      - cluster-info
-    summary: Get bulk cluster metrics
-    operationId: getBulkClusterMetrics
-    parameters:
-      - name: accountId
-        in: path
-        description: ID of the associated account
-        required: true
-        style: simple
-        explode: false
-        schema:
-          type: string
-          format: uuid
-      - name: projectId
-        in: path
-        description: ID of the associated project
-        required: true
-        style: simple
-        explode: false
-        schema:
-          type: string
-          format: uuid
-      - name: cluster_ids
-        in: query
-        description: Clusters to get metrics data for
-        required: true
-        style: form
-        explode: false
-        schema:
-          type: array
-          items:
-            type: string
-            format: uuid
-          uniqueItems: true
-          nullable: false
-          minItems: 1
-          maxItems: 25
-    responses:
-      '200':
-        $ref: '../responses/_index.yaml#/ClusterInstantMetricsListResponse'
-      '400':
-        $ref: '../responses/_index.yaml#/ApiError'
-      '500':
-        $ref: '../responses/_index.yaml#/ApiError'
 '/live_queries':
   get:
     summary: Get the live queries in a cluster
@@ -124,6 +76,14 @@
       explode: false
       schema:
         type: string
+    - name: zone
+      in: query
+      description: Zone to filter for the given cluster
+      required: false
+      style: form
+      explode: false
+      schema:
+        type: string
     - name: start_time
       in: query
       description: Start of range of time series data (in epoch seconds)
@@ -144,6 +104,14 @@
         type: integer
         format: int64
         minimum: 0
+    - name: cluster_type
+      in: query
+      description: Cluster type (primary or read replica)
+      required: false
+      style: form
+      explode: false
+      schema:
+        type: string
   get:
     summary: Get a metric for a cluster
     description: Get metrics for a Yugabyte cluster
@@ -153,6 +121,45 @@
     responses:
       '200':
         $ref: '../responses/_index.yaml#/MetricResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+'/activities':
+  parameters:
+    - name: activities
+      in: query
+      description: Which activities data to retrieve
+      required: true
+      style: form
+      explode: false
+      schema:
+        type: string
+    - name: status
+      in: query
+      description: Completed or In-Progress
+      required: true
+      style: form
+      explode: false
+      schema:
+        type: string
+    - name: database
+      in: query
+      description: Which database's activities data is to be retrived.
+      required: false
+      style: form
+      explode: false
+      schema:
+        type: string
+  get:
+    summary: Get a activities data for a cluster
+    description: Get activities data for a Yugabyte cluster
+    operationId: getClusterActivities
+    tags:
+      - cluster-info
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/ActivityResponse'
       '400':
         $ref: '../responses/_index.yaml#/ApiError'
       '500':
@@ -181,44 +188,137 @@
         $ref: '../responses/_index.yaml#/ApiError'
       '500':
         $ref: '../responses/_index.yaml#/ApiError'
-/public/accounts/{accountId}/projects/{projectId}/clusters/{clusterId}/tablespaces:
+/table:
   get:
-    description: Get list of tablespaces for YSQL
-    operationId: getClusterTablespaces
-    summary: Get list of DB tables for YSQL
+    description: Get info on a single table, given table uuid
+    operationId: getTableInfo
+    summary: Get info on a single table, given table uuid
     tags:
       - cluster-info
     parameters:
-      - name: accountId
-        in: path
-        description: ID of the associated account
+      - name: id
+        in: query
+        description: UUID of the table
         required: true
-        style: simple
+        style: form
         explode: false
         schema:
           type: string
-          format: uuid
-      - name: projectId
-        in: path
-        description: ID of the associated project
+      - name: node_address
+        in: query
+        description: Specify the node ip-address from where the table info is retrieved
         required: true
-        style: simple
+        style: form
         explode: false
         schema:
           type: string
-          format: uuid
-      - name: clusterId
-        in: path
-        description: ID of the cluster
-        required: true
-        style: simple
-        explode: false
-        schema:
-          type: string
-          format: uuid
     responses:
       '200':
-        $ref: '../responses/_index.yaml#/ClusterTablespacesListResponse'
+        $ref: '../responses/_index.yaml#/TableInfoResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+/health-check:
+  get:
+    description: Get health information about the cluster
+    operationId: getClusterHealthCheck
+    summary: Get health information about the cluster
+    tags:
+      - cluster-info
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/HealthCheckResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+/tablets:
+  get:
+    description: Get list of tablets
+    operationId: getClusterTablets
+    summary: Get list of tablets
+    tags:
+      - cluster-info
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/ClusterTabletListResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+/version:
+  get:
+    summary: Get YugabyteDB version
+    description: Get YugabyteDB version
+    tags:
+      - cluster-info
+    operationId: getVersion
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/VersionInfo'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+/is_load_balancer_idle:
+  get:
+    summary: Check if cluster load balancer is idle
+    description: Check if cluster load balancer is idle
+    tags:
+      - cluster-info
+    operationId: getIsLoadBalancerIdle
+    responses:
+      '200':
+        description: Is load balancer idle
+        content:
+          application/json:
+            schema:
+              title: Is load balancer idle
+              description: Is load balancer idle
+              type: object
+              properties:
+                is_idle:
+                  type: boolean
+              required:
+                - is_idle
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+/gflags:
+  get:
+    summary: Get gflags of master and tserver process
+    description: Retrieve gflags of master and tserver process
+    operationId: getGflags
+    tags:
+      - cluster-info
+    parameters:
+      - name: node_address
+        in: query
+        description: Specify the node ip-address from where gflags are retrieved
+        required: true
+        style: form
+        explode: false
+        schema:
+          type: string
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/GflagsResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+/alerts:
+  get:
+    summary: Get any alerts for the cluster
+    description: Get any alerts for the cluster
+    operationId: getClusterAlerts
+    tags:
+      - cluster-info
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/AlertsResponse'
       '400':
         $ref: '../responses/_index.yaml#/ApiError'
       '500':

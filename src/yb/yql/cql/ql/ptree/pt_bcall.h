@@ -15,8 +15,7 @@
 // Tree node definitions for expression.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_PT_BCALL_H_
-#define YB_YQL_CQL_QL_PTREE_PT_BCALL_H_
+#pragma once
 
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
 #include "yb/bfql/gen_opcodes.h"
@@ -86,7 +85,8 @@ class PTBcall : public PTExpr {
 
   void CollectReferencedIndexColnames(MCSet<std::string> *col_names) const override;
 
-  std::string QLName(QLNameOption option = QLNameOption::kUserOriginalName) const override;
+  std::string QLName(
+      qlexpr::QLNameOption option = qlexpr::QLNameOption::kUserOriginalName) const override;
   bool IsAggregateCall() const override;
   yb::bfql::TSOpcode aggregate_opcode() const override;
 
@@ -185,5 +185,3 @@ class PTPartitionHash : public PTToken {
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_PTREE_PT_BCALL_H_

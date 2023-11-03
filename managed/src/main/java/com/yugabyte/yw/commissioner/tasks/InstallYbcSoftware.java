@@ -2,21 +2,26 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import java.util.HashSet;
+import static java.util.stream.Collectors.toList;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.HashSet;
 import lombok.extern.slf4j.Slf4j;
-
-import static java.util.stream.Collectors.toList;
 
 @Slf4j
 public class InstallYbcSoftware extends UniverseDefinitionTaskBase {
+
+  @Inject private ReleaseManager releaseManager;
+  @Inject private YbcManager ybcManager;
 
   @Inject
   protected InstallYbcSoftware(BaseTaskDependencies baseTaskDependencies) {
@@ -35,17 +40,36 @@ public class InstallYbcSoftware extends UniverseDefinitionTaskBase {
       // to lock out the universe completely in case this task fails.
       lockUniverse(-1 /* expectedUniverseVersion */);
 
-      Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+      Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+
+      // Check whether the target ybc version is present in YB-Anywhere for each node.
+      universe
+          .getNodes()
+          .forEach(
+              (node) -> {
+                Pair<String, String> ybcPackageDetails =
+                    ybcManager.getYbcPackageDetailsForNode(universe, node);
+                if (releaseManager.getYbcReleaseByVersion(
+                        taskParams().getYbcSoftwareVersion(),
+                        ybcPackageDetails.getFirst(),
+                        ybcPackageDetails.getSecond())
+                    == null) {
+                  throw new RuntimeException(
+                      "Target ybc package "
+                          + taskParams().getYbcSoftwareVersion()
+                          + " does not exists for node"
+                          + node.nodeName);
+                }
+              });
 
       // We will need to setup server again in case of systemd to register yb-controller service.
-      if (universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd) {
-        // We would fail this task as the manually provisioned systemd enabled on-prem universe
-        // could lack sudo user permission.
-        if (Util.isOnPremManualProvisioning(universe)) {
-          throw new RuntimeException(
-              "Cannot install ybc on manually provisioned systemd enabled on-prem universes");
+      if (!universe.isYbcEnabled()
+          && universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd) {
+        // We assume that user has provisioned nodes again with new service files in case of
+        // on-prem manual provisioned universe.
+        if (!Util.isOnPremManualProvisioning(universe)) {
+          createSetupServerTasks(universe.getNodes(), param -> param.isSystemdUpgrade = true);
         }
-        createSetupServerTasks(universe.getNodes(), param -> param.isSystemdUpgrade = true);
       }
 
       // create task for installing yb-controller on each DB node.
@@ -58,7 +82,7 @@ public class InstallYbcSoftware extends UniverseDefinitionTaskBase {
           universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd);
 
       //  Update Universe detail to enable yb-controller.
-      createUpdateYbcTask(taskParams().ybcSoftwareVersion)
+      createUpdateYbcTask(taskParams().getYbcSoftwareVersion())
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Set the node states to Live.

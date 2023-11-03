@@ -196,7 +196,7 @@ INSERT INTO employees VALUES
 After inserting values into the base relation (`employees`), we will have to `REFRESH` the materialized view to update its contents.
 
 ```sql
-REFRESH MATERIALIZED VIEW employees;
+REFRESH MATERIALIZED VIEW employees_mview;
 SELECT * FROM employees_mview;
 ```
 
@@ -209,6 +209,7 @@ employee_no | name
 1224        | John Zimmerman
 1221        | John Smith
 1222        | Bette Davis
+1225        | Jane Doe
 ```
 
 For detailed documentation on materialized views please refer to the following links:

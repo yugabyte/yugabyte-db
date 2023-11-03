@@ -14,9 +14,11 @@
  */
 #include "postgres.h"
 
+#include "catalog/namespace.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_class.h"
 #include "nodes/nodeFuncs.h"
+#include "parser/parse_coerce.h"
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
 #include "optimizer/joininfo.h"
@@ -36,6 +38,7 @@
 /* These parameters are set by GUC */
 int			from_collapse_limit;
 int			join_collapse_limit;
+extern int yb_bnl_batch_size;
 
 
 /* Elements of the postponed_qual_list used during deconstruct_recurse */
@@ -77,6 +80,7 @@ static bool check_equivalence_delay(PlannerInfo *root,
 static bool check_redundant_nullability_qual(PlannerInfo *root, Node *clause);
 static void check_mergejoinable(RestrictInfo *restrictinfo);
 static void check_hashjoinable(RestrictInfo *restrictinfo);
+static void check_batchable(RestrictInfo *restrictinfo);
 
 
 /*****************************************************************************
@@ -1922,6 +1926,7 @@ distribute_qual_to_rels(PlannerInfo *root, Node *clause,
 	 * relation, or between vars and consts.
 	 */
 	check_mergejoinable(restrictinfo);
+	check_batchable(restrictinfo);
 
 	/*
 	 * If it is a true equivalence clause, send it to the EquivalenceClass
@@ -2407,6 +2412,7 @@ build_implied_join_equality(Oid opno,
 	/* Set mergejoinability/hashjoinability flags */
 	check_mergejoinable(restrictinfo);
 	check_hashjoinable(restrictinfo);
+	check_batchable(restrictinfo);
 
 	return restrictinfo;
 }
@@ -2652,4 +2658,150 @@ check_hashjoinable(RestrictInfo *restrictinfo)
 	if (op_hashjoinable(opno, exprType(leftarg)) &&
 		!contain_volatile_functions((Node *) clause))
 		restrictinfo->hashjoinoperator = opno;
+}
+
+/*
+ * check_batchable
+ *	  If the restrictinfo's clause can potentially be a batched join clause
+ *	  then yb_batched_rinfo is filled in with candidate batched versions of
+ *	  this clause.
+ *		
+ *	  Note that this does nothing if yb_bnl_batch_size indicates no batching.
+ *	  Right now we only support batching mergejoinable conditions of the form
+ *	  var_1 op var_2. These yield batched expressions,
+ *	  var_1 op YbBatchedExpr(var_2) and var_2 op YbBatchedExpr(var_1).
+ */
+static void
+check_batchable(RestrictInfo *restrictinfo)
+{
+	Expr	   *clause = restrictinfo->clause;
+	Node	   *leftarg;
+	Node	   *rightarg;
+	OpExpr	   *opexpr = (OpExpr *) clause;
+
+	if (yb_bnl_batch_size <= 1)
+		return;
+
+	if (!restrictinfo->mergeopfamilies)
+		return;
+
+	if (bms_overlap(restrictinfo->left_relids, restrictinfo->right_relids))
+		return;
+
+	leftarg = linitial(opexpr->args);
+	rightarg = lsecond(opexpr->args);
+
+	Node *outer;
+	Node *inner;
+
+	Node *args[] = {leftarg, rightarg};
+
+	/*
+	 * Try to make batched expressions of the forms
+	 * leftarg = BatchedExpr(rightarg) or rightarg = BatchedExpr(leftarg)
+	 * with necessary type checking.
+	 */
+	for (int i = 0; i < 2; i++)
+	{
+		inner = args[i];
+		outer = args[1 - i];
+		if (!IsA(inner, Var) &&
+			 !(IsA(inner, RelabelType)
+				&& IsA(((RelabelType *) inner)->arg, Var)))
+			continue;
+
+		Oid outerType = exprType(outer);
+
+		Oid innerType = exprType(inner);
+		int innerTypMod = exprTypmod(inner);
+		Oid opno = opexpr->opno;
+
+		if (outerType != innerType)
+		{
+			/* We need to coerce the outer operand to the inner type. */
+			Oid finalargtype = innerType;
+			Oid finalargtypmod = innerTypMod;
+			Node *coerced = NULL;
+
+			MemoryContext cxt = GetCurrentMemoryContext();
+			
+			PG_TRY();
+			{
+				coerced = coerce_to_target_type(NULL, outer, outerType,
+														  finalargtype, finalargtypmod,
+														  COERCION_IMPLICIT,
+														  COERCE_IMPLICIT_CAST, -1);
+			}
+			PG_CATCH();
+			{
+				/*
+				 * Doing nothing here as if we encounter an error during type
+				 * coercion, we'll consider this coercion impossible. One would
+				 * usually expect coerce_to_target_type to return NULL in all
+				 * cases. Unfortunately, in some cases like where a record type
+				 * is being coerced into an incompatible complex UDT, it logs an
+				 * error instead. Making this a workaround for now.
+				 */
+				
+				MemoryContext errcxt = MemoryContextSwitchTo(cxt);
+				ErrorData *errdata = CopyErrorData();
+				int errcode = errdata->sqlerrcode;
+				FreeErrorData(errdata);
+
+				if (errcode == ERRCODE_CANNOT_COERCE)
+				{
+					FlushErrorState();
+				}
+				else
+				{
+					MemoryContextSwitchTo(errcxt);
+					PG_RE_THROW();
+				}
+			}
+			PG_END_TRY();
+
+			
+			/* Outer can't be coerced to inner type, bail and continue. */
+			if (coerced == NULL)
+				continue;
+			
+			/* Make outer the new coerced expression. */
+			outer = coerced;
+
+			char *opname = get_opname(opno);
+			List *names = lappend(NIL, makeString(opname));
+			
+			/* Find an equivalent operator whose operands are of the same type. */
+			Oid newopno = 
+				OpernameGetOprid(names, finalargtype, finalargtype);
+			pfree(opname);
+
+			if (!OidIsValid(newopno))
+				continue;
+			
+			opno = newopno;
+		}
+
+		YbBatchedExpr *bexpr = makeNode(YbBatchedExpr);
+		bexpr->orig_expr = (Expr*) copyObject(outer);
+
+		Expr *batched_op = make_opclause(opno,
+										 opexpr->opresulttype,
+										 opexpr->opretset,
+										 (Expr *) inner,
+										 (Expr *) bexpr,
+										 opexpr->opcollid,
+										 opexpr->inputcollid);
+		RestrictInfo *batched =
+			make_restrictinfo(batched_op,
+							  restrictinfo->is_pushed_down,
+							  restrictinfo->outerjoin_delayed,
+							  false,
+							  restrictinfo->security_level,
+							  restrictinfo->required_relids,
+							  restrictinfo->outer_relids,
+							  restrictinfo->nullable_relids);
+		restrictinfo->yb_batched_rinfo =
+			lappend(restrictinfo->yb_batched_rinfo, batched);
+	}
 }

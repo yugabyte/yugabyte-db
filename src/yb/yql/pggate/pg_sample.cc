@@ -21,6 +21,7 @@ namespace yb {
 namespace pggate {
 
 using std::make_shared;
+using std::vector;
 
 //--------------------------------------------------------------------------------------------------
 // PgSample
@@ -47,7 +48,8 @@ Status PgSample::Prepare() {
   RETURN_NOT_OK(secondary_index_query_->Prepare());
 
   // Prepare read op to fetch rows
-  auto read_op = ArenaMakeShared<PgsqlReadOp>(arena_ptr(), &arena(), *target_, is_region_local_);
+  auto read_op = ArenaMakeShared<PgsqlReadOp>(
+      arena_ptr(), &arena(), *target_, is_region_local_, pg_session_->metrics().metrics_capture());
   read_req_ = std::shared_ptr<LWPgsqlReadRequestPB>(read_op, &read_op->read_request());
   doc_op_ = make_shared<PgDocReadOp>(pg_session_, &target_, std::move(read_op));
 
@@ -94,7 +96,8 @@ PgSamplePicker::~PgSamplePicker() {
 Status PgSamplePicker::Prepare() {
   target_ = PgTable(VERIFY_RESULT(pg_session_->LoadTable(table_id_)));
   bind_ = PgTable(nullptr);
-  auto read_op = ArenaMakeShared<PgsqlReadOp>(arena_ptr(), &arena(), *target_, is_region_local_);
+  auto read_op = ArenaMakeShared<PgsqlReadOp>(
+      arena_ptr(), &arena(), *target_, is_region_local_, pg_session_->metrics().metrics_capture());
   read_req_ = std::shared_ptr<LWPgsqlReadRequestPB>(read_op, &read_op->read_request());
   doc_op_ = make_shared<PgDocReadOp>(pg_session_, &target_, std::move(read_op));
   return Status::OK();

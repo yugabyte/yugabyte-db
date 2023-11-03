@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import { useRef } from 'react';
 import { Field, FieldArray, Form, FormikProps } from 'formik';
 
 import { YBModalForm } from '../../common/forms';
@@ -14,12 +14,12 @@ interface ManagePeerCertsModalProps {
   onClose: () => void;
 }
 
-interface FormValues {
-  peerCerts: CertFormItem[];
-}
-
 interface CertFormItem {
   data: string;
+}
+
+interface FormValues {
+  peerCerts: CertFormItem[];
 }
 
 export const PEER_CERT_PREFIX = '-----BEGIN CERTIFICATE-----';
@@ -132,6 +132,7 @@ export const ManagePeerCertsModal = ({
                 render={(arrayHelpers) => (
                   <div>
                     {formik.current.values.peerCerts.map((peerCert, index) => (
+                      // eslint-disable-next-line react/jsx-key
                       <div className={styles.certFormField}>
                         {formik.current.errors.peerCerts?.[index]?.data &&
                           formik.current.touched.peerCerts?.[index]?.data && (

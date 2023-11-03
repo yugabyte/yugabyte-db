@@ -54,6 +54,8 @@
 
 #include "yb/util/debug/trace_event.h"
 
+using std::string;
+
 namespace yb {
 namespace tablet {
 
@@ -79,7 +81,7 @@ const string TabletStatusListener::table_id() const {
   return meta_->table_id();
 }
 
-std::shared_ptr<Partition> TabletStatusListener::partition() const {
+std::shared_ptr<dockv::Partition> TabletStatusListener::partition() const {
   return meta_->partition();
 }
 
@@ -93,7 +95,7 @@ TabletStatusListener::~TabletStatusListener() {
 void TabletStatusListener::StatusMessage(const string& status) {
   LOG(INFO) << "T " << tablet_id() << " P " << meta_->fs_manager()->uuid() << ": "
             << status;
-  std::lock_guard<std::shared_timed_mutex> l(lock_);
+  std::lock_guard l(lock_);
   last_status_ = status;
 }
 

@@ -33,6 +33,8 @@
 
 #include "yb/util/status_log.h"
 
+using std::unique_ptr;
+
 namespace rocksdb {
 namespace mock {
 

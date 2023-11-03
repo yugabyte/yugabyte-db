@@ -95,6 +95,28 @@ ybginrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 								  YBCIsRegionLocal(scan->heapRelation),
 								  &ybso->handle));
 
+	/* Add any pushdown expression to the main table scan. */
+	if (scan->yb_rel_pushdown != NULL)
+	{
+		YbDmlAppendQuals(scan->yb_rel_pushdown->quals,
+						 true /* is_primary */,
+						 ybso->handle);
+		YbDmlAppendColumnRefs(scan->yb_rel_pushdown->colrefs,
+							  true /* is_primary */,
+							  ybso->handle);
+	}
+
+	/* Add any pushdown expression to the index relation scan. */
+	if (scan->yb_idx_pushdown != NULL)
+	{
+		YbDmlAppendQuals(scan->yb_idx_pushdown->quals,
+						 false /* is_primary */,
+						 ybso->handle);
+		YbDmlAppendColumnRefs(scan->yb_idx_pushdown->colrefs,
+							  false /* is_primary */,
+							  ybso->handle);
+	}
+
 	/* Initialize ybgin scan opaque is_exec_done. */
 	ybso->is_exec_done = false;
 }

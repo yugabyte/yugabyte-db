@@ -47,8 +47,6 @@
 #include <thread>
 #include <unordered_map>
 
-#include <gflags/gflags.h>
-
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/options.h"
@@ -62,9 +60,6 @@
 #include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/perf_context.h"
 #include "yb/rocksdb/perf_level.h"
-#include "yb/rocksdb/utilities/transaction.h"
-#include "yb/rocksdb/utilities/transaction_db.h"
-#include "yb/rocksdb/utilities/optimistic_transaction_db.h"
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/port/stack_trace.h"
 #include "yb/rocksdb/util/crc32c.h"
@@ -76,22 +71,24 @@
 #include "yb/rocksdb/util/statistics.h"
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/util/xxhash.h"
-#include "yb/rocksdb/hdfs/env_hdfs.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
 
+#include "yb/util/flags.h"
 #include "yb/util/slice.h"
 #include "yb/util/status_log.h"
+#include "yb/util/thread.h"
 
 #ifdef OS_WIN
 #include <io.h>  // open/close
 #endif
 
+using std::unique_ptr;
+
 namespace {
 using GFLAGS::ParseCommandLineFlags;
-using GFLAGS::RegisterFlagValidator;
 using GFLAGS::SetUsageMessage;
 
-DEFINE_string(benchmarks,
+DEFINE_NON_RUNTIME_string(benchmarks,
               "fillseq,"
               "fillsync,"
               "fillrandom,"
@@ -122,7 +119,6 @@ DEFINE_string(benchmarks,
               "uncompress,"
               "acquireload,"
               "fillseekseq,"
-              "randomtransaction,"
               "randomreplacekeys",
 
               "Comma-separated list of operations to run in the specified"
@@ -172,8 +168,6 @@ DEFINE_string(benchmarks,
               "\tacquireload   -- load N*1000 times\n"
               "\tfillseekseq   -- write N values in sequential key, then read "
               "them by seeking to each key\n"
-              "\trandomtransaction     -- execute N random transactions and "
-              "verify correctness\n"
               "\trandomreplacekeys     -- randomly replaces N keys by deleting "
               "the old version and putting the new version\n\n"
               "Meta operations:\n"
@@ -184,53 +178,53 @@ DEFINE_string(benchmarks,
               "\theapprofile -- Dump a heap profile (if supported by this"
               " port)\n");
 
-DEFINE_int64(num, 1000000, "Number of key/values to place in database");
+DEFINE_NON_RUNTIME_int64(num, 1000000, "Number of key/values to place in database");
 
-DEFINE_int64(numdistinct, 1000,
+DEFINE_NON_RUNTIME_int64(numdistinct, 1000,
              "Number of distinct keys to use. Used in RandomWithVerify to "
              "read/write on fewer keys so that gets are more likely to find the"
              " key and puts are more likely to update the same key");
 
-DEFINE_int64(merge_keys, -1,
+DEFINE_NON_RUNTIME_int64(merge_keys, -1,
              "Number of distinct keys to use for MergeRandom and "
              "ReadRandomMergeRandom. "
              "If negative, there will be FLAGS_num keys.");
-DEFINE_int32(num_column_families, 1, "Number of Column Families to use.");
+DEFINE_NON_RUNTIME_int32(num_column_families, 1, "Number of Column Families to use.");
 
-DEFINE_int32(
+DEFINE_NON_RUNTIME_int32(
     num_hot_column_families, 0,
     "Number of Hot Column Families. If more than 0, only write to this "
     "number of column families. After finishing all the writes to them, "
     "create new set of column families and insert to them. Only used "
     "when num_column_families > 1.");
 
-DEFINE_int64(reads, -1, "Number of read operations to do.  "
+DEFINE_NON_RUNTIME_int64(reads, -1, "Number of read operations to do.  "
              "If negative, do FLAGS_num reads.");
 
-DEFINE_int32(bloom_locality, 0, "Control bloom filter probes locality");
+DEFINE_NON_RUNTIME_int32(bloom_locality, 0, "Control bloom filter probes locality");
 
-DEFINE_int64(seed, 0, "Seed base for random number generators. "
+DEFINE_NON_RUNTIME_int64(seed, 0, "Seed base for random number generators. "
              "When 0 it is deterministic.");
 
-DEFINE_int32(threads, 1, "Number of concurrent threads to run.");
+DEFINE_NON_RUNTIME_int32(threads, 1, "Number of concurrent threads to run.");
 
-DEFINE_int32(duration, 0, "Time in seconds for the random-ops tests to run."
+DEFINE_NON_RUNTIME_int32(duration, 0, "Time in seconds for the random-ops tests to run."
              " When 0 then num & reads determine the test duration");
 
-DEFINE_int32(value_size, 100, "Size of each value");
+DEFINE_NON_RUNTIME_int32(value_size, 100, "Size of each value");
 
-DEFINE_int32(seek_nexts, 0,
+DEFINE_NON_RUNTIME_int32(seek_nexts, 0,
              "How many times to call Next() after Seek() in "
              "fillseekseq, seekrandom, seekrandomwhilewriting and "
              "seekrandomwhilemerging");
 
-DEFINE_bool(reverse_iterator, false,
+DEFINE_NON_RUNTIME_bool(reverse_iterator, false,
             "When true use Prev rather than Next for iterators that do "
             "Seek and then Next");
 
-DEFINE_bool(use_uint64_comparator, false, "use Uint64 user comparator");
+DEFINE_NON_RUNTIME_bool(use_uint64_comparator, false, "use Uint64 user comparator");
 
-DEFINE_int64(batch_size, 1, "Batch size");
+DEFINE_NON_RUNTIME_int64(batch_size, 1, "Batch size");
 
 static bool ValidateKeySize(const char* flagname, int32_t value) {
   return true;
@@ -244,23 +238,23 @@ static bool ValidateUint32Range(const char* flagname, uint64_t value) {
   return true;
 }
 
-DEFINE_int32(key_size, 16, "size of each key");
+DEFINE_NON_RUNTIME_int32(key_size, 16, "size of each key");
 
-DEFINE_int32(num_multi_db, 0,
+DEFINE_NON_RUNTIME_int32(num_multi_db, 0,
              "Number of DBs used in the benchmark. 0 means single DB.");
 
-DEFINE_double(compression_ratio, 0.5, "Arrange to generate values that shrink"
+DEFINE_NON_RUNTIME_double(compression_ratio, 0.5, "Arrange to generate values that shrink"
               " to this fraction of their original size after compression");
 
-DEFINE_double(read_random_exp_range, 0.0,
+DEFINE_NON_RUNTIME_double(read_random_exp_range, 0.0,
               "Read random's key will be generated using distribution of "
               "num * exp(-r) where r is uniform number from 0 to this value. "
               "The larger the number is, the more skewed the reads are. "
               "Only used in readrandom and multireadrandom benchmarks.");
 
-DEFINE_bool(histogram, false, "Print histogram of operation timings");
+DEFINE_NON_RUNTIME_bool(histogram, false, "Print histogram of operation timings");
 
-DEFINE_bool(enable_numa, false,
+DEFINE_NON_RUNTIME_bool(enable_numa, false,
             "Make operations aware of NUMA architecture and bind memory "
             "and cpus corresponding to nodes together. In NUMA, memory "
             "in same node as CPUs are closer when compared to memory in "
@@ -268,18 +262,18 @@ DEFINE_bool(enable_numa, false,
             "CPU and memory of same node. Use \"$numactl --hardware\" command "
             "to see NUMA memory architecture.");
 
-DEFINE_int64(db_write_buffer_size, rocksdb::Options().db_write_buffer_size,
+DEFINE_NON_RUNTIME_int64(db_write_buffer_size, rocksdb::Options().db_write_buffer_size,
              "Number of bytes to buffer in all memtables before compacting");
 
-DEFINE_int64(write_buffer_size, rocksdb::Options().write_buffer_size,
+DEFINE_NON_RUNTIME_int64(write_buffer_size, rocksdb::Options().write_buffer_size,
              "Number of bytes to buffer in memtable before compacting");
 
-DEFINE_int32(max_write_buffer_number,
+DEFINE_NON_RUNTIME_int32(max_write_buffer_number,
              rocksdb::Options().max_write_buffer_number,
              "The number of in-memory memtables. Each memtable is of size"
              "write_buffer_size.");
 
-DEFINE_int32(min_write_buffer_number_to_merge,
+DEFINE_NON_RUNTIME_int32(min_write_buffer_number_to_merge,
              rocksdb::Options().min_write_buffer_number_to_merge,
              "The minimum number of write buffers that will be merged together"
              "before writing to storage. This is cheap because it is an"
@@ -290,7 +284,7 @@ DEFINE_int32(min_write_buffer_number_to_merge,
              " writing less data to storage if there are duplicate records "
              " in each of these individual write buffers.");
 
-DEFINE_int32(max_write_buffer_number_to_maintain,
+DEFINE_NON_RUNTIME_int32(max_write_buffer_number_to_maintain,
              rocksdb::Options().max_write_buffer_number_to_maintain,
              "The total maximum number of write buffers to maintain in memory "
              "including copies of buffers that have already been flushed. "
@@ -304,110 +298,108 @@ DEFINE_int32(max_write_buffer_number_to_maintain,
              "after they are flushed.  If this value is set to -1, "
              "'max_write_buffer_number' will be used.");
 
-DEFINE_int32(max_background_compactions,
+DEFINE_NON_RUNTIME_int32(max_background_compactions,
              rocksdb::Options().max_background_compactions,
              "The maximum number of concurrent background compactions"
              " that can occur in parallel.");
 
-DEFINE_uint64(subcompactions, 1,
+DEFINE_NON_RUNTIME_uint64(subcompactions, 1,
               "Maximum number of subcompactions to divide L0-L1 compactions "
               "into.");
-static const bool FLAGS_subcompactions_dummy
-    __attribute__((unused)) = RegisterFlagValidator(&FLAGS_subcompactions,
-                                                    &ValidateUint32Range);
+DEFINE_validator(subcompactions, &ValidateUint32Range);
 
-DEFINE_int32(max_background_flushes,
+DEFINE_NON_RUNTIME_int32(max_background_flushes,
              rocksdb::Options().max_background_flushes,
              "The maximum number of concurrent background flushes"
              " that can occur in parallel.");
 
 static rocksdb::CompactionStyle FLAGS_compaction_style_e;
-DEFINE_int32(compaction_style, (int32_t) rocksdb::Options().compaction_style,
+DEFINE_NON_RUNTIME_int32(compaction_style, (int32_t) rocksdb::Options().compaction_style,
              "style of compaction: level-based vs universal");
 
 static rocksdb::CompactionPri FLAGS_compaction_pri_e;
-DEFINE_int32(compaction_pri, (int32_t)rocksdb::Options().compaction_pri,
+DEFINE_NON_RUNTIME_int32(compaction_pri, (int32_t)rocksdb::Options().compaction_pri,
              "priority of files to compaction: by size or by data age");
 
-DEFINE_int32(universal_size_ratio, 0,
+DEFINE_NON_RUNTIME_int32(universal_size_ratio, 0,
              "Percentage flexibility while comparing file size"
              " (for universal compaction only).");
 
-DEFINE_int32(universal_min_merge_width, 0, "The minimum number of files in a"
+DEFINE_NON_RUNTIME_int32(universal_min_merge_width, 0, "The minimum number of files in a"
              " single compaction run (for universal compaction only).");
 
-DEFINE_int32(universal_max_merge_width, 0, "The max number of files to compact"
+DEFINE_NON_RUNTIME_int32(universal_max_merge_width, 0, "The max number of files to compact"
              " in universal style compaction");
 
-DEFINE_int32(universal_max_size_amplification_percent, 0,
+DEFINE_NON_RUNTIME_int32(universal_max_size_amplification_percent, 0,
              "The max size amplification for universal style compaction");
 
-DEFINE_int32(universal_compression_size_percent, -1,
+DEFINE_NON_RUNTIME_int32(universal_compression_size_percent, -1,
              "The percentage of the database to compress for universal "
              "compaction. -1 means compress everything.");
 
-DEFINE_bool(universal_allow_trivial_move, false,
+DEFINE_NON_RUNTIME_bool(universal_allow_trivial_move, false,
             "Allow trivial move in universal compaction.");
 
-DEFINE_int64(cache_size, -1, "Number of bytes to use as a cache of uncompressed"
+DEFINE_NON_RUNTIME_int64(cache_size, -1, "Number of bytes to use as a cache of uncompressed"
              "data. Negative means use default settings.");
 
-DEFINE_bool(cache_index_and_filter_blocks, false,
+DEFINE_NON_RUNTIME_bool(cache_index_and_filter_blocks, false,
             "Cache index/filter blocks in block cache.");
 
-DEFINE_int32(block_size,
+DEFINE_NON_RUNTIME_int32(block_size,
              static_cast<int32_t>(rocksdb::BlockBasedTableOptions().block_size),
              "Number of bytes in a block.");
 
-DEFINE_int32(block_restart_interval,
+DEFINE_NON_RUNTIME_int32(block_restart_interval,
              rocksdb::BlockBasedTableOptions().block_restart_interval,
              "Number of keys between restart points "
              "for delta encoding of keys.");
 
-DEFINE_int64(compressed_cache_size, -1,
+DEFINE_NON_RUNTIME_int64(compressed_cache_size, -1,
              "Number of bytes to use as a cache of compressed data.");
 
-DEFINE_int64(row_cache_size, 0,
+DEFINE_NON_RUNTIME_int64(row_cache_size, 0,
              "Number of bytes to use as a cache of individual rows"
              " (0 = disabled).");
 
-DEFINE_int32(open_files, rocksdb::Options().max_open_files,
+DEFINE_NON_RUNTIME_int32(open_files, rocksdb::Options().max_open_files,
              "Maximum number of files to keep open at the same time"
              " (use default if == 0)");
 
-DEFINE_int32(file_opening_threads, rocksdb::Options().max_file_opening_threads,
+DEFINE_NON_RUNTIME_int32(file_opening_threads, rocksdb::Options().max_file_opening_threads,
              "If open_files is set to -1, this option set the number of "
              "threads that will be used to open files during DB::Open()");
 
-DEFINE_int32(new_table_reader_for_compaction_inputs, true,
+DEFINE_NON_RUNTIME_int32(new_table_reader_for_compaction_inputs, true,
              "If true, uses a separate file handle for compaction inputs");
 
-DEFINE_int32(compaction_readahead_size, 0, "Compaction readahead size");
+DEFINE_NON_RUNTIME_int32(compaction_readahead_size, 0, "Compaction readahead size");
 
-DEFINE_int32(random_access_max_buffer_size, 1024 * 1024,
+DEFINE_NON_RUNTIME_int32(random_access_max_buffer_size, 1024 * 1024,
              "Maximum windows randomaccess buffer size");
 
-DEFINE_int32(writable_file_max_buffer_size, 1024 * 1024,
+DEFINE_NON_RUNTIME_int32(writable_file_max_buffer_size, 1024 * 1024,
              "Maximum write buffer for Writable File");
 
-DEFINE_int32(skip_table_builder_flush, false, "Skip flushing block in "
+DEFINE_NON_RUNTIME_int32(skip_table_builder_flush, false, "Skip flushing block in "
              "table builder ");
 
-DEFINE_int32(bloom_bits, -1, "Bloom filter bits per key. Negative means"
+DEFINE_NON_RUNTIME_int32(bloom_bits, -1, "Bloom filter bits per key. Negative means"
              " use default settings.");
-DEFINE_int32(memtable_bloom_bits, 0, "Bloom filter bits per key for memtable. "
+DEFINE_NON_RUNTIME_int32(memtable_bloom_bits, 0, "Bloom filter bits per key for memtable. "
              "Negative means no bloom filter.");
 
-DEFINE_bool(use_existing_db, false, "If true, do not destroy the existing"
+DEFINE_NON_RUNTIME_bool(use_existing_db, false, "If true, do not destroy the existing"
             " database.  If you set this flag and also specify a benchmark that"
             " wants a fresh database, that benchmark will fail.");
 
-DEFINE_bool(show_table_properties, false,
+DEFINE_NON_RUNTIME_bool(show_table_properties, false,
             "If true, then per-level table"
             " properties will be printed on every stats-interval when"
             " stats_interval is set and stats_per_interval is on.");
 
-DEFINE_string(db, "", "Use the db with the following name.");
+DEFINE_NON_RUNTIME_string(db, "", "Use the db with the following name.");
 
 static bool ValidateCacheNumshardbits(const char* flagname, int32_t value) {
   if (value >= 20) {
@@ -417,60 +409,60 @@ static bool ValidateCacheNumshardbits(const char* flagname, int32_t value) {
   }
   return true;
 }
-DEFINE_int32(cache_numshardbits, -1, "Number of shards for the block cache"
+DEFINE_NON_RUNTIME_int32(cache_numshardbits, -1, "Number of shards for the block cache"
              " is 2 ** cache_numshardbits. Negative means use default settings."
              " This is applied only if FLAGS_cache_size is non-negative.");
 
-DEFINE_bool(verify_checksum, false, "Verify checksum for every block read"
+DEFINE_NON_RUNTIME_bool(verify_checksum, false, "Verify checksum for every block read"
             " from storage");
 
-DEFINE_bool(statistics, false, "Database statistics");
+DEFINE_NON_RUNTIME_bool(statistics, false, "Database statistics");
 static class std::shared_ptr<rocksdb::Statistics> dbstats;
 
-DEFINE_int64(writes, -1, "Number of write operations to do. If negative, do"
+DEFINE_NON_RUNTIME_int64(writes, -1, "Number of write operations to do. If negative, do"
              " --num reads.");
 
-DEFINE_bool(sync, false, "Sync all writes to disk");
+DEFINE_NON_RUNTIME_bool(sync, false, "Sync all writes to disk");
 
-DEFINE_bool(disable_data_sync, false, "If true, do not wait until data is"
+DEFINE_NON_RUNTIME_bool(disable_data_sync, false, "If true, do not wait until data is"
             " synced to disk.");
 
-DEFINE_bool(use_fsync, false, "If true, issue fsync instead of fdatasync");
+DEFINE_NON_RUNTIME_bool(use_fsync, false, "If true, issue fsync instead of fdatasync");
 
-DEFINE_bool(disable_wal, false, "If true, do not write WAL for write.");
+DEFINE_NON_RUNTIME_bool(disable_wal, false, "If true, do not write WAL for write.");
 
-DEFINE_string(wal_dir, "", "If not empty, use the given dir for WAL");
+DEFINE_NON_RUNTIME_string(wal_dir, "", "If not empty, use the given dir for WAL");
 
-DEFINE_int32(num_levels, 7, "The total number of levels");
+DEFINE_NON_RUNTIME_int32(num_levels, 7, "The total number of levels");
 
-DEFINE_int64(target_file_size_base, 2 * 1048576, "Target file size at level-1");
+DEFINE_NON_RUNTIME_int64(target_file_size_base, 2 * 1048576, "Target file size at level-1");
 
-DEFINE_int32(target_file_size_multiplier, 1,
+DEFINE_NON_RUNTIME_int32(target_file_size_multiplier, 1,
              "A multiplier to compute target level-N file size (N >= 2)");
 
-DEFINE_uint64(max_bytes_for_level_base,  10 * 1048576, "Max bytes for level-1");
+DEFINE_NON_RUNTIME_uint64(max_bytes_for_level_base,  10 * 1048576, "Max bytes for level-1");
 
-DEFINE_bool(level_compaction_dynamic_level_bytes, false,
+DEFINE_NON_RUNTIME_bool(level_compaction_dynamic_level_bytes, false,
             "Whether level size base is dynamic");
 
-DEFINE_int32(max_bytes_for_level_multiplier, 10,
+DEFINE_NON_RUNTIME_int32(max_bytes_for_level_multiplier, 10,
              "A multiplier to compute max bytes for level-N (N >= 2)");
 
 static std::vector<int> FLAGS_max_bytes_for_level_multiplier_additional_v;
-DEFINE_string(max_bytes_for_level_multiplier_additional, "",
+DEFINE_NON_RUNTIME_string(max_bytes_for_level_multiplier_additional, "",
               "A vector that specifies additional fanout per level");
 
-DEFINE_int32(level0_stop_writes_trigger,
+DEFINE_NON_RUNTIME_int32(level0_stop_writes_trigger,
              rocksdb::Options().level0_stop_writes_trigger,
              "Number of files in level-0"
              " that will trigger put stop.");
 
-DEFINE_int32(level0_slowdown_writes_trigger,
+DEFINE_NON_RUNTIME_int32(level0_slowdown_writes_trigger,
              rocksdb::Options().level0_slowdown_writes_trigger,
              "Number of files in level-0"
              " that will slow down writes.");
 
-DEFINE_int32(level0_file_num_compaction_trigger,
+DEFINE_NON_RUNTIME_int32(level0_file_num_compaction_trigger,
              rocksdb::Options().level0_file_num_compaction_trigger,
              "Number of files in level-0"
              " when compactions start");
@@ -484,52 +476,26 @@ static bool ValidateInt32Percent(const char* flagname, int32_t value) {
   return true;
 }
 
-DEFINE_int32(readwritepercent, 90, "Ratio of reads to reads/writes (expressed"
+DEFINE_NON_RUNTIME_int32(readwritepercent, 90, "Ratio of reads to reads/writes (expressed"
              " as percentage) for the ReadRandomWriteRandom workload. The "
              "default value 90 means 90% operations out of all reads and writes"
              " operations are reads. In other words, 9 gets for every 1 put.");
 
-DEFINE_int32(mergereadpercent, 70, "Ratio of merges to merges&reads (expressed"
+DEFINE_NON_RUNTIME_int32(mergereadpercent, 70, "Ratio of merges to merges&reads (expressed"
              " as percentage) for the ReadRandomMergeRandom workload. The"
              " default value 70 means 70% out of all read and merge operations"
              " are merges. In other words, 7 merges for every 3 gets.");
 
-DEFINE_int32(deletepercent, 2, "Percentage of deletes out of reads/writes/"
+DEFINE_NON_RUNTIME_int32(deletepercent, 2, "Percentage of deletes out of reads/writes/"
              "deletes (used in RandomWithVerify only). RandomWithVerify "
              "calculates writepercent as (100 - FLAGS_readwritepercent - "
              "deletepercent), so deletepercent must be smaller than (100 - "
              "FLAGS_readwritepercent)");
 
-DEFINE_uint64(delete_obsolete_files_period_micros, 0,
+DEFINE_NON_RUNTIME_uint64(delete_obsolete_files_period_micros, 0,
               "Ignored. Left here for backward compatibility");
 
-#ifndef ROCKSDB_LITE
-DEFINE_bool(optimistic_transaction_db, false,
-            "Open a OptimisticTransactionDB instance. "
-            "Required for randomtransaction benchmark.");
-
-DEFINE_bool(transaction_db, false,
-            "Open a TransactionDB instance. "
-            "Required for randomtransaction benchmark.");
-
-DEFINE_uint64(transaction_sets, 2,
-              "Number of keys each transaction will "
-              "modify (use in RandomTransaction only).  Max: 9999");
-
-DEFINE_bool(transaction_set_snapshot, false,
-            "Setting to true will have each transaction call SetSnapshot()"
-            " upon creation.");
-
-DEFINE_int32(transaction_sleep, 0,
-             "Max microseconds to sleep in between "
-             "reading and writing a value (used in RandomTransaction only). ");
-
-DEFINE_uint64(transaction_lock_timeout, 100,
-              "If using a transaction_db, specifies the lock wait timeout in"
-              " milliseconds before failing a transaction waiting on a lock");
-#endif  // ROCKSDB_LITE
-
-DEFINE_bool(compaction_measure_io_stats, false,
+DEFINE_NON_RUNTIME_bool(compaction_measure_io_stats, false,
             "Measure times spents on I/Os while in compactions. ");
 
 enum rocksdb::CompressionType StringToCompressionType(const char* ctype) {
@@ -564,12 +530,12 @@ std::string ColumnFamilyName(size_t i) {
   }
 }
 
-DEFINE_string(compression_type, "snappy",
+DEFINE_NON_RUNTIME_string(compression_type, "snappy",
               "Algorithm to use to compress the database");
 static enum rocksdb::CompressionType FLAGS_compression_type_e =
     rocksdb::kSnappyCompression;
 
-DEFINE_int32(compression_level, -1,
+DEFINE_NON_RUNTIME_int32(compression_level, -1,
              "Compression level. For zlib this should be -1 for the "
              "default level, or between 0 and 9.");
 
@@ -582,10 +548,9 @@ static bool ValidateCompressionLevel(const char* flagname, int32_t value) {
   return true;
 }
 
-static const bool FLAGS_compression_level_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_compression_level, &ValidateCompressionLevel);
+DEFINE_validator(compression_level, &ValidateCompressionLevel);
 
-DEFINE_int32(min_level_to_compress, -1, "If non-negative, compression starts"
+DEFINE_NON_RUNTIME_int32(min_level_to_compress, -1, "If non-negative, compression starts"
              " from this level. Levels with number < min_level_to_compress are"
              " not compressed. Otherwise, apply compression_type to "
              "all levels.");
@@ -599,34 +564,34 @@ static bool ValidateTableCacheNumshardbits(const char* flagname,
   }
   return true;
 }
-DEFINE_int32(table_cache_numshardbits, 4, "");
+DEFINE_NON_RUNTIME_int32(table_cache_numshardbits, 4, "");
 
-DEFINE_string(hdfs, "", "Name of hdfs environment");
+DEFINE_NON_RUNTIME_string(hdfs, "", "Name of hdfs environment");
 // posix or hdfs environment
 static rocksdb::Env* FLAGS_env = rocksdb::Env::Default();
 
-DEFINE_int64(stats_interval, 0, "Stats are reported every N operations when "
+DEFINE_NON_RUNTIME_int64(stats_interval, 0, "Stats are reported every N operations when "
              "this is greater than zero. When 0 the interval grows over time.");
 
-DEFINE_int64(stats_interval_seconds, 0, "Report stats every N seconds. This "
+DEFINE_NON_RUNTIME_int64(stats_interval_seconds, 0, "Report stats every N seconds. This "
              "overrides stats_interval when both are > 0.");
 
-DEFINE_int32(stats_per_interval, 0, "Reports additional stats per interval when"
+DEFINE_NON_RUNTIME_int32(stats_per_interval, 0, "Reports additional stats per interval when"
              " this is greater than 0.");
 
-DEFINE_int64(report_interval_seconds, 0,
+DEFINE_NON_RUNTIME_int64(report_interval_seconds, 0,
              "If greater than zero, it will write simple stats in CVS format "
              "to --report_file every N seconds");
 
-DEFINE_string(report_file, "report.csv",
+DEFINE_NON_RUNTIME_string(report_file, "report.csv",
               "Filename where some simple stats are reported to (if "
               "--report_interval_seconds is bigger than 0)");
 
-DEFINE_int32(thread_status_per_interval, 0,
+DEFINE_NON_RUNTIME_int32(thread_status_per_interval, 0,
              "Takes and report a snapshot of the current status of each thread"
              " when this is greater than 0.");
 
-DEFINE_int32(perf_level, 0, "Level of perf collection");
+DEFINE_NON_RUNTIME_int32(perf_level, 0, "Level of perf collection");
 
 static bool ValidateRateLimit(const char* flagname, double value) {
   const double EPSILON = 1e-10;
@@ -637,108 +602,106 @@ static bool ValidateRateLimit(const char* flagname, double value) {
   }
   return true;
 }
-DEFINE_double(soft_rate_limit, 0.0, "DEPRECATED");
+DEFINE_NON_RUNTIME_double(soft_rate_limit, 0.0, "DEPRECATED");
 
-DEFINE_double(hard_rate_limit, 0.0, "DEPRECATED");
+DEFINE_NON_RUNTIME_double(hard_rate_limit, 0.0, "DEPRECATED");
 
-DEFINE_uint64(soft_pending_compaction_bytes_limit, 64ull * 1024 * 1024 * 1024,
+DEFINE_NON_RUNTIME_uint64(soft_pending_compaction_bytes_limit, 64ull * 1024 * 1024 * 1024,
               "Slowdown writes if pending compaction bytes exceed this number");
 
-DEFINE_uint64(hard_pending_compaction_bytes_limit, 128ull * 1024 * 1024 * 1024,
+DEFINE_NON_RUNTIME_uint64(hard_pending_compaction_bytes_limit, 128ull * 1024 * 1024 * 1024,
               "Stop writes if pending compaction bytes exceed this number");
 
-DEFINE_uint64(delayed_write_rate, 8388608u,
+DEFINE_NON_RUNTIME_uint64(delayed_write_rate, 8388608u,
               "Limited bytes allowed to DB when soft_rate_limit or "
               "level0_slowdown_writes_trigger triggers");
 
-DEFINE_bool(allow_concurrent_memtable_write, false,
+DEFINE_NON_RUNTIME_bool(allow_concurrent_memtable_write, false,
             "Allow multi-writers to update mem tables in parallel.");
 
-DEFINE_bool(enable_write_thread_adaptive_yield, false,
+DEFINE_NON_RUNTIME_bool(enable_write_thread_adaptive_yield, false,
             "Use a yielding spin loop for brief writer thread waits.");
 
-DEFINE_uint64(
+DEFINE_NON_RUNTIME_uint64(
     write_thread_max_yield_usec, 100,
     "Maximum microseconds for enable_write_thread_adaptive_yield operation.");
 
-DEFINE_uint64(write_thread_slow_yield_usec, 3,
+DEFINE_NON_RUNTIME_uint64(write_thread_slow_yield_usec, 3,
               "The threshold at which a slow yield is considered a signal that "
               "other processes or threads want the core.");
 
-DEFINE_int32(rate_limit_delay_max_milliseconds, 1000,
+DEFINE_NON_RUNTIME_int32(rate_limit_delay_max_milliseconds, 1000,
              "When hard_rate_limit is set then this is the max time a put will"
              " be stalled.");
 
-DEFINE_uint64(rate_limiter_bytes_per_sec, 0, "Set options.rate_limiter value.");
+DEFINE_NON_RUNTIME_uint64(rate_limiter_bytes_per_sec, 0, "Set options.rate_limiter value.");
 
-DEFINE_uint64(
+DEFINE_NON_RUNTIME_uint64(
     benchmark_write_rate_limit, 0,
     "If non-zero, db_bench will rate-limit the writes going into RocksDB. This "
     "is the global rate in bytes/second.");
 
-DEFINE_int32(max_grandparent_overlap_factor, 10, "Control maximum bytes of "
+DEFINE_NON_RUNTIME_int32(max_grandparent_overlap_factor, 10, "Control maximum bytes of "
              "overlaps in grandparent (i.e., level+2) before we stop building a"
              " single file in a level->level+1 compaction.");
 
-#ifndef ROCKSDB_LITE
-DEFINE_bool(readonly, false, "Run read only benchmarks.");
-#endif  // ROCKSDB_LITE
+DEFINE_NON_RUNTIME_bool(readonly, false, "Run read only benchmarks.");
 
-DEFINE_bool(disable_auto_compactions, false, "Do not auto trigger compactions");
+DEFINE_NON_RUNTIME_bool(disable_auto_compactions, false, "Do not auto trigger compactions");
 
-DEFINE_int32(source_compaction_factor, 1, "Cap the size of data in level-K for"
+DEFINE_NON_RUNTIME_int32(source_compaction_factor, 1, "Cap the size of data in level-K for"
              " a compaction run that compacts Level-K with Level-(K+1) (for"
              " K >= 1)");
 
-DEFINE_uint64(wal_ttl_seconds, 0, "Set the TTL for the WAL Files in seconds.");
-DEFINE_uint64(wal_size_limit_MB, 0, "Set the size limit for the WAL Files"
+DEFINE_NON_RUNTIME_uint64(wal_ttl_seconds, 0, "Set the TTL for the WAL Files in seconds.");
+DEFINE_NON_RUNTIME_uint64(wal_size_limit_MB, 0, "Set the size limit for the WAL Files"
               " in MB.");
-DEFINE_uint64(max_total_wal_size, 0, "Set total max WAL size");
+DEFINE_NON_RUNTIME_uint64(max_total_wal_size, 0, "Set total max WAL size");
 
-DEFINE_bool(bufferedio, rocksdb::EnvOptions().use_os_buffer,
+DEFINE_NON_RUNTIME_bool(bufferedio, rocksdb::EnvOptions().use_os_buffer,
             "Allow buffered io using OS buffers");
 
-DEFINE_bool(mmap_read, rocksdb::EnvOptions().use_mmap_reads,
+DEFINE_NON_RUNTIME_bool(mmap_read, rocksdb::EnvOptions().use_mmap_reads,
             "Allow reads to occur via mmap-ing files");
 
-DEFINE_bool(mmap_write, rocksdb::EnvOptions().use_mmap_writes,
+DEFINE_NON_RUNTIME_bool(mmap_write, rocksdb::EnvOptions().use_mmap_writes,
             "Allow writes to occur via mmap-ing files");
 
-DEFINE_bool(advise_random_on_open, rocksdb::Options().advise_random_on_open,
+DEFINE_NON_RUNTIME_bool(advise_random_on_open, rocksdb::Options().advise_random_on_open,
             "Advise random access on table file open");
 
-DEFINE_string(compaction_fadvice, "NORMAL",
+DEFINE_NON_RUNTIME_string(compaction_fadvice, "NORMAL",
               "Access pattern advice when a file is compacted");
 static auto FLAGS_compaction_fadvice_e =
   rocksdb::Options().access_hint_on_compaction_start;
 
-DEFINE_bool(use_tailing_iterator, false,
+DEFINE_NON_RUNTIME_bool(use_tailing_iterator, false,
             "Use tailing iterator to access a series of keys instead of get");
 
-DEFINE_bool(use_adaptive_mutex, rocksdb::Options().use_adaptive_mutex,
+DEFINE_NON_RUNTIME_bool(use_adaptive_mutex, rocksdb::Options().use_adaptive_mutex,
             "Use adaptive mutex");
 
-DEFINE_uint64(bytes_per_sync,  rocksdb::Options().bytes_per_sync,
+DEFINE_NON_RUNTIME_uint64(bytes_per_sync,  rocksdb::Options().bytes_per_sync,
               "Allows OS to incrementally sync SST files to disk while they are"
               " being written, in the background. Issue one request for every"
               " bytes_per_sync written. 0 turns it off.");
 
-DEFINE_uint64(wal_bytes_per_sync,  rocksdb::Options().wal_bytes_per_sync,
+DEFINE_NON_RUNTIME_uint64(wal_bytes_per_sync,  rocksdb::Options().wal_bytes_per_sync,
               "Allows OS to incrementally sync WAL files to disk while they are"
               " being written, in the background. Issue one request for every"
               " wal_bytes_per_sync written. 0 turns it off.");
 
-DEFINE_bool(filter_deletes, false, " On true, deletes use bloom-filter and drop"
+DEFINE_NON_RUNTIME_bool(filter_deletes, false, " On true, deletes use bloom-filter and drop"
             " the delete if key not present");
 
-DEFINE_bool(use_single_deletes, true,
+DEFINE_NON_RUNTIME_bool(use_single_deletes, true,
             "Use single deletes (used in RandomReplaceKeys only).");
 
-DEFINE_double(stddev, 2000.0,
+DEFINE_NON_RUNTIME_double(stddev, 2000.0,
               "Standard deviation of normal distribution used for picking keys"
               " (used in RandomReplaceKeys only).");
 
-DEFINE_int32(max_successive_merges, 0, "Maximum number of successive merge"
+DEFINE_NON_RUNTIME_int32(max_successive_merges, 0, "Maximum number of successive merge"
              " operations on a key in the memtable");
 
 static bool ValidatePrefixSize(const char* flagname, int32_t value) {
@@ -749,12 +712,12 @@ static bool ValidatePrefixSize(const char* flagname, int32_t value) {
   }
   return true;
 }
-DEFINE_int32(prefix_size, 0, "control the prefix size for HashSkipList and "
+DEFINE_NON_RUNTIME_int32(prefix_size, 0, "control the prefix size for HashSkipList and "
              "plain table");
-DEFINE_int64(keys_per_prefix, 0, "control average number of keys generated "
+DEFINE_NON_RUNTIME_int64(keys_per_prefix, 0, "control average number of keys generated "
              "per prefix, 0 means no special handling of the prefix, "
              "i.e. use the prefix comes with the generated random number.");
-DEFINE_bool(enable_io_prio, false, "Lower the background flush/compaction "
+DEFINE_NON_RUNTIME_bool(enable_io_prio, false, "Lower the background flush/compaction "
             "threads' IO priority");
 
 enum RepFactory {
@@ -784,56 +747,46 @@ enum RepFactory StringToRepFactory(const char* ctype) {
 }
 
 static enum RepFactory FLAGS_rep_factory;
-DEFINE_string(memtablerep, "skip_list", "");
-DEFINE_int64(hash_bucket_count, 1024 * 1024, "hash bucket count");
-DEFINE_bool(use_plain_table, false, "if use plain table "
+DEFINE_NON_RUNTIME_string(memtablerep, "skip_list", "");
+DEFINE_NON_RUNTIME_int64(hash_bucket_count, 1024 * 1024, "hash bucket count");
+DEFINE_NON_RUNTIME_bool(use_plain_table, false, "if use plain table "
             "instead of block-based table format");
-DEFINE_bool(use_binary_search, false, "if use kBinarySearch "
+DEFINE_NON_RUNTIME_bool(use_binary_search, false, "if use kBinarySearch "
             "instead of kMultiLevelBinarySearch. "
             "This is valid if only we use BlockTable");
-DEFINE_bool(use_hash_search, false, "if use kHashSearch "
+DEFINE_NON_RUNTIME_bool(use_hash_search, false, "if use kHashSearch "
             "instead of kMultiLevelBinarySearch. "
             "This is valid if only we use BlockTable");
-DEFINE_bool(use_block_based_filter, false, "if use kBlockBasedFilter "
+DEFINE_NON_RUNTIME_bool(use_block_based_filter, false, "if use kBlockBasedFilter "
             "instead of kFullFilter for filter block. "
             "This is valid if only we use BlockTable");
-DEFINE_string(merge_operator, "", "The merge operator to use with the database."
+DEFINE_NON_RUNTIME_string(merge_operator, "", "The merge operator to use with the database."
               "If a new merge operator is specified, be sure to use fresh"
               " database The possible merge operators are defined in"
               " utilities/merge_operators.h");
-DEFINE_int32(skip_list_lookahead, 0, "Used with skip_list memtablerep; try "
+DEFINE_NON_RUNTIME_int32(skip_list_lookahead, 0, "Used with skip_list memtablerep; try "
              "linear search first for this many steps from the previous "
              "position");
-DEFINE_bool(report_file_operations, false, "if report number of file "
+DEFINE_NON_RUNTIME_bool(report_file_operations, false, "if report number of file "
             "operations");
 
-static const bool FLAGS_soft_rate_limit_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_soft_rate_limit, &ValidateRateLimit);
+DEFINE_validator(soft_rate_limit, &ValidateRateLimit);
 
-static const bool FLAGS_hard_rate_limit_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_hard_rate_limit, &ValidateRateLimit);
+DEFINE_validator(hard_rate_limit, &ValidateRateLimit);
 
-static const bool FLAGS_prefix_size_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_prefix_size, &ValidatePrefixSize);
+DEFINE_validator(prefix_size, &ValidatePrefixSize);
 
-static const bool FLAGS_key_size_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_key_size, &ValidateKeySize);
+DEFINE_validator(key_size, &ValidateKeySize);
 
-static const bool FLAGS_cache_numshardbits_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_cache_numshardbits,
-                          &ValidateCacheNumshardbits);
+DEFINE_validator(cache_numshardbits, &ValidateCacheNumshardbits);
 
-static const bool FLAGS_readwritepercent_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_readwritepercent, &ValidateInt32Percent);
+DEFINE_validator(readwritepercent, &ValidateInt32Percent);
 
-DEFINE_int32(disable_seek_compaction, false,
+DEFINE_NON_RUNTIME_int32(disable_seek_compaction, false,
              "Not used, left here for backwards compatibility");
 
-static const bool FLAGS_deletepercent_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_deletepercent, &ValidateInt32Percent);
-static const bool FLAGS_table_cache_numshardbits_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_table_cache_numshardbits,
-                          &ValidateTableCacheNumshardbits);
+DEFINE_validator(deletepercent, &ValidateInt32Percent);
+DEFINE_validator(table_cache_numshardbits, &ValidateTableCacheNumshardbits);
 }  // namespace
 
 namespace rocksdb {
@@ -945,6 +898,7 @@ class ReportFileOpEnv : public EnvWrapper {
       Status Close() override { return target_->Close(); }
       Status Flush() override { return target_->Flush(); }
       Status Sync() override { return target_->Sync(); }
+      const std::string& filename() const override { return target_->filename(); }
     };
 
     Status s = target()->NewWritableFile(f, r, soptions);
@@ -1007,9 +961,6 @@ static void AppendWithSpace(std::string* str, Slice msg) {
 struct DBWithColumnFamilies {
   std::vector<ColumnFamilyHandle*> cfh;
   DB* db;
-#ifndef ROCKSDB_LITE
-  OptimisticTransactionDB* opt_txn_db;
-#endif  // ROCKSDB_LITE
   std::atomic<size_t> num_created;  // Need to be updated after all the
                                     // new entries in cfh are set.
   size_t num_hot;  // Number of column families to be queried at each moment.
@@ -1017,12 +968,7 @@ struct DBWithColumnFamilies {
                    // Column families will be created and used to be queried.
   port::Mutex create_cf_mutex;  // Only one thread can execute CreateNewCf()
 
-  DBWithColumnFamilies()
-      : db(nullptr)
-#ifndef ROCKSDB_LITE
-        , opt_txn_db(nullptr)
-#endif  // ROCKSDB_LITE
-  {
+  DBWithColumnFamilies() : db(nullptr) {
     cfh.clear();
     num_created = 0;
     num_hot = 0;
@@ -1031,9 +977,6 @@ struct DBWithColumnFamilies {
   DBWithColumnFamilies(const DBWithColumnFamilies& other)
       : cfh(other.cfh),
         db(other.db),
-#ifndef ROCKSDB_LITE
-        opt_txn_db(other.opt_txn_db),
-#endif  // ROCKSDB_LITE
         num_created(other.num_created.load()),
         num_hot(other.num_hot) {}
 
@@ -1041,18 +984,8 @@ struct DBWithColumnFamilies {
     std::for_each(cfh.begin(), cfh.end(),
                   [](ColumnFamilyHandle* cfhi) { delete cfhi; });
     cfh.clear();
-#ifndef ROCKSDB_LITE
-    if (opt_txn_db) {
-      delete opt_txn_db;
-      opt_txn_db = nullptr;
-    } else {
-      delete db;
-      db = nullptr;
-    }
-#else
     delete db;
     db = nullptr;
-#endif  // ROCKSDB_LITE
   }
 
   ColumnFamilyHandle* GetCfh(int64_t rand_num) {
@@ -1107,7 +1040,8 @@ class ReporterAgent {
       abort();
     }
 
-    reporting_thread_ = std::thread([&]() { SleepAndReport(); });
+    CHECK_OK(yb::Thread::Create(
+        "reporter_agent", "reporter", &ReporterAgent::SleepAndReport, this, &reporting_thread_));
   }
 
   ~ReporterAgent() {
@@ -1116,7 +1050,9 @@ class ReporterAgent {
       stop_ = true;
       stop_cv_.notify_all();
     }
-    reporting_thread_.join();
+    if (reporting_thread_) {
+      reporting_thread_->Join();
+    }
   }
 
   // thread safe
@@ -1167,7 +1103,7 @@ class ReporterAgent {
   std::atomic<int64_t> total_ops_done_;
   int64_t last_report_;
   const uint64_t report_interval_secs_;
-  std::thread reporting_thread_;
+  scoped_refptr<yb::Thread> reporting_thread_;
   std::mutex mutex_;
   // will notify on stop
   std::condition_variable stop_cv_;
@@ -1752,12 +1688,6 @@ class Benchmark {
         merge_keys_(FLAGS_merge_keys < 0 ? FLAGS_num : FLAGS_merge_keys),
         report_file_operations_(FLAGS_report_file_operations) {
     if (report_file_operations_) {
-      if (!FLAGS_hdfs.empty()) {
-        fprintf(stderr,
-                "--hdfs and --report_file_operations cannot be enabled "
-                "at the same time");
-        exit(1);
-      }
       FLAGS_env = new ReportFileOpEnv(rocksdb::Env::Default());
     }
 
@@ -1990,11 +1920,6 @@ class Benchmark {
         method = &Benchmark::Compress;
       } else if (name == "uncompress") {
         method = &Benchmark::Uncompress;
-#ifndef ROCKSDB_LITE
-      } else if (name == "randomtransaction") {
-        method = &Benchmark::RandomTransaction;
-        post_process_method = &Benchmark::RandomTransactionVerify;
-#endif  // ROCKSDB_LITE
       } else if (name == "randomreplacekeys") {
         fresh_db = true;
         method = &Benchmark::RandomReplaceKeys;
@@ -2372,7 +2297,6 @@ class Benchmark {
         options.memtable_factory.reset(new SkipListFactory(
             FLAGS_skip_list_lookahead));
         break;
-#ifndef ROCKSDB_LITE
       case kPrefixHash:
         options.memtable_factory.reset(
             NewHashSkipListRepFactory(FLAGS_hash_bucket_count));
@@ -2386,14 +2310,8 @@ class Benchmark {
           new VectorRepFactory
         );
         break;
-#else
-      default:
-        fprintf(stderr, "Only skip list is supported in lite mode\n");
-        exit(1);
-#endif  // ROCKSDB_LITE
     }
     if (FLAGS_use_plain_table) {
-#ifndef ROCKSDB_LITE
       if (FLAGS_rep_factory != kPrefixHash &&
           FLAGS_rep_factory != kHashLinkedList) {
         fprintf(stderr, "Waring: plain table is used with skipList\n");
@@ -2414,10 +2332,6 @@ class Benchmark {
       plain_table_options.hash_table_ratio = 0.75;
       options.table_factory = std::shared_ptr<TableFactory>(
           NewPlainTableFactory(plain_table_options));
-#else
-      fprintf(stderr, "Plain table is not supported in lite mode\n");
-      exit(1);
-#endif  // ROCKSDB_LITE
     } else {
       BlockBasedTableOptions block_based_options;
       if (FLAGS_use_hash_search) {
@@ -2553,13 +2467,6 @@ class Benchmark {
           NewGenericRateLimiter(FLAGS_rate_limiter_bytes_per_sec));
     }
 
-#ifndef ROCKSDB_LITE
-    if (FLAGS_readonly && FLAGS_transaction_db) {
-      fprintf(stderr, "Cannot use readonly flag with transaction_db\n");
-      exit(1);
-    }
-#endif  // ROCKSDB_LITE
-
     if (FLAGS_num_multi_db <= 1) {
       OpenDb(options, FLAGS_db, &db_);
     } else {
@@ -2591,49 +2498,17 @@ class Benchmark {
         column_families.push_back(ColumnFamilyDescriptor(
               ColumnFamilyName(i), ColumnFamilyOptions(options)));
       }
-#ifndef ROCKSDB_LITE
       if (FLAGS_readonly) {
         s = DB::OpenForReadOnly(options, db_name, column_families,
             &db->cfh, &db->db);
-      } else if (FLAGS_optimistic_transaction_db) {
-        s = OptimisticTransactionDB::Open(options, db_name, column_families,
-                                          &db->cfh, &db->opt_txn_db);
-        if (s.ok()) {
-          db->db = db->opt_txn_db->GetBaseDB();
-        }
-      } else if (FLAGS_transaction_db) {
-        TransactionDB* ptr;
-        TransactionDBOptions txn_db_options;
-        s = TransactionDB::Open(options, txn_db_options, db_name,
-                                column_families, &db->cfh, &ptr);
-        if (s.ok()) {
-          db->db = ptr;
-        }
       } else {
         s = DB::Open(options, db_name, column_families, &db->cfh, &db->db);
       }
-#else
-      s = DB::Open(options, db_name, column_families, &db->cfh, &db->db);
-#endif  // ROCKSDB_LITE
       db->cfh.resize(FLAGS_num_column_families);
       db->num_created = num_hot;
       db->num_hot = num_hot;
-#ifndef ROCKSDB_LITE
     } else if (FLAGS_readonly) {
       s = DB::OpenForReadOnly(options, db_name, &db->db);
-    } else if (FLAGS_optimistic_transaction_db) {
-      s = OptimisticTransactionDB::Open(options, db_name, &db->opt_txn_db);
-      if (s.ok()) {
-        db->db = db->opt_txn_db->GetBaseDB();
-      }
-    } else if (FLAGS_transaction_db) {
-      TransactionDB* ptr;
-      TransactionDBOptions txn_db_options;
-      s = TransactionDB::Open(options, txn_db_options, db_name, &ptr);
-      if (s.ok()) {
-        db->db = ptr;
-      }
-#endif  // ROCKSDB_LITE
     } else {
       s = DB::Open(options, db_name, &db->db);
     }
@@ -3671,237 +3546,6 @@ class Benchmark {
     }
   }
 
-#ifndef ROCKSDB_LITE
-  // This benchmark stress tests Transactions.  For a given --duration (or
-  // total number of --writes, a Transaction will perform a read-modify-write
-  // to increment the value of a key in each of N(--transaction-sets) sets of
-  // keys (where each set has --num keys).  If --threads is set, this will be
-  // done in parallel.
-  //
-  // To test transactions, use --transaction_db=true.  Not setting this
-  // parameter
-  // will run the same benchmark without transactions.
-  //
-  // RandomTransactionVerify() will then validate the correctness of the results
-  // by checking if the sum of all keys in each set is the same.
-  void RandomTransaction(ThreadState* thread) {
-    ReadOptions options(FLAGS_verify_checksum, true);
-    Duration duration(FLAGS_duration, readwrites_);
-    ReadOptions read_options(FLAGS_verify_checksum, true);
-    std::string value;
-    DB* db = db_.db;
-    uint64_t transactions_done = 0;
-    uint64_t transactions_aborted = 0;
-    Status s;
-    uint64_t num_prefix_ranges = FLAGS_transaction_sets;
-
-    if (num_prefix_ranges == 0 || num_prefix_ranges > 9999) {
-      fprintf(stderr, "invalid value for transaction_sets\n");
-      abort();
-    }
-
-    if (FLAGS_num_multi_db > 1) {
-      fprintf(stderr,
-              "Cannot run RandomTransaction benchmark with "
-              "FLAGS_multi_db > 1.");
-      abort();
-    }
-
-    while (!duration.Done(1)) {
-      Transaction* txn = nullptr;
-      WriteBatch* batch = nullptr;
-
-      if (FLAGS_optimistic_transaction_db) {
-        txn = db_.opt_txn_db->BeginTransaction(write_options_);
-        assert(txn);
-      } else if (FLAGS_transaction_db) {
-        TransactionDB* txn_db = reinterpret_cast<TransactionDB*>(db_.db);
-
-        TransactionOptions txn_options;
-        txn_options.lock_timeout = FLAGS_transaction_lock_timeout;
-
-        txn = txn_db->BeginTransaction(write_options_, txn_options);
-        assert(txn);
-      } else {
-        batch = new WriteBatch();
-      }
-
-      if (txn && FLAGS_transaction_set_snapshot) {
-        txn->SetSnapshot();
-      }
-
-      // pick a random number to use to increment a key in each set
-      uint64_t incr = (thread->rand.Next() % 100) + 1;
-
-      bool failed = false;
-      // For each set, pick a key at random and increment it
-      for (uint8_t i = 0; i < num_prefix_ranges; i++) {
-        uint64_t int_value;
-        char prefix_buf[5];
-
-        // key format:  [SET#][random#]
-        std::string rand_key = ToString(thread->rand.Next() % FLAGS_num);
-        Slice base_key(rand_key);
-
-        // Pad prefix appropriately so we can iterate over each set
-        snprintf(prefix_buf, sizeof(prefix_buf), "%04d", i + 1);
-        std::string full_key = std::string(prefix_buf) + base_key.ToString();
-        Slice key(full_key);
-
-        if (txn) {
-          s = txn->GetForUpdate(read_options, key, &value);
-        } else {
-          s = db->Get(read_options, key, &value);
-        }
-
-        if (s.ok()) {
-          int_value = std::stoull(value);
-
-          if (int_value == 0 || int_value == ULONG_MAX) {
-            fprintf(stderr, "Get returned unexpected value: %s\n",
-                    value.c_str());
-            abort();
-          }
-        } else if (s.IsNotFound()) {
-          int_value = 0;
-        } else if (!(s.IsBusy() || s.IsTimedOut() || s.IsTryAgain())) {
-          fprintf(stderr, "Get returned an unexpected error: %s\n",
-                  s.ToString().c_str());
-          abort();
-        } else {
-          failed = true;
-          break;
-        }
-
-        if (FLAGS_transaction_sleep > 0) {
-          FLAGS_env->SleepForMicroseconds(thread->rand.Next() %
-                                          FLAGS_transaction_sleep);
-        }
-
-        std::string sum = ToString(int_value + incr);
-        if (txn) {
-          s = txn->Put(key, sum);
-          if (!s.ok()) {
-            // Since we did a GetForUpdate, Put should not fail.
-            fprintf(stderr, "Put returned an unexpected error: %s\n",
-                    s.ToString().c_str());
-            abort();
-          }
-        } else {
-          batch->Put(key, sum);
-        }
-      }
-
-      if (txn) {
-        if (failed) {
-          transactions_aborted++;
-          txn->Rollback();
-          s = Status::OK();
-        } else {
-          s = txn->Commit();
-        }
-      } else {
-        s = db->Write(write_options_, batch);
-      }
-
-      if (!s.ok()) {
-        failed = true;
-
-        // Ideally, we'd want to run this stress test with enough concurrency
-        // on a small enough set of keys that we get some failed transactions
-        // due to conflicts.
-        if (FLAGS_optimistic_transaction_db &&
-            (s.IsBusy() || s.IsTimedOut() || s.IsTryAgain())) {
-          transactions_aborted++;
-        } else if (FLAGS_transaction_db && s.IsExpired()) {
-          transactions_aborted++;
-        } else {
-          fprintf(stderr, "Unexpected write error: %s\n", s.ToString().c_str());
-          abort();
-        }
-      }
-
-      delete txn;
-      delete batch;
-
-      if (!failed) {
-        thread->stats.FinishedOps(nullptr, db, 1, kOthers);
-      }
-
-      transactions_done++;
-    }
-
-    char msg[100];
-    if (FLAGS_optimistic_transaction_db || FLAGS_transaction_db) {
-      snprintf(msg, sizeof(msg),
-               "( transactions:%" PRIu64 " aborts:%" PRIu64 ")",
-               transactions_done, transactions_aborted);
-    } else {
-      snprintf(msg, sizeof(msg), "( batches:%" PRIu64 " )", transactions_done);
-    }
-    thread->stats.AddMessage(msg);
-
-    if (FLAGS_perf_level > 0) {
-      thread->stats.AddMessage(perf_context.ToString());
-    }
-  }
-
-  // Verifies consistency of data after RandomTransaction() has been run.
-  // Since each iteration of RandomTransaction() incremented a key in each set
-  // by the same value, the sum of the keys in each set should be the same.
-  void RandomTransactionVerify() {
-    if (!FLAGS_transaction_db && !FLAGS_optimistic_transaction_db) {
-      // transactions not used, nothing to verify.
-      return;
-    }
-
-    uint64_t prev_total = 0;
-
-    // For each set of keys with the same prefix, sum all the values
-    for (uint32_t i = 0; i < FLAGS_transaction_sets; i++) {
-      char prefix_buf[5];
-      snprintf(prefix_buf, sizeof(prefix_buf), "%04u", i + 1);
-      uint64_t total = 0;
-
-      Iterator* iter = db_.db->NewIterator(ReadOptions());
-
-      for (iter->Seek(Slice(prefix_buf, 4)); iter->Valid(); iter->Next()) {
-        Slice key = iter->key();
-
-        // stop when we reach a different prefix
-        if (key.ToString().compare(0, 4, prefix_buf) != 0) {
-          break;
-        }
-
-        Slice value = iter->value();
-        uint64_t int_value = std::stoull(value.ToString());
-        if (int_value == 0 || int_value == ULONG_MAX) {
-          fprintf(stderr, "Iter returned unexpected value: %s\n",
-                  value.ToString().c_str());
-          abort();
-        }
-
-        total += int_value;
-      }
-      delete iter;
-
-      if (i > 0) {
-        if (total != prev_total) {
-          fprintf(stderr,
-                  "RandomTransactionVerify found inconsistent totals. "
-                  "Set[%" PRIu32 "]: %" PRIu64 ", Set[%" PRIu32 "]: %" PRIu64
-                  " \n",
-                  i - 1, prev_total, i, total);
-          abort();
-        }
-      }
-      prev_total = total;
-    }
-
-    fprintf(stdout, "RandomTransactionVerify Success!\n");
-  }
-#endif  // ROCKSDB_LITE
-
   // Writes and deletes random keys without overwriting keys.
   //
   // This benchmark is intended to partially replicate the behavior of MyRocks
@@ -4013,10 +3657,6 @@ int db_bench_tool(int argc, char** argv) {
 
   FLAGS_compression_type_e =
     StringToCompressionType(FLAGS_compression_type.c_str());
-
-  if (!FLAGS_hdfs.empty()) {
-    FLAGS_env  = new rocksdb::HdfsEnv(FLAGS_hdfs);
-  }
 
   if (!strcasecmp(FLAGS_compaction_fadvice.c_str(), "NONE")) {
     FLAGS_compaction_fadvice_e = rocksdb::Options::NONE;

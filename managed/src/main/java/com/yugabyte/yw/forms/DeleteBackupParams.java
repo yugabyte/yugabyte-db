@@ -14,6 +14,9 @@ public class DeleteBackupParams {
   @ApiModelProperty(value = "Backups to be deleted", required = true)
   public List<DeleteBackupInfo> deleteBackupInfos;
 
+  @ApiModelProperty(value = "Delete Backups forcefully", required = false)
+  public boolean deleteForcefully = false;
+
   @ApiModel
   public static class DeleteBackupInfo {
 

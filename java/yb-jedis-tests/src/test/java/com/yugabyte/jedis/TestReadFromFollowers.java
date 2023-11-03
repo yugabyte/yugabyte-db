@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.TreeMap;
+import org.junit.Ignore;
 
 import org.apache.commons.text.RandomStringGenerator;
 import org.junit.Test;
@@ -57,6 +58,7 @@ import redis.clients.jedis.JedisCommands;
 import redis.clients.jedis.YBJedis;
 import redis.clients.util.JedisClusterCRC16;
 
+@Ignore("Redis is not supported anymore")
 @RunWith(value=YBParameterizedTestRunner.class)
 public class TestReadFromFollowers extends BaseJedisTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestReadFromFollowers.class);
@@ -209,7 +211,7 @@ public class TestReadFromFollowers extends BaseJedisTest {
               ImmutableMap.of("placement_zone", PLACEMENT_ZONE1),
               ImmutableMap.of("placement_zone", PLACEMENT_ZONE2),
               ImmutableMap.of("placement_zone", PLACEMENT_ZONE2)));
-        });
+        }, Collections.emptyMap());
 
     waitForTServersAtMasterLeader();
 
@@ -252,6 +254,7 @@ public class TestReadFromFollowers extends BaseJedisTest {
 
     PlacementInfoPB livePlacementInfo =
         PlacementInfoPB.newBuilder().addAllPlacementBlocks(placementBlocksLive).
+            setNumReplicas(3).
             setPlacementUuid(ByteString.copyFromUtf8(PLACEMENT_UUID)).build();
 
     ModifyClusterConfigLiveReplicas liveOperation =
@@ -318,7 +321,7 @@ public class TestReadFromFollowers extends BaseJedisTest {
                   "TEST_follower_reject_update_consensus_requests_seconds", "300"),
               ImmutableMap.of(),
               ImmutableMap.of()));
-        });
+        }, Collections.emptyMap());
 
     // Setup the Jedis client.
     setUpJedis();
@@ -438,7 +441,7 @@ public class TestReadFromFollowers extends BaseJedisTest {
               ImmutableMap.of("lookup_cache_refresh_secs", "1"),
               ImmutableMap.of(),
               ImmutableMap.of()));
-        });
+        }, Collections.emptyMap());
 
     // Setup the Jedis client.
     setUpJedis();
@@ -559,7 +562,7 @@ public class TestReadFromFollowers extends BaseJedisTest {
               ImmutableMap.of("placement_uuid", readReplicaUuid)));
 
           cb.perTServerFlags(perTserverFlags);
-        });
+        }, Collections.emptyMap());
 
     PlacementInfoPB livePlacementInfo =
         PlacementInfoPB.newBuilder()

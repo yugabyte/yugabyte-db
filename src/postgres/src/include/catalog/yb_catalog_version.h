@@ -10,11 +10,9 @@
  *-------------------------------------------------------------------------
  */
 
-#ifndef YB_CATALOG_VERSION_H
-#define YB_CATALOG_VERSION_H
+#pragma once
 
-#include "yb/yql/pggate/ybc_pggate.h"
-#include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 /*
  * Enum representing how the catalog version is stored on this cluster.
@@ -37,7 +35,8 @@ extern YbCatalogVersionType yb_catalog_version_type;
 extern uint64_t YbGetMasterCatalogVersion();
 
 /* Send a request to increment the master catalog version. */
-extern bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change);
+extern bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change,
+													  bool is_global_ddl);
 
 /* Send a request to create the master catalog version for the given database. */
 extern void YbCreateMasterDBCatalogVersionTableEntry(Oid db_oid);
@@ -46,10 +45,14 @@ extern void YbCreateMasterDBCatalogVersionTableEntry(Oid db_oid);
 extern void YbDeleteMasterDBCatalogVersionTableEntry(Oid db_oid);
 
 /* Annotate an DML request if it changes the catalog data (if needed). */
-bool YbMarkStatementIfCatalogVersionIncrement(YBCPgStatement ybc_stmt,
-											  Relation rel);
+extern bool YbMarkStatementIfCatalogVersionIncrement(
+	YBCPgStatement ybc_stmt,
+	Relation rel);
+
+extern bool YbIsSystemCatalogChange(Relation rel);
 
 /* Return the catalog version type. */
-YbCatalogVersionType YbGetCatalogVersionType();
+extern YbCatalogVersionType YbGetCatalogVersionType();
 
-#endif							/* YB_CATALOG_VERSION_H */
+/* Get actual db_oid for pg_yb_catalog_version */
+Oid YbMasterCatalogVersionTableDBOid();

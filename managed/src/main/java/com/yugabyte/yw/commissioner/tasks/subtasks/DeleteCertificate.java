@@ -12,10 +12,8 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
-import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.CertificateInfo;
-import java.io.File;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -48,12 +46,6 @@ public class DeleteCertificate extends UniverseTaskBase {
       if (cert.getInUse()) {
         log.info("Certificate already in use, can't delete.");
         return;
-      }
-
-      File certDirectory = new File(cert.certificate).getParentFile();
-      // delete entire certificate directory recursively.
-      if (!FileUtils.deleteDirectory(certDirectory)) {
-        log.error("Failed to delete certificate directory: %s", certDirectory.getAbsolutePath());
       }
 
       CertificateInfo.delete(taskParams().certUUID, taskParams().customerUUID);

@@ -120,7 +120,8 @@ public class HealthCheckerReport {
       }
 
       boolean hasError = jsonNode.get("has_error").asBoolean();
-      nodeReport.checks.add(new CheckItem(hasError, jsonNode.get("timestamp").asText(), jsonNode));
+      nodeReport.checks.add(
+          new CheckItem(hasError, jsonNode.get("timestamp_iso").asText(), jsonNode));
       nodeReport.hasError |= hasError;
       nodeReport.hasWarning |= jsonNode.get("has_warning").asBoolean();
     }
@@ -170,7 +171,7 @@ public class HealthCheckerReport {
     String timestamp =
         String.format(
             "<span style=\"color:black;font-size:10px;\">%s</span>",
-            report.path("timestamp").asText());
+            report.path("timestamp_iso").asText());
 
     String header =
         String.format(
@@ -185,7 +186,7 @@ public class HealthCheckerReport {
                 + "        <td style=\"text-align:left\">%s</td>\n"
                 + "    </tr>\n"
                 + "</table>\n",
-            makeHeaderLeft("Universe name", u.name),
+            makeHeaderLeft("Universe name", u.getName()),
             makeHeaderLeft("Universe version", report.path("yb_version").asText()),
             timestamp,
             makeHeaderLeft("YW host name", Util.getHostname()),
@@ -353,8 +354,7 @@ public class HealthCheckerReport {
   private static List<String> getNodeNames(
       Universe u, Cluster cluster, Map<String, NodeReport> reports) {
     List<String> nodeNames =
-        u.getNodesInCluster(cluster.uuid)
-            .stream()
+        u.getNodesInCluster(cluster.uuid).stream()
             .map(node -> node.nodeName)
             .sorted(new NodesComparator(reports))
             .collect(Collectors.toList());
@@ -411,6 +411,7 @@ public class HealthCheckerReport {
             + "white-space: pre-wrap;border-radius:5px;\">%s</pre>\n",
         content);
   }
+
   // @formatter:off
 
   private static String assembleMailRow(JsonNode rowData, boolean isFirstCcheck, String timestamp) {

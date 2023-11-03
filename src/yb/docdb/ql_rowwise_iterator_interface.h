@@ -11,10 +11,11 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_QL_ROWWISE_ITERATOR_INTERFACE_H
-#define YB_DOCDB_QL_ROWWISE_ITERATOR_INTERFACE_H
+#pragma once
 
 #include <memory>
+
+#include <boost/optional.hpp>
 
 #include "yb/common/common_fwd.h"
 
@@ -31,24 +32,30 @@ namespace docdb {
 class YQLRowwiseIteratorIf {
  public:
   typedef std::unique_ptr<YQLRowwiseIteratorIf> UniPtr;
-  virtual ~YQLRowwiseIteratorIf() {}
+  virtual ~YQLRowwiseIteratorIf() = default;
 
   //------------------------------------------------------------------------------------------------
   // Pure virtual API methods.
   //------------------------------------------------------------------------------------------------
   // Checks whether next row exists.
-  virtual Result<bool> HasNext() const = 0;
+  Result<bool> FetchNext(
+      qlexpr::QLTableRow* table_row,
+      const dockv::ReaderProjection* projection = nullptr,
+      qlexpr::QLTableRow* static_row = nullptr,
+      const dockv::ReaderProjection* static_projection = nullptr) {
+    return DoFetchNext(table_row, projection, static_row, static_projection);
+  }
 
-  // Skip the current row.
-  virtual void SkipRow() = 0;
+  virtual Result<bool> PgFetchNext(dockv::PgTableRow* table_row) = 0;
 
   // If restart is required returns restart hybrid time, based on iterated records.
   // Otherwise returns invalid hybrid time.
-  virtual HybridTime RestartReadHt() = 0;
+  virtual Result<HybridTime> RestartReadHt() = 0;
+
+  // Returns max seen hybrid time. Only used by tests for validation.
+  virtual HybridTime TEST_MaxSeenHt();
 
   virtual std::string ToString() const = 0;
-
-  virtual const Schema& schema() const = 0;
 
   //------------------------------------------------------------------------------------------------
   // Virtual API methods.
@@ -57,32 +64,28 @@ class YQLRowwiseIteratorIf {
 
   // Apache Cassandra Only: CQL supports static columns while all other intefaces do not.
   // Is the next row column to read a static column?
-  virtual bool IsNextStaticColumn() const {
+  virtual bool IsFetchedRowStatic() const {
     return false;
   }
 
   // Retrieves the next key to read after the iterator finishes for the given page.
-  virtual Status GetNextReadSubDocKey(SubDocKey* sub_doc_key) const;
+  virtual Status GetNextReadSubDocKey(dockv::SubDocKey* sub_doc_key);
 
   // Returns the tuple id of the current tuple. See DocRowwiseIterator for details.
-  virtual Result<Slice> GetTupleId() const;
+  virtual Slice GetTupleId() const;
 
   // Seeks to the given tuple by its id. See DocRowwiseIterator for details.
-  virtual Result<bool> SeekTuple(const Slice& tuple_id);
+  virtual void SeekTuple(Slice tuple_id);
 
-  //------------------------------------------------------------------------------------------------
-  // Common API methods.
-  //------------------------------------------------------------------------------------------------
-  // Read next row using the specified projection.
-  Status NextRow(const Schema& projection, QLTableRow* table_row);
+  virtual Result<bool> FetchTuple(Slice tuple_id, qlexpr::QLTableRow* row);
 
-  Status NextRow(QLTableRow* table_row);
-
- private:
-  virtual Status DoNextRow(const Schema& projection, QLTableRow* table_row) = 0;
+ protected:
+  virtual Result<bool> DoFetchNext(
+      qlexpr::QLTableRow* table_row,
+      const dockv::ReaderProjection* projection,
+      qlexpr::QLTableRow* static_row,
+      const dockv::ReaderProjection* static_projection) = 0;
 };
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif // YB_DOCDB_QL_ROWWISE_ITERATOR_INTERFACE_H

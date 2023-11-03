@@ -96,7 +96,7 @@ message CreateTableRequestPB {
   // Only makes sense for colocated tables.
   optional uint32 colocation_id = 25;
 
-  // DDL Dependent upon Transaction success (abort removes). Used by YSQL.
+  // For YSQL tables, transaction used by this DDL. If aborted, table will be removed.
   optional TransactionMetadataPB transaction = 20;
 
   // For YSQL tables, this denotes the tablespace that this table is associated with.
@@ -108,6 +108,10 @@ message CreateTableRequestPB {
   optional bool is_matview = 26;
 
   optional bytes matview_pg_table_id = 24;
+
+  repeated StatefulServiceKind hosted_stateful_services = 27;
+
+  optional bool ysql_ddl_rollback_enabled = 28 [ default = false ];
 }
 
 message CreateTableResponsePB {
@@ -149,6 +153,11 @@ message ListTablesResponsePB {
   // The error, if an error occurred with this request.
   optional MasterErrorPB error = 1;
 
+  message ColocatedInfo {
+    optional bool colocated = 1;
+    optional bytes parent_table_id = 2;
+  }
+
   message TableInfo {
     required bytes id = 1;
     required string name = 2;
@@ -157,6 +166,8 @@ message ListTablesResponsePB {
     optional RelationType relation_type = 5 [default = USER_TABLE_RELATION];
     optional SysTablesEntryPB.State state = 6;
     optional string pgschema_name = 7;
+    optional ColocatedInfo colocated_info = 8;
+    optional bool hidden = 9;
   }
 
   repeated TableInfo tables = 2;
@@ -210,6 +221,8 @@ message GetTableSchemaResponsePB {
   optional bool is_compatible_with_previous_version = 14 [default = false];
 
   optional uint32 wal_retention_secs = 15;
+
+  repeated YsqlDdlTxnVerifierStatePB ysql_ddl_txn_verifier_state = 17;
 }
 
 message GetTablegroupSchemaRequestPB {
@@ -295,6 +308,8 @@ message GetBackfillJobsResponsePB {
 message DeleteTableRequestPB {
   required TableIdentifierPB table = 1;
   optional bool is_index_table = 2 [ default = false ];
+  optional TransactionMetadataPB transaction = 3;
+  optional bool ysql_ddl_rollback_enabled = 4 [ default = false ];
 }
 
 message DeleteTableResponsePB {
@@ -382,8 +397,11 @@ message AlterTableRequestPB {
   // Replication information for this table.
   optional ReplicationInfoPB replication_info = 8;
 
-  // DDL Dependent upon Transaction success (abort removes). Used by YSQL.
+  // This is the transaction performing the Alter operation. This is used by TServers to abort
+  // any ongoing DML on the table other than this transaction.
   optional TransactionMetadataPB transaction = 9;
+  // If set, YB-Master will poll the status of 'transaction' and rollback the Alter if failed.
+  optional bool ysql_ddl_rollback_enabled = 12 [ default = false ];
 
   // If set, updates the pgschema_name in SchemaPB.
   optional string pgschema_name = 10;
@@ -522,6 +540,12 @@ message ListNamespacesResponsePB {
   optional MasterErrorPB error = 1;
 
   repeated NamespaceIdentifierPB namespaces = 2;
+
+  repeated int32 states = 3;
+
+  /* We use int32 because the repeated bool type is bugged.
+  See https://github.com/yugabyte/yugabyte-db/issues/15868 */
+  repeated int32 colocated = 4;
 }
 
 message GetNamespaceInfoRequestPB {
@@ -534,6 +558,8 @@ message GetNamespaceInfoResponsePB {
 
   optional NamespaceIdentifierPB namespace = 2;
   optional bool colocated = 3;
+  // This denotes if a colocated database is a legacy colocated database.
+  optional bool legacy_colocated_database = 4;
 }
 
 // ============================================================================
@@ -544,6 +570,11 @@ message CreateTablegroupRequestPB {
   required bytes id = 1;
   required bytes namespace_id = 2;
   optional string namespace_name = 3;
+
+  // These two fields ensure that YB-Master will poll the status of 'transaction' and delete the
+  // tablegroup if aborted.
+  optional TransactionMetadataPB transaction = 5;
+  optional bool ysql_ddl_rollback_enabled = 6 [ default = false ];
 
   // This denotes the tablespace that this tablegroup is associated with.
   optional bytes tablespace_id = 4;
@@ -559,7 +590,15 @@ message CreateTablegroupResponsePB {
 
 message DeleteTablegroupRequestPB {
   required bytes id = 1;
-  optional bytes namespace_id_UNUSED = 2 [ deprecated = true ];
+
+  // Deprecated namespace_id.
+  reserved 2;
+
+  // These two fields ensure that YB-Master will first mark the tablegroup for deletion, poll the
+  // status of 'transaction' and rollback the marker if failed. Otherwise deletion of the tablegroup
+  // will be initiated upon receipt of this request.
+  optional TransactionMetadataPB transaction = 3;
+  optional bool ysql_ddl_rollback_enabled = 4 [ default = false ];
 }
 
 message DeleteTablegroupResponsePB {
@@ -627,6 +666,18 @@ message GetUDTypeInfoResponsePB {
   optional UDTypeInfoPB udtype = 2;
 }
 
+message ReportYsqlDdlTxnStatusRequestPB {
+  // The transaction whose status is being reported.
+  optional bytes transaction_id = 1;
+
+  // Whether the above transaction is committed or aborted.
+  optional bool is_committed = 2;
+}
+
+message ReportYsqlDdlTxnStatusResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 service MasterDdl {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -675,4 +726,7 @@ service MasterDdl {
   rpc DeleteUDType(DeleteUDTypeRequestPB) returns (DeleteUDTypeResponsePB);
   rpc ListUDTypes(ListUDTypesRequestPB) returns (ListUDTypesResponsePB);
   rpc GetUDTypeInfo(GetUDTypeInfoRequestPB) returns (GetUDTypeInfoResponsePB);
+
+  rpc ReportYsqlDdlTxnStatus(ReportYsqlDdlTxnStatusRequestPB) returns
+      (ReportYsqlDdlTxnStatusResponsePB);
 }

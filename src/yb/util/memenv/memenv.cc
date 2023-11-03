@@ -27,7 +27,7 @@
 #include <string>
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stringprintf.h"
@@ -70,7 +70,7 @@ class RandomAccessFileImpl : public RandomAccessFile {
     return 0;
   }
 
-  const string& filename() const override {
+  const std::string& filename() const override {
     return file_->filename();
   }
 
@@ -275,8 +275,8 @@ class InMemoryEnv : public EnvWrapper {
   }
 
   Status GetChildren(const std::string& dir,
-                             ExcludeDots exclude_dots,
-                             vector<std::string>* result) override {
+                     ExcludeDots exclude_dots,
+                     vector<std::string>* result) override {
     MutexLock lock(mutex_);
     result->clear();
 
@@ -437,6 +437,8 @@ class InMemoryEnv : public EnvWrapper {
     if (ContainsKey(file_map_, fname)) {
       switch (mode) {
         case CREATE_IF_NON_EXISTING_TRUNCATE:
+          FALLTHROUGH_INTENDED;
+        case CREATE_NONBLOCK_IF_NON_EXISTING:
           DeleteFileInternal(fname);
           break; // creates a new file below
         case CREATE_NON_EXISTING:

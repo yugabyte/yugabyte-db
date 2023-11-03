@@ -1,7 +1,9 @@
 ---
-title: Unique indexes
+title: Unique indexes in YugabyteDB YCQL
+headerTitle: Unique indexes
 linkTitle: Unique indexes
 description: Using Unique indexes in YCQL
+headContent: Explore unique indexes in YugabyteDB using YCQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   stable:
@@ -34,6 +36,8 @@ When a unique index is applied to two or more columns, the combined values in th
 
 If a table has a primary key defined, a corresponding unique index is created automatically.
 
+{{% explore-setup-single %}}
+
 ## Syntax
 
 ```sql
@@ -41,8 +45,6 @@ CREATE UNIQUE INDEX index_name ON table_name(column_list);
 ```
 
 ## Example
-
-Create a cluster [locally](../../../quick-start/) or in [YugabyteDB Managed](../../../yugabyte-cloud/cloud-basics/create-clusters-free/) and connect to the cluster using [ycqlsh](../../../admin/ycqlsh/) for local clusters, or [using cloud shell](../../../yugabyte-cloud/cloud-connect/connect-cloud-shell/) for YugabyteDB Managed.
 
 1. Create a keyspace and a table as follows:
 
@@ -59,7 +61,7 @@ Create a cluster [locally](../../../quick-start/) or in [YugabyteDB Managed](../
     CREATE UNIQUE INDEX index_employee_name ON employees(name);
     ```
 
-1. Use the [DESCRIBE INDEX](/preview/admin/ycqlsh/#describe) command to verify the index creation.
+1. Use the [DESCRIBE INDEX](../../../admin/ycqlsh/#describe) command to verify the index creation.
 
     ```cql
     ycqlsh:yb_demo> DESCRIBE INDEX index_employee_name;

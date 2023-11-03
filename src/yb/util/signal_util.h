@@ -12,15 +12,14 @@
 //--------------------------------------------------------------------------------------------------
 // Utility functions and macros to manage process signals.
 
-#ifndef YB_UTIL_SIGNAL_UTIL_H
-#define YB_UTIL_SIGNAL_UTIL_H
+#pragma once
 
 #include <signal.h>
 
 #include <vector>
 #include <type_traits>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/util/result.h"
 
@@ -35,6 +34,10 @@ namespace yb {
 // This is needed before starting the thread if we only want those signals to be handled
 // at the main thread to avoid concurrency issues.
 Result<sigset_t> ThreadSignalMaskBlock(const std::vector<int>& signals_to_block);
+
+// On current thread, unblock the given signals and return an old signal mask.
+// Signals that were accumulated by OS will be delivered before this function returns.
+Result<sigset_t> ThreadSignalMaskUnblock(const std::vector<int>& signals_to_unblock);
 
 // Restore previous signal mask on the current thread.
 // Unblocking signals lets the blocked signals be delivered if they had been raised in the meantime.
@@ -67,5 +70,3 @@ typename std::invoke_result<Functor>::type WithMaskedYsqlSignals(Functor callbac
 }
 
 } // namespace yb
-
-#endif // YB_UTIL_SIGNAL_UTIL_H

@@ -1,8 +1,8 @@
 ---
-title: Start YB-Master nodes of YugabyteDB cluster
+title: YB-Master manual start
 headerTitle: Start YB-Masters
 linkTitle: 3. Start YB-Masters
-description: Start YB-Master servers of your YugabyteDB cluster
+description: How to manually start the YB-Masters Server service for your YugabyteDB database cluster.
 menu:
   preview:
     identifier: deploy-manual-deployment-start-masters
@@ -16,6 +16,7 @@ type: docs
 - The number of nodes in a cluster running YB-Masters **must** equal the replication factor.
 - The number of comma-separated addresses present in `master_addresses` should also equal the replication factor.
 - For running a single cluster across multiple data centers or 2 clusters in 2 data centers, refer to the [Multi-DC deployments](../../../deploy/multi-dc/) section.
+- Read more about the [yb-master service architecture](../../../architecture/concepts/yb-master/).
 
 {{< /note >}}
 
@@ -91,4 +92,6 @@ Remember to add the command with which you launched `yb-master` to a cron to res
 
 {{< /tip >}}
 
-Now you are ready to start the YB-TServers.
+## Next step
+
+Now you are ready to [start the YB-TServers](../start-tservers/).

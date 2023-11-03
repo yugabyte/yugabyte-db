@@ -111,7 +111,7 @@ public class VaultPKI extends CertificateProviderBase {
 
   public static VaultPKI getVaultPKIInstance(CertificateInfo caCertConfigInfo) throws Exception {
     HashicorpVaultConfigParams hcConfigInfo = caCertConfigInfo.getCustomHCPKICertInfoInternal();
-    return getVaultPKIInstance(caCertConfigInfo.uuid, hcConfigInfo);
+    return getVaultPKIInstance(caCertConfigInfo.getUuid(), hcConfigInfo);
   }
 
   public static VaultPKI getVaultPKIInstance(UUID uuid, HashicorpVaultConfigParams configInfo)
@@ -186,6 +186,7 @@ public class VaultPKI extends CertificateProviderBase {
     try {
       String path = params.mountPath + VaultOperationsForCert.ISSUE + "/" + params.role;
       Map<String, String> result = vAccessor.writeAt(path, input);
+      boolean syncCertsToDB = CertificateHelper.DEFAULT_CLIENT.equals(username);
 
       // fetch certificate
       String newCertPemStr = result.get(ISSUE_FIELD_CERT);
@@ -207,7 +208,7 @@ public class VaultPKI extends CertificateProviderBase {
 
       // for client certificate: later it is read using CertificateHelper.getClientCertFile
       return CertificateHelper.dumpNewCertsToFile(
-          storagePath, certFileName, newCertKeyStrName, certObj, pKeyObj);
+          storagePath, certFileName, newCertKeyStrName, certObj, pKeyObj, syncCertsToDB);
 
     } catch (Exception e) {
       LOG.error("Unable to create certificate for {} using CA {}", username, caCertUUID, e);

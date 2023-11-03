@@ -31,8 +31,7 @@ DECLARE_bool(use_cassandra_authentication);
 namespace yb {
 namespace ql {
 
-using std::shared_ptr;
-using std::to_string;
+using std::string;
 using strings::Substitute;
 
 //--------------------------------------------------------------------------------------------------
@@ -54,9 +53,8 @@ PTGrantRevokeRole::~PTGrantRevokeRole() {
 Status PTGrantRevokeRole::Analyze(SemContext* sem_context) {
   if (FLAGS_use_cassandra_authentication) {
     RETURN_NOT_OK(sem_context->CheckHasRolePermission(loc(), PermissionType::AUTHORIZE_PERMISSION,
-        recipient_role_name_->data()));
-    RETURN_NOT_OK(sem_context->CheckHasRolePermission(loc(), PermissionType::AUTHORIZE_PERMISSION,
         granted_role_name_->data()));
+    // Access to 'recipient_role_name_' is not required.
   }
   return Status::OK();
 }

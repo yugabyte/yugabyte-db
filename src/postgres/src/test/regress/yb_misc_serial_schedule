@@ -2,7 +2,12 @@
 #
 ####################################################################################################
 # This testsuite includes miscellaneous tests that are not yet characterized to a proper testsuite.
-# The tests in this schedule are not ported from PostgreSQL original tests.
+# This schedule and its siblings schedules (yb_misc_serialN_schedule) are designed to contain a
+# reasonable number of tests in order to avoid test timeout for each of these schedules.
+# Because some tests are larger and take longer time to run, the number of tests in each
+# schedule can be quite different: one schedule can contain quite a few tests if each test
+# is small, another schedule can contain only one test if the test is large.
+# The tests in these schedules are not ported from PostgreSQL original tests.
 ####################################################################################################
 test: yb_pg_expressions
 test: yb_compound_key
@@ -14,4 +19,3 @@ test: yb_query_consistent_snapshot
 test: yb_obj_properties_functions
 test: yb_dependency
 test: yb_create_language
-test: yb_get_range_split_clause

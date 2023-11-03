@@ -14,7 +14,8 @@ type: docs
 
 ## Synopsis
 
-<b>`ZREVRANGE key start stop [WITHSCORES]`</b><br>
+**`ZREVRANGE key start stop [WITHSCORES]`**
+
 This command returns `members` ordered from highest to lowest score in the specified range at sorted set `key`.
 `start` and `stop` represent the high and low index bounds respectively and are zero-indexed. They can also be negative
 numbers indicating offsets from the beginning of the sorted set, with -1 being the first element of the sorted set, -2 the second element and so on.
@@ -26,7 +27,7 @@ Returns a list of members found in the range specified by `start`, `stop`, unles
 
 ## ZREVRANGE Options
 
-<li> WITHSCORES: Makes the command return both the `member` and its `score`.</li>
+WITHSCORES: Makes the command return both the `member` and its `score`.
 
 ## Examples
 

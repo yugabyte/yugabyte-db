@@ -1,7 +1,7 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../_style/colors.scss';
-@import '../../_style/mixins.scss';
+@use '../../_style/colors.scss';
+@use '../../_style/mixins.scss';
 
 .modal-content {
   border-radius: 5px;
@@ -12,7 +12,7 @@
     button.close {
       font-size: 32px;
       line-height: 26px;
-      color: $YB_ORANGE;
+      color: colors.$YB_ORANGE;
       opacity: 1;
     }
   }
@@ -26,7 +26,7 @@
     margin: 5px -15px 15px;
     height: 1px;
     width: auto;
-    background-color: $YB_GRAY_HOVER;
+    background-color: colors.$YB_GRAY_HOVER;
   }
 
   .alert {
@@ -109,7 +109,7 @@
       border-color: rgb(217, 217, 217);
 
       &:hover {
-        border-color: $YB_ORANGE;
+        border-color: colors.$YB_ORANGE;
       }
     }
   }
@@ -172,23 +172,23 @@
             z-index: 1000 !important;
             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
             text-align: center;
-            @include transition(0.125s);
+            @include mixins.transition(0.125s);
 
             i.fa {
               margin-right: 0;
               font-size: 22px;
               line-height: 25px;
               padding-right: 0;
-              color: $YB_ORANGE;
-              @include transition(0.125s);
+              color: colors.$YB_ORANGE;
+              @include mixins.transition(0.125s);
             }
 
             &:hover {
               box-shadow: 0 2px 5px rgba(0, 0, 0, 0);
-              @include transition(0.35s);
+              @include mixins.transition(0.35s);
 
               i.fa {
-                @include transition(0.35s);
+                @include mixins.transition(0.35s);
                 transform: rotate(90deg);
               }
             }

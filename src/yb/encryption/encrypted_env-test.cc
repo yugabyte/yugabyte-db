@@ -13,7 +13,7 @@
 
 #include <string>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
 #include "yb/encryption/encrypted_file_factory.h"
@@ -28,6 +28,8 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
+using std::string;
+
 namespace yb {
 namespace encryption {
 
@@ -41,8 +43,10 @@ TEST_F(TestEncryptedEnv, FileOps) {
 
   auto env = NewEncryptedEnv(std::move(header_manager));
   auto fname_template = "test-fileXXXXXX";
-  auto bytes = RandomBytes(kDataSize);
-  Slice data(bytes.data(), kDataSize);
+  auto bytes = RandomBytes(kDataSize*2);
+  Slice first_half_data(bytes.data(), kDataSize);
+  Slice second_half_data(bytes.data()+kDataSize, kDataSize);
+  Slice total_data(bytes.data(), kDataSize*2);
 
   for (bool encrypted : {false, true}) {
     down_cast<HeaderManagerMockImpl*>(hm_ptr)->SetFileEncryption(encrypted);
@@ -51,11 +55,20 @@ TEST_F(TestEncryptedEnv, FileOps) {
     std::unique_ptr<WritableFile> writable_file;
     ASSERT_OK(env->NewTempWritableFile(
         WritableFileOptions(), fname_template, &fname, &writable_file));
-    TestWrites(writable_file.get(), data);
+    TestWrites(writable_file.get(), first_half_data);
 
     std::unique_ptr<yb::RandomAccessFile> ra_file;
     ASSERT_OK(env->NewRandomAccessFile(fname, &ra_file));
-    TestRandomAccessReads<uint8_t>(ra_file.get(), data);
+    TestRandomAccessReads<uint8_t>(ra_file.get(), first_half_data);
+
+    auto opt = WritableFileOptions();
+    opt.mode = EnvWrapper::OPEN_EXISTING;
+    opt.initial_offset = kDataSize;
+    ASSERT_OK(env->NewWritableFile(opt, fname, &writable_file));
+    ASSERT_OK(writable_file->Append(second_half_data));
+
+    ASSERT_OK(env->NewRandomAccessFile(fname, &ra_file));
+    TestRandomAccessReads<uint8_t>(ra_file.get(), total_data);
 
     ASSERT_OK(env->DeleteFile(fname));
   }

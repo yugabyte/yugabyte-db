@@ -16,8 +16,8 @@
 #include <cstdlib>
 #include <future>
 
-#include <gflags/gflags.h>
-#include <glog/logging.h>
+#include "yb/util/flags.h"
+#include "yb/util/logging.h"
 
 #include "yb/client/callbacks.h"
 #include "yb/client/client.h"
@@ -36,37 +36,21 @@
 
 #include "yb/tserver/mini_tablet_server.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
-#include "yb/util/test_util.h"
 
 using namespace std::literals;
 
 using std::string;
 using std::vector;
-using std::unique_ptr;
-
-using yb::client::YBValue;
-
-using std::shared_ptr;
 
 DECLARE_int32(log_cache_size_limit_mb);
 DECLARE_int32(global_log_cache_size_limit_mb);
 
 namespace yb {
 namespace integration_tests {
-
-using client::YBClient;
-using client::YBClientBuilder;
-using client::YBColumnSchema;
-using client::YBSchema;
-using client::YBSchemaBuilder;
-using client::YBSession;
-using client::YBStatusMemberCallback;
-using client::YBTable;
-using client::YBTableCreator;
-using strings::Split;
 
 class KVTableTest : public YBTableTestBase {
  protected:
@@ -212,8 +196,8 @@ class KVTableSingleTabletTest : public KVTableTest {
   }
 
   void SetUp() override {
-    FLAGS_global_log_cache_size_limit_mb = 1;
-    FLAGS_log_cache_size_limit_mb = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_global_log_cache_size_limit_mb) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_cache_size_limit_mb) = 1;
     KVTableTest::SetUp();
   }
 };
@@ -248,7 +232,7 @@ TEST_F_EX(KVTableTest, BigValues, KVTableSingleTabletTest) {
   while (writer.num_writes() - start_writes < 50) {
     std::this_thread::sleep_for(100ms);
   }
-  ASSERT_OK(mini_cluster_->mini_tablet_server(1)->Start());
+  ASSERT_OK(mini_cluster_->mini_tablet_server(1)->Start(tserver::WaitTabletsBootstrapped::kFalse));
 
   ASSERT_OK(WaitFor([] {
     std::vector<MemTrackerData> trackers;

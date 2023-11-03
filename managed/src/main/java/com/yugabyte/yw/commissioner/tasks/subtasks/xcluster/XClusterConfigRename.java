@@ -3,9 +3,8 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.xcluster;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
-import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
-import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import javax.inject.Inject;
@@ -17,8 +16,9 @@ import org.yb.client.YBClient;
 public class XClusterConfigRename extends XClusterConfigTaskBase {
 
   @Inject
-  protected XClusterConfigRename(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
+  protected XClusterConfigRename(
+      BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
+    super(baseTaskDependencies, xClusterUniverseService);
   }
 
   public static class Params extends XClusterConfigTaskParams {
@@ -37,7 +37,7 @@ public class XClusterConfigRename extends XClusterConfigTaskBase {
   public String getName() {
     return String.format(
         "%s(xClusterConfig=%s,newName=%s)",
-        super.getName(), taskParams().xClusterConfig, taskParams().newName);
+        super.getName(), taskParams().getXClusterConfig(), taskParams().newName);
   }
 
   @Override
@@ -45,39 +45,39 @@ public class XClusterConfigRename extends XClusterConfigTaskBase {
     log.info("Running {}", getName());
 
     // Each xCluster config rename task must belong to a parent xCluster config.
-    XClusterConfig xClusterConfig = taskParams().xClusterConfig;
+    XClusterConfig xClusterConfig = taskParams().getXClusterConfig();
     if (xClusterConfig == null) {
       throw new RuntimeException(
           "taskParams().xClusterConfig is null. Each xCluster config rename subtask must belong "
               + "to an xCluster config");
     }
 
-    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID);
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
     String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
     String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
     try (YBClient client =
         ybService.getClient(targetUniverseMasterAddresses, targetUniverseCertificate)) {
       log.info(
           "Renaming XClusterConfig({}): `{}` -> `{}`",
-          xClusterConfig.uuid,
-          xClusterConfig.name,
+          xClusterConfig.getUuid(),
+          xClusterConfig.getName(),
           taskParams().newName);
 
       AlterUniverseReplicationResponse resp =
           client.alterUniverseReplicationName(
               xClusterConfig.getReplicationGroupName(),
-              XClusterConfig.getReplicationGroupName(
-                  xClusterConfig.sourceUniverseUUID, taskParams().newName));
+              xClusterConfig.getNewReplicationGroupName(
+                  xClusterConfig.getSourceUniverseUUID(), taskParams().newName));
       if (resp.hasError()) {
         throw new RuntimeException(
             String.format(
                 "Failed to rename XClusterConfig(%s): %s",
-                xClusterConfig.uuid, resp.errorMessage()));
+                xClusterConfig.getUuid(), resp.errorMessage()));
       }
 
       // Set the new name of the xCluster config in the DB.
-      xClusterConfig.name = taskParams().newName;
-      xClusterConfig.setReplicationGroupName();
+      xClusterConfig.setName(taskParams().newName);
+      xClusterConfig.setReplicationGroupName(taskParams().newName);
       xClusterConfig.update();
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());

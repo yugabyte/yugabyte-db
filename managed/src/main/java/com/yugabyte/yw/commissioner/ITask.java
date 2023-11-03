@@ -5,7 +5,6 @@ package com.yugabyte.yw.commissioner;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.TaskInfo;
-
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -31,13 +30,32 @@ public interface ITask extends Runnable {
   /** Initialize the task by reading various parameters. */
   void initialize(ITaskParams taskParams);
 
+  /**
+   * This is invoked after the task params are initialized for validations before the actual task is
+   * created.
+   */
+  void validateParams(boolean isFirstTry);
+
+  /** Returns the retry limit on failure. */
   default int getRetryLimit() {
     return 1;
   }
 
-  default void onFailure(TaskInfo taskInfo, Throwable cause) {}
+  /**
+   * Invoked when the current task fails.
+   *
+   * @param taskInfo details of the failed task
+   * @param cause exception that caused the failure
+   * @return true to retry, false to throw {@param cause} up the stack
+   */
+  default boolean onFailure(TaskInfo taskInfo, Throwable cause) {
+    return false;
+  }
 
-  /** Clean up the initialization */
+  /** Invoked when the current task is cancelled/aborted. */
+  default void onCancelled(TaskInfo taskInfo) {}
+
+  /** Clean up the initialization. */
   void terminate();
 
   /** A short name representing the task. */
@@ -48,6 +66,13 @@ public interface ITask extends Runnable {
    * task to a user in a read-only mode.
    */
   JsonNode getTaskDetails();
+
+  /**
+   * Sets the UUID info of the task. E.g subtask UUID. It is invoked by the task executor.
+   *
+   * @param taskUUID the task UUID.
+   */
+  void setTaskUUID(UUID taskUUID);
 
   /**
    * Set the user-facing top-level task for the Task tree that this Task belongs to. E.g.

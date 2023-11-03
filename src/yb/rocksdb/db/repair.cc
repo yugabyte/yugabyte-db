@@ -72,7 +72,6 @@
 //   Store per-table metadata (smallest, largest, largest-seq#, ...)
 //   in the table's meta section to speed up ScanTable.
 
-#ifndef ROCKSDB_LITE
 
 #ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
@@ -101,6 +100,8 @@
 #include "yb/rocksdb/util/logging.h"
 
 #include "yb/util/status_log.h"
+
+using std::unique_ptr;
 
 namespace rocksdb {
 
@@ -309,7 +310,7 @@ class Repairer {
       Arena arena;
       ScopedArenaIterator iter(mem->NewIterator(ro, &arena));
       status = BuildTable(dbname_,
-                          env_,
+                          options_,
                           ioptions_,
                           env_options_,
                           table_cache_,
@@ -322,9 +323,8 @@ class Repairer {
                           kMaxSequenceNumber,
                           kNoCompression,
                           CompressionOptions(),
-                          /* paranoid_file_checks */ false,
-                          /* internal_stats */ nullptr,
-                          options_.boundary_extractor.get());
+                          /* paranoid_file_checks = */ false,
+                          /* internal_stats = */ nullptr);
     }
     delete mem->Unref();
     delete cf_mems_default;
@@ -499,5 +499,3 @@ Status RepairDB(const std::string& dbname, const Options& options) {
 }
 
 }  // namespace rocksdb
-
-#endif  // ROCKSDB_LITE

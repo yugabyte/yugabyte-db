@@ -17,8 +17,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_ROCKSDB_FLUSH_BLOCK_POLICY_H
-#define YB_ROCKSDB_FLUSH_BLOCK_POLICY_H
 
 #pragma once
 
@@ -80,5 +78,3 @@ class FlushBlockBySizePolicyFactory : public FlushBlockPolicyFactory {
 };
 
 }  // namespace rocksdb
-
-#endif // YB_ROCKSDB_FLUSH_BLOCK_POLICY_H

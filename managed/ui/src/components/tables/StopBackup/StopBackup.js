@@ -1,4 +1,3 @@
-import React from 'react';
 import { YBModal } from '../../common/forms/fields';
 
 export const StopBackup = (props) => {

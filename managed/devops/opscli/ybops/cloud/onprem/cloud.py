@@ -43,7 +43,6 @@ class OnPremCloud(AbstractCloud):
         if args.node_metadata is None:
             raise YBOpsRuntimeError("Must provide node_metadata!")
 
-        search_pattern = args.search_pattern
         instances = [json.loads(args.node_metadata)]
 
         results = []

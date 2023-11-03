@@ -464,12 +464,14 @@ LINE 3:        lateral (select a, b, sum(v.x) from gstest_data(v.x) ...
 -- min max optimization should still work with GROUP BY ()
 explain (costs off)
   select min(unique1) from tenk1 GROUP BY ();
-       QUERY PLAN
--------------------------
- Aggregate
-   Group Key: ()
-   ->  Seq Scan on tenk1
-(3 rows)
+                         QUERY PLAN
+------------------------------------------------------------
+ Result
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Index Only Scan using tenk1_unique1 on tenk1
+                 Index Cond: (unique1 IS NOT NULL)
+(5 rows)
 
 -- Views with GROUPING SET queries
 CREATE VIEW gstest_view AS select a, b, grouping(a,b), sum(c), count(*), max(c)
@@ -1487,21 +1489,18 @@ explain (costs off)
 -------------------------------
  MixedAggregate
    Hash Key: two
+   Hash Key: four
+   Hash Key: ten
+   Hash Key: hundred
    Group Key: unique1
    Sort Key: twothousand
      Group Key: twothousand
    Sort Key: thousand
      Group Key: thousand
-   Sort Key: hundred
-     Group Key: hundred
-   Sort Key: ten
-     Group Key: ten
-   Sort Key: four
-     Group Key: four
    ->  Sort
          Sort Key: unique1
          ->  Seq Scan on tenk1
-(16 rows)
+(13 rows)
 
 explain (costs off)
   select unique1,
@@ -1513,17 +1512,14 @@ explain (costs off)
 -------------------------------
  MixedAggregate
    Hash Key: two
+   Hash Key: four
+   Hash Key: ten
+   Hash Key: hundred
    Group Key: unique1
-   Sort Key: hundred
-     Group Key: hundred
-   Sort Key: ten
-     Group Key: ten
-   Sort Key: four
-     Group Key: four
    ->  Sort
          Sort Key: unique1
          ->  Seq Scan on tenk1
-(12 rows)
+(9 rows)
 
 set work_mem = '384kB';
 explain (costs off)
@@ -1532,18 +1528,21 @@ explain (costs off)
          count(hundred), count(thousand), count(twothousand),
          count(*)
     from tenk1 group by grouping sets (unique1,twothousand,thousand,hundred,ten,four,two);
-       QUERY PLAN
--------------------------
- HashAggregate
-   Hash Key: unique1
-   Hash Key: twothousand
-   Hash Key: thousand
-   Hash Key: hundred
-   Hash Key: ten
-   Hash Key: four
+          QUERY PLAN
+-------------------------------
+ MixedAggregate
    Hash Key: two
-   ->  Seq Scan on tenk1
-(9 rows)
+   Hash Key: four
+   Hash Key: ten
+   Hash Key: hundred
+   Hash Key: thousand
+   Group Key: unique1
+   Sort Key: twothousand
+     Group Key: twothousand
+   ->  Sort
+         Sort Key: unique1
+         ->  Seq Scan on tenk1
+(12 rows)
 
 -- check collation-sensitive matching between grouping expressions
 -- (similar to a check for aggregates, but there are additional code

@@ -11,11 +11,15 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGWRAPPER_LIBPQ_UTILS_H
-#define YB_YQL_PGWRAPPER_LIBPQ_UTILS_H
+#pragma once
 
 #include <memory>
+#include <optional>
 #include <string>
+#include <tuple>
+#include <type_traits>
+#include <utility>
+#include <vector>
 
 #include "libpq-fe.h" // NOLINT
 
@@ -25,11 +29,10 @@
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/result.h"
+#include "yb/util/subprocess.h"
+#include "yb/util/uuid.h"
 
-#include <boost/optional.hpp>
-
-namespace yb {
-namespace pgwrapper {
+namespace yb::pgwrapper {
 
 struct PGConnClose {
   void operator()(PGconn* conn) const;
@@ -42,32 +45,73 @@ struct PGResultClear {
 typedef std::unique_ptr<PGconn, PGConnClose> PGConnPtr;
 typedef std::unique_ptr<PGresult, PGResultClear> PGResultPtr;
 
-Result<bool> GetBool(PGresult* result, int row, int column);
-
-Result<int32_t> GetInt32(PGresult* result, int row, int column);
-
-Result<int64_t> GetInt64(PGresult* result, int row, int column);
-
-Result<double> GetDouble(PGresult* result, int row, int column);
-
-Result<std::string> GetString(PGresult* result, int row, int column);
-
-inline Result<int32_t> GetValueImpl(PGresult* result, int row, int column, int32_t*) {
-  return GetInt32(result, row, column);
-}
-
-inline Result<int64_t> GetValueImpl(PGresult* result, int row, int column, int64_t*) {
-  return GetInt64(result, row, column);
-}
-
-inline Result<std::string> GetValueImpl(PGresult* result, int row, int column, std::string*) {
-  return GetString(result, row, column);
-}
+struct PGOid {};
 
 template<class T>
-Result<T> GetValue(PGresult* result, int row, int column) {
-  // static_cast<T*>(nullptr) is a trick to use function overload from template.
-  return GetValueImpl(result, row, column, static_cast<T*>(nullptr));
+inline constexpr bool IsPGFloatType =
+    std::is_same_v<T, float> || std::is_same_v<T, double>;
+
+template<class T>
+inline constexpr bool IsPGIntType =
+    std::is_same_v<T, int16_t> || std::is_same_v<T, int32_t> || std::is_same_v<T, int64_t>;
+
+template<class T>
+requires(IsPGIntType<T>)
+struct PGNonNeg {
+  using Type = T;
+};
+
+template<class T>
+struct IsPGNonNegImpl : std::false_type {};
+
+template<class T>
+requires(std::is_same_v<T, PGNonNeg<typename T::Type>>)
+struct IsPGNonNegImpl<T> : std::true_type {};
+
+template<class T>
+inline constexpr bool IsPGNonNeg = IsPGNonNegImpl<T>::value;
+
+template<class T>
+concept AllowedPGType =
+    IsPGNonNeg<T> || IsPGIntType<T> || IsPGFloatType<T> ||
+    std::is_same_v<T, bool> || std::is_same_v<T, std::string> || std::is_same_v<T, char> ||
+    std::is_same_v<T, PGOid> || std::is_same_v<T, Uuid>;
+
+template<AllowedPGType T>
+struct PGTypeTraits {
+  using ReturnType = T;
+};
+
+template<AllowedPGType T>
+requires(IsPGNonNeg<T>)
+struct PGTypeTraits<T> {
+  using ReturnType = std::make_unsigned_t<typename T::Type>;
+};
+
+template<AllowedPGType T>
+requires(std::is_same_v<T, PGOid>)
+struct PGTypeTraits<T> {
+  using ReturnType = Oid;
+};
+
+using PGUint16 = PGNonNeg<int16_t>;
+using PGUint32 = PGNonNeg<int32_t>;
+using PGUint64 = PGNonNeg<int64_t>;
+
+template<class T>
+using GetValueResult = Result<typename PGTypeTraits<T>::ReturnType>;
+
+template<class T>
+GetValueResult<T> GetValue(const PGresult* result, int row, int column);
+
+template<class T>
+requires(std::is_same_v<T, std::optional<typename T::value_type>>)
+Result<std::optional<typename PGTypeTraits<typename T::value_type>::ReturnType>> GetValue(
+    const PGresult* result, int row, int column) {
+  if (PQgetisnull(result, row, column)) {
+    return std::nullopt;
+  }
+  return GetValue<typename T::value_type>(result, row, column);
 }
 
 const std::string& DefaultColumnSeparator();
@@ -80,6 +124,37 @@ void LogResult(PGresult* result);
 
 std::string PqEscapeLiteral(const std::string& input);
 std::string PqEscapeIdentifier(const std::string& input);
+
+template <class... Args>
+class FetchAllHelper {
+  using Tuple = std::tuple<Args...>;
+  using TupleVector = std::vector<Tuple>;
+
+ public:
+  static Result<TupleVector> Fetch(const PGresult* res) {
+    constexpr auto kExpectedColumns = sizeof...(Args);
+    SCHECK_EQ(PQnfields(res), kExpectedColumns, RuntimeError, "Unexpected number of columns");
+    TupleVector result(PQntuples(res));
+    auto row = 0;
+    for (auto& tuple : result) {
+      RETURN_NOT_OK(Update<0>(&tuple, res, row++));
+    }
+    return result;
+  }
+
+ private:
+  template <size_t ElIdx>
+  static Status Update(Tuple* dest, const PGresult* res, int row) {
+    auto& element = std::get<ElIdx>(*dest);
+    element = VERIFY_RESULT(GetValue<std::remove_cvref_t<decltype(element)>>(res, row, ElIdx));
+    constexpr auto kNextElIdx = ElIdx + 1;
+    if constexpr (kNextElIdx < sizeof...(Args)) {
+      return Update<kNextElIdx>(dest, res, row);
+    } else {
+      return Status::OK();
+    }
+  }
+};
 
 class PGConn {
  public:
@@ -105,6 +180,9 @@ class PGConn {
       bool simple_query_protocol,
       const std::string& conn_str_for_log);
 
+  // Reconnect.
+  void Reset();
+
   Status Execute(const std::string& command, bool show_query_in_error = true);
 
   template <class... Args>
@@ -112,9 +190,12 @@ class PGConn {
     return Execute(Format(format, std::forward<Args>(args)...));
   }
 
+  bool IsBusy();
+
   Result<PGResultPtr> Fetch(const std::string& command);
 
   template <class... Args>
+  requires(sizeof...(Args) > 0)
   Result<PGResultPtr> FetchFormat(const std::string& format, Args&&... args) {
     return Fetch(Format(format, std::forward<Args>(args)...));
   }
@@ -128,17 +209,25 @@ class PGConn {
       const std::string& row_sep = DefaultRowSeparator());
 
   template <class T>
-  Result<T> FetchValue(const std::string& command) {
+  auto FetchValue(const std::string& command) -> decltype(GetValue<T>(nullptr, 0, 0)) {
     auto res = VERIFY_RESULT(FetchMatrix(command, 1, 1));
     return GetValue<T>(res.get(), 0, 0);
+  }
+
+  template <class... Args>
+  auto FetchAll(const std::string& query) -> decltype(FetchAllHelper<Args...>::Fetch(nullptr)) {
+    return FetchAllHelper<Args...>::Fetch(VERIFY_RESULT(Fetch(query)).get());
   }
 
   Status StartTransaction(IsolationLevel isolation_level);
   Status CommitTransaction();
   Status RollbackTransaction();
 
+  Status TestFailDdl(const std::string& ddl_to_fail);
+
   // Would this query use an index [only] scan?
   Result<bool> HasIndexScan(const std::string& query);
+  Result<bool> HasScanType(const std::string& query, const std::string expected_scan_type);
 
   Status CopyBegin(const std::string& command);
   Result<PGResultPtr> CopyEnd();
@@ -191,11 +280,20 @@ class PGConnBuilder {
  private:
   const std::string conn_str_;
   const std::string conn_str_for_log_;
+  const size_t connect_timeout_;
 };
 
-bool HasTryAgain(const Status& status);
+Result<PGConn> Execute(Result<PGConn> connection, const std::string& query);
+Result<PGConn> SetHighPriTxn(Result<PGConn> connection);
+Result<PGConn> SetLowPriTxn(Result<PGConn> connection);
+Status SetMaxBatchSize(PGConn* conn, size_t max_batch_size);
 
-} // namespace pgwrapper
-} // namespace yb
+class PGConnPerf {
+ public:
+  explicit PGConnPerf(PGConn* conn);
+  ~PGConnPerf();
+ private:
+  Subprocess process_;
+};
 
-#endif // YB_YQL_PGWRAPPER_LIBPQ_UTILS_H
+} // namespace yb::pgwrapper

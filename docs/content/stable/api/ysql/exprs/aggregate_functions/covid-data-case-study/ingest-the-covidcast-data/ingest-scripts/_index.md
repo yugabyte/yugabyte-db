@@ -2,6 +2,7 @@
 title: SQL scripts for ingesting the COVIDcast data
 linkTitle: SQL scripts
 headerTitle: SQL scripts for ingesting the COVIDcast data
+description: SQL scripts for ingesting COVIDcast data
 image: /images/section_icons/api/ysql.png
 menu:
   stable:

@@ -1,59 +1,58 @@
 ---
-title: YugabyteDB Quick start
+title: YugabyteDB Quick start for Kubernetes
 headerTitle: Quick start
-linkTitle: Quick start
+linkTitle: Kubernetes
 headcontent: Create a local cluster on a single host
 description: Get started using YugabyteDB in less than five minutes on Kubernetes (Minikube).
 aliases:
   - /quick-start-kubernetes/
 type: docs
+unversioned: true
 ---
 
-<div class="custom-tabs tabs-style-2">
-  <ul class="tabs-name">
-    <li>
-      <a href="../../quick-start-yugabytedb-managed/" class="nav-link">
-        Use a cloud cluster
-      </a>
-    </li>
-    <li class="active">
-      <a href="../../quick-start/" class="nav-link">
-        Use a local cluster
-      </a>
-    </li>
-  </ul>
-</div>
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../../quick-start-yugabytedb-managed/" class="nav-link">
+      <img src="/icons/cloud.svg" alt="Cloud Icon">
+      Use a cloud cluster
+    </a>
+  </li>
+  <li class="active">
+    <a href="../../quick-start/" class="nav-link">
+      <img src="/icons/database.svg" alt="Server Icon">
+      Use a local cluster
+    </a>
+  </li>
+</ul>
 
 The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../../deploy/).
 
-<div class="custom-tabs tabs-style-1">
-  <ul class="tabs-name">
-    <li>
-      <a href="../" class="nav-link">
-        <i class="fab fa-apple" aria-hidden="true"></i>
-        macOS
-      </a>
-    </li>
-    <li>
-      <a href="../linux/" class="nav-link">
-        <i class="fab fa-linux" aria-hidden="true"></i>
-        Linux
-      </a>
-    </li>
-    <li>
-      <a href="../docker/" class="nav-link">
-        <i class="fab fa-docker" aria-hidden="true"></i>
-        Docker
-      </a>
-    </li>
-    <li class="active">
-      <a href="../kubernetes/" class="nav-link">
-        <i class="fas fa-cubes" aria-hidden="true"></i>
-        Kubernetes
-      </a>
-    </li>
-  </ul>
-</div>
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../" class="nav-link">
+      <i class="fa-brands fa-apple" aria-hidden="true"></i>
+      macOS
+    </a>
+  </li>
+  <li>
+    <a href="../linux/" class="nav-link">
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
+      Linux
+    </a>
+  </li>
+  <li>
+    <a href="../docker/" class="nav-link">
+      <i class="fa-brands fa-docker" aria-hidden="true"></i>
+      Docker
+    </a>
+  </li>
+  <li class="active">
+    <a href="../kubernetes/" class="nav-link">
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
+      Kubernetes
+    </a>
+  </li>
+</ul>
 
 ## Install YugabyteDB
 
@@ -141,8 +140,8 @@ To start YugabyteDB Helm chart, perform the following:
     ```
 
     ```output
-    NAME                 CHART VERSION  APP VERSION   DESCRIPTION
-  yugabytedb/yugabyte  {{<yb-version version="preview" format="short">}}          {{<yb-version version="preview" format="build">}}  YugabyteDB is the high-performance distributed ...
+    NAME                 CHART VERSION  APP VERSION    DESCRIPTION
+  yugabytedb/yugabyte  {{<yb-version version="preview" format="short">}}         {{<yb-version version="preview" format="build">}}  YugabyteDB is the high-performance distributed ...
   ```
 
 Now you are ready to create a local YugabyteDB cluster.
@@ -245,7 +244,7 @@ $ kubectl --namespace yb-demo exec -it yb-tserver-0 -- sh -c "cd /home/yugabyte 
 ```
 
 ```output
-ysqlsh (11.2-YB-2.1.0.0-b0)
+ysqlsh (11.2-YB-{{< yb-version version="preview">}}-b0)
 Type "help" for help.
 
 yugabyte=#
@@ -405,7 +404,7 @@ The following steps demonstrate how to create two Java applications, `UniformLoa
         config.validate();
         HikariDataSource hikariDataSource = new HikariDataSource(config);
 
-        System.out.println("Wait for some time for Hikari Pool to setup and create the connections...");
+        System.out.println("Wait for some time for Hikari Pool to set up and create the connections...");
         System.out.println("You can verify the load balancing by visiting http://<host>:13000/rpcz as discussed before.");
         System.out.println("Enter a integer to continue once verified:");
         int x = new Scanner(System.in).nextInt();
@@ -513,7 +512,7 @@ The following steps demonstrate how to create two Java applications, `UniformLoa
         config.validate();
         HikariDataSource hikariDataSource = new HikariDataSource(config);
 
-        System.out.println("Wait for some time for Hikari Pool to setup and create the connections...");
+        System.out.println("Wait for some time for Hikari Pool to set up and create the connections...");
         System.out.println("You can verify the load balancing by visiting http://<host>:13000/rpcz as discussed before.");
         System.out.println("Enter a integer to continue once verified:");
         int x = new Scanner(System.in).nextInt();

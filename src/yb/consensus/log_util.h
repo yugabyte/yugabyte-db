@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_CONSENSUS_LOG_UTIL_H_
-#define YB_CONSENSUS_LOG_UTIL_H_
+#pragma once
 
 #include <iosfwd>
 #include <map>
@@ -44,6 +43,7 @@
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/log_fwd.h"
+#include "yb/consensus/log.fwd.h"
 #include "yb/consensus/log.pb.h"
 
 #include "yb/gutil/macros.h"
@@ -128,7 +128,7 @@ struct LogEntryMetadata {
 };
 
 // A sequence of segments, ordered by increasing sequence number.
-typedef std::vector<std::unique_ptr<LogEntryPB>> LogEntries;
+typedef std::vector<std::shared_ptr<LWLogEntryPB>> LogEntries;
 
 struct ReadEntriesResult {
   // Read entries
@@ -140,7 +140,7 @@ struct ReadEntriesResult {
   // Where we finished reading
   int64_t end_offset;
 
-  yb::OpId committed_op_id;
+  OpId committed_op_id;
 
   // Failure status
   Status status;
@@ -184,8 +184,8 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   // This initializer provides methods for avoiding disk IO when creating a
   // ReadableLogSegment from a WritableLogSegment (i.e. for log rolling).
   Status Init(const LogSegmentHeaderPB& header,
-                      const LogSegmentFooterPB& footer,
-                      int64_t first_entry_offset);
+              const LogSegmentFooterPB& footer,
+              int64_t first_entry_offset);
 
   // Initialize the ReadableLogSegment.
   // This initializer will parse the log segment header and footer.
@@ -219,6 +219,17 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   // so it should be only used in the case of a crash, where the footer is
   // missing because we didn't have the time to write it out.
   Status RebuildFooterByScanning();
+
+  Status RebuildFooterByScanning(const ReadEntriesResult& read_entries);
+
+  // Restore footer_builder and log_index for log's active_segment.Similar to
+  // RebuildFooterByScanning(), this is also only used in the case of crash.
+  // The difference is, instead of rebuilding its footer and closing this
+  // uncompleted segment, we restore footer_builder_ and log_index_'s progress,
+  // and then reuse this segment as writable active_segment.
+  Status RestoreFooterBuilderAndLogIndex(LogSegmentFooterPB* footer_builder,
+                                         LogIndex* log_index,
+                                         const ReadEntriesResult& read_entries);
 
   // Copies log segment up to up_to_op_id into new segment at dest_path.
   Status CopyTo(
@@ -282,6 +293,10 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
     return readable_to_offset_.load(std::memory_order_acquire);
   }
 
+  bool footer_was_rebuilt() const {
+    return footer_was_rebuilt_;
+  }
+
  private:
   friend class RefCountedThreadSafe<ReadableLogSegment>;
   friend class LogReader;
@@ -326,11 +341,9 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   // Format a nice error message to report on a corruption in a log file.
   Status MakeCorruptionStatus(
       size_t batch_number, int64_t batch_offset, std::vector<int64_t>* recent_offsets,
-      const std::vector<std::unique_ptr<LogEntryPB>>& entries, const Status& status) const;
+      const LogEntries& entries, const Status& status) const;
 
-  Status ReadEntryHeaderAndBatch(int64_t* offset,
-                                         faststring* tmp_buf,
-                                         LogEntryBatchPB* batch);
+  Result<std::shared_ptr<LWLogEntryBatchPB>> ReadEntryHeaderAndBatch(int64_t* offset);
 
   // Reads a log entry header from the segment.
   // Also increments the passed offset* by the length of the entry.
@@ -345,10 +358,8 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
 
   // Reads a log entry batch from the provided readable segment, which gets decoded
   // into 'entry_batch' and increments 'offset' by the batch's length.
-  Status ReadEntryBatch(int64_t *offset,
-                                const EntryHeader& header,
-                                faststring* tmp_buf,
-                                LogEntryBatchPB* entry_batch);
+  Result<std::shared_ptr<LWLogEntryBatchPB>> ReadEntryBatch(
+      int64_t *offset, const EntryHeader& header);
 
   void UpdateReadableToOffset(int64_t readable_to_offset);
 
@@ -399,8 +410,13 @@ class WritableLogSegment {
   WritableLogSegment(std::string path,
                      std::shared_ptr<WritableFile> writable_file);
 
+  // This initializer method avoids writing header to disk when creating a WritableLogSegment
+  // from a ReadableLogSegment.
+  Status ReuseHeader(const LogSegmentHeaderPB& new_header,
+                            int64_t first_entry_offset);
+
   // Opens the segment by writing the header.
-  Status WriteHeaderAndOpen(const LogSegmentHeaderPB& new_header);
+  Status WriteHeader(const LogSegmentHeaderPB& new_header);
 
   // Closes the segment by writing the index, the footer, and then actually closing the
   // underlying WritableFile.
@@ -446,13 +462,21 @@ class WritableLogSegment {
     return path_;
   }
 
+  void set_path(const std::string& path) {
+    path_ = path;
+  }
+
   int64_t first_entry_offset() const {
     return first_entry_offset_;
   }
 
   int64_t written_offset() const {
-    return written_offset_;
+    return writable_file_->Size();
   }
+
+  // Write header without data. This help us to simulate crash
+  // in the middle of writing a entry
+  Status TEST_WriteCorruptedEntryBatchAndSync();
 
  private:
 
@@ -466,7 +490,7 @@ class WritableLogSegment {
   Status WriteIndexBlock(const LogIndexBlock& index_block);
 
   // The path to the log file.
-  const std::string path_;
+  std::string path_;
 
   // The writable file to which this LogSegment will be written.
   const std::shared_ptr<WritableFile> writable_file_;
@@ -482,9 +506,6 @@ class WritableLogSegment {
   // the offset of the first entry in the log
   int64_t first_entry_offset_;
 
-  // The offset where the last written entry ends.
-  int64_t written_offset_;
-
   faststring index_block_header_buffer_;
 
   DISALLOW_COPY_AND_ASSIGN(WritableLogSegment);
@@ -496,7 +517,7 @@ using consensus::ReplicateMsgs;
 // ReplicateMsgs in 'msgs'.
 // We use C-style passing here to avoid having to allocate a vector
 // in some hot paths.
-LogEntryBatchPB CreateBatchFromAllocatedOperations(const ReplicateMsgs& msgs);
+std::shared_ptr<LWLogEntryBatchPB> CreateBatchFromAllocatedOperations(const ReplicateMsgs& msgs);
 
 // Checks if 'fname' is a correctly formatted name of log segment file.
 bool IsLogFileName(const std::string& fname);
@@ -508,9 +529,7 @@ Status CheckRelevantPathsAreODirectWritable();
 Status ModifyDurableWriteFlagIfNotODirect();
 
 void UpdateSegmentFooterIndexes(
-    const consensus::ReplicateMsg& replicate, LogSegmentFooterPB* footer);
+    const consensus::LWReplicateMsg& replicate, LogSegmentFooterPB* footer);
 
 }  // namespace log
 }  // namespace yb
-
-#endif /* YB_CONSENSUS_LOG_UTIL_H_ */

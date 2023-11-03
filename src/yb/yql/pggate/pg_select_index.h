@@ -12,8 +12,7 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_PGGATE_PG_SELECT_INDEX_H_
-#define YB_YQL_PGGATE_PG_SELECT_INDEX_H_
+#pragma once
 
 #include "yb/yql/pggate/pg_select.h"
 
@@ -41,7 +40,7 @@ class PgSelectIndex : public PgSelect {
   bool UseSecondaryIndex() const override;
 
   // The output parameter "ybctids" are pointer to the data buffer in "ybctid_batch_".
-  virtual Result<bool> FetchYbctidBatch(const vector<Slice> **ybctids);
+  virtual Result<bool> FetchYbctidBatch(const std::vector<Slice> **ybctids);
 
   // Get next batch of ybctids from either PgGate::cache or server.
   Result<bool> GetNextYbctidBatch();
@@ -61,5 +60,3 @@ class PgSelectIndex : public PgSelect {
 
 }  // namespace pggate
 }  // namespace yb
-
-#endif // YB_YQL_PGGATE_PG_SELECT_INDEX_H_

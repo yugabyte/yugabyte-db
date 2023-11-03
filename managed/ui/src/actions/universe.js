@@ -116,11 +116,6 @@ export const GET_HEALTH_CHECK_RESPONSE = 'GET_HEALTH_CHECK_RESPONSE';
 export const SET_ENCRYPTION_KEY = 'SET_ENCRYPTION_KEY';
 export const SET_ENCRYPTION_KEY_RESPONSE = 'SET_ENCRYPTION_KEY_RESPONSE';
 
-export const IMPORT_UNIVERSE = 'IMPORT_UNIVERSE';
-export const IMPORT_UNIVERSE_INIT = 'IMPORT_UNIVERSE_INIT';
-export const IMPORT_UNIVERSE_RESPONSE = 'IMPORT_UNIVERSE_RESPONSE';
-export const IMPORT_UNIVERSE_RESET = 'IMPORT_UNIVERSE_RESET';
-
 export const SET_ALERTS_CONFIG = 'SET_ALERTS_CONFIG';
 export const SET_ALERTS_CONFIG_RESPONSE = 'SET_ALERTS_CONFIG_RESPONSE';
 
@@ -692,34 +687,6 @@ export function setEncryptionKeyResponse(response) {
   };
 }
 
-export function importUniverseInit() {
-  return {
-    type: IMPORT_UNIVERSE_INIT
-  };
-}
-
-export function importUniverse(values) {
-  const customerUUID = localStorage.getItem('customerId');
-  const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/universes/import`, values);
-  return {
-    type: IMPORT_UNIVERSE,
-    payload: request
-  };
-}
-
-export function importUniverseResponse(response) {
-  return {
-    type: IMPORT_UNIVERSE_RESPONSE,
-    payload: response
-  };
-}
-
-export function importUniverseReset() {
-  return {
-    type: IMPORT_UNIVERSE_RESET
-  };
-}
-
 export function setAlertsConfig(universeUUID, data) {
   const customerUUID = localStorage.getItem('customerId');
   const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/config_alerts`;
@@ -838,7 +805,7 @@ export async function fetchParticularFlag(dbVersion, params) {
 
 export async function validateGFlags(dbVersion, payload) {
   try {
-    const apiToken = Cookies.get('apiToken') || localStorage.getItem('apiToken');
+    const apiToken = Cookies.get('apiToken') ?? localStorage.getItem('apiToken');
     if (apiToken && apiToken !== '') {
       axios.defaults.headers.common['X-AUTH-YW-API-TOKEN'] = apiToken;
     }
@@ -858,6 +825,24 @@ export async function fetchSupportedReleases(pUUID) {
   const cUUID = localStorage.getItem('customerId');
   try {
     return await axios.get(`${ROOT_URL}/customers/${cUUID}/providers/${pUUID}/releases`);
+  } catch (e) {
+    throw e.response.data;
+  }
+}
+
+export function validateHelmYAML(UniverseConfigureTaskParams) {
+  const cUUID = localStorage.getItem('customerId');
+  return axios.post(`${ROOT_URL}/customers/${cUUID}/validate_kubernetes_overrides`, {
+    ...UniverseConfigureTaskParams
+  });
+}
+
+export async function fetchNodeDetails(universeUUID, nodeName) {
+  const customerUUID = localStorage.getItem('customerId');
+  try {
+    return await axios.get(
+      `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/nodes/${nodeName}/details`
+    );
   } catch (e) {
     throw e.response.data;
   }

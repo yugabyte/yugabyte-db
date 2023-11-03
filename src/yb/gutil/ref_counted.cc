@@ -22,7 +22,7 @@
 #include <atomic>
 #include <regex>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/threading/thread_collision_warner.h"
 

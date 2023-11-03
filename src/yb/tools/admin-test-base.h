@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TOOLS_ADMIN_TEST_BASE_H
-#define YB_TOOLS_ADMIN_TEST_BASE_H
+#pragma once
 
 #include <rapidjson/document.h>
 
@@ -76,5 +75,3 @@ Result<std::string> RunAdminToolCommand(const std::string& master_addresses, Arg
 
 }  // namespace tools
 }  // namespace yb
-
-#endif  // YB_TOOLS_ADMIN_TEST_BASE_H

@@ -71,10 +71,10 @@ class QLListTest : public QLDmlTestBase<MiniCluster> {
     QLDmlTestBase::SetUp();
 
     YBSchemaBuilder b;
-    b.AddColumn("h1")->Type(INT32)->HashPrimaryKey()->NotNull();
-    b.AddColumn("h2")->Type(INT32)->HashPrimaryKey()->NotNull();
-    b.AddColumn("h3")->Type(STRING)->HashPrimaryKey()->NotNull();
-    b.AddColumn("r1")->Type(INT32)->PrimaryKey()->NotNull();
+    b.AddColumn("h1")->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+    b.AddColumn("h2")->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+    b.AddColumn("h3")->Type(DataType::STRING)->HashPrimaryKey()->NotNull();
+    b.AddColumn("r1")->Type(DataType::INT32)->PrimaryKey()->NotNull();
     b.AddColumn("l1")->Type(QLType::CreateTypeList(DataType::INT32));
     b.AddColumn("s1")->Type(QLType::CreateTypeSet(DataType::STRING));
     b.AddColumn("s2")->Type(QLType::CreateTypeSet(DataType::STRING));
@@ -103,7 +103,7 @@ class QLListTest : public QLDmlTestBase<MiniCluster> {
     ASSERT_OK(session->TEST_ApplyAndFlush(ops));
   }
 
-  std::unique_ptr<QLRowBlock> ReadRows(YBSession* session, int32_t hash_seed) {
+  std::unique_ptr<qlexpr::QLRowBlock> ReadRows(YBSession* session, int32_t hash_seed) {
     auto op = table_.NewReadOp();
     auto* const req = op->mutable_request();
     AddHash(hash_seed, req);

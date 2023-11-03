@@ -19,13 +19,13 @@ Use the `CREATE INDEX` statement to create an index on the specified columns of 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
     <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fas fa-file-alt" aria-hidden="true"></i>
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
     <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fas fa-project-diagram" aria-hidden="true"></i>
+      <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
   </li>
@@ -238,6 +238,6 @@ If it still doesn't work, here are some troubleshooting steps:
 **To prioritize keeping other transactions alive** during the index backfill, bump up the following:
 
 - master flag `index_backfill_wait_for_old_txns_ms`
-- YSQL GUC variable `yb_index_state_flags_update_delay`
+- YSQL parameter `yb_index_state_flags_update_delay`
 
-**To speed up index creation** by a few seconds when you know there will be no online writes, set the YSQL GUC variable `yb_index_state_flags_update_delay` to zero.
+**To speed up index creation** by a few seconds when you know there will be no online writes, set the YSQL parameter `yb_index_state_flags_update_delay` to zero.

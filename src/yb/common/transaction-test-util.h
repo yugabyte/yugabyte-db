@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_COMMON_TRANSACTION_TEST_UTIL_H
-#define YB_COMMON_TRANSACTION_TEST_UTIL_H
+#pragma once
 
 #include <functional>
 #include <type_traits>
@@ -50,29 +49,30 @@ class TransactionStatusManagerMock : public TransactionStatusManager {
         << " has been already committed.";
   }
 
-  Result<TransactionMetadata> PrepareMetadata(const TransactionMetadataPB& pb) override {
+  Result<TransactionMetadata> PrepareMetadata(const LWTransactionMetadataPB& pb) override {
     return STATUS(Expired, "");
   }
 
   void Abort(const TransactionId& id, TransactionStatusCallback callback) override {
   }
 
-  void Cleanup(TransactionIdSet&& set) override {
+  Status Cleanup(TransactionIdSet&& set) override {
+    return Status::OK();
   }
 
-  int64_t RegisterRequest() override {
+  Result<int64_t> RegisterRequest() override {
     return 0;
   }
 
   void UnregisterRequest(int64_t) override {
   }
 
-  void FillPriorities(
-      boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) override {}
+  Status FillPriorities(
+      boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) override {
+    return Status::OK();
+  }
 
-  void FillStatusTablets(std::vector<BlockingTransactionData>* inout) override { }
-
-  boost::optional<TabletId> FindStatusTablet(const TransactionId& id) override {
+  Result<boost::optional<TabletId>> FindStatusTablet(const TransactionId& id) override {
     return boost::none;
   }
 
@@ -89,10 +89,12 @@ class TransactionStatusManagerMock : public TransactionStatusManager {
     return tablet_id;
   }
 
+  void RecordConflictResolutionKeysScanned(int64_t num_keys) override {}
+
+  void RecordConflictResolutionScanLatency(MonoDelta latency) override {}
+
  private:
   std::unordered_map<TransactionId, HybridTime, TransactionIdHash> txn_commit_time_;
 };
 
 } // namespace yb
-
-#endif // YB_COMMON_TRANSACTION_TEST_UTIL_H

@@ -749,6 +749,36 @@ INSERT INTO fktable VALUES (100, 200);
 -- error here on commit
 COMMIT;
 
+-- deferred in subtransactions
+BEGIN;
+
+INSERT INTO pktable VALUES (100, 100);
+
+INSERT INTO pktable VALUES (200, 200);
+
+SAVEPOINT savept1;
+
+INSERT INTO fktable VALUES (100, 100);
+
+-- PK violation
+INSERT INTO fktable VALUES (100, 200);
+
+ROLLBACK TO SAVEPOINT savept1;
+
+INSERT INTO fktable VALUES (100, 100);
+
+-- no error here
+INSERT INTO fktable VALUES (200, 300);
+
+-- still no error
+RELEASE SAVEPOINT savept1;
+
+-- error here on commit
+COMMIT;
+
+SELECT * FROM pktable;
+SELECT * FROM fktable;
+
 DROP TABLE fktable, pktable;
 
 -- test notice about expensive referential integrity checks,

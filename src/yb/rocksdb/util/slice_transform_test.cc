@@ -26,6 +26,8 @@
 #include "yb/util/test_macros.h"
 #include "yb/rocksdb/util/testutil.h"
 
+using std::unique_ptr;
+
 namespace rocksdb {
 
 class SliceTransformTest : public RocksDBTest {};
@@ -122,30 +124,25 @@ TEST_F(SliceTransformDBTest, CapPrefix) {
   unique_ptr<Iterator> iter(db()->NewIterator(ro));
 
   iter->Seek("foo");
-  ASSERT_OK(iter->status());
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ(iter->value().ToString(), "bar");
   ASSERT_EQ(TestGetTickerCount(last_options_, BLOOM_FILTER_PREFIX_USEFUL), 0U);
 
   iter->Seek("foo2");
-  ASSERT_OK(iter->status());
-  ASSERT_TRUE(!iter->Valid());
+  ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ(TestGetTickerCount(last_options_, BLOOM_FILTER_PREFIX_USEFUL), 1U);
 
   iter->Seek("barbarbar");
-  ASSERT_OK(iter->status());
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ(iter->value().ToString(), "foo");
   ASSERT_EQ(TestGetTickerCount(last_options_, BLOOM_FILTER_PREFIX_USEFUL), 1U);
 
   iter->Seek("barfoofoo");
-  ASSERT_OK(iter->status());
-  ASSERT_TRUE(!iter->Valid());
+  ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ(TestGetTickerCount(last_options_, BLOOM_FILTER_PREFIX_USEFUL), 2U);
 
   iter->Seek("foobarbar");
-  ASSERT_OK(iter->status());
-  ASSERT_TRUE(!iter->Valid());
+  ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ(TestGetTickerCount(last_options_, BLOOM_FILTER_PREFIX_USEFUL), 3U);
 }
 

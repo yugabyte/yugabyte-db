@@ -1,6 +1,6 @@
 // Copyright (c) 2018 AppJudo Inc.  MIT License.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { Collapse } from 'react-bootstrap';
 
 import './TreeNode.scss';

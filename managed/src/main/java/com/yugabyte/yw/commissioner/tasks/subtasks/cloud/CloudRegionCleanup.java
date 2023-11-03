@@ -17,12 +17,16 @@ import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.models.Region;
 import javax.inject.Inject;
-import play.api.Play;
 
 public class CloudRegionCleanup extends CloudTaskBase {
+
+  private final NetworkManager networkManager;
+
   @Inject
-  protected CloudRegionCleanup(BaseTaskDependencies baseTaskDependencies) {
+  protected CloudRegionCleanup(
+      BaseTaskDependencies baseTaskDependencies, NetworkManager networkManager) {
     super(baseTaskDependencies);
+    this.networkManager = networkManager;
   }
 
   public static class Params extends CloudTaskParams {
@@ -41,9 +45,7 @@ public class CloudRegionCleanup extends CloudTaskBase {
     if (region == null) {
       throw new RuntimeException("Region " + regionCode + " doesn't exists.");
     }
-    NetworkManager networkManager = Play.current().injector().instanceOf(NetworkManager.class);
-
-    JsonNode vpcInfo = networkManager.cleanupOrFail(region.uuid);
+    JsonNode vpcInfo = networkManager.cleanupOrFail(region.getUuid());
     if (vpcInfo.has("error") || !vpcInfo.has(regionCode)) {
       throw new RuntimeException("Region cleanup failed for: " + regionCode);
     }

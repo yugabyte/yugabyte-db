@@ -4,33 +4,56 @@ package executor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"node-agent/util"
+	"runtime/debug"
 	"sync"
+	"sync/atomic"
+)
+
+// TaskState represents state of a task.
+type TaskState string
+
+func (state TaskState) String() string {
+	return string(state)
+}
+
+const (
+	// TaskScheduled indicates the task is scheduled for running.
+	TaskScheduled TaskState = "Scheduled"
+	// TaskRunning indicates the task is running.
+	TaskRunning TaskState = "Running"
+	// TaskAborted indicates the task is aborted.
+	TaskAborted TaskState = "Aborted"
+	// TaskFailed indicates the task has failed.
+	TaskFailed TaskState = "Failed"
+	// TaskSuccess indicates the task has succeeded.
+	TaskSuccess TaskState = "Success"
 )
 
 // Future is a struct for facilitating async tasks.
 type Future struct {
-	done       bool
-	responseWg *sync.WaitGroup
-	data       *Result
+	ch    chan struct{}
+	data  any
+	err   error
+	state *atomic.Value
 }
 
-func (f *Future) Get() *Result {
-	f.responseWg.Wait()
-	f.done = true
-	return f.data
+// Done returns a channel to check if the task is completed.
+func (f *Future) Done() <-chan struct{} {
+	return f.ch
 }
 
-func (f *Future) IsDone() bool {
-	return f.done
+// State returns the state of the submitted task.
+func (f *Future) State() TaskState {
+	return f.state.Load().(TaskState)
 }
 
-// This is a wrapper for handler that allows any handler to
-// run asynchronously.
-type asyncTask struct {
-	taskHandle   util.Handler
-	futureHandle *Future
+// Get wait for the task to complete and returns the result.
+func (f *Future) Get() (any, error) {
+	<-f.ch
+	return f.data, f.err
 }
 
 var (
@@ -45,12 +68,19 @@ type TaskExecutor struct {
 	ctx context.Context
 }
 
-// Making the task Executor singleton to make
-// the startup and shutdown easier.
-func GetInstance(ctx context.Context) *TaskExecutor {
+// Init creates the singleton task executor.
+func Init(ctx context.Context) *TaskExecutor {
 	once.Do(func() {
 		instance = &TaskExecutor{wg: &sync.WaitGroup{}, ctx: ctx}
 	})
+	return instance
+}
+
+// GetInstance returns the singleton executor instance.
+func GetInstance() *TaskExecutor {
+	if instance == nil {
+		util.FileLogger().Fatal(nil, "Task executor is not initialized")
+	}
 	return instance
 }
 
@@ -72,55 +102,59 @@ func (te *TaskExecutor) WaitOnShutdown() {
 	te.wg.Wait()
 }
 
-// Runs the task handler and puts the result in Future.data.
-// Listens for the ctx.cancel signal to cancel the task at
-// task executor level as well as the task level.
-func (te *TaskExecutor) runTask(ctx context.Context, asyncTask asyncTask) {
-	defer te.wg.Done()
-	defer asyncTask.futureHandle.responseWg.Done()
-	var result *Result
-	select {
-	//TaskExecutor level context.
-	case <-te.ctx.Done():
-		result = NewResult(fmt.Errorf("TaskExecutor is closed"), "canceled", nil)
-	//Task level context
-	case <-ctx.Done():
-		result = NewResult(fmt.Errorf("Task cancelled"), "canceled", nil)
-	default:
-		response, err := asyncTask.taskHandle(ctx)
-		if err != nil {
-			result = NewResult(err, "error", response)
-		} else {
-			result = NewResult(nil, "success", response)
-		}
-	}
-	asyncTask.futureHandle.data = result
-}
-
 // SubmitTask wraps a task in asyncTask and assigns the
 // async task to a goroutine. It returns a Future.
-func (te *TaskExecutor) SubmitTask(ctx context.Context, handler util.Handler) (*Future, error) {
+func (te *TaskExecutor) SubmitTask(
+	ctx context.Context,
+	handler util.Handler,
+) (*Future, error) {
 	if te.isShutdown() {
-		return nil, fmt.Errorf("TaskExecutor is closed")
+		return nil, fmt.Errorf("TaskExecutor is shutdown")
 	}
 	te.wg.Add(1)
-	futureHandler := &Future{responseWg: &sync.WaitGroup{}}
-	futureHandler.responseWg.Add(1)
-	futureTask := asyncTask{taskHandle: handler, futureHandle: futureHandler}
-	go te.runTask(ctx, futureTask)
-	return futureTask.futureHandle, nil
+	future := &Future{ch: make(chan struct{}), state: &atomic.Value{}}
+	future.state.Store(TaskScheduled)
+	go func() {
+		defer func() {
+			te.wg.Done()
+			if err := recover(); err != nil {
+				util.FileLogger().Errorf(ctx, "Panic occurred: %v", string(debug.Stack()))
+				future.err = fmt.Errorf("Panic occurred: %v", err)
+				future.state.Store(TaskFailed)
+			}
+			close(future.ch)
+		}()
+		select {
+		// TaskExecutor level context.
+		case <-te.ctx.Done():
+			future.err = errors.New("TaskExecutor is shutdown")
+			future.state.Store(TaskAborted)
+		// Task level context.
+		case <-ctx.Done():
+			future.err = errors.New("Task is cancelled")
+			future.state.Store(TaskAborted)
+		default:
+			future.state.Store(TaskRunning)
+			future.data, future.err = handler(ctx)
+			if future.err == nil {
+				future.state.Store(TaskSuccess)
+			} else {
+				future.state.Store(TaskFailed)
+			}
+		}
+	}()
+	return future, nil
 }
 
 // Submits a task and waits for completion.
-func (te *TaskExecutor) ExecuteTask(ctx context.Context, handler util.Handler) (any, error) {
+func (te *TaskExecutor) ExecuteTask(ctx context.Context, handler util.Handler) error {
 	future, err := te.SubmitTask(ctx, handler)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to submit the task. Error: %s", err.Error())
+		return fmt.Errorf("Failed to submit the task. Error: %s", err.Error())
 	}
-	result := future.Get()
-	if result.Err() != nil {
-		//result.data might return nil. The caller needs to nil check.
-		return result.data, fmt.Errorf("Error in executing the task. Error: %s", result.Err())
+	_, err = future.Get()
+	if err != nil {
+		return fmt.Errorf("Error in executing the task. Error: %s", err.Error())
 	}
-	return result.data, nil
+	return nil
 }

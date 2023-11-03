@@ -54,40 +54,42 @@ public class PriceComponentTest extends FakeDBApplication {
   @Test
   public void testCreate() {
     PriceComponent.PriceDetails details = getValidPriceDetails();
-    PriceComponent.upsert(testProvider.uuid, testRegion.code, "foo", details);
-    PriceComponent component = PriceComponent.get(testProvider.uuid, testRegion.code, "foo");
+    PriceComponent.upsert(testProvider.getUuid(), testRegion.getCode(), "foo", details);
+    PriceComponent component =
+        PriceComponent.get(testProvider.getUuid(), testRegion.getCode(), "foo");
 
     assertNotNull(component);
     assertEquals("aws", component.getProviderCode());
-    assertEquals(testRegion.code, component.getRegionCode());
+    assertEquals(testRegion.getCode(), component.getRegionCode());
     assertEquals("foo", component.getComponentCode());
-    assertEquals(details.pricePerUnit, component.priceDetails.pricePerUnit, 0.0);
-    assertEquals(details.currency, component.priceDetails.currency);
+    assertEquals(details.pricePerUnit, component.getPriceDetails().pricePerUnit, 0.0);
+    assertEquals(details.currency, component.getPriceDetails().currency);
     assertEquals(details.effectiveDate, originalEffectiveDate);
-    assertEquals(details.description, component.priceDetails.description);
-    assertEquals(details.unit, component.priceDetails.unit);
+    assertEquals(details.description, component.getPriceDetails().description);
+    assertEquals(details.unit, component.getPriceDetails().unit);
   }
 
   @Test
   public void testEdit() {
     PriceComponent.PriceDetails details = getValidPriceDetails();
-    PriceComponent.upsert(testProvider.uuid, testRegion.code, "foo", details);
-    PriceComponent component = PriceComponent.get(testProvider.uuid, testRegion.code, "foo");
+    PriceComponent.upsert(testProvider.getUuid(), testRegion.getCode(), "foo", details);
+    PriceComponent component =
+        PriceComponent.get(testProvider.getUuid(), testRegion.getCode(), "foo");
 
     assertNotNull(component);
     assertEquals("aws", component.getProviderCode());
-    assertEquals(testRegion.code, component.getRegionCode());
+    assertEquals(testRegion.getCode(), component.getRegionCode());
     assertEquals("foo", component.getComponentCode());
-    assertEquals(details.pricePerUnit, component.priceDetails.pricePerUnit, 0.0);
-    assertEquals(details.currency, component.priceDetails.currency);
+    assertEquals(details.pricePerUnit, component.getPriceDetails().pricePerUnit, 0.0);
+    assertEquals(details.currency, component.getPriceDetails().currency);
     assertEquals(details.effectiveDate, originalEffectiveDate);
-    assertEquals(details.description, component.priceDetails.description);
-    assertEquals(details.unit, component.priceDetails.unit);
+    assertEquals(details.description, component.getPriceDetails().description);
+    assertEquals(details.unit, component.getPriceDetails().unit);
 
     String nextEffectiveDate = "2017-02-22T00:00:00Z";
     details.effectiveDate = nextEffectiveDate;
-    PriceComponent.upsert(testProvider.uuid, testRegion.code, "foo", details);
-    component = PriceComponent.get(testProvider.uuid, testRegion.code, "foo");
+    PriceComponent.upsert(testProvider.getUuid(), testRegion.getCode(), "foo", details);
+    component = PriceComponent.get(testProvider.getUuid(), testRegion.getCode(), "foo");
     assertNotNull(component);
     assertEquals(details.effectiveDate, nextEffectiveDate);
   }
@@ -108,15 +110,16 @@ public class PriceComponentTest extends FakeDBApplication {
   @Test
   public void testFindByProviderAndRegion() {
     PriceComponent.PriceDetails details = getValidPriceDetails();
-    PriceComponent pc1 = PriceComponent.upsert(testProvider.uuid, testRegion.code, "foo", details);
-    PriceComponent pc2 = PriceComponent.upsert(testProvider.uuid, "code2", "bar", details);
-    PriceComponent pc3 = PriceComponent.upsert(testProvider.uuid, "other", "foo", details);
+    PriceComponent pc1 =
+        PriceComponent.upsert(testProvider.getUuid(), testRegion.getCode(), "foo", details);
+    PriceComponent pc2 = PriceComponent.upsert(testProvider.getUuid(), "code2", "bar", details);
+    PriceComponent pc3 = PriceComponent.upsert(testProvider.getUuid(), "other", "foo", details);
 
     List<PriceComponent> components =
         PriceComponent.findByProvidersAndRegions(
             ImmutableList.of(
-                new ProviderAndRegion(testProvider.uuid, testRegion.code),
-                new ProviderAndRegion(testProvider.uuid, "code2")));
+                new ProviderAndRegion(testProvider.getUuid(), testRegion.getCode()),
+                new ProviderAndRegion(testProvider.getUuid(), "code2")));
 
     assertThat(components, Matchers.containsInAnyOrder(pc1, pc2));
   }

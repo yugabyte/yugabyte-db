@@ -20,24 +20,24 @@ Named objects in a schema can be accessed by using the schema name as prefix or 
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fas fa-file-alt" aria-hidden="true"></i>
+    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fas fa-project-diagram" aria-hidden="true"></i>
+    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+      <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
   </li>
 </ul>
 
 <div class="tab-content">
-  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
   {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_schema_name,create_schema_role,schema_element,role_specification.grammar.md" %}}
   </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
   {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_schema_name,create_schema_role,schema_element,role_specification.diagram.md" %}}
   </div>
 </div>
@@ -57,7 +57,7 @@ Other kinds of objects may be created in separate commands after the schema is c
 - Create a schema.
 
 ```plpgsql
-yugabyte=# CREATE SCHEMA IF NOT EXIST branch;
+yugabyte=# CREATE SCHEMA IF NOT EXISTS branch;
 ```
 
 - Create a schema for a user.
@@ -71,17 +71,6 @@ yugabyte=# CREATE SCHEMA AUTHORIZATION john;
 
 ```plpgsql
 yugabyte=# CREATE SCHEMA branch AUTHORIZATION john;
-```
-
-- Create a schema and an object within that schema.
-
-```plpgsql
-yugabyte=# CREATE SCHEMA branch
-               CREATE TABLE dept(
-                   dept_id INT NOT NULL,
-                   dept_name TEXT NOT NULL,
-                   PRIMARY KEY (dept_id)
-               );
 ```
 
 ## See also

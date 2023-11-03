@@ -22,8 +22,7 @@
 // under the License.
 //
 
-#ifndef YB_GUTIL_BIND_INTERNAL_H_
-#define YB_GUTIL_BIND_INTERNAL_H_
+#pragma once
 
 #include "yb/gutil/bind_helpers.h"
 #include "yb/gutil/callback_internal.h"
@@ -2706,5 +2705,3 @@ struct BindState<Runnable, RunType, void(P1, P2, P3, P4, P5, P6,
 
 }  // namespace internal
 }  // namespace yb
-
-#endif // YB_GUTIL_BIND_INTERNAL_H_

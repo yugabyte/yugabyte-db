@@ -16,6 +16,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigPasswordPolicyData;
@@ -26,12 +27,14 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.data.validation.ValidationError;
 import play.libs.Json;
 
 @Singleton
+@Slf4j
 public class PasswordPolicyService {
   private static final char[] SPECIAL_CHARACTERS =
       "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~".toCharArray();
@@ -44,10 +47,12 @@ public class PasswordPolicyService {
   private List<PasswordValidator> validators = new ArrayList<>();
 
   private final Config config;
+  private final ApiHelper apiHelper;
 
   @Inject
-  public PasswordPolicyService(Config config) {
+  public PasswordPolicyService(Config config, ApiHelper apiHelper) {
     this.config = config;
+    this.apiHelper = apiHelper;
     validators.add(
         new PasswordComplexityValidator(
             CustomerConfigPasswordPolicyData::getMinLength, c -> true, "characters"));
@@ -79,16 +84,14 @@ public class PasswordPolicyService {
     }
 
     List<ValidationError> errors =
-        validators
-            .stream()
+        validators.stream()
             .map(validator -> validator.validate(password, effectivePolicy))
             .filter(Objects::nonNull)
             .collect(Collectors.toList());
 
     if (!errors.isEmpty()) {
       String fullMessage =
-          errors
-              .stream()
+          errors.stream()
               .map(ValidationError::messages)
               .flatMap(List::stream)
               .collect(Collectors.joining("; "));

@@ -94,7 +94,7 @@ public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
-    defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
     defaultProvider = ModelFactory.kubernetesProvider(defaultCustomer);
   }
 
@@ -162,7 +162,8 @@ public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
     validateProviderValues(providerConfig);
 
     // modifying provider level should not mod customer config.
-    validateCustomerValues(configFactory.forCustomer(Customer.get(defaultProvider.customerUUID)));
+    validateCustomerValues(
+        configFactory.forCustomer(Customer.get(defaultProvider.getCustomerUUID())));
 
     // modifying provider level should not mod global config.
     validateGlobalValues(configFactory.globalRuntimeConf());
@@ -198,7 +199,8 @@ public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
     validateUniverseValues(universeConfig);
 
     // modifying universe level should not mod customer config.
-    validateCustomerValues(configFactory.forCustomer(Customer.get(defaultUniverse.customerId)));
+    validateCustomerValues(
+        configFactory.forCustomer(Customer.get(defaultUniverse.getCustomerId())));
 
     // modifying universe level should not mod global config.
     validateGlobalValues(configFactory.globalRuntimeConf());
@@ -209,8 +211,8 @@ public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
 
   @Test
   public void testTwoUniverses() {
-    Universe universe1 = ModelFactory.createUniverse("USA", defaultCustomer.getCustomerId());
-    Universe universe2 = ModelFactory.createUniverse("Asia", defaultCustomer.getCustomerId());
+    Universe universe1 = ModelFactory.createUniverse("USA", defaultCustomer.getId());
+    Universe universe2 = ModelFactory.createUniverse("Asia", defaultCustomer.getId());
     configFactory.forUniverse(universe1).setValue(TASK_GC_FREQUENCY, "1 day");
     configFactory.forUniverse(universe2).setValue(TASK_GC_FREQUENCY, "2 days");
 

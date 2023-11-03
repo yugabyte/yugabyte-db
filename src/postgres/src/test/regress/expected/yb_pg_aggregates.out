@@ -349,16 +349,14 @@ LINE 4:                where sum(distinct a.four + b.four) = b.four)...
                              ^
 -- Test handling of sublinks within outer-level aggregates.
 -- Per bug report from Daniel Grace.
-create view oneh as select * from onek order by unique2 limit 100;
 select
-  (select max((select i.unique2 from oneh i where i.unique1 = o.unique1)))
-from oneh o;
+  (select max((select i.unique2 from tenk1 i where i.unique1 = o.unique1)))
+from tenk1 o;
  max
------
-  99
+------
+ 9999
 (1 row)
 
-drop view oneh;
 -- Test handling of Params within aggregate arguments in hashed aggregation.
 -- Per bug report from Jeevan Chalke.
 explain (verbose, costs off)
@@ -475,8 +473,6 @@ FROM bitwise_test;
  1 | 1 | 1 | 1 | 0 | 0100 | 7 | 7 | 7 | 3 | 7 | 1101
 (1 row)
 
--- drop temp table
-DROP TABLE bitwise_test;
 --
 -- test boolean aggregates
 --
@@ -579,12 +575,14 @@ FROM bool_test;
 -- Basic cases
 explain (costs off)
   select min(unique1) from tenk1;
-           QUERY PLAN            
----------------------------------
- Finalize Aggregate
-   ->  Seq Scan on tenk1
-         Partial Aggregate: true
-(3 rows)
+                         QUERY PLAN
+------------------------------------------------------------
+ Result
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Index Only Scan using tenk1_unique1 on tenk1
+                 Index Cond: (unique1 IS NOT NULL)
+(5 rows)
 
 select min(unique1) from tenk1;
  min
@@ -594,12 +592,14 @@ select min(unique1) from tenk1;
 
 explain (costs off)
   select max(unique1) from tenk1;
-           QUERY PLAN            
----------------------------------
- Finalize Aggregate
-   ->  Seq Scan on tenk1
-         Partial Aggregate: true
-(3 rows)
+                             QUERY PLAN
+---------------------------------------------------------------------
+ Result
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Index Only Scan Backward using tenk1_unique1 on tenk1
+                 Index Cond: (unique1 IS NOT NULL)
+(5 rows)
 
 select max(unique1) from tenk1;
  max
@@ -609,12 +609,14 @@ select max(unique1) from tenk1;
 
 explain (costs off)
   select max(unique1) from tenk1 where unique1 < 42;
-           QUERY PLAN
---------------------------------
- Aggregate
-   ->  Seq Scan on tenk1
-         Filter: (unique1 < 42)
-(3 rows)
+                               QUERY PLAN
+------------------------------------------------------------------------
+ Result
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Index Only Scan Backward using tenk1_unique1 on tenk1
+                 Index Cond: ((unique1 IS NOT NULL) AND (unique1 < 42))
+(5 rows)
 
 select max(unique1) from tenk1 where unique1 < 42;
  max
@@ -624,12 +626,14 @@ select max(unique1) from tenk1 where unique1 < 42;
 
 explain (costs off)
   select max(unique1) from tenk1 where unique1 > 42;
-           QUERY PLAN
---------------------------------
- Aggregate
-   ->  Seq Scan on tenk1
-         Filter: (unique1 > 42)
-(3 rows)
+                               QUERY PLAN
+------------------------------------------------------------------------
+ Result
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Index Only Scan Backward using tenk1_unique1 on tenk1
+                 Index Cond: ((unique1 IS NOT NULL) AND (unique1 > 42))
+(5 rows)
 
 select max(unique1) from tenk1 where unique1 > 42;
  max
@@ -645,12 +649,14 @@ begin;
 set local max_parallel_workers_per_gather = 0;
 explain (costs off)
   select max(unique1) from tenk1 where unique1 > 42000;
-            QUERY PLAN
------------------------------------
- Aggregate
-   ->  Seq Scan on tenk1
-         Filter: (unique1 > 42000)
-(3 rows)
+                                QUERY PLAN
+---------------------------------------------------------------------------
+ Result
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Index Only Scan Backward using tenk1_unique1 on tenk1
+                 Index Cond: ((unique1 IS NOT NULL) AND (unique1 > 42000))
+(5 rows)
 
 select max(unique1) from tenk1 where unique1 > 42000;
  max
@@ -662,12 +668,14 @@ rollback;
 -- multi-column index (uses tenk1_thous_tenthous)
 explain (costs off)
   select max(tenthous) from tenk1 where thousand = 33;
-           QUERY PLAN
----------------------------------
- Aggregate
-   ->  Seq Scan on tenk1
-         Filter: (thousand = 33)
-(3 rows)
+                                 QUERY PLAN
+----------------------------------------------------------------------------
+ Result
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Index Only Scan Backward using tenk1_thous_tenthous on tenk1
+                 Index Cond: ((thousand = 33) AND (tenthous IS NOT NULL))
+(5 rows)
 
 select max(tenthous) from tenk1 where thousand = 33;
  max
@@ -677,12 +685,14 @@ select max(tenthous) from tenk1 where thousand = 33;
 
 explain (costs off)
   select min(tenthous) from tenk1 where thousand = 33;
-           QUERY PLAN
----------------------------------
- Aggregate
-   ->  Seq Scan on tenk1
-         Filter: (thousand = 33)
-(3 rows)
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Result
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Index Only Scan using tenk1_thous_tenthous on tenk1
+                 Index Cond: ((thousand = 33) AND (tenthous IS NOT NULL))
+(5 rows)
 
 select min(tenthous) from tenk1 where thousand = 33;
  min
@@ -694,30 +704,45 @@ select min(tenthous) from tenk1 where thousand = 33;
 explain (costs off)
   select f1, (select min(unique1) from tenk1 where unique1 > f1) AS gt
     from int4_tbl;
-                   QUERY PLAN
--------------------------------------------------
+                                       QUERY PLAN
+-----------------------------------------------------------------------------------------
  Seq Scan on int4_tbl
-   SubPlan 1
-     ->  Aggregate
-           ->  Seq Scan on tenk1
-                 Filter: (unique1 > int4_tbl.f1)
+   SubPlan 2
+     ->  Result
+           InitPlan 1 (returns $1)
+             ->  Limit
+                   ->  Index Only Scan using tenk1_unique1 on tenk1
+                         Index Cond: ((unique1 IS NOT NULL) AND (unique1 > int4_tbl.f1))
+(7 rows)
+
+-- YB note: add consistent ordering that matches upstream:
+-- 1. mainly order by absolute value of f1.
+-- 2. order positives before negatives by adding an offset of -1/+1 using the
+--    sign function.
+select f1, (select min(unique1) from tenk1 where unique1 > f1) AS gt
+  from int4_tbl order by abs(f1) - sign(f1);
+     f1      | gt
+-------------+----
+           0 |  1
+      123456 |
+     -123456 |  0
+  2147483647 |
+ -2147483647 |  0
 (5 rows)
 
--- TODO(jayden): Non-deterministic, so commenting out.
--- select f1, (select min(unique1) from tenk1 where unique1 > f1) AS gt
---   from int4_tbl;
 -- check some cases that were handled incorrectly in 8.3.0
 explain (costs off)
   select distinct max(unique2) from tenk1;
-                 QUERY PLAN                  
----------------------------------------------
- Unique
-   ->  Sort
-         Sort Key: (max(unique2))
-         ->  Finalize Aggregate
-               ->  Seq Scan on tenk1
-                     Partial Aggregate: true
-(6 rows)
+                             QUERY PLAN
+---------------------------------------------------------------------
+ HashAggregate
+   Group Key: $0
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Index Only Scan Backward using tenk1_unique2 on tenk1
+                 Index Cond: (unique2 IS NOT NULL)
+   ->  Result
+(7 rows)
 
 select distinct max(unique2) from tenk1;
  max
@@ -727,14 +752,16 @@ select distinct max(unique2) from tenk1;
 
 explain (costs off)
   select max(unique2) from tenk1 order by 1;
-              QUERY PLAN               
----------------------------------------
+                             QUERY PLAN
+---------------------------------------------------------------------
  Sort
-   Sort Key: (max(unique2))
-   ->  Finalize Aggregate
-         ->  Seq Scan on tenk1
-               Partial Aggregate: true
-(5 rows)
+   Sort Key: ($0)
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Index Only Scan Backward using tenk1_unique2 on tenk1
+                 Index Cond: (unique2 IS NOT NULL)
+   ->  Result
+(7 rows)
 
 select max(unique2) from tenk1 order by 1;
  max
@@ -744,14 +771,16 @@ select max(unique2) from tenk1 order by 1;
 
 explain (costs off)
   select max(unique2) from tenk1 order by max(unique2);
-              QUERY PLAN               
----------------------------------------
+                             QUERY PLAN
+---------------------------------------------------------------------
  Sort
-   Sort Key: (max(unique2))
-   ->  Finalize Aggregate
-         ->  Seq Scan on tenk1
-               Partial Aggregate: true
-(5 rows)
+   Sort Key: ($0)
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Index Only Scan Backward using tenk1_unique2 on tenk1
+                 Index Cond: (unique2 IS NOT NULL)
+   ->  Result
+(7 rows)
 
 select max(unique2) from tenk1 order by max(unique2);
  max
@@ -761,14 +790,16 @@ select max(unique2) from tenk1 order by max(unique2);
 
 explain (costs off)
   select max(unique2) from tenk1 order by max(unique2)+1;
-              QUERY PLAN               
----------------------------------------
+                             QUERY PLAN
+---------------------------------------------------------------------
  Sort
-   Sort Key: ((max(unique2) + 1))
-   ->  Finalize Aggregate
-         ->  Seq Scan on tenk1
-               Partial Aggregate: true
-(5 rows)
+   Sort Key: (($0 + 1))
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Index Only Scan Backward using tenk1_unique2 on tenk1
+                 Index Cond: (unique2 IS NOT NULL)
+   ->  Result
+(7 rows)
 
 select max(unique2) from tenk1 order by max(unique2)+1;
  max
@@ -778,15 +809,17 @@ select max(unique2) from tenk1 order by max(unique2)+1;
 
 explain (costs off)
   select max(unique2), generate_series(1,3) as g from tenk1 order by g desc;
-                 QUERY PLAN                  
----------------------------------------------
+                             QUERY PLAN
+---------------------------------------------------------------------
  Sort
    Sort Key: (generate_series(1, 3)) DESC
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Index Only Scan Backward using tenk1_unique2 on tenk1
+                 Index Cond: (unique2 IS NOT NULL)
    ->  ProjectSet
-         ->  Finalize Aggregate
-               ->  Seq Scan on tenk1
-                     Partial Aggregate: true
-(6 rows)
+         ->  Result
+(8 rows)
 
 select max(unique2), generate_series(1,3) as g from tenk1 order by g desc;
  max  | g
@@ -837,7 +870,7 @@ insert into minmaxtest values(11), (12);
 -- insert into minmaxtest3 values(17), (18);
 explain (costs off)
   select min(f1), max(f1) from minmaxtest;
-           QUERY PLAN            
+           QUERY PLAN
 ---------------------------------
  Finalize Aggregate
    ->  Seq Scan on minmaxtest
@@ -853,7 +886,7 @@ select min(f1), max(f1) from minmaxtest;
 -- DISTINCT doesn't do anything useful here, but it shouldn't fail
 explain (costs off)
   select distinct min(f1), max(f1) from minmaxtest;
-                 QUERY PLAN                  
+                 QUERY PLAN
 ---------------------------------------------
  Unique
    ->  Sort
@@ -908,36 +941,41 @@ explain (costs off) select *
 from t1 inner join t2 on t1.a = t2.x and t1.b = t2.y
 group by t1.a,t1.b,t1.c,t1.d,t2.x,t2.y,t2.z;
                       QUERY PLAN
-------------------------------------------------------
- HashAggregate
+-------------------------------------------------------
+ Group
    Group Key: t1.a, t1.b, t2.x, t2.y
-   ->  Hash Join   
-         Hash Cond: ((t2.x = t1.a) AND (t2.y = t1.b))
-         ->  Seq Scan on t2
-         ->  Hash
-               ->  Seq Scan on t1
-(7 rows)
+   ->  Merge Join
+         Merge Cond: ((t1.a = t2.x) AND (t1.b = t2.y))
+         ->  Index Scan using t1_pkey on t1
+         ->  Index Scan using t2_pkey on t2
+(6 rows)
 
 -- Test case where t1 can be optimized but not t2
 explain (costs off) select t1.*,t2.x,t2.z
 from t1 inner join t2 on t1.a = t2.x and t1.b = t2.y
 group by t1.a,t1.b,t1.c,t1.d,t2.x,t2.z;
                       QUERY PLAN
-------------------------------------------------------
+-------------------------------------------------------
  HashAggregate
    Group Key: t1.a, t1.b, t2.x, t2.z
-   ->  Hash Join   
-         Hash Cond: ((t2.x = t1.a) AND (t2.y = t1.b))
-         ->  Seq Scan on t2
-         ->  Hash
-               ->  Seq Scan on t1
-(7 rows)
+   ->  Merge Join
+         Merge Cond: ((t1.a = t2.x) AND (t1.b = t2.y))
+         ->  Index Scan using t1_pkey on t1
+         ->  Index Scan using t2_pkey on t2
+(6 rows)
 
 -- Cannot optimize when PK is deferrable
--- explain (costs off) select * from t3 group by a,b,c;
+explain (costs off) select * from t3 group by a,b,c;
+      QUERY PLAN
+----------------------
+ HashAggregate
+   Group Key: a, b, c
+   ->  Seq Scan on t3
+(3 rows)
+
 drop table t1;
 drop table t2;
--- drop table t3;
+drop table t3;
 --
 -- Test combinations of DISTINCT and/or ORDER BY
 --
@@ -1244,25 +1282,62 @@ select string_agg(a,',') from (values(null),(null)) g(a);
 (1 row)
 
 -- check some implicit casting cases, as per bug #5564
--- TODO(jayden): Enable below once we have yb_pg_varchar test which creates this table.
 select string_agg(distinct f1, ',' order by f1) from varchar_tbl;  -- ok
-ERROR:  relation "varchar_tbl" does not exist
-LINE 1: ...ect string_agg(distinct f1, ',' order by f1) from varchar_tb...
-                                                             ^
--- select string_agg(distinct f1::text, ',' order by f1) from varchar_tbl;  -- not ok
--- select string_agg(distinct f1, ',' order by f1::text) from varchar_tbl;  -- not ok
--- select string_agg(distinct f1::text, ',' order by f1::text) from varchar_tbl;  -- ok
+ string_agg
+------------
+ a,ab,abcd
+(1 row)
+
+select string_agg(distinct f1::text, ',' order by f1) from varchar_tbl;  -- not ok
+ERROR:  in an aggregate with DISTINCT, ORDER BY expressions must appear in argument list
+LINE 1: select string_agg(distinct f1::text, ',' order by f1) from v...
+                                                          ^
+select string_agg(distinct f1, ',' order by f1::text) from varchar_tbl;  -- not ok
+ERROR:  in an aggregate with DISTINCT, ORDER BY expressions must appear in argument list
+LINE 1: select string_agg(distinct f1, ',' order by f1::text) from v...
+                                                    ^
+select string_agg(distinct f1::text, ',' order by f1::text) from varchar_tbl;  -- ok
+ string_agg
+------------
+ a,ab,abcd
+(1 row)
+
 -- string_agg bytea tests
--- TODO(jayden): Below test relies on retrieval ordering, thus is non-deterministic.
--- create table bytea_test_table(v bytea);
--- select string_agg(v, '') from bytea_test_table;
--- insert into bytea_test_table values(decode('ff','hex'));
--- select string_agg(v, '') from bytea_test_table;
--- insert into bytea_test_table values(decode('aa','hex'));
--- select string_agg(v, '') from bytea_test_table;
--- select string_agg(v, NULL) from bytea_test_table;
--- select string_agg(v, decode('ee', 'hex')) from bytea_test_table;
--- drop table bytea_test_table;
+-- YB note: add PK ordering for consistent output.
+create table bytea_test_table(v bytea, PRIMARY KEY (v DESC));
+select string_agg(v, '') from bytea_test_table;
+ string_agg
+------------
+
+(1 row)
+
+insert into bytea_test_table values(decode('ff','hex'));
+select string_agg(v, '') from bytea_test_table;
+ string_agg
+------------
+ \xff
+(1 row)
+
+insert into bytea_test_table values(decode('aa','hex'));
+select string_agg(v, '') from bytea_test_table;
+ string_agg
+------------
+ \xffaa
+(1 row)
+
+select string_agg(v, NULL) from bytea_test_table;
+ string_agg
+------------
+ \xffaa
+(1 row)
+
+select string_agg(v, decode('ee', 'hex')) from bytea_test_table;
+ string_agg
+------------
+ \xffeeaa
+(1 row)
+
+drop table bytea_test_table;
 -- FILTER tests
 select min(unique1) filter (where unique1 > 100) from tenk1;
  min
@@ -1366,13 +1441,13 @@ select aggfns(distinct a,b,c order by a,c using ~<~,b) filter (where a > 1)
 
 -- check handling of bare boolean Var in FILTER
 select max(0) filter (where b1) from bool_test;
- max 
+ max
 -----
    0
 (1 row)
 
 select (select max(0) filter (where b1)) from bool_test;
- max 
+ max
 -----
    0
 (1 row)
@@ -1544,18 +1619,19 @@ select pg_collation_for(percentile_disc(1) within group (order by x collate "POS
 (1 row)
 
 -- ordered-set aggs created with CREATE AGGREGATE
--- TODO(jason): uncomment when issue #2172 is closed or closing.
 select test_rank(3) within group (order by x)
 from (values (1),(1),(2),(2),(3),(3),(4)) v(x);
-ERROR:  function test_rank(integer, integer) does not exist
-LINE 1: select test_rank(3) within group (order by x)
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ test_rank
+-----------
+         5
+(1 row)
+
 select test_percentile_disc(0.5) within group (order by thousand) from tenk1;
-ERROR:  function test_percentile_disc(numeric, integer) does not exist
-LINE 1: select test_percentile_disc(0.5) within group (order by thou...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ test_percentile_disc
+----------------------
+                  499
+(1 row)
+
 -- ordered-set aggs can't use ungrouped vars in direct args:
 select rank(x) within group (order by x) from generate_series(1,5) x;
 ERROR:  column "x.x" must appear in the GROUP BY clause or be used in an aggregate function

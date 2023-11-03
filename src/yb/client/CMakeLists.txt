@@ -53,6 +53,9 @@ set(CLIENT_SRCS
   permissions.cc
   session.cc
   schema.cc
+  stateful_services/pg_auto_analyze_service_client.cc
+  stateful_services/stateful_service_client_base.cc
+  stateful_services/test_echo_service_client.cc
   table.cc
   table_alterer.cc
   table_creator.cc
@@ -71,18 +74,20 @@ set(CLIENT_SRCS
 
 set(CLIENT_LIBS
   yb_common
-  yb_partition
   master_proto
   master_rpc
   master_util
   server_process
   tserver_proto
   tserver_service_proto
+  pg_auto_analyze_service_proto
+  test_echo_service_proto
   tserver_util
+  yb_ql_expr
   yb_util
   gutil
   yrpc
-  yb_docdb_encoding)
+  yb_dockv)
 
 # We customize the output name/directory of the exported library so that we can
 # call it "yb_client" without it colliding with the regular library.
@@ -108,7 +113,7 @@ endif()
 # and therefore don't need to worry about export strictness)
 ADD_YB_LIBRARY(yb_client_test_util
                SRCS client-test-util.cc
-               DEPS gmock yb_client)
+               DEPS gmock gtest yb_client yb_test_util)
 
 ADD_YB_LIBRARY(ql-dml-test-base
                SRCS ql-dml-test-base.cc txn-test-base.cc snapshot_test_util.cc
@@ -116,13 +121,15 @@ ADD_YB_LIBRARY(ql-dml-test-base
 
 # Tests
 
-set(YB_TEST_LINK_LIBS integration-tests rpc_test_util ql-dml-test-base ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS
+    yb_docdb_test_common integration-tests rpc_test_util ql-dml-test-base ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(backup-txn-test)
 ADD_YB_TEST(client-test)
 ADD_YB_TEST(client-unittest)
 ADD_YB_TEST(ql-dml-test)
 ADD_YB_TEST(ql-dml-ttl-test)
 ADD_YB_TEST(ql-list-test)
+ADD_YB_TEST(ql-map-test)
 ADD_YB_TEST(ql-tablet-test)
 ADD_YB_TEST(ql-transaction-test)
 ADD_YB_TEST(ql-stress-test)

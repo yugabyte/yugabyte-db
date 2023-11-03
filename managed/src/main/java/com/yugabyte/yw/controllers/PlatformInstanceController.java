@@ -13,13 +13,21 @@ package com.yugabyte.yw.controllers;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.PlatformInstanceFormData;
-import com.yugabyte.yw.forms.RestorePlatformBackupFormData;
 import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.RestorePlatformBackupFormData;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import java.io.File;
 import java.net.URL;
 import java.util.Objects;
@@ -29,6 +37,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
+import play.mvc.Http;
 import play.mvc.Result;
 
 public class PlatformInstanceController extends AuthenticatedController {
@@ -39,11 +48,19 @@ public class PlatformInstanceController extends AuthenticatedController {
 
   @Inject CustomerTaskManager taskManager;
 
-  public Result createInstance(UUID configUUID) {
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(
+                resourceType = ResourceType.OTHER,
+                action = Action.SUPER_ADMIN_ACTIONS),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result createInstance(UUID configUUID, Http.Request request) {
     Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.getOrBadRequest(configUUID);
 
     Form<PlatformInstanceFormData> formData =
-        formFactory.getFormDataOrBadRequest(PlatformInstanceFormData.class);
+        formFactory.getFormDataOrBadRequest(request, PlatformInstanceFormData.class);
 
     // Cannot create a remote instance before creating a local instance.
     if (!formData.get().is_local && !config.get().getLocal().isPresent()) {
@@ -74,22 +91,30 @@ public class PlatformInstanceController extends AuthenticatedController {
       config.get().updateLastFailover();
     }
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.PlatformInstance,
-            Objects.toString(instance.getUUID(), null),
+            Objects.toString(instance.getUuid(), null),
             Audit.ActionType.Create);
     return PlatformResults.withData(instance);
   }
 
-  public Result deleteInstance(UUID configUUID, UUID instanceUUID) {
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(
+                resourceType = ResourceType.OTHER,
+                action = Action.SUPER_ADMIN_ACTIONS),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result deleteInstance(UUID configUUID, UUID instanceUUID, Http.Request request) {
     Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.getOrBadRequest(configUUID);
 
     Optional<PlatformInstance> instanceToDelete = PlatformInstance.get(instanceUUID);
 
     boolean instanceUUIDValid =
         instanceToDelete.isPresent()
-            && config.get().getInstances().stream().anyMatch(i -> i.getUUID().equals(instanceUUID));
+            && config.get().getInstances().stream().anyMatch(i -> i.getUuid().equals(instanceUUID));
 
     if (!instanceUUIDValid) {
       throw new PlatformServiceException(NOT_FOUND, "Invalid instance UUID");
@@ -105,8 +130,8 @@ public class PlatformInstanceController extends AuthenticatedController {
     }
 
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.PlatformInstance,
             instanceUUID.toString(),
             Audit.ActionType.Delete);
@@ -115,6 +140,14 @@ public class PlatformInstanceController extends AuthenticatedController {
     return ok();
   }
 
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(
+                resourceType = ResourceType.OTHER,
+                action = Action.SUPER_ADMIN_ACTIONS),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result getLocal(UUID configUUID) {
     Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.getOrBadRequest(configUUID);
 
@@ -126,7 +159,16 @@ public class PlatformInstanceController extends AuthenticatedController {
     return PlatformResults.withData(localInstance.get());
   }
 
-  public Result promoteInstance(UUID configUUID, UUID instanceUUID, String curLeaderAddr)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(
+                resourceType = ResourceType.OTHER,
+                action = Action.SUPER_ADMIN_ACTIONS),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result promoteInstance(
+      UUID configUUID, UUID instanceUUID, String curLeaderAddr, Http.Request request)
       throws java.net.MalformedURLException {
     Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.getOrBadRequest(configUUID);
 
@@ -134,7 +176,7 @@ public class PlatformInstanceController extends AuthenticatedController {
 
     boolean instanceUUIDValid =
         instance.isPresent()
-            && config.get().getInstances().stream().anyMatch(i -> i.getUUID().equals(instanceUUID));
+            && config.get().getInstances().stream().anyMatch(i -> i.getUuid().equals(instanceUUID));
 
     if (!instanceUUIDValid) {
       throw new PlatformServiceException(NOT_FOUND, "Invalid platform instance UUID");
@@ -149,7 +191,7 @@ public class PlatformInstanceController extends AuthenticatedController {
     }
 
     Form<RestorePlatformBackupFormData> formData =
-        formFactory.getFormDataOrBadRequest(RestorePlatformBackupFormData.class);
+        formFactory.getFormDataOrBadRequest(request, RestorePlatformBackupFormData.class);
 
     if (StringUtils.isBlank(curLeaderAddr)) {
       Optional<PlatformInstance> leaderInstance = config.get().getLeader();
@@ -162,9 +204,7 @@ public class PlatformInstanceController extends AuthenticatedController {
 
     // Make sure the backup file provided exists.
     Optional<File> backup =
-        replicationManager
-            .listBackups(new URL(curLeaderAddr))
-            .stream()
+        replicationManager.listBackups(new URL(curLeaderAddr)).stream()
             .filter(f -> f.getName().equals(formData.get().backup_file))
             .findFirst();
     if (!backup.isPresent()) {
@@ -177,8 +217,8 @@ public class PlatformInstanceController extends AuthenticatedController {
     // Restore the backup.
     backup.ifPresent(replicationManager::restoreBackup);
 
-    // Fail any incomplete tasks that may be leftover from the backup that was restored.
-    taskManager.failAllPendingTasks();
+    // Handle any incomplete tasks that may be leftover from the backup that was restored.
+    taskManager.handleAllPendingTasks();
 
     // Promote the local instance.
     PlatformInstance.getByAddress(localInstanceAddr)
@@ -190,8 +230,8 @@ public class PlatformInstanceController extends AuthenticatedController {
     // Finally, switch the prometheus configuration to read from swamper targets directly.
     replicationManager.switchPrometheusToStandalone();
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.PlatformInstance,
             instanceUUID.toString(),
             Audit.ActionType.Promote);

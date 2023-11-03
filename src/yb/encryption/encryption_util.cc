@@ -29,18 +29,18 @@
 #include "yb/encryption/header_manager.h"
 
 #include "yb/util/atomic.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status_format.h"
 
-DEFINE_int64(encryption_counter_min, 0,
+DEFINE_UNKNOWN_int64(encryption_counter_min, 0,
              "Minimum value (inclusive) for the randomly generated 32-bit encryption counter at "
              "the beginning of a file");
 TAG_FLAG(encryption_counter_min, advanced);
 TAG_FLAG(encryption_counter_min, hidden);
 
-DEFINE_int64(encryption_counter_max, 0x7fffffffLL,
+DEFINE_UNKNOWN_int64(encryption_counter_max, 0x7fffffffLL,
              "Maximum value (inclusive) for the randomly generated 32-bit encryption counter at "
              "the beginning of a file. Setting to 2147483647 by default to reduce the probability "
              "of #3707 until it is fixed. This only reduces the key size by 1 bit but eliminates "
@@ -51,7 +51,7 @@ TAG_FLAG(encryption_counter_max, hidden);
 
 DEFINE_test_flag(bool, encryption_use_openssl_compatible_counter_overflow, true,
                  "Overflow into the rest of the initialization vector when computing counter"
-                 "increment for newly created keys.")
+                 "increment for newly created keys.");
 
 namespace yb {
 namespace encryption {

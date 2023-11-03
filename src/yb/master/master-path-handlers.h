@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_MASTER_MASTER_PATH_HANDLERS_H
-#define YB_MASTER_MASTER_PATH_HANDLERS_H
+#pragma once
 
 #include <string>
 #include <sstream>
@@ -42,7 +41,9 @@
 #include "yb/master/master_fwd.h"
 
 #include "yb/server/webserver.h"
+#include "yb/server/monitored_task.h"
 #include "yb/util/enums.h"
+#include "yb/util/jsonwriter.h"
 
 namespace yb {
 
@@ -112,7 +113,14 @@ class MasterPathHandlers {
     kNumColumns
   };
 
-  const std::string kSystemPlatformNamespace = "system_platform";
+  enum NamespaceColumns {
+    kNamespaceName,
+    kNamespaceId,
+    kNamespaceLanguage,
+    kNamespaceState,
+    kNamespaceColocated,
+    kNumNamespaceColumns
+  };
 
   struct TabletCounts {
     uint32_t user_tablet_leaders = 0;
@@ -201,8 +209,16 @@ class MasterPathHandlers {
   void HandleCatalogManager(const Webserver::WebRequest& req,
                             Webserver::WebResponse* resp,
                             bool only_user_tables = false);
+  void HandleCatalogManagerJSON(const Webserver::WebRequest& req,
+                                Webserver::WebResponse* resp);
+  void HandleNamespacesHTML(const Webserver::WebRequest& req,
+                            Webserver::WebResponse* resp,
+                            bool only_user_namespaces = false);
+  void HandleNamespacesJSON(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleTablePage(const Webserver::WebRequest& req,
                        Webserver::WebResponse* resp);
+  void HandleTablePageJSON(const Webserver::WebRequest& req,
+                           Webserver::WebResponse* resp);
   void HandleTasksPage(const Webserver::WebRequest& req,
                        Webserver::WebResponse* resp);
   void HandleTabletReplicasPage(const Webserver::WebRequest &req, Webserver::WebResponse *resp);
@@ -214,6 +230,8 @@ class MasterPathHandlers {
                           Webserver::WebResponse* resp);
   void HandleGetClusterConfig(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleGetClusterConfigJSON(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
+  void HandleGetXClusterConfig(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
+  void HandleGetXClusterConfigJSON(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleHealthCheck(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleCheckIfLeader(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleGetMastersStatus(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
@@ -222,17 +240,24 @@ class MasterPathHandlers {
                                         Webserver::WebResponse *resp);
   void HandleVersionInfoDump(const Webserver::WebRequest &req, Webserver::WebResponse *resp);
   void HandlePrettyLB(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
+  void HandleLoadBalancer(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
 
   // Calcuates number of leaders/followers per table.
   void CalculateTabletMap(TabletCountMap* tablet_map);
 
-  Status CalculateTServerTree(TServerTree* tserver_tree);
-
+  // Calculate tserver tree for ALL tables if max_table_count == -1.
+  // Otherwise, do not perform calculation if number of tables is less than max_table_count.
+  Status CalculateTServerTree(TServerTree* tserver_tree, int max_table_count);
+  void RenderLoadBalancerViewPanel(
+      const TServerTree& tserver_tree, const std::vector<std::shared_ptr<TSDescriptor>>& descs,
+      const std::vector<TableInfoPtr>& tables, std::stringstream* output);
+  TableType GetTableType(const TableInfo& table);
   std::vector<TabletInfoPtr> GetNonSystemTablets();
 
-  std::vector<TabletInfoPtr> GetLeaderlessTablets();
+  std::vector<std::pair<TabletInfoPtr, std::string>> GetLeaderlessTablets();
 
-  Result<std::vector<TabletInfoPtr>> GetUnderReplicatedTablets();
+  Result<std::vector<std::pair<TabletInfoPtr, std::vector<std::string>>>>
+      GetUnderReplicatedTablets();
 
   // Calculates the YSQL OID of a tablegroup / colocated database parent table
   std::string GetParentTableOid(scoped_refptr<TableInfo> parent_table);
@@ -256,6 +281,9 @@ class MasterPathHandlers {
 
   std::string GetHttpHostPortFromServerRegistration(const ServerRegistrationPB& reg) const;
 
+  Status GetClusterAndXClusterConfigStatus(
+      SysXClusterConfigEntryPB* xcluster_config, SysClusterConfigEntryPB* cluster_config);
+
   Master* master_;
 
   const int output_precision_;
@@ -264,6 +292,5 @@ class MasterPathHandlers {
 
 void HandleTabletServersPage(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
 
-} // namespace master
-} // namespace yb
-#endif /* YB_MASTER_MASTER_PATH_HANDLERS_H */
+}  //  namespace master
+}  //  namespace yb

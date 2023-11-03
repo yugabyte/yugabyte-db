@@ -20,8 +20,7 @@
  *--------------------------------------------------------------------------------------------------
  */
 
-#ifndef YB_SCAN_H
-#define YB_SCAN_H
+#pragma once
 
 #include "postgres.h"
 
@@ -70,20 +69,27 @@ typedef struct YbScanDescData
 	Relation index;
 
 	/*
-	 * In YB ScanKey could be one of two types:
-	 *  - key for regular column
+	 * ScanKey could be one of two types:
 	 *  - key which represents the yb_hash_code function.
-	 * The keys array holds keys of both types.
-	 * All regular keys go before keys for yb_hash_code.
-	 * Keys in range [0, nkeys) are regular keys.
-	 * Keys in range [nkeys, nkeys + nhash_keys) are keys for yb_hash_code
-	 * Such separation allows to process regular and non-regular keys independently.
+	 *  - otherwise
+	 * hash_code_keys holds the first type; keys holds the second.
 	 */
 	ScanKey keys[YB_MAX_SCAN_KEYS];
-	/* number of regular keys */
+	/* Number of elements in the above array. */
 	int nkeys;
-	/* number of keys which represents the yb_hash_code function */
-	int nhash_keys;
+	/*
+	 * List of ScanKey for keys which represent the yb_hash_code function.
+	 * Prefer List over array because this is likely to have zero or a few
+	 * elements in most cases.
+	 */
+	List *hash_code_keys;
+
+	/*
+	 * True if all ordinary (non-yb_hash_code) keys are bound to pggate.  There
+	 * could be false negatives: it could say false when they are in fact all
+	 * bound.
+	 */
+	bool all_ordinary_keys_bound;
 
 	TupleDesc target_desc;
 	AttrNumber target_key_attnums[YB_MAX_SCAN_KEYS];
@@ -119,6 +125,23 @@ typedef struct YbScanDescData
 
 typedef struct YbScanDescData *YbScanDesc;
 
+struct YbSysScanBaseData;
+
+typedef struct YbSysScanBaseData *YbSysScanBase;
+
+typedef struct YbSysScanVirtualTable
+{
+	HeapTuple (*next)(YbSysScanBase);
+	void (*end)(YbSysScanBase);
+} YbSysScanVirtualTable;
+
+typedef struct YbSysScanBaseData
+{
+	YbSysScanVirtualTable *vtable;
+} YbSysScanBaseData;
+
+extern void ybc_free_ybscan(YbScanDesc ybscan);
+
 /*
  * Access to YB-stored system catalogs (mirroring API from genam.c)
  * We ignore the index id and always do a regular YugaByte scan (Postgres
@@ -130,8 +153,12 @@ extern SysScanDesc ybc_systable_beginscan(Relation relation,
 										  Snapshot snapshot,
 										  int nkeys,
 										  ScanKey key);
-extern HeapTuple ybc_systable_getnext(SysScanDesc scanDesc);
-extern void ybc_systable_endscan(SysScanDesc scan_desc);
+extern SysScanDesc ybc_systable_begin_default_scan(Relation relation,
+												   Oid indexId,
+												   bool indexOK,
+												   Snapshot snapshot,
+												   int nkeys,
+												   ScanKey key);
 
 /*
  * Access to YB-stored system catalogs (mirroring API from heapam.c)
@@ -147,7 +174,24 @@ extern void ybc_heap_endscan(HeapScanDesc scanDesc);
 extern HeapScanDesc ybc_remote_beginscan(Relation relation,
 										 Snapshot snapshot,
 										 Scan *pg_scan_plan,
-										 PushdownExprs *remote);
+										 PushdownExprs *pushdown,
+										 List *aggrefs,
+										 YBCPgExecParameters *exec_params);
+
+/* Add targets to the given statement. */
+extern void YbDmlAppendTargetSystem(AttrNumber attnum, YBCPgStatement handle);
+extern void YbDmlAppendTargetRegular(TupleDesc tupdesc, AttrNumber attnum,
+									 YBCPgStatement handle);
+extern void YbDmlAppendTargetsAggregate(List *aggrefs, TupleDesc tupdesc,
+										Relation index, bool xs_want_itup,
+										YBCPgStatement handle);
+extern void YbDmlAppendTargets(List *colrefs, YBCPgStatement handle);
+/* Add quals to the given statement. */
+extern void YbDmlAppendQuals(List *quals, bool is_primary,
+							 YBCPgStatement handle);
+/* Add column references to the given statement. */
+extern void YbDmlAppendColumnRefs(List *colrefs, bool is_primary,
+								  YBCPgStatement handle);
 
 /*
  * The ybc_idx API is used to process the following SELECT.
@@ -160,11 +204,25 @@ extern YbScanDesc ybcBeginScan(Relation relation,
 							   int nkeys,
 							   ScanKey key,
 							   Scan *pg_scan_plan,
-							   PushdownExprs *rel_remote,
-							   PushdownExprs *idx_remote);
+							   PushdownExprs *rel_pushdown,
+							   PushdownExprs *idx_pushdown,
+							   List *aggrefs,
+							   int distinct_prefixlen,
+							   YBCPgExecParameters *exec_params);
+
+/* Returns whether the given populated ybScan needs PG-side recheck. */
+extern bool YbNeedsRecheck(YbScanDesc ybScan);
+/* The same thing but with less context, used in node init phase. */
+extern bool YbPredetermineNeedsRecheck(Relation relation,
+									   Relation index,
+									   bool xs_want_itup,
+									   ScanKey keys,
+									   int nkeys);
 
 HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);
 IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);
+bool ybc_getnext_aggslot(IndexScanDesc scan, YBCPgStatement handle,
+						 bool index_only_scan);
 
 Oid ybc_get_attcollation(TupleDesc bind_desc, AttrNumber attnum);
 
@@ -198,7 +256,8 @@ extern void ybcCostEstimate(RelOptInfo *baserel, Selectivity selectivity,
 							bool is_backwards_scan, bool is_seq_scan, bool is_uncovered_idx_scan,
 							Cost *startup_cost, Cost *total_cost, Oid index_tablespace_oid);
 extern void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
-								 Selectivity *selectivity, Cost *startup_cost, Cost *total_cost);
+								 			Selectivity *selectivity, Cost *startup_cost,
+											Cost *total_cost);
 
 /*
  * Fetch a single tuple by the ybctid.
@@ -228,5 +287,3 @@ bool ybSampleNextBlock(YbSample ybSample);
 int ybFetchSample(YbSample ybSample, HeapTuple *rows);
 TupleTableSlot *ybFetchNext(YBCPgStatement handle,
 			TupleTableSlot *slot, Oid relid);
-
-#endif							/* YB_SCAN_H */

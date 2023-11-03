@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 create_procedure ::= CREATE [ OR REPLACE ] PROCEDURE name ( 
                      [ arg_decl [ , ... ] ] ) procedure_attribute 
                      [ ... ]

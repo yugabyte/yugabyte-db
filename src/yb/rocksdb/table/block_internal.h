@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_ROCKSDB_TABLE_BLOCK_INTERNAL_H
-#define YB_ROCKSDB_TABLE_BLOCK_INTERNAL_H
+#pragma once
 
 #include "yb/util/logging.h"
 #include "yb/util/std_util.h"
@@ -147,5 +146,3 @@ inline const char* DecodeEntryThreeSharedParts(
 }
 
 }  // namespace rocksdb
-
-#endif // YB_ROCKSDB_TABLE_BLOCK_INTERNAL_H

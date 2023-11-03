@@ -39,6 +39,8 @@ The following `SELECT` statement clauses provide flexibility and allow you to fi
 
 ### SELECT examples
 
+{{% explore-setup-single %}}
+
 Suppose you work with a database that includes the following table populated with data:
 
 ```sql

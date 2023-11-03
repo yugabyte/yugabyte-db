@@ -2,7 +2,7 @@
 title: Real timezones that do not observe DST [YSQL]
 headerTitle: Real timezones that don't observe Daylight Savings Time
 linkTitle: Real timezones no DST
-description: Table. [YSQL]
+description: Real timezones no DST table. [YSQL]
 menu:
   preview:
     identifier: canonical-real-country-no-dst

@@ -12,6 +12,8 @@
  */
 
 
+// eslint-disable-next-line no-duplicate-imports
+import type { NodeDataMetricsActiveConnections } from './NodeDataMetricsActiveConnections';
 
 
 /**
@@ -50,6 +52,72 @@ export interface NodeDataMetrics  {
    * @memberof NodeDataMetrics
    */
   write_ops_per_sec: number;
+  /**
+   * 
+   * @type {number}
+   * @memberof NodeDataMetrics
+   */
+  time_since_hb_sec: number;
+  /**
+   * 
+   * @type {number}
+   * @memberof NodeDataMetrics
+   */
+  uptime_seconds: number;
+  /**
+   * 
+   * @type {number}
+   * @memberof NodeDataMetrics
+   */
+  user_tablets_total: number;
+  /**
+   * 
+   * @type {number}
+   * @memberof NodeDataMetrics
+   */
+  user_tablets_leaders: number;
+  /**
+   * 
+   * @type {number}
+   * @memberof NodeDataMetrics
+   */
+  system_tablets_total: number;
+  /**
+   * 
+   * @type {number}
+   * @memberof NodeDataMetrics
+   */
+  system_tablets_leaders: number;
+  /**
+   * 
+   * @type {NodeDataMetricsActiveConnections}
+   * @memberof NodeDataMetrics
+   */
+  active_connections: NodeDataMetricsActiveConnections;
+  /**
+   * 
+   * @type {number}
+   * @memberof NodeDataMetrics
+   */
+  master_uptime_us: number;
+  /**
+   * 
+   * @type {number}
+   * @memberof NodeDataMetrics
+   */
+  ram_used_bytes: number;
+  /**
+   * 
+   * @type {number}
+   * @memberof NodeDataMetrics
+   */
+  ram_provisioned_bytes: number;
+  /**
+   * 
+   * @type {number}
+   * @memberof NodeDataMetrics
+   */
+  disk_provisioned_bytes: number;
 }
 
 

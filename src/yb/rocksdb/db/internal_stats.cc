@@ -43,7 +43,6 @@
 
 namespace rocksdb {
 
-#ifndef ROCKSDB_LITE
 namespace {
 const double kMB = 1048576.0;
 const double kGB = kMB * 1024;
@@ -888,10 +887,5 @@ void InternalStats::DumpCFStats(std::string* value) {
 }
 
 
-#else
-
-const DBPropertyInfo* GetPropertyInfo(const Slice& property) { return nullptr; }
-
-#endif  // !ROCKSDB_LITE
 
 }  // namespace rocksdb

@@ -14,13 +14,13 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/preview/explore/cluster-management/point-in-time-recovery-ysql" class="nav-link active">
+    <a href="../point-in-time-recovery-ysql" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
   <li >
-    <a href="/preview/explore/cluster-management/point-in-time-recovery-ycql" class="nav-link">
+    <a href="../point-in-time-recovery-ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -35,7 +35,7 @@ You can try out the PITR feature by creating a database and populating it, creat
 
 {{< tip title="Examples are simplified" >}}
 
-The examples on this page are deliberately simple. In many of the scenarios presented, you could drop the index or table to recover. Consider the examples as part of an effort to undo a larger schema change, such as a database migration, which has performed several operations.
+The examples on this page are deliberately simplified. In many of the scenarios presented, you could drop the index or table to recover. Consider the examples as part of an effort to undo a larger schema change, such as a database migration, which has performed several operations.
 
 {{< /tip >}}
 
@@ -84,7 +84,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 1. At a terminal prompt, create a snapshot schedule for the database from a shell prompt. In this example, the schedule is one snapshot every minute, and each snapshot is retained for ten minutes.
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> create_snapshot_schedule 1 10 ysql.yugabyte
+    $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 create_snapshot_schedule 1 10 ysql.yugabyte
     ```
 
     ```output
@@ -96,7 +96,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 1. Verify that a snapshot has happened:
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> list_snapshot_schedules
+    $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 list_snapshot_schedules
     ```
 
     ```output
@@ -155,7 +155,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 1. Restore the snapshot schedule to the timestamp you obtained before you added the data, at a terminal prompt.
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca 1620418817729963
+    $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca 1620418817729963
     ```
 
     ```output
@@ -168,7 +168,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 1. Next, verify the restoration is in `RESTORED` state (you'll see more snapshots in the list, as well):
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> list_snapshots
+    $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 list_snapshots
     ```
 
     ```output
@@ -229,7 +229,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. At a terminal prompt, create a snapshot schedule for the database. In this example, the schedule is on the default `yugabyte` database, one snapshot every minute, and each snapshot is retained for ten minutes.
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> create_snapshot_schedule 1 10 ysql.yugabyte
+    $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 create_snapshot_schedule 1 10 ysql.yugabyte
     ```
 
     ```output
@@ -241,7 +241,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. Verify that a snapshot has happened.
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> list_snapshot_schedules
+    $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 list_snapshot_schedules
     ```
 
     ```output
@@ -314,7 +314,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. Restore the snapshot schedule to the timestamp you obtained before you created the table, at a terminal prompt.
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> restore_snapshot_schedule 1ccb7e8b-4032-48b9-ac94-9f425d270a97 1627943076717734
+    $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 restore_snapshot_schedule 1ccb7e8b-4032-48b9-ac94-9f425d270a97 1627943076717734
     ```
 
     ```output
@@ -327,7 +327,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. Next, verify the restoration is in `RESTORED` state (you'll see more snapshots in the list, as well).
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> list_snapshots
+    $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 list_snapshots
     ```
 
     ```output
@@ -357,10 +357,11 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     ```
 
 ### Undo table deletion
+
 1. At a terminal prompt, create a snapshot schedule for the database. In this example, the schedule is on the default `yugabyte` database, one snapshot every minute, and each snapshot is retained for ten minutes.
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> create_snapshot_schedule 1 10 ysql.yugabyte
+    $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 create_snapshot_schedule 1 10 ysql.yugabyte
     ```
 
     ```output
@@ -408,7 +409,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. Verify that a snapshot has happened since table creation.
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> list_snapshot_schedules
+    $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 list_snapshot_schedules
     ```
 
     ```output
@@ -461,7 +462,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. Restore the snapshot schedule to the timestamp you obtained before you deleted the table, at a terminal prompt.
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> restore_snapshot_schedule b4217ea5-56dc-4daf-afea-743460ece241 1627990118725202
+    $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 restore_snapshot_schedule b4217ea5-56dc-4daf-afea-743460ece241 1627990118725202
     ```
 
     ```output
@@ -474,7 +475,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. Next, verify the restoration is in `RESTORED` state (you'll see more snapshots in the list, as well).
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> list_snapshots
+    $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 list_snapshots
     ```
 
     ```output
@@ -517,7 +518,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. At a terminal prompt, create a snapshot schedule for the database. In this example, the schedule is on the default `yugabyte` database, one snapshot every minute, and each snapshot is retained for ten minutes.
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> create_snapshot_schedule 1 10 ysql.yugabyte
+    $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 create_snapshot_schedule 1 10 ysql.yugabyte
     ```
 
     ```output
@@ -565,7 +566,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. Verify that a snapshot has happened since table creation.
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> list_snapshot_schedules
+    $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 list_snapshot_schedules
     ```
 
     ```output
@@ -634,7 +635,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. At a terminal prompt, restore the snapshot schedule to the timestamp you obtained before you added the column.
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> restore_snapshot_schedule 47fd40c3-1c2f-4e1b-b64b-6c2c9f698946 1627992256752809
+    $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 restore_snapshot_schedule 47fd40c3-1c2f-4e1b-b64b-6c2c9f698946 1627992256752809
     ```
 
     ```output
@@ -647,7 +648,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. Next, verify the restoration is in `RESTORED` state (you'll see more snapshots in the list, as well):
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> list_snapshots
+    $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 list_snapshots
     ```
 
     ```output
@@ -687,7 +688,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. At a terminal prompt, create a snapshot schedule for the database. In this example, the schedule is on the default `yugabyte` database, one snapshot every minute, and each snapshot is retained for ten minutes.
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> create_snapshot_schedule 1 10 ysql.yugabyte
+    $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 create_snapshot_schedule 1 10 ysql.yugabyte
     ```
 
     ```output
@@ -735,7 +736,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. Verify that a snapshot has happened since table creation.
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> list_snapshot_schedules
+    $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 list_snapshot_schedules
     ```
 
     ```output
@@ -800,7 +801,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. Restore the snapshot schedule to the timestamp you obtained before you dropped the column, at a terminal prompt.
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> restore_snapshot_schedule 064d1734-377c-4842-a95e-88ce68c93ca9 1627993283589019
+    $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 restore_snapshot_schedule 064d1734-377c-4842-a95e-88ce68c93ca9 1627993283589019
     ```
 
     ```output
@@ -813,7 +814,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. Next, verify the restoration is in `RESTORED` state (you'll see more snapshots in the list, as well):
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> list_snapshots
+    $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 list_snapshots
     ```
 
     ```output
@@ -850,7 +851,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. At a terminal prompt, create a snapshot schedule for the database. In this example, the schedule is on the default `yugabyte` database, one snapshot every minute, and each snapshot is retained for ten minutes.
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> create_snapshot_schedule 1 10 ysql.yugabyte
+    $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 create_snapshot_schedule 1 10 ysql.yugabyte
     ```
 
     ```output
@@ -898,7 +899,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. Verify that a snapshot has happened since table creation.
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> list_snapshot_schedules
+    $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 list_snapshot_schedules
     ```
 
     ```output
@@ -965,7 +966,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. Restore the snapshot schedule to the timestamp you obtained before you created the index, at a terminal prompt.
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> restore_snapshot_schedule dcbe46e3-8108-4d50-8601-423b27d230b1 1627994453375139
+    $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 restore_snapshot_schedule dcbe46e3-8108-4d50-8601-423b27d230b1 1627994453375139
     ```
 
     ```output
@@ -978,7 +979,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. Next, verify the restoration is in `RESTORED` state (you'll see more snapshots in the list, as well):
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> list_snapshots
+    $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 list_snapshots
     ```
 
     ```output

@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TSERVER_REMOTE_BOOTSTRAP_ANCHOR_CLIENT_H
-#define YB_TSERVER_REMOTE_BOOTSTRAP_ANCHOR_CLIENT_H
+#pragma once
 
 #include <gtest/gtest_prod.h>
 
@@ -52,17 +51,21 @@ class HostPort;
 
 namespace tserver {
 
+using SetLogAnchorRefreshStatusFunc = void(std::shared_ptr<rpc::RpcController> controller,
+    const std::shared_ptr<UpdateLogAnchorResponsePB>&,
+    const std::shared_ptr<KeepLogAnchorAliveResponsePB>&);
+
 class RemoteBootstrapAnchorClient : public RefCountedThreadSafe<RemoteBootstrapAnchorClient> {
  public:
   RemoteBootstrapAnchorClient(
-      const string& rbs_client_uuid,
-      const string& owner_info,
+      const std::string& rbs_client_uuid,
+      const std::string& owner_info,
       rpc::ProxyCache* proxy_cache,
       const HostPort& tablet_leader_peer_addr);
 
-  Status RegisterLogAnchor(const string& tablet_id, const OpId& op_id);
+  Status RegisterLogAnchor(const std::string& tablet_id, const int64_t& log_index);
 
-  Status UpdateLogAnchorAsync(const OpId& op_id);
+  Status UpdateLogAnchorAsync(const int64_t& log_index);
 
   Status UnregisterLogAnchor();
 
@@ -70,7 +73,10 @@ class RemoteBootstrapAnchorClient : public RefCountedThreadSafe<RemoteBootstrapA
 
   Status ChangePeerRole();
 
-  void SetLogAnchorRefreshStatus(std::shared_ptr<rpc::RpcController> controller);
+  void SetLogAnchorRefreshStatus(
+      std::shared_ptr<rpc::RpcController> controller,
+      const std::shared_ptr<UpdateLogAnchorResponsePB> &update_anchor_resp,
+      const std::shared_ptr<KeepLogAnchorAliveResponsePB> &keep_anchor_alive_resp);
 
   Status ProcessLogAnchorRefreshStatus();
 
@@ -79,9 +85,9 @@ class RemoteBootstrapAnchorClient : public RefCountedThreadSafe<RemoteBootstrapA
  private:
   std::shared_ptr<RemoteBootstrapServiceProxy> proxy_;
 
-  const string tablet_leader_peer_uuid_;
-  const string rbs_client_uuid_;
-  const string owner_info_;
+  const std::string tablet_leader_peer_uuid_;
+  const std::string rbs_client_uuid_;
+  const std::string owner_info_;
 
   mutable std::mutex log_anchor_status_mutex_;
   Status log_anchor_refresh_status_ GUARDED_BY(log_anchor_status_mutex_) = Status::OK();
@@ -91,5 +97,3 @@ class RemoteBootstrapAnchorClient : public RefCountedThreadSafe<RemoteBootstrapA
 
 }  // namespace tserver
 }  // namespace yb
-
-#endif  // YB_TSERVER_REMOTE_BOOTSTRAP_ANCHOR_CLIENT_H

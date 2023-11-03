@@ -2,13 +2,21 @@
 
 package com.yugabyte.yw.controllers;
 
-import static com.yugabyte.yw.models.Users.Role;
 import static com.yugabyte.yw.models.Users.UserType;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
+import com.yugabyte.yw.common.rbac.RoleBindingUtil;
+import com.yugabyte.yw.common.rbac.RoleResourceDefinition;
+import com.yugabyte.yw.common.rbac.RoleUtil;
 import com.yugabyte.yw.common.user.UserService;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
@@ -17,23 +25,33 @@ import com.yugabyte.yw.forms.UserRegisterFormData;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.Users.UserType;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
+import com.yugabyte.yw.models.rbac.ResourceGroup;
+import com.yugabyte.yw.models.rbac.Role;
+import com.yugabyte.yw.models.rbac.RoleBinding;
+import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
+import io.ebean.annotation.Transactional;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-
 import java.nio.charset.Charset;
 import java.util.*;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
-
-import net.logstash.logback.encoder.org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
 import play.libs.Json;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
@@ -45,15 +63,29 @@ public class UsersController extends AuthenticatedController {
   private static final List<String> specialCharacters =
       ImmutableList.of("!", "@", "#", "$", "%", "^", "&", "*");
 
-  @Inject private RuntimeConfigFactory runtimeConfigFactory;
+  @Inject private RuntimeConfGetter confGetter;
 
   private final PasswordPolicyService passwordPolicyService;
   private final UserService userService;
+  private final TokenAuthenticator tokenAuthenticator;
+  private final RuntimeConfigFactory runtimeConfigFactory;
+  private final RoleUtil roleUtil;
+  private final RoleBindingUtil roleBindingUtil;
 
   @Inject
-  public UsersController(PasswordPolicyService passwordPolicyService, UserService userService) {
+  public UsersController(
+      PasswordPolicyService passwordPolicyService,
+      UserService userService,
+      TokenAuthenticator tokenAuthenticator,
+      RuntimeConfigFactory runtimeConfigFactory,
+      RoleUtil roleUtil,
+      RoleBindingUtil roleBindingUtil) {
     this.passwordPolicyService = passwordPolicyService;
     this.userService = userService;
+    this.tokenAuthenticator = tokenAuthenticator;
+    this.runtimeConfigFactory = runtimeConfigFactory;
+    this.roleUtil = roleUtil;
+    this.roleBindingUtil = roleBindingUtil;
   }
 
   /**
@@ -65,9 +97,15 @@ public class UsersController extends AuthenticatedController {
       value = "Get a user's details",
       nickname = "getUserDetails",
       response = UserWithFeatures.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.USER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.USERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result index(UUID customerUUID, UUID userUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Users user = Users.getOrBadRequest(userUUID);
+    Users user = Users.getOrBadRequest(customerUUID, userUUID);
     return PlatformResults.withData(userService.getUserWithFeatures(customer, user));
   }
 
@@ -81,12 +119,22 @@ public class UsersController extends AuthenticatedController {
       nickname = "listUsers",
       response = UserWithFeatures.class,
       responseContainer = "List")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.USER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.USERS, sourceType = SourceType.ENDPOINT),
+        checkOnlyPermission = true)
+  })
   public Result list(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
+    UserWithFeatures u = RequestContext.get(TokenAuthenticator.USER);
+    Set<UUID> resourceUUIDs =
+        roleBindingUtil.getResourceUuids(u.getUser().getUuid(), ResourceType.USER, Action.READ);
     List<Users> users = Users.getAll(customerUUID);
     List<UserWithFeatures> userWithFeaturesList =
-        users
-            .stream()
+        users.stream()
+            .filter(user -> resourceUUIDs.contains(user.getUuid()))
             .map(user -> userService.getUserWithFeatures(customer, user))
             .collect(Collectors.toList());
     return PlatformResults.withData(userWithFeaturesList);
@@ -106,14 +154,25 @@ public class UsersController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.forms.UserRegisterFormData",
         paramType = "body")
   })
-  public Result create(UUID customerUUID) {
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.USER, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.USERS, sourceType = SourceType.ENDPOINT)),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.ROLE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.ROLE, sourceType = SourceType.ENDPOINT))
+  })
+  @Transactional
+  public Result create(UUID customerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Form<UserRegisterFormData> form =
-        formFactory.getFormDataOrBadRequest(UserRegisterFormData.class);
 
-    UserRegisterFormData formData = form.get();
+    JsonNode requestBody = request.body().asJson();
+    UserRegisterFormData formData =
+        formFactory.getFormDataOrBadRequest(requestBody, UserRegisterFormData.class);
 
-    if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth")) {
+    if (confGetter.getGlobalConf(GlobalConfKeys.useOauth)) {
       byte[] passwordOidc = new byte[16];
       new Random().nextBytes(passwordOidc);
       String generatedPassword = new String(passwordOidc, Charset.forName("UTF-8"));
@@ -129,15 +188,101 @@ public class UsersController extends AuthenticatedController {
       formData.setPassword(generatedPassword); // Password is not used.
     }
 
+    // Validate password.
     passwordPolicyService.checkPasswordPolicy(customerUUID, formData.getPassword());
-    Users user =
-        Users.create(
-            formData.getEmail(), formData.getPassword(), formData.getRole(), customerUUID, false);
+
+    boolean useNewAuthz =
+        runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.rbac.use_new_authz");
+    Users user;
+
+    if (!useNewAuthz) {
+      LOG.debug("Using old authz RBAC model to create user.");
+      user =
+          Users.create(
+              formData.getEmail(), formData.getPassword(), formData.getRole(), customerUUID, false);
+    } else {
+      LOG.debug("Using new authz RBAC model to create user.");
+
+      // Case 1:
+      // Check the role field. Original API use case. To be deprecated.
+      if (formData.getRole() != null && formData.getRoleResourceDefinitions() == null) {
+        // Get the built-in role UUID by name.
+        Role role = Role.getOrBadRequest(customerUUID, formData.getRole().toString());
+        // Create the user.
+        user =
+            Users.create(
+                formData.getEmail(),
+                formData.getPassword(),
+                formData.getRole(),
+                customerUUID,
+                false);
+        // Need to define all available resources in resource group as default.
+        ResourceGroup resourceGroup =
+            ResourceGroup.getSystemDefaultResourceGroup(customerUUID, user);
+        // Create a single role binding for the user.
+        List<RoleBinding> createdRoleBindings =
+            roleBindingUtil.setUserRoleBindings(
+                user.getUuid(),
+                Arrays.asList(new RoleResourceDefinition(role.getRoleUUID(), resourceGroup)),
+                RoleBindingType.Custom);
+
+        LOG.info(
+            "Created user '{}', email '{}', default role bindings '{}'.",
+            user.getUuid(),
+            user.getEmail(),
+            createdRoleBindings.toString());
+      }
+
+      // Case 2:
+      // Check the role and resource definitions list field. New RBAC APIs use case. To be
+      // standardized.
+      else if (formData.getRole() == null && formData.getRoleResourceDefinitions() != null) {
+        // Validate the roles and resource group definitions given.
+        roleBindingUtil.validateRoles(customerUUID, formData.getRoleResourceDefinitions());
+        roleBindingUtil.validateResourceGroups(customerUUID, formData.getRoleResourceDefinitions());
+
+        // Create the user.
+        user =
+            Users.create(
+                formData.getEmail(),
+                formData.getPassword(),
+                Users.Role.ConnectOnly,
+                customerUUID,
+                false);
+
+        // Populate all the system default resource groups for all system defined roles.
+        roleBindingUtil.populateSystemRoleResourceGroups(
+            customerUUID, user.getUuid(), formData.getRoleResourceDefinitions());
+        // Add all the role bindings for the user.
+        List<RoleBinding> createdRoleBindings =
+            roleBindingUtil.setUserRoleBindings(
+                user.getUuid(), formData.getRoleResourceDefinitions(), RoleBindingType.Custom);
+
+        LOG.info(
+            "Created user '{}', email '{}', custom role bindings '{}'.",
+            user.getUuid(),
+            user.getEmail(),
+            createdRoleBindings.toString());
+      }
+
+      // Case 3:
+      // When both or none of ('role', 'roleResourceDefinitions') are given by the user. Wrong API
+      // usage.
+      else {
+        String errMsg =
+            String.format(
+                "Any one of the fields 'role' or 'roleResourceDefinitions' should be defined. "
+                    + "Instead got 'role' = '%s' and 'roleResourceDefinitions' = '%s'.",
+                formData.getRole(), formData.getRoleResourceDefinitions().toString());
+        LOG.error(errMsg);
+        throw new PlatformServiceException(BAD_REQUEST, errMsg);
+      }
+    }
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.User,
-            Objects.toString(user.uuid, null),
+            Objects.toString(user.getUuid(), null),
             Audit.ActionType.Create,
             Json.toJson(formData));
     return PlatformResults.withData(userService.getUserWithFeatures(customer, user));
@@ -153,10 +298,15 @@ public class UsersController extends AuthenticatedController {
       nickname = "deleteUser",
       notes = "Deletes the specified user. Note that you can't delete a customer's primary user.",
       response = YBPSuccess.class)
-  public Result delete(UUID customerUUID, UUID userUUID) {
-    Users user = Users.getOrBadRequest(userUUID);
-    checkUserOwnership(customerUUID, userUUID, user);
-    if (user.getIsPrimary()) {
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.USER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.USERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result delete(UUID customerUUID, UUID userUUID, Http.Request request) {
+    Users user = Users.getOrBadRequest(customerUUID, userUUID);
+    if (user.isPrimary()) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
@@ -164,8 +314,8 @@ public class UsersController extends AuthenticatedController {
     }
     if (user.delete()) {
       auditService()
-          .createAuditEntryWithReqBody(
-              ctx(), Audit.TargetType.User, userUUID.toString(), Audit.ActionType.Delete);
+          .createAuditEntry(
+              request, Audit.TargetType.User, userUUID.toString(), Audit.ActionType.Delete);
       return YBPSuccess.empty();
     } else {
       throw new PlatformServiceException(
@@ -173,15 +323,34 @@ public class UsersController extends AuthenticatedController {
     }
   }
 
-  private void checkUserOwnership(UUID customerUUID, UUID userUUID, Users user) {
-    Customer.getOrBadRequest(customerUUID);
-    if (!user.customerUUID.equals(customerUUID)) {
+  /**
+   * GET endpoint for retrieving the OIDC auth token for a given user.
+   *
+   * @return JSON response with users OIDC auth token.
+   */
+  @ApiOperation(
+      value = "Retrieve OIDC auth token",
+      nickname = "retrieveOIDCAuthToken",
+      response = Users.UserOIDCAuthToken.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.USER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result retrieveOidcAuthToken(UUID customerUUID, UUID userUuid, Http.Request request) {
+    if (!confGetter.getGlobalConf(GlobalConfKeys.oidcFeatureEnhancements)) {
       throw new PlatformServiceException(
-          BAD_REQUEST,
-          String.format(
-              "User UUID %s does not belong to customer %s",
-              userUUID.toString(), customerUUID.toString()));
+          BAD_REQUEST, "yb.security.oidc_feature_enhancements flag is not enabled.");
     }
+    Customer.getOrBadRequest(customerUUID);
+    Users user = Users.getOrBadRequest(customerUUID, userUuid);
+
+    Users.UserOIDCAuthToken token = new Users.UserOIDCAuthToken(user.getUnmakedOidcJwtAuthToken());
+    auditService()
+        .createAuditEntry(
+            request, Audit.TargetType.User, userUuid.toString(), Audit.ActionType.SetSecurity);
+    return PlatformResults.withData(token);
   }
 
   /**
@@ -191,26 +360,60 @@ public class UsersController extends AuthenticatedController {
    */
   @ApiOperation(
       value = "Change a user's role",
+      notes = "Deprecated. Use this method instead: setRoleBinding.",
       nickname = "updateUserRole",
       response = YBPSuccess.class)
-  public Result changeRole(UUID customerUUID, UUID userUUID, String role) {
-    Users user = Users.getOrBadRequest(userUUID);
-    checkUserOwnership(customerUUID, userUUID, user);
-    if (UserType.ldap == user.getUserType() && user.getLdapSpecifiedRole()) {
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(
+                resourceType = ResourceType.USER,
+                action = Action.UPDATE_ROLE_BINDINGS),
+        resourceLocation = @Resource(path = Util.USERS, sourceType = SourceType.ENDPOINT)),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.ROLE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.ROLE, sourceType = SourceType.ENDPOINT))
+  })
+  @Deprecated
+  @Transactional
+  public Result changeRole(UUID customerUUID, UUID userUUID, String role, Http.Request request) {
+    Users user = Users.getOrBadRequest(customerUUID, userUUID);
+    if (UserType.ldap == user.getUserType() && user.isLdapSpecifiedRole()) {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot change role for LDAP user.");
     }
-    if (Role.SuperAdmin == user.getRole()) {
+    if (Users.Role.SuperAdmin == user.getRole()) {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot change super admin role.");
     }
-    user.setRole(Role.valueOf(role));
+    user.setRole(Users.Role.valueOf(role));
     user.save();
+
+    boolean useNewAuthz =
+        runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.rbac.use_new_authz");
+    if (useNewAuthz) {
+      LOG.debug("Using new authz RBAC model to edit user role.");
+      // Get the built-in role UUID by name.
+      Role newRbacRole = Role.getOrBadRequest(customerUUID, role);
+      // Need to define all available resources in resource group as default.
+      ResourceGroup resourceGroup = ResourceGroup.getSystemDefaultResourceGroup(customerUUID, user);
+      // Create a single role binding for the user.
+      List<RoleBinding> createdRoleBindings =
+          roleBindingUtil.setUserRoleBindings(
+              user.getUuid(),
+              Arrays.asList(new RoleResourceDefinition(newRbacRole.getRoleUUID(), resourceGroup)),
+              RoleBindingType.Custom);
+
+      LOG.info(
+          "Changed user '{}' with email '{}' to role '{}', with default role bindings '{}'.",
+          user.getUuid(),
+          user.getEmail(),
+          role,
+          createdRoleBindings.toString());
+    }
+
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
-            Audit.TargetType.User,
-            userUUID.toString(),
-            Audit.ActionType.ChangeUserRole,
-            request().body().asJson());
+            request, Audit.TargetType.User, userUUID.toString(), Audit.ActionType.ChangeUserRole);
     return YBPSuccess.empty();
   }
 
@@ -231,24 +434,36 @@ public class UsersController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.forms.UserRegisterFormData",
         paramType = "body")
   })
-  public Result changePassword(UUID customerUUID, UUID userUUID) {
-    Users user = Users.getOrBadRequest(userUUID);
+  @AuthzPath(
+      @RequiredPermissionOnResource(
+          requiredPermission =
+              @PermissionAttribute(
+                  resourceType = ResourceType.USER,
+                  action = Action.UPDATE_PROFILE),
+          resourceLocation = @Resource(path = Util.USERS, sourceType = SourceType.ENDPOINT)))
+  public Result changePassword(UUID customerUUID, UUID userUUID, Http.Request request) {
+    Users user = Users.getOrBadRequest(customerUUID, userUUID);
     if (UserType.ldap == user.getUserType()) {
       throw new PlatformServiceException(BAD_REQUEST, "Can't change password for LDAP user.");
     }
-    checkUserOwnership(customerUUID, userUUID, user);
+
+    if (!checkUpdateProfileAccessForPasswordChange(userUUID, request)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Only the User can change his/her own password.");
+    }
+
     Form<UserRegisterFormData> form =
-        formFactory.getFormDataOrBadRequest(UserRegisterFormData.class);
+        formFactory.getFormDataOrBadRequest(request, UserRegisterFormData.class);
 
     UserRegisterFormData formData = form.get();
     passwordPolicyService.checkPasswordPolicy(customerUUID, formData.getPassword());
-    if (formData.getEmail().equals(user.email)) {
+    if (formData.getEmail().equals(user.getEmail())) {
       if (formData.getPassword().equals(formData.getConfirmPassword())) {
         user.setPassword(formData.getPassword());
         user.save();
         auditService()
-            .createAuditEntryWithReqBody(
-                ctx(),
+            .createAuditEntry(
+                request,
                 Audit.TargetType.User,
                 userUUID.toString(),
                 Audit.ActionType.ChangeUserPassword);
@@ -256,6 +471,20 @@ public class UsersController extends AuthenticatedController {
       }
     }
     throw new PlatformServiceException(BAD_REQUEST, "Invalid user credentials.");
+  }
+
+  private Users getLoggedInUser(Http.Request request) {
+    Users user = tokenAuthenticator.getCurrentAuthenticatedUser(request);
+    return user;
+  }
+
+  private boolean checkUpdateProfileAccessForPasswordChange(UUID userUUID, Http.Request request) {
+    Users user = getLoggedInUser(request);
+
+    if (user == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "Unable To Authenticate User");
+    }
+    return userUUID.equals(user.getUuid());
   }
 
   /**
@@ -275,10 +504,18 @@ public class UsersController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.forms.UserProfileFormData",
         paramType = "body")
   })
-  public Result updateProfile(UUID customerUUID, UUID userUUID) {
-    Users user = Users.getOrBadRequest(userUUID);
-    checkUserOwnership(customerUUID, userUUID, user);
-    Form<UserProfileFormData> form = formFactory.getFormDataOrBadRequest(UserProfileFormData.class);
+  @AuthzPath(
+      @RequiredPermissionOnResource(
+          requiredPermission =
+              @PermissionAttribute(
+                  resourceType = ResourceType.USER,
+                  action = Action.UPDATE_PROFILE),
+          resourceLocation = @Resource(path = Util.USERS, sourceType = SourceType.ENDPOINT)))
+  public Result updateProfile(UUID customerUUID, UUID userUUID, Http.Request request) {
+
+    Users user = Users.getOrBadRequest(customerUUID, userUUID);
+    Form<UserProfileFormData> form =
+        formFactory.getFormDataOrBadRequest(request, UserProfileFormData.class);
 
     UserProfileFormData formData = form.get();
 
@@ -286,6 +523,12 @@ public class UsersController extends AuthenticatedController {
       if (UserType.ldap == user.getUserType()) {
         throw new PlatformServiceException(BAD_REQUEST, "Can't change password for LDAP user.");
       }
+
+      if (!checkUpdateProfileAccessForPasswordChange(userUUID, request)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Only the User can change his/her own password.");
+      }
+
       passwordPolicyService.checkPasswordPolicy(customerUUID, formData.getPassword());
       if (!formData.getPassword().equals(formData.getConfirmPassword())) {
         throw new PlatformServiceException(
@@ -293,18 +536,41 @@ public class UsersController extends AuthenticatedController {
       }
       user.setPassword(formData.getPassword());
     }
-    if (formData.getTimezone() != user.getTimezone()) {
+
+    Users loggedInUser = getLoggedInUser(request);
+    if (loggedInUser.getRole().compareTo(Users.Role.BackupAdmin) <= 0
+        && formData.getRole() != user.getRole()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "ConnectOnly/ReadOnly/BackupAdmin users can't change their assigned roles");
+    }
+
+    if (loggedInUser.getRole().compareTo(Users.Role.BackupAdmin) <= 0
+        && !formData.getTimezone().equals(user.getTimezone())) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "ConnectOnly/ReadOnly/BackupAdmin users can't change their timezone");
+    }
+
+    if (!formData.getTimezone().equals(user.getTimezone())) {
       user.setTimezone(formData.getTimezone());
     }
     if (formData.getRole() != user.getRole()) {
-      if (Role.SuperAdmin == user.getRole()) {
+      if (Users.Role.SuperAdmin == user.getRole()) {
         throw new PlatformServiceException(BAD_REQUEST, "Can't change super admin role.");
+      }
+
+      if (formData.getRole() == Users.Role.SuperAdmin) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Can't Assign the role of " + "SuperAdmin to another user.");
+      }
+
+      if (user.getUserType() == UserType.ldap && user.isLdapSpecifiedRole() == true) {
+        throw new PlatformServiceException(BAD_REQUEST, "Cannot change role for LDAP user.");
       }
       user.setRole(formData.getRole());
     }
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.User,
             userUUID.toString(),
             Audit.ActionType.Update,

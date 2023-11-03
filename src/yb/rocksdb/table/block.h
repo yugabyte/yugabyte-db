@@ -20,8 +20,6 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
-#ifndef YB_ROCKSDB_TABLE_BLOCK_H
-#define YB_ROCKSDB_TABLE_BLOCK_H
 
 #pragma once
 #include <stddef.h>
@@ -149,7 +147,7 @@ class Block {
   void operator=(const Block&);
 };
 
-class BlockIter : public InternalIterator {
+class BlockIter final : public InternalIterator {
  public:
   BlockIter()
       : comparator_(nullptr),
@@ -181,30 +179,25 @@ class BlockIter : public InternalIterator {
     status_ = s;
   }
 
-  virtual bool Valid() const override { return current_ < restarts_; }
   virtual Status status() const override { return status_; }
 
-  // Becomes invalid after iterator modification or destruction
-  virtual Slice key() const override {
-    assert(Valid());
-    return key_.GetKey();
+  virtual const KeyValueEntry& Entry() const override {
+    if (current_ < restarts_) {
+      return entry_;
+    }
+
+    return KeyValueEntry::Invalid();
   }
 
-  // Valid during a block life-time, even after iterator's destruction
-  virtual Slice value() const override {
-    assert(Valid());
-    return value_;
-  }
+  virtual const KeyValueEntry& Next() override;
 
-  virtual void Next() override;
+  virtual const KeyValueEntry& Prev() override;
 
-  virtual void Prev() override;
+  virtual const KeyValueEntry& Seek(Slice target) override;
 
-  virtual void Seek(const Slice& target) override;
+  virtual const KeyValueEntry& SeekToFirst() override;
 
-  virtual void SeekToFirst() override;
-
-  virtual void SeekToLast() override;
+  virtual const KeyValueEntry& SeekToLast() override;
 
   virtual Status PinData() override {
     // block data is always pinned.
@@ -224,6 +217,10 @@ class BlockIter : public InternalIterator {
     return restart_index_;
   }
 
+  ScanForwardResult ScanForward(
+      const Comparator* user_key_comparator, const Slice& upperbound,
+      KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) override;
+
  private:
   const Comparator* comparator_;
   const char* data_;       // underlying block contents
@@ -235,7 +232,7 @@ class BlockIter : public InternalIterator {
   uint32_t current_;
   uint32_t restart_index_;  // Index of restart block in which current_ falls
   IterKey key_;
-  Slice value_;
+  KeyValueEntry entry_;
   Status status_;
   const BlockHashIndex* hash_index_;
   const BlockPrefixIndex* prefix_index_;
@@ -247,7 +244,7 @@ class BlockIter : public InternalIterator {
   // Return the offset in data_ just past the end of the current entry.
   inline uint32_t NextEntryOffset() const {
     // NOTE: We don't support files bigger than 2GB
-    return static_cast<uint32_t>((value_.cdata() + value_.size()) - data_);
+    return static_cast<uint32_t>(entry_.value.cend() - data_);
   }
 
   uint32_t GetRestartPoint(uint32_t index) {
@@ -262,7 +259,10 @@ class BlockIter : public InternalIterator {
 
     // ParseNextKey() starts at the end of value_, so set value_ accordingly
     uint32_t offset = GetRestartPoint(index);
-    value_ = Slice(data_ + offset, 0UL);
+    entry_ = KeyValueEntry {
+      .key = key_.GetKey(),
+      .value = Slice(data_ + offset, 0UL),
+    };
   }
 
   void SetError(const Status& error);
@@ -286,5 +286,3 @@ class BlockIter : public InternalIterator {
 };
 
 }  // namespace rocksdb
-
-#endif // YB_ROCKSDB_TABLE_BLOCK_H

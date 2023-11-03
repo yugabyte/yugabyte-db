@@ -12,8 +12,19 @@ set -e
 # py_wrapper is already in bin/
 . "${BASH_SOURCE%/*}"/common.sh
 
-activate_virtualenv
-cd "$yb_devops_home"
+detect_os
 
-activate_virtualenv
-$PYTHON_EXECUTABLE "$@"
+# The PEX environment is used if the operating system is not macOS, the
+# environment variable YB_USE_VIRTUAL_ENV is unset (default unset), and
+# the pexEnv directory exists
+if [ "$is_mac" == false ] && \
+   [[ -z ${YB_USE_VIRTUAL_ENV:-} ]] && \
+   [ -d "$yb_devops_home/pex/pexEnv" ]; then
+    activate_pex
+    $PYTHON_EXECUTABLE "$@"
+# The PEX environment is used in all other cases.
+else
+    activate_virtualenv
+    cd "$yb_devops_home"
+    $PYTHON_EXECUTABLE "$@"
+fi

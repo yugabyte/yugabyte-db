@@ -28,9 +28,9 @@
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/format.h"
 #include "yb/util/status_format.h"
-#include "yb/util/test_util.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
 
@@ -40,11 +40,11 @@ namespace yb {
 
 using client::YBSessionPtr;
 using client::YBSchemaBuilder;
-using client::YBqlReadOp;
 using client::YBqlWriteOp;
 using itest::TServerDetails;
 using std::shared_ptr;
-using std::unique_ptr;
+using std::vector;
+using std::string;
 
 using namespace std::literals;
 
@@ -146,8 +146,8 @@ class KVTableTsFailoverWriteIfTest : public integration_tests::YBTableTestBase {
                                                     table.namespace_type()));
 
       YBSchemaBuilder b;
-      b.AddColumn(kKeyColumnName)->Type(INT32)->NotNull()->HashPrimaryKey();
-      b.AddColumn(kValueColumnName)->Type(INT32)->NotNull();
+      b.AddColumn(kKeyColumnName)->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
+      b.AddColumn(kValueColumnName)->Type(DataType::INT32)->NotNull();
       ASSERT_OK(b.Build(&schema_));
 
       ASSERT_OK(NewTableCreator()->table_name(table_name()).schema(&schema_).Create());
@@ -210,7 +210,7 @@ class KVTableTsFailoverWriteIfTest : public integration_tests::YBTableTestBase {
 
 // Test for ENG-3471 - shouldn't run write-if when leader hasn't yet committed all pendings ops.
 TEST_F(KVTableTsFailoverWriteIfTest, KillTabletServerDuringReplication) {
-  FLAGS_TEST_combine_batcher_errors = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_combine_batcher_errors) = true;
 
   const int32_t key = 0;
   const int32_t initial_value = 10000;

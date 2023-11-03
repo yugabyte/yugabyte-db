@@ -10,8 +10,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_YQL_PGWRAPPER_GEO_TRANSACTIONS_TEST_BASE_H
-#define YB_YQL_PGWRAPPER_GEO_TRANSACTIONS_TEST_BASE_H
+#pragma once
+
+#include <optional>
 
 #include "yb/client/client_fwd.h"
 
@@ -34,6 +35,8 @@ class GeoTransactionsTestBase : public pgwrapper::PgMiniTestBase {
 
   void SetUp() override;
 
+  void InitTransactionManagerAndPool();
+
   size_t NumTabletServers() override { return NumRegions(); }
 
   virtual size_t NumRegions() { return 3; }
@@ -46,11 +49,25 @@ class GeoTransactionsTestBase : public pgwrapper::PgMiniTestBase {
 
   void CreateTransactionTable(int region);
 
+  Result<TableId> GetTransactionTableId(int region);
+
+  void StartDeleteTransactionTable(int region);
+
+  void WaitForDeleteTransactionTableToFinish(int region);
+
   void CreateMultiRegionTransactionTable();
 
-  void SetupTables(size_t tables_per_region);
+  void SetupTablespaces();
 
-  void DropTables();
+  virtual void SetupTables(size_t tables_per_region);
+
+  void SetupTablesAndTablespaces(size_t tables_per_region);
+
+  void DropTablespaces();
+
+  virtual void DropTables();
+
+  void DropTablesAndTablespaces();
 
   void WaitForStatusTabletsVersion(uint64_t version);
 
@@ -59,14 +76,13 @@ class GeoTransactionsTestBase : public pgwrapper::PgMiniTestBase {
   Status StartTabletServersByRegion(int region);
   Status ShutdownTabletServersByRegion(int region);
   Status StartTabletServers(
-    const boost::optional<std::string>& region_str, const boost::optional<std::string>& zone_str);
+    const std::optional<std::string>& region_str, const std::optional<std::string>& zone_str);
   Status ShutdownTabletServers(
-    const boost::optional<std::string>& region_str, const boost::optional<std::string>& zone_str);
+    const std::optional<std::string>& region_str, const std::optional<std::string>& zone_str);
   Status StartShutdownTabletServers(
-    const boost::optional<std::string>& region_str, const boost::optional<std::string>& zone_str,
+    const std::optional<std::string>& region_str, const std::optional<std::string>& zone_str,
     bool shutdown);
 
-  std::unique_ptr<YBClient> client_;
   TransactionManager* transaction_manager_;
   TransactionPool* transaction_pool_;
   size_t tables_per_region_ = 0;
@@ -75,5 +91,3 @@ class GeoTransactionsTestBase : public pgwrapper::PgMiniTestBase {
 
 } // namespace client
 } // namespace yb
-
-#endif // YB_YQL_PGWRAPPER_GEO_TRANSACTIONS_TEST_BASE_H

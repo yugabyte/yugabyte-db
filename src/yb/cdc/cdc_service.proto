@@ -37,8 +37,10 @@ option java_package = "org.yb.cdc";
 
 import "yb/common/common.proto";
 import "yb/common/common_net.proto";
+import "yb/common/common_types.proto";
 import "yb/common/value.proto";
 import "yb/common/wire_protocol.proto";
+import "yb/master/master_client.proto";
 import "yb/rpc/service.proto";
 import "yb/tablet/operations.proto";
 import "yb/tserver/tserver.proto";
@@ -60,6 +62,8 @@ service CDCService {
   rpc SetCDCCheckpoint (SetCDCCheckpointRequestPB) returns (SetCDCCheckpointResponsePB) {
     option (yb.rpc.trivial) = true;
   };
+  rpc GetTabletListToPollForCDC (GetTabletListToPollForCDCRequestPB)
+      returns (GetTabletListToPollForCDCResponsePB);
   rpc IsBootstrapRequired (IsBootstrapRequiredRequestPB) returns (IsBootstrapRequiredResponsePB);
   rpc CheckReplicationDrain (CheckReplicationDrainRequestPB)
       returns (CheckReplicationDrainResponsePB);
@@ -83,6 +87,8 @@ message CDCErrorPB {
     NOT_RUNNING = 8;
     INTERNAL_ERROR = 9;
     INVALID_REQUEST = 10;
+    TABLET_SPLIT = 12;
+    OPERATION_DISALLOWED = 13;
   }
 
   // The error code.
@@ -96,8 +102,9 @@ message CDCErrorPB {
 
 enum CDCRecordType {
   CHANGE = 1;
-  AFTER = 2;
   ALL = 3;
+  FULL_ROW_NEW_IMAGE = 4;
+  MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES = 5;
 }
 
 enum CDCRecordFormat {
@@ -112,7 +119,7 @@ enum CDCRequestSource {
 }
 
 enum CDCCheckpointType {
-  IMPLICIT = 1; // Used for 2DC
+  IMPLICIT = 1; // Used for 2DC and CDC
   EXPLICIT = 2; // Used for CDC
 }
 
@@ -123,7 +130,9 @@ message CreateCDCStreamRequestPB {
   optional CDCRecordFormat record_format = 3 [default = JSON];
   optional string namespace_name = 4;
   optional CDCRequestSource source_type = 5 [default = XCLUSTER];
-  optional CDCCheckpointType checkpoint_type = 6 [default = IMPLICIT];
+  optional CDCCheckpointType checkpoint_type = 6;
+  optional bool transactional = 7; // [default = false]
+  optional YQLDatabase db_type = 8 [default = YQL_DATABASE_PGSQL] ;
 }
 
 message CreateCDCStreamResponsePB {
@@ -202,6 +211,14 @@ message GetChangesRequestPB {
   optional CDCSDKCheckpointPB from_cdc_sdk_checkpoint = 8;
 
   optional bool need_schema_info = 9 [default = false];
+
+  // This will be the checkpoint used for 'EXPLICIT' checkpoint streams.
+  optional CDCSDKCheckpointPB explicit_cdc_sdk_checkpoint = 10;
+
+  optional int64 safe_hybrid_time = 11 [default = -1];
+
+  // index used to filter out the records we've already streamed.
+  optional int32 wal_segment_index = 12 [default = 0];
 }
 
 message KeyValuePairPB {
@@ -216,6 +233,8 @@ message CDCRecordPB {
     APPLY = 3;
     SPLIT_OP = 4;
     CHANGE_METADATA = 5;
+    // Reserved for deprecated TRANSACTION_COMMITTED and TRANSACTION_CREATED fields.
+    reserved 6, 7;
   }
   optional uint64 time = 1;
   optional OperationType operation = 2;
@@ -230,7 +249,7 @@ message CDCRecordPB {
 
   optional tablet.TransactionStatePB transaction_state = 7;
 
-  // If transaction_state.status is APPLYING, then partitions will contain the partition for the
+  // If transaction_state.status is APPLYING, then partition will contain the partition for the
   // tablet being polled.
   optional PartitionPB partition = 9;
 
@@ -239,6 +258,10 @@ message CDCRecordPB {
 
   // If operation type is a CHANGE_METADATA_OP, then include the tablet payload for it.
   optional tablet.ChangeMetadataRequestPB change_metadata_request = 11;
+
+  // For intents, what subtransaction, if any, they are part of.
+  // Omitted in cases where the subtransaction ID is kMinSubTransactionId.
+  optional uint32 subtransaction_id = 12;
 }
 
 // CDCSDK: Column information used in case of DDL, as part of schema info
@@ -338,6 +361,7 @@ message RowMessage {
     DDL      = 5;
     TRUNCATE = 6;
     READ     = 7;
+    SAFEPOINT= 8;
   }
 
   optional bytes  transaction_id = 1;
@@ -361,6 +385,7 @@ message RowMessage {
 
   // truncate info
   optional yb.tserver.TruncateRequestPB truncate_request_info = 13;
+  optional uint64 record_time = 14;
 }
 
 message CDCSDKProtoRecordPB {
@@ -368,6 +393,8 @@ message CDCSDKProtoRecordPB {
 
   // Op id information to identify duplicate entries
   optional CDCSDKOpIdPB cdc_sdk_op_id = 2;
+
+  optional CDCSDKOpIdPB from_op_id = 3;
 }
 
 message GetChangesResponsePB {
@@ -393,16 +420,26 @@ message GetChangesResponsePB {
 
   // The safe time to be used on the target for this tablet.
   optional int64 safe_hybrid_time = 10;
+
+  // index used to filter out the records we've already streamed.
+  optional int32 wal_segment_index = 11 [default = 0];
 }
 
 message GetCheckpointRequestPB {
   optional bytes stream_id = 1;
   optional bytes tablet_id = 2;
+  // The table_id will be required in case of colocated tables.
+  optional bytes table_id = 3;
+  // Whether the caller knows the tablet address or needs to use us as a proxy.
+  optional bool serve_as_proxy = 4 [default = true];
 }
 
 message GetCheckpointResponsePB {
   optional CDCErrorPB error = 1;
   optional CDCCheckpointPB checkpoint = 2;
+  // The snapshot_key and snapshot_time will be used for CDCSDK snapshot purposes.
+  optional bytes snapshot_key = 3;
+  optional uint64 snapshot_time = 4;
 }
 
 message UpdateCdcReplicatedIndexRequestPB {
@@ -420,6 +457,8 @@ message UpdateCdcReplicatedIndexRequestPB {
   repeated OpIdPB cdc_sdk_consumed_ops = 7;
   repeated uint64 cdc_sdk_ops_expiration_ms = 8;
   repeated bytes stream_ids = 9;
+  optional fixed64 cdc_sdk_safe_time = 10;
+  repeated fixed64 cdc_sdk_safe_times = 11;
 }
 
 message UpdateCdcReplicatedIndexResponsePB {
@@ -433,6 +472,8 @@ message BootstrapProducerRequestPB {
 message BootstrapProducerResponsePB {
   optional CDCErrorPB error = 1;
   repeated bytes cdc_bootstrap_ids = 2;
+  // Minimum time after which data is available on all the bootstrapped streams.
+  optional fixed64 bootstrap_time = 3;
 }
 
 message GetLatestEntryOpIdRequestPB {
@@ -445,6 +486,7 @@ message GetLatestEntryOpIdResponsePB {
 
   optional OpIdPB op_id = 2; // Deprecated.
   repeated OpIdPB op_ids = 3; // Batch param.
+  optional fixed64 bootstrap_time = 4;
 }
 
 message TableInfo {
@@ -468,10 +510,28 @@ message SetCDCCheckpointRequestPB {
   optional bytes tablet_id = 4;
   optional bool initial_checkpoint = 5 [default = false];
   optional bool bootstrap = 6 [default = false];
+  optional fixed64 cdc_sdk_safe_time = 7;
+  // Whether the caller knows the tablet address or needs to use us as a proxy.
+  optional bool serve_as_proxy = 8 [default = true];
 }
 
 message SetCDCCheckpointResponsePB {
   optional CDCErrorPB error = 1;
+}
+
+message TabletCheckpointPair {
+  optional yb.master.TabletLocationsPB tablet_locations = 1;
+  optional CDCSDKCheckpointPB cdc_sdk_checkpoint = 2;
+}
+
+message GetTabletListToPollForCDCRequestPB {
+  optional TableInfo table_info = 1;
+  optional bytes tablet_id = 2;
+}
+
+message GetTabletListToPollForCDCResponsePB {
+  optional CDCErrorPB error = 1;
+  repeated TabletCheckpointPair tablet_checkpoint_pairs = 2;
 }
 
 message IsBootstrapRequiredRequestPB {

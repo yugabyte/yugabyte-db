@@ -39,11 +39,11 @@
 
 #include <time.h>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/client/table.h"
 
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 
@@ -53,20 +53,22 @@
 #include "yb/tablet/local_tablet_writer.h"
 #include "yb/tablet/tablet-test-base.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/slice.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/flags.h"
 
-using std::shared_ptr;
-using std::unordered_set;
+using std::string;
+using std::vector;
 
 namespace yb {
 namespace tablet {
 
-DEFINE_int32(testiterator_num_inserts, 1000,
+DEFINE_NON_RUNTIME_int32(testiterator_num_inserts, 1000,
              "Number of rows inserted in TestRowIterator/TestInsert");
 
 static_assert(static_cast<int>(to_underlying(TableType::YQL_TABLE_TYPE)) ==
@@ -85,7 +87,7 @@ TYPED_TEST_CASE(TestTablet, TabletTestHelperTypes);
 // Test that inserting a row which already exists causes an AlreadyPresent
 // error
 TYPED_TEST(TestTablet, TestInsertDuplicateKey) {
-  LocalTabletWriter writer(this->tablet().get());
+  LocalTabletWriter writer(this->tablet());
 
   CHECK_OK(this->InsertTestRow(&writer, 12345, 0));
 
@@ -121,7 +123,7 @@ TYPED_TEST(TestTablet, TestRowIteratorComplex) {
   int32_t max_rows = this->ClampRowCount(FLAGS_testiterator_num_inserts);
 
   // Put a row in (insert and flush).
-  LocalTabletWriter writer(this->tablet().get());
+  LocalTabletWriter writer(this->tablet());
   for (int32_t i = 0; i < max_rows; i++) {
     ASSERT_OK_FAST(this->InsertTestRow(&writer, i, 0));
   }
@@ -142,7 +144,7 @@ TYPED_TEST(TestTablet, TestRowIteratorComplex) {
 
   // Collect the expected rows.
   vector<string> rows;
-  ASSERT_OK(yb::tablet::DumpTablet(*this->tablet(), this->client_schema_, &rows));
+  ASSERT_OK(yb::tablet::DumpTablet(*this->tablet(), &rows));
   ASSERT_EQ(max_rows, rows.size());
 }
 
@@ -150,7 +152,7 @@ TYPED_TEST(TestTablet, TestRowIteratorComplex) {
 // the most recent value.
 TYPED_TEST(TestTablet, TestMultipleUpdates) {
   // Insert and update same row several times.
-  LocalTabletWriter writer(this->tablet().get());
+  LocalTabletWriter writer(this->tablet());
   ASSERT_OK(this->InsertTestRow(&writer, 0, 0));
   ASSERT_OK(this->UpdateTestRow(&writer, 0, 1));
   ASSERT_OK(this->UpdateTestRow(&writer, 0, 2));
@@ -197,7 +199,7 @@ TYPED_TEST(TestTablet, TestMetricsInit) {
 }
 
 TYPED_TEST(TestTablet, TestFlushedOpId) {
-  auto tablet = this->tablet().get();
+  auto tablet = this->tablet();
   LocalTabletWriter writer(tablet);
   const int64_t kCount = 1000;
 
@@ -222,6 +224,33 @@ TYPED_TEST(TestTablet, TestFlushedOpId) {
   ASSERT_OK(tablet->Flush(FlushMode::kSync));
   id = ASSERT_RESULT(tablet->MaxPersistentOpId()).regular;
   ASSERT_EQ(id.index, start_index + 2*kCount);
+}
+
+TYPED_TEST(TestTablet, TestDocKeyMetrics) {
+  auto metrics = this->harness()->tablet()->metrics();
+
+  ASSERT_EQ(metrics->Get(TabletCounters::kDocDBKeysFound), 0);
+  ASSERT_EQ(metrics->Get(TabletCounters::kDocDBObsoleteKeysFound), 0);
+
+  LocalTabletWriter writer(this->tablet());
+  ASSERT_OK(this->InsertTestRow(&writer, 0, 0));
+  ASSERT_OK(this->InsertTestRow(&writer, 1, 0));
+  ASSERT_OK(this->InsertTestRow(&writer, 2, 0));
+  ASSERT_OK(this->InsertTestRow(&writer, 3, 0));
+  ASSERT_OK(this->InsertTestRow(&writer, 4, 0));
+
+  this->VerifyTestRows(0, 5);
+
+  ASSERT_EQ(metrics->Get(TabletCounters::kDocDBKeysFound), 5);
+  ASSERT_EQ(metrics->Get(TabletCounters::kDocDBObsoleteKeysFound), 0);
+  auto prev_total_keys = metrics->Get(TabletCounters::kDocDBKeysFound);
+
+  ASSERT_OK(this->DeleteTestRow(&writer, 0));
+  std::vector<std::string> str;
+  ASSERT_OK(this->IterateToStringList(&str));
+
+  ASSERT_EQ(metrics->Get(TabletCounters::kDocDBKeysFound) - prev_total_keys, 5);
+  ASSERT_EQ(metrics->Get(TabletCounters::kDocDBObsoleteKeysFound), 1);
 }
 
 } // namespace tablet

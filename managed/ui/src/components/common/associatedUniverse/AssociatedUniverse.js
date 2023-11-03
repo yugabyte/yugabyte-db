@@ -1,4 +1,3 @@
-import React from 'react';
 import { YBModal } from '../forms/fields';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { Link } from 'react-router';
@@ -13,8 +12,8 @@ const modifyStatus = (item, row) => {
   const universeStatus = row.universePaused
     ? 'Paused'
     : row.updateSucceeded && !row.updateInProgress
-      ? 'Ready'
-      : 'Error';
+    ? 'Ready'
+    : 'Error';
   switch (universeStatus) {
     case 'Ready':
       return (
@@ -59,7 +58,7 @@ export const AssociatedUniverse = ({ onHide, associatedUniverses, visible, title
     <YBModal
       visible={visible}
       onHide={onHide}
-      submitLabel='Close'
+      submitLabel="Close"
       onFormSubmit={onHide}
       title={`Universes using ${title}`}
     >
@@ -70,7 +69,7 @@ export const AssociatedUniverse = ({ onHide, associatedUniverses, visible, title
         >
           <TableHeaderColumn dataField="uuid" hidden={true} isKey={true}>
             UUID
-            </TableHeaderColumn>
+          </TableHeaderColumn>
           <TableHeaderColumn
             dataField="name"
             columnClassName="no-border name-column"
@@ -79,7 +78,7 @@ export const AssociatedUniverse = ({ onHide, associatedUniverses, visible, title
             dataFormat={getUniverseLink}
           >
             Universe Name
-            </TableHeaderColumn>
+          </TableHeaderColumn>
           <TableHeaderColumn
             dataField="universeStatus"
             columnClassName="no-border name-column"
@@ -87,7 +86,7 @@ export const AssociatedUniverse = ({ onHide, associatedUniverses, visible, title
             dataFormat={modifyStatus}
           >
             Status
-            </TableHeaderColumn>
+          </TableHeaderColumn>
         </BootstrapTable>
       ) : (
         <>No Associated Universe.</>

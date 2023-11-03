@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TSERVER_MINI_TABLET_SERVER_H
-#define YB_TSERVER_MINI_TABLET_SERVER_H
+#pragma once
 
 #include <string>
 
@@ -59,6 +58,8 @@ namespace tserver {
 
 class TabletServer;
 
+YB_STRONGLY_TYPED_BOOL(WaitTabletsBootstrapped);
+
 // An in-process tablet server meant for use in test cases.
 class MiniTabletServer {
  public:
@@ -84,7 +85,12 @@ class MiniTabletServer {
   // an ephemeral port. To determine the address that the server
   // bound to, call MiniTabletServer::bound_addr().
   // The TS will be initialized asynchronously and then started.
-  Status Start();
+  // if wait_tablets_bootstrapped=true, then Waits for the tablet
+  // server to be fully initialized, including
+  // having all its tablets bootstrapped.
+  Status Start(WaitTabletsBootstrapped wait_tablets_bootstrapped = WaitTabletsBootstrapped::kTrue);
+
+  std::string ToString() const;
 
   // Waits for the tablet server to be fully initialized, including
   // having all tablets bootstrapped.
@@ -106,20 +112,22 @@ class MiniTabletServer {
   // Add a new tablet to the test server, use the default consensus configuration.
   //
   // Requires that the server has already been started with Start().
-  Status AddTestTablet(const std::string& ns_id,
-                       const std::string& table_id,
-                       const std::string& tablet_id,
-                       const Schema& schema,
-                       TableType table_type);
+  Status AddTestTablet(
+      const std::string& ns_id,
+      const std::string& table_id,
+      const std::string& tablet_id,
+      const Schema& schema,
+      TableType table_type);
 
   // Add a new tablet to the test server and specify the consensus configuration
   // for the tablet.
-  Status AddTestTablet(const std::string& ns_id,
-                       const std::string& table_id,
-                       const std::string& tablet_id,
-                       const Schema& schema,
-                       const consensus::RaftConfigPB& config,
-                       TableType table_type);
+  Status AddTestTablet(
+      const std::string& ns_id,
+      const std::string& table_id,
+      const std::string& tablet_id,
+      const Schema& schema,
+      const consensus::RaftConfigPB& config,
+      TableType table_type);
 
   // Create a RaftConfigPB which should be used to create a local-only
   // tablet on the given tablet server.
@@ -143,20 +151,16 @@ class MiniTabletServer {
   Status Reconnect();
 
   FsManager& fs_manager() const;
+  MetricEntity& metric_entity() const;
 
  private:
   bool started_;
   TabletServerOptions opts_;
   int index_;
 
-  std::unique_ptr<encryption::UniverseKeyManager> universe_key_manager_;
-  std::unique_ptr<yb::Env> encrypted_env_;
-  std::unique_ptr<rocksdb::Env> rocksdb_encrypted_env_;
   std::unique_ptr<TabletServer> server_;
   std::unique_ptr<Tunnel> tunnel_;
 };
 
 } // namespace tserver
 } // namespace yb
-
-#endif // YB_TSERVER_MINI_TABLET_SERVER_H

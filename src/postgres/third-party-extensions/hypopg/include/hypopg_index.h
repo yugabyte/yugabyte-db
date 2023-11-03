@@ -56,7 +56,8 @@ typedef struct hypoIndex
 
 	/* index descriptor informations */
 	int			ncolumns;		/* number of columns, only 1 for now */
-	int			nkeycolumns;	/* number of key columns */
+	int			nkeycolumns;	/* number of (hash & range) key columns in index */
+	int			nhashcolumns;	/* number of hash key columns in index */
 	short int  *indexkeys;		/* attnums */
 	Oid		   *indexcollations;	/* OIDs of collations of index columns */
 	Oid		   *opfamily;		/* OIDs of operator families for columns */

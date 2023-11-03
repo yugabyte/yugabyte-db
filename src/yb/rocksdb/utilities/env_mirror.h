@@ -28,10 +28,8 @@
 // This is useful when implementing a new Env and ensuring that the
 // semantics and behavior are correct (in that they match that of an
 // existing, stable Env, like the default POSIX one).
-#ifndef YB_ROCKSDB_UTILITIES_ENV_MIRROR_H
-#define YB_ROCKSDB_UTILITIES_ENV_MIRROR_H
+#pragma once
 
-#ifndef ROCKSDB_LITE
 
 #include <iostream>
 #include <algorithm>
@@ -50,19 +48,19 @@ class EnvMirror : public EnvWrapper {
  public:
   EnvMirror(Env* a, Env* b) : EnvWrapper(a), a_(a), b_(b) {}
 
-  Status NewSequentialFile(const std::string& f, unique_ptr<SequentialFile>* r,
+  Status NewSequentialFile(const std::string& f, std::unique_ptr<SequentialFile>* r,
                            const EnvOptions& options) override;
   Status NewRandomAccessFile(const std::string& f,
-                             unique_ptr<RandomAccessFile>* r,
+                             std::unique_ptr<RandomAccessFile>* r,
                              const EnvOptions& options) override;
-  Status NewWritableFile(const std::string& f, unique_ptr<WritableFile>* r,
+  Status NewWritableFile(const std::string& f, std::unique_ptr<WritableFile>* r,
                          const EnvOptions& options) override;
   Status ReuseWritableFile(const std::string& fname,
                            const std::string& old_fname,
-                           unique_ptr<WritableFile>* r,
+                           std::unique_ptr<WritableFile>* r,
                            const EnvOptions& options) override;
   Status NewDirectory(const std::string& name,
-                      unique_ptr<Directory>* result) override;
+                      std::unique_ptr<Directory>* result) override;
   Status FileExists(const std::string& f) override;
   Status GetChildren(const std::string& dir,
                      std::vector<std::string>* r) override;
@@ -91,7 +89,3 @@ class EnvMirror : public EnvWrapper {
 };
 
 }  // namespace rocksdb
-
-#endif  // ROCKSDB_LITE
-
-#endif  // YB_ROCKSDB_UTILITIES_ENV_MIRROR_H

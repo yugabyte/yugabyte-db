@@ -28,15 +28,15 @@ public class CreateAlertDefinitions extends UniverseTaskBase {
 
   @Override
   public String getName() {
-    return super.getName() + "(" + taskParams().universeUUID + ")";
+    return super.getName() + "(" + taskParams().getUniverseUUID() + ")";
   }
 
   @Override
   public void run() {
     try {
       log.info("Running {}", getName());
-      Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
-      Customer customer = Customer.get(universe.customerId);
+      Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+      Customer customer = Customer.get(universe.getCustomerId());
 
       AlertConfigurationFilter filter =
           AlertConfigurationFilter.builder()
@@ -45,14 +45,12 @@ public class CreateAlertDefinitions extends UniverseTaskBase {
               .build();
 
       List<AlertConfiguration> configurations =
-          alertConfigurationService
-              .list(filter)
-              .stream()
+          alertConfigurationService.list(filter).stream()
               .filter(group -> group.getTarget().isAll())
               .collect(Collectors.toList());
 
       // Just need to save - service will create definition itself.
-      alertConfigurationService.save(configurations);
+      alertConfigurationService.save(customer.getUuid(), configurations);
     } catch (Exception e) {
       String msg = getName() + " failed with exception " + e.getMessage();
       log.warn(msg, e.getMessage());

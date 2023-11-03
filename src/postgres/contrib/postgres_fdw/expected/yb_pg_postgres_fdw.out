@@ -457,6 +457,7 @@ SELECT 'fixed', NULL FROM ft1 t1 WHERE c1 = 1;
 -- Test forcing the remote server to produce sorted data for a merge join.
 SET enable_hashjoin TO false;
 SET enable_nestloop TO false;
+SET yb_enable_batchednl TO false;
 -- inner join; expressions in the clauses appear in the equivalence class list
 EXPLAIN (VERBOSE, COSTS OFF)
 	SELECT t1.c1, t2."C 1" FROM ft2 t1 JOIN "S 1"."T 1" t2 ON (t1.c1 = t2."C 1") OFFSET 100 LIMIT 10;
@@ -812,9 +813,9 @@ SELECT * FROM ft2 WHERE c1 = ANY (ARRAY(SELECT c1 FROM ft1 WHERE c1 < 5));
  c1 | c2 |  c3   |              c4              |            c5            | c6 |     c7     | c8
 ----+----+-------+------------------------------+--------------------------+----+------------+-----
   1 |  1 | 00001 | Fri Jan 02 00:00:00 1970 PST | Fri Jan 02 00:00:00 1970 | 1  | 1          | foo
+  4 |  4 | 00004 | Mon Jan 05 00:00:00 1970 PST | Mon Jan 05 00:00:00 1970 | 4  | 4          | foo
   2 |  2 | 00002 | Sat Jan 03 00:00:00 1970 PST | Sat Jan 03 00:00:00 1970 | 2  | 2          | foo
   3 |  3 | 00003 | Sun Jan 04 00:00:00 1970 PST | Sun Jan 04 00:00:00 1970 | 3  | 3          | foo
-  4 |  4 | 00004 | Mon Jan 05 00:00:00 1970 PST | Mon Jan 05 00:00:00 1970 | 4  | 4          | foo
 (4 rows)
 
 -- we should not push order by clause with volatile expressions or unsafe
@@ -1305,7 +1306,40 @@ SELECT t1.c1, ss.a, ss.b FROM (SELECT c1 FROM ft4 WHERE c1 between 50 and 60) t1
 -- d. test deparsing rowmarked relations as subqueries
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1.c1, ss.a, ss.b FROM (SELECT c1 FROM "S 1"."T 3" WHERE c1 = 50) t1 INNER JOIN (SELECT t2.c1, t3.c1 FROM (SELECT c1 FROM ft4 WHERE c1 between 50 and 60) t2 FULL JOIN (SELECT c1 FROM ft5 WHERE c1 between 50 and 60) t3 ON (t2.c1 = t3.c1) WHERE t2.c1 IS NULL OR t2.c1 IS NOT NULL) ss(a, b) ON (TRUE) ORDER BY t1.c1, ss.a, ss.b FOR UPDATE OF t1;
-ERROR:  cache lookup failed for attribute -8 of relation 16414
+                                                                                                                                                                                             QUERY PLAN
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ LockRows
+   Output: "T 3".c1, ft4.c1, ft5.c1, "T 3".ybctid, ft4.*, ft5.*
+   ->  Nested Loop
+         Output: "T 3".c1, ft4.c1, ft5.c1, "T 3".ybctid, ft4.*, ft5.*
+         ->  Foreign Scan
+               Output: ft4.c1, ft4.*, ft5.c1, ft5.*
+               Relations: (public.ft4) FULL JOIN (public.ft5)
+               Remote SQL: SELECT s8.c1, s8.c2, s9.c1, s9.c2 FROM ((SELECT c1, ROW(c1, c2, c3) FROM "S 1"."T 3" WHERE ((c1 >= 50)) AND ((c1 <= 60))) s8(c1, c2) FULL JOIN (SELECT c1, ROW(c1, c2, c3) FROM "S 1"."T 4" WHERE ((c1 >= 50)) AND ((c1 <= 60))) s9(c1, c2) ON (((s8.c1 = s9.c1)))) WHERE (((s8.c1 IS NULL) OR (s8.c1 IS NOT NULL))) ORDER BY s8.c1 ASC NULLS LAST, s9.c1 ASC NULLS LAST
+               ->  Sort
+                     Output: ft4.c1, ft4.*, ft5.c1, ft5.*
+                     Sort Key: ft4.c1, ft5.c1
+                     ->  Hash Full Join
+                           Output: ft4.c1, ft4.*, ft5.c1, ft5.*
+                           Hash Cond: (ft4.c1 = ft5.c1)
+                           Filter: ((ft4.c1 IS NULL) OR (ft4.c1 IS NOT NULL))
+                           ->  Foreign Scan on public.ft4
+                                 Output: ft4.c1, ft4.*
+                                 Remote Filter: ((ft4.c1 >= 50) AND (ft4.c1 <= 60))
+                                 Remote SQL: SELECT c1, c2, c3 FROM "S 1"."T 3" WHERE ((c1 >= 50)) AND ((c1 <= 60))
+                           ->  Hash
+                                 Output: ft5.c1, ft5.*
+                                 ->  Foreign Scan on public.ft5
+                                       Output: ft5.c1, ft5.*
+                                       Remote Filter: ((ft5.c1 >= 50) AND (ft5.c1 <= 60))
+                                       Remote SQL: SELECT c1, c2, c3 FROM "S 1"."T 4" WHERE ((c1 >= 50)) AND ((c1 <= 60))
+         ->  Materialize
+               Output: "T 3".c1, "T 3".ybctid
+               ->  Index Scan using t3_pkey on "S 1"."T 3"
+                     Output: "T 3".c1, "T 3".ybctid
+                     Index Cond: ("T 3".c1 = 50)
+(30 rows)
+
 SELECT t1.c1, ss.a, ss.b FROM (SELECT c1 FROM "S 1"."T 3" WHERE c1 = 50) t1 INNER JOIN (SELECT t2.c1, t3.c1 FROM (SELECT c1 FROM ft4 WHERE c1 between 50 and 60) t2 FULL JOIN (SELECT c1 FROM ft5 WHERE c1 between 50 and 60) t3 ON (t2.c1 = t3.c1) WHERE t2.c1 IS NULL OR t2.c1 IS NOT NULL) ss(a, b) ON (TRUE) ORDER BY t1.c1, ss.a, ss.b FOR UPDATE OF t1;
  c1 | a  | b
 ----+----+----
@@ -2154,21 +2188,9 @@ SELECT t1c1, avg(t1c1 + t2c1) FROM (SELECT t1.c1, t2.c1 FROM ft1 t1 JOIN ft2 t2 
 -- join with lateral reference
 --EXPLAIN (VERBOSE, COSTS OFF)
 --SELECT t1."C 1" FROM "S 1"."T 1" t1, LATERAL (SELECT DISTINCT t2.c1, t3.c1 FROM ft1 t2, ft2 t3 WHERE t2.c1 = t3.c1 AND t2.c2 = t1.c2) q ORDER BY t1."C 1" OFFSET 10 LIMIT 10;
-SELECT t1."C 1" FROM "S 1"."T 1" t1, LATERAL (SELECT DISTINCT t2.c1, t3.c1 FROM ft1 t2, ft2 t3 WHERE t2.c1 = t3.c1 AND t2.c2 = t1.c2) q ORDER BY t1."C 1" OFFSET 10 LIMIT 10;
- C 1
------
-   1
-   1
-   1
-   1
-   1
-   1
-   1
-   1
-   1
-   1
-(10 rows)
-
+-- YB note: This is commented out as it ends up doing rescans on a remote relation
+-- which uses an unsupported MOVE BACKWARD ALL IN command. See issue #11422.
+--SELECT t1."C 1" FROM "S 1"."T 1" t1, LATERAL (SELECT DISTINCT t2.c1, t3.c1 FROM ft1 t2, ft2 t3 WHERE t2.c1 = t3.c1 AND t2.c2 = t1.c2) q ORDER BY t1."C 1" OFFSET 10 LIMIT 10;
 -- non-Var items in targetlist of the nullable rel of a join preventing
 -- push-down in some cases
 -- unable to push {ft1, ft2}
@@ -2229,6 +2251,7 @@ SELECT ft5, ft5.c1, ft5.c2, ft5.c3, ft4.c1, ft4.c2 FROM ft5 left join ft4 on ft5
 -- multi-way join involving multiple merge joins
 -- (this case used to have EPQ-related planning problems)
 SET enable_nestloop TO false;
+SET yb_enable_batchednl TO false;
 SET enable_hashjoin TO false;
 --EXPLAIN (VERBOSE, COSTS OFF)
 --SELECT * FROM ft1, ft2, ft4, ft5 WHERE ft1.c1 = ft2.c1 AND ft1.c2 = ft4.c1
@@ -2956,8 +2979,8 @@ FROM
     ) AS subq_1
 WHERE ref_0."C 1" < 10 AND subq_1.c3 = '00001'
 ORDER BY ref_0."C 1";
-                                                  QUERY PLAN
----------------------------------------------------------------------------------------------------------------
+                                       QUERY PLAN
+-----------------------------------------------------------------------------------------
  Sort
    Output: ref_0.c2, ref_0."C 1", (ref_0.c2), ref_1.c3, ref_0."C 1"
    Sort Key: ref_0."C 1"
@@ -2966,8 +2989,8 @@ ORDER BY ref_0."C 1";
          ->  Nested Loop
                Output: ref_0.c2, ref_0."C 1", ref_1.c3, (ref_0.c2)
                ->  Seq Scan on "S 1"."T 1" ref_0
-                     Output: ref_0."C 1", ref_0.c2, ref_0.c3, ref_0.c4, ref_0.c5, ref_0.c6, ref_0.c7, ref_0.c8
-                     Filter: (ref_0."C 1" < 10)
+                     Output: ref_0.c2, ref_0."C 1"
+                     Remote Filter: (ref_0."C 1" < 10)
                ->  Foreign Scan on public.ft1 ref_1
                      Output: ref_1.c3, ref_0.c2
                      Remote Filter: (ref_1.c3 = '00001'::text)

@@ -123,6 +123,10 @@ std::string Uuid::ToHexString() const {
 }
 
 Result<Uuid> Uuid::FromHexString(const std::string& hex_string) {
+  if (hex_string.empty()) {
+    return Uuid::Nil();
+  }
+
   constexpr size_t kInputLen = kUuidSize * 2;
   if (hex_string.length() != kInputLen) {
     return STATUS_SUBSTITUTE(InvalidArgument, "Size of hex_string is invalid: $0, expected: $1",
@@ -337,7 +341,7 @@ Result<Uuid> Uuid::FromString(const std::string& strval) {
   try {
     return Uuid(boost::lexical_cast<boost::uuids::uuid>(strval));
   } catch (std::exception& e) {
-    return STATUS(Corruption, "Couldn't read Uuid from string!");
+    return STATUS(Corruption, "Couldn't read Uuid from string", strval);
   }
 }
 

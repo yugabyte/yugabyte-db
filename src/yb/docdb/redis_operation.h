@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_REDIS_OPERATION_H
-#define YB_DOCDB_REDIS_OPERATION_H
+#pragma once
 
 #include <boost/optional/optional.hpp>
 
@@ -20,7 +19,7 @@
 
 #include "yb/docdb/deadline_info.h"
 #include "yb/docdb/doc_operation.h"
-#include "yb/docdb/expiration.h"
+#include "yb/dockv/expiration.h"
 #include "yb/docdb/key_bounds.h"
 
 #include "yb/rocksdb/cache.h"
@@ -33,7 +32,7 @@ namespace docdb {
 struct RedisValue {
   RedisDataType type = static_cast<RedisDataType>(0);
   std::string value;
-  Expiration exp;
+  dockv::Expiration exp;
   int64_t internal_index = 0;
 };
 
@@ -63,7 +62,7 @@ class RedisWriteOperation :
   Result<RedisDataType> GetValueType(const DocOperationApplyData& data,
       int subkey_index = kNilSubkeyIndex);
   Result<RedisValue> GetValue(const DocOperationApplyData& data,
-      int subkey_index = kNilSubkeyIndex, Expiration* exp = nullptr);
+      int subkey_index = kNilSubkeyIndex, dockv::Expiration* exp = nullptr);
 
   Status ApplySetTtl(const DocOperationApplyData& data);
   Status ApplySet(const DocOperationApplyData& data);
@@ -90,9 +89,8 @@ class RedisReadOperation {
  public:
   explicit RedisReadOperation(const yb::RedisReadRequestPB& request,
                               const DocDB& doc_db,
-                              CoarseTimePoint deadline,
-                              const ReadHybridTime& read_time)
-      : request_(request), doc_db_(doc_db), deadline_(deadline), read_time_(read_time) {}
+                              const ReadOperationData& read_operation_data)
+      : request_(request), doc_db_(doc_db), read_operation_data_(read_operation_data) {}
 
   Status Execute();
 
@@ -117,7 +115,7 @@ class RedisReadOperation {
   Status ExecuteGetTtl();
   // Used to implement HGETALL, HKEYS, HVALS, SMEMBERS, HLEN, SCARD
   Status ExecuteHGetAllLikeCommands(
-      ValueEntryType value_type, bool add_keys, bool add_values);
+      dockv::ValueEntryType value_type, bool add_keys, bool add_values);
   Status ExecuteStrLen();
   Status ExecuteExists();
   Status ExecuteGetRange();
@@ -134,8 +132,7 @@ class RedisReadOperation {
   const RedisReadRequestPB& request_;
   RedisResponsePB response_;
   const DocDB doc_db_;
-  CoarseTimePoint deadline_;
-  ReadHybridTime read_time_;
+  const ReadOperationData read_operation_data_;
   // TODO: Move iterator_ to a superclass of RedisWriteOperation RedisReadOperation
   // Make these two classes similar in terms of how rocksdb state is passed to them.
   // Currently ReadOperations get the state during construction, but Write operations get them when
@@ -147,5 +144,3 @@ class RedisReadOperation {
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif // YB_DOCDB_REDIS_OPERATION_H
