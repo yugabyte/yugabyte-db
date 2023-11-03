@@ -1,7 +1,5 @@
 import { YBButton } from '../../../common/forms/fields';
-import {
-  RbacValidator
-} from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { RbacValidator } from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 export const FirstStep = ({ onCreateSupportBundle, universeUUID }) => {
@@ -11,8 +9,9 @@ export const FirstStep = ({ onCreateSupportBundle, universeUUID }) => {
       <RbacValidator
         isControl
         accessRequiredOn={{
-          ...ApiPermissionMap.CREATE_SUPPORT_BUNDLE, onResource: {
-            "UNIVERSE": universeUUID
+          ...ApiPermissionMap.CREATE_SUPPORT_BUNDLE,
+          onResource: {
+            UNIVERSE: universeUUID
           }
         }}
         popOverOverrides={{ zIndex: 100000 }}

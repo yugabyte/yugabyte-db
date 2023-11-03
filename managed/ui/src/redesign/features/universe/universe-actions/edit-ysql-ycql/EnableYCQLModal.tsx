@@ -24,6 +24,9 @@ import {
   DATABASE_NAME,
   YCQL_USER_NAME
 } from './Helper';
+import { hasNecessaryPerm } from '../../../rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../rbac/ApiAndUserPermMapping';
+import { RBAC_ERR_MSG_NO_PERM } from '../../../rbac/common/validator/ValidatorUtils';
 import { PASSWORD_REGEX, TOAST_AUTO_DISMISS_INTERVAL } from '../../universe-form/utils/constants';
 import { dbSettingStyles } from './DBSettingStyles';
 //icons
@@ -161,6 +164,11 @@ export const EnableYCQLModal: FC<EnableYCQLModalProps> = ({
     }
   });
 
+  const canUpdateYCQL = hasNecessaryPerm({
+    onResource: universeUUID,
+    ...ApiPermissionMap.UNIVERSE_CONFIGURE_YCQL
+  });
+
   return (
     <YBModal
       open={open}
@@ -176,9 +184,10 @@ export const EnableYCQLModal: FC<EnableYCQLModalProps> = ({
       cancelTestId="EnableYCQLModal-Close"
       buttonProps={{
         primary: {
-          disabled: !isDirty
+          disabled: !isDirty || !canUpdateYCQL
         }
       }}
+      submitButtonTooltip={!canUpdateYCQL ? RBAC_ERR_MSG_NO_PERM : ''}
     >
       <FormProvider {...formMethods}>
         <Box
