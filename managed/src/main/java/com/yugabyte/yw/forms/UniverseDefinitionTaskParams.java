@@ -30,6 +30,7 @@ import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.*;
 import com.yugabyte.yw.models.helpers.audit.*;
+import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
@@ -140,6 +141,27 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   // UUID of last failed task that applied modification to cluster state.
   @ApiModelProperty public UUID placementModificationTaskUuid = null;
+
+  @ApiModelProperty public SoftwareUpgradeState softwareUpgradeState = SoftwareUpgradeState.Ready;
+
+  public enum SoftwareUpgradeState {
+    @EnumValue("Ready")
+    Ready,
+    @EnumValue("Upgrading")
+    Upgrading,
+    @EnumValue("UpgradeFailed")
+    UpgradeFailed,
+    @EnumValue("PreFinalize")
+    PreFinalize,
+    @EnumValue("Finalizing")
+    Finalizing,
+    @EnumValue("FinalizeFailed")
+    FinalizeFailed,
+    @EnumValue("RollingBack")
+    RollingBack,
+    @EnumValue("RollbackFailed")
+    RollbackFailed
+  }
 
   // The next cluster index to be used when a new read-only cluster is added.
   @ApiModelProperty public int nextClusterIndex = 1;

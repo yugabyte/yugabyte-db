@@ -36,6 +36,12 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
     return (RollbackUpgradeParams) taskParams;
   }
 
+  @Override
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    taskParams().verifyParams(getUniverse(), isFirstTry);
+  }
+
   public NodeDetails.NodeState getNodeState() {
     return NodeDetails.NodeState.RollbackUpgrade;
   }
@@ -52,6 +58,10 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
               universe.getUniverseDetails().prevYBSoftwareConfig;
           String newVersion =
               universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+
+          createUpdateUniverseSoftwareUpgradeStateTask(
+              UniverseDefinitionTaskParams.SoftwareUpgradeState.RollingBack);
+
           // Skip auto flags restore incase upgrade did not take place or succeed.
           if (prevYBSoftwareConfig != null
               && !newVersion.equals(prevYBSoftwareConfig.getSoftwareVersion())) {
@@ -90,6 +100,9 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
           // Update Software version
           createUpdateSoftwareVersionTask(newVersion, false /*isSoftwareUpdateViaVm*/)
               .setSubTaskGroupType(getTaskSubGroupType());
+
+          createUpdateUniverseSoftwareUpgradeStateTask(
+              UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready);
         });
   }
 

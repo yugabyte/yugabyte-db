@@ -251,7 +251,10 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
       }
       commonNodeTasks.addAll(
           ImmutableList.of(
-              TaskType.UpdateSoftwareVersion, TaskType.RunHooks, TaskType.UniverseUpdateSucceeded));
+              TaskType.UpdateSoftwareVersion,
+              TaskType.UpdateUniverseState,
+              TaskType.RunHooks,
+              TaskType.UniverseUpdateSucceeded));
     }
     for (TaskType commonNodeTask : commonNodeTasks) {
       assertTaskType(subTasksByPosition.get(position), commonNodeTask);
@@ -406,6 +409,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
     // XCluster gflag set up.
     assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
     assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
@@ -421,7 +425,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false, true);
     position = assertSequence(subTasksByPosition, TSERVER, position, true, true);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true, true);
-    assertEquals(129, position);
+    assertEquals(130, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }
@@ -450,6 +454,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
     // XCluster gflag set up.
     assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
     assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
@@ -465,7 +470,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false, true);
     position = assertSequence(subTasksByPosition, TSERVER, position, true, true, true);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true, true, true);
-    assertEquals(139, position);
+    assertEquals(140, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }
@@ -518,6 +523,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
     // XCluster gflag set up.
     assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
     assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
@@ -584,6 +590,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
     // XCluster gflag set up.
     assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
     assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
@@ -599,7 +606,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false, true);
     position = assertSequence(subTasksByPosition, TSERVER, position, true, true);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true, true);
-    assertEquals(174, position);
+    assertEquals(175, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }
@@ -626,6 +633,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
     // XCluster gflag set up.
     assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
     assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
@@ -638,7 +646,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     position = assertSequence(subTasksByPosition, MASTER, position, false, false);
     position = assertSequence(subTasksByPosition, TSERVER, position, false, true);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.FULL_UPGRADE, true, true);
-    assertEquals(24, position);
+    assertEquals(25, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }
@@ -659,7 +667,6 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
 
   @Test
   public void testSoftwareUpgradeRetries() {
-    updateDefaultUniverseTo5Nodes(true);
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
     taskParams.ybSoftwareVersion = "2.17.0.0-b1";
     taskParams.expectedUniverseVersion = -1;

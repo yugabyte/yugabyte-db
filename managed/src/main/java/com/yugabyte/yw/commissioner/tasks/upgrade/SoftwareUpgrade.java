@@ -9,6 +9,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -60,6 +61,10 @@ public class SoftwareUpgrade extends SoftwareUpgradeTaskBase {
           Set<NodeDetails> allNodes = toOrderedSet(nodes);
           Universe universe = getUniverse();
           String newVersion = taskParams().ybSoftwareVersion;
+
+          createUpdateUniverseSoftwareUpgradeStateTask(
+              UniverseDefinitionTaskParams.SoftwareUpgradeState.Upgrading);
+
           if (!universe
               .getUniverseDetails()
               .xClusterInfo
@@ -110,6 +115,9 @@ public class SoftwareUpgrade extends SoftwareUpgradeTaskBase {
           // Update software version in the universe metadata.
           createUpdateSoftwareVersionTask(newVersion, false /*isSoftwareUpdateViaVm*/)
               .setSubTaskGroupType(getTaskSubGroupType());
+
+          createUpdateUniverseSoftwareUpgradeStateTask(
+              UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready);
         });
   }
 }

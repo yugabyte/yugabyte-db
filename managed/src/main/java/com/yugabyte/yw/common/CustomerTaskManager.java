@@ -32,6 +32,7 @@ import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
@@ -56,6 +57,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -331,6 +333,55 @@ public class CustomerTaskManager {
     } catch (Exception e) {
       LOG.error("Encountered error failing pending tasks", e);
     }
+  }
+
+  /**
+   * Updates the state of the universe in the event that the most recent task performed on it was an
+   * upgrade task that failed or was aborted which is called on YBA startup.
+   */
+  public void updateUniverseSoftwareUpgradeStateSet() {
+    Set<UUID> universeUUIDSet = Universe.getAllUUIDs();
+    for (UUID uuid : universeUUIDSet) {
+      Universe universe = Universe.getOrBadRequest(uuid);
+      Customer customer = Customer.get(universe.getCustomerId());
+      UUID placementModificationTaskUuid =
+          universe.getUniverseDetails().placementModificationTaskUuid;
+      if (placementModificationTaskUuid != null) {
+        CustomerTask placementModificationTask =
+            CustomerTask.getOrBadRequest(customer.getUuid(), placementModificationTaskUuid);
+        SoftwareUpgradeState state =
+            getUniverseSoftwareUpgradeStateBasedOnTask(universe, placementModificationTask);
+        universe.updateUniverseSoftwareUpgradeState(state);
+        LOG.debug("Updated universe {} software upgrade state to  {}.", uuid, state);
+      }
+    }
+  }
+
+  private SoftwareUpgradeState getUniverseSoftwareUpgradeStateBasedOnTask(
+      Universe universe, CustomerTask customerTask) {
+    SoftwareUpgradeState state = universe.getUniverseDetails().softwareUpgradeState;
+    Optional<TaskInfo> taskInfo = TaskInfo.maybeGet(customerTask.getTaskUUID());
+    if (taskInfo.isPresent()) {
+      TaskInfo lastTaskInfo = taskInfo.get();
+      if (lastTaskInfo.getTaskState().equals(TaskInfo.State.Failure)
+          || lastTaskInfo.getTaskState().equals(TaskInfo.State.Aborted)) {
+        TaskType taskType = lastTaskInfo.getTaskType();
+        if (Arrays.asList(TaskType.RollbackUpgrade, TaskType.RollbackKubernetesUpgrade)
+            .contains(taskType)) {
+          state = SoftwareUpgradeState.RollbackFailed;
+        } else if (taskType.equals(TaskType.FinalizeUpgrade)) {
+          state = SoftwareUpgradeState.FinalizeFailed;
+        } else if (Arrays.asList(
+                TaskType.SoftwareUpgrade,
+                TaskType.SoftwareUpgradeYB,
+                TaskType.SoftwareKubernetesUpgrade,
+                TaskType.SoftwareKubernetesUpgradeYB)
+            .contains(taskType)) {
+          state = SoftwareUpgradeState.UpgradeFailed;
+        }
+      }
+    }
+    return state;
   }
 
   private void enableLoadBalancer(Universe universe) {

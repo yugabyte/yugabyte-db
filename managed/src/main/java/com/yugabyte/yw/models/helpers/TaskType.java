@@ -559,6 +559,9 @@ public enum TaskType {
   UpdateClusterAPIDetails(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterAPIDetails.class),
 
+  UpdateUniverseState(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseSoftwareUpgradeState.class),
+
   UpdateUniverseCommunicationPorts(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseCommunicationPorts.class),
 

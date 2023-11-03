@@ -1037,6 +1037,17 @@ public class Universe extends Model {
     return masterLeader.getHost();
   }
 
+  public void updateUniverseSoftwareUpgradeState(
+      UniverseDefinitionTaskParams.SoftwareUpgradeState state) {
+    Universe.UniverseUpdater updater =
+        universe -> {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          universeDetails.softwareUpgradeState = state;
+          universe.setUniverseDetails(universeDetails);
+        };
+    Universe.saveDetails(universeUUID, updater, false);
+  }
+
   public boolean universeIsLocked() {
     return getUniverseDetails().updateInProgress;
   }
