@@ -57,6 +57,12 @@ You can use YBA Installer only if you are about to perform a new install. Curren
 - Ensure your machine satisfies the [minimum requirements](../../prerequisites/installer/).
 - For production deployments, sudo permissions are required for some YBA Installer commands. (You can use YBA Installer without sudo access, but this is not recommended for production; refer to [Non-sudo installation](#non-sudo-installation).)
 
+  If your sudo permissions are limited, add the following to the allowed list for root in the sudoers file:
+
+  ```sh
+  /bin/mv, /usr/bin/find, /opt/yugabyte/software/*/pgsql/bin/createdb, /opt/yugabyte/software/*/pgsql/bin/initdb
+  ```
+
 ## Quick start
 
 To install YugabyteDB Anywhere using YBA Installer, do the following:

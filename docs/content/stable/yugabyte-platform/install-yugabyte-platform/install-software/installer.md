@@ -51,6 +51,43 @@ You can use YBA Installer only if you are about to perform a new install. Curren
 - Ensure your machine satisfies the [minimum requirements](../../prerequisites/installer/).
 - For production deployments, sudo permissions are required for some YBA Installer commands. (You can use YBA Installer without sudo access, but this is not recommended for production; refer to [Non-sudo installation](#non-sudo-installation).)
 
+  If your sudo permissions are limited, add the following to the allowed list for root in the sudoers file:
+
+  ```sh
+  /bin/mv, /usr/bin/find, /opt/yugabyte/software/*/pgsql/bin/createdb, /opt/yugabyte/software/*/pgsql/bin/initdb
+  ```
+
+## Quick start
+
+To install YugabyteDB Anywhere using YBA Installer, do the following:
+
+1. Obtain your license from Yugabyte Support.
+1. Download and extract the YBA Installer by entering the following commands:
+
+    ```sh
+    $ wget https://downloads.yugabyte.com/releases/{{<yb-version version="stable" format="long">}}/yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
+    $ tar -xf yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
+    $ cd yba_installer_full-{{<yb-version version="stable" format="build">}}/
+    ```
+
+1. Using sudo, run a preflight check to ensure your environment satisfies the requirements. Respond with `y` when prompted to create a default configuration.
+
+    ```sh
+    $ sudo ./yba-ctl preflight
+    ```
+
+1. If there are no issues, using sudo, install the software, providing your license.
+
+    ```sh
+    $ sudo ./yba-ctl install -l /path/to/license
+    ```
+
+After the installation succeeds, you can immediately start using YBA.
+
+If the installation fails due to permissions or lack of sudo privileges, you can re-try after running `yba-ctl clean all` to remove all traces of the previous attempt.
+
+For more detailed installation instructions and information on how to use YBA Installer to manage your installation, refer to the following sections.
+
 ## Download and configure YBA Installer
 
 ### Download YBA Installer
