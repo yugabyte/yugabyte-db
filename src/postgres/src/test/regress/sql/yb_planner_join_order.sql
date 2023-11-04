@@ -37,10 +37,10 @@ EXPLAIN (COSTS false) SELECT * FROM t_1000, t_100 WHERE t_1000.id = t_100.id;
 EXPLAIN (COSTS false) SELECT * FROM t_100, t_1000 WHERE t_100.id = t_1000.id;
 EXPLAIN (COSTS false) SELECT * FROM t_10000, t_1000000 WHERE t_10000.id = t_1000000.id;
 EXPLAIN (COSTS false) SELECT * FROM t_1000000, t_10000 WHERE t_1000000.id = t_10000.id;
--- Here we, reset the table size to 0. In this situation, query planner is unaware of table sizes
+-- Here we, reset the table size to -1. In this situation, query planner is unaware of table sizes
 -- Hence, it will choose the inner table based on the order in which it appears in the query
 -- irrespective of the actual size.
-call update_sizes(0, 0, 0, 0);
+call update_sizes(-1, -1, -1, -1);
 select pg_sleep(1);
 EXPLAIN (COSTS false) SELECT * FROM t_1000, t_100 WHERE t_1000.id = t_100.id;
 EXPLAIN (COSTS false) SELECT * FROM t_100, t_1000 WHERE t_100.id = t_1000.id;
@@ -61,7 +61,7 @@ EXPLAIN (COSTS false) SELECT * FROM t_1000000 t4 INNER JOIN t_100 t1 ON t4.id = 
 EXPLAIN (COSTS false) SELECT * FROM t_10000 t3 INNER JOIN t_1000 t2 ON t3.id = t2.id
                                                INNER JOIN t_100 t1 ON t2.val = t1.val
                                                WHERE t3.id < 10;
-call update_sizes(0, 0, 0, 0);
+call update_sizes(-1, -1, -1, -1);
 select pg_sleep(1);
 EXPLAIN (COSTS false) SELECT * FROM t_1000000 t4 INNER JOIN t_100 t1 ON t4.id = t1.id
                                                  INNER JOIN t_1000 t2 ON t1.id = t2.id

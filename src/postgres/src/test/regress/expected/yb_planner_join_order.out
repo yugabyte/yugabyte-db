@@ -72,10 +72,10 @@ EXPLAIN (COSTS false) SELECT * FROM t_1000000, t_10000 WHERE t_1000000.id = t_10
          Index Cond: (id = t_10000.id)
 (4 rows)
 
--- Here we, reset the table size to 0. In this situation, query planner is unaware of table sizes
+-- Here we, reset the table size to -1. In this situation, query planner is unaware of table sizes
 -- Hence, it will choose the inner table based on the order in which it appears in the query
 -- irrespective of the actual size.
-call update_sizes(0, 0, 0, 0);
+call update_sizes(-1, -1, -1, -1);
 select pg_sleep(1);
  pg_sleep
 ----------
@@ -165,7 +165,7 @@ EXPLAIN (COSTS false) SELECT * FROM t_10000 t3 INNER JOIN t_1000 t2 ON t3.id = t
          Remote Filter: (id < 10)
 (9 rows)
 
-call update_sizes(0, 0, 0, 0);
+call update_sizes(-1, -1, -1, -1);
 select pg_sleep(1);
  pg_sleep
 ----------

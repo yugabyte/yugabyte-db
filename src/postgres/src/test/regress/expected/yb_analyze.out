@@ -22,8 +22,8 @@ ORDER BY
   relname, staattnum;
  relname | reltuples | staattnum | stanullfrac | stawidth | stadistinct
 ---------+-----------+-----------+-------------+----------+-------------
- x       |         0 |           |             |          |
- y       |         0 |           |             |          |
+ x       |        -1 |           |             |          |
+ y       |        -1 |           |             |          |
 (2 rows)
 
 -- Explain queries without statistics
