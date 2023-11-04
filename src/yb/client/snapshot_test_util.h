@@ -46,8 +46,16 @@ class SnapshotTestUtil {
  public:
   SnapshotTestUtil() = default;
   ~SnapshotTestUtil() = default;
+
+  Result<std::unique_ptr<YBClient>> InitWithCluster(MiniClusterBase* cluster) {
+    SetCluster(cluster);
+    auto result = VERIFY_RESULT(cluster->CreateClient());
+    SetProxy(&result->proxy_cache());
+    return result;
+  }
+
   void SetProxy(rpc::ProxyCache* proxy_cache) {
-      proxy_cache_ = proxy_cache;
+    proxy_cache_ = proxy_cache;
   }
   void SetCluster(MiniClusterBase* cluster) { cluster_ = cluster; }
 
@@ -78,6 +86,7 @@ class SnapshotTestUtil {
   Result<bool> IsRestorationDone(const TxnSnapshotRestorationId& restoration_id);
   Status RestoreSnapshot(
       const TxnSnapshotId& snapshot_id, HybridTime restore_at = HybridTime());
+  Result<TxnSnapshotId> StartSnapshot(const YBTableName& table_name);
   // Set for_import to true if this snapshots is imported from another DB.
   Result<TxnSnapshotId> StartSnapshot(const TableId& table_id, bool imported = false);
   Result<TxnSnapshotId> StartSnapshot(const TableHandle& table);
@@ -114,6 +123,9 @@ class SnapshotTestUtil {
       HybridTime min_hybrid_time = HybridTime::kMin);
 
  private:
+  template <class F>
+  Result<TxnSnapshotId> DoStartSnapshot(const F& fill_tables);
+
   rpc::ProxyCache* proxy_cache_;
   MiniClusterBase* cluster_;
 };

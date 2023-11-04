@@ -12,6 +12,7 @@
 //
 
 #include "yb/client/client_master_rpc.h"
+#include "yb/client/snapshot_test_util.h"
 #include "yb/client/table_info.h"
 
 #include "yb/consensus/raft_consensus.h"
@@ -47,11 +48,13 @@ using namespace std::literals;
 
 DECLARE_bool(cleanup_intents_sst_files);
 DECLARE_bool(TEST_timeout_non_leader_master_rpcs);
+DECLARE_bool(ycql_enable_packed_row);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int64(cql_processors_limit);
 DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
+DECLARE_int32(TEST_delay_tablet_export_metadata_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 
 DECLARE_int32(partitions_vtable_cache_refresh_secs);
@@ -1262,6 +1265,33 @@ TEST_F(CqlTest, CheckStateAfterDrop) {
   }, CoarseMonoClock::now() + 30s, "Deleted table cleanup"));
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(CqlTest, RetainSchemaPacking) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_tablet_export_metadata_ms) = 1000;
+
+  client::SnapshotTestUtil snapshot_util;
+  auto client = snapshot_util.InitWithCluster(cluster_.get());
+
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  ASSERT_OK(session.ExecuteQuery("CREATE TABLE t (key INT PRIMARY KEY, value INT)"));
+  for (int i = 0; i != 1000; ++i) {
+    ASSERT_OK(session.ExecuteQueryFormat("INSERT INTO t (key, value) VALUES ($0, $1)", i, i * 2));
+  }
+
+  ASSERT_OK(session.ExecuteQuery("ALTER TABLE t ADD extra INT"));
+
+  auto snapshot_id = ASSERT_RESULT(snapshot_util.StartSnapshot(
+      client::YBTableName(YQLDatabase::YQL_DATABASE_CQL, "test", "t")));
+  ASSERT_OK(cluster_->CompactTablets());
+
+  ASSERT_OK(snapshot_util.WaitSnapshotDone(snapshot_id));
+
+  ASSERT_OK(snapshot_util.RestoreSnapshot(snapshot_id));
+
+  auto content = ASSERT_RESULT(session.ExecuteAndRenderToString("SELECT * FROM t"));
+  LOG(INFO) << "Content: " << content;
 }
 
 }  // namespace yb

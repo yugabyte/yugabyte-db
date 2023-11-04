@@ -52,6 +52,10 @@ DEFINE_test_flag(int32, delay_tablet_split_metadata_restore_secs, 0,
                  "checkpoint.");
 TAG_FLAG(TEST_delay_tablet_split_metadata_restore_secs, runtime);
 
+DEFINE_test_flag(int32, delay_tablet_export_metadata_ms, 0,
+                 "How much time in milliseconds to delay before exporting tablet metadata during "
+                 "snapshot creation.");
+
 namespace yb {
 namespace tablet {
 
@@ -168,6 +172,8 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
     }
   });
 
+  DisableSchemaGC disable_schema_gc(tablet().metadata());
+
   // Note: checkpoint::CreateCheckpoint() calls DisableFileDeletions()/EnableFileDeletions()
   //       for the RocksDB object.
   s = CreateCheckpoint(tmp_snapshot_dir);
@@ -184,6 +190,8 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
     RETURN_NOT_OK(patcher.Load());
     RETURN_NOT_OK(patcher.SetHybridTimeFilter(std::nullopt, snapshot_hybrid_time));
   }
+
+  AtomicFlagSleepMs(&FLAGS_TEST_delay_tablet_export_metadata_ms);
 
   bool need_flush = data.schedule_id && tablet().metadata()->AddSnapshotSchedule(data.schedule_id);
 
