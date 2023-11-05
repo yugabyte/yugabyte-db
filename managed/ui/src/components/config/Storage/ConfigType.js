@@ -25,29 +25,6 @@ export const storageConfigTypes = {
       }
     ]
   },
-  GCS: {
-    title: 'GCS Storage',
-    fields: [
-      {
-        id: 'GCS_CONFIGURATION_NAME',
-        label: 'Configuration Name',
-        placeHolder: 'Configuration Name',
-        component: YBTextInputWithLabel
-      },
-      {
-        id: 'GCS_BACKUP_LOCATION',
-        label: 'GCS Bucket',
-        placeHolder: 'GCS Bucket',
-        component: YBTextInputWithLabel
-      },
-      {
-        id: 'GCS_CREDENTIALS_JSON',
-        label: 'GCS Credentials',
-        placeHolder: 'GCS Credentials JSON',
-        component: YBTextInputWithLabel
-      }
-    ]
-  },
   AZ: {
     title: 'Azure Storage',
     fields: [
