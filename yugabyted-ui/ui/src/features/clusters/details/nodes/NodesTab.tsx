@@ -22,6 +22,11 @@ import RefreshIcon from '@app/assets/refresh.svg';
 import { StateEnum, StatusEntity, YBSmartStatus } from '@app/components/YBStatus/YBSmartStatus';
 import { StringParam, useQueryParams, withDefault } from 'use-query-params';
 import { useNodes } from './NodeHooks';
+import {
+    useGetGflagsQuery,
+    GflagsInfo,
+    useGetClusterConnectionsQuery,
+} from "@app/api/src";
 import { YBTextBadge } from '@app/components/YBTextBadge/YBTextBadge';
 
 const useStyles = makeStyles((theme) => ({
@@ -181,6 +186,19 @@ export const NodesTab: FC = () => {
 
   // Get nodes
   const { data: nodesResponse, isFetching: fetchingNodes, refetch: refetchNodes } = useNodes();
+  // address of a live tserver
+  const tserverAddress = nodesResponse?.data?.find((node) => node.is_node_up)?.host ?? "";
+  const { data: gflagsResponse, isFetching: fetchingGflags, refetch: refetchGflags }
+      = useGetGflagsQuery<GflagsInfo>(
+        { node_address: tserverAddress },
+      );
+  const isConnMgrEnabled = useMemo(() => {
+    return gflagsResponse?.tserver_flags?.some(flag =>
+        flag.name === "enable_ysql_conn_mgr" && flag.value === "true")
+  }, [gflagsResponse, nodesResponse]);
+
+  const { data: connectionsResponse, isFetching: fetchingConn, refetch: refetchConn }
+      = useGetClusterConnectionsQuery();
 
   // These define which checkboxes are checked by default in the Edit Columns modal
   const defaultValues : Record<string, boolean> = {
@@ -198,7 +216,9 @@ export const NodesTab: FC = () => {
       read_write_ops: true,
       read_ops: true,
       write_ops: true,
-      active_connections: false,
+      ...((isConnMgrEnabled)
+          ? {active_logical_connections: false, active_physical_connections: false}
+          : {active_connections: false}),
       number_of_tablets: true,
       peer_tablets: true,
       leader_tablets: true,
@@ -286,7 +306,12 @@ export const NodesTab: FC = () => {
         read_write_ops:
             [roundDecimal(node.metrics.read_ops_per_sec),
              roundDecimal(node.metrics.write_ops_per_sec),
-             node.metrics.active_connections.ysql + node.metrics.active_connections.ycql],
+             ...((isConnMgrEnabled)
+                 ? [connectionsResponse?.data?.[node.host]
+                        ?.reduce((sum, pool) => sum + pool.active_logical_connections, 0) ?? 0,
+                    connectionsResponse?.data?.[node.host]
+                        ?.reduce((sum, pool) => sum + pool.active_physical_connections, 0) ?? 0]
+                 : [node.metrics.active_connections.ysql + node.metrics.active_connections.ycql])],
         node_status_column:
             [node.is_node_up ? node.metrics.uptime_seconds : -1,
              node.metrics.time_since_hb_sec],
@@ -314,11 +339,12 @@ export const NodesTab: FC = () => {
       }));
     }
     return [];
-  }, [nodesResponse, filter, nodeFilter]);
-
+  }, [nodesResponse, filter, nodeFilter, connectionsResponse, isConnMgrEnabled]);
+console.log(nodesData)
+console.log(connectionsResponse)
   const hasReadReplica = !!nodesResponse?.data.find(node => node.is_read_replica);
 
-  if (fetchingNodes) {
+  if (fetchingNodes || fetchingGflags || fetchingConn) {
     return (
       <>
         <Box mt={3} mb={2.5}>
@@ -393,7 +419,8 @@ export const NodesTab: FC = () => {
         label: t('clusterDetail.nodes.performance'),
         options: {
           filter: true,
-          display: columns.read_ops || columns.write_ops || columns.active_connections
+          display: columns.read_ops || columns.write_ops || columns.active_connections ||
+                   columns.active_logical_connections || columns.active_physical_connections
         },
         subColumns: [
           {
@@ -419,16 +446,48 @@ export const NodesTab: FC = () => {
                   setCellHeaderProps: () => ({ style: { width: '150px', padding: '8px 32px' } })
               }
           },
-          {
-            name: 'active_connections',
-            label: t('clusterDetail.nodes.activeConnections'),
-            options: {
-                filter: true,
-                display: columns.active_connections,
-                setCellProps: () => ({ style: { width: '180px', padding: '0 32px' } }),
-                setCellHeaderProps: () => ({ style: { width: '180px', padding: '8px 32px' } })
-            }
-          },
+          ...((isConnMgrEnabled)
+              ? [
+                    {
+                        name: 'active_logical_connections',
+                        label: t('clusterDetail.nodes.activeLogicalConnections'),
+                        options: {
+                            filter: true,
+                            display: columns.active_logical_connections,
+                            setCellProps: () => ({ style: { width: '220px', padding: '0 32px' } }),
+                            setCellHeaderProps: () => ({
+                                style: { width: '220px', padding: '8px 32px' }
+                            })
+                        }
+                    },
+                    {
+                        name: 'active_physical_connections',
+                        label: t('clusterDetail.nodes.activePhysicalConnections'),
+                        options: {
+                            filter: true,
+                            display: columns.active_physical_connections,
+                            setCellProps: () => ({ style: { width: '220px', padding: '0 32px' } }),
+                            setCellHeaderProps: () => ({
+                                style: { width: '220px', padding: '8px 32px' }
+                            })
+                        }
+                    }
+                ]
+              : [
+                    {
+                        name: 'active_connections',
+                        label: t('clusterDetail.nodes.activeConnections'),
+                        options: {
+                            filter: true,
+                            display: columns.active_connections,
+                            setCellProps: () => ({ style: { width: '180px', padding: '0 32px' } }),
+                            setCellHeaderProps: () => ({
+                                style: { width: '180px', padding: '8px 32px' }
+                            })
+                        }
+                    }
+                ]
+          ),
         ],
     },
     {
@@ -685,7 +744,9 @@ export const NodesTab: FC = () => {
     region_and_zone: 'general',
     read_ops: 'performance',
     write_ops: 'performance',
-    active_connections: 'performance',
+    ...((isConnMgrEnabled)
+        ? {active_logical_connections: 'performance', active_physical_connections: 'performance'}
+        : {active_connections: 'performance'}),
     ram_used: 'memory',
     ram_provisioned: 'memory',
     peer_tablets: 'scalability',
@@ -726,10 +787,24 @@ export const NodesTab: FC = () => {
                 name: 'write_ops',
                 label: t('clusterDetail.nodes.writeOpsPerSec')
             },
-            {
-                name: 'active_connections',
-                label: t('clusterDetail.nodes.activeConnections')
-            }
+            ...((isConnMgrEnabled)
+                ? [
+                    {
+                        name: 'active_logical_connections',
+                        label: t('clusterDetail.nodes.activeLogicalConnections')
+                    },
+                    {
+                        name: 'active_physical_connections',
+                        label: t('clusterDetail.nodes.activePhysicalConnections')
+                    }
+                  ]
+                : [
+                    {
+                        name: 'active_connections',
+                        label: t('clusterDetail.nodes.activeConnections')
+                    }
+                  ]
+            ),
         ]
     },
     scalability: {
@@ -925,6 +1000,8 @@ export const NodesTab: FC = () => {
                 startIcon={<RefreshIcon />}
                 onClick={() =>  {
                     refetchNodes();
+                    refetchGflags();
+                    refetchConn();
                 }}
                 >
                 {t('clusterDetail.nodes.refresh')}

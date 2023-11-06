@@ -180,3 +180,9 @@ VoyagerAssesmentResponse:
         properties:
           data:
             $ref: '../schemas/_index.yaml#/MigrationAssesmentInfo'
+ConnectionsResponse:
+  description: YSQL connection manager stats
+  content:
+    application/json:
+      schema:
+        $ref: '../schemas/_index.yaml#/ConnectionsStats'

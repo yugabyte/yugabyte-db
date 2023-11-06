@@ -667,6 +667,42 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
                 Name:   metric,
                 Values: metricValues,
             })
+        case "TOTAL_LOGICAL_CONNECTIONS":
+            rawMetricValues, err := c.getRawMetricsForAllNodes("total_logical_connections",
+                nodeList, hostToUuid, startTime, endTime, session, false)
+            if err != nil {
+                return ctx.String(http.StatusInternalServerError, err.Error())
+            }
+            // If the time window is less than 1 hour, don't use as many intervals
+            numIntervals := GRANULARITY_NUM_INTERVALS
+            if endTime - startTime < 60*60 {
+                numIntervals = 25
+            }
+            nodeMetricValues := reduceGranularityForAllNodes(startTime, endTime,
+                rawMetricValues, numIntervals, true)
+            metricValues := calculateCombinedMetric(nodeMetricValues, false)
+            metricResponse.Data = append(metricResponse.Data, models.MetricData{
+                Name:   metric,
+                Values: metricValues,
+            })
+        case "TOTAL_PHYSICAL_CONNECTIONS":
+            rawMetricValues, err := c.getRawMetricsForAllNodes("total_physical_connections",
+            nodeList, hostToUuid, startTime, endTime, session, false)
+            if err != nil {
+                return ctx.String(http.StatusInternalServerError, err.Error())
+            }
+            // If the time window is less than 1 hour, don't use as many intervals
+            numIntervals := GRANULARITY_NUM_INTERVALS
+            if endTime - startTime < 60*60 {
+                numIntervals = 25
+            }
+            nodeMetricValues := reduceGranularityForAllNodes(startTime, endTime,
+                rawMetricValues, numIntervals, true)
+            metricValues := calculateCombinedMetric(nodeMetricValues, false)
+            metricResponse.Data = append(metricResponse.Data, models.MetricData{
+                Name:   metric,
+                Values: metricValues,
+            })
         }
     }
     return ctx.JSON(http.StatusOK, metricResponse)
@@ -1304,6 +1340,9 @@ func (c *Container) GetIsLoadBalancerIdle(ctx echo.Context) error {
 func (c *Container) GetGflagsJson(ctx echo.Context) error {
 
     nodeHost := ctx.QueryParam("node_address")
+    if nodeHost == "" {
+        nodeHost = helpers.HOST
+    }
 
     gFlagsTserverFuture := make(chan helpers.GFlagsJsonFuture)
     go c.helper.GetGFlagsJsonFuture(nodeHost, false, gFlagsTserverFuture)
@@ -1466,4 +1505,53 @@ func (c *Container) GetClusterAlerts(ctx echo.Context) error {
     }
 
     return ctx.JSON(http.StatusOK, alertsResponse)
+}
+
+// GetClusterConnections - Get YSQL connection manager stats for every node of the cluster
+func (c *Container) GetClusterConnections(ctx echo.Context) error {
+    connectionsResponse := models.ConnectionsStats{
+        Data: map[string][]models.ConnectionStatsItem{},
+    }
+    nodeList, err := c.getNodes()
+    if err != nil {
+        return ctx.String(http.StatusInternalServerError, err.Error())
+    }
+    connectionsFutures := map[string]chan helpers.ConnectionsFuture{}
+    for _, nodeHost := range nodeList {
+        connectionsFuture := make(chan helpers.ConnectionsFuture)
+        connectionsFutures[nodeHost] = connectionsFuture
+        go c.helper.GetConnectionsFuture(nodeHost, connectionsFuture)
+    }
+    for nodeHost, future := range connectionsFutures {
+        connectionResponse := <-future
+        if connectionResponse.Error != nil {
+            c.logger.Errorf("failed to get connection stats from %s: %s",
+                nodeHost, connectionResponse.Error.Error())
+            continue
+        }
+        connectionsResponse.Data[nodeHost] = []models.ConnectionStatsItem{}
+        for _, connectionPool := range connectionResponse.Pools {
+            if connectionPool.Pool != "control_connection" {
+                connectionsResponse.Data[nodeHost] = append(
+                    connectionsResponse.Data[nodeHost],
+                    models.ConnectionStatsItem{
+                        Pool: connectionPool.Pool,
+                        ActiveLogicalConnections: connectionPool.ActiveLogicalConnections,
+                        QueuedLogicalConnections: connectionPool.QueuedLogicalConnections,
+                        IdleOrPendingLogicalConnections:
+                            connectionPool.IdleOrPendingLogicalConnections,
+                        ActivePhysicalConnections: connectionPool.ActivePhysicalConnections,
+                        IdlePhysicalConnections: connectionPool.IdlePhysicalConnections,
+                        AvgWaitTimeNs: connectionPool.AvgWaitTimeNs,
+                        Qps: connectionPool.Qps,
+                        Tps: connectionPool.Tps,
+                    },
+                )
+            }
+        }
+        if len(connectionsResponse.Data[nodeHost]) == 0 {
+            c.logger.Errorf("did not find non-control connection pool info for %s", nodeHost)
+        }
+    }
+    return ctx.JSON(http.StatusOK, connectionsResponse)
 }
