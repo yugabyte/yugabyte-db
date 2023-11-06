@@ -252,7 +252,7 @@ Perform the following steps to verify your certificates:
 1. Execute the following verify command which checks the database node certificate (node.crt) against the root CA certificate (ca.crt):
 
     ```sh
-    openssl verify ca.crt bundle.pem node.crt
+    openssl verify ca.crt node.crt
     ```
 
     The `bundle.pem` file is a certificate bundle containing the root certificate and any intermediate certificates in the PEM format.
@@ -266,7 +266,7 @@ Perform the following steps to verify your certificates:
     ```
 
     ```sh
-    openssl x509 -in root.crt -text -noout
+    openssl x509 -in ca.crt -text -noout
     ```
 
 1. Verify that the node certificate Common Name (CN) or Subject Alternate Name  (SAN) contains the IP address or DNS name of each on-prem node on which the nodes are deployed.
