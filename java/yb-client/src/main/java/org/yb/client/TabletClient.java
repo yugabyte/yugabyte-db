@@ -60,6 +60,8 @@ import org.yb.rpc.RpcHeader;
 import org.yb.tserver.TserverTypes;
 import org.yb.util.Pair;
 
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
@@ -67,7 +69,6 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.BiConsumer;
 
 /**
  * Stateful handler that manages a connection to a specific TabletServer.
@@ -141,16 +142,10 @@ public class TabletClient extends ReplayingDecoder<Void> {
 
   private final long socketReadTimeoutMs;
 
-  private BiConsumer<TabletClient, Channel> disconnectListener;
-
   public TabletClient(AsyncYBClient client, String uuid) {
     this.ybClient = client;
     this.uuid = uuid;
     this.socketReadTimeoutMs = client.getDefaultSocketReadTimeoutMs();
-  }
-
-  public void setDisconnectListener(BiConsumer<TabletClient, Channel> disconnectListener) {
-    this.disconnectListener = disconnectListener;
   }
 
   <R> void sendRpc(YRpc<R> rpc) {
@@ -270,16 +265,22 @@ public class TabletClient extends ReplayingDecoder<Void> {
 
     final Channel chancopy = chan;
     if (chancopy == null) {
+      LOG.warn("Channel is missing during client shutdown for {}", getPeerUuidLoggingString());
       return Deferred.fromResult(null);
     }
+    String hostPort = getHostPort(chan.remoteAddress());
+    LOG.debug("Shutting down channel {}", hostPort);
     final Deferred<Void> d = new Deferred<Void>();
     if (chancopy.isActive()) {
       try {
         chancopy.disconnect().sync();   // ... this is going to set it to null.
         // At this point, all in-flight RPCs are going to be failed.
       } catch (InterruptedException e) {
-        LOG.warn(getPeerUuidLoggingString() + chan + " - failed to disconnect - interrupted");
+        LOG.warn("{} {} - failed to disconnect - interrupted",
+          getPeerUuidLoggingString(), hostPort);
       }
+    } else {
+      LOG.warn("Channel {} is not active during shutdown", hostPort);
     }
     // It's OK to call close() on a Channel if it's already closed.
     final ChannelFuture future = chancopy.close();
@@ -346,7 +347,7 @@ public class TabletClient extends ReplayingDecoder<Void> {
     final int rpcid = header.getCallId();
 
     @SuppressWarnings("rawtypes")
-    final YRpc rpc = rpcs_inflight.get(rpcid);
+    final YRpc rpc = rpcs_inflight.remove(rpcid);
 
     if (rpc == null) {
       final String msg = getPeerUuidLoggingString() + "Invalid rpcid: " + rpcid + " found in "
@@ -391,14 +392,6 @@ public class TabletClient extends ReplayingDecoder<Void> {
           + ", response size=" + (buf.readerIndex() - rdx) + " bytes"
           + ", " + actualReadableBytes() + " readable bytes left"
           + ", rpc=" + rpc);
-    }
-
-    {
-      final YRpc<?> removed = rpcs_inflight.remove(rpcid);
-      if (removed == null) {
-        // The RPC we were decoding was cleaned up already, give up.
-        throw new NonRecoverableException("RPC not found");
-      }
     }
 
     // This check is specifically for the ERROR_SERVER_TOO_BUSY case above.
@@ -647,8 +640,7 @@ public class TabletClient extends ReplayingDecoder<Void> {
     doCleanup(ctx.channel());
   }
 
-  public void doCleanup(Channel channel) throws Exception {
-    disconnectListener.accept(this, channel);
+  public void doCleanup(Channel channel) {
     chan = null;
     cleanup(channel);
   }
@@ -792,6 +784,17 @@ public class TabletClient extends ReplayingDecoder<Void> {
         .append(rpcs_inflight.size())       // ~ 2
         .append(')');                       // = 1
     return buf.toString();
+  }
+
+  public static String getHostPort(SocketAddress remoteAddress) {
+    if (remoteAddress == null) {
+      return null;
+    }
+    if (!(remoteAddress instanceof InetSocketAddress)) {
+      return "Unknown address type " + remoteAddress.getClass().getSimpleName();
+    }
+    InetSocketAddress inetSocketAddress = (InetSocketAddress) remoteAddress;
+    return  inetSocketAddress.getAddress().getHostAddress() + ":" + inetSocketAddress.getPort();
   }
 
 }
