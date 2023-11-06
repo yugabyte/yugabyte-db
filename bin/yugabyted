@@ -278,7 +278,7 @@ METRICS_SNAPSHOT_LIST = [
     "handler_latency_yb_tserver_TabletServerService_Write_count",
     "handler_latency_yb_tserver_TabletServerService_Read_sum",
     "handler_latency_yb_tserver_TabletServerService_Write_sum",
-    "disk_usage", "cpu_usage", "node_up", "ysql_conn_mgr"
+    "disk_usage", "cpu_usage", "node_up"
 ]
 
 # YugaWare configs. These have their own separate subdirectory to preserve our itest flow.
@@ -2002,6 +2002,12 @@ class ControlScript(object):
         if join_ip:
             master_addresses  = "{}:{},{}".format(join_ip, master_rpc_port, master_addresses)
         certs_dir = self.configs.saved_data.get("certs_dir")
+
+        # Check if connection manager is enabled
+        tserver_flags = self.configs.saved_data.get("tserver_flags")
+
+        if tserver_flags.find("enable_ysql_conn_mgr") != -1:
+            METRICS_SNAPSHOT_LIST.append("ysql_conn_mgr")
 
         common_gflags = [
             "--stop_on_parent_termination",
