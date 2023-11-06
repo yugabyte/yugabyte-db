@@ -152,7 +152,7 @@ CREATE TABLE table_name (
 To add a multi-column index to an existing table, you can use the following syntax:
 
 ```sql
-CREATE INDEX index_name ON table_name(col2,col3,col4);
+CREATE INDEX index_name ON table_name ((col2,col3,col4));
 ```
 
 The column order is very important when you create a multi-column index in YSQL because of the structure in which the index is stored. As such, these indexes have a hierarchical order from left to right. So, for the preceding syntaxes, you can perform search using the following column combinations:
