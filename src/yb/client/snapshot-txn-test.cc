@@ -78,6 +78,7 @@ DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(max_transactions_in_status_request);
 DECLARE_uint64(clock_skew_force_crash_bound_usec);
 DECLARE_bool(enable_load_balancing);
+DECLARE_bool(enable_check_retryable_request_timeout);
 
 extern double TEST_delay_create_transaction_probability;
 
@@ -382,6 +383,8 @@ TEST_F(SnapshotTxnTest, BankAccountsPartitioned) {
 TEST_F(SnapshotTxnTest, BankAccountsWithTimeStrobe) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_fail_on_out_of_range_clock_skew) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_clock_skew_force_crash_bound_usec) = 0;
+  // If clock skew is not bounded, cannot rely on request timeout to reject expired requests.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_check_retryable_request_timeout) = false;
 
   TestBankAccounts(
       BankAccountsOptions{BankAccountsOption::kTimeStrobe}, 300s,

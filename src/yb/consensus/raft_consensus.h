@@ -297,6 +297,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   OpId GetLastFlushedOpIdInRetryableRequests();
 
   bool TEST_HasRetryableRequestsOnDisk() const;
+  int TEST_RetryableRequestTimeoutSecs() const;
 
  protected:
   // As a leader, append a new ConsensusRound to the queue.
