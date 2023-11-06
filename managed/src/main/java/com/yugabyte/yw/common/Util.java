@@ -61,6 +61,7 @@ import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.validator.routines.InetAddressValidator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -994,5 +995,10 @@ public class Util {
       }
     }
     return dataDirPath;
+  }
+
+  public static boolean isIpAddress(String maybeIp) {
+    InetAddressValidator ipValidator = InetAddressValidator.getInstance();
+    return ipValidator.isValidInet4Address(maybeIp) || ipValidator.isValidInet6Address(maybeIp);
   }
 }
