@@ -1,23 +1,38 @@
 ---
 title: Writes
-headerTitle: Writes
-linkTitle: Writes
-description: Writes in YugabyteDB.
-headcontent: Write performance when scaling out
+headerTitle: Scaling writes
+linkTitle: Scaling writes
+description: Writes scale horizontally in YugabyteDB as you add more nodes
+headcontent: Writes scale horizontally in YugabyteDB as you add more nodes
 menu:
   preview:
-    name: Writes
     identifier: scaling-writes
     parent: explore-scalability
-    weight: 50
+    weight: 40
 type: docs
 ---
 
-Writes scale linearly in YugabyteDB as more nodes are added to the cluster.
+Writes scale linearly in YugabyteDB as more nodes are added to the cluster. Let us see how this happens.
 
-In YugabyteDB, the rows are [sharded into tablets](../sharding-data) based on the primary key (or the row ID when a primary key is not defined), and these tablets are distributed across the nodes in the cluster. Because data is distributed across the different nodes in the cluster, YugabyteDB can perform parallel write operations, which results in linear scaling of performance when nodes are added to the cluster.
+## Writes - How do they work
 
-YugabyteDB can clock more than 1 million writes/second in both [YSQL](../../../api/ysql/) and [YCQL](../../../api/ycql/) APIs.
+When a application, connected to a node sends a write request for a key say `UPDATE T SET V=2 WHERE K=5`, YugabyteDB first identifies the location of the tablet leader containing the row with the key specified (`K=5`). Once the location of the tablet leader is identified, the request is internally re-directed to the node containing the tablet leader for the requested key.
+
+The leader replicates the write to the followers and then acknowledges the write back to the application. This replication to follower adds additional latency to the request. A simple `write` involves a maximum of just 2 nodes.
+
+![How does a write work](/images/explore/scalability/scaling-write-working.png)
+
+If multiple rows have to be fetched and are located in different tablets, various rows are internally fetched from various tablets located in different nodes. This redirection is completely transparent to the application.
+
+![How does a write work](/images/explore/scalability/scaling-write-multiple-fetches.png)
+
+## Sysbench workload
+
+Here we show how writes scale horizontally in YugabyteDB using a sysbench workload of simple inserts. The cluster consisted of `m6i.4xlarge` instances and had `1024` connections. All requests had a latency of <10ms.
+
+![Scaling with sysbench](/images/explore/scalability/scaling-writes-sysbench.png)
+
+You can clearly see that with increase in the no.of nodes the no.of reads scales linearly.
 
 ## YSQL - 1 million writes/second
 

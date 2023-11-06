@@ -25,17 +25,18 @@ menu:
 type: indexpage
 ---
 
-YugabyteDB can be scaled either horizontally or vertically depending on your needs. YugabyteDB automatically splits user tables into multiple [shards](../../../architecture/docdb-sharding/sharding/?), called tablets. You can either add more nodes to distribute the tablets or increase the specs of your nodes to scale your universe efficiently and reliably to handle the following:
+In YugabyteDB, [data is split (sharded)](./sharding-rebalancing) into tablets, and these multiple tablets are placed on varioous nodes. When more [nodes are added](./node-addition), some tablets are automatically [rebalanced](./sharding-rebalancing#rebalancing) to the new nodes. Tablets can be split dynamically as needed to use the newly added resource, which leads to each node managing fewer tablets. The entire cluster can therefore handle more transactions and queries in parallel, thus increasing its capacity to handle larger workloads.
+
+You can either add more nodes to distribute the tablets or increase the specs of your nodes to scale your universe efficiently and reliably to handle the following:
 
 * High transactions per second
 * High number of concurrent client connections
 * Large datasets
+* Data in multiple regions and continents
 
 ## Horizontal scaling (scale out)
 
-Horizontal scaling, also referred to as scaling out, is the process of adding more nodes to a distributed database to handle increased load and data. In YugabyteDB, data is split (sharded) into tablets, and these multiple tablets are located on each node. When more nodes are added, some tablets are automatically moved to the new nodes. Tablets can be split dynamically as needed to use the newly added resource, which leads to each node managing fewer tablets. The entire cluster can therefore handle more transactions and queries in parallel, thus increasing its capacity to handle larger workloads.
-
-Horizontal scaling is the most common scaling model in YugabyteDB, and has several advantages, including:
+Horizontal scaling, also referred to as scaling out, is the process of adding more nodes to a distributed database to handle increased load and data. Horizontal scaling is the most common scaling model in YugabyteDB, and has several advantages, including:
 
 * **Improved performance** - More nodes can process requests in parallel, reducing response times.
 * **Cost-effectiveness** - You can use commodity hardware, which is generally less expensive than high-end servers.
@@ -51,32 +52,41 @@ In some cases, depending on your application needs and budget constraints, a com
 
 The following table lists the pros and cons of Horizontal/Vertical scaling of a YugabyteDB cluster.
 
-|                     |           Horizontal Scaling            |                               Vertical Scaling                                |
-| ------------------- | --------------------------------------- | ----------------------------------------------------------------------------- |
-| Also known as       | Scale out                               | Scale up                                                                      |
-| No. of nodes        | Increases                               | Remains the same                                                              |
-| Ease of effort      | Add new nodes to the cluster            | Add more powerful nodes, drain the old node, and remove them from the cluster |
-| Fault Tolerance     | Increases as more nodes have been added | Remains the same                                                              |
-| Cluster rebalancing | Faster                                  | Slower                                                                        |
-| Future scaling      | More nodes can be added                 | Limited to the most powerful machines available today                         |
-| Added costs         | Cost of newer machines                  | Difference in cost of the new and old machines                                |
-| Disk | Same disks as other nodes can be used as data and connections will be distributed | Along with CPU and Memory, disks should also be updgraded to handle increased workloads |
+|                         |                           Horizontal Scaling/Scale out                            |                                Vertical Scaling/Scale up                                |
+| ----------------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| **No. of nodes**        | Increases                                                                         | Remains the same                                                                        |
+| **Ease of effort**      | Add new nodes to the cluster                                                      | Add more powerful nodes, drain the old node, and remove them from the cluster           |
+| **Fault Tolerance**     | Increases as more nodes have been added                                           | Remains the same                                                                        |
+| **Cluster rebalancing** | Faster                                                                            | Slower                                                                                  |
+| **Future scaling**      | More nodes can be added                                                           | Limited to the most powerful machines available today                                   |
+| **Added costs**         | Cost of newer machines                                                            | Difference in cost of the new and old machines                                          |
+| **Disk**                | Same disks as other nodes can be used as data and connections will be distributed | Along with CPU and Memory, disks should also be updgraded to handle increased workloads |
+
+## Enhancements
+
+[DocDB](../../architecture/docdb/), YugabyteDB's underlying distributed document store, uses a heavily customized version of RocksDB for node-local persistence. It has been engineered ground up to deliver high performance at a massive scale. Several features have been built into DocDB to support this design goal, including the following:
+
+- Scan-resistant global block cache
+- Bloom/index data splitting
+- Global memstore limit
+- Separate compaction queues to reduce read amplification
+- Smart load balancing across disks
 
 ## Learn more
 
 {{<index/block>}}
 
   {{<index/item
-    title="Scaling transactions per second"
-    body="Scale out a universe to handle a greater number of concurrent transactions per second."
-    href="scaling-transactions-cloud/"
-    icon="/images/section_icons/explore/linear_scalability.png">}}
-
-  {{<index/item
     title="Distribute data across nodes"
     body="Automatic data distribution across the universe's nodes using transparent sharding of tables."
-    href="sharding-data/"
+    href="./sharding-rebalancing"
     icon="fa-solid fa-building">}}
+
+  {{<index/item
+    title="Scale out by adding nodes"
+    body="Seamlessly scale your cluster on demand by adding new nodes to the cluster"
+    href="./node-addition"
+    icon="fa-solid fa-circle-nodes">}}
 
   {{<index/item
     title="Writes"
