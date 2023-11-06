@@ -89,6 +89,12 @@ The following table lists the pros and cons of Horizontal/Vertical scaling of a 
     icon="fa-solid fa-circle-nodes">}}
 
   {{<index/item
+    title="Reads"
+    body="See how reads scale in YugabyteDB."
+    href="scaling-reads/"
+    icon="fa-brands fa-readme">}}
+
+  {{<index/item
     title="Writes"
     body="See how writes scale in YugabyteDB."
     href="scaling-writes/"
@@ -100,11 +106,7 @@ The following table lists the pros and cons of Horizontal/Vertical scaling of a 
     href="scaling-transactions-bench/"
     icon="/images/section_icons/explore/auto_sharding.png">}}
 
-  {{<index/item
-    title="Simple workloads"
-    body="See how large simple workloads scale in YugabyteDB."
-    href="scaling-simple-workloads/"
-    icon="fa-solid fa-truck-ramp-box">}}
+  
 
   {{<index/item
     title="Large datasets"
