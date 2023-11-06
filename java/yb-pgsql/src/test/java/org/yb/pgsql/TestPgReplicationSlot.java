@@ -70,4 +70,58 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         .make();
     replConnection.dropReplicationSlot("test_slot_repl_conn");
   }
+
+  @Test
+  public void replicationConnectionCreateTemporaryUnsupported() throws Exception {
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+    String expectedErrorMessage = "Temporary replication slot is not yet supported";
+
+    boolean exceptionThrown = false;
+    try {
+      replConnection.createReplicationSlot()
+          .logical()
+          .withSlotName("test_slot_repl_conn_temporary")
+          .withOutputPlugin("yboutput")
+          .withTemporaryOption()
+          .make();
+    } catch (PSQLException e) {
+      exceptionThrown = true;
+      if (StringUtils.containsIgnoreCase(e.getMessage(), expectedErrorMessage)) {
+        LOG.info("Expected exception", e);
+      } else {
+        fail(String.format("Unexpected Error Message. Got: '%s', Expected to contain: '%s'",
+            e.getMessage(), expectedErrorMessage));
+      }
+    }
+
+    assertTrue("Expected an exception but wasn't thrown", exceptionThrown);
+  }
+
+  @Test
+  public void replicationConnectionCreatePhysicalUnsupported() throws Exception {
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+    String expectedErrorMessage = "YSQL only supports logical replication slots";
+
+    boolean exceptionThrown = false;
+    try {
+      replConnection.createReplicationSlot()
+          .physical()
+          .withSlotName("test_slot_repl_conn_temporary")
+          .make();
+    } catch (PSQLException e) {
+      exceptionThrown = true;
+      if (StringUtils.containsIgnoreCase(e.getMessage(), expectedErrorMessage)) {
+        LOG.info("Expected exception", e);
+      } else {
+        fail(String.format("Unexpected Error Message. Got: '%s', Expected to contain: '%s'",
+            e.getMessage(), expectedErrorMessage));
+      }
+    }
+
+    assertTrue("Expected an exception but wasn't thrown", exceptionThrown);
+  }
 }
