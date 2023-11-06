@@ -134,13 +134,13 @@ During a [maintenance window](../../yugabyte-cloud/cloud-clusters/cloud-maintena
 
 #### Cluster (YugabyteDB) version upgrade
 
-To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte upgrades your cluster database to the [latest version](#what-version-of-yugabytedb-does-my-cluster-run-on).
+To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte upgrades your cluster database to the [latest version](#what-version-of-yugabytedb-does-my-cluster-run-on). The database is upgraded to the latest release in the [release track](#what-version-of-yugabytedb-does-my-cluster-run-on) that was selected when the cluster was created (Innovation or Production for dedicated clusters, or Preview for Sandbox clusters). Sandbox clusters are always in the preview track.
 
-Yugabyte only upgrades clusters during scheduled maintenance windows. Yugabyte notifies you in advance of any upcoming upgrade via email. The email includes the date and time of the maintenance window. An Upcoming Maintenance badge is also displayed on the cluster. You can start the upgrade any time by signing in to YugabyteDB Managed, selecting the cluster, clicking the **Upcoming Maintenance** badge, and clicking **Upgrade Now**. To delay the maintenance, click **Delay to next available window**. To manage maintenance windows, select the cluster [Maintenance tab](../../yugabyte-cloud/cloud-clusters/cloud-maintenance/).
+Yugabyte only upgrades clusters during scheduled maintenance windows. Yugabyte notifies you in advance of any upcoming upgrade via email.
 
-The database is upgraded to the latest release in the [release track](#what-version-of-yugabytedb-does-my-cluster-run-on) that was selected when the cluster was created (Innovation or Production for dedicated clusters, or Preview for Sandbox clusters). Sandbox clusters are always in the preview track.
+Updates to fault-tolerant clusters are done on a rolling basis to avoid any downtime.
 
-Database upgrades of high-availability (multi-node) clusters are done on a rolling basis to avoid any downtime.
+For more information, refer to [Maintenance windows](../../yugabyte-cloud/cloud-clusters/cloud-maintenance/).
 
 ## YugabyteDB
 
