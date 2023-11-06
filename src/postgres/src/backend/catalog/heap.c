@@ -1831,9 +1831,8 @@ RemoveAttributeById(Oid relid, AttrNumber attnum)
 
 			CatalogTupleUpdate(attr_rel, &tuple->t_self, tuple);
 		}
-		/* YB note: attmissingval is unused in YB relations. */
 		/* clear the missing value if any */
-		if (!IsYBRelationById(relid) && attStruct->atthasmissing)
+		if (attStruct->atthasmissing)
 		{
 			Datum		valuesAtt[Natts_pg_attribute];
 			bool		nullsAtt[Natts_pg_attribute];
@@ -2189,9 +2188,6 @@ heap_drop_with_catalog(Oid relid)
 void
 RelationClearMissing(Relation rel)
 {
-	/* YB note: attmissingval is unused in YB relations. */
-	if (IsYBRelation(rel))
-		return;
 	Relation	attr_rel;
 	Oid			relid = RelationGetRelid(rel);
 	int			natts = RelationGetNumberOfAttributes(rel);
@@ -2260,9 +2256,6 @@ RelationClearMissing(Relation rel)
 void
 SetAttrMissing(Oid relid, char *attname, char *value)
 {
-	/* YB note: attmissingval is unused in YB relations. */
-	if (IsYBRelationById(relid))
-		return;
 	Datum		valuesAtt[Natts_pg_attribute];
 	bool		nullsAtt[Natts_pg_attribute];
 	bool		replacesAtt[Natts_pg_attribute];
@@ -2409,11 +2402,7 @@ StoreAttrDefault(Relation rel, AttrNumber attnum,
 		valuesAtt[Anum_pg_attribute_atthasdef - 1] = true;
 		replacesAtt[Anum_pg_attribute_atthasdef - 1] = true;
 
-		/*
-		 * YB note: attmissingval is unused in YB relations - the missing value
-		 * is stored in the DocDB schema instead.
-		 */
-		if (!IsYBRelation(rel) && add_column_mode)
+		if (add_column_mode)
 		{
 			expr2 = expression_planner(expr2);
 			estate = CreateExecutorState();
