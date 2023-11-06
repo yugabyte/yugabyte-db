@@ -15,13 +15,13 @@ rightNav:
 type: docs
 ---
 
-Depending on your business needs, you might need to have some slow-moving data available for reads globally while other fast-moving data or data that needs to be geo-resident in specific geographies due to local laws. You can accomplish this using the pattern discussed here which combines several patterns we already discussed like, [Global Database](../global-database), [Locality-optimized Geo-partition](../locality-optimized-geo-partition), and [Follower Reads](../follower-reads).
+Depending your business needs, you might want to have some data available across multiple geographies and some data just within specific geographies due to local laws. You can accomplish this using the pattern discussed here which combines several patterns we already discussed like, [Global Database](../global-database), [Locality-optimized Geo-partition](../locality-optimized-geo-partition), and [Follower Reads](../follower-reads).
 
 {{<tip>}}
-Application instances are active in all regions, do consistent reads and writes on local data, but stale reads on global data that does not change much.
+Application instances are active in all regions, do consistent reads and writes on local data, but stale reads on global data that does not change often.
 {{</tip>}}
 
-Let us say that your business sells products in multiple geographies, say the USA, Europe and the Indian subcontinent. You need to have your product catalog available of the geographies but have to keep your customer's order information local to the geo for [GDPR](https://en.wikipedia.org/wiki/General_Data_Protection_Regulation). At the same time, you still would have to serve all data with low latency.
+Let us say that your business sells products in multiple geographies, say the USA, Europe and the Indian subcontinent. You need to have your product catalog available in all of the geographies but have to keep your customer's order information local to the geo for [GDPR](https://en.wikipedia.org/wiki/General_Data_Protection_Regulation). At the same time, you still would have to serve all data with low latency.
 
 ![Global catalog with Local orders data](/images/develop/global-apps/global-geolocal-tables-goal.png)
 
@@ -56,7 +56,7 @@ We are creating a global tablespace here for clarity and to differentiate agains
 {{</note>}}
 
 {{<tip>}}
-Although we are not specifying any leader preference for the `catalog` table, it would be advisable to set the leader preference to the region where the application that updates the `catalog` table runs.
+Although we are not specifying any leader preference for the `catalog` table, it would be advisable to set the leader preference to the region where the application that updates the `catalog` table runs or where most of your users are located.
 {{</tip>}}
 
 Now, we create the `catalog` table and attach it to the `global` tablespace. This will ensure that the `catalog` table is placed in all 3 geos.
