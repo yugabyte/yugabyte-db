@@ -57,6 +57,7 @@
 #include "yb/util/crc.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flags.h"
+#include "yb/util/logging.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -551,6 +552,8 @@ void RemoteBootstrapServiceImpl::RegisterLogAnchor(
     const RegisterLogAnchorRequestPB* req,
     RegisterLogAnchorResponsePB* resp,
     rpc::RpcContext context) {
+  VLOG_WITH_FUNC(4) << req->ShortDebugString();
+
   auto tablet_peer_result = tablet_peer_lookup_->GetServingTablet(req->tablet_id());
   RPC_RETURN_NOT_OK(
       tablet_peer_result,
@@ -571,8 +574,9 @@ void RemoteBootstrapServiceImpl::RegisterLogAnchor(
   if (requested_log_index < min_available_log_index) {
     RPC_RETURN_APP_ERROR(
         RemoteBootstrapErrorPB::REMOTE_LOG_ANCHOR_FAILURE,
-        Substitute("Cannot register LogAnchor for index $0", requested_log_index),
-        STATUS(NotSupported, "Not Supported: Requested LogAnchor index < MinReplicateIndex"));
+        Substitute("Cannot register LogAnchor"),
+        STATUS_FORMAT(NotFound, "Requested LogAnchor index($0) < min_available_log_index($1)",
+                      requested_log_index, min_available_log_index));
   }
 
   MAYBE_FAULT(FLAGS_TEST_fault_crash_on_rbs_anchor_register);
@@ -587,6 +591,8 @@ void RemoteBootstrapServiceImpl::RegisterLogAnchor(
       std::shared_ptr<LogAnchorSessionData> anchor_session_data(
           new LogAnchorSessionData(tablet_peer, log_anchor_ptr));
       log_anchors_map_[req->owner_info()] = anchor_session_data;
+      LOG(INFO) << "Beginning new remote log anchor session on tablet " << req->tablet_id()
+                << " with session id = " << req->owner_info();
     } else {
       tablet_peer.reset(it->second->tablet_peer_.get());
       std::shared_ptr<log::LogAnchor> log_anchor_ptr(it->second->log_anchor_ptr_);
@@ -598,6 +604,8 @@ void RemoteBootstrapServiceImpl::RegisterLogAnchor(
           Substitute(
               "Cannot Update LogAnchor for tablet $0 to index $1", tablet_peer->tablet_id(),
               requested_log_index));
+      LOG(INFO) << "Re-initializing existing remote log anchor session on tablet "
+                << req->tablet_id() << " with session id = " << req->owner_info();
     }
   }
 
@@ -611,8 +619,8 @@ void RemoteBootstrapServiceImpl::UpdateLogAnchor(
   if (it == log_anchors_map_.end()) {
     RPC_RETURN_APP_ERROR(
         RemoteBootstrapErrorPB::NO_SESSION,
-        Substitute("No existing Log Anchor session with id $0", req->owner_info()),
-        STATUS(IllegalState, "Cannot Update Log Anchor without Registering for one"));
+        Substitute("Log Anchor session not found."),
+        STATUS_FORMAT(IllegalState, "Couldn't find Log Anchor session: $0", req->owner_info()));
   }
 
   const auto requested_log_index = req->op_id().index();
@@ -639,8 +647,8 @@ void RemoteBootstrapServiceImpl::KeepLogAnchorAlive(
   if (it == log_anchors_map_.end()) {
     RPC_RETURN_APP_ERROR(
         RemoteBootstrapErrorPB::NO_SESSION,
-        Substitute("No existing Log Anchor session with id $0", req->owner_info()),
-        STATUS(IllegalState, "Cannot Refresh Log Anchor Session"));
+        Substitute("Log Anchor session not found."),
+        STATUS_FORMAT(IllegalState, "Couldn't find Log Anchor session: $0", req->owner_info()));
   }
   std::shared_ptr<tablet::TabletPeer> tablet_peer(it->second->tablet_peer_);
   std::shared_ptr<log::LogAnchor> log_anchor_ptr(it->second->log_anchor_ptr_);
@@ -652,6 +660,8 @@ void RemoteBootstrapServiceImpl::UnregisterLogAnchor(
     const UnregisterLogAnchorRequestPB* req,
     UnregisterLogAnchorResponsePB* resp,
     rpc::RpcContext context) {
+  VLOG_WITH_FUNC(4) << req->ShortDebugString();
+
   RemoteBootstrapErrorPB::Code app_error;
   std::lock_guard l(log_anchors_mutex_);
   RPC_RETURN_NOT_OK(
@@ -659,12 +669,15 @@ void RemoteBootstrapServiceImpl::UnregisterLogAnchor(
       app_error,
       Substitute("No existing Log Anchor session with id $0", req->owner_info())
   );
+  LOG(INFO) << "Request end of remote log anchor session " << req->owner_info();
   RemoveLogAnchorSession(req->owner_info());
   context.RespondSuccess();
 }
 
 void RemoteBootstrapServiceImpl::ChangePeerRole(
     const ChangePeerRoleRequestPB* req, ChangePeerRoleResponsePB* resp, rpc::RpcContext context) {
+  VLOG_WITH_FUNC(4) << req->ShortDebugString();
+
   std::shared_ptr<tablet::TabletPeer> tablet_peer;
   {
     std::lock_guard l(log_anchors_mutex_);
@@ -672,8 +685,8 @@ void RemoteBootstrapServiceImpl::ChangePeerRole(
     if (it == log_anchors_map_.end()) {
       RPC_RETURN_APP_ERROR(
           RemoteBootstrapErrorPB::NO_SESSION,
-          Substitute("No existing Log Anchor session with id $0", req->owner_info()),
-          STATUS(IllegalState, "Cannot execute ChangePeerRole with an invalid session"));
+          Substitute("Log Anchor session not found."),
+          STATUS_FORMAT(IllegalState, "Couldn't find Log Anchor session: $0", req->owner_info()));
     }
 
     tablet_peer = it->second->tablet_peer_;

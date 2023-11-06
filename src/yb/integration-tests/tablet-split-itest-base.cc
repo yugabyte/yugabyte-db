@@ -833,7 +833,10 @@ Status TabletSplitExternalMiniClusterITest::SplitTablet(const std::string& table
 Status TabletSplitExternalMiniClusterITest::FlushTabletsOnSingleTServer(
     size_t tserver_idx, const std::vector<yb::TabletId> tablet_ids, bool is_compaction) {
   auto tserver = cluster_->tablet_server(tserver_idx);
-  RETURN_NOT_OK(cluster_->FlushTabletsOnSingleTServer(tserver, tablet_ids, is_compaction));
+  auto flush_op_type = is_compaction ?
+      tserver::FlushTabletsRequestPB::COMPACT :
+      tserver::FlushTabletsRequestPB::FLUSH;
+  RETURN_NOT_OK(cluster_->FlushTabletsOnSingleTServer(tserver, tablet_ids, flush_op_type));
   return Status::OK();
 }
 

@@ -104,11 +104,8 @@ RemoteBootstrapSession::RemoteBootstrapSession(
 }
 
 RemoteBootstrapSession::~RemoteBootstrapSession() {
-  if (rbs_anchor_client_) {
-    WARN_NOT_OK(
-        rbs_anchor_client_->UnregisterLogAnchor(),
-        Format("Couldn't delete log anchor session $0", session_id_));
-  }
+  WARN_NOT_OK(UnregisterRemotelogAnchor(),
+              Format("$0Couldn't unregister remote log anchor session", LogPrefix()));
 
   // No lock taken in the destructor, should only be 1 thread with access now.
   CHECK_OK(UnregisterAnchorIfNeededUnlocked());
@@ -265,6 +262,12 @@ Status RemoteBootstrapSession::InitBootstrapSession() {
     }
   }
 
+  // When the current peer is a follower and is serving rbs, make the leader anchor its log at
+  // the last_logged_opid of the current peer. Since all data until that index will anyways be
+  // served by this peer, we need not register the anchor at a preceeding index.
+  remote_log_anchor_index_ = last_logged_opid.index;
+  RETURN_NOT_OK(RegisterRemoteLogAnchorUnlocked());
+
   std::optional<OpId> min_synced_op_id;
   // Copy the retryable requests if it exists.
   if (GetAtomicFlag(&FLAGS_enable_flush_retryable_requests)) {
@@ -310,11 +313,6 @@ Status RemoteBootstrapSession::InitBootstrapSession() {
     }
   }
 
-  if (rbs_anchor_client_) {
-    RETURN_NOT_OK(rbs_anchor_client_->RegisterLogAnchor(
-        tablet_peer_->tablet_id(), log_anchor_index_));
-    rbs_anchor_session_created_ = true;
-  }
   // Re-anchor on the highest OpId that was in the log right before we
   // snapshotted the log segments. This helps ensure that we don't end up in a
   // remote bootstrap loop due to a follower falling too far behind the
@@ -631,17 +629,17 @@ Status RemoteBootstrapSession::OpenLogSegment(
       log_segment->footer().min_replicate_index() > log_anchor_index_) {
     log_anchor_index_ = log_segment->footer().min_replicate_index();
 
-    // Update log anchor on the tablet leader.
-    if (rbs_anchor_client_) {
-      RETURN_NOT_OK(rbs_anchor_client_->UpdateLogAnchorAsync(log_anchor_index_));
-    }
-
     // Update log anchor, since we don't need older logs anymore.
     auto status = tablet_peer_->log_anchor_registry()->UpdateRegistration(
         log_anchor_index_, &log_anchor_);
     if (!status.ok()) {
       *error_code = RemoteBootstrapErrorPB::UNKNOWN_ERROR;
       return status;
+    }
+    // Update remote log anchor on the leader when the current peer serving rbs is a follower.
+    if (log_anchor_index_ > remote_log_anchor_index_) {
+      remote_log_anchor_index_ = log_anchor_index_;
+      RETURN_NOT_OK(UpdateRemoteLogAnchorUnlocked());
     }
   }
 
@@ -704,6 +702,32 @@ void RemoteBootstrapSession::InitRateLimiter() {
     });
   }
   rate_limiter_.Init();
+}
+
+Status RemoteBootstrapSession::RegisterRemoteLogAnchorUnlocked() {
+  if (rbs_anchor_client_) {
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "index=" << remote_log_anchor_index_;
+    RETURN_NOT_OK(rbs_anchor_client_->RegisterLogAnchor(tablet_peer_->tablet_id(),
+                                                        remote_log_anchor_index_));
+    rbs_anchor_session_created_ = true;
+  }
+  return Status::OK();
+}
+
+Status RemoteBootstrapSession::UpdateRemoteLogAnchorUnlocked() {
+  if (rbs_anchor_client_) {
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "index=" << remote_log_anchor_index_;
+    RETURN_NOT_OK(rbs_anchor_client_->UpdateLogAnchorAsync(remote_log_anchor_index_));
+  }
+  return Status::OK();
+}
+
+Status RemoteBootstrapSession::UnregisterRemotelogAnchor() {
+  if (rbs_anchor_client_) {
+    VLOG_WITH_PREFIX_AND_FUNC(4);
+    RETURN_NOT_OK(rbs_anchor_client_->UnregisterLogAnchor());
+  }
+  return Status::OK();
 }
 
 } // namespace tserver
