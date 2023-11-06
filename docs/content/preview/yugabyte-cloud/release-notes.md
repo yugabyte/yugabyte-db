@@ -20,6 +20,17 @@ On this page:
 
 ## Change log
 
+### November 3, 2023
+
+**New Features**
+
+- Ability to track usage per cluster over time. Navigate to **Usage & Billing > Usage** to view cumulative and daily usage of cluster compute, disk storage, cloud backup storage, and data transfer.
+- For Azure, all regions that are supported for single-region clusters are now available for multi-region clusters (including Virginia useast2, Tokyo, Seoul, Johannesburg, Texas, and Dubai).
+
+**Database**
+
+- Production track updated to 2.14.13.0.
+
 ### October 5, 2023
 
 **New Features**
