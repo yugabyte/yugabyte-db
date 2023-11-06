@@ -77,6 +77,7 @@ export class ListKeyManagementConfigurations extends Component {
             onClick={() => {
               this.setState({ associatedUniverses: [...universeDetails], isVisibleModal: true });
             }}
+            data-testid="EAR-ShowUniverses"
           >
             <i className="fa fa-eye"></i> Show Universes
           </MenuItem>

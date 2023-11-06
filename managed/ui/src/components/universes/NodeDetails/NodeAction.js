@@ -208,6 +208,7 @@ export default class NodeAction extends Component {
                   eventKey="live_queries_action_btn"
                   disabled={disabled}
                   onClick={this.handleLiveQueryClick}
+                  data-testid={'NodeAction-LIVE_QUERIES'}
                 >
                   {this.getLabel('LIVE_QUERIES', currentRow.dedicatedTo)}
                 </MenuItem>
@@ -222,6 +223,7 @@ export default class NodeAction extends Component {
                   eventKey="slow_queries_action_btn"
                   disabled={disabled}
                   onClick={this.handleSlowQueryClick}
+                  data-testid={'NodeAction-SLOW_QUERIES'}
                 >
                   {this.getLabel('SLOW_QUERIES', currentRow.dedicatedTo)}
                 </MenuItem>
@@ -243,6 +245,7 @@ export default class NodeAction extends Component {
             eventKey={btnId}
             disabled={isDisabled}
             onClick={() => isDisabled || this.openModal(actionType)}
+            data-testid={`NodeAction-${actionType}`}
           >
             {this.getLabel(actionType, currentRow.dedicatedTo)}
           </MenuItem>

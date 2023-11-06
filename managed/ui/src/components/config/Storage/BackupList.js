@@ -118,6 +118,7 @@ export const BackupList = (props) => {
               setConfigData({ configUUID, configName });
             }}
             disabled={!hasNecessaryPerm(ApiPermissionMap.GET_BACKUP)}
+            data-testid={`${currTab}-BackupList-ShowAssociatedBackups`}
           >
             Show associated backups
           </MenuItem>
