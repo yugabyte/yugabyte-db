@@ -40,6 +40,7 @@ export const getWrappedChildren = ({ overrideStyle }: { overrideStyle: CSSProper
         ...overrideStyle
       }}
       data-testid="rbac-no-perm"
+      id="rbac-no-perm"
     >
       <LockIcon />
       {RBAC_ERR_MSG_NO_PERM}
@@ -60,6 +61,7 @@ export const getErrorBoundary = ({
         position: 'relative'
       }}
       data-testid="rbac-no-perm"
+      id="rbac-no-perm"
     >
       <div
         style={{
@@ -100,6 +102,7 @@ export const ControlComp = ({
         ...overrideStyle
       }}
       data-testid="rbac-no-perm"
+      id="rbac-no-perm"
     >
       <ButtonDisabledPopover popOverOverrides={popOverOverrides}>
         {children as any}

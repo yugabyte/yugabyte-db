@@ -732,7 +732,7 @@ class UniverseDetail extends Component {
                           isControl
                           accessRequiredOn={{
                             onResource: uuid,
-                            ...ApiPermissionMap.GET_UNIVERSES_BY_ID
+                            ...ApiPermissionMap.UPGRADE_UNIVERSE_GFLAGS
                           }}
                         >
                           <YBMenuItem
@@ -752,7 +752,7 @@ class UniverseDetail extends Component {
                           isControl
                           accessRequiredOn={{
                             onResource: uuid,
-                            ...ApiPermissionMap.GET_UNIVERSES_BY_ID
+                            ...ApiPermissionMap.UPGRADE_UNIVERSE_GFLAGS
                           }}
                         >
                           <YBMenuItem

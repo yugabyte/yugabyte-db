@@ -277,6 +277,7 @@ class Certificates extends Component {
                 isVisibleModal: true
               });
             }}
+            data-testid="Certificates-ShowUniverses"
           >
             <i className="fa fa-eye"></i> Show Universes
           </MenuItem>
