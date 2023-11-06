@@ -15,6 +15,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -76,13 +77,28 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
                   && !isUniverseOnPremManualProvisioned
                   && universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
 
-          // Download software to all nodes.
-          createDownloadTasks(allNodes, newVersion);
+          Pair<List<NodeDetails>, List<NodeDetails>> nodesToSkipAction =
+              filterNodesWithSameDBVersionAndLiveState(universe, nodes, newVersion);
+          Set<NodeDetails> nodesToSkipMasterActions =
+              nodesToSkipAction.getLeft().stream().collect(Collectors.toSet());
+          Set<NodeDetails> nodesToSkipTServerActions =
+              nodesToSkipAction.getRight().stream().collect(Collectors.toSet());
+
+          // Download software to nodes which does not have either master or tserver with new
+          // version.
+          createDownloadTasks(
+              getNodesWhichRequiresSoftwareDownload(
+                  allNodes, nodesToSkipMasterActions, nodesToSkipTServerActions),
+              newVersion);
+
           // Install software on nodes.
           createUpgradeTaskFlowTasks(
               nodes,
               newVersion,
-              getUpgradeContext(taskParams().ybSoftwareVersion),
+              getUpgradeContext(
+                  taskParams().ybSoftwareVersion,
+                  nodesToSkipMasterActions,
+                  nodesToSkipTServerActions),
               reProvisionRequired);
 
           if (taskParams().installYbc) {
