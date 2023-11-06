@@ -397,7 +397,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                 UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
                 if (universeDetails.placementModificationTaskUuid != null
                     && !SAFE_TO_RUN_IF_UNIVERSE_BROKEN.contains(taskType)) {
-                  System.out.println("------>>>> " + universeDetails.placementModificationTaskUuid);
                   String msg =
                       String.format(
                           "Universe %s placement update failed - can't run %s task until placement"
