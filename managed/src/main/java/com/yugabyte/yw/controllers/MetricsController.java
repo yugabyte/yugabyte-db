@@ -6,21 +6,13 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.AppInit;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.metrics.MetricService;
-import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
-import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
-import com.yugabyte.yw.rbac.annotations.AuthzPath;
-import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
-import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
-import com.yugabyte.yw.rbac.annotations.Resource;
-import com.yugabyte.yw.rbac.enums.SourceType;
 import io.prometheus.client.Collector;
 import io.prometheus.client.Collector.MetricFamilySamples;
 import io.prometheus.client.CollectorRegistry;
@@ -75,12 +67,6 @@ public class MetricsController extends Controller {
       value = "Available since YBA version 2.8.0.0. Get Prometheus metrics",
       response = String.class,
       nickname = "MetricsDetail")
-  @AuthzPath({
-    @RequiredPermissionOnResource(
-        requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
-  })
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.8.0.0")
   public Result index() {
     try (ByteArrayOutputStream response = new ByteArrayOutputStream(1 << 20);

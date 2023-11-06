@@ -336,7 +336,7 @@ public class UsersController extends AuthenticatedController {
     @RequiredPermissionOnResource(
         requiredPermission =
             @PermissionAttribute(resourceType = ResourceType.USER, action = Action.READ),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+        resourceLocation = @Resource(path = Util.USERS, sourceType = SourceType.ENDPOINT))
   })
   public Result retrieveOidcAuthToken(UUID customerUUID, UUID userUuid, Http.Request request) {
     if (!confGetter.getGlobalConf(GlobalConfKeys.oidcFeatureEnhancements)) {
