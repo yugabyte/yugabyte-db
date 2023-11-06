@@ -1010,3 +1010,56 @@ AssesmentComplexityInfo:
       type: integer
     complexity:
       type: string
+ConnectionsStats:
+  title: YSQL connection manager stats
+  description: YSQL connection manager stats
+  type: object
+  properties:
+    data:
+      $ref: '#/ConnectionsStatsData'
+ConnectionsStatsData:
+  type: object
+  additionalProperties:
+    $ref: '#/ConnectionStats'
+ConnectionStats:
+  type: array
+  items:
+    $ref: '#/ConnectionStatsItem'
+ConnectionStatsItem:
+  type: object
+  properties:
+    pool:
+      type: string
+    active_logical_connections:
+      type: integer
+      format: int64
+    queued_logical_connections:
+      type: integer
+      format: int64
+    idle_or_pending_logical_connections:
+      type: integer
+      format: int64
+    active_physical_connections:
+      type: integer
+      format: int64
+    idle_physical_connections:
+      type: integer
+      format: int64
+    avg_wait_time_ns:
+      type: integer
+      format: int64
+    qps:
+      type: integer
+      format: int64
+    tps:
+      type: integer
+      format: int64
+  required:
+    - active_logical_connections
+    - queued_logical_connections
+    - idle_or_pending_logical_connections
+    - active_physical_connections
+    - idle_physical_connections
+    - avg_wait_time_ns
+    - qps
+    - tps

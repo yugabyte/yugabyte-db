@@ -323,3 +323,17 @@
         $ref: '../responses/_index.yaml#/ApiError'
       '500':
         $ref: '../responses/_index.yaml#/ApiError'
+/connections:
+  get:
+    summary: Get YSQL connection manager stats for every node of the cluster
+    description: Get YSQL connection manager stats for every node of the cluster
+    operationId: getClusterConnections
+    tags:
+      - cluster-info
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/ConnectionsResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
