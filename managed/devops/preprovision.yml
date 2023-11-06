@@ -77,6 +77,10 @@
 
       - name: Update apt cache
         raw: apt-get -y update
+        register: apt_status
+        until: apt_status is succeeded
+        retries: 25
+        delay: 5
 
       # Needed for /usr/bin/python as Python 2.7
       - name: Install python-minimal
