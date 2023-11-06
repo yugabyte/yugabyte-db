@@ -339,6 +339,11 @@ set_cxx_test_name() {
     if [[ $1 =~ ^(TEST_F_EX)\($identifier,\ *$identifier,\ *$identifier\) ||
           $1 =~ ^(TEST|TEST_F)\($identifier,\ *$identifier\) ]]; then
       gtest_filter=${BASH_REMATCH[2]}.${BASH_REMATCH[3]}
+    elif [[ $1 =~ ^TEST_P\($identifier,\ *$identifier\) ]]; then
+      # Create a filter with wildcards that match all possiblilities.  For example,
+      # - PackingVersion/PgPackedRowTest.AddDropColumn/kV1
+      # - PackingVersion/PgPackedRowTest.AddDropColumn/kV2
+      gtest_filter="*/${BASH_REMATCH[1]}.${BASH_REMATCH[2]}/*"
     else
       fatal "Could not determine gtest test filter from source substring $1"
     fi
