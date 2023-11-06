@@ -36,7 +36,7 @@ This page describes the steps to perform and verify a successful offline migrati
 Before proceeding with migration, ensure that you have completed the following steps:
 
 - [Install yb-voyager](../../install-yb-voyager/#install-yb-voyager).
-- Check the [unsupported features](../../known-issues/#unsupported-features) and [known issues](../../known-issues/#known-issues).
+- Review the [guidelines for your migration](../../known-issues/).
 - Review [data modeling](../../reference/data-modeling/) strategies.
 - [Prepare the source database](#prepare-the-source-database).
 - [Prepare the target database](#prepare-the-target-database).

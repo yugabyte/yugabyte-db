@@ -42,7 +42,7 @@ The following illustration describes the workflow for live migration using YB Vo
 Before proceeding with migration, ensure that you have completed the following steps:
 
 - [Install yb-voyager](../../install-yb-voyager/#install-yb-voyager).
-- Check the [unsupported features](../../known-issues/#unsupported-features) and [known issues](../../known-issues/#known-issues).
+- Review the [guidelines for your migration](../../known-issues/).
 - Review [data modeling](../../reference/data-modeling/) strategies.
 - [Prepare the source database](#prepare-the-source-database).
 - [Prepare the target database](#prepare-the-target-database).
