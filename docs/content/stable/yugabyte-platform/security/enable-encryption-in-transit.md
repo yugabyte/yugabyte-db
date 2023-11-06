@@ -255,8 +255,6 @@ Perform the following steps to verify your certificates:
     openssl verify ca.crt node.crt
     ```
 
-    The `bundle.pem` file is a certificate bundle containing the root certificate and any intermediate certificates in the PEM format.
-
 1. Verify that the node certificate (`node.crt`) and the node private key (`node.key`) match. See [How do I verify that a private key matches a certificate?](https://www.ssl247.com/knowledge-base/detail/how-do-i-verify-that-a-private-key-matches-a-certificate-openssl-1527076112539/ka03l0000015hscaay/)
 
 1. Verify that the node certificate and Root CA certificate expiration is at least 3 months by checking the validity field in the output of the following commands:
