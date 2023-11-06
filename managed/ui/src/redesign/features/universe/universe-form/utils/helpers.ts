@@ -409,3 +409,21 @@ export const editReadReplica = async (configurePayload: UniverseConfigure) => {
     return error;
   }
 };
+
+export const getDiffClusterData = (currentClusterConfig?: Cluster, newClusterConfig?: Cluster) => {
+  if (!currentClusterConfig || !newClusterConfig) {
+    return {
+      masterPlacementChanged: false,
+      numNodesChanged: false,
+      currentNodeCount: false,
+      newNodeCount: false
+    }
+  }
+
+  return {
+    masterPlacementChanged: currentClusterConfig?.userIntent?.dedicatedNodes !== newClusterConfig?.userIntent?.dedicatedNodes,
+    numNodesChanged: currentClusterConfig?.userIntent?.numNodes !== newClusterConfig?.userIntent?.numNodes,
+    currentNodeCount: currentClusterConfig?.userIntent?.numNodes,
+    newNodeCount: newClusterConfig?.userIntent?.numNodes
+  }
+}

@@ -385,6 +385,11 @@
         "modalDescription": "This operation will migrate this universe and all its data to a completely new set of nodes Or alternatively you could try smart resize (This will change VM image {{value}} for existing nodes)",
         "buttonLabel": "Do Smart Resize"
       },
+      "placementModal": {
+        "modalTitle": "Confirm Update",
+        "modalDescription": "This operation will scale-up or scale-down the number of the nodes or will change master placement from colocated to dedicated or vice versa",
+        "likeToProceed": "Would you like to proceed?"
+      },
       "fullMoveModal": {
         "modalTitle": "Confirm Full Move Update",
         "submitLabel": "Do full move",

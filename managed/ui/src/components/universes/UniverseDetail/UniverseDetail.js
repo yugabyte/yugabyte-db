@@ -726,7 +726,6 @@ class UniverseDetail extends Component {
                             </YBMenuItem>
                           </RbacValidator>
                         )}
-
                       {!universePaused && !this.isRRFlagsEnabled() && (
                         <RbacValidator
                           isControl
