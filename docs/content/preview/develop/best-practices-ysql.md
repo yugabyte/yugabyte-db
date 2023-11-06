@@ -96,6 +96,16 @@ Use [table partitioning](../../explore/ysql-language-features/advanced-features/
 For more details, see [Partition data by time](../common-patterns/timeseries/partitioning-by-time/).
 {{</tip>}}
 
+## Use the right data types for partition keys
+
+In general, integer, arbitrary precision number, character string (not very long ones), and timestamp types are safe choices for comparisons.
+
+Avoid the following:
+
+- Floating point number data types - because they are stored as binary float format that cannot represent most of the decimal values precisely, values that are supposedly the same may not be treated as a match because of possible multiple internal representations.
+
+- Date, time, and similar timestamp component types if they may be compared with values from a different timezone or different day of the year, or when either value comes from a country or region that observes or ever observed daylight savings time.
+
 ## Use multi row inserts wherever possible
 
 If you're inserting multiple rows, it's faster to batch them together whenever possible. You can start with 128 rows per batch

@@ -44,7 +44,7 @@ There are two types of primary key columns:
 - `Hash primary key columns`: The primary key may have zero or more leading hash-partitioned columns.
 By default, only the first column is treated as the hash-partition column. But this behavior can be modified by explicit use of the HASH annotation.
 
-- `Range primary key columns`: A table can have zero or more range primary key columns and it controls the top-level ordering of rows within a table (if there are no hash partition columns) or the ordering of rows among rows that share a common set of hash partitioned column values. By default, the range primary key columns are stored in ascending order. But this behavior can be controlled by explicit use of `ASC` or `DESC`.
+- `Range primary key columns`: A table can have zero or more range primary key columns and it controls the top-level ordering of rows in a table (if there are no hash partition columns) or the ordering of rows among rows that share a common set of hash partitioned column values. By default, the range primary key columns are stored in ascending order. But this behavior can be controlled by explicit use of `ASC` or `DESC`.
 
 For example, if the primary key specification is `PRIMARY KEY ((a, b) HASH, c DESC)`, then columns `a` & `b` are used together to hash partition the table, and rows that share the same values for `a` and `b` are stored in descending order of their value for `c`.
 
@@ -52,21 +52,11 @@ If the primary key specification is `PRIMARY KEY(a, b)`, then column `a` is used
 
 {{<note title="Tables always have a primary key">}}
 
-PostgreSQL's table storage is heap-oriented—so a table with no primary key is viable. However YugabyteDB's table storage is index-oriented (see [DocDB Persistence](../../../../../architecture/docdb/persistence/))—so a table isn't viable without a primary key.
+PostgreSQL's table storage is heap-oriented—so a table with no primary key is viable. However YugabyteDB's table storage is index-oriented (see [DocDB Persistence](../../../../../architecture/docdb/persistence/)), so a table isn't viable without a primary key.
 
 Therefore, if you don't specify a primary key at table-creation time, YugabyteDB will use the internal `ybrowid` column as `PRIMARY KEY` and the table will be sharded on `ybrowid HASH`.
 
 {{</note>}}
-
-#### Data types for partition keys
-
-In general, integer, arbitrary precision numbers, character string (not very long ones), and timestamp types are safe choices for comparisons.
-
-Better avoided are the following:
-
-- Floating point number data types - because they are stored as binary float format that cannot represent most of the decimal values precisely, values that are supposedly the same may not be treated as a match because of possible multiple internal representations.
-
-- Date and time, and similar timestamp component types - if they may be compared with values from a different timezone or different day of the year, or when either value comes from a country or region that observes or ever observed daylight savings time.
 
 ### Foreign key
 
