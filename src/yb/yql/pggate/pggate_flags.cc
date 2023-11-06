@@ -139,5 +139,9 @@ DEFINE_bool(yb_enable_read_committed_isolation, false,
 DEFINE_test_flag(bool, yb_lwlock_crash_after_acquire_pg_stat_statements_reset, false,
              "Issue sigkill for crash test after acquiring a LWLock in pg_stat_statements reset.");
 
+DEFINE_test_flag(bool, yb_lwlock_error_after_acquire_pg_stat_statements_reset, false,
+                 "Issue ereport(ERROR) for error test after acquiring a LWLock"
+                 " in pg_stat_statements reset.");
+
 DEFINE_test_flag(bool, yb_test_fail_matview_refresh_after_creation, false,
                  "Fail a refresh on a matview after the creation of a new relation.");

@@ -2873,6 +2873,32 @@ TEST_F_EX(PgLibPqTest,
 }
 #endif
 
+// The motive of this test is to prove that when a postgres backend errors out
+// while possessing an LWLock, the lock is released.
+// TEST_yb_lwlock_error_after_acquire_pg_stat_statements_reset when set true
+// will error out a postgres backend after acquiring a LWLock. Specifically in
+// this example, when pg_stat_statements_reset() function is called when this
+// flag is set, it errors out after acquiring a lock on pgss->lock.
+// We verify that future commands on the same connection do not deadlock as the
+// lock should have been released after error.
+class PgLibPqYSQLBackendError: public PgLibPqTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back(
+        Format("--TEST_yb_lwlock_error_after_acquire_pg_stat_statements_reset=true"));
+  }
+};
+
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(TestLWPgBackendErrorAfterLWLockAcquire),
+          PgLibPqYSQLBackendError) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_NOK(conn.FetchFormat("SELECT pg_stat_statements_reset()"));
+
+  // Verify that future commands on the same connection works.
+  EXPECT_OK(conn.FetchFormat("SELECT 1"));
+}
+
 class PgLibPqRefreshMatviewFailure: public PgLibPqTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
