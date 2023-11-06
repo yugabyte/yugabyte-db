@@ -237,8 +237,10 @@ void YBInboundConnectionContext::HandleTimeout(ev::timer& watcher, int revents) 
         if (queuing_status.ok()) {
           last_heartbeat_sending_time_ = now;
         } else {
-          LOG(DFATAL) << "Could not queue an inbound connection heartbeat message: "
-                      << queuing_status;
+          // Do not DFATAL here. This happens during shutdown and should not result in frequent
+          // log messages.
+          LOG(WARNING) << "Could not queue an inbound connection heartbeat message: "
+                       << queuing_status;
           // We will try again at the next timer event.
         }
       }

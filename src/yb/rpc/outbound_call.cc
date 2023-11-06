@@ -180,6 +180,32 @@ void InvokeCallbackTask::Done(const Status& status) {
 }
 
 ///
+/// CompletedCallQueue
+///
+
+void CompletedCallQueue::AddCompletedCall(int32_t call_id) {
+  if (!stopping_.load(std::memory_order_acquire)) {
+    completed_calls_.Push(new CompletedCallEntry(call_id));
+  }
+}
+
+std::optional<int32_t> CompletedCallQueue::Pop() {
+  auto entry = std::unique_ptr<CompletedCallEntry>(completed_calls_.Pop());
+  if (!entry) {
+    return std::nullopt;
+  }
+  auto call_id = entry->call_id;
+  return call_id;
+}
+
+void CompletedCallQueue::Shutdown() {
+  // Using sequential consistency because we don't want queue draining operations to be reordered
+  // before setting stopping_ to true, which could have happened with memory_order_release.
+  stopping_ = true;
+  completed_calls_.Drain();
+}
+
+///
 /// OutboundCall
 ///
 
@@ -457,11 +483,24 @@ void OutboundCall::InvokeCallbackSync(std::optional<CoarseTimePoint> now_optiona
   // Could be destroyed during callback. So reset it.
   controller_ = nullptr;
   response_ = nullptr;
+
+  auto completed_call_queue = completed_call_queue_.lock();
+  if (completed_call_queue) {
+    completed_call_queue->AddCompletedCall(call_id_);
+  }
 }
 
 void OutboundCall::SetConnection(const ConnectionPtr& connection) {
   if (!connection_weak_.Set(connection)) {
-    LOG_WITH_PREFIX(ERROR) << "Failed to set connection to " << AsString(connection);
+    LOG(WARNING) << "Failed to set connection to " << AsString(connection) << " on "
+                 << DebugString();
+  }
+}
+
+void OutboundCall::SetCompletedCallQueue(
+    const std::shared_ptr<CompletedCallQueue>& completed_call_queue) {
+  if (!completed_call_queue_.Set(completed_call_queue)) {
+    LOG(WARNING) << "Failed to set completed call queue on " << DebugString();
   }
 }
 
@@ -618,6 +657,10 @@ bool OutboundCall::IsFinished() const {
 // The following two functions are only invoked when the call has already finished.
 Result<RefCntSlice> OutboundCall::ExtractSidecar(size_t idx) const NO_THREAD_SAFETY_ANALYSIS {
   return call_response_.ExtractSidecar(idx);
+}
+
+size_t OutboundCall::GetSidecarsCount() const NO_THREAD_SAFETY_ANALYSIS {
+  return call_response_.GetSidecarsCount();
 }
 
 size_t OutboundCall::TransferSidecars(Sidecars* dest) NO_THREAD_SAFETY_ANALYSIS  {

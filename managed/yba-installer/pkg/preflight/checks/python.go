@@ -42,11 +42,11 @@ func (p pythonCheck) Execute() Result {
 
 	outputTrimmed := strings.TrimSuffix(out.StdoutString(), "\n")
 
-	re := regexp.MustCompile(`Python 3.6|Python 3.7|Python 3.8|Python 3.9|Python 3.10|Python 3.11`)
+	re := regexp.MustCompile(`Python 3.8|Python 3.9|Python 3.10|Python 3.11`)
 
 	if !re.MatchString(outputTrimmed) {
 		res.Error = fmt.Errorf("System does not meet Python requirements. Please install any " +
-			"version of Python between 3.6 and 3.11.")
+			"version of Python between 3.8 and 3.11.")
 		res.Status = StatusCritical
 		return res
 	} else {

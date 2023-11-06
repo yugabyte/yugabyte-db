@@ -484,7 +484,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
                 const dockv::PartitionSchema& partition_schema,
                 const boost::optional<qlexpr::IndexInfo>& index_info,
                 const SchemaVersion schema_version,
-                const OpId& op_id);
+                const OpId& op_id) EXCLUDES(data_mutex_);
 
   void RemoveTable(const TableId& table_id, const OpId& op_id);
 
@@ -562,7 +562,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // Returns a new WAL dir path to be used for new Raft group `raft_group_id` which will be created
   // as a result of this Raft group splitting.
   // Uses the same root dir as for `this` Raft group.
-  std::string GetSubRaftGroupWalDir(const RaftGroupId& raft_group_id) const;
+  std::string GetSubRaftGroupWalDir(const RaftGroupId& raft_group_id) const EXCLUDES(data_mutex_);
 
   // Returns a new Data dir path to be used for new Raft group `raft_group_id` which will be created
   // as a result of this Raft group splitting.
@@ -682,7 +682,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // Requires 'data_mutex_'.
   void ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* superblock) const REQUIRES(data_mutex_);
 
-  const TableInfoPtr primary_table_info_unlocked() const {
+  const TableInfoPtr primary_table_info_unlocked() const REQUIRES(data_mutex_) {
     const auto& tables = kv_store_.tables;
     const auto itr = tables.find(primary_table_id_);
     CHECK(itr != tables.end());
@@ -710,7 +710,11 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // If taken together with 'data_mutex_', must be acquired first.
   mutable Mutex flush_lock_;
 
-  RaftGroupId raft_group_id_ GUARDED_BY(data_mutex_);
+  // No thread safety annotations on raft_group_id_ because it is a constant after the object is
+  // fully created. We cannot mark it as const since CreateSubtabletMetadata sets it to its parents
+  // id in order to call LoadFromSuperBlock and then updates it to the right value.
+  RaftGroupId raft_group_id_;
+
   std::shared_ptr<dockv::Partition> partition_ GUARDED_BY(data_mutex_);
 
   // The primary table id. Primary table is the first table this Raft group is created for.
@@ -759,7 +763,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   std::vector<TxnSnapshotRestorationId> active_restorations_;
 
-  const std::string log_prefix_;
+  // No thread safety annotations on log_prefix_ because it is a constant after the object is
+  // fully created. Check the comment on raft_group_id_ for more info.
+  std::string log_prefix_;
 
   std::unordered_set<StatefulServiceKind> hosted_services_;
 

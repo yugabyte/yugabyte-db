@@ -55,9 +55,12 @@ public class ResizeNode extends UpgradeTaskBase {
   }
 
   @Override
-  public void run() {
-    // Verify the request params and fail if invalid.
+  public void validateParams() {
     taskParams().verifyParams(getUniverse(), !isFirstTry() ? getNodeState() : null);
+  }
+
+  @Override
+  public void run() {
     runUpgrade(
         () -> {
           Universe universe = getUniverse();
@@ -305,9 +308,7 @@ public class ResizeNode extends UpgradeTaskBase {
     for (NodeDetails node : nodes) {
       if (!node.disksAreMountedByUUID) {
         createUpdateMountedDisksTask(
-                node,
-                currentIntent.getInstanceTypeForNode(node),
-                currentIntent.getDeviceInfoForNode(node))
+                node, node.getInstanceType(), currentIntent.getDeviceInfoForNode(node))
             .setSubTaskGroupType(getTaskSubGroupType());
       }
     }

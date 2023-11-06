@@ -393,7 +393,7 @@ templates:
       {{ query_condition }} {{ query_threshold }}
     createForNewCustomer: true
     defaultThresholdMap:
-      SEVERE:
+      WARNING:
         threshold: 0.0
     targetType: UNIVERSE
     defaultThresholdCondition: GREATER_THAN
@@ -981,9 +981,10 @@ templates:
   NODE_CPU_USAGE:
     name: DB node CPU usage
     description: Average node CPU usage percentage for 30 minutes is above threshold
-    queryTemplate: count by(universe_uuid) ((100 - (avg by (universe_uuid, node_name)
-      (rate(node_cpu_seconds_total{job="node",mode="idle", universe_uuid="__universeUuid__"}[30m]))
-      * 100)) {{ query_condition }} {{ query_threshold }})
+    queryTemplate: count by(universe_uuid) ((avg by (universe_uuid, node_name)
+      (sum by (universe_uuid, node_name, cpu)
+      (rate(node_cpu_seconds_total{job="node",mode!="idle",universe_uuid="__universeUuid__"}[30m])
+      * 100))) {{ query_condition }} {{ query_threshold }})
     createForNewCustomer: true
     defaultThresholdMap:
       WARNING:
@@ -1000,9 +1001,11 @@ templates:
       generateValueFromThreshold: false
     labels:
       affected_node_names: >-
-        {{ range query "(100 - (avg by (universe_uuid, node_name)
-        (rate(node_cpu_seconds_total{job='node',mode='idle', universe_uuid='{{ $labels.universe_uuid }}'}[30m]))
-        * 100)) {{ query_condition }} {{ query_threshold }}" }}{{ .Labels.node_name }} {{ end }}
+        {{ range query "avg by (universe_uuid, node_name)
+        (sum by (universe_uuid, node_name, cpu)
+        (rate(node_cpu_seconds_total{job='node',mode!='idle',
+        universe_uuid='{{ $labels.universe_uuid }}'}[30m])* 100))
+        {{ query_condition }} {{ query_threshold }}" }}{{ .Labels.node_name }} {{ end }}
     annotations:
       summary: >-
         Average node CPU usage for universe '{{ $labels.source_name }}'
@@ -1476,3 +1479,22 @@ templates:
       summary: >-
         Maximum throughput for YCQL operations for universe '{{ $labels.source_name }}'
         is above {{ $labels.threshold }}. Current value is {{ $value | printf "%.0f" }}
+
+  UNIVERSE_OS_UPDATE_REQUIRED:
+    name: Universe OS outdated
+    description: More recent OS version is recommended for this universe.
+    queryTemplate: ybp_universe_os_update_required{universe_uuid="__universeUuid__"}
+      {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultThresholdMap:
+      WARNING:
+        threshold: 1.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: LESS_THAN
+    defaultThresholdUnit: STATUS
+    thresholdMaxValue: 1.0
+    thresholdReadOnly: true
+    annotations:
+      summary: >-
+        More recent OS version is recommended for this universe. Consider running VM image
+        upgrade for the nodes to incorporate security patches and address vulnerabilities.

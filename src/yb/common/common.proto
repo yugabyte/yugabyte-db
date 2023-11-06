@@ -377,7 +377,13 @@ message TransactionMetadataPB {
   optional string status_tablet = 3;
   optional fixed64 priority = 4;
 
+  // Stores the time at which this transaction was taken by pg_client_session from the transaction
+  // pool. Serves as a lower bound on the ht at which the first RPC which may write intents for this
+  // transaction would have been issued to a tserver.
   optional fixed64 start_hybrid_time = 5;
+
+  // Stores the time at which the transaction was initiated from postgres' perspective.
+  optional int64 pg_txn_start_us = 9;
 
   // Stores time when metadata was written to provisional records RocksDB on a
   // participating tablet. So it could be used for cleanup.

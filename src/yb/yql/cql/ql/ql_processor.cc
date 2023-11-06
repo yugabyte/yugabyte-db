@@ -310,11 +310,8 @@ Status QLProcessor::CheckNodePermissions(const TreeNode* tnode) {
     case TreeNodeOpcode::kPTGrantRevokeRole: {
       const auto grant_revoke_role_stmt = static_cast<const PTGrantRevokeRole*>(tnode);
       const string granted_role = grant_revoke_role_stmt->granted_role_name();
-      const string recipient_role = grant_revoke_role_stmt->recipient_role_name();
       s = ql_env_.HasRolePermission(granted_role, PermissionType::AUTHORIZE_PERMISSION);
-      if (s.ok()) {
-        s = ql_env_.HasRolePermission(recipient_role, PermissionType::AUTHORIZE_PERMISSION);
-      }
+      // Access to 'recipient_role_name' is not reqired.
       break;
     }
     case TreeNodeOpcode::kPTGrantRevokePermission: {

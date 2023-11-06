@@ -25,7 +25,6 @@ EOT
 }
 
 export DEVOPS_HOME="${BASH_SOURCE%/*}"/../devops
-export YB_MANAGED_DEVOPS_USE_PYTHON3=1
 
 . "$DEVOPS_HOME/bin/"/common.sh
 

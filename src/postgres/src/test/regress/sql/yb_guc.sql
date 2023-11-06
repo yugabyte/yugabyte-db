@@ -33,7 +33,9 @@ set yb_fetch_row_limit = -1;  -- ERROR since yb_fetch_row_limit must be non-nega
 -- Test yb_fetch_size_limit
 set yb_fetch_size_limit = '2MB';
 show yb_fetch_size_limit;
-set yb_fetch_size_limit = 1234;
+set yb_fetch_size_limit = 789;
+show yb_fetch_size_limit;
+set yb_fetch_size_limit = 2048;
 show yb_fetch_size_limit;
 
 set yb_fetch_size_limit = -1;  -- ERROR since yb_fetch_size_limit must be non-negative.

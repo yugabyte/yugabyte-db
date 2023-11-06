@@ -35,7 +35,7 @@ You can restore YugabyteDB universe data from a backup as follows:
 
 1. To rename databases (YSQL) or keyspaces (YCQL), select the **Rename** option.
 
-    If you are restoring a backup to a universe with a existing databases with the same name, you must rename the database.
+    If you are restoring a backup to a universe with an existing databases of the same name, you must rename the database.
 
 1. Optionally, specify the number of parallel threads that are allowed to run. This can be any number between `1` and `100`.
 
@@ -52,6 +52,8 @@ To confirm that the restore succeeded, select the **Tables** tab to compare the 
 You can restore only a specific database (YSQL) or keyspace (YCQL).
 
 In addition, if you are restoring a YCQL keyspace, you can restore only selected tables in the keyspace.
+
+For instructions on restoring a single table in YSQL, refer to [Restore a single table in YSQL](../restore-ysql-single-table).
 
 To restore, do the following:
 
@@ -84,9 +86,25 @@ To confirm that the restore succeeded, select the **Tables** tab to compare the 
 
 ## Advanced restore procedure
 
-In addition to the basic restore, an advanced option is available if you have more than one YugabyteDB Anywhere installation and want to restore a database or keyspace from a different YugabyteDB Anywhere installation to the current universe.
+In addition to the basic restore, an advanced option is available for when you have more than one YugabyteDB Anywhere installation and want to restore a database or keyspace from a different YugabyteDB Anywhere installation to the current universe.
 
-To perform an advanced restore, do the following:
+### Prerequisites
+
+To perform an advanced restore, you need the following:
+
+- If the backup had [encryption at rest enabled](../../security/enable-encryption-at-rest), a matching KMS configuration in the target YBA installation so that the backup can be decrypted.
+- A matching [storage configuration](../configure-backup-storage/) in the target YBA installation with credentials to access the storage where the backup is located.
+- The storage address of the database or keyspace backup you want to restore. On the YugabyteDB Anywhere installation with the backup, do the following:
+
+    1. In the **Backups** list, click the backup (row) to display the **Backup Details**.
+
+    1. In the list of databases (YSQL) or keyspaces (YCQL), click **Copy Location** for the database or keyspace you want to restore. If your backup includes incremental backups, to display the databases or keyspaces, click the down arrow for the increment at which you want to restore.
+
+    1. Note the **Storage Config** used by the backup, along with the database or keyspace name.
+
+### Perform an advanced restore
+
+To perform an advanced restore, on the YugabyteDB Anywhere installation where you want to perform the advanced restore, do the following:
 
 1. On the **Backups** tab of the universe to which you want to restore, click **Advanced** and choose **Advanced Restore** to display the **Advanced Restore** dialog.
 
@@ -94,7 +112,7 @@ To perform an advanced restore, do the following:
 
 1. Choose the type of API.
 
-1. Specify the location of the backup you want to restore.
+1. In the **Backup location** field, paste the location of the backup you copied from your other installation.
 
 1. Select the cloud provider-specific configuration of the backup storage. The storage could be on Google Cloud, Amazon S3, Azure, or Network File System.
 

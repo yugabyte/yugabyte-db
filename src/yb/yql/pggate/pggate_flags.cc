@@ -151,3 +151,5 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_create_database_oid_collision_retry, true,
                         "Whether to retry YSQL CREATE DATABASE statement "
                         "if oid collision happens.");
 TAG_FLAG(ysql_enable_create_database_oid_collision_retry, advanced);
+
+DEFINE_NON_RUNTIME_bool(ysql_use_relcache_file, true, "Use relcache init file");

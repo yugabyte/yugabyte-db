@@ -48,7 +48,9 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.CertsRotateParams;
@@ -509,6 +511,20 @@ public class UniverseCRUDHandler {
         }
       }
 
+      if (taskParams.arch == null && c.userIntent.imageBundleUUID != null) {
+        /*
+         * In case the architecture is not specified as part of universe creation.
+         * We will try:
+         * 1. Try reading the architecture of the imageBundle specified.
+         * 2. In case image bundle is not specified we will proceed with the architecture
+         * of the default image bundle (#2 is already taken care of in the above set of statements.)
+         */
+
+        ImageBundle universeBundle =
+            ImageBundle.getOrBadRequest(provider.getUuid(), c.userIntent.imageBundleUUID);
+        taskParams.arch = universeBundle.getDetails().getArch();
+      }
+
       // Set the node exporter config based on the provider
       if (!c.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
         AccessKey accessKey = AccessKey.get(provider.getUuid(), c.userIntent.accessKeyCode);
@@ -533,6 +549,9 @@ public class UniverseCRUDHandler {
 
       PlacementInfoUtil.updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c.placementInfo);
       PlacementInfoUtil.finalSanityCheckConfigure(c, taskParams.getNodesInCluster(c.uuid));
+
+      taskParams.otelCollectorEnabled =
+          confGetter.getConfForScope(provider, ProviderConfKeys.otelCollectorEnabled);
     }
 
     if (taskParams.getPrimaryCluster() != null) {
@@ -1068,6 +1087,18 @@ public class UniverseCRUDHandler {
       boolean isForceDelete,
       boolean isDeleteBackups,
       boolean isDeleteAssociatedCerts) {
+    return destroy(
+        customer, universe, isForceDelete, isDeleteBackups, isDeleteAssociatedCerts, null);
+  }
+
+  // destroy with KubernetesResourceDetails is to allow the operator to
+  public UUID destroy(
+      Customer customer,
+      Universe universe,
+      boolean isForceDelete,
+      boolean isDeleteBackups,
+      boolean isDeleteAssociatedCerts,
+      KubernetesResourceDetails resourceDetails) {
     LOG.info(
         "Destroy universe, customer uuid: {}, universe: {} [ {} ] ",
         customer.getUuid(),
@@ -1089,6 +1120,9 @@ public class UniverseCRUDHandler {
     Cluster primaryCluster = universeDetails.getPrimaryCluster();
     if (primaryCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
       taskType = TaskType.DestroyKubernetesUniverse;
+      if (resourceDetails != null) {
+        taskParams.setKubernetesResourceDetails(resourceDetails);
+      }
     }
 
     // Update all current tasks for this universe to be marked as done if it is a force delete.
@@ -1207,6 +1241,10 @@ public class UniverseCRUDHandler {
     boolean isAuthEnforced = confGetter.getConfForScope(customer, CustomerConfKeys.isAuthEnforced);
     addOnCluster.userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
     addOnCluster.validate(!cloudEnabled, isAuthEnforced, taskParams.nodeDetailsSet);
+    addOnCluster.userIntent.enableNodeToNodeEncrypt =
+        primaryCluster.userIntent.enableNodeToNodeEncrypt;
+    addOnCluster.userIntent.enableClientToNodeEncrypt =
+        primaryCluster.userIntent.enableClientToNodeEncrypt;
 
     TaskType taskType = TaskType.AddOnClusterCreate;
     if (addOnCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
@@ -1283,6 +1321,13 @@ public class UniverseCRUDHandler {
     boolean isAuthEnforced = confGetter.getConfForScope(customer, CustomerConfKeys.isAuthEnforced);
     readOnlyCluster.userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
     readOnlyCluster.validate(!cloudEnabled, isAuthEnforced, taskParams.nodeDetailsSet);
+    if (readOnlyCluster.userIntent.specificGFlags != null
+        && readOnlyCluster.userIntent.specificGFlags.isInheritFromPrimary()) {
+      SpecificGFlags primaryGFlags = primaryCluster.userIntent.specificGFlags;
+      readOnlyCluster.userIntent.specificGFlags.setPerProcessFlags(
+          primaryGFlags.getPerProcessFlags());
+      readOnlyCluster.userIntent.specificGFlags.setPerAZ(primaryGFlags.getPerAZ());
+    }
 
     TaskType taskType = TaskType.ReadOnlyClusterCreate;
     if (readOnlyCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
@@ -1529,7 +1574,7 @@ public class UniverseCRUDHandler {
     // Validate if any required params are missed based on the taskType
     switch (taskParams.taskType) {
       case VMImage:
-        if (!runtimeConfigFactory.forUniverse(universe).getBoolean("yb.cloud.enabled")) {
+        if (!runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled")) {
           throw new PlatformServiceException(
               Http.Status.METHOD_NOT_ALLOWED, "VM image upgrade is disabled");
         }

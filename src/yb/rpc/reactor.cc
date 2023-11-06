@@ -96,10 +96,10 @@ DEFINE_RUNTIME_int32(stuck_outbound_call_default_timeout_sec, 120,
     "Default timeout for reporting purposes for the Reactor-based stuck OutboundCall tracking and "
     "expiration mechanism. That mechanism itself is controlled by the "
     "reactor_based_outbound_call_expiration_delay_ms flag. Note that this flag does not force a "
-    "call to be timed out, it just specifies the interval after which the call is reported.");
+    "call to be timed out, it just specifies the interval after which the call is logged.");
 TAG_FLAG(stuck_outbound_call_default_timeout_sec, advanced);
 
-DEFINE_RUNTIME_int32(stuck_outbound_call_check_interval_sec, 60,
+DEFINE_RUNTIME_int32(stuck_outbound_call_check_interval_sec, 30,
     "Check and report each stuck outbound call at most once per this number of seconds.");
 TAG_FLAG(stuck_outbound_call_check_interval_sec, advanced);
 
@@ -258,6 +258,7 @@ Reactor::Reactor(Messenger* messenger,
           MakeFunctorReactorTask(std::bind(&Reactor::ProcessOutboundQueue, this),
                                  SOURCE_LOCATION())),
       num_connections_to_server_(bld.num_connections_to_server()),
+      completed_call_queue_(std::make_shared<CompletedCallQueue>()),
       cur_time_(CoarseMonoClock::Now()) {
   static std::once_flag libev_once;
   std::call_once(libev_once, DoInitLibEv);
@@ -391,9 +392,10 @@ void Reactor::ShutdownInternal() {
   }
   for (auto& call : processing_outbound_queue_) {
     call->Transferred(aborted, /* conn= */ nullptr);
-    FinalizeTrackedCall(call);
   }
   processing_outbound_queue_.clear();
+
+  completed_call_queue_->Shutdown();
 }
 
 Status Reactor::GetMetrics(ReactorMetrics *metrics) {
@@ -556,15 +558,14 @@ ConnectionPtr Reactor::AssignOutboundCall(const OutboundCallPtr& call) {
   }
 
   call->SetConnection(conn);
+  call->SetCompletedCallQueue(completed_call_queue_);
   conn->QueueOutboundCall(call);
 
   if (ShouldTrackOutboundCalls()) {
     auto expires_at = call->expires_at();
     tracked_outbound_calls_.insert(TrackedOutboundCall {
-      .call_raw = call.get(),
+      .call_id = call->call_id(),
       .call_weak = call,
-      // For calls with a timeout, we will check on them shortly after the timeout. Otherwise, we
-      // will check after a most likely conservatively large "default timeout".
       .next_check_time = expires_at == CoarseTimePoint::max()
           ? call->start_time() + FLAGS_stuck_outbound_call_default_timeout_sec * 1s
           : expires_at + FLAGS_reactor_based_outbound_call_expiration_delay_ms * 1ms
@@ -648,51 +649,62 @@ void Reactor::ScanForStuckOutboundCalls(CoarseTimePoint now) {
   if (!ShouldTrackOutboundCalls()) {
     return;
   }
-  auto& index = tracked_outbound_calls_.get<NextCheckTimeTag>();
 
-  while (!index.empty() && index.begin()->next_check_time <= now) {
-    auto& top = *index.begin();
-    auto call = top.call_weak.lock();
+  auto& index_by_call_id = tracked_outbound_calls_.get<CallIdTag>();
+  while (auto call_id_opt = completed_call_queue_->Pop()) {
+    index_by_call_id.erase(*call_id_opt);
+  }
+
+  auto& index_by_next_check_time = tracked_outbound_calls_.get<NextCheckTimeTag>();
+  while (!index_by_next_check_time.empty()) {
+    auto& entry = *index_by_next_check_time.begin();
+    // It is useful to check the next entry even if its scheduled next check time is later than
+    // now, to erase entries corresponding to completed calls as soon as possible. This alone,
+    // even without the completed call queue, mostly solves #19090.
+    auto call = entry.call_weak.lock();
     if (!call || call->callback_invoked()) {
-      index.erase(index.begin());
+      index_by_next_check_time.erase(index_by_next_check_time.begin());
       continue;
     }
-
-    auto expires_at = call->expires_at();
-    const auto expiration_enforcement_time = ExpirationEnforcementTime(expires_at);
-    const bool expired = now >= expiration_enforcement_time;
-
-    bool forced_expiration = false;
-    if (expired && !call->callback_triggered()) {
-      // Normally, timeout should be enforced at the connection level. Here, we will catch failures
-      // to do that.
-      forced_expiration = true;
+    if (entry.next_check_time > now) {
+      break;
     }
+
+    // Normally, timeout should be enforced at the connection level. Here, we will catch failures
+    // to do that.
+    const bool forcing_timeout =
+        !call->callback_triggered() && now >= ExpirationEnforcementTime(call->expires_at());
 
     auto call_str = call->DebugString();
 
     auto conn = call->connection();
 
     LOG_WITH_PREFIX(WARNING) << "Stuck OutboundCall: " << call_str
-                             << (forced_expiration ? " (forcing a timeout)" : "");
+                             << (forcing_timeout ? " (forcing a timeout)" : "");
     IncrementCounter(messenger_.rpc_metrics()->outbound_calls_stuck);
 
-    if (forced_expiration) {
+    if (forcing_timeout) {
       // Only do this after we've logged the call, so that the log would capture the call state
       // before the forced timeout.
       if (conn) {
-        // This calls SetTimeOut so we don't need to do it directly.
+        // This calls SetTimedOut so we don't need to do it directly.
         conn->ForceCallExpiration(call);
       } else {
-        LOG_WITH_PREFIX(WARNING) << "Connection is not set for a call that is being forcefuly "
-                                 << "expired: " << call->DebugString();
+        LOG_WITH_PREFIX(WARNING) << "Connection is not set for a call that is being forcefully "
+                                 << "expired: " << call_str;
         call->SetTimedOut();
       }
     }
 
-    index.modify(index.begin(), [now](auto& tracked_call) {
+    index_by_next_check_time.modify(index_by_next_check_time.begin(), [now](auto& tracked_call) {
       tracked_call.next_check_time = now + FLAGS_stuck_outbound_call_check_interval_sec * 1s;
     });
+  }
+
+  if (tracked_outbound_calls_.size() >= 1000) {
+    YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 1)
+        << "tracked_outbound_calls_ has a large number of entries: "
+        << tracked_outbound_calls_.size();
   }
 }
 
@@ -961,12 +973,6 @@ void Reactor::RegisterInboundSocket(
       << ": " << scheduling_status;
 }
 
-void Reactor::FinalizeTrackedCall(const OutboundCallPtr &call) {
-  if (ShouldTrackOutboundCalls() && call->callback_invoked()) {
-    tracked_outbound_calls_.erase(call.get());
-  }
-}
-
 Status Reactor::ScheduleReactorTask(ReactorTaskPtr task, bool even_if_not_running) {
   // task should never be null, so not using an SCHECK here.
   CHECK_NOTNULL(task);
@@ -1006,10 +1012,6 @@ Status Reactor::RunOnReactorThread(const F& f, const SourceLocation& source_loca
   RETURN_NOT_OK(ScheduleReactorTask(task));
   return task->Wait();
 }
-
-// Initialize with the current time so that it would be usable even before any reactor thread
-// starts running.
-std::atomic<CoarseTimePoint> Reactor::global_cur_time_{CoarseMonoClock::Now()};
 
 }  // namespace rpc
 }  // namespace yb

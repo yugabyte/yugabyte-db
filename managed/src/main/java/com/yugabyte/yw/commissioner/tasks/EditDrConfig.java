@@ -137,6 +137,8 @@ public class EditDrConfig extends CreateXClusterConfig {
     createDeleteXClusterConfigSubtasks(
         currentXClusterConfig, false /* keepEntry */, forceDeleteCurrentXClusterConfig);
 
+    createPromoteSecondaryConfigToMainConfigTask(newXClusterConfig);
+
     // Create the new xCluster config.
     createXClusterConfigSetStatusTask(newXClusterConfig, XClusterConfigStatusType.Updating);
 
@@ -151,8 +153,6 @@ public class EditDrConfig extends CreateXClusterConfig {
         taskParams().getMainTableIndexTablesMap(),
         taskParams().getSourceTableIdsWithNoTableOnTargetUniverse(),
         taskParams().getPitrParams());
-
-    createPromoteSecondaryConfigToMainConfigTask(newXClusterConfig);
 
     createXClusterConfigSetStatusTask(newXClusterConfig, XClusterConfigStatusType.Running)
         .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);

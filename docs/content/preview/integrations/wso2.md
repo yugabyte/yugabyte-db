@@ -5,7 +5,7 @@ description: WSO2 Identity Server
 menu:
   preview_integrations:
     identifier: wso2
-    parent: integrations
+    parent: integrations-security
     weight: 571
 type: docs
 ---

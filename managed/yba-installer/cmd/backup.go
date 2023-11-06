@@ -97,7 +97,7 @@ func CreateReplicatedBackupScript(output, dataDir, pgUser, pgPort string, verbos
 // RestoreBackupScript calls the yb_platform_backup.sh script with the correct args.
 // TODO: Version check is still disabled because of issues finding the path across all installs.
 func RestoreBackupScript(inputPath string, destination string, skipRestart bool,
-	verbose bool, plat Platform, yugabundle bool, useSystemPostgres bool) {
+	verbose bool, plat Platform, migration bool, useSystemPostgres bool) {
 	userName := viper.GetString("service_username")
 	fileName := plat.backupScript()
 	err := os.Chmod(fileName, 0777)
@@ -108,13 +108,15 @@ func RestoreBackupScript(inputPath string, destination string, skipRestart bool,
 	}
 
 	args := []string{"restore", "--input", inputPath,
-		"--destination", destination, "--data_dir", destination, "--disable_version_check",
-		"--yba_installer", "--yba_user", userName, "--ybai_data_dir", plat.DataDir}
+		"--destination", destination, "--data_dir", destination, "--yba_installer",
+		"--yba_user", userName, "--ybai_data_dir", plat.DataDir}
 	if skipRestart {
 		args = append(args, "--skip_restart")
 	}
-	if yugabundle {
-		args = append(args, "--yugabundle")
+	if migration {
+		args = append(args, "--migration")
+		// Disable version checking in case of version upgrades during migration.
+		args = append(args, "--disable_version_check")
 	}
 	if useSystemPostgres {
 		args = append(args, "--use_system_pg")
@@ -157,7 +159,7 @@ func RestoreBackupScript(inputPath string, destination string, skipRestart bool,
 		log.Warn(fmt.Sprintf("Could not set %s permissions.", plat.DataDir))
 	}
 
-	if yugabundle {
+	if migration {
 		// set fixPaths conf variable
 		plat.FixPaths = true
 		config.GenerateTemplate(plat)
@@ -260,7 +262,7 @@ func restoreBackupCmd() *cobra.Command {
 	var destination string
 	var skipRestart bool
 	var verbose bool
-	var yugabundle bool
+	var migration bool
 	var useSystemPostgres bool
 	var skipYugawareDrop bool
 
@@ -287,14 +289,14 @@ func restoreBackupCmd() *cobra.Command {
 			// TODO: backupScript is the only reason we need to have this cast. Should probably refactor.
 			if plat, ok := services["yb-platform"].(Platform); ok {
 				// Drop the yugaware database.
-				if yugabundle && !skipYugawareDrop {
-					prompt := "Restoring from yugabundle will drop the existing yugaware database. Continue?"
+				if migration && !skipYugawareDrop {
+					prompt := "Restoring previous YBA will drop the existing yugaware database. Continue?"
 					if !common.UserConfirm(prompt, common.DefaultYes) {
-						log.Fatal("Stopping yugabundle restore.")
+						log.Fatal("Stopping migration restore.")
 					}
 					if err := plat.Stop(); err != nil {
 						log.Warn(fmt.Sprintf(
-							"Error %s stopping yb-platform. Continuing with yugabundle restore.", err.Error()))
+							"Error %s stopping yb-platform. Continuing with migration restore.", err.Error()))
 					}
 					var db *sql.DB
 					var connStr string
@@ -303,7 +305,7 @@ func restoreBackupCmd() *cobra.Command {
 						db, connStr, err = common.GetPostgresConnection(
 							viper.GetString("postgres.useExisting.username"))
 					} else {
-						db, connStr, err = common.GetPostgresConnection("postgres.install.username")
+						db, connStr, err = common.GetPostgresConnection(viper.GetString("postgres.install.username"))
 					}
 					if err != nil {
 						log.Fatal(fmt.Sprintf(
@@ -319,7 +321,7 @@ func restoreBackupCmd() *cobra.Command {
 						log.Fatal(fmt.Sprintf("Error %s trying to create yugaware DB.", err.Error()))
 					}
 				}
-				RestoreBackupScript(inputPath, destination, skipRestart, verbose, plat, yugabundle,
+				RestoreBackupScript(inputPath, destination, skipRestart, verbose, plat, migration,
 					useSystemPostgres)
 
 
@@ -336,12 +338,16 @@ func restoreBackupCmd() *cobra.Command {
 		"don't restart processes during execution (default: false)")
 	restoreBackup.Flags().BoolVar(&verbose, "verbose", false,
 		"verbose output of script (default: false)")
-	restoreBackup.Flags().BoolVar(&yugabundle, "yugabundle", false,
-		"restoring from a yugabundle installation (default: false)")
+	restoreBackup.Flags().BoolVar(&migration, "migration", false,
+		"restoring from a Replicated or Yugabundle installation (default: false)")
+	restoreBackup.Flags().BoolVar(&migration, "yugabundle", false,
+		"WARNING: yugabundle flag is deprecated.\n" +
+		"Please use migration instead to migrate from yugabundle to YBA-installer. (default: false)")
+	restoreBackup.MarkFlagsMutuallyExclusive("migration", "yugabundle")
 	restoreBackup.Flags().BoolVar(&useSystemPostgres, "use_system_pg", false,
 		"use system path's pg_restore as opposed to installed binary (default: false)")
 	restoreBackup.Flags().BoolVar(&skipYugawareDrop, "skip_dbdrop", false,
-		"skip dropping the yugaware database before a yugabundle restore (default: false)")
+		"skip dropping the yugaware database before a migration restore (default: false)")
 	return restoreBackup
 }
 

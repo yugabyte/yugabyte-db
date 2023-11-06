@@ -112,7 +112,9 @@ public enum PlatformMetrics {
   CONTAINER_RESOURCE_REQUESTS_CPU_CORES(
       "Requested number of CPU cores for the db process", Unit.COUNT, false),
   UNIVERSE_NODE_CRON_STATUS("Cron jobs status on the node", Unit.STATUS),
-  UNIVERSE_IS_SYSTEMD("Flag, indicating systemd universe", Unit.STATUS, false);
+  UNIVERSE_IS_SYSTEMD("Flag, indicating systemd universe", Unit.STATUS, false),
+  UNIVERSE_OS_UPDATE_REQUIRED(
+      "More recent OS version is recommended for this universe", Unit.STATUS, false);
   private final String help;
   private final Unit unit;
   private final Set<MetricSourceState> validForSourceStates;

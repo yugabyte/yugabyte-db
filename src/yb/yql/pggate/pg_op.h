@@ -98,7 +98,8 @@ class PgsqlOp {
 class PgsqlReadOp : public PgsqlOp {
  public:
   PgsqlReadOp(ThreadSafeArena* arena, bool is_region_local);
-  PgsqlReadOp(ThreadSafeArena* arena, const PgTableDesc& desc, bool is_region_local);
+  PgsqlReadOp(ThreadSafeArena* arena, const PgTableDesc& desc, bool is_region_local,
+              PgsqlMetricsCaptureType metrics_capture);
 
   LWPgsqlReadRequestPB& read_request() {
     return read_request_;

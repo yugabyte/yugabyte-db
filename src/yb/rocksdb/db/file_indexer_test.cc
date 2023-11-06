@@ -36,7 +36,7 @@ namespace rocksdb {
 
 class IntComparator : public Comparator {
  public:
-  int Compare(const Slice& a, const Slice& b) const override {
+  int Compare(Slice a, Slice b) const override {
     assert(a.size() == 8);
     assert(b.size() == 8);
     int64_t diff = *reinterpret_cast<const int64_t*>(a.data()) -

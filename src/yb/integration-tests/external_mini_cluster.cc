@@ -411,19 +411,19 @@ Status ExternalMiniCluster::Start(rpc::Messenger* messenger) {
   return Status::OK();
 }
 
-void ExternalMiniCluster::Shutdown(NodeSelectionMode mode) {
+void ExternalMiniCluster::Shutdown(NodeSelectionMode mode, RequireExitCode0 require_exit_code_0) {
   // TODO: in the regular MiniCluster Shutdown is a no-op if running_ is false.
   // Therefore, in case of an error during cluster startup behavior might be different.
   if (mode == ALL) {
     for (const scoped_refptr<ExternalMaster>& master : masters_) {
       if (master) {
-        master->Shutdown(SafeShutdown::kTrue);
+        master->Shutdown(SafeShutdown::kTrue, require_exit_code_0);
       }
     }
   }
 
   for (const scoped_refptr<ExternalTabletServer>& ts : tablet_servers_) {
-    ts->Shutdown(SafeShutdown::kTrue);
+    ts->Shutdown(SafeShutdown::kTrue, require_exit_code_0);
   }
   running_ = false;
 }
@@ -1043,10 +1043,11 @@ Status ExternalMiniCluster::WaitForLeaderCommitTermAdvance() {
   return STATUS(TimedOut, Format("Term did not advance from $0.", start_opid.term()));
 }
 
-Status ExternalMiniCluster::GetLastOpIdForEachMasterPeer(
+Status ExternalMiniCluster::GetLastOpIdForMasterPeers(
     const MonoDelta& timeout,
     consensus::OpIdType opid_type,
-    vector<OpIdPB>* op_ids) {
+    vector<OpIdPB>* op_ids,
+    const std::vector<ExternalMaster*>& masters) {
   GetLastOpIdRequestPB opid_req;
   GetLastOpIdResponsePB opid_resp;
   opid_req.set_tablet_id(yb::master::kSysCatalogTabletId);
@@ -1054,11 +1055,11 @@ Status ExternalMiniCluster::GetLastOpIdForEachMasterPeer(
   controller.set_timeout(timeout);
 
   op_ids->clear();
-  for (scoped_refptr<ExternalMaster> master : masters_) {
+  for (auto master : masters) {
     opid_req.set_dest_uuid(master->uuid());
     opid_req.set_opid_type(opid_type);
     RETURN_NOT_OK_PREPEND(
-        GetConsensusProxy(master.get()).GetLastOpId(opid_req, &opid_resp, &controller),
+        GetConsensusProxy(master).GetLastOpId(opid_req, &opid_resp, &controller),
         Format("Failed to fetch last op id from $0", master->bound_rpc_hostport().port()));
     op_ids->push_back(opid_resp.opid());
     controller.Reset();
@@ -1068,11 +1069,23 @@ Status ExternalMiniCluster::GetLastOpIdForEachMasterPeer(
 }
 
 Status ExternalMiniCluster::WaitForMastersToCommitUpTo(int64_t target_index) {
-  auto deadline = CoarseMonoClock::Now() + opts_.timeout.ToSteadyDuration();
+  std::vector<ExternalMaster*> masters;
+  for (auto master : masters_) {
+    masters.push_back(master.get());
+  }
+  return WaitForMastersToCommitUpTo(target_index, masters);
+}
+
+Status ExternalMiniCluster::WaitForMastersToCommitUpTo(
+    int64_t target_index, const std::vector<ExternalMaster*>& masters, MonoDelta timeout) {
+  if (!timeout.Initialized()) {
+    timeout = opts_.timeout;
+  }
+  auto deadline = CoarseMonoClock::Now() + timeout.ToSteadyDuration();
 
   for (int i = 1;; i++) {
     vector<OpIdPB> ids;
-    Status s = GetLastOpIdForEachMasterPeer(opts_.timeout, consensus::COMMITTED_OPID, &ids);
+    Status s = GetLastOpIdForMasterPeers(opts_.timeout, consensus::COMMITTED_OPID, &ids, masters);
 
     if (s.ok()) {
       bool any_behind = false;
@@ -1331,7 +1344,7 @@ Status ExternalMiniCluster::WaitForInitDb() {
 }
 
 Result<bool> ExternalMiniCluster::is_ts_stale(int ts_idx, MonoDelta deadline) {
-  auto proxy = GetMasterProxy<master::MasterClusterProxy>();
+  auto proxy = GetLeaderMasterProxy<master::MasterClusterProxy>();
   std::shared_ptr<rpc::RpcController> controller = std::make_shared<rpc::RpcController>();
   master::ListTabletServersRequestPB req;
   master::ListTabletServersResponsePB resp;
@@ -2344,13 +2357,19 @@ bool ExternalDaemon::IsShutdown() const {
 
 bool ExternalDaemon::WasUnsafeShutdown() const { return sigkill_used_for_shutdown_; }
 
-bool ExternalDaemon::IsProcessAlive() const {
+bool ExternalDaemon::IsProcessAlive(RequireExitCode0 require_exit_code_0) const {
   if (IsShutdown()) {
     return false;
   }
 
   int rc = 0;
   Status s = process_->WaitNoBlock(&rc);
+
+  // Return code will be non-zero if the process crashed.
+  if (require_exit_code_0 && rc != 0) {
+    LOG(DFATAL) << "Non-zero return code " << rc << " for WaitNoBlock for daemon " << daemon_id_;
+  }
+
   // If the non-blocking Wait "times out", that means the process
   // is running.
   return s.IsTimedOut();
@@ -2365,7 +2384,7 @@ pid_t ExternalDaemon::pid() const {
   return process_->pid();
 }
 
-void ExternalDaemon::Shutdown(SafeShutdown safe_shutdown) {
+void ExternalDaemon::Shutdown(SafeShutdown safe_shutdown, RequireExitCode0 require_exit_code_0) {
   if (!process_) {
     return;
   }
@@ -2379,7 +2398,7 @@ void ExternalDaemon::Shutdown(SafeShutdown safe_shutdown) {
 
   const auto start_time = CoarseMonoClock::Now();
   auto process_name_and_pid = exe_;
-  if (IsProcessAlive()) {
+  if (IsProcessAlive(require_exit_code_0)) {
     process_name_and_pid = ProcessNameAndPidStr();
     // In coverage builds, ask the process nicely to flush coverage info
     // before we kill -9 it. Otherwise, we never get any coverage from
@@ -2404,7 +2423,7 @@ void ExternalDaemon::Shutdown(SafeShutdown safe_shutdown) {
       LOG_WITH_PREFIX(INFO) << "Terminating " << process_name_and_pid << " using 'SIGTERM' signal";
       WARN_NOT_OK(process_->Kill(SIGTERM), "Killing process failed");
       CoarseBackoffWaiter waiter(start_time + max_graceful_shutdown_wait, 100ms);
-      while (IsProcessAlive()) {
+      while (IsProcessAlive(require_exit_code_0)) {
         YB_LOG_EVERY_N_SECS(INFO, 1)
             << LogPrefix() << "Waiting for process termination: " << process_name_and_pid;
         if (!waiter.Wait()) {
@@ -2412,14 +2431,14 @@ void ExternalDaemon::Shutdown(SafeShutdown safe_shutdown) {
         }
       }
 
-      if (IsProcessAlive()) {
+      if (IsProcessAlive(require_exit_code_0)) {
         LOG_WITH_PREFIX(INFO) << "The process " << process_name_and_pid
                               << " is still running after " << CoarseMonoClock::Now() - start_time
                               << " ms, will send SIGKILL";
       }
     }
 
-    if (IsProcessAlive()) {
+    if (IsProcessAlive(require_exit_code_0)) {
       LOG_WITH_PREFIX(INFO) << "Killing " << process_name_and_pid << " with SIGKILL";
       sigkill_used_for_shutdown_ = true;
       WARN_NOT_OK(process_->Kill(SIGKILL), "Killing process failed");

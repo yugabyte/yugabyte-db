@@ -19,8 +19,6 @@
 #include <map>
 #include <unordered_map>
 
-#include <boost/regex.hpp>
-
 #include "yb/gutil/callback_forward.h"
 #include "yb/gutil/map-util.h"
 
@@ -51,13 +49,11 @@ enum class MetricLevel {
   kWarn = 2
 };
 
-using AggregationLevels = unsigned int;
-constexpr AggregationLevels kServerLevel = 1 << 0;
-constexpr AggregationLevels kStreamLevel = 1 << 1;
-constexpr AggregationLevels kTableLevel = 1 << 2;
-constexpr AggregationLevels kAggregationLevelMask = (1 << 3) - 1;
-
-using MetricAggregationMap = std::unordered_map<std::string, AggregationLevels>;
+enum class AggregationMetricLevel {
+  kServer,
+  kTable,
+  kStream
+};
 
 struct MetricOptions {
   // Determine whether system reset histogram or not
@@ -67,9 +63,6 @@ struct MetricOptions {
   // Include the metrics at a level and above.
   // Default: debug
   MetricLevel level = MetricLevel::kDebug;
-
-  // This CSV list is used to filter metrics.
-  std::vector<std::string> metrics;
 };
 
 struct MetricJsonOptions : public MetricOptions {
@@ -85,40 +78,25 @@ struct MetricJsonOptions : public MetricOptions {
   bool include_schema_info = false;
 };
 
+YB_STRONGLY_TYPED_BOOL(ExportHelpAndType);
+
 struct MetricPrometheusOptions : public MetricOptions {
-  // Metrics that shows on table level.
-  // Default: "ALL"
-  std::string table_whitelist = "ALL";
-  boost::regex table_whitelist_regex;
+  // Number of tables to include metrics for.
+  uint32_t max_tables_metrics_breakdowns;
 
-  // Metrics that should be excluded on table level.
-  // This has higher priority than table_whitelist.
-  // Default: "NONE"
-  std::string table_blacklist = "NONE";
-  boost::regex table_blacklist_regex;
-
-  // Metrics that shows on server level.
-  // Default: "ALL"
-  std::string server_whitelist = "ALL";
-  boost::regex server_whitelist_regex;
-
-  // Metrics that should be excluded on server level.
-  // This has higher priority than server_whitelist.
-  // Default: "NONE"
-  std::string server_blacklist = "NONE";
-  boost::regex server_blacklist_regex;
-
-  // If true, MetricRegister will cache all regex filters.
-  // Default: true.
-  bool cache_filters = true;
-
-  void CreateRegexs() {
-    table_whitelist_regex = table_whitelist;
-    table_blacklist_regex = table_blacklist;
-    server_whitelist_regex = server_whitelist;
-    server_blacklist_regex = server_blacklist;
-  }
+  // Include #TYPE and #HELP in Prometheus metrics output
+  ExportHelpAndType export_help_and_type{ExportHelpAndType::kFalse};
 };
+
+struct MetricEntityOptions {
+  std::vector<std::string> metrics;
+  std::vector<std::string> exclude_metrics;
+
+  // Regex for metrics that should always be included for all tables.
+  std::string priority_regex;
+};
+
+using MeticEntitiesOptions = std::map<AggregationMetricLevel, MetricEntityOptions>;
 
 class MetricEntityPrototype {
  public:
@@ -169,11 +147,12 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
 
   // See MetricRegistry::WriteAsJson()
   Status WriteAsJson(JsonWriter* writer,
+                     const MetricEntityOptions& entity_options,
                      const MetricJsonOptions& opts) const;
 
   Status WriteForPrometheus(PrometheusWriter* writer,
-                            const MetricPrometheusOptions& opts,
-                            MetricAggregationMap* metric_filter);
+                            const MetricEntityOptions& entity_options,
+                            const MetricPrometheusOptions& opts) const;
 
   const MetricMap& UnsafeMetricsMapForTests() const { return metric_map_; }
 
@@ -227,9 +206,6 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
   // within this entity. This entity's type must match the expected entity
   // type defined within the metric prototype.
   void CheckInstantiation(const MetricPrototype* proto) const;
-
-  AggregationLevels GetAggregationLevelsFromRegex(
-    const MetricPrometheusOptions& opts, const std::string& metric_name) const;
 
   template<typename Pointer>
   void AddConsumption(const Pointer& value) REQUIRES(lock_);

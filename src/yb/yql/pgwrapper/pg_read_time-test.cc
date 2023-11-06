@@ -14,6 +14,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 
 #include <gtest/gtest.h>
 
@@ -31,7 +32,6 @@
 
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(enable_wait_queues);
-DECLARE_bool(enable_deadlock_detection);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_int32(ysql_max_write_restart_attempts);
 DECLARE_string(ysql_pg_conf_csv);
@@ -39,6 +39,9 @@ DECLARE_string(ysql_pg_conf_csv);
 METRIC_DECLARE_counter(picked_read_time_on_docdb);
 
 namespace yb::pgwrapper {
+
+using namespace std::literals;
+
 namespace {
 
 class PgReadTimeTest : public PgMiniTestBase {
@@ -48,7 +51,6 @@ class PgReadTimeTest : public PgMiniTestBase {
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_deadlock_detection) = true;
 
     // TODO: Remove the below guc setting once it becomes the default.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = "yb_lock_pk_single_rpc=true";
@@ -153,15 +155,15 @@ TEST_F(PgReadTimeTest, TestConflictRetriesOnDocdb) {
 TEST_F(PgReadTimeTest, CheckReadTimePickingLocation) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("SET DEFAULT_TRANSACTION_ISOLATION TO \"REPEATABLE READ\""));
-  const std::string kTable = "test";
-  const std::string kSingleTabletTable = "test_with_single_tablet";
+  constexpr auto kTable = "test"sv;
+  constexpr auto kSingleTabletTable = "test_with_single_tablet"sv;
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTable));
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0 (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS", kSingleTabletTable));
 
-  for (const auto* table_name : {&kTable, &kSingleTabletTable}) {
+  for (const auto& table_name : {kTable, kSingleTabletTable}) {
     ASSERT_OK(conn.ExecuteFormat(
-        "INSERT INTO $0 SELECT generate_series(1, 100), 0", *table_name));
+        "INSERT INTO $0 SELECT generate_series(1, 100), 0", table_name));
     ASSERT_OK(conn.ExecuteFormat(
       "CREATE OR REPLACE PROCEDURE insert_rows_$0(first integer, last integer) "
       "LANGUAGE plpgsql "
@@ -171,7 +173,7 @@ TEST_F(PgReadTimeTest, CheckReadTimePickingLocation) {
       "    INSERT INTO $0 VALUES (i, i); "
       "  END LOOP; "
       "END; "
-      "$$body$$", *table_name));
+      "$$body$$", table_name));
   }
 
   // Cases to test:
@@ -195,15 +197,27 @@ TEST_F(PgReadTimeTest, CheckReadTimePickingLocation) {
   // query layer where applicable.
 
   // 1. no pipeline, single operation in first batch, no distributed txn
-  CheckReadTimePickedOnDocdb(
-      [&conn, kTable]() {
-        ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1", kTable));
-      });
+  for (const auto& table_name : {kTable, kSingleTabletTable}) {
+    CheckReadTimePickedOnDocdb(
+        [&conn, table_name]() {
+          ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1", table_name));
+        });
 
-  CheckReadTimePickedOnDocdb(
-      [&conn, kTable]() {
-        ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET v=1 WHERE k=1", kTable));
-      });
+    CheckReadTimePickedOnDocdb(
+        [&conn, table_name]() {
+          ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET v=1 WHERE k=1", table_name));
+        });
+
+    CheckReadTimePickedOnDocdb(
+        [&conn, table_name]() {
+          ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1000, 1000)", table_name));
+        });
+
+    CheckReadTimePickedOnDocdb(
+        [&conn, table_name]() {
+          ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE k=1000", table_name));
+        });
+  }
 
   // 2. no pipeline, multiple operations to various tablets in first batch, no distributed txn
   CheckReadTimeProvidedToDocdb(

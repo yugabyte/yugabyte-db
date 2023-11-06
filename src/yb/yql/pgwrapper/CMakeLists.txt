@@ -63,7 +63,8 @@ set(PG_WRAPPER_TEST_BASE_SRCS
     pg_mini_test_base.cc
     pg_tablet_split_test_base.cc
     pg_test_utils.cc
-    pg_wrapper_test_base.cc)
+    pg_wrapper_test_base.cc
+    pg_ddl_atomicity_test_base.cc)
 set(PG_WRAPPER_TEST_BASE_DEPS
     pq_utils
     yb_client_test_util)
@@ -140,6 +141,8 @@ ADD_YB_TEST(pg_op_buffering-test)
 ADD_YB_TEST(pg_packed_row-test)
 ADD_YB_TEST(pg_read_time-test)
 ADD_YB_TEST(pg_row_lock-test)
+ADD_YB_TEST(pg_server_restart-test)
+ADD_YB_TEST(pg_shared_mem-test)
 ADD_YB_TEST(pg_single_tserver-test)
 ADD_YB_TEST(pg_stat_activity-test)
 ADD_YB_TEST(pg_table_size-test)
@@ -149,7 +152,6 @@ ADD_YB_TEST(pg_txn-test)
 ADD_YB_TEST(pg_txn_status-test)
 ADD_YB_TEST(pg_wait_on_conflict-test)
 ADD_YB_TEST(pg_wrapper-test)
-ADD_YB_TEST(pg_server_restart-test)
 
 # This is really a tool, not a test, but uses a lot of existing test infrastructure.
 ADD_YB_TEST(create_initial_sys_catalog_snapshot)

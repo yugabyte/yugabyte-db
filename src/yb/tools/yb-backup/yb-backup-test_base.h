@@ -32,15 +32,23 @@ YB_DEFINE_ENUM(TableOp, (kKeepTable)(kDropTable)(kDropDB));
 
 } // namespace helpers
 
-class YBBackupTest : public pgwrapper::PgCommandTestBase {
+class YBBackupTestBase {
+ protected:
+  string GetTempDir(const string& subdir);
+
+  Status RunBackupCommand(const vector<string>& args, auto *cluster);
+
+ private:
+  TmpDirProvider tmp_dir_;
+};
+
+class YBBackupTest : public pgwrapper::PgCommandTestBase, public YBBackupTestBase {
  protected:
   YBBackupTest() : pgwrapper::PgCommandTestBase(false, false) {}
 
   void SetUp() override;
 
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override;
-
-  string GetTempDir(const string& subdir);
 
   Status RunBackupCommand(const vector<string>& args);
 
@@ -62,17 +70,17 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
   void LogTabletsInfo(const std::vector<yb::master::TabletLocationsPB>& tablets);
 
   Status WaitForTabletPostSplitCompacted(size_t tserver_idx, const TabletId& tablet_id);
-
+  void RestartClusterWithCatalogVersionMode(bool db_catalog_version_mode);
   void DoTestYEDISBackup(helpers::TableOp tableOp);
   void DoTestYSQLKeyspaceBackup(helpers::TableOp tableOp);
   void DoTestYSQLMultiSchemaKeyspaceBackup(helpers::TableOp tableOp);
   void DoTestYSQLKeyspaceWithHyphenBackupRestore(
       const string& backup_db, const string& restore_db);
+  void DoTestYSQLRestoreBackup(std::optional<bool> db_catalog_version_mode);
 
   void TestColocatedDBBackupRestore();
 
   client::TableHandle table_;
-  TmpDirProvider tmp_dir_;
   std::unique_ptr<TestAdminClient> test_admin_client_;
   std::unique_ptr<client::SnapshotTestUtil> snapshot_util_;
 };

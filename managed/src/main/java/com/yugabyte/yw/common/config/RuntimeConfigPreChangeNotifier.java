@@ -15,6 +15,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.impl.MetricCollectionLevelValidator;
 import com.yugabyte.yw.common.config.impl.SSH2EnabledKeyValidator;
+import com.yugabyte.yw.common.config.impl.UseNewRbacAuthzValidator;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -42,9 +43,11 @@ public class RuntimeConfigPreChangeNotifier {
   @Inject
   public RuntimeConfigPreChangeNotifier(
       SSH2EnabledKeyValidator ssh2EnabledKeyValidator,
-      MetricCollectionLevelValidator metricCollectionLevelValidator) {
+      MetricCollectionLevelValidator metricCollectionLevelValidator,
+      UseNewRbacAuthzValidator useNewRbacAuthzValidator) {
     addListener(ssh2EnabledKeyValidator);
     addListener(metricCollectionLevelValidator);
+    addListener(useNewRbacAuthzValidator);
   }
 
   public void notifyListeners(UUID scopeUUID, String path, String newValue) {

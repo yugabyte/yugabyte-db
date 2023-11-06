@@ -8,7 +8,7 @@ image: /images/develop/graphql/hasura/hasura.png
 menu:
   preview_integrations:
     identifier: hasura
-    parent: integrations
+    parent: application-frameworks
     weight: 571
 type: indexpage
 ---

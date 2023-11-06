@@ -59,9 +59,7 @@ service PgClientService {
   rpc ReserveOids(PgReserveOidsRequestPB) returns (PgReserveOidsResponsePB);
   rpc RollbackToSubTransaction(PgRollbackToSubTransactionRequestPB)
       returns (PgRollbackToSubTransactionResponsePB);
-  // DEPRECATED
-  rpc SetActiveSubTransaction(PgSetActiveSubTransactionRequestPB)
-      returns (PgSetActiveSubTransactionResponsePB);
+
   rpc TabletServerCount(PgTabletServerCountRequestPB) returns (PgTabletServerCountResponsePB);
   rpc TruncateTable(PgTruncateTableRequestPB) returns (PgTruncateTableResponsePB);
   rpc ValidatePlacement(PgValidatePlacementRequestPB)
@@ -85,6 +83,12 @@ service PgClientService {
   rpc CancelTransaction(PgCancelTransactionRequestPB) returns (PgCancelTransactionResponsePB);
   rpc GetActiveTransactionList(PgGetActiveTransactionListRequestPB)
       returns (PgGetActiveTransactionListResponsePB);
+
+  rpc GetTableKeyRanges(PgGetTableKeyRangesRequestPB) returns (PgGetTableKeyRangesResponsePB);
+
+  // DEPRECATED
+  rpc SetActiveSubTransaction(PgSetActiveSubTransactionRequestPB)
+      returns (PgSetActiveSubTransactionResponsePB);
 }
 
 message PgHeartbeatRequestPB {
@@ -424,8 +428,9 @@ message OptionalUint64PB { uint64 value = 1; }
 
 message PgPerformOptionsPB {
   message CachingInfoPB {
-    bytes key = 1;
-    OptionalUint32PB lifetime_threshold_ms = 2;
+    uint64 key_group = 1;
+    bytes key_value = 2;
+    OptionalUint32PB lifetime_threshold_ms = 3;
   }
 
   // Cannot use IsolationLevel enum, since we cannot use proto2 enum in proto3 messages.
@@ -451,6 +456,8 @@ message PgPerformOptionsPB {
   CachingInfoPB caching_info = 17;
   bool read_from_followers = 18;
   bool trace_requested = 19;
+  bool yb_non_ddl_txn_for_sys_tables_allowed = 21;
+  int64 pg_txn_start_us = 22;
 }
 
 message PgPerformRequestPB {
@@ -704,4 +711,19 @@ message PgGetActiveTransactionListResponsePB {
   }
   AppStatusPB status = 1;
   repeated EntryPB entries = 2;
+}
+
+message PgGetTableKeyRangesRequestPB {
+  uint64 session_id = 1;
+  PgObjectIdPB table_id = 2;
+  bytes lower_bound_key = 3;
+  bytes upper_bound_key = 4;
+  uint64 max_num_ranges = 5;
+  uint64 range_size_bytes = 6;
+  bool is_forward = 7;
+  uint32 max_key_length = 8;
+}
+
+message PgGetTableKeyRangesResponsePB {
+  AppStatusPB status = 1;
 }

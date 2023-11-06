@@ -6,7 +6,6 @@ description: Horizontal scalability in YugabyteDB.
 headcontent: Handle larger workloads by adding nodes to your cluster
 aliases:
   - /explore/linear-scalability/
-  - /preview/explore/linear-scalability/
   - /preview/explore/postgresql/linear-scalability/
   - /preview/explore/linear-scalability-macos/
   - /preview/explore/linear-scalability/linux/
@@ -22,6 +21,7 @@ menu:
     identifier: explore-scalability
     parent: explore
     weight: 220
+showRightNav: true
 type: indexpage
 ---
 

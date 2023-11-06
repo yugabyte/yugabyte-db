@@ -37,6 +37,8 @@
 #include <sys/time.h>
 #include <sys/types.h>
 
+#include "yb/util/signal_util.h"
+
 #if defined(__linux__)
 #include <sys/prctl.h>
 #endif // defined(__linux__)
@@ -760,7 +762,14 @@ Status Thread::StartThread(const std::string& category, const std::string& name,
 
   {
     SCOPED_LOG_SLOW_EXECUTION_PREFIX(WARNING, 500 /* ms */, log_prefix, "creating pthread");
+
+    // Block stack trace collection while we create a thread. This also prevents stack trace
+    // collection in the new thread while it is being started since it will inherit our signal
+    // masks. SuperviseThread function will unblock the signal as soon as thread begins to run.
+    auto old_signal = VERIFY_RESULT(ThreadSignalMaskBlock({GetStackTraceSignal()}));
     int ret = pthread_create(&t->thread_, NULL, &Thread::SuperviseThread, t.get());
+    RETURN_NOT_OK(ThreadSignalMaskRestore(old_signal));
+
     if (ret) {
       return STATUS(RuntimeError, "Could not create thread", Errno(ret));
     }
@@ -800,6 +809,8 @@ Status Thread::StartThread(const std::string& category, const std::string& name,
 }
 
 void* Thread::SuperviseThread(void* arg) {
+  CHECK_OK(ThreadSignalMaskUnblock({GetStackTraceSignal()}));
+
   Thread* t = static_cast<Thread*>(arg);
   int64_t system_tid = Thread::CurrentThreadId();
   if (system_tid == -1) {
@@ -869,6 +880,9 @@ void Thread::FinishThread(void* arg) {
 
   VLOG(2) << "Ended thread " << t->tid() << " - "
           << t->category() << ":" << t->name();
+
+  // Its no longer safe to collect stack traces in this thread.
+  CHECK_OK(ThreadSignalMaskBlock({GetStackTraceSignal()}));
 }
 
 CDSAttacher::CDSAttacher() {

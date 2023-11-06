@@ -230,7 +230,9 @@ Status UpdateReadTime(tserver::PgPerformOptionsPB* options, const ReadHybridTime
 
 class PgSession::RunHelper {
  public:
-  RunHelper(PgSession* pg_session, SessionType session_type, HybridTime in_txn_limit)
+  RunHelper(PgSession* pg_session,
+            SessionType session_type,
+            HybridTime in_txn_limit)
       : pg_session_(*pg_session),
         session_type_(session_type),
         in_txn_limit_(in_txn_limit) {
@@ -425,7 +427,6 @@ Status PgSession::DropDatabase(const std::string& database_name, PgOid database_
   req.set_database_oid(database_oid);
 
   RETURN_NOT_OK(pg_client_.DropDatabase(&req, CoarseTimePoint()));
-  RETURN_NOT_OK(DeleteDBSequences(database_oid));
   return Status::OK();
 }
 
@@ -487,14 +488,6 @@ Result<std::pair<int64_t, bool>> PgSession::ReadSequenceTuple(int64_t db_oid,
                                                               bool is_db_catalog_version_mode) {
   return pg_client_.ReadSequenceTuple(
       db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode);
-}
-
-Status PgSession::DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid) {
-  return pg_client_.DeleteSequenceTuple(db_oid, seq_oid);
-}
-
-Status PgSession::DeleteDBSequences(int64_t db_oid) {
-  return pg_client_.DeleteDBSequences(db_oid);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -694,9 +687,12 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   }
   options.set_force_global_transaction(global_transaction);
 
+  // For DDLs, ysql_upgrades and PGCatalog accesses, we always use the default read-time
+  // and effectively skip xcluster_database_consistency which enables reads as of xcluster safetime.
   options.set_use_xcluster_database_consistency(
       yb_xcluster_consistency_level == XCLUSTER_CONSISTENCY_DATABASE &&
-      !(ops_options.use_catalog_session || pg_txn_manager_->IsDdlMode()));
+      !(ops_options.use_catalog_session || pg_txn_manager_->IsDdlMode() ||
+        yb_non_ddl_txn_for_sys_tables_allowed));
 
   auto promise = std::make_shared<std::promise<PerformResult>>();
 
@@ -731,7 +727,8 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   if (ops_options.cache_options) {
     auto& cache_options = *ops_options.cache_options;
     auto& caching_info = *options.mutable_caching_info();
-    caching_info.set_key(std::move(cache_options.key));
+    caching_info.set_key_group(cache_options.key_group);
+    caching_info.set_key_value(std::move(cache_options.key_value));
     if (cache_options.lifetime_threshold_ms) {
       caching_info.mutable_lifetime_threshold_ms()->set_value(*cache_options.lifetime_threshold_ms);
     }
@@ -959,7 +956,7 @@ Result<PerformFuture> PgSession::RunAsync(const ReadOperationGenerator& generato
 
 Result<PerformFuture> PgSession::RunAsync(
     const ReadOperationGenerator& generator, CacheOptions&& cache_options) {
-  SCHECK(!cache_options.key.empty(), InvalidArgument, "Cache key can't be empty");
+  RSTATUS_DCHECK(!cache_options.key_value.empty(), InvalidArgument, "Cache key can't be empty");
   // Ensure no buffered requests will be added to cached request.
   RETURN_NOT_OK(buffer_.Flush());
   return DoRunAsync(generator, HybridTime(), ForceNonBufferable::kFalse, std::move(cache_options));
@@ -971,6 +968,16 @@ Result<bool> PgSession::CheckIfPitrActive() {
 
 Result<bool> PgSession::IsObjectPartOfXRepl(const PgObjectId& table_id) {
   return pg_client_.IsObjectPartOfXRepl(table_id);
+}
+
+Result<boost::container::small_vector<RefCntSlice, 2>> PgSession::GetTableKeyRanges(
+    const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
+    uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length) {
+  // TODO(ysql_parallel_query): consider async population of range boundaries to avoid blocking
+  // calling worker on waiting for range boundaries.
+  return pg_client_.GetTableKeyRanges(
+      table_id, lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes, is_forward,
+      max_key_length);
 }
 
 }  // namespace yb::pggate

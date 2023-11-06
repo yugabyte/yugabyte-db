@@ -23,6 +23,7 @@ import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -132,6 +133,8 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     mockWaits(mockClient, 3);
     UniverseModifyBaseTest.mockGetMasterRegistrationResponse(
         mockClient, ImmutableList.of("10.0.0.4", "10.0.0.6"), Collections.emptyList());
+
+    setFollowerLagMock();
   }
 
   private TaskInfo submitTask(NodeTaskParams taskParams, String nodeName) {
@@ -182,7 +185,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           TaskType.UpdateNodeProcess,
           TaskType.WaitForServer,
           TaskType.ChangeMasterConfig,
-          TaskType.WaitForFollowerLag,
+          TaskType.CheckFollowerLag,
           TaskType.ChangeMasterConfig,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForMasterLeader,
@@ -496,5 +499,23 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
             NodeState.Stopping,
             NodeState.Removing);
     assertEquals(expectedStates, allowedStates);
+  }
+
+  @Test
+  public void testRemoveNodeRetries() {
+    setUp(true, 4, 3, false);
+    NodeTaskParams taskParams =
+        UniverseControllerRequestBinder.deepCopy(
+            defaultUniverse.getUniverseDetails(), NodeTaskParams.class);
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = 3;
+    taskParams.nodeName = "host-n1";
+    super.verifyTaskRetries(
+        defaultCustomer,
+        CustomerTask.TaskType.Remove,
+        CustomerTask.TargetType.Universe,
+        defaultUniverse.getUniverseUUID(),
+        TaskType.RemoveNodeFromUniverse,
+        taskParams);
   }
 }

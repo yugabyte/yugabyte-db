@@ -4,6 +4,9 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModifyTables;
+import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
+import com.yugabyte.yw.common.DrConfigStates.State;
+import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import com.yugabyte.yw.models.Restore;
@@ -174,9 +177,6 @@ public class EditXClusterConfig extends CreateXClusterConfig {
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList,
       Map<String, List<String>> mainTableIndexTablesMap,
       Set<String> tableIdsScheduledForBeingRemoved) {
-    Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
-    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
-
     Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
         dbToTablesInfoMapNeedBootstrap =
             getDbToTablesInfoMapNeedBootstrap(
@@ -186,19 +186,16 @@ public class EditXClusterConfig extends CreateXClusterConfig {
                 mainTableIndexTablesMap,
                 taskParams().getSourceTableIdsWithNoTableOnTargetUniverse());
 
-    // Replication for tables that do NOT need bootstrapping.
+    // Add the subtasks to set up replication for tables that do not need bootstrapping.
     Set<String> tableIdsNotNeedBootstrap =
         getTableIdsNotNeedBootstrap(taskParams().getTableIdsToAdd());
     if (!tableIdsNotNeedBootstrap.isEmpty()) {
-      log.info(
-          "Creating a subtask to modify replication to add tables without bootstrap for "
-              + "tables {}",
-          tableIdsNotNeedBootstrap);
-      createXClusterConfigModifyTablesTask(
-              xClusterConfig,
-              tableIdsNotNeedBootstrap,
-              XClusterConfigModifyTables.Params.Action.ADD)
-          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+      addSubtasksForTablesNotNeedBootstrap(
+          xClusterConfig,
+          tableIdsNotNeedBootstrap,
+          requestedTableInfoList,
+          true /* isReplicationConfigCreated */,
+          taskParams().getPitrParams());
     }
 
     // YSQL tables replication with bootstrapping can only be set up with DB granularity. The
@@ -235,6 +232,16 @@ public class EditXClusterConfig extends CreateXClusterConfig {
       createDeleteXClusterConfigSubtasks(
           xClusterConfig, true /* keepEntry */, taskParams().isForced());
 
+      if (xClusterConfig.isUsedForDr()) {
+        createSetDrStatesTask(
+                xClusterConfig,
+                State.Initializing,
+                SourceUniverseState.Unconfigured,
+                TargetUniverseState.Unconfigured,
+                null /* keyspacePending */)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+      }
+
       createXClusterConfigSetStatusTask(
           xClusterConfig, XClusterConfig.XClusterConfigStatusType.Updating);
 
@@ -253,6 +260,16 @@ public class EditXClusterConfig extends CreateXClusterConfig {
           xClusterConfig,
           tableIdsDeleteReplication,
           XClusterConfigModifyTables.Params.Action.REMOVE_FROM_REPLICATION_ONLY);
+
+      if (xClusterConfig.isUsedForDr()) {
+        createSetDrStatesTask(
+                xClusterConfig,
+                State.Initializing,
+                SourceUniverseState.Unconfigured,
+                TargetUniverseState.Unconfigured,
+                null /* keyspacePending */)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+      }
 
       createXClusterConfigSetStatusForTablesTask(
           xClusterConfig, tableIdsDeleteReplication, XClusterTableConfig.Status.Updating);

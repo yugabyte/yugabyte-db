@@ -103,8 +103,6 @@ bool AllowSlowTests();
 void OverrideFlagForSlowTests(const std::string& flag_name,
                               const std::string& new_value);
 
-Status EnableVerboseLoggingForModule(const std::string& module, int level);
-
 // Call srand() with a random seed based on the current time, reporting
 // that seed to the logs. The time-based seed may be overridden by passing
 // --test_random_seed= from the CLI in order to reproduce a failed randomized

@@ -194,7 +194,7 @@ typedef struct SysScanDescData
 	HeapScanDesc scan;			/* only valid in heap-scan case */
 	IndexScanDesc iscan;		/* only valid in index-scan case */
 	Snapshot	snapshot;		/* snapshot to unregister at end of scan */
-	YbScanDesc	ybscan;			/* only valid in yb-scan case */
+	YbSysScanBase	ybscan;			/* only valid in yb-scan case */
 }			SysScanDescData;
 
 #endif							/* RELSCAN_H */

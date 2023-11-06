@@ -11,6 +11,7 @@ import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonEnumDefaultValue;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.annotation.JsonTypeInfo.As;
@@ -21,6 +22,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.StorageUtil;
 import com.yugabyte.yw.common.StorageUtilFactory;
@@ -29,6 +31,7 @@ import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.BackupUtil.PerBackupLocationKeyspaceTables;
 import com.yugabyte.yw.common.backuprestore.BackupUtil.PerLocationBackupInfo;
+import com.yugabyte.yw.common.backuprestore.BackupUtil.TablespaceResponse;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.TablesMetadata.TableDetails;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.TablesMetadata.TableDetails.IndexTable;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse.ResponseCloudStoreSpec.BucketLocation;
@@ -36,12 +39,15 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse.
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse.SnapshotObjectDetails.SnapshotObjectData;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse.SnapshotObjectDetails.TableData;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.RestorePreflightResponse;
 import com.yugabyte.yw.models.Backup.BackupCategory;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.backuprestore.Tablespace;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
@@ -104,7 +110,9 @@ public class YbcBackupUtil {
   public static final String DEFAULT_REGION_STRING = "default_region";
   public static final String YBC_SUCCESS_MARKER_TASK_SUFFIX = "_success_marker";
   public static final String YBC_SUCCESS_MARKER_FILE_NAME = "success";
+  public static final String YBDB_AUTOFLAG_BACKUP_SUPPORT_VERSION = "2.19.3.0-b1";
 
+  private final AutoFlagUtil autoFlagUtil;
   private final UniverseInfoHandler universeInfoHandler;
   private final CustomerConfigService configService;
   private final EncryptionAtRestManager encryptionAtRestManager;
@@ -113,6 +121,7 @@ public class YbcBackupUtil {
 
   @Inject
   public YbcBackupUtil(
+      AutoFlagUtil autoFlagUtil,
       UniverseInfoHandler universeInfoHandler,
       CustomerConfigService configService,
       EncryptionAtRestManager encryptionAtRestManager,
@@ -123,6 +132,7 @@ public class YbcBackupUtil {
     this.encryptionAtRestManager = encryptionAtRestManager;
     this.backupHelper = backupHelper;
     this.storageUtilFactory = storageUtilFactory;
+    this.autoFlagUtil = autoFlagUtil;
   }
 
   public static final Logger LOG = LoggerFactory.getLogger(YbcBackupUtil.class);
@@ -167,8 +177,7 @@ public class YbcBackupUtil {
         if (!hasIndexTables) {
           return new HashSet<>();
         }
-        return indexTableRelations
-            .parallelStream()
+        return indexTableRelations.parallelStream()
             .map(iT -> iT.indexTableName)
             .collect(Collectors.toSet());
       }
@@ -177,9 +186,7 @@ public class YbcBackupUtil {
     @JsonIgnore
     public Set<String> getIndexTables(Set<String> parentTables) {
       Set<String> tablesSet =
-          tableDetailsMap
-              .entrySet()
-              .parallelStream()
+          tableDetailsMap.entrySet().parallelStream()
               .filter(
                   tDE ->
                       CollectionUtils.isNotEmpty(parentTables)
@@ -203,14 +210,36 @@ public class YbcBackupUtil {
     @JsonIgnore
     public Map<String, Set<String>> getTablesWithIndexesMap() {
       Map<String, Set<String>> tablesWithIndexesMap =
-          tableDetailsMap
-              .entrySet()
-              .parallelStream()
+          tableDetailsMap.entrySet().parallelStream()
               .filter(tDE -> tDE.getValue().hasIndexTables)
               .collect(
                   Collectors.toMap(Map.Entry::getKey, tDE -> tDE.getValue().getAllIndexTables()));
       return tablesWithIndexesMap;
     }
+  }
+
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  public static class YbcSuccessBackupConfig {
+
+    @JsonProperty("ybdb_version")
+    @Valid
+    public String ybdbVersion;
+
+    @JsonProperty("master_auto_flags")
+    @Valid
+    public Set<String> masterAutoFlags;
+
+    @JsonProperty("tserver_auto_flags")
+    @Valid
+    public Set<String> tserverAutoFlags;
+
+    @JsonProperty("universe_keys")
+    @Valid
+    public JsonNode universeKeys;
+
+    @JsonProperty("master_key_metadata")
+    @Valid
+    public JsonNode masterKeyMetadata;
   }
 
   @JsonIgnoreProperties(ignoreUnknown = true)
@@ -231,6 +260,10 @@ public class YbcBackupUtil {
     @NotNull
     @Valid
     public List<SnapshotObjectDetails> snapshotObjectDetails;
+
+    @JsonAlias("tablespace_info")
+    @Valid
+    public List<Tablespace> tablespaceInfos;
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class ResponseCloudStoreSpec {
@@ -357,11 +390,11 @@ public class YbcBackupUtil {
   }
 
   public static JsonNode getUniverseKeysJsonFromSuccessMarker(String extendedArgs) {
-    ObjectMapper mapper = new ObjectMapper();
-    JsonNode args = null;
     try {
-      args = mapper.readTree(extendedArgs);
-      return args.get("universe_keys");
+      ObjectMapper mapper = new ObjectMapper();
+      YbcSuccessBackupConfig backupConfig =
+          mapper.readValue(extendedArgs, YbcSuccessBackupConfig.class);
+      return backupConfig.universeKeys;
     } catch (Exception e) {
       log.error("Could not fetch universe keys from success marker");
       return null;
@@ -439,7 +472,7 @@ public class YbcBackupUtil {
    * Creates backup task request compatible with YB-Controller
    *
    * @param backupTableParams This backup's params.
-   * @param previousTableParam Previous backup's params for incremental backup.
+   * @param previousTableParams Previous backup's params for incremental backup.
    * @return BackupServiceTaskCreateRequest object
    */
   public BackupServiceTaskCreateRequest createYbcBackupRequest(
@@ -486,16 +519,9 @@ public class YbcBackupUtil {
       String taskId,
       YbcBackupResponse successMarker) {
     NamespaceType namespaceType = getNamespaceType(backupStorageInfo.backupType);
-    BackupServiceTaskExtendedArgs.Builder extendedArgs = BackupServiceTaskExtendedArgs.newBuilder();
-    if (StringUtils.isNotBlank(backupStorageInfo.newOwner)) {
-      extendedArgs.setUserSpec(
-          UserChangeSpec.newBuilder()
-              .setNewUsername(backupStorageInfo.newOwner)
-              .setOldUsername(backupStorageInfo.oldOwner)
-              .build());
-    }
+    BackupServiceTaskExtendedArgs extendedArgs = getExtendedArgsForRestore(backupStorageInfo);
     BackupServiceTaskCreateRequest.Builder backupServiceTaskCreateRequestBuilder =
-        backupServiceTaskCreateBuilder(taskId, namespaceType, extendedArgs.build());
+        backupServiceTaskCreateBuilder(taskId, namespaceType, extendedArgs);
     CustomerConfig config = configService.getOrBadRequest(customerUUID, storageConfigUUID);
     CloudStoreConfig cloudStoreConfig = createRestoreConfig(config, successMarker);
     backupServiceTaskCreateRequestBuilder.setCsConfig(cloudStoreConfig);
@@ -792,9 +818,7 @@ public class YbcBackupUtil {
     Map<String, String> parentTablesMap = new ConcurrentHashMap<>();
 
     // Get parent tables first
-    successMarker
-        .snapshotObjectDetails
-        .parallelStream()
+    successMarker.snapshotObjectDetails.parallelStream()
         .filter(
             sOD ->
                 sOD.type.equals(SnapshotObjectType.TABLE)
@@ -813,9 +837,7 @@ public class YbcBackupUtil {
 
     // Add index tables if required
     if (!filterIndexTables) {
-      successMarker
-          .snapshotObjectDetails
-          .parallelStream()
+      successMarker.snapshotObjectDetails.parallelStream()
           .filter(
               sOD ->
                   sOD.type.equals(SnapshotObjectType.TABLE)
@@ -894,17 +916,44 @@ public class YbcBackupUtil {
    * @return Extended args object for YB-Controller
    */
   public BackupServiceTaskExtendedArgs getExtendedArgsForBackup(BackupTableParams tableParams) {
-    BackupServiceTaskExtendedArgs.Builder extendedArgsBuilder =
-        BackupServiceTaskExtendedArgs.newBuilder();
     try {
+      YbcSuccessBackupConfig config = new YbcSuccessBackupConfig();
+      Universe universe = Universe.getOrBadRequest(tableParams.getUniverseUUID());
+      String ybdbSoftwareVersion =
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+      config.ybdbVersion = ybdbSoftwareVersion;
+      if (Util.compareYbVersions(
+              ybdbSoftwareVersion,
+              YBDB_AUTOFLAG_BACKUP_SUPPORT_VERSION,
+              true /* suppressFormatError */)
+          >= 0) {
+        config.masterAutoFlags =
+            autoFlagUtil.getPromotedAutoFlags(
+                universe,
+                UniverseTaskBase.ServerType.MASTER,
+                AutoFlagUtil.LOCAL_PERSISTED_AUTO_FLAG_CLASS);
+        config.tserverAutoFlags =
+            autoFlagUtil.getPromotedAutoFlags(
+                universe,
+                UniverseTaskBase.ServerType.TSERVER,
+                AutoFlagUtil.LOCAL_PERSISTED_AUTO_FLAG_CLASS);
+      }
       ObjectNode universeKeyHistory =
           encryptionAtRestManager.backupUniverseKeyHistory(tableParams.getUniverseUUID());
       if (universeKeyHistory != null) {
-        ObjectMapper mapper = new ObjectMapper();
-        String backupKeys = mapper.writeValueAsString(universeKeyHistory);
-        extendedArgsBuilder.setBackupConfigData(backupKeys);
+        config.universeKeys = universeKeyHistory.get("universe_keys");
+        config.masterKeyMetadata = universeKeyHistory.get("master_key_metadata");
       }
+      BackupServiceTaskExtendedArgs.Builder extendedArgsBuilder =
+          BackupServiceTaskExtendedArgs.newBuilder();
+      ObjectMapper mapper = new ObjectMapper();
+      extendedArgsBuilder.setBackupConfigData(mapper.writeValueAsString(config));
+      if (tableParams.useTablespaces) {
+        extendedArgsBuilder.setUseTablespaces(true);
+      }
+      return extendedArgsBuilder.build();
     } catch (Exception e) {
+      log.error("Error while fetching extended args for backup: ", e);
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
           String.format(
@@ -912,8 +961,66 @@ public class YbcBackupUtil {
               getBaseLogMessage(tableParams.backupUuid, tableParams.getKeyspace()),
               e.getMessage()));
     }
-    if (tableParams.useTablespaces) {
+  }
+
+  /**
+   * Verifies that universe has already promoted the provided set of master and tserver auto flags.
+   *
+   * @param universe
+   * @param masterAutoFlags
+   * @param tserverAutoFlags
+   * @return
+   * @throws IOException
+   */
+  public boolean validateAutoFlagCompatibility(
+      Universe universe, Set<String> masterAutoFlags, Set<String> tserverAutoFlags)
+      throws IOException {
+    if (!CollectionUtils.isEmpty(masterAutoFlags)) {
+      Set<String> targetMasterAutoFlags =
+          autoFlagUtil.getPromotedAutoFlags(
+              universe,
+              UniverseTaskBase.ServerType.MASTER,
+              AutoFlagUtil.LOCAL_PERSISTED_AUTO_FLAG_CLASS);
+      for (String flag : masterAutoFlags) {
+        if (!targetMasterAutoFlags.contains(flag)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "Cannot restore backup as " + flag + " is missing on target universe master server.");
+        }
+      }
+    }
+    if (!CollectionUtils.isEmpty(tserverAutoFlags)) {
+      Set<String> targetTServerAutoFlags =
+          autoFlagUtil.getPromotedAutoFlags(
+              universe,
+              UniverseTaskBase.ServerType.MASTER,
+              AutoFlagUtil.LOCAL_PERSISTED_AUTO_FLAG_CLASS);
+      for (String flag : tserverAutoFlags) {
+        if (!targetTServerAutoFlags.contains(flag)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "Cannot restore backup as "
+                  + flag
+                  + " is missing on target universe tserver server.");
+        }
+      }
+    }
+    return true;
+  }
+
+  public BackupServiceTaskExtendedArgs getExtendedArgsForRestore(
+      BackupStorageInfo backupStorageInfo) {
+    BackupServiceTaskExtendedArgs.Builder extendedArgsBuilder =
+        BackupServiceTaskExtendedArgs.newBuilder();
+    if (backupStorageInfo.isUseTablespaces()) {
       extendedArgsBuilder.setUseTablespaces(true);
+    }
+    if (StringUtils.isNotBlank(backupStorageInfo.newOwner)) {
+      extendedArgsBuilder.setUserSpec(
+          UserChangeSpec.newBuilder()
+              .setNewUsername(backupStorageInfo.newOwner)
+              .setOldUsername(backupStorageInfo.oldOwner)
+              .build());
     }
     return extendedArgsBuilder.build();
   }
@@ -1082,7 +1189,8 @@ public class YbcBackupUtil {
   public static RestorePreflightResponse generateYBCRestorePreflightResponseUsingMetadata(
       Map<String, YbcBackupResponse> ybcSuccessMarkerMap,
       boolean selectiveRestoreYbcCheck,
-      boolean filterIndexes) {
+      boolean filterIndexes,
+      Map<String, TablespaceResponse> tablespaceResponsesMap) {
     RestorePreflightResponse.RestorePreflightResponseBuilder restorePreflightResponseBuilder =
         RestorePreflightResponse.builder();
 
@@ -1095,7 +1203,12 @@ public class YbcBackupUtil {
     // Populate KMS param here
     boolean hasKMSHistory =
         ybcSuccessMarkerMap.values().stream()
-            .anyMatch(sM -> getUniverseKeysJsonFromSuccessMarker(sM.extendedArgsString) != null);
+            .anyMatch(
+                sM -> {
+                  JsonNode universeKeys =
+                      getUniverseKeysJsonFromSuccessMarker(sM.extendedArgsString);
+                  return universeKeys != null && !universeKeys.isNull();
+                });
     restorePreflightResponseBuilder.hasKMSHistory(hasKMSHistory);
 
     // Populate namespace type, name, tables list( if applicable ) etc. here
@@ -1110,9 +1223,7 @@ public class YbcBackupUtil {
                       perLocationBackupInfoBuilder.backupLocation(e.getKey());
                       YbcBackupResponse sMarker = e.getValue();
                       SnapshotObjectData namespaceDetails =
-                          sMarker
-                              .snapshotObjectDetails
-                              .parallelStream()
+                          sMarker.snapshotObjectDetails.parallelStream()
                               .filter(sOD -> sOD.type.equals(SnapshotObjectType.NAMESPACE))
                               .findAny()
                               .get()
@@ -1126,6 +1237,10 @@ public class YbcBackupUtil {
                       PerBackupLocationKeyspaceTables.PerBackupLocationKeyspaceTablesBuilder
                           perBackupKeyspaceTablesBuilder =
                               PerBackupLocationKeyspaceTables.builder();
+
+                      // Populate tablespaces related info
+                      perLocationBackupInfoBuilder.tablespaceResponse(
+                          tablespaceResponsesMap.get(e.getKey()));
 
                       // Populate keyspace name
                       perBackupKeyspaceTablesBuilder.originalKeyspace(

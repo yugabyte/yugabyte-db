@@ -42,6 +42,7 @@ public class ScopedRuntimeConfig extends Model {
   private final UUID universeUUID;
 
   private final UUID providerUUID;
+
   // End foreign key fields
   // ====================================================
 

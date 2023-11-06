@@ -300,8 +300,20 @@ public class UniverseResourceDetails {
             && userIntent.deviceInfo.volumeSize != null
             && userIntent.deviceInfo.numVolumes != null) {
           details.addVolumeCount(userIntent.deviceInfo.numVolumes);
-          details.addVolumeSizeGB(
-              userIntent.deviceInfo.volumeSize * userIntent.deviceInfo.numVolumes);
+          // Check correct volume size based of type of node
+          if (node.isTserver) {
+            details.addVolumeSizeGB(
+                userIntent.deviceInfo.volumeSize * userIntent.deviceInfo.numVolumes);
+          } else if (node.isMaster) {
+            // if populated masterDeviceInfo use that, else use deviceInfo.
+            if (userIntent.masterDeviceInfo != null) {
+              details.addVolumeSizeGB(
+                  userIntent.masterDeviceInfo.volumeSize * userIntent.masterDeviceInfo.numVolumes);
+            } else {
+              details.addVolumeSizeGB(
+                  userIntent.deviceInfo.volumeSize * userIntent.deviceInfo.numVolumes);
+            }
+          }
 
           if (userIntent.deviceInfo.diskIops != null) {
             details.gp3FreePiops = userIntent.deviceInfo.diskIops;
@@ -314,12 +326,16 @@ public class UniverseResourceDetails {
           details.addAz(node.cloudInfo.az);
           // If we have resource spec use that.
           if (userIntent.tserverK8SNodeResourceSpec != null) {
-            details.addMemSizeGB(userIntent.tserverK8SNodeResourceSpec.memoryGib);
-            details.addNumCores(userIntent.tserverK8SNodeResourceSpec.cpuCoreCount);
+            if (node.isTserver) {
+              details.addMemSizeGB(userIntent.tserverK8SNodeResourceSpec.memoryGib);
+              details.addNumCores(userIntent.tserverK8SNodeResourceSpec.cpuCoreCount);
+            }
             // Check for master and add its resources too
             if (userIntent.masterK8SNodeResourceSpec != null) {
-              details.addMemSizeGB(userIntent.masterK8SNodeResourceSpec.memoryGib);
-              details.addNumCores(userIntent.masterK8SNodeResourceSpec.cpuCoreCount);
+              if (node.isMaster) {
+                details.addMemSizeGB(userIntent.masterK8SNodeResourceSpec.memoryGib);
+                details.addNumCores(userIntent.masterK8SNodeResourceSpec.cpuCoreCount);
+              }
             }
           } else {
             if (node.cloudInfo.instance_type != null) {

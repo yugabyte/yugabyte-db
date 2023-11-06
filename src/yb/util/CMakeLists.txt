@@ -154,6 +154,9 @@ set(UTIL_SRCS
   curl_util.cc
   date_time.cc
   debug-util.cc
+  symbolize.cc
+  libbacktrace_util.cc
+  source_location.cc
   debug/lock_debug.cc
   debug/long_operation_tracker.cc
   debug/trace_event_impl.cc
@@ -256,7 +259,6 @@ set(UTIL_SRCS
   timestamp.cc
   tostring.cc
   trace.cc
-  trilean.cc
   ulimit.cc
   ulimit_util.cc
   url-coding.cc

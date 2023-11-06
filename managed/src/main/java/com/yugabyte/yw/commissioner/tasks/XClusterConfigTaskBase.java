@@ -516,7 +516,9 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
         .collect(Collectors.toSet());
   }
 
-  /** @see #getTablesNeedBootstrap(Set) */
+  /**
+   * @see #getTablesNeedBootstrap(Set)
+   */
   protected Set<XClusterTableConfig> getTablesNeedBootstrap() {
     return getTablesNeedBootstrap(getXClusterConfigFromTaskParams().getTableIds());
   }
@@ -547,7 +549,9 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
         .collect(Collectors.toSet());
   }
 
-  /** @see #getTablesNotNeedBootstrap(Set) */
+  /**
+   * @see #getTablesNotNeedBootstrap(Set)
+   */
   protected Set<XClusterTableConfig> getTablesNotNeedBootstrap() {
     return getTablesNotNeedBootstrap(getXClusterConfigFromTaskParams().getTableIds());
   }
@@ -1156,7 +1160,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       return Collections.emptyMap();
     }
     Map<String, GetTableSchemaResponse> tableSchemaMap = new HashMap<>();
-    String universeMasterAddresses = universe.getMasterAddresses(true /* mastersQueryable */);
+    String universeMasterAddresses = universe.getMasterAddresses();
     String universeCertificate = universe.getCertificateNodetoNode();
     try (YBClient client = ybService.getClient(universeMasterAddresses, universeCertificate)) {
       for (String tableUuid : mainTableUuidList) {
@@ -1233,7 +1237,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   public static List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> getTableInfoList(
       YBClientService ybService, Universe universe, boolean excludeSystemTables) {
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList;
-    String universeMasterAddresses = universe.getMasterAddresses(true /* mastersQueryable */);
+    String universeMasterAddresses = universe.getMasterAddresses();
     String universeCertificate = universe.getCertificateNodetoNode();
     try (YBClient client = ybService.getClient(universeMasterAddresses, universeCertificate)) {
       ListTablesResponse listTablesResponse =
@@ -1345,6 +1349,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     }
     return tableType;
   }
+
   // --------------------------------------------------------------------------------
   // End of TableInfo helpers.
 

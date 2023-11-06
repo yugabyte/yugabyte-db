@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import MoreIcon from '../../../redesign/assets/ellipsis.svg';
 import Close from '../../../redesign/assets/close.svg';
 import Edit from '../../../redesign/assets/edit_pen.svg';
+import './UniverseForm.scss';
 
 interface PreviewGFlagJWKSProps {
   JWKSKeyset: string;

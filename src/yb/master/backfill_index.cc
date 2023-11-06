@@ -779,8 +779,7 @@ Status BackfillTable::LaunchComputeSafeTimeForRead() {
       SCHECK(!res->is_special(), InvalidArgument, "Invalid xCluster safe time for namespace ",
              indexed_table_->namespace_id());
 
-      LOG_WITH_PREFIX(INFO) << "Using xCluster safe time " << read_time_for_backfill_
-                            << " as the backfill read time";
+      LOG_WITH_PREFIX(INFO) << "Using xCluster safe time " << *res << " as the backfill read time";
       return SetSafeTimeAndStartBackfill(*res);
     } else {
       if (res.status().IsNotFound()) {
@@ -958,8 +957,10 @@ Status BackfillTable::DoBackfill() {
     LOG(INFO) << Format("Blocking $0 for $1", __func__, kSpinWait);
     SleepFor(kSpinWait);
   }
-  VLOG_WITH_PREFIX(1) << "starting backfill with timestamp: "
-                      << read_time_for_backfill_;
+  if (VLOG_IS_ON(1)) {
+    std::lock_guard l(mutex_);
+    VLOG_WITH_PREFIX(1) << "starting backfill with timestamp: " << read_time_for_backfill_;
+  }
 
   num_tablets_.store(tablets.size(), std::memory_order_release);
   tablets_pending_.store(tablets.size(), std::memory_order_release);

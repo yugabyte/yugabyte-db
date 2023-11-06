@@ -13,6 +13,12 @@
 
 #include <optional>
 
+#include "yb/client/client_fwd.h"
+#include "yb/client/meta_cache.h"
+#include "yb/client/table.h"
+#include "yb/client/table_info.h"
+#include "yb/client/yb_table_name.h"
+
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
@@ -42,6 +48,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_error.h"
 
+#include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/monotime.h"
@@ -68,6 +75,7 @@ DECLARE_uint64(post_split_compaction_input_size_threshold_bytes);
 
 DECLARE_bool(TEST_asyncrpc_common_response_check_fail_once);
 DECLARE_bool(TEST_pause_before_full_compaction);
+DECLARE_bool(TEST_skip_deleting_split_tablets);
 DECLARE_bool(TEST_skip_partitioning_version_validation);
 DECLARE_bool(TEST_skip_post_split_compaction);
 DECLARE_int32(TEST_fetch_next_delay_ms);
@@ -144,6 +152,9 @@ Status SetEnableIndexScan(PGConn* conn, bool indexscan) {
 using TabletRecordsInfo =
     std::unordered_map<std::string, std::tuple<docdb::KeyBounds, ssize_t>>;
 
+using client::UseCache;
+using client::internal::RemoteTabletPtr;
+
 class PgTabletSplitTest : public PgTabletSplitTestBase {
  protected:
   void SetUp() override {
@@ -179,6 +190,26 @@ class PgTabletSplitTest : public PgTabletSplitTestBase {
     auto tablet = peer->shared_tablet();
     SCHECK_NOTNULL(tablet);
     return tablet->Flush(tablet::FlushMode::kSync);
+  }
+
+  Result<RemoteTabletPtr> LookupTabletById(const TabletId& tablet_id,
+                                           const std::shared_ptr<client::YBTable>& table = nullptr,
+                                           UseCache use_cache = client::UseCache::kTrue) {
+    auto deadline = ToCoarse(MonoTime::Now() + MonoDelta::FromSeconds(3 * kTimeMultiplier));
+    auto remote_tablet_future = MakeFuture<Result<RemoteTabletPtr>>([&](auto callback) {
+      client_->LookupTabletById(
+          tablet_id, table, master::IncludeInactive::kFalse, master::IncludeDeleted::kFalse,
+          deadline, [callback] (const auto& lookup_result) {
+            callback(lookup_result);
+          }, use_cache);
+    });
+    return VERIFY_RESULT(remote_tablet_future.get());
+  }
+
+  Result<RemoteTabletPtr> LookupTabletByKey(const std::shared_ptr<client::YBTable>& table,
+                                            const std::string& partition_key) {
+    auto deadline = ToCoarse(MonoTime::Now() + MonoDelta::FromSeconds(3 * kTimeMultiplier));
+    return VERIFY_RESULT(client_->LookupTabletByKeyFuture(table, partition_key, deadline).get());
   }
 };
 
@@ -633,6 +664,40 @@ TEST_F(PgTabletSplitTest, PostSplitCompactionWithLimitedSize) {
   ASSERT_STR_EQ(expected_data, actual_data);
 }
 
+TEST_F(PgTabletSplitTest, TestMetaCacheLookupsPostSplit) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
+
+  auto conn = ASSERT_RESULT(Connect());
+  const auto table_name = "foo";
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(k INT, v INT) SPLIT INTO 1 TABLETS;", table_name));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT generate_series(1, 10000), 0;", table_name));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName(table_name));
+  auto tablets = ListTabletIdsForTable(cluster_.get(), table_id);
+  ASSERT_EQ(tablets.size(), 1);
+  auto parent_tablet_id = *tablets.begin();
+
+  ASSERT_OK(WaitForAnySstFiles(cluster_.get(), parent_tablet_id));
+
+  ASSERT_OK(SplitSingleTablet(table_id));
+  ASSERT_OK(WaitForSplitCompletion(table_id));
+
+  // The below resets the partition map and registers child tablets. The first child tablet is
+  // registered against an empty partition start key.
+  auto table = ASSERT_RESULT(client_->OpenTable(table_id));
+  table->MarkPartitionsAsStale();
+  auto remote_child = ASSERT_RESULT(LookupTabletByKey(table, ""));
+  ASSERT_NE(remote_child->tablet_id(), parent_tablet_id);
+  // LookupTabletById should still return the split parent location info, and shouldn't overwrite
+  // entries in the partition map.
+  auto remote_parent = ASSERT_RESULT(LookupTabletById(parent_tablet_id, table, UseCache::kFalse));
+  ASSERT_EQ(remote_parent->tablet_id(), parent_tablet_id);
+  // Execute another LookupTabletByKey to confirm the the above LookupTabletById didn't overwrite
+  // the partition map cache.
+  remote_child = ASSERT_RESULT(LookupTabletByKey(table, ""));
+  ASSERT_NE(remote_child->tablet_id(), parent_tablet_id);
+}
 
 class PgPartitioningVersionTest :
     public PgTabletSplitTest,
@@ -1238,7 +1303,7 @@ TEST_F(PgRangePartitionedTableSplitTest, SelectMiddleRangeAfterManualSplit) {
       // Wrapping into a block to unlock tablet after parsing is done.
       {
         const auto middle_tablet = (++tablets.begin())->second;
-        const auto& partition = middle_tablet->LockForRead()->pb.partition();
+        const auto partition = middle_tablet->LockForRead()->pb.partition();
         ASSERT_TRUE(partition.has_partition_key_start());
         ASSERT_TRUE(partition.has_partition_key_end());
         partition_start = ASSERT_RESULT(parse_partition_key(partition.partition_key_start()));
@@ -1324,7 +1389,7 @@ TEST_P(PgPartitioningTest, PgGatePartitionsListAfterSplit) {
     expected_clause << "SPLIT AT VALUES (";
     bool need_comma = false;
     for (size_t n = 0; n < tablets.size(); ++n) {
-      const auto& partition = tablets[n]->LockForRead()->pb.partition();
+      const auto partition = tablets[n]->LockForRead()->pb.partition();
       if (partition.has_partition_key_start()) {
         if (partition.partition_key_start().empty()) {
           continue;

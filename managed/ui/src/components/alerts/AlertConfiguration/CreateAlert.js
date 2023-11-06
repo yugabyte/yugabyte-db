@@ -62,7 +62,7 @@ const CreateAlert = (props) => {
       ));
       setAlertDestination([
         <option key="default" value="<default>">
-          Use Default ({defaultDestination.name})
+          Use Default ({defaultDestination?.name ?? 'No default destination configured'})
         </option>,
         <option key="empty" value="<empty>">
           No Destination

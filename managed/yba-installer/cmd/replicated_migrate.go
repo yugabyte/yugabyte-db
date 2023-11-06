@@ -52,11 +52,7 @@ var replicatedMigrationStart = &cobra.Command{
 				"rerun the command with --skip_preflight <check name1>,<check name2>")
 		}
 
-		if !state.CurrentStatus.TransitionValid(ybactlstate.MigratingStatus) {
-			log.Fatal("Unable to start migrating from state " + state.CurrentStatus.String())
-		}
-		state.CurrentStatus = ybactlstate.MigratingStatus
-		if err := ybactlstate.StoreState(state); err != nil {
+		if err := state.TransitionStatus(ybactlstate.MigratingStatus); err != nil {
 			log.Fatal("failed to update state: " + err.Error())
 		}
 
@@ -65,6 +61,11 @@ var replicatedMigrationStart = &cobra.Command{
 		config, err := replCtl.AppConfigExport()
 		if err != nil {
 			log.Fatal("failed to export replicated app config: " + err.Error())
+		}
+
+		configView, err := replCtl.AppConfigView()
+		if err != nil {
+			log.Fatal("failed to get the config view: " + err.Error())
 		}
 
 		// Get the uid and gid used by the prometheus container. This is used for rollback.
@@ -81,10 +82,12 @@ var replicatedMigrationStart = &cobra.Command{
 			log.Fatal("Could not read " + checkFile + " to get group and user: " + err.Error())
 		}
 		statInfo := info.Sys().(*syscall.Stat_t)
+		log.DebugLF(
+			fmt.Sprintf("Prometheus user:group ownership - '%s:%s'", statInfo.Uid, statInfo.Gid))
 		state.Replicated.PrometheusFileUser = statInfo.Uid
 		state.Replicated.PrometheusFileGroup = statInfo.Gid
 
-		// Mark install state
+		// Mark install state. Do thi smanually, as we are also updating additional fields.
 		state.CurrentStatus = ybactlstate.MigratingStatus
 		if err := ybactlstate.StoreState(state); err != nil {
 			log.Fatal("before replicated migration, failed to update state: " + err.Error())
@@ -100,7 +103,7 @@ var replicatedMigrationStart = &cobra.Command{
 		initServices()
 
 		// Lay out new YBA bits, don't start
-		common.Install(common.GetVersion())
+		common.Install(ybaCtl.Version())
 		for _, name := range serviceOrder {
 			log.Info("About to migrate component " + name)
 			if err := services[name].MigrateFromReplicated(); err != nil {
@@ -118,8 +121,20 @@ var replicatedMigrationStart = &cobra.Command{
 		// Take a backup of running YBA using replicated settings.
 		replBackupDir := "/tmp/replBackupDir"
 		common.MkdirAllOrFail(replBackupDir, common.DirMode)
-		CreateReplicatedBackupScript(replBackupDir, config.Get("storage_path").Value,
-			config.Get("dbuser").Value, config.Get("db_external_port").Value, true, plat)
+		dataDir, err := configView.Get("storage_path")
+		if err != nil {
+			log.Fatal("no storage path found in config view: " + err.Error())
+		}
+		dbUser, err := configView.Get("dbuser")
+		if err != nil {
+			log.Fatal("no dbuser found in config view: " + err.Error())
+		}
+		dbPort, err := configView.Get("db_external_port")
+		if err != nil {
+			log.Fatal("no db_external_port found in config view: " + err.Error())
+		}
+		CreateReplicatedBackupScript(replBackupDir, dataDir.Get(), dbUser.Get(), dbPort.Get(),
+			true, plat)
 
 		// Stop replicated containers.
 		log.Info("Waiting for Replicated to stop.")
@@ -201,7 +216,7 @@ var replicatedMigrationStart = &cobra.Command{
 		}
 		log.Info("Started yb-platform after restoring data.")
 
-		common.WaitForYBAReady()
+		common.WaitForYBAReady(ybaCtl.Version())
 
 		var statuses []common.Status
 		for _, name := range serviceOrder {
@@ -246,12 +261,8 @@ Are you sure you want to continue?`
 		if err != nil {
 			log.Fatal("failed to YBA Installer state: " + err.Error())
 		}
-		if !state.CurrentStatus.TransitionValid(ybactlstate.FinishingStatus) {
-			log.Fatal("Unable to rollback migration from state " + state.CurrentStatus.String())
-		}
-		state.CurrentStatus = ybactlstate.FinishingStatus
-		if err := ybactlstate.StoreState(state); err != nil {
-			log.Fatal("Failed to save state: " + err.Error())
+		if err := state.TransitionStatus(ybactlstate.FinishingStatus); err != nil {
+			log.Fatal("Failed to update status: " + err.Error())
 		}
 
 		for _, name := range serviceOrder {
@@ -304,12 +315,14 @@ var replicatedRollbackCmd = &cobra.Command{
 		if err != nil {
 			log.Fatal("failed to YBA Installer state: " + err.Error())
 		}
-		if !state.CurrentStatus.TransitionValid(ybactlstate.RollbackStatus) {
-			log.Fatal("Unable to rollback migration from state " + state.CurrentStatus.String())
+		if err := state.TransitionStatus(ybactlstate.RollbackStatus); err != nil {
+			log.Fatal("failed to update statue: " + err.Error())
 		}
-		state.CurrentStatus = ybactlstate.RollbackStatus
-		if err := ybactlstate.StoreState(state); err != nil {
-			log.Fatal("Failed to save state: " + err.Error())
+
+		prompt := "Rollback to Replicated will not carry over any changes made to YBA after " +
+			"migration began. Continue?"
+		if !common.UserConfirm(prompt, common.DefaultNo) {
+			log.Fatal("canceling rollback")
 		}
 		if err := rollbackMigrations(state); err != nil {
 			log.Fatal("rollback failed: " + err.Error())
@@ -373,5 +386,9 @@ func init() {
 
 	baseReplicatedMigration.AddCommand(replicatedMigrationStart, replicatedMigrationConfig,
 		replicatedMigrateFinish, replicatedRollbackCmd)
-	rootCmd.AddCommand(baseReplicatedMigration)
+
+	// Feature flag replicated migration for now
+	if os.Getenv("YBA_MODE") == "dev" {
+		rootCmd.AddCommand(baseReplicatedMigration)
+	}
 }

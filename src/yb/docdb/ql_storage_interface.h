@@ -109,6 +109,8 @@ class YQLStorageIf {
       std::unique_ptr<YQLRowwiseIteratorIf>* iter,
       const DocDBStatistics* statistics = nullptr,
       SkipSeek skip_seek = SkipSeek::kFalse) const = 0;
+
+  virtual std::string ToString() const = 0;
 };
 
 }  // namespace yb::docdb

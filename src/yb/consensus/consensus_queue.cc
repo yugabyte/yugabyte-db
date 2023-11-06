@@ -119,8 +119,7 @@ TAG_FLAG(cdc_intent_retention_ms, advanced);
 DEFINE_test_flag(bool, disallow_lmp_failures, false,
                  "Whether we disallow PRECEDING_ENTRY_DIDNT_MATCH failures for non new peers.");
 
-DEFINE_RUNTIME_bool(
-    remote_bootstrap_from_leader_only, false,
+DEFINE_RUNTIME_AUTO_bool(remote_bootstrap_from_leader_only, kLocalVolatile, true, false,
     "Whether to instruct the peer to attempt bootstrap from the closest peer instead of the "
     "leader. The leader too could be the closest peer depending on the new peer's geographic "
     "placement. Setting the flag to false will enable remote bootstrap from the closest peer. "
@@ -128,14 +127,12 @@ DEFINE_RUNTIME_bool(
     "single node and could result in increased load on the node. If bootstrap of a new node is "
     "slow, it might be worth setting the flag to true and enable bootstrapping from leader only.");
 
-DEFINE_RUNTIME_uint32(
-    max_remote_bootstrap_attempts_from_non_leader, 5,
+DEFINE_RUNTIME_uint32(max_remote_bootstrap_attempts_from_non_leader, 5,
     "When FLAGS_remote_bootstrap_from_leader_only is enabled, the flag represents the maximum "
     "number of times we attempt to remote bootstrap a new peer from a closest non-leader peer "
     "that result in a failure. We fallback to bootstrapping from the leader peer post this.");
 
-DEFINE_test_flag(
-    bool, assert_remote_bootstrap_happens_from_same_zone, false,
+DEFINE_test_flag(bool, assert_remote_bootstrap_happens_from_same_zone, false,
     "Assert that remote bootstrap is served by a peer in the same zone as the new peer.");
 
 namespace yb {

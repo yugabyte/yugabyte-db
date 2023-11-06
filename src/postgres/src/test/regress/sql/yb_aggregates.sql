@@ -110,10 +110,6 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 \set ios '/*+IndexOnlyScan(ybaggtest2 ybaggtest2index)*/'
 \set query 'SELECT COUNT(*) FROM ybaggtest2'
 :runnois;
--- TODO(#16417): update the following three index only scan explains to have
--- "Partial Aggregate: true" because pushdown will be allowed once the index's
--- constant 1 column is not requested by the aggregate node to the index only
--- scan node when using CP_SMALL_TLIST.
 \set query 'SELECT COUNT(a) FROM ybaggtest2'
 :runnois;
 \set query 'SELECT COUNT(*), COUNT(a) FROM ybaggtest2'

@@ -30,6 +30,7 @@ $$;
 
 SET yb_fetch_size_limit = 0;
 SET yb_fetch_row_limit = 1024;
+SET yb_bnl_batch_size = 1;
 -- the default behaviour sends 6 RPCs for the outer table
 SELECT explain_join_tsmall_tlarge();
 SELECT explain_join_tlarge_tsmall();

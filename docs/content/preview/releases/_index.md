@@ -65,7 +65,7 @@ The following releases are no longer supported:
 | [v2.12](release-notes/end-of-life/v2.12/) | {{< yb-eol-dates "v2.12" release >}} | {{< yb-eol-dates "v2.12" EOM >}} | {{< yb-eol-dates "v2.12" EOL >}} |
 | [v2.11](release-notes/end-of-life/v2.11/) | November 22, 2021 | n/a | n/a |
 | [v2.9](release-notes/end-of-life/v2.9/) | August 31, 2021 | n/a | n/a |
-| [v2.8](release-notes/end-of-life/v2.8/) | {{< yb-eol-dates "v2.8" release >}} | {{< yb-eol-dates "v2.8" EOM >}} | {{< yb-eol-dates "v2.8" EOL >}} |
+| [v2.8](release-notes/end-of-life/v2.8/) | November 15, 2021 | November 15, 2022 | May 15, 2023 |
 | [v2.7](release-notes/end-of-life/v2.7/) | May 5, 2021 | n/a | n/a |
 | [v2.6](release-notes/end-of-life/v2.6/) | July 5, 2021 | July 5, 2022 | January 5, 2023 |
 | [v2.5](release-notes/end-of-life/v2.5/) | November 12, 2020 | n/a | n/a |

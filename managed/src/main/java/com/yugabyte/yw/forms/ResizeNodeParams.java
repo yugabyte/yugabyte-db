@@ -4,17 +4,17 @@ package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -33,7 +33,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
-import java.util.regex.Pattern;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
@@ -46,8 +45,6 @@ import play.mvc.Http.Status;
 @EqualsAndHashCode(callSuper = true)
 @Slf4j
 public class ResizeNodeParams extends UpgradeWithGFlags {
-
-  private static final Pattern AZU_NO_LOCAL_DISK = Pattern.compile("Standard_(D|E)[0-9]*as\\_v5");
 
   public static final int AZU_DISK_LIMIT_NO_DOWNTIME = 4 * 1024; // 4 TiB
 
@@ -84,8 +81,10 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
           Status.BAD_REQUEST, "Either none or both master and tserver gflags are required");
     }
     if (masterGFlags != null) {
+      long customerId = universe.getCustomerId();
       // We want this flow to only be enabled for cloud in the first go.
-      if (!runtimeConfGetter.getConfForScope(universe, UniverseConfKeys.cloudEnabled)) {
+      if (!runtimeConfGetter.getConfForScope(
+          Customer.get(customerId), CustomerConfKeys.cloudEnabled)) {
         throw new PlatformServiceException(
             Status.METHOD_NOT_ALLOWED, "Cannot resize with gflag changes.");
       }
@@ -95,7 +94,8 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
     }
 
     if (upgradeOption != UpgradeOption.ROLLING_UPGRADE) {
-      throw new IllegalArgumentException(
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST,
           "Only ROLLING_UPGRADE option is supported for resizing node (changing VM type).");
     }
 
@@ -113,12 +113,12 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
           getResizeIsPossibleError(
               cluster.uuid, currentUserIntent, newUserIntent, universe, runtimeConfGetter, true);
       if (errorStr != null) {
-        throw new IllegalArgumentException(errorStr);
+        throw new PlatformServiceException(Status.BAD_REQUEST, errorStr);
       }
       hasClustersToResize = true;
     }
     if (!hasClustersToResize && !forceResizeNode) {
-      throw new IllegalArgumentException("No changes!");
+      throw new PlatformServiceException(Status.BAD_REQUEST, "No changes!");
     }
     if (flagsProvided(universe)) {
       verifyGFlags(universe);
@@ -249,20 +249,22 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
       boolean instanceTypeChanged = false;
       if (!Objects.equals(newInstanceTypeCode, currentInstanceTypeCode)) {
         if (!instanceTypeMap.containsKey(newInstanceTypeCode)) {
-          InstanceType instanceType =
+          InstanceType newInstanceType =
               getInstanceType(currentUserIntent, newInstanceTypeCode, allowUnsupportedInstances);
-          instanceTypeMap.put(newInstanceTypeCode, instanceType);
-          if (instanceType == null) {
+          instanceTypeMap.put(newInstanceTypeCode, newInstanceType);
+          if (newInstanceType == null) {
             return String.format(
                 "Provider %s of type %s does not contain the intended instance type '%s'",
                 currentUserIntent.provider, currentUserIntent.providerType, newInstanceTypeCode);
           }
-          if (currentUserIntent.providerType == Common.CloudType.azu
-              && isAzureWithLocalDisk(currentInstanceTypeCode)
-                  != isAzureWithLocalDisk(newInstanceTypeCode)) {
-            return String.format(
-                "Cannot switch between instances with and without local disk (%s and %s)",
-                currentInstanceTypeCode, newInstanceTypeCode);
+          if (currentUserIntent.providerType == Common.CloudType.azu) {
+            InstanceType currentInstanceType =
+                InstanceType.getOrBadRequest(provider.getUuid(), currentInstanceTypeCode);
+            if (newInstanceType.isAzureWithLocalDisk()
+                != currentInstanceType.isAzureWithLocalDisk())
+              return String.format(
+                  "Cannot switch between instances with and without local disk (%s and %s)",
+                  currentInstanceTypeCode, newInstanceTypeCode);
           }
         }
         instanceTypeChanged = true;
@@ -426,16 +428,12 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
     List<InstanceType> instanceTypes =
         InstanceType.findByProvider(
             Provider.getOrBadRequest(UUID.fromString(provider)),
-            StaticInjectorHolder.injector().instanceOf(Config.class),
+            StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class),
             allowUnsupportedInstances);
     return instanceTypes.stream()
         .filter(type -> type.getInstanceTypeCode().equals(instanceTypeCode))
         .findFirst()
         .orElse(null);
-  }
-
-  private static boolean isAzureWithLocalDisk(String instanceType) {
-    return AZU_NO_LOCAL_DISK.matcher(instanceType).matches();
   }
 
   public boolean flagsProvided(Universe universe) {

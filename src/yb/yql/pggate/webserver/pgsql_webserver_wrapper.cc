@@ -41,6 +41,7 @@ static ybpgmEntry *ybpgm_table;
 static int ybpgm_num_entries;
 static int *num_backends;
 MetricEntity::AttributeMap prometheus_attr;
+MetricEntity::AttributeMap ysql_conn_mgr_prometheus_attr;
 static void (*pullYsqlStatementStats)(void *);
 static void (*resetYsqlStatementStats)();
 static rpczEntry **rpczResultPointer;
@@ -61,6 +62,9 @@ static const char *PSQL_SERVER_ACTIVE_CONNECTION_TOTAL = "yb_ysqlserver_active_c
 static const char *PSQL_SERVER_CONNECTION_OVER_LIMIT = "yb_ysqlserver_connection_over_limit_total";
 static const char *PSQL_SERVER_MAX_CONNECTION_TOTAL = "yb_ysqlserver_max_connection_total";
 static const char *PSQL_SERVER_NEW_CONNECTION_TOTAL = "yb_ysqlserver_new_connection_total";
+
+// YSQL Connection Manager-specific metric labels
+static const char *DATABASE = "database";
 
 namespace {
 
@@ -120,8 +124,71 @@ void initSqlServerDefaultLabels(const char *metric_node_name) {
   prometheus_attr[EXPORTED_INSTANCE] = metric_node_name;
   prometheus_attr[METRIC_TYPE] = METRIC_TYPE_SERVER;
   prometheus_attr[METRIC_ID] = METRIC_ID_YB_YSQLSERVER;
+
+  // Database-related attribute will have to be added dynamically.
+  ysql_conn_mgr_prometheus_attr = prometheus_attr;
 }
 
+static void GetYsqlConnMgrStats(std::vector<ConnectionStats> *stats) {
+  char *stats_shm_key = getenv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME);
+  if(stats_shm_key == NULL)
+    return;
+
+  key_t key = (key_t)atoi(stats_shm_key);
+  std::ostringstream errMsg;
+  int shmid = shmget(key, 0, 0666);
+  if (shmid == -1) {
+    errMsg << "Unable to find the stats from the shared memory segment, " << strerror(errno);
+    return;
+  }
+
+  static const uint32_t num_pools = YSQL_CONN_MGR_MAX_POOLS;
+
+  struct ConnectionStats *shmp = (struct ConnectionStats *)shmat(shmid, NULL, 0);
+  if (shmp == NULL) {
+    errMsg << "Unable to find the stats from the shared memory segment, " << strerror(errno);
+    return;
+  }
+
+  for (uint32_t itr = 0; itr < num_pools; itr++) {
+    if (strcmp(shmp[itr].pool_name, "") == 0)
+      break;
+    stats->push_back(shmp[itr]);
+  }
+
+  shmdt(shmp);
+}
+
+void emitYsqlConnectionManagerMetrics(PrometheusWriter *pwriter) {
+  std::vector <std::pair<std::string, uint64_t>> ysql_conn_mgr_metrics;
+  std::vector<ConnectionStats> stats_list;
+  GetYsqlConnMgrStats(&stats_list);
+
+  // Iterate over stats collected for each DB (pool), publish them iteratively.
+  for (ConnectionStats stats : stats_list) {
+    ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_active_clients", stats.active_clients});
+    ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_queued_clients", stats.queued_clients});
+    ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_idle_or_pending_clients",
+            stats.idle_or_pending_clients});
+    ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_active_servers", stats.active_servers});
+    ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_idle_servers", stats.idle_servers});
+    ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_query_rate", stats.query_rate});
+    ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_transaction_rate", stats.transaction_rate});
+    ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_avg_wait_time_ns", stats.avg_wait_time_ns});
+    ysql_conn_mgr_prometheus_attr[DATABASE] = stats.pool_name;
+
+    // Publish collected metrics for the current pool.
+    for (auto entry : ysql_conn_mgr_metrics) {
+      WARN_NOT_OK(
+        pwriter->WriteSingleEntry(
+            ysql_conn_mgr_prometheus_attr, entry.first, entry.second,
+            AggregationFunction::kSum),
+        "Cannot publish Ysql Connection Manager metric to Prometheus-metrics endpoint");
+    }
+    // Clear the collected metrics for the metrics collected for the next pool.
+    ysql_conn_mgr_metrics.clear();
+  }
+}
 }  // namespace
 
 static void PgMetricsHandler(const Webserver::WebRequest &req, Webserver::WebResponse *resp) {
@@ -317,37 +384,6 @@ static void PgRpczHandler(const Webserver::WebRequest &req, Webserver::WebRespon
   pgCallbacks.freeRpczEntries();
 }
 
-void GetYsqlConnMgrStats(std::vector<ConnectionStats> *stats) {
-  char *stats_shm_key = getenv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME);
-  if(stats_shm_key == NULL)
-    return;
-
-  key_t key = (key_t)atoi(stats_shm_key);
-  std::ostringstream errMsg;
-  int shmid = shmget(key, 0, 0666);
-  if (shmid == -1) {
-    errMsg << "Unable to find the stats from the shared memory segment, " << strerror(errno);
-    return;
-  }
-
-  static const uint32_t num_pools = YSQL_CONN_MGR_MAX_POOLS;
-  // Attach to the segment to get a pointer to it.
-  struct ConnectionStats *shmp = (struct ConnectionStats *)shmat(shmid, NULL, 0);
-  if (shmp == NULL) {
-    errMsg << "Unable to find the stats from the shared memory segment, " << strerror(errno);
-    return;
-  }
-
-  for (uint32_t itr = 0; itr < num_pools; itr++) {
-    if (strcmp(shmp[itr].pool_name, "") == 0)
-      break;
-    stats->push_back(shmp[itr]);
-  }
-
-  // Detach from shared memory.
-  shmdt(shmp);
-}
-
 static void PgLogicalRpczHandler(const Webserver::WebRequest &req, Webserver::WebResponse *resp) {
   JsonWriter::Mode json_mode;
   string arg = FindWithDefault(req.parsed_args, "compact", "false");
@@ -416,18 +452,26 @@ static void PgPrometheusMetricsHandler(
   std::stringstream *output = &resp->output;
   PrometheusWriter writer(output, ExportHelpAndType::kFalse);
 
+  // Max size of ybpgm_table name (100 incl \0 char) + max size of "_count"/"_sum" (6 excl \0).
+  char copied_name[106];
   for (int i = 0; i < ybpgm_num_entries; ++i) {
-    std::string name = ybpgm_table[i].name;
-    WARN_NOT_OK(writer.WriteSingleEntry(prometheus_attr, name + "_count",
-        ybpgm_table[i].calls, AggregationFunction::kSum, "", "", kServerLevel),
-            "Couldn't write text metrics for Prometheus");
-    WARN_NOT_OK(writer.WriteSingleEntry(prometheus_attr, name + "_sum",
-        ybpgm_table[i].total_time, AggregationFunction::kSum, "", "", kServerLevel),
-            "Couldn't write text metrics for Prometheus");
+    snprintf(copied_name, sizeof(copied_name), "%s%s", ybpgm_table[i].name, "_count");
+    WARN_NOT_OK(
+        writer.WriteSingleEntry(
+            prometheus_attr, copied_name, ybpgm_table[i].calls, AggregationFunction::kSum),
+        "Couldn't write text metrics for Prometheus");
+    snprintf(copied_name, sizeof(copied_name), "%s%s", ybpgm_table[i].name, "_sum");
+    WARN_NOT_OK(
+        writer.WriteSingleEntry(
+            prometheus_attr, copied_name, ybpgm_table[i].total_time, AggregationFunction::kSum),
+        "Couldn't write text metrics for Prometheus");
   }
 
   // Publish sql server connection related metrics
   emitConnectionMetrics(&writer);
+
+  // Publish Ysql Connection Manager related metrics
+  emitYsqlConnectionManagerMetrics(&writer);
 }
 
 extern "C" {

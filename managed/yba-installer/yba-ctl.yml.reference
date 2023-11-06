@@ -145,6 +145,7 @@ postgres:
    install:
       enabled: true # yba-ctl will set up its own postgres
       username: postgres # user to connect to yugaware db
+      password: ""
       port: 5432
       restartSeconds: 10 # restart interval on exit
       locale: en_US.UTF8 # Locale for initdb
@@ -171,6 +172,8 @@ postgres:
 # Config parameters for Prometheus
 # Format for specifying timing information can be found at
 # https://prometheus.io/docs/prometheus/latest/configuration/configuration/#configuration-file
+# h/m/d syntax not supported by golang time parse function https://pkg.go.dev/time#ParseDuration.
+# If you want to use that syntax skip the prometheus preflight check.
 # ================================
 
 prometheus:

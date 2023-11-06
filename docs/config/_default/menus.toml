@@ -300,21 +300,30 @@
   identifier = "home"
   url = "/"
   [home.params]
-    classes = "separator"
     showSection = true
 
 [[home]]
-  name = "Quick Start"
+  name = "Key benefits"
   weight = 2
-  identifier = "quick-start"
-  url = "/preview/quick-start-yugabytedb-managed/"
+  identifier = "features"
+  url = "/preview/features/"
   [home.params]
     showSection = true
     hideChildren = true
 
 [[home]]
+  name = "Quick Start"
+  weight = 3
+  identifier = "quick-start"
+  url = "/preview/quick-start-yugabytedb-managed/"
+  [home.params]
+    classes = "separator"
+    showSection = true
+    hideChildren = true
+
+[[home]]
   name = "YugabyteDB"
-  weight = 2
+  weight = 4
   identifier = "yugabytedb"
   url = "/preview/"
   [home.params]
@@ -322,7 +331,7 @@
 
 [[home]]
   name = "YugabyteDB Anywhere"
-  weight = 3
+  weight = 5
   identifier = "yugabytedb-anywhere"
   url = "/preview/yugabyte-platform/"
   [home.params]
@@ -330,7 +339,7 @@
 
 [[home]]
   name = "YugabyteDB Managed"
-  weight = 4
+  weight = 6
   identifier = "yugabytedb-managed"
   url = "/preview/yugabyte-cloud/"
   [home.params]
@@ -338,7 +347,7 @@
 
 [[home]]
   name = "YugabyteDB Voyager"
-  weight = 5
+  weight = 7
   identifier = "migrate"
   url = "/preview/yugabyte-voyager/"
   [home.params]
@@ -364,8 +373,17 @@
     showSection = true
 
 [[preview]]
-  name = "Quick Start"
+  name = "Key benefits"
   weight = 3
+  identifier = "features"
+  url = "/preview/features/"
+  [preview.params]
+    showSection = true
+    hideChildren = true
+
+[[preview]]
+  name = "Quick Start"
+  weight = 4
   identifier = "quick-start"
   url = "/preview/quick-start-yugabytedb-managed/"
   [preview.params]
@@ -374,7 +392,7 @@
 
 [[preview]]
   name = "Explore"
-  weight = 4
+  weight = 5
   identifier = "explore"
   url = "/preview/explore/"
   [preview.params]
@@ -382,7 +400,7 @@
 
 [[preview]]
   name = "Develop"
-  weight = 5
+  weight = 6
   identifier = "develop"
   url = "/preview/develop/"
   [preview.params]
@@ -458,6 +476,72 @@
   url = "/preview/integrations/"
   [preview_integrations.params]
     showSection = true
+
+[[preview_integrations]]
+  name = "Drivers and ORMs"
+  weight = 2
+  url = "/preview/drivers-orms/"
+  parent = "integrations"
+
+[[preview_integrations]]
+  name = "Schema migration"
+  weight = 3
+  identifier = "schema-migration"
+  parent = "integrations"
+
+[[preview_integrations]]
+  name = "Data migration"
+  weight = 4
+  identifier = "data-migration"
+  parent = "integrations"
+
+[[preview_integrations]]
+  name = "Data integration"
+  weight = 5
+  identifier = "data-integration"
+  parent = "integrations"
+
+[[preview_integrations]]
+  name = "GUI clients"
+  weight = 6
+  url = "/preview/tools/"
+  parent = "integrations"
+
+[[preview_integrations]]
+  name = "Application frameworks"
+  weight = 7
+  identifier = "application-frameworks"
+  parent = "integrations"
+
+[[preview_integrations]]
+  name = "Development platforms"
+  weight = 8
+  identifier = "development-platforms"
+  parent = "integrations"
+
+[[preview_integrations]]
+  name = "Data discovery"
+  weight = 9
+  identifier = "data-discovery"
+  parent = "integrations"
+
+[[preview_integrations]]
+  name = "Security"
+  weight = 10
+  identifier = "integrations-security"
+  parent = "integrations"
+
+[[preview_integrations]]
+  name = "Applications"
+  weight = 11
+  identifier = "integrations-applications"
+  parent = "integrations"
+
+[[preview_integrations]]
+  name = "Other"
+  weight = 12
+  identifier = "integrations-other"
+  parent = "integrations"
 
 ########## Menus (in preview) for APIs
 
@@ -676,6 +760,60 @@
   name = "YugabyteDB Voyager"
   weight = 2
   identifier = "yugabytedb-voyager"
+  [preview_yugabyte-voyager.params]
+    showSection = true
+    hideLink = true
+
+[[preview_yugabyte-voyager]]
+  name = "Schema migration"
+  parent = "yb-voyager-cli"
+  weight = 3
+  identifier = "schema-migration"
+  [preview_yugabyte-voyager.params]
+    showSection = true
+    hideLink = true
+
+[[preview_yugabyte-voyager]]
+  name = "Data migration"
+  parent = "yb-voyager-cli"
+  weight = 4
+  identifier = "data-migration"
+  [preview_yugabyte-voyager.params]
+    showSection = true
+    hideLink = true
+
+[[preview_yugabyte-voyager]]
+  name = "Cutover and archive"
+  parent = "yb-voyager-cli"
+  weight = 6
+  identifier = "cutover-archive"
+  [preview_yugabyte-voyager.params]
+    showSection = true
+    hideLink = true
+
+[[preview_yugabyte-voyager]]
+  name = "Fall-forward"
+  parent = "yb-voyager-cli"
+  weight = 5
+  identifier = "fall-forward"
+  [preview_yugabyte-voyager.params]
+    showSection = true
+    hideLink = true
+
+[[preview_yugabyte-voyager]]
+  name = "Cutover and archive"
+  parent = "yb-voyager-cli"
+  weight = 6
+  identifier = "cutover-archive"
+  [preview_yugabyte-voyager.params]
+    showSection = true
+    hideLink = true
+
+[[preview_yugabyte-voyager]]
+  name = "Bulk data load"
+  parent = "yb-voyager-cli"
+  weight = 7
+  identifier = "bulk-data-load-ref"
   [preview_yugabyte-voyager.params]
     showSection = true
     hideLink = true
@@ -1347,182 +1485,3 @@
 #     showSection = true
 #     newTab = true
 
-########## (there was no v2.10)
-
-########## Menus for v2.8
-
-[["v2.8"]]
-  name = "Docs Home"
-  weight = 1
-  identifier = "home"
-  url = "/"
-  ["v2.8".params]
-    classes = "separator"
-    showSection = true
-
-[["v2.8"]]
-  name = "YugabyteDB"
-  weight = 2
-  identifier = "yugabytedb"
-  url = "/v2.8/"
-  ["v2.8".params]
-    showSection = true
-
-[["v2.8"]]
-  name = "Quick Start"
-  weight = 3
-  identifier = "quick-start"
-  url = "/preview/quick-start-yugabytedb-managed/"
-  ["v2.8".params]
-    showSection = true
-    hideChildren = true
-
-[["v2.8"]]
-  name = "Explore"
-  weight = 4
-  identifier = "explore"
-  url = "/v2.8/explore/"
-  ["v2.8".params]
-    showSection = true
-
-[["v2.8"]]
-  name = "Develop"
-  weight = 5
-  identifier = "develop"
-  url = "/v2.8/develop/"
-  ["v2.8".params]
-    showSection = true
-
-[["v2.8"]]
-  name = "Migrate"
-  weight = 6
-  identifier = "migrate"
-  url = "/v2.8/migrate/"
-  ["v2.8".params]
-    showSection = true
-
-[["v2.8"]]
-  name = "Secure"
-  weight = 7
-  identifier = "secure"
-  url = "/v2.8/secure/"
-  ["v2.8".params]
-    showSection = true
-
-[["v2.8"]]
-  name = "Launch and Manage"
-  weight = 8
-  identifier = "launch-and-manage"
-  url = "/v2.8/launch-and-manage/"
-  ["v2.8".params]
-    showSection = true
-
-[["v2.8"]]
-  name = "Troubleshoot"
-  parent = "launch-and-manage"
-  url = "/preview/troubleshoot/"
-
-[["v2.8"]]
-  name = "Benchmark"
-  weight = 9
-  identifier = "benchmark"
-  url = "/v2.8/benchmark/"
-  ["v2.8".params]
-    showSection = true
-
-[["v2.8"]]
-  name = "Reference"
-  weight = 12
-  identifier = "reference"
-  url = "/v2.8/reference/"
-  ["v2.8".params]
-    showSection = true
-
-[["v2.8"]]
-  name = "Misc"
-  identifier = "misc"
-  parent = "reference"
-
-[["v2.8"]]
-  name = "YEDIS"
-  weight = 1
-  url = "/preview/yedis/"
-  parent = "misc"
-
-[["v2.8"]]
-  name = "Legal"
-  weight = 2
-  url = "/preview/legal/"
-  parent = "misc"
-
-[["v2.8"]]
-  name = "Contribute"
-  weight = 13
-  identifier = "contribute"
-  url = "/preview/contribute/"
-  ["v2.8".params]
-    showSection = true
-
-########## Menus (in v2.8) for YB Anywhere section
-
-[["v2.8_yugabyte-platform"]]
-  name = "Docs Home"
-  weight = 1
-  identifier = "home"
-  url = "/"
-  ["v2.8_yugabyte-platform".params]
-    classes = "separator"
-    showSection = true
-
-[["v2.8_yugabyte-platform"]]
-  name = "YugabyteDB Anywhere"
-  weight = 2
-  identifier = "yugabytedb-anywhere"
-  ["v2.8_yugabyte-platform".params]
-    showSection = true
-    hideLink = true
-
-########## Menus (in v2.8) for APIs
-
-# [["v2.8_api"]]
-#   name = "Docs Home"
-#   weight = 1
-#   identifier = "home"
-#   url = "/"
-#   ["v2.8_api".params]
-#     classes = "separator"
-#     showSection = true
-
-# [["v2.8_api"]]
-#   name = "YSQL"
-#   weight = 2
-#   identifier = "yugabyte-api-ysql"
-#   ["v2.8_api".params]
-#     showSection = true
-#     hideLink = true
-
-# [["v2.8_api"]]
-#   name = "YCQL"
-#   weight = 3
-#   identifier = "yugabyte-api-ycql"
-#   ["v2.8_api".params]
-#     showSection = true
-#     hideLink = true
-
-# [["v2.8_api"]]
-#   name = "YugabyteDB Anywhere API"
-#   weight = 4
-#   identifier = "yugabytedb-anywhere-api"
-#   url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
-#   ["v2.8_api".params]
-#     showSection = true
-#     newTab = true
-
-# [["v2.8_api"]]
-#   name = "YugabyteDB Managed API"
-#   weight = 5
-#   identifier = "yugabytedb-managed-api"
-#   url = "https://api-docs.yugabyte.com/docs/managed-apis/"
-#   ["v2.8_api".params]
-#     showSection = true
-#     newTab = true

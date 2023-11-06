@@ -7,22 +7,30 @@ import static play.mvc.Http.Status.CONFLICT;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.Lists;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
+import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.StorageUtil;
 import com.yugabyte.yw.common.StorageUtilFactory;
+import com.yugabyte.yw.common.TableSpaceStructures.TableSpaceQueryResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.BackupUtil.PerLocationBackupInfo;
+import com.yugabyte.yw.common.backuprestore.BackupUtil.TablespaceResponse;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.common.logging.LogUtil;
+import com.yugabyte.yw.common.replication.ValidateReplicationInfo;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
@@ -42,11 +50,15 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.backuprestore.Tablespace;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
+import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -62,7 +74,9 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.Predicate;
 import org.apache.commons.lang3.StringUtils;
+import org.slf4j.MDC;
 import org.yb.CommonTypes.TableType;
 import org.yb.CommonTypes.YQLDatabase;
 import org.yb.client.YBClient;
@@ -71,18 +85,24 @@ import org.yb.master.MasterTypes.RelationType;
 import org.yb.ybc.BackupServiceTaskCreateRequest;
 import org.yb.ybc.CloudStoreSpec;
 import org.yb.ybc.NamespaceType;
+import play.libs.Json;
 
 @Slf4j
 @Singleton
 public class BackupHelper {
   private static final String VALID_OWNER_REGEX = "^[\\pL_][\\pL\\pM_0-9]*$";
   private static final int maxRetryCount = 5;
+  private static final String TABLESPACES_SQL_QUERY =
+      "SELECT jsonb_agg(t) from (SELECT spcname, spcoptions"
+          + " from pg_catalog.pg_tablespace where spcname not like 'pg_%') as t;";
 
   private YbcManager ybcManager;
   private YBClientService ybClientService;
   private CustomerConfigService customerConfigService;
   private RuntimeConfGetter confGetter;
   private StorageUtilFactory storageUtilFactory;
+  private ValidateReplicationInfo validateReplicationInfo;
+  private NodeUniverseManager nodeUniverseManager;
   @Inject Commissioner commissioner;
 
   @Inject
@@ -92,12 +112,16 @@ public class BackupHelper {
       CustomerConfigService customerConfigService,
       RuntimeConfGetter confGetter,
       StorageUtilFactory storageUtilFactory,
-      Commissioner commisssioner) {
+      Commissioner commisssioner,
+      ValidateReplicationInfo validateReplicationInfo,
+      NodeUniverseManager nodeUniverseManager) {
     this.ybcManager = ybcManager;
     this.ybClientService = ybClientService;
     this.customerConfigService = customerConfigService;
     this.confGetter = confGetter;
     this.storageUtilFactory = storageUtilFactory;
+    this.validateReplicationInfo = validateReplicationInfo;
+    this.nodeUniverseManager = nodeUniverseManager;
     // this.commissioner = commissioner;
   }
 
@@ -165,12 +189,11 @@ public class BackupHelper {
               "Cannot run Backup task since the universe %s is currently in a locked state.",
               taskParams.getUniverseUUID().toString()));
     }
-    if ((universe.getLiveTServersInPrimaryCluster().size() < taskParams.parallelDBBackups)
-        || taskParams.parallelDBBackups <= 0) {
+    if (taskParams.parallelDBBackups <= 0) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
-              "invalid parallel backups value provided for universe %s",
+              "Invalid parallel backups value provided for universe %s",
               universe.getUniverseUUID()));
     }
     validateBackupRequest(taskParams.keyspaceTableList, universe, taskParams.backupType);
@@ -279,9 +302,7 @@ public class BackupHelper {
         .getStorageUtil(customerConfig.getName())
         .validateStorageConfigOnLocationsList(
             configData,
-            taskParams
-                .backupStorageInfoList
-                .parallelStream()
+            taskParams.backupStorageInfoList.parallelStream()
                 .map(bSI -> bSI.storageLocation)
                 .collect(Collectors.toSet()));
 
@@ -432,8 +453,7 @@ public class BackupHelper {
         if (backupInfo.backupType.equals(TableType.YQL_TABLE_TYPE)
             && CollectionUtils.isNotEmpty(backupInfo.tableNameList)) {
           List<TableInfo> tableInfos =
-              tableInfoList
-                  .parallelStream()
+              tableInfoList.parallelStream()
                   .filter(tableInfo -> backupInfo.backupType.equals(tableInfo.getTableType()))
                   .filter(
                       tableInfo -> backupInfo.keyspace.equals(tableInfo.getNamespace().getName()))
@@ -448,8 +468,7 @@ public class BackupHelper {
           }
         } else if (backupInfo.backupType.equals(TableType.PGSQL_TABLE_TYPE)) {
           List<TableInfo> tableInfos =
-              tableInfoList
-                  .parallelStream()
+              tableInfoList.parallelStream()
                   .filter(tableInfo -> backupInfo.backupType.equals(tableInfo.getTableType()))
                   .filter(
                       tableInfo -> backupInfo.keyspace.equals(tableInfo.getNamespace().getName()))
@@ -482,8 +501,7 @@ public class BackupHelper {
   public void validateMapToRestoreWithUniverseNonRedisYBC(
       UUID universeUUID, Map<TableType, Map<String, Set<String>>> restoreMap) {
     List<TableInfo> tableInfos = getTableInfosOrEmpty(Universe.getOrBadRequest(universeUUID));
-    tableInfos
-        .parallelStream()
+    tableInfos.parallelStream()
         .filter(t -> !t.getTableType().equals(TableType.REDIS_TABLE_TYPE))
         .forEach(
             t -> {
@@ -568,8 +586,7 @@ public class BackupHelper {
     List<TableInfo> tableInfoList = getTableInfosOrEmpty(universe);
     if (keyspace != null && CollectionUtils.isEmpty(tableUuids)) {
       tableInfoList =
-          tableInfoList
-              .parallelStream()
+          tableInfoList.parallelStream()
               .filter(tableInfo -> keyspace.equals(tableInfo.getNamespace().getName()))
               .filter(tableInfo -> tableType.equals(tableInfo.getTableType()))
               .collect(Collectors.toList());
@@ -582,8 +599,7 @@ public class BackupHelper {
 
     if (keyspace == null) {
       tableInfoList =
-          tableInfoList
-              .parallelStream()
+          tableInfoList.parallelStream()
               .filter(tableInfo -> tableType.equals(tableInfo.getTableType()))
               .collect(Collectors.toList());
       if (CollectionUtils.isEmpty(tableInfoList)) {
@@ -617,7 +633,7 @@ public class BackupHelper {
   }
 
   public List<TableInfo> getTableInfosOrEmpty(Universe universe) throws PlatformServiceException {
-    final String masterAddresses = universe.getMasterAddresses(true);
+    final String masterAddresses = universe.getMasterAddresses();
     if (masterAddresses.isEmpty()) {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Masters are not currently queryable.");
@@ -635,6 +651,111 @@ public class BackupHelper {
     }
   }
 
+  public List<Tablespace> getTablespacesInUniverse(Universe universe) {
+    log.info("Fetching tablespaces for universe {}", universe.getName());
+    final String masterAddresses = universe.getMasterAddresses(true);
+    if (masterAddresses.isEmpty()) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Masters are not currently queryable.");
+    }
+    NodeDetails nodeToUse = null;
+    try {
+      nodeToUse = CommonUtils.getServerToRunYsqlQuery(universe);
+    } catch (IllegalStateException e) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cluster may not have been initialized yet. Please try later");
+    }
+    ShellResponse shellResponse =
+        nodeUniverseManager.runYsqlCommand(nodeToUse, universe, "template1", TABLESPACES_SQL_QUERY);
+    if (!shellResponse.isSuccess()) {
+      log.warn(
+          "Attempt to fetch tablespace info via node {} failed, response {}:{}",
+          nodeToUse.nodeName,
+          shellResponse.code,
+          shellResponse.message);
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Error while fetching TableSpace information");
+    }
+    String jsonData = CommonUtils.extractJsonisedSqlResponse(shellResponse);
+    if (jsonData == null || jsonData.isBlank()) {
+      return new ArrayList<>();
+    }
+    try {
+      ObjectMapper objectMapper = Json.mapper();
+      List<TableSpaceQueryResponse> tablespaceList =
+          objectMapper.readValue(jsonData, new TypeReference<List<TableSpaceQueryResponse>>() {});
+      return tablespaceList.stream()
+          .map(Tablespace::getTablespaceFromTablespaceQueryResponse)
+          .collect(Collectors.toList());
+    } catch (IOException e) {
+      log.error("Unable to parse fetchTablespaceQuery response {}", jsonData, e);
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Error while fetching TableSpace information");
+    }
+  }
+
+  public TablespaceResponse getTablespaceResponse(
+      Universe universe,
+      List<Tablespace> tablespacesInBackup,
+      List<Tablespace> tablespacesInUniverse) {
+    if (CollectionUtils.isEmpty(tablespacesInBackup)) {
+      return TablespaceResponse.builder().containsTablespaces(false).build();
+    }
+    Map<String, Tablespace> tablespacesInBackupMap =
+        tablespacesInBackup.parallelStream()
+            .collect(Collectors.toMap(t -> t.tablespaceName, Function.identity()));
+
+    // Conflicting tablespaces info.
+    List<String> conflictingTablespaceNames = new ArrayList<>();
+    if (CollectionUtils.isNotEmpty(tablespacesInUniverse)) {
+      List<Tablespace> conflictingTablespaces =
+          tablespacesInUniverse.stream()
+              .filter(t -> tablespacesInBackupMap.containsKey(t.tablespaceName))
+              .collect(Collectors.toList());
+      conflictingTablespaces.stream()
+          .forEach(
+              t -> {
+                Tablespace backupTs = tablespacesInBackupMap.get(t.tablespaceName);
+                String placementComparison =
+                    t.replicaPlacement.equals(backupTs.replicaPlacement)
+                        ? "identical"
+                        : "different";
+                log.info(
+                    "Tablespace {} with replica placement {}"
+                        + " already exists in Universe {} with {}"
+                        + " placement",
+                    t.tablespaceName,
+                    backupTs.getJsonString(),
+                    universe.getName(),
+                    placementComparison);
+              });
+      conflictingTablespaces.stream()
+          .map(t -> t.tablespaceName)
+          .forEach(tName -> conflictingTablespaceNames.add(tName));
+      // Remove conflicting tablespaces, we don't need to validate them.
+      CollectionUtils.filter(
+          tablespacesInBackup,
+          new Predicate<Tablespace>() {
+            @Override
+            public boolean evaluate(Tablespace tablespace) {
+              return !conflictingTablespaceNames.contains(tablespace.tablespaceName);
+            }
+          });
+    }
+    List<String> unsupportedTablespaceNames =
+        validateReplicationInfo
+            .getUnsupportedTablespacesOnUniverse(universe, tablespacesInBackup)
+            .parallelStream()
+            .map(t -> t.tablespaceName)
+            .collect(Collectors.toList());
+
+    return TablespaceResponse.builder()
+        .conflictingTablespaces(conflictingTablespaceNames)
+        .unsupportedTablespaces(unsupportedTablespaceNames)
+        .containsTablespaces(true)
+        .build();
+  }
+
   /**
    * Generate preflight response for restore. Validates and provides output in form of
    * RestorePreflightResponse.
@@ -644,27 +765,40 @@ public class BackupHelper {
    */
   public RestorePreflightResponse generateRestorePreflightAPIResponse(
       RestorePreflightParams preflightParams, UUID customerUUID) {
+    // Get loggingID
+    String loggingID = (String) MDC.get(LogUtil.CORRELATION_ID);
+    // Validate Universe exists
+    Universe universe = Universe.getOrBadRequest(preflightParams.getUniverseUUID());
+
+    log.info(
+        "Starting preflight checks for restore on Universe {} with regex filter {}",
+        universe.getName(),
+        loggingID);
 
     // Validate storage config exists
     CustomerConfig storageConfig =
         customerConfigService.getOrBadRequest(customerUUID, preflightParams.getStorageConfigUUID());
-
-    // Validate Universe exists
-    Universe.getOrBadRequest(preflightParams.getUniverseUUID());
 
     // Validate storage config is usable
     storageUtilFactory
         .getStorageUtil(storageConfig.getName())
         .validateStorageConfigOnLocationsList(
             storageConfig.getDataObject(), preflightParams.getBackupLocations());
+
     UUID backupUUID = preflightParams.getBackupUUID();
     if (backupUUID != null) {
       Optional<Backup> oBackup = Backup.maybeGet(customerUUID, backupUUID);
       if (oBackup.isPresent()) {
-        return restorePreflightWithBackupObject(customerUUID, oBackup.get(), preflightParams, true);
+        return restorePreflightWithBackupObject(customerUUID, oBackup.get(), preflightParams, true)
+            .toBuilder()
+            .loggingID(loggingID)
+            .build();
       }
     }
-    return restorePreflightWithoutBackupObject(customerUUID, preflightParams, storageConfig, true);
+    return restorePreflightWithoutBackupObject(customerUUID, preflightParams, storageConfig, true)
+        .toBuilder()
+        .loggingID(loggingID)
+        .build();
   }
 
   /**
@@ -687,8 +821,9 @@ public class BackupHelper {
 
     BackupCategory bCategory = backup.getCategory();
     preflightResponseBuilder.backupCategory(bCategory);
-    if (bCategory.equals(BackupCategory.YB_CONTROLLER)
-        && !Universe.getOrBadRequest(preflightParams.getUniverseUUID()).isYbcEnabled()) {
+
+    Universe universe = Universe.getOrBadRequest(preflightParams.getUniverseUUID());
+    if (bCategory.equals(BackupCategory.YB_CONTROLLER) && !universe.isYbcEnabled()) {
       throw new PlatformServiceException(
           PRECONDITION_FAILED,
           "YB-Controller restore attempted on non YB-Controller enabled Universe");
@@ -706,10 +841,29 @@ public class BackupHelper {
               .getSelectiveTableRestore();
     }
 
-    // Generate locations and corresponding table list map.
+    boolean queryUniverseTablespaces =
+        backup.getBackupParamsCollection().parallelStream()
+            .filter(bP -> CollectionUtils.isNotEmpty(bP.getTablespacesList()))
+            .findAny()
+            .isPresent();
+    List<Tablespace> universeTablespaces =
+        queryUniverseTablespaces ? getTablespacesInUniverse(universe) : new ArrayList<>();
+    Map<String, TablespaceResponse> tablespaceResponsesMap =
+        backup.getBackupParamsCollection().stream()
+            .collect(
+                Collectors.toMap(
+                    bP -> bP.storageLocation,
+                    bP ->
+                        getTablespaceResponse(
+                            universe, bP.getTablespacesList(), universeTablespaces)));
+
+    // Generate locations and corresponding PerLocationBackupInfo map.
     Map<String, PerLocationBackupInfo> locationContentMap =
         BackupUtil.getBackupLocationBackupInfoMap(
-            backup.getBackupParamsCollection(), selectiveRestoreYbcCheck, filterIndexes);
+            backup.getBackupParamsCollection(),
+            selectiveRestoreYbcCheck,
+            filterIndexes,
+            tablespaceResponsesMap);
     Map<String, PerLocationBackupInfo> locationBackupInfoMap =
         preflightParams.getBackupLocations().stream()
             .collect(
@@ -762,14 +916,15 @@ public class BackupHelper {
 
     // If success file exists
     if (ybcSuccessMarkerExists) {
-      if (!Universe.getOrBadRequest(preflightParams.getUniverseUUID()).isYbcEnabled()) {
+      Universe universe = Universe.getOrBadRequest(preflightParams.getUniverseUUID());
+      if (!universe.isYbcEnabled()) {
         throw new PlatformServiceException(
             PRECONDITION_FAILED,
             "YB-Controller restore attempted on non YB-Controller enabled Universe");
       }
       preflightResponse =
           generateYBCRestorePreflightResponseWithoutBackupObject(
-              preflightParams, storageConfig, filterIndexes);
+              preflightParams, storageConfig, filterIndexes, universe);
     } else {
       log.info("Did not find YB-Controller success marker, fallback to script");
       preflightResponse =
@@ -788,7 +943,10 @@ public class BackupHelper {
    * @param storageConfig The CustomerConfig object
    */
   public RestorePreflightResponse generateYBCRestorePreflightResponseWithoutBackupObject(
-      RestorePreflightParams preflightParams, CustomerConfig storageConfig, boolean filterIndexes) {
+      RestorePreflightParams preflightParams,
+      CustomerConfig storageConfig,
+      boolean filterIndexes,
+      Universe universe) {
     Map<String, YbcBackupResponse> ybcSuccessMarkerMap =
         getYbcSuccessMarker(
             storageConfig, preflightParams.getBackupLocations(), preflightParams.getUniverseUUID());
@@ -798,8 +956,23 @@ public class BackupHelper {
             .getEnabledBackupFeatures(preflightParams.getUniverseUUID())
             .getSelectiveTableRestore();
 
+    boolean queryUniverseTablespaces =
+        ybcSuccessMarkerMap.values().parallelStream()
+            .filter(yBP -> CollectionUtils.isNotEmpty(yBP.tablespaceInfos))
+            .findAny()
+            .isPresent();
+    List<Tablespace> universeTablespaces =
+        queryUniverseTablespaces ? getTablespacesInUniverse(universe) : new ArrayList<>();
+    Map<String, TablespaceResponse> tablespaceResponsesMap =
+        ybcSuccessMarkerMap.entrySet().stream()
+            .collect(
+                Collectors.toMap(
+                    Map.Entry::getKey,
+                    e ->
+                        getTablespaceResponse(
+                            universe, e.getValue().tablespaceInfos, universeTablespaces)));
     return YbcBackupUtil.generateYBCRestorePreflightResponseUsingMetadata(
-        ybcSuccessMarkerMap, selectiveRestoreYbcCheck, filterIndexes);
+        ybcSuccessMarkerMap, selectiveRestoreYbcCheck, filterIndexes, tablespaceResponsesMap);
   }
 
   // Pass list of locations and particular file. The checkExistsOnAll

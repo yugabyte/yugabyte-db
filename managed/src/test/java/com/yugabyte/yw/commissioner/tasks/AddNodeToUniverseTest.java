@@ -103,6 +103,8 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     mockWaits(mockClient, 4);
     when(mockClient.waitForLoadBalance(anyLong(), anyInt())).thenReturn(true);
     when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
+
+    setFollowerLagMock();
   }
 
   // Updates one of the nodes using a passed consumer.
@@ -286,9 +288,9 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl,
           TaskType.ChangeMasterConfig, // master done
-          TaskType.WaitForFollowerLag, // master done
-          TaskType.UpdateNodeProcess,
+          TaskType.CheckFollowerLag, // master done
           TaskType.WaitForServer,
+          TaskType.UpdateNodeProcess,
           TaskType.AnsibleClusterServerCtl,
           TaskType.UpdateNodeProcess,
           TaskType.WaitForServer, // tServer
@@ -321,8 +323,8 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           Json.toJson(ImmutableMap.of("process", "master", "command", "start")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of("processType", "MASTER", "isAdd", true)),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("processType", "MASTER", "isAdd", true)),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
           Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
           Json.toJson(ImmutableMap.of()),
@@ -554,5 +556,32 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
             NodeState.SoftwareInstalled,
             NodeState.Adding);
     assertEquals(expectedStates, allowedStates);
+  }
+
+  @Test
+  public void testAddNodeRetries() {
+    // This is set up with under-replicated master to execute master addition flow.
+    mockGetMasterRegistrationResponse(ImmutableList.of("10.0.0.1"), Collections.emptyList());
+    verify(mockNodeManager, never()).nodeCommand(any(), any());
+    Universe universe =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            getNodeUpdater(DEFAULT_NODE_NAME, node -> node.isMaster = false));
+
+    NodeTaskParams taskParams = new NodeTaskParams();
+    taskParams.clusters.addAll(universe.getUniverseDetails().clusters);
+    taskParams.expectedUniverseVersion = universe.getVersion();
+    taskParams.nodeName = DEFAULT_NODE_NAME;
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
+    taskParams.azUuid = AvailabilityZone.getByCode(defaultProvider, AZ_CODE).getUuid();
+    taskParams.creatingUser = defaultUser;
+    TestUtils.setFakeHttpContext(defaultUser);
+    super.verifyTaskRetries(
+        defaultCustomer,
+        CustomerTask.TaskType.Add,
+        CustomerTask.TargetType.Universe,
+        universe.getUniverseUUID(),
+        TaskType.AddNodeToUniverse,
+        taskParams);
   }
 }

@@ -42,11 +42,11 @@ class BytewiseComparatorImpl : public Comparator {
     return "leveldb.BytewiseComparator";
   }
 
-  int Compare(const Slice& a, const Slice& b) const override {
+  int Compare(Slice a, Slice b) const override {
     return a.compare(b);
   }
 
-  bool Equal(const Slice& a, const Slice& b) const override {
+  bool Equal(Slice a, Slice b) const override {
     return a == b;
   }
 
@@ -115,7 +115,7 @@ class ReverseBytewiseComparatorImpl : public BytewiseComparatorImpl {
     return "rocksdb.ReverseBytewiseComparator";
   }
 
-  int Compare(const Slice& a, const Slice& b) const override {
+  int Compare(Slice a, Slice b) const override {
     return -a.compare(b);
   }
 };
@@ -146,7 +146,7 @@ class Uint64ComparatorImpl : public Comparator {
     return "rocksdb.Uint64Comparator";
   }
 
-  int Compare(const Slice& a, const Slice& b) const override {
+  int Compare(Slice a, Slice b) const override {
     assert(a.size() == sizeof(uint64_t) && b.size() == sizeof(uint64_t));
     const uint64_t* left = reinterpret_cast<const uint64_t*>(a.data());
     const uint64_t* right = reinterpret_cast<const uint64_t*>(b.data());

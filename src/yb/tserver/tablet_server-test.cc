@@ -303,13 +303,13 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
   ASSERT_OK(c.FetchURL(Substitute("http://$0/prometheus-metrics?reset_histograms=false", addr),
                 &buf));
   // Find our target metric and concatenate value zero to it. metric_instance_with_zero_value is a
-  // string looks like: handler_latency_yb_tserver_TabletServerService_Write{...quantile=...} 0
+  // string looks like: handler_latency_yb_tserver_TabletServerService_Write{quantile=p50.....} 0
   string page_content = buf.ToString();
-  std::size_t begin = page_content.find("handler_latency_yb_tserver_TabletServerService_Write{");
-
+  std::size_t begin = page_content.find("handler_latency_yb_tserver_TabletServerService_Write"
+                                        "{quantile=\"p50\"");
   std::size_t end = page_content.find("}", begin);
   string metric_instance_with_zero_value = page_content.substr(begin, end - begin + 1) + " 0";
-  ASSERT_STR_CONTAINS(metric_instance_with_zero_value, "quantile=");
+
   ASSERT_STR_CONTAINS(buf.ToString(), metric_instance_with_zero_value);
 
   // Insert some data

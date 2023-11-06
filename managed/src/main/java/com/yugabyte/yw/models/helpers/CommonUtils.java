@@ -24,6 +24,7 @@ import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.paging.PagedQuery;
 import com.yugabyte.yw.models.paging.PagedResponse;
@@ -673,6 +674,10 @@ public class CommonUtils {
         && isReleaseBefore(maxRelease, actualRelease);
   }
 
+  public static boolean isReleaseEqual(String thresholdRelease, String actualRelease) {
+    return compareReleases(thresholdRelease, actualRelease, false, false, true);
+  }
+
   private static boolean compareReleases(
       String thresholdRelease,
       String actualRelease,
@@ -786,6 +791,7 @@ public class CommonUtils {
     }
     return new String(logTableName).trim();
   }
+
   /**
    * This method extracts the json from shell response where the shell executes a SQL Query that
    * aggregates the response as JSON e.g. select jsonb_agg() The resultant shell output has json
@@ -836,9 +842,18 @@ public class CommonUtils {
     return stateLogMsg;
   }
 
-  /** Get the user sending the API request from the HTTP context. */
+  /**
+   * Get the user sending the API request from the HTTP context. It throws exception if the context
+   * is not set.
+   */
   public static Users getUserFromContext() {
     return RequestContext.get(TokenAuthenticator.USER).getUser();
+  }
+
+  /** Get the user sending the API request from the HTTP context if present. */
+  public static Optional<Users> maybeGetUserFromContext() {
+    UserWithFeatures value = RequestContext.getIfPresent(TokenAuthenticator.USER);
+    return value == null ? Optional.empty() : Optional.ofNullable(value.getUser());
   }
 
   public static boolean isAutoFlagSupported(String dbVersion) {

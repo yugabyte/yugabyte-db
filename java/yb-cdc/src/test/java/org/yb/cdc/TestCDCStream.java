@@ -126,7 +126,7 @@ public class TestCDCStream extends CDCBaseClass {
       } catch (Exception e) {
         // The above try block would throw an exception since we are trying to create a stream
         // on a namespace which doesn't exist.
-        assertTrue(e.getMessage().contains("Keyspace name not found: non_existing_namespace"));
+        assertTrue(e.getMessage().contains("YSQL keyspace name not found: non_existing_namespace"));
         exceptionThrown = true;
       }
       assertTrue(exceptionThrown);

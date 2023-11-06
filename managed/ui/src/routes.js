@@ -34,9 +34,10 @@ import Releases from './pages/Releases';
 import { isDefinedNotNull, isNullOrEmpty, objToQueryParams } from './utils/ObjectUtils';
 import { Administration } from './pages/Administration';
 import ToggleFeaturesInTest from './pages/ToggleFeaturesInTest';
-import { ReplicationDetails } from './components/xcluster';
+import { Replication } from './pages/Replication';
 import UniverseNewView from './pages/UniverseNewView';
 import { DataCenterConfiguration } from './pages/DataCenterConfiguration';
+import { clearRbacCreds, getRbacEnabledVal, isRbacEnabled } from './redesign/features/rbac/common/RbacUtils';
 
 /**
  * Redirects to base url if no queryParmas is set else redirects to path set in queryParam
@@ -59,6 +60,8 @@ export const clearCredentials = () => {
   localStorage.removeItem('apiToken');
   localStorage.removeItem('customerId');
   localStorage.removeItem('userId');
+  clearRbacCreds();
+
   /*
    * Remove domain cookies if YW is running on subdomain.
    * For context, see issue: https://github.com/yugabyte/yugabyte-db/issues/7653
@@ -120,6 +123,9 @@ axios.interceptors.response.use(
   (response) => response,
   (error) => {
     // skip 401 response for "/login" and "/register" endpoints
+    //rbac is not loaded yet or it is enabled
+    if(getRbacEnabledVal() === null || isRbacEnabled()) return Promise.reject(error);
+
     const isAllowedUrl = /.+\/(login|register)$/i.test(error.request.responseURL);
     const isUnauthorised = error.response?.status === 401;
     if (isUnauthorised && !isAllowedUrl) {
@@ -173,9 +179,11 @@ function validateSession(store, replacePath, callback) {
           : {};
         switch (status) {
           case 401:
-            store.dispatch(resetCustomer());
-            store.dispatch(customerTokenError());
-            clearCredentials();
+            if (!isRbacEnabled()) {
+              store.dispatch(resetCustomer());
+              store.dispatch(customerTokenError());
+              clearCredentials();
+            }
             break;
           default:
           // Do nothing
@@ -240,10 +248,7 @@ export default (store) => {
           <Route path="/universes/:uuid" component={UniverseDetail} />
           {/* <Route path="/universes/:uuid/edit" component={UniverseDetail}> */}
           <Route path="/universes/:uuid/tables/:tableUUID" component={TableDetail} />
-          <Route
-            path="/universes/:uuid/replication/:replicationUUID"
-            component={ReplicationDetails}
-          />
+          <Route path="/universes/:uuid/replication/:replicationUUID" component={Replication} />
           <Route path="/universes/:uuid/:mode/:type" component={UniverseNewView} />
           {/* </Route> */}
           <Route path="/universes/:uuid/:tab" component={UniverseDetail} />

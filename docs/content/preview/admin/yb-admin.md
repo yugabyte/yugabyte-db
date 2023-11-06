@@ -606,6 +606,38 @@ yb-admin \
 
 To verify that the new status tablet has been created, run the [`list_tablets`](#list-tablets) command.
 
+#### flush_table
+
+Flush the memstores of the specified table on all tablet servers to disk.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    flush_table <table_name> | <table_id> <db_type>.<namespace> [timeout_in_seconds] [ADD_INDEXES]
+```
+
+* *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *db_type*: The type of database. Valid values include ysql, ycql, yedis, and unknown.
+* *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
+* *table_name*: The name of the table to flush.
+* *table_id*: The unique UUID of the table to flush.
+* *timeout_in_seconds*: Specifies duration, in seconds when the cli timeouts waiting for flushing to end. Default value is `20`.
+* *ADD_INDEXES*: If the DB should also flush the secondary indexes associated with the table. Default is `false`.
+
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses $MASTER_RPC_ADDRS \
+    flush_table ysql.yugabyte table_name
+    
+```
+```output
+Flushed [yugabyte.table_name] tables.
+```
 ---
 
 ### Backup and snapshot commands
@@ -1622,6 +1654,8 @@ For example:
     create_change_data_stream ysql.yugabyte
 ```
 
+
+
 ##### Enabling before image
 
 To create a change data capture (CDC) DB stream which also supports sending the before image of the record, use the following command.
@@ -1638,6 +1672,28 @@ yb-admin \
 * *namespace_name*: The namespace on which the DB stream ID is to be created.
 * `IMPLICIT`: Checkpointing type on the server.
 * `ALL`: Record type indicating the server that the stream should send the before image too.
+
+A successful operation of the above command returns a message with a DB stream ID:
+
+```output
+CDC Stream ID: d540f5e4890c4d3b812933cbfd703ed3
+```
+
+##### Creating stream in EXPLICIT checkpointing mode
+
+To create a change data capture (CDC) DB stream which works in the EXPLICIT checkpointing mode where the client is responsible for managing the checkpoints, use the following command:
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    create_change_data_stream ysql.<namespace_name> EXPLICIT
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *namespace_name*: The namespace on which the DB stream ID is to be created.
+* `EXPLICIT`: Checkpointing type on the server.
 
 A successful operation of the above command returns a message with a DB stream ID:
 

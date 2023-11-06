@@ -19,6 +19,9 @@
 namespace yb {
 namespace docdb {
 
+constexpr auto kDeadlineCheckGranulatiryFactor = 10;
+constexpr auto kDeadlineCheckGranularity = 1 << kDeadlineCheckGranulatiryFactor;
+
 class DeadlineInfo {
  public:
   explicit DeadlineInfo(CoarseTimePoint deadline);

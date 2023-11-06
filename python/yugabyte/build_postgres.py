@@ -17,17 +17,20 @@ A wrapper script around PostgreSQL build that allows building debug and release 
 directories.
 """
 
-import os
 import logging
-import re
-import sys
 import multiprocessing
-import subprocess
-import time
-import semantic_version  # type: ignore
+import os
 import pathlib
+import re
+import semantic_version  # type: ignore
+import shlex
+import subprocess
+import sys
+import time
 
 from overrides import overrides
+from sys_detection import local_sys_conf
+
 from typing import List, Dict, Optional, Any, Set, Callable
 
 from yugabyte_pycommon import (  # type: ignore
@@ -60,6 +63,7 @@ from yugabyte.cmake_cache import CMakeCache, load_cmake_cache
 from yugabyte.file_util import mkdir_p
 from yugabyte.string_util import compute_sha256
 from yugabyte.timestamp_saver import TimestampSaver
+from yugabyte.common_util import get_target_arch
 
 
 ALLOW_REMOTE_COMPILATION = True
@@ -75,7 +79,8 @@ CONFIG_ENV_VARS = [
     'YB_BUILD_ROOT',
     'YB_BUILD_TYPE',
     'YB_SRC_ROOT',
-    'YB_THIRDPARTY_DIR'
+    'YB_THIRDPARTY_DIR',
+    'PKG_CONFIG_PATH',
 ]
 REMOVE_CONFIG_CACHE_MSG_RE = re.compile(r'error: run.*\brm config[.]cache\b.*and start over')
 TRANSIENT_BUILD_ERRORS = ['missing separator.  Stop.']
@@ -184,6 +189,24 @@ def adjust_compiler_or_linker_flags(
             UNDEFINED_DYNAMIC_LOOKUP_FLAG_RE.sub(' ', ' ' + new_flags_str).strip().split()
         )
     return new_flags_str
+
+
+def remove_repeated_arguments(removing_from: str, removing_what: str) -> str:
+    """
+    Removes arguments from the first argument list, represented as a Bash-formatted string,
+    if they are present in the second argument list. Does not change the order of arguments.
+    >>> remove_repeated_arguments('--foo --bar', '--foo')
+    '--bar'
+    >>> remove_repeated_arguments('--baz "foo bar" --baz', "'foo bar' 'baz'")
+    '--baz --baz'
+    """
+    args_seen: Set[str] = set()
+    args_to_remove: Set[str] = set(shlex.split(removing_what))
+    result: List[str] = []
+    for arg in shlex.split(removing_from):
+        if arg not in args_to_remove:
+            result.append(arg)
+    return shlex_join(result)
 
 
 class PostgresBuilder(YbBuildToolBase):
@@ -352,7 +375,17 @@ class PostgresBuilder(YbBuildToolBase):
             raise RuntimeError(
                 ("Invalid step specified for setting env vars: must be in {}")
                 .format(BUILD_STEPS))
+
         is_make_step = step == 'make'
+
+        self.set_env_var('YB_BUILD_ROOT', self.build_root)
+
+        pkg_config_path = self.cmake_cache.get_or_raise('YB_PKG_CONFIG_PATH')
+        for pkg_config_path_entry in pkg_config_path.split(':'):
+            if not os.path.isdir(pkg_config_path_entry):
+                raise IOError("Directory %s does not exist. PKG_CONFIG_PATH: %s" % (
+                    pkg_config_path_entry, pkg_config_path))
+        self.set_env_var('PKG_CONFIG_PATH', pkg_config_path)
 
         self.set_env_var('YB_PG_BUILD_STEP', step)
         self.set_env_var('YB_THIRDPARTY_DIR', self.thirdparty_dir)
@@ -363,7 +396,6 @@ class PostgresBuilder(YbBuildToolBase):
             'CXXFLAGS': 'POSTGRES_FINAL_CXX_FLAGS',
             'CPPFLAGS': 'POSTGRES_EXTRA_PREPROCESSOR_FLAGS',
             'LDFLAGS': 'POSTGRES_FINAL_LD_FLAGS',
-            'LDFLAGS_EX': 'POSTGRES_FINAL_EXE_LD_FLAGS',
 
             # Extra linker flags to add after the Yugabyte libraries when linking executables. For
             # example, this can be used to add tcmalloc static library to satisfy missing symbols in
@@ -373,6 +405,14 @@ class PostgresBuilder(YbBuildToolBase):
         }
         for env_var_name, cmake_cache_var_name in env_var_to_cmake_cache_mapping.items():
             self.set_env_var(env_var_name, self.cmake_cache.get_or_raise(cmake_cache_var_name))
+
+        # LDFLAGS_EX are linking arguments for executables that are used in addition to LDFLAGS.
+        # Remove arguments present in LDFLAGS from LDFLAGS_EX.
+        self.set_env_var(
+            'LDFLAGS_EX',
+            remove_repeated_arguments(
+                self.cmake_cache.get_or_raise('POSTGRES_FINAL_EXE_LD_FLAGS'),
+                self.cmake_cache.get_or_raise('POSTGRES_FINAL_LD_FLAGS')))
 
         additional_c_cxx_flags = [
             '-Wimplicit-function-declaration',
@@ -528,8 +568,19 @@ class PostgresBuilder(YbBuildToolBase):
                 './configure',
                 '--prefix', self.pg_prefix,
                 '--with-extra-version=-YB-' + self.get_yb_version(),
-                '--enable-depend',
-                '--enable-nls',
+                '--enable-depend'
+        ]
+        if (local_sys_conf().short_os_name_and_version() != 'ubuntu23.04' or
+                get_target_arch() != 'x86_64' or
+                self.compiler_type != 'gcc13'):
+            # With GCC 13 build on Ubuntu 23.04, we run into an error where Postgres configure
+            # complains about not finding the msgfmt tool if we try to build Postgres with NLS.
+            # This fails on our Ubuntu 23.04 x86_64 build infra Docker image but might work in a
+            # different environment.
+            #
+            # TODO(mbautin): fix the root cause of this.
+            configure_cmd_line.append('--enable-nls')
+        configure_cmd_line += [
                 '--with-icu',
                 '--with-ldap',
                 '--with-openssl',

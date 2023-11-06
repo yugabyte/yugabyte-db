@@ -19,7 +19,7 @@ NoStatus  \
           -> Upgrading -> Installed
 Installed /   failure \_> Cleaning
 
-**Replicated Migrating**
+**Replicated Migrating**pkg/ybactlstate/install_status.go
 Uninstall -> Migrating -> Migrate -> Finishing -> Installed
                     |           |     failure \_> Finishing (Retry)
 										|	          \_> Rollback (Customer wants back to replicated)
@@ -27,7 +27,11 @@ Uninstall -> Migrating -> Migrate -> Finishing -> Installed
 Rollback -> Uninstalled (Rollback leads to an uninstall of yba-installer, Replicated still exists)
 */
 
+// InvalidStatusError for unparsable status
 var InvalidStatusError error = errors.New("invalid status")
+
+// StatusTransitionError when it is not possible from move from one status to the next
+var StatusTransitionError error = errors.New("invalid status transition")
 
 type status int
 
@@ -47,6 +51,7 @@ const (
 )
 
 var toStatus = map[string]status{
+	"NoStatus":     NoStatus,
 	"Installed":    InstalledStatus,
 	"Installing":   InstallingStatus,
 	"Upgrading":    UpgradingStatus,
@@ -54,6 +59,7 @@ var toStatus = map[string]status{
 	"Soft Cleaned": SoftCleanStatus,
 	"Uninstalled":  UninstalledStatus,
 	"Migrating":    MigratingStatus,
+	"Migrate":      MigrateStatus,
 	"Rollback":     RollbackStatus,
 	"Finishing":    FinishingStatus,
 }
@@ -61,6 +67,8 @@ var toStatus = map[string]status{
 // String value of the status
 func (s status) String() string {
 	switch s {
+	case NoStatus:
+		return "NoStatus"
 	case InstalledStatus:
 		return "Installed"
 	case InstallingStatus:
@@ -75,6 +83,8 @@ func (s status) String() string {
 		return "Uninstalled"
 	case MigratingStatus:
 		return "Migrating"
+	case MigrateStatus:
+		return "Migrate"
 	case RollbackStatus:
 		return "Rollback"
 	case FinishingStatus:
@@ -125,13 +135,13 @@ func (s status) TransitionValid(next status) bool {
 	case InstallingStatus:
 		return next == InstalledStatus || next == CleaningStatus || next == InstallingStatus
 	case UpgradingStatus:
-		return next == InstalledStatus || next == CleaningStatus
+		return next == InstalledStatus || next == CleaningStatus || next == UpgradingStatus
 	case CleaningStatus:
 		return next == SoftCleanStatus
 	case SoftCleanStatus:
 		return next == InstallingStatus
 	case UninstalledStatus:
-		return next == InstallingStatus || next == MigratingStatus
+		return next == InstallingStatus || next == MigratingStatus || next == CleaningStatus
 	case MigratingStatus:
 		return next == RollbackStatus || next == MigrateStatus
 	case MigrateStatus:

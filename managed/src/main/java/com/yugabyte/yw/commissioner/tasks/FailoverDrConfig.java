@@ -3,6 +3,9 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
+import com.yugabyte.yw.common.DrConfigStates.State;
+import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.forms.DrConfigFailoverForm;
 import com.yugabyte.yw.forms.DrConfigFailoverForm.Type;
@@ -60,6 +63,16 @@ public class FailoverDrConfig extends EditDrConfig {
         lockUniverseForUpdate(targetUniverse.getUniverseUUID(), targetUniverse.getVersion());
 
         if (failoverType.equals(Type.PLANNED)) {
+          // Todo: After DB support, put the old primary in read-only mode.
+
+          createSetDrStatesTask(
+                  currentXClusterConfig,
+                  State.SwitchoverInProgress,
+                  SourceUniverseState.PreparingSwitchover,
+                  null /* targetUniverseState */,
+                  null /* keyspacePending */)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+
           createWaitForReplicationDrainTask(currentXClusterConfig);
 
           addSubtasksToUseNewXClusterConfig(
@@ -67,9 +80,30 @@ public class FailoverDrConfig extends EditDrConfig {
               failoverXClusterConfig,
               false /* forceDeleteCurrentXClusterConfig */);
         } else if (failoverType.equals(Type.UNPLANNED)) {
+          createSetDrStatesTask(
+                  currentXClusterConfig,
+                  State.FailoverInProgress,
+                  SourceUniverseState.DrFailed,
+                  TargetUniverseState.SwitchingToDrPrimary,
+                  null /* keyspacePending */)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+
+          // The source and target universes are swapped in `failoverXClusterConfig`, so set the
+          // target universe state of that config which the source universe of the main config to
+          // `DrFailed`.
+          createSetDrStatesTask(
+                  failoverXClusterConfig,
+                  null /* drConfigState */,
+                  null /* sourceUniverseState */,
+                  TargetUniverseState.DrFailed,
+                  null /* keyspacePending */)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+
           // Delete the main replication config.
           createDeleteXClusterConfigSubtasks(
               currentXClusterConfig, false /* keepEntry */, true /* forceDelete */);
+
+          createPromoteSecondaryConfigToMainConfigTask(failoverXClusterConfig);
 
           // Use pitr to restore to the safetime for all DBs.
           getNamespaces(taskParams().getTableInfoList())
@@ -109,7 +143,13 @@ public class FailoverDrConfig extends EditDrConfig {
                         TimeUnit.MICROSECONDS.toMillis(namespaceSafetimeEpochUs));
                   });
 
-          createPromoteSecondaryConfigToMainConfigTask(failoverXClusterConfig);
+          createSetDrStatesTask(
+                  failoverXClusterConfig,
+                  State.Halted,
+                  null /* sourceUniverseState */,
+                  null /* targetUniverseState */,
+                  null /* keyspacePending */)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
         } else {
           throw new IllegalArgumentException(
               String.format("taskParams().failoverType is %s which is not known", failoverType));

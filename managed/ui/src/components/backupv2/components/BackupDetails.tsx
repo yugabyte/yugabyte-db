@@ -34,6 +34,8 @@ import { createErrorMessage } from '../../../utils/ObjectUtils';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { handleCACertErrMsg } from '../../customCACerts';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
 import './BackupDetails.scss';
 
 export type IncrementalBackupProps = {
@@ -244,59 +246,86 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
         </div>
         <div className="side-panel__content">
           <Row className="backup-details-actions">
-            <YBButton
-              btnText="Delete"
-              btnIcon="fa fa-trash-o"
-              onClick={() => onDelete()}
-              disabled={
-                backupDetails.commonBackupInfo.state === Backup_States.DELETED ||
-                backupDetails.commonBackupInfo.state === Backup_States.DELETE_IN_PROGRESS ||
-                backupDetails.commonBackupInfo.state === Backup_States.QUEUED_FOR_DELETION ||
-                !backupDetails.isStorageConfigPresent
-              }
-            />
-            {!hideRestore && (
+            <RbacValidator
+              accessRequiredOn={{
+                onResource: 'CUSTOMER_ID',
+                ...UserPermissionMap.deleteBackup
+              }}
+              isControl
+              popOverOverrides={{ zIndex: 10000 }}
+            >
               <YBButton
-                btnText="Restore Entire Backup"
-                btnIcon="fa fa-share"
-                onClick={() => {
-                  if (backupDetails.hasIncrementalBackups) {
-                    if (incrementalBackups?.data) {
-                      const recentBackup = incrementalBackups.data.filter(
-                        (e: ICommonBackupInfo) => e.state === Backup_States.COMPLETED
-                      )[0];
-                      onRestore(
-                        { ...backupDetails, commonBackupInfo: recentBackup },
-                        {
-                          isRestoreEntireBackup: true,
-                          incrementalBackupUUID: recentBackup.backupUUID,
-                          singleKeyspaceRestore: false
-                        }
-                      );
-                    }
-                  } else {
-                    onRestore(undefined, {
-                      isRestoreEntireBackup: true,
-                      singleKeyspaceRestore: false
-                    });
-                  }
-                }}
+                btnText="Delete"
+                btnIcon="fa fa-trash-o"
+                onClick={() => onDelete()}
                 disabled={
-                  backupDetails.commonBackupInfo.state !== Backup_States.COMPLETED ||
+                  backupDetails.commonBackupInfo.state === Backup_States.DELETED ||
+                  backupDetails.commonBackupInfo.state === Backup_States.DELETE_IN_PROGRESS ||
+                  backupDetails.commonBackupInfo.state === Backup_States.QUEUED_FOR_DELETION ||
                   !backupDetails.isStorageConfigPresent
                 }
               />
+            </RbacValidator>
+            {!hideRestore && (
+              <RbacValidator
+                accessRequiredOn={{
+                  onResource: currentUniverseUUID,
+                  ...UserPermissionMap.restoreBackup
+                }}
+                isControl
+                popOverOverrides={{ zIndex: 10000 }}
+              >
+                <YBButton
+                  btnText="Restore Entire Backup"
+                  btnIcon="fa fa-share"
+                  onClick={() => {
+                    if (backupDetails.hasIncrementalBackups) {
+                      if (incrementalBackups?.data) {
+                        const recentBackup = incrementalBackups.data.filter(
+                          (e: ICommonBackupInfo) => e.state === Backup_States.COMPLETED
+                        )[0];
+                        onRestore(
+                          { ...backupDetails, commonBackupInfo: recentBackup },
+                          {
+                            isRestoreEntireBackup: true,
+                            incrementalBackupUUID: recentBackup.backupUUID,
+                            singleKeyspaceRestore: false
+                          }
+                        );
+                      }
+                    } else {
+                      onRestore(undefined, {
+                        isRestoreEntireBackup: true,
+                        singleKeyspaceRestore: false
+                      });
+                    }
+                  }}
+                  disabled={
+                    backupDetails.commonBackupInfo.state !== Backup_States.COMPLETED ||
+                    !backupDetails.isStorageConfigPresent
+                  }
+                />
+              </RbacValidator>
             )}
             {onEdit && (
-              <YBButton
-                btnText="Change Retention Period"
-                btnIcon="fa fa-pencil"
-                onClick={() => onEdit()}
-                disabled={
-                  backupDetails.commonBackupInfo.state !== Backup_States.COMPLETED ||
-                  !backupDetails.isStorageConfigPresent
-                }
-              />
+              <RbacValidator
+                accessRequiredOn={{
+                  onResource: 'CUSTOMER_ID',
+                  ...UserPermissionMap.editBackup
+                }}
+                isControl
+                popOverOverrides={{ zIndex: 10000 }}
+              >
+                <YBButton
+                  btnText="Change Retention Period"
+                  btnIcon="fa fa-pencil"
+                  onClick={() => onEdit()}
+                  disabled={
+                    backupDetails.commonBackupInfo.state !== Backup_States.COMPLETED ||
+                    !backupDetails.isStorageConfigPresent
+                  }
+                />
+              </RbacValidator>
             )}
           </Row>
           <Row className="backup-details-info">
@@ -361,7 +390,6 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                 <div className="header-text">Expiration</div>
                 <div>{ybFormatDate(backupDetails.expiryTime)}</div>
               </div>
-              <span className="flex-divider" />
               <div className="details-storage-config">
                 <div className="header-text">Storage Config</div>
                 <div className="universeLink">
@@ -378,6 +406,12 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                 <div className="header-text">KMS Config</div>
                 <div>{kmsConfig ? kmsConfig.metadata?.name : '-'}</div>
               </div>
+              {!backupDetails.onDemand && (
+                <div>
+                  <div className="header-text">Schedule Name</div>
+                  <div>{backupDetails.scheduleName}</div>
+                </div>
+              )}
             </div>
             {!storageConfigName && (
               <span className="assign-config-msg">
@@ -408,15 +442,27 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
               </Col>
               {currentUniverseUUID && backupDetails.isStorageConfigPresent && (
                 <Col lg={6} className="no-padding">
-                  <YBButton
-                    btnText="Add Incremental Backup"
-                    btnIcon="fa fa-plus"
-                    className="add-increment-backup-btn"
-                    disabled={backupDetails.commonBackupInfo.state !== Backup_States.COMPLETED}
-                    onClick={() => {
-                      setShowAddIncrementalBackupModal(true);
+                  <RbacValidator
+                    accessRequiredOn={{
+                      onResource: currentUniverseUUID,
+                      ...UserPermissionMap.createBackup
                     }}
-                  />
+                    overrideStyle={{
+                      display: 'unset'
+                    }}
+                    isControl
+                    popOverOverrides={{ zIndex: 10000 }}
+                  >
+                    <YBButton
+                      btnText="Add Incremental Backup"
+                      btnIcon="fa fa-plus"
+                      className="add-increment-backup-btn"
+                      disabled={backupDetails.commonBackupInfo.state !== Backup_States.COMPLETED}
+                      onClick={() => {
+                        setShowAddIncrementalBackupModal(true);
+                      }}
+                    />
+                  </RbacValidator>
                 </Col>
               )}
 

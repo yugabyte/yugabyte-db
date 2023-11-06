@@ -764,10 +764,6 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
      5
 (1 row)
 
--- TODO(#16417): update the following three index only scan explains to have
--- "Partial Aggregate: true" because pushdown will be allowed once the index's
--- constant 1 column is not requested by the aggregate node to the index only
--- scan node when using CP_SMALL_TLIST.
 \set query 'SELECT COUNT(a) FROM ybaggtest2'
 :runnois;
            QUERY PLAN
@@ -786,9 +782,10 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 
                         QUERY PLAN
 -----------------------------------------------------------
- Aggregate
+ Finalize Aggregate
    ->  Index Only Scan using ybaggtest2index on ybaggtest2
-(2 rows)
+         Partial Aggregate: true
+(3 rows)
 
  count
 -------
@@ -823,9 +820,10 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 
                         QUERY PLAN
 -----------------------------------------------------------
- Aggregate
+ Finalize Aggregate
    ->  Index Only Scan using ybaggtest2index on ybaggtest2
-(2 rows)
+         Partial Aggregate: true
+(3 rows)
 
  count | count
 -------+-------
@@ -861,9 +859,10 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 
                         QUERY PLAN
 -----------------------------------------------------------
- Aggregate
+ Finalize Aggregate
    ->  Index Only Scan using ybaggtest2index on ybaggtest2
-(2 rows)
+         Partial Aggregate: true
+(3 rows)
 
  max | min
 -----+-----

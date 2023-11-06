@@ -6604,7 +6604,8 @@ deconstruct_indexquals(IndexPath *path)
 				   *rightop;
 		IndexQualInfo *qinfo;
 
-		if (IsYugaByteEnabled() && path->path.param_info)
+		if (IsYugaByteEnabled() && path->path.param_info &&
+			 yb_enable_base_scans_cost_model)
 		{
 			Relids batched = path->path.param_info->yb_ppi_req_outer_batched;
 			RestrictInfo *batched_rinfo =

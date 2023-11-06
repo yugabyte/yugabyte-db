@@ -18,6 +18,8 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.SubTaskFormData;
 import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.FailedSubtasks;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
@@ -265,9 +267,10 @@ public class CustomerTaskController extends AuthenticatedController {
     return ok(responseJson);
   }
 
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.19.1.0")
   @ApiOperation(
       value =
-          "Deprecated: sinceDate=2023-06-06, sinceYBAVersion=2.19.1.0, "
+          "Deprecated since YBA version 2.19.1.0, "
               + "Use /api/v1/customers/{cUUID}/tasks/{tUUID}/failed_subtasks instead",
       responseContainer = "Map",
       response = Object.class)

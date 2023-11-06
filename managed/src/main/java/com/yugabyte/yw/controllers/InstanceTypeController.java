@@ -17,7 +17,9 @@ import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
@@ -28,7 +30,9 @@ import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
@@ -102,21 +106,20 @@ public class InstanceTypeController extends AuthenticatedController {
       UUID customerUUID, UUID providerUUID, List<String> zoneCodes, @Nullable String arch) {
     Set<String> filterByZoneCodes = new HashSet<>(zoneCodes);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
-    // if (arch == null) {
-    //   // This will be the case of legacy flow, where we don't have architecture as top level
-    //   // universe property. We can retrieve the arch from the default Image bundle for the
-    // provider.
-    //   List<ImageBundle> defaultImageBundles = ImageBundle.getDefaultForProvider(providerUUID);
-    //   if (defaultImageBundles.size() > 0) {
-    //     arch = defaultImageBundles.get(0).getDetails().getArch().toString();
-    //   }
-    // }
+    if (arch == null && confGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching)) {
+      // This will be the case of legacy flow, where we don't have architecture as top level
+      // universe property. We can retrieve the arch from the default Image bundle for the provider.
+      List<ImageBundle> defaultImageBundles = ImageBundle.getDefaultForProvider(providerUUID);
+      if (defaultImageBundles.size() > 0) {
+        arch = defaultImageBundles.get(0).getDetails().getArch().toString();
+      }
+    }
     final String architecture = arch;
     Map<String, InstanceType> instanceTypesMap;
     instanceTypesMap =
         InstanceType.findByProvider(
                 provider,
-                config,
+                confGetter,
                 confGetter.getConfForScope(provider, ProviderConfKeys.allowUnsupportedInstances))
             .stream()
             .filter(
@@ -224,6 +227,18 @@ public class InstanceTypeController extends AuthenticatedController {
     Form<InstanceType> formData = formFactory.getFormDataOrBadRequest(request, InstanceType.class);
 
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
+    if (provider.getCloudCode() == CloudType.aws
+        && confGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching)) {
+      // Check in case the arch is specified for the instance.
+      InstanceTypeDetails instanceDetails = formData.get().getInstanceTypeDetails();
+      if (instanceDetails == null || instanceDetails.arch == null) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "Please specify the architecture for the instance type %s",
+                formData.get().getInstanceTypeCode()));
+      }
+    }
     InstanceType it =
         InstanceType.upsert(
             provider.getUuid(),

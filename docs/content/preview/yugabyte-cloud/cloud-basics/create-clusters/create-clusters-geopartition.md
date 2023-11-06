@@ -15,8 +15,6 @@ Use [partition-by-region](../../create-clusters-topology/#partition-by-region) c
 
 Clusters consist of a primary region and any number of additional secondary regions, where the partitioned, region-specific data resides. You can add or remove regions as required. When first deploying, you can deploy a single cluster in the primary region.
 
-Currently, Azure is not supported for partition-by-region clusters (coming soon).
-
 {{< youtube id="9ESTXEa9QZY" title="Create a geo-partitioned cluster in YugabyteDB Managed" >}}
 
 ## Tablespaces
@@ -99,7 +97,7 @@ To add additional regions to the cluster, click **Add Region**.
 
 **Node size** - enter the number of virtual CPUs per node and the disk size per node (in GB).
 
-Partiton-by-region clusters support both horizontal and vertical scaling; you can add regions and change the cluster configuration after the cluster is created using the **Edit Configuration** settings. Refer to [Scale and configure clusters](../../../cloud-clusters/configure-clusters#infrastructure).
+Partiton-by-region clusters support both horizontal and vertical scaling; you can add regions and change the cluster configuration after the cluster is created. Refer to [Scale and configure clusters](../../../cloud-clusters/configure-clusters#infrastructure).
 
 Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../../cloud-admin/cloud-billing-costs/).
 

@@ -5,12 +5,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfigCache;
 import com.yugabyte.yw.controllers.JWTVerifier;
 import com.yugabyte.yw.controllers.RequestContext;
 import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
 import com.yugabyte.yw.models.rbac.RoleBinding;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
@@ -28,7 +30,6 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.pac4j.play.store.PlaySessionStore;
-import play.libs.typedmap.TypedKey;
 import play.mvc.Action;
 import play.mvc.Http;
 import play.mvc.Result;
@@ -46,34 +47,31 @@ public class AuthorizationHandler extends Action<AuthzPath> {
   private static final String CUSTOMERS = "customers";
 
   private final Config config;
-  private final RuntimeConfigFactory runtimeConfigFactory;
+  private final RuntimeConfigCache runtimeConfigCache;
   private final PlaySessionStore sessionStore;
   private final JWTVerifier jwtVerifier;
   private final TokenAuthenticator tokenAuthenticator;
 
   private static final String UUID_PATTERN =
       "([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(/.*)?";
-  public static final TypedKey<Customer> CUSTOMER = TypedKey.create("customer");
-  public static final TypedKey<Users> USER = TypedKey.create("user");
 
   @Inject
   public AuthorizationHandler(
       Config config,
       PlaySessionStore sessionStore,
-      RuntimeConfigFactory runtimeConfigFactory,
+      RuntimeConfigCache runtimeConfigCache,
       JWTVerifier jwtVerifier,
       TokenAuthenticator tokenAuthenticator) {
     this.config = config;
     this.sessionStore = sessionStore;
-    this.runtimeConfigFactory = runtimeConfigFactory;
+    this.runtimeConfigCache = runtimeConfigCache;
     this.jwtVerifier = jwtVerifier;
     this.tokenAuthenticator = tokenAuthenticator;
   }
 
   @Override
   public CompletionStage<Result> call(Http.Request request) {
-    boolean useNewAuthz =
-        runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.rbac.use_new_authz");
+    boolean useNewAuthz = runtimeConfigCache.getBoolean(GlobalConfKeys.useNewRbacAuthz.getKey());
     if (!useNewAuthz) {
       return delegate.call(request);
     }
@@ -81,6 +79,9 @@ public class AuthorizationHandler extends Action<AuthzPath> {
     if (user == null) {
       return CompletableFuture.completedFuture(Results.unauthorized("Unable To authenticate User"));
     }
+    UserWithFeatures userWithFeatures = new UserWithFeatures().setUser(user);
+    RequestContext.put(TokenAuthenticator.CUSTOMER, Customer.get(user.getCustomerUUID()));
+    RequestContext.put(TokenAuthenticator.USER, userWithFeatures);
 
     String endpoint = request.path();
     UUID customerUUID = null;
@@ -116,6 +117,10 @@ public class AuthorizationHandler extends Action<AuthzPath> {
 
       if (applicableRoleBindings.isEmpty()) {
         return CompletableFuture.completedFuture(Results.unauthorized("Unable to authorize user"));
+      }
+
+      if (permissionPath.checkOnlyPermission()) {
+        continue;
       }
 
       UUID resourceUUID = null;
@@ -216,8 +221,6 @@ public class AuthorizationHandler extends Action<AuthzPath> {
           }
       }
     }
-    RequestContext.put(CUSTOMER, Customer.get(user.getCustomerUUID()));
-    RequestContext.put(USER, user);
     return delegate.call(request);
   }
 

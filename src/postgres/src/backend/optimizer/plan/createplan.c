@@ -1014,6 +1014,13 @@ use_physical_tlist(PlannerInfo *root, Path *path, int flags)
 		return false;
 
 	/*
+	 * Exact tlist is beneficial for YB relations, in this case only referenced
+	 * columns are fetched from remote tserver.
+	 */
+	if (rel->is_yb_relation)
+		return false;
+
+	/*
 	 * Also, don't do it to a CustomPath; the premise that we're extracting
 	 * columns from a simple physical tuple is unlikely to hold for those.
 	 * (When it does make sense, the custom path creator can set up the path's

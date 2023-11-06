@@ -233,16 +233,28 @@ void PreparerImpl::Run() {
     }
     ProcessAndClearLeaderSideBatch();
     std::unique_lock<std::mutex> stop_lock(stop_mtx_);
-    running_.store(false, std::memory_order_release);
-    // Check whether tasks were added while we were setting running to false.
-    if (active_tasks_.load(std::memory_order_acquire)) {
-      // Got more operations, try stay in the loop.
-      bool expected = false;
-      if (running_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
-        continue;
+    // If load of active_tasks_ below is re-ordered by the compiler/cpu and gets to execute before
+    // exchange of running_, we could get into a state where there is a new item enqueued on queue_
+    // but no newly submitted task of type PreparerImpl::Run. And the current thread executing
+    // PreparerImpl::Run could return as well which would put us in a "stuck" state.
+    //
+    // Use of acquire-release ordering for running_.exchange prevents any subsequent atomic
+    // operations in this thread from being re-ordered before the state of running_ is set to false,
+    // thus preventing the situation described above.
+    if (PREDICT_TRUE(running_.exchange(false, std::memory_order_acq_rel))) {
+      // Check whether tasks were added while we were switching running to false.
+      if (active_tasks_.load(std::memory_order_acquire)) {
+        // Got more operations, try stay in the loop.
+        bool expected = false;
+        if (running_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
+          continue;
+        }
+        // If someone else has flipped running_ to true, we can safely exit this function because
+        // another task is already submitted to the same token.
       }
-      // If someone else has flipped running_ to true, we can safely exit this function because
-      // another task is already submitted to the same token.
+    } else {
+      LOG(DFATAL) << "running_ is false when there's an active thread executing PreparerImpl::Run. "
+                  << "Getting into this state may affect throughput or halt workloads.";
     }
     if (stop_requested_.load(std::memory_order_acquire)) {
       VLOG(2) << "Prepare task's Run() function is returning because stop is requested.";

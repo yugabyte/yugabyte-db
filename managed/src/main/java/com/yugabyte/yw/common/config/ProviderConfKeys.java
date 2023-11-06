@@ -328,7 +328,8 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "yb.filepaths.remoteTmpDirectory",
           ScopeType.PROVIDER,
           "Remote tmp directory",
-          "A remote temporary directory should be used for performing operations on nodes within the provider scope.",
+          "A remote temporary directory should be used for performing operations on nodes within"
+              + " the provider scope.",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> operationStatusPollingInterval =
@@ -388,4 +389,31 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Mount roots, which we show on the merics dashboard and which we're alerting on.",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<String> ybopsFaultInjectedPaths =
+      new ConfKeyInfo<>(
+          "yb.internal.ybops_fault_injected_paths",
+          ScopeType.PROVIDER,
+          "Enable ybops fault injection",
+          "Enable ybobs fault injection for module paths with failure rate.",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<Boolean> otelCollectorEnabled =
+      new ConfKeyInfo<>(
+          "yb.universe.otel_collector_enabled",
+          ScopeType.PROVIDER,
+          "Enable OpenTelemetry Collector",
+          "Enables OpenTelemetry Collector installation on DB nodes",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<Duration> waitForYQLRetryDuration =
+      new ConfKeyInfo<>(
+          "yb.wait_for_yqlserver_retry",
+          ScopeType.PROVIDER,
+          "Duration between retries while waiting for ysql to come up",
+          "Duration between retries while waiting for ysql to come up",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

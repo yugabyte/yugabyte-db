@@ -63,7 +63,6 @@ $YB_SRC_ROOT/python/yugabyte/gen_initial_sys_catalog_snapshot.py
   export YB_SCRIPT_PATH_IS_SAME_PATH=$YB_SRC_ROOT/python/yugabyte/is_same_path.py
   export YB_SCRIPT_PATH_KILL_LONG_RUNNING_MINICLUSTER_DAEMONS=\
 $YB_SRC_ROOT/python/yugabyte/kill_long_running_minicluster_daemons.py
-  export YB_SCRIPT_PATH_MAKE_RPATH_RELATIVE=$YB_SRC_ROOT/python/yugabyte/make_rpath_relative.py
   export YB_SCRIPT_PATH_PARSE_TEST_FAILURE=$YB_SRC_ROOT/python/yugabyte/parse_test_failure.py
   export YB_SCRIPT_PATH_POSTPROCESS_TEST_RESULT=\
 $YB_SRC_ROOT/python/yugabyte/postprocess_test_result.py
@@ -228,6 +227,7 @@ readonly -a VALID_COMPILER_TYPES=(
   gcc
   gcc11
   gcc12
+  gcc13
   clang
   clang14
   clang15
@@ -388,13 +388,8 @@ decide_whether_to_use_linuxbrew() {
       if [[ ${predefined_build_root##*/} == *-linuxbrew-* ]]; then
         YB_USE_LINUXBREW=1
       fi
-    elif [[ -n ${YB_LINUXBREW_DIR:-} ||
-            ( ${YB_COMPILER_TYPE} =~ ^clang[0-9]+$ &&
-               $build_type =~ ^(release|prof_(gen|use))$ &&
-              "$( uname -m )" == "x86_64" &&
-              ${OSTYPE} =~ ^linux.*$ ) ]] && ! is_ubuntu; then
-      YB_USE_LINUXBREW=1
     fi
+    # Default is no linuxbrew
     export YB_USE_LINUXBREW=${YB_USE_LINUXBREW:-0}
   fi
 }
@@ -1637,7 +1632,9 @@ get_build_worker_list() {
     if [[ -n ${YB_BUILD_WORKERS_FILE:-} ]]; then
       build_workers=( $( cat "$YB_BUILD_WORKERS_FILE" ))
     else
-      build_workers=( $( curl -s "$YB_BUILD_WORKERS_LIST_URL" ) )
+      build_workers=( $( curl -s "$YB_BUILD_WORKERS_LIST_URL" ) ) \
+        || fatal "Failed to curl $YB_BUILD_WORKERS_LIST_URL: check your network connection or use" \
+                 "--no-remote"
     fi
     if [[ ${#build_workers[@]} -eq 0 ]]; then
       log "Got an empty list of build workers from $YB_BUILD_WORKERS_LIST_URL," \
@@ -2381,7 +2378,7 @@ activate_virtualenv() {
   if [[ ${yb_readonly_virtualenv} == "false" ]]; then
     local requirements_file_path="$YB_SRC_ROOT/requirements_frozen.txt"
     local installed_requirements_file_path=$virtualenv_dir/${requirements_file_path##*/}
-    pip3 install --upgrade pip
+    "$pip_executable" --retries 0 install --upgrade pip
     if ! cmp --silent "$requirements_file_path" "$installed_requirements_file_path"; then
       run_with_retries 10 0.5 "$pip_executable" install -r "$requirements_file_path" \
         $pip_no_cache
@@ -2592,7 +2589,7 @@ set_prebuilt_thirdparty_url() {
       local thirdparty_tool_cmd_line=(
         "$YB_BUILD_SUPPORT_DIR/thirdparty_tool"
         --save-thirdparty-url-to-file "$thirdparty_url_file_path"
-        --compiler-type "$YB_COMPILER_TYPE"
+        --compiler-type "${YB_COMPILER_TYPE_FOR_THIRDPARTY:-$YB_COMPILER_TYPE}"
       )
       if [[ -n ${YB_USE_LINUXBREW:-} ]]; then
         # See arg_str_to_bool in Python code for how the boolean parameter is interpreted.

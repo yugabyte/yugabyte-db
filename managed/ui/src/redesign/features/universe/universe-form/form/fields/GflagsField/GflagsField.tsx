@@ -30,6 +30,7 @@ import Edit from '../../../../../../assets/edit_pen.svg';
 import Close from '../../../../../../assets/close.svg';
 import Plus from '../../../../../../assets/plus.svg';
 import MoreIcon from '../../../../../../assets/ellipsis.svg';
+import '../../../../../../../components/universes/UniverseForm/UniverseForm.scss';
 
 /* TODO : 
 1. Rewrite this file with proper types
@@ -135,7 +136,7 @@ export const GFlagsField = ({
           {t('universeForm.gFlags.addGflags')}
         </>
       ),
-      className: 'btn btn-orange mr-10',
+      className: 'btn btn-orange mr-10 btn-add-gflag',
       bsStyle: 'danger'
     },
     {
@@ -146,7 +147,8 @@ export const GFlagsField = ({
           {t('universeForm.gFlags.addJson')}
         </>
       ),
-      className: 'btn btn-default'
+      className: 'btn btn-orange mr-10',
+      bsStyle: 'danger'
     }
   ];
   //server list - TO DRY THE CODE

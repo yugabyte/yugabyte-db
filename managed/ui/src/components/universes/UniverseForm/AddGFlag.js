@@ -15,6 +15,8 @@ import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 //Icons
 import Bulb from '../images/bulb.svg';
 import BookOpen from '../images/book_open.svg';
+// Styles
+import './UniverseForm.scss';
 
 const AddGFlag = ({ formProps, gFlagProps, updateJWKSDialogStatus }) => {
   const featureFlags = useSelector((state) => state.featureFlags);

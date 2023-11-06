@@ -5,6 +5,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.yugabyte.yw.common.DrConfigStates.State;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterConfig.TableType;
@@ -61,6 +62,13 @@ public class DrConfig extends Model {
   @JsonIgnore
   private List<XClusterConfig> xClusterConfigs;
 
+  /**
+   * In the application logic, <em>NEVER<em/> read from the following variable. This is only used
+   * for UI purposes.
+   */
+  @ApiModelProperty(value = "The state of the DR config")
+  private State state;
+
   @Transactional
   public static DrConfig create(
       String name, UUID sourceUniverseUUID, UUID targetUniverseUUID, Set<String> tableIds) {
@@ -68,6 +76,7 @@ public class DrConfig extends Model {
     drConfig.name = name;
     drConfig.setCreateTime(new Date());
     drConfig.setModifyTime(new Date());
+    drConfig.setState(State.Initializing);
 
     // Create a corresponding xCluster object.
     XClusterConfig xClusterConfig =

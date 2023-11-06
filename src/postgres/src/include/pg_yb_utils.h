@@ -41,6 +41,7 @@
 
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 #include "yb_ysql_conn_mgr_helper.h"
 
@@ -89,7 +90,8 @@ extern void YbResetCatalogCacheVersion();
 
 extern uint64_t YbGetLastKnownCatalogCacheVersion();
 
-extern uint64_t YbGetCatalogCacheVersionForTablePrefetching();
+extern YBCPgLastKnownCatalogVersionInfo
+YbGetCatalogCacheVersionForTablePrefetching();
 
 extern void YbUpdateLastKnownCatalogCacheVersion(uint64_t catalog_cache_version);
 
@@ -250,6 +252,11 @@ extern bool YBSavepointsEnabled();
  * Whether the per database catalog version mode is enabled.
  */
 extern bool YBIsDBCatalogVersionMode();
+
+/*
+ * Whether we need to preload additional catalog tables.
+ */
+extern bool YbNeedAdditionalCatalogTables();
 
 /*
  * Since DDL metadata in master DocDB and postgres system tables is not modified
@@ -798,6 +805,12 @@ void YbRefreshSessionStatsDuringExecution();
  * storage layer need to be timed.
  */
 void YbToggleSessionStatsTimer(bool timing_on);
+
+/**
+ * Update the global flag indicating what metric changes to capture and return
+ * from the tserver to PG.
+ */
+void YbSetMetricsCaptureType(YBCPgMetricsCaptureType metrics_capture);
 
 /*
  * If the tserver gflag --ysql_disable_server_file_access is set to

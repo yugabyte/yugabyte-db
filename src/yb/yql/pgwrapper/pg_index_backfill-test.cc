@@ -231,28 +231,19 @@ bool PgIndexBackfillTest::HasClientTimedOut(const Status& s) {
 
 void PgIndexBackfillTest::TestSimpleBackfill(const std::string& table_create_suffix) {
   ASSERT_OK(conn_->ExecuteFormat(
-    "CREATE TABLE $0 (c char, i int, p point) $1",
-    kTableName,
-    table_create_suffix));
-  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES ('a', 0, '(1, 2)')", kTableName));
-  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES ('y', -5, '(0, -2)')", kTableName));
-  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES ('b', 100, '(868, 9843)')", kTableName));
+      "CREATE TABLE $0 (c CHAR, i INT, p POINT) $1", kTableName, table_create_suffix));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 VALUES ('a', 0, '(1, 2)'), ('y', -5, '(0, -2)'), ('b', 100, '(868, 9843)')",
+      kTableName));
   ASSERT_OK(conn_->ExecuteFormat("CREATE INDEX ON $0 (c ASC)", kTableName));
 
   // Index scan to verify contents of index table.
-  const std::string query = Format("SELECT * FROM $0 ORDER BY c", kTableName);
+  const auto query = Format("SELECT c, i FROM $0 ORDER BY c", kTableName);
   ASSERT_TRUE(ASSERT_RESULT(conn_->HasIndexScan(query)));
-  PGResultPtr res = ASSERT_RESULT(conn_->Fetch(query));
-  ASSERT_EQ(PQntuples(res.get()), 3);
-  ASSERT_EQ(PQnfields(res.get()), 3);
-  std::array<int, 3> values = {
-    ASSERT_RESULT(GetInt32(res.get(), 0, 1)),
-    ASSERT_RESULT(GetInt32(res.get(), 1, 1)),
-    ASSERT_RESULT(GetInt32(res.get(), 2, 1)),
-  };
-  ASSERT_EQ(values[0], 0);
-  ASSERT_EQ(values[1], 100);
-  ASSERT_EQ(values[2], -5);
+
+  const auto values = ASSERT_RESULT((conn_->FetchAll<char, int32_t>(query)));
+  decltype(values) expected_values = {{'a', 0}, {'b', 100}, {'y', -5}};
+  ASSERT_EQ(values, expected_values);
 }
 
 // Checks that retain_delete_markers is false after index creation.
@@ -366,8 +357,8 @@ TEST_F(PgIndexBackfillTest, Partial) {
     ASSERT_EQ(PQntuples(res.get()), 2);
     ASSERT_EQ(PQnfields(res.get()), 1);
     std::array<int, 2> values = {
-      ASSERT_RESULT(GetInt32(res.get(), 0, 0)),
-      ASSERT_RESULT(GetInt32(res.get(), 1, 0)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 0)),
     };
     ASSERT_EQ(values[0], -1);
     ASSERT_EQ(values[1], -2);
@@ -381,8 +372,8 @@ TEST_F(PgIndexBackfillTest, Partial) {
     ASSERT_EQ(PQntuples(res.get()), 2);
     ASSERT_EQ(PQnfields(res.get()), 1);
     std::array<int, 2> values = {
-      ASSERT_RESULT(GetInt32(res.get(), 0, 0)),
-      ASSERT_RESULT(GetInt32(res.get(), 1, 0)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 0)),
     };
     ASSERT_EQ(values[0], 4);
     ASSERT_EQ(values[1], 3);
@@ -410,14 +401,14 @@ TEST_F(PgIndexBackfillTest, Expression) {
   ASSERT_EQ(PQnfields(res.get()), 3);
   std::array<std::array<int, 3>, 2> values = {{
     {
-      ASSERT_RESULT(GetInt32(res.get(), 0, 0)),
-      ASSERT_RESULT(GetInt32(res.get(), 0, 1)),
-      ASSERT_RESULT(GetInt32(res.get(), 0, 2)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 1)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 2)),
     },
     {
-      ASSERT_RESULT(GetInt32(res.get(), 1, 0)),
-      ASSERT_RESULT(GetInt32(res.get(), 1, 1)),
-      ASSERT_RESULT(GetInt32(res.get(), 1, 2)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 0)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 1)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 2)),
     },
   }};
   ASSERT_EQ(values[0][0], 14);
@@ -631,7 +622,20 @@ Status PgIndexBackfillTest::TestInsertsWhileCreatingIndex(bool expect_missing_ro
   return Status::OK();
 }
 
-TEST_F(PgIndexBackfillTest, InsertsWhileCreatingIndex) {
+class PgIndexBackfillTestEnableWait : public PgIndexBackfillTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.insert(
+        options->extra_tserver_flags.end(),
+        {
+          "--ysql_yb_disable_wait_for_backends_catalog_version=false",
+          "--ysql_yb_index_state_flags_update_delay=0",
+        });
+  }
+};
+
+TEST_F_EX(PgIndexBackfillTest, InsertsWhileCreatingIndexEnableWait, PgIndexBackfillTestEnableWait) {
   ASSERT_OK(TestInsertsWhileCreatingIndex(false /* expect_missing_row */));
 }
 
@@ -639,8 +643,12 @@ class PgIndexBackfillTestDisableWait : public PgIndexBackfillTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgIndexBackfillTest::UpdateMiniClusterOptions(options);
-    options->extra_tserver_flags.push_back(
-        "--ysql_yb_disable_wait_for_backends_catalog_version=true");
+    options->extra_tserver_flags.insert(
+        options->extra_tserver_flags.end(),
+        {
+          "--ysql_yb_disable_wait_for_backends_catalog_version=true",
+          "--ysql_yb_index_state_flags_update_delay=0",
+        });
   }
 };
 
@@ -924,11 +932,9 @@ TEST_F_EX(PgIndexBackfillTest,
   LOG(INFO) << "Checking postgres schema";
   {
     // Check number of indexes.
-    PGResultPtr res = ASSERT_RESULT(conn_->FetchFormat(
-        "SELECT indexname FROM pg_indexes WHERE tablename = '$0'", kTableName));
-    ASSERT_EQ(PQntuples(res.get()), 1);
-    const std::string actual = ASSERT_RESULT(GetString(res.get(), 0, 0));
-    ASSERT_EQ(actual, kIndexName);
+    ASSERT_EQ(ASSERT_RESULT(conn_->FetchValue<std::string>(
+                Format("SELECT indexname FROM pg_indexes WHERE tablename = '$0'", kTableName))),
+              kIndexName);
 
     // Check whether index is public using index scan.
     ASSERT_TRUE(ASSERT_RESULT(conn_->HasIndexScan(query)));
@@ -983,10 +989,7 @@ TEST_F_EX(PgIndexBackfillTest,
   LOG(INFO) << "Checking if index still works";
   {
     ASSERT_TRUE(ASSERT_RESULT(conn_->HasIndexScan(query)));
-    PGResultPtr res = ASSERT_RESULT(conn_->Fetch(query));
-    ASSERT_EQ(PQntuples(res.get()), 1);
-    int32_t value = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
-    ASSERT_EQ(value, 7);
+    ASSERT_EQ(ASSERT_RESULT(conn_->FetchValue<int32_t>(query)), 7);
   }
 }
 
@@ -1306,10 +1309,10 @@ TEST_F_EX(PgIndexBackfillTest,
   ASSERT_EQ(1, lines);
   int columns = PQnfields(res.get());
   ASSERT_EQ(2, columns);
-  int32_t key = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+  auto key = ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0));
   ASSERT_EQ(key, 3);
   // Make sure that the update is visible.
-  int32_t value = ASSERT_RESULT(GetInt32(res.get(), 0, 1));
+  auto value = ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 1));
   ASSERT_EQ(value, 113);
 }
 
@@ -1383,14 +1386,8 @@ TEST_F_EX(PgIndexBackfillTest,
         kTableName,
         key);
     ASSERT_OK(WaitForIndexScan(query));
-    PGResultPtr res = ASSERT_RESULT(conn_->Fetch(query));
-    int lines = PQntuples(res.get());
-    ASSERT_EQ(1, lines);
-    int columns = PQnfields(res.get());
-    ASSERT_EQ(1, columns);
     // Make sure that the update is visible.
-    int value = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
-    ASSERT_EQ(value, key + 110);
+    ASSERT_EQ(ASSERT_RESULT(conn_->FetchValue<int32_t>(query)), key + 110);
   }
 }
 
@@ -2053,7 +2050,7 @@ TEST_F_EX(PgIndexBackfillTest,
   // Assert that the phase is still "backfilling" and that the number of tuples done is still 0
   // within this txn.
   res = ASSERT_RESULT(conn_->Fetch(index_progress_query));
-  ASSERT_EQ(ASSERT_RESULT(GetString(res.get(), 0, 0)), "backfilling");
+  ASSERT_EQ(ASSERT_RESULT(GetValue<std::string>(res.get(), 0, 0)), "backfilling");
   ASSERT_EQ(ASSERT_RESULT(GetValue<PGUint64>(res.get(), 0, 1)), 0);
   ASSERT_OK(conn_->ExecuteFormat("COMMIT"));
 }
@@ -2172,6 +2169,16 @@ TEST_F_EX(PgIndexBackfillTest,
   thread_holder_.Stop();
 }
 
+// Override to use YSQL backends manager.
+class PgIndexBackfillBackendsManager : public PgIndexBackfillBlockDoBackfill {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillBlockDoBackfill::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back(
+        "--ysql_yb_disable_wait_for_backends_catalog_version=false");
+  }
+};
+
 // Make sure transaction is not aborted by getting safe time.  Simulate the following:
 //   Session A                                    Session B
 //   --------------------------                   ---------------------------------
@@ -2188,7 +2195,7 @@ TEST_F_EX(PgIndexBackfillTest,
 // TODO(#19000): enable for TSAN.
 TEST_F_EX(PgIndexBackfillTest,
           YB_DISABLE_TEST_IN_TSAN(NoAbortTxn),
-          PgIndexBackfillBlockDoBackfill) {
+          PgIndexBackfillBackendsManager) {
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int PRIMARY KEY, j int) SPLIT INTO 1 TABLETS",
                                  kTableName));
   ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 2), (3, 4)", kTableName));

@@ -201,7 +201,8 @@ public class CloudProviderHandler {
             }
           } else if (!hasConfig) {
             LOG.warn(
-                "No Kubeconfig found at any level, in-cluster service account credentials will be used.");
+                "No Kubeconfig found at any level, in-cluster service account credentials will be"
+                    + " used.");
           }
         }
       }

@@ -1,3 +1,5 @@
+import { IBackup } from "./IBackup";
+
 export enum Restore_States {
   IN_PROGRESS = 'InProgress',
   COMPLETED = 'Completed',
@@ -5,13 +7,23 @@ export enum Restore_States {
   ABORTED = 'Aborted'
 }
 export interface IRestore {
-  createTime: number;
+  createTime: string;
+  updateTime: string;
   totalBackupSizeInBytes?: number;
+  isSourceUniversePresent: boolean;
+  sourceUniverseUUID: string;
   universeUUID: string;
   state: Restore_States;
   targetUniverseName: string;
   sourceUniverseName: string;
   restoreSizeInBytes: number;
+  backupType?: IBackup['backupType']
+  backupCreatedOnDate?: string;
+  restoreKeyspaceList: {
+    targetKeyspace: string;
+    storageLocation: string;
+    tableNameList?: string[];
+  }[]
 }
 
 export const RESTORE_STATUS_OPTIONS: { value: Restore_States | null; label: string }[] = [
@@ -30,9 +42,5 @@ export const RESTORE_STATUS_OPTIONS: { value: Restore_States | null; label: stri
   {
     label: 'Failed',
     value: Restore_States.FAILED
-  },
-  {
-    label: 'Aborted',
-    value: Restore_States.ABORTED
   }
 ];

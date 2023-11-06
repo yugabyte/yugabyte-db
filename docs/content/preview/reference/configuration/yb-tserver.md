@@ -460,6 +460,14 @@ Assigns an extra priority to automatic (minor) compactions when automatic tablet
 
 Default: `50`
 
+##### --ysql_colocate_database_by_default
+
+When enabled, all databases created in the cluster are colocated by default. If you enable the flag after creating a cluster, you need to restart the YB-Master and YB-TServer services.
+
+For more details, see [clusters in colocated tables](../../../architecture/docdb-sharding/colocated-tables/#clusters).
+
+Default: `false`
+
 ## Geo-distribution flags
 
 Settings related to managing geo-distributed clusters:
@@ -638,7 +646,7 @@ Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNC
 
 Default: `READ COMMITTED`<sup>$</sup>
 
-<sup>$</sup> Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag). Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
+<sup>$</sup> Read Committed support is currently in [Tech Preview](/preview/releases/versioning/#feature-availability). Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
 
 ##### --ysql_disable_index_backfill
 
@@ -674,7 +682,7 @@ Default: `100`
 
 Specifies the types of YSQL statements that should be logged.
 
-Valid values: `none` (off), `ddl` (only data definition queries, such as create/alter/drop), `mod` (all modifying/write statements, includes DDLs plus insert/update/delete/trunctate, etc), and `all` (all statements).
+Valid values: `none` (off), `ddl` (only data definition queries, such as create/alter/drop), `mod` (all modifying/write statements, includes DDLs plus insert/update/delete/truncate, etc), and `all` (all statements).
 
 Default: `none`
 
@@ -843,6 +851,24 @@ Rate control across all tablets being remote bootstrapped from or to this proces
 
 Default: `256MB` (256 MB/second)
 
+##### --remote_bootstrap_from_leader_only
+
+Based on the value (`true`/`false`) of the flag, the leader decides whether to instruct the new peer to attempt bootstrap from a closest caught-up peer. The leader too could be the closest peer depending on the new peer's geographic placement. Setting the flag to false will enable the feature of remote bootstrapping from a closest caught-up peer. The number of bootstrap attempts from a non-leader peer is limited by the flag [max_remote_bootstrap_attempts_from_non_leader](#max-remote-bootstrap-attempts-from-non-leader).
+
+Default: `false`
+
+{{< note title="Note" >}}
+
+The code for the feature is present from version 2.16 and later, and can be enabled explicitly if needed. Starting from version 2.19, the feature is on by default.
+
+{{< /note >}}
+
+##### --max_remote_bootstrap_attempts_from_non_leader
+
+When the flag [remote_bootstrap_from_leader_only](#remote-bootstrap-from-leader-only) is set to `false` (enabling the feature of bootstrapping from a closest peer), the number of attempts where the new peer tries to bootstrap from a non-leader peer is limited by the flag. After these failed bootstrap attempts for the new peer, the leader peer sets itself as the bootstrap source.
+
+Default: `5`
+
 ## Network compression flags
 
 Use the following two flags to configure RPC compression:
@@ -977,15 +1003,19 @@ In addition, as this setting does not propagate to PostgreSQL, it is recommended
 --ysql_pg_conf_csv="ssl_min_protocol_version=TLSv1.2"
 ```
 
-## Packed row flags (Beta)
+## Packed row flags
 
-To learn about the packed row feature, see [Packed row format](../../../architecture/docdb/persistence/#packed-row-format-beta) in the architecture section.
+Packed row format support is currently in [Early Access](/preview/releases/versioning/#feature-availability).
+
+To learn about the packed row feature, see [Packed row format](../../../architecture/docdb/persistence/#packed-row-format) in the architecture section.
 
 ##### --ysql_enable_packed_row
 
 Whether packed row is enabled for YSQL.
 
 Default: `false`
+
+Packed Row for YSQL can be used from version 2.16.4 in production environments if the cluster is not used in xCluster settings. For xCluster scenarios, use version 2.18.1 and later. Starting from version 2.19 and later, the flag default is true for new clusters.
 
 ##### --ysql_packed_row_size_limit
 
@@ -994,6 +1024,8 @@ Packed row size limit for YSQL. The default value is 0 (use block size as limit)
 Default: `0`
 
 ##### --ycql_enable_packed_row
+
+YCQL packed row support is currently in [Tech Preview](/preview/releases/versioning/#feature-availability).
 
 Whether packed row is enabled for YCQL.
 
@@ -1232,21 +1264,21 @@ Default: `1GB`
 
 The Admin UI for the YB-TServer is available at `http://localhost:9000`.
 
-### Home
-
-Home page of the YB-TServer (`yb-tserver`) that gives a high level overview of this specific instance.
-
-![tserver-home](/images/admin/tserver-home.png)
-
 ### Dashboards
 
-Here's a list of all dashboards to review the ongoing operations:
+List of all dashboards to review ongoing operations.
 
 ![tserver-dashboards](/images/admin/tserver-dashboards.png)
 
+### Tables
+
+List of all tables managed by this specific instance, sorted by [namespace](../yb-master/#namespaces).
+
+![tserver-tablets](/images/admin/tserver-tables.png)
+
 ### Tablets
 
-List of all tablets managed by this specific instance, sorted by the table name.
+List of all tablets managed by this specific instance.
 
 ![tserver-tablets](/images/admin/tserver-tablets.png)
 

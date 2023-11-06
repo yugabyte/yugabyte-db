@@ -178,9 +178,9 @@ TEST_P(PgAddColumnDefaultTest, AddColumnDefaultCopy) {
   auto check_result = [&res] {
     ASSERT_EQ(PQntuples(res.get()), 9);
     for (int i = 1; i <= PQntuples(res.get()); ++i) {
-      const auto value1 = ASSERT_RESULT(GetInt32(res.get(), i - 1, 0));
+      const auto value1 = ASSERT_RESULT(GetValue<int32_t>(res.get(), i - 1, 0));
       ASSERT_EQ(value1, i);
-      const auto value2 = ASSERT_RESULT(GetString(res.get(), i - 1, 1));
+      const auto value2 = ASSERT_RESULT(GetValue<std::string>(res.get(), i - 1, 1));
       if (i <= 5) {
         ASSERT_EQ(value2, "default");
       } else if (i <= 7) {

@@ -103,6 +103,8 @@ public class Util {
 
   public static final String K8S_YBC_COMPATIBLE_DB_VERSION = "2.17.3.0-b62";
 
+  public static final String YBDB_ROLLBACK_DB_VERSION = "2.20.0.0-b1";
+
   public static final String AUTO_FLAG_FILENAME = "auto_flags.json";
 
   public static final String LIVE_QUERY_TIMEOUTS = "yb.query_stats.live_queries.ws";
@@ -140,6 +142,7 @@ public class Util {
   public static void setYbaVersion(String version) {
     YBA_VERSION = version;
   }
+
   /**
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
    */
@@ -861,7 +864,7 @@ public class Util {
   }
 
   public static String getYbcNodeIp(Universe universe) {
-    List<NodeDetails> nodeList = universe.getLiveTServersInPrimaryCluster();
+    List<NodeDetails> nodeList = universe.getRunningTserversInPrimaryCluster();
     return nodeList.get(0).cloudInfo.private_ip;
   }
 
@@ -876,7 +879,8 @@ public class Util {
     MessageDigest md = MessageDigest.getInstance(checksumAlgorithm);
     try (DigestInputStream dis =
         new DigestInputStream(new FileInputStream(filePath.toFile()), md)) {
-      while (dis.read() != -1) ; // Empty loop to clear the data
+      while (dis.read() != -1)
+        ; // Empty loop to clear the data
       md = dis.getMessageDigest();
       // Convert the digest to String.
       StringBuilder result = new StringBuilder();
@@ -991,5 +995,14 @@ public class Util {
       }
     }
     return dataDirPath;
+  }
+
+  public static String extractRegexValue(String input, String patternStr) {
+    Pattern pattern = Pattern.compile(patternStr);
+    Matcher matcher = pattern.matcher(input);
+    if (matcher.find()) {
+      return matcher.group(1);
+    }
+    return null;
   }
 }

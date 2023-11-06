@@ -74,7 +74,6 @@ DECLARE_bool(enable_pg_savepoints);
 DECLARE_bool(enable_tracing);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(enable_wait_queues);
-DECLARE_bool(enable_deadlock_detection);
 
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
@@ -162,6 +161,8 @@ class PgMiniTest : public PgMiniTestBase {
   void RunManyConcurrentReadersTest();
 
   void ValidateAbortedTxnMetric();
+
+  int64_t GetBloomFilterCheckedMetric();
 };
 
 class PgMiniTestSingleNode : public PgMiniTest {
@@ -176,7 +177,6 @@ class PgMiniTestFailOnConflict : public PgMiniTest {
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_deadlock_detection) = false;
     PgMiniTest::SetUp();
   }
 };
@@ -407,9 +407,9 @@ TEST_F(PgMiniTest, MultiColFollowerReads) {
   auto result =
       ASSERT_RESULT(conn.Fetch("/*+ Set(transaction_read_only off) */ "
                                "SELECT * FROM t WHERE k = 1"));
-  ASSERT_EQ(1, ASSERT_RESULT(GetInt32(result.get(), 0, 0)));
-  ASSERT_EQ("NEW", ASSERT_RESULT(GetString(result.get(), 0, 1)));
-  ASSERT_EQ("NEW", ASSERT_RESULT(GetString(result.get(), 0, 2)));
+  ASSERT_EQ(1, ASSERT_RESULT(GetValue<int32_t>(result.get(), 0, 0)));
+  ASSERT_EQ("NEW", ASSERT_RESULT(GetValue<std::string>(result.get(), 0, 1)));
+  ASSERT_EQ("NEW", ASSERT_RESULT(GetValue<std::string>(result.get(), 0, 2)));
 
   const int32_t kOpDurationMs = 10;
   auto staleness_ms = (MonoTime::Now() - kUpdateTime0).ToMilliseconds() - kOpDurationMs;
@@ -417,18 +417,18 @@ TEST_F(PgMiniTest, MultiColFollowerReads) {
   result =
       ASSERT_RESULT(conn.Fetch("/*+ Set(transaction_read_only on) */ "
                                "SELECT * FROM t WHERE k = 1"));
-  ASSERT_EQ(1, ASSERT_RESULT(GetInt32(result.get(), 0, 0)));
-  ASSERT_EQ("old", ASSERT_RESULT(GetString(result.get(), 0, 1)));
-  ASSERT_EQ("old", ASSERT_RESULT(GetString(result.get(), 0, 2)));
+  ASSERT_EQ(1, ASSERT_RESULT(GetValue<int32_t>(result.get(), 0, 0)));
+  ASSERT_EQ("old", ASSERT_RESULT(GetValue<std::string>(result.get(), 0, 1)));
+  ASSERT_EQ("old", ASSERT_RESULT(GetValue<std::string>(result.get(), 0, 2)));
 
   staleness_ms = (MonoTime::Now() - kUpdateTime1).ToMilliseconds() - kOpDurationMs;
   ASSERT_OK(conn.Execute(Format("SET yb_follower_read_staleness_ms = $0", staleness_ms)));
   result =
       ASSERT_RESULT(conn.Fetch("/*+ Set(transaction_read_only on) */ "
                                "SELECT * FROM t WHERE k = 1"));
-  ASSERT_EQ(1, ASSERT_RESULT(GetInt32(result.get(), 0, 0)));
-  ASSERT_EQ("NEW", ASSERT_RESULT(GetString(result.get(), 0, 1)));
-  ASSERT_EQ("old", ASSERT_RESULT(GetString(result.get(), 0, 2)));
+  ASSERT_EQ(1, ASSERT_RESULT(GetValue<int32_t>(result.get(), 0, 0)));
+  ASSERT_EQ("NEW", ASSERT_RESULT(GetValue<std::string>(result.get(), 0, 1)));
+  ASSERT_EQ("old", ASSERT_RESULT(GetValue<std::string>(result.get(), 0, 2)));
 
   SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
 
@@ -437,9 +437,9 @@ TEST_F(PgMiniTest, MultiColFollowerReads) {
   result =
       ASSERT_RESULT(conn.Fetch("/*+ Set(transaction_read_only on) */ "
                                "SELECT * FROM t WHERE k = 1"));
-  ASSERT_EQ(1, ASSERT_RESULT(GetInt32(result.get(), 0, 0)));
-  ASSERT_EQ("NEW", ASSERT_RESULT(GetString(result.get(), 0, 1)));
-  ASSERT_EQ("NEW", ASSERT_RESULT(GetString(result.get(), 0, 2)));
+  ASSERT_EQ(1, ASSERT_RESULT(GetValue<int32_t>(result.get(), 0, 0)));
+  ASSERT_EQ("NEW", ASSERT_RESULT(GetValue<std::string>(result.get(), 0, 1)));
+  ASSERT_EQ("NEW", ASSERT_RESULT(GetValue<std::string>(result.get(), 0, 2)));
 }
 
 TEST_F(PgMiniTest, Simple) {
@@ -512,7 +512,7 @@ TEST_F(PgMiniTest, WriteRetry) {
 
   auto result = ASSERT_RESULT(conn.FetchMatrix("SELECT * FROM t ORDER BY key", kKeys, 1));
   for (int key = 0; key != kKeys; ++key) {
-    auto fetched_key = ASSERT_RESULT(GetInt32(result.get(), key, 0));
+    auto fetched_key = ASSERT_RESULT(GetValue<int32_t>(result.get(), key, 0));
     ASSERT_EQ(fetched_key, key);
   }
 
@@ -657,23 +657,16 @@ TEST_F_EX(PgMiniTest, SerializableReadOnly, PgMiniTestFailOnConflict) {
 
   // SHOW for READ ONLY should show serializable
   ASSERT_OK(read_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE, READ ONLY"));
-  Result<PGResultPtr> result = read_conn.Fetch("SHOW transaction_isolation");
-  ASSERT_TRUE(result.ok()) << result.status();
-  string value = ASSERT_RESULT(GetString(result.get().get(), 0, 0));
-  ASSERT_EQ(value, "serializable");
+  ASSERT_EQ(ASSERT_RESULT(read_conn.FetchValue<std::string>("SHOW transaction_isolation")),
+            "serializable");
   ASSERT_OK(read_conn.Execute("COMMIT"));
 
   // SHOW for READ WRITE to READ ONLY should show serializable and read_only
   ASSERT_OK(write_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE, READ WRITE"));
   ASSERT_OK(write_conn.Execute("SET TRANSACTION READ ONLY"));
-  result = write_conn.Fetch("SHOW transaction_isolation");
-  ASSERT_TRUE(result.ok()) << result.status();
-  value = ASSERT_RESULT(GetString(result.get().get(), 0, 0));
-  ASSERT_EQ(value, "serializable");
-  result = write_conn.Fetch("SHOW transaction_read_only");
-  ASSERT_TRUE(result.ok()) << result.status();
-  value = ASSERT_RESULT(GetString(result.get().get(), 0, 0));
-  ASSERT_EQ(value, "on");
+  ASSERT_EQ(ASSERT_RESULT(write_conn.FetchValue<std::string>("SHOW transaction_isolation")),
+            "serializable");
+  ASSERT_EQ(ASSERT_RESULT(write_conn.FetchValue<std::string>("SHOW transaction_read_only")), "on");
   ASSERT_OK(write_conn.Execute("COMMIT"));
 
   // SERIALIZABLE, READ ONLY to READ WRITE should not use snapshot isolation
@@ -683,18 +676,17 @@ TEST_F_EX(PgMiniTest, SerializableReadOnly, PgMiniTestFailOnConflict) {
   ASSERT_OK(write_conn.Execute("UPDATE t SET i = i + 1"));
   // The result of the following statement is probabilistic.  If it does not fail now, then it
   // should fail during COMMIT.
-  result = read_conn.Fetch("SELECT * FROM t");
-  if (result.ok()) {
+  auto s = ResultToStatus(read_conn.Fetch("SELECT * FROM t"));
+  if (s.ok()) {
     ASSERT_OK(read_conn.Execute("COMMIT"));
     Status status = write_conn.Execute("COMMIT");
     ASSERT_NOK(status);
     ASSERT_TRUE(status.IsNetworkError()) << status;
     ASSERT_EQ(PgsqlError(status), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE) << status;
   } else {
-    const auto& status = result.status();
-    ASSERT_TRUE(status.IsNetworkError()) << status;
-    ASSERT_TRUE(IsSerializeAccessError(status)) << status;
-    ASSERT_STR_CONTAINS(status.ToString(), "conflicts with higher priority transaction");
+    ASSERT_TRUE(s.IsNetworkError()) << s;
+    ASSERT_TRUE(IsSerializeAccessError(s)) << s;
+    ASSERT_STR_CONTAINS(s.ToString(), "conflicts with higher priority transaction");
   }
 }
 
@@ -767,7 +759,7 @@ TEST_F(PgMiniTest, TruncateColocatedBigTable) {
   ASSERT_OK(tablet_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
 
   // Check if the row still visible.
-  auto res = conn.FetchValue<int>("select k from t1 where k = 1");
+  auto res = conn.FetchValue<int32_t>("select k from t1 where k = 1");
   ASSERT_NOK(res);
   ASSERT_TRUE(res.status().message().Contains("Fetched 0 rows, while 1 expected"));
 
@@ -900,10 +892,7 @@ TEST_F(PgMiniTest, ConcurrentSingleRowUpdate) {
       });
     }
   }
-  auto res = ASSERT_RESULT(conn.Fetch("SELECT counter FROM t WHERE k = 1"));
-  ASSERT_EQ(1, PQnfields(res.get()));
-  ASSERT_EQ(1, PQntuples(res.get()));
-  auto counter = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+  auto counter = ASSERT_RESULT(conn.FetchValue<int32_t>("SELECT counter FROM t WHERE k = 1"));
   ASSERT_EQ(thread_count * increment_per_thread, counter);
 }
 
@@ -1184,13 +1173,13 @@ void PgMiniTest::TestConcurrentDeleteRowAndUpdateColumn(bool select_before_updat
   ASSERT_OK(status);
   ASSERT_OK(conn1.CommitTransaction());
   auto result = ASSERT_RESULT(conn1.FetchMatrix("SELECT * FROM t ORDER BY i", 2, 2));
-  auto value = ASSERT_RESULT(GetInt32(result.get(), 0, 0));
+  auto value = ASSERT_RESULT(GetValue<int32_t>(result.get(), 0, 0));
   ASSERT_EQ(value, 1);
-  value = ASSERT_RESULT(GetInt32(result.get(), 0, 1));
+  value = ASSERT_RESULT(GetValue<int32_t>(result.get(), 0, 1));
   ASSERT_EQ(value, 10);
-  value = ASSERT_RESULT(GetInt32(result.get(), 1, 0));
+  value = ASSERT_RESULT(GetValue<int32_t>(result.get(), 1, 0));
   ASSERT_EQ(value, 3);
-  value = ASSERT_RESULT(GetInt32(result.get(), 1, 1));
+  value = ASSERT_RESULT(GetValue<int32_t>(result.get(), 1, 1));
   ASSERT_EQ(value, 30);
 }
 
@@ -1431,7 +1420,7 @@ void PgMiniTest::StartReadWriteThreads(const std::string table_name,
                                                    table_name));
       std::vector<int> sort_check;
       for(int x = 0; x < PQntuples(result.get()); x++) {
-        auto value = ASSERT_RESULT(GetInt32(result.get(), x, 2));
+        auto value = ASSERT_RESULT(GetValue<int32_t>(result.get(), x, 2));
         sort_check.push_back(value);
       }
       ASSERT_TRUE(std::is_sorted(sort_check.begin(), sort_check.end()));
@@ -1579,14 +1568,14 @@ void PgMiniTest::RunManyConcurrentReadersTest() {
                 << "Expected to fetch (" << read_start << ") and (" << read_end << "). "
                 << "Instead, got the following results:";
             for (int i = 0; i < fetched_rows; ++i) {
-              auto fetched_val = CHECK_RESULT(GetInt32(res.get(), i, 0));
+              auto fetched_val = CHECK_RESULT(GetValue<int32_t>(res.get(), i, 0));
               LOG(INFO) << "Result " << i << " - " << fetched_val;
             }
           }
           EXPECT_EQ(fetched_rows, 2);
-          auto first_fetched_val = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+          auto first_fetched_val = ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0));
           EXPECT_EQ(read_start, first_fetched_val);
-          auto second_fetched_val = ASSERT_RESULT(GetInt32(res.get(), 1, 0));
+          auto second_fetched_val = ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 0));
           EXPECT_EQ(read_start + 4, second_fetched_val);
         }
         reader_latch.CountDown(1);
@@ -1649,9 +1638,9 @@ TEST_F(PgMiniTest, BigInsertWithAbortedIntentsAndRestart) {
 
     auto res = ASSERT_RESULT(conn.FetchFormat("SELECT * FROM t WHERE a = $0", row_num));
     if (should_abort) {
-      EXPECT_NOK(GetInt32(res.get(), 0, 0)) << "Did not expect to find value for: " << row_num;
+      EXPECT_EQ(0, PQntuples(res.get())) << "Did not expect to find value for: " << row_num;
     } else {
-      int64_t value = EXPECT_RESULT(GetInt32(res.get(), 0, 0));
+      auto value = EXPECT_RESULT(GetValue<int32_t>(res.get(), 0, 0));
       EXPECT_EQ(value, row_num) << "Expected to find " << row_num << ", found " << value << ".";
     }
   }
@@ -1918,6 +1907,36 @@ TEST_F_EX(
   SleepFor(MonoDelta::FromMilliseconds(2 * FLAGS_heartbeat_interval_ms));
   // Check that connection can handle query (i.e. the catalog cache was updated without an issue)
   ASSERT_OK(aux_conn.Fetch("SELECT 1"));
+}
+
+int64_t PgMiniTest::GetBloomFilterCheckedMetric() {
+  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+  auto bloom_filter_checked = 0;
+  for (auto &peer : peers) {
+    const auto tablet = peer->shared_tablet();
+    if (tablet) {
+      bloom_filter_checked += tablet->regulardb_statistics()
+        ->getTickerCount(rocksdb::BLOOM_FILTER_CHECKED);
+    }
+  }
+  return bloom_filter_checked;
+}
+
+TEST_F(PgMiniTest, BloomFilterBackwardScanTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (h int, r int, primary key(h, r))"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT i / 10, i % 10"
+                         "FROM generate_series(1, 500) i"));
+
+  FlushAndCompactTablets();
+
+  auto before_blooms_checked = GetBloomFilterCheckedMetric();
+
+  ASSERT_OK(
+      conn.Fetch("SELECT * FROM t WHERE h = 2 AND r > 2 ORDER BY r DESC;"));
+
+  auto after_blooms_checked = GetBloomFilterCheckedMetric();
+  ASSERT_EQ(after_blooms_checked, before_blooms_checked + 1);
 }
 
 } // namespace yb::pgwrapper

@@ -46,6 +46,7 @@ var replicatedToYbaCtl = map[string]string{
 	"db_external_port":             "postgres.install.port",
 	"dbuser":                       "postgres.install.username",
 	"dbldapauth":                   "postgres.install.ldap_enabled",
+	"dbpass":												"postgres.install.password",
 	"ldap_server":                  "postgres.install.ldap_server",
 	"ldap_dn_prefix":               "postgres.install.ldap_prefix",
 	"ldap_base_dn":                 "postgres.install.ldap_suffix",
@@ -160,12 +161,12 @@ func (r *ReplicatedCtl) AppConfigExport() (AppConfig, error) {
 func (ac *AppConfig) ExportYbaCtl() error {
 	if _, err := os.Stat(common.InputFile()); !errors.Is(err, os.ErrNotExist) {
 		prompt := fmt.Sprintf("Found existing config file at %s. Proceed with those settings?",
-													common.InputFile())
+			common.InputFile())
 		if common.UserConfirm(prompt, common.DefaultYes) {
 			return nil
 		}
 		return fmt.Errorf("found existing config file and asked not to proceed. " +
-											"please delete the config file to migrate replicated settings")
+			"please delete the config file to migrate replicated settings")
 	}
 	config.WriteDefaultConfig()
 	for _, e := range ac.EntriesAsSlice() {

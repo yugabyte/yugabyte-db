@@ -27,7 +27,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class TableSpaceUtil {
 
-  private static final String REPLICA_PLACEMENT_TEXT = "replica_placement=";
+  public static final String REPLICA_PLACEMENT_TEXT = "replica_placement=";
 
   public static TableSpaceInfo parseToTableSpaceInfo(TableSpaceQueryResponse tablespace) {
     TableSpaceInfo.TableSpaceInfoBuilder builder = TableSpaceInfo.builder();

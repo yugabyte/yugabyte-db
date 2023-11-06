@@ -15,6 +15,8 @@ import { UnavailableUniverseStates } from '../../redesign/helpers/constants';
 
 import { Universe } from '../../redesign/helpers/dtos';
 
+import { RbacValidator } from '../../redesign/features/rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../redesign/features/rbac/UserPermPathMapping';
 import styles from './XClusterReplication.module.scss';
 
 export const XClusterReplication = ({ currentUniverseUUID }: { currentUniverseUUID: string }) => {
@@ -58,18 +60,33 @@ export const XClusterReplication = ({ currentUniverseUUID }: { currentUniverseUU
         <Col lg={6}>
           <Row className={styles.configActionsContainer}>
             <Row>
-              <YBButton
-                btnText="Max acceptable lag time"
-                btnClass={clsx('btn', styles.setMaxAcceptableLagBtn)}
-                btnIcon="fa fa-bell-o"
-                onClick={showConfigureMaxLagTimeModal}
-              />
-              <YBButton
-                btnText="Configure Replication"
-                btnClass={'btn btn-orange'}
-                onClick={showAddClusterReplicationModal}
-                disabled={shouldDisableXClusterActions}
-              />
+              <RbacValidator
+                accessRequiredOn={{
+                  ...UserPermissionMap.editAlertsConfig
+                }}
+                isControl
+              >
+                <YBButton
+                  btnText="Max acceptable lag time"
+                  btnClass={clsx('btn', styles.setMaxAcceptableLagBtn)}
+                  btnIcon="fa fa-bell-o"
+                  onClick={showConfigureMaxLagTimeModal}
+                />
+              </RbacValidator>
+              <RbacValidator
+                accessRequiredOn={{
+                  onResource: currentUniverseUUID,
+                  ...UserPermissionMap.createReplication
+                }}
+                isControl
+              >
+                <YBButton
+                  btnText="Configure Replication"
+                  btnClass={'btn btn-orange'}
+                  onClick={showAddClusterReplicationModal}
+                  disabled={shouldDisableXClusterActions}
+                />
+              </RbacValidator>
             </Row>
           </Row>
         </Col>

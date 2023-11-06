@@ -1,6 +1,8 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.*;
@@ -10,6 +12,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -19,6 +22,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
 import org.yb.client.YBClient;
 import play.libs.Json;
@@ -40,8 +44,6 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
 
   protected Hook hook1, hook2;
   protected HookScope hookScope1, hookScope2;
-
-  private static boolean addMasters = false;
 
   @Override
   @Before
@@ -81,6 +83,15 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
                 }
                 listResponse.message = respJson.toString();
                 return listResponse;
+              }
+              if (invocation.getArgument(0).equals(NodeManager.NodeCommandType.Control)) {
+                AnsibleClusterServerCtl.Params params = invocation.getArgument(1);
+                assertTrue(StringUtils.isNotBlank(params.command));
+                Universe universe = Universe.getOrBadRequest(params.getUniverseUUID());
+                NodeDetails nodeDetails = universe.getNode(params.nodeName);
+                if ("stop".equalsIgnoreCase(params.command)) {
+                  assertFalse(nodeDetails.isSoftwareDeleted());
+                }
               }
               return dummyShellResponse;
             });
@@ -145,6 +156,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     gflags.put("foo", "bar");
     userIntent.masterGFlags = gflags;
     userIntent.tserverGFlags = gflags;
+    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
     Universe result = createUniverse(universeName, defaultCustomer.getId(), providerType);
     result =
         Universe.saveDetails(

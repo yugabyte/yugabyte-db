@@ -19,12 +19,15 @@ import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
 import play.libs.Json;
 
 @Slf4j
@@ -34,7 +37,7 @@ public class CheckUnderReplicatedTablets extends UniverseTaskBase {
 
   private static final int MAX_DELAY_MS = 130000;
 
-  private static final String URL_SUFFIX = "/api/v1/tablet-under-replication";
+  public static final String URL_SUFFIX = "/api/v1/tablet-under-replication";
 
   private static final String MINIMUM_VERSION_UNDERREPLICATED_SUPPORT_2_14 = "2.14.12.0-b1";
 
@@ -48,6 +51,8 @@ public class CheckUnderReplicatedTablets extends UniverseTaskBase {
 
   public static class Params extends NodeTaskParams {
     public Duration maxWaitTime;
+
+    @Nullable public String targetSoftwareVersion;
   }
 
   protected Params taskParams() {
@@ -65,9 +70,11 @@ public class CheckUnderReplicatedTablets extends UniverseTaskBase {
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String softwareVersion =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
-
-    if (!supportsUnderReplicatedCheck(universe)) {
+        taskParams().targetSoftwareVersion != null
+            ? taskParams().targetSoftwareVersion
+            : universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    log.debug("Current master db software version {}", softwareVersion);
+    if (!supportsUnderReplicatedCheck(softwareVersion)) {
       log.debug(
           "Under-replicated tablets check skipped for universe {}. Universe version {} "
               + "does not support under-replicated tablets check.",
@@ -166,6 +173,11 @@ public class CheckUnderReplicatedTablets extends UniverseTaskBase {
               "Under-replicated tablet size not 0, under-replicated tablet size: {}, iteration: {}",
               numUnderReplicatedTablets,
               iterationNum);
+          log.warn(
+              "Under-replicated tablets: {} ...",
+              underReplicatedTabletsResp.getTabletsUnderReplicatedInCluster(cluster).stream()
+                  .limit(10)
+                  .collect(Collectors.joining(",")));
         }
       } catch (Exception e) {
         log.error("{} hit error : '{}' after {} iters", getName(), e.getMessage(), iterationNum);
@@ -201,10 +213,7 @@ public class CheckUnderReplicatedTablets extends UniverseTaskBase {
     log.debug("{} pre-check passed successfully.", getName());
   }
 
-  private boolean supportsUnderReplicatedCheck(Universe universe) {
-    String ybSoftwareVersion =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
-
+  private boolean supportsUnderReplicatedCheck(String ybSoftwareVersion) {
     return CommonUtils.isReleaseBetween(
             MINIMUM_VERSION_UNDERREPLICATED_SUPPORT_2_14, "2.15.0.0-b0", ybSoftwareVersion)
         || CommonUtils.isReleaseBetween(
@@ -229,22 +238,39 @@ public class CheckUnderReplicatedTablets extends UniverseTaskBase {
       public String tabletUUID;
 
       @JsonProperty("underreplicated_placements")
-      public List<String> underreplicatedClusters;
+      public List<String> underReplicatedClusters;
     }
 
     public int numUnderReplicatedTabletsInCluster(Cluster cluster) {
 
-      // Older db versions will not have underreplicatedClusters set.
+      // Older db versions will not have underReplicatedClusters set.
       if (underReplicatedTablets.size() == 0
-          || underReplicatedTablets.get(0).underreplicatedClusters == null) {
+          || underReplicatedTablets.get(0).underReplicatedClusters == null) {
         return underReplicatedTablets.size();
       }
 
-      int count = 0;
       return (int)
           underReplicatedTablets.stream()
-              .filter(tablet -> tablet.underreplicatedClusters.contains(cluster.uuid.toString()))
+              .filter(tablet -> tablet.underReplicatedClusters.contains(cluster.uuid.toString()))
               .count();
+    }
+
+    public List<String> getTabletsUnderReplicatedInCluster(Cluster cluster) {
+      if (CollectionUtils.isEmpty(underReplicatedTablets)) {
+        return Collections.emptyList();
+      }
+
+      // Older db versions will not have underReplicatedClusters set.
+      if (underReplicatedTablets.get(0).underReplicatedClusters == null) {
+        return underReplicatedTablets.stream()
+            .map(tablet -> tablet.tabletUUID)
+            .collect(Collectors.toList());
+      }
+
+      return underReplicatedTablets.stream()
+          .filter(tablet -> tablet.underReplicatedClusters.contains(cluster.uuid.toString()))
+          .map(tablet -> tablet.tabletUUID)
+          .collect(Collectors.toList());
     }
   }
 }

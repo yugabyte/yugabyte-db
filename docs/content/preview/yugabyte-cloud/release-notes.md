@@ -20,6 +20,26 @@ On this page:
 
 ## Change log
 
+### October 5, 2023
+
+**New Features**
+
+- Support for creating [private service endpoints](../cloud-basics/cloud-vpcs/cloud-add-endpoint/) (PSEs) in the YugabyteDB Managed UI (this feature was previously only available using the YBM CLI). Add PSEs to clusters to connect to your application VPC over a secure private link. Supports AWS PrivateLink and Azure Private Link.
+- Support for [exporting cluster metrics](../cloud-monitor/metrics-export/) to Grafana.
+
+### September 22, 2023
+
+**Database**
+
+- Preview track updated to 2.19.2.0.
+- Production track updated to 2.14.12.0.
+
+### September 12, 2023
+
+**New Features**
+
+- Support for multi-region clusters and read replicas in Azure. You can now create dedicated clusters with multi-region deployment in Azure, as well as read replicas.
+
 ### September 6, 2023
 
 **New Features**
@@ -174,7 +194,7 @@ On this page:
 **New Features**
 
 - Ability to add IP addresses to the cluster IP allow list during cluster creation. The **Create Cluster** wizard includes the new **Networking** page to configure connectivity for your cluster. Automatically detect and add your current IP address or the addresses of any peered VPC to the cluster.
-- Ability to connect to clusters deployed in VPCs from public IP addresses. For clusters deployed in VPCs, enable **Public Access** on the **Settings** tab to connect from addresses outside the peered network. When enabled, a public IP address is added to each region of the cluster. You can view the private and public host addresses under **Connection Parameters** on the cluster **Settings** tab.
+- Ability to connect to clusters deployed in VPCs from public IP addresses. For clusters deployed in VPCs, enable **Public Access** on the **Settings > Network Access** tab to connect from addresses outside the peered network. When enabled, a public IP address is added to each region of the cluster. You can view the private and public host addresses under **Connection Parameters** on the cluster **Settings > Infrastructure** tab.
 
 **Database**
 
@@ -416,8 +436,6 @@ This release includes the following features:
 - **Metrics** - The **View Full Screen** option in charts on the cluster **Overview** and **Performance Metrics** pages does not work in some versions of Safari 14.0 (Big Sur).
 - **Metrics** - Some clusters in European regions may show occasional spikes in the YSQL Operations/sec chart. This is due to cluster health checks and can be ignored.
 - **Widely-dispersed regions** - For multi-region clusters with widely-dispersed regions, Performance Advisor, Slow Queries, and some metrics may not return any results.
-- **Read replicas**
-  - For clusters in AWS, removed read replicas can't be added back to the same region if the cluster has other read replicas. To add a read replica back to the same region, first remove all the read replicas and then add them all back.
 
 ### Known issues in Cloud Shell
 

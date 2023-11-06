@@ -55,7 +55,7 @@ namespace util {
 // Handle and log the status code from waitpid().
 // The status code is encoded. We need to call the proper macro
 // to decode it to be readable.
-void LogWaitCode(int ret_code);
+void LogWaitCode(int ret_code, const std::string &process_name);
 
 } // namespace util
 

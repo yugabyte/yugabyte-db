@@ -236,7 +236,7 @@ class TransactionParticipant : public TransactionStatusManager {
 
   void RecordConflictResolutionScanLatency(MonoDelta latency) override;
 
-  size_t TEST_GetNumRunningTransactions() const;
+  size_t GetNumRunningTransactions() const;
 
   // Returns pair of number of intents and number of transactions.
   Result<std::pair<size_t, size_t>> TEST_CountIntents() const;

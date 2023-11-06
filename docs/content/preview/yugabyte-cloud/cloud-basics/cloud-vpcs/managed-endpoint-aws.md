@@ -47,7 +47,30 @@ To use AWS PrivateLink to connect your cluster to a VPC in AWS that hosts your a
 
 ## Create a PSE in YugabyteDB Managed
 
-You create the PSEs (one for each region) for your cluster using [ybm CLI](../../../managed-automation/managed-cli/).
+You create the PSEs (one for each region) for your cluster on the cluster **Settings** tab, or using [ybm CLI](../../../managed-automation/managed-cli/).
+
+### Use YugabyteDB Managed
+
+To create or edit a PSE, do the following:
+
+1. Select your cluster.
+
+1. Navigate to **Settings > Network Access > Private Service Endpoint**.
+
+1. Click **Create Private Service Endpoint** or, to edit an existing PSE, **Edit Private Service Endpoint** to display the **Edit Private Service Endpoint** sheet.
+
+1. For each region in your cluster, provide the ARN of an AWS principal you want to grant access. For example, `arn:aws:iam::<aws account number>:root`.
+
+1. Click **Save**.
+
+The endpoints are displayed with the following values:
+
+- **Host** - The host name of the PSE. You use this to [connect to your cluster](../../../cloud-connect/connect-applications/). The host name of a PSE for AWS always ends in `aws.ybdb.io`.
+- **Service Name** - You use this service name when creating the private endpoint in AWS.
+
+You can also create the PSEs during [cluster creation](../../create-clusters/).
+
+### Use ybm CLI
 
 To create a PSE, do the following:
 
@@ -85,7 +108,7 @@ To create a PSE, do the following:
 
 Note the following values:
 
-- **Host** - The host name of the PSE. You will use this to [connect to your cluster](../../../cloud-connect/connect-applications/). The host name of a PSE for AWS always ends in `aws.ybdb.io`. The PSE Host is also displayed in YugabyteDB Managed on the cluster **Settings** tab under **Connection Parameters**.
+- **Host** - The host name of the PSE. You will use this to [connect to your cluster](../../../cloud-connect/connect-applications/). The host name of a PSE for AWS always ends in `aws.ybdb.io`.
 - **Service Name** - You will use this service name when creating the private endpoint in AWS.
 
 To delete a PSE, enter the following command:

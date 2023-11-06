@@ -59,7 +59,8 @@ import play.mvc.Result;
 
 @Api(
     value = "Disaster Recovery",
-    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH),
+    hidden = true)
 @Slf4j
 public class DrConfigController extends AuthenticatedController {
 
@@ -163,6 +164,9 @@ public class DrConfigController extends AuthenticatedController {
             createForm.sourceUniverseUUID,
             createForm.targetUniverseUUID,
             tableIds);
+    drConfig
+        .getActiveXClusterConfig()
+        .updateIndexTablesFromMainTableIndexTablesMap(mainTableIndexTablesMap);
 
     // Submit task to set up xCluster config.
     DrConfigTaskParams taskParams =
@@ -284,6 +288,7 @@ public class DrConfigController extends AuthenticatedController {
         drConfig.addXClusterConfig(
             sourceUniverse.getUniverseUUID(), newTargetUniverse.getUniverseUUID());
     newTargetXClusterConfig.updateTables(tableIds, tableIds /* tableIdsNeedBootstrap */);
+    newTargetXClusterConfig.updateIndexTablesFromMainTableIndexTablesMap(mainTableIndexTablesMap);
     newTargetXClusterConfig.setSecondary(true);
 
     // Submit task to set up xCluster config.
@@ -430,6 +435,7 @@ public class DrConfigController extends AuthenticatedController {
         drConfig.addXClusterConfig(
             xClusterConfig.getTargetUniverseUUID(), xClusterConfig.getSourceUniverseUUID());
     failoverXClusterConfig.updateTables(tableIds, null /* tableIdsNeedBootstrap */);
+    failoverXClusterConfig.updateIndexTablesFromMainTableIndexTablesMap(mainTableIndexTablesMap);
     failoverXClusterConfig.setSecondary(true);
 
     // Submit task to set up xCluster config.
@@ -697,8 +703,8 @@ public class DrConfigController extends AuthenticatedController {
 
     // General xCluster pre-checks.
     XClusterConfigTaskBase.verifyTablesNotInReplication(
-        tableIds, sourceUniverse.getUniverseUUID(), targetUniverse.getUniverseUUID());
-    XClusterConfigController.certsForCdcDirGFlagCheck(sourceUniverse, targetUniverse);
+        tableIds, targetUniverse.getUniverseUUID(), sourceUniverse.getUniverseUUID());
+    XClusterConfigController.certsForCdcDirGFlagCheck(targetUniverse, sourceUniverse);
 
     // If table type is YSQL, all tables in that keyspace are selected.
     if (XClusterConfigTaskBase.getTableType(requestedTableInfoList)

@@ -98,7 +98,7 @@ class ReverseKeyComparator : public Comparator {
     return "rocksdb.ReverseBytewiseComparator";
   }
 
-  int Compare(const Slice& a, const Slice& b) const override {
+  int Compare(Slice a, Slice b) const override {
     return BytewiseComparator()->Compare(Reverse(a), Reverse(b));
   }
 

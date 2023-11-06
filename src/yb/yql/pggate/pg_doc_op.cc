@@ -352,11 +352,24 @@ Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
   return Status::OK();
 }
 
+void PgDocOp::RecordRequestMetrics() {
+  auto& metrics = pg_session_->metrics();
+  for (const auto& op : pgsql_ops_) {
+    auto* response = op->response();
+    if (response && response->has_metrics()) {
+      metrics.RecordRequestMetrics(op->response()->metrics());
+    }
+  }
+}
+
 Result<std::list<PgDocResult>> PgDocOp::ProcessResponse(
   const Result<PgDocResponse::Data>& response) {
   VLOG(1) << __PRETTY_FUNCTION__ << ": Received response for request " << this;
   // Check operation status.
   DCHECK(exec_status_.ok());
+
+  RecordRequestMetrics();
+
   auto result = ProcessResponseImpl(response);
   if (result.ok()) {
     return result;

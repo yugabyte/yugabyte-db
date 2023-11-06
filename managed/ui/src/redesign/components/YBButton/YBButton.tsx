@@ -4,7 +4,7 @@ import type { LinkProps } from 'react-router-dom';
 
 type MUIButtonProps = ButtonProps & Partial<LinkProps>;
 
-export interface YBButtonProps extends Omit<MUIButtonProps, 'variant' | 'color' | 'classes'> {
+export interface YBButtonProps extends Omit<MUIButtonProps, 'variant' | 'color'> {
   variant?: 'primary' | 'secondary' | 'ghost' | 'gradient' | 'pill';
   showSpinner?: boolean;
   selected?: boolean; // relevant to "pill" variant only
@@ -59,7 +59,7 @@ const usePillStyles = makeStyles<Theme, Partial<YBButtonProps>>((theme) => ({
 export const YBButton: FC<YBButtonProps> = (props) => {
   const { variant, showSpinner, ...muiProps } = props;
   const muiButtonProps: MUIButtonProps = muiProps;
-  muiButtonProps.classes = useStyles(props);
+  muiButtonProps.classes = { ...useStyles(props), ...props.classes };
   const pillStyles = usePillStyles(props);
 
   switch (variant) {

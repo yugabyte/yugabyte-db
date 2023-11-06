@@ -167,7 +167,7 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_wait_for_backends_catalog_version_timeout, 5 * 
     " wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms. Setting to zero or less"
     " results in no timeout. Currently used by concurrent CREATE INDEX.");
 
-DEFINE_RUNTIME_PG_FLAG(int32, yb_bnl_batch_size, 1,
+DEFINE_RUNTIME_PG_FLAG(int32, yb_bnl_batch_size, 1024,
     "Batch size of nested loop joins.");
 
 DEFINE_RUNTIME_PG_FLAG(string, yb_xcluster_consistency_level, "database",
@@ -204,6 +204,9 @@ DEFINE_RUNTIME_PG_FLAG(uint64, yb_fetch_size_limit, 0,
 DEFINE_NON_RUNTIME_bool(enable_ysql_conn_mgr_stats, true,
   "Enable stats collection from Ysql Connection Manager. These stats will be "
   "displayed at the endpoint '<ip_address_of_cluster>:13000/connections'");
+
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_replication_commands, kLocalPersisted, false, true,
+    "Enable logical replication commands for Publication and Replication Slots");
 
 static bool ValidateXclusterConsistencyLevel(const char* flagname, const std::string& value) {
   if (value != "database" && value != "tablet") {

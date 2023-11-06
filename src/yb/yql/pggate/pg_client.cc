@@ -52,6 +52,10 @@ DECLARE_int32(yb_client_admin_operation_timeout_sec);
 DEFINE_UNKNOWN_uint64(pg_client_heartbeat_interval_ms, 10000,
     "Pg client heartbeat interval in ms.");
 
+DEFINE_NON_RUNTIME_int32(pg_client_extra_timeout_ms, 2000,
+   "Adding this value to RPC call timeout, so postgres could detect timeout by it's own mechanism "
+   "and report it.");
+
 DECLARE_bool(TEST_index_read_multiple_partitions);
 DECLARE_bool(TEST_enable_db_catalog_version_mode);
 
@@ -64,10 +68,6 @@ namespace yb {
 namespace pggate {
 
 namespace {
-
-// Adding this value to RPC call timeout, so postgres could detect timeout by it's own mechanism
-// and report it.
-const auto kExtraTimeout = 2s;
 
 struct PerformData {
   PgsqlOps operations;
@@ -209,7 +209,7 @@ class PgClient::Impl {
   }
 
   void SetTimeout(MonoDelta timeout) {
-    timeout_ = timeout + kExtraTimeout;
+    timeout_ = timeout + MonoDelta::FromMilliseconds(FLAGS_pg_client_extra_timeout_ms);
   }
 
   Result<PgTableDescPtr> OpenTable(
@@ -440,7 +440,7 @@ class PgClient::Impl {
     *req.mutable_options() = std::move(*options);
     PrepareOperations(&req, operations);
 
-    if (exchange_) {
+    if (exchange_ && exchange_->ReadyToSend()) {
       PerformData data(&arena, std::move(*operations), callback);
       ProcessPerformResponse(&data, ExecutePerform(&data, req));
     } else {
@@ -460,7 +460,7 @@ class PgClient::Impl {
     auto* end = pointer_cast<std::byte*>(req.SerializeToArray(pointer_cast<uint8_t*>(out)));
     CHECK_EQ(end - out, size);
 
-    auto res = VERIFY_RESULT(exchange_->SendRequest(nullptr, CoarseMonoClock::now() + timeout_));
+    auto res = VERIFY_RESULT(exchange_->SendRequest(CoarseMonoClock::now() + timeout_));
 
     rpc::CallData call_data(res.size());
     res.CopyTo(call_data.data());
@@ -723,6 +723,39 @@ class PgClient::Impl {
     return Status::OK();
   }
 
+  Result<boost::container::small_vector<RefCntSlice, 2>> GetTableKeyRanges(
+      const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
+      uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward,
+      uint32_t max_key_length) {
+    tserver::PgGetTableKeyRangesRequestPB req;
+    tserver::PgGetTableKeyRangesResponsePB resp;
+    req.set_session_id(session_id_);
+    table_id.ToPB(req.mutable_table_id());
+    if (!lower_bound_key.empty()) {
+      req.mutable_lower_bound_key()->assign(lower_bound_key.cdata(), lower_bound_key.size());
+    }
+    if (!upper_bound_key.empty()) {
+      req.mutable_upper_bound_key()->assign(upper_bound_key.cdata(), upper_bound_key.size());
+    }
+    req.set_max_num_ranges(max_num_ranges);
+    req.set_range_size_bytes(range_size_bytes);
+    req.set_is_forward(is_forward);
+    req.set_max_key_length(max_key_length);
+
+    auto* controller = PrepareController();
+
+    RETURN_NOT_OK(proxy_->GetTableKeyRanges(req, &resp, controller));
+    if (resp.has_status()) {
+      return StatusFromPB(resp.status());
+    }
+
+    boost::container::small_vector<RefCntSlice, 2> result;
+    for (size_t i = 0; i < controller->GetSidecarsCount(); ++i) {
+      result.push_back(VERIFY_RESULT(controller->ExtractSidecar(i)));
+    }
+    return result;
+  }
+
   Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo(
       bool size_only, uint32_t db_oid) {
     tserver::PgGetTserverCatalogVersionInfoRequestPB req;
@@ -979,6 +1012,14 @@ Result<bool> PgClient::CheckIfPitrActive() {
 
 Result<bool> PgClient::IsObjectPartOfXRepl(const PgObjectId& table_id) {
   return impl_->IsObjectPartOfXRepl(table_id);
+}
+
+Result<boost::container::small_vector<RefCntSlice, 2>> PgClient::GetTableKeyRanges(
+    const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
+    uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length) {
+  return impl_->GetTableKeyRanges(
+      table_id, lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes, is_forward,
+      max_key_length);
 }
 
 Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> PgClient::GetTserverCatalogVersionInfo(

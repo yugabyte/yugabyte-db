@@ -16,6 +16,10 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
+#include <type_traits>
+#include <utility>
+#include <vector>
 
 #include "libpq-fe.h" // NOLINT
 
@@ -28,8 +32,7 @@
 #include "yb/util/subprocess.h"
 #include "yb/util/uuid.h"
 
-namespace yb {
-namespace pgwrapper {
+namespace yb::pgwrapper {
 
 struct PGConnClose {
   void operator()(PGconn* conn) const;
@@ -70,8 +73,9 @@ inline constexpr bool IsPGNonNeg = IsPGNonNegImpl<T>::value;
 
 template<class T>
 concept AllowedPGType =
-    IsPGNonNeg<T> || IsPGIntType<T> || IsPGFloatType<T> || std::is_same_v<T, bool> ||
-    std::is_same_v<T, std::string> || std::is_same_v<T, PGOid> || std::is_same_v<T, Uuid>;
+    IsPGNonNeg<T> || IsPGIntType<T> || IsPGFloatType<T> ||
+    std::is_same_v<T, bool> || std::is_same_v<T, std::string> || std::is_same_v<T, char> ||
+    std::is_same_v<T, PGOid> || std::is_same_v<T, Uuid>;
 
 template<AllowedPGType T>
 struct PGTypeTraits {
@@ -98,26 +102,16 @@ template<class T>
 using GetValueResult = Result<typename PGTypeTraits<T>::ReturnType>;
 
 template<class T>
-GetValueResult<T> GetValue(PGresult* result, int row, int column);
+GetValueResult<T> GetValue(const PGresult* result, int row, int column);
 
 template<class T>
+requires(std::is_same_v<T, std::optional<typename T::value_type>>)
 Result<std::optional<typename PGTypeTraits<typename T::value_type>::ReturnType>> GetValue(
-    PGresult* result, int row, int column) {
+    const PGresult* result, int row, int column) {
   if (PQgetisnull(result, row, column)) {
     return std::nullopt;
   }
   return GetValue<typename T::value_type>(result, row, column);
-}
-
-inline Result<int32_t> GetInt32(PGresult* result, int row, int column) {
-  return GetValue<int32_t>(result, row, column);
-}
-
-inline Result<int64_t> GetInt64(PGresult* result, int row, int column) {
-  return GetValue<int64_t>(result, row, column);
-}
-inline Result<std::string> GetString(PGresult* result, int row, int column) {
-  return GetValue<std::string>(result, row, column);
 }
 
 const std::string& DefaultColumnSeparator();
@@ -130,6 +124,37 @@ void LogResult(PGresult* result);
 
 std::string PqEscapeLiteral(const std::string& input);
 std::string PqEscapeIdentifier(const std::string& input);
+
+template <class... Args>
+class FetchAllHelper {
+  using Tuple = std::tuple<Args...>;
+  using TupleVector = std::vector<Tuple>;
+
+ public:
+  static Result<TupleVector> Fetch(const PGresult* res) {
+    constexpr auto kExpectedColumns = sizeof...(Args);
+    SCHECK_EQ(PQnfields(res), kExpectedColumns, RuntimeError, "Unexpected number of columns");
+    TupleVector result(PQntuples(res));
+    auto row = 0;
+    for (auto& tuple : result) {
+      RETURN_NOT_OK(Update<0>(&tuple, res, row++));
+    }
+    return result;
+  }
+
+ private:
+  template <size_t ElIdx>
+  static Status Update(Tuple* dest, const PGresult* res, int row) {
+    auto& element = std::get<ElIdx>(*dest);
+    element = VERIFY_RESULT(GetValue<std::remove_cvref_t<decltype(element)>>(res, row, ElIdx));
+    constexpr auto kNextElIdx = ElIdx + 1;
+    if constexpr (kNextElIdx < sizeof...(Args)) {
+      return Update<kNextElIdx>(dest, res, row);
+    } else {
+      return Status::OK();
+    }
+  }
+};
 
 class PGConn {
  public:
@@ -182,10 +207,15 @@ class PGConn {
       const std::string& column_sep = DefaultColumnSeparator(),
       const std::string& row_sep = DefaultRowSeparator());
 
-  template<class T>
+  template <class T>
   auto FetchValue(const std::string& command) -> decltype(GetValue<T>(nullptr, 0, 0)) {
     auto res = VERIFY_RESULT(FetchMatrix(command, 1, 1));
     return GetValue<T>(res.get(), 0, 0);
+  }
+
+  template <class... Args>
+  auto FetchAll(const std::string& query) -> decltype(FetchAllHelper<Args...>::Fetch(nullptr)) {
+    return FetchAllHelper<Args...>::Fetch(VERIFY_RESULT(Fetch(query)).get());
   }
 
   Status StartTransaction(IsolationLevel isolation_level);
@@ -265,5 +295,4 @@ class PGConnPerf {
   Subprocess process_;
 };
 
-} // namespace pgwrapper
-} // namespace yb
+} // namespace yb::pgwrapper

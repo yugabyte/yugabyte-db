@@ -1,0 +1,54 @@
+- block:
+    - name: Control OpenTelemetry collector | Determine system or user scope
+      stat:
+        path: /etc/systemd/system/otel-collector.service
+      register: systemd_system
+
+    - name: Control OpenTelemetry collector | User mode systemd | Stop existing running OpenTelemetry Collector
+      systemd:
+        name: otel-collector
+        state: stopped
+        enabled: no
+        scope: user
+      when: not systemd_system.stat.exists
+
+    - name: Control OpenTelemetry collector | System mode systemd | Stop and disable OpenTelemetry collector
+      block:
+        - name: Control OpenTelemetry collector | System mode systemd | Stop existing running OpenTelemetry collector
+          shell:
+            cmd: "sudo systemctl stop otel-collector"
+
+        - name: Control OpenTelemetry collector | System mode systemd | Stop existing running OpenTelemetry collector
+          shell:
+            cmd: "sudo systemctl disable otel-collector"
+      when: systemd_system.stat.exists
+
+    - name: Control OpenTelemetry collector | Remove existing OpenTelemetry collector conf file
+      file:
+        path: "{{ otel_col_config_file }}"
+        state: absent
+
+    - name: Control OpenTelemetry collector | Download new OpenTelemetry collector conf file
+      copy:
+        src: "{{ otel_col_config_file_local }}"
+        dest: "{{ otel_col_config_file }}"
+      when: otel_col_config_file_local is defined
+
+    - name: Control OpenTelemetry collector | User mode systemd | Enable and start OpenTelemetry collector
+      systemd:
+        name: otel-collector
+        state: started
+        enabled: yes
+        scope: user
+      when: not systemd_system.stat.exists and otel_col_config_file_local is defined
+
+    - name: Control OpenTelemetry collector | System mode systemd | Enable and start OpenTelemetry collector
+      block:
+        - name: Control OpenTelemetry collector | System mode systemd | Enable OpenTelemetry collector service
+          shell:
+            cmd: "sudo systemctl enable otel-collector"
+
+        - name: Control OpenTelemetry collector | System mode systemd | Run otel-collector.service to start the OpenTelemetry collector
+          shell:
+            cmd: "sudo systemctl start otel-collector"
+      when: systemd_system.stat.exists and otel_col_config_file_local is defined

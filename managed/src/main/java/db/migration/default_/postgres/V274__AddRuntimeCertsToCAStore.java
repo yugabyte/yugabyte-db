@@ -8,6 +8,7 @@ import com.typesafe.config.ConfigList;
 import com.typesafe.config.ConfigValue;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.utils.FileUtils;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.nio.file.Files;
@@ -25,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.tuple.Pair;
 import org.flywaydb.core.api.migration.BaseJavaMigration;
 import org.flywaydb.core.api.migration.Context;
 
@@ -53,8 +55,16 @@ public class V274__AddRuntimeCertsToCAStore extends BaseJavaMigration {
 
   @Override
   public void migrate(Context context) throws Exception {
-    for (String confPath : WS_CONF_PATH) {
-      migrate_conf(context, confPath);
+    try {
+      for (String confPath : WS_CONF_PATH) {
+        migrate_conf(context, confPath);
+      }
+    } catch (Exception e) {
+      // In case the migration fails for some reason, need to ensure that we do
+      // cleanup of the relevant files that might be created.
+      File trustStoreDirectory = new File(trustHome);
+      FileUtils.deleteDirectory(trustStoreDirectory);
+      throw e;
     }
   }
 
@@ -120,26 +130,37 @@ public class V274__AddRuntimeCertsToCAStore extends BaseJavaMigration {
     if (customerResult.next()) {
       customerUuid = UUID.fromString(customerResult.getString("uuid"));
     }
-    X509Certificate x509Cert = null;
+    List<X509Certificate> x509Certs = null;
 
     int numCerts = allCerts.size();
     for (int count = 0; count < numCerts; count++) {
       try {
-        x509Cert = CertificateHelper.convertStringToX509Cert(allCerts.get(count));
+        String inputCert = allCerts.get(count);
+        String[] lines = inputCert.split("\n");
+        StringBuilder result = new StringBuilder();
+
+        // Iterate through the lines and remove leading white spaces
+        for (String line : lines) {
+          String trimmedLine = line.trim(); // Remove leading and trailing white spaces
+          if (!trimmedLine.isEmpty()) {
+            result.append(trimmedLine).append("\n");
+          }
+        }
+        x509Certs = CertificateHelper.convertStringToX509CertList(result.toString());
       } catch (CertificateException e) {
         log.warn("Certificate exception occurred, ignoring it.", e);
         return false;
       }
-
       UUID certUuid = UUID.randomUUID();
       Date createDate = new Timestamp(new Date().getTime());
-      Date startDate = x509Cert.getNotBefore();
-      Date expiryDate = x509Cert.getNotAfter();
+      Pair<Date, Date> dates = CertificateHelper.extractDatesFromCertBundle(x509Certs);
+      Date startDate = dates.getLeft();
+      Date expiryDate = dates.getRight();
       String certPath = String.format("%s/certs/trust-store/%s/ca.crt", storagePath, certUuid);
       File certFile = new File(certPath);
       certFile.getParentFile().mkdirs();
       // Create file data in certPath, using syncToDb as false as it has runtime config use.
-      CertificateHelper.writeCertFileContentToCertPath(x509Cert, certPath, false);
+      CertificateHelper.writeCertBundleToCertPath(x509Certs, certPath, false);
       String filePath = String.format("/certs/trust-store/%s/ca.crt", certUuid);
       String encodedCert = Base64.getEncoder().encodeToString(allCerts.get(count).getBytes());
       String fileCreateSql =
@@ -162,10 +183,13 @@ public class V274__AddRuntimeCertsToCAStore extends BaseJavaMigration {
       connection.createStatement().executeUpdate(createSql);
 
       // Add the CA in the Pkcs12 format truststore.
-      ybaJavaStore.setCertificateEntry(certName, x509Cert);
+      for (int i = 0; i < x509Certs.size(); i++) {
+        String alias = certName + "-" + i; // Unique alias for each certificate in the chain
+        ybaJavaStore.setCertificateEntry(alias, x509Certs.get(i));
+      }
 
       // Add the PEM store file in the file-system.
-      CertificateHelper.writeCertFileContentToCertPath(x509Cert, pemStorePath, false, true);
+      CertificateHelper.writeCertBundleToCertPath(x509Certs, pemStorePath, false, true);
       log.debug("Truststore '{}' now has the cert {}", pemStorePath, certName);
     }
 

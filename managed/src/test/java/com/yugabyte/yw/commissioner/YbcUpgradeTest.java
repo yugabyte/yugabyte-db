@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -84,12 +85,19 @@ public class YbcUpgradeTest extends FakeDBApplication {
         .thenReturn(true);
     when(mockYbcManager.getStableYbcVersion()).thenReturn(NEW_YBC_VERSION);
 
-    ShellResponse response = new ShellResponse();
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any())).thenReturn(response);
+    ShellResponse dummyShellUploadResponse = ShellResponse.create(0, "");
+    lenient()
+        .when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+        .thenReturn(dummyShellUploadResponse);
+    lenient()
+        .when(mockNodeUniverseManager.uploadFileToNode(any(), any(), any(), any(), any(), any()))
+        .thenReturn(dummyShellUploadResponse);
+    lenient().when(mockYbcManager.getYbcPackageTmpLocation(any(), any(), any())).thenReturn("/tmp");
     mockYbcClient = mock(YbcClient.class);
     mockYbcClient2 = mock(YbcClient.class);
     ybcUpgrade =
         new YbcUpgrade(
+            mockAppConfig,
             mockPlatformScheduler,
             mockConfGetter,
             mockYbcClientService,
@@ -165,6 +173,7 @@ public class YbcUpgradeTest extends FakeDBApplication {
     when(mockYbcClient.UpgradeResult(any())).thenReturn(upgradeResultResponse);
     when(mockYbcClientService.getNewClient(any(), anyInt(), any())).thenReturn(mockYbcClient);
     new YbcUpgrade(
+            mockAppConfig,
             mockPlatformScheduler,
             mockConfGetter,
             mockYbcClientService,
@@ -213,6 +222,7 @@ public class YbcUpgradeTest extends FakeDBApplication {
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ybcNodeBatchSize))).thenReturn(1);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ybcUniverseBatchSize))).thenReturn(2);
     new YbcUpgrade(
+            mockAppConfig,
             mockPlatformScheduler,
             mockConfGetter,
             mockYbcClientService,
@@ -260,6 +270,7 @@ public class YbcUpgradeTest extends FakeDBApplication {
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ybcNodeBatchSize))).thenReturn(4);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ybcUniverseBatchSize))).thenReturn(2);
     new YbcUpgrade(
+            mockAppConfig,
             mockPlatformScheduler,
             mockConfGetter,
             mockYbcClientService,
@@ -354,6 +365,7 @@ public class YbcUpgradeTest extends FakeDBApplication {
             defaultUniverse.getUniverseDetails().communicationPorts.ybControllerrRpcPort,
             defaultUniverse.getCertificateNodetoNode()))
         .thenReturn(mockYbcClient2);
+    ybcUpgrade.scheduleRunner();
     ybcUpgrade.scheduleRunner();
     assertEquals(
         NEW_YBC_VERSION,

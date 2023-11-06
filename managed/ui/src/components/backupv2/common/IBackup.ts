@@ -85,6 +85,7 @@ export interface IBackup {
   fullChainSizeInBytes: number;
   kmsConfigUUID?: null | string;
   scheduleName: string;
+  useTablespaces: boolean;
 }
 
 export interface IBackupEditParams {

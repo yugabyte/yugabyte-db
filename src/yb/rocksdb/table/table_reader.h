@@ -67,6 +67,10 @@ class TableReader {
                                         Arena* arena = nullptr,
                                         bool skip_filters = false) = 0;
 
+  // TODO(index_iter): consider allocating index iterator on arena, try and measure potential
+  // performance improvements.
+  virtual InternalIterator* NewIndexIterator(const ReadOptions& read_options) = 0;
+
   // Given a key, return an approximate byte offset in the file where
   // the data for that key begins (or would begin if the key were
   // present in the file).  The returned value is in terms of file

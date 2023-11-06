@@ -190,7 +190,8 @@ RUN set -x; \
     mkdir /tmp/gsutils && \
     curl -o /tmp/gsutils/gsutil_${GSV}.tar.gz \
       https://storage.googleapis.com/pub/gsutil_${GSV}.tar.gz && \
-    tar -xzf /tmp/gsutils/gsutil_${GSV}.tar.gz -C /usr/local/
+    tar -xzf /tmp/gsutils/gsutil_${GSV}.tar.gz -C /usr/local/ && \
+    chown :root -R /usr/local/gsutil
 
 # Configure azcopy and gsutil
 RUN mkdir /home/yugabyte/.boto \

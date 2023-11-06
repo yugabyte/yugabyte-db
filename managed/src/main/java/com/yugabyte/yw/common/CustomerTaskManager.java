@@ -10,18 +10,23 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudProviderDelete;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.IProviderTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareKubernetesUpgrade;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
+import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
+import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Backup;
@@ -34,6 +39,8 @@ import com.yugabyte.yw.models.RestoreKeyspace;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.DB;
 import java.util.ArrayList;
@@ -98,7 +105,10 @@ public class CustomerTaskManager {
                 subtask.save();
               });
 
-      Optional<Universe> optUniv = Universe.maybeGet(customerTask.getTargetUUID());
+      Optional<Universe> optUniv =
+          customerTask.getTargetType().isUniverseTarget()
+              ? Universe.maybeGet(customerTask.getTargetUUID())
+              : Optional.empty();
       if (LOAD_BALANCER_TASK_TYPES.contains(taskInfo.getTaskType())) {
         Boolean isLoadBalanceAltered = false;
         JsonNode node = taskInfo.getDetails();
@@ -136,7 +146,8 @@ public class CustomerTaskManager {
                               || backup.getState().equals(Backup.BackupState.Stopped))
                   .collect(Collectors.groupingBy(Backup::getCategory));
 
-          backupCategoryMap.getOrDefault(BackupCategory.YB_BACKUP_SCRIPT, new ArrayList<>())
+          backupCategoryMap
+              .getOrDefault(BackupCategory.YB_BACKUP_SCRIPT, new ArrayList<>())
               .stream()
               .forEach(backup -> backup.transitionState(Backup.BackupState.Failed));
           List<Backup> ybcBackups =
@@ -187,24 +198,22 @@ public class CustomerTaskManager {
 
       if (unlockUniverse) {
         // Unlock the universe for future operations.
-        Universe.maybeGet(customerTask.getTargetUUID())
-            .ifPresent(
-                u -> {
-                  UniverseDefinitionTaskParams details = u.getUniverseDetails();
-                  if (details.updateInProgress) {
-                    // Create the update lambda.
-                    Universe.UniverseUpdater updater =
-                        universe -> {
-                          UniverseDefinitionTaskParams universeDetails =
-                              universe.getUniverseDetails();
-                          universeDetails.updateInProgress = false;
-                          universe.setUniverseDetails(universeDetails);
-                        };
+        optUniv.ifPresent(
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              if (details.updateInProgress) {
+                // Create the update lambda.
+                Universe.UniverseUpdater updater =
+                    universe -> {
+                      UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+                      universeDetails.updateInProgress = false;
+                      universe.setUniverseDetails(universeDetails);
+                    };
 
-                    Universe.saveDetails(customerTask.getTargetUUID(), updater, false);
-                    LOG.debug("Unlocked universe {}.", customerTask.getTargetUUID());
-                  }
-                });
+                Universe.saveDetails(customerTask.getTargetUUID(), updater, false);
+                LOG.debug("Unlocked universe {}.", customerTask.getTargetUUID());
+              }
+            });
       }
 
       // Mark task as a failure after the universe is unlocked.
@@ -216,15 +225,13 @@ public class CustomerTaskManager {
       // Resume tasks if any
       TaskType taskType = taskInfo.getTaskType();
       UniverseTaskParams taskParams = null;
-      LOG.info("Resume Task: " + String.valueOf(resumeTask));
+      LOG.info("Resume Task: {}", resumeTask);
 
       try {
         if (resumeTask && optUniv.isPresent()) {
           Universe universe = optUniv.get();
           if (!taskUUID.equals(universe.getUniverseDetails().updatingTaskUUID)) {
-            String errMsg =
-                String.format("Invalid task state: Task %s cannot be resumed", taskUUID);
-            LOG.debug(errMsg);
+            LOG.debug("Invalid task state: Task {} cannot be resumed", taskUUID);
             customerTask.markAsCompleted();
             return;
           }
@@ -241,7 +248,7 @@ public class CustomerTaskManager {
               taskParams = restoreParams;
               break;
             default:
-              LOG.error(String.format("Invalid task type: %s during platform restart", taskType));
+              LOG.error("Invalid task type: {} during platform restart", taskType);
               return;
           }
           taskParams.setPreviousTaskUUID(taskUUID);
@@ -250,15 +257,14 @@ public class CustomerTaskManager {
           try {
             customerTask.updateTaskUUID(newTaskUUID);
             customerTask.resetCompletionTime();
-            TaskInfo task = TaskInfo.get(taskUUID);
-            if (task != null) {
-              task.getSubTasks().forEach(st -> st.delete());
-              task.delete();
+            Optional<TaskInfo> optional = TaskInfo.maybeGet(taskUUID);
+            if (optional.isPresent()) {
+              optional.get().getSubTasks().forEach(st -> st.delete());
+              optional.get().delete();
             }
             commitTransaction();
           } catch (Exception e) {
-            throw new RuntimeException(
-                "Unable to delete the previous task info: " + taskUUID.toString());
+            throw new RuntimeException("Unable to delete the previous task info: " + taskUUID);
           } finally {
             endTransaction();
           }
@@ -286,9 +292,18 @@ public class CustomerTaskManager {
           TaskInfo.INCOMPLETE_STATES.stream()
               .map(Objects::toString)
               .collect(Collectors.joining("','"));
-      // Retrieve all incomplete customer tasks or task in incomplete state. Task state update and
-      // customer completion time update are not transactional.
+
+      // Delete orphaned parent tasks which do not have any associated customer task.
+      // It is rare but can happen as a customer task and task info are not saved in transaction.
+      // TODO It can be handled better with transaction but involves bigger change.
       String query =
+          "DELETE FROM task_info WHERE parent_uuid IS NULL AND uuid NOT IN "
+              + "(SELECT task_uuid FROM customer_task)";
+      DB.sqlUpdate(query).execute();
+
+      // Retrieve all incomplete customer tasks or task in incomplete state. Task state update
+      // and customer completion time update are not transactional.
+      query =
           "SELECT ti.uuid AS task_uuid, ct.id AS customer_task_id "
               + "FROM task_info ti, customer_task ct "
               + "WHERE ti.uuid = ct.task_uuid "
@@ -303,7 +318,7 @@ public class CustomerTaskManager {
           .findList()
           .forEach(
               row -> {
-                TaskInfo taskInfo = TaskInfo.get(row.getUUID("task_uuid"));
+                TaskInfo taskInfo = TaskInfo.getOrBadRequest(row.getUUID("task_uuid"));
                 CustomerTask customerTask = CustomerTask.get(row.getLong("customer_task_id"));
                 handlePendingTask(customerTask, taskInfo);
               });
@@ -359,6 +374,15 @@ public class CustomerTaskManager {
         break;
       case DestroyKubernetesUniverse:
         taskParams = Json.fromJson(oldTaskParams, DestroyUniverse.Params.class);
+        break;
+      case KubernetesOverridesUpgrade:
+        taskParams = Json.fromJson(oldTaskParams, KubernetesOverridesUpgradeParams.class);
+        break;
+      case GFlagsKubernetesUpgrade:
+        taskParams = Json.fromJson(oldTaskParams, KubernetesGFlagsUpgradeParams.class);
+        break;
+      case SoftwareKubernetesUpgrade:
+        taskParams = Json.fromJson(oldTaskParams, SoftwareUpgradeParams.class);
         break;
       case AddNodeToUniverse:
       case RemoveNodeFromUniverse:
@@ -475,6 +499,9 @@ public class CustomerTaskManager {
       case CloudProviderDelete:
         taskParams = Json.fromJson(oldTaskParams, CloudProviderDelete.Params.class);
         break;
+      case CloudBootstrap:
+        taskParams = Json.fromJson(oldTaskParams, CloudBootstrap.Params.class);
+        break;
       default:
         String errMsg =
             String.format(
@@ -488,12 +515,17 @@ public class CustomerTaskManager {
 
     UUID targetUUID;
     if (taskParams instanceof UniverseTaskParams) {
-      targetUUID = ((UniverseTaskParams) taskParams).getUniverseUUID();
+      UniverseTaskParams universeTaskParams = (UniverseTaskParams) taskParams;
+      targetUUID = universeTaskParams.getUniverseUUID();
       Universe universe = Universe.getOrBadRequest(targetUUID);
       if (!taskUUID.equals(universe.getUniverseDetails().updatingTaskUUID)
           && !taskUUID.equals(universe.getUniverseDetails().placementModificationTaskUuid)) {
         String errMsg = String.format("Invalid task state: Task %s cannot be retried", taskUUID);
         throw new PlatformServiceException(BAD_REQUEST, errMsg);
+      }
+      Optional<Users> userOptional = CommonUtils.maybeGetUserFromContext();
+      if (userOptional.isPresent()) {
+        universeTaskParams.creatingUser = userOptional.get();
       }
     } else if (taskParams instanceof IProviderTaskParams) {
       targetUUID = ((IProviderTaskParams) taskParams).getProviderUUID();

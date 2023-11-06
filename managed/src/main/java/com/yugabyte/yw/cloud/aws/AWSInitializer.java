@@ -38,6 +38,8 @@ import com.yugabyte.yw.cloud.AbstractInitializer;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.InstanceType.VolumeType;
@@ -65,6 +67,8 @@ public class AWSInitializer extends AbstractInitializer {
   @Inject Environment environment;
 
   @Inject Config config;
+
+  @Inject RuntimeConfGetter runtimeConfGetter;
 
   /**
    * Entry point to initialize AWS. This will create the various InstanceTypes and their
@@ -133,8 +137,8 @@ public class AWSInitializer extends AbstractInitializer {
       JsonNode onDemandJson = regionJson.get("terms").get("OnDemand");
 
       storeEBSPriceComponents(context, productDetailsListJson, onDemandJson);
-      storeInstancePriceComponents(context, productDetailsListJson, onDemandJson);
-      parseProductDetailsList(context, productDetailsListJson);
+      storeInstancePriceComponents(context, productDetailsListJson, onDemandJson, region);
+      parseProductDetailsList(context, productDetailsListJson, region);
 
       // Create the instance types.
       storeInstanceTypeInfoToDB(context);
@@ -282,7 +286,11 @@ public class AWSInitializer extends AbstractInitializer {
    * @param onDemandJson Price details json object.
    */
   private void storeInstancePriceComponents(
-      InitializationContext context, JsonNode productDetailsListJson, JsonNode onDemandJson) {
+      InitializationContext context,
+      JsonNode productDetailsListJson,
+      JsonNode onDemandJson,
+      Region region) {
+    Architecture regionArch = region.getArchitecture();
     // Get SKUs associated with Instances
     LOG.info("Parsing product details list to store pricing info");
     for (JsonNode productDetailsJson : productDetailsListJson) {
@@ -312,7 +320,16 @@ public class AWSInitializer extends AbstractInitializer {
       // Make sure it is the base instance type.
       include &= matches(productAttrs, "preInstalledSw", FilterOp.Equals, "NA");
       // Make sure instance type is supported.
-      include &= isInstanceTypeSupported(productAttrs);
+      include &= isInstanceTypeSupported(region.getProvider(), productAttrs);
+
+      if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching)) {
+        // Make sure architecture matches.
+        if (regionArch == Architecture.x86_64) {
+          include &= matches(productAttrs, "physicalProcessor", FilterOp.Contains, "Intel");
+        } else if (regionArch == Architecture.aarch64) {
+          include &= matches(productAttrs, "physicalProcessor", FilterOp.Contains, "Graviton");
+        }
+      }
 
       if (include) {
         JsonNode attributesJson = productDetailsJson.get("attributes");
@@ -402,9 +419,10 @@ public class AWSInitializer extends AbstractInitializer {
    * @param region The region EC2 product is in.
    */
   private void parseProductDetailsList(
-      InitializationContext context, JsonNode productDetailsListJson) {
+      InitializationContext context, JsonNode productDetailsListJson, Region region) {
     LOG.info("Parsing product details list");
     Iterator<JsonNode> productDetailsListIter = productDetailsListJson.elements();
+    Architecture regionArch = region.getArchitecture();
     while (productDetailsListIter.hasNext()) {
       JsonNode productDetailsJson = productDetailsListIter.next();
 
@@ -434,7 +452,16 @@ public class AWSInitializer extends AbstractInitializer {
       // Make sure it is the base instance type.
       include &= matches(productAttrs, "preInstalledSw", FilterOp.Equals, "NA");
       // Make sure instance type is supported.
-      include &= isInstanceTypeSupported(productAttrs);
+      include &= isInstanceTypeSupported(region.getProvider(), productAttrs);
+
+      if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching)) {
+        // Make sure architecture matches.
+        if (regionArch == Architecture.x86_64) {
+          include &= matches(productAttrs, "physicalProcessor", FilterOp.Contains, "Intel");
+        } else if (regionArch == Architecture.aarch64) {
+          include &= matches(productAttrs, "physicalProcessor", FilterOp.Contains, "Graviton");
+        }
+      }
 
       if (!include) {
         if (enableVerboseLogging) {
@@ -493,8 +520,9 @@ public class AWSInitializer extends AbstractInitializer {
   private void storeInstanceTypeInfoToDB(InitializationContext context) {
     LOG.info("Storing AWS instance type and pricing info in Yugaware DB");
     Provider provider = context.getProvider();
-    // First reset all the JSON details of all entries in the table, as we are about to refresh it.
-    InstanceType.resetInstanceTypeDetailsForProvider(provider.getUuid());
+    // First reset all the JSON details of all supported instance entries in the table, as we are
+    // about to refresh it.
+    InstanceType.resetInstanceTypeDetailsForProvider(provider, runtimeConfGetter, false);
     String instanceTypeCode;
 
     for (Map<String, String> productAttrs : context.getAvailableInstances()) {
@@ -585,11 +613,14 @@ public class AWSInitializer extends AbstractInitializer {
       if (details.tenancy == null) {
         details.tenancy = PublicCloudConstants.Tenancy.Shared;
       }
-      // Persist the architecture in instance details.
-      if (productAttrs.get("physicalProcessor").contains("Intel")) {
-        details.arch = Architecture.x86_64;
-      } else if (productAttrs.get("physicalProcessor").contains("Graviton")) {
-        details.arch = Architecture.aarch64;
+
+      if (runtimeConfGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching)) {
+        // Persist the architecture in instance details.
+        if (productAttrs.get("physicalProcessor").contains("Intel")) {
+          details.arch = Architecture.x86_64;
+        } else if (productAttrs.get("physicalProcessor").contains("Graviton")) {
+          details.arch = Architecture.aarch64;
+        }
       }
       // Update the object.
       InstanceType.upsert(provider.getUuid(), instanceTypeCode, numCores, memSizeGB, details);
@@ -622,8 +653,9 @@ public class AWSInitializer extends AbstractInitializer {
     }
   }
 
-  private boolean isInstanceTypeSupported(Map<String, String> productAttributes) {
-    return InstanceType.getAWSInstancePrefixesSupported(config).stream()
+  private boolean isInstanceTypeSupported(
+      Provider provider, Map<String, String> productAttributes) {
+    return InstanceType.getAWSInstancePrefixesSupported(provider, runtimeConfGetter).stream()
         .anyMatch(productAttributes.getOrDefault("instanceType", "")::startsWith);
   }
 }

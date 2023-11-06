@@ -101,7 +101,9 @@ export const SelectTables = React.forwardRef<PageRef>((_, forwardRef) => {
           setValue('selectedTables', table);
         }}
         searchPlaceholder={t('newRestoreModal.selectTables.searchTableName')}
-        tableCountInfo={() => <>{t('newRestoreModal.selectTables.tablesCount', { count: tablesInPreflight.length })}</>}
+        tableCountInfo={() => (
+          <>{t('newRestoreModal.selectTables.tablesCount', { count: tablesInPreflight.length })}</>
+        )}
       />
     </form>
   );

@@ -1056,7 +1056,17 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&yb_prefer_bnl,
-		false,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"yb_enable_batchednl", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables the planner's use of batched nested-loop "
+							 "join plans."),
+			NULL
+		},
+		&yb_enable_batchednl,
+		true,
 		NULL, NULL, NULL
 	},
 	{
@@ -2072,6 +2082,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_replication_commands", PGC_SUSET, REPLICATION,
+			gettext_noop("Enable the replication commands for Publication and Replication Slots."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_replication_commands,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"ysql_upgrade_mode", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enter a special mode designed specifically for YSQL cluster upgrades. "
 						 "Allows creating new system tables with given relation and type OID. "
@@ -2370,7 +2391,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_bnl_batch_size,
-		1, 1, INT_MAX,
+		1024, 1, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -3731,10 +3752,10 @@ static struct config_int ConfigureNamesInt[] =
 	{
 		{"yb_fetch_size_limit", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Maximum size of a fetch response. 0 = No limit"),
-			NULL, GUC_UNIT_KB
+			NULL, GUC_UNIT_BYTE
 		},
 		&yb_fetch_size_limit,
-		0, 0, MAX_KILOBYTES,
+		0, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 

@@ -387,6 +387,10 @@ CREATE TABLE pk_hash_range_int (h int, r1 int, r2 int, r3 int, PRIMARY KEY(h has
 INSERT INTO pk_hash_range_int SELECT i/25, (i/5) % 5, i % 5, i FROM generate_series(1, 125) AS i;
 /*+ IndexScan(pk_hash_range_int) */ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_hash_range_int WHERE (r1, r2) <= (3, 2);
 /*+ IndexScan(pk_hash_range_int) */ SELECT * FROM pk_hash_range_int WHERE (r1, r2) <= (3, 2);
+/*+ IndexScan(pk_hash_range_int) */ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_hash_range_int WHERE h = 1 AND (r1, r2) <= (3, 2) AND r1 <= 2;
+/*+ IndexScan(pk_hash_range_int) */ SELECT * FROM pk_hash_range_int WHERE h = 1 AND (r1, r2) <= (3, 2) AND r1 <= 2;
+/*+ IndexScan(pk_hash_range_int) */ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT sum(r1) FROM pk_hash_range_int WHERE h = 1 AND (r1, r2) <= (3, 2) AND r1 <= 2;
+/*+ IndexScan(pk_hash_range_int) */ SELECT sum(r1) FROM pk_hash_range_int WHERE h = 1 AND (r1, r2) <= (3, 2) AND r1 <= 2;
 DROP TABLE pk_hash_range_int;
 
 -- Test index SPLIT AT with INCLUDE clause

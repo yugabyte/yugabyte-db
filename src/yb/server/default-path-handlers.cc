@@ -83,6 +83,7 @@
 #include "yb/util/jsonwriter.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
+#include "yb/util/url-coding.h"
 #include "yb/util/version_info.h"
 #include "yb/util/version_info.pb.h"
 
@@ -91,8 +92,9 @@ DEFINE_RUNTIME_uint64(web_log_bytes, 1024 * 1024,
 TAG_FLAG(web_log_bytes, advanced);
 
 DEFINE_RUNTIME_bool(export_help_and_type_in_prometheus_metrics, true,
-    "Include #TYPE and #HELP in promethus metrics output");
+    "Include #TYPE and #HELP in Prometheus metrics output by default");
 
+DECLARE_int32(max_tables_metrics_breakdowns);
 DECLARE_bool(TEST_mini_cluster_mode);
 
 namespace yb {
@@ -157,7 +159,7 @@ static void LogsHandler(const Webserver::WebRequest& req, Webserver::WebResponse
   string logfile;
   GetFullLogFilename(google::INFO, &logfile);
   (*output) << tags.header <<"INFO logs" << tags.end_header << endl;
-  (*output) << "Log path is: " << logfile << endl;
+  (*output) << "Log path is: " << EscapeForHtmlToString(logfile) << endl;
 
   struct stat file_stat;
   if (stat(logfile.c_str(), &file_stat) == 0) {
@@ -169,12 +171,15 @@ static void LogsHandler(const Webserver::WebRequest& req, Webserver::WebResponse
     // file is likely to be small, this is unlikely to be an issue in
     // practice.
     log.seekg(seekpos);
-    (*output) << tags.line_break <<"Showing last " << FLAGS_web_log_bytes
+    (*output) << tags.line_break << "Showing last " << FLAGS_web_log_bytes
               << " bytes of log" << endl;
-    (*output) << tags.line_break << tags.pre_tag << log.rdbuf() << tags.end_pre_tag;
+    (*output) << tags.line_break << tags.pre_tag;
+    EscapeForHtml(&log, output);
+    (*output) << tags.end_pre_tag;
 
   } else {
-    (*output) << tags.line_break << "Couldn't open INFO log file: " << logfile;
+    (*output) << tags.line_break << "Couldn't open INFO log file: "
+              << EscapeForHtmlToString(logfile);
   }
 }
 
@@ -333,7 +338,7 @@ static void FlagsHandler(
     }
 
     output << tags.row << tags.cell << flag_info.name << tags.end_cell;
-    output << tags.cell << flag_info.value << tags.end_cell << tags.end_row;
+    output << tags.cell << EscapeForHtmlToString(flag_info.value) << tags.end_cell << tags.end_row;
   }
 
   if (!first_table) {
@@ -358,30 +363,71 @@ static void MemUsageHandler(const Webserver::WebRequest& req, Webserver::WebResp
   (*output) << "Memory tracking is not available unless tcmalloc is enabled.";
 #else
   auto tmp = TcMallocStats();
+  if (!as_text) {
+    tmp = EscapeForHtmlToString(tmp);
+  }
   // Replace new lines with <br> for html.
   replace_all(tmp, "\n", tags.line_break);
   (*output) << tmp << tags.end_pre_tag;
 #endif
 }
 
-// Registered to handle "/mem-trackers", and prints out to handle memory tracker information.
-static void MemTrackersHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
-  std::stringstream *output = &resp->output;
+static void JsonOutputMemTrackers(const std::vector<MemTrackerData>& trackers,
+                                  std::stringstream *output,
+                                  int max_depth,
+                                  bool use_full_path) {
+  JsonWriter jw(output, JsonWriter::COMPACT);
+  for (auto it = trackers.begin(); it != trackers.end(); it++) {
+    // If the data.depth >= max_depth, skip the info.
+    const auto data = *it;
+    if (data.depth > max_depth) {
+      continue;
+    }
+    const auto& tracker = data.tracker;
+    const std::string tracker_id = use_full_path ? tracker->ToString() : tracker->id();
+    // Output the object
+    jw.StartObject();
+    jw.String("id");
+    jw.String(tracker_id);
+    jw.String("limit_bytes");
+    jw.Int64(tracker->limit());
+    jw.String("current_consumption_bytes");
+    jw.Int64(tracker->consumption());
+    jw.String("peak_consumption_bytes");
+    jw.Int64(tracker->peak_consumption());
+
+    // UpdateConsumption returns true if consumption is taken from external source,
+    // for instance tcmalloc stats. So we should show only it in this case.
+    if (data.consumption_excluded_from_ancestors && !data.tracker->UpdateConsumption()) {
+      jw.String("full_consumption_bytes");
+      jw.Int64(tracker->consumption() + data.consumption_excluded_from_ancestors);
+    }
+
+    jw.String("children");
+    jw.StartArray();
+    const auto next_tracker = std::next(it, 1);
+    if (next_tracker == trackers.end()) {
+      for (int i = 0; i < data.depth + 1; ++i) {
+        jw.EndArray();
+        jw.EndObject();
+      }
+    } else if ((*next_tracker).depth <= data.depth) {
+      for (int i = 0; i < data.depth - (*next_tracker).depth + 1; ++i) {
+        jw.EndArray();
+        jw.EndObject();
+      }
+    }
+  }
+}
+
+static void HtmlOutputMemTrackers(const std::vector<MemTrackerData>& trackers,
+                                  std::stringstream *output,
+                                  int max_depth,
+                                  bool use_full_path) {
   *output << "<h1>Memory usage by subsystem</h1>\n";
   *output << "<table class='table table-striped' id='memtrackerstable'>\n";
   *output << "  <tr><th>Id</th><th>Current Consumption</th>"
       "<th>Peak consumption</th><th>Limit</th></tr>\n";
-
-  int max_depth = INT_MAX;
-  string depth = FindWithDefault(req.parsed_args, "max_depth", "");
-  if (depth != "") {
-    max_depth = std::stoi(depth);
-  }
-  string full_path_arg = FindWithDefault(req.parsed_args, "show_full_path", "true");
-  bool use_full_path = ParseLeadingBoolValue(full_path_arg.c_str(), true);
-
-  std::vector<MemTrackerData> trackers;
-  CollectMemTrackerData(MemTracker::GetRootTracker(), 0, &trackers);
   for (auto it = trackers.begin(); it != trackers.end(); it++) {
     // If the data.depth >= max_depth, skip the info.
     const auto data = *it;
@@ -395,7 +441,8 @@ static void MemTrackersHandler(const Webserver::WebRequest& req, Webserver::WebR
         HumanReadableNumBytes::ToString(tracker->consumption());
     const std::string peak_consumption_str =
         HumanReadableNumBytes::ToString(tracker->peak_consumption());
-    const std::string tracker_id = use_full_path ? tracker->ToString() : tracker->id();
+    const std::string tracker_id =
+        EscapeForHtmlToString(use_full_path ? tracker->ToString() : tracker->id());
     // GetPeakRootConsumption() in client-stress-test.cc depends on the HTML formatting.
     // Update the test, in case this changes in future.
     if (data.depth < 2) {
@@ -437,6 +484,30 @@ static void MemTrackersHandler(const Webserver::WebRequest& req, Webserver::WebR
   *output << "</table>\n";
 }
 
+// Registered to handle "/mem-trackers", and prints out to handle memory tracker information.
+static void MemTrackersHandler(const Webserver::WebRequest& req,
+                               Webserver::WebResponse* resp,
+                               bool isJson) {
+  std::stringstream *output = &resp->output;
+
+  int max_depth = INT_MAX;
+  string depth = FindWithDefault(req.parsed_args, "max_depth", "");
+  if (!depth.empty()) {
+    max_depth = std::stoi(depth);
+  }
+  string full_path_arg = FindWithDefault(req.parsed_args, "show_full_path", "true");
+  bool use_full_path = ParseLeadingBoolValue(full_path_arg.c_str(), true);
+
+  std::vector<MemTrackerData> trackers;
+  CollectMemTrackerData(MemTracker::GetRootTracker(), 0, &trackers);
+
+  if (isJson) {
+    JsonOutputMemTrackers(trackers, output, max_depth, use_full_path);
+  } else {
+    HtmlOutputMemTrackers(trackers, output, max_depth, use_full_path);
+  }
+}
+
 static Result<MetricLevel> MetricLevelFromName(const std::string& level) {
   if (level == "debug") {
     return MetricLevel::kDebug;
@@ -457,10 +528,47 @@ void SetParsedValue(Value* v, const Result<Value>& result) {
   }
 }
 
+bool ParseEntityOptions(const std::string& entity_prefix,
+                        const Webserver::WebRequest& req,
+                        MetricEntityOptions *metric_entity_options) {
+  bool found = false;
+  auto regex_p = FindOrNull(req.parsed_args, entity_prefix + "priority_regex");
+  if (regex_p != nullptr) {
+    found = true;
+    metric_entity_options->priority_regex = *regex_p;
+  }
+  const string* metrics_p = FindOrNull(req.parsed_args, entity_prefix + "metrics");
+  if (metrics_p != nullptr) {
+    found = true;
+    SplitStringUsing(*metrics_p, ",", &metric_entity_options->metrics);
+  } else {
+    metric_entity_options->metrics.push_back("*");
+  }
+  const string* exclude_metrics_p = FindOrNull(req.parsed_args, entity_prefix + "exclude_metrics");
+  if (exclude_metrics_p != nullptr) {
+    found = true;
+    SplitStringUsing(*exclude_metrics_p, ",", &metric_entity_options->exclude_metrics);
+  }
+  return found;
+}
+
 static void ParseRequestOptions(const Webserver::WebRequest& req,
+                                MeticEntitiesOptions *entities_options,
                                 MetricPrometheusOptions *prometheus_opts,
                                 MetricJsonOptions *json_opts = nullptr,
                                 JsonWriter::Mode *json_mode = nullptr) {
+  if (entities_options) {
+    MetricEntityOptions default_options;
+    if (ParseEntityOptions("", req, &default_options)) {
+      // Create an entry for each aggregation level with the filters from the request.
+      (*entities_options)[AggregationMetricLevel::kTable] = default_options;
+      (*entities_options)[AggregationMetricLevel::kStream] = default_options;
+    }
+    MetricEntityOptions server_options;
+    if (ParseEntityOptions("server_", req, &server_options)) {
+      (*entities_options)[AggregationMetricLevel::kServer] = server_options;
+    }
+  }
   string arg;
   if (json_opts) {
     arg = FindWithDefault(req.parsed_args, "include_raw_histograms", "false");
@@ -480,31 +588,15 @@ static void ParseRequestOptions(const Webserver::WebRequest& req,
     arg = FindWithDefault(req.parsed_args, "reset_histograms", "true");
     prometheus_opts->reset_histograms = ParseLeadingBoolValue(arg.c_str(), true);
 
-    const string* metrics_p = FindOrNull(req.parsed_args, "metrics");
-    if (metrics_p != nullptr) {
-      SplitStringUsing(*metrics_p, ",", &prometheus_opts->metrics);
+    SetParsedValue(&prometheus_opts->level,
+                   MetricLevelFromName(FindWithDefault(req.parsed_args, "level", "debug")));
+    prometheus_opts->max_tables_metrics_breakdowns = std::stoi(FindWithDefault(req.parsed_args,
+      "max_tables_metrics_breakdowns", std::to_string(FLAGS_max_tables_metrics_breakdowns)));
+
+    if (const std::string* arg_p = FindOrNull(req.parsed_args, "show_help")) {
+      prometheus_opts->export_help_and_type =
+          ExportHelpAndType(ParseLeadingBoolValue(arg_p->c_str(), false));
     }
-
-    arg = FindWithDefault(req.parsed_args, "cache_filters", "true");
-    prometheus_opts->cache_filters = ParseLeadingBoolValue(arg.c_str(), true);
-
-    const string* table_whitelist_p = FindOrNull(req.parsed_args,
-        "table_whitelist");
-    if (table_whitelist_p == nullptr) {
-      prometheus_opts->table_whitelist = FindWithDefault(req.parsed_args,
-          "priority_regex", "ALL");
-    } else {
-      prometheus_opts->table_whitelist = *table_whitelist_p;
-    }
-
-    prometheus_opts->table_blacklist = FindWithDefault(req.parsed_args,
-        "table_blacklist", "NONE");
-
-    prometheus_opts->server_whitelist = FindWithDefault(req.parsed_args,
-        "server_whitelist", "ALL");
-
-    prometheus_opts->server_blacklist = FindWithDefault(req.parsed_args,
-        "server_blacklist", "NONE");
   }
 
   if (json_mode) {
@@ -516,32 +608,50 @@ static void ParseRequestOptions(const Webserver::WebRequest& req,
 
 static void WriteMetricsAsJson(const MetricRegistry* const metrics,
                                const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  MeticEntitiesOptions entities_opts;
   MetricJsonOptions opts;
   JsonWriter::Mode json_mode;
-  ParseRequestOptions(req, /* prometheus opts */ nullptr, &opts, &json_mode);
+  ParseRequestOptions(req, &entities_opts, /* prometheus opts */ nullptr, &opts, &json_mode);
+  if (entities_opts.empty()) {
+    // Using kTable to just group all the metrics together.
+    entities_opts[AggregationMetricLevel::kTable].metrics.push_back("*");
+  }
   std::stringstream* output = &resp->output;
   JsonWriter writer(output, json_mode);
 
-  WARN_NOT_OK(metrics->WriteAsJson(&writer, opts), "Couldn't write JSON metrics over HTTP");
+  WARN_NOT_OK(metrics->WriteAsJson(&writer,
+                                   entities_opts[AggregationMetricLevel::kTable], opts),
+              "Couldn't write JSON metrics over HTTP");
 }
 
-static void WriteMetricsForPrometheus(MetricRegistry* const metrics,
-                                      const Webserver::WebRequest& req,
-                                      Webserver::WebResponse* resp) {
+static void WriteMetricsForPrometheus(const MetricRegistry* const metrics,
+                               const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   MetricPrometheusOptions opts;
-  ParseRequestOptions(req, &opts);
-  opts.CreateRegexs();
+  opts.export_help_and_type =
+      ExportHelpAndType(GetAtomicFlag(&FLAGS_export_help_and_type_in_prometheus_metrics));
+  MeticEntitiesOptions entities_opts;
+  ParseRequestOptions(req, &entities_opts, &opts);
 
   std::stringstream* output = &resp->output;
 
   std::set<std::string> prototypes;
   metrics->get_all_prototypes(prototypes);
 
-  ExportHelpAndType export_help_and_type_in_prometheus_metrics(
-      GetAtomicFlag(&FLAGS_export_help_and_type_in_prometheus_metrics));
-  PrometheusWriter writer(output, export_help_and_type_in_prometheus_metrics);
-  WARN_NOT_OK(metrics->WriteForPrometheus(&writer, opts),
-      "Couldn't write text metrics for Prometheus");
+  if (entities_opts.empty()) {
+    if (prototypes.find("cdc") != prototypes.end() ||
+        prototypes.find("cdcsdk") != prototypes.end()) {
+      // Only need to process Stream metrics if we have any cdc or cdcsdk metrics.
+      entities_opts[AggregationMetricLevel::kStream].metrics.push_back("*");
+    }
+    entities_opts[AggregationMetricLevel::kTable].metrics.push_back("*");
+  }
+
+  for (const auto& entity_options : entities_opts) {
+    PrometheusWriter writer(output, opts.export_help_and_type,
+        entity_options.first);
+    WARN_NOT_OK(metrics->WriteForPrometheus(&writer, entity_options.second, opts),
+                "Couldn't write text metrics for Prometheus");
+  }
 }
 
 static void HandleGetVersionInfo(
@@ -583,7 +693,11 @@ void AddDefaultPathHandlers(Webserver* webserver) {
   webserver->RegisterPathHandler("/status", "Status", StatusHandler, false, false);
   webserver->RegisterPathHandler("/memz", "Memory (total)", MemUsageHandler, true, false);
   webserver->RegisterPathHandler("/mem-trackers", "Memory (detail)",
-                                 MemTrackersHandler, true, false);
+                                 std::bind(&MemTrackersHandler, _1, _2, false /* isJson */),
+                                 true, false);
+  webserver->RegisterPathHandler("/api/v1/mem-trackers", "Memory (detail) JSON",
+                                 std::bind(&MemTrackersHandler, _1, _2, true /* isJson */),
+                                 false, false);
   webserver->RegisterPathHandler(
       "/api/v1/varz", "Flags", std::bind(&GetFlagsJsonHandler, _1, _2, webserver), false, false);
   webserver->RegisterPathHandler("/api/v1/version-info", "Build Version Info",
@@ -592,7 +706,7 @@ void AddDefaultPathHandlers(Webserver* webserver) {
   AddPprofPathHandlers(webserver);
 }
 
-void RegisterMetricsJsonHandler(Webserver* webserver, MetricRegistry* const metrics) {
+void RegisterMetricsJsonHandler(Webserver* webserver, const MetricRegistry* const metrics) {
   Webserver::PathHandlerCallback callback = std::bind(WriteMetricsAsJson, metrics, _1, _2);
   Webserver::PathHandlerCallback prometheus_callback = std::bind(
       WriteMetricsForPrometheus, metrics, _1, _2);
@@ -624,13 +738,14 @@ static void PathUsageHandler(FsManager* fsmanager,
     if (!stats.ok()) {
       LOG(WARNING) << stats.status();
       *output << Format("  <tr><td>$0</td><td colspan=\"2\">$1</td></tr>\n",
-                        path, stats.status().message());
+                        EscapeForHtmlToString(path),
+                        EscapeForHtmlToString(stats.status().message().ToString()));
       continue;
     }
     const std::string used_space_str = HumanReadableNumBytes::ToString(stats->used_space);
     const std::string total_space_str = HumanReadableNumBytes::ToString(stats->total_space);
     *output << Format("  <tr><td>$0</td><td>$1</td><td>$2</td></tr>\n",
-                      path, used_space_str, total_space_str);
+                      EscapeForHtmlToString(path), used_space_str, total_space_str);
   }
   *output << "</table>\n";
 }
@@ -673,7 +788,7 @@ static void CertificateHandler(server::RpcServerBase* server,
   if(!details.empty()) {
     (*output) << tags.header << "Certificate details" << tags.end_header << endl;
 
-    (*output) << tags.pre_tag << details << tags.end_pre_tag << endl;
+    (*output) << tags.pre_tag << EscapeForHtmlToString(details) << tags.end_pre_tag << endl;
   }
 }
 

@@ -107,6 +107,7 @@
 #include "catalog/pg_yb_role_profile.h"
 #include "catalog/yb_catalog_version.h"
 #include "pg_yb_utils.h"
+#include "utils/yb_inheritscache.h"
 
 #define RELCACHE_INIT_FILEMAGIC		0x573266	/* version ID value */
 
@@ -2238,11 +2239,16 @@ typedef enum YbPFetchTable
 	YB_PFETCH_TABLE_PG_TABLESPACE,
 	YB_PFETCH_TABLE_PG_TRIGGER,
 	YB_PFETCH_TABLE_PG_TYPE,
-	YB_PFETCH_TABLE_YB_PG_PROFILIE,
+	YB_PFETCH_TABLE_YB_PG_PROFILE,
 	YB_PFETCH_TABLE_YB_PG_ROLE_PROFILE,
 
 	YB_PFETCH_TABLE_LAST
 } YbPFetchTable;
+
+enum YbPFetchTablesCount
+{
+	YB_PFETCH_TABLES_COUNT = YB_PFETCH_TABLE_LAST - YB_PFETCH_TABLE_FIRST
+};
 
 typedef struct YbCatalogNameToPfTableId
 {
@@ -2294,7 +2300,7 @@ static const YbCatNamePfId YbCatalogNamesPfIds[] = {
 	{"pg_tablespace", YB_PFETCH_TABLE_PG_TABLESPACE},
 	{"pg_trigger", YB_PFETCH_TABLE_PG_TRIGGER},
 	{"pg_type", YB_PFETCH_TABLE_PG_TYPE},
-	{"pg_yb_profile", YB_PFETCH_TABLE_YB_PG_PROFILIE},
+	{"pg_yb_profile", YB_PFETCH_TABLE_YB_PG_PROFILE},
 	{"pg_yb_role_profile", YB_PFETCH_TABLE_YB_PG_ROLE_PROFILE},
 };
 
@@ -2306,134 +2312,106 @@ typedef enum YbPFetchTableState
 	YB_PFETCH_STATE_CACHE_FILLED,
 } YbPFetchTableState;
 
+typedef enum YbTableCacheType
+{
+	YB_TABLE_CACHE_TYPE_NO_CACHE = 0,
+	YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX,
+	YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX,
+	YB_TABLE_CACHE_TYPE_CUSTOM_CACHE
+} YbTableCacheType;
+
+typedef struct YbCatCacheInfo
+{
+	int id;
+	int index_id;
+} YbCatCacheInfo;
+
+typedef void(*YbCustomCache)();
+
+typedef struct YbTableCacheInfo
+{
+	YbTableCacheType type;
+	union
+	{
+		YbCatCacheInfo cat_cache;
+		YbCustomCache custom_loader;
+	};
+} YbTableCacheInfo;
+
 typedef struct YbPFetchTableInfo
 {
 	Oid relation_oid;
-	int cache_id;
-	int index_cache_id;
+	YbTableCacheInfo cache;
 } YbPFetchTableInfo;
 
 typedef struct YbTablePrefetcherState
 {
-	YbPFetchTableState tables[YB_PFETCH_TABLE_LAST - YB_PFETCH_TABLE_FIRST];
+	YbPFetchTableState tables[YB_PFETCH_TABLES_COUNT];
 	YbPFetchTableState tables_end;
 } YbTablePrefetcherState;
-
-static const int YB_INVALID_CACHE_ID = -1;
-
-static YbPFetchTableInfo
-YbGetPrefetchableTableInfoImpl(YbPFetchTable table)
-{
-	switch(table)
-	{
-	case YB_PFETCH_TABLE_PG_AM:
-		return (YbPFetchTableInfo)
-			{ AccessMethodRelationId, AMOID, AMNAME};
-	case YB_PFETCH_TABLE_PG_AMOP:
-		return (YbPFetchTableInfo)
-			{ AccessMethodOperatorRelationId, AMOPOPID, AMOPSTRATEGY };
-	case YB_PFETCH_TABLE_PG_AMPROC:
-		return (YbPFetchTableInfo)
-			{ AccessMethodProcedureRelationId, AMPROCNUM, YB_INVALID_CACHE_ID };
-	case YB_PFETCH_TABLE_PG_ATTRDEF:
-		return (YbPFetchTableInfo)
-			{ AttrDefaultRelationId, YB_INVALID_CACHE_ID, YB_INVALID_CACHE_ID };
-	case YB_PFETCH_TABLE_PG_ATTRIBUTE:
-		return (YbPFetchTableInfo)
-			{ AttributeRelationId, ATTNAME, ATTNUM };
-	case YB_PFETCH_TABLE_PG_AUTH_MEMBERS:
-		return (YbPFetchTableInfo)
-			{ AuthMemRelationId, YB_INVALID_CACHE_ID, YB_INVALID_CACHE_ID };
-	case YB_PFETCH_TABLE_PG_AUTHID:
-		return (YbPFetchTableInfo)
-			{ AuthIdRelationId, AUTHOID, AUTHNAME };
-	case YB_PFETCH_TABLE_PG_CAST:
-		return (YbPFetchTableInfo)
-			{ CastRelationId, CASTSOURCETARGET, YB_INVALID_CACHE_ID };
-	case YB_PFETCH_TABLE_PG_CLASS:
-		return (YbPFetchTableInfo)
-			{ RelationRelationId, RELOID, RELNAMENSP };
-	case YB_PFETCH_TABLE_PG_CONSTRAINT:
-		return (YbPFetchTableInfo)
-			{ ConstraintRelationId, CONSTROID, YB_INVALID_CACHE_ID };
-	case YB_PFETCH_TABLE_PG_DATABASE:
-		return (YbPFetchTableInfo)
-			{ DatabaseRelationId, DATABASEOID, YB_INVALID_CACHE_ID };
-	case YB_PFETCH_TABLE_PG_DB_ROLE_SETTINGS:
-		return (YbPFetchTableInfo)
-			{ DbRoleSettingRelationId, YB_INVALID_CACHE_ID, YB_INVALID_CACHE_ID };
-	case YB_PFETCH_TABLE_PG_INDEX:
-		return (YbPFetchTableInfo)
-			{ IndexRelationId, INDEXRELID, YB_INVALID_CACHE_ID };
-	case YB_PFETCH_TABLE_PG_INHERITS:
-		return (YbPFetchTableInfo)
-			{ InheritsRelationId, INHERITSRELID, YB_INVALID_CACHE_ID };
-	case YB_PFETCH_TABLE_PG_NAMESPACE:
-		return (YbPFetchTableInfo)
-			{ NamespaceRelationId, NAMESPACEOID, NAMESPACENAME };
-	case YB_PFETCH_TABLE_PG_OPCLASS:
-		return (YbPFetchTableInfo)
-			{ OperatorClassRelationId, CLAOID, CLAAMNAMENSP };
-	case YB_PFETCH_TABLE_PG_OPERATOR:
-		return (YbPFetchTableInfo)
-			{ OperatorRelationId, OPEROID, OPERNAMENSP };
-	case YB_PFETCH_TABLE_PG_PARTITIONED_TABLE:
-		return (YbPFetchTableInfo)
-			{ PartitionedRelationId, PARTRELID, YB_INVALID_CACHE_ID };
-	case YB_PFETCH_TABLE_PG_POLICY:
-		return (YbPFetchTableInfo)
-			{ PolicyRelationId, YB_INVALID_CACHE_ID, YB_INVALID_CACHE_ID };
-	case YB_PFETCH_TABLE_PG_PROC:
-		return (YbPFetchTableInfo)
-			{ ProcedureRelationId, PROCOID, PROCNAMEARGSNSP };
-	case YB_PFETCH_TABLE_PG_RANGE:
-		return (YbPFetchTableInfo)
-			{ RangeRelationId, RANGETYPE, YB_INVALID_CACHE_ID };
-	case YB_PFETCH_TABLE_PG_REWRITE:
-		return (YbPFetchTableInfo)
-			{ RewriteRelationId, RULERELNAME, YB_INVALID_CACHE_ID };
-	case YB_PFETCH_TABLE_PG_STATISTIC:
-		return (YbPFetchTableInfo)
-			{ StatisticRelationId, STATRELATTINH, YB_INVALID_CACHE_ID };
-	case YB_PFETCH_TABLE_PG_TABLESPACE:
-		return (YbPFetchTableInfo)
-			{ TableSpaceRelationId, TABLESPACEOID, YB_INVALID_CACHE_ID };
-	case YB_PFETCH_TABLE_PG_TRIGGER:
-		return (YbPFetchTableInfo)
-			{ TriggerRelationId, YB_INVALID_CACHE_ID, YB_INVALID_CACHE_ID };
-	case YB_PFETCH_TABLE_PG_TYPE:
-		return (YbPFetchTableInfo)
-			{ TypeRelationId, TYPEOID, TYPENAMENSP };
-	case YB_PFETCH_TABLE_YB_PG_PROFILIE:
-		return (YbPFetchTableInfo)
-			{ YbProfileRelationId, YB_INVALID_CACHE_ID, YB_INVALID_CACHE_ID };
-	case YB_PFETCH_TABLE_YB_PG_ROLE_PROFILE:
-		return (YbPFetchTableInfo)
-			{ YbRoleProfileRelationId, YB_INVALID_CACHE_ID, YB_INVALID_CACHE_ID };
-	case YB_PFETCH_TABLE_LAST:
-		break;
-	}
-	Assert(false);
-	return (YbPFetchTableInfo)
-		{ InvalidOid, YB_INVALID_CACHE_ID, YB_INVALID_CACHE_ID };
-}
 
 static const YbPFetchTableInfo*
 YbGetPrefetchableTableInfo(YbPFetchTable table)
 {
-	static YbPFetchTableInfo
-		array[YB_PFETCH_TABLE_LAST - YB_PFETCH_TABLE_FIRST];
-	static YbPFetchTableInfo* table_info_start = NULL;
-	if (!table_info_start)
-	{
-		for (YbPFetchTable i = YB_PFETCH_TABLE_FIRST;
-			 i < YB_PFETCH_TABLE_LAST;
-			 ++i)
-			array[i] = YbGetPrefetchableTableInfoImpl(i);
-
-		table_info_start = array;
-	}
-	return table_info_start + table;
+	static YbPFetchTableInfo tables[YB_PFETCH_TABLES_COUNT] = {
+		[YB_PFETCH_TABLE_PG_AM] =
+			(YbPFetchTableInfo){AccessMethodRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX, .cat_cache = {AMOID, AMNAME}}},
+		[YB_PFETCH_TABLE_PG_AMOP] =
+			(YbPFetchTableInfo){AccessMethodOperatorRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX, .cat_cache = {AMOPOPID, AMOPSTRATEGY}}},
+		[YB_PFETCH_TABLE_PG_AMPROC] =
+			(YbPFetchTableInfo){AccessMethodProcedureRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX, .cat_cache = {AMPROCNUM}}},
+		[YB_PFETCH_TABLE_PG_ATTRDEF] =
+			(YbPFetchTableInfo){AttrDefaultRelationId},
+		[YB_PFETCH_TABLE_PG_ATTRIBUTE] =
+			(YbPFetchTableInfo){AttributeRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX, .cat_cache = {ATTNAME, ATTNUM}}},
+		[YB_PFETCH_TABLE_PG_AUTH_MEMBERS] =
+			(YbPFetchTableInfo){AuthMemRelationId},
+		[YB_PFETCH_TABLE_PG_AUTHID] =
+			(YbPFetchTableInfo){AuthIdRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX, .cat_cache = {AUTHOID, AUTHNAME}}},
+		[YB_PFETCH_TABLE_PG_CAST] =
+			(YbPFetchTableInfo){ CastRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX, .cat_cache = {CASTSOURCETARGET}}},
+		[YB_PFETCH_TABLE_PG_CLASS] =
+			(YbPFetchTableInfo){ RelationRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX, .cat_cache = {RELOID, RELNAMENSP}}},
+		[YB_PFETCH_TABLE_PG_CONSTRAINT] =
+			(YbPFetchTableInfo){ ConstraintRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX, .cat_cache = {CONSTROID}}},
+		[YB_PFETCH_TABLE_PG_DATABASE] =
+			(YbPFetchTableInfo){ DatabaseRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX, .cat_cache = {DATABASEOID}}},
+		[YB_PFETCH_TABLE_PG_DB_ROLE_SETTINGS] =
+			(YbPFetchTableInfo){ DbRoleSettingRelationId},
+		[YB_PFETCH_TABLE_PG_INDEX] =
+			(YbPFetchTableInfo){ IndexRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX, .cat_cache = {INDEXRELID}}},
+		[YB_PFETCH_TABLE_PG_INHERITS] =
+			(YbPFetchTableInfo){ InheritsRelationId, {YB_TABLE_CACHE_TYPE_CUSTOM_CACHE, .custom_loader = &YbPreloadPgInheritsCache}},
+		[YB_PFETCH_TABLE_PG_NAMESPACE] =
+			(YbPFetchTableInfo){ NamespaceRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX, .cat_cache = {NAMESPACEOID, NAMESPACENAME}}},
+		[YB_PFETCH_TABLE_PG_OPCLASS] =
+			(YbPFetchTableInfo){ OperatorClassRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX, .cat_cache = {CLAOID, CLAAMNAMENSP}}},
+		[YB_PFETCH_TABLE_PG_OPERATOR] =
+			(YbPFetchTableInfo){ OperatorRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX, .cat_cache = {OPEROID, OPERNAMENSP}}},
+		[YB_PFETCH_TABLE_PG_PARTITIONED_TABLE] =
+			(YbPFetchTableInfo){ PartitionedRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX, .cat_cache = {PARTRELID}}},
+		[YB_PFETCH_TABLE_PG_POLICY] =
+			(YbPFetchTableInfo){ PolicyRelationId},
+		[YB_PFETCH_TABLE_PG_PROC] =
+			(YbPFetchTableInfo){ ProcedureRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX, .cat_cache = {PROCOID, PROCNAMEARGSNSP}}},
+		[YB_PFETCH_TABLE_PG_RANGE] =
+			(YbPFetchTableInfo){ RangeRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX, .cat_cache = {RANGETYPE}}},
+		[YB_PFETCH_TABLE_PG_REWRITE] =
+			(YbPFetchTableInfo){ RewriteRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX, .cat_cache = {RULERELNAME}}},
+		[YB_PFETCH_TABLE_PG_STATISTIC] =
+			(YbPFetchTableInfo){ StatisticRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX, .cat_cache = {STATRELATTINH}}},
+		[YB_PFETCH_TABLE_PG_TABLESPACE] =
+			(YbPFetchTableInfo){ TableSpaceRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX, .cat_cache = {TABLESPACEOID}}},
+		[YB_PFETCH_TABLE_PG_TRIGGER] =
+			(YbPFetchTableInfo){ TriggerRelationId},
+		[YB_PFETCH_TABLE_PG_TYPE] =
+			(YbPFetchTableInfo){ TypeRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX, .cat_cache = {TYPEOID, TYPENAMENSP}}},
+		[YB_PFETCH_TABLE_YB_PG_PROFILE] =
+			(YbPFetchTableInfo){ YbProfileRelationId},
+		[YB_PFETCH_TABLE_YB_PG_ROLE_PROFILE] =
+			(YbPFetchTableInfo){ YbRoleProfileRelationId},
+	};
+	return tables + table;
 }
 
 static void
@@ -2484,26 +2462,40 @@ YbPrefetch(YbTablePrefetcherState* prefetcher)
 }
 
 static void
-YbFillCatCache(YbTablePrefetcherState* prefetcher, YbPFetchTable table)
+YbFillCache(YbTablePrefetcherState* prefetcher, YbPFetchTable table)
 {
 	const YbPFetchTableInfo* info = YbGetPrefetchableTableInfo(table);
-	Assert(info->cache_id != YB_INVALID_CACHE_ID);
 	YbPFetchTableState* ts = prefetcher->tables + table;
 	if (*ts == YB_PFETCH_STATE_CACHE_FILLED)
 		return;
 	Assert(*ts == YB_PFETCH_STATE_LOADED);
-	YbPreloadCatalogCache(info->cache_id, info->index_cache_id);
+	switch (info->cache.type)
+	{
+	case YB_TABLE_CACHE_TYPE_NO_CACHE:
+		Assert(false);
+		break;
+	case YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX:
+		YbPreloadCatalogCache(info->cache.cat_cache.id, -1);
+		break;
+	case YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX:
+		YbPreloadCatalogCache(
+			info->cache.cat_cache.id, info->cache.cat_cache.index_id);
+		break;
+	case YB_TABLE_CACHE_TYPE_CUSTOM_CACHE:
+		info->cache.custom_loader();
+		break;
+	}
 	*ts = YB_PFETCH_STATE_CACHE_FILLED;
 }
 
 static bool
 YbHasAssociatedCache(YbPFetchTable table)
 {
-	return YbGetPrefetchableTableInfo(table)->cache_id != YB_INVALID_CACHE_ID;
+	return YbGetPrefetchableTableInfo(table)->cache.type != YB_TABLE_CACHE_TYPE_NO_CACHE;
 }
 
 static void
-YbFillCatCaches(YbTablePrefetcherState* prefetcher)
+YbFillCaches(YbTablePrefetcherState* prefetcher)
 {
 	for (const YbPFetchTableState* ts = prefetcher->tables;
 		 ts != &prefetcher->tables_end;
@@ -2511,7 +2503,7 @@ YbFillCatCaches(YbTablePrefetcherState* prefetcher)
 	{
 		const YbPFetchTable table = ts - prefetcher->tables;
 		if (*ts != YB_PFETCH_STATE_EMPTY && YbHasAssociatedCache(table))
-			YbFillCatCache(prefetcher, table);
+			YbFillCache(prefetcher, table);
 	}
 }
 
@@ -2521,20 +2513,25 @@ typedef struct YbRunWithPrefetcherContext
 	bool is_using_response_cache;
 } YbRunWithPrefetcherContext;
 
+typedef struct YbPrefetcherStarterFunctor
+{
+   bool (*call)(struct YbPrefetcherStarterFunctor* );
+} YbPrefetcherStarterFunctor;
+
 static YBCStatus
 YbRunWithPrefetcherImpl(
-	uint64_t catalog_version,
-	YBCPgSysTablePrefetcherCacheMode cache_mode,
-	YBCStatus (*func)(YbRunWithPrefetcherContext* ctx),
+	YbPrefetcherStarterFunctor *prefetcher_starter,
+	YBCStatus (*func)(YbRunWithPrefetcherContext *ctx),
 	bool keep_prefetcher)
 {
 	YBCPgResetCatalogReadTime();
-	YBCStartSysTablePrefetching(catalog_version, cache_mode);
+	const bool is_using_response_cache =
+		prefetcher_starter->call(prefetcher_starter);
 	YBCStatus result = NULL;
 	PG_TRY();
 	{
 		YbRunWithPrefetcherContext ctx = {};
-		ctx.is_using_response_cache = cache_mode != YB_YQL_PREFETCHER_NO_CACHE;
+		ctx.is_using_response_cache = is_using_response_cache;
 		result = func(&ctx);
 	}
 	PG_CATCH();
@@ -2555,37 +2552,76 @@ YbRunWithPrefetcherImpl(
 	return result;
 }
 
+typedef struct YbPrefetcherStarterWithCache {
+	/* YbPrefetcherStarterFunctor have to be the first field due to cast */
+	YbPrefetcherStarterFunctor functor;
+	const YBCPgLastKnownCatalogVersionInfo *version;
+	YBCPgSysTablePrefetcherCacheMode mode;
+} YbPrefetcherStarterWithCache;
+
+static bool
+YbPrefetcherStarterWithCacheCall(YbPrefetcherStarterFunctor *functor) {
+	const YbPrefetcherStarterWithCache *this =
+		(const YbPrefetcherStarterWithCache *)functor;
+	YBCStartSysTablePrefetching(MyDatabaseId, *this->version, this->mode);
+	return true;
+}
+
+static YbPrefetcherStarterWithCache
+MakeStarterWithCache(YBCPgSysTablePrefetcherCacheMode mode,
+					 const YBCPgLastKnownCatalogVersionInfo *version)
+{
+	return (YbPrefetcherStarterWithCache){
+		.functor = {.call = &YbPrefetcherStarterWithCacheCall},
+		.version = version,
+		.mode = mode
+	};
+}
+
+static bool
+YbPrefetcherStarterNoCacheCall(YbPrefetcherStarterFunctor *functor)
+{
+	YBCStartSysTablePrefetchingNoCache();
+	return false;
+}
+
 static void
 YbRunWithPrefetcher(
-	YBCStatus (*func)(YbRunWithPrefetcherContext*),
-	bool keep_prefetcher)
+	YBCStatus (*func)(YbRunWithPrefetcherContext *), bool keep_prefetcher)
 {
-	static const YBCPgSysTablePrefetcherCacheMode cache_modes[] =
-	{
-		YB_YQL_PREFETCHER_TRUST_CACHE,
-		YB_YQL_PREFETCHER_RENEW_CACHE_SOFT,
-		YB_YQL_PREFETCHER_RENEW_CACHE_HARD,
-		YB_YQL_PREFETCHER_NO_CACHE
+	YBCPgLastKnownCatalogVersionInfo catalog_version = {};
+	YbPrefetcherStarterWithCache trust_cache = MakeStarterWithCache(
+		YB_YQL_PREFETCHER_TRUST_CACHE, &catalog_version);
+	YbPrefetcherStarterWithCache renew_soft = MakeStarterWithCache(
+		YB_YQL_PREFETCHER_RENEW_CACHE_SOFT, &catalog_version);
+	YbPrefetcherStarterWithCache renew_hard = MakeStarterWithCache(
+		YB_YQL_PREFETCHER_RENEW_CACHE_HARD, &catalog_version);
+	YbPrefetcherStarterFunctor no_cache =
+		{.call = &YbPrefetcherStarterNoCacheCall};
+
+	YbPrefetcherStarterFunctor *prefetcher_starters[] = {
+		&trust_cache.functor,
+		&renew_soft.functor,
+		&renew_hard.functor,
+		&no_cache
 	};
 
-	static const size_t kCacheModesCount = lengthof(cache_modes);
-	const uint64_t catalog_version =
-		YbGetCatalogCacheVersionForTablePrefetching();
+	static const size_t kStartersCount = lengthof(prefetcher_starters);
 
-	size_t cache_mode_idx =
-		YBCIsInitDbModeEnvVarSet() ||
-		!*YBCGetGFlags()->ysql_enable_read_request_caching
-			? (kCacheModesCount - 1) : 0;
+	size_t starter_idx = kStartersCount - 1;
+	if (!YBCIsInitDbModeEnvVarSet() &&
+		*YBCGetGFlags()->ysql_enable_read_request_caching)
+	{
+		starter_idx = 0;
+		catalog_version = YbGetCatalogCacheVersionForTablePrefetching();
+	}
 	for (;;)
 	{
 		YBCStatus status = YbRunWithPrefetcherImpl(
-			catalog_version,
-			cache_modes[cache_mode_idx],
-			func,
-			keep_prefetcher);
+			prefetcher_starters[starter_idx], func, keep_prefetcher);
 		if (!status)
 			break;
-		if (++cache_mode_idx == kCacheModesCount ||
+		if (++starter_idx == kStartersCount ||
 			!YBCStatusIsSnapshotTooOld(status))
 		{
 			HandleYBStatus(status);
@@ -2627,41 +2663,37 @@ YbUpdateRelationCacheImpl(YbUpdateRelationCacheState *state,
 
 	YbTablePrefetcherState *prefetcher = &ctx->prefetcher;
 
-	if (!ctx->is_using_response_cache)
+	/*
+	 * Preload other tables on demand.
+	 * This is the optimization to prevent master node from being overloaded
+	 * with lots of fat read requests (request which reads too much tables)
+	 * in case there are lots of opened connections.
+	 * Some of our tests has such setup. Reading all the tables in one
+	 * request on a debug build under heavy load may spend up to 5-6 secs.
+	 */
+	if (state->has_relations_with_trigger)
+		YbRegisterTable(prefetcher, YB_PFETCH_TABLE_PG_TRIGGER);
+
+	if (state->has_relations_with_row_security)
+		YbRegisterTable(prefetcher, YB_PFETCH_TABLE_PG_POLICY);
+
+	if (state->has_partitioned_tables)
 	{
-		/*
-		 * In case of disabled respose cache preload other tables on demand.
-		 * This is the optimization to prevent master node from being overloaded
-		 * with lots of fat read requests (request which reads too much tables)
-		 * in case there are lots of opened connections.
-		 * Some of our tests has such setup. Reading all the tables in one
-		 * request on a debug build under heavy load may spend up to 5-6 secs.
-		 */
-		if (state->has_relations_with_trigger)
-			YbRegisterTable(prefetcher, YB_PFETCH_TABLE_PG_TRIGGER);
-
-		if (state->has_relations_with_row_security)
-			YbRegisterTable(prefetcher, YB_PFETCH_TABLE_PG_POLICY);
-
-		if (state->has_partitioned_tables)
-		{
-			static const YbPFetchTable tables[] = {
-				YB_PFETCH_TABLE_PG_CAST,
-				YB_PFETCH_TABLE_PG_INHERITS,
-				YB_PFETCH_TABLE_PG_PROC};
-			YbRegisterTables(prefetcher, tables, lengthof(tables));
-		}
-
-		YBCStatus status = YbPrefetch(prefetcher);
-		if (status)
-			return status;
+		static const YbPFetchTable tables[] = {
+			YB_PFETCH_TABLE_PG_CAST,
+			YB_PFETCH_TABLE_PG_PROC};
+		YbRegisterTables(prefetcher, tables, lengthof(tables));
 	}
+
+	YBCStatus status = YbPrefetch(prefetcher);
+	if (status)
+		return status;
 
 	YBUpdateRelationsAttributes(state);
 
 	YBUpdateRelationsPartitioning(state);
 
-	YbFillCatCaches(prefetcher);
+	YbFillCaches(prefetcher);
 
 	YBUpdateRelationsIndicies(state);
 	return NULL;
@@ -2824,6 +2856,7 @@ YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 		YB_PFETCH_TABLE_PG_CONSTRAINT,
 		YB_PFETCH_TABLE_PG_DATABASE,
 		YB_PFETCH_TABLE_PG_INDEX,
+		YB_PFETCH_TABLE_PG_INHERITS,
 		YB_PFETCH_TABLE_PG_NAMESPACE,
 		YB_PFETCH_TABLE_PG_OPCLASS,
 		YB_PFETCH_TABLE_PG_PARTITIONED_TABLE,
@@ -2840,14 +2873,14 @@ YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 	if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist)
 	{
 		static const YbPFetchTable tables[] = {
-			YB_PFETCH_TABLE_YB_PG_PROFILIE,
+			YB_PFETCH_TABLE_YB_PG_PROFILE,
 			YB_PFETCH_TABLE_YB_PG_ROLE_PROFILE,
 			YB_PFETCH_TABLE_PG_CAST
 		};
 		YbRegisterTables(prefetcher, tables, lengthof(tables));
 	}
 
-	if (ctx->is_using_response_cache)
+	if (YbNeedAdditionalCatalogTables())
 	{
 		static const YbPFetchTable tables[] = {
 			YB_PFETCH_TABLE_PG_CAST,
@@ -2881,11 +2914,11 @@ YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 	 *       scaning of prefetched tables.
 	 */
 
-	YbFillCatCache(prefetcher, YB_PFETCH_TABLE_PG_INDEX);
-	YbFillCatCache(prefetcher, YB_PFETCH_TABLE_PG_REWRITE);
-	YbFillCatCache(prefetcher, YB_PFETCH_TABLE_PG_CLASS);
-	YbFillCatCache(prefetcher, YB_PFETCH_TABLE_PG_ATTRIBUTE);
-	YbFillCatCaches(prefetcher);
+	YbFillCache(prefetcher, YB_PFETCH_TABLE_PG_INDEX);
+	YbFillCache(prefetcher, YB_PFETCH_TABLE_PG_REWRITE);
+	YbFillCache(prefetcher, YB_PFETCH_TABLE_PG_CLASS);
+	YbFillCache(prefetcher, YB_PFETCH_TABLE_PG_ATTRIBUTE);
+	YbFillCaches(prefetcher);
 
 	status = YbUpdateRelationCache(ctx);
 	if (status)
@@ -2933,7 +2966,7 @@ YbPrefetchRequiredDataImpl(
 	YbRunWithPrefetcherContext* ctx,
 	bool preload_rel_cache)
 {
-	YbTablePrefetcherState* prefetcher = &ctx->prefetcher;
+	YbTablePrefetcherState *prefetcher = &ctx->prefetcher;
 
 	YBCStatus status = NULL;
 	if (preload_rel_cache)
@@ -2957,18 +2990,18 @@ YbPrefetchRequiredDataImpl(
 	status = YbPrefetch(prefetcher);
 	if (status)
 		return status;
-	YbFillCatCaches(prefetcher);
+	YbFillCaches(prefetcher);
 	return NULL;
 }
 
 static YBCStatus
-YbPrefetchRequiredDataWithoutRelCache(YbRunWithPrefetcherContext* ctx)
+YbPrefetchRequiredDataWithoutRelCache(YbRunWithPrefetcherContext *ctx)
 {
 	return YbPrefetchRequiredDataImpl(ctx, false /* preload_rel_cache */);
 }
 
 static YBCStatus
-YbPrefetchRequiredDataWithRelCache(YbRunWithPrefetcherContext* ctx)
+YbPrefetchRequiredDataWithRelCache(YbRunWithPrefetcherContext *ctx)
 {
 	return YbPrefetchRequiredDataImpl(ctx, true /* preload_rel_cache */);
 }
@@ -5572,7 +5605,9 @@ RelationCacheInitializePhase3(void)
 		 * again and re-compute needNewCacheFile.
 		 */
 		Assert(OidIsValid(MyDatabaseId));
-		needNewCacheFile = !load_relcache_init_file(true);
+		needNewCacheFile = !load_relcache_init_file(true) && 
+			!YbNeedAdditionalCatalogTables() &&
+			*YBCGetGFlags()->ysql_use_relcache_file;
 	}
 
 	/*
@@ -5612,9 +5647,11 @@ RelationCacheInitializePhase3(void)
 		Assert(!YBCIsSysTablePrefetchingStarted());
 
 		bool preload_rel_cache =
-			needNewCacheFile ||
+			needNewCacheFile || 
 			YBCIsInitDbModeEnvVarSet() ||
-			*YBCGetGFlags()->ysql_enable_read_request_caching;
+			YbNeedAdditionalCatalogTables() ||
+			!*YBCGetGFlags()->ysql_use_relcache_file;
+
 		YbPrefetchRequiredData(preload_rel_cache);
 
 		Assert(YBCIsSysTablePrefetchingStarted());
@@ -7495,9 +7532,8 @@ load_relcache_init_file(bool shared)
 	 * below.
 	 */
 	if (IsYugaByteEnabled() &&
-		(IS_NON_EMPTY_STR_FLAG(
-			YBCGetGFlags()->ysql_catalog_preload_additional_table_list) ||
-			*YBCGetGFlags()->ysql_catalog_preload_additional_tables))
+		(YbNeedAdditionalCatalogTables() || 
+			!*YBCGetGFlags()->ysql_use_relcache_file))
 		return false;
 
 	RelCacheInitFileName(initfilename, shared);

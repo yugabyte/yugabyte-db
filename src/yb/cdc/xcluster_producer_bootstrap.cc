@@ -16,6 +16,10 @@
 #include "yb/cdc/cdc_state_table.h"
 #include "yb/client/meta_cache.h"
 #include "yb/consensus/consensus.h"
+#include "yb/consensus/log.h"
+#include "yb/consensus/log_cache.h"
+#include "yb/docdb/ql_rowwise_iterator_interface.h"
+#include "yb/dockv/reader_projection.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/util/logging.h"
 
@@ -23,6 +27,69 @@ DECLARE_int32(cdc_write_rpc_timeout_ms);
 
 namespace yb {
 namespace cdc {
+
+Result<bool> IsBootstrapRequiredForTablet(
+    tablet::TabletPeerPtr tablet_peer, const OpId& min_op_id, const CoarseTimePoint& deadline) {
+  if (min_op_id.index < 0) {
+    // Bootstrap is needed if there is any data in the tablet.
+    // This is done by calling FetchNext on NewRowIterator to see if there is any row is visible
+    // (not deleted). For colocated tablets, each table has to be checked.
+    //
+    // We cannot rely on existence of data in WAL. Only locally generated data is
+    // replicated via xcluster. This is done to prevent infinite replication loop in bidirectional
+    // mode. If the data in the WAL was from a prior xcluster stream (xcluster DR cases) then it
+    // will not get replicated even if we can read the log. Reading the entire log to determine if
+    // any entries are external is can be too expensive. Also the user could have accidentally
+    // inserted data but then deleted it before adding the table to replication, which we cannot
+    // detect by scanning the WAL.
+
+    const auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+    auto table_ids = tablet->metadata()->GetAllColocatedTables();
+    const dockv::ReaderProjection empty_projection;
+
+    // We will have multiple tables when this is a colocated table.
+    for (const auto& table_id : table_ids) {
+      auto iter = VERIFY_RESULT(
+          tablet->NewRowIterator(empty_projection, /* read_hybrid_time */ {}, table_id));
+      if (VERIFY_RESULT(iter->FetchNext(nullptr))) {
+        LOG(INFO) << "Tablet " << tablet_peer->tablet_id() << " has rows in table " << table_id
+                  << ". Bootstrap is required when setting up xCluster.";
+        return true;
+      }
+    }
+    return false;
+  }
+
+  auto log = tablet_peer->log();
+  const auto latest_opid = log->GetLatestEntryOpId();
+  if (min_op_id.index == latest_opid.index) {
+    // Consumer has caught up to producer.
+    return false;
+  }
+
+  OpId next_index = min_op_id;
+  next_index.index++;
+
+  int64_t last_readable_opid_index;
+  auto consensus = VERIFY_RESULT_OR_SET_CODE(
+      tablet_peer->GetConsensus(), CDCError(CDCErrorPB::LEADER_NOT_READY));
+
+  auto log_result = consensus->ReadReplicatedMessagesForCDC(
+      next_index, &last_readable_opid_index, deadline, true /* fetch_single_entry */);
+
+  if (!log_result.ok()) {
+    if (log_result.status().IsNotFound()) {
+      LOG(INFO) << "Couldn't read index " << next_index << " for tablet "
+                << tablet_peer->tablet_id() << ": " << log_result.status()
+                << ". Re-bootstrap of the xCluster stream is required";
+      return true;
+    }
+
+    return log_result.status().CloneAndAddErrorCode(CDCError(CDCErrorPB::INTERNAL_ERROR));
+  }
+
+  return false;
+}
 
 Status XClusterProducerBootstrap::RunBootstrapProducer() {
   LOG_WITH_FUNC(INFO) << "Initializing xCluster Streams";

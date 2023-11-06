@@ -454,7 +454,8 @@ const string TableInfo::pgschema_name() const {
 }
 
 bool TableInfo::has_pg_type_oid() const {
-  for (const auto& col : LockForRead()->schema().columns()) {
+  const auto lock = LockForRead();
+  for (const auto& col : lock->schema().columns()) {
     if (!col.has_pg_type_oid()) {
       return false;
     }
@@ -1261,6 +1262,11 @@ const google::protobuf::RepeatedPtrField<std::string> CDCStreamInfo::table_id() 
 
 const NamespaceId CDCStreamInfo::namespace_id() const {
   return LockForRead()->pb.namespace_id();
+}
+
+const ReplicationSlotName CDCStreamInfo::GetCdcsdkYsqlReplicationSlotName() const {
+  auto l = LockForRead();
+  return ReplicationSlotName(l->pb.cdcsdk_ysql_replication_slot_name());
 }
 
 std::string CDCStreamInfo::ToString() const {

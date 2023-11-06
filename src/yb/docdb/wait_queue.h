@@ -76,7 +76,7 @@ class WaitQueue {
   Status WaitOn(
       const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
       std::shared_ptr<ConflictDataManager> blockers, const TabletId& status_tablet_id,
-      uint64_t serial_no, WaitDoneCallback callback);
+      uint64_t serial_no, int64_t txn_start_us, WaitDoneCallback callback);
 
   // Check the wait queue for any active blockers which would conflict with locks. This method
   // should be called as the first step in conflict resolution when processing a new request to
@@ -87,7 +87,8 @@ class WaitQueue {
   // status in case of some unresolvable error.
   Result<bool> MaybeWaitOnLocks(
       const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
-      const TabletId& status_tablet_id, uint64_t serial_no, WaitDoneCallback callback);
+      const TabletId& status_tablet_id, uint64_t serial_no, int64_t txn_start_us,
+      WaitDoneCallback callback);
 
   void Poll(HybridTime now);
 

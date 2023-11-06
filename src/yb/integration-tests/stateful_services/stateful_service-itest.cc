@@ -281,8 +281,6 @@ TEST_F(StatefulServiceTest, TestEchoService) {
   ASSERT_OK(initial_leader->Start());
 }
 
-// The below tests use SyncPoint so can only run in DEBUG mode.
-#ifndef NDEBUG
 TEST_F(StatefulServiceTest, TestLeadershipChange) {
   // If the tablet leader changes in the middle of a RPC, but after the write then the RPC should
   // still fail. The StatefulServiceClient should retry the RPC on the new leader such that the
@@ -409,6 +407,5 @@ TEST_F(StatefulServiceTest, TestWriteDuringLeadershipChange) {
   ASSERT_EQ(count_err, 0);
   ASSERT_EQ(count_term_err, 1);
 }
-#endif
 
 }  // namespace yb

@@ -141,16 +141,18 @@ class AzureCloud(AbstractCloud):
             logging.warning("[app] Network parameters not specified for region {}".format(region))
         nicId = self.get_admin().create_or_update_nic(
             vmName, vnet, subnet, zone, nsg, region, public_ip, tags, network_params)
-        output = self.get_admin().create_or_update_vm(vmName, zone, numVolumes, private_key_file,
-                                                      volSize, instanceType, adminSSH, image,
-                                                      volType, args.type, region, nicId, tags,
-                                                      disk_iops, disk_throughput, spot_price,
-                                                      use_spot_instance, vm_params, disk_params)
+        output = self.get_admin()\
+            .create_or_update_vm(vmName, zone, numVolumes, private_key_file, volSize,
+                                 instanceType, adminSSH, image, volType, args.type, region,
+                                 nicId, tags, disk_iops, disk_throughput, spot_price,
+                                 use_spot_instance, vm_params, disk_params,
+                                 cloud_instance_types=args.cloud_instance_types)
         logging.info("[app] Updated Azure VM {}.".format(vmName, region, zone))
         return output
 
-    def change_instance_type(self, host_info, new_instance_type):
-        self.get_admin().change_instance_type(host_info['name'], new_instance_type)
+    def change_instance_type(self, host_info, instance_type, cloud_instance_types):
+        self.get_admin().change_instance_type(host_info['name'], instance_type,
+                                              cloud_instance_types)
 
     def destroy_instance(self, args):
         host_info = self.get_host_info(args)
@@ -236,7 +238,7 @@ class AzureCloud(AbstractCloud):
     def start_instance(self, host_info, server_ports):
         vm_name = host_info['name']
         vm_status = self.get_admin().get_vm_status(vm_name)
-        if vm_status != 'VM deallocated':
+        if vm_status != 'deallocated' and vm_status != 'stopped':
             logging.warning("Host {} is not stopped, VM status is {}".format(
                 vm_name, vm_status))
         else:

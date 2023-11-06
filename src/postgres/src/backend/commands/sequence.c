@@ -44,9 +44,9 @@
 #include "utils/resowner.h"
 #include "utils/syscache.h"
 #include "utils/varlena.h"
-#include "yb/yql/pggate/ybc_pggate.h"
 
 /*  YB includes. */
+#include "commands/ybccmds.h"
 #include "pg_yb_utils.h"
 
 /*
@@ -621,7 +621,7 @@ DeleteSequenceTuple(Oid relid)
 
 	if (IsYugaByteEnabled())
 	{
-		HandleYBStatus(YBCDeleteSequenceTuple(MyDatabaseId, relid));
+		YBCDropSequence(relid);
 	}
 
 	CatalogTupleDelete(rel, tuple);

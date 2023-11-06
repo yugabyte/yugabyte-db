@@ -5,6 +5,7 @@ import static org.junit.Assert.assertTrue;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.List;
+import java.math.BigDecimal;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,7 +16,9 @@ import org.yb.util.json.ObjectChecker;
 import org.yb.util.json.ObjectCheckerBuilder;
 import org.yb.util.json.ValueChecker;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 public class ExplainAnalyzeUtils {
@@ -37,11 +40,15 @@ public class ExplainAnalyzeUtils {
 
   public static final String NODE_YB_BATCHED_NESTED_LOOP = "YB Batched Nested Loop";
 
+  public static final String PLAN = "Plan";
+
   public static final String OPERATION_INSERT = "Insert";
   public static final String OPERATION_UPDATE = "Update";
 
   public static final String RELATIONSHIP_OUTER_TABLE = "Outer";
   public static final String RELATIONSHIP_INNER_TABLE = "Inner";
+
+  public static final String TOTAL_COST = "Total Cost";
 
   public interface TopLevelCheckerBuilder extends ObjectCheckerBuilder {
     TopLevelCheckerBuilder plan(ObjectChecker checker);
@@ -95,12 +102,27 @@ public class ExplainAnalyzeUtils {
     PlanCheckerBuilder actualTotalTime(Checker checker);
   }
 
+  public static void setRowAndSizeLimit(Statement statement, int rowLimit, int sizeLimitBytes)
+      throws Exception {
+    LOG.info(String.format("Row limit = %d, Size limit = %d B", rowLimit, sizeLimitBytes));
+    statement.execute(String.format("SET yb_fetch_row_limit = %d", rowLimit));
+    statement.execute(String.format("SET yb_fetch_size_limit = %d", sizeLimitBytes));
+  }
+
+  public static void setRowAndSizeLimit(Statement statement, int rowLimit, String sizeLimit)
+      throws Exception {
+    LOG.info(String.format("Row limit = %d, Size limit = %s", rowLimit, sizeLimit));
+    statement.execute(String.format("SET yb_fetch_row_limit = %d", rowLimit));
+    statement.execute(String.format("SET yb_fetch_size_limit = '%s'", sizeLimit));
+  }
+
   private static void testExplain(
-      Statement stmt, String query, Checker checker, boolean timing) throws Exception {
+      Statement stmt, String query, Checker checker, boolean timing, boolean debug)
+      throws Exception {
     LOG.info("Query: " + query);
     ResultSet rs = stmt.executeQuery(String.format(
-        "EXPLAIN (FORMAT json, ANALYZE true, SUMMARY true, DIST true, TIMING %b) %s",
-        timing, query));
+        "EXPLAIN (FORMAT json, ANALYZE true, SUMMARY true, DIST true, TIMING %b, DEBUG %b) %s",
+        timing, debug, query));
     rs.next();
     JsonElement json = JsonParser.parseString(rs.getString(1));
     LOG.info("Response:\n" + JsonUtil.asPrettyString(json));
@@ -114,12 +136,17 @@ public class ExplainAnalyzeUtils {
 
   public static void testExplain(
       Statement stmt, String query, Checker checker) throws Exception {
-    testExplain(stmt, query, checker, true);
+    testExplain(stmt, query, checker, true, false);
+  }
+
+  public static void testExplainDebug(
+      Statement stmt, String query, Checker checker) throws Exception {
+    testExplain(stmt, query, checker, true, true);
   }
 
   public static void testExplainNoTiming(
       Statement stmt, String query, Checker checker) throws Exception {
-    testExplain(stmt, query, checker, false);
+    testExplain(stmt, query, checker, false, false);
   }
 
   private static TopLevelCheckerBuilder makeTopLevelBuilder() {
@@ -142,5 +169,47 @@ public class ExplainAnalyzeUtils {
         .build();
 
     testExplain(stmt, query, checker);
+  }
+
+    // An opaque holder for costs. The idea of this is for users to only be able
+  // to compare costs in tests and not read into potentially finnicky cost
+  // values.
+  public static class Cost implements Comparable<Cost> {
+    public Cost(String value) {
+      this.value = new BigDecimal(value);
+    }
+
+    @Override
+    public int compareTo(Cost otherCost) {
+      return this.value.compareTo(otherCost.value);
+    }
+
+    @Override
+    public boolean equals(Object other) {
+      if (this == other)
+        return true;
+
+      if (other == null || this.getClass() != other.getClass())
+        return false;
+
+      Cost otherCost = (Cost) other;
+      return this.value.equals(otherCost.value);
+    }
+
+    private BigDecimal value;
+  }
+
+  public static Cost getExplainTotalCost(Statement stmt, String query)
+  throws Exception {
+    ResultSet rs = stmt.executeQuery(String.format(
+      "EXPLAIN (FORMAT json) %s", query));
+    rs.next();
+    JsonElement json = JsonParser.parseString(rs.getString(1));
+    JsonArray rootArray = json.getAsJsonArray();
+    if (!rootArray.isEmpty()) {
+      JsonObject plan = rootArray.get(0).getAsJsonObject().getAsJsonObject(PLAN);
+      return new Cost(plan.get(TOTAL_COST).getAsString());
+    }
+    throw new IllegalArgumentException("Explain plan for this query returned empty.");
   }
 }

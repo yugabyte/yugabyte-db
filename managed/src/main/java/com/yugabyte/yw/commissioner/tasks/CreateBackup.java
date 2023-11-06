@@ -30,6 +30,7 @@ import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
+import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
@@ -63,17 +64,20 @@ public class CreateBackup extends UniverseTaskBase {
   private final CustomerConfigService customerConfigService;
   private final YbcManager ybcManager;
   private final StorageUtilFactory storageUtilFactory;
+  private final KubernetesOperatorStatusUpdater kubernetesStatus;
 
   @Inject
   protected CreateBackup(
       BaseTaskDependencies baseTaskDependencies,
       CustomerConfigService customerConfigService,
       YbcManager ybcManager,
-      StorageUtilFactory storageUtilFactory) {
+      StorageUtilFactory storageUtilFactory,
+      KubernetesOperatorStatusUpdater kubernetesStatus) {
     super(baseTaskDependencies);
     this.customerConfigService = customerConfigService;
     this.ybcManager = ybcManager;
     this.storageUtilFactory = storageUtilFactory;
+    this.kubernetesStatus = kubernetesStatus;
   }
 
   protected BackupRequestParams params() {
@@ -97,6 +101,7 @@ public class CreateBackup extends UniverseTaskBase {
         !BackupCategory.YB_BACKUP_SCRIPT.equals(params().backupCategory)
             && universe.isYbcEnabled()
             && !params().backupType.equals(TableType.REDIS_TABLE_TYPE);
+    Backup backup = null;
     try {
       checkUniverseVersion();
 
@@ -140,7 +145,7 @@ public class CreateBackup extends UniverseTaskBase {
           }
         }
 
-        Backup backup =
+        backup =
             createAllBackupSubtasks(
                 params(),
                 UserTaskDetails.SubTaskGroupType.CreatingTableBackup,
@@ -164,10 +169,10 @@ public class CreateBackup extends UniverseTaskBase {
         log.error("Aborting backups for task: {}", userTaskUUID);
         Backup.fetchAllBackupsByTaskUUID(userTaskUUID)
             .forEach(
-                backup -> {
-                  backup.transitionState(BackupState.Stopped);
-                  backup.setCompletionTime(new Date());
-                  backup.save();
+                bkp -> {
+                  bkp.transitionState(BackupState.Stopped);
+                  bkp.setCompletionTime(new Date());
+                  bkp.save();
                 });
         unlockUniverseForUpdate(false);
         isUniverseLocked = false;
@@ -190,8 +195,14 @@ public class CreateBackup extends UniverseTaskBase {
         }
       }
       throw t;
+    } finally {
+      if (backup != null) {
+        backup.refresh();
+      }
+      log.info("Checking to see if we need to update the status of custom resource");
+      kubernetesStatus.updateBackupStatus(backup, getName(), getUserTaskUUID());
+      log.info("Finished task name {}, taskUUID {}", getName(), getUserTaskUUID().toString());
     }
-    log.info("Finished {} task.", getName());
   }
 
   public void runScheduledBackup(

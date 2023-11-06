@@ -19,6 +19,9 @@ import com.yugabyte.yw.forms.rbac.RoleFormData;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.rbac.Role;
 import com.yugabyte.yw.models.rbac.Role.RoleType;
 import com.yugabyte.yw.models.rbac.RoleBinding;
@@ -53,6 +56,8 @@ import play.mvc.Result;
 @Slf4j
 public class RBACController extends AuthenticatedController {
 
+  public static final String newAuthzRuntimeFlagPath = "yb.rbac.use_new_authz";
+
   private final PermissionUtil permissionUtil;
   private final RoleUtil roleUtil;
   private final RoleBindingUtil roleBindingUtil;
@@ -73,8 +78,12 @@ public class RBACController extends AuthenticatedController {
    * @param resourceType
    * @return list of all permissions info
    */
+  @YbaApi(
+      visibility = YbaApiVisibility.INTERNAL,
+      sinceYBAVersion = "2.19.3.0",
+      runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
-      value = "List all the permissions available",
+      value = "YbaApi Internal. List all the permissions available",
       nickname = "listPermissions",
       response = PermissionInfo.class,
       responseContainer = "List")
@@ -88,9 +97,9 @@ public class RBACController extends AuthenticatedController {
     List<PermissionInfo> permissionInfoList = Collections.emptyList();
     ResourceType resourceTypeEnum = EnumUtils.getEnumIgnoreCase(ResourceType.class, resourceType);
     if (resourceTypeEnum != null) {
-      permissionInfoList = permissionUtil.getAllPermissionInfo(resourceTypeEnum);
+      permissionInfoList = permissionUtil.getAllPermissionInfoFromCache(resourceTypeEnum);
     } else {
-      permissionInfoList = permissionUtil.getAllPermissionInfo();
+      permissionInfoList = permissionUtil.getAllPermissionInfoFromCache();
     }
     return PlatformResults.withData(permissionInfoList);
   }
@@ -102,7 +111,14 @@ public class RBACController extends AuthenticatedController {
    * @param roleUUID
    * @return the role information
    */
-  @ApiOperation(value = "Get a role's information", nickname = "getRole", response = Role.class)
+  @YbaApi(
+      visibility = YbaApiVisibility.INTERNAL,
+      sinceYBAVersion = "2.19.3.0",
+      runtimeConfig = newAuthzRuntimeFlagPath)
+  @ApiOperation(
+      value = "YbaApi Internal. Get a role's information",
+      nickname = "getRole",
+      response = Role.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -124,8 +140,12 @@ public class RBACController extends AuthenticatedController {
    * @param roleType
    * @return the list of roles and their information
    */
+  @YbaApi(
+      visibility = YbaApiVisibility.INTERNAL,
+      sinceYBAVersion = "2.19.3.0",
+      runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
-      value = "List all the roles available",
+      value = "YbaApi Internal. List all the roles available",
       nickname = "listRoles",
       response = Role.class,
       responseContainer = "List")
@@ -140,6 +160,9 @@ public class RBACController extends AuthenticatedController {
       @ApiParam(value = "Optional role type to filter roles list") String roleType) {
     // Check if customer exists.
     Customer.getOrBadRequest(customerUUID);
+    UserWithFeatures u = RequestContext.get(TokenAuthenticator.USER);
+    Set<UUID> resourceUUIDs =
+        roleBindingUtil.getResourceUuids(u.getUser().getUuid(), ResourceType.ROLE, Action.READ);
 
     // Get all roles for the customer if 'roleType' is not a valid case insensitive enum
     List<Role> roleList = Collections.emptyList();
@@ -149,6 +172,10 @@ public class RBACController extends AuthenticatedController {
     } else {
       roleList = Role.getAll(customerUUID);
     }
+    roleList =
+        roleList.stream()
+            .filter(r -> resourceUUIDs.contains(r.getRoleUUID()))
+            .collect(Collectors.toList());
     return PlatformResults.withData(roleList);
   }
 
@@ -159,7 +186,21 @@ public class RBACController extends AuthenticatedController {
    * @param request
    * @return the info of the role created
    */
-  @ApiOperation(value = "Create a custom role", nickname = "createRole", response = Role.class)
+  @YbaApi(
+      visibility = YbaApiVisibility.INTERNAL,
+      sinceYBAVersion = "2.19.3.0",
+      runtimeConfig = newAuthzRuntimeFlagPath)
+  @ApiOperation(
+      value = "YbaApi Internal. Create a custom role",
+      nickname = "createRole",
+      response = Role.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "RoleFormData",
+          value = "create role form data",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.rbac.RoleFormData",
+          required = true))
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -222,7 +263,21 @@ public class RBACController extends AuthenticatedController {
    * @param request
    * @return the info of the edited role
    */
-  @ApiOperation(value = "Edit a custom role", nickname = "editRole", response = Role.class)
+  @YbaApi(
+      visibility = YbaApiVisibility.INTERNAL,
+      sinceYBAVersion = "2.19.3.0",
+      runtimeConfig = newAuthzRuntimeFlagPath)
+  @ApiOperation(
+      value = "YbaApi Internal. Edit a custom role",
+      nickname = "editRole",
+      response = Role.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "RoleFormData",
+          value = "edit role form data",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.rbac.RoleFormData",
+          required = true))
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -292,8 +347,12 @@ public class RBACController extends AuthenticatedController {
    * @param request
    * @return a success message if deleted properly.
    */
+  @YbaApi(
+      visibility = YbaApiVisibility.INTERNAL,
+      sinceYBAVersion = "2.19.3.0",
+      runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
-      value = "Delete a custom role",
+      value = "YbaApi Internal. Delete a custom role",
       nickname = "deleteRole",
       response = YBPSuccess.class)
   @AuthzPath({
@@ -348,8 +407,12 @@ public class RBACController extends AuthenticatedController {
             "Successfully deleted role with UUID '%s' for customer '%s'", roleUUID, customerUUID));
   }
 
+  @YbaApi(
+      visibility = YbaApiVisibility.INTERNAL,
+      sinceYBAVersion = "2.19.3.0",
+      runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
-      value = "Get all the role bindings available",
+      value = "YbaApi Internal. Get all the role bindings available",
       nickname = "getRoleBindings",
       response = RoleBinding.class,
       responseContainer = "Map")
@@ -381,8 +444,12 @@ public class RBACController extends AuthenticatedController {
     return PlatformResults.withData(roleBindingMap);
   }
 
+  @YbaApi(
+      visibility = YbaApiVisibility.INTERNAL,
+      sinceYBAVersion = "2.19.3.0",
+      runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
-      value = "Set the role bindings of a user",
+      value = "YbaApi Internal. Set the role bindings of a user",
       nickname = "setRoleBinding",
       response = RoleBinding.class)
   @ApiImplicitParams(
@@ -413,9 +480,13 @@ public class RBACController extends AuthenticatedController {
         formFactory.getFormDataOrBadRequest(requestBody, RoleBindingFormData.class);
 
     // Validate the roles and resource group definitions.
-    roleBindingUtil.validateRoles(userUUID, roleBindingFormData.getRoleResourceDefinitions());
+    roleBindingUtil.validateRoles(customerUUID, roleBindingFormData.getRoleResourceDefinitions());
     roleBindingUtil.validateResourceGroups(
         customerUUID, roleBindingFormData.getRoleResourceDefinitions());
+
+    // Populate all the system default resource groups for all system defined roles.
+    roleBindingUtil.populateSystemRoleResourceGroups(
+        customerUUID, userUUID, roleBindingFormData.getRoleResourceDefinitions());
 
     // Delete all existing user role bindings and create new given role bindings.
     List<RoleBinding> createdRoleBindings =
@@ -432,8 +503,12 @@ public class RBACController extends AuthenticatedController {
     return PlatformResults.withData(createdRoleBindings);
   }
 
+  @YbaApi(
+      visibility = YbaApiVisibility.INTERNAL,
+      sinceYBAVersion = "2.19.3.0",
+      runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
-      value = "UI_ONLY",
+      value = "YbaApi Internal. UI_ONLY",
       nickname = "getUserResourcePermissions",
       response = ResourcePermissionData.class,
       responseContainer = "Set",

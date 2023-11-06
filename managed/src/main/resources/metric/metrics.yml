@@ -55,6 +55,7 @@ disk_usage:
 disk_usage_percent:
   metric: "disk_used_size_total/disk_capacity_size_total"
   panel_group: "Node Metrics"
+  group_by: "mountpoint"
   layout:
     title: "Data Disks Usage Percent"
     xaxis:
@@ -101,6 +102,7 @@ disk_capacity_size_total:
 disk_volume_usage_percent:
   metric: "disk_volume_used/disk_volume_capacity"
   panel_group: "Node Metrics"
+  group_by: "mountpoint"
   layout:
     title: "Disk Volume Usage Percent"
     xaxis:
@@ -1517,7 +1519,9 @@ lsm_rocksdb_mem_tracker_db_memtable:
   range: true
   filters:
     export_type: "tserver_export"
-    saved_name: "mem_tracker_RegularDB_MemTable|mem_tracker_IntentsDB_MemTable"
+    saved_name: "mem_tracker_RegularDB_MemTable|mem_tracker_IntentsDB_MemTable|\
+      mem_tracker_server_PerTablet_RegularDB_MemTable|\
+      mem_tracker_server_PerTablet_IntentsDB_MemTable"
   group_by: "saved_name"
   panel_group: "RocksDB"
   layout:
@@ -1528,6 +1532,8 @@ lsm_rocksdb_mem_tracker_db_memtable:
       alias:
         "mem_tracker_RegularDB_MemTable": "RegularDB"
         "mem_tracker_IntentsDB_MemTable": "IntentsDB"
+        "mem_tracker_server_PerTablet_RegularDB_MemTable": "RegularDB"
+        "mem_tracker_server_PerTablet_IntentsDB_MemTable": "IntentsDB"
 
 lsm_rocksdb_latencies_get:
   metric: "rocksdb_db_get_micros.avg"
@@ -2601,6 +2607,24 @@ master_yb_rpc_connections:
       alias:
         "rpc_connections_alive": "Connections"
 
+master_leaderless_and_underreplicated_tablets:
+  metric: ""
+  filters:
+    export_type: "node_export"
+    saved_name: "yb_node_leaderless_tablet_count|yb_node_underreplicated_tablet_count"
+  group_by: "saved_name"
+  range: true
+  function: "max_over_time|max"
+  panel_group: "Master"
+  layout:
+    title: "Leaderless/Underreplicated Tablets"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "yb_node_leaderless_tablet_count": "Leaderless Tablets"
+        "yb_node_underreplicated_tablet_count": "Underreplicated Tablets"
+
 master_threads_running:
   metric: "threads_running"
   function: "avg_over_time|avg"
@@ -2998,7 +3022,9 @@ table_mem_tracker_db_memtable:
   range: true
   filters:
     export_type: "tserver_export"
-    saved_name: "mem_tracker_RegularDB_MemTable|mem_tracker_IntentsDB_MemTable"
+    saved_name: "mem_tracker_RegularDB_MemTable|mem_tracker_IntentsDB_MemTable|\
+      mem_tracker_server_PerTablet_RegularDB_MemTable|\
+      mem_tracker_server_PerTablet_IntentsDB_MemTable"
   group_by: "saved_name"
   layout:
     title: "Memtable Size"
@@ -3008,6 +3034,8 @@ table_mem_tracker_db_memtable:
       alias:
         "mem_tracker_RegularDB_MemTable": "RegularDB"
         "mem_tracker_IntentsDB_MemTable": "IntentsDB"
+        "mem_tracker_server_PerTablet_RegularDB_MemTable": "RegularDB"
+        "mem_tracker_server_PerTablet_IntentsDB_MemTable": "IntentsDB"
 
 table_log_latency:
   metric: "log_sync_latency.avg|log_group_commit_latency.avg|log_append_latency.avg"

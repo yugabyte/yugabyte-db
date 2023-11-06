@@ -373,6 +373,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     volumeDetails.volumeSizeGB = 10;
     details.volumeDetailsList.add(volumeDetails);
     details.setDefaultMountPaths();
+    details.arch = Architecture.x86_64;
     ObjectNode instanceTypeJson = Json.newObject();
     ObjectNode idKey = Json.newObject();
     idKey.put("instanceTypeCode", "test-i1");
@@ -417,6 +418,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     volumeDetails.volumeSizeGB = 10;
     details.volumeDetailsList.add(volumeDetails);
     details.setDefaultMountPaths();
+    details.arch = Architecture.x86_64;
     ObjectNode instanceTypeJson = Json.newObject();
     ObjectNode idKey = Json.newObject();
     idKey.put("instanceTypeCode", sharedInstanceTypeCode);

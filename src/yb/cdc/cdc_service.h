@@ -55,6 +55,12 @@ class TableHandle;
 
 }
 
+namespace xrepl {
+
+struct StreamTabletStats;
+
+}  // namespace xrepl
+
 namespace cdc {
 
 class CDCStateTable;
@@ -220,6 +226,7 @@ class CDCServiceImpl : public CDCServiceIf {
       uint32_t xcluster_config_version);
 
   uint32_t GetXClusterConfigVersion() const;
+  std::vector<xrepl::StreamTabletStats> GetAllStreamTabletStats() const EXCLUDES(mutex_);
 
  private:
   friend class XClusterProducerBootstrap;
@@ -272,7 +279,8 @@ class CDCServiceImpl : public CDCServiceIf {
       const TableId& colocated_table_id, const CDCSDKCheckpointPB& cdc_sdk_checkpoint);
 
   Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> GetTablets(
-      const xrepl::StreamId& stream_id);
+      const xrepl::StreamId& stream_id,
+      bool ignore_errors = false);
 
   Status CreateCDCStreamForTable(
       const TableId& table_id,
@@ -338,9 +346,20 @@ class CDCServiceImpl : public CDCServiceIf {
       const TabletId& tablet_id, const TabletCDCCheckpointInfo& cdc_checkpoint_min,
       bool ignore_failures = true);
 
-  void ComputeLagMetric(
-      int64_t last_replicated_micros, int64_t metric_last_timestamp_micros,
-      int64_t cdc_state_last_replication_time_micros, scoped_refptr<AtomicGauge<int64_t>> metric);
+  struct ChildrenTabletMeta {
+    ProducerTabletInfo parent_tablet_info;
+    uint64_t last_replication_time;
+    std::shared_ptr<yb::cdc::CDCTabletMetrics> tablet_metric;
+  };
+  using EmptyChildrenTabletMap =
+      std::unordered_map<ProducerTabletInfo, ChildrenTabletMeta, ProducerTabletInfo::Hash>;
+  using TabletInfoToLastReplicationTimeMap =
+      std::unordered_map<ProducerTabletInfo, std::optional<uint64_t>, ProducerTabletInfo::Hash>;
+  // Helper function for processing metrics of children tablets. We need to find an ancestor tablet
+  // that has a last replicated time and use that with our latest op's time to find the full lag.
+  void ProcessMetricsForEmptyChildrenTablets(
+      const EmptyChildrenTabletMap& empty_children_tablets,
+      TabletInfoToLastReplicationTimeMap* cdc_state_tablets_to_last_replication_time);
 
   // Update metrics async_replication_sent_lag_micros and async_replication_committed_lag_micros.
   // Called periodically default 1s.
@@ -393,9 +412,8 @@ class CDCServiceImpl : public CDCServiceIf {
       const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
       HybridTime cdc_sdk_safe_time = HybridTime::kInvalid);
 
-  Status UpdateChildrenTabletsOnSplitOp(
-      const ProducerTabletInfo& producer_tablet,
-      const consensus::ReplicateMsg& split_op_msg);
+  Status UpdateChildrenTabletsOnSplitOpForXCluster(
+      const ProducerTabletInfo& producer_tablet, const consensus::ReplicateMsg& split_op_msg);
 
   Status UpdateChildrenTabletsOnSplitOpForCDCSDK(const ProducerTabletInfo& info);
 
@@ -421,9 +439,6 @@ class CDCServiceImpl : public CDCServiceIf {
   // Update composite map in cache.
   Result<CompositeAttsMap> UpdateCompositeMapInCacheUnlocked(const NamespaceName& ns_name)
       REQUIRES(mutex_);
-
-  Result<bool> IsBootstrapRequiredForTablet(
-      tablet::TabletPeerPtr tablet_peer, const OpId& min_op_id, const CoarseTimePoint& deadline);
 
   void AddTabletCheckpoint(OpId op_id, const xrepl::StreamId& stream_id, const TabletId& tablet_id);
 

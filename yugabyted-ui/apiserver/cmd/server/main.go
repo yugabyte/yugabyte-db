@@ -199,6 +199,16 @@ func main() {
         },
     }))
 
+    // Middleware to redirect all non-api calls to index.html, to allow direct navigation to
+    // UI pages by URL path. Need to add to this list when creating new paths in the UI.
+    e.Use(middleware.Rewrite(map[string]string{
+        "^/alerts*": "/",
+        "^/databases*": "/",
+        "^/debug*": "/",
+        "^/migrations*": "/",
+        "^/performance*": "/",
+    }))
+
     // GetCluster - Get a cluster
     e.GET("/api/cluster", c.GetCluster)
 

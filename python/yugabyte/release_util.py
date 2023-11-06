@@ -290,7 +290,8 @@ class ReleaseUtil:
         shutil.move(self.distribution_path, tmp_distribution_dir)
 
         def change_permissions(mode: str) -> None:
-            logging.info(
+            # Logging the command as part of run_program will be enough in non-verbose mode.
+            logging.debug(
                 "Changing permissions recursively on directory '%s': %s", tmp_distribution_dir,
                 mode)
             cmd_line = ['chmod', '-R', mode, tmp_distribution_dir]

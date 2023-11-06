@@ -150,6 +150,16 @@ public class Role extends Model {
     return find.query().where().eq("customer_uuid", customerUUID).eq("name", name).findOne();
   }
 
+  public static Role getOrBadRequest(UUID customerUUID, String name) {
+    Role role = get(customerUUID, name);
+    if (role == null) {
+      throw new PlatformServiceException(
+          NOT_FOUND,
+          String.format("Invalid role name '%s' for customer '%s'.", name, customerUUID));
+    }
+    return role;
+  }
+
   public static List<Role> getAll(UUID customerUUID) {
     return find.query().where().eq("customer_uuid", customerUUID).findList();
   }

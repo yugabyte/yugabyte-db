@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-A peering connection connects a YugabyteDB Managed VPC with a VPC on the same cloud provider (AWS or GCP) - typically one that hosts an application that you want to have access to your cluster. Peering connections are not supported in Azure (use a private service endpoint).
+A peering connection connects a YugabyteDB Managed VPC with a VPC on the same cloud provider (AWS or GCP) - typically one that hosts an application that you want to have access to your cluster. Peering connections are not supported in Azure (use a [private service endpoint](../cloud-add-endpoint/)).
 
 {{< youtube id="Yu59wX8Rsug" title="Create a peering connection to access a cluster in YugabyteDB Managed" >}}
 

@@ -22,6 +22,8 @@ import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
 import com.yugabyte.yw.commissioner.YbcUpgrade;
+import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudImageBundleSetup;
+import com.yugabyte.yw.common.ConfigHelper.ConfigType;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
@@ -30,6 +32,7 @@ import com.yugabyte.yw.common.alerts.QueryAlerts;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.diagnostics.ThreadDumpPublisher;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.common.metrics.SwamperTargetsFileUpdater;
@@ -38,13 +41,15 @@ import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ExtraMigration;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.MetricConfig;
 import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.queries.QueryHelper;
 import com.yugabyte.yw.scheduler.Scheduler;
 import io.ebean.DB;
 import io.prometheus.client.hotspot.DefaultExports;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
@@ -81,7 +86,7 @@ public class AppInit {
       SwamperTargetsFileUpdater swamperTargetsFileUpdater,
       AlertConfigurationService alertConfigurationService,
       AlertDestinationService alertDestinationService,
-      QueryHelper queryHelper,
+      ThreadDumpPublisher threadDumpPublisher,
       PlatformMetricsProcessor platformMetricsProcessor,
       Scheduler scheduler,
       CallHome callHome,
@@ -97,6 +102,7 @@ public class AppInit {
       KubernetesOperator kubernetesOperator,
       RuntimeConfGetter confGetter,
       PrometheusConfigManager prometheusConfigManager,
+      ImageBundleUtil imageBundleUtil,
       @Named("AppStartupTimeMs") Long startupTime)
       throws ReflectiveOperationException {
     try {
@@ -105,6 +111,11 @@ public class AppInit {
       String mode = config.getString("yb.mode");
 
       if (!environment.isTest()) {
+        // only start thread dump collection for YBM at this time
+        if (config.getBoolean("yb.cloud.enabled")) {
+          threadDumpPublisher.start();
+        }
+
         // Check if we have provider data, if not, we need to seed the database
         if (Customer.find.query().where().findCount() == 0 && config.getBoolean("yb.seedData")) {
           log.debug("Seed the Yugaware DB");
@@ -144,6 +155,17 @@ public class AppInit {
           }
         }
 
+        boolean vmOsPatchingEnabled = confGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching);
+        String defaultYbaOsVersion =
+            configHelper
+                .getConfig(ConfigHelper.ConfigType.YBADefaultAMI)
+                .getOrDefault(CloudImageBundleSetup.ybaDefaultKey, "")
+                .toString();
+        boolean migrateImageBundlesToNewYBAAMIVersion =
+            (defaultYbaOsVersion.isEmpty()
+                    || !defaultYbaOsVersion.equals(CloudImageBundleSetup.YBA_DEFAULT_OS))
+                && vmOsPatchingEnabled;
+
         // temporarily revert due to PLAT-2434
         // LogUtil.updateApplicationLoggingFromConfig(sConfigFactory, config);
         // LogUtil.updateAuditLoggingFromConfig(sConfigFactory, config);
@@ -152,16 +174,59 @@ public class AppInit {
         List<Provider> providerList = Provider.find.query().where().findList();
         for (Provider provider : providerList) {
           if (provider.getCode().equals("aws")) {
-            for (InstanceType instanceType :
-                InstanceType.findByProvider(provider, application.config())) {
+            for (InstanceType instanceType : InstanceType.findByProvider(provider, confGetter)) {
               if (instanceType.getInstanceTypeDetails() != null
-                  && (instanceType.getInstanceTypeDetails().volumeDetailsList == null)) {
+                  && (instanceType.getInstanceTypeDetails().volumeDetailsList == null
+                      || (instanceType.getInstanceTypeDetails().arch == null
+                          && vmOsPatchingEnabled))) {
+                // We started persisting all the instance types for a provider now, given that we
+                // can manage multiple architecture via image bundle. This will ensure that we
+                // have all the instance_types populated for the AWS providers.
                 awsInitializer.initialize(provider.getCustomerUUID(), provider.getUuid());
                 break;
               }
             }
-            break;
+
+            if (vmOsPatchingEnabled) {
+              // If there still exists instance types with arch as null, those will be
+              // the custom added instance. Need to populate arch for those as well.
+              List<InstanceType> instancesWithoutArch =
+                  InstanceType.getInstanceTypesWithoutArch(provider.getUuid());
+              List<ImageBundle> defaultImageBundles =
+                  ImageBundle.getDefaultForProvider(provider.getUuid());
+              if (instancesWithoutArch.size() > 0 && defaultImageBundles.size() > 0) {
+                for (InstanceType instance : instancesWithoutArch) {
+                  if (instance.getInstanceTypeDetails() == null) {
+                    instance.setInstanceTypeDetails(new InstanceTypeDetails());
+                  }
+
+                  if (defaultImageBundles.get(0).getDetails() != null) {
+                    instance.getInstanceTypeDetails().arch =
+                        defaultImageBundles.get(0).getDetails().getArch();
+                  }
+
+                  instance.save();
+                }
+              }
+            }
           }
+          if (migrateImageBundlesToNewYBAAMIVersion) {
+            // In case defaultYbaAmiVersion is not null & not equal to version specified in
+            // CloudImageBundleSetup.YBA_AMI_VERSION, we will check in the provider bundles
+            // & migrate all the YBA_DEFAULT -> YBA_DEPRECATED, & at the same time generating
+            // new bundle with the latest AMIs. This will only hold in case the provider
+            // does not have CUSTOM bundles.
+            imageBundleUtil.migrateImageBundlesForProviders(provider);
+          }
+        }
+
+        if (migrateImageBundlesToNewYBAAMIVersion) {
+          // Store the latest YBA_AMI_VERSION in the yugaware_roperty.
+          // This will be first time YBA reboot post VM OS Patching changes.
+          Map<String, Object> defaultYbaAmiVersionMap = new HashMap<>();
+          defaultYbaAmiVersionMap.put(
+              CloudImageBundleSetup.ybaDefaultKey, CloudImageBundleSetup.YBA_DEFAULT_OS);
+          configHelper.loadConfigToDB(ConfigType.YBADefaultAMI, defaultYbaAmiVersionMap);
         }
 
         // Load metrics configurations.

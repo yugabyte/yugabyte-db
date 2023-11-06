@@ -3,7 +3,7 @@ title: Large datasets
 headerTitle: Large datasets
 linkTitle: Large datasets
 description: Large datasets
-headcontent: Understand how YugabyteDB handles large datasets
+headcontent: Performance running large datasets when scaling out
 menu:
   preview:
     name: Large datasets
@@ -36,7 +36,7 @@ The following scenario shows how YugabyteDB handles a total of 18 TB on just fou
 
 ## Data load
 
-The data was loaded at a steady rate over about 6 days using the DataStax Enterprise documentation notes: [CassandraKeyValue](https://docs.yugabyte.com/preview/benchmark/key-value-workload-ycql/) sample application. The following graph shows the steady growth in SSTable size per node for 6 days, beyond which it stabilizes at 4.5 TB.
+The data was loaded at a steady rate over about 6 days using the [Cassandra Key Value](../../../benchmark/key-value-workload-ycql/) sample application. The following graph shows the steady growth in SSTable size per node for 6 days, beyond which it stabilizes at 4.5 TB.
 
 ![Data load](https://www.yugabyte.com/wp-content/uploads/2018/08/Picture1-1.png)
 

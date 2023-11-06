@@ -1,6 +1,8 @@
 package ybactlstate
 
 import (
+	"fmt"
+
 	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/ybactl"
@@ -62,4 +64,21 @@ type YbdbState struct {
 type internalFields struct {
 	ChangeID      int `json:"change_id"`
 	SchemaVersion int `json:"schema"`
+}
+
+// TransitionStatus will move the state from CurrentStatus to next, after first Validating the
+// transition path. After updating CurrentStatus, the state will call StoreState to ensure it is
+// updated on the filesystem.
+func (s *State) TransitionStatus(next status) error {
+	if !s.CurrentStatus.TransitionValid(next) {
+		return fmt.Errorf("%w, cannot move from %s to %s",
+			StatusTransitionError, s.CurrentStatus.String(), next.String())
+	}
+	s.CurrentStatus = next
+	err := StoreState(s)
+	if err != nil {
+		return fmt.Errorf("could not transition to status %s, failed to save state: %w",
+			next.String(), err)
+	}
+	return nil
 }

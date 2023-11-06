@@ -110,7 +110,7 @@ import {
 } from '../actions/customers';
 import { sortVersion } from '../components/releases';
 
-import { sortVersionStrings, isDefinedNotNull } from '../utils/ObjectUtils';
+import { isDefinedNotNull } from '../utils/ObjectUtils';
 import {
   getInitialState,
   setLoadingState,

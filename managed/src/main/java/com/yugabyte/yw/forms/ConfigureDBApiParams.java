@@ -10,10 +10,13 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
+import com.yugabyte.yw.controllers.handlers.UniverseTableHandler;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import java.util.List;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.CommonTypes.TableType;
 
@@ -154,7 +157,7 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
       }
     } else {
       throw new PlatformServiceException(
-          BAD_REQUEST, "Cannot configure server type " + configureServer.toString());
+          BAD_REQUEST, "Cannot configure server type " + configureServer);
     }
   }
 
@@ -164,6 +167,42 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
     }
     if (enableYCQLAuth && !StringUtils.isEmpty(ycqlPassword)) {
       policyService.checkPasswordPolicy(null, ycqlPassword);
+    }
+  }
+
+  public void validateYSQLTables(Universe universe, UniverseTableHandler tableHandler) {
+    if (enableYSQL) {
+      return;
+    }
+    // Validate ysql tables exists only while disabling YSQL.
+    Customer customer = Customer.get(universe.getCustomerId());
+    List<TableInfoForm.TableInfoResp> tables =
+        tableHandler.listTables(
+            customer.getUuid(),
+            universe.getUniverseUUID(),
+            false /*includeParentTableInfo */,
+            false /* excludeColocatedTables */,
+            false /* includeColocatedParentTables */);
+    if (tables.stream().anyMatch(t -> t.tableType.equals(TableType.PGSQL_TABLE_TYPE))) {
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot disable YSQL if any tables exists");
+    }
+  }
+
+  public void validateYCQLTables(Universe universe, UniverseTableHandler tableHandler) {
+    if (enableYCQL) {
+      return;
+    }
+    // Validate ycql tables exists only while disabling YCQL.
+    Customer customer = Customer.get(universe.getCustomerId());
+    List<TableInfoForm.TableInfoResp> tables =
+        tableHandler.listTables(
+            customer.getUuid(),
+            universe.getUniverseUUID(),
+            false /*includeParentTableInfo */,
+            false /* excludeColocatedTables */,
+            false /* includeColocatedParentTables */);
+    if (tables.stream().anyMatch(t -> t.tableType.equals(TableType.YQL_TABLE_TYPE))) {
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot disable YCQL if any tables exists");
     }
   }
 

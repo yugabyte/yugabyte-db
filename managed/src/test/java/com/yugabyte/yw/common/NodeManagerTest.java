@@ -41,6 +41,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -120,7 +121,7 @@ public class NodeManagerTest extends FakeDBApplication {
     public String privateKey = "/path/to/private.key";
     public final List<String> baseCommand = new ArrayList<>();
     public final String replacementVolume = "test-volume";
-    public final String NewInstanceType = "test-c5.2xlarge";
+    public final String newInstanceTypeCode = "test-c5.2xlarge";
     public final String rootDeviceName = "/dev/sda1";
 
     public TestData(
@@ -135,7 +136,8 @@ public class NodeManagerTest extends FakeDBApplication {
       provider = p;
       region = Region.create(provider, "region-1", "Region 1", "yb-image-1");
       zone = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
-
+      InstanceType.upsert(
+          provider.getUuid(), newInstanceTypeCode, 6.0, 16.0, new InstanceTypeDetails());
       NodeInstanceFormData.NodeInstanceData nodeData = new NodeInstanceFormData.NodeInstanceData();
       nodeData.ip = "fake_ip";
       nodeData.region = region.getCode();
@@ -170,6 +172,7 @@ public class NodeManagerTest extends FakeDBApplication {
   public List<TestData> getTestData(Customer customer, Common.CloudType cloud) {
     List<TestData> testDataList = new ArrayList<>();
     Provider provider = ModelFactory.newProvider(customer, cloud);
+    InstanceType.upsert(provider.getUuid(), instanceTypeCode, 4.0, 12.0, new InstanceTypeDetails());
     if (cloud.equals(Common.CloudType.aws)) {
       testDataList.add(
           new TestData(customer, provider, cloud, PublicCloudConstants.StorageType.GP2, 1));
@@ -1211,7 +1214,7 @@ public class NodeManagerTest extends FakeDBApplication {
           Universe.saveDetails(
               createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       List<String> expectedCommand = t.baseCommand;
-      params.instanceType = t.NewInstanceType;
+      params.instanceType = t.newInstanceTypeCode;
       expectedCommand.addAll(
           nodeCommand(NodeManager.NodeCommandType.Change_Instance_Type, params, t, NODE_IPS[idx]));
       reset(shellProcessHandler);
@@ -2327,7 +2330,7 @@ public class NodeManagerTest extends FakeDBApplication {
   }
 
   private Map<String, String> extractGFlags(List<String> command) {
-    String gflagsJson = mapKeysToValues(command).get("--gflags");
+    String gflagsJson = LocalNodeManager.convertCommandArgListToMap(command).get("--gflags");
     if (gflagsJson == null) {
       throw new IllegalStateException("Empty gflags for " + command);
     }
@@ -3947,7 +3950,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
   private void checkArguments(
       List<String> currentArgs, List<String> allPossibleArgs, String... argsExpected) {
-    Map<String, String> k2v = mapKeysToValues(currentArgs);
+    Map<String, String> k2v = LocalNodeManager.convertCommandArgListToMap(currentArgs);
     List<String> allArgsCpy = new ArrayList<>(allPossibleArgs);
     for (int i = 0; i < argsExpected.length; i += 2) {
       String key = argsExpected[i];
@@ -4005,21 +4008,6 @@ public class NodeManagerTest extends FakeDBApplication {
     ArgumentCaptor<List> arg = ArgumentCaptor.forClass(List.class);
     verify(shellProcessHandler).run(arg.capture(), any(ShellProcessContext.class));
     return new ArrayList<>(arg.getValue());
-  }
-
-  private Map<String, String> mapKeysToValues(List<String> args) {
-    Map<String, String> result = new HashMap<>();
-    for (int i = 0; i < args.size(); i++) {
-      String key = args.get(i);
-      if (key.startsWith("--")) {
-        String value = "";
-        if (i < args.size() - 1 && !args.get(i + 1).startsWith("--")) {
-          value = args.get(++i);
-        }
-        result.put(key, value);
-      }
-    }
-    return result;
   }
 
   private void assertFails(Runnable r, String expectedError) {

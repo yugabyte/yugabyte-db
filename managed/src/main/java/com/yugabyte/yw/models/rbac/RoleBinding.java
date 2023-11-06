@@ -123,6 +123,10 @@ public class RoleBinding extends Model {
     return roleBinding;
   }
 
+  public static List<RoleBinding> getAll() {
+    return find.query().findList();
+  }
+
   public static List<RoleBinding> getAll(UUID userUUID) {
     return find.query().where().eq("user_uuid", userUUID).findList();
   }

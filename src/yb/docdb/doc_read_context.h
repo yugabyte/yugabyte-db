@@ -84,6 +84,10 @@ struct DocReadContext {
     return Slice(upperbound_buffer_.data(), upperbound_len_);
   }
 
+  Slice table_key_prefix() const {
+    return Slice(shared_key_prefix_buffer_.data(), table_key_prefix_len_);
+  }
+
   void TEST_SetDefaultTimeToLive(uint64_t ttl_msec) {
     schema_.SetDefaultTimeToLive(ttl_msec);
   }
@@ -134,6 +138,9 @@ struct DocReadContext {
   // hash code itself.
   // While key_prefix_encoded_len_ will have 3 bytes for it, i.e. full encoded hash code.
   size_t key_prefix_encoded_len_ = 0;
+
+  // Includes cotable_id and colocation_id.
+  size_t table_key_prefix_len_ = 0;
 
   std::string log_prefix_;
 };

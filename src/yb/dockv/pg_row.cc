@@ -26,12 +26,15 @@
 #include "yb/dockv/value_type.h"
 
 #include "yb/util/decimal.h"
+#include "yb/util/fast_varint.h"
 
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
 namespace yb::dockv {
 
 namespace {
+
+YB_DEFINE_ENUM(ColumnStrategy, (kRegular)(kLast)(kSkip));
 
 size_t FixedSize(DataType data_type) {
   switch (data_type) {
@@ -212,6 +215,31 @@ Status DoDecodeValue(
       value_type, Slice(original_start, slice.end()).ToDebugHexString(), data_type);
 }
 
+// Should be used only in conjunction with WriteBuffer::Append* methods.
+template <class T>
+class LazyBigEndianValue {
+ public:
+  explicit LazyBigEndianValue(PgValueDatum datum) : datum_(datum) {}
+
+  size_t size() const {
+    return sizeof(T);
+  }
+
+  // Exactly one of the methods below will be invoked.
+  void CopyTo(char* out) {
+    auto value = LoadRaw<T, BigEndian>(&datum_);
+    memcpy(out, &value, sizeof(value));
+  }
+
+  Slice AsSlice() {
+    datum_ = LoadRaw<T, BigEndian>(&datum_);
+    return Slice(pointer_cast<const char*>(&datum_), sizeof(T));
+  }
+
+ private:
+  PgValueDatum datum_;
+};
+
 template <class T, bool kLast>
 void EncodePrimitive(const PgTableRow& row, WriteBuffer* buffer, const PgWireEncoderEntry* chain) {
   auto index = chain->data;
@@ -222,9 +250,8 @@ void EncodePrimitive(const PgTableRow& row, WriteBuffer* buffer, const PgWireEnc
   }
 
   auto datum = row.GetPrimitiveDatum(index);
-  auto value = LoadRaw<T, BigEndian>(&datum);
-  buffer->AppendWithPrefix(0, pointer_cast<const char*>(&value), sizeof(value));
-  CallNextEncoder<kLast>(row, buffer, chain);
+  buffer->AppendWithPrefix(0, LazyBigEndianValue<T>(datum));
+  MUST_TAIL return CallNextEncoder<kLast>(row, buffer, chain);
 }
 
 template <bool kLast>
@@ -258,47 +285,6 @@ struct EncoderProvider {
 
   PgWireEncoder Decimal() const {
     return Binary();
-  }
-};
-
-template <bool kLast>
-struct DecodeBoolColumn {
-  UnsafeStatus V1(
-      const PackedColumnDecoderData& data, size_t projection_index,
-      const PackedColumnDecoderEntry* chain, ValueEntryType value_type, Slice column_value) {
-    auto* row = static_cast<PgTableRow*>(data.context);
-    if (!column_value.empty()) {
-      return STATUS_FORMAT(
-          Corruption, "Non empty value for BOOL column", column_value.ToDebugHexString())
-          .UnsafeRelease();
-    }
-    if (value_type == ValueEntryType::kTrue) {
-      row->SetDatum(projection_index, 1);
-    } else if (value_type == ValueEntryType::kFalse) {
-      row->SetDatum(projection_index, 0);
-    } else {
-      return STATUS_FORMAT(
-          Corruption, "Unexpected value type for BOOL column: $0", value_type).UnsafeRelease();
-    }
-
-    return CallNextDecoder<kLast>(data, projection_index, chain);
-  }
-};
-
-template <bool kLast, class Decoder>
-struct DecodePgTableRow {
-  UnsafeStatus operator()(
-      const PackedColumnDecoderData& data, size_t projection_index,
-      const PackedColumnDecoderEntry* chain, Slice column_value) {
-    auto row = static_cast<PgTableRow*>(data.context);
-    auto value_type_char = column_value.consume_byte();
-    if (PREDICT_FALSE(IsNull(value_type_char))) {
-      row->SetNull(projection_index);
-      return CallNextDecoder<kLast>(data, projection_index, chain);
-    }
-    Decoder decoder;
-    return decoder(
-        data, projection_index, chain, static_cast<ValueEntryType>(value_type_char), column_value);
   }
 };
 
@@ -358,6 +344,10 @@ struct GetValueType<uint64_t> {
 
 template <class T>
 struct PrimitiveValueDecoder {
+  static std::string SSS() {
+    return Format("PrimitiveValueDecoder<$0>", typeid(T).name());
+  }
+
   bool V1(PgTableRow* row, size_t projection_index, const char* begin, const char* end) const {
     auto value_type = GetValueType<T>::kValue;
     constexpr size_t kEncodedSize = sizeof(T) <= 4 ? 4 : 8;
@@ -377,19 +367,27 @@ struct PrimitiveValueDecoder {
     return true;
   }
 
-  void V2(PgTableRow* row, size_t projection_index, const char* begin, const char* end) const {
-#ifdef IS_LITTLE_ENDIAN
-    PgValueDatum value = 0;
-    memcpy(&value, begin, sizeof(T));
-    row->SetDatum(projection_index, value);
-#else
-    #error "Big endian not implemented"
-#endif
+  template <ColumnStrategy kStrategy>
+  const uint8_t* V2(const uint8_t* body, size_t projection_index, PgTableRow* row) const {
+    if (kStrategy != ColumnStrategy::kSkip) {
+      PgValueDatum value = 0;
+    #ifdef IS_LITTLE_ENDIAN
+      memcpy(&value, body, sizeof(T));
+    #else
+      #error "Big endian not implemented"
+    #endif
+      row->SetDatum(projection_index, value);
+    }
+    return body + sizeof(T);
   }
 };
 
 template <>
 struct PrimitiveValueDecoder<bool> {
+  static std::string SSS() {
+    return "PrimitiveValueDecoder<bool>";
+  }
+
   bool V1(PgTableRow* row, size_t projection_index, const char* begin, const char* end) const {
     if (PREDICT_FALSE(end - begin != 1)) {
       return false;
@@ -405,13 +403,21 @@ struct PrimitiveValueDecoder<bool> {
     return true;
   }
 
-  void V2(PgTableRow* row, size_t projection_index, const char* begin, const char* end) const {
-    row->SetDatum(projection_index, *begin);
+  template <ColumnStrategy kStrategy>
+  const uint8_t* V2(const uint8_t* body, size_t projection_index, PgTableRow* row) const {
+    if (kStrategy != ColumnStrategy::kSkip) {
+      row->SetDatum(projection_index, *body);
+    }
+    return body + sizeof(bool);
   }
 };
 
 template <bool kAppendZero, char kValueType>
 struct BinaryValueDecoder {
+  static std::string SSS() {
+    return Format("BinaryValueDecoder<$0, $1>", kAppendZero, kValueType);
+  }
+
   bool V1(PgTableRow* row, size_t projection_index, const char* begin, const char* end) const {
     if (PREDICT_FALSE(begin == end)) {
       return false;
@@ -423,100 +429,163 @@ struct BinaryValueDecoder {
     return true;
   }
 
-  void V2(PgTableRow* row, size_t projection_index, const char* begin, const char* end) const {
-    row->SetBinary(projection_index, Slice(begin, end), kAppendZero);
+  template <ColumnStrategy kStrategy>
+  const uint8_t* V2(const uint8_t* body, size_t projection_index, PgTableRow* row) const {
+    auto [len, start] = DecodeFieldLength(body);
+    auto value = Slice(start, len);
+    if (kStrategy != ColumnStrategy::kSkip) {
+      row->SetBinary(projection_index, value, kAppendZero);
+    }
+    return value.end();
   }
 };
 
 template <bool kLast, class Decoder>
-UnsafeStatus DoDecodePackedColumn(
-    const PackedColumnDecoderData& data, size_t projection_index,
+UnsafeStatus DoDecodePackedColumnV1(
+    PackedColumnDecoderDataV1* data, size_t projection_index,
     const PackedColumnDecoderEntry* chain, const char* begin, const char* end) {
-  auto* row = static_cast<PgTableRow*>(data.context);
+  auto* row = static_cast<PgTableRow*>(data->context);
   Decoder decoder;
   if (decoder.V1(row, projection_index, begin, end)) {
-    return CallNextDecoder<kLast>(data, projection_index, chain);
+    return CallNextDecoderV1<kLast>(data, projection_index, chain);
   }
 
   if (PREDICT_FALSE(begin == end)) {
     row->SetNull(projection_index);
-    return CallNextDecoder<kLast>(data, projection_index, chain);
+    return CallNextDecoderV1<kLast>(data, projection_index, chain);
   }
 
   auto value_type_char = *begin;
   if (IsNull(value_type_char)) {
     row->SetNull(projection_index);
-    return CallNextDecoder<kLast>(data, projection_index, chain);
+    return CallNextDecoderV1<kLast>(data, projection_index, chain);
   }
 
   auto result = StripHybridTime(begin, end);
   if (!result.ok()) {
     return result.status().UnsafeRelease();
   }
-  return DoDecodePackedColumn<kLast, Decoder>(data, projection_index, chain, *result, end);
+  return DoDecodePackedColumnV1<kLast, Decoder>(data, projection_index, chain, *result, end);
 }
 
 template <bool kLast, class Decoder>
-UnsafeStatus DoDecodePackedColumn(
-    const PackedColumnDecoderData& data, size_t projection_index,
+UnsafeStatus DoDecodePackedColumnV1(
+    PackedColumnDecoderDataV1* data, size_t projection_index,
     const PackedColumnDecoderEntry* chain, PackedValueV1 value) {
-  return DoDecodePackedColumn<kLast, Decoder>(
+  return DoDecodePackedColumnV1<kLast, Decoder>(
       data, projection_index, chain, value->cdata(), value->cend());
 }
 
 template <bool kLast, class Decoder>
-UnsafeStatus DoDecodePackedColumn(
-    const PackedColumnDecoderData& data, size_t projection_index,
-    const PackedColumnDecoderEntry* chain, PackedValueV2 value) {
-  auto* row = static_cast<PgTableRow*>(data.context);
-  if (PREDICT_FALSE(value.IsNull())) {
-    row->SetNull(projection_index);
-    return CallNextDecoder<kLast>(data, projection_index, chain);
-  }
-  Decoder decoder;
-  decoder.V2(row, projection_index, value->cdata(), value->cend());
-  return CallNextDecoder<kLast>(data, projection_index, chain);
-}
-
-template <class RowDecoder, bool kLast, class T>
-UnsafeStatus DecodePackedColumn(
-    const PackedColumnDecoderData& data, size_t projection_index,
+UnsafeStatus DecodePackedColumnV1(
+    PackedColumnDecoderDataV1* data, size_t projection_index,
     const PackedColumnDecoderEntry* chain) {
-  auto column_value = static_cast<RowDecoder*>(data.decoder)->FetchValue(chain->data);
-  return DoDecodePackedColumn<kLast, T>(
+  auto column_value = data->decoder.FetchValue(chain->data);
+  return DoDecodePackedColumnV1<kLast, Decoder>(
       data, projection_index, chain, column_value);
 }
 
-template <class RowDecoder, bool kLast>
-struct GetPackedColumnDecoderVisitor {
+template <class Decoder, bool kCheckNull, ColumnStrategy kStrategy>
+UnsafeStatus DecodeColumnValueV2(
+    const uint8_t* header, const uint8_t* body, void* context, size_t projection_index,
+    const PackedColumnDecoderEntry* chain) {
+  auto idx = chain->data;
+  auto* row = static_cast<PgTableRow*>(context);
+  constexpr auto kLast = kStrategy == ColumnStrategy::kLast;
+  constexpr auto kIncrementProjectionIndex = kStrategy != ColumnStrategy::kSkip;
+  if (kCheckNull && PREDICT_FALSE(PackedRowDecoderV2::IsNull(header, idx))) {
+    row->SetNull(projection_index);
+    return CallNextDecoderV2<kCheckNull, kLast, kIncrementProjectionIndex>(
+        header, body, context, projection_index, chain);
+  }
+  Decoder decoder;
+  return CallNextDecoderV2<kCheckNull, kLast, kIncrementProjectionIndex>(
+      header, decoder.template V2<kStrategy>(body, projection_index, row), context,
+      projection_index, chain);
+}
+
+template <bool kCheckNull, ColumnStrategy kStrategy>
+struct GetPackedColumnDecoderVisitorV2 {
   template <class T>
-  PackedColumnDecoder Primitive() const {
-    return DecodePackedColumn<RowDecoder, kLast, PrimitiveValueDecoder<T>>;
+  PackedColumnDecoderV2 Primitive() const {
+    return Apply<PrimitiveValueDecoder<T>>();
   }
 
-  PackedColumnDecoder Binary() const {
-    return DecodePackedColumn<
-        RowDecoder, kLast, BinaryValueDecoder<false, ValueEntryTypeAsChar::kString>>;
+  PackedColumnDecoderV2 Binary() const {
+    return Apply<BinaryValueDecoder<false, ValueEntryTypeAsChar::kString>>();
   }
 
-  PackedColumnDecoder String() const {
-    return DecodePackedColumn<
-        RowDecoder, kLast, BinaryValueDecoder<true, ValueEntryTypeAsChar::kString>>;
+  PackedColumnDecoderV2 String() const {
+    return Apply<BinaryValueDecoder<true, ValueEntryTypeAsChar::kString>>();
   }
 
-  PackedColumnDecoder Decimal() const {
-    return DecodePackedColumn<
-        RowDecoder, kLast, BinaryValueDecoder<true, ValueEntryTypeAsChar::kDecimal>>;
+  PackedColumnDecoderV2 Decimal() const {
+    return Apply<BinaryValueDecoder<true, ValueEntryTypeAsChar::kDecimal>>();
+  }
+
+ private:
+  template<class Decoder>
+  PackedColumnDecoderV2 Apply() const {
+    return DecodeColumnValueV2<Decoder, kCheckNull, kStrategy>;
   }
 };
 
-template <class RowDecoder>
-PackedColumnDecoder GetPackedColumnDecoder2(bool last, DataType data_type) {
-  if (last) {
-    return VisitDataType(data_type, GetPackedColumnDecoderVisitor<RowDecoder, true>());
-  } else {
-    return VisitDataType(data_type, GetPackedColumnDecoderVisitor<RowDecoder, false>());
+template <ColumnStrategy kStrategy>
+struct GetPackedColumnDecoderVisitorV1 {
+  template <class T>
+  PackedColumnDecoderV1 Primitive() const {
+    return Apply<PrimitiveValueDecoder<T>>();
   }
+
+  PackedColumnDecoderV1 Binary() const {
+    return Apply<BinaryValueDecoder<false, ValueEntryTypeAsChar::kString>>();
+  }
+
+  PackedColumnDecoderV1 String() const {
+    return Apply<BinaryValueDecoder<true, ValueEntryTypeAsChar::kString>>();
+  }
+
+  PackedColumnDecoderV1 Decimal() const {
+    return Apply<BinaryValueDecoder<true, ValueEntryTypeAsChar::kDecimal>>();
+  }
+
+ private:
+  template<class Decoder>
+  PackedColumnDecoderV1 Apply() const {
+    return DecodePackedColumnV1<kStrategy == ColumnStrategy::kLast, Decoder>;
+  }
+};
+
+template <template <ColumnStrategy> class Visitor>
+auto GetPackedColumnDecoder(ColumnStrategy strategy, DataType data_type) {
+  switch (strategy) {
+    case ColumnStrategy::kRegular:
+      return VisitDataType(data_type, Visitor<ColumnStrategy::kRegular>());
+    case ColumnStrategy::kLast:
+      return VisitDataType(data_type, Visitor<ColumnStrategy::kLast>());
+    case ColumnStrategy::kSkip:
+      return VisitDataType(data_type, Visitor<ColumnStrategy::kSkip>());
+  }
+  FATAL_INVALID_ENUM_VALUE(ColumnStrategy, strategy);
+}
+
+template <ColumnStrategy kStrategy>
+using WithNullsVisitorV2 = GetPackedColumnDecoderVisitorV2<true, kStrategy>;
+
+template <ColumnStrategy kStrategy>
+using NoNullsVisitorV2 = GetPackedColumnDecoderVisitorV2<false, kStrategy>;
+
+PackedColumnDecoderEntry GetPackedColumnDecoderEntryV2(
+    ColumnStrategy strategy, DataType data_type, ssize_t packed_index) {
+  return PackedColumnDecoderEntry {
+    .decoder = PackedColumnDecoderUnion {
+      .v2 = PackedColumnDecodersV2 {
+        .with_nulls = GetPackedColumnDecoder<WithNullsVisitorV2>(strategy, data_type),
+        .no_nulls = GetPackedColumnDecoder<NoNullsVisitorV2>(strategy, data_type),
+      },
+    },
+    .data = make_unsigned(packed_index),
+  };
 }
 
 } // namespace
@@ -802,15 +871,26 @@ void PgTableRow::SetBinary(size_t column_idx, Slice value, bool append_zero) {
   AppendString(value, &buffer_, append_zero);
 }
 
-PackedColumnDecoder PgTableRow::GetPackedColumnDecoder(
-    PackedRowVersion version, bool last, DataType data_type) {
-  switch (version) {
-    case PackedRowVersion::kV1:
-      return GetPackedColumnDecoder2<PackedRowDecoderV1>(last, data_type);
-    case PackedRowVersion::kV2:
-      return GetPackedColumnDecoder2<PackedRowDecoderV2>(last, data_type);
-  }
-  FATAL_INVALID_ENUM_VALUE(PackedRowVersion, version);
+PackedColumnDecoderEntry PgTableRow::GetPackedColumnDecoderV1(
+    bool last, DataType data_type, ssize_t packed_index) {
+  auto strategy = last ? ColumnStrategy::kLast : ColumnStrategy::kRegular;
+  return PackedColumnDecoderEntry {
+    .decoder = PackedColumnDecoderUnion {
+      .v1 = GetPackedColumnDecoder<GetPackedColumnDecoderVisitorV1>(strategy, data_type),
+    },
+    .data = make_unsigned(packed_index),
+  };
+}
+
+PackedColumnDecoderEntry PgTableRow::GetPackedColumnDecoderV2(
+    bool last, DataType data_type, ssize_t packed_index) {
+  auto strategy = last ? ColumnStrategy::kLast : ColumnStrategy::kRegular;
+  return GetPackedColumnDecoderEntryV2(strategy, data_type, packed_index);
+}
+
+PackedColumnDecoderEntry PgTableRow::GetPackedColumnSkipperV2(
+    DataType data_type, ssize_t packed_index) {
+  return GetPackedColumnDecoderEntryV2(ColumnStrategy::kSkip, data_type, packed_index);
 }
 
 }  // namespace yb::dockv

@@ -10,14 +10,19 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.BiMap;
 import com.google.common.collect.ImmutableBiMap;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
+import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
+import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbEnumValue;
 import io.ebean.annotation.Transactional;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
@@ -87,6 +92,39 @@ public class XClusterConfig extends Model {
       allowableValues = "Initialized, Running, Updating, DeletedUniverse, DeletionFailed, Failed")
   private XClusterConfigStatusType status;
 
+  /**
+   * In the application logic, <em>NEVER<em/> read from the following variable. This is only used
+   * for UI purposes.
+   */
+  @ApiModelProperty(
+      value =
+          "WARNING: This is a preview API that could change. "
+              + "The replication status of the source universe; used for disaster recovery")
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
+  private SourceUniverseState sourceUniverseState;
+
+  /**
+   * In the application logic, <em>NEVER<em/> read from the following variable. This is only used
+   * for UI purposes.
+   */
+  @ApiModelProperty(
+      value =
+          "WARNING: This is a preview API that could change. "
+              + "The replication status of the target universe; used for disaster recovery")
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
+  private TargetUniverseState targetUniverseState;
+
+  /**
+   * In the application logic, <em>NEVER<em/> read from the following variable. This is only used
+   * for UI purposes.
+   */
+  @ApiModelProperty(
+      value =
+          "WARNING: This is a preview API that could change. The keyspace name that the xCluster"
+              + " task is working on; used for disaster recovery")
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
+  private String keyspacePending;
+
   public enum XClusterConfigStatusType {
     Initialized("Initialized"),
     Running("Running"),
@@ -126,7 +164,9 @@ public class XClusterConfig extends Model {
   @ApiModelProperty(value = "Whether this xCluster replication config is paused")
   private boolean paused;
 
-  @ApiModelProperty(value = "Whether this xCluster replication config was imported")
+  @ApiModelProperty(
+      value = "YbaApi Internal. Whether this xCluster replication config was imported")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.18.0.0")
   private boolean imported;
 
   @ApiModelProperty(value = "Create time of the xCluster config", example = "2022-12-12T13:07:18Z")
@@ -174,15 +214,23 @@ public class XClusterConfig extends Model {
   @ApiModelProperty(value = "Whether the target is active in txn xCluster")
   private boolean targetActive;
 
-  @ManyToOne
+  @ManyToOne(cascade = {CascadeType.PERSIST, CascadeType.MERGE, CascadeType.REFRESH})
   @JoinColumn(name = "dr_config_uuid", referencedColumnName = "uuid")
   @JsonIgnore
   private DrConfig drConfig;
 
   @ApiModelProperty(
-      value = "Whether this xCluster config is used as a secondary config for a DR config")
+      value =
+          "WARNING: This is a preview API that could change. "
+              + "Whether this xCluster config is used as a secondary config for a DR config")
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   private boolean secondary;
 
+  @ApiModelProperty(
+      value =
+          "WARNING: This is a preview API that could change. "
+              + "The list of PITR configs used for the txn xCluster config")
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.2.0")
   @OneToMany
   @JoinTable(
       name = "xcluster_pitr",
@@ -190,14 +238,22 @@ public class XClusterConfig extends Model {
       inverseJoinColumns = @JoinColumn(name = "pitr_uuid", referencedColumnName = "uuid"))
   private List<PitrConfig> pitrConfigs;
 
+  @ApiModelProperty(
+      value =
+          "WARNING: This is a preview API that could change. "
+              + "Whether the xCluster config is used as part of a DR config")
   @JsonProperty
+  // Todo: Uncomment the following after YbaApi utest supports JsonProperty annotation.
+  //  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   public boolean isUsedForDr() {
-    return Objects.nonNull(this.drConfig);
+    return maybeGetDrConfig().isPresent();
   }
 
   public void addPitrConfig(PitrConfig pitrConfig) {
-    this.pitrConfigs.add(pitrConfig);
-    this.update();
+    if (this.pitrConfigs.stream().noneMatch(p -> p.getUuid().equals(pitrConfig.getUuid()))) {
+      this.pitrConfigs.add(pitrConfig);
+      this.update();
+    }
   }
 
   @Override
@@ -223,6 +279,10 @@ public class XClusterConfig extends Model {
     return this.getTableDetails().stream()
         .filter(tableConfig -> tableConfig.getTableId().equals(tableId))
         .findAny();
+  }
+
+  public Optional<DrConfig> maybeGetDrConfig() {
+    return Optional.ofNullable(this.drConfig);
   }
 
   @JsonIgnore
@@ -566,6 +626,19 @@ public class XClusterConfig extends Model {
     update();
   }
 
+  public void updateIndexTablesFromMainTableIndexTablesMap(
+      Map<String, List<String>> mainTableIndexTablesMap) {
+    Set<String> tableIdsInConfig = this.getTableIds();
+    mainTableIndexTablesMap.forEach(
+        (mainTableId, indexTableIds) -> {
+          if (this.maybeGetTableById(mainTableId).isPresent()) {
+            List<String> indexTableIdsInConfig = new ArrayList<>(indexTableIds);
+            indexTableIdsInConfig.retainAll(tableIdsInConfig);
+            this.updateIndexTableForTables(indexTableIdsInConfig, true /* indexTable */);
+          }
+        });
+  }
+
   @Transactional
   public void updateBootstrapCreateTimeForTables(Collection<String> tableIds, Date moment) {
     ensureTableIdsExist(new HashSet<>(tableIds));
@@ -688,6 +761,8 @@ public class XClusterConfig extends Model {
     xClusterConfig.setTargetActive(
         XClusterConfigTaskBase.TRANSACTION_TARGET_UNIVERSE_ROLE_ACTIVE_DEFAULT);
     xClusterConfig.setReplicationGroupName(name);
+    xClusterConfig.setSourceUniverseState(SourceUniverseState.Unconfigured);
+    xClusterConfig.setTargetUniverseState(TargetUniverseState.Unconfigured);
     xClusterConfig.save();
     return xClusterConfig;
   }

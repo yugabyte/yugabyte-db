@@ -11,6 +11,8 @@ import { RunTimeConfigData } from '../../redesign/utils/dtos';
 import { getPromiseState } from '../../utils/PromiseUtils';
 import { isNonEmptyArray } from '../../utils/ObjectUtils';
 
+import { RbacValidator } from '../../redesign/features/rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../redesign/features/rbac/UserPermPathMapping';
 import './AdvancedConfig.scss';
 
 const DEFAULT_RUNTIME_TAG_FILTER = ['PUBLIC'];
@@ -148,22 +150,32 @@ export const ConfigData: FC<GlobalConfigProps> = ({
         id="runtime-config-nested-dropdown middle-aligned-table"
         pullRight
       >
-        <MenuItem
-          onClick={() => {
-            openEditConfig(row);
-          }}
+        <RbacValidator
+          accessRequiredOn={UserPermissionMap.editRuntimeConfig}
+          isControl
         >
-          {t('admin.advanced.globalConfig.ModelEditConfigTitle')}
-        </MenuItem>
-
-        {!row.isConfigInherited && (
           <MenuItem
             onClick={() => {
-              openResetConfig(row);
+              openEditConfig(row);
             }}
           >
-            {t('admin.advanced.globalConfig.ModelResetConfigTitle')}
+            {t('admin.advanced.globalConfig.ModelEditConfigTitle')}
           </MenuItem>
+        </RbacValidator>
+        {!row.isConfigInherited && (
+          <RbacValidator
+            accessRequiredOn={UserPermissionMap.editRuntimeConfig}
+            isControl
+            overrideStyle={{ display: 'block' }}
+          >
+            <MenuItem
+              onClick={() => {
+                openResetConfig(row);
+              }}
+            >
+              {t('admin.advanced.globalConfig.ModelResetConfigTitle')}
+            </MenuItem>
+          </RbacValidator>
         )}
       </DropdownButton>
     );

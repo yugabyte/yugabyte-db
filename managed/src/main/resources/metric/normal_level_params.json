@@ -15,5 +15,6 @@
     "|cache_size|cache_num_ops)|follower_lag_ms|[^_]+_memory_pressure_rejections",
     "|log_wal_size|ql_read_latency_[^_]+|(all|write)_operations_inflight|ql_write_latency_[^_]+",
     "|write_lock_latency_[^_]+|is_raft_leader"
-  ]
+  ],
+  "show_help": "false"
 }

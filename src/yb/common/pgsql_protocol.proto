@@ -343,6 +343,22 @@ message PgsqlBackfillSpecPB {
   optional bytes next_row_key = 3;
 }
 
+// Make sure this is in sync with YBCPgMetricsCaptureType in ybc_pg_typedefs.h.
+enum PgsqlMetricsCaptureType {
+  PGSQL_METRICS_CAPTURE_NONE = 0;
+  PGSQL_METRICS_CAPTURE_ALL = 1;
+}
+
+// TODO(get_table_key_ranges): deprecate after/if separate GetTabletKeyRanges RPC to the tablet
+// leader is used.
+message GetTabletKeyRangesEmbeddedRequestPB {
+  optional bytes lower_bound_key = 1;
+  optional bytes upper_bound_key = 2;
+  optional uint64 range_size_bytes = 3;
+  optional bool is_forward = 4 [ default = true ];
+  optional uint32 max_key_length = 5;
+}
+
 // TODO(neil) The protocol for select needs to be changed accordingly when we introduce and cache
 // execution plan in tablet server.
 message PgsqlReadRequestPB {
@@ -503,6 +519,13 @@ message PgsqlReadRequestPB {
 
   // Used only in pg client.
   optional bytes partition_key = 35;
+
+  // What metric changes to return in response.
+  optional PgsqlMetricsCaptureType metrics_capture = 38;
+
+  // TODO(get_table_key_ranges): deprecate this field after separate separate GetTabletKeyRanges
+  // RPC to the tablet leader is used.
+  optional GetTabletKeyRangesEmbeddedRequestPB get_tablet_key_ranges_request = 41;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -510,13 +533,28 @@ message PgsqlReadRequestPB {
 //--------------------------------------------------------------------------------------------------
 
 message PgsqlRequestGaugeMetricPB {
-  optional int64 metric = 1;
+  optional uint64 metric = 1;
   optional int64 value = 2;
+}
+
+message PgsqlRequestCounterMetricPB {
+  optional uint64 metric = 1;
+  optional uint64 value = 2;
+}
+
+message PgsqlRequestEventMetricPB {
+  optional uint64 metric = 1;
+  optional int64 sum = 2;
+  optional uint64 count = 3;
 }
 
 message PgsqlRequestMetricsPB {
   // Gauge metrics changes as a result of processing the request.
   repeated PgsqlRequestGaugeMetricPB gauge_metrics = 1;
+  // Counter metrics changes as a result of processing the request.
+  repeated PgsqlRequestCounterMetricPB counter_metrics = 2;
+  // Event stats metrics changes as a result of processing the request.
+  repeated PgsqlRequestEventMetricPB event_metrics = 3;
 }
 
 // Response from tablet server for both read and write.

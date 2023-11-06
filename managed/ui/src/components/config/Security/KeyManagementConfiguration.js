@@ -246,7 +246,7 @@ class KeyManagementConfiguration extends Component {
       const createConfig = (data) => {
         setKMSConfig(kmsProvider.value, data).then((res) => {
           if (res) {
-            this.setState({ listView: true }, () => {
+            this.setState({ listView: true, hcpAuthType: DEFAULT_HCP_AUTHENTICATION_TYPE }, () => {
               this.monitorTaskStatus(res.payload.data.taskUUID, mode);
             });
           }

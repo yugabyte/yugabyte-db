@@ -92,7 +92,8 @@ const preparePayload = (restoreContext: RestoreContextMethods): restoreBackupPro
         sse: backupDetails!.commonBackupInfo.sse,
         storageLocation:
           backupDetails?.commonBackupInfo.responseList[index].storageLocation ??
-          backupDetails?.commonBackupInfo.responseList[index].defaultLocation
+          backupDetails?.commonBackupInfo.responseList[index].defaultLocation,
+        useTablespaces: generalSettings?.useTablespaces
       };
 
       if (backupDetails?.backupType === TableType.YQL_TABLE_TYPE) {

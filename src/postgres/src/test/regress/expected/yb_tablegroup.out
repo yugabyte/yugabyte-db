@@ -409,13 +409,13 @@ CREATE TABLE tgroup_test6 (col1 int, col2 int) TABLEGROUP grp3;
     Group Name    | Group Owner | Access privileges | Group Description | Group Tablespace | Group Options |           Name           | Type  |  Owner   | Rel Description | Size
 ------------------+-------------+-------------------+-------------------+------------------+---------------+--------------------------+-------+----------+-----------------+------
  grp3             | yugabyte    |                   |                   | tblspc           |               | tgroup_test6             | table | yugabyte |                 |
+ tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test3             | table | yugabyte |                 |
  tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test3_col1_idx    | index | yugabyte |                 |
  tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test4             | table | yugabyte |                 |
  tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test4_col1_idx    | index | yugabyte |                 |
- tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test3             | table | yugabyte |                 |
  tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test4_col2_idx    | index | yugabyte |                 |
- tgroup_describe1 | yugabyte    |                   |                   |                  |               | tgroup_describe_col1_idx | index | yugabyte |                 |
  tgroup_describe1 | yugabyte    |                   |                   |                  |               | tgroup_describe          | table | yugabyte |                 |
+ tgroup_describe1 | yugabyte    |                   |                   |                  |               | tgroup_describe_col1_idx | index | yugabyte |                 |
 (8 rows)
 
 --

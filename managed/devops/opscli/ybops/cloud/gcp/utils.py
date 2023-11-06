@@ -718,8 +718,8 @@ class GoogleCloudAdmin():
                     "Instance %s's volume %s has not changed from %s",
                     instance, disk["deviceName"], disk["diskSizeGb"])
 
-    def change_instance_type(self, zone, instance_name, newInstanceType):
-        new_machine_type = f"zones/{zone}/machineTypes/{newInstanceType}"
+    def change_instance_type(self, zone, instance_name, instance_type):
+        new_machine_type = f"zones/{zone}/machineTypes/{instance_type}"
         body = {
             "machineType": new_machine_type
         }

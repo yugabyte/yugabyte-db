@@ -287,9 +287,12 @@ interface GCPCloudInfoMutation extends GCPCloudInfoBase {
   gceApplicationCredentials?: {};
 }
 interface GCPCloudInfo extends GCPCloudInfoBase {
-  gceApplicationCredentials: GCPServiceAccount;
-  gceApplicationCredentialsPath: string;
   vpcType: Exclude<VPCSetupType, typeof VPCSetupType.HOST_INSTANCE>;
+
+  // gcpApplicationCredentials is undefined when the user chooses to use
+  // YBA host credentials instead.
+  gceApplicationCredentials?: GCPServiceAccount;
+  gceApplicationCredentialsPath?: string;
 }
 
 interface K8sCloudInfoBase {

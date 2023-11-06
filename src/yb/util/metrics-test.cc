@@ -95,23 +95,22 @@ class MetricsTest : public YBTest {
   }
 
   void DoAggregationCheck(const PrometheusWriter& writer,
-                          const string& entity,
-                          const string& metric_name,
-                          int expected_aggregation_value,
-                          const MetricEntity::AttributeMap& expected_attrs) {
-    auto attrs_it = writer.aggregated_attributes_.find(entity);
+                          const string& table,
+                         const string& name,
+                         int expected_aggregation,
+                         const MetricEntity::AttributeMap& expected_attrs) {
+    auto attrs_it = writer.aggregated_attributes_.find(table);
     ASSERT_NE(attrs_it, writer.aggregated_attributes_.end());
-    auto actual_attrs = attrs_it->second;
-    for (const auto& expected_attr : expected_attrs) {
-      auto actual_attr_it = actual_attrs.find(expected_attr.first);
-      ASSERT_NE(actual_attr_it, actual_attrs.end());
-      ASSERT_EQ(actual_attr_it->second, expected_attr.second);
+    for (const auto& attr : expected_attrs) {
+      auto attr_it = attrs_it->second.find(attr.first);
+      ASSERT_NE(attr_it, attrs_it->second.end());
+      ASSERT_EQ(attr_it->second, attr.second);
     }
-    auto metric_it = writer.aggregated_values_.find(metric_name);
+    auto metric_it = writer.aggregated_values_.find(name);
     ASSERT_NE(metric_it, writer.aggregated_values_.end());
-    auto value_it = metric_it->second.find(entity);
+    auto value_it = metric_it->second.find(table);
     ASSERT_NE(value_it, metric_it->second.end());
-    ASSERT_EQ(value_it->second, expected_aggregation_value);
+    ASSERT_EQ(value_it->second, expected_aggregation);
   }
 
   std::string dumpPrometheusWriterOutput(const PrometheusWriter& w) { return w.output_->str(); }
@@ -272,61 +271,33 @@ TEST_F(MetricsTest, AggregationTest) {
     entities.insert({tablet.first, entity});
   }
   {
-    // Testing regex filter.
     MetricPrometheusOptions opts;
-    opts.table_whitelist = METRIC_test_sum_gauge.name();
-    opts.server_whitelist = METRIC_test_max_gauge.name();
-    opts.CreateRegexs();
     std::stringstream output;
-    PrometheusWriter writer(&output, ExportHelpAndType::kFalse);
-    MetricAggregationMap metric_filter;
-    ASSERT_OK(entities[tablets[0].first]->WriteForPrometheus(&writer,
-        opts, &metric_filter));
-    ASSERT_EQ(metric_filter[METRIC_test_sum_gauge.name()],
-        kTableLevel | kStreamLevel);
-    ASSERT_EQ(metric_filter[METRIC_test_max_gauge.name()],
-        kServerLevel | kStreamLevel);
-
-    std::stringstream server_blacklist_regex_string;
-    server_blacklist_regex_string << METRIC_test_max_gauge.name()
-                                  << "|" << METRIC_test_sum_gauge.name();
-    opts.table_whitelist = "NONE";
-    opts.server_blacklist = server_blacklist_regex_string.str();
-    opts.CreateRegexs();
-    PrometheusWriter writer2(&output, ExportHelpAndType::kFalse);
-    MetricAggregationMap metric_filter2;
-    ASSERT_OK(entities[tablets[0].first]->WriteForPrometheus(&writer,
-        opts, &metric_filter2));
-    ASSERT_EQ(metric_filter2[METRIC_test_sum_gauge.name()], kStreamLevel);
-    ASSERT_EQ(metric_filter2[METRIC_test_max_gauge.name()], kStreamLevel);
+    PrometheusWriter writer(&output, ExportHelpAndType::kFalse, AggregationMetricLevel::kTable);
+    MetricEntityOptions entity_options;
+    entity_options.metrics.push_back("*");
+    for (const auto& tablet : tablets) {
+      ASSERT_OK(entities[tablet.first]->WriteForPrometheus(&writer, entity_options, opts));
+    }
+    MetricEntity::AttributeMap attrs;
+    attrs["table_id"] = "table1";
+    DoAggregationCheck(writer, "table1", METRIC_test_sum_gauge.name(), 19, attrs);
+    DoAggregationCheck(writer, "table1", METRIC_test_max_gauge.name(), 10, attrs);
+    attrs["table_id"] = "table2";
+    DoAggregationCheck(writer, "table2", METRIC_test_sum_gauge.name(), 15, attrs);
+    DoAggregationCheck(writer, "table2", METRIC_test_max_gauge.name(), 8, attrs);
   }
   {
     MetricPrometheusOptions opts;
-    opts.CreateRegexs();
     std::stringstream output;
-    PrometheusWriter writer(&output, ExportHelpAndType::kFalse);
-    MetricAggregationMap metric_filter;
+    PrometheusWriter writer(&output, ExportHelpAndType::kFalse, AggregationMetricLevel::kServer);
+    MetricEntityOptions entity_options;
+    entity_options.metrics.push_back("*");
     for (const auto& tablet : tablets) {
-      ASSERT_OK(entities[tablet.first]->WriteForPrometheus(&writer, opts, &metric_filter));
+      ASSERT_OK(entities[tablet.first]->WriteForPrometheus(&writer, entity_options, opts));
     }
-
-    ASSERT_EQ(metric_filter[METRIC_test_sum_gauge.name()],
-        kTableLevel | kServerLevel | kStreamLevel);
-    ASSERT_EQ(metric_filter[METRIC_test_max_gauge.name()],
-        kTableLevel | kServerLevel | kStreamLevel);
-    // Check table aggregation.
-    MetricEntity::AttributeMap expected_attrs;
-    expected_attrs["table_id"] = "table1";
-    expected_attrs["table_name"] = "table1";
-    DoAggregationCheck(writer, "table1", METRIC_test_sum_gauge.name(), 19, expected_attrs);
-    DoAggregationCheck(writer, "table1", METRIC_test_max_gauge.name(), 10, expected_attrs);
-    expected_attrs["table_id"] = "table2";
-    expected_attrs["table_name"] = "table2";
-    DoAggregationCheck(writer, "table2", METRIC_test_sum_gauge.name(), 15, expected_attrs);
-    DoAggregationCheck(writer, "table2", METRIC_test_max_gauge.name(), 8, expected_attrs);
-    // Check server aggregation.
-    DoAggregationCheck(writer, "tablet", METRIC_test_sum_gauge.name(), 34, {});
-    DoAggregationCheck(writer, "tablet", METRIC_test_max_gauge.name(), 10, {});
+    DoAggregationCheck(writer, "", METRIC_test_sum_gauge.name(), 34, {});
+    DoAggregationCheck(writer, "", METRIC_test_max_gauge.name(), 10, {});
   }
 }
 
@@ -437,7 +408,9 @@ TEST_F(MetricsTest, JsonPrintTest) {
   // Generate the JSON.
   std::stringstream out;
   JsonWriter writer(&out, JsonWriter::PRETTY);
-  ASSERT_OK(entity_->WriteAsJson(&writer, MetricJsonOptions()));
+  MetricEntityOptions entity_opts;
+  entity_opts.metrics.push_back("*");
+  ASSERT_OK(entity_->WriteAsJson(&writer, entity_opts, MetricJsonOptions()));
 
   // Now parse it back out.
   JsonReader reader(out.str());
@@ -458,6 +431,12 @@ TEST_F(MetricsTest, JsonPrintTest) {
   string attr_value;
   ASSERT_OK(reader.ExtractString(attributes, "test_attr", &attr_value));
   ASSERT_EQ("attr_val", attr_value);
+
+  // Verify that, if we filter for a metric that isn't in this entity, we get no result.
+  out.str("");
+  entity_opts.metrics = { "not_a_matching_metric" };
+  ASSERT_OK(entity_->WriteAsJson(&writer, entity_opts, MetricJsonOptions()));
+  ASSERT_EQ("", out.str());
 }
 
 // Test that metrics are retired when they are no longer referenced.
@@ -597,32 +576,39 @@ TEST_F(MetricsTest, TestStreamLevelAggregation) {
 
   static const auto TEST_METRIC_NAME_1 = "test_metric_name_1";
   static const auto TEST_METRIC_NAME_2 = "test_metric_name_2";
-  static const auto TWO = 2;
-
-  MetricEntity::AttributeMap attrs;
-  attrs[LABEL] = LABEL_VAL;
-  attrs["stream_id"] = "stream_1";
-  attrs["table_id"] = "table_1";
-  attrs["metric_type"] = "cdc";
-
-  MetricEntity::AttributeMap expected_attrs = attrs;
-  expected_attrs.erase("table_id");
+  static const std::string TWO = "2";
 
   std::stringstream output;
-  PrometheusWriter writer(&output, ExportHelpAndType::kFalse);
-  ASSERT_OK(writer.WriteSingleEntry(attrs, TEST_METRIC_NAME_1, 1u,
-      AggregationFunction::kMax, "", "", kStreamLevel));
-  ASSERT_OK(writer.WriteSingleEntry(attrs, TEST_METRIC_NAME_1, 2u,
-      AggregationFunction::kMax, "", "", kStreamLevel));
-  DoAggregationCheck(writer, "stream_1", TEST_METRIC_NAME_1, TWO, expected_attrs);
+  PrometheusWriter writer(&output, ExportHelpAndType::kFalse, AggregationMetricLevel::kStream);
+
+  MetricEntity::AttributeMap attr;
+  attr[LABEL] = LABEL_VAL;
+  attr["stream_id"] = "stream_1";
+  attr["table_id"] = "table_1";
+
+  ASSERT_OK(writer.WriteSingleEntry(attr, TEST_METRIC_NAME_1, 1u, AggregationFunction::kMax));
+  ASSERT_OK(writer.WriteSingleEntry(attr, TEST_METRIC_NAME_1, 2u, AggregationFunction::kMax));
+  ASSERT_OK(writer.FlushAggregatedValues(1, TEST_METRIC_NAME_1));
+  std::vector<std::string> patterns1 = {
+      TEST_METRIC_NAME_1, "stream_id=\"stream_1\"", Format("$0=\"$1\"", LABEL, LABEL_VAL), TWO};
+  auto pw_output = dumpPrometheusWriterOutput(writer);
+  auto verify_patterns = [&pw_output](std::vector<std::string>& patterns) {
+    for (const auto& pattern : patterns) {
+      ASSERT_TRUE(pw_output.find(pattern) != string::npos);
+    }
+  };
+  verify_patterns(patterns1);
 
   std::stringstream output_2;
-  PrometheusWriter writer_2(&output_2, ExportHelpAndType::kFalse);
-  ASSERT_OK(writer_2.WriteSingleEntry(attrs, TEST_METRIC_NAME_2, 1u,
-      AggregationFunction::kSum, "", "", kStreamLevel));
-  ASSERT_OK(writer_2.WriteSingleEntry(attrs, TEST_METRIC_NAME_2, 1u,
-      AggregationFunction::kSum, "", "", kStreamLevel));
-  DoAggregationCheck(writer, "stream_1", TEST_METRIC_NAME_1, TWO, expected_attrs);
+  PrometheusWriter writer_2(&output_2, ExportHelpAndType::kFalse, AggregationMetricLevel::kStream);
+
+  ASSERT_OK(writer_2.WriteSingleEntry(attr, TEST_METRIC_NAME_2, 1u, AggregationFunction::kSum));
+  ASSERT_OK(writer_2.WriteSingleEntry(attr, TEST_METRIC_NAME_2, 1u, AggregationFunction::kSum));
+  ASSERT_OK(writer_2.FlushAggregatedValues(1, TEST_METRIC_NAME_2));
+  std::vector<std::string> patterns2 = {
+      TEST_METRIC_NAME_2, "stream_id=\"stream_1\"", Format("$0=\"$1\"", LABEL, LABEL_VAL), TWO};
+  pw_output = dumpPrometheusWriterOutput(writer_2);
+  verify_patterns(patterns2);
 }
 
 int StringOccurence(const string& s, const string& target) {
@@ -668,10 +654,12 @@ TEST_F(MetricsTest, VerifyHelpAndTypeTags) {
   entities.insert({"tablet", tablet_entity});
   entities.insert({"server", server_entity});
   MetricPrometheusOptions opts;
-  opts.server_whitelist = "t_hist|t_lag|t_event_stats";
+  opts.max_tables_metrics_breakdowns = INT32_MAX;
   std::stringstream output;
-  PrometheusWriter writer(&output, ExportHelpAndType::kTrue);
-  ASSERT_OK(registry_.WriteForPrometheus(&writer, opts));
+  PrometheusWriter writer(&output, ExportHelpAndType::kTrue, AggregationMetricLevel::kTable);
+  MetricEntityOptions entity_options;
+  entity_options.metrics.push_back("*");
+  ASSERT_OK(registry_.WriteForPrometheus(&writer, entity_options, opts));
 
   string output_str = output.str();
   // Check histogram output.

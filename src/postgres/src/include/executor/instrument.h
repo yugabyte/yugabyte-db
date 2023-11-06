@@ -14,6 +14,7 @@
 #define INSTRUMENT_H
 
 #include "portability/instr_time.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 
 typedef struct BufferUsage
@@ -49,14 +50,23 @@ typedef struct YbPgRpcStats {
 	double	wait_time;		/* RPC wait time (ns) */
 } YbPgRpcStats;
 
+typedef struct YbPgEventMetric {
+	double sum;
+	double count;
+} YbPgEventMetric;
+
 typedef struct YbInstrumentation {
-	YbPgRpcStats tbl_reads;
-	YbPgRpcStats index_reads;
-	YbPgRpcStats catalog_reads;
-	YbPgRpcStats write_flushes;
-	double		 tbl_writes;
-	double		 index_writes;
-	double		 catalog_writes;
+	YbPgRpcStats         tbl_reads;
+	YbPgRpcStats         index_reads;
+	YbPgRpcStats         catalog_reads;
+	YbPgRpcStats         write_flushes;
+	double               tbl_writes;
+	double               index_writes;
+	double               catalog_writes;
+
+	double               storage_gauge_metrics[YB_STORAGE_GAUGE_COUNT];
+	double               storage_counter_metrics[YB_STORAGE_COUNTER_COUNT];
+	YbPgEventMetric      storage_event_metrics[YB_STORAGE_EVENT_COUNT];
 } YbInstrumentation;
 
 typedef struct Instrumentation
