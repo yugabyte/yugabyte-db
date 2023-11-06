@@ -2829,6 +2829,10 @@ SELECT agtype_to_int8(Inf);
 ERROR:  column "inf" does not exist
 LINE 1: SELECT agtype_to_int8(Inf);
                               ^
+SELECT agtype_to_int8('{"name":"John"}');
+ERROR:  invalid agtype string to int8 type: 17
+SELECT agtype_to_int8('[1,2,3]');
+ERROR:  invalid agtype string to int8 type: 16
 --
 -- Test boolean to integer cast
 --
@@ -2959,6 +2963,10 @@ SELECT agtype_to_int4(Inf);
 ERROR:  column "inf" does not exist
 LINE 1: SELECT agtype_to_int4(Inf);
                               ^
+SELECT agtype_to_int4('{"name":"John"}');
+ERROR:  invalid agtype string to int4 type: 17
+SELECT agtype_to_int4('[1,2,3]');
+ERROR:  invalid agtype string to int4 type: 16
 --
 -- Test boolean to integer2 cast
 --
@@ -3089,6 +3097,10 @@ SELECT agtype_to_int2(Inf);
 ERROR:  column "inf" does not exist
 LINE 1: SELECT agtype_to_int2(Inf);
                               ^
+SELECT agtype_to_int2('{"name":"John"}');
+ERROR:  invalid agtype string to int2 type: 17
+SELECT agtype_to_int2('[1,2,3]');
+ERROR:  invalid agtype string to int2 type: 16
 --
 -- Test agtype to int[]
 --
