@@ -115,7 +115,7 @@ To set up unidirectional transactional replication manually, do the following:
 
   </div>
 
-  <div id="anywhere" class="tab-pane fade" role="tabpanel" aria-labelledby="cloud-tab">
+  <div id="anywhere" class="tab-pane fade" role="tabpanel" aria-labelledby="anywhere-tab">
 
 To set up unidirectional transactional replication using YugabyteDB Anywhere, do the following:
 

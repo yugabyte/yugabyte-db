@@ -195,15 +195,15 @@ To do a PITR on a database:
 
   </div>
 
-  <div id="anywhere" class="tab-pane fade" role="tabpanel" aria-labelledby="cloud-tab">
+  <div id="anywhere" class="tab-pane fade" role="tabpanel" aria-labelledby="anywhere-tab">
 
 To do a PITR on a database:
 
 1. In YugabyteDB Anywhere, navigate to Standby (B) and choose **Backups > Point-in-time Recovery**.
 
-1. For the database or keyspace, click **...** and choose **Recover to a Point in Time**.
+1. For the database, click **...** and choose **Recover to a Point in Time**.
 
-1. Select the Date and Time option and enter the safe time you obtained.
+1. Select the **Date and Time** option and enter the safe time you obtained.
 
     By default, YBA shows the time in local time, whereas yb-admin returns the time in UTC. Therefore, you need to convert the xCluster Safe time to local time when entering the date and time.
 
@@ -212,6 +212,8 @@ To do a PITR on a database:
     Note that YBA only supports minute-level granularity.
 
 1. Click **Recover**.
+
+    ![Recover to a point in time](/images/yp/create-deployments/xcluster/deploy-xcluster-tran-recoverpit.png)
 
     For more information on PITR in YugabyteDB Anywhere, refer to [Point-in-time recovery](../../../../yugabyte-platform/back-up-restore-universes/pitr/).
 
@@ -258,6 +260,84 @@ If the former Primary universe (A) doesn't come back and you end up creating a n
 
 If universe A is brought back, to bring A into sync with B and set up replication in the opposite direction (B->A), the database on A needs to be dropped and recreated from a backup of B (Bootstrap).
 
+<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
+  <li>
+    <a href="#localreverse" class="nav-link active" id="local-tab" data-toggle="tab"
+      role="tab" aria-controls="local" aria-selected="true">
+      <img src="/icons/database.svg" alt="Server Icon">
+      Local
+    </a>
+  </li>
+  <li>
+    <a href="#anywherereverse" class="nav-link" id="anywhere-tab" data-toggle="tab"
+      role="tab" aria-controls="anywhere" aria-selected="false">
+      <img src="/icons/server.svg" alt="Server Icon">
+      YugabyteDB Anywhere
+    </a>
+  </li>
+</ul>
+<div class="tab-content">
+  <div id="localreverse" class="tab-pane fade show active" role="tabpanel" aria-labelledby="local-tab">
+
+Do the following:
+
+1. Disable PITR on A as follows:
+
+    - List the snapshot schedules to obtain the schedule ID:
+
+        ```sh
+        ./bin/yb-admin -master_addresses <A_master_addresses> \
+        list_snapshot_schedules
+        ```
+
+    - Delete the snapshot schedule:
+
+        ```sh
+        ./bin/yb-admin \
+            -master_addresses <A_master_addresses> \
+            delete_snapshot_schedule <schedule_id>
+        ```
+
+1. Drop the database(s) on A.
+
+    If the original cluster A went down and could not clean up any of its replication streams, then dropping the database may fail with the following error:
+
+    ```output
+    ERROR: Table: 00004000000030008000000000004037 is under replication
+    ```
+
+    If this happens, do the following using yb-admin to clean up replication streams on A:
+
+    - List the CDC streams on Cluster A to obtain the list of stream IDs as follows:
+
+        ```sh
+        yb-admin \
+        -master_addresses <A_master_ips> \
+        -certs_dir_name <dir_name> \
+        list_cdc_streams
+        ```
+
+    - For each stream ID, delete the corresponding CDC stream:
+
+        ```sh
+        yb-admin \
+        -master_addresses <A_master_ips> \
+        -certs_dir_name <dir_name> \
+        delete_cdc_stream <streamID>
+        ```
+
+1. Recreate the database(s) on A.
+
+    If you are using YubabyteDB Anywhere, don't create any tables. Replication setup (Bootstrapping) will create tables and objects on A from B.
+
+1. Enable PITR on all replicating databases on both Primary and Standby universes by following the steps in [Set up replication](../async-transactional-setup/#set-up-replication).
+
+1. Set up xCluster Replication from the ACTIVE to STANDBY universe (B to A) by following the steps in [Set up replication](../async-transactional-setup/#set-up-replication).
+
+  </div>
+
+  <div id="anywherereverse" class="tab-pane fade" role="tabpanel" aria-labelledby="anywhere-tab">
+
 Do the following:
 
 1. In YugabyteDB Anywhere, navigate to universe A and choose **Backups > Point-in-time Recovery**.
@@ -294,14 +374,18 @@ Do the following:
 
 1. Recreate the database(s) on A.
 
-    DO NOT create any tables. Replication setup (Bootstrapping) will create tables/objects on A from B.
+    If you are using YubabyteDB Anywhere, don't create any tables. Replication setup (Bootstrapping) will create tables and objects on A from B.
 
-1. In YugabyteDB Anywhere, enable PITR on all replicating databases on both Primary and Standby universes.
+1. Enable PITR on all replicating databases on both Primary and Standby universes by following the steps in [Set up replication](../async-transactional-setup/#set-up-replication).
 
-1. In YugabyteDB Anywhere, set up xCluster Replication from the ACTIVE to STANDBY universe (B to A).
+1. Set up xCluster Replication from the ACTIVE to STANDBY universe (B to A) by following the steps in [Set up replication](../async-transactional-setup/#set-up-replication).
+
+  </div>
+
+</div>
 
 Replication is now complete.
 
 To verify replication, see [Verify replication](../async-transactional-setup/#verify-replication).
 
-If your eventual desired configuration is for A to be the primary cluster and B the standby, follow the steps for [Planned Switchover](../async-transactional-switchover/).
+If your eventual desired configuration is for A to be the primary cluster and B the standby, follow the steps for [Planned switchover](../async-transactional-switchover/).
