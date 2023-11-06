@@ -3,7 +3,7 @@ title: Manage tables and indexes transactional xCluster replication
 headerTitle: Manage tables and indexes
 linkTitle: Tables and indexes
 description: Manage tables and indexes using transactional (active-standby) replication between universes
-headContent: Add and remove tables and indexes
+headContent: How to add and remove tables and indexes from replication
 menu:
   preview:
     parent: async-replication-transactional
@@ -14,21 +14,26 @@ type: docs
 
 ## Add a table to replication
 
+To ensure that data is protected at all times, set up replication on a new table _before_ starting any workload.
+
+If a table already has data before adding it to replication, then adding the table to replication can result in a backup and restore of the entire database from Primary to Standby.
+
 Add tables to replication in the following sequence:
 
 1. Create the table on the Primary (if it doesn't already exist).
 1. Create the table on the Standby.
-1. Add the table to the replication in YugabyteDB Anywhere.
+1. Add the table to the replication.
 
-If the newly added table already has data before adding it to replication, then adding the table to replication can result in a Backup/Restore of that entire database from Primary to Standby.
-
-**Note**: Set up replication on the new table before starting any workload to ensure that data is protected at all times.
+    For instructions on adding tables to replication in YugabyteDB Anywhere, refer to [View, manage, and monitor replication](../../../../yugabyte-platform/create-deployments/async-replication-platform/#view-manage-and-monitor-replication).
 
 ## Remove a table from replication
 
 Remove tables from replication in the following sequence:
 
-1. Remove the table from replication using YugabyteDB Anywhere.
+1. Remove the table from replication.
+
+    For instructions on removing tables from replication in YugabyteDB Anywhere, refer to [View, manage, and monitor replication](../../../../yugabyte-platform/create-deployments/async-replication-platform/#view-manage-and-monitor-replication).
+
 1. Drop the table from both Primary and Standby databases separately.
 
 ## Add a new index to replication
@@ -47,9 +52,9 @@ Add indexes to replication in the following sequence:
 
 1. Wait for index backfill to finish.
 
-1. [Manually resync YBA monitoring](#manually-resync-yba-monitoring).
+    For instructions on monitoring backfill, refer to [Monitor index backfill from the command line](https://yugabytedb.tips/?p=2215).
 
-For instructions on monitoring backfill, refer to [Monitor index backfill from the command line](https://yugabytedb.tips/?p=2215).
+1. [Manually resync YBA monitoring](#manually-resync-yba-monitoring).
 
 ## Remove an index from replication
 
@@ -69,7 +74,7 @@ Adding a table partition is similar to adding a table.
 
 The caveat is that the parent table (if not already) along with each new partition has to be added to the replication, as DDL changes are not replicated automatically. Each partition is treated as a separate table and is added to replication separately (like a table).
 
-Create a table with partitions:
+For example, you can create a table with partitions as follows:
 
 ```sql
 CREATE TABLE order_changes (
@@ -78,7 +83,9 @@ CREATE TABLE order_changes (
   type text,
   description text)
   PARTITION BY RANGE (change_date);  
+```
 
+```sql
 CREATE TABLE order_changes_default PARTITION OF order_changes DEFAULT;
 ```
 
@@ -99,18 +106,12 @@ To remove a table partition from replication, follow the same steps as [Remove a
 
 ## Manually resync YBA monitoring
 
-To manually resync YBA monitoring:
+You manually resync YBA monitoring using the YBA API [sync xCluster config command](https://api-docs.yugabyte.com/docs/yugabyte-platform/e19b528a55430-sync-xcluster-config).
 
-1. In YugabyteDB Anywhere, navigate to your profile by clicking the profile icon in the top right and choosing **User Profile** (that is, https://<yourportal.yugabyte.com>/profile).
+Before you can use the command, you need an [API token](../../../yugabyte-platform/anywhere-automation/#); refer to [Authentication](../../../../yugabyte-platform/anywhere-automation/#authentication). You also need your customer ID and the UUID of the Standby universe; refer to [Account details](../../../../yugabyte-platform/anywhere-automation/#account-details).
 
-1. Click **Generate Key**.
+To manually resync YBA monitoring, run the following command:
 
-1. Copy the API Token and Customer ID and store it in a secure location.
-
-1. Navigate to the Standby universe and get the cluster UUID from the URL.
-
-1. Run the following command:
-
-    ```sh
-    curl -k --location --request POST 'https://<yourportal.yugabyte.com>/api/v1/customers/<Customer_ID>/xcluster_configs/sync?targetUniverseUUID=<standby_universe_uuid>' --header 'X-AUTH-YW-API-TOKEN: <API_token>' --data
-    ```
+```sh
+curl -k --location --request POST 'https://<yourportal.yugabyte.com>/api/v1/customers/<Customer_ID>/xcluster_configs/sync?<standby_universe_uuid>' --header 'X-AUTH-YW-API-TOKEN: <API_token>' --data
+```

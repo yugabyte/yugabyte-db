@@ -501,6 +501,7 @@ When new tables (or partitions) are created, to ensure that all changes from the
 #### Adding indexes
 
 To add a new index to an empty table, follow the same steps as described in [Adding Tables (or Partitions)](#adding-tables-or-partitions).
+
 However, to add a new index to a table that already has data, the following additional steps are required to ensure that the index has all the updates:
 
 1. Create an [index](../../../api/ysql/the-sql-language/statements/ddl_create_index/) - for example, `my_new index` on the source.

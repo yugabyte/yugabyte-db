@@ -63,11 +63,13 @@ If the Primary is Terminated for some reason, do the following:
     ]
     ```
 
-    `safe_time_lag_sec` is the time elapsed in microseconds between the physical time and safe time. Safe time is when data has been replicated to all the tablets on the target cluster.
+    `safe_time_lag_sec` is the time elapsed in microseconds between the physical time and safe time. Safe time is when data has been replicated to all the tablets on the Standby cluster.
 
-    `safe_time_skew_sec` is the time elapsed in microseconds for replication between the first and the last tablet replica on the target cluster.
+    `safe_time_skew_sec` is the time elapsed in microseconds for replication between the first and the last tablet replica on the Standby cluster.
 
     Determine if the estimated data loss and the safe time to which the system will be reset are acceptable.
+
+    For more information on replication metrics, refer to [Replication](../../../../launch-and-manage/monitor-and-alert/metrics/replication/).
 
 ### Restore the cluster to a consistent state
 
@@ -211,6 +213,8 @@ To do a PITR on a database:
 
 1. Click **Recover**.
 
+    For more information on PITR in YugabyteDB Anywhere, refer to [Point-in-time recovery](../../../../yugabyte-platform/back-up-restore-universes/pitr/).
+
 1. Promote Standby (B) to ACTIVE as follows:
 
     ```sh
@@ -238,13 +242,15 @@ To do a PITR on a database:
 
     ![Primary unreachable](/images/yp/create-deployments/xcluster/deploy-xcluster-tran-unreachable.png)
 
+    For more information on managing replication in YugabyteDB Anywhere, refer to [View, manage, and monitor replication](../../../../yugabyte-platform/create-deployments/async-replication-platform/#view-manage-and-monitor-replication).
+
 1. Resume the application traffic on the new Primary (B).
 
   </div>
 
 </div>
 
-After completing the preceding steps, the former Standby (B) is the new Primary (active) universe. There is no target (standby) until the former Primary (A) comes back up and is restored to the correct state.
+After completing the preceding steps, the former Standby (B) is the new Primary (active) universe. There is no Standby until the former Primary (A) comes back up and is restored to the correct state.
 
 ## Set up reverse replication
 
@@ -294,34 +300,8 @@ Do the following:
 
 1. In YugabyteDB Anywhere, set up xCluster Replication from the ACTIVE to STANDBY universe (B to A).
 
-1. On the Standby (A), verify `xcluster_safe_time` is progressing. This is the indicator of data flow from Primary to Standby.
-
-    ```sh
-    yb-admin \
-    -master_addresses <standby_master_ips> \
-    -certs_dir_name <dir_name> \
-    get_xcluster_safe_time
-    ```
-
-    For example:
-
-    ```sh
-    ./yb-admin -master_addresses 172.150.21.61:7100,172.150.44.121:7100,172.151.23.23:7100 get_xcluster_safe_time
-    ```
-
-    ```output.json
-    [
-        {
-            "namespace_id": "00004000000030008000000000000000",
-            "namespace_name": "dr_db",
-            "safe_time": "2023-06-07 16:31:17.601527",
-            "safe_time_epoch": "1686155477601527"
-        }
-    ]
-    ```
-
-    Default time reported in xCluster safe time is year 2112. Need to wait until the xCluster safe time on Standby advances beyond setup replication clock time.
-
 Replication is now complete.
+
+To verify replication, see [Verify replication](../async-transactional-setup/#verify-replication).
 
 If your eventual desired configuration is for A to be the primary cluster and B the standby, follow the steps for [Planned Switchover](../async-transactional-switchover/).

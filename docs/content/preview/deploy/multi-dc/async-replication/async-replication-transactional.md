@@ -24,7 +24,7 @@ The recovery time objective (RTO) is very low, as it only depends on the applica
 
 Transactional xCluster support further allows for the role of each universe to switch during planned and unplanned failover scenarios.
 
-The xCluster role is a property with values ACTIVE or STANDBY that determines and identifies the active (source) and standby (target) universes:
+The xCluster role is a property with values ACTIVE or STANDBY that determines and identifies the Primary (source) and Standby (target) universes:
 
 - ACTIVE: The active universe serves both reads & writes. Reads/writes happen as of the latest time and according to the chosen isolation levels.
 - STANDBY: The standby universe is meant for reads only. Reads happen as of xCluster safe time for the given database.
@@ -38,14 +38,14 @@ xCluster safe time is the transactionally consistent time across all tables in a
 - Supports only Active-Standby setups with transactional atomicity and global ordering.
 - Transactional consistency is currently not supported for YCQL, only for YSQL.
 
-## Recommended guardrails
+## Best practices
 
-- CPU utilisation: keep below 65%.
-- Disk space utilisation: under 65%.
+- Keep CPU use below 65%.
+- Keep disk space use under 65%.
 
 ## Prerequisites
 
-- Create Primary and Standby Universes with TLS enabled.
+- Create Primary and Standby universes with TLS enabled.
 
 - Set the YB-TServer [log_min_seconds_to_retain](../../../../reference/configuration/yb-tserver/#log-min-seconds-to-retain) to 86400 on both Primary and Standby.
 

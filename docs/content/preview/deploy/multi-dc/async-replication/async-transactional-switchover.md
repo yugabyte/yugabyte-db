@@ -106,9 +106,9 @@ Proceed as follows:
       - Tablet: 318745aee32c463c81d4242924d679a2
     ```
 
-1. Wait until xCluster safe time on Standby (B) is greater than the current time obtained on Primary (A).
+1. Wait until [xCluster safe time](../async-transactional-setup/#verify-replication) on Standby (B) is greater than the current time obtained on Primary (A).
 
-1. Use `change_xcluster_role` to promote Standby (B) to ACTIVE.
+1. Use `change_xcluster_role` to promote Standby (B) to ACTIVE as follows.
 
     ```sh
     ./bin/yb-admin \
@@ -117,7 +117,7 @@ Proceed as follows:
         change_xcluster_role ACTIVE
     ```
 
-1. Delete the replication from A to B:
+1. Delete the replication from A to B as follows:
 
     ```sh
     ./bin/yb-admin \

@@ -39,7 +39,9 @@ To set up unidirectional transactional replication manually, do the following:
 
 1. Create a new database on the Primary and Standby universes with the same name.
 
-1. Create the following tables and indexes on both Primary and Standby; the schema must match between the databases, including the number of tablets per table.
+1. Create tables and indexes on both Primary and Standby; the schema must match between the databases, including the number of tablets per table.
+
+    For example, create the following tables on the Primary and Standby:
 
     ```sql
     create table ordering_test (id int) split into 8 tablets;
@@ -117,9 +119,18 @@ To set up unidirectional transactional replication manually, do the following:
 
 To set up unidirectional transactional replication using YugabyteDB Anywhere, do the following:
 
-1. On the Primary universe (with and without data), create a fresh database. Don't create these objects in the default `yugabyte` database.
+1. On the Primary universe (with and without data), create a new database.
 
-1. Create the following tables and indexes:
+    For example:
+
+    ```sql
+    create database ybdb;
+    \c ybdb
+    ```
+
+1. Create your tables and indexes.
+
+    For example, create the following:
 
     ```sql
     create database ybdb;
@@ -136,7 +147,7 @@ To set up unidirectional transactional replication using YugabyteDB Anywhere, do
     create table if not exists account_sum ( sum int );
     ```
 
-1. On the Standby, create a fresh database with the same name (with and without data).
+1. On the Standby, create a new database with the same name (with and without data).
 
     During initial replication setup, you don't need to create objects on the Standby cluster. xCluster bootstrap auto-creates tables and objects and restores data on the Standby from the Primary cluster.
 
@@ -150,7 +161,9 @@ To set up unidirectional transactional replication using YugabyteDB Anywhere, do
 
         ![Enable PITR](/images/yp/create-deployments/xcluster/deploy-xcluster-tran-pitr2.png)
 
-1. Set up xCluster Replication from Primary to Standby as follows:
+    For more information on setting up PITR in YugabyteDB Anywhere, refer to [Point-in-time recovery](../../../../yugabyte-platform/back-up-restore-universes/pitr/).
+
+1. Set up xCluster replication from Primary to Standby as follows:
 
     - Navigate to your Primary universe, select the **Replication** tab, and click **Configure Replication**.
 
@@ -164,21 +177,24 @@ To set up unidirectional transactional replication using YugabyteDB Anywhere, do
 
     - Click **Next: Configure Bootstrap**.
 
-    - Choose the storage config to use for backup and click **Bootstrap and Enable Replication**.
+    - Choose the storage configuration to use for backup and click **Bootstrap and Enable Replication**.
 
-    **Note**: If there are any connections open against the Standby databases and replication is being set up for a Primary database that already has some data, then Bootstrap and Enable Replication will fail with the following error:
+    Note that if there are any connections open against the Standby databases and replication is being set up for a Primary database that already has some data, then Bootstrap and Enable Replication will fail with the following error:
 
     ```output
     Error ERROR:  database "database_name" is being accessed by other users
     DETAIL:  There is 1 other session using the database.
     ```
 
-    This is because setting up replication requires backing up the Primary database and restoring the backup to the Standby database after cleaning up any pre-existing data on the standby. Close any connections to the Standby database and retry the replication setup operation.
+    This is because setting up replication requires backing up the Primary database and restoring the backup to the Standby database after cleaning up any pre-existing data on the Standby. Close any connections to the Standby database and retry the replication setup operation.
 
-    **Note**: When you add a new database to an existing replication stream:
+    For more information on setting up replication in YugabyteDB Anywhere, refer to [Set up replication](../../../../yugabyte-platform/create-deployments/async-replication-platform/#set-up-replication).
 
-    - You need to create the same objects on the Standby. If Primary and Standby objects don't match, the database won't be allowed to be added to the replication.
-    - If the WALs are garbage collected from Primary, then the database will need to be bootstrapped. The bootstrap process is handled by YBA. Only single database is bootstrapped, not all the databases involved in the existing replication.
+**Adding a database to an existing replication**
+
+Note that, although you don't need to create objects on Standby during initial replication, when you add a new database to an existing replication stream, you _do_ need to create the same objects on the Standby. If Primary and Standby objects don't match, you won't be able to add the database to the replication.
+
+In addition, If the WALs are garbage collected from Primary, then the database will need to be bootstrapped. The bootstrap process is handled by YBA. Only the single database is bootstrapped, not all the databases involved in the existing replication.
 
   </div>
 
@@ -188,11 +204,11 @@ To set up unidirectional transactional replication using YugabyteDB Anywhere, do
 
 To verify the replication is working, on the Standby, check that [xCluster safe time](../../../../architecture/docdb-replication/async-replication/#transactional-replication) is progressing. This is the indicator of data flow from Primary to Standby.
 
-Use the `get_xcluster_safe_time` command:
+Use the `get_xcluster_safe_time` command as follows:
 
 ```sh
 yb-admin \
--master_addresses <Standby_master_ips> \
+-master_addresses <standby_master_ips> \
 -certs_dir_name <dir_name> \
 get_xcluster_safe_time
 ```
