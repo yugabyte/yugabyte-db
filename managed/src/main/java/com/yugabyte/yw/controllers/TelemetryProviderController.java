@@ -4,12 +4,20 @@ package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -28,6 +36,12 @@ public class TelemetryProviderController extends AuthenticatedController {
   @Inject private TelemetryProviderService telemetryProviderService;
 
   @ApiOperation(value = "Get Telemetry Provider", response = TelemetryProvider.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result getTelemetryProvider(UUID customerUUID, UUID providerUUID) {
     Customer.getOrBadRequest(customerUUID);
     TelemetryProvider provider =
@@ -40,6 +54,12 @@ public class TelemetryProviderController extends AuthenticatedController {
       response = TelemetryProvider.class,
       responseContainer = "List",
       nickname = "listAllTelemetryProviders")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result listTelemetryProviders(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
     List<TelemetryProvider> providers = telemetryProviderService.list(customerUUID);
@@ -56,6 +76,12 @@ public class TelemetryProviderController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.models.TelemetryProvider",
           required = true,
           paramType = "body"))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result createTelemetryProvider(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     TelemetryProvider provider = parseJson(request, TelemetryProvider.class);
@@ -73,6 +99,12 @@ public class TelemetryProviderController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Delete a telemetry provider", response = YBPSuccess.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result deleteTelemetryProvider(
       UUID customerUUID, UUID providerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
