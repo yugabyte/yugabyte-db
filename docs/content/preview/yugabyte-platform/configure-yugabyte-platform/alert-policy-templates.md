@@ -429,7 +429,7 @@ SSH key for universe `'$universe_name'` will expire in `$value` days.
 ybp_universe_ssh_key_expiry_day{universe_uuid="__universeUuid__"} {{ query_condition }} {{ query_threshold }}
 ```
 
-### Metric Collection Failure
+### Metric collection failure
 
 Failed to collect metric for universe `'$universe_name'`. You need to check YugabyteDB Anywhere logs for details or contact {{% support-platform %}}.
 
