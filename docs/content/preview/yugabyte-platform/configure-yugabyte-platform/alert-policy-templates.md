@@ -389,7 +389,7 @@ New YSQL tables are added to the source universe `'$universe_name'` in the datab
 ((count by (namespace_name, universe_uuid)(count by(namespace_name, table_id, universe_uuid)(rocksdb_current_version_sst_files_size{universe_uuid="__universeUuid__",table_type="PGSQL_TABLE_TYPE"}))) - count by(namespace_name, universe_uuid)(count by(namespace_name, universe_uuid, table_id)(async_replication_sent_lag_micros{universe_uuid="__universeUuid__",table_type="PGSQL_TABLE_TYPE"}))) {{ query_condition }} {{ query_threshold }}
 ```
 
-### PITR Config Failure
+### PITR config failure
 
 Last Snapshot task for universe `'$universe_name'` failed. To retry, check PITR Configuration task result for more details.
 
