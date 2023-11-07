@@ -1726,8 +1726,8 @@ YBCStatus YBCTableIDMetadata(YBCTableIDMetadataInfo** infolist, size_t* count) {
         YBCTableIDMetadataInfo* dest = *infolist;
         for (const auto& table_info : table_info_list) {
 
-            dest->id = YBCPAllocStdString(table_info.id());
-            dest->name = YBCPAllocStdString(table_info.name());
+            dest->table_id = YBCPAllocStdString(table_info.id());
+            dest->table_name = YBCPAllocStdString(table_info.name());
             dest->table_type = table_info.table_type();
             dest->relation_type = table_info.relation_type();
             dest->namespace_.id = YBCPAllocStdString(table_info.namespace_().id()); 

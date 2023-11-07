@@ -455,8 +455,8 @@ typedef struct ColocatedInfo {
 } ColocatedInfo;
 
 typedef struct TableIDMetadataInfo {
-  const char* id;
-  const char* name;
+  const char* table_id;
+  const char* table_name;
   uint32_t table_type;
   uint32_t relation_type;
   NamespaceIdentifierPB namespace_;

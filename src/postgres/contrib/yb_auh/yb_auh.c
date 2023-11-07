@@ -40,6 +40,7 @@
 
 PG_MODULE_MAGIC;
 PG_FUNCTION_INFO_V1(pg_active_universe_history);
+PG_FUNCTION_INFO_V1(yb_table_info_collector);
 
 #define PG_ACTIVE_UNIVERSE_HISTORY_COLS        12
 
@@ -58,12 +59,13 @@ typedef struct ybauhEntry {
 } ybauhEntry;
 
 typedef struct ybtableInfo {
-  const char* id;
-  const char* name;
+  const char* table_id;
+  const char* table_name;
   uint32_t table_type;
   uint32_t relation_type;
   const char* namespace_id;
   const char* namespace_name;
+  uint32_t database_type;
   const char* pgschema_name;
   bool colocated;
   const char* parent_table_id;
@@ -121,8 +123,8 @@ static void auh_entry_store(TimestampTz auh_time,
                             long query_id,
                             TimestampTz start_ts_of_wait_event,
                             float8 sample_rate);
-static void table_info(const char* id,
-                        const char* name,
+static void table_info(const char* table_id,
+                        const char* table_name,
                         uint32_t table_type,
                         uint32_t relation_type,
                         const char* namespace_id,
@@ -133,7 +135,6 @@ static void table_info(const char* id,
                        const char* parent_table_id);
 static void pg_collect_samples(TimestampTz auh_sample_time, uint16 num_procs_to_sample);
 static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 num_rpcs_to_sample);
-static void collect_table_info();
 
 static volatile sig_atomic_t got_sigterm = false;
 static volatile sig_atomic_t got_sighup = false;
@@ -278,7 +279,6 @@ yb_auh_main(Datum main_arg) {
 
     pg_collect_samples(auh_sample_time, auh_sample_size);
     tserver_collect_samples(auh_sample_time, auh_sample_size);
-    collect_table_info();
 
     MemoryContextSwitchTo(oldcxt);
     /* No problems, so clean exit */
@@ -329,21 +329,6 @@ static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 num_rpcs
                     rpcs[i].metadata.client_node_host, rpcs[i].metadata.client_node_port,
                     rpcs[i].metadata.query_id, auh_sample_time, sample_rate);
     }
-  }
-}
-
-static void collect_table_info()
-{
-  YBCTableIDMetadataInfo *infolist = NULL;
-  size_t size = 0;
-  HandleYBStatus(YBCTableIDMetadata(&infolist, &size));
-  for (int i = 0; i < size; i++) 
-  {
-      table_info(infolist[i].id, infolist[i].name, 
-                infolist[i].table_type, infolist[i].relation_type, 
-                infolist[i].namespace_.id, infolist[i].namespace_.name, 
-                infolist[i].namespace_.database_type, infolist[i].pgschema_name,
-                infolist[i].colocated_info.colocated, infolist[i].colocated_info.parent_table_id);
   }
 }
 
@@ -423,8 +408,8 @@ static void auh_entry_store(TimestampTz auh_time,
   LWLockRelease(auh_entry_array_lock);
 }
 
-static void table_info(const char* id,
-                       const char* name,
+static void table_info(const char* table_id,
+                       const char* table_name,
                        uint32_t table_type,
                        uint32_t relation_type,
                        const char* namespace_id,
@@ -435,12 +420,13 @@ static void table_info(const char* id,
                        const char* parent_table_id) {
     ybtableInfo tableInfo;
 
-    tableInfo.id = id;
-    tableInfo.name = name;
+    tableInfo.table_id = table_id;
+    tableInfo.table_name = table_name;
     tableInfo.table_type = table_type;
     tableInfo.relation_type = relation_type;
     tableInfo.namespace_id = namespace_id;
     tableInfo.namespace_name = namespace_name;
+    tableInfo.database_type = database_type;
     tableInfo.pgschema_name = pgschema_name;
     tableInfo.colocated = colocated;
     tableInfo.parent_table_id = parent_table_id;
@@ -543,6 +529,131 @@ ybauh_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
     PG_RE_THROW();
   }
   PG_END_TRY();
+}
+
+static void 
+yb_table_info_collector_internal(FunctionCallInfo fcinfo)
+{
+  ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+  TupleDesc       tupdesc;
+  Tuplestorestate *tupstore;
+  MemoryContext per_query_ctx;
+  MemoryContext oldcontext;
+
+  if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+    ereport(ERROR,
+            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                errmsg("set-valued function called in context that cannot accept a set")));
+  if (!(rsinfo->allowedModes & SFRM_Materialize))
+    ereport(ERROR,
+            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                errmsg("materialize mode required, but it is not " \
+					   "allowed in this context")));
+
+  if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+    elog(ERROR, "return type must be a row type");
+
+  per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
+  oldcontext = MemoryContextSwitchTo(per_query_ctx); 
+
+  tupstore = tuplestore_begin_heap(true, false, work_mem);
+  rsinfo->returnMode = SFRM_Materialize;
+  rsinfo->setResult = tupstore;
+  rsinfo->setDesc = tupdesc;
+
+  MemoryContextSwitchTo(oldcontext);
+
+  YBCTableIDMetadataInfo *infolist = NULL;
+	size_t size = 0;
+  
+  HandleYBStatus(YBCTableIDMetadata(&infolist, &size));
+  ybtableInfo* tableInfo = (ybtableInfo*)palloc(size * sizeof(ybtableInfo)); 
+  int i;
+
+  for (i = 0; i < size; i++) {
+    tableInfo[i].table_id = infolist[i].table_id;
+    tableInfo[i].table_name = infolist[i].table_name;
+    tableInfo[i].table_type = infolist[i].table_type;
+    tableInfo[i].relation_type = infolist[i].relation_type;
+    tableInfo[i].namespace_id = infolist[i].namespace_.id;
+    tableInfo[i].namespace_name = infolist[i].namespace_.name;
+    tableInfo[i].database_type = infolist[i].namespace_.database_type;
+    tableInfo[i].pgschema_name = infolist[i].pgschema_name;
+    tableInfo[i].colocated = infolist[i].colocated_info.colocated;
+    tableInfo[i].parent_table_id = infolist[i].colocated_info.parent_table_id;
+  }
+  
+  for (i = 0; i < size; i++) {
+
+    Datum values[10];
+    bool isnull[10];
+    int j = 0;
+
+    memset(values, 0, sizeof(values));
+    memset(isnull, 0, sizeof(isnull));
+
+    // table_id
+    if (tableInfo[i].table_id != NULL)
+        values[j] = CStringGetTextDatum(tableInfo[i].table_id);
+    else
+        isnull[j] = true;
+    j++;
+
+    // table_name
+    if (tableInfo[i].table_name != NULL)
+        values[j] = CStringGetTextDatum(tableInfo[i].table_name);
+    else
+        isnull[j] = true;
+    j++;
+
+    // table_type and relation_type
+    values[j++] = Int32GetDatum(tableInfo[i].table_type);
+    values[j++] = Int32GetDatum(tableInfo[i].relation_type);
+
+    // namespace_id
+    if (tableInfo[i].namespace_id != NULL)
+        values[j] = CStringGetTextDatum(tableInfo[i].namespace_id);
+    else
+        isnull[j] = true;
+    j++;
+
+    // namespace_name
+    if (tableInfo[i].namespace_name != NULL)
+        values[j] = CStringGetTextDatum(tableInfo[i].namespace_name);
+    else
+        isnull[j] = true;
+    j++;
+
+    //database_type 
+    values[j++] = Int32GetDatum(tableInfo[i].database_type);
+
+    // pgschema_name
+    if (tableInfo[i].pgschema_name != NULL)
+        values[j] = CStringGetTextDatum(tableInfo[i].pgschema_name);
+    else
+        isnull[j] = true;
+    j++;
+
+    // colocated
+    values[j++] = BoolGetDatum(tableInfo[i].colocated);
+
+    // parent_table_id
+    if (tableInfo[i].parent_table_id != NULL)
+        values[j] = CStringGetTextDatum(tableInfo[i].parent_table_id);
+    else
+        isnull[j] = true;
+
+    tuplestore_putvalues(tupstore, tupdesc, values, isnull);
+  }
+
+  tuplestore_donestoring(tupstore);
+}
+
+Datum
+yb_table_info_collector(PG_FUNCTION_ARGS)
+{
+	yb_table_info_collector_internal(fcinfo);
+  return (Datum) 0;
 }
 
 static void
