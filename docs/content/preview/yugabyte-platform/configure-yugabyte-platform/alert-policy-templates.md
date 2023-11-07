@@ -415,7 +415,7 @@ max by (universe_uuid) (avg_over_time(async_replication_committed_lag_micros{uni
 
 ### SSH Key Rotation Failure
 
-Last SSH Key Rotation task for universe `'$universe_name'` failed. To retry, check SSH Key Rotation task result.
+Last SSH key rotation task for universe `'$universe_name'` failed. To retry, check SSH key rotation task result.
 
 ```expression
 last_over_time(ybp_ssh_key_rotation_status{universe_uuid = "__universeUuid__"}[1d]) {{ query_condition }} 1
