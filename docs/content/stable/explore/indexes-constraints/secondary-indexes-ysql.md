@@ -155,7 +155,15 @@ To add a multi-column index to an existing table, you can use the following synt
 CREATE INDEX index_name ON table_name ((col2,col3,col4));
 ```
 
-The column order is very important when you create a multi-column index in YSQL because of the structure in which the index is stored. As such, these indexes have a hierarchical order from left to right. So, for the preceding syntaxes, you can perform search using the following column combinations:
+If you include nested parenthesis between the columns as per the preceding syntax, you will have to perform search using all the columns col2,col3, and col4.
+
+However, if you add the multi-column index to an existing table using the following syntax:
+
+```sql
+CREATE INDEX index_name ON table_name (col2,col3,col4);
+```
+
+You can perform search using the following column combinations:
 
 ```sql
 (col2)
@@ -163,6 +171,7 @@ The column order is very important when you create a multi-column index in YSQL 
 (col2,col3,col4)
 ```
 
+The column order is very important when you create a multi-column index in YSQL because of the structure in which the index is stored. As such, these indexes have a hierarchical order from left to right.
 A column combination like (col2,col4) cannot be used to search or query a table.
 
 ## Multi-column example
