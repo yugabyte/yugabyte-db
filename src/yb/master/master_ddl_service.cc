@@ -40,6 +40,7 @@ class MasterDdlServiceImpl : public MasterServiceBase, public MasterDdlIf {
     (DeleteTablegroup)
     (DeleteUDType)
     (GetBackfillJobs)
+    (GetBackfillStatus)
     (GetColocatedTabletSchema)
     (GetNamespaceInfo)
     (GetTablegroupSchema)

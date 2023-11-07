@@ -410,7 +410,16 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   void RemoveTable(const TableId& table_id);
 
   // Returns a list of all tables colocated on this tablet.
-  std::vector<TableId> GetAllColocatedTables();
+  std::vector<TableId> GetAllColocatedTables() const;
+
+  // Returns the number of tables colocated on this tablet, returns 1 for non-colocated case.
+  size_t GetColocatedTablesCount() const EXCLUDES(data_mutex_);
+
+  // Iterates through all the tables colocated on this tablet. In case of non-colocated tables,
+  // iterates exactly one time. Use light-weight callback as it's triggered under the locked mutex;
+  // callback should return true to continue iteration and false - to break the loop and exit.
+  void IterateColocatedTables(
+      std::function<void(const TableInfo&)> callback) const EXCLUDES(data_mutex_);
 
   // Set / get the remote bootstrap / tablet data state.
   void set_tablet_data_state(TabletDataState state);
@@ -538,8 +547,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
     return kv_store_;
   }
 
-  // Updates related meta data as a reaction to index table backfilling is done.
-  void OnBackfillDone(const TableId& table_id);
+  // Called to update related metadata when index table backfilling is complete.
+  // Returns kStatusNotFound if table is not found in kv_store, in other case returns kStatusOk.
+  Status OnBackfillDone(const TableId& table_id) EXCLUDES(data_mutex_);
 
  private:
   typedef simple_spinlock MutexType;
@@ -581,6 +591,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
     CHECK(itr != tables.end());
     return itr->second;
   }
+
+  Status OnBackfillDoneUnlocked(const TableId& table_id) REQUIRES(data_mutex_);
 
   enum State {
     kNotLoadedYet,

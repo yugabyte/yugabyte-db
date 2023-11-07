@@ -151,6 +151,19 @@ std::shared_ptr<YBqlReadOp> CreateReadOp(
   return op;
 }
 
+Result<string> GetTableIdByTableName(client::YBClient* client,
+                                     const string& namespace_name,
+                                     const string& table_name) {
+  const auto tables = VERIFY_RESULT(client->ListTables());
+  for (const auto& t : tables) {
+    if (t.namespace_name() == namespace_name && t.table_name() == table_name) {
+      return t.table_id();
+    }
+  }
+  return STATUS_SUBSTITUTE(NotFound, "The table $0 does not exist in namespace $1",
+      table_name, namespace_name);
+}
+
 void VerifyTable(
     client::YBClient* client,
     const std::string& database_name,

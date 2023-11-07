@@ -12,18 +12,21 @@
 //
 
 #include "yb/integration-tests/cql_test_base.h"
-#include "yb/integration-tests/mini_cluster_utils.h"
 
 #include "yb/client/table_info.h"
 
 #include "yb/docdb/deadline_info.h"
 
-#include "yb/tablet/tablet_metadata.h"
-#include "yb/tablet/write_query.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/external_mini_cluster_validator.h"
+#include "yb/integration-tests/mini_cluster_utils.h"
+
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
-#include "yb/tablet/tablet_metrics.h"
+#include "yb/tablet/write_query.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/logging.h"
@@ -526,6 +529,59 @@ TEST_F(CqlIndexTest, SlowIndexResponse) {
   ASSERT_TRUE(latch_done) << "SELECT hasn't completed within " << timeout_limit_ms << " ms";
 
   select_thread.JoinAll();
+}
+
+class CqlIndexExternalMiniClusterTest : public CqlTestBase<ExternalMiniCluster> {
+ protected:
+  void TestRetainDeleteMarkersRecovery(bool use_multiple_requests) {
+    ASSERT_OK(EnsureClientCreated());
+    auto validator =
+        CqlRetainDeleteMarkersValidator{ cluster_.get(), client_.get(), driver_.get() };
+    validator.TestRecovery(use_multiple_requests);
+  }
+
+ private:
+  class CqlRetainDeleteMarkersValidator final : public itest::RetainDeleteMarkersValidator {
+    using Base = itest::RetainDeleteMarkersValidator;
+
+   public:
+    CqlRetainDeleteMarkersValidator(
+        ExternalMiniCluster* cluster, client::YBClient* client, CppCassandraDriver* driver)
+        : Base(cluster, client, kCqlTestKeyspace), driver_(*CHECK_NOTNULL(driver)) {
+    }
+
+   private:
+    Status RestartCluster() override {
+      RETURN_NOT_OK(Base::RestartCluster());
+      session_ = VERIFY_RESULT(EstablishSession(&driver_));
+      return Status::OK();
+    }
+
+    Status CreateIndex(const std::string &index_name, const std::string &table_name) override {
+      return session_.ExecuteQueryFormat(
+          "CREATE INDEX $0 ON $1(value) WITH transactions = { 'enabled' : true }",
+          index_name, table_name);
+    }
+
+    Status CreateTable(const std::string &table_name) override {
+      return session_.ExecuteQueryFormat(
+          "CREATE TABLE $0 (key INT PRIMARY KEY, value INT) "
+          "WITH transactions = { 'enabled' : true }", table_name);
+    }
+
+    CppCassandraDriver& driver_;
+    CassandraSession session_;
+  };
+};
+
+// Test for https://github.com/yugabyte/yugabyte-db/issues/19731.
+TEST_F(CqlIndexExternalMiniClusterTest, RetainDeleteMarkersRecovery) {
+  TestRetainDeleteMarkersRecovery(false /* use_multiple_requests */);
+}
+
+// Test for https://github.com/yugabyte/yugabyte-db/issues/19731.
+TEST_F(CqlIndexExternalMiniClusterTest, RetainDeleteMarkersRecoveryViaSeveralRequests) {
+  TestRetainDeleteMarkersRecovery(true /* use_multiple_requests */);
 }
 
 } // namespace yb

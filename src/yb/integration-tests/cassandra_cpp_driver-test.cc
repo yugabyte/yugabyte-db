@@ -14,6 +14,7 @@
 #include <tuple>
 
 #include "yb/client/client.h"
+#include "yb/client/client-test-util.h"
 #include "yb/client/table_info.h"
 
 #include "yb/gutil/strings/join.h"
@@ -1298,17 +1299,6 @@ bool CreateTableSuccessOrTimedOut(const Status& s) {
   // We sometimes get a Runtime Error from cql_test_util wrapping the actual Timeout.
   return s.ok() || s.IsTimedOut() ||
          string::npos != s.ToUserMessage().find("Timed out waiting for Table Creation");
-}
-
-Result<string> GetTableIdByTableName(
-    client::YBClient* client, const string& namespace_name, const string& table_name) {
-  const auto tables = VERIFY_RESULT(client->ListTables());
-  for (const auto& t : tables) {
-    if (t.namespace_name() == namespace_name && t.table_name() == table_name) {
-      return t.table_id();
-    }
-  }
-  return STATUS(NotFound, "The table does not exist");
 }
 
 TEST_F_EX(CppCassandraDriverTest, WaitForSplitsToComplete, CppCassandraDriverTestIndexSlow) {

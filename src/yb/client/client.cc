@@ -641,6 +641,12 @@ Status YBClient::GetIndexBackfillProgress(
   return Status::OK();
 }
 
+Result<master::GetBackfillStatusResponsePB> YBClient::GetBackfillStatus(
+    const std::vector<std::string_view>& table_ids) {
+  const auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  return data_->GetBackfillStatus(table_ids, deadline);
+}
+
 Status YBClient::DeleteTable(const YBTableName& table_name, bool wait) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->DeleteTable(this,

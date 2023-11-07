@@ -105,6 +105,9 @@ class PGConn {
       bool simple_query_protocol,
       const std::string& conn_str_for_log);
 
+  // Reconnect.
+  void Reset();
+
   Status Execute(const std::string& command, bool show_query_in_error = true);
 
   template <class... Args>

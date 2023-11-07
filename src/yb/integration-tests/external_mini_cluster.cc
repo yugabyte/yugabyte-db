@@ -42,7 +42,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include <glog/logging.h>
 #include <gtest/gtest.h>
 #include <rapidjson/document.h>
 
@@ -1882,6 +1881,18 @@ Status ExternalMiniCluster::SetFlagOnTServers(const string& flag, const string& 
   return Status::OK();
 }
 
+void ExternalMiniCluster::AddExtraFlagOnTServers(
+    const std::string& flag, const std::string& value) {
+  for (const auto& tablet_server : tablet_servers_) {
+    tablet_server->AddExtraFlag(flag, value);
+  }
+}
+void ExternalMiniCluster::RemoveExtraFlagOnTServers(const std::string& flag) {
+  for (const auto& tablet_server : tablet_servers_) {
+    tablet_server->RemoveExtraFlag(flag);
+  }
+}
+
 
 uint16_t ExternalMiniCluster::AllocateFreePort() {
   // This will take a file lock ensuring the port does not get claimed by another thread/process
@@ -2523,6 +2534,17 @@ Result<int64_t> ExternalDaemon::GetInt64Metric(const char* entity_proto_name,
                                                const char* value_field) const {
   return GetInt64MetricFromHost(
       bound_http_hostport(), entity_proto_name, entity_id, metric_proto_name, value_field);
+}
+
+void ExternalDaemon::AddExtraFlag(const std::string& flag, const std::string& value) {
+  extra_flags_.push_back(Format("--$0=$1", flag, value));
+}
+
+size_t ExternalDaemon::RemoveExtraFlag(const std::string& flag) {
+  const std::string flag_with_prefix = "--" + flag;
+  return std::erase_if(extra_flags_, [&flag_with_prefix](auto&& flag) {
+    return HasPrefixString(flag, flag_with_prefix);
+  });
 }
 
 LogWaiter::LogWaiter(ExternalDaemon* daemon, const std::string& string_to_wait) :
