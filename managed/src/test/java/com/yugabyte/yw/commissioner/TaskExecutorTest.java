@@ -114,7 +114,10 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.GFlagsUpgrade,
           TaskType.RebootUniverse,
           TaskType.RestartUniverse,
-          TaskType.ThirdpartySoftwareUpgrade);
+          TaskType.ThirdpartySoftwareUpgrade,
+          TaskType.FinalizeUpgrade,
+          TaskType.CertsRotate,
+          TaskType.SystemdUpgrade);
 
   @Override
   protected Application provideApplication() {
