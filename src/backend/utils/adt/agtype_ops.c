@@ -1277,7 +1277,7 @@ Datum agtype_exists_agtype(PG_FUNCTION_ARGS)
                                              aval);
     }
     else if (AGT_ROOT_IS_ARRAY(agt) &&
-             !aval->type == AGTV_NULL)
+             aval->type != AGTV_NULL)
     {
         v = find_agtype_value_from_container(&agt->root,
                                              AGT_FARRAY,
@@ -1319,7 +1319,7 @@ Datum agtype_exists_any_agtype(PG_FUNCTION_ARGS)
                     PG_RETURN_BOOL(true);
                 }
                 else if (AGT_ROOT_IS_ARRAY(agt) &&
-                         !(&elem)->type == AGTV_NULL &&
+                         (&elem)->type != AGTV_NULL &&
                          find_agtype_value_from_container(&agt->root,
                                                            AGT_FARRAY,
                                                            &elem))
