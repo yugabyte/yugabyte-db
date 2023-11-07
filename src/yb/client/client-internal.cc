@@ -98,12 +98,11 @@
 using namespace std::literals;
 
 DEFINE_test_flag(bool, assert_local_tablet_server_selected, false, "Verify that SelectTServer "
-                 "selected the local tablet server. Also verify that ReplicaSelection is equal "
-                 "to CLOSEST_REPLICA");
+    "selected the local tablet server. Also verify that ReplicaSelection is equal "
+    "to CLOSEST_REPLICA");
 
 DEFINE_test_flag(string, assert_tablet_server_select_is_in_zone, "",
-                 "Verify that SelectTServer selected a talet server in the AZ specified by this "
-                 "flag.");
+    "Verify that SelectTServer selected a talet server in the AZ specified by this flag.");
 
 DEFINE_RUNTIME_uint32(change_metadata_backoff_max_jitter_ms, 0,
     "Max jitter (in ms) in the exponential backoff loop that checks if a change metadata operation "
@@ -243,6 +242,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE(DeleteTable);
 YB_CLIENT_SPECIALIZE_SIMPLE(DeleteTablegroup);
 YB_CLIENT_SPECIALIZE_SIMPLE(DeleteUDType);
 YB_CLIENT_SPECIALIZE_SIMPLE(FlushTables);
+YB_CLIENT_SPECIALIZE_SIMPLE(GetBackfillStatus);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetTablegroupSchema);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetColocatedTabletSchema);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetMasterClusterConfig);
@@ -935,6 +935,26 @@ Status YBClient::Data::WaitForBackfillIndexToFinish(
       "Timed out waiting for Backfill Index",
       std::bind(
           &YBClient::Data::IsBackfillIndexInProgress, this, client, table_id, index_id, _1, _2));
+}
+
+Result<master::GetBackfillStatusResponsePB> YBClient::Data::GetBackfillStatus(
+    const std::vector<std::string_view>& table_ids, const CoarseTimePoint deadline) {
+  if (table_ids.empty()) {
+    return STATUS(InvalidArgument, "At least one table must be specified");
+  }
+
+  GetBackfillStatusRequestPB req;
+  GetBackfillStatusResponsePB resp;
+  req.mutable_index_tables()->Reserve(yb::narrow_cast<int>(table_ids.size()));
+  for (auto it = table_ids.begin(); it != table_ids.end(); ++it) {
+    req.add_index_tables()->set_table_id(std::string{*it});
+  }
+
+  RETURN_NOT_OK(SyncLeaderMasterRpc(
+      deadline, req, &resp, "GetBackfillStatus",
+      &master::MasterDdlProxy::GetBackfillStatusAsync));
+
+  return resp;
 }
 
 Status YBClient::Data::IsCreateNamespaceInProgress(

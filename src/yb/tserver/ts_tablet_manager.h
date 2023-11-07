@@ -112,6 +112,8 @@ typedef boost::container::static_vector<TabletCreationMetaData, kNumSplitParts>
 
 typedef Callback<void(tablet::TabletPeerPtr)> ConsensusChangeCallback;
 
+class TabletMetadataValidator;
+
 // If 'expr' fails, log a message, tombstone the given tablet, and return the
 // error status.
 #define TOMBSTONE_NOT_OK(expr, meta, uuid, msg, ts_manager_ptr) \
@@ -631,6 +633,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Used for verifying tablet data integrity.
   std::unique_ptr<rpc::Poller> verify_tablet_data_poller_;
+
+  // Used for verifying tablet metadata data integrity.
+  std::unique_ptr<TabletMetadataValidator> tablet_metadata_validator_;
 
   // Used for cleaning up old metrics.
   std::unique_ptr<rpc::Poller> metrics_cleaner_;
