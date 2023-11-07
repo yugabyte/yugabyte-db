@@ -2687,15 +2687,13 @@ AbortTransaction(void)
 	AtAbort_Memory();
 	AtAbort_ResourceOwner();
 
-	if (YBIsPgLockingEnabled()) {
-		/*
-		* Release any LW locks we might be holding as quickly as possible.
-		* (Regular locks, however, must be held till we finish aborting.)
-		* Releasing LW locks is critical since we might try to grab them again
-		* while cleaning up!
-		*/
-		LWLockReleaseAll();
-	}
+	/*
+	 * Release any LW locks we might be holding as quickly as possible.
+	 * (Regular locks, however, must be held till we finish aborting.)
+	 * Releasing LW locks is critical since we might try to grab them again
+	 * while cleaning up!
+	 */
+	LWLockReleaseAll();
 
 	/* Clear wait information and command progress indicator */
 	pgstat_report_wait_end();

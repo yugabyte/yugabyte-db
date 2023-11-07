@@ -2694,6 +2694,26 @@ yb_lwlock_crash_after_acquire_pg_stat_statements_reset()
 
 }
 
+
+/*
+ * Function that caches environmental variable
+ * FLAGS_TEST_yb_lwlock_error_after_acquire_pg_stat_statements_reset.
+ *
+ * This avoids the process of checking the value of the environmental variable
+ * time and again.
+ */
+bool
+yb_lwlock_error_after_acquire_pg_stat_statements_reset()
+{
+	static int cached_value = -1;
+	if (cached_value == -1)
+	{
+		cached_value = YBCIsEnvVarTrue(
+			"FLAGS_TEST_yb_lwlock_error_after_acquire_pg_stat_statements_reset");
+	}
+	return cached_value;
+}
+
 /*
  * Release all entries.
  */
@@ -2714,6 +2734,14 @@ entry_reset(void)
 
 	if (yb_lwlock_crash_after_acquire_pg_stat_statements_reset())
 	  kill(getpid(), 9);
+
+	if (yb_lwlock_error_after_acquire_pg_stat_statements_reset())
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("Forced error since "
+				 		"yb_lwlock_error_after_acquire_pg_stat_statements_reset"
+						" is set")));
+
 	/*
 	 * Write new empty query file, perhaps even creating a new one to recover
 	 * if the file was missing.
