@@ -251,6 +251,10 @@ void PGResultClear::operator()(PGresult* result) const {
   PQclear(result);
 }
 
+void PGConn::Reset() {
+  PQreset(impl_.get());
+}
+
 Status PGConn::Execute(const std::string& command, bool show_query_in_error) {
   VLOG(1) << __func__ << " " << command;
   PGResultPtr res(PQexec(impl_.get(), command.c_str()));

@@ -16,11 +16,12 @@
 #include <vector>
 
 #include "yb/client/table_info.h"
+#include "yb/client/client-test-util.h"
 
 #include "yb/common/schema.h"
 
 #include "yb/integration-tests/backfill-test-util.h"
-#include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
+#include "yb/integration-tests/external_mini_cluster_validator.h"
 
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_admin.pb.h"
@@ -32,7 +33,6 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
-#include "yb/util/pb_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
@@ -127,6 +127,8 @@ class PgIndexBackfillTest : public LibPqTestBase {
   void TestSimpleBackfill(const std::string& table_create_suffix = "");
   void TestLargeBackfill(const int num_rows);
   void TestRetainDeleteMarkers(const std::string& db_name);
+  void TestRetainDeleteMarkersRecovery(const std::string& db_name, bool use_multiple_requests);
+
   const int kTabletsPerServer = 8;
 
   std::unique_ptr<PGConn> conn_;
@@ -161,22 +163,37 @@ class PgIndexBackfillTest : public LibPqTestBase {
 
     return index_state_flags;
   }
+
+  class PgRetainDeleteMarkersValidator final : public itest::RetainDeleteMarkersValidator {
+    using Base = itest::RetainDeleteMarkersValidator;
+
+   public:
+    PgRetainDeleteMarkersValidator(
+        ExternalMiniCluster* cluster, client::YBClient* client,
+        PGConn* conn, const std::string& db_name)
+        : Base(cluster, client, db_name), conn_(*CHECK_NOTNULL(conn)) {
+    }
+
+   private:
+    Status RestartCluster() override {
+      RETURN_NOT_OK(Base::RestartCluster());
+      conn_.Reset(); // Should be enough to restore connection after the cluster restart.
+      return Status::OK();
+    }
+
+    Status CreateIndex(const std::string &index_name, const std::string &table_name) override {
+      return conn_.ExecuteFormat("CREATE INDEX $0 ON $1 (i ASC)", index_name, table_name);
+    }
+
+    Status CreateTable(const std::string &table_name) override {
+      return conn_.ExecuteFormat("CREATE TABLE $0 (i int)", table_name);
+    }
+
+    PGConn& conn_;
+  };
 };
 
 namespace {
-
-// A copy of the same function in pg_libpq-test.cc.  Eventually, issue #6868 should provide a way to
-// do this easily for both this file and that.
-Result<string> GetTableIdByTableName(
-    client::YBClient* client, const string& namespace_name, const string& table_name) {
-  const auto tables = VERIFY_RESULT(client->ListTables());
-  for (const auto& t : tables) {
-    if (t.namespace_name() == namespace_name && t.table_name() == table_name) {
-      return t.table_id();
-    }
-  }
-  return STATUS(NotFound, "The table does not exist");
-}
 
 Result<int> TotalBackfillRpcMetric(ExternalMiniCluster* cluster, const char* type) {
   int total_rpc_calls = 0;
@@ -243,69 +260,20 @@ void PgIndexBackfillTest::TestSimpleBackfill(const std::string& table_create_suf
   ASSERT_EQ(values[2], -5);
 }
 
+
 // Checks that retain_delete_markers is false after index creation.
 void PgIndexBackfillTest::TestRetainDeleteMarkers(const std::string& db_name) {
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  ASSERT_OK(EnsureClientCreated());
+  PgRetainDeleteMarkersValidator{ cluster_.get(), client_.get(), conn_.get(), db_name }.Test();
+}
 
-  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
-  const auto index_name = "ttt_idx";
-  ASSERT_OK(conn_->ExecuteFormat("CREATE INDEX $0 ON $1 (i ASC)", index_name, kTableName));
-
-  // Verify that retain_delete_markers was set properly in the index table schema.
-  const std::string table_id = ASSERT_RESULT(GetTableIdByTableName(
-      client.get(), db_name, index_name));
-  auto table_info = std::make_shared<client::YBTableInfo>();
-  {
-    Synchronizer sync;
-    ASSERT_OK(client->GetTableSchemaById(table_id, table_info, sync.AsStatusCallback()));
-    ASSERT_OK(sync.Wait());
-  }
-
-  ASSERT_EQ(table_info->schema.version(), 0);
-  ASSERT_FALSE(table_info->schema.table_properties().retain_delete_markers());
-
-  // Validate the value if retain_delete_markers is persisted correctly in a tablet meta-data:
-  // let's get all tablets for an index table and validate it's superblock on a disk.
-  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
-  ASSERT_GT(tablets.size(), 0);
-
-  itest::ExternalMiniClusterFsInspector inspector { cluster_.get() };
-
-  // The backfilling is considered done when the majority has replicated applied corresponding
-  // metadata change operation, which mean there's a chance that not all tservers have applied
-  // the operation. Let's wait for some time until the change is seen in the tablet metadata files.
-  ASSERT_OK(LoggedWaitFor(
-      [cluster = cluster_.get(), &index_name, &tablets, &inspector]() -> Result<bool> {
-        size_t num_tablets_verified = 0;
-        for (const auto& tablet : tablets) {
-          for (size_t n = 0; n < cluster->num_tablet_servers(); ++n) {
-            tablet::RaftGroupReplicaSuperBlockPB superblock;
-            RETURN_NOT_OK(inspector.ReadTabletSuperBlockOnTS(n, tablet.tablet_id(), &superblock));
-            SCHECK(superblock.has_kv_store(), IllegalState, "");
-            SCHECK_GT(superblock.kv_store().tables_size(), 0, IllegalState, "");
-            for (const auto& table_pb : superblock.kv_store().tables()) {
-              // Take into accound only index table (required in case of colocation).
-              if (table_pb.has_table_name() && table_pb.table_name() != index_name) {
-                continue;
-              }
-              ++num_tablets_verified;
-              SCHECK(table_pb.has_schema(), IllegalState, "");
-              SCHECK(table_pb.schema().has_table_properties(), IllegalState, "");
-              LOG(INFO)
-                  << "P " << cluster->tablet_server(n)->id() << " T " << tablet.tablet_id()
-                  << (table_pb.has_table_name() ? " Table " + table_pb.table_name() : "")
-                  << " properties: " << table_pb.schema().table_properties().ShortDebugString();
-              if (table_pb.schema().table_properties().retain_delete_markers()) {
-                return false;
-              }
-            }
-          }
-        }
-        SCHECK_GT(num_tablets_verified, 0, IllegalState, "");
-        return true;
-      },
-      10s * kTimeMultiplier, "Wait for tablet metadata updated"));
+// Test that retain_delete_markers is recovered after not being properly set after index backfill.
+void PgIndexBackfillTest::TestRetainDeleteMarkersRecovery(
+    const std::string& db_name, bool use_multiple_requests) {
+  ASSERT_OK(EnsureClientCreated());
+  auto validator =
+      PgRetainDeleteMarkersValidator{ cluster_.get(), client_.get(), conn_.get(), db_name };
+  validator.TestRecovery(use_multiple_requests);
 }
 
 void PgIndexBackfillTest::TestLargeBackfill(const int num_rows) {
@@ -920,6 +888,17 @@ TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(Tablegroup)) {
 // Test that retain_delete_markers is properly set after index backfill.
 TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(RetainDeleteMarkers)) {
   TestRetainDeleteMarkers(kDatabaseName);
+}
+
+// Test for https://github.com/yugabyte/yugabyte-db/issues/19731.
+TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(RetainDeleteMarkersRecovery)) {
+  TestRetainDeleteMarkersRecovery(kDatabaseName, false /* use_multiple_requests */);
+}
+
+// Test for https://github.com/yugabyte/yugabyte-db/issues/19731.
+TEST_F(PgIndexBackfillTest,
+       YB_DISABLE_TEST_IN_TSAN(RetainDeleteMarkersRecoveryViaSeveralRequests)) {
+  TestRetainDeleteMarkersRecovery(kDatabaseName, true /* use_multiple_requests */);
 }
 
 // Override the index backfill test to do alter slowly.
@@ -1863,6 +1842,18 @@ TEST_F_EX(PgIndexBackfillTest,
           YB_DISABLE_TEST_IN_TSAN(ColocatedRetainDeleteMarkers),
           PgIndexBackfillColocated) {
   TestRetainDeleteMarkers(kColoDbName);
+}
+
+// Test for https://github.com/yugabyte/yugabyte-db/issues/19731.
+TEST_F_EX(PgIndexBackfillTest,
+          YB_DISABLE_TEST_IN_TSAN(ColocatedRetainDeleteMarkersRecovery),
+          PgIndexBackfillColocated) {
+  TestRetainDeleteMarkersRecovery(kColoDbName, false /* use_multiple_requests */);
+}
+TEST_F_EX(PgIndexBackfillTest,
+          YB_DISABLE_TEST_IN_TSAN(ColocatedRetainDeleteMarkersRecoveryViaSeveralRequests),
+          PgIndexBackfillColocated) {
+  TestRetainDeleteMarkersRecovery(kColoDbName, true /* use_multiple_requests */);
 }
 
 // Verify in-progress CREATE INDEX command's entry in pg_stat_progress_create_index.

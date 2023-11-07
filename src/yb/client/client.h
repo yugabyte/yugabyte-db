@@ -48,10 +48,11 @@
 #include <gtest/gtest_prod.h>
 
 #include "yb/cdc/cdc_producer.h"
+
 #include "yb/client/client_fwd.h"
-#include "yb/common/common_fwd.h"
 
 #include "yb/common/clock.h"
+#include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/retryable_request.h"
@@ -61,9 +62,9 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 
-#include "yb/master/master_fwd.h"
 #include "yb/master/master_client.fwd.h"
 #include "yb/master/master_ddl.fwd.h"
+#include "yb/master/master_fwd.h"
 #include "yb/master/master_replication.fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
@@ -271,6 +272,9 @@ class YBClient {
   Status GetIndexBackfillProgress(
       const std::vector<TableId>& index_ids,
       google::protobuf::RepeatedField<google::protobuf::uint64>* rows_processed_entries);
+
+  Result<master::GetBackfillStatusResponsePB> GetBackfillStatus(
+      const std::vector<std::string_view>& table_ids);
 
   // Delete the specified table.
   // Set 'wait' to true if the call must wait for the table to be fully deleted before returning.

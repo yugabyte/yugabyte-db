@@ -2048,8 +2048,12 @@ Status Tablet::RemoveTable(const std::string& table_id) {
 }
 
 Status Tablet::MarkBackfillDone(const TableId& table_id) {
-  LOG_WITH_PREFIX(INFO) << "Setting backfill as done.";
-  metadata_->OnBackfillDone(table_id);
+  LOG_WITH_PREFIX(INFO) << "Setting backfill as done";
+  auto status = metadata_->OnBackfillDone(table_id);
+  if (!status.ok()) {
+    LOG_WITH_PREFIX(WARNING) << "Triggering backfill done failed: " << status;
+    return status;
+  }
   return metadata_->Flush();
 }
 

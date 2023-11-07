@@ -46,6 +46,7 @@ set(INTEGRATION_TESTS_SRCS
   create-table-itest-base.cc
   external_mini_cluster.cc
   external_mini_cluster_fs_inspector.cc
+  external_mini_cluster_validator.cc
   load_balancer_test_util.cc
   load_generator.cc
   mini_cluster.cc
