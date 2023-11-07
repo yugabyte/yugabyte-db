@@ -6514,8 +6514,8 @@ SELECT * FROM cypher('case_statement', $$
     WHEN 1 THEN count(*)
     ELSE 'not count'
   END
-$$ ) AS (j agtype, case_statement agtype);
-                                               j                                                | case_statement 
+$$ ) AS (n agtype, case_statement agtype);
+                                               n                                                | case_statement 
 ------------------------------------------------------------------------------------------------+----------------
  {"id": 281474976710658, "label": "", "properties": {"i": "a", "j": "b", "id": 2}}::vertex      | "not count"
  {"id": 281474976710661, "label": "", "properties": {"i": [], "j": [0, 1, 2], "id": 5}}::vertex | "not count"
@@ -6532,8 +6532,8 @@ SELECT * FROM cypher('case_statement', $$
     WHEN 1 THEN count(*)
     ELSE 'not count'
   END
-$$ ) AS (j agtype, case_statement agtype);
-                                               j                                                | case_statement 
+$$ ) AS (n agtype, case_statement agtype);
+                                               n                                                | case_statement 
 ------------------------------------------------------------------------------------------------+----------------
  {"id": 281474976710658, "label": "", "properties": {"i": "a", "j": "b", "id": 2}}::vertex      | "not count"
  {"id": 281474976710661, "label": "", "properties": {"i": [], "j": [0, 1, 2], "id": 5}}::vertex | "not count"
@@ -6550,8 +6550,8 @@ SELECT * FROM cypher('case_statement', $$
     WHEN 1 THEN count(n)
     ELSE 'not count'
   END
-$$ ) AS (j agtype, case_statement agtype);
-                                               j                                                | case_statement 
+$$ ) AS (n agtype, case_statement agtype);
+                                               n                                                | case_statement 
 ------------------------------------------------------------------------------------------------+----------------
  {"id": 281474976710658, "label": "", "properties": {"i": "a", "j": "b", "id": 2}}::vertex      | "not count"
  {"id": 281474976710661, "label": "", "properties": {"i": [], "j": [0, 1, 2], "id": 5}}::vertex | "not count"
@@ -6568,8 +6568,8 @@ SELECT * FROM cypher('case_statement', $$
     WHEN 1 THEN count(n)
     ELSE 'not count'
   END
-$$ ) AS (j agtype, case_statement agtype);
-                                               j                                                | case_statement 
+$$ ) AS (n agtype, case_statement agtype);
+                                               n                                                | case_statement 
 ------------------------------------------------------------------------------------------------+----------------
  {"id": 281474976710658, "label": "", "properties": {"i": "a", "j": "b", "id": 2}}::vertex      | "not count"
  {"id": 281474976710661, "label": "", "properties": {"i": [], "j": [0, 1, 2], "id": 5}}::vertex | "not count"
@@ -6586,8 +6586,8 @@ SELECT * FROM cypher('case_statement', $$
     WHEN 1 THEN count(1)
     ELSE 'not count'
   END
-$$ ) AS (j agtype, case_statement agtype);
-                                               j                                                | case_statement 
+$$ ) AS (n agtype, case_statement agtype);
+                                               n                                                | case_statement 
 ------------------------------------------------------------------------------------------------+----------------
  {"id": 281474976710658, "label": "", "properties": {"i": "a", "j": "b", "id": 2}}::vertex      | "not count"
  {"id": 281474976710661, "label": "", "properties": {"i": [], "j": [0, 1, 2], "id": 5}}::vertex | "not count"
@@ -6604,8 +6604,8 @@ SELECT * FROM cypher('case_statement', $$
     WHEN 1 THEN count(1)
     ELSE 'not count'
   END
-$$ ) AS (j agtype, case_statement agtype);
-                                               j                                                | case_statement 
+$$ ) AS (n agtype, case_statement agtype);
+                                               n                                                | case_statement 
 ------------------------------------------------------------------------------------------------+----------------
  {"id": 281474976710658, "label": "", "properties": {"i": "a", "j": "b", "id": 2}}::vertex      | "not count"
  {"id": 281474976710661, "label": "", "properties": {"i": [], "j": [0, 1, 2], "id": 5}}::vertex | "not count"
@@ -6615,6 +6615,72 @@ $$ ) AS (j agtype, case_statement agtype);
  {"id": 281474976710662, "label": "", "properties": {"i": {}, "j": {"i": 1}, "id": 6}}::vertex  | "not count"
 (6 rows)
 
+--CASE with EXISTS()
+--exists(n.property)
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)
+  RETURN n, CASE exists(n.j)
+    WHEN true THEN 'property j exists'
+    ELSE 'property j does not exist'
+  END
+$$ ) AS (n agtype, case_statement agtype);
+                                               n                                                |       case_statement        
+------------------------------------------------------------------------------------------------+-----------------------------
+ {"id": 281474976710657, "label": "", "properties": {"i": 1, "id": 1}}::vertex                  | "property j does not exist"
+ {"id": 281474976710658, "label": "", "properties": {"i": "a", "j": "b", "id": 2}}::vertex      | "property j exists"
+ {"id": 281474976710659, "label": "", "properties": {"i": 0, "j": 1, "id": 3}}::vertex          | "property j exists"
+ {"id": 281474976710660, "label": "", "properties": {"i": true, "j": false, "id": 4}}::vertex   | "property j exists"
+ {"id": 281474976710661, "label": "", "properties": {"i": [], "j": [0, 1, 2], "id": 5}}::vertex | "property j exists"
+ {"id": 281474976710662, "label": "", "properties": {"i": {}, "j": {"i": 1}, "id": 6}}::vertex  | "property j exists"
+(6 rows)
+
+--CASE evaluates to boolean true, is not a boolean, should hit ELSE
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)
+  RETURN n, CASE exists(n.j)
+    WHEN 1 THEN 'should not output me'
+    ELSE '1 is not a boolean'
+  END
+$$ ) AS (n agtype, case_statement agtype);
+                                               n                                                |    case_statement    
+------------------------------------------------------------------------------------------------+----------------------
+ {"id": 281474976710657, "label": "", "properties": {"i": 1, "id": 1}}::vertex                  | "1 is not a boolean"
+ {"id": 281474976710658, "label": "", "properties": {"i": "a", "j": "b", "id": 2}}::vertex      | "1 is not a boolean"
+ {"id": 281474976710659, "label": "", "properties": {"i": 0, "j": 1, "id": 3}}::vertex          | "1 is not a boolean"
+ {"id": 281474976710660, "label": "", "properties": {"i": true, "j": false, "id": 4}}::vertex   | "1 is not a boolean"
+ {"id": 281474976710661, "label": "", "properties": {"i": [], "j": [0, 1, 2], "id": 5}}::vertex | "1 is not a boolean"
+ {"id": 281474976710662, "label": "", "properties": {"i": {}, "j": {"i": 1}, "id": 6}}::vertex  | "1 is not a boolean"
+(6 rows)
+
+--exists in WHEN, vacuously false because exists(n.j) evaluates to a boolean, n is a vertex
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)
+  RETURN n, CASE n
+    WHEN exists(n.j) THEN 'should not output me'
+    ELSE 'n is a vertex, not a boolean'
+  END
+$$ ) AS (j agtype, case_statement agtype);
+                                               j                                                |         case_statement         
+------------------------------------------------------------------------------------------------+--------------------------------
+ {"id": 281474976710657, "label": "", "properties": {"i": 1, "id": 1}}::vertex                  | "n is a vertex, not a boolean"
+ {"id": 281474976710658, "label": "", "properties": {"i": "a", "j": "b", "id": 2}}::vertex      | "n is a vertex, not a boolean"
+ {"id": 281474976710659, "label": "", "properties": {"i": 0, "j": 1, "id": 3}}::vertex          | "n is a vertex, not a boolean"
+ {"id": 281474976710660, "label": "", "properties": {"i": true, "j": false, "id": 4}}::vertex   | "n is a vertex, not a boolean"
+ {"id": 281474976710661, "label": "", "properties": {"i": [], "j": [0, 1, 2], "id": 5}}::vertex | "n is a vertex, not a boolean"
+ {"id": 281474976710662, "label": "", "properties": {"i": {}, "j": {"i": 1}, "id": 6}}::vertex  | "n is a vertex, not a boolean"
+(6 rows)
+
+--exists(*) (should fail)
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)
+  RETURN n, CASE n.j
+    WHEN 1 THEN exists(*)
+    ELSE 'not count'
+  END
+$$ ) AS (j agtype, case_statement agtype);
+ERROR:  syntax error at or near "*"
+LINE 4:     WHEN 1 THEN exists(*)
+                               ^
 -- RETURN * and (u)--(v) optional forms
 SELECT create_graph('opt_forms');
 NOTICE:  graph "opt_forms" has been created

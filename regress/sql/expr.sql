@@ -2726,7 +2726,7 @@ SELECT * FROM cypher('case_statement', $$
     WHEN 1 THEN count(*)
     ELSE 'not count'
   END
-$$ ) AS (j agtype, case_statement agtype);
+$$ ) AS (n agtype, case_statement agtype);
 
 --concatenated
 SELECT * FROM cypher('case_statement', $$
@@ -2735,7 +2735,7 @@ SELECT * FROM cypher('case_statement', $$
     WHEN 1 THEN count(*)
     ELSE 'not count'
   END
-$$ ) AS (j agtype, case_statement agtype);
+$$ ) AS (n agtype, case_statement agtype);
 
 --count(n)
 SELECT * FROM cypher('case_statement', $$
@@ -2744,7 +2744,7 @@ SELECT * FROM cypher('case_statement', $$
     WHEN 1 THEN count(n)
     ELSE 'not count'
   END
-$$ ) AS (j agtype, case_statement agtype);
+$$ ) AS (n agtype, case_statement agtype);
 
 --concatenated
 SELECT * FROM cypher('case_statement', $$
@@ -2753,7 +2753,7 @@ SELECT * FROM cypher('case_statement', $$
     WHEN 1 THEN count(n)
     ELSE 'not count'
   END
-$$ ) AS (j agtype, case_statement agtype);
+$$ ) AS (n agtype, case_statement agtype);
 
 --count(1)
 SELECT * FROM cypher('case_statement', $$
@@ -2762,7 +2762,7 @@ SELECT * FROM cypher('case_statement', $$
     WHEN 1 THEN count(1)
     ELSE 'not count'
   END
-$$ ) AS (j agtype, case_statement agtype);
+$$ ) AS (n agtype, case_statement agtype);
 
 --concatenated
 SELECT * FROM cypher('case_statement', $$
@@ -2771,7 +2771,47 @@ SELECT * FROM cypher('case_statement', $$
     WHEN 1 THEN count(1)
     ELSE 'not count'
   END
+$$ ) AS (n agtype, case_statement agtype);
+
+--CASE with EXISTS()
+
+--exists(n.property)
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)
+  RETURN n, CASE exists(n.j)
+    WHEN true THEN 'property j exists'
+    ELSE 'property j does not exist'
+  END
+$$ ) AS (n agtype, case_statement agtype);
+
+--CASE evaluates to boolean true, is not a boolean, should hit ELSE
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)
+  RETURN n, CASE exists(n.j)
+    WHEN 1 THEN 'should not output me'
+    ELSE '1 is not a boolean'
+  END
+$$ ) AS (n agtype, case_statement agtype);
+
+--exists in WHEN, vacuously false because exists(n.j) evaluates to a boolean, n is a vertex
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)
+  RETURN n, CASE n
+    WHEN exists(n.j) THEN 'should not output me'
+    ELSE 'n is a vertex, not a boolean'
+  END
 $$ ) AS (j agtype, case_statement agtype);
+
+--exists(*) (should fail)
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)
+  RETURN n, CASE n.j
+    WHEN 1 THEN exists(*)
+    ELSE 'not count'
+  END
+$$ ) AS (j agtype, case_statement agtype);
+
+
 
 
 -- RETURN * and (u)--(v) optional forms
