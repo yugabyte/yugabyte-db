@@ -313,6 +313,11 @@ METRIC_DEFINE_gauge_uint64(server, ts_post_split_compaction_added,
                         MetricUnit::kRequests,
                         "Number of post-split compaction requests submitted.");
 
+METRIC_DEFINE_gauge_uint32(
+    server, ts_live_tablet_peers, "Number of Live Tablet Peers", MetricUnit::kUnits,
+    "Number of live tablet peers running on this tserver. Tablet peers are live if they are "
+    "bootstrapping or running.");
+
 THREAD_POOL_METRICS_DEFINE(server, admin_triggered_compaction_pool,
     "Thread pool for admin-triggered tablet compaction jobs.");
 
@@ -467,6 +472,8 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
   ts_split_op_apply_ = METRIC_ts_split_op_apply.Instantiate(server_->metric_entity(), 0);
   ts_post_split_compaction_added_ =
       METRIC_ts_post_split_compaction_added.Instantiate(server_->metric_entity(), 0);
+  ts_live_tablet_peers_metric_ =
+      METRIC_ts_live_tablet_peers.Instantiate(server_->metric_entity(), 0);
 
   mem_manager_ = std::make_shared<TabletMemoryManager>(
       &tablet_options_,
@@ -2084,6 +2091,7 @@ int TSTabletManager::GetNumLiveTablets() const {
       count++;
     }
   }
+  ts_live_tablet_peers_metric_->set_value(count);
   return count;
 }
 

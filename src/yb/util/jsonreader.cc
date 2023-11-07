@@ -31,8 +31,6 @@
 //
 #include "yb/util/jsonreader.h"
 
-#include "yb/gutil/strings/substitute.h"
-
 #include <rapidjson/error/en.h>
 
 #include "yb/util/status.h"
@@ -40,7 +38,6 @@
 using rapidjson::Value;
 using std::string;
 using std::vector;
-using strings::Substitute;
 
 namespace yb {
 
@@ -64,7 +61,7 @@ Status JsonReader::ExtractBool(const Value* object,
   const Value* val;
   RETURN_NOT_OK(ExtractField(object, field, &val));
   if (PREDICT_FALSE(!val->IsBool())) {
-    return STATUS(InvalidArgument, Substitute(
+    return STATUS(InvalidArgument, Format(
         "Wrong type during field extraction: expected bool but got $0",
         val->GetType()));
   }
@@ -78,7 +75,7 @@ Status JsonReader::ExtractInt32(const Value* object,
   const Value* val;
   RETURN_NOT_OK(ExtractField(object, field, &val));
   if (PREDICT_FALSE(!val->IsInt())) {
-    return STATUS(InvalidArgument, Substitute(
+    return STATUS(InvalidArgument, Format(
         "Wrong type during field extraction: expected int32 but got $0",
         val->GetType()));
   }
@@ -92,9 +89,38 @@ Status JsonReader::ExtractInt64(const Value* object,
   const Value* val;
   RETURN_NOT_OK(ExtractField(object, field, &val));
   if (PREDICT_FALSE(!val->IsInt64())) {
-    return STATUS(InvalidArgument, Substitute(
+    return STATUS(InvalidArgument, Format(
         "Wrong type during field extraction: expected int64 but got $0",
-        val->GetType()));  }
+        val->GetType()));
+  }
+  *result = val->GetInt64();
+  return Status::OK();
+}
+
+Status JsonReader::ExtractUInt32(const Value* object,
+                                 const char* field,
+                                 uint32_t* result) const {
+  const Value* val;
+  RETURN_NOT_OK(ExtractField(object, field, &val));
+  if (PREDICT_FALSE(!val->IsUint())) {
+    return STATUS(InvalidArgument, Format(
+        "Wrong type during field extraction: expected uint32 but got $0",
+        val->GetType()));
+  }
+  *result = val->GetUint();
+  return Status::OK();
+}
+
+Status JsonReader::ExtractUInt64(const Value* object,
+                                 const char* field,
+                                 uint64_t* result) const {
+  const Value* val;
+  RETURN_NOT_OK(ExtractField(object, field, &val));
+  if (PREDICT_FALSE(!val->IsUint64())) {
+    return STATUS(InvalidArgument, Format(
+        "Wrong type during field extraction: expected uint64 but got $0",
+        val->GetType()));
+  }
   *result = val->GetUint64();
   return Status::OK();
 }
@@ -109,7 +135,7 @@ Status JsonReader::ExtractString(const Value* object,
       *result = "";
       return Status::OK();
     }
-    return STATUS(InvalidArgument, Substitute(
+    return STATUS(InvalidArgument, Format(
         "Wrong type during field extraction: expected string but got $0",
         val->GetType()));  }
   result->assign(val->GetString());
@@ -122,7 +148,7 @@ Status JsonReader::ExtractObject(const Value* object,
   const Value* val;
   RETURN_NOT_OK(ExtractField(object, field, &val));
   if (PREDICT_FALSE(!val->IsObject())) {
-    return STATUS(InvalidArgument, Substitute(
+    return STATUS(InvalidArgument, Format(
         "Wrong type during field extraction: expected object but got $0",
         val->GetType()));  }
   *result = val;
@@ -135,7 +161,7 @@ Status JsonReader::ExtractObjectArray(const Value* object,
   const Value* val;
   RETURN_NOT_OK(ExtractField(object, field, &val));
   if (PREDICT_FALSE(!val->IsArray())) {
-    return STATUS(InvalidArgument, Substitute(
+    return STATUS(InvalidArgument, Format(
         "Wrong type during field extraction: expected object array but got $0",
         val->GetType()));  }
   for (Value::ConstValueIterator iter = val->Begin(); iter != val->End(); ++iter) {

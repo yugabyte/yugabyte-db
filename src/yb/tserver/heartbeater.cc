@@ -426,6 +426,9 @@ Status Heartbeater::Thread::TryHeartbeat() {
   }
 
   req.mutable_tablet_report()->set_is_incremental(!sending_full_report_);
+  // We rely on the heartbeat thread calling GetNumLiveTablets regularly to keep the
+  // ts_live_tablet_peers metric up to date. If you remove this call, add another mechanism to
+  // update the metric.
   req.set_num_live_tablets(server_->tablet_manager()->GetNumLiveTablets());
   req.set_leader_count(server_->tablet_manager()->GetLeaderCount());
 
