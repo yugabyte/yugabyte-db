@@ -199,6 +199,10 @@ class YBClient::Data {
                                       const TableId& index_id,
                                       CoarseTimePoint deadline);
 
+  Result<master::GetBackfillStatusResponsePB> GetBackfillStatus(
+    const std::vector<std::string_view>& table_ids,
+    const CoarseTimePoint deadline);
+
   Status AlterTable(YBClient* client,
                     const master::AlterTableRequestPB& req,
                     CoarseTimePoint deadline);

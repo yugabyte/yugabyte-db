@@ -49,11 +49,11 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.h"
-#include "yb/consensus/multi_raft_batcher.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/metadata.pb.h"
+#include "yb/consensus/multi_raft_batcher.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/consensus/raft_consensus.h"
@@ -92,6 +92,7 @@
 #include "yb/tserver/remote_bootstrap_client.h"
 #include "yb/tserver/remote_bootstrap_session.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/tablet_validator.h"
 #include "yb/tserver/tserver.pb.h"
 
 #include "yb/util/debug/long_operation_tracker.h"
@@ -220,6 +221,7 @@ DEFINE_UNKNOWN_int32(read_pool_max_threads, 128,
              "The maximum number of threads allowed for read_pool_. This pool is used "
              "to run multiple read operations, that are part of the same tablet rpc, "
              "in parallel.");
+
 DEFINE_UNKNOWN_int32(read_pool_max_queue_size, 128,
              "The maximum number of tasks that can be held in the queue for read_pool_. This pool "
              "is used to run multiple read operations, that are part of the same tablet rpc, "
@@ -227,6 +229,7 @@ DEFINE_UNKNOWN_int32(read_pool_max_queue_size, 128,
 
 DEFINE_UNKNOWN_int32(post_split_trigger_compaction_pool_max_threads, 1,
              "DEPRECATED. Use full_compaction_pool_max_threads.");
+
 DEFINE_UNKNOWN_int32(post_split_trigger_compaction_pool_max_queue_size, 16,
              "DEPRECATED. Use full_compaction_pool_max_queue_size.");
 
@@ -235,6 +238,7 @@ DEFINE_NON_RUNTIME_int32(full_compaction_pool_max_threads, 1,
              "pool is used to run full compactions on tablets, either on a shceduled basis "
               "or after they have been split and still contain irrelevant data from the tablet "
               "they were sourced from.");
+
 DEFINE_NON_RUNTIME_int32(full_compaction_pool_max_queue_size, 500,
              "The maximum number of tasks that can be held in the pool for "
              "full_compaction_pool_. This pool is used to run full compactions on tablets "
@@ -260,8 +264,7 @@ DECLARE_bool(lazily_flush_superblock);
 
 DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
 
-namespace yb {
-namespace tserver {
+namespace yb::tserver {
 
 METRIC_DEFINE_coarse_histogram(server, op_apply_queue_length, "Operation Apply Queue Length",
                         MetricUnit::kTasks,
@@ -575,6 +578,9 @@ Status TSTabletManager::Init() {
   LOG(INFO) << "Loaded metadata for " << tablet_ids.size() << " tablet in "
             << elapsed.ToMilliseconds() << " ms";
 
+  // Validator should be created before tablets are open.
+  tablet_metadata_validator_ = std::make_unique<TabletMetadataValidator>(LogPrefix(), this);
+
   // Now submit the "Open" task for each.
   for (const RaftGroupMetadataPtr& meta : metas) {
     scoped_refptr<TransitionInProgressDeleter> deleter;
@@ -603,6 +609,8 @@ Status TSTabletManager::Init() {
   RETURN_NOT_OK(mem_manager_->Init());
 
   RETURN_NOT_OK(full_compaction_manager_->Init());
+
+  RETURN_NOT_OK(tablet_metadata_validator_->Init());
 
   tablets_cleaner_ = std::make_unique<rpc::Poller>(
       LogPrefix(), std::bind(&TSTabletManager::CleanupSplitTablets, this));
@@ -1664,6 +1672,8 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
     VLOG(2) << TabletLogPrefix(tablet->tablet_id())
             << " marking as maybe being compacted after split.";
   }
+
+  tablet_metadata_validator_->ScheduleValidation(*tablet->metadata());
 }
 
 Status TSTabletManager::TriggerAdminCompactionAndWait(const TabletPtrs& tablets) {
@@ -1721,6 +1731,8 @@ void TSTabletManager::StartShutdown() {
   tablets_cleaner_->Shutdown();
 
   verify_tablet_data_poller_->Shutdown();
+
+  tablet_metadata_validator_->Shutdown();
 
   metrics_cleaner_->Shutdown();
 
@@ -2904,5 +2916,4 @@ Status ShutdownAndTombstoneTabletPeerNotOk(
   return status;
 }
 
-} // namespace tserver
-} // namespace yb
+} // namespace yb::tserver

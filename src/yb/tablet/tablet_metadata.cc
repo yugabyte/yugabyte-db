@@ -81,8 +81,11 @@
 DEPRECATE_FLAG(bool, enable_tablet_orphaned_block_deletion, "10_2022");
 
 DEFINE_test_flag(bool, invalidate_last_change_metadata_op, false,
-                 "Used in tests to update last_flushed_change_metadata_op_id to -1.-1 to simulate "
-                 "behavior of old code");
+    "Used in tests to update last_flushed_change_metadata_op_id to -1.-1 to simulate "
+    "behavior of old code");
+
+DEFINE_test_flag(bool, skip_metadata_backfill_done, false,
+    "Used in tests to skip triggering of RaftGroupMetadata::OnBackfillDone().");
 
 // Only used for colocated table creation currently.
 // The flag is non-runtime so that if it is changed from true to false, the node restarts and the
@@ -92,7 +95,6 @@ DEFINE_NON_RUNTIME_bool(lazily_flush_superblock, false,
     "Flushes the superblock lazily on metadata update. Only used for colocated table creation "
     "currently.");
 
-using std::shared_ptr;
 using std::string;
 
 using strings::Substitute;
@@ -613,7 +615,7 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::TEST_LoadOrCreate(
 
 template <class TablesMap>
 Status MakeTableNotFound(const TableId& table_id, const RaftGroupId& raft_group_id,
-                         const TablesMap& tables) {
+                         const TablesMap& tables, const char* file_name, int line_number) {
   std::string table_name = "<unknown_table_name>";
   if (!table_id.empty()) {
     const auto iter = tables.find(table_id);
@@ -630,8 +632,11 @@ Status MakeTableNotFound(const TableId& table_id, const RaftGroupId& raft_group_
   std::string suffix = Format(". Tables: $0.", tables);
   VLOG(1) << msg << suffix;
 #endif
-  return STATUS(NotFound, msg);
+  return Status(Status::kNotFound, file_name, line_number, msg);
 }
+
+#define RETURN_TABLE_NOT_FOUND(table_id, tables) \
+    return MakeTableNotFound((table_id), raft_group_id_, (tables), __FILE__, __LINE__)
 
 Status MakeColocatedTableNotFound(
     const ColocationId& colocation_id, const RaftGroupId& raft_group_id) {
@@ -663,7 +668,7 @@ Result<TableInfoPtr> RaftGroupMetadata::GetTableInfoUnlocked(
   const auto id = !table_id.empty() ? table_id : primary_table_id_;
   const auto iter = tables.find(id);
   if (iter == tables.end()) {
-    return MakeTableNotFound(table_id, raft_group_id_, tables);
+    RETURN_TABLE_NOT_FOUND(table_id, tables);
   }
   return iter->second;
 }
@@ -1177,7 +1182,7 @@ void RaftGroupMetadata::SetPartitionSchema(const PartitionSchema& partition_sche
   std::lock_guard<MutexType> lock(data_mutex_);
   auto& tables = kv_store_.tables;
   auto it = tables.find(primary_table_id_);
-  DCHECK(it != tables.end());
+  CHECK(it != tables.end());
   it->second->partition_schema = partition_schema;
 }
 
@@ -1195,7 +1200,7 @@ void RaftGroupMetadata::SetTableNameUnlocked(
   auto& tables = kv_store_.tables;
   auto& id = table_id.empty() ? primary_table_id_ : table_id;
   auto it = tables.find(id);
-  DCHECK(it != tables.end());
+  CHECK(it != tables.end());
   it->second->namespace_name = namespace_name;
   it->second->table_name = table_name;
   OnChangeMetadataOperationAppliedUnlocked(op_id);
@@ -1854,13 +1859,31 @@ bool RaftGroupMetadata::UsePartialRangeKeyIntents() const {
   return table_type() == TableType::PGSQL_TABLE_TYPE;
 }
 
-std::vector<TableId> RaftGroupMetadata::GetAllColocatedTables() {
-  std::lock_guard<MutexType> lock(data_mutex_);
+std::vector<TableId> RaftGroupMetadata::GetAllColocatedTables() const {
+  std::lock_guard lock(data_mutex_);
   std::vector<TableId> table_ids;
+  table_ids.reserve(kv_store_.tables.size());
   for (const auto& id_and_info : kv_store_.tables) {
     table_ids.emplace_back(id_and_info.first);
   }
   return table_ids;
+}
+
+size_t RaftGroupMetadata::GetColocatedTablesCount() const {
+  DCHECK_NE(state_, kNotLoadedYet);
+  std::lock_guard lock(data_mutex_);
+  return kv_store_.tables.size();
+}
+
+void RaftGroupMetadata::IterateColocatedTables(
+    std::function<void(const TableInfo&)> callback) const {
+  DCHECK_NE(state_, kNotLoadedYet);
+  CHECK(static_cast<bool>(callback));
+
+  std::lock_guard lock(data_mutex_);
+  for (const auto& it : kv_store_.tables) {
+    callback(*CHECK_NOTNULL(it.second));
+  }
 }
 
 std::unordered_map<TableId, ColocationId>
@@ -1939,12 +1962,29 @@ OpId RaftGroupMetadata::MinUnflushedChangeMetadataOpId() const {
   return min_unflushed_change_metadata_op_id_;
 }
 
-void RaftGroupMetadata::OnBackfillDone(const OpId& op_id, const TableId& table_id) {
+Status RaftGroupMetadata::OnBackfillDone(const TableId& table_id) {
   std::lock_guard lock(data_mutex_);
+  return OnBackfillDoneUnlocked(table_id);
+}
+
+Status RaftGroupMetadata::OnBackfillDone(const OpId& op_id, const TableId& table_id) {
+  std::lock_guard lock(data_mutex_);
+  RETURN_NOT_OK(OnBackfillDoneUnlocked(table_id));
+  OnChangeMetadataOperationAppliedUnlocked(op_id);
+  return Status::OK();
+}
+
+Status RaftGroupMetadata::OnBackfillDoneUnlocked(const TableId& table_id) {
+  if (FLAGS_TEST_skip_metadata_backfill_done) {
+    LOG_WITH_PREFIX(INFO) << "Skipping RaftGroupMetadata::OnBackfillDoneUnlocked()";
+    return Status::OK();
+  }
 
   TableId target_table_id = table_id.empty() ? primary_table_id_ : table_id;
   auto it = kv_store_.tables.find(target_table_id);
-  CHECK(it != kv_store_.tables.end());
+  if (it == kv_store_.tables.end()) {
+    RETURN_TABLE_NOT_FOUND(table_id, kv_store_.tables);
+  }
 
   Schema new_schema = it->second->schema();
   new_schema.SetRetainDeleteMarkers(false);
@@ -1955,8 +1995,7 @@ void RaftGroupMetadata::OnBackfillDone(const OpId& op_id, const TableId& table_i
                       << " from \n" << AsString(it->second)
                       << " to \n" << AsString(new_table_info);
   it->second.swap(new_table_info);
-
-  OnChangeMetadataOperationAppliedUnlocked(op_id);
+  return Status::OK();
 }
 
 } // namespace tablet

@@ -69,7 +69,6 @@
 #include <vector>
 
 #include <boost/optional.hpp>
-#include "yb/util/logging.h"
 
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
@@ -183,6 +182,7 @@
 #include "yb/util/format.h"
 #include "yb/util/hash_util.h"
 #include "yb/util/locks.h"
+#include "yb/util/logging.h"
 #include "yb/util/math_util.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
@@ -5717,6 +5717,123 @@ Status CatalogManager::GetBackfillJobs(
     auto l = indexed_table->LockForRead();
     resp->mutable_backfill_jobs()->CopyFrom(l->pb.backfill_jobs());
   }
+  return Status::OK();
+}
+
+namespace {
+
+IndexStatusPB::BackfillStatus GetBackfillStatus(IndexPermissions permissions) {
+  switch (permissions) {
+    case INDEX_PERM_READ_WRITE_AND_DELETE:
+      return IndexStatusPB::BACKFILL_SUCCESS;
+    case INDEX_PERM_DELETE_ONLY:                     [[fallthrough]];
+    case INDEX_PERM_WRITE_AND_DELETE:                [[fallthrough]];
+    case INDEX_PERM_DO_BACKFILL:                     [[fallthrough]];
+    case INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING: [[fallthrough]];
+    case INDEX_PERM_DELETE_ONLY_WHILE_REMOVING:      [[fallthrough]];
+    case INDEX_PERM_INDEX_UNUSED:                    [[fallthrough]];
+    case INDEX_PERM_NOT_USED:
+      return IndexStatusPB::BACKFILL_UNKNOWN;
+  }
+  FATAL_INVALID_ENUM_VALUE(IndexPermissions, permissions);
+}
+
+} // namespace
+
+Status CatalogManager::GetBackfillStatus(
+    const GetBackfillStatusRequestPB* req,
+    GetBackfillStatusResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  VLOG_WITH_PREFIX_AND_FUNC(1) << "request: " << req->ShortDebugString();
+
+  // Helper lambda to respond with an error for the index table.
+  auto set_table_error = [resp](const TableIdentifierPB& identifier, const Status& status) {
+    auto* index_status = resp->add_index_status();
+    index_status->mutable_index_table()->CopyFrom(identifier);
+    StatusToPB(status, index_status->mutable_error());
+  };
+
+  // The caller expects results for every specified table.
+  resp->mutable_index_status()->Reserve(req->index_tables_size());
+
+  // First step is to group all incoming index tables by indexed table id to lock that particular
+  // indexed table only once. Also it is required to keep input table identifiers to re-use them
+  // in the response as is.
+  using IndexIdentifierMap = std::unordered_map<TableId, const TableIdentifierPB*>;
+  std::unordered_map<TableId, IndexIdentifierMap> indexed_table_to_index_map;
+  for (const auto& index_table_pb : req->index_tables()) {
+    Status status = Status::OK();
+    auto result = FindTable(index_table_pb);
+    if (!result.ok()) {
+      status = result.status();
+    } else {
+      const auto& table_info = *result;
+      const auto indexed_table_id = table_info->indexed_table_id();
+      if (indexed_table_id.empty()) {
+        status = STATUS_FORMAT(InvalidArgument,
+            "Table $0 is not an index table", index_table_pb.ShortDebugString());
+      } else {
+        indexed_table_to_index_map[indexed_table_id].insert({table_info->id(), &index_table_pb});
+      }
+    }
+    if (!status.ok()) {
+      set_table_error(index_table_pb, status);
+      LOG_WITH_PREFIX_AND_FUNC(INFO) << "Failed to get index status for table "
+          << index_table_pb.ShortDebugString() << ", status: " << status;
+    }
+  }
+
+  // Second step is to iterate over indexed_table_map and get the statuses for all required indexes.
+  for (auto& [table_id, index_map] : indexed_table_to_index_map) {
+    // Sanity check, should not happen.
+    if (index_map.empty()) {
+      LOG_WITH_PREFIX(DFATAL) << "No index tables are specified for table " << table_id;
+      continue;
+    }
+
+    auto indexed_table = GetTableInfo(table_id);
+    if (!indexed_table) {
+      // Need to provide a response for all input indexes.
+      const auto status = STATUS_FORMAT(NotFound, "Indexed table $0 is not found", table_id);
+      for (const auto& index : index_map) {
+        set_table_error(*index.second, status);
+      }
+      LOG_WITH_PREFIX_AND_FUNC(INFO) << status;
+      continue;
+    }
+
+    // Denoting the scope for indexed table lock.
+    {
+      auto indexed_table_pb = indexed_table->LockForRead();
+      for (const auto& index_info_pb : indexed_table_pb->pb.indexes()) {
+        auto it = index_map.find(index_info_pb.table_id());
+        if (it == index_map.end()) {
+          continue;
+        }
+
+        auto* index_status = resp->add_index_status();
+        index_status->mutable_index_table()->CopyFrom(*it->second);
+        if (index_info_pb.has_index_permissions()) {
+          index_status->set_backfill_status(
+              master::GetBackfillStatus(index_info_pb.index_permissions()));
+        }
+        VLOG_WITH_PREFIX_AND_FUNC(1) << Format(
+            "Index table $0 permissions: [$1]",
+            index_info_pb.table_id(),
+            index_info_pb.has_index_permissions() ?
+                IndexPermissions_Name(index_info_pb.index_permissions()) : "-");
+
+        // Need to erase from the map to be able to track removed indexes.
+        index_map.erase(it);
+      }
+    }
+
+    // Check remaining indexes, there's a chance it was removed before locking the indexed table.
+    for (const auto& index : index_map) {
+      set_table_error(*index.second, STATUS(NotFound, "Index table is not found"));
+    }
+  }
+
   return Status::OK();
 }
 
