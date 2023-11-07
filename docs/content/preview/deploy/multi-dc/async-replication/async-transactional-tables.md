@@ -12,6 +12,8 @@ menu:
 type: docs
 ---
 
+Use the following guidance when managing tables and indexes in transactional xCluster deployments.
+
 ## Add a table to replication
 
 To ensure that data is protected at all times, set up replication on a new table _before_ starting any workload.
@@ -54,7 +56,9 @@ Add indexes to replication in the following sequence:
 
     For instructions on monitoring backfill, refer to [Monitor index backfill from the command line](https://yugabytedb.tips/?p=2215).
 
-1. [Manually resync YBA monitoring](#manually-resync-yba-monitoring).
+1. [Resynchronize YBA](#resynchronize-yba).
+
+    This step is only required if you are using YBA, and ensures your changes are reflected in the YugabyteDB Anywhere UI.
 
 ## Remove an index from replication
 
@@ -66,7 +70,9 @@ Remove indexes from replication in the following sequence:
 
 1. Drop the index on the Primary universe.
 
-1. [Manually resync YBA monitoring](#manually-resync-yba-monitoring).
+1. [Resynchronize YBA](#resynchronize-yba).
+
+    This step is only required if you are using YBA, and ensures your changes are reflected in the YugabyteDB Anywhere UI.
 
 ## Add a table partition to the replication
 
@@ -104,13 +110,13 @@ To add a table partition to the replication, follow the same steps for [Add a ta
 
 To remove a table partition from replication, follow the same steps as [Remove a table from replication](#remove-a-table-from-replication).
 
-## Manually resync YBA monitoring
+## Resynchronize YBA
 
-You manually resync YBA monitoring using the YBA API [sync xCluster config command](https://api-docs.yugabyte.com/docs/yugabyte-platform/e19b528a55430-sync-xcluster-config).
+To ensure changes made outside of YugabyteDB Anywhere are reflected in YBA, resynchronize the YBA UI using the YBA API [sync xCluster config command](https://api-docs.yugabyte.com/docs/yugabyte-platform/e19b528a55430-sync-xcluster-config).
 
 Before you can use the command, you need an [API token](../../../yugabyte-platform/anywhere-automation/#); refer to [Authentication](../../../../yugabyte-platform/anywhere-automation/#authentication). You also need your customer ID and the UUID of the Standby universe; refer to [Account details](../../../../yugabyte-platform/anywhere-automation/#account-details).
 
-To manually resync YBA monitoring, run the following command:
+To resynchronize the YBA UI, run the following command:
 
 ```sh
 curl -k --location --request POST 'https://<yourportal.yugabyte.com>/api/v1/customers/<Customer_ID>/xcluster_configs/sync?<standby_universe_uuid>' --header 'X-AUTH-YW-API-TOKEN: <API_token>' --data
