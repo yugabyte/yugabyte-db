@@ -421,7 +421,7 @@ Last SSH key rotation task for universe `'$universe_name'` failed. To retry, che
 last_over_time(ybp_ssh_key_rotation_status{universe_uuid = "__universeUuid__"}[1d]) {{ query_condition }} 1
 ```
 
-### SSH Key expiry
+### SSH key expiry
 
 SSH key for universe `'$universe_name'` will expire in `$value` days.
 
