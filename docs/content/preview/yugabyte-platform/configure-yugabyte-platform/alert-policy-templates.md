@@ -405,7 +405,7 @@ Invalid permissions of private access key file for universe `'$universe_name'`. 
 last_over_time(ybp_universe_private_access_key_status{universe_uuid = "__universeUuid__"}[1d]) {{ query_condition }} 1
 ```
 
-### Replication Lag
+### Replication lag
 
 Average replication lag for universe `'$universe_name'` is above `$threshold` milliseconds. Current value is `$value` milliseconds.
 
