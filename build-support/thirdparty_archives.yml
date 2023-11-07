@@ -1,4 +1,4 @@
-sha_for_local_checkout: fe31c8491e01d14c9ea1b835507ea03b52cc09a7
+sha: fe31c8491e01d14c9ea1b835507ea03b52cc09a7
 archives:
   - os_type: almalinux8
     architecture: x86_64
