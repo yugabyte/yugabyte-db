@@ -236,6 +236,7 @@ set(TSERVER_SRCS
   tablet_server.cc
   tablet_server_options.cc
   tablet_service.cc
+  tablet_validator.cc
   ts_tablet_manager.cc
   tserver-path-handlers.cc
   tserver_metrics_heartbeat_data_provider.cc
