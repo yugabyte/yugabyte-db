@@ -267,7 +267,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @Setter
   private KubernetesResourceDetails kubernetesResourceDetails;
 
-  @ApiModelProperty public boolean otelCollectorEnabled = false;
+  @ApiModelProperty(value = "YbaApi Internal. OpenTelemetry Collector enabled for universe")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
+  public boolean otelCollectorEnabled = false;
 
   /** A wrapper for all the clusters that will make up the universe. */
   @JsonInclude(value = JsonInclude.Include.NON_NULL)
@@ -725,9 +727,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @Getter @Setter @ApiModelProperty private Integer cgroupSize;
 
     // Audit Logging Config
-    @ApiModelProperty public AuditLogConfig auditLogConfig;
+    @ApiModelProperty(value = "YbaApi Internal. Audit Logging configuration")
+    @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
+    public AuditLogConfig auditLogConfig;
 
-    // for gflags
     public AuditLogConfig getAuditLogConfig() {
       return auditLogConfig;
     }
