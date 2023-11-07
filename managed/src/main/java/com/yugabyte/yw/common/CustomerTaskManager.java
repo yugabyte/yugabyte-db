@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
@@ -30,6 +31,7 @@ import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
+import com.yugabyte.yw.forms.SystemdUpgradeParams;
 import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
@@ -457,6 +459,12 @@ public class CustomerTaskManager {
         break;
       case GFlagsUpgrade:
         taskParams = Json.fromJson(oldTaskParams, GFlagsUpgradeParams.class);
+        break;
+      case CertsRotate:
+        taskParams = Json.fromJson(oldTaskParams, CertsRotateParams.class);
+        break;
+      case SystemdUpgrade:
+        taskParams = Json.fromJson(oldTaskParams, SystemdUpgradeParams.class);
         break;
       case AddNodeToUniverse:
       case RemoveNodeFromUniverse:
