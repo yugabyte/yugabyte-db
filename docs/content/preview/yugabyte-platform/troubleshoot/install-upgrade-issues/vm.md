@@ -16,7 +16,7 @@ type: docs
     <a href="../vm/" class="nav-link active">
       <i class="fa-solid fa-building"></i>
       Virtual machine</a>
-  </li>  
+  </li>
 
 <li>
     <a href="../kubernetes/" class="nav-link">
@@ -78,7 +78,6 @@ do
   ssh $IP firewall-cmd --zone=public --add-port=6379/tcp;
 done
 ```
-
 
 <!--
 

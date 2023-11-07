@@ -1,9 +1,8 @@
 ---
-title: Performance metrics
+title: YBM Performance metrics
 linkTitle: Performance metrics
 description: View time series charts of cluster metrics.
 headcontent: Evaluate cluster performance with time series charts
-image: /images/section_icons/deploy/enterprise.png
 menu:
   preview_yugabyte-cloud:
     identifier: overview-clusters
