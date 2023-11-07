@@ -150,7 +150,7 @@ const ListRoles = () => {
           </RbacValidator>
         );
       },
-      disabled: role.roleType === RoleType.SYSTEM
+      disabled: false
     });
 
     menuOptions.push({
@@ -212,7 +212,7 @@ const ListRoles = () => {
           </RbacValidator>
         );
       },
-      disabled: role.roleType === RoleType.SYSTEM
+      disabled: false
     });
 
     return (

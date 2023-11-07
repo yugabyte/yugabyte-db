@@ -17,7 +17,10 @@ import { api } from '../../../../redesign/helpers/api';
 import { AssociatedUniverse } from '../../../common/associatedUniverse/AssociatedUniverse';
 import { YBConfirmModal } from '../../../modals';
 import { ybFormatDate } from '../../../../redesign/helpers/DateUtils';
-import { RbacValidator, hasNecessaryPerm } from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import {
+  RbacValidator,
+  hasNecessaryPerm
+} from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { Action, Resource } from '../../../../redesign/features/rbac';
 import './certificates.scss';
@@ -172,7 +175,9 @@ class Certificates extends Component {
   };
 
   formatActionButtons = (cell, row) => {
-    const downloadEnabled = ['SelfSigned', 'HashicorpVault'].includes(row.type) || !hasNecessaryPerm(ApiPermissionMap.DOWNLOAD_CERTIFICATE);;
+    const downloadEnabled =
+      ['SelfSigned', 'HashicorpVault'].includes(row.type) ||
+      !hasNecessaryPerm(ApiPermissionMap.DOWNLOAD_CERTIFICATE);
     const deleteDisabled = row.inUse || !hasNecessaryPerm(ApiPermissionMap.DELETE_CERTIFICATE);
     const payload = {
       name: row.name,
@@ -181,7 +186,8 @@ class Certificates extends Component {
       expiryDate: row.expiryDateIso,
       universeDetails: row.universeDetails
     };
-    const disableCertEdit = row.type !== 'HashicorpVault' || !hasNecessaryPerm(ApiPermissionMap.MODIFY_CERTIFICATE);
+    const disableCertEdit =
+      row.type !== 'HashicorpVault' || !hasNecessaryPerm(ApiPermissionMap.MODIFY_CERTIFICATE);
     // TODO: Replace dropdown option + modal with a side panel
     return (
       <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
@@ -266,7 +272,10 @@ class Certificates extends Component {
           </MenuItem>
         </RbacValidator>
         <RbacValidator
-          customValidateFunction={(userPermissions) => find(userPermissions, { resourceType: Resource.UNIVERSE, actions: Action.READ }) !== undefined}
+          customValidateFunction={(userPermissions) =>
+            find(userPermissions, { resourceType: Resource.UNIVERSE, actions: Action.READ }) !==
+            undefined
+          }
           isControl
           overrideStyle={{ display: 'block' }}
         >
@@ -282,7 +291,7 @@ class Certificates extends Component {
             <i className="fa fa-eye"></i> Show Universes
           </MenuItem>
         </RbacValidator>
-      </DropdownButton >
+      </DropdownButton>
     );
   };
 
@@ -336,9 +345,7 @@ class Certificates extends Component {
 
     return (
       <div id="page-wrapper">
-        <RbacValidator
-          accessRequiredOn={ApiPermissionMap.GET_CERTIFICATES}
-        >
+        <RbacValidator accessRequiredOn={ApiPermissionMap.GET_CERTIFICATES}>
           <YBPanelItem
             header={
               <Row className="header-row">
@@ -347,10 +354,7 @@ class Certificates extends Component {
                 </Col>
                 <Col xs={6} className="universe-table-header-action">
                   {isNotHidden(currentCustomer.data.features, 'universe.create') && (
-                    <RbacValidator
-                      accessRequiredOn={ApiPermissionMap.CREATE_CERTIFICATE}
-                      isControl
-                    >
+                    <RbacValidator accessRequiredOn={ApiPermissionMap.CREATE_CERTIFICATE} isControl>
                       <YBButton
                         btnClass="universe-button btn btn-lg btn-orange"
                         onClick={() => {
@@ -358,9 +362,10 @@ class Certificates extends Component {
                             showAddCertificateModal();
                           });
                         }}
-                        disabled={isDisabled(currentCustomer.data.features, 'universe.create') || !hasNecessaryPerm(ApiPermissionMap.CREATE_CERTIFICATE)}
-                        btnText="Add Certificate"
+                        disabled={isDisabled(currentCustomer.data.features, 'universe.create')}
+                        btnText="Add Certificate1"
                         btnIcon="fa fa-plus"
+                        data-testid="Add-Certificate"
                       />
                     </RbacValidator>
                   )}
