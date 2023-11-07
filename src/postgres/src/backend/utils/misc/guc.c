@@ -1039,6 +1039,16 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 	{
+		{"yb_bnl_optimize_first_batch", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables batched nested loop joins to predict the "			 	 "size of its first batch and optimize if it's "
+						 "smaller than yb_bnl_batch_size."),
+			NULL
+		},
+		&yb_bnl_optimize_first_batch,
+		true,
+		NULL, NULL, NULL
+	},
+	{
 		{"yb_lock_pk_single_rpc", PGC_USERSET, QUERY_TUNING_OTHER,
 			gettext_noop("Use single RPC to select and lock when PK is specified."),
 			gettext_noop("If possible (no conflicting filters in the plan), use a single RPC to "
