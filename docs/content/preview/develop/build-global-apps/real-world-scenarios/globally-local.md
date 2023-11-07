@@ -15,7 +15,7 @@ rightNav:
 type: docs
 ---
 
-Depending your business needs, you might want to have some data available across multiple geographies and some data just within specific geographies due to local laws. You can accomplish this using the pattern discussed here which combines several patterns we already discussed like, [Global Database](../global-database), [Locality-optimized Geo-partition](../locality-optimized-geo-partition), and [Follower Reads](../follower-reads).
+Depending your business needs, you might want to have some data available across multiple geographies and some data just within specific geographies due to local laws. You can accomplish this using the pattern discussed here which combines several patterns we already discussed like, [Global Database](../../global-database), [Locality-optimized Geo-partition](../../locality-optimized-geo-partition), and [Follower Reads](../../follower-reads).
 
 {{<tip>}}
 Application instances are active in all regions, do consistent reads and writes on local data, but stale reads on global data that does not change often.
@@ -77,7 +77,7 @@ Create a table of `orders` that you are going to partition by the `geo` field.
 
 ```plpgsql
 CREATE TABLE orders (
-    orderid INTEGER NOT NULL, 
+    orderid INTEGER NOT NULL,
     userid INTEGER NOT NULL,
     productid INTEGER NOT NULL,
     price DECIMAL NOT NULL, /* sale price */
@@ -162,7 +162,7 @@ Now you have your `catalog` table across all the 3 geos and the `orders` table p
 
 ![Complete setup](/images/develop/global-apps/global-geolocal-tables-complete-setup.png)
 
-Applications in each region only access the data locally. Their orders are stored and replicated locally in their geo as the `orders` table is partitioned by geo. This enables fast reads and writes locally. The `catalog` table is globally distributed across 3 regions and does not change much and is not directly updated by the user facing applications. So applications can read the catalog data quickly from the followers using [Follower reads](../follower-reads).
+Applications in each region only access the data locally. Their orders are stored and replicated locally in their geo as the `orders` table is partitioned by geo. This enables fast reads and writes locally. The `catalog` table is globally distributed across 3 regions and does not change much and is not directly updated by the user facing applications. So applications can read the catalog data quickly from the followers using [Follower reads](../../follower-reads).
 
 This pattern helps applications running in different regions to have low read and write latency, as they are reading and writing data to nearby partitions. At the same time, you are complying with local data protection laws by keeping the citizen data inside the country boundaries.
 
