@@ -3,6 +3,8 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.forms.SystemdUpgradeParams;
@@ -12,6 +14,8 @@ import java.util.List;
 import javax.inject.Inject;
 import org.apache.commons.lang3.tuple.Pair;
 
+@Abortable
+@Retryable
 public class SystemdUpgrade extends UpgradeTaskBase {
 
   @Inject

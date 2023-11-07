@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.forms;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
@@ -16,6 +15,7 @@ import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import io.swagger.annotations.ApiModelProperty;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
@@ -37,8 +37,11 @@ public class CertsRotateParams extends UpgradeTaskParams {
   // If true, rotates server cert of clientRootCA
   public boolean selfSignedClientCertRotate = false;
 
-  @JsonIgnore public CertRotationType rootCARotationType = CertRotationType.None;
-  @JsonIgnore public CertRotationType clientRootCARotationType = CertRotationType.None;
+  @ApiModelProperty(hidden = true)
+  public CertRotationType rootCARotationType = CertRotationType.None;
+
+  @ApiModelProperty(hidden = true)
+  public CertRotationType clientRootCARotationType = CertRotationType.None;
 
   public boolean isKubernetesUpgradeSupported() {
     return true;
@@ -64,7 +67,6 @@ public class CertsRotateParams extends UpgradeTaskParams {
     UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
     UUID currentRootCA = universeDetails.rootCA;
     UUID currentClientRootCA = universeDetails.clientRootCA;
-    boolean currentRootAndClientRootCASame = universeDetails.rootAndClientRootCASame;
 
     if (upgradeOption == UpgradeOption.NON_RESTART_UPGRADE) {
       throw new PlatformServiceException(Status.BAD_REQUEST, "Cert upgrade cannot be non restart.");
@@ -126,6 +128,29 @@ public class CertsRotateParams extends UpgradeTaskParams {
           "clientRootCA is required with the current TLS parameters and cannot upgrade.");
     }
 
+    if (isFirstTry) {
+      // TODO Move this out of verify params. This pattern is in many other places too.
+      setAdditionalTaskParams(universe);
+    }
+  }
+
+  // Sets additional tasks params which are derived based on the universe fields.
+  private void setAdditionalTaskParams(Universe universe) {
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+    UUID currentRootCA = universeDetails.rootCA;
+    UUID currentClientRootCA = universeDetails.clientRootCA;
+    boolean currentRootAndClientRootCASame = universeDetails.rootAndClientRootCASame;
+    boolean isRootCARequired =
+        EncryptionInTransitUtil.isRootCARequired(
+            userIntent.enableNodeToNodeEncrypt,
+            userIntent.enableClientToNodeEncrypt,
+            rootAndClientRootCASame);
+    boolean isClientRootCARequired =
+        EncryptionInTransitUtil.isClientRootCARequired(
+            userIntent.enableNodeToNodeEncrypt,
+            userIntent.enableClientToNodeEncrypt,
+            rootAndClientRootCASame);
     if (rootCA != null && !rootCA.equals(currentRootCA)) {
       // When the request comes to this block, this is when actual upgrade on rootCA
       // needs to be done. Now check on what kind of upgrade it is, RootCert or ServerCert
@@ -134,7 +159,6 @@ public class CertsRotateParams extends UpgradeTaskParams {
         throw new PlatformServiceException(
             Status.BAD_REQUEST, "Certificate not present: " + rootCA);
       }
-
       switch (rootCert.getCertType()) {
         case SelfSigned:
           rootCARotationType = CertRotationType.RootCert;
@@ -162,10 +186,8 @@ public class CertsRotateParams extends UpgradeTaskParams {
           throw new PlatformServiceException(
               Status.BAD_REQUEST, "rootCA cannot be of type CustomServerCert.");
         case HashicorpVault:
-          {
-            rootCARotationType = CertRotationType.RootCert;
-            break;
-          }
+          rootCARotationType = CertRotationType.RootCert;
+          break;
       }
     } else {
       // Consider this case:
@@ -233,10 +255,8 @@ public class CertsRotateParams extends UpgradeTaskParams {
           }
           break;
         case HashicorpVault:
-          {
-            clientRootCARotationType = CertRotationType.RootCert;
-            break;
-          }
+          clientRootCARotationType = CertRotationType.RootCert;
+          break;
       }
     } else {
       // Consider this case:
@@ -257,8 +277,7 @@ public class CertsRotateParams extends UpgradeTaskParams {
     }
 
     // When there is no upgrade needs to be done, fail the request
-    if (isFirstTry
-        && rootCARotationType == CertRotationType.None
+    if (rootCARotationType == CertRotationType.None
         && clientRootCARotationType == CertRotationType.None) {
       if (!(userIntent.enableNodeToNodeEncrypt
           && userIntent.enableClientToNodeEncrypt
