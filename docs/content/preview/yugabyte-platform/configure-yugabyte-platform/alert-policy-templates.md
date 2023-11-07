@@ -302,7 +302,7 @@ The tablet leader is missing for more than 5 minutes for `$value` tablets in uni
 max by (node_prefix) (count by (node_prefix, exported_instance) (max_over_time(yb_node_leaderless_tablet{node_prefix="$node_prefix"}[5m])) > 0)
 ```
 
-### Backup Deletion failure
+### Backup deletion failure
 
 Failed to delete `$value` backups for customer `'yugabyte support'` in last GC run. Check logs for more details.
 
