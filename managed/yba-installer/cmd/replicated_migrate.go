@@ -216,7 +216,8 @@ var replicatedMigrationStart = &cobra.Command{
 			if match {
 				input := fmt.Sprintf("%s/%s", replBackupDir, file.Name())
 				log.Info(fmt.Sprintf("Restoring replicated backup %s to YBA.", input))
-				RestoreBackupScript(input, common.GetBaseInstall(), false, true, plat, true, false)
+				// backup path, destination, skipRestart, verbose, platform, migration, systemPG, disableVersion
+				RestoreBackupScript(input, common.GetBaseInstall(), false, true, plat, true, false, true)
 				break
 			}
 		}
