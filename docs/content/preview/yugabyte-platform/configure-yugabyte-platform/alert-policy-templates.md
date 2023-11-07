@@ -413,7 +413,7 @@ Average replication lag for universe `'$universe_name'` is above `$threshold` mi
 max by (universe_uuid) (avg_over_time(async_replication_committed_lag_micros{universe_uuid="__universeUuid__"}[10m]) or avg_over_time(async_replication_sent_lag_micros{universe_uuid="__universeUuid__"}[10m])) / 1000 {{ query_condition }} {{ query_threshold }}
 ```
 
-### SSH Key Rotation Failure
+### SSH key rotation failure
 
 Last SSH key rotation task for universe `'$universe_name'` failed. To retry, check SSH key rotation task result.
 
