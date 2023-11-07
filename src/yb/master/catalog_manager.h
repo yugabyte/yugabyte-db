@@ -362,8 +362,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // Gets the backfill jobs state associated with the requested table.
   Status GetBackfillJobs(const GetBackfillJobsRequestPB* req,
-                                      GetBackfillJobsResponsePB* resp,
-                                      rpc::RpcContext* rpc);
+                         GetBackfillJobsResponsePB* resp,
+                         rpc::RpcContext* rpc);
+
+  // Gets the index permissions of the specified index tables. The response will contain all the
+  // specified tables with either their index permissions or an error in the corresponding field.
+  Status GetBackfillStatus(const GetBackfillStatusRequestPB* req,
+                           GetBackfillStatusResponsePB* resp,
+                           rpc::RpcContext* rpc);
 
   // Backfill the indexes for the specified table.
   // Used for backfilling YCQL defered indexes when triggered from yb-admin.
