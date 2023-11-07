@@ -4,11 +4,14 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.DrConfigCreateForm;
 import com.yugabyte.yw.forms.DrConfigEditForm;
@@ -37,6 +40,11 @@ import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import com.yugabyte.yw.models.XClusterTableConfig.Status;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -112,6 +120,12 @@ public class DrConfigController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.DrConfigCreateForm",
           paramType = "body",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result create(UUID customerUUID, Http.Request request) {
     log.info("Received create drConfig request");
 
@@ -224,6 +238,12 @@ public class DrConfigController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.DrConfigEditForm",
           paramType = "body",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result edit(UUID customerUUID, UUID drConfigUuid, Http.Request request) {
     log.info("Received edit drConfig request");
 
@@ -349,6 +369,12 @@ public class DrConfigController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.DrConfigFailoverForm",
           paramType = "body",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result failover(UUID customerUUID, UUID drConfigUuid, Http.Request request) {
     log.info("Received failover drConfig request");
 
@@ -489,6 +515,12 @@ public class DrConfigController extends AuthenticatedController {
       nickname = "getDrConfig",
       value = "Get disaster recovery config",
       response = DrConfig.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result get(UUID customerUUID, UUID drUUID) {
     log.info("Received get DrConfig({}) request", drUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -510,6 +542,12 @@ public class DrConfigController extends AuthenticatedController {
       nickname = "deleteXClusterConfig",
       value = "Delete xcluster config",
       response = YBPTask.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result delete(
       UUID customerUUID, UUID drConfigUuid, boolean isForceDelete, Http.Request request) {
     log.info(
@@ -571,6 +609,12 @@ public class DrConfigController extends AuthenticatedController {
       nickname = "getDrConfigSafetime",
       value = "Get disaster recovery config safetime",
       response = DrConfigSafetimeResp.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result getSafetime(UUID customerUUID, UUID drUUID) {
     log.info("Received getSafetime DrConfig({}) request", drUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
