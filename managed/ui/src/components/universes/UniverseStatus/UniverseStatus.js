@@ -14,6 +14,8 @@ import {
   UniverseState
 } from '../helpers/universeHelpers';
 import { UniverseAlertBadge } from '../YBUniverseItem/UniverseAlertBadge';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 import './UniverseStatus.scss';
 
@@ -161,11 +163,19 @@ export default class UniverseStatus extends Component {
             />
           )}
           {shouldDisplayTaskButton && !universePendingTask && failedTask?.retryable && (
-            <YBButton
-              btnText={'Retry Task'}
-              btnClass="btn btn-default view-task-details-btn"
-              onClick={() => this.retryTaskClicked(failedTask.id, currentUniverse.universeUUID)}
-            />
+            <RbacValidator
+              accessRequiredOn={{
+                onResource: currentUniverse.universeUUID,
+                ...ApiPermissionMap.RETRY_TASKS
+              }}
+              isControl
+            >
+              <YBButton
+                btnText={'Retry Task'}
+                btnClass="btn btn-default view-task-details-btn"
+                onClick={() => this.retryTaskClicked(failedTask.id, currentUniverse.universeUUID)}
+              />
+            </RbacValidator>
           )}
         </div>
       );

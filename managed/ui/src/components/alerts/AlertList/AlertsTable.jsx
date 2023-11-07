@@ -13,8 +13,8 @@ import { toast } from 'react-toastify';
 import { Label } from 'react-bootstrap';
 import { timeFormatter } from '../../../utils/TableFormatters';
 import { useSearchParam } from 'react-use';
-import { RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import './AlertsTable.scss';
 
 const DEFAULT_SORT_COLUMN = 'createTime';
@@ -195,9 +195,7 @@ export default function AlertsTable({ filters, customer }) {
                     }
                     return (
                       <RbacValidator
-                        accessRequiredOn={{
-                          ...UserPermissionMap.acknowledgeAlert
-                        }}
+                        accessRequiredOn={ApiPermissionMap.ACKNOWLEDGE_ALERT}
                         isControl
                       >
                         <YBButton
@@ -208,6 +206,7 @@ export default function AlertsTable({ filters, customer }) {
                             e.preventDefault();
                             acknowledge.mutateAsync(row);
                           }}
+                          data-testid="Acknowledge-Alert"
                         />
                       </RbacValidator>
                     );
