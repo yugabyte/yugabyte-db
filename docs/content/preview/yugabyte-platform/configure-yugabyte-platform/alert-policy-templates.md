@@ -399,7 +399,7 @@ min(ybp_pitr_config_status{universe_uuid = "__universeUuid__"}) {{ query_conditi
 
 ### Private access key permission status
 
-Invalid Permissions of private access key file for universe `'$universe_name'`. You need to check YugabyteDB Anywhere logs for details or contact {{% support-platform %}}.
+Invalid permissions of private access key file for universe `'$universe_name'`. You need to check YugabyteDB Anywhere logs for details or contact {{% support-platform %}}.
 
 ```expression
 last_over_time(ybp_universe_private_access_key_status{universe_uuid = "__universeUuid__"}[1d]) {{ query_condition }} 1
