@@ -423,7 +423,7 @@ last_over_time(ybp_ssh_key_rotation_status{universe_uuid = "__universeUuid__"}[1
 
 ### SSH Key expiry
 
-SSH Key for universe `'$universe_name'` will expire in `$value` days.
+SSH key for universe `'$universe_name'` will expire in `$value` days.
 
 ```expression
 ybp_universe_ssh_key_expiry_day{universe_uuid="__universeUuid__"} {{ query_condition }} {{ query_threshold }}
