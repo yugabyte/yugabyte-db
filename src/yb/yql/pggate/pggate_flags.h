@@ -45,6 +45,7 @@ DECLARE_int32(ysql_max_write_restart_attempts);
 DECLARE_bool(ysql_sleep_before_retry_on_txn_conflict);
 DECLARE_bool(ysql_disable_portal_run_context);
 DECLARE_bool(TEST_yb_lwlock_crash_after_acquire_pg_stat_statements_reset);
+DECLARE_bool(TEST_yb_lwlock_error_after_acquire_pg_stat_statements_reset);
 DECLARE_bool(TEST_yb_test_fail_matview_refresh_after_creation);
 DECLARE_bool(ysql_enable_read_request_caching);
 DECLARE_bool(ysql_enable_create_database_oid_collision_retry);
