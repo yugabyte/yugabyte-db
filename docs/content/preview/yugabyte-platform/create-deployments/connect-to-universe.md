@@ -33,13 +33,30 @@ For more information on connecting to TLS-enabled universes, refer to [Connect t
 
 The YugabyteDB shells are installed in the tserver/bin directory on each YB-TServer of a YugabyteDB universe.
 
-To connect to a universe node, you should be signed on to the machine where YugabyteDB Anywhere is installed, or connected via SSH.
+### Access your YugabyteDB Anywhere instance
 
-How you connect to your YugabyteDB Anywhere instance varies depending on the cloud provider hosting the instance. For example, for a GCP instance, you can SSH using a command similar to the following:
+To connect to a universe node, you first need to be signed on to the machine where YugabyteDB Anywhere is installed, or connected via SSH.
+
+To SSH to a YugabyteDB Anywhere instance hosted on the cloud provider, you enter the following:
 
 ```sh
-ssh -i secrets/yugabyte-platform-gcp-instance username@<platform_machine_external_ip>
+ssh -i <path_to_secret> username@<platform_machine_external_ip>
 ```
+
+For example, for an AWS instance, you can SSH using a command similar to the following:
+
+```sh
+ssh -i ~/.yugabyte/yb-dev-aws-2.pem centos@my.yugabyte.aws
+```
+
+If your instance is on Kubernetes, use kubectl commands to connect. For example:
+
+```sh
+gcloud container clusters get-credentials --region us-west1 itest-release --project yugabyte
+kubectl exec -it yw-ns-kvik-id7973-20230213-031611-yugaware-0 -n yw-ns-kvik-id7973-20230213-031611 -c yugaware -- bash
+```
+
+### Connect to a node
 
 To run a shell from a universe node, do the following:
 
