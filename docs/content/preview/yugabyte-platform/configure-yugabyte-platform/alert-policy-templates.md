@@ -381,7 +381,7 @@ Master is missing from RAFT group or has follower lag higher than `$threshold` s
 (min_over_time((ybp_universe_replication_factor{universe_uuid='{{ $labels.universe_uuid }}'} - on(universe_uuid) count by(universe_uuid) (count by (universe_uuid, exported_instance) (follower_lag_ms{export_type="master_export", universe_uuid='{{ $labels.universe_uuid }}'})))[{{query_threshold }}s:]) > 0 or (max by(universe_uuid) (follower_lag_ms{export_type="master_export", universe_uuid='{{ $labels.universe_uuid }}'}) {{ query_condition }} ({{ query_threshold }} * 1000)))
 ```
 
-### New YSQL Tables Added
+### New YSQL tables added
 
 New YSQL tables are added to the source universe `'$universe_name'` in the database with an existing xCluster configuration, but not added to the xCluster replication.
 
