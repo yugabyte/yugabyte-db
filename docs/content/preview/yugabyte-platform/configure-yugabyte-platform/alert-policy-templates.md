@@ -359,7 +359,7 @@ Number of YEDIS connections for universe `'$universe_name'` is above `$threshold
 max by (universe_uuid) (max_over_time(rpc_connections_alive{universe_uuid="__universeUuid__",export_type="cql_export"}[5m])) {{ query_condition }} {{ query_threshold }}
 ```
 
-### Memory Consumption
+### Memory consumption
 
 Average memory usage for universe `'$universe_name'` nodes is above `$threshold%`. Maximum value is `$value`.
 
