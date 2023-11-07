@@ -391,7 +391,7 @@ New YSQL tables are added to the source universe `'$universe_name'` in the datab
 
 ### PITR config failure
 
-Last Snapshot task for universe `'$universe_name'` failed. To retry, check PITR Configuration task result for more details.
+Last snapshot task for universe `'$universe_name'` failed. To retry, check PITR configuration task result for more details.
 
 ```expression
 min(ybp_pitr_config_status{universe_uuid = "__universeUuid__"}) {{ query_condition }} 1
