@@ -88,6 +88,9 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     // Set it to clean previous master state on restart. It is just a hint to clean
     // old master state but may not be used if it is illegal.
     public boolean resetMasterState = false;
+    // This sets the flag master_join_existing_universe to true by default in the conf file, unless
+    // it is overridden e.g in CreateUniverse.
+    public boolean masterJoinExistingCluster = true;
   }
 
   @Override
