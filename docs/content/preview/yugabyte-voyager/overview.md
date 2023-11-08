@@ -62,4 +62,4 @@ The following table shows the target database support for each migration type.
 | :------------- | :--------------------------- | ------------------ |
 | Offline | v2.16<br>v2.18<br>v2.19 | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/)<br>[YugabyteDB Managed](../../yugabyte-cloud/cloud-basics/) |
 | Live | v2.16<br>v2.18<br>v2.19 | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/)<br>[YugabyteDB Managed](../../yugabyte-cloud/cloud-basics/) |
-| Live with fall-forward | v2.18 | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/) |
+| Live with fall-forward | v2.18.2.x | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/) |
