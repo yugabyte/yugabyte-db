@@ -1429,7 +1429,7 @@ drop table lp, rlp, mc3p, mc2p, boolpart, rp, like_op_noprune, lparted_by_int2, 
 -- Test Partition pruning for HASH partitioning
 --
 -- Use hand-rolled hash functions and operator classes to get predictable
--- result on different matchines.  See the definitions of
+-- result on different machines.  See the definitions of
 -- part_part_test_int4_ops and part_test_text_ops in insert.sql.
 --
 create or replace function part_hashint4_noop(value int4, seed int8)
