@@ -910,11 +910,10 @@ TEST_F(GeoPartitionedReadCommiittedTest, TestPromotionAmidstConflicts) {
   // Assert that the conflicting updates above go through successfully.
   auto conn = ASSERT_RESULT(Connect());
   for (int i = 1; i <= num_iterations/2; i++) {
-    auto rows_res = ASSERT_RESULT(conn.FetchFormat(
-        "SELECT people FROM $0 WHERE country='C$1'", table_name, i));
-    auto num_fetched_rows = PQntuples(rows_res.get());
-    for (int j = 0; j < num_fetched_rows; j++) {
-      ASSERT_EQ(num_sessions * 2, ASSERT_RESULT(pgwrapper::GetValue<int32>(rows_res.get(), j, 0)));
+    auto values = ASSERT_RESULT(conn.FetchRows<int32_t>(
+        Format("SELECT people FROM $0 WHERE country='C$1'", table_name, i)));
+    for (const auto value : values) {
+      ASSERT_EQ(value, num_sessions * 2);
     }
   }
 }

@@ -41,8 +41,7 @@ const auto kInsertStmtFormat = Format("INSERT INTO $0 VALUES($1, $1)", kTableNam
 const auto kDropIndexStmt = Format("DROP INDEX $0", kIndexName);
 const auto kId1CountStmt = Format("SELECT COUNT(*) FROM $0 WHERE id1 >= 0", kTableName);
 const auto kId2CountStmt = Format("SELECT COUNT(*) FROM $0 WHERE id2 >= 0", kTableName);
-const auto kSelectAllId1Stmt = Format("SELECT id1 FROM $0 ORDER BY id1", kTableName);
-const auto kSelectAllId2Stmt = Format("SELECT id2 FROM $0 ORDER BY id2", kTableName);
+const auto kSelectAllId12Stmt = Format("SELECT id1, id2 FROM $0 ORDER BY id1, id2", kTableName);
 
 class XClusterYsqlIndexTest : public XClusterYsqlTestBase {
  public:
@@ -130,42 +129,11 @@ class XClusterYsqlIndexTest : public XClusterYsqlTestBase {
     return WaitForSafeTime(namespace_id_, now);
   }
 
-  template <class T>
-  pgwrapper::GetValueResult<T> FetchValue(const std::string& command, pgwrapper::PGConn* conn) {
-    auto res = VERIFY_RESULT(conn->Fetch(command));
-
-    auto fetched_rows = PQntuples(res.get());
-    auto fetched_columns = PQnfields(res.get());
-    if (fetched_rows != 1 || fetched_columns != 1) {
-      return STATUS_FORMAT(
-          RuntimeError, "Fetched $0 rows and $1 columns, while only 1 expected", fetched_rows,
-          fetched_columns);
-    }
-
-    return pgwrapper::GetValue<T>(res.get(), 0 /* row */, 0 /* column */);
-  }
-
-  Result<string> GetAllRows(pgwrapper::PGConn* conn) {
-    return Format(
-        "\nId1 rows: $0\nId2 rows: $1\n",
-        VERIFY_RESULT(conn->FetchAllAsString(kSelectAllId1Stmt)),
-        VERIFY_RESULT(conn->FetchAllAsString(kSelectAllId2Stmt)));
+  auto GetAllRows(pgwrapper::PGConn* conn) {
+    return conn->FetchRows<int32_t, int32_t>(kSelectAllId12Stmt);
   }
 
   Status ValidateRows() {
-    const auto producer_row_count =
-        VERIFY_RESULT(FetchValue<int64_t>(kId1CountStmt, producer_conn_.get()));
-    const auto id1_count = VERIFY_RESULT(FetchValue<int64_t>(kId1CountStmt, consumer_conn_.get()));
-    const auto id2_count = VERIFY_RESULT(FetchValue<int64_t>(kId2CountStmt, consumer_conn_.get()));
-    SCHECK_EQ(
-        producer_row_count, id1_count, IllegalState,
-        "Producer consumer row count mismatch.\nProducer: " +
-            VERIFY_RESULT(GetAllRows(producer_conn_.get())) +
-            "Consumer: " + VERIFY_RESULT(GetAllRows(consumer_conn_.get())));
-    SCHECK_EQ(
-        id1_count, id2_count, IllegalState,
-        "Id1 id2 row count mismatch." + VERIFY_RESULT(GetAllRows(consumer_conn_.get())));
-
     SCHECK_EQ(
         VERIFY_RESULT(GetAllRows(producer_conn_.get())),
         VERIFY_RESULT(GetAllRows(consumer_conn_.get())), IllegalState,
@@ -175,31 +143,33 @@ class XClusterYsqlIndexTest : public XClusterYsqlTestBase {
 
   // Get row count using indexed table and index when available. Both counts should match.
   // Row count should never move backwards.
-  void ValidateRowsDuringCreateIndex(int initial_count, std::atomic_bool* stop) {
-    int64_t min_count = initial_count;
+  void ValidateRowsDuringCreateIndex(uint64_t initial_count, std::atomic_bool* stop) {
+    auto min_count = initial_count;
     auto consumer_conn = CHECK_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+    auto row_counts_getter = [&consumer_conn]() -> Result<std::pair<uint64_t, uint64_t>> {
+      // Intentionally fetch id1 count first.
+      const auto count1 = VERIFY_RESULT(consumer_conn.FetchRow<pgwrapper::PGUint64>(kId1CountStmt));
+      const auto count2 = VERIFY_RESULT(consumer_conn.FetchRow<pgwrapper::PGUint64>(kId2CountStmt));
+      return std::make_pair(count1, count2);
+    };
+
     while (!*stop) {
-      int64_t id1_count, id2_count;
-      auto get_row_counts = [&]() -> Status {
-        id1_count = VERIFY_RESULT(FetchValue<int64_t>(kId1CountStmt, &consumer_conn));
-        id2_count = VERIFY_RESULT(FetchValue<int64_t>(kId2CountStmt, &consumer_conn));
-        return Status::OK();
-      };
-      auto s = get_row_counts();
-      if (!s.ok()) {
+      auto result = row_counts_getter();
+      if (!result.ok()) {
         // Failure expected from the index create DDL. DDL version is bumped and propagated to pg
         // clients asynchronously leading to transient errors.
-        CHECK(s.message().Contains("schema version mismatch"));
+        CHECK(result.status().message().Contains("schema version mismatch"));
         continue;
       }
+      auto [id1_count, id2_count] = *result;
 
       CHECK_GE(id2_count, min_count)
-          << "Id2 count reduced." << CHECK_RESULT(GetAllRows(consumer_conn_.get()));
+          << "Id2 count reduced." << ToString(CHECK_RESULT(GetAllRows(consumer_conn_.get())));
 
       // id1_count should be less than or equal to id2_count because it was fetched first and the
       // two statements are run in different transactions.
       CHECK_LE(id1_count, id2_count) << "Id1 count should be <= id2 row count."
-                                     << CHECK_RESULT(GetAllRows(consumer_conn_.get()));
+                                     << ToString(CHECK_RESULT(GetAllRows(consumer_conn_.get())));
 
       min_count = id2_count;
 

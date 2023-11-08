@@ -1121,11 +1121,20 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(MultiTabletFairness)) {
       "statements involving multiple tablets.";
   auto update_analyze_query = Format("EXPLAIN (ANALYZE, DIST) $0", Format(update_query, -10));
   ASSERT_OK(setup_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-  auto explain_analyze_output = ASSERT_RESULT(setup_conn.FetchAllAsString(update_analyze_query));
-  ASSERT_NE(explain_analyze_output.find(
-      Format("Storage Write Requests: $0", kNumKeys)), std::string::npos) << explain_fail_help_text;
-  ASSERT_NE(explain_analyze_output.find("Storage Flush Requests: 1"), std::string::npos)
-      << explain_fail_help_text;
+  auto values = ASSERT_RESULT(
+      setup_conn.FetchRows<std::string>(update_analyze_query));
+  const auto storage_write_requests_text = Format("Storage Write Requests: $0", kNumKeys);
+  bool found_flush_requests_line = false;
+  bool found_write_requests_line = false;
+  for (const auto& value : values) {
+    if (value.find(storage_write_requests_text) != std::string::npos) {
+      found_write_requests_line = true;
+    } else if (value.find("Storage Flush Requests: 1") != std::string::npos) {
+      found_flush_requests_line = true;
+    }
+  }
+  ASSERT_TRUE(found_flush_requests_line && found_write_requests_line)
+      << explain_fail_help_text << "\n" << JoinStrings(values, "\n");
   ASSERT_OK(setup_conn.CommitTransaction());
 
   ASSERT_OK(setup_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
@@ -1158,8 +1167,8 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(MultiTabletFairness)) {
     thread_holder.AddThreadFunctor(
         [i, &conn, &update_did_return = update_did_return[i], &queued_waiters, &update_query] {
       // Wait for all connections to queue their thread of execution
-      auto txn_id = ASSERT_RESULT(conn.FetchAllAsString("SELECT yb_get_current_transaction()"));
-      LOG(INFO) << "Conn " << i << " queued with txn id " <<  txn_id;
+      auto txn_id = ASSERT_RESULT(conn.FetchRow<Uuid>("SELECT yb_get_current_transaction()"));
+      LOG(INFO) << "Conn " << i << " queued with txn id " << yb::ToString(txn_id);
       queued_waiters.CountDown();
       ASSERT_TRUE(queued_waiters.WaitFor(10s * kTimeMultiplier));
       LOG(INFO) << "Conn " << i << " finished waiting";
@@ -1180,7 +1189,7 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(MultiTabletFairness)) {
             execute_status.ToString(), "pgsql error 40001");
       }
       LOG(INFO) << "Update completed on conn " << i
-                << " with txn id: " << txn_id
+                << " with txn id: " << yb::ToString(txn_id)
                 << " and status " << execute_status;
 
       update_did_return.exchange(true);

@@ -755,8 +755,7 @@ TEST_F(PgSingleTServerTest, PagingSelectWithDelayedIntentsApply) {
     LOG(INFO) << "Insert iteration " << i;
     ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1)"));
     LOG(INFO) << "Reading iteration " << i;
-    auto all = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t"));
-    ASSERT_EQ(all, "1");
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT * FROM t")), 1);
   }
 }
 
@@ -768,9 +767,9 @@ TEST_F(PgSingleTServerTest, BoundedRangeScanWithLargeTransaction) {
     holder.AddThreadFunctor([this, &stop = holder.stop_flag()] {
       auto conn = ASSERT_RESULT(Connect());
       while (!stop) {
-        auto res = ASSERT_RESULT(conn.FetchAllAsString("SELECT r2 FROM t WHERE r2 <= 1"));
-        if (!res.empty()) {
-          ASSERT_EQ(res, "1");
+        auto values = ASSERT_RESULT(conn.FetchRows<int32_t>("SELECT r2 FROM t WHERE r2 <= 1"));
+        if (!values.empty()) {
+          ASSERT_EQ(values, decltype(values){1});
         }
       }
     });
@@ -783,9 +782,8 @@ YB_DEFINE_ENUM(BoundType, (kNone)(kExclusive)(kInclusive));
 YB_DEFINE_ENUM(State, (kBefore)(kBetween)(kAfter));
 
 TEST_F(PgSingleTServerTest, Bounds) {
-  using Row = std::vector<int>;
-
   constexpr int kNumColumns = 3;
+  using Row = std::array<int, kNumColumns>;
   constexpr int kNumValues = 6;
 
   const int kNumBounds = 1 + pow(kElementsInBoundType, 2);
@@ -819,14 +817,12 @@ TEST_F(PgSingleTServerTest, Bounds) {
       div /= kNumValues;
       auto value = v / div;
       cmd += std::to_string(value);
-      rows[i].push_back(value);
+      rows[i][c] = value;
       v %= div;
     }
     cmd += ")";
     ASSERT_OK(conn.Execute(cmd));
   }
-
-  LOG(INFO) << "Content: " << conn.FetchAllAsString("SELECT * FROM t");
 
   for (int i = 0; i != kNumCombinations; ++i) {
     std::vector<std::function<bool(const Row&)>> conditions;
@@ -874,7 +870,7 @@ TEST_F(PgSingleTServerTest, Bounds) {
       cmd += cmd.length() == initial_length ? " WHERE " : " AND ";
       cmd += condition;
     }
-    std::string expected;
+    std::vector<std::tuple<int32_t, int32_t, int32_t>> expected;
     auto state = State::kBefore;
     auto trivial = true;
     for (const auto& row : rows) {
@@ -900,17 +896,13 @@ TEST_F(PgSingleTServerTest, Bounds) {
           break;
       }
       if (match) {
-        if (!expected.empty()) {
-          expected += "; ";
-        }
-        expected += JoinElements(row, ", ");
+        expected.push_back(std::tuple_cat(row));
       }
     }
     LOG(INFO) << "Trivial: " << trivial << ", cmd: " << cmd;
     ANNOTATE_UNPROTECTED_WRITE(TEST_scan_trivial_expectation) = trivial;
-    auto fetched = ASSERT_RESULT(conn.FetchAllAsString(cmd));
+    auto fetched = ASSERT_RESULT((conn.FetchRows<int32_t, int32_t, int32_t>(cmd)));
     ANNOTATE_UNPROTECTED_WRITE(TEST_scan_trivial_expectation) = -1;
-    LOG(INFO) << fetched;
     ASSERT_EQ(expected, fetched);
   }
 }

@@ -240,8 +240,9 @@ TEST_F(PgTxnTest, ReadRecentSet) {
           p = FastInt64ToBufferLeft(v, p);
         }
         ASSERT_OK(connection.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
-        auto res = connection.FetchFormat("SELECT value FROM test WHERE value in ($0)", str_buffer);
-        if (!res.ok()) {
+        auto values_res = connection.FetchRows<int32_t>(
+            Format("SELECT value FROM test WHERE value in ($0)", str_buffer));
+        if (!values_res.ok()) {
           ASSERT_OK(connection.RollbackTransaction());
           continue;
         }
@@ -251,8 +252,8 @@ TEST_F(PgTxnTest, ReadRecentSet) {
           continue;
         }
         uint64_t mask = 0;
-        for (int j = 0, count = PQntuples(res->get()); j != count; ++j) {
-          mask |= 1ULL << (ASSERT_RESULT(GetValue<int32_t>(res->get(), j, 0)) - read_min);
+        for (const auto& value : *values_res) {
+          mask |= 1ULL << (value - read_min);
         }
         std::lock_guard lock(reads_mutex);
         Read new_read{read_min, mask};

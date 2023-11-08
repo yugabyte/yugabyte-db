@@ -97,16 +97,13 @@ class PgCatalogVersionTest : public LibPqTestBase {
 
   // Return a MasterCatalogVersionMap by making a query of the pg_yb_catalog_version table.
   static Result<MasterCatalogVersionMap> GetMasterCatalogVersionMap(PGConn* conn) {
-    auto res = VERIFY_RESULT(conn->Fetch("SELECT * FROM pg_yb_catalog_version"));
-    const auto lines = PQntuples(res.get());
-    SCHECK_GT(lines, 0, IllegalState, "empty version map");
-    SCHECK_EQ(PQnfields(res.get()), 3, IllegalState, "Unexpected column count");
+    const auto rows = VERIFY_RESULT((
+        conn->FetchRows<pgwrapper::PGOid, pgwrapper::PGUint64, pgwrapper::PGUint64>(
+          "SELECT * FROM pg_yb_catalog_version")));
+    SCHECK(!rows.empty(), IllegalState, "empty version map");
     MasterCatalogVersionMap result;
     std::string output;
-    for (int i = 0; i != lines; ++i) {
-      const auto db_oid = VERIFY_RESULT(GetValue<PGOid>(res.get(), i, 0));
-      const auto current_version = VERIFY_RESULT(GetValue<PGUint64>(res.get(), i, 1));
-      const auto last_breaking_version = VERIFY_RESULT(GetValue<PGUint64>(res.get(), i, 2));
+    for (const auto& [db_oid, current_version, last_breaking_version] : rows) {
       result.emplace(db_oid, CatalogVersion{current_version, last_breaking_version});
       if (!output.empty()) {
         output += ", ";
@@ -254,22 +251,18 @@ class PgCatalogVersionTest : public LibPqTestBase {
   // * when single_row is false, return true if pg_yb_catalog_version has the same set
   //   of db_oids as the set of oids of pg_database.
   Result<bool> VerifyCatalogVersionTableDbOids(PGConn* conn, bool single_row) {
-    auto res = VERIFY_RESULT(conn->Fetch("SELECT db_oid FROM pg_yb_catalog_version"));
-    auto lines = PQntuples(res.get());
+    auto values = VERIFY_RESULT(conn->FetchRows<PGOid>("SELECT db_oid FROM pg_yb_catalog_version"));
     std::unordered_set<PgOid> pg_yb_catalog_version_db_oids;
-    for (int i = 0; i != lines; ++i) {
-      const auto oid = VERIFY_RESULT(GetValue<PGOid>(res.get(), i, 0));
+    for (const auto& oid : values) {
       pg_yb_catalog_version_db_oids.insert(oid);
     }
     if (single_row) {
       return pg_yb_catalog_version_db_oids.size() == 1 &&
              *pg_yb_catalog_version_db_oids.begin() == 1;
     }
-    res = VERIFY_RESULT(conn->Fetch("SELECT oid FROM pg_database"));
-    lines = PQntuples(res.get());
+    values = VERIFY_RESULT(conn->FetchRows<PGOid>("SELECT oid FROM pg_database"));
     std::unordered_set<PgOid> pg_database_oids;
-    for (int i = 0; i != lines; ++i) {
-      const auto oid = VERIFY_RESULT(GetValue<PGOid>(res.get(), i, 0));
+    for (const auto& oid : values) {
       pg_database_oids.insert(oid);
     }
     return pg_database_oids == pg_yb_catalog_version_db_oids;
@@ -1082,14 +1075,13 @@ TEST_F(PgCatalogVersionTest, NonBreakingDDLMode) {
   ASSERT_OK(conn1.Execute("CREATE TABLE t1(a int)"));
   ASSERT_OK(conn1.Execute("CREATE TABLE t2(a int)"));
   ASSERT_OK(conn1.Execute("BEGIN"));
-  auto res = ASSERT_RESULT(conn1.Fetch("SELECT * FROM t1"));
-  ASSERT_EQ(0, PQntuples(res.get()));
+  auto values = ASSERT_RESULT(conn1.FetchRows<int32_t>("SELECT * FROM t1"));
+  ASSERT_TRUE(values.empty());
   ASSERT_OK(conn2.Execute("REVOKE ALL ON t2 FROM public"));
   // Wait for the new catalog version to propagate to TServers.
   std::this_thread::sleep_for(2s);
   // REVOKE is a breaking catalog change, the running transaction on conn1 is aborted.
-  auto result = conn1.Fetch("SELECT * FROM t1");
-  auto status = ResultToStatus(result);
+  auto status = ResultToStatus(conn1.Fetch("SELECT * FROM t1"));
   ASSERT_TRUE(status.IsNetworkError()) << status;
   const string msg = "catalog snapshot used for this transaction has been invalidated";
   ASSERT_STR_CONTAINS(status.ToString(), msg);
@@ -1098,8 +1090,8 @@ TEST_F(PgCatalogVersionTest, NonBreakingDDLMode) {
   // Let's start over, but this time use yb_make_next_ddl_statement_nonbreaking to suppress the
   // breaking catalog change and the SELECT command on conn1 runs successfully.
   ASSERT_OK(conn1.Execute("BEGIN"));
-  res = ASSERT_RESULT(conn1.Fetch("SELECT * FROM t1"));
-  ASSERT_EQ(0, PQntuples(res.get()));
+  values = ASSERT_RESULT(conn1.FetchRows<int32_t>("SELECT * FROM t1"));
+  ASSERT_TRUE(values.empty());
 
   // Do grant first otherwise the next two REVOKE statements will be no-ops.
   ASSERT_OK(conn2.Execute("GRANT ALL ON t2 TO public"));
@@ -1108,16 +1100,15 @@ TEST_F(PgCatalogVersionTest, NonBreakingDDLMode) {
   ASSERT_OK(conn2.Execute("REVOKE SELECT ON t2 FROM public"));
   // Wait for the new catalog version to propagate to TServers.
   std::this_thread::sleep_for(2s);
-  res = ASSERT_RESULT(conn1.Fetch("SELECT * FROM t1"));
-  ASSERT_EQ(0, PQntuples(res.get()));
+  values = ASSERT_RESULT(conn1.FetchRows<int32_t>("SELECT * FROM t1"));
+  ASSERT_TRUE(values.empty());
 
   // Verify that the session variable yb_make_next_ddl_statement_nonbreaking auto-resets to false.
   // As a result, the running transaction on conn1 is aborted.
   ASSERT_OK(conn2.Execute("REVOKE INSERT ON t2 FROM public"));
   // Wait for the new catalog version to propagate to TServers.
   std::this_thread::sleep_for(2s);
-  result = conn1.Fetch("SELECT * FROM t1");
-  status = ResultToStatus(result);
+  status = ResultToStatus(conn1.Fetch("SELECT * FROM t1"));
   ASSERT_TRUE(status.IsNetworkError()) << status;
   ASSERT_STR_CONTAINS(status.ToString(), msg);
   ASSERT_OK(conn1.Execute("ABORT"));

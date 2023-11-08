@@ -421,10 +421,9 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStreamWithReplicationSlot(
       replication_slot_name));
 
   // Fetch the stream_id of the replication slot.
-  auto result = VERIFY_RESULT(conn.FetchFormat(
+  auto stream_id = VERIFY_RESULT(conn.FetchRow<std::string>(Format(
       "select yb_stream_id from pg_replication_slots WHERE slot_name = '$0'",
-      replication_slot_name));
-  auto stream_id = VERIFY_RESULT(pgwrapper::GetValue<std::string>(result.get(), 0, 0));
+      replication_slot_name)));
   return xrepl::StreamId::FromString(stream_id);
 }
 

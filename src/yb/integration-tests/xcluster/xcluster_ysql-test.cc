@@ -314,10 +314,9 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
       auto consumer_conn =
           ASSERT_RESULT(consumer_cluster_.ConnectToDB(consumer_table.namespace_name()));
       auto now = CoarseMonoClock::Now();
+      auto query = Format("SELECT COUNT(*) FROM $0", GetCompleteTableName(consumer_table));
       while (CoarseMonoClock::Now() < now + duration) {
-        auto result = ASSERT_RESULT(consumer_conn.FetchFormat(
-            "select count(*) from $0", GetCompleteTableName(consumer_table)));
-        auto count = ASSERT_RESULT(GetValue<int64_t>(result.get(), 0, 0));
+        auto count = ASSERT_RESULT(consumer_conn.FetchRow<pgwrapper::PGUint64>(query));
         ASSERT_EQ(count % transaction_size, 0);
       }
     });
@@ -344,10 +343,9 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
     test_thread_holder->AddThread([this, &consumer_table, end_time]() {
       auto consumer_conn =
           ASSERT_RESULT(consumer_cluster_.ConnectToDB(consumer_table.namespace_name()));
+      auto query = Format("SELECT COUNT(*) FROM $0", GetCompleteTableName(consumer_table));
       while (CoarseMonoClock::Now() < end_time) {
-        auto result = ASSERT_RESULT(consumer_conn.FetchFormat(
-            "select count(*) from $0", GetCompleteTableName(consumer_table)));
-        auto count = ASSERT_RESULT(GetValue<int64_t>(result.get(), 0, 0));
+        auto count = ASSERT_RESULT(consumer_conn.FetchRow<pgwrapper::PGUint64>(query));
         ASSERT_EQ(count, 0);
       }
     });
@@ -669,9 +667,8 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionsWithUpdates) {
         "INSERT INTO account_balance VALUES($0, 'user$0', 1000000)", i));
   }
 
-  auto result = ASSERT_RESULT(producer_conn.Fetch("select sum(salary) from account_balance"));
-  ASSERT_EQ(PQntuples(result.get()), 1);
-  auto total_salary = ASSERT_RESULT(GetValue<int64_t>(result.get(), 0, 0));
+  auto total_salary = ASSERT_RESULT(producer_conn.FetchRow<int64_t>(
+      "SELECT SUM(salary) FROM account_balance"));
 
   // Transactional workload
   auto test_thread_holder = TestThreadHolder();
@@ -694,12 +691,10 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionsWithUpdates) {
   // Read validate workload.
   test_thread_holder.AddThread([this, namespace_name, total_salary]() {
     auto now = CoarseMonoClock::Now();
+    auto consumer_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
     while (CoarseMonoClock::Now() < now + MonoDelta::FromSeconds(30)) {
-      auto consumer_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
-      auto result =
-          ASSERT_RESULT(consumer_conn.Fetch("select sum(salary) from account_balance"));
-      ASSERT_EQ(PQntuples(result.get()), 1);
-      Result<int64_t> current_salary_result = GetValue<int64_t>(result.get(), 0, 0);
+      auto current_salary_result = consumer_conn.FetchRow<int64_t>(
+          "select sum(salary) from account_balance");
       if (!current_salary_result.ok()) {
         continue;
       }
@@ -1538,9 +1533,7 @@ TEST_F(XClusterYsqlTest, ReplicationWithCreateIndexDDL) {
   const std::string query =
       Format("SELECT * FROM $0 ORDER BY $1", producer_table_->name().table_name(), new_column);
   ASSERT_TRUE(ASSERT_RESULT(producer_conn.HasIndexScan(query)));
-  PGResultPtr res = ASSERT_RESULT(producer_conn.Fetch(query));
-  ASSERT_EQ(PQntuples(res.get()), count);
-  ASSERT_EQ(PQnfields(res.get()), 2);
+  ASSERT_OK(producer_conn.FetchMatrix(query, count, 2));
 
   // Verify that the Consumer is still getting new traffic after the index is created.
   ASSERT_OK(producer_conn.ExecuteFormat(
@@ -1555,9 +1548,7 @@ TEST_F(XClusterYsqlTest, ReplicationWithCreateIndexDDL) {
 
   // The main Table should no longer list having an index.
   ASSERT_FALSE(ASSERT_RESULT(producer_conn.HasIndexScan(query)));
-  res = ASSERT_RESULT(producer_conn.Fetch(query));
-  ASSERT_EQ(PQntuples(res.get()), count);
-  ASSERT_EQ(PQnfields(res.get()), 2);
+  ASSERT_OK(producer_conn.FetchMatrix(query, count, 2));
 
   // Verify that we're still getting traffic to the Consumer after the index drop.
   ASSERT_OK(producer_conn.ExecuteFormat(

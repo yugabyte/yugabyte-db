@@ -1668,9 +1668,9 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, PgsqlDropDefaultWithPackedRow,
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN v2 TEXT DEFAULT 'v2_default'"));
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (100500)"));
-  auto value = ASSERT_RESULT(
-      conn.FetchRowAsString("SELECT value, v2 FROM test_table WHERE key=100500"));
-  ASSERT_EQ(value, "default_value, v2_default");
+  auto row = ASSERT_RESULT((conn.FetchRow<std::string, std::string>(
+      "SELECT value, v2 FROM test_table WHERE key=100500")));
+  ASSERT_EQ(row, (decltype(row){"default_value", "v2_default"}));
 }
 
 // Check that we restore cleaned metadata correctly.
@@ -1700,8 +1700,9 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, PgsqlAddColumnCompactWithPackedRow,
 
   ASSERT_OK(CompactTablets(cluster_.get(), 300s * kTimeMultiplier));
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
-  auto res = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM test_table ORDER BY key"));
-  ASSERT_EQ(res, "1, one, NULL; 2, two, dva");
+  auto rows = ASSERT_RESULT((conn.FetchRows<int32_t, std::string, std::optional<std::string>>(
+      "SELECT * FROM test_table ORDER BY key")));
+  ASSERT_EQ(rows, (decltype(rows){{1, "one", std::nullopt}, {2, "two", "dva"}}));
 }
 
 TEST_F_EX(YbAdminSnapshotScheduleTest, PgsqlSingleColumnUpdate,
@@ -1718,9 +1719,9 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, PgsqlSingleColumnUpdate,
   // Now get next val in new connection.
   {
     auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
-    auto result = ASSERT_RESULT(conn.FetchRowAsString("SELECT nextval('seq_1')"));
+    auto result = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT nextval('seq_1')"));
     LOG(INFO) << "First value of sequence " << result;
-    ASSERT_EQ(result, "10");
+    ASSERT_EQ(result, 10);
   }
 
   // Restore to noted time.
@@ -1729,9 +1730,9 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, PgsqlSingleColumnUpdate,
   // Open a new connection and get the next value.
   {
     auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
-    auto result = ASSERT_RESULT(conn.FetchRowAsString("SELECT nextval('seq_1')"));
+    auto result = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT nextval('seq_1')"));
     LOG(INFO) << "First value of sequence post restore " << result;
-    ASSERT_EQ(result, "510");
+    ASSERT_EQ(result, 510);
   }
 }
 
@@ -1747,9 +1748,9 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, PgsqlTestMonotonicSequence,
   // Once I read in the first value, last_values should change to 100
   // (since caches are of size 100). Read 50 values.
   for (int i = 1; i <= 50; i++) {
-    auto result = ASSERT_RESULT(conn.FetchRowAsString("SELECT nextval('seq_1')"));
+    auto result = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT nextval('seq_1')"));
     LOG(INFO) << "Iteration: " << i << ", seq value: " << result;
-    ASSERT_EQ(stoi(result), i);
+    ASSERT_EQ(result, i);
   }
 
   // Restore to time noted above.
@@ -1761,9 +1762,9 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, PgsqlTestMonotonicSequence,
   // Subsequent values should not start from 1 but instead be 101,102...150
   // since last_value was not reverted.
   for (int i = 1; i <= 150; i++) {
-    auto result = ASSERT_RESULT(conn.FetchRowAsString("SELECT nextval('seq_1')"));
+    auto result = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT nextval('seq_1')"));
     LOG(INFO) << "Iteration: " << i << ", seq value: " << result;
-    ASSERT_EQ(stoi(result), i+50);
+    ASSERT_EQ(result, i + 50);
   }
 }
 
@@ -2536,9 +2537,9 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, PgsqlTestMonotonicSequenceNoPacked,
   // Once I read in the first value, last_values should change to 199
   // (since caches are of size 100). Read 50 values.
   for (int i = 1; i <= 99; i += 2) {
-    auto result = ASSERT_RESULT(conn.FetchRowAsString("SELECT nextval('seq_1')"));
+    auto result = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT nextval('seq_1')"));
     LOG(INFO) << "Iteration: " << i << ", seq value: " << result;
-    ASSERT_EQ(stoi(result), i);
+    ASSERT_EQ(result, i);
   }
 
   // Restore to time noted above.
@@ -2550,9 +2551,9 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, PgsqlTestMonotonicSequenceNoPacked,
   // Subsequent values should not start from 1 but instead be 201,203...
   // since last_value was not reverted.
   for (int i = 101; i <= 399; i += 2) {
-    auto result = ASSERT_RESULT(conn.FetchRowAsString("SELECT nextval('seq_1')"));
+    auto result = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT nextval('seq_1')"));
     LOG(INFO) << "Iteration: " << i << ", seq value: " << result;
-    ASSERT_EQ(stoi(result), i);
+    ASSERT_EQ(result, i);
   }
 }
 
@@ -2606,18 +2607,13 @@ class YbAdminSnapshotScheduleTestPerDbCatalogVersion : public YbAdminSnapshotSch
   using MasterCatalogVersionMap = std::unordered_map<Oid, CatalogVersion>;
 
   static Result<MasterCatalogVersionMap> GetMasterCatalogVersionMap(pgwrapper::PGConn* conn) {
-    auto res = VERIFY_RESULT(conn->Fetch("SELECT * FROM pg_yb_catalog_version"));
-    const auto lines = PQntuples(res.get());
-    SCHECK_GT(lines, 0, IllegalState, "empty version map");
-    SCHECK_EQ(PQnfields(res.get()), 3, IllegalState, "Unexpected column count");
+    const auto rows = VERIFY_RESULT((
+        conn->FetchRows<pgwrapper::PGOid, pgwrapper::PGUint64, pgwrapper::PGUint64>(
+          "SELECT * FROM pg_yb_catalog_version")));
+    SCHECK(!rows.empty(), IllegalState, "empty version map");
     MasterCatalogVersionMap result;
     std::string output;
-    for (int i = 0; i != lines; ++i) {
-      const auto db_oid = VERIFY_RESULT(pgwrapper::GetValue<pgwrapper::PGOid>(res.get(), i, 0));
-      const auto current_version = VERIFY_RESULT(
-          pgwrapper::GetValue<pgwrapper::PGUint64>(res.get(), i, 1));
-      const auto last_breaking_version = VERIFY_RESULT(
-          pgwrapper::GetValue<pgwrapper::PGUint64>(res.get(), i, 2));
+    for (const auto& [db_oid, current_version, last_breaking_version] : rows) {
       result.emplace(db_oid, CatalogVersion{current_version, last_breaking_version});
       if (!output.empty()) {
         output += ", ";
@@ -4237,15 +4233,15 @@ class YbAdminSnapshotScheduleAutoSplitting : public YbAdminSnapshotScheduleTestW
   Result<bool> VerifyData(pgwrapper::PGConn* conn, size_t prev_tablets_count) {
     auto select_query = Format(
         "SELECT count(*) FROM $0", client::kTableName.table_name());
-    auto rows = VERIFY_RESULT(conn->FetchRowAsString(select_query));
+    auto rows = VERIFY_RESULT(conn->FetchRow<pgwrapper::PGUint64>(select_query));
     LOG(INFO) << "Found #rows " << rows;
-    if(rows != "1") {
+    if (rows != 1) {
       return false;
     }
 
     select_query = Format(
         "SELECT value FROM $0 WHERE key=0", client::kTableName.table_name());
-    auto val = VERIFY_RESULT(conn->FetchValue<std::string>(select_query));
+    auto val = VERIFY_RESULT(conn->FetchRow<std::string>(select_query));
     LOG(INFO) << "key = 0, Value = " << val;
     if(val != "after") {
       return false;
@@ -4380,9 +4376,9 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, CacheRefreshOnNewConnection,
   // Read data so that cache gets updated to latest partitions.
   auto select_query = Format(
        "SELECT count(*) FROM $0", client::kTableName.table_name());
-  auto rows = ASSERT_RESULT(conn.FetchRowAsString(select_query));
+  auto rows = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGUint64>(select_query));
   LOG(INFO) << "Found #rows " << rows;
-  ASSERT_EQ(rows, "5001");
+  ASSERT_EQ(rows, 5001);
 
   // Perform a restoration.
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
@@ -4437,9 +4433,9 @@ class YbAdminSnapshotScheduleTestWithYsqlAndManualSplitting
     // Read data so that partitions get updated.
     auto select_query = Format(
         "SELECT count(*) FROM $0", client::kTableName.table_name());
-    auto rows = ASSERT_RESULT(conn.FetchRowAsString(select_query));
+    auto rows = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGUint64>(select_query));
     LOG(INFO) << "Before split found #rows " << rows;
-    ASSERT_EQ(rows, "5000");
+    ASSERT_EQ(rows, 5000);
 
     // Trigger a manual split.
     ASSERT_OK(test_admin_client_->SplitTabletAndWait(
@@ -4454,9 +4450,9 @@ class YbAdminSnapshotScheduleTestWithYsqlAndManualSplitting
     } else {
       select_query = Format(
           "SELECT count(*) FROM $0", client::kTableName.table_name());
-      rows = ASSERT_RESULT(conn.FetchRowAsString(select_query));
+      rows = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGUint64>(select_query));
       LOG(INFO) << "After split found #rows " << rows;
-      ASSERT_EQ(rows, "5000");
+      ASSERT_EQ(rows, 5000);
     }
 
     if (perform_restore) {
@@ -4473,9 +4469,9 @@ class YbAdminSnapshotScheduleTestWithYsqlAndManualSplitting
       } else {
         select_query = Format(
             "SELECT count(*) FROM $0", client::kTableName.table_name());
-        rows = ASSERT_RESULT(new_conn.FetchRowAsString(select_query));
+        rows = ASSERT_RESULT(new_conn.FetchRow<pgwrapper::PGUint64>(select_query));
         LOG(INFO) << "After restore found #rows " << rows;
-        ASSERT_EQ(rows, "0");
+        ASSERT_EQ(rows, 0);
       }
     }
   }
