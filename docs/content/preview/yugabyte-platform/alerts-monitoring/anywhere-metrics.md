@@ -20,6 +20,12 @@ You access metrics by navigating to **Universes > Universe-Name > Metrics**, as 
 
 ![Metrics Page](/images/yp/metrics_main.png)
 
+To zoom in to view granular data points, select a portion of the time range along the y-axis of any chart.
+
+![Fine grained metrics](/images/yp/fine-grain-metrics.png)
+
+Click the refresh button to zoom out and restore the original metric graph.
+
 ## Filter metrics
 
 You can display metrics based on different criteria:
@@ -204,12 +210,6 @@ DocDB uses a highly customized version of [RocksDB](http://rocksdb.org/), a log-
 | Compaction num files        | The average number of files in any single compaction.        | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![Compaction num files](/images/yp/metrics74.png)  |
 | Transaction                 | Expired Transactions: the number of expired distributed transactions.<br>Transaction Conflicts: the number of conflicts detected among uncommitted distributed transactions.<br><br>This is related to the process that resolves conflicts for write transactions. This process reads all intents that could conflict and tries to abort transactions with a lower priority. If a write transaction conflicts with a higher-priority transaction, then an error is returned and this metric is iterated. | Alerting is not required.                                    | ![Transaction](/images/yp/metrics75.png)  |
 | Transaction pool cache hits | Percentage of transaction pool requests fulfilled by the transaction pool cache. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![Transaction pool cache hits](/images/yp/metrics105.png) |
-
-## View fine grained metrics
-
-YugabyteDB Anywhere allows you to view granular data points in metric charts by selecting a portion of time range along the y-axis of the graph. To do so, navigate to **Universes > Universe-Name > Metrics** and select a portion of any graph to view the granular results as per the following illustration:
-
-![Fine grained metrics](/images/yb-platform/fine-grain-metrics.png)
 
 <!--
 
