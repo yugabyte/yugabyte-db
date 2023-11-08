@@ -55,7 +55,7 @@ public class SetRestoreTime extends XClusterConfigTaskBase {
 
     // Update the DB.
     Date now = new Date();
-    xClusterConfig.updateRestoreTimeForTables(taskParams().tableIds, now, taskUUID);
+    xClusterConfig.updateRestoreTimeForTables(taskParams().tableIds, now, getTaskUUID());
     log.info("Restore time for tables {} set to {}", taskParams().tableIds, now);
 
     log.info("Completed {}", getName());

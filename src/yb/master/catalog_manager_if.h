@@ -58,6 +58,7 @@ YB_DEFINE_ENUM(GetTablesMode, (kAll) // All tables
 
 YB_STRONGLY_TYPED_BOOL(HideOnly);
 YB_STRONGLY_TYPED_BOOL(KeepData);
+YB_STRONGLY_TYPED_BOOL(PrimaryTablesOnly);
 
 class CatalogManagerIf {
  public:
@@ -97,7 +98,11 @@ class CatalogManagerIf {
       TabletInfo* tablet, uint32_t version, const LeaderEpoch& epoch,
       const scoped_refptr<TableInfo>& table = nullptr) = 0;
 
-  virtual std::vector<TableInfoPtr> GetTables(GetTablesMode mode) = 0;
+  // A primary table is a non-colocated table or the dummy parent table created for a colocated
+  // tablet. If you are calling GetTables to iterate over all tablets then PrimaryTablesOnly should
+  // be kTrue to avoid unnecessarily iterating over colocated tables.
+  virtual std::vector<TableInfoPtr> GetTables(
+      GetTablesMode mode, PrimaryTablesOnly = PrimaryTablesOnly::kFalse) = 0;
 
   virtual void GetAllNamespaces(
       std::vector<scoped_refptr<NamespaceInfo>>* namespaces,
@@ -147,6 +152,8 @@ class CatalogManagerIf {
       const TablespaceId& tablespace_id) = 0;
 
   virtual Result<ReplicationInfoPB> GetTableReplicationInfo(const TableInfoPtr& table) = 0;
+
+  virtual Result<size_t> GetTableReplicationFactor(const TableInfoPtr& table) const = 0;
 
   virtual std::vector<std::shared_ptr<server::MonitoredTask>> GetRecentJobs() = 0;
 
@@ -278,7 +285,9 @@ class CatalogManagerIf {
 
   virtual TabletSplitManager* tablet_split_manager() = 0;
 
-  virtual XClusterManager* GetXClusterManager() = 0;
+  virtual XClusterManagerIf* GetXClusterManager() = 0;
+
+  virtual XClusterManager* GetXClusterManagerImpl() = 0;
 
   virtual std::shared_ptr<tablet::TabletPeer> tablet_peer() const = 0;
 

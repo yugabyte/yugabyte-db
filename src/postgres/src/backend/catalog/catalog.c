@@ -439,6 +439,14 @@ GetNewOid(Relation relation)
 	/* If relation doesn't have OIDs at all, caller is confused */
 	Assert(relation->rd_rel->relhasoids);
 
+	if (IsYugaByteEnabled())
+	{
+		if (relation->rd_rel->relisshared)
+			YbDatabaseIdForNewObjectId = TemplateDbOid;
+		else
+			YbDatabaseIdForNewObjectId = MyDatabaseId;
+	}
+
 	/* In bootstrap mode, we don't have any indexes to use */
 	if (IsBootstrapProcessingMode())
 		return GetNewObjectId();
@@ -497,6 +505,14 @@ GetNewOidWithIndex(Relation relation, Oid indexId, AttrNumber oidcolumn)
 	 */
 	Assert(!IsBinaryUpgrade || yb_binary_restore || RelationGetRelid(relation) != TypeRelationId);
 
+	if (IsYugaByteEnabled())
+	{
+		if (relation->rd_rel->relisshared)
+			YbDatabaseIdForNewObjectId = TemplateDbOid;
+		else
+			YbDatabaseIdForNewObjectId = MyDatabaseId;
+	}
+
 	/* Generate new OIDs until we find one not in the table */
 	do
 	{
@@ -546,6 +562,17 @@ GetNewRelFileNode(Oid reltablespace, Relation pg_class, char relpersistence)
 	 * are properly detected.
 	 */
 	rnode.backend = GetBackendOidFromRelPersistence(relpersistence);;
+
+	/*
+	 * All the shared relations have relfilenode value as 0, which suggests
+	 * that relfilenode is only used for non-shared relations. That's why
+	 * MyDatabaseId should be used for new relfilenode OID allocation.
+	 */
+	if (IsYugaByteEnabled())
+	{
+		Assert(!pg_class || !pg_class->rd_rel->relisshared);
+		YbDatabaseIdForNewObjectId = MyDatabaseId;
+	}
 
 	do
 	{

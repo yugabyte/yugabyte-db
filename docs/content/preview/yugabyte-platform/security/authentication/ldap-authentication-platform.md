@@ -23,6 +23,10 @@ type: docs
   </li>
 </ul>
 
+LDAP Authentication in YugabyteDB is similar to password authentication, except that it uses the LDAP protocol to verify the password. Therefore, before LDAP can be used for authentication, the user must already exist in the database and have appropriate permissions.
+
+You enable LDAP authentication in the YugabyteDB cluster by setting the LDAP configuration with the <code>[ysql_hba_conf_csv](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv)</code> flag.
+
 This section describes how to configure a YugabyteDB Anywhere universe to use an LDAP server such as Active Directory with TLS.
 
 You enable LDAP authentication in the YugabyteDB universe by setting the LDAP configuration with the <code>[--ysql_hba_conf_csv](../../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv)</code> flag.
@@ -53,7 +57,7 @@ Consider the following example:
 
 1. Configure YugabyteDB Anywhere with the `ysql_hba_conf_csv` flag, as outlined in [Bind to the LDAP server using TLS](#bind-to-the-ldap-server-using-tls).
 
-1. Create a user in the Active Directory and validate a successful search for that user, as follows:
+1. Create a user in Active Directory and validate a successful search for that user, as follows:
 
     ```sh
     ldapsearch -x -H ldaps://ldapserver.example.org -b dc=example,dc=org 'uid=adam' -D "cn=admin,dc=example,dc=org" -w adminpassword
@@ -95,7 +99,7 @@ Consider the following example:
     # numEntries: 1
     ```
 
-    If instead you see a message similar to `ldap_sasl_bind(SIMPLE): Can't contact LDAP server (-1)`, then you have a network, certificate, or binding (authentication) problem.
+    If instead you see a message similar to `ldap_sasl_bind(SIMPLE): Can't contact LDAP server (-1)`, then you have a network, certificate, or binding (authentication) problem.  See [Troubleshooting](../../troubleshoot/ldap-issues/).
 
 1. Create the user in YugabyteDB, as follows:
 
@@ -134,3 +138,4 @@ Consider the following example:
     ```output
     You are connected to database "exampledb" as user "adam" on host "localhost" at port "5433".
     ```
+

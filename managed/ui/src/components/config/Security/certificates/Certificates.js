@@ -1,4 +1,5 @@
 import { Component, Fragment } from 'react';
+import { find } from 'lodash';
 import { YBPanelItem } from '../../../panels';
 import { Row, Col, DropdownButton, MenuItem } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
@@ -16,12 +17,13 @@ import { api } from '../../../../redesign/helpers/api';
 import { AssociatedUniverse } from '../../../common/associatedUniverse/AssociatedUniverse';
 import { YBConfirmModal } from '../../../modals';
 import { ybFormatDate } from '../../../../redesign/helpers/DateUtils';
-import './certificates.scss';
 import {
   RbacValidator,
   hasNecessaryPerm
-} from '../../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../../redesign/features/rbac/UserPermPathMapping';
+} from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { Action, Resource } from '../../../../redesign/features/rbac';
+import './certificates.scss';
 
 const validationSchema = Yup.object().shape({
   username: Yup.string().required('Enter username for certificate')
@@ -175,15 +177,8 @@ class Certificates extends Component {
   formatActionButtons = (cell, row) => {
     const downloadEnabled =
       ['SelfSigned', 'HashicorpVault'].includes(row.type) ||
-      !hasNecessaryPerm({
-        ...UserPermissionMap.listEAT
-      });
-    const deleteDisabled =
-      row.inUse ||
-      !hasNecessaryPerm({
-        onResource: 'CUSTOMER_ID',
-        ...UserPermissionMap.deleteEncryptionInTransit
-      });
+      !hasNecessaryPerm(ApiPermissionMap.DOWNLOAD_CERTIFICATE);
+    const deleteDisabled = row.inUse || !hasNecessaryPerm(ApiPermissionMap.DELETE_CERTIFICATE);
     const payload = {
       name: row.name,
       uuid: row.uuid,
@@ -192,11 +187,7 @@ class Certificates extends Component {
       universeDetails: row.universeDetails
     };
     const disableCertEdit =
-      row.type !== 'HashicorpVault' ||
-      !hasNecessaryPerm({
-        onResource: 'CUSTOMER_ID',
-        ...UserPermissionMap.editEncryptionInTransit
-      });
+      row.type !== 'HashicorpVault' || !hasNecessaryPerm(ApiPermissionMap.MODIFY_CERTIFICATE);
     // TODO: Replace dropdown option + modal with a side panel
     return (
       <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
@@ -213,10 +204,7 @@ class Certificates extends Component {
           <i className="fa fa-info-circle"></i> Details
         </MenuItem>
         <RbacValidator
-          accessRequiredOn={{
-            onResource: 'CUSTOMER_ID',
-            ...UserPermissionMap.editEncryptionInTransit
-          }}
+          accessRequiredOn={ApiPermissionMap.MODIFY_CERTIFICATE}
           isControl
           overrideStyle={{ display: 'block' }}
         >
@@ -235,10 +223,7 @@ class Certificates extends Component {
           </MenuItem>
         </RbacValidator>
         <RbacValidator
-          accessRequiredOn={{
-            onResource: 'CUSTOMER_ID',
-            ...UserPermissionMap.editEncryptionInTransit
-          }}
+          accessRequiredOn={ApiPermissionMap.DOWNLOAD_CERTIFICATE}
           isControl
           overrideStyle={{ display: 'block' }}
         >
@@ -256,10 +241,7 @@ class Certificates extends Component {
           </MenuItem>
         </RbacValidator>
         <RbacValidator
-          accessRequiredOn={{
-            onResource: 'CUSTOMER_ID',
-            ...UserPermissionMap.editEncryptionInTransit
-          }}
+          accessRequiredOn={ApiPermissionMap.DOWNLOAD_CERTIFICATE}
           isControl
           overrideStyle={{ display: 'block' }}
         >
@@ -274,10 +256,7 @@ class Certificates extends Component {
           </MenuItem>
         </RbacValidator>
         <RbacValidator
-          accessRequiredOn={{
-            onResource: 'CUSTOMER_ID',
-            ...UserPermissionMap.deleteEncryptionInTransit
-          }}
+          accessRequiredOn={ApiPermissionMap.DELETE_CERTIFICATE}
           isControl
           overrideStyle={{ display: 'block' }}
         >
@@ -292,17 +271,26 @@ class Certificates extends Component {
             <i className="fa fa-trash"></i> Delete Certificate
           </MenuItem>
         </RbacValidator>
-        <MenuItem
-          onClick={() => {
-            this.setState({
-              associatedUniverses: [...payload?.universeDetails],
-              isVisibleModal: true
-            });
-          }}
-          data-testid="Certificates-ShowUniverses"
+        <RbacValidator
+          customValidateFunction={(userPermissions) =>
+            find(userPermissions, { resourceType: Resource.UNIVERSE, actions: Action.READ }) !==
+            undefined
+          }
+          isControl
+          overrideStyle={{ display: 'block' }}
         >
-          <i className="fa fa-eye"></i> Show Universes
-        </MenuItem>
+          <MenuItem
+            onClick={() => {
+              this.setState({
+                associatedUniverses: [...payload?.universeDetails],
+                isVisibleModal: true
+              });
+            }}
+            data-testid="Certificates-ShowUniverses"
+          >
+            <i className="fa fa-eye"></i> Show Universes
+          </MenuItem>
+        </RbacValidator>
       </DropdownButton>
     );
   };
@@ -357,11 +345,7 @@ class Certificates extends Component {
 
     return (
       <div id="page-wrapper">
-        <RbacValidator
-          accessRequiredOn={{
-            ...UserPermissionMap.listEAT
-          }}
-        >
+        <RbacValidator accessRequiredOn={ApiPermissionMap.GET_CERTIFICATES}>
           <YBPanelItem
             header={
               <Row className="header-row">
@@ -370,12 +354,7 @@ class Certificates extends Component {
                 </Col>
                 <Col xs={6} className="universe-table-header-action">
                   {isNotHidden(currentCustomer.data.features, 'universe.create') && (
-                    <RbacValidator
-                      accessRequiredOn={{
-                        ...UserPermissionMap.createEncryptionInTransit
-                      }}
-                      isControl
-                    >
+                    <RbacValidator accessRequiredOn={ApiPermissionMap.CREATE_CERTIFICATE} isControl>
                       <YBButton
                         btnClass="universe-button btn btn-lg btn-orange"
                         onClick={() => {
@@ -383,14 +362,10 @@ class Certificates extends Component {
                             showAddCertificateModal();
                           });
                         }}
-                        disabled={
-                          isDisabled(currentCustomer.data.features, 'universe.create') ||
-                          !hasNecessaryPerm({
-                            ...UserPermissionMap.createEncryptionInTransit
-                          })
-                        }
-                        btnText="Add Certificate"
+                        disabled={isDisabled(currentCustomer.data.features, 'universe.create')}
+                        btnText="Add Certificate1"
                         btnIcon="fa fa-plus"
+                        data-testid="Add-Certificate"
                       />
                     </RbacValidator>
                   )}

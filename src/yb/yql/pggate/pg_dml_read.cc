@@ -20,6 +20,8 @@
 #include <memory>
 #include <utility>
 
+#include <boost/container/small_vector.hpp>
+
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/ql_datatype.h"
 #include "yb/common/row_mark.h"
@@ -47,33 +49,20 @@
 namespace yb::pggate {
 namespace {
 
-class DocKeyBuilder {
- public:
-  Status Prepare(
-      const dockv::KeyEntryValues& hashed_components,
-      const LWQLValuePB*const* hashed_values,
-      const dockv::PartitionSchema& partition_schema) {
-    if (hashed_components.empty()) {
-      return Status::OK();
-    }
+Result<dockv::DocKey> BuildDocKey(
+    const dockv::PartitionSchema& partition_schema,
+    dockv::KeyEntryValues hashed_components,
+    const LWQLValuePB*const* hashed_values,
+    dockv::KeyEntryValues range_components = {}) {
 
-    hash_ = VERIFY_RESULT(partition_schema.PgsqlHashColumnCompoundValue(
+  if (!hashed_components.empty()) {
+    DCHECK(hashed_values);
+    auto hash = VERIFY_RESULT(partition_schema.PgsqlHashColumnCompoundValue(
         boost::make_iterator_range(hashed_values, hashed_values + hashed_components.size())));
-    hashed_components_ = &hashed_components;
-    return Status::OK();
+    return dockv::DocKey(hash, std::move(hashed_components), std::move(range_components));
   }
-
-  dockv::DocKey operator()(const std::vector<dockv::KeyEntryValue>& range_components) const {
-    if (!hashed_components_) {
-      return dockv::DocKey(range_components);
-    }
-    return dockv::DocKey(hash_, *hashed_components_, range_components);
-  }
-
- private:
-  uint16_t hash_;
-  const std::vector<dockv::KeyEntryValue>* hashed_components_ = nullptr;
-};
+  return dockv::DocKey(std::move(range_components));
+}
 
 inline void ApplyBound(
     ::yb::LWPgsqlReadRequestPB* req, const std::optional<Bound>& bound, bool is_lower) {
@@ -104,30 +93,45 @@ inline void ApplyBound(
 class InOperatorYbctidsGenerator {
  public:
   using Ybctids = std::vector<std::string>;
-  using RangeComponents = std::vector<dockv::KeyEntryValue>;
 
-  InOperatorYbctidsGenerator(
-      Ybctids* ybctids,
-      RangeComponents* range_components,
-      size_t value_placeholder_idx,
-      std::reference_wrapper<const DocKeyBuilder> builder)
-      : ybctids_(*ybctids), range_components_(*range_components),
-        value_placeholder_(range_components_[value_placeholder_idx]), builder_(builder.get()) {}
+  InOperatorYbctidsGenerator(dockv::DocKey* doc_key, size_t value_placeholder_idx, Ybctids* ybctids)
+      : doc_key_(*doc_key),
+        value_placeholder_(doc_key_.range_group()[value_placeholder_idx]),
+        ybctids_(*ybctids) {}
 
   template <class It>
   void Generate(It it, const It& end) const {
     for (; it != end; ++it) {
       value_placeholder_ = *it;
-      ybctids_.push_back(builder_(range_components_).Encode().ToStringBuffer());
+      ybctids_.push_back(doc_key_.Encode().ToStringBuffer());
     }
   }
 
  private:
-  Ybctids& ybctids_;
-  RangeComponents& range_components_;
+  dockv::DocKey& doc_key_;
   dockv::KeyEntryValue& value_placeholder_;
-  const DocKeyBuilder& builder_;
+  Ybctids& ybctids_;
 };
+
+using LWQLValuePBContainer = boost::container::small_vector<LWQLValuePB*, 16>;
+
+Result<dockv::KeyEntryValue> GetKeyValue(
+    const PgColumn& col, PgExpr* expr,
+    LWQLValuePB** ql_value_dest, std::optional<dockv::KeyEntryType> null_type = {}) {
+  if (!expr) {
+    RSTATUS_DCHECK(null_type, IllegalState, "Null expression is not expected");
+    *ql_value_dest = nullptr;
+    return dockv::KeyEntryValue(*null_type);
+  }
+  *ql_value_dest = VERIFY_RESULT(expr->Eval());
+  return dockv::KeyEntryValue::FromQLValuePB(**ql_value_dest, col.desc().sorting_type());
+}
+
+auto GetKeyValue(
+    const PgColumn& col, PgExpr* expr, std::optional<dockv::KeyEntryType> null_type = {}) {
+  LWQLValuePB* tmp = nullptr;
+  return GetKeyValue(col, expr, &tmp, null_type);
+}
 
 } // namespace
 
@@ -575,42 +579,30 @@ Status PgDmlRead::BindColumnCondIsNotNull(int attr_num) {
 }
 
 Result<dockv::DocKey> PgDmlRead::EncodeRowKeyForBound(
-    YBCPgStatement handle, size_t n_col_values, PgExpr **col_values, bool for_lower_bound) {
+    YBCPgStatement handle, size_t n_col_values, PgExpr** col_values, bool for_lower_bound) {
+  const auto num_hash_key_columns = bind_->num_hash_key_columns();
   dockv::KeyEntryValues hashed_components;
-  hashed_components.reserve(bind_->num_hash_key_columns());
+  hashed_components.reserve(num_hash_key_columns);
+  LWQLValuePBContainer hashed_values(num_hash_key_columns);
   size_t i = 0;
-  auto hashed_values = arena().AllocateArray<LWQLValuePB*>(bind_->num_hash_key_columns());
-  for (; i < bind_->num_hash_key_columns(); ++i) {
-    auto &col = bind_.columns()[i];
-
-    hashed_values[i] = VERIFY_RESULT(col_values[i]->Eval());
-    auto docdbval = dockv::KeyEntryValue::FromQLValuePB(
-        *hashed_values[i], col.desc().sorting_type());
-    hashed_components.push_back(std::move(docdbval));
+  for (; i < num_hash_key_columns; ++i) {
+    hashed_components.push_back(VERIFY_RESULT(GetKeyValue(
+        bind_.ColumnForIndex(i), col_values[i], &hashed_values[i])));
   }
-
-  DocKeyBuilder dockey_builder;
-  RETURN_NOT_OK(dockey_builder.Prepare(
-      hashed_components, hashed_values, bind_->partition_schema()));
 
   dockv::KeyEntryValues range_components;
-  n_col_values = std::max(std::min(n_col_values, bind_->num_key_columns()),
-                          bind_->num_hash_key_columns());
-  range_components.reserve(n_col_values - bind_->num_hash_key_columns());
+  n_col_values = std::max(std::min(n_col_values, bind_->num_key_columns()), num_hash_key_columns);
+  range_components.reserve(n_col_values - num_hash_key_columns);
+  const auto null_type = for_lower_bound
+      ? dockv::KeyEntryType::kLowest : dockv::KeyEntryType::kHighest;
   for (; i < n_col_values; ++i) {
-    auto& col = bind_.columns()[i];
-
-    if (col_values[i] == nullptr) {
-      range_components.emplace_back(
-          for_lower_bound ? dockv::KeyEntryType::kLowest : dockv::KeyEntryType::kHighest);
-    } else {
-      auto value = VERIFY_RESULT(col_values[i]->Eval());
-      range_components.push_back(
-          dockv::KeyEntryValue::FromQLValuePB(*value, col.desc().sorting_type()));
-    }
+    range_components.push_back(VERIFY_RESULT(GetKeyValue(
+        bind_.ColumnForIndex(i), col_values[i], null_type)));
   }
 
-  return dockey_builder(range_components);
+  return BuildDocKey(
+      bind_->partition_schema(), std::move(hashed_components), hashed_values.data(),
+      std::move(range_components));
 }
 
 Status PgDmlRead::AddRowUpperBound(YBCPgStatement handle,
@@ -707,19 +699,19 @@ Status PgDmlRead::SubstitutePrimaryBindsWithYbctids(const PgExecParameters* exec
 // Required precondition that not more than one range key component has the IN operator and all
 // other key components are set must be checked by caller code.
 Result<std::vector<std::string>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
-  auto hashed_values = arena().AllocateArray<LWQLValuePB*>(bind_->num_hash_key_columns());
-  std::vector<dockv::KeyEntryValue> hashed_components, range_components;
-  hashed_components.reserve(bind_->num_hash_key_columns());
-  range_components.reserve(bind_->num_key_columns() - bind_->num_hash_key_columns());
-  for (size_t i = 0; i < bind_->num_hash_key_columns(); ++i) {
+  auto num_hash_key_columns = bind_->num_hash_key_columns();
+  LWQLValuePBContainer hashed_values(num_hash_key_columns);
+  dockv::KeyEntryValues hashed_components;
+  hashed_components.reserve(num_hash_key_columns);
+  for (size_t i = 0; i < num_hash_key_columns; ++i) {
     auto& col = bind_.ColumnForIndex(i);
-    hashed_components.push_back(VERIFY_RESULT(col.BuildKeyColumnValue(hashed_values + i)));
+    hashed_components.push_back(VERIFY_RESULT(col.BuildKeyColumnValue(&hashed_values[i])));
   }
 
-  DocKeyBuilder dockey_builder;
-  RETURN_NOT_OK(dockey_builder.Prepare(
-      hashed_components, hashed_values, bind_->partition_schema()));
-
+  auto doc_key = VERIFY_RESULT(BuildDocKey(
+      bind_->partition_schema(), std::move(hashed_components), hashed_values.data()));
+  auto& range_components = doc_key.range_group();
+  range_components.reserve(bind_->num_key_columns() - num_hash_key_columns);
   struct InOperatorInfo {
     InOperatorInfo(const PgColumn& column_, size_t placeholder_idx_)
         : column(column_), placeholder_idx(placeholder_idx_) {}
@@ -730,7 +722,7 @@ Result<std::vector<std::string>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
 
   std::optional<InOperatorInfo> in_operator_info;
   std::vector<std::string> ybctids;
-  for (auto i = bind_->num_hash_key_columns(); i < bind_->num_key_columns(); ++i) {
+  for (auto i = num_hash_key_columns; i < bind_->num_key_columns(); ++i) {
     auto& col = bind_.ColumnForIndex(i);
     auto& expr = *col.bind_pb();
     if (IsForInOperator(expr)) {
@@ -747,8 +739,7 @@ Result<std::vector<std::string>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
     const auto& column = in_operator_info->column;
     const auto provider = column.BuildSubExprKeyColumnValueProvider();
     ybctids.reserve(provider.size());
-    InOperatorYbctidsGenerator generator(
-        &ybctids, &range_components, in_operator_info->placeholder_idx, dockey_builder);
+    InOperatorYbctidsGenerator generator(&doc_key, in_operator_info->placeholder_idx, &ybctids);
     // In some cases scan are sensitive to key values order. On DocDB side IN operator processes
     // based on column sort order and scan direction. It is necessary to preserve same order for
     // the constructed ybctids.
@@ -760,7 +751,7 @@ Result<std::vector<std::string>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
       generator.Generate(begin, end);
     }
   } else {
-    ybctids.push_back(dockey_builder(range_components).Encode().ToStringBuffer());
+    ybctids.push_back(doc_key.Encode().ToStringBuffer());
   }
   return ybctids;
 }

@@ -30,7 +30,8 @@ import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
-import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
@@ -64,7 +65,7 @@ public class CreateBackup extends UniverseTaskBase {
   private final CustomerConfigService customerConfigService;
   private final YbcManager ybcManager;
   private final StorageUtilFactory storageUtilFactory;
-  private final KubernetesOperatorStatusUpdater kubernetesStatus;
+  private final OperatorStatusUpdater kubernetesStatus;
 
   @Inject
   protected CreateBackup(
@@ -72,12 +73,12 @@ public class CreateBackup extends UniverseTaskBase {
       CustomerConfigService customerConfigService,
       YbcManager ybcManager,
       StorageUtilFactory storageUtilFactory,
-      KubernetesOperatorStatusUpdater kubernetesStatus) {
+      OperatorStatusUpdaterFactory statusUpdaterFactory) {
     super(baseTaskDependencies);
     this.customerConfigService = customerConfigService;
     this.ybcManager = ybcManager;
     this.storageUtilFactory = storageUtilFactory;
-    this.kubernetesStatus = kubernetesStatus;
+    this.kubernetesStatus = statusUpdaterFactory.create();
   }
 
   protected BackupRequestParams params() {
@@ -166,8 +167,8 @@ public class CreateBackup extends UniverseTaskBase {
         metricService.setOkStatusMetric(
             buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
       } catch (CancellationException ce) {
-        log.error("Aborting backups for task: {}", userTaskUUID);
-        Backup.fetchAllBackupsByTaskUUID(userTaskUUID)
+        log.error("Aborting backups for task: {}", getUserTaskUUID());
+        Backup.fetchAllBackupsByTaskUUID(getUserTaskUUID())
             .forEach(
                 bkp -> {
                   bkp.transitionState(BackupState.Stopped);
@@ -182,7 +183,7 @@ public class CreateBackup extends UniverseTaskBase {
     } catch (Throwable t) {
       try {
         log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
-        List<Backup> backupList = Backup.fetchAllBackupsByTaskUUID(userTaskUUID);
+        List<Backup> backupList = Backup.fetchAllBackupsByTaskUUID(getUserTaskUUID());
         handleFailedBackupAndRestore(backupList, null, isAbort, params().alterLoadBalancer);
         BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
         metricService.setFailureStatusMetric(

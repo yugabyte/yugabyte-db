@@ -801,6 +801,12 @@ Status PgApiImpl::ReserveOids(const PgOid database_oid,
   return Status::OK();
 }
 
+Status PgApiImpl::GetNewObjectId(PgOid db_oid, PgOid* new_oid) {
+  auto result = VERIFY_RESULT(pg_client_.GetNewObjectId(db_oid));
+  *new_oid = result;
+  return Status::OK();
+}
+
 Status PgApiImpl::GetCatalogMasterVersion(uint64_t *version) {
   return pg_session_->GetCatalogMasterVersion(version);
 }
@@ -2150,6 +2156,11 @@ Status PgApiImpl::ExecCreateReplicationSlot(PgStatement *handle) {
 
 Result<tserver::PgListReplicationSlotsResponsePB> PgApiImpl::ListReplicationSlots() {
   return pg_session_->ListReplicationSlots();
+}
+
+Result<tserver::PgGetReplicationSlotStatusResponsePB> PgApiImpl::GetReplicationSlotStatus(
+    const ReplicationSlotName& slot_name) {
+  return pg_session_->GetReplicationSlotStatus(slot_name);
 }
 
 Status PgApiImpl::NewDropReplicationSlot(const char *slot_name,

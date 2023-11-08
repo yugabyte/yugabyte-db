@@ -49,7 +49,7 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageVali
     CustomerConfigStorageGCSData gcsData = (CustomerConfigStorageGCSData) data;
 
     // Should not contain neither or both json creds and use GCP IAM flag.
-    if (StringUtils.isEmpty(gcsData.gcsCredentialsJson) ^ (gcsData.useGcpIam)) {
+    if (StringUtils.isBlank(gcsData.gcsCredentialsJson) ^ (gcsData.useGcpIam)) {
       SetMultimap<String, String> validationErrorsMap = HashMultimap.create();
       validationErrorsMap.put(
           CustomerConfigConsts.USE_GCP_IAM_FIELDNAME,

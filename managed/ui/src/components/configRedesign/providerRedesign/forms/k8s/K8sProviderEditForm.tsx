@@ -72,6 +72,8 @@ import {
   K8sRegionMutation,
   YBProviderMutation
 } from '../../types';
+import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 interface K8sProviderEditFormProps {
   editProvider: EditProvider;
@@ -364,15 +366,20 @@ export const K8sProviderEditForm = ({
               heading="Regions"
               headerAccessories={
                 regions.length > 0 ? (
-                  <YBButton
-                    btnIcon="fa fa-plus"
-                    btnText="Add Region"
-                    btnClass="btn btn-default"
-                    btnType="button"
-                    onClick={showAddRegionFormModal}
-                    disabled={isFormDisabled}
-                    data-testid={`${FORM_NAME}-AddRegionButton`}
-                  />
+                  <RbacValidator
+                    accessRequiredOn={ApiPermissionMap.MODIFY_REGION_BY_PROVIDER}
+                    isControl
+                  >
+                    <YBButton
+                      btnIcon="fa fa-plus"
+                      btnText="Add Region"
+                      btnClass="btn btn-default"
+                      btnType="button"
+                      onClick={showAddRegionFormModal}
+                      disabled={isFormDisabled}
+                      data-testid={`${FORM_NAME}-AddRegionButton`}
+                    />
+                  </RbacValidator>
                 ) : null
               }
             >
@@ -543,21 +550,21 @@ const constructProviderPayload = async (
                 cloudInfo: {
                   [ProviderCode.KUBERNETES]: {
                     ...(!existingZone?.details?.cloudInfo.kubernetes.kubeConfig ||
-                    azFormValues.editKubeConfigContent
+                      azFormValues.editKubeConfigContent
                       ? {
-                          ...(azFormValues.kubeConfigContent && {
-                            kubeConfigContent:
-                              (await readFileAsText(azFormValues.kubeConfigContent)) ?? '',
-                            ...(azFormValues.kubeConfigContent.name && {
-                              kubeConfigName: azFormValues.kubeConfigContent.name
-                            })
+                        ...(azFormValues.kubeConfigContent && {
+                          kubeConfigContent:
+                            (await readFileAsText(azFormValues.kubeConfigContent)) ?? '',
+                          ...(azFormValues.kubeConfigContent.name && {
+                            kubeConfigName: azFormValues.kubeConfigContent.name
                           })
-                        }
+                        })
+                      }
                       : {
-                          ...(existingZone?.details.cloudInfo.kubernetes.kubeConfig && {
-                            kubeConfig: existingZone?.details.cloudInfo.kubernetes.kubeConfig
-                          })
-                        }),
+                        ...(existingZone?.details.cloudInfo.kubernetes.kubeConfig && {
+                          kubeConfig: existingZone?.details.cloudInfo.kubernetes.kubeConfig
+                        })
+                      }),
                     ...(azFormValues.kubeDomain && { kubeDomain: azFormValues.kubeDomain }),
                     ...(azFormValues.kubeNamespace && {
                       kubeNamespace: azFormValues.kubeNamespace
@@ -619,39 +626,39 @@ const constructProviderPayload = async (
         [ProviderCode.KUBERNETES]: {
           ...(formValues.editKubeConfigContent && formValues.kubeConfigContent
             ? {
-                kubeConfigContent: kubeConfigContent,
-                ...(formValues.kubeConfigContent.name && {
-                  kubeConfigName: formValues.kubeConfigContent.name
-                })
-              }
+              kubeConfigContent: kubeConfigContent,
+              ...(formValues.kubeConfigContent.name && {
+                kubeConfigName: formValues.kubeConfigContent.name
+              })
+            }
             : {
-                ...(providerConfig?.details.cloudInfo.kubernetes.kubeConfig && {
-                  kubeConfig: providerConfig?.details.cloudInfo.kubernetes.kubeConfig
-                })
-              }),
+              ...(providerConfig?.details.cloudInfo.kubernetes.kubeConfig && {
+                kubeConfig: providerConfig?.details.cloudInfo.kubernetes.kubeConfig
+              })
+            }),
           kubernetesImageRegistry: formValues.kubernetesImageRegistry,
           kubernetesProvider: formValues.kubernetesProvider.value,
           ...(formValues.editPullSecretContent && formValues.kubernetesPullSecretContent
             ? {
-                kubernetesPullSecretContent: kubernetesPullSecretContent,
-                ...(formValues.kubernetesPullSecretContent.name && {
-                  kubernetesPullSecretName: formValues.kubernetesPullSecretContent.name
-                }),
-                ...(kubernetesImagePullSecretName && {
-                  kubernetesImagePullSecretName: kubernetesImagePullSecretName
-                })
-              }
-            : {
-                ...(existingKubernetesPullSecret && {
-                  kubernetesPullSecret: existingKubernetesPullSecret
-                }),
-                ...(existingKubernetesPullSecretName && {
-                  kubernetesPullSecretName: existingKubernetesPullSecretName
-                }),
-                ...(existingKubernetesImagePullSecretName && {
-                  kubernetesImagePullSecretName: existingKubernetesImagePullSecretName
-                })
+              kubernetesPullSecretContent: kubernetesPullSecretContent,
+              ...(formValues.kubernetesPullSecretContent.name && {
+                kubernetesPullSecretName: formValues.kubernetesPullSecretContent.name
+              }),
+              ...(kubernetesImagePullSecretName && {
+                kubernetesImagePullSecretName: kubernetesImagePullSecretName
               })
+            }
+            : {
+              ...(existingKubernetesPullSecret && {
+                kubernetesPullSecret: existingKubernetesPullSecret
+              }),
+              ...(existingKubernetesPullSecretName && {
+                kubernetesPullSecretName: existingKubernetesPullSecretName
+              }),
+              ...(existingKubernetesImagePullSecretName && {
+                kubernetesImagePullSecretName: existingKubernetesImagePullSecretName
+              })
+            })
         }
       }
     },

@@ -35,6 +35,7 @@ import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
@@ -819,7 +820,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       paramsCustomizer.accept(params);
       AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
       task.initialize(params);
-      task.setUserTaskUUID(userTaskUUID);
+      task.setUserTaskUUID(getUserTaskUUID());
       subTaskGroup.addSubTask(task);
     }
 
@@ -1053,6 +1054,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.nodeExporterUser = taskParams().nodeExporterUser;
     // Development testing variable.
     params.remotePackagePath = taskParams().remotePackagePath;
+    params.cgroupSize = getCGroupSize(node);
   }
 
   protected void fillCreateParamsForNode(
@@ -1222,7 +1224,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Create the Ansible task to get the server info.
       AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
       task.initialize(params);
-      task.setUserTaskUUID(userTaskUUID);
+      task.setUserTaskUUID(getUserTaskUUID());
       // Add it to the task list.
       subTaskGroup.addSubTask(task);
     }
@@ -1254,7 +1256,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Create the Ansible task to get the server info.
       AnsibleUpdateNodeInfo ansibleFindCloudHost = createTask(AnsibleUpdateNodeInfo.class);
       ansibleFindCloudHost.initialize(params);
-      ansibleFindCloudHost.setUserTaskUUID(userTaskUUID);
+      ansibleFindCloudHost.setUserTaskUUID(getUserTaskUUID());
       // Add it to the task list.
       subTaskGroup.addSubTask(ansibleFindCloudHost);
     }
@@ -1457,7 +1459,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               userIntent, node, certRotateAction, rootCARotationType, clientRootCARotationType);
       AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
       task.initialize(params);
-      task.setUserTaskUUID(userTaskUUID);
+      task.setUserTaskUUID(getUserTaskUUID());
       subTaskGroup.addSubTask(task);
     }
     subTaskGroup.setSubTaskGroupType(subTaskGroupType);
@@ -1477,7 +1479,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           createUpdateCertDirParams(userIntent, node, ServerType.CONTROLLER);
       AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
       task.initialize(params);
-      task.setUserTaskUUID(userTaskUUID);
+      task.setUserTaskUUID(getUserTaskUUID());
       subTaskGroup.addSubTask(task);
     }
     subTaskGroup.setSubTaskGroupType(subTaskGroupType);
@@ -1497,7 +1499,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           createUpdateCertDirParams(userIntent, node, serverType);
       AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
       task.initialize(params);
-      task.setUserTaskUUID(userTaskUUID);
+      task.setUserTaskUUID(getUserTaskUUID());
       subTaskGroup.addSubTask(task);
     }
     subTaskGroup.setSubTaskGroupType(subTaskGroupType);
@@ -1754,7 +1756,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
   /** Sets the task params from the DB. */
   public void fetchTaskDetailsFromDB() {
-    TaskInfo taskInfo = TaskInfo.getOrBadRequest(userTaskUUID);
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(getUserTaskUUID());
     taskParams = Json.fromJson(taskInfo.getDetails(), UniverseDefinitionTaskParams.class);
   }
 
@@ -2195,6 +2197,63 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         });
   }
 
+  protected int getCGroupSize(NodeDetails nodeDetails) {
+    Universe universe = getUniverse();
+    Cluster primary = taskParams().getPrimaryCluster();
+    if (primary == null) {
+      primary = universe.getUniverseDetails().getPrimaryCluster();
+    }
+    Cluster curCluster = taskParams().getClusterByUuid(nodeDetails.placementUuid);
+    if (curCluster == null) {
+      curCluster = universe.getUniverseDetails().getClusterByUuid(nodeDetails.placementUuid);
+    }
+    return getCGroupSize(confGetter, universe, primary, curCluster, nodeDetails);
+  }
+
+  public static int getCGroupSize(
+      RuntimeConfGetter confGetter,
+      Universe universe,
+      Cluster primaryCluster,
+      Cluster currentCluster,
+      NodeDetails nodeDetails) {
+
+    Integer primarySizeFromIntent = primaryCluster.userIntent.getCGroupSize(nodeDetails.azUuid);
+    Integer sizeFromIntent = currentCluster.userIntent.getCGroupSize(nodeDetails.azUuid);
+
+    if (sizeFromIntent != null || primarySizeFromIntent != null) {
+      // Absence of value (or -1) for read replica means to use value from primary cluster.
+      if (currentCluster.clusterType == UniverseDefinitionTaskParams.ClusterType.ASYNC
+          && (sizeFromIntent == null || sizeFromIntent < 0)) {
+        if (primarySizeFromIntent == null) {
+          log.error(
+              "Incorrect state for cgroup: null for primary but {} for replica", sizeFromIntent);
+          return getCGroupSizeFromConfig(confGetter, universe, currentCluster.clusterType);
+        }
+        return primarySizeFromIntent;
+      }
+      return sizeFromIntent;
+    }
+    return getCGroupSizeFromConfig(confGetter, universe, currentCluster.clusterType);
+  }
+
+  private static int getCGroupSizeFromConfig(
+      RuntimeConfGetter confGetter,
+      Universe universe,
+      UniverseDefinitionTaskParams.ClusterType clusterType) {
+    log.debug("Falling back to runtime config for cgroup size");
+    Integer postgresMaxMemMb =
+        confGetter.getConfForScope(universe, UniverseConfKeys.dbMemPostgresMaxMemMb);
+
+    // For read replica clusters, use the read replica value if it is >= 0. -1 means to follow
+    // what the primary cluster has set.
+    Integer rrMaxMemMb =
+        confGetter.getConfForScope(universe, UniverseConfKeys.dbMemPostgresReadReplicaMaxMemMb);
+    if (clusterType == UniverseDefinitionTaskParams.ClusterType.ASYNC && rrMaxMemMb >= 0) {
+      postgresMaxMemMb = rrMaxMemMb;
+    }
+    return postgresMaxMemMb;
+  }
+
   /**
    * Creates a task to delete a read only cluster info from the universe and adds the task to the
    * task queue.
@@ -2319,7 +2378,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
     AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
     task.initialize(params);
-    task.setUserTaskUUID(userTaskUUID);
+    task.setUserTaskUUID(getUserTaskUUID());
     return task;
   }
 
@@ -2393,7 +2452,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.clusters = Collections.singletonList(cluster);
     UpdateUniverseIntent task = createTask(UpdateUniverseIntent.class);
     task.initialize(params);
-    task.setUserTaskUUID(userTaskUUID);
+    task.setUserTaskUUID(getUserTaskUUID());
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
@@ -2442,7 +2501,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
     UpdateNodeDetails updateNodeTask = createTask(UpdateNodeDetails.class);
     updateNodeTask.initialize(updateNodeDetailsParams);
-    updateNodeTask.setUserTaskUUID(userTaskUUID);
+    updateNodeTask.setUserTaskUUID(getUserTaskUUID());
     subTaskGroup.addSubTask(updateNodeTask);
 
     getRunnableTask().addSubTaskGroup(subTaskGroup);

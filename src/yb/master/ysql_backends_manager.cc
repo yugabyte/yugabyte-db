@@ -131,7 +131,7 @@ Status YsqlBackendsManager::WaitForYsqlBackendsCatalogVersion(
     Status s;
     // TODO(jason): using the gflag to determine per-db mode may not work for initdb, so make sure
     // to handle that case if initdb ever goes through this codepath.
-    if (FLAGS_TEST_enable_db_catalog_version_mode) {
+    if (FLAGS_ysql_enable_db_catalog_version_mode) {
       s = master_->catalog_manager_impl()->GetYsqlDBCatalogVersion(
           db_oid, &master_version, nullptr /* last_breaking_version */);
     } else {
@@ -498,7 +498,7 @@ Status BackendsCatalogVersionJob::Launch(LeaderEpoch epoch) {
 Status BackendsCatalogVersionJob::LaunchTS(
     TabletServerId ts_uuid, int num_lagging_backends, const LeaderEpoch& epoch) {
   auto task = std::make_shared<BackendsCatalogVersionTS>(
-      shared_from_this(), ts_uuid, num_lagging_backends, epoch);
+      shared_from_this(), ts_uuid, num_lagging_backends);
   Status s = threadpool()->SubmitFunc([this, &ts_uuid, task]() {
     Status s = task->Run();
     if (!s.ok()) {
@@ -714,12 +714,10 @@ std::string BackendsCatalogVersionJob::LogPrefix() const {
 BackendsCatalogVersionTS::BackendsCatalogVersionTS(
     std::shared_ptr<BackendsCatalogVersionJob> job,
     const std::string& ts_uuid,
-    int prev_num_lagging_backends, LeaderEpoch epoch)
+    int prev_num_lagging_backends)
     : RetryingTSRpcTask(job->master(),
                         job->threadpool(),
                         std::unique_ptr<TSPicker>(new PickSpecificUUID(job->master(), ts_uuid)),
-                        nullptr /* table */,
-                        std::move(epoch),
                         nullptr /* async_task_throttler */),
       job_(job),
       prev_num_lagging_backends_(prev_num_lagging_backends) {

@@ -17,10 +17,8 @@ public class PreflightNodeCheck extends NodeTaskBase {
 
   @Inject
   protected PreflightNodeCheck(
-      BaseTaskDependencies baseTaskDependencies,
-      NodeManager nodeManager,
-      NodeConfigValidator nodeConfigValidator) {
-    super(baseTaskDependencies, nodeManager);
+      BaseTaskDependencies baseTaskDependencies, NodeConfigValidator nodeConfigValidator) {
+    super(baseTaskDependencies);
     this.nodeConfigValidator = nodeConfigValidator;
   }
 

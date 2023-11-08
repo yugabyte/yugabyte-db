@@ -110,7 +110,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.validator.routines.InetAddressValidator;
 import org.bouncycastle.asn1.x509.GeneralName;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -137,6 +136,7 @@ public class NodeManager extends DevopsBase {
   public static final Pattern YBC_PACKAGE_PATTERN = Pattern.compile(YBC_PACKAGE_REGEX);
   public static final String SPECIAL_CHARACTERS = "[^a-zA-Z0-9_-]+";
   public static final Pattern SPECIAL_CHARACTERS_PATTERN = Pattern.compile(SPECIAL_CHARACTERS);
+  public static final long PRECHECK_NODE_DETACHED_DEFAULT_TIMEOUT_SECS = 300;
 
   public static final String YUGABYTE_USER = "yugabyte";
 
@@ -909,7 +909,7 @@ public class NodeManager extends DevopsBase {
 
     boolean useHostname =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.useHostname
-            || !isIpAddress(node.cloudInfo.private_ip);
+            || !Util.isIpAddress(node.cloudInfo.private_ip);
 
     Map<String, Integer> alternateNames = new HashMap<>();
     String commonName = node.cloudInfo.private_ip;
@@ -1326,11 +1326,6 @@ public class NodeManager extends DevopsBase {
     return result;
   }
 
-  public static boolean isIpAddress(String maybeIp) {
-    InetAddressValidator ipValidator = InetAddressValidator.getInstance();
-    return ipValidator.isValidInet4Address(maybeIp) || ipValidator.isValidInet6Address(maybeIp);
-  }
-
   public enum SkipCertValidationType {
     ALL,
     HOSTNAME,
@@ -1479,6 +1474,7 @@ public class NodeManager extends DevopsBase {
             .commandArgs(commandArgs)
             .cloudArgs(cloudArgs)
             .redactedVals(redactedVals)
+            .timeoutSecs(PRECHECK_NODE_DETACHED_DEFAULT_TIMEOUT_SECS)
             .build());
   }
 
@@ -1917,7 +1913,7 @@ public class NodeManager extends DevopsBase {
           }
 
           commandArgs.add("--pg_max_mem_mb");
-          commandArgs.add(Integer.toString(getCGroupSize(confGetter, universe, nodeTaskParam)));
+          commandArgs.add(Integer.toString(taskParam.cgroupSize));
 
           if (cloudType.equals(Common.CloudType.azu)) {
             NodeDetails node = universe.getNode(taskParam.nodeName);
@@ -2139,7 +2135,7 @@ public class NodeManager extends DevopsBase {
           ChangeInstanceType.Params taskParam = (ChangeInstanceType.Params) nodeTaskParam;
           addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, false);
           commandArgs.add("--pg_max_mem_mb");
-          commandArgs.add(Integer.toString(getCGroupSize(confGetter, universe, nodeTaskParam)));
+          commandArgs.add(Integer.toString(taskParam.cgroupSize));
 
           if (taskParam.force) {
             commandArgs.add("--force");
@@ -2370,54 +2366,6 @@ public class NodeManager extends DevopsBase {
         }
       }
     }
-  }
-
-  @VisibleForTesting
-  static int getCGroupSize(
-      RuntimeConfGetter confGetter, Universe universe, NodeTaskParams taskParam) {
-    UniverseDefinitionTaskParams.Cluster cluster =
-        universe.getUniverseDetails().getClusterByUuid(taskParam.placementUuid);
-
-    Integer primarySizeFromIntent =
-        universe
-            .getUniverseDetails()
-            .getPrimaryCluster()
-            .userIntent
-            .getCGroupSize(taskParam.azUuid);
-    Integer sizeFromIntent = cluster.userIntent.getCGroupSize(taskParam.azUuid);
-
-    if (sizeFromIntent != null || primarySizeFromIntent != null) {
-      // Absence of value (or -1) for read replica means to use value from primary cluster.
-      if (cluster.clusterType == UniverseDefinitionTaskParams.ClusterType.ASYNC
-          && (sizeFromIntent == null || sizeFromIntent < 0)) {
-        if (primarySizeFromIntent == null) {
-          log.error(
-              "Incorrect state for cgroup: null for primary but {} for replica", sizeFromIntent);
-          return getCGroupSizeFromConfig(confGetter, universe, cluster.clusterType);
-        }
-        return primarySizeFromIntent;
-      }
-      return sizeFromIntent;
-    }
-    return getCGroupSizeFromConfig(confGetter, universe, cluster.clusterType);
-  }
-
-  private static int getCGroupSizeFromConfig(
-      RuntimeConfGetter confGetter,
-      Universe universe,
-      UniverseDefinitionTaskParams.ClusterType clusterType) {
-    log.debug("Falling back to runtime config for cgroup size");
-    Integer postgresMaxMemMb =
-        confGetter.getConfForScope(universe, UniverseConfKeys.dbMemPostgresMaxMemMb);
-
-    // For read replica clusters, use the read replica value if it is >= 0. -1 means to follow
-    // what the primary cluster has set.
-    Integer rrMaxMemMb =
-        confGetter.getConfForScope(universe, UniverseConfKeys.dbMemPostgresReadReplicaMaxMemMb);
-    if (clusterType == UniverseDefinitionTaskParams.ClusterType.ASYNC && rrMaxMemMb >= 0) {
-      postgresMaxMemMb = rrMaxMemMb;
-    }
-    return postgresMaxMemMb;
   }
 
   private void appendCertPathsToCheck(

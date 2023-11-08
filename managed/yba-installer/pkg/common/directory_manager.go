@@ -243,3 +243,7 @@ func GetSelfSignedCertsDir() string {
 func GetReplicatedBaseDir() string {
 	return dm.ReplicatedBaseDir()
 }
+
+func SetReplicatedBaseDir(dir string) {
+	dm.replicatedBaseDir = dir
+}

@@ -42,9 +42,6 @@
 
 using namespace std::literals;
 
-DEFINE_RUNTIME_int32(retryable_request_timeout_secs, 660,
-    "Amount of time to keep write request in index, to prevent duplicate writes.");
-
 // We use this limit to prevent request range from infinite grow, because it will block log
 // cleanup. I.e. even we have continous request range, it will be split by blocks, that could be
 // dropped independently.
@@ -55,6 +52,8 @@ DEFINE_UNKNOWN_bool(enable_check_retryable_request_timeout, true,
                     "Whether to check if retryable request exceeds the timeout.");
 
 DECLARE_uint64(max_clock_skew_usec);
+
+DECLARE_int32(retryable_request_timeout_secs);
 
 METRIC_DEFINE_gauge_int64(tablet, running_retryable_requests,
                           "Number of running retryable requests.",
@@ -247,6 +246,7 @@ std::ostream& operator<<(std::ostream& out, const ReplicateData& data) {
 
 Status RetryableRequestsManager::Init(const server::ClockPtr& clock) {
   retryable_requests_->SetServerClock(clock);
+  retryable_requests_->SetRequestTimeout(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs));
   if (!fs_manager_->Exists(dir_)) {
     LOG(INFO) << "Wal dir is not created, skip initializing RetryableRequestsManager for "
               << tablet_id_;
@@ -366,6 +366,7 @@ class RetryableRequests::Impl {
 
   void CopyFrom(const Impl& rhs) {
     log_prefix_ = rhs.log_prefix_;
+    request_timeout_secs_ = rhs.request_timeout_secs_;
     max_replicated_op_id_ = rhs.max_replicated_op_id_;
     last_flushed_op_id_ = rhs.last_flushed_op_id_;
     clock_ = rhs.clock_;
@@ -493,8 +494,7 @@ class RetryableRequests::Impl {
         FLAGS_enable_check_retryable_request_timeout &&
         server_clock_ &&
         data.write().start_time_micros() > 0) {
-      const auto retryable_request_timeout =
-          GetAtomicFlag(&FLAGS_retryable_request_timeout_secs) * 1s;
+      const auto retryable_request_timeout = request_timeout_secs_ * 1s;
       const auto max_clock_skew = FLAGS_max_clock_skew_usec * 1us;
       if (PREDICT_TRUE(retryable_request_timeout > max_clock_skew)) {
         const auto now_micros = server_clock_->Now().GetPhysicalValueMicros();
@@ -531,7 +531,7 @@ class RetryableRequests::Impl {
   OpId CleanExpiredReplicatedAndGetMinOpId() {
     OpId result = OpId::Max();
     auto now = clock_.Now();
-    auto clean_start = now - GetAtomicFlag(&FLAGS_retryable_request_timeout_secs) * 1s;
+    auto clean_start = now - request_timeout_secs_ * 1s;
     for (auto ci = clients_.begin(); ci != clients_.end();) {
       ClientRetryableRequests& client_retryable_requests = ci->second;
       auto& op_id_index = client_retryable_requests.replicated->get<OpIdIndex>();
@@ -652,6 +652,14 @@ class RetryableRequests::Impl {
 
   void SetServerClock(const server::ClockPtr& clock) {
     server_clock_ = clock;
+  }
+
+  void SetRequestTimeout(int timeout_secs) {
+    request_timeout_secs_ = timeout_secs;
+  }
+
+  int request_timeout_secs() const {
+    return request_timeout_secs_;
   }
 
   RetryableRequestsCounts Counts() {
@@ -824,6 +832,7 @@ class RetryableRequests::Impl {
   }
 
   std::string log_prefix_;
+  int request_timeout_secs_;
   OpId max_replicated_op_id_ = OpId::Min();
   OpId last_flushed_op_id_ = OpId::Min();
   std::unordered_map<ClientId, ClientRetryableRequests, ClientIdHash> clients_;
@@ -924,6 +933,14 @@ bool RetryableRequests::HasUnflushedData() const {
 
 void RetryableRequests::SetServerClock(const server::ClockPtr& clock) {
   impl_->SetServerClock(clock);
+}
+
+void RetryableRequests::SetRequestTimeout(int timeout_secs) {
+  impl_->SetRequestTimeout(timeout_secs);
+}
+
+int RetryableRequests::request_timeout_secs() {
+  return impl_->request_timeout_secs();
 }
 
 } // namespace consensus

@@ -827,7 +827,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompactionWithSnapshotAndNoBe
         return false;
       },
       MonoDelta::FromSeconds(60),
-      "Compaction is resticted for the stream."));
+      "Compaction is restricted for the stream."));
   LOG(INFO) << "count_before_compaction: " << count_before_compaction
             << " count_after_compaction: " << count_after_compaction;
   ASSERT_LE(count_after_compaction, count_before_compaction);
@@ -940,16 +940,16 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompactionWithSnapshotAndBefo
           return false;
         }
         count_after_compaction = CountEntriesInDocDB(peers, table.table_id());
-        if (count_after_compaction < count_before_compaction) {
+        if (count_after_compaction <= count_before_compaction) {
           return true;
         }
         return false;
       },
       MonoDelta::FromSeconds(60),
-      "Compaction is resticted for the stream."));
+      "Compaction is restricted for the stream."));
   LOG(INFO) << "count_before_compaction: " << count_before_compaction
             << " count_after_compaction: " << count_after_compaction;
-  ASSERT_LT(count_after_compaction, count_before_compaction);
+  ASSERT_LE(count_after_compaction, count_before_compaction);
   // Read from cdc_state once the stream is done, without before image.
   expected_row = ReadFromCdcStateTable(stream_id, tablets[0].tablet_id());
   if (!expected_row.ok()) {

@@ -62,11 +62,11 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
     return false;
   }
 
-  public void verifyParams(Universe universe) {
-    verifyParams(universe, null);
+  public void verifyParams(Universe universe, boolean isFirstTry) {
+    verifyParams(universe, null, isFirstTry);
   }
 
-  public void verifyParams(Universe universe, NodeDetails.NodeState nodeState) {
+  public void verifyParams(Universe universe, NodeDetails.NodeState nodeState, boolean isFirstTry) {
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     Map<String, String> universeConfig = universe.getConfig();
 

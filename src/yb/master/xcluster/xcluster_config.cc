@@ -13,11 +13,14 @@
 
 #include "yb/master/xcluster/xcluster_config.h"
 
+// TODO: Remove once CDCStreamInfo has moved to xcluster_catalog_entity.h.
 #include "yb/master/catalog_entity_info.h"
+
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/sys_catalog.h"
+#include "yb/master/xcluster/xcluster_catalog_entity.h"
 
 namespace yb::master {
 
@@ -32,12 +35,8 @@ void XClusterConfig::Load(const SysXClusterConfigEntryPB& metadata) {
   std::lock_guard mutex_lock(mutex_);
   DCHECK(!xcluster_config_info_) << "Already have xCluster config data!";
 
-  auto config = std::make_shared<XClusterConfigInfo>();
-  auto l = config->LockForWrite();
-  l.mutable_data()->pb.CopyFrom(metadata);
-  l.Commit();
-
-  xcluster_config_info_ = std::move(config);
+  xcluster_config_info_ = std::make_unique<XClusterConfigInfo>();
+  xcluster_config_info_->Load(metadata);
 }
 
 Status XClusterConfig::PrepareDefault(int64_t term, bool re_create) {
@@ -47,14 +46,13 @@ Status XClusterConfig::PrepareDefault(int64_t term, bool re_create) {
     LOG(INFO) << "Cluster configuration has already been set up, skipping re-initialization.";
     return Status::OK();
   }
-  xcluster_config_info_.reset();
 
   // Create default.
   SysXClusterConfigEntryPB config;
   config.set_version(0);
 
   // Create in memory object.
-  xcluster_config_info_ = std::make_shared<XClusterConfigInfo>();
+  xcluster_config_info_ = std::make_unique<XClusterConfigInfo>();
 
   // Prepare write.
   auto l = xcluster_config_info_->LockForWrite();
@@ -71,6 +69,16 @@ Result<uint32_t> XClusterConfig::GetVersion() const {
   SharedLock mutex_lock(mutex_);
   SCHECK(xcluster_config_info_, IllegalState, "XCluster config is not initialized");
   return xcluster_config_info_->LockForRead()->pb.version();
+}
+
+void XClusterConfig::DumpState(std::ostream* out) const {
+  SharedLock mutex_lock(mutex_);
+  if (!xcluster_config_info_) {
+    return;
+  }
+
+  auto l = xcluster_config_info_->LockForRead();
+  *out << "XCluster Config: " << l->pb.ShortDebugString() << "\n";
 }
 
 Result<SysXClusterConfigEntryPB> XClusterConfig::GetXClusterConfigEntryPB() const {

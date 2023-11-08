@@ -186,7 +186,7 @@ public class UniverseYbDbAdminHandler {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         universe.getUniverseDetails().getPrimaryCluster().userIntent;
     // Verify request params
-    requestParams.verifyParams(universe);
+    requestParams.verifyParams(universe, true);
     requestParams.validatePassword(policyService);
     requestParams.validateYSQLTables(universe, tableHandler);
     TaskType taskType =
@@ -220,7 +220,7 @@ public class UniverseYbDbAdminHandler {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         universe.getUniverseDetails().getPrimaryCluster().userIntent;
     // Verify request params
-    requestParams.verifyParams(universe);
+    requestParams.verifyParams(universe, true);
     requestParams.validatePassword(policyService);
     requestParams.validateYCQLTables(universe, tableHandler);
     TaskType taskType =

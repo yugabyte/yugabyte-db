@@ -553,6 +553,29 @@ public class ResizeNodeTest extends UpgradeTaskTest {
   }
 
   @Test
+  public void testChangingOnlyCgroup() {
+    ResizeNodeParams taskParams = createResizeParamsForCloud();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.setCgroupSize(NEW_CGROUP_SIZE);
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    subTasks.stream()
+        .filter(s -> s.getTaskType() == TaskType.ChangeInstanceType)
+        .forEach(
+            t ->
+                assertEquals(
+                    String.valueOf(NEW_CGROUP_SIZE), t.getDetails().get("cgroupSize").asText()));
+    assertTasksSequence(subTasks, false, true);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertUniverseData(false, false, false, false);
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    assertEquals(NEW_CGROUP_SIZE, (int) userIntent.getCgroupSize());
+  }
+
+  @Test
   public void testChangingBoth() {
     ResizeNodeParams taskParams = createResizeParams();
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
@@ -563,6 +586,12 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     taskParams.getPrimaryCluster().userIntent.setCgroupSize(NEW_CGROUP_SIZE);
     TaskInfo taskInfo = submitTask(taskParams);
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    subTasks.stream()
+        .filter(s -> s.getTaskType() == TaskType.ChangeInstanceType)
+        .forEach(
+            t ->
+                assertEquals(
+                    String.valueOf(NEW_CGROUP_SIZE), t.getDetails().get("cgroupSize").asText()));
     assertTasksSequence(subTasks, true, true);
     assertEquals(Success, taskInfo.getTaskState());
     assertUniverseData(true, true);

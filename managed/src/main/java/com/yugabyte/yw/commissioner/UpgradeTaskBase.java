@@ -554,7 +554,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
     UpdateClusterUserIntent updateClusterUserIntentTask = createTask(UpdateClusterUserIntent.class);
     updateClusterUserIntentTask.initialize(updateClusterUserIntentParams);
-    updateClusterUserIntentTask.setUserTaskUUID(userTaskUUID);
+    updateClusterUserIntentTask.setUserTaskUUID(getUserTaskUUID());
     subTaskGroup.addSubTask(updateClusterUserIntentTask);
 
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -574,7 +574,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     params.gflagsToRemove = GFlagsUtil.getDeletedGFlags(oldGflags, newGflags);
     AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
     task.initialize(params);
-    task.setUserTaskUUID(userTaskUUID);
+    task.setUserTaskUUID(getUserTaskUUID());
     return task;
   }
 

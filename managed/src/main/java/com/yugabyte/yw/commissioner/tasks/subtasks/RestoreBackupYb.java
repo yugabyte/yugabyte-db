@@ -29,8 +29,8 @@ public class RestoreBackupYb extends AbstractTaskBase {
     RestoreKeyspace restoreKeyspace = null;
     try {
 
-      log.info("Creating entry for restore keyspace: {}", taskUUID);
-      restoreKeyspace = RestoreKeyspace.create(taskUUID, taskParams());
+      log.info("Creating entry for restore keyspace: {}", getTaskUUID());
+      restoreKeyspace = RestoreKeyspace.create(getTaskUUID(), taskParams());
 
       ShellResponse response = restoreManagerYb.runCommand(taskParams());
       JsonNode jsonNode = null;
@@ -43,7 +43,7 @@ public class RestoreBackupYb extends AbstractTaskBase {
       if (response.code != 0 || jsonNode.has("error")) {
         log.error("Response code={}, hasError={}.", response.code, jsonNode.has("error"));
         if (restoreKeyspace != null) {
-          restoreKeyspace.update(taskUUID, RestoreKeyspace.State.Failed);
+          restoreKeyspace.update(getTaskUUID(), RestoreKeyspace.State.Failed);
         }
         throw new RuntimeException(response.message);
       } else {
@@ -51,13 +51,13 @@ public class RestoreBackupYb extends AbstractTaskBase {
         if (restoreKeyspace != null) {
           long backupSize = restoreKeyspace.getBackupSizeFromStorageLocation();
           Restore.updateRestoreSizeForRestore(taskParams().prefixUUID, backupSize);
-          restoreKeyspace.update(taskUUID, RestoreKeyspace.State.Completed);
+          restoreKeyspace.update(getTaskUUID(), RestoreKeyspace.State.Completed);
         }
       }
     } catch (Exception e) {
       log.error("Errored out with: " + e);
       if (restoreKeyspace != null) {
-        restoreKeyspace.update(taskUUID, RestoreKeyspace.State.Failed);
+        restoreKeyspace.update(getTaskUUID(), RestoreKeyspace.State.Failed);
       }
       throw new RuntimeException(e);
     }

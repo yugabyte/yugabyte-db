@@ -36,7 +36,6 @@
 #include "yb/common/constants.h"
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/master_util.h"
-#include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/ysql_tablegroup_manager.h"
 #include "yb/master/ysql_transaction_ddl.h"
 
@@ -195,6 +194,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
                   << SysTabletsEntryPB::State_Name(metadata.state())
                   << ", unknown table for this tablet: " << metadata.table_id();
     }
+    catalog_manager_->deleted_tablets_loaded_from_sys_catalog_.insert(tablet_id);
     return Status::OK();
   }
 
@@ -240,6 +240,10 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
 
     tablet_deleted = l.mutable_data()->is_deleted();
     listed_as_hidden = l.mutable_data()->ListedAsHidden();
+
+    if (tablet_deleted) {
+      catalog_manager_->deleted_tablets_loaded_from_sys_catalog_.insert(tablet_id);
+    }
 
     // Assume we need to delete this tablet until we find an active table using this tablet.
     bool should_delete_tablet = !tablet_deleted;
@@ -328,6 +332,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
       string deletion_msg = "Tablet deleted at " + LocalTimeAsString();
       l.mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
       needs_async_write_to_sys_catalog = true;
+      catalog_manager_->deleted_tablets_loaded_from_sys_catalog_.insert(tablet_id);
     }
 
     l.Commit();
@@ -575,17 +580,6 @@ Status ClusterConfigLoader::Visit(
 }
 
 ////////////////////////////////////////////////////////////
-// XCluster Config Loader
-////////////////////////////////////////////////////////////
-
-Status XClusterConfigLoader::Visit(
-    const std::string& unused_id, const SysXClusterConfigEntryPB& metadata) {
-  catalog_manager_->GetXClusterManager()->LoadXClusterConfig(metadata);
-
-  return Status::OK();
-}
-
-////////////////////////////////////////////////////////////
 // Redis Config Loader
 ////////////////////////////////////////////////////////////
 
@@ -650,24 +644,6 @@ Status SysConfigLoader::Visit(const string& config_type, const SysConfigEntryPB&
   }
 
   LOG(INFO) << "Loaded sys config type " << config_type;
-  return Status::OK();
-}
-
-////////////////////////////////////////////////////////////
-// XClusterSafeTime Loader
-////////////////////////////////////////////////////////////
-
-Status XClusterSafeTimeLoader::Visit(
-    const std::string& unused_id, const XClusterSafeTimePB& metadata) {
-  // Debug confirm that there is no xcluster_safe_time_info_ set. This also ensures that this does
-  // not visit multiple rows.
-  auto l = catalog_manager_->xcluster_safe_time_info_.LockForWrite();
-  DCHECK(l->pb.safe_time_map().empty()) << "Already have XCluster Safe Time data!";
-
-  VLOG_WITH_FUNC(2) << "Loading XCluster Safe Time data: " << metadata.DebugString();
-  l.mutable_data()->pb.CopyFrom(metadata);
-  l.Commit();
-
   return Status::OK();
 }
 

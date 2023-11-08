@@ -57,6 +57,9 @@ import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.metrics.MetricService;
+import com.yugabyte.yw.common.nodeui.DumpEntitiesResponse;
+import com.yugabyte.yw.common.nodeui.DumpEntitiesResponse.Replica;
+import com.yugabyte.yw.common.nodeui.DumpEntitiesResponse.Tablet;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponent;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponentFactory;
@@ -68,8 +71,11 @@ import com.yugabyte.yw.models.CustomerTask.TargetType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -425,10 +431,9 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
         // Abort starts from the first sub-task until there is no more sub-task left.
         int abortPosition = totalSubTaskCount - pendingSubTaskCount;
         if (pendingSubTaskCount > 1) {
-          int originalAbortPosition = expectedSubTaskTypes.size() - pendingSubTaskCount;
           log.info(
-              "Abort position at {} relative to the original subtasks {}",
-              originalAbortPosition,
+              "Abort position at {} in the original subtasks {}",
+              expectedSubTaskTypes.size() - pendingSubTaskCount,
               expectedSubTaskMap);
           setAbortPosition(abortPosition);
         } else {
@@ -452,6 +457,10 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
           // New task UUID for the retry.
           taskUuid = customerTask.getTaskUUID();
           waitForTaskPaused(taskUuid);
+          log.info(
+              "Validating subtasks for next abort position at {} in the original subtasks {}",
+              expectedSubTaskTypes.size() - pendingSubTaskCount + 1,
+              expectedSubTaskMap);
           // Get the task and sub-tasks that are to be executed on retry.
           taskInfo = TaskInfo.getOrBadRequest(taskUuid);
           Map<Integer, List<TaskInfo>> retrySubTaskMap =
@@ -527,5 +536,24 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     underReplicatedTabletsJson.put("underreplicated_tablets", Json.newArray());
     when(mockNodeUIApiHelper.getRequest(endsWith(CheckUnderReplicatedTablets.URL_SUFFIX)))
         .thenReturn(underReplicatedTabletsJson);
+  }
+
+  public void setDumpEntitiesMock(Universe universe, String nodeName, boolean hasTablets) {
+    NodeDetails node = universe.getNode(nodeName);
+    Replica replica = new Replica();
+    replica.setAddr(node.cloudInfo.private_ip + ":" + node.tserverRpcPort);
+    Tablet tablet = new Tablet();
+    tablet.setTabletId("Tablet id 1");
+    if (hasTablets) {
+      tablet.setReplicas(Arrays.asList(replica));
+    } else {
+      tablet.setReplicas(new ArrayList<Replica>());
+    }
+
+    DumpEntitiesResponse response = new DumpEntitiesResponse();
+    response.setTablets(Arrays.asList(tablet));
+    ObjectNode dumpEntitiesJson = (ObjectNode) Json.toJson(response);
+    when(mockNodeUIApiHelper.getRequest(endsWith(RemoveNodeFromUniverse.DUMP_ENTITIES_URL_SUFFIX)))
+        .thenReturn(dumpEntitiesJson);
   }
 }

@@ -19,6 +19,7 @@
 #include <thread>
 #include <utility>
 
+#include "yb/client/session.h"
 #include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
 
@@ -63,16 +64,9 @@
 #include "yb/yql/pggate/util/ybc-internal.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
-DEFINE_UNKNOWN_int32(ysql_client_read_write_timeout_ms, -1,
-    "Timeout for YSQL's yb-client read/write "
-    "operations. Falls back on max(client_read_write_timeout_ms, 600s) if set to -1." );
 DEFINE_UNKNOWN_int32(pggate_num_connections_to_server, 1,
              "Number of underlying connections to each server from a PostgreSQL backend process. "
              "This overrides the value of --num_connections_to_server.");
-DEFINE_test_flag(uint64, ysql_oid_prefetch_adjustment, 0,
-                 "Amount to add when prefetch the next batch of OIDs. Never use this flag in "
-                 "production environment. In unit test we use this flag to force allocation of "
-                 "large Postgres OIDs.");
 
 DECLARE_int32(num_connections_to_server);
 
@@ -549,10 +543,13 @@ YBCStatus YBCPgReserveOids(const YBCPgOid database_oid,
                            const uint32_t count,
                            YBCPgOid *begin_oid,
                            YBCPgOid *end_oid) {
-  return ToYBCStatus(pgapi->ReserveOids(database_oid,
-                                        next_oid + static_cast<YBCPgOid>(
-                                          FLAGS_TEST_ysql_oid_prefetch_adjustment),
+  return ToYBCStatus(pgapi->ReserveOids(database_oid, next_oid,
                                         count, begin_oid, end_oid));
+}
+
+YBCStatus YBCGetNewObjectId(YBCPgOid db_oid, YBCPgOid* new_oid) {
+  DCHECK_NE(db_oid, kInvalidOid);
+  return ToYBCStatus(pgapi->GetNewObjectId(db_oid, new_oid));
 }
 
 YBCStatus YBCPgGetCatalogMasterVersion(uint64_t *version) {
@@ -1561,7 +1558,9 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_ysql_enable_create_database_oid_collision_retry,
       .ysql_catalog_preload_additional_table_list =
           FLAGS_ysql_catalog_preload_additional_table_list.c_str(),
-      .ysql_use_relcache_file                   = &FLAGS_ysql_use_relcache_file
+      .ysql_use_relcache_file                   = &FLAGS_ysql_use_relcache_file,
+      .ysql_enable_pg_per_database_oid_allocator =
+          &FLAGS_ysql_enable_pg_per_database_oid_allocator
   };
   // clang-format on
   return &accessor;
@@ -1575,10 +1574,7 @@ void YBCSetTimeout(int timeout_ms, void* extra) {
   if (!pgapi) {
     return;
   }
-  const auto default_client_timeout_ms =
-      (FLAGS_ysql_client_read_write_timeout_ms < 0
-           ? std::max(FLAGS_client_read_write_timeout_ms, 600000)
-           : FLAGS_ysql_client_read_write_timeout_ms);
+  const auto default_client_timeout_ms = client::YsqlClientReadWriteTimeoutMs();
   // We set the rpc timeouts as a min{STATEMENT_TIMEOUT,
   // FLAGS(_ysql)?_client_read_write_timeout_ms}.
   // Note that 0 is a valid value of timeout_ms, meaning no timeout in Postgres.
@@ -1809,12 +1805,23 @@ YBCStatus YBCPgListReplicationSlots(
           .slot_name = YBCPAllocStdString(info.slot_name()),
           .stream_id = YBCPAllocStdString(info.stream_id()),
           .database_oid = info.database_oid(),
-          // TODO(#19211): Fetch the status of the stream.
-          .active = false,
+          .active = info.replication_slot_status() == tserver::ReplicationSlotStatus::ACTIVE,
       };
       ++dest;
     }
   }
+  return YBCStatusOK();
+}
+
+YBCStatus YBCPgGetReplicationSlotStatus(const char *slot_name,
+                                        bool *active) {
+  const auto replication_slot_name = ReplicationSlotName(std::string(slot_name));
+  const auto result = pgapi->GetReplicationSlotStatus(replication_slot_name);
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+
+  *active = result->replication_slot_status() == tserver::ReplicationSlotStatus::ACTIVE;
   return YBCStatusOK();
 }
 

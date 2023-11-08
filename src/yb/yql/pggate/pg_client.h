@@ -98,6 +98,8 @@ class PgClient {
 
   Result<std::pair<PgOid, PgOid>> ReserveOids(PgOid database_oid, PgOid next_oid, uint32_t count);
 
+  Result<PgOid> GetNewObjectId(PgOid db_oid);
+
   Result<bool> IsInitDbDone();
 
   Result<uint64_t> GetCatalogMasterVersion();
@@ -181,6 +183,9 @@ class PgClient {
       bool size_only, uint32_t db_oid);
 
   Result<tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots();
+
+  Result<tserver::PgGetReplicationSlotStatusResponsePB> GetReplicationSlotStatus(
+      const ReplicationSlotName& slot_name);
 
   using ActiveTransactionCallback = LWFunction<Status(
       const tserver::PgGetActiveTransactionListResponsePB_EntryPB&, bool is_last)>;

@@ -56,8 +56,9 @@ public class CertsRotate extends UpgradeTaskBase {
   }
 
   @Override
-  public void validateParams() {
-    taskParams().verifyParams(getUniverse());
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    taskParams().verifyParams(getUniverse(), isFirstTry);
   }
 
   @Override
@@ -204,7 +205,7 @@ public class CertsRotate extends UpgradeTaskBase {
     if (isCertReloadable(universe)) {
       // cert reload can be performed
       log.info("adding cert rotate via reload task ...");
-      createCertReloadTask(nodes, universe.getUniverseUUID(), userTaskUUID);
+      createCertReloadTask(nodes, universe.getUniverseUUID(), getUserTaskUUID());
 
     } else {
       // Do a restart to rotate certificate

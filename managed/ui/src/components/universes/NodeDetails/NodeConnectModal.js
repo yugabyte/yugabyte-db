@@ -10,8 +10,8 @@ import { isEmptyObject } from '../../../utils/ObjectUtils';
 import { getPrimaryCluster, getReadOnlyCluster } from '../../../utils/UniverseUtils';
 import { YBCopyButton } from '../../../components/common/descriptors';
 import { MenuItem } from 'react-bootstrap';
-import { RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 import './NodeConnectModal.scss';
 
@@ -120,7 +120,7 @@ class NodeConnectModal extends Component {
           isControl
           accessRequiredOn={{
             onResource: universeUUID,
-            ...UserPermissionMap.readUniverse
+            ...ApiPermissionMap.GET_UNIVERSES_BY_ID
           }}
         >
           <MenuItem

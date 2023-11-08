@@ -25,12 +25,9 @@ import play.libs.Json;
 
 @Slf4j
 public abstract class NodeTaskBase extends UniverseDefinitionTaskBase {
-  private final NodeManager nodeManager;
-
   @Inject
-  protected NodeTaskBase(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
+  protected NodeTaskBase(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
-    this.nodeManager = nodeManager;
   }
 
   public NodeManager getNodeManager() {
@@ -76,7 +73,7 @@ public abstract class NodeTaskBase extends UniverseDefinitionTaskBase {
 
       HardRebootServer task = createTask(HardRebootServer.class);
       task.initialize(rebootParams);
-      task.setUserTaskUUID(userTaskUUID);
+      task.setUserTaskUUID(getUserTaskUUID());
       task.run();
       return true;
     }

@@ -29,6 +29,7 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
+#include "yb/util/version_info.h"
 
 using std::string;
 
@@ -272,10 +273,11 @@ Status AutoFlagsManager::ApplyConfig(ApplyNonRuntimeAutoFlags apply_non_runtime)
   for (const auto& flag_name : required_promoted_flags) {
     // This will fail if the node is running a old version of the code that does not support the
     // flag.
-    RSTATUS_DCHECK(
-        GetAutoFlagDescription(flag_name) != nullptr, NotSupported,
-        "AutoFlag '$0' is not supported. Upgrade the process to a version that supports this flag.",
-        flag_name);
+    SCHECK(
+        GetAutoFlagDescription(flag_name) != nullptr, NotFound,
+        "AutoFlag '$0' is not found. Upgrade the process to a version that contains this AutoFlag. "
+        "Current version: $1",
+        flag_name, VersionInfo::GetShortVersionString());
   }
 
   std::vector<std::string> flags_promoted;

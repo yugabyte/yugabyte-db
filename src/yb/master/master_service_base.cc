@@ -42,7 +42,15 @@ EncryptionManager* MasterServiceBase::handler(EncryptionManager*) {
 }
 
 XClusterManager* MasterServiceBase::handler(XClusterManager*) {
-  return server_->catalog_manager()->GetXClusterManager();
+  return server_->xcluster_manager_impl();
+}
+
+TestAsyncRpcManager* MasterServiceBase::handler(TestAsyncRpcManager*) {
+  return server_->test_async_rpc_manager();
+}
+
+TabletHealthManager* MasterServiceBase::handler(TabletHealthManager*) {
+  return server_->tablet_health_manager();
 }
 
 Status HandleLockAndCallFunction(

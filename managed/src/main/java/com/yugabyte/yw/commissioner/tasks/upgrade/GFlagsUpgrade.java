@@ -3,6 +3,8 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.XClusterUniverseService;
@@ -28,6 +30,8 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
+@Retryable
+@Abortable
 public class GFlagsUpgrade extends UpgradeTaskBase {
 
   private final GFlagsValidation gFlagsValidation;
@@ -62,8 +66,9 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
   }
 
   @Override
-  public void validateParams() {
-    taskParams().verifyParams(getUniverse());
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    taskParams().verifyParams(getUniverse(), isFirstTry);
   }
 
   @Override
@@ -190,6 +195,9 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
                 curClusters,
                 newCluster,
                 newClusters.values());
+          }
+          for (UniverseDefinitionTaskParams.Cluster curCluster : curClusters) {
+            UniverseDefinitionTaskParams.Cluster newCluster = newClusters.get(curCluster.uuid);
             // Update the list of parameter key/values in the universe with the new ones.
             if (hasUpdatedGFlags(newCluster.userIntent, curCluster.userIntent)) {
               updateGFlagsPersistTasks(

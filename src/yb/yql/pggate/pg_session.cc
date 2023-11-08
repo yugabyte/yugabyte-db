@@ -990,4 +990,9 @@ Result<tserver::PgListReplicationSlotsResponsePB> PgSession::ListReplicationSlot
   return pg_client_.ListReplicationSlots();
 }
 
+Result<tserver::PgGetReplicationSlotStatusResponsePB> PgSession::GetReplicationSlotStatus(
+    const ReplicationSlotName& slot_name) {
+  return pg_client_.GetReplicationSlotStatus(slot_name);
+}
+
 }  // namespace yb::pggate

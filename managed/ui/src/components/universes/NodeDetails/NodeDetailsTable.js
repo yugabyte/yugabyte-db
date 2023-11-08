@@ -21,8 +21,7 @@ import { getUniverseStatus, UniverseState } from '../helpers/universeHelpers';
 
 import './NodeDetailsTable.scss';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
-import { hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+
 
 const NODE_TYPE = [
   {
@@ -76,7 +75,7 @@ export default class NodeDetailsTable extends Component {
         sortedNodeDetails = sortedNodeDetails.filter((nodeDetails) =>
           isKubernetesCluster
             ? nodeDetails.isMasterProcess
-            : nodeDetails.nodeDetails.dedicatedTo === NodeType.Master.toUpperCase()
+            : nodeDetails.dedicatedTo === NodeType.Master.toUpperCase()
         );
       } else if (this.state.nodeTypeDropdownValue === NodeType.TServer) {
         sortedNodeDetails = sortedNodeDetails.filter((nodeDetails) =>

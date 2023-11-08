@@ -1503,6 +1503,19 @@ Status YBClient::GetCDCStream(
   return Status::OK();
 }
 
+Status YBClient::GetCDCStream(
+    const ReplicationSlotName& replication_slot_name,
+    xrepl::StreamId* stream_id) {
+  GetCDCStreamRequestPB req;
+  req.set_cdcsdk_ysql_replication_slot_name(replication_slot_name.ToString());
+
+  GetCDCStreamResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, GetCDCStream);
+
+  *stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(resp.stream().stream_id()));
+  return Status::OK();
+}
+
 void YBClient::GetCDCStream(
     const xrepl::StreamId& stream_id,
     std::shared_ptr<TableId> table_id,
@@ -1710,7 +1723,7 @@ Status YBClient::UpdateConsumerOnProducerSplit(
   SCHECK(stream_id, InvalidArgument, "Stream id is required.");
 
   UpdateConsumerOnProducerSplitRequestPB req;
-  req.set_producer_id(replication_group_id.ToString());
+  req.set_replication_group_id(replication_group_id.ToString());
   req.set_stream_id(stream_id.ToString());
   req.mutable_producer_split_tablet_info()->CopyFrom(split_info);
 
@@ -1732,7 +1745,7 @@ Status YBClient::UpdateConsumerOnProducerMetadata(
   SCHECK(resp != nullptr, InvalidArgument, "Response pointer is required.");
 
   master::UpdateConsumerOnProducerMetadataRequestPB req;
-  req.set_producer_id(replication_group_id.ToString());
+  req.set_replication_group_id(replication_group_id.ToString());
   req.set_stream_id(stream_id.ToString());
   req.set_colocation_id(colocation_id);
   req.set_producer_schema_version(producer_schema_version);
@@ -2398,6 +2411,29 @@ Result<std::vector<YBTableName>> YBClient::ListUserTables(
                         table_info.relation_type());
   }
   return result;
+}
+
+Status YBClient::AreNodesSafeToTakeDown(
+      std::vector<std::string> tserver_uuids,
+      std::vector<std::string> master_uuids,
+      int follower_lag_bound_ms) {
+  master::AreNodesSafeToTakeDownRequestPB req;
+  master::AreNodesSafeToTakeDownResponsePB resp;
+
+  for (auto& tserver_uuid : tserver_uuids) {
+    req.add_tserver_uuids(std::move(tserver_uuid));
+  }
+  for (auto& master_uuid : master_uuids) {
+    req.add_master_uuids(std::move(master_uuid));
+  }
+  req.set_follower_lag_bound_ms(follower_lag_bound_ms);
+
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Admin, req, resp, AreNodesSafeToTakeDown);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
 }
 
 Result<cdc::EnumOidLabelMap> YBClient::GetPgEnumOidLabelMap(const NamespaceName& ns_name) {

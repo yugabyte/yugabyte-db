@@ -775,7 +775,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Container Usage",
-      "expr" : "((sum(kubelet_volume_stats_used_bytes{node_prefix=~\"$dbcluster\", persistentvolumeclaim=~\"(.*)-yb-tserver-(.*)\"}) / 1073741824)/(sum(kubelet_volume_stats_capacity_bytes{node_prefix=~\"$dbcluster\", persistentvolumeclaim=~\"(.*)-yb-tserver-(.*)\"}) / 1073741824))*100",
+      "expr" : "((sum(kubelet_volume_stats_used_bytes{node_prefix=~\"$dbcluster\", persistentvolumeclaim=~\"(.*)-yb-tserver-(.*)\"}) / 1073741824) / (sum(kubelet_volume_stats_capacity_bytes{node_prefix=~\"$dbcluster\", persistentvolumeclaim=~\"(.*)-yb-tserver-(.*)\"}) / 1073741824)) * 100",
       "refId" : "A"
     } ],
     "gridPos" : {
@@ -6609,7 +6609,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Disk Usage",
-      "expr" : "((sum(node_filesystem_used_bytes{node_prefix=~\"$dbcluster\", mountpoint=~\"/mnt/d[0-9]+\", fstype!=\"rootfs\"}) / 1073741824)/(sum(node_filesystem_size_bytes{node_prefix=~\"$dbcluster\", mountpoint=~\"/mnt/d[0-9]+\", fstype!=\"rootfs\"}) / 1073741824))*100",
+      "expr" : "((sum(node_filesystem_used_bytes{node_prefix=~\"$dbcluster\", mountpoint=~\"/mnt/d[0-9]+\", fstype!=\"rootfs\"}) / 1073741824) / (sum(node_filesystem_size_bytes{node_prefix=~\"$dbcluster\", mountpoint=~\"/mnt/d[0-9]+\", fstype!=\"rootfs\"}) / 1073741824)) * 100",
       "refId" : "A"
     } ],
     "gridPos" : {
@@ -6701,7 +6701,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : null,
-      "expr" : "((sum(node_filesystem_used_bytes{node_prefix=~\"$dbcluster\", mountpoint=~\"/|/mnt/d[0-9]+\", fstype!=\"rootfs\"}) by (mountpoint) / 1073741824)/(sum(node_filesystem_size_bytes{node_prefix=~\"$dbcluster\", mountpoint=~\"/|/mnt/d[0-9]+\", fstype!=\"rootfs\"}) by (mountpoint) / 1073741824))*100",
+      "expr" : "((sum(node_filesystem_used_bytes{node_prefix=~\"$dbcluster\", mountpoint=~\"/|/mnt/d[0-9]+\", fstype!=\"rootfs\"}) by (mountpoint) / 1073741824) / (sum(node_filesystem_size_bytes{node_prefix=~\"$dbcluster\", mountpoint=~\"/|/mnt/d[0-9]+\", fstype!=\"rootfs\"}) by (mountpoint) / 1073741824)) * 100",
       "refId" : "A"
     } ],
     "gridPos" : {

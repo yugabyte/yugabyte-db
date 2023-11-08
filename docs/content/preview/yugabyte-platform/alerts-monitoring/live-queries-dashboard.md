@@ -3,6 +3,7 @@ title: Live queries in YugabyteDB Anywhere
 headerTitle: Live Queries dashboard
 linkTitle: Live Queries dashboard
 description: Live Queries dashboard
+headcontent: View live queries running on your universe
 menu:
   preview_yugabyte-platform:
     parent: alerts-monitoring

@@ -175,7 +175,9 @@ public class NodeAgentManager {
     try {
       Map<String, Integer> sans =
           ImmutableMap.<String, Integer>builder()
-              .put(nodeAgent.getIp(), GeneralName.iPAddress)
+              .put(
+                  nodeAgent.getIp(),
+                  Util.isIpAddress(nodeAgent.getIp()) ? GeneralName.iPAddress : GeneralName.dNSName)
               .build();
 
       // Add the security provider in case createSignedCertificate was never called.

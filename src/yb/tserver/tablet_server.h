@@ -302,6 +302,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   std::shared_ptr<cdc::CDCServiceImpl> GetCDCService() const { return cdc_service_; }
 
+  key_t GetYsqlConnMgrStatsShmemKey() { return ysql_conn_mgr_stats_shmem_key_; }
+  void SetYsqlConnMgrStatsShmemKey(key_t shmem_key) { ysql_conn_mgr_stats_shmem_key_ = shmem_key; }
+
  protected:
   virtual Status RegisterServices();
 
@@ -391,11 +394,18 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // is shut down.
   std::weak_ptr<PgClientServiceImpl> pg_client_service_;
 
+  // Key to shared memory for ysql connection manager stats
+  key_t ysql_conn_mgr_stats_shmem_key_ = 0;
+
  private:
   // Auto initialize some of the service flags that are defaulted to -1.
   void AutoInitServiceFlags();
 
   void InvalidatePgTableCache();
+
+  Result<std::unordered_set<uint32_t>> GetPgDatabaseOids();
+
+  void ScheduleCheckObjectIdAllocators();
 
   std::string log_prefix_;
 

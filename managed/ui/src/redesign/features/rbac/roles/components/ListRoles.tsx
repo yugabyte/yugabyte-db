@@ -25,9 +25,9 @@ import { RoleTypeComp } from '../../common/RbacUtils';
 import { EditViews, Pages, RoleContextMethods, RoleViewContext } from '../RoleContext';
 import { ForbiddenRoles, Role, RoleType } from '../IRoles';
 import { getAllRoles, getRoleBindingsForAllUsers } from '../../api';
-import { RbacValidator, hasNecessaryPerm } from '../../common/RbacValidator';
+import { RbacValidator, hasNecessaryPerm } from '../../common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../ApiAndUserPermMapping';
 import { SortOrder } from '../../../../helpers/constants';
-import { UserPermissionMap } from '../../UserPermPathMapping';
 
 import { Add, ArrowDropDown } from '@material-ui/icons';
 import { ReactComponent as Create } from '../../../../assets/edit_pen.svg';
@@ -140,14 +140,17 @@ const ListRoles = () => {
         return (
           <RbacValidator
             isControl
-            accessRequiredOn={{ ...UserPermissionMap.editRole, onResource: role.roleUUID }}
+            accessRequiredOn={{
+              ...ApiPermissionMap.MODIFY_RBAC_ROLE,
+              onResource: { ROLE: role.roleUUID }
+            }}
             overrideStyle={{ display: 'block' }}
           >
             {elem}
           </RbacValidator>
         );
       },
-      disabled: role.roleType === RoleType.SYSTEM
+      disabled: false
     });
 
     menuOptions.push({
@@ -166,11 +169,11 @@ const ListRoles = () => {
         return (
           <RbacValidator
             isControl
-            accessRequiredOn={{ ...UserPermissionMap.editRole, onResource: role.roleUUID }}
+            accessRequiredOn={{ ...ApiPermissionMap.CREATE_RBAC_ROLE }}
             customValidateFunction={() => {
               return hasNecessaryPerm({
-                ...UserPermissionMap.createRole,
-                onResource: role.roleUUID
+                ...ApiPermissionMap.CREATE_RBAC_ROLE,
+                onResource: { ROLE: role.roleUUID }
               });
             }}
             overrideStyle={{ display: 'block' }}
@@ -194,11 +197,14 @@ const ListRoles = () => {
           <RbacValidator
             isControl
             overrideStyle={{ display: 'block' }}
-            accessRequiredOn={{ ...UserPermissionMap.deleteRole, onResource: role.roleUUID }}
+            accessRequiredOn={{
+              ...ApiPermissionMap.DELETE_RBAC_ROLE,
+              onResource: { ROLE: role.roleUUID }
+            }}
             customValidateFunction={() =>
               hasNecessaryPerm({
-                ...UserPermissionMap.deleteRole,
-                onResource: role.roleUUID
+                ...ApiPermissionMap.DELETE_RBAC_ROLE,
+                onResource: { ROLE: role.roleUUID }
               })
             }
           >
@@ -206,7 +212,7 @@ const ListRoles = () => {
           </RbacValidator>
         );
       },
-      disabled: role.roleType === RoleType.SYSTEM
+      disabled: false
     });
 
     return (
@@ -221,10 +227,7 @@ const ListRoles = () => {
   const allRoleMapping = flattenDeep(values(roleBindings ?? []));
 
   return (
-    <RbacValidator
-      accessRequiredOn={{ onResource: 'CUSTOMER_ID', ...UserPermissionMap.listRole }}
-      customValidateFunction={() => true}
-    >
+    <RbacValidator accessRequiredOn={ApiPermissionMap.GET_RBAC_ROLES}>
       <Box className={classes.root}>
         <div className={classes.actions}>
           <div className={classes.search}>
@@ -238,8 +241,7 @@ const ListRoles = () => {
           </div>
           <RbacValidator
             accessRequiredOn={{
-              onResource: undefined,
-              ...UserPermissionMap.createRole
+              ...ApiPermissionMap.CREATE_RBAC_ROLE
             }}
             isControl
           >

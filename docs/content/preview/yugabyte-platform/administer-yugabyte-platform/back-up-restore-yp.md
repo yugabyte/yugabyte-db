@@ -7,18 +7,22 @@ menu:
   preview_yugabyte-platform:
     identifier: back-up-restore-yp
     parent: administer-yugabyte-platform
-    weight: 10
+    weight: 20
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+ <li>
+    <a href="../back-up-restore-installer/" class="nav-link">
+      <i class="fa-solid fa-building"></i>
+      YBA Installer</a>
+  </li>
   <li >
     <a href="../back-up-restore-yp/" class="nav-link active">
       <i class="fa-solid fa-cloud"></i>
-      Default
+      Replicated
     </a>
   </li>
-
   <li>
     <a href="../back-up-restore-k8s/" class="nav-link">
       <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>

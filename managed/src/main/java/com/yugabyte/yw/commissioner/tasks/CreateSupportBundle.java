@@ -9,7 +9,8 @@ import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponent;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponentFactory;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
@@ -43,7 +44,7 @@ public class CreateSupportBundle extends AbstractTaskBase {
   @Inject private SupportBundleComponentFactory supportBundleComponentFactory;
   @Inject private SupportBundleUtil supportBundleUtil;
   @Inject private Config config;
-  @Inject private KubernetesOperatorStatusUpdater kubernetesStatusUpdater;
+  @Inject private OperatorStatusUpdaterFactory statusUpdaterFactory;
 
   @Inject
   protected CreateSupportBundle(BaseTaskDependencies baseTaskDependencies) {
@@ -58,6 +59,7 @@ public class CreateSupportBundle extends AbstractTaskBase {
   @Override
   public void run() {
     SupportBundle supportBundle = taskParams().supportBundle;
+    OperatorStatusUpdater kubernetesStatusUpdater = statusUpdaterFactory.create();
     try {
       Path gzipPath = generateBundle(supportBundle);
       supportBundle.setPathObject(gzipPath);

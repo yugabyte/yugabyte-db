@@ -630,6 +630,10 @@ class YBClient {
       std::unordered_map<std::string, std::string>* options,
       cdc::StreamModeTransactional* transactional);
 
+  Status GetCDCStream(
+      const ReplicationSlotName& replication_slot_name,
+      xrepl::StreamId* stream_id);
+
   void GetCDCStream(
       const xrepl::StreamId& stream_id,
       std::shared_ptr<TableId> table_id,
@@ -821,6 +825,10 @@ class YBClient {
   // This is a fully local operation (no RPCs or blocking).
   std::shared_ptr<YBSession> NewSession(MonoDelta delta);
   std::shared_ptr<YBSession> NewSession(CoarseTimePoint deadline);
+
+  Status AreNodesSafeToTakeDown(
+      std::vector<std::string> tserver_uuids, std::vector<std::string> master_uuids,
+      int follower_lag_bound_ms);
 
   // Return the socket address of the master leader for this client.
   HostPort GetMasterLeaderAddress();

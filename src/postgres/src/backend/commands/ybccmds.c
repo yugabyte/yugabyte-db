@@ -1793,6 +1793,20 @@ YBCListReplicationSlots(YBCReplicationSlotDescriptor **replication_slots,
 }
 
 void
+YBCGetReplicationSlotStatus(const char *slot_name,
+							bool *active)
+{
+	bool not_found = false;
+	HandleYBStatusIgnoreNotFound(
+		YBCPgGetReplicationSlotStatus(slot_name, active),
+		&not_found);
+	if (not_found)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("replication slot \"%s\" does not exist", slot_name)));
+}
+
+void
 YBCDropReplicationSlot(const char *slot_name)
 {
 	YBCPgStatement handle;

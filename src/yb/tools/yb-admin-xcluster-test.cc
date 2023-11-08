@@ -143,7 +143,7 @@ class XClusterAdminCliTest : public AdminCliTestBase {
     master::GetUniverseReplicationResponsePB resp;
     return WaitFor(
         [proxy, &req, &resp, producer_uuid]() -> Result<bool> {
-          req.set_producer_id(producer_uuid);
+          req.set_replication_group_id(producer_uuid);
           RpcController rpc;
           Status s = proxy->GetUniverseReplication(req, &resp, &rpc);
 

@@ -741,9 +741,15 @@ YBCStatus YBCPgExecCreateReplicationSlot(YBCPgStatement handle);
 YBCStatus YBCPgListReplicationSlots(
     YBCReplicationSlotDescriptor **replication_slots, size_t *numreplicationslots);
 
+YBCStatus YBCPgGetReplicationSlotStatus(const char *slot_name,
+                                        bool *active);
+
 YBCStatus YBCPgNewDropReplicationSlot(const char *slot_name,
                                       YBCPgStatement *handle);
 YBCStatus YBCPgExecDropReplicationSlot(YBCPgStatement handle);
+
+// Get a new OID from the OID allocator of database db_oid.
+YBCStatus YBCGetNewObjectId(YBCPgOid db_oid, YBCPgOid* new_oid);
 
 #ifdef __cplusplus
 }  // extern "C"

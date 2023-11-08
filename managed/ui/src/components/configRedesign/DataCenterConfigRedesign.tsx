@@ -33,8 +33,8 @@ import { YBTabsPanel, YBTabsWithLinksPanel } from '../panels';
 import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
 import { isAvailable, showOrRedirect } from '../../utils/LayoutUtils';
 import { api, regionMetadataQueryKey } from '../../redesign/helpers/api';
-import { RbacValidator } from '../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../redesign/features/rbac/UserPermPathMapping';
+import { RbacValidator } from '../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../redesign/features/rbac/ApiAndUserPermMapping';
 
 interface ReactRouterProps {
   location: LocationShape;
@@ -82,9 +82,7 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
     <div>
       <h2 className="content-title">Provider Configuration</h2>
       <RbacValidator
-        accessRequiredOn={{
-          ...UserPermissionMap.listProvider
-        }}
+        accessRequiredOn={ApiPermissionMap.GET_PROVIDERS}
       >
         <YBTabsWithLinksPanel
           defaultTab={defaultTab}
