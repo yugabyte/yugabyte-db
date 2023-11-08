@@ -22,7 +22,7 @@ export const RBAC_ERR_MSG_NO_PERM = (
       lineHeight: 1.25,
     }}
   >
-    You don’t have permission to do this action.
+    You don&apos;t have permission to do this action.
     <br />
     <br />
     If you think you should be able to do this action, contact your administrator.
@@ -39,8 +39,8 @@ export const getWrappedChildren = ({ overrideStyle }: { overrideStyle: CSSProper
         textAlign: 'center',
         ...overrideStyle
       }}
-      data-testid="rbac-no-perm"
-      id="rbac-no-perm"
+      data-testid="rbac-perm-error"
+      id="rbac-perm-error"
     >
       <LockIcon />
       {RBAC_ERR_MSG_NO_PERM}
@@ -60,8 +60,8 @@ export const getErrorBoundary = ({
       style={{
         position: 'relative'
       }}
-      data-testid="rbac-no-perm"
-      id="rbac-no-perm"
+      data-testid="rbac-perm-error"
+      id="rbac-perm-error"
     >
       <div
         style={{
@@ -101,8 +101,8 @@ export const ControlComp = ({
         display: 'inline-block',
         ...overrideStyle
       }}
-      data-testid="rbac-no-perm"
-      id="rbac-no-perm"
+      data-testid="rbac-perm-error"
+      id="rbac-perm-error"
     >
       <ButtonDisabledPopover popOverOverrides={popOverOverrides}>
         {children as any}

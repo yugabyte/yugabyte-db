@@ -87,7 +87,7 @@ const ListRoles = () => {
     select: (data) => data.data
   });
 
-  const { data: roleBindings } = useQuery('role_bindings', getRoleBindingsForAllUsers, {
+  const { data: roleBindings, isError: isRoleBindingsError } = useQuery('role_bindings', getRoleBindingsForAllUsers, {
     select: (data) => data.data
   });
 
@@ -110,6 +110,9 @@ const ListRoles = () => {
       role.name.toLowerCase().includes(searchText.toLowerCase())
     );
   }
+
+  const allRoleMapping = flattenDeep(values(roleBindings ?? []));
+
 
   const getActions = (_: undefined, role: Role) => {
     const menuOptions = [
@@ -150,7 +153,7 @@ const ListRoles = () => {
           </RbacValidator>
         );
       },
-      disabled: false
+      disabled: role.roleType === RoleType.SYSTEM
     });
 
     menuOptions.push({
@@ -212,7 +215,9 @@ const ListRoles = () => {
           </RbacValidator>
         );
       },
-      disabled: false
+      disabled: role.roleType === RoleType.SYSTEM || allRoleMapping.filter(
+        (roleMapping) => roleMapping.role.roleUUID === role.roleUUID
+      ).length !== 0
     });
 
     return (
@@ -224,7 +229,6 @@ const ListRoles = () => {
     );
   };
 
-  const allRoleMapping = flattenDeep(values(roleBindings ?? []));
 
   return (
     <RbacValidator accessRequiredOn={ApiPermissionMap.GET_RBAC_ROLES}>
@@ -293,15 +297,16 @@ const ListRoles = () => {
               ).length;
               return order === SortOrder.ASCENDING ? aCount - bCount : bCount - aCount;
             }}
-            dataFormat={(_, role: Role) => (
-              <>
+            dataFormat={(_, role: Role) => {
+              if (isRoleBindingsError) return '-';
+              return (<>
                 {
                   allRoleMapping.filter(
                     (roleMapping) => roleMapping.role.roleUUID === role.roleUUID
                   ).length
                 }
-              </>
-            )}
+              </>);
+            }}
           >
             {t('table.users')}
           </TableHeaderColumn>

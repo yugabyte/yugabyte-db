@@ -10,7 +10,7 @@
 import { useEffect, useState } from 'react';
 import { useMap } from 'react-use';
 import clsx from 'clsx';
-import { capitalize, concat, find, flattenDeep, groupBy, isEmpty, values } from 'lodash';
+import { capitalize, concat, find, flattenDeep, groupBy, isEmpty, keys, values } from 'lodash';
 import { useTranslation } from 'react-i18next';
 import {
   Accordion,
@@ -22,7 +22,7 @@ import {
 } from '@material-ui/core';
 import { YBCheckbox, YBModal } from '../../../components';
 import { isDefinedNotNull } from '../../../../utils/ObjectUtils';
-import { resourceOrderByRelevance } from '../common/RbacUtils';
+import { permissionOrderByRelevance, resourceOrderByRelevance } from '../common/RbacUtils';
 import { Action, Permission, Resource, ResourceType } from './IPermission';
 import { ArrowDropDown } from '@material-ui/icons';
 
@@ -137,6 +137,13 @@ function ListPermissionsModal({
   const classes = useStyles();
 
   const permissionGroups = groupBy(permissionsList, (perm) => perm.resourceType);
+
+  keys(permissionGroups).forEach((key) => {
+    permissionGroups[key] = permissionGroups[key].sort((a, b) => {
+      return permissionOrderByRelevance.indexOf(a.action) - permissionOrderByRelevance.indexOf(b.action);
+    });
+  });
+
   if (isDefinedNotNull(permissionGroups[Resource.DEFAULT])) {
     permissionGroups[Resource.DEFAULT] = permissionGroups[Resource.DEFAULT].filter(
       (p) => p.action !== Action.SUPER_ADMIN_ACTIONS
@@ -229,8 +236,8 @@ function ListPermissionsModal({
                     resourceType === Resource.DEFAULT
                       ? t('selectAllOtherPermissions')
                       : t('selectAllPermissions', {
-                          resource: capitalize(resourceType.toLowerCase())
-                        })
+                        resource: capitalize(resourceType.toLowerCase())
+                      })
                   }
                   indeterminate={
                     selectedPermissions[resourceType].length > 0 &&

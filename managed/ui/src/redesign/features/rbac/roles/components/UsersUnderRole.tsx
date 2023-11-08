@@ -74,7 +74,7 @@ export const UsersUnderRole = forwardRef((_, forwardRef) => {
     [onCancel]
   );
 
-  if (!roleBindings) return null;
+  if (!roleBindings) return <div className={classes.root}></div>;
 
   return (
     <div className={classes.root}>
