@@ -20,29 +20,11 @@ Use the `FETCH` statement to fetch one or several rows from a _[cursor](../../..
 
 ## Syntax
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammar Icon">
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <img src="/icons/diagram.svg" alt="Diagram Icon">
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/fetch,fetch_one_row,fetch_many_rows.grammar.md" %}}
-  </div>
-  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/fetch,fetch_one_row,fetch_many_rows.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  fetch,
+  fetch_one_row,
+  fetch_many_rows
+{{%/ebnf%}}
 
 ## Semantics
 
@@ -64,7 +46,7 @@ A _cursor_ represents the current position in its result set. After declaring a 
 
 - The `FETCH ABSOLUTE :n` variant fetches the single row at exactly the indicated absolute position. The `FETCH RELATIVE :n` variant fetches the single row at exactly the indicated relative position (_:n_ can be negative) to the current row. For both `FETCH ABSOLUTE :n` and `FETCH RELATIVE :n`, the requested row might lie before the first row or after the last row. The outcome here is the same as it is when executing other `FETCH` variants cause the current position to fall outside the range from the first through the last row in the cursor's result set. Notice that _:n_ can be negative for both the `ABSOLUTE` and the `RELATIVE` variants.
 
-- Each of the `FETCH FIRST` and `FETCH LAST` variants fetches, respectively, the first row or the last row. The meanings are therefore insensitive to the current cursor position, and each can be repeated time and again and will always produce the same result. 
+- Each of the `FETCH FIRST` and `FETCH LAST` variants fetches, respectively, the first row or the last row. The meanings are therefore insensitive to the current cursor position, and each can be repeated time and again and will always produce the same result.
 
 Notice that the three variants ,`FETCH FORWARD 0`, `FETCH BACKWARD 0`, and `FETCH RELATIVE 0`, all mean the same as each other.
 
@@ -100,7 +82,7 @@ rollback;
 This is the result. (Blanks lines were added manually to improve the readability.)
 
 ```output
-  k |  v  
+  k |  v
 ----+------
   2 |  200
   4 |  400
