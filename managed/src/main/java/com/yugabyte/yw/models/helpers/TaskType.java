@@ -430,6 +430,12 @@ public enum TaskType {
 
   RestoreUniverseKeysYbc(com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeysYbc.class),
 
+  RestorePreflightValidate(
+      com.yugabyte.yw.commissioner.tasks.subtasks.RestorePreflightValidate.class),
+
+  BackupPreflightValidate(
+      com.yugabyte.yw.commissioner.tasks.subtasks.BackupPreflightValidate.class),
+
   WaitForLeadersOnPreferredOnly(
       com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLeadersOnPreferredOnly.class),
 

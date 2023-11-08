@@ -26,6 +26,7 @@ import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.OK;
+import static play.mvc.Http.Status.PRECONDITION_FAILED;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -759,12 +760,13 @@ public class BackupsControllerTest extends FakeDBApplication {
   @Test
   public void testCreateBackupValidationFailed() {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST25");
-    UUID fakeTaskUUID = UUID.randomUUID();
+    CustomerConfigService mockCCS = mock(CustomerConfigService.class);
+    when(mockCCS.getOrBadRequest(any(), any())).thenReturn(customerConfig);
     when(mockBackupHelper.createBackupTask(any(), any())).thenCallRealMethod();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    doThrow(new PlatformServiceException(BAD_REQUEST, "error"))
+    doThrow(new PlatformServiceException(PRECONDITION_FAILED, "error"))
         .when(mockBackupHelper)
-        .validateBackupRequest(any(), any(), any());
+        .validateStorageConfig(any());
+    ReflectionTestUtils.setField(mockBackupHelper, "customerConfigService", mockCCS);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("universeUUID", defaultUniverse.getUniverseUUID().toString());
     bodyJson.put("storageConfigUUID", customerConfig.getConfigUUID().toString());
@@ -772,7 +774,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     Result r = assertPlatformException(() -> createBackupYb(bodyJson, null));
     JsonNode resultJson = Json.parse(contentAsString(r));
     assertValue(resultJson, "error", "error");
-    assertEquals(BAD_REQUEST, r.status());
+    assertEquals(PRECONDITION_FAILED, r.status());
     verify(mockCommissioner, times(0)).submit(any(), any());
   }
 
