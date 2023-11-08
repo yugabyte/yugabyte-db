@@ -58,7 +58,7 @@ The following is an example of a decoded JWT with groups claims (the Group GUID 
 ]
 ```
 
-Note that GUIDs are not supported for YSQL usernames. Use regex rules in user name maps in `yp_ident_conf` to convert group GUIDs to roles as described in the following section.
+Note that GUIDs are not supported for YSQL usernames. Use regex rules in user name maps in the `yb_ident.conf` file to convert group GUIDs to roles. See [ysql_ident_conf_csv](#ysql-ident-conf-csv).
 
 The following illustration shows an example of Azure app roles configuration.
 
@@ -94,7 +94,7 @@ To enable OIDC authentication with AAD, you need to do the following:
 
 - Create an app registration in AAD - The AAD IdP configuration includes application registration (registering YugabyteDB Anywhere in the AAD tenant) and configuring AAD to send (redirect) tokens with the required claims to YugabyteDB Anywhere.
 - Configure OIDC in Yugabyte Anywhere - The OIDC configuration uses the application you registered. You can also configure YBA to display the user's JSON Web Token (JWT) on the login screen.
-- Configure the universe to use OIDC - You enable OIDC for universes by setting authentication rules for database access using flags. The database is implicitly configured and picks up the authentication rules you set. The database uses well-known PostgreSQL constructs to translate these authentication rules into database roles for access. Mapping AAD attributes, such as group memberships, roles, and email addresses to database roles, is accomplished using the PostgreSQL `yb_hba_conf` and `yb_ident_conf` files.
+- Configure the universe to use OIDC - You enable OIDC for universes by setting authentication rules for database access using flags. The database is implicitly configured and picks up the authentication rules you set. The database uses well-known PostgreSQL constructs to translate these authentication rules into database roles for access. Mapping AAD attributes, such as group memberships, roles, and email addresses to database roles, is accomplished using the PostgreSQL `yb_hba.conf` and `yb_ident.conf` files.
 
 ### Register an application in Azure
 
