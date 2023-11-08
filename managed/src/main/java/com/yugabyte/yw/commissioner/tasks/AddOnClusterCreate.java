@@ -76,7 +76,7 @@ public class AddOnClusterCreate extends UniverseDefinitionTaskBase {
           universe,
           nodesToProvision,
           false /* ignore node status check */,
-          ignoreUseCustomImageConfig);
+          setupParams -> setupParams.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig);
 
       // no need to enable tservers.
       // no need to start ybc process.

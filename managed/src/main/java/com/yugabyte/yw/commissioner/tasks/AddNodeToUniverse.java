@@ -154,10 +154,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       // ignore node status is true because generic callee checks for node state To Be Added.
       boolean isNextFallThrough =
           createCreateNodeTasks(
-              universe,
-              nodeSet,
-              true /* ignoreNodeStatus */,
-              false /* ignoreUseCustomImageConfig */);
+              universe, nodeSet, true /* ignoreNodeStatus */, null /* param customizer */);
 
       boolean addMaster =
           areMastersUnderReplicated(currentNode, universe)
@@ -181,9 +178,12 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
           universe,
           mastersToAdd,
           tServersToAdd,
-          true /* isShellMode */,
           isNextFallThrough /* ignoreNodeStatus */,
-          false /* ignoreUseCustomImageConfig */);
+          installSoftwareParams -> installSoftwareParams.isMasterInShellMode = true,
+          gFlagsParams -> {
+            gFlagsParams.isMasterInShellMode = true;
+            gFlagsParams.resetMasterState = true;
+          });
 
       // Copy the source root certificate to the newly added node.
       createTransferXClusterCertsCopyTasks(

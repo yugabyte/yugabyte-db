@@ -222,7 +222,7 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
-      createConfigureUniverseTasks(primaryCluster);
+      createConfigureUniverseTasks(primaryCluster, null);
       // Run all the tasks.
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
