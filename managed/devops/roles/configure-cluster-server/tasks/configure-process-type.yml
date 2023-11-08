@@ -17,6 +17,10 @@
     _mount_logs_dir: "{{ _mount_points[0] }}/yb-data/{{ yb_process_type }}/logs"
   tags: always
 
+- set_fact:
+    server_gflags: {}
+  tags: always
+
 - name: Deleting files and directories
   file:
     path: "{{ item }}"
@@ -47,17 +51,9 @@
 # Set the gflags in conf file
 # gflags has greater precedence over extra_gflags
 - block:
-  # Remove existing gflags present in conf file
-  - name: Configure | Remove {{ yb_process_type }} gflags
-    file:
-      path: "{{ yb_conf_file }}"
-      state: absent
-  - name: Configure | Set {{ yb_process_type }} gflags
-    lineinfile:
-      dest: "{{ yb_conf_file }}"
-      regexp: "^--{{ item.key }}=(.*)"
-      line: "--{{item.key}}={{item.value}}"
-      create: yes
+  - name: Configure | Create {{ yb_process_type }} gflags
+    set_fact:
+      server_gflags: "{{ server_gflags | combine ({ item.key : item.value }) }}"
     with_dict: "{{ extra_gflags | combine(gflags | default({})) }}"
     when: item.key != 'postmaster_cgroup'
 
@@ -83,13 +79,20 @@
       when: cgroup_output.stdout == 'cgroup2fs'
 
     - name: Configure | Set postmaster_cgroup gflag
-      lineinfile:
-        dest: "{{ yb_conf_file }}"
-        regexp: "^--postmaster_cgroup=(.*)"
-        line: "--postmaster_cgroup={{ postmaster_cgroup_path }}"
-        create: yes
+      set_fact:
+        server_gflags: "{{ server_gflags | combine ({ 'postmaster_cgroup': postmaster_cgroup_path }) }}"
     when:
       - gflags.postmaster_cgroup is defined or extra_gflags.postmaster_cgroup is defined
+
+  # This overwrites the existing file at once.
+  - name: Configure | Copy {{ yb_process_type }} gflags conf file
+    template:
+      src: yb-server-gflags.conf.j2
+      dest: "{{ yb_conf_file }}"
+      force: yes
+      mode: 0644
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
   tags:
     - override_gflags
 

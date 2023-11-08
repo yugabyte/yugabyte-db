@@ -1851,7 +1851,7 @@ public class NodeManager extends DevopsBase {
             commandArgs.add("systemd_upgrade");
             commandArgs.add("--systemd_services");
           } else if (taskParam.useSystemd) {
-            // Systemd for new universes
+            // Systemd for new universes.
             commandArgs.add("--systemd_services");
           }
           if (taskParam.installThirdPartyPackages) {

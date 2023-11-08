@@ -1254,7 +1254,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             self.extra_vars["ybc_dir"] = args.ybc_dir
 
         if args.ybc_flags is not None:
-            self.extra_vars["ybc_flags"] = args.ybc_flags
+            self.extra_vars["ybc_flags"] = json.loads(args.ybc_flags)
 
         if args.extra_gflags is not None:
             self.extra_vars["extra_gflags"] = json.loads(args.extra_gflags)

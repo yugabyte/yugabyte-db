@@ -148,9 +148,13 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       createProvisionNodeTasks(
           universe,
           taskParams().nodeDetailsSet,
-          false /* isShell */,
           false /* ignore node status check */,
-          false /* ignoreUseCustomImageConfig */);
+          null /* setup server param customizer */,
+          null /* install software param customizer */,
+          gFlagsParams -> {
+            gFlagsParams.resetMasterState = true;
+            gFlagsParams.masterJoinExistingCluster = false;
+          });
 
       Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
 
@@ -179,7 +183,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
-      createConfigureUniverseTasks(primaryCluster);
+      createConfigureUniverseTasks(primaryCluster, newMasters);
 
       // Create Load Balancer map to add nodes to load balancer
       Map<LoadBalancerPlacement, LoadBalancerConfig> loadBalancerMap =

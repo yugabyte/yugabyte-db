@@ -276,10 +276,19 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       createProvisionNodeTasks(
           universe,
           nodesToProvision,
-          true /* isShell */,
           false /* ignore node status check */,
-          ignoreUseCustomImageConfig);
-
+          setupServerParams -> {
+            setupServerParams.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
+          },
+          installSoftwareParams -> {
+            installSoftwareParams.isMasterInShellMode = true;
+            installSoftwareParams.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
+          },
+          gFlagsParams -> {
+            gFlagsParams.isMasterInShellMode = true;
+            gFlagsParams.resetMasterState = true;
+            gFlagsParams.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
+          });
       // Copy the source root certificate to the provisioned nodes.
       createTransferXClusterCertsCopyTasks(
           nodesToProvision, universe, SubTaskGroupType.Provisioning);
