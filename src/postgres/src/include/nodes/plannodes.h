@@ -385,6 +385,7 @@ typedef struct YbSeqScan
 	PushdownExprs yb_pushdown;
 	double		yb_estimated_num_nexts;
 	double		yb_estimated_num_seeks;
+	int 		yb_estimated_docdb_result_width;
 } YbSeqScan;
 
 /* ----------------
@@ -450,6 +451,7 @@ typedef struct IndexScan
 	PushdownExprs yb_rel_pushdown;
 	double		yb_estimated_num_nexts;
 	double		yb_estimated_num_seeks;
+	int 		yb_estimated_docdb_result_width;
 	int         yb_distinct_prefixlen; /* distinct index scan prefix */
 	YbLockMechanism	yb_lock_mechanism;	/* locks possible as part of the scan */
 } IndexScan;
@@ -488,6 +490,7 @@ typedef struct IndexOnlyScan
 	List	   *yb_indexqual_for_recheck;
 	double		yb_estimated_num_nexts;
 	double		yb_estimated_num_seeks;
+	int 		yb_estimated_docdb_result_width;
 	int         yb_distinct_prefixlen; /* distinct index scan prefix */
 } IndexOnlyScan;
 

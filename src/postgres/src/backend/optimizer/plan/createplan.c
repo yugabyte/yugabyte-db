@@ -192,7 +192,8 @@ static YbSeqScan *make_yb_seqscan(List *qptlist,
 				List *yb_pushdown_colrefs,
 				Index scanrelid,
 				double yb_estimated_num_nexts,
-				double yb_estimated_num_seeks);
+				double yb_estimated_num_seeks,
+				int yb_estimated_docdb_result_width);
 static SampleScan *make_samplescan(List *qptlist, List *qpqual, Index scanrelid,
 				TableSampleClause *tsc);
 static IndexScan *make_indexscan(List *qptlist, List *qpqual,
@@ -203,14 +204,15 @@ static IndexScan *make_indexscan(List *qptlist, List *qpqual,
 			   List *indexorderby, List *indexorderbyorig,
 			   List *indexorderbyops, List *indextlist,
 			   ScanDirection indexscandir, double yb_estimated_num_nexts,
-			   double yb_estimated_num_seeks, YbIndexPathInfo yb_path_info);
+			   double yb_estimated_num_seeks, int yb_estimated_docdb_result_width,
+			   YbIndexPathInfo yb_path_info);
 static IndexOnlyScan *make_indexonlyscan(List *qptlist, List *qpqual,
 				   List *yb_pushdown_colrefs, List *yb_pushdown_quals,
 				   Index scanrelid, Oid indexid,
 				   List *indexqual, List *indexorderby,
 				   List *indextlist,
 				   ScanDirection indexscandir, double yb_estimated_num_nexts,
-				   double yb_estimated_num_seeks);
+				   double yb_estimated_num_seeks, int yb_estimated_docdb_result_width);
 static BitmapIndexScan *make_bitmap_indexscan(Index scanrelid, Oid indexid,
 					  List *indexqual,
 					  List *indexqualorig);
@@ -3481,7 +3483,8 @@ create_seqscan_plan(PlannerInfo *root, Path *best_path,
 												remote_quals, colrefs,
 												scan_relid,
 												best_path->yb_estimated_num_nexts,
-												best_path->yb_estimated_num_seeks);
+												best_path->yb_estimated_num_seeks,
+												best_path->yb_estimated_docdb_result_width);
 	else
 		scan_plan = make_seqscan(tlist, local_quals, scan_relid);
 
@@ -3840,7 +3843,8 @@ create_indexscan_plan(PlannerInfo *root,
 												best_path->indexinfo->indextlist,
 												best_path->indexscandir,
 												best_path->yb_estimated_num_nexts,
-												best_path->yb_estimated_num_seeks);
+												best_path->yb_estimated_num_seeks,
+												best_path->yb_estimated_docdb_result_width);
 		index_only_scan_plan->yb_indexqual_for_recheck =
 			YbBuildIndexqualForRecheck(fixed_indexquals, best_path->indexinfo);
 		index_only_scan_plan->yb_distinct_prefixlen =
@@ -3868,6 +3872,7 @@ create_indexscan_plan(PlannerInfo *root,
 										 best_path->indexscandir,
 										 best_path->yb_estimated_num_nexts,
 										 best_path->yb_estimated_num_seeks,
+										 best_path->yb_estimated_docdb_result_width,
 										 best_path->yb_index_path_info);
 		index_scan_plan->yb_distinct_prefixlen =
 			best_path->yb_index_path_info.yb_distinct_prefixlen;
@@ -6452,7 +6457,8 @@ make_yb_seqscan(List *qptlist,
 				List *yb_pushdown_colrefs,
 				Index scanrelid,
 				double yb_estimated_num_nexts,
-				double yb_estimated_num_seeks)
+				double yb_estimated_num_seeks,
+				int yb_estimated_docdb_result_width)
 {
 	YbSeqScan  *node = makeNode(YbSeqScan);
 	Plan	   *plan = &node->scan.plan;
@@ -6464,6 +6470,7 @@ make_yb_seqscan(List *qptlist,
 	node->scan.scanrelid = scanrelid;
 	node->yb_estimated_num_nexts = yb_estimated_num_nexts;
 	node->yb_estimated_num_seeks = yb_estimated_num_seeks;
+	node->yb_estimated_docdb_result_width = yb_estimated_docdb_result_width;
 	node->yb_pushdown.quals = yb_pushdown_quals;
 	node->yb_pushdown.colrefs = yb_pushdown_colrefs;
 
@@ -6507,6 +6514,7 @@ make_indexscan(List *qptlist,
 			   ScanDirection indexscandir,
 			   double yb_estimated_num_nexts,
 			   double yb_estimated_num_seeks,
+			   int yb_estimated_docdb_result_width,
 			   YbIndexPathInfo yb_path_info)
 {
 	IndexScan  *node = makeNode(IndexScan);
@@ -6527,6 +6535,7 @@ make_indexscan(List *qptlist,
 	node->indexorderdir = indexscandir;
 	node->yb_estimated_num_nexts = yb_estimated_num_nexts;
 	node->yb_estimated_num_seeks = yb_estimated_num_seeks;
+	node->yb_estimated_docdb_result_width = yb_estimated_docdb_result_width;
 	node->yb_rel_pushdown.colrefs = yb_rel_pushdown_colrefs;
 	node->yb_rel_pushdown.quals = yb_rel_pushdown_quals;
 	node->yb_idx_pushdown.colrefs = yb_idx_pushdown_colrefs;
@@ -6548,7 +6557,8 @@ make_indexonlyscan(List *qptlist,
 				   List *indextlist,
 				   ScanDirection indexscandir,
 				   double yb_estimated_num_nexts,
-				   double yb_estimated_num_seeks)
+				   double yb_estimated_num_seeks,
+				   int yb_estimated_docdb_result_width)
 {
 	IndexOnlyScan *node = makeNode(IndexOnlyScan);
 	Plan	   *plan = &node->scan.plan;
@@ -6567,6 +6577,7 @@ make_indexonlyscan(List *qptlist,
 	node->yb_pushdown.quals = yb_pushdown_quals;
 	node->yb_estimated_num_nexts = yb_estimated_num_nexts;
 	node->yb_estimated_num_seeks = yb_estimated_num_seeks;
+	node->yb_estimated_docdb_result_width = yb_estimated_docdb_result_width;
 
 	return node;
 }
