@@ -25,9 +25,9 @@ showRightNav: true
 type: indexpage
 ---
 
-In YugabyteDB, [data is split (sharded)](./sharding-rebalancing) into tablets, and these multiple tablets are placed on varioous nodes. When more [nodes are added](./node-addition), some tablets are automatically [rebalanced](./sharding-rebalancing#rebalancing) to the new nodes. Tablets can be split dynamically as needed to use the newly added resource, which leads to each node managing fewer tablets. The entire cluster can therefore handle more transactions and queries in parallel, thus increasing its capacity to handle larger workloads.
+In YugabyteDB, [data is split (sharded)](./sharding-rebalancing) into tablets, and these multiple tablets are placed on various nodes. When more [nodes are added](./node-addition), some tablets are automatically [rebalanced](./sharding-rebalancing#rebalancing) to the new nodes. Tablets can be split dynamically as needed to use the newly added resource, which leads to each node managing fewer tablets. The entire cluster can therefore handle more transactions and queries in parallel, thus increasing its capacity to handle larger workloads.
 
-You can either add more nodes to distribute the tablets or increase the specs of your nodes to scale your universe efficiently and reliably to handle the following:
+You can either add more nodes to distribute the tablets or increase the specifications of your nodes to scale your universe efficiently and reliably to handle the following:
 
 * High transactions per second
 * High number of concurrent client connections
@@ -48,29 +48,29 @@ Vertical scaling involves upgrading the existing hardware or resources of each o
 
 In some cases, depending on your application needs and budget constraints, a combination of both horizontal and vertical scaling may be used to achieve the desired performance and scalability goals.
 
-## Horizontal vs Vertical Scaling
+## Horizontal vs Vertical scaling
 
-The following table lists the pros and cons of Horizontal/Vertical scaling of a YugabyteDB cluster.
+The following table lists the pros and cons of Horizontal and Vertical scaling of a YugabyteDB cluster.
 
 |                         |                           Horizontal Scaling/Scale out                            |                                Vertical Scaling/Scale up                                |
 | ----------------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| **No. of nodes**        | Increases                                                                         | Remains the same                                                                        |
+| **Number of nodes**        | Increases                                                                         | Remains the same                                                                        |
 | **Ease of effort**      | Add new nodes to the cluster                                                      | Add more powerful nodes, drain the old node, and remove them from the cluster           |
-| **Fault Tolerance**     | Increases as more nodes have been added                                           | Remains the same                                                                        |
+| **Fault Tolerance**     | Increases as more nodes are added                                           | Remains the same                                                                        |
 | **Cluster rebalancing** | Faster                                                                            | Slower                                                                                  |
-| **Future scaling**      | More nodes can be added                                                           | Limited to the most powerful machines available today                                   |
-| **Added costs**         | Cost of newer machines                                                            | Difference in cost of the new and old machines                                          |
-| **Disk**                | Same disks as other nodes can be used as data and connections will be distributed | Along with CPU and Memory, disks should also be updgraded to handle increased workloads |
+| **Future scaling**      | More nodes can be added                                                           | Limited to the most powerful machines available currently                                   |
+| **Added costs**         | Cost of newer machines                                                            | Difference in cost between the new and old machines                                          |
+| **Disk**                | Same disks as other nodes can be used as data and connections will be distributed | Along with CPU and memory, disks should also be updgraded to handle increased workloads |
 
 ## Enhancements
 
-[DocDB](../../architecture/docdb/), YugabyteDB's underlying distributed document store, uses a heavily customized version of RocksDB for node-local persistence. It has been engineered ground up to deliver high performance at a massive scale. Several features have been built into DocDB to support this design goal, including the following:
+[DocDB](../../architecture/docdb/), YugabyteDB's underlying distributed document store, uses a heavily customized version of RocksDB for node-local persistence. It has been engineered ground up to deliver high performance at a massive scale. Several features have been built into DocDB to enhance performance, including the following:
 
-- Scan-resistant global block cache
-- Bloom/index data splitting
-- Global memstore limit
-- Separate compaction queues to reduce read amplification
-- Smart load balancing across disks
+* Scan-resistant global block cache
+* Bloom/index data splitting
+* Global memstore limit
+* Separate compaction queues to reduce read amplification
+* Smart load balancing across disks
 
 ## Learn more
 
@@ -78,13 +78,13 @@ The following table lists the pros and cons of Horizontal/Vertical scaling of a 
 
   {{<index/item
     title="Distribute data across nodes"
-    body="Automatic data distribution across the universe's nodes using transparent sharding of tables."
+    body="Automatic data distribution across a universe's nodes using transparent sharding of tables."
     href="./sharding-rebalancing"
     icon="fa-solid fa-building">}}
 
   {{<index/item
     title="Scale out by adding nodes"
-    body="Seamlessly scale your cluster on demand by adding new nodes to the cluster"
+    body="Seamlessly scale your cluster on demand by adding new nodes to the cluster."
     href="./node-addition"
     icon="fa-solid fa-circle-nodes">}}
 
@@ -103,10 +103,8 @@ The following table lists the pros and cons of Horizontal/Vertical scaling of a 
   {{<index/item
     title="Transactions"
     body="See how transactions scale in YugabyteDB."
-    href="scaling-transactions-bench/"
+    href="scaling-transactions/"
     icon="/images/section_icons/explore/auto_sharding.png">}}
-
-  
 
   {{<index/item
     title="Large datasets"
