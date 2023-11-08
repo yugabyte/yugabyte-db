@@ -20,11 +20,11 @@ Assuming universe A is the Primary and universe B is the Standby, use the follow
 
 ### Pause replication and get the safe time
 
-If the Primary is Terminated for some reason, do the following:
+If the Primary (A) is terminated for some reason, do the following:
 
 1. Stop the application traffic to ensure no more updates are attempted.
 
-1. Pause replication on the Standby (B). This step is required to avoid unexpected updates arriving through replication, which can happen if the Primary comes back up before the failover process is completed.
+1. Pause replication on the Standby (B). This step is required to avoid unexpected updates arriving through replication, which can happen if the Primary (A) comes back up before failover completes.
 
     ```sh
     ./bin/yb-admin \
@@ -42,7 +42,7 @@ If the Primary is Terminated for some reason, do the following:
 1. Get the latest consistent time on Standby (B). The `get_xcluster_safe_time` command provides an approximate value for the data loss expected to occur when the unplanned failover process finishes, and the consistent timestamp on the Standby universe.
 
     ```sh
-    yb-admin \
+    ./bin/yb-admin \
     -master_addresses <standby_master_addresses> \
     -certs_dir_name <cert_dir> \
     get_xcluster_safe_time include_lag_and_skew
@@ -220,7 +220,7 @@ To do a PITR on a database:
 1. Promote Standby (B) to ACTIVE as follows:
 
     ```sh
-    yb-admin \
+    ./bin/yb-admin \
     -master_addresses <standby_master_addresses> \
     -certs_dir_name <cert_dir> \
     change_xcluster_role ACTIVE
@@ -311,7 +311,7 @@ Do the following:
     - List the CDC streams on Cluster A to obtain the list of stream IDs as follows:
 
         ```sh
-        yb-admin \
+        ./bin/yb-admin \
         -master_addresses <A_master_ips> \
         -certs_dir_name <dir_name> \
         list_cdc_streams
@@ -320,15 +320,13 @@ Do the following:
     - For each stream ID, delete the corresponding CDC stream:
 
         ```sh
-        yb-admin \
+        ./bin/yb-admin \
         -master_addresses <A_master_ips> \
         -certs_dir_name <dir_name> \
         delete_cdc_stream <streamID>
         ```
 
-1. Recreate the database(s) on A.
-
-    If you are using YubabyteDB Anywhere, don't create any tables. Replication setup (Bootstrapping) will create tables and objects on A from B.
+1. Recreate the database(s) and schema on A.
 
 1. Enable PITR on all replicating databases on both Primary and Standby universes by following the steps in [Set up replication](../async-transactional-setup/#set-up-replication).
 
@@ -357,7 +355,7 @@ Do the following:
     - List the CDC streams on Cluster A to obtain the list of stream IDs as follows:
 
         ```sh
-        yb-admin \
+        ./bin/yb-admin \
         -master_addresses <A_master_ips> \
         -certs_dir_name <dir_name> \
         list_cdc_streams
@@ -366,7 +364,7 @@ Do the following:
     - For each stream ID, delete the corresponding CDC stream:
 
         ```sh
-        yb-admin \
+        ./bin/yb-admin \
         -master_addresses <A_master_ips> \
         -certs_dir_name <dir_name> \
         delete_cdc_stream <streamID>
@@ -374,7 +372,7 @@ Do the following:
 
 1. Recreate the database(s) on A.
 
-    If you are using YubabyteDB Anywhere, don't create any tables. Replication setup (Bootstrapping) will create tables and objects on A from B.
+    Don't create any tables. Replication setup (Bootstrapping) will create tables and objects on A from B.
 
 1. Enable PITR on all replicating databases on both Primary and Standby universes by following the steps in [Set up replication](../async-transactional-setup/#set-up-replication).
 
@@ -388,4 +386,4 @@ Replication is now complete.
 
 To verify replication, see [Verify replication](../async-transactional-setup/#verify-replication).
 
-If your eventual desired configuration is for A to be the primary cluster and B the standby, follow the steps for [Planned switchover](../async-transactional-switchover/).
+If your eventual desired configuration is for A to be the primary universe and B the standby, follow the steps for [Planned switchover](../async-transactional-switchover/).

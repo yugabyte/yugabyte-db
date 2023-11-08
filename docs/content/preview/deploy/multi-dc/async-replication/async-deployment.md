@@ -18,9 +18,9 @@ type: docs
 
 You can create source and target universes as follows:
 
-1. Create the source universe by following the procedure from [Manual deployment](../../manual-deployment/).
+1. Create the source universe by following the procedure from [Manual deployment](../../../manual-deployment/).
 1. Create tables for the APIs being used by the source universe.
-1. Create the target universe by following the procedure from [Manual deployment](../../manual-deployment/).
+1. Create the target universe by following the procedure from [Manual deployment](../../../manual-deployment/).
 1. Create tables for the APIs being used by the target universe. These should be the same tables as you created for the source universe.
 1. Proceed to setting up [unidirectional](#set-up-unidirectional-replication) or [bidirectional](#set-up-bidirectional-replication) replication.
 
@@ -46,7 +46,7 @@ After you created the required tables, you can set up unidirectional replication
       ./bin/yb-admin -master_addresses <source_universe_master_addresses> list_tables include_table_id | grep table_name
       ```
 
-- Run the following `yb-admin` [`setup_universe_replication`](../../../admin/yb-admin/#setup-universe-replication) command from the YugabyteDB home directory in the source universe:
+- Run the following `yb-admin` [`setup_universe_replication`](../../../../admin/yb-admin/#setup-universe-replication) command from the YugabyteDB home directory in the source universe:
 
     ```sh
     ./bin/yb-admin \
@@ -96,7 +96,7 @@ After you have set up replication, load data into the source universe, as follow
     java -jar yb-sample-apps.jar --workload CassandraBatchKeyValue --nodes 127.0.0.1:9042
     ```
 
-  Note that the IP address needs to correspond to the IP of any T-Servers in the universe.
+  Note that the IP address needs to correspond to the IP of any YB-TServers in the universe.
 
 - For bidirectional replication, repeat the preceding step in the target universe.
 
@@ -126,9 +126,9 @@ Replication lag is computed at the tablet level as follows:
 
 `replication lag = hybrid_clock_time - last_read_hybrid_time`
 
-*hybrid_clock_time* is the hybrid clock timestamp on the source's tablet-server, and *last_read_hybrid_time* is the hybrid clock timestamp of the latest record pulled from the source.
+*hybrid_clock_time* is the hybrid clock timestamp on the source's tablet server, and *last_read_hybrid_time* is the hybrid clock timestamp of the latest record pulled from the source.
 
-To obtain information about the overall maximum lag, you should check `/metrics` or `/prometheus-metrics` for `async_replication_sent_lag_micros` or `async_replication_committed_lag_micros` and take the maximum of these values across each source's T-Server. For information on how to set up the node exporter and Prometheus manually, see [Prometheus integration](../../../explore/observability/prometheus-integration/macos/).
+To obtain information about the overall maximum lag, you should check `/metrics` or `/prometheus-metrics` for `async_replication_sent_lag_micros` or `async_replication_committed_lag_micros` and take the maximum of these values across each source's YB-TServer. For information on how to set up the node exporter and Prometheus manually, see [Prometheus integration](../../../../explore/observability/prometheus-integration/macos/).
 
 ### Replication status
 
@@ -155,7 +155,7 @@ statuses {
 
 The setup process depends on whether the source and target universes have the same certificates.
 
-If both universes use the same certificates, run `yb-admin setup_universe_replication` and include the [`-certs_dir_name`](../../../admin/yb-admin#syntax) flag. Setting that to the target universe's certificate directory will make replication use those certificates for connecting to both universes.
+If both universes use the same certificates, run `yb-admin setup_universe_replication` and include the [`-certs_dir_name`](../../../../admin/yb-admin#syntax) flag. Setting that to the target universe's certificate directory will make replication use those certificates for connecting to both universes.
 
 Consider the following example:
 
@@ -169,11 +169,11 @@ Consider the following example:
 
 When universes use different certificates, you need to store the certificates for the source universe on the target universe, as follows:
 
-1. Ensure that `use_node_to_node_encryption` is set to `true` on all [masters](../../../reference/configuration/yb-master/#use-node-to-node-encryption) and [t-servers](../../../reference/configuration/yb-tserver/#use-node-to-node-encryption) on both the source and target.
+1. Ensure that `use_node_to_node_encryption` is set to `true` on all [YB-Masters](../../../../reference/configuration/yb-master/#use-node-to-node-encryption) and [YB-TServers](../../../../reference/configuration/yb-tserver/#use-node-to-node-encryption) on both the source and target.
 
-1. For each master and t-server on the target universe, set the flag `certs_for_cdc_dir` to the parent directory where you want to store all the source universe's certificates for replication.
+1. For each YB-Master and YB-TServer on the target universe, set the flag `certs_for_cdc_dir` to the parent directory where you want to store all the source universe's certificates for replication.
 
-1. Find the certificate authority file used by the source universe (`ca.crt`). This should be stored in the [`--certs_dir`](../../../reference/configuration/yb-master/#certs-dir).
+1. Find the certificate authority file used by the source universe (`ca.crt`). This should be stored in the [`--certs_dir`](../../../../reference/configuration/yb-master/#certs-dir).
 
 1. Copy this file to each node on the target. It needs to be copied to a directory named`<certs_for_cdc_dir>/<source_universe_uuid>`.
 
@@ -382,7 +382,7 @@ You can set up xCluster replication for the following purposes:
 - Enabling replication on a table that has existing data.
 - Catching up an existing stream where the target has fallen too far behind.
 
-To ensure that the WALs are still available, you need to perform the following steps in the [cdc_wal_retention_time_secs](../../../reference/configuration/yb-master/#cdc-wal-retention-time-secs) flag window. If the process is going to take more time than the value defined by this flag, you should increase the value.
+To ensure that the WALs are still available, you need to perform the following steps in the [cdc_wal_retention_time_secs](../../../../reference/configuration/yb-master/#cdc-wal-retention-time-secs) flag window. If the process is going to take more time than the value defined by this flag, you should increase the value.
 
 Proceed as follows:
 
@@ -408,7 +408,7 @@ Proceed as follows:
     table id: 000033e1000030008000000000004006, CDC bootstrap id: c967967523eb4e03bcc201bb464e0679
     ```
 
-1. Take the backup of the tables on the source universe and restore at the target universe by following instructions from [Backup and restore](../../../manage/backup-restore/snapshot-ysql/).
+1. Take the backup of the tables on the source universe and restore at the target universe by following instructions from [Backup and restore](../../../../manage/backup-restore/snapshot-ysql/).
 1. Execute the following command to set up the replication stream using the bootstrap IDs generated in step 1. Ensure that the bootstrap IDs are in the same order as their corresponding table IDs.
 
     ```sh
@@ -504,7 +504,7 @@ To add a new index to an empty table, follow the same steps as described in [Add
 
 However, to add a new index to a table that already has data, the following additional steps are required to ensure that the index has all the updates:
 
-1. Create an [index](../../../api/ysql/the-sql-language/statements/ddl_create_index/) - for example, `my_new index` on the source.
+1. Create an [index](../../../../api/ysql/the-sql-language/statements/ddl_create_index/) - for example, `my_new index` on the source.
 1. Wait for index backfill to finish. For more details, refer to YugabyteDB tips on [monitor backfill progress](https://yugabytedb.tips/?p=2215).
 1. Determine the table ID for `my_new index`.
 
@@ -537,7 +537,7 @@ However, to add a new index to a table that already has data, the following addi
    ```
 
 1. Wait for replication to be 0 on the main table using the replication lag metrics described in [Replication lag](#replication-lag).
-1. Create an [index](../../../api/ysql/the-sql-language/statements/ddl_create_index/) on the target.
+1. Create an [index](../../../../api/ysql/the-sql-language/statements/ddl_create_index/) on the target.
 1. Wait for index backfill to finish. For more details, refer to YugabyteDB tips on [monitor backfill progress](https://yugabytedb.tips/?p=2215).
 1. Add the index to replication with the bootstrap ID from Step 4.
 

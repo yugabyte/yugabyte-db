@@ -1,5 +1,5 @@
 ---
-title: Unplanned failover with transactional xCluster replication
+title: Planned Switchover with transactional xCluster replication
 headerTitle: Planned switchover
 linkTitle: Switchover
 description: Switchover using transactional (active-standby) replication between universes
@@ -156,7 +156,7 @@ In the second stage, set up replication from the new Primary (B) universe as fol
 
     Repeat these steps on all A nodes.
 
-1. Set up replication from B to A using the bootstrap IDs obtained previously.
+1. Set up replication from B to A using the bootstrap IDs obtained in step 1.
 
     ```sh
     ./bin/yb-admin \
@@ -169,7 +169,7 @@ In the second stage, set up replication from the new Primary (B) universe as fol
         <comma_separated_B_bootstrap_ids> transactional
     ```
 
-1. Use `change_xcluster_role` to demote A to STANDBY:
+1. Use `change_xcluster_role` to demote A to Standby:
 
     ```sh
     ./bin/yb-admin \

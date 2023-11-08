@@ -114,7 +114,7 @@ To remove a table partition from replication, follow the same steps as [Remove a
 
 To ensure changes made outside of YugabyteDB Anywhere are reflected in YBA, resynchronize the YBA UI using the YBA API [sync xCluster config command](https://api-docs.yugabyte.com/docs/yugabyte-platform/e19b528a55430-sync-xcluster-config).
 
-Before you can use the command, you need an [API token](../../../yugabyte-platform/anywhere-automation/#); refer to [Authentication](../../../../yugabyte-platform/anywhere-automation/#authentication). You also need your customer ID and the UUID of the Standby universe; refer to [Account details](../../../../yugabyte-platform/anywhere-automation/#account-details).
+Before you can use the command, you need an API token, your customer ID, and the UUID of the Standby universe; refer to [Automation](../../../../yugabyte-platform/anywhere-automation/).
 
 To resynchronize the YBA UI, run the following command:
 

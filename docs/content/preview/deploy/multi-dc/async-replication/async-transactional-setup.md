@@ -89,7 +89,7 @@ To set up unidirectional transactional replication manually, do the following:
         create_snapshot_schedule 1 10 ysql.yugabyte
     ```
 
-1. If the Primary universe already has data, then follow the bootstrap process described in [Bootstrap a target universe](../async-replication/#bootstrap-a-target-universe) before setting up replication with the transactional flag.
+1. If the Primary universe already has data, then follow the bootstrap process described in [Bootstrap a target universe](../async-deployment/#bootstrap-a-target-universe) before setting up replication with the transactional flag.
 
 1. Set up xCluster replication from Primary to Standby using yb-admin as follows:
 
