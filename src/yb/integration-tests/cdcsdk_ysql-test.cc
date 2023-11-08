@@ -7134,5 +7134,32 @@ TEST_F(CDCSDKYsqlTest, TestReplicationSlotDropWithActiveInvalid) {
   ASSERT_OK(repl_conn.Execute("DROP_REPLICATION_SLOT repl_slot_drop_with_active_invalid"));
 }
 
+// Test for https://github.com/yugabyte/yugabyte-db/issues/19894.
+TEST_F(CDCSDKYsqlTest, TestPgReplicationSlotsView) {
+  ASSERT_OK(
+      SetUpWithParams(3 /* replication_factor */, 1 /* num_masters */, false /* colocated */));
+
+  // Disable VLOG for this test so that the log statements present in
+  // CdcStateTableIterator::operator*() - cdc_state_table.cc do not execute.
+  // It is important to not execute them so that we don't check the status of the
+  // Result<CDCStateTableEntry> inside it and be able to reproduce the crash that happens afterwards
+  // due to us not checking the status correctly while iterating the cdc state table entry in
+  // ListReplicationSlots - pg_client_service.cc.
+  google::SetVLOGLevel("cdc*", 0);
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.Execute(
+      "create table t1 (id int primary key, name text, l_name varchar, hours float);"));
+
+  ASSERT_OK(conn.Execute("create publication pub for all tables;"));
+
+  ASSERT_OK(conn.FetchFormat(
+      "SELECT * FROM pg_create_logical_replication_slot('$0', 'yboutput', false)",
+      "test_replication_slot_create_with_view"));
+
+  ASSERT_OK(conn.Fetch("SELECT * FROM pg_replication_slots"));
+}
+
 }  // namespace cdc
 }  // namespace yb
