@@ -22,28 +22,30 @@ export const ButtonDisabledPopover = ({
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const open = Boolean(anchorEl);
   const ref = useRef(null);
-  const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+  const handleClick = (event: React.MouseEvent<HTMLDivElement>) => {
     setAnchorEl(event.currentTarget);
   };
   const handleClose = () => {
     setAnchorEl(null);
   };
 
+  const onClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    handleClick(e);
+  };
+
   const reactChild = cloneElement(children, {
-    onClick: (e: React.MouseEvent<HTMLButtonElement>) => {
-      e.preventDefault();
-      e.stopPropagation();
-      handleClick(e);
-    }
+    onClick: onClick
   });
 
   useClickAway(ref, handleClose);
 
   return (
-    <div ref={ref}>
+    <div ref={ref} onClick={onClick}>
       {reactChild}
       <Popover
-        id={'rbac_perm_error'}
+        id={'rbac-perm-error'}
         open={open}
         anchorEl={anchorEl}
         onClose={handleClose}

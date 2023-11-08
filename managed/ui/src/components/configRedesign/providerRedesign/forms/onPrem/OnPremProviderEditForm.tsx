@@ -383,13 +383,19 @@ export const OnPremProviderEditForm = ({
             )}
           </Box>
           <Box marginTop="16px">
-            <YBButton
-              btnText="Apply Changes"
-              btnClass="btn btn-default save-btn"
-              btnType="submit"
-              disabled={isFormDisabled || formMethods.formState.isValidating}
-              data-testid={`${FORM_NAME}-SubmitButton`}
-            />
+            <RbacValidator
+              accessRequiredOn={ApiPermissionMap.MODIFY_PROVIDER}
+              isControl
+              overrideStyle={{ float: 'right' }}
+            >
+              <YBButton
+                btnText="Apply Changes"
+                btnClass="btn btn-default save-btn"
+                btnType="submit"
+                disabled={isFormDisabled || formMethods.formState.isValidating}
+                data-testid={`${FORM_NAME}-SubmitButton`}
+              />
+            </RbacValidator>
             <YBButton
               btnText="Clear Changes"
               btnClass="btn btn-default"
