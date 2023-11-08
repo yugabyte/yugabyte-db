@@ -1019,6 +1019,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "and the node does not have any tablets assigned to it in the tserver quorum.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> verifyClusterStateBeforeTask =
+      new ConfKeyInfo<>(
+          "yb.task.verify_cluster_state",
+          ScopeType.UNIVERSE,
+          "Verify current cluster state (from db perspective) before running task",
+          "Verify current cluster state (from db perspective) before running task",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 
   public static final ConfKeyInfo<Boolean> enableDbQueryApi =
       new ConfKeyInfo<>(

@@ -307,7 +307,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.RestartUniverse,
           TaskType.RebootNodeInUniverse,
           TaskType.VMImageUpgrade,
-          TaskType.ThirdpartySoftwareUpgrade);
+          TaskType.ThirdpartySoftwareUpgrade,
+          TaskType.CertsRotate);
 
   // Tasks that are allowed to run if cluster placement modification task failed.
   private static final Set<TaskType> SAFE_TO_RUN_IF_UNIVERSE_BROKEN =
@@ -332,7 +333,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.SyncDrConfig,
           TaskType.DeleteDrConfig,
           TaskType.DestroyUniverse,
-          TaskType.DestroyKubernetesUniverse);
+          TaskType.DestroyKubernetesUniverse,
+          TaskType.ReinstallNodeAgent);
 
   private static final Set<TaskType> RERUNNABLE_PLACEMENT_MODIFICATION_TASKS =
       ImmutableSet.of(TaskType.GFlagsUpgrade, TaskType.RestartUniverse, TaskType.VMImageUpgrade);

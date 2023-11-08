@@ -47,6 +47,13 @@ public class EditUniverse extends EditUniverseTaskBase {
     }
   }
 
+  @Override
+  protected void createPrecheckTasks(Universe universe) {
+    if (isFirstTry()) {
+      verifyClustersConsistency();
+    }
+  }
+
   protected void freezeUniverseInTxn(Universe universe) {
     super.freezeUniverseInTxn(universe);
   }

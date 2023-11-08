@@ -80,6 +80,10 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
         throw new RuntimeException(msg);
       }
 
+      if (isFirstTry()) {
+        verifyClustersConsistency();
+      }
+
       preTaskActions();
 
       // Delete all the read-only cluster nodes.

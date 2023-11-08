@@ -5,6 +5,7 @@ package com.yugabyte.yw.models.helpers;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.ITask;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.models.CustomerTask;
 import java.lang.reflect.Field;
@@ -906,7 +907,9 @@ public enum TaskType {
 
   QueryLdapServer(com.yugabyte.yw.commissioner.tasks.subtasks.ldapsync.QueryLdapServer.class),
 
-  DbLdapSync(com.yugabyte.yw.commissioner.tasks.subtasks.ldapsync.DbLdapSync.class);
+  DbLdapSync(com.yugabyte.yw.commissioner.tasks.subtasks.ldapsync.DbLdapSync.class),
+
+  CheckForClusterServers(CheckClusterConsistency.class);
 
   private final Class<? extends ITask> taskClass;
 

@@ -7,6 +7,7 @@ import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.HookInserter;
+import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
@@ -15,6 +16,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteClusterFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
@@ -2280,7 +2282,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   public SubTaskGroup createInstanceExistsCheckTasks(
-      UUID universeUuid, Collection<NodeDetails> nodes) {
+      UUID universeUuid,
+      UniverseDefinitionTaskParams parentTaskParams,
+      Collection<NodeDetails> nodes) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("InstanceExistsCheck");
     for (NodeDetails node : nodes) {
       if (node.placementUuid == null) {
@@ -2293,6 +2297,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.nodeUuid = node.nodeUuid;
       params.azUuid = node.azUuid;
       params.placementUuid = node.placementUuid;
+      params.clusters = parentTaskParams.clusters;
       InstanceExistCheck task = createTask(InstanceExistCheck.class);
       task.initialize(params);
       subTaskGroup.addSubTask(task);
@@ -2556,6 +2561,23 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               null /* ycqlCurrentPassword */,
               null /* ycqlUserName */)
           .setSubTaskGroupType(subTaskGroupType);
+    }
+  }
+
+  /**
+   * Verify that current cluster composition matches the expected one. (Check that we don't have
+   * unexpected masters or tservers)
+   */
+  protected void verifyClustersConsistency() {
+    if (confGetter.getConfForScope(getUniverse(), UniverseConfKeys.verifyClusterStateBeforeTask)) {
+      TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup("PrecheckCluster");
+      CheckClusterConsistency.Params params = new CheckClusterConsistency.Params();
+      params.setUniverseUUID(taskParams().getUniverseUUID());
+      CheckClusterConsistency task = createTask(CheckClusterConsistency.class);
+      task.initialize(params);
+      // Add it to the task list.
+      subTaskGroup.addSubTask(task);
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
     }
   }
 }

@@ -58,7 +58,6 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
       log.error(msg);
       throw new PlatformServiceException(Http.Status.BAD_REQUEST, msg);
     }
-
     currentNode.validateActionOnState(
         taskParams().isHardReboot ? NodeActionType.HARD_REBOOT : NodeActionType.REBOOT);
 
@@ -69,6 +68,13 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
     if (provider.getCloudCode() == CloudType.onprem && providerDetails.skipProvisioning == true) {
       throw new PlatformServiceException(
           Http.Status.BAD_REQUEST, "Cannot reboot manually provisioned nodes through YBA");
+    }
+  }
+
+  @Override
+  protected void createPrecheckTasks(Universe universe) {
+    if (isFirstTry()) {
+      verifyClustersConsistency();
     }
   }
 

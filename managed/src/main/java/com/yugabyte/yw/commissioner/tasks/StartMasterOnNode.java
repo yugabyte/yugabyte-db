@@ -112,6 +112,9 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
           universe.getName());
 
       preTaskActions();
+      if (isFirstTry()) {
+        verifyClustersConsistency();
+      }
 
       if (currentNode.masterState == null) {
         saveNodeStatus(

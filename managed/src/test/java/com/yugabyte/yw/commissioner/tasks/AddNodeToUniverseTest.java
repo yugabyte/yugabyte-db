@@ -9,9 +9,21 @@ import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.junit.Assert.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
@@ -20,16 +32,28 @@ import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeActionType;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.util.*;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
@@ -179,8 +203,8 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
   private static final List<TaskType> ADD_NODE_TASK_SEQUENCE =
       ImmutableList.of(
-          TaskType.FreezeUniverse,
           TaskType.InstanceExistCheck, // only if it wasn't decommissioned.
+          TaskType.FreezeUniverse,
           TaskType.SetNodeState, // to Adding
           TaskType.SetNodeStatus, // to Adding for 'To Be Added'
           TaskType.AnsibleCreateServer,
@@ -281,8 +305,8 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
   private static final List<TaskType> WITH_MASTER_UNDER_REPLICATED =
       ImmutableList.of(
-          TaskType.FreezeUniverse,
           TaskType.InstanceExistCheck,
+          TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.SetNodeStatus,
           TaskType.AnsibleCreateServer,
@@ -373,7 +397,10 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
       JsonNode expectedResults = taskExpectedResults.get(position);
       List<JsonNode> taskDetails =
           tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
-      assertJsonEqual(expectedResults, taskDetails.get(0));
+      assertJsonEqual(
+          "At position: " + position + " taskType " + expectedTaskType,
+          expectedResults,
+          taskDetails.get(0));
       position++;
     }
   }
@@ -452,7 +479,11 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
     verify(mockNodeManager, times(1)).nodeCommand(any(), any());
     assertThat(
-        taskInfo.getErrorMessage(),
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.FreezeUniverse)
+            .findFirst()
+            .get()
+            .getErrorMessage(),
         containsString(
             "Failed preflight checks for node host-n1. Code: 1. Output: {\"test\": false}"));
 
@@ -483,9 +514,12 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
   @Test
   public void testAddUnknownNode() {
-    TaskInfo taskInfo = submitTask(defaultUniverse.getUniverseUUID(), "host-n9", 3);
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> submitTask(defaultUniverse.getUniverseUUID(), "host-n9", 3));
+    assertEquals("No node host-n9 is found in universe Test Universe", exception.getMessage());
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
-    assertEquals(Failure, taskInfo.getTaskState());
   }
 
   @Test

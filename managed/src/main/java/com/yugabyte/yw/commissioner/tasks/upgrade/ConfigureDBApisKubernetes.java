@@ -31,6 +31,13 @@ public class ConfigureDBApisKubernetes extends KubernetesUpgradeTaskBase {
   }
 
   @Override
+  protected void createPrecheckTasks(Universe universe) {
+    if (isFirstTry()) {
+      verifyClustersConsistency();
+    }
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {

@@ -73,6 +73,9 @@ public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
     if (alwaysWaitForDataMove) {
       performPrecheck();
     }
+    if (isFirstTry()) {
+      verifyClustersConsistency();
+    }
   }
 
   @Override
@@ -126,9 +129,6 @@ public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
 
       Cluster currCluster =
           universe.getUniverseDetails().getClusterByUuid(taskParams().placementUuid);
-      UserIntent userIntent = currCluster.userIntent;
-      PlacementInfo pi = currCluster.placementInfo;
-
       boolean masterReachable = false;
       // Update Node State to being removed.
       createSetNodeStateTask(currentNode, NodeState.Removing)
