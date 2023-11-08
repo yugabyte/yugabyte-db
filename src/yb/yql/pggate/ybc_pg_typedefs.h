@@ -458,7 +458,7 @@ typedef struct TableIDMetadataInfo {
   const char* table_id;
   const char* table_name;
   const char* table_type;
-  uint32_t relation_type;
+  const char* relation_type;
   NamespaceIdentifierPB namespace_;
   const char* pgschema_name;
   ColocatedInfo colocated_info;

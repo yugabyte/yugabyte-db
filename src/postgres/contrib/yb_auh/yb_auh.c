@@ -62,7 +62,7 @@ typedef struct ybtableInfo {
   const char* table_id;
   const char* table_name;
   const char* table_type;
-  uint32_t relation_type;
+  const char* relation_type;
   const char* namespace_id;
   const char* namespace_name;
   const char* database_type;
@@ -580,7 +580,11 @@ yb_tables_internal(FunctionCallInfo fcinfo)
     j++;
 
     // relation_type
-    values[j++] = Int32GetDatum(tableInfo[i].relation_type);
+    if (tableInfo[i].relation_type != NULL)
+        values[j] = CStringGetTextDatum(tableInfo[i].relation_type);
+    else
+        isnull[j] = true;
+    j++;
 
     // namespace_id
     if (tableInfo[i].namespace_id != NULL)
@@ -597,7 +601,7 @@ yb_tables_internal(FunctionCallInfo fcinfo)
     j++;
 
     //database_type 
-    if (tableInfo[i].pgschema_name != NULL)
+    if (tableInfo[i].database_type != NULL)
         values[j] = CStringGetTextDatum(tableInfo[i].database_type);
     else
         isnull[j] = true;

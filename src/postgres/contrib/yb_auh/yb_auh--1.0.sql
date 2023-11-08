@@ -24,7 +24,7 @@ CREATE FUNCTION yb_tables(
     OUT table_id text,
     OUT table_name text,
     OUT table_type text,
-    OUT relation_type BIGINT,
+    OUT relation_type text,
     OUT namespace_id text,
     OUT namespace_name text,
     OUT database_type text,
