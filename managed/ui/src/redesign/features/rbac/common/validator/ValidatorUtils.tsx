@@ -19,7 +19,7 @@ export const RBAC_ERR_MSG_NO_PERM = (
     style={{
       fontSize: '13px',
       fontWeight: 400,
-      lineHeight: 1.25,
+      lineHeight: 1.25
     }}
   >
     You don&apos;t have permission to do this action.

@@ -140,7 +140,9 @@ function ListPermissionsModal({
 
   keys(permissionGroups).forEach((key) => {
     permissionGroups[key] = permissionGroups[key].sort((a, b) => {
-      return permissionOrderByRelevance.indexOf(a.action) - permissionOrderByRelevance.indexOf(b.action);
+      return (
+        permissionOrderByRelevance.indexOf(a.action) - permissionOrderByRelevance.indexOf(b.action)
+      );
     });
   });
 
@@ -236,8 +238,8 @@ function ListPermissionsModal({
                     resourceType === Resource.DEFAULT
                       ? t('selectAllOtherPermissions')
                       : t('selectAllPermissions', {
-                        resource: capitalize(resourceType.toLowerCase())
-                      })
+                          resource: capitalize(resourceType.toLowerCase())
+                        })
                   }
                   indeterminate={
                     selectedPermissions[resourceType].length > 0 &&

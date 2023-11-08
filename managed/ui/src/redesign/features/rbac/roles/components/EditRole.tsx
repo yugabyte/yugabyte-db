@@ -133,10 +133,12 @@ export const EditRole = () => {
           </div>
           <RbacValidator
             customValidateFunction={() => {
-              return hasNecessaryPerm({
-                ...ApiPermissionMap.DELETE_RBAC_ROLE,
-                onResource: { ROLE: currentRole?.roleUUID }
-              }) && currentRole?.roleType !== RoleType.SYSTEM;
+              return (
+                hasNecessaryPerm({
+                  ...ApiPermissionMap.DELETE_RBAC_ROLE,
+                  onResource: { ROLE: currentRole?.roleUUID }
+                }) && currentRole?.roleType !== RoleType.SYSTEM
+              );
             }}
             isControl
           >
