@@ -362,13 +362,13 @@ Run the `yb-voyager import data status --export-dir <EXPORT_DIR>` command to get
 
 ### Archive changes (Optional)
 
-As the migration continuously exports changes on the source database to the `EXPORT-DIR`, the disk utilization continues to grow indefinitely over time. To limit usage of all the disk space, optionally, you can use the `archive changes` command as follows:
+As the migration continuously exports changes on the source database to the `EXPORT-DIR`, disk use continues to grow. To prevent the disk from filling up, you can optionally use the `archive changes` command as follows:
 
 ```sh
 yb-voyager archive changes --export-dir <EXPORT-DIR> --move-to <DESTINATION-DIR> --delete
 ```
 
-Refer to [archive changes](../../reference/cutover-archive/archive-changes-optional/) for details about the arguments.
+Refer to [archive changes](../../reference/cutover-archive/archive-changes/) for details about the arguments.
 
 ### Cutover to the target
 

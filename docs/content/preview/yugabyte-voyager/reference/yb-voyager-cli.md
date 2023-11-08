@@ -65,7 +65,7 @@ The list of commands for various phases of migration are as follows:
 - [Fall-forward status](../../reference/fall-forward/fall-forward-switchover/#fall-forward-status)
 - [Cutover initiate](../../reference/cutover-archive/cutover/#cutover-initiate)
 - [Cutover status](../../reference/cutover-archive/cutover/#cutover-status)
-- [Archive changes](../../reference/cutover-archive/archive-changes/#archive-changes-optional)
+- [Archive changes](../../reference/cutover-archive/archive-changes)
 
 ## SSL Connectivity
 
