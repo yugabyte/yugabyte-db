@@ -283,8 +283,7 @@ TEST_F(PgDdlAtomicitySanityTest, TestMultiRewriteAlterTable) {
   ASSERT_OK(VerifySchema(client.get(), "yugabyte", table_name, {"key", "value", "num"}));
 
   // Verify that the data and schema is intact.
-  PGResultPtr res = ASSERT_RESULT(conn.FetchFormat("SELECT * FROM $0", table_name));
-  ASSERT_EQ(PQntuples(res.get()), num_rows);
+  ASSERT_OK(conn.FetchMatrix(Format("SELECT * FROM $0", table_name), num_rows, 3));
   ASSERT_OK(conn.ExecuteFormat(
       "INSERT INTO $0 VALUES (11, 'value11', 11.11)", table_name));
 
@@ -295,9 +294,8 @@ TEST_F(PgDdlAtomicitySanityTest, TestMultiRewriteAlterTable) {
   ASSERT_OK(conn.ExecuteFormat(
       "INSERT INTO $0 VALUES ('keytext', 'value$1', '2.231')", table_name));
 
-  PGResultPtr res_after_ddl = ASSERT_RESULT(conn.FetchFormat("SELECT * FROM $0", table_name));
   // We added two new rows.
-  ASSERT_EQ(PQntuples(res_after_ddl.get()), num_rows + 2);
+  ASSERT_OK(conn.FetchMatrix(Format("SELECT * FROM $0", table_name), num_rows + 2, 3));
 }
 
 TEST_F(PgDdlAtomicitySanityTest, TestChangedPkColOrder) {
@@ -879,8 +877,7 @@ TEST_F(PgDdlAtomicityTxnTest, AddColDropColTest) {
   // Table should exist with old schema intact.
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   ASSERT_OK(VerifySchema(client.get(), kDatabase, table(), {"key", "value", "num"}));
-  PGResultPtr res = ASSERT_RESULT(conn.FetchFormat("SELECT value FROM $0", table()));
-  ASSERT_EQ(PQntuples(res.get()), 5);
+  ASSERT_OK(conn.FetchMatrix(Format("SELECT value FROM $0", table()), 5, 1));
 }
 
 TEST_F(PgDdlAtomicityTxnTest, AddDropColWithSameNameTest) {

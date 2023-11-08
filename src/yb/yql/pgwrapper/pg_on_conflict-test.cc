@@ -279,19 +279,13 @@ void PgOnConflictTest::TestOnConflict(bool kill_master, const MonoDelta& duratio
                 "UPDATE SET v = CONCAT(test.v, '$1')",
                 key_and_appended_char.first, value);
           } else {
-            auto result = connection.FetchFormat(
-                "SELECT v FROM test WHERE k = $0", key_and_appended_char.first);
+            auto result = connection.FetchRows<std::string>(Format(
+                "SELECT v FROM test WHERE k = $0", key_and_appended_char.first));
             if (!result.ok()) {
               status = result.status();
-            } else {
-              auto tuples = PQntuples(result->get());
-              if (tuples == 1) {
-                ASSERT_EQ(PQnfields(result->get()), 1);
-                current_batch.read_value = ASSERT_RESULT(
-                    GetValue<std::string>(result->get(), 0, 0));
-              } else {
-                ASSERT_EQ(tuples, 0);
-              }
+            } else if (!result->empty()) {
+              ASSERT_EQ(result->size(), 1);
+              current_batch.read_value = std::move(result->back());
             }
           }
           if (status.ok()) {
@@ -358,17 +352,12 @@ void PgOnConflictTest::TestOnConflict(bool kill_master, const MonoDelta& duratio
   }
 
   for (;;) {
-    auto res = conn.Fetch("SELECT * FROM test ORDER BY k");
-    if (!res.ok()) {
-      ASSERT_TRUE(TransactionalFailure(res.status())) << res.status();
+    auto rows_res = conn.FetchRows<int32_t, std::string>("SELECT * FROM test ORDER BY k");
+    if (!rows_res.ok()) {
+      ASSERT_TRUE(TransactionalFailure(rows_res.status())) << rows_res.status();
       continue;
     }
-    int cols = PQnfields(res->get());
-    ASSERT_EQ(cols, 2);
-    int rows = PQntuples(res->get());
-    for (int i = 0; i != rows; ++i) {
-      auto key = GetValue<int32_t>(res->get(), i, 0);
-      auto value = GetValue<std::string>(res->get(), i, 1);
+    for (const auto& [key, value] : *rows_res) {
       LOG(INFO) << "  " << key << ": " << value;
     }
     LOG(INFO) << "Total processed: " << processed.load(std::memory_order_acquire);
@@ -418,7 +407,8 @@ TEST_F(PgOnConflictTest, NoTxnOnConflict) {
   }
 
   thread_holder.WaitAndStop(30s);
-  LogResult(ASSERT_RESULT(conn.Fetch("SELECT * FROM test ORDER BY k")).get());
+  LOG(INFO) << yb::ToString(ASSERT_RESULT((conn.FetchRows<int32_t, std::string>(
+      "SELECT * FROM test ORDER BY k"))));
 }
 
 TEST_F_EX(PgOnConflictTest, ValidSessionAfterTxnCommitConflict, PgFailOnConflictTest) {

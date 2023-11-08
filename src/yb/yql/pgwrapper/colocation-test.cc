@@ -251,13 +251,13 @@ TEST_F(ColocationConcurrencyTest, InsertAndIndexBackfillOnSeparateTables) {
     insertion_thread.join();
 
     // Verify contents of t1_idx.
-    const std::string query = Format("SELECT * FROM t1 ORDER BY i");
+    const auto query = Format("SELECT * FROM t1 ORDER BY i");
     ASSERT_TRUE(ASSERT_RESULT(conn1.HasIndexScan(query)));
-    PGResultPtr res = ASSERT_RESULT(conn1.Fetch(query));
-    ASSERT_EQ(PQntuples(res.get()), 50);
-    ASSERT_EQ(PQnfields(res.get()), 2);
-    for (int i = 0; i < 50; ++i) {
-      ASSERT_EQ(i, ASSERT_RESULT(GetValue<int32_t>(res.get(), i, 0)));
+    const auto rows = ASSERT_RESULT((conn1.FetchRows<int32_t, int32_t>(query)));
+    ASSERT_EQ(rows.size(), 50);
+    auto index = 0;
+    for (const auto& [i_val, _] : rows) {
+      ASSERT_EQ(i_val, index++);
     }
 
     // Verify t2 has rows equal to counter.
@@ -319,9 +319,7 @@ TEST_F(ColocationConcurrencyTest, UpdateAndIndexBackfillOnSameTable) {
     // Verify contents of t1_idx.
     std::string query = "SELECT * FROM t1 ORDER BY i";
     ASSERT_TRUE(ASSERT_RESULT(conn1.HasIndexScan(query)));
-    PGResultPtr res = ASSERT_RESULT(conn1.Fetch(query));
-    ASSERT_EQ(PQntuples(res.get()), 50);
-    ASSERT_EQ(PQnfields(res.get()), 2);
+    ASSERT_OK(conn1.FetchMatrix(query, 50, 2));
 
     // Reset the table for next iteration.
     ASSERT_OK(conn1.ExecuteFormat("DROP INDEX t1_idx"));
@@ -350,13 +348,13 @@ TEST_F(ColocationConcurrencyTest, CreateAndTruncateOnSeparateTables) {
     create_index_thread.join();
 
     // Verify contents of t1_idx.
-    const std::string query = Format("SELECT * FROM t1 ORDER BY i");
+    const auto query = Format("SELECT * FROM t1 ORDER BY i");
     ASSERT_TRUE(ASSERT_RESULT(conn1.HasIndexScan(query)));
-    PGResultPtr res = ASSERT_RESULT(conn1.Fetch(query));
-    ASSERT_EQ(PQntuples(res.get()), 50);
-    ASSERT_EQ(PQnfields(res.get()), 2);
-    for (int i = 0; i < 50; ++i) {
-      ASSERT_EQ(i, ASSERT_RESULT(GetValue<int32_t>(res.get(), i, 0)));
+    const auto rows = ASSERT_RESULT((conn1.FetchRows<int32_t, int32_t>(query)));
+    ASSERT_EQ(rows.size(), 50);
+    auto index = 0;
+    for (const auto& [i_val, _] : rows) {
+      ASSERT_EQ(i_val, index++);
     }
 
     // Verify t2 has 0 rows
@@ -452,10 +450,9 @@ TEST_F(ColocationConcurrencyTest, AlterAndUpdateOnSameTable) {
     update_thread.join();
 
     // Verify that t1 has 3 columns.
-    std::string query =
+    const auto query =
         "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 't1'";
-    PGResultPtr res = ASSERT_RESULT(conn1.Fetch(query));
-    ASSERT_EQ(PQntuples(res.get()), 3);
+    ASSERT_OK(conn1.FetchMatrix(query, 3, 2));
 
     // Verify t1 has 50 rows.
     auto curr_rows = ASSERT_RESULT(conn1.FetchValue<int64_t>("SELECT COUNT(*) FROM t1"));

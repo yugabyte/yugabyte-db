@@ -2259,7 +2259,7 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
   argv.insert(argv.end(), extra_flags_.begin(), extra_flags_.end());
   AddExtraFlagsFromEnvVar("YB_EXTRA_DAEMON_FLAGS", &argv);
 
-  std::unique_ptr<Subprocess> p(new Subprocess(exe_, argv));
+  auto p = std::make_unique<Subprocess>(exe_, argv);
   p->PipeParentStdout();
   p->PipeParentStderr();
   auto default_output_prefix = Format("[$0]", daemon_id_);

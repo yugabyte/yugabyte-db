@@ -405,42 +405,30 @@ TEST_F(PgMiniTest, MultiColFollowerReads) {
   ASSERT_OK(conn.Execute("UPDATE t SET c2 = 'NEW' WHERE k = 1"));
   auto kUpdateTime2 = MonoTime::Now();
 
-  auto result =
-      ASSERT_RESULT(conn.Fetch("/*+ Set(transaction_read_only off) */ "
-                               "SELECT * FROM t WHERE k = 1"));
-  ASSERT_EQ(1, ASSERT_RESULT(GetValue<int32_t>(result.get(), 0, 0)));
-  ASSERT_EQ("NEW", ASSERT_RESULT(GetValue<std::string>(result.get(), 0, 1)));
-  ASSERT_EQ("NEW", ASSERT_RESULT(GetValue<std::string>(result.get(), 0, 2)));
+  auto row = ASSERT_RESULT((conn.FetchRow<int32_t, std::string, std::string>(
+      "/*+ Set(transaction_read_only off) */ SELECT * FROM t WHERE k = 1")));
+  ASSERT_EQ(row, (decltype(row){1, "NEW", "NEW"}));
 
   const int32_t kOpDurationMs = 10;
   auto staleness_ms = (MonoTime::Now() - kUpdateTime0).ToMilliseconds() - kOpDurationMs;
   ASSERT_OK(conn.Execute(Format("SET yb_follower_read_staleness_ms = $0", staleness_ms)));
-  result =
-      ASSERT_RESULT(conn.Fetch("/*+ Set(transaction_read_only on) */ "
-                               "SELECT * FROM t WHERE k = 1"));
-  ASSERT_EQ(1, ASSERT_RESULT(GetValue<int32_t>(result.get(), 0, 0)));
-  ASSERT_EQ("old", ASSERT_RESULT(GetValue<std::string>(result.get(), 0, 1)));
-  ASSERT_EQ("old", ASSERT_RESULT(GetValue<std::string>(result.get(), 0, 2)));
+  row = ASSERT_RESULT((conn.FetchRow<int32_t, std::string, std::string>(
+      "/*+ Set(transaction_read_only on) */ SELECT * FROM t WHERE k = 1")));
+  ASSERT_EQ(row, (decltype(row){1, "old", "old"}));
 
   staleness_ms = (MonoTime::Now() - kUpdateTime1).ToMilliseconds() - kOpDurationMs;
   ASSERT_OK(conn.Execute(Format("SET yb_follower_read_staleness_ms = $0", staleness_ms)));
-  result =
-      ASSERT_RESULT(conn.Fetch("/*+ Set(transaction_read_only on) */ "
-                               "SELECT * FROM t WHERE k = 1"));
-  ASSERT_EQ(1, ASSERT_RESULT(GetValue<int32_t>(result.get(), 0, 0)));
-  ASSERT_EQ("NEW", ASSERT_RESULT(GetValue<std::string>(result.get(), 0, 1)));
-  ASSERT_EQ("old", ASSERT_RESULT(GetValue<std::string>(result.get(), 0, 2)));
+  row = ASSERT_RESULT((conn.FetchRow<int32_t, std::string, std::string>(
+      "/*+ Set(transaction_read_only on) */ SELECT * FROM t WHERE k = 1")));
+  ASSERT_EQ(row, (decltype(row){1, "NEW", "old"}));
 
   SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
 
   staleness_ms = (MonoTime::Now() - kUpdateTime2).ToMilliseconds();
   ASSERT_OK(conn.Execute(Format("SET yb_follower_read_staleness_ms = $0", staleness_ms)));
-  result =
-      ASSERT_RESULT(conn.Fetch("/*+ Set(transaction_read_only on) */ "
-                               "SELECT * FROM t WHERE k = 1"));
-  ASSERT_EQ(1, ASSERT_RESULT(GetValue<int32_t>(result.get(), 0, 0)));
-  ASSERT_EQ("NEW", ASSERT_RESULT(GetValue<std::string>(result.get(), 0, 1)));
-  ASSERT_EQ("NEW", ASSERT_RESULT(GetValue<std::string>(result.get(), 0, 2)));
+  row = ASSERT_RESULT((conn.FetchRow<int32_t, std::string, std::string>(
+      "/*+ Set(transaction_read_only on) */ SELECT * FROM t WHERE k = 1")));
+  ASSERT_EQ(row, (decltype(row){1, "NEW", "NEW"}));
 }
 
 TEST_F(PgMiniTest, Simple) {
@@ -799,9 +787,7 @@ TEST_F(PgMiniTest, TruncateColocatedBigTable) {
   ASSERT_OK(tablet_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
 
   // Check if the row still visible.
-  auto res = conn.FetchValue<int32_t>("select k from t1 where k = 1");
-  ASSERT_NOK(res);
-  ASSERT_TRUE(res.status().message().Contains("Fetched 0 rows, while 1 expected"));
+  ASSERT_OK(conn.FetchMatrix("select k from t1 where k = 1", 0, 1));
 
   // Check if hit dup key error.
   ASSERT_OK(conn.Execute("insert into t1 values (1)"));
@@ -1212,15 +1198,10 @@ void PgMiniTest::TestConcurrentDeleteRowAndUpdateColumn(bool select_before_updat
   }
   ASSERT_OK(status);
   ASSERT_OK(conn1.CommitTransaction());
-  auto result = ASSERT_RESULT(conn1.FetchMatrix("SELECT * FROM t ORDER BY i", 2, 2));
-  auto value = ASSERT_RESULT(GetValue<int32_t>(result.get(), 0, 0));
-  ASSERT_EQ(value, 1);
-  value = ASSERT_RESULT(GetValue<int32_t>(result.get(), 0, 1));
-  ASSERT_EQ(value, 10);
-  value = ASSERT_RESULT(GetValue<int32_t>(result.get(), 1, 0));
-  ASSERT_EQ(value, 3);
-  value = ASSERT_RESULT(GetValue<int32_t>(result.get(), 1, 1));
-  ASSERT_EQ(value, 30);
+  const auto rows = ASSERT_RESULT((conn1.FetchRows<int32_t, int32_t>(
+      "SELECT * FROM t ORDER BY i")));
+  const decltype(rows) expected_rows = {{1, 10}, {3, 30}};
+  ASSERT_EQ(rows, expected_rows);
 }
 
 TEST_F(PgMiniTest, ConcurrentDeleteRowAndUpdateColumn) {
@@ -1315,10 +1296,7 @@ class PgMiniTestAutoScanNextPartitions : public PgMiniTest {
     // of rows.
     constexpr auto kQuery = "SELECT k FROM t WHERE v1 = 1";
     RETURN_NOT_OK(conn->HasIndexScan(kQuery));
-    auto res = VERIFY_RESULT(conn->Fetch(kQuery));
-    auto lines = PQntuples(res.get());
-    SCHECK_EQ(lines, kNumRows, IllegalState, "Unexpected rows count");
-    return Status::OK();
+    return ResultToStatus(conn->FetchMatrix(kQuery, kNumRows, 1));
   }
 
   Status FKConstraint(PGConn* conn, KeyColumnType key_type) {
@@ -1599,24 +1577,19 @@ void PgMiniTest::RunManyConcurrentReadersTest() {
             "SELECT * FROM $0 WHERE a BETWEEN $1 AND $2 ORDER BY a ASC",
             kTableName, read_start, read_end);
 
-        auto res = ASSERT_RESULT(conn.Fetch(fetch_query));
-        auto fetched_rows = PQntuples(res.get());
-        if (fetched_rows != 0) {
+        const auto values = ASSERT_RESULT(conn.FetchRows<int32_t>(fetch_query));
+        const auto fetched_values = values.size();
+        if (fetched_values != 0) {
           num_non_empty_reads++;
-          if (fetched_rows != 2) {
+          if (fetched_values != 2) {
             LOG(INFO)
                 << "Expected to fetch (" << read_start << ") and (" << read_end << "). "
                 << "Instead, got the following results:";
-            for (int i = 0; i < fetched_rows; ++i) {
-              auto fetched_val = CHECK_RESULT(GetValue<int32_t>(res.get(), i, 0));
-              LOG(INFO) << "Result " << i << " - " << fetched_val;
+            for (size_t i = 0; i < fetched_values; ++i) {
+              LOG(INFO) << "Result " << i << " - " << values[i];
             }
           }
-          EXPECT_EQ(fetched_rows, 2);
-          auto first_fetched_val = ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0));
-          EXPECT_EQ(read_start, first_fetched_val);
-          auto second_fetched_val = ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 0));
-          EXPECT_EQ(read_start + 4, second_fetched_val);
+          EXPECT_EQ(values, (decltype(values){read_start, read_start + 4}));
         }
         reader_latch.CountDown(1);
       }
@@ -1649,7 +1622,7 @@ TEST_F(PgMiniTest, BigInsertWithAbortedIntentsAndRestart) {
   ASSERT_OK(conn.Execute("CREATE TABLE t (a int PRIMARY KEY) SPLIT INTO 1 TABLETS"));
 
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
-  for (int64_t row_num = 0; row_num < kNumRows; ++row_num) {
+  for (int32_t row_num = 0; row_num < kNumRows; ++row_num) {
     auto should_abort = row_num % kRowNumModToAbort == 0;
     if (should_abort) {
       ASSERT_OK(conn.Execute("SAVEPOINT A"));
@@ -1673,15 +1646,16 @@ TEST_F(PgMiniTest, BigInsertWithAbortedIntentsAndRestart) {
     return intents_count == 0;
   }, 60s * kTimeMultiplier, "Intents cleanup", 200ms));
 
-  for (int64_t row_num = 0; row_num < kNumRows; ++row_num) {
+  for (int32_t row_num = 0; row_num < kNumRows; ++row_num) {
     auto should_abort = row_num % kRowNumModToAbort == 0;
 
-    auto res = ASSERT_RESULT(conn.FetchFormat("SELECT * FROM t WHERE a = $0", row_num));
+    const auto values = ASSERT_RESULT(conn.FetchRows<int32_t>(Format(
+        "SELECT * FROM t WHERE a = $0", row_num)));
     if (should_abort) {
-      EXPECT_EQ(0, PQntuples(res.get())) << "Did not expect to find value for: " << row_num;
+      EXPECT_TRUE(values.empty()) << "Did not expect to find value for: " << row_num;
     } else {
-      auto value = EXPECT_RESULT(GetValue<int32_t>(res.get(), 0, 0));
-      EXPECT_EQ(value, row_num) << "Expected to find " << row_num << ", found " << value << ".";
+      EXPECT_EQ(values.size(), 1);
+      EXPECT_EQ(values[0], row_num);
     }
   }
   ValidateAbortedTxnMetric();

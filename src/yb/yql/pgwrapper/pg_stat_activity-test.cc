@@ -70,16 +70,12 @@ class PgStatActivityTest : public LibPqTestBase {
   }
 
   static Result<std::vector<TxnInfo>> FetchTxnInfoFromStatActivity(PGConn* conn) {
-    auto stat_result_holder = VERIFY_RESULT(conn->Fetch(
-        "SELECT pid, yb_backend_xid FROM pg_stat_activity WHERE yb_backend_xid IS NOT NULL"));
-    auto* stat_result = stat_result_holder.get();
+    auto rows = VERIFY_RESULT((conn->FetchRows<int32_t, Uuid>(
+        "SELECT pid, yb_backend_xid FROM pg_stat_activity WHERE yb_backend_xid IS NOT NULL")));
     std::vector<TxnInfo> result;
-    const auto rows_count = PQntuples(stat_result);
-    result.reserve(rows_count);
-    for (int i = 0; i < rows_count; ++i) {
-      result.emplace_back(
-          VERIFY_RESULT(GetValue<int32_t>(stat_result, i, 0)),
-          VERIFY_RESULT(GetValue<Uuid>(stat_result, i, 1)));
+    result.reserve(rows.size());
+    for (const auto& [pid, txn_id] : rows) {
+      result.emplace_back(pid, txn_id);
     }
     return result;
   }

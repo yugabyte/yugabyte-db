@@ -539,20 +539,14 @@ TEST_F(PgTabletSplitTest, PostSplitCompactionWithLimitedSize) {
             << " should allow to post split into 4 files.";
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_post_split_compaction_input_size_threshold_bytes) = input_limit;
 
-  // Prepare result for these 6 files.
-  std::string expected_data = []() {
-    std::stringstream ss;
-    for (auto k = 51; k <= 5100; ++k) {
-      ss << (k != 51 ? DefaultRowSeparator() : "");
-      ss << k << DefaultColumnSeparator();
-      ss << (k > 100 ? k : -k);
-    }
-    return ss.str();
-  }();
-
   // Fetch all rows and check result.
-  auto actual_data = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t ORDER BY k ASC"));
-  ASSERT_STR_EQ(expected_data, actual_data);
+  auto rows = ASSERT_RESULT((conn.FetchRows<int32_t, int32_t>("SELECT * FROM t ORDER BY k ASC")));
+  decltype(rows) expected_rows;
+  expected_rows.reserve(5150);
+  for (auto k = 51; k <= 5100; ++k) {
+    expected_rows.emplace_back(k, (k > 100 ? k : -k));
+  }
+  ASSERT_EQ(rows, expected_rows);
 
   // Remember the id of the newest file.
   const auto parent_latest_file_id =
@@ -563,8 +557,8 @@ TEST_F(PgTabletSplitTest, PostSplitCompactionWithLimitedSize) {
 
   // Split and check data is expected. Post split compaction is not yet done, it is paused.
   ASSERT_OK(SplitSingleTabletAndWaitForActiveChildTablets(table_id));
-  actual_data = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t ORDER BY k ASC"));
-  ASSERT_STR_EQ(expected_data, actual_data);
+  rows = ASSERT_RESULT((conn.FetchRows<int32_t, int32_t>("SELECT * FROM t ORDER BY k ASC")));
+  ASSERT_EQ(rows, expected_rows);
 
   // Write data which will be hosted in children as a new files. Remember the file number.
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO t SELECT i, i FROM generate_series(5101, 5200) AS i"));
@@ -589,13 +583,9 @@ TEST_F(PgTabletSplitTest, PostSplitCompactionWithLimitedSize) {
   }
 
   // Update expected data to reflect new rows.
-  expected_data += []() {
-    std::stringstream ss;
-    for (auto k = 5101; k <= 5200; ++k) {
-      ss << DefaultRowSeparator() << k << DefaultColumnSeparator() << k;
-    }
-    return ss.str();
-  }();
+  for (auto k = 5101; k <= 5200; ++k) {
+    expected_rows.emplace_back(k, k);
+  }
 
   // Resume post split compaciton and wait for a completion.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = false;
@@ -660,8 +650,8 @@ TEST_F(PgTabletSplitTest, PostSplitCompactionWithLimitedSize) {
   }
 
   // Make sure we still have the expected data.
-  actual_data = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t ORDER BY k ASC"));
-  ASSERT_STR_EQ(expected_data, actual_data);
+  rows = ASSERT_RESULT((conn.FetchRows<int32_t, int32_t>("SELECT * FROM t ORDER BY k ASC")));
+  ASSERT_EQ(rows, expected_rows);
 }
 
 TEST_F(PgTabletSplitTest, TestMetaCacheLookupsPostSplit) {
@@ -1192,24 +1182,18 @@ class PgRangePartitionedTableSplitTest : public PgTabletSplitTest {
     return cluster_->FlushTablets();
   }
 
-  std::string PrepareSelectResult(int lower_bound, int upper_bound) {
-    std::stringstream expected;
+  static std::vector<int32_t> PrepareSelectResult(int lower_bound, int upper_bound) {
+    std::vector<int32_t> result;
     if (lower_bound < upper_bound) {
       for (auto n = lower_bound + 1; n < upper_bound; ++n) {
-        if (expected.tellp()) {
-          expected << pgwrapper::DefaultRowSeparator();
-        }
-        expected << n;
+        result.push_back(n);
       }
     } else {
       for (auto n = upper_bound - 1; n > lower_bound; --n) {
-        if (expected.tellp()) {
-          expected << pgwrapper::DefaultRowSeparator();
-        }
-        expected << n;
+        result.push_back(n);
       }
     }
-    return expected.str();
+    return result;
   }
 };
 
@@ -1226,15 +1210,14 @@ TEST_F(PgRangePartitionedTableSplitTest, SelectMinMaxAfterSplit) {
       ASSERT_OK(DoLastTabletSplitForTableWithSingleTablet(table_name, kNumSplits));
 
       const bool is_min = ToLowerCase(aggregate) == "min";
-      const auto expected = std::to_string(is_min ? 1 : kNumRows);
+      const auto expected = is_min ? 1 : kNumRows;
 
       // Executing in a loop to check the result after possible cache update.
       for ([[maybe_unused]] auto _ : Range(5)) {
         const auto query = Format(
             "SELECT $0($1) FROM $2", aggregate, column, table_name);
         LOG(INFO) << "Query: " << query;
-        const auto result = ASSERT_RESULT(conn.FetchAllAsString(query));
-        ASSERT_EQ(result, expected);
+        ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>(query)), expected);
       }
     }
   }
@@ -1255,7 +1238,7 @@ TEST_F(PgRangePartitionedTableSplitTest, SelectRangeAfterManualSplit) {
       const bool is_asc_ordering = ToLowerCase(sort_order) == "asc";
       const auto lower_bound = is_asc_ordering ? 1 : kNumRows;
       const auto upper_bound = is_asc_ordering ? kNumRows : 1;
-      const auto expected = PrepareSelectResult(lower_bound, upper_bound);
+      const auto expected_values = PrepareSelectResult(lower_bound, upper_bound);
 
       // Executing in a loop to check the result after possible cache update.
       for ([[maybe_unused]] auto _ : Range(5)) {
@@ -1263,8 +1246,7 @@ TEST_F(PgRangePartitionedTableSplitTest, SelectRangeAfterManualSplit) {
             "SELECT $0 FROM $1 WHERE $0 > $2 and $0 < $3 ORDER BY $0 $4",
             column, table_name, lower_bound, upper_bound, sort_order);
         LOG(INFO) << "Query: " << query;
-        const auto result = ASSERT_RESULT(conn.FetchAllAsString(query));
-        ASSERT_EQ(result, expected);
+        ASSERT_EQ(ASSERT_RESULT(conn.FetchRows<int32_t>(query)), expected_values);
       }
     }
   }
@@ -1323,7 +1305,7 @@ TEST_F(PgRangePartitionedTableSplitTest, SelectMiddleRangeAfterManualSplit) {
       const bool is_asc_ordering = ToLowerCase(sort_order) == "asc";
       const auto lower_bound = is_asc_ordering ? partition_start : partition_end;
       const auto upper_bound = is_asc_ordering ? partition_end : partition_start;
-      const auto expected = PrepareSelectResult(lower_bound, upper_bound);
+      const auto expected_values = PrepareSelectResult(lower_bound, upper_bound);
 
       // Executing in a loop to check the result after possible cache update.
       for ([[maybe_unused]] auto _ : Range(5)) {
@@ -1331,8 +1313,7 @@ TEST_F(PgRangePartitionedTableSplitTest, SelectMiddleRangeAfterManualSplit) {
             "SELECT $0 FROM $1 WHERE $0 > $2 and $0 < $3 ORDER BY $0 $4",
             column, table_name, lower_bound, upper_bound, sort_order);
         LOG(INFO) << "Query: " << query;
-        const auto result = ASSERT_RESULT(conn.FetchAllAsString(query));
-        ASSERT_EQ(result, expected);
+        ASSERT_EQ(ASSERT_RESULT(conn.FetchRows<int32_t>(query)), expected_values);
       }
     }
   }

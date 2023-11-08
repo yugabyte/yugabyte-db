@@ -113,14 +113,11 @@ TEST_F(PgIndexTest, SplitOption) {
     ASSERT_EQ(value, 1);
   }
   {
-    auto query = Format("SELECT unnest.lexeme FROM $0, LATERAL unnest(v) where v @@ 'bc'",
-                        kTableName);
+    const auto query = Format("SELECT unnest.lexeme FROM $0, LATERAL unnest(v) where v @@ 'bc'",
+                              kTableName);
     ASSERT_TRUE(ASSERT_RESULT(conn_->HasIndexScan(query)));
-    auto res = ASSERT_RESULT(conn_->Fetch(query));
-    ASSERT_EQ(PQntuples(res.get()), 2);
-    ASSERT_EQ(PQnfields(res.get()), 1);
-    ASSERT_EQ(ASSERT_RESULT(GetValue<std::string>(res.get(), 0, 0)), "ab");
-    ASSERT_EQ(ASSERT_RESULT(GetValue<std::string>(res.get(), 1, 0)), "bc");
+    const auto values = ASSERT_RESULT(conn_->FetchRows<std::string>(query));
+    ASSERT_EQ(values, (decltype(values){"ab", "bc"}));
   }
 
   // Hash partitioning is currently not possible, so we can't test hash splitting.
@@ -131,9 +128,10 @@ TEST_F(PgIndexTest, NullKey) {
   ASSERT_OK(conn_->Execute("CREATE UNIQUE INDEX ON usc_asc(v ASC NULLS FIRST)"));
   ASSERT_OK(conn_->Execute(
       "INSERT INTO usc_asc VALUES (44, NULL),(22, 20),(33, 30),(11, 10),(44, NULL)"));
-  auto all = ASSERT_RESULT(conn_->FetchAllAsString(
-      "SELECT * FROM usc_asc ORDER BY v DESC NULLS LAST"));
-  ASSERT_EQ(all, "33, 30; 22, 20; 11, 10; 44, NULL; 44, NULL");
+  auto rows = ASSERT_RESULT((conn_->FetchRows<int32_t, std::optional<int32_t>>(
+      "SELECT * FROM usc_asc ORDER BY v DESC NULLS LAST")));
+  ASSERT_EQ(rows,
+            (decltype(rows){{33, 30}, {22, 20}, {11, 10}, {44, std::nullopt}, {44, std::nullopt}}));
 }
 
 } // namespace pgwrapper

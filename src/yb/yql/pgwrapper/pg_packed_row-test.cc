@@ -64,8 +64,8 @@ class PgPackedRowTest : public PackedRowTestBase<PgMiniTestBase>,
     PackedRowTestBase<PgMiniTestBase>::SetUp();
   }
 
-  void TestCompaction(int num_keys, const std::string& expr_suffix);
-  void TestColocated(int num_keys, int num_expected_records);
+  void TestCompaction(size_t num_keys, const std::string& expr_suffix);
+  void TestColocated(size_t num_keys, int num_expected_records);
   void TestSstDump(bool specify_metadata, std::string* output);
   void TestAppliedSchemaVersion(bool colocated);
 };
@@ -76,19 +76,22 @@ TEST_P(PgPackedRowTest, Simple) {
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, v1 TEXT, v2 TEXT)"));
   ASSERT_OK(conn.Execute("INSERT INTO t (key, v1, v2) VALUES (1, 'one', 'two')"));
 
-  auto value = ASSERT_RESULT(conn.FetchRowAsString("SELECT v1, v2 FROM t WHERE key = 1"));
-  ASSERT_EQ(value, "one, two");
+  auto row = ASSERT_RESULT((conn.FetchRow<std::string, std::string>(
+      "SELECT v1, v2 FROM t WHERE key = 1")));
+  ASSERT_EQ(row, (decltype(row){"one", "two"}));
 
   ASSERT_OK(conn.Execute("UPDATE t SET v2 = 'three' where key = 1"));
-  value = ASSERT_RESULT(conn.FetchRowAsString("SELECT v1, v2 FROM t WHERE key = 1"));
-  ASSERT_EQ(value, "one, three");
+  row = ASSERT_RESULT((conn.FetchRow<std::string, std::string>(
+      "SELECT v1, v2 FROM t WHERE key = 1")));
+  ASSERT_EQ(row, (decltype(row){"one", "three"}));
 
   ASSERT_OK(conn.Execute("DELETE FROM t WHERE key = 1"));
   ASSERT_OK(conn.FetchMatrix("SELECT * FROM t", 0, 3));
 
   ASSERT_OK(conn.Execute("INSERT INTO t (key, v1, v2) VALUES (1, 'four', 'five')"));
-  value = ASSERT_RESULT(conn.FetchRowAsString("SELECT v1, v2 FROM t WHERE key = 1"));
-  ASSERT_EQ(value, "four, five");
+  row = ASSERT_RESULT((conn.FetchRow<std::string, std::string>(
+      "SELECT v1, v2 FROM t WHERE key = 1")));
+  ASSERT_EQ(row, (decltype(row){"four", "five"}));
 }
 
 TEST_P(PgPackedRowTest, Update) {
@@ -101,8 +104,9 @@ TEST_P(PgPackedRowTest, Update) {
   ASSERT_OK(conn.Execute(
       "CREATE TABLE t (key INT PRIMARY KEY, v1 TEXT, v2 TEXT) SPLIT INTO 1 TABLETS"));
   ASSERT_OK(conn.Execute("INSERT INTO t (key, v1, v2) VALUES (1, 'one', 'two')"));
-  auto value = ASSERT_RESULT(conn.FetchRowAsString("SELECT v1, v2 FROM t WHERE key = 1"));
-  ASSERT_EQ(value, "one, two");
+  auto row = ASSERT_RESULT((conn.FetchRow<std::string, std::string>(
+      "SELECT v1, v2 FROM t WHERE key = 1")));
+  ASSERT_EQ(row, (decltype(row){"one", "two"}));
   CheckNumRecords(cluster_.get(), /* expected_num_records = */ 1);
 
   // Update the row with column size exceeds limit size for paced row,
@@ -111,22 +115,25 @@ TEST_P(PgPackedRowTest, Update) {
   const std::string kBigValue(kValueLimit, 'B');
   ASSERT_OK(conn.ExecuteFormat(
       "UPDATE t SET v1 = '$0', v2 = '$1' where key = 1", kBigValue, kBigValue));
-  value = ASSERT_RESULT(conn.FetchRowAsString("SELECT v1, v2 FROM t WHERE key = 1"));
-  ASSERT_EQ(value, Format("$0, $1", kBigValue, kBigValue));
+  row = ASSERT_RESULT((conn.FetchRow<std::string, std::string>(
+      "SELECT v1, v2 FROM t WHERE key = 1")));
+  ASSERT_EQ(row, (decltype(row){kBigValue, kBigValue}));
   CheckNumRecords(cluster_.get(), /* expected_num_records = */ 3);
 
   // Update the row with two small strings, updated row will be packed.
   ASSERT_OK(conn.Execute("UPDATE t SET v1 = 'four', v2 = 'three' where key = 1"));
-  value = ASSERT_RESULT(conn.FetchRowAsString("SELECT v1, v2 FROM t WHERE key = 1"));
-  ASSERT_EQ(value, "four, three");
+  row = ASSERT_RESULT((conn.FetchRow<std::string, std::string>(
+      "SELECT v1, v2 FROM t WHERE key = 1")));
+  ASSERT_EQ(row, (decltype(row){"four", "three"}));
   CheckNumRecords(cluster_.get(), /* expected_num_records = */ 4);
 
   // Disable packed row, and after update, should have two entries inserted to docdb.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
 
   ASSERT_OK(conn.Execute("UPDATE t SET v1 = 'six', v2 = 'five' where key = 1"));
-  value = ASSERT_RESULT(conn.FetchRowAsString("SELECT v1, v2 FROM t WHERE key = 1"));
-  ASSERT_EQ(value, "six, five");
+  row = ASSERT_RESULT((conn.FetchRow<std::string, std::string>(
+      "SELECT v1, v2 FROM t WHERE key = 1")));
+  ASSERT_EQ(row, (decltype(row){"six", "five"}));
   CheckNumRecords(cluster_.get(), /* expected_num_records = */ 6);
 }
 
@@ -202,14 +209,15 @@ TEST_P(PgPackedRowTest, UpdateReturning) {
   ASSERT_OK(conn.Execute(
       "CREATE TABLE t (key INT PRIMARY KEY, v1 TEXT, v2 TEXT) SPLIT INTO 1 TABLETS"));
   ASSERT_OK(conn.Execute("INSERT INTO t (key, v1, v2) VALUES (1, 'one', 'two')"));
-  auto value = ASSERT_RESULT(conn.FetchRowAsString("SELECT v1, v2 FROM t WHERE key = 1"));
-  ASSERT_EQ(value, "one, two");
+  auto row = ASSERT_RESULT((conn.FetchRow<std::string, std::string>(
+      "SELECT v1, v2 FROM t WHERE key = 1")));
+  ASSERT_EQ(row, (decltype(row){"one", "two"}));
   CheckNumRecords(cluster_.get(), /* expected_num_records = */ 1);
 
   // Update the row and return it.
-  value = ASSERT_RESULT(conn.FetchRowAsString(
-      "UPDATE t SET v1 = 'three', v2 = 'four' where key = 1 RETURNING v1, v2"));
-  ASSERT_EQ(value, "three, four");
+  row = ASSERT_RESULT((conn.FetchRow<std::string, std::string>(
+      "UPDATE t SET v1 = 'three', v2 = 'four' where key = 1 RETURNING v1, v2")));
+  ASSERT_EQ(row, (decltype(row){"three", "four"}));
   CheckNumRecords(cluster_.get(), /* expected_num_records = */ 2);
 }
 
@@ -266,17 +274,14 @@ TEST_P(PgPackedRowTest, Random) {
         }
       }
     }
-    auto result = ASSERT_RESULT(conn.Fetch("SELECT * FROM t"));
+    auto rows = ASSERT_RESULT((conn.FetchRows<int32_t, int32_t, int32_t>("SELECT * FROM t")));
     auto state_copy = key_state;
-    for (int row = 0, num_rows = PQntuples(result.get()); row != num_rows; ++row) {
-      auto key = ASSERT_RESULT(GetValue<int32_t>(result.get(), row, 0));
+    for (const auto& [key, value1, value2] : rows) {
       SCOPED_TRACE(Format("Key: $0", key));
       auto it = state_copy.find(key);
       ASSERT_NE(it, state_copy.end());
-      auto v1 = ASSERT_RESULT(GetValue<int32_t>(result.get(), row, 1));
-      ASSERT_EQ(it->second.first, v1);
-      auto v2 = ASSERT_RESULT(GetValue<int32_t>(result.get(), row, 2));
-      ASSERT_EQ(it->second.second, v2);
+      ASSERT_EQ(it->second.first, value1);
+      ASSERT_EQ(it->second.second, value2);
       state_copy.erase(key);
     }
     ASSERT_TRUE(state_copy.empty()) << AsString(state_copy);
@@ -402,7 +407,7 @@ TEST_P(PgPackedRowTest, SchemaGC) {
   }
 }
 
-void PgPackedRowTest::TestCompaction(int num_keys, const std::string& expr_suffix) {
+void PgPackedRowTest::TestCompaction(size_t num_keys, const std::string& expr_suffix) {
   constexpr size_t kValueLen = 32;
 
   auto conn = ASSERT_RESULT(ConnectToDB("test"));
@@ -413,20 +418,17 @@ void PgPackedRowTest::TestCompaction(int num_keys, const std::string& expr_suffi
 
   std::mt19937_64 rng(42);
 
-  std::string t1;
-  std::string t2;
-  for (auto key : Range(num_keys)) {
-    if (key) {
-      t1 += ";";
-      t2 += ";";
-    }
+  std::vector<std::tuple<int32_t, std::string>> expected_rows_t1(num_keys);
+  std::vector<std::tuple<int32_t, int32_t>> expected_rows_t2(num_keys);
+  for (size_t i = 0; i < num_keys; ++i) {
+    auto key = i + 1;
     auto t1_val = RandomHumanReadableString(kValueLen, &rng);
-    t1 += Format("$0,$1", key, t1_val);
+    expected_rows_t1[i] = {key, t1_val};
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO t1 (key, value) VALUES ($0, '')", key));
     ASSERT_OK(conn.ExecuteFormat("UPDATE t1 SET value = '$1' WHERE key = $0", key, t1_val));
 
     auto t2_val = RandomUniformInt<int32_t>(&rng);
-    t2 += Format("$0,$1", key, t2_val);
+    expected_rows_t2[i] = {key, t2_val};
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO t2 (key, value) VALUES ($0, 0)", key));
     ASSERT_OK(conn.ExecuteFormat("UPDATE t2 SET value = $1 WHERE key = $0", key, t2_val));
   }
@@ -440,14 +442,16 @@ void PgPackedRowTest::TestCompaction(int num_keys, const std::string& expr_suffi
       ASSERT_OK(cluster_->CompactTablets());
     }
 
-    auto value = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t1 ORDER BY key", ",", ";"));
-    ASSERT_EQ(value, t1);
-    value = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t2 ORDER BY key", ",", ";"));
-    ASSERT_EQ(value, t2);
+    auto rows_t1 = ASSERT_RESULT((conn.FetchRows<int32_t, std::string>(
+        "SELECT * FROM t1 ORDER BY key")));
+    ASSERT_EQ(rows_t1, expected_rows_t1);
+    auto rows_t2 = ASSERT_RESULT((conn.FetchRows<int32_t, int32_t>(
+        "SELECT * FROM t2 ORDER BY key")));
+    ASSERT_EQ(rows_t2, expected_rows_t2);
   }
 }
 
-void PgPackedRowTest::TestColocated(int num_keys, int num_expected_records) {
+void PgPackedRowTest::TestColocated(size_t num_keys, int num_expected_records) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE DATABASE test WITH colocated = true"));
   TestCompaction(num_keys, "WITH (colocated = true)");
@@ -505,8 +509,9 @@ TEST_P(PgPackedRowTest, CompactAfterTransaction) {
   ASSERT_OK(conn.Execute("UPDATE test SET value = 'dva' WHERE key = 2"));
   ASSERT_OK(conn.CommitTransaction());
   ASSERT_OK(cluster_->CompactTablets());
-  auto value = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM test ORDER BY key"));
-  ASSERT_EQ(value, "1, odin; 2, dva");
+  auto rows = ASSERT_RESULT((conn.FetchRows<int64_t, std::string>(
+      "SELECT * FROM test ORDER BY key")));
+  ASSERT_EQ(rows, (decltype(rows){{1, "odin"}, {2, "dva"}}));
 }
 
 TEST_P(PgPackedRowTest, Serial) {
@@ -518,21 +523,16 @@ TEST_P(PgPackedRowTest, PackDuringCompaction) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
 
   const auto kNumKeys = 10;
-  const auto kKeys = Range(1, kNumKeys + 1);
 
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute(
       "CREATE TABLE t (key INT PRIMARY KEY, v1 TEXT, v2 INT NOT NULL) SPLIT INTO 1 TABLETS"));
 
-  std::string all_rows;
-  for (auto i : kKeys) {
-    auto expr = Format("$0, $0, -$0", i);
-    ASSERT_OK(conn.ExecuteFormat("INSERT INTO t (key, v1, v2) VALUES ($0)", expr));
-    if (!all_rows.empty()) {
-      all_rows += "; ";
-    }
-    all_rows += expr;
+  std::vector<std::tuple<int32_t, std::string, int32_t>> expected_rows(kNumKeys);
+  for (size_t i = 0; i < kNumKeys; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO t (key, v1, v2) VALUES ($0, $0, -$0)", i));
+    expected_rows[i] = {i, std::to_string(i), -i};
   }
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
@@ -541,8 +541,9 @@ TEST_P(PgPackedRowTest, PackDuringCompaction) {
 
   ASSERT_NO_FATALS(CheckNumRecords(cluster_.get(), kNumKeys));
 
-  auto fetched_rows = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t ORDER BY key"));
-  ASSERT_EQ(fetched_rows, all_rows);
+  auto rows = ASSERT_RESULT((conn.FetchRows<int32_t, std::string, int32_t>(
+      "SELECT * FROM t ORDER BY key")));
+  ASSERT_EQ(rows, expected_rows);
 }
 
 // Check that we correctly interpret packed row size limit.
@@ -559,9 +560,9 @@ TEST_P(PgPackedRowTest, BigValue) {
 
   auto check_state = [this, &conn, &values](size_t expected_num_records) -> Status {
     RETURN_NOT_OK(cluster_->CompactTablets());
-    auto fetched_rows = VERIFY_RESULT(conn.FetchAllAsString("SELECT v1, v2 FROM t"));
-    SCHECK_EQ(
-        fetched_rows, Format("$0, $1", values[0], values[1]), IllegalState, "Wrong DB content");
+    auto row = VERIFY_RESULT((conn.FetchRow<std::string, std::string>(
+        "SELECT v1, v2 FROM t")));
+    SCHECK_EQ(row, std::tuple_cat(values), IllegalState, "Wrong DB content");
     CheckNumRecords(cluster_.get(), expected_num_records);
     return Status::OK();
   };
@@ -804,13 +805,13 @@ TEST_P(PgPackedRowTest, UpdateToNull) {
   ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, 1)"));
   ASSERT_OK(conn.Execute("UPDATE test SET v2 = NULL"));
 
-  auto content = ASSERT_RESULT(conn.FetchAllAsString("SELECT v2 FROM test"));
-  ASSERT_EQ(content, "NULL");
+  auto content = ASSERT_RESULT(conn.FetchRow<std::optional<int32_t>>("SELECT v2 FROM test"));
+  ASSERT_EQ(content, std::nullopt);
 
   ASSERT_OK(cluster_->CompactTablets());
 
-  content = ASSERT_RESULT(conn.FetchAllAsString("SELECT v2 FROM test"));
-  ASSERT_EQ(content, "NULL");
+  content = ASSERT_RESULT(conn.FetchRow<std::optional<int32_t>>("SELECT v2 FROM test"));
+  ASSERT_EQ(content, std::nullopt);
 }
 
 TEST_P(PgPackedRowTest, UpdateToNullWithPK) {
@@ -822,15 +823,14 @@ TEST_P(PgPackedRowTest, UpdateToNullWithPK) {
   ASSERT_OK(conn.Execute("UPDATE t SET value = NULL WHERE key = 1"));
 
   DumpDocDB(cluster_.get(), ListPeersFilter::kLeaders);
-  auto value = ASSERT_RESULT(conn.FetchRowAsString("SELECT value FROM t"));
-  ASSERT_EQ(value, "NULL");
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::optional<std::string>>("SELECT value FROM t")),
+            std::nullopt);
 
   ASSERT_OK(cluster_->CompactTablets());
 
   DumpDocDB(cluster_.get(), ListPeersFilter::kLeaders);
-
-  value = ASSERT_RESULT(conn.FetchRowAsString("SELECT value FROM t"));
-  ASSERT_EQ(value, "NULL");
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::optional<std::string>>("SELECT value FROM t")),
+            std::nullopt);
 }
 
 class TestKVFormatter : public tablet::KVFormatter {
