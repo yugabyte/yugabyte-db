@@ -126,6 +126,8 @@ For more information, refer to [Register an application with the Microsoft ident
 
 ### Configure YugabyteDB Anywhere
 
+To allow users to access their JWT from the YugabyteDB sign in page, you must enable the OIDC feature via a configuration flag before you configure OIDC.
+
 #### Enable OIDC enhancements
 
 To enable some features of the OIDC functionality in Yugabyte Anywhere, you need to set the `yb.security.oidc_feature_enhancements` configuration flag to true as follows:
@@ -138,7 +140,7 @@ To enable some features of the OIDC functionality in Yugabyte Anywhere, you need
 
 #### Enable OIDC authentication
 
-To configure YugabyteDB Anywhere for OIDC, you need to be signed on as a superuser. You need your application client ID, client secret, and tenant ID.
+To configure YugabyteDB Anywhere for OIDC, you need to be signed on as a superuser. You need your Azure application client ID, client secret, and tenant ID.
 
 To enable OIDC authentication in YugabyteDB Anywhere, do the following:
 
@@ -156,7 +158,7 @@ To enable OIDC authentication in YugabyteDB Anywhere, do the following:
 
 1. Set the email attribute to a name for the property to be used in the mapping file, such as `preferred_username`.
 
-1. Select the **Display JWT token on login** option to allow users to access their JWT from the Yugabyte Anywhere sign on page. This allows a user to view and copy their JWT without signing on to YBA. (This option is only available if you enabled the yb.security.oidc_feature_enhancements configuration flag.)
+1. Select the **Display JWT token on login** option to allow users to access their JWT from the Yugabyte Anywhere sign in page. This allows a user to view and copy their JWT without signing in to YBA. (This option is only available if you enabled the yb.security.oidc_feature_enhancements configuration flag.)
 
 1. Click **Save**.
 
@@ -247,11 +249,11 @@ After OIDC-based authentication is configured, an administrator can manage users
 
 - In YugabyteDB Anywhere, create YBA users.
 
-  Create a user in YugabyteDB Anywhere for each user who wishes to sign on to YBA to obtain their JWT.
+  Create a user in YugabyteDB Anywhere for each user who wishes to sign in to YBA to obtain their JWT.
 
-  To view their JWT, YBA users can sign on to YugabyteDB Anywhere, click the **User** icon at the top right, select **User Profile**, and click **Fetch OIDC Token**.
+  To view their JWT, YBA users can sign in to YugabyteDB Anywhere, click the **User** icon at the top right, select **User Profile**, and click **Fetch OIDC Token**.
 
-  This is not required if you enabled the **Display JWT token on login** option in the YBA OIDC configuration, as any database user can copy the JWT from the YBA landing page without signing on to YBA.
+  This is not required if you enabled the **Display JWT token on login** option in the YBA OIDC configuration, as any database user can copy the JWT from the YBA landing page without signing in to YBA.
 
   For information on how to add YBA users, see [Create, modify, and delete users](../../../security/authorization-platform/#create-modify-and-delete-users).
 
