@@ -66,6 +66,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForServer, // wait for postgres
           TaskType.SetNodeState,
           TaskType.WaitForMasterLeader,
+          TaskType.AnsibleConfigureServers,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForTServerHeartBeats,
           TaskType.SwamperTargetsFileUpdate,
@@ -85,6 +86,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForServer, // wait for postgres
           TaskType.SetNodeState,
           TaskType.WaitForMasterLeader,
+          TaskType.AnsibleConfigureServers,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForTServerHeartBeats,
           TaskType.SwamperTargetsFileUpdate,
@@ -275,7 +277,6 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     PlacementInfoUtil.dedicateNodes(taskParams.nodeDetailsSet);
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
-    List<TaskInfo> subTasks = taskInfo.getSubTasks();
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     Map<UniverseTaskBase.ServerType, List<NodeDetails>> byDedicatedType =
         defaultUniverse.getNodes().stream().collect(Collectors.groupingBy(n -> n.dedicatedTo));

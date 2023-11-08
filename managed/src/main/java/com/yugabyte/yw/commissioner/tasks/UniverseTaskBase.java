@@ -276,7 +276,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.RestartUniverse,
           TaskType.RebootNodeInUniverse,
           TaskType.VMImageUpgrade,
-          TaskType.ThirdpartySoftwareUpgrade);
+          TaskType.ThirdpartySoftwareUpgrade,
+          TaskType.CertsRotate);
 
   // Tasks that are allowed to run if cluster placement modification task failed.
   protected static final Set<TaskType> SAFE_TO_RUN_IF_UNIVERSE_BROKEN =
@@ -293,7 +294,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.RestartXClusterConfig,
           TaskType.SyncXClusterConfig,
           TaskType.DestroyUniverse,
-          TaskType.DestroyKubernetesUniverse);
+          TaskType.DestroyKubernetesUniverse,
+          TaskType.ReinstallNodeAgent);
 
   protected static final Set<TaskType> SOFTWARE_UPGRADE_ROLLBACK_TASKS =
       ImmutableSet.of(TaskType.RollbackKubernetesUpgrade, TaskType.RollbackUpgrade);
@@ -3846,46 +3848,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
-  }
-
-  public void createConfigureUniverseTasks(Cluster primaryCluster) {
-    // Wait for a Master Leader to be elected.
-    createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-    // Persist the placement info into the YB master leader.
-    createPlacementInfoTask(null /* blacklistNodes */)
-        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-    // Manage encryption at rest
-    SubTaskGroup manageEncryptionKeyTask = createManageEncryptionAtRestTask();
-    if (manageEncryptionKeyTask != null) {
-      manageEncryptionKeyTask.setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-    }
-
-    // Wait for a master leader to hear from all the tservers.
-    createWaitForTServerHeartBeatsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-    // Update the DNS entry for all the nodes once, using the primary cluster type.
-    createDnsManipulationTask(DnsManager.DnsCommandType.Create, false, primaryCluster)
-        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-    // Update the swamper target file.
-    createSwamperTargetUpdateTask(false /* removeFile */);
-
-    // Create alert definitions.
-    createUnivCreateAlertDefinitionsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-    // Create default redis table.
-    checkAndCreateRedisTableTask(primaryCluster);
-
-    // Create read write test table tasks.
-    checkAndCreateReadWriteTestTableTask(primaryCluster);
-
-    // Change admin password for Admin user, as specified.
-    checkAndCreateChangeAdminPasswordTask(primaryCluster);
-
-    // Marks the update of this universe as a success only if all the tasks before it succeeded.
-    createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 
   // Check if the node present in taskParams has a backing instance alive on the IaaS.

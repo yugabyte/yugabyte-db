@@ -27,6 +27,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateNodeDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseCommunicationPorts;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseIntent;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
+import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
@@ -757,7 +758,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         });
   }
 
-  public void createGFlagsOverrideTasks(
+  public SubTaskGroup createGFlagsOverrideTasks(
       Collection<NodeDetails> nodes,
       ServerType serverType,
       Consumer<AnsibleConfigureServers.Params> paramsCustomizer) {
@@ -817,19 +818,68 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           GFlagsUtil.getGFlagsForNode(
               node, serverType, cluster, universe.getUniverseDetails().clusters);
       params.useSystemd = userIntent.useSystemd;
-      paramsCustomizer.accept(params);
+      if (paramsCustomizer != null) {
+        paramsCustomizer.accept(params);
+      }
       AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
       task.initialize(params);
       task.setUserTaskUUID(getUserTaskUUID());
       subTaskGroup.addSubTask(task);
     }
 
-    if (subTaskGroup.getSubTaskCount() == 0) {
-      return;
+    if (subTaskGroup.getSubTaskCount() > 0) {
+      subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
+    return subTaskGroup;
+  }
+
+  public void createConfigureUniverseTasks(
+      Cluster primaryCluster, @Nullable Collection<NodeDetails> masterNodes) {
+    // Wait for a Master Leader to be elected.
+    createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+    if (CollectionUtils.isNotEmpty(masterNodes)
+        && primaryCluster.userIntent.providerType != CloudType.kubernetes) {
+      // Update the gflags to set master_join_existing_universe to false.
+      // It is not set for k8s universe because this restarts the pods.
+      createGFlagsOverrideTasks(masterNodes, ServerType.MASTER, null /* param customizer */);
     }
 
-    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    // Persist the placement info into the YB master leader.
+    createPlacementInfoTask(null /* blacklistNodes */)
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+    // Manage encryption at rest
+    SubTaskGroup manageEncryptionKeyTask = createManageEncryptionAtRestTask();
+    if (manageEncryptionKeyTask != null) {
+      manageEncryptionKeyTask.setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    }
+
+    // Wait for a master leader to hear from all the tservers.
+    createWaitForTServerHeartBeatsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+    // Update the DNS entry for all the nodes once, using the primary cluster type.
+    createDnsManipulationTask(DnsManager.DnsCommandType.Create, false, primaryCluster)
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+    // Update the swamper target file.
+    createSwamperTargetUpdateTask(false /* removeFile */);
+
+    // Create alert definitions.
+    createUnivCreateAlertDefinitionsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+    // Create default redis table.
+    checkAndCreateRedisTableTask(primaryCluster);
+
+    // Create read write test table tasks.
+    checkAndCreateReadWriteTestTableTask(primaryCluster);
+
+    // Change admin password for Admin user, as specified.
+    checkAndCreateChangeAdminPasswordTask(primaryCluster);
+
+    // Marks the update of this universe as a success only if all the tasks before it succeeded.
+    createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 
   /**
@@ -1091,17 +1141,19 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param nodes : a collection of nodes that need to be created
    */
   public SubTaskGroup createSetupServerTasks(
-      Collection<NodeDetails> nodes, Consumer<AnsibleSetupServer.Params> paramsCustomizer) {
+      Collection<NodeDetails> nodes,
+      @Nullable Consumer<AnsibleSetupServer.Params> paramsCustomizer) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleSetupServer");
     for (NodeDetails node : nodes) {
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
       fillSetupParamsForNode(params, userIntent, node);
       params.useSystemd = userIntent.useSystemd;
-      paramsCustomizer.accept(params);
       params.sshUserOverride = node.sshUserOverride;
       params.sshPortOverride = node.sshPortOverride;
-
+      if (paramsCustomizer != null) {
+        paramsCustomizer.accept(params);
+      }
       // Create the Ansible task to setup the server.
       AnsibleSetupServer ansibleSetupServer = createTask(AnsibleSetupServer.class);
       ansibleSetupServer.initialize(params);
@@ -1113,7 +1165,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   public SubTaskGroup createSetupServerTasks(Collection<NodeDetails> nodes) {
-    return createSetupServerTasks(nodes, x -> {});
+    return createSetupServerTasks(nodes, null);
   }
 
   /**
@@ -1150,7 +1202,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @return subtask group
    */
   public SubTaskGroup createConfigureServerTasks(
-      Collection<NodeDetails> nodes, Consumer<AnsibleConfigureServers.Params> paramsCustomizer) {
+      Collection<NodeDetails> nodes,
+      @Nullable Consumer<AnsibleConfigureServers.Params> paramsCustomizer) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleConfigureServers");
     for (NodeDetails node : nodes) {
       Cluster cluster = taskParams().getClusterByUuid(node.placementUuid);
@@ -1191,10 +1244,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // sshPortOverride, in case the passed imageBundle has a different port
       // configured for the region.
       params.sshPortOverride = node.sshPortOverride;
-      paramsCustomizer.accept(params);
 
       // Development testing variable.
       params.itestS3PackagePath = taskParams().itestS3PackagePath;
+
+      if (paramsCustomizer != null) {
+        paramsCustomizer.accept(params);
+      }
 
       Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
       UUID custUUID = Customer.get(universe.getCustomerId()).getUuid();
@@ -1855,14 +1911,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param universe universe to which the nodes belong.
    * @param nodesToBeCreated nodes to be created.
    * @param ignoreNodeStatus ignore checking node status before creating subtasks if it is set.
-   * @param ignoreUseCustomImageConfig ignore using custom image config if it is set.
+   * @param setupParamsCustomizer callback to customize params.
    * @return true if any of the subtasks are executed or ignoreNodeStatus is true.
    */
   public boolean createCreateNodeTasks(
       Universe universe,
       Set<NodeDetails> nodesToBeCreated,
       boolean ignoreNodeStatus,
-      boolean ignoreUseCustomImageConfig) {
+      @Nullable Consumer<AnsibleSetupServer.Params> setupParamsCustomizer) {
 
     // Determine the starting state of the nodes and invoke the callback if
     // ignoreNodeStatus is not set.
@@ -1916,8 +1972,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               createWaitForNodeAgentTasks(nodesToBeCreated)
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
               createHookProvisionTask(filteredNodes, TriggerType.PreNodeProvision);
-              createSetupServerTasks(
-                      filteredNodes, p -> p.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig)
+              createSetupServerTasks(filteredNodes, setupParamsCustomizer)
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
             });
 
@@ -1940,20 +1995,20 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * ignored if ignoreNodeStatus is true.
    *
    * @param universe universe to which the nodes belong.
-   * @param mastersToBeConfigured, nodes to be configured.
-   * @param tServersToBeConfigured, nodes to be configured.
-   * @param isShellMode configure nodes in shell mode if true.
+   * @param mastersToBeConfigured mastersToBeConfigured, nodes to be configured.
+   * @param tServersToBeConfigured tServersToBeConfigured, nodes to be configured.
    * @param ignoreNodeStatus ignore node status if it is set.
-   * @param ignoreUseCustomImageConfig ignore using custom image config if it is set.
+   * @param installSoftwareParamsCustomizer callback to customize params.
+   * @param gflagsParamsCustomizer callback to customize params.
    * @return true if any of the subtasks are executed or ignoreNodeStatus is true.
    */
   public boolean createConfigureNodeTasks(
       Universe universe,
       Set<NodeDetails> mastersToBeConfigured,
       Set<NodeDetails> tServersToBeConfigured,
-      boolean isShellMode,
       boolean ignoreNodeStatus,
-      boolean ignoreUseCustomImageConfig) {
+      @Nullable Consumer<AnsibleConfigureServers.Params> installSoftwareParamsCustomizer,
+      @Nullable Consumer<AnsibleConfigureServers.Params> gflagsParamsCustomizer) {
 
     Set<NodeDetails> mergedNodes = new HashSet<>();
     if (mastersToBeConfigured == tServersToBeConfigured) {
@@ -1976,12 +2031,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             ignoreNodeStatus,
             NodeStatus.builder().nodeState(NodeState.ServerSetup).build(),
             filteredNodes -> {
-              createConfigureServerTasks(
-                      filteredNodes,
-                      params -> {
-                        params.isMasterInShellMode = isShellMode;
-                        params.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
-                      })
+              createConfigureServerTasks(filteredNodes, installSoftwareParamsCustomizer)
                   .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
             });
 
@@ -2004,14 +2054,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                     // Override master (on primary cluster only) and tserver flags as necessary.
                     // These are idempotent operations.
                     createGFlagsOverrideTasks(
-                        primaryClusterNodes,
-                        ServerType.MASTER,
-                        params -> {
-                          params.isMasterInShellMode = isShellMode;
-                          params.resetMasterState = isShellMode;
-                          params.vmUpgradeTaskType = VmUpgradeTaskType.None;
-                          params.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
-                        });
+                        primaryClusterNodes, ServerType.MASTER, gflagsParamsCustomizer);
                   }
                 }
               });
@@ -2029,11 +2072,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               NodeStatus.builder().nodeState(NodeState.SoftwareInstalled).build(),
               filteredNodes -> {
                 createGFlagsOverrideTasks(
-                    filteredNodes,
-                    ServerType.TSERVER,
-                    false /* isShell */,
-                    VmUpgradeTaskType.None,
-                    ignoreUseCustomImageConfig);
+                    filteredNodes, ServerType.TSERVER, gflagsParamsCustomizer);
               });
     }
 
@@ -2061,28 +2100,30 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    *
    * @param universe universe to which the nodes belong.
    * @param nodesToBeCreated nodes to be provisioned.
-   * @param isShellMode configure nodes in shell mode if true.
    * @param ignoreNodeStatus ignore node status if it is set.
-   * @param ignoreUseCustomImageConfig ignore using custom image config if it is set.
+   * @param setupServerParamsCustomizer callback to customize params.
+   * @param installSoftwareParamsCustomizer callback to customize params.
+   * @param gflagsParamsCustomizer callback to customize params.
    * @return true if any of the subtasks are executed or ignoreNodeStatus is true.
    */
   public boolean createProvisionNodeTasks(
       Universe universe,
       Set<NodeDetails> nodesToBeCreated,
-      boolean isShellMode,
       boolean ignoreNodeStatus,
-      boolean ignoreUseCustomImageConfig) {
+      @Nullable Consumer<AnsibleSetupServer.Params> setupServerParamsCustomizer,
+      @Nullable Consumer<AnsibleConfigureServers.Params> installSoftwareParamsCustomizer,
+      @Nullable Consumer<AnsibleConfigureServers.Params> gflagsParamsCustomizer) {
     boolean isFallThrough =
         createCreateNodeTasks(
-            universe, nodesToBeCreated, ignoreNodeStatus, ignoreUseCustomImageConfig);
+            universe, nodesToBeCreated, ignoreNodeStatus, setupServerParamsCustomizer);
 
     return createConfigureNodeTasks(
         universe,
         nodesToBeCreated,
         nodesToBeCreated,
-        isShellMode,
         isFallThrough,
-        ignoreUseCustomImageConfig);
+        installSoftwareParamsCustomizer,
+        gflagsParamsCustomizer);
   }
 
   /**
