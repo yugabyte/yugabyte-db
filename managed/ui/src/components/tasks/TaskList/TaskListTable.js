@@ -9,8 +9,8 @@ import { YBPanelItem } from '../../panels';
 import { timeFormatter, successStringFormatter } from '../../../utils/TableFormatters';
 import { YBConfirmModal } from '../../modals';
 
-import { hasNecessaryPerm, RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+import { hasNecessaryPerm, RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import './TasksList.scss';
 
 export default class TaskListTable extends Component {
@@ -30,9 +30,7 @@ export default class TaskListTable extends Component {
     }
 
     function typeFormatter(cell, row) {
-      return row.correlationId && hasNecessaryPerm({
-        ...UserPermissionMap.abortTask
-      }) ? (
+      return row.correlationId && hasNecessaryPerm(ApiPermissionMap.GET_LOGS) ? (
         <Link to={`/logs/?queryRegex=${row.correlationId}&startDate=${row.createTime}`}>
           {row.typeName} {row.target}
         </Link>
@@ -83,10 +81,7 @@ export default class TaskListTable extends Component {
               Are you sure you want to abort the task?
             </YBConfirmModal>
             <RbacValidator
-              accessRequiredOn={{
-                onResource: 'CUSTOMER_ID',
-                ...UserPermissionMap.abortTask
-              }}
+              accessRequiredOn={ApiPermissionMap.ABORT_TASK}
               isControl
             >
               <div className="task-abort-view yb-pending-color" onClick={showTaskAbortModal}>
@@ -102,9 +97,7 @@ export default class TaskListTable extends Component {
     const tableBodyContainer = { marginBottom: '1%', paddingBottom: '1%' };
     return (
       <RbacValidator
-        accessRequiredOn={{
-          ...UserPermissionMap.readTask
-        }}
+        accessRequiredOn={ApiPermissionMap.GET_TASKS_LIST}
       >
         <YBPanelItem
           header={<h2 className="task-list-header content-title">{title}</h2>}

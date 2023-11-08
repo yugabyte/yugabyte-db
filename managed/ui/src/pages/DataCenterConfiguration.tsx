@@ -10,6 +10,9 @@ import DataCenterConfigurationContainer from '../components/config/ConfigProvide
 import { YBErrorIndicator, YBLoading, YBLoadingCircleIcon } from '../components/common/indicators';
 import { api, runtimeConfigQueryKey } from '../redesign/helpers/api';
 import { RuntimeConfigKey } from '../redesign/helpers/constants';
+import { hasNecessaryPerm } from '../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../redesign/features/rbac/ApiAndUserPermMapping';
+import { getWrappedChildren } from '../redesign/features/rbac/common/validator/ValidatorUtils';
 
 const DataCenterConfigRedesignComponent = lazy(() =>
   import('../components/configRedesign/DataCenterConfigRedesign').then(
@@ -25,6 +28,12 @@ export const DataCenterConfiguration = (props: any) => {
     runtimeConfigQueryKey.customerScope(customerUUID),
     () => api.fetchRuntimeConfigs(customerUUID, true)
   );
+
+  const hasViewProviderPerm = hasNecessaryPerm(ApiPermissionMap.GET_PROVIDERS);
+
+  if (!hasViewProviderPerm) {
+    return getWrappedChildren({ overrideStyle: { marginTop: '150px' } });
+  }
 
   if (customerRuntimeConfigQuery.isLoading || customerRuntimeConfigQuery.isIdle) {
     return <YBLoading />;

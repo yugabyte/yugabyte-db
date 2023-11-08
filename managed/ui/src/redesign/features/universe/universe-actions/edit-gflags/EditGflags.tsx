@@ -26,8 +26,9 @@ import {
 } from './GflagHelper';
 import { GFlagsField } from '../../universe-form/form/fields';
 import { useFormMainStyles } from '../../universe-form/universeMainStyle';
-import { RBAC_ERR_MSG_NO_PERM, hasNecessaryPerm } from '../../../rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../rbac/UserPermPathMapping';
+import { RBAC_ERR_MSG_NO_PERM } from '../../../rbac/common/validator/ValidatorUtils';
+import { hasNecessaryPerm } from '../../../rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../rbac/ApiAndUserPermMapping';
 
 interface EditGflagsModalProps {
   open: boolean;
@@ -230,7 +231,7 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
 
   const canEditGFlags = hasNecessaryPerm({
     onResource: universeUUID,
-    ...UserPermissionMap.editUniverse
+    ...ApiPermissionMap.UPGRADE_UNIVERSE_GFLAGS
   });
 
   return (

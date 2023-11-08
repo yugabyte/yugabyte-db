@@ -28,8 +28,9 @@ import { CertificateAuthority } from './components/CertificateAuthority';
 import { RotateServerCerts } from './components/RotateServerCerts';
 import { RollingUpgrade } from './components/RollingUpgrade';
 import { YBLoading } from '../../../../../components/common/indicators';
-import { RBAC_ERR_MSG_NO_PERM, hasNecessaryPerm } from '../../../rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../rbac/UserPermPathMapping';
+import { hasNecessaryPerm } from '../../../rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../rbac/ApiAndUserPermMapping';
+import { RBAC_ERR_MSG_NO_PERM } from '../../../rbac/common/validator/ValidatorUtils';
 import { createErrorMessage } from '../../universe-form/utils/helpers';
 
 //EAR Component
@@ -208,7 +209,8 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
   });
 
   const canEditEAT = hasNecessaryPerm({
-    ...UserPermissionMap.editEncryptionInTransit
+    onResource: universeId,
+    ...ApiPermissionMap.MODIFY_UNIVERSE_TLS
   });
   useEffect(() => {
     if (disableServerCertRotation) setTab(EitTabs.CACert);

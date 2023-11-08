@@ -15,11 +15,7 @@ import {
   CpuUsagePanel,
   QueryDisplayPanel
 } from '../../metrics';
-import {
-  YBResourceCount,
-  YBCost,
-  DescriptionList,
-} from '../../../components/common/descriptors';
+import { YBResourceCount, YBCost, DescriptionList } from '../../../components/common/descriptors';
 import { RegionMap, YBMapLegend } from '../../maps';
 import {
   isNonEmptyObject,
@@ -37,8 +33,8 @@ import { FlexContainer, FlexGrow, FlexShrink } from '../../common/flexbox/YBFlex
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBButton, YBModal } from '../../common/forms/fields';
 import { isEnabled, isDisabled } from '../../../utils/LayoutUtils';
-import { RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 class DatabasePanel extends PureComponent {
   static propTypes = {
@@ -559,11 +555,11 @@ export default class UniverseOverviewNew extends Component {
     const metricKey = isKubernetes ? 'container_volume_stats' : 'disk_usage';
     const secondaryMetric = isKubernetes
       ? [
-        {
-          metric: 'container_volume_max_usage',
-          name: 'size'
-        }
-      ]
+          {
+            metric: 'container_volume_max_usage',
+            name: 'size'
+          }
+        ]
       : null;
     return (
       <StandaloneMetricsPanelContainer
@@ -720,7 +716,7 @@ export default class UniverseOverviewNew extends Component {
         <RbacValidator
           accessRequiredOn={{
             onResource: universeInfo.universeUUID,
-            ...UserPermissionMap.updateUniverse
+            ...ApiPermissionMap.MODIFY_UNIVERSE
           }}
           isControl
         >

@@ -22,13 +22,13 @@ import {
 } from '../../redesign/utils/dtos';
 import { UniverseState, getUniverseStatus } from '../universes/helpers/universeHelpers';
 import { YBSelect } from '../../redesign/components';
+import { RbacValidator } from '../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../redesign/features/rbac/ApiAndUserPermMapping';
 import dbSettingsIcon from './images/db-settings.svg';
 import documentationIcon from './images/documentation.svg';
 import EmptyTrayIcon from './images/empty-tray.svg';
 import WarningIcon from './images/warning.svg';
 
-import { RbacValidator } from '../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../redesign/features/rbac/UserPermPathMapping';
 import './PerfAdvisor.scss';
 
 interface RecommendationDetailProps {
@@ -358,8 +358,8 @@ export const PerfAdvisor: FC = () => {
                       isUniversePaused
                         ? 'Universe Paused'
                         : isUniverseUpdating
-                          ? 'Universe Updating'
-                          : ''
+                        ? 'Universe Updating'
+                        : ''
                     }
                   >
                     <i className="fa fa-search-minus" aria-hidden="true"></i>
@@ -412,8 +412,8 @@ export const PerfAdvisor: FC = () => {
                       isUniversePaused
                         ? 'Universe Paused'
                         : isUniverseUpdating
-                          ? 'Universe Updating'
-                          : ''
+                        ? 'Universe Updating'
+                        : ''
                     }
                   >
                     <i className="fa fa-search-minus" aria-hidden="true"></i>
@@ -421,7 +421,7 @@ export const PerfAdvisor: FC = () => {
                       isControl
                       accessRequiredOn={{
                         onResource: universeUUID,
-                        ...UserPermissionMap.rescan
+                        ...ApiPermissionMap.MODIFY_UNIVERSE
                       }}
                     >
                       {t('clusterDetail.performance.advisor.ReScanBtn')}
@@ -460,7 +460,7 @@ export const PerfAdvisor: FC = () => {
               isControl
               accessRequiredOn={{
                 onResource: universeUUID,
-                ...UserPermissionMap.rescan
+                ...ApiPermissionMap.MODIFY_UNIVERSE
               }}
             >
               <YBButton
@@ -471,7 +471,11 @@ export const PerfAdvisor: FC = () => {
                 onClick={handleScan}
                 data-placement="left"
                 title={
-                  isUniversePaused ? 'Universe Paused' : isUniverseUpdating ? 'Universe Updating' : ''
+                  isUniversePaused
+                    ? 'Universe Paused'
+                    : isUniverseUpdating
+                    ? 'Universe Updating'
+                    : ''
                 }
               />
             </RbacValidator>

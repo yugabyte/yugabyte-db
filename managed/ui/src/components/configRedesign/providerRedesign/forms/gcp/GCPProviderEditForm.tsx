@@ -69,6 +69,8 @@ import {
   GCPRegion,
   ImageBundle
 } from '../../types';
+import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 interface GCPProviderEditFormProps {
   editProvider: EditProvider;
@@ -390,15 +392,20 @@ export const GCPProviderEditForm = ({
               heading="Regions"
               headerAccessories={
                 regions.length > 0 ? (
-                  <YBButton
-                    btnIcon="fa fa-plus"
-                    btnText="Add Region"
-                    btnClass="btn btn-default"
-                    btnType="button"
-                    onClick={showAddRegionFormModal}
-                    disabled={isFormDisabled}
-                    data-testid={`${FORM_NAME}-AddRegionButton`}
-                  />
+                  <RbacValidator
+                    accessRequiredOn={ApiPermissionMap.MODIFY_REGION_BY_PROVIDER}
+                    isControl
+                  >
+                    <YBButton
+                      btnIcon="fa fa-plus"
+                      btnText="Add Region"
+                      btnClass="btn btn-default"
+                      btnType="button"
+                      onClick={showAddRegionFormModal}
+                      disabled={isFormDisabled}
+                      data-testid={`${FORM_NAME}-AddRegionButton`}
+                    />
+                  </RbacValidator>
                 ) : null
               }
             >
@@ -532,13 +539,19 @@ export const GCPProviderEditForm = ({
             )}
           </Box>
           <Box marginTop="16px">
-            <YBButton
-              btnText="Apply Changes"
-              btnClass="btn btn-default save-btn"
-              btnType="submit"
-              disabled={isFormDisabled || formMethods.formState.isValidating}
-              data-testid={`${FORM_NAME}-SubmitButton`}
-            />
+            <RbacValidator
+              accessRequiredOn={ApiPermissionMap.MODIFY_PROVIDER}
+              isControl
+              overrideStyle={{ float: 'right' }}
+            >
+              <YBButton
+                btnText="Apply Changes"
+                btnClass="btn btn-default save-btn"
+                btnType="submit"
+                disabled={isFormDisabled || formMethods.formState.isValidating}
+                data-testid={`${FORM_NAME}-SubmitButton`}
+              />
+            </RbacValidator>
             <YBButton
               btnText="Clear Changes"
               btnClass="btn btn-default"
@@ -633,7 +646,7 @@ const constructProviderPayload = async (
   try {
     sshPrivateKeyContent =
       formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED &&
-      formValues.sshPrivateKeyContent
+        formValues.sshPrivateKeyContent
         ? (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
         : '';
   } catch (error) {
@@ -645,32 +658,32 @@ const constructProviderPayload = async (
   const vpcConfig =
     formValues.vpcSetupType === VPCSetupType.HOST_INSTANCE
       ? {
-          useHostVPC: true
-        }
+        useHostVPC: true
+      }
       : formValues.vpcSetupType === VPCSetupType.EXISTING
-      ? {
+        ? {
           useHostVPC: true, // Must be sent as true for backwards compatability.
           destVpcId: formValues.destVpcId
         }
-      : formValues.vpcSetupType === VPCSetupType.NEW
-      ? {
-          useHostVPC: false,
-          destVpcId: formValues.destVpcId
-        }
-      : assertUnreachableCase(formValues.vpcSetupType);
+        : formValues.vpcSetupType === VPCSetupType.NEW
+          ? {
+            useHostVPC: false,
+            destVpcId: formValues.destVpcId
+          }
+          : assertUnreachableCase(formValues.vpcSetupType);
 
   const gcpCredentials =
     formValues.providerCredentialType === ProviderCredentialType.HOST_INSTANCE_SERVICE_ACCOUNT
       ? {
-          useHostCredentials: true
-        }
+        useHostCredentials: true
+      }
       : formValues.providerCredentialType === ProviderCredentialType.SPECIFIED_SERVICE_ACCOUNT
-      ? {
+        ? {
           gceApplicationCredentials: googleServiceAccount,
           gceProject: formValues.gceProject ?? googleServiceAccount?.project_id ?? '',
           useHostCredentials: false
         }
-      : assertUnreachableCase(formValues.providerCredentialType);
+        : assertUnreachableCase(formValues.providerCredentialType);
 
   const allAccessKeysPayload = constructAccessKeysEditPayload(
     formValues.editSSHKeypair,
@@ -723,17 +736,17 @@ const constructProviderPayload = async (
           },
           zones: existingRegion
             ? existingRegion.zones.map((zone) => ({
-                active: zone.active,
-                code: zone.code,
-                name: zone.name,
-                subnet: regionFormValues.sharedSubnet ?? '',
-                uuid: zone.uuid
-              }))
+              active: zone.active,
+              code: zone.code,
+              name: zone.name,
+              subnet: regionFormValues.sharedSubnet ?? '',
+              uuid: zone.uuid
+            }))
             : regionFormValues.zones.map<GCPAvailabilityZoneMutation>((zone) => ({
-                code: zone.code,
-                name: zone.code,
-                subnet: regionFormValues.sharedSubnet ?? ''
-              }))
+              code: zone.code,
+              name: zone.code,
+              subnet: regionFormValues.sharedSubnet ?? ''
+            }))
         };
       }),
       ...getDeletedRegions(providerConfig.regions, formValues.regions)

@@ -11,7 +11,7 @@ import { FC } from 'react';
 import clsx from 'clsx';
 import { makeStyles } from '@material-ui/core';
 import { Role } from '../roles';
-import { Resource } from '../permission';
+import { Action, Resource } from '../permission';
 
 const useStyles = makeStyles((theme) => ({
   roleType: {
@@ -50,8 +50,13 @@ export const isRbacEnabled = () => {
   return localStorage.getItem(rbac_identifier) === 'true';
 };
 
+export const getRbacEnabledVal = () => {
+  return localStorage.getItem(rbac_identifier);
+};
+
 export const clearRbacCreds = () => {
   localStorage.removeItem(rbac_identifier);
+  delete (window as any).rbac_permissions;
 };
 
 export const resourceOrderByRelevance = [
@@ -62,3 +67,15 @@ export const resourceOrderByRelevance = [
 ];
 
 export const RBAC_USER_MNG_ROUTE = '/admin/rbac?tab=users';
+
+export const permissionOrderByRelevance = [
+  Action.CREATE,
+  Action.READ,
+  Action.UPDATE,
+  Action.BACKUP_RESTORE,
+  Action.PAUSE_RESUME,
+  Action.UPDATE_PROFILE,
+  Action.UPDATE_ROLE_BINDINGS,
+  Action.SUPER_ADMIN_ACTIONS,
+  Action.DELETE
+];

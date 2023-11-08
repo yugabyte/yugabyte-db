@@ -41,9 +41,9 @@ import { SortOrder } from '../../../redesign/helpers/constants';
 
 import { YBProvider, YBRegion } from './types';
 
+import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import styles from './ProviderList.module.scss';
-import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
 
 interface ProviderListCommonProps {
   setCurrentView: (newView: ProviderDashboardView) => void;
@@ -152,10 +152,7 @@ export const ProviderList = (props: ProviderListProps) => {
         </Dropdown.Toggle>
         <Dropdown.Menu>
           <RbacValidator
-            accessRequiredOn={{
-              onResource: "CUSTOMER_ID",
-              ...UserPermissionMap.deleteProvider
-            }}
+            accessRequiredOn={ApiPermissionMap.DELETE_PROVIDER}
             isControl
             overrideStyle={{ display: 'block' }}
           >
@@ -163,10 +160,7 @@ export const ProviderList = (props: ProviderListProps) => {
               eventKey="1"
               onSelect={() => handleDeleteProviderConfig(row)}
               data-testid="DeleteConfiguration-button"
-              disabled={row.linkedUniverses.length > 0 || !hasNecessaryPerm({
-                onResource: "CUSTOMER_ID",
-                ...UserPermissionMap.deleteProvider
-              })}
+              disabled={row.linkedUniverses.length > 0 || !hasNecessaryPerm(ApiPermissionMap.DELETE_PROVIDER)}
             >
               <YBLabelWithIcon icon="fa fa-trash">Delete Configuration</YBLabelWithIcon>
             </MenuItem>
@@ -209,10 +203,7 @@ export const ProviderList = (props: ProviderListProps) => {
           } Configs`}</Typography>
         {filteredProviderList.length > 0 && (
           <RbacValidator
-            accessRequiredOn={{
-              onResource: "CUSTOMER_ID",
-              ...UserPermissionMap.createProvider
-            }}
+            accessRequiredOn={ApiPermissionMap.CREATE_PROVIDERS}
             isControl
           >
             <YBButton

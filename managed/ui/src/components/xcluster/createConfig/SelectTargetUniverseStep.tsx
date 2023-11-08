@@ -12,6 +12,8 @@ import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { CollapsibleNote } from '../common/CollapsibleNote';
 import { UnavailableUniverseStates } from '../../../redesign/helpers/constants';
 
+import { hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import styles from './SelectTargetUniverseStep.module.scss';
 
 const YB_ADMIN_XCLUSTER_DOCUMENTATION_URL =
@@ -84,7 +86,8 @@ export const SelectTargetUniverseStep = ({
             .filter(
               (universe) =>
                 universe.universeUUID !== currentUniverseUUID &&
-                !UnavailableUniverseStates.includes(getUniverseStatus(universe).state)
+                !UnavailableUniverseStates.includes(getUniverseStatus(universe).state) &&
+                hasNecessaryPerm({ ...ApiPermissionMap.CREATE_XCLUSTER_REPLICATION, onResource: universe.universeUUID})
             )
             .map((universe) => {
               return {
