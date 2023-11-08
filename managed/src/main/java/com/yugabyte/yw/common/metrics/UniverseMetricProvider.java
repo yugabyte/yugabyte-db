@@ -30,6 +30,7 @@ import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.ImageBundle.ImageBundleType;
 import com.yugabyte.yw.models.KmsHistoryId.TargetType;
 import com.yugabyte.yw.models.filters.MetricFilter;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
@@ -306,9 +307,10 @@ public class UniverseMetricProvider implements MetricsProvider {
               if (nodeDetails.placementUuid != null) {
                 UniverseDefinitionTaskParams.Cluster cluster =
                     universe.getCluster(nodeDetails.placementUuid);
-                if (cluster != null && cluster.userIntent.deviceInfo != null) {
-                  Integer iops = cluster.userIntent.deviceInfo.diskIops;
-                  Integer throughput = cluster.userIntent.deviceInfo.throughput;
+                if (cluster != null && cluster.userIntent != null) {
+                  DeviceInfo deviceInfo = cluster.userIntent.getDeviceInfoForNode(nodeDetails);
+                  Integer iops = deviceInfo.diskIops;
+                  Integer throughput = deviceInfo.throughput;
                   if (iops != null) {
                     universeGroup.metric(
                         createNodeMetric(
