@@ -7,7 +7,7 @@ menu:
   stable:
     identifier: architecture-transaction-priorities
     parent: architecture-acid-transactions
-    weight: 1153
+    weight: 40
 type: docs
 ---
 

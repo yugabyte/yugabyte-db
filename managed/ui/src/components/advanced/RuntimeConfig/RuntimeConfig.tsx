@@ -1,4 +1,4 @@
-import React, { FC } from 'react';
+import { FC } from 'react';
 import { Tab } from 'react-bootstrap';
 import { useTranslation } from 'react-i18next';
 
@@ -8,7 +8,10 @@ import { CustomerRuntimeConfig } from './CustomerRuntimeConfig';
 import { UniverseRuntimeConfig } from './UniverseRuntimeConfig';
 import { ProviderRuntimeConfig } from './ProviderRuntimeConfig';
 
+import { Action, Resource } from '../../../redesign/features/rbac';
 import '../AdvancedConfig.scss';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 interface RuntimeConfigProps {
   activeTab: string;
@@ -61,13 +64,18 @@ export const RuntimeConfig: FC<RuntimeConfigProps> = ({
           title={t('admin.advanced.globalConfig.CustomerConfigTitle')}
           unmountOnExit
         >
-          <CustomerRuntimeConfig
-            setRuntimeConfig={setRuntimeConfig}
-            deleteRunTimeConfig={deleteRunTimeConfig}
-            fetchRuntimeConfigs={fetchRuntimeConfigs}
-            resetRuntimeConfigs={resetRuntimeConfigs}
-            configTagFilter={configTagFilter}
-          />
+          <RbacValidator
+            accessRequiredOn={ApiPermissionMap.GET_RUNTIME_CONFIG_BY_SCOPE}
+            overrideStyle={{ marginTop: '50px' }}
+          >
+            <CustomerRuntimeConfig
+              setRuntimeConfig={setRuntimeConfig}
+              deleteRunTimeConfig={deleteRunTimeConfig}
+              fetchRuntimeConfigs={fetchRuntimeConfigs}
+              resetRuntimeConfigs={resetRuntimeConfigs}
+              configTagFilter={configTagFilter}
+            />
+          </RbacValidator>
         </Tab>
 
         <Tab
@@ -75,13 +83,23 @@ export const RuntimeConfig: FC<RuntimeConfigProps> = ({
           title={t('admin.advanced.globalConfig.UniverseConfigTitle')}
           unmountOnExit
         >
-          <UniverseRuntimeConfig
-            setRuntimeConfig={setRuntimeConfig}
-            deleteRunTimeConfig={deleteRunTimeConfig}
-            fetchRuntimeConfigs={fetchRuntimeConfigs}
-            resetRuntimeConfigs={resetRuntimeConfigs}
-            configTagFilter={configTagFilter}
-          />
+          <RbacValidator
+            customValidateFunction={(perms) => {
+              const universeWithReadPerm = perms.filter((p) => {
+                return p.resourceType === Resource.UNIVERSE && p.actions.includes(Action.READ);
+              });
+              return universeWithReadPerm.length !== 0;
+            }}
+            overrideStyle={{ marginTop: '150px' }}
+          >
+            <UniverseRuntimeConfig
+              setRuntimeConfig={setRuntimeConfig}
+              deleteRunTimeConfig={deleteRunTimeConfig}
+              fetchRuntimeConfigs={fetchRuntimeConfigs}
+              resetRuntimeConfigs={resetRuntimeConfigs}
+              configTagFilter={configTagFilter}
+            />
+          </RbacValidator>
         </Tab>
 
         <Tab
@@ -89,13 +107,18 @@ export const RuntimeConfig: FC<RuntimeConfigProps> = ({
           title={t('admin.advanced.globalConfig.ProviderConfigTitle')}
           unmountOnExit
         >
-          <ProviderRuntimeConfig
-            setRuntimeConfig={setRuntimeConfig}
-            deleteRunTimeConfig={deleteRunTimeConfig}
-            fetchRuntimeConfigs={fetchRuntimeConfigs}
-            resetRuntimeConfigs={resetRuntimeConfigs}
-            configTagFilter={configTagFilter}
-          />
+          <RbacValidator
+            accessRequiredOn={ApiPermissionMap.GET_RUNTIME_CONFIG_BY_SCOPE}
+            overrideStyle={{ marginTop: '150px' }}
+          >
+            <ProviderRuntimeConfig
+              setRuntimeConfig={setRuntimeConfig}
+              deleteRunTimeConfig={deleteRunTimeConfig}
+              fetchRuntimeConfigs={fetchRuntimeConfigs}
+              resetRuntimeConfigs={resetRuntimeConfigs}
+              configTagFilter={configTagFilter}
+            />
+          </RbacValidator>
         </Tab>
       </YBTabsPanel>
     </div>

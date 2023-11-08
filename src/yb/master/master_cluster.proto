@@ -310,6 +310,16 @@ message DemoteSingleAutoFlagResponsePB {
   optional MasterErrorPB error = 3;
 }
 
+message CheckMasterTabletHealthRequestPB {
+}
+
+message CheckMasterTabletHealthResponsePB {
+  optional MasterErrorPB error = 1;
+  optional PeerRole role = 2;
+  // Only valid if role is not LEADER.
+  optional int64 follower_lag_ms = 3;
+}
+
 service MasterCluster {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -360,4 +370,6 @@ service MasterCluster {
       returns (IsLoadBalancerIdleResponsePB);
   rpc AreLeadersOnPreferredOnly(AreLeadersOnPreferredOnlyRequestPB)
       returns (AreLeadersOnPreferredOnlyResponsePB);
+  rpc CheckMasterTabletHealth(CheckMasterTabletHealthRequestPB)
+      returns (CheckMasterTabletHealthResponsePB);
 }

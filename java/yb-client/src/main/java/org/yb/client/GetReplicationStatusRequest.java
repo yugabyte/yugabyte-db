@@ -22,7 +22,7 @@ public class GetReplicationStatusRequest extends YRpc<GetReplicationStatusRespon
     final MasterReplicationOuterClass.GetReplicationStatusRequestPB.Builder builder =
         MasterReplicationOuterClass.GetReplicationStatusRequestPB.newBuilder();
     if (this.replicationGroupName != null) {
-      builder.setUniverseId(this.replicationGroupName);
+      builder.setReplicationGroupId(this.replicationGroupName);
     }
     return toChannelBuffer(header, builder.build());
   }

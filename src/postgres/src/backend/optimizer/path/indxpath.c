@@ -1175,7 +1175,9 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 				 * Moreover, LSM index supports scalar array ops as
 				 * index clauses without sacrificing ordering.
 				 */
-				if (!yb_supports_distinct_pushdown && indexcol > 0)
+				bool is_yb_index = IsYugaByteEnabled() &&
+					index->relam == LSM_AM_OID;
+				if (!is_yb_index && indexcol > 0)
 				{
 					if (skip_lower_saop)
 					{

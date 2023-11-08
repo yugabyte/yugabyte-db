@@ -43,7 +43,7 @@ public class TestPgYbStat extends BasePgSQLTest {
   private void executeQueryAndExpectNoResults(final String query,
     final Connection inputConnection) throws Exception {
     try (Statement statement = inputConnection.createStatement()) {
-      statement.executeQuery(String.format(query));
+      statement.executeQuery(query);
     } catch (PSQLException exception) {
       assertEquals("No results were returned by the query.", exception.getMessage());
     }
@@ -52,7 +52,7 @@ public class TestPgYbStat extends BasePgSQLTest {
   private void executeQueryAndExpectTempFileLimitExceeded(final String query,
     final Connection inputConnection) throws Exception {
     try (Statement statement = inputConnection.createStatement()) {
-      statement.executeQuery(String.format(query));
+      statement.executeQuery(query);
     } catch (PSQLException exception) {
       assertEquals("ERROR: temporary file size exceeds temp_file_limit (0kB)",
                    exception.getMessage());
@@ -132,7 +132,7 @@ public class TestPgYbStat extends BasePgSQLTest {
     int retries = 0;
     while (retries++ < MAX_PG_STAT_RETRIES) {
       try (Statement statement = inputConnection.createStatement()) {
-        ResultSet resultSet = statement.executeQuery(String.format(query));
+        ResultSet resultSet = statement.executeQuery(query);
         if (checkResultSetCallback.checkResultSet(resultSet))
           return true;
       }
@@ -188,7 +188,6 @@ public class TestPgYbStat extends BasePgSQLTest {
                         .equals("Terminated by SIGSEGV"))
               return false;
           }
-
 
           if (!resultSet.next()
            || !oversized_query.equals(resultSet.getString("query_text"))

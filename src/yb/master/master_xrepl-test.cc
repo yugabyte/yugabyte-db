@@ -34,6 +34,7 @@
 DECLARE_int32(cdc_state_table_num_tablets);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_bool(disable_truncate_table);
+DECLARE_bool(ysql_yb_enable_replication_commands);
 
 namespace yb {
 namespace master {
@@ -240,7 +241,7 @@ Status MasterTestXRepl::SetupUniverseReplication(
   SetupUniverseReplicationRequestPB req;
   SetupUniverseReplicationResponsePB resp;
 
-  req.set_producer_id(producer_id);
+  req.set_replication_group_id(producer_id);
   req.mutable_producer_master_addresses()->Reserve(narrow_cast<int>(producer_master_addrs.size()));
   for (const auto& addr : producer_master_addrs) {
     std::vector<std::string> hp;
@@ -266,7 +267,7 @@ Result<GetUniverseReplicationResponsePB> MasterTestXRepl::GetUniverseReplication
     const std::string& producer_id) {
   GetUniverseReplicationRequestPB req;
   GetUniverseReplicationResponsePB resp;
-  req.set_producer_id(producer_id);
+  req.set_replication_group_id(producer_id);
 
   RETURN_NOT_OK(proxy_replication_->GetUniverseReplication(req, &resp, ResetAndGetController()));
   return resp;
@@ -275,7 +276,7 @@ Result<GetUniverseReplicationResponsePB> MasterTestXRepl::GetUniverseReplication
 Status MasterTestXRepl::DeleteUniverseReplication(const std::string& producer_id) {
   DeleteUniverseReplicationRequestPB req;
   DeleteUniverseReplicationResponsePB resp;
-  req.set_producer_id(producer_id);
+  req.set_replication_group_id(producer_id);
 
   RETURN_NOT_OK(proxy_replication_->DeleteUniverseReplication(req, &resp, ResetAndGetController()));
   if (resp.has_error()) {
@@ -383,6 +384,39 @@ TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespaceCql) {
   ASSERT_EQ(1, list_resp.streams_size());
 }
 
+TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespaceDisabled) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = false;
+
+  CreateNamespaceResponsePB create_namespace_resp;
+  ASSERT_OK(CreatePgsqlNamespace(kNamespaceName, kPgsqlNamespaceId, &create_namespace_resp));
+  auto ns_id = create_namespace_resp.id();
+
+  for (auto i = 0; i < num_tables; ++i) {
+    ASSERT_OK(CreatePgsqlTable(ns_id, Format("cdc_table_$0", i), kTableIds[i], kTableSchema));
+  }
+
+  CreateCDCStreamRequestPB req;
+  CreateCDCStreamResponsePB resp;
+  req.set_namespace_id(ns_id);
+  req.set_cdcsdk_ysql_replication_slot_name(kPgReplicationSlotName);
+  AddKeyValueToCreateCDCStreamRequestOption(&req, cdc::kIdType, cdc::kNamespaceId);
+  AddKeyValueToCreateCDCStreamRequestOption(
+      &req, cdc::kSourceType, CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK));
+
+  ASSERT_OK(proxy_replication_->CreateCDCStream(req, &resp, ResetAndGetController()));
+  SCOPED_TRACE(resp.DebugString());
+  ASSERT_TRUE(resp.has_error());
+  ASSERT_NE(
+      resp
+        .error()
+        .status()
+        .message()
+        .find("Creation of CDCSDK stream is disallowed when ysql_yb_enable_replication_commands is"
+              " false"),
+      std::string::npos)
+      << resp.error().status().message();
+}
+
 TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespaceInvalidDuplicationSlotName) {
   CreateNamespaceResponsePB create_namespace_resp;
   ASSERT_OK(CreatePgsqlNamespace(kNamespaceName, kPgsqlNamespaceId, &create_namespace_resp));
@@ -438,35 +472,6 @@ TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespaceInvalidIdTypeOption) {
   ASSERT_NE(
       resp.error().status().message().find(
           "Invalid id_type in options. Expected to be NAMESPACEID"),
-      std::string::npos)
-      << resp.error().status().message();
-
-  auto list_resp = ASSERT_RESULT(ListCDCStreams());
-  ASSERT_EQ(0, list_resp.streams_size());
-}
-
-TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespaceMissingReplicationSlotName) {
-  CreateNamespaceResponsePB create_namespace_resp;
-  CreateCDCStreamRequestPB req;
-  CreateCDCStreamResponsePB resp;
-
-  ASSERT_OK(CreatePgsqlNamespace(kNamespaceName, kPgsqlNamespaceId, &create_namespace_resp));
-  auto ns_id = create_namespace_resp.id();
-
-
-  // Not populating cdcsdk_ysql_replication_slot_name.
-  req.set_namespace_id(ns_id);
-  AddKeyValueToCreateCDCStreamRequestOption(&req, cdc::kIdType, cdc::kNamespaceId);
-  AddKeyValueToCreateCDCStreamRequestOption(
-      &req, cdc::kSourceType, CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK));
-
-  ASSERT_OK(proxy_replication_->CreateCDCStream(req, &resp, ResetAndGetController()));
-  SCOPED_TRACE(resp.DebugString());
-  ASSERT_TRUE(resp.has_error());
-  ASSERT_EQ(MasterErrorPB::INVALID_REQUEST, resp.error().code());
-  ASSERT_NE(
-      resp.error().status().message().find(
-          "cdcsdk_ysql_replication_slot_name is required for YSQL databases"),
       std::string::npos)
       << resp.error().status().message();
 
@@ -706,7 +711,7 @@ TEST_F(MasterTestXRepl, TestSetupUniverseReplication) {
   ASSERT_NOK(SetupUniverseReplication(producer_id, producer_masters, tables));
 
   auto resp = ASSERT_RESULT(GetUniverseReplication(producer_id));
-  ASSERT_EQ(resp.entry().producer_id(), producer_id);
+  ASSERT_EQ(resp.entry().replication_group_id(), producer_id);
 
   ASSERT_EQ(resp.entry().producer_master_addresses_size(), 1);
   std::string addr;
@@ -727,7 +732,7 @@ TEST_F(MasterTestXRepl, TestDeleteUniverseReplication) {
 
   // Verify that universe was created.
   auto resp = ASSERT_RESULT(GetUniverseReplication(producer_id));
-  ASSERT_EQ(resp.entry().producer_id(), producer_id);
+  ASSERT_EQ(resp.entry().replication_group_id(), producer_id);
 
   ASSERT_OK(DeleteUniverseReplication(producer_id));
 

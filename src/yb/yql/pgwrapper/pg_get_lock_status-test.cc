@@ -479,7 +479,7 @@ TEST_F(PgGetLockStatusTest, TestLocksOfColocatedTables) {
   auto res = ASSERT_RESULT(setup_conn.FetchValue<int64_t>("SELECT COUNT(*) FROM pg_locks"));
   ASSERT_EQ(res, table_names.size() * 2);
   // Assert that the locks held belong to tables "foo", "bar", "baz".
-  auto table_names_res = ASSERT_RESULT(setup_conn.FetchFormat(
+  auto table_names_res = ASSERT_RESULT(setup_conn.Fetch(
     "SELECT relname FROM pg_class WHERE oid IN (SELECT DISTINCT relation FROM pg_locks)"));
   auto fetched_rows = PQntuples(table_names_res.get());
   ASSERT_EQ(fetched_rows, 3);
@@ -603,7 +603,7 @@ TEST_F(PgGetLockStatusTest, TestPgLocksWhileDDLInProgress) {
 
   auto conn = ASSERT_RESULT(Connect());
   while (status_future.wait_for(0ms) != std::future_status::ready) {
-    ASSERT_OK(conn.FetchFormat("SELECT * FROM pg_locks"));
+    ASSERT_OK(conn.Fetch("SELECT * FROM pg_locks"));
   }
   ASSERT_OK(status_future.get());
 }

@@ -1,10 +1,10 @@
 ---
-title: Known issues with YugabyteDB Voyager
-headerTitle: Known issues and workarounds
-linkTitle: Known issues
+title: Manual review guideline for YugabyteDB Voyager
+headerTitle: Manual review guideline
+linkTitle: Manual review guideline
 image: /images/section_icons/develop/learn.png
-headcontent: Unsupported features and known issues with workarounds when migrating data using YugabyteDB Voyager.
-description: Known issues and suggested workarounds for migrating data using YugabyteDB Voyager.
+headcontent: What to watch out for when migrating data using YugabyteDB Voyager
+description: What to watch out for when migrating data using YugabyteDB Voyager.
 type: indexpage
 showRightNav: true
 menu:
@@ -14,7 +14,7 @@ menu:
     weight: 104
 ---
 
-This section documents unsupported features as well as known issues and workarounds when migrating data with YugabyteDB Voyager.
+Review the unsupported features, limitations, and implement suggested workarounds to successfully migrate data from MySQL, Oracle, or PostgreSQL to YugabyteDB.
 
 ## Unsupported features
 
@@ -26,17 +26,17 @@ Currently, yb-voyager doesn't support the following features:
 | USERS/GRANTS | Voyager does not support migrating the USERS and GRANTS from the source database to the target cluster. |
 | Unsupported datatypes | Data migration is unsupported for some datatypes such as BLOB and XML. For others such as ANY and BFile, both schema and data migration is unsupported. Refer to [datatype mapping](../reference/datatype-mapping-oracle/) for the detailed list of datatypes. | |
 
-## Known issues
+## Manual review
 
 <div class="row">
  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="general-issues/">
       <div class="head">
         <img class="icon" src="/images/section_icons/architecture/concepts.png" aria-hidden="true" />
-        <div class="title">General known issues</div>
+        <div class="title">General</div>
       </div>
       <div class="body">
-       Known issues common to MySQL, PostgreSQL, and Oracle source databases.
+       Explore workarounds for limitations associated with MySQL, PostgreSQL, and Oracle source databases.
       </div>
     </a>
   </div>
@@ -48,7 +48,7 @@ Currently, yb-voyager doesn't support the following features:
         <div class="title">MySQL</div>
       </div>
       <div class="body">
-        Known issues with MySQL as the source database.
+        Explore workarounds for limitations associated with MySQL as the source database.
       </div>
     </a>
   </div>
@@ -60,7 +60,7 @@ Currently, yb-voyager doesn't support the following features:
         <div class="title">PostgreSQL</div>
       </div>
       <div class="body">
-        Known issues with PostgreSQL as the source database.
+        Explore workarounds for limitations associated with PostgreSQL as the source database.
       </div>
     </a>
   </div>
@@ -72,7 +72,7 @@ Currently, yb-voyager doesn't support the following features:
         <div class="title">Oracle</div>
       </div>
       <div class="body">
-       Known issues with Oracle as the source database.
+       Explore workarounds for limitations associated with Oracle as the source database.
       </div>
     </a>
   </div>
@@ -84,7 +84,7 @@ Currently, yb-voyager doesn't support the following features:
         <div class="title">MySQL and Oracle</div>
       </div>
       <div class="body">
-       Known issues common to MySQL and Oracle source databases.
+       Explore workarounds for limitations associated with MySQL and Oracle source databases.
       </div>
     </a>
   </div>

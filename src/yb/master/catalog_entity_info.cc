@@ -1246,12 +1246,6 @@ std::string DdlLogEntry::id() const {
   return DocHybridTime(HybridTime(pb_.time()), kMaxWriteId).EncodedInDocDbFormat();
 }
 
-void XClusterSafeTimeInfo::Clear() {
-  auto l = LockForWrite();
-  l.mutable_data()->pb.Clear();
-  l.Commit();
-}
-
 // ================================================================================================
 // CDCStreamInfo
 // ================================================================================================

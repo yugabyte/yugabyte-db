@@ -295,7 +295,8 @@ public class BackupGarbageCollector {
       UUID storageConfigUUID = backup.getBackupInfo().storageConfigUUID;
       CustomerConfig customerConfig =
           customerConfigService.getOrBadRequest(backup.getCustomerUUID(), storageConfigUUID);
-      if (isCredentialUsable(customerConfig, backup.getUniverseUUID())) {
+      BackupCategory category = backup.getCategory();
+      if (isCredentialUsable(customerConfig, backup.getUniverseUUID(), category)) {
         List<String> backupLocations = null;
         log.info("Backup {} deletion started", backupUUID);
         backup.transitionState(BackupState.DeleteInProgress);
@@ -406,22 +407,31 @@ public class BackupGarbageCollector {
     }
   }
 
-  private Boolean isCredentialUsable(CustomerConfig config, UUID universeUUID) {
+  private Boolean isCredentialUsable(
+      CustomerConfig config, UUID universeUUID, BackupCategory category) {
     Boolean isValid = true;
     try {
       if (config.getName().equals(NAME_NFS)) {
         Optional<Universe> universeOpt = Universe.maybeGet(universeUUID);
 
         if (universeOpt.isPresent()) {
-          storageUtilFactory
-              .getStorageUtil(config.getName())
-              .validateStorageConfigOnUniverse(config, universeOpt.get());
+          if (category.equals(BackupCategory.YB_CONTROLLER)) {
+            backupHelper.validateStorageConfigForBackupOnUniverse(config, universeOpt.get());
+          } else {
+            storageUtilFactory
+                .getStorageUtil(config.getName())
+                .validateStorageConfigOnUniverseNonRpc(config, universeOpt.get());
+          }
         }
 
       } else {
         backupHelper.validateStorageConfig(config);
       }
     } catch (Exception e) {
+      log.error(
+          "Storage config {} to use for backup deletion failed validation: {}",
+          config.getConfigUUID(),
+          e.getMessage());
       isValid = false;
     }
     return isValid;

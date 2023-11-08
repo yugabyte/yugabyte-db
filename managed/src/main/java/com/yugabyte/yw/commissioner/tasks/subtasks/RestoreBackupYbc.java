@@ -80,7 +80,7 @@ public class RestoreBackupYbc extends YbcTaskBase {
   public void run() {
     BackupStorageInfo backupStorageInfo = taskParams().backupStorageInfoList.get(0);
 
-    TaskInfo taskInfo = TaskInfo.getOrBadRequest(userTaskUUID);
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(getUserTaskUUID());
     boolean isResumable = false;
     if (taskInfo.getTaskType().equals(TaskType.RestoreBackup)) {
       isResumable = true;
@@ -118,13 +118,13 @@ public class RestoreBackupYbc extends YbcTaskBase {
     RestoreKeyspace restoreKeyspace = null;
     boolean updateRestoreSizeInBytes = true;
     if (!restoreKeyspaceIfPresent.isPresent()) {
-      log.info("Creating entry for restore keyspace: {}", taskUUID);
-      restoreKeyspace = RestoreKeyspace.create(taskUUID, taskParams());
+      log.info("Creating entry for restore keyspace: {}", getTaskUUID());
+      restoreKeyspace = RestoreKeyspace.create(getTaskUUID(), taskParams());
     } else {
       restoreKeyspace = restoreKeyspaceIfPresent.get();
-      restoreKeyspace.updateTaskUUID(taskUUID);
+      restoreKeyspace.updateTaskUUID(getTaskUUID());
       updateRestoreSizeInBytes = false;
-      restoreKeyspace.update(taskUUID, RestoreKeyspace.State.InProgress);
+      restoreKeyspace.update(getTaskUUID(), RestoreKeyspace.State.InProgress);
     }
     long backupSize = 0L;
     // Send create restore to yb-controller
@@ -149,7 +149,7 @@ public class RestoreBackupYbc extends YbcTaskBase {
                     backupStorageInfo);
             String successMarkerString =
                 ybcManager.downloadSuccessMarker(
-                    downloadSuccessMarkerRequest, taskParams().getUniverseUUID(), dsmTaskId);
+                    downloadSuccessMarkerRequest, dsmTaskId, ybcClient);
             if (StringUtils.isEmpty(successMarkerString)) {
               throw new PlatformServiceException(
                   INTERNAL_SERVER_ERROR, "Got empty success marker response, exiting.");
@@ -173,8 +173,6 @@ public class RestoreBackupYbc extends YbcTaskBase {
                   backupStorageInfo,
                   taskId,
                   taskParams().getSuccessMarker());
-          YbcBackupUtil.validateConfigWithSuccessMarker(
-              taskParams().getSuccessMarker(), restoreTaskCreateRequest.getCsConfig(), false);
           BackupServiceTaskCreateResponse response =
               ybcClient.restoreNamespace(restoreTaskCreateRequest);
           if (response.getStatus().getCode().equals(ControllerStatus.OK)) {
@@ -225,24 +223,24 @@ public class RestoreBackupYbc extends YbcTaskBase {
         Restore.updateRestoreSizeForRestore(taskParams().prefixUUID, backupSize);
       }
       if (restoreKeyspace != null) {
-        restoreKeyspace.update(taskUUID, RestoreKeyspace.State.Completed);
+        restoreKeyspace.update(getTaskUUID(), RestoreKeyspace.State.Completed);
       }
     } catch (CancellationException ce) {
       if (!taskExecutor.isShutdown()) {
         // update aborted/failed - not showing aborted from here.
         if (restoreKeyspace != null) {
-          restoreKeyspace.update(taskUUID, RestoreKeyspace.State.Aborted);
+          restoreKeyspace.update(getTaskUUID(), RestoreKeyspace.State.Aborted);
         }
-        ybcManager.deleteYbcBackupTask(taskParams().getUniverseUUID(), taskId, ybcClient);
+        ybcManager.deleteYbcBackupTask(taskId, ybcClient);
       }
       Throwables.propagate(ce);
     } catch (Throwable e) {
       log.error(String.format("Failed with error %s", e.getMessage()));
       if (restoreKeyspace != null) {
-        restoreKeyspace.update(taskUUID, RestoreKeyspace.State.Failed);
+        restoreKeyspace.update(getTaskUUID(), RestoreKeyspace.State.Failed);
       }
       if (StringUtils.isNotBlank(taskId)) {
-        ybcManager.deleteYbcBackupTask(taskParams().getUniverseUUID(), taskId, ybcClient);
+        ybcManager.deleteYbcBackupTask(taskId, ybcClient);
       }
       Throwables.propagate(e);
     } finally {

@@ -4,6 +4,8 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -20,6 +22,8 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.yb.client.YBClient;
 
 @Slf4j
+@Abortable
+@Retryable
 public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
 
   @Inject
@@ -30,6 +34,12 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
   @Override
   protected RollbackUpgradeParams taskParams() {
     return (RollbackUpgradeParams) taskParams;
+  }
+
+  @Override
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    taskParams().verifyParams(getUniverse(), isFirstTry);
   }
 
   public NodeDetails.NodeState getNodeState() {
@@ -48,6 +58,10 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
               universe.getUniverseDetails().prevYBSoftwareConfig;
           String newVersion =
               universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+
+          createUpdateUniverseSoftwareUpgradeStateTask(
+              UniverseDefinitionTaskParams.SoftwareUpgradeState.RollingBack);
+
           // Skip auto flags restore incase upgrade did not take place or succeed.
           if (prevYBSoftwareConfig != null
               && !newVersion.equals(prevYBSoftwareConfig.getSoftwareVersion())) {
@@ -86,6 +100,9 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
           // Update Software version
           createUpdateSoftwareVersionTask(newVersion, false /*isSoftwareUpdateViaVm*/)
               .setSubTaskGroupType(getTaskSubGroupType());
+
+          createUpdateUniverseSoftwareUpgradeStateTask(
+              UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready);
         });
   }
 

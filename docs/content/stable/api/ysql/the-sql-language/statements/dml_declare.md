@@ -24,29 +24,9 @@ See the generic section [Cursors](../../../cursors/).
 
 ## Syntax
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammar Icon">
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <img src="/icons/diagram.svg" alt="Diagram Icon">
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/declare.grammar.md" %}}
-  </div>
-  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/declare.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  declare
+{{%/ebnf%}}
 
 ## Semantics
 
@@ -110,7 +90,7 @@ start transaction;
   from t
   where (k <> all (array[1, 3, 5, 7, 11, 13, 17, 19]))
   order by k;
-  
+
   select
     statement,
     is_holdable::text,
@@ -120,7 +100,7 @@ start transaction;
   and creation_time < (transaction_timestamp() + make_interval(secs=>0.05));
 
   fetch all from cur;
-  
+
   close cur;
 rollback;
 ```
@@ -128,19 +108,19 @@ rollback;
 This is the result from _"select... from pg_cursors..."_:
 
 ```output
-                       statement                        | is_holdable | is_scrollable 
+                       statement                        | is_holdable | is_scrollable
 --------------------------------------------------------+-------------+---------------
  declare cur scroll cursor without hold for            +| false       | true
-   select k, v                                         +|             | 
-   from t                                              +|             | 
-   where (k <> all (array[1, 3, 5, 7, 11, 13, 17, 19]))+|             | 
+   select k, v                                         +|             |
+   from t                                              +|             |
+   where (k <> all (array[1, 3, 5, 7, 11, 13, 17, 19]))+|             |
    order by k;                                          |             |
 ```
 
 And this is the result from `FETCH ALL`:
 
 ```output
- k  |  v   
+ k  |  v
 ----+------
   2 |  200
   4 |  400

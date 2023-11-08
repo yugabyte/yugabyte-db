@@ -89,7 +89,7 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
       }
     } else if (FLAGS_log_ysql_catalog_versions && pg_req.table_id() == kPgYbCatalogVersionTableId) {
       log_versions = true;
-      if (FLAGS_TEST_enable_db_catalog_version_mode) {
+      if (FLAGS_ysql_enable_db_catalog_version_mode) {
         // The contents of req->pgsql_write_batch() are freed after the next call to
         // tserver::TabletServiceImpl::Write, save db_oid to use for later debugging log.
 

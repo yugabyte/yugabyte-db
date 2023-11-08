@@ -46,6 +46,32 @@ export const RBAC_ERR_MSG_NO_PERM = (
   </Typography>
 );
 
+type ErrorBoundaryState = {
+  hasError: boolean;
+};
+export class ErrorBoundary extends Component {
+  public state: ErrorBoundaryState = {
+    hasError: false
+  };
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    //if error == '401, , then log and display permission needed
+    console.error(error, info);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <h1>Something went wrong.</h1>;
+    }
+
+    return this.props.children;
+  }
+}
+
 const findResource = (accessRequiredOn: RbacValidatorProps['accessRequiredOn']) => {
   const { onResource, resourceType } = accessRequiredOn;
 
@@ -81,6 +107,73 @@ const findResource = (accessRequiredOn: RbacValidatorProps['accessRequiredOn']) 
   });
   return resource;
 };
+
+export const getWrappedChildren = ({
+  minimal,
+  overrideStyle
+}: {
+  minimal: boolean;
+  overrideStyle: CSSProperties;
+}) => {
+  if (minimal) {
+    return (
+      <Tooltip title="Permission required">
+        <LockIcon />
+      </Tooltip>
+    );
+  }
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        textAlign: 'center',
+        ...overrideStyle
+      }}
+      data-testid="rbac-no-perm"
+    >
+      <LockIcon />
+      {RBAC_ERR_MSG_NO_PERM}
+    </div>
+  );
+};
+export const getErrorBoundary = ({
+  minimal,
+  overrideStyle,
+  children
+}: {
+  minimal: boolean;
+  overrideStyle: CSSProperties;
+  children: React.ReactNode;
+}) => (
+  <ErrorBoundary>
+    <div
+      style={{
+        position: 'relative'
+      }}
+      data-testid="rbac-no-perm"
+    >
+      <div
+        style={{
+          background: '#fffdfdf7',
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          zIndex: 1001,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+      >
+        {getWrappedChildren({ minimal, overrideStyle })}
+      </div>
+      {children}
+    </div>
+  </ErrorBoundary>
+);
 
 export const hasNecessaryPerm = (accessRequiredOn: RbacValidatorProps['accessRequiredOn']) => {
   const { permissionRequired } = accessRequiredOn;
@@ -129,63 +222,11 @@ export const RbacValidator: FC<RequireAccessReqOrCustomValidateFn> = ({
     </ErrorBoundary>
   );
 
-  const getWrappedChildren = () => {
-    if (minimal) {
-      return (
-        <Tooltip title="Permission required">
-          <LockIcon />
-        </Tooltip>
-      );
-    }
-    return (
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          textAlign: 'center'
-        }}
-        data-testid="rbac-no-perm"
-      >
-        <LockIcon />
-        {RBAC_ERR_MSG_NO_PERM}
-      </div>
-    );
-  };
-  const getErrorBoundary = (
-    <ErrorBoundary>
-      <div
-        style={{
-          position: 'relative'
-        }}
-        data-testid="rbac-no-perm"
-      >
-        <div
-          style={{
-            background: '#fffdfdf7',
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '100%',
-            zIndex: 1001,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
-        >
-          {getWrappedChildren()}
-        </div>
-        {children}
-      </div>
-    </ErrorBoundary>
-  );
-
   if (customValidateFunction) {
     if (customValidateFunction((window as any).rbac_permissions)) {
       return <>{children}</>;
     } else {
-      return isControl ? controlComp : getErrorBoundary;
+      return isControl ? controlComp : getErrorBoundary({ minimal, overrideStyle, children });
     }
   }
 
@@ -205,34 +246,8 @@ export const RbacValidator: FC<RequireAccessReqOrCustomValidateFn> = ({
     return controlComp;
   }
 
-  return getErrorBoundary;
+  return getErrorBoundary({ minimal, overrideStyle, children });
 };
-
-type ErrorBoundaryState = {
-  hasError: boolean;
-};
-export class ErrorBoundary extends Component {
-  public state: ErrorBoundaryState = {
-    hasError: false
-  };
-
-  static getDerivedStateFromError(error: Error) {
-    return { hasError: true };
-  }
-
-  componentDidCatch(error: Error, info: ErrorInfo) {
-    //if error == '401, , then log and display permission needed
-    console.error(error, info);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return <h1>Something went wrong.</h1>;
-    }
-
-    return this.props.children;
-  }
-}
 
 export const ButtonDisabledPopover = ({
   children,

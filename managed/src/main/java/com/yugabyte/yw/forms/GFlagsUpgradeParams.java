@@ -36,22 +36,31 @@ public class GFlagsUpgradeParams extends UpgradeWithGFlags {
   }
 
   @Override
-  public void verifyParams(Universe universe) {
-    super.verifyParams(universe);
+  public void verifyParams(Universe universe, boolean isFirstTry) {
+    super.verifyParams(universe, isFirstTry);
+
+    if (universe
+        .getUniverseDetails()
+        .softwareUpgradeState
+        .equals(UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot upgrade gflags on universe in pre-finalize state.");
+    }
+
     if (masterGFlags == null) {
       masterGFlags = new HashMap<>();
     }
     if (tserverGFlags == null) {
       tserverGFlags = new HashMap<>();
     }
-    verifyGFlags(universe);
+    verifyGFlags(universe, isFirstTry);
   }
 
   public void checkXClusterAutoFlags(
       Universe universe,
       GFlagsValidation gFlagsValidation,
       XClusterUniverseService xClusterUniverseService) {
-    super.verifyParams(universe);
+    super.verifyParams(universe, true);
     if (isUsingSpecificGFlags(universe)) {
       checkXClusterSpecificAutoFlags(universe, gFlagsValidation, xClusterUniverseService);
     } else {

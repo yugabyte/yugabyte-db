@@ -14,7 +14,7 @@
 #include "yb/master/xcluster/add_table_to_xcluster_task.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
-#include "yb/master/xcluster/xcluster_manager.h"
+#include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
 #include "yb/rpc/messenger.h"
 #include "yb/util/source_location.h"
@@ -130,7 +130,7 @@ void AddTableToXClusterTask::AddTableToReplicationGroup(
                                  << " and bootstrap_time " << bootstrap_time_;
   AlterUniverseReplicationRequestPB alter_universe_req;
   AlterUniverseReplicationResponsePB alter_universe_resp;
-  alter_universe_req.set_producer_id(replication_group_id_.ToString());
+  alter_universe_req.set_replication_group_id(replication_group_id_.ToString());
   alter_universe_req.add_producer_table_ids_to_add(producer_table_id);
   alter_universe_req.add_producer_bootstrap_ids_to_add(bootstrap_id);
   FAIL_TASK_AND_RETURN_IF_NOT_OK(catalog_manager_->AlterUniverseReplication(
@@ -149,7 +149,7 @@ void AddTableToXClusterTask::AddTableToReplicationGroup(
 void AddTableToXClusterTask::WaitForSetupUniverseReplicationToFinish() {
   IsSetupUniverseReplicationDoneRequestPB check_req;
   IsSetupUniverseReplicationDoneResponsePB check_resp;
-  check_req.set_producer_id(replication_group_id_.ToString());
+  check_req.set_replication_group_id(replication_group_id_.ToString());
   auto status = catalog_manager_->IsSetupUniverseReplicationDone(
       &check_req, &check_resp, /* RpcContext */ nullptr);
   if (status.ok() && check_resp.has_error()) {
@@ -176,9 +176,8 @@ void AddTableToXClusterTask::RefreshAndGetXClusterSafeTime() {
   // replication.
   auto namespace_id = table_info_->namespace_id();
   auto initial_safe_time = VERIFY_RESULT_AND_FAIL_TASK(
-      catalog_manager_->GetXClusterManager()
-          ->xcluster_safe_time_service_->RefreshAndGetXClusterNamespaceToSafeTimeMap(
-              catalog_manager_->GetLeaderEpochInternal()));
+      catalog_manager_->GetXClusterManager()->RefreshAndGetXClusterNamespaceToSafeTimeMap(
+          catalog_manager_->GetLeaderEpochInternal()));
   if (!initial_safe_time.contains(namespace_id)) {
     // Namespace is no longer part of any xCluster replication.
     CompleteTableCreation();
@@ -196,7 +195,7 @@ void AddTableToXClusterTask::RefreshAndGetXClusterSafeTime() {
 void AddTableToXClusterTask::WaitForXClusterSafeTimeCaughtUp() {
   if (initial_xcluster_safe_time_.is_valid()) {
     auto ht = VERIFY_RESULT_AND_FAIL_TASK(
-        catalog_manager_->GetXClusterSafeTime(table_info_->namespace_id()));
+        catalog_manager_->GetXClusterManager()->GetXClusterSafeTime(table_info_->namespace_id()));
 
     auto caught_up = ht > initial_xcluster_safe_time_;
     if (!caught_up) {

@@ -279,22 +279,20 @@ The following **Azure regions** are available:
 - Iowa (centralus)
 - Hong Kong (eastasia)
 - Virginia (eastus)
-- Virginia (eastus2)*
+- Virginia (eastus2)
 - Paris (francecentral)
-- Tokyo, Saitama (japaneast)*
-- Seoul (koreacentral)*
+- Tokyo, Saitama (japaneast)
+- Seoul (koreacentral)
 - Ireland (northeurope)
 - Norway (norwayeast)
-- Johannesburg (southafricanorth)*
-- Texas (southcentralus)*
+- Johannesburg (southafricanorth)
+- Texas (southcentralus)
 - Zurich (switzerlandnorth)
-- Dubai (uaenorth)*
+- Dubai (uaenorth)
 - London (uksouth)
 - Netherlands (westeurope)
 - Washington (westus2)
 - Phoenix (westus3)
-
-\* Single-region clusters only (not available for multi-region deployments)
 
   {{% /tab %}}
 

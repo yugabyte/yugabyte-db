@@ -26,15 +26,15 @@ To stream data change events from YugabyteDB databases, you need to use Debezium
 
 The following steps are necessary to set up YugabyteDB for use with the Debezium YugabyteDB connector:
 
-1. Create a DB stream ID.
+- Create a DB stream ID.
 
     Before you use the YugabyteDB connector to retrieve data change events from YugabyteDB, create a stream ID using the yb-admin CLI command. Refer to the [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) CDC command reference documentation for more details.
 
-1. Make sure the master ports are open.
+- Make sure the YB-Master and YB-TServer ports are open.
 
-    The connector connects to the master processes running on the YugabyteDB server. Make sure the ports on which the YugabyteDB server's master processes are running are open. The default port on which the process runs is `7100`.
+    The connector connects to the YB-Master and YB-TServer processes running on the YugabyteDB server. Make sure the ports on which these processes are running are open. The [default ports](../../../reference/configuration/default-ports/) on which the processes run are `7100` and `9100` respectively.
 
-1. Monitor available disk space.
+- Monitor available disk space.
 
     The change records for CDC are read from the WAL. YugabyteDB CDC maintains checkpoints internally for each DB stream ID and garbage collects the WAL entries if those have been streamed to the CDC clients.
 

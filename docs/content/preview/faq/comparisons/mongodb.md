@@ -25,11 +25,11 @@ MongoDB is a document-oriented database that only supports document data modelin
 
 ## Automatic sharding
 
-Sharding is not automatic in MongoDB since a Replica Set has to be manually converted to Sharded Cluster. On the other hand, YugabyteDB automatically shards data in any cluster of any size.
+Sharding is not automatic in MongoDB because a Replica Set has to be manually converted to Sharded Cluster. On the other hand, YugabyteDB automatically shards data in any cluster of any size.
 
 ## Fault tolerance
 
-Fault-tolerance for a given shard is similar in both systems since both rely on Raft consensus protocol for fast primary/leader election.
+Fault-tolerance for a given shard is similar in both systems because both rely on Raft consensus protocol for fast primary/leader election.
 
 ## Synchronous data replication
 
@@ -37,7 +37,7 @@ While primary election is Raft-based in MongoDB, actual data replication is not.
 
 ## Durable and fast writes
 
-Durability can be achieved in MongoDB only w/ majority writeConcern which suffers from asynchronous replication lag. On the other hand, durability is by default in YugabyteDB since the write path is based on Raft's synchronous data replication and majority consensus. Synchronous replication is typically of lower latency than the completely asynchronous approach of MongoDB.
+Durability can be achieved in MongoDB only w/ majority writeConcern which suffers from asynchronous replication lag. On the other hand, durability is by default in YugabyteDB because the write path is based on Raft's synchronous data replication and majority consensus. Synchronous replication is typically of lower latency than the completely asynchronous approach of MongoDB.
 
 ## Linearizable and fast reads
 
@@ -49,7 +49,7 @@ Both databases support single-key and single-shard transactions. In MongoDB, the
 
 ## Distributed (aka multi-shard) transactions
 
-Distributed transactions not yet available in MongoDB Sharded Clusters. On the other hand, YugabyteDB has full support for distributed transactions based on a distributed transaction manager that manages transactions across multiple shards (similar in architecture to that of Google Spanner).
+Distributed transactions are limited in MongoDB Sharded Clusters (in performance and features). YugabyteDB has full support for distributed transactions based on a distributed transaction manager that manages transactions across multiple shards (similar in architecture to that of Google Spanner).
 
 ## Strongly consistent global secondary indexes
 

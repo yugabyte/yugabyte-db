@@ -11,7 +11,6 @@
 // under the License.
 //
 
-#include "yb/util/logging.h"
 #include <boost/algorithm/string.hpp>
 
 #include "yb/client/yb_table_name.h"

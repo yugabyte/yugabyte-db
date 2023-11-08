@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.forms;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
@@ -62,11 +63,16 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
     return false;
   }
 
-  public void verifyParams(Universe universe) {
-    verifyParams(universe, null);
+  @JsonIgnore
+  public SoftwareUpgradeState getUniverseSoftwareUpgradeStateOnFailure() {
+    return null;
   }
 
-  public void verifyParams(Universe universe, NodeDetails.NodeState nodeState) {
+  public void verifyParams(Universe universe, boolean isFirstTry) {
+    verifyParams(universe, null, isFirstTry);
+  }
+
+  public void verifyParams(Universe universe, NodeDetails.NodeState nodeState, boolean isFirstTry) {
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     Map<String, String> universeConfig = universe.getConfig();
 

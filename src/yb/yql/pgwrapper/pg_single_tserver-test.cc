@@ -38,7 +38,11 @@ METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Write);
 
 DEFINE_RUNTIME_int32(TEST_scan_reads, 3, "Number of reads in scan tests");
 
-namespace yb::pgwrapper {
+namespace yb {
+
+extern int TEST_scan_trivial_expectation;
+
+namespace pgwrapper {
 
 class PgSingleTServerTest : public PgMiniTestBase {
  protected:
@@ -180,7 +184,31 @@ namespace {
 constexpr int kScanRows = RegularBuildVsDebugVsSanitizers(1000000, 100000, 10000);
 constexpr int kScanBlockSize = 1000;
 
+std::string CreateTableWithNValuesCommand(int num_columns, bool add_pk = true) {
+  std::string result = "CREATE TABLE t (";
+  if (add_pk) {
+    result += "a int PRIMARY KEY";
+  }
+  for (auto column : Range(num_columns)) {
+    if (add_pk || column != 0) {
+      result += ", ";
+    }
+    result += Format("c$0 INT", column);
+  }
+  result += ")";
+  return result;
 }
+
+std::string InsertNValuesCommand(int num_columns) {
+  std::string result = "INSERT INTO t VALUES (generate_series($0, $1)";
+  for (int i = 0; i != num_columns; ++i) {
+    result += ", trunc(random()*100000000)";
+  }
+  result += ")";
+  return result;
+}
+
+} // namespace
 
 TEST_F_EX(PgSingleTServerTest, Scan, PgMiniBigPrefetchTest) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
@@ -194,17 +222,34 @@ TEST_F_EX(PgSingleTServerTest, ScanWithPackedRow, PgMiniBigPrefetchTest) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
 
-  std::string create_cmd = "CREATE TABLE t (a int PRIMARY KEY";
-  std::string insert_cmd = "INSERT INTO t VALUES (generate_series($0, $1)";
-  for (auto column : Range(kNumColumns)) {
-    create_cmd += Format(", c$0 INT", column);
-    insert_cmd += ", trunc(random()*100000000)";
-  }
-  create_cmd += ")";
-  insert_cmd += ")";
+  auto create_cmd = CreateTableWithNValuesCommand(kNumColumns);
+  auto insert_cmd = InsertNValuesCommand(kNumColumns);
   const std::string select_cmd = "SELECT * FROM t";
   SetupColocatedTableAndRunBenchmark(
       create_cmd, insert_cmd, select_cmd, kScanRows, kScanBlockSize, FLAGS_TEST_scan_reads,
+      /* compact= */ false, /* aggregate = */ false);
+}
+
+TEST_F_EX(PgSingleTServerTest, ScanWithLowerLimit, PgMiniBigPrefetchTest) {
+  constexpr int kNumColumns = 5;
+
+  auto create_cmd = CreateTableWithNValuesCommand(kNumColumns);
+  auto insert_cmd = InsertNValuesCommand(kNumColumns);
+  const std::string select_cmd = "SELECT * FROM t WHERE a > 0";
+  SetupColocatedTableAndRunBenchmark(
+      create_cmd, insert_cmd, select_cmd, kScanRows, kScanBlockSize, FLAGS_TEST_scan_reads,
+      /* compact= */ false, /* aggregate = */ false);
+}
+
+TEST_F_EX(PgSingleTServerTest, IndexScan, PgMiniBigPrefetchTest) {
+  constexpr int kNumColumns = 2;
+
+  auto create_cmd = CreateTableWithNValuesCommand(kNumColumns, false) + ";";
+  create_cmd += "CREATE INDEX ON t (c0 ASC);";
+  auto insert_cmd = InsertNValuesCommand(kNumColumns - 1);
+  const std::string select_cmd = "SELECT c0 FROM t WHERE c0 > 0";
+  SetupColocatedTableAndRunBenchmark(
+      create_cmd, insert_cmd, select_cmd, kScanRows / 2, kScanBlockSize, FLAGS_TEST_scan_reads,
       /* compact= */ false, /* aggregate = */ false);
 }
 
@@ -734,4 +779,141 @@ TEST_F(PgSingleTServerTest, BoundedRangeScanWithLargeTransaction) {
   holder.WaitAndStop(std::chrono::seconds(5));
 }
 
-}  // namespace yb::pgwrapper
+YB_DEFINE_ENUM(BoundType, (kNone)(kExclusive)(kInclusive));
+YB_DEFINE_ENUM(State, (kBefore)(kBetween)(kAfter));
+
+TEST_F(PgSingleTServerTest, Bounds) {
+  using Row = std::vector<int>;
+
+  constexpr int kNumColumns = 3;
+  constexpr int kNumValues = 6;
+
+  const int kNumBounds = 1 + pow(kElementsInBoundType, 2);
+  const int kNumRows = pow(kNumValues, kNumColumns);
+  const int kNumCombinations = pow(kNumBounds, kNumColumns);
+
+  auto conn = ASSERT_RESULT(Connect());
+  std::vector<Row> rows;
+  {
+    std::string cmd = "CREATE TABLE t (";
+    std::string suffix;
+    for (int i = 0; i != kNumColumns; ++i) {
+      cmd += Format("r$0 INT, ", i);
+      if (i) {
+        suffix += ", ";
+      }
+      suffix += Format("r$0 ASC", i);
+    }
+    cmd += "PRIMARY KEY (" + suffix + "))";
+    ASSERT_OK(conn.Execute(cmd));
+  }
+  rows.resize(kNumRows);
+  for (int i = 0; i != kNumRows; ++i) {
+    std::string cmd = "INSERT INTO t VALUES (";
+    auto v = i;
+    auto div = kNumRows;
+    for (int c = 0; c != kNumColumns; ++c) {
+      if (c) {
+        cmd += ", ";
+      }
+      div /= kNumValues;
+      auto value = v / div;
+      cmd += std::to_string(value);
+      rows[i].push_back(value);
+      v %= div;
+    }
+    cmd += ")";
+    ASSERT_OK(conn.Execute(cmd));
+  }
+
+  LOG(INFO) << "Content: " << conn.FetchAllAsString("SELECT * FROM t");
+
+  for (int i = 0; i != kNumCombinations; ++i) {
+    std::vector<std::function<bool(const Row&)>> conditions;
+    std::vector<std::string> conditions_str;
+    auto v = i;
+    for (int c = 0; c != kNumColumns; ++c) {
+      auto bounds = v % kNumBounds;
+      v /= kNumBounds;
+      if (!bounds) {
+        conditions.push_back([c](const Row& row) { return row[c] == 2; });
+        conditions_str.push_back(Format("r$0 = 2", c));
+        continue;
+      }
+      --bounds;
+      auto lower_bound = static_cast<BoundType>(bounds % kElementsInBoundType);
+      auto upper_bound = static_cast<BoundType>(bounds / kElementsInBoundType);
+      switch (lower_bound) {
+        case BoundType::kNone:
+          break;
+        case BoundType::kExclusive:
+          conditions.push_back([c](const Row& row) { return row[c] > 1; });
+          conditions_str.push_back(Format("r$0 > 1", c));
+          break;
+        case BoundType::kInclusive:
+          conditions.push_back([c](const Row& row) { return row[c] >= 1; });
+          conditions_str.push_back(Format("r$0 >= 1", c));
+          break;
+      }
+      switch (upper_bound) {
+        case BoundType::kNone:
+          break;
+        case BoundType::kExclusive:
+          conditions.push_back([c](const Row& row) { return row[c] < 4; });
+          conditions_str.push_back(Format("r$0 < 4", c));
+          break;
+        case BoundType::kInclusive:
+          conditions.push_back([c](const Row& row) { return row[c] <= 4; });
+          conditions_str.push_back(Format("r$0 <= 4", c));
+          break;
+      }
+    }
+    std::string cmd = "SELECT * FROM t";
+    auto initial_length = cmd.length();
+    for (const auto& condition : conditions_str) {
+      cmd += cmd.length() == initial_length ? " WHERE " : " AND ";
+      cmd += condition;
+    }
+    std::string expected;
+    auto state = State::kBefore;
+    auto trivial = true;
+    for (const auto& row : rows) {
+      bool match = true;
+      for (const auto& condition : conditions) {
+        match = match && condition(row);
+      }
+      switch (state) {
+        case State::kBefore:
+          if (match) {
+            state = State::kBetween;
+          }
+          break;
+        case State::kBetween:
+          if (!match) {
+            state = State::kAfter;
+          }
+          break;
+        case State::kAfter:
+          if (match) {
+            trivial = false;
+          }
+          break;
+      }
+      if (match) {
+        if (!expected.empty()) {
+          expected += "; ";
+        }
+        expected += JoinElements(row, ", ");
+      }
+    }
+    LOG(INFO) << "Trivial: " << trivial << ", cmd: " << cmd;
+    ANNOTATE_UNPROTECTED_WRITE(TEST_scan_trivial_expectation) = trivial;
+    auto fetched = ASSERT_RESULT(conn.FetchAllAsString(cmd));
+    ANNOTATE_UNPROTECTED_WRITE(TEST_scan_trivial_expectation) = -1;
+    LOG(INFO) << fetched;
+    ASSERT_EQ(expected, fetched);
+  }
+}
+
+}  // namespace pgwrapper
+}  // namespace yb

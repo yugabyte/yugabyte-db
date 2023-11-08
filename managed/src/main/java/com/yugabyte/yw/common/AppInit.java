@@ -267,6 +267,7 @@ public class AppInit {
 
         // Handle incomplete tasks
         taskManager.handleAllPendingTasks();
+        taskManager.updateUniverseSoftwareUpgradeStateSet();
 
         // Schedule garbage collection of old completed tasks in database.
         taskGC.start();

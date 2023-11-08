@@ -169,11 +169,6 @@ void YBTableTestBase::SetUp() {
 }
 
 void YBTableTestBase::TearDown() {
-  DeleteTable();
-
-  // Fetch the tablet server metrics page after we delete the table. [ENG-135].
-  FetchTSMetricsPage();
-
   client_.reset();
   if (use_yb_admin_client()) {
     yb_admin_client_.reset();

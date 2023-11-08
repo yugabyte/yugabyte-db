@@ -15,8 +15,8 @@ import { UnavailableUniverseStates } from '../../redesign/helpers/constants';
 
 import { Universe } from '../../redesign/helpers/dtos';
 
-import { RbacValidator } from '../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../redesign/features/rbac/UserPermPathMapping';
+import { RbacValidator } from '../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../redesign/features/rbac/ApiAndUserPermMapping';
 import styles from './XClusterReplication.module.scss';
 
 export const XClusterReplication = ({ currentUniverseUUID }: { currentUniverseUUID: string }) => {
@@ -51,6 +51,7 @@ export const XClusterReplication = ({ currentUniverseUUID }: { currentUniverseUU
   const shouldDisableXClusterActions = UnavailableUniverseStates.includes(
     getUniverseStatus(universeQuery.data).state
   );
+
   return (
     <>
       <Row>
@@ -61,9 +62,7 @@ export const XClusterReplication = ({ currentUniverseUUID }: { currentUniverseUU
           <Row className={styles.configActionsContainer}>
             <Row>
               <RbacValidator
-                accessRequiredOn={{
-                  ...UserPermissionMap.editAlertsConfig
-                }}
+                accessRequiredOn={ApiPermissionMap.CREATE_ALERT_CONFIGURATIONS}
                 isControl
               >
                 <YBButton
@@ -75,8 +74,8 @@ export const XClusterReplication = ({ currentUniverseUUID }: { currentUniverseUU
               </RbacValidator>
               <RbacValidator
                 accessRequiredOn={{
-                  onResource: currentUniverseUUID,
-                  ...UserPermissionMap.createReplication
+                  ...ApiPermissionMap.CREATE_XCLUSTER_REPLICATION,
+                  onResource: { UNIVERSE: currentUniverseUUID },
                 }}
                 isControl
               >

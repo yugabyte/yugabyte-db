@@ -16,29 +16,11 @@ Use the `CALL` statement to execute a stored procedure.
 
 ## Syntax
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammar Icon">
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <img src="/icons/diagram.svg" alt="Diagram Icon">
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/call_procedure,subprogram_arg,arg_name.grammar.md" %}}
-  </div>
-  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/call_procedure,subprogram_arg,arg_name.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  call_procedure,
+  actual_arg,
+  formal_arg
+{{%/ebnf%}}
 
 {{< tip title="The syntax and semantics of 'subprogram_arg' are the same for function invocation as for 'CALL'." >}}
 The syntax and semantics of the _subprogram_arg_ rule (for example how to use the named parameter invocation style to avoid providing actual arguments for defaulted parameters) are the same for invoking a function as for `CALL`. A function cannot be invoked with the `CALL` statement. Rather, it's invoked as (part of) an expression in DML statements like `SELECT` or in PL/pgSQL source code.

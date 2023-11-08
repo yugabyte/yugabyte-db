@@ -1778,7 +1778,7 @@ TEST_F(AutomaticTabletSplitExternalMiniClusterITest, CrashedSplitIsRestarted) {
   for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
     ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(i),
                                                     {tablet_id},
-                                                    false /* is_compaction */));
+                                                    tserver::FlushTabletsRequestPB::FLUSH));
   }
 
   const auto kCrashTime = 10s;
@@ -2848,7 +2848,8 @@ TEST_F_EX(
     auto* ts = cluster_->tablet_server(i);
     if (i != server_to_bootstrap_idx) {
       ASSERT_OK(cluster_->WaitForAllIntentsApplied(ts, 15s * kTimeMultiplier));
-      ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(ts, {source_tablet_id}, false));
+      ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(
+          ts, {source_tablet_id}, tserver::FlushTabletsRequestPB::FLUSH));
       // Prevent leader changes.
       ASSERT_OK(cluster_->SetFlag(ts, "enable_leader_failure_detection", "false"));
     }
@@ -2979,7 +2980,7 @@ TEST_F_EX(
     auto* ts = cluster_->tablet_server(ts_idx);
     if (ts->IsProcessAlive()) {
       ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(
-          ts, {source_tablet_id}, /* is_compaction = */ false));
+          ts, {source_tablet_id}, tserver::FlushTabletsRequestPB::FLUSH));
       ASSERT_OK(WaitForAnySstFiles(*ts, source_tablet_id));
     }
   }

@@ -14,7 +14,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ReplicateNamespaces;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetReplicationPaused;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetRestoreTime;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.WaitForReplicationDrain;
-import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModifyTables;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigRename;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetStatus;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetStatusForTables;
@@ -96,6 +95,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   public static final String ENABLE_PG_SAVEPOINTS_GFLAG_NAME = "enable_pg_savepoints";
   public static final String MINIMUN_VERSION_TRANSACTIONAL_XCLUSTER_SUPPORT = "2.18.1.0-b1";
   public static final int LOGICAL_CLOCK_NUM_BITS_IN_HYBRID_CLOCK = 12;
+  public static final String TXN_XCLUSTER_SAFETIME_LAG_NAME = "consumer_safe_time_lag";
 
   public static final List<XClusterConfig.XClusterConfigStatusType>
       X_CLUSTER_CONFIG_MUST_DELETE_STATUS_LIST =
@@ -306,24 +306,6 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   protected SubTaskGroup createSetReplicationPausedTask(
       XClusterConfig xClusterConfig, String status) {
     return createSetReplicationPausedTask(xClusterConfig, status.equals("Paused"));
-  }
-
-  protected SubTaskGroup createXClusterConfigModifyTablesTask(
-      XClusterConfig xClusterConfig,
-      Set<String> tables,
-      XClusterConfigModifyTables.Params.Action action) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("XClusterConfigModifyTables");
-    XClusterConfigModifyTables.Params modifyTablesParams = new XClusterConfigModifyTables.Params();
-    modifyTablesParams.setUniverseUUID(xClusterConfig.getTargetUniverseUUID());
-    modifyTablesParams.xClusterConfig = xClusterConfig;
-    modifyTablesParams.tables = tables;
-    modifyTablesParams.action = action;
-
-    XClusterConfigModifyTables task = createTask(XClusterConfigModifyTables.class);
-    task.initialize(modifyTablesParams);
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
   }
 
   protected SubTaskGroup createXClusterConfigRenameTask(
@@ -785,6 +767,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
             .getProducerMapMap()
             .get(xClusterConfig.getReplicationGroupName());
     if (replicationGroup == null) {
+      xClusterConfig.updateReplicationSetupDone(tableIds, false /* replicationSetupDone */);
       return false;
     }
 

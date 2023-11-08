@@ -19,8 +19,8 @@ import org.yb.annotations.InterfaceAudience;
 import org.yb.master.MasterBackupOuterClass.DeleteSnapshotRequestPB;
 import org.yb.master.MasterBackupOuterClass.DeleteSnapshotResponsePB;
 import org.yb.master.MasterTypes;
+import org.yb.util.CommonUtil;
 import org.yb.util.Pair;
-import org.yb.util.SnapshotUtil;
 
 @InterfaceAudience.Public
 public class DeleteSnapshotRequest extends YRpc<DeleteSnapshotResponse>{
@@ -37,7 +37,7 @@ public class DeleteSnapshotRequest extends YRpc<DeleteSnapshotResponse>{
         assert header.isInitialized();
         final DeleteSnapshotRequestPB.Builder builder =
                 DeleteSnapshotRequestPB.newBuilder();
-        builder.setSnapshotId(SnapshotUtil.convertToByteString(snapshotUUID));
+        builder.setSnapshotId(CommonUtil.convertToByteString(snapshotUUID));
         return toChannelBuffer(header, builder.build());
     }
 

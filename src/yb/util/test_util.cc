@@ -32,7 +32,6 @@
 
 #include "yb/util/test_util.h"
 
-#include "yb/util/logging.h"
 #include <gtest/gtest-spi.h>
 
 #include "yb/gutil/casts.h"
@@ -317,7 +316,13 @@ int CalcNumTablets(size_t num_tablet_servers) {
 #endif
 }
 
-Status CorruptFile(const std::string& file_path, int64_t offset, size_t bytes_to_corrupt) {
+Status CorruptFile(
+    const std::string& file_path, int64_t offset, size_t bytes_to_corrupt,
+    CorruptionType corruption_type) {
+  if (bytes_to_corrupt == 0) {
+    LOG(INFO) << "Not corrupting file " << file_path << " since bytes_to_corrupt == 0";
+    return Status::OK();
+  }
   struct stat sbuf;
   if (stat(file_path.c_str(), &sbuf) != 0) {
     const char* msg = strerror(errno);
@@ -332,6 +337,9 @@ Status CorruptFile(const std::string& file_path, int64_t offset, size_t bytes_to
     bytes_to_corrupt = sbuf.st_size - offset;
   }
 
+  LOG(INFO) << "Corrupting file " << file_path << ", " << bytes_to_corrupt << " bytes at offset "
+            << offset << ", file size: " << sbuf.st_size;
+
   RWFileOptions opts;
   opts.mode = Env::CreateMode::OPEN_EXISTING;
   opts.sync_on_close = true;
@@ -343,7 +351,15 @@ Status CorruptFile(const std::string& file_path, int64_t offset, size_t bytes_to
   SCHECK_EQ(data_read.size(), bytes_to_corrupt, IOError, "Unexpected number of bytes read");
 
   for (uint8_t* p = data_read.mutable_data(); p < data_read.end(); ++p) {
-    *p ^= 0x55;
+    switch (corruption_type) {
+      case CorruptionType::kZero:
+        *p = 0;
+        continue;
+      case CorruptionType::kXor55:
+        *p ^= 0x55;
+        continue;
+    }
+    FATAL_INVALID_ENUM_VALUE(CorruptionType, corruption_type);
   }
 
   RETURN_NOT_OK(file->Write(offset, data_read));

@@ -1920,19 +1920,19 @@ Status delete_universe_replication_action(
   if (args.size() < 1) {
     return ClusterAdminCli::kInvalidArguments;
   }
-  const string producer_id = args[0];
+  const string replication_group_id = args[0];
   bool ignore_errors = false;
   if (args.size() >= 2 && args[1] == "ignore-errors") {
     ignore_errors = true;
   }
   RETURN_NOT_OK_PREPEND(
-      client->DeleteUniverseReplication(producer_id, ignore_errors),
-      Format("Unable to delete replication for universe $0", producer_id));
+      client->DeleteUniverseReplication(replication_group_id, ignore_errors),
+      Format("Unable to delete replication for universe $0", replication_group_id));
   return Status::OK();
 }
 
 const auto alter_universe_replication_args =
-    "<producer_universe_id>"
+    "<producer_universe_uuid>"
     "(set_master_addresses [<comma_separated_list_of_producer_master_addresses>] | "
     "add_table [<comma_separated_list_of_table_ids>] "
     "[<comma_separated_list_of_producer_bootstrap_ids>] | "
@@ -1952,7 +1952,7 @@ Status alter_universe_replication_action(
   vector<string> add_tables;
   vector<string> remove_tables;
   vector<string> bootstrap_ids_to_add;
-  string new_producer_universe_id = "";
+  string new_replication_group_id = "";
   bool remove_table_ignore_errors = false;
 
   vector<string> newElem, *lst;
@@ -1967,7 +1967,7 @@ Status alter_universe_replication_action(
     }
   } else if (args[1] == "rename_id") {
     lst = nullptr;
-    new_producer_universe_id = args[2];
+    new_replication_group_id = args[2];
   } else {
     return ClusterAdminCli::kInvalidArguments;
   }
@@ -1984,7 +1984,7 @@ Status alter_universe_replication_action(
   RETURN_NOT_OK_PREPEND(
       client->AlterUniverseReplication(
           replication_group_id, master_addresses, add_tables, remove_tables, bootstrap_ids_to_add,
-          new_producer_universe_id, remove_table_ignore_errors),
+          new_replication_group_id, remove_table_ignore_errors),
       Format("Unable to alter replication for universe $0", replication_group_id));
 
   return Status::OK();
@@ -2012,13 +2012,13 @@ Status set_universe_replication_enabled_action(
   if (args.size() < 2) {
     return ClusterAdminCli::kInvalidArguments;
   }
-  const string producer_id = args[0];
+  const string replication_group_id = args[0];
   const bool is_enabled = VERIFY_RESULT(CheckedStoi(args[1])) != 0;
   RETURN_NOT_OK_PREPEND(
-      client->SetUniverseReplicationEnabled(producer_id, is_enabled),
+      client->SetUniverseReplicationEnabled(replication_group_id, is_enabled),
       Format(
           "Unable to $0 replication for universe $1", is_enabled ? "enable" : "disable",
-          producer_id));
+          replication_group_id));
   return Status::OK();
 }
 
@@ -2147,9 +2147,9 @@ Status get_replication_status_action(
   if (args.size() != 0 && args.size() != 1) {
     return ClusterAdminCli::kInvalidArguments;
   }
-  const string producer_universe_uuid = args.size() == 1 ? args[0] : "";
+  const string replication_group_id = args.size() == 1 ? args[0] : "";
   RETURN_NOT_OK_PREPEND(
-      client->GetReplicationInfo(producer_universe_uuid), "Unable to get replication status");
+      client->GetReplicationInfo(replication_group_id), "Unable to get replication status");
   return Status::OK();
 }
 
@@ -2263,6 +2263,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(rotate_universe_key_in_memory);
   REGISTER_COMMAND(disable_encryption_in_memory);
   REGISTER_COMMAND(write_universe_key_to_file);
+  // CDC commands
   REGISTER_COMMAND(create_cdc_stream);
   REGISTER_COMMAND(create_change_data_stream);
   REGISTER_COMMAND(delete_cdc_stream);
@@ -2270,6 +2271,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(list_cdc_streams);
   REGISTER_COMMAND(list_change_data_streams);
   REGISTER_COMMAND(get_change_data_stream_info);
+  // xCluster commands
   REGISTER_COMMAND(setup_universe_replication);
   REGISTER_COMMAND(delete_universe_replication);
   REGISTER_COMMAND(alter_universe_replication);

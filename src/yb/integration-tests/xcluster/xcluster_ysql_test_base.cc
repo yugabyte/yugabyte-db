@@ -635,7 +635,7 @@ void XClusterYsqlTestBase::TestReplicationWithSchemaChanges(
   master::GetUniverseReplicationResponsePB resp;
   ASSERT_OK(
       VerifyUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, &resp));
-  ASSERT_EQ(resp.entry().producer_id(), kReplicationGroupId);
+  ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
   ASSERT_EQ(resp.entry().tables_size(), 1);
   ASSERT_EQ(resp.entry().tables(0), producer_table_id);
   ASSERT_OK(VerifyWrittenRecords());

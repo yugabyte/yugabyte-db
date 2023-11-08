@@ -1,3 +1,5 @@
+// Copyright (c) YugaByte, Inc.
+
 package com.yugabyte.yw.common.config;
 
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;

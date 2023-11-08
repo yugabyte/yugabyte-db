@@ -579,7 +579,7 @@ void DocRowwiseIteratorTest::TestClusteredFilterRangeWithTableTombstone() {
   DocDBDebugDumpToConsole();
 
   const KeyEntryValues empty_key_components;
-  boost::optional<int32_t> empty_hash_code;
+  std::optional<int32_t> empty_hash_code;
   DocPgsqlScanSpec spec(
       test_schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
       empty_hash_code, empty_hash_code);
@@ -624,7 +624,7 @@ void DocRowwiseIteratorTest::TestClusteredFilterRangeWithTableTombstoneReverseSc
   option1->add_elems()->set_int32_value(5);
 
   const KeyEntryValues empty_key_components;
-  boost::optional<int32_t> empty_hash_code;
+  std::optional<int32_t> empty_hash_code;
   static const DocKey default_doc_key;
   DocPgsqlScanSpec spec(
       test_schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,

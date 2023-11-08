@@ -318,14 +318,14 @@ export default class UserProfileForm extends Component {
                           <FlexGrow className="copy-text-field">
                             <YBTextArea
                               type="text"
-                              rows={OIDCToken.data.oidcAuthToken ? 5 : 2}
+                              rows={OIDCToken?.data?.oidcAuthToken ? 5 : 2}
                               isReadOnly={true}
                               input={{
-                                value: OIDCToken.data.oidcAuthToken
+                                value: OIDCToken?.data?.oidcAuthToken
                               }}
                               label="OIDC Token"
                             />
-                            <YBCopyButton text={OIDCToken.data.oidcAuthToken || ''} />
+                            <YBCopyButton text={OIDCToken?.data?.oidcAuthToken || ''} />
                           </FlexGrow>
                           <FlexShrink>
                             <YBButton
@@ -337,7 +337,7 @@ export default class UserProfileForm extends Component {
                             />
                           </FlexShrink>
                         </FlexContainer>
-                        {isNonEmptyString(OIDCToken.data.oidcAuthToken) && waringMessageContent}
+                        {isNonEmptyString(OIDCToken?.data?.oidcAuthToken) && waringMessageContent}
                       </>
                     )}
                   </Col>

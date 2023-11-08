@@ -81,6 +81,7 @@ public class PersistResizeNode extends UniverseTaskBase {
               UserIntent newUserIntent = taskParams().newUserIntent;
               userIntent.instanceType = newUserIntent.instanceType;
               userIntent.setUserIntentOverrides(newUserIntent.getUserIntentOverrides());
+              userIntent.setCgroupSize(newUserIntent.getCgroupSize());
               userIntent.masterInstanceType = newUserIntent.masterInstanceType;
               Date now = new Date();
               DeviceInfo oldDeviceInfo = userIntent.deviceInfo.clone();

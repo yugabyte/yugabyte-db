@@ -19,7 +19,9 @@
 #include "pg_stat_monitor.h"
 
 /* YB includes. */
+#include "access/transam.h" /* For FirstNormalObjectId */
 #include "common/pg_yb_common.h"
+#include "pg_yb_utils.h"
 #include "yb/yql/pggate/webserver/pgsql_webserver_wrapper.h"
 
 PG_MODULE_MAGIC;
@@ -1825,6 +1827,8 @@ JumbleRangeTable(pgssJumbleState *jstate, List *rtable)
 		switch (rte->rtekind)
 		{
 			case RTE_RELATION:
+				if (IsYugaByteEnabled() && rte->relid >= FirstNormalObjectId)
+					APP_JUMB(MyDatabaseId);
 				APP_JUMB(rte->relid);
 				JumbleExpr(jstate, (Node *) rte->tablesample);
 				break;

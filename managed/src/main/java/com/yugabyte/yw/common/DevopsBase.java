@@ -102,6 +102,11 @@ public abstract class DevopsBase {
           "Invalid args provided for execCommand: region, provider or cloudType required!");
     }
 
+    long timeoutSecs = confGetter.getGlobalConf(GlobalConfKeys.devopsCommandTimeout).getSeconds();
+    if (devopsCommand.timeoutSecs > 0) {
+      timeoutSecs = devopsCommand.timeoutSecs;
+    }
+
     String description = String.join(" ", commandList);
     description += (" " + getCommandType().toLowerCase() + " " + devopsCommand.command);
     if (commandArgs.size() >= 1) {
@@ -119,7 +124,7 @@ public abstract class DevopsBase {
             .extraEnvVars(extraVars)
             .redactedVals(devopsCommand.redactedVals)
             .sensitiveData(devopsCommand.sensitiveData)
-            .timeoutSecs(confGetter.getGlobalConf(GlobalConfKeys.devopsCommandTimeout).toSeconds())
+            .timeoutSecs(timeoutSecs)
             .build());
   }
 
@@ -137,5 +142,7 @@ public abstract class DevopsBase {
     Map<String, String> redactedVals;
     // Args that will be added to the cmd but will be redacted in logs.
     Map<String, String> sensitiveData;
+    // Max time in seconds we will wait for command to run.
+    long timeoutSecs;
   }
 }

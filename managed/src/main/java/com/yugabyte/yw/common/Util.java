@@ -61,6 +61,7 @@ import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.validator.routines.InetAddressValidator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -93,6 +94,7 @@ public class Util {
   public static final String CUSTOMERS = "customers";
   public static final String UNIVERSES = "universes";
   public static final String USERS = "users";
+  public static final String ROLE = "role";
   public static final String UNIVERSE_UUID = "universeUUID";
 
   public static final String AVAILABLE_MEMORY = "MemAvailable";
@@ -1004,5 +1006,10 @@ public class Util {
       return matcher.group(1);
     }
     return null;
+  }
+
+  public static boolean isIpAddress(String maybeIp) {
+    InetAddressValidator ipValidator = InetAddressValidator.getInstance();
+    return ipValidator.isValidInet4Address(maybeIp) || ipValidator.isValidInet6Address(maybeIp);
   }
 }

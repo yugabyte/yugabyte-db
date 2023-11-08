@@ -71,7 +71,8 @@ export const convertScheduleToFormValues = (
     keep_indefinitely: schedule.backupInfo.timeBeforeDelete === 0,
     parallel_threads: schedule.backupInfo.parallelism ?? 8,
     scheduleObj: schedule,
-    isTableByTableBackup: schedule.tableByTableBackup
+    isTableByTableBackup: schedule.tableByTableBackup,
+    useTablespaces: schedule.backupInfo.useTablespaces
   };
 
   if (schedule.backupInfo?.fullBackup) {

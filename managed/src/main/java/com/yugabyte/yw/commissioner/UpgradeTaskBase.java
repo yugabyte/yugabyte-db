@@ -5,7 +5,6 @@ package com.yugabyte.yw.commissioner;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.google.common.collect.ImmutableSet;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
@@ -106,7 +105,17 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
             // Run all the tasks.
             getRunnableTask().runSubTasks();
           } catch (Throwable t) {
-            log.error("Error executing task {} with error={}.", getName(), t);
+            log.error("Error executing task {} with error: ", getName(), t);
+
+            if (taskParams().getUniverseSoftwareUpgradeStateOnFailure() != null) {
+              Universe universe = getUniverse(true);
+              universe.updateUniverseSoftwareUpgradeState(
+                  taskParams().getUniverseSoftwareUpgradeStateOnFailure());
+              log.debug(
+                  "Updated universe {} software upgrade state to  {}.",
+                  taskParams().getUniverseUUID(),
+                  taskParams().getUniverseSoftwareUpgradeStateOnFailure());
+            }
 
             // If the task failed, we don't want the loadbalancer to be
             // disabled, so we enable it again in case of errors.
@@ -117,7 +126,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
                         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
                   });
             }
-
             throw t;
           } finally {
             try {
@@ -555,7 +563,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
     UpdateClusterUserIntent updateClusterUserIntentTask = createTask(UpdateClusterUserIntent.class);
     updateClusterUserIntentTask.initialize(updateClusterUserIntentParams);
-    updateClusterUserIntentTask.setUserTaskUUID(userTaskUUID);
+    updateClusterUserIntentTask.setUserTaskUUID(getUserTaskUUID());
     subTaskGroup.addSubTask(updateClusterUserIntentTask);
 
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -575,7 +583,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     params.gflagsToRemove = GFlagsUtil.getDeletedGFlags(oldGflags, newGflags);
     AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
     task.initialize(params);
-    task.setUserTaskUUID(userTaskUUID);
+    task.setUserTaskUUID(getUserTaskUUID());
     return task;
   }
 
@@ -625,14 +633,14 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       UniverseDefinitionTaskParams.UserIntent userIntent,
       Universe universe,
       ServerType processType,
-      Map<String, String> newGFlags,
-      Config config) {
+      Map<String, String> newGFlags) {
     AnsibleConfigureServers.Params params =
         getAnsibleConfigureServerParams(
             userIntent, node, processType, UpgradeTaskType.GFlags, UpgradeTaskSubType.None);
 
     String errorMsg =
-        GFlagsUtil.checkForbiddenToOverride(node, params, userIntent, universe, newGFlags, config);
+        GFlagsUtil.checkForbiddenToOverride(
+            node, params, userIntent, universe, newGFlags, confGetter);
     if (errorMsg != null) {
       throw new PlatformServiceException(
           BAD_REQUEST,

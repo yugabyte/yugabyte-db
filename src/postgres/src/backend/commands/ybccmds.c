@@ -1761,3 +1761,64 @@ YBCValidatePlacement(const char *placement_info)
 {
 	HandleYBStatus(YBCPgValidatePlacement(placement_info));
 }
+
+/* ------------------------------------------------------------------------- */
+/*  Replication Slot Functions. */
+
+void
+YBCCreateReplicationSlot(const char *slot_name)
+{
+	YBCPgStatement handle;
+
+	HandleYBStatus(YBCPgNewCreateReplicationSlot(slot_name,
+												 MyDatabaseId,
+												 &handle));
+
+	bool already_present = false;
+	HandleYBStatusIgnoreAlreadyPresent(YBCPgExecCreateReplicationSlot(handle),
+									   &already_present);
+	if (already_present)
+		ereport(ERROR,
+				(errcode(ERRCODE_DUPLICATE_OBJECT),
+				 errmsg("replication slot \"%s\" already exists",
+						slot_name)));
+}
+
+void
+YBCListReplicationSlots(YBCReplicationSlotDescriptor **replication_slots,
+						size_t* numreplicationslots)
+{
+	HandleYBStatus(
+		YBCPgListReplicationSlots(replication_slots, numreplicationslots));
+}
+
+void
+YBCGetReplicationSlotStatus(const char *slot_name,
+							bool *active)
+{
+	bool not_found = false;
+	HandleYBStatusIgnoreNotFound(
+		YBCPgGetReplicationSlotStatus(slot_name, active),
+		&not_found);
+	if (not_found)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("replication slot \"%s\" does not exist", slot_name)));
+}
+
+void
+YBCDropReplicationSlot(const char *slot_name)
+{
+	YBCPgStatement handle;
+
+	HandleYBStatus(YBCPgNewDropReplicationSlot(slot_name,
+											   &handle));
+
+	bool not_found = false;
+	HandleYBStatusIgnoreNotFound(YBCPgExecDropReplicationSlot(handle),
+								 &not_found);
+	if (not_found)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("replication slot \"%s\" does not exist", slot_name)));
+}

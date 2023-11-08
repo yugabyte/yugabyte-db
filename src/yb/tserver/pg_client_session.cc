@@ -18,6 +18,8 @@
 #include <mutex>
 #include <set>
 
+#include "yb/cdc/cdc_service.h"
+
 #include "yb/client/batcher.h"
 #include "yb/client/client.h"
 #include "yb/client/error.h"
@@ -666,6 +668,31 @@ Status PgClientSession::TruncateTable(
     const PgTruncateTableRequestPB& req, PgTruncateTableResponsePB* resp,
     rpc::RpcContext* context) {
   return client().TruncateTable(PgObjectId::GetYbTableIdFromPB(req.table_id()));
+}
+
+Status PgClientSession::CreateReplicationSlot(
+    const PgCreateReplicationSlotRequestPB& req, PgCreateReplicationSlotResponsePB* resp,
+    rpc::RpcContext* context) {
+  std::unordered_map<std::string, std::string> options;
+  // TODO(#19260): Support customizing the CDCRecordType.
+  options.reserve(5);
+  options.emplace(cdc::kIdType, cdc::kNamespaceId);
+  options.emplace(cdc::kRecordType, CDCRecordType_Name(cdc::CDCRecordType::CHANGE));
+  options.emplace(cdc::kRecordFormat, CDCRecordFormat_Name(cdc::CDCRecordFormat::PROTO));
+  options.emplace(cdc::kSourceType, CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK));
+  options.emplace(cdc::kCheckpointType, CDCCheckpointType_Name(cdc::CDCCheckpointType::EXPLICIT));
+
+  auto stream_result = VERIFY_RESULT(client().CreateCDCSDKStreamForNamespace(
+      GetPgsqlNamespaceId(req.database_oid()), options,
+      ReplicationSlotName(req.replication_slot_name())));
+  *resp->mutable_stream_id() = stream_result.ToString();
+  return Status::OK();
+}
+
+Status PgClientSession::DropReplicationSlot(
+    const PgDropReplicationSlotRequestPB& req, PgDropReplicationSlotResponsePB* resp,
+    rpc::RpcContext* context) {
+  return client().DeleteCDCStream(ReplicationSlotName(req.replication_slot_name()));
 }
 
 Status PgClientSession::WaitForBackendsCatalogVersion(

@@ -91,7 +91,7 @@ enum XClusterRole {
 }
 
 message ConsumerRegistryPB {
-  // Map from producer universe uuid to metadata for that producer.
+  // Map from ReplicationGroupId to metadata for that ReplicationGroup.
   map<string, ProducerEntryPB> producer_map = 1;
   // Reserved for deprecated enable_replicate_transaction_status_table field.
   reserved 2;
