@@ -84,6 +84,10 @@ public class AnsibleConfigureServers extends NodeTaskBase {
 
     // In case a node doesn't have custom AMI, ignore the value of USE_CUSTOM_IMAGE config.
     public boolean ignoreUseCustomImageConfig = false;
+
+    // This sets the flag master_join_existing_universe to true by default in the conf file, unless
+    // it is overridden e.g in CreateUniverse.
+    public boolean masterJoinExistingCluster = true;
   }
 
   @Override

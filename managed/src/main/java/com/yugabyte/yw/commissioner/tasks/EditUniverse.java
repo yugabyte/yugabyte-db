@@ -287,9 +287,18 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       createProvisionNodeTasks(
           universe,
           nodesToProvision,
-          true /* isShell */,
           false /* ignore node status check */,
-          ignoreUseCustomImageConfig);
+          setupServerParams -> {
+            setupServerParams.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
+          },
+          installSoftwareParams -> {
+            installSoftwareParams.isMasterInShellMode = true;
+            installSoftwareParams.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
+          },
+          gFlagsParams -> {
+            gFlagsParams.isMasterInShellMode = true;
+            gFlagsParams.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
+          });
     }
 
     Set<NodeDetails> removeMasters = PlacementInfoUtil.getMastersToBeRemoved(nodes);

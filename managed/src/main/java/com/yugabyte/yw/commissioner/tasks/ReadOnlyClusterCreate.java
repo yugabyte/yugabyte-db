@@ -96,9 +96,18 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       createProvisionNodeTasks(
           universe,
           nodesToProvision,
-          true /* isShell */,
           false /* ignore node status check */,
-          ignoreUseCustomImageConfig);
+          setupServerParams -> {
+            setupServerParams.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
+          },
+          installSoftwareParams -> {
+            installSoftwareParams.isMasterInShellMode = true;
+            installSoftwareParams.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
+          },
+          gFlagsParams -> {
+            gFlagsParams.isMasterInShellMode = true;
+            gFlagsParams.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
+          });
 
       // Set of processes to be started, note that in this case it is same as nodes provisioned.
       Set<NodeDetails> newTservers = PlacementInfoUtil.getTserversToProvision(readOnlyNodes);

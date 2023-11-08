@@ -527,11 +527,19 @@ public class NodeManagerTest extends FakeDBApplication {
       TestData testData,
       boolean useHostname) {
     Map<String, String> gflags = new HashMap<>();
-    gflags.put("placement_cloud", configureParams.getProvider().code);
-    gflags.put("placement_region", configureParams.getRegion().code);
-    gflags.put("placement_zone", configureParams.getAZ().code);
+    String processType = params.getProperty("processType");
+    gflags.put("placement_cloud", configureParams.getProvider().getCode());
+    gflags.put("placement_region", configureParams.getRegion().getCode());
+    gflags.put("placement_zone", configureParams.getAZ().getCode());
+    if (ServerType.MASTER.name().equals(processType)) {
+      gflags.put("master_join_existing_universe", "true");
+    }
     gflags.put("max_log_size", "256");
-    gflags.put("undefok", "enable_ysql");
+    if (ServerType.MASTER.name().equals(processType)) {
+      gflags.put("undefok", "master_join_existing_universe,enable_ysql");
+    } else {
+      gflags.put("undefok", "enable_ysql");
+    }
     gflags.put("placement_uuid", String.valueOf(configureParams.placementUuid));
     gflags.put("metric_node_name", configureParams.nodeName);
 
@@ -542,8 +550,6 @@ public class NodeManagerTest extends FakeDBApplication {
 
     String index = testData.node.getDetails().nodeName.split("-n")[1];
     String private_ip = "10.0.0." + index;
-    String processType = params.getProperty("processType");
-
     if (processType == null) {
       gflags.put("master_addresses", "");
     } else if (processType.equals(ServerType.TSERVER.name())) {
@@ -799,7 +805,6 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add("--master_addresses_for_master");
           expectedCommand.add(MASTER_ADDRESSES);
         }
-
         expectedCommand.add("--master_http_port");
         expectedCommand.add("7000");
         expectedCommand.add("--master_rpc_port");

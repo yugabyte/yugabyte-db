@@ -151,9 +151,12 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       createProvisionNodeTasks(
           universe,
           taskParams().nodeDetailsSet,
-          false /* isShell */,
           false /* ignore node status check */,
-          false /*ignoreUseCustomImageConfig*/);
+          null /* setup server param customizer */,
+          null /* install software param customizer */,
+          gFlagsParams -> {
+            gFlagsParams.masterJoinExistingCluster = false;
+          });
 
       Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
 
@@ -170,7 +173,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       createSetNodeStateTasks(taskParams().nodeDetailsSet, NodeDetails.NodeState.Live)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
-      createConfigureUniverseTasks(primaryCluster);
+      createConfigureUniverseTasks(primaryCluster, newMasters);
 
       // Run all the tasks.
       getRunnableTask().runSubTasks();

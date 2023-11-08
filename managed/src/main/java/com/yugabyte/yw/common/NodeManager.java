@@ -118,6 +118,7 @@ public class NodeManager extends DevopsBase {
   // DB internal glag to suppress going into shell mode and delete files on master removal.
   public static final String NOTIFY_PEER_OF_REMOVAL_FROM_CLUSTER =
       "notify_peer_of_removal_from_cluster";
+  public static final String MASTER_JOIN_EXISTING_UNIVERSE = "master_join_existing_universe";
 
   @Inject ReleaseManager releaseManager;
 
@@ -767,6 +768,12 @@ public class NodeManager extends DevopsBase {
       // By default, it is true in the DB.
       gflags.put(NOTIFY_PEER_OF_REMOVAL_FROM_CLUSTER, String.valueOf(notifyPeerOnRemoval));
       gflags.put(UNDEFOK, NOTIFY_PEER_OF_REMOVAL_FROM_CLUSTER);
+    }
+    if (taskParam.isMasterInShellMode || taskParam.masterJoinExistingCluster) {
+      // Always set this to true in shell mode to avoid forming a cluster even if the master
+      // addresses are set by mistake. Once the master joins an existing cluster, this is ignored.
+      gflags.put(MASTER_JOIN_EXISTING_UNIVERSE, "true");
+      gflags.merge(UNDEFOK, MASTER_JOIN_EXISTING_UNIVERSE, (v1, v2) -> mergeCSVs(v1, v2));
     }
     return gflags;
   }
@@ -1745,7 +1752,7 @@ public class NodeManager extends DevopsBase {
             commandArgs.add("systemd_upgrade");
             commandArgs.add("--systemd_services");
           } else if (taskParam.useSystemd) {
-            // Systemd for new universes
+            // Systemd for new universes.
             commandArgs.add("--systemd_services");
           }
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
