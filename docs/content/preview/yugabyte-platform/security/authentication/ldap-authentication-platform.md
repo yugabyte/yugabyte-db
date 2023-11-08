@@ -23,10 +23,6 @@ type: docs
   </li>
 </ul>
 
-LDAP Authentication in YugabyteDB is similar to password authentication, except that it uses the LDAP protocol to verify the password. Therefore, before LDAP can be used for authentication, the user must already exist in the database and have appropriate permissions.
-
-You enable LDAP authentication in the YugabyteDB cluster by setting the LDAP configuration with the <code>[ysql_hba_conf_csv](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv)</code> flag.
-
 This section describes how to configure a YugabyteDB Anywhere universe to use an LDAP server such as Active Directory with TLS.
 
 You enable LDAP authentication in the YugabyteDB universe by setting the LDAP configuration with the <code>[--ysql_hba_conf_csv](../../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv)</code> flag.
@@ -138,4 +134,3 @@ Consider the following example:
     ```output
     You are connected to database "exampledb" as user "adam" on host "localhost" at port "5433".
     ```
-
