@@ -1340,7 +1340,7 @@ static Query *transform_cypher_unwind(cypher_parsestate *cpstate,
 
         pnsi = transform_prev_cypher_clause(cpstate, clause->prev, true);
         rtindex = list_length(pstate->p_rtable);
-        Assert(rtindex == 1); // rte is the first RangeTblEntry in pstate
+        // rte is the first RangeTblEntry in pstate
         if (rtindex != 1)
         {
             ereport(ERROR,
@@ -2325,7 +2325,7 @@ static Query *transform_cypher_clause_with_where(cypher_parsestate *cpstate,
                                                    NULL, true);
         Assert(pnsi != NULL);
         rtindex = list_length(pstate->p_rtable);
-        Assert(rtindex == 1); // rte is the only RangeTblEntry in pstate
+        // rte is the only RangeTblEntry in pstate
         if (rtindex != 1)
         {
             ereport(ERROR,
@@ -2605,7 +2605,7 @@ static Query *transform_cypher_match_pattern(cypher_parsestate *cpstate,
             pnsi = transform_prev_cypher_clause(cpstate, clause->prev, true);
             rte = pnsi->p_rte;
             rtindex = list_length(pstate->p_rtable);
-            Assert(rtindex == 1); // rte is the first RangeTblEntry in pstate
+            // rte is the first RangeTblEntry in pstate
             if (rtindex != 1)
             {
                 ereport(ERROR,
@@ -7016,7 +7016,6 @@ static void handle_prev_clause(cypher_parsestate *cpstate, Query *query,
     // rte is the first RangeTblEntry in pstate
     if (first_rte)
     {
-        Assert(rtindex == 1);
         if (rtindex != 1)
         {
             ereport(ERROR,

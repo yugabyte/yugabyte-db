@@ -802,7 +802,7 @@ static Query *analyze_cypher_and_coerce(List *stmt, RangeTblFunction *rtfunc,
                                         lateral, true);
 
     rtindex = list_length(pstate->p_rtable);
-    Assert(rtindex == 1); // rte is the only RangeTblEntry in pstate
+    // rte is the only RangeTblEntry in pstate
     if (rtindex !=1 )
     {
         ereport(ERROR,

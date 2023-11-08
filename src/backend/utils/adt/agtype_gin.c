@@ -242,7 +242,10 @@ Datum gin_extract_agtype_query(PG_FUNCTION_ARGS)
 
         /* it should be WAGT_BEGIN_ARRAY */
         itok = agtype_iterator_next(&it, &elem, true);
-        Assert(itok == WAGT_BEGIN_ARRAY);
+        if (itok != WAGT_BEGIN_ARRAY)
+        {
+            elog(ERROR, "unexpected iterator token: %d", itok);
+        }
 
         while (WAGT_END_ARRAY != agtype_iterator_next(&it, &elem, true))
         {

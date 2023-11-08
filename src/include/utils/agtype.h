@@ -46,7 +46,7 @@
 /* Tokens used when sequentially processing an agtype value */
 typedef enum
 {
-    WAGT_DONE,
+    WAGT_DONE = 0x0,
     WAGT_KEY,
     WAGT_VALUE,
     WAGT_ELEM,

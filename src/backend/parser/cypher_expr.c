@@ -565,12 +565,17 @@ static Node *transform_AEXPR_IN(cypher_parsestate *cpstate, A_Expr *a)
 
         scalar_type = AGTYPEOID;
 
-        Assert (verify_common_type(scalar_type, allexprs));
+        /* verify they are a common type */
+        if (!verify_common_type(scalar_type, allexprs))
+        {
+            ereport(ERROR,
+                    errmsg_internal("not a common type: %d", scalar_type));
+        }
+
         /*
          * coerce all the right-hand non-Var inputs to the common type
          * and build an ArrayExpr for them.
          */
-
         aexprs = NIL;
         foreach(l, rnonvars)
         {
