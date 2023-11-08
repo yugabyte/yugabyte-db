@@ -446,7 +446,7 @@ typedef struct AUHDescriptor {
 typedef struct NamespaceIdentifierPB {
   const char* id;
   const char* name;
-  uint32_t database_type;
+  const char* database_type;
 } NamespaceIdentifierPB;
 
 typedef struct ColocatedInfo {
@@ -457,7 +457,7 @@ typedef struct ColocatedInfo {
 typedef struct TableIDMetadataInfo {
   const char* table_id;
   const char* table_name;
-  uint32_t table_type;
+  const char* table_type;
   uint32_t relation_type;
   NamespaceIdentifierPB namespace_;
   const char* pgschema_name;

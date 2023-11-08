@@ -40,7 +40,7 @@
 
 PG_MODULE_MAGIC;
 PG_FUNCTION_INFO_V1(pg_active_universe_history);
-PG_FUNCTION_INFO_V1(yb_table_info_collector);
+PG_FUNCTION_INFO_V1(yb_table_list);
 
 #define PG_ACTIVE_UNIVERSE_HISTORY_COLS        12
 
@@ -61,11 +61,11 @@ typedef struct ybauhEntry {
 typedef struct ybtableInfo {
   const char* table_id;
   const char* table_name;
-  uint32_t table_type;
+  const char* table_type;
   uint32_t relation_type;
   const char* namespace_id;
   const char* namespace_name;
-  uint32_t database_type;
+  const char* database_type;
   const char* pgschema_name;
   bool colocated;
   const char* parent_table_id;
@@ -123,16 +123,6 @@ static void auh_entry_store(TimestampTz auh_time,
                             long query_id,
                             TimestampTz start_ts_of_wait_event,
                             float8 sample_rate);
-static void table_info(const char* table_id,
-                        const char* table_name,
-                        uint32_t table_type,
-                        uint32_t relation_type,
-                        const char* namespace_id,
-                        const char* namespace_name,
-                        uint32_t database_type,
-                        const char* pgschema_name,
-                        bool colocated,
-                       const char* parent_table_id);
 static void pg_collect_samples(TimestampTz auh_sample_time, uint16 num_procs_to_sample);
 static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 num_rpcs_to_sample);
 
@@ -408,30 +398,6 @@ static void auh_entry_store(TimestampTz auh_time,
   LWLockRelease(auh_entry_array_lock);
 }
 
-static void table_info(const char* table_id,
-                       const char* table_name,
-                       uint32_t table_type,
-                       uint32_t relation_type,
-                       const char* namespace_id,
-                       const char* namespace_name,
-                       uint32_t database_type,
-                       const char* pgschema_name,
-                       bool colocated,
-                       const char* parent_table_id) {
-    ybtableInfo tableInfo;
-
-    tableInfo.table_id = table_id;
-    tableInfo.table_name = table_name;
-    tableInfo.table_type = table_type;
-    tableInfo.relation_type = relation_type;
-    tableInfo.namespace_id = namespace_id;
-    tableInfo.namespace_name = namespace_name;
-    tableInfo.database_type = database_type;
-    tableInfo.pgschema_name = pgschema_name;
-    tableInfo.colocated = colocated;
-    tableInfo.parent_table_id = parent_table_id;
-}
-
 static void
 ybauh_startup_hook(void)
 {
@@ -532,7 +498,7 @@ ybauh_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 }
 
 static void 
-yb_table_info_collector_internal(FunctionCallInfo fcinfo)
+yb_table_list_internal(FunctionCallInfo fcinfo)
 {
   ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
   TupleDesc       tupdesc;
@@ -606,8 +572,14 @@ yb_table_info_collector_internal(FunctionCallInfo fcinfo)
         isnull[j] = true;
     j++;
 
-    // table_type and relation_type
-    values[j++] = Int32GetDatum(tableInfo[i].table_type);
+    // table_type
+    if (tableInfo[i].table_type != NULL)
+        values[j] = CStringGetTextDatum(tableInfo[i].table_type);
+    else
+        isnull[j] = true;
+    j++;
+    
+    // relation_type
     values[j++] = Int32GetDatum(tableInfo[i].relation_type);
 
     // namespace_id
@@ -625,7 +597,11 @@ yb_table_info_collector_internal(FunctionCallInfo fcinfo)
     j++;
 
     //database_type 
-    values[j++] = Int32GetDatum(tableInfo[i].database_type);
+    if (tableInfo[i].pgschema_name != NULL)
+        values[j] = CStringGetTextDatum(tableInfo[i].database_type);
+    else
+        isnull[j] = true;
+    j++;
 
     // pgschema_name
     if (tableInfo[i].pgschema_name != NULL)
@@ -650,9 +626,9 @@ yb_table_info_collector_internal(FunctionCallInfo fcinfo)
 }
 
 Datum
-yb_table_info_collector(PG_FUNCTION_ARGS)
+yb_table_list(PG_FUNCTION_ARGS)
 {
-	yb_table_info_collector_internal(fcinfo);
+	yb_table_list_internal(fcinfo);
   return (Datum) 0;
 }
 
