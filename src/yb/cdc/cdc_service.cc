@@ -2362,7 +2362,8 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     // We will only populate the "cdc_sdk_safe_time" when before image is active or when we are in
     // taking the snapshot of any table.
     if (entry.cdc_sdk_safe_time &&
-        (record.GetRecordType() == CDCRecordType::ALL || entry.snapshot_key.has_value())) {
+       ((record.GetRecordType() == CDCRecordType::ALL ||
+         record.GetRecordType() == CDCRecordType::PG_FULL) || entry.snapshot_key.has_value())) {
       cdc_sdk_safe_time = HybridTime(*entry.cdc_sdk_safe_time);
     }
 

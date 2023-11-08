@@ -1386,6 +1386,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const google::protobuf::RepeatedPtrField<std::string>& table_ids, const NamespaceId& ns_id)
       REQUIRES(mutex_);
 
+  Status ValidateCDCSDKRequestProperties(
+      const CreateCDCStreamRequestPB& req, const std::string& source_type_option_value,
+      const std::string& record_type_option_value);
+
   // Process the newly created tables that are relevant to existing CDCSDK streams.
   Status ProcessNewTablesForCDCSDKStreams(
       const TableStreamIdsMap& table_to_unprocessed_streams_map, const LeaderEpoch& epoch);

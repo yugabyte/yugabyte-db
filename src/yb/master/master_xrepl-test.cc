@@ -35,6 +35,7 @@ DECLARE_int32(cdc_state_table_num_tablets);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_bool(disable_truncate_table);
 DECLARE_bool(ysql_yb_enable_replication_commands);
+DECLARE_bool(cdc_enable_postgres_replica_identity);
 DECLARE_uint32(max_replication_slots);
 
 namespace yb {
@@ -131,6 +132,8 @@ Result<xrepl::StreamId> MasterTestXRepl::CreateCDCStreamForNamespace(
   AddKeyValueToCreateCDCStreamRequestOption(&req, cdc::kIdType, cdc::kNamespaceId);
   AddKeyValueToCreateCDCStreamRequestOption(
       &req, cdc::kSourceType, CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK));
+  AddKeyValueToCreateCDCStreamRequestOption(
+      &req, cdc::kRecordType, CDCRecordType_Name(cdc::CDCRecordType::CHANGE));
 
   RETURN_NOT_OK(proxy_replication_->CreateCDCStream(req, &resp, ResetAndGetController()));
   if (resp.has_error()) {
@@ -368,6 +371,8 @@ TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespaceCql) {
   AddKeyValueToCreateCDCStreamRequestOption(&req, cdc::kIdType, cdc::kNamespaceId);
   AddKeyValueToCreateCDCStreamRequestOption(
       &req, cdc::kSourceType, CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK));
+  AddKeyValueToCreateCDCStreamRequestOption(
+      &req, cdc::kRecordType, CDCRecordType_Name(cdc::CDCRecordType::CHANGE));
 
   ASSERT_OK(proxy_replication_->CreateCDCStream(req, &resp, ResetAndGetController()));
 
@@ -403,6 +408,8 @@ TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespaceDisabled) {
   AddKeyValueToCreateCDCStreamRequestOption(&req, cdc::kIdType, cdc::kNamespaceId);
   AddKeyValueToCreateCDCStreamRequestOption(
       &req, cdc::kSourceType, CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK));
+  AddKeyValueToCreateCDCStreamRequestOption(
+      &req, cdc::kRecordType, CDCRecordType_Name(cdc::CDCRecordType::CHANGE));
 
   ASSERT_OK(proxy_replication_->CreateCDCStream(req, &resp, ResetAndGetController()));
   SCOPED_TRACE(resp.DebugString());
@@ -414,6 +421,67 @@ TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespaceDisabled) {
         .message()
         .find("Creation of CDCSDK stream is disallowed when ysql_yb_enable_replication_commands is"
               " false"),
+      std::string::npos)
+      << resp.error().status().message();
+}
+
+TEST_F(MasterTestXRepl, YB_DISABLE_TEST_IN_TSAN(TestCDCStreamCreationWithNewRecordTypeDisabled)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_postgres_replica_identity) = false;
+
+  CreateNamespaceResponsePB create_namespace_resp;
+  ASSERT_OK(CreatePgsqlNamespace(kNamespaceName, kPgsqlNamespaceId, &create_namespace_resp));
+  auto ns_id = create_namespace_resp.id();
+
+  for (auto i = 0; i < num_tables; ++i) {
+    ASSERT_OK(CreatePgsqlTable(ns_id, Format("cdc_table_$0", i), kTableIds[i], kTableSchema));
+  }
+
+  CreateCDCStreamRequestPB req;
+  CreateCDCStreamResponsePB resp;
+  req.set_namespace_id(ns_id);
+  req.set_cdcsdk_ysql_replication_slot_name(kPgReplicationSlotName);
+  AddKeyValueToCreateCDCStreamRequestOption(&req, cdc::kIdType, cdc::kNamespaceId);
+  AddKeyValueToCreateCDCStreamRequestOption(
+      &req, cdc::kSourceType, CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK));
+  AddKeyValueToCreateCDCStreamRequestOption(
+      &req, cdc::kRecordType, CDCRecordType_Name(cdc::CDCRecordType::PG_DEFAULT));
+
+  ASSERT_OK(proxy_replication_->CreateCDCStream(req, &resp, ResetAndGetController()));
+  SCOPED_TRACE(resp.DebugString());
+  ASSERT_TRUE(resp.has_error());
+  ASSERT_NE(
+      resp.error().status().message().find("Using new record types is disallowed in the middle of "
+                                           "an upgrade. Finalize the upgrade and try again."),
+      std::string::npos)
+      << resp.error().status().message();
+}
+
+TEST_F(MasterTestXRepl, YB_DISABLE_TEST_IN_TSAN(TestCDCStreamCreationWithOldRecordTypeDisabled)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_postgres_replica_identity) = true;
+
+  CreateNamespaceResponsePB create_namespace_resp;
+  ASSERT_OK(CreatePgsqlNamespace(kNamespaceName, kPgsqlNamespaceId, &create_namespace_resp));
+  auto ns_id = create_namespace_resp.id();
+
+  for (auto i = 0; i < num_tables; ++i) {
+    ASSERT_OK(CreatePgsqlTable(ns_id, Format("cdc_table_$0", i), kTableIds[i], kTableSchema));
+  }
+
+  CreateCDCStreamRequestPB req;
+  CreateCDCStreamResponsePB resp;
+  req.set_namespace_id(ns_id);
+  req.set_cdcsdk_ysql_replication_slot_name(kPgReplicationSlotName);
+  AddKeyValueToCreateCDCStreamRequestOption(&req, cdc::kIdType, cdc::kNamespaceId);
+  AddKeyValueToCreateCDCStreamRequestOption(
+      &req, cdc::kSourceType, CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK));
+  AddKeyValueToCreateCDCStreamRequestOption(
+      &req, cdc::kRecordType, CDCRecordType_Name(cdc::CDCRecordType::FULL_ROW_NEW_IMAGE));
+
+  ASSERT_OK(proxy_replication_->CreateCDCStream(req, &resp, ResetAndGetController()));
+  SCOPED_TRACE(resp.DebugString());
+  ASSERT_TRUE(resp.has_error());
+  ASSERT_NE(
+      resp.error().status().message().find("Using old record types is disallowed"),
       std::string::npos)
       << resp.error().status().message();
 }
@@ -436,6 +504,8 @@ TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespaceInvalidDuplicationSlotNam
   AddKeyValueToCreateCDCStreamRequestOption(&req, cdc::kIdType, cdc::kNamespaceId);
   AddKeyValueToCreateCDCStreamRequestOption(
       &req, cdc::kSourceType, CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK));
+  AddKeyValueToCreateCDCStreamRequestOption(
+      &req, cdc::kRecordType, CDCRecordType_Name(cdc::CDCRecordType::CHANGE));
 
   ASSERT_OK(proxy_replication_->CreateCDCStream(req, &resp, ResetAndGetController()));
   SCOPED_TRACE(resp.DebugString());
@@ -465,6 +535,8 @@ TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespaceInvalidIdTypeOption) {
   req.set_cdcsdk_ysql_replication_slot_name(kPgReplicationSlotName);
   AddKeyValueToCreateCDCStreamRequestOption(
       &req, cdc::kSourceType, CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK));
+  AddKeyValueToCreateCDCStreamRequestOption(
+      &req, cdc::kRecordType, CDCRecordType_Name(cdc::CDCRecordType::CHANGE));
 
   ASSERT_OK(proxy_replication_->CreateCDCStream(req, &resp, ResetAndGetController()));
   SCOPED_TRACE(resp.DebugString());

@@ -38,6 +38,8 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/lexical_cast.hpp>
 
+#include "yb/cdc/cdc_service.h"
+
 #include "yb/common/json_util.h"
 
 #include "yb/gutil/strings/util.h"
@@ -1761,7 +1763,7 @@ Status create_change_data_stream_action(
   }
 
   std::string checkpoint_type = yb::ToString("EXPLICIT");
-  std::string record_type = yb::ToString("CHANGE");
+  cdc::CDCRecordType record_type_pb = cdc::CDCRecordType::CHANGE;
   std::string uppercase_checkpoint_type;
   std::string uppercase_record_type;
 
@@ -1776,20 +1778,16 @@ Status create_change_data_stream_action(
 
   if (args.size() > 2) {
     ToUpperCase(args[2], &uppercase_record_type);
-    if (uppercase_record_type != yb::ToString("ALL") &&
-        uppercase_record_type != yb::ToString("CHANGE") &&
-        uppercase_record_type != yb::ToString("FULL_ROW_NEW_IMAGE") &&
-        uppercase_record_type != yb::ToString("MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES")) {
+    if (!cdc::CDCRecordType_Parse(uppercase_record_type, &record_type_pb)) {
       return ClusterAdminCli::kInvalidArguments;
     }
-    record_type = uppercase_record_type;
   }
 
   const string namespace_name = args[0];
   const TypedNamespaceName database = VERIFY_RESULT(ParseNamespaceName(args[0]));
 
   RETURN_NOT_OK_PREPEND(
-      client->CreateCDCSDKDBStream(database, checkpoint_type, record_type),
+      client->CreateCDCSDKDBStream(database, checkpoint_type, record_type_pb),
       Format("Unable to create CDC stream for database $0", namespace_name));
   return Status::OK();
 }
