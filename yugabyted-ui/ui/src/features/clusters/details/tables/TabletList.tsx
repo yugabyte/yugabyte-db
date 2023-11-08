@@ -103,19 +103,24 @@ export const TabletList: FC<DatabaseListProps> = ({ selectedTableUuid, onRefetch
           let followers: string[] = [];
           let read_replicas: string[] = [];
           tablet.raft_config?.forEach((node) => {
-            let nodeAddress = node.location ? new URL(node.location).hostname : "";
-            switch (node.role) {
-              case "LEADER":
-                leader = nodeAddress;
-                break;
-              case "FOLLOWER":
-                followers.push(nodeAddress);
-                break;
-              case "READ_REPLICA":
-                read_replicas.push(nodeAddress);
-                break;
-              default:
-                console.error("unknown role " + node.role + " for node " + nodeAddress);
+            try {
+              let nodeAddress = node.location ? new URL(node.location).hostname : "";
+              switch (node.role) {
+                case "LEADER":
+                  leader = nodeAddress;
+                  break;
+                case "FOLLOWER":
+                  followers.push(nodeAddress);
+                  break;
+                case "READ_REPLICA":
+                  read_replicas.push(nodeAddress);
+                  break;
+                default:
+                  console.error("Unknown role " + node.role + " for node " + nodeAddress);
+              }
+            } catch {
+                console.warn("Failed to get node address from given string: " + node.location +
+                             ". This might be because the leader master node is down.");
             }
           });
           let hashPartition = tablet.partition
