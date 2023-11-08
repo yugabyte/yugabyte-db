@@ -1142,7 +1142,7 @@ namespace cdc {
       CDCSDKYsqlTest::ExpectedRecordWithThreeColumns expected_records, uint32_t* count,
       const bool& validate_old_tuple,
       CDCSDKYsqlTest::ExpectedRecordWithThreeColumns expected_before_image_records,
-      const bool& validate_third_column) {
+      const bool& validate_third_column, const bool is_nothing_record) {
     // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
     switch (record.row_message().op()) {
       case RowMessage::DDL: {
@@ -1183,18 +1183,21 @@ namespace cdc {
         count[2]++;
       } break;
       case RowMessage::DELETE: {
-        ASSERT_EQ(record.row_message().old_tuple(0).datum_int32(),
-          expected_before_image_records.key);
-        if (validate_old_tuple) {
-          if (validate_third_column) {
-            ASSERT_EQ(record.row_message().old_tuple_size(), 3);
-            ASSERT_EQ(record.row_message().new_tuple_size(), 3);
-            AssertBeforeImageKeyValue(
-                record, expected_before_image_records.key, expected_before_image_records.value,
-                true, expected_before_image_records.value2);
-          } else {
-            AssertBeforeImageKeyValue(
-                record, expected_before_image_records.key, expected_before_image_records.value);
+        if (is_nothing_record) {
+          ASSERT_EQ(record.row_message().old_tuple_size(), 0);
+          ASSERT_EQ(record.row_message().new_tuple_size(), 0);
+        } else {
+          if (validate_old_tuple) {
+            if (validate_third_column) {
+              ASSERT_EQ(record.row_message().old_tuple_size(), 3);
+              ASSERT_EQ(record.row_message().new_tuple_size(), 3);
+              AssertBeforeImageKeyValue(
+                  record, expected_before_image_records.key, expected_before_image_records.value,
+                  true, expected_before_image_records.value2);
+            } else {
+              AssertBeforeImageKeyValue(
+                  record, expected_before_image_records.key, expected_before_image_records.value);
+            }
           }
         }
         ASSERT_EQ(record.row_message().table(), kTableName);

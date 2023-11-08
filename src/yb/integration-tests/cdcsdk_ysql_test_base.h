@@ -128,6 +128,7 @@ DECLARE_uint64(cdc_stream_records_threshold_size_bytes);
 DECLARE_int64(cdc_resolve_intent_lag_threshold_ms);
 DECLARE_bool(enable_tablet_split_of_cdcsdk_streamed_tables);
 DECLARE_bool(ysql_yb_enable_replication_commands);
+DECLARE_bool(cdc_enable_postgres_replica_identity);
 DECLARE_uint64(ysql_cdc_active_replication_slot_window_ms);
 
 namespace yb {
@@ -381,7 +382,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       CDCSDKYsqlTest::ExpectedRecordWithThreeColumns expected_records, uint32_t* count,
       const bool& validate_old_tuple = false,
       CDCSDKYsqlTest::ExpectedRecordWithThreeColumns expected_before_image_records = {},
-      const bool& validate_third_column = false);
+      const bool& validate_third_column = false, const bool is_nothing_record = false);
 
   void CheckCount(const uint32_t* expected_count, uint32_t* count);
 

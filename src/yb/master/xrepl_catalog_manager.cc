@@ -125,6 +125,9 @@ DEFINE_test_flag(
     bool, allow_ycql_transactional_xcluster, false,
     "Determines if xCluster transactional replication on YCQL tables is allowed.");
 
+DEFINE_RUNTIME_AUTO_bool(cdc_enable_postgres_replica_identity, kLocalPersisted, false, true,
+    "Enable new record types in CDC streams");
+
 DECLARE_bool(xcluster_wait_on_ddl_alter);
 DECLARE_int32(master_rpc_timeout_ms);
 DECLARE_bool(ysql_yb_enable_replication_commands);
@@ -744,6 +747,7 @@ Status CatalogManager::CreateCDCStream(
   }
 
   std::string id_type_option_value(cdc::kTableId);
+  std::string record_type_option_value;
   bool source_type_found = false;
   std::string source_type_option_value(CDCRequestSource_Name(cdc::CDCRequestSource::XCLUSTER));
 
@@ -755,15 +759,13 @@ Status CatalogManager::CreateCDCStream(
       source_type_found = true;
       source_type_option_value = option.value();
     }
+    if (option.key() == cdc::kRecordType) {
+      record_type_option_value = option.value();
+    }
   }
 
-  if (source_type_option_value == CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK) &&
-      !FLAGS_ysql_yb_enable_replication_commands) {
-    RETURN_INVALID_REQUEST_STATUS(
-        "Creation of CDCSDK stream is disallowed when ysql_yb_enable_replication_commands is "
-        "false",
-        (*req));
-  }
+  RETURN_NOT_OK(
+      ValidateCDCSDKRequestProperties(*req, source_type_option_value, record_type_option_value));
 
   if (req->has_table_id()) {
     if (id_type_option_value != cdc::kNamespaceId) {
@@ -1306,6 +1308,57 @@ void CatalogManager::FindAllTablesMissingInCDCSDKStream(
           table_info->id());
     }
   }
+}
+
+Status CatalogManager::ValidateCDCSDKRequestProperties(
+    const CreateCDCStreamRequestPB& req, const std::string& source_type_option_value,
+    const std::string& record_type_option_value) {
+  if (source_type_option_value != CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK)) {
+    return Status::OK();
+  }
+
+  if (!FLAGS_ysql_yb_enable_replication_commands) {
+    RETURN_INVALID_REQUEST_STATUS(
+        "Creation of CDCSDK stream is disallowed when ysql_yb_enable_replication_commands is "
+        "false",
+        (req));
+  }
+
+  cdc::CDCRecordType record_type_pb;
+  if (!cdc::CDCRecordType_Parse(record_type_option_value, &record_type_pb)) {
+    return STATUS(InvalidArgument, "Invalid CDCRecordType value", record_type_option_value);
+  }
+
+  switch (record_type_pb) {
+    case cdc::CDCRecordType::PG_FULL:
+      FALLTHROUGH_INTENDED;
+    case cdc::CDCRecordType::PG_CHANGE_OLD_NEW:
+      FALLTHROUGH_INTENDED;
+    case cdc::CDCRecordType::PG_DEFAULT:
+      FALLTHROUGH_INTENDED;
+    case cdc::CDCRecordType::PG_NOTHING: {
+      SCHECK(
+          FLAGS_cdc_enable_postgres_replica_identity, InvalidArgument,
+          "Using new record types is disallowed in the middle of an upgrade. Finalize the upgrade "
+          "and try again.",
+          (req));
+      break;
+    }
+    case cdc::CDCRecordType::ALL:
+      FALLTHROUGH_INTENDED;
+    case cdc::CDCRecordType::FULL_ROW_NEW_IMAGE:
+      FALLTHROUGH_INTENDED;
+    case cdc::CDCRecordType::MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES: {
+      SCHECK(
+          !FLAGS_cdc_enable_postgres_replica_identity, InvalidArgument,
+          "Using old record types is disallowed", (req));
+      break;
+    }
+    case cdc::CDCRecordType::CHANGE: {
+      return Status::OK();
+    }
+  }
+  return Status::OK();
 }
 
 std::vector<TableInfoPtr> CatalogManager::FindAllTablesForCDCSDK(const NamespaceId& ns_id) {
