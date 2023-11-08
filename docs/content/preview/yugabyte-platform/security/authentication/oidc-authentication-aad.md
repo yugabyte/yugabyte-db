@@ -12,16 +12,7 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="../oidc-authentication-platform/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-</ul>
-
-This section describes how to configure a YugabyteDB Anywhere universe to use OIDC-based authentication for YugabyteDB database access with Azure AD (AAD) and Entra ID as the Identity Provider (IdP).
+This section describes how to configure a YugabyteDB Anywhere universe to use OIDC-based authentication for YugabyteDB YSQL database access with Azure AD (AAD) and Entra ID as the Identity Provider (IdP).
 
 After OIDC is set up, users can sign in to the YugabyteDB universe database using their JSON Web Token (JWT) as their password.
 
@@ -135,11 +126,9 @@ For more information, refer to [Register an application with the Microsoft ident
 
 ### Configure YugabyteDB Anywhere
 
-You can configure OIDC-based database authentication using the YugabyteDB Anywhere UI or API.
-
 #### Enable OIDC enhancements
 
-To enable some features of the AAD OIDC functionality in Yugabyte Anywhere, you need to set the `yb.security.oidc_feature_enhancements` configuration flag to true as follows:
+To enable some features of the OIDC functionality in Yugabyte Anywhere, you need to set the `yb.security.oidc_feature_enhancements` configuration flag to true as follows:
 
 1. Navigate to **Admin > Advanced > Global Configuration**.
 
@@ -167,7 +156,7 @@ To enable OIDC authentication in YugabyteDB Anywhere, do the following:
 
 1. Set the email attribute to a name for the property to be used in the mapping file, such as `preferred_username`.
 
-1. Select the **Display JWT token on login** option to allow users to access their JWT from the Yugabyte Anywhere sign on page. This allows a user to view and copy their JWT without signing on to YBA.
+1. Select the **Display JWT token on login** option to allow users to access their JWT from the Yugabyte Anywhere sign on page. This allows a user to view and copy their JWT without signing on to YBA. (This option is only available if you enabled the yb.security.oidc_feature_enhancements configuration flag.)
 
 1. Click **Save**.
 
