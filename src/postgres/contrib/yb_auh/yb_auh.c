@@ -40,7 +40,7 @@
 
 PG_MODULE_MAGIC;
 PG_FUNCTION_INFO_V1(pg_active_universe_history);
-PG_FUNCTION_INFO_V1(yb_table_list);
+PG_FUNCTION_INFO_V1(yb_tables);
 
 #define PG_ACTIVE_UNIVERSE_HISTORY_COLS        12
 
@@ -498,7 +498,7 @@ ybauh_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 }
 
 static void 
-yb_table_list_internal(FunctionCallInfo fcinfo)
+yb_tables_internal(FunctionCallInfo fcinfo)
 {
   ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
   TupleDesc       tupdesc;
@@ -578,7 +578,7 @@ yb_table_list_internal(FunctionCallInfo fcinfo)
     else
         isnull[j] = true;
     j++;
-    
+
     // relation_type
     values[j++] = Int32GetDatum(tableInfo[i].relation_type);
 
@@ -626,9 +626,9 @@ yb_table_list_internal(FunctionCallInfo fcinfo)
 }
 
 Datum
-yb_table_list(PG_FUNCTION_ARGS)
+yb_tables(PG_FUNCTION_ARGS)
 {
-	yb_table_list_internal(fcinfo);
+	yb_tables_internal(fcinfo);
   return (Datum) 0;
 }
 

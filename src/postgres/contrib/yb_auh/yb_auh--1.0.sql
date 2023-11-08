@@ -20,7 +20,7 @@ RETURNS SETOF record
 AS 'MODULE_PATHNAME', 'pg_active_universe_history'
 LANGUAGE C STRICT VOLATILE PARALLEL SAFE;
 
-CREATE FUNCTION yb_table_list(
+CREATE FUNCTION yb_tables(
     OUT table_id text,
     OUT table_name text,
     OUT table_type text,
@@ -34,7 +34,7 @@ CREATE FUNCTION yb_table_list(
 )
 
 RETURNS SETOF record
-AS 'MODULE_PATHNAME', 'yb_table_list'
+AS 'MODULE_PATHNAME', 'yb_tables'
 LANGUAGE C STRICT VOLATILE PARALLEL SAFE;
 
 -- Register a view on the function for ease of use.
@@ -43,7 +43,7 @@ CREATE VIEW pg_active_universe_history AS
 
 GRANT SELECT ON pg_active_universe_history TO PUBLIC;
 
-CREATE VIEW yb_table_list AS
-  SELECT * FROM yb_table_list();
+CREATE VIEW yb_tables AS
+  SELECT * FROM yb_tables();
 
-GRANT SELECT ON yb_table_list TO PUBLIC;
+GRANT SELECT ON yb_tables TO PUBLIC;
