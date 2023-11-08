@@ -921,13 +921,13 @@ class PgClientServiceImpl::Impl {
     Status iteration_status;
     auto range_result = VERIFY_RESULT(cdc_state_table_->GetTableRange(
         cdc::CDCStateTableEntrySelector().IncludeActiveTime(), &iteration_status));
-    SCHECK(
-        iteration_status.ok(), InternalError, "Unable to read the CDC state table",
-        iteration_status);
 
     for (auto entry_result : range_result) {
-      auto stream_id = entry_result->key.stream_id;
-      auto active_time = entry_result->active_time;
+      RETURN_NOT_OK(entry_result);
+      const auto& entry = *entry_result;
+
+      auto stream_id = entry.key.stream_id;
+      auto active_time = entry.active_time;
       // If active_time isn't populated, then the (stream_id, tablet_id) pair hasn't been consumed
       // yet by the client. So treat it is as an inactive case.
       if (!active_time) {
@@ -941,6 +941,9 @@ class PgClientServiceImpl::Impl {
         stream_to_latest_active_time[stream_id] = *active_time;
       }
     }
+    SCHECK(
+        iteration_status.ok(), InternalError, "Unable to read the CDC state table",
+        iteration_status);
 
     auto streams = VERIFY_RESULT(client().ListCDCSDKStreams());
     auto current_time = GetCurrentTimeMicros();
@@ -973,18 +976,18 @@ class PgClientServiceImpl::Impl {
     Status iteration_status;
     auto range_result = VERIFY_RESULT(cdc_state_table_->GetTableRange(
         cdc::CDCStateTableEntrySelector().IncludeActiveTime(), &iteration_status));
-    SCHECK(
-        iteration_status.ok(), InternalError, "Unable to read the CDC state table",
-        iteration_status);
 
     // Find the latest active time for the stream across all tablets.
     uint64_t last_activity_time_micros = 0;
     for (auto entry_result : range_result) {
-      if (entry_result->key.stream_id != stream_id) {
+      RETURN_NOT_OK(entry_result);
+      const auto& entry = *entry_result;
+
+      if (entry.key.stream_id != stream_id) {
         continue;
       }
 
-      auto active_time = entry_result->active_time;
+      auto active_time = entry.active_time;
 
       // If active_time isn't populated, then the (stream_id, tablet_id) pair hasn't been consumed
       // yet by the client. So treat it is as an inactive case.
@@ -994,6 +997,9 @@ class PgClientServiceImpl::Impl {
 
       last_activity_time_micros = std::max(last_activity_time_micros, *active_time);
     }
+    SCHECK(
+        iteration_status.ok(), InternalError, "Unable to read the CDC state table",
+        iteration_status);
 
     auto is_stream_active = GetCurrentTimeMicros() - last_activity_time_micros <=
                             1000 * GetAtomicFlag(&FLAGS_ysql_cdc_active_replication_slot_window_ms);
