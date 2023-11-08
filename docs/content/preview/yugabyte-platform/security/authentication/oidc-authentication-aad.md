@@ -3,7 +3,7 @@ title: OIDC authentication using Azure AD in YugabyteDB Anywhere
 headerTitle: OIDC authentication with Azure AD
 linkTitle: OIDC with Azure AD
 description: Configuring YugabyteDB Anywhere to use OIDC with Azure AD.
-headcontent: Conmfigure YugabyteDB Anywhere to use Azure AD for SSO
+headcontent: Use Azure AD accounts for database access
 menu:
   preview_yugabyte-platform:
     identifier: oidc-authentication-platform
