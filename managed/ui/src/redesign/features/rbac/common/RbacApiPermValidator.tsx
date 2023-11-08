@@ -105,7 +105,7 @@ export const hasNecessaryPerm = (
     return true;
   }
 
-  if (!accessRequiredOn) throw new Error('AccessRequired on is Present');
+  if (!accessRequiredOn) throw new Error('AccessRequired on is not Present');
 
   const { requestType, endpoint, onResource } = accessRequiredOn;
 
