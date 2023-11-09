@@ -40,8 +40,10 @@
 
 #include "yb/cdc/cdc_service.h"
 
+#include "yb/common/hybrid_time.h"
 #include "yb/common/json_util.h"
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_defaults.h"
@@ -52,7 +54,9 @@
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
+#include "yb/util/monotime.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
@@ -1490,6 +1494,44 @@ Status restore_snapshot_schedule_action(
   return PrintJsonResult(client->RestoreSnapshotSchedule(schedule_id, restore_at));
 }
 
+const auto clone_from_snapshot_schedule_args =
+    Format("<schedule_id> <target_namespace_name> [<timestamp> | $0 <interval>]", kMinus);
+Status clone_from_snapshot_schedule_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  RETURN_NOT_OK(CheckArgumentsCount(args.size(), 2, 4));
+
+  auto schedule_id = VERIFY_RESULT(SnapshotScheduleId::FromString(args[0]));
+  auto target_namespace_name = args[1];
+
+  HybridTime restore_at;
+  if (args.size() == 2) {
+    auto now = VERIFY_RESULT(WallClock()->Now());
+    restore_at = HybridTime::FromMicros(now.time_point);
+  } else if (args.size() == 3) {
+    restore_at = VERIFY_RESULT(HybridTime::ParseHybridTime(args[2]));
+  } else {
+    if (args[2] != kMinus) {
+      return ClusterAdminCli::kInvalidArguments;
+    }
+    restore_at = VERIFY_RESULT(HybridTime::ParseHybridTime("-" + args[3]));
+  }
+
+  RETURN_NOT_OK(PrintJsonResult(
+      client->CloneFromSnapshotSchedule(schedule_id, target_namespace_name, restore_at)));
+  return Status::OK();
+}
+
+const auto is_clone_done_args = "<source_namespace_id> <seq_no>";
+Status is_clone_done_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  RETURN_NOT_OK(CheckArgumentsCount(args.size(), 2, 2));
+
+  auto source_namespace_id = args[0];
+  uint32_t seq_no = narrow_cast<uint32_t>(std::stoul(args[1]));
+
+  return PrintJsonResult(client->IsCloneDone(source_namespace_id, seq_no));
+}
+
 const auto edit_snapshot_schedule_args =
     "<schedule_id> (interval <new_interval_in_minutes> | retention "
     "<new_retention_in_minutes>){1,2}";
@@ -2292,6 +2334,8 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(list_snapshot_schedules);
   REGISTER_COMMAND(delete_snapshot_schedule);
   REGISTER_COMMAND(restore_snapshot_schedule);
+  REGISTER_COMMAND(clone_from_snapshot_schedule);
+  REGISTER_COMMAND(is_clone_done);
   REGISTER_COMMAND(edit_snapshot_schedule);
   REGISTER_COMMAND(create_keyspace_snapshot);
   REGISTER_COMMAND(create_database_snapshot);
