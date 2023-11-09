@@ -14,19 +14,18 @@
 #include <boost/lexical_cast.hpp>
 
 #include "yb/cdc/cdc_service.h"
-
 #include "yb/cdc/cdc_state_table.h"
+
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/casts.h"
 
-#include "yb/master/master_ddl.proxy.h"
-#include "yb/master/master_replication.proxy.h"
-#include "yb/master/master_defaults.h"
-
 #include "yb/master/master-test_base.h"
+#include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_defaults.h"
+#include "yb/master/master_replication.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/result.h"
@@ -86,6 +85,10 @@ class MasterTestXRepl  : public MasterTestBase {
   Result<GetUniverseReplicationResponsePB> GetUniverseReplication(const std::string& producer_id);
 
   Status CreateTableWithTableId(TableId* table_id);
+  Status DeleteNamespace(std::string namespace_id, YQLDatabase db_type);
+  Result<bool> IsDeleteNamespaceDone(std::string namespace_id);
+  Status WaitForDeleteNamespaceToComplete(
+      std::string namespace_id, MonoDelta timeout, const std::string& failure_message);
 };
 
 Result<xrepl::StreamId> MasterTestXRepl::CreateCDCStream(const TableId& table_id) {
@@ -291,6 +294,43 @@ Status MasterTestXRepl::DeleteUniverseReplication(const std::string& producer_id
 
 Status MasterTestXRepl::CreateTableWithTableId(TableId* table_id) {
   return CreateTable(kTableName, kTableSchema, table_id);
+}
+
+Status MasterTestXRepl::DeleteNamespace(std::string namespace_id, YQLDatabase db_type) {
+  DeleteNamespaceRequestPB req;
+  DeleteNamespaceResponsePB resp;
+  req.mutable_namespace_()->set_id(namespace_id);
+  req.set_database_type(db_type);
+  auto s = proxy_ddl_->DeleteNamespace(req, &resp, ResetAndGetController());
+  if (!s.ok()) {
+    return s;
+  }
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
+Result<bool> MasterTestXRepl::IsDeleteNamespaceDone(std::string namespace_id) {
+  IsDeleteNamespaceDoneRequestPB req;
+  IsDeleteNamespaceDoneResponsePB resp;
+  req.mutable_namespace_()->set_id(std::move(namespace_id));
+
+  auto s = proxy_ddl_->IsDeleteNamespaceDone(req, &resp, ResetAndGetController());
+  if (!s.ok()) {
+    return s;
+  }
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return resp.done();
+}
+
+Status MasterTestXRepl::WaitForDeleteNamespaceToComplete(
+    std::string namespace_id, MonoDelta timeout, const std::string& failure_message) {
+  return WaitFor(
+      [this, &namespace_id]() -> Result<bool> { return IsDeleteNamespaceDone(namespace_id); },
+      timeout, failure_message);
 }
 
 TEST_F(MasterTestXRepl, TestDisableTruncation) {
@@ -849,6 +889,20 @@ TEST_F(MasterTestXRepl, TestDeleteUniverseReplication) {
   resp = ASSERT_RESULT(GetUniverseReplication(producer_id));
   ASSERT_TRUE(resp.has_error());
   ASSERT_EQ(MasterErrorPB::OBJECT_NOT_FOUND, resp.error().code());
+}
+
+TEST_F(MasterTestXRepl, DropNamespaceWithLiveCDCStream) {
+  CreateNamespaceResponsePB create_namespace_resp;
+  ASSERT_OK(CreatePgsqlNamespace(kNamespaceName, kPgsqlNamespaceId, &create_namespace_resp));
+  auto ns_id = create_namespace_resp.id();
+
+  for (auto i = 0; i < num_tables; ++i) {
+    ASSERT_OK(CreatePgsqlTable(ns_id, Format("cdc_table_$0", i), kTableIds[i], kTableSchema));
+  }
+  ASSERT_RESULT(CreateCDCStreamForNamespace(ns_id, kPgReplicationSlotName));
+  ASSERT_OK(DeleteNamespace(ns_id, YQL_DATABASE_PGSQL));
+  ASSERT_OK(WaitForDeleteNamespaceToComplete(
+      ns_id, MonoDelta::FromSeconds(30), "Failed waiting for database drop to complete"));
 }
 
 } // namespace master
