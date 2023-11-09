@@ -1325,7 +1325,7 @@ TEST_F_EX(YBBackupTest,
       Format("CREATE TABLE $0 (k INT PRIMARY KEY) SPLIT INTO 4 TABLETS", table_name)));
   tablets = ASSERT_RESULT(GetTablets(table_name, "mock-restore"));
   ASSERT_EQ(tablets.size(), 4);
-  ASSERT_TRUE(CheckPartitions(tablets, {"\x3f\xff", "\x7f\xfe", "\xbf\xfd"}));
+  ASSERT_TRUE(CheckPartitions(tablets, {"\x40\x00"s, "\x80\x00"s, "\xc0\x00"s}));
   ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
 
   // Restore should notice that the table it creates from ysql_dump file has different partition

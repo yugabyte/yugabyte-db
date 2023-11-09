@@ -186,7 +186,7 @@ class Partition {
 class PartitionSchema {
  public:
   static constexpr int32_t kPartitionKeySize = 2;
-  static constexpr int32_t kMaxPartitionKey = std::numeric_limits<uint16_t>::max();
+  static constexpr uint16_t kMaxPartitionKey = std::numeric_limits<uint16_t>::max();
 
   // Deserializes a protobuf message into a partition schema.
   static Status FromPB(const PartitionSchemaPB& pb,
@@ -276,6 +276,9 @@ class PartitionSchema {
   // are starting with this prefix or greater than it.
   static Result<std::string> GetEncodedKeyPrefix(
     const std::string& partition_key, const PartitionSchemaPB& partition_schema);
+
+  // Returns inclusive min and max hash code for the partition.
+  static std::pair<uint16_t, uint16_t> GetHashPartitionBounds(const Partition& partition);
 
   // YugaByte partition creation
   // Creates the set of table partitions using multi column hash schema. In this schema, we divide
@@ -400,7 +403,7 @@ class PartitionSchema {
   // the [ hash(0), hash(max_partition_key) ] range equally into the requested number of intervals.
   Status CreateHashPartitions(int32_t num_tablets,
                               std::vector<Partition>* partitions,
-                              int32_t max_partition_key = kMaxPartitionKey) const;
+                              uint16_t max_partition_key = kMaxPartitionKey) const;
 
   // Creates the set of table partitions using primary-key range schema. In this schema, we divide
   // the table by given ranges in the partitions vector.

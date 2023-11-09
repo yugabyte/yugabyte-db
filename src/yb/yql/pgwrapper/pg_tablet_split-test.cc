@@ -19,6 +19,7 @@
 #include "yb/client/table_info.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/partition.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
@@ -52,6 +53,7 @@
 #include "yb/util/test_util.h"
 
 #include "yb/util/tsan_util.h"
+#include "yb/util/yb_partition.h"
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pgwrapper/pg_tablet_split_test_base.h"
@@ -311,24 +313,50 @@ TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitKeyMatchesPartitionBound)
       "CREATE TABLE t(k1 INT, k2 INT, v TEXT, PRIMARY KEY (k1 HASH, k2 ASC))"
       "  SPLIT INTO 2 TABLETS"));
 
-  // Make a special structure of records: it has the same HASH but different DocKey, thus from
-  // tablet splitting perspective it should give middle split key that matches the partition bound.
-  ASSERT_OK(conn.Execute(
-      "INSERT INTO t SELECT 13402, i, i::text FROM generate_series(1, 200) as i"));
-
-  ASSERT_OK(cluster_->FlushTablets());
-
-  auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
+  const auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
   auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
   ASSERT_EQ(2, peers.size());
 
-  // Select a peer whose lower bound is specified.
+  // Find tablet peer for upper half of hash codes.
   auto peer_it = std::find_if(peers.begin(), peers.end(),
       [](const tablet::TabletPeerPtr& peer){
     return !(peer->tablet_metadata()->partition()->partition_key_start().empty());
   });
   ASSERT_FALSE((peer_it == peers.end()));
   auto peer = *peer_it;
+
+  int32_t kK1Value = 0;
+  {
+    LOG(INFO) << "Searching for k1 value that (kK1Value, k2) records should match lower bound of "
+                 "the upper-half tablet...";
+
+    const auto boundary_hash_code =
+        PartitionSchema::GetHashPartitionBounds(*peer->tablet_metadata()->partition()).first;
+
+    std::string tmp;
+    QLValuePB value;
+    for (;; ++kK1Value) {
+      tmp.clear();
+      value.set_int32_value(kK1Value);
+      AppendToKey(value, &tmp);
+      const auto hash_code = YBPartition::HashColumnCompoundValue(tmp);
+
+      if (hash_code == boundary_hash_code) {
+        LOG(INFO) << "Found boundary value for k1: " << kK1Value;
+        break;
+      }
+    }
+  }
+
+  // Make a special structure of records: it has the same HASH but different DocKey, thus from
+  // tablet splitting perspective it should give middle split key that matches the partition bound.
+  ASSERT_OK(conn.Execute(Format(
+      "INSERT INTO t SELECT $0, i, i::text FROM generate_series(1, 200) as i", kK1Value)));
+
+  ASSERT_OK(cluster_->FlushTablets());
+
+  peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+  ASSERT_EQ(2, peers.size());
 
   // Make sure SST files appear to be able to split.
   ASSERT_OK(WaitForAnySstFiles(cluster_.get(), peer->tablet_id()));
