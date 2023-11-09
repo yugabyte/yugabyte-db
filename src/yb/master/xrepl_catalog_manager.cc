@@ -49,6 +49,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/string_util.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/thread.h"
 #include "yb/util/trace.h"
 
@@ -1641,6 +1642,31 @@ Status CatalogManager::CleanUpCDCStreamsMetadata(const std::vector<CDCStreamInfo
     return Status::OK();
   }
 
+  TEST_SYNC_POINT("CleanUpCDCStreamMetadata::StartStep1");
+  // for efficient filtering of cdc_state table entries to only the list received in streams.
+  std::unordered_set<xrepl::StreamId> stream_ids_metadata_to_be_cleaned_up;
+  for(const auto& stream : streams) {
+    stream_ids_metadata_to_be_cleaned_up.insert(stream->StreamId());
+  }
+  // Step-1: Get entries from cdc_state table.
+  std::vector<cdc::CDCStateTableKey> cdc_state_entries;
+  Status iteration_status;
+  auto all_entry_keys =
+      VERIFY_RESULT(cdc_state_table_->GetTableRange({} /* just key columns */, &iteration_status));
+  for (const auto& entry_result : all_entry_keys) {
+    RETURN_NOT_OK(entry_result);
+    const auto& entry = *entry_result;
+    // only add those entries that belong to the received list of streams.
+    if(stream_ids_metadata_to_be_cleaned_up.contains(entry.key.stream_id)) {
+      cdc_state_entries.emplace_back(entry.key);
+    }
+
+  }
+  RETURN_NOT_OK(iteration_status);
+  TEST_SYNC_POINT("CleanUpCDCStreamMetadata::CompletedStep1");
+
+  TEST_SYNC_POINT("CleanUpCDCStreamMetadata::StartStep2");
+  // Step-2: Get list of tablets to keep for each stream.
   // Map of valid tablets to keep for each stream.
   std::unordered_map<xrepl::StreamId, std::set<TabletId>> tablets_to_keep_per_stream;
   // Map to identify the list of dropped tables for the stream.
@@ -1654,24 +1680,18 @@ Status CatalogManager::CleanUpCDCStreamsMetadata(const std::vector<CDCStreamInfo
         stream, &tablets_to_keep_per_stream[stream_id], &drop_stream_table_list[stream_id]);
   }
 
-  Status iteration_status;
-  auto all_entry_keys =
-      VERIFY_RESULT(cdc_state_table_->GetTableRange({} /* just key columns */, &iteration_status));
   std::vector<cdc::CDCStateTableKey> keys_to_delete;
-  for (const auto& entry_result : all_entry_keys) {
-    RETURN_NOT_OK(entry_result);
-    const auto& entry = *entry_result;
-    const auto tablets = FindOrNull(tablets_to_keep_per_stream, entry.key.stream_id);
-    if (!tablets) {
-      continue;
-    }
+  for(const auto& entry : cdc_state_entries) {
+    const auto tablets = FindOrNull(tablets_to_keep_per_stream, entry.stream_id);
 
-    if (!tablets->contains(entry.key.tablet_id)) {
+    RSTATUS_DCHECK(tablets, IllegalState,
+      "No entry found in tablets_to_keep_per_stream map for the stream");
+
+    if (!tablets->contains(entry.tablet_id)) {
       // Tablet is no longer part of this stream so delete it.
-      keys_to_delete.emplace_back(entry.key.tablet_id, entry.key.stream_id);
+      keys_to_delete.emplace_back(entry.tablet_id, entry.stream_id);
     }
   }
-  RETURN_NOT_OK(iteration_status);
 
   if (keys_to_delete.empty()) {
     return Status::OK();
