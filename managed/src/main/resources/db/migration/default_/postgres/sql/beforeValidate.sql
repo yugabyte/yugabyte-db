@@ -70,6 +70,13 @@ $$
 
        -- Fix the migration checksum
        UPDATE schema_version SET checksum = -493663200 WHERE version = '290' AND checksum = 1818940336;
+       
+       -- Rerun migration 305 after removing the existing fk constraints
+       IF EXISTS (SELECT * FROM schema_version WHERE version = '305' AND checksum = -1750313508) THEN
+        DELETE FROM SCHEMA_VERSION where version = '305' AND checksum = -1750313508;
+        ALTER TABLE customer_task DROP CONSTRAINT uk_task_uuid;
+        ALTER TABLE customer_task DROP CONSTRAINT fk_customer_task_task_info;
+       END IF;
 
        -- Fix next migration here
     END IF;
