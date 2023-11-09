@@ -1067,5 +1067,33 @@ export const ApiPermissionMap = {
     GET_UNIVERSE_PROXY: {
         requestType: ApiRequestType.GET,
         endpoint: '/universes/$uniUUID<[^/]+>/proxy/[^/]+'
+    },
+    PERF_ADVISOR_START_MANUALLY: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/universes/$uniUUID<[^/]+>/start_manually'
+    },
+    GET_PERF_RECOMENDATION_BY_PAGE: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/performance_recommendations/page'
+    },
+    CREATE_DR_CONFIG: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/dr_configs'
+    },
+    GET_DR_CONFIG_BY_ID: {
+        requestType: ApiRequestType.GET,
+        endpoint: '/dr_configs/$drUUID<[^/]+>'
+    },
+    MODIFY_DR_CONFIG_BY_ID: {
+        requestType: ApiRequestType.PUT,
+        endpoint: '/dr_configs/$drUUID<[^/]+>'
+    },
+    MODIFY_DR_CONFIG_FAILOVER: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/dr_configs/$drUUID<[^/]+>/failover',
+    },
+    DELETE_DR_CONFIG: {
+        requestType: ApiRequestType.DELETE,
+        endpoint: '/dr_configs/$drUUID<[^/]+>'
     }
 } satisfies ApiPermissionMapType;

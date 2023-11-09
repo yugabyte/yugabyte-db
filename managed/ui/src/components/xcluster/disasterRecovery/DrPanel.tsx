@@ -34,6 +34,8 @@ import { FailoverIcon } from '../icons/FailoverIcon';
 import { RepairDrConfigModal } from './repairConfig/RepairDrConfigModal';
 import { DrConfigOverview } from './drConfig/DrConfigOverview';
 import { DrBannerSection } from './DrBannerSection';
+import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 import { TableType } from '../../../redesign/helpers/dtos';
 
@@ -242,226 +244,281 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
   );
   return (
     <>
-      <DrBannerSection
-        drConfig={drConfig}
-        openRepairConfigModal={openRepairConfigModal}
-        openRestartConfigModal={openRestartConfigModal}
-      />
-      <div className={classes.header}>
-        <Typography variant="h3">{t('heading')}</Typography>
-        <div className={classes.actionButtonContainer}>
-          <YBButton
-            variant="primary"
-            size="large"
-            type="button"
-            onClick={openSwitchoverModal}
-            disabled={!enabledDrConfigActions.includes(DrConfigActions.SWITCHOVER)}
-            data-testid={`${PANEL_ID}-switchover`}
-          >
-            {t('actionButton.switchover')}
-          </YBButton>
-          <DropdownButton
-            bsClass="dropdown"
-            title={t('actionButton.actionMenu.label')}
-            onToggle={handleActionMenuToggle}
-            id={`${PANEL_ID}-actionsDropdown`}
-            data-testid={`${PANEL_ID}-actionsDropdown`}
-            pullRight
-          >
-            <MenuItemsContainer
-              parentDropdownOpen={isActionMenuOpen}
-              mainMenu={(showSubmenu) => (
-                <>
-                  <MenuItem
-                    eventKey={XClusterConfigAction.MANAGE_TABLE}
-                    onSelect={openEditTablesModal}
-                    disabled={
-                      !enabledXClusterConfigActions.includes(XClusterConfigAction.MANAGE_TABLE)
-                    }
-                  >
-                    <YBMenuItemLabel
-                      label={t('actionButton.actionMenu.editTables')}
-                      preLabelElement={<i className="fa fa-table" />}
-                    />
-                  </MenuItem>
-                  <MenuItem
-                    eventKey={DrConfigActions.EDIT}
-                    onSelect={openEditConfigModal}
-                    disabled={!enabledDrConfigActions.includes(DrConfigActions.EDIT)}
-                  >
-                    <YBMenuItemLabel
-                      label={t('actionButton.actionMenu.editDrConfig')}
-                      preLabelElement={<i className="fa fa-cog" />}
-                    />
-                  </MenuItem>
-                  <MenuItem
-                    eventKey={DrConfigActions.EDIT_TARGET}
-                    onSelect={openEditTargetConfigModal}
-                    disabled={!enabledDrConfigActions.includes(DrConfigActions.EDIT_TARGET)}
-                  >
-                    <YBMenuItemLabel
-                      label={t('actionButton.actionMenu.editDrConfigTarget')}
-                      preLabelElement={<i className="fa fa-globe" />}
-                    />
-                  </MenuItem>
-                  <MenuItem
-                    eventKey={ActionMenu.ADVANCED}
-                    onSelect={() => showSubmenu(ActionMenu.ADVANCED)}
-                  >
-                    <YBMenuItemLabel
-                      label={t('actionButton.actionMenu.advancedSubmenu')}
-                      preLabelElement={<i className="fa fa-cogs" />}
-                      postLabelElement={
-                        <Box component="span" marginLeft="auto">
-                          <i className="fa fa-chevron-right" />
-                        </Box>
-                      }
-                    />
-                  </MenuItem>
-                  <MenuItem divider />
-                  <MenuItem
-                    eventKey={DrConfigActions.SWITCHOVER}
-                    onSelect={openSwitchoverModal}
-                    disabled={!enabledDrConfigActions.includes(DrConfigActions.SWITCHOVER)}
-                  >
-                    <YBMenuItemLabel
-                      label={t('actionButton.actionMenu.switchover')}
-                      preLabelElement={
-                        <SwitchoverIcon
-                          isDisabled={!enabledDrConfigActions.includes(DrConfigActions.SWITCHOVER)}
-                        />
-                      }
-                    />
-                  </MenuItem>
-                  <MenuItem
-                    eventKey={DrConfigActions.FAILOVER}
-                    onSelect={openFailoverModal}
-                    disabled={!enabledDrConfigActions.includes(DrConfigActions.FAILOVER)}
-                  >
-                    <YBMenuItemLabel
-                      label={t('actionButton.actionMenu.failover')}
-                      preLabelElement={
-                        <FailoverIcon
-                          isDisabled={!enabledDrConfigActions.includes(DrConfigActions.FAILOVER)}
-                        />
-                      }
-                    />
-                  </MenuItem>
-                  <MenuItem divider />
-                  <MenuItem
-                    eventKey={DrConfigActions.DELETE}
-                    onSelect={openDeleteConfigModal}
-                    disabled={!enabledDrConfigActions.includes(DrConfigActions.DELETE)}
-                  >
-                    <YBMenuItemLabel
-                      label={t('actionButton.actionMenu.deleteConfig')}
-                      preLabelElement={<i className="fa fa-trash" />}
-                    />
-                  </MenuItem>
-                </>
-              )}
-              subMenus={{
-                // eslint-disable-next-line react/display-name
-                [ActionMenu.ADVANCED]: (navigateToMainMenu) => (
+      <RbacValidator
+        accessRequiredOn={ApiPermissionMap.GET_DR_CONFIG_BY_ID}
+      >
+        <DrBannerSection
+          drConfig={drConfig}
+          openRepairConfigModal={openRepairConfigModal}
+          openRestartConfigModal={openRestartConfigModal}
+        />
+        <div className={classes.header}>
+          <Typography variant="h3">{t('heading')}</Typography>
+          <div className={classes.actionButtonContainer}>
+            <RbacValidator
+              accessRequiredOn={ApiPermissionMap.MODIFY_DR_CONFIG_FAILOVER}
+              isControl
+            >
+              <YBButton
+                variant="primary"
+                size="large"
+                type="button"
+                onClick={openSwitchoverModal}
+                disabled={!enabledDrConfigActions.includes(DrConfigActions.SWITCHOVER)}
+                data-testid={`${PANEL_ID}-switchover`}
+              >
+                {t('actionButton.switchover')}
+              </YBButton>
+            </RbacValidator>
+            <DropdownButton
+              bsClass="dropdown"
+              title={t('actionButton.actionMenu.label')}
+              onToggle={handleActionMenuToggle}
+              id={`${PANEL_ID}-actionsDropdown`}
+              data-testid={`${PANEL_ID}-actionsDropdown`}
+              pullRight
+            >
+              <MenuItemsContainer
+                parentDropdownOpen={isActionMenuOpen}
+                mainMenu={(showSubmenu) => (
                   <>
-                    <MenuItem eventKey="back" onSelect={navigateToMainMenu}>
-                      <YBMenuItemLabel
-                        label={t('back', { keyPrefix: 'common' })}
-                        preLabelElement={<i className="fa fa-chevron-left fa-fw" />}
-                      />
-                    </MenuItem>
                     <MenuItem
-                      eventKey={XClusterConfigAction.RESTART}
-                      onSelect={openRestartConfigModal}
+                      eventKey={XClusterConfigAction.MANAGE_TABLE}
+                      onSelect={openEditTablesModal}
                       disabled={
-                        !enabledXClusterConfigActions.includes(XClusterConfigAction.RESTART)
+                        !enabledXClusterConfigActions.includes(XClusterConfigAction.MANAGE_TABLE)
                       }
                     >
                       <YBMenuItemLabel
-                        label={t('actionButton.actionMenu.restartReplication')}
-                        preLabelElement={<i className="fa fa-refresh" />}
+                        label={t('actionButton.actionMenu.editTables')}
+                        preLabelElement={<i className="fa fa-table" />}
                       />
                     </MenuItem>
+                    <RbacValidator
+                      accessRequiredOn={ApiPermissionMap.MODIFY_DR_CONFIG_BY_ID}
+                      overrideStyle={{ display: 'block' }}
+                      isControl
+                    >
+                      <MenuItem
+                        eventKey={DrConfigActions.EDIT}
+                        onSelect={openEditConfigModal}
+                        disabled={!enabledDrConfigActions.includes(DrConfigActions.EDIT)}
+                      >
+
+                        <YBMenuItemLabel
+                          label={t('actionButton.actionMenu.editDrConfig')}
+                          preLabelElement={<i className="fa fa-cog" />}
+                        />
+                      </MenuItem>
+                    </RbacValidator>
+                    <RbacValidator
+                      accessRequiredOn={ApiPermissionMap.MODIFY_DR_CONFIG_BY_ID}
+                      overrideStyle={{ display: 'block' }}
+                      isControl
+                    >
+                      <MenuItem
+                        eventKey={DrConfigActions.EDIT_TARGET}
+                        onSelect={openEditTargetConfigModal}
+                        disabled={!enabledDrConfigActions.includes(DrConfigActions.EDIT_TARGET)}
+                      >
+                        <YBMenuItemLabel
+                          label={t('actionButton.actionMenu.editDrConfigTarget')}
+                          preLabelElement={<i className="fa fa-globe" />}
+                        />
+                      </MenuItem>
+                    </RbacValidator>
                     <MenuItem
-                      eventKey={XClusterConfigAction.DB_SYNC}
-                      onSelect={openDbSyncModal}
-                      disabled={
-                        !enabledXClusterConfigActions.includes(XClusterConfigAction.DB_SYNC)
-                      }
+                      eventKey={ActionMenu.ADVANCED}
+                      onSelect={() => showSubmenu(ActionMenu.ADVANCED)}
                     >
                       <YBMenuItemLabel
-                        label={t('actionButton.actionMenu.dbSync')}
-                        preLabelElement={<i className="fa fa-refresh" />}
+                        label={t('actionButton.actionMenu.advancedSubmenu')}
+                        preLabelElement={<i className="fa fa-cogs" />}
+                        postLabelElement={
+                          <Box component="span" marginLeft="auto">
+                            <i className="fa fa-chevron-right" />
+                          </Box>
+                        }
                       />
                     </MenuItem>
+                    <MenuItem divider />
+                    <RbacValidator
+                      accessRequiredOn={ApiPermissionMap.MODIFY_DR_CONFIG_FAILOVER}
+                      overrideStyle={{ display: 'block' }}
+                      isControl
+                    >
+                      <MenuItem
+                        eventKey={DrConfigActions.SWITCHOVER}
+                        onSelect={openSwitchoverModal}
+                        disabled={!enabledDrConfigActions.includes(DrConfigActions.SWITCHOVER)}
+                      >
+                        <YBMenuItemLabel
+                          label={t('actionButton.actionMenu.switchover')}
+                          preLabelElement={
+                            <SwitchoverIcon
+                              isDisabled={!enabledDrConfigActions.includes(DrConfigActions.SWITCHOVER)}
+                            />
+                          }
+                        />
+                      </MenuItem>
+                    </RbacValidator>
+                    <RbacValidator
+                      accessRequiredOn={ApiPermissionMap.MODIFY_DR_CONFIG_FAILOVER}
+                      overrideStyle={{ display: 'block' }}
+                      isControl
+                    >
+                      <MenuItem
+                        eventKey={DrConfigActions.FAILOVER}
+                        onSelect={openFailoverModal}
+                        disabled={!enabledDrConfigActions.includes(DrConfigActions.FAILOVER)}
+                      >
+                        <YBMenuItemLabel
+                          label={t('actionButton.actionMenu.failover')}
+                          preLabelElement={
+                            <FailoverIcon
+                              isDisabled={!enabledDrConfigActions.includes(DrConfigActions.FAILOVER)}
+                            />
+                          }
+                        />
+                      </MenuItem>
+                    </RbacValidator>
+                    <MenuItem divider />
+                    <RbacValidator
+                      accessRequiredOn={ApiPermissionMap.DELETE_DR_CONFIG}
+                      overrideStyle={{ display: 'block' }}
+                      isControl
+                    >
+                      <MenuItem
+                        eventKey={DrConfigActions.DELETE}
+                        onSelect={openDeleteConfigModal}
+                        disabled={!enabledDrConfigActions.includes(DrConfigActions.DELETE)}
+                      >
+                        <YBMenuItemLabel
+                          label={t('actionButton.actionMenu.deleteConfig')}
+                          preLabelElement={<i className="fa fa-trash" />}
+                        />
+                      </MenuItem>
+                    </RbacValidator>
                   </>
-                )
-              }}
-            />
-          </DropdownButton>
+                )}
+                subMenus={{
+                  // eslint-disable-next-line react/display-name
+                  [ActionMenu.ADVANCED]: (navigateToMainMenu) => (
+                    <>
+                      <MenuItem eventKey="back" onSelect={navigateToMainMenu}>
+                        <YBMenuItemLabel
+                          label={t('back', { keyPrefix: 'common' })}
+                          preLabelElement={<i className="fa fa-chevron-left fa-fw" />}
+                        />
+                      </MenuItem>
+                      <RbacValidator
+                        customValidateFunction={() => {
+                          return hasNecessaryPerm({ ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION, onResource: sourceUniverseUuid }) &&
+                            hasNecessaryPerm({ ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION, onResource: targetUniverseUuid });
+                        }}
+                        overrideStyle={{ display: 'block' }}
+                        isControl
+                      >
+                        <MenuItem
+                          eventKey={XClusterConfigAction.RESTART}
+                          onSelect={openRestartConfigModal}
+                          disabled={
+                            !enabledXClusterConfigActions.includes(XClusterConfigAction.RESTART)
+                          }
+                        >
+                          <YBMenuItemLabel
+                            label={t('actionButton.actionMenu.restartReplication')}
+                            preLabelElement={<i className="fa fa-refresh" />}
+                          />
+                        </MenuItem>
+                      </RbacValidator>
+                      <RbacValidator
+                        accessRequiredOn={{ ...ApiPermissionMap.SYNC_XCLUSTER_REQUIREMENT, onResource: targetUniverseUuid }}
+                        overrideStyle={{ display: 'block' }}
+                        isControl
+                      >
+                        <MenuItem
+                          eventKey={XClusterConfigAction.DB_SYNC}
+                          onSelect={openDbSyncModal}
+                          disabled={
+                            !enabledXClusterConfigActions.includes(XClusterConfigAction.DB_SYNC)
+                          }
+                        >
+                          <YBMenuItemLabel
+                            label={t('actionButton.actionMenu.dbSync')}
+                            preLabelElement={<i className="fa fa-refresh" />}
+                          />
+                        </MenuItem>
+                      </RbacValidator>
+                    </>
+                  )
+                }}
+              />
+            </DropdownButton>
+          </div>
         </div>
-      </div>
-      <Box display="flex" flexDirection="column" gridGap={theme.spacing(3)}>
-        <DrConfigOverview drConfig={drConfig} />
-        <DrConfigDetails drConfig={drConfig} />
-      </Box>
-      {isSwitchoverModalOpen && (
-        <InitiateSwitchoverModal
-          drConfig={drConfig}
-          modalProps={{ open: isSwitchoverModalOpen, onClose: closeSwitchoverModal }}
-        />
-      )}
-      {isFailoverModalOpen && (
-        <InitiateFailoverModal
-          drConfig={drConfig}
-          modalProps={{ open: isFailoverModalOpen, onClose: closeFailoverModal }}
-        />
-      )}
-      {isDeleteConfigModalOpen && (
-        <DeleteConfigModal
-          drConfig={drConfig}
-          modalProps={{ open: isDeleteConfigModalOpen, onClose: closeDeleteConfigModal }}
-        />
-      )}
-      {isEditConfigModalOpen && (
-        <EditConfigModal
-          drConfig={drConfig}
-          modalProps={{ open: isEditConfigModalOpen, onClose: closeEditConfigModal }}
-        />
-      )}
-      {isEditConfigTargetModalOpen && (
-        <EditConfigTargetModal
-          drConfig={drConfig}
-          modalProps={{ open: isEditConfigTargetModalOpen, onClose: closeEditTargetConfigModal }}
-        />
-      )}
-      {isEditTablesModalOpen && (
-        <EditTablesModal
-          xClusterConfig={drConfig.xClusterConfig}
-          isDrConfig={true}
-          modalProps={{ open: isEditTablesModalOpen, onClose: closeEditTablesModal }}
-        />
-      )}
-      {isRepairConfigModalOpen && (
-        <RepairDrConfigModal
-          drConfig={drConfig}
-          modalProps={{ open: isRepairConfigModalOpen, onClose: closeRepairConfigModal }}
-        />
-      )}
-      {isRestartConfigModalOpen && (
-        <RestartConfigModal
-          configTableType={TableType.PGSQL_TABLE_TYPE}
-          isVisible={isRestartConfigModalOpen}
-          onHide={closeRestartConfigModal}
-          xClusterConfig={drConfig.xClusterConfig}
-        />
-      )}
-      {isDbSyncModalOpen && (
-        <SyncXClusterConfigModal
-          xClusterConfig={drConfig.xClusterConfig}
-          modalProps={{ open: isDbSyncModalOpen, onClose: closeDbSyncModal }}
-        />
-      )}
+        <Box display="flex" flexDirection="column" gridGap={theme.spacing(3)}>
+          <DrConfigOverview drConfig={drConfig} />
+          <DrConfigDetails drConfig={drConfig} />
+        </Box>
+        {isSwitchoverModalOpen && (
+          <InitiateSwitchoverModal
+            drConfig={drConfig}
+            modalProps={{ open: isSwitchoverModalOpen, onClose: closeSwitchoverModal }}
+          />
+        )}
+        {isFailoverModalOpen && (
+          <InitiateFailoverModal
+            drConfig={drConfig}
+            modalProps={{ open: isFailoverModalOpen, onClose: closeFailoverModal }}
+          />
+        )}
+        {isDeleteConfigModalOpen && (
+          <DeleteConfigModal
+            drConfig={drConfig}
+            modalProps={{ open: isDeleteConfigModalOpen, onClose: closeDeleteConfigModal }}
+          />
+        )}
+        {isEditConfigModalOpen && (
+          <EditConfigModal
+            drConfig={drConfig}
+            modalProps={{ open: isEditConfigModalOpen, onClose: closeEditConfigModal }}
+          />
+        )}
+        {isEditConfigTargetModalOpen && (
+          <EditConfigTargetModal
+            drConfig={drConfig}
+            modalProps={{ open: isEditConfigTargetModalOpen, onClose: closeEditTargetConfigModal }}
+          />
+        )}
+        {isEditTablesModalOpen && (
+          <EditTablesModal
+            xClusterConfig={drConfig.xClusterConfig}
+            isDrConfig={true}
+            modalProps={{ open: isEditTablesModalOpen, onClose: closeEditTablesModal }}
+          />
+        )}
+        {isRepairConfigModalOpen && (
+          <RepairDrConfigModal
+            drConfig={drConfig}
+            modalProps={{ open: isRepairConfigModalOpen, onClose: closeRepairConfigModal }}
+          />
+        )}
+        {isRestartConfigModalOpen && (
+          <RestartConfigModal
+            configTableType={TableType.PGSQL_TABLE_TYPE}
+            isVisible={isRestartConfigModalOpen}
+            onHide={closeRestartConfigModal}
+            xClusterConfig={drConfig.xClusterConfig}
+          />
+        )}
+        {isDbSyncModalOpen && (
+          <SyncXClusterConfigModal
+            xClusterConfig={drConfig.xClusterConfig}
+            modalProps={{ open: isDbSyncModalOpen, onClose: closeDbSyncModal }}
+          />
+        )}
+      </RbacValidator>
     </>
   );
 };

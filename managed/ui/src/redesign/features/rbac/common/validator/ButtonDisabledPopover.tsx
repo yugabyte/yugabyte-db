@@ -30,13 +30,15 @@ export const ButtonDisabledPopover = ({
   };
 
   const onClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    handleClick(e);
+    if(!e?.target || !e?.currentTarget) return;
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
+    e && handleClick(e);
   };
 
   const reactChild = cloneElement(children, {
-    onClick: onClick
+    onClick: onClick,
+    onSelect: onClick
   });
 
   useClickAway(ref, handleClose);
