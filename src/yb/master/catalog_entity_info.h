@@ -164,6 +164,8 @@ struct TabletReplica {
 
   FullCompactionStatus full_compaction_status;
 
+  uint32_t last_attempted_clone_seq_no;
+
   TabletReplica() : time_updated(MonoTime::Now()) {}
 
   void UpdateFrom(const TabletReplica& source);
@@ -355,6 +357,8 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   // Transient, in memory list of table ids hosted by this tablet. This is not persisted.
   // Only used when FLAGS_use_parent_table_id_field is set.
   std::vector<TableId> table_ids_ GUARDED_BY(lock_);
+
+  uint32_t last_attempted_clone_seq_no_ GUARDED_BY(lock_) = 0;
 
   DISALLOW_COPY_AND_ASSIGN(TabletInfo);
 };
@@ -855,6 +859,8 @@ class NamespaceInfo : public RefCountedThreadSafe<NamespaceInfo>,
   ::yb::master::SysNamespaceEntryPB_State state() const;
 
   std::string ToString() const override;
+
+  uint32_t FetchAndIncrementCloneSeqNo();
 
  private:
   friend class RefCountedThreadSafe<NamespaceInfo>;

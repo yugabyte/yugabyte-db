@@ -228,16 +228,22 @@ struct TableWithTabletsEntries {
 Status CatalogManager::CreateSnapshot(const CreateSnapshotRequestPB* req,
                                       CreateSnapshotResponsePB* resp,
                                       RpcContext* rpc, const LeaderEpoch& epoch) {
+  return DoCreateSnapshot(req, resp, rpc->GetClientDeadline(), epoch);
+}
+
+Status CatalogManager::DoCreateSnapshot(const CreateSnapshotRequestPB* req,
+                                        CreateSnapshotResponsePB* resp,
+                                        CoarseTimePoint deadline, const LeaderEpoch& epoch) {
   LOG(INFO) << "Servicing CreateSnapshot request: " << req->ShortDebugString();
 
   if (FLAGS_enable_transaction_snapshots && req->transaction_aware()) {
-    return CreateTransactionAwareSnapshot(*req, resp, rpc->GetClientDeadline());
+    return CreateTransactionAwareSnapshot(*req, resp, deadline);
   }
 
   if (req->has_schedule_id()) {
     auto schedule_id = VERIFY_RESULT(FullyDecodeSnapshotScheduleId(req->schedule_id()));
     auto snapshot_id = snapshot_coordinator_.CreateForSchedule(
-        schedule_id, leader_ready_term(), rpc->GetClientDeadline());
+        schedule_id, leader_ready_term(), deadline);
     if (!snapshot_id.ok()) {
       LOG(INFO) << "Create snapshot failed: " << snapshot_id.status();
       return snapshot_id.status();
@@ -246,13 +252,13 @@ Status CatalogManager::CreateSnapshot(const CreateSnapshotRequestPB* req,
     return Status::OK();
   }
 
-  return CreateNonTransactionAwareSnapshot(req, resp, rpc, epoch);
+  return CreateNonTransactionAwareSnapshot(req, resp, epoch);
 }
 
 Status CatalogManager::CreateNonTransactionAwareSnapshot(
     const CreateSnapshotRequestPB* req,
     CreateSnapshotResponsePB* resp,
-    RpcContext* rpc, const LeaderEpoch& epoch) {
+    const LeaderEpoch& epoch) {
   SnapshotId snapshot_id;
   {
     LockGuard lock(mutex_);
