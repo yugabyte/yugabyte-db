@@ -22,6 +22,7 @@ import io.fabric8.kubernetes.api.model.PersistentVolumeClaimList;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodList;
 import io.fabric8.kubernetes.api.model.PodStatus;
+import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.Service;
 import io.fabric8.kubernetes.api.model.ServiceList;
@@ -360,6 +361,22 @@ public class ShellKubernetesManager extends KubernetesManager {
     ShellResponse response =
         execCommand(config, commandList, false).processErrors("Unable to delete StatefulSet");
     return response.isSuccess();
+  }
+
+  @Override
+  public List<Quantity> getPVCSizeList(
+      Map<String, String> config,
+      String namespace,
+      String helmReleaseName,
+      String appName,
+      boolean newNamingStyle) {
+    List<PersistentVolumeClaim> pvcList =
+        getPVCs(config, namespace, helmReleaseName, appName, newNamingStyle);
+    List<Quantity> pvcSizes = new ArrayList<>();
+    for (PersistentVolumeClaim pvc : pvcList) {
+      pvcSizes.add(pvc.getSpec().getResources().getRequests().get("storage"));
+    }
+    return pvcSizes;
   }
 
   @Override
