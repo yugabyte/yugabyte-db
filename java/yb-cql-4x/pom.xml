@@ -48,12 +48,12 @@
     <dependency>
       <groupId>com.yugabyte</groupId>
       <artifactId>java-driver-core</artifactId>
-      <version>4.6.0-yb-11</version>
+      <version>4.15.0-yb-1</version>
     </dependency>
     <dependency>
       <groupId>com.yugabyte</groupId>
       <artifactId>java-driver-query-builder</artifactId>
-      <version>4.6.0-yb-11</version>
+      <version>4.15.0-yb-1</version>
     </dependency>
     <dependency>
       <groupId>org.lz4</groupId>
