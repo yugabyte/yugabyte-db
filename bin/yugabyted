@@ -1251,8 +1251,7 @@ class ControlScript(object):
     # Starts yb-master, yb-tserver, and yugaware processes.
     # After initializing, creates a callhome thread.
     def start_processes(self):
-        bind_ip = self.configs.saved_data.get("advertise_address")
-        advertise_ip = bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
+        advertise_ip = self.advertise_ip()
         master_rpc_port = self.configs.saved_data.get("master_rpc_port")
         join_ip = self.configs.saved_data.get("join")
         fault_tolerance = self.configs.saved_data.get("fault_tolerance")
@@ -1267,7 +1266,7 @@ class ControlScript(object):
             "--stop_on_parent_termination",
             "--undefok=stop_on_parent_termination",
             "--fs_data_dirs={}".format(self.configs.saved_data.get("data_dir")),
-            "--webserver_interface={}".format(bind_ip),
+            "--webserver_interface={}".format(advertise_ip),
             "--metrics_snapshotter_tserver_metrics_whitelist={}".format(
                 ",".join(METRICS_SNAPSHOT_LIST)),
             "--yb_num_shards_per_tserver={}".format(YB_NUM_SHARDS_PER_TSERVER),
@@ -1288,7 +1287,7 @@ class ControlScript(object):
         yb_master_cmd = [find_binary_location("yb-master")] + \
             common_gflags + \
             [
-                "--rpc_bind_addresses={}:{}".format(bind_ip, master_rpc_port),
+                "--rpc_bind_addresses={}:{}".format(advertise_ip, master_rpc_port),
                 "--server_broadcast_addresses={}:{}".format(advertise_ip, master_rpc_port),
                 "--replication_factor=1",
                 "--use_initial_sys_catalog_snapshot",
@@ -1313,14 +1312,14 @@ class ControlScript(object):
         yb_tserver_cmd = [find_binary_location("yb-tserver")] + common_gflags + \
             [
                 "--{}={}".format(TS_MASTER_ADDRS_FLAG, master_addresses),
-                "--rpc_bind_addresses={}:{}".format(bind_ip, tserver_rpc_port),
+                "--rpc_bind_addresses={}:{}".format(advertise_ip, tserver_rpc_port),
                 "--server_broadcast_addresses={}:{}".format(advertise_ip, tserver_rpc_port),
                 "--cql_proxy_bind_address={}:{}".format(
-                    bind_ip, self.configs.saved_data.get("ycql_port")),
+                    advertise_ip, self.configs.saved_data.get("ycql_port")),
                 "--server_dump_info_path={}".format(
                     os.path.join(self.configs.saved_data.get("data_dir"), "tserver-info")),
                 "--start_pgsql_proxy", "--pgsql_proxy_bind_address={}:{}".format(
-                    bind_ip, self.configs.saved_data.get("ysql_port")),
+                    advertise_ip, self.configs.saved_data.get("ysql_port")),
                 "--tserver_enable_metrics_snapshotter=true",
                 "--metrics_snapshotter_interval_ms=11000",
                 "--webserver_port={}".format(self.configs.saved_data.get("tserver_webserver_port")),
@@ -1549,7 +1548,7 @@ class ControlScript(object):
                 if self.configs.saved_data.get("ui"):
                     yugabyted_ui_cmd = [ find_binary_location("yugabyted-ui")] + \
                         [
-                            "-database_host={}".format(bind_ip),
+                            "-database_host={}".format(advertise_ip),
                             "-master_ui_port={}".format(self.configs.saved_data.
                             get("master_webserver_port")),
                             "-tserver_ui_port={}".format(self.configs.saved_data.
@@ -2514,17 +2513,14 @@ class ControlScript(object):
         # The master was not in the current list of masters
         # and we have a valid join_ip
 
-        bind_ip = self.configs.saved_data.get("advertise_address")
-        # master_addrs = "{}:{}".format(join_ip,
-        #             self.configs.saved_data.get("master_rpc_port"))
-        # master_uuids = [ m[0] for m in YBAdminProxy.get_masters(master_addrs) ]
+        advertise_ip = self.advertise_ip()
 
         if len(master_uuids) >= 3:
             # this is going to be a standalone shell master
             return True
-        if not YBAdminProxy.add_master(master_addrs, bind_ip):
+        if not YBAdminProxy.add_master(master_addrs, advertise_ip):
             Output.log_error_and_exit("Unable to add master {} to existing cluster at {}.".format(
-                bind_ip, join_ip))
+                advertise_ip, join_ip))
             return False
 
         # If we are the third master, set replication factor to 3. This makes the cluster
@@ -3373,6 +3369,9 @@ class ControlScript(object):
                         "provided is not a valid IPv4 or IPv6 address. " +
                         "Please try again with a valid IP.")
 
+            args.advertise_address = IP_LOCALHOST if args.advertise_address == IP_ANY \
+                else args.advertise_address
+
             if args.daemon is not None:
                 if args.background is not None and \
                         self.parse_bool(args.daemon) != self.parse_bool(args.background):
@@ -3386,9 +3385,18 @@ class ControlScript(object):
                 args.background = "True"
 
             if args.join is not None:
+                if not self.validate_hostname_ip(args.join):
+                    Output.log_error_and_exit(Output.make_red("ERROR") + ": --join" +
+                        " provided is not a valid address. Please try again with a valid IPV4, " +
+                        "IPV6 or DNS.")
+
+                Output.print_and_log("Fetching configs from join IP...")
                 try:
                     leaderMasterURL = "http://{}:7000/api/v1/varz".format(args.join)
                     response = urlopen(Request(leaderMasterURL))
+                    Output.log("Trying to hit endpoint {}".format(leaderMasterURL) +
+                            " to check if join IP is reachable. (Timeout=60s)")
+                    response = urlopen(Request(leaderMasterURL), timeout=60)
                 except HTTPError as http_err:
                     Output.log("HTTP Error occured while hitting the api endpoint " +
                         "http://{}:7000/api/v1/varz: {}".format(args.join, http_err))
@@ -3750,6 +3758,8 @@ class ControlScript(object):
             level=logging.DEBUG, filemode="a",
             filename=os.path.join(log_dir, "{}.log".format(SCRIPT_NAME)),
             format="[%(filename)s " + args.parser + "] %(asctime)s %(levelname)s: %(message)s")
+
+        Output.log("Running yugabyted command: '{}'".format(' '.join(sys.argv)))
 
         Output.log("cmd = {} using config file: {} (args.config={})".format(
             args.parser, self.conf_file, args.config))
