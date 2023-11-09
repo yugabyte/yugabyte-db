@@ -25,9 +25,9 @@ type: docs
 
 This section describes how to configure a YugabyteDB Anywhere universe to use an LDAP server such as Active Directory with TLS.
 
-You enable LDAP authentication in the YugabyteDB universe by setting the LDAP configuration with the <code>[--ysql_hba_conf_csv](../../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv)</code> flag.
-
 ## Bind to the LDAP server using TLS
+
+You enable LDAP authentication in the YugabyteDB universe by setting the LDAP configuration using the <code>[--ysql_hba_conf_csv](../../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv)</code> flag.
 
 To bind to the LDAP server using TLS, include the `ldaptls=1` option in the `ysql_hba_conf_csv` flag as per the following example:
 
@@ -95,7 +95,7 @@ Consider the following example:
     # numEntries: 1
     ```
 
-    If instead you see a message similar to `ldap_sasl_bind(SIMPLE): Can't contact LDAP server (-1)`, then you have a network, certificate, or binding (authentication) problem.  See [Troubleshooting](../../troubleshoot/ldap-issues/).
+    If instead you see a message similar to `ldap_sasl_bind(SIMPLE): Can't contact LDAP server (-1)`, then you have a network, certificate, or binding (authentication) problem.  See [Troubleshoot LDAP issues](../../../troubleshoot/ldap-issues/).
 
 1. Create the user in YugabyteDB, as follows:
 
