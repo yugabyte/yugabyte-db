@@ -44,7 +44,6 @@
 #include "yb/master/xcluster_consumer_registry_service.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/server/hybrid_clock.h"
-#include "yb/tserver/xcluster_consumer.h"
 #include "yb/tserver/mini_tablet_server.h"
 
 #include "yb/util/atomic.h"

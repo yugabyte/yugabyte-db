@@ -23,42 +23,43 @@
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index_container.hpp>
 
+#include "yb/cdc/cdc_consumer.pb.h"
 #include "yb/cdc/cdc_types.h"
 #include "yb/cdc/cdc_util.h"
+#include "yb/cdc/xcluster_types.h"
 #include "yb/client/client_fwd.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/tablet/tablet_types.pb.h"
-#include "yb/cdc/cdc_consumer.pb.h"
+
+#include "yb/tserver/xcluster_consumer_if.h"
+#include "yb/tserver/xcluster_consumer_replication_error.h"
 #include "yb/tserver/xcluster_poller_stats.h"
+
 #include "yb/util/flags/flags_callback.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 
 namespace rocksdb {
-
 class RateLimiter;
-
-}
+}  // namespace rocksdb
 
 namespace yb {
-
 class Thread;
 class ThreadPool;
 
 namespace rpc {
-
 class Messenger;
-class ProxyCache;
 class Rpcs;
 class SecureContext;
-
-} // namespace rpc
+}  // namespace rpc
 
 namespace cdc {
-
 class ConsumerRegistryPB;
+}  // namespace cdc
 
-} // namespace cdc
+namespace master {
+class TSHeartbeatRequestPB;
+}  // namespace master
 
 namespace tserver {
 class XClusterPoller;
@@ -73,62 +74,51 @@ struct XClusterClient {
   void Shutdown();
 };
 
-class XClusterConsumer {
+class XClusterConsumer : public XClusterConsumerIf {
  public:
-  static Result<std::unique_ptr<XClusterConsumer>> Create(
-      std::function<bool(const std::string&)> is_leader_for_tablet,
-      std::function<int64_t(const TabletId&)> get_leader_term, rpc::ProxyCache* proxy_cache,
-      TabletServer* tserver);
-
   XClusterConsumer(
-      std::function<bool(const std::string&)> is_leader_for_tablet,
       std::function<int64_t(const TabletId&)> get_leader_term, rpc::ProxyCache* proxy_cache,
       const std::string& ts_uuid, std::unique_ptr<XClusterClient> local_client);
 
   ~XClusterConsumer();
-  void Shutdown() EXCLUDES(shutdown_mutex_);
+  Status Init();
+  void Shutdown() override EXCLUDES(shutdown_mutex_);
 
   // Refreshes the in memory state when we receive a new registry from master.
-  void RefreshWithNewRegistryFromMaster(const cdc::ConsumerRegistryPB* consumer_registry,
-                                        int32_t cluster_config_version);
+  void HandleMasterHeartbeatResponse(
+      const cdc::ConsumerRegistryPB* consumer_registry, int32_t cluster_config_version) override;
 
-  std::vector<TabletId> TEST_producer_tablets_running();
+  std::vector<TabletId> TEST_producer_tablets_running() const override;
 
-  std::vector<std::shared_ptr<XClusterPoller>> TEST_ListPollers();
+  std::vector<std::shared_ptr<XClusterPoller>> TEST_ListPollers() const override;
 
-  std::vector<XClusterPollerStats> GetPollerStats() const;
+  std::vector<XClusterPollerStats> GetPollerStats() const override;
 
   std::string LogPrefix();
 
   // Return the value stored in cluster_config_version_. Since we are reading an atomic variable,
   // we don't need to hold the mutex.
-  int32_t cluster_config_version() const NO_THREAD_SAFETY_ANALYSIS;
+  int32_t cluster_config_version() const override NO_THREAD_SAFETY_ANALYSIS;
 
   void TEST_IncrementNumSuccessfulWriteRpcs() { TEST_num_successful_write_rpcs_++; }
 
-  uint32_t TEST_GetNumSuccessfulWriteRpcs() {
+  uint32_t TEST_GetNumSuccessfulWriteRpcs() override {
     return TEST_num_successful_write_rpcs_.load(std::memory_order_acquire);
   }
 
-  Status ReloadCertificates();
+  Status ReloadCertificates() override;
 
   Status PublishXClusterSafeTime();
 
-  SchemaVersion GetMinXClusterSchemaVersion(const TableId& table_id,
-      const ColocationId& colocation_id);
+  SchemaVersion GetMinXClusterSchemaVersion(
+      const TableId& table_id, const ColocationId& colocation_id) override;
 
-  // Stores a replication error and detail. This overwrites a previously stored 'error'.
-  void StoreReplicationError(
-      const TabletId& tablet_id, const xrepl::StreamId& stream_id, ReplicationErrorPb error,
-      const std::string& detail);
+  cdc::XClusterRole TEST_GetXClusterRole() const override { return consumer_role_; }
 
-  // Clears replication errors.
-  void ClearReplicationError(const TabletId& tablet_id, const xrepl::StreamId& stream_id);
+  void PopulateMasterHeartbeatRequest(
+      master::TSHeartbeatRequestPB* req, bool needs_full_tablet_report) override;
 
-  // Returns the replication error map.
-  cdc::TabletReplicationErrorMap GetReplicationErrors() const;
-
-  cdc::XClusterRole TEST_GetXClusterRole() const { return consumer_role_; }
+  void StoreReplicationError(const XClusterPollerId& poller_id, ReplicationErrorPb error);
 
  private:
   // Runs a thread that periodically polls for any new threads.
@@ -136,8 +126,9 @@ class XClusterConsumer {
 
   // Loops through all the entries in the registry and creates a producer -> consumer tablet
   // mapping.
-  void UpdateInMemoryState(const cdc::ConsumerRegistryPB* consumer_producer_map,
-                           int32_t cluster_config_version);
+  void UpdateReplicationGroupInMemState(
+      const cdc::ReplicationGroupId& replication_group_id,
+      const yb::cdc::ProducerEntryPB& producer_entry_pb) REQUIRES(master_data_mutex_);
 
   // Loops through all entries in registry from master to check if all producer tablets are being
   // polled for.
@@ -147,8 +138,8 @@ class XClusterConsumer {
   void TriggerDeletionOfOldPollers() EXCLUDES (master_data_mutex_);
 
   bool ShouldContinuePolling(
-      const cdc::ProducerTabletInfo producer_tablet_info,
-      const XClusterPoller& poller) REQUIRES_SHARED(master_data_mutex_);
+      const cdc::ProducerTabletInfo producer_tablet_info, const XClusterPoller& poller,
+      std::string& reason) REQUIRES_SHARED(master_data_mutex_);
 
   void UpdatePollerSchemaVersionMaps(
       std::shared_ptr<XClusterPoller> xcluster_poller, const xrepl::StreamId& stream_id) const
@@ -169,8 +160,7 @@ class XClusterConsumer {
   // Mutex for producer_pollers_map_.
   mutable rw_spinlock pollers_map_mutex_ ACQUIRED_AFTER(master_data_mutex_);
 
-  std::function<bool(const std::string&)> is_leader_for_tablet_;
-  std::function<int64_t(const TabletId&)> get_leader_term_;
+  std::function<int64_t(const TabletId&)> get_leader_term_func_;
 
   class TabletTag;
   using ProducerConsumerTabletMap = boost::multi_index_container <
@@ -246,13 +236,11 @@ class XClusterConsumer {
   bool xcluster_safe_time_table_ready_ GUARDED_BY(safe_time_update_mutex_) = false;
   std::unique_ptr<client::TableHandle> safe_time_table_ GUARDED_BY(safe_time_update_mutex_);
 
-  mutable simple_spinlock tablet_replication_error_map_lock_;
-  cdc::TabletReplicationErrorMap tablet_replication_error_map_
-      GUARDED_BY(tablet_replication_error_map_lock_);
+  XClusterConsumerReplicationErrorCollector error_collector_;
 
   std::unique_ptr<rocksdb::RateLimiter> rate_limiter_;
   FlagCallbackRegistration rate_limiter_callback_;
 };
 
 } // namespace tserver
-} // namespace yb
+}  // namespace yb

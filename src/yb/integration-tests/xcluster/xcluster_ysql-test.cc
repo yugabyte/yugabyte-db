@@ -1314,7 +1314,7 @@ TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
 
   // 2. Setup replication.
   ASSERT_OK(SetupUniverseReplication({producer_table_}));
-  auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_table_->id())).ToString();
+  auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_table_->id()));
 
   // 3. Verify everything is setup correctly.
   ASSERT_OK(CorrectlyPollingAllTablets(
@@ -1362,7 +1362,7 @@ TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
       ToggleUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, true));
 
   // We read the first batch of writes with the old schema, but not the new schema writes.
-  ASSERT_NO_FATALS(VerifyReplicationError(
+  ASSERT_OK(VerifyReplicationError(
       consumer_table_->id(), stream_id, ReplicationErrorPb::REPLICATION_SCHEMA_MISMATCH));
   ASSERT_OK(data_replicated_correctly(count));
 
@@ -1376,7 +1376,7 @@ TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
 
   // 5. Verify Replication continued and new schema Producer entries are added to Consumer.
   count += kRecordBatch;
-  ASSERT_NO_FATALS(VerifyReplicationError(consumer_table_->id(), stream_id, boost::none));
+  ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
   ASSERT_OK(data_replicated_correctly(count));
 
   /***************************/
@@ -1419,7 +1419,7 @@ TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
   //  2. Expectations: Replication should add data 1x, then block because IDs don't match.
   //                   DROP is non-blocking,
   //                   re-ADD blocks until IDs match even though the Name & Type match.
-  ASSERT_NO_FATALS(VerifyReplicationError(
+  ASSERT_OK(VerifyReplicationError(
       consumer_table_->id(), stream_id, ReplicationErrorPb::REPLICATION_SCHEMA_MISMATCH));
   ASSERT_OK(data_replicated_correctly(count));
 
@@ -1429,7 +1429,7 @@ TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
       "ALTER TABLE $0 ADD COLUMN $1 VARCHAR", consumer_tbl_name, new_column));
 
   count += kRecordBatch;
-  ASSERT_NO_FATALS(VerifyReplicationError(consumer_table_->id(), stream_id, boost::none));
+  ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
   ASSERT_OK(data_replicated_correctly(count));
 
   /***************************/
@@ -1447,7 +1447,7 @@ TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
 
   // 3. Verify ALTER was parsed by Consumer, which stopped replication and hasn't read the new
   // data.
-  ASSERT_NO_FATALS(VerifyReplicationError(
+  ASSERT_OK(VerifyReplicationError(
       consumer_table_->id(), stream_id, ReplicationErrorPb::REPLICATION_SCHEMA_MISMATCH));
   ASSERT_OK(data_replicated_correctly(count));
 
@@ -1461,7 +1461,7 @@ TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
 
   // 5. Verify Replication continued and new schema Producer entries are added to Consumer.
   count += kRecordBatch;
-  ASSERT_NO_FATALS(VerifyReplicationError(consumer_table_->id(), stream_id, boost::none));
+  ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
   ASSERT_OK(data_replicated_correctly(count));
 
   /***************************/

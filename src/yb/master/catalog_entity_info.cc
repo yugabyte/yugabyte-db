@@ -1316,44 +1316,6 @@ Status UniverseReplicationInfo::GetSetupUniverseReplicationErrorStatus() const {
   return setup_universe_replication_error_;
 }
 
-void UniverseReplicationInfo::StoreReplicationError(
-    const TableId& consumer_table_id,
-    const xrepl::StreamId& stream_id,
-    const ReplicationErrorPb error,
-    const std::string& error_detail) {
-  std::lock_guard l(lock_);
-  table_replication_error_map_[consumer_table_id][stream_id][error] = error_detail;
-}
-
-void UniverseReplicationInfo::ClearReplicationError(
-    const TableId& consumer_table_id,
-    const xrepl::StreamId& stream_id,
-    const ReplicationErrorPb error) {
-  std::lock_guard l(lock_);
-
-  if (table_replication_error_map_.count(consumer_table_id) == 0 ||
-      table_replication_error_map_[consumer_table_id].count(stream_id) == 0 ||
-      table_replication_error_map_[consumer_table_id][stream_id].count(error) == 0) {
-    return;
-  }
-
-  table_replication_error_map_[consumer_table_id][stream_id].erase(error);
-
-  if (table_replication_error_map_[consumer_table_id][stream_id].empty()) {
-    table_replication_error_map_[consumer_table_id].erase(stream_id);
-  }
-
-  if (table_replication_error_map_[consumer_table_id].empty()) {
-    table_replication_error_map_.erase(consumer_table_id);
-  }
-}
-
-UniverseReplicationInfo::TableReplicationErrorMap
-UniverseReplicationInfo::GetReplicationErrors() const {
-  SharedLock<decltype(lock_)> l(lock_);
-  return table_replication_error_map_;
-}
-
 // ================================================================================================
 // PersistentUniverseReplicationBootstrapInfo
 // ================================================================================================
