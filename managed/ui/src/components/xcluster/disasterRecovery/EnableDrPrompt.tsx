@@ -3,6 +3,8 @@ import { makeStyles, Typography } from '@material-ui/core';
 import { Trans, useTranslation } from 'react-i18next';
 
 import { YBButton } from '../../../redesign/components';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { ReactComponent as BackupIcon } from '../../../redesign/assets/fileBackup.svg';
 
 interface EnableDrPromptProps {
@@ -45,14 +47,19 @@ export const EnableDrPrompt = ({ className, onConfigureDrButtonClick }: EnableDr
           components={{ bold: <b /> }}
         />
       </Typography>
-      <YBButton
-        style={{ minWidth: '200px' }}
-        variant="primary"
-        onClick={onConfigureDrButtonClick}
-        data-testid={`EnableDrPrompt-ConfigureDrButton`}
+      <RbacValidator
+        accessRequiredOn={ApiPermissionMap.CREATE_DR_CONFIG}
+        isControl
       >
-        {t('actionButton')}
-      </YBButton>
+        <YBButton
+          style={{ minWidth: '200px' }}
+          variant="primary"
+          onClick={onConfigureDrButtonClick}
+          data-testid={`EnableDrPrompt-ConfigureDrButton`}
+        >
+          {t('actionButton')}
+        </YBButton>
+      </RbacValidator>
       <Typography variant="body2">
         <Trans
           i18nKey={`${TRANSLATION_KEY_PREFIX}.learnMore`}
