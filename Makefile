@@ -61,7 +61,8 @@ DATA = orafce--4.7.sql\
 		orafce--4.3--4.4.sql\
 		orafce--4.4--4.5.sql\
 		orafce--4.5--4.6.sql\
-		orafce--4.6--4.7.sql
+		orafce--4.6--4.7.sql\
+		orafce--4.7--4.8.sql
 
 
 DOCS = README.asciidoc COPYRIGHT.orafce INSTALL.orafce
