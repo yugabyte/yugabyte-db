@@ -93,7 +93,7 @@ For more information on configuring group claims and app roles, refer to [Config
 To enable OIDC authentication with AAD, you need to do the following:
 
 - Create an app registration in AAD - The AAD IdP configuration includes application registration (registering YugabyteDB Anywhere in the AAD tenant) and configuring AAD to send (redirect) tokens with the required claims to YugabyteDB Anywhere.
-- Configure OIDC in Yugabyte Anywhere - The OIDC configuration uses the application you registered. You can also configure YBA to display the user's JSON Web Token (JWT) on the login screen.
+- Configure OIDC in YugabyteDB Anywhere - The OIDC configuration uses the application you registered. You can also configure YBA to display the user's JSON Web Token (JWT) on the login screen.
 - Configure the universe to use OIDC - You enable OIDC for universes by setting authentication rules for database access using flags. The database is implicitly configured and picks up the authentication rules you set. The database uses well-known PostgreSQL constructs to translate these authentication rules into database roles for access. Mapping AAD attributes, such as group memberships, roles, and email addresses to database roles, is accomplished using the PostgreSQL `yb_hba.conf` and `yb_ident.conf` files.
 
 ### Register an application in Azure
@@ -118,7 +118,7 @@ To register an application, do the following:
 
 1. Select **Client secrets** and click **New client secret**.
 
-1. Enter a description and set the expiry for the secret, then click **Add**.
+1. Enter a description and set the expiry for the secret, and then click **Add**.
 
 1. Copy the secret value and keep it in a secure location.
 
@@ -140,7 +140,7 @@ To enable some features of the OIDC functionality in Yugabyte Anywhere, you need
 
 #### Enable OIDC authentication
 
-To configure YugabyteDB Anywhere for OIDC, you need to be signed on as a superuser. You need your Azure application client ID, client secret, and tenant ID.
+To configure YugabyteDB Anywhere for OIDC, you need to be signed in as a superuser. You need your Azure application client ID, client secret, and tenant ID.
 
 To enable OIDC authentication in YugabyteDB Anywhere, do the following:
 
@@ -158,7 +158,7 @@ To enable OIDC authentication in YugabyteDB Anywhere, do the following:
 
 1. Set the email attribute to a name for the property to be used in the mapping file, such as `preferred_username`.
 
-1. Select the **Display JWT token on login** option to allow users to access their JWT from the Yugabyte Anywhere sign in page. This allows a user to view and copy their JWT without signing in to YBA. (This option is only available if you enabled the yb.security.oidc_feature_enhancements configuration flag.)
+1. Select the **Display JWT token on login** option to allow users to access their JWT from the YugabyteDB Anywhere sign in page. This allows a user to view and copy their JWT without signing in to YBA. (This option is only available if you enabled the `yb.security.oidc_feature_enhancements` configuration flag.)
 
 1. Click **Save**.
 
