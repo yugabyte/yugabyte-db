@@ -138,7 +138,7 @@ message SysTablesEntryPB {
   // This prevents column ID reuse.
   optional int32 next_column_id = 8;
 
-  // Replication information for this tablet.
+  // Replication information for this table.
   optional ReplicationInfoPB replication_info = 5;
 
   // Debug state for the table.
@@ -338,6 +338,8 @@ message SysNamespaceEntryPB {
   optional TransactionMetadataPB transaction = 6;
 
   optional State state = 5 [ default = UNKNOWN ];
+
+  optional uint32 clone_request_seq_no = 7;
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a User Defined Type.

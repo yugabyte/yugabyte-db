@@ -263,6 +263,9 @@ void CatalogManagerBgTasks::Run() {
       catalog_manager_->tablet_split_manager()->MaybeDoSplitting(
           tables, tablet_info_map, l.epoch());
 
+      WARN_NOT_OK(catalog_manager_->clone_state_manager()->Run(),
+          "Failed to run CloneStateManager: ");
+
       if (!to_delete.empty() || catalog_manager_->AreTablesDeleting()) {
         catalog_manager_->CleanUpDeletedTables(l.epoch());
       }

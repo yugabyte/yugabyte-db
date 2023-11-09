@@ -36,6 +36,16 @@ class CloneStateManager {
 
   Status Run();
 
+  Status IsCloneDone(
+      const IsCloneDoneRequestPB* req,
+      IsCloneDoneResponsePB* resp);
+
+  Status CloneFromSnapshotSchedule(
+      const CloneFromSnapshotScheduleRequestPB* req,
+      CloneFromSnapshotScheduleResponsePB* resp,
+      rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+
   Result<CloneStateInfoPtr> CreateCloneState(
       uint32_t seq_no,
       const NamespaceId& source_namespace_id,
@@ -56,8 +66,25 @@ class CloneStateManager {
 
     // Catalog manager.
     const std::function<Result<TabletInfoPtr>(const TabletId&)> GetTabletInfo;
+
+    const std::function<Result<NamespaceInfoPtr>(const NamespaceId&)> FindNamespaceById;
+
     const std::function<Status(const TabletInfoPtr&, LeaderEpoch, tablet::CloneTabletRequestPB)>
         ScheduleCloneTabletCall;
+
+    const std::function<Status(
+        const CreateSnapshotRequestPB* req, CreateSnapshotResponsePB* resp,
+        CoarseTimePoint deadline, const LeaderEpoch& epoch)> DoCreateSnapshot;
+
+    const std::function<Result<SnapshotInfoPB>(
+      const SnapshotScheduleId& snapshot_schedule_id, HybridTime export_time,
+      CoarseTimePoint deadline)> GenerateSnapshotInfoFromSchedule;
+
+    const std::function<Status(
+      const SnapshotInfoPB& snapshot_pb, const LeaderEpoch& epoch,
+      const std::optional<std::string>& clone_target_namespace_name, NamespaceMap* namespace_map,
+      UDTypeMap* type_map, ExternalTableSnapshotDataMap* tables_data,
+      CoarseTimePoint deadline)> DoImportSnapshotMeta;
 
     // Sys catalog.
     const std::function<Status(const CloneStateInfoPtr&)> Upsert;
@@ -67,6 +94,13 @@ class CloneStateManager {
   };
 
   explicit CloneStateManager(ExternalFunctions external_functions);
+
+  Result<std::pair<NamespaceId, uint32_t>> CloneFromSnapshotSchedule(
+    const SnapshotScheduleId& snapshot_schedule_id,
+    const HybridTime& read_time,
+    const std::string& target_namespace_name,
+    CoarseTimePoint deadline,
+    const LeaderEpoch& epoch);
 
   Status LoadCloneState(const std::string& id, const SysCloneStatePB& metadata);
 
