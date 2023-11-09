@@ -5069,18 +5069,28 @@
     }, {
       "hide" : false,
       "legendFormat" : "IntentsDB",
-      "expr" : "avg(sum by (saved_name, namespace_name, table_id, table_name)(avg_over_time({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"mem_tracker_server_PerTablet_IntentsDB_MemTable\"}[300s]))) by (saved_name)",
+      "expr" : "avg(sum by (saved_name, namespace_name, table_id, table_name)(avg_over_time({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"mem_tracker_server_Tablets_overhead_PerTablet_IntentsDB_MemTable\"}[300s]))) by (saved_name)",
       "refId" : "B"
     }, {
       "hide" : false,
-      "legendFormat" : "RegularDB",
-      "expr" : "avg(sum by (saved_name, namespace_name, table_id, table_name)(avg_over_time({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"mem_tracker_server_PerTablet_RegularDB_MemTable\"}[300s]))) by (saved_name)",
+      "legendFormat" : "IntentsDB",
+      "expr" : "avg(sum by (saved_name, namespace_name, table_id, table_name)(avg_over_time({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"mem_tracker_server_PerTablet_IntentsDB_MemTable\"}[300s]))) by (saved_name)",
       "refId" : "C"
     }, {
       "hide" : false,
       "legendFormat" : "RegularDB",
-      "expr" : "avg(sum by (saved_name, namespace_name, table_id, table_name)(avg_over_time({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"mem_tracker_RegularDB_MemTable\"}[300s]))) by (saved_name)",
+      "expr" : "avg(sum by (saved_name, namespace_name, table_id, table_name)(avg_over_time({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"mem_tracker_server_Tablets_overhead_PerTablet_RegularDB_MemTable\"}[300s]))) by (saved_name)",
       "refId" : "D"
+    }, {
+      "hide" : false,
+      "legendFormat" : "RegularDB",
+      "expr" : "avg(sum by (saved_name, namespace_name, table_id, table_name)(avg_over_time({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"mem_tracker_server_PerTablet_RegularDB_MemTable\"}[300s]))) by (saved_name)",
+      "refId" : "E"
+    }, {
+      "hide" : false,
+      "legendFormat" : "RegularDB",
+      "expr" : "avg(sum by (saved_name, namespace_name, table_id, table_name)(avg_over_time({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"mem_tracker_RegularDB_MemTable\"}[300s]))) by (saved_name)",
+      "refId" : "F"
     } ],
     "gridPos" : {
       "w" : 12,
@@ -8997,18 +9007,28 @@
     }, {
       "hide" : false,
       "legendFormat" : "IntentsDB",
-      "expr" : "avg(sum by (exported_instance, saved_name)(avg_over_time({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"mem_tracker_server_PerTablet_IntentsDB_MemTable\"}[300s]))) by (saved_name)",
+      "expr" : "avg(sum by (exported_instance, saved_name)(avg_over_time({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"mem_tracker_server_Tablets_overhead_PerTablet_IntentsDB_MemTable\"}[300s]))) by (saved_name)",
       "refId" : "B"
     }, {
       "hide" : false,
-      "legendFormat" : "RegularDB",
-      "expr" : "avg(sum by (exported_instance, saved_name)(avg_over_time({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"mem_tracker_server_PerTablet_RegularDB_MemTable\"}[300s]))) by (saved_name)",
+      "legendFormat" : "IntentsDB",
+      "expr" : "avg(sum by (exported_instance, saved_name)(avg_over_time({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"mem_tracker_server_PerTablet_IntentsDB_MemTable\"}[300s]))) by (saved_name)",
       "refId" : "C"
     }, {
       "hide" : false,
       "legendFormat" : "RegularDB",
-      "expr" : "avg(sum by (exported_instance, saved_name)(avg_over_time({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"mem_tracker_RegularDB_MemTable\"}[300s]))) by (saved_name)",
+      "expr" : "avg(sum by (exported_instance, saved_name)(avg_over_time({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"mem_tracker_server_Tablets_overhead_PerTablet_RegularDB_MemTable\"}[300s]))) by (saved_name)",
       "refId" : "D"
+    }, {
+      "hide" : false,
+      "legendFormat" : "RegularDB",
+      "expr" : "avg(sum by (exported_instance, saved_name)(avg_over_time({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"mem_tracker_server_PerTablet_RegularDB_MemTable\"}[300s]))) by (saved_name)",
+      "refId" : "E"
+    }, {
+      "hide" : false,
+      "legendFormat" : "RegularDB",
+      "expr" : "avg(sum by (exported_instance, saved_name)(avg_over_time({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"mem_tracker_RegularDB_MemTable\"}[300s]))) by (saved_name)",
+      "refId" : "F"
     } ],
     "gridPos" : {
       "w" : 12,
