@@ -15,7 +15,6 @@ test: yb_pg_create_type
 
 # Dependency for yb_pg_create_function_2
 test: yb_pg_create_table
-test: yb_pg_create_index
 
 test: yb_pg_create_function_2
 
@@ -23,6 +22,9 @@ test: yb_pg_create_function_2
 test: yb_pg_copy
 
 test: yb_pg_create_operator
+
+# Dependency for yb_pg_select_distinct
+test: yb_pg_create_index
 
 test: yb_pg_errors
 test: yb_pg_select
