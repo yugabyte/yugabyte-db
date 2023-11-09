@@ -50,6 +50,7 @@ class EncryptionManager;
 class CatalogManager;
 class CatalogManagerIf;
 class CatalogManagerBgTasks;
+class CloneStateManager;
 class CDCConsumerSplitDriverIf;
 class XClusterRpcTasks;
 class CDCSplitDriverIf;
@@ -68,6 +69,7 @@ class MasterDdlProxy;
 class MasterEncryptionProxy;
 class MasterHeartbeatProxy;
 class MasterReplicationProxy;
+class MasterSnapshotCoordinator;
 class MasterTestProxy;
 class NamespaceInfo;
 class PermissionsManager;
@@ -101,6 +103,9 @@ struct TabletReplicaDriveInfo;
 
 class AsyncTabletSnapshotOp;
 using AsyncTabletSnapshotOpPtr = std::shared_ptr<AsyncTabletSnapshotOp>;
+
+class CloneStateInfo;
+using CloneStateInfoPtr = scoped_refptr<CloneStateInfo>;
 
 class TableInfo;
 using TableInfoPtr = scoped_refptr<TableInfo>;
