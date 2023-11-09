@@ -71,8 +71,8 @@ The following are key metrics for evaluating database IOPS. All metrics are coun
 
 | Metric (Counter \| microseconds) | Description |
 | :--- | :--- |
-| `handler_latency_yb_tserver_TabletServerService_Read` | Time to perform WRITE operations at a tablet level.
-| `handler_latency_yb_tserver_TabletServerService_Write` | Time to perform READ operations at a tablet level.
+| `handler_latency_yb_tserver_TabletServerService_Read` | Time to perform READ operations at a tablet level.
+| `handler_latency_yb_tserver_TabletServerService_Write` | Time to perform WRITE operations at a tablet level.
 
 <!-- | Metrics | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |
