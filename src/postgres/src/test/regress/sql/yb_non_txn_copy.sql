@@ -27,7 +27,7 @@ CREATE TABLE onek (
 -- Test non-txn COPY on regular table.
 --
 \set filename :abs_srcdir '/data/onek.data'
-COPY onek FROM :'filename'
+COPY onek FROM :'filename';
 
 -- Verify data is there.
 SELECT COUNT(*) FROM onek;
@@ -40,7 +40,7 @@ TRUNCATE onek;
 --
 CREATE INDEX ON onek(unique1);
 \set filename :abs_srcdir '/data/onek.data'
-COPY onek FROM :'filename'
+COPY onek FROM :'filename';
 
 -- Verify data is there.
 SELECT COUNT(*) FROM onek;
@@ -70,7 +70,7 @@ CREATE TABLE onek_hash0 PARTITION OF onek_hash FOR VALUES WITH (modulus 2, remai
 CREATE TABLE onek_hash1 PARTITION OF onek_hash FOR VALUES WITH (modulus 2, remainder 1);
 
 \set filename :abs_srcdir '/data/onek.data'
-COPY onek_hash FROM :'filename'
+COPY onek_hash FROM :'filename';
 
 SELECT COUNT(*) FROM onek_hash;
 
@@ -97,7 +97,7 @@ CREATE TABLE onek_range0 PARTITION OF onek_range FOR VALUES FROM (0) TO (500);
 CREATE TABLE onek_range1 PARTITION OF onek_range FOR VALUES FROM (500) TO (1000);
 
 \set filename :abs_srcdir '/data/onek.data'
-COPY onek_range FROM :'filename'
+COPY onek_range FROM :'filename';
 
 SELECT COUNT(*) FROM onek_range;
 
@@ -124,6 +124,6 @@ CREATE TABLE onek_list0 PARTITION OF onek_list FOR VALUES IN (0);
 CREATE TABLE onek_list1 PARTITION OF onek_list FOR VALUES IN (1);
 
 \set filename :abs_srcdir '/data/onek.data'
-COPY onek_list FROM :'filename'
+COPY onek_list FROM :'filename';
 
 SELECT COUNT(*) FROM onek_list;

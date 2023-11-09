@@ -857,7 +857,7 @@ CopyFrom(CopyFromState cstate)
 		 * meets criteria for multi insert (e.g. no triggers), and the relation
 		 * does not have secondary indices.
 		 */
-		if (YBIsNonTxnCopyEnabled() && insertMethod != CIM_SINGLE &&
+		if (YBIsNonTxnCopyEnabled() && insertMethod == CIM_MULTI &&
 			!YBCRelInfoHasSecondaryIndices(resultRelInfo))
 			useNonTxnInsert = true;
 		insertMethod = CIM_YB;
