@@ -276,7 +276,7 @@ TEST_F(PgOpBufferingTest, FKCheckWithNonTxnWrites) {
       "INSERT INTO ref_t SELECT s, 1 FROM generate_series(1, $0) AS s", kInsertRowCount - 1));
 
   const auto table_row_count = ASSERT_RESULT(
-      conn.FetchValue<int64_t>("SELECT COUNT(*) FROM ref_t"));
+      conn.FetchRow<int64_t>("SELECT COUNT(*) FROM ref_t"));
   ASSERT_EQ(kInsertRowCount, table_row_count);
 }
 

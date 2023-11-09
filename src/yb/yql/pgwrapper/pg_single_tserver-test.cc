@@ -112,7 +112,7 @@ class PgSingleTServerTest : public PgMiniTestBase {
       auto metric_start = read_histogram->TotalSum();
       auto start = MonoTime::Now();
       if (aggregate) {
-        fetched_rows = ASSERT_RESULT(conn.FetchValue<PGUint64>(select_cmd));
+        fetched_rows = ASSERT_RESULT(conn.FetchRow<PGUint64>(select_cmd));
       } else {
         auto res = ASSERT_RESULT(conn.Fetch(select_cmd));
         fetched_rows = PQntuples(res.get());
@@ -367,7 +367,7 @@ TEST_F(PgSingleTServerTest, BigValue) {
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO t VALUES ($0, '$1')", kKey, kValue));
 
   auto start = MonoTime::Now();
-  auto result = ASSERT_RESULT(conn.FetchValue<std::string>(
+  auto result = ASSERT_RESULT(conn.FetchRow<std::string>(
       Format("SELECT md5(b) FROM t WHERE a = $0", kKey)));
   auto finish = MonoTime::Now();
   LOG(INFO) << "Passed: " << finish - start << ", result: " << result;
@@ -525,7 +525,7 @@ TEST_F(PgSingleTServerTest, YB_DISABLE_TEST(PerfScanG7RangePK100Columns)) {
 
   FlushAndCompactTablets();
 
-  const auto rows_inserted = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT COUNT(*) FROM t"));
+  const auto rows_inserted = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM t"));
   LOG(INFO) << "Rows inserted: " << rows_inserted;
   ASSERT_EQ(rows_inserted, kNumRows);
 
@@ -561,7 +561,7 @@ TEST_F_EX(PgSingleTServerTest, ColocatedJoinPerformance,
       "INSERT INTO t1 SELECT s, s FROM generate_series(1, $0) AS s", kNumRows));
 
   auto start = MonoTime::Now();
-  auto res = ASSERT_RESULT(conn.FetchValue<int32_t>(
+  auto res = ASSERT_RESULT(conn.FetchRow<int32_t>(
       "SELECT v1 + v2 FROM t1 INNER JOIN t2 ON (t1.k = t2.k) WHERE v2 < 2 OR v1 < 2"));
   auto finish = MonoTime::Now();
   ASSERT_EQ(res, 2);
@@ -622,7 +622,7 @@ class PgBackwardIndexScanTest : public PgSingleTServerTest {
     }
 
     auto count = ASSERT_RESULT(
-        conn.FetchValue<PGUint64>("SELECT COUNT(*) FROM events_backwardscan"));
+        conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM events_backwardscan"));
     LOG(INFO) << "Total rows inserted: " << count;
 
     auto select_result = ASSERT_RESULT(conn.Fetch(
@@ -700,7 +700,7 @@ class PgRocksDbIteratorLoggingTest : public PgSingleTServerTest {
       if (!is_warmup) {
         SetAtomicFlag(true, &FLAGS_rocksdb_use_logging_iterator);
       }
-      auto actual_num_rows = ASSERT_RESULT(conn.FetchValue<PGUint64>(count_stmt_str));
+      auto actual_num_rows = ASSERT_RESULT(conn.FetchRow<PGUint64>(count_stmt_str));
       const int expected_num_rows = config.last_row_to_scan - config.first_row_to_scan + 1;
       ASSERT_EQ(expected_num_rows, actual_num_rows);
     }

@@ -447,7 +447,7 @@ TEST_F(PgWrapperSingleNodeLongTxnTest, RestartMidApply) {
   ASSERT_OK(pg_ts->Restart(/* start_cql_proxy= */ false));
 
   auto conn = ASSERT_RESULT(ConnectToDB(kDbName));
-  auto count = ASSERT_RESULT(conn.FetchValue<PGUint64>("SELECT COUNT(*) FROM mytbl"));
+  auto count = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM mytbl"));
   ASSERT_EQ(kNumRows, count);
 }
 

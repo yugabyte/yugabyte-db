@@ -333,7 +333,7 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     // Weak read + weak write on (1) has no conflicts.
     ASSERT_OK(extra_conn.Execute("COMMIT"));
     auto res = ASSERT_RESULT(
-        conn.template FetchValue<PGUint64>("SELECT COUNT(*) FROM pktable WHERE v = 20"));
+        conn.template FetchRow<PGUint64>("SELECT COUNT(*) FROM pktable WHERE v = 20"));
     ASSERT_EQ(res, 1);
   }
 
@@ -457,7 +457,7 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
 
     ASSERT_OK(conn.Execute("COMMIT"));
 
-    auto res = ASSERT_RESULT(conn.template FetchValue<PGUint64>("SELECT COUNT(*) FROM t"));
+    auto res = ASSERT_RESULT(conn.template FetchRow<PGUint64>("SELECT COUNT(*) FROM t"));
     ASSERT_EQ(res, 1);
   }
 
@@ -575,7 +575,7 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     ASSERT_OK(extra_conn.Execute("COMMIT"));
 
     ASSERT_OK(conn.Execute("COMMIT;"));
-    const auto count = ASSERT_RESULT(conn.template FetchValue<PGUint64>("SELECT COUNT(*) FROM t"));
+    const auto count = ASSERT_RESULT(conn.template FetchRow<PGUint64>("SELECT COUNT(*) FROM t"));
     ASSERT_EQ(4, count);
   }
 
@@ -637,7 +637,7 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
       ASSERT_NOK(low_pri_txn_commit_status);
     }
     const auto count = ASSERT_RESULT(
-      extra_conn.template FetchValue<PGUint64>("SELECT COUNT(*) FROM t WHERE v = 10"));
+      extra_conn.template FetchRow<PGUint64>("SELECT COUNT(*) FROM t WHERE v = 10"));
     ASSERT_EQ(low_pri_txn_succeed ? 2 : 1, count);
   }
 };
@@ -665,7 +665,7 @@ class PgMiniTestTxnHelperSerializable
 
     ASSERT_OK(conn.Execute("COMMIT"));
 
-    auto res = ASSERT_RESULT(conn.FetchValue<PGUint64>("SELECT COUNT(*) FROM t WHERE v1 = 20"));
+    auto res = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM t WHERE v1 = 20"));
     ASSERT_EQ(res, 1);
 
     ASSERT_OK(StartTxn(&conn));
@@ -677,7 +677,7 @@ class PgMiniTestTxnHelperSerializable
 
     ASSERT_OK(conn.Execute("COMMIT"));
 
-    res = ASSERT_RESULT(conn.FetchValue<PGUint64>("SELECT COUNT(*) FROM t WHERE v2 = 6"));
+    res = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM t WHERE v2 = 6"));
     ASSERT_EQ(res, 1);
   }
 };
@@ -705,7 +705,7 @@ class PgRowLockTxnHelperSnapshotTest
 
     ASSERT_OK(conn.Execute("COMMIT"));
 
-    const auto res = ASSERT_RESULT(conn.FetchValue<PGUint64>(
+    const auto res = ASSERT_RESULT(conn.FetchRow<PGUint64>(
         "SELECT COUNT(*) FROM t WHERE v = 20"));
     ASSERT_EQ(res, 1);
   }

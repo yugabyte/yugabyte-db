@@ -109,7 +109,7 @@ TEST_F(PgIndexTest, SplitOption) {
   {
     auto query = Format("SELECT count(*) FROM $0 where v @@ 'bc'", kTableName);
     ASSERT_TRUE(ASSERT_RESULT(conn_->HasIndexScan(query)));
-    auto value = ASSERT_RESULT(conn_->FetchValue<PGUint64>(query));
+    auto value = ASSERT_RESULT(conn_->FetchRow<PGUint64>(query));
     ASSERT_EQ(value, 1);
   }
   {

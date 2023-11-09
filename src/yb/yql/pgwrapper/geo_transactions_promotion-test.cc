@@ -210,10 +210,10 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
     if (success) {
       // Ensure data written is still fine.
       for (size_t i = 1; i <= tables_per_region_; ++i) {
-        ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchValue<int32_t>(strings::Substitute(
+        ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
             "SELECT value FROM $0$1_$2", kTablePrefix, kLocalRegion, i))));
       }
-      ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchValue<int32_t>(strings::Substitute(
+      ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
           "SELECT value FROM $0$1_1", kTablePrefix, kOtherRegion))));
     }
 
@@ -236,10 +236,10 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
 
     if (transaction_type == TestTransactionType::kCommit && success) {
       for (size_t i = 1; i <= tables_per_region_; ++i) {
-        ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchValue<int32_t>(strings::Substitute(
+        ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
             "SELECT value FROM $0$1_$2", kTablePrefix, kLocalRegion, i))));
       }
-      ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchValue<int32_t>(strings::Substitute(
+      ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
           "SELECT value FROM $0$1_1", kTablePrefix, kOtherRegion))));
     } else {
       for (size_t i = 1; i <= tables_per_region_; ++i) {
@@ -974,7 +974,7 @@ TEST_F(GeoPartitionedReadCommiittedTest,
   ASSERT_OK(conn.CommitTransaction());
 
   thread_holder.WaitAndStop(60s * kTimeMultiplier);
-  auto res = ASSERT_RESULT(conn.FetchValue<int32_t>(Format(
+  auto res = ASSERT_RESULT(conn.FetchRow<int32_t>(Format(
       "SELECT people FROM $0 WHERE country='C0' AND state='$1'", table_name, kLocalState)));
   ASSERT_EQ(res, num_sessions + 1);
 }

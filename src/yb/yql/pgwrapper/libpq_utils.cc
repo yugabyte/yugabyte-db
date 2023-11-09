@@ -673,7 +673,7 @@ Status SetMaxBatchSize(PGConn* conn, size_t max_batch_size) {
 
 PGConnPerf::PGConnPerf(yb::pgwrapper::PGConn* conn)
     : process_("perf",
-               PerfArguments(CHECK_RESULT(conn->FetchValue<PGUint32>("SELECT pg_backend_pid()")))) {
+               PerfArguments(CHECK_RESULT(conn->FetchRow<PGUint32>("SELECT pg_backend_pid()")))) {
 
   CHECK_OK(process_.Start());
 }

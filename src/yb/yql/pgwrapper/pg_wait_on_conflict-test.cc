@@ -703,11 +703,11 @@ class ConcurrentBlockedWaitersTest {
     auto conn = VERIFY_RESULT(GetDbConn());
     for (int i = 0; i < num_waiters; ++i) {
       auto k = num_waiters + i;
-      auto v = VERIFY_RESULT(conn.FetchValue<int32_t>(Format("SELECT v FROM foo WHERE k=$0", k)));
+      auto v = VERIFY_RESULT(conn.FetchRow<int32_t>(Format("SELECT v FROM foo WHERE k=$0", k)));
       EXPECT_EQ(v, k);
     }
     for (int i = -1; i > num_waiters; --i) {
-      auto v = VERIFY_RESULT(conn.FetchValue<int32_t>(Format("SELECT v FROM foo WHERE k=$0", i)));
+      auto v = VERIFY_RESULT(conn.FetchRow<int32_t>(Format("SELECT v FROM foo WHERE k=$0", i)));
       EXPECT_EQ(v, i);
     }
     return Status::OK();
@@ -846,7 +846,7 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TablegroupUpdateAndSelectForSha
   std::thread th([&] {
     auto conn2 = ASSERT_RESULT(Connect());
     ASSERT_OK(conn2.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
-    auto value = conn2.FetchValue<int32_t>("select v from t1 where k=1 for share");
+    auto value = conn2.FetchRow<int32_t>("select v from t1 where k=1 for share");
     // Should detect the conflict and raise serializable error.
     ASSERT_NOK(value);
     ASSERT_TRUE(value.status().message().Contains("All transparent retries exhausted"));
@@ -868,14 +868,14 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TablegroupSelectForShareAndUpda
 
   // txn1: lock the row in share mode
   ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
-  auto value = ASSERT_RESULT(conn.FetchValue<int32_t>("select v from t1 where k=1 for share"));
+  auto value = ASSERT_RESULT(conn.FetchRow<int32_t>("select v from t1 where k=1 for share"));
   ASSERT_EQ(value, 11);
 
   // txn2: do an UPDATE on the same row, should wait for txn1 to commit
   std::thread th([&] {
     auto conn2 = ASSERT_RESULT(Connect());
     ASSERT_OK(conn2.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
-    auto value = ASSERT_RESULT(conn2.FetchValue<int32_t>(
+    auto value = ASSERT_RESULT(conn2.FetchRow<int32_t>(
         "update t1 set v=111 where k=1 returning v"));
     ASSERT_OK(conn2.Execute("COMMIT"));
     ASSERT_EQ(value, 111);
@@ -1220,7 +1220,7 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(MultiTabletFairness)) {
   // Confirm that all rows have been updated to the value set by the first update txn.
   for (int i = 0; i < kNumKeys; ++i) {
     ASSERT_EQ(
-        ASSERT_RESULT(setup_conn.FetchValue<int>(Format("SELECT v FROM foo WHERE k=$0", i))), 0);
+        ASSERT_RESULT(setup_conn.FetchRow<int>(Format("SELECT v FROM foo WHERE k=$0", i))), 0);
   }
 }
 
@@ -1261,7 +1261,7 @@ TEST_F(PgWaitQueuePackedRowTest, YB_DISABLE_TEST_IN_TSAN(TestKeyShareAndUpdate))
   // txn2: do select-for-keyshare on the same row, should be able to lock and get the value.
   std::thread th([&] {
     auto conn2 = ASSERT_RESULT(Connect());
-    auto value = conn2.FetchValue<int32_t>(
+    auto value = conn2.FetchRow<int32_t>(
         "select value from foo where key = 1 for key share");
     ASSERT_OK(value);
     ASSERT_EQ(value.get(), 1);

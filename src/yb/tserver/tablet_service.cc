@@ -1905,7 +1905,7 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
   s = Wait(
       [&]() -> Result<bool> {
         num_lagging_backends = narrow_cast<int>(VERIFY_RESULT(
-            conn.FetchValue<pgwrapper::PGUint64>(num_lagging_backends_query)));
+            conn.FetchRow<pgwrapper::PGUint64>(num_lagging_backends_query)));
         if (num_lagging_backends != prev_num_lagging_backends) {
           SCHECK((prev_num_lagging_backends == -1 ||
                   prev_num_lagging_backends > num_lagging_backends),

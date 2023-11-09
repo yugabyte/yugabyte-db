@@ -36,9 +36,9 @@ class PgTxnTest : public PgMiniTestBase {
  protected:
   void AssertEffectiveIsolationLevel(PGConn* conn, const string& expected) {
     auto value_from_deprecated_guc = ASSERT_RESULT(
-        conn->FetchValue<std::string>("SHOW yb_effective_transaction_isolation_level"));
+        conn->FetchRow<std::string>("SHOW yb_effective_transaction_isolation_level"));
     auto value_from_proc = ASSERT_RESULT(
-        conn->FetchValue<std::string>("SELECT yb_get_effective_transaction_isolation_level()"));
+        conn->FetchRow<std::string>("SELECT yb_get_effective_transaction_isolation_level()"));
     ASSERT_EQ(value_from_deprecated_guc, value_from_proc);
     ASSERT_EQ(value_from_deprecated_guc, expected);
   }
@@ -136,7 +136,7 @@ TEST_F_EX(PgTxnTest, SelectRF1ReadOnlyDeferred, PgTxnRF1Test) {
   ASSERT_OK(conn.Execute("CREATE TABLE test (key INT)"));
   ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1)"));
   ASSERT_OK(conn.Execute("BEGIN ISOLATION LEVEL SERIALIZABLE, READ ONLY, DEFERRABLE"));
-  auto res = ASSERT_RESULT(conn.FetchValue<int32_t>("SELECT * FROM test"));
+  auto res = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT * FROM test"));
   ASSERT_EQ(res, 1);
   ASSERT_OK(conn.Execute("COMMIT"));
 }
@@ -358,7 +358,7 @@ TEST_F_EX( PgTxnTest, SelectForUpdateExclusiveRead, PgTxnTestFailOnConflict) {
       // then we should expect one RPC thread to hold the lock for 10s while the others wait for
       // the sync point in this test to be hit. Then, each RPC thread should proceed in serial after
       // that, acquiring the lock and resolving conflicts.
-      auto res = conn.FetchValue<int32_t>("SELECT value FROM test WHERE key=1 FOR UPDATE");
+      auto res = conn.FetchRow<int32_t>("SELECT value FROM test WHERE key=1 FOR UPDATE");
 
       read_succeeded[thread_idx] = res.ok();
       LOG(INFO) << "Thread read " << thread_idx << (res.ok() ? " succeeded" : " failed");

@@ -331,7 +331,7 @@ void PgIndexBackfillTest::TestLargeBackfill(const int num_rows) {
       "SELECT COUNT(*) FROM $0 WHERE i > 0",
       kTableName);
   ASSERT_TRUE(ASSERT_RESULT(conn_->HasIndexScan(query)));
-  auto actual_num_rows = ASSERT_RESULT(conn_->FetchValue<PGUint64>(query));
+  auto actual_num_rows = ASSERT_RESULT(conn_->FetchRow<PGUint64>(query));
   ASSERT_EQ(actual_num_rows, num_rows);
 }
 
@@ -589,9 +589,9 @@ Status PgIndexBackfillTest::TestInsertsWhileCreatingIndex(bool expect_missing_ro
   thread_holder.Stop();
 
   LOG(INFO) << "Check counts";
-  const auto table_count = VERIFY_RESULT(conn_->FetchValue<PGUint64>(
+  const auto table_count = VERIFY_RESULT(conn_->FetchRow<PGUint64>(
       Format("SELECT count(*) FROM $0", kTableName)));
-  const auto index_count = VERIFY_RESULT(conn_->FetchValue<PGUint64>(
+  const auto index_count = VERIFY_RESULT(conn_->FetchRow<PGUint64>(
       Format("WITH w AS (SELECT * FROM $0 ORDER BY i) SELECT count(*) FROM w", kTableName)));
 
   LOG(INFO) << "Table has " << table_count << " rows";
@@ -936,7 +936,7 @@ TEST_F_EX(PgIndexBackfillTest,
   LOG(INFO) << "Checking postgres schema";
   {
     // Check number of indexes.
-    ASSERT_EQ(ASSERT_RESULT(conn_->FetchValue<std::string>(
+    ASSERT_EQ(ASSERT_RESULT(conn_->FetchRow<std::string>(
                 Format("SELECT indexname FROM pg_indexes WHERE tablename = '$0'", kTableName))),
               kIndexName);
 
@@ -993,7 +993,7 @@ TEST_F_EX(PgIndexBackfillTest,
   LOG(INFO) << "Checking if index still works";
   {
     ASSERT_TRUE(ASSERT_RESULT(conn_->HasIndexScan(query)));
-    ASSERT_EQ(ASSERT_RESULT(conn_->FetchValue<int32_t>(query)), 7);
+    ASSERT_EQ(ASSERT_RESULT(conn_->FetchRow<int32_t>(query)), 7);
   }
 }
 
@@ -1384,7 +1384,7 @@ TEST_F_EX(PgIndexBackfillTest,
         key);
     ASSERT_OK(WaitForIndexScan(query));
     // Make sure that the update is visible.
-    ASSERT_EQ(ASSERT_RESULT(conn_->FetchValue<int32_t>(query)), key + 110);
+    ASSERT_EQ(ASSERT_RESULT(conn_->FetchRow<int32_t>(query)), key + 110);
   }
 }
 
@@ -1727,7 +1727,7 @@ TEST_F_EX(PgIndexBackfillTest,
 
   // Make sure that the index is gone.
   // Check postgres metadata.
-  auto value = ASSERT_RESULT(conn_->FetchValue<PGUint64>(
+  auto value = ASSERT_RESULT(conn_->FetchRow<PGUint64>(
       Format("SELECT COUNT(*) FROM pg_class WHERE relname = '$0'", kIndexName)));
   ASSERT_EQ(value, 0);
   // Check DocDB metadata.
@@ -1902,7 +1902,7 @@ TEST_F_EX(PgIndexBackfillTest,
   // Index scan to verify contents of index table.
   const std::string query = Format("SELECT COUNT(*) FROM $0 WHERE i > 0", kTableName);
   ASSERT_TRUE(ASSERT_RESULT(conn_->HasIndexScan(query)));
-  auto count = ASSERT_RESULT(conn_->FetchValue<PGUint64>(query));
+  auto count = ASSERT_RESULT(conn_->FetchRow<PGUint64>(query));
   ASSERT_EQ(count, 2);
 }
 
@@ -2070,7 +2070,7 @@ TEST_F(PgIndexBackfillTest,
       kTableName, kNumRows));
   ASSERT_OK(conn_->ExecuteFormat("ANALYZE $0", kTableName));
   ASSERT_EQ(
-      ASSERT_RESULT(conn_->FetchValue<float>(
+      ASSERT_RESULT(conn_->FetchRow<float>(
         Format("SELECT reltuples FROM pg_class WHERE relname='$0'", kTableName))),
       kNumRows);
 
@@ -2161,7 +2161,7 @@ TEST_F_EX(PgIndexBackfillTest,
       "INSERT INTO $0 VALUES (generate_series(1, $1))", kTableName, kNumRows));
   ASSERT_OK(new_db_conn.ExecuteFormat("ANALYZE $0", kTableName));
   ASSERT_EQ(
-      ASSERT_RESULT(new_db_conn.FetchValue<float>(
+      ASSERT_RESULT(new_db_conn.FetchRow<float>(
         Format("SELECT reltuples FROM pg_class WHERE relname='$0'", kTableName))),
       kNumRows);
 

@@ -43,7 +43,7 @@ class PgTabletShutdownTest : public PgMiniTestBase {
 
       const auto start_time = CoarseMonoClock::now();
 
-      const auto rows_count_result = conn.FetchValue<PGUint64>("SELECT COUNT(*) FROM t");
+      const auto rows_count_result = conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM t");
 
       // Request should be aborted during tablet shutdown.
       ASSERT_FALSE(rows_count_result.ok());

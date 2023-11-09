@@ -406,7 +406,7 @@ TEST_F_EX(PggateTestSelect, GetTableKeyRanges, PggateTestSelectWithYsql) {
 
   LOG(INFO) << "Connected to YSQL";
 
-  const auto db_oid = ASSERT_RESULT(conn.FetchValue<int32_t>(
+  const auto db_oid = ASSERT_RESULT(conn.FetchRow<int32_t>(
       Format("SELECT oid FROM pg_database WHERE datname = '$0'", kDatabaseName)));
 
   ASSERT_OK(
@@ -414,7 +414,7 @@ TEST_F_EX(PggateTestSelect, GetTableKeyRanges, PggateTestSelectWithYsql) {
                    "(200), (300), (3000));"));
 
   const auto table_oid = ASSERT_RESULT(
-      conn.FetchValue<pgwrapper::PGOid>("SELECT oid from pg_class WHERE relname='t'"));
+      conn.FetchRow<pgwrapper::PGOid>("SELECT oid from pg_class WHERE relname='t'"));
 
   ASSERT_OK(conn.Execute(
       "INSERT INTO t SELECT i, 1 FROM (SELECT generate_series(1, 10000) i) tmp;"));
@@ -450,7 +450,7 @@ TEST_F_EX(PggateTestSelect, GetColocatedTableKeyRanges, PggateTestSelectWithYsql
       conn.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", kColocatedDatabaseName));
   conn = ASSERT_RESULT(PgConnect(kColocatedDatabaseName));
 
-  const auto db_oid = ASSERT_RESULT(conn.FetchValue<int32_t>(
+  const auto db_oid = ASSERT_RESULT(conn.FetchRow<int32_t>(
       Format("SELECT oid FROM pg_database WHERE datname = '$0'", kColocatedDatabaseName)));
 
   for (int i = 0; i < kNumTables; ++i) {
@@ -466,7 +466,7 @@ TEST_F_EX(PggateTestSelect, GetColocatedTableKeyRanges, PggateTestSelectWithYsql
   std::vector<std::pair<std::string, std::string>> min_max_keys;
 
   for (int i = 0; i < kNumTables; ++i) {
-    const auto table_oid = ASSERT_RESULT(conn.FetchValue<pgwrapper::PGOid>(
+    const auto table_oid = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
         Format("SELECT oid from pg_class WHERE relname='t$0'", i)));
 
     std::vector<std::string> end_keys;

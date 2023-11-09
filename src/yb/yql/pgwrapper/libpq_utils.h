@@ -265,10 +265,6 @@ class PGConn {
   // Fetches data matrix of specified size. I.e. exact number of rows and columns are expected.
   Result<PGResultPtr> FetchMatrix(const std::string& command, int rows, int columns);
 
-  // DEPRECATED: use FetchRow instead.
-  template <class T>
-  auto FetchValue(const std::string& query) { return FetchRow<T>(query); }
-
   template <class... Args>
   auto FetchRow(const std::string& query) {
     return libpq_utils::internal::FetchHelper<Args...>::FetchRow(Fetch(query));

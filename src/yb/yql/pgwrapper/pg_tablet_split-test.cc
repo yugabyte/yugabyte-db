@@ -98,14 +98,14 @@ using PgYbTableProperties = YbTablePropertiesData;
 GetValueResult<PGUint64> FetchTableRowsCount(
     PGConn* conn, const std::string& table_name,
     const std::string& where_clause = std::string()) {
-  return conn->FetchValue<PGUint64>(Format(
+  return conn->FetchRow<PGUint64>(Format(
       "SELECT COUNT(*) FROM $0$1",
       table_name, where_clause.empty() ? where_clause : Format(" WHERE $0", where_clause)));
 }
 
 // Fetches table rel oid.
 GetValueResult<PGOid> FetchTableRelOid(PGConn* conn, const std::string& table_name) {
-  return conn->FetchValue<PGOid>(Format(
+  return conn->FetchRow<PGOid>(Format(
       "SELECT oid from pg_class WHERE relname='$0'", table_name));
 }
 
@@ -132,7 +132,7 @@ Result<PgYbTableProperties> FetchYbTableProperties(PGConn* conn, const std::stri
 
 // Fetch range partitioning clause.
 GetValueResult<std::string> FetchRangeSplitClause(PGConn* conn, Oid table_oid) {
-  return conn->FetchValue<std::string>(Format(
+  return conn->FetchRow<std::string>(Format(
       "SELECT range_split_clause from yb_get_range_split_clause($0)", table_oid));
 }
 
@@ -1430,7 +1430,7 @@ TEST_F(PgLocksTabletSplitTest, TestPgLocks) {
   SleepFor(kMinTxnAgeSeconds * 1s * kTimeMultiplier);
   auto locks_conn = ASSERT_RESULT(Connect());
   ASSERT_OK(locks_conn.ExecuteFormat("SET yb_locks_min_txn_age='$0s'", kMinTxnAgeSeconds));
-  ASSERT_EQ(ASSERT_RESULT(locks_conn.FetchValue<int64>(
+  ASSERT_EQ(ASSERT_RESULT(locks_conn.FetchRow<int64>(
       "SELECT COUNT(DISTINCT(ybdetails->>'transactionid')) FROM pg_locks")), 1);
 
   auto table_id = ASSERT_RESULT(GetTableIDFromTableName(table));
@@ -1442,9 +1442,9 @@ TEST_F(PgLocksTabletSplitTest, TestPgLocks) {
     return ListTabletIdsForTable(cluster_.get(), table_id).size() == 2;
   }, 5s * kTimeMultiplier, "Wait for clean up of split parent tablet."));
 
-  ASSERT_EQ(ASSERT_RESULT(locks_conn.FetchValue<int64>(
+  ASSERT_EQ(ASSERT_RESULT(locks_conn.FetchRow<int64>(
       "SELECT COUNT(DISTINCT(ybdetails->>'transactionid')) FROM pg_locks")), 1);
-  ASSERT_EQ(ASSERT_RESULT(locks_conn.FetchValue<int64>(
+  ASSERT_EQ(ASSERT_RESULT(locks_conn.FetchRow<int64>(
       "SELECT COUNT(*) FROM pg_locks")), num_keys_to_lock * 2);
 }
 
@@ -1459,11 +1459,11 @@ TEST_F(PgLocksTabletSplitTest, TestPgLocksSplitAfterFetchingParentLocation) {
   auto status_future = std::async(std::launch::async, [&]() -> Status {
     auto locks_conn = VERIFY_RESULT(Connect());
     RETURN_NOT_OK(locks_conn.ExecuteFormat("SET yb_locks_min_txn_age='$0s'", kMinTxnAgeSeconds));
-    auto num_txns = VERIFY_RESULT(locks_conn.FetchValue<int64>(
+    auto num_txns = VERIFY_RESULT(locks_conn.FetchRow<int64>(
         "SELECT COUNT(DISTINCT(ybdetails->>'transactionid')) FROM pg_locks"));
     RSTATUS_DCHECK_EQ(num_txns, 1, IllegalState,
                       Format("Expected to see $0 (vs $1) transactions in pg_locks", 1, num_txns));
-    auto num_locks = VERIFY_RESULT(locks_conn.FetchValue<int64>(
+    auto num_locks = VERIFY_RESULT(locks_conn.FetchRow<int64>(
         "SELECT COUNT(*) FROM pg_locks"));
     RSTATUS_DCHECK_EQ(num_locks, 2, IllegalState,
                       Format("Expected to see $0 (vs $1) locks", 2 * num_keys_to_lock, num_locks));

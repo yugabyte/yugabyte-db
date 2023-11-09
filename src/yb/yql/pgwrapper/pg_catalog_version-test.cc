@@ -706,7 +706,7 @@ TEST_F(PgCatalogVersionTest, FixCatalogVersionTable) {
       VerifyCatalogVersionTableDbOids(&conn_template1, false /* single_row */)));
 
   const auto max_oid = ASSERT_RESULT(
-      conn_template1.FetchValue<PGOid>("SELECT max(oid) FROM pg_database"));
+      conn_template1.FetchRow<PGOid>("SELECT max(oid) FROM pg_database"));
   // Delete the row with max_oid from pg_catalog.pg_yb_catalog_version.
   ASSERT_OK(conn_template1.ExecuteFormat(
       "DELETE FROM pg_catalog.pg_yb_catalog_version WHERE db_oid = $0", max_oid));
@@ -751,7 +751,7 @@ TEST_F(PgCatalogVersionTest, FixCatalogVersionTable) {
   ASSERT_OK(conn_yugabyte.Execute("CREATE TABLE test_table(id int)"));
   ASSERT_OK(conn_yugabyte.Execute("INSERT INTO test_table VALUES(1), (2), (3)"));
   const auto max_id = ASSERT_RESULT(
-      conn_yugabyte.FetchValue<int32_t>("SELECT max(id) FROM test_table"));
+      conn_yugabyte.FetchRow<int32_t>("SELECT max(id) FROM test_table"));
   ASSERT_EQ(max_id, 3);
   constexpr CatalogVersion kCurrentCatalogVersion{1, 1};
   auto versions = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte));
@@ -800,7 +800,7 @@ TEST_F(PgCatalogVersionTest, FixCatalogVersionTable) {
 TEST_F(PgCatalogVersionTest, RecycleManyDatabases) {
   RestartClusterWithDBCatalogVersionMode();
   auto conn = ASSERT_RESULT(ConnectToDB("template1"));
-  const auto initial_count = ASSERT_RESULT(conn.FetchValue<PGUint64>(
+  const auto initial_count = ASSERT_RESULT(conn.FetchRow<PGUint64>(
       "SELECT COUNT(*) FROM pg_yb_catalog_version"));
   PgOid db_oid = kPgFirstNormalObjectId;
   // Pick a number so that we can trigger wrap around in about 10 passes.
@@ -821,7 +821,7 @@ TEST_F(PgCatalogVersionTest, RecycleManyDatabases) {
     ASSERT_OK(conn.Execute(ss.str()));
     ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=0"));
     WaitForCatalogVersionToPropagate();
-    auto count = ASSERT_RESULT(conn.FetchValue<PGUint64>(
+    auto count = ASSERT_RESULT(conn.FetchRow<PGUint64>(
         "SELECT COUNT(*) FROM pg_yb_catalog_version"));
     CHECK_EQ(count, kNumRows + initial_count);
     LOG(INFO) << "Deleting the newly inserted " << kNumRows << " rows";
@@ -830,7 +830,7 @@ TEST_F(PgCatalogVersionTest, RecycleManyDatabases) {
         "DELETE FROM pg_yb_catalog_version WHERE db_oid >= $0", kPgFirstNormalObjectId));
     ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=0"));
     WaitForCatalogVersionToPropagate();
-    count = ASSERT_RESULT(conn.FetchValue<PGUint64>(
+    count = ASSERT_RESULT(conn.FetchRow<PGUint64>(
         "SELECT COUNT(*) FROM pg_yb_catalog_version"));
     CHECK_EQ(count, initial_count);
   }
@@ -960,7 +960,7 @@ TEST_F_EX(PgCatalogVersionTest, SimulateDowngradeToGlobalMode,
   ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte, true /* per_database_mode */));
   RestartClusterWithDBCatalogVersionMode();
   conn_yugabyte = ASSERT_RESULT(Connect());
-  auto initial_count = ASSERT_RESULT(conn_yugabyte.FetchValue<PGUint64>(
+  auto initial_count = ASSERT_RESULT(conn_yugabyte.FetchRow<PGUint64>(
       "SELECT COUNT(*) FROM pg_yb_catalog_version"));
   ASSERT_GT(initial_count, 1);
 
@@ -969,7 +969,7 @@ TEST_F_EX(PgCatalogVersionTest, SimulateDowngradeToGlobalMode,
   // pg_yb_catalog_version still has one row per database.
   RestartClusterWithoutDBCatalogVersionMode();
   conn_yugabyte = ASSERT_RESULT(ConnectToDB("yugabyte"));
-  initial_count = ASSERT_RESULT(conn_yugabyte.FetchValue<PGUint64>(
+  initial_count = ASSERT_RESULT(conn_yugabyte.FetchRow<PGUint64>(
       "SELECT COUNT(*) FROM pg_yb_catalog_version"));
   ASSERT_GT(initial_count, 1);
 
@@ -1002,7 +1002,7 @@ SET LOCAL yb_non_ddl_txn_for_sys_tables_allowed TO false;
   // This can fail if downgrade takes longer than kMaxDowngradeSec but in practice
   // this won't happen.
   ASSERT_TRUE(downgraded);
-  const auto current_count = ASSERT_RESULT(conn_yugabyte.FetchValue<PGUint64>(
+  const auto current_count = ASSERT_RESULT(conn_yugabyte.FetchRow<PGUint64>(
       "SELECT COUNT(*) FROM pg_yb_catalog_version"));
   ASSERT_EQ(current_count, 1);
   thread_holder.Stop();
@@ -1022,7 +1022,7 @@ TEST_F_EX(PgCatalogVersionTest, SimulateUpgradeToPerdbMode,
   conn_yugabyte = ASSERT_RESULT(Connect());
   // After we upgrade the binaries, we should still only have one row
   // in pg_yb_catalog_version.
-  const auto initial_count = ASSERT_RESULT(conn_yugabyte.FetchValue<PGUint64>(
+  const auto initial_count = ASSERT_RESULT(conn_yugabyte.FetchRow<PGUint64>(
       "SELECT COUNT(*) FROM pg_yb_catalog_version"));
   ASSERT_EQ(initial_count, 1);
 
@@ -1061,7 +1061,7 @@ END $$;
   // This can fail if upgrade takes longer than kMaxUpgradeSec but in practice
   // this won't happen.
   ASSERT_TRUE(upgraded);
-  const auto current_count = ASSERT_RESULT(conn_yugabyte.FetchValue<PGUint64>(
+  const auto current_count = ASSERT_RESULT(conn_yugabyte.FetchRow<PGUint64>(
       "SELECT COUNT(*) FROM pg_yb_catalog_version"));
   ASSERT_GT(current_count, 1);
   thread_holder.Stop();
