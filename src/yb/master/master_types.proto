@@ -217,8 +217,3 @@ message TServerMetricsPB {
   optional bool disable_tablet_split_if_default_ttl = 9;
 }
 
-message StreamReplicationStatusPB {
-  // The keys are expected to be of type 'ReplicationErrorPb'. This works around the limitation that
-  // enums can not be used as map keys in the protobuf spec.
-  map<int32, string> replication_errors = 1;
-}

@@ -86,7 +86,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver-path-handlers.h"
 #include "yb/tserver/tserver_service.proxy.h"
-#include "yb/tserver/xcluster_consumer.h"
+#include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/backup_service.h"
 
 #include "yb/cdc/cdc_service.h"
@@ -1151,7 +1151,7 @@ Status TabletServer::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
   return Status::OK();
 }
 
-XClusterConsumer* TabletServer::GetXClusterConsumer() const {
+XClusterConsumerIf* TabletServer::GetXClusterConsumer() const {
   std::lock_guard l(xcluster_consumer_mutex_);
   return xcluster_consumer_.get();
 }
@@ -1168,13 +1168,8 @@ Status TabletServer::SetUniverseKeyRegistry(
 }
 
 Status TabletServer::CreateXClusterConsumer() {
-  auto is_leader_clbk = [this](const string& tablet_id) {
-    auto tablet_peer = tablet_manager_->LookupTablet(tablet_id);
-    if (!tablet_peer) {
-      return false;
-    }
-    return tablet_peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
-  };
+  std::lock_guard l(xcluster_consumer_mutex_);
+  SCHECK(!xcluster_consumer_, IllegalState, "XCluster consumer already exists");
 
   auto get_leader_term = [this](const TabletId& tablet_id) {
     auto tablet_peer = tablet_manager_->LookupTablet(tablet_id);
@@ -1184,22 +1179,51 @@ Status TabletServer::CreateXClusterConsumer() {
     return tablet_peer->LeaderTerm();
   };
 
-  xcluster_consumer_ = VERIFY_RESULT(XClusterConsumer::Create(
-      std::move(is_leader_clbk), std::move(get_leader_term), proxy_cache_.get(), this));
+  xcluster_consumer_ = VERIFY_RESULT(
+      tserver::CreateXClusterConsumer(std::move(get_leader_term), proxy_cache_.get(), this));
   return Status::OK();
 }
 
-Status TabletServer::SetConfigVersionAndConsumerRegistry(
-    int32_t cluster_config_version, const cdc::ConsumerRegistryPB* consumer_registry) {
-  std::lock_guard l(xcluster_consumer_mutex_);
+Status TabletServer::XClusterHandleMasterHeartbeatResponse(
+    const master::TSHeartbeatResponsePB& resp) {
+  auto* xcluster_consumer = GetXClusterConsumer();
 
-  // Only create a cdc consumer if consumer_registry is not null.
-  if (!xcluster_consumer_ && consumer_registry) {
-    RETURN_NOT_OK(CreateXClusterConsumer());
+  // Only create a xcluster consumer if consumer_registry is not null.
+  const cdc::ConsumerRegistryPB* consumer_registry = nullptr;
+  if (resp.has_consumer_registry()) {
+    consumer_registry = &resp.consumer_registry();
+
+    if (!xcluster_consumer) {
+      RETURN_NOT_OK(CreateXClusterConsumer());
+      xcluster_consumer = GetXClusterConsumer();
+    }
+
+    SetXClusterDDLOnlyMode(consumer_registry->role() != cdc::XClusterRole::ACTIVE);
   }
-  if (xcluster_consumer_) {
-    xcluster_consumer_->RefreshWithNewRegistryFromMaster(consumer_registry, cluster_config_version);
+
+  if (xcluster_consumer) {
+    int32_t cluster_config_version = -1;
+    if (!resp.has_cluster_config_version()) {
+      YB_LOG_EVERY_N_SECS(WARNING, 30)
+          << "Invalid heartbeat response without a cluster config version";
+    } else {
+      cluster_config_version = resp.cluster_config_version();
+    }
+
+    xcluster_consumer->HandleMasterHeartbeatResponse(consumer_registry, cluster_config_version);
   }
+
+  // Check whether the cluster is a producer of a CDC stream.
+  if (resp.has_xcluster_enabled_on_producer() && resp.xcluster_enabled_on_producer()) {
+    RETURN_NOT_OK(SetCDCServiceEnabled());
+  }
+
+  if (resp.has_xcluster_producer_registry() && resp.has_xcluster_config_version()) {
+    RETURN_NOT_OK(SetPausedXClusterProducerStreams(
+        resp.xcluster_producer_registry().paused_producer_stream_ids(),
+        resp.xcluster_config_version()));
+  }
+
   return Status::OK();
 }
 

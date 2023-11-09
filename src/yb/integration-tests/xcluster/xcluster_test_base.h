@@ -315,11 +315,9 @@ class XClusterTestBase : public YBTest {
 
   Status WaitForSafeTime(const NamespaceId& namespace_id, const HybridTime& min_safe_time);
 
-  void VerifyReplicationError(
-      const std::string& consumer_table_id,
-      const std::string& stream_id,
-      const boost::optional<ReplicationErrorPb>
-          expected_replication_error);
+  Status VerifyReplicationError(
+      const std::string& consumer_table_id, const xrepl::StreamId& stream_id,
+      const std::optional<ReplicationErrorPb> expected_replication_error);
 
   Result<xrepl::StreamId> GetCDCStreamID(const TableId& producer_table_id);
 

@@ -149,6 +149,12 @@ enum ReplicationErrorPb {
 
   // There is a colocated table missing on the consumer side.
   REPLICATION_MISSING_TABLE = 3;
+
+  // Replication state has not yet been initialized.
+  REPLICATION_ERROR_UNINITIALIZED = 4;
+
+  // Replication is healthy.
+  REPLICATION_OK = 5;
 }
 
 // Stateful services.
