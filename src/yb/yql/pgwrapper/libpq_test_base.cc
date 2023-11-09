@@ -77,7 +77,7 @@ bool LibPqTestBase::TransactionalFailure(const Status& status) {
 }
 
 Result<PgOid> GetDatabaseOid(PGConn* conn, const std::string& db_name) {
-  return conn->FetchValue<PGOid>(
+  return conn->FetchRow<PGOid>(
       Format("SELECT oid FROM pg_database WHERE datname = '$0'", db_name));
 }
 

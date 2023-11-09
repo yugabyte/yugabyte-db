@@ -46,7 +46,7 @@ Result<int64_t> SelectCountStar(PGConn* pgconn,
   auto query_str = Format("SELECT COUNT(*) FROM $0$1",
                           table_name,
                           where_clause == "" ? "" : Format(" WHERE $0", where_clause));
-  return VERIFY_RESULT(pgconn->FetchValue<PGUint64>(query_str));
+  return VERIFY_RESULT(pgconn->FetchRow<PGUint64>(query_str));
 }
 
 Result<bool> SystemTableExists(PGConn* pgconn, const std::string& table_name) {

@@ -327,7 +327,7 @@ TEST_P(PgPackedRowTest, SchemaChange) {
   ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
   ASSERT_OK(cluster_->CompactTablets());
 
-  auto value = ASSERT_RESULT(conn.FetchValue<std::string>(
+  auto value = ASSERT_RESULT(conn.FetchRow<std::string>(
       Format("SELECT v3 FROM t WHERE key = $0", kKey)));
   ASSERT_EQ(value, "");
 }

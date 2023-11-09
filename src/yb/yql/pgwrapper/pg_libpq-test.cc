@@ -176,7 +176,7 @@ class PgLibPqFailOnConflictTest : public PgLibPqTest {
 };
 
 static Result<PgOid> GetTablegroupOid(PGConn* conn, const std::string& tablegroup_name) {
-  return conn->FetchValue<PGOid>(
+  return conn->FetchRow<PGOid>(
       Format("SELECT oid FROM pg_yb_tablegroup WHERE grpname = '$0'", tablegroup_name));
 }
 
@@ -301,7 +301,7 @@ TEST_F(PgLibPqTest, ReadRestart) {
     SCOPED_TRACE(Format("Reading: $0", read_key));
 
     ASSERT_OK(conn.Execute("BEGIN"));
-    auto key = ASSERT_RESULT(conn.FetchValue<int32_t>(Format(
+    auto key = ASSERT_RESULT(conn.FetchRow<int32_t>(Format(
         "SELECT * FROM t WHERE key = $0", read_key)));
     ASSERT_EQ(key, read_key);
     ASSERT_OK(conn.Execute("ROLLBACK"));
@@ -443,18 +443,18 @@ TEST_F(PgLibPqTest, ConcurrentInsertAndDeleteOnTablesWithForeignKey) {
 
     // Verify for CASCADE behaviour.
     ASSERT_OK(conn1.Execute("DELETE FROM t1 where a = 10"));
-    ASSERT_EQ(ASSERT_RESULT(conn1.FetchValue<int64_t>("SELECT COUNT(*) FROM t2 WHERE j = 10")), 0);
+    ASSERT_EQ(ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t2 WHERE j = 10")), 0);
 
     stop = true;
     insertion_thread.join();
 
     // Verify t1 has 99 i.e. (100 - 1) rows.
-    auto curr_rows = ASSERT_RESULT(conn1.FetchValue<int64_t>("SELECT COUNT(*) FROM t1"));
+    auto curr_rows = ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t1"));
     ASSERT_EQ(curr_rows, 99);
 
     // Reset the tables for next iteration.
     ASSERT_OK(conn1.Execute("TRUNCATE TABLE t1 CASCADE"));
-    curr_rows = ASSERT_RESULT(conn1.FetchValue<int64_t>("SELECT COUNT(*) FROM t2"));
+    curr_rows = ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t2"));
     ASSERT_EQ(curr_rows, 0);
   }
 }
@@ -730,7 +730,7 @@ void PgLibPqTest::TestParallelCounter(IsolationLevel isolation) {
 
   // Check each counter
   for (int i = 0; i < kThreads; i++) {
-    ASSERT_EQ(ASSERT_RESULT(conn.FetchValue<int32_t>(Format("SELECT value FROM t WHERE key = $0",
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>(Format("SELECT value FROM t WHERE key = $0",
                                                             i))),
               kIncrements);
   }
@@ -768,7 +768,7 @@ void PgLibPqTest::TestConcurrentCounter(IsolationLevel isolation, bool lock_firs
   }
 
   // Check that we incremented exactly the desired number of times
-  ASSERT_EQ(ASSERT_RESULT(conn.FetchValue<int32_t>("SELECT value FROM t WHERE key = 0")),
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT value FROM t WHERE key = 0")),
             kThreads * kIncrements);
 }
 
@@ -835,7 +835,7 @@ TEST_F(PgLibPqTest, SecondaryIndexInsertSelect) {
           }
           int read_key = num_written - 1;
           int b = read_key;
-          int read_a = ASSERT_RESULT(connection.FetchValue<int32_t>(
+          int read_a = ASSERT_RESULT(connection.FetchRow<int32_t>(
               Format("SELECT a FROM t WHERE b = $0 LIMIT 1", b)));
           ASSERT_EQ(read_a % 1000000, read_key);
         }
@@ -1111,7 +1111,7 @@ Result<TableGroupInfo> SelectTablegroup(
     const std::string& group_name) {
   TableGroupInfo group_info;
   const auto database_oid = VERIFY_RESULT(GetDatabaseOid(conn, database_name));
-  group_info.oid = VERIFY_RESULT(conn->FetchValue<PGOid>(
+  group_info.oid = VERIFY_RESULT(conn->FetchRow<PGOid>(
       Format("SELECT oid FROM pg_yb_tablegroup WHERE grpname=\'$0\'", group_name)));
 
   group_info.id = GetPgsqlTablegroupId(database_oid, group_info.oid);
@@ -1551,7 +1551,7 @@ void PgLibPqTest::FlushTablesAndPerformBootstrap(
     // Restart a TS that serves this tablet so we do a local bootstrap and replay WAL files.
     // Ensure we don't crash here due to missing table info in metadata when replaying the ALTER.
     auto conn_after = ASSERT_RESULT(RestartTSAndConnectToPostgres(0, database_name));
-    auto res = ASSERT_RESULT(conn_after.FetchValue<int64_t>("SELECT COUNT(*) FROM bar"));
+    auto res = ASSERT_RESULT(conn_after.FetchRow<int64_t>("SELECT COUNT(*) FROM bar"));
     ASSERT_EQ(res, 0);
   }
 
@@ -1561,7 +1561,7 @@ void PgLibPqTest::FlushTablesAndPerformBootstrap(
     ASSERT_OK(cluster_->SetFlagOnTServers("TEST_invalidate_last_change_metadata_op", "false"));
     {
       auto conn_after = ASSERT_RESULT(RestartTSAndConnectToPostgres(0, database_name));
-      auto res = ASSERT_RESULT(conn_after.FetchValue<int64_t>("SELECT COUNT(*) FROM bar"));
+      auto res = ASSERT_RESULT(conn_after.FetchRow<int64_t>("SELECT COUNT(*) FROM bar"));
       ASSERT_EQ(res, 0);
 
       ASSERT_OK(conn_after.Execute("CREATE TABLE bar2 (c char)"));
@@ -1569,9 +1569,9 @@ void PgLibPqTest::FlushTablesAndPerformBootstrap(
     }
     auto conn_after = ASSERT_RESULT(RestartTSAndConnectToPostgres(0, database_name));
 
-    auto res = ASSERT_RESULT(conn_after.FetchValue<int64_t>("SELECT COUNT(*) FROM bar"));
+    auto res = ASSERT_RESULT(conn_after.FetchRow<int64_t>("SELECT COUNT(*) FROM bar"));
     ASSERT_EQ(res, 0);
-    res = ASSERT_RESULT(conn_after.FetchValue<int64_t>("SELECT COUNT(*) FROM bar2"));
+    res = ASSERT_RESULT(conn_after.FetchRow<int64_t>("SELECT COUNT(*) FROM bar2"));
     ASSERT_EQ(res, 0);
   }
 }
@@ -1634,14 +1634,14 @@ class PgLibPqDuplicateClientCreateTableTest : public PgLibPqTest {
 Status PgLibPqTest::TestDuplicateCreateTableRequest(PGConn conn) {
   RETURN_NOT_OK(conn.Execute("CREATE TABLE tbl (k int primary key)"));
   RETURN_NOT_OK(conn.Execute("INSERT INTO tbl VALUES (1)"));
-  const int k = VERIFY_RESULT(conn.FetchValue<int32_t>("SELECT * FROM tbl"));
+  const int k = VERIFY_RESULT(conn.FetchRow<int32_t>("SELECT * FROM tbl"));
   SCHECK_EQ(k, 1, IllegalState, "wrong result");
 
   return Status::OK();
 }
 
 Result<string> PgLibPqTest::GetSchemaName(const string& relname, PGConn* conn) {
-  return conn->FetchValue<std::string>(Format(
+  return conn->FetchRow<std::string>(Format(
       "SELECT nspname FROM pg_class JOIN pg_namespace "
       "ON pg_class.relnamespace = pg_namespace.oid WHERE relname = '$0'",
       relname));
@@ -2925,7 +2925,7 @@ TEST_F_EX(PgLibPqTest,
   // Test where clause.
   const std::string query2 = Format("SELECT * FROM $0 where id = 'b'", kTableName);
   ASSERT_TRUE(ASSERT_RESULT(conn->HasIndexScan(query2)));
-  ASSERT_EQ(ASSERT_RESULT(conn->FetchValue<std::string>(query2)), "b");
+  ASSERT_EQ(ASSERT_RESULT(conn->FetchRow<std::string>(query2)), "b");
 }
 
 // Test postgres large oid (>= 2^31). Internally postgres oid is an unsigned 32-bit integer. But
@@ -3131,7 +3131,7 @@ TEST_F_EX(PgLibPqTest,
           PgLibPqYSQLBackendCrash) {
 
   auto conn = ASSERT_RESULT(Connect());
-  auto backend_pid = ASSERT_RESULT(conn.FetchValue<int32_t>("SELECT pg_backend_pid()"));
+  auto backend_pid = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
   std::string file_name = "/proc/" + std::to_string(backend_pid) + "/oom_score_adj";
   std::ifstream fPtr(file_name);
   std::string oom_score_adj;
@@ -3188,17 +3188,17 @@ TEST_F(PgLibPqTest, AggrSystemColumn) {
   auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
 
   // Count oid column which is a system column.
-  const auto count_oid = ASSERT_RESULT(conn.FetchValue<PGUint64>("SELECT COUNT(oid) FROM pg_type"));
+  const auto count_oid = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(oid) FROM pg_type"));
 
   // Count oid column which is a system column, but cast oid to int.
   const auto count_oid_int = ASSERT_RESULT(
-      conn.FetchValue<PGUint64>("SELECT COUNT(oid::int) FROM pg_type"));
+      conn.FetchRow<PGUint64>("SELECT COUNT(oid::int) FROM pg_type"));
   // Should get the same count.
   ASSERT_EQ(count_oid_int, count_oid);
 
   // Count typname column which is a regular column.
   const auto count_typname = ASSERT_RESULT(
-      conn.FetchValue<PGUint64>("SELECT COUNT(typname) FROM pg_type"));
+      conn.FetchRow<PGUint64>("SELECT COUNT(typname) FROM pg_type"));
   // Should get the same count.
   ASSERT_EQ(count_oid, count_typname);
 
@@ -3469,7 +3469,7 @@ TEST_P(PgOidCollisionTest, MetaCachePgOidCollisionFromTservers) {
   if (ysql_enable_pg_per_database_oid_allocator) {
     ASSERT_OK(status);
     // Verify
-    ASSERT_EQ(ASSERT_RESULT(conn1.FetchValue<PGUint64>("SELECT COUNT(*) FROM danger")), 100);
+    ASSERT_EQ(ASSERT_RESULT(conn1.FetchRow<PGUint64>("SELECT COUNT(*) FROM danger")), 100);
   } else {
     ASSERT_TRUE(status.IsNetworkError()) << status;
     ASSERT_STR_CONTAINS(status.ToString(), "Tablet deleted:");
@@ -3535,12 +3535,12 @@ TEST_P(PgOidCollisionCreateDatabaseTest, CreateDatabasePgOidCollisionFromTserver
   if (ysql_enable_pg_per_database_oid_allocator) {
     ASSERT_OK(status);
     // Verify no OID collision and the expected OID is used.
-    int db3_oid = ASSERT_RESULT(conn2.FetchValue<int32_t>(
+    int db3_oid = ASSERT_RESULT(conn2.FetchRow<int32_t>(
         Format("SELECT oid FROM pg_database WHERE datname = \'$0\'", db3)));
     ASSERT_EQ(db3_oid, 16640);
   } else if (ysql_enable_create_database_oid_collision_retry) {
     // Verify internally retry CREATE DATABASE works.
-    int db3_oid = ASSERT_RESULT(conn2.FetchValue<int32_t>(
+    int db3_oid = ASSERT_RESULT(conn2.FetchRow<int32_t>(
         Format("SELECT oid FROM pg_database WHERE datname = \'$0\'", db3)));
     ASSERT_EQ(db3_oid, 16386);
   } else {
@@ -3570,8 +3570,8 @@ TEST_P(PgOidCollisionTest, TablespaceOidCollision) {
     Format("SELECT count(oid) FROM $0", shared_pg_table);
   const string max_oid_query =
     Format("SELECT max(oid) FROM $0", shared_pg_table);
-  auto count_oid = ASSERT_RESULT(conn.FetchValue<int64_t>(count_oid_query));
-  auto max_oid = ASSERT_RESULT(conn.FetchValue<PGOid>(max_oid_query));
+  auto count_oid = ASSERT_RESULT(conn.FetchRow<int64_t>(count_oid_query));
+  auto max_oid = ASSERT_RESULT(conn.FetchRow<PGOid>(max_oid_query));
   ASSERT_EQ(count_oid, num_tablespaces + num_system_tablespaces);
   ASSERT_EQ(max_oid, kPgFirstNormalObjectId + num_tablespaces - 1);
 
@@ -3584,8 +3584,8 @@ TEST_P(PgOidCollisionTest, TablespaceOidCollision) {
   for (int i = num_tablespaces; i < num_tablespaces * 2; i++) {
     ASSERT_OK(conn.ExecuteFormat("CREATE TABLESPACE tp$0 LOCATION '/data'", i));
   }
-  count_oid = ASSERT_RESULT(conn.FetchValue<int64_t>(count_oid_query));
-  max_oid = ASSERT_RESULT(conn.FetchValue<PGOid>(max_oid_query));
+  count_oid = ASSERT_RESULT(conn.FetchRow<int64_t>(count_oid_query));
+  max_oid = ASSERT_RESULT(conn.FetchRow<PGOid>(max_oid_query));
   ASSERT_EQ(count_oid, num_tablespaces * 2 + num_system_tablespaces);
   ASSERT_EQ(max_oid, kPgFirstNormalObjectId + num_tablespaces * 2 - 1);
 }
@@ -3598,7 +3598,7 @@ class PgLibPqTempTest: public PgLibPqTest {
     filepaths.reserve(relnames.size());
     for (const string& relname : relnames) {
       string pg_filepath = VERIFY_RESULT(
-          conn->FetchValue<std::string>(Format("SELECT pg_relation_filepath('$0')", relname)));
+          conn->FetchRow<std::string>(Format("SELECT pg_relation_filepath('$0')", relname)));
       filepaths.push_back(JoinPathSegments(pg_ts->GetRootDir(), "pg_data", pg_filepath));
     }
     for (const string& filepath : filepaths) {

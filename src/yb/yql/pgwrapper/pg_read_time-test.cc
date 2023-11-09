@@ -299,21 +299,21 @@ TEST_F(PgMiniTestBase, CheckReadingDataAsOfPastTime) {
   ASSERT_OK(conn.Execute("CREATE TABLE t (k INT, v INT)"));
   LOG(INFO) << "Inserting 10 rows into table t";
   ASSERT_OK(conn.Execute("INSERT INTO t (k,v) SELECT i,i FROM generate_series(1,10) AS i"));
-  auto count = ASSERT_RESULT(conn.FetchValue<PGUint64>("SELECT count(*) FROM t"));
+  auto count = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t"));
   ASSERT_EQ(count, 10);
-  auto t1 = ASSERT_RESULT(conn.FetchValue<PGUint64>(
+  auto t1 = ASSERT_RESULT(conn.FetchRow<PGUint64>(
       Format("SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint")));
   LOG(INFO) << "Deleting 4 rows from table t";
   ASSERT_OK(conn.Execute("DELETE FROM t WHERE k>6"));
-  count = ASSERT_RESULT(conn.FetchValue<PGUint64>(Format("SELECT count(*) FROM t")));
+  count = ASSERT_RESULT(conn.FetchRow<PGUint64>(Format("SELECT count(*) FROM t")));
   ASSERT_EQ(count, 6);
   LOG(INFO) << "Setting yb_read_time to " << t1;
   ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", t1));
-  count = ASSERT_RESULT(conn.FetchValue<PGUint64>(Format("SELECT count(*) FROM t")));
+  count = ASSERT_RESULT(conn.FetchRow<PGUint64>(Format("SELECT count(*) FROM t")));
   ASSERT_EQ(count, 10);
   LOG(INFO) << "Setting yb_read_time to 0";
   ASSERT_OK(conn.Execute("SET yb_read_time TO 0"));
-  count = ASSERT_RESULT(conn.FetchValue<PGUint64>(Format("SELECT count(*) FROM t")));
+  count = ASSERT_RESULT(conn.FetchRow<PGUint64>(Format("SELECT count(*) FROM t")));
   ASSERT_EQ(count, 6);
 }
 

@@ -133,7 +133,7 @@ void ColocationConcurrencyTest::InsertDataIntoTable(
     }
   }
 
-  auto curr_rows = ASSERT_RESULT(conn->FetchValue<PGUint64>(
+  auto curr_rows = ASSERT_RESULT(conn->FetchRow<PGUint64>(
       Format("SELECT COUNT(*) FROM $0", table_name)));
   ASSERT_EQ(curr_rows, num_rows);
 }
@@ -164,11 +164,11 @@ TEST_F(ColocationConcurrencyTest, InsertAndTruncateOnSeparateTables) {
     insertion_thread.join();
 
     // Verify t1 is empty after truncate.
-    auto curr_rows = ASSERT_RESULT(conn1.FetchValue<int64_t>("SELECT COUNT(*) FROM t1"));
+    auto curr_rows = ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t1"));
     ASSERT_EQ(curr_rows, 0);
 
     // Verify t2 has rows equal to the counter.
-    curr_rows = ASSERT_RESULT(conn1.FetchValue<int64_t>("SELECT COUNT(*) FROM t2"));
+    curr_rows = ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t2"));
     ASSERT_EQ(curr_rows, counter);
 
     // Reset the tables for next iteration.
@@ -208,11 +208,11 @@ TEST_F(
     insertion_thread.join();
 
     // Verify t1 is empty after truncate.
-    auto curr_rows = ASSERT_RESULT(conn1.FetchValue<int64_t>("SELECT COUNT(*) FROM t1"));
+    auto curr_rows = ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t1"));
     ASSERT_EQ(curr_rows, 0);
 
     // Verify t2 has rows equal to counter.
-    curr_rows = ASSERT_RESULT(conn1.FetchValue<int64_t>("SELECT COUNT(*) FROM t2"));
+    curr_rows = ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t2"));
     ASSERT_EQ(curr_rows, counter);
 
     // Reset the tables for next iteration.
@@ -261,7 +261,7 @@ TEST_F(ColocationConcurrencyTest, InsertAndIndexBackfillOnSeparateTables) {
     }
 
     // Verify t2 has rows equal to counter.
-    auto curr_rows = ASSERT_RESULT(conn1.FetchValue<int64_t>("SELECT COUNT(*) FROM t2"));
+    auto curr_rows = ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t2"));
     ASSERT_EQ(curr_rows, counter);
 
     // Reset the tables for next iteration.
@@ -358,7 +358,7 @@ TEST_F(ColocationConcurrencyTest, CreateAndTruncateOnSeparateTables) {
     }
 
     // Verify t2 has 0 rows
-    auto curr_rows = ASSERT_RESULT(conn1.FetchValue<int64_t>("SELECT COUNT(*) FROM t2"));
+    auto curr_rows = ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t2"));
     ASSERT_EQ(curr_rows, 0);
 
     // Reset the tables for next iteration.
@@ -400,11 +400,11 @@ TEST_F(ColocationConcurrencyTest, UpdateAndDeleteOnSeparateTables) {
     update_values_thread.join();
 
     // Verify t1 has 50 rows.
-    auto curr_rows = ASSERT_RESULT(conn1.FetchValue<int64_t>("SELECT COUNT(*) FROM t1"));
+    auto curr_rows = ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t1"));
     ASSERT_EQ(curr_rows, 50);
 
     // Verify t2 has 25 rows
-    curr_rows = ASSERT_RESULT(conn1.FetchValue<int64_t>("SELECT COUNT(*) FROM t2"));
+    curr_rows = ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t2"));
     ASSERT_EQ(curr_rows, 25);
 
     // Reset the tables for next iteration.
@@ -455,7 +455,7 @@ TEST_F(ColocationConcurrencyTest, AlterAndUpdateOnSameTable) {
     ASSERT_OK(conn1.FetchMatrix(query, 3, 2));
 
     // Verify t1 has 50 rows.
-    auto curr_rows = ASSERT_RESULT(conn1.FetchValue<int64_t>("SELECT COUNT(*) FROM t1"));
+    auto curr_rows = ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t1"));
     ASSERT_EQ(curr_rows, 50);
 
     // Reset the table for next iteration.
@@ -493,11 +493,11 @@ TEST_F(ColocationConcurrencyTest, TxnsOnSeparateTables) {
     insert_thread.join();
 
     // Verify t1 has 50 rows.
-    auto curr_rows = ASSERT_RESULT(conn1.FetchValue<int64_t>("SELECT COUNT(*) FROM t1"));
+    auto curr_rows = ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t1"));
     ASSERT_EQ(curr_rows, 50);
 
     // Verify t2 has rows equal to counter.
-    curr_rows = ASSERT_RESULT(conn1.FetchValue<int64_t>("SELECT COUNT(*) FROM t2"));
+    curr_rows = ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t2"));
     ASSERT_EQ(curr_rows, counter);
 
     // Reset the tables for next iteration.
@@ -551,16 +551,16 @@ TEST_F(ColocationConcurrencyTest, InsertOnTablesWithFK) {
     insertion_thread.join();
 
     // Verify t1 has 599 (600 - 1) rows.
-    auto curr_rows = ASSERT_RESULT(conn1.FetchValue<int64_t>("SELECT COUNT(*) FROM t1"));
+    auto curr_rows = ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t1"));
     ASSERT_EQ(curr_rows, 599);
 
     // Verify t2 has counter - 1 rows
-    curr_rows = ASSERT_RESULT(conn1.FetchValue<int64_t>("SELECT COUNT(*) FROM t2"));
+    curr_rows = ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t2"));
     ASSERT_EQ(curr_rows, counter - 1);
 
     // Reset the tables for next iteration.
     ASSERT_OK(conn1.Execute("TRUNCATE TABLE t1 CASCADE"));
-    curr_rows = ASSERT_RESULT(conn1.FetchValue<int64_t>("SELECT COUNT(*) FROM t2"));
+    curr_rows = ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t2"));
     ASSERT_EQ(curr_rows, 0);
   }
 }
@@ -616,23 +616,23 @@ TEST_F(ColocationConcurrencyTest, TransactionsOnTablesWithFK) {
     ASSERT_OK(conn1.Execute("DELETE FROM t1 where a = 10"));
 
     auto curr_rows =
-        ASSERT_RESULT(conn1.FetchValue<int64_t>("SELECT COUNT(*) FROM t2 where j = 10"));
+        ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t2 where j = 10"));
     ASSERT_EQ(curr_rows, 0);
 
-    curr_rows = ASSERT_RESULT(conn1.FetchValue<int64_t>("SELECT COUNT(*) FROM t1 where a =10"));
+    curr_rows = ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t1 where a =10"));
     ASSERT_EQ(curr_rows, 0);
 
     // Verify t1 has 549 (550 - 1) rows.
-    curr_rows = ASSERT_RESULT(conn1.FetchValue<int64_t>("SELECT COUNT(*) FROM t1"));
+    curr_rows = ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t1"));
     ASSERT_EQ(curr_rows, 549);
 
     // Verify t2 has rows equal to counter - 1.
-    curr_rows = ASSERT_RESULT(conn1.FetchValue<int64_t>("SELECT COUNT(*) FROM t2"));
+    curr_rows = ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t2"));
     ASSERT_EQ(curr_rows, counter - 1);
 
     // Reset the tables for next iteration.
     ASSERT_OK(conn1.Execute("TRUNCATE TABLE t1 CASCADE"));
-    curr_rows = ASSERT_RESULT(conn1.FetchValue<int64_t>("SELECT COUNT(*) FROM t2"));
+    curr_rows = ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t2"));
     ASSERT_EQ(curr_rows, 0);
   }
 }

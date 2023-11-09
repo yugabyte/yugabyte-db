@@ -420,7 +420,7 @@ TEST_F_EX(PgOnConflictTest, ValidSessionAfterTxnCommitConflict, PgFailOnConflict
   ASSERT_OK(extra_conn.Execute("INSERT INTO test VALUES(1)"));
   ASSERT_NOK(conn.Execute("COMMIT"));
   // Check connection is in valid state after failed COMMIT
-  ASSERT_EQ(ASSERT_RESULT(conn.FetchValue<int32_t>("SELECT * FROM test")), 1);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT * FROM test")), 1);
 }
 
 } // namespace pgwrapper

@@ -90,7 +90,7 @@ TEST_P(PgAddColumnDefaultTest, AddColumnDefaultConcurrency) {
   ASSERT_OK(conn_->ExecuteFormat(
       "INSERT INTO $0 VALUES (generate_series(10, 12), null)", kTableName));
   // Verify that we can read the correct values for the new column.
-  auto res = ASSERT_RESULT(conn_->FetchValue<PGUint64>(
+  auto res = ASSERT_RESULT(conn_->FetchRow<PGUint64>(
       Format("SELECT count(*) FROM $0 WHERE c1 = 'default'", kTableName)));
   ASSERT_EQ(res, 9);
   const auto table_id = ASSERT_RESULT(GetTableIdByTableName(
@@ -102,7 +102,7 @@ TEST_P(PgAddColumnDefaultTest, AddColumnDefaultConcurrency) {
       3 /* deadline (seconds) */,
       true /* is_compaction */));
   // Verify that we can read the correct values for the new column after compaction.
-  res = ASSERT_RESULT(conn_->FetchValue<PGUint64>(
+  res = ASSERT_RESULT(conn_->FetchRow<PGUint64>(
       Format("SELECT count(*) FROM $0 WHERE c1 = 'default'", kTableName)));
   ASSERT_EQ(res, 9);
 }
@@ -118,7 +118,7 @@ TEST_P(PgAddColumnDefaultTest, AddColumnDefaultCompactionAfterUpdate) {
       " ADD COLUMN c2 int DEFAULT 5",
       kTableName));
   // Verify the data.
-  auto res = ASSERT_RESULT(conn_->FetchValue<PGUint64>(
+  auto res = ASSERT_RESULT(conn_->FetchRow<PGUint64>(
       Format("SELECT count(*) FROM $0 WHERE c1 = 'default' AND c2 = 5", kTableName)));
   ASSERT_EQ(res, 4);
   // Update some rows.

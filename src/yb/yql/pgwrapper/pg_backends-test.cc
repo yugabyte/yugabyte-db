@@ -45,7 +45,7 @@ class PgBackendsTest : public LibPqTestBase {
     conn_ = std::make_unique<PGConn>(ASSERT_RESULT(ConnectToDB("yugabyte")));
 
     const auto yugabyte_db_oid = ASSERT_RESULT(GetDatabaseOid(conn_.get(), "yugabyte"));
-    catalog_version_db_oid_ = ASSERT_RESULT(conn_->FetchValue<PGOid>(Format(
+    catalog_version_db_oid_ = ASSERT_RESULT(conn_->FetchRow<PGOid>(Format(
         "SELECT db_oid FROM pg_yb_catalog_version "
         "WHERE db_oid in ($0, 1) ORDER BY db_oid DESC LIMIT 1", yugabyte_db_oid)));
   }
@@ -101,7 +101,7 @@ class PgBackendsTest : public LibPqTestBase {
   Result<uint64_t> GetCatalogVersion(PGConn* conn) {
     // The use of catalog_version_db_oid_ makes the query work for both global catalog version
     // mode and per-db catalog version mode. We assume conn is connected to database 'yugabyte'.
-    return conn->FetchValue<PGUint64>(
+    return conn->FetchRow<PGUint64>(
         Format("SELECT current_version FROM pg_yb_catalog_version WHERE "
                "db_oid = $0", catalog_version_db_oid_));
   }
@@ -707,7 +707,7 @@ TEST_F_EX(PgBackendsTest, RenameDatabase, PgBackendsTestRf3) {
   LOG(INFO) << "Create database and get its oid";
   constexpr auto kDbPrefix = "before";
   ASSERT_OK(conn_->ExecuteFormat("CREATE DATABASE $0_0", kDbPrefix));
-  const auto db_oid = ASSERT_RESULT(conn_->FetchValue<PGOid>(Format(
+  const auto db_oid = ASSERT_RESULT(conn_->FetchRow<PGOid>(Format(
       "SELECT oid FROM pg_database WHERE datname = '$0_0'", kDbPrefix)));
 
   LOG(INFO) << "Create connection that is behind";

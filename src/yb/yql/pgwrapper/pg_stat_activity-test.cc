@@ -57,7 +57,7 @@ class PgStatActivityTest : public LibPqTestBase {
 
   static Result<TxnInfo> GetTransactionInfo(PGConn* conn) {
     auto opt_txn_id =
-        VERIFY_RESULT(conn->FetchValue<std::optional<Uuid>>("SELECT yb_get_current_transaction()"));
+        VERIFY_RESULT(conn->FetchRow<std::optional<Uuid>>("SELECT yb_get_current_transaction()"));
     return TxnInfo{PQbackendPID(conn->get()), opt_txn_id.value_or(Uuid::Nil())};
   }
 
