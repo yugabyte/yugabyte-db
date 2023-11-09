@@ -938,6 +938,30 @@ SELECT '{"a": 9, "b": 11, "c": {"ca": [[], {}, null]}, "d": true, "1": false}'::
  
 (1 row)
 
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"automatically":{"1":[2,3]}}'::agtype -> '"n"'::agtype -> '"1"'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"automatically":{"1":[2,3]}}'::agtype -> '"n"'::agtype -> 1::text;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"automatically":{"1":[2,3]}}'::agtype -> '"n"'::agtype -> '"a"';
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT 'null'::agtype -> '"1"';
+ ?column? 
+----------
+ 
+(1 row)
+
 -- LHS is an array
 SELECT '["a","b","c",[1,2],null]'::agtype -> '0'::agtype;
  ?column? 
@@ -1236,6 +1260,30 @@ SELECT '{"a": [{"b": "c"}, {"b": "cc"}]}'::agtype ->> null::text;
 (1 row)
 
 SELECT '{"a": [{"b": "c"}, {"b": "cc"}]}'::agtype ->> null::int;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"automatically":{"1":[2,3]}}'::agtype -> '"n"'::agtype ->> '"1"'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"automatically":{"1":[2,3]}}'::agtype -> '"n"'::agtype ->> 1::text;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"automatically":{"1":[2,3]}}'::agtype -> '"n"'::agtype ->> '"a"';
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT 'null'::agtype ->> '"1"';
  ?column? 
 ----------
  

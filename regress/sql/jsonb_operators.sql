@@ -223,6 +223,12 @@ SELECT '{"a": [{"b": "c"}, {"b": "cc"}]}'::agtype -> null::int;
 SELECT '{"a": [-1, -2, -3]}'::agtype -> '"a"'::text;
 SELECT '{"a": 9, "b": 11, "c": {"ca": [[], {}, null]}, "d": true, "1": false}'::agtype -> '1'::text::agtype;
 
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"automatically":{"1":[2,3]}}'::agtype -> '"n"'::agtype -> '"1"'::agtype;
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"automatically":{"1":[2,3]}}'::agtype -> '"n"'::agtype -> 1::text;
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"automatically":{"1":[2,3]}}'::agtype -> '"n"'::agtype -> '"a"';
+
+SELECT 'null'::agtype -> '"1"';
+
 -- LHS is an array
 SELECT '["a","b","c",[1,2],null]'::agtype -> '0'::agtype;
 SELECT '["a","b","c",[1,2],null]'::agtype -> 1;
@@ -287,6 +293,12 @@ SELECT '{"1": -1.99, "a": 1, "b": 2, "c": {"d": [{}, [[[], [9]]]]}, "1": true}':
 SELECT '{"1": -1.99, "a": 1, "b": 2, "c": {"d": [{}, [[[], [9]]]]}, "1": true}'::agtype ->> '1';
 SELECT '{"a": [{"b": "c"}, {"b": "cc"}]}'::agtype ->> null::text;
 SELECT '{"a": [{"b": "c"}, {"b": "cc"}]}'::agtype ->> null::int;
+
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"automatically":{"1":[2,3]}}'::agtype -> '"n"'::agtype ->> '"1"'::agtype;
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"automatically":{"1":[2,3]}}'::agtype -> '"n"'::agtype ->> 1::text;
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"automatically":{"1":[2,3]}}'::agtype -> '"n"'::agtype ->> '"a"';
+
+SELECT 'null'::agtype ->> '"1"';
 
 -- LHS is an array
 SELECT '["a","b","c",[1,2],null]'::agtype ->> 0;

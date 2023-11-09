@@ -3644,9 +3644,14 @@ Datum agtype_object_field_impl(FunctionCallInfo fcinfo, agtype *agtype_in,
 
     if (AGT_ROOT_IS_SCALAR(agtype_in))
     {
-        process_agtype =
-            agtype_value_to_agtype(extract_entity_properties(agtype_in,
-                                                             false));
+        agtype_value *process_agtv = extract_entity_properties(agtype_in,
+                                                               false);
+        if (!process_agtv)
+        {
+            PG_RETURN_NULL();
+        }
+
+        process_agtype = agtype_value_to_agtype(process_agtv);
     }
     else
     {
