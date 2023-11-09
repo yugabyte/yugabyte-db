@@ -16,8 +16,8 @@
 #include "yb/cdc/xrepl_types.h"
 
 #include "yb/common/common_fwd.h"
-
 #include "yb/common/schema.h"
+
 #include "yb/consensus/consensus_fwd.h"
 
 #include "yb/docdb/docdb_fwd.h"
@@ -299,7 +299,7 @@ class CatalogManagerIf {
 
   virtual intptr_t tablet_locations_version() const = 0;
 
-  virtual tablet::SnapshotCoordinator& snapshot_coordinator() = 0;
+  virtual MasterSnapshotCoordinator& snapshot_coordinator() = 0;
 
   virtual Status UpdateLastFullCompactionRequestTime(
       const TableId& table_id, const LeaderEpoch& epoch) = 0;

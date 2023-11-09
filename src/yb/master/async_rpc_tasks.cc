@@ -1805,6 +1805,9 @@ bool AsyncSplitTablet::SendRequest(int attempt) {
   return true;
 }
 
+// ============================================================================
+//  Class AsyncUpdateTransactionTablesVersion.
+// ============================================================================
 AsyncUpdateTransactionTablesVersion::AsyncUpdateTransactionTablesVersion(
     Master* master,
     ThreadPool* callback_pool,
@@ -1919,6 +1922,40 @@ bool AsyncMasterTestRetry::SendRequest(int attempt) {
   return true;
 }
 
+// ============================================================================
+//  Class AsyncCloneTablet.
+// ============================================================================
+AsyncCloneTablet::AsyncCloneTablet(
+    Master* master,
+    ThreadPool* callback_pool,
+    const TabletInfoPtr& tablet,
+    LeaderEpoch epoch,
+    tablet::CloneTabletRequestPB req)
+    : AsyncTabletLeaderTask(master, callback_pool, tablet, std::move(epoch)),
+      req_(std::move(req)) {}
+
+std::string AsyncCloneTablet::description() const {
+  return "Clone tablet RPC";
+}
+
+void AsyncCloneTablet::HandleResponse(int attempt) {
+  if (resp_.has_error()) {
+    Status status = StatusFromPB(resp_.error().status());
+    LOG(WARNING) << "CloneTablet for tablet " << tablet_id() << "failed: "
+                 << status;
+    return;
+  }
+
+  TransitionToCompleteState();
+}
+
+bool AsyncCloneTablet::SendRequest(int attempt) {
+  req_.set_dest_uuid(permanent_uuid());
+  req_.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
+  ts_admin_proxy_->CloneTabletAsync(req_, &resp_, &rpc_, BindRpcCallback());
+  VLOG_WITH_PREFIX(1) << "Sent clone tablets request to " << tablet_id();
+  return true;
+}
 
 }  // namespace master
 }  // namespace yb

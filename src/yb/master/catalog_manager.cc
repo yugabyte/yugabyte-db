@@ -1033,6 +1033,7 @@ CatalogManager::CatalogManager(Master* master)
       master_, master_->metric_registry(),
       Bind(&CatalogManager::ElectedAsLeaderCb, Unretained(this))));
 
+  clone_state_manager_ = CloneStateManager::Create(this, master, sys_catalog_.get());
   xcluster_manager_ = std::make_unique<XClusterManager>(*master_, *this, *sys_catalog_.get());
 }
 
@@ -1551,6 +1552,7 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   RETURN_NOT_OK(LoadUniverseReplicationBootstrap());
 
   RETURN_NOT_OK(xcluster_manager_->RunLoaders());
+  RETURN_NOT_OK(clone_state_manager_->ClearAndRunLoaders());
 
   return Status::OK();
 }
@@ -5344,6 +5346,7 @@ std::string CatalogManager::GenerateIdUnlocked(
       case SysRowEntryType::UDTYPE:
         if (FindPtrOrNull(udtype_ids_map_, id) == nullptr) return id;
         break;
+      case SysRowEntryType::CLONE_STATE: FALLTHROUGH_INTENDED;
       case SysRowEntryType::SNAPSHOT:
         return id;
       case SysRowEntryType::CDC_STREAM:
