@@ -611,7 +611,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status DeleteXReplStatesForIndexTables(const std::vector<TableId>& table_ids) EXCLUDES(mutex_);
 
   // Delete CDC streams metadata for a table.
-  Status DeleteCDCStreamsMetadataForTables(const std::vector<TableId>& table_ids) EXCLUDES(mutex_);
+  Status DeleteCDCStreamsMetadataForTables(const std::unordered_set<TableId>& table_ids)
+      EXCLUDES(mutex_);
 
   // Add new table metadata to all CDCSDK streams of required namespace.
   Status AddNewTableToCDCDKStreamsMetadata(const TableId& table_id, const NamespaceId& ns_id)
@@ -2657,8 +2658,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       REQUIRES_SHARED(mutex_);
 
   // Find CDC streams for a table to clean its metadata.
-  std::vector<CDCStreamInfoPtr> FindCDCStreamsForTableToDeleteMetadata(
-      const TableId& table_id) const REQUIRES_SHARED(mutex_);
+  std::vector<CDCStreamInfoPtr> FindCDCStreamsForTablesToDeleteMetadata(
+      const std::unordered_set<TableId>& table_ids) const REQUIRES_SHARED(mutex_);
 
   Status FillHeartbeatResponseEncryption(
       const SysClusterConfigEntryPB& cluster_config,
@@ -2935,7 +2936,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   bool IsTableXClusterConsumerUnlocked(const TableInfo& table_info) const REQUIRES_SHARED(mutex_);
 
-  Status DeleteCDCStreamsForTables(const std::vector<TableId>& table_ids) EXCLUDES(mutex_);
+  Status DeleteCDCStreamsForTables(const std::unordered_set<TableId>& table_ids) EXCLUDES(mutex_);
 
   bool ShouldAddTableToXClusterReplication(const TableInfo& index_info, const SysTablesEntryPB& pb)
       EXCLUDES(mutex_);

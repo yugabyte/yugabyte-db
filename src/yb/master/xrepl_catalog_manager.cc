@@ -524,7 +524,7 @@ Status CatalogManager::DeleteXReplStatesForIndexTables(const vector<TableId>& ta
   return RemoveTableFromXcluster(table_ids);
 }
 
-Status CatalogManager::DeleteCDCStreamsForTables(const vector<TableId>& table_ids) {
+Status CatalogManager::DeleteCDCStreamsForTables(const std::unordered_set<TableId>& table_ids) {
   std::ostringstream tid_stream;
   for (const auto& tid : table_ids) {
     tid_stream << " " << tid;
@@ -539,16 +539,13 @@ Status CatalogManager::DeleteCDCStreamsForTables(const vector<TableId>& table_id
       streams.insert(streams.end(), newstreams.begin(), newstreams.end());
     }
   }
-  if (streams.empty()) {
-    return Status::OK();
-  }
-
   // Do not delete them here, just mark them as DELETING and the catalog manager background thread
   // will handle the deletion.
   return MarkCDCStreamsForMetadataCleanup(streams, SysCDCStreamEntryPB::DELETING);
 }
 
-Status CatalogManager::DeleteCDCStreamsMetadataForTables(const vector<TableId>& table_ids) {
+Status CatalogManager::DeleteCDCStreamsMetadataForTables(
+    const std::unordered_set<TableId>& table_ids) {
   std::ostringstream tid_stream;
   for (const auto& tid : table_ids) {
     tid_stream << " " << tid;
@@ -556,18 +553,12 @@ Status CatalogManager::DeleteCDCStreamsMetadataForTables(const vector<TableId>& 
   LOG(INFO) << "Deleting CDC streams metadata for tables:" << tid_stream.str();
 
   std::vector<CDCStreamInfoPtr> streams;
-  for (const auto& tid : table_ids) {
-    std::vector<CDCStreamInfoPtr> newstreams;
-    {
-      LockGuard lock(mutex_);
-      cdcsdk_tables_to_stream_map_.erase(tid);
-      newstreams = FindCDCStreamsForTableToDeleteMetadata(tid);
+  {
+    LockGuard lock(mutex_);
+    for (const auto& table_id : table_ids) {
+      cdcsdk_tables_to_stream_map_.erase(table_id);
     }
-    streams.insert(streams.end(), newstreams.begin(), newstreams.end());
-  }
-
-  if (streams.empty()) {
-    return Status::OK();
+    streams = FindCDCStreamsForTablesToDeleteMetadata(table_ids);
   }
 
   // Do not delete them here, just mark them as DELETING_METADATA and the catalog manager background
@@ -604,18 +595,21 @@ std::vector<CDCStreamInfoPtr> CatalogManager::FindCDCStreamsForTableUnlocked(
   return streams;
 }
 
-std::vector<CDCStreamInfoPtr> CatalogManager::FindCDCStreamsForTableToDeleteMetadata(
-    const TableId& table_id) const {
+std::vector<CDCStreamInfoPtr> CatalogManager::FindCDCStreamsForTablesToDeleteMetadata(
+    const std::unordered_set<TableId>& table_ids) const {
   std::vector<CDCStreamInfoPtr> streams;
 
-  for (const auto& entry : cdc_stream_map_) {
-    auto ltm = entry.second->LockForRead();
-    uint32_t table_list_size = ltm->table_id().size();
-    for (uint32_t i = 0; i < table_list_size; i++) {
-      if (ltm->table_id().Get(i) == table_id && !ltm->is_deleting_metadata() &&
-          !ltm->namespace_id().empty()) {
-        streams.push_back(entry.second);
-      }
+  for (const auto& [_, stream_info] : cdc_stream_map_) {
+    auto ltm = stream_info->LockForRead();
+    if (ltm->is_deleting_metadata() || ltm->namespace_id().empty()) {
+      continue;
+    }
+    if (std::any_of(ltm->table_id().begin(),
+                    ltm->table_id().end(),
+                    [&table_ids](const auto& table_id) {
+                      return table_ids.contains(table_id);
+                    })) {
+      streams.push_back(stream_info);
     }
   }
   return streams;

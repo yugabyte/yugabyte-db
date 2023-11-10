@@ -111,6 +111,13 @@ Status CDCSDKTestBase::CreateDatabase(
   return Status::OK();
 }
 
+Status CDCSDKTestBase::DropDatabase(
+    Cluster* cluster,
+    const std::string& namespace_name) {
+  auto conn = VERIFY_RESULT(cluster->Connect());
+  return conn.ExecuteFormat("DROP DATABASE $0", namespace_name);
+}
+
 Status CDCSDKTestBase::InitPostgres(Cluster* cluster) {
   auto pg_ts = RandomElement(cluster->mini_cluster_->mini_tablet_servers());
   auto port = cluster->mini_cluster_->AllocateFreePort();
