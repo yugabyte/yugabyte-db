@@ -681,6 +681,10 @@ void IntentAwareIterator::SeekToSuitableIntent() {
     }
     ProcessIntent();
     if (!status_.ok()) {
+      LOG(WARNING) << "Entry: " << DebugDumpKeyToStr(intent_iter_.key())
+                   << " => " << intent_iter_.value().ToDebugHexString()
+                   << " ProcessIntent failed: " << status_
+                   << " TransactionOperationContext: " << txn_op_context_;
       return;
     }
     switch (direction) {
