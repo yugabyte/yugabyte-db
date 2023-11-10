@@ -42,7 +42,6 @@
 #include <vector>
 
 #include <boost/function.hpp>
-#include <glog/logging.h>
 
 #include "yb/common/common_flags.h"
 #include "yb/common/hybrid_time.h"
@@ -436,7 +435,7 @@ Status Heartbeater::Thread::TryHeartbeat() {
   // update the metric.
   req.set_num_live_tablets(server_->tablet_manager()->GetNumLiveTablets());
   req.set_leader_count(server_->tablet_manager()->GetLeaderCount());
-  if (FLAGS_TEST_enable_db_catalog_version_mode) {
+  if (FLAGS_ysql_enable_db_catalog_version_mode) {
     auto fingerprint = server_->GetCatalogVersionsFingerprint();
     if (fingerprint.has_value()) {
       req.set_ysql_db_catalog_versions_fingerprint(*fingerprint);
@@ -532,34 +531,7 @@ Status Heartbeater::Thread::TryHeartbeat() {
       RETURN_NOT_OK(server_->SetUniverseKeyRegistry(resp.universe_key_registry()));
     }
 
-    // Check for CDC Universe Replication.
-    if (resp.has_consumer_registry()) {
-      int32_t cluster_config_version = -1;
-      if (!resp.has_cluster_config_version()) {
-        YB_LOG_EVERY_N_SECS(INFO, 30)
-            << "Invalid heartbeat response without a cluster config version";
-      } else {
-        cluster_config_version = resp.cluster_config_version();
-      }
-      RETURN_NOT_OK(server_->SetConfigVersionAndConsumerRegistry(
-          cluster_config_version, &resp.consumer_registry()));
-      server_->SetXClusterDDLOnlyMode(resp.consumer_registry().role() != cdc::XClusterRole::ACTIVE);
-    } else if (resp.has_cluster_config_version()) {
-      RETURN_NOT_OK(
-          server_->SetConfigVersionAndConsumerRegistry(resp.cluster_config_version(), nullptr));
-    }
-
-    // Check whether the cluster is a producer of a CDC stream.
-    if (resp.has_xcluster_enabled_on_producer() &&
-        resp.xcluster_enabled_on_producer()) {
-      RETURN_NOT_OK(server_->SetCDCServiceEnabled());
-    }
-
-    if (resp.has_xcluster_producer_registry() && resp.has_xcluster_config_version()) {
-      RETURN_NOT_OK(server_->SetPausedXClusterProducerStreams(
-          resp.xcluster_producer_registry().paused_producer_stream_ids(),
-          resp.xcluster_config_version()));
-    }
+    RETURN_NOT_OK(server_->XClusterHandleMasterHeartbeatResponse(resp));
 
     // At this point we know resp is a successful heartbeat response from the master so set it as
     // the last heartbeat response. This invalidates resp so we should use last_hb_response_ instead
@@ -591,8 +563,8 @@ Status Heartbeater::Thread::TryHeartbeat() {
   sending_full_report_ = sending_full_report_ && !all_processed;
 
   // Update the master's YSQL catalog version (i.e. if there were schema changes for YSQL objects).
-  if (FLAGS_TEST_enable_db_catalog_version_mode) {
-    // We never expect rolling gflag change of --TEST_enable_db_catalog_version_mode. In per-db
+  if (FLAGS_ysql_enable_db_catalog_version_mode) {
+    // We never expect rolling gflag change of --ysql_enable_db_catalog_version_mode. In per-db
     // mode, we do not use ysql_catalog_version.
     DCHECK(!last_hb_response_.has_ysql_catalog_version());
     if (last_hb_response_.has_db_catalog_version_data()) {
@@ -615,7 +587,7 @@ Status Heartbeater::Thread::TryHeartbeat() {
       VLOG_WITH_FUNC(2) << "got no master catalog version data";
     }
   } else {
-    // We never expect rolling gflag change of --TEST_enable_db_catalog_version_mode. In
+    // We never expect rolling gflag change of --ysql_enable_db_catalog_version_mode. In
     // non-per-db mode, we do not use db_catalog_version_data.
     DCHECK(!last_hb_response_.has_db_catalog_version_data());
     if (last_hb_response_.has_ysql_catalog_version()) {

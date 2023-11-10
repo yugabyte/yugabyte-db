@@ -65,7 +65,11 @@ export const SelectTargetUniverseStep = ({
   }
 
   if (universeListQuery.isError) {
-    return <YBErrorIndicator />;
+    return (
+      <YBErrorIndicator
+        customErrorMessage={t('failedToFetchUniverseList', { keyPrefix: 'queryError' })}
+      />
+    );
   }
 
   const { values } = formik.current;

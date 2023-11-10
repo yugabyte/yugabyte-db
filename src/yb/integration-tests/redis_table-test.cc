@@ -14,7 +14,7 @@
 #include <chrono>
 #include <thread>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/client/schema.h"
 

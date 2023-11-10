@@ -303,25 +303,25 @@ TEST_F(PgCancelTxnTest, Simple) {
   auto s = ASSERT_RESULT(InitSession("foo"));
   ASSERT_OK(s.conn.Execute("UPDATE foo SET v=30 WHERE k=5"));
   auto cancel_session = ASSERT_RESULT(Connect());
-  ASSERT_TRUE(ASSERT_RESULT(cancel_session.FetchValue<bool>(
+  ASSERT_TRUE(ASSERT_RESULT(cancel_session.FetchRow<bool>(
       Format("SELECT yb_cancel_transaction('$0')", s.txn_id.ToString()))));
   ASSERT_NOK(s.conn.CommitTransaction());
 
-  ASSERT_EQ(0, ASSERT_RESULT(cancel_session.FetchValue<int32_t>("SELECT v FROM foo where k=5")));
+  ASSERT_EQ(0, ASSERT_RESULT(cancel_session.FetchRow<int32_t>("SELECT v FROM foo where k=5")));
 
   // Cancelling the same transaction again should return false
-  ASSERT_FALSE(ASSERT_RESULT(cancel_session.FetchValue<bool>(
+  ASSERT_FALSE(ASSERT_RESULT(cancel_session.FetchRow<bool>(
       Format("SELECT yb_cancel_transaction('$0')", s.txn_id.ToString()))));
 }
 
 TEST_F(PgCancelTxnTest, CancelSelf) {
   auto s = ASSERT_RESULT(InitSession("foo"));
   ASSERT_OK(s.conn.Execute("UPDATE foo SET v=30 WHERE k=5"));
-  ASSERT_TRUE(ASSERT_RESULT(s.conn.FetchValue<bool>(
+  ASSERT_TRUE(ASSERT_RESULT(s.conn.FetchRow<bool>(
       Format("SELECT yb_cancel_transaction('$0')", s.txn_id.ToString()))));
   ASSERT_NOK(s.conn.CommitTransaction());
 
-  ASSERT_EQ(0, ASSERT_RESULT(s.conn.FetchValue<int32_t>("SELECT v FROM foo where k=5")));
+  ASSERT_EQ(0, ASSERT_RESULT(s.conn.FetchRow<int32_t>("SELECT v FROM foo where k=5")));
 }
 
 TEST_F(PgCancelTxnTest, InvalidArgs) {
@@ -333,10 +333,10 @@ TEST_F(PgCancelTxnTest, InvalidArgs) {
   // Non-existent transaction should return false
   const std::string non_existent_txnid = "abcdabcd-abcd-abcd-abcd-abcd00000075";
   DCHECK_NE(non_existent_txnid, s.txn_id.ToString());
-  ASSERT_FALSE(ASSERT_RESULT(cancel_session.FetchValue<bool>(
+  ASSERT_FALSE(ASSERT_RESULT(cancel_session.FetchRow<bool>(
       Format("SELECT yb_cancel_transaction('$0')", non_existent_txnid))));
   // Invalid uuid should return error
-  auto invalid_result = cancel_session.FetchValue<bool>("SELECT yb_cancel_transaction('1234')");
+  auto invalid_result = cancel_session.FetchRow<bool>("SELECT yb_cancel_transaction('1234')");
   ASSERT_NOK(invalid_result);
   ASSERT_STR_CONTAINS(invalid_result.status().ToString(), "invalid input");
 }
@@ -356,11 +356,11 @@ TEST_F(PgCancelTxnTest, OnlyAdminAccess) {
   auto dml_session = ASSERT_RESULT(InitSession("foo"));
   auto cancel_statement = Format("SELECT yb_cancel_transaction('$0')", dml_session.txn_id);
 
-  auto user_result = user_conn.FetchValue<bool>(cancel_statement);
+  auto user_result = user_conn.FetchRow<bool>(cancel_statement);
   ASSERT_NOK(user_result);
   ASSERT_STR_CONTAINS(user_result.status().ToString(), "permission denied");
 
-  ASSERT_TRUE(ASSERT_RESULT(admin_conn.FetchValue<bool>(cancel_statement)));
+  ASSERT_TRUE(ASSERT_RESULT(admin_conn.FetchRow<bool>(cancel_statement)));
 }
 
 } // namespace pgwrapper

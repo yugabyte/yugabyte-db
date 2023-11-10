@@ -42,7 +42,7 @@
 
 #include <boost/container/static_vector.hpp>
 #include <boost/optional/optional.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/client/client.h"
 #include "yb/client/meta_data_cache.h"
@@ -105,7 +105,6 @@
 #include "yb/util/fault_injection.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
-#include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
@@ -1741,8 +1740,8 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   if (elapsed_ms > FLAGS_tablet_start_warn_threshold_ms) {
     LOG(WARNING) << kLogPrefix << "Tablet startup took " << elapsed_ms << "ms";
     if (Trace::CurrentTrace()) {
-      LOG(WARNING) << kLogPrefix << "Trace:" << std::endl
-                   << Trace::CurrentTrace()->DumpToString(true);
+      LOG(INFO) << kLogPrefix << "Trace:";
+      Trace::CurrentTrace()->DumpToLogInfo(true);
     }
   }
 

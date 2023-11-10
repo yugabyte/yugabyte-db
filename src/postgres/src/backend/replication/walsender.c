@@ -94,6 +94,9 @@
 #include "utils/timeout.h"
 #include "utils/timestamp.h"
 
+/* YB includes. */
+#include "pg_yb_utils.h"
+
 /*
  * Maximum data payload in a WAL data message.  Must be >= XLOG_BLCKSZ.
  *
@@ -838,6 +841,13 @@ parseCreateReplSlotOptions(CreateReplicationSlotCmd *cmd,
 static void
 CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 {
+	if (IsYugaByteEnabled() && !yb_enable_replication_commands)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("CreateReplicationSlot is unavailable"),
+				 errdetail("yb_enable_replication_commands is false or a "
+				 		   "system upgrade is in progress")));
+
 	const char *snapshot_name = NULL;
 	char		xloc[MAXFNAMELEN];
 	char	   *slot_name;
@@ -851,6 +861,16 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 
 	Assert(!MyReplicationSlot);
 
+	/*
+	 * Exporting a snapshot is not supported yet. So we change the default for
+	 * YSQL. A valid default is needed because drivers such as the Java JDBC
+	 * driver do not allow chosing the snapshot action during creation of a
+	 * replication slot. The only action available to the user is the default
+	 * action, so it must work.
+	 */
+	if (IsYugaByteEnabled())
+		snapshot_action = CRS_USE_SNAPSHOT;
+
 	parseCreateReplSlotOptions(cmd, &reserve_wal, &snapshot_action);
 
 	/* setup state for XLogReadPage */
@@ -859,6 +879,11 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 
 	if (cmd->kind == REPLICATION_KIND_PHYSICAL)
 	{
+		if (IsYugaByteEnabled())
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("YSQL only supports logical replication slots")));
+
 		ReplicationSlotCreate(cmd->slotname, false,
 							  cmd->temporary ? RS_TEMPORARY : RS_PERSISTENT);
 	}
@@ -867,14 +892,22 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 		CheckLogicalDecodingRequirements();
 
 		/*
-		 * Initially create persistent slot as ephemeral - that allows us to
-		 * nicely handle errors during initialization because it'll get
-		 * dropped if this transaction fails. We'll make it persistent at the
-		 * end. Temporary slots can be created as temporary from beginning as
-		 * they get dropped on error as well.
+		 * Only create replication slot after all the validation is done. This
+		 * is because creating a replication slot requires going to yb-master
+		 * which is expensive.
 		 */
-		ReplicationSlotCreate(cmd->slotname, true,
-							  cmd->temporary ? RS_TEMPORARY : RS_EPHEMERAL);
+		if (!IsYugaByteEnabled())
+		{
+			/*
+			 * Initially create persistent slot as ephemeral - that allows us to
+			 * nicely handle errors during initialization because it'll get
+			 * dropped if this transaction fails. We'll make it persistent at
+			 * the end. Temporary slots can be created as temporary from
+			 * beginning as they get dropped on error as well.
+			 */
+			ReplicationSlotCreate(cmd->slotname, true,
+								  cmd->temporary ? RS_TEMPORARY : RS_EPHEMERAL);
+		}
 	}
 
 	if (cmd->kind == REPLICATION_KIND_LOGICAL)
@@ -888,6 +921,11 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 		 */
 		if (snapshot_action == CRS_EXPORT_SNAPSHOT)
 		{
+			if (IsYugaByteEnabled())
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("Exporting snapshot is not yet supported")));
+
 			if (IsTransactionBlock())
 				ereport(ERROR,
 						(errmsg("CREATE_REPLICATION_SLOT ... EXPORT_SNAPSHOT "
@@ -895,7 +933,12 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 
 			need_full_snapshot = true;
 		}
-		else if (snapshot_action == CRS_USE_SNAPSHOT)
+
+		/* 
+		 * YB has its own snapshot mechanism that does not require the command
+		 * to be created within a transaction, so we disable these checks here.
+		 */
+		else if (snapshot_action == CRS_USE_SNAPSHOT && !IsYugaByteEnabled())
 		{
 			if (!IsTransactionBlock())
 				ereport(ERROR,
@@ -920,46 +963,79 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 			need_full_snapshot = true;
 		}
 
-		ctx = CreateInitDecodingContext(cmd->plugin, NIL, need_full_snapshot,
-										logical_read_xlog_page,
-										WalSndPrepareWrite, WalSndWriteData,
-										WalSndUpdateProgress);
-
-		/*
-		 * Signal that we don't need the timeout mechanism. We're just
-		 * creating the replication slot and don't yet accept feedback
-		 * messages or send keepalives. As we possibly need to wait for
-		 * further WAL the walsender would otherwise possibly be killed too
-		 * soon.
-		 */
-		last_reply_timestamp = 0;
-
-		/* build initial snapshot, might take a while */
-		DecodingContextFindStartpoint(ctx);
-
-		/*
-		 * Export or use the snapshot if we've been asked to do so.
-		 *
-		 * NB. We will convert the snapbuild.c kind of snapshot to normal
-		 * snapshot when doing this.
-		 */
-		if (snapshot_action == CRS_EXPORT_SNAPSHOT)
+		if (IsYugaByteEnabled())
 		{
-			snapshot_name = SnapBuildExportSnapshot(ctx->snapshot_builder);
-		}
-		else if (snapshot_action == CRS_USE_SNAPSHOT)
-		{
-			Snapshot	snap;
+			if (cmd->plugin == NULL || 
+				strcmp(cmd->plugin, YB_OUTPUT_PLUGIN) != 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("invalid output plugin"),
+						 errdetail("Only yboutput plugin is supported")));
 
-			snap = SnapBuildInitialSnapshot(ctx->snapshot_builder);
-			RestoreTransactionSnapshot(snap, MyProc);
+			if (cmd->temporary)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 	 errmsg("Temporary replication slot is not yet"
+						 		" supported"),
+					 	 errhint("See https://github.com/yugabyte/yugabyte-db/"
+							 	 "issues/19263. React with thumbs up to raise"
+								 " its priority")));
+
+			ReplicationSlotCreate(cmd->slotname, true, RS_PERSISTENT);
+
+			/*
+			 * Signal that we don't need the timeout mechanism. We're just
+			 * creating the replication slot and don't yet accept feedback
+			 * messages or send keepalives. As we possibly need to wait for
+			 * further WAL the walsender would otherwise possibly be killed too
+			 * soon.
+			 */
+			last_reply_timestamp = 0;
 		}
 
-		/* don't need the decoding context anymore */
-		FreeDecodingContext(ctx);
+		if (!IsYugaByteEnabled())
+		{
+			ctx = CreateInitDecodingContext(cmd->plugin, NIL, need_full_snapshot,
+								logical_read_xlog_page,
+								WalSndPrepareWrite, WalSndWriteData,
+								WalSndUpdateProgress);
+			
+			/*
+			 * Signal that we don't need the timeout mechanism. We're just
+			 * creating the replication slot and don't yet accept feedback
+			 * messages or send keepalives. As we possibly need to wait for
+			 * further WAL the walsender would otherwise possibly be killed too
+			 * soon.
+			 */
+			last_reply_timestamp = 0;
 
-		if (!cmd->temporary)
-			ReplicationSlotPersist();
+			/* build initial snapshot, might take a while */
+			DecodingContextFindStartpoint(ctx);
+
+			/*
+			 * Export or use the snapshot if we've been asked to do so.
+			 *
+			 * NB. We will convert the snapbuild.c kind of snapshot to normal
+			 * snapshot when doing this.
+			 */
+			if (snapshot_action == CRS_EXPORT_SNAPSHOT)
+			{
+				snapshot_name = SnapBuildExportSnapshot(ctx->snapshot_builder);
+			}
+			else if (snapshot_action == CRS_USE_SNAPSHOT)
+			{
+				Snapshot	snap;
+
+				snap = SnapBuildInitialSnapshot(ctx->snapshot_builder);
+				RestoreTransactionSnapshot(snap, MyProc);
+			}
+
+			/* don't need the decoding context anymore */
+			FreeDecodingContext(ctx);
+		
+			if (!cmd->temporary)
+				ReplicationSlotPersist();
+		}
 	}
 	else if (cmd->kind == REPLICATION_KIND_PHYSICAL && reserve_wal)
 	{
@@ -972,9 +1048,17 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 			ReplicationSlotSave();
 	}
 
-	snprintf(xloc, sizeof(xloc), "%X/%X",
-			 (uint32) (MyReplicationSlot->data.confirmed_flush >> 32),
-			 (uint32) MyReplicationSlot->data.confirmed_flush);
+	/* 
+	 * Send "0/0" as the consistent wal location instead of a NULL value. This
+	 * is so that the drivers which have a NULL check on the value continue to
+	 * work. 
+	 */
+	if (IsYugaByteEnabled())
+		snprintf(xloc, sizeof(xloc), "%X/%X", 0, 0);
+	else
+		snprintf(xloc, sizeof(xloc), "%X/%X",
+				 (uint32) (MyReplicationSlot->data.confirmed_flush >> 32),
+				 (uint32) MyReplicationSlot->data.confirmed_flush);
 
 	dest = CreateDestReceiver(DestRemoteSimple);
 	MemSet(nulls, false, sizeof(nulls));
@@ -1001,7 +1085,11 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 	tstate = begin_tup_output_tupdesc(dest, tupdesc);
 
 	/* slot_name */
-	slot_name = NameStr(MyReplicationSlot->data.name);
+	if (IsYugaByteEnabled())
+		slot_name = cmd->slotname;
+	else
+		slot_name = NameStr(MyReplicationSlot->data.name);
+	
 	values[0] = CStringGetTextDatum(slot_name);
 
 	/* consistent wal location */
@@ -1023,7 +1111,8 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 	do_tup_output(tstate, values, nulls);
 	end_tup_output(tstate);
 
-	ReplicationSlotRelease();
+	if (!IsYugaByteEnabled())
+		ReplicationSlotRelease();
 }
 
 /*
@@ -1032,6 +1121,19 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 static void
 DropReplicationSlot(DropReplicationSlotCmd *cmd)
 {
+	if (IsYugaByteEnabled() && !yb_enable_replication_commands)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("DropReplicationSlot is unavailable"),
+				 errdetail("yb_enable_replication_commands is false or a "
+				 		   "system upgrade is in progress")));
+
+	if (IsYugaByteEnabled() && cmd->wait)
+		ereport(ERROR, 
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("Waiting for a replication slot is not yet"
+						" supported")));
+
 	ReplicationSlotDrop(cmd->slotname, !cmd->wait);
 	EndCommand("DROP_REPLICATION_SLOT", DestRemote);
 }
@@ -1445,7 +1547,8 @@ exec_replication_command(const char *cmd_string)
 	 */
 	if (MyWalSnd->state == WALSNDSTATE_STOPPING)
 		ereport(ERROR,
-				(errmsg("cannot execute new commands while WAL sender is in stopping mode")));
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("cannot execute new commands while WAL sender is in stopping mode")));
 
 	/*
 	 * CREATE_REPLICATION_SLOT ... LOGICAL exports a snapshot until the next
@@ -1455,43 +1558,70 @@ exec_replication_command(const char *cmd_string)
 
 	CHECK_FOR_INTERRUPTS();
 
+	/*
+	 * Prepare to parse and execute the command.
+	 */
 	cmd_context = AllocSetContextCreate(GetCurrentMemoryContext(),
 										"Replication command context",
 										ALLOCSET_DEFAULT_SIZES);
 	old_context = MemoryContextSwitchTo(cmd_context);
 
 	replication_scanner_init(cmd_string);
+
+	/*
+	 * Is it a WalSender command?
+	 */
+	if (!replication_scanner_is_replication_command())
+	{
+		/* Nope; clean up and get out. */
+		replication_scanner_finish();
+
+		MemoryContextSwitchTo(old_context);
+		MemoryContextDelete(cmd_context);
+
+		/* XXX this is a pretty random place to make this check */
+		if (MyDatabaseId == InvalidOid)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("cannot execute SQL commands in WAL sender for physical replication")));
+
+		/* Tell the caller that this wasn't a WalSender command. */
+		return false;
+	}
+
+	/*
+	 * Looks like a WalSender command, so parse it.
+	 */
 	parse_rc = replication_yyparse();
 	if (parse_rc != 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-				 (errmsg_internal("replication command parser returned %d",
-								  parse_rc))));
+				 errmsg_internal("replication command parser returned %d",
+								 parse_rc)));
+	replication_scanner_finish();
 
 	cmd_node = replication_parse_result;
 
 	/*
+	 * Report query to various monitoring facilities.  For this purpose, we
+	 * report replication commands just like SQL commands.
+	 */
+	debug_query_string = cmd_string;
+
+	pgstat_report_activity(STATE_RUNNING, cmd_string);
+
+	/*
 	 * Log replication command if log_replication_commands is enabled. Even
 	 * when it's disabled, log the command with DEBUG1 level for backward
-	 * compatibility. Note that SQL commands are not logged here, and will be
-	 * logged later if log_statement is enabled.
+	 * compatibility.
 	 */
-	if (cmd_node->type != T_SQLCmd)
-		ereport(log_replication_commands ? LOG : DEBUG1,
-				(errmsg("received replication command: %s", cmd_string)));
+	ereport(log_replication_commands ? LOG : DEBUG1,
+			(errmsg("received replication command: %s", cmd_string)));
 
 	/*
-	 * CREATE_REPLICATION_SLOT ... LOGICAL exports a snapshot. If it was
-	 * called outside of transaction the snapshot should be cleared here.
+	 * Disallow replication commands in aborted transaction blocks.
 	 */
-	if (!IsTransactionBlock())
-		SnapBuildClearExportedSnapshot();
-
-	/*
-	 * For aborted transactions, don't allow anything except pure SQL, the
-	 * exec_simple_query() will handle it correctly.
-	 */
-	if (IsAbortedTransactionBlockState() && !IsA(cmd_node, SQLCmd))
+	if (IsAbortedTransactionBlockState())
 		ereport(ERROR,
 				(errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION),
 				 errmsg("current transaction is aborted, "
@@ -1506,9 +1636,6 @@ exec_replication_command(const char *cmd_string)
 	initStringInfo(&output_message);
 	initStringInfo(&reply_message);
 	initStringInfo(&tmpbuf);
-
-	/* Report to pgstat that this process is running */
-	pgstat_report_activity(STATE_RUNNING, NULL);
 
 	switch (cmd_node->type)
 	{
@@ -1531,6 +1658,12 @@ exec_replication_command(const char *cmd_string)
 
 		case T_StartReplicationCmd:
 			{
+				if (IsYugaByteEnabled())
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("Consuming changes via Walsender is not yet"
+									" supported")));
+
 				StartReplicationCmd *cmd = (StartReplicationCmd *) cmd_node;
 
 				PreventInTransactionBlock(true, "START_REPLICATION");
@@ -1556,17 +1689,6 @@ exec_replication_command(const char *cmd_string)
 			}
 			break;
 
-		case T_SQLCmd:
-			if (MyDatabaseId == InvalidOid)
-				ereport(ERROR,
-						(errmsg("cannot execute SQL commands in WAL sender for physical replication")));
-
-			/* Report to pgstat that this process is now idle */
-			pgstat_report_activity(STATE_IDLE, NULL);
-
-			/* Tell the caller that this wasn't a WalSender command. */
-			return false;
-
 		default:
 			elog(ERROR, "unrecognized replication command node tag: %u",
 				 cmd_node->type);
@@ -1581,6 +1703,7 @@ exec_replication_command(const char *cmd_string)
 
 	/* Report to pgstat that this process is now idle */
 	pgstat_report_activity(STATE_IDLE, NULL);
+	debug_query_string = NULL;
 
 	return true;
 }

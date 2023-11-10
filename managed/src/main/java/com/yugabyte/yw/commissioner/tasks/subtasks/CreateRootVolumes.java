@@ -19,8 +19,8 @@ public class CreateRootVolumes extends NodeTaskBase {
   private static final String ROOT_DEVICE_KEY = "root_device_name";
 
   @Inject
-  protected CreateRootVolumes(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected CreateRootVolumes(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
   public static class Params extends AnsibleCreateServer.Params {

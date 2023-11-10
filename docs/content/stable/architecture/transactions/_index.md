@@ -12,6 +12,7 @@ menu:
     weight: 1120
 type: indexpage
 ---
+
 YugabyteDB's distributed transaction architecture is based on principles of atomicity, consistency, isolation, and durability (ACID), and is inspired by <a href="https://research.google.com/archive/spanner-osdi2012.pdf">Google Spanner</a>.
 
 <div class="row">
@@ -48,6 +49,30 @@ YugabyteDB's distributed transaction architecture is based on principles of atom
       </div>
       <div class="body">
         Learn how YugabyteDB handles conflicts between concurrent transactions.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="transaction-priorities/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/architecture/distributed_acid.png" aria-hidden="true" />
+        <div class="title">Transaction priorities</div>
+      </div>
+      <div class="body">
+        Learn how YugabyteDB decides which transactions should be aborted in case of conflict.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="read-committed/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/architecture/distributed_acid.png" aria-hidden="true" />
+        <div class="title">Read committed</div>
+      </div>
+      <div class="body">
+        Read committed isolation level in YugabyteDB.
       </div>
     </a>
   </div>

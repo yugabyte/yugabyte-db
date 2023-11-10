@@ -114,7 +114,7 @@ Status TcpStream::DoStart(ev::loop_ref* loop, bool connect) {
   is_epoll_registered_ = true;
 
   if (connected_) {
-    context_->Connected();
+    RETURN_NOT_OK(context_->Connected());
   }
 
   return Status::OK();
@@ -283,11 +283,16 @@ void TcpStream::Handler(ev::io& watcher, int revents) {  // NOLINT
     bool just_connected = !connected_;
     if (just_connected) {
       connected_ = true;
-      context_->Connected();
+      status = context_->Connected();
+      if (!status.ok()) {
+        VLOG_WITH_PREFIX(3) << "Connected() returned error: " << status;
+      }
     }
-    status = WriteHandler(just_connected);
-    if (!status.ok()) {
-      VLOG_WITH_PREFIX(3) << "WriteHandler() returned error: " << status;
+    if (status.ok()) {
+      status = WriteHandler(just_connected);
+      if (!status.ok()) {
+        VLOG_WITH_PREFIX(3) << "WriteHandler() returned error: " << status;
+      }
     }
   }
 

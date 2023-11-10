@@ -46,9 +46,7 @@ const mapDispatchToProps = (dispatch) => {
     },
     fetchOIDCToken: (userUUID) => {
       dispatch(fetchOIDCToken(userUUID)).then((response) => {
-        if (response.payload.status === 200) {
           dispatch(fetchOIDCTokenResponse(response.payload));
-        }
       });
     },
     fetchGlobalRunTimeConfigs: () => {

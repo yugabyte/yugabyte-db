@@ -41,6 +41,7 @@
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/gutil/strings/util.h"
 #include "yb/integration-tests/mini_cluster.h"
 
 #include "yb/master/catalog_manager.h"
@@ -147,6 +148,9 @@ Status CDCSDKTestBase::SetUpWithParams(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_factor) = replication_factor;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_pack_full_row_update) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_populate_safepoint_record) = cdc_populate_safepoint_record;
+  // Set max_replication_slots to a large value so that we don't run out of them during tests and
+  // don't have to do cleanups after every test case.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_replication_slots) = 500;
 
   MiniClusterOptions opts;
   opts.num_masters = num_masters;
@@ -402,6 +406,28 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStream(
   RETURN_NOT_OK(cdc_proxy_->CreateCDCStream(req, &resp, &rpc));
 
   return xrepl::StreamId::FromString(resp.db_stream_id());
+}
+
+Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStreamWithReplicationSlot() {
+  // Generate a unique name for the replication slot as a UUID. Replication slot names cannot
+  // contain dash. Hence, we remove them from here.
+  auto uuid_without_dash = StringReplace(Uuid::Generate().ToString(), "-", "", true);
+  auto slot_name = Format("test_replication_slot_$0", uuid_without_dash);
+  return CreateDBStreamWithReplicationSlot(slot_name);
+}
+
+Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStreamWithReplicationSlot(
+    const std::string& replication_slot_name) {
+  auto conn = VERIFY_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  RETURN_NOT_OK(conn.FetchFormat(
+      "SELECT * FROM pg_create_logical_replication_slot('$0', 'yboutput', false)",
+      replication_slot_name));
+
+  // Fetch the stream_id of the replication slot.
+  auto stream_id = VERIFY_RESULT(conn.FetchRow<std::string>(Format(
+      "select yb_stream_id from pg_replication_slots WHERE slot_name = '$0'",
+      replication_slot_name)));
+  return xrepl::StreamId::FromString(stream_id);
 }
 
 }  // namespace cdc

@@ -18,7 +18,7 @@
 //
 #include "yb/util/condition_variable.h"
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/util/errno.h"
 #include "yb/util/monotime.h"

@@ -36,9 +36,9 @@ class PgTxnTest : public PgMiniTestBase {
  protected:
   void AssertEffectiveIsolationLevel(PGConn* conn, const string& expected) {
     auto value_from_deprecated_guc = ASSERT_RESULT(
-        conn->FetchValue<std::string>("SHOW yb_effective_transaction_isolation_level"));
+        conn->FetchRow<std::string>("SHOW yb_effective_transaction_isolation_level"));
     auto value_from_proc = ASSERT_RESULT(
-        conn->FetchValue<std::string>("SELECT yb_get_effective_transaction_isolation_level()"));
+        conn->FetchRow<std::string>("SELECT yb_get_effective_transaction_isolation_level()"));
     ASSERT_EQ(value_from_deprecated_guc, value_from_proc);
     ASSERT_EQ(value_from_deprecated_guc, expected);
   }
@@ -136,7 +136,7 @@ TEST_F_EX(PgTxnTest, SelectRF1ReadOnlyDeferred, PgTxnRF1Test) {
   ASSERT_OK(conn.Execute("CREATE TABLE test (key INT)"));
   ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1)"));
   ASSERT_OK(conn.Execute("BEGIN ISOLATION LEVEL SERIALIZABLE, READ ONLY, DEFERRABLE"));
-  auto res = ASSERT_RESULT(conn.FetchValue<int32_t>("SELECT * FROM test"));
+  auto res = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT * FROM test"));
   ASSERT_EQ(res, 1);
   ASSERT_OK(conn.Execute("COMMIT"));
 }
@@ -240,8 +240,9 @@ TEST_F(PgTxnTest, ReadRecentSet) {
           p = FastInt64ToBufferLeft(v, p);
         }
         ASSERT_OK(connection.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
-        auto res = connection.FetchFormat("SELECT value FROM test WHERE value in ($0)", str_buffer);
-        if (!res.ok()) {
+        auto values_res = connection.FetchRows<int32_t>(
+            Format("SELECT value FROM test WHERE value in ($0)", str_buffer));
+        if (!values_res.ok()) {
           ASSERT_OK(connection.RollbackTransaction());
           continue;
         }
@@ -251,8 +252,8 @@ TEST_F(PgTxnTest, ReadRecentSet) {
           continue;
         }
         uint64_t mask = 0;
-        for (int j = 0, count = PQntuples(res->get()); j != count; ++j) {
-          mask |= 1ULL << (ASSERT_RESULT(GetValue<int32_t>(res->get(), j, 0)) - read_min);
+        for (const auto& value : *values_res) {
+          mask |= 1ULL << (value - read_min);
         }
         std::lock_guard lock(reads_mutex);
         Read new_read{read_min, mask};
@@ -357,7 +358,7 @@ TEST_F_EX( PgTxnTest, SelectForUpdateExclusiveRead, PgTxnTestFailOnConflict) {
       // then we should expect one RPC thread to hold the lock for 10s while the others wait for
       // the sync point in this test to be hit. Then, each RPC thread should proceed in serial after
       // that, acquiring the lock and resolving conflicts.
-      auto res = conn.FetchValue<int32_t>("SELECT value FROM test WHERE key=1 FOR UPDATE");
+      auto res = conn.FetchRow<int32_t>("SELECT value FROM test WHERE key=1 FOR UPDATE");
 
       read_succeeded[thread_idx] = res.ok();
       LOG(INFO) << "Thread read " << thread_idx << (res.ok() ? " succeeded" : " failed");

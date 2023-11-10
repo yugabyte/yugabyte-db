@@ -789,6 +789,12 @@ extern void assign_yb_xcluster_consistency_level(const char *newval,
  */
 void YbUpdateSessionStats(YbInstrumentation *yb_instr);
 
+extern bool check_yb_read_time(char **newval, void **extra, GucSource source);
+extern void assign_yb_read_time(const char *newval, void *extra);
+
+/* GUC assign hook for max_replication_slots */
+extern void yb_assign_max_replication_slots(int newval, void *extra);
+
 /*
  * Refreshes the session stats snapshot with the collected stats. This function
  * is to be invoked before the query has started its execution.
@@ -880,8 +886,7 @@ OptSplit *YbGetSplitOptions(Relation rel);
  * here. Also we don't need ereport's flexibility, as we support transfer of
  * limited subset of Postgres error fields.
  *
- * Similar to ereport, we have a version for compilers without support for
- * __builtin_constant_p, though we may drop it eventually.
+ * We require the compiler to support __builtin_constant_p.
  */
 #ifdef HAVE__BUILTIN_CONSTANT_P
 #define HandleYBStatusAtErrorLevel(status, elevel) \
@@ -907,12 +912,14 @@ OptSplit *YbGetSplitOptions(Relation rel);
 										   &detail_buf, &detail_nargs, \
 										   &detail_args); \
 			YBCFreeStatus(_status); \
-			if (errstart(elevel, filename ? filename : __FILE__, \
+			if (errstart(elevel, __FILE__, \
 						 lineno > 0 ? lineno : __LINE__, \
-						 funcname ? funcname : PG_FUNCNAME_MACRO, TEXTDOMAIN)) \
+						 PG_FUNCNAME_MACRO, \
+						 TEXTDOMAIN)) \
 			{ \
 				yb_errmsg_from_status_data(msg_buf, msg_nargs, msg_args); \
 				yb_detail_from_status_data(detail_buf, detail_nargs, detail_args); \
+				yb_set_pallocd_error_file_and_func(filename, funcname); \
 				errcode(pg_err_code); \
 				yb_txn_errcode(txn_err_code); \
 				errhidecontext(true); \
@@ -920,44 +927,12 @@ OptSplit *YbGetSplitOptions(Relation rel);
 				if (__builtin_constant_p(elevel) && (elevel) >= ERROR) \
 					pg_unreachable(); \
 			} \
-		} \
-	} while (0)
-#else							/* !HAVE__BUILTIN_CONSTANT_P */
-#define HandleYBStatusAtErrorLevel(status, elevel) \
-	do \
-	{ \
-		AssertMacro(!IsMultiThreadedMode()); \
-		YBCStatus _status = (status); \
-		if (_status) \
-		{ \
-			const int		elevel_ = (elevel); \
-			const uint32_t	pg_err_code = YBCStatusPgsqlError(_status); \
-			const uint16_t	txn_err_code = YBCStatusTransactionError(_status); \
-			const char	   *filename = YBCStatusFilename(_status); \
-			int				lineno = YBCStatusLineNumber(_status); \
-			const char	   *funcname = YBCStatusFuncname(_status); \
-			const char	   *msg_buf = NULL; \
-			const char	   *detail_buf = NULL; \
-			size_t		    msg_nargs = 0; \
-			size_t		    detail_nargs = 0; \
-			const char	  **msg_args = NULL; \
-			const char	  **detail_args = NULL; \
-			GetStatusMsgAndArgumentsByCode(pg_err_code, _status, &msg_buf, \
-										   &msg_nargs, &msg_args, &detail_buf, \
-										   &detail_nargs, &detail_args); \
-			YBCFreeStatus(_status); \
-			if (errstart(elevel_, filename ? filename : __FILE__, \
-						 lineno > 0 ? lineno : __LINE__, \
-						 funcname ? funcname : PG_FUNCNAME_MACRO, TEXTDOMAIN)) \
+			else \
 			{ \
-				yb_errmsg_from_status_data(msg_buf, msg_nargs, msg_args); \
-				yb_detail_from_status_data(detail_buf, detail_nargs, detail_args); \
-				errcode(pg_err_code); \
-				yb_txn_errcode(txn_err_code); \
-				errhidecontext(true); \
-				errfinish(0); \
-				if (elevel_ >= ERROR) \
-					pg_unreachable(); \
+				if (filename) \
+					pfree((void*) filename); \
+				if (funcname) \
+					pfree((void*) funcname); \
 			} \
 		} \
 	} while (0)

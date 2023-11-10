@@ -3,7 +3,7 @@ title: Steps for a bulk data load
 headerTitle: Bulk data load from files
 linkTitle: Bulk data load
 headcontent: Import data from flat files using YugabyteDB Voyager
-description: Run the steps to ensure a successful offline migration using YugabyteDB Voyager.
+description: Import data from flat files using YugabyteDB Voyager.
 menu:
   preview_yugabyte-voyager:
     identifier: bulk-data-load
@@ -31,7 +31,7 @@ yb-voyager import data file --export-dir <EXPORT_DIR> \
        --target-db-name <TARGET_DB_NAME> \
        --target-db-schema <TARGET_DB_SCHEMA> \
        --data-dir </path/to/files/dir/> \
-       --file-table-map <filename1:table1,filename2:table2> \
+       --file-table-map <filename1>:<table1>,<filename2>:<table2> \
        --format csv|text \ # default csv
        # Optional arguments as per data format
        --delimiter <DELIMITER> \ # default ',' for csv and '\t' for text

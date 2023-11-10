@@ -134,7 +134,7 @@ public class PgRegressRunner {
           continue;
         }
         LOG.warn("Side-by-side diff between expected output and actual output of {}:\n{}",
-            testName, new SideBySideDiff(expectedFile, resultFile).getSideBySideDiff());
+            testName, SideBySideDiff.generate(expectedFile, resultFile));
       }
     } else if (exitCode != 0) {
       LOG.error("No failed tests detected!");

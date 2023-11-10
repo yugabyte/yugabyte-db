@@ -945,4 +945,29 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " with the universe.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> notifyPeerOnRemoval =
+      new ConfKeyInfo<>(
+          "yb.gflags.notify_peer_of_removal_from_cluster",
+          ScopeType.UNIVERSE,
+          "Notify Peers in Cluster on Node Removal",
+          "Notify peers in cluster on a master node removal",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> alwaysWaitForDataMove =
+      new ConfKeyInfo<>(
+          "yb.always_wait_for_data_move",
+          ScopeType.UNIVERSE,
+          "Always wait for data move on remove node",
+          "Always run wait for data move during remove node",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> skipConfigBasedPreflightValidation =
+      new ConfKeyInfo<>(
+          "yb.backup.skip_config_based_preflight_validation",
+          ScopeType.UNIVERSE,
+          "Skip storage config backup/restore preflight validation",
+          "Skip preflight validation before backup/scheduled backups/incremental backups/restores."
+              + " This skips the storage config/success marker based validations done before B/R.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

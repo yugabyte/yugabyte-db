@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { useDispatch, useSelector } from 'react-redux';
+import { find } from 'lodash';
 import { toast } from 'react-toastify';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 import { AxiosError } from 'axios';
@@ -31,8 +32,12 @@ import { handleServerError } from '../../../utils/errorHandlingUtils';
 import { AddTableModal } from './addTable/AddTableModal';
 
 import { TableType, TableTypeLabel, YBTable } from '../../../redesign/helpers/dtos';
-import { XClusterConfig, XClusterTable } from '../XClusterTypes';
+import { XClusterTable } from '../XClusterTypes';
+import { XClusterConfig } from '../dtos';
 
+import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { Action, Resource } from '../../../redesign/features/rbac';
 import styles from './ReplicationTables.module.scss';
 
 interface props {
@@ -130,11 +135,19 @@ export function ReplicationTables({ xClusterConfig, isDrConfig = false }: props)
         <span className={styles.infoText}>Tables selected for Replication</span>
         <div className={styles.actionBar}>
           {!isDrConfig && (
-            <YBButton
-              onClick={showAddTablesToClusterModal}
-              btnIcon="fa fa-plus"
-              btnText="Add Tables"
-            />
+            <RbacValidator
+              customValidateFunction={(userPerm) => {
+                return find(userPerm, { resourceUUID: xClusterConfig.sourceUniverseUUID, actions: [Action.BACKUP_RESTORE, Action.UPDATE], resourceType: Resource.UNIVERSE }) !== undefined &&
+                  find(userPerm, { resourceUUID: xClusterConfig.targetUniverseUUID, actions: [Action.BACKUP_RESTORE, Action.UPDATE], resourceType: Resource.UNIVERSE }) !== undefined;
+              }}
+              isControl
+            >
+              <YBButton
+                onClick={showAddTablesToClusterModal}
+                btnIcon="fa fa-plus"
+                btnText="Add Tables"
+              />
+            </RbacValidator>
           )}
         </div>
       </div>
@@ -215,17 +228,25 @@ export function ReplicationTables({ xClusterConfig, isDrConfig = false }: props)
                     <img src={ellipsisIcon} alt="more" className="ellipsis-icon" />
                   </Dropdown.Toggle>
                   <Dropdown.Menu>
-                    <MenuItem
-                      onClick={() => {
-                        setDeleteTableDetails(row);
-                        dispatch(openDialog(XClusterModalName.REMOVE_TABLE_FROM_CONFIG));
+                    <RbacValidator
+                      customValidateFunction={() => {
+                        return hasNecessaryPerm({ ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION, onResource: xClusterConfig.sourceUniverseUUID }) &&
+                          hasNecessaryPerm({ ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION, onResource: xClusterConfig.targetUniverseUUID });
                       }}
-                      disabled={row.tableType === TableType.TRANSACTION_STATUS_TABLE_TYPE}
+                      isControl
                     >
-                      <YBLabelWithIcon className={styles.dropdownMenuItem} icon="fa fa-times">
-                        Remove Table
-                      </YBLabelWithIcon>
-                    </MenuItem>
+                      <MenuItem
+                        onClick={() => {
+                          setDeleteTableDetails(row);
+                          dispatch(openDialog(XClusterModalName.REMOVE_TABLE_FROM_CONFIG));
+                        }}
+                        disabled={row.tableType === TableType.TRANSACTION_STATUS_TABLE_TYPE}
+                      >
+                        <YBLabelWithIcon className={styles.dropdownMenuItem} icon="fa fa-times">
+                          Remove Table
+                        </YBLabelWithIcon>
+                      </MenuItem>
+                    </RbacValidator>
                   </Dropdown.Menu>
                 </Dropdown>
               </>

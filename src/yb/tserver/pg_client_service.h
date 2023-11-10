@@ -24,6 +24,8 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/server/server_base_options.h"
+
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/pg_client.service.h"
 #include "yb/tserver/xcluster_context.h"
@@ -42,12 +44,14 @@ class PgMutationCounter;
     (AlterTable) \
     (BackfillIndex) \
     (CreateDatabase) \
+    (CreateReplicationSlot) \
     (CreateSequencesDataTable) \
     (CreateTable) \
     (CreateTablegroup) \
     (DeleteDBSequences) \
     (DeleteSequenceTuple) \
     (DropDatabase) \
+    (DropReplicationSlot) \
     (DropTable) \
     (DropTablegroup) \
     (FetchSequenceTuple) \
@@ -56,6 +60,7 @@ class PgMutationCounter;
     (GetDatabaseInfo) \
     (GetIndexBackfillProgress) \
     (GetLockStatus) \
+    (GetReplicationSlotStatus) \
     (GetTableDiskSize) \
     (GetTablePartitionList) \
     (Heartbeat) \
@@ -63,9 +68,11 @@ class PgMutationCounter;
     (IsInitDbDone) \
     (IsObjectPartOfXRepl) \
     (ListLiveTabletServers) \
+    (ListReplicationSlots) \
     (OpenTable) \
     (ReadSequenceTuple) \
     (ReserveOids) \
+    (GetNewObjectId) \
     (RollbackToSubTransaction) \
     (SetActiveSubTransaction) \
     (TabletServerCount) \
@@ -94,7 +101,9 @@ class PgClientServiceImpl : public PgClientServiceIf {
       TransactionPoolProvider transaction_pool_provider,
       const std::shared_ptr<MemTracker>& parent_mem_tracker,
       const scoped_refptr<MetricEntity>& entity,
-      rpc::Scheduler* scheduler,
+      rpc::Messenger* messenger,
+      const std::string& permanent_uuid,
+      const server::ServerBaseOptions* tablet_server_opts,
       const std::optional<XClusterContext>& xcluster_context = std::nullopt,
       PgMutationCounter* pg_node_level_mutation_counter = nullptr);
 
@@ -104,6 +113,7 @@ class PgClientServiceImpl : public PgClientServiceIf {
       const PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext context) override;
 
   void InvalidateTableCache();
+  void CheckObjectIdAllocators(const std::unordered_set<uint32_t>& db_oids);
 
   size_t TEST_SessionsCount();
 

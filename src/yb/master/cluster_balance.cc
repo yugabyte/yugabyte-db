@@ -587,7 +587,7 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
   RecordActivity(task_added, master_errors);
 }
 
-void ClusterLoadBalancer::RunLoadBalancer(const LeaderEpoch& epoch, Options* options) {
+void ClusterLoadBalancer::RunLoadBalancer(const LeaderEpoch& epoch) {
   epoch_ = epoch;
   SysClusterConfigEntryPB config;
   CHECK_OK(catalog_manager_->GetClusterConfig(&config));

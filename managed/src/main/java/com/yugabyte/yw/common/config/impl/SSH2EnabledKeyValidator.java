@@ -42,4 +42,9 @@ public class SSH2EnabledKeyValidator implements RuntimeConfigPreChangeValidator 
           BAD_REQUEST, "yb.security.ssh2_enabled cannot be reinitialised");
     }
   }
+
+  @Override
+  public void validateDeleteConfig(UUID scopeUUID, String path) {
+    throw new PlatformServiceException(BAD_REQUEST, "Cannot delete 'yb.security.ssh2_enabled'.");
+  }
 }

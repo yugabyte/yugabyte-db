@@ -43,10 +43,11 @@ import { ScheduledBackupEmpty } from '../components/BackupEmpty';
 import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import { ITable } from '../common/IBackup';
-import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
-import WarningIcon from '../../users/icons/warning_icon';
+import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+
 import './ScheduledBackupList.scss';
+import WarningIcon from '../../users/icons/warning_icon';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 const wrapTableName = (tablesList: string[] | undefined) => {
   if (!Array.isArray(tablesList) || tablesList.length === 0) {
@@ -128,7 +129,7 @@ export const ScheduledBackupList = ({ universeUUID }: { universeUUID: string }) 
 
   const canCreateBackup = hasNecessaryPerm({
     onResource: universeUUID,
-    ...UserPermissionMap.createBackup
+    ...ApiPermissionMap.CREATE_BACKUP_SCHEDULE
   });
 
   if (schedules?.length === 0) {
@@ -168,7 +169,7 @@ export const ScheduledBackupList = ({ universeUUID }: { universeUUID: string }) 
       <div className="schedule-action">
         <RbacValidator accessRequiredOn={{
           onResource: universeUUID,
-          ...UserPermissionMap.createBackup
+          ...ApiPermissionMap.CREATE_BACKUP_SCHEDULE
         }}
           isControl
         >
@@ -296,7 +297,7 @@ const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
           />
           <RbacValidator
             accessRequiredOn={{
-              ...UserPermissionMap.editBackup,
+              ...ApiPermissionMap.MODIFY_SCHEDULE,
               onResource: universeUUID
             }}
             isControl
@@ -350,7 +351,7 @@ const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
           >
             <RbacValidator
               accessRequiredOn={{
-                ...UserPermissionMap.editBackup,
+                ...ApiPermissionMap.MODIFY_SCHEDULE,
                 onResource: universeUUID
               }}
               isControl
@@ -369,10 +370,7 @@ const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
               </MenuItem>
             </RbacValidator>
             <RbacValidator
-              accessRequiredOn={{
-                ...UserPermissionMap.deleteBackup,
-                onResource: 'CUSTOMER_ID'
-              }}
+              accessRequiredOn={ApiPermissionMap.DELETE_SCHEDULE}
               isControl
               overrideStyle={{
                 display: 'unset'

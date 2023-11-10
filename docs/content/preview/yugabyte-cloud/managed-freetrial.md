@@ -28,7 +28,10 @@ To request a free trial:
 
 1. If you have a promo code, enter it and click **Start Free Trial** to start your trial right away.
 
-    Otherwise, enter your contact details and click **Request Free Trial**. The Yugabyte team will contact you within two business days. In the meantime, [create a Sandbox cluster](../cloud-basics/create-clusters/create-clusters-free/) to run a tutorial and [explore](../../explore/) YugabyteDB and distributed SQL.
+    Otherwise, enter your contact details and click **Request Free Trial**. The Yugabyte team will contact you within two business days. In the meantime:
+
+    - [create a Sandbox cluster](../cloud-basics/create-clusters/create-clusters-free/) and run the tutorial to learn about distributed SQL
+    - [run a lab](../managed-labs/) to learn how to design global applications
 
 After the free trial begins, you can use your credits to create dedicated clusters in a [variety of topologies](../cloud-basics/create-clusters-topology/), including:
 

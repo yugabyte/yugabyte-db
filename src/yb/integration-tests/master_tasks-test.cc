@@ -11,23 +11,30 @@
 // under the License.
 //
 
+#include <algorithm>
+
 #include <gtest/gtest.h>
 
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
 #include "yb/master/catalog_manager.h"
+#include "yb/master/master.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/test_async_rpc_manager.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/countdown_latch.h"
+#include "yb/util/status_callback.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/unique_lock.h"
 
 using namespace std::chrono_literals;
 
 DECLARE_int32(retrying_ts_rpc_max_delay_ms);
+DECLARE_int32(retrying_rpc_max_jitter_ms);
 
 namespace yb {
 
@@ -39,7 +46,7 @@ class MasterTasksTest : public YBMiniClusterTestBase<MiniCluster> {
     YBMiniClusterTestBase::SetUp();
     MiniClusterOptions opts;
     opts.num_tablet_servers = 1;
-    opts.num_masters = 1;
+    opts.num_masters = 3;
     cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 
@@ -47,44 +54,61 @@ class MasterTasksTest : public YBMiniClusterTestBase<MiniCluster> {
   }
 };
 
-// Make sure delay before retrying RetryingTSRpcTask is capped by
-// FLAGS_retrying_ts_rpc_max_delay_ms + up to 50ms random jitter.
+// Test that retrying master and tserver rpc tasks retry properly and that the delay before retrying
+// is capped by FLAGS_retrying_ts_rpc_max_delay_ms + up to 50ms random jitter per retry.
+TEST_F(MasterTasksTest, RetryingMasterRpcTaskMaxDelay) {
+  constexpr auto kNumRetries = 10;
+
+  auto* leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  std::vector<consensus::RaftPeerPB> master_peers;
+  ASSERT_OK(leader_master->master()->ListRaftConfigMasters(&master_peers));
+
+  // Send the RPC to a non-leader master.
+  auto non_leader_master = std::find_if(
+      master_peers.begin(), master_peers.end(),
+      [&](auto& peer) { return peer.permanent_uuid() != leader_master->permanent_uuid(); });
+
+  std::promise<Status> promise;
+  std::future<Status> future = promise.get_future();
+  ASSERT_OK(leader_master->master()->test_async_rpc_manager()->SendMasterTestRetryRequest(
+    *non_leader_master, kNumRetries, [&promise](const Status& s) {
+      LOG(INFO) << "Done: " << s;
+      promise.set_value(s);
+  }));
+
+  LOG(INFO) << "Task scheduled";
+
+  auto status = future.wait_for(
+      (FLAGS_retrying_ts_rpc_max_delay_ms + FLAGS_retrying_rpc_max_jitter_ms) *
+      kNumRetries * RegularBuildVsSanitizers(1.1, 1.2) * 1ms);
+  ASSERT_EQ(status, std::future_status::ready);
+  ASSERT_OK(future.get());
+}
+
 TEST_F(MasterTasksTest, RetryingTSRpcTaskMaxDelay) {
   constexpr auto kNumRetries = 10;
-  constexpr auto kMaxJitterMs = 50;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_retrying_ts_rpc_max_delay_ms) = 100;
 
   auto* ts = cluster_->mini_tablet_server(0);
 
-  struct SharedData {
-    CountDownLatch done = CountDownLatch(1);
-    std::shared_mutex mutex;
-    Status status GUARDED_BY(mutex);
-  };
+  auto* leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
 
-  auto shared_data = std::make_shared<SharedData>();
-
-  ASSERT_OK(cluster_->mini_master()->catalog_manager_impl().TEST_SendTestRetryRequest(
-      ts->server()->permanent_uuid(), kNumRetries, [shared_data](const Status& s) {
-        LOG(INFO) << "Done: " << s;
-        {
-          UniqueLock<std::shared_mutex> lock(shared_data->mutex);
-          shared_data->status = s;
-        }
-        shared_data->done.CountDown();
-      }));
+  std::promise<Status> promise;
+  std::future<Status> future = promise.get_future();
+  ASSERT_OK(leader_master->master()->test_async_rpc_manager()->SendTsTestRetryRequest(
+    ts->server()->permanent_uuid(), kNumRetries, [&promise](const Status& s) {
+      LOG(INFO) << "Done: " << s;
+      promise.set_value(s);
+  }));
 
   LOG(INFO) << "Task scheduled";
 
-  ASSERT_TRUE(shared_data->done.WaitFor(MonoDelta::FromMilliseconds(
-      (FLAGS_retrying_ts_rpc_max_delay_ms + kMaxJitterMs) * kNumRetries *
-      RegularBuildVsSanitizers(1.1, 1.2))));
-
-  {
-    SharedLock<std::shared_mutex> lock(shared_data->mutex);
-    ASSERT_OK(shared_data->status);
-  }
+  auto status = future.wait_for(
+      (FLAGS_retrying_ts_rpc_max_delay_ms + FLAGS_retrying_rpc_max_jitter_ms) *
+      kNumRetries * RegularBuildVsSanitizers(1.1, 1.2) * 1ms);
+  ASSERT_EQ(status, std::future_status::ready);
+  ASSERT_OK(future.get());
 }
 
 }  // namespace yb

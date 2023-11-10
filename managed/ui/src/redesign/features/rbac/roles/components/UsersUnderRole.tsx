@@ -9,6 +9,7 @@
 
 import { forwardRef, useContext, useImperativeHandle } from 'react';
 import { useQuery } from 'react-query';
+import Cookies from 'js-cookie';
 import { flattenDeep, values } from 'lodash';
 import { useTranslation } from 'react-i18next';
 import { Typography, makeStyles } from '@material-ui/core';
@@ -53,7 +54,9 @@ export const UsersUnderRole = forwardRef((_, forwardRef) => {
 
   const classes = useStyles();
 
-  const { data: roleBindings } = useQuery('role_bindings', getRoleBindingsForAllUsers, {
+  const userId = Cookies.get('userId') ?? localStorage.getItem('userId');
+
+  const { data: roleBindings } = useQuery(['role_bindings', userId], getRoleBindingsForAllUsers, {
     select: (data) => data.data
   });
 
@@ -74,7 +77,7 @@ export const UsersUnderRole = forwardRef((_, forwardRef) => {
     [onCancel]
   );
 
-  if (!roleBindings) return null;
+  if (!roleBindings) return <div className={classes.root}></div>;
 
   return (
     <div className={classes.root}>

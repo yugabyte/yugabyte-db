@@ -68,6 +68,12 @@ export const XClusterConfigTypeLabel = {
   [XClusterConfigType.TXN]: 'Transactional'
 } as const;
 
+export const UniverseXClusterRole = {
+  SOURCE: 'source',
+  TARGET: 'target'
+} as const;
+export type UniverseXClusterRole = typeof UniverseXClusterRole[keyof typeof UniverseXClusterRole];
+
 //------------------------------------------------------------------------------------
 // Table Selection Constants
 

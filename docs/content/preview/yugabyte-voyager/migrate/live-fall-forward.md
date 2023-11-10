@@ -1,5 +1,5 @@
 ---
-title: Steps to perform live migration of your database using YugabyteDB Voyager
+title: Steps to perform live migration with fall-forward using YugabyteDB Voyager
 headerTitle: Live migration with fall-forward
 linkTitle: Live migration with fall-forward
 headcontent: Steps for a live migration with fall-forward using YugabyteDB Voyager
@@ -27,7 +27,7 @@ Before starting a [live migration](../live-migrate/#live-migration-workflow), yo
 
 ![After fall-forward setup](/images/migrate/after-fall-forward-setup.png)
 
-At [cutover](#cut-over-to-the-target), applications stop writing to the source database and start writing to the target YugabyteDB database. After the cutover process is complete, YB Voyager keeps the fall-forward database synchronized with changes from the target Yugabyte DB as shown in the following illustration:
+At [cutover](#cutover-to-the-target), applications stop writing to the source database and start writing to the target YugabyteDB database. After the cutover process is complete, YB Voyager keeps the fall-forward database synchronized with changes from the target Yugabyte DB as shown in the following illustration:
 
 ![After cutover](/images/migrate/after-cutover.png)
 
@@ -42,14 +42,14 @@ The following illustration describes the workflow for live migration using YB Vo
 Before proceeding with migration, ensure that you have completed the following steps:
 
 - [Install yb-voyager](../../install-yb-voyager/#install-yb-voyager).
-- Check the [unsupported features](../../known-issues/#unsupported-features) and [known issues](../../known-issues/#known-issues).
+- Review the [guidelines for your migration](../../known-issues/).
 - Review [data modeling](../../reference/data-modeling/) strategies.
 - [Prepare the source database](#prepare-the-source-database).
 - [Prepare the target database](#prepare-the-target-database).
 
 ## Prepare the source database
 
-Prepare your source database by creating a new database user, and provide it with READ access to all the resources which need to be migrated.
+Create a new database user, and assign the necessary user permissions.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
@@ -180,18 +180,40 @@ Perform the following steps to prepare your fall-forward database:
             num_deletes NUMBER(19),
             PRIMARY KEY (migration_uuid, table_name, channel_no)
         );
+    ```
 
-    // Grant all privileges on ybvoyager_metadata schema table to user ybvoyager
+1. Create a writer role for fall-forward schema in the fall forward database as follows:
+
+    ```sql
+    CREATE ROLE <SCHEMA_NAME>_writer_role;
+
+    BEGIN
+        FOR R IN (SELECT owner, object_name FROM all_objects WHERE owner=UPPER('<SCHEMA_NAME>') and object_type ='TABLE' MINUS SELECT owner, table_name from all_nested_tables where owner = UPPER('<SCHEMA_NAME>'))
+        LOOP
+           EXECUTE IMMEDIATE 'GRANT SELECT, INSERT, UPDATE, DELETE, ALTER on '||R.owner||'."'||R.object_name||'" to  <SCHEMA_NAME>_writer_role';
+        END LOOP;
+    END;
+    /
 
     DECLARE
        v_sql VARCHAR2(4000);
     BEGIN
-       FOR table_rec IN (SELECT table_name FROM all_tables WHERE owner = 'YBVOYAGER_METADATA') LOOP
-          v_sql := 'GRANT ALL PRIVILEGES ON YBVOYAGER_METADATA.' || table_rec.table_name || ' TO YBVOYAGER';
+        FOR table_rec IN (SELECT table_name FROM all_tables WHERE owner = 'YBVOYAGER_METADATA') LOOP
+         v_sql := 'GRANT ALL PRIVILEGES ON YBVOYAGER_METADATA.' || table_rec.table_name || ' TO <SCHEMA_NAME>_writer_role';
           EXECUTE IMMEDIATE v_sql;
-       END LOOP;
+        END LOOP;
     END;
     /
+
+    GRANT CREATE ANY SEQUENCE, SELECT ANY SEQUENCE, ALTER ANY SEQUENCE TO <SCHEMA_NAME>_writer_role;
+    ```
+
+1. Create a user and grant the preceding writer role to the user as follows:
+
+    ```sql
+    CREATE USER YBVOYAGER_FF IDENTIFIED BY password;
+    GRANT CONNECT TO YBVOYAGER_FF;
+    GRANT <SCHEMA_NAME>_writer_role TO YBVOYAGER_FF;
     ```
 
 1. Set the following variables on the client machine on where yb-voyager is running (Only if yb-voyager is installed on Ubuntu / RHEL) :
@@ -263,11 +285,11 @@ To learn more about modelling strategies using YugabyteDB, refer to [Data modeli
 
 {{< note title="Manual schema changes" >}}
 
-- `CREATE INDEX CONCURRENTLY` is not currently supported in YugabyteDB. You should remove the `CONCURRENTLY` clause before trying to import the schema.
-
-- Include the primary key definition in the `CREATE TABLE` statement. Primary Key cannot be added to a partitioned table using the `ALTER TABLE` statement.
+Include the primary key definition in the `CREATE TABLE` statement. Primary Key cannot be added to a partitioned table using the `ALTER TABLE` statement.
 
 {{< /note >}}
+
+Refer to the [Manual review guideline](../../known-issues/) for a detailed list of limitations and suggested workarounds associated with the source databases when migrating to YugabyteDB Voyager.
 
 ### Import schema
 
@@ -436,9 +458,9 @@ Additionally, when you run the `fall-forward setup` command, the [import data st
 yb-voyager import data status --export-dir <EXPORT_DIR> --ff-db-password <password>
 ```
 
-### Archive changes
+### Archive changes (Optional)
 
-As the migration continuously exports changes on the source database to the `EXPORT-DIR`, the disk utilization continues to grow indefinitely over time. To limit usage of all the disk space, you can use the `archive changes` command as follows:
+As the migration continuously exports changes on the source database to the `EXPORT-DIR`, disk use continues to grow. To prevent the disk from filling up, you can optionally use the `archive changes` command as follows:
 
 ```sh
 yb-voyager archive changes --export-dir <EXPORT-DIR> --move-to <DESTINATION-DIR> --delete
@@ -450,7 +472,7 @@ Refer to [archive changes](../../reference/cutover-archive/archive-changes/) for
 Make sure to run the archive changes command only after completing [fall-forward setup](#fall-forward-setup). If you run the command before, you may archive some changes before they have been imported to the fall-forward database.
 {{< /note >}}
 
-### Cut over to the target
+### Cutover to the target
 
 Cutover is the last phase, where you switch your application over from the source database to the target YugabyteDB database.
 
@@ -506,7 +528,7 @@ For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/y
 
     {{< /warning >}}
 
-1. Stop [archive changes](#archive-changes).
+1. Stop [archive changes](#archive-changes-optional).
 
 ### Switch over to the fall forward (Optional)
 
@@ -535,7 +557,7 @@ Perform the following steps as part of the switchover process:
 
     Refer to [fall-forward status](../../reference/fall-forward/fall-forward-switchover/#fall-forward-status) for details about the arguments.
 
-1. Setup indexes and triggers to the fall-forward database manually.
+1. Setup indexes and triggers to the fall-forward database manually. Also, re-enable the foreign key and check constraints.
 
 1. Verify your migration. After the schema and data import is complete, the automated part of the database migration process is considered complete. You should manually run validation queries on both the source and fall-forward databases to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count of each table.
 
@@ -553,7 +575,7 @@ For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/y
 
     {{< /warning >}}
 
-1. Stop [archive changes](#archive-changes).
+1. Stop [archive changes](#archive-changes-optional).
 
 {{< note >}}
 During `fall-forward synchronize`, yb-voyager creates a CDC stream ID on the target YugabyteDB database to fetch the new changes from the target database which is displayed as part of the `fall-forward synchronize` output. You need to manually delete the stream ID after `fall forward switchover` is completed.

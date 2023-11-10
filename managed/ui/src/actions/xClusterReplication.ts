@@ -2,7 +2,7 @@ import axios from 'axios';
 import moment from 'moment';
 
 import { ROOT_URL } from '../config';
-import { XClusterConfig, Metrics } from '../components/xcluster';
+import { Metrics } from '../components/xcluster';
 import { getCustomerEndpoint } from './common';
 import {
   MetricName,
@@ -11,6 +11,7 @@ import {
 } from '../components/xcluster/constants';
 import { ApiTimeout } from '../redesign/helpers/api';
 import { YBPTask } from '../redesign/helpers/dtos';
+import { XClusterConfig } from '../components/xcluster/dtos';
 
 // TODO: Move this out of the /actions folder since these functions aren't Redux actions.
 
@@ -73,10 +74,12 @@ export function restartXClusterConfig(
   bootstrapParams: { backupRequestParams: any }
 ) {
   const customerId = localStorage.getItem('customerId');
-  return axios.post(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${xClusterUUID}`, {
-    tables,
-    bootstrapParams
-  });
+  return axios
+    .post<YBPTask>(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${xClusterUUID}`, {
+      tables,
+      bootstrapParams
+    })
+    .then((response) => response.data);
 }
 
 export function isBootstrapRequired(

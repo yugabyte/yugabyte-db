@@ -20,7 +20,7 @@
 #include <stddef.h>
 #include <string.h>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/strip.h"
 

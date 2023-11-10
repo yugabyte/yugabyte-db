@@ -16,8 +16,8 @@ import lombok.extern.slf4j.Slf4j;
 public class DeleteRootVolumes extends NodeTaskBase {
 
   @Inject
-  protected DeleteRootVolumes(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected DeleteRootVolumes(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
   public static class Params extends NodeTaskParams {

@@ -34,7 +34,10 @@ import {
   KubernetesProvider,
   ProviderCode
 } from '../../components/configRedesign/providerRedesign/constants';
-import { DrConfig } from '../../components/xcluster/disasterRecovery/types';
+import {
+  DrConfig,
+  DrConfigSafetimeResponse
+} from '../../components/xcluster/disasterRecovery/dtos';
 
 /**
  * @deprecated Use query key factories for more flexable key organization
@@ -66,6 +69,14 @@ export enum QUERY_KEY {
 // --------------------------------------------------------------------------------------
 // TODO: Upgrade React Query to 3.17+ to get the change for supporting
 //       annotating these as readonly query keys. (PLAT-4896)
+
+export const taskQueryKey = {
+  ALL: ['task'],
+  customer: (customerUuid: string) => [...taskQueryKey.ALL, 'customer', customerUuid],
+  universe: (universeUuid: string) => [...taskQueryKey.ALL, 'universe', universeUuid],
+  provider: (providerUuid: string) => [...taskQueryKey.ALL, 'provider', providerUuid],
+  xCluster: (xClusterUuid: string) => [...taskQueryKey.ALL, 'xCluster', xClusterUuid]
+};
 
 export const providerQueryKey = {
   ALL: ['provider'],
@@ -121,7 +132,8 @@ export const xClusterQueryKey = {
 
 export const drConfigQueryKey = {
   ALL: ['drConfig'],
-  detail: (drConfigUuid: string | undefined) => [...drConfigQueryKey.ALL, drConfigUuid]
+  detail: (drConfigUuid: string | undefined) => [...drConfigQueryKey.ALL, drConfigUuid],
+  safetimes: (drConfigUuid: string) => [...drConfigQueryKey.detail(drConfigUuid), 'safetimes']
 };
 
 // --------------------------------------------------------------------------------------
@@ -353,13 +365,36 @@ class ApiService {
     }
   };
 
-  deleteDrConfig = (drConfigUuid: string | undefined): Promise<YBPTask> => {
-    if (drConfigUuid) {
-      const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs/${drConfigUuid}`;
-      return axios.delete<YBPTask>(requestUrl).then((response) => response.data);
-    } else {
-      return Promise.reject('Failed to delete DR config. No DR config UUID provided.');
-    }
+  deleteDrConfig = (drConfigUuid: string): Promise<YBPTask> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs/${drConfigUuid}`;
+    return axios.delete<YBPTask>(requestUrl).then((response) => response.data);
+  };
+
+  initiateSwitchover = (drConfigUuid: string): Promise<YBPTask> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs/${drConfigUuid}/failover`;
+    return axios
+      .post<YBPTask>(requestUrl, { type: 'PLANNED' })
+      .then((response) => response.data);
+  };
+
+  initiateFailover = (
+    drConfigUuid: string,
+    namespaceIdSafetimeEpochUsMap: { [namespaceId: string]: string }
+  ): Promise<YBPTask> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs/${drConfigUuid}/failover`;
+    return axios
+      .post<YBPTask>(requestUrl, { type: 'UNPLANNED', namespaceIdSafetimeEpochUsMap })
+      .then((response) => response.data);
+  };
+
+  fetchCurrentSafetimes = (drConfigUuid: string): Promise<DrConfigSafetimeResponse> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs/${drConfigUuid}/safetime`;
+    return axios.get<DrConfigSafetimeResponse>(requestUrl).then((response) => response.data);
+  };
+
+  abortTask = (taskUuid: string) => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/task/${taskUuid}/abort`;
+    return axios.post<YBPSuccess>(requestUrl).then((response) => response.data);
   };
 
   getAZList = (providerId: string, regionId: string): Promise<AvailabilityZone[]> => {
@@ -509,6 +544,13 @@ class ApiService {
   deleteCertificate = (certUUID: string, customerUUID: string): Promise<any> => {
     const requestUrl = `${ROOT_URL}/customers/${customerUUID}/certificates/${certUUID}`;
     return axios.delete<any>(requestUrl).then((res) => res.data);
+  };
+
+  fetchUniverseTasks = (universeUuid: string): Promise<any> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/tasks_list`;
+    return axios
+      .get<any>(requestUrl, { params: { uUUID: universeUuid } })
+      .then((response) => response.data);
   };
 
   getAlerts = (

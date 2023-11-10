@@ -71,7 +71,7 @@ import com.yugabyte.yw.common.kms.util.EncryptionAtRestUniverseKeyCache;
 import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.common.metrics.SwamperTargetsFileUpdater;
-import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.common.rbac.PermissionUtil;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.common.rbac.RoleUtil;
@@ -224,7 +224,7 @@ public class Module extends AbstractModule {
     }
 
     bind(YbClientConfigFactory.class).asEagerSingleton();
-    bind(KubernetesOperatorStatusUpdater.class).asEagerSingleton();
+    bind(OperatorStatusUpdaterFactory.class).asEagerSingleton();
   }
 
   @Provides

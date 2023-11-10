@@ -26,6 +26,7 @@ class Env;
 class MemTable;
 class InternalIterator;
 class Iterator;
+class ReadFileFilter;
 class Statistics;
 class UserFrontiers;
 class WriteBatch;

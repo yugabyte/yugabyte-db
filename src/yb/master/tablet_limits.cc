@@ -20,12 +20,15 @@
 #include "yb/util/atomic.h"
 #include "yb/util/flags/flag_tags.h"
 
-DEFINE_test_flag(int32, tablet_replicas_per_gib_limit, 0,
+DEFINE_RUNTIME_int32(tablet_replicas_per_gib_limit, 0,
     "The maximum number of tablets per GiB of RAM reserved by TServers for tablet overheads the "
     "cluster can support. A non-positive number means no limit.");
-DEFINE_test_flag(int32, tablet_replicas_per_core_limit, 0,
+TAG_FLAG(tablet_replicas_per_gib_limit, experimental);
+
+DEFINE_RUNTIME_int32(tablet_replicas_per_core_limit, 0,
     "The maximum number of tablets per vCPU available to TServer processes the cluster can "
     "support. A non-positive number means no limit.");
+TAG_FLAG(tablet_replicas_per_core_limit, experimental);
 
 namespace yb::master {
 
@@ -61,11 +64,15 @@ class Aggregator {
 
 }  // namespace
 
-AggregatedClusterInfo ComputeAggregatedClusterInfo(const TSDescriptorVector& ts_descs) {
+AggregatedClusterInfo ComputeAggregatedClusterInfo(
+    const TSDescriptorVector& ts_descs, const std::string& placement_uuid) {
   Aggregator memory_aggregator;
   Aggregator cores_aggregator;
   int64_t live_replicas_count = 0;
   for (const auto& ts : ts_descs) {
+    if (ts->placement_uuid() != placement_uuid) {
+      continue;
+    }
     const auto resources = ts->GetRegistration().resources();
     cores_aggregator.Add(resources.has_core_count(), resources.core_count());
     memory_aggregator.Add(
@@ -99,16 +106,15 @@ Status CanCreateTabletReplicas(
     int num_tablets, const ReplicationInfoPB& replication_info,
     const TSDescriptorVector& ts_descs) {
   TabletReplicaPerResourceLimits limits{
-      .per_gib = PositiveOrNullopt(GetAtomicFlag(&FLAGS_TEST_tablet_replicas_per_gib_limit)),
-      .per_core = PositiveOrNullopt(GetAtomicFlag(&FLAGS_TEST_tablet_replicas_per_core_limit))};
+      .per_gib = PositiveOrNullopt(GetAtomicFlag(&FLAGS_tablet_replicas_per_gib_limit)),
+      .per_core = PositiveOrNullopt(GetAtomicFlag(&FLAGS_tablet_replicas_per_core_limit))};
   if (!limits.per_gib && !limits.per_core) {
     return Status::OK();
   }
-  // TODO(zdrudi): Check tablet replica count for the read placements as well. That includes all
-  // read placements, the tablet replicas contained in them and the tservers hosting them.
   int64_t tablet_replicas_to_create =
       num_tablets * GetNumReplicasOrGlobalReplicationFactor(replication_info.live_replicas());
-  auto cluster_info = ComputeAggregatedClusterInfo(ts_descs);
+  auto cluster_info =
+      ComputeAggregatedClusterInfo(ts_descs, replication_info.live_replicas().placement_uuid());
   int64_t cluster_limit = ComputeTabletReplicaLimit(cluster_info, limits);
   int64_t new_tablet_count = cluster_info.total_live_replicas + tablet_replicas_to_create;
   if (new_tablet_count > cluster_limit) {

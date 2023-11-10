@@ -1,7 +1,10 @@
 import _ from 'lodash';
 import { Theme, makeStyles } from '@material-ui/core';
-import { Certificate, UniverseDetails } from '../../universe-form/utils/dto';
-import { getPrimaryCluster } from '../../universe-form/utils/helpers';
+
+import { getPrimaryCluster } from '../../../../../utils/universeUtilsTyped';
+
+import { Certificate } from '../../universe-form/utils/dto';
+import { UniverseDetails } from '../../../../helpers/dtos';
 
 //styles
 export const useEITStyles = makeStyles((theme: Theme) => ({
@@ -103,7 +106,7 @@ export const FORM_RESET_VALUES = {
 };
 
 export const getInitialFormValues = (universeDetails: UniverseDetails) => {
-  const cluster = getPrimaryCluster(universeDetails);
+  const cluster = getPrimaryCluster(universeDetails.clusters);
   return {
     enableUniverseEncryption: !!(
       cluster?.userIntent?.enableNodeToNodeEncrypt || cluster?.userIntent.enableClientToNodeEncrypt

@@ -33,6 +33,7 @@ import static play.test.Helpers.contentAsString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
@@ -42,6 +43,7 @@ import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.net.URLEncoder;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -188,7 +190,7 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
 
   @Test
   public void testUniverseDestroyValidUUID() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.DestroyUniverse);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Universe u = createUniverse(customer.getId());
 
@@ -228,13 +230,13 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
 
   @Test
   public void testUniverseDestroyValidUUIDIsForceDelete() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.DestroyUniverse);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Universe u = createUniverse(customer.getId());
 
     // Set http context
     TestUtils.setFakeHttpContext(user);
-    UUID randUUID = UUID.randomUUID();
+    UUID randUUID = FakeDBApplication.buildTaskInfo(null, TaskType.DestroyUniverse);
     CustomerTask.create(
         customer,
         u.getUniverseUUID(),
@@ -295,8 +297,8 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
   // @formatter:on
   public void testUniverseDestroyValidUUIDIsForceDeleteAndDeleteBackup(
       Boolean isDeleteBackups, Boolean isForceDelete, Boolean isDeleteAssociatedCerts) {
-    UUID fakeTaskUUID = UUID.randomUUID();
     String url;
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.DestroyUniverse);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
 
     String certificate = createTempFile("universe_controller_test_ca.crt", "test data");

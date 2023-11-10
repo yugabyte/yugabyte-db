@@ -30,6 +30,7 @@ import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.*;
 import com.yugabyte.yw.models.helpers.audit.*;
+import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
@@ -140,6 +141,27 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   // UUID of last failed task that applied modification to cluster state.
   @ApiModelProperty public UUID placementModificationTaskUuid = null;
+
+  @ApiModelProperty public SoftwareUpgradeState softwareUpgradeState = SoftwareUpgradeState.Ready;
+
+  public enum SoftwareUpgradeState {
+    @EnumValue("Ready")
+    Ready,
+    @EnumValue("Upgrading")
+    Upgrading,
+    @EnumValue("UpgradeFailed")
+    UpgradeFailed,
+    @EnumValue("PreFinalize")
+    PreFinalize,
+    @EnumValue("Finalizing")
+    Finalizing,
+    @EnumValue("FinalizeFailed")
+    FinalizeFailed,
+    @EnumValue("RollingBack")
+    RollingBack,
+    @EnumValue("RollbackFailed")
+    RollbackFailed
+  }
 
   // The next cluster index to be used when a new read-only cluster is added.
   @ApiModelProperty public int nextClusterIndex = 1;
@@ -712,45 +734,29 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @Override
     public String toString() {
-      return "UserIntent "
-          + "for universe="
-          + universeName
-          + " type="
-          + instanceType
-          + ", spotInstance="
-          + useSpotInstance
-          + ", spotPrice="
-          + spotPrice
-          + ", numNodes="
-          + numNodes
-          + ", prov="
-          + provider
-          + ", provType="
-          + providerType
-          + ", RF="
-          + replicationFactor
-          + ", regions="
-          + regionList
-          + ", pref="
-          + preferredRegion
-          + ", ybVersion="
-          + ybSoftwareVersion
-          + ", accessKey="
-          + accessKeyCode
-          + ", deviceInfo='"
-          + deviceInfo
-          + "', timeSync="
-          + useTimeSync
-          + ", publicIP="
-          + assignPublicIP
-          + ", staticPublicIP="
-          + assignStaticPublicIP
-          + ", tags="
-          + instanceTags
-          + ", masterInstanceType="
-          + masterInstanceType
-          + ", kubernetesOperatorVersion="
-          + kubernetesOperatorVersion;
+      StringBuilder sb = new StringBuilder();
+      sb.append("UserIntent for universe=").append(universeName);
+      sb.append(", type=").append(instanceType);
+      sb.append(", spotInstance=").append(useSpotInstance);
+      sb.append(", useSpotInstance=").append(useSpotInstance);
+      sb.append(", spotPrice=").append(spotPrice);
+      sb.append(", useSpotInstance=").append(useSpotInstance);
+      sb.append(", numNodes=").append(numNodes);
+      sb.append(", prov=").append(provider);
+      sb.append(", provType=").append(providerType);
+      sb.append(", RF=").append(replicationFactor);
+      sb.append(", regions=").append(regionList);
+      sb.append(", pref=").append(preferredRegion);
+      sb.append(", ybVersion=").append(ybSoftwareVersion);
+      sb.append(", accessKey=").append(accessKeyCode);
+      sb.append(", deviceInfo=").append(deviceInfo);
+      sb.append(", timeSync=").append(useTimeSync);
+      sb.append(", publicIP=").append(assignPublicIP);
+      sb.append(", staticPublicIP=").append(assignStaticPublicIP);
+      sb.append(", tags=").append(instanceTags);
+      sb.append(", masterInstanceType=").append(masterInstanceType);
+      sb.append(", kubernetesOperatorVersion=").append(kubernetesOperatorVersion);
+      return sb.toString();
     }
 
     @Override

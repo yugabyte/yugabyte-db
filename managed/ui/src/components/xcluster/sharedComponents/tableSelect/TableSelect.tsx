@@ -28,10 +28,10 @@ import { hasSubstringMatch } from '../../../queries/helpers/queriesHelper';
 import {
   formatUuidForXCluster,
   formatBytes,
-  getAllXClusterConfigs,
   getSharedXClusterConfigs,
   tableSort,
-  isTableSelectable
+  isTableSelectable,
+  hasLinkedXClusterConfig
 } from '../../ReplicationUtils';
 import {
   TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD,
@@ -61,7 +61,8 @@ import {
   UniverseNamespace,
   YBTable
 } from '../../../../redesign/helpers/dtos';
-import { XClusterConfig, XClusterTableType } from '../../XClusterTypes';
+import { XClusterTableType } from '../../XClusterTypes';
+import { XClusterConfig } from '../../dtos';
 import {
   EligibilityDetails,
   KeyspaceItem,
@@ -88,7 +89,7 @@ interface CommonTableSelectProps {
   selectionWarning: { title: string; body: string } | undefined;
 }
 
-type TableSelectProps =
+export type TableSelectProps =
   | (CommonTableSelectProps & {
       configAction: typeof XClusterConfigAction.CREATE;
       isTransactionalConfig: boolean;
@@ -439,11 +440,11 @@ export const TableSelect = (props: TableSelectProps) => {
   );
   const ybSoftwareVersion = getPrimaryCluster(sourceUniverseQuery.data.universeDetails.clusters)
     ?.userIntent.ybSoftwareVersion;
-  const hasExisitingReplicationConfig =
-    [
-      ...getAllXClusterConfigs(sourceUniverseQuery.data),
-      ...getAllXClusterConfigs(targetUniverseQuery.data)
-    ].length > 0;
+
+  const participantsHaveLinkedXClusterConfig = hasLinkedXClusterConfig([
+    sourceUniverseQuery.data,
+    targetUniverseQuery.data
+  ]);
   const isTransactionalAtomicitySupported =
     !!ybSoftwareVersion &&
     compareYBSoftwareVersions(
@@ -451,7 +452,7 @@ export const TableSelect = (props: TableSelectProps) => {
       ybSoftwareVersion,
       true
     ) < 0 &&
-    !hasExisitingReplicationConfig;
+    !participantsHaveLinkedXClusterConfig;
   return (
     <>
       {isTransactionalAtomicityEnabled &&

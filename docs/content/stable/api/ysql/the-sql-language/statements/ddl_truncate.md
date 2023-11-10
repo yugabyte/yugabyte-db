@@ -18,29 +18,9 @@ Applying `TRUNCATE` to a set of tables produces the same ultimate outcome as doe
 
 ## Syntax
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammar Icon">
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <img src="/icons/diagram.svg" alt="Diagram Icon">
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/truncate.grammar.md" %}}
-  </div>
-  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/truncate.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  truncate
+{{%/ebnf%}}
 
 {{< note title="Table inheritance is not yet supported" >}}
 The [table_expr](../../../syntax_resources/grammar_diagrams/#table-expr) rule specifies syntax that is useful only when at least one other table inherits one of the tables that the `truncate` statement lists explicitly. See [this note](../ddl_alter_table#table-expr-note) for more detail. Until inheritance is supported, use a bare [table_name](../../../syntax_resources/grammar_diagrams/#table-name).
@@ -52,10 +32,10 @@ The [table_expr](../../../syntax_resources/grammar_diagrams/#table-expr) rule sp
 
 You should avoid using TRUNCATE in the following circumstances:
 
-* inside of a multi-step transaction 
+* inside of a multi-step transaction
 * concurrently with read and write operations in the same table
 
-If your use case is mostly for CI/CD on smaller datasets, you can use `DELETE FROM table;`.  
+If your use case is mostly for CI/CD on smaller datasets, you can use `DELETE FROM table;`.
 This is heavier weight (and also not recommended for very large data sets) but will be transactional.
 
 Note that even in PostgreSQL truncate is not [MVCC-safe](https://www.postgresql.org/docs/15/sql-truncate.html).

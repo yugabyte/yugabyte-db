@@ -18,7 +18,7 @@
 #include "yb/tserver/xcluster_async_executor.h"
 #include "yb/tserver/xcluster_output_client.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/tserver/xcluster_consumer.h"
+#include "yb/tserver/xcluster_poller_id.h"
 #include "yb/tserver/xcluster_poller_stats.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/locks.h"
@@ -53,7 +53,7 @@ class XClusterPoller : public XClusterAsyncExecutor {
       const cdc::ConsumerTabletInfo& consumer_tablet_info, ThreadPool* thread_pool, rpc::Rpcs* rpcs,
       const std::shared_ptr<XClusterClient>& local_client,
       const std::shared_ptr<XClusterClient>& producer_client, XClusterConsumer* xcluster_consumer,
-      SchemaVersion last_compatible_consumer_schema_version,
+      SchemaVersion last_compatible_consumer_schema_version, int64_t leader_term,
       std::function<int64_t(const TabletId&)> get_leader_term);
   ~XClusterPoller();
 
@@ -62,7 +62,7 @@ class XClusterPoller : public XClusterAsyncExecutor {
   void StartShutdown() override;
   void CompleteShutdown() override;
 
-  bool IsFailed() const { return is_failed_.load(); }
+  bool ShouldContinuePolling() const;
 
   // Begins poll process for a producer tablet.
   void SchedulePoll();
@@ -78,15 +78,26 @@ class XClusterPoller : public XClusterAsyncExecutor {
       EXCLUDES(schema_version_lock_);
 
   std::string LogPrefix() const override;
+  const XClusterPollerId& GetPollerId() const { return poller_id_; }
 
   HybridTime GetSafeTime() const EXCLUDES(safe_time_lock_);
 
-  cdc::ConsumerTabletInfo GetConsumerTabletInfo() const;
+  const cdc::ConsumerTabletInfo& GetConsumerTabletInfo() const { return consumer_tablet_info_; }
+  const cdc::ProducerTabletInfo& GetProducerTabletInfo() const { return producer_tablet_info_; }
 
   bool IsStuck() const;
   std::string State() const;
 
   XClusterPollerStats GetStats() const;
+
+  int64_t GetLeaderTerm() const { return poller_id_.leader_term; }
+
+  void MarkFailed(const std::string& reason, const Status& status = Status::OK()) override;
+  // Stores a replication error and detail. This overwrites a previously stored 'error'.
+  void StoreReplicationError(ReplicationErrorPb error) EXCLUDES(replication_error_mutex_);
+  void ClearReplicationError() EXCLUDES(replication_error_mutex_);
+  void TEST_IncrementNumSuccessfulWriteRpcs();
+  void ApplyChangesCallback(XClusterOutputClientResponse&& response);
 
  private:
   bool IsOffline() override;
@@ -101,26 +112,20 @@ class XClusterPoller : public XClusterAsyncExecutor {
   void ScheduleApplyChanges(std::shared_ptr<cdc::GetChangesResponsePB> get_changes_response);
   void ApplyChanges(std::shared_ptr<cdc::GetChangesResponsePB> get_changes_response)
       EXCLUDES(data_mutex_);
-  void ApplyChangesCallback(XClusterOutputClientResponse response);
-  void HandleApplyChangesResponse(XClusterOutputClientResponse response) EXCLUDES(data_mutex_);
+  void HandleApplyChangesResponse(XClusterOutputClientResponse& response) EXCLUDES(data_mutex_);
   void UpdateSafeTime(int64 new_time) EXCLUDES(safe_time_lock_);
   void UpdateSchemaVersionsForApply() EXCLUDES(schema_version_lock_);
   bool IsLeaderTermValid() REQUIRES(data_mutex_);
 
-  void MarkFailed(const std::string& reason, const Status& status = Status::OK()) override;
-
   const cdc::ProducerTabletInfo producer_tablet_info_;
   const cdc::ConsumerTabletInfo consumer_tablet_info_;
+  const XClusterPollerId poller_id_;
 
   mutable rw_spinlock schema_version_lock_;
   cdc::XClusterSchemaVersionMap schema_version_map_ GUARDED_BY(schema_version_lock_);
   cdc::ColocatedSchemaVersionMap colocated_schema_version_map_ GUARDED_BY(schema_version_lock_);
 
-  // Although this is processing serially, it might be on a different thread in the ThreadPool.
-  // Using mutex to guarantee cache flush, preventing TSAN warnings.
-  // Recursive, since when we abort the CDCReadRpc, that will also call the callback within the
-  // same thread (HandlePoll()) which needs to Unregister poll_handle_ from rpcs_.
-  std::mutex data_mutex_;
+  mutable std::mutex data_mutex_;
 
   std::atomic<bool> shutdown_ = false;
   // In failed state we do not poll for changes and are awaiting shutdown.
@@ -137,7 +142,8 @@ class XClusterPoller : public XClusterAsyncExecutor {
   std::shared_ptr<XClusterOutputClient> output_client_;
   std::shared_ptr<XClusterClient> producer_client_;
 
-  XClusterConsumer* xcluster_consumer_ GUARDED_BY(data_mutex_);
+  // Unsafe to use after shutdown.
+  XClusterConsumer* const xcluster_consumer_;
 
   mutable rw_spinlock safe_time_lock_;
   HybridTime producer_safe_time_ GUARDED_BY(safe_time_lock_);
@@ -147,7 +153,10 @@ class XClusterPoller : public XClusterAsyncExecutor {
   std::atomic<uint32> apply_failures_ = 0;
   std::atomic<uint32> idle_polls_ = 0;
 
-  int64_t leader_term_ GUARDED_BY(data_mutex_) = OpId::kUnknownTerm;
+  // Replication errors that are tracked and reported to the master.
+  std::mutex replication_error_mutex_;
+  ReplicationErrorPb previous_replication_error_ GUARDED_BY(replication_error_mutex_) =
+      ReplicationErrorPb::REPLICATION_ERROR_UNINITIALIZED;
 
   PollStatsHistory poll_stats_history_;
 };

@@ -62,10 +62,10 @@ TEST_F(PgConnTest, Uri) {
     const auto conn_str = Format("postgres://yugabyte@$0:$1", host, port);
     LOG(INFO) << "Connecting using string: " << conn_str;
     auto conn = ASSERT_RESULT(ConnectUsingString(conn_str));
-    ASSERT_EQ(ASSERT_RESULT(conn.FetchValue<std::string>("select current_database()")), "yugabyte");
-    ASSERT_EQ(ASSERT_RESULT(conn.FetchValue<std::string>("select current_user")), "yugabyte");
-    ASSERT_EQ(ASSERT_RESULT(conn.FetchValue<std::string>("show listen_addresses")), host);
-    ASSERT_EQ(ASSERT_RESULT(conn.FetchValue<std::string>("show port")), std::to_string(port));
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>("select current_database()")), "yugabyte");
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>("select current_user")), "yugabyte");
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>("show listen_addresses")), host);
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>("show port")), std::to_string(port));
   }
   // Supply database name.
   {
@@ -73,7 +73,7 @@ TEST_F(PgConnTest, Uri) {
     LOG(INFO) << "Connecting using string: " << conn_str;
     auto conn = ASSERT_RESULT(ConnectUsingString(conn_str));
     ASSERT_EQ(
-        ASSERT_RESULT(conn.FetchValue<std::string>("select current_database()")), "template1");
+        ASSERT_RESULT(conn.FetchRow<std::string>("select current_database()")), "template1");
   }
   // Supply an incorrect password.  Since HBA config gives the yugabyte user trust access, postgres
   // won't request a password, our client won't send this password, and the authentication should

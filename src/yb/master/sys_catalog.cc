@@ -36,7 +36,6 @@
 #include <memory>
 
 #include <boost/optional.hpp>
-#include <glog/logging.h>
 #include <rapidjson/document.h>
 
 #include "yb/client/client.h"
@@ -599,7 +598,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
       .metadata = metadata,
       .client_future = master_->async_client_initializer().get_client_future(),
       .clock = scoped_refptr<server::Clock>(master_->clock()),
-      .parent_mem_tracker = master_->mem_tracker(),
+      .parent_mem_tracker = mem_manager_->tablets_overhead_mem_tracker(),
       .block_based_table_mem_tracker = mem_manager_->block_based_table_mem_tracker(),
       .metric_registry = metric_registry_,
       .log_anchor_registry = tablet_peer()->log_anchor_registry(),
@@ -1027,7 +1026,7 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImplWithReadTime(
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
-        &cond, boost::none /* hash_code */, boost::none /* max_hash_code */);
+        &cond, std::nullopt /* hash_code */, std::nullopt /* max_hash_code */);
     RETURN_NOT_OK(iter->Init(spec));
   } else {
     iter->InitForTableType(read_data.table_info->table_type);
@@ -1292,7 +1291,7 @@ Status SysCatalogTable::ReadPgClassInfo(
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
-        &cond, boost::none /* hash_code */, boost::none /* max_hash_code */);
+        &cond, std::nullopt /* hash_code */, std::nullopt /* max_hash_code */);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -1405,7 +1404,7 @@ Result<uint32_t> SysCatalogTable::ReadPgClassColumnWithOidValue(const uint32_t d
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
-        &cond, boost::none /* hash_code */, boost::none /* max_hash_code */);
+        &cond, std::nullopt /* hash_code */, std::nullopt /* max_hash_code */);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -1450,7 +1449,7 @@ Result<string> SysCatalogTable::ReadPgNamespaceNspname(const uint32_t database_o
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
-        &cond, boost::none /* hash_code */, boost::none /* max_hash_code */);
+        &cond, std::nullopt /* hash_code */, std::nullopt /* max_hash_code */);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -1501,7 +1500,7 @@ Result<std::unordered_map<string, uint32_t>> SysCatalogTable::ReadPgAttNameTypid
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
-        boost::none /* hash_code */, boost::none /* max_hash_code */);
+        std::nullopt /* hash_code */, std::nullopt /* max_hash_code */);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -1566,7 +1565,7 @@ Result<std::unordered_map<uint32_t, string>> SysCatalogTable::ReadPgEnum(
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
-        nullptr /* cond */, boost::none /* hash_code */, boost::none /* max_hash_code */);
+        nullptr /* cond */, std::nullopt /* hash_code */, std::nullopt /* max_hash_code */);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -1622,7 +1621,7 @@ Result<std::unordered_map<uint32_t, PgTypeInfo>> SysCatalogTable::ReadPgTypeInfo
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
-        boost::none /* hash_code */, boost::none /* max_hash_code */);
+        std::nullopt /* hash_code */, std::nullopt /* max_hash_code */);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -1842,7 +1841,7 @@ Result<RelIdToAttributesMap> SysCatalogTable::ReadPgAttributeInfo(
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
-        boost::none /* hash_code */, boost::none /* max_hash_code */);
+        std::nullopt /* hash_code */, std::nullopt /* max_hash_code */);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -1952,7 +1951,7 @@ Result<RelTypeOIDMap> SysCatalogTable::ReadCompositeTypeFromPgClass(
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, nullptr,
-        boost::none /* hash_code */, boost::none /* max_hash_code */);
+        std::nullopt /* hash_code */, std::nullopt /* max_hash_code */);
     RETURN_NOT_OK(iter->Init(spec));
   }
 

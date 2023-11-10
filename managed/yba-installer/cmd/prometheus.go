@@ -14,6 +14,7 @@ import (
 
 	"github.com/fluxcd/pkg/tar"
 	"github.com/spf13/viper"
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
@@ -25,6 +26,7 @@ import (
 type prometheusDirectories struct {
 	SystemdFileLocation string
 	ConfFileLocation    string // This is used during config generation
+	WebConfFile					string
 	templateFileName    string
 	DataDir             string
 	PromDir             string
@@ -35,6 +37,7 @@ func newPrometheusDirectories() prometheusDirectories {
 	return prometheusDirectories{
 		SystemdFileLocation: common.SystemdDir + "/prometheus.service",
 		ConfFileLocation:    common.GetSoftwareRoot() + "/prometheus/conf/prometheus.yml",
+		WebConfFile:				 common.GetSoftwareRoot() + "/prometheus/conf/web.yml",
 		templateFileName:    "yba-installer-prometheus.yml",
 		DataDir:             common.GetBaseInstall() + "/data/prometheus",
 		PromDir:             common.GetSoftwareRoot() + "/prometheus",
@@ -87,7 +90,9 @@ func (prom Prometheus) Version() string {
 func (prom Prometheus) Install() error {
 	log.Info("Starting Prometheus install")
 	config.GenerateTemplate(prom)
-
+	if err := prom.FixBasicAuth(); err != nil {
+		return err
+	}
 	if err := prom.moveAndExtractPrometheusPackage(); err != nil {
 		return err
 	}
@@ -257,6 +262,9 @@ func (prom Prometheus) Uninstall(removeData bool) error {
 func (prom Prometheus) Upgrade() error {
 	prom.prometheusDirectories = newPrometheusDirectories()
 	config.GenerateTemplate(prom) // No need to reload systemd, start takes care of that for us.
+	if err := prom.FixBasicAuth(); err != nil {
+		return err
+	}
 	prom.moveAndExtractPrometheusPackage()
 	if err := prom.createPrometheusSymlinks(); err != nil {
 		return err
@@ -323,6 +331,9 @@ func (prom Prometheus) Status() (common.Status, error) {
 func (prom Prometheus) MigrateFromReplicated() error {
 	log.Info("Starting Prometheus migration")
 	config.GenerateTemplate(prom)
+	if err := prom.FixBasicAuth(); err != nil {
+		return err
+	}
 
 	if err := prom.moveAndExtractPrometheusPackage(); err != nil {
 		return fmt.Errorf("failed to extract prometheus: %w", err)
@@ -358,6 +369,22 @@ func (prom Prometheus) MigrateFromReplicated() error {
 	return nil
 }
 
+// FixBasicAuth sets auth password in prometheus web.yml.
+// Must always be called after GenerateTemplate
+func (prom Prometheus) FixBasicAuth() error {
+	// Fix up prometheus basic auth user (needs space beteween username/password)
+	if viper.GetBool("prometheus.enableAuth") {
+		log.Info("Setting prometheus authentication.")
+		authKey := fmt.Sprintf("basic_auth_users.%s", viper.GetString("prometheus.authUsername"))
+		pwd, err := bcrypt.GenerateFromPassword([]byte(viper.GetString("prometheus.authPassword")), 10)
+		if err != nil {
+			return fmt.Errorf("error generating prometheus auth password: %s", err.Error())
+		}
+		return common.SetYamlValue(prom.WebConfFile, authKey, string(pwd))
+	}
+	return nil
+}
+
 // FinishReplicatedMigrate completest the replicated migration prometheus specific tasks
 func (prom Prometheus) FinishReplicatedMigrate() error {
 	links := []string{
@@ -380,12 +407,11 @@ func (prom Prometheus) FinishReplicatedMigrate() error {
 	return nil
 }
 
-func (prom Prometheus) RollbackMigration(uid, gid uint32) error {
-	rootDir := common.GetReplicatedBaseDir()
+func (prom Prometheus) RollbackMigration(uid, gid uint32, replBaseDir string) error {
 	replDirs := []string{
-		filepath.Join(rootDir, "prometheusv2"),
-		filepath.Join(rootDir, "/yugaware/swamper_targets"),
-		filepath.Join(rootDir, "yugaware/swamper_rules"),
+		filepath.Join(replBaseDir, "prometheusv2"),
+		filepath.Join(replBaseDir, "/yugaware/swamper_targets"),
+		filepath.Join(replBaseDir, "yugaware/swamper_rules"),
 	}
 	for _, dir := range replDirs {
 		if err := common.Chown(dir, fmt.Sprintf("%d", uid), fmt.Sprintf("%d", gid), true); err != nil {

@@ -33,7 +33,7 @@
 // This header should not be included by anything but pb_util and its tests.
 #pragma once
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <google/protobuf/io/zero_copy_stream.h>
 
 #include "yb/util/env.h"

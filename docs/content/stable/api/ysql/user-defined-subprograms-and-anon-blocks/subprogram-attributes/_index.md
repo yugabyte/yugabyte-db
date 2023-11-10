@@ -25,29 +25,12 @@ The overall behavior of a user-defined function or procedure is determined by a 
 
 You can see the names of all of these rules in the grammars for _create [or replace] function_, _create [or replace] procedure_, _alter function_, and _alter procedure_, below:
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li>
-    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammar Icon">
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <img src="/icons/diagram.svg" alt="Diagram Icon">
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/create_function,create_procedure,alter_function,alter_procedure.grammar.md" %}}
-  </div>
-  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/create_function,create_procedure,alter_function,alter_procedure.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf localrefs="alterable_fn_only_attribute,alterable_fn_and_proc_attribute,special_fn_and_proc_attribute,unalterable_fn_attribute,unalterable_proc_attribute" %}}
+  create_function,
+  create_procedure,
+  alter_function,
+  alter_procedure
+{{%/ebnf%}}
 
 Here are the different attribute rules.
 

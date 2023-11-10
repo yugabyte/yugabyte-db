@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.yugabyte.yw.models.helpers.CommonUtils.getDurationSeconds;
+import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -319,7 +320,15 @@ public class TaskExecutor {
    */
   public RunnableTask createRunnableTask(ITask task) {
     checkNotNull(task, "Task must be set");
-    task.validateParams();
+    try {
+      task.validateParams(task.isFirstTry());
+    } catch (PlatformServiceException e) {
+      log.error("Params validation failed for task " + task, e);
+      throw e;
+    } catch (Exception e) {
+      log.error("Params validation failed for task " + task, e);
+      throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
+    }
     TaskInfo taskInfo = createTaskInfo(task);
     taskInfo.setPosition(-1);
     taskInfo.save();

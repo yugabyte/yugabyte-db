@@ -48,6 +48,7 @@ set(INTEGRATION_TESTS_SRCS
   cluster_verifier.cc
   create-table-itest-base.cc
   external_mini_cluster.cc
+  external_yb_controller.cc
   external_mini_cluster_fs_inspector.cc
   load_balancer_test_util.cc
   load_generator.cc
@@ -142,6 +143,7 @@ ADD_YB_TEST(are_leaders_on_preferred_only-itest)
 ADD_YB_TEST(compaction-test)
 ADD_YB_TEST(compressed_stream-test)
 ADD_YB_TEST(logging-test)
+ADD_YB_TEST(tablet_health_manager-itest)
 ADD_YB_TEST(master_replication-itest)
 ADD_YB_TEST(master_sysnamespace-itest)
 ADD_YB_TEST(master_path_handlers-itest)

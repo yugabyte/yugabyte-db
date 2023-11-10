@@ -40,7 +40,6 @@
 #include <utility>
 
 #include <boost/container/small_vector.hpp>
-#include <glog/logging.h>
 
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/consensus_context.h"
@@ -792,14 +791,15 @@ const PeerMessageQueue::TrackedPeer* PeerMessageQueue::FindClosestPeerForBootstr
     }
 
     // Consider only those followers as rbs source which are in the same term as the leader
-    // and have last_applied_opid >= leader log's min available index
+    // and have last_received_opid >= leader log's min available index.
     // TODO: Add a gflag that sets the max allowed difference between the leader's last
-    // applied log opid and that of the rbs source. Reject peer as an rbs source if
-    // leader->last_applied.index - remote_peer->last_applied.index > flag
-    OpId remote_last_applied_opid = it->second->last_applied;
+    // logged opid and that of the rbs source. Reject peer as an rbs source if
+    // leader->last_received.index - remote_peer->last_received.index > flag_value
+    OpId remote_last_received_opid = it->second->last_received;
     if (it->second->member_type != PeerMemberType::VOTER ||
-        remote_last_applied_opid.term != queue_state_.current_term ||
-        remote_last_applied_opid.index < log_cache_.earliest_op_index()) {
+        remote_last_received_opid.term != queue_state_.current_term ||
+        remote_last_received_opid.index < log_cache_.earliest_op_index() ||
+        !it->second->is_last_exchange_successful) {
       continue;
     }
 

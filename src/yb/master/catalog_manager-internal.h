@@ -43,9 +43,7 @@ namespace master {
 static const std::string kRelnamespaceNotFoundErrorStr =
     "Not found or invalid relnamespace oid for table oid ";
 
-inline Status SetupError(MasterErrorPB* error,
-                                 MasterErrorPB::Code code,
-                                 const Status& s) {
+inline Status SetupError(MasterErrorPB* error, MasterErrorPB::Code code, const Status& s) {
   StatusToPB(s, error->mutable_status());
   error->set_code(code);
   return s;

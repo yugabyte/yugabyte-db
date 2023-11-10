@@ -40,6 +40,7 @@ import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -1189,6 +1190,28 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     assertEquals(
         specificGFlags.getGFlags(null, TSERVER),
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.tserverGFlags);
+  }
+
+  @Test
+  public void testGFlagsUpgradePrimaryWithRRRetries() {
+    addReadReplica();
+
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    SpecificGFlags specificGFlags =
+        SpecificGFlags.construct(
+            ImmutableMap.of("master-flag", "m1"), ImmutableMap.of("tserver-flag", "t1"));
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.specificGFlags = specificGFlags;
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    super.verifyTaskRetries(
+        defaultCustomer,
+        CustomerTask.TaskType.GFlagsUpgrade,
+        CustomerTask.TargetType.Universe,
+        defaultUniverse.getUniverseUUID(),
+        TaskType.GFlagsUpgrade,
+        taskParams,
+        false);
   }
 
   private Map<String, String> getGflagsForNode(

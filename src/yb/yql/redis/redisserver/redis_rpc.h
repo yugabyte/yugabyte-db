@@ -79,7 +79,7 @@ class RedisConnectionContext : public rpc::ConnectionContextWithQueue {
   Status ReportPendingWriteBytes(size_t bytes_in_queue) override;
 
  private:
-  void Connected(const rpc::ConnectionPtr& connection) override {}
+  Status Connected(const rpc::ConnectionPtr& connection) override { return Status::OK(); }
 
   rpc::RpcConnectionPB::StateType State() override {
     return rpc::RpcConnectionPB::OPEN;

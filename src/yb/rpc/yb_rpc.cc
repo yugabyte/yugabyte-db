@@ -191,7 +191,7 @@ Status YBInboundConnectionContext::HandleCall(
   return Status::OK();
 }
 
-void YBInboundConnectionContext::Connected(const ConnectionPtr& connection) {
+Status YBInboundConnectionContext::Connected(const ConnectionPtr& connection) {
   DCHECK_EQ(connection->direction(), Connection::Direction::SERVER);
 
   state_ = RpcConnectionPB::NEGOTIATING;
@@ -204,6 +204,7 @@ void YBInboundConnectionContext::Connected(const ConnectionPtr& connection) {
         YBInboundConnectionContext, &YBInboundConnectionContext::HandleTimeout>(this);
     timer_.Start(HeartbeatPeriod());
   }
+  return Status::OK();
 }
 
 void YBInboundConnectionContext::UpdateLastWrite(const ConnectionPtr& connection) {
@@ -338,7 +339,8 @@ void YBInboundCall::LogTrace() const {
                    << header_.timeout_ms << "ms).";
       auto my_trace = trace();
       if (my_trace) {
-        LOG(WARNING) << "Trace:\n" << my_trace->DumpToString(1, true);
+        LOG(INFO) << "Trace:";
+        my_trace->DumpToLogInfo(true);
       }
       return;
     }
@@ -351,7 +353,7 @@ void YBInboundCall::LogTrace() const {
           total_time > FLAGS_rpc_slow_query_threshold_ms)) {
     LOG(INFO) << ToString() << " took " << total_time << "ms. Trace:";
     if (my_trace) {
-      my_trace->Dump(&LOG(INFO), true);
+      my_trace->DumpToLogInfo(true);
     }
   }
 }
@@ -452,7 +454,7 @@ Status YBOutboundConnectionContext::HandleCall(
   return connection->HandleCallResponse(call_data);
 }
 
-void YBOutboundConnectionContext::Connected(const ConnectionPtr& connection) {
+Status YBOutboundConnectionContext::Connected(const ConnectionPtr& connection) {
   DCHECK_EQ(connection->direction(), Connection::Direction::CLIENT);
   connection_ = connection;
   last_read_time_ = connection->reactor()->cur_time();
@@ -462,6 +464,7 @@ void YBOutboundConnectionContext::Connected(const ConnectionPtr& connection) {
         YBOutboundConnectionContext, &YBOutboundConnectionContext::HandleTimeout>(this);
     timer_.Start(Timeout());
   }
+  return Status::OK();
 }
 
 Status YBOutboundConnectionContext::AssignConnection(const ConnectionPtr& connection) {

@@ -101,7 +101,7 @@ class GeoTransactionsTest : public GeoTransactionsTestBase {
 
   Result<uint32_t> GetTablespaceOidForRegion(int region) {
     auto conn = EXPECT_RESULT(Connect());
-    uint32_t tablespace_oid = EXPECT_RESULT(conn.FetchValue<int32_t>(strings::Substitute(
+    uint32_t tablespace_oid = EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
         "SELECT oid FROM pg_catalog.pg_tablespace WHERE spcname = 'tablespace$0'", region)));
     return tablespace_oid;
   }
@@ -611,10 +611,10 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionTableDeletion
   // Check data.
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
-  int64_t count = EXPECT_RESULT(conn.FetchValue<int64_t>(strings::Substitute(
+  int64_t count = EXPECT_RESULT(conn.FetchRow<int64_t>(strings::Substitute(
         "SELECT COUNT(*) FROM $0$1_1", kTablePrefix, kLocalRegion)));
   ASSERT_EQ(3, count);
-  count = EXPECT_RESULT(conn.FetchValue<int64_t>(strings::Substitute(
+  count = EXPECT_RESULT(conn.FetchRow<int64_t>(strings::Substitute(
         "SELECT COUNT(*) FROM $0$1_2", kTablePrefix, kLocalRegion)));
   ASSERT_EQ(1, count);
 }

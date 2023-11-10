@@ -55,10 +55,12 @@
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/integration-tests/external_yb_controller.h"
 #include "yb/integration-tests/mini_cluster_base.h"
 
 #include "yb/server/server_fwd.h"
 
+#include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_types.pb.h"
 
@@ -365,6 +367,9 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Return all tablet servers.
   std::vector<ExternalTabletServer*> tserver_daemons() const;
 
+  // Return all YBController servers.
+  std::vector<ExternalYbController*> yb_controller_daemons() const;
+
   // Get tablet server host.
   HostPort pgsql_hostport(int node_index) const;
 
@@ -450,7 +455,7 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   Status FlushTabletsOnSingleTServer(
       ExternalTabletServer* ts, const std::vector<yb::TabletId> tablet_ids,
-      bool is_compaction);
+      tserver::FlushTabletsRequestPB_Operation operation);
 
   Status WaitForTSToCrash(const ExternalTabletServer* ts,
                           const MonoDelta& timeout = MonoDelta::FromSeconds(60));
@@ -578,6 +583,8 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   std::vector<scoped_refptr<ExternalMaster> > masters_;
   std::vector<scoped_refptr<ExternalTabletServer> > tablet_servers_;
+
+  std::vector<scoped_refptr<ExternalYbController>> yb_controller_servers_;
 
   rpc::Messenger* messenger_ = nullptr;
   std::unique_ptr<rpc::Messenger> messenger_holder_;

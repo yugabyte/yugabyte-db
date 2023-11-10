@@ -182,6 +182,8 @@ DECLARE_int32(rpc_workers_limit);
 
 DECLARE_int64(cdc_intent_retention_ms);
 
+DECLARE_bool(ysql_yb_enable_replication_commands);
+
 METRIC_DEFINE_entity(cdc);
 
 METRIC_DEFINE_entity(cdcsdk);
@@ -968,88 +970,19 @@ Status CDCServiceImpl::CreateCDCStreamForNamespace(
   // Generate a stream id by calling CreateCDCStream, and also setup the stream in the master.
   std::unordered_map<std::string, std::string> options = GetCreateCDCStreamOptions(req);
 
-  // Filter out tables with PK
-  master::NamespaceIdentifierPB ns_identifier;
-  ns_identifier.set_id(ns_id);
-  auto table_list = VERIFY_RESULT_OR_SET_CODE(
-      client()->ListUserTables(ns_identifier), CDCError(CDCErrorPB::INTERNAL_ERROR));
-  std::vector<client::YBTableName> required_tables;
-  for (const auto& table_iter : table_list) {
-    std::shared_ptr<client::YBTable> table;
-
-    RETURN_NOT_OK_SET_CODE(
-        client()->OpenTable(table_iter.table_id(), &table), CDCError(CDCErrorPB::TABLE_NOT_FOUND));
-
-    // internally if any of the table doesn't have a primary key, then do not create
-    // a CDC stream ID for that table
-    if (!YsqlTableHasPrimaryKey(table->schema())) {
-      LOG(WARNING) << "Skipping CDC stream creation on " << table->name().table_name()
-                   << " because it does not have a primary key";
-      continue;
-    }
-
-    // We don't allow CDC on YEDIS and tables without a primary key.
-    if (req->record_format() != CDCRecordFormat::WAL) {
-      RETURN_NOT_OK_SET_CODE(CheckCdcCompatibility(table), CDCError(CDCErrorPB::INVALID_REQUEST));
-    }
-
-    required_tables.push_back(table_iter);
-  }
-
-  bool set_active = required_tables.empty();
-  xrepl::StreamId db_stream_id = VERIFY_RESULT_OR_SET_CODE(
-      client()->CreateCDCStream(ns_id, options, set_active), CDCError(CDCErrorPB::INTERNAL_ERROR));
-
-  options.erase(kIdType);
-
-  std::vector<TableId> table_ids;
-  std::vector<xrepl::StreamId> stream_ids;
-  std::vector<CDCStateTableEntry> entries_to_insert;
-
-  for (const auto& table_iter : required_tables) {
-    // We only change the stream's state to "ACTIVE", while we are inserting the last table for the
-    // stream.
-    bool set_active = table_iter == required_tables.back();
-    const xrepl::StreamId stream_id = VERIFY_RESULT_OR_SET_CODE(
-        client()->CreateCDCStream(table_iter.table_id(), options, set_active, db_stream_id),
+  // Forward request to master directly since we support creating CDCSDK stream for a namespace
+  // atomically in master now.
+  if (FLAGS_ysql_yb_enable_replication_commands) {
+    xrepl::StreamId db_stream_id = VERIFY_RESULT_OR_SET_CODE(
+        client()->CreateCDCSDKStreamForNamespace(ns_id, options),
         CDCError(CDCErrorPB::INTERNAL_ERROR));
-
-    creation_state.created_cdc_streams.push_back(stream_id);
-
-    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-    RETURN_NOT_OK_SET_CODE(
-        client()->GetTabletsFromTableId(table_iter.table_id(), 0, &tablets),
-        CDCError(CDCErrorPB::TABLE_NOT_FOUND));
-
-    // For each tablet, create a row in cdc_state table containing the generated stream id, and
-    // the op id as max in the logs.
-    for (const auto& tablet : tablets) {
-      InitNewTabletStreamEntry(
-          db_stream_id,
-          tablet.tablet_id(),
-          &creation_state.producer_entries_modified,
-          &entries_to_insert);
-    }
-    stream_ids.push_back(std::move(stream_id));
-    table_ids.push_back(table_iter.table_id());
+    resp->set_db_stream_id(db_stream_id.ToString());
+    return Status::OK();
+  } else {
+    return STATUS(
+        ServiceUnavailable, "Creating a CDC stream is disallowed during an upgrade",
+        CDCError(CDCErrorPB::OPERATION_DISALLOWED));
   }
-
-  // Add stream to cache.
-  AddStreamMetadataToCache(
-      db_stream_id,
-      std::make_shared<StreamMetadata>(
-          ns_id, table_ids, req->record_type(), req->record_format(), req->source_type(),
-          req->checkpoint_type(), StreamModeTransactional(req->transactional())));
-
-  RETURN_NOT_OK_SET_CODE(
-      cdc_state_table_->InsertEntries(entries_to_insert), CDCError(CDCErrorPB::INTERNAL_ERROR));
-
-  resp->set_db_stream_id(db_stream_id.ToString());
-
-  // Clear creation_state so no changes are reversed by scope_exit since we succeeded.
-  creation_state.Clear();
-
-  return Status::OK();
 }
 
 void CDCServiceImpl::CreateCDCStream(
@@ -2429,7 +2362,8 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     // We will only populate the "cdc_sdk_safe_time" when before image is active or when we are in
     // taking the snapshot of any table.
     if (entry.cdc_sdk_safe_time &&
-        (record.GetRecordType() == CDCRecordType::ALL || entry.snapshot_key.has_value())) {
+       ((record.GetRecordType() == CDCRecordType::ALL ||
+         record.GetRecordType() == CDCRecordType::PG_FULL) || entry.snapshot_key.has_value())) {
       cdc_sdk_safe_time = HybridTime(*entry.cdc_sdk_safe_time);
     }
 

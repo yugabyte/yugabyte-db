@@ -15,6 +15,7 @@ import { RbacUser, RbacUserWithResources } from "./users/interface/Users";
 import { ROOT_URL } from "../../../config";
 import { mapResourceBindingsToApi } from "./rbacUtils";
 import { RbacBindings } from "./users/components/UserUtils";
+import { RunTimeConfigEntry } from "../universe/universe-form/utils/dto";
 
 
 export const getAllAvailablePermissions = (resourceType?: ResourceType) => {
@@ -101,4 +102,12 @@ export const createUser = (user: RbacUserWithResources) => {
 export const deleteUser = (user: RbacUserWithResources) => {
     const cUUID = localStorage.getItem('customerId');
     return axios.delete(`${ROOT_URL}/customers/${cUUID}/users/${user.uuid}`);
+};
+
+export const getApiRoutePermMapList = () => {
+    return axios.get(`${ROOT_URL}/rbac/routes`);
+};
+
+export const getRBACEnabledStatus = () => {
+    return axios.get<RunTimeConfigEntry[]>(`${ROOT_URL}/runtime_config/feature_flags`);
 };

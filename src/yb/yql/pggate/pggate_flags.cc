@@ -153,3 +153,7 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_create_database_oid_collision_retry, true,
 TAG_FLAG(ysql_enable_create_database_oid_collision_retry, advanced);
 
 DEFINE_NON_RUNTIME_bool(ysql_use_relcache_file, true, "Use relcache init file");
+
+DEFINE_NON_RUNTIME_PREVIEW_bool(enable_yb_auh, false,
+                                "True to enable Active Universe History");
+TAG_FLAG(enable_yb_auh, hidden);

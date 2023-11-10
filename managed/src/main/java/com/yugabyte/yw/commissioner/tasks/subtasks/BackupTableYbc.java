@@ -11,11 +11,11 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupNodeRetriever;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.TablesMetadata;
-import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Universe;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -56,9 +56,11 @@ public class BackupTableYbc extends YbcTaskBase {
   }
 
   public static class Params extends BackupTableParams {
-    public Params(BackupTableParams tableParams, YbcBackupNodeRetriever nodeRetriever) {
+    public Params(
+        BackupTableParams tableParams, YbcBackupNodeRetriever nodeRetriever, Universe universe) {
       super(tableParams);
       this.nodeRetriever = nodeRetriever;
+      this.universe = universe;
     }
 
     // Node-ip to use as co-ordinator for the backup.
@@ -66,6 +68,7 @@ public class BackupTableYbc extends YbcTaskBase {
     public String nodeIp = null;
     public String taskID = null;
     @JsonIgnore public YbcBackupNodeRetriever nodeRetriever;
+    @JsonIgnore Universe universe;
   }
 
   @Override
@@ -97,7 +100,7 @@ public class BackupTableYbc extends YbcTaskBase {
       }
 
       // Ping operation is attempted again, but it's OK, since a small check only.
-      ybcClient = ybcManager.getYbcClient(taskParams().getUniverseUUID(), taskParams().nodeIp);
+      ybcClient = ybcManager.getYbcClient(taskParams().universe, taskParams().nodeIp);
 
       if (StringUtils.isBlank(taskParams().taskID)) {
         taskParams().taskID =
@@ -106,6 +109,18 @@ public class BackupTableYbc extends YbcTaskBase {
                 taskParams().backupType.name(),
                 taskParams().getKeyspace(),
                 taskParams().backupParamsIdentifier);
+
+        // Validate cloud store credentials on YBC server
+        if (!backupHelper.isSkipConfigBasedPreflightValidation(taskParams().universe)) {
+          ybcManager.validateCloudConfigWithClient(
+              taskParams().nodeIp,
+              ybcClient,
+              ybcBackupUtil.createCloudStoreConfigForNode(
+                  taskParams().nodeIp,
+                  taskParams().universe,
+                  taskParams().storageConfigUUID,
+                  taskParams().customerUuid));
+        }
 
         String successMarkerString = null;
         if (previousBackupParams != null) {
@@ -118,8 +133,8 @@ public class BackupTableYbc extends YbcTaskBase {
                       taskParams().storageConfigUUID,
                       dsmTaskId,
                       previousBackupParams),
-                  taskParams().getUniverseUUID(),
-                  dsmTaskId);
+                  dsmTaskId,
+                  ybcClient);
           if (StringUtils.isBlank(successMarkerString)) {
             throw new RuntimeException(
                 String.format(
@@ -136,13 +151,6 @@ public class BackupTableYbc extends YbcTaskBase {
               previousBackupParams == null
                   ? ybcBackupUtil.createYbcBackupRequest(taskParams())
                   : ybcBackupUtil.createYbcBackupRequest(taskParams(), previousBackupParams);
-          if (previousBackupParams != null) {
-            // Fail if validation fails.
-            YbcBackupResponse successMarker =
-                YbcBackupUtil.parseYbcBackupResponse(successMarkerString);
-            YbcBackupUtil.validateConfigWithSuccessMarker(
-                successMarker, backupServiceTaskCreateRequest.getCsConfig(), true);
-          }
           BackupServiceTaskCreateResponse response =
               ybcClient.backupNamespace(backupServiceTaskCreateRequest);
           if (response.getStatus().getCode().equals(ControllerStatus.OK)) {
@@ -192,8 +200,7 @@ public class BackupTableYbc extends YbcTaskBase {
       try {
         pollTaskProgress(ybcClient, taskParams().taskID);
         handleBackupResult();
-        ybcManager.deleteYbcBackupTask(
-            taskParams().getUniverseUUID(), taskParams().taskID, ybcClient);
+        ybcManager.deleteYbcBackupTask(taskParams().taskID, ybcClient);
         taskParams().nodeRetriever.putNodeIPBackToPool(taskParams().nodeIp);
       } catch (Exception e) {
         log.error(
@@ -206,15 +213,13 @@ public class BackupTableYbc extends YbcTaskBase {
       if (!taskExecutor.isShutdown()) {
         if (ce.getMessage().contains("Task aborted on YB-Controller")) {
           // Remove task on YB-Controller server.
-          ybcManager.deleteYbcBackupTask(
-              taskParams().getUniverseUUID(), taskParams().taskID, ybcClient);
+          ybcManager.deleteYbcBackupTask(taskParams().taskID, ybcClient);
         } else {
           // Explicit abort sent to YB-Controller server to abort process there.
           if (StringUtils.isNotBlank(taskParams().taskID)) {
             ybcManager.abortBackupTask(
                 taskParams().customerUuid, taskParams().backupUuid, taskParams().taskID, ybcClient);
-            ybcManager.deleteYbcBackupTask(
-                taskParams().getUniverseUUID(), taskParams().taskID, ybcClient);
+            ybcManager.deleteYbcBackupTask(taskParams().taskID, ybcClient);
           }
         }
       }
@@ -225,8 +230,7 @@ public class BackupTableYbc extends YbcTaskBase {
         // Try abort on YB-Controller server.
         ybcManager.abortBackupTask(
             taskParams().customerUuid, taskParams().backupUuid, taskParams().taskID, ybcClient);
-        ybcManager.deleteYbcBackupTask(
-            taskParams().getUniverseUUID(), taskParams().taskID, ybcClient);
+        ybcManager.deleteYbcBackupTask(taskParams().taskID, ybcClient);
       }
       Throwables.propagate(e);
     } finally {

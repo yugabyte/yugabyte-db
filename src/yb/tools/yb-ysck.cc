@@ -33,8 +33,6 @@
 // on the default RPC port. It verifies that all the reported Tablet Servers are running and that
 // the tablets are in a consistent state.
 
-#include <glog/logging.h>
-
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
 

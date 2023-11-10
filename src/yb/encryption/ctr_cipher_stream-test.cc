@@ -14,7 +14,7 @@
 #include <string>
 #include <thread>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
 #include "yb/encryption/cipher_stream.h"

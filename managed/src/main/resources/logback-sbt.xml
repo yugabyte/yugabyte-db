@@ -15,11 +15,11 @@
 
     <sift>
       <appender name="FILE-${logType}" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>${log.override.path:-${application.home:-.}/logs}/${logType}.log</file>
+        <file>${log.override.path:-${application.home:-.}/logs}/${${logType}LogFileNamePrefix:-/}${logType}.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
           <!-- Daily rollover with compression -->
           <fileNamePattern>
-            ${log.override.path:-${application.home:-.}/logs}/${logType}-log-%d{${${logType}LogRolloverPattern:-yyyy-MM-dd}}.gz
+            ${log.override.path:-${application.home:-.}/logs}/${${logType}LogFileNamePrefix:-/}${logType}-log-%d{${${logType}LogRolloverPattern:-yyyy-MM-dd}}.gz
           </fileNamePattern>
           <!-- keep 30 days worth of history -->
           <maxHistory>${${logType}LogMaxHistory:-30}</maxHistory>

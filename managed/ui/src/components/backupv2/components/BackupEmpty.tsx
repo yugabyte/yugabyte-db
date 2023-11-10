@@ -12,8 +12,9 @@ import { OverlayTrigger, Popover } from 'react-bootstrap';
 import { YBButton } from '../../common/forms/fields';
 import clsx from 'clsx';
 
-import { RBAC_ERR_MSG_NO_PERM, RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { RBAC_ERR_MSG_NO_PERM } from '../../../redesign/features/rbac/common/validator/ValidatorUtils';
 import './BackupEmpty.scss';
 
 const UPLOAD_ICON = <i className="fa fa-upload backup-empty-icon" />;
@@ -38,16 +39,21 @@ export const ScheduledBackupEmpty = ({
   return (
     <BackupEmpty>
       {UPLOAD_ICON}
-      <BackupDisabledTooltip disabled={disabled} hasPerm={hasPerm}>
-        <YBButton
-          onClick={onActionButtonClick}
-          btnClass="btn btn-orange backup-empty-button"
-          btnText="Create Scheduled Backup Policy"
-          disabled={disabled}
-        />
-      </BackupDisabledTooltip>
+      <RbacValidator
+        customValidateFunction={() => hasPerm}
+        isControl
+      >
+        <BackupDisabledTooltip disabled={disabled} hasPerm={hasPerm}>
+          <YBButton
+            onClick={onActionButtonClick}
+            btnClass="btn btn-orange backup-empty-button"
+            btnText="Create Scheduled Backup Policy"
+            disabled={disabled}
+          />
+        </BackupDisabledTooltip>
+      </RbacValidator>
       <div className="sub-text">Currently there are no Scheduled Backup Policies to show</div>
-    </BackupEmpty>
+    </BackupEmpty >
   );
 };
 
@@ -64,7 +70,7 @@ export const UniverseLevelBackupEmpty = ({
     <BackupEmpty>
       {UPLOAD_ICON}
       <RbacValidator
-        accessRequiredOn={{ ...UserPermissionMap.createBackup, onResource: 'CUSTOMER_ID' }}
+        customValidateFunction={() => hasPerm}
         isControl
       >
         <BackupDisabledTooltip disabled={disabled} hasPerm={hasPerm}>

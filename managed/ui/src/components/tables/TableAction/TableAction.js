@@ -18,6 +18,8 @@ import _ from 'lodash';
 import { BackupCreateModal } from '../../backupv2/components/BackupCreateModal';
 import { TableTypeLabel } from '../../../redesign/helpers/dtos';
 import { BACKUP_API_TYPES, Backup_Options_Type } from '../../backupv2';
+import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 export default class TableAction extends Component {
   constructor(props) {
@@ -203,7 +205,26 @@ export default class TableAction extends Component {
       );
     }
 
+    const getRbacCreateBackup = () => {
+      const canCreateBackup = hasNecessaryPerm({ ...ApiPermissionMap.CREATE_BACKUP, onResource: this.props.universeUUID });
+      return (
+        <RbacValidator customValidateFunction={() => canCreateBackup} isControl>
+          <Fragment>
+            <MenuItem eventKey={btnId} onClick={!canCreateBackup ? null : this.openModal} disabled={!canCreateBackup}>
+              <YBLabelWithIcon icon={btnIcon}>{btnLabel}</YBLabelWithIcon>
+            </MenuItem>
+            {modalContainer}
+          </Fragment>
+        </RbacValidator>
+      );
+    };
+
     const btnId = _.uniqueId('table_action_btn_');
+
+    if (actionType === 'create-backup') {
+      return getRbacCreateBackup();
+    }
+
     if (isMenuItem) {
       return (
         <Fragment>

@@ -583,6 +583,7 @@ static bool integer_datetimes;
 static bool assert_enabled;
 static char *yb_effective_transaction_isolation_level_string;
 static char *yb_xcluster_consistency_level_string;
+static char *yb_read_time_string;
 
 /* should be static, but commands/variable.c needs to get at this */
 char	   *role_string;
@@ -3113,7 +3114,7 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&max_replication_slots,
 		10, 0, MAX_BACKENDS /* XXX? */ ,
-		NULL, NULL, NULL
+		NULL, yb_assign_max_replication_slots, NULL
 	},
 
 	{
@@ -4422,6 +4423,24 @@ static struct config_string ConfigureNamesString[] =
 		&yb_xcluster_consistency_level_string,
 		"database",
 		check_yb_xcluster_consistency_level, assign_yb_xcluster_consistency_level, NULL
+	},
+
+	{
+		{"yb_read_time", PGC_SUSET, CLIENT_CONN_STATEMENT,
+			gettext_noop(
+				"Allows querying the database as of a point in time in the past."
+				" Takes a unix timestamp in microseconds."
+				" Zero means reading data as of current time."),
+			gettext_noop(
+				"User should set this variable with caution. Currently, it can"
+				" only read old data without schema changes. In other words, it should not be"
+				" set to a timestamp before a DDL operation has been performed."
+				" Potential corruption can happen in case (1) the variable is set to a timestamp"
+				" before most recent DDL. (2) DDL is performed while it is set to nonzero.")
+		},
+		&yb_read_time_string,
+		"0", 
+		check_yb_read_time, assign_yb_read_time, NULL
 	},
 
 	{

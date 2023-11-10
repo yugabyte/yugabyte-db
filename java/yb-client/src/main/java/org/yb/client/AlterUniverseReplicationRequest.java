@@ -58,13 +58,13 @@ public class AlterUniverseReplicationRequest extends YRpc<AlterUniverseReplicati
     });
 
     final MasterReplicationOuterClass.AlterUniverseReplicationRequestPB.Builder builder =
-      MasterReplicationOuterClass.AlterUniverseReplicationRequestPB.newBuilder()
-        .setProducerId(replicationGroupName)
-        .addAllProducerMasterAddresses(sourceMasterAddresses)
-        .addAllProducerTableIdsToAdd(sourceTableIdsToAdd)
-        .addAllProducerTableIdsToRemove(sourceTableIdsToRemove);
+        MasterReplicationOuterClass.AlterUniverseReplicationRequestPB.newBuilder()
+            .setReplicationGroupId(replicationGroupName)
+            .addAllProducerMasterAddresses(sourceMasterAddresses)
+            .addAllProducerTableIdsToAdd(sourceTableIdsToAdd)
+            .addAllProducerTableIdsToRemove(sourceTableIdsToRemove);
     if (newReplicationGroupName != null) {
-      builder.setNewProducerUniverseId(newReplicationGroupName);
+      builder.setNewReplicationGroupId(newReplicationGroupName);
     }
 
     // If all bootstrap IDs are null, it is not required.

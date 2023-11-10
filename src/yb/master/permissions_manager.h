@@ -20,7 +20,7 @@
 #include <utility>
 
 #include "yb/util/flags.h"
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/roles_permissions.h"

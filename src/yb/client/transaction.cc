@@ -267,12 +267,17 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     if ((trace_ && trace_->must_print())
            || (threshold > 0 && ToMilliseconds(time_spent) > threshold)
            || (FLAGS_txn_print_trace_on_error && !status_.ok())) {
-      LOG(INFO) << ToString() << " took " << ToMicroseconds(time_spent) << "us. Trace: \n"
-        << (trace_ ? trace_->DumpToString(true) : "Not collected");
+      LOG(INFO) << ToString() << " took " << ToMicroseconds(time_spent)
+                << "us. Trace: " << (trace_ ? "" : "Not collected");
+      if (trace_)
+        trace_->DumpToLogInfo(true);
     } else if (trace_) {
+      bool was_printed = false;
       YB_LOG_IF_EVERY_N(INFO, print_trace_every_n > 0, print_trace_every_n)
-        << ToString() << " took " << ToMicroseconds(time_spent) << "us. Trace: \n"
-        << trace_->DumpToString(true);
+          << ToString() << " took " << ToMicroseconds(time_spent) << "us. Trace: \n"
+          << Trace::SetTrue(&was_printed);
+      if (was_printed)
+        trace_->DumpToLogInfo(true);
     }
   }
 

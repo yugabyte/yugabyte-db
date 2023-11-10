@@ -86,6 +86,7 @@ message AppStatusPB {
     DEPRECATED_HOST_UNREACHABLE = 31;
     CACHE_MISS_ERROR = 32;
     TABLET_SPLIT = 33;
+    REPLICATION_SLOT_LIMIT_REACHED = 34;
   }
 
   required ErrorCode code = 1;

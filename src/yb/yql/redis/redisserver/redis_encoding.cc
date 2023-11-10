@@ -14,7 +14,7 @@
 //
 #include "yb/yql/redis/redisserver/redis_encoding.h"
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <google/protobuf/repeated_field.h>
 
 #include "yb/gutil/strings/numbers.h"

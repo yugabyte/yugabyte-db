@@ -20,29 +20,11 @@ Use the `MOVE` statement to change the position of the current row in a _[cursor
 
 ## Syntax
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammar Icon">
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <img src="/icons/diagram.svg" alt="Diagram Icon">
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/move,move_to_one_row,move_over_many_rows.grammar.md" %}}
-  </div>
-  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/move,move_to_one_row,move_over_many_rows.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  move,
+  move_to_one_row,
+  move_over_many_rows
+{{%/ebnf%}}
 
 ## Semantics
 
@@ -66,7 +48,7 @@ A _cursor_ represents the current position in its result set. After declaring a 
 
 - The `MOVE ABSOLUTE :n` variant moves to the single row at exactly the indicated absolute position. The `MOVE RELATIVE :n` variant moves to the single row at exactly the indicated relative position (_:n_ can be negative) to the current row. For both `MOVE ABSOLUTE :n` and `MOVE RELATIVE :n`, the requested row might lie before the first row or after the last row. The outcome here is the same as it is when executing other `MOVE` variants that cause the current position to fall outside the range from the first through the last row in the cursor's result set. Notice that _:n_ can be negative for both the `ABSOLUTE` and the `RELATIVE` variants.
 
-- Each of the `MOVE FIRST` and `MOVE LAST` variants moves, respectively, to the first row or the last row. The meanings are therefore insensitive to the current cursor position, and each can be repeated time and again and will always have the same effect. 
+- Each of the `MOVE FIRST` and `MOVE LAST` variants moves, respectively, to the first row or the last row. The meanings are therefore insensitive to the current cursor position, and each can be repeated time and again and will always have the same effect.
 
 Notice that the three variants ,`MOVE FORWARD 0`, `MOVE BACKWARD 0`, and `MOVE RELATIVE 0`, all mean the same as each other.
 

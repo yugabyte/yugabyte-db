@@ -32,8 +32,11 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
+#include "yb/client/auto_flags_manager.h"
+
 #include "yb/util/flags.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/version_info.h"
 
 DECLARE_bool(TEST_auto_flags_initialized);
 DECLARE_bool(TEST_auto_flags_new_install);
@@ -360,26 +363,6 @@ class AutoFlagsMiniClusterTest : public YBMiniClusterTestBase<MiniCluster> {
     return config;
   }
 
-  auto PromoteSingleFlagAndValidate(
-      const std::string& process_name, const std::string& flag_name, master::Master* leader_master,
-      uint32_t& expected_config_version, bool flag_promoted = true) {
-    master::PromoteSingleAutoFlagRequestPB req;
-    req.set_process_name(process_name);
-    req.set_auto_flag_name(flag_name);
-    master::PromoteSingleAutoFlagResponsePB resp;
-    CHECK_OK(leader_master->catalog_manager_impl()->PromoteSingleAutoFlag(&req, &resp));
-    CHECK(!resp.has_error());
-    CHECK(resp.has_new_config_version());
-    CHECK_EQ(resp.new_config_version(), expected_config_version);
-    CHECK_EQ(resp.flag_promoted(), flag_promoted);
-
-    CHECK_OK(ValidateConfigOnAllProcesses(expected_config_version));
-
-    auto config = leader_master->GetAutoFlagsConfig();
-    CHECK_EQ(expected_config_version, config.config_version());
-    return config;
-  }
-
   auto DemoteSingleFlagAndValidate(
       const std::string& process_name, const std::string& flag_name, master::Master* leader_master,
       uint32_t& expected_config_version, bool flag_demoted = true, bool expect_success = true) {
@@ -556,31 +539,6 @@ TEST_F(AutoFlagsMiniClusterTest, Demote) {
   ASSERT_TRUE(kExternalAutoFlag);
 }
 
-TEST_F(AutoFlagsMiniClusterTest, PromoteOneFlag) {
-  // Start with an empty config.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_limit_auto_flag_promote_for_new_universe) = 0;
-  ASSERT_OK(RunSetUp());
-  const auto kVolatileAutoFlagName = "ysql_yb_pushdown_strict_inequality";
-  const auto& kVolatileAutoFlag = FLAGS_ysql_yb_pushdown_strict_inequality;
-  const auto kYbTServerProcess = "yb-tserver";
-
-  auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master();
-  uint32 expected_config_version = 0;
-
-  auto config = leader_master->GetAutoFlagsConfig();
-  ASSERT_EQ(expected_config_version, config.config_version());
-  ASSERT_EQ(CountFlagsInConfig(kVolatileAutoFlagName, config, expected_config_version), 0);
-  ASSERT_FALSE(kVolatileAutoFlag);
-
-  // Demote and promote a flag so that it has a higher version than the rest.
-  ASSERT_NO_FATALS(
-      config = PromoteSingleFlagAndValidate(
-          kYbTServerProcess, kVolatileAutoFlagName, leader_master, ++expected_config_version));
-  // Flag exists in master but not tserver.
-  ASSERT_EQ(CountFlagsInConfig(kVolatileAutoFlagName, config), 1);
-  ASSERT_TRUE(kVolatileAutoFlag);
-}
-
 // Demote before the backfill is not allowed. We cannot Demote or Rollback flags before 2.20 upgrade
 // has completed (including Promotion of all AutoFlags).
 TEST_F(AutoFlagsMiniClusterTest, DemoteFlagBeforeBackfillFlagInfos) {
@@ -608,6 +566,25 @@ TEST_F(AutoFlagsMiniClusterTest, DemoteFlagBeforeBackfillFlagInfos) {
   // flag_infos should still not be set
   ASSERT_EQ(config.promoted_flags(0).flag_infos_size(), 0);
   ASSERT_EQ(config.promoted_flags(1).flag_infos_size(), 0);
+}
+
+TEST_F(AutoFlagsMiniClusterTest, CheckMissingFlag) {
+  ASSERT_OK(RunSetUp());
+  ASSERT_OK(ValidateConfig());
+
+  auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  auto auto_flags_manager = leader_master->master()->auto_flags_manager();
+
+  auto config = auto_flags_manager->GetConfig();
+  for (auto& promoted_flags : *config.mutable_promoted_flags()) {
+    promoted_flags.add_flags("missing_flag");
+  }
+  config.set_config_version(config.config_version() + 1);
+
+  auto s = auto_flags_manager->LoadFromConfig(config, ApplyNonRuntimeAutoFlags::kFalse);
+  ASSERT_NOK(s);
+  ASSERT_TRUE(s.ToString().find("missing_flag") != std::string::npos) << s;
+  ASSERT_TRUE(s.ToString().find(VersionInfo::GetShortVersionString()) != std::string::npos) << s;
 }
 
 class AutoFlagsExternalMiniClusterTest : public ExternalMiniClusterITestBase {
@@ -741,6 +718,31 @@ class AutoFlagsExternalMiniClusterTest : public ExternalMiniClusterITestBase {
     CHECK(!rollback_resp.has_error());
     CHECK_EQ(rollback_resp.new_config_version(), expected_config_version);
     CHECK(rollback_resp.flags_rolledback());
+    CHECK_EQ(expected_config_version, config.config_version());
+
+    CHECK_OK(ValidateConfigOnAllProcesses(expected_config_version));
+
+    return config;
+  }
+
+  auto PromoteSingleFlagAndValidate(
+      const std::string& process_name, const std::string& flag_name,
+      uint32_t& expected_config_version, bool flag_promoted = true) {
+    master::PromoteSingleAutoFlagRequestPB req;
+    req.set_process_name(process_name);
+    req.set_auto_flag_name(flag_name);
+    master::PromoteSingleAutoFlagResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(kTimeout);
+
+    auto s = cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>().PromoteSingleAutoFlag(
+        req, &resp, &rpc);
+    CHECK(!resp.has_error());
+    CHECK(resp.has_new_config_version());
+    CHECK_EQ(resp.new_config_version(), expected_config_version);
+    CHECK_EQ(resp.flag_promoted(), flag_promoted);
+
+    auto config = CHECK_RESULT(GetAutoFlagsConfig());
     CHECK_EQ(expected_config_version, config.config_version());
 
     CHECK_OK(ValidateConfigOnAllProcesses(expected_config_version));
@@ -918,13 +920,48 @@ TEST_F(AutoFlagsExternalMiniClusterTest, UpgradeCluster) {
       }));
 }
 
+TEST_F(AutoFlagsExternalMiniClusterTest, PromoteOneFlag) {
+  // Start with an empty config.
+  ASSERT_NO_FATALS(BuildAndStart(
+      {} /* ts_flags */, {"--limit_auto_flag_promote_for_new_universe=0"} /* master_flags */));
+
+  const auto kVolatileAutoFlagName = "ysql_yb_pushdown_strict_inequality";
+  const auto kYbTServerProcess = "yb-tserver";
+
+  uint32 expected_config_version = 0;
+
+  auto config = ASSERT_RESULT(GetAutoFlagsConfig());
+  ASSERT_EQ(expected_config_version, config.config_version());
+  ASSERT_EQ(CountFlagsInConfig(kVolatileAutoFlagName, config, expected_config_version), 0);
+
+  for (auto& master : cluster_->master_daemons()) {
+    ASSERT_EQ(ASSERT_RESULT(master->GetFlag(kVolatileAutoFlagName)), "false");
+  }
+  for (auto& tserver : cluster_->tserver_daemons()) {
+    ASSERT_EQ(ASSERT_RESULT(tserver->GetFlag(kVolatileAutoFlagName)), "false");
+  }
+
+  // Demote and promote a flag so that it has a higher version than the rest.
+  ASSERT_NO_FATALS(
+      config = PromoteSingleFlagAndValidate(
+          kYbTServerProcess, kVolatileAutoFlagName, ++expected_config_version));
+
+  // Flag exists in tserver but not master.
+  ASSERT_EQ(CountFlagsInConfig(kVolatileAutoFlagName, config), 1);
+  for (auto& master : cluster_->master_daemons()) {
+    ASSERT_EQ(ASSERT_RESULT(master->GetFlag(kVolatileAutoFlagName)), "false");
+  }
+  for (auto& tserver : cluster_->tserver_daemons()) {
+    ASSERT_EQ(ASSERT_RESULT(tserver->GetFlag(kVolatileAutoFlagName)), "true");
+  }
+}
+
 // Promote one flag and make sure Rollback only affects that one flag.
 TEST_F(AutoFlagsExternalMiniClusterTest, RollbackOneFlag) {
   ASSERT_NO_FATALS(BuildAndStart());
   const auto kVolatileAutoFlagName = "ysql_yb_pushdown_strict_inequality";
   const auto kYbTServerProcess = "yb-tserver";
 
-  auto master_proxy = cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>();
   uint32 expected_config_version = 1;
 
   // Initial config.

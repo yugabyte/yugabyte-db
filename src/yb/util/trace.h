@@ -172,6 +172,25 @@ class Trace : public RefCountedThreadSafe<Trace> {
   void Dump(std::ostream* out, bool include_time_deltas) const;
   void Dump(std::ostream* out, int32_t tracing_depth, bool include_time_deltas) const;
 
+  // Dumps the trace to Log(INFO)
+  void DumpToLogInfo(bool include_time_deltas) const;
+
+  // Sets the given flag to true, and
+  // returns and empty string ("")
+  //
+  // Useful to chain with probabilistic macros such as YB_LOG_EVERY_xxx()
+  //
+  // Example usage:
+  //   bool was_printed = false;
+  //   LOG_EVERY_N(INFO, 1000) << Trace::SetTrue(&was_printed) << "rpc took too long : Trace :";
+  //   if (was_printed) {
+  //     trace_->DumpToLogInfo(true);
+  //   }
+  static std::string SetTrue(bool* flag) {
+    *flag = true;
+    return "";
+  }
+
   // Dump the trace buffer as a string.
   std::string DumpToString(int32_t tracing_depth, bool include_time_deltas) const;
   std::string DumpToString(bool include_time_deltas) const {
@@ -327,7 +346,7 @@ class PlainTrace {
     const char* message;
     CoarseTimePoint timestamp;
 
-    void Dump(std::ostream* out) const;
+    void Dump(std::ostream* out, const std::string& nesting_prefix = "") const;
   };
 
   mutable simple_spinlock mutex_;

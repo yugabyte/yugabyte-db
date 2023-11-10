@@ -44,8 +44,12 @@ import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.filters.AlertFilter;
@@ -312,6 +316,20 @@ public class CustomerController extends AuthenticatedController {
       user.delete();
     }
 
+    // delete the taskInfo corresponding to the customer_task
+    // TODO: Alter task_info table to have foreign key reference to customer id.
+    List<CustomerTask> customerTasks = CustomerTask.getByCustomerUUID(customerUUID);
+    if (!customerTasks.isEmpty()) {
+      for (CustomerTask task : customerTasks) {
+        UUID taskUUID = task.getTaskUUID();
+        TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+        if (!taskInfo.delete()) {
+          throw new PlatformServiceException(
+              INTERNAL_SERVER_ERROR, "Unable to delete taskInfo of taskUUID: " + taskUUID);
+        }
+      }
+    }
+
     if (!customer.delete()) {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Unable to delete Customer UUID: " + customerUUID);
@@ -368,7 +386,7 @@ public class CustomerController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Add metrics to a customer",
+      value = "YbaApi Internal. Add metrics to a customer",
       response = Object.class,
       responseContainer = "Map")
   @ApiResponses(
@@ -390,6 +408,7 @@ public class CustomerController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.8.0.0")
   public Result metrics(UUID customerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 

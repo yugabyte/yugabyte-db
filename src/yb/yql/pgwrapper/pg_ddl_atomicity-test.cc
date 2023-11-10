@@ -176,7 +176,7 @@ TEST_F(
   threads.AddThreadFunctor([this, &m, &cv, &cache_warm, &index_deletion_sent, &table_name] {
     auto conn = ASSERT_RESULT(ConnectToDB("test_db"));
     ASSERT_RESULT(
-        conn.FetchValue<int32_t>(Format("SELECT key FROM $0 where value = '1000'", table_name)));
+        conn.FetchRow<int32_t>(Format("SELECT key FROM $0 where value = '1000'", table_name)));
     LOG(INFO) << "queryer - setting cache to be warm";
     {
       std::unique_lock lk(m);
@@ -189,7 +189,7 @@ TEST_F(
       cv.wait(lk, [&index_deletion_sent] { return index_deletion_sent; });
     }
     auto result =
-        conn.FetchValue<int32_t>(Format("SELECT key FROM $0 where value = '3000'", table_name));
+        conn.FetchRow<int32_t>(Format("SELECT key FROM $0 where value = '3000'", table_name));
     if (!result.ok() &&
         !(result.status().IsNetworkError() &&
           result.status().ToString().find("OBJECT_NOT_FOUND") != std::string::npos)) {
@@ -283,8 +283,7 @@ TEST_F(PgDdlAtomicitySanityTest, TestMultiRewriteAlterTable) {
   ASSERT_OK(VerifySchema(client.get(), "yugabyte", table_name, {"key", "value", "num"}));
 
   // Verify that the data and schema is intact.
-  PGResultPtr res = ASSERT_RESULT(conn.FetchFormat("SELECT * FROM $0", table_name));
-  ASSERT_EQ(PQntuples(res.get()), num_rows);
+  ASSERT_OK(conn.FetchMatrix(Format("SELECT * FROM $0", table_name), num_rows, 3));
   ASSERT_OK(conn.ExecuteFormat(
       "INSERT INTO $0 VALUES (11, 'value11', 11.11)", table_name));
 
@@ -295,9 +294,8 @@ TEST_F(PgDdlAtomicitySanityTest, TestMultiRewriteAlterTable) {
   ASSERT_OK(conn.ExecuteFormat(
       "INSERT INTO $0 VALUES ('keytext', 'value$1', '2.231')", table_name));
 
-  PGResultPtr res_after_ddl = ASSERT_RESULT(conn.FetchFormat("SELECT * FROM $0", table_name));
   // We added two new rows.
-  ASSERT_EQ(PQntuples(res_after_ddl.get()), num_rows + 2);
+  ASSERT_OK(conn.FetchMatrix(Format("SELECT * FROM $0", table_name), num_rows + 2, 3));
 }
 
 TEST_F(PgDdlAtomicitySanityTest, TestChangedPkColOrder) {
@@ -879,8 +877,7 @@ TEST_F(PgDdlAtomicityTxnTest, AddColDropColTest) {
   // Table should exist with old schema intact.
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   ASSERT_OK(VerifySchema(client.get(), kDatabase, table(), {"key", "value", "num"}));
-  PGResultPtr res = ASSERT_RESULT(conn.FetchFormat("SELECT value FROM $0", table()));
-  ASSERT_EQ(PQntuples(res.get()), 5);
+  ASSERT_OK(conn.FetchMatrix(Format("SELECT value FROM $0", table()), 5, 1));
 }
 
 TEST_F(PgDdlAtomicityTxnTest, AddDropColWithSameNameTest) {
@@ -1344,19 +1341,19 @@ void PgLibPqMatviewTest::MatviewTest() {
   ASSERT_OK(conn.TestFailDdl(Format("REFRESH MATERIALIZED VIEW mv")));
   // Wait for rollback to complete.
   SleepFor(2s);
-  auto curr_rows = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT COUNT(*) FROM mv"));
+  auto curr_rows = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM mv"));
   ASSERT_EQ(curr_rows, 0);
 
   // Verify refresh success.
   ASSERT_OK(conn.Execute("REFRESH MATERIALIZED VIEW mv"));
-  curr_rows = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT COUNT(*) FROM mv"));
+  curr_rows = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM mv"));
   ASSERT_EQ(curr_rows, 2);
 
   // Perform another refresh to verify the case where relfilenode of both old and new table no
   // longer matches the oid.
   ASSERT_OK(conn.Execute("INSERT INTO t VALUES (3), (4)"));
   ASSERT_OK(conn.Execute("REFRESH MATERIALIZED VIEW mv"));
-  curr_rows = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT COUNT(*) FROM mv"));
+  curr_rows = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM mv"));
   ASSERT_EQ(curr_rows, 4);
 }
 
@@ -1391,7 +1388,7 @@ void PgLibPqMatviewFailure::RefreshMatviewRollback() {
   ASSERT_OK(conn.ExecuteFormat("CREATE MATERIALIZED VIEW mv AS SELECT * FROM t"));
   // Wait for DDL verification to complete for the above statement.
   ASSERT_OK(WaitForDdlVerification(client.get(), kDatabase, "mv"));
-  auto matview_oid = ASSERT_RESULT(conn.FetchValue<PGOid>(
+  auto matview_oid = ASSERT_RESULT(conn.FetchRow<PGOid>(
       "SELECT oid FROM pg_class WHERE relname = 'mv'"));
   auto pg_temp_table_name = "pg_temp_" + std::to_string(matview_oid);
   // The following statement fails because we set 'yb_test_fail_matview_refresh_after_creation'.

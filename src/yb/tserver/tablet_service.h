@@ -48,6 +48,8 @@
 
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/rpc/rpc_context.h"
+
 #include "yb/tablet/tablet_fwd.h"
 
 #include "yb/tserver/read_query.h"
@@ -189,6 +191,10 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
                          CancelTransactionResponsePB* resp,
                          rpc::RpcContext context) override;
 
+  void CheckTserverTabletHealth(const CheckTserverTabletHealthRequestPB* req,
+                                  CheckTserverTabletHealthResponsePB* resp,
+                                  rpc::RpcContext context) override;
+
   void StartRemoteSnapshotTransfer(
       const StartRemoteSnapshotTransferRequestPB* req, StartRemoteSnapshotTransferResponsePB* resp,
       rpc::RpcContext context) override;
@@ -315,7 +321,7 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
   mutable std::mutex backfill_lock_;
   std::condition_variable backfill_cond_;
   std::atomic<int32_t> num_tablets_backfilling_{0};
-  std::atomic<int32_t> num_test_retry_calls{0};
+  std::atomic<int32_t> TEST_num_test_retry_calls_{0};
   scoped_refptr<yb::AtomicGauge<uint64_t>> ts_split_op_added_;
 };
 

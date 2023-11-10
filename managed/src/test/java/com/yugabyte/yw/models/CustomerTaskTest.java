@@ -28,7 +28,6 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
-import play.libs.Json;
 
 public class CustomerTaskTest extends FakeDBApplication {
   private Customer defaultCustomer;
@@ -48,7 +47,7 @@ public class CustomerTaskTest extends FakeDBApplication {
 
   private CustomerTask createTask(
       CustomerTask.TargetType targetType, UUID targetUUID, CustomerTask.TaskType taskType) {
-    UUID taskUUID = UUID.randomUUID();
+    UUID taskUUID = buildTaskInfo(null, TaskType.CreateUniverse);
     return CustomerTask.create(defaultCustomer, targetUUID, taskUUID, targetType, taskType, "Foo");
   }
 
@@ -67,18 +66,20 @@ public class CustomerTaskTest extends FakeDBApplication {
       boolean completeSubtasks) {
     UUID rootTaskUUID = null;
     if (depth > 1) {
-      TaskInfo rootTaskInfo = buildTaskInfo(null, TaskType.CreateUniverse);
-      rootTaskUUID = rootTaskInfo.getTaskUUID();
+      rootTaskUUID = buildTaskInfo(null, TaskType.CreateUniverse);
+      TaskInfo rootTaskInfo = TaskInfo.getOrBadRequest(rootTaskUUID);
       completeRoot.ifPresent(rootTaskInfo::setTaskState);
       rootTaskInfo.save();
     }
     if (depth > 2) {
-      TaskInfo subtask0 = buildTaskInfo(rootTaskUUID, TaskType.AnsibleSetupServer);
+      TaskInfo subtask0 =
+          TaskInfo.getOrBadRequest(buildTaskInfo(rootTaskUUID, TaskType.AnsibleSetupServer));
       if (completeSubtasks) {
         subtask0.setTaskState(TaskInfo.State.Failure);
       }
       subtask0.save();
-      TaskInfo subtask1 = buildTaskInfo(rootTaskUUID, TaskType.AnsibleConfigureServers);
+      TaskInfo subtask1 =
+          TaskInfo.getOrBadRequest(buildTaskInfo(rootTaskUUID, TaskType.AnsibleConfigureServers));
       if (completeSubtasks) {
         subtask1.setTaskState(TaskInfo.State.Success);
       }
@@ -86,19 +87,6 @@ public class CustomerTaskTest extends FakeDBApplication {
     }
     return CustomerTask.create(
         defaultCustomer, targetUUID, rootTaskUUID, targetType, taskType, "Foo");
-  }
-
-  private TaskInfo buildTaskInfo(UUID parentUUID, TaskType taskType) {
-    TaskInfo taskInfo;
-    taskInfo = new TaskInfo(taskType);
-    UUID taskUUID = UUID.randomUUID();
-    taskInfo.setTaskUUID(taskUUID);
-    taskInfo.setDetails(Json.newObject());
-    taskInfo.setOwner("");
-    if (parentUUID != null) {
-      taskInfo.setParentUuid(parentUUID);
-    }
-    return taskInfo;
   }
 
   @Test

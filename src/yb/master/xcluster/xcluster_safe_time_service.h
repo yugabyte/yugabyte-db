@@ -37,6 +37,7 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/xcluster/xcluster_consumer_metrics.h"
+#include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/rpc/scheduler.h"
 #include "yb/util/threadpool.h"
 #include "yb/gutil/thread_annotations.h"

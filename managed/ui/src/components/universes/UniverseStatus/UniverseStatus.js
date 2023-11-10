@@ -4,7 +4,7 @@ import { Component } from 'react';
 import { ProgressBar } from 'react-bootstrap';
 import { browserHistory } from 'react-router';
 
-import { isNonEmptyObject } from '../../../utils/ObjectUtils';
+import { isDefinedNotNull, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import { YBButton } from '../../common/forms/fields';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import {
@@ -14,6 +14,8 @@ import {
   UniverseState
 } from '../helpers/universeHelpers';
 import { UniverseAlertBadge } from '../YBUniverseItem/UniverseAlertBadge';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 import './UniverseStatus.scss';
 
@@ -34,11 +36,11 @@ export default class UniverseStatus extends Component {
     }
   }
 
-  retryTaskClicked = (currentTaskUUID) => {
+  retryTaskClicked = (currentTaskUUID, universeUUID) => {
     this.props.retryCurrentTask(currentTaskUUID).then((response) => {
       const status = response?.payload?.response?.status || response?.payload?.status;
       if (status === 200 || status === 201) {
-        browserHistory.push('/tasks');
+        browserHistory.push(`/universes/${universeUUID}/tasks`);
       } else {
         const taskResponse = response?.payload?.response;
         const toastMessage = taskResponse?.data?.error
@@ -123,13 +125,27 @@ export default class UniverseStatus extends Component {
       universeStatus.state === UniverseState.BAD ||
       universeStatus.state === UniverseState.WARNING
     ) {
-      const currentUniverseFailedTask = customerTaskList?.filter((task) => {
-        return (
-          task.targetUUID === currentUniverse.universeUUID &&
-          (task.status === 'Failure' || task.status === 'Aborted')
-        );
-      });
-      const failedTask = currentUniverseFailedTask?.[0];
+      const currentUniverseFailedTask = () => {
+        // Find the latest task (first in the list) for this universe.
+        const latestTask = customerTaskList?.find((task) => {
+          return task.targetUUID === currentUniverse.universeUUID;
+        });
+        if (latestTask && (latestTask.status === 'Failure' || latestTask.status === 'Aborted')) {
+          return latestTask;
+        }
+        const universeDetails = currentUniverse.universeDetails;
+        // Last universe task succeeded, but there can be a placement modification task failure.
+        if (isDefinedNotNull(universeDetails.placementModificationTaskUuid)) {
+          return customerTaskList?.find((task) => {
+            return (
+              task.targetUUID === currentUniverse.universeUUID &&
+              task.id === universeDetails.placementModificationTaskUuid
+            );
+          });
+        }
+        return null;
+      };
+      const failedTask = currentUniverseFailedTask();
       statusDisplay = (
         <div className={showLabelText ? 'status-error' : ''}>
           <i className="fa fa-warning" />
@@ -147,11 +163,19 @@ export default class UniverseStatus extends Component {
             />
           )}
           {shouldDisplayTaskButton && !universePendingTask && failedTask?.retryable && (
-            <YBButton
-              btnText={'Retry Task'}
-              btnClass="btn btn-default view-task-details-btn"
-              onClick={() => this.retryTaskClicked(failedTask.id)}
-            />
+            <RbacValidator
+              accessRequiredOn={{
+                onResource: currentUniverse.universeUUID,
+                ...ApiPermissionMap.RETRY_TASKS
+              }}
+              isControl
+            >
+              <YBButton
+                btnText={'Retry Task'}
+                btnClass="btn btn-default view-task-details-btn"
+                onClick={() => this.retryTaskClicked(failedTask.id, currentUniverse.universeUUID)}
+              />
+            </RbacValidator>
           )}
         </div>
       );

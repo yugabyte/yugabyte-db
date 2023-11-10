@@ -21,6 +21,8 @@ public class MetricQueryContext {
 
   // Set in case we need query to be wrapped with topk or boottomk function
   @Builder.Default boolean topKQuery = false;
+  // Set in case we need additional level of aggregation
+  @Builder.Default boolean secondLevelAggregation = false;
   // Filters, applied to each metric query
   @Builder.Default Map<String, String> additionalFilters = Collections.emptyMap();
   // Filters, applied to each metric query

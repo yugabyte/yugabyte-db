@@ -13,7 +13,7 @@ type: docs
 {{< tip title="See the dedicated 'User-defined subprograms and anonymous blocks' section." >}}
 User-defined procedures are part of a larger area of functionality. See this major section:
 
-- [User-defined subprograms and anonymous blocks—"language SQL" and "language plpgsql"](../../../user-defined-subprograms-and-anon-blocks/) 
+- [User-defined subprograms and anonymous blocks—"language SQL" and "language plpgsql"](../../../user-defined-subprograms-and-anon-blocks/)
 {{< /tip >}}
 
 ## Synopsis
@@ -22,29 +22,17 @@ Use the `CREATE PROCEDURE` statement to create a procedure in a database.
 
 ## Syntax
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li>
-    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammar Icon">
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <img src="/icons/diagram.svg" alt="Diagram Icon">
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_procedure,arg_decl_with_dflt,arg_decl,subprogram_signature,unalterable_proc_attribute,lang_name,implementation_definition,sql_stmt_list,alterable_fn_and_proc_attribute.grammar.md" %}}
-  </div>
-  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_procedure,arg_decl_with_dflt,arg_decl,subprogram_signature,unalterable_proc_attribute,lang_name,implementation_definition,sql_stmt_list,alterable_fn_and_proc_attribute.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  create_procedure,
+  arg_decl_with_dflt,
+  arg_decl,
+  subprogram_signature,
+  unalterable_proc_attribute,
+  lang_name,
+  subprogram_implementation,
+  sql_stmt_list,
+  alterable_fn_and_proc_attribute
+{{%/ebnf%}}
 
 {{< tip title="'create procedure' and the 'subprogram_signature' rule." >}}
 When you write a `CREATE PROCEDURE` statement, you will already have decided what formal arguments it will have—i.e. for each, what will be its name, mode, data type, and optionally its default value. When, later, you alter or drop a procedure, you must identify it. You do this, in  [`ALTER PROCEDURE`](../ddl_alter_procedure/) and [`DROP PROCEDURE`](../ddl_drop_procedure/), typically by specifying just its _[subprogram_call_signature](../../../user-defined-subprograms-and-anon-blocks/subprogram-overloading/#subprogram-call-signature)_. You are allowed to use the full _subprogram_signature_. But this is unconventional. Notice that the _subprogram_signature_ does not include the optional specification of default values; and you _cannot_ mention these when you alter or drop a procedure. The distinction between the _subprogram_signature_ and the _subprogram_call_signature_ is discussed carefully in the section [Subprogram overloading](../../../user-defined-subprograms-and-anon-blocks/subprogram-overloading/).
@@ -80,18 +68,18 @@ A procedure's _depends on extension_ attribute cannot be set using `CREATE [OR R
 - Set up an accounts table.
     ```plpgsql
     create schema s;
-    
+
     create table s.accounts (
       id integer primary key,
       name text not null,
       balance decimal(15,2) not null);
-    
+
     insert into s.accounts values (1, 'Jane', 100.00);
     insert into s.accounts values (2, 'John', 50.00);
-    
+
     select * from s.accounts order by 1;
     ```
-    
+
     ```output
      id | name | balance
     ----+------+---------
@@ -144,11 +132,11 @@ A procedure's _depends on extension_ attribute cannot be set using `CREATE [OR R
   ```output
   ERROR:  Sender and receiver cannot be the same
   ```
-  
+
   ```plpgsql
   call s.transfer(1, 2, -20.00);
   ```
-  
+
   ```output
   ERROR:  The transfer amount must be positive
   ```

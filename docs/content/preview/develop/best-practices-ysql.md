@@ -23,6 +23,7 @@ For more details, see [Build global applications](../build-global-apps).
 {{</tip>}}
 
 ## Colocation
+
 Colocated tables optimize latency and performance for data access by reducing the need for additional trips across the network for small tables. Additionally, it reduces the overhead of creating a tablet for every relation (tables, indexes, and so on) and their storage per node.
 
 {{<tip>}}
@@ -41,8 +42,7 @@ For more details, see [Avoid trips to the table with covering indexes](https://w
 
 ## Faster writes with partial indexes
 
-A partial index is an index that is built on a subset of a table and includes only rows that satisfy the condition 
-specified in the `WHERE` clause. This speeds up any writes to the table and reduces the size of the index, thereby improving speed for read queries that use the index.
+A partial index is an index that is built on a subset of a table and includes only rows that satisfy the condition specified in the `WHERE` clause. This speeds up any writes to the table and reduces the size of the index, thereby improving speed for read queries that use the index.
 
 {{<tip>}}
 For more details, see [Partial indexes](../../explore/indexes-constraints/partial-index-ysql/).
@@ -96,26 +96,38 @@ Use [table partitioning](../../explore/ysql-language-features/advanced-features/
 For more details, see [Partition data by time](../common-patterns/timeseries/partitioning-by-time/).
 {{</tip>}}
 
+## Use the right data types for partition keys
+
+In general, integer, arbitrary precision number, character string (not very long ones), and timestamp types are safe choices for comparisons.
+
+Avoid the following:
+
+- Floating point number data types - because they are stored as binary float format that cannot represent most of the decimal values precisely, values that are supposedly the same may not be treated as a match because of possible multiple internal representations.
+
+- Date, time, and similar timestamp component types if they may be compared with values from a different timezone or different day of the year, or when either value comes from a country or region that observes or ever observed daylight savings time.
+
 ## Use multi row inserts wherever possible
+
 If you're inserting multiple rows, it's faster to batch them together whenever possible. You can start with 128 rows per batch
 and test different batch sizes to find the sweet spot.
 
 Don't use multiple statements:
+
 ```postgresql
 INSERT INTO users(name,surname) VALUES ('bill', 'jane');
 INSERT INTO users(name,surname) VALUES ('billy', 'bob');
 INSERT INTO users(name,surname) VALUES ('joey', 'does');
 ```
+
 Instead, group values into a single statement as follows:
+
 ```postgresql
 INSERT INTO users(name,surname) VALUES ('bill', 'jane'), ('billy', 'bob'), ('joe', 'does');
-``` 
-
+```
 
 ## UPSERT multiple rows wherever possible
 
-PostgreSQL and YSQL enable you to do upserts using the `INSERT ON CONFLICT` clause. Similar to multi-row inserts, 
-you can also batch multiple upserts in a single `INSERT ON CONFLICT` statement for better performance.
+PostgreSQL and YSQL enable you to do upserts using the `INSERT ON CONFLICT` clause. Similar to multi-row inserts, you can also batch multiple upserts in a single `INSERT ON CONFLICT` statement for better performance.
 
 In case the row already exists, you can access the existing values using `EXCLUDED.<column_name>` in the query.
 
@@ -151,7 +163,7 @@ SELECT * FROM products;
 ```
 
 {{<tip>}}
-For more details, see [Data manipulation](../../explore/ysql-language-features/data-manipulation).
+For more information, see [Data manipulation](../../explore/ysql-language-features/data-manipulation).
 {{</tip>}}
 
 ## Load balance and failover using smart drivers
@@ -159,7 +171,7 @@ For more details, see [Data manipulation](../../explore/ysql-language-features/d
 YugabyteDB [smart drivers](../../drivers-orms/smart-drivers/) provide advanced cluster-aware load-balancing capabilities that enables your applications to send requests to multiple nodes in the cluster just by connecting to one node. You can also set a fallback hierarchy by assigning priority to specific regions and ensuring that connections are made to the region with the highest priority, and then fall back to the region with the next priority in case the high-priority region fails.
 
 {{<tip>}}
-For more details, see [Load balancing with smart drivers](https://www.yugabyte.com/blog/multi-region-database-deployment-best-practices/#load-balancing-with-smart-driver).
+For more information, see [Load balancing with smart drivers](https://www.yugabyte.com/blog/multi-region-database-deployment-best-practices/#load-balancing-with-smart-driver).
 {{</tip>}}
 
 ## Scale your application with connection pools
@@ -167,22 +179,19 @@ For more details, see [Load balancing with smart drivers](https://www.yugabyte.c
 Set up different pools with different load balancing policies as needed for your application to scale by using popular pooling solutions such as HikariCP and Tomcat along with YugabyteDB [smart drivers](../../drivers-orms/smart-drivers/).
 
 {{<tip>}}
-For more details, see [Connection pooling](../../drivers-orms/smart-drivers/#connection-pooling).
+For more information, see [Connection pooling](../../drivers-orms/smart-drivers/#connection-pooling).
 {{</tip>}}
 
 ## Use YSQL Connection Manager
 
-YugabyteDB includes a built-in connection pooler, YSQL Connection Manager, which provides the same connection pooling advantages as other external pooling solutions, but without many of their limitations. 
-As the manager is bundled with the product, it is convenient to manage, monitor, and configure the server connections.
+YugabyteDB includes a built-in connection pooler, YSQL Connection Manager, which provides the same connection pooling advantages as other external pooling solutions, but without many of their limitations. As the manager is bundled with the product, it is convenient to manage, monitor, and configure the server connections.
 
 {{<tip>}}
-For more details, see:
+For more information, refer to the following:
 
 - [YSQL Connection Manager](../../explore/connection-manager/connection-mgr-ysql/)
-- [Built-in Connection Manager Turns Key  PostgreSQL Weakness into a Strength](https://www.yugabyte.com/blog/connection-pooling-management/)
-
+- [Built-in Connection Manager Turns Key PostgreSQL Weakness into a Strength](https://www.yugabyte.com/blog/connection-pooling-management/)
 {{</tip>}}
-
 
 ## Re-use query plans with prepared statements
 
@@ -200,20 +209,23 @@ Use `BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE READ ONLY DEFERRABLE` for ba
 For more details, see [Large scans and batch jobs](../../develop/learn/transactions/transactions-performance-ysql/#large-scans-and-batch-jobs).
 {{</tip>}}
 
-
 ## JSONB datatype
-Use the [jsonb](../../api/ysql/datatypes/type_json) datatype to model JSON data; that is, data that doesn't have a set schema but has a truly dynamic schema. 
-jsonb in YSQL is the same as the [jsonb](https://www.postgresql.org/docs/11/datatype-json.html) datatype in PostgreSQL. 
-You can use jsonb to group less interesting or less frequently accessed columns of a table. 
-YSQL also supports jsonb expression indexes, which can be used to speed up data retrieval that would otherwise require scanning the JSON entries.
 
-{{< note title="Use jsonb columns only when necessary" >}}
+Use the [JSONB](../../api/ysql/datatypes/type_json) datatype to model JSON data; that is, data that doesn't have a set schema but has a truly dynamic schema.
 
-- A good schema design is to only use jsonb for truly dynamic schema. That is, don't create a "data jsonb" column where you put everything; instead, create a jsonb column for dynamic data, and use regular columns for the other data.
-- jsonb columns are slower to read/write compared to normal columns.
-- jsonb values take more space because they need to store keys in strings, and maintaining data consistency is harder, requiring more complex queries to get/set jsonb values.
-- jsonb is a good fit when writes are done as a whole document with a per-row hierarchical structure. If there are arrays, the choice is not JSONB vs. column, but vs additional relational tables.
-- For reads, jsonb is a good fit if you read the whole document and the searched expression is indexed. 
+JSONB in YSQL is the same as the [JSONB](https://www.postgresql.org/docs/11/datatype-json.html) datatype in PostgreSQL.
+
+You can use JSONB to group less interesting or less frequently accessed columns of a table.
+
+YSQL also supports JSONB expression indexes, which can be used to speed up data retrieval that would otherwise require scanning the JSON entries.
+
+{{< note title="Use JSONB columns only when necessary" >}}
+
+- A good schema design is to only use JSONB for truly dynamic schema. That is, don't create a "data JSONB" column where you put everything; instead, create a JSONB column for dynamic data, and use regular columns for the other data.
+- JSONB columns are slower to read/write compared to normal columns.
+- JSONB values take more space because they need to store keys in strings, and maintaining data consistency is harder, requiring more complex queries to get/set JSONB values.
+- JSONB is a good fit when writes are done as a whole document with a per-row hierarchical structure. If there are arrays, the choice is not JSONB vs. column, but vs additional relational tables.
+- For reads, JSONB is a good fit if you read the whole document and the searched expression is indexed.
 - When reading one attribute frequently, it's better to move it to a column as it can be included in an index for an `Index Only Scan`.
 
 {{< /note >}}
@@ -228,11 +240,11 @@ For more details, see [Distributed parallel queries](../../api/ysql/exprs/func_y
 
 ## Single availability zone (AZ) deployments
 
-In single AZ deployments, you need to set the [yb-tserver](../../reference/configuration/yb-tserver) flag `--durable_wal_write=true` to not lose data if the whole datacenter goes down (For example, power failure).
+In single AZ deployments, you need to set the [yb-tserver](../../reference/configuration/yb-tserver) flag `--durable_wal_write=true` to not lose data if the whole data center goes down (For example, power failure).
 
 ## Row size limit
 
-Big columns add up when you select full or multiple rows. For consistent latency or performance, it is recommended keeping the size under 10MB or less, and a maximum of 32MB. 
+Big columns add up when you select full or multiple rows. For consistent latency or performance, it is recommended keeping the size under 10MB or less, and a maximum of 32MB.
 
 ## Column size limit
 
@@ -248,30 +260,27 @@ Each table and index is split into tablets and each tablet has overhead. See [ta
 
 ## Tablets per server
 
-Each table and index consists of several tablets based on the [`--ysql_num_shards_per_tserver`](../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) flag. 
-For a cluster with RF3, 1000 tablets have an overhead of 0.4vcpu for raft heartbeats (assuming 0.5s heartbeat interval), 300MB memory, 128GB disk-space for WAL (write-ahead log).
+Each table and index consists of several tablets based on the [`--ysql_num_shards_per_tserver`](../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) flag.
 
-You have to keep this number in mind depending on the number of tables and number of tablets per-server that you intend to create. Note that each tablet can contain 100GB+ of data. 
+For a cluster with RF3, 1000 tablets have an overhead of 0.4vCPU for raft heartbeats (assuming 0.5s heartbeat interval), 300MB memory, 128GB disk-space for WAL (write-ahead log).
+
+You need to keep this number in mind depending on the number of tables and number of tablets per server that you intend to create. Note that each tablet can contain 100GB+ of data.
 
 An effort to increase this limit is currently in progress. See GitHub issue [#1317](https://github.com/yugabyte/yugabyte-db/issues/1317).
 
-You can try one of the following ways to reduce the number of tablets:
+You can try one of the following methods to reduce the number of tablets:
 
 - Use [colocation](../../architecture/docdb-sharding/colocated-tables/) to group small tables into 1 tablet.
-- Reduce number of tablets-per-table using [`--ysql_num_shards_per_tserver`](../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) gflag.
-- Use [`SPLIT INTO`](../api/ysql/the-sql-language/statements/ddl_create_table/#split-into) clause when creating a table.
+- Reduce number of tablets-per-table using [`--ysql_num_shards_per_tserver`](../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) flag.
+- Use [`SPLIT INTO`](../../api/ysql/the-sql-language/statements/ddl_create_table/#split-into) clause when creating a table.
 - Start with few tablets and use [automatic tablet splitting](../../architecture/docdb-sharding/tablet-splitting/).
 
 ## Settings for CI and CD integration tests
 
-You can set certain gflags to increase performance using YugabyteDB in CI and CD automated test scenarios as follows:
+You can set certain flags to increase performance using YugabyteDB in CI and CD automated test scenarios as follows:
 
-- Point the gflags `--fs_data_dirs`, and `--fs_wal_dirs` to a RAMDisk directory to make DML, DDL, cluster creation and deletion faster, ensuring that data is not written to disk.
-This will make DML,DDL and create,destroy a cluster faster because data will not be written to disk
-- Set the flag `--yb_num_shards_per_tserver=1`. Reducing the number of shards lowers overhead when creating or dropping YCQL tables, and writing or reading small amounts of data.
-Reducing the number of shards lowers overhead when creating,dropping YCQL tables and writing,reading small amounts of data
+- Point the flags `--fs_data_dirs`, and `--fs_wal_dirs` to a RAMDisk directory to make DML, DDL, cluster creation, and cluster deletion faster, ensuring that data is not written to disk.
+- Set the flag `--yb_num_shards_per_tserver=1`. Reducing the number of shards lowers overhead when creating or dropping YSQL tables, and writing or reading small amounts of data.
 - Use colocated databases in YSQL. Colocation lowers overhead when creating or dropping YSQL tables, and writing or reading small amounts of data.
-Colocation will lower overhead when creating/dropping YSQL tables and writing,reading small amounts of data 
-- Set the flag `--replication_factor=1` for test scenarios, as keeping the data three way replicated (default) is not necessary. Reducing that to 1 reduces space usage and increases performance. 
-For these testing scenarios, perhaps the default of keeping the data 3-way replicated is not necessary. Reducing that down to 1 cuts space usage and increases perf.
-- Use `TRUNCATE table1,table2,table3..tablen;` instead of `CREATE TABLE`, and `DROP TABLE` between test cases. 
+- Set the flag `--replication_factor=1` for test scenarios, as keeping the data three way replicated (default) is not necessary. Reducing that to 1 reduces space usage and increases performance.
+- Use `TRUNCATE table1,table2,table3..tablen;` instead of `CREATE TABLE`, and `DROP TABLE` between test cases.
