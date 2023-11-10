@@ -571,6 +571,7 @@ using std::shared_ptr;
 using std::string;
 using std::unique_ptr;
 using std::vector;
+using std::unordered_set;
 
 using namespace std::placeholders;
 
@@ -8524,13 +8525,12 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
 
   // Batch remove all relevant CDC streams, handle after releasing Table locks.
   TRACE("Deleting CDC streams on table");
-  vector<TableId> id_list;
-  id_list.reserve(tables.size());
+  unordered_set<TableId> table_ids;
   for (auto &table_and_lock : tables) {
-    id_list.push_back(table_and_lock.first->id());
+    table_ids.insert(table_and_lock.first->id());
   }
-  RETURN_NOT_OK(DeleteCDCStreamsForTables(id_list));
-  RETURN_NOT_OK(DeleteCDCStreamsMetadataForTables(id_list));
+  RETURN_NOT_OK(DeleteCDCStreamsForTables(table_ids));
+  RETURN_NOT_OK(DeleteCDCStreamsMetadataForTables(table_ids));
 
   // Send a DeleteTablet() RPC request to each tablet replica in the table.
   for (auto &table_and_lock : tables) {
@@ -9060,7 +9060,7 @@ Status CatalogManager::DeleteCDCStreamsForTable(const TableId& table) {
   return Status::OK();
 }
 
-Status CatalogManager::DeleteCDCStreamsForTables(const vector<TableId>& table_ids) {
+Status CatalogManager::DeleteCDCStreamsForTables(const unordered_set<TableId>& table_ids) {
   return Status::OK();
 }
 
@@ -9068,7 +9068,7 @@ Status CatalogManager::DeleteCDCStreamsMetadataForTable(const TableId& table) {
   return Status::OK();
 }
 
-Status CatalogManager::DeleteCDCStreamsMetadataForTables(const vector<TableId>& table_ids) {
+Status CatalogManager::DeleteCDCStreamsMetadataForTables(const unordered_set<TableId>& table_ids) {
   return Status::OK();
 }
 

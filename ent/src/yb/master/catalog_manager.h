@@ -149,11 +149,11 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   // Delete CDC streams for a table.
   Status DeleteCDCStreamsForTable(const TableId& table_id) override;
-  Status DeleteCDCStreamsForTables(const vector<TableId>& table_ids) override;
+  Status DeleteCDCStreamsForTables(const std::unordered_set<TableId>& table_ids) override;
 
   // Clean CDC streams for a table.
   Status DeleteCDCStreamsMetadataForTable(const TableId& table_id) override;
-  Status DeleteCDCStreamsMetadataForTables(const vector<TableId>& table_ids) override;
+  Status DeleteCDCStreamsMetadataForTables(const std::unordered_set<TableId>& table_ids) override;
 
   Status AddNewTableToCDCDKStreamsMetadata(
       const TableId& table_id, const NamespaceId& ns_id) override;
@@ -468,8 +468,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       REQUIRES_SHARED(mutex_);
 
   // Find CDC streams for a table to clean its metadata.
-  std::vector<scoped_refptr<CDCStreamInfo>> FindCDCStreamsForTableToDeleteMetadata(
-      const TableId& table_id) const REQUIRES_SHARED(mutex_);
+  std::vector<scoped_refptr<CDCStreamInfo>> FindCDCStreamsForTablesToDeleteMetadata(
+      const std::unordered_set<TableId>& table_ids) const REQUIRES_SHARED(mutex_);
 
   bool CDCStreamExistsUnlocked(const CDCStreamId& stream_id) override REQUIRES_SHARED(mutex_);
 
