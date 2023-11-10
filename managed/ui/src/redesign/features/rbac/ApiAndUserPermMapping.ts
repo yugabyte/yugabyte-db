@@ -1067,5 +1067,13 @@ export const ApiPermissionMap = {
     GET_UNIVERSE_PROXY: {
         requestType: ApiRequestType.GET,
         endpoint: '/universes/$uniUUID<[^/]+>/proxy/[^/]+'
+    },
+    PERF_ADVISOR_START_MANUALLY: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/universes/$uniUUID<[^/]+>/start_manually'
+    },
+    GET_PERF_RECOMENDATION_BY_PAGE: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/performance_recommendations/page'
     }
 } satisfies ApiPermissionMapType;
