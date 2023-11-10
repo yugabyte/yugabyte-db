@@ -2,16 +2,16 @@ package com.yugabyte.yw.forms;
 
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-import java.util.Map;
 import java.util.UUID;
+import javax.validation.Valid;
 import lombok.ToString;
 import play.data.validation.Constraints.Required;
 
-@ApiModel(description = "drConfig failover form")
+@ApiModel(description = "drConfig edit form")
 @ToString
-public class DrConfigFailoverForm {
+public class DrConfigReplaceReplicaForm {
 
-  @ApiModelProperty(value = "New primary universe UUID")
+  @ApiModelProperty(value = "The current primary universe UUID")
   @Required
   public UUID primaryUniverseUuid;
 
@@ -19,10 +19,8 @@ public class DrConfigFailoverForm {
   @Required
   public UUID drReplicaUniverseUuid;
 
-  @ApiModelProperty(
-      value =
-          "A map from database ID to its safetime since epoch in micro-seconds to use "
-              + "during unplanned failover")
+  @Valid
+  @ApiModelProperty("Parameters needed for the bootstrap flow including backup/restore")
   @Required
-  public Map<String, Long> namespaceIdSafetimeEpochUsMap;
+  public XClusterConfigRestartFormData.RestartBootstrapParams bootstrapParams;
 }

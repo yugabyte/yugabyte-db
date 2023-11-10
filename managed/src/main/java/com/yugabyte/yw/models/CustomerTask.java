@@ -294,6 +294,9 @@ public class CustomerTask extends Model {
     @EnumValue("Failover")
     Failover,
 
+    @EnumValue("Switchover")
+    Switchover,
+
     @EnumValue("PrecheckNode")
     PrecheckNode,
 
@@ -455,7 +458,9 @@ public class CustomerTask extends Model {
         case SyncXClusterConfig:
           return completed ? "Synchronized xcluster config " : "Synchronizing xcluster config ";
         case Failover:
-          return completed ? "Failed over dr confing " : "Failing over dr confing ";
+          return completed ? "Failed over dr config " : "Failing over dr config ";
+        case Switchover:
+          return completed ? "Switched over dr config " : "Switching over dr config ";
         case PrecheckNode:
           return completed ? "Performed preflight check on " : "Performing preflight check on ";
         case Abort:
