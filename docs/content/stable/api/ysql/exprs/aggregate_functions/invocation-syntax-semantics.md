@@ -15,70 +15,34 @@ type: docs
 
 ### Reproduced from the SELECT statement section
 
-The following six diagrams, [`select_start`](../../../syntax_resources/grammar_diagrams/#select-start), [`ordinary_aggregate_fn_invocation`](../../../syntax_resources/grammar_diagrams/#ordinary-aggregate-fn-invocation), [`within_group_aggregate_fn_invocation`](../../../syntax_resources/grammar_diagrams/#within-group-aggregate-fn-invocation), [`group_by_clause`](../../../syntax_resources/grammar_diagrams/#group-by-clause), [`grouping_element`](../../../syntax_resources/grammar_diagrams/#grouping-element), and [`having_clause`](../../../syntax_resources/grammar_diagrams/#having-clause) are reproduced from the section that describes the [`SELECT` statement](../../../the-sql-language/statements/dml_select/).
+The following three diagrams, [`select_start`](../../../syntax_resources/grammar_diagrams/#select-start), [`WINDOW` clause](../../../syntax_resources/grammar_diagrams/#window-clause), and [`fn_over_window`](../../../syntax_resources/grammar_diagrams/#fn-over-window) rule, are reproduced from the section that describes the [`SELECT` statement](../../../the-sql-language/statements/dml_select/).
 
-{{%ebnf%}}
-  select_start,
-  ordinary_aggregate_fn_invocation,
-  within_group_aggregate_fn_invocation
+{{%ebnf localrefs="window_definition"%}}
+select_start,
+window_clause,
+fn_over_window
 {{%/ebnf%}}
-These rules govern the invocation of aggregate functions as `SELECT` list items.
 
-The aggregate functions listed in the sections [General-purpose aggregate functions](../function-syntax-semantics/#general-purpose-aggregate-functions) and [Statistical aggregate functions](../function-syntax-semantics/#statistical-aggregate-functions) are governed by the `ordinary_aggregate_fn_invocation` rule.  These functions may also be invoked as window functions. See the account of the `fn_over_window` rule, and everything else that qualifies this, in the section [Window function invocation—SQL syntax and semantics](../../window_functions/invocation-syntax-semantics/).
+### Definition of the window_definition rule
 
-The aggregate functions listed in the sections [Within-group ordered-set aggregate functions](../function-syntax-semantics/#within-group-ordered-set-aggregate-functions) and [Within-group hypothetical-set aggregate functions](../function-syntax-semantics/#within-group-hypothetical-set-aggregate-functions) are governed by the `within_group_aggregate_fn_invocation` rule.  "Within-group ordered-set" aggregate functions may _not_ be invoked as window functions. But "within-group hypothetical-set" aggregate functions _may_ be invoked as window functions. The reasons for this difference are explained in the two relevant dedicated sections.
+As promised in the `SELECT` statement section, this section explains the [`window_definition`](../../../syntax_resources/grammar_diagrams/#window-definition) rule and its use as the argument of either the `OVER` keyword or the `WINDOW` keyword.
 
-When aggregate functions are invoked using the syntax specified by either the `ordinary_aggregate_fn_invocation` rule or the `within_group_aggregate_fn_invocation` rule, users very often determine the result set with the `GROUP BY` clause.
+A [`window_definition`](../../../syntax_resources/grammar_diagrams/#window-definition) can be used only at these two syntax spots, within the enclosing syntax of a subquery.
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar-2" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammar Icon">
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram-2" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <img src="/icons/diagram.svg" alt="Diagram Icon">
-      Diagram
-    </a>
-  </li>
-</ul>
+{{%ebnf localrefs="frame_clause" %}}
+window_definition
+{{%/ ebnf %}}
 
-<div class="tab-content">
-  <div id="grammar-2" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/exprs/aggregate_functions/group_by_clause,grouping_element.grammar.md" %}}
-  </div>
-  <div id="diagram-2" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/exprs/aggregate_functions/group_by_clause,grouping_element.diagram.md" %}}
-  </div>
-</div>
+### The frame_clause
 
-The result set may be restricted by the `HAVING` clause:
-
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar-3" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammar Icon">
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram-3" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <img src="/icons/diagram.svg" alt="Diagram Icon">
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar-3" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/exprs/aggregate_functions/having_clause.grammar.md" %}}
-  </div>
-  <div id="diagram-3" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/exprs/aggregate_functions/having_clause.diagram.md" %}}
-  </div>
-</div>
+{{% ebnf %}}
+frame_clause,
+frame_bounds,
+frame_start,
+frame_end,
+frame_bound,
+frame_exclusion
+{{%/ ebnf %}}
 
 ## Semantics
 
