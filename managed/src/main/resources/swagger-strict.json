@@ -6579,6 +6579,25 @@
       "required" : [ "cloudInfo", "masterRpcPort" ],
       "type" : "object"
     },
+    "MasterNodesInfo" : {
+      "properties" : {
+        "host" : {
+          "type" : "string"
+        },
+        "isLeader" : {
+          "type" : "boolean"
+        },
+        "masterUUID" : {
+          "type" : "string"
+        },
+        "port" : {
+          "format" : "int32",
+          "type" : "integer"
+        }
+      },
+      "required" : [ "host", "isLeader", "masterUUID", "port" ],
+      "type" : "object"
+    },
     "MastersList" : {
       "properties" : {
         "masters" : {
@@ -11653,6 +11672,10 @@
         "platformVersion" : {
           "type" : "string"
         },
+        "prevYBSoftwareConfig" : {
+          "$ref" : "#/definitions/PrevYBSoftwareConfig",
+          "description" : "Previous software version related data"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -11665,6 +11688,10 @@
         "sleepAfterTServerRestartMillis" : {
           "format" : "int32",
           "type" : "integer"
+        },
+        "softwareUpgradeState" : {
+          "enum" : [ "Ready", "Upgrading", "UpgradeFailed", "PreFinalize", "Finalizing", "FinalizeFailed", "RollingBack", "RollbackFailed" ],
+          "type" : "string"
         },
         "sourceXClusterConfigs" : {
           "description" : "The source universe's xcluster replication relationships",
@@ -19400,6 +19427,15 @@
           "name" : "arch",
           "required" : false,
           "type" : "string"
+        }, {
+          "in" : "path",
+          "name" : "code",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -19996,6 +20032,12 @@
           "format" : "uuid",
           "in" : "path",
           "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "pUUID",
           "required" : true,
           "type" : "string"
         }, {
@@ -21639,7 +21681,9 @@
           "in" : "path",
           "name" : "uniUUID",
           "required" : true,
-          "type" : "string"
+          "schema" : {
+            "$ref" : "#/definitions/CreatePitrConfigParams"
+          }
         } ],
         "responses" : {
           "200" : {
@@ -21788,6 +21832,41 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "List a master node's addresses",
+        "tags" : [ "Universe node metadata (metamaster)" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/masters/info" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "getMasterNodesInfo",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uniUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/MasterNodesInfo"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Available since YBA version 2.21.1.0. Lists all master nodes details",
         "tags" : [ "Universe node metadata (metamaster)" ]
       }
     },
@@ -23207,7 +23286,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List all tablet servers",
+        "summary" : "List all tablet servers information",
         "tags" : [ "Tablet server management" ]
       }
     },
