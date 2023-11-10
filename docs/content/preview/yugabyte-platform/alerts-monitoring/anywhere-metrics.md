@@ -20,6 +20,12 @@ You access metrics by navigating to **Universes > Universe-Name > Metrics**, as 
 
 ![Metrics Page](/images/yp/metrics_main.png)
 
+Use the time menu to change the range. To zoom in to view granular data points, select a portion of the time range along the y-axis of any chart. This zooms all charts.
+
+![Fine grained metrics](/images/yp/fine-grain-metrics.png)
+
+Click the refresh button to restore the default time range.
+
 ## Filter metrics
 
 You can display metrics based on different criteria:
