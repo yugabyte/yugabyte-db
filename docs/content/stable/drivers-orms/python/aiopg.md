@@ -4,7 +4,7 @@ headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Python application using aiopg Driver for YSQL
 menu:
-  preview_integrations:
+  stable:
     identifier: ysql-aiopg
     parent: python-drivers
     weight: 571
