@@ -406,30 +406,31 @@ export const PerfAdvisor: FC = () => {
                         ? t('clusterDetail.performance.advisor.DBScanFailed')
                         : t('clusterDetail.performance.advisor.NoPerformanceIssues')}
                     </p>
-                    <Button
-                      bsClass="btn btn-orange rescanBtn"
-                      disabled={isUniversePaused || isUniverseUpdating}
-                      onClick={handleScan}
-                      data-placement="left"
-                      title={
-                        isUniversePaused
-                          ? 'Universe Paused'
-                          : isUniverseUpdating
-                            ? 'Universe Updating'
-                            : ''
-                      }
+                    <RbacValidator
+                      isControl
+                      accessRequiredOn={{
+                        onResource: universeUUID,
+                        ...ApiPermissionMap.PERF_ADVISOR_START_MANUALLY
+                      }}
                     >
-                      <i className="fa fa-search-minus" aria-hidden="true"></i>
-                      <RbacValidator
-                        isControl
-                        accessRequiredOn={{
-                          onResource: universeUUID,
-                          ...ApiPermissionMap.PERF_ADVISOR_START_MANUALLY
-                        }}
+                      <Button
+                        bsClass="btn btn-orange rescanBtn"
+                        disabled={isUniversePaused || isUniverseUpdating}
+                        onClick={handleScan}
+                        data-placement="left"
+                        title={
+                          isUniversePaused
+                            ? 'Universe Paused'
+                            : isUniverseUpdating
+                              ? 'Universe Updating'
+                              : ''
+                        }
                       >
+                        <i className="fa fa-search-minus" aria-hidden="true"></i>
+
                         {t('clusterDetail.performance.advisor.ReScanBtn')}
-                      </RbacValidator>
-                    </Button>
+                      </Button>
+                    </RbacValidator>
                   </div>
                 </div>
               </div>
