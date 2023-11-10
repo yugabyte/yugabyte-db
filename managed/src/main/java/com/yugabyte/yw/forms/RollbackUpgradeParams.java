@@ -53,10 +53,18 @@ public class RollbackUpgradeParams extends UpgradeTaskParams {
   public void verifyParams(Universe universe, boolean isFirstTry) {
     super.verifyParams(universe, isFirstTry);
 
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     if (!ALLOWED_UNIVERSE_SOFTWARE_UPGRADE_STATE_SET.contains(
-        universe.getUniverseDetails().softwareUpgradeState)) {
+        universeDetails.softwareUpgradeState)) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "Cannot rollback software upgrade on the universe");
+          BAD_REQUEST,
+          "Cannot rollback software upgrade on the universe in state "
+              + universe.getUniverseDetails().softwareUpgradeState);
+    }
+    if (!universeDetails.isSoftwareRollbackAllowed
+        || universeDetails.prevYBSoftwareConfig == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot rollback software upgrade as previous upgrade was finalized");
     }
   }
 
