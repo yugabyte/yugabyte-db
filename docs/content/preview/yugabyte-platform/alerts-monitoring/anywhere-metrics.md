@@ -20,7 +20,7 @@ You access metrics by navigating to **Universes > Universe-Name > Metrics**, as 
 
 ![Metrics Page](/images/yp/metrics_main.png)
 
-To zoom in to view granular data points, select a portion of the time range along the y-axis of any chart. Note that all the charts get zoomed in and you can view the detailed metrics.
+Use the time menu to change the range. To zoom in to view granular data points, select a portion of the time range along the y-axis of any chart. This zooms all charts.
 
 ![Fine grained metrics](/images/yp/fine-grain-metrics.png)
 
