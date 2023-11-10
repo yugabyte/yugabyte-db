@@ -118,6 +118,10 @@ class CDCSDKTestBase : public YBTest {
       const std::string& namespace_name = kNamespaceName,
       bool colocated = false);
 
+  Status DropDatabase(
+      Cluster* cluster,
+      const std::string& namespace_name = kNamespaceName);
+
   Status InitPostgres(Cluster* cluster);
 
   Status SetUpWithParams(

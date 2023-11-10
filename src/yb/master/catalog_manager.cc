@@ -6045,10 +6045,10 @@ Status CatalogManager::DeleteTableInternal(
   // Update the in-memory state.
   TRACE("Committing in-memory state");
   std::unordered_set<TableId> sys_table_ids;
-  std::vector<TableId> deleted_table_ids;
+  std::unordered_set<TableId> deleted_table_ids;
   std::vector<TableId> deleted_index_ids;
   for (auto& table : tables) {
-    deleted_table_ids.emplace_back(table.info->id());
+    deleted_table_ids.insert(table.info->id());
     if(table.info->is_index()) {
       deleted_index_ids.emplace_back(table.info->id());
     }
@@ -9417,17 +9417,16 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
 
   // Batch remove all relevant CDC streams, handle after releasing Table locks.
   TRACE("Deleting CDC streams on table");
-  vector<TableId> id_list;
+  std::unordered_set<TableId> table_ids;
   vector<TableId> index_list;
-  id_list.reserve(tables.size());
   for (auto &[table, lock] : tables) {
-    id_list.push_back(table->id());
+    table_ids.insert(table->id());
     if (table->is_index()) {
       index_list.push_back(table->id());
     }
   }
-  RETURN_NOT_OK(DeleteCDCStreamsForTables(id_list));
-  RETURN_NOT_OK(DeleteCDCStreamsMetadataForTables(id_list));
+  RETURN_NOT_OK(DeleteCDCStreamsForTables(table_ids));
+  RETURN_NOT_OK(DeleteCDCStreamsMetadataForTables(table_ids));
   RETURN_NOT_OK(DeleteXReplStatesForIndexTables(index_list));
 
   // Send a DeleteTablet() RPC request to each tablet replica in the table.
