@@ -773,10 +773,17 @@ public class CustomerTask extends Model {
       return 0;
     }
     int subTaskSize = rootTaskInfo.getSubTasks().size();
-    // This performs cascade delete.
-    rootTaskInfo.delete();
+    deleteTasks(rootTaskInfo);
     delete();
     return 2 + subTaskSize;
+  }
+
+  @Transactional
+  // This is in a transaction block to not lose the parent task UUID.
+  private void deleteTasks(TaskInfo rootTaskInfo) {
+    rootTaskInfo.delete();
+    // TODO This is needed temporarily if the migration to add the FK constraint is skipped.
+    rootTaskInfo.getSubTasks().stream().forEach(TaskInfo::delete);
   }
 
   public static CustomerTask findByTaskUUID(UUID taskUUID) {
