@@ -70,6 +70,13 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
     }
   }
 
+  @Override
+  protected void createPrecheckTasks(Universe universe) {
+    if (isFirstTry()) {
+      verifyClustersConsistency();
+    }
+  }
+
   public void run() {
     log.info(
         "Start Node with name {} from universe uuid={}",

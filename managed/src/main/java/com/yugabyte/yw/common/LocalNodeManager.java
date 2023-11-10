@@ -145,6 +145,14 @@ public class LocalNodeManager {
     }
   }
 
+  public void killProcess(String nodeName, UniverseTaskBase.ServerType serverType)
+      throws IOException, InterruptedException {
+    NodeInfo nodeInfo = nodesByNameMap.get(nodeName);
+    Process process = nodeInfo.processMap.get(serverType);
+    log.debug("Destroying process with pid {} for {}", process.pid(), nodeInfo.ip);
+    killProcess(process.pid());
+  }
+
   private enum NodeState {
     CREATED,
     PROVISIONED
@@ -329,6 +337,10 @@ public class LocalNodeManager {
         }
         break;
       case Destroy:
+        for (UniverseTaskBase.ServerType serverType :
+            nodeInfo.processMap.keySet().toArray(new UniverseTaskBase.ServerType[0])) {
+          stopProcessForNode(serverType, nodeInfo);
+        }
         nodesByNameMap.remove(nodeInfo.name);
         response = ShellResponse.create(ERROR_CODE_SUCCESS, "Success!");
         break;
@@ -597,6 +609,7 @@ public class LocalNodeManager {
     if (process == null) {
       throw new IllegalStateException("No process of type " + serverType + " for " + nodeInfo.name);
     }
+    log.debug("Killing process {}", process.pid());
     process.destroy();
   }
 
