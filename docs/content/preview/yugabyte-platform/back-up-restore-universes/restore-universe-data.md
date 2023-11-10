@@ -19,6 +19,14 @@ To access backups from a specific universe, navigate to the universe and choose 
 
 To access all universe backups, navigate to **Backups**.
 
+## Prerequisites
+
+- The target universe must have enough nodes to accommodate the restore.
+- If the source universe is encrypted, the KMS configuration that was used to encrypt the universe. See [Back up and restore data from an encrypted at rest universe](../../security/enable-encryption-at-rest/#back-up-and-restore-data-from-an-encrypted-at-rest-universe).
+- If the source backup has tablespaces, to restore the tablespaces the target universe must have a matching topology; that is, the zones and regions in the target must be the same as the zones and regions in the source.
+
+    If the topology of the target universe does not match, none of the tablespaces are preserved and all their data is written to the primary region. After the restore, you will have to re-add all the tablespaces. For more information on specifying data placement for tables and indexes, refer to [Tablespaces](../../../explore/ysql-language-features/going-beyond-sql/tablespaces/).
+
 ## Restore an entire or incremental backup
 
 You can restore YugabyteDB universe data from a backup as follows:
@@ -31,13 +39,21 @@ You can restore YugabyteDB universe data from a backup as follows:
 
 1. In the **Restore Backup** dialog, select the universe (target) to which you want to restore the backup.
 
-1. If you are restoring data from a universe that has, or previously had, [encryption at rest enabled](../../security/enable-encryption-at-rest), then you must select the KMS configuration to use so that the master keys referenced in the metadata file can be retrieved. If the universe was previously encrypted at rest, but is not currently, then the retrieved keys assure that any existing files can be decrypted. The retrieved keys are used to build and augment the universe key registry on the restored universe with the required master keys. The universe data files are restored normally afterwards.
+1. If you are restoring data from a universe that has, or previously had, [encryption at rest enabled](../../security/enable-encryption-at-rest), then you must select the KMS configuration to use so that the master keys referenced in the metadata file can be retrieved.
+
+    If the universe was previously encrypted at rest, but is not currently, then the retrieved keys assure that any existing files can be decrypted. The retrieved keys are used to build and augment the universe key registry on the restored universe with the required master keys. The universe data files are restored normally afterwards.
 
 1. To rename databases (YSQL) or keyspaces (YCQL), select the **Rename** option.
 
     If you are restoring a backup to a universe with an existing databases of the same name, you must rename the database.
 
 1. Optionally, specify the number of parallel threads that are allowed to run. This can be any number between `1` and `100`.
+
+1. If you are restoring data from a universe that has tablespaces, select the **Restore tablespaces and data to their respective regions** option.
+
+    To restore tablespaces, the target universe must have a topology that matches the source.
+
+    You can restore without tablespaces, in which case none of the tablespaces are preserved and all their data is written to the primary region.
 
 1. If you chose to rename databases or keyspaces, click **Next**, then enter new names for the databases or keyspaces that you want to rename.
 
@@ -65,7 +81,9 @@ To restore, do the following:
 
 1. In the **Restore Backup** dialog, select the universe (target) to which you want to restore the backup.
 
-1. If you are restoring data from a universe that has, or previously had, [encryption at rest enabled](../../security/enable-encryption-at-rest), then you must select the KMS configuration to use so that the master keys referenced in the metadata file can be retrieved. If the universe was previously encrypted at rest, but is not currently, then the retrieved keys assure that any existing files can be decrypted. The retrieved keys are used to build and augment the universe key registry on the restored universe with the required master keys. The universe data files are restored normally afterwards.
+1. If you are restoring data from a universe that has, or previously had, [encryption at rest enabled](../../security/enable-encryption-at-rest), then you must select the KMS configuration to use so that the master keys referenced in the metadata file can be retrieved.
+
+    If the universe was previously encrypted at rest, but is not currently, then the retrieved keys assure that any existing files can be decrypted. The retrieved keys are used to build and augment the universe key registry on the restored universe with the required master keys. The universe data files are restored normally afterwards.
 
 1. To rename databases (YSQL) or keyspaces (YCQL), select the **Rename** option.
 
