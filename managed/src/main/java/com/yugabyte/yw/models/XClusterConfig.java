@@ -184,7 +184,7 @@ public class XClusterConfig extends Model {
   @JsonProperty("tableDetails")
   private Set<XClusterTableConfig> tables = new HashSet<>();
 
-  @ApiModelProperty(value = "Replication group name in DB")
+  @ApiModelProperty(value = "Replication group name in the target universe cluster config")
   private String replicationGroupName;
 
   public enum ConfigType {

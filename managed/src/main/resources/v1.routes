@@ -363,8 +363,12 @@ POST    /customers/:cUUID/universes/:uniUUID/need_bootstrap                    c
 # Disaster Recovery API
 POST    /customers/:cUUID/dr_configs                                           com.yugabyte.yw.controllers.DrConfigController.create(cUUID: java.util.UUID, request: Request)
 GET     /customers/:cUUID/dr_configs/:drUUID                                   com.yugabyte.yw.controllers.DrConfigController.get(cUUID: java.util.UUID, drUUID: java.util.UUID)
-PUT     /customers/:cUUID/dr_configs/:drUUID                                   com.yugabyte.yw.controllers.DrConfigController.edit(cUUID: java.util.UUID, drUUID: java.util.UUID, request: Request)
+POST    /customers/:cUUID/dr_configs/:drUUID/replace_replica                   com.yugabyte.yw.controllers.DrConfigController.replaceReplica(cUUID: java.util.UUID, drUUID: java.util.UUID, request: Request)
+POST    /customers/:cUUID/dr_configs/:drUUID/switchover                        com.yugabyte.yw.controllers.DrConfigController.switchover(cUUID: java.util.UUID, drUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/dr_configs/:drUUID/failover                          com.yugabyte.yw.controllers.DrConfigController.failover(cUUID: java.util.UUID, drUUID: java.util.UUID, request: Request)
+POST    /customers/:cUUID/dr_configs/:drUUID/restart                           com.yugabyte.yw.controllers.DrConfigController.restart(cUUID: java.util.UUID, drUUID: java.util.UUID, isForceDelete:Boolean ?= false, request: Request)
+POST    /customers/:cUUID/dr_configs/:drUUID/set_tables                        com.yugabyte.yw.controllers.DrConfigController.setTables(cUUID: java.util.UUID, drUUID: java.util.UUID, request: Request)
+POST    /customers/:cUUID/dr_configs/:drUUID/sync                              com.yugabyte.yw.controllers.DrConfigController.sync(cUUID: java.util.UUID, drUUID: java.util.UUID, request: Request)
 DELETE  /customers/:cUUID/dr_configs/:drUUID                                   com.yugabyte.yw.controllers.DrConfigController.delete(cUUID: java.util.UUID, drUUID: java.util.UUID, isForceDelete:Boolean ?= false, request: Request)
 GET     /customers/:cUUID/dr_configs/:drUUID/safetime                          com.yugabyte.yw.controllers.DrConfigController.getSafetime(cUUID: java.util.UUID, drUUID: java.util.UUID)
 

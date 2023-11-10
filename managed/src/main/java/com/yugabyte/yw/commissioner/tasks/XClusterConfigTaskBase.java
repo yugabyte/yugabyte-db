@@ -56,7 +56,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.CommonTypes;
@@ -1278,17 +1277,6 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
           }
         });
     return namespaces;
-  }
-
-  public static Set<String> getTableIds(
-      Collection<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tablesInfoList,
-      @Nullable MasterDdlOuterClass.ListTablesResponsePB.TableInfo txnTableInfo) {
-    if (Objects.nonNull(txnTableInfo)) {
-      return getTableIds(
-          Stream.concat(tablesInfoList.stream(), Stream.of(txnTableInfo))
-              .collect(Collectors.toList()));
-    }
-    return getTableIds(tablesInfoList);
   }
 
   public static Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
