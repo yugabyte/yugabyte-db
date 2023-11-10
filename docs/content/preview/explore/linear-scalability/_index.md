@@ -57,10 +57,10 @@ The following table lists the pros and cons of Horizontal and Vertical scaling o
 | **Number of nodes**        | Increases                                                                         | Remains the same                                                                        |
 | **Ease of effort**      | Add new nodes to the cluster                                                      | Add more powerful nodes, drain the old node, and remove them from the cluster           |
 | **Fault Tolerance**     | Increases as more nodes are added                                           | Remains the same                                                                        |
-| **Cluster rebalancing** | Faster                                                                            | Slower                                                                                  |
+| **Cluster&nbsp;rebalancing** | Faster                                                                            | Slower                                                                                  |
 | **Future scaling**      | More nodes can be added                                                           | Limited to the most powerful machines available currently                                   |
 | **Added costs**         | Cost of newer machines                                                            | Difference in cost between the new and old machines                                          |
-| **Disk**                | Same disks as other nodes can be used as data and connections will be distributed | Along with CPU and memory, disks should also be updgraded to handle increased workloads |
+| **Disk**                | Same disks as other nodes can be used as data and connections will be distributed | Along with CPU and memory, disks should also be upgraded to handle increased workloads |
 
 ## Enhancements
 
