@@ -605,7 +605,7 @@ If you created your universe with the Client-to-Node TLS option enabled, then yo
   ycqlsh>
   ```
 
-To use TLS from a different client, consult the client-specific documentation. For example, if you are using a Cassandra driver to connect to YugabyteDB, see [SSL](https://docs.datastax.com/en/developer/python-driver/3.19/security/#ssl) .
+To use TLS from a different client, consult the client-specific documentation. For example, if you are using a Cassandra driver to connect to YugabyteDB, see [SSL](https://docs.datastax.com/en/developer/python-driver/3.19/security/#ssl).
 
 ## Validating certificates
 
@@ -652,7 +652,7 @@ To enforce the minimum TLS version of 1.2, you need to specify all available sub
 ssl_protocols = tls12,tls13
 ```
 
-In addition, as the `ssl_protocols` setting does not propagate to PostgreSQL, it is recommended that you specify the minimum TLS version (`ssl_min_protocol_version`) for PostgreSQL by setting the following YB-TServer gflag:
+In addition, as the `ssl_protocols` setting does not propagate to PostgreSQL, it is recommended that you specify the minimum TLS version (`ssl_min_protocol_version`) for PostgreSQL by setting the following YB-TServer flag:
 
 ```shell
 --ysql_pg_conf_csv="ssl_min_protocol_version=TLSv1.2"
@@ -681,7 +681,7 @@ To add a certificate to the YugabyteDB Anywhere Trust Store, do the following:
 
 1. Enter a name for the certificate.
 
-1. Click **Upload**, select your certifcate (in .crt format) and click **Save CA Certificate**.
+1. Click **Upload**, select your certificate (in .crt format) and click **Save CA Certificate**.
 
 ### Rotate a certificate in your trust store
 
@@ -691,7 +691,7 @@ To rotate a certificate in your YugabyteDB Anywhere Trust Store, do the followin
 
 1. Click the **...** button for the certificate and choose **Update Certificate**.
 
-1. Click **Upload**, select your certifcate (in .crt format) and click **Save CA Certificate**.
+1. Click **Upload**, select your certificate (in .crt format) and click **Save CA Certificate**.
 
 ### Delete a certificate in your trust store
 
