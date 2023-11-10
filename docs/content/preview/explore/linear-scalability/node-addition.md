@@ -66,4 +66,5 @@ Now that you have successfully added a node and scaled your cluster, application
 
 ## Learn more
 
+- Try it out: [Scale out a universe](../scaling-universe/)
 - [Smart drivers](../../../drivers-orms/smart-drivers/)

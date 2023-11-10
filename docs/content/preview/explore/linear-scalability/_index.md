@@ -112,4 +112,10 @@ The following table lists the pros and cons of Horizontal and Vertical scaling o
     href="scaling-large-datasets/"
     icon="fa-solid fa-weight-hanging">}}
 
+  {{<index/item
+    title="Scale out a universe"
+    body="Try it out for yourself by following an example."
+    href="scaling-universe/"
+    icon="fa-solid fa-circle-nodes">}}
+
 {{</index/block>}}
