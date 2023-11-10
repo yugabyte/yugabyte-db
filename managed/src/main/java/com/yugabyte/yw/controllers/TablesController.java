@@ -273,7 +273,9 @@ public class TablesController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+            @PermissionAttribute(
+                resourceType = ResourceType.UNIVERSE,
+                action = Action.BACKUP_RESTORE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
   public Result createMultiTableBackup(UUID customerUUID, UUID universeUUID, Http.Request request) {
