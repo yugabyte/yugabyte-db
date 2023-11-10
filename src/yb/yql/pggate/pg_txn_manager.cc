@@ -256,7 +256,7 @@ Status PgTxnManager::SetDeferrable(bool deferrable) {
 
 uint64_t PgTxnManager::NewPriority(TxnPriorityRequirement txn_priority_requirement) {
   if (txn_priority_requirement == kHighestPriority) {
-    return txn_priority_highpri_upper_bound;
+    return yb::kHighPriTxnUpperBound;
   }
 
   if (txn_priority_requirement == kHigherPriorityRange) {
@@ -325,8 +325,8 @@ Status PgTxnManager::CalculateIsolation(
     }
     isolation_level_ = docdb_isolation;
 
-    VLOG_TXN_STATE(2) << "effective isolation level: "
-                      << IsolationLevel_Name(docdb_isolation)
+    VLOG_TXN_STATE(2) << "effective isolation level: " << IsolationLevel_Name(docdb_isolation)
+                      << " priority_: " << priority_
                       << "; transaction started successfully.";
   }
 
