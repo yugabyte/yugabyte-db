@@ -3649,7 +3649,11 @@ Status CDCServiceImpl::UpdateCheckpointAndActiveTime(
               << ", and stream: " << producer_tablet.stream_id;
     }
 
-    RETURN_NOT_OK(cdc_state_table_->UpdateEntries({entry}));
+    if (!is_snapshot) {
+      RETURN_NOT_OK(cdc_state_table_->UpdateEntries({entry}, false, {"snapshot_key"}));
+    } else {
+      RETURN_NOT_OK(cdc_state_table_->UpdateEntries({entry}));
+    }
   }
 
   // If we update the colocated snapshot row, we still need to do one of two things:
@@ -3667,7 +3671,7 @@ Status CDCServiceImpl::UpdateCheckpointAndActiveTime(
       CDCStateTableEntry entry(producer_tablet.tablet_id, producer_tablet.stream_id);
       entry.active_time = last_active_time;
       entry.cdc_sdk_safe_time = checkpoint.has_snapshot_time() ? checkpoint.snapshot_time() : 0;
-      RETURN_NOT_OK(cdc_state_table_->UpdateEntries({entry}));
+      RETURN_NOT_OK(cdc_state_table_->UpdateEntries({entry}, false, {"snapshot_key"}));
     }
   }
 
@@ -3688,8 +3692,8 @@ Status CDCServiceImpl::UpdateSnapshotDone(
         !cdc_sdk_checkpoint.has_snapshot_time() ? 0 : cdc_sdk_checkpoint.snapshot_time();
     entry.active_time = current_time;
     entry.last_replication_time = 0;
-    // Insert if row not found, Update if row already exists.
-    RETURN_NOT_OK(cdc_state_table_->UpsertEntries({entry}));
+    // Insert if row not found, Update if row already exists. Remove snapshot_key from map
+    RETURN_NOT_OK(cdc_state_table_->UpsertEntries({entry}, false, {"snapshot_key"}));
   }
 
   // Also update the active_time in the streaming row.
@@ -3697,7 +3701,7 @@ Status CDCServiceImpl::UpdateSnapshotDone(
     CDCStateTableEntry entry(tablet_id, stream_id);
     entry.active_time = current_time;
     entry.cdc_sdk_safe_time = VERIFY_RESULT(GetSafeTime(stream_id, tablet_id));
-    RETURN_NOT_OK(cdc_state_table_->UpdateEntries({entry}));
+    RETURN_NOT_OK(cdc_state_table_->UpdateEntries({entry}, false, {"snapshot_key"}));
   }
 
   return Status::OK();
