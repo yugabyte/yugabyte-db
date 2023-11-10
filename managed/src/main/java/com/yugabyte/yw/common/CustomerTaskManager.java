@@ -288,17 +288,9 @@ public class CustomerTaskManager {
               .map(Objects::toString)
               .collect(Collectors.joining("','"));
 
-      // Delete orphaned parent tasks which do not have any associated customer task.
-      // It is rare but can happen as a customer task and task info are not saved in transaction.
-      // TODO It can be handled better with transaction but involves bigger change.
-      String query =
-          "DELETE FROM task_info WHERE parent_uuid IS NULL AND uuid NOT IN "
-              + "(SELECT task_uuid FROM customer_task)";
-      DB.sqlUpdate(query).execute();
-
       // Retrieve all incomplete customer tasks or task in incomplete state. Task state update
       // and customer completion time update are not transactional.
-      query =
+      String query =
           "SELECT ti.uuid AS task_uuid, ct.id AS customer_task_id "
               + "FROM task_info ti, customer_task ct "
               + "WHERE ti.uuid = ct.task_uuid "
