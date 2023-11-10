@@ -9,6 +9,8 @@ import com.google.inject.Singleton;
 import com.google.protobuf.Descriptors.FieldDescriptor;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.common.FileHelperService;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.NFSUtil;
@@ -26,6 +28,8 @@ import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.forms.YbcThrottleParameters;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse.PresetThrottleValues;
@@ -36,6 +40,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.nio.file.Files;
@@ -932,7 +937,8 @@ public class YbcManager {
       Map<String, String> config,
       Universe universe,
       NodeDetails nodeDetails,
-      String ybcSoftwareVersion) {
+      String ybcSoftwareVersion,
+      Map<String, String> ybcGflagsMap) {
     ReleaseManager.ReleaseMetadata releaseMetadata =
         releaseManager.getYbcReleaseByVersion(
             ybcSoftwareVersion,
@@ -951,7 +957,8 @@ public class YbcManager {
             universe.getUniverseUUID(),
             nodeDetails.nodeName,
             listenOnAllInterfaces,
-            hardwareConcurrency);
+            hardwareConcurrency,
+            ybcGflagsMap);
     try {
       Path confFilePath =
           fileHelperService.createTempFile(
@@ -1064,5 +1071,64 @@ public class YbcManager {
         }
       }
     }
+  }
+
+  public AnsibleConfigureServers.Params getAnsibleConfigureYbcServerTaskParams(
+      Universe universe,
+      NodeDetails node,
+      Map<String, String> gflags,
+      UpgradeTaskType type,
+      UpgradeTaskSubType subType) {
+    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+    // Add the universe uuid.
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.allowInsecure = universe.getUniverseDetails().allowInsecure;
+    params.setTxnTableWaitCountFlag = universe.getUniverseDetails().setTxnTableWaitCountFlag;
+
+    UUID custUUID = Customer.get(universe.getCustomerId()).getUuid();
+    params.callhomeLevel = CustomerConfig.getCallhomeLevel(custUUID);
+    params.rootCA = universe.getUniverseDetails().rootCA;
+    params.setClientRootCA(universe.getUniverseDetails().getClientRootCA());
+    params.rootAndClientRootCASame = universe.getUniverseDetails().rootAndClientRootCASame;
+
+    UserIntent userIntent =
+        universe.getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
+
+    // Add testing flag.
+    params.itestS3PackagePath = universe.getUniverseDetails().itestS3PackagePath;
+    params.gflags = gflags;
+
+    // Set the device information (numVolumes, volumeSize, etc.)
+    params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+    // Add the node name.
+    params.nodeName = node.nodeName;
+    // Add the az uuid.
+    params.azUuid = node.azUuid;
+    // Add in the node placement uuid.
+    params.placementUuid = node.placementUuid;
+    // Sets the isMaster field
+    params.isMaster = node.isMaster;
+    params.enableYSQL = userIntent.enableYSQL;
+    params.enableYCQL = userIntent.enableYCQL;
+    params.enableYCQLAuth = userIntent.enableYCQLAuth;
+    params.enableYSQLAuth = userIntent.enableYSQLAuth;
+
+    // The software package to install for this cluster.
+    params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
+
+    params.instanceType = node.cloudInfo.instance_type;
+    params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
+    params.enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
+    params.enableYEDIS = userIntent.enableYEDIS;
+
+    params.setEnableYbc(universe.getUniverseDetails().isEnableYbc());
+    params.setYbcSoftwareVersion(universe.getUniverseDetails().getYbcSoftwareVersion());
+    params.installYbc = universe.getUniverseDetails().installYbc;
+    params.setYbcInstalled(universe.getUniverseDetails().isYbcInstalled());
+    params.ybcGflags = gflags;
+    params.type = type;
+    params.setProperty("processType", ServerType.CONTROLLER.toString());
+    params.setProperty("taskSubType", subType.toString());
+    return params;
   }
 }

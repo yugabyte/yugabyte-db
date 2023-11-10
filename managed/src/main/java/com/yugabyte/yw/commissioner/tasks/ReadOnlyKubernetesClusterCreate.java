@@ -108,7 +108,8 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
             universe.getName(),
             tserversAdded,
             true,
-            universe.getUniverseDetails().getYbcSoftwareVersion());
+            universe.getUniverseDetails().getYbcSoftwareVersion(),
+            readOnlyCluster.userIntent.ybcFlags);
         createWaitForYbcServerTask(tserversAdded);
       }
 

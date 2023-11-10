@@ -882,6 +882,12 @@ public class UniverseCRUDHandler {
       taskParams.setEnableYbc(true);
       taskParams.setYbcSoftwareVersion(u.getUniverseDetails().getYbcSoftwareVersion());
       taskParams.setYbcInstalled(true);
+      for (Cluster cluster : taskParams.clusters) {
+        cluster.userIntent.ybcFlags =
+            u.getUniverseDetails().getClusterByUuid(cluster.uuid) == null
+                ? u.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags
+                : u.getUniverseDetails().getClusterByUuid(cluster.uuid).userIntent.ybcFlags;
+      }
     }
 
     // Set existing LBs into taskParams
@@ -1178,6 +1184,12 @@ public class UniverseCRUDHandler {
       taskParams.setEnableYbc(true);
       taskParams.setYbcSoftwareVersion(universe.getUniverseDetails().getYbcSoftwareVersion());
       taskParams.setYbcInstalled(true);
+      for (Cluster cluster : taskParams.clusters) {
+        cluster.userIntent.ybcFlags =
+            universe.getUniverseDetails().getClusterByUuid(cluster.uuid) == null
+                ? universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags
+                : universe.getUniverseDetails().getClusterByUuid(cluster.uuid).userIntent.ybcFlags;
+      }
     }
 
     List<Cluster> newReadOnlyClusters = taskParams.getReadOnlyClusters();
