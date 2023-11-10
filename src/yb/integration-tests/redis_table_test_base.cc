@@ -13,7 +13,7 @@
 
 #include "yb/integration-tests/redis_table_test_base.h"
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/client/client.h"
 #include "yb/client/session.h"

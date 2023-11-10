@@ -33,7 +33,7 @@
 
 #include <string>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/stringprintf.h"
 #include "yb/util/coding.h"

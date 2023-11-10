@@ -44,7 +44,7 @@
 #include <vector>
 
 #include <boost/container/small_vector.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/once.h"
 #include "yb/gutil/port.h"

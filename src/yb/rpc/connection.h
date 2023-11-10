@@ -54,7 +54,7 @@
 
 #include <ev++.h>
 #include "yb/util/flags.h"
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/ref_counted.h"
 

@@ -40,7 +40,6 @@
 #include <utility>
 
 #include <boost/container/small_vector.hpp>
-#include <glog/logging.h>
 
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/consensus_context.h"

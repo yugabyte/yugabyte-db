@@ -13,7 +13,7 @@
 
 #include "yb/dockv/intent.h"
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/common/row_mark.h"
 #include "yb/common/transaction.h"

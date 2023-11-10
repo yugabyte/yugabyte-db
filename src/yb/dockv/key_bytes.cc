@@ -17,7 +17,7 @@
 #include <string>
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/common/column_id.h"
 #include "yb/common/doc_hybrid_time.h"

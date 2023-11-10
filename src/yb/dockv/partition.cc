@@ -37,7 +37,7 @@
 #include <limits>
 #include <set>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/common/common.pb.h"
 #include "yb/common/crc16.h"

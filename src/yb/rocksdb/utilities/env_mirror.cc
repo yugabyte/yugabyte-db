@@ -21,8 +21,7 @@
 // under the License.
 //
 
-
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/rocksdb/utilities/env_mirror.h"
 #include "yb/util/result.h"

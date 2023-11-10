@@ -16,7 +16,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/master/catalog_entity_info.h"

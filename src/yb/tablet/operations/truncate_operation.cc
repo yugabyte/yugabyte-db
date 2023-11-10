@@ -13,7 +13,7 @@
 
 #include "yb/tablet/operations/truncate_operation.h"
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/consensus/consensus_round.h"
 #include "yb/consensus/consensus.messages.h"

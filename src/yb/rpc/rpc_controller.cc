@@ -34,7 +34,7 @@
 
 #include <mutex>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/sidecars.h"

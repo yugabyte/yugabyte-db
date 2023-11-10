@@ -20,7 +20,7 @@
 
 #include <stdarg.h>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/port/sys_time.h"

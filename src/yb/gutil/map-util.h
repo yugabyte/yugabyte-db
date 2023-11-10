@@ -80,10 +80,7 @@
 #include <string>
 #include <vector>
 
-#include <glog/logging.h>
-
-
-
+#include "yb/util/logging.h"
 
 //
 // Find*()

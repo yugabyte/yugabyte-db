@@ -43,7 +43,6 @@
 
 #include <boost/optional/optional_io.hpp>
 #include <boost/range/adaptors.hpp>
-#include <glog/logging.h>
 
 #include "yb/client/async_rpc.h"
 #include "yb/client/client-internal.h"
