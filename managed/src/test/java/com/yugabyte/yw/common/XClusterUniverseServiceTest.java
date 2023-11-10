@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.services.config.YbClientConfigFactory;
@@ -38,7 +39,7 @@ public class XClusterUniverseServiceTest extends FakeDBApplication {
   @Mock private PlatformExecutorFactory mockPlatformExecutorFactory;
   @Mock private YbClientConfigFactory ybClientConfigFactory;
   @Mock private YBClientService ybService;
-
+  @Mock private AutoFlagUtil mockAutoFlagUtil;
   @Mock RuntimeConfGetter mockConfGetter;
 
   @Before
@@ -51,6 +52,7 @@ public class XClusterUniverseServiceTest extends FakeDBApplication {
             mockGFlagsValidation,
             mockConfGetter,
             ybService,
+            mockAutoFlagUtil,
             mockPlatformExecutorFactory,
             ybClientConfigFactory);
   }

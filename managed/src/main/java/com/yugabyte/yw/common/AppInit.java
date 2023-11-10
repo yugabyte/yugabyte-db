@@ -253,7 +253,11 @@ public class AppInit {
             .getLocalReleases()
             .forEach(
                 (version, rm) -> {
-                  gFlagsValidation.addDBMetadataFiles(version, rm);
+                  try {
+                    gFlagsValidation.addDBMetadataFiles(version, rm);
+                  } catch (Exception e) {
+                    log.error("Error: ", e);
+                  }
                 });
         // Background thread to query for latest ARM release version.
         Thread armReleaseThread =

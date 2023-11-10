@@ -74,7 +74,8 @@ public class RollbackKubernetesUpgrade extends KubernetesUpgradeTaskBase {
               .setSubTaskGroupType(getTaskSubGroupType());
 
           createUpdateUniverseSoftwareUpgradeStateTask(
-              UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready);
+              UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
+              false /* isSoftwareRollbackAllowed */);
         });
   }
 }

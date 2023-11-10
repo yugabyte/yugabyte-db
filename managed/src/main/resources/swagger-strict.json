@@ -1482,6 +1482,10 @@
         "isKubernetesOperatorControlled" : {
           "type" : "boolean"
         },
+        "isSoftwareRollbackAllowed" : {
+          "description" : "Available since YBA version 2.21.0.0.",
+          "type" : "boolean"
+        },
         "itestS3PackagePath" : {
           "type" : "string"
         },
@@ -3234,6 +3238,10 @@
           "type" : "boolean"
         },
         "isKubernetesOperatorControlled" : {
+          "type" : "boolean"
+        },
+        "isSoftwareRollbackAllowed" : {
+          "description" : "Available since YBA version 2.21.0.0.",
           "type" : "boolean"
         },
         "itestS3PackagePath" : {
@@ -4999,6 +5007,22 @@
       },
       "type" : "object"
     },
+    "FinalizeUpgradeInfoResponse" : {
+      "description" : "Finalize Upgrade Info Response",
+      "properties" : {
+        "impactedXClusterConnectedUniverse" : {
+          "description" : "WARNING: This is a preview API that could change. Set of xCluster connected universes uuids to be impacted ",
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "readOnly" : true,
+          "type" : "array",
+          "uniqueItems" : true
+        }
+      },
+      "type" : "object"
+    },
     "FinalizeUpgradeParams" : {
       "properties" : {
         "allowInsecure" : {
@@ -5071,6 +5095,10 @@
           "type" : "boolean"
         },
         "isKubernetesOperatorControlled" : {
+          "type" : "boolean"
+        },
+        "isSoftwareRollbackAllowed" : {
+          "description" : "Available since YBA version 2.21.0.0.",
           "type" : "boolean"
         },
         "itestS3PackagePath" : {
@@ -5372,6 +5400,10 @@
           "type" : "boolean"
         },
         "isKubernetesOperatorControlled" : {
+          "type" : "boolean"
+        },
+        "isSoftwareRollbackAllowed" : {
+          "description" : "Available since YBA version 2.21.0.0.",
           "type" : "boolean"
         },
         "itestS3PackagePath" : {
@@ -6127,6 +6159,10 @@
           "type" : "boolean"
         },
         "isKubernetesOperatorControlled" : {
+          "type" : "boolean"
+        },
+        "isSoftwareRollbackAllowed" : {
+          "description" : "Available since YBA version 2.21.0.0.",
           "type" : "boolean"
         },
         "itestS3PackagePath" : {
@@ -9123,6 +9159,10 @@
         "isKubernetesOperatorControlled" : {
           "type" : "boolean"
         },
+        "isSoftwareRollbackAllowed" : {
+          "description" : "Available since YBA version 2.21.0.0.",
+          "type" : "boolean"
+        },
         "itestS3PackagePath" : {
           "type" : "string"
         },
@@ -9412,6 +9452,10 @@
           "type" : "boolean"
         },
         "isKubernetesOperatorControlled" : {
+          "type" : "boolean"
+        },
+        "isSoftwareRollbackAllowed" : {
+          "description" : "Available since YBA version 2.21.0.0.",
           "type" : "boolean"
         },
         "itestS3PackagePath" : {
@@ -10378,6 +10422,10 @@
         "isKubernetesOperatorControlled" : {
           "type" : "boolean"
         },
+        "isSoftwareRollbackAllowed" : {
+          "description" : "Available since YBA version 2.21.0.0.",
+          "type" : "boolean"
+        },
         "itestS3PackagePath" : {
           "type" : "string"
         },
@@ -10845,6 +10893,28 @@
       },
       "type" : "object"
     },
+    "SoftwareUpgradeInfoRequest" : {
+      "description" : "Software upgrade info request",
+      "properties" : {
+        "ybSoftwareVersion" : {
+          "description" : "WARNING: This is a preview API that could change. DB version",
+          "type" : "string"
+        }
+      },
+      "required" : [ "ybSoftwareVersion" ],
+      "type" : "object"
+    },
+    "SoftwareUpgradeInfoResponse" : {
+      "description" : "Software Upgrade Info response",
+      "properties" : {
+        "finalizeRequired" : {
+          "description" : "WARNING: This is a preview API that could change. Finalize required",
+          "readOnly" : true,
+          "type" : "boolean"
+        }
+      },
+      "type" : "object"
+    },
     "SoftwareUpgradeParams" : {
       "properties" : {
         "allowInsecure" : {
@@ -10917,6 +10987,10 @@
           "type" : "boolean"
         },
         "isKubernetesOperatorControlled" : {
+          "type" : "boolean"
+        },
+        "isSoftwareRollbackAllowed" : {
+          "description" : "Available since YBA version 2.21.0.0.",
           "type" : "boolean"
         },
         "itestS3PackagePath" : {
@@ -11427,6 +11501,10 @@
           "type" : "boolean"
         },
         "isKubernetesOperatorControlled" : {
+          "type" : "boolean"
+        },
+        "isSoftwareRollbackAllowed" : {
+          "description" : "Available since YBA version 2.21.0.0.",
           "type" : "boolean"
         },
         "itestS3PackagePath" : {
@@ -12012,6 +12090,10 @@
         "isKubernetesOperatorControlled" : {
           "type" : "boolean"
         },
+        "isSoftwareRollbackAllowed" : {
+          "description" : "Available since YBA version 2.21.0.0.",
+          "type" : "boolean"
+        },
         "itestS3PackagePath" : {
           "type" : "string"
         },
@@ -12261,6 +12343,10 @@
           "type" : "boolean"
         },
         "isKubernetesOperatorControlled" : {
+          "type" : "boolean"
+        },
+        "isSoftwareRollbackAllowed" : {
+          "description" : "Available since YBA version 2.21.0.0.",
           "type" : "boolean"
         },
         "itestS3PackagePath" : {
@@ -12587,6 +12673,10 @@
         "isKubernetesOperatorControlled" : {
           "type" : "boolean"
         },
+        "isSoftwareRollbackAllowed" : {
+          "description" : "Available since YBA version 2.21.0.0.",
+          "type" : "boolean"
+        },
         "itestS3PackagePath" : {
           "type" : "string"
         },
@@ -12815,6 +12905,10 @@
         "isKubernetesOperatorControlled" : {
           "type" : "boolean"
         },
+        "isSoftwareRollbackAllowed" : {
+          "description" : "Available since YBA version 2.21.0.0.",
+          "type" : "boolean"
+        },
         "itestS3PackagePath" : {
           "type" : "string"
         },
@@ -13038,6 +13132,10 @@
           "type" : "boolean"
         },
         "isKubernetesOperatorControlled" : {
+          "type" : "boolean"
+        },
+        "isSoftwareRollbackAllowed" : {
+          "description" : "Available since YBA version 2.21.0.0.",
           "type" : "boolean"
         },
         "itestS3PackagePath" : {
@@ -13490,6 +13588,10 @@
           "type" : "boolean"
         },
         "isKubernetesOperatorControlled" : {
+          "type" : "boolean"
+        },
+        "isSoftwareRollbackAllowed" : {
+          "description" : "Available since YBA version 2.21.0.0.",
           "type" : "boolean"
         },
         "itestS3PackagePath" : {
@@ -14111,6 +14213,10 @@
           "type" : "boolean"
         },
         "isKubernetesOperatorControlled" : {
+          "type" : "boolean"
+        },
+        "isSoftwareRollbackAllowed" : {
+          "description" : "Available since YBA version 2.21.0.0.",
           "type" : "boolean"
         },
         "itestS3PackagePath" : {
@@ -22676,6 +22782,38 @@
         "tags" : [ "Universe Upgrades Management" ]
       }
     },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/upgrade/finalize/info" : {
+      "get" : {
+        "description" : "Provides pre-finalize software upgrade info",
+        "operationId" : "preFinalizeSoftwareUpgradeInfo",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uniUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/FinalizeUpgradeInfoResponse"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "WARNING: This is a preview API that could change. Finalize Software Upgrade info",
+        "tags" : [ "Universe Upgrades Management" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/upgrade/gflags" : {
       "post" : {
         "description" : "Queues a task to perform gflags upgrade and rolling restart in a universe.",
@@ -22981,6 +23119,50 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Upgrade Software",
+        "tags" : [ "Universe Upgrades Management" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/upgrade/software/precheck" : {
+      "post" : {
+        "description" : "Performs pre-checks and provides pre-upgrade info",
+        "operationId" : "softwareUpgradePreCheck",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uniUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "Software Upgrade Info Request",
+          "in" : "body",
+          "name" : "software_upgrade_info_request",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/SoftwareUpgradeInfoRequest"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/SoftwareUpgradeInfoResponse"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "WARNING: This is a preview API that could change. Software Upgrade universe pre-check",
         "tags" : [ "Universe Upgrades Management" ]
       }
     },
