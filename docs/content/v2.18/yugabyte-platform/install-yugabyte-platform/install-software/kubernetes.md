@@ -76,20 +76,20 @@ You install YugabyteDB Anywhere on a Kubernetes cluster as follows:
     To search for the available chart version, run the following command:
 
     ```sh
-    helm search repo yugabytedb/yugaware --version {{<yb-version version="stable" format="short">}}
+    helm search repo yugabytedb/yugaware --version {{<yb-version version="v2.18" format="short">}}
     ```
 
     The latest Helm chart version and application version is displayed via the output similar to the following:
 
     ```output
     NAME                 CHART VERSION  APP VERSION  DESCRIPTION
-    yugabytedb/yugaware {{<yb-version version="stable" format="short">}}          {{<yb-version version="stable" format="build">}}  YugaWare is YugaByte Database's Orchestration a...
+    yugabytedb/yugaware {{<yb-version version="v2.18" format="short">}}          {{<yb-version version="v2.18" format="build">}}  YugaWare is YugaByte Database's Orchestration a...
     ```
 
 1. Run the following `helm install` command to install the YugabyteDB Anywhere (`yugaware`) Helm chart:
 
     ```sh
-    helm install yw-test yugabytedb/yugaware --version {{<yb-version version="stable" format="short">}} -n yb-platform --wait
+    helm install yw-test yugabytedb/yugaware --version {{<yb-version version="v2.18" format="short">}} -n yb-platform --wait
     ```
 
     You can enable TLS by following instructions provided in [Configure TLS](#configure-tls).
@@ -140,7 +140,7 @@ You can customize YugabyteDB Anywhere on a Kubernetes cluster in a number of way
 
 ```sh
 helm install yw-test yugabytedb/yugaware \
-  --version {{<yb-version version="stable" format="short">}} \
+  --version {{<yb-version version="v2.18" format="short">}} \
   -n yb-platform \
   --values yba-values.yaml \
   --wait
@@ -148,7 +148,7 @@ helm install yw-test yugabytedb/yugaware \
 
 You can copy the preceding code block into a file called `yba-values.yaml` and then install YugabyteDB Anywhere using this command. Alternatively, you can pass the values using the `--set key=value` flag. For more information, see [Customizing the chart before installing](https://helm.sh/docs/intro/using_helm/#customizing-the-chart-before-installing). It is recommend to use a values file and store it in a version control system.
 
-If you are looking for a customization which is not listed, you can view all the supported options and their default values by running the `helm show values yugabytedb/yugaware --version {{<yb-version version="stable" format="short">}}` command and copying the specific section to your own values file.
+If you are looking for a customization which is not listed, you can view all the supported options and their default values by running the `helm show values yugabytedb/yugaware --version {{<yb-version version="v2.18" format="short">}}` command and copying the specific section to your own values file.
 
 ### Specify custom container registry
 

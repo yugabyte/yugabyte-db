@@ -181,20 +181,20 @@ You need to perform the following steps:
 - Run the following command to search for the version.
 
   ```sh
-  helm search repo yugabytedb/yugaware --version {{<yb-version version="preview" format="short">}}
+  helm search repo yugabytedb/yugaware --version {{<yb-version version="stable" format="short">}}
   ```
 
   You should see output similar to the following:
 
   ```output
   NAME                            CHART VERSION   APP VERSION     DESCRIPTION
-  yugabytedb/yugaware             {{<yb-version version="preview" format="short">}}          {{<yb-version version="preview" format="build">}}    YugaWare is YugaByte Database's Orchestration a...
+  yugabytedb/yugaware             {{<yb-version version="stable" format="short">}}          {{<yb-version version="stable" format="build">}}    YugaWare is YugaByte Database's Orchestration a...
   ```
 
 - Fetch images tag from `values.yaml` as tags may vary depending on the version.
 
   ```sh
-  helm show values yugabytedb/yugaware --version {{<yb-version version="preview" format="short">}}
+  helm show values yugabytedb/yugaware --version {{<yb-version version="stable" format="short">}}
   ```
 
   You should see output similar to the following:
@@ -240,7 +240,7 @@ You need to perform the following steps:
   These image tags will vary based on the version.
 
   ```sh
-  docker pull quay.io/yugabyte/yugaware:{{<yb-version version="preview" format="build">}}
+  docker pull quay.io/yugabyte/yugaware:{{<yb-version version="stable" format="build">}}
   docker pull postgres:14.4
   docker pull prom/prometheus:v2.41.0
   docker pull tianon/postgres-upgrade:11-to-14
@@ -262,7 +262,7 @@ You need to perform the following steps:
   Replace the Location, Project ID, Repository, and Image in the example as applicable.
 
   ```sh
-  docker tag quay.io/yugabyte/yugaware:{{<yb-version version="preview" format="build">}} us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/yugabyte/yugaware:{{<yb-version version="preview" format="build">}}
+  docker tag quay.io/yugabyte/yugaware:{{<yb-version version="stable" format="build">}} us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/yugabyte/yugaware:{{<yb-version version="stable" format="build">}}
   docker tag nginxinc/nginx-unprivileged:1.23.3 us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/nginxinc/nginx-unprivileged:1.23.3
   docker tag postgres:14.4 us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/postgres:14.4
   docker tag tianon/postgres-upgrade:11-to-14 us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/tianon/postgres-upgrade:11-to-14
@@ -274,7 +274,7 @@ You need to perform the following steps:
   Replace the Location, Project ID, Repository, and Image in the example as applicable.
 
   ```sh
-  docker push us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/yugabyte/yugaware:{{<yb-version version="preview" format="build">}}
+  docker push us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/yugabyte/yugaware:{{<yb-version version="stable" format="build">}}
   docker push us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/nginxinc/nginx-unprivileged:1.23.3
   docker push us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/postgres:14.4
   docker push us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/tianon/postgres-upgrade:11-to-14

@@ -67,9 +67,9 @@ To install YugabyteDB Anywhere using YBA Installer, do the following:
 1. Download and extract the YBA Installer by entering the following commands:
 
     ```sh
-    $ wget https://downloads.yugabyte.com/releases/{{<yb-version version="stable" format="long">}}/yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
-    $ tar -xf yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
-    $ cd yba_installer_full-{{<yb-version version="stable" format="build">}}/
+    $ wget https://downloads.yugabyte.com/releases/{{<yb-version version="v2.18" format="long">}}/yba_installer_full-{{<yb-version version="v2.18" format="build">}}-linux-x86_64.tar.gz
+    $ tar -xf yba_installer_full-{{<yb-version version="v2.18" format="build">}}-linux-x86_64.tar.gz
+    $ cd yba_installer_full-{{<yb-version version="v2.18" format="build">}}/
     ```
 
 1. Using sudo, run a preflight check to ensure your environment satisfies the requirements. Respond with `y` when prompted to create a default configuration.
@@ -97,9 +97,9 @@ For more detailed installation instructions and information on how to use YBA In
 Download and extract the YBA Installer by entering the following commands:
 
 ```sh
-$ wget https://downloads.yugabyte.com/releases/{{<yb-version version="stable" format="long">}}/yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
-$ tar -xf yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
-$ cd yba_installer_full-{{<yb-version version="stable" format="build">}}/
+$ wget https://downloads.yugabyte.com/releases/{{<yb-version version="v2.18" format="long">}}/yba_installer_full-{{<yb-version version="v2.18" format="build">}}-linux-x86_64.tar.gz
+$ tar -xf yba_installer_full-{{<yb-version version="v2.18" format="build">}}-linux-x86_64.tar.gz
+$ cd yba_installer_full-{{<yb-version version="v2.18" format="build">}}/
 ```
 
 This bundle provides everything needed, except a [license](#provide-a-license), to complete a fresh install of YBA:
@@ -206,7 +206,7 @@ Services:
   Systemd service |       Version |  Port |                            Log File Locations |  Running Status |
          postgres |         10.23 |  5432 |          /opt/yugabyte/data/logs/postgres.log |         Running |
        prometheus |        2.42.0 |  9090 |  /opt/yugabyte/data/prometheus/prometheus.log |         Running |
-      yb-platform |  {{<yb-version version="stable" format="build">}} |   443 |       /opt/yugabyte/data/logs/application.log |         Running |
+      yb-platform |  {{<yb-version version="v2.18" format="build">}} |   443 |       /opt/yugabyte/data/logs/application.log |         Running |
 INFO[2023-04-24T23:19:59Z] Successfully installed YugabyteDB Anywhere!
 ```
 
@@ -249,7 +249,7 @@ Services:
   Systemd service |       Version |  Port |                            Log File Locations |  Running Status |
          postgres |         10.23 |  5432 |          /opt/yugabyte/data/logs/postgres.log |         Running |
        prometheus |        2.42.0 |  9090 |  /opt/yugabyte/data/prometheus/prometheus.log |         Running |
-      yb-platform |  {{<yb-version version="stable" format="build">}} |   443 |       /opt/yugabyte/data/logs/application.log |         Running |
+      yb-platform |  {{<yb-version version="v2.18" format="build">}} |   443 |       /opt/yugabyte/data/logs/application.log |         Running |
 ```
 
 ### Upgrade

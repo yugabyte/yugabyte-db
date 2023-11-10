@@ -20,16 +20,16 @@ You can upgrade your air-gapped installation of YugabyteDB Anywhere to a newer v
    For example, if you are upgrading to the latest YugabyteDB Anywhere stable version, you would start by executing the following command to obtain the package:
 
    ```sh
-   wget https://downloads.yugabyte.com/releases/{{<yb-version version="stable">}}/yugaware-{{<yb-version version="stable" format="build">}}-linux-x86_64.airgap
+   wget https://downloads.yugabyte.com/releases/{{<yb-version version="v2.18">}}/yugaware-{{<yb-version version="v2.18" format="build">}}-linux-x86_64.airgap
    ```
 
-   Then you would create the `/opt/yugabyte/releases/yugaware-{{<yb-version version="stable" format="build">}}/` directory and move (or SCP) the `yugaware-{{<yb-version version="stable" format="build">}}-linux-x86_64.airgap` file into that directory.
+   Then you would create the `/opt/yugabyte/releases/yugaware-{{<yb-version version="v2.18" format="build">}}/` directory and move (or SCP) the `yugaware-{{<yb-version version="v2.18" format="build">}}-linux-x86_64.airgap` file into that directory.
 
 3. Log in to the Replicated Admin Console at <https://:8800/> and navigate to **Settings** to load the new license file, as per the following illustration:
 
    ![Airgap Settings](/images/yp/airgap-settings.png)
 
-   Change the two directories to match the ones you used. For example, enter `/opt/yugabyte/releases/yugaware-{{<yb-version version="stable" format="build">}}/` in the **Update Path** field and `/home/{user}/` in the **License File** field.
+   Change the two directories to match the ones you used. For example, enter `/opt/yugabyte/releases/yugaware-{{<yb-version version="v2.18" format="build">}}/` in the **Update Path** field and `/home/{user}/` in the **License File** field.
 
    Replicated detects updates based on the updated path information and applies them in the same way it does for connected YugabyteDB Anywhere installations.
 

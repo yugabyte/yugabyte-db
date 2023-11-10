@@ -225,12 +225,12 @@ You need to perform a number of steps to deploy YugabyteDB using Helm chart:
    ```
 
    ```sh
-   helm search repo yugabytedb/yugabyte --version {{<yb-version version="preview" format="short">}}
+   helm search repo yugabytedb/yugabyte --version {{<yb-version version="stable" format="short">}}
    ```
 
    ```output
    NAME                 CHART VERSION  APP VERSION   DESCRIPTION
-   yugabytedb/yugabyte  {{<yb-version version="preview" format="short">}}          {{<yb-version version="preview" format="build">}}  YugabyteDB is the high-performance distributed ...
+   yugabytedb/yugabyte  {{<yb-version version="stable" format="short">}}          {{<yb-version version="stable" format="build">}}  YugabyteDB is the high-performance distributed ...
    ```
 
 1. To create the `yb-demo` namespace, run the following command.
@@ -249,7 +249,7 @@ You need to perform a number of steps to deploy YugabyteDB using Helm chart:
 
    ```sh
    helm install yb-demo -n yb-demo yugabytedb/yugabyte \
-    --version {{<yb-version version="preview" format="short">}} \
+    --version {{<yb-version version="stable" format="short">}} \
     --set storage.master.count=1 \
     --set storage.tserver.count=1 \
     --set storage.master.storageClass=default \
