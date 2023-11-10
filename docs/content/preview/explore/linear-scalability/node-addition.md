@@ -1,9 +1,9 @@
 ---
-title: Seamless scaling by adding new nodes
-headerTitle: Seamless scaling by adding new nodes
+title: Horizontal scaling by adding new nodes
+headerTitle: Scale out by adding new nodes
 linkTitle: Add nodes
 description: Scale your cluster on demand by adding new nodes
-headcontent: Scale your cluster on demand by adding new nodes
+headcontent: Seamlessly scale your cluster on demand
 menu:
   preview:
     identifier: scalability-node-addition
@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-In YugabyteDB, you can scale your cluster horizontally on demand by adding new nodes, without any interruption to your applications. Let's see what happens when a node is added to an existing cluster.
+In YugabyteDB, you can scale your cluster horizontally on demand by adding new nodes, without any interruption to your applications.
 
 ## Initial setup
 
@@ -21,12 +21,12 @@ Suppose you have a 3-node cluster with 4 tablets and a replication factor (RF) o
 ![Initial setup](/images/explore/scalability/node-addition-cluster-setup.png)
 
 {{<tip>}}
-To understand how tablets are formed and split, see [Sharding & Rebalancing](./sharding-rebalancing).
+To understand how tablets are formed and split, see [Sharding & Rebalancing](../sharding-rebalancing/).
 {{</tip>}}
 
 ## Replication
 
-When a node is added, the tablets are [rebalanced](./sharding-rebalancing#rebalancing). The process starts by adding an additional replica for a tablet in the new node, and the new tablet bootstraps its data from the tablet leader. During this process, throughput is not affected as the data bootstrapping is asynchronous.
+When a node is added, the tablets are [rebalanced](../sharding-rebalancing/#rebalancing). The process starts by adding an additional replica for a tablet in the new node, and the new tablet bootstraps its data from the tablet leader. During this process, throughput is not affected as the data bootstrapping is asynchronous.
 
 ![Add a new replica](/images/explore/scalability/node-addition-replication.png)
 
@@ -42,7 +42,7 @@ Now that node 4 has a tablet leader, it can actively take on load, thereby reduc
 
 When adding the new node, a new replica of tablet `T4` was created. Now `T4` has 4 copies, although the cluster is RF3. This over-replication is fixed by dropping one of the other replicas.
 
-![Dropping replicas](/images/explore/scalability/node-addition-dropping-replicas.png)
+![Drop replicas](/images/explore/scalability/node-addition-dropping-replicas.png)
 
 ## Rebalance followers
 
@@ -54,7 +54,7 @@ Now that the leaders have moved to the new node and the over-replication has bee
 
 After the rebalancing is done, you should see a reasonable distribution of leaders and followers across your cluster as follows:
 
-![Rebalance followers](/images/explore/scalability/node-addition-complete.png)
+![Leader distribution](/images/explore/scalability/node-addition-complete.png)
 
 The cluster is now scaled out completely.
 
@@ -62,9 +62,8 @@ The cluster is now scaled out completely.
 
 Now that you have successfully added a node and scaled your cluster, applications can connect to any node and send queries. But how will your application know about the new nodes? For this, you can use a YugabytedDB smart driver in your application. Smart drivers automatically send traffic to newly added nodes when they become active. Although you can use an external load balancer, smart drivers are topology-aware, and will failover correctly when needed.
 
-![Rebalance followers](/images/explore/scalability/node-addition-smart-driver.png)
+![Add a smart driver](/images/explore/scalability/node-addition-smart-driver.png)
 
 ## Learn more
 
-- [Smart driver](../../../drivers-orms/smart-drivers/)
-- [Scale out an universe](./scaling-universe)
+- [Smart drivers](../../../drivers-orms/smart-drivers/)

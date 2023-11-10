@@ -12,9 +12,9 @@ menu:
 type: docs
 ---
 
-Transactions are are a set of SQL statements that are expected to be executed atomically. It can get very complex depending on the needs of your business. To get a transaction working correctly there are multiple components involved. 
+Transactions are a set of SQL statements that are expected to be executed atomically. Getting a transaction to work correctly involves multiple components.
 
-In the simplest explanation, the node the client connects to acts as the transaction manager. It acquires the necessary locks, talks to the leaders for the keys involved in the transaction and the transaction is committed to the leader and replicated to the respective followers.
+In the simplest explanation, the node the client connects to acts as the transaction manager. The node acquires the necessary locks, talks to the leaders for the keys involved in the transaction, the transaction is committed to the leader, and finally replicated to the respective followers.
 
 ![How does a transaction work](/images/explore/scalability/scaling-transactions-working.png)
 
