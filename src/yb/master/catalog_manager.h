@@ -527,12 +527,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // Delete CDC streams for a table.
   virtual Status DeleteCDCStreamsForTable(const TableId& table_id) EXCLUDES(mutex_);
-  virtual Status DeleteCDCStreamsForTables(const std::vector<TableId>& table_ids)
+  virtual Status DeleteCDCStreamsForTables(const std::unordered_set<TableId>& table_ids)
       EXCLUDES(mutex_);
 
   // Delete CDC streams metadata for a table.
   virtual Status DeleteCDCStreamsMetadataForTable(const TableId& table_id) EXCLUDES(mutex_);
-  virtual Status DeleteCDCStreamsMetadataForTables(const std::vector<TableId>& table_ids)
+  virtual Status DeleteCDCStreamsMetadataForTables(const std::unordered_set<TableId>& table_ids)
       EXCLUDES(mutex_);
 
   // Add new table metadata to all CDCSDK streams of required namespace.

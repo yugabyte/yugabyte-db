@@ -524,6 +524,19 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(ExplicitCheckPointValidate)) {
     }
 }
 
+TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(DropNamespaceWithLiveCDCStream)) {
+  ASSERT_OK(
+      SetUpWithParams(3 /* replication_factor */, 1 /* num_masters */, false /* colocated */));
+  std::vector<std::string> table_names = {"pk_table1", "pk_table2"};
+
+  for (const auto& table_name : table_names) {
+    ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, table_name));
+  }
+
+  ASSERT_RESULT(CreateDBStream());
+  ASSERT_OK(DropDatabase(&test_cluster_));
+}
+
 }  // namespace enterprise
 }  // namespace cdc
 }  // namespace yb
