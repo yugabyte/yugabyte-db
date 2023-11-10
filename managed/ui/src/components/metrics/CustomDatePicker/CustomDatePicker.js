@@ -1,8 +1,8 @@
+import { useSelector } from 'react-redux';
 import { DateTimePicker } from 'react-widgets';
+import moment from 'moment-timezone';
 import { YBButtonLink } from '../../common/forms/fields';
 import './CustomDatePicker.scss';
-import { useSelector } from 'react-redux';
-import moment from 'moment';
 
 const TIMESTAMP_FORMAT = 'YYYY-MM-DD[T]HH:mm:ss';
 
