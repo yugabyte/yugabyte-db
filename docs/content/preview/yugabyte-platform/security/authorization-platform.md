@@ -25,7 +25,7 @@ The YugabyteDB database on your universe includes a set of default users and rol
 
 ## YSQL default roles and users
 
-To view the roles in your cluster, enter the following command:
+To view the roles in your universe, enter the following command:
 
 ```sql
 yugabyte=> \du

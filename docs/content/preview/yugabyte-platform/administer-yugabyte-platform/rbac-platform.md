@@ -25,7 +25,7 @@ As a Super Admin or Admin, you can invite new users and manage existing users fo
 
 You can invite new users to your tenant as follows:
 
-* Navigate to **Admin > User Management > Users** and click **Add User**.
+* Navigate to **Admin > User Management > Users**, and click **Add User**.
 
 * Complete the fields of the **Add User** dialog shown in the following illustration, and then click **Submit**:
 
@@ -35,7 +35,7 @@ To modify a user role or delete the user, navigate to **Admin > User Management 
 
 ## Roles
 
-YugabyteDB Antwhere includes built-in roles, and you can define custom roles for team members to restrict access to specific account features.
+YugabyteDB Anywhere includes built-in roles, and you can define custom roles for team members to restrict access to specific account features.
 
 [API tokens](../../anywhere-automation/) generated for users are assigned the same role as the user that generated them.
 
@@ -52,7 +52,7 @@ The following built-in roles are available:
 
 * **Admin** has privileges that are similar to the Super Admin, except that the Admin cannot manage the global scope artifacts and actions, such as runtime configuration settings and LDAP authentication.
 
-* **Backup Admin** has access the backup related tasks, such as the following:
+* **Backup Admin** has access to the backup related tasks, such as the following:
 
   * Manage database backups and restore operations.
   * Create new backups.
