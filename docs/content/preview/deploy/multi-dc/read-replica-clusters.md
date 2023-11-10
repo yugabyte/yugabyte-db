@@ -8,7 +8,7 @@ menu:
   preview:
     parent: multi-dc
     identifier: read-replica-clusters
-    weight: 634
+    weight: 620
 type: docs
 ---
 
