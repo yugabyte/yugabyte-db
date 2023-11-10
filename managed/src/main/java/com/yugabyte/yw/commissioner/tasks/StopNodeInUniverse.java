@@ -90,6 +90,13 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
   }
 
   @Override
+  protected void createPrecheckTasks(Universe universe) {
+    if (isFirstTry()) {
+      verifyClustersConsistency();
+    }
+  }
+
+  @Override
   public void run() {
 
     checkUniverseVersion();

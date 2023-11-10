@@ -20,6 +20,7 @@ import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.HookScope.TriggerType;
 import com.yugabyte.yw.models.ImageBundle;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -78,6 +79,13 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   @Override
   public void validateParams(boolean isFirstTry) {
     taskParams().verifyParams(getUniverse());
+  }
+
+  @Override
+  protected void createPrecheckTasks(Universe universe) {
+    if (isFirstTry()) {
+      verifyClustersConsistency();
+    }
   }
 
   @Override

@@ -37,6 +37,13 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
   }
 
   @Override
+  protected void createPrecheckTasks(Universe universe) {
+    if (isFirstTry()) {
+      verifyClustersConsistency();
+    }
+  }
+
+  @Override
   public void run() {
     log.info("Started {} task for uuid={}", getName(), taskParams().getUniverseUUID());
     // Set the 'updateInProgress' flag to prevent other updates from happening.

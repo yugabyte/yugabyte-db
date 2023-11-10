@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.util.Collections;
 import java.util.HashSet;
@@ -34,6 +35,13 @@ public class SoftwareKubernetesUpgrade extends KubernetesUpgradeTaskBase {
   @Override
   public SubTaskGroupType getTaskSubGroupType() {
     return SubTaskGroupType.UpgradingSoftware;
+  }
+
+  @Override
+  protected void createPrecheckTasks(Universe universe) {
+    if (isFirstTry()) {
+      verifyClustersConsistency();
+    }
   }
 
   @Override

@@ -30,6 +30,13 @@ public class KubernetesOverridesUpgrade extends KubernetesUpgradeTaskBase {
   }
 
   @Override
+  protected void createPrecheckTasks(Universe universe) {
+    if (isFirstTry()) {
+      verifyClustersConsistency();
+    }
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {

@@ -84,6 +84,9 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
       }
 
       preTaskActions();
+      if (isFirstTry()) {
+        verifyClustersConsistency();
+      }
 
       // We support only one readonly cluster, so using the first one in the list.
       Cluster cluster = roClusters.get(0);

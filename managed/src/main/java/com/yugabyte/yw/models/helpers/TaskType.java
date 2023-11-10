@@ -2,6 +2,7 @@ package com.yugabyte.yw.models.helpers;
 
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.ITask;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
 import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.List;
@@ -538,7 +539,9 @@ public enum TaskType {
 
   ReprovisionNode(com.yugabyte.yw.commissioner.tasks.ReprovisionNode.class),
 
-  FreezeUniverse(com.yugabyte.yw.commissioner.tasks.subtasks.FreezeUniverse.class);
+  FreezeUniverse(com.yugabyte.yw.commissioner.tasks.subtasks.FreezeUniverse.class),
+
+  CheckForClusterServers(CheckClusterConsistency.class);
 
   private final Class<? extends ITask> taskClass;
 

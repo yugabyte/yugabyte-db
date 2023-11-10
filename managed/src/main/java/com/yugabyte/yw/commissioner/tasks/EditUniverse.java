@@ -54,6 +54,13 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     }
   }
 
+  @Override
+  protected void createPrecheckTasks(Universe universe) {
+    if (isFirstTry()) {
+      verifyClustersConsistency();
+    }
+  }
+
   protected void freezeUniverseInTxn(Universe universe) {
     // Fetch the task params from the DB to start from fresh on retry.
     // Otherwise, some operations like name assignment can fail.

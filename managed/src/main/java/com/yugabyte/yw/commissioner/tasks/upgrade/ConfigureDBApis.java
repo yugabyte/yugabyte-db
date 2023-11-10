@@ -40,6 +40,13 @@ public class ConfigureDBApis extends UpgradeTaskBase {
   }
 
   @Override
+  protected void createPrecheckTasks(Universe universe) {
+    if (isFirstTry()) {
+      verifyClustersConsistency();
+    }
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {

@@ -44,6 +44,9 @@ public class UpdateKubernetesDiskSize extends EditKubernetesUniverse {
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
       taskParams().useNewHelmNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
       preTaskActions();
+      if (isFirstTry()) {
+        verifyClustersConsistency();
+      }
 
       UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
       Integer newDiskSize = taskParams().getPrimaryCluster().userIntent.deviceInfo.volumeSize;

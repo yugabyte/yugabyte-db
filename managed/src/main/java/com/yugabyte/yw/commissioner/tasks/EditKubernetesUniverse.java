@@ -59,6 +59,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
 
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+      if (isFirstTry()) {
+        verifyClustersConsistency();
+      }
 
       // This value is used by subsequent calls to helper methods for
       // creating KubernetesCommandExecutor tasks. This value cannot

@@ -40,7 +40,7 @@ import org.yb.util.TabletServerInfo;
 
 @Slf4j
 @Retryable
-public class RemoveNodeFromUniverse extends UniverseTaskBase {
+public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
 
   public static final String DUMP_ENTITIES_URL_SUFFIX = "/dump-entities";
 
@@ -60,6 +60,9 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
         confGetter.getConfForScope(getUniverse(), UniverseConfKeys.alwaysWaitForDataMove);
     if (alwaysWaitForDataMove) {
       performPrecheck();
+    }
+    if (isFirstTry()) {
+      verifyClustersConsistency();
     }
   }
 
