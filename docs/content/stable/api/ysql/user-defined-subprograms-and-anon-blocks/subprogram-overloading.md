@@ -19,55 +19,19 @@ The risk occurs because PostgreSQL, and therefore YSQL, support implicit data ty
 
 Subprograms with different _subprogram_call_signatures_ can share the same _[subprogram_name](../../syntax_resources/grammar_diagrams/#subprogram-name)_. If two or more subprograms share the same _subprogram_name_, then the _subprogram_name_ is said to be _overloaded_. Notice the relationship between the _subprogram_signature_ rule:
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li>
-    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammar Icon">
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <img src="/icons/diagram.svg" alt="Diagram Icon">
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../syntax_resources/user-defined-subprograms-and-anon-blocks/subprogram_signature,arg_decl,arg_name,arg_mode,arg_type.grammar.md" %}}
-  </div>
-  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../syntax_resources/user-defined-subprograms-and-anon-blocks/subprogram_signature,arg_decl,arg_name,arg_mode,arg_type.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  subprogram_signature,
+  arg_decl,
+  arg_name,
+  arg_mode,
+  arg_type
+{{%/ebnf%}}
 
 and the _subprogram_call_signature_ rule:
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li>
-    <a href="#grammar-2" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammar Icon">
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram-2" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <img src="/icons/diagram.svg" alt="Diagram Icon">
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar-2" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../syntax_resources/user-defined-subprograms-and-anon-blocks/subprogram_call_signature.grammar.md" %}}
-  </div>
-  <div id="diagram-2" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../syntax_resources/user-defined-subprograms-and-anon-blocks/subprogram_call_signature.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  subprogram_call_signature
+{{%/ebnf%}}
 
 The _subprogram_signature_ is a list of _arg_decls_; and an _arg_decl_ has two optional components (_arg_type_ and _arg_mode_) and one mandatory component (_arg_type_). But the only significant part of the _subprogram_signature_ for distinguishing between overloads is the mandatory _arg_type_ component.<a name="subprogram-call-signature"></a>
 

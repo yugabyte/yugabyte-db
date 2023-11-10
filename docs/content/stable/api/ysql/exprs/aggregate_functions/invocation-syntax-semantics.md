@@ -30,55 +30,16 @@ The aggregate functions listed in the sections [Within-group ordered-set aggrega
 
 When aggregate functions are invoked using the syntax specified by either the `ordinary_aggregate_fn_invocation` rule or the `within_group_aggregate_fn_invocation` rule, users very often determine the result set with the `GROUP BY` clause.
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar-2" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammar Icon">
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram-2" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <img src="/icons/diagram.svg" alt="Diagram Icon">
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar-2" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/exprs/aggregate_functions/group_by_clause,grouping_element.grammar.md" %}}
-  </div>
-  <div id="diagram-2" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/exprs/aggregate_functions/group_by_clause,grouping_element.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  group_by_clause,
+  grouping_element
+{{%/ebnf%}}
 
 The result set may be restricted by the `HAVING` clause:
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar-3" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammar Icon">
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram-3" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <img src="/icons/diagram.svg" alt="Diagram Icon">
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar-3" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/exprs/aggregate_functions/having_clause.grammar.md" %}}
-  </div>
-  <div id="diagram-3" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/exprs/aggregate_functions/having_clause.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  having_clause
+{{%/ebnf%}}
 
 ## Semantics
 
