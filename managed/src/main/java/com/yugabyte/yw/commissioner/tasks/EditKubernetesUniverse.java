@@ -79,6 +79,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       // TODO: Would it make sense to have a precheck k8s task that does
       // some precheck operations to verify kubeconfig, svcaccount, connectivity to universe here ?
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
+      if (isFirstTry()) {
+        verifyClustersConsistency();
+      }
+
       kubernetesStatus.createYBUniverseEventStatus(
           universe,
           taskParams().getKubernetesResourceDetails(),
