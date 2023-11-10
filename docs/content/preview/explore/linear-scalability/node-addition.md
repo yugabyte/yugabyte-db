@@ -1,7 +1,7 @@
 ---
 title: Seamless scaling by adding new nodes
 headerTitle: Seamless scaling by adding new nodes
-linkTitle: Node addition
+linkTitle: Add nodes
 description: Scale your cluster on demand by adding new nodes
 headcontent: Scale your cluster on demand by adding new nodes
 menu:
@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-In YugabyteDB, you can scale your cluster on demand by adding new nodes seamlessly. This is what enables YugabyteDB to scale horizontally without any interruption to your applications. Let us see what happens when a node is added to an existing cluster.
+In YugabyteDB, you can scale your cluster horizontally on demand by adding new nodes, without any interruption to your applications. Let's see what happens when a node is added to an existing cluster.
 
 ## Initial cluster
 

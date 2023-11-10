@@ -64,7 +64,7 @@ The following table lists the pros and cons of Horizontal and Vertical scaling o
 
 ## Enhancements
 
-[DocDB](../../architecture/docdb/), YugabyteDB's underlying distributed document store, uses a heavily customized version of RocksDB for node-local persistence. It has been engineered ground up to deliver high performance at a massive scale. Several features have been built into DocDB to enhance performance, including the following:
+[DocDB](../../architecture/docdb/), YugabyteDB's underlying distributed document store, uses a heavily customized version of RocksDB for node-local persistence. It has been engineered from the ground up to deliver high performance at a massive scale. Several features have been built into DocDB to enhance performance, including the following:
 
 * Scan-resistant global block cache
 * Bloom/index data splitting
