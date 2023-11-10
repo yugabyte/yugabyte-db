@@ -4,7 +4,7 @@ headerTitle: Amazon Web Services
 linkTitle: Amazon Web Services
 description: Manually deploy a YugabyteDB cluster on Amazon Web Services.
 menu:
-  stable:
+  v2.18:
     identifier: deploy-in-aws-3-manual-deployment
     parent: public-clouds
     weight: 630

@@ -4,7 +4,7 @@ headerTitle: Demonstrate the globality of metadata, and the privacy of use, of t
 linkTitle: Globality of metadata and privacy of use of temp objects
 description: Demonstrates that all sessions can see the metadata for temporary objects created by all other sessions—but that only the session that created a temporary object can use it. [YSQL]
 menu:
-  stable:
+  v2.18:
     identifier: globality-of-metadata-and-privacy-of-use-of-temp-objects
     parent: creating-and-using-temporary-schema-objects
     weight: 300

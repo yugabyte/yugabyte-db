@@ -6,7 +6,7 @@ description: Transaction priorities in YugabyteDB.
 headcontent: Transaction priorities in YugabyteDB.
 image: <div class="icon"><i class="fa-solid fa-file-invoice-dollar"></i></div>
 menu:
-  stable:
+  v2.18:
     name: Transaction priorities
     identifier: develop-quality-of-service-transaction-priorities
     parent: develop-quality-of-service

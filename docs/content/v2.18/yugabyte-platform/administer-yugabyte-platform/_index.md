@@ -6,7 +6,7 @@ description: Administer YugabyteDB Anywhere
 image: /images/section_icons/manage/enterprise.png
 headcontent:
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: administer-yugabyte-platform
     weight: 649

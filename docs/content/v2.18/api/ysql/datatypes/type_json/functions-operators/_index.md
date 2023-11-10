@@ -6,7 +6,7 @@ summary: Functions and operators
 description: Learn about JSON functions and operators categorized by the goal you want to accomplish.
 image: /images/section_icons/api/ysql.png
 menu:
-  stable:
+  v2.18:
     identifier: json-functions-operators
     parent: api-ysql-datatypes-json
     weight: 50

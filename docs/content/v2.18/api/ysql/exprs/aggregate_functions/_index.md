@@ -5,7 +5,7 @@ headerTitle: Aggregate functions
 description: This major section describes the syntax and semantics of all of the aggregate functions that YSQL supports.
 image: /images/section_icons/api/ysql.png
 menu:
-  stable:
+  v2.18:
     identifier: aggregate-functions
     parent: api-ysql-exprs
 type: indexpage

@@ -4,7 +4,7 @@ headerTitle: Prepare nodes for on-premises deployment
 linkTitle: Prepare on-prem nodes
 description: Prepare YugabyteDB nodes for on-premises deployments.
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: prepare-on-prem-nodes
     parent: install-yugabyte-platform
     weight: 79

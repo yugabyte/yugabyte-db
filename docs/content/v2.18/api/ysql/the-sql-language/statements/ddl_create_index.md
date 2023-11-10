@@ -4,7 +4,7 @@ headerTitle: CREATE INDEX
 linkTitle: CREATE INDEX
 description: Use the CREATE INDEX statement to create an index on the specified columns of the specified table.
 menu:
-  stable:
+  v2.18:
     identifier: ddl_create_index
     parent: statements
 type: docs

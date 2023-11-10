@@ -4,7 +4,7 @@ headerTitle: Test the date-time comparison overloads
 linkTitle: Test comparison overloads
 description: Presents code that tests the date-time comparison overloads. [YSQL]
 menu:
-  stable:
+  v2.18:
     identifier: test-date-time-comparison-overloads
     parent: date-time-operators
     weight: 10

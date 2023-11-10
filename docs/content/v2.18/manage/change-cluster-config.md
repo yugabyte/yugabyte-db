@@ -5,7 +5,7 @@ linkTitle: Change cluster configuration
 description: Migrate a YugabyteDB cluster to a new set of nodes.
 headcontent: Migrate a YugabyteDB cluster to a new set of nodes
 menu:
-  stable:
+  v2.18:
     identifier: manage-change-cluster-config
     parent: manage
     weight: 704

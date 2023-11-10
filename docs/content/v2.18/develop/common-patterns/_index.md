@@ -6,7 +6,7 @@ description: Build on Common patterns
 headcontent: Design robust and efficient applications using common patterns
 image: /images/section_icons/architecture/distributed_acid.png
 menu:
-  stable:
+  v2.18:
     identifier: common-patterns
     parent: develop
     weight: 400

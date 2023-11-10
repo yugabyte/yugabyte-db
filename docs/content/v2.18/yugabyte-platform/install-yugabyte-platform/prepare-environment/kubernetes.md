@@ -5,7 +5,7 @@ linkTitle: Cloud prerequisites
 description: Prepare the Kubernetes environment for YugabyteDB Anywhere.
 headContent: Prepare Kubernetes for YugabyteDB Anywhere
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     parent: install-yugabyte-platform
     identifier: prepare-environment-4-kubernetes
     weight: 55

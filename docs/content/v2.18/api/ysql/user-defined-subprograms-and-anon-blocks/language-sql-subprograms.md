@@ -4,7 +4,7 @@ headerTitle: SQL (a.k.a. "language sql") subprograms
 linkTitle: «language sql» subprograms
 description: Describes SQL functions and procedures.  Describes PL/pgSQL functions and procedures. These are also known as "language sql" subprograms.)[YSQL].
 menu:
-  stable:
+  v2.18:
     identifier: language-sql-subprograms
     parent: user-defined-subprograms-and-anon-blocks
     weight: 20

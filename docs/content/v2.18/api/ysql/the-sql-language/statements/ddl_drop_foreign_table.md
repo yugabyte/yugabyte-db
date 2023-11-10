@@ -4,7 +4,7 @@ headerTitle: DROP FOREIGN TABLE
 linkTitle: DROP FOREIGN TABLE
 description: Use the DROP FOREIGN TABLE statement to drop a foreign table.
 menu:
-  stable:
+  v2.18:
     identifier: ddl_drop_foreign_table
     parent: statements
 type: docs

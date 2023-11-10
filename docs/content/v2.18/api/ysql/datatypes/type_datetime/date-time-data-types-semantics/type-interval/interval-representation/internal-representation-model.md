@@ -4,7 +4,7 @@ headerTitle: Modeling the internal representation and comparing the model with t
 linkTitle: Representation model
 description: Demonstrates a model of the internal representation of an interval value using PL/pgSQL. [YSQL]
 menu:
-  stable:
+  v2.18:
     identifier: internal-representation-model
     parent: interval-representation
     weight: 10

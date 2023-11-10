@@ -5,7 +5,7 @@ linkTitle: Install Yugastore
 description: Install the Yugastore sample application.
 headcontent: Run the Yugastore sample application
 menu:
-  stable:
+  v2.18:
     identifier: explore-sample-apps
     parent: ecommerce-app
     weight: 125

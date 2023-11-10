@@ -5,7 +5,7 @@ linkTitle: Best practices
 description: Tips and tricks to build YSQL applications
 headcontent: Tips and tricks to build YSQL applications for high performance and availability
 menu:
-  stable:
+  v2.18:
     identifier: best-practices-ysql
     parent: develop
     weight: 570

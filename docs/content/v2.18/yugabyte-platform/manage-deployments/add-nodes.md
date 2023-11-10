@@ -4,7 +4,7 @@ headerTitle: Recover a node
 linkTitle: Recover a node
 description: Use YugabyteDB Anywhere to recover a decommissioned node.
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: add-nodes
     parent: manage-deployments
     weight: 30

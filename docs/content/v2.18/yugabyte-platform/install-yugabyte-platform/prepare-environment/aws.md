@@ -5,7 +5,7 @@ linkTitle: Cloud prerequisites
 description: Prepare the Amazon Web Services (AWS) environment for YugabyteDB Anywhere.
 headContent: Prepare AWS for YugabyteDB Anywhere
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: prepare-environment-1-aws
     parent: install-yugabyte-platform
     weight: 55

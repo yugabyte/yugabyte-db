@@ -4,7 +4,7 @@ linkTitle: rank(), dense_rank(), percent_rank(), cume_dist()
 headerTitle: Within-group hypothetical-set aggregate functions
 description: Describes the within-group hypothetical-set functionality of the rank(), dense_rank(), percent_rank(), cume_dist() YSQL aggregate functions
 menu:
-  stable:
+  v2.18:
     identifier: rank-dense-rank-percent-rank-cume-dist
     parent: aggregate-function-syntax-semantics
     weight: 100

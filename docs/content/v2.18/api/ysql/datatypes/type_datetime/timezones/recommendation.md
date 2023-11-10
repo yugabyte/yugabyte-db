@@ -4,7 +4,7 @@ headerTitle: Recommended practice for specifying the UTC offset
 linkTitle: Recommended practice
 description: Recommends a practice to for specifying the offset from the UTC Time Standard safely. [YSQL]
 menu:
-  stable:
+  v2.18:
     identifier: recommendation
     parent: timezones
     weight: 80

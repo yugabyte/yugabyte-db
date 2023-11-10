@@ -6,7 +6,7 @@ description: Simulate fault tolerance and resilience in a local YugabyteDB datab
 headcontent: Highly available and fault tolerant
 image: /images/section_icons/explore/fault_tolerance.png
 menu:
-  stable:
+  v2.18:
     identifier: fault-tolerance
     parent: explore
     weight: 220

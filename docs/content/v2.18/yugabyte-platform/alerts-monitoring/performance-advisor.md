@@ -6,7 +6,7 @@ headcontent: Scan your universe to discover performance optimizations
 image: /images/section_icons/deploy/enterprise.png
 earlyAccess: /preview/releases/versioning/#feature-availability
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     parent: alerts-monitoring
     identifier: performance-advisor-anywhere
     weight: 40

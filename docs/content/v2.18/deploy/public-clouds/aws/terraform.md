@@ -4,7 +4,7 @@ headerTitle: Amazon Web Services
 linkTitle: Amazon Web Services
 description: Deploy YugabyteDB clusters on Amazon Web Services using Terraform.
 menu:
-  stable:
+  v2.18:
     identifier: deploy-in-aws-2-terraform
     parent: public-clouds
     weight: 630

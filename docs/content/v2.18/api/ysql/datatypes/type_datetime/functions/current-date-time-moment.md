@@ -4,7 +4,7 @@ headerTitle: Functions that return the current date-time moment
 linkTitle: Current date-time moment
 description: The semantics of the functions that return the current date-time moment. [YSQL]
 menu:
-  stable:
+  v2.18:
     identifier: current-date-time-moment
     parent: date-time-functions
     weight: 40

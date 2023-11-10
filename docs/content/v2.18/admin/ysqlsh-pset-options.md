@@ -5,7 +5,7 @@ linkTitle: pset options
 description: YSQL shell pset meta-command options.
 headcontent: Options for the \pset meta-command
 menu:
-  stable:
+  v2.18:
     identifier: ysqlsh-pset-options
     parent: ysqlsh-meta-commands
     weight: 10

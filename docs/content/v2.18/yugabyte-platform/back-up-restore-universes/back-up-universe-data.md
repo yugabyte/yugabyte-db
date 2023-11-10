@@ -5,7 +5,7 @@ linkTitle: Back up universe data
 description: Use YugabyteDB Anywhere to back up data.
 headContent: Create full and incremental backups
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     parent: back-up-restore-universes
     identifier: back-up-universe-data
     weight: 20

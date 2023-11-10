@@ -4,7 +4,7 @@ linkTitle: Supported versions
 description: Supported versions of Python drivers, ORMs and AppDev frameworks
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
-  stable:
+  v2.18:
     identifier: python-compatibility
     parent: python-drivers
     weight: 800

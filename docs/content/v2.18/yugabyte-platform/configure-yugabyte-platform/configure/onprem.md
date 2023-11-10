@@ -6,7 +6,7 @@ description: Configure YugabyteDB Anywhere on-premises
 image: /images/section_icons/deploy/enterprise.png
 headcontent: Configure YugabyteDB Anywhere for on-premises
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: configure-5-onprem
     parent: configure-yugabyte-platform
     weight: 5

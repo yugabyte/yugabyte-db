@@ -4,7 +4,7 @@ headerTitle: DROP SEQUENCE
 linkTitle: DROP SEQUENCE
 description: Use the DROP SEQUENCE statement to delete a sequence in the current schema.
 menu:
-  stable:
+  v2.18:
     identifier: ddl_drop_sequence
     parent: statements
 type: docs

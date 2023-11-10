@@ -4,7 +4,7 @@ headerTitle: Manually trace executed statements in YSQL
 description: Tracing executed statements in YSQL.
 image: /images/section_icons/secure/authentication.png
 menu:
-  stable:
+  v2.18:
     name: Trace statements
     identifier: trace-statements-ysql
     parent: audit-logging

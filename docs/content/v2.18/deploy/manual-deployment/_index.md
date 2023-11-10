@@ -6,7 +6,7 @@ description: Deploy a YugabyteDB cluster in a single region or data center with 
 headcontent: Deploy a YugabyteDB cluster in a single region or data center
 image: /images/section_icons/deploy/manual-deployment.png
 menu:
-  stable:
+  v2.18:
     identifier: deploy-manual-deployment
     parent: deploy
     weight: 610

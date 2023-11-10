@@ -6,7 +6,7 @@ description: Secure YugabyteDB Anywhere and YugabyteDB universes.
 image: /images/section_icons/index/secure.png
 headcontent: Secure YugabyteDB Anywhere and your YugabyteDB universes.
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: security
 weight: 645

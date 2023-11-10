@@ -5,7 +5,7 @@ linkTitle: HA of transactions
 description: Simulate fault tolerance and resilience of transactions in a local YugabyteDB database universe.
 headcontent: Highly available and fault tolerant transactions
 menu:
-  stable:
+  v2.18:
     identifier: transaction-availability-local
     parent: fault-tolerance
     weight: 20

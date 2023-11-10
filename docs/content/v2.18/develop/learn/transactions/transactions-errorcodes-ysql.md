@@ -4,7 +4,7 @@ headerTitle: Transaction error codes in YSQL
 linkTitle: Error codes
 description: Understand the error codes returned during transactions.
 menu:
-  stable:
+  v2.18:
     identifier: transaction-errorcodes-ysql
     parent: acid-transactions-1-ysql
     weight: 570

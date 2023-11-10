@@ -4,7 +4,7 @@ headerTitle: Strings and text
 linkTitle: 8. Strings and text
 description: Learn how to work with string and text data types in YSQL.
 menu:
-  stable:
+  v2.18:
     identifier: strings-and-text-1-ysql
     parent: learn
     weight: 570

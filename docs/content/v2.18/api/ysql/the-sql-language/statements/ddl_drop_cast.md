@@ -4,7 +4,7 @@ headerTitle: DROP CAST
 linkTitle: DROP CAST
 description: Use the DROP CAST statement to remove a cast.
 menu:
-  stable:
+  v2.18:
     identifier: ddl_drop_cast
     parent: statements
 type: docs

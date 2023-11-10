@@ -4,7 +4,7 @@ headerTitle: Configure ports
 linkTitle: Configure ports
 description: Configure ports
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     parent: security
     identifier: customize-ports
     weight: 15

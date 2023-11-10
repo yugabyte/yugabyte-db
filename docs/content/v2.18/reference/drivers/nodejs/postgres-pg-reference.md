@@ -6,7 +6,7 @@ description: PostgreSQL node-postgres Driver for YSQL
 headcontent: Node.js Drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
-  stable:
+  v2.18:
     name: Node.js Drivers
     identifier: ref-postgres-pg-driver
     parent: drivers

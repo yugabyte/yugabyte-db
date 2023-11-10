@@ -4,7 +4,7 @@ headerTitle: Finding the paths in a general undirected cyclic graph
 linkTitle: Undirected cyclic graph
 description: This section shows how to use a recursive CTE to traverse a general undirected cyclic graph.
 menu:
-  stable:
+  v2.18:
     identifier: undirected cyclic graph
     parent: traversing-general-graphs
     weight: 30

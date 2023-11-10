@@ -6,7 +6,7 @@ description: YSQL JSON Support in YugabyteDB.
 headcontent: Explore YugabyteDB support for JSON data
 image: <div class="icon"><i class="fa-solid fa-file-invoice"></i></div>
 menu:
-  stable:
+  v2.18:
     name: JSON support
     identifier: explore-json-support-1-ysql
     parent: explore

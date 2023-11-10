@@ -4,7 +4,7 @@ headerTitle: Performance
 linkTitle: Performance
 description: Learn how DocDB enhances RocksDB for scale and performance.
 menu:
-  stable:
+  v2.18:
     identifier: docdb-performance
     parent: docdb
     weight: 1148

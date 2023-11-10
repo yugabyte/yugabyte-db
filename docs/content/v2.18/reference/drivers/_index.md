@@ -6,7 +6,7 @@ description: Use drivers to power applications with YugabyteDB.
 headcontent: Drivers and ORMs reference
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
-  stable:
+  v2.18:
     identifier: drivers
     parent: reference
     weight: 2750

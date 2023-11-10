@@ -6,7 +6,7 @@ description: Laravel ORM support for YugabyteDB
 headcontent: Laravel ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
-  stable:
+  v2.18:
     identifier: laravel-orm
     parent: php-drivers
     weight: 500

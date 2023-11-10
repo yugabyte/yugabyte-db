@@ -5,7 +5,7 @@ linkTitle: Connect an app
 description: Connect a node.js application using node-postgres Driver
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
-  stable:
+  v2.18:
     identifier: postgres-node-driver
     parent: nodejs-drivers
     weight: 600

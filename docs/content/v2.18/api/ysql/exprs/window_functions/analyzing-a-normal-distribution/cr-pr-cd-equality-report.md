@@ -4,7 +4,7 @@ linkTitle: cr_pr_cd_equality_report.sql
 headerTitle: cr_pr_cd_equality_report.sql
 description: cr_pr_cd_equality_report.sql - Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
 menu:
-  stable:
+  v2.18:
     identifier: cr-pr-cd-equality-report
     parent: analyzing-a-normal-distribution
     weight: 60

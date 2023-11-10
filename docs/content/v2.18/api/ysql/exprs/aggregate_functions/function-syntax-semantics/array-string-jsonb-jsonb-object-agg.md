@@ -4,7 +4,7 @@ linkTitle: array_agg(), string_agg(), jsonb_agg(), jsonb_object_agg()
 headerTitle: array_agg(), string_agg(), jsonb_agg(), jsonb_object_agg()
 description: Describes the functionality of the array_agg(), string_agg(), jsonb_agg(), jsonb_object_agg() YSQL aggregate functions
 menu:
-  stable:
+  v2.18:
     identifier: array-string-jsonb-jsonb-object-agg
     parent: aggregate-function-syntax-semantics
     weight: 20

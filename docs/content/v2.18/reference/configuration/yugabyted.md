@@ -4,7 +4,7 @@ headerTitle: yugabyted
 linkTitle: yugabyted
 description: Use yugabyted to deploy YugabyteDB clusters.
 menu:
-  stable:
+  v2.18:
     identifier: yugabyted
     parent: configuration
     weight: 2451

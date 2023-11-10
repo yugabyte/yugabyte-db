@@ -4,7 +4,7 @@ headerTitle: Migrate from Helm 2 to Helm 3
 linkTitle: Migrate to Helm 3
 description: Migrate your YugabyteDB universes and YugabyteDB Anywhere from Helm 2 to Helm 3.
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: migrate-to-helm3
     parent: manage-deployments
     weight: 90

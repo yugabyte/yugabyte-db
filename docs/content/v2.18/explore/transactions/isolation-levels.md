@@ -6,7 +6,7 @@ description: Isolation Levels in YugabyteDB.
 headcontent: Serializable, Snapshot, and Read committed isolation in YugabyteDB
 image: <div class="icon"><i class="fa-solid fa-file-invoice-dollar"></i></div>
 menu:
-  stable:
+  v2.18:
     name: Isolation levels
     identifier: explore-transactions-isolation-levels-1-ysql
     parent: explore-transactions

@@ -4,7 +4,7 @@ headerTitle: Layered architecture
 linkTitle: Layered architecture
 description: Learn about the layered architecture of YugabyteDB in the query layer and the storage layer.
 menu:
-  stable:
+  v2.18:
     identifier: architecture-layered-architecture
     parent: architecture
     weight: 1109

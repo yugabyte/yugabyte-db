@@ -5,7 +5,7 @@ description: Using pg_stat_activity to troubleshoot issues and help to identify 
 headerTitle: View live queries with pg_stat_activity
 image: /images/section_icons/index/develop.png
 menu:
-  stable:
+  v2.18:
     identifier: pg-stat-activity
     parent: query-tuning
     weight: 300

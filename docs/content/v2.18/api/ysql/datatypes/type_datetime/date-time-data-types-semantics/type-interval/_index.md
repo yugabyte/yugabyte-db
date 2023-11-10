@@ -5,7 +5,7 @@ linkTitle: Interval data type
 description: The semantics of the interval and data type and its variants. [YSQL]
 image: /images/section_icons/api/subsection.png
 menu:
-  stable:
+  v2.18:
     identifier: type-interval
     parent: date-time-data-types-semantics
     weight: 40

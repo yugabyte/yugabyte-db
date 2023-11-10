@@ -4,7 +4,7 @@ headerTitle: pgsql-postal extension
 linkTitle: pgsql-postal
 description: Using the pgsql-postal extension in YugabyteDB
 menu:
-  stable:
+  v2.18:
     identifier: extension-pgsql-postal
     parent: pg-extensions
     weight: 20

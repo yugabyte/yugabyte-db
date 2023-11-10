@@ -4,7 +4,7 @@ headerTitle: ROLLBACK
 linkTitle: ROLLBACK
 description: Use the ROLLBACK statement to roll back the current transactions.
 menu:
-  stable:
+  v2.18:
     identifier: txn_rollback
     parent: statements
 type: docs

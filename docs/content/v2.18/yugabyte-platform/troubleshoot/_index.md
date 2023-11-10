@@ -6,7 +6,7 @@ description: Troubleshoot issues in YugabyteDB Anywhere
 image: /images/section_icons/troubleshoot/troubleshoot.png
 headcontent: Diagnose and troubleshoot issues that arise from YugabyteDB universes and YugabyteDB Anywhere.
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: troubleshoot-yp
     weight: 648

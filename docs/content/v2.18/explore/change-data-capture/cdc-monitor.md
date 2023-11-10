@@ -5,7 +5,7 @@ linkTitle: Monitor
 description: Monitor Change Data Capture in YugabyteDB.
 headcontent: Monitor deployed CDC connectors
 menu:
-  stable:
+  v2.18:
     parent: explore-change-data-capture
     identifier: cdc-monitor
     weight: 60

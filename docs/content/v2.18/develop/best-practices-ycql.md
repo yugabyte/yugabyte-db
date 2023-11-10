@@ -5,7 +5,7 @@ linkTitle: Best practices
 description: Tips and tricks to build YCQL applications
 headcontent: Tips and tricks to build YCQL applications for high performance and availability
 menu:
-  stable:
+  v2.18:
     identifier: best-practices-ycql
     parent: develop
     weight: 582

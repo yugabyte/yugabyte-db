@@ -5,7 +5,7 @@ linkTitle: Read replicas
 description: Explore read replicas in YugabyteDB using YCQL
 headContent: Replicate data asynchronously to one or more read replica clusters
 menu:
-  stable:
+  v2.18:
     name: Read replicas
     identifier: explore-multi-region-deployments-read-replicas-ycql
     parent: explore-multi-region-deployments

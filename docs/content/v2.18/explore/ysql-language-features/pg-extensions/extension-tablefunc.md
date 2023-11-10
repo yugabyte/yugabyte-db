@@ -4,7 +4,7 @@ headerTitle: tablefunc extension
 linkTitle: tablefunc
 description: Using the tablefunc extension in YugabyteDB
 menu:
-  stable:
+  v2.18:
     identifier: extension-tablefunc
     parent: pg-extensions
     weight: 20

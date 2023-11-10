@@ -6,7 +6,7 @@ description: Configure YugabyteDB Anywhere on Kubernetes
 image: /images/section_icons/deploy/enterprise.png
 headcontent: Configure YugabyteDB Anywhere on Kubernetes
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: configure-4-k8s
     parent: configure-yugabyte-platform
     weight: 5

@@ -6,7 +6,7 @@ description: PostgreSQL Psycopg2 Python Driver for YSQL
 headcontent: Python Drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
-  stable:
+  v2.18:
     name: Python Drivers
     identifier: ref-postgres-psycopg2-driver
     parent: drivers

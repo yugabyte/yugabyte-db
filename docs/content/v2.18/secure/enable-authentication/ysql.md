@@ -4,7 +4,7 @@ headerTitle: Enable users in YSQL
 description: Enable users in YSQL.
 image: /images/section_icons/secure/authentication.png
 menu:
-  stable:
+  v2.18:
     name: Enable users
     identifier: enable-authentication-1-ysql
     parent: enable-authentication

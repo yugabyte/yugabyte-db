@@ -6,7 +6,7 @@ description: C# Entity Framework support for YugabyteDB
 headcontent: C# ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
-  stable:
+  v2.18:
     identifier: csharp-orm
     parent: csharp-drivers
     weight: 600

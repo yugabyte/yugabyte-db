@@ -5,7 +5,7 @@ linkTitle: Writes
 description: Writes in YugabyteDB.
 headcontent: Write performance when scaling out
 menu:
-  stable:
+  v2.18:
     name: Writes
     identifier: scaling-writes
     parent: explore-scalability

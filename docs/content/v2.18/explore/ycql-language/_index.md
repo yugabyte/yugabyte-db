@@ -6,7 +6,7 @@ description: Explore core features in YCQL
 headcontent: Explore core features in YCQL
 image: /images/section_icons/api/ycql.png
 menu:
-  stable:
+  v2.18:
     identifier: explore-ycql-language
     parent: explore
     weight: 900

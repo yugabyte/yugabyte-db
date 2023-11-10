@@ -4,7 +4,7 @@ headerTitle: Conceptual background
 linkTitle: Conceptual background
 description: Conceptual background for the date, time, timestamp, and interval data types. [YSQL]
 menu:
-  stable:
+  v2.18:
     identifier: conceptual-background
     parent: api-ysql-datatypes-datetime
     weight: 30

@@ -6,7 +6,7 @@ description: Import and export data in YugabyteDB.
 image: /images/section_icons/manage/enterprise.png
 headcontent: Bulk export and import data from and to YugabyteDB
 menu:
-  stable:
+  v2.18:
     identifier: manage-bulk-import-export
     parent: manage
     weight: 703

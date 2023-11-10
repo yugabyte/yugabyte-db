@@ -6,7 +6,7 @@ description: Configure YugabyteDB Anywhere on AWS
 image: /images/section_icons/deploy/enterprise.png
 headcontent: Configure YugabyteDB Anywhere on AWS
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: configure-1-aws
     parent: configure-yugabyte-platform
     weight: 5

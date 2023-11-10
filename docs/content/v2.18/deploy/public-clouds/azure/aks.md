@@ -4,7 +4,7 @@ headerTitle: Microsoft Azure
 linkTitle: Microsoft Azure
 description: Deploy on Microsoft Azure Kubernetes Service (AKS)
 menu:
-  stable:
+  v2.18:
     identifier: deploy-in-azure-2-aks
     parent: public-clouds
     weight: 650

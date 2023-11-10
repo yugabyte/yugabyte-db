@@ -5,7 +5,7 @@ linkTitle: Connect an app
 description: Connect a Go application using PQ driver
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
-  stable:
+  v2.18:
     identifier: pq-driver
     parent: go-drivers
     weight: 420

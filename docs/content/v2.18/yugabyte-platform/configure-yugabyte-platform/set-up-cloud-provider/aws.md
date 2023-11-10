@@ -5,7 +5,7 @@ linkTitle: Create provider configuration
 description: Configure the Amazon Web Services (AWS) provider configuration.
 headContent: Configure an AWS provider configuration
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: set-up-cloud-provider-1-aws
     parent: configure-yugabyte-platform
     weight: 20

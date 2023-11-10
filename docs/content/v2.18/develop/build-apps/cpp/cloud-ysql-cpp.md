@@ -4,7 +4,7 @@ headerTitle: Build a C++ application
 description: Build a small C++ application using the libpqxx driver and using the YSQL API to connect to and interact with a YugabyteDB Managed cluster.
 headContent: "Client driver: libpqxx"
 menu:
-  stable:
+  v2.18:
     parent: build-apps
     name: C++
     identifier: cloud-cpp

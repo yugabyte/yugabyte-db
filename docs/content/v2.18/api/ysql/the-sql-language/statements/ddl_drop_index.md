@@ -4,7 +4,7 @@ headerTitle: DROP INDEX
 linkTitle: DROP INDEX
 description: Use the DROP INDEX statement to remove one or more indexes from the database.
 menu:
-  stable:
+  v2.18:
     identifier: ddl_drop_index
     parent: statements
 type: docs

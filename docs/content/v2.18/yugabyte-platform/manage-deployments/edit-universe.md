@@ -4,7 +4,7 @@ headerTitle: Modify universe
 linkTitle: Modify universe
 description: Use YugabyteDB Anywhere to modify a universe.
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: edit-universe
     parent: manage-deployments
     weight: 60

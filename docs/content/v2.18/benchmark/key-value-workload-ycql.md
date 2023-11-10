@@ -6,7 +6,7 @@ description: Benchmark YCQL performance with key-value workloads.
 image: /images/section_icons/explore/high_performance.png
 headcontent: Benchmark YCQL performance with key-value workloads
 menu:
-  stable:
+  v2.18:
     identifier: key-value-workload-1-ycql
     parent: benchmark
     weight: 6

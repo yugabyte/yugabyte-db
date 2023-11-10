@@ -4,7 +4,7 @@ headerTitle: Restricting a set of paths to just the unique longest paths that co
 linkTitle: Unique containing paths
 description: This section shows how restricting a set of paths to the smaller set that contains them all provides a compact way to visualize find_paths() results.
 menu:
-  stable:
+  v2.18:
     identifier: unq-containing-paths
     parent: traversing-general-graphs
     weight: 70

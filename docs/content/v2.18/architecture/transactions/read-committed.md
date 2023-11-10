@@ -5,7 +5,7 @@ linkTitle: Read Committed
 description: Details about the Read Committed isolation level
 techPreview: /preview/releases/versioning/#feature-availability
 menu:
-  stable:
+  v2.18:
     identifier: architecture-read-committed
     parent: architecture-acid-transactions
     weight: 50

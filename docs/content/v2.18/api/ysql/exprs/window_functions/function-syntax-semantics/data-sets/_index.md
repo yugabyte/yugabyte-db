@@ -5,7 +5,7 @@ headerTitle: The data sets used by the code examples
 description: This section describes and presents the code to create, selection of four data sets for the code examples that illustrate the use of window functions.
 image: /images/section_icons/api/ysql.png
 menu:
-  stable:
+  v2.18:
     identifier: data-sets
     parent: window-function-syntax-semantics
     weight: 50

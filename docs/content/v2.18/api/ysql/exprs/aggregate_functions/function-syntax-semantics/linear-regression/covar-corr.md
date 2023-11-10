@@ -4,7 +4,7 @@ linkTitle: covar_pop(), covar_samp(), corr()
 headerTitle: covar_pop(), covar_samp(), corr()
 description: Describes the functionality of the covar_pop(), covar_samp(), and corr() YSQL aggregate functions for linear regression analysis
 menu:
-  stable:
+  v2.18:
     identifier: covar-corr
     parent: linear-regression
     weight: 10

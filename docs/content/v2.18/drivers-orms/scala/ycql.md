@@ -5,7 +5,7 @@ linkTitle: Connect an app
 description: Connect a Scala application using YugabyteDB Java Driver for YCQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
-  stable:
+  v2.18:
     identifier: ycql-scala-driver
     parent: scala-drivers
     weight: 420

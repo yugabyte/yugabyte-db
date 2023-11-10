@@ -6,7 +6,7 @@ description: Enable client-to-server encryption (using TLS) for YSQL and YCQL.
 headcontent: Enable client-to-server encryption (using TLS) for YSQL and YCQL.
 image: /images/section_icons/secure/tls-encryption/client-to-server.png
 menu:
-  stable:
+  v2.18:
     identifier: client-to-server
     parent: tls-encryption
     weight: 30

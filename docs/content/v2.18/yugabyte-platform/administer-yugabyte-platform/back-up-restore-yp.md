@@ -4,7 +4,7 @@ headerTitle: Back up and restore YugabyteDB Anywhere
 linkTitle: Back up YugabyteDB Anywhere
 description: Use a script to back up and restore YugabyteDB Anywhere.
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: back-up-restore-yp
     parent: administer-yugabyte-platform
     weight: 30

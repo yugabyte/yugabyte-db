@@ -6,7 +6,7 @@ description: Summary of supported PostgreSQL extensions
 image: /images/section_icons/develop/ecosystem-integrations.png
 summary: Reference for YSQL extensions
 menu:
-  stable:
+  v2.18:
     identifier: pg-extensions
     parent: explore-ysql-language-features
     weight: 4400

@@ -4,7 +4,7 @@ headerTitle: postgres_fdw extension
 linkTitle: postgres_fdw
 description: Using the postgres_fdw extension in YugabyteDB
 menu:
-  stable:
+  v2.18:
     identifier: extension-postgres-fdw
     parent: pg-extensions
     weight: 20

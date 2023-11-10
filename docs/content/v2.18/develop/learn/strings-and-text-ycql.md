@@ -4,7 +4,7 @@ headerTitle: String and text data types
 linkTitle: 8. Strings and text
 description: Learn how to work with string and text data types in YCQL.
 menu:
-  stable:
+  v2.18:
     identifier: strings-and-text-2-ycql
     parent: learn
     weight: 570

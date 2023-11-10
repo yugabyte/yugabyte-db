@@ -4,7 +4,7 @@ headerTitle: Build a PHP application
 description: Build a small PHP application using the php-pgsql driver and using the YSQL API to connect to and interact with a YugabyteDB Managed cluster.
 headContent: "Client driver: php-pgsql"
 menu:
-  stable:
+  v2.18:
     parent: build-apps
     name: PHP
     identifier: cloud-php

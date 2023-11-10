@@ -5,7 +5,7 @@ linkTitle: Global ordering by time
 description: Distribute your time-ordered data and retrieve data efficiently
 headcontent: Distribute time-ordered data and retrieve data efficiently
 menu:
-  stable:
+  v2.18:
     identifier: timeseries-global-ordering
     parent: common-patterns-timeseries
     weight: 100

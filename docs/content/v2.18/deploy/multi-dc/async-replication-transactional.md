@@ -5,7 +5,7 @@ linkTitle: Transactional xCluster
 description: Enable deployment using transactional (active-standby) replication between universes
 headContent: Transactional (active-standby) replication
 menu:
-  stable:
+  v2.18:
     parent: async-replication
     identifier: async-replication-transactional
     weight: 633

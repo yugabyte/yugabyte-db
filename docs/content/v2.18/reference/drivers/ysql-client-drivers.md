@@ -4,7 +4,7 @@ headerTitle: Client drivers for YSQL
 linkTitle: Client drivers for YSQL
 description: Lists the client drivers that you can use to connect to and interact with the YSQL API.
 menu:
-  stable:
+  v2.18:
     identifier: ysql-client-libraries
     parent: drivers
     weight: 2940

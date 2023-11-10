@@ -6,7 +6,7 @@ description: Generalized inverted indexes in YSQL
 headContent: Explore GIN indexes using YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  stable:
+  v2.18:
     identifier: indexes-constraints-gin
     parent: explore-indexes-constraints
     weight: 260

@@ -4,7 +4,7 @@ linkTitle: symptoms vs mask-wearing by day
 headerTitle: Daily values for regr_r2(), regr_slope(), regr_intercept() for symptoms vs mask-wearing
 description: Reporting the daily values for regr_r2(), regr_slope(), regr_intercept() for symptoms vs mask-wearing
 menu:
-  stable:
+  v2.18:
     identifier: report-daily-regression-analysis
     parent: analyze-the-covidcast-data
     weight: 10

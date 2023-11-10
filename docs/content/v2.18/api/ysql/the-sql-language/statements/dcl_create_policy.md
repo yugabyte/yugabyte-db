@@ -4,7 +4,7 @@ headerTitle: CREATE POLICY
 linkTitle: CREATE POLICY
 description: Use the CREATE POLICY statement to create a row level security policy for a table to select, insert, update, or delete rows that match the relevant policy expression.
 menu:
-  stable:
+  v2.18:
     identifier: dcl_create_policy
     parent: statements
 type: docs

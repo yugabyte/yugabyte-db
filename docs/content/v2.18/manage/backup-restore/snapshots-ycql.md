@@ -5,7 +5,7 @@ linkTitle: Distributed snapshots
 description: Distributed snapshots for YCQL.
 image: /images/section_icons/manage/enterprise.png
 menu:
-  stable:
+  v2.18:
     identifier: snapshots-2-ycql
     parent: backup-restore
     weight: 705

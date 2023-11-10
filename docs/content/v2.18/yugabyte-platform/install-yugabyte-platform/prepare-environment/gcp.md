@@ -5,7 +5,7 @@ linkTitle: Cloud prerequisites
 description: Prepare the Google Cloud Platform (GCP) environment
 headContent: Prepare GCP for YugabyteDB Anywhere
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     parent: install-yugabyte-platform
     identifier: prepare-environment-2-gcp
     weight: 55

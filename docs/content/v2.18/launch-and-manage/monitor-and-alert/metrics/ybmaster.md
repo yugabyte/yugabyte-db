@@ -5,7 +5,7 @@ linkTitle: YB-Master metrics
 headcontent: Monitor table and tablet operations
 description: Learn about YugabyteDB's YB-Master metrics, and how to select and use the metrics.
 menu:
-  stable:
+  v2.18:
     identifier: yb-master-metrics
     parent: metrics-overview
     weight: 140

@@ -4,7 +4,7 @@ headerTitle: GRANT PERMISSION
 linkTitle: GRANT PERMISSION
 description: Use the GRANT PERMISSION statement to grant a permission (or all the available permissions) to a role.
 menu:
-  stable:
+  v2.18:
     parent: api-cassandra
     weight: 1281
 type: docs

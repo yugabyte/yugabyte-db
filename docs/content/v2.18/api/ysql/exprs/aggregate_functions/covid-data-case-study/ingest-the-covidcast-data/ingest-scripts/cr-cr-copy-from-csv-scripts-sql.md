@@ -4,7 +4,7 @@ linkTitle: Create cr_copy_from_scripts()
 headerTitle: Create the function cr_copy_from_scripts()
 description: Creates a function that writes the chosen one of three \COPY command invocations.
 menu:
-  stable:
+  v2.18:
     identifier: cr-cr-copy-from-csv-scripts-sql
     parent: ingest-scripts
     weight: 20

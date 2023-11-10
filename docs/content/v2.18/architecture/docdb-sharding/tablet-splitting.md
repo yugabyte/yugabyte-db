@@ -4,7 +4,7 @@ headerTitle: Tablet splitting
 linkTitle: Tablet splitting
 description: Learn about tablet splitting mechanisms for resharding data, including presplitting, manual, and automatic.
 menu:
-  stable:
+  v2.18:
     identifier: docdb-tablet-splitting
     parent: architecture-docdb-sharding
     weight: 1143

@@ -4,7 +4,7 @@ linkTitle: bit_and(), bit_or(), bool_and(), bool_or()
 headerTitle: bit_and(), bit_or(), bool_and(), bool_or()
 description: Describes the functionality of the bit_and(), bit_or(), bool_and(), bool_or() YSQL aggregate functions
 menu:
-  stable:
+  v2.18:
     identifier: bit-and-or-bool-and-or
     parent: aggregate-function-syntax-semantics
     weight: 30

@@ -6,7 +6,7 @@ description: Use these CLIs and command line tools to interact with YugabyteDB.
 image: /images/section_icons/index/admin.png
 headcontent: Command line interfaces (CLIs) and tools reference.
 menu:
-  stable:
+  v2.18:
     identifier: admin
     parent: reference
     weight: 1400

@@ -5,7 +5,7 @@ linkTitle: Connect an app
 description: Connect a Java application using YCQL 3.10 driver
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
-  stable:
+  v2.18:
     identifier: ycql-java-driver
     parent: java-drivers
     weight: 500

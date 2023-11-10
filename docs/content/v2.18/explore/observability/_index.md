@@ -6,7 +6,7 @@ description: Observability in YugabyteDB.
 headcontent: Observability in YugabyteDB.
 image: /images/section_icons/secure/authorization.png
 menu:
-  stable:
+  v2.18:
     identifier: explore-observability
     parent: explore
     weight: 310

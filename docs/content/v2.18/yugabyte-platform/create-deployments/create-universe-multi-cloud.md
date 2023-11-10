@@ -4,7 +4,7 @@ headerTitle: Create a multi-cloud universe
 linkTitle: Multi-cloud universe
 description: Use YugabyteDB Anywhere to create a YugabyteDB universe that spans multiple cloud providers.
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: create-multi-cloud-universe
     parent: create-deployments
     weight: 35

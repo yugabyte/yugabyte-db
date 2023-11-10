@@ -4,7 +4,7 @@ headerTitle: CREATE MATERIALIZED VIEW
 linkTitle: CREATE MATERIALIZED VIEW
 description: Use the CREATE MATERIALIZED VIEW statement to create a materialized view.
 menu:
-  stable:
+  v2.18:
     identifier: ddl_create_matview
     parent: statements
 type: docs

@@ -5,7 +5,7 @@ linkTitle: Create provider configuration
 description: Configure the OpenShift provider configuration
 headContent: Configure an OpenShift provider configuration
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: set-up-cloud-provider-5-openshift
     parent: configure-yugabyte-platform
     weight: 20

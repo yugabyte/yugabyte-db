@@ -4,7 +4,7 @@ headerTitle: Alert policy templates
 linkTitle: Alert policy templates
 description: Alert policy template reference
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: alert-policy-templates
     parent: set-up-alerts-health-checking
     weight: 40

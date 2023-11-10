@@ -4,7 +4,7 @@ headerTitle: Finding the paths in a rooted tree
 linkTitle: Rooted tree
 description: This section shows how to use a recursive CTE to traverse a rooted tree.
 menu:
-  stable:
+  v2.18:
     identifier: rooted-tree
     parent: traversing-general-graphs
     weight: 60

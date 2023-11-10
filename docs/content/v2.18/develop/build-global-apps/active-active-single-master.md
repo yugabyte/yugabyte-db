@@ -5,7 +5,7 @@ linkTitle: Active-active single-master
 description: An active and a stand by cluster for global applications
 headcontent: Active cluster with standby using xCluster deployment
 menu:
-  stable:
+  v2.18:
     identifier: global-apps-active-active-single-master
     parent: build-global-apps
     weight: 400

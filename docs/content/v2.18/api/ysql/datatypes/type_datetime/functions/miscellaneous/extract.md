@@ -4,7 +4,7 @@ headerTitle: Function extract() | date_part() returns double precision
 linkTitle: Function extract() | date_part()
 description: The semantics of The functions extract() returns double precision, and its alternative formulation date_part() [YSQL]
 menu:
-  stable:
+  v2.18:
     identifier: extract
     parent: miscellaneous
     weight: 20

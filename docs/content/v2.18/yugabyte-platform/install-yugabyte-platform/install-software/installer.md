@@ -5,7 +5,7 @@ linkTitle: Install YBA software
 description: Install YugabyteDB Anywhere software using YBA Installer
 headContent: Install YBA software using YBA Installer
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     parent: install-yugabyte-platform
     identifier: install-software-4-installer
     weight: 77

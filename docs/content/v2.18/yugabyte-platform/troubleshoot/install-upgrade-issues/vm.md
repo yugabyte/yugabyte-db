@@ -4,7 +4,7 @@ headerTitle: Install and upgrade issues on virtual machines
 linkTitle: Install and upgrade issues
 description: Troubleshoot issues encountered when installing or upgrading YugabyteDB Anywhere on virtual machines.
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: install-upgrade-vm-issues
     parent: troubleshoot-yp
     weight: 10

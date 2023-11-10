@@ -5,7 +5,7 @@ linkTitle: Use an ORM
 description: Ruby Active Record ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
-  stable:
+  v2.18:
     identifier: activerecord-orm
     parent: ruby-drivers
     weight: 410

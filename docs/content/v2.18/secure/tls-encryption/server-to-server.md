@@ -6,7 +6,7 @@ description: Enable server-to-server encryption (using TLS) for intranode commun
 headcontent: Enable server-to-server encryption (using TLS) for intranode communication.
 image: /images/section_icons/secure/tls-encryption/server-to-server.png
 menu:
-  stable:
+  v2.18:
     identifier: server-to-server
     parent: tls-encryption
     weight: 20

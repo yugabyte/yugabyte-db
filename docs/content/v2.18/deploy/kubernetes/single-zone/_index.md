@@ -6,7 +6,7 @@ description: Deploy on single-zone Kubernetes
 headcontent: Deploy YugabyteDB on a single-zone Kubernetes cluster
 image: /images/section_icons/deploy/kubernetes.png
 menu:
-  stable:
+  v2.18:
     identifier: deploy-kubernetes-sz
     parent: deploy-kubernetes
     weight: 621

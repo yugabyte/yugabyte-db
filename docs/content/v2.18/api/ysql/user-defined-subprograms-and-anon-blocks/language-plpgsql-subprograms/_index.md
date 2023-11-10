@@ -5,7 +5,7 @@ linkTitle: «language plpgsql» subprograms
 description: Describes PL/pgSQL functions and procedures. These are also known as "language plpgsql" subprograms.) [YSQL].
 image: /images/section_icons/api/subsection.png
 menu:
-  stable:
+  v2.18:
     identifier: language-plpgsql-subprograms
     parent: user-defined-subprograms-and-anon-blocks
     weight: 30

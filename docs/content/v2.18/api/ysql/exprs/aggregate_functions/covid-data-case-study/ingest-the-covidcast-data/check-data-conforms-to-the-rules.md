@@ -3,7 +3,7 @@ title: Check the ingested COVIDcast data conforms to the rules
 linkTitle: Check staged data conforms to the rules
 headerTitle: Check that the values from the .csv files do indeed conform to the stated rules
 menu:
-  stable:
+  v2.18:
     identifier: check-data-conforms-to-the-rules
     parent: ingest-the-covidcast-data
     weight: 30

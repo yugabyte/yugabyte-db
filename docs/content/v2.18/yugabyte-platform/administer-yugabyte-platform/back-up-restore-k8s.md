@@ -4,7 +4,7 @@ headerTitle: Back up and restore YugabyteDB Anywhere
 description: Use a script to back up and restore YugabyteDB Anywhere on Kubernetes.
 linkTitle: Back up YugabyteDB Anywhere
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: back-up-restore-k8s
     parent: administer-yugabyte-platform
     weight: 20

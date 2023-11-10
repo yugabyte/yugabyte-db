@@ -5,7 +5,7 @@ linkTitle: Transactions
 description: Scaling concurrent transactions in YugabyteDB.
 headcontent: Transaction performance when scaling out
 menu:
-  stable:
+  v2.18:
     name: Transactions
     identifier: scaling-transactions-bench
     parent: explore-scalability

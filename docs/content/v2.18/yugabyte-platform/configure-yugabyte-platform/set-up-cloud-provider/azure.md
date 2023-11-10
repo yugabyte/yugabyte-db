@@ -5,7 +5,7 @@ linkTitle: Create provider configuration
 description: Configure the Microsoft Azure provider configuration
 headContent: Configure an Azure provider configuration
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: set-up-cloud-provider-3-azure
     parent: configure-yugabyte-platform
     weight: 20

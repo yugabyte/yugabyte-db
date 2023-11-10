@@ -4,7 +4,7 @@ headerTitle: Create a KMS configuration using Google Cloud
 linkTitle: Create a KMS configuration
 description: Use YugabyteDB Anywhere to create a KMS configuration for Google Cloud KMS.
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     parent: security
     identifier: create-kms-config-1-google-kms
     weight: 27

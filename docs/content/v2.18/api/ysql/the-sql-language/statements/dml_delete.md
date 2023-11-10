@@ -4,7 +4,7 @@ headerTitle: DELETE
 linkTitle: DELETE
 description: Use the DELETE statement to remove rows that meet certain conditions, and when conditions are not provided in WHERE clause, all rows are deleted.
 menu:
-  stable:
+  v2.18:
     identifier: dml_delete
     parent: statements
 type: docs

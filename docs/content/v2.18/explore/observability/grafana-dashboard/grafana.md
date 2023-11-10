@@ -4,7 +4,7 @@ headerTitle: Grafana dashboard
 linkTitle: Grafana dashboard
 description: Learn about setting up the community dashboards with Prometheus data source using Grafana.
 menu:
-  stable:
+  v2.18:
     identifier: observability-2-macos
     parent: explore-observability
     weight: 240

@@ -5,7 +5,7 @@ linkTitle: Yugastore
 description: Run a distributed e-commerce sample application built on YugabyteDB.
 headcontent: Distributed full-stack e-commerce application built on YugabyteDB
 menu:
-  stable:
+  v2.18:
     identifier: ecommerce-app
     parent: realworld-apps
     weight: 100

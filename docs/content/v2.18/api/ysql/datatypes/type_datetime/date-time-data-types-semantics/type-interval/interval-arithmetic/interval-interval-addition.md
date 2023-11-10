@@ -4,7 +4,7 @@ headerTitle: Adding or subtracting a pair of interval values
 linkTitle: Interval-interval addition and subtraction
 description: Explains the semantics of adding or subtracting a pair of interval values. [YSQL]
 menu:
-  stable:
+  v2.18:
     identifier: interval-interval-addition
     parent: interval-arithmetic
     weight: 20

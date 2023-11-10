@@ -4,7 +4,7 @@ headerTitle: Google Cloud Platform
 linkTitle: Google Cloud Platform
 description: Use Terraform to deploy a YugabyteDB cluster in Google Cloud Platform.
 menu:
-  stable:
+  v2.18:
     identifier: deploy-in-gcp-3-terraform
     parent: public-clouds
     weight: 640

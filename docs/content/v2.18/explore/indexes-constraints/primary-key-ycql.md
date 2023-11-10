@@ -6,7 +6,7 @@ description: Defining Primary key constraint in YCQL
 headContent: Explore primary keys in YugabyteDB using YCQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  stable:
+  v2.18:
     identifier: primary-key-ycql
     parent: explore-indexes-constraints
     weight: 201

@@ -4,7 +4,7 @@ headerTitle: postgresql-hll extension
 linkTitle: postgresql-hll
 description: Using the postgresql-hll extension in YugabyteDB
 menu:
-  stable:
+  v2.18:
     identifier: extension-postgresql-hll
     parent: pg-extensions
     weight: 20

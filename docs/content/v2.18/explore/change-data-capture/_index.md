@@ -8,7 +8,7 @@ image: /images/section_icons/index/develop.png
 cascade:
   earlyAccess: /preview/releases/versioning/#feature-availability
 menu:
-  stable:
+  v2.18:
     identifier: explore-change-data-capture
     parent: explore
     weight: 299

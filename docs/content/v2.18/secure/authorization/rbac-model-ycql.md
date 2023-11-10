@@ -6,7 +6,7 @@ description: Overview of the role-based access control (RBAC) model in YCQL.
 headcontent: How role-based access control works
 image: /images/section_icons/secure/rbac-model.png
 menu:
-  stable:
+  v2.18:
     identifier: rbac-model-ycql
     parent: authorization
     weight: 716

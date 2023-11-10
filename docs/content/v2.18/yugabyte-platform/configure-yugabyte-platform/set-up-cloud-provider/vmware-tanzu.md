@@ -5,7 +5,7 @@ linkTitle: Create provider configuration
 description: Configure the VMware Tanzu provider configuration
 headContent: Configure a VMWare Tanzu provider configuration
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: set-up-cloud-provider-4-vmware-tanzu
     parent: configure-yugabyte-platform
     weight: 20

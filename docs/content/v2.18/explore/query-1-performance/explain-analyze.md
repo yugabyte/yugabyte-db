@@ -5,7 +5,7 @@ description: Query optimization with EXPLAIN and EXPLAIN ANALYZE
 headerTitle: Analyze queries with EXPLAIN
 image: /images/section_icons/index/develop.png
 menu:
-  stable:
+  v2.18:
     identifier: explain-analyze
     parent: query-tuning
     weight: 500

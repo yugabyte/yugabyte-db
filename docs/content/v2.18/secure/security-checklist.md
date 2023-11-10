@@ -4,7 +4,7 @@ headerTitle: Security checklist
 linkTitle: Security checklist
 description: Review security measures for your YugabyteDB installation.
 menu:
-  stable:
+  v2.18:
     identifier: security-checklist
     parent: secure
     weight: 710

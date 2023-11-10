@@ -4,7 +4,7 @@ headerTitle: UUID data type
 linkTitle: UUID
 description: Represents Universally Unique Identifiers (UUIDs).
 menu:
-  stable:
+  v2.18:
     identifier: api-ysql-datatypes-uuid
     parent: api-ysql-datatypes
 type: docs

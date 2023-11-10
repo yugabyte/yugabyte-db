@@ -4,7 +4,7 @@ headerTitle: YB-Master service
 linkTitle: YB-Master service
 description: Learn how the YB-Master service manages tablet metadata and coordinates cluster configuration changes.
 menu:
-  stable:
+  v2.18:
     identifier: architecture-concepts-yb-master
     parent: key-concepts
     weight: 1126

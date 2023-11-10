@@ -5,7 +5,7 @@ linkTitle: YBA prerequisites
 description: Prerequisites for installing YugabyteDB Anywhere using YBA Installer
 headContent: What you need to install YugabyteDB Anywhere
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: prerequisites-installer
     parent: install-yugabyte-platform
     weight: 20

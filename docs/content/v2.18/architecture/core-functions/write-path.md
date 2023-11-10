@@ -4,7 +4,7 @@ headerTitle: Write I/O path
 linkTitle: Write I/O path
 description: Learn how YugabyteDB manages single-row write operations.
 menu:
-  stable:
+  v2.18:
     identifier: write-path
     parent: core-functions
     weight: 1186

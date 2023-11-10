@@ -4,7 +4,7 @@ linkTitle: cr_histogram.sql
 headerTitle: cr_histogram.sql
 description: cr_histogram.sql - Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
 menu:
-  stable:
+  v2.18:
     identifier: cr-histogram
     parent: analyzing-a-normal-distribution
     weight: 100

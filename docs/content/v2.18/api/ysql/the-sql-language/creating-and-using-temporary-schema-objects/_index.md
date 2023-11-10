@@ -4,7 +4,7 @@ headerTitle: Creating and using temporary schema-objects
 linkTitle: Temporary schema-objects
 description: Describes how to create temporary schema-objects of all kinds without needing the dedicated create temporary syntax.
 menu:
-  stable:
+  v2.18:
     identifier: creating-and-using-temporary-schema-objects
     parent: the-sql-language
     weight: 200

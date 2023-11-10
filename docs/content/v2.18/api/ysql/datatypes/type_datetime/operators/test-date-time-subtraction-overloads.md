@@ -4,7 +4,7 @@ headerTitle: Test the date-time subtraction overloads
 linkTitle: Test subtraction overloads
 description: Presents code that tests the date-time subtraction overloads. [YSQL]
 menu:
-  stable:
+  v2.18:
     identifier: test-date-time-subtraction-overloads
     parent: date-time-operators
     weight: 30

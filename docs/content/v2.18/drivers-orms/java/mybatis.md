@@ -6,7 +6,7 @@ description: MyBatis Persistence framework support for YugabyteDB
 headcontent: MyBatis Persistence framework support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
-  stable:
+  v2.18:
     identifier: java-orm-mybatis
     parent: java-drivers
     weight: 700

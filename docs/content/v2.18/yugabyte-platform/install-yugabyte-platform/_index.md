@@ -6,7 +6,7 @@ description: Install YugabyteDB Anywhere and prepare universe nodes.
 image: /images/section_icons/quick_start/install.png
 headcontent: Install YugabyteDB Anywhere to begin creating and managing deployments.
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: install-yugabyte-platform
 weight: 641

@@ -4,7 +4,7 @@ headerTitle: Pause, resume, and delete universes
 linkTitle: Pause or delete universe
 description: Use YugabyteDB Anywhere to pause, resume, and delete a universe.
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: delete-universe
     parent: manage-deployments
     weight: 70

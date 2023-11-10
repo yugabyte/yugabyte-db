@@ -6,7 +6,7 @@ description: Run real-world YugabyteDB example applications for e-commerce and I
 headcontent: E-commerce and IoT sample applications
 image: /images/section_icons/index/develop.png
 menu:
-  stable:
+  v2.18:
     identifier: realworld-apps
     parent: develop
     weight: 580

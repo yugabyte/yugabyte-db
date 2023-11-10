@@ -4,7 +4,7 @@ headerTitle: View universe details
 linkTitle: View universe details
 description: Use the YugabyteDB Anywhere UI to view universe details.
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: view-universe-details
     parent: manage-deployments
     weight: 30

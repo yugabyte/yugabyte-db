@@ -4,7 +4,7 @@ headerTitle: Retail analytics sample database
 linkTitle: Retail Analytics
 description: Explore this retail analytics sample database on YugabyteDB using YSQL.
 menu:
-  stable:
+  v2.18:
     identifier: retail-analytics
     parent: sample-data
     weight: 500

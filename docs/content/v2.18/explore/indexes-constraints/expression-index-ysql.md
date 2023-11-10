@@ -6,7 +6,7 @@ description: Using expression indexes in YSQL
 headContent: Explore expression indexes in YugabyteDB using YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  stable:
+  v2.18:
     identifier: expression-index-ysql
     parent: explore-indexes-constraints
     weight: 250

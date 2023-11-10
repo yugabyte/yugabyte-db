@@ -5,7 +5,7 @@ linkTitle: Connection metrics
 headcontent: Monitor YSQL connections
 description: Learn about YugabyteDB's connection metrics, and how to select and use the metrics.
 menu:
-  stable:
+  v2.18:
     identifier: connections
     parent: metrics-overview
     weight: 110

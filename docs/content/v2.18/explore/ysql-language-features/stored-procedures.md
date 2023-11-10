@@ -4,7 +4,7 @@ linkTitle: Stored procedures
 description: Stored procedures in YSQL
 image: /images/section_icons/index/explore.png
 menu:
-  stable:
+  v2.18:
     identifier: explore-ysql-language-features-stored-procedures
     parent: explore-ysql-language-features
     weight: 300

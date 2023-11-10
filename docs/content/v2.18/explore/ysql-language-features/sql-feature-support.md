@@ -5,7 +5,7 @@ description: Summary of YugabyteDB's conformance to the SQL standard
 headcontent: YugabyteDB supports most standard SQL features.
 image: /images/section_icons/secure/create-roles.png
 menu:
-  stable:
+  v2.18:
     identifier: explore-ysql-language-feature-support
     parent: explore-ysql-language-features
     weight: 50

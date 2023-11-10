@@ -4,7 +4,7 @@ headerTitle: Concurrency control
 linkTitle: Concurrency control
 description: Details about Concurrency control in YSQL
 menu:
-  stable:
+  v2.18:
     identifier: architecture-concurrency-control
     parent: architecture-acid-transactions
     weight: 30

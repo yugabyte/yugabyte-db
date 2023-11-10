@@ -4,7 +4,7 @@ headerTitle: Open source Kubernetes
 linkTitle: Open source Kubernetes
 description: Deploy a YugabyteDB cluster with a Kubernetes native customer resource.
 menu:
-  stable:
+  v2.18:
     parent: deploy-kubernetes-sz
     name: Open Source
     identifier: k8s-oss-2

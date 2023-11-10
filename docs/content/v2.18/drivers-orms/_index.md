@@ -6,7 +6,7 @@ description: Connect your applications with supported drivers and ORMs
 headcontent: Connect applications with your database
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
-  stable:
+  v2.18:
     identifier: drivers-orms
     parent: develop
     weight: 570

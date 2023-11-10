@@ -5,7 +5,7 @@ linkTitle: IoT Fleet Management
 description: Run this fleet management application built with Kafka, KSQL, Apache Spark, and YugabyteDB.
 headcontent: IoT application built using Kafka, KSQL, Apache Spark, and YugabyteDB
 menu:
-  stable:
+  v2.18:
     identifier: iot-spark-kafka
     parent: realworld-apps
     weight: 150

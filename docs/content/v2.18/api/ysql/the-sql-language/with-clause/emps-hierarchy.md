@@ -7,7 +7,7 @@ headerTitle: >
   Case study: using a recursive CTE to traverse an employee hierarchy
 description: Case study to show how to traverse a hierarchy, breadth or depth first, using a recursive CTE.
 menu:
-  stable:
+  v2.18:
     identifier: emps-hierarchy
     parent: with-clause
     weight: 40

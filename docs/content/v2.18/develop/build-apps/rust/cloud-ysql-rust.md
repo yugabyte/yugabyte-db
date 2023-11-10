@@ -4,7 +4,7 @@ headerTitle: Build a Rust application
 description: Build a small Rust application using the Rust-Postgres driver and using the YSQL API to connect to and interact with a YugabyteDB Managed cluster.
 headContent: "Client driver: Rust-Postgres"
 menu:
-  stable:
+  v2.18:
     parent: build-apps
     name: Rust
     identifier: cloud-rust

@@ -6,7 +6,7 @@ description: Generate server certificates and prepare YugabyteDB nodes for serve
 headcontent: Generate server certificates and prepare YugabyteDB nodes for server-to-server encryption.
 image: /images/section_icons/secure/prepare-nodes.png
 menu:
-  stable:
+  v2.18:
     identifier: prepare-nodes
     parent: tls-encryption
     weight: 10

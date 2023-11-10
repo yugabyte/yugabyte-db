@@ -4,7 +4,7 @@ headerTitle: LDAP authentication
 linkTitle: LDAP authentication
 description: Configuring YugabyteDB Anywhere to use an external LDAP authentication service.
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: ldap-authentication-platform
     parent: security
     weight: 25

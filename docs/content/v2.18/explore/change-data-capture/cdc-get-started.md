@@ -5,7 +5,7 @@ linkTitle: Get started
 description: Get started with Change Data Capture in YugabyteDB.
 headcontent: Get set up for using CDC in YugabyteDB
 menu:
-  stable:
+  v2.18:
     parent: explore-change-data-capture
     identifier: cdc-get-started
     weight: 30

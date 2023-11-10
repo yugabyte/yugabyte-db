@@ -4,7 +4,7 @@ headerTitle: View all universes
 linkTitle: View all universes
 description: Use YugabyteDB Anywhere to view all universes.
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: view-all-universes
     parent: manage-deployments
     weight: 20

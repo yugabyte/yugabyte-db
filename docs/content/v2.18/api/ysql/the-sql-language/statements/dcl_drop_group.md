@@ -3,7 +3,7 @@ title: DROP GROUP statement [YSQL]
 linkTitle: DROP GROUP
 description: Use the DROP GROUP statement to drop a role. DROP GROUP is an alias for DROP ROLE and is used to drop a role.
 menu:
-  stable:
+  v2.18:
     identifier: dcl_drop_group
     parent: statements
 type: docs

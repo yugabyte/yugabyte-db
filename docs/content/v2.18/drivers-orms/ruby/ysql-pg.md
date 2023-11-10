@@ -5,7 +5,7 @@ linkTitle: Connect an app
 description: Connect a Ruby application using the Pg Gem Driver for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
-  stable:
+  v2.18:
     identifier: ysql-pg-driver
     parent: ruby-drivers
     weight: 410

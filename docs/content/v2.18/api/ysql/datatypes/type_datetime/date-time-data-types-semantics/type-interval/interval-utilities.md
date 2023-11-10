@@ -4,7 +4,7 @@ headerTitle: User-defined interval utility functions
 linkTitle: Interval utility functions
 description: Presents copy-and-paste ready code to create utility functions that support learning about and using the interval data type. [YSQL]
 menu:
-  stable:
+  v2.18:
     identifier: interval-utilities
     parent: type-interval
     weight: 100

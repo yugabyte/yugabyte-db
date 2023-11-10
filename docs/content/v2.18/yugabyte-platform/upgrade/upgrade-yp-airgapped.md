@@ -4,7 +4,7 @@ headerTitle: Upgrade air-gapped YugabyteDB Anywhere installation
 linkTitle: Upgrade air-gapped installation
 description: Upgrade air-gapped YugabyteDB Anywhere installation
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: upgrade-yp-airgapped
     parent: upgrade
     weight: 81

@@ -6,7 +6,7 @@ description: Using indexes and constraints in YugabyteDB
 headcontent: Explore indexes and constraints in YSQL and YCQL
 image: /images/section_icons/explore/monitoring.png
 menu:
-  stable:
+  v2.18:
     identifier: explore-indexes-constraints
     parent: explore
     weight: 245

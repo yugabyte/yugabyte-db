@@ -5,7 +5,7 @@ linkTitle: Distributed snapshots
 description: Distributed snapshots for YSQL.
 image: /images/section_icons/manage/enterprise.png
 menu:
-  stable:
+  v2.18:
     identifier: snapshots-1-ysql
     parent: backup-restore
     weight: 704

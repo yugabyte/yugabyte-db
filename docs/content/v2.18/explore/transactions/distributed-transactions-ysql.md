@@ -5,7 +5,7 @@ linkTitle: Distributed transactions
 description: Understand distributed transactions in YugabyteDB using YSQL.
 headcontent:
 menu:
-  stable:
+  v2.18:
     name: Distributed transactions
     identifier: explore-transactions-distributed-transactions-1-ysql
     parent: explore-transactions

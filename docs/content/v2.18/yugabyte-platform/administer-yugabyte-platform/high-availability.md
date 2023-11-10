@@ -4,7 +4,7 @@ headerTitle: Enable high availability
 linkTitle: Enable high availability
 description: Make YugabyteDB Anywhere highly available
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: platform-high-availability
     parent: administer-yugabyte-platform
     weight: 40

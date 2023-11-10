@@ -8,7 +8,7 @@ linkTitle: >
 description: Case study showing how to use a recursive CTE to solve the "Six Degrees of Kevin Bacon" problem using IMDb data.
 image: /images/section_icons/api/ysql.png
 menu:
-  stable:
+  v2.18:
     identifier: bacon-numbers
     parent: with-clause
     weight: 60

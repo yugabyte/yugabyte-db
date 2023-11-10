@@ -4,7 +4,7 @@ headerTitle: Overview of YugabyteDB Query Layer
 linkTitle: Overview
 description: The YugabyteDB Query Layer is the upper layer of YugabyteDB. Applications interact directly with YQL using client drivers.
 menu:
-  stable:
+  v2.18:
     identifier: architecture-query-layer-yql
     parent: architecture-query-layer
     weight: 1172

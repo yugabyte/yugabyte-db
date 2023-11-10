@@ -4,7 +4,7 @@ headerTitle: Rule 1
 linkTitle: 1 case-insensitive resolution
 description: Substantiates the rule that a string that's intended to identify a UTC offset is resolved case-insensitively. [YSQL]
 menu:
-  stable:
+  v2.18:
     identifier: rule-1
     parent: name-res-rules
     weight: 10

@@ -4,7 +4,7 @@ headerTitle: CREATE FOREIGN DATA WRAPPER
 linkTitle: CREATE FOREIGN DATA WRAPPER
 description: Use the CREATE FOREIGN DATA WRAPPER statement to create a foreign-data wrapper.
 menu:
-  stable:
+  v2.18:
     identifier: ddl_create_foreign_data_wrapper
     parent: statements
 type: docs

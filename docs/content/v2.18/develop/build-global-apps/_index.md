@@ -6,7 +6,7 @@ description: Build globally distributed applications.
 headcontent: Learn how to design globally distributed applications using simple patterns
 image: /images/section_icons/architecture/distributed_acid.png
 menu:
-  stable:
+  v2.18:
     identifier: build-global-apps
     parent: develop
     weight: 201

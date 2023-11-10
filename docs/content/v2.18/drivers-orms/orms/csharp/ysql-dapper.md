@@ -4,7 +4,7 @@ headerTitle: C# ORM example application
 linkTitle: C#
 description: C# ORM example application that uses Dapper ORM and the YSQL API.
 menu:
-  stable:
+  v2.18:
     identifier: csharp-dapper
     parent: orm-tutorials
     weight: 720

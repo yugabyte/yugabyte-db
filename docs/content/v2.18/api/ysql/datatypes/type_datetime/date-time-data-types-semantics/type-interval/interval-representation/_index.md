@@ -5,7 +5,7 @@ linkTitle: Interval representation
 description: Explains how interval value is represented internally as three fields (months, days, and seconds). [YSQL]
 image: /images/section_icons/api/subsection.png
 menu:
-  stable:
+  v2.18:
     identifier: interval-representation
     parent: type-interval
     weight: 10

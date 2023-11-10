@@ -4,7 +4,7 @@ headerTitle: Java ORM example application
 linkTitle: Java
 description: Java ORM example application with MyBatis persistence framework and use the YSQL API to connect to and interact with YugabyteDB.
 menu:
-  stable:
+  v2.18:
     identifier: java-mybatis
     parent: orm-tutorials
     weight: 660

@@ -4,7 +4,7 @@ headerTitle: REASSIGN OWNED
 linkTitle: REASSIGN OWNED
 description: Use the REASSIGN OWNED statement to change the ownership of database objects owned by any of the "old_roles" to "new_role".
 menu:
-  stable:
+  v2.18:
     identifier: dcl_reassign_owned
     parent: statements
 type: docs

@@ -4,7 +4,7 @@ headerTitle: C# ORM example application
 linkTitle: C#
 description: C# ORM example application that uses Entity Framework and the YSQL API.
 menu:
-  stable:
+  v2.18:
     identifier: csharp-ef
     parent: orm-tutorials
     weight: 710

@@ -4,7 +4,7 @@ headerTitle: PL/pgSQL syntax and semantics
 linkTitle: plpgsql syntax and semantics
 description: Describes the syntax and semantics of the PL/pgSQL language (a.k.a. language plpgsql). [YSQL].
 menu:
-  stable:
+  v2.18:
     identifier: plpgsql-syntax-and-semantics
     parent: language-plpgsql-subprograms
     weight: 20

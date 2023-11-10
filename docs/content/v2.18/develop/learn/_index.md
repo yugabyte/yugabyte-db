@@ -4,7 +4,7 @@ linkTitle: Learn app development
 description: Learn to develop YugabyteDB applications
 image: /images/section_icons/develop/learn.png
 menu:
-  stable:
+  v2.18:
     identifier: learn
     parent: develop
     weight: 560

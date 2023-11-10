@@ -4,7 +4,7 @@ headerTitle: Data types
 linkTitle: 3. Data types
 description: Learn about the data types in YCQL.
 menu:
-  stable:
+  v2.18:
     identifier: data-types-1-ycql
     parent: learn
     weight: 565

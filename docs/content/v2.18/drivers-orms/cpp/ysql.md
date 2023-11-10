@@ -5,7 +5,7 @@ linkTitle: Connect an app
 description: Connect a C++ application using libpqxx
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
-  stable:
+  v2.18:
     identifier: cpp-ysql-driver
     parent: cpp-drivers
     weight: 410

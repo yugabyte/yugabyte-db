@@ -4,7 +4,7 @@ headerTitle: Create a KMS configuration using Azure
 linkTitle: Create a KMS configuration
 description: Use YugabyteDB Anywhere to create a KMS configuration for Azure Key Vault.
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     parent: security
     identifier: create-kms-config-1-azure-kms
     weight: 27

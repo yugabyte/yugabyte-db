@@ -4,7 +4,7 @@ headerTitle: ALTER TABLE
 linkTitle: ALTER TABLE
 description: Use the ALTER TABLE statement to change the schema or definition of an existing table.
 menu:
-  stable:
+  v2.18:
     parent: api-cassandra
     weight: 1220
 type: docs

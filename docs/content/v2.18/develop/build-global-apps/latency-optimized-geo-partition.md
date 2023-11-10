@@ -5,7 +5,7 @@ linkTitle: Latency-optimized geo-partitioning
 description: Geo Partitioning for improving the latency of Multi-Active global applications
 headcontent: Improve the latency of Multi-Active global applications using geo partitioning
 menu:
-  stable:
+  v2.18:
     identifier: global-apps-latency-optimized-geo-partition
     parent: build-global-apps
     weight: 600

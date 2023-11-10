@@ -4,7 +4,7 @@ headerTitle: Start YB-Masters
 linkTitle: 3. Start YB-Masters
 description: Start YB-Master servers of your YugabyteDB cluster
 menu:
-  stable:
+  v2.18:
     identifier: deploy-manual-deployment-start-masters
     parent: deploy-manual-deployment
     weight: 613

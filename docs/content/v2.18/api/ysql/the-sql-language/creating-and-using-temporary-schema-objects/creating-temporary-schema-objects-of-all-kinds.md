@@ -4,7 +4,7 @@ headerTitle: Creating temporary schema-objects of all kinds
 linkTitle: Temp schema-objects of all kinds
 description: Describes how to create temporary schema-objects of all kinds by using a schema-qualified identifier for the target object that starts with the alias 'pg_temp' [YSQL]
 menu:
-  stable:
+  v2.18:
     identifier: creating-temporary-schema-objects-of-all-kinds
     parent: creating-and-using-temporary-schema-objects
     weight: 200

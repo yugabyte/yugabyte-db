@@ -4,7 +4,7 @@ linkTitle: Keyspaces and tables
 description: Keyspaces and tables in YCQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  stable:
+  v2.18:
     identifier: explore-ycql-language-features-keyspaces-tables
     parent: explore-ycql-language
     weight: 60

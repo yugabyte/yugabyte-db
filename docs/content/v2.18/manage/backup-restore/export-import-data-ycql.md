@@ -4,7 +4,7 @@ headerTitle: Export and import
 linkTitle: Export and import
 description: Export and import for YCQL
 menu:
-  stable:
+  v2.18:
     identifier: export-import-data-ycql
     parent: backup-restore
     weight: 703

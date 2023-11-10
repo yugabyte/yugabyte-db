@@ -4,7 +4,7 @@ headerTitle: Implementations that model the overlaps operator
 linkTitle: Implementations that model the overlaps operator
 description: Implementations that model the overlaps operator. [YSQL]
 menu:
-  stable:
+  v2.18:
     identifier: overlaps
     parent: miscellaneous
     weight: 30

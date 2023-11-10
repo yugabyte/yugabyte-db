@@ -4,7 +4,7 @@ headerTitle: CREATE VIEW
 linkTitle: CREATE VIEW
 description: Use the CREATE VIEW statement to create a view in a database.
 menu:
-  stable:
+  v2.18:
     identifier: ddl_create_view
     parent: statements
 type: docs

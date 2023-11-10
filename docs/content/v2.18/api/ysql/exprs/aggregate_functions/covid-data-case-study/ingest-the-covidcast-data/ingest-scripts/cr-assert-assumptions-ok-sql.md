@@ -4,7 +4,7 @@ linkTitle: Create assert_assumptions_ok()
 headerTitle: Create the procedure assert_assumptions_ok()
 description: Creates a procedure checks that all of the assumptions made about the data imported from the .csv files holds
 menu:
-  stable:
+  v2.18:
     identifier: cr-assert-assumptions-ok-sql
     parent: ingest-scripts
     weight: 30

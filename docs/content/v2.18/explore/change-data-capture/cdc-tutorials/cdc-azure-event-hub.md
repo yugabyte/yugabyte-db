@@ -5,7 +5,7 @@ linkTitle: Azure Event Hubs
 description: Azure Synapse Analytics Integration using Azure Event Hubs for Change Data Capture in YugabyteDB.
 headcontent: Azure Synapse Analytics integration using Azure Event Hubs
 menu:
-  stable:
+  v2.18:
     parent: cdc-tutorials
     identifier: cdc-azure-event-hub
     weight: 20

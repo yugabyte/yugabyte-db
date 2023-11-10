@@ -4,7 +4,7 @@ headerTitle: Upgrade the YugabyteDB software
 linkTitle: Upgrade YugabyteDB
 description: Use YugabyteDB Anywhere to upgrade the YugabyteDB software.
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: upgrade-software
     parent: manage-deployments
     weight: 80

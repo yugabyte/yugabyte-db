@@ -4,7 +4,7 @@ linkTitle: int-results
 headerTitle: Output from running do_ntile(), do_percent_rank(), and do_cume_dist() on t4.int_score
 description: Output from running do_ntile(), do_percent_rank(), and do_cume_dist() on t4.int_score.
 menu:
-  stable:
+  v2.18:
     identifier: int-results
     parent: normal-distribution-analysis-reports
     weight: 40

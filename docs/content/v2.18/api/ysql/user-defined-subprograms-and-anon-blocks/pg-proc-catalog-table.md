@@ -4,7 +4,7 @@ headerTitle: The 'pg_proc' catalog table for subprograms
 linkTitle: The pg_proc catalog table
 description: Explains how to use the 'pg_proc' catalog table to see subprogram metadata [YSQL].
 menu:
-  stable:
+  v2.18:
     identifier: pg-proc-catalog-table
     parent: user-defined-subprograms-and-anon-blocks
     weight: 99

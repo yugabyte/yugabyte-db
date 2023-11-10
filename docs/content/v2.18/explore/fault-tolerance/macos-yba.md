@@ -5,7 +5,7 @@ linkTitle: HA during failures
 description: Simulate fault tolerance and resilience in a YugabyteDB Anywhere universe.
 headcontent: Keep serving requests through node, zone, and region failures
 menu:
-  stable:
+  v2.18:
     identifier: node-failure-2-macos
     parent: fault-tolerance
     weight: 10

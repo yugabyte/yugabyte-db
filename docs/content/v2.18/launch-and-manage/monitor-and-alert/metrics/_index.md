@@ -5,7 +5,7 @@ linkTitle: Metrics
 headcontent: Monitor clusters using key metrics
 description: Learn about YugabyteDB's database metrics, and how to select and use the metrics relevant to your situation.
 menu:
-  stable:
+  v2.18:
     identifier: metrics-overview
     parent: monitor-and-alert
     weight: 100

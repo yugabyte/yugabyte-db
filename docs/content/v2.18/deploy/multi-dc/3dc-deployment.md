@@ -5,7 +5,7 @@ linkTitle: Three+ data center (3DC)
 description: Deploy YugabyteDB clusters to three or more data centers.
 headContent: Deploy YugabyteDB clusters across regions
 menu:
-  stable:
+  v2.18:
     parent: multi-dc
     identifier: 3dc-deployment
     weight: 632

@@ -4,7 +4,7 @@ headerTitle: Simple expressions
 linkTitle: Simple expressions
 description: A simple expression can be a column, constant, or NULL.
 menu:
-  stable:
+  v2.18:
     parent: api-cassandra
     weight: 1331
 type: docs

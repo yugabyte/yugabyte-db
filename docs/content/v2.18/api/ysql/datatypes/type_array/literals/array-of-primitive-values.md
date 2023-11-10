@@ -4,7 +4,7 @@ linkTitle: Array of primitive values
 headerTitle: The literal for an array of primitive values
 description: The literal for an array of primitive values
 menu:
-  stable:
+  v2.18:
     identifier: array-of-primitive-values
     parent: array-literals
     weight: 10

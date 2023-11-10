@@ -4,7 +4,7 @@ headerTitle: Bulk export for YSQL
 linkTitle: Bulk export
 description: Bulk export for YSQL using ysql_dump.
 menu:
-  stable:
+  v2.18:
     identifier: manage-bulk-export-ysql
     parent: manage-bulk-import-export
     weight: 704

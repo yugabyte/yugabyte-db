@@ -6,7 +6,7 @@ description: Use YugabyteDB Anywhere to back up and restore YugabyteDB universe 
 image: /images/section_icons/manage/backup.png
 headcontent: Use YugabyteDB Anywhere to back up and restore YugabyteDB universes and data
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: back-up-restore-universes
 weight: 640

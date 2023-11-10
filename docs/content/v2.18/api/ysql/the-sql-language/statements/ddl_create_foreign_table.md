@@ -4,7 +4,7 @@ headerTitle: CREATE FOREIGN TABLE
 linkTitle: CREATE FOREIGN TABLE
 description: Use the CREATE FOREIGN TABLE statement to create a foreign table.
 menu:
-  stable:
+  v2.18:
     identifier: ddl_create_foreign_table
     parent: statements
 type: docs

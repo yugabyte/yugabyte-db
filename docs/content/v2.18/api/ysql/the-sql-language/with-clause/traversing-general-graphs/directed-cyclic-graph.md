@@ -4,7 +4,7 @@ headerTitle: Finding the paths in a directed cyclic graph
 linkTitle: Directed cyclic graph
 description: This section shows how to use a recursive CTE to traverse a directed cyclic graph.
 menu:
-  stable:
+  v2.18:
     identifier: directed-cyclic-graph
     parent: traversing-general-graphs
     weight: 40

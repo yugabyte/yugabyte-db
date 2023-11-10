@@ -6,7 +6,7 @@ description: Go PG ORM support for YugabyteDB
 headcontent: Go ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
-  stable:
+  v2.18:
     identifier: pg-orm
     parent: go-drivers
     weight: 610

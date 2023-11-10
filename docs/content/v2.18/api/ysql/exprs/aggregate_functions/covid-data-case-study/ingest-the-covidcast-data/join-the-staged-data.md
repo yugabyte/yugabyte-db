@@ -3,7 +3,7 @@ title: Join the staged COVIDcast data into a single table
 linkTitle: Join the staged data into a single table
 headerTitle: Join the staged COVIDcast data into the "covidcast_fb_survey_results" table
 menu:
-  stable:
+  v2.18:
     identifier: join-the-staged-data
     parent: ingest-the-covidcast-data
     weight: 40

@@ -5,7 +5,7 @@ linkTitle: Schedule data backups
 description: Use YugabyteDB Anywhere to create scheduled backups of universe data.
 headContent: Create backup schedules to regularly back up universe data
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: schedule-data-backups
     parent: back-up-restore-universes
     weight: 40

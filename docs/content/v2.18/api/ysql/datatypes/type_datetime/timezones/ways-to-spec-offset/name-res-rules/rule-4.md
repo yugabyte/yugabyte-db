@@ -4,7 +4,7 @@ headerTitle: Rule 4
 linkTitle: 4 ~abbrevs.abbrev before ~names.name
 description: Substantiates the rule that a string that's intended to identify a UTC offset is resolved first in pg_timezone_abbrevs.abbrev and, only if this fails, then in pg_timezone_names.name. [YSQL]
 menu:
-  stable:
+  v2.18:
     identifier: rule-4
     parent: name-res-rules
     weight: 40

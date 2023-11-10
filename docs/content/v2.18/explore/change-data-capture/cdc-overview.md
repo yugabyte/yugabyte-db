@@ -5,7 +5,7 @@ linkTitle: Overview
 description: Change Data Capture in YugabyteDB.
 headcontent: Change Data Capture in YugabyteDB
 menu:
-  stable:
+  v2.18:
     parent: explore-change-data-capture
     identifier: cdc-overview
     weight: 10

@@ -4,7 +4,7 @@ headerTitle: LDAP authentication in YCQL
 linkTitle: LDAP authentication
 description: Configuring YugabyteDB to use an external LDAP authentication service using YCQL.
 menu:
-  stable:
+  v2.18:
     identifier: ldap-authentication-2-ycql
     parent: authentication
     weight: 732

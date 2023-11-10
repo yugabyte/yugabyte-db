@@ -5,7 +5,7 @@ description: Advanced features in YSQL
 headcontent:  Explore advanced features in YSQL
 image: /images/section_icons/api/ysql.png
 menu:
-  stable:
+  v2.18:
     identifier: advanced-features
     parent: explore-ysql-language-features
     weight: 320

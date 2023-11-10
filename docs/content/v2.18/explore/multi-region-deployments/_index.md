@@ -6,7 +6,7 @@ description: Explore different Multi-Region deployment topologies in YugabyteDB.
 headcontent: Multi-Region Deployments in YugabyteDB.
 image: /images/section_icons/explore/planet_scale.png
 menu:
-  stable:
+  v2.18:
     identifier: explore-multi-region-deployments
     parent: explore
     weight: 270

@@ -6,7 +6,7 @@ description: Interactive third party clients that you can use with YugabyteDB.
 headcontent: Use popular third party clients with YugabyteDB.
 image: /images/section_icons/troubleshoot/troubleshoot.png
 menu:
-  stable:
+  v2.18:
     identifier: tools
     parent: reference
     weight: 2900

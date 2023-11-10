@@ -4,7 +4,7 @@ headerTitle: Persistence
 linkTitle: Persistence
 description: Learn how DocDB manages persistence using a RocksDB-based storage layer.
 menu:
-  stable:
+  v2.18:
     identifier: docdb-persistence
     parent: docdb
     weight: 1146

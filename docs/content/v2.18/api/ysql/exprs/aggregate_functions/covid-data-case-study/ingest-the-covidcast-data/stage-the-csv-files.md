@@ -4,7 +4,7 @@ linkTitle: Copy the .csv files to staging tables
 headerTitle: Copy each of the COVIDcast data .csv files to a dedicated staging table
 description: Copy each of the COVIDcast data .csv files to a dedicated staging table for analysis using YSQL functions for linear regression analysis
 menu:
-  stable:
+  v2.18:
     identifier: stage-the-csv-files
     parent: ingest-the-covidcast-data
     weight: 20

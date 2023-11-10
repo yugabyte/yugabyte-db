@@ -4,7 +4,7 @@ headerTitle: jsonb_populate_record() and json_populate_record()
 linkTitle: jsonb_populate_record()
 description: Convert a JSON object into the equivalent SQL record.
 menu:
-  stable:
+  v2.18:
     identifier: jsonb-populate-record
     parent: json-functions-operators
     weight: 180

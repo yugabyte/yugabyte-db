@@ -5,7 +5,7 @@ linkTitle: Cloud prerequisites
 description: Prepare the Azure environment for YugabyteDB Anywhere.
 headContent: Prepare Azure for YugabyteDB Anywhere
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: prepare-environment-3-azure
     parent: install-yugabyte-platform
     weight: 55

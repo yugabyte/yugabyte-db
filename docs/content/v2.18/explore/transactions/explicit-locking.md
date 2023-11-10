@@ -5,7 +5,7 @@ linkTitle: Explicit locking
 description: Explicit locking in YugabyteDB.
 headcontent: Row locking in YugabyteDB
 menu:
-  stable:
+  v2.18:
     identifier: explore-transactions-explicit-locking-1-ysql
     parent: explore-transactions
     weight: 245

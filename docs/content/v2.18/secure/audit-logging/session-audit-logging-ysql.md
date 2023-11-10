@@ -5,7 +5,7 @@ linkTitle: Session-level audit logging
 description: Session-level audit logging in YSQL.
 image: /images/section_icons/secure/authentication.png
 menu:
-  stable:
+  v2.18:
     identifier: session-audit-logging-1-ysql
     parent: audit-logging
     weight: 760

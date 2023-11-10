@@ -5,7 +5,7 @@ linkTitle: Create provider configuration
 description: Configure the Kubernetes provider configuration
 headContent: Configure a Kubernetes provider configuration
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: set-up-cloud-provider-5-kubernetes
     parent: configure-yugabyte-platform
     weight: 20

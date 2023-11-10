@@ -5,7 +5,7 @@ description: Tablespaces in YSQL
 headcontent: Control the placement of data
 image: /images/section_icons/secure/create-roles.png
 menu:
-  stable:
+  v2.18:
     identifier: going-beyond-sql-tablespaces
     parent: going-beyond-sql
     weight: 320

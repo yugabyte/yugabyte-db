@@ -4,7 +4,7 @@ linkTitle: mode(), percentile_disc(), percentile_cont()
 headerTitle: Within-group ordered-set aggregate functions
 description: Describes the Within-group ordered-set functionality of the mode(), percentile_disc(), percentile_cont() YSQL aggregate functions
 menu:
-  stable:
+  v2.18:
     identifier: mode-percentile-disc-percentile-cont
     parent: aggregate-function-syntax-semantics
     weight: 90

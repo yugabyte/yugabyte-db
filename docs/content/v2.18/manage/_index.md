@@ -6,7 +6,7 @@ description: Manging YugabyteDB deployments
 image: /images/section_icons/quick_start/sample_apps.png
 headcontent: Manage your YugabyteDB deployment
 menu:
-  stable:
+  v2.18:
     identifier: manage
     parent: launch-and-manage
 type: indexpage

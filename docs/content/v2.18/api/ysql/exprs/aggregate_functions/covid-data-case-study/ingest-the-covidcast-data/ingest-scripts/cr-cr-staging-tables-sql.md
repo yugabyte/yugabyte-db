@@ -4,7 +4,7 @@ linkTitle: Create cr_staging_tables()
 headerTitle: Create the procedure cr_staging_tables()
 description: Creates a procedure that uses dynamic SQL to create three staging tables with the same structure.
 menu:
-  stable:
+  v2.18:
     identifier: cr-cr-staging-tables-sql
     parent: ingest-scripts
     weight: 10

@@ -5,7 +5,7 @@ description: Tune queries in YugabyteDB
 headerTitle: Tune queries in YugabyteDB
 image: /images/section_icons/index/develop.png
 menu:
-  stable:
+  v2.18:
     identifier: query-tuning-intro
     parent: query-tuning
     weight: 100

@@ -6,7 +6,7 @@ description: Benchmark YCQL performance with large datasets
 image: /images/section_icons/architecture/concepts.png
 headcontent: Benchmark YCQL performance with large datasets
 menu:
-  stable:
+  v2.18:
     identifier: large-datasets-1-ycql
     parent: benchmark
     weight: 7

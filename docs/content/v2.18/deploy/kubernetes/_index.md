@@ -6,7 +6,7 @@ description: Deploy YugabyteDB clusters natively on Kubernetes with various prov
 headcontent: Deploy YugabyteDB natively on Kubernetes
 image: /images/section_icons/deploy/kubernetes.png
 menu:
-  stable:
+  v2.18:
     identifier: deploy-kubernetes
     parent: deploy
     weight: 620

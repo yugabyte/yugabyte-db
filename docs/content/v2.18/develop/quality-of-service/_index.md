@@ -6,7 +6,7 @@ description: Quality of service and admission control
 headcontent: Quality of service and admission control
 image: /images/section_icons/api/ysql.png
 menu:
-  stable:
+  v2.18:
     identifier: develop-quality-of-service
     parent: develop
     weight: 585

@@ -4,7 +4,7 @@ headerTitle: DROP TRIGGER
 linkTitle: DROP TRIGGER
 description: Use the DROP TRIGGER statement to remove a trigger from the database.
 menu:
-  stable:
+  v2.18:
     identifier: ddl_drop_trigger
     parent: statements
 type: docs

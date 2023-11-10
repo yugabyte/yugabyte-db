@@ -4,7 +4,7 @@ headerTitle: Finding the paths in a directed acyclic graph
 linkTitle: Directed acyclic graph
 description: This section shows how to use a recursive CTE to traverse a directed acyclic graph.
 menu:
-  stable:
+  v2.18:
     identifier: directed-acyclic-graph
     parent: traversing-general-graphs
     weight: 50

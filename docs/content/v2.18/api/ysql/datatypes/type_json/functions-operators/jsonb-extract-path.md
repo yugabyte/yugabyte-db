@@ -4,7 +4,7 @@ headerTitle: jsonb_extract_path() and json_extract_path()
 linkTitle: jsonb_extract_path()
 description: Provide identical functionality to the "#>" operator.
 menu:
-  stable:
+  v2.18:
     identifier: jsonb-extract-path
     parent: json-functions-operators
     weight: 130

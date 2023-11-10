@@ -6,7 +6,7 @@ description: Rate limiting connections in YugabyteDB.
 headcontent: Rate limiting connections in YugabyteDB.
 image: <div class="icon"><i class="fa-solid fa-file-invoice-dollar"></i></div>
 menu:
-  stable:
+  v2.18:
     name: Rate limiting connections
     identifier: develop-quality-of-service-limiting-connections
     parent: develop-quality-of-service

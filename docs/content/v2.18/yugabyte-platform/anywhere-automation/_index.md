@@ -6,7 +6,7 @@ description: Automation tools for YugabyteDB Anywhere.
 image: /images/section_icons/explore/administer.png
 headcontent: Manage YugabyteDB Anywhere accounts and deployments using automation
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: anywhere-automation
     weight: 648

@@ -4,7 +4,7 @@ headerTitle: uuid-ossp extension
 linkTitle: uuid-ossp
 description: Using the uuid-ossp extension in YugabyteDB
 menu:
-  stable:
+  v2.18:
     identifier: extension-uuid-ossp
     parent: pg-extensions
     weight: 20

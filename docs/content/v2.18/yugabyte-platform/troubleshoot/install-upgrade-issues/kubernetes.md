@@ -4,7 +4,7 @@ headerTitle: Install and upgrade issues on Kubernetes
 linkTitle: Install and upgrade issues
 description: Troubleshoot issues encountered when installing or upgrading YugabyteDB Anywhere on Kubernetes.
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: install-upgrade-kubernetes-issues
     parent: troubleshoot-yp
     weight: 13

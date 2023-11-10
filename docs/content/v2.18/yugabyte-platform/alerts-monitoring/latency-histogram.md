@@ -4,7 +4,7 @@ headerTitle: Latency histogram and P99 latencies
 linkTitle: Latency histogram
 description: View histogram and P99 latency metrics for slow queries
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     parent: alerts-monitoring
     identifier: latency-histogram
     weight: 50

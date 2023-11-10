@@ -5,7 +5,7 @@ linkTitle: Create provider configuration
 description: Configure the on-premises provider configuration.
 headContent: Configure an on-premises provider configuration
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: set-up-cloud-provider-6-on-premises
     parent: configure-yugabyte-platform
     weight: 20

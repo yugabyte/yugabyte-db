@@ -5,7 +5,7 @@ linkTitle: YugabyteDB Anywhere
 headcontent: Self-managed Database-as-a-Service
 description: YugabyteDB delivered as a private database-as-a-service for enterprises.
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: overview-yp
     weight: 10

@@ -4,7 +4,7 @@ headerTitle: Deployment checklist
 linkTitle: Deployment checklist
 description: Deployment checklist for multi-node YugabyteDB clusters used for production and performance testing
 menu:
-  stable:
+  v2.18:
     identifier: checklist
     parent: deploy
     weight: 605

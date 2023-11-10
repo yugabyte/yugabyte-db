@@ -4,7 +4,7 @@ headerTitle: xCluster replication
 linkTitle: xCluster replication
 description: Enable deployment using asynchronous replication between two data centers
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     parent: create-deployments
     identifier: async-replication-platform
     weight: 50

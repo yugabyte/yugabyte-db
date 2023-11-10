@@ -4,7 +4,7 @@ headerTitle: Transactional I/O path
 linkTitle: Transactional I/O path
 description: Learn how YugabyteDB manages the write path of a transaction.
 menu:
-  stable:
+  v2.18:
     identifier: architecture-transactional-io-path
     parent: architecture-acid-transactions
     weight: 80

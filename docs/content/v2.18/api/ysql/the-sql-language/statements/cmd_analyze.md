@@ -5,7 +5,7 @@ linkTitle: ANALYZE
 description: Collect statistics about database tables with the ANALYZE statement.
 techPreview: /preview/releases/versioning/#feature-availability
 menu:
-  stable:
+  v2.18:
     identifier: cmd_analyze
     parent: statements
 type: docs

@@ -5,7 +5,7 @@ linkTitle: Cloud prerequisites
 description: Prepare the private cloud (on-premise) environment for YugabyteDB Anywhere.
 headContent: Prepare your on-premises environment for YugabyteDB Anywhere
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: prepare-environment-5-private-cloud
     parent: install-yugabyte-platform
     weight: 55

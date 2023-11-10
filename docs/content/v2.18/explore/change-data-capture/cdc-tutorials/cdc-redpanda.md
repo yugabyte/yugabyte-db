@@ -5,7 +5,7 @@ linkTitle: Redpanda
 description: Redpanda for Change Data Capture in YugabyteDB.
 headcontent: Use YugabyteDB CDC with Redpanda as message broker
 menu:
-  stable:
+  v2.18:
     parent: cdc-tutorials
     identifier: cdc-redpanda
     weight: 40

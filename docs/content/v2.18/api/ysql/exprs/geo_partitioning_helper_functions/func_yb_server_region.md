@@ -4,7 +4,7 @@ headerTitle: yb_server_region()
 linkTitle: yb_server_region()
 description: Returns the region of the currently connected node
 menu:
-  stable:
+  v2.18:
     identifier: api-ysql-exprs-yb_server_region
     parent: geo-partitioning-helper-functions
 type: docs

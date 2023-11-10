@@ -6,7 +6,7 @@ description: Build applications that run on different clouds
 headcontent: Build applications that run on different clouds
 image: /images/section_icons/develop/api-icon.png
 menu:
-  stable:
+  v2.18:
     identifier: build-multicloud-apps
     parent: develop
     weight: 300

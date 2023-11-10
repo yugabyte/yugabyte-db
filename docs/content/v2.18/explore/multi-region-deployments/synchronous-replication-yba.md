@@ -5,7 +5,7 @@ linkTitle: Synchronous (3+ regions)
 description: Global data distributed using synchronous replication across regions using YugabyteDB Anywhere.
 headcontent: Distribute data synchronously across regions
 menu:
-  stable:
+  v2.18:
     identifier: explore-multi-region-deployments-sync-replication-2-yba
     parent: explore-multi-region-deployments
     weight: 710

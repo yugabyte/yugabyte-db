@@ -4,7 +4,7 @@ headerTitle: Bulk import for YSQL
 linkTitle: Bulk import
 description: Import data from PostgreSQL into YugabyteDB for YSQL.
 menu:
-  stable:
+  v2.18:
     identifier: manage-bulk-import-ysql
     parent: manage-bulk-import-export
     weight: 706

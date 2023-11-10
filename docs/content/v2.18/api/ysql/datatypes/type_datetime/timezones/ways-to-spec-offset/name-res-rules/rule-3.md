@@ -4,7 +4,7 @@ headerTitle: Rule 3
 linkTitle: 3 'set timezone' string not resolved in ~abbrevs.abbrev
 description: Substantiates the rule that a string that's intended to identify a UTC offset is never resolved in pg_timezone_abbrevs.abbrev as the argument of 'set timezone' but is resolved there as the argument of 'timezone()' and within a 'text' literal for a 'timestamptz' value. [YSQL]
 menu:
-  stable:
+  v2.18:
     identifier: rule-3
     parent: name-res-rules
     weight: 30

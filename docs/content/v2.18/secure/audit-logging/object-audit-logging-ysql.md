@@ -4,7 +4,7 @@ headerTitle: Object-level audit logging in YSQL
 linkTitle: Object-level audit logging
 description: Object-level audit logging in YSQL.
 menu:
-  stable:
+  v2.18:
     identifier: object-audit-logging-1-ysql
     parent: audit-logging
     weight: 765

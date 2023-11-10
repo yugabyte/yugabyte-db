@@ -5,7 +5,7 @@ linkTitle: Global database
 description: Build highly available global applications
 headcontent: Design highly-available applications using a global database
 menu:
-  stable:
+  v2.18:
     identifier: global-apps-global-database
     parent: build-global-apps
     weight: 210

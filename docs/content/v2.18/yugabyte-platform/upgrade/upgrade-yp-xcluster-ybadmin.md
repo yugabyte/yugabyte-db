@@ -4,7 +4,7 @@ headerTitle: Synchronize replication after upgrade
 linkTitle: Synchronize replication after upgrade
 description: Synchronize replication after upgrade via yb-admin
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: upgrade-yp-xcluster-ybadmin
     parent: upgrade
     weight: 82

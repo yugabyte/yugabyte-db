@@ -4,7 +4,7 @@ headerTitle: yb-ts-cli
 linkTitle: yb-ts-cli
 description: Use the yb-ts-cli command line utility to perform advanced YB-TServer operations.
 menu:
-  stable:
+  v2.18:
     identifier: yb-ts-cli
     parent: admin
     weight: 50

@@ -5,7 +5,7 @@ linkTitle: Node prerequisites
 description: Operating systems and architectures supported by YugabyteDB Anywhere for deploying YugabyteDB
 headcontent: Prerequisites for YugabyteDB universe nodes
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: supported-os-and-arch
     parent: configure-yugabyte-platform
     weight: 6

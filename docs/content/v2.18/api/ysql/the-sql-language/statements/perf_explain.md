@@ -4,7 +4,7 @@ headerTitle: EXPLAIN
 linkTitle: EXPLAIN
 description: Use the EXPLAIN statement to show the execution plan for an statement. If the ANALYZE option is used, the statement will be executed, rather than just planned.
 menu:
-  stable:
+  v2.18:
     identifier: perf_explain
     parent: statements
 type: docs

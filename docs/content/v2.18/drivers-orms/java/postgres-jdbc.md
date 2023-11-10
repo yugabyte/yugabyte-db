@@ -5,7 +5,7 @@ linkTitle: Connect an app
 description: Connect a Java application using PostgreSQL JDBC driver
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
-  stable:
+  v2.18:
     identifier: postgres-jdbc-driver
     parent: java-drivers
     weight: 500

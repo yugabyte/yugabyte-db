@@ -5,7 +5,7 @@ linkTitle: Connect an app
 description: Connect an application using YugabyteDB Node.js smart driver for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
-  stable:
+  v2.18:
     identifier: yugabyte-node-driver
     parent: nodejs-drivers
     weight: 500

@@ -4,7 +4,7 @@ headerTitle: PostGIS extension
 linkTitle: PostGIS
 description: Using the PostGIS extension in YugabyteDB
 menu:
-  stable:
+  v2.18:
     identifier: extension-postgis
     parent: pg-extensions
     weight: 20

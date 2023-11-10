@@ -5,7 +5,7 @@ linkTitle: Geo-partitioning helper functions
 description: This section contains all the helper functions for geo-distribution.
 image: /images/section_icons/api/ysql.png
 menu:
-  stable:
+  v2.18:
     identifier: geo-partitioning-helper-functions
     parent: api-ysql-exprs
 type: indexpage

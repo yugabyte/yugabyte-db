@@ -4,7 +4,7 @@ headerTitle: Java ORM example application
 linkTitle: Java
 description: Java ORM example application that uses Spring Boot and YSQL.
 menu:
-  stable:
+  v2.18:
     identifier: java-spring
     parent: orm-tutorials
     weight: 630

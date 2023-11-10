@@ -6,7 +6,7 @@ description: Learn about the internals of YugabyteDB in the context of the core 
 image: /images/section_icons/architecture/core_functions.png
 headcontent: Learn about the internals of YugabyteDB in the context of the core database functions.
 menu:
-  stable:
+  v2.18:
     identifier: core-functions
     parent: architecture
     weight: 1107

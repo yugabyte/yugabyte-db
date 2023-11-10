@@ -6,7 +6,7 @@ description: Benchmark YSQL performance with large datasets
 image: /images/section_icons/architecture/concepts.png
 headcontent: Benchmark YSQL performance with large datasets
 menu:
-  stable:
+  v2.18:
     identifier: large-datasets-2-ysql
     parent: benchmark
     weight: 7

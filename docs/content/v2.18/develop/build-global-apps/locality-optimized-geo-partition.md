@@ -5,7 +5,7 @@ linkTitle: Locality-optimized geo-partitioning
 description: Geo partitioning for compliance in Multi-Active global applications
 headcontent: Geo partition for compliance in Multi-Active global applications
 menu:
-  stable:
+  v2.18:
     identifier: global-apps-locality-optimized-geo-partition
     parent: build-global-apps
     weight: 700

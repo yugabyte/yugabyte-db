@@ -4,7 +4,7 @@ headerTitle: Point-in-time recovery
 linkTitle: Point-in-time recovery
 description: Restore data to a specific point in time in YugabyteDB
 menu:
-  stable:
+  v2.18:
     identifier: point-in-time-recovery
     parent: backup-restore
     weight: 705

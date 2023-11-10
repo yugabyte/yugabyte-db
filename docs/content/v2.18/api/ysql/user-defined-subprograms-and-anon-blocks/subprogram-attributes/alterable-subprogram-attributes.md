@@ -4,7 +4,7 @@ headerTitle: Alterable subprogram attributes
 linkTitle: Alterable subprogram attributes
 description: Describes and categorizes the subprogram attributes that cab be changed with the ALTER statement  [YSQL].
 menu:
-  stable:
+  v2.18:
     identifier: alterable-subprogram-attributes
     parent: subprogram-attributes
     weight: 20

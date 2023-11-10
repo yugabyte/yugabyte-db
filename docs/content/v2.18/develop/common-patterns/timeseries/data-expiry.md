@@ -5,7 +5,7 @@ linkTitle: Automatic data expiration
 description: Distribute your time-ordered data and retrieve fast
 headcontent: Expire data using time-to-live
 menu:
-  stable:
+  v2.18:
     identifier: timeseries-automatic-expiration
     parent: common-patterns-timeseries
     weight: 300

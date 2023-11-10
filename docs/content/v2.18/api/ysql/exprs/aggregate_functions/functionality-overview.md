@@ -4,7 +4,7 @@ linkTitle: Informal functionality overview
 headerTitle: Informal overview of aggregate function invocation
 description: This section provides an informal introduction to the invocation of aggregate functions.
 menu:
-  stable:
+  v2.18:
     identifier: aggregate-functions-functionality-overview
     parent: aggregate-functions
     weight: 10

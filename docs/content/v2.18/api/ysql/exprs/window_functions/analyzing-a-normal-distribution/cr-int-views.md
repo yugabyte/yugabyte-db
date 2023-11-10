@@ -4,7 +4,7 @@ linkTitle: cr_int_views.sql
 headerTitle: cr_int_views.sql
 description: cr_int_views.sql - Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
 menu:
-  stable:
+  v2.18:
     identifier: cr-int-views
     parent: analyzing-a-normal-distribution
     weight: 50

@@ -4,7 +4,7 @@ linkTitle: table t2
 headerTitle: Create and populate table t2
 description: Creates and populate table t2 with data that allows the demonstration of the YSQL window functions.
 menu:
-  stable:
+  v2.18:
     identifier: table-t2
     parent: data-sets
     weight: 30

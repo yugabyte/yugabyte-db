@@ -6,7 +6,7 @@ description: Benchmark scalability of queries and datasets in YugabyteDB.
 image: /images/section_icons/deploy/enterprise.png
 headcontent: Benchmark adjusting capacity to meet demand
 menu:
-  stable:
+  v2.18:
     identifier: scalability
     parent: benchmark
     weight: 20

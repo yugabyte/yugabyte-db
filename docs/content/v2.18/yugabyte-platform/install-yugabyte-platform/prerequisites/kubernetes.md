@@ -5,7 +5,7 @@ linkTitle: YBA prerequisites
 description: Prerequisites for installing YugabyteDB Anywhere in your Kubernetes environment
 headContent: What you need to install YugabyteDB Anywhere
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: prerequisites-kubernetes
     parent: install-yugabyte-platform
     weight: 20

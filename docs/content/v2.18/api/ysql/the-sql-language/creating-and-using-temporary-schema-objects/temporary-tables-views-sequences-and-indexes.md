@@ -4,7 +4,7 @@ headerTitle: Temporary tables, views, sequences, and indexes
 linkTitle: Temp tables, views, sequences, and indexes
 description: Describes the dedicated syntax for creating temporary tables, views, and sequences. Shows that the index on a temporary table is necessarily temporary. [YSQL]
 menu:
-  stable:
+  v2.18:
     identifier: temporary-tables-views-sequences-and-indexes
     parent: creating-and-using-temporary-schema-objects
     weight: 100

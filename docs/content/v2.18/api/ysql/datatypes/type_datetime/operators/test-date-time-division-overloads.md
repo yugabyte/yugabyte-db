@@ -4,7 +4,7 @@ headerTitle: Test the date-time division overloads
 linkTitle: Test division overloads
 description: Presents code that tests the date-time division overloads. [YSQL]
 menu:
-  stable:
+  v2.18:
     identifier: test-date-time-division-overloads
     parent: date-time-operators
     weight: 50

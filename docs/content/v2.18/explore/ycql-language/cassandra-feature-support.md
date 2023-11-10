@@ -5,7 +5,7 @@ description: Summary of YugabyteDB's parity to Cassandra features
 headcontent: YugabyteDB supports most standard Cassandra features
 image: /images/section_icons/secure/create-roles.png
 menu:
-  stable:
+  v2.18:
     identifier: explore-ycql-language-feature-support
     parent: explore-ycql-language
     weight: 50

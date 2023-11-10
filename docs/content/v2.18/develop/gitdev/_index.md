@@ -4,7 +4,7 @@ linkTitle: Cloud-native development
 description: Integrated development environments as code and configuration
 image: /images/section_icons/develop/git.png
 menu:
-  stable:
+  v2.18:
     identifier: gitdev
     parent: develop
     weight: 590

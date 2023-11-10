@@ -4,7 +4,7 @@ headerTitle: Google Kubernetes Engine (GKE)
 linkTitle: Google Kubernetes Engine (GKE)
 description: Use Helm chart to deploy a multi-region YugabyteDB cluster that spans three GKE clusters across three regions.
 menu:
-  stable:
+  v2.18:
     parent: deploy-kubernetes-mc
     name: Google Kubernetes Engine
     identifier: k8s-mc-gke-1

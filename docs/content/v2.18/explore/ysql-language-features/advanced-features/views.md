@@ -4,7 +4,7 @@ linkTitle: Views
 description: Views in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  stable:
+  v2.18:
     identifier: advanced-features-views
     parent: advanced-features
     weight: 230

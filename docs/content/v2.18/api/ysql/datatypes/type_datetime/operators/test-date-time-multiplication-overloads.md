@@ -4,7 +4,7 @@ headerTitle: Test the date-time multiplication overloads
 linkTitle: Test multiplication overloads
 description: Presents code that tests the date-time multiplication overloads. [YSQL]
 menu:
-  stable:
+  v2.18:
     identifier: test-date-time-multiplication-overloads
     parent: date-time-operators
     weight: 40

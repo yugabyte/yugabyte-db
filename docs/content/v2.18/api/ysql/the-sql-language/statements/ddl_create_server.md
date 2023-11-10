@@ -4,7 +4,7 @@ headerTitle: CREATE SERVER
 linkTitle: CREATE SERVER
 description: Use the CREATE SERVER statement to create a foreign server.
 menu:
-  stable:
+  v2.18:
     identifier: ddl_create_server
     parent: statements
 type: docs

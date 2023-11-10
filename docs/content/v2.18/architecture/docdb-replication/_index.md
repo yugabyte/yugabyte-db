@@ -6,7 +6,7 @@ description: Learn how synchronous and asynchronous replication work in DocDB, i
 image: /images/section_icons/architecture/concepts.png
 headcontent: Learn how synchronous and asynchronous replication work in DocDB.
 menu:
-  stable:
+  v2.18:
     identifier: architecture-docdb-replication
     parent: architecture
     weight: 1135

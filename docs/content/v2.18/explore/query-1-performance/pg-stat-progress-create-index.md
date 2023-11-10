@@ -5,7 +5,7 @@ description: Use pg_stat_progress_create_index to get the CREATE INDEX command s
 headerTitle: View CREATE INDEX status with pg_stat_progress_create_index
 image: /images/section_icons/index/develop.png
 menu:
-  stable:
+  v2.18:
     identifier: pg-stat-progress-create-index
     parent: query-tuning
     weight: 450

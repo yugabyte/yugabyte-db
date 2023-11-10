@@ -4,7 +4,7 @@ headerTitle: jsonb_typeof() and json_typeof()
 linkTitle: jsonb_typeof()
 description: Return the data type of the JSON value as a SQL text value.
 menu:
-  stable:
+  v2.18:
     identifier: jsonb-typeof
     parent: json-functions-operators
     weight: 250

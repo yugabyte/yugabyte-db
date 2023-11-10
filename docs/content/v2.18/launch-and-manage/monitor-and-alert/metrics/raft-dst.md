@@ -5,7 +5,7 @@ linkTitle: Raft metrics
 headcontent: Monitor raft and distributed system metrics
 description: Learn about YugabyteDB's raft and distributed system metrics, and how to select and use the metrics.
 menu:
-  stable:
+  v2.18:
     identifier: raft-dst
     parent: metrics-overview
     weight: 130

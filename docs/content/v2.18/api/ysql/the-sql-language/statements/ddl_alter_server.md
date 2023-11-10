@@ -4,7 +4,7 @@ headerTitle: ALTER SERVER
 linkTitle: ALTER SERVER
 description: Use the ALTER SERVER statement to create alter a foreign server.
 menu:
-  stable:
+  v2.18:
     identifier: ddl_alter_server
     parent: statements
 type: docs

@@ -4,7 +4,7 @@ headerTitle: CREATE DOMAIN
 linkTitle: CREATE DOMAIN
 description: Use the CREATE DOMAIN statement to create a user-defined data type with optional constraints.
 menu:
-  stable:
+  v2.18:
     identifier: ddl_create_domain
     parent: statements
 type: docs

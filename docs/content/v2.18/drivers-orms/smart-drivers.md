@@ -5,7 +5,7 @@ description: Use YugabyteDB smart drivers to improve performance with connection
 headcontent: Manage connection load balancing automatically using smart drivers
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
-  stable:
+  v2.18:
     identifier: smart-drivers
     parent: drivers-orms
     weight: 400

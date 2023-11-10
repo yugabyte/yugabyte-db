@@ -4,7 +4,7 @@ headerTitle: Typecasting between values of different date-time datatypes
 linkTitle: Typecasting between date-time datatypes
 description: Describes how to typecast date-time values of different date-time datatypes. [YSQL]
 menu:
-  stable:
+  v2.18:
     identifier: typecasting-between-date-time-values
     parent: api-ysql-datatypes-datetime
     weight: 70

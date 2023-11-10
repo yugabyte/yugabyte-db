@@ -5,7 +5,7 @@ description: View terminated queries for all SQL statements executed by a server
 headerTitle: View terminated queries with yb_terminated_queries
 headcontent: See why a query failed
 menu:
-  stable:
+  v2.18:
     identifier: yb-terminated-queries
     parent: query-tuning
     weight: 350

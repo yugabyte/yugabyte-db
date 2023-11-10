@@ -4,7 +4,7 @@ headerTitle: file_fdw extension
 linkTitle: file_fdw
 description: Using the file_fdw extension in YugabyteDB
 menu:
-  stable:
+  v2.18:
     identifier: extension-file-fdw
     parent: pg-extensions
     weight: 20

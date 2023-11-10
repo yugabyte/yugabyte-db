@@ -6,7 +6,7 @@ description: Defining Foreign key constraint in YSQL
 headContent: Explore foreign keys in YugabyteDB using YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  stable:
+  v2.18:
     identifier: foreign-key-ysql
     parent: explore-indexes-constraints
     weight: 210

@@ -4,7 +4,7 @@ headerTitle: Declaring intervals
 linkTitle: Declaring intervals
 description: Explains that the nominally fourteen distinct interval declaration syntaxes have just six distinct semantics. [YSQL]
 menu:
-  stable:
+  v2.18:
     identifier: declaring-intervals
     parent: type-interval
     weight: 30

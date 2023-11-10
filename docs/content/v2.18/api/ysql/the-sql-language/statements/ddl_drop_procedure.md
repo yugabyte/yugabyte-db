@@ -4,7 +4,7 @@ headerTitle: DROP PROCEDURE
 linkTitle: DROP PROCEDURE
 description: Use the DROP PROCEDURE statement to remove a procedure from a database.
 menu:
-  stable:
+  v2.18:
     identifier: ddl_drop_procedure
     parent: statements
 type: docs

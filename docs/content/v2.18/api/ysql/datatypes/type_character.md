@@ -4,7 +4,7 @@ headerTitle: Character data types
 linkTitle: Character
 description: Use character-based data types to specify data of a string of Unicode characters.
 menu:
-  stable:
+  v2.18:
     identifier: api-ysql-datatypes-character
     parent: api-ysql-datatypes
 type: docs

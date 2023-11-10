@@ -5,7 +5,7 @@ linkTitle: Cloud prerequisites
 description: Prepare the OpenShift environment for YugabyteDB Anywhere
 headContent: Prepare OpenShift for YugabyteDB Anywhere
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: prepare-environment-4-OpenShift
     parent: install-yugabyte-platform
     weight: 55

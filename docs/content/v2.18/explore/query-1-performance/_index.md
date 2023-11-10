@@ -6,7 +6,7 @@ description: Tuning and optimizing query performance
 headcontent: Tuning and optimizing query performance
 image: /images/section_icons/index/develop.png
 menu:
-  stable:
+  v2.18:
     identifier: query-tuning
     parent: explore
     weight: 280

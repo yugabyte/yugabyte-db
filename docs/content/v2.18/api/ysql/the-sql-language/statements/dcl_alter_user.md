@@ -4,7 +4,7 @@ headerTitle: ALTER USER
 linkTitle: ALTER USER
 description: Use the ALTER USER statement to alter a role. ALTER USER is an alias for ALTER ROLE and is used to alter a role.
 menu:
-  stable:
+  v2.18:
     identifier: dcl_alter_user
     parent: statements
 type: docs

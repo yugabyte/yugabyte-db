@@ -4,7 +4,7 @@ headerTitle: Performance tuning for global applications in YSQL
 linkTitle: Global applications
 description: Learn how to speed up Transactions in multi-region deployments in YSQL.
 menu:
-  stable:
+  v2.18:
     identifier: transactions-global-apps-ysql
     parent: acid-transactions-1-ysql
     weight: 569

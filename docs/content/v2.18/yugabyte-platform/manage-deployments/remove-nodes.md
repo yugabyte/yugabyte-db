@@ -4,7 +4,7 @@ headerTitle: Eliminate an unresponsive node
 linkTitle: Eliminate an unresponsive node
 description: Use YugabyteDB Anywhere to eliminate an unresponsive node.
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: remove-nodes
     parent: manage-deployments
     weight: 20

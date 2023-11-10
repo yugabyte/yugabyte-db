@@ -5,7 +5,7 @@ linkTitle: Connect an app
 description: Connect a PHP application using php-pgsql driver for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
-  stable:
+  v2.18:
     identifier: php-ysql-driver
     parent: php-drivers
     weight: 410

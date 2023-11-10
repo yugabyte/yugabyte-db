@@ -6,7 +6,7 @@ description: YugabyteDB configuration reference for core database services, incl
 headcontent: Configure core database services
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
-  stable:
+  v2.18:
     identifier: configuration
     parent: reference
     weight: 2600

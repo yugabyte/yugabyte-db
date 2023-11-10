@@ -4,7 +4,7 @@ headerTitle: DROP SERVER
 linkTitle: DROP SERVER
 description: Use the DROP SERVER statement to drop a foreign server.
 menu:
-  stable:
+  v2.18:
     identifier: ddl_drop_foreign_server
     parent: statements
 type: docs

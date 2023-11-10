@@ -6,7 +6,7 @@ description: Overview of monitoring and alerts for YugabyteDB databases
 image: /images/section_icons/explore/monitoring.png
 headcontent: Monitor cluster performance and activity
 menu:
-  stable:
+  v2.18:
     identifier: monitor-and-alert
     parent: launch-and-manage
 type: indexpage

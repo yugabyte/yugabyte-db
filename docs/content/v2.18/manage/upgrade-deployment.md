@@ -5,7 +5,7 @@ linkTitle: Upgrade a deployment
 description: Upgrade a deployment
 headcontent: Upgrade YugabyteDB on your deployment
 menu:
-  stable:
+  v2.18:
     identifier: manage-upgrade-deployment
     parent: manage
     weight: 706

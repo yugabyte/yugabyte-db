@@ -4,7 +4,7 @@ headerTitle: HypoPG extension
 linkTitle: HypoPG
 description: Using the HypoPG extension in YugabyteDB
 menu:
-  stable:
+  v2.18:
     identifier: extension-hypopg
     parent: pg-extensions
     weight: 20

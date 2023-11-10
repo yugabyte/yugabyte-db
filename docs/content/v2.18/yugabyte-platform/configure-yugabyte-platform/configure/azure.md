@@ -6,7 +6,7 @@ description: Configure YugabyteDB Anywhere on Azure
 image: /images/section_icons/deploy/enterprise.png
 headcontent: Configure YugabyteDB Anywhere on Azure
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     identifier: configure-3-azure
     parent: configure-yugabyte-platform
     weight: 5

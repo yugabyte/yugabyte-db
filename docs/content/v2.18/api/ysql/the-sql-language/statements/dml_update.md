@@ -4,7 +4,7 @@ headerTitle: UPDATE
 linkTitle: UPDATE
 description: Use UPDATE to modify values of specified columns in all rows that meet certain conditions. When conditions are not provided in WHERE clause, all rows update.
 menu:
-  stable:
+  v2.18:
     identifier: dml_update
     parent: statements
 type: docs

@@ -5,7 +5,7 @@ linkTitle: Install YBA software
 description: Install the YugabyteDB Anywhere software.
 headContent: Install YBA software using Replicated and Docker containers
 menu:
-  stable_yugabyte-platform:
+  v2.18_yugabyte-platform:
     parent: install-yugabyte-platform
     identifier: install-software-1-default
     weight: 78

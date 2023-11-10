@@ -4,7 +4,7 @@ linkTitle: variance(), var_pop(), var_samp(), stddev(), stddev_pop(), stddev_sam
 headerTitle: variance(), var_pop(), var_samp(), stddev(), stddev_pop(), stddev_samp()
 description: Describes the functionality of the variance(), var_pop(), var_samp(), stddev(), stddev_pop(), and stddev_samp() YSQL aggregate functions
 menu:
-  stable:
+  v2.18:
     identifier: variance-stddev
     parent: aggregate-function-syntax-semantics
     weight: 40

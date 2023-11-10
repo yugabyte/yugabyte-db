@@ -6,7 +6,7 @@ description: Horizontal scalability in YugabyteDB.
 headcontent: Handle larger workloads by adding nodes to your cluster
 image: /images/section_icons/explore/linear_scalability.png
 menu:
-  stable:
+  v2.18:
     identifier: explore-scalability
     parent: explore
     weight: 220

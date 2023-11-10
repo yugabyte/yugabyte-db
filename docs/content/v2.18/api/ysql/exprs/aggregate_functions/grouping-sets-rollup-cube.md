@@ -4,7 +4,7 @@ linkTitle: Grouping sets, rollup, cube
 headerTitle: Using the GROUPING SETS, ROLLUP, and CUBE syntax for aggregate function invocation
 description: Explains the GROUPING SETS, ROLLUP, and CUBE syntax and semantics for aggregate function invocation.
 menu:
-  stable:
+  v2.18:
     identifier: grouping-sets-rollup-cube
     parent: aggregate-functions
     weight: 60

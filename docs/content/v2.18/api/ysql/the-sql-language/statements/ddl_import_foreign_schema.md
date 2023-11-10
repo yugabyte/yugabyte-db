@@ -4,7 +4,7 @@ headerTitle: IMPORT FOREIGN SCHEMA
 linkTitle: IMPORT FOREIGN SCHEMA
 description: Use the IMPORT FOREIGN SCHEMA statement to import tables from a foreign schema.
 menu:
-  stable:
+  v2.18:
     identifier: ddl_import_foreign_schema
     parent: statements
 type: docs

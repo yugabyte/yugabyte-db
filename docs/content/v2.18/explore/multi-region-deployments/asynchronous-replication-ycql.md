@@ -5,7 +5,7 @@ linkTitle: xCluster (2+ regions)
 description: Multi-region deployment using asynchronous replication across two or more data centers in YCQL.
 headContent: Unidirectional (master-follower) and bidirectional (multi-master) replication
 menu:
-  stable:
+  v2.18:
     identifier: explore-multi-region-deployments-async-replication-2-ycql
     parent: explore-multi-region-deployments
     weight: 720

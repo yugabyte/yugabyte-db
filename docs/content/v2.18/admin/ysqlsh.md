@@ -5,7 +5,7 @@ linkTitle: ysqlsh
 description: Use the YSQL shell (ysqlsh) to interact with YugabyteDB.
 headcontent: Shell for interacting with the YugabyteDB YSQL API
 menu:
-  stable:
+  v2.18:
     identifier: ysqlsh
     parent: admin
     weight: 10

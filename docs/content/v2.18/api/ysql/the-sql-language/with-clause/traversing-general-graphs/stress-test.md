@@ -4,7 +4,7 @@ headerTitle: Stress testing different find_paths() implementations on maximally 
 linkTitle: Stress testing find_paths()
 description: This section stress-tests different find_paths() implementations on maximally connected graphs to show the critical importance of early pruning.
 menu:
-  stable:
+  v2.18:
     identifier: stress-test
     parent: traversing-general-graphs
     weight: 80

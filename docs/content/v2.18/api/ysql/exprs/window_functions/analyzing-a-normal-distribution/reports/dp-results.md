@@ -4,7 +4,7 @@ linkTitle: dp-results
 headerTitle: Output from running do_ntile(), do_percent_rank(), and do_cume_dist() on t4.dp_score
 description: Output from running do_ntile(), do_percent_rank(), and do_cume_dist() on t4.dp_score.
 menu:
-  stable:
+  v2.18:
     identifier: dp-results
     parent: normal-distribution-analysis-reports
     weight: 20
