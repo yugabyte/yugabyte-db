@@ -24,7 +24,7 @@ To zoom in to view granular data points, select a portion of the time range alon
 
 ![Fine grained metrics](/images/yp/fine-grain-metrics.png)
 
-Click the refresh button to zoom out and restore the original metric graphs.
+Click the refresh button to restore the default time range.
 
 ## Filter metrics
 
