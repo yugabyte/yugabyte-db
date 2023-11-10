@@ -791,6 +791,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
       params.setEnableYbc(taskParams().isEnableYbc());
       params.setYbcSoftwareVersion(taskParams().getYbcSoftwareVersion());
+      params.ybcGflags = userIntent.ybcFlags;
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
       params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
@@ -1231,6 +1232,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.setEnableYbc(taskParams().isEnableYbc());
       params.setYbcSoftwareVersion(taskParams().getYbcSoftwareVersion());
       params.setYbcInstalled(taskParams().isYbcInstalled());
+      params.ybcGflags = userIntent.ybcFlags;
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
       params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
@@ -2469,6 +2471,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.setYbcSoftwareVersion(taskParams().getYbcSoftwareVersion());
     params.installYbc = taskParams().installYbc;
     params.setYbcInstalled(taskParams().isYbcInstalled());
+    params.ybcGflags = userIntent.ybcFlags;
 
     params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
 

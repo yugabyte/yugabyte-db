@@ -218,6 +218,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
     // YBC server name
     public String ybcServerName = null;
+    public Map<String, String> ybcGflags = new HashMap<>();
     public String command = null;
     public String azCode = null;
   }
@@ -382,7 +383,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
         NodeDetails nodeDetails = u.getNode(taskParams().ybcServerName);
         ybcManager.copyYbcPackagesOnK8s(
-            config, u, nodeDetails, taskParams().getYbcSoftwareVersion());
+            config, u, nodeDetails, taskParams().getYbcSoftwareVersion(), taskParams().ybcGflags);
         break;
       case YBC_ACTION:
         u = Universe.getOrBadRequest(taskParams().getUniverseUUID());

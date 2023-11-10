@@ -276,14 +276,24 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           Set<NodeDetails> replicaTservers =
               new HashSet<NodeDetails>(
                   universe.getNodesInCluster(taskParams().getReadOnlyClusters().get(0).uuid));
-          installYbcOnThePods(universe.getName(), replicaTservers, true, ybcSoftwareVersion);
+          installYbcOnThePods(
+              universe.getName(),
+              replicaTservers,
+              true,
+              ybcSoftwareVersion,
+              taskParams().getReadOnlyClusters().get(0).userIntent.ybcFlags);
           performYbcAction(replicaTservers, true, "stop");
           createWaitForYbcServerTask(replicaTservers);
         } else {
           Set<NodeDetails> primaryTservers =
               new HashSet<NodeDetails>(
                   universe.getNodesInCluster(taskParams().getPrimaryCluster().uuid));
-          installYbcOnThePods(universe.getName(), primaryTservers, false, ybcSoftwareVersion);
+          installYbcOnThePods(
+              universe.getName(),
+              primaryTservers,
+              false,
+              ybcSoftwareVersion,
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags);
           performYbcAction(primaryTservers, true, "stop");
           createWaitForYbcServerTask(primaryTservers);
         }

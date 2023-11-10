@@ -5,20 +5,25 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import java.util.HashMap;
+import java.util.Map;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-public class UpdateUniverseYbcDetails extends UniverseTaskBase {
+public class UpdateUniverseYbcGflagsDetails extends UniverseTaskBase {
 
   @Inject
-  protected UpdateUniverseYbcDetails(BaseTaskDependencies baseTaskDependencies) {
+  protected UpdateUniverseYbcGflagsDetails(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
   }
 
-  public static class Params extends UniverseDefinitionTaskParams {}
+  public static class Params extends UniverseDefinitionTaskParams {
+    public Map<String, String> ybcGflags = new HashMap<>();
+  }
 
   protected Params taskParams() {
     return (Params) taskParams;
@@ -33,6 +38,7 @@ public class UpdateUniverseYbcDetails extends UniverseTaskBase {
   public void run() {
     try {
       log.info("Running {}", getName());
+      String errorString = null;
 
       // Create the update lambda.
       UniverseUpdater updater =
@@ -47,10 +53,9 @@ public class UpdateUniverseYbcDetails extends UniverseTaskBase {
                 log.error(errMsg);
                 throw new RuntimeException(errMsg);
               }
-              universeDetails.setYbcSoftwareVersion(taskParams().getYbcSoftwareVersion());
-              universeDetails.setEnableYbc(taskParams().isEnableYbc());
-              universeDetails.setYbcInstalled(taskParams().isYbcInstalled());
-              universe.setUniverseDetails(universeDetails);
+              for (Cluster cluster : universeDetails.clusters) {
+                cluster.userIntent.ybcFlags = taskParams().ybcGflags;
+              }
             }
           };
       // Perform the update. If unsuccessful, this will throw a runtime exception which we do not

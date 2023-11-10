@@ -355,7 +355,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             universe.getName(),
             tserversToAdd,
             isReadOnlyCluster,
-            universe.getUniverseDetails().getYbcSoftwareVersion());
+            universe.getUniverseDetails().getYbcSoftwareVersion(),
+            isReadOnlyCluster
+                ? universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.ybcFlags
+                : universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags);
         createWaitForYbcServerTask(tserversToAdd);
       }
     }

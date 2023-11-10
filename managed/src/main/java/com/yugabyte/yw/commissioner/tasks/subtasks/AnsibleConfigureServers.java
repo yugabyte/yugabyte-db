@@ -95,6 +95,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     public boolean masterJoinExistingCluster = true;
 
     public AuditLogConfig auditLogConfig = null;
+    public Map<String, String> ybcGflags = new HashMap<>();
   }
 
   @Override

@@ -1256,6 +1256,22 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     return nodeDetailsSet.stream().filter(n -> n.isInPlacement(uuid)).collect(Collectors.toSet());
   }
 
+  /**
+   * Helper API to retrieve tserver nodes that are in a specified cluster.
+   *
+   * @param uuid UUID of the cluster that we want tserver nodes from.
+   * @return A Set of NodeDetails that are in the specified cluster.
+   */
+  @JsonIgnore
+  public Set<NodeDetails> getTserverNodesInCluster(UUID uuid) {
+    if (nodeDetailsSet == null) {
+      return null;
+    }
+    return nodeDetailsSet.stream()
+        .filter(n -> n.isInPlacement(uuid) && n.isTserver)
+        .collect(Collectors.toSet());
+  }
+
   @JsonIgnore
   public Cluster getClusterByNodeUUID(UUID nodeUUID) {
     NodeDetails node =
