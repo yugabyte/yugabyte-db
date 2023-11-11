@@ -31,12 +31,16 @@
 //
 #pragma once
 
+#include <atomic>
 #include <future>
 #include <memory>
+#include <mutex>
+#include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
+#include <utility>
 #include <vector>
-#include <atomic>
 
 #include "yb/common/common_util.h"
 #include "yb/common/pg_catversions.h"
@@ -401,10 +405,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void AutoInitServiceFlags();
 
   void InvalidatePgTableCache();
-
-  Result<std::unordered_set<uint32_t>> GetPgDatabaseOids();
-
-  void ScheduleCheckObjectIdAllocators();
 
   std::string log_prefix_;
 
