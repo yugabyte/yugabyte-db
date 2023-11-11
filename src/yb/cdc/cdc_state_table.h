@@ -106,7 +106,7 @@ class CDCStateTableRange;
 // uses the YBClient and YBSession to access the table.
 class CDCStateTable {
  public:
-  explicit CDCStateTable(client::AsyncClientInitialiser* async_client_init)
+  explicit CDCStateTable(client::AsyncClientInitializer* async_client_init)
       : async_client_init_(async_client_init) {}
   explicit CDCStateTable(client::YBClient* client) : client_(client) {}
 
@@ -137,7 +137,7 @@ class CDCStateTable {
       QLOperator condition_op = QL_OP_NOOP) EXCLUDES(mutex_);
 
   std::shared_mutex mutex_;
-  client::AsyncClientInitialiser* async_client_init_ = nullptr;
+  client::AsyncClientInitializer* async_client_init_ = nullptr;
   client::YBClient* client_ = nullptr;
 
   std::shared_ptr<client::TableHandle> cdc_table_ GUARDED_BY(mutex_);

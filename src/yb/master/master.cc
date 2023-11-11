@@ -214,7 +214,7 @@ Status Master::Init() {
     shared_object().SetHostEndpoint(bound_addresses.front(), get_hostname());
   }
 
-  cdc_state_client_init_ = std::make_unique<client::AsyncClientInitialiser>(
+  cdc_state_client_init_ = std::make_unique<client::AsyncClientInitializer>(
       "cdc_state_client",
       default_client_timeout(),
       "" /* tserver_uuid */,
@@ -273,7 +273,7 @@ const std::string& Master::permanent_uuid() const {
   return empty_uuid;
 }
 
-void Master::SetupAsyncClientInit(client::AsyncClientInitialiser* async_client_init) {
+void Master::SetupAsyncClientInit(client::AsyncClientInitializer* async_client_init) {
   async_client_init->builder()
       .set_master_address_flag_name("master_addresses")
       .default_admin_operation_timeout(MonoDelta::FromMilliseconds(FLAGS_master_rpc_timeout_ms))
