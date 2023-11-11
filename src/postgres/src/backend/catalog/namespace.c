@@ -4158,8 +4158,7 @@ RemoveTempRelations(Oid tempNamespaceId)
 	object.objectSubId = 0;
 
 	if (IsYugaByteEnabled())
-		YBIncrementDdlNestingLevel(false /* is_catalog_version_increment */,
-								   false /* is_breaking_catalog_change */);
+		YBIncrementDdlNestingLevel(YB_DDL_MODE_SILENT);
 	performDeletion(&object, DROP_CASCADE,
 					PERFORM_DELETION_INTERNAL |
 					PERFORM_DELETION_QUIETLY |

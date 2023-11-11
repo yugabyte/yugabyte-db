@@ -603,13 +603,37 @@ bool YBIsInitDbAlreadyDone();
 
 int YBGetDdlNestingLevel();
 void YbSetIsGlobalDDL();
-void YBIncrementDdlNestingLevel(bool is_catalog_version_increment,
-								bool is_breaking_catalog_change);
+
+typedef enum YbSysCatalogModificationAspect
+{
+	YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT = 1,
+	YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE = 2
+} YbSysCatalogModificationAspect;
+
+typedef enum YbDdlMode
+{
+	YB_DDL_MODE_SILENT = 0,
+
+	YB_DDL_MODE_VERSION_INCREMENT =
+		YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT,
+
+	YB_DDL_MODE_BREAKING_CHANGE =
+		YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT |
+		YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE
+} YbDdlMode;
+
+void YBIncrementDdlNestingLevel(YbDdlMode mode);
 void YBDecrementDdlNestingLevel();
-bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
-								 bool *is_catalog_version_increment,
-								 bool *is_breaking_catalog_change,
-								 ProcessUtilityContext context);
+
+typedef struct YbDdlModeOptional
+{
+	bool has_value;
+	YbDdlMode value;
+} YbDdlModeOptional;
+
+YbDdlModeOptional YbGetDdlMode(
+	PlannedStmt *pstmt, ProcessUtilityContext context);
+
 extern void YBBeginOperationsBuffering();
 extern void YBEndOperationsBuffering();
 extern void YBResetOperationsBuffering();

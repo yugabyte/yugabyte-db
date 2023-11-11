@@ -392,7 +392,7 @@ Status PgTxnManager::FinishTransaction(Commit commit) {
   }
 
   VLOG_TXN_STATE(2) << (commit ? "Committing" : "Aborting") << " transaction.";
-  Status status = client_->FinishTransaction(commit, DdlType::NonDdl);
+  Status status = client_->FinishTransaction(commit);
   VLOG_TXN_STATE(2) << "Transaction " << (commit ? "commit" : "abort") << " status: " << status;
   ResetTxnAndSession();
   return status;
@@ -419,7 +419,7 @@ Status PgTxnManager::EnterSeparateDdlTxnMode() {
   RSTATUS_DCHECK(!IsDdlMode(), IllegalState,
                  "EnterSeparateDdlTxnMode called when already in a DDL transaction");
   VLOG_TXN_STATE(2);
-  ddl_type_ = DdlType::DdlWithoutDocdbSchemaChanges;
+  ddl_mode_.emplace();
   VLOG_TXN_STATE(2);
   return Status::OK();
 }
@@ -430,20 +430,20 @@ Status PgTxnManager::ExitSeparateDdlTxnMode(Commit commit) {
     RSTATUS_DCHECK(!commit, IllegalState, "Commit ddl txn called when not in a DDL transaction");
     return Status::OK();
   }
-  RETURN_NOT_OK(client_->FinishTransaction(commit, ddl_type_));
-  ddl_type_ = DdlType::NonDdl;
+  RETURN_NOT_OK(client_->FinishTransaction(commit, ddl_mode_));
+  ddl_mode_.reset();
   return Status::OK();
 }
 
 void PgTxnManager::SetDdlHasSyscatalogChanges() {
   if (IsDdlMode()) {
-    ddl_type_ = DdlType::DdlWithDocdbSchemaChanges;
+    ddl_mode_->has_docdb_schema_changes = true;
     return;
   }
   // There are only 2 cases where we may be performing DocDB schema changes outside of DDL mode:
   // 1. During initdb, when we do not use a transaction at all.
   // 2. When yb_non_ddl_txn_for_sys_tables_allowed is set. Here we would use a regular transaction.
-  // DdlWithDocdbSchemaChanges is mainly used for DDL atomicity, which is disabled for the PG
+  // has_docdb_schema_changes is mainly used for DDL atomicity, which is disabled for the PG
   // system catalog tables. Both cases above are primarily used for modifying the system catalog,
   // so there is no need to set this flag here.
   DCHECK(YBCIsInitDbModeEnvVarSet() ||
@@ -452,7 +452,7 @@ void PgTxnManager::SetDdlHasSyscatalogChanges() {
 
 std::string PgTxnManager::TxnStateDebugStr() const {
   return YB_CLASS_TO_STRING(
-      ddl_type,
+      ddl_mode,
       read_only,
       deferrable,
       txn_in_progress,

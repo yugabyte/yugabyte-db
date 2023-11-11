@@ -45,15 +45,12 @@
 namespace yb {
 namespace pggate {
 
-YB_DEFINE_ENUM(
-  DdlType,
-  // Not a DDL operation.
-  ((NonDdl, 0))
-  // DDL operation that does not modify the DocDB schema protobufs.
-  ((DdlWithoutDocdbSchemaChanges, 1))
-  // DDL operation that modifies the DocDB schema protobufs.
-  ((DdlWithDocdbSchemaChanges, 2))
-);
+struct DdlMode {
+  bool has_docdb_schema_changes{false};
+
+  std::string ToString() const;
+  void ToPB(tserver::PgFinishTransactionRequestPB_DdlModePB* dest) const;
+};
 
 #define YB_PG_CLIENT_SIMPLE_METHODS \
     (AlterDatabase)(AlterTable) \
@@ -92,7 +89,7 @@ class PgClient {
 
   Result<client::VersionedTablePartitionList> GetTablePartitionList(const PgObjectId& table_id);
 
-  Status FinishTransaction(Commit commit, DdlType ddl_type);
+  Status FinishTransaction(Commit commit, std::optional<DdlMode> ddl_mode = std::nullopt);
 
   Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
 
