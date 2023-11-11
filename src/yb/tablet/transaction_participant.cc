@@ -205,6 +205,8 @@ class TransactionParticipant::Impl
       return false;
     }
 
+    loader_.StartShutdown();
+
     wait_queue_poller_.Shutdown();
     if (wait_queue_) {
       wait_queue_->StartShutdown();
@@ -250,7 +252,7 @@ class TransactionParticipant::Impl
     }
 
     rpcs_.Shutdown();
-    loader_.Shutdown();
+    loader_.CompleteShutdown();
     for (auto& resolver : status_resolvers) {
       resolver.Shutdown();
     }
