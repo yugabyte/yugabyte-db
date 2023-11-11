@@ -15,6 +15,8 @@
 
 #include <mutex>
 #include <queue>
+#include <unordered_map>
+#include <unordered_set>
 
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/mem_fun.hpp>
@@ -57,6 +59,7 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/flags/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/random_util.h"
@@ -107,6 +110,11 @@ TAG_FLAG(ysql_cdc_active_replication_slot_window_ms, advanced);
 
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_int32(cdc_read_rpc_timeout_ms);
+
+DEFINE_RUNTIME_int32(
+    check_pg_object_id_allocators_interval_secs, 3600 * 3,
+    "Interval at which pg object id allocators are checked for dropped databases.");
+TAG_FLAG(check_pg_object_id_allocators_interval_secs, advanced);
 
 
 namespace yb::tserver {
@@ -362,6 +370,7 @@ class PgClientServiceImpl::Impl {
         transaction_pool_provider_(std::move(transaction_pool_provider)),
         table_cache_(client_future),
         check_expired_sessions_(&messenger->scheduler()),
+        check_object_id_allocators_(&messenger->scheduler()),
         xcluster_context_(xcluster_context),
         pg_node_level_mutation_counter_(pg_node_level_mutation_counter),
         response_cache_(parent_mem_tracker, metric_entity),
@@ -370,6 +379,7 @@ class PgClientServiceImpl::Impl {
           return BuildTransaction(std::forward<decltype(args)>(args)...);
         }) {
     ScheduleCheckExpiredSessions(CoarseMonoClock::now());
+    ScheduleCheckObjectIdAllocators();
     cdc_state_client_init_ = std::make_unique<client::AsyncClientInitialiser>(
         "cdc_state_client", std::chrono::milliseconds(FLAGS_cdc_read_rpc_timeout_ms),
         permanent_uuid, tablet_server_opts, metric_entity, parent_mem_tracker, messenger);
@@ -381,6 +391,7 @@ class PgClientServiceImpl::Impl {
     cdc_state_table_.reset();
     cdc_state_client_init_->Shutdown();
     check_expired_sessions_.Shutdown();
+    check_object_id_allocators_.Shutdown();
   }
 
   Status Heartbeat(
@@ -509,18 +520,6 @@ class PgClientServiceImpl::Impl {
     oid_chunk.oid_count--;
     resp->set_new_oid(new_oid);
     return Status::OK();
-  }
-
-  void CheckObjectIdAllocators(const std::unordered_set<uint32_t>& db_oids) {
-    std::lock_guard lock(mutex_);
-    for (auto it = reserved_oids_map_.begin(); it != reserved_oids_map_.end();) {
-      if (db_oids.count(it->first) == 0) {
-        LOG(INFO) << "Erase PG object id allocator of database: " << it->first;
-        it = reserved_oids_map_.erase(it);
-      } else {
-        it++;
-      }
-    }
   }
 
   Status GetCatalogMasterVersion(
@@ -1369,6 +1368,50 @@ class PgClientServiceImpl::Impl {
     return {std::move(watcher), txn};
   }
 
+  Result<std::unordered_set<uint32_t>> GetPgDatabaseOids() {
+    LOG(INFO) << "Fetching set of database oids";
+    auto namespaces = VERIFY_RESULT(client().ListNamespaces(YQL_DATABASE_PGSQL));
+    std::unordered_set<uint32_t> result;
+    for (const auto& ns : namespaces) {
+      result.insert(VERIFY_RESULT(GetPgsqlDatabaseOid(ns.id.id())));
+    }
+    LOG(INFO) << "Successfully fetched " << result.size() << " database oids";
+    return result;
+  }
+
+  void CheckObjectIdAllocators(const std::unordered_set<uint32_t>& db_oids) {
+    std::lock_guard lock(mutex_);
+    std::erase_if(
+        reserved_oids_map_,
+        [&db_oids](const auto& item) {
+          const auto& [db_oid, _] = item;
+          if (!db_oids.contains(db_oid)) {
+            LOG(INFO) << "Erase PG object id allocator of database: " << db_oid;
+            return true;
+          }
+          return false;
+        });
+  }
+
+  void ScheduleCheckObjectIdAllocators() {
+    LOG(INFO) << "ScheduleCheckObjectIdAllocators";
+    check_object_id_allocators_.Schedule(
+      [this](const Status& status) {
+        if (!status.ok()) {
+          LOG(INFO) << status;
+          return;
+        }
+        auto db_oids = GetPgDatabaseOids();
+        if (db_oids.ok()) {
+          CheckObjectIdAllocators(*db_oids);
+        } else {
+          LOG(WARNING) << "Could not get the set of database oids: " << ResultToStatus(db_oids);
+        }
+        ScheduleCheckObjectIdAllocators();
+      },
+      std::chrono::seconds(FLAGS_check_pg_object_id_allocators_interval_secs));
+  }
+
   const TabletServerIf& tablet_server_;
   std::shared_future<client::YBClient*> client_future_;
   scoped_refptr<ClockBase> clock_;
@@ -1408,6 +1451,7 @@ class PgClientServiceImpl::Impl {
   std::atomic<int64_t> session_serial_no_{0};
 
   rpc::ScheduledTaskTracker check_expired_sessions_;
+  rpc::ScheduledTaskTracker check_object_id_allocators_;
 
   std::unique_ptr<yb::client::AsyncClientInitialiser> cdc_state_client_init_;
   std::shared_ptr<cdc::CDCStateTable> cdc_state_table_;
@@ -1453,10 +1497,6 @@ void PgClientServiceImpl::Perform(
 
 void PgClientServiceImpl::InvalidateTableCache() {
   impl_->InvalidateTableCache();
-}
-
-void PgClientServiceImpl::CheckObjectIdAllocators(const std::unordered_set<uint32_t>& db_oids) {
-  impl_->CheckObjectIdAllocators(db_oids);
 }
 
 size_t PgClientServiceImpl::TEST_SessionsCount() {

@@ -36,8 +36,6 @@
 #include <limits>
 #include <list>
 #include <thread>
-#include <utility>
-#include <vector>
 
 #include "yb/client/auto_flags_manager.h"
 #include "yb/client/client.h"
@@ -105,7 +103,6 @@
 #include "yb/util/status_log.h"
 #include "yb/util/ntp_clock.h"
 
-#include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
 using std::make_shared;
@@ -233,12 +230,7 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_port, yb::pgwrapper::PgProcessConf::kDef
     "Ysql Connection Manager port to which clients will connect. This must be different from the "
     "postgres port set via pgsql_proxy_bind_address. Default is 5433.");
 
-DEFINE_UNKNOWN_int32(check_pg_object_id_allocators_interval_secs, 3600 * 3,
-    "Interval at which the TS check pg object id allocators for dropped databases.");
-TAG_FLAG(check_pg_object_id_allocators_interval_secs, advanced);
-
-namespace yb {
-namespace tserver {
+namespace yb::tserver {
 
 namespace {
 
@@ -670,10 +662,6 @@ Status TabletServer::Start() {
   RETURN_NOT_OK(maintenance_manager_->Init());
 
   google::FlushLogFiles(google::INFO); // Flush the startup messages.
-
-  if (FLAGS_enable_ysql) {
-    ScheduleCheckObjectIdAllocators();
-  }
 
   return Status::OK();
 }
@@ -1324,49 +1312,4 @@ void TabletServer::SetXClusterDDLOnlyMode(bool is_xcluster_read_only_mode) {
   xcluster_read_only_mode_.store(is_xcluster_read_only_mode, std::memory_order_release);
 }
 
-Result<std::unordered_set<uint32_t>> TabletServer::GetPgDatabaseOids() {
-  LOG(INFO) << "Read pg_database to get the set of database oids";
-  std::unordered_set<uint32_t> db_oids;
-  auto conn = VERIFY_RESULT(pgwrapper::PGConnBuilder({
-    .host = PgDeriveSocketDir(pgsql_proxy_bind_address()),
-    .port = pgsql_proxy_bind_address().port(),
-    .dbname = "template1",
-    .user = "postgres",
-    .password = UInt64ToString(GetSharedMemoryPostgresAuthKey()),
-  }).Connect());
-
-  auto res = VERIFY_RESULT(conn.Fetch("SELECT oid FROM pg_database"));
-  auto lines = PQntuples(res.get());
-  for (int i = 0; i != lines; ++i) {
-    const auto oid = VERIFY_RESULT(pgwrapper::GetValue<pgwrapper::PGOid>(res.get(), i, 0));
-    db_oids.insert(oid);
-  }
-  LOG(INFO) << "Successfully read " << db_oids.size() << " database oids from pg_database";
-  return db_oids;
-}
-
-void TabletServer::ScheduleCheckObjectIdAllocators() {
-  messenger()->scheduler().Schedule(
-      [this](const Status& status) {
-        if (!status.ok()) {
-          LOG(INFO) << status;
-          return;
-        }
-        Result<std::unordered_set<uint32_t>> db_oids = GetPgDatabaseOids();
-        if (db_oids.ok()) {
-          auto pg_client_service = pg_client_service_.lock();
-          if (pg_client_service) {
-            pg_client_service->CheckObjectIdAllocators(*db_oids);
-          } else {
-            LOG(WARNING) << "Could not call CheckObjectIdAllocators";
-          }
-        } else {
-          LOG(WARNING) << "Could not get the set of database oids: " << ResultToStatus(db_oids);
-        }
-        ScheduleCheckObjectIdAllocators();
-      },
-      std::chrono::seconds(FLAGS_check_pg_object_id_allocators_interval_secs));
-}
-
-}  // namespace tserver
-}  // namespace yb
+}  // namespace yb::tserver
