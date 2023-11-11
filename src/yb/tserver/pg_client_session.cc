@@ -870,15 +870,23 @@ Status PgClientSession::FinishTransaction(
     const PgFinishTransactionRequestPB& req, PgFinishTransactionResponsePB* resp,
     rpc::RpcContext* context) {
   saved_priority_ = std::nullopt;
-  auto kind = req.ddl_mode() ? PgClientSessionKind::kDdl : PgClientSessionKind::kPlain;
+  auto is_ddl = false;
+  auto kind = PgClientSessionKind::kPlain;
+  auto has_docdb_schema_changes = false;
+  if (req.has_ddl_mode()) {
+    const auto& ddl_mode = req.ddl_mode();
+    is_ddl = true;
+    kind = PgClientSessionKind::kDdl;
+    has_docdb_schema_changes = ddl_mode.has_docdb_schema_changes();
+  }
   auto& txn = Transaction(kind);
   if (!txn) {
-    VLOG_WITH_PREFIX_AND_FUNC(2) << "ddl: " << req.ddl_mode() << ", no running transaction";
+    VLOG_WITH_PREFIX_AND_FUNC(2) << "ddl: " << is_ddl << ", no running transaction";
     return Status::OK();
   }
 
   const TransactionMetadata* metadata = nullptr;
-  if (FLAGS_report_ysql_ddl_txn_status_to_master && req.has_docdb_schema_changes()) {
+  if (has_docdb_schema_changes && FLAGS_report_ysql_ddl_txn_status_to_master) {
     metadata = VERIFY_RESULT(GetDdlTransactionMetadata(true, context->GetClientDeadline()));
     LOG_IF(DFATAL, !metadata) << "metadata is required";
   }
@@ -889,7 +897,7 @@ Status PgClientSession::FinishTransaction(
   if (req.commit()) {
     const auto commit_status = txn_value->CommitFuture().get();
     VLOG_WITH_PREFIX_AND_FUNC(2)
-        << "ddl: " << req.ddl_mode() << ", txn: " << txn_value->id()
+        << "ddl: " << is_ddl << ", txn: " << txn_value->id()
         << ", commit: " << commit_status;
     // If commit_status is not ok, we cannot be sure whether the commit was successful or not. It
     // is possible that the commit succeeded at the transaction coordinator but we failed to get
@@ -909,7 +917,7 @@ Status PgClientSession::FinishTransaction(
     }
   } else {
     VLOG_WITH_PREFIX_AND_FUNC(2)
-        << "ddl: " << req.ddl_mode() << ", txn: " << txn_value->id() << ", abort";
+        << "ddl: " << is_ddl << ", txn: " << txn_value->id() << ", abort";
     txn_value->Abort();
   }
 

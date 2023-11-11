@@ -16,6 +16,7 @@
 #pragma once
 
 #include <mutex>
+#include <optional>
 
 #include "yb/common/clock.h"
 #include "yb/common/transaction.h"
@@ -74,7 +75,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   bool IsTxnInProgress() const { return txn_in_progress_; }
   IsolationLevel GetIsolationLevel() const { return isolation_level_; }
-  bool IsDdlMode() const { return ddl_type_ != DdlType::NonDdl; }
+  bool IsDdlMode() const { return ddl_mode_.has_value(); }
   bool ShouldEnableTracing() const { return enable_tracing_; }
 
   void SetupPerformOptions(
@@ -123,7 +124,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   HybridTime read_time_for_follower_reads_;
   bool deferrable_ = false;
 
-  DdlType ddl_type_ = DdlType::NonDdl;
+  std::optional<DdlMode> ddl_mode_;
 
   // On a transaction conflict error we want to recreate the transaction with the same priority as
   // the last transaction. This avoids the case where the current transaction gets a higher priority

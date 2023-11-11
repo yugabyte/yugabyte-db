@@ -303,11 +303,14 @@ message PgGetCatalogMasterVersionRequestPB {
 }
 
 message PgFinishTransactionRequestPB {
+  message DdlModePB {
+    // This transaction contains changes to the DocDB schema protobufs.
+    bool has_docdb_schema_changes = 1;
+  }
+
   uint64 session_id = 1;
   bool commit = 2;
-  bool ddl_mode = 3;
-  // This transaction contains changes to the DocDB schema protobufs.
-  bool has_docdb_schema_changes = 4;
+  DdlModePB ddl_mode = 3;
 }
 
 message PgFinishTransactionResponsePB {
