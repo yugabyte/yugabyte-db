@@ -70,7 +70,7 @@ For information on key features planned for the upcoming releases, visit [Curren
 
 | Release series | Planned release |
 | :------------- | :-------------- |
-| v2.20 (LTS)    | Late 2023       |
+| v2.22 (STS)    | Mid 2024       |
 
 ## Recommended release series for projects
 
