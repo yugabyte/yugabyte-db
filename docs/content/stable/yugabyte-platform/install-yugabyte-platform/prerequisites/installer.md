@@ -22,13 +22,15 @@ You can install YugabyteDB Anywhere (YBA) using the following methods:
 
 All installation methods support installing YBA with and without (airgapped) Internet connectivity.
 
-Licensing (such as a license file in the case of Replicated, or appropriate repository access in the case of Kubernetes) may be required prior to installation.  Contact {{% support-platform %}} for assistance.
+Licensing (such as a license file in the case of YBA Installer or Replicated, or appropriate repository access in the case of Kubernetes) may be required prior to installation. Contact {{% support-platform %}} for assistance.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+
   <li>
     <a href="../installer/" class="nav-link active">
       <i class="fa-solid fa-building" aria-hidden="true"></i>YBA Installer</a>
   </li>
+
   <li>
     <a href="../default/" class="nav-link">
       <i class="fa-solid fa-cloud"></i>Replicated</a>
@@ -38,6 +40,7 @@ Licensing (such as a license file in the case of Replicated, or appropriate repo
     <a href="../kubernetes/" class="nav-link">
       <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>Kubernetes</a>
   </li>
+
 </ul>
 
 ## Supported Linux distributions
@@ -51,6 +54,7 @@ You can install YugabyteDB Anywhere using YBA Installer on the following Linux d
 - Ubuntu 20
 - RedHat Enterprise Linux 7
 - RedHat Enterprise Linux 8
+- SUSE Linux Enterprise Server (SLES) 15 SP4 ([Tech Preview](/preview/releases/versioning/#feature-availability))
 
 YugabyteDB Anywhere may also work on other Linux distributions; contact your YugabyteDB support representative if you need added support.
 

@@ -26,11 +26,11 @@ The replication factor of a read replica cluster can be an even number as well. 
 
 ## Writing to read replicas
 
-An application can send write requests to read replicas, but these write requests are internally redirected to the source of truth. This is because the read replicas are aware of the topology of the universe.
+An application can send write requests to read replicas, but these write requests are internally redirected to the source of truth. This is possible because the read replicas are aware of the topology of the universe.
 
 ## Schema changes
 
-Since read replicas are a Raft replication-level extension, the schema changes are transparently applied to these replicas. There is no need to execute DDL operations separately on the read replica cluster.
+Because read replicas are a Raft replication-level extension, the schema changes are transparently applied to these replicas. There is no need to execute DDL operations separately on the read replica cluster.
 
 ## Read replicas vs. eventual consistency
 

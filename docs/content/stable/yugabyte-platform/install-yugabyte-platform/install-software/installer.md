@@ -19,10 +19,12 @@ Use the following instructions to install YugabyteDB Anywhere (YBA) software. Fo
 Note: For higher availability, one or more additional YBA instances can be separately installed, and then configured later to serve as passive warm standby servers. See [Enable High Availability](../../../administer-yugabyte-platform/high-availability/) for more information.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+
   <li>
     <a href="../installer/" class="nav-link active">
       <i class="fa-solid fa-building"></i>YBA Installer</a>
   </li>
+
   <li>
     <a href="../default/" class="nav-link">
       <i class="fa-solid fa-cloud"></i>Replicated</a>
@@ -113,7 +115,7 @@ To see a full list of commands, run the following command:
 $ ./yba-ctl help
 ```
 
-yba-ctl commands need to be run in the correct context; see [Running yb-ctl commands](#running-yba-ctl-commands).
+yba-ctl commands need to be run in the correct context; see [Running yba-ctl commands](#running-yba-ctl-commands).
 
 ### Configure YBA Installer
 
@@ -192,7 +194,7 @@ To perform an install, run the `install` command. Once started, an install can t
 $ sudo ./yba-ctl install
 ```
 
-You can also provide a license when running the `install` command by using the `-l` flag:
+You can also provide a license when running the `install` command by using the `-l` flag if you haven't [set the license prior to install](#provide-a-license) :
 
 ```sh
 $ sudo ./yba-ctl install -l /path/to/license
@@ -299,7 +301,7 @@ INFO[2023-04-24T23:58:14Z] Uninstalling prometheus
 INFO[2023-04-24T23:58:14Z] Uninstalling postgres
 ```
 
-To delete all data, run `clean` with the `--all` flag as follows:
+To delete all data, run `clean` with the `–-all` flag as follows:
 
 ```sh
 $ sudo yba-ctl clean --all
@@ -388,7 +390,7 @@ OAuth related settings are described in the following table. Only set these fiel
 | `ybOidcDiscoveryUri` | The OIDC Discovery URI corresponding to the OIDC SSO for your YBA installation. Must be a valid URL.
 | `ywWrl` | The Platform IP corresponding to the OIDC SSO for your YBA installation. Must be a valid URL.
 | `ybOidcScope` | The OIDC Scope corresponding to the OIDC SSO for your YBA installation.
-| `ybOidcEmailAtr` | The OIDC Email Attr corresponding to the OIDC SSO for your YBA installation. Must be a valid email address.
+| `ybOidcEmailAtr` | The OIDC Email Attribute corresponding to the OIDC SSO for your YBA installation. Must be a valid email address.
 
 Http and Https proxy settings are described in the following table.
 

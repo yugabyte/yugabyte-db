@@ -3,19 +3,22 @@ title: covar_pop(), covar_samp(), corr(), regr_%()
 linkTitle: linear regression
 headerTitle: Functions for linear regression analysis
 description: Describes the functionality of the covar_pop(), covar_samp(), corr(), and regr_%() family of YSQL aggregate functions for linear regression analysis
-image: /images/section_icons/api/ysql.png
+image: /images/section_icons/api/subsection.png
 menu:
   stable:
     identifier: linear-regression
     parent: aggregate-function-syntax-semantics
     weight: 50
 type: indexpage
+showRightNav: true
 ---
 
 This parent section and its two child sections describe these aggregate functions for linear regression analysis:
 
 - [`covar_pop()`](./covar-corr/#covar-pop-covar-samp), [`covar_samp()`](./covar-corr/#covar-pop-covar-samp), [`corr()`](./covar-corr/#corr)
 - [`regr_avgy()`](./regr/#regr-avgy-regr-avgx), [`regr_avgx()`](./regr/#regr-avgy-regr-avgx), [`regr_count()`](./regr/#regr-count), [`regr_slope()`](./regr/#regr-slope-regr-intercept), [`regr_intercept()`](./regr/#regr-slope-regr-intercept), [`regr_r2()`](./regr/#regr-r2), [`regr_syy()`](./regr/#regr-syy-regr-sxx-regr-sxy)[`regr_sxx()`](./regr/#regr-syy-regr-sxx-regr-sxy), [`regr_sxy()`](./regr/#regr-syy-regr-sxx-regr-sxy).
+
+## Overview
 
 See, for example, this Wikipedia article on [Regression analysis](https://en.wikipedia.org/wiki/Regression_analysis). Briefly, linear regression analysis estimates the relationship between a dependent variable and an independent variable, aiming to find the line that most closely fits the data. This is why each of the functions described has two input formal parameters. The _dependent variable_, the first formal parameter, is conventionally designated by _"y"_; and the _independent variable_, the second formal parameter, is conventionally designated by _"x"_.
 

@@ -10,6 +10,7 @@ menu:
     parent: date-time-data-types-semantics
     weight: 40
 type: indexpage
+showRightNav: true
 ---
 
 ## Why does the interval data type exist?

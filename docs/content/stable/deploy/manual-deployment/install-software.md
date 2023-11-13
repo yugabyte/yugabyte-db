@@ -1,8 +1,8 @@
 ---
-title: Install YugabyteDB software
+title: Manual software installation
 headerTitle: Install software
 linkTitle: 2. Install software
-description: Download and install YugabyteDB software to each node
+description: How to manually install YugabyteDB database on each node.
 menu:
   stable:
     identifier: deploy-manual-deployment-install-software

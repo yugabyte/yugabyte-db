@@ -25,6 +25,7 @@ Use the `DROP TRIGGER` statement to remove a trigger from the database.
 - `RESTRICT` is the default and it will throw an error if any objects depend on the trigger.
 - `CASCADE` will drop all objects that (transitively) depend on the trigger.
 
+
 ## Examples
 
 ```plpgsql

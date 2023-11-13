@@ -1,5 +1,5 @@
 ---
-title: Data types
+title: Data types in YSQL
 linkTitle: Data types
 description: Data types in YSQL
 image: /images/section_icons/secure/create-roles.png

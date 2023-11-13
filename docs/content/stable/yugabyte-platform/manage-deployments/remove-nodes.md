@@ -67,7 +67,7 @@ A typical universe has an RF of 3 or 5. At the end of the [node removal](#remove
 
 1. Select a node in the same availability zone as the removed node.
 
-2. Click **Actions > Start Master** corresponding to the node, as per the following illustration.
+2. Click **Actions > Start Master** corresponding to the node, as per the following illustration. 
 
    This action is only available if there are additional nodes in the same availability zone and these nodes do not have a running Master process.
 

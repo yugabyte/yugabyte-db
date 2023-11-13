@@ -86,17 +86,31 @@ Where
 - `property_literal` is a literal of either [boolean](../type_bool), [text](../type_text), or [map](../type_collection) data type.
 - `index_column` can be any data type except `MAP`, `SET`, `LIST`, `JSONB`, `USER_DEFINED_TYPE`.
 
+
 ## Semantics
 
 - An error is raised if transactions have not be enabled using the `WITH transactions = { 'enabled' : true }` clause on the table to be indexed. This is because secondary indexes internally use distributed transactions to ensure ACID guarantees in the updates to the secondary index and the associated primary key. More details [here](https://www.yugabyte.com/blog/yugabyte-db-1-1-new-feature-speeding-up-queries-with-secondary-indexes/).
 - An error is raised if `index_name` already exists in the associated keyspace unless the `IF NOT EXISTS` option is used.
-- Indexes do not support TTL. An error is raised if data is inserted with TTL into a table with indexes.
 
 {{< note title="Note" >}}
 
 When an index is created on an existing table, YugabyteDB will automatically backfill existing data into the index in an online manner (that is, while continuing to serve other concurrent writes and traffic). For more details on how this is done, see [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md).
 
 {{< /note >}}
+
+### User enforced consistency
+
+Indexes require transactions to have been enabled on the table. For cases where the table was created without enabling transactions, `consistency_level` has to be set to `user_enforced` like,
+
+```sql
+CREATE TABLE orders (id int PRIMARY KEY, warehouse int);
+CREATE INDEX ON orders (warehouse)
+      WITH transactions = { 'enabled' : false, 'consistency_level' : 'user_enforced' };
+```
+
+{{< warning >}}
+When using an index without transactions enabled, it is the responsibility of the application to retry any insert/update/delete failures to make sure that the table and index are in sync.
+{{< /warning >}}
 
 ### PARTITION KEY
 
@@ -113,6 +127,11 @@ When an index is created on an existing table, YugabyteDB will automatically bac
 - The `CLUSTERING ORDER BY` property can be used to set the ordering for each clustering column individually (default is `ASC`).
 - The `TABLETS = <num>` property specifies the number of tablets to be used for the specified YCQL index. Setting this property overrides the value from the [`--yb_num_shards_per_tserver`](../../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) option. For an example, see [Create an index specifying the number of tablets](#create-an-index-specifying-the-number-of-tablets).
 - Use the `AND` operator to use multiple index properties.
+- When setting a TTL on the index using `default_time_to_live`, please ensure that the TTL value is the same as that of the table's TTL. If they are different, it would lead to the index and the table being out of sync and would lead to unexpected behavior.
+
+{{<warning>}}
+**Caveat** : Row level TTL cannot be set on a table with a secondary indexes during INSERTS/UPDATES. {{<issue 10992>}}
+{{</warning>}}
 
 ### INCLUDED COLUMNS
 
@@ -308,7 +327,7 @@ ycqlsh:example> SELECT SUM(amount) FROM orders
 
 ### Create a table with a unique index
 
-You can do this as shown below.
+You can do this as follows:
 
 ```sql
 ycqlsh:example> CREATE TABLE emp (enum INT primary key,
@@ -351,8 +370,8 @@ ycqlsh:example> SELECT * FROM emp;
 
 ### Create an index specifying the number of tablets
 
-You can use the `CREATE INDEX` statement with the `WITH tablets = <num>` clause to specify the number of tablets for an index. This is useful to scale the index up or down based on requirements. 
-For example, for smaller or partial indexes, it may be wasteful to have a large number of shards (tablets). In that case, you can use this to reduce the number of tablets created for the index. 
+You can use the `CREATE INDEX` statement with the `WITH tablets = <num>` clause to specify the number of tablets for an index. This is useful to scale the index up or down based on requirements.
+For example, for smaller or partial indexes, it may be wasteful to have a large number of shards (tablets). In that case, you can use this to reduce the number of tablets created for the index.
 Similarly, for a very large index, you can use this statement to presplit the index into a large number of shards to get improved performance.
 
 Note that YugabyteDB, by default, presplits an index in `yb_num_shards_per_tserver * num_of_tserver` shards. This clause can be used to override that setting on per-index basis.

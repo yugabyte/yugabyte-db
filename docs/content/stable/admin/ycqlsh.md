@@ -9,6 +9,8 @@ menu:
     identifier: ycqlsh
     parent: admin
     weight: 20
+rightNav:
+  hideH4: true
 type: docs
 ---
 

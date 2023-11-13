@@ -36,7 +36,7 @@ Here are the different attribute rules.
 
 ## Unalterable subprogram attributes
 
-The _unalterable subprogram attributes_ can be set _only_ with the _create [or replace]_ statement. Each of _function_ and _procedure_ has its own _unalterable attributes_ rule. They share _language_ and _implementation_definition_. But the status _regular function_ or _window function_ is meaningless for a procedure.
+The _unalterable subprogram attributes_ can be set _only_ with the _create [or replace]_ statement. Each of _function_ and _procedure_ has its own _unalterable attributes_ rule. They share _language_ and _subprogram_implementation_. But the status _regular function_ or _window function_ is meaningless for a procedure.
 
 {{%ebnf%}}
   unalterable_fn_attribute,

@@ -51,8 +51,7 @@ It makes sense to select a transaction status tablet in a way such that the tran
 
 Provisional records are written to tablets containing the rows that need to be modified. These provisional records contain the transaction ID, the values that need to be written, and the provisional hybrid timestamp, which is not the final commit timestamp and will in general be different for different provisional records within the same transaction. In contrast, there is only one commit hybrid timestamp for the entire transaction.
 
-As the provisional records are written, it is possible to encounter conflicts with other transactions. In
-this case, the transaction would have to be aborted and restarted. These restarts still happen transparently to the client up to a certain number of retries.
+As the provisional records are written, it is possible to encounter conflicts with other transactions. In this case, the transaction would have to be aborted and restarted. These restarts still happen transparently to the client up to a certain number of retries.
 
 ### Commit the transaction
 

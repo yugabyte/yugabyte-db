@@ -3,7 +3,7 @@ title: Geo-partitioning helper functions
 headerTitle: Geo-partitioning helper functions
 linkTitle: Geo-partitioning helper functions
 description: This section contains all the helper functions for geo-distribution.
-image: /images/section_icons/api/ysql.png
+image: /images/section_icons/api/subsection.png
 menu:
   stable:
     identifier: geo-partitioning-helper-functions

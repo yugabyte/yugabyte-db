@@ -77,7 +77,7 @@ Although described here as a separate lock type for simplicity, the snapshot iso
 
 ## Locking granularities
 
-Locks can be taken at many levels of granularity.  For example, a serializable read lock could be taken at the level of an entire tablet, a single row, or a single column of a single row.  Such a lock will block attempts to take write locks at that or finer granularities. Thus, for example, a read lock taken at the row level will block attempts to write to that entire row or any sub column of it.
+Locks can be taken at many levels of granularity.  For example, a serializable read lock could be taken at the level of an entire tablet, a single row, or a single column of a single row.  Such a lock will block attempts to take write locks at that or finer granularities. Thus, for example, a read lock taken at the row level will block attempts to write to that entire row or any column in that row.
 
 In addition to the above-mentioned levels of granularity, locks in DocDB can be taken at  prefixes of the primary key columns, treating the hash columns as a single unit.  For example, if you created a YSQL table via:
 

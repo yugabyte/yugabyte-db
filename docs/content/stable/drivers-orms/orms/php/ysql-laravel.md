@@ -7,7 +7,7 @@ menu:
   stable:
     identifier: php-orm
     parent: orm-tutorials
-    weight: 660
+    weight: 830
 type: docs
 ---
 

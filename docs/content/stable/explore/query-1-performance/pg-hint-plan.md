@@ -48,6 +48,7 @@ yugabyte=# SET pg_hint_plan.enable_hint=ON;
 You can enable `pg_hint_plan` in different levels like [all PostgreSQL options can](../../../reference/configuration/yb-tserver/#postgresql-options).
 {{</note>}}
 
+
 ### Turn on debug output
 
 To view the specific hints that pg_hint_plan uses and forwards to the query planner, turn on debug output. This is helpful for situations where syntactical errors or wrong hint names are present in hint phrases. To view these debug prints, run the following commands:

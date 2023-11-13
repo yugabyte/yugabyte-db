@@ -47,11 +47,11 @@ For this example, assume you have two on-prem data centers in `us-west` and `us-
 
 One of the key benefits of a Hybrid cloud strategy is that you can slowly migrate applications from your on-prem data centers to the public cloud. The first phase of this process could be to move some applications to public cloud. For example, suppose you have two on-prem data centers with YugabyteDB deployed for your production and test applications as follows:
 
-![Two On-Prem DCs with YugabyteDB](/images/develop/multicloud/hybridcloud-2-onprem.png)
+![Two On-Premises data centers with YugabyteDB](/images/develop/multicloud/hybridcloud-2-onprem.png)
 
 As a part of your data center modernization and expansion, you could choose a public cloud provider in a region where you do not have a presence (for example, `us-central`) and move your testing application to that public cloud, as follows:
 
-![Two On-Prem DCs and a Public Cloud with Yugabyte](/images/develop/multicloud/hybridcloud-move-testing-app.png)
+![Two On-Premises data centers and a Public Cloud with Yugabyte](/images/develop/multicloud/hybridcloud-move-testing-app.png)
 
 {{<tip>}}
 To replicate your production data onto your test cluster, see [Backup and Restore](../../../manage/backup-restore/).
@@ -67,7 +67,7 @@ This move has multiple advantages:
 
 After you have tested out the new public cloud you have added to your infrastructure, you can begin moving more important and resource-intensive applications (like machine-learning logic/stream processing, and so on) to the newly adopted public cloud.
 
-![Two On-Prem DCs and a Public Cloud with Yugabyte](/images/develop/multicloud/hybridcloud-move-important-app.png)
+![Two On-Premises data centers and a Public Cloud with Yugabyte](/images/develop/multicloud/hybridcloud-move-important-app.png)
 
 The reason for moving resource-intensive applications to the public cloud is that it is easier to switch to powerful node instances that the public cloud provides. For example, [AWS Instance types](https://aws.amazon.com/ec2/instance-types/) and [GCP Instance Types](https://cloud.google.com/compute/docs/machine-resource).
 

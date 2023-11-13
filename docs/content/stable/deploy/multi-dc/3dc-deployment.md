@@ -8,7 +8,7 @@ menu:
   stable:
     parent: multi-dc
     identifier: 3dc-deployment
-    weight: 632
+    weight: 600
 type: docs
 ---
 

@@ -94,7 +94,7 @@ For information on the relevant YCQL API, see the following:
 
 #### Range-sharded tables
 
-In range-sharded YSQL tables, the start and end key for each tablet is not immediately known since this depends on the column type and the intended usage. For example, if the primary key is a `percentage NUMBER` column where the range of values is in the `[0, 100]` range, presplitting on the entire `NUMBER` space would not be effective.
+In range-sharded YSQL tables, the start and end key for each tablet is not immediately known as this depends on the column type and the intended usage. For example, if the primary key is a `percentage NUMBER` column where the range of values is in the `[0, 100]` range, presplitting on the entire `NUMBER` space would not be effective.
 
 For this reason, in order to presplit range-sharded tables, you must explicitly specify the split points, as per the following example:
 
@@ -160,7 +160,7 @@ Note that misuse or overuse of manual tablet splitting (for example, splitting t
 
 #### Verify the table has one tablet
 
-In order to verify that the table `t` has only one tablet, list all the tablets for table `t` using the following [`yb-admin list_tablets`](../../../admin/yb-admin/#list-tablets) command:
+To verify that the table `t` has only one tablet, list all the tablets for table `t` using the following [`yb-admin list_tablets`](../../../admin/yb-admin/#list-tablets) command:
 
 ```bash
 ./bin/yb-admin --master_addresses 127.0.0.1:7100 list_tablets ysql.yugabyte t
@@ -315,7 +315,7 @@ In the following example, a three-node cluster is created and uses a YCSB worklo
 
 ## Limitations
 
-* Tablet splitting is disabled for index tables with range partitioning that are being restored in version `2.14.5` or later from a backup taken in any version prior to `2.14.5`. It is not recommended to use tablet splitting for range partitioned index tables prior to version `2.14.5` to prevent possible data loss for index tables. For details, see [#12190](https://github.com/yugabyte/yugabyte-db/issues/12190) and [#17169](https://github.com/yugabyte/yugabyte-db/issues/17169).
+* Tablet splitting is disabled for index tables with range partitioning that are being restored in version 2.14.5 or later from a backup taken in any version prior to 2.14.5. It is not recommended to use tablet splitting for range partitioned index tables prior to version 2.14.5 to prevent possible data loss for index tables. For details, see [#12190](https://github.com/yugabyte/yugabyte-db/issues/12190) and [#17169](https://github.com/yugabyte/yugabyte-db/issues/17169).
 
 The following known limitations are planned to be resolved in upcoming releases:
 

@@ -7,6 +7,7 @@ Disallow: */binary/
 Disallow: /v2.12/
 Disallow: /v2.14/
 Disallow: /v2.16/
+Disallow: /v2.18/
 Disallow: /stable/
 
 # Algolia-Crawler-Verif: 73EC23ACA4B42138

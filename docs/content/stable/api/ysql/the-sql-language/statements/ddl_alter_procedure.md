@@ -13,7 +13,7 @@ type: docs
 {{< tip title="See the dedicated 'User-defined subprograms and anonymous blocks' section." >}}
 User-defined procedures are part of a larger area of functionality. See this major section:
 
-- [User-defined subprograms and anonymous blocks—"language SQL" and "language plpgsql"](../../../user-defined-subprograms-and-anon-blocks/)
+- [User-defined subprograms and anonymous blocks—"language SQL" and "language plpgsql"](../../../user-defined-subprograms-and-anon-blocks/) 
 {{< /tip >}}
 
 ## Synopsis
@@ -34,7 +34,7 @@ You must identify the to-be-altered procedure by:
 
 - Its name and the schema where it lives. This can be done by using its fully qualified name or by using just its bare name and letting name resolution find it in the first schema on the _search_path_ where it occurs. Notice that you don't need to (and cannot) mention the name of its owner.
 
-- Its signature. The _[subprogram_call_signature](../../../user-defined-subprograms-and-anon-blocks/subprogram-overloading/#subprogram-call-signature)_ is sufficient; and this is typically used. You can use the full _subprogram_signature_. But you should realize that the _arg_name_ and _arg_mode_ for each _arg_decl_ carry no identifying information. (This is why it is not typically used when a function or procedure is to be altered or dropped.) This is explained in the section [Subprogram overloading](../../../user-defined-subprograms-and-anon-blocks/subprogram-overloading/).
+- Its signature. The _[subprogram_call_signature](../../../user-defined-subprograms-and-anon-blocks/subprogram-overloading/#subprogram-call-signature)_ is sufficient; and this is typically used. You can use the full _subprogram_signature_. But you should realize that the _formal_arg_ and _arg_mode_ for each _arg_decl_ carry no identifying information. (This is why it is not typically used when a function or procedure is to be altered or dropped.) This is explained in the section [Subprogram overloading](../../../user-defined-subprograms-and-anon-blocks/subprogram-overloading/).
 
 ## Semantics
 
@@ -86,7 +86,7 @@ The attempt draws a warning in the current _preview_ version of YugabyteDB, thus
 
 and the _hint_ refers you to [GitHub Issue #2717](https://github.com/YugaByte/yugabyte-db/issues/2717)
 
-In spite of the warning, the attempt actually has the intended effect. You can see this by inspecting the procedure's metadata. See the section [The «pg_proc» catalog table for subprograms](../../../user-defined-subprograms-and-anon-blocks/pg-proc-catalog-table/) for information on how to  query subprogram metadata.
+In spite of the warning, the attempt actually has the intended effect. You can see this by inspecting the procedure's metadata. See the section [The "pg_proc" catalog table for subprograms](../../../user-defined-subprograms-and-anon-blocks/pg-proc-catalog-table/) for information on how to  query subprogram metadata.
 
 ```plpgsql
 select

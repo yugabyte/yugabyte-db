@@ -15,6 +15,7 @@ type: docs
 Use the `CREATE FOREIGN DATA WRAPPER` statement to create a foreign data wrapper.
 Only superusers or users with the yb_fdw role can create foreign data wrappers.
 
+
 ## Syntax
 
 {{%ebnf%}}

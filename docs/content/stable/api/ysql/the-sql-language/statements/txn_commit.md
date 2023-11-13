@@ -24,7 +24,7 @@ Use the `COMMIT` statement to commit the current transaction. All changes made b
 
 ### *commit*
 
-```sql
+```
 COMMIT [ TRANSACTION | WORK ]
 ```
 

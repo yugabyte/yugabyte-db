@@ -7,7 +7,7 @@ menu:
   stable:
     identifier: tableplus
     parent: tools
-    weight: 50
+    weight: 95
 type: docs
 ---
 
