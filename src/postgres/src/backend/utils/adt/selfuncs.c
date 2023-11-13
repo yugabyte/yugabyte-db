@@ -6606,7 +6606,7 @@ deconstruct_indexquals(IndexPath *path)
 
 		if (IsYugaByteEnabled() && path->path.param_info)
 		{
-			Relids batched = path->path.param_info->yb_ppi_req_outer_batched;
+			Relids batched = YB_PATH_REQ_OUTER_BATCHED(&path->path);
 			RestrictInfo *batched_rinfo =
 				yb_get_batched_restrictinfo(rinfo,
 					batched, path->path.parent->relids);

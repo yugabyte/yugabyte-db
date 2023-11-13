@@ -219,11 +219,9 @@ compare_path_costs_fuzzily(Path *path1, Path *path2, double fuzz_factor)
 static BMS_Comparison
 yb_bms_compare_ppi(Path *path1, Path *path2)
 {
-	Relids path1_batchinfo = path1->param_info ?
-		path1->param_info->yb_ppi_req_outer_batched : NULL;
+	Relids path1_batchinfo = YB_PATH_REQ_OUTER_BATCHED(path1);
 
-	Relids path2_batchinfo = path2->param_info ?
-		path2->param_info->yb_ppi_req_outer_batched : NULL;
+	Relids path2_batchinfo = YB_PATH_REQ_OUTER_BATCHED(path2);
 
 	if (bms_is_empty(path1_batchinfo) ^ bms_is_empty(path2_batchinfo))
 		return BMS_DIFFERENT;
@@ -504,11 +502,9 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 			 * YB: If one is batched and the other isn't we consider
 			 * the two parameterizations to be different.
 			 */
-			bool is_new_path_batched = new_path->param_info &&
-				!bms_is_empty(new_path->param_info->yb_ppi_req_outer_batched);
+			bool is_new_path_batched = YB_PATH_NEEDS_BATCHED_RELS(new_path);
 
-			bool is_old_path_batched = old_path->param_info &&
-				!bms_is_empty(old_path->param_info->yb_ppi_req_outer_batched);
+			bool is_old_path_batched = YB_PATH_NEEDS_BATCHED_RELS(old_path);
 			bool considering_batchedness =
 				is_new_path_batched || is_old_path_batched;
 
@@ -1443,14 +1439,14 @@ create_append_path(PlannerInfo *root,
 	if (partitioned_rels != NIL && root && rel->reloptkind == RELOPT_BASEREL)
 	{
 		/* YB: Accumulate batching info from subpaths for this "baserel". */
-		Assert(root->yb_cur_batched_relids == NULL);
-		yb_accumulate_batching_info(subpaths,
-			&root->yb_cur_batched_relids, &root->yb_cur_unbatched_relids);
+		Assert(yb_has_same_batching_reqs(subpaths));
+
+		root->yb_cur_batched_relids =
+			YB_PATH_REQ_OUTER_BATCHED((Path *) linitial(subpaths));
 		pathnode->path.param_info = get_baserel_parampathinfo(root,
 															  rel,
 															  required_outer);
 		root->yb_cur_batched_relids = NULL;
-		root->yb_cur_unbatched_relids = NULL;
 	}
 	else
 		pathnode->path.param_info = get_appendrel_parampathinfo(rel,
@@ -2428,17 +2424,13 @@ create_nestloop_path(PlannerInfo *root,
 	 * because the restrict_clauses list can affect the size and cost
 	 * estimates for this path.
 	 */
-	 ParamPathInfo *param_info = inner_path->param_info;
-	 Relids inner_req_batched = param_info == NULL
-		? NULL : param_info->yb_ppi_req_outer_batched;
+	 Relids inner_req_batched = YB_PATH_REQ_OUTER_BATCHED(inner_path);
 
-	 Relids outer_req_unbatched = outer_path->param_info ?
-	 	outer_path->param_info->yb_ppi_req_outer_unbatched :
-		NULL;
+	 Relids outer_req_unbatched = YB_PATH_REQ_OUTER_UNBATCHED(outer_path);
 
 	 bool is_batched = bms_overlap(inner_req_batched,
-	 							   outer_path->parent->relids) &&
-					   !bms_overlap(outer_req_unbatched, inner_req_batched);
+	 										 outer_path->parent->relids) &&
+							 !bms_overlap(outer_req_unbatched, inner_req_batched);
 	if (!is_batched && bms_overlap(inner_req_outer, outer_path->parent->relids))
 	{
 		Relids		inner_and_outer = bms_union(inner_path->parent->relids,
