@@ -365,7 +365,8 @@ public class NodeManager extends DevopsBase {
             || type == NodeCommandType.Update_Mounted_Disks
             || type == NodeCommandType.Reboot
             || type == NodeCommandType.Change_Instance_Type
-            || type == NodeCommandType.Create_Root_Volumes)
+            || type == NodeCommandType.Create_Root_Volumes
+            || type == NodeCommandType.RunHooks)
         && StringUtils.isNotBlank(providerDetails.sshUser)) {
       subCommand.add("--ssh_user");
       if (StringUtils.isNotBlank(sshUser)) {
