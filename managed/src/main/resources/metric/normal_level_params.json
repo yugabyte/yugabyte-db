@@ -16,7 +16,7 @@
     "|append_latency_[^_]+|bytes_logged|reader_bytes_read",
     "|cache_size|cache_num_ops)|follower_lag_ms|[^_]+_memory_pressure_rejections",
     "|log_wal_size|ql_read_latency_[^_]+|(all|write)_operations_inflight|ql_write_latency_[^_]+",
-    "|write_lock_latency_[^_]+|is_raft_leader"
+    "|write_lock_latency_[^_]+|is_raft_leader|ts_live_tablet_peers"
   ],
   "show_help": "false"
 }

@@ -3241,3 +3241,15 @@ raft_leader:
     yaxis:
       alias:
         "is_raft_leader": "Raft Leader"
+
+tserver_live_tablet_peers:
+  metric: "ts_live_tablet_peers"
+  function: "avg_over_time|sum"
+  panel_group: "Tablet Server"
+  layout:
+    "title": "Live Tablet Peers"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "ts_live_tablet_peers": "Live Tablet Peers"
