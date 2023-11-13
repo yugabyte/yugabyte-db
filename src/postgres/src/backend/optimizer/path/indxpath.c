@@ -716,9 +716,7 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	batchedrelids = bms_difference(batchedrelids, unbatchablerelids);
 
 	Assert(!root->yb_cur_batched_relids);
-	Assert(!root->yb_cur_unbatched_relids);
 	root->yb_cur_batched_relids = batchedrelids;
-	root->yb_cur_unbatched_relids = unbatchablerelids;
 
 	/*
 	 * Build simple index paths using the clauses.  Allow ScalarArrayOpExpr
@@ -775,7 +773,6 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	}
 
 	root->yb_cur_batched_relids = NULL;
-	root->yb_cur_unbatched_relids = NULL;
 }
 
 /*
