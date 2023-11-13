@@ -73,6 +73,12 @@ echo "Build script ${BASH_SOURCE[0]} is running"
 # shellcheck source=build-support/common-test-env.sh
 . "${BASH_SOURCE%/*}/../common-test-env.sh"
 
+# YB_SRC_ROOT is defined by build-support/common-build-env.sh which is sourced by
+# build-support/common-test-env.sh above
+# shellcheck source=build-support/digest_package.sh
+. "${YB_SRC_ROOT}/build-support/digest_package.sh"
+
+
 readonly COMMON_YB_BUILD_ARGS_FOR_CPP_BUILD=(
   --no-rebuild-thirdparty
   --skip-java
@@ -554,15 +560,8 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
     fatal "Package path stored in '${package_path_file}' does not exist: ${YB_PACKAGE_PATH}"
   fi
 
-  # Upload the package.
-  if ! is_jenkins_phabricator_build; then
-    # shellcheck source=build-support/upload_package.sh
-    . "${YB_SRC_ROOT}/build-support/upload_package.sh"
-    if ! "${package_uploaded}" && ! "${package_upload_skipped}"; then
-      FAILURES+=$'Package upload failed\n'
-      EXIT_STATUS=1
-    fi
-  fi
+  # Digest the package.
+  digest_package "${YB_PACKAGE_PATH}"
 
   if grep -q "CentOS Linux 7" /etc/os-release || (
       # We only do this test with AlmaLinux 8 for the Linuxbrew-enabled Clang-based build, because
