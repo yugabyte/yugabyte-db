@@ -640,7 +640,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
     String errorMsg =
         GFlagsUtil.checkForbiddenToOverride(
-            node, params, userIntent, universe, newGFlags, confGetter);
+            node, params, userIntent, universe, newGFlags, config, confGetter);
     if (errorMsg != null) {
       throw new PlatformServiceException(
           BAD_REQUEST,
