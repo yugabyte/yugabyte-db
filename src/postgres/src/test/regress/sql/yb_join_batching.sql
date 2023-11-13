@@ -387,6 +387,38 @@ SELECT '' AS "xxx", t1.a, t2.e
   FROM J1_TBL t1 (a, b, c), J2_TBL t2 (d, e)
   WHERE t1.a = t2.d  order by 1, 2, 3;
 
+CREATE TABLE x1 (a int PRIMARY KEY, b int);
+CREATE INDEX i_x1_b ON x1 (b);
+INSERT INTO x1 VALUES (1, 0), (2, 1);
+
+CREATE TABLE x2 (a int PRIMARY KEY, b int);
+CREATE INDEX i_x2_b ON x2 (b);
+INSERT INTO x2 VALUES (1, 0), (2, 1);
+
+CREATE TABLE x3 (a int PRIMARY KEY, b int);
+CREATE INDEX i_x3_b ON x3 (b);
+INSERT INTO x3 VALUES (1, 0), (2, 1);
+
+EXPLAIN (COSTS OFF) SELECT * FROM x1 LEFT JOIN LATERAL (
+  SELECT * FROM x2 LEFT JOIN LATERAL (
+    SELECT x3.b FROM x3 WHERE x3.a = x1.a AND x3.b = x2.b LIMIT ALL
+  ) AS v1 ON true 
+  WHERE x2.a = x1.a
+) v2 ON true
+ORDER BY x1.a ASC;
+
+SELECT * FROM x1 LEFT JOIN LATERAL (
+  SELECT * FROM x2 LEFT JOIN LATERAL (
+    SELECT x3.b FROM x3 WHERE x3.a = x1.a AND x3.b = x2.b LIMIT ALL
+  ) AS v1 ON true
+  WHERE x2.a = x1.a
+) v2 ON true
+ORDER BY x1.a ASC;
+
+DROP TABLE x1;
+DROP TABLE x2;
+DROP TABLE x3;
+
 --
 --
 -- Inner joins (equi-joins)

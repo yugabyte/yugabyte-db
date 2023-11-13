@@ -1848,11 +1848,15 @@ add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 			accumulate_append_subpath(subpath, &subpaths, NULL);
 		}
 
+		subpaths_valid &= yb_has_same_batching_reqs(subpaths);
+
 		if (subpaths_valid)
 			add_path(rel, (Path *)
 					 create_append_path(root, rel, subpaths, NIL,
 										required_outer, 0, false,
 										partitioned_rels, -1));
+		else
+			break;
 	}
 }
 

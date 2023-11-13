@@ -289,8 +289,7 @@ extern ParamPathInfo *get_joinrel_parampathinfo(PlannerInfo *root,
 						  SpecialJoinInfo *sjinfo,
 						  Relids required_outer,
 						  List **restrict_clauses);
-extern void yb_accumulate_batching_info(List *paths, 
-						  Relids *batchedrelids, Relids *unbatchedrelids);
+extern bool yb_has_same_batching_reqs(List *paths);
 extern ParamPathInfo *get_appendrel_parampathinfo(RelOptInfo *appendrel,
 							Relids required_outer);
 extern ParamPathInfo *find_param_path_info(RelOptInfo *rel,
@@ -298,8 +297,7 @@ extern ParamPathInfo *find_param_path_info(RelOptInfo *rel,
 extern ParamPathInfo *yb_find_batched_param_path_info(
 	RelOptInfo *rel,
 	Relids required_outer,
-	Relids yb_required_batched_outer,
-	Relids yb_required_unbatched_outer);
+	Relids yb_required_batched_outer);
 extern RelOptInfo *build_child_join_rel(PlannerInfo *root,
 					 RelOptInfo *outer_rel, RelOptInfo *inner_rel,
 					 RelOptInfo *parent_joinrel, List *restrictlist,
