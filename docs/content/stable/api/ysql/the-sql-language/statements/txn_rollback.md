@@ -24,7 +24,7 @@ Use the `ROLLBACK` statement to roll back the current transactions. All changes 
 
 ### *rollback*
 
-```sql
+```
 ROLLBACK [ TRANSACTION | WORK ]
 ```
 

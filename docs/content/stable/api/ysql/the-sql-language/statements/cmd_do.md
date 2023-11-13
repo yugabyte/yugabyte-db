@@ -28,6 +28,7 @@ See the thread on the _[pgsql-general](mailto:pgsql-general@lists.postgresql.org
 Specifying _language plpgsql_ brings no benefit with respect to omitting the `LANGUAGE` clause altogether. You can assume that all developers know that the only supported implementation language is PL/pgSQL. Yugabyte therefore recommends that you avoid cluttering your code and simply always omit the optional `LANGUAGE` clause.
 {{< /tip >}}
 
+
 ## Syntax
 
 {{< note title="The syntax diagram omits the optional 'LANGUAGE' clause." >}}

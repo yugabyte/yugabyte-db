@@ -27,7 +27,7 @@ Attributes in the `SET CONSTRAINTS` statement comply with the behavior defined i
 
 ### *set_constraints*
 
-```sql
+```
 SET CONSTRAINTS { ALL | *name [ , ... ] } { DEFERRED | IMMEDIATE }
 ```
 

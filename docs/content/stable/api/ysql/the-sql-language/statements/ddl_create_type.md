@@ -79,12 +79,12 @@ The order of options in creating range types and base types does not matter.  Ev
 - `like_type` specifies the type to copy over the `INTERNALLENGTH`, `PASSEDBYVALUE`, `ALIGNMENT`,
   and `STORAGE` values from.
 - `category` specifies the category code for this type.
-- `preferred` specifies whether this type is preferred for implicit casts in the same category.
+- `PREFERRED` specifies whether this type is preferred for implicit casts in the same category.
 - `default` specifies the default value of this type.
-- `element` specifies the elements this type, also making this type an array.
+- `element` Implies that the type being created is an array; this specifies the type of the array elements.
 - `delimiter` specifies the character used to separate array elements in the external textual
   representation of values of this type.
-- `collatable` specifies whether collation information may be passed to operations that use this
+- `COLLATABLE` specifies whether collation information may be passed to operations that use this
   type.
 
 ## Examples

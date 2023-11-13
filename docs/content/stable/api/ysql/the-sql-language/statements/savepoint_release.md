@@ -32,6 +32,11 @@ RELEASE [ SAVEPOINT ] name
 
 The name of the savepoint you wish to release.
 
+{{<note title="Other savepoints may be released">}}
+When you release a savepoint, all savepoints that were created after it was created are also released.
+{{</note>}}
+
+
 ## Examples
 
 Begin a transaction and create a savepoint.

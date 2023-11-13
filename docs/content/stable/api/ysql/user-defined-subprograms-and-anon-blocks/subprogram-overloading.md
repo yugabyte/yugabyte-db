@@ -22,9 +22,7 @@ Subprograms with different _subprogram_call_signatures_ can share the same _[sub
 {{%ebnf%}}
   subprogram_signature,
   arg_decl,
-  arg_name,
-  arg_mode,
-  arg_type
+  formal_arg,arg_mode,arg_type
 {{%/ebnf%}}
 
 and the _subprogram_call_signature_ rule:
@@ -33,7 +31,7 @@ and the _subprogram_call_signature_ rule:
   subprogram_call_signature
 {{%/ebnf%}}
 
-The _subprogram_signature_ is a list of _arg_decls_; and an _arg_decl_ has two optional components (_arg_type_ and _arg_mode_) and one mandatory component (_arg_type_). But the only significant part of the _subprogram_signature_ for distinguishing between overloads is the mandatory _arg_type_ component.<a name="subprogram-call-signature"></a>
+The _subprogram_signature_ is a list of _arg_decls_; and an _arg_decl_ has two optional components (_formal_arg_ and _arg_mode_) and one mandatory component (_arg_type_). But the only significant part of the _subprogram_signature_ for distinguishing between overloads is the mandatory _arg_type_ component.<a name="subprogram-call-signature"></a>
 
 {{< tip title="'OUT' arguments are not included in the 'subprogram_call_signature'." >}}
 This rule is stated in the PostgreSQL documentation in the account of the  _[pg_proc](https://www.postgresql.org/docs/11/catalog-pg-proc.html)_ catalog table. See the description of the _proargtypes_ column.

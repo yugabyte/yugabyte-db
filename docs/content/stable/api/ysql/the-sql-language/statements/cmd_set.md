@@ -64,7 +64,7 @@ Specify the value of parameter.
 
 ### User-defined run-time parameters
 
-You can also create a user-defined run-time parameter, on the fly, by spelling it suitably. The duration of  a user-defined run-time parameter never exceeds that of the session. The spelling _must_ include a period. And, as long as  you double-quote in in the `set` statement, it can contain any combination of arbitrary characters. Try this:
+You can also create a user-defined run-time parameter, on the fly, by spelling it suitably. The duration of  a user-defined run-time parameter never exceeds that of the session. The spelling _must_ include a period. And, as long as  you double-quote in the `set` statement, it can contain any combination of arbitrary characters. Try this:
 
 ```plpgsql
 set min.værelse17 = 'stue';
@@ -79,7 +79,7 @@ select
 This is the result:
 
 ```output
-  s1  |   s2    |  s3
+  s1  |   s2    |  s3  
 ------+---------+------
  stue | kjøkken | 跳舞
 ```

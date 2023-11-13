@@ -33,7 +33,7 @@ type: docs
   </li>
 </ul>
 
-YCQL authentication is based on roles. Roles can be created with superuser, non-superuser and login privileges. New roles can be created, and existing ones altered or dropped by administrators using YCQL commands.
+YCQL authentication is based on roles. Roles can be created with superuser, non-superuser, and login privileges. New roles can be created, and existing ones altered or dropped by administrators using YCQL commands.
 
 ## Enable YCQL authentication
 

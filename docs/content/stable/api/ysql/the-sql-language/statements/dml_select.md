@@ -40,7 +40,7 @@ See the section [The WITH clause and common table expressions](../../with-clause
 
 While the where clause allows a wide range of operators, the exact conditions used in the where clause have significant performance considerations (especially for large datasets).
 
-For details on `from_item` and `with_query` see [SELECT](https://www.postgresql.org/docs/10/static/sql-select.html) in the PostgreSQL documentation.
+For details on `from_item` see [SELECT](https://www.postgresql.org/docs/11/static/sql-select.html) in the PostgreSQL documentation.
 
 The `fn_over_window` rule denotes the special kind of `SELECT` list item that must be used to invoke a window function and that may be used to invoke an aggregate function. (Window functions are known as analytic functions in the terminology of some SQL database systems.) The dedicated diagram that follows the main diagram for the `select` rule shows the `FILTER` and the `OVER` keywords. You can see that you _cannot_ invoke a function in this way without specifying an `OVER` clause—and that the `OVER` clause requires the specification of the so-called [_window_](../../../exprs/window_functions/invocation-syntax-semantics/#the-window-definition-rule) that gives this invocation style its name. The `FILTER` clause is optional and may be used _only_ when you invoke an aggregate function in this way. All of this is explained in the [Window function invocation—SQL syntax and semantics](../../../exprs/window_functions/invocation-syntax-semantics/) section within the major section [Window functions](../../../exprs/window_functions/).
 

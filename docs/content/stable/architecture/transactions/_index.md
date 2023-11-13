@@ -33,10 +33,10 @@ YugabyteDB's distributed transaction architecture is based on principles of atom
     <a class="section-link icon-offset" href="isolation-levels/">
       <div class="head">
         <img class="icon" src="/images/section_icons/architecture/distributed_acid.png" aria-hidden="true" />
-        <div class="title">Transaction isolation</div>
+        <div class="title">Transaction isolation levels</div>
       </div>
       <div class="body">
-        Supported transaction isolation levels.
+        Serializable, Read Committed, and Snapshot isolation levels in YugabyteDB.
       </div>
     </a>
   </div>

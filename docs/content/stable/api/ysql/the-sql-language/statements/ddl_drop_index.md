@@ -53,10 +53,10 @@ Verify the index was created:
 
 ```output
                             Table "public.t1"
- Column |  Type  | Collation | Nullable |            Default
+ Column |  Type  | Collation | Nullable |            Default             
 --------+--------+-----------+----------+--------------------------------
  id     | bigint |           | not null | nextval('t1_id_seq'::regclass)
- v      | text   |           |          |
+ v      | text   |           |          | 
 Indexes:
     "t1_pkey" PRIMARY KEY, lsm (id HASH)
     "i1" lsm (v HASH)
@@ -76,10 +76,10 @@ Use the `\d t1` meta-command to verify that the index no longer exists.
 
 ```output
                             Table "public.t1"
- Column |  Type  | Collation | Nullable |            Default
+ Column |  Type  | Collation | Nullable |            Default             
 --------+--------+-----------+----------+--------------------------------
  id     | bigint |           | not null | nextval('t1_id_seq'::regclass)
- v      | text   |           |          |
+ v      | text   |           |          | 
 Indexes:
     "t1_pkey" PRIMARY KEY, lsm (id HASH)
 ```

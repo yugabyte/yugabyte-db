@@ -31,35 +31,39 @@ Specify the name of the sequence (*sequence_name*). An error is raised if a sequ
 
 ### *sequence_options*
 
-#### AS *datatype*
+#### AS *seq_data_type*
 
 Changes the data type of a sequence. This automatically changes the minimum and maximum values of the sequence if the previous values were beyond what the new type allows. Valid types are `smallint`, `integer`, and `bigint`.
 
-#### INCREMENT BY *increment*
+#### INCREMENT BY *int_literal*
 
 Specify the difference between consecutive values in the sequence. Default is `1`.
 
-#### MINVALUE *minvalue* | NO MINVALUE
+#### MINVALUE *int_literal* | NO MINVALUE
 
  Specify the minimum value allowed in the sequence. If this value is reached (in a sequence with a negative increment), `nextval()` will return an error. If `NO MINVALUE` is specified, the default value will be used. Default is 1.
 
-#### MAXVALUE *maxvalue* | NO MAXVALUE
+#### MAXVALUE *int_literal* | NO MAXVALUE
 
 Specify the maximum value allowed in the sequence. If this value is reached, `nextval()` will return an error. If `NO MAXVALUE` is specified, the default will be used. Default is `2⁶³-1`.
 
-#### START WITH *start*
+#### START WITH *int_literal*
 
 Specify the first value in the sequence. `start` cannot be less than `minvalue`. Default is `1`.
 
-#### RESTART [ [ WITH ] *restart* ] ]
+#### RESTART [ [ WITH ] *int_literal* ] ]
 
 Change the current value of the sequence. If no value is specified, the current value will be set to the last value specified with `START [ WITH ]` when the sequence was created or altered.
 
-#### CACHE *cache*
+#### CACHE *int_literal*
 
 Specify how many numbers from the sequence to cache in the client. Default is `1`.
 
 When YB-TServer [ysql_sequence_cache_minval](../../../../../reference/configuration/yb-tserver/#ysql-sequence-cache-minval) configuration flag is not explicitly turned off (set to `0`), the maximum value of the flag and the cache clause will be used.
+
+#### [ NO ] CYCLE
+
+If `CYCLE` is specified, the sequence will wrap around once it has reached `minvalue` or `maxvalue`. If `maxvalue` was reached, `minvalue` will be the next number in the sequence. If `minvalue` was reached (for a descending sequence), `maxvalue` will be the next number in a sequence. `NO CYCLE` is the default.
 
 #### OWNED BY *table_name.table_column* | NONE
 

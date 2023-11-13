@@ -22,6 +22,7 @@ Note: For higher availability, one or more additional YugabyteDB Anywhere instan
     <a href="../installer/" class="nav-link">
       <i class="fa-solid fa-building"></i>YBA Installer</a>
   </li>
+
   <li>
     <a href="../default/" class="nav-link">
       <i class="fa-solid fa-cloud"></i>Replicated</a>

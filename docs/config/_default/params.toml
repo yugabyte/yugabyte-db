@@ -47,10 +47,13 @@ version_menu_pagelinks = true
   ul_show = 1
 
 [[versions]]
+  url = "/stable"
+  version = "v2.20 (LTS)"
+[[versions]]
   url = "/preview"
   version = "v2.19 (Preview)"
 [[versions]]
-  url = "/stable"
+  url = "/v2.18"
   version = "v2.18 (STS)"
 [[versions]]
   url = "/v2.16"
@@ -70,7 +73,7 @@ version_menu_pagelinks = true
 [yb]
   terms_of_service = "https://www.yugabyte.com/terms-of-service/"
   preview_version = "v2.19"
-  preview_version_slug = "preview"
+  preview_version_slug = "stable"
 
 # Header logo link
 [yb.navbar_logo]

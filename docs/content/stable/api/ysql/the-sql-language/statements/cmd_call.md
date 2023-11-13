@@ -22,7 +22,7 @@ Use the `CALL` statement to execute a stored procedure.
   formal_arg
 {{%/ebnf%}}
 
-{{< tip title="The syntax and semantics of 'subprogram_arg' are the same for function invocation as for 'CALL'." >}}
+{{< tip title="The syntax and semantics of 'actual_arg' are the same for function invocation as for 'CALL'." >}}
 The syntax and semantics of the _subprogram_arg_ rule (for example how to use the named parameter invocation style to avoid providing actual arguments for defaulted parameters) are the same for invoking a function as for `CALL`. A function cannot be invoked with the `CALL` statement. Rather, it's invoked as (part of) an expression in DML statements like `SELECT` or in PL/pgSQL source code.
 {{< /tip >}}
 

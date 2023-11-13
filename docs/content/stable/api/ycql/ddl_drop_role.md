@@ -42,8 +42,6 @@ Where
 
 ## Examples
 
-You can do this as shown below.
-
 ```sql
 ycqlsh:example> DROP ROLE role1;
 ```

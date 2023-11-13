@@ -24,7 +24,7 @@ Note that non-transactional backups are not supported.
 
 To view, [restore](../restore-universe-data/), or delete existing backups for your universe, navigate to that universe and select **Backups**.
 
-By default, the list displays all the backups generated for the universe regardless of the time period. You can configure the list to only display the backups created during a specific time period, such as last year, last month, and so on. In addition, you can specify a custom time period.
+By default, the list displays all the backups generated for the universe regardless of the time period. You can filter the list to only display the backups created during a specific time period, such as last year, last month, and so on. In addition, you can specify a custom time period.
 
 ## Create backups
 

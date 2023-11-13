@@ -1,4 +1,4 @@
----
+<!---
 title: Use Visual Studio Code with YugabyteDB YCQL
 headerTitle: Cassandra Workbench
 linkTitle: Cassandra Workbench
@@ -7,9 +7,14 @@ menu:
   stable:
     identifier: visualstudioworkbench
     parent: tools
-    weight: 80
+    weight: 40
 type: docs
----
+--->
+<!--
++++
+private = true
++++
+-->
 
 [Cassandra Workbench](https://marketplace.visualstudio.com/items?itemName=kdcro101.vscode-cassandra) is a free Visual Studio Code extension for browsing and querying Cassandra databases. It also features autocomplete and syntax highlighting.
 
@@ -42,8 +47,8 @@ For more information on managing extensions in Visual Studio Code, refer to [Ins
 
 ## Create a configuration
 
-1. Click the Cassandra Workbench icon in the **Activity** bar in Visual Studio Code.\
-\
+1. Click the Cassandra Workbench icon in the **Activity** bar in Visual Studio Code.
+
     ![Open Cassandra Workbench](/images/develop/tools/vscodeworkbench/cloudicon.png)
 
 1. Open the Command Palette (View>Command Palette) and enter the following command to generate the .cassandraWorkbench.jsonc configuration file:

@@ -11,12 +11,12 @@ type: docs
 ---
 
 {{< warning title="YSQL currently supports only fetching rows from a cursor consecutively in the forward direction." >}}
-See the subsection [Beware Issue #6514](../../../cursors/#beware-issue-6514) in the generic section [Cursors](../../../cursors/).
+See the subsection [Beware Issue #6514](../../../cursors/#beware-issue-6514) in the generic section [Cursors](../../../cursors/). In particular, every `MOVE` variant causes the _0A000_ with a message like "MOVE not supported yet".
 {{< /warning >}}
 
 ## Synopsis
 
-Use the `MOVE` statement to change the position of the current row in a _[cursor](../../../cursors/)_. The `MOVE` statement is used jointly with the [`DECLARE`](../dml_declare), [`FETCH`](../dml_fetch), and [`CLOSE`](../dml_close) statements.
+Use the `MOVE` statement to change the position of the current row in a _cursor_. See the generic section [Cursors](../../../cursors/). The `MOVE` statement is used jointly with the [`DECLARE`](../dml_declare), [`FETCH`](../dml_fetch), and [`CLOSE`](../dml_close) statements.
 
 ## Syntax
 
@@ -48,7 +48,7 @@ A _cursor_ represents the current position in its result set. After declaring a 
 
 - The `MOVE ABSOLUTE :n` variant moves to the single row at exactly the indicated absolute position. The `MOVE RELATIVE :n` variant moves to the single row at exactly the indicated relative position (_:n_ can be negative) to the current row. For both `MOVE ABSOLUTE :n` and `MOVE RELATIVE :n`, the requested row might lie before the first row or after the last row. The outcome here is the same as it is when executing other `MOVE` variants that cause the current position to fall outside the range from the first through the last row in the cursor's result set. Notice that _:n_ can be negative for both the `ABSOLUTE` and the `RELATIVE` variants.
 
-- Each of the `MOVE FIRST` and `MOVE LAST` variants moves, respectively, to the first row or the last row. The meanings are therefore insensitive to the current cursor position, and each can be repeated time and again and will always have the same effect.
+- Each of the `MOVE FIRST` and `MOVE LAST` variants moves, respectively, to the first row or the last row. The meanings are therefore insensitive to the current cursor position, and each can be repeated time and again and will always have the same effect. 
 
 Notice that the three variants ,`MOVE FORWARD 0`, `MOVE BACKWARD 0`, and `MOVE RELATIVE 0`, all mean the same as each other.
 

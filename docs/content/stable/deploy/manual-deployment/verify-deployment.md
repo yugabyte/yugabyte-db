@@ -1,8 +1,8 @@
 ---
-title: Verify deployment
+title: Verify manual deployment
 headerTitle: Verify deployment
 linkTitle: 5. Verify deployment
-description: Verify deployment of your YugabyteDB cluster
+description: How to verify the manual deployment of the YugabyteDB database cluster.
 menu:
   stable:
     identifier: deploy-manual-deployment-verify-deployment

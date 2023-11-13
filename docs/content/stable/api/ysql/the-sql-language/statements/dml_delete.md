@@ -21,6 +21,10 @@ Use the `DELETE` statement to remove rows that meet certain conditions, and when
   returning_clause
 {{%/ebnf%}}
 
+{{< note title="Table inheritance is not yet supported" >}}
+The [table_expr](../../../syntax_resources/grammar_diagrams/#table-expr) rule specifies syntax that is useful only when at least one other table inherits one of the tables that the `truncate` statement lists explicitly. See [this note](../ddl_alter_table#table-expr-note) for more detail. Until inheritance is supported, use a bare [table_name](../../../syntax_resources/grammar_diagrams/#table-name).
+{{< /note >}}
+
 See the section [The WITH clause and common table expressions](../../with-clause/) for more information about the semantics of the `common_table_expression` grammar rule.
 
 ## Semantics

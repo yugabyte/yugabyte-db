@@ -42,7 +42,7 @@ A role with LOGIN can be thought of as a user. If not specified, NOLOGIN is the 
 - `CONNECTION LIMIT` specifies how many concurrent connections the role can make. Default is -1 which means unlimited. This only applies to roles that can log in.
 - `[ENCRYPTED] PASSWORD` sets the password for the new role. This only applies to roles that can log in.
 If no password is specified, the password will be set to null and password authentication will always fail for that user.
-Note that password is always stored encrypted in system catalogs and the optional keyword ENCRYPTED is only present for compatibility with Postgres.
+Note that password is always stored encrypted in system catalogs and the optional keyword ENCRYPTED is only present for compatibility with PostgreSQL.
 - `VALID UNTIL` sets a date and time after which the role's password is no longer valid. If this clause is omitted the password will be valid for all time.
 - `IN ROLE role_name`, `IN GROUP role_name` lists one or more existing roles to which the new role will be immediately added as a new member. (Note that there is no option to add the new role as an administrator; use a separate GRANT command to do that.)
 - `ROLE role_name`, `USER role_name` lists one or more existing roles which are automatically added as members of the new role. (This in effect makes the new role a “group”.)
