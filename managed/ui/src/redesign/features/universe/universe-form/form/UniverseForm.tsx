@@ -5,7 +5,7 @@ import { useForm, FormProvider } from 'react-hook-form';
 import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
-import { Typography, Grid, Box, Link } from '@material-ui/core';
+import { Typography, Grid, Box } from '@material-ui/core';
 import { YBButton } from '../../../../components';
 import {
   AdvancedConfiguration,
@@ -47,6 +47,7 @@ interface UniverseFormProps {
   submitLabel?: string;
   isNewUniverse?: boolean; // This flag is used only in new cluster creation flow - we don't have proper state params to differentiate
   universeUUID?: string;
+  isViewMode?: boolean;
 }
 
 export const UniverseForm: FC<UniverseFormProps> = ({
@@ -57,7 +58,8 @@ export const UniverseForm: FC<UniverseFormProps> = ({
   onDeleteRR,
   submitLabel,
   universeUUID,
-  isNewUniverse = false
+  isNewUniverse = false,
+  isViewMode = false
 }) => {
   const classes = useFormMainStyles();
   const { t } = useTranslation();
@@ -125,7 +127,13 @@ export const UniverseForm: FC<UniverseFormProps> = ({
         {!isNewUniverse && (
           <Typography className={classes.subHeaderFont}>
             <i className="fa fa-chevron-right"></i> &nbsp;
-            {isPrimary ? t('universeForm.editUniverse') : t('universeForm.configReadReplica')}
+            {isPrimary
+              ? isViewMode
+                ? t('universeForm.viewPrimary')
+                : t('universeForm.editUniverse')
+              : isViewMode
+              ? t('universeForm.viewReadReplica')
+              : t('universeForm.configReadReplica')}
           </Typography>
         )}
         {onClusterTypeChange && (
@@ -150,10 +158,9 @@ export const UniverseForm: FC<UniverseFormProps> = ({
               {t('universeForm.rrTab')}
             </Box>
             {/* show during new universe creation only */}
-            {isNewUniverse && onDeleteRR && !!asyncFormData && (
+            {!isViewMode && isNewUniverse && onDeleteRR && !!asyncFormData && (
               <YBButton
                 className={classes.clearRRButton}
-                // component={Link}
                 variant="secondary"
                 size="medium"
                 data-testid="UniverseForm-ClearRR"
@@ -284,9 +291,11 @@ export const UniverseForm: FC<UniverseFormProps> = ({
         <form key={clusterType} onSubmit={formMethods.handleSubmit(onSubmit)}>
           <Box className={classes.formHeader}>{renderHeader()}</Box>
           <Box className={classes.formContainer}>{renderSections()}</Box>
-          <Box className={classes.formFooter} mt={4}>
-            {renderFooter()}
-          </Box>
+          {!isViewMode && (
+            <Box className={classes.formFooter} mt={4}>
+              {renderFooter()}
+            </Box>
+          )}
         </form>
       </FormProvider>
     </Box>

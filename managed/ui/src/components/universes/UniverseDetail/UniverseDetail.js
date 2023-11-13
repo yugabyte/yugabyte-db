@@ -9,7 +9,6 @@ import { mouseTrap } from 'react-mousetrap';
 import { CustomerMetricsPanel } from '../../metrics';
 import { RollingUpgradeFormContainer } from '../../../components/common/forms';
 import {
-  UniverseFormContainer,
   UniverseStatusContainer,
   NodeDetailsContainer,
   DeleteUniverseContainer,

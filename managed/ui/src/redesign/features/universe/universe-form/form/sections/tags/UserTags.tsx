@@ -15,7 +15,7 @@ export const UserTags: FC = () => {
   const { t } = useTranslation();
 
   //form context
-  const { clusterType, mode } = useContext(UniverseFormContext)[0];
+  const { clusterType, mode, isViewMode } = useContext(UniverseFormContext)[0];
   const isAsyncCluster = clusterType === ClusterType.ASYNC;
   const isEditMode = mode === ClusterModes.EDIT;
 
@@ -41,7 +41,7 @@ export const UserTags: FC = () => {
       >
         <Typography variant="h4">{t('universeForm.userTags.title')}</Typography>
         <Box display="flex" width="100%" mt={4}>
-          <UserTagsField disabled={disableEditTags} isAsyncCluster={isAsyncCluster} />
+          <UserTagsField disabled={disableEditTags || isViewMode} isAsyncCluster={isAsyncCluster} />
         </Box>
       </Box>
     );

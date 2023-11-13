@@ -50,9 +50,10 @@ export enum UPDATE_ACTIONS {
 }
 interface EditUniverseProps {
   uuid: string;
+  isViewMode: boolean;
 }
 
-export const EditUniverse: FC<EditUniverseProps> = ({ uuid }) => {
+export const EditUniverse: FC<EditUniverseProps> = ({ uuid, isViewMode }) => {
   const [contextState, contextMethods]: any = useContext(UniverseFormContext);
   const { isLoading, universeConfigureTemplate } = contextState;
   const { initializeForm, setUniverseResourceTemplate } = contextMethods;
@@ -78,6 +79,7 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid }) => {
           initializeForm({
             clusterType: ClusterType.PRIMARY,
             mode: ClusterModes.EDIT,
+            isViewMode,
             universeConfigureTemplate: _.cloneDeep(configureResponse)
           });
           //set Universe Resource Template
@@ -188,6 +190,7 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid }) => {
         onFormSubmit={onSubmit}
         onCancel={onCancel}
         universeUUID={uuid}
+        isViewMode={isViewMode}
       />
       {universePayload && (
         <>
