@@ -1029,6 +1029,9 @@ public class TestPgAlterTableChangePrimaryKey extends BasePgSQLTest {
 
   private void policiesAndPermissionsVerification(Statement stmt1,
                                                   Statement stmt2) throws Exception {
+    assertQuery(stmt1,
+        "SELECT relrowsecurity, relforcerowsecurity FROM pg_class WHERE relname = 'nopk'",
+        new Row(true, true));
     assertQuery(stmt1, "SELECT * FROM nopk", new Row(2, "user1"));
     runInvalidQuery(stmt2, "SELECT * FROM nopk", "permission denied for table nopk");
     assertQuery(stmt2, "SELECT id FROM nopk", new Row(3));
@@ -1051,6 +1054,7 @@ public class TestPgAlterTableChangePrimaryKey extends BasePgSQLTest {
       stmt.executeUpdate("CREATE POLICY p ON nopk FOR SELECT TO user1, user2 USING" +
                          "(username = CURRENT_USER)");
       stmt.executeUpdate("ALTER TABLE nopk ENABLE ROW LEVEL SECURITY");
+      stmt.executeUpdate("ALTER TABLE nopk FORCE ROW LEVEL SECURITY");
       stmt.executeUpdate("ALTER TABLE nopk DROP COLUMN drop_me");
       try (Connection conn1 = getConnectionBuilder().withUser("user1").connect();
            Connection conn2 = getConnectionBuilder().withUser("user2").connect();) {
