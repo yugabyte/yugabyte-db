@@ -80,6 +80,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   public static final String PLACEMENT_MODIFICATION_TASK_UUID_FIELD =
       "placementModificationTaskUuid";
 
+  public static final Set<SoftwareUpgradeState> IN_PROGRESS_UNIV_SOFTWARE_UPGRADE_STATES =
+      ImmutableSet.of(
+          SoftwareUpgradeState.Upgrading,
+          SoftwareUpgradeState.RollingBack,
+          SoftwareUpgradeState.Finalizing);
+
   @Constraints.Required()
   @Size(min = 1)
   public List<Cluster> clusters = new LinkedList<>();
