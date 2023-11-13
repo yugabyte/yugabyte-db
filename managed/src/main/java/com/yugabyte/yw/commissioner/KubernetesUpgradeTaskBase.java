@@ -76,14 +76,18 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
 
       if (taskParams().getUniverseSoftwareUpgradeStateOnFailure() != null) {
         Universe universe = getUniverse(true);
-        universe.updateUniverseSoftwareUpgradeState(
-            taskParams().getUniverseSoftwareUpgradeStateOnFailure());
-        log.debug(
-            "Updated universe {} software upgrade state to  {}.",
-            taskParams().getUniverseUUID(),
-            taskParams().getUniverseSoftwareUpgradeStateOnFailure());
+        if (!UniverseDefinitionTaskParams.IN_PROGRESS_UNIV_SOFTWARE_UPGRADE_STATES.contains(
+            universe.getUniverseDetails().softwareUpgradeState)) {
+          log.debug("Skipping universe upgrade state as actual task was not started.");
+        } else {
+          universe.updateUniverseSoftwareUpgradeState(
+              taskParams().getUniverseSoftwareUpgradeStateOnFailure());
+          log.debug(
+              "Updated universe {} software upgrade state to  {}.",
+              taskParams().getUniverseUUID(),
+              taskParams().getUniverseSoftwareUpgradeStateOnFailure());
+        }
       }
-
       // If the task failed, we don't want the loadbalancer to be
       // disabled, so we enable it again in case of errors.
       setTaskQueueAndRun(

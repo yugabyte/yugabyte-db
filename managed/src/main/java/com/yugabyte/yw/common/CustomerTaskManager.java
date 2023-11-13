@@ -345,8 +345,13 @@ public class CustomerTaskManager {
             CustomerTask.getOrBadRequest(customer.getUuid(), placementModificationTaskUuid);
         SoftwareUpgradeState state =
             getUniverseSoftwareUpgradeStateBasedOnTask(universe, placementModificationTask);
-        universe.updateUniverseSoftwareUpgradeState(state);
-        LOG.debug("Updated universe {} software upgrade state to  {}.", uuid, state);
+        if (!UniverseDefinitionTaskParams.IN_PROGRESS_UNIV_SOFTWARE_UPGRADE_STATES.contains(
+            universe.getUniverseDetails().softwareUpgradeState)) {
+          LOG.debug("Skipping universe upgrade state as actual task was not started.");
+        } else {
+          universe.updateUniverseSoftwareUpgradeState(state);
+          LOG.debug("Updated universe {} software upgrade state to  {}.", uuid, state);
+        }
       }
     }
   }
