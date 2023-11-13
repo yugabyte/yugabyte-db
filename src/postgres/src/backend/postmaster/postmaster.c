@@ -3377,6 +3377,7 @@ CleanupBackgroundWorker(int pid,
 static void
 CleanupKilledProcess(PGPROC *proc)
 {
+	KilledProcToClean = proc;
 	if (proc->backendId == InvalidBackendId)
 	{
 		/* These come from ShutdownAuxiliaryProcess */
@@ -3406,6 +3407,8 @@ CleanupKilledProcess(PGPROC *proc)
 
 		ReleaseProcToFreeList(proc);
 	}
+
+	KilledProcToClean = NULL;
 }
 
 /*
