@@ -986,10 +986,19 @@ LWLockQueueSelf(LWLock *lock, LWLockMode mode)
 	 * should never occur, since MyProc should only be null during shared
 	 * memory initialization.
 	 */
-	if (MyProc == NULL)
+	PGPROC *proc = MyProc;
+
+	if (!IsUnderPostmaster && MyProc == NULL)
+	{
+		if (KilledProcToClean == NULL)
+			elog(PANIC, "postmaster cannot wait without a killed process struct");
+		proc = KilledProcToClean;
+	}
+
+	if (proc == NULL)
 		elog(PANIC, "cannot wait without a PGPROC structure");
 
-	if (MyProc->lwWaiting)
+	if (proc->lwWaiting)
 		elog(PANIC, "queueing for lock while waiting on another one");
 
 	LWLockWaitListLock(lock);
@@ -997,14 +1006,14 @@ LWLockQueueSelf(LWLock *lock, LWLockMode mode)
 	/* setting the flag is protected by the spinlock */
 	pg_atomic_fetch_or_u32(&lock->state, LW_FLAG_HAS_WAITERS);
 
-	MyProc->lwWaiting = true;
-	MyProc->lwWaitMode = mode;
+	proc->lwWaiting = true;
+	proc->lwWaitMode = mode;
 
 	/* LW_WAIT_UNTIL_FREE waiters are always at the front of the queue */
 	if (mode == LW_WAIT_UNTIL_FREE)
-		proclist_push_head(&lock->waiters, MyProc->pgprocno, lwWaitLink);
+		proclist_push_head(&lock->waiters, proc->pgprocno, lwWaitLink);
 	else
-		proclist_push_tail(&lock->waiters, MyProc->pgprocno, lwWaitLink);
+		proclist_push_tail(&lock->waiters, proc->pgprocno, lwWaitLink);
 
 	/* Can release the mutex now */
 	LWLockWaitListUnlock(lock);
@@ -1128,6 +1137,9 @@ LWLockAcquire(LWLock *lock, LWLockMode mode)
 
 	lwstats = get_lwlock_stats_entry(lock);
 #endif
+
+	if (!IsUnderPostmaster && MyProc == NULL && KilledProcToClean != NULL)
+		proc = KilledProcToClean;
 
 	AssertArg(mode == LW_SHARED || mode == LW_EXCLUSIVE);
 
