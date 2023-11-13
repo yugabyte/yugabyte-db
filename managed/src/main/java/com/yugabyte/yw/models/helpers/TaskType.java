@@ -183,11 +183,19 @@ public enum TaskType {
 
   RestartXClusterConfig(com.yugabyte.yw.commissioner.tasks.RestartXClusterConfig.class),
 
+  RestartDrConfig(com.yugabyte.yw.commissioner.tasks.RestartXClusterConfig.class),
+
+  SyncDrConfig(com.yugabyte.yw.commissioner.tasks.SyncXClusterConfig.class),
+
+  SetTablesDrConfig(com.yugabyte.yw.commissioner.tasks.EditXClusterConfig.class),
+
   CreateDrConfig(com.yugabyte.yw.commissioner.tasks.CreateDrConfig.class),
 
   DeleteDrConfig(com.yugabyte.yw.commissioner.tasks.DeleteDrConfig.class),
 
   FailoverDrConfig(com.yugabyte.yw.commissioner.tasks.FailoverDrConfig.class),
+
+  SwitchoverDrConfig(com.yugabyte.yw.commissioner.tasks.SwitchoverDrConfig.class),
 
   EditDrConfig(com.yugabyte.yw.commissioner.tasks.EditDrConfig.class),
 
@@ -332,6 +340,9 @@ public enum TaskType {
 
   DeleteXClusterConfigEntry(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteXClusterConfigEntry.class),
+
+  DeleteXClusterTableConfigEntry(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteXClusterTableConfigEntry.class),
 
   DeleteDrConfigEntry(com.yugabyte.yw.commissioner.tasks.subtasks.DeleteDrConfigEntry.class),
 

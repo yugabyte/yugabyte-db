@@ -114,6 +114,17 @@ public class XClusterConfig extends Model {
   @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   private TargetUniverseState targetUniverseState;
 
+  /**
+   * In the application logic, <em>NEVER<em/> read from the following variable. This is only used
+   * for UI purposes.
+   */
+  @ApiModelProperty(
+      value =
+          "WARNING: This is a preview API that could change. The keyspace name that the xCluster"
+              + " task is working on; used for disaster recovery")
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
+  private String keyspacePending;
+
   public enum XClusterConfigStatusType {
     Initialized("Initialized"),
     Running("Running"),
@@ -173,7 +184,7 @@ public class XClusterConfig extends Model {
   @JsonProperty("tableDetails")
   private Set<XClusterTableConfig> tables = new HashSet<>();
 
-  @ApiModelProperty(value = "Replication group name in DB")
+  @ApiModelProperty(value = "Replication group name in the target universe cluster config")
   private String replicationGroupName;
 
   public enum ConfigType {
@@ -239,8 +250,10 @@ public class XClusterConfig extends Model {
   }
 
   public void addPitrConfig(PitrConfig pitrConfig) {
-    this.pitrConfigs.add(pitrConfig);
-    this.update();
+    if (this.pitrConfigs.stream().noneMatch(p -> p.getUuid().equals(pitrConfig.getUuid()))) {
+      this.pitrConfigs.add(pitrConfig);
+      this.update();
+    }
   }
 
   @Override

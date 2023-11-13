@@ -55,9 +55,12 @@ import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.WireProtocol.AppStatusPB;
 import org.yb.WireProtocol.AppStatusPB.ErrorCode;
+import org.yb.cdc.CdcConsumer;
 import org.yb.client.DeleteUniverseReplicationResponse;
+import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.PromoteAutoFlagsResponse;
 import org.yb.client.YBClient;
+import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterClusterOuterClass;
 import org.yb.master.MasterTypes.MasterErrorPB;
 import org.yb.master.MasterTypes.MasterErrorPB.Code;
@@ -169,6 +172,39 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
     return null;
   }
 
+  public void initTargetUniverseClusterConfig(String replicationGroupName, int numberOfTables) {
+    CdcConsumer.ProducerEntryPB.Builder fakeProducerEntry =
+        CdcConsumer.ProducerEntryPB.newBuilder();
+    switch (numberOfTables) {
+      case 2:
+        CdcConsumer.StreamEntryPB.Builder fakeStreamEntry2 =
+            CdcConsumer.StreamEntryPB.newBuilder().setProducerTableId(exampleTableID2);
+        fakeProducerEntry.putStreamMap(exampleStreamID2, fakeStreamEntry2.build());
+        // Intentional fall-through.
+      case 1:
+      default:
+        CdcConsumer.StreamEntryPB.Builder fakeStreamEntry1 =
+            CdcConsumer.StreamEntryPB.newBuilder().setProducerTableId(exampleTableID1);
+        fakeProducerEntry.putStreamMap(exampleStreamID1, fakeStreamEntry1.build());
+    }
+
+    CdcConsumer.ConsumerRegistryPB.Builder fakeConsumerRegistryBuilder =
+        CdcConsumer.ConsumerRegistryPB.newBuilder()
+            .putProducerMap(replicationGroupName, fakeProducerEntry.build());
+
+    CatalogEntityInfo.SysClusterConfigEntryPB.Builder fakeClusterConfigBuilder =
+        CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder()
+            .setConsumerRegistry(fakeConsumerRegistryBuilder.build());
+
+    GetMasterClusterConfigResponse fakeClusterConfigResponse =
+        new GetMasterClusterConfigResponse(0, "", fakeClusterConfigBuilder.build(), null);
+
+    try {
+      when(mockClient.getMasterClusterConfig()).thenReturn(fakeClusterConfigResponse);
+    } catch (Exception e) {
+    }
+  }
+
   public void setupAlertConfigurations() {
     AlertConfiguration alertConfiguration =
         alertConfigurationService
@@ -208,6 +244,7 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
   public void testDelete() {
     XClusterConfig xClusterConfig =
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
+    initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName(), 2);
 
     try {
       DeleteUniverseReplicationResponse mockDeleteResponse =
@@ -241,6 +278,7 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
   public void testDeleteWithPromoteAutoFlagsOnSelectiveUniverse() {
     XClusterConfig xClusterConfig =
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
+    initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName(), 2);
     TestHelper.updateUniverseVersion(targetUniverse, "2.14.0.0-b1");
 
     try {
@@ -277,6 +315,7 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
   public void testDeleteHAEnabled() {
     XClusterConfig xClusterConfig =
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
+    initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName(), 2);
 
     HighAvailabilityConfig.create("test-cluster-key");
 
@@ -312,6 +351,7 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
   public void testDeleteXClusterFailure() {
     XClusterConfig xClusterConfig =
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
+    initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName(), 2);
 
     String deleteErrMsg = "failed to run delete rpc";
     try {

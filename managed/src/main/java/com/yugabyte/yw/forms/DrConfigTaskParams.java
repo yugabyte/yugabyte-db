@@ -2,6 +2,7 @@ package com.yugabyte.yw.forms;
 
 import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.XClusterConfig;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import javax.annotation.Nullable;
@@ -17,7 +18,7 @@ import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 public class DrConfigTaskParams extends XClusterConfigTaskParams {
 
   protected DrConfig drConfig;
-  protected DrConfigFailoverForm.Type failoverType;
+  protected XClusterConfig oldXClusterConfig;
   protected Map<String, Long> namespaceIdSafetimeEpochUsMap;
 
   /** It is used in the create method. */
@@ -44,24 +45,41 @@ public class DrConfigTaskParams extends XClusterConfigTaskParams {
     this.drConfig = drConfig;
   }
 
-  /** It is used in the edit and failover methods. */
+  /** It is used in the replaceReplica methods. */
   public DrConfigTaskParams(
       DrConfig drConfig,
-      @Nullable DrConfigFailoverForm.Type failoverType,
-      @Nullable Map<String, Long> namespaceIdSafetimeEpochUsMap,
-      XClusterConfig xClusterConfig,
-      @Nullable XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
+      @Nullable XClusterConfig oldXClusterConfig,
+      XClusterConfig newXClusterConfig,
+      XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList,
       Map<String, List<String>> mainTableIndexTablesMap,
       Map<String, String> sourceTableIdTargetTableIdMap) {
     super(
-        xClusterConfig,
+        newXClusterConfig,
         bootstrapParams,
         tableInfoList,
         mainTableIndexTablesMap,
         sourceTableIdTargetTableIdMap);
     this.drConfig = drConfig;
-    this.failoverType = failoverType;
+    this.oldXClusterConfig = oldXClusterConfig;
+  }
+
+  /** It is used in the switchover and failover methods. */
+  public DrConfigTaskParams(
+      DrConfig drConfig,
+      @Nullable XClusterConfig oldXClusterConfig,
+      XClusterConfig newXClusterConfig,
+      @Nullable Map<String, Long> namespaceIdSafetimeEpochUsMap,
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList,
+      Map<String, List<String>> mainTableIndexTablesMap) {
+    super(
+        newXClusterConfig,
+        null /* bootstrapParams */,
+        tableInfoList,
+        mainTableIndexTablesMap,
+        Collections.emptyMap() /* sourceTableIdTargetTableIdMap */);
+    this.drConfig = drConfig;
+    this.oldXClusterConfig = oldXClusterConfig;
     this.namespaceIdSafetimeEpochUsMap = namespaceIdSafetimeEpochUsMap;
   }
 }
