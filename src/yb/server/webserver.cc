@@ -56,7 +56,7 @@
 
 #include <boost/algorithm/string.hpp>
 #include <cds/init.h>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <squeasel.h>
 
 #include "yb/gutil/dynamic_annotations.h"

@@ -33,7 +33,7 @@
 #include <limits>
 #include <sstream>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/int128.h"

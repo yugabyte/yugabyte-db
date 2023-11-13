@@ -51,7 +51,7 @@
 #include <mutex>
 #include <regex>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/hash/city.h"
 #include "yb/gutil/linux_syscall_support.h"

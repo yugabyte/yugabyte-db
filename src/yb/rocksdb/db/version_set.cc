@@ -38,7 +38,7 @@
 #include <vector>
 #include <string>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <boost/container/small_vector.hpp>
 
 #include "yb/gutil/casts.h"

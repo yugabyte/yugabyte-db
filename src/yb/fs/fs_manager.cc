@@ -38,7 +38,6 @@
 
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/preprocessor/cat.hpp>
-#include <glog/logging.h>
 #include <glog/stl_logging.h>
 #include <google/protobuf/message.h>
 

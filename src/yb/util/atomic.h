@@ -38,7 +38,7 @@
 
 #include <boost/atomic.hpp>
 #include <boost/type_traits/make_signed.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/macros.h"

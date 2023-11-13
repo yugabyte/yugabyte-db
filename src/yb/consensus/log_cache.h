@@ -44,7 +44,7 @@
 
 #include <boost/container/small_vector.hpp>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <gtest/gtest_prod.h>
 
 #include "yb/consensus/consensus_fwd.h"

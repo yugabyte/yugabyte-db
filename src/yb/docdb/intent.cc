@@ -15,8 +15,6 @@
 
 #include <string>
 
-#include <glog/logging.h>
-
 #include "yb/common/row_mark.h"
 #include "yb/common/transaction.h"
 
@@ -24,6 +22,7 @@
 
 #include "yb/gutil/endian.h"
 
+#include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 

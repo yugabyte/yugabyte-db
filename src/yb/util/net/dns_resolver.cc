@@ -37,7 +37,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_fwd.h"

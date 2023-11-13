@@ -39,7 +39,7 @@
 #include <vector>
 
 #include <boost/optional/optional.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"

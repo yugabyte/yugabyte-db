@@ -17,7 +17,7 @@
 #include <future>
 
 #include "yb/util/flags.h"
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/client/callbacks.h"
 #include "yb/client/client.h"

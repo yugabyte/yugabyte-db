@@ -33,8 +33,6 @@
 
 #include <memory>
 
-#include <glog/logging.h>
-
 #include "yb/common/partition.h"
 #include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_wire_protocol.h"

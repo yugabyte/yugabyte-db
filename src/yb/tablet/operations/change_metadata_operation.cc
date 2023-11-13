@@ -32,8 +32,6 @@
 
 #include "yb/tablet/operations/change_metadata_operation.h"
 
-#include <glog/logging.h>
-
 #include "yb/common/ql_wire_protocol.h"
 #include "yb/common/schema.h"
 

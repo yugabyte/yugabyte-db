@@ -35,8 +35,6 @@
 #include <algorithm>
 #include <mutex>
 
-#include <glog/logging.h>
-
 #include "yb/gutil/bind.h"
 #include "yb/gutil/walltime.h"
 

@@ -39,7 +39,6 @@
 #include <vector>
 
 #include <boost/optional.hpp>
-#include <glog/logging.h>
 
 #include "yb/common/wire_protocol.h"
 

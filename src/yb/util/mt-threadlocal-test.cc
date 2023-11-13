@@ -32,7 +32,7 @@
 #include <mutex>
 #include <unordered_set>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/map-util.h"

@@ -22,7 +22,7 @@
 #include <mutex>
 
 #include <boost/function.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/util/monotime.h"

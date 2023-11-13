@@ -24,7 +24,7 @@
 
 #include <boost/optional.hpp>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/value.pb.h"

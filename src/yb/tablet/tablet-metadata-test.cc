@@ -32,7 +32,7 @@
 
 #include <cstddef>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/schema.h"

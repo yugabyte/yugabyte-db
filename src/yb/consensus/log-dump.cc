@@ -36,7 +36,6 @@
 
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
-#include <glog/logging.h>
 
 #include "yb/common/ql_wire_protocol.h"
 #include "yb/common/schema.h"

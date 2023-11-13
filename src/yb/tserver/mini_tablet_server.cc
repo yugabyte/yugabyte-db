@@ -37,7 +37,7 @@
 #include <string>
 #include <utility>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/common/index.h"
 #include "yb/common/partition.h"

@@ -22,7 +22,7 @@
 #include "absl/debugging/symbolize.h"
 #endif
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/strings/numbers.h"
 #include "yb/util/format.h"

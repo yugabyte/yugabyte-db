@@ -29,7 +29,7 @@
 
 #include <boost/optional.hpp>
 #include <boost/preprocessor/cat.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/common/partial_row.h"
 #include "yb/common/partition.h"

@@ -37,7 +37,7 @@
 #include <string>
 #include <type_traits>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
 #include "yb/gutil/hash/hash.h"

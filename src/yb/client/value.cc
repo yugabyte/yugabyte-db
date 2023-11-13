@@ -32,7 +32,7 @@
 
 #include "yb/client/value.h"
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/client/value-internal.h"
 #include "yb/common/ql_type.h"

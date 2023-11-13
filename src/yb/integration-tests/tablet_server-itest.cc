@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/ts_itest-base.h"

@@ -16,7 +16,7 @@
 #include <memory>
 #include <string>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"

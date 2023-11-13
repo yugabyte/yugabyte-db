@@ -39,7 +39,7 @@
 #include <vector>
 
 #include "yb/util/flags.h"
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
 #include "yb/gutil/atomicops.h"

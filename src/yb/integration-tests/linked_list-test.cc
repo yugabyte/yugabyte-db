@@ -47,7 +47,7 @@
 #include <functional>
 #include <set>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
 #include "yb/client/client-test-util.h"

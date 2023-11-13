@@ -30,7 +30,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/table/block_hash_index.h"

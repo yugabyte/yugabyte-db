@@ -32,8 +32,6 @@
 
 #include "yb/tserver/remote_bootstrap_client.h"
 
-#include <glog/logging.h>
-
 #include "yb/common/index.h"
 #include "yb/common/ql_wire_protocol.h"
 #include "yb/common/schema.h"

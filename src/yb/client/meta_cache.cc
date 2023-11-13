@@ -44,7 +44,6 @@
 #include <vector>
 
 #include <boost/optional/optional_io.hpp>
-#include <glog/logging.h>
 
 #include "yb/client/client.h"
 #include "yb/client/client_error.h"

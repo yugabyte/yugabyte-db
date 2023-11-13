@@ -38,7 +38,7 @@
 #include <vector>
 
 #include <boost/thread/thread.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
 #include "yb/common/partial_row.h"

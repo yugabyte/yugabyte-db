@@ -33,7 +33,7 @@
 
 #include <limits>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/consensus/consensus.messages.h"
 #include "yb/gutil/port.h"

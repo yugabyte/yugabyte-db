@@ -40,7 +40,7 @@
 #include <string>
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/strings/ascii_ctype.h"
 #include "yb/gutil/strings/charset.h"

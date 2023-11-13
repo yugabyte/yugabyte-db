@@ -39,7 +39,7 @@
 
 #include <time.h>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/client/table.h"
 

@@ -33,7 +33,7 @@
 
 #include <memory>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
 #include "yb/consensus/consensus_fwd.h"

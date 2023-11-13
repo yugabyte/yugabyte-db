@@ -15,7 +15,7 @@
 #include <fstream>
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/bfpg/directory.h"
 #include "yb/common/ql_type.h"

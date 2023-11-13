@@ -13,7 +13,7 @@
 
 #include "yb/util/async_task_util.h"
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 namespace yb {
 

@@ -23,7 +23,7 @@
 
 #include "yb/rocksdb/util/rate_limiter.h"
 #include "yb/rocksdb/env.h"
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 
@@ -270,25 +270,25 @@ void GenericRateLimiter::Refill() {
 }
 
 std::string GenericRateLimiter::ToString() const {
-  auto queue_size = queue_[yb::to_underlying(IOPriority::kHigh)].size() + 
+  auto queue_size = queue_[yb::to_underlying(IOPriority::kHigh)].size() +
                     queue_[yb::to_underlying(IOPriority::kLow)].size();
   auto total_bytes_requested_per_second =
       total_bytes_requested_per_second_[yb::to_underlying(IOPriority::kHigh)] +
       total_bytes_requested_per_second_[yb::to_underlying(IOPriority::kLow)];
-  auto total_request_per_second = 
+  auto total_request_per_second =
       total_request_per_second_[yb::to_underlying(IOPriority::kHigh)] +
       total_request_per_second_[yb::to_underlying(IOPriority::kLow)];
-  auto allowed_request_per_second = 
+  auto allowed_request_per_second =
       allowed_request_per_second_[yb::to_underlying(IOPriority::kHigh)] +
       allowed_request_per_second_[yb::to_underlying(IOPriority::kLow)];
-  auto throttled_request_per_second = 
+  auto throttled_request_per_second =
       throttled_request_per_second_[yb::to_underlying(IOPriority::kHigh)] +
       throttled_request_per_second_[yb::to_underlying(IOPriority::kLow)];
-  
+
   if (throttled_request_per_second > 0) {
     LOG(INFO) << yb::Format("$0: THROTTLED REQUESTS", description_);
   }
-    
+
   return yb::Format(
       "$0 rate limiter status:\navailable_bytes: $1\nqueue_size: $2\ntotal_bytes_requested_per_second: $3\n"
       "total_request_per_second: $4\nallowed_request_per_second: $5\n"

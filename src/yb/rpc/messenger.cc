@@ -41,7 +41,7 @@
 #include <string>
 #include <thread>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"

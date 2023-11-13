@@ -33,7 +33,7 @@
 #include <signal.h> // For sigaction
 #include <sys/time.h>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
 #include "yb/util/pstack_watcher.h"

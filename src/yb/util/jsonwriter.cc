@@ -33,7 +33,7 @@
 
 #include <string>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <google/protobuf/message.h>
 #include <rapidjson/prettywriter.h>
 

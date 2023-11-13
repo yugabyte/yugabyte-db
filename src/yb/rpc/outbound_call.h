@@ -44,7 +44,7 @@
 
 #include <boost/functional/hash.hpp>
 #include "yb/util/flags.h"
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/macros.h"

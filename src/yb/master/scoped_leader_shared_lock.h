@@ -36,7 +36,7 @@
 #include <string>
 #include <unordered_map>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/master/master_fwd.h"
 

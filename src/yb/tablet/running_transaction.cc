@@ -13,8 +13,6 @@
 
 #include "yb/tablet/running_transaction.h"
 
-#include <glog/logging.h>
-
 #include "yb/client/transaction_rpc.h"
 
 #include "yb/common/hybrid_time.h"

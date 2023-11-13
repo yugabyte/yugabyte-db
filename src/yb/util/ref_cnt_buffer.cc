@@ -13,7 +13,7 @@
 //
 //
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/util/ref_cnt_buffer.h"
 

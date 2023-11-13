@@ -32,7 +32,7 @@
 
 #include "yb/util/rwc_lock.h"
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #ifndef NDEBUG
 #include <utility>
