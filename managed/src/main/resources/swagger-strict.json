@@ -11672,10 +11672,6 @@
         "platformVersion" : {
           "type" : "string"
         },
-        "prevYBSoftwareConfig" : {
-          "$ref" : "#/definitions/PrevYBSoftwareConfig",
-          "description" : "Previous software version related data"
-        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -11688,10 +11684,6 @@
         "sleepAfterTServerRestartMillis" : {
           "format" : "int32",
           "type" : "integer"
-        },
-        "softwareUpgradeState" : {
-          "enum" : [ "Ready", "Upgrading", "UpgradeFailed", "PreFinalize", "Finalizing", "FinalizeFailed", "RollingBack", "RollbackFailed" ],
-          "type" : "string"
         },
         "sourceXClusterConfigs" : {
           "description" : "The source universe's xcluster replication relationships",
@@ -19427,15 +19419,6 @@
           "name" : "arch",
           "required" : false,
           "type" : "string"
-        }, {
-          "in" : "path",
-          "name" : "code",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -20032,12 +20015,6 @@
           "format" : "uuid",
           "in" : "path",
           "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "pUUID",
           "required" : true,
           "type" : "string"
         }, {
@@ -21681,9 +21658,7 @@
           "in" : "path",
           "name" : "uniUUID",
           "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/CreatePitrConfigParams"
-          }
+          "type" : "string"
         } ],
         "responses" : {
           "200" : {
