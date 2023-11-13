@@ -486,6 +486,19 @@ export default class UniverseOverviewNew extends Component {
     );
   };
 
+  getReadReplicaClusterWidget = (currentUniverse) => {
+    if (isNullOrEmpty(currentUniverse)) return;
+    return (
+      <Col lg={2} sm={6} md={4} xs={8}>
+        <ClusterInfoPanelContainer
+          type={'read-replica'}
+          universeInfo={currentUniverse}
+          runtimeConfigs={this.props.runtimeConfigs}
+        />
+      </Col>
+    );
+  };
+
   getTablesWidget = (universeInfo) => {
     if (isNullOrEmpty(this.props.tables)) return;
     const { tables } = this.props;
@@ -533,8 +546,11 @@ export default class UniverseOverviewNew extends Component {
   };
 
   getHealthWidget = (healthCheck, universeInfo) => {
+    const isDedicatedNodes = isDedicatedNodePlacement(universeInfo);
+    const hasReadReplicaCluster = this.hasReadReplica(universeInfo);
+
     return (
-      <Col lg={4} md={8} sm={8} xs={12}>
+      <Col lg={isDedicatedNodes && hasReadReplicaCluster ? 2 : 4} md={6} sm={8} xs={12}>
         <HealthInfoPanel healthCheck={healthCheck} universeInfo={universeInfo} />
       </Col>
     );
@@ -607,6 +623,7 @@ export default class UniverseOverviewNew extends Component {
     // For kubernetes the CPU usage would be in container tab, rest it would be server tab.
     const isItKubernetesUniverse = isKubernetesUniverse(universeInfo);
     const isDedicatedNodes = isDedicatedNodePlacement(universeInfo);
+    const hasReadReplicaCluster = this.hasReadReplica(universeInfo);
     const subTab = isItKubernetesUniverse ? 'container' : 'server';
     const useK8CustomResourcesObject = this.props.runtimeConfigs?.data?.configEntries?.find(
       (c) => c.key === RuntimeConfigKey.USE_K8_CUSTOM_RESOURCES_FEATURE_FLAG
@@ -614,7 +631,7 @@ export default class UniverseOverviewNew extends Component {
     const useK8CustomResources = useK8CustomResourcesObject?.value === 'true';
 
     return (
-      <Col lg={isDedicatedNodes ? 2 : 4} md={4} sm={4} xs={6}>
+      <Col lg={isDedicatedNodes || hasReadReplicaCluster ? 2 : 4} md={4} sm={4} xs={6}>
         <StandaloneMetricsPanelContainer
           metricKey={isItKubernetesUniverse ? 'container_cpu_usage' : 'cpu_usage'}
           isDedicatedNodes={isDedicatedNodes && !isItKubernetesUniverse}
@@ -809,6 +826,7 @@ export default class UniverseOverviewNew extends Component {
         <Row>
           {this.getDatabaseWidget(universeInfo, tasks)}
           {this.getPrimaryClusterWidget(universeInfo)}
+          {this.hasReadReplica(universeInfo) && this.getReadReplicaClusterWidget(universeInfo)}
           {this.getCPUWidget(universeInfo)}
           {isDisabled(currentCustomer.data.features, 'universes.details.health')
             ? this.getAlertWidget(alerts, universeInfo)
