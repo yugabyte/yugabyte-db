@@ -18,6 +18,7 @@
  */
 
 #include "postgres.h"
+
 #include "utils/guc.h"
 #include "utils/ag_guc.h"
 

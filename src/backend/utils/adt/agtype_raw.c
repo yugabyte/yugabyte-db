@@ -18,8 +18,7 @@
  */
 
 #include "postgres.h"
-#include "utils/agtype.h"
-#include "utils/agtype_ext.h"
+
 #include "utils/agtype_raw.h"
 
 /*

@@ -19,34 +19,9 @@
 
 #include "postgres.h"
 
-#include "access/xact.h"
 #include "access/genam.h"
-#include "access/heapam.h"
-#include "catalog/dependency.h"
-#include "catalog/objectaddress.h"
-#include "commands/defrem.h"
-#include "commands/schemacmds.h"
-#include "commands/tablecmds.h"
-#include "fmgr.h"
-#include "miscadmin.h"
-#include "nodes/makefuncs.h"
-#include "nodes/nodes.h"
-#include "nodes/parsenodes.h"
-#include "nodes/pg_list.h"
-#include "nodes/value.h"
-#include "parser/parser.h"
-#include "utils/fmgroids.h"
-#include "utils/relcache.h"
-#include "utils/rel.h"
-
-#include "catalog/ag_graph.h"
-#include "catalog/ag_label.h"
 #include "commands/graph_commands.h"
-#include "commands/label_commands.h"
-#include "utils/graphid.h"
 #include "utils/load/age_load.h"
-#include "utils/load/ag_load_edges.h"
-#include "utils/load/ag_load_labels.h"
 
 
 int64 get_nextval_internal(graph_cache_data* graph_cache,

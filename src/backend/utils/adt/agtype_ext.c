@@ -18,8 +18,6 @@
  */
 
 #include "utils/agtype_ext.h"
-#include "utils/agtype.h"
-#include "utils/graphid.h"
 
 /* define the type and size of the agt_header */
 #define AGT_HEADER_TYPE uint32

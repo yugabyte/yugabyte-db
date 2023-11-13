@@ -30,14 +30,11 @@
 
 #include "access/gin.h"
 #include "access/hash.h"
-#include "access/stratnum.h"
 #include "catalog/pg_collation.h"
-#include "catalog/pg_type.h"
+#include "utils/agtype.h"
 #include "utils/float.h"
 #include "utils/builtins.h"
 #include "utils/varlena.h"
-
-#include "utils/agtype.h"
 
 typedef struct PathHashStack
 {

@@ -30,45 +30,28 @@
 
 #include "postgres.h"
 
-#include <math.h>
 #include <float.h>
 
 #include "access/genam.h"
 #include "access/heapam.h"
-#include "access/skey.h"
-#include "access/table.h"
-#include "access/tableam.h"
-#include "access/htup_details.h"
 #include "catalog/namespace.h"
-#include "catalog/pg_collation.h"
-#include "catalog/pg_operator.h"
-#include "catalog/pg_type.h"
-#include "catalog/pg_aggregate_d.h"
 #include "catalog/pg_collation_d.h"
 #include "catalog/pg_operator_d.h"
-#include "executor/nodeAgg.h"
 #include "funcapi.h"
 #include "libpq/pqformat.h"
 #include "miscadmin.h"
 #include "parser/parse_coerce.h"
-#include "nodes/pg_list.h"
 #include "utils/builtins.h"
 #include "utils/float.h"
-#include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
-#include "utils/rel.h"
 #include "utils/snapmgr.h"
 #include "utils/typcache.h"
-
 #include "utils/age_vle.h"
-#include "utils/agtype.h"
 #include "utils/agtype_parser.h"
 #include "utils/ag_float8_supp.h"
 #include "utils/agtype_raw.h"
 #include "catalog/ag_graph.h"
 #include "catalog/ag_label.h"
-#include "utils/graphid.h"
-#include "utils/numeric.h"
 
 /* State structure for Percentile aggregate functions */
 typedef struct PercentileGroupAggState

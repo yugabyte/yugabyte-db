@@ -19,31 +19,16 @@
 
 #include "postgres.h"
 
-#include "access/attnum.h"
 #include "access/genam.h"
 #include "access/heapam.h"
-#include "access/htup.h"
-#include "access/htup_details.h"
-#include "access/skey.h"
-#include "access/stratnum.h"
-#include "access/tupdesc.h"
 #include "catalog/pg_collation.h"
-#include "fmgr.h"
-#include "storage/lockdefs.h"
 #include "utils/builtins.h"
 #include "utils/catcache.h"
-#include "utils/fmgroids.h"
-#include "utils/hsearch.h"
 #include "utils/inval.h"
-#include "utils/memutils.h"
-#include "utils/rel.h"
-#include "utils/relcache.h"
-#include "utils/syscache.h"
 
 #include "catalog/ag_graph.h"
 #include "catalog/ag_label.h"
 #include "utils/ag_cache.h"
-#include "utils/graphid.h"
 
 typedef struct graph_name_cache_entry
 {

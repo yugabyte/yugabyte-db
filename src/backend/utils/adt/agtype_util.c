@@ -39,9 +39,7 @@
 #include "utils/memutils.h"
 #include "utils/varlena.h"
 
-#include "utils/agtype.h"
 #include "utils/agtype_ext.h"
-#include "utils/graphid.h"
 
 /*
  * Maximum number of elements in an array (or key/value pairs in an object).

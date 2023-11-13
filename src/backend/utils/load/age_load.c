@@ -19,20 +19,6 @@
 
 #include "postgres.h"
 
-#include "access/heapam.h"
-#include "access/xact.h"
-#include "parser/parse_node.h"
-#include "storage/lockdefs.h"
-#include "tcop/dest.h"
-#include "utils/builtins.h"
-#include "utils/lsyscache.h"
-#include "utils/rel.h"
-
-#include "catalog/ag_graph.h"
-#include "catalog/ag_label.h"
-#include "utils/agtype.h"
-#include "utils/graphid.h"
-
 #include "utils/load/ag_load_edges.h"
 #include "utils/load/ag_load_labels.h"
 #include "utils/load/age_load.h"

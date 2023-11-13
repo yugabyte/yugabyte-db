@@ -20,28 +20,17 @@
 #include "postgres.h"
 
 #include "access/heapam.h"
-#include "access/relscan.h"
-#include "access/skey.h"
-#include "access/table.h"
-#include "access/tableam.h"
 #include "catalog/namespace.h"
 #include "common/hashfn.h"
 #include "commands/label_commands.h"
 #include "utils/datum.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
-#include "utils/rel.h"
 #include "utils/snapmgr.h"
 
-#include "catalog/ag_graph.h"
-#include "catalog/ag_label.h"
 #include "utils/age_global_graph.h"
-#include "utils/age_graphid_ds.h"
-#include "utils/agtype.h"
 #include "catalog/ag_graph.h"
 #include "catalog/ag_label.h"
-#include "utils/graphid.h"
-#include "utils/age_graphid_ds.h"
 
 /* defines */
 #define VERTEX_HTAB_NAME "Vertex to edge lists " /* added a space at end for */

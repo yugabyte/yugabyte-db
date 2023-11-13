@@ -26,12 +26,8 @@
 #include <math.h>
 #include <limits.h>
 
-#include "catalog/pg_type_d.h"
-#include "fmgr.h"
-#include "utils/builtins.h"
-#include "utils/numeric.h"
-
 #include "utils/agtype.h"
+#include "utils/builtins.h"
 
 static agtype *agtype_concat_impl(agtype *agt1, agtype *agt2);
 static agtype_value *iterator_concat(agtype_iterator **it1,
