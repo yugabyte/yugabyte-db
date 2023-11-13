@@ -4894,6 +4894,11 @@ create_nestloop_plan(PlannerInfo *root,
 
 	if (yb_is_batched)
 	{
+		/* No rels supplied to inner from outer should be unbatched. */
+		Relids inner_unbatched =
+			YB_PATH_REQ_OUTER_UNBATCHED(best_path->innerjoinpath);
+		Assert(!bms_overlap(inner_unbatched, outerrelids));
+		(void)inner_unbatched;
 		/* Add the available batched outer rels. */
 		root->yb_availBatchedRelids =
 			lcons(outerrelids, root->yb_availBatchedRelids);
@@ -4929,14 +4934,14 @@ create_nestloop_plan(PlannerInfo *root,
 			}
 
 			if (rinfo->can_join &&
-				 OidIsValid(rinfo->hashjoinoperator) &&
-				 yb_can_batch_rinfo(rinfo, batched_outerrelids, inner_relids))
+				OidIsValid(rinfo->hashjoinoperator) &&
+				yb_can_batch_rinfo(rinfo, batched_outerrelids, inner_relids))
 			{
 				/* if nlhash can process this */
 				Assert(is_opclause(rinfo->clause));
 				RestrictInfo *batched_rinfo =
-					yb_get_batched_restrictinfo(rinfo,batched_outerrelids,
-											 			 inner_relids);
+					yb_get_batched_restrictinfo(rinfo, batched_outerrelids,
+											 	inner_relids);
 
 				hashOpno = ((OpExpr *) batched_rinfo->clause)->opno;
 			}
