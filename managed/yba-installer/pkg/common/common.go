@@ -55,12 +55,12 @@ func Install(version string) {
 
 func createInstallDirs() {
 	createDirs := []string{
-		GetBaseInstall(),
 		GetSoftwareRoot(),
 		dm.WorkingDirectory(),
 		filepath.Join(GetBaseInstall(), "data"),
 		filepath.Join(GetBaseInstall(), "data/logs"),
 		GetInstallerSoftwareDir(),
+		GetBaseInstall(),
 	}
 
 	for _, dir := range createDirs {
@@ -385,9 +385,9 @@ func fixConfigValues() {
 
 	if viper.GetBool("postgres.install.enabled") &&
 		len(viper.GetString("postgres.install.password")) == 0 {
-			log.Info("Generating default password for postgres")
-			SetYamlValue(InputFile(), "postgres.install.password", GenerateRandomStringURLSafe(32))
-			InitViper()
+		log.Info("Generating default password for postgres")
+		SetYamlValue(InputFile(), "postgres.install.password", GenerateRandomStringURLSafe(32))
+		InitViper()
 	}
 }
 
