@@ -285,9 +285,9 @@ class CDCServiceContextImpl : public cdc::CDCServiceContext {
 
   const std::string& permanent_uuid() const override { return tablet_server_.permanent_uuid(); }
 
-  std::unique_ptr<client::AsyncClientInitialiser> MakeClientInitializer(
+  std::unique_ptr<client::AsyncClientInitializer> MakeClientInitializer(
       const std::string& client_name, MonoDelta default_timeout) const override {
-    return std::make_unique<client::AsyncClientInitialiser>(
+    return std::make_unique<client::AsyncClientInitializer>(
         client_name, default_timeout, tablet_server_.permanent_uuid(), &tablet_server_.options(),
         tablet_server_.metric_entity(), tablet_server_.mem_tracker(), tablet_server_.messenger());
   }
@@ -331,7 +331,7 @@ MonoDelta TabletServer::default_client_timeout() {
   return std::chrono::milliseconds(FLAGS_tserver_yb_client_default_timeout_ms);
 }
 
-void TabletServer::SetupAsyncClientInit(client::AsyncClientInitialiser* async_client_init) {
+void TabletServer::SetupAsyncClientInit(client::AsyncClientInitializer* async_client_init) {
   // If enabled, creates a proxy to call this tablet server locally.
   if (FLAGS_enable_direct_local_tablet_server_call) {
     proxy_ = std::make_shared<TabletServerServiceProxy>(proxy_cache_.get(), HostPort());

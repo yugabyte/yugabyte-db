@@ -164,7 +164,7 @@ typedef Result<std::tuple<
     HybridTime /* bootstrap_time */>>
     BootstrapProducerResult;
 typedef std::function<void(BootstrapProducerResult)> BootstrapProducerCallback;
-class AsyncClientInitialiser;
+class AsyncClientInitializer;
 
 } // namespace client
 } // namespace yb

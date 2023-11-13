@@ -180,11 +180,11 @@ class Master : public tserver::DbServerBase {
   uint32_t GetAutoFlagConfigVersion() const override;
   AutoFlagsConfigPB GetAutoFlagsConfig() const;
 
-  yb::client::AsyncClientInitialiser& async_client_initializer() {
+  yb::client::AsyncClientInitializer& async_client_initializer() {
     return *async_client_init_;
   }
 
-  yb::client::AsyncClientInitialiser& cdc_state_client_initializer() {
+  yb::client::AsyncClientInitializer& cdc_state_client_initializer() {
     return *cdc_state_client_init_;
   }
 
@@ -243,7 +243,7 @@ class Master : public tserver::DbServerBase {
 
   const std::string& permanent_uuid() const override;
 
-  void SetupAsyncClientInit(client::AsyncClientInitialiser* async_client_init) override;
+  void SetupAsyncClientInit(client::AsyncClientInitializer* async_client_init) override;
 
   std::atomic<MasterState> state_;
 
@@ -278,7 +278,7 @@ class Master : public tserver::DbServerBase {
   // Master's tablet server implementation used to host virtual tables like system.peers.
   std::unique_ptr<MasterTabletServer> master_tablet_server_;
 
-  std::unique_ptr<yb::client::AsyncClientInitialiser> cdc_state_client_init_;
+  std::unique_ptr<yb::client::AsyncClientInitializer> cdc_state_client_init_;
   std::mutex master_metrics_mutex_;
   std::map<std::string, scoped_refptr<Histogram>> master_metrics_ GUARDED_BY(master_metrics_mutex_);
 

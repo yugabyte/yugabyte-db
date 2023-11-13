@@ -379,8 +379,7 @@ class PgClientServiceImpl::Impl {
           return BuildTransaction(std::forward<decltype(args)>(args)...);
         }) {
     ScheduleCheckExpiredSessions(CoarseMonoClock::now());
-    ScheduleCheckObjectIdAllocators();
-    cdc_state_client_init_ = std::make_unique<client::AsyncClientInitialiser>(
+    cdc_state_client_init_ = std::make_unique<client::AsyncClientInitializer>(
         "cdc_state_client", std::chrono::milliseconds(FLAGS_cdc_read_rpc_timeout_ms),
         permanent_uuid, tablet_server_opts, metric_entity, parent_mem_tracker, messenger);
     cdc_state_client_init_->Start();
@@ -1453,7 +1452,7 @@ class PgClientServiceImpl::Impl {
   rpc::ScheduledTaskTracker check_expired_sessions_;
   rpc::ScheduledTaskTracker check_object_id_allocators_;
 
-  std::unique_ptr<yb::client::AsyncClientInitialiser> cdc_state_client_init_;
+  std::unique_ptr<yb::client::AsyncClientInitializer> cdc_state_client_init_;
   std::shared_ptr<cdc::CDCStateTable> cdc_state_table_;
 
   const std::optional<XClusterContext> xcluster_context_;

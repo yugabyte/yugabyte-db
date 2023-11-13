@@ -2691,7 +2691,7 @@ TEST_F(ClientTest, BadMasterAddress) {
     master_addr->push_back({HostPort(host, 2)});
     opts.SetMasterAddresses(master_addr);
 
-    AsyncClientInitialiser async_init(
+    AsyncClientInitializer async_init(
         "test-client", /* timeout= */ 1s, "UUID", &opts,
         /* metric_entity= */ nullptr, /* parent_mem_tracker= */ nullptr, messenger.get());
     async_init.Start();

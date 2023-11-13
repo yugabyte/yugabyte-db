@@ -46,7 +46,7 @@ DbServerBase::~DbServerBase() {
 Status DbServerBase::Init() {
   RETURN_NOT_OK(RpcAndWebServerBase::Init());
 
-  async_client_init_ = std::make_unique<client::AsyncClientInitialiser>(
+  async_client_init_ = std::make_unique<client::AsyncClientInitializer>(
       "server_client", default_client_timeout(), permanent_uuid(), &options(), metric_entity(),
       mem_tracker(), messenger());
   SetupAsyncClientInit(async_client_init_.get());
