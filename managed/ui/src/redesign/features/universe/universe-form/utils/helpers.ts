@@ -67,12 +67,12 @@ export const createErrorMessage = (payload: any) => {
     if (typeof structuredError == 'string') {
       return structuredError;
     }
-    const message = Object.keys(structuredError)
-      .map((fieldName) => {
+    const message = (Object.keys(structuredError)
+      ?.map((fieldName) => {
         const messages = structuredError[fieldName];
-        return fieldName + ': ' + messages.join(', ');
+        return fieldName + ': ' + (messages?.join(', ') ?? '');
       })
-      .join('\n');
+      ?.join('\n')) ?? 'Something went wrong. Please try again';
     return message;
   }
   return payload.message;
