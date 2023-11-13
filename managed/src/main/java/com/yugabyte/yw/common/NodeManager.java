@@ -764,7 +764,12 @@ public class NodeManager extends DevopsBase {
           node,
           gflags,
           GFlagsUtil.getAllDefaultGFlags(
-              taskParam, universe, getUserIntentFromParams(taskParam), useHostname, confGetter),
+              taskParam,
+              universe,
+              getUserIntentFromParams(taskParam),
+              useHostname,
+              appConfig,
+              confGetter),
           allowOverrideAll,
           confGetter,
           taskParam);
@@ -1314,6 +1319,7 @@ public class NodeManager extends DevopsBase {
                     universe,
                     getUserIntentFromParams(taskParam),
                     useHostname,
+                    config,
                     confGetter))));
     return subcommand;
   }
