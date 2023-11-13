@@ -55,12 +55,12 @@ func Install(version string) {
 
 func createInstallDirs() {
 	createDirs := []string{
-		GetBaseInstall(),
 		GetSoftwareRoot(),
 		dm.WorkingDirectory(),
 		filepath.Join(GetBaseInstall(), "data"),
 		filepath.Join(GetBaseInstall(), "data/logs"),
 		GetInstallerSoftwareDir(),
+		GetBaseInstall(),
 	}
 
 	for _, dir := range createDirs {
@@ -387,16 +387,16 @@ func FixConfigValues() {
 
 	if viper.GetBool("postgres.install.enabled") &&
 		len(viper.GetString("postgres.install.password")) == 0 {
-			log.Info("Generating default password for postgres")
-			SetYamlValue(InputFile(), "postgres.install.password", GenerateRandomStringURLSafe(32))
-			InitViper()
+		log.Info("Generating default password for postgres")
+		SetYamlValue(InputFile(), "postgres.install.password", GenerateRandomStringURLSafe(32))
+		InitViper()
 	}
 
 	if viper.GetBool("prometheus.enableAuth") &&
 		len(viper.GetString("prometheus.authPassword")) == 0 {
-			log.Info("Generating default password for prometheus")
-			SetYamlValue(InputFile(), "prometheus.authPassword", GenerateRandomStringURLSafe(32))
-			InitViper()
+		log.Info("Generating default password for prometheus")
+		SetYamlValue(InputFile(), "prometheus.authPassword", GenerateRandomStringURLSafe(32))
+		InitViper()
 	}
 
 	if viper.GetBool("prometheus.enableHttps") {
