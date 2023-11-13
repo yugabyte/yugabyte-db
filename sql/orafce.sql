@@ -498,6 +498,17 @@ select to_char(1234567890.12345);
 select to_char('4.00'::numeric);
 select to_char('4.0010'::numeric);
 
+select to_char('-44444');
+select to_char('1234567890123456');
+select to_char('123.456');
+select to_char('123abc');
+select to_char('你好123@$%abc');
+select to_char('1234567890123456789012345678901234567890123456789012345678901234567890');
+select to_char('');
+select to_char(' ');
+select to_char(null);
+
+
 SELECT to_number('123'::text);
 SELECT to_number('123.456'::text);
 SELECT to_number(123);
