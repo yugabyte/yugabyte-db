@@ -318,6 +318,16 @@ def search_file_in_paths(dir_candidates, file_name):
     if(file_name == "post_install.sh"):
         return None
 
+    # If yugabyted-ui is not found, don't error out
+    # Caller should set self.configs.saved_data.get("ui") to false if needed
+    if(file_name == "yugabyted-ui"):
+        Output.log(
+            "Yugabyte {} file not found in paths {}. Please check "
+            "the paths.".format(file_name, dir_candidates),
+            logging.WARN
+        )
+        return None
+
     Output.log_error_and_exit(
         "Yugabyte {} file not found in paths {}. Please check "
         "the paths.".format(file_name, dir_candidates)
@@ -1700,23 +1710,31 @@ class ControlScript(object):
 
             if is_first_run:
                 if self.configs.saved_data.get("ui"):
-                    yugabyted_ui_cmd = [ find_binary_location("yugabyted-ui")] + \
-                        [
-                            "-database_host={}".format(bind_ip),
-                            "-master_ui_port={}".format(self.configs.saved_data.
-                                                        get("master_webserver_port")),
-                            "-tserver_ui_port={}".format(self.configs.saved_data.
-                                                        get("tserver_webserver_port")),
-                            "-warnings={}".format("|".join(warnings_for_ui))
-                        ]
-                    if self.configs.saved_data.get("secure"):
-                        yugabyted_ui_cmd.extend(["-secure=true",
-                            "-database_password={}".format(
-                            self.configs.saved_data.get("database_password"))])
+                    yugabyted_ui_path = find_binary_location("yugabyted-ui")
+                    if (yugabyted_ui_path is None):
+                        ui_bin_not_found = "Couldn't find yugabyted-ui binary. " + \
+                            "Cluster started without UI."
+                        warnings.append(ui_bin_not_found)
+                        self.configs.saved_data["ui"] = False
+                    else:
+                        yugabyted_ui_cmd = [ yugabyted_ui_path ] + \
+                            [
+                                "-database_host={}".format(bind_ip),
+                                "-master_ui_port={}".format(self.configs.saved_data.
+                                                            get("master_webserver_port")),
+                                "-tserver_ui_port={}".format(self.configs.saved_data.
+                                                            get("tserver_webserver_port")),
+                                "-warnings={}".format("|".join(warnings_for_ui))
+                            ]
+                        if self.configs.saved_data.get("secure"):
+                            yugabyted_ui_cmd.extend(["-secure=true",
+                                "-database_password={}".format(
+                                self.configs.saved_data.get("database_password"))])
 
-                    self.processes["yugabyted-ui"] = ProcessManager(
-                        "yugabyted-ui", yugabyted_ui_cmd, self.configs.saved_data.get("log_dir"),
-                        self.configs.saved_data.get("data_dir"))
+                        self.processes["yugabyted-ui"] = ProcessManager(
+                            "yugabyted-ui", yugabyted_ui_cmd,
+                            self.configs.saved_data.get("log_dir"),
+                            self.configs.saved_data.get("data_dir"))
 
             if self.configs.saved_data.get("ui"):
                 (_, was_started) = self.verify_start_yugabyted_ui(is_first_run, is_first_install)
