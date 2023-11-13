@@ -318,7 +318,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Status ValidateMasterAddressResolution() const;
 
   MonoDelta default_client_timeout() override;
-  void SetupAsyncClientInit(client::AsyncClientInitialiser* async_client_init) override;
+  void SetupAsyncClientInit(client::AsyncClientInitializer* async_client_init) override;
 
   Status SetupMessengerBuilder(rpc::MessengerBuilder* builder) override;
 
