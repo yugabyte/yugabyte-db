@@ -27,6 +27,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -490,16 +492,17 @@ public class NodeManagerTest extends FakeDBApplication {
     testData.addAll(getTestData(customer, Common.CloudType.aws));
     testData.addAll(getTestData(customer, Common.CloudType.gcp));
     testData.addAll(getTestData(customer, Common.CloudType.onprem));
+    Config appConfig = spy(app.config());
     ReleaseManager.ReleaseMetadata releaseMetadata = new ReleaseManager.ReleaseMetadata();
     releaseMetadata.filePath = "/yb/release.tar.gz";
     when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn(releaseMetadata);
-
     when(mockConfig.getString(NodeManager.BOOT_SCRIPT_PATH)).thenReturn("");
     when(mockAppConfig.getString(eq("yb.security.default.access.key")))
         .thenReturn(ApiUtils.DEFAULT_ACCESS_KEY_CODE);
     when(runtimeConfigFactory.forProvider(any())).thenReturn(mockConfig);
-    when(runtimeConfigFactory.forUniverse(any())).thenReturn(app.config());
+    when(runtimeConfigFactory.forUniverse(any())).thenReturn(appConfig);
     when(runtimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
+    doReturn(true).when(appConfig).getBoolean(eq("yb.gflags.notify_peer_of_removal_from_cluster"));
     createTempFile("node_manager_test_ca.crt", "test-cert");
   }
 

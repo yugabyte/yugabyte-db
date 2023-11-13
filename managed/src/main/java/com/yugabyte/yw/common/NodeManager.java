@@ -60,6 +60,8 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
 import java.io.IOException;
+import java.io.StringReader;
+import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -70,6 +72,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -80,6 +83,10 @@ import java.util.UUID;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.MapUtils;
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVParser;
+import org.apache.commons.csv.CSVPrinter;
+import org.apache.commons.csv.CSVRecord;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.validator.routines.InetAddressValidator;
 import org.bouncycastle.asn1.x509.GeneralName;
@@ -107,6 +114,10 @@ public class NodeManager extends DevopsBase {
   static final String CERT_CLIENT_NODE_SUBDIR = "/yugabyte-client-tls-config";
   public static final String SPECIAL_CHARACTERS = "[^a-zA-Z0-9_-]+";
   public static final Pattern SPECIAL_CHARACTERS_PATTERN = Pattern.compile(SPECIAL_CHARACTERS);
+  public static final String UNDEFOK = "undefok";
+  // DB internal glag to suppress going into shell mode and delete files on master removal.
+  public static final String NOTIFY_PEER_OF_REMOVAL_FROM_CLUSTER =
+      "notify_peer_of_removal_from_cluster";
 
   @Inject ReleaseManager releaseManager;
 
@@ -748,7 +759,15 @@ public class NodeManager extends DevopsBase {
 
     gflags.put("webserver_port", Integer.toString(node.masterHttpPort));
     gflags.put("webserver_interface", private_ip);
-
+    boolean notifyPeerOnRemoval =
+        runtimeConfigFactory
+            .forUniverse(universe)
+            .getBoolean("yb.gflags.notify_peer_of_removal_from_cluster");
+    if (!notifyPeerOnRemoval) {
+      // By default, it is true in the DB.
+      gflags.put(NOTIFY_PEER_OF_REMOVAL_FROM_CLUSTER, String.valueOf(notifyPeerOnRemoval));
+      gflags.put(UNDEFOK, NOTIFY_PEER_OF_REMOVAL_FROM_CLUSTER);
+    }
     return gflags;
   }
 
@@ -804,6 +823,36 @@ public class NodeManager extends DevopsBase {
     return gflags;
   }
 
+  private static String mergeCSVs(String csv1, String csv2) {
+    StringWriter writer = new StringWriter();
+    try {
+      CSVFormat csvFormat = CSVFormat.DEFAULT.builder().setRecordSeparator("").build();
+      try (CSVPrinter csvPrinter = new CSVPrinter(writer, csvFormat)) {
+        Set<String> records = new LinkedHashSet<>();
+        CSVParser parser = new CSVParser(new StringReader(csv1), csvFormat);
+        for (CSVRecord record : parser) {
+          records.addAll(record.toList());
+        }
+        parser = new CSVParser(new StringReader(csv2), csvFormat);
+        for (CSVRecord record : parser) {
+          records.addAll(record.toList());
+        }
+        csvPrinter.printRecord(records);
+        csvPrinter.flush();
+      }
+    } catch (IOException ignored) {
+      // can't really happen
+    }
+    return writer.toString();
+  }
+
+  private static void mergeCSVs(Map<String, String> des, Map<String, String> src, String key) {
+    if (des.containsKey(key)) {
+      String csv = des.get(key);
+      des.put(key, mergeCSVs(csv, src.getOrDefault(key, "")));
+    }
+  }
+
   /** Return the map of default gflags which will be passed as extra gflags to the db nodes. */
   private Map<String, String> getAllDefaultGFlags(
       AnsibleConfigureServers.Params taskParam, Boolean useHostname, Config config) {
@@ -812,7 +861,7 @@ public class NodeManager extends DevopsBase {
     extra_gflags.put("placement_region", taskParam.getRegion().code);
     extra_gflags.put("placement_zone", taskParam.getAZ().code);
     extra_gflags.put("max_log_size", "256");
-    extra_gflags.put("undefok", "enable_ysql");
+    extra_gflags.put(UNDEFOK, "enable_ysql");
     extra_gflags.put("metric_node_name", taskParam.nodeName);
     extra_gflags.put("placement_uuid", String.valueOf(taskParam.placementUuid));
 
@@ -843,8 +892,11 @@ public class NodeManager extends DevopsBase {
       extra_gflags.putAll(
           getTServerDefaultGflags(taskParam, useHostname, useSecondaryIp, isDualNet));
     } else {
-      extra_gflags.putAll(
-          getMasterDefaultGFlags(taskParam, useHostname, useSecondaryIp, isDualNet));
+      Map<String, String> masterGFlags =
+          getMasterDefaultGFlags(taskParam, useHostname, useSecondaryIp, isDualNet);
+      // Merge into masterGFlags.
+      mergeCSVs(masterGFlags, extra_gflags, UNDEFOK);
+      extra_gflags.putAll(masterGFlags);
     }
 
     UserIntent userIntent = getUserIntentFromParams(taskParam);
