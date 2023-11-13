@@ -229,6 +229,7 @@ public class GFlagsUtil {
       Universe universe,
       UniverseDefinitionTaskParams.UserIntent userIntent,
       boolean useHostname,
+      Config config,
       RuntimeConfGetter confGetter) {
     Map<String, String> extra_gflags = new TreeMap<>();
     extra_gflags.put(PLACEMENT_CLOUD, taskParam.getProvider().getCode());
@@ -258,7 +259,7 @@ public class GFlagsUtil {
     boolean legacyNet =
         universe.getConfig().getOrDefault(Universe.DUAL_NET_LEGACY, "true").equals("true");
     boolean isDualNet =
-        confGetter.getStaticConf().getBoolean("yb.cloud.enabled")
+        config.getBoolean("yb.cloud.enabled")
             && node.cloudInfo.secondary_private_ip != null
             && !node.cloudInfo.secondary_private_ip.equals("null");
     boolean useSecondaryIp = isDualNet && !legacyNet;
@@ -273,14 +274,14 @@ public class GFlagsUtil {
     if (processType == null) {
       extra_gflags.put(MASTER_ADDRESSES, "");
     } else if (processType.equals(UniverseTaskBase.ServerType.TSERVER.name())) {
-      boolean configCgroup = confGetter.getStaticConf().getInt(NodeManager.POSTGRES_MAX_MEM_MB) > 0;
+      boolean configCgroup = config.getInt(NodeManager.POSTGRES_MAX_MEM_MB) > 0;
 
       // If the cluster is a read replica, use the read replica max mem value if its >= 0. -1 means
       // to use the primary cluster value instead.
       if (universe.getUniverseDetails().getClusterByUuid(taskParam.placementUuid).clusterType
               == UniverseDefinitionTaskParams.ClusterType.ASYNC
           && confGetter.getStaticConf().getInt(NodeManager.POSTGRES_RR_MAX_MEM_MB) >= 0) {
-        configCgroup = confGetter.getStaticConf().getInt(NodeManager.POSTGRES_RR_MAX_MEM_MB) > 0;
+        configCgroup = config.getInt(NodeManager.POSTGRES_RR_MAX_MEM_MB) > 0;
       }
       extra_gflags.putAll(
           getTServerDefaultGflags(
@@ -1264,13 +1265,14 @@ public class GFlagsUtil {
       UniverseDefinitionTaskParams.UserIntent userIntent,
       Universe universe,
       Map<String, String> userGFlags,
+      Config config,
       RuntimeConfGetter confGetter) {
     boolean useHostname =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.useHostname
             || !isIpAddress(node.cloudInfo.private_ip);
 
     Map<String, String> platformGFlags =
-        getAllDefaultGFlags(taskParams, universe, userIntent, useHostname, confGetter);
+        getAllDefaultGFlags(taskParams, universe, userIntent, useHostname, config, confGetter);
     for (String gflag : GFLAGS_FORBIDDEN_TO_OVERRIDE) {
       if (userGFlags.containsKey(gflag)
           && platformGFlags.containsKey(gflag)
