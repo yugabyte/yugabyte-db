@@ -5,6 +5,7 @@ linkTitle: Key benefits
 description: Benefits of using YugabyteDB to power your next cloud-native application.
 headcontent: Why YugabyteDB should power your next cloud-native application
 type: docs
+unversioned: true
 ---
 
 YugabyteDB is a high-performance distributed SQL database for powering global, internet-scale applications. Built using a combination of high-performance document store, per-shard distributed consensus replication, and multi-shard ACID transactions (inspired by Google Spanner), YugabyteDB serves both scale-out RDBMS and internet-scale OLTP workloads with low query latency, extreme resilience against failures, and global data distribution. As a cloud-native database, it can be deployed across public and private clouds as well as in Kubernetes environments.
