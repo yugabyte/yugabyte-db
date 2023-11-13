@@ -1080,8 +1080,6 @@ typedef struct ParamPathInfo
 	double		ppi_rows;		/* estimated number of result tuples */
 	List	   *ppi_clauses;	/* join clauses available from outer rels */
 	Relids		yb_ppi_req_outer_batched; /* outer rels that can be batched */
-	Relids		yb_ppi_req_outer_unbatched; /* outer rels that cannot
-											 * be batched */
 } ParamPathInfo;
 
 
@@ -1180,6 +1178,16 @@ typedef struct Path
 /* Macro for extracting a path's parameterization relids; beware double eval */
 #define PATH_REQ_OUTER(path)  \
 	((path)->param_info ? (path)->param_info->ppi_req_outer : (Relids) NULL)
+
+#define YB_PATH_REQ_OUTER_BATCHED(path)  \
+	((path)->param_info ? ((path)->param_info->yb_ppi_req_outer_batched) : \
+	(Relids) NULL)
+
+#define YB_PATH_NEEDS_BATCHED_RELS(path) \
+	!bms_is_empty(YB_PATH_REQ_OUTER_BATCHED(path))
+
+#define YB_PATH_REQ_OUTER_UNBATCHED(path)  \
+	(bms_difference(PATH_REQ_OUTER(path), YB_PATH_REQ_OUTER_BATCHED(path)))
 
 /*----------
  * IndexPath represents an index scan over a single index.

@@ -1233,6 +1233,76 @@ SELECT '' AS "xxx", t1.a, t2.e
      | 5 | -5
 (7 rows)
 
+create table p1(a int, primary key(a asc));
+create table p2(a int, primary key(a asc));
+create table p3(a int, primary key(a asc));
+insert into p1 select generate_series(1, 1000);
+insert into p2 select generate_series(1, 1000);
+insert into p3 select generate_series(1, 1000);
+analyze p1;
+analyze p2;
+analyze p3;
+-- The following hints try to force an illegal BNL
+/*+YbBatchedNL(p1 p2 p3) YbBatchedNL(p2 p3) Leading((p1 (p2 p3))) IndexScan(p3)*/explain (costs off) select * from p1, p2, p3 where p1.a + 1 = p2.a and
+p3.a = p1.a + p2.a;
+                                 QUERY PLAN
+-----------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: ((p1.a + p2.a) = p3.a)
+   ->  YB Batched Nested Loop Join
+         Join Filter: ((p1.a + 1) = p2.a)
+         ->  Seq Scan on p1
+         ->  Index Scan using p2_pkey on p2
+               Index Cond: (a = ANY (ARRAY[(p1.a + 1), ($1 + 1), ($2 + 1)]))
+   ->  Index Scan using p3_pkey on p3
+         Index Cond: (a = ANY (ARRAY[(p1.a + p2.a), ($4 + $7), ($5 + $8)]))
+(9 rows)
+
+/*+YbBatchedNL(p1 p2 p3) NestLoop(p2 p3) Leading((p1 (p2 p3))) IndexScan(p3)*/explain (costs off) select * from p1, p2, p3 where p1.a + 1 = p2.a and
+p3.a = p1.a + p2.a;
+                  QUERY PLAN
+-----------------------------------------------
+ Nested Loop
+   ->  Seq Scan on p1
+   ->  Nested Loop
+         ->  Index Scan using p2_pkey on p2
+               Index Cond: (a = (p1.a + 1))
+         ->  Index Scan using p3_pkey on p3
+               Index Cond: (a = (p1.a + p2.a))
+(7 rows)
+
+/*+NestLoop(p1 p2 p3) NestLoop(p2 p3) Leading((p1 (p2 p3))) IndexScan(p3)*/explain (costs off) select * from p1, p2, p3 where p1.a + 1 = p2.a and
+p3.a = p1.a + p2.a;
+                  QUERY PLAN
+-----------------------------------------------
+ Nested Loop
+   ->  Seq Scan on p1
+   ->  Nested Loop
+         ->  Index Scan using p2_pkey on p2
+               Index Cond: (a = (p1.a + 1))
+         ->  Index Scan using p3_pkey on p3
+               Index Cond: (a = (p1.a + p2.a))
+(7 rows)
+
+-- This is a legal BNL
+/*+YbBatchedNL(p1 p2 p3) Leading(((p1 p2) p3)) IndexScan(p3)*/explain (costs off) select * from p1, p2, p3 where p1.a + 1 = p2.a and
+p3.a = p1.a + p2.a;
+                                 QUERY PLAN
+-----------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: ((p1.a + p2.a) = p3.a)
+   ->  YB Batched Nested Loop Join
+         Join Filter: ((p1.a + 1) = p2.a)
+         ->  Seq Scan on p1
+         ->  Index Scan using p2_pkey on p2
+               Index Cond: (a = ANY (ARRAY[(p1.a + 1), ($1 + 1), ($2 + 1)]))
+   ->  Index Scan using p3_pkey on p3
+         Index Cond: (a = ANY (ARRAY[(p1.a + p2.a), ($4 + $7), ($5 + $8)]))
+(9 rows)
+
+drop table p1;
+drop table p2;
+drop table p3;
 --
 --
 -- Inner joins (equi-joins)

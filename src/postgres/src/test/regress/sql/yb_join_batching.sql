@@ -316,6 +316,35 @@ SELECT '' AS "xxx", t1.a, t2.e
   FROM J1_TBL t1 (a, b, c), J2_TBL t2 (d, e)
   WHERE t1.a = t2.d  order by 1, 2, 3;
 
+create table p1(a int, primary key(a asc));
+create table p2(a int, primary key(a asc));
+create table p3(a int, primary key(a asc));
+
+insert into p1 select generate_series(1, 1000);
+insert into p2 select generate_series(1, 1000);
+insert into p3 select generate_series(1, 1000);
+
+analyze p1;
+analyze p2;
+analyze p3;
+
+-- The following hints try to force an illegal BNL
+/*+YbBatchedNL(p1 p2 p3) YbBatchedNL(p2 p3) Leading((p1 (p2 p3))) IndexScan(p3)*/explain (costs off) select * from p1, p2, p3 where p1.a + 1 = p2.a and
+p3.a = p1.a + p2.a;
+
+/*+YbBatchedNL(p1 p2 p3) NestLoop(p2 p3) Leading((p1 (p2 p3))) IndexScan(p3)*/explain (costs off) select * from p1, p2, p3 where p1.a + 1 = p2.a and
+p3.a = p1.a + p2.a;
+
+/*+NestLoop(p1 p2 p3) NestLoop(p2 p3) Leading((p1 (p2 p3))) IndexScan(p3)*/explain (costs off) select * from p1, p2, p3 where p1.a + 1 = p2.a and
+p3.a = p1.a + p2.a;
+
+-- This is a legal BNL
+/*+YbBatchedNL(p1 p2 p3) Leading(((p1 p2) p3)) IndexScan(p3)*/explain (costs off) select * from p1, p2, p3 where p1.a + 1 = p2.a and
+p3.a = p1.a + p2.a;
+
+drop table p1;
+drop table p2;
+drop table p3;
 --
 --
 -- Inner joins (equi-joins)
