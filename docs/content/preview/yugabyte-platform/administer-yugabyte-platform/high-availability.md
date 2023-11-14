@@ -63,7 +63,9 @@ You can configure the active instance as follows:
 
     The address for this active instance should be the only information under **Instances**.
 
-1. If the active instance is using the HTTPS protocol, copy the root certificate for the active instance. For information on how to obtain the root certificate of a server using Google Chrome, see [Get CA certificates of any server](https://medium.com/@sanghviyash6/how-to-get-ca-certificate-of-any-server-using-google-chrome-e8db3e4d3fcf), or search the internet for instructions applicable to your browser of choice.
+1. If the active instance is using the HTTPS protocol and self-signed certificates which are not signed by a trusted Certificate Authority (CA), it is necessary to upload the CA certificate that was used to sign the client certificate for the standby setup into the trust store of the active YBA.
+
+    For information on how to obtain the root certificate of a server using Google Chrome, see [Get CA certificates of any server](https://medium.com/@sanghviyash6/how-to-get-ca-certificate-of-any-server-using-google-chrome-e8db3e4d3fcf), or search the internet for instructions applicable to your browser of choice.
 
     The root certificate is required for HTTPS connections, and allows a standby to connect to the active instance if the standby is promoted to active status.
 
@@ -85,7 +87,9 @@ After the active instance has been configured, you can configure one or more sta
 
 1. Click **Create**.
 
-1. If the standby instance is using the HTTPS protocol, copy the root certificate for the standby instance. For information on how to obtain the root certificate of a server using Google Chrome, see [Get CA certificates of any server](https://medium.com/@sanghviyash6/how-to-get-ca-certificate-of-any-server-using-google-chrome-e8db3e4d3fcf), or search the internet for instructions applicable to your browser of choice.
+1. If the standby instance is using the HTTPS protocol and self-signed certificates which are not signed by a trusted Certificate Authority (CA), it is necessary to upload the CA certificate that was used to sign the client certificate for the standby setup into the trust store of the active YBA.
+
+    For information on how to obtain the root certificate of a server using Google Chrome, see [Get CA certificates of any server](https://medium.com/@sanghviyash6/how-to-get-ca-certificate-of-any-server-using-google-chrome-e8db3e4d3fcf), or search the internet for instructions applicable to your browser of choice.
 
     The CA certificate is required for HTTPS connections, and allows a standby to connect to the active instance if the standby is promoted to active status.
 
