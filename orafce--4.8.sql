@@ -122,54 +122,54 @@ COMMENT ON FUNCTION oracle.instr(text, text) IS 'Search pattern in string';
 CREATE FUNCTION oracle.to_char(num smallint)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_to_char_int4'
-LANGUAGE C IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION oracle.to_char(smallint) IS 'Convert number to string';
 
 CREATE FUNCTION oracle.to_char(num int)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_to_char_int4'
-LANGUAGE C IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION oracle.to_char(int) IS 'Convert number to string';
 
 CREATE FUNCTION oracle.to_char(num bigint)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_to_char_int8'
-LANGUAGE C IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION oracle.to_char(bigint) IS 'Convert number to string';
 
 CREATE FUNCTION oracle.to_char(num real)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_to_char_float4'
-LANGUAGE C IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION oracle.to_char(real) IS 'Convert number to string';
 
 CREATE FUNCTION oracle.to_char(num double precision)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_to_char_float8'
-LANGUAGE C IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION oracle.to_char(double precision) IS 'Convert number to string';
 
 CREATE FUNCTION oracle.to_char(num numeric)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_to_char_numeric'
-LANGUAGE C IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION oracle.to_char(numeric) IS 'Convert number to string';
 
 CREATE FUNCTION oracle.to_number(str text)
 RETURNS numeric
 AS 'MODULE_PATHNAME','orafce_to_number'
-LANGUAGE C IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION oracle.to_number(text) IS 'Convert string to number';
 
 CREATE OR REPLACE FUNCTION oracle.to_number(numeric)
 RETURNS numeric AS $$
 SELECT oracle.to_number($1::text);
-$$ LANGUAGE SQL IMMUTABLE;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 
 CREATE OR REPLACE FUNCTION oracle.to_number(numeric,numeric)
 RETURNS numeric AS $$
 SELECT pg_catalog.to_number($1::text,$2::text);
-$$ LANGUAGE SQL IMMUTABLE;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 
 CREATE FUNCTION oracle.orafce__obsolete_to_date(str text)
 RETURNS timestamp
@@ -494,7 +494,7 @@ LANGUAGE SQL IMMUTABLE STRICT;
 CREATE FUNCTION oracle.to_char(timestamp)
 RETURNS TEXT
 AS 'MODULE_PATHNAME','orafce_to_char_timestamp'
-LANGUAGE C STABLE STRICT;
+LANGUAGE C STABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION oracle.to_char(timestamp) IS 'Convert timestamp to string';
 
 CREATE FUNCTION oracle.sysdate()
@@ -2604,140 +2604,140 @@ CREATE FUNCTION oracle.lpad(char, integer, char)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.lpad(char, integer, text)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
-STRICT  IMMUTABLE
+STRICT  IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.lpad(char, integer, oracle.varchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.lpad(char, integer, oracle.nvarchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.lpad(char, integer)
 RETURNS text
 AS $$ SELECT oracle.lpad($1, $2, ' '::text); $$
 LANGUAGE SQL
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.lpad(text, integer, char)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.lpad(oracle.varchar2, integer, char)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.lpad(oracle.nvarchar2, integer, char)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.lpad(text, integer, text)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.lpad(text, integer, oracle.varchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.lpad(text, integer, oracle.nvarchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.lpad(text, integer)
 RETURNS text
 AS $$ SELECT oracle.lpad($1, $2, ' '::text); $$
 LANGUAGE SQL
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.lpad(oracle.varchar2, integer, text)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.lpad(oracle.varchar2, integer, oracle.varchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.lpad(oracle.varchar2, integer, oracle.nvarchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.lpad(oracle.varchar2, integer)
 RETURNS text
 AS $$ SELECT oracle.lpad($1, $2, ' '::text); $$
 LANGUAGE SQL
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.lpad(oracle.nvarchar2, integer, text)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.lpad(oracle.nvarchar2, integer, oracle.varchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.lpad(oracle.nvarchar2, integer, oracle.nvarchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.lpad(oracle.nvarchar2, integer)
 RETURNS text
 AS $$ SELECT oracle.lpad($1, $2, ' '::text); $$
 LANGUAGE SQL
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 /* RPAD family */
@@ -2755,140 +2755,140 @@ CREATE FUNCTION oracle.rpad(char, integer, char)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rpad(char, integer, text)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rpad(char, integer, oracle.varchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rpad(char, integer, oracle.nvarchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rpad(char, integer)
 RETURNS text
 AS $$ SELECT oracle.rpad($1, $2, ' '::text); $$
 LANGUAGE SQL
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rpad(text, integer, char)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rpad(oracle.varchar2, integer, char)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rpad(oracle.nvarchar2, integer, char)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rpad(text, integer, text)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rpad(text, integer, oracle.varchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rpad(text, integer, oracle.nvarchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rpad(text, integer)
 RETURNS text
 AS $$ SELECT oracle.rpad($1, $2, ' '::text); $$
 LANGUAGE SQL
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rpad(oracle.varchar2, integer, text)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rpad(oracle.varchar2, integer, oracle.varchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rpad(oracle.varchar2, integer, oracle.nvarchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rpad(oracle.varchar2, integer)
 RETURNS text
 AS $$ SELECT oracle.rpad($1, $2, ' '::text); $$
 LANGUAGE SQL
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rpad(oracle.nvarchar2, integer, text)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rpad(oracle.nvarchar2, integer, oracle.varchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rpad(oracle.nvarchar2, integer, oracle.nvarchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rpad(oracle.nvarchar2, integer)
 RETURNS text
 AS $$ SELECT oracle.rpad($1, $2, ' '::text); $$
 LANGUAGE SQL
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 /* TRIM */
@@ -2908,140 +2908,140 @@ CREATE FUNCTION oracle.ltrim(char, char)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.ltrim(char, text)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.ltrim(char, oracle.varchar2)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.ltrim(char, oracle.nvarchar2)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.ltrim(char)
 RETURNS text
 AS $$ SELECT oracle.ltrim($1, ' '::text) $$
 LANGUAGE SQL
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.ltrim(text, char)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.ltrim(text, text)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.ltrim(text, oracle.varchar2)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.ltrim(text, oracle.nvarchar2)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.ltrim(text)
 RETURNS text
 AS $$ SELECT oracle.ltrim($1, ' '::text) $$
 LANGUAGE SQL
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.ltrim(oracle.varchar2, char)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.ltrim(oracle.varchar2, text)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.ltrim(oracle.varchar2, oracle.varchar2)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.ltrim(oracle.varchar2, oracle.nvarchar2)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.ltrim(oracle.varchar2)
 RETURNS text
 AS $$ SELECT oracle.ltrim($1, ' '::text) $$
 LANGUAGE SQL
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.ltrim(oracle.nvarchar2, char)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.ltrim(oracle.nvarchar2, text)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.ltrim(oracle.nvarchar2, oracle.varchar2)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.ltrim(oracle.nvarchar2, oracle.nvarchar2)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.ltrim(oracle.nvarchar2)
 RETURNS text
 AS $$ SELECT oracle.ltrim($1, ' '::text) $$
 LANGUAGE SQL
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 /* RTRIM family */
@@ -3049,140 +3049,140 @@ CREATE FUNCTION oracle.rtrim(char, char)
 RETURNS text
 AS 'rtrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rtrim(char, text)
 RETURNS text
 AS 'rtrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rtrim(char, oracle.varchar2)
 RETURNS text
 AS 'rtrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rtrim(char, oracle.nvarchar2)
 RETURNS text
 AS 'rtrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rtrim(char)
 RETURNS text
 AS $$ SELECT oracle.rtrim($1, ' '::text) $$
 LANGUAGE SQL
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rtrim(text, char)
 RETURNS text
 AS 'rtrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rtrim(text, text)
 RETURNS text
 AS 'rtrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rtrim(text, oracle.varchar2)
 RETURNS text
 AS 'rtrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rtrim(text, oracle.nvarchar2)
 RETURNS text
 AS 'rtrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rtrim(text)
 RETURNS text
 AS $$ SELECT oracle.rtrim($1, ' '::text) $$
 LANGUAGE SQL
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rtrim(oracle.varchar2, char)
 RETURNS text
 AS 'rtrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rtrim(oracle.varchar2, text)
 RETURNS text
 AS 'rtrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rtrim(oracle.varchar2, oracle.varchar2)
 RETURNS text
 AS 'rtrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rtrim(oracle.varchar2, oracle.nvarchar2)
 RETURNS text
 AS 'rtrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rtrim(oracle.varchar2)
 RETURNS text
 AS $$ SELECT oracle.rtrim($1, ' '::text) $$
 LANGUAGE SQL
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rtrim(oracle.nvarchar2, char)
 RETURNS text
 AS 'rtrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rtrim(oracle.nvarchar2, text)
 RETURNS text
 AS 'rtrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rtrim(oracle.nvarchar2, oracle.varchar2)
 RETURNS text
 AS 'rtrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rtrim(oracle.nvarchar2, oracle.nvarchar2)
 RETURNS text
 AS 'rtrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.rtrim(oracle.nvarchar2)
 RETURNS text
 AS $$ SELECT oracle.rtrim($1, ' '::text) $$
 LANGUAGE SQL
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 /* BTRIM family */
@@ -3190,140 +3190,140 @@ CREATE FUNCTION oracle.btrim(char, char)
 RETURNS text
 AS 'btrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.btrim(char, text)
 RETURNS text
 AS 'btrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.btrim(char, oracle.varchar2)
 RETURNS text
 AS 'btrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.btrim(char, oracle.nvarchar2)
 RETURNS text
 AS 'btrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.btrim(char)
 RETURNS text
 AS $$ SELECT oracle.btrim($1, ' '::text) $$
 LANGUAGE SQL
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.btrim(text, char)
 RETURNS text
 AS 'btrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.btrim(text, text)
 RETURNS text
 AS 'btrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.btrim(text, oracle.varchar2)
 RETURNS text
 AS 'btrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.btrim(text, oracle.nvarchar2)
 RETURNS text
 AS 'btrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.btrim(text)
 RETURNS text
 AS $$ SELECT oracle.btrim($1, ' '::text) $$
 LANGUAGE SQL
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.btrim(oracle.varchar2, char)
 RETURNS text
 AS 'btrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.btrim(oracle.varchar2, text)
 RETURNS text
 AS 'btrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.btrim(oracle.varchar2, oracle.varchar2)
 RETURNS text
 AS 'btrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.btrim(oracle.varchar2, oracle.nvarchar2)
 RETURNS text
 AS 'btrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.btrim(oracle.varchar2)
 RETURNS text
 AS $$ SELECT oracle.btrim($1, ' '::text) $$
 LANGUAGE SQL
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.btrim(oracle.nvarchar2, char)
 RETURNS text
 AS 'btrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.btrim(oracle.nvarchar2, text)
 RETURNS text
 AS 'btrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.btrim(oracle.nvarchar2, oracle.varchar2)
 RETURNS text
 AS 'btrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.btrim(oracle.nvarchar2, oracle.nvarchar2)
 RETURNS text
 AS 'btrim'
 LANGUAGE internal
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 CREATE FUNCTION oracle.btrim(oracle.nvarchar2)
 RETURNS text
 AS $$ SELECT oracle.btrim($1, ' '::text) $$
 LANGUAGE SQL
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 /* LENGTH */
@@ -3562,22 +3562,22 @@ WHERE
 CREATE OR REPLACE FUNCTION oracle.lpad(int, int, int)
 RETURNS text AS $$
 SELECT pg_catalog.lpad($1::text,$2,$3::text)
-$$ LANGUAGE sql IMMUTABLE STRICT;
+$$ LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE;
 
 CREATE OR REPLACE FUNCTION oracle.lpad(bigint, int, int)
 RETURNS text AS $$
 SELECT pg_catalog.lpad($1::text,$2,$3::text)
-$$ LANGUAGE sql IMMUTABLE STRICT;
+$$ LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE;
 
 CREATE OR REPLACE FUNCTION oracle.lpad(smallint, int, int)
 RETURNS text AS $$
 SELECT pg_catalog.lpad($1::text,$2,$3::text)
-$$ LANGUAGE sql IMMUTABLE STRICT;
+$$ LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE;
 
 CREATE OR REPLACE FUNCTION oracle.lpad(numeric, int, int)
 RETURNS text AS $$
 SELECT pg_catalog.lpad($1::text,$2,$3::text)
-$$ LANGUAGE sql IMMUTABLE STRICT;
+$$ LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE;
 
 CREATE OR REPLACE FUNCTION oracle.nvl(bigint, int)
 RETURNS bigint AS $$
