@@ -103,6 +103,8 @@ void EscapeForHtml(Stream* in, std::stringstream* out) {
                 break;
       case '"': (*out) << "&quot;";
                 break;
+      case '\n': (*out) << "<br/>";
+                break;
       default: (*out) << (*itr);
     }
   }
