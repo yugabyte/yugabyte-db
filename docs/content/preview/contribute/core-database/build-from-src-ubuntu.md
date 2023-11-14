@@ -141,6 +141,12 @@ export YB_CCACHE_DIR="$HOME/.cache/yb_ccache"
 
 {{% readfile "includes/build-the-code.md" %}}
 
+{{< note title="Note" >}}
+
+For Ubuntu 23.04, the `--clang17` build option is needed in order to use [downloaded third-party](#opt-yb-build).
+
+{{< /note >}}
+
 ### Build release package (optional)
 
 Perform the following steps to build a release package:
