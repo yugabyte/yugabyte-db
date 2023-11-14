@@ -1,5 +1,5 @@
 ---
-title: Data types in YCQL
+title: Data types
 linkTitle: Data types
 description: Data types in YCQL
 image: /images/section_icons/secure/create-roles.png
@@ -318,6 +318,6 @@ The following example shows how to create and use a user defined type.
      item_id                              | item                                               | count
     --------------------------------------+----------------------------------------------------+-------
      28df63b7-cc57-43cb-9752-fae69d1653da | {name: 'fuzzy dice', supplier_id: 42, price: 1.99} |  1000
-    
+
     (1 rows)
     ```
