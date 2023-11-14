@@ -127,3 +127,39 @@ AS $$
 select str;
 $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION oracle.to_char(text) IS 'Convert string to string';
+
+ALTER FUNCTION oracle.round(double precision, integer) PARALLEL SAFE;
+ALTER FUNCTION oracle.round(real, integer) PARALLEL SAFE;
+ALTER FUNCTION oracle.round(value date) PARALLEL SAFE;
+ALTER FUNCTION oracle.round(value date, fmt text) PARALLEL SAFE;
+ALTER FUNCTION oracle.round(value timestamp with time zone) PARALLEL SAFE;
+ALTER FUNCTION oracle.round(value timestamp with time zone, fmt text) PARALLEL SAFE;
+ALTER FUNCTION oracle.round(value timestamp without time zone) PARALLEL SAFE;
+ALTER FUNCTION oracle.round(value timestamp without time zone, fmt text) PARALLEL SAFE;
+
+ALTER FUNCTION oracle.instr(str text, patt text, start int, nth int) PARALLEL SAFE;
+ALTER FUNCTION oracle.instr(str text, patt text, start int) PARALLEL SAFE;
+ALTER FUNCTION oracle.instr(str text, patt text) PARALLEL SAFE;
+ALTER FUNCTION oracle.substr(str text, start integer) PARALLEL SAFE;
+ALTER FUNCTION oracle.substr(character varying, numeric) PARALLEL SAFE;
+ALTER FUNCTION oracle.substr(numeric, numeric) PARALLEL SAFE;
+ALTER FUNCTION oracle.substr(str text, start integer, len integer) PARALLEL SAFE;
+ALTER FUNCTION oracle.substr(character varying, numeric, numeric) PARALLEL SAFE;
+ALTER FUNCTION oracle.substr(numeric, numeric, numeric) PARALLEL SAFE;
+ALTER FUNCTION oracle.length(char) PARALLEL SAFE;
+ALTER FUNCTION oracle.lengthb(oracle.varchar2) PARALLEL SAFE;
+
+ALTER FUNCTION oracle.subtract(oracle.date, bigint) PARALLEL SAFE;
+ALTER FUNCTION oracle.subtract(oracle.date, smallint) PARALLEL SAFE;
+ALTER FUNCTION oracle.subtract(oracle.date, integer) PARALLEL SAFE;
+ALTER FUNCTION oracle.subtract(oracle.date, numeric) PARALLEL SAFE;
+ALTER FUNCTION oracle.subtract(oracle.date, oracle.date) PARALLEL SAFE;
+
+ALTER FUNCTION oracle.trunc(double precision, integer) PARALLEL SAFE;
+ALTER FUNCTION oracle.trunc(real, integer) PARALLEL SAFE;
+ALTER FUNCTION oracle.trunc(value date) PARALLEL SAFE;
+ALTER FUNCTION oracle.trunc(value date, fmt text) PARALLEL SAFE;
+ALTER FUNCTION oracle.trunc(value timestamp with time zone) PARALLEL SAFE;
+ALTER FUNCTION oracle.trunc(value timestamp with time zone, fmt text) PARALLEL SAFE;
+ALTER FUNCTION oracle.trunc(value timestamp without time zone) PARALLEL SAFE;
+ALTER FUNCTION oracle.trunc(value timestamp without time zone, fmt text) PARALLEL SAFE;
