@@ -113,7 +113,7 @@ public class MetaMasterController extends Controller {
         }
       }
     } catch (Exception e) {
-      LOG.error("Failed to get list of masters in universe " + universeUUID, e);
+      LOG.warn("Failed to get list of masters in universe {} - {} ", universeUUID, e.getMessage());
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     } finally {
       ybService.closeClient(client, masterAddresses);
