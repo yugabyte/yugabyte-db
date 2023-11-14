@@ -496,3 +496,13 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_k
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_kv_pkey) */ SELECT 1 FROM t_kv;
 
 DROP TABLE t_kv;
+
+CREATE TABLE sample(a int, b int, primary key(a asc, b asc));
+INSERT INTO sample VALUES (1,1), (1,2);
+DELETE FROM sample where b = 1;
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT a FROM sample WHERE a > 0;
+SELECT DISTINCT a FROM sample WHERE a > 0;
+
+DROP TABLE sample;
+

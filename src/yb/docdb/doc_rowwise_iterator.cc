@@ -311,7 +311,7 @@ Result<bool> DocRowwiseIterator::DoFetchNext(
     IncrementKeyFoundStats(!doc_found, key_data.write_time);
 
     if (scan_choices_ && !is_static_column) {
-      has_next_status_ = scan_choices_->DoneWithCurrentTarget();
+      has_next_status_ = scan_choices_->DoneWithCurrentTarget(!doc_found);
       RETURN_NOT_OK(has_next_status_);
     }
     has_next_status_ = AdvanceIteratorToNextDesiredRow();

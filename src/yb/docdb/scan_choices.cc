@@ -725,9 +725,9 @@ std::vector<OptionRange> HybridScanChoices::TEST_GetCurrentOptions() {
 }
 
 // Method called when the scan target is done being used
-Status HybridScanChoices::DoneWithCurrentTarget() {
+Status HybridScanChoices::DoneWithCurrentTarget(bool current_row_skipped) {
   if (schema_num_keys_ == scan_options_.size() ||
-      prefix_length_ > 0) {
+      (prefix_length_ > 0 && !current_row_skipped)) {
 
     ssize_t incr_idx =
         (prefix_length_ ? prefix_length_ : current_scan_target_ranges_.size()) - 1;

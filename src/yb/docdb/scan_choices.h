@@ -40,7 +40,7 @@ class ScanChoices {
   virtual bool FinishedWithScanChoices() const { return finished_; }
 
   // Go to the next scan target if any.
-  virtual Status DoneWithCurrentTarget() = 0;
+  virtual Status DoneWithCurrentTarget(bool current_row_skipped = false) = 0;
 
   // Go (directly) to the new target (or the one after if new_target does not
   // exist in the desired list/range). If the new_target is larger than all scan target options it
@@ -281,7 +281,7 @@ class HybridScanChoices : public ScanChoices {
       const KeyBytes& upper_doc_key);
 
   Result<bool> SkipTargetsUpTo(const Slice& new_target) override;
-  Status DoneWithCurrentTarget() override;
+  Status DoneWithCurrentTarget(bool current_row_skipped = false) override;
   Status SeekToCurrentTarget(IntentAwareIteratorIf* db_iter) override;
 
  protected:
