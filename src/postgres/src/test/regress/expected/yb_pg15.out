@@ -509,6 +509,40 @@ SELECT * FROM tlateral1 t1 LEFT JOIN LATERAL (SELECT t2.a AS t2a, t2.c AS t2c, t
  550 | 0 | 0002 |     |      |     |     |
 (12 rows)
 
+-- Insert with on conflict on temp table
+create temporary table mytmp (id int primary key, name text, count int);
+insert into mytmp values (1, 'foo', 0);
+insert into mytmp values (1, 'foo') on conflict ON CONSTRAINT mytmp_pkey do update set id = mytmp.id+1;
+select * from mytmp;
+ id | name | count 
+----+------+-------
+  2 | foo  |     0
+(1 row)
+
+CREATE OR REPLACE FUNCTION update_count() RETURNS trigger LANGUAGE plpgsql AS
+$func$
+BEGIN
+   NEW.count := NEW.count+1;
+   RETURN NEW;
+END
+$func$;
+CREATE TRIGGER update_count_trig BEFORE UPDATE ON mytmp FOR ROW EXECUTE PROCEDURE update_count();
+insert into mytmp values (2, 'foo') on conflict ON CONSTRAINT mytmp_pkey do update set id = mytmp.id+1;
+select * from mytmp;
+ id | name | count 
+----+------+-------
+  3 | foo  |     1
+(1 row)
+
+create view myview as  select * from mytmp;
+NOTICE:  view "myview" will be a temporary view
+insert into myview values (3, 'foo') on conflict (id) do update set id = myview.id + 1;
+select * from myview;
+ id | name | count 
+----+------+-------
+  4 | foo  |     2
+(1 row)
+
 -- Cleanup
 DROP TABLE IF EXISTS address, address2, emp, emp2, emp_par1, emp_par1_1_100, emp_par2, emp_par3,
   fastpath, myemp, myemp2, myemp2_101_200, myemp2_1_100, p1, p2, pk_range_int_asc,

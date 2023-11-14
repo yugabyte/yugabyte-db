@@ -1019,7 +1019,7 @@ retry:
 		if (violationOK)
 		{
 			conflict = true;
-			if (IsYugaByteEnabled()) {
+			if (IsYBRelation(heap)) {
 				estate->yb_conflict_slot = existing_slot;
 			}
 			if (conflictTid)

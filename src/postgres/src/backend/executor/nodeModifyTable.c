@@ -2988,8 +2988,8 @@ ExecOnConflictUpdate(ModifyTableContext *context,
 	ExprContext *econtext = mtstate->ps.ps_ExprContext;
 	Relation	relation = resultRelInfo->ri_RelationDesc;
 	ExprState  *onConflictSetWhere = resultRelInfo->ri_onConflict->oc_WhereClause;
-	HeapTuple	oldtuple = NULL;
-	bool 		shouldFree = true;
+	HeapTuple	ybOldTuple = NULL;
+	bool 		ybShouldFree = false;
 	TupleTableSlot *existing = resultRelInfo->ri_onConflict->oc_Existing;
 	TM_FailureData tmfd;
 	LockTupleMode lockmode;
@@ -3011,7 +3011,7 @@ ExecOnConflictUpdate(ModifyTableContext *context,
 	 * However, YugaByte writes the conflict tuple including its "ybctid" to execution state "estate"
 	 * and then frees the slot when done.
 	 */
-	if (IsYBBackedRelation(relation)) {
+	if (IsYBRelation(relation)) {
 		/* Initialize result without calling postgres. */
 		test = TM_Ok;
 		ItemPointerSetInvalid(&tmfd.ctid);
@@ -3139,13 +3139,13 @@ yb_skip_transaction_control_check:
 	 * snapshot.  This is in line with the way UPDATE deals with newer tuple
 	 * versions.
 	 */
-	if (!IsYugaByteEnabled())
+	if (!IsYBRelation(relation))
 		ExecCheckTupleVisible(context->estate, relation, existing);
 	else
 	{
-		oldtuple = ExecFetchSlotHeapTuple(context->estate->yb_conflict_slot, true, &shouldFree);
-		ExecStoreBufferHeapTuple(oldtuple, existing, InvalidBuffer);
-		TABLETUPLE_YBCTID(context->planSlot) = HEAPTUPLE_YBCTID(oldtuple);
+		ybOldTuple = ExecFetchSlotHeapTuple(context->estate->yb_conflict_slot, true, &ybShouldFree);
+		ExecStoreBufferHeapTuple(ybOldTuple, existing, InvalidBuffer);
+		TABLETUPLE_YBCTID(context->planSlot) = HEAPTUPLE_YBCTID(ybOldTuple);
 	}
 
 	/*
@@ -3200,15 +3200,15 @@ yb_skip_transaction_control_check:
 	 * wCTE in the ON CONFLICT's SET.
 	 */
 
-	ItemPointer tid = IsYugaByteEnabled() ? NULL : conflictTid;
+	ItemPointer ybTid = IsYBRelation(relation) ? NULL : conflictTid;
 	/* Execute UPDATE with projection */
 	*returning = ExecUpdate(context, resultRelInfo,
-							tid, oldtuple,
+							ybTid, ybOldTuple,
 							resultRelInfo->ri_onConflict->oc_ProjSlot,
 							canSetTag);
 
-	if (shouldFree)
-		pfree(oldtuple);
+	if (ybShouldFree)
+		pfree(ybOldTuple);
 
 	/*
 	 * Clear out existing tuple, as there might not be another conflict among
