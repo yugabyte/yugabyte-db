@@ -568,11 +568,12 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // The maximum delta is capped by 'FLAGS_leader_failure_exp_backoff_max_delta_ms'.
   MonoDelta LeaderElectionExpBackoffDeltaUnlocked();
 
-  // Checks if the leader is ready to process a change config request (one requirement for this is
-  // for it to have at least one committed op in the current term). Also checks that there are no
-  // voters in transition in the active config state. Status OK() implies leader is ready.
-  // server_uuid is the uuid of the server that we are trying to remove, add, or change its
-  // role.
+  // Checks if the leader is ready to process a change config request
+  // 1. has at least one committed op in the current term
+  // 2. has no pending change config request
+  //
+  // For sys catalog tablet, the function additionally ensures that there are no servers
+  // currently amidst transition.
   Status IsLeaderReadyForChangeConfigUnlocked(ChangeConfigType type,
                                               const std::string& server_uuid);
 
