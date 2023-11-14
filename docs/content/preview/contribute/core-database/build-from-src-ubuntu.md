@@ -67,7 +67,6 @@ packages=(
   gettext
   git
   locales
-  ninja-build
   pkg-config
   rsync
 )
