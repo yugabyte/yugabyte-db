@@ -227,14 +227,7 @@ class XClusterTestNoParam : public XClusterTestBase {
       return Status::OK();
     }));
 
-    if (!producer_tables_.empty()) {
-      producer_table_ = producer_tables_.front();
-    }
-    if (!consumer_tables_.empty()) {
-      consumer_table_ = consumer_tables_.front();
-    }
-
-    return WaitForLoadBalancersToStabilize();
+    return PostSetUp();
   }
 
   virtual XClusterTestParams GetTestParam() {

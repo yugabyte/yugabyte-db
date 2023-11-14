@@ -123,6 +123,8 @@ class XClusterTestBase : public YBTest {
     propagation_timeout_ = MonoDelta::FromSeconds(30 * kTimeMultiplier);
   }
 
+  Status PostSetUp();
+
   Result<std::unique_ptr<Cluster>> CreateCluster(
       const std::string& cluster_id, const std::string& cluster_short_name,
       uint32_t num_tservers = 1, uint32_t num_masters = 1);
