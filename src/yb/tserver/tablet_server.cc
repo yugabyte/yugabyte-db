@@ -605,6 +605,7 @@ Status TabletServer::RegisterServices() {
   auto remote_bootstrap_service = std::make_shared<RemoteBootstrapServiceImpl>(
           fs_manager_.get(), tablet_manager_.get(), metric_entity(), this->MakeCloudInfoPB(),
           &this->proxy_cache());
+  remote_bootstrap_service_ = remote_bootstrap_service;
   LOG(INFO) << "yb::tserver::RemoteBootstrapServiceImpl created at " <<
     remote_bootstrap_service.get();
   RETURN_NOT_OK(RegisterService(
