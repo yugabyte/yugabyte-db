@@ -9,17 +9,18 @@ tsv_path=${test_result_dir}/results.tsv
 mkdir -p "$test_result_dir"
 
 find . -name 'test_*.sh' \
-  | grep -oP 'test_.+(?=.sh)' \
+  | grep -oE 'test_[^.]+' \
   | while read -r test_name; do
   test_output_path="$test_result_dir"/"$test_name".txt
 
   # Run test, capturing out/err to file.
+  [ -x "$test_name".sh ]
   set +e
   ./"$test_name".sh "$@" |& tee "$test_output_path"
   result=$?
   set -e
 
-  datetime=$(date -Is)
+  datetime=$(date -Iseconds)
     # In case of failure, persist failure output.
   if [ $result -ne 0 ]; then
     cp "$test_output_path" "$test_output_path"."$datetime"

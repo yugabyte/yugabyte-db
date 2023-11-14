@@ -70,3 +70,16 @@ java_test() {
 yb_ctl() {
   "${yb_ctl_cmd_pre[@]}" "$@" "${yb_ctl_cmd_post[@]}"
 }
+
+yb_ctl_wipe_restart() {
+  yb_ctl wipe_restart
+  # yb-ctl can return before ysqlsh is able to connect, so work around that by
+  # not returning from this function until ysqlsh succeeds
+  for _ in {1..30}; do
+    if bin/ysqlsh -c ';'; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
