@@ -44,7 +44,9 @@ class ScanChoices {
   // Check whether scan choices is interested in specified row.
   // Seek on specified iterator to the next row of interest.
   virtual Result<bool> InterestedInRow(dockv::KeyBytes* row_key, IntentAwareIteratorIf* iter) = 0;
-  virtual Result<bool> AdvanceToNextRow(dockv::KeyBytes* row_key, IntentAwareIteratorIf* iter) = 0;
+  virtual Result<bool> AdvanceToNextRow(dockv::KeyBytes* row_key,
+                                        IntentAwareIteratorIf* iter,
+                                        bool current_fetched_row_skipped) = 0;
 
   static ScanChoicesPtr Create(
       const Schema& schema, const qlexpr::YQLScanSpec& doc_spec,
@@ -236,14 +238,16 @@ class HybridScanChoices : public ScanChoices {
   }
 
   Result<bool> InterestedInRow(dockv::KeyBytes* row_key, IntentAwareIteratorIf* iter) override;
-  Result<bool> AdvanceToNextRow(dockv::KeyBytes* row_key, IntentAwareIteratorIf* iter) override;
+  Result<bool> AdvanceToNextRow(dockv::KeyBytes* row_key,
+                                IntentAwareIteratorIf* iter,
+                                bool current_fetched_row_skipped) override;
 
  private:
   friend class ScanChoicesTest;
 
   // Sets current_scan_target_ to the first tuple in the filter space that is >= new_target.
   Result<bool> SkipTargetsUpTo(Slice new_target);
-  Result<bool> DoneWithCurrentTarget();
+  Result<bool> DoneWithCurrentTarget(bool current_row_skipped = false);
   void SeekToCurrentTarget(IntentAwareIteratorIf* db_iter);
 
   bool CurrentTargetMatchesKey(Slice curr);
