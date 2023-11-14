@@ -2438,6 +2438,60 @@ select to_char('4.0010'::numeric);
  4.001
 (1 row)
 
+select to_char('-44444');
+ to_char 
+---------
+ -44444
+(1 row)
+
+select to_char('1234567890123456');
+     to_char      
+------------------
+ 1234567890123456
+(1 row)
+
+select to_char('123.456');
+ to_char 
+---------
+ 123.456
+(1 row)
+
+select to_char('123abc');
+ to_char 
+---------
+ 123abc
+(1 row)
+
+select to_char('你好123@$%abc');
+    to_char    
+---------------
+ 你好123@$%abc
+(1 row)
+
+select to_char('1234567890123456789012345678901234567890123456789012345678901234567890');
+                                to_char                                 
+------------------------------------------------------------------------
+ 1234567890123456789012345678901234567890123456789012345678901234567890
+(1 row)
+
+select to_char('');
+ to_char 
+---------
+ 
+(1 row)
+
+select to_char(' ');
+ to_char 
+---------
+  
+(1 row)
+
+select to_char(null);
+ to_char 
+---------
+ 
+(1 row)
+
 SELECT to_number('123'::text);
  to_number 
 -----------

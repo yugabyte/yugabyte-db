@@ -119,3 +119,11 @@ ALTER FUNCTION oracle.to_char(num numeric) PARALLEL SAFE;
 ALTER FUNCTION oracle.to_number(str text) PARALLEL SAFE;
 ALTER FUNCTION oracle.to_number(numeric) PARALLEL SAFE;
 ALTER FUNCTION oracle.to_number(numeric,numeric) PARALLEL SAFE;
+
+
+CREATE FUNCTION oracle.to_char(str text)
+RETURNS text
+AS $$
+select str;
+$$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
+COMMENT ON FUNCTION oracle.to_char(text) IS 'Convert string to string';
