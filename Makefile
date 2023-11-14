@@ -30,7 +30,7 @@ OBJS= regexp.o\
 
 EXTENSION = orafce
 
-DATA = orafce--4.7.sql\
+DATA = orafce--4.8.sql\
 		orafce--3.2--3.3.sql\
 		orafce--3.3--3.4.sql\
 		orafce--3.4--3.5.sql\

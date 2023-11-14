@@ -8,13 +8,13 @@ CREATE SCHEMA oracle;
 CREATE FUNCTION oracle.trunc(value date, fmt text)
 RETURNS date
 AS 'MODULE_PATHNAME','ora_date_trunc'
-LANGUAGE C IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION oracle.trunc(date,text) IS 'truncate date according to the specified format';
 
 CREATE FUNCTION oracle.round(value date, fmt text)
 RETURNS date
 AS 'MODULE_PATHNAME','ora_date_round'
-LANGUAGE C IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION oracle.round(date, text) IS 'round dates according to the specified format';
 
 CREATE FUNCTION oracle.next_day(value date, weekday text)
@@ -50,37 +50,37 @@ COMMENT ON FUNCTION oracle.add_months(date, int) IS 'returns date plus n months'
 CREATE FUNCTION oracle.trunc(value timestamp with time zone, fmt text)
 RETURNS timestamp with time zone
 AS 'MODULE_PATHNAME', 'ora_timestamptz_trunc'
-LANGUAGE C IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION oracle.trunc(timestamp with time zone, text) IS 'truncate date according to the specified format';
 
 CREATE FUNCTION oracle.round(value timestamp with time zone, fmt text)
 RETURNS timestamp with time zone
 AS 'MODULE_PATHNAME','ora_timestamptz_round'
-LANGUAGE C IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION oracle.round(timestamp with time zone, text) IS 'round dates according to the specified format';
 
 CREATE FUNCTION oracle.round(value timestamp with time zone)
 RETURNS timestamp with time zone
 AS $$ SELECT oracle.round($1, 'DDD'); $$
-LANGUAGE SQL IMMUTABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION oracle.round(timestamp with time zone) IS 'will round dates according to the specified format';
 
 CREATE FUNCTION oracle.round(value date)
 RETURNS date
 AS $$ SELECT $1; $$
-LANGUAGE SQL IMMUTABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION oracle.round(value date)IS 'will round dates according to the specified format';
 
 CREATE FUNCTION oracle.trunc(value timestamp with time zone)
 RETURNS timestamp with time zone
 AS $$ SELECT oracle.trunc($1, 'DDD'); $$
-LANGUAGE SQL IMMUTABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION oracle.trunc(timestamp with time zone) IS 'truncate date according to the specified format';
 
 CREATE FUNCTION oracle.trunc(value date)
 RETURNS date
 AS $$ SELECT $1; $$
-LANGUAGE SQL IMMUTABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION oracle.trunc(date) IS 'truncate date according to the specified format';
 
 CREATE FUNCTION oracle.nlssort(text, text)
@@ -104,19 +104,19 @@ COMMENT ON FUNCTION oracle.set_nls_sort(text) IS '';
 CREATE FUNCTION oracle.instr(str text, patt text, start int, nth int)
 RETURNS int
 AS 'MODULE_PATHNAME','plvstr_instr4'
-LANGUAGE C IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION oracle.instr(text, text, int, int) IS 'Search pattern in string';
 
 CREATE FUNCTION oracle.instr(str text, patt text, start int)
 RETURNS int
 AS 'MODULE_PATHNAME','plvstr_instr3'
-LANGUAGE C IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION oracle.instr(text, text, int) IS 'Search pattern in string';
 
 CREATE FUNCTION oracle.instr(str text, patt text)
 RETURNS int
 AS 'MODULE_PATHNAME','plvstr_instr2'
-LANGUAGE C IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION oracle.instr(text, text) IS 'Search pattern in string';
 
 CREATE FUNCTION oracle.to_char(num smallint)
@@ -278,34 +278,34 @@ COMMENT ON FUNCTION oracle.lnnvl(bool) IS '';
 CREATE FUNCTION oracle.substr(str text, start int)
 RETURNS text
 AS 'MODULE_PATHNAME','oracle_substr2'
-LANGUAGE C IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION oracle.substr(text, int) IS 'Returns substring started on start_in to end';
 
 CREATE FUNCTION oracle.substr(str text, start int, len int)
 RETURNS text
 AS 'MODULE_PATHNAME','oracle_substr3'
-LANGUAGE C IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION oracle.substr(text, int, int) IS 'Returns substring started on start_in len chars';
 
 CREATE OR REPLACE FUNCTION oracle.substr(numeric,numeric)
 RETURNS text AS $$
 SELECT oracle.substr($1::text,trunc($2)::int);
-$$ LANGUAGE SQL IMMUTABLE;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 
 CREATE OR REPLACE FUNCTION oracle.substr(numeric,numeric,numeric)
 RETURNS text AS $$
 SELECT oracle.substr($1::text,trunc($2)::int,trunc($3)::int);
-$$ LANGUAGE SQL IMMUTABLE;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 
 CREATE OR REPLACE FUNCTION oracle.substr(varchar,numeric)
 RETURNS text AS $$
 SELECT oracle.substr($1,trunc($2)::int);
-$$ LANGUAGE SQL IMMUTABLE;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 
 CREATE OR REPLACE FUNCTION oracle.substr(varchar,numeric,numeric)
 RETURNS text AS $$
 SELECT oracle.substr($1,trunc($2)::int,trunc($3)::int);
-$$ LANGUAGE SQL IMMUTABLE;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 
 CREATE OR REPLACE FUNCTION oracle.mod(smallint, smallint)
 RETURNS SMALLINT AS $$
@@ -362,45 +362,45 @@ RETURNS timestamp AS $$
 SELECT $1 + interval '1 day' * $2;
 $$ LANGUAGE SQL IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION oracle.subtract (oracle.date, integer)
+CREATE OR REPLACE FUNCTION oracle.subtract(oracle.date, integer)
 RETURNS timestamp AS $$
 SELECT $1 - interval '1 day' * $2;
-$$ LANGUAGE SQL IMMUTABLE;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 
 CREATE OR REPLACE FUNCTION oracle.add_days_to_timestamp(oracle.date,bigint)
 RETURNS timestamp AS $$
 SELECT $1 + interval '1 day' * $2;
 $$ LANGUAGE SQL IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION oracle.subtract (oracle.date, bigint)
+CREATE OR REPLACE FUNCTION oracle.subtract(oracle.date, bigint)
 RETURNS timestamp AS $$
 SELECT $1 - interval '1 day' * $2;
-$$ LANGUAGE SQL IMMUTABLE;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 
 CREATE OR REPLACE FUNCTION oracle.add_days_to_timestamp(oracle.date,smallint)
 RETURNS timestamp AS $$
 SELECT $1 + interval '1 day' * $2;
 $$ LANGUAGE SQL IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION oracle.subtract (oracle.date, smallint)
+CREATE OR REPLACE FUNCTION oracle.subtract(oracle.date, smallint)
 RETURNS timestamp AS $$
 SELECT $1 - interval '1 day' * $2;
-$$ LANGUAGE SQL IMMUTABLE;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 
 CREATE OR REPLACE FUNCTION oracle.add_days_to_timestamp(oracle.date,numeric)
 RETURNS timestamp AS $$
 SELECT $1 + interval '1 day' * $2;
 $$ LANGUAGE SQL IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION oracle.subtract (oracle.date, numeric)
+CREATE OR REPLACE FUNCTION oracle.subtract(oracle.date, numeric)
 RETURNS timestamp AS $$
 SELECT $1 - interval '1 day' * $2;
-$$ LANGUAGE SQL IMMUTABLE;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 
 CREATE OR REPLACE FUNCTION oracle.subtract(oracle.date,oracle.date)
 RETURNS double precision AS $$
 SELECT date_part('epoch', ($1::timestamp - $2::timestamp)/3600/24);
-$$ LANGUAGE SQL IMMUTABLE;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 
 CREATE OPERATOR oracle.+ (
   LEFTARG   = oracle.date,
@@ -1251,31 +1251,31 @@ COMMENT ON FUNCTION plvstr.is_prefix(bigint, bigint) IS 'Returns true, if prefix
 CREATE FUNCTION plvstr.substr(str text, start int, len int)
 RETURNS varchar
 AS 'MODULE_PATHNAME','plvstr_substr3'
-LANGUAGE C IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION plvstr.substr(text, int, int) IS 'Returns substring started on start_in to end';
 
 CREATE FUNCTION plvstr.substr(str text, start int)
 RETURNS varchar
 AS 'MODULE_PATHNAME','plvstr_substr2'
-LANGUAGE C IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION plvstr.substr(text, int) IS 'Returns substring started on start_in to end';
 
 CREATE FUNCTION plvstr.instr(str text, patt text, start int, nth int)
 RETURNS int
 AS 'MODULE_PATHNAME','plvstr_instr4'
-LANGUAGE C IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION plvstr.instr(text, text, int, int) IS 'Search pattern in string';
 
 CREATE FUNCTION plvstr.instr(str text, patt text, start int)
 RETURNS int
 AS 'MODULE_PATHNAME','plvstr_instr3'
-LANGUAGE C IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION plvstr.instr(text, text, int) IS 'Search pattern in string';
 
 CREATE FUNCTION plvstr.instr(str text, patt text)
 RETURNS int
 AS 'MODULE_PATHNAME','plvstr_instr2'
-LANGUAGE C IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION plvstr.instr(text, text) IS 'Search pattern in string';
 
 CREATE FUNCTION plvstr.lpart(str text, div text, start int, nth int, all_if_notfound bool)
@@ -2377,7 +2377,7 @@ COMMENT ON FUNCTION oracle.substrb(oracle.varchar2, integer) IS 'extracts specif
 CREATE OR REPLACE FUNCTION oracle.lengthb(oracle.varchar2) RETURNS integer
 AS 'byteaoctetlen'
 LANGUAGE internal
-STRICT IMMUTABLE;
+STRICT IMMUTABLE PARALLEL SAFE;
 COMMENT ON FUNCTION oracle.lengthb(oracle.varchar2) IS 'returns byte length of the input varchar2 string';
 
 CREATE OR REPLACE FUNCTION oracle.strposb(oracle.varchar2, oracle.varchar2) RETURNS integer
@@ -3331,7 +3331,7 @@ CREATE FUNCTION oracle.length(char)
 RETURNS integer
 AS 'MODULE_PATHNAME','orafce_bpcharlen'
 LANGUAGE 'c'
-STRICT IMMUTABLE
+STRICT IMMUTABLE PARALLEL SAFE
 ;
 
 GRANT USAGE ON SCHEMA dbms_pipe TO PUBLIC;
@@ -3358,46 +3358,46 @@ ALTER FUNCTION dbms_assert.noop ( character varying ) STRICT;
 CREATE FUNCTION oracle.trunc(value timestamp without time zone, fmt text)
 RETURNS timestamp without time zone
 AS 'MODULE_PATHNAME', 'ora_timestamp_trunc'
-LANGUAGE C IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION oracle.trunc(timestamp without time zone, text) IS 'truncate date according to the specified format';
 
 CREATE FUNCTION oracle.round(value timestamp without time zone, fmt text)
 RETURNS timestamp without time zone
 AS 'MODULE_PATHNAME','ora_timestamp_round'
-LANGUAGE C IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION oracle.round(timestamp with time zone, text) IS 'round dates according to the specified format';
 
 CREATE FUNCTION oracle.round(value timestamp without time zone)
 RETURNS timestamp without time zone
 AS $$ SELECT oracle.round($1, 'DDD'); $$
-LANGUAGE SQL IMMUTABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION oracle.round(timestamp without time zone) IS 'will round dates according to the specified format';
 
 CREATE FUNCTION oracle.trunc(value timestamp without time zone)
 RETURNS timestamp without time zone
 AS $$ SELECT oracle.trunc($1, 'DDD'); $$
-LANGUAGE SQL IMMUTABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION oracle.trunc(timestamp without time zone) IS 'truncate date according to the specified format';
 
 CREATE OR REPLACE FUNCTION oracle.round(double precision, int)
 RETURNS numeric
 AS $$SELECT pg_catalog.round($1::numeric, $2)$$
-LANGUAGE sql IMMUTABLE STRICT;
+LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE;
 
 CREATE OR REPLACE FUNCTION oracle.trunc(double precision, int)
 RETURNS numeric
 AS $$SELECT pg_catalog.trunc($1::numeric, $2)$$
-LANGUAGE sql IMMUTABLE STRICT;
+LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE;
 
 CREATE OR REPLACE FUNCTION oracle.round(float4, int)
 RETURNS numeric
 AS $$SELECT pg_catalog.round($1::numeric, $2)$$
-LANGUAGE sql IMMUTABLE STRICT;
+LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE;
 
 CREATE OR REPLACE FUNCTION oracle.trunc(float4, int)
 RETURNS numeric
 AS $$SELECT pg_catalog.trunc($1::numeric, $2)$$
-LANGUAGE sql IMMUTABLE STRICT;
+LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE;
 
 
 CREATE FUNCTION oracle.get_major_version()
