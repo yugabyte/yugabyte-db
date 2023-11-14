@@ -319,6 +319,11 @@ class ExternalMiniCluster : public MiniClusterBase {
   // This API waits for the commit indices of all the master peers to reach the target index.
   Status WaitForMastersToCommitUpTo(int64_t target_index);
 
+  // This API waits for the commit indices of the given master peers to reach the target index.
+  Status WaitForMastersToCommitUpTo(
+      int64_t target_index, const std::vector<ExternalMaster*>& masters,
+      MonoDelta timeout = MonoDelta());
+
   Status WaitForAllIntentsApplied(const MonoDelta& timeout);
 
   Status WaitForAllIntentsApplied(ExternalTabletServer* ts, const MonoDelta& timeout);
@@ -532,10 +537,11 @@ class ExternalMiniCluster : public MiniClusterBase {
   Status CheckPortAndMasterSizes() const;
 
   // Return the list of opid's for all master's in this cluster.
-  Status GetLastOpIdForEachMasterPeer(
+  Status GetLastOpIdForMasterPeers(
       const MonoDelta& timeout,
       consensus::OpIdType opid_type,
-      std::vector<OpIdPB>* op_ids);
+      std::vector<OpIdPB>* op_ids,
+      const std::vector<ExternalMaster*>& masters);
 
   // Ensure that the leader server is allowed to process a config change (by having at least one
   // commit in the current term as leader).
