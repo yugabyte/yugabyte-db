@@ -131,7 +131,7 @@ DEFINE_RUNTIME_AUTO_bool(cdc_enable_postgres_replica_identity, kLocalPersisted, 
 
 DECLARE_bool(xcluster_wait_on_ddl_alter);
 DECLARE_int32(master_rpc_timeout_ms);
-DECLARE_bool(ysql_yb_enable_replication_commands);
+DECLARE_bool(TEST_ysql_yb_enable_replication_commands);
 
 #define RETURN_ACTION_NOT_OK(expr, action) \
   RETURN_NOT_OK_PREPEND((expr), Format("An error occurred while $0", action))
@@ -743,7 +743,6 @@ Status CatalogManager::CreateCDCStream(
 
   std::string id_type_option_value(cdc::kTableId);
   std::string record_type_option_value;
-  bool source_type_found = false;
   std::string source_type_option_value(CDCRequestSource_Name(cdc::CDCRequestSource::XCLUSTER));
 
   for (auto option : req->options()) {
@@ -751,7 +750,6 @@ Status CatalogManager::CreateCDCStream(
       id_type_option_value = option.value();
     }
     if (option.key() == cdc::kSourceType) {
-      source_type_found = true;
       source_type_option_value = option.value();
     }
     if (option.key() == cdc::kRecordType) {
@@ -759,45 +757,19 @@ Status CatalogManager::CreateCDCStream(
     }
   }
 
-  RETURN_NOT_OK(
-      ValidateCDCSDKRequestProperties(*req, source_type_option_value, record_type_option_value));
+  // xCluster only.
+  if (req->has_table_id() && id_type_option_value != cdc::kNamespaceId) {
+    RETURN_NOT_OK(SetWalRetentionForTable(req->table_id(), rpc, epoch));
+    RETURN_NOT_OK(BackfillMetadataForCDC(req->table_id(), rpc, epoch));
 
-  if (req->has_table_id()) {
-    if (id_type_option_value != cdc::kNamespaceId) {
-      RETURN_NOT_OK(SetWalRetentionForTable(req->table_id(), rpc, epoch));
-      RETURN_NOT_OK(BackfillMetadataForCDC(req->table_id(), rpc, epoch));
-    }
+    RETURN_NOT_OK(CreateNewXReplStream(
+        *req, CreateNewCDCStreamMode::kXClusterTableIds,
+        /*table_ids=*/{req->table_id()}, /*namespace_id=*/std::nullopt, resp, epoch));
 
-    if (!req->has_db_stream_id()) {
-      if (id_type_option_value == cdc::kNamespaceId) {
-        // If the id_type is kNamespaceId, the table_id field contains the namespace_id. The caller
-        // is expected to make future calls with table id. It is used by cdc_service to create a
-        // namespace level CDCSDK stream. This should not be needed after we tackle #18890.
-        RETURN_NOT_OK(CreateNewXReplStream(
-            *req, CreateNewCDCStreamMode::kNamespaceId, /*table_ids=*/{},
-            /*namespace_id=*/req->table_id(), resp, epoch));
-      } else {
-        RETURN_NOT_OK(CreateNewXReplStream(
-            *req, CreateNewCDCStreamMode::kXClusterTableIds,
-            /*table_ids=*/{req->table_id()}, /*namespace_id=*/std::nullopt, resp, epoch));
-      }
-    } else {
-      // Update and add table_id.
-      RETURN_NOT_OK(AddTableIdToCDCStream(*req));
-    }
+  // CDCSDK only.
   } else {
-    if (!source_type_found) {
-      RETURN_INVALID_REQUEST_STATUS("source_type wasn't found in the request", (*req));
-    }
-
-    if (source_type_option_value != CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK)) {
-      RETURN_INVALID_REQUEST_STATUS("Namespace CDC stream is only supported for CDCSDK", (*req));
-    }
-
-    if (id_type_option_value != cdc::kNamespaceId) {
-      RETURN_INVALID_REQUEST_STATUS(
-          "Invalid id_type in options. Expected to be NAMESPACEID for all CDCSDK streams", (*req));
-    }
+    RETURN_NOT_OK(ValidateCDCSDKRequestProperties(
+        *req, source_type_option_value, record_type_option_value, id_type_option_value));
 
     RETURN_NOT_OK(CreateNewCDCStreamForNamespace(*req, resp, rpc, epoch));
   }
@@ -811,7 +783,18 @@ Status CatalogManager::CreateCDCStream(
 Status CatalogManager::CreateNewCDCStreamForNamespace(
     const CreateCDCStreamRequestPB& req, CreateCDCStreamResponsePB* resp, rpc::RpcContext* rpc,
     const LeaderEpoch& epoch) {
-  auto ns = VERIFY_RESULT(FindNamespaceById(req.namespace_id()));
+  std::string namespace_id;
+  // The namespace_id field was added to the request as part of the replication slots feature in
+  // YSQL. When the replication slot feature is disabled, read from the table_id field for backwards
+  // compatibility so that we still support atomic creation of namespace level CDCSDK streams in
+  // yb-master independently of the replication slot feature.
+  if (FLAGS_TEST_ysql_yb_enable_replication_commands) {
+    namespace_id = req.namespace_id();
+  } else {
+    namespace_id = req.table_id();
+  }
+
+  auto ns = VERIFY_RESULT(FindNamespaceById(namespace_id));
 
   // TODO(#19211): Validate that if the ns type is PGSQL, it must have the replication slot name in
   // the request. This can only be done after we have ensured that YSQL is the only client
@@ -853,7 +836,8 @@ Status CatalogManager::CreateNewXReplStream(
     TRACE("Acquired catalog manager lock");
     LockGuard lock(mutex_);
 
-    if (req.has_cdcsdk_ysql_replication_slot_name()) {
+    auto has_replication_slot_name = req.has_cdcsdk_ysql_replication_slot_name();
+    if (has_replication_slot_name) {
       auto slot_name = ReplicationSlotName(req.cdcsdk_ysql_replication_slot_name());
 
       // Duplicate detection.
@@ -890,14 +874,12 @@ Status CatalogManager::CreateNewXReplStream(
     stream = make_scoped_refptr<CDCStreamInfo>(stream_id);
     stream->mutable_metadata()->StartMutation();
     auto* metadata = &stream->mutable_metadata()->mutable_dirty()->pb;
-    if (mode != CreateNewCDCStreamMode::kXClusterTableIds) {
+    if (mode == CreateNewCDCStreamMode::kCdcsdkNamespaceAndTableIds) {
       DCHECK(namespace_id) << "namespace_id is unexpectedly none";
       metadata->set_namespace_id(*namespace_id);
     }
-    if (mode != CreateNewCDCStreamMode::kNamespaceId) {
-      for (const auto& table_id : table_ids) {
-        metadata->add_table_id(table_id);
-      }
+    for (const auto& table_id : table_ids) {
+      metadata->add_table_id(table_id);
     }
 
     metadata->set_transactional(req.transactional());
@@ -906,24 +888,22 @@ Status CatalogManager::CreateNewXReplStream(
     metadata->set_state(
         req.has_initial_state() ? req.initial_state() : SysCDCStreamEntryPB::ACTIVE);
 
-    if (req.has_cdcsdk_ysql_replication_slot_name()) {
+    if (has_replication_slot_name) {
       metadata->set_cdcsdk_ysql_replication_slot_name(req.cdcsdk_ysql_replication_slot_name());
     }
 
     // Add the stream to the in-memory map.
     cdc_stream_map_[stream->StreamId()] = stream;
-    if (mode != CreateNewCDCStreamMode::kNamespaceId) {
-      for (const auto& table_id : table_ids) {
-        if (mode == CreateNewCDCStreamMode::kXClusterTableIds) {
-          xcluster_producer_tables_to_stream_map_[table_id].insert(stream->StreamId());
-        } else {
-          cdcsdk_tables_to_stream_map_[table_id].insert(stream->StreamId());
-        }
+    for (const auto& table_id : table_ids) {
+      if (mode == CreateNewCDCStreamMode::kXClusterTableIds) {
+        xcluster_producer_tables_to_stream_map_[table_id].insert(stream->StreamId());
+      } else {
+        cdcsdk_tables_to_stream_map_[table_id].insert(stream->StreamId());
       }
-      if (req.has_cdcsdk_ysql_replication_slot_name()) {
-        cdcsdk_replication_slots_to_stream_map_.insert_or_assign(
-            ReplicationSlotName(req.cdcsdk_ysql_replication_slot_name()), stream->StreamId());
-      }
+    }
+    if (has_replication_slot_name) {
+      cdcsdk_replication_slots_to_stream_map_.insert_or_assign(
+          ReplicationSlotName(req.cdcsdk_ysql_replication_slot_name()), stream->StreamId());
     }
     resp->set_stream_id(stream->id());
   }
@@ -950,8 +930,7 @@ Status CatalogManager::CreateNewXReplStream(
   // If this is a bootstrap (initial state not ACTIVE), let the BootstrapProducer logic take care of
   // populating entries in cdc_state.
   if (PREDICT_FALSE(FLAGS_TEST_disable_cdc_state_insert_on_setup) ||
-      (req.has_initial_state() && req.initial_state() != master::SysCDCStreamEntryPB::ACTIVE) ||
-      (mode == CreateNewCDCStreamMode::kNamespaceId)) {
+      (req.has_initial_state() && req.initial_state() != master::SysCDCStreamEntryPB::ACTIVE)) {
     return Status::OK();
   }
 
@@ -975,49 +954,6 @@ Status CatalogManager::CreateNewXReplStream(
 
   RETURN_NOT_OK(cdc_state_table_->InsertEntries(entries));
   TRACE("Created CDC state entries");
-  return Status::OK();
-}
-
-Status CatalogManager::AddTableIdToCDCStream(const CreateCDCStreamRequestPB& req) {
-  CDCStreamInfoPtr stream;
-  {
-    SharedLock lock(mutex_);
-    stream = FindPtrOrNull(
-        cdc_stream_map_, VERIFY_RESULT(xrepl::StreamId::FromString(req.db_stream_id())));
-  }
-
-  if (stream == nullptr) {
-    return STATUS(
-        NotFound, "Could not find CDC stream", req.ShortDebugString(),
-        MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
-  }
-
-  auto stream_lock = stream->LockForWrite();
-  auto* metadata = &stream_lock.mutable_data()->pb;
-  if (stream_lock->is_deleting()) {
-    return STATUS(
-        NotFound, "CDC stream has been deleted", req.ShortDebugString(),
-        MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
-  }
-  metadata->add_table_id(req.table_id());
-
-  // Transactional mode cannot be changed once set.
-  DCHECK(!req.has_transactional());
-
-  if (req.has_initial_state()) {
-    metadata->set_state(req.initial_state());
-  }
-
-  // Also need to persist changes in sys catalog.
-  RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), stream));
-  stream_lock.Commit();
-  TRACE("Updated CDC stream in sys-catalog");
-  // Add the stream to the in-memory map.
-  {
-    LockGuard lock(mutex_);
-    cdcsdk_tables_to_stream_map_[req.table_id()].insert(stream->StreamId());
-  }
-
   return Status::OK();
 }
 
@@ -1307,16 +1243,21 @@ void CatalogManager::FindAllTablesMissingInCDCSDKStream(
 
 Status CatalogManager::ValidateCDCSDKRequestProperties(
     const CreateCDCStreamRequestPB& req, const std::string& source_type_option_value,
-    const std::string& record_type_option_value) {
+    const std::string& record_type_option_value, const std::string& id_type_option_value) {
   if (source_type_option_value != CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK)) {
-    return Status::OK();
+    RETURN_INVALID_REQUEST_STATUS("Namespace CDC stream is only supported for CDCSDK", req);
   }
 
-  if (!FLAGS_ysql_yb_enable_replication_commands) {
+  if (id_type_option_value != cdc::kNamespaceId) {
     RETURN_INVALID_REQUEST_STATUS(
-        "Creation of CDCSDK stream is disallowed when ysql_yb_enable_replication_commands is "
-        "false",
-        (req));
+        "Invalid id_type in options. Expected to be NAMESPACEID for all CDCSDK streams", req);
+  }
+
+  if (!FLAGS_TEST_ysql_yb_enable_replication_commands &&
+      req.has_cdcsdk_ysql_replication_slot_name()) {
+    // Should never happen since the YSQL commands also check the flag.
+    RETURN_INVALID_REQUEST_STATUS(
+        "Creation of CDCSDK stream with a replication slot name is disallowed", req);
   }
 
   cdc::CDCRecordType record_type_pb;
