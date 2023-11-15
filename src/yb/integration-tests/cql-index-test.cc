@@ -14,6 +14,8 @@
 #include "yb/integration-tests/cql_test_base.h"
 #include "yb/integration-tests/mini_cluster_utils.h"
 
+#include "yb/client/table_info.h"
+
 #include "yb/docdb/deadline_info.h"
 
 #include "yb/tablet/tablet_metadata.h"
@@ -85,6 +87,28 @@ TEST_F(CqlIndexTest, Simple) {
   ASSERT_EQ(row.Value(0).As<cass_int32_t>(), kKey);
   ASSERT_EQ(row.Value(1).As<cass_int32_t>(), kValue);
   ASSERT_FALSE(iter.Next());
+}
+
+TEST_F(CqlIndexTest, EmptyIndex) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_index_backfill) = false;
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+
+  WARN_NOT_OK(session.ExecuteQuery(
+      "CREATE TABLE t (key INT PRIMARY KEY, value INT) WITH transactions = { 'enabled' : true }"),
+      "Create table failed.");
+  auto future = session.ExecuteGetFuture(
+      "CREATE INDEX idx ON T (value) WITH transactions = { 'enabled' : true }");
+
+  constexpr auto kNamespace = "test";
+  const client::YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "t");
+  const client::YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace, "idx");
+
+  LOG(INFO) << "Waiting for idx got " << future.Wait();
+  auto perm = ASSERT_RESULT(client_->WaitUntilIndexPermissionsAtLeast(
+      table_name, index_table_name, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE));
+  CHECK_EQ(perm, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+  auto index = ASSERT_RESULT(client_->GetYBTableInfo(index_table_name));
+  ASSERT_FALSE(index.schema.table_properties().retain_delete_markers());
 }
 
 TEST_F(CqlIndexTest, MultipleIndex) {
