@@ -1287,6 +1287,8 @@ char *yb_test_fail_index_state_change = "";
 
 bool ddl_rollback_enabled = false;
 
+bool yb_silence_advisory_locks_not_supported_error = false;
+
 const char*
 YBDatumToString(Datum datum, Oid typid)
 {

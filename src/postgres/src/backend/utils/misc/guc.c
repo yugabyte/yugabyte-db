@@ -1999,6 +1999,21 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_silence_advisory_locks_not_supported_error", PGC_USERSET, LOCK_MANAGEMENT,
+			gettext_noop("Silence the advisory locks not supported error message."),
+			gettext_noop(
+					"Enable this with high caution. It was added to avoid disruption for users who were "
+					"already using advisory locks but seeing success messages without the lock really being "
+					"acquired. Such users should take the necessary steps to modify their application to "
+					"remove usage of advisory locks."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_silence_advisory_locks_not_supported_error,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"data_sync_retry", PGC_POSTMASTER, ERROR_HANDLING_OPTIONS,
 			gettext_noop("Whether to continue running after a failure to sync data files."),
 		},
