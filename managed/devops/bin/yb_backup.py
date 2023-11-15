@@ -67,6 +67,9 @@ ACCESS_TOKEN_REDACT_RE = r'\g<1>--access_token=REDACT\g<2>'
 STARTED_SNAPSHOT_CREATION_RE = re.compile(r'[\S\s]*Started snapshot creation: (?P<uuid>.*)')
 YSQL_CATALOG_VERSION_RE = re.compile(r'[\S\s]*Version: (?P<version>.*)')
 
+YSQL_SHELL_ERROR_RE = re.compile('.*ERROR.*')
+ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR = False
+
 ROCKSDB_PATH_PREFIX = '/yb-data/tserver/data/rocksdb'
 
 SNAPSHOT_DIR_GLOB = '*/table-*/tablet-*.snapshots/*'
@@ -145,6 +148,11 @@ class CompatibilityException(BackupException):
 class YbAdminOpNotSupportedException(BackupException):
     """Exception raised if the attempted operation is not supported by the version of yb-admin we
     are using."""
+    pass
+
+
+class YsqlDumpApplyFailedException(BackupException):
+    """Exception raised if 'ysqlsh' tool failed to apply the YSQL dump file."""
     pass
 
 
@@ -1208,8 +1216,14 @@ class YBBackup:
             '--remote_ysql_shell_binary', default=DEFAULT_REMOTE_YSQL_SHELL_PATH,
             help="Path to the remote ysql shell binary")
         parser.add_argument(
-            '--pg_based_backup', action='store_true', default=False, help="Use it to trigger "
-                                                                          "pg based backup.")
+            '--pg_based_backup', action='store_true', default=False,
+            help="Use it to trigger pg based backup.")
+        parser.add_argument(
+            '--ysql_ignore_restore_errors', action='store_true', default=False,
+            help="Do NOT use ON_ERROR_STOP mode when applying YSQL dumps in backup-restore.")
+        parser.add_argument(
+            '--ysql_disable_db_drop_on_restore_errors', action='store_true', default=False,
+            help="Do NOT drop just created (or existing) YSQL DB if YSQL dump apply failed.")
         parser.add_argument(
             '--disable_xxhash_checksum', action='store_true', default=False,
             help="Disables xxhash algorithm for checksum computation.")
@@ -1525,7 +1539,7 @@ class YBBackup:
                         xxh64_bin = XXH64_X86_BIN
                     self.xxhash_checksum_path = os.path.join(xxhash_tool_path, xxh64_bin)
                 except Exception:
-                    logging.warn("[app] xxhsum tool missing on the host, continuing with sha256")
+                    logging.warning("[app] xxhsum tool missing on the host, continuing with sha256")
             else:
                 raise BackupException("No Live TServer exists. "
                                       "Check the TServer nodes status & try again.")
@@ -3429,8 +3443,12 @@ class YBBackup:
         """
         Import the YSQL dump using the provided file.
         """
-        new_db_name = None
-        if self.args.keyspace:
+        on_error_stop = (not self.args.ysql_ignore_restore_errors and
+                         ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR)
+
+        old_db_name = None
+        if self.args.keyspace or on_error_stop:
+            # Get YSQL DB name from the dump file.
             cmd = get_db_name_cmd(dump_file_path)
 
             if self.args.local_yb_admin_binary:
@@ -3443,6 +3461,8 @@ class YBBackup:
                 # ssh_librabry(yugabyte-db/managed/devops/opscli/ybops/utils/ssh.py).
                 old_db_name = old_db_name.splitlines()[-1].strip()
 
+        new_db_name = None
+        if self.args.keyspace:
             if old_db_name:
                 new_db_name = keyspace_name(self.args.keyspace[0])
                 if new_db_name == old_db_name:
@@ -3472,7 +3492,45 @@ class YBBackup:
             else:
                 self.run_ssh_cmd(cmd, self.get_main_host_ip())
 
-        self.run_ysql_shell(['--echo-all', '--file=' + dump_file_path])
+        ysql_shell_args = ['--echo-all', '--file=' + dump_file_path]
+
+        if on_error_stop:
+            logging.info(
+                "[app] Enable ON_ERROR_STOP mode when applying '{}'".format(dump_file_path))
+            ysql_shell_args.append('--variable=ON_ERROR_STOP=1')
+            error_msg = None
+            try:
+                self.run_ysql_shell(ysql_shell_args)
+            except subprocess.CalledProcessError as ex:
+                output = str(ex.output.decode('utf-8', errors='replace')
+                                      .encode("ascii", "ignore")
+                                      .decode("ascii"))
+                errors = []
+                for line in output.splitlines():
+                    if YSQL_SHELL_ERROR_RE.match(line):
+                        errors.append(line)
+
+                error_msg = "Failed to apply YSQL dump '{}' with RC={}: {}".format(
+                    dump_file_path, ex.returncode, '; '.join(errors))
+            except Exception as ex:
+                error_msg = "Failed to apply YSQL dump '{}': {}".format(dump_file_path, ex)
+
+            if error_msg:
+                logging.error("[app] {}".format(error_msg))
+                db_name_to_drop = new_db_name if new_db_name else old_db_name
+                if db_name_to_drop:
+                    logging.info("[app] YSQL DB '{}' will be deleted at exit...".format(
+                                 db_name_to_drop))
+                    atexit.register(self.delete_created_ysql_db, db_name_to_drop)
+                else:
+                    logging.warning("[app] Skip new YSQL DB drop because YSQL DB name "
+                                    "was not found in file '{}'".format(dump_file_path))
+
+                raise YsqlDumpApplyFailedException(error_msg)
+        else:
+            logging.warning("[app] Ignoring YSQL errors when applying '{}'".format(dump_file_path))
+            self.run_ysql_shell(ysql_shell_args)
+
         return new_db_name
 
     def import_snapshot(self, metadata_file_path):
@@ -3871,6 +3929,21 @@ class YBBackup:
             logging.info("Deleting snapshot %s ...", snapshot_id)
 
         return self.run_yb_admin(['delete_snapshot', snapshot_id])
+
+    def delete_created_ysql_db(self, db_name):
+        """
+        Callback run on exit to delete incomplete/partly created YSQL DB.
+        """
+        if db_name:
+            if self.args.ysql_disable_db_drop_on_restore_errors:
+                logging.warning("[app] Skip YSQL DB '{}' drop because "
+                                "the clean-up is disabled".format(db_name))
+            else:
+                ysql_shell_args = ['-c', 'DROP DATABASE {};'.format(db_name)]
+                logging.info("[app] Do clean-up due to previous error: "
+                             "'{}'".format(' '.join(ysql_shell_args)))
+                output = self.run_ysql_shell(ysql_shell_args)
+                logging.info("YSQL DB drop result: {}".format(output.replace('\n', ' ')))
 
     def TEST_yb_admin_unsupported_commands(self):
         try:
