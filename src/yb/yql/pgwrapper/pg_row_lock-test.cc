@@ -196,15 +196,21 @@ TEST_F(PgRowLockTest, SelectForKeyShareWithRestart) {
 
 TEST_F(PgRowLockTest, AdvisoryLocksNotSupported) {
   const auto table = "foo";
+  const auto query = Format("SELECT pg_advisory_lock(k) FROM $0", table);
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(k INT, v INT)", table));
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", table));
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-  auto value = conn.FetchFormat("SELECT pg_advisory_lock(k) FROM $0 WHERE k = 1", table);
+  auto value = conn.Fetch(query);
   ASSERT_NOK(value);
-  ASSERT_TRUE(value.status().message().Contains(
-      "ERROR:  advisory locks are not yet implemented"));
+  ASSERT_TRUE(value.status().message().Contains("ERROR:  advisory locks are not yet implemented"));
+  ASSERT_OK(conn.RollbackTransaction());
+
+  ASSERT_OK(conn.Execute("SET yb_silence_advisory_locks_not_supported_error = true"));
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Fetch(query));
+  ASSERT_OK(conn.CommitTransaction());
 }
 
 class PgMiniTestNoTxnRetry : public PgRowLockTest {
