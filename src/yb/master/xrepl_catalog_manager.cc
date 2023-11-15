@@ -1343,12 +1343,10 @@ Status CatalogManager::ValidateCDCSDKRequestProperties(
       FALLTHROUGH_INTENDED;
     case cdc::CDCRecordType::FULL_ROW_NEW_IMAGE:
       FALLTHROUGH_INTENDED;
-    case cdc::CDCRecordType::MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES: {
-      SCHECK(
-          !FLAGS_cdc_enable_postgres_replica_identity, InvalidArgument,
-          "Using old record types is disallowed", (req));
-      break;
-    }
+    case cdc::CDCRecordType::MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES:
+      // TODO(#19930): Disallow older record types once we have disallowed the YSQL CDC commands in
+      // yb-admin.
+      FALLTHROUGH_INTENDED;
     case cdc::CDCRecordType::CHANGE: {
       return Status::OK();
     }
