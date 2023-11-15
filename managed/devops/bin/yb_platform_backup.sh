@@ -65,11 +65,13 @@ fi
 set -e
 
 # Assume the script is being run from a systemctl-based Yugabyte Platform installation otherwise.
-if [[ "$DOCKER_BASED" = false ]] && [[ "$INSIDE_CONTAINER" = false ]]; then
+set +u # Allow checking undefined variables, mostly for the global env kubernetes_service_host
+if [[ "$DOCKER_BASED" = false ]] && [[ "$INSIDE_CONTAINER" = false ]] && [[ "$KUBERNETES_SERVICE_HOST" = "" ]]; then
   SERVICE_BASED=true
 else
   SERVICE_BASED=false
 fi
+set -u # Disallow undefined variables
 
 # Takes docker container and command as arguments. Executes docker cmd if docker-based or not.
 docker_aware_cmd() {
@@ -340,27 +342,6 @@ create_backup() {
       return
     fi
 
-    # The version_metadata.json file is always present in the container, so
-    # we don't need to check if the file exists before copying it to the output path.
-
-    # Note that the copied path is version_metadata_backup.json and not version_metadata.json
-    # because executing yb_platform_backup.sh with the kubectl command will first execute the
-    # script in the container, making the version metadata file already be renamed to
-    # version_metadata_backup.json and placed at location
-    # /opt/yugabyte/yugaware/version_metadata_backup.json in the container. We extract this file
-    # from the container to our local machine for version checking.
-
-    version_path="/opt/yugabyte/yugaware/${VERSION_METADATA_BACKUP}"
-
-
-    # Copy version_metadata_backup.json from container to local machine.
-    kubectl cp "${k8s_pod}:${version_path}" "${output_path}/${VERSION_METADATA_BACKUP}" \
-      -n "${k8s_namespace}" -c yugaware
-
-    # Delete version_metadata_backup.json from container.
-    kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- \
-      /bin/bash -c "rm /opt/yugabyte/yugaware/${VERSION_METADATA_BACKUP}"
-
     echo "Copying backup from container"
     # Copy backup archive from container to local machine.
     kubectl -n "${k8s_namespace}" -c yugaware cp \
@@ -379,14 +360,14 @@ create_backup() {
 
     metadata_regex="**/yugaware/conf/${VERSION_METADATA}"
     if [[ "${yba_installer}" = true ]]; then
-      version=$(basename $(realpath /opt/yugabyte/software/active))
+      version=$(basename $(realpath ${data_dir}/software/active))
       metadata_regex="**/${version}/**/yugaware/conf/${VERSION_METADATA}"
     fi
     version_path=$(docker_aware_cmd "yugaware" "find ${data_dir} -wholename ${metadata_regex}")
 
     # At least keep some default as a worst case.
     if [ ! -f ${version_path} ] || [ -z ${version_path} ]; then
-      version_path="/opt/yugabyte/yugaware/conf/${VERSION_METADATA}"
+      version_path="${data_dir}/yugaware/conf/${VERSION_METADATA}"
     fi
 
     command="cp ${version_path} ${data_dir}/${VERSION_METADATA_BACKUP}"
@@ -448,6 +429,9 @@ create_backup() {
   gzip -9 < ${tar_name} > ${tgz_name}
   cleanup "${tar_name}"
 
+  # Delete the version metadata backup if we had created it earlier
+  docker_aware_cmd "yugaware" "rm -f ${data_dir}/${VERSION_METADATA_BACKUP}"
+
   echo "Finished creating backup ${tgz_name}"
   modify_service yb-platform restart
 }
@@ -488,7 +472,7 @@ restore_backup() {
 
       # At least keep some default as a worst case.
       if [ ! -f ${current_metadata_path} ] || [ -z ${current_metadata_path} ]; then
-        current_metadata_path="/opt/yugabyte/yugaware/conf/${VERSION_METADATA}"
+        current_metadata_path="${data_dir}/yugaware/conf/${VERSION_METADATA}"
       fi
 
   fi
@@ -502,10 +486,6 @@ restore_backup() {
     kubectl -n "${k8s_namespace}" -c yugaware cp \
       "${input_path}" "${k8s_pod}:/opt/yugabyte/yugaware/"
     echo "Done"
-
-    # Copy version_metadata_backup.json to container.
-    kubectl -n "${k8s_namespace}" -c yugaware cp \
-      "${r_pth}" "${k8s_pod}:/opt/yugabyte/yugaware/"
 
     # Determine backup archive filename.
     # Note: There is a slight race condition here. It will always use the most recent backup file.
@@ -532,14 +512,6 @@ restore_backup() {
         "${backup_script} restore ${verbose_flag} --input ${cont_path}/${backup_file} ${d}"
     fi
 
-    # Delete version_metadata_backup.json from container.
-    kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- \
-      /bin/bash -c "rm /opt/yugabyte/yugaware/${VERSION_METADATA_BACKUP}"
-
-    # Delete version_metadata.json from container (it already exists at conf folder)
-    kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- \
-      /bin/bash -c "rm /opt/yugabyte/yugaware/${VERSION_METADATA}"
-
     # Delete backup archive from container.
     kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- \
       /bin/bash -c "rm /opt/yugabyte/yugaware/backup*.tgz"
@@ -558,6 +530,12 @@ restore_backup() {
     curr_platform_version=${version}-${build}
 
     backup_metadata_path=$(tar -tzf ${input_path} | grep ${VERSION_METADATA_BACKUP} | head -1)
+    if [[ "${backup_metadata_path}" == "" ]]; then
+      echo "cannot perform version check on backup ${input_path}, no ${VERSION_METADATA_BACKUP}
+      found. Please run restore with --disable_version_check or take a new backup with \
+      ${VERSION_METADATA_BACKUP}"
+      exit 1
+    fi
     tar -xzf ${input_path} ${backup_metadata_path}
     # The version_metadata.json file is always present in a release package, and it would have
     # been stored during create_backup(), so we don't need to check if the file exists before
@@ -565,6 +543,9 @@ restore_backup() {
     backup_yba_version=$(cat "${backup_metadata_path}" | ${PYTHON_EXECUTABLE} -c "${version_cmd}")
     backup_yba_build=$(cat "${backup_metadata_path}" | ${PYTHON_EXECUTABLE} -c "${build_cmd}")
     back_plat_version=${backup_yba_version}-${backup_yba_build}
+
+    # Delete the backup metadata path after using it
+    rm ${backup_metadata_path}
 
     if [ ${curr_platform_version} != ${back_plat_version} ]
     then
@@ -672,6 +653,11 @@ restore_backup() {
   if [[ "$migration" = true ]]; then
     rm -rf "${destination}/${MIGRATION_BACKUP_DIR}"
   fi
+
+
+  # Delete any extra version metadata files. These may not exist, so this is best effort
+  rm -f ${data_dir}/${VERSION_METADATA_BACKUP}
+  rm -f ${data_dir}/yugaware/${VERSION_METADATA}
 
   modify_service yb-platform restart
 
