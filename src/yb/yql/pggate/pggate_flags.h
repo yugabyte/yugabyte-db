@@ -50,4 +50,4 @@ DECLARE_bool(ysql_enable_read_request_caching);
 DECLARE_bool(ysql_enable_create_database_oid_collision_retry);
 DECLARE_bool(ysql_use_relcache_file);
 
-DECLARE_bool(enable_yb_auh);
+DECLARE_bool(enable_yb_ash);
