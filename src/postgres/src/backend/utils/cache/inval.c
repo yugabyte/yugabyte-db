@@ -534,6 +534,21 @@ RegisterRelcacheInvalidation(Oid dbId, Oid relId)
 	 */
 	if (relId == InvalidOid || RelationIdIsInInitFile(relId))
 		transInvalInfo->RelcacheInitFileInval = true;
+
+	if (IsYugaByteEnabled() &&
+		YBIsDBCatalogVersionMode() &&
+		relId == InvalidOid &&
+		YBCPgIsDdlMode() &&
+		!(*YBCGetGFlags()->ysql_disable_global_impact_ddl_statements))
+	{
+		/*
+		 * Note: A InvalidOid relId means we are invalidating whole relcache,
+		 * which includes all the shared relations. If relId isn't InvalidOid,
+		 * we detect global impact DDL at write path (see YBCExecWriteStmt).
+		 */
+		Assert(dbId == InvalidOid);
+		YbSetIsGlobalDDL();
+	}
 }
 
 /*

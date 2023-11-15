@@ -8169,10 +8169,7 @@ write_item(const void *data, Size len, FILE *fp)
 bool
 RelationIdIsInInitFile(Oid relationId)
 {
-	if (relationId == SharedSecLabelRelationId ||
-		relationId == TriggerRelidNameIndexId ||
-		relationId == DatabaseNameIndexId ||
-		relationId == SharedSecLabelObjectIndexId)
+	if (YbRelationIdIsInInitFileAndNotCached(relationId))
 	{
 		/*
 		 * If this Assert fails, we don't need the applicable special case
@@ -8182,6 +8179,16 @@ RelationIdIsInInitFile(Oid relationId)
 		return true;
 	}
 	return RelationSupportsSysCache(relationId);
+}
+
+bool
+YbRelationIdIsInInitFileAndNotCached(Oid relationId)
+{
+	/* These rel ids are copied from the original RelationIdIsInInitFile. */
+	return (relationId == SharedSecLabelRelationId ||
+			relationId == TriggerRelidNameIndexId ||
+			relationId == DatabaseNameIndexId ||
+			relationId == SharedSecLabelObjectIndexId);
 }
 
 /*

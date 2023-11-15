@@ -29,6 +29,7 @@
 #include "catalog/indexing.h"
 #include "catalog/pg_authid_d.h"
 #include "catalog/pg_auth_members_d.h"
+#include "catalog/pg_shseclabel_d.h"
 #include "catalog/pg_tablespace_d.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_yb_role_profile.h"
@@ -208,28 +209,44 @@ static void YBCExecWriteStmt(YBCPgStatement ybc_stmt,
 		YbUpdateCatalogCacheVersion(YbGetCatalogCacheVersion() + 1);
 	}
 
-	if (YBIsDBCatalogVersionMode() &&
-		RelationGetForm(rel)->relisshared &&
-		RelationSupportsSysCache(RelationGetRelid(rel)) &&
-		!(*YBCGetGFlags()->ysql_disable_global_impact_ddl_statements))
+	if (YBIsDBCatalogVersionMode())
 	{
-		/* NOTE: relisshared implies that rel is a system relation. */
-		Assert(IsSystemRelation(rel));
-		Assert(/* pg_authid */
-			   RelationGetRelid(rel) == AuthIdRelationId ||
-			   RelationGetRelid(rel) == AuthIdRolnameIndexId ||
+		Oid relid = RelationGetRelid(rel);
+		if (RelationGetForm(rel)->relisshared &&
+			(RelationSupportsSysCache(relid) ||
+			 YbRelationIdIsInInitFileAndNotCached(relid)) &&
+			!(*YBCGetGFlags()->ysql_disable_global_impact_ddl_statements))
+		{
+			/* NOTE: relisshared implies that rel is a system relation. */
+			Assert(IsSystemRelation(rel));
+			/*
+			 * There are two sections in the next Assert. Relation ids
+			 * in each section are grouped together and two sections
+			 * are separated with an empty line.
+			 *
+			 * Section 1 contains relations in relcache init file that
+			 * support sys cache. Should be kept in sync with shared
+			 * relids in RelationSupportsSysCache.
+			 *
+			 * Section 2 contains relations in relcache init file but
+			 * do not support sys cache. Should be kept in sync with
+			 * YbRelationIdIsInInitFileAndNotCached.
+			 * As of 2023-11-27, SECURITY LABEL command is not supported.
+			 * Add SharedSecLabelRelationId, SharedSecLabelObjectIndexId
+			 * to section 2 when SECURITY LABEL command is supported.
+			 */
+			Assert(relid == AuthIdRelationId ||
+				   relid == AuthIdRolnameIndexId ||
+				   relid == AuthMemRelationId ||
+				   relid == AuthMemRoleMemIndexId ||
+				   relid == AuthMemMemRoleIndexId ||
+				   relid == DatabaseRelationId ||
+				   relid == TableSpaceRelationId ||
 
-			   /* pg_auth_members */
-			   RelationGetRelid(rel) == AuthMemRelationId ||
-			   RelationGetRelid(rel) == AuthMemRoleMemIndexId ||
-			   RelationGetRelid(rel) == AuthMemMemRoleIndexId ||
+				   relid == DatabaseNameIndexId);
 
-			   /* pg_database */
-			   RelationGetRelid(rel) == DatabaseRelationId ||
-
-			   /* pg_tablespace */
-			   RelationGetRelid(rel) == TableSpaceRelationId);
-		YbSetIsGlobalDDL();
+			YbSetIsGlobalDDL();
+		}
 	}
 }
 
