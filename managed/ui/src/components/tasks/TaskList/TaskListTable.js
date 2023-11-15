@@ -81,7 +81,7 @@ export default class TaskListTable extends Component {
               Are you sure you want to abort the task?
             </YBConfirmModal>
             <RbacValidator
-              accessRequiredOn={ApiPermissionMap.ABORT_TASK}
+              accessRequiredOn={{ ...ApiPermissionMap.ABORT_TASK, onResource: row.targetUUID }}
               isControl
             >
               <div className="task-abort-view yb-pending-color" onClick={showTaskAbortModal}>
