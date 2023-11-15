@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB uses a 2-server architecture with YB-TServers managing the data and YB-Masters managing the metadata. However, this can introduce a burden on new users who want to get started right away. To manage YugabyteDB for testing and learning purposes, you can use `yugabyted`, which is a database server that acts as a parent server across the [`yb-tserver`](../yb-tserver) and [`yb-master`](../yb-master) servers. yugabyted also provides a UI similar to the Yugabyte Platform UI, with a data placement map and metrics dashboard.
+YugabyteDB uses a 2-server architecture with YB-TServers managing the data and YB-Masters managing the metadata. However, this can introduce a burden on new users who want to get started right away. To manage YugabyteDB for testing and learning purposes, you can use `yugabyted`, which is a database server that acts as a parent server across the [`yb-tserver`](../yb-tserver/) and [`yb-master`](../yb-master/) servers. yugabyted also provides a UI similar to the Yugabyte Platform UI, with a data placement map and metrics dashboard.
 
 The `yugabyted` executable file is located in the YugabyteDB home's `bin` directory.
 
@@ -147,10 +147,10 @@ Usage: yugabyted start [-h] [--config CONFIG] [--data_dir DATA_DIR]
 : Enable or disable the webserver UI. Default is `false`.
 
 --master_flags *master_flags*
-: Specify extra [master flags](../../../reference/configuration/yb-master#configuration-flags) as a set of key value pairs. Format (key=value,key=value).
+: Specify extra [master flags](../../../reference/configuration/yb-master/#configuration-flags) as a set of key value pairs. Format (key=value,key=value).
 
 --tserver_flags *tserver_flags*
-: Specify extra [tserver flags](../../../reference/configuration/yb-tserver#configuration-flags) as a set of key value pairs. Format (key=value,key=value).
+: Specify extra [tserver flags](../../../reference/configuration/yb-tserver/#configuration-flags) as a set of key value pairs. Format (key=value,key=value).
 
 --ysql_enable_auth *bool*
 : Enable or disable YSQL Authentication. Default is `false`.
@@ -300,13 +300,13 @@ Usage: yugabyted collect_logs [-h] [--config CONFIG]
 : The data directory for the yugabyted server whose logs are desired.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server that whose logs are desired.
+: The base directory for the yugabyted server whose logs are desired.
 
 -----
 
 ### connect
 
-Use the `yugabyted connect` command to connect to the cluster using [ysqlsh](../../../admin/ysqlsh) or [ycqlsh](../../../admin/ycqlsh).
+Use the `yugabyted connect` command to connect to the cluster using [ysqlsh](../../../admin/ysqlsh/) or [ycqlsh](../../../admin/ycqlsh/).
 
 #### Syntax
 
@@ -437,7 +437,7 @@ Combinations of environment variables and their uses.
 Create a single-node cluster with a given base dir and listen address. Note the need to provide a fully-qualified directory path for the base dir parameter.
 
 ```sh
-bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.3.0/data1 --listen=127.0.0.1
+./bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.3.0/data1 --listen=127.0.0.1
 ```
 
 ### Pass additional flags to YB-TServer
@@ -445,7 +445,7 @@ bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.3.0/data1 --listen=1
 Create a single-node cluster and set additional flags for the YB-TServer process.
 
 ```sh
-bin/yugabyted start --tserver_flags="pg_yb_session_timeout_ms=1200000,ysql_max_connections=400"
+./bin/yugabyted start --tserver_flags="pg_yb_session_timeout_ms=1200000,ysql_max_connections=400"
 ```
 
 ### Create a multi-node cluster
@@ -453,8 +453,8 @@ bin/yugabyted start --tserver_flags="pg_yb_session_timeout_ms=1200000,ysql_max_c
 Add two more nodes to the cluster using the `join` option.
 
 ```sh
-bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.3.0/data2 --listen=127.0.0.2 --join=127.0.0.1
-bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.3.0/data3 --listen=127.0.0.3 --join=127.0.0.1
+./bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.3.0/data2 --listen=127.0.0.2 --join=127.0.0.1
+./bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.3.0/data3 --listen=127.0.0.3 --join=127.0.0.1
 ```
 
 ### Destroy a multi-node cluster
@@ -462,7 +462,7 @@ bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.3.0/data3 --listen=1
 Destroy the above multi-node cluster.
 
 ```sh
-bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.3.3.0/data1
-bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.3.3.0/data2
-bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.3.3.0/data3
+./bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.3.3.0/data1
+./bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.3.3.0/data2
+./bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.3.3.0/data3
 ```
