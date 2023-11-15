@@ -1447,9 +1447,16 @@ void YBClient::CreateCDCStream(
 Result<xrepl::StreamId> YBClient::CreateCDCSDKStreamForNamespace(
     const NamespaceId& namespace_id,
     const std::unordered_map<std::string, std::string>& options,
+    bool populate_namespace_id_as_table_id,
     const ReplicationSlotName& replication_slot_name) {
   CreateCDCStreamRequestPB req;
-  req.set_namespace_id(namespace_id);
+
+  if (populate_namespace_id_as_table_id) {
+    req.set_table_id(namespace_id);
+  } else {
+    req.set_namespace_id(namespace_id);
+  }
+
   req.mutable_options()->Reserve(narrow_cast<int>(options.size()));
   for (const auto& option : options) {
     auto new_option = req.add_options();

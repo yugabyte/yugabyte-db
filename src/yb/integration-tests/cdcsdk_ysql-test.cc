@@ -7068,22 +7068,21 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestUnrelatedTableDropUponTserver
       GetChangesFromCDCWithoutRetry(stream_id, tablets, &change_resp_2.cdc_sdk_checkpoint()));
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCStreamCreationDisabledDuringUpgrade)) {
-  ASSERT_OK(SetUpWithParams(/*replication_factor=*/3, /*num_masters=*/1, /*colocated=*/false));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = false;
+void TestStreamCreationViaCDCService(CDCSDKYsqlTest* test_class, bool enable_replication_commands) {
+  ASSERT_OK(test_class->SetUpWithParams(
+      /*replication_factor=*/3, /*num_masters=*/1, /*colocated=*/false));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_commands) =
+      enable_replication_commands;
 
-  CreateCDCStreamRequestPB req;
-  CreateCDCStreamResponsePB resp;
-  rpc::RpcController rpc;
-  rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
-  InitCreateStreamRequest(&req);
-  ASSERT_OK(cdc_proxy_->CreateCDCStream(req, &resp, &rpc));
+  ASSERT_OK(test_class->CreateDBStream());
+}
 
-  ASSERT_TRUE(resp.has_error());
-  ASSERT_NE(
-      resp.error().status().message().find("Creating a CDC stream is disallowed during an upgrade"),
-      std::string::npos)
-      << resp.error().status().message();
+TEST_F(CDCSDKYsqlTest, TestCDCStreamCreationViaCDCServiceWithReplicationCommandsEnabled) {
+  TestStreamCreationViaCDCService(this, /* enable_replication_commands */ true);
+}
+
+TEST_F(CDCSDKYsqlTest, TestCDCStreamCreationViaCDCServiceWithReplicationCommandsDisabled) {
+  TestStreamCreationViaCDCService(this, /* enable_replication_commands */ false);
 }
 
 TEST_F(CDCSDKYsqlTest, TestReplicationSlotDropWithActiveInvalid) {

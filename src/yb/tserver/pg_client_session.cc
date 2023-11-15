@@ -684,6 +684,7 @@ Status PgClientSession::CreateReplicationSlot(
 
   auto stream_result = VERIFY_RESULT(client().CreateCDCSDKStreamForNamespace(
       GetPgsqlNamespaceId(req.database_oid()), options,
+      /* populate_namespace_id_as_table_id */ false,
       ReplicationSlotName(req.replication_slot_name())));
   *resp->mutable_stream_id() = stream_result.ToString();
   return Status::OK();
