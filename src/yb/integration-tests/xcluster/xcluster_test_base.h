@@ -21,6 +21,7 @@
 #include "yb/cdc/cdc_types.h"
 
 #include "yb/client/transaction_manager.h"
+#include "yb/client/client.h"
 
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
@@ -67,7 +68,7 @@ class XClusterTestBase : public YBTest {
   class Cluster {
    public:
     std::unique_ptr<MiniCluster> mini_cluster_;
-    std::unique_ptr<YBClient> client_;
+    std::unique_ptr<client::YBClient> client_;
     std::unique_ptr<yb::pgwrapper::PgSupervisor> pg_supervisor_;
     HostPort pg_host_port_;
     boost::optional<client::TransactionManager> txn_mgr_;
@@ -123,13 +124,18 @@ class XClusterTestBase : public YBTest {
     propagation_timeout_ = MonoDelta::FromSeconds(30 * kTimeMultiplier);
   }
 
-  Status PostSetUp();
+  virtual Status PostSetUp();
 
   Result<std::unique_ptr<Cluster>> CreateCluster(
       const std::string& cluster_id, const std::string& cluster_short_name,
       uint32_t num_tservers = 1, uint32_t num_masters = 1);
 
   virtual Status InitClusters(const MiniClusterOptions& opts);
+
+  virtual Status PreProducerCreate() { return Status::OK(); }
+  virtual Status PostProducerCreate() { return Status::OK(); }
+  virtual Status PreConsumerCreate() { return Status::OK(); }
+  virtual Status PostConsumerCreate() { return Status::OK(); }
 
   void TearDown() override;
 
@@ -148,6 +154,7 @@ class XClusterTestBase : public YBTest {
       uint32_t num_tablets, const client::YBSchema* schema);
 
   virtual Status SetupUniverseReplication(const std::vector<std::string>& producer_table_ids);
+  virtual Status SetupUniverseReplication();
 
   virtual Status SetupUniverseReplication(
       const std::vector<std::shared_ptr<client::YBTable>>& producer_tables,

@@ -94,19 +94,23 @@ Status XClusterTestBase::InitClusters(const MiniClusterOptions& opts) {
 
   producer_cluster_.mini_cluster_ = std::make_unique<MiniCluster>(producer_opts);
 
+  RETURN_NOT_OK(PreProducerCreate());
   {
     TEST_SetThreadPrefixScoped prefix_se("P");
     RETURN_NOT_OK(producer_cluster()->StartAsync());
   }
+  RETURN_NOT_OK(PostProducerCreate());
 
   auto consumer_opts = opts;
   consumer_opts.cluster_id = "consumer";
   consumer_cluster_.mini_cluster_ = std::make_unique<MiniCluster>(consumer_opts);
 
+  RETURN_NOT_OK(PreConsumerCreate());
   {
     TEST_SetThreadPrefixScoped prefix_se("C");
     RETURN_NOT_OK(consumer_cluster()->StartAsync());
   }
+  RETURN_NOT_OK(PostConsumerCreate());
 
   RETURN_NOT_OK(RunOnBothClusters([](Cluster* cluster) {
     RETURN_NOT_OK(cluster->mini_cluster_->WaitForAllTabletServers());
@@ -253,6 +257,10 @@ Status XClusterTestBase::SetupReverseUniverseReplication(
   return SetupUniverseReplication(
       consumer_cluster(), producer_cluster(), producer_client(), kReplicationGroupId,
       producer_tables);
+}
+
+Status XClusterTestBase::SetupUniverseReplication() {
+  return SetupUniverseReplication(producer_tables_);
 }
 
 Status XClusterTestBase::SetupUniverseReplication(
