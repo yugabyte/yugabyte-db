@@ -167,7 +167,7 @@ const mapDispatchToProps = (dispatch) => {
         }
       });
     },
-    abortCurrentTask: (taskUUID) => {
+    abortTask: (taskUUID) => {
       return dispatch(abortTask(taskUUID)).then((response) => {
         return dispatch(abortTaskResponse(response.payload));
       });
