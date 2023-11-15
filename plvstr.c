@@ -60,6 +60,8 @@ PG_FUNCTION_INFO_V1(oracle_substr3);
 PG_FUNCTION_INFO_V1(oracle_substrb2);
 PG_FUNCTION_INFO_V1(oracle_substrb3);
 
+int orafce_substring_length_is_zero = ORAFCE_COMPATIBILITY_WARNING_ORACLE;
+
 static text *ora_substr(Datum str, int start, int len);
 
 #define ora_substr_text(str, start, len) \
@@ -1126,8 +1128,21 @@ Datum
 oracle_substr3(PG_FUNCTION_ARGS)
 {
 	int32	len = PG_GETARG_INT32(2);
+
 	if (len < 0)
 		PG_RETURN_NULL();
+
+	if (len == 0)
+	{
+		if (orafce_substring_length_is_zero == ORAFCE_COMPATIBILITY_WARNING_ORACLE ||
+			 orafce_substring_length_is_zero == ORAFCE_COMPATIBILITY_WARNING_ORAFCE)
+			elog(WARNING, "zero substring_length is used in substr function");
+
+		if (orafce_substring_length_is_zero == ORAFCE_COMPATIBILITY_WARNING_ORACLE ||
+			 orafce_substring_length_is_zero == ORAFCE_COMPATIBILITY_ORACLE)
+			PG_RETURN_NULL();
+	}
+
 	PG_RETURN_TEXT_P(ora_substr(PG_GETARG_DATUM(0), PG_GETARG_INT32(1), len));
 }
 

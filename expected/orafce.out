@@ -1197,7 +1197,31 @@ select oracle.substr('TechOnTheNet', -8, 2) =  'On';
  t
 (1 row)
 
+set orafce.using_substring_zero_width_in_substr TO orafce;
 select oracle.substr('TechOnTheNet', -8, 0) =  '';
+ ?column? 
+----------
+ t
+(1 row)
+
+set orafce.using_substring_zero_width_in_substr TO oracle;
+select oracle.substr('TechOnTheNet', -8, 0) is null;
+ ?column? 
+----------
+ t
+(1 row)
+
+set orafce.using_substring_zero_width_in_substr TO warning_oracle;
+select oracle.substr('TechOnTheNet', -8, 0) is null;
+WARNING:  zero substring_length is used in substr function
+ ?column? 
+----------
+ t
+(1 row)
+
+set orafce.using_substring_zero_width_in_substr TO default;
+select oracle.substr('TechOnTheNet', -8, 0) is null;
+WARNING:  zero substring_length is used in substr function
  ?column? 
 ----------
  t

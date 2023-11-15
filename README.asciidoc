@@ -808,6 +808,11 @@ Note that in case of lpad and rpad, parameters string and fill can be of types C
 
 Note that oracle.length has a limitation that it works only in units of characters because PostgreSQL CHAR type only supports character semantics.
 
+The oracle.substr with three arguments can returns different result (null or empty string) in dependency
+to setting orafce.using_substring_zero_width_in_substr variable (oracle, warning_oracle, orafce, warning_orafce).
+This different result is returned only when third argument (substring_length) is zero. Default is warning_oracle,
+thats means raising warning and returning null.
+
 == oracle.sys_guid() function
 
 This functions returns global unique id. It calls specified functions from "uuid-ossp" extension, and then

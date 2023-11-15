@@ -29,6 +29,13 @@ char  *orafce_timezone = NULL;
 
 extern char *orafce_sys_guid_source;
 
+static const struct config_enum_entry orafce_compatibility_options[] = {
+	{"warning_oracle", ORAFCE_COMPATIBILITY_WARNING_ORACLE, false},
+	{"warning_orafce", ORAFCE_COMPATIBILITY_WARNING_ORAFCE, false},
+	{"oracle", ORAFCE_COMPATIBILITY_ORACLE, false},
+	{"orafce", ORAFCE_COMPATIBILITY_ORAFCE, false},
+	{NULL, 0, false}
+};
 
 #if PG_VERSION_NUM >= 150000
 
@@ -145,6 +152,16 @@ _PG_init(void)
 									PGC_USERSET,
 									0,
 									check_sys_guid_source, NULL, NULL);
+
+	DefineCustomEnumVariable("orafce.using_substring_zero_width_in_substr",
+							 gettext_noop("behaviour of substr function when substring_length argument is zero"),
+							 NULL,
+							 &orafce_substring_length_is_zero,
+							 ORAFCE_COMPATIBILITY_WARNING_ORACLE,
+							 orafce_compatibility_options,
+							 PGC_USERSET, 0,
+							 NULL, NULL, NULL);
+
 
 	EmitWarningsOnPlaceholders("orafce");
 

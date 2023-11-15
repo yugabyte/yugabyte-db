@@ -236,7 +236,19 @@ select oracle.substr('TechOnTheNet', 1, 4) =  'Tech';
 select oracle.substr('TechOnTheNet', -3, 3) =  'Net';
 select oracle.substr('TechOnTheNet', -6, 3) =  'The';
 select oracle.substr('TechOnTheNet', -8, 2) =  'On';
+
+set orafce.using_substring_zero_width_in_substr TO orafce;
 select oracle.substr('TechOnTheNet', -8, 0) =  '';
+
+set orafce.using_substring_zero_width_in_substr TO oracle;
+select oracle.substr('TechOnTheNet', -8, 0) is null;
+
+set orafce.using_substring_zero_width_in_substr TO warning_oracle;
+select oracle.substr('TechOnTheNet', -8, 0) is null;
+
+set orafce.using_substring_zero_width_in_substr TO default;
+select oracle.substr('TechOnTheNet', -8, 0) is null;
+
 select oracle.substr('TechOnTheNet', -8, -1) =  '';
 select oracle.substr(1234567,3.6::smallint)='4567';
 select oracle.substr(1234567,3.6::int)='4567';

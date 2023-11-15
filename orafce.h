@@ -27,6 +27,14 @@ typedef union vardata
 	void   *p;
 } vardata;
 
+typedef enum orafce_compatibility
+{
+	ORAFCE_COMPATIBILITY_WARNING_ORACLE,
+	ORAFCE_COMPATIBILITY_WARNING_ORAFCE,
+	ORAFCE_COMPATIBILITY_ORACLE,
+	ORAFCE_COMPATIBILITY_ORAFCE,
+} orafce_compatibility;
+
 extern int ora_instr(text *txt, text *pattern, int start, int nth);
 extern int ora_mb_strlen(text *str, char **sizes, int **positions);
 extern int ora_mb_strlen1(text *str);
@@ -35,6 +43,8 @@ extern char *nls_date_format;
 extern char *orafce_timezone;
 
 extern bool orafce_varchar2_null_safe_concat;
+
+extern int orafce_substring_length_is_zero;
 
 extern void orafce_xact_cb(XactEvent event, void *arg);
 
