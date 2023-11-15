@@ -1138,6 +1138,38 @@ TEST_F(PgCatalogVersionTest, ResetIsGlobalDdlState) {
   }
 }
 
+// NOTE: for 2.20, PUBLICATION isn't supported yet. If we ever backport
+// PUBLICATION support to 2.20, then remove the "DISABLED_" prefix.
+TEST_F(PgCatalogVersionTest, DISABLED_InvalidateWholeRelCache) {
+  auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte));
+  RestartClusterWithDBCatalogVersionMode();
+  conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  const auto yugabyte_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn_yugabyte, kYugabyteDatabase));
+  // CREATE PUBLICATION is not a global-impact DDL.
+  ASSERT_OK(conn_yugabyte.Execute("CREATE PUBLICATION testpub_foralltables FOR ALL TABLES"));
+
+  // This ALTER PUBLICATION causes invalidation of the whole relcache (including
+  // shared relations) in PG. YB inherits this behavior but during the execution
+  // of this DDL there wasn't any write to a shared relation that has a syscache.
+  // In per-database catalog version mode there is a shared rel init file for
+  // each database. Ensure we still detect this DDL as global impact so that
+  // all shared rel cache init files can be invalidated.
+  ASSERT_OK(conn_yugabyte.Execute(
+        R"#(
+ALTER PUBLICATION testpub_foralltables SET (publish = 'insert, update, delete, truncate')
+        )#"));
+  auto expected_versions = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte));
+  ASSERT_TRUE(expected_versions.find(yugabyte_db_oid) != expected_versions.end());
+  for (const auto& entry : expected_versions) {
+    if (entry.first != yugabyte_db_oid) {
+      ASSERT_OK(CheckMatch(entry.second, {2, 2}));
+    } else {
+      ASSERT_OK(CheckMatch(entry.second, {3, 3}));
+    }
+  }
+}
+
 TEST_F(PgCatalogVersionTest, NonBreakingDDLMode) {
   const string kDatabaseName = "yugabyte";
 
