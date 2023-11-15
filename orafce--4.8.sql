@@ -4264,3 +4264,11 @@ CREATE OR REPLACE FUNCTION oracle.sys_guid()
 RETURNS bytea
 AS 'MODULE_PATHNAME','orafce_sys_guid'
 LANGUAGE C VOLATILE;
+
+CREATE FUNCTION oracle.to_char(str text)
+RETURNS text
+AS $$
+select str;
+$$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
+COMMENT ON FUNCTION oracle.to_char(text) IS 'Convert string to string';
+
