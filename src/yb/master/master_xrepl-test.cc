@@ -496,7 +496,9 @@ TEST_F(MasterTestXRepl, YB_DISABLE_TEST_IN_TSAN(TestCDCStreamCreationWithNewReco
       << resp.error().status().message();
 }
 
-TEST_F(MasterTestXRepl, YB_DISABLE_TEST_IN_TSAN(TestCDCStreamCreationWithOldRecordTypeDisabled)) {
+// TODO(#19930): Disallow stream creation with older record types once we have disallowed the YSQL
+// CDC commands in yb-admin.
+TEST_F(MasterTestXRepl, YB_DISABLE_TEST_IN_TSAN(TestCDCStreamCreationWithOldRecordType)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_postgres_replica_identity) = true;
 
   CreateNamespaceResponsePB create_namespace_resp;
@@ -519,11 +521,7 @@ TEST_F(MasterTestXRepl, YB_DISABLE_TEST_IN_TSAN(TestCDCStreamCreationWithOldReco
 
   ASSERT_OK(proxy_replication_->CreateCDCStream(req, &resp, ResetAndGetController()));
   SCOPED_TRACE(resp.DebugString());
-  ASSERT_TRUE(resp.has_error());
-  ASSERT_NE(
-      resp.error().status().message().find("Using old record types is disallowed"),
-      std::string::npos)
-      << resp.error().status().message();
+  ASSERT_FALSE(resp.has_error());
 }
 
 TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespaceInvalidDuplicationSlotName) {
