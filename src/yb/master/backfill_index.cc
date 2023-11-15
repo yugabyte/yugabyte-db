@@ -1189,7 +1189,7 @@ Status BackfillTable::AllowCompactionsToGCDeleteMarkers(
       VLOG(2) << __func__ << ": Trying to lock index table for Read";
       auto l = index_table_info->LockForRead();
       auto state = l->pb.state();
-      if (state != SysTablesEntryPB::RUNNING && state != SysTablesEntryPB::ALTERING) {
+      if (!l->is_running()) {
         LOG(ERROR) << "Index " << index_table_id << " is in state "
                    << SysTablesEntryPB_State_Name(state) << " : cannot enable compactions on it";
         // Treating it as success so that we can proceed with updating other indexes.
