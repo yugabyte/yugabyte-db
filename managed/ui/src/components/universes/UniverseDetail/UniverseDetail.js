@@ -472,7 +472,7 @@ class UniverseDetail extends Component {
           >
             <UniverseTaskList
               universeUuid={currentUniverse.data.universeUUID}
-              abortTask={this.props.abortCurrentTask}
+              abortTask={this.props.abortTask}
               hideTaskAbortModal={this.props.hideTaskAbortModal}
               showTaskAbortModal={this.props.showTaskAbortModal}
               refreshUniverseData={this.getUniverseInfo}
