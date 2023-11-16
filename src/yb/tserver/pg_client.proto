@@ -86,6 +86,8 @@ service PgClientService {
   rpc CancelTransaction(PgCancelTransactionRequestPB) returns (PgCancelTransactionResponsePB);
   rpc ActiveUniverseHistory(PgActiveUniverseHistoryRequestPB)
       returns (PgActiveUniverseHistoryResponsePB);
+  rpc TabletIDMetadata(PgTabletIDMetadataRequestPB)
+      returns (PgTabletIDMetadataResponsePB);
   rpc TableIDMetadata(PgTableIDMetadataRequestPB)
       returns (PgTableIDMetadataResponsePB);
   rpc GetActiveTransactionList(PgGetActiveTransactionListRequestPB)
@@ -717,6 +719,14 @@ message PgActiveUniverseHistoryResponsePB {
   repeated WaitStateInfoPB tserver_wait_states = 2;
   repeated WaitStateInfoPB cql_wait_states = 3;
   repeated WaitStateInfoPB bg_wait_states = 4;
+}
+
+message PgTabletIDMetadataRequestPB {
+  string table_id = 1;
+}
+message PgTabletIDMetadataResponsePB {
+  AppStatusPB status = 1;
+  yb.master.TabletLocationsPB tablets = 2;
 }
 
 message PgTableIDMetadataRequestPB {}

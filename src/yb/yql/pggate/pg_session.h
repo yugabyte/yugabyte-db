@@ -367,6 +367,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   Result<client::RpcsInfo> ActiveUniverseHistory();
   
+  Result<tserver::PgTabletIDMetadataResponsePB>TabletIDMetadata(std::string table_id); 
+  
   Result<tserver::PgTableIDMetadataResponsePB>TableIDMetadata();
 
   // Check whether the specified table has a CDC stream.

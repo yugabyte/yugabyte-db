@@ -180,6 +180,8 @@ class PgClient {
 
   Result<client::RpcsInfo> ActiveUniverseHistory();
   
+  Result<tserver::PgTabletIDMetadataResponsePB>TabletIDMetadata(std::string table_id);
+  
   Result<tserver::PgTableIDMetadataResponsePB>TableIDMetadata();
   
   using ActiveTransactionCallback = LWFunction<Status(
