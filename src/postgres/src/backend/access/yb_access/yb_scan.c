@@ -388,7 +388,7 @@ static void ybcUpdateFKCache(YbScanDesc ybScan, Datum ybctid)
 	}
 }
 
-static HeapTuple ybcFetchNextHeapTuple(YbScanDesc ybScan, bool is_forward_scan)
+static HeapTuple ybcFetchNextHeapTuple(YbScanDesc ybScan, ScanDirection dir)
 {
 	HeapTuple tuple    = NULL;
 	bool      has_data = false;
@@ -401,7 +401,12 @@ static HeapTuple ybcFetchNextHeapTuple(YbScanDesc ybScan, bool is_forward_scan)
 	/* Execute the select statement. */
 	if (!ybScan->is_exec_done)
 	{
-		HandleYBStatus(YBCPgSetForwardScan(ybScan->handle, is_forward_scan));
+		/* Set scan direction, if matters */
+		if (ScanDirectionIsForward(dir))
+			HandleYBStatus(YBCPgSetForwardScan(ybScan->handle, true));
+		else if (ScanDirectionIsBackward(dir))
+			HandleYBStatus(YBCPgSetForwardScan(ybScan->handle, false));
+
 		HandleYBStatus(YBCPgExecSelect(ybScan->handle, ybScan->exec_params));
 		ybScan->is_exec_done = true;
 	}
@@ -465,7 +470,7 @@ static HeapTuple ybcFetchNextHeapTuple(YbScanDesc ybScan, bool is_forward_scan)
 }
 
 static IndexTuple
-ybcFetchNextIndexTuple(YbScanDesc ybScan, bool is_forward_scan)
+ybcFetchNextIndexTuple(YbScanDesc ybScan, ScanDirection dir)
 {
 	IndexTuple tuple    = NULL;
 	bool       has_data = false;
@@ -479,7 +484,12 @@ ybcFetchNextIndexTuple(YbScanDesc ybScan, bool is_forward_scan)
 	/* Execute the select statement. */
 	if (!ybScan->is_exec_done)
 	{
-		HandleYBStatus(YBCPgSetForwardScan(ybScan->handle, is_forward_scan));
+		/* Set scan direction, if matters */
+		if (ScanDirectionIsForward(dir))
+			HandleYBStatus(YBCPgSetForwardScan(ybScan->handle, true));
+		else if (ScanDirectionIsBackward(dir))
+			HandleYBStatus(YBCPgSetForwardScan(ybScan->handle, false));
+
 		HandleYBStatus(YBCPgExecSelect(ybScan->handle, ybScan->exec_params));
 		ybScan->is_exec_done = true;
 	}
@@ -2550,7 +2560,7 @@ YbNeedsRecheck(YbScanDesc ybScan)
 }
 
 HeapTuple
-ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck)
+ybc_getnext_heaptuple(YbScanDesc ybScan, ScanDirection dir, bool *recheck)
 {
 	HeapTuple   tup      = NULL;
 
@@ -2560,8 +2570,7 @@ ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck)
 	*recheck = YbNeedsRecheck(ybScan);
 
 	/* Loop over rows from pggate. */
-	while (HeapTupleIsValid(tup = ybcFetchNextHeapTuple(ybScan,
-														is_forward_scan)))
+	while (HeapTupleIsValid(tup = ybcFetchNextHeapTuple(ybScan, dir)))
 	{
 		/* Do a preliminary check to skip rows we can guarantee don't match. */
 		if (ybIsTupMismatch(tup, ybScan))
@@ -2575,12 +2584,12 @@ ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck)
 }
 
 IndexTuple
-ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck)
+ybc_getnext_indextuple(YbScanDesc ybScan, ScanDirection dir, bool *recheck)
 {
 	if (ybScan->quit_scan)
 		return NULL;
 	*recheck = YbNeedsRecheck(ybScan);
-	return ybcFetchNextIndexTuple(ybScan, is_forward_scan);
+	return ybcFetchNextIndexTuple(ybScan, dir);
 }
 
 bool

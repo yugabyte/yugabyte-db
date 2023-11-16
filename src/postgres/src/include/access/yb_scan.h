@@ -219,8 +219,8 @@ extern bool YbPredetermineNeedsRecheck(Relation relation,
 									   ScanKey keys,
 									   int nkeys);
 
-HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);
-IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);
+HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, ScanDirection dir, bool *recheck);
+IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, ScanDirection dir, bool *recheck);
 bool ybc_getnext_aggslot(IndexScanDesc scan, YBCPgStatement handle,
 						 bool index_only_scan);
 
