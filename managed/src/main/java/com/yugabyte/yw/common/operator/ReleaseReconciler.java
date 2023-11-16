@@ -2,6 +2,7 @@ package com.yugabyte.yw.common.operator;
 
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
@@ -21,6 +22,7 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
   private final MixedOperation<Release, KubernetesResourceList<Release>, Resource<Release>>
       resourceClient;
   private final ReleaseManager releaseManager;
+  private final GFlagsValidation gFlagsValidation;
   private final String namespace;
 
   public static Pair<String, ReleaseMetadata> crToReleaseMetadata(Release release) {
@@ -68,12 +70,14 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
       SharedIndexInformer<Release> releaseInformer,
       MixedOperation<Release, KubernetesResourceList<Release>, Resource<Release>> resourceClient,
       ReleaseManager releaseManager,
+      GFlagsValidation gFlagsValidation,
       String namespace) {
     this.resourceClient = resourceClient;
     this.informer = releaseInformer;
     this.lister = new Lister<>(informer.getIndexer());
     this.releaseManager = releaseManager;
     this.namespace = namespace;
+    this.gFlagsValidation = gFlagsValidation;
   }
 
   @Override
@@ -82,7 +86,7 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
     Pair<String, ReleaseMetadata> releasePair = crToReleaseMetadata(release);
     try {
       releaseManager.addReleaseWithMetadata(releasePair.getFirst(), releasePair.getSecond());
-      releaseManager.addGFlagsMetadataFiles(releasePair.getFirst(), releasePair.getSecond());
+      gFlagsValidation.addDBMetadataFiles(releasePair.getFirst(), releasePair.getSecond());
       releaseManager.updateCurrentReleases();
       updateStatus(release, "Available", true);
     } catch (RuntimeException re) {

@@ -15,6 +15,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.utils.FileUtils;
@@ -30,6 +31,7 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -55,15 +57,21 @@ public class GFlagsValidation {
 
   private final RuntimeConfGetter confGetter;
 
+  private final ReleaseManager releaseManager;
+
   public static final Logger LOG = LoggerFactory.getLogger(GFlagsValidation.class);
 
   public static final List<String> GFLAG_FILENAME_LIST =
       ImmutableList.of("master_flags.xml", "tserver_flags.xml", "auto_flags.json");
 
+  public static final String DB_BUILD_WITH_FLAG_FILES = "2.17.0.0-b1";
+
   @Inject
-  public GFlagsValidation(Environment environment, RuntimeConfGetter confGetter) {
+  public GFlagsValidation(
+      Environment environment, RuntimeConfGetter confGetter, ReleaseManager releaseManager) {
     this.environment = environment;
     this.confGetter = confGetter;
+    this.releaseManager = releaseManager;
   }
 
   public List<GFlagDetails> extractGFlags(String version, String serverType, boolean mostUsedGFlags)
@@ -76,7 +84,21 @@ public class GFlagsValidation {
     try {
       if (Files.exists(Paths.get(file.getAbsolutePath()))) {
         flagStream = FileUtils.getInputStreamOrFail(file);
+      } else if (CommonUtils.isReleaseEqualOrAfter(DB_BUILD_WITH_FLAG_FILES, version)) {
+        // Fetch gFlags files from DB package if it does not exist
+        ReleaseManager.ReleaseMetadata rm = releaseManager.getReleaseByVersion(version);
+        try (InputStream inputStream = releaseManager.getTarGZipDBPackageInputStream(version, rm)) {
+          String gFlagFileName = serverType.toLowerCase() + "_flags.xml";
+          fetchGFlagFilesFromTarGZipInputStream(
+              inputStream, version, Collections.singletonList(gFlagFileName), releasesPath);
+          flagStream = FileUtils.getInputStreamOrFail(file);
+        } catch (Exception e) {
+          LOG.error("Error in extracting flags from DB package", e);
+          throw new PlatformServiceException(
+              INTERNAL_SERVER_ERROR, "Error in extracting flags form DB package");
+        }
       } else {
+        // Use static flag files for old versions.
         String majorVersion = version.substring(0, StringUtils.ordinalIndexOf(version, ".", 2));
         flagStream =
             environment.resourceAsStream(
@@ -176,20 +198,6 @@ public class GFlagsValidation {
     return Files.exists(Paths.get(filePath));
   }
 
-  public List<String> getMissingGFlagFileList(String dbVersion) {
-    String releasesPath = confGetter.getStaticConf().getString(Util.YB_RELEASES_PATH);
-    List<String> fileNameList =
-        GFLAG_FILENAME_LIST.stream()
-            .filter(
-                (gFlagFileName) -> !checkGFlagFileExists(releasesPath, dbVersion, gFlagFileName))
-            .collect(Collectors.toList());
-    if (fileNameList.contains(Util.AUTO_FLAG_FILENAME)
-        && !CommonUtils.isAutoFlagSupported(dbVersion)) {
-      fileNameList.remove(Util.AUTO_FLAG_FILENAME);
-    }
-    return fileNameList;
-  }
-
   public AutoFlagsPerServer extractAutoFlags(String version, ServerType serverType)
       throws IOException {
     if (serverType.equals(ServerType.MASTER)) {
@@ -198,6 +206,41 @@ public class GFlagsValidation {
       return extractAutoFlags(version, "yb-tserver");
     }
     return null;
+  }
+
+  public void addDBMetadataFiles(String version) {
+    ReleaseManager.ReleaseMetadata rm = releaseManager.getReleaseByVersion(version);
+    addDBMetadataFiles(version, rm);
+  }
+
+  public void addDBMetadataFiles(String version, ReleaseManager.ReleaseMetadata rm) {
+    List<String> missingFiles = getMissingFlagFiles(version);
+    String releasesPath = confGetter.getStaticConf().getString(Util.YB_RELEASES_PATH);
+    try (InputStream tarGZIPInputStream =
+        releaseManager.getTarGZipDBPackageInputStream(version, rm)) {
+      fetchGFlagFilesFromTarGZipInputStream(
+          tarGZIPInputStream, version, missingFiles, releasesPath);
+    } catch (Exception e) {
+      LOG.error("Error in fetching GFlags metadata: ", e);
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Error in adding DB metadata files for DB version " + version);
+    }
+  }
+
+  private List<String> getMissingFlagFiles(String version) {
+    String releasesPath = confGetter.getStaticConf().getString(Util.YB_RELEASES_PATH);
+    List<String> missingFiles = new ArrayList<>();
+    for (String fileName : GFlagsValidation.GFLAG_FILENAME_LIST) {
+      File file = new File(String.format("%s/%s/%s", releasesPath, version, fileName));
+      if (!Files.exists(Paths.get(file.getAbsolutePath()))) {
+        missingFiles.add(fileName);
+      }
+    }
+    if (missingFiles.contains(Util.AUTO_FLAG_FILENAME)
+        && !CommonUtils.isAutoFlagSupported(version)) {
+      missingFiles.remove(Util.AUTO_FLAG_FILENAME);
+    }
+    return missingFiles;
   }
 
   /**
@@ -212,6 +255,17 @@ public class GFlagsValidation {
   public AutoFlagsPerServer extractAutoFlags(String version, String serverType) throws IOException {
     String releasesPath = confGetter.getStaticConf().getString(Util.YB_RELEASES_PATH);
     File autoFlagFile = Paths.get(releasesPath, version, Util.AUTO_FLAG_FILENAME).toFile();
+    if (!Files.exists(Paths.get(autoFlagFile.getAbsolutePath()))) {
+      ReleaseManager.ReleaseMetadata rm = releaseManager.getReleaseByVersion(version);
+      try (InputStream inputStream = releaseManager.getTarGZipDBPackageInputStream(version, rm)) {
+        fetchGFlagFilesFromTarGZipInputStream(
+            inputStream, version, Collections.singletonList(Util.AUTO_FLAG_FILENAME), releasesPath);
+      } catch (Exception e) {
+        LOG.error("Error in extracting flags form DB package: ", e);
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR, "Error in extracting flags form DB package");
+      }
+    }
     ObjectMapper objectMapper = new ObjectMapper();
     try (InputStream inputStream = FileUtils.getInputStreamOrFail(autoFlagFile)) {
       AutoFlags data = objectMapper.readValue(inputStream, AutoFlags.class);
