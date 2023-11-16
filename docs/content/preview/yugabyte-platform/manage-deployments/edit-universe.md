@@ -29,7 +29,7 @@ For universes that use Google Cloud Provider (GCP) or Amazon Web Services (AWS),
 
 - Smart resize cannot decrease the volume size.
 
-- The smart resize option is not presented if anything except the values of the **Instance Type** and the size portion of the **Volume Info** fields has been changed on the **Edit Universe** page.
+- You can't do a smart resize if you change any options on the **Edit Universe** page other than the **Instance Type** and the size portion of the **Volume Info** field.
 
 - If you modify the value in the **Instance Type** field or in both the **Instance Type** and the size portion of the **Volume Info** field, and then click **Save**, you will be able to choose either the migration of the universe along with its data to new nodes or smart resize, as per the following illustrations:
 
