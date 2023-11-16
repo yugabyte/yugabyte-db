@@ -17024,6 +17024,11 @@ YbATCopyMiscMetadata(Relation old_rel, Relation new_rel, AttrNumber *attmap)
 		old_rel_form->relrowsecurity;
 	replaces[Anum_pg_class_relrowsecurity - 1] = true;
 
+	/* Copy relforcerowsecurity value. */
+	values[Anum_pg_class_relforcerowsecurity - 1] =
+		old_rel_form->relforcerowsecurity;
+	replaces[Anum_pg_class_relforcerowsecurity - 1] = true;
+
 	/* Create modified tuple with the new values. */
 	new_rel_new_tuple = heap_modify_tuple(new_rel_old_tuple,
 											RelationGetDescr(pg_class),

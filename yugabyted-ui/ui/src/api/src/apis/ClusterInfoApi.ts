@@ -25,6 +25,7 @@ import type {
   ClusterNodesResponse,
   ClusterTableListResponse,
   ClusterTabletListResponse,
+  ConnectionsStats,
   GflagsInfo,
   HealthCheckResponse,
   IsLoadBalancerIdle,
@@ -210,6 +211,81 @@ export const useGetClusterAlertsQuery = <T = AlertsResponse, Error = ApiError>(
   const query = useQuery<AlertsResponse, Error, T>(
     queryKey,
     () => getClusterAlertsAxiosRequest(customAxiosInstance),
+    queryOptions
+  );
+
+  return {
+    queryKey,
+    ...query
+  };
+};
+
+
+
+/**
+ * Get YSQL connection manager stats for every node of the cluster
+ * Get YSQL connection manager stats for every node of the cluster
+ */
+
+export const getClusterConnectionsAxiosRequest = (
+  customAxiosInstance?: AxiosInstance
+) => {
+  return Axios<ConnectionsStats>(
+    {
+      url: '/connections',
+      method: 'GET',
+      params: {
+      }
+    },
+    customAxiosInstance
+  );
+};
+
+export const getClusterConnectionsQueryKey = (
+  pageParam = -1,
+  version = 1,
+) => [
+  `/v${version}/connections`,
+  pageParam,
+];
+
+
+export const useGetClusterConnectionsInfiniteQuery = <T = ConnectionsStats, Error = ApiError>(
+  options?: {
+    query?: UseInfiniteQueryOptions<ConnectionsStats, Error, T>;
+    customAxiosInstance?: AxiosInstance;
+  },
+  pageParam = -1,
+  version = 1,
+) => {
+  const queryKey = getClusterConnectionsQueryKey(pageParam, version);
+  const { query: queryOptions, customAxiosInstance } = options ?? {};
+
+  const query = useInfiniteQuery<ConnectionsStats, Error, T>(
+    queryKey,
+    () => getClusterConnectionsAxiosRequest(customAxiosInstance),
+    queryOptions
+  );
+
+  return {
+    queryKey,
+    ...query
+  };
+};
+
+export const useGetClusterConnectionsQuery = <T = ConnectionsStats, Error = ApiError>(
+  options?: {
+    query?: UseQueryOptions<ConnectionsStats, Error, T>;
+    customAxiosInstance?: AxiosInstance;
+  },
+  version = 1,
+) => {
+  const queryKey = getClusterConnectionsQueryKey(version);
+  const { query: queryOptions, customAxiosInstance } = options ?? {};
+
+  const query = useQuery<ConnectionsStats, Error, T>(
+    queryKey,
+    () => getClusterConnectionsAxiosRequest(customAxiosInstance),
     queryOptions
   );
 

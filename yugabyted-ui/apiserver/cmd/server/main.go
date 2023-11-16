@@ -263,6 +263,9 @@ func main() {
     // Get Voyager Data migration metrics
     e.GET("/api/migration_metrics", c.GetVoyagerMetrics)
 
+    // GetClusterConnections - Get YSQL connection manager stats for every node of the cluster
+    e.GET("/api/connections", c.GetClusterConnections)
+
     render_htmls := templates.NewTemplate()
 
     // Code for rendering UI Without embedding the files

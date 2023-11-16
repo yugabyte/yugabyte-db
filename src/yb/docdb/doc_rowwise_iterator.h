@@ -122,7 +122,9 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
   // ensures that the iterator will be positioned on the first kv-pair of the next row.
   // row_finished - true when current row was fully iterated. So we would not have to perform
   // extra Seek in case of full scan.
-  Status AdvanceIteratorToNextDesiredRow(bool row_finished);
+  // current_fetched_row_skipped is true if we skipped processing the most recently fetched row.
+  Status AdvanceIteratorToNextDesiredRow(bool row_finished,
+                                         bool current_fetched_row_skipped);
 
   // Read next row into a value map using the specified projection.
   Status FillRow(qlexpr::QLTableRow* table_row, const dockv::ReaderProjection* projection);
