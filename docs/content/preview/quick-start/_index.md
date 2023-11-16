@@ -191,6 +191,8 @@ You download YugabyteDB as follows:
 
 ## Create a local cluster
 
+Use the [yugabyted](../reference/configuration/yugabyted/) utility to create and manage universes.
+
 {{< tabpane text=true >}}
 
   {{% tab header="macOS Pre-Monterey" lang="Pre-Monterey" %}}

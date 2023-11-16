@@ -336,7 +336,11 @@ SELECT * FROM example;
 
 ## Read committed isolation
 
-Read committed support is currently in [Tech Preview](/preview/releases/versioning/#feature-availability).
+{{< note >}}
+
+Read Committed is [Tech Preview](/preview/releases/versioning/#feature-availability).
+
+{{</note >}}
 
 Read committed isolation is the same as Snapshot isolation, except that every statement in the transaction is aware of all data that has been committed before it has been issued (this implicitly means that the statement will see a consistent snapshot). In other words, each statement works on a new snapshot of the database that includes everything that has been committed before the statement is issued. Conflict detection is the same as in Snapshot isolation.
 
