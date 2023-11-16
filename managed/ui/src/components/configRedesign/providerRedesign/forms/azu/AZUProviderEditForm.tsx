@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { Box, CircularProgress, FormHelperText, Typography } from '@material-ui/core';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { array, mixed, object, string } from 'yup';
 import { toast } from 'react-toastify';
+import { useQuery } from 'react-query';
 
 import {
   RadioGroupOrientation,
@@ -35,6 +36,7 @@ import {
   findExistingZone,
   getDeletedRegions,
   getDeletedZones,
+  getInUseAzs,
   getLatestAccessKey,
   getNtpSetupType
 } from '../../utils';
@@ -45,6 +47,7 @@ import {
   deleteItem,
   editItem,
   generateLowerCaseAlphanumericId,
+  getIsFieldDisabled,
   getIsFormDisabled,
   readFileAsText
 } from '../utils';
@@ -54,6 +57,10 @@ import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import { VersionWarningBanner } from '../components/VersionWarningBanner';
 import { ACCEPTABLE_CHARS } from '../../../../config/constants';
 import { NTP_SERVER_REGEX } from '../constants';
+import { UniverseItem } from '../../providerView/providerDetails/UniverseTable';
+import { RuntimeConfigKey } from '../../../../../redesign/helpers/constants';
+import { YBErrorIndicator, YBLoading } from '../../../../common/indicators';
+import { api, runtimeConfigQueryKey } from '../../../../../redesign/helpers/api';
 
 import {
   AZUAvailabilityZone,
@@ -69,7 +76,7 @@ import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUs
 
 interface AZUProviderEditFormProps {
   editProvider: EditProvider;
-  isProviderInUse: boolean;
+  linkedUniverses: UniverseItem[];
   providerConfig: AZUProvider;
 }
 
@@ -142,7 +149,7 @@ const FORM_NAME = 'AZUProviderEditForm';
 
 export const AZUProviderEditForm = ({
   editProvider,
-  isProviderInUse,
+  linkedUniverses,
   providerConfig
 }: AZUProviderEditFormProps) => {
   const [isRegionFormModalOpen, setIsRegionFormModalOpen] = useState<boolean>(false);
@@ -155,6 +162,21 @@ export const AZUProviderEditForm = ({
     defaultValues: defaultValues,
     resolver: yupResolver(VALIDATION_SCHEMA)
   });
+
+  const customerUUID = localStorage.getItem('customerId') ?? '';
+  const customerRuntimeConfigQuery = useQuery(
+    runtimeConfigQueryKey.customerScope(customerUUID),
+    () => api.fetchRuntimeConfigs(customerUUID, true)
+  );
+
+  if (customerRuntimeConfigQuery.isError) {
+    return (
+      <YBErrorIndicator message="Error fetching runtime configurations for current customer." />
+    );
+  }
+  if (customerRuntimeConfigQuery.isLoading || customerRuntimeConfigQuery.isIdle) {
+    return <YBLoading />;
+  }
 
   const showAddRegionFormModal = () => {
     setRegionSelection(undefined);
@@ -215,7 +237,20 @@ export const AZUProviderEditForm = ({
   const editSSHKeypair = formMethods.watch('editSSHKeypair', defaultValues.editSSHKeypair);
   const latestAccessKey = getLatestAccessKey(providerConfig.allAccessKeys);
   const existingRegions = providerConfig.regions.map((region) => region.code);
-  const isFormDisabled = getIsFormDisabled(formMethods.formState, isProviderInUse, providerConfig);
+  const runtimeConfigEntries = customerRuntimeConfigQuery.data.configEntries ?? [];
+  /**
+   * In use zones for selected region.
+   */
+  const inUseZones = getInUseAzs(providerConfig.uuid, linkedUniverses, regionSelection?.code);
+  const isEditInUseProviderEnabled = runtimeConfigEntries.some(
+    (config: any) =>
+      config.key === RuntimeConfigKey.EDIT_IN_USE_PORIVDER_UI_FEATURE_FLAG &&
+      config.value === 'true'
+  );
+  const isProviderInUse = linkedUniverses.length > 0;
+  const isFormDisabled =
+    (!isEditInUseProviderEnabled && isProviderInUse) ||
+    getIsFormDisabled(formMethods.formState, providerConfig);
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
@@ -229,7 +264,12 @@ export const AZUProviderEditForm = ({
             <YBInputField
               control={formMethods.control}
               name="providerName"
-              disabled={isFormDisabled}
+              disabled={getIsFieldDisabled(
+                ProviderCode.AZU,
+                'providerName',
+                isFormDisabled,
+                isProviderInUse
+              )}
               fullWidth
             />
           </FormField>
@@ -240,7 +280,12 @@ export const AZUProviderEditForm = ({
                 <YBInputField
                   control={formMethods.control}
                   name="azuClientId"
-                  disabled={isFormDisabled}
+                  disabled={getIsFieldDisabled(
+                    ProviderCode.AZU,
+                    'azuClientId',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
                   fullWidth
                 />
               </FormField>
@@ -249,7 +294,12 @@ export const AZUProviderEditForm = ({
                 <YBInputField
                   control={formMethods.control}
                   name="azuClientSecret"
-                  disabled={isFormDisabled}
+                  disabled={getIsFieldDisabled(
+                    ProviderCode.AZU,
+                    'azuClientSecret',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
                   fullWidth
                 />
               </FormField>
@@ -258,7 +308,12 @@ export const AZUProviderEditForm = ({
                 <YBInputField
                   control={formMethods.control}
                   name="azuRG"
-                  disabled={isFormDisabled}
+                  disabled={getIsFieldDisabled(
+                    ProviderCode.AZU,
+                    'azuRG',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
                   fullWidth
                 />
               </FormField>
@@ -267,7 +322,12 @@ export const AZUProviderEditForm = ({
                 <YBInputField
                   control={formMethods.control}
                   name="azuNetworkRG"
-                  disabled={isFormDisabled}
+                  disabled={getIsFieldDisabled(
+                    ProviderCode.AZU,
+                    'azuNetworkRG',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
                   fullWidth
                 />
               </FormField>
@@ -276,7 +336,12 @@ export const AZUProviderEditForm = ({
                 <YBInputField
                   control={formMethods.control}
                   name="azuSubscriptionId"
-                  disabled={isFormDisabled}
+                  disabled={getIsFieldDisabled(
+                    ProviderCode.AZU,
+                    'azuSubscriptionId',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
                   fullWidth
                 />
               </FormField>
@@ -285,7 +350,12 @@ export const AZUProviderEditForm = ({
                 <YBInputField
                   control={formMethods.control}
                   name="azuNetworkSubscriptionId"
-                  disabled={isFormDisabled}
+                  disabled={getIsFieldDisabled(
+                    ProviderCode.AZU,
+                    'azuNetworkSubscriptionId',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
                   fullWidth
                 />
               </FormField>
@@ -294,7 +364,12 @@ export const AZUProviderEditForm = ({
                 <YBInputField
                   control={formMethods.control}
                   name="azuTenantId"
-                  disabled={isFormDisabled}
+                  disabled={getIsFieldDisabled(
+                    ProviderCode.AZU,
+                    'azuTenantId',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
                   fullWidth
                 />
               </FormField>
@@ -303,7 +378,12 @@ export const AZUProviderEditForm = ({
                 <YBInputField
                   control={formMethods.control}
                   name="azuHostedZoneId"
-                  disabled={isFormDisabled}
+                  disabled={getIsFieldDisabled(
+                    ProviderCode.AZU,
+                    'azuHostedZoneId',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
                   fullWidth
                 />
               </FormField>
@@ -322,7 +402,12 @@ export const AZUProviderEditForm = ({
                       btnClass="btn btn-default"
                       btnType="button"
                       onClick={showAddRegionFormModal}
-                      disabled={isFormDisabled}
+                      disabled={getIsFieldDisabled(
+                        ProviderCode.AZU,
+                        'regions',
+                        isFormDisabled,
+                        isProviderInUse
+                      )}
                       data-testid={`${FORM_NAME}-AddRegionButton`}
                     />
                   </RbacValidator>
@@ -331,15 +416,22 @@ export const AZUProviderEditForm = ({
             >
               <RegionList
                 providerCode={ProviderCode.AZU}
+                providerUuid={providerConfig.uuid}
                 regions={regions}
                 existingRegions={existingRegions}
                 setRegionSelection={setRegionSelection}
                 showAddRegionFormModal={showAddRegionFormModal}
                 showEditRegionFormModal={showEditRegionFormModal}
                 showDeleteRegionModal={showDeleteRegionModal}
-                disabled={isFormDisabled}
+                disabled={getIsFieldDisabled(
+                  ProviderCode.AZU,
+                  'regions',
+                  isFormDisabled,
+                  isProviderInUse
+                )}
                 isError={!!formMethods.formState.errors.regions}
-                isProviderInUse={isProviderInUse}
+                linkedUniverses={linkedUniverses}
+                isEditInUseProviderEnabled={isEditInUseProviderEnabled}
               />
               {formMethods.formState.errors.regions?.message && (
                 <FormHelperText error={true}>
@@ -353,7 +445,12 @@ export const AZUProviderEditForm = ({
                 <YBInputField
                   control={formMethods.control}
                   name="sshUser"
-                  disabled={isFormDisabled}
+                  disabled={getIsFieldDisabled(
+                    ProviderCode.AZU,
+                    'sshUser',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
                   fullWidth
                 />
               </FormField>
@@ -364,7 +461,12 @@ export const AZUProviderEditForm = ({
                   name="sshPort"
                   type="number"
                   inputProps={{ min: 1, max: 65535 }}
-                  disabled={isFormDisabled}
+                  disabled={getIsFieldDisabled(
+                    ProviderCode.AZU,
+                    'sshPort',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
                   fullWidth
                 />
               </FormField>
@@ -381,7 +483,12 @@ export const AZUProviderEditForm = ({
                 <YBToggleField
                   name="editSSHKeypair"
                   control={formMethods.control}
-                  disabled={isFormDisabled}
+                  disabled={getIsFieldDisabled(
+                    ProviderCode.AZU,
+                    'editSSHKeypair',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
                 />
               </FormField>
               {editSSHKeypair && (
@@ -393,7 +500,12 @@ export const AZUProviderEditForm = ({
                       control={formMethods.control}
                       options={KEY_PAIR_MANAGEMENT_OPTIONS}
                       orientation={RadioGroupOrientation.HORIZONTAL}
-                      isDisabled={isFormDisabled}
+                      isDisabled={getIsFieldDisabled(
+                        ProviderCode.AZU,
+                        'sshKeypairManagement',
+                        isFormDisabled,
+                        isProviderInUse
+                      )}
                     />
                   </FormField>
                   {keyPairManagement === KeyPairManagement.SELF_MANAGED && (
@@ -403,7 +515,12 @@ export const AZUProviderEditForm = ({
                         <YBInputField
                           control={formMethods.control}
                           name="sshKeypairName"
-                          disabled={isFormDisabled}
+                          disabled={getIsFieldDisabled(
+                            ProviderCode.AZU,
+                            'sshKeypairName',
+                            isFormDisabled,
+                            isProviderInUse
+                          )}
                           fullWidth
                         />
                       </FormField>
@@ -415,7 +532,12 @@ export const AZUProviderEditForm = ({
                           actionButtonText="Upload SSH Key PEM File"
                           multipleFiles={false}
                           showHelpText={false}
-                          disabled={isFormDisabled}
+                          disabled={getIsFieldDisabled(
+                            ProviderCode.AZU,
+                            'sshPrivateKeyContent',
+                            isFormDisabled,
+                            isProviderInUse
+                          )}
                         />
                       </FormField>
                     </>
@@ -434,12 +556,25 @@ export const AZUProviderEditForm = ({
                 <YBToggleField
                   name="dbNodePublicInternetAccess"
                   control={formMethods.control}
-                  disabled={isFormDisabled}
+                  disabled={getIsFieldDisabled(
+                    ProviderCode.AZU,
+                    'dbNodePublicInternetAccess',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
                 />
               </FormField>
               <FormField>
                 <FieldLabel>NTP Setup</FieldLabel>
-                <NTPConfigField isDisabled={isFormDisabled} providerCode={ProviderCode.AZU} />
+                <NTPConfigField
+                  isDisabled={getIsFieldDisabled(
+                    ProviderCode.AZU,
+                    'ntpServers',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
+                  providerCode={ProviderCode.AZU}
+                />
               </FormField>
             </FieldGroup>
             {(formMethods.formState.isValidating || formMethods.formState.isSubmitting) && (
@@ -477,7 +612,13 @@ export const AZUProviderEditForm = ({
         <ConfigureRegionModal
           configuredRegions={regions}
           isEditProvider={true}
-          isProviderFormDisabled={isFormDisabled}
+          isProviderFormDisabled={getIsFieldDisabled(
+            ProviderCode.AZU,
+            'providerName',
+            isFormDisabled,
+            isProviderInUse
+          )}
+          inUseZones={inUseZones}
           onClose={hideRegionFormModal}
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}
@@ -549,11 +690,21 @@ const constructProviderPayload = async (
     providerConfig.allAccessKeys
   );
 
+  const {
+    airGapInstall,
+    cloudInfo,
+    ntpServers,
+    setUpChrony,
+    sshPort,
+    sshUser,
+    ...unexposedProviderDetailFields
+  } = providerConfig.details;
   return {
     code: ProviderCode.AZU,
     name: formValues.providerName,
     ...allAccessKeysPayload,
     details: {
+      ...unexposedProviderDetailFields,
       airGapInstall: !formValues.dbNodePublicInternetAccess,
       cloudInfo: {
         [ProviderCode.AZU]: {
