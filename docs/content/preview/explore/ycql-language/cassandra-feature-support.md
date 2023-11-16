@@ -114,8 +114,8 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 | :------------: | :---------------------------------------- | :----------------------------------------------------------------------- |
 | {{<icon/yes>}} | Delete rows                               | [DELETE](../../../api/ycql/dml_delete/)                                  |
 | {{<icon/yes>}} | Conditional delete with `IF` clause       | [DELETE ... IF](../../../api/ycql/dml_update#if-clause)                  |
-| {{<icon/yes>}} | Conditional delete with `[NOT] IN` clause | [DELETE ... WHERE key IN ...](../../../api/ycql/dml_delete#where-clause) |
 | {{<icon/yes>}} | Delete with `USING` clause                | [DELETE ... USING](../../../api/ycql/dml_delete#using-clause)            |
+| {{<icon/no>}}  | Conditional delete with `[NOT] IN` clause | [DELETE ... WHERE key IN ...](../../../api/ycql/dml_delete#where-clause) |
 | {{<icon/no>}}  | Conditional Delete using `CONTAINS [KEY]` | `DELETE ... WHERE <col> CONTAINS ...`                                    |
 {.sno-1}
 
