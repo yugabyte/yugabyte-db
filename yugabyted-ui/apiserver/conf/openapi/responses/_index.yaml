@@ -186,3 +186,9 @@ ConnectionsResponse:
     application/json:
       schema:
         $ref: '../schemas/_index.yaml#/ConnectionsStats'
+NodeAddressResponse:
+  description: Node address
+  content:
+    text/plain:
+      schema:
+        type: string
