@@ -246,7 +246,7 @@ public class RBACController extends AuthenticatedController {
     if (Role.get(customerUUID, roleFormData.name) != null) {
       String errorMsg = "Role with given name already exists: " + roleFormData.name;
       log.error(errorMsg);
-      throw new PlatformServiceException(BAD_REQUEST, errorMsg);
+      throw new PlatformServiceException(CONFLICT, errorMsg);
     }
 
     // Ensure that the given permission list is not empty.
@@ -329,8 +329,10 @@ public class RBACController extends AuthenticatedController {
       throw new PlatformServiceException(BAD_REQUEST, errorMsg);
     }
 
-    if (roleFormData.name != null) {
-      log.warn("Editing the role name is not supported, skipping this operation.");
+    if (roleFormData.name != null && !roleFormData.name.equals(role.getName())) {
+      String errorMsg =
+          String.format("Editing the role name is not supported. Role UUID: '%s'.", roleUUID);
+      throw new PlatformServiceException(BAD_REQUEST, errorMsg);
     }
 
     if (roleFormData.permissionList == null) {

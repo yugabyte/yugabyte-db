@@ -354,7 +354,7 @@ public class RBACControllerTest extends FakeDBApplication {
             + "]}";
     JsonNode bodyJson = mapper.readValue(createRoleRequestBody, JsonNode.class);
     Result result = assertPlatformException(() -> createRole(customer.getUuid(), bodyJson));
-    assertEquals(BAD_REQUEST, result.status());
+    assertEquals(CONFLICT, result.status());
     assertAuditEntry(0, customer.getUuid());
   }
 
