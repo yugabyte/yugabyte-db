@@ -2830,6 +2830,167 @@ SELECT * FROM cypher('cypher_match', $$ MATCH p1=(n {name:'Dave'})-[]->() MATCH 
 (1 row)
 
 --
+-- Issue 1399 EXISTS leads to an error if a relation label does not exists as database table
+--
+SELECT create_graph('issue_1399');
+NOTICE:  graph "issue_1399" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+-- this is an empty graph so these should return 0
+SELECT * FROM cypher('issue_1399', $$
+  MATCH (foo)
+  WHERE exists((foo)-[]->())
+  RETURN foo
+$$) as (c agtype);
+ c 
+---
+(0 rows)
+
+SELECT * FROM cypher('issue_1399', $$
+  MATCH (foo)
+  WHERE NOT exists((foo)-[]->())
+  RETURN foo
+$$) as (c agtype);
+ c 
+---
+(0 rows)
+
+SELECT * FROM cypher('issue_1399', $$
+  MATCH (foo)
+  WHERE exists((foo)-[:BAR]->())
+  RETURN foo
+$$) as (c agtype);
+ c 
+---
+(0 rows)
+
+SELECT * FROM cypher('issue_1399', $$
+  MATCH (foo)
+  WHERE NOT exists((foo)-[:BAR]->())
+  RETURN foo
+$$) as (c agtype);
+ c 
+---
+(0 rows)
+
+-- this is an empty graph so these should return false
+SELECT * FROM cypher('issue_1399', $$
+  MATCH (foo)
+  WHERE exists((foo)-[]->())
+  RETURN count(foo) > 0
+$$) as (c agtype);
+   c   
+-------
+ false
+(1 row)
+
+SELECT * FROM cypher('issue_1399', $$
+  MATCH (foo)
+  WHERE NOT exists((foo)-[]->())
+  RETURN count(foo) > 0
+$$) as (c agtype);
+   c   
+-------
+ false
+(1 row)
+
+SELECT * FROM cypher('issue_1399', $$
+  MATCH (foo)
+  WHERE exists((foo)-[:BAR]->())
+  RETURN count(foo) > 0
+$$) as (c agtype);
+   c   
+-------
+ false
+(1 row)
+
+SELECT * FROM cypher('issue_1399', $$
+  MATCH (foo)
+  WHERE NOT exists((foo)-[:BAR]->())
+  RETURN count(foo) > 0
+$$) as (c agtype);
+   c   
+-------
+ false
+(1 row)
+
+-- create 1 path
+SELECT * FROM cypher('issue_1399', $$
+  CREATE (foo)-[:BAR]->() RETURN foo
+$$) as (c agtype);
+                               c                                
+----------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {}}::vertex
+(1 row)
+
+-- these should each return 1 row as it is a directed edge and
+-- only one vertex can match.
+SELECT * FROM cypher('issue_1399', $$
+  MATCH (foo)
+  WHERE exists((foo)-[]->())
+  RETURN foo
+$$) as (c agtype);
+                               c                                
+----------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM cypher('issue_1399', $$
+  MATCH (foo)
+  WHERE NOT exists((foo)-[]->())
+  RETURN foo
+$$) as (c agtype);
+                               c                                
+----------------------------------------------------------------
+ {"id": 281474976710658, "label": "", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM cypher('issue_1399', $$
+  MATCH (foo)
+  WHERE exists((foo)-[:BAR]->())
+  RETURN foo
+$$) as (c agtype);
+                               c                                
+----------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM cypher('issue_1399', $$
+  MATCH (foo)
+  WHERE NOT exists((foo)-[:BAR]->())
+  RETURN foo
+$$) as (c agtype);
+                               c                                
+----------------------------------------------------------------
+ {"id": 281474976710658, "label": "", "properties": {}}::vertex
+(1 row)
+
+-- this should return 0 rows as it can't exist - that path isn't in BAR2
+SELECT * FROM cypher('issue_1399', $$
+  MATCH (foo)
+  WHERE exists((foo)-[:BAR2]->())
+  RETURN foo
+$$) as (c agtype);
+ c 
+---
+(0 rows)
+
+-- this should return 2 rows as they all exist
+SELECT * FROM cypher('issue_1399', $$
+  MATCH (foo)
+  WHERE NOT exists((foo)-[:BAR2]->())
+  RETURN foo
+$$) as (c agtype);
+                               c                                
+----------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {}}::vertex
+ {"id": 281474976710658, "label": "", "properties": {}}::vertex
+(2 rows)
+
+--
 -- Clean up
 --
 SELECT drop_graph('cypher_match', true);
@@ -2887,6 +3048,17 @@ DETAIL:  drop cascades to table issue_945._ag_label_vertex
 drop cascades to table issue_945._ag_label_edge
 drop cascades to table issue_945."Part"
 NOTICE:  graph "issue_945" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+SELECT drop_graph('issue_1399', true);
+NOTICE:  drop cascades to 3 other objects
+DETAIL:  drop cascades to table issue_1399._ag_label_vertex
+drop cascades to table issue_1399._ag_label_edge
+drop cascades to table issue_1399."BAR"
+NOTICE:  graph "issue_1399" has been dropped
  drop_graph 
 ------------
  

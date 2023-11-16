@@ -1179,12 +1179,98 @@ SELECT * FROM cypher('cypher_match', $$ MATCH (n {name:'Dave'}) MATCH p=()-[*]->
 SELECT * FROM cypher('cypher_match', $$ MATCH p1=(n {name:'Dave'})-[]->() MATCH p2=()-[*]->() WHERE p2=p1 RETURN p2=p1 $$) as (path agtype);
 
 --
+-- Issue 1399 EXISTS leads to an error if a relation label does not exists as database table
+--
+SELECT create_graph('issue_1399');
+-- this is an empty graph so these should return 0
+SELECT * FROM cypher('issue_1399', $$
+  MATCH (foo)
+  WHERE exists((foo)-[]->())
+  RETURN foo
+$$) as (c agtype);
+SELECT * FROM cypher('issue_1399', $$
+  MATCH (foo)
+  WHERE NOT exists((foo)-[]->())
+  RETURN foo
+$$) as (c agtype);
+SELECT * FROM cypher('issue_1399', $$
+  MATCH (foo)
+  WHERE exists((foo)-[:BAR]->())
+  RETURN foo
+$$) as (c agtype);
+SELECT * FROM cypher('issue_1399', $$
+  MATCH (foo)
+  WHERE NOT exists((foo)-[:BAR]->())
+  RETURN foo
+$$) as (c agtype);
+-- this is an empty graph so these should return false
+SELECT * FROM cypher('issue_1399', $$
+  MATCH (foo)
+  WHERE exists((foo)-[]->())
+  RETURN count(foo) > 0
+$$) as (c agtype);
+SELECT * FROM cypher('issue_1399', $$
+  MATCH (foo)
+  WHERE NOT exists((foo)-[]->())
+  RETURN count(foo) > 0
+$$) as (c agtype);
+SELECT * FROM cypher('issue_1399', $$
+  MATCH (foo)
+  WHERE exists((foo)-[:BAR]->())
+  RETURN count(foo) > 0
+$$) as (c agtype);
+SELECT * FROM cypher('issue_1399', $$
+  MATCH (foo)
+  WHERE NOT exists((foo)-[:BAR]->())
+  RETURN count(foo) > 0
+$$) as (c agtype);
+-- create 1 path
+SELECT * FROM cypher('issue_1399', $$
+  CREATE (foo)-[:BAR]->() RETURN foo
+$$) as (c agtype);
+-- these should each return 1 row as it is a directed edge and
+-- only one vertex can match.
+SELECT * FROM cypher('issue_1399', $$
+  MATCH (foo)
+  WHERE exists((foo)-[]->())
+  RETURN foo
+$$) as (c agtype);
+SELECT * FROM cypher('issue_1399', $$
+  MATCH (foo)
+  WHERE NOT exists((foo)-[]->())
+  RETURN foo
+$$) as (c agtype);
+SELECT * FROM cypher('issue_1399', $$
+  MATCH (foo)
+  WHERE exists((foo)-[:BAR]->())
+  RETURN foo
+$$) as (c agtype);
+SELECT * FROM cypher('issue_1399', $$
+  MATCH (foo)
+  WHERE NOT exists((foo)-[:BAR]->())
+  RETURN foo
+$$) as (c agtype);
+-- this should return 0 rows as it can't exist - that path isn't in BAR2
+SELECT * FROM cypher('issue_1399', $$
+  MATCH (foo)
+  WHERE exists((foo)-[:BAR2]->())
+  RETURN foo
+$$) as (c agtype);
+-- this should return 2 rows as they all exist
+SELECT * FROM cypher('issue_1399', $$
+  MATCH (foo)
+  WHERE NOT exists((foo)-[:BAR2]->())
+  RETURN foo
+$$) as (c agtype);
+
+--
 -- Clean up
 --
 SELECT drop_graph('cypher_match', true);
 SELECT drop_graph('test_retrieve_var', true);
 SELECT drop_graph('test_enable_containment', true);
 SELECT drop_graph('issue_945', true);
+SELECT drop_graph('issue_1399', true);
 
 --
 -- End

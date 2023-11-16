@@ -114,33 +114,40 @@ transform_entity *find_variable(cypher_parsestate *cpstate, char *name)
 {
     ListCell *lc;
 
-    foreach (lc, cpstate->entities)
+    /* while we have cypher_parsestates to check */
+    while (cpstate)
     {
-        transform_entity *entity = lfirst(lc);
-        char *entity_name;
+        foreach (lc, cpstate->entities)
+        {
+            transform_entity *entity = lfirst(lc);
+            char *entity_name = NULL;
 
-        if (entity->type == ENT_VERTEX)
-        {
-            entity_name = entity->entity.node->name;
-        }
-        else if (entity->type == ENT_EDGE || entity->type == ENT_VLE_EDGE)
-        {
-            entity_name = entity->entity.rel->name;
-        }
-        else if (entity->type == ENT_PATH)
-        {
-            entity_name = entity->entity.path->var_name;
-        }
-        else
-        {
-            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                            errmsg("unknown entity type")));
+            if (entity->type == ENT_VERTEX)
+            {
+                entity_name = entity->entity.node->name;
+            }
+            else if (entity->type == ENT_EDGE || entity->type == ENT_VLE_EDGE)
+            {
+                entity_name = entity->entity.rel->name;
+            }
+            else if (entity->type == ENT_PATH)
+            {
+                entity_name = entity->entity.path->var_name;
+            }
+            else
+            {
+                ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                                errmsg("unknown entity type")));
+            }
+
+            if (entity_name != NULL && !strcmp(name, entity_name))
+            {
+                return entity;
+            }
         }
 
-        if (entity_name != NULL && !strcmp(name, entity_name))
-        {
-            return entity;
-        }
+        /* go up to the next parent parse state */
+        cpstate = (cypher_parsestate*)cpstate->pstate.parentParseState;
     }
 
     return NULL;
