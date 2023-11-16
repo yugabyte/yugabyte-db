@@ -10,13 +10,10 @@ menu:
     parent: explore-ycql-language
     weight: 50
 
-rightNav:
-  hideH3: true
-
 type: docs
 ---
 
-Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Language (CQL)](http://cassandra.apache.org/doc/latest/cql/index.html). This page highlights the important differences in feature support between YCQL and Cassandra 3.4.2.
+Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Language (CQL)](http://cassandra.apache.org/doc/latest/cql/index.html). The following tables highlight the important differences in feature support between YCQL and Cassandra 3.4.2.
 
 ## Data types
 
@@ -31,7 +28,7 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 | {{<icon/yes>}} | Date/Time    | [DATE, TIME, TIMESTAMP](../../../api/ycql/type_datetime/)                                    |
 | {{<icon/yes>}} | Collections  | [FROZEN](../../../api/ycql/type_frozen), [LIST, MAP, SET](../../../api/ycql/type_collection) |
 | {{<icon/yes>}} | IP Addresses | [INET](../../../api/ycql/type_inet)                                                          |
-| {{<icon/yes>}} | Json         | [JSONB](../../../api/ycql/type_jsonb)                                                        |
+| {{<icon/yes>}} | JSON         | [JSONB](../../../api/ycql/type_jsonb)                                                        |
 | {{<icon/yes>}} | String       | [TEXT, VARCHAR](../../../api/ycql/type_text)                                                 |
 | {{<icon/yes>}} | UUID         | [TIMEUUID, UUID](../../../api/ycql/type_uuid)                                                |
 | {{<icon/no>}}  | TUPLE        |                                                                                              |
