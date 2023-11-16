@@ -408,7 +408,8 @@ Result<bool> XClusterSafeTimeService::ComputeSafeTime(
   if (should_log_outlier_tablets) {
     for (const auto& [namespace_id, tablet_ids] : tablets_missing_safe_time_map) {
       LOG(WARNING) << "Missing xcluster safe time for producer tablet(s) "
-                   << TabletIdsToLimitedString(tablet_ids) << " in namespace " << namespace_id;
+                   << JoinStringsLimitCount(tablet_ids, ",", 20) << " in namespace "
+                   << namespace_id;
     }
   }
 
@@ -448,7 +449,7 @@ Result<bool> XClusterSafeTimeService::ComputeSafeTime(
                    << namespace_max_safe_time[namespace_id].PhysicalDiff(
                           namespace_min_safe_time[namespace_id]) /
                           MonoTime::kMicrosecondsPerSecond
-                   << "s due to producer tablet(s) " << TabletIdsToLimitedString(tablet_ids);
+                   << "s due to producer tablet(s) " << JoinStringsLimitCount(tablet_ids, ",", 20);
     }
   }
 
@@ -738,16 +739,5 @@ xcluster::XClusterConsumerClusterMetrics* XClusterSafeTimeService::TEST_GetMetri
   return cluster_metrics_per_namespace_[namespace_id].get();
 }
 
-std::string XClusterSafeTimeService::TabletIdsToLimitedString(
-    const std::vector<TabletId>& tablet_ids) {
-  const uint32 max_tablet_count = 20;
-  uint32 tablet_count = std::min(max_tablet_count, static_cast<uint32>(tablet_ids.size()));
-  auto tablet_str = JoinStringsIterator(tablet_ids.begin(), tablet_ids.begin() + tablet_count, ",");
-  const auto tablets_left = tablet_ids.size() - tablet_count;
-  if (tablets_left > 0) {
-    tablet_str += Format(" and $0 others", tablets_left);
-  }
-  return tablet_str;
-}
 }  // namespace master
 }  // namespace yb
