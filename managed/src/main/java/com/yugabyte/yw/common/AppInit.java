@@ -32,6 +32,7 @@ import com.yugabyte.yw.common.alerts.QueryAlerts;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.common.metrics.SwamperTargetsFileUpdater;
@@ -69,6 +70,7 @@ public class AppInit {
       Application application,
       ConfigHelper configHelper,
       ReleaseManager releaseManager,
+      GFlagsValidation gFlagsValidation,
       AWSInitializer awsInitializer,
       CustomerTaskManager taskManager,
       YamlWrapper yaml,
@@ -243,6 +245,16 @@ public class AppInit {
         // Import new local releases into release metadata
         releaseManager.importLocalReleases();
         releaseManager.updateCurrentReleases();
+        releaseManager
+            .getLocalReleases()
+            .forEach(
+                (version, rm) -> {
+                  try {
+                    gFlagsValidation.addDBMetadataFiles(version, rm);
+                  } catch (Exception e) {
+                    log.error("Error: ", e);
+                  }
+                });
         // Background thread to query for latest ARM release version.
         Thread armReleaseThread =
             new Thread(

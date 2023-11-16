@@ -220,7 +220,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
         (ObjectNode) Json.newObject().set("2.17.1.0-foo", Json.newObject().set("s3", s3));
     Result result = createRelease(customer.getUuid(), body);
     verify(mockReleaseManager, times(1)).addReleaseWithMetadata(any(), any());
-    verify(mockReleaseManager, times(1)).addGFlagsMetadataFiles(any(), any());
+    verify(mockGFlagsValidation, times(1)).addDBMetadataFiles(any(), any());
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     assertTrue(json.get("success").asBoolean());
@@ -243,7 +243,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
         (ObjectNode) Json.newObject().set("2.17.1.0-foo", Json.newObject().set("gcs", gcs));
     Result result = createRelease(customer.getUuid(), body);
     verify(mockReleaseManager, times(1)).addReleaseWithMetadata(any(), any());
-    verify(mockReleaseManager, times(1)).addGFlagsMetadataFiles(any(), any());
+    verify(mockGFlagsValidation, times(1)).addDBMetadataFiles(any(), any());
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     assertTrue(json.get("success").asBoolean());
@@ -286,7 +286,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
         .addReleaseWithMetadata(any(), any());
     Result result = assertPlatformException(() -> createRelease(customer.getUuid(), body));
     verify(mockReleaseManager, times(1)).addReleaseWithMetadata(any(), any());
-    verify(mockReleaseManager, times(0)).addGFlagsMetadataFiles(any(), any());
+    verify(mockGFlagsValidation, times(0)).addDBMetadataFiles(any(), any());
     assertEquals(INTERNAL_SERVER_ERROR, result.status());
     assertAuditEntry(0, customer.getUuid());
   }
@@ -309,7 +309,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
         (ObjectNode) Json.newObject().set("2.7.2.0-b137", Json.newObject().set("s3", s3));
     Result result = assertPlatformException(() -> createRelease(customer.getUuid(), body));
     verify(mockReleaseManager, times(0)).addReleaseWithMetadata(any(), any());
-    verify(mockReleaseManager, times(0)).addGFlagsMetadataFiles(any(), any());
+    verify(mockGFlagsValidation, times(0)).addDBMetadataFiles(any(), any());
     assertEquals(BAD_REQUEST, result.status());
     assertAuditEntry(0, customer.getUuid());
 
@@ -320,7 +320,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
         (ObjectNode) Json.newObject().set("2.7.2.0-b137", Json.newObject().set("s3", s3));
     result = assertPlatformException(() -> createRelease(customer.getUuid(), body2));
     verify(mockReleaseManager, times(0)).addReleaseWithMetadata(any(), any());
-    verify(mockReleaseManager, times(0)).addGFlagsMetadataFiles(any(), any());
+    verify(mockGFlagsValidation, times(0)).addDBMetadataFiles(any(), any());
     assertEquals(BAD_REQUEST, result.status());
     assertAuditEntry(0, customer.getUuid());
 
@@ -328,7 +328,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
         (ObjectNode) Json.newObject().set("2.7.2.0-b137", Json.newObject().set("http", http));
     result = assertPlatformException(() -> createRelease(customer.getUuid(), body3));
     verify(mockReleaseManager, times(0)).addReleaseWithMetadata(any(), any());
-    verify(mockReleaseManager, times(0)).addGFlagsMetadataFiles(any(), any());
+    verify(mockGFlagsValidation, times(0)).addDBMetadataFiles(any(), any());
     assertEquals(INTERNAL_SERVER_ERROR, result.status());
     assertAuditEntry(0, customer.getUuid());
 
@@ -338,7 +338,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
         (ObjectNode) Json.newObject().set("2.7.2.0-b137", Json.newObject().set("http", http));
     result = assertPlatformException(() -> createRelease(customer.getUuid(), body4));
     verify(mockReleaseManager, times(0)).addReleaseWithMetadata(any(), any());
-    verify(mockReleaseManager, times(0)).addGFlagsMetadataFiles(any(), any());
+    verify(mockGFlagsValidation, times(0)).addDBMetadataFiles(any(), any());
     assertEquals(INTERNAL_SERVER_ERROR, result.status());
     assertAuditEntry(0, customer.getUuid());
   }

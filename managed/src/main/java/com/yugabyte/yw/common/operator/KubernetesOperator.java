@@ -10,6 +10,7 @@ import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
@@ -41,6 +42,7 @@ public class KubernetesOperator {
   @Inject private CloudProviderHandler cloudProviderHandler;
 
   @Inject private ReleaseManager releaseManager;
+  @Inject private GFlagsValidation gFlagsValidation;
   @Inject private CustomerConfigService ccs;
   @Inject private BackupHelper backupHelper;
   @Inject protected ValidatingFormFactory formFactory;
@@ -224,6 +226,7 @@ public class KubernetesOperator {
                           ybSoftwareReleaseIndexInformer,
                           releasesClient,
                           releaseManager,
+                          gFlagsValidation,
                           namespace);
                   SupportBundleReconciler supportBundleReconciler =
                       new SupportBundleReconciler(
