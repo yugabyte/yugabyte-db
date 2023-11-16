@@ -245,11 +245,13 @@ function CpuSankeyNode(props: any) {
           fontSize="13"
           fontWeight={500}
         >
-          <tspan fill="#97A5B0">{cpuTextPrefix}</tspan>
-          <tspan dx={index === 0 ? (cpuValue < 10 ? 74 : 64) : (cpuValue < 10 ? 40 : 32)}
-            fill="#000" fontWeight={700} fontSize="15">{cpuValue} </tspan>
-          <tspan fill="#444" fillOpacity={1}>{cpuTextSuffix}</tspan>
-          <tspan dy={15} dx={-53} fill="#333" fontSize={10} fillOpacity={0.6}>of {totalCores} {cpuTextSuffix}</tspan>
+          <tspan fill="#97A5B0">{cpuTextPrefix}</tspan> {/* USED or AVAILABLE depending on index = 0 or 1 */}
+          <tspan dx={index === 0 ? (cpuValue < 10 ? 68 : 58) : (cpuValue < 10 ? 34 : 26)}
+            fill="#000" fontWeight={700} fontSize="15">{cpuValue} </tspan> {/* number */}
+          <tspan fill="#444" fillOpacity={1}>{cpuTextSuffix}</tspan> {/* cores */}
+          <tspan dy={15} dx={totalCores < 10 ? -52 : -56} fill="#333" fontSize={10} fillOpacity={0.6}>
+            of {totalCores} {cpuTextSuffix} {/* of number cores */}
+          </tspan>
         </text>
       }
     </Layer>
