@@ -1222,6 +1222,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
       req.bootstrap_source_broadcast_addr(), req.bootstrap_source_private_addr(),
       req.bootstrap_source_cloud_info(), server_->MakeCloudInfoPB()));
 
+  auto rbs_source_role = "LEADER";
   ServerRegistrationPB tablet_leader_peer_conn_info;
   if (!req.is_served_by_tablet_leader()) {
     *tablet_leader_peer_conn_info.mutable_broadcast_addresses() =
@@ -1229,6 +1230,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
     *tablet_leader_peer_conn_info.mutable_private_rpc_addresses() =
         req.tablet_leader_private_addr();
     *tablet_leader_peer_conn_info.mutable_cloud_info() = req.tablet_leader_cloud_info();
+    rbs_source_role = "FOLLOWER";
   }
 
   int64_t leader_term = req.caller_term();
@@ -1275,6 +1277,10 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
         CreateAndRegisterTabletPeer(meta, replacing_tablet ? REPLACEMENT_PEER : NEW_PEER));
   MarkTabletBeingRemoteBootstrapped(tablet_peer->tablet_id(),
       tablet_peer->tablet_metadata()->table_id());
+  // Set the bootstrap source info for the peer's status listener for external visibility.
+  tablet_peer->status_listener()->SetStatusPrefix(
+      Format("Bootstrap Source: $0 ($1) [$2]",
+             bootstrap_peer_uuid, bootstrap_peer_addr, rbs_source_role));
 
   // TODO: If we ever make this method asynchronous, we need to move this code somewhere else.
   auto se = ScopeExit([this, tablet_peer] {
