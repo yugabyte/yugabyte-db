@@ -1132,6 +1132,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const PromoteSingleAutoFlagRequestPB* req, PromoteSingleAutoFlagResponsePB* resp);
   Status DemoteSingleAutoFlag(
       const DemoteSingleAutoFlagRequestPB* req, DemoteSingleAutoFlagResponsePB* resp);
+  Status ValidateAutoFlagsConfig(
+      const ValidateAutoFlagsConfigRequestPB* req, ValidateAutoFlagsConfigResponsePB* resp);
 
   Status ReportYsqlDdlTxnStatus(
       const ReportYsqlDdlTxnStatusRequestPB* req,

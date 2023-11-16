@@ -13201,6 +13201,28 @@ Status CatalogManager::DemoteSingleAutoFlag(
   return Status::OK();
 }
 
+Status CatalogManager::ValidateAutoFlagsConfig(
+    const ValidateAutoFlagsConfigRequestPB* req, ValidateAutoFlagsConfigResponsePB* resp) {
+  VLOG_WITH_FUNC(1) << req->ShortDebugString();
+
+  auto min_class = AutoFlagClass::kLocalVolatile;
+  if (req->has_min_flag_class()) {
+    min_class = VERIFY_RESULT_PREPEND(
+        yb::UnderlyingToEnumSlow<yb::AutoFlagClass>(req->min_flag_class()),
+        "Invalid value provided for flag class");
+  }
+
+  auto local_auto_flag_config = master_->GetAutoFlagsConfig();
+  auto valid =
+      VERIFY_RESULT(AreAutoFlagsCompatible(local_auto_flag_config, req->config(), min_class));
+  VLOG_WITH_FUNC(1) << valid;
+
+  resp->set_valid(valid);
+  resp->set_config_version(local_auto_flag_config.config_version());
+
+  return Status::OK();
+}
+
 Status CatalogManager::GetStatefulServiceLocation(
     const GetStatefulServiceLocationRequestPB* req, GetStatefulServiceLocationResponsePB* resp) {
   VLOG(4) << "GetStatefulServiceLocation: " << req->ShortDebugString();

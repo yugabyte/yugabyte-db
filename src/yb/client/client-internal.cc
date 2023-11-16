@@ -282,6 +282,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, RedisConfigSet);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, ReservePgsqlOids);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetStatefulServiceLocation);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Cluster, GetAutoFlagsConfig);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Cluster, ValidateAutoFlagsConfig);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Cluster, IsLoadBalanced);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Cluster, IsLoadBalancerIdle);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Cluster, ListLiveTabletServers);
