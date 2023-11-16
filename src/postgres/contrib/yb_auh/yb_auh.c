@@ -533,22 +533,8 @@ yb_tables_internal(FunctionCallInfo fcinfo)
 	size_t size = 0;
   
   HandleYBStatus(YBCTableIDMetadata(&infolist, &size));
-  ybtableInfo* tableInfo = (ybtableInfo*)palloc(size * sizeof(ybtableInfo)); 
-  int i;
-
-  for (i = 0; i < size; i++) {
-    tableInfo[i].table_id = infolist[i].table_id;
-    tableInfo[i].table_name = infolist[i].table_name;
-    tableInfo[i].table_type = infolist[i].table_type;
-    tableInfo[i].relation_type = infolist[i].relation_type;
-    tableInfo[i].namespace_id = infolist[i].namespace_.id;
-    tableInfo[i].namespace_name = infolist[i].namespace_.name;
-    tableInfo[i].database_type = infolist[i].namespace_.database_type;
-    tableInfo[i].pgschema_name = infolist[i].pgschema_name;
-    tableInfo[i].colocated = infolist[i].colocated_info.colocated;
-    tableInfo[i].parent_table_id = infolist[i].colocated_info.parent_table_id;
-  }
   
+  int i;
   for (i = 0; i < size; i++) {
 
     Datum values[10];
@@ -559,67 +545,67 @@ yb_tables_internal(FunctionCallInfo fcinfo)
     memset(isnull, 0, sizeof(isnull));
 
     // table_id
-    if (tableInfo[i].table_id != NULL)
-        values[j] = CStringGetTextDatum(tableInfo[i].table_id);
+    if (infolist[i].table_id != NULL)
+        values[j] = CStringGetTextDatum(infolist[i].table_id);
     else
         isnull[j] = true;
     j++;
 
     // table_name
-    if (tableInfo[i].table_name != NULL)
-        values[j] = CStringGetTextDatum(tableInfo[i].table_name);
+    if (infolist[i].table_name != NULL)
+        values[j] = CStringGetTextDatum(infolist[i].table_name);
     else
         isnull[j] = true;
     j++;
 
     // table_type
-    if (tableInfo[i].table_type != NULL)
-        values[j] = CStringGetTextDatum(tableInfo[i].table_type);
+    if (infolist[i].table_type != NULL)
+        values[j] = CStringGetTextDatum(infolist[i].table_type);
     else
         isnull[j] = true;
     j++;
 
     // relation_type
-    if (tableInfo[i].relation_type != NULL)
-        values[j] = CStringGetTextDatum(tableInfo[i].relation_type);
+    if (infolist[i].relation_type != NULL)
+        values[j] = CStringGetTextDatum(infolist[i].relation_type);
     else
         isnull[j] = true;
     j++;
 
     // namespace_id
-    if (tableInfo[i].namespace_id != NULL)
-        values[j] = CStringGetTextDatum(tableInfo[i].namespace_id);
+    if (infolist[i].namespace_.id != NULL)
+        values[j] = CStringGetTextDatum(infolist[i].namespace_.id);
     else
         isnull[j] = true;
     j++;
 
     // namespace_name
-    if (tableInfo[i].namespace_name != NULL)
-        values[j] = CStringGetTextDatum(tableInfo[i].namespace_name);
+    if (infolist[i].namespace_.name != NULL)
+        values[j] = CStringGetTextDatum(infolist[i].namespace_.name);
     else
         isnull[j] = true;
     j++;
 
     //database_type 
-    if (tableInfo[i].database_type != NULL)
-        values[j] = CStringGetTextDatum(tableInfo[i].database_type);
+    if (infolist[i].namespace_.database_type != NULL)
+        values[j] = CStringGetTextDatum(infolist[i].namespace_.database_type);
     else
         isnull[j] = true;
     j++;
 
     // pgschema_name
-    if (tableInfo[i].pgschema_name != NULL)
-        values[j] = CStringGetTextDatum(tableInfo[i].pgschema_name);
+    if (infolist[i].pgschema_name != NULL)
+        values[j] = CStringGetTextDatum(infolist[i].pgschema_name);
     else
         isnull[j] = true;
     j++;
 
     // colocated
-    values[j++] = BoolGetDatum(tableInfo[i].colocated);
+    values[j++] = BoolGetDatum(infolist[i].colocated_info.colocated);
 
     // parent_table_id
-    if (tableInfo[i].parent_table_id != NULL)
-        values[j] = CStringGetTextDatum(tableInfo[i].parent_table_id);
+    if (infolist[i].colocated_info.parent_table_id != NULL)
+        values[j] = CStringGetTextDatum(infolist[i].colocated_info.parent_table_id);
     else
         isnull[j] = true;
 
