@@ -1271,7 +1271,8 @@ create_index_path(PlannerInfo *root,
 	pathnode->indexqualcols = indexqualcols;
 	pathnode->indexorderbys = indexorderbys;
 	pathnode->indexorderbycols = indexorderbycols;
-	pathnode->indexscandir = indexscandir;
+	pathnode->indexscandir = rel->is_yb_relation && pathkeys == NIL ?
+		NoMovementScanDirection : indexscandir;
 
 	if (IsYugaByteEnabled() &&
 		yb_enable_base_scans_cost_model &&
