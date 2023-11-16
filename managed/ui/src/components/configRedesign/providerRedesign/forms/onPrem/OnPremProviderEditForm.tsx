@@ -4,6 +4,7 @@ import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { array, mixed, object, string } from 'yup';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { toast } from 'react-toastify';
+import { useQuery } from 'react-query';
 
 import { KeyPairManagement, NTPSetupType, ProviderCode } from '../../constants';
 import { NTP_SERVER_REGEX } from '../constants';
@@ -29,6 +30,7 @@ import {
   deleteItem,
   editItem,
   generateLowerCaseAlphanumericId,
+  getIsFieldDisabled,
   getIsFormDisabled,
   readFileAsText
 } from '../utils';
@@ -38,11 +40,17 @@ import {
   findExistingZone,
   getDeletedRegions,
   getDeletedZones,
+  getInUseAzs,
   getLatestAccessKey,
-  getNtpSetupType
+  getNtpSetupType,
+  getRegionToInUseAz
 } from '../../utils';
 import { VersionWarningBanner } from '../components/VersionWarningBanner';
 import { getOnPremLocationOption } from '../configureRegion/utils';
+import { UniverseItem } from '../../providerView/providerDetails/UniverseTable';
+import { api, runtimeConfigQueryKey } from '../../../../../redesign/helpers/api';
+import { YBErrorIndicator, YBLoading } from '../../../../common/indicators';
+import { RuntimeConfigKey } from '../../../../../redesign/helpers/constants';
 
 import {
   OnPremAvailabilityZone,
@@ -57,11 +65,11 @@ import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUs
 
 interface OnPremProviderEditFormProps {
   editProvider: EditProvider;
-  isProviderInUse: boolean;
+  linkedUniverses: UniverseItem[];
   providerConfig: OnPremProvider;
 }
 
-interface OnPremProviderEditFormFieldValues {
+export interface OnPremProviderEditFormFieldValues {
   dbNodePublicInternetAccess: boolean;
   editSSHKeypair: boolean;
   installNodeExporter: boolean;
@@ -110,7 +118,7 @@ const FORM_NAME = 'OnPremProviderEditForm';
 
 export const OnPremProviderEditForm = ({
   editProvider,
-  isProviderInUse,
+  linkedUniverses,
   providerConfig
 }: OnPremProviderEditFormProps) => {
   const [isRegionFormModalOpen, setIsRegionFormModalOpen] = useState<boolean>(false);
@@ -123,6 +131,21 @@ export const OnPremProviderEditForm = ({
     defaultValues: defaultValues,
     resolver: yupResolver(VALIDATION_SCHEMA)
   });
+
+  const customerUUID = localStorage.getItem('customerId') ?? '';
+  const customerRuntimeConfigQuery = useQuery(
+    runtimeConfigQueryKey.customerScope(customerUUID),
+    () => api.fetchRuntimeConfigs(customerUUID, true)
+  );
+
+  if (customerRuntimeConfigQuery.isError) {
+    return (
+      <YBErrorIndicator message="Error fetching runtime configurations for current customer." />
+    );
+  }
+  if (customerRuntimeConfigQuery.isLoading || customerRuntimeConfigQuery.isIdle) {
+    return <YBLoading />;
+  }
 
   const onFormSubmit: SubmitHandler<OnPremProviderEditFormFieldValues> = async (formValues) => {
     if (formValues.ntpSetupType === NTPSetupType.SPECIFIED && !formValues.ntpServers.length) {
@@ -186,7 +209,20 @@ export const OnPremProviderEditForm = ({
   const editSSHKeypair = formMethods.watch('editSSHKeypair', defaultValues.editSSHKeypair);
   const latestAccessKey = getLatestAccessKey(providerConfig.allAccessKeys);
   const existingRegions = providerConfig.regions.map((region) => region.code);
-  const isFormDisabled = getIsFormDisabled(formMethods.formState, isProviderInUse, providerConfig);
+  const runtimeConfigEntries = customerRuntimeConfigQuery.data.configEntries ?? [];
+  /**
+   * In use zones for selected region.
+   */
+  const inUseZones = getInUseAzs(providerConfig.uuid, linkedUniverses, regionSelection?.code);
+  const isEditInUseProviderEnabled = runtimeConfigEntries.some(
+    (config: any) =>
+      config.key === RuntimeConfigKey.EDIT_IN_USE_PORIVDER_UI_FEATURE_FLAG &&
+      config.value === 'true'
+  );
+  const isProviderInUse = linkedUniverses.length > 0;
+  const isFormDisabled =
+    (!isEditInUseProviderEnabled && isProviderInUse) ||
+    getIsFormDisabled(formMethods.formState, providerConfig);
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
@@ -201,7 +237,12 @@ export const OnPremProviderEditForm = ({
               control={formMethods.control}
               name="providerName"
               fullWidth
-              disabled={isFormDisabled}
+              disabled={getIsFieldDisabled(
+                ProviderCode.KUBERNETES,
+                'providerName',
+                isFormDisabled,
+                isProviderInUse
+              )}
             />
           </FormField>
           <Box width="100%" display="flex" flexDirection="column" gridGap="32px">
@@ -219,7 +260,12 @@ export const OnPremProviderEditForm = ({
                       btnClass="btn btn-default"
                       btnType="button"
                       onClick={showAddRegionFormModal}
-                      disabled={isFormDisabled}
+                      disabled={getIsFieldDisabled(
+                        ProviderCode.KUBERNETES,
+                        'regions',
+                        isFormDisabled,
+                        isProviderInUse
+                      )}
                       data-testid={`${FORM_NAME}-AddRegionButton`}
                     />
                   </RbacValidator>
@@ -228,15 +274,22 @@ export const OnPremProviderEditForm = ({
             >
               <RegionList
                 providerCode={ProviderCode.ON_PREM}
+                providerUuid={providerConfig.uuid}
                 regions={regions}
                 existingRegions={existingRegions}
                 setRegionSelection={setRegionSelection}
                 showAddRegionFormModal={showAddRegionFormModal}
                 showEditRegionFormModal={showEditRegionFormModal}
                 showDeleteRegionModal={showDeleteRegionModal}
-                disabled={isFormDisabled}
+                disabled={getIsFieldDisabled(
+                  ProviderCode.KUBERNETES,
+                  'regions',
+                  isFormDisabled,
+                  isProviderInUse
+                )}
                 isError={!!formMethods.formState.errors.regions}
-                isProviderInUse={isProviderInUse}
+                linkedUniverses={linkedUniverses}
+                isEditInUseProviderEnabled={isEditInUseProviderEnabled}
               />
               {formMethods.formState.errors.regions?.message ? (
                 <FormHelperText error={true}>
@@ -250,8 +303,13 @@ export const OnPremProviderEditForm = ({
                 <YBInputField
                   control={formMethods.control}
                   name="sshUser"
+                  disabled={getIsFieldDisabled(
+                    ProviderCode.KUBERNETES,
+                    'sshUser',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
                   fullWidth
-                  disabled={isFormDisabled}
                 />
               </FormField>
               <FormField>
@@ -261,8 +319,13 @@ export const OnPremProviderEditForm = ({
                   name="sshPort"
                   type="number"
                   inputProps={{ min: 1, max: 65535 }}
+                  disabled={getIsFieldDisabled(
+                    ProviderCode.KUBERNETES,
+                    'sshPort',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
                   fullWidth
-                  disabled={isFormDisabled}
                 />
               </FormField>
               <FormField>
@@ -278,7 +341,12 @@ export const OnPremProviderEditForm = ({
                 <YBToggleField
                   name="editSSHKeypair"
                   control={formMethods.control}
-                  disabled={isFormDisabled}
+                  disabled={getIsFieldDisabled(
+                    ProviderCode.KUBERNETES,
+                    'editSSHKeypair',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
                 />
               </FormField>
               {editSSHKeypair && (
@@ -288,7 +356,12 @@ export const OnPremProviderEditForm = ({
                     <YBInputField
                       control={formMethods.control}
                       name="sshKeypairName"
-                      disabled={isFormDisabled}
+                      disabled={getIsFieldDisabled(
+                        ProviderCode.KUBERNETES,
+                        'sshKeypairName',
+                        isFormDisabled,
+                        isProviderInUse
+                      )}
                       fullWidth
                     />
                   </FormField>
@@ -300,7 +373,12 @@ export const OnPremProviderEditForm = ({
                       actionButtonText="Upload SSH Key PEM File"
                       multipleFiles={false}
                       showHelpText={false}
-                      disabled={isFormDisabled}
+                      disabled={getIsFieldDisabled(
+                        ProviderCode.KUBERNETES,
+                        'sshPrivateKeyContent',
+                        isFormDisabled,
+                        isProviderInUse
+                      )}
                     />
                   </FormField>
                 </>
@@ -317,7 +395,12 @@ export const OnPremProviderEditForm = ({
                 <YBToggleField
                   name="dbNodePublicInternetAccess"
                   control={formMethods.control}
-                  disabled={isFormDisabled}
+                  disabled={getIsFieldDisabled(
+                    ProviderCode.KUBERNETES,
+                    'dbNodePublicInternetAccess',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
                 />
               </FormField>
               <FormField>
@@ -330,7 +413,12 @@ export const OnPremProviderEditForm = ({
                 <YBToggleField
                   name="skipProvisioning"
                   control={formMethods.control}
-                  disabled={isFormDisabled}
+                  disabled={getIsFieldDisabled(
+                    ProviderCode.KUBERNETES,
+                    'skipProvisioning',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
                 />
               </FormField>
               <FormField>
@@ -339,7 +427,12 @@ export const OnPremProviderEditForm = ({
                   control={formMethods.control}
                   name="ybHomeDir"
                   fullWidth
-                  disabled={isFormDisabled}
+                  disabled={getIsFieldDisabled(
+                    ProviderCode.KUBERNETES,
+                    'ybHomeDir',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
                 />
               </FormField>
               <FormField>
@@ -347,7 +440,12 @@ export const OnPremProviderEditForm = ({
                 <YBToggleField
                   name="installNodeExporter"
                   control={formMethods.control}
-                  disabled={isFormDisabled}
+                  disabled={getIsFieldDisabled(
+                    ProviderCode.KUBERNETES,
+                    'installNodeExporter',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
                 />
               </FormField>
               {installNodeExporter && (
@@ -357,7 +455,12 @@ export const OnPremProviderEditForm = ({
                     control={formMethods.control}
                     name="nodeExporterUser"
                     fullWidth
-                    disabled={isFormDisabled}
+                    disabled={getIsFieldDisabled(
+                      ProviderCode.KUBERNETES,
+                      'nodeExporterUser',
+                      isFormDisabled,
+                      isProviderInUse
+                    )}
                   />
                 </FormField>
               )}
@@ -368,12 +471,25 @@ export const OnPremProviderEditForm = ({
                   name="nodeExporterPort"
                   type="number"
                   fullWidth
-                  disabled={isFormDisabled}
+                  disabled={getIsFieldDisabled(
+                    ProviderCode.KUBERNETES,
+                    'nodeExporterPort',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
                 />
               </FormField>
               <FormField>
                 <FieldLabel>NTP Setup</FieldLabel>
-                <NTPConfigField isDisabled={isFormDisabled} providerCode={ProviderCode.ON_PREM} />
+                <NTPConfigField
+                  isDisabled={getIsFieldDisabled(
+                    ProviderCode.KUBERNETES,
+                    'ntpServers',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
+                  providerCode={ProviderCode.ON_PREM}
+                />
               </FormField>
             </FieldGroup>
             {(formMethods.formState.isValidating || formMethods.formState.isSubmitting) && (
@@ -410,6 +526,7 @@ export const OnPremProviderEditForm = ({
         <ConfigureOnPremRegionModal
           configuredRegions={regions}
           isProviderFormDisabled={isFormDisabled}
+          inUseZones={inUseZones}
           onClose={hideRegionFormModal}
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}
@@ -478,11 +595,25 @@ const constructProviderPayload = async (
     providerConfig.allAccessKeys
   );
 
+  const {
+    airGapInstall,
+    cloudInfo,
+    installNodeExporter,
+    ntpServers,
+    passwordlessSudoAccess,
+    provisionInstanceScript,
+    setUpChrony,
+    skipProvisioning,
+    sshPort,
+    sshUser,
+    ...unexposedProviderDetailFields
+  } = providerConfig.details;
   return {
     code: ProviderCode.ON_PREM,
     name: formValues.providerName,
     ...allAccessKeysPayload,
     details: {
+      ...unexposedProviderDetailFields,
       airGapInstall: !formValues.dbNodePublicInternetAccess,
       cloudInfo: {
         [ProviderCode.ON_PREM]: {
@@ -525,9 +656,9 @@ const constructProviderPayload = async (
               return {
                 ...(existingZone
                   ? {
-                    active: existingZone.active,
-                    uuid: existingZone.uuid
-                  }
+                      active: existingZone.active,
+                      uuid: existingZone.uuid
+                    }
                   : { active: true }),
                 code: azFormValues.code,
                 name: azFormValues.code

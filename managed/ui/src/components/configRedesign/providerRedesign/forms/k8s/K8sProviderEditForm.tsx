@@ -46,6 +46,7 @@ import {
   deleteItem,
   editItem,
   generateLowerCaseAlphanumericId,
+  getIsFieldDisabled,
   getIsFormDisabled,
   readFileAsText
 } from '../utils';
@@ -56,12 +57,18 @@ import {
   getCertIssuerType,
   getDeletedRegions,
   getDeletedZones,
+  getInUseAzs,
   getKubernetesProviderType
 } from '../../utils';
 import { VersionWarningBanner } from '../components/VersionWarningBanner';
-import { api, suggestedKubernetesConfigQueryKey } from '../../../../../redesign/helpers/api';
-import { YBLoading } from '../../../../common/indicators';
+import {
+  api,
+  runtimeConfigQueryKey,
+  suggestedKubernetesConfigQueryKey
+} from '../../../../../redesign/helpers/api';
+import { YBErrorIndicator, YBLoading } from '../../../../common/indicators';
 import { adaptSuggestedKubernetesConfig } from './utils';
+import { UniverseItem } from '../../providerView/providerDetails/UniverseTable';
 
 import {
   K8sAvailabilityZone,
@@ -74,10 +81,11 @@ import {
 } from '../../types';
 import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { RuntimeConfigKey } from '../../../../../redesign/helpers/constants';
 
 interface K8sProviderEditFormProps {
   editProvider: EditProvider;
-  isProviderInUse: boolean;
+  linkedUniverses: UniverseItem[];
   providerConfig: K8sProvider;
 }
 
@@ -121,7 +129,7 @@ const FORM_NAME = 'K8sProviderEditForm';
 
 export const K8sProviderEditForm = ({
   editProvider,
-  isProviderInUse,
+  linkedUniverses,
   providerConfig
 }: K8sProviderEditFormProps) => {
   const [isRegionFormModalOpen, setIsRegionFormModalOpen] = useState<boolean>(false);
@@ -149,9 +157,22 @@ export const K8sProviderEditForm = ({
     }
   );
 
+  const customerUUID = localStorage.getItem('customerId') ?? '';
+  const customerRuntimeConfigQuery = useQuery(
+    runtimeConfigQueryKey.customerScope(customerUUID),
+    () => api.fetchRuntimeConfigs(customerUUID, true)
+  );
+
+  if (customerRuntimeConfigQuery.isError) {
+    return (
+      <YBErrorIndicator message="Error fetching runtime configurations for current customer." />
+    );
+  }
   if (
-    enableSuggestedConfigFeature &&
-    (suggestedKubernetesConfigQuery.isLoading || suggestedKubernetesConfigQuery.isIdle)
+    (enableSuggestedConfigFeature &&
+      (suggestedKubernetesConfigQuery.isLoading || suggestedKubernetesConfigQuery.isIdle)) ||
+    customerRuntimeConfigQuery.isLoading ||
+    customerRuntimeConfigQuery.isIdle
   ) {
     return <YBLoading />;
   }
@@ -240,7 +261,20 @@ export const K8sProviderEditForm = ({
     ...KUBERNETES_PROVIDER_OPTIONS.k8sDeprecated
   ] as const;
   const existingRegions = providerConfig.regions.map((region) => region.code);
-  const isFormDisabled = getIsFormDisabled(formMethods.formState, isProviderInUse, providerConfig);
+  const runtimeConfigEntries = customerRuntimeConfigQuery.data.configEntries ?? [];
+  /**
+   * In use zones for selected region.
+   */
+  const inUseZones = getInUseAzs(providerConfig.uuid, linkedUniverses, regionSelection?.code);
+  const isEditInUseProviderEnabled = runtimeConfigEntries.some(
+    (config: any) =>
+      config.key === RuntimeConfigKey.EDIT_IN_USE_PORIVDER_UI_FEATURE_FLAG &&
+      config.value === 'true'
+  );
+  const isProviderInUse = linkedUniverses.length > 0;
+  const isFormDisabled =
+    (!isEditInUseProviderEnabled && isProviderInUse) ||
+    getIsFormDisabled(formMethods.formState, providerConfig);
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
@@ -257,7 +291,7 @@ export const K8sProviderEditForm = ({
                   btnClass="btn btn-default"
                   btnType="button"
                   onClick={() => applySuggestedConfig()}
-                  disabled={isFormDisabled || !suggestedKubernetesConfig}
+                  disabled={isFormDisabled || !suggestedKubernetesConfig || isProviderInUse}
                   data-testid={`${FORM_NAME}-UseSuggestedConfigButton`}
                 />
               )}
@@ -269,7 +303,12 @@ export const K8sProviderEditForm = ({
               control={formMethods.control}
               name="providerName"
               fullWidth
-              disabled={isFormDisabled}
+              disabled={getIsFieldDisabled(
+                ProviderCode.KUBERNETES,
+                'providerName',
+                isFormDisabled,
+                isProviderInUse
+              )}
             />
           </FormField>
           <Box width="100%" display="flex" flexDirection="column" gridGap="32px">
@@ -281,7 +320,12 @@ export const K8sProviderEditForm = ({
                   name="kubernetesProvider"
                   options={kubernetesProviderTypeOptions}
                   defaultValue={defaultValues.kubernetesProvider}
-                  isDisabled={isFormDisabled}
+                  isDisabled={getIsFieldDisabled(
+                    ProviderCode.KUBERNETES,
+                    'kubernetesProvider',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
                 />
               </FormField>
               <FormField>
@@ -295,7 +339,12 @@ export const K8sProviderEditForm = ({
                       : QUAY_IMAGE_REGISTRY
                   }
                   fullWidth
-                  disabled={isFormDisabled}
+                  disabled={getIsFieldDisabled(
+                    ProviderCode.KUBERNETES,
+                    'kubernetesImageRegistry',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
                 />
               </FormField>
               <FormField>
@@ -311,7 +360,12 @@ export const K8sProviderEditForm = ({
                 <YBToggleField
                   name="editPullSecretContent"
                   control={formMethods.control}
-                  disabled={isFormDisabled}
+                  disabled={getIsFieldDisabled(
+                    ProviderCode.KUBERNETES,
+                    'editPullSecretContent',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
                 />
               </FormField>
               {editPullSecretContent && (
@@ -328,7 +382,12 @@ export const K8sProviderEditForm = ({
                     actionButtonText="Upload Pull Secret File"
                     multipleFiles={false}
                     showHelpText={false}
-                    disabled={isFormDisabled}
+                    disabled={getIsFieldDisabled(
+                      ProviderCode.KUBERNETES,
+                      'kubernetesPullSecretContent',
+                      isFormDisabled,
+                      isProviderInUse
+                    )}
                   />
                 </FormField>
               )}
@@ -345,7 +404,12 @@ export const K8sProviderEditForm = ({
                 <YBToggleField
                   name="editKubeConfigContent"
                   control={formMethods.control}
-                  disabled={isFormDisabled}
+                  disabled={getIsFieldDisabled(
+                    ProviderCode.KUBERNETES,
+                    'editKubeConfigContent',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
                 />
               </FormField>
               {editKubeConfigContent && (
@@ -357,7 +421,12 @@ export const K8sProviderEditForm = ({
                     actionButtonText="Upload Kube Config File"
                     multipleFiles={false}
                     showHelpText={false}
-                    disabled={isFormDisabled}
+                    disabled={getIsFieldDisabled(
+                      ProviderCode.KUBERNETES,
+                      'kubeConfigContent',
+                      isFormDisabled,
+                      isProviderInUse
+                    )}
                   />
                 </FormField>
               )}
@@ -376,7 +445,12 @@ export const K8sProviderEditForm = ({
                       btnClass="btn btn-default"
                       btnType="button"
                       onClick={showAddRegionFormModal}
-                      disabled={isFormDisabled}
+                      disabled={getIsFieldDisabled(
+                        ProviderCode.KUBERNETES,
+                        'regions',
+                        isFormDisabled,
+                        isProviderInUse
+                      )}
                       data-testid={`${FORM_NAME}-AddRegionButton`}
                     />
                   </RbacValidator>
@@ -385,15 +459,22 @@ export const K8sProviderEditForm = ({
             >
               <RegionList
                 providerCode={ProviderCode.KUBERNETES}
+                providerUuid={providerConfig.uuid}
                 regions={regions}
                 existingRegions={existingRegions}
                 setRegionSelection={setRegionSelection}
                 showAddRegionFormModal={showAddRegionFormModal}
                 showEditRegionFormModal={showEditRegionFormModal}
                 showDeleteRegionModal={showDeleteRegionModal}
-                disabled={isFormDisabled}
+                disabled={getIsFieldDisabled(
+                  ProviderCode.KUBERNETES,
+                  'regions',
+                  isFormDisabled,
+                  isProviderInUse
+                )}
                 isError={!!formMethods.formState.errors.regions}
-                isProviderInUse={isProviderInUse}
+                linkedUniverses={linkedUniverses}
+                isEditInUseProviderEnabled={isEditInUseProviderEnabled}
               />
               {formMethods.formState.errors.regions?.message && (
                 <FormHelperText error={true}>
@@ -434,7 +515,13 @@ export const K8sProviderEditForm = ({
       {isRegionFormModalOpen && (
         <ConfigureK8sRegionModal
           configuredRegions={regions}
-          isProviderFormDisabled={isFormDisabled}
+          isProviderFormDisabled={getIsFieldDisabled(
+            ProviderCode.KUBERNETES,
+            'regions',
+            isFormDisabled,
+            isProviderInUse
+          )}
+          inUseZones={inUseZones}
           kubernetesProvider={kubernetesProvider.value}
           onClose={hideRegionFormModal}
           onRegionSubmit={onRegionFormSubmit}
@@ -556,21 +643,21 @@ const constructProviderPayload = async (
                 cloudInfo: {
                   [ProviderCode.KUBERNETES]: {
                     ...(!existingZone?.details?.cloudInfo.kubernetes.kubeConfig ||
-                      azFormValues.editKubeConfigContent
+                    azFormValues.editKubeConfigContent
                       ? {
-                        ...(azFormValues.kubeConfigContent && {
-                          kubeConfigContent:
-                            (await readFileAsText(azFormValues.kubeConfigContent)) ?? '',
-                          ...(azFormValues.kubeConfigContent.name && {
-                            kubeConfigName: azFormValues.kubeConfigContent.name
+                          ...(azFormValues.kubeConfigContent && {
+                            kubeConfigContent:
+                              (await readFileAsText(azFormValues.kubeConfigContent)) ?? '',
+                            ...(azFormValues.kubeConfigContent.name && {
+                              kubeConfigName: azFormValues.kubeConfigContent.name
+                            })
                           })
-                        })
-                      }
+                        }
                       : {
-                        ...(existingZone?.details.cloudInfo.kubernetes.kubeConfig && {
-                          kubeConfig: existingZone?.details.cloudInfo.kubernetes.kubeConfig
-                        })
-                      }),
+                          ...(existingZone?.details.cloudInfo.kubernetes.kubeConfig && {
+                            kubeConfig: existingZone?.details.cloudInfo.kubernetes.kubeConfig
+                          })
+                        }),
                     ...(azFormValues.kubeDomain && { kubeDomain: azFormValues.kubeDomain }),
                     ...(azFormValues.kubeNamespace && {
                       kubeNamespace: azFormValues.kubeNamespace
@@ -623,48 +710,50 @@ const constructProviderPayload = async (
     kubernetesPullSecret: existingKubernetesPullSecret,
     kubernetesPullSecretName: existingKubernetesPullSecretName
   } = providerConfig?.details.cloudInfo.kubernetes;
+  const { airGapInstall, cloudInfo, ...unexposedProviderDetailFields } = providerConfig.details;
   return {
     code: ProviderCode.KUBERNETES,
     name: formValues.providerName,
     details: {
+      ...unexposedProviderDetailFields,
       airGapInstall: !formValues.dbNodePublicInternetAccess,
       cloudInfo: {
         [ProviderCode.KUBERNETES]: {
           ...(formValues.editKubeConfigContent && formValues.kubeConfigContent
             ? {
-              kubeConfigContent: kubeConfigContent,
-              ...(formValues.kubeConfigContent.name && {
-                kubeConfigName: formValues.kubeConfigContent.name
-              })
-            }
+                kubeConfigContent: kubeConfigContent,
+                ...(formValues.kubeConfigContent.name && {
+                  kubeConfigName: formValues.kubeConfigContent.name
+                })
+              }
             : {
-              ...(providerConfig?.details.cloudInfo.kubernetes.kubeConfig && {
-                kubeConfig: providerConfig?.details.cloudInfo.kubernetes.kubeConfig
-              })
-            }),
+                ...(providerConfig?.details.cloudInfo.kubernetes.kubeConfig && {
+                  kubeConfig: providerConfig?.details.cloudInfo.kubernetes.kubeConfig
+                })
+              }),
           kubernetesImageRegistry: formValues.kubernetesImageRegistry,
           kubernetesProvider: formValues.kubernetesProvider.value,
           ...(formValues.editPullSecretContent && formValues.kubernetesPullSecretContent
             ? {
-              kubernetesPullSecretContent: kubernetesPullSecretContent,
-              ...(formValues.kubernetesPullSecretContent.name && {
-                kubernetesPullSecretName: formValues.kubernetesPullSecretContent.name
-              }),
-              ...(kubernetesImagePullSecretName && {
-                kubernetesImagePullSecretName: kubernetesImagePullSecretName
-              })
-            }
+                kubernetesPullSecretContent: kubernetesPullSecretContent,
+                ...(formValues.kubernetesPullSecretContent.name && {
+                  kubernetesPullSecretName: formValues.kubernetesPullSecretContent.name
+                }),
+                ...(kubernetesImagePullSecretName && {
+                  kubernetesImagePullSecretName: kubernetesImagePullSecretName
+                })
+              }
             : {
-              ...(existingKubernetesPullSecret && {
-                kubernetesPullSecret: existingKubernetesPullSecret
-              }),
-              ...(existingKubernetesPullSecretName && {
-                kubernetesPullSecretName: existingKubernetesPullSecretName
-              }),
-              ...(existingKubernetesImagePullSecretName && {
-                kubernetesImagePullSecretName: existingKubernetesImagePullSecretName
+                ...(existingKubernetesPullSecret && {
+                  kubernetesPullSecret: existingKubernetesPullSecret
+                }),
+                ...(existingKubernetesPullSecretName && {
+                  kubernetesPullSecretName: existingKubernetesPullSecretName
+                }),
+                ...(existingKubernetesImagePullSecretName && {
+                  kubernetesImagePullSecretName: existingKubernetesImagePullSecretName
+                })
               })
-            })
         }
       }
     },

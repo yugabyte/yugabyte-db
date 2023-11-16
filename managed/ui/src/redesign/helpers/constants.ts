@@ -35,6 +35,7 @@ export type SortOrder = typeof SortOrder[keyof typeof SortOrder];
 
 export const RuntimeConfigKey = {
   PROVIDER_REDESIGN_UI_FEATURE_FLAG: 'yb.ui.feature_flags.provider_redesign',
+  EDIT_IN_USE_PORIVDER_UI_FEATURE_FLAG: 'yb.ui.feature_flags.edit_in_use_provider',
   XCLUSTER_TRANSACTIONAL_ATOMICITY_FEATURE_FLAG: 'yb.xcluster.transactional.enabled',
   DISASTER_RECOVERY_UI_FEATURE_FLAG: 'yb.ui.feature_flags.disaster_recovery',
   DISASTER_RECOVERY_FEATURE_FLAG: 'yb.xcluster.dr.enabled',

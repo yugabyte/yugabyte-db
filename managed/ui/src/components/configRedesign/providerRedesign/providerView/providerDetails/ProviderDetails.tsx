@@ -113,10 +113,7 @@ export const ProviderDetails = ({ linkedUniverses, providerConfig }: ProviderDet
             />
           </TabPanel>
           <TabPanel classes={{ root: styles.tabPanel }} value={ProviderDetailsTab.CONFIG_DETAILS}>
-            <ProviderEditView
-              providerConfig={providerConfig}
-              isProviderInUse={linkedUniverses.length > 0}
-            />
+            <ProviderEditView providerConfig={providerConfig} linkedUniverses={linkedUniverses} />
           </TabPanel>
           <TabPanel classes={{ root: styles.tabPanel }} value={ProviderDetailsTab.UNIVERSES}>
             <UniverseTable linkedUniverses={linkedUniverses} />
