@@ -116,6 +116,8 @@
       lineinfile:
         dest: "{{ yb_home_dir }}/.bash_profile"
         line: ". {{ yb_home_dir }}/.bashrc"
+        owner: "{{ user_name }}"
+        group: "{{ user_name }}"
         create: yes
         state: present
 
@@ -123,6 +125,8 @@
       lineinfile:
         dest: "{{ yb_home_dir }}/.bashrc"
         line: "export XDG_RUNTIME_DIR=/run/user/{{ output.stdout }}"
+        owner: "{{ user_name }}"
+        group: "{{ user_name }}"
         create: yes
         state: present
 
