@@ -2727,12 +2727,7 @@ void PgLibPqTest::AddTSToLoadBalanceMultipleInstances(
       },
       timeout,
       "wait for load balancer to be active"));
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        return client->IsLoadBalancerIdle();
-      },
-      timeout,
-      "wait for load balancer to be idle"));
+  ASSERT_OK(cluster_->WaitForLoadBalancerToBecomeIdle(client, timeout));
 }
 
 void PgLibPqTest::VerifyLoadBalance(const std::map<std::string, int>& ts_loads) {
@@ -2755,11 +2750,12 @@ void PgLibPqTest::VerifyLoadBalance(const std::map<std::string, int>& ts_loads) 
 void PgLibPqTest::TestLoadBalanceMultipleColocatedDB(
     GetParentTableTabletLocation getParentTableTabletLocation) {
   constexpr int num_databases = 3;
-  const auto timeout = 60s;
+  const auto timeout = 60s * kTimeMultiplier;
   const std::string database_prefix = "co";
   std::map<std::string, int> ts_loads;
-
   auto client = ASSERT_RESULT(cluster_->CreateClient());
+  // Stabilize the load balancer.
+  ASSERT_OK(cluster_->WaitForLoadBalancerToBecomeIdle(client, timeout));
   auto conn = ASSERT_RESULT(Connect());
 
   for (int i = 0; i < num_databases; ++i) {
@@ -2794,12 +2790,14 @@ TEST_F(PgLibPqTest, LoadBalanceMultipleColocatedDB) {
 
 TEST_F(PgLibPqTest, LoadBalanceMultipleTablegroups) {
   constexpr int num_databases = 3;
-  const auto timeout = 60s;
+  const auto timeout = 60s * kTimeMultiplier;
   const std::string database_prefix = "test_db";
   const std::string tablegroup_prefix = "tg";
   std::map<std::string, int> ts_loads;
 
   auto client = ASSERT_RESULT(cluster_->CreateClient());
+  // Stabilize the load balancer.
+  ASSERT_OK(cluster_->WaitForLoadBalancerToBecomeIdle(client, timeout));
   auto conn = ASSERT_RESULT(Connect());
 
   for (int i = 0; i < num_databases; ++i) {
