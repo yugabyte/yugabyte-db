@@ -152,12 +152,12 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
     }
 
     // Calculate cpu usage and available cpu values
-    const cpuAcc = data["links"].slice(0, -1).reduce((acc, curr) => acc + curr.value, 0);
-    const cpuUsage = Math.ceil(Math.min(cpuAcc, 100) * totalCores / 100);
+    const totalCpuUsage = data["links"].slice(0, -1).reduce((acc, curr) => acc + curr.value, 0);
+    const cpuUsage = Math.ceil((Math.min(totalCpuUsage, 100) / (nodeList?.length ?? 1)) * totalCores / 100);
     const cpuAvailable = totalCores - cpuUsage;
 
     // Update data values as per the calculation performed
-    data["links"][data["links"].length - 1].value = Math.round(cpuAcc / cpuUsage * cpuAvailable);
+    data["links"][data["links"].length - 1].value = Math.round(totalCpuUsage / cpuUsage * cpuAvailable);
     data["nodes"][0].name = t('clusterDetail.overview.usedCores', { usage: cpuUsage });
     data["nodes"][1].name = t('clusterDetail.overview.availableCores', { available: cpuAvailable });
 
