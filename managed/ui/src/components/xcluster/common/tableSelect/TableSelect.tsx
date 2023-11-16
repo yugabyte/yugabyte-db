@@ -28,9 +28,9 @@ import { hasSubstringMatch } from '../../../queries/helpers/queriesHelper';
 import {
   adaptTableUUID,
   formatBytes,
-  getAllXClusterConfigs,
   getSharedXClusterConfigs,
-  tableSort
+  tableSort,
+  hasLinkedXClusterConfig
 } from '../../ReplicationUtils';
 import {
   TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD,
@@ -431,11 +431,11 @@ export const TableSelect = (props: TableSelectProps) => {
   );
   const ybSoftwareVersion = getPrimaryCluster(sourceUniverseQuery.data.universeDetails.clusters)
     ?.userIntent.ybSoftwareVersion;
-  const hasExisitingReplicationConfig =
-    [
-      ...getAllXClusterConfigs(sourceUniverseQuery.data),
-      ...getAllXClusterConfigs(targetUniverseQuery.data)
-    ].length > 0;
+
+  const participantsHaveLinkedXClusterConfig = hasLinkedXClusterConfig([
+    sourceUniverseQuery.data,
+    targetUniverseQuery.data
+  ]);
   const isTransactionalAtomicitySupported =
     !!ybSoftwareVersion &&
     compareYBSoftwareVersions(
@@ -443,7 +443,7 @@ export const TableSelect = (props: TableSelectProps) => {
       ybSoftwareVersion,
       true
     ) < 0 &&
-    !hasExisitingReplicationConfig;
+    !participantsHaveLinkedXClusterConfig;
   return (
     <>
       {isTransactionalAtomicityEnabled &&

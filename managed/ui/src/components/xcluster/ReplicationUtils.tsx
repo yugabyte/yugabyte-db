@@ -360,10 +360,16 @@ export const getEnabledConfigActions = (
 /**
  * Returns the UUIDs for all xCluster configs associated with the provided universe.
  */
-export const getAllXClusterConfigs = (universe: Universe) => [
-  ...(universe.universeDetails?.xclusterInfo?.sourceXClusterConfigs ?? []),
-  ...(universe.universeDetails?.xclusterInfo?.targetXClusterConfigs ?? [])
-];
+export const getXClusterConfigUuids = (universe: Universe) => ({
+  sourceXClusterConfigs: universe.universeDetails?.xclusterInfo?.sourceXClusterConfigs ?? [],
+  targetXClusterConfigs: universe.universeDetails?.xclusterInfo?.targetXClusterConfigs ?? []
+});
+
+export const hasLinkedXClusterConfig = (universes: Universe[]) =>
+  universes.some((universe) => {
+    const { sourceXClusterConfigs, targetXClusterConfigs } = getXClusterConfigUuids(universe);
+    return sourceXClusterConfigs.length > 0 || targetXClusterConfigs.length > 0;
+  });
 
 /**
  * Returns the UUIDs for all xCluster configs with the provided source and target universe.

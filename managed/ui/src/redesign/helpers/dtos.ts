@@ -214,11 +214,13 @@ export interface UniverseDetails {
   clusterOperation?: 'CREATE' | 'EDIT' | 'DELETE';
   allowInsecure: boolean;
   backupInProgress: boolean;
+  mastersInDefaultRegion?: boolean;
   capability: 'READ_ONLY' | 'EDITS_ALLOWED';
   clusters: Cluster[];
   communicationPorts: CommunicationPorts;
   cmkArn: string;
   deviceInfo: DeviceInfo | null;
+  masterDeviceInfo: DeviceInfo | null;
   encryptionAtRestConfig: EncryptionAtRestConfig;
   extraDependencies: {
     installNodeExporter: boolean;
@@ -231,7 +233,9 @@ export interface UniverseDetails {
   nodeDetailsSet: NodeDetails[];
   nodePrefix: string;
   resetAZConfig: boolean;
-  rootCA: string | null;
+  rootCA: string;
+  clientRootCA: string;
+  rootAndClientRootCASame: boolean;
   xclusterInfo: {
     sourceRootCertDirPath: string;
     sourceXClusterConfigs: string[];
@@ -241,6 +245,9 @@ export interface UniverseDetails {
   updateInProgress: boolean;
   updateSucceeded: boolean;
   userAZSelected: boolean;
+  enableYbc: boolean;
+  updateOptions: string[];
+  useSpotInstance: boolean;
 }
 
 export type UniverseConfigure = DeepPartial<UniverseDetails>;

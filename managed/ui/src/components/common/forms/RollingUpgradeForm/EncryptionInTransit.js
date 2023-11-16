@@ -12,6 +12,8 @@ import { YBBanner, YBBannerVariant } from '../../descriptors';
 import { getAllXClusterConfigs } from '../../../xcluster/ReplicationUtils';
 import { hasNecessaryPerm } from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { hasLinkedXClusterConfig } from '../../../xcluster/ReplicationUtils';
+
 import './EncryptionInTransit.scss';
 
 const CLIENT_TO_NODE_ROTATE_MSG =
@@ -218,8 +220,7 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse, fetchCur
     });
   };
 
-  const universeHasXClusterConfig = getAllXClusterConfigs(currentUniverse.data).length > 0;
-
+  const universeHasXClusterConfig = hasLinkedXClusterConfig([currentUniverse.data]);
   const canEditEAT = hasNecessaryPerm({
     onResource: currentUniverse.data.universeDetails.universeUUID,
     ...ApiPermissionMap.MODIFY_UNIVERSE_TLS

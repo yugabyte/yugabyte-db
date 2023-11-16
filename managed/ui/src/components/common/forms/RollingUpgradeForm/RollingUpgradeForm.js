@@ -28,7 +28,7 @@ import { TASK_LONG_TIMEOUT } from '../../../tasks/constants';
 import { sortVersion } from '../../../releases';
 import { HelmOverridesModal } from '../../../universes/UniverseForm/HelmOverrides';
 import { YBBanner, YBBannerVariant } from '../../descriptors';
-import { getAllXClusterConfigs } from '../../../xcluster/ReplicationUtils';
+import { hasLinkedXClusterConfig } from '../../../xcluster/ReplicationUtils';
 
 import { hasNecessaryPerm } from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../../redesign/features/rbac/ApiAndUserPermMapping';
@@ -497,8 +497,7 @@ export default class RollingUpgradeForm extends Component {
             />
           );
         }
-        const universeHasXClusterConfig =
-          getAllXClusterConfigs(universe.currentUniverse.data).length > 0;
+        const universeHasXClusterConfig = hasLinkedXClusterConfig([universe.currentUniverse.data]);
         return (
           <YBModal
             className={getPromiseState(universe.rollingUpgrade).isError() ? 'modal-shake' : ''}
