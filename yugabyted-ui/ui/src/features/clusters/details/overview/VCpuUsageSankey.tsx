@@ -184,7 +184,7 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
         right: 225,
         bottom: 5,
       }}
-      node={<CpuSankeyNode filteredNode={filteredNode} />}
+      node={<CpuSankeyNode filteredNode={filteredNode} totalCores={totalCores} />}
       nodeWidth={4}
       nodePadding={10}
       link={<CpuSankeyLink nodeWidth={4} filteredNode={filteredNode} />}
@@ -199,7 +199,7 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
 function CpuSankeyNode(props: any) {
   const classes = useStyles();
 
-  const { x, y, width, height, index, payload, filteredNode } = props;
+  const { x, y, width, height, index, payload, filteredNode, totalCores } = props;
   const isLeftNode = index <= 1;
 
   const { isReadReplica } = payload;
@@ -241,7 +241,7 @@ function CpuSankeyNode(props: any) {
         <text
           textAnchor='end'
           x={x - 10}
-          y={y + height / 2 + width / 2 + 3}
+          y={y + height / 2 + width / 2 - 5}
           fontSize="13"
           fontWeight={500}
         >
@@ -249,6 +249,7 @@ function CpuSankeyNode(props: any) {
           <tspan dx={index === 0 ? (cpuValue < 10 ? 74 : 64) : (cpuValue < 10 ? 40 : 32)}
             fill="#000" fontWeight={700} fontSize="15">{cpuValue} </tspan>
           <tspan fill="#444" fillOpacity={1}>{cpuTextSuffix}</tspan>
+          <tspan dy={15} dx={-53} fill="#333" fontSize={10} fillOpacity={0.6}>of {totalCores} {cpuTextSuffix}</tspan>
         </text>
       }
     </Layer>
