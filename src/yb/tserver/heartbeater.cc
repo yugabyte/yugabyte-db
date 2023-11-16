@@ -463,8 +463,10 @@ Status Heartbeater::Thread::TryHeartbeat() {
 
   // Include the hybrid time of this tablet server in the heartbeat.
   auto* hybrid_clock = dynamic_cast<server::HybridClock*>(server_->Clock());
+  HybridTime heartbeat_send_time;
   if (hybrid_clock) {
-    req.set_ts_hybrid_time(hybrid_clock->Now().ToUint64());
+    heartbeat_send_time = hybrid_clock->Now();
+    req.set_ts_hybrid_time(heartbeat_send_time.ToUint64());
     // Also include the physical clock time of this tablet server in the heartbeat.
     Result<PhysicalTime> now = hybrid_clock->physical_clock()->Now();
     if (!now.ok()) {
@@ -618,9 +620,11 @@ Status Heartbeater::Thread::TryHeartbeat() {
 
   server_->UpdateXClusterSafeTime(last_hb_response_.xcluster_namespace_to_safe_time());
 
+  std::optional<AutoFlagsConfigPB> new_config;
   if (last_hb_response_.has_auto_flags_config()) {
-    RETURN_NOT_OK(server_->SetAutoFlagConfig(last_hb_response_.auto_flags_config()));
+    new_config = last_hb_response_.auto_flags_config();
   }
+  server_->HandleMasterHeartbeatResponse(heartbeat_send_time, std::move(new_config));
 
   // Update the live tserver list.
   return server_->PopulateLiveTServers(last_hb_response_);

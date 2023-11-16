@@ -29,6 +29,7 @@
 
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/tserver/heartbeater.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
@@ -46,6 +47,8 @@ DECLARE_int32(heartbeat_interval_ms);
 DECLARE_bool(TEST_disable_versioned_auto_flags);
 DECLARE_bool(enable_tablet_split_of_xcluster_replicated_tables);
 DECLARE_bool(ysql_yb_pushdown_strict_inequality);
+DECLARE_uint32(auto_flags_apply_delay_ms);
+DECLARE_bool(TEST_tserver_disable_heartbeat);
 
 // Required for tests with AutoFlags management disabled
 DISABLE_PROMOTE_ALL_AUTO_FLAGS_FOR_TEST;
@@ -60,6 +63,9 @@ using OK = Status::OK;
 const string kDisableAutoFlagsManagementFlagName = "disable_auto_flags_management";
 const string kTESTAutoFlagsInitializedFlagName = "TEST_auto_flags_initialized";
 const string kTESTAutoFlagsNewInstallFlagName = "TEST_auto_flags_new_install";
+const string kAutoFlagsApplyDelayFlagName = "auto_flags_apply_delay_ms";
+const string kDisableAutoFlagsApplyDelay = Format("--$0=0", kAutoFlagsApplyDelayFlagName);
+const string kDisableAutoFlagPromoteForNewUniverse = "--limit_auto_flag_promote_for_new_universe=0";
 const string kTrue = "true";
 const string kFalse = "false";
 const MonoDelta kTimeout = 20s * kTimeMultiplier;
@@ -177,7 +183,7 @@ Status TestPromote(
 
 }  // namespace
 
-class AutoFlagsMiniClusterTest : public YBMiniClusterTestBase<MiniCluster> {
+class AutoFlagsMiniClusterTest : public MiniClusterTestWithClient<MiniCluster> {
  protected:
   void SetUp() override {}
   void TestBody() override {}
@@ -189,7 +195,8 @@ class AutoFlagsMiniClusterTest : public YBMiniClusterTestBase<MiniCluster> {
     opts.num_tablet_servers = kNumTServers;
     opts.num_masters = kNumMasterServers;
     cluster_.reset(new MiniCluster(opts));
-    return cluster_->Start();
+    RETURN_NOT_OK(cluster_->Start());
+    return CreateClient();
   }
 
   Status ValidateConfig() {
@@ -315,19 +322,29 @@ class AutoFlagsMiniClusterTest : public YBMiniClusterTestBase<MiniCluster> {
     return ValidateConfigOnTservers(expected_config_version);
   }
 
+  Result<master::PromoteAutoFlagsResponsePB> PromoteFlags(
+      master::Master* leader_master, AutoFlagClass flag_class, bool force = false) {
+    master::PromoteAutoFlagsRequestPB req;
+    req.set_max_flag_class(ToString(flag_class));
+    req.set_promote_non_runtime_flags(true);
+    req.set_force(force);
+
+    master::PromoteAutoFlagsResponsePB resp;
+    RETURN_NOT_OK(leader_master->catalog_manager_impl()->PromoteAutoFlags(&req, &resp));
+
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+
+    return resp;
+  }
+
   auto PromoteFlagsAndValidate(
       uint32 expected_config_version, master::Master* leader_master, AutoFlagClass flag_class) {
-    master::PromoteAutoFlagsRequestPB promote_req;
-    promote_req.set_max_flag_class(ToString(flag_class));
-    promote_req.set_promote_non_runtime_flags(true);
-    promote_req.set_force(false);
-
-    master::PromoteAutoFlagsResponsePB promote_resp;
-    CHECK_OK(leader_master->catalog_manager_impl()->PromoteAutoFlags(&promote_req, &promote_resp));
-    CHECK(!promote_resp.has_error());
-    CHECK(promote_resp.has_new_config_version());
-    CHECK_EQ(promote_resp.new_config_version(), expected_config_version);
-    CHECK(promote_resp.flags_promoted());
+    auto resp = CHECK_RESULT(PromoteFlags(leader_master, flag_class, /* force */ false));
+    CHECK(resp.has_new_config_version());
+    CHECK_EQ(resp.new_config_version(), expected_config_version);
+    CHECK(resp.flags_promoted());
 
     CHECK_OK(ValidateConfigOnAllProcesses(expected_config_version));
 
@@ -499,6 +516,7 @@ TEST_F(AutoFlagsMiniClusterTest, Rollback) {
 
 TEST_F(AutoFlagsMiniClusterTest, Demote) {
   ASSERT_OK(RunSetUp());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_flags_apply_delay_ms) = 0;
   auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master();
   uint32 expected_config_version = 1;
   const auto kExternalAutoFlagName = "enable_tablet_split_of_xcluster_replicated_tables";
@@ -581,10 +599,206 @@ TEST_F(AutoFlagsMiniClusterTest, CheckMissingFlag) {
   }
   config.set_config_version(config.config_version() + 1);
 
-  auto s = auto_flags_manager->LoadFromConfig(config, ApplyNonRuntimeAutoFlags::kFalse);
+  auto s = auto_flags_manager->LoadNewConfig(config);
   ASSERT_NOK(s);
   ASSERT_TRUE(s.ToString().find("missing_flag") != std::string::npos) << s;
   ASSERT_TRUE(s.ToString().find(VersionInfo::GetShortVersionString()) != std::string::npos) << s;
+}
+
+// Make sure AutoFlags are not applied before auto_flags_apply_delay_ms
+TEST_F(AutoFlagsMiniClusterTest, HeartbeatDelay) {
+  ASSERT_OK(RunSetUp());
+  ASSERT_OK(cluster_->WaitForLoadBalancerToStabilize(kTimeout));
+
+  // Wait for initial heartbeats with full tablet reports to finish.
+  SleepFor(kTimeout);
+
+  auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master();
+  auto initial_config_version = leader_master->GetAutoFlagConfigVersion();
+
+  std::vector<tserver::TabletServer*> tservers;
+  for (auto mini_tablet_server : cluster_->mini_tablet_servers()) {
+    tservers.push_back(mini_tablet_server->server());
+  }
+
+  // Validate initial config on all tservers.
+  for (auto* tserver : tservers) {
+    const auto tserver_version = ASSERT_RESULT(tserver->ValidateAndGetAutoFlagsConfigVersion());
+    ASSERT_EQ(tserver_version, initial_config_version);
+  }
+
+  const auto heartbeat_ms = FLAGS_heartbeat_interval_ms;
+  // Disable the heartbeats and wait for inflight heartbeats to complete.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = true;
+  const auto heartbeat_sleep_ms = heartbeat_ms * 2 * kTimeMultiplier;
+
+  // Sleep out the apply delay as well.
+  const int32 apply_delay_ms = static_cast<int32>(FLAGS_auto_flags_apply_delay_ms);
+  LOG(INFO) << "Sleeping for " << apply_delay_ms << "ms";
+  SleepFor(MonoDelta::FromMilliseconds(std::max(apply_delay_ms, heartbeat_sleep_ms)));
+
+  // Make sure tservers can no longer return the config version.
+  for (auto* tserver : tservers) {
+    ASSERT_NOK(tserver->ValidateAndGetAutoFlagsConfigVersion());
+  }
+
+  // Bump up the config.
+  auto config =
+      ASSERT_RESULT(PromoteFlags(leader_master, AutoFlagClass::kExternal, /* force */ true));
+  ASSERT_EQ(config.new_config_version(), initial_config_version + 1);
+  SleepFor(MonoDelta::FromMilliseconds(heartbeat_sleep_ms));
+
+  // tservers should remain on old version.
+  for (auto* tserver : tservers) {
+    ASSERT_NOK(tserver->ValidateAndGetAutoFlagsConfigVersion());
+    ASSERT_EQ(tserver->TEST_GetAutoFlagConfig().config_version(), initial_config_version);
+  }
+
+  // Trigger heartbeats.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = false;
+  for (auto* tserver : tservers) {
+    tserver->heartbeater()->TriggerASAP();
+  }
+  // Wait for the heartbeats that we started to complete.
+  SleepFor(MonoDelta::FromMilliseconds(heartbeat_sleep_ms));
+
+  // tserver should now be on new version.
+  for (auto* tserver : tservers) {
+    const auto tserver_version = ASSERT_RESULT(tserver->ValidateAndGetAutoFlagsConfigVersion());
+    ASSERT_EQ(tserver_version, initial_config_version + 1);
+  }
+}
+
+// If a new node comes up between the time a new AutoFlags config was created and its apply time,
+// then this new process startup should block till the apply time has passed.
+TEST_F(AutoFlagsMiniClusterTest, AddTserverBeforeApplyDelay) {
+  // Start with an empty config.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_limit_auto_flag_promote_for_new_universe) = 0;
+  const auto kApplyDelayMs = 10 * MonoTime::kMillisecondsPerSecond * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_flags_apply_delay_ms) = kApplyDelayMs;
+
+  ASSERT_OK(RunSetUp());
+  auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master();
+  auto now_ht = [&leader_master]() { return leader_master->clock()->Now(); };
+  uint32 expected_config_version = 0;
+  CHECK_OK(ValidateConfigOnAllProcesses(expected_config_version));
+
+  AutoFlagsConfigPB config;
+  ASSERT_NO_FATALS(
+      config = PromoteFlagsAndValidate(
+          ++expected_config_version, leader_master, AutoFlagClass::kExternal));
+
+  ASSERT_TRUE(config.has_config_apply_time());
+  HybridTime config_apply_ht;
+  ASSERT_OK(config_apply_ht.FromUint64(config.config_apply_time()));
+
+  // Make sure we still have time before new config is applied.
+  const auto before_add_tserver = now_ht();
+  ASSERT_GT(config_apply_ht, before_add_tserver.AddDelta(1s));
+
+  // Add a new tserver. This call will block till we can get the config from master leader and apply
+  // it.
+  ASSERT_OK(cluster_->AddTabletServer());
+
+  // Make sure we have waited for the apply time to pass.
+  const auto after_tserver_started = now_ht();
+  ASSERT_GT(after_tserver_started, config_apply_ht);
+
+  // We should have waited for some time atleast.
+  ASSERT_GT(
+      after_tserver_started.PhysicalDiff(before_add_tserver), MonoTime::kMicrosecondsPerSecond);
+
+  // Validate it got the right config.
+  ASSERT_OK(cluster_->WaitForAllTabletServers());
+  CHECK_OK(ValidateConfigOnAllProcesses(expected_config_version));
+}
+
+// If we promote and then Rollback the volatile flags before it has been Applied, the flag values
+// should never change.
+TEST_F(AutoFlagsMiniClusterTest, RollbackBeforeApply) {
+  // Start with an empty config.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_limit_auto_flag_promote_for_new_universe) = 0;
+  const auto kApplyDelayMs = 10 * MonoTime::kMillisecondsPerSecond * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_flags_apply_delay_ms) = kApplyDelayMs;
+  const auto& kLocalVolatileAutoFlag = FLAGS_ysql_yb_pushdown_strict_inequality;
+
+  ASSERT_OK(RunSetUp());
+  auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master();
+  uint32 initial_config_version = 0;
+  CHECK_OK(ValidateConfigOnAllProcesses(initial_config_version));
+
+  ASSERT_FALSE(kLocalVolatileAutoFlag);
+
+  // Track if the kLocalVolatileAutoFlag is ever changed;
+  uint32 callback_count = 0;
+  auto registration = ASSERT_RESULT(RegisterFlagUpdateCallback(
+      &kLocalVolatileAutoFlag, "Test", [&callback_count]() { callback_count++; }));
+
+  ASSERT_NO_FATALS(
+      auto config = PromoteFlagsAndValidate(
+          initial_config_version + 1, leader_master, AutoFlagClass::kLocalVolatile));
+  ASSERT_FALSE(kLocalVolatileAutoFlag);
+
+  // Rollback before the Apply happens.
+  ASSERT_NO_FATALS(
+      RollbackFlagsAndValidate(initial_config_version, initial_config_version + 2, leader_master));
+  ASSERT_FALSE(kLocalVolatileAutoFlag);
+
+  // Wait for 3x the Apply delay.
+  SleepFor(MonoDelta::FromMilliseconds(kApplyDelayMs * 3));
+
+  // The callback should never get invoked.
+  ASSERT_EQ(callback_count, 0);
+  ASSERT_FALSE(kLocalVolatileAutoFlag);
+
+  registration.Deregister();
+}
+
+// Make sure ValidateAutoFlagsConfig API returns true only when the passed in config has a superset
+// of flags compared to the universe config.
+TEST_F(AutoFlagsMiniClusterTest, ValidateAutoFlagsConfig) {
+  const auto kYbTServerProcess = "yb-tserver";
+  const auto kVolatileAutoFlagName = "ysql_yb_pushdown_strict_inequality";
+  ASSERT_OK(RunSetUp());
+
+  auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  const auto current_config = leader_master->master()->GetAutoFlagsConfig();
+  AutoFlagsConfigPB config;
+  config.set_config_version(kMinAutoFlagsConfigVersion);
+
+  // Empty request.
+  auto result = ASSERT_RESULT(client_->ValidateAutoFlagsConfig(config));
+  ASSERT_TRUE(result.has_value());
+  ASSERT_FALSE(result->first);
+  ASSERT_EQ(result->second, current_config.config_version());
+
+  // Same config.
+  result = ASSERT_RESULT(client_->ValidateAutoFlagsConfig(current_config));
+  ASSERT_TRUE(result.has_value());
+  ASSERT_TRUE(result->first);
+  ASSERT_EQ(result->second, current_config.config_version());
+
+  // Create a new config without one Volatile AutoFlag in the tserver process.
+  for (const auto& current_promoted_flags : current_config.promoted_flags()) {
+    auto* promoted_flags = config.add_promoted_flags();
+    promoted_flags->set_process_name(current_promoted_flags.process_name());
+
+    for (const auto& flag : current_promoted_flags.flags()) {
+      if (current_promoted_flags.process_name() == kYbTServerProcess &&
+          flag == kVolatileAutoFlagName) {
+        continue;
+      }
+      promoted_flags->add_flags(flag);
+    }
+  }
+  result = ASSERT_RESULT(client_->ValidateAutoFlagsConfig(config));
+  ASSERT_FALSE(result->first);
+  ASSERT_EQ(result->second, current_config.config_version());
+
+  // Set min class to check to External and missing flag should not case error.
+  result = ASSERT_RESULT(client_->ValidateAutoFlagsConfig(config, AutoFlagClass::kExternal));
+  ASSERT_TRUE(result->first);
+  ASSERT_EQ(result->second, current_config.config_version());
 }
 
 class AutoFlagsExternalMiniClusterTest : public ExternalMiniClusterITestBase {
@@ -923,7 +1137,8 @@ TEST_F(AutoFlagsExternalMiniClusterTest, UpgradeCluster) {
 TEST_F(AutoFlagsExternalMiniClusterTest, PromoteOneFlag) {
   // Start with an empty config.
   ASSERT_NO_FATALS(BuildAndStart(
-      {} /* ts_flags */, {"--limit_auto_flag_promote_for_new_universe=0"} /* master_flags */));
+      {kDisableAutoFlagsApplyDelay} /* ts_flags */,
+      {kDisableAutoFlagsApplyDelay, kDisableAutoFlagPromoteForNewUniverse} /* master_flags */));
 
   const auto kVolatileAutoFlagName = "ysql_yb_pushdown_strict_inequality";
   const auto kYbTServerProcess = "yb-tserver";
@@ -958,7 +1173,9 @@ TEST_F(AutoFlagsExternalMiniClusterTest, PromoteOneFlag) {
 
 // Promote one flag and make sure Rollback only affects that one flag.
 TEST_F(AutoFlagsExternalMiniClusterTest, RollbackOneFlag) {
-  ASSERT_NO_FATALS(BuildAndStart());
+  ASSERT_NO_FATALS(BuildAndStart(
+      {kDisableAutoFlagsApplyDelay} /* ts_flags */,
+      {kDisableAutoFlagsApplyDelay} /* master_flags */));
   const auto kVolatileAutoFlagName = "ysql_yb_pushdown_strict_inequality";
   const auto kYbTServerProcess = "yb-tserver";
 
@@ -1025,6 +1242,70 @@ TEST_F(AutoFlagsExternalMiniClusterTest, RollbackOneFlag) {
   ASSERT_EQ(CountFlagsInConfig(kVolatileAutoFlagName, config), 2);
   for (auto& daemons : cluster_->daemons()) {
     ASSERT_EQ(ASSERT_RESULT(daemons->GetFlag(kVolatileAutoFlagName)), "true");
+  }
+}
+
+TEST_F(AutoFlagsExternalMiniClusterTest, DelayedApplyFlags) {
+  const uint32 apply_delay_ms = 5000 * kTimeMultiplier;
+  const auto kVolatileAutoFlagName = "ysql_yb_pushdown_strict_inequality";
+  const auto kSetAutoFlagsApplyDelay =
+      Format("--$0=$1", kAutoFlagsApplyDelayFlagName, apply_delay_ms);
+
+  ASSERT_NO_FATALS(BuildAndStart(
+      {kSetAutoFlagsApplyDelay} /* ts_flags */,
+      {kSetAutoFlagsApplyDelay, kDisableAutoFlagPromoteForNewUniverse} /* master_flags */));
+
+  uint32 expected_config_version = 0;
+
+  // Initial config is empty.
+  auto config = ASSERT_RESULT(GetAutoFlagsConfig());
+  ASSERT_EQ(expected_config_version, config.config_version());
+  ASSERT_EQ(CountPromotedFlags(config), 0);
+  ASSERT_FALSE(config.has_config_apply_time());
+  for (auto& tserver : cluster_->tserver_daemons()) {
+    ASSERT_EQ(ASSERT_RESULT(tserver->GetFlag(kVolatileAutoFlagName)), "false");
+  }
+
+  // Promote some flags.
+  auto leader_master = cluster_->GetLeaderMaster();
+  auto before_promote_ht = ASSERT_RESULT(leader_master->GetServerTime());
+  LOG(INFO) << "before_promote_ht: " << before_promote_ht;
+  ASSERT_NO_FATALS(
+      config = PromoteFlagsAndValidate(++expected_config_version, AutoFlagClass::kLocalVolatile));
+
+  ASSERT_EQ(expected_config_version, config.config_version());
+  ASSERT_GT(CountPromotedFlags(config), 0);
+  // config_apply_time must be at least apply_delay_ms more than before_promote_ht.
+  ASSERT_TRUE(config.has_config_apply_time());
+  HybridTime config_apply_ht;
+  ASSERT_OK(config_apply_ht.FromUint64(config.config_apply_time()));
+  LOG(INFO) << "config_apply_ht: " << config_apply_ht;
+  ASSERT_GT(config_apply_ht, before_promote_ht);
+  ASSERT_GT(
+      config_apply_ht.PhysicalDiff(before_promote_ht),
+      apply_delay_ms * MonoTime::kMicrosecondsPerMillisecond);
+
+  auto after_promote_and_validate_ht = ASSERT_RESULT(leader_master->GetServerTime());
+  LOG(INFO) << "after_promote_and_validate_ht: " << after_promote_and_validate_ht;
+  // The apply time cannot be too far in the future.
+  ASSERT_LT(config_apply_ht, after_promote_and_validate_ht.AddMilliseconds(apply_delay_ms));
+
+  // Make sure we still have some time to do the validation.
+  ASSERT_GT(config_apply_ht.AddDelta(MonoDelta::FromSeconds(1)), after_promote_and_validate_ht);
+
+  // Make sure the flag is not applied yet.
+  for (auto& daemon : cluster_->daemons()) {
+    ASSERT_EQ(ASSERT_RESULT(daemon->GetFlag(kVolatileAutoFlagName)), "false");
+  }
+
+  // Wait for config to be applied plus a buffer of 1s.
+  const auto sleep_time_us = config_apply_ht.PhysicalDiff(after_promote_and_validate_ht) +
+                             (MonoTime::kMicrosecondsPerSecond * kTimeMultiplier);
+  LOG(WARNING) << "Sleeping for " << sleep_time_us << "us";
+  SleepFor(MonoDelta::FromMicroseconds(sleep_time_us));
+
+  for (auto& daemon : cluster_->daemons()) {
+    ASSERT_EQ(ASSERT_RESULT(daemon->GetFlag(kVolatileAutoFlagName)), "true");
   }
 }
 }  // namespace yb

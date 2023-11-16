@@ -2610,6 +2610,21 @@ Result<string> ExternalDaemon::GetFlag(const std::string& flag) {
   return resp.value();
 }
 
+Result<HybridTime> ExternalDaemon::GetServerTime() {
+  server::GenericServiceProxy proxy(proxy_cache_, bound_rpc_addr());
+
+  rpc::RpcController controller;
+  controller.set_timeout(MonoDelta::FromSeconds(30));
+  server::ServerClockRequestPB req;
+  server::ServerClockResponsePB resp;
+  RETURN_NOT_OK(proxy.ServerClock(req, &resp, &controller));
+  SCHECK(resp.has_hybrid_time(), IllegalState, "No hybrid time in response");
+  HybridTime ht;
+  RETURN_NOT_OK(ht.FromUint64(resp.hybrid_time()));
+
+  return ht;
+}
+
 LogWaiter::LogWaiter(ExternalDaemon* daemon, const std::string& string_to_wait) :
     daemon_(daemon), string_to_wait_(string_to_wait) {
   daemon_->SetLogListener(this);

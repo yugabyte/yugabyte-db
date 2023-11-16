@@ -930,6 +930,15 @@ class YBClient {
   // version that does not support AutoFlags.
   Result<std::optional<AutoFlagsConfigPB>> GetAutoFlagConfig();
 
+  // Check if the given AutoFlagsConfigPB is compatible with the AutoFlags config of the universe.
+  // Check the description of AutoFlagsUtil::AreAutoFlagsCompatible for more information about what
+  // compatible means.
+  // Returns the result in the bool and the current AutoFlags config version that it was validated
+  // with. Returns nullopt if the master is running on an older version that does not support this
+  // API.
+  Result<std::optional<std::pair<bool, uint32>>> ValidateAutoFlagsConfig(
+      const AutoFlagsConfigPB& config, std::optional<AutoFlagClass> min_flag_class = std::nullopt);
+
   Result<master::StatefulServiceInfoPB> GetStatefulServiceLocation(
       StatefulServiceKind service_kind);
 
