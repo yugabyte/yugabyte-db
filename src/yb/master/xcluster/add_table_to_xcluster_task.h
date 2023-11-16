@@ -25,6 +25,11 @@
 #include "yb/server/monitored_task.h"
 
 namespace yb::master {
+// This task adds a newly created table in the consumer xCluster universe to transactional
+// replication group. The table must be in PREPARING state with all tablets created at the start of
+// the task. The task performs bootstrap of the producer table, adds it to the replication group,
+// waits for the xCluster Safe Time to include the new table, and finally marks the table as
+// RUNNING.
 class AddTableToXClusterTask : public server::RunnableMonitoredTask {
  public:
   AddTableToXClusterTask(

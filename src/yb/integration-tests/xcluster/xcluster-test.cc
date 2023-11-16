@@ -3148,16 +3148,12 @@ class XClusterTestWaitForReplicationDrain : public XClusterTest {
     XClusterTest::TearDown();
   }
 
-  std::shared_ptr<std::promise<Status>> WaitForReplicationDrainAsync(
-      const std::shared_ptr<master::MasterReplicationProxy>& master_proxy,
-      const master::WaitForReplicationDrainRequestPB& req, int expected_num_nondrained,
-      int timeout_secs = kRpcTimeout) {
+  std::shared_ptr<std::promise<Status>> WaitForReplicationDrainAsync() {
     // Return a promise that will be set to a status indicating whether the API completes
     // with the expected response.
     auto promise = std::make_shared<std::promise<Status>>();
-    std::thread async_task([this, expected_num_nondrained, timeout_secs, promise, &master_proxy,
-                            &req]() {
-      auto s = WaitForReplicationDrain(master_proxy, req, expected_num_nondrained, timeout_secs);
+    std::thread async_task([this, promise]() {
+      auto s = WaitForReplicationDrain();
       promise->set_value(s);
     });
     async_task.detach();
@@ -3175,22 +3171,16 @@ TEST_P(XClusterTestWaitForReplicationDrain, TestBlockGetChanges) {
   constexpr uint32_t kNumTables = 3;
   constexpr uint32_t kNumTablets = 3;
   constexpr int kRpcTimeoutShort = 30;
-  master::WaitForReplicationDrainRequestPB req;
 
   SetUpTablesAndReplication(kNumTables, kNumTablets);
-  PopulateWaitForReplicationDrainRequest(producer_tables_, &req);
-  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
-      &producer_client()->proxy_cache(),
-      ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
-
   // 1. Replication is caught-up initially.
-  ASSERT_OK(WaitForReplicationDrain(master_proxy, req, 0));
+  ASSERT_OK(WaitForReplicationDrain());
 
   // 2. Replication is caught-up when some data is written.
   for (uint32_t i = 0; i < producer_tables_.size(); i++) {
     ASSERT_OK(InsertRowsAndVerify(0, 50 * (i + 1), producer_tables_[i]));
   }
-  ASSERT_OK(WaitForReplicationDrain(master_proxy, req, 0));
+  ASSERT_OK(WaitForReplicationDrain());
 
   // 3. Replication is not caught-up when GetChanges are blocked while producer
   // keeps taking writes.
@@ -3198,65 +3188,57 @@ TEST_P(XClusterTestWaitForReplicationDrain, TestBlockGetChanges) {
   for (uint32_t i = 0; i < producer_tables_.size(); i++) {
     ASSERT_OK(InsertRowsInProducer(50 * (i + 1), 100 * (i + 1), producer_tables_[i]));
   }
-  ASSERT_OK(WaitForReplicationDrain(master_proxy, req, kNumTables * kNumTablets, kRpcTimeoutShort));
+  ASSERT_OK(WaitForReplicationDrain(
+      /* expected_num_nondrained */ kNumTables * kNumTablets, kRpcTimeoutShort));
 
   // 4. Replication is caught-up when GetChanges are unblocked.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_block_get_changes) = false;
-  ASSERT_OK(WaitForReplicationDrain(master_proxy, req, 0));
+  ASSERT_OK(WaitForReplicationDrain());
 }
 
 TEST_P(XClusterTestWaitForReplicationDrain, TestWithTargetTime) {
   constexpr uint32_t kNumTables = 3;
   constexpr uint32_t kNumTablets = 3;
-  master::WaitForReplicationDrainRequestPB req;
 
   SetUpTablesAndReplication(kNumTables, kNumTablets);
-  PopulateWaitForReplicationDrainRequest(producer_tables_, &req);
-  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
-      &producer_client()->proxy_cache(),
-      ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
 
   // 1. Write some data and verify that replication is caught-up.
   auto past_checkpoint = GetCurrentTimeMicros();
   for (uint32_t i = 0; i < producer_tables_.size(); i++) {
     ASSERT_OK(InsertRowsInProducer(0, 50 * (i + 1), producer_tables_[i]));
   }
-  ASSERT_OK(WaitForReplicationDrain(master_proxy, req, 0));
+  ASSERT_OK(WaitForReplicationDrain());
 
   // 2. Verify that replication is caught-up to a checkpoint in the past.
-  req.set_target_time(past_checkpoint);
-  ASSERT_OK(WaitForReplicationDrain(master_proxy, req, 0));
+  ASSERT_OK(WaitForReplicationDrain(
+      /* expected_num_nondrained */ 0, /* timeout_secs */ kRpcTimeout,
+      /* target_time */ past_checkpoint));
 
   // 3. Set a checkpoint in the future. Verify that API waits until passing this
   // checkpoint before responding.
   int timeout_secs = kRpcTimeout;
   auto time_to_wait = MonoDelta::FromSeconds(timeout_secs / 2.0);
   auto future_checkpoint = GetCurrentTimeMicros() + time_to_wait.ToMicroseconds();
-  req.set_target_time(future_checkpoint);
-  ASSERT_OK(WaitForReplicationDrain(master_proxy, req, 0));
+  ASSERT_OK(WaitForReplicationDrain(
+      /* expected_num_nondrained */ 0, /* timeout_secs */ kRpcTimeout,
+      /* target_time */ future_checkpoint));
   ASSERT_GT(GetCurrentTimeMicros(), future_checkpoint);
 }
 
 TEST_P(XClusterTestWaitForReplicationDrain, TestProducerChange) {
   constexpr uint32_t kNumTables = 3;
   constexpr uint32_t kNumTablets = 3;
-  master::WaitForReplicationDrainRequestPB req;
 
   SetUpTablesAndReplication(kNumTables, kNumTablets);
-  PopulateWaitForReplicationDrainRequest(producer_tables_, &req);
-  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
-      &producer_client()->proxy_cache(),
-      ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
-
   // 1. Write some data and verify that replication is caught-up.
   for (uint32_t i = 0; i < producer_tables_.size(); i++) {
     ASSERT_OK(InsertRowsInProducer(0, 50 * (i + 1), producer_tables_[i]));
   }
-  ASSERT_OK(WaitForReplicationDrain(master_proxy, req, 0));
+  ASSERT_OK(WaitForReplicationDrain());
 
   // 2. Verify that producer shutdown does not impact the API.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_wait_replication_drain) = true;
-  auto drain_api_promise = WaitForReplicationDrainAsync(master_proxy, req, 0);
+  auto drain_api_promise = WaitForReplicationDrainAsync();
   auto drain_api_future = drain_api_promise->get_future();
   producer_cluster()->mini_tablet_server(0)->Shutdown();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_wait_replication_drain) = false;
@@ -3267,7 +3249,7 @@ TEST_P(XClusterTestWaitForReplicationDrain, TestProducerChange) {
   // 3. Verify that producer rebalancing does not impact the API.
   auto num_tservers = narrow_cast<int>(producer_cluster()->num_tablet_servers());
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_wait_replication_drain) = true;
-  drain_api_promise = WaitForReplicationDrainAsync(master_proxy, req, 0);
+  drain_api_promise = WaitForReplicationDrainAsync();
   drain_api_future = drain_api_promise->get_future();
   ASSERT_OK(producer_cluster()->AddTabletServer());
   ASSERT_OK(producer_cluster()->WaitForTabletServerCount(num_tservers + 1));
