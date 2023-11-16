@@ -25,7 +25,7 @@ Expansion of universes created with an on-premise cloud provider and secured wit
 
 For universes that use Google Cloud Provider (GCP) or Amazon Web Services (AWS), YBA allows you to change the VM images and increase the volume size without moving the data from the old nodes to the new nodes. This is known as smart resize and is subject to the following:
 
-- Smart resize cannot be applied to instances with ephemeral disks due to a potential loss of data, but smart resize to ephemeral disks is supported.
+- Instances with ephemeral disks cannot undergo smart resize to avoid potential data loss, but smart resize to ephemeral disks is supported.
 
 - Smart resize cannot decrease the volume size.
 

@@ -23,15 +23,15 @@ Expansion of universes created with an on-premise cloud provider and secured wit
 
 For universes that use Google Cloud Provider (GCP) or Amazon Web Services (AWS), YBA allows you to change the VM images and increase the volume size without moving the data from the old nodes to the new nodes. This is known as smart resize and is subject to the following:
 
-- Smart resize cannot be applied to instances with ephemeral disks due to a potential loss of data, but smart resize to ephemeral disks is supported.
+- Instances with ephemeral disks cannot undergo smart resize to avoid potential data loss, but smart resize to ephemeral disks is supported.
 
 - Smart resize cannot decrease the volume size.
 
-- The smart resize option is not presented if anything except the values of the **Instance Type** and the size portion of the **Volume Info** fields has been changed on the **Edit Universe** page.
+- You can't do a smart resize if you change any options on the **Edit Universe** page other than the **Instance Type** and the size portion of the **Volume Info** field.
 
-- If you modify the value in the **Instance Type** field or in both the **Instance Type** and the size portion of the **Volume Info** field, and then click **Save**, you will be able to choose either the migration of the universe along with its data to new nodes or smart resize, as per the following illustrations:
+If you change the **Instance Type** or both the **Instance Type** and the **Volume Info** size and then click **Save**, YBA gives you the option to either do a full migration of the universe and its data to new nodes, or do a smart resize, as per the following illustrations:
 
   ![Full or smart resize1](/images/ee/edit-univ-1.png)
   ![Full or smart resize2](/images/ee/edit-univ-2.png)
 
-- If you only modify the value in the size portion of the **Volume Info** field and click **Save**, smart resize will be performed.
+If you change only the **Volume Info** size and click **Save**, YBA automatically performs a smart resize.
