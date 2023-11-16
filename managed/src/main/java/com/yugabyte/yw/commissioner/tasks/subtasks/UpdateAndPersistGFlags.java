@@ -102,9 +102,11 @@ public class UpdateAndPersistGFlags extends UniverseTaskBase {
                       && cluster.userIntent.specificGFlags.isInheritFromPrimary()) {
                     SpecificGFlags primaryGFlags =
                         universeDetails.getPrimaryCluster().userIntent.specificGFlags;
-                    cluster.userIntent.specificGFlags.setPerProcessFlags(
-                        primaryGFlags.getPerProcessFlags());
-                    cluster.userIntent.specificGFlags.setPerAZ(primaryGFlags.getPerAZ());
+                    if (primaryGFlags != null) {
+                      cluster.userIntent.specificGFlags.setPerProcessFlags(
+                          primaryGFlags.getPerProcessFlags());
+                      cluster.userIntent.specificGFlags.setPerAZ(primaryGFlags.getPerAZ());
+                    }
                   }
                 }
                 GFlagsUtil.syncGflagsToIntent(masterGFlags, cluster.userIntent);
