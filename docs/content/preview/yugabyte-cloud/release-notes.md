@@ -20,11 +20,11 @@ On this page:
 
 ## Change log
 
-### November 14, 2023
+### November 16, 2023
 
 **New Features**
 
-- Product Labs provides an interactive, in-product learning experience. Learn about YugabyteDB features using real-world applications running on live YugabyteDB clusters. The first lab, Create Global Applications, demonstrates how to manage latencies using three different deployment strategies.
+- [Product Labs](../../yugabyte-cloud/managed-labs/) provides an interactive, in-product learning experience. Learn about YugabyteDB features using real-world applications running on live YugabyteDB clusters. The first lab, Create Global Applications, demonstrates how to manage latencies using three different deployment strategies.
 
 **Database**
 
