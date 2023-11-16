@@ -421,6 +421,12 @@ class PgCatalogVersionTest : public LibPqTestBase {
       ASSERT_STR_CONTAINS(status.ToString(), "permission denied for table t5");
     }
   }
+  static void IncrementAllDBCatalogVersions(PGConn* conn, bool breaking) {
+    ASSERT_OK(conn->Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
+    ASSERT_OK(conn->FetchFormat(
+        "SELECT yb_increment_all_db_catalog_versions($0)", breaking ? "true" : "false"));
+    ASSERT_OK(conn->Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=0"));
+  }
 };
 
 TEST_F(PgCatalogVersionTest, DBCatalogVersion) {
@@ -669,12 +675,8 @@ TEST_F(PgCatalogVersionTest, IncrementAllDBCatalogVersions) {
   }
   ASSERT_OK(CheckMatch(expected_versions, ASSERT_RESULT(GetShmCatalogVersionMap())));
 
-  // Get ready to execute yb_increment_all_db_catalog_versions.
-  ASSERT_OK(conn_yugabyte.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
-
   constexpr CatalogVersion kSecondCatalogVersion{2, 1};
-  ASSERT_RESULT(conn_yugabyte.Fetch("SELECT yb_increment_all_db_catalog_versions(false)"));
-  ASSERT_OK(conn_yugabyte.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=0"));
+  IncrementAllDBCatalogVersions(&conn_yugabyte, false);
   WaitForCatalogVersionToPropagate();
   expected_versions = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte));
   for (const auto& entry : expected_versions) {
@@ -683,15 +685,29 @@ TEST_F(PgCatalogVersionTest, IncrementAllDBCatalogVersions) {
   ASSERT_OK(CheckMatch(expected_versions, ASSERT_RESULT(GetShmCatalogVersionMap())));
 
   constexpr CatalogVersion kThirdCatalogVersion{3, 3};
-  ASSERT_OK(conn_yugabyte.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
-  ASSERT_RESULT(conn_yugabyte.Fetch("SELECT yb_increment_all_db_catalog_versions(true)"));
-  ASSERT_OK(conn_yugabyte.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=0"));
+  IncrementAllDBCatalogVersions(&conn_yugabyte, true);
   WaitForCatalogVersionToPropagate();
   expected_versions = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte));
   for (const auto& entry : expected_versions) {
     ASSERT_OK(CheckMatch(entry.second, kThirdCatalogVersion));
   }
   ASSERT_OK(CheckMatch(expected_versions, ASSERT_RESULT(GetShmCatalogVersionMap())));
+
+  // Ensure that PUBLICATION will not cause yb_increment_all_db_catalog_versions
+  // to fail.
+  ASSERT_OK(conn_yugabyte.Execute("CREATE PUBLICATION testpub_foralltables FOR ALL TABLES"));
+  IncrementAllDBCatalogVersions(&conn_yugabyte, true);
+
+  // Ensure that in global catalog version mode, by turning on
+  // yb_non_ddl_txn_for_sys_tables_allowed, we can perform both update and
+  // delete on pg_yb_catalog_version table.
+  RestartClusterWithoutDBCatalogVersionMode();
+  conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+
+  // This involves deleting all rows except for template1 from pg_yb_catalog_version.
+  ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte, false));
+  // Update the row for template1 to increment catalog version.
+  IncrementAllDBCatalogVersions(&conn_yugabyte, false);
 }
 
 // Test yb_fix_catalog_version_table, that will sync up pg_yb_catalog_version
