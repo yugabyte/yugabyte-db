@@ -402,6 +402,11 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 	if (ybscan->exec_params)
 		ybscan->exec_params->work_mem = work_mem;
 
+  if (!ybscan->is_exec_done)
+  {
+    pgstat_count_index_scan(scan->indexRelation);
+  }
+
 	/* Special case: aggregate pushdown. */
 	if (scan->yb_aggrefs)
 	{
@@ -455,12 +460,6 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 			has_tuple = true;
 		}
 	}
-
-  if (!ybscan->is_exec_done)
-  {
-    pgstat_count_index_scan(scan->indexRelation);
-    ybscan->is_exec_done = true;
-  }
 
 	return has_tuple;
 }
