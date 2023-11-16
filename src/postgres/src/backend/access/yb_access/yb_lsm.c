@@ -361,7 +361,7 @@ ybcinbeginscan(Relation rel, int nkeys, int norderbys)
 	/* get the scan */
 	scan = RelationGetIndexScan(rel, nkeys, norderbys);
 	scan->opaque = NULL;
-	pgstat_count_index_scan(rel);
+
 	return scan;
 }
 
@@ -455,6 +455,12 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 			has_tuple = true;
 		}
 	}
+
+  if (!ybscan->is_exec_done)
+  {
+    pgstat_count_index_scan(scan->indexRelation);
+    ybscan->is_exec_done = true;
+  }
 
 	return has_tuple;
 }
