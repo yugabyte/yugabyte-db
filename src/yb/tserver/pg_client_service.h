@@ -77,6 +77,7 @@ class PgMutationCounter;
     (CancelTransaction) \
     (ActiveUniverseHistory) \
     (TableIDMetadata) \
+    (TabletIDMetadata) \
     (GetTServerUUID) \
     (GetActiveTransactionList) \
     (YCQLStatStatements) \

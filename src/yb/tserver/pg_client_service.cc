@@ -916,6 +916,23 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
+  Status TabletIDMetadata(const PgTabletIDMetadataRequestPB& req, PgTabletIDMetadataResponsePB* resp, rpc::RpcContext* context) {
+    //const std::string table_id;
+    const int32_t max_tablets = 0;
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB>* tablets=nullptr;
+    
+    auto status = client().GetTabletsFromTableId(req.table_id(),max_tablets,tablets);
+    //const auto& tabletInfo = *tablets
+    //for(const auto& tablet : table_id->GetTablets())
+    
+    for (const auto& tabletInfo : *tablets) {
+    //     //auto tablet = resp->add_tablets();
+    //     tablet->CopyFrom(tabletInfo);
+      resp->CopyFrom(tabletInfo);
+    }
+    return Status::OK();
+  }
+  
   Status TableIDMetadata(const PgTableIDMetadataRequestPB& req, PgTableIDMetadataResponsePB* resp, rpc::RpcContext* context) {
     auto list_of_tables = VERIFY_RESULT(client().ListTableInfo());
 

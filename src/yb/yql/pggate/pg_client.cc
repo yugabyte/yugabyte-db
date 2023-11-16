@@ -745,6 +745,14 @@ class PgClient::Impl {
     return resp;
   }
 
+  Result<tserver::PgTabletIDMetadataResponsePB>TabletIDMetadata(std::string table_id) {
+    tserver::PgTabletIDMetadataRequestPB req;
+    req.set_table_id(std::move(table_id));
+    tserver::PgTabletIDMetadataResponsePB resp;
+    RETURN_NOT_OK(proxy_->TabletIDMetadata(req, &resp, PrepareController()));
+    return resp;
+  }
+
   Result<tserver::PgTableIDMetadataResponsePB> TableIDMetadata() {
     tserver::PgTableIDMetadataRequestPB req; 
     tserver::PgTableIDMetadataResponsePB resp;
@@ -1040,6 +1048,10 @@ Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> PgClient::GetTserverCa
 
 Result<client::RpcsInfo> PgClient::ActiveUniverseHistory() {
   return impl_->ActiveUniverseHistory();
+}
+
+Result<tserver::PgTabletIDMetadataResponsePB> PgClient::TabletIDMetadata(std::string table_id) {
+  return impl_->TabletIDMetadata(table_id);
 }
 
 Result<tserver::PgTableIDMetadataResponsePB> PgClient::TableIDMetadata() {

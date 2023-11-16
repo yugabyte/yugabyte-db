@@ -2118,6 +2118,10 @@ Result<client::RpcsInfo> PgApiImpl::ActiveUniverseHistory() {
   return pg_session_->ActiveUniverseHistory();
 }
 
+Result<tserver::PgTabletIDMetadataResponsePB> PgApiImpl::TabletIDMetadata(std::string table_id) {
+    return pg_session_->TabletIDMetadata(table_id);
+}
+
 Result<tserver::PgTableIDMetadataResponsePB> PgApiImpl::TableIDMetadata() {
     return pg_session_->TableIDMetadata();
 }
