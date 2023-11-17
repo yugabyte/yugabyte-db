@@ -792,11 +792,13 @@ TEST_F(AutoFlagsMiniClusterTest, ValidateAutoFlagsConfig) {
     }
   }
   result = ASSERT_RESULT(client_->ValidateAutoFlagsConfig(config));
+  ASSERT_TRUE(result.has_value());
   ASSERT_FALSE(result->first);
   ASSERT_EQ(result->second, current_config.config_version());
 
   // Set min class to check to External and missing flag should not case error.
   result = ASSERT_RESULT(client_->ValidateAutoFlagsConfig(config, AutoFlagClass::kExternal));
+  ASSERT_TRUE(result.has_value());
   ASSERT_TRUE(result->first);
   ASSERT_EQ(result->second, current_config.config_version());
 }
