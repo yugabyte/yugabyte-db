@@ -1,5 +1,6 @@
 ---
-title: Export metrics
+title: Export metrics from YugabyteDB Managed
+headerTitle: Export metrics
 linkTitle: Export metrics
 description: Export cluster metrics to third-party tools.
 headcontent: Export cluster metrics to third-party tools
@@ -51,11 +52,11 @@ You can also access metrics export on the cluster **Settings** tab under **Expor
 
 You can add, edit, and delete export configurations. You can't delete a configuration that is assigned to a cluster.
 
-To create an export configuration, do the following:
-
 {{< tabpane text=true >}}
 
   {{% tab header="Datadog" lang="datadog" %}}
+
+To create an export configuration, do the following:
 
 1. On the **Integrations** page, select the **Metrics** tab.
 1. Click **Create Export Configuration** or, if one or more configurations are already available, **Add Export Configuration**.
@@ -70,6 +71,8 @@ To create an export configuration, do the following:
   {{% /tab %}}
 
   {{% tab header="Grafana" lang="grafana" %}}
+
+To create an export configuration, do the following:
 
 1. On the **Integrations** page, select the **Metrics** tab.
 1. Click **Create Export Configuration** or, if one or more configurations are already available, **Add Export Configuration**.
@@ -86,13 +89,13 @@ To create an export configuration, do the following:
 
   {{% tab header="Sumo Logic" lang="sumo" %}}
 
+To create an export configuration, do the following:
+
 1. On the **Integrations** page, select the **Metrics** tab.
 1. Click **Create Export Configuration** or, if one or more configurations are already available, **Add Export Configuration**.
 1. Enter a name for the configuration.
 1. Choose Sumo Logic.
-1. Enter your installation token.
-1. Enter your access ID.
-1. Enter your access key.
+1. Enter your installation token, access ID, and access key.
 1. Optionally, click **Download** to download the Sumo Logic dashboard template. You can import this JSON format template into your Sumo Logic account and use it as a starting point for visualizing your cluster data.
 1. Click **Test Configuration** to make sure your connection is working.
 1. Click **Create Configuration**.
