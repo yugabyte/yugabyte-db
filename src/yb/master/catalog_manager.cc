@@ -12298,8 +12298,12 @@ Status CatalogManager::ValidateReplicationInfo(
   // because they aren't a part of any raft quorum underneath.
   // Technically, it is ok to have even 0 read replica nodes for them upfront.
   // We only need it for the primary cluster replicas.
-  const auto& placement_info = req->replication_info().live_replicas();
+  auto placement_info = req->replication_info().live_replicas();
   TSDescriptorVector ts_descs;
+  // If the placement_info's uuid is empty, set it to be the current cluster's live replica uuid.
+  if (placement_info.placement_uuid().empty()) {
+    placement_info.set_placement_uuid(VERIFY_RESULT(placement_uuid()));
+  }
   GetTsDescsFromPlacementInfo(placement_info, all_ts_descs, &ts_descs);
   Status s = CheckValidPlacementInfo(placement_info, ts_descs, resp);
   if (!s.ok()) {

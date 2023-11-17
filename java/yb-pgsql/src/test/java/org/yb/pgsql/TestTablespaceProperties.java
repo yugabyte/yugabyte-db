@@ -38,12 +38,7 @@ import org.slf4j.LoggerFactory;
 import com.yugabyte.util.PSQLException;
 
 import org.yb.CommonNet.CloudInfoPB;
-import org.yb.client.LeaderStepDownResponse;
-import org.yb.client.LocatedTablet;
-import org.yb.client.ModifyClusterConfigLiveReplicas;
-import org.yb.client.ModifyClusterConfigReadReplicas;
-import org.yb.client.YBClient;
-import org.yb.client.YBTable;
+import org.yb.client.*;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.minicluster.MiniYBCluster;
@@ -68,6 +63,8 @@ public class TestTablespaceProperties extends BasePgSQLTest {
   private static final int LOAD_BALANCER_MAX_CONCURRENT = 10;
 
   private static final String tablespaceName = "testTablespace";
+
+  private static String placementUuid = "";
 
   private static final List<Map<String, String>> perTserverZonePlacementFlags = Arrays.asList(
       ImmutableMap.of(
@@ -114,6 +111,11 @@ public class TestTablespaceProperties extends BasePgSQLTest {
                           Integer.toString(LOAD_BALANCER_MAX_CONCURRENT));
 
     builder.perTServerFlags(perTserverZonePlacementFlags);
+    builder.addCommonTServerFlag("placement_uuid", placementUuid);
+  }
+
+  public void setPlacementUuid(String uuid) {
+    placementUuid = uuid;
   }
 
   @Before
@@ -129,6 +131,26 @@ public class TestTablespaceProperties extends BasePgSQLTest {
           "{\"cloud\":\"cloud2\",\"region\":\"region2\",\"zone\":\"zone2\"," +
           "\"min_num_replicas\":1}]}')");
     }
+  }
+
+  /**
+   * Sets placement_uuid on master.
+   */
+  @Override
+  protected void afterStartingMiniCluster() throws Exception {
+    super.afterStartingMiniCluster();
+    if (placementUuid.isEmpty()) {
+      return;
+    }
+    LOG.info("Modifying placement_info on master to set placement_uuid");
+    runProcess(TestUtils.findBinary("yb-admin"),
+      "--master_addresses", masterAddresses,
+      "modify_placement_info",
+      "cloud1.region1.zone1,cloud2.region2.zone2,cloud3.region3.zone3",
+      Integer.toString(3),
+      placementUuid);
+
+    Thread.sleep(1000);
   }
 
   private void createTestData (String prefixName) throws Exception {
@@ -786,5 +808,49 @@ public class TestTablespaceProperties extends BasePgSQLTest {
       // A read-only replica must be found.
       assertTrue(foundReadOnlyReplica);
     }
+  }
+
+  @Test
+  public void testAlterTableSetTablespaceWithPlacementUuid() throws Exception {
+    setPlacementUuid("placement_uuid");
+    try {
+      testAlterTableWithPlacementUuidHelper();
+    } finally {
+      // Unset the placementUuid for future tests.
+      setPlacementUuid("");
+    }
+  }
+
+  private void testAlterTableWithPlacementUuidHelper() throws Exception {
+    restartCluster();
+    markClusterNeedsRecreation();
+
+    // Create a table.
+    final String testTable = "test_table";
+    try (Statement setupStatement = connection.createStatement()) {
+      setupStatement.execute(String.format("CREATE TABLE %s (a SERIAL)", testTable));
+    }
+
+    LOG.info("Verifying whether tablet replicas were placed correctly at creation time");
+    verifyDefaultPlacement(testTable);
+
+    // Execute the ALTER TABLE SET TABLESPACE command
+    setupTablespaces();
+    LOG.info("Moving test_table to new tablespace " + tablespaceName);
+    try (Statement setupStatement = connection.createStatement()) {
+      setupStatement.execute(String.format("ALTER TABLE %s SET TABLESPACE %s",
+                                           testTable, tablespaceName));
+    }
+
+    // Wait for loadbalancer to run.
+    assertTrue(miniCluster.getClient().waitForLoadBalancerActive(
+      MASTER_LOAD_BALANCER_WAIT_TIME_MS));
+
+    LOG.info("Waiting for the load balancer to become idle...");
+    assertTrue(miniCluster.getClient().waitForLoadBalancerIdle(
+      MASTER_LOAD_BALANCER_WAIT_TIME_MS));
+
+    LOG.info("Verifying whether tablet replicas were moved to the new tablespace");
+    verifyCustomPlacement(testTable);
   }
 }
