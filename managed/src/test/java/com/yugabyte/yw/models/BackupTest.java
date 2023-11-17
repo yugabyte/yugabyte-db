@@ -32,7 +32,6 @@ import java.util.Map;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
-import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -40,11 +39,9 @@ import org.yb.CommonTypes.TableType;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
-@Slf4j
 public class BackupTest extends FakeDBApplication {
   private Customer defaultCustomer;
   private CustomerConfig s3StorageConfig;
-  private final String timestampRegex = "\\d{4}-[0-1]\\d-[0-3]\\dT[0-2]\\d:[0-5]\\d:[0-5]\\d";
 
   @Before
   public void setUp() {
@@ -62,9 +59,7 @@ public class BackupTest extends FakeDBApplication {
     String storageRegex =
         "s3://foo/univ-"
             + universeUUID
-            + "/backup-[a-zA-Z0-9]+?/full/"
-            + timestampRegex
-            + "/table-foo.bar-[a-zA-Z0-9]*";
+            + "/backup-\\d{4}-[0-1]\\d-[0-3]\\dT[0-2]\\d:[0-5]\\d:[0-5]\\d\\-\\d+/table-foo.bar-[a-zA-Z0-9]*";
     assertThat(b.getBackupInfo().storageLocation, RegexMatcher.matchesRegex(storageRegex));
     assertEquals(s3StorageConfig.getConfigUUID(), b.getBackupInfo().storageConfigUUID);
     assertEquals(InProgress, b.getState());
@@ -82,9 +77,7 @@ public class BackupTest extends FakeDBApplication {
     String storageRegex =
         "s3://foo/univ-"
             + universeUUID
-            + "/backup-[a-zA-Z0-9]+?/full/"
-            + timestampRegex
-            + "/table-foo.bar";
+            + "/backup-\\d{4}-[0-1]\\d-[0-3]\\dT[0-2]\\d:[0-5]\\d:[0-5]\\d\\-\\d+/table-foo.bar";
     assertThat(b.getBackupInfo().storageLocation, RegexMatcher.matchesRegex(storageRegex));
     assertEquals(s3StorageConfig.getConfigUUID(), b.getBackupInfo().storageConfigUUID);
     assertEquals(InProgress, b.getState());
@@ -105,7 +98,9 @@ public class BackupTest extends FakeDBApplication {
     params.setTableName("bar");
     Backup b = Backup.create(defaultCustomer.getUuid(), params);
     String storageRegex =
-        "univ-" + universeUUID + "/backup-[a-zA-Z0-9]+?/full/" + timestampRegex + "/table-foo.bar";
+        "univ-"
+            + universeUUID
+            + "/backup-\\d{4}-[0-1]\\d-[0-3]\\dT[0-2]\\d:[0-5]\\d:[0-5]\\d\\-\\d+/table-foo.bar";
     assertThat(b.getBackupInfo().storageLocation, RegexMatcher.matchesRegex(storageRegex));
     assertEquals(customerConfig.getConfigUUID(), b.getBackupInfo().storageConfigUUID);
     assertEquals(InProgress, b.getState());
@@ -346,11 +341,7 @@ public class BackupTest extends FakeDBApplication {
 
   private BackupTableParams createTableParams(int lower, int upper, String keyspace) {
     List<UUID> tableUUIDs =
-        Arrays.asList(
-            UUID.fromString("00000000-0000-0000-0000-000000000000"),
-            UUID.fromString("00000000-0000-0000-0000-000000000001"),
-            UUID.fromString("00000000-0000-0000-0000-000000000002"),
-            UUID.fromString("00000000-0000-0000-0000-000000000003"));
+        Arrays.asList(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
     List<String> tableNames = Arrays.asList("t1", "t2", "t3", "t4");
     BackupTableParams params = new BackupTableParams();
     params.setKeyspace(keyspace);
@@ -388,24 +379,12 @@ public class BackupTest extends FakeDBApplication {
     previousBackup.transitionState(BackupState.Completed);
     UUID baseIdentifier_1 = previousBackup.getBackupInfo().backupList.get(0).backupParamsIdentifier;
     UUID baseIdentifier_2 = previousBackup.getBackupInfo().backupList.get(1).backupParamsIdentifier;
-
-    BackupTableParams tableParamsParentIncrement = createParentParams(defaultUniverse);
-    tableParamsParentIncrement.baseBackupUUID = tableParamsParent.backupUuid;
-
-    List<BackupTableParams> paramsListIncrement = new ArrayList<>();
-    BackupTableParams childParam1Increment = createTableParams(0, 2, "foo");
-    childParam1Increment.setUniverseUUID(defaultUniverse.getUniverseUUID());
-    paramsListIncrement.add(childParam1Increment);
-
-    BackupTableParams childParam2Increment = createTableParams(2, 4, "bar");
-    childParam2Increment.setUniverseUUID(defaultUniverse.getUniverseUUID());
-    paramsListIncrement.add(childParam2Increment);
-    tableParamsParentIncrement.backupList = new ArrayList<>(paramsListIncrement);
+    tableParamsParent.baseBackupUUID = previousBackup.getBaseBackupUUID();
     // Incremental backup type 1 - same tableParams
     Backup increment1 =
         Backup.create(
             defaultCustomer.getUuid(),
-            tableParamsParentIncrement,
+            tableParamsParent,
             BackupCategory.YB_CONTROLLER,
             BackupVersion.V2);
     UUID increment1_identifier_1 =
@@ -414,15 +393,6 @@ public class BackupTest extends FakeDBApplication {
         increment1.getBackupInfo().backupList.get(1).backupParamsIdentifier;
     assertEquals(increment1_identifier_1, baseIdentifier_1);
     assertEquals(increment1_identifier_2, baseIdentifier_2);
-    String storageRegex =
-        "s3://foo/univ-"
-            + defaultUniverse.getUniverseUUID()
-            + "/ybc_backup-[a-zA-Z0-9]+?/incremental/"
-            + timestampRegex
-            + "/.+";
-    assertThat(
-        increment1.getBackupInfo().backupList.get(0).storageLocation,
-        RegexMatcher.matchesRegex(storageRegex));
   }
 
   @Test

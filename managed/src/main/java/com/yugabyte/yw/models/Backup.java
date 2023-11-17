@@ -44,7 +44,6 @@ import io.ebean.annotation.EnumValue;
 import io.ebean.annotation.UpdatedTimestamp;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
@@ -367,8 +366,6 @@ public class Backup extends Model {
       backup.expiry = new Date(System.currentTimeMillis() + params.timeBeforeDelete);
       backup.setExpiryTimeUnit(params.expiryTimeUnit);
     }
-    SimpleDateFormat tsFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
-    String backupLocationTS = tsFormat.format(new Date());
     if (params.backupList != null) {
       params.backupUuid = backup.getBackupUUID();
       params.baseBackupUUID = backup.getBaseBackupUUID();
@@ -381,23 +378,18 @@ public class Backup extends Model {
           childBackup.backupParamsIdentifier = UUID.randomUUID();
           if (childBackup.storageLocation == null) {
             BackupUtil.updateDefaultStorageLocation(
-                childBackup,
-                customerUUID,
-                backup.getCategory(),
-                backup.getVersion(),
-                backupLocationTS);
+                childBackup, customerUUID, backup.getCategory(), backup.getVersion());
           }
         }
       } else {
         // Only for incremental backup object creation
-        populateChildParams(params, previousBackup, backupLocationTS);
+        populateChildParams(params, previousBackup);
       }
     } else if (params.storageLocation == null) {
       params.backupUuid = backup.getBackupUUID();
-      params.baseBackupUUID = backup.getBaseBackupUUID();
       // We would derive the storage location based on the parameters
       BackupUtil.updateDefaultStorageLocation(
-          params, customerUUID, backup.getCategory(), backup.getVersion(), backupLocationTS);
+          params, customerUUID, backup.getCategory(), backup.getVersion());
     }
     CustomerConfig storageConfig = CustomerConfig.get(customerUUID, params.storageConfigUUID);
     if (storageConfig != null) {
@@ -411,8 +403,7 @@ public class Backup extends Model {
   // For incremental backup requests, populate child params based on previous backup's params
   // If a previous sub-param consist of a keyspace-tables match with this request, assign the
   // same params identifier to this child param.
-  private static void populateChildParams(
-      BackupTableParams params, Backup previousBackup, String backupLocationTS) {
+  private static void populateChildParams(BackupTableParams params, Backup previousBackup) {
     BackupTableParams previousBackupInfo = previousBackup.getBackupInfo();
     List<BackupTableParams> paramsCollection = previousBackup.getBackupParamsCollection();
     for (BackupTableParams childParams : params.backupList) {
@@ -437,11 +428,7 @@ public class Backup extends Model {
       }
       if (childParams.storageLocation == null) {
         BackupUtil.updateDefaultStorageLocation(
-            childParams,
-            params.customerUuid,
-            BackupCategory.YB_CONTROLLER,
-            BackupVersion.V2,
-            backupLocationTS);
+            childParams, params.customerUuid, BackupCategory.YB_CONTROLLER, BackupVersion.V2);
       }
     }
     if (previousBackup != null) {

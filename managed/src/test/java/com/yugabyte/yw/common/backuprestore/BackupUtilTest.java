@@ -19,9 +19,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import java.io.IOException;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -231,18 +229,14 @@ public class BackupUtilTest extends FakeDBApplication {
     BackupTableParams tableParams = new BackupTableParams();
     tableParams.setUniverseUUID(UUID.randomUUID());
     tableParams.backupUuid = UUID.randomUUID();
-    tableParams.baseBackupUUID = tableParams.backupUuid;
-    tableParams.backupParamsIdentifier = UUID.randomUUID();
     tableParams.setKeyspace("foo");
     if (emptyTableList) {
       tableParams.tableUUIDList = null;
     } else {
       tableParams.tableUUIDList = new ArrayList<>();
     }
-    SimpleDateFormat tsFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
-    String backupLocationTS = tsFormat.format(new Date());
     String formattedLocation =
-        BackupUtil.formatStorageLocation(tableParams, isYbc, BackupVersion.V2, backupLocationTS);
+        BackupUtil.formatStorageLocation(tableParams, isYbc, BackupVersion.V2);
     if (isYbc) {
       assertTrue(formattedLocation.contains("/ybc_backup"));
       if (emptyTableList) {
@@ -307,19 +301,11 @@ public class BackupUtilTest extends FakeDBApplication {
     BackupTableParams tableParams = new BackupTableParams();
     tableParams.storageConfigUUID = testConfig.getConfigUUID();
     tableParams.backupUuid = UUID.randomUUID();
-    tableParams.baseBackupUUID = tableParams.backupUuid;
-    tableParams.backupParamsIdentifier = UUID.randomUUID();
     tableParams.setUniverseUUID(UUID.randomUUID());
     tableParams.setKeyspace("foo");
     String backupIdentifier = "univ-" + tableParams.getUniverseUUID().toString() + "/";
-    SimpleDateFormat tsFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
-    String backupLocationTS = tsFormat.format(new Date());
     BackupUtil.updateDefaultStorageLocation(
-        tableParams,
-        testCustomer.getUuid(),
-        BackupCategory.YB_BACKUP_SCRIPT,
-        BackupVersion.V2,
-        backupLocationTS);
+        tableParams, testCustomer.getUuid(), BackupCategory.YB_BACKUP_SCRIPT, BackupVersion.V2);
     String expectedStorageLocation = formData.get("data").get("BACKUP_LOCATION").asText();
     expectedStorageLocation =
         expectedStorageLocation.endsWith("/")
@@ -341,19 +327,11 @@ public class BackupUtilTest extends FakeDBApplication {
     BackupTableParams tableParams = new BackupTableParams();
     tableParams.storageConfigUUID = testConfig.getConfigUUID();
     tableParams.backupUuid = UUID.randomUUID();
-    tableParams.baseBackupUUID = tableParams.backupUuid;
-    tableParams.backupParamsIdentifier = UUID.randomUUID();
     tableParams.setUniverseUUID(UUID.randomUUID());
     tableParams.setKeyspace("foo");
     String backupIdentifier = "univ-" + tableParams.getUniverseUUID().toString() + "/";
-    SimpleDateFormat tsFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
-    String backupLocationTS = tsFormat.format(new Date());
     BackupUtil.updateDefaultStorageLocation(
-        tableParams,
-        testCustomer.getUuid(),
-        BackupCategory.YB_CONTROLLER,
-        BackupVersion.V2,
-        backupLocationTS);
+        tableParams, testCustomer.getUuid(), BackupCategory.YB_CONTROLLER, BackupVersion.V2);
     String expectedStorageLocation = formData.get("data").get("BACKUP_LOCATION").asText();
     if (testConfig.getName().equals("NFS")) {
       backupIdentifier = "yugabyte_backup/" + backupIdentifier;
