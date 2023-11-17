@@ -452,7 +452,7 @@ Status AutoFlagsManager::StoreUpdatedConfig(
   auto se = ScopeExit([this]() NO_THREAD_SAFETY_ANALYSIS { update_lock_.unlock(); });
 
   // This is an update of an existing config. The initial config must be applied immediately.
-  DCHECK_GT(new_config.config_version(), kMinAutoFlagsConfigVersion);
+  DCHECK_GE(new_config.config_version(), kMinAutoFlagsConfigVersion);
   // Every config change must update the version by 1.
   RSTATUS_DCHECK_EQ(
       new_config.config_version(), current_config_.config_version() + 1, IllegalState,
