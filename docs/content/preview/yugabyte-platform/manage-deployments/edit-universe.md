@@ -19,11 +19,13 @@ YugabyteDB Anywhere allows you to expand a universe to add more nodes and shrink
 
 Using the **Edit Universe** page, you can specify the new intent for the universe. This may include a new configuration of nodes powered by a different instance type. YugabyteDB Anywhere performs these modifications through the YB-Masters powering the universe. The YB-Masters ensure that the new nodes start hosting the tablet leaders for a set of tablets in such a way that the tablet leader count remains evenly balanced across all the available nodes.
 
-Expansion of universes created with an on-premise cloud provider and secured with third-party certificates obtained from external certification authorities follows a different workflow. For details, see [Expand the universe](../../security/enable-encryption-in-transit#expand-the-universe).
+Expansion of universes created with an on-premises cloud provider and secured with third-party certificates obtained from external certification authorities follows a different workflow. For details, see [Expand the universe](../../security/enable-encryption-in-transit#expand-the-universe).
 
 ## Smart resize
 
-For universes that use Google Cloud Provider (GCP) or Amazon Web Services (AWS), YBA allows you to change the VM images and increase the volume size without moving the data from the old nodes to the new nodes. This is known as smart resize and is subject to the following:
+For universes that use Google Cloud Provider (GCP), Amazon Web Services (AWS), or Microsoft Azure, YBA allows you to change the VM images and increase the volume size without moving the data from the old nodes to the new nodes. This is known as smart resize and is subject to the following:
+
+- For Azure universes, you can't increase the volume size for ultra SSDs.
 
 - To avoid potential data loss, you can't do a smart resize of instances with ephemeral disks. Smart resize _to_ ephemeral disks is supported.
 
