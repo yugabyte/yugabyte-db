@@ -85,3 +85,6 @@ CREATE TYPE test_range AS RANGE (
 
 -- Test Composite Type
 CREATE TYPE test_composite AS (col1 text, col2 text);
+
+-- Add a reference to target schema to test schema names (CVE-2023-39417)
+SELECT 1 AS @extschema@;
