@@ -77,13 +77,14 @@ public class AuthorizationHandler extends Action<AuthzPath> {
     }
     Users user = tokenAuthenticator.getCurrentAuthenticatedUser(request);
     if (user == null) {
+      log.debug("User not present in the system");
       return CompletableFuture.completedFuture(Results.unauthorized("Unable To authenticate User"));
     }
     UserWithFeatures userWithFeatures = new UserWithFeatures().setUser(user);
     RequestContext.put(TokenAuthenticator.CUSTOMER, Customer.get(user.getCustomerUUID()));
     RequestContext.put(TokenAuthenticator.USER, userWithFeatures);
 
-    String endpoint = request.path();
+    String endpoint = request.uri();
     UUID customerUUID = null;
     Pattern custPattern = Pattern.compile(String.format(".*/%s/" + UUID_PATTERN, CUSTOMERS));
     Matcher custMatcher = custPattern.matcher(endpoint);
@@ -92,6 +93,7 @@ public class AuthorizationHandler extends Action<AuthzPath> {
     }
 
     if (customerUUID != null && !user.getCustomerUUID().equals(customerUUID)) {
+      log.debug("User {} does not belong to the customer {}", user.getUuid(), customerUUID);
       return CompletableFuture.completedFuture(Results.unauthorized("Unable To authenticate User"));
     }
 
@@ -116,6 +118,11 @@ public class AuthorizationHandler extends Action<AuthzPath> {
               .collect(Collectors.toList());
 
       if (applicableRoleBindings.isEmpty()) {
+        log.debug(
+            "User {} does not have the required permission {} on the resource {}",
+            user.getUuid(),
+            attribute.action(),
+            attribute.resourceType());
         return CompletableFuture.completedFuture(Results.unauthorized("Unable to authorize user"));
       }
 
@@ -148,6 +155,10 @@ public class AuthorizationHandler extends Action<AuthzPath> {
             isPermissionPresentOnResource =
                 checkResourcePermission(applicableRoleBindings, attribute, resourceUUID);
             if (!isPermissionPresentOnResource) {
+              log.debug(
+                  "User {} does not have role bindings for the permission {}",
+                  user.getUuid(),
+                  attribute);
               return CompletableFuture.completedFuture(
                   Results.unauthorized("Unable to authorize user"));
             }
@@ -169,6 +180,10 @@ public class AuthorizationHandler extends Action<AuthzPath> {
             isPermissionPresentOnResource =
                 checkResourcePermission(applicableRoleBindings, attribute, resourceUUID);
             if (!isPermissionPresentOnResource) {
+              log.debug(
+                  "User {} does not have role bindings for the permission {}",
+                  user.getUuid(),
+                  attribute);
               return CompletableFuture.completedFuture(
                   Results.unauthorized("Unable to authorize user"));
             }
@@ -209,6 +224,10 @@ public class AuthorizationHandler extends Action<AuthzPath> {
             isPermissionPresentOnResource =
                 checkResourcePermission(applicableRoleBindings, attribute, resourceUUID);
             if (!isPermissionPresentOnResource) {
+              log.debug(
+                  "User {} does not have role bindings for the permission {}",
+                  user.getUuid(),
+                  attribute);
               return CompletableFuture.completedFuture(
                   Results.unauthorized("Unable to authorize user"));
             }
@@ -216,6 +235,7 @@ public class AuthorizationHandler extends Action<AuthzPath> {
           }
         default:
           {
+            log.debug("Authorization logic {} not supported", resource.sourceType());
             return CompletableFuture.completedFuture(
                 Results.unauthorized("Unable to authorize user"));
           }
