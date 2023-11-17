@@ -112,7 +112,16 @@ void PgRowLockTest::TestStmtBeforeRowLock(
     ASSERT_OK(misc_conn.ExecuteFormat("INSERT INTO t (i, j) VALUES ($0, $0)", i));
   }
 
+  LOG(INFO) << "starting transaction isolation level " << isolation << " test statement "
+            << statement << " rowmark " << row_mark_str;
+
+
   ASSERT_OK(read_conn.StartTransaction(isolation));
+  std::string isolation_level = ASSERT_RESULT(
+      read_conn.FetchRow<std::string>("SELECT yb_get_effective_transaction_isolation_level()"));
+
+  LOG(INFO) << "effective isolation level: " << isolation_level;
+
   ASSERT_OK(read_conn.FetchFormat("SELECT * FROM t WHERE i = $0", -1));
 
   // Sleep to ensure that read done in snapshot isolation txn doesn't face kReadRestart after INSERT

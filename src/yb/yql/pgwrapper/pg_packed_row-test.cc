@@ -147,13 +147,17 @@ TEST_P(PgPackedRowTest, AlterTable) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 1 * kTimeMultiplier;
 
-  auto conn = ASSERT_RESULT(Connect());
+  // TODO (#19975): Enable read committed isolation
+  auto conn = ASSERT_RESULT(
+      SetDefaultTransactionIsolation(Connect(), IsolationLevel::SNAPSHOT_ISOLATION));
 
   TestThreadHolder thread_holder;
   for (int i = 0; i != 2; ++i) {
     thread_holder.AddThreadFunctor([this, i, &stop = thread_holder.stop_flag()] {
       auto table_name = Format("test_$0", i);
-      auto conn = ASSERT_RESULT(Connect());
+      // TODO (#19975): Enable read committed isolation
+      auto conn = ASSERT_RESULT(
+          SetDefaultTransactionIsolation(Connect(), IsolationLevel::SNAPSHOT_ISOLATION));
       std::vector<int> columns;
       int column_idx = 0;
       ASSERT_OK(conn.ExecuteFormat(

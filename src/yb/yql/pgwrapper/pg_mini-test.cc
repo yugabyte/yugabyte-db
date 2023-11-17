@@ -235,12 +235,22 @@ TEST_F(PgMiniTest, FollowerReads) {
   ASSERT_OK(conn.Execute("UPDATE t SET value = 'NEW' WHERE key = 1"));
   auto kUpdateTime = MonoTime::Now();
   ASSERT_OK(conn.Execute(Format("SET yb_follower_read_staleness_ms = $0", kStalenessMs)));
+  ASSERT_OK(
+        conn.Execute("CREATE FUNCTION func() RETURNS text AS"
+                     " $$ SELECT value FROM t WHERE key = 1 $$ LANGUAGE SQL"));
 
   // Follower reads will not be enabled unless a transaction block is marked read-only.
   {
     ASSERT_OK(conn.Execute("BEGIN TRANSACTION"));
     auto value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
     ASSERT_EQ(value, "NEW");
+    // Test with function
+    value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT func()"));
+    ASSERT_EQ(value, "NEW");
+    // Test with join
+    value = ASSERT_RESULT(conn.FetchRow<std::string>(
+        "SELECT phrase FROM t, t2 WHERE t.value = t2.word"));
+    ASSERT_EQ(value, "NEW is fine");
     ASSERT_OK(conn.Execute("COMMIT"));
   }
 
@@ -249,128 +259,69 @@ TEST_F(PgMiniTest, FollowerReads) {
     ASSERT_OK(conn.Execute("BEGIN TRANSACTION READ ONLY"));
     auto value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
     ASSERT_EQ(value, "old");
+    // Test with function
+    value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT func()"));
+    ASSERT_EQ(value, "old");
+    // Test with join
+    value = ASSERT_RESULT(conn.FetchRow<std::string>(
+        "SELECT phrase FROM t, t2 WHERE t.value = t2.word"));
+    ASSERT_EQ(value, "old is gold");
     ASSERT_OK(conn.Execute("COMMIT"));
   }
 
   // Follower reads will not be enabled unless the session or statement is marked read-only.
-  auto value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
-  ASSERT_EQ(value, "NEW");
-
-  value = ASSERT_RESULT(conn.FetchRow<std::string>(
-      "SELECT phrase FROM t, t2 WHERE t.value = t2.word"));
-  ASSERT_EQ(value, "NEW is fine");
-
-  // Follower reads can be enabled for a single statement with a pg hint.
-  value = ASSERT_RESULT(conn.FetchRow<std::string>(
-      "/*+ Set(transaction_read_only on) */ SELECT value FROM t WHERE key = 1"));
-  ASSERT_EQ(value, "old");
-  value = ASSERT_RESULT(conn.FetchRow<std::string>(
-      "/*+ Set(transaction_read_only on) */ SELECT phrase FROM t, t2 WHERE t.value = t2.word"));
-  ASSERT_EQ(value, "old is gold");
-
-  // pg_hint only applies for the specific statement used.
-  // Statements following it should not enable follower reads if it is not marked read-only.
-  value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
-  ASSERT_EQ(value, "NEW");
-
-  // pg_hint should also apply for prepared statements, if the hint is provided
-  // at PREPARE stage.
   {
-    ASSERT_OK(
-        conn.Execute("PREPARE hinted_select_stmt (int) AS "
-                     "/*+ Set(transaction_read_only on) */ "
-                     "SELECT value FROM t WHERE key = $1"));
-    value = ASSERT_RESULT(conn.FetchRow<std::string>("EXECUTE hinted_select_stmt (1)"));
-    ASSERT_EQ(value, "old");
-    value = ASSERT_RESULT(conn.FetchRow<std::string>(
-        "/*+ Set(transaction_read_only on) */ EXECUTE hinted_select_stmt (1)"));
-    ASSERT_EQ(value, "old");
-    value = ASSERT_RESULT(conn.FetchRow<std::string>(
-        "/*+ Set(transaction_read_only off) */ EXECUTE hinted_select_stmt (1)"));
-    ASSERT_EQ(value, "old");
-  }
-  // Adding a pg_hint at the EXECUTE stage has no effect.
-  {
-    ASSERT_OK(
-        conn.Execute("PREPARE select_stmt (int) AS "
-                     "SELECT value FROM t WHERE key = $1"));
-    value = ASSERT_RESULT(conn.FetchRow<std::string>("EXECUTE select_stmt (1)"));
+    auto value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
     ASSERT_EQ(value, "NEW");
-    value = ASSERT_RESULT(conn.FetchRow<std::string>(
-        "/*+ Set(transaction_read_only on) */ EXECUTE select_stmt (1)"));
-    ASSERT_EQ(value, "NEW");
-  }
-
-  // pg_hint with func()
-  // The hint may be provided when the function is defined, or when the function is
-  // called.
-  {
-    ASSERT_OK(
-        conn.Execute("CREATE FUNCTION func() RETURNS text AS"
-                     " $$ SELECT value FROM t WHERE key = 1 $$ LANGUAGE SQL"));
+    // Test with function
     value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT func()"));
     ASSERT_EQ(value, "NEW");
+    // Test with join
     value = ASSERT_RESULT(conn.FetchRow<std::string>(
-        "/*+ Set(transaction_read_only off) */ SELECT func()"));
-    ASSERT_EQ(value, "NEW");
-    value = ASSERT_RESULT(conn.FetchRow<std::string>(
-        "/*+ Set(transaction_read_only on) */ SELECT func()"));
-    ASSERT_EQ(value, "old");
-    ASSERT_OK(conn.Execute("DROP FUNCTION func()"));
-  }
-  {
-    ASSERT_OK(
-        conn.Execute("CREATE FUNCTION hinted_func() RETURNS text AS"
-                     " $$ "
-                     "/*+ Set(transaction_read_only on) */ "
-                     "SELECT value FROM t WHERE key = 1"
-                     " $$ LANGUAGE SQL"));
-    value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT hinted_func()"));
-    ASSERT_EQ(value, "old");
-    value = ASSERT_RESULT(conn.FetchRow<std::string>(
-        "/*+ Set(transaction_read_only off) */ SELECT hinted_func()"));
-    ASSERT_EQ(value, "old");
-    value = ASSERT_RESULT(conn.FetchRow<std::string>(
-        "/*+ Set(transaction_read_only on) */ SELECT hinted_func()"));
-    ASSERT_EQ(value, "old");
-    ASSERT_OK(conn.Execute("DROP FUNCTION hinted_func()"));
+        "SELECT phrase FROM t, t2 WHERE t.value = t2.word"));
+    ASSERT_EQ(value, "NEW is fine");
   }
 
-  ASSERT_OK(conn.Execute("SET default_transaction_read_only = true"));
   // Follower reads will be enabled since the session is marked read-only.
-  value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
-  ASSERT_EQ(value, "old");
-
-  // pg_hint can only mark a session from read-write to read-only.
-  // Marking a statement in a read-only session as read-write is not allowed.
-  // Writes operations fail.
-  // Read operations will be performed as if they are read-write, so will not use follower
-  // reads.
   {
-    auto status = conn.Execute(
-        "/*+ Set(transaction_read_only off) */ "
-        "UPDATE t SET value = 'NEWER' WHERE key = 1");
-    ASSERT_EQ(PgsqlError(status), YBPgErrorCode::YB_PG_READ_ONLY_SQL_TRANSACTION) << status;
-    ASSERT_STR_CONTAINS(status.ToString(), "cannot execute UPDATE in a read-only transaction");
-
-    value = ASSERT_RESULT(conn.FetchRow<std::string>(
-        "/*+ Set(transaction_read_only off) */ SELECT value FROM t WHERE key = 1"));
+    ASSERT_OK(conn.Execute("SET default_transaction_read_only = true"));
+    auto value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
     ASSERT_EQ(value, "old");
+    // Test with function
+    value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT func()"));
+    ASSERT_EQ(value, "old");
+    // Test with join
+    value = ASSERT_RESULT(conn.FetchRow<std::string>(
+        "SELECT phrase FROM t, t2 WHERE t.value = t2.word"));
+    ASSERT_EQ(value, "old is gold");
   }
 
   // After sufficient time has passed, even "follower reads" should see the newer value.
-  SleepFor(kUpdateTime + MonoDelta::FromMilliseconds(kStalenessMs) - MonoTime::Now());
+  {
+    SleepFor(kUpdateTime + MonoDelta::FromMilliseconds(kStalenessMs) - MonoTime::Now());
 
-  ASSERT_OK(conn.Execute("SET default_transaction_read_only = false"));
-  value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
-  ASSERT_EQ(value, "NEW");
+    ASSERT_OK(conn.Execute("SET default_transaction_read_only = false"));
+    auto value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
+    ASSERT_EQ(value, "NEW");
+    // Test with function
+    value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT func()"));
+    ASSERT_EQ(value, "NEW");
+    // Test with join
+    value = ASSERT_RESULT(conn.FetchRow<std::string>(
+        "SELECT phrase FROM t, t2 WHERE t.value = t2.word"));
+    ASSERT_EQ(value, "NEW is fine");
 
-  ASSERT_OK(conn.Execute("SET default_transaction_read_only = true"));
-  value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
-  ASSERT_EQ(value, "NEW");
-  value = ASSERT_RESULT(conn.FetchRow<std::string>(
-      "/*+ Set(transaction_read_only on) */ SELECT phrase FROM t, t2 WHERE t.value = t2.word"));
-  ASSERT_EQ(value, "NEW is fine");
+    ASSERT_OK(conn.Execute("SET default_transaction_read_only = true"));
+    value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
+    ASSERT_EQ(value, "NEW");
+    // Test with function
+    value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT func()"));
+    ASSERT_EQ(value, "NEW");
+    // Test with join
+    value = ASSERT_RESULT(conn.FetchRow<std::string>(
+        "SELECT phrase FROM t, t2 WHERE t.value = t2.word"));
+    ASSERT_EQ(value, "NEW is fine");
+  }
 }
 
 TEST_F(PgMiniTest, MultiColFollowerReads) {
@@ -394,21 +345,26 @@ TEST_F(PgMiniTest, MultiColFollowerReads) {
   ASSERT_OK(conn.Execute("UPDATE t SET c2 = 'NEW' WHERE k = 1"));
   auto kUpdateTime2 = MonoTime::Now();
 
+  ASSERT_OK(conn.Execute("SET default_transaction_read_only = false"));
   auto row = ASSERT_RESULT((conn.FetchRow<int32_t, std::string, std::string>(
-      "/*+ Set(transaction_read_only off) */ SELECT * FROM t WHERE k = 1")));
+      "SELECT * FROM t WHERE k = 1")));
   ASSERT_EQ(row, (decltype(row){1, "NEW", "NEW"}));
+
+  // Set default_transaction_read_only to true for the rest of the statements
+  ASSERT_OK(conn.Execute("SET default_transaction_read_only = true"));
 
   const int32_t kOpDurationMs = 10;
   auto staleness_ms = (MonoTime::Now() - kUpdateTime0).ToMilliseconds() - kOpDurationMs;
   ASSERT_OK(conn.Execute(Format("SET yb_follower_read_staleness_ms = $0", staleness_ms)));
+  ASSERT_OK(conn.Execute("SET default_transaction_read_only = true"));
   row = ASSERT_RESULT((conn.FetchRow<int32_t, std::string, std::string>(
-      "/*+ Set(transaction_read_only on) */ SELECT * FROM t WHERE k = 1")));
+      "SELECT * FROM t WHERE k = 1")));
   ASSERT_EQ(row, (decltype(row){1, "old", "old"}));
 
   staleness_ms = (MonoTime::Now() - kUpdateTime1).ToMilliseconds() - kOpDurationMs;
   ASSERT_OK(conn.Execute(Format("SET yb_follower_read_staleness_ms = $0", staleness_ms)));
   row = ASSERT_RESULT((conn.FetchRow<int32_t, std::string, std::string>(
-      "/*+ Set(transaction_read_only on) */ SELECT * FROM t WHERE k = 1")));
+      "SELECT * FROM t WHERE k = 1")));
   ASSERT_EQ(row, (decltype(row){1, "NEW", "old"}));
 
   SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
@@ -416,7 +372,7 @@ TEST_F(PgMiniTest, MultiColFollowerReads) {
   staleness_ms = (MonoTime::Now() - kUpdateTime2).ToMilliseconds();
   ASSERT_OK(conn.Execute(Format("SET yb_follower_read_staleness_ms = $0", staleness_ms)));
   row = ASSERT_RESULT((conn.FetchRow<int32_t, std::string, std::string>(
-      "/*+ Set(transaction_read_only on) */ SELECT * FROM t WHERE k = 1")));
+      "SELECT * FROM t WHERE k = 1")));
   ASSERT_EQ(row, (decltype(row){1, "NEW", "NEW"}));
 }
 

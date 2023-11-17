@@ -663,8 +663,40 @@ Result<PGConn> Execute(Result<PGConn> connection, const std::string& query) {
 Result<PGConn> SetHighPriTxn(Result<PGConn> connection) {
   return Execute(std::move(connection), "SET yb_transaction_priority_lower_bound=0.5");
 }
+
 Result<PGConn> SetLowPriTxn(Result<PGConn> connection) {
   return Execute(std::move(connection), "SET yb_transaction_priority_upper_bound=0.4");
+}
+
+Result<PGConn> SetDefaultTransactionIsolation(
+    Result<PGConn> connection, IsolationLevel isolation_level) {
+  switch (isolation_level) {
+    case IsolationLevel::NON_TRANSACTIONAL:
+      return STATUS(InvalidArgument, "default transaction_isolation non-transactional is invalid");
+    case IsolationLevel::READ_COMMITTED:
+      return Execute(std::move(connection), "SET default_transaction_isolation = 'read committed'");
+    case IsolationLevel::SNAPSHOT_ISOLATION:
+      return Execute(
+          std::move(connection), "SET default_transaction_isolation = 'repeatable read'");
+    case IsolationLevel::SERIALIZABLE_ISOLATION:
+      return Execute(std::move(connection), "SET default_transaction_isolation = 'serializable'");
+  }
+
+  FATAL_INVALID_ENUM_VALUE(IsolationLevel, isolation_level);
+}
+
+Result<IsolationLevel> EffectiveIsolationLevel(PGConn* conn) {
+  const std::string effective_isolation = CHECK_RESULT(
+      conn->FetchRow<std::string>("SELECT yb_get_effective_transaction_isolation_level()"));
+
+  if (effective_isolation == "read committed")
+      return IsolationLevel::READ_COMMITTED;
+  if (effective_isolation == "repeatable read")
+      return IsolationLevel::SNAPSHOT_ISOLATION;
+  if (effective_isolation == "serializable")
+      return IsolationLevel::SERIALIZABLE_ISOLATION;
+
+  return STATUS_FORMAT(NotFound, "Unknown effective isolation level: $0", effective_isolation);
 }
 
 Status SetMaxBatchSize(PGConn* conn, size_t max_batch_size) {

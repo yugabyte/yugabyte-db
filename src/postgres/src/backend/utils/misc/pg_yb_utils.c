@@ -441,7 +441,12 @@ IsYBReadCommitted()
 	static int cached_value = -1;
 	if (cached_value == -1)
 	{
+
+#ifdef NDEBUG
 		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_yb_enable_read_committed_isolation", false);
+#else
+		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_yb_enable_read_committed_isolation", true);
+#endif
 	}
 	return IsYugaByteEnabled() && cached_value &&
 				 (XactIsoLevel == XACT_READ_COMMITTED || XactIsoLevel == XACT_READ_UNCOMMITTED);

@@ -255,7 +255,7 @@ TEST_F(PgWrapperTest, TestCompactHistoryWithTxn) {
   std::thread read_txn_thread([this]{
     LOG(INFO) << "Starting transaction to read data and wait";
     RunPsqlCommand(
-        "BEGIN; "
+        "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ; "
         "SELECT * FROM mytbl WHERE k = 100; "
         "SELECT pg_sleep(30); "
         "SELECT * FROM mytbl WHERE k = 100; "

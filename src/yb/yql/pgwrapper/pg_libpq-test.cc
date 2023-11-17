@@ -341,7 +341,9 @@ TEST_F(PgLibPqTest, ConcurrentInsertTruncateForeignKey) {
 
   for (int i = 0; i != kTruncateThreads; ++i) {
     thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
-      auto truncate_conn = ASSERT_RESULT(Connect());
+      // TODO (#19975): Enable read committed isolation
+      auto truncate_conn = ASSERT_RESULT(
+          SetDefaultTransactionIsolation(Connect(), IsolationLevel::SNAPSHOT_ISOLATION));
       int idx __attribute__((unused)) = 0;
       while (!stop.load(std::memory_order_acquire)) {
         auto status = truncate_conn.Execute("TRUNCATE TABLE t1, t2 CASCADE");
@@ -1426,11 +1428,13 @@ void PgLibPqTest::PerformSimultaneousTxnsAndVerifyConflicts(
   auto res = ASSERT_RESULT(conn1.Fetch(query_statement));
   ASSERT_EQ(PQntuples(res.get()), 1);
 
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   auto status = conn2.Execute("DELETE FROM t WHERE a = 1");
   ASSERT_TRUE(IsSerializeAccessError(status)) <<  status;
   ASSERT_STR_CONTAINS(status.ToString(), "conflicts with higher priority transaction");
 
   ASSERT_OK(conn1.CommitTransaction());
+  ASSERT_OK(conn2.CommitTransaction());
 
   // Ensure that reads to separate tables in a colocated database/tablegroup do not conflict.
   if (colocated) {
