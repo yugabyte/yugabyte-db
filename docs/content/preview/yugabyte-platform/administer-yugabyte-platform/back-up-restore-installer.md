@@ -1,5 +1,5 @@
 ---
-title: Back up and restore YugabyteDB Anywhere
+title: Back up and restore YugabyteDB Anywhere on YBA Installer
 headerTitle: Back up and restore YugabyteDB Anywhere on YBA Installer
 description: Use a script to back up and restore YugabyteDB Anywhere on YBA Installer.
 linkTitle: Back up YugabyteDB Anywhere

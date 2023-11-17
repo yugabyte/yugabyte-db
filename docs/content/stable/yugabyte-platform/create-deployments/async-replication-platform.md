@@ -21,8 +21,8 @@ In the concept of replication, universes are divided into the following categori
 
 For additional information on xCluster replication in YugabyteDB, see the following:
 
-- [xCluster replication: overview and architecture](/preview/architecture/docdb-replication/async-replication/)
-- [xCluster replication between universes in YugabyteDB](/preview/deploy/multi-dc/async-replication/)
+- [xCluster replication: overview and architecture](../../architecture/docdb-replication/async-replication/)
+- [xCluster replication between universes in YugabyteDB](../../deploy/multi-dc/async-replication/)
 
 You can use the YugabyteDB Anywhere UI to set up and configure xCluster replication for universes. In addition, you can perform monitoring by accessing the information about the replication lag and enabling alerts on excessive lag.
 
