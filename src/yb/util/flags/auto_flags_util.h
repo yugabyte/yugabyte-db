@@ -21,7 +21,7 @@
 namespace yb {
 
 constexpr uint32 kInvalidAutoFlagsConfigVersion = 0;
-constexpr uint32 kMinAutoFlagsConfigVersion = 0;
+constexpr uint32 kMinAutoFlagsConfigVersion = 1;
 
 namespace server {
 class ServerBaseOptions;
