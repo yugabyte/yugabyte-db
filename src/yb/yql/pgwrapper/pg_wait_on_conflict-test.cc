@@ -34,6 +34,7 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
+#include "yb/util/sync_point.h"
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -59,6 +60,7 @@ DECLARE_bool(TEST_drop_participant_signal);
 DECLARE_int32(send_wait_for_report_interval_ms);
 DECLARE_uint64(TEST_inject_process_update_resp_delay_ms);
 DECLARE_uint64(TEST_delay_rpc_status_req_callback_ms);
+DECLARE_int32(TEST_txn_participant_inject_delay_on_start_shutdown_ms);
 
 using namespace std::literals;
 
@@ -1223,6 +1225,59 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(MultiTabletFairness)) {
         ASSERT_RESULT(setup_conn.FetchRow<int>(Format("SELECT v FROM foo WHERE k=$0", i))), 0);
   }
 }
+
+class PgWaitQueueRF1Test : public PgWaitQueuesTest {
+ protected:
+  size_t NumTabletServers() override {
+    return 1;
+  }
+};
+
+#ifndef NDEBUG
+TEST_F(PgWaitQueueRF1Test, TestResumingWaitersDoesntBlockTabletShutdown) {
+  static const char* sync_points[1][4] = {
+      {"WaitQueue::Impl::SetupWaiterUnlocked:1", "PgWaitQueueRF1Test::CommitConnection1:1",
+       "TabletPeer::StartShutdown:1", "WaiterData::Impl::InvokeCallback:1"}};
+  yb::SyncPoint::GetInstance()->LoadDependency({
+    {sync_points[0][0], sync_points[0][1]},
+    {sync_points[0][2], sync_points[0][3]}});
+  yb::SyncPoint::GetInstance()->ClearTrace();
+  yb::SyncPoint::GetInstance()->DisableProcessing();
+
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(setup_conn.Execute("INSERT INTO foo SELECT generate_series(0, 2), 0"));
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  yb::SyncPoint::GetInstance()->EnableProcessing();
+  ASSERT_OK(conn.Execute("UPDATE foo SET v=v+1 WHERE k=1"));
+
+  auto status_future = std::async(std::launch::async, [&]() -> Status {
+    auto conn = VERIFY_RESULT(Connect());
+    EXPECT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    RETURN_NOT_OK(conn.Execute("UPDATE foo SET v=v+1 WHERE k=1"));
+    return Status::OK();
+  });
+  // Hold off commit until the waiter txn registers itself with the wait-queue.
+  DEBUG_ONLY_TEST_SYNC_POINT("PgWaitQueueRF1Test::CommitConnection1:1");
+  ASSERT_OK(conn.CommitTransaction());
+  // TabletPeer::StartShutdown:1 "happens before" WaiterData::Impl::InvokeCallback:1 dependency
+  // will ensure that the resumed waiter's callback would only be called after the tablet peer's
+  // lock_ has been acquired in TabletPeer::StartShutdown.
+  //
+  // Delay participant shutdown so as to give a chance for the resumed waiter to grab a valid
+  // request scope. Post that, the resumed waiter thread will block temporarily while trying to
+  // obtain tablet peer's lock_ during construction of operation driver.
+  //
+  // Ensure that the thread executing Tablet::StartShutdown (while holding the peer's lock_)
+  // doesn't wait for the completion of waiter's callback. Else, it could result in a deadlock.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_txn_participant_inject_delay_on_start_shutdown_ms) =
+      1000 * kTimeMultiplier;
+  ASSERT_OK(setup_conn.Execute("DROP TABLE foo"));
+  ASSERT_NOK(status_future.get());
+}
+#endif // NDEBUG
 
 class PgWaitQueuesReadCommittedTest : public PgWaitQueuesTest {
  protected:
