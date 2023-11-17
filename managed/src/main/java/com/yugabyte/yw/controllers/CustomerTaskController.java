@@ -17,7 +17,11 @@ import com.yugabyte.yw.forms.CustomerTaskFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.SubTaskFormData;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.Audit;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.FailedSubtasks;
@@ -30,7 +34,14 @@ import io.ebean.ExpressionList;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -51,8 +62,6 @@ public class CustomerTaskController extends AuthenticatedController {
   @Inject private CustomerTaskManager customerTaskManager;
 
   static final String CUSTOMER_TASK_DB_QUERY_LIMIT = "yb.customer_task_db_query_limit";
-  private static final String YB_SOFTWARE_VERSION = "ybSoftwareVersion";
-  private static final String YB_PREV_SOFTWARE_VERSION = "ybPrevSoftwareVersion";
 
   public static final Logger LOG = LoggerFactory.getLogger(CustomerTaskController.class);
 
@@ -116,17 +125,18 @@ public class CustomerTaskController extends AuthenticatedController {
               : task.getType().getFriendlyName();
       taskData.targetUUID = task.getTargetUUID();
       taskData.userEmail = task.getUserEmail();
+      if (taskProgress.has("details")) {
+        taskData.details = taskProgress.get("details");
+      } else {
+        ObjectNode details = Json.newObject();
+        ObjectNode versionNumbers = commissioner.getVersionInfo(task, taskInfo);
+        if (versionNumbers != null && !versionNumbers.isEmpty()) {
+          details.set("versionNumbers", versionNumbers);
+          taskData.details = details;
+        }
+      }
       String correlationId = task.getCorrelationId();
       if (!Strings.isNullOrEmpty(correlationId)) taskData.correlationId = correlationId;
-      ObjectNode versionNumbers = Json.newObject();
-      JsonNode taskDetails = taskInfo.getDetails();
-      if (task.getType() == CustomerTask.TaskType.SoftwareUpgrade
-          && taskDetails.has(YB_PREV_SOFTWARE_VERSION)) {
-        versionNumbers.put(
-            YB_PREV_SOFTWARE_VERSION, taskDetails.get(YB_PREV_SOFTWARE_VERSION).asText());
-        versionNumbers.put(YB_SOFTWARE_VERSION, taskDetails.get(YB_SOFTWARE_VERSION).asText());
-        taskData.details = versionNumbers;
-      }
       return taskData;
     } catch (RuntimeException e) {
       LOG.error("Error fetching task progress for {}. TaskInfo is not found", task.getTaskUUID());

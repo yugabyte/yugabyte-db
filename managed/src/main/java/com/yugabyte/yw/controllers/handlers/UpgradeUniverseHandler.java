@@ -31,6 +31,7 @@ import com.yugabyte.yw.forms.SystemdUpgradeParams;
 import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PrevYBSoftwareConfig;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
@@ -101,6 +102,7 @@ public class UpgradeUniverseHandler {
     requestParams.verifyParams(universe, true);
 
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    requestParams.ybPrevSoftwareVersion = userIntent.ybSoftwareVersion;
 
     if (userIntent.providerType.equals(CloudType.kubernetes)) {
       checkHelmChartExists(requestParams.ybSoftwareVersion);
@@ -182,6 +184,13 @@ public class UpgradeUniverseHandler {
             : TaskType.RollbackUpgrade;
 
     requestParams.verifyParams(universe, true);
+    requestParams.ybPrevSoftwareVersion = userIntent.ybSoftwareVersion;
+    PrevYBSoftwareConfig prevYBSoftwareConfig = universe.getUniverseDetails().prevYBSoftwareConfig;
+    if (prevYBSoftwareConfig != null) {
+      requestParams.ybSoftwareVersion = prevYBSoftwareConfig.getSoftwareVersion();
+    } else {
+      requestParams.ybSoftwareVersion = userIntent.ybSoftwareVersion;
+    }
 
     return submitUpgradeTask(
         taskType, CustomerTask.TaskType.RollbackUpgrade, requestParams, customer, universe);
