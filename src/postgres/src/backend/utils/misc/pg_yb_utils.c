@@ -1266,6 +1266,7 @@ bool yb_disable_wait_for_backends_catalog_version = false;
 bool yb_enable_base_scans_cost_model = false;
 int yb_wait_for_backends_catalog_version_timeout = 5 * 60 * 1000;	/* 5 min */
 bool yb_prefer_bnl = false;
+bool yb_explain_hide_non_deterministic_fields = false;
 
 //------------------------------------------------------------------------------
 // YB Debug utils.

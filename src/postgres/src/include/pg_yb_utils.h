@@ -519,6 +519,12 @@ extern int yb_wait_for_backends_catalog_version_timeout;
  */
 extern bool yb_prefer_bnl;
 
+/*
+ * If true, all fields that vary from run to run are hidden from the
+ * output of EXPLAIN.
+ */
+extern bool yb_explain_hide_non_deterministic_fields;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;
