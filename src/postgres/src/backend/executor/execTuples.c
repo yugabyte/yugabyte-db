@@ -1404,9 +1404,7 @@ ExecStoreBufferHeapTuple(HeapTuple tuple,
 	Assert(tuple != NULL);
 	Assert(slot != NULL);
 	Assert(slot->tts_tupleDescriptor != NULL);
-
-	if (!IsYugaByteEnabled())
-		Assert(BufferIsValid(buffer));
+	Assert(BufferIsValid(buffer));
 
 	if (unlikely(!TTS_IS_BUFFERTUPLE(slot)))
 		elog(ERROR, "trying to store an on-disk heap tuple into wrong type of slot");

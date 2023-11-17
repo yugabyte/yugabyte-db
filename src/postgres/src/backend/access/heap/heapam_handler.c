@@ -69,6 +69,8 @@ static const TableAmRoutine heapam_methods;
 static const TupleTableSlotOps *
 heapam_slot_callbacks(Relation relation)
 {
+	if (IsYBRelation(relation))
+		return &TTSOpsHeapTuple;
 	return &TTSOpsBufferHeapTuple;
 }
 
@@ -1642,19 +1644,21 @@ heapam_index_build_range_scan(Relation heapRelation,
 				tupleIsAlive = true;
 				reltuples += 1;
 			}
+
+			MemoryContextReset(econtext->ecxt_per_tuple_memory);
+
+			/* Set up for predicate or expression evaluation */
+			ExecStoreBufferHeapTuple(heapTuple, slot, hscan->rs_cbuf);
 		}
 		else
 		{
 			/* In YugaByte mode DocDB will only send live tuples. */
 			tupleIsAlive = true;
 			reltuples += 1;
+
+			/* Set up for predicate or expression evaluation */
+			ExecStoreHeapTuple(heapTuple, slot, false /* shouldFree */);
 		}
-
-		if (!IsYBRelation(indexRelation))
-			MemoryContextReset(econtext->ecxt_per_tuple_memory);
-
-		/* Set up for predicate or expression evaluation */
-		ExecStoreBufferHeapTuple(heapTuple, slot, hscan->rs_cbuf);
 
 		/*
 		 * In a partial index, discard tuples that don't satisfy the

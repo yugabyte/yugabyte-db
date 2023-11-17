@@ -91,6 +91,10 @@ EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 
 -- YB_TODO: Explain has a missing line Index Cond: (a = ANY (ARRAY[t1.a, $1, $2])) under Index Scan
 SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
 
+SET enable_mergejoin = on;
+SET enable_hashjoin = on;
+SET enable_seqscan = on;
+SET enable_material = on;
 -- Update pushdown test.
 
 CREATE TABLE single_row_decimal (k int PRIMARY KEY, v1 decimal, v2 decimal(10,2), v3 int);
@@ -203,6 +207,19 @@ ANALYZE tlateral1, tlateral2;
 -- EXPLAIN (COSTS FALSE) SELECT * FROM tlateral1 t1 LEFT JOIN LATERAL (SELECT t2.a AS t2a, t2.c AS t2c, t2.b AS t2b, t3.b AS t3b, least(t1.a,t2.a,t3.b) FROM tlateral1 t2 JOIN tlateral2 t3 ON (t2.a = t3.b AND t2.c = t3.c)) ss ON t1.a = ss.t2a WHERE t1.b = 0 ORDER BY t1.a;
 SELECT * FROM tlateral1 t1 LEFT JOIN LATERAL (SELECT t2.a AS t2a, t2.c AS t2c, t2.b AS t2b, t3.b AS t3b, least(t1.a,t2.a,t3.b) FROM tlateral1 t2 JOIN tlateral2 t3 ON (t2.a = t3.b AND t2.c = t3.c)) ss ON t1.a = ss.t2a WHERE t1.b = 0 ORDER BY t1.a;
 
+-- Test FailedAssertion("BufferIsValid(bsrcslot->buffer) failure from ExecCopySlot in ExecMergeJoin.
+CREATE TABLE mytest1(h int, r int, v1 int, v2 int, v3 int, primary key(h HASH, r ASC));
+INSERT INTO mytest1 VALUES (1,2,4,9,2), (2,3,2,4,6);
+
+CREATE TABLE mytest2(h int, r int, v1 int, v2 int, v3 int, primary key(h ASC, r ASC));
+INSERT INTO mytest2 VALUES (1,2,4,5,7), (1,3,8,6,1), (4,3,7,3,2);
+
+SET enable_hashjoin = off;
+SET enable_nestloop = off;
+explain SELECT * FROM mytest1 t1 JOIN mytest2 t2 on t1.h = t2.h WHERE t2.r = 2;
+SELECT * FROM mytest1 t1 JOIN mytest2 t2 on t1.h = t2.h WHERE t2.r = 2;
+SET enable_hashjoin = on;
+SET enable_nestloop = on;
 -- Insert with on conflict on temp table
 create temporary table mytmp (id int primary key, name text, count int);
 insert into mytmp values (1, 'foo', 0);
@@ -228,4 +245,4 @@ select * from myview;
 -- Cleanup
 DROP TABLE IF EXISTS address, address2, emp, emp2, emp_par1, emp_par1_1_100, emp_par2, emp_par3,
   fastpath, myemp, myemp2, myemp2_101_200, myemp2_1_100, p1, p2, pk_range_int_asc,
-  single_row_decimal, t1, t2, test, test2, serial_test, tlateral1, tlateral2 CASCADE;
+  single_row_decimal, t1, t2, test, test2, serial_test, tlateral1, tlateral2, mytest1, mytest2 CASCADE;
