@@ -12,7 +12,7 @@ aliases:
 type: docs
 ---
 
-YugabyteDB Anywhere allows you to use its UI or [API](https://api-docs.yugabyte.com/docs/yugabyte-platform/f10502c9c9623-yugabyte-db-anywhere-api-overview) to manage asynchronous replication between independent YugabyteDB clusters. You can perform deployment via unidirectional (master-follower) or [bidirectional](#set-up-bidirectional-replication) (multi-master) xCluster replication between two data centers.
+YugabyteDB Anywhere allows you to use its UI or [API](../../anywhere-automation/anywhere-api/) to manage asynchronous replication between independent YugabyteDB clusters. You can perform deployment via unidirectional (master-follower) or [bidirectional](#set-up-bidirectional-replication) (multi-master) xCluster replication between two data centers.
 
 In the concept of replication, universes are divided into the following categories:
 
