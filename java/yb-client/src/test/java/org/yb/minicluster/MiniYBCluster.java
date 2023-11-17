@@ -107,6 +107,9 @@ public class MiniYBCluster implements AutoCloseable {
   // Map of host/port pairs to tablet servers.
   private final Map<HostAndPort, MiniYBDaemon> tserverProcesses = new ConcurrentHashMap<>();
 
+  // Map of host/port to YB Controller servers.
+  private final Map<HostAndPort, MiniYBDaemon> ybControllerProcesses = new ConcurrentHashMap<>();
+
   private final List<String> pathsToDelete = new ArrayList<>();
   private final List<HostAndPort> masterHostPorts = new ArrayList<>();
   private final List<InetSocketAddress> cqlContactPoints = new ArrayList<>();
@@ -136,6 +139,7 @@ public class MiniYBCluster implements AutoCloseable {
   // prefixes).
   private AtomicInteger nextMasterIndex = new AtomicInteger(0);
   private AtomicInteger nextTServerIndex = new AtomicInteger(0);
+  private AtomicInteger nextYbControllerIndex = new AtomicInteger(0);
 
   /**
    * Hard memory limit for YB daemons. This should be consistent with the memory limit set for C++
@@ -454,6 +458,80 @@ public class MiniYBCluster implements AutoCloseable {
 
     LOG.info("Starting {} tablet servers...", numTservers);
     startTabletServers(numTservers, commonTserverFlags, perTserverFlags, tserverEnvVars);
+
+    if (TestUtils.useYbController()) {
+      startYbControllers();
+    }
+  }
+
+  private void startYbControllers() throws Exception {
+    // All YB Controllers run on the same port, but with different IPs.
+    final int serverPort = TestUtils.findFreePort("127.0.0.1");
+    // Get web port of first master.
+    MiniYBDaemon firstMaster = masterProcesses.values().stream().findFirst().get();
+    int masterWebPort = firstMaster.getWebPort();
+    int idx = 0;
+    // We need one YB Controller for each tserver.
+    for (MiniYBDaemon ts : tserverProcesses.values()) {
+      startYbController(serverPort, masterWebPort, ts.getWebPort(), ts.getLocalhostIP(), ++idx);
+    }
+
+    TestUtils.logAndSleepMs(500, "Allow YB Controllers to start...");
+
+    // Ping all the YB Controllers to make sure they started correctly
+    for (MiniYBDaemon ybController : ybControllerProcesses.values()) {
+      ybController.ping();
+    }
+  }
+
+  /**
+   * Starts a YB Controller server.
+   * @param serverPort the port on which the server listens
+   * @param masterWebPort HTTP port of master
+   * @param tserverWebPort HTTP port of tserver
+   * @param bindAddress IP on which to bind the server
+   * @param idx index to attach to data dirs e.g. ybc-idx
+   * @throws Exception
+   */
+  public void startYbController(int serverPort, int masterWebPort, int tserverWebPort,
+      String bindAddress, int idx)
+      throws Exception {
+
+    LOG.info("Starting a YB Controller server: " + "bindAddress = {}, " + "serverPort = {}",
+        bindAddress, serverPort);
+    String dataDir = TestUtils.getBaseTmpDir() + "/ybc-" + idx;
+    String logDir = FileSystems.getDefault().getPath(dataDir, "logs").toString();
+    String tmpDir = FileSystems.getDefault().getPath(dataDir, "tmp").toString();
+
+    // Create log dir
+    LOG.info("YB Controller log directory =" + logDir);
+    File f = new File(logDir);
+    if (!f.exists() && !f.mkdirs()) {
+      throw new RuntimeException("Could not create " + logDir + ", not enough permissions?");
+    }
+
+    final List<String> cmdLine = Lists.newArrayList(
+        TestUtils.findBinary("../ybc/yb-controller-server"),
+        "--log_dir=" + logDir,
+        "--tmp_dir=" + tmpDir,
+        "--server_address=" + bindAddress,
+        "--yb_tserver_address=" + bindAddress,
+        "--yb_admin=" + TestUtils.findBinary("yb-admin"),
+        "--yb_ctl=" + TestUtils.findBinary("../../../bin/yb-ctl"),
+        "--ycqlsh=" + TestUtils.findBinary("../../../bin/ycqlsh"),
+        "--ysql_dump=" + TestUtils.findBinary("../postgres/bin/ysql_dump"),
+        "--ysql_dumpall=" + TestUtils.findBinary("../postgres/bin/ysql_dumpall"),
+        "--ysqlsh=" + TestUtils.findBinary("../postgres/bin/ysqlsh"),
+        "--server_port=" + serverPort,
+        "--yb_master_webserver_port=" + masterWebPort,
+        "--yb_tserver_webserver_port=" + tserverWebPort);
+
+    final MiniYBDaemon daemon = configureAndStartProcess(MiniYBDaemonType.YBCONTROLLER,
+        cmdLine.toArray(new String[cmdLine.size()]), bindAddress, serverPort,
+        serverPort, /* pgsqlWebPport */ -1, /* cqlWebPort */ -1, /* redisWebPort */ -1, dataDir,
+        /* environment */ null);
+    ybControllerProcesses.put(HostAndPort.fromParts(bindAddress, serverPort), daemon);
+    pathsToDelete.add(dataDir);
   }
 
   private String getYsqlSnapshotFilePath(YsqlSnapshotVersion ver) {
@@ -819,16 +897,16 @@ public class MiniYBCluster implements AutoCloseable {
                                                 Map<String, String> environment) throws Exception {
     command[0] = FileSystems.getDefault().getPath(command[0]).normalize().toString();
     final int indexForLog =
-        type == MiniYBDaemonType.MASTER ? nextMasterIndex.incrementAndGet()
-            : nextTServerIndex.incrementAndGet();
+      type == MiniYBDaemonType.MASTER ? nextMasterIndex.incrementAndGet()
+        : (type == MiniYBDaemonType.TSERVER ? nextTServerIndex.incrementAndGet()
+            : nextYbControllerIndex.incrementAndGet());
 
-    {
+    if (type != MiniYBDaemonType.YBCONTROLLER) {
       List<String> args = new ArrayList<>();
       args.addAll(Arrays.asList(command));
       String fatalDetailsPathPrefix = System.getenv("YB_FATAL_DETAILS_PATH_PREFIX");
       if (fatalDetailsPathPrefix == null) {
-        fatalDetailsPathPrefix =
-            TestUtils.getTestReportFilePrefix() + "fatal_failure_details";
+        fatalDetailsPathPrefix = TestUtils.getTestReportFilePrefix() + "fatal_failure_details";
       }
       fatalDetailsPathPrefix += "." + type.shortStr() + "-" + indexForLog + "." + bindIp + "-" +
           "port" + rpcPort;
@@ -897,6 +975,7 @@ public class MiniYBCluster implements AutoCloseable {
   public void restart(boolean waitForMasterLeader) throws Exception {
     List<MiniYBDaemon> masters = new ArrayList<>(masterProcesses.values());
     List<MiniYBDaemon> tservers = new ArrayList<>(tserverProcesses.values());
+    List<MiniYBDaemon> ybControllers = new ArrayList<>(ybControllerProcesses.values());
 
     LOG.info("Shutting down mini cluster");
     shutdownDaemons();
@@ -912,6 +991,11 @@ public class MiniYBCluster implements AutoCloseable {
     for (MiniYBDaemon tserver : tservers) {
       tserver = restart(tserver);
       tserverProcesses.put(tserver.getHostAndPort(), tserver);
+    }
+
+    for(MiniYBDaemon ybController : ybControllers){
+      ybController = restart(ybController);
+      ybControllerProcesses.put(ybController.getHostAndPort(), ybController);
     }
 
     LOG.info("Restarted mini cluster");
@@ -1095,8 +1179,10 @@ public class MiniYBCluster implements AutoCloseable {
     List<MiniYBDaemon> allDaemons = new ArrayList<>();
     allDaemons.addAll(masterProcesses.values());
     allDaemons.addAll(tserverProcesses.values());
+    allDaemons.addAll(ybControllerProcesses.values());
     processes.addAll(destroyDaemons(masterProcesses.values()));
     processes.addAll(destroyDaemons(tserverProcesses.values()));
+    processes.addAll(destroyDaemons(ybControllerProcesses.values()));
     LOG.info(
         "Waiting for " + processes.size() + " processes to terminate...");
     final long deadlineMs = System.currentTimeMillis() + PROCESS_TERMINATE_TIMEOUT_MS;
