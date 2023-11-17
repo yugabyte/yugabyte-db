@@ -15,6 +15,7 @@
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
+#include "yb/util/scope_exit.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
@@ -56,6 +57,18 @@ TEST_F(PgTxnTest, YB_DISABLE_TEST_IN_SANITIZERS(EmptyUpdate)) {
 }
 
 TEST_F(PgTxnTest, YB_DISABLE_TEST_IN_SANITIZERS(ShowEffectiveYBIsolationLevel)) {
+  auto original_read_committed_setting = FLAGS_yb_enable_read_committed_isolation;
+
+  // Ensure the original setting is restored at the end of this scope
+  auto scope_exit = ScopeExit([original_read_committed_setting]() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) =
+        original_read_committed_setting;
+  });
+
+  if (FLAGS_yb_enable_read_committed_isolation) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = false;
+    ASSERT_OK(RestartCluster());
+  }
 
   auto conn = ASSERT_RESULT(Connect());
   AssertEffectiveIsolationLevel(&conn, "repeatable read");
