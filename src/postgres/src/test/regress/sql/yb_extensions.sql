@@ -53,3 +53,14 @@ select uuid_generate_v5('00000000-0000-0000-0000-000000000000', 'yugabyte');
 
 -- generated values are random, so to ensure deterministic output ignore the actual values.
 select uuid_generate_v1() != uuid_generate_v4();
+
+-- Testing CVE-2023-39417
+CREATE SCHEMA "has space";
+CREATE SCHEMA has$dollar;
+
+CREATE EXTENSION yb_test_extension SCHEMA has$dollar;
+CREATE EXTENSION yb_test_extension SCHEMA "has space";
+
+DROP EXTENSION yb_test_extension;
+DROP SCHEMA has$dollar;
+DROP SCHEMA "has space";
