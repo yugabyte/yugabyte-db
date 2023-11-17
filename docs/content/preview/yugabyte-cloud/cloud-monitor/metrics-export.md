@@ -34,8 +34,8 @@ Exporting metrics counts against your data transfer allowance, and may incur add
 
 ### Sumo Logic
 
-- Installation token. These are available on Administration > Security > Installation Tokens in your Sumo Logic account.
-- Create an access ID and access key on the Preferences page under your profile name in Sumo Logic.
+- Create an [access ID and access key](https://help.sumologic.com/docs/manage/security/access-keys/) on the **Preferences** page under your profile name.
+- [Installation token](https://help.sumologic.com/docs/manage/security/installation-tokens/). These are available under **Administration > Security > Installation Tokens**.
 
 ## Export configuration
 
