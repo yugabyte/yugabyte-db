@@ -99,6 +99,30 @@ drop table d2;
 drop table d3;
 drop table d4;
 
+create table test (
+    id   uuid NOT NULL,
+    num  int4 NOT NULL,
+    PRIMARY KEY ((id)HASH, num DESC)
+);
+insert into test(id, num) VALUES
+('774cee8f-f0e9-4c46-8f3d-3b5e7db8b839'::uuid, 1);
+
+/*+ Set(yb_bnl_batch_size 3) */ explain (costs off)
+select * from test t1
+join test t2 on (t1.id = t2.id and t1.num = t2.num)
+where t1.id in (
+	'774cee8f-f0e9-4c46-8f3d-3b5e7db8b839'::uuid,
+	'884cee8f-f0e9-4c46-8f3d-3b5e7db8b847'::uuid);
+
+/*+ Set(yb_bnl_batch_size 3) */
+select * from test t1
+join test t2 on (t1.id = t2.id and t1.num = t2.num)
+where t1.id in (
+	'774cee8f-f0e9-4c46-8f3d-3b5e7db8b839'::uuid,
+	'884cee8f-f0e9-4c46-8f3d-3b5e7db8b847'::uuid);
+
+drop table test;
+
 EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 LEFT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.a <= 100 AND t2.a <= 100) s ON t3.a = s.a WHERE t3.a <= 30;
 SELECT * FROM p3 t3 LEFT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.a <= 100 AND t2.a <= 100) s ON t3.a = s.a WHERE t3.a <= 30;
 
