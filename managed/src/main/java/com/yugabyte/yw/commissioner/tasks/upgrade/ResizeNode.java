@@ -399,6 +399,7 @@ public class ResizeNode extends UpgradeTaskBase {
     params.force = taskParams().isForceResizeNode();
     params.useSystemd = universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
     params.placementUuid = node.placementUuid;
+    params.cgroupSize = getCGroupSize(node);
 
     ChangeInstanceType changeInstanceTypeTask = createTask(ChangeInstanceType.class);
     changeInstanceTypeTask.initialize(params);

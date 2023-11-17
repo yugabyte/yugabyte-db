@@ -69,6 +69,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
   private static final int NEW_DISK_IOPS = 5000;
   private static final int DEFAULT_DISK_THROUGHPUT = 125;
   private static final int NEW_DISK_THROUGHPUT = 250;
+  private static final int NEW_CGROUP_SIZE = 10;
 
   // Tasks for RF1 configuration do not create sub-tasks for
   // leader blacklisting. So create two PLACEHOLDER indexes
@@ -547,8 +548,15 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     taskParams.getPrimaryCluster().userIntent.deviceInfo.diskIops = NEW_DISK_IOPS;
     taskParams.getPrimaryCluster().userIntent.deviceInfo.throughput = NEW_DISK_THROUGHPUT;
     taskParams.getPrimaryCluster().userIntent.instanceType = NEW_INSTANCE_TYPE;
+    taskParams.getPrimaryCluster().userIntent.setCgroupSize(NEW_CGROUP_SIZE);
     TaskInfo taskInfo = submitTask(taskParams);
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    subTasks.stream()
+        .filter(s -> s.getTaskType() == TaskType.ChangeInstanceType)
+        .forEach(
+            t ->
+                assertEquals(
+                    String.valueOf(NEW_CGROUP_SIZE), t.getDetails().get("cgroupSize").asText()));
     assertTasksSequence(subTasks, true, true);
     assertEquals(Success, taskInfo.getTaskState());
     assertUniverseData(true, true);
@@ -557,6 +565,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         universe.getUniverseDetails().getPrimaryCluster().userIntent;
     assertEquals(NEW_DISK_IOPS, (int) userIntent.deviceInfo.diskIops);
     assertEquals(NEW_DISK_THROUGHPUT, (int) userIntent.deviceInfo.throughput);
+    assertEquals(NEW_CGROUP_SIZE, (int) userIntent.getCgroupSize());
   }
 
   @Test
