@@ -53,6 +53,10 @@ void out_cypher_param(StringInfo str, const ExtensibleNode *node);
 void out_cypher_map(StringInfo str, const ExtensibleNode *node);
 void out_cypher_list(StringInfo str, const ExtensibleNode *node);
 
+// comparison expression
+void out_cypher_comparison_aexpr(StringInfo str, const ExtensibleNode *node);
+void out_cypher_comparison_boolexpr(StringInfo str, const ExtensibleNode *node);
+
 // string match
 void out_cypher_string_match(StringInfo str, const ExtensibleNode *node);
 

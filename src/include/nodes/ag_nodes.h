@@ -51,6 +51,9 @@ typedef enum ag_node_tag
     cypher_param_t,
     cypher_map_t,
     cypher_list_t,
+    // comparison expression
+    cypher_comparison_aexpr_t,
+    cypher_comparison_boolexpr_t,
     // string match
     cypher_string_match_t,
     // typecast

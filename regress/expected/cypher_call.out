@@ -84,8 +84,8 @@ HINT:  No function matches the given name and argument types. You might need to 
 /* CALL YIELD WHERE, should fail */
 SELECT * FROM cypher('cypher_call', $$CALL sqrt(64) YIELD sqrt WHERE sqrt > 1$$) as (sqrt agtype);
 ERROR:  Cannot use standalone CALL with WHERE
-LINE 2: ...r('cypher_call', $$CALL sqrt(64) YIELD sqrt WHERE sqrt > 1$$...
-                                                             ^
+LINE 2: SELECT * FROM cypher('cypher_call', $$CALL sqrt(64) YIELD sq...
+                                             ^
 HINT:  Instead use `CALL ... WITH * WHERE ... RETURN *`
 /*
  * subquery

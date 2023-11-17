@@ -808,6 +808,135 @@ SELECT * FROM cypher('chained', $$ MATCH (u:people) WHERE NOT 35 < u.age + 1 <= 
  {"id": 844424930131973, "label": "people", "properties": {"age": 15, "name": "David"}}::vertex
 (3 rows)
 
+-- order of operations
+-- expressions
+SELECT * FROM cypher('chained', $$ RETURN 1 = 1 = 1 $$) AS (result agtype);
+ result 
+--------
+ true
+(1 row)
+
+SELECT * FROM cypher('chained', $$ RETURN 1 = 2 = 1 $$) AS (result agtype);
+ result 
+--------
+ false
+(1 row)
+
+SELECT * FROM cypher('chained', $$ RETURN (1 = 1) = 1 $$) AS (result agtype);
+ result 
+--------
+ false
+(1 row)
+
+SELECT * FROM cypher('chained', $$ RETURN 1 = (1 = 1) $$) AS (result agtype);
+ result 
+--------
+ false
+(1 row)
+
+SELECT * FROM cypher('chained', $$ RETURN 1 = 1 = true $$) AS (result agtype);
+ result 
+--------
+ false
+(1 row)
+
+SELECT * FROM cypher('chained', $$ RETURN (1 = 1) = true $$) AS (result agtype);
+ result 
+--------
+ true
+(1 row)
+
+SELECT * FROM cypher('chained', $$ RETURN true = ((1 = 1) = true) $$) AS (result agtype);
+ result 
+--------
+ true
+(1 row)
+
+SELECT * FROM cypher('chained', $$ RETURN ((1 = 1) = 1) = 1 $$) AS (result agtype);
+ result 
+--------
+ false
+(1 row)
+
+SELECT * FROM cypher('chained', $$ RETURN (1 = (1 = 1)) = 1 $$) AS (result agtype);
+ result 
+--------
+ false
+(1 row)
+
+SELECT * FROM cypher('chained', $$ RETURN ((1 = (1 = 1)) = 1) = 1 $$) AS (result agtype);
+ result 
+--------
+ false
+(1 row)
+
+-- in clause
+SELECT * FROM cypher('chained', $$ MATCH (u:people) WHERE 35 = u.age = 35  RETURN u $$) AS (result agtype);
+                                              result                                               
+---------------------------------------------------------------------------------------------------
+ {"id": 844424930131971, "label": "people", "properties": {"age": 35, "name": "Samantha"}}::vertex
+(1 row)
+
+SELECT * FROM cypher('chained', $$ MATCH (u:people) WHERE (35 = u.age) = 35  RETURN u $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('chained', $$ MATCH (u:people) WHERE (35 = 35) = u.age  RETURN u $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('chained', $$ MATCH (u:people) WHERE u.age = u.age = u.age  RETURN u $$) AS (result agtype);
+                                              result                                               
+---------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "people", "properties": {"age": 50, "name": "Jason"}}::vertex
+ {"id": 844424930131970, "label": "people", "properties": {"age": 25, "name": "Amy"}}::vertex
+ {"id": 844424930131971, "label": "people", "properties": {"age": 35, "name": "Samantha"}}::vertex
+ {"id": 844424930131972, "label": "people", "properties": {"age": 40, "name": "Mark"}}::vertex
+ {"id": 844424930131973, "label": "people", "properties": {"age": 15, "name": "David"}}::vertex
+(5 rows)
+
+SELECT * FROM cypher('chained', $$ MATCH (u:people) WHERE (u.age = u.age) = u.age  RETURN u $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('chained', $$ MATCH (u:people) WHERE u.age = (u.age = u.age)  RETURN u $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('chained', $$ MATCH (u:people) WHERE (u.age = u.age) = (u.age = u.age)  RETURN u $$) AS (result agtype);
+                                              result                                               
+---------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "people", "properties": {"age": 50, "name": "Jason"}}::vertex
+ {"id": 844424930131970, "label": "people", "properties": {"age": 25, "name": "Amy"}}::vertex
+ {"id": 844424930131971, "label": "people", "properties": {"age": 35, "name": "Samantha"}}::vertex
+ {"id": 844424930131972, "label": "people", "properties": {"age": 40, "name": "Mark"}}::vertex
+ {"id": 844424930131973, "label": "people", "properties": {"age": 15, "name": "David"}}::vertex
+(5 rows)
+
+SELECT * FROM cypher('chained', $$ MATCH (u:people) WHERE u.age = (u.age = (u.age = u.age))  RETURN u $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('chained', $$ MATCH (u:people) WHERE u.age = 35 = ((u.age = u.age) = u.age) RETURN u $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('chained', $$ MATCH (u:people) WHERE ((u.age = u.age) = (u.age = u.age)) = (u.age = u.age)  RETURN u $$) AS (result agtype);
+                                              result                                               
+---------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "people", "properties": {"age": 50, "name": "Jason"}}::vertex
+ {"id": 844424930131970, "label": "people", "properties": {"age": 25, "name": "Amy"}}::vertex
+ {"id": 844424930131971, "label": "people", "properties": {"age": 35, "name": "Samantha"}}::vertex
+ {"id": 844424930131972, "label": "people", "properties": {"age": 40, "name": "Mark"}}::vertex
+ {"id": 844424930131973, "label": "people", "properties": {"age": 15, "name": "David"}}::vertex
+(5 rows)
+
 --
 -- Test transform logic for IS NULL & IS NOT NULL
 --

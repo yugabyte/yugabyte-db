@@ -205,6 +205,12 @@ static Node *make_or_expr(Node *lexpr, Node *rexpr, int location);
 static Node *make_and_expr(Node *lexpr, Node *rexpr, int location);
 static Node *make_xor_expr(Node *lexpr, Node *rexpr, int location);
 static Node *make_not_expr(Node *expr, int location);
+static Node *make_comparison_and_expr(Node *lexpr, Node *rexpr, int location);
+static Node *make_cypher_comparison_aexpr(A_Expr_Kind kind, char *name,
+                                          Node *lexpr, Node *rexpr,
+                                          int location);
+static Node *make_cypher_comparison_boolexpr(BoolExprType boolop, List *args,
+                                               int location);
 
 // arithmetic operators
 static Node *do_negate(Node *n, int location);
@@ -240,7 +246,7 @@ static cypher_relationship *build_VLE_relation(List *left_arg,
                                                int left_arg_location,
                                                int cr_location);
 // comparison
-static bool is_A_Expr_a_comparison_operation(A_Expr *a);
+static bool is_A_Expr_a_comparison_operation(cypher_comparison_aexpr *a);
 static Node *build_comparison_expression(Node *left_grammar_node,
                                          Node *right_grammar_node,
                                          char *opr_name, int location);
@@ -1776,7 +1782,14 @@ expr_atom:
         }
     | '(' expr ')'
         {
-            $$ = $2;
+            Node *n = $2;
+
+            if (is_ag_node(n, cypher_comparison_aexpr) ||
+                is_ag_node(n, cypher_comparison_boolexpr))
+            {
+                n = (Node *)node_to_agtype(n, "boolean", @2);
+            }
+            $$ = n;
         }
     | expr_case
     | expr_var
@@ -2113,6 +2126,51 @@ static Node *make_xor_expr(Node *lexpr, Node *rexpr, int location)
 static Node *make_not_expr(Node *expr, int location)
 {
     return (Node *)makeBoolExpr(NOT_EXPR, list_make1(expr), location);
+}
+
+/*
+ * chained expression comparison operators
+ */
+
+static Node *make_cypher_comparison_aexpr(A_Expr_Kind kind, char *name,
+                 Node *lexpr, Node *rexpr, int location)
+{
+    cypher_comparison_aexpr *a = make_ag_node(cypher_comparison_aexpr);
+
+    a->kind = kind;
+    a->name = list_make1(makeString((char *) name));
+    a->lexpr = lexpr;
+    a->rexpr = rexpr;
+    a->location = location;
+    return (Node *)a;
+}
+
+static Node *make_cypher_comparison_boolexpr(BoolExprType boolop, List *args, int location)
+{
+    cypher_comparison_boolexpr *b = make_ag_node(cypher_comparison_boolexpr);
+
+    b->boolop = boolop;
+    b->args = args;
+    b->location = location;
+    return (Node *)b;
+}
+
+static Node *make_comparison_and_expr(Node *lexpr, Node *rexpr, int location)
+{
+    // flatten "a AND b AND c ..." to a single BoolExpr on sight
+    if (is_ag_node(lexpr, cypher_comparison_boolexpr))
+    {
+        cypher_comparison_boolexpr *bexpr = (cypher_comparison_boolexpr *)lexpr;
+
+        if (bexpr->boolop == AND_EXPR)
+        {
+            bexpr->args = lappend(bexpr->args, rexpr);
+
+            return (Node *)bexpr;
+        }
+    }
+
+    return (Node *)make_cypher_comparison_boolexpr(AND_EXPR, list_make2(lexpr, rexpr), location);
 }
 
 /*
@@ -2535,7 +2593,7 @@ static Node *make_set_op(SetOperation op, bool all_or_distinct, List *larg,
 }
 
 /* check if A_Expr is a comparison expression */
-static bool is_A_Expr_a_comparison_operation(A_Expr *a)
+static bool is_A_Expr_a_comparison_operation(cypher_comparison_aexpr *a)
 {
     String *v = NULL;
     char *opr_name = NULL;
@@ -2601,75 +2659,77 @@ static Node *build_comparison_expression(Node *left_grammar_node,
 
     /*
      * Case 1:
-     *    If the previous expression is an A_Expr and it is also a
+     *    If the left expression is an A_Expr and it is also a
      *    comparison, then this is part of a chained comparison. In this
      *    specific case, the second chained element.
      */
-    if (IsA(left_grammar_node, A_Expr) &&
-        is_A_Expr_a_comparison_operation((A_Expr *)left_grammar_node))
+    if (is_ag_node(left_grammar_node, cypher_comparison_aexpr) &&
+        is_A_Expr_a_comparison_operation((cypher_comparison_aexpr *)left_grammar_node))
     {
-        A_Expr *aexpr = NULL;
+        cypher_comparison_aexpr *aexpr = NULL;
         Node *lexpr = NULL;
         Node *n = NULL;
 
         /* get the A_Expr on the left side */
-        aexpr = (A_Expr *) left_grammar_node;
+        aexpr = (cypher_comparison_aexpr *)left_grammar_node;
         /* get its rexpr which will be our lexpr */
         lexpr = aexpr->rexpr;
         /* build our comparison operator */
-        n = (Node *)makeSimpleA_Expr(AEXPR_OP, opr_name, lexpr,
+        n = (Node *)make_cypher_comparison_aexpr(AEXPR_OP, opr_name, lexpr,
                                      right_grammar_node, location);
 
         /* now add it (AND) to the other comparison */
-        result_expr = make_and_expr(left_grammar_node, n, location);
+        result_expr = make_comparison_and_expr(left_grammar_node, n, location);
     }
 
     /*
      * Case 2:
-     *    If the previous expression is a boolean AND and its right most
+     *    If the left expression is a boolean AND and its right most
      *    expression is an A_Expr and a comparison, then this is part of
      *    a chained comparison. In this specific case, the third and
      *    beyond chained element.
      */
-    if (IsA(left_grammar_node, BoolExpr) &&
-        ((BoolExpr*)left_grammar_node)->boolop == AND_EXPR)
+    else if (is_ag_node(left_grammar_node, cypher_comparison_boolexpr) &&
+        ((cypher_comparison_boolexpr*)left_grammar_node)->boolop == AND_EXPR)
     {
-        BoolExpr *bexpr = NULL;
+        cypher_comparison_boolexpr *bexpr = NULL;
         Node *last = NULL;
 
         /* cast the left to a boolean */
-        bexpr = (BoolExpr *)left_grammar_node;
+        bexpr = (cypher_comparison_boolexpr *)left_grammar_node;
         /* extract the last node - ANDs are chained in a flat list */
         last = llast(bexpr->args);
 
         /* is the last node an A_Expr and a comparison operator */
-        if (IsA(last, A_Expr) &&
-            is_A_Expr_a_comparison_operation((A_Expr *)last))
+        if (is_ag_node(last, cypher_comparison_aexpr) &&
+            is_A_Expr_a_comparison_operation((cypher_comparison_aexpr *)last))
         {
-            A_Expr *aexpr = NULL;
+            cypher_comparison_aexpr *aexpr = NULL;
             Node *lexpr = NULL;
             Node *n = NULL;
 
             /* get the last expressions right expression */
-            aexpr = (A_Expr *) last;
+            aexpr = (cypher_comparison_aexpr *) last;
             lexpr = aexpr->rexpr;
             /* make our comparison operator */
-            n = (Node *)makeSimpleA_Expr(AEXPR_OP, opr_name, lexpr,
+            n = (Node *)make_cypher_comparison_aexpr(AEXPR_OP, opr_name, lexpr,
                                          right_grammar_node, location);
 
             /* now add it (AND) to the other comparisons */
-            result_expr = make_and_expr(left_grammar_node, n, location);
+            result_expr = make_comparison_and_expr(left_grammar_node, n, location);
         }
     }
 
+
     /*
      * Case 3:
-     *    The previous expression isn't a chained comparison. So, treat
-     *    it as a regular comparison expression.
+     *    The left expression isn't a chained comparison. So, treat
+     *    it as a regular comparison expression. This is usually an initial
+     *    comparison expression.
      */
-    if (result_expr == NULL)
+    else if (result_expr == NULL)
     {
-        result_expr = (Node *)makeSimpleA_Expr(AEXPR_OP, opr_name,
+        result_expr = (Node *)make_cypher_comparison_aexpr(AEXPR_OP, opr_name,
                                                left_grammar_node,
                                                right_grammar_node, location);
     }

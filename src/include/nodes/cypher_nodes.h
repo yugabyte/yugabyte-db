@@ -240,6 +240,29 @@ typedef struct cypher_create_path
 } cypher_create_path;
 
 /*
+ * comparison expressions
+ */
+
+typedef struct cypher_comparison_aexpr
+{
+    ExtensibleNode extensible;
+    A_Expr_Kind kind; /* see above */
+    List *name; /* possibly-qualified name of operator */
+    Node *lexpr; /* left argument, or NULL if none */
+    Node *rexpr; /* right argument, or NULL if none */
+    int location; /* token location, or -1 if unknown */
+} cypher_comparison_aexpr;
+
+typedef struct cypher_comparison_boolexpr
+{
+    ExtensibleNode extensible;
+    BoolExprType boolop;
+    List       *args;           /* arguments to this expression */
+    int         location;       /* token location, or -1 if unknown */
+} cypher_comparison_boolexpr;
+
+
+/*
  * procedure call
  */
 

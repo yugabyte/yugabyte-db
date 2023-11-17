@@ -259,6 +259,28 @@ void out_cypher_list(StringInfo str, const ExtensibleNode *node)
     WRITE_LOCATION_FIELD(location);
 }
 
+// serialization function for the cypher_comparison_aexpr ExtensibleNode.
+void out_cypher_comparison_aexpr(StringInfo str, const ExtensibleNode *node)
+{
+    DEFINE_AG_NODE(cypher_comparison_aexpr);
+
+    WRITE_ENUM_FIELD(kind, A_Expr_Kind);
+    WRITE_NODE_FIELD(name);
+    WRITE_NODE_FIELD(lexpr);
+    WRITE_NODE_FIELD(rexpr);
+    WRITE_LOCATION_FIELD(location);
+}
+
+// serialization function for the cypher_comparison_boolexpr ExtensibleNode.
+void out_cypher_comparison_boolexpr(StringInfo str, const ExtensibleNode *node)
+{
+    DEFINE_AG_NODE(cypher_comparison_boolexpr);
+
+    WRITE_ENUM_FIELD(boolop, BoolExprType);
+    WRITE_NODE_FIELD(args);
+    WRITE_LOCATION_FIELD(location);
+}
+
 // serialization function for the cypher_string_match ExtensibleNode.
 void out_cypher_string_match(StringInfo str, const ExtensibleNode *node)
 {

@@ -73,7 +73,11 @@ static Node *transform_ColumnRef(cypher_parsestate *cpstate, ColumnRef *cref);
 static Node *transform_A_Indirection(cypher_parsestate *cpstate,
                                      A_Indirection *a_ind);
 static Node *transform_AEXPR_OP(cypher_parsestate *cpstate, A_Expr *a);
+static Node *transform_cypher_comparison_aexpr_OP(cypher_parsestate *cpstate,
+                                                  cypher_comparison_aexpr *a);
 static Node *transform_BoolExpr(cypher_parsestate *cpstate, BoolExpr *expr);
+static Node *transform_cypher_comparison_boolexpr(cypher_parsestate *cpstate,
+                                                  cypher_comparison_boolexpr *b);
 static Node *transform_cypher_bool_const(cypher_parsestate *cpstate,
                                          cypher_bool_const *bc);
 static Node *transform_cypher_integer_const(cypher_parsestate *cpstate,
@@ -193,6 +197,12 @@ static Node *transform_cypher_expr_recurse(cypher_parsestate *cpstate,
         if (is_ag_node(expr, cypher_typecast))
             return transform_cypher_typecast(cpstate,
                                              (cypher_typecast *)expr);
+        if (is_ag_node(expr, cypher_comparison_aexpr))
+            return transform_cypher_comparison_aexpr_OP(cpstate,
+                                             (cypher_comparison_aexpr *)expr);
+        if (is_ag_node(expr, cypher_comparison_boolexpr))
+            return transform_cypher_comparison_boolexpr(cpstate,
+                                             (cypher_comparison_boolexpr *)expr);
         ereport(ERROR,
                 (errmsg_internal("unrecognized ExtensibleNode: %s",
                                  ((ExtensibleNode *)expr)->extnodename)));
@@ -488,6 +498,25 @@ static Node *transform_AEXPR_OP(cypher_parsestate *cpstate, A_Expr *a)
                            a->location);
 }
 
+/*
+ * function for transforming cypher comparision A_Expr. Since this node is a
+ * wrapper to let us know when a comparison occurs in a chained comparison,
+ * we convert it to a regular A_expr and transform it.
+ */
+static Node *transform_cypher_comparison_aexpr_OP(cypher_parsestate *cpstate,
+                                                  cypher_comparison_aexpr *a)
+{
+    A_Expr *n = makeNode(A_Expr);
+    n->kind = a->kind;
+    n->name = a->name;
+    n->lexpr = a->lexpr;
+    n->rexpr = a->rexpr;
+    n->location = a->location;
+
+    return (Node *)transform_AEXPR_OP(cpstate, n);
+}
+
+
 static Node *transform_AEXPR_IN(cypher_parsestate *cpstate, A_Expr *a)
 {
     ParseState *pstate = (ParseState *)cpstate;
@@ -659,6 +688,24 @@ static Node *transform_BoolExpr(cypher_parsestate *cpstate, BoolExpr *expr)
 
     return (Node *)makeBoolExpr(expr->boolop, args, expr->location);
 }
+
+/*
+ * function for transforming cypher_comparison_boolexpr. Since this node is a
+ * wrapper to let us know when a comparison occurs in a chained comparison,
+ * we convert it to a PG BoolExpr and transform it.
+ */
+static Node *transform_cypher_comparison_boolexpr(cypher_parsestate *cpstate,
+                                                  cypher_comparison_boolexpr *b)
+{
+    BoolExpr *n = makeNode(BoolExpr);
+
+    n->boolop = b->boolop;
+    n->args = b->args;
+    n->location = b->location;
+
+    return transform_BoolExpr(cpstate, n);
+}
+
 
 static Node *transform_cypher_bool_const(cypher_parsestate *cpstate,
                                          cypher_bool_const *bc)
