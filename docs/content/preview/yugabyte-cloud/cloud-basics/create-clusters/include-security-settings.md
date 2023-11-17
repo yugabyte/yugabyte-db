@@ -10,17 +10,22 @@ In addition to the volume encryption that YugabyteDB Managed uses to encrypt you
 
 <!--You can also enable EAR for a cluster after the cluster is created.-->
 
-To use a CMK to encrypt your cluster, make sure you have configured the CMK in AWS KMS or Google Cloud KMS. Refer to [Prerequisites](../../../cloud-secure-clusters/managed-ear/#prerequisites).
+To use a CMK to encrypt your cluster, make sure you have configured the CMK in AWS KMS, Azure Key Vault, or Google Cloud KMS. Refer to [Prerequisites](../../../cloud-secure-clusters/managed-ear/#prerequisites).
 
 ![Add Cluster Wizard - Security Settings](/images/yb-cloud/cloud-addcluster-security.png)
 
 To use a CMK, select the **Enable cluster encryption at rest** option and set the following options:
 
-- **KMS provider**: AWS or GCP.
+- **KMS provider**: AWS, Azure, or GCP.
 - For AWS:
 
   - **Customer managed key (CMK)**: Enter the Amazon Resource Name (ARN) of the CMK to use to encrypt the cluster.
   - **Access key**: Provide an access key of an [IAM identity](https://docs.aws.amazon.com/IAM/latest/UserGuide/id.html) with permissions for the CMK. An access key consists of an access key ID and the secret access key.
+
+- For Azure:
+
+  - The Azure [tenant ID](https://learn.microsoft.com/en-us/entra/fundamentals/how-to-find-tenant), the vault URI (for example, https://myvault.vault.azure.net), and the name of the key.
+  - The client ID and secret for an application with permission to encrypt and decrypt using the CMK.
 
 - For GCP:
   - **Resource ID**: Enter the resource ID of the key ring where the CMK is stored.

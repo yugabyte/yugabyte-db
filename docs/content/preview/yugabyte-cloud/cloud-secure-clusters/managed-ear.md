@@ -24,7 +24,6 @@ Note that, regardless of whether you enable YugabyteDB EAR for a cluster, Yugaby
 ## Limitations
 
 - You can't enable cluster EAR on clusters with YugabyteDB versions earlier than 2.16.7.
-- Currently, Azure is not supported for CMKs.
 
 Enabling EAR can impact cluster performance. You should monitor your workload after enabling this feature.
 
@@ -33,6 +32,8 @@ Enabling EAR can impact cluster performance. You should monitor your workload af
 {{< tabpane text=true >}}
 
   {{% tab header="AWS" lang="aws" %}}
+
+To use AWS KMS, you need the following:
 
 - Single-region [symmetric encryption key](https://docs.aws.amazon.com/kms/latest/developerguide/concepts.html#symmetric-cmks) created in AWS KMS. The key resource policy should include the following [actions](https://docs.aws.amazon.com/kms/latest/developerguide/key-policy-default.html#key-policy-users-crypto):
   - kms:Encrypt
@@ -47,7 +48,30 @@ For more information on AWS KMS, refer to [AWS Key Management Service](https://d
 
   {{% /tab %}}
 
+  {{% tab header="Azure" lang="azure" %}}
+
+Create a key vault using the [Azure portal](https://docs.microsoft.com/en-us/azure/key-vault/general/quick-create-portal). The following settings are required:
+
+- Set the vault permission model as Vault access policy.
+- Add the application to the key vault access policies with the minimum key management operations permissions of Get and Create (unless you are pre-creating the key), as well as cryptographic operations permissions of Unwrap Key and Wrap Key.
+
+If you are planning to use an existing cryptographic key with the same name, it must meet the following criteria:
+
+- The primary key version should be in the Enabled state.
+- The activation date should either be disabled or set to a date before the KMS configuration creation.
+- The expiration date should be disabled.
+- Permitted operations should have at least WRAP_KEY and UNWRAP_KEY.
+- The key rotation policy should not be defined in order to avoid automatic rotation.
+
+In addition, you need the client ID and secret for an application registered in Azure with permission to encrypt and decrypt using the CMK. Refer to [Create a new client secret](https://learn.microsoft.com/en-us/entra/identity-platform/howto-create-service-principal-portal#option-3-create-a-new-client-secret) in the Microsoft documentation.
+
+For more information, refer to the [Azure Key Vault documentation](https://learn.microsoft.com/en-us/azure/key-vault/general/).
+
+  {{% /tab %}}
+
   {{% tab header="GCP" lang="gcp" %}}
+
+To use Cloud KMS, you need the following:
 
 - CMK (AKA customer-managed encryption key or CMEK) created in Cloud KMS.
 - Cloud KMS resource ID. You can copy the resource ID from KMS Management page in the Google Cloud console. Do not include the key version. For more information, refer to [Getting a Cloud KMS resource ID](https://cloud.google.com/kms/docs/getting-resource-ids) in the GCP documentation.
@@ -67,20 +91,44 @@ For more information on GCP KMS, refer to [Cloud Key Management Service overview
 
 ## Encrypt a cluster using a CMK
 
-You can enable EAR using a CMK for clusters in AWS and GCP (database version 2.16.7 and later only) as follows:
+{{< tabpane text=true >}}
+
+  {{% tab header="AWS" lang="aws" %}}
+
+You can enable EAR using a CMK for clusters (database version 2.16.7 and later only) as follows:
 
 1. On the cluster **Settings** tab, select **Encryption at rest**.
 1. Click **Enable Cluster Encryption at Rest**.
-1. For AWS, provide the following details:
+1. Enter the Amazon Resource Name (ARN) of the CMK to use to encrypt the cluster.
+1. Provide an access key of an [IAM identity](https://docs.aws.amazon.com/IAM/latest/UserGuide/id.html) with permissions for the CMK. An access key consists of an access key ID and the secret access key.
 
-    - **Customer managed key (CMK)**: Enter the Amazon Resource Name (ARN) of the CMK to use to encrypt the cluster.
-    - **Access key**: Provide an access key of an [IAM identity](https://docs.aws.amazon.com/IAM/latest/UserGuide/id.html) with permissions for the CMK. An access key consists of an access key ID and the secret access key.
+  {{% /tab %}}
 
-    For GCP:
-    - **Resource ID**: Enter the resource ID of the key ring where the CMK is stored.
-    - **Service Account Credentials**: Click **Add Key** to select the credentials JSON file you downloaded when creating credentials for the service account that has permissions to encrypt and decrypt using the CMK.
+  {{% tab header="Azure" lang="azure" %}}
 
-1. Click **Save**.
+You can enable EAR using a CMK for clusters (database version 2.16.7 and later only) as follows:
+
+1. On the cluster **Settings** tab, select **Encryption at rest**.
+1. Click **Enable Cluster Encryption at Rest**.
+1. Provide the Azure [tenant ID](https://learn.microsoft.com/en-us/entra/fundamentals/how-to-find-tenant), the vault URI (for example, https://myvault.vault.azure.net), and the name of the key.
+1. Enter the client ID and secret for an application with permission to encrypt and decrypt using the CMK.
+
+  {{% /tab %}}
+
+  {{% tab header="GCP" lang="gcp" %}}
+
+You can enable EAR using a CMK for clusters (database version 2.16.7 and later only) as follows:
+
+1. On the cluster **Settings** tab, select **Encryption at rest**.
+1. Click **Enable Cluster Encryption at Rest**.
+1. Enter the resource ID of the key ring where the CMK is stored.
+1. Click **Add Key** to select the credentials JSON file you downloaded when creating credentials for the service account that has permissions to encrypt and decrypt using the CMK.
+
+  {{% /tab %}}
+
+{{< /tabpane >}}
+
+Click **Save** when you are done.
 
 YugabyteDB Managed validates the key and, if successful, starts encrypting the data. Only new data is encrypted with the new key. Old data remains unencrypted until compaction churn triggers a re-encryption with the new key.
 
