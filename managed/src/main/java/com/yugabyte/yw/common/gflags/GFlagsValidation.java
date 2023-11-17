@@ -215,6 +215,10 @@ public class GFlagsValidation {
 
   public void addDBMetadataFiles(String version, ReleaseManager.ReleaseMetadata rm) {
     List<String> missingFiles = getMissingFlagFiles(version);
+    if (missingFiles.size() == 0) {
+      return;
+    }
+    LOG.info("Adding {} files for version: {}", missingFiles, version);
     String releasesPath = confGetter.getStaticConf().getString(Util.YB_RELEASES_PATH);
     try (InputStream tarGZIPInputStream =
         releaseManager.getTarGZipDBPackageInputStream(version, rm)) {
