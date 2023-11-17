@@ -1,5 +1,6 @@
 ---
-title: Alerts
+title: Alerts in YugabyteDB Managed
+headerTitle: Alerts
 linkTitle: Alerts
 description: Set alerts for activity in your account.
 headcontent: Set alerts for activity in your account

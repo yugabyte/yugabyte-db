@@ -1,5 +1,5 @@
 ---
-title: role resource
+title: ybm CLI role resource
 headerTitle: ybm role
 linkTitle: role
 description: YugabyteDB Managed CLI reference Role resource.

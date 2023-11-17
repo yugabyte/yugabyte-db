@@ -25,6 +25,7 @@ On this page:
 **New Features**
 
 - [Product Labs](../../yugabyte-cloud/managed-labs/) provides an interactive, in-product learning experience. Learn about YugabyteDB features using real-world applications running on live YugabyteDB clusters. The first lab, Create Global Applications, demonstrates how to manage latencies using three different deployment strategies.
+- Support for [exporting cluster metrics](../cloud-monitor/metrics-export/) to Sumo Logic.
 
 **Database**
 
