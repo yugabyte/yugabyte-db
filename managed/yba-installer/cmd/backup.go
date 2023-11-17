@@ -77,8 +77,8 @@ func CreateReplicatedBackupScript(output, dataDir, pgUser, pgPort string, verbos
 	}
 
 	args := []string{"create", "--output", output, "--data_dir", dataDir, "--exclude_prometheus",
-									 "--exclude_releases", "--disable_version_check", "--db_username", pgUser,
-									 "--db_host", "localhost", "--db_port", pgPort}
+		"--exclude_releases", "--disable_version_check", "--db_username", pgUser,
+		"--db_host", "localhost", "--db_port", pgPort}
 
 	if verbose {
 		args = append(args, "--verbose")
@@ -146,6 +146,13 @@ func RestoreBackupScript(inputPath string, destination string, skipRestart bool,
 	log.Info("Restoring a backup of your YugabyteDB Anywhere Installation.")
 	if out := shell.Run(fileName, args...); !out.SucceededOrLog() {
 		log.Fatal("Restore script failed. May need to restart services.")
+	}
+	if common.HasSudoAccess() {
+		log.Debug("ensuring ownership of restored directories")
+		user := viper.GetString("service_user")
+		if err := common.Chown(plat.DataDir, user, user, true); err != nil {
+			log.Fatal("failed to change ownership of " + plat.DataDir + "to user/group " + user)
+		}
 	}
 
 	if err := plat.SetDataDirPerms(); err != nil {
@@ -227,7 +234,7 @@ func createBackupCmd() *cobra.Command {
 			outputPath := args[0]
 			if plat, ok := services["yb-platform"].(Platform); ok {
 				CreateBackupScript(outputPath, dataDir, excludePrometheus, excludeReleases, skipRestart,
-													 verbose, plat)
+					verbose, plat)
 			} else {
 				log.Fatal("Could not cast service to Platform struct.")
 			}
@@ -317,7 +324,6 @@ func restoreBackupCmd() *cobra.Command {
 				RestoreBackupScript(inputPath, destination, skipRestart, verbose, plat, migration,
 					useSystemPostgres)
 
-
 			} else {
 				log.Fatal("Could not cast service to Platform for backup script execution.")
 			}
@@ -334,8 +340,8 @@ func restoreBackupCmd() *cobra.Command {
 	restoreBackup.Flags().BoolVar(&migration, "migration", false,
 		"restoring from a Replicated or Yugabundle installation (default: false)")
 	restoreBackup.Flags().BoolVar(&migration, "yugabundle", false,
-		"WARNING: yugabundle flag is deprecated.\n" +
-		"Please use migration instead to migrate from yugabundle to YBA-installer. (default: false)")
+		"WARNING: yugabundle flag is deprecated.\n"+
+			"Please use migration instead to migrate from yugabundle to YBA-installer. (default: false)")
 	restoreBackup.MarkFlagsMutuallyExclusive("migration", "yugabundle")
 	restoreBackup.Flags().BoolVar(&useSystemPostgres, "use_system_pg", false,
 		"use system path's pg_restore as opposed to installed binary (default: false)")

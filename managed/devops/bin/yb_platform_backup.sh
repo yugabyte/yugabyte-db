@@ -571,9 +571,6 @@ restore_backup() {
   if [[ "$migration" = true ]]; then
     rm -rf "${destination}/${MIGRATION_BACKUP_DIR}"
   fi
-  if [[ "$yba_installer" = true ]]; then
-    run_sudo_cmd "chown -R ${yba_user}:${yba_user} ${ybai_data_dir}"
-  fi
 
   modify_service yb-platform restart
 
