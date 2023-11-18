@@ -44,6 +44,10 @@ public class RestoreBackup extends UniverseTaskBase {
 
       try {
 
+        if (isFirstTry()) {
+          backupHelper.validateRestoreOverwrites(taskParams().backupStorageInfoList, universe);
+        }
+
         if (universe.isYbcEnabled()
             && !universe
                 .getUniverseDetails()
