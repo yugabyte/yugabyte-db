@@ -2890,13 +2890,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     TaskInfo taskInfo = TaskInfo.getOrBadRequest(getUserTaskUUID());
     Universe universe = Universe.getOrBadRequest(restoreBackupParams.getUniverseUUID());
 
-    backupHelper.validateRestoreOverwrites(
-        restoreBackupParams.backupStorageInfoList, universe, restoreBackupParams.category);
-    getAndSaveRestoreBackupCategory(restoreBackupParams, taskInfo);
-
     // No validation for xcluster type tasks, since the backup
     // itself is used for populating restore task.
     if (taskInfo.getTaskType().equals(TaskType.RestoreBackup)) {
+      getAndSaveRestoreBackupCategory(restoreBackupParams, taskInfo);
       createPreflightValidateRestoreTask(restoreBackupParams);
     }
     if (restoreBackupParams.alterLoadBalancer) {

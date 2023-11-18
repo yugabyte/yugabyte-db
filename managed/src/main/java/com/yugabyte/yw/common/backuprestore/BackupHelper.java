@@ -445,7 +445,7 @@ public class BackupHelper {
   }
 
   public void validateRestoreOverwrites(
-      List<BackupStorageInfo> backupStorageInfos, Universe universe, Backup.BackupCategory category)
+      List<BackupStorageInfo> backupStorageInfos, Universe universe)
       throws PlatformServiceException {
     List<TableInfo> tableInfoList = getTableInfosOrEmpty(universe);
     for (BackupStorageInfo backupInfo : backupStorageInfos) {
