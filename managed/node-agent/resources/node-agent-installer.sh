@@ -17,6 +17,7 @@ SKIP_VERIFY_CERT=""
 #Disable node to Yugabyte Anywhere connection.
 DISABLE_EGRESS="false"
 SILENT_INSTALL="false"
+AIRGAP_INSTALL="false"
 CERT_DIR=""
 CUSTOMER_ID=""
 NODE_NAME=""
@@ -225,30 +226,40 @@ modify_firewall() {
 modify_selinux() {
   set +e
   if ! command -v semanage >/dev/null 2>&1; then
-    if command -v yum >/dev/null 2>&1; then
-      sudo yum install -y policycoreutils-python-utils
-    elif command -v apt-get >/dev/null 2>&1; then
-      sudo apt-get update -y
-      sudo apt-get install -y semanage-utils
+    if [ "$AIRGAP_INSTALL" = "true" ]; then
+      # The changes made with chcon are temporary in the sense that the context of the file
+      # altered with chcon goes back to default when restorecon is run.
+      # It should not even try to reach out to the repo.
+      sudo chcon -R -t bin_t "$NODE_AGENT_HOME"
+    else
+      if command -v yum >/dev/null 2>&1; then
+        sudo yum install -y policycoreutils-python-utils
+      elif command -v apt-get >/dev/null 2>&1; then
+        sudo apt-get update -y
+        sudo apt-get install -y semanage-utils
+      fi
     fi
   fi
-  sudo semanage port -lC | grep -F "$NODE_PORT" >/dev/null 2>&1
-  if [ "$?" -ne 0 ]; then
-    sudo semanage port -a -t http_port_t -p tcp "$NODE_PORT"
-  fi
-  sudo semanage fcontext -lC | grep -F "$NODE_AGENT_HOME(/.*)?" >/dev/null 2>&1
-  if [ "$?" -ne 0 ]; then
-    sudo semanage fcontext -a -t bin_t "$NODE_AGENT_HOME(/.*)?"
+  # Check if semanage was installed in the previous steps.
+  if command -v semanage >/dev/null 2>&1; then
+    sudo semanage port -lC | grep -F "$NODE_PORT" >/dev/null 2>&1
+    if [ "$?" -ne 0 ]; then
+      sudo semanage port -a -t http_port_t -p tcp "$NODE_PORT"
+    fi
+    sudo semanage fcontext -lC | grep -F "$NODE_AGENT_HOME(/.*)?" >/dev/null 2>&1
+    if [ "$?" -ne 0 ]; then
+      sudo semanage fcontext -a -t bin_t "$NODE_AGENT_HOME(/.*)?"
+    fi
+    sudo restorecon -ir "$NODE_AGENT_HOME"
   fi
   set -e
-  sudo restorecon -ir "$NODE_AGENT_HOME"
 }
 
 install_systemd_service() {
   if [ "$SE_LINUX_STATUS" = "Enforcing" ]; then
     modify_selinux
-    modify_firewall
   fi
+  modify_firewall
   echo "* Installing Node Agent Systemd Service"
   sudo tee "$SYSTEMD_DIR/$SERVICE_NAME"  <<-EOF
   [Unit]
@@ -298,6 +309,8 @@ Options:
     Username of the installation. A sudo user can install service for a non-sudo user.
   --skip_verify_cert (OPTIONAL)
     Specify to skip Yugabyte Anywhere server cert verification during install.
+  --airgap (OPTIONAL)
+    Specify to skip installing semanage utility.
   -h, --help
     Show usage.
 EOT
@@ -469,6 +482,9 @@ while [[ $# -gt 0 ]]; do
     ;;
     --silent)
       SILENT_INSTALL="true"
+    ;;
+    --airgap)
+      AIRGAP_INSTALL="true"
     ;;
     --node_name)
       NODE_NAME="$2"
