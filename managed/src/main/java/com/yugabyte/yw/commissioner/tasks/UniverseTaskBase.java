@@ -1202,6 +1202,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   public SubTaskGroup createInstallNodeAgentTasks(
       Collection<NodeDetails> nodes, boolean reinstall) {
+    Map<UUID, Provider> nodeUuidProviderMap = new HashMap<>();
     SubTaskGroup subTaskGroup = createSubTaskGroup(InstallNodeAgent.class.getSimpleName());
     int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
     Universe universe = getUniverse();
@@ -1210,6 +1211,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         .forEach(
             n -> {
               InstallNodeAgent.Params params = new InstallNodeAgent.Params();
+              Provider provider =
+                  nodeUuidProviderMap.computeIfAbsent(
+                      n.placementUuid,
+                      k -> {
+                        Cluster cluster = universe.getCluster(n.placementUuid);
+                        return Provider.getOrBadRequest(
+                            UUID.fromString(cluster.userIntent.provider));
+                      });
+              params.airgap = provider.getAirGapInstall();
               params.nodeName = n.nodeName;
               params.customerUuid = customer.getUuid();
               params.azUuid = n.azUuid;
