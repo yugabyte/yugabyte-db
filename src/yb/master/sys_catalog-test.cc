@@ -46,6 +46,8 @@
 #include "yb/master/sys_catalog-test_base.h"
 #include "yb/master/sys_catalog.h"
 
+#include "yb/tablet/tablet_peer.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
@@ -837,6 +839,13 @@ TEST_F(SysCatalogTest, TestNamespaceNameMigration) {
                !persisted_ns_name.empty() && persisted_ns_name == ns->name();
       },
       10s * kTimeMultiplier, "Wait for table's namespace_name to be set in memory and on disk."));
+}
+
+TEST_F(SysCatalogTest, TestTabletMemTracker) {
+  const auto& tablet_mem_tracker =
+      sys_catalog_->TEST_GetTabletPeer()->shared_tablet()->mem_tracker();
+  ASSERT_EQ("Tablets_overhead", tablet_mem_tracker->parent()->id());
+  ASSERT_EQ("mem_tracker_server_Tablets_overhead_PerTablet", tablet_mem_tracker->metric_name());
 }
 
 } // namespace master

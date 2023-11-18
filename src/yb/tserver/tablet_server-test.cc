@@ -978,5 +978,11 @@ TEST_F(TabletServerTest, TestGFlagsCallHome) {
   TestGFlagsCallHome<TabletServer, TserverCallHome>(mini_server_->server());
 }
 
+TEST_F(TabletServerTest, TestTabletMemTracker) {
+  const auto& tablet_mem_tracker = tablet_peer_->shared_tablet()->mem_tracker();
+  ASSERT_EQ("Tablets_overhead", tablet_mem_tracker->parent()->id());
+  ASSERT_EQ("mem_tracker_server_Tablets_overhead_PerTablet", tablet_mem_tracker->metric_name());
+}
+
 } // namespace tserver
 } // namespace yb

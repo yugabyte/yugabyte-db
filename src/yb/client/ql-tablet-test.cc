@@ -1154,7 +1154,7 @@ TEST_F(QLTabletTest, OperationMemTracking) {
   session->Apply(op);
   auto future = session->FlushFuture();
   auto server_tracker = MemTracker::GetRootTracker()->FindChild("server 1");
-  auto tablets_tracker = server_tracker->FindChild("Tablets");
+  auto tablets_tracker = server_tracker->FindChild("Tablets_overhead");
   auto log_tracker = server_tracker->FindChild("LogCache");
 
   std::chrono::steady_clock::time_point deadline;

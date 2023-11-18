@@ -252,6 +252,10 @@ class SysCatalogTable {
       Schema* schema,
       uint32_t* schema_version);
 
+  tablet::TabletPeerPtr TEST_GetTabletPeer() {
+    return tablet_peer_;
+  }
+
  private:
   friend class CatalogManager;
 
