@@ -60,10 +60,10 @@ Create a [private service endpoint](../../../../cloud-basics/cloud-vpcs/cloud-ad
 
 | Flag | Description |
 | :--- | :--- |
-| --accessibility-type | Required. The type of endpoint to create. `PUBLIC`, `PRIVATE`, or `PRIVATE_SERVICE_ENDPOINT`. |
+| --accessibility-type | Required. The type of endpoint to create.<br>`PUBLIC`, `PRIVATE`, or `PRIVATE_SERVICE_ENDPOINT`. |
 | --cluster-name | Required. The name of the cluster for which you want to create the endpoint. |
 | --region | Required. Region in which you want to create the endpoint. |
-| --security-principals | Required for `PRIVATE_SERVICE_ENDPOINT`. A comma-separated list of security principals to be granted access to this endpoint. For AWS, these are the Amazon resource names (ARNs) of AWS principals with permissions to create an interface VPC endpoint to connect to your endpoint service. For Azure, provide subscription IDs of the services to be granted access to this endpoint. |
+| &#8209;&#8209;security&#8209;principals | Required for `PRIVATE_SERVICE_ENDPOINT`. A comma-separated list of security principals to be granted access to this endpoint. For AWS, these are the Amazon resource names (ARNs) of AWS principals with permissions to create an interface VPC endpoint to connect to your endpoint service. For Azure, provide subscription IDs of the services to be granted access to this endpoint. |
 
 ### endpoint delete
 
@@ -91,7 +91,7 @@ List the network endpoints of the specified cluster. This includes public and pr
 
 | Flag | Description |
 | :--- | :--- |
-| --accessibility-type | Return endpoints only with the specified accessibility type. `PUBLIC`, `PRIVATE`, or `PRIVATE_SERVICE_ENDPOINT`.
+| --accessibility-type | Return endpoints only with the specified accessibility type.<br>`PUBLIC`, `PRIVATE`, or `PRIVATE_SERVICE_ENDPOINT`. |
 | --cluster-name | Required. The name of the cluster for which you want to list the endpoints. |
 | --region | Return endpoints only from the specified region. |
 
@@ -103,4 +103,4 @@ Update the configuration of a specified private service endpoint.
 | :--- | :--- |
 | --cluster-name | Required. The name of the cluster with the endpoint to update. |
 | --endpoint-id | Required. The ID of the endpoint to update. |
-| --security-principals | A comma-separated list of security principals to be granted access to this endpoint. For AWS, these are the Amazon resource names (ARNs) of AWS principals with permissions to create an interface VPC endpoint to connect to your endpoint service. For Azure, provide subscription IDs of the services to be granted access to this endpoint. |
+| &#8209;&#8209;security&#8209;principals | A comma-separated list of security principals to be granted access to this endpoint. For AWS, these are the Amazon resource names (ARNs) of AWS principals with permissions to create an interface VPC endpoint to connect to your endpoint service. For Azure, provide subscription IDs of the services to be granted access to this endpoint. |
