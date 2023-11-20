@@ -1310,22 +1310,6 @@ class UniverseReplicationInfo : public UniverseReplicationInfoBase,
   // Get the Status of the last error from the current SetupUniverseReplication.
   Status GetSetupUniverseReplicationErrorStatus() const;
 
-  void StoreReplicationError(
-      const TableId& consumer_table_id,
-      const xrepl::StreamId& stream_id,
-      ReplicationErrorPb error,
-      const std::string& error_detail);
-
-  void ClearReplicationError(
-      const TableId& consumer_table_id, const xrepl::StreamId& stream_id, ReplicationErrorPb error);
-
-  // Maps from a table id -> stream id -> replication error -> error detail.
-  typedef std::unordered_map<ReplicationErrorPb, std::string> ReplicationErrorMap;
-  typedef std::unordered_map<xrepl::StreamId, ReplicationErrorMap> StreamReplicationErrorMap;
-  typedef std::unordered_map<TableId, StreamReplicationErrorMap> TableReplicationErrorMap;
-
-  TableReplicationErrorMap GetReplicationErrors() const;
-
  private:
   friend class RefCountedThreadSafe<UniverseReplicationInfo>;
   virtual ~UniverseReplicationInfo() = default;
@@ -1333,8 +1317,6 @@ class UniverseReplicationInfo : public UniverseReplicationInfoBase,
   // The last error Status of the currently running SetupUniverseReplication. Will be OK, if freshly
   // constructed object, or if the SetupUniverseReplication was successful.
   Status setup_universe_replication_error_ = Status::OK();
-
-  TableReplicationErrorMap table_replication_error_map_;
 
   DISALLOW_COPY_AND_ASSIGN(UniverseReplicationInfo);
 };

@@ -44,6 +44,7 @@
 #include <boost/functional/hash.hpp>
 #include <gtest/internal/gtest-internal.h>
 
+#include "yb/cdc/xcluster_types.h"
 #include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
 #include "yb/master/leader_epoch.h"
@@ -1078,8 +1079,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const TabletDriveStorageMetadataPB& storage_metadata,
       const std::optional<TabletLeaderMetricsPB>& leader_metrics);
 
-  Status ProcessTabletReplicationStatus(const TabletReplicationStatusPB& replication_state)
-      EXCLUDES(mutex_);
+  void SyncXClusterConsumerReplicationStatusMap(
+      const cdc::ReplicationGroupId& replication_group_id,
+      const google::protobuf::Map<std::string, cdc::ProducerEntryPB>& producer_map)
+      EXCLUDES(xcluster_consumer_replication_error_map_mutex_);
+
+  void StoreXClusterConsumerReplicationStatus(
+      const XClusterConsumerReplicationStatusPB& consumer_replication_status) EXCLUDES(mutex_);
 
   void ProcessTabletReplicaFullCompactionStatus(
       const TabletServerId& ts_uuid, const FullCompactionStatusPB& full_compaction_status);
@@ -2862,35 +2868,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   void LoadCDCRetainedTabletsSet() REQUIRES(mutex_);
 
-  void PopulateUniverseReplicationStatus(
-      const UniverseReplicationInfo& universe, GetReplicationStatusResponsePB* resp) const
-      REQUIRES_SHARED(mutex_);
-
-  Status StoreReplicationErrors(
+  // Populate the response with the errors for the given replication group.
+  Status PopulateReplicationGroupErrors(
       const cdc::ReplicationGroupId& replication_group_id,
-      const TableId& consumer_table_id,
-      const xrepl::StreamId& stream_id,
-      const std::vector<std::pair<ReplicationErrorPb, std::string>>& replication_errors)
-      EXCLUDES(mutex_);
-
-  Status StoreReplicationErrorsUnlocked(
-      const cdc::ReplicationGroupId& replication_group_id,
-      const TableId& consumer_table_id,
-      const xrepl::StreamId& stream_id,
-      const std::vector<std::pair<ReplicationErrorPb, std::string>>& replication_errors)
-      REQUIRES_SHARED(mutex_);
-
-  Status ClearReplicationErrors(
-      const cdc::ReplicationGroupId& replication_group_id,
-      const TableId& consumer_table_id,
-      const xrepl::StreamId& stream_id,
-      const std::vector<ReplicationErrorPb>& replication_error_codes) EXCLUDES(mutex_);
-
-  Status ClearReplicationErrorsUnlocked(
-      const cdc::ReplicationGroupId& replication_group_id,
-      const TableId& consumer_table_id,
-      const xrepl::StreamId& stream_id,
-      const std::vector<ReplicationErrorPb>& replication_error_codes) REQUIRES_SHARED(mutex_);
+      GetReplicationStatusResponsePB* resp) const
+      REQUIRES_SHARED(mutex_, xcluster_consumer_replication_error_map_mutex_);
 
   // Update the UniverseReplicationInfo object when toggling replication.
   Status SetUniverseReplicationInfoEnabled(
@@ -3113,6 +3095,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
     GUARDED_BY(heartbeat_pg_catalog_versions_cache_mutex_) = 0;
 
   std::unique_ptr<cdc::CDCStateTable> cdc_state_table_;
+
+  mutable std::shared_mutex xcluster_consumer_replication_error_map_mutex_ ACQUIRED_AFTER(mutex_);
+  std::unordered_map<cdc::ReplicationGroupId, xcluster::ReplicationGroupErrors>
+      xcluster_consumer_replication_error_map_
+          GUARDED_BY(xcluster_consumer_replication_error_map_mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

@@ -263,15 +263,9 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
         }
       }
 
-      // Only process the replication status if we have plenty of time to process the work (> 50% of
-      // timeout).
-      safe_time_left = CoarseMonoClock::Now() + (FLAGS_heartbeat_rpc_timeout_ms * 1ms / 2);
-      if (rpc.GetClientDeadline() > safe_time_left) {
-        for (const auto& replication_state : req->replication_state()) {
-          ERROR_NOT_OK(
-            server_->catalog_manager_impl()->ProcessTabletReplicationStatus(replication_state),
-            "Failed to process tablet replication status");
-        }
+      for (const auto& consumer_replication_state : req->xcluster_consumer_replication_status()) {
+        server_->catalog_manager_impl()->StoreXClusterConsumerReplicationStatus(
+            consumer_replication_state);
       }
 
       // Only process the full compaction statuses if we have plenty of time to process the work (>

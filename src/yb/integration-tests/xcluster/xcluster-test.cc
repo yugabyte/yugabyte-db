@@ -69,12 +69,12 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet.h"
 
+#include "yb/tserver/xcluster_consumer_if.h"
+#include "yb/tserver/xcluster_poller.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_service.pb.h"
-#include "yb/tserver/xcluster_consumer.h"
-#include "yb/tserver/xcluster_poller.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
@@ -298,66 +298,6 @@ class XClusterTestNoParam : public XClusterYcqlTestBase {
   }
 
   Status SetupReplication() { return SetupUniverseReplication(producer_tables_); }
-
-  Status VerifyReplicationError(
-      const std::string& consumer_table_id, const xrepl::StreamId& stream_id,
-      const boost::optional<ReplicationErrorPb> expected_replication_error) {
-    // 1. Verify that the RPC contains the expected error.
-    master::GetReplicationStatusRequestPB req;
-    master::GetReplicationStatusResponsePB resp;
-
-    req.set_universe_id(kReplicationGroupId.ToString());
-
-    auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
-        &consumer_client()->proxy_cache(),
-        VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
-
-    rpc::RpcController rpc;
-    RETURN_NOT_OK(WaitFor(
-        [&]() -> Result<bool> {
-          rpc.Reset();
-          rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
-          if (!master_proxy->GetReplicationStatus(req, &resp, &rpc).ok()) {
-            return false;
-          }
-
-          if (resp.has_error()) {
-            return false;
-          }
-
-          if (resp.statuses_size() == 0 ||
-              (resp.statuses()[0].table_id() != consumer_table_id &&
-               resp.statuses()[0].stream_id() != stream_id.ToString())) {
-            return false;
-          }
-
-          if (expected_replication_error) {
-            return resp.statuses()[0].errors_size() == 1 &&
-                   resp.statuses()[0].errors()[0].error() == *expected_replication_error;
-          } else {
-            return resp.statuses()[0].errors_size() == 0;
-          }
-        },
-        MonoDelta::FromSeconds(30), "Waiting for replication error"));
-
-    // 2. Verify that the yb-admin output contains the expected error.
-    auto admin_out =
-        VERIFY_RESULT(CallAdmin(consumer_cluster(), "get_replication_status", kReplicationGroupId));
-    if (expected_replication_error) {
-      SCHECK_FORMAT(
-          admin_out.find(
-              Format("error: $0", ReplicationErrorPb_Name(*expected_replication_error))) !=
-              std::string::npos,
-          IllegalState, "Expected error '$0' not found in yb-admin output '$1'",
-          expected_replication_error, admin_out);
-    } else {
-      SCHECK_FORMAT(
-          admin_out.find("error:") == std::string::npos, IllegalState,
-          "Unexpected error found in yb-admin output '$0'", admin_out);
-    }
-
-    return Status::OK();
-  }
 
   Result<xrepl::StreamId> GetCDCStreamID(const std::string& producer_table_id) {
     master::ListCDCStreamsResponsePB stream_resp;
@@ -2374,8 +2314,7 @@ TEST_P(XClusterTest, TestAlterDDLBasic) {
   ASSERT_OK(VerifyRowsMatch());
 
   // Verify that the replication status for the consumer table does not contain an error.
-  ASSERT_OK(VerifyReplicationError(
-      consumer_table_->id(), stream_id, boost::optional<ReplicationErrorPb>()));
+  ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
 
   // Stop replication on the Consumer.
   ASSERT_OK(DeleteUniverseReplication());
@@ -3257,7 +3196,7 @@ TEST_P(XClusterTestWaitForReplicationDrain, TestProducerChange) {
   ASSERT_OK(drain_api_future.get());
 }
 
-TEST_P(XClusterTest, TestPrematureLogGC) {
+TEST_F_EX(XClusterTest, TestPrematureLogGC, XClusterTestNoParam) {
   // Allow WAL segments to be garbage collected regardless of their lifetime.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_wal_retention_time) = true;
 
@@ -3876,4 +3815,52 @@ TEST_F_EX(XClusterTest, TestStats, XClusterTestNoParam) {
   ASSERT_EQ(source_stats[0].mbs_sent, target_stats[0].mbs_received);
   ASSERT_EQ(source_stats[0].sent_index, target_stats[0].received_index);
 }
+
+TEST_F_EX(XClusterTest, VerifyReplicationError, XClusterTestNoParam) {
+  // Disable polling so that errors don't get cleared by successful polls.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_skip_replication_poll) = true;
+  ASSERT_OK(SetUpWithParams(
+      {1}, {1}, /* replication_factor */ 1, /* num_masters */ 3, /* num_tservers */ 1));
+  ASSERT_OK(SetupReplication());
+  ASSERT_OK(CorrectlyPollingAllTablets(1));
+  const auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_table_->id()));
+  ASSERT_OK(VerifyReplicationError(
+      consumer_table_->id(), stream_id, ReplicationErrorPb::REPLICATION_ERROR_UNINITIALIZED));
+
+  const auto replication_error1 = ReplicationErrorPb::REPLICATION_SCHEMA_MISMATCH;
+  const auto replication_error2 = ReplicationErrorPb::REPLICATION_MISSING_OP_ID;
+
+  // Store an error in the Poller.
+  auto xcluster_consumer =
+      consumer_cluster()->mini_tablet_server(0)->server()->GetXClusterConsumer();
+  auto pollers = xcluster_consumer->TEST_ListPollers();
+  ASSERT_EQ(pollers.size(), 1);
+  auto poller = pollers[0];
+  poller->StoreReplicationError(replication_error1);
+
+  // Verify the error propagated to master.
+  ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, replication_error1));
+
+  // Verify the error persists across master fail overs and restarts.
+  auto old_master = ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster());
+  ASSERT_OK(producer_cluster()->StepDownMasterLeader());
+  ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, replication_error1));
+
+  // Set a different error in the Poller.
+  poller->StoreReplicationError(replication_error2);
+
+  // Verify the new error propagated to the master.
+  ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, replication_error2));
+
+  // Fallback to old master and make sure it is updated.
+  ASSERT_OK(producer_cluster()->StepDownMasterLeader(old_master->permanent_uuid()));
+  ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, replication_error2));
+
+  // Clear the error in the Poller.
+  poller->StoreReplicationError(ReplicationErrorPb::REPLICATION_OK);
+
+  // Verify the error is cleared in the master.
+  ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
+}
+
 }  // namespace yb

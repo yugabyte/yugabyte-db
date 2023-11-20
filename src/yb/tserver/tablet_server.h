@@ -78,8 +78,8 @@ class AutoFlagsManager;
 
 namespace tserver {
 
-class XClusterConsumer;
 class PgClientServiceImpl;
+class XClusterConsumerIf;
 
 class TabletServer : public DbServerBase, public TabletServerIf {
  public:
@@ -278,12 +278,11 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   encryption::UniverseKeyManager* GetUniverseKeyManager();
 
-  Status SetConfigVersionAndConsumerRegistry(
-      int32_t cluster_config_version, const cdc::ConsumerRegistryPB* consumer_registry);
+  Status XClusterHandleMasterHeartbeatResponse(const master::TSHeartbeatResponsePB& resp);
 
   Status ValidateAndMaybeSetUniverseUuid(const UniverseUuid& universe_uuid);
 
-  XClusterConsumer* GetXClusterConsumer() const;
+  XClusterConsumerIf* GetXClusterConsumer() const;
 
   // Mark the CDC service as enabled via heartbeat.
   Status SetCDCServiceEnabled();
@@ -426,14 +425,14 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   PgConfigReloader pg_config_reloader_;
 
-  Status CreateXClusterConsumer() REQUIRES(xcluster_consumer_mutex_);
+  Status CreateXClusterConsumer() EXCLUDES(xcluster_consumer_mutex_);
 
   std::unique_ptr<rpc::SecureContext> secure_context_;
   std::vector<CertificateReloader> certificate_reloaders_;
 
   // xCluster consumer.
   mutable std::mutex xcluster_consumer_mutex_;
-  std::unique_ptr<XClusterConsumer> xcluster_consumer_ GUARDED_BY(xcluster_consumer_mutex_);
+  std::unique_ptr<XClusterConsumerIf> xcluster_consumer_ GUARDED_BY(xcluster_consumer_mutex_);
 
   // CDC service.
   std::shared_ptr<cdc::CDCServiceImpl> cdc_service_;
