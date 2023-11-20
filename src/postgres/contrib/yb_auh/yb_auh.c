@@ -40,6 +40,7 @@
 
 PG_MODULE_MAGIC;
 PG_FUNCTION_INFO_V1(pg_active_universe_history);
+PG_FUNCTION_INFO_V1(yb_tables);
 
 #define PG_ACTIVE_UNIVERSE_HISTORY_COLS        12
 
@@ -56,6 +57,19 @@ typedef struct ybauhEntry {
   TimestampTz start_ts_of_wait_event;
   float8 sample_rate;
 } ybauhEntry;
+
+typedef struct ybtableInfo {
+  const char* table_id;
+  const char* table_name;
+  const char* table_type;
+  const char* relation_type;
+  const char* namespace_id;
+  const char* namespace_name;
+  const char* database_type;
+  const char* pgschema_name;
+  bool colocated;
+  const char* parent_table_id;
+} ybtableInfo;
 
 /* counters */
 typedef struct circularBufferIndex
@@ -481,6 +495,131 @@ ybauh_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
     PG_RE_THROW();
   }
   PG_END_TRY();
+}
+
+static void 
+yb_tables_internal(FunctionCallInfo fcinfo)
+{
+  ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+  TupleDesc       tupdesc;
+  Tuplestorestate *tupstore;
+  MemoryContext per_query_ctx;
+  MemoryContext oldcontext;
+
+  if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+    ereport(ERROR,
+            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                errmsg("set-valued function called in context that cannot accept a set")));
+  if (!(rsinfo->allowedModes & SFRM_Materialize))
+    ereport(ERROR,
+            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                errmsg("materialize mode required, but it is not " \
+					   "allowed in this context")));
+
+  if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+    elog(ERROR, "return type must be a row type");
+
+  per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
+  oldcontext = MemoryContextSwitchTo(per_query_ctx); 
+
+  tupstore = tuplestore_begin_heap(true, false, work_mem);
+  rsinfo->returnMode = SFRM_Materialize;
+  rsinfo->setResult = tupstore;
+  rsinfo->setDesc = tupdesc;
+
+  MemoryContextSwitchTo(oldcontext);
+
+  YBCTableIDMetadataInfo *infolist = NULL;
+	size_t size = 0;
+  
+  HandleYBStatus(YBCTableIDMetadata(&infolist, &size));
+  
+  int i;
+  for (i = 0; i < size; i++) {
+
+    Datum values[10];
+    bool isnull[10];
+    int j = 0;
+
+    memset(values, 0, sizeof(values));
+    memset(isnull, 0, sizeof(isnull));
+
+    // table_id
+    if (infolist[i].table_id != NULL)
+        values[j] = CStringGetTextDatum(infolist[i].table_id);
+    else
+        isnull[j] = true;
+    j++;
+
+    // table_name
+    if (infolist[i].table_name != NULL)
+        values[j] = CStringGetTextDatum(infolist[i].table_name);
+    else
+        isnull[j] = true;
+    j++;
+
+    // table_type
+    if (infolist[i].table_type != NULL)
+        values[j] = CStringGetTextDatum(infolist[i].table_type);
+    else
+        isnull[j] = true;
+    j++;
+
+    // relation_type
+    if (infolist[i].relation_type != NULL)
+        values[j] = CStringGetTextDatum(infolist[i].relation_type);
+    else
+        isnull[j] = true;
+    j++;
+
+    // namespace_id
+    if (infolist[i].namespace_.id != NULL)
+        values[j] = CStringGetTextDatum(infolist[i].namespace_.id);
+    else
+        isnull[j] = true;
+    j++;
+
+    // namespace_name
+    if (infolist[i].namespace_.name != NULL)
+        values[j] = CStringGetTextDatum(infolist[i].namespace_.name);
+    else
+        isnull[j] = true;
+    j++;
+
+    //database_type 
+    if (infolist[i].namespace_.database_type != NULL)
+        values[j] = CStringGetTextDatum(infolist[i].namespace_.database_type);
+    else
+        isnull[j] = true;
+    j++;
+
+    // pgschema_name
+    if (infolist[i].pgschema_name != NULL)
+        values[j] = CStringGetTextDatum(infolist[i].pgschema_name);
+    else
+        isnull[j] = true;
+    j++;
+
+    // colocated
+    values[j++] = BoolGetDatum(infolist[i].colocated_info.colocated);
+
+    // parent_table_id
+    if (infolist[i].colocated_info.parent_table_id != NULL)
+        values[j] = CStringGetTextDatum(infolist[i].colocated_info.parent_table_id);
+    else
+        isnull[j] = true;
+
+    tuplestore_putvalues(tupstore, tupdesc, values, isnull);
+  }
+
+  tuplestore_donestoring(tupstore);
+}
+
+Datum
+yb_tables(PG_FUNCTION_ARGS)
+{
+	yb_tables_internal(fcinfo);
+  return (Datum) 0;
 }
 
 static void

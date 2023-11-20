@@ -709,6 +709,8 @@ YBCStatus YBCPrefetchRegisteredSysTables();
 
 YBCStatus YBCPgCheckIfPitrActive(bool* is_active);
 
+YBCStatus YBCTableIDMetadata(YBCTableIDMetadataInfo** infolist, size_t* count);
+
 YBCStatus YBCActiveUniverseHistory(YBCAUHDescriptor **rpcs, size_t* numrpcs);
 
 YBCStatus YBCSetTopLevelNodeId();
