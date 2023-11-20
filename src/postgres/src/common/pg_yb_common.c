@@ -231,3 +231,9 @@ YBColocateDatabaseByDefault()
 	}
 	return cached_value;
 }
+
+bool
+YBIsTestOnlinePg11ToPg15Upgrade()
+{
+	return YBCIsEnvVarTrue("FLAGS_TEST_online_pg11_to_pg15_upgrade");
+}

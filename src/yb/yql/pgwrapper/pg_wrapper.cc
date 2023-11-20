@@ -97,6 +97,9 @@ DEFINE_UNKNOWN_string(ysql_hba_conf, "",
               "Comma separated list of postgres hba rules (in order)");
 TAG_FLAG(ysql_hba_conf, sensitive_info);
 DECLARE_string(tmp_dir);
+DEFINE_test_flag(bool, online_pg11_to_pg15_upgrade, false,
+    "Enter the mode in which the master creates PG15 catalogs alongside PG11 catalogs, leaving "
+    "PG11 catalogs as they are, using pg_restore. This flag is only meaningful on the YB master.");
 
 // gFlag wrappers over Postgres GUC parameter.
 // The value type should match the GUC parameter, or it should be a string, in which case Postgres
@@ -697,6 +700,9 @@ Status PgWrapper::InitDb(bool yb_enabled) {
   Subprocess initdb_subprocess(initdb_program_path, initdb_args);
   initdb_subprocess.InheritNonstandardFd(conf_.tserver_shm_fd);
   SetCommonEnv(&initdb_subprocess, yb_enabled);
+  initdb_subprocess.SetEnv(
+      "FLAGS_TEST_online_pg11_to_pg15_upgrade",
+      FLAGS_TEST_online_pg11_to_pg15_upgrade ? "true" : "false");
   int status = 0;
   RETURN_NOT_OK(initdb_subprocess.Start());
   RETURN_NOT_OK(initdb_subprocess.Wait(&status));

@@ -150,4 +150,9 @@ extern const bool kTestOnlyUseOSDefaultCollation;
  */
 extern bool YBColocateDatabaseByDefault();
 
+/**
+ * Returns whether we're doing an online upgrade from PG11 to PG15.
+ */
+extern bool YBIsTestOnlinePg11ToPg15Upgrade();
+
 #endif /* PG_YB_COMMON_H */
