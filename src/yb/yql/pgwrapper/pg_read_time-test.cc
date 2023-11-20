@@ -333,7 +333,7 @@ TEST_F(PgMiniTestBase, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLDumpAsOfTime)) {
   LOG(INFO) << "Create table t2";
   ASSERT_OK(conn.Execute("CREATE TABLE t2 (k2 INT primary key, v2 text);"));
   //  Step 2
-  auto t1 = ASSERT_RESULT(conn.FetchValue<int64_t>(
+  auto t1 = ASSERT_RESULT(conn.FetchRow<PGUint64>(
       Format("SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint")));
   LOG(INFO) << "Current timestamp t=" << std::to_string(t1);
   // Step 3
