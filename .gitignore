@@ -1,6 +1,7 @@
 *.o
 *.so
 build.sh
+age--*.*.*.sql
 .idea
 .deps
 .DS_Store

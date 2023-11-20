@@ -17,7 +17,7 @@
 
 MODULE_big = age
 
-
+age_sql = age--1.4.0.sql
 
 OBJS = src/backend/age.o \
        src/backend/catalog/ag_catalog.o \
@@ -75,7 +75,12 @@ OBJS = src/backend/age.o \
 
 EXTENSION = age
 
-DATA = age--1.4.0.sql
+#SQLS = $(sort ($(wildcard sql/*.sql)))
+SQLS := $(shell cat sql/sql_files)
+SQLS := $(addprefix sql/,$(SQLS)) 
+SQLS := $(addsuffix .sql,$(SQLS)) 
+
+DATA_built = $(age_sql)
 
 # sorted in dependency order
 REGRESS = scan \
@@ -110,7 +115,7 @@ ag_regress_dir = $(srcdir)/regress
 REGRESS_OPTS = --load-extension=age --inputdir=$(ag_regress_dir) --outputdir=$(ag_regress_dir) --temp-instance=$(ag_regress_dir)/instance --port=61958 --encoding=UTF-8 --temp-config $(ag_regress_dir)/age_regression.conf
 
 ag_regress_out = instance/ log/ results/ regression.*
-EXTRA_CLEAN = $(addprefix $(ag_regress_dir)/, $(ag_regress_out)) src/backend/parser/cypher_gram.c src/include/parser/cypher_gram_def.h src/include/parser/cypher_kwlist_d.h
+EXTRA_CLEAN = $(addprefix $(ag_regress_dir)/, $(ag_regress_out)) src/backend/parser/cypher_gram.c src/include/parser/cypher_gram_def.h src/include/parser/cypher_kwlist_d.h $(age_sql)
 
 GEN_KEYWORDLIST = $(PERL) -I ./tools/ ./tools/gen_keywordlist.pl
 GEN_KEYWORDLIST_DEPS = ./tools/gen_keywordlist.pl tools/PerfectHash.pm
@@ -133,6 +138,9 @@ src/backend/parser/cypher_gram.c: BISONFLAGS += --defines=src/include/parser/cyp
 
 src/backend/parser/cypher_parser.o: src/backend/parser/cypher_gram.c
 src/backend/parser/cypher_keywords.o: src/backend/parser/cypher_gram.c
+
+$(age_sql):
+	@cat $(SQLS) > $@
 
 src/backend/parser/ag_scanner.c: FLEX_NO_BACKUP=yes
 
