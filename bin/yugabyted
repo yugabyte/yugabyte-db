@@ -1832,15 +1832,11 @@ class ControlScript(object):
                             yugabyted_ui_cmd.extend(["-secure=true",
                                 "-database_password={}".format(
                                 self.configs.saved_data.get("database_password"))])
-                    if self.configs.saved_data.get("secure"):
-                        yugabyted_ui_cmd.extend(["-secure=true",
-                            "-database_password={}".format(
-                            self.configs.saved_data.get("database_password"))])
 
-                    self.processes["yugabyted-ui"] = ProcessManager(
-                        "yugabyted-ui", yugabyted_ui_cmd,
-                        self.configs.saved_data.get("log_dir"),
-                        self.configs.saved_data.get("data_dir"))
+                        self.processes["yugabyted-ui"] = ProcessManager(
+                            "yugabyted-ui", yugabyted_ui_cmd,
+                            self.configs.saved_data.get("log_dir"),
+                            self.configs.saved_data.get("data_dir"))
 
             if self.configs.saved_data.get("ui") and ui_port_available:
                 (_, was_started) = self.verify_start_yugabyted_ui(is_first_run, is_first_install)
