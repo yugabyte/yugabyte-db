@@ -1743,6 +1743,44 @@ YBCStatus YBCTableIDMetadata(YBCTableIDMetadataInfo** infolist, size_t* count) {
     return YBCStatusOK();
 }
 
+YBCStatus YBCTabletIDMetadata(YBCTabletIDMetadataInfo* infolist, size_t* count, const char* table_id) {
+    const auto result = pgapi->TabletIDMetadata(table_id);
+    if (!result.ok()) {
+        return ToYBCStatus(result.status());
+    }
+    const auto& tablet_info = result.get().tablets();
+    // *count = tablet_info.size();
+    // if (*count == 0) {
+    //     return YBCStatusOK();
+    // }
+    infolist = static_cast<YBCTabletIDMetadataInfo*>(YBCPAlloc(sizeof(YBCTabletIDMetadataInfo)));
+    YBCTabletIDMetadataInfo dest = *infolist;
+      dest.tablet_id = YBCPAllocStdString(tablet_info.tablet_id());
+      dest.start_key = YBCPAllocStdString(tablet_info.start_key());
+      dest.end_key = YBCPAllocStdString(tablet_info.end_key());
+
+      const google::protobuf::RepeatedField<google::protobuf::int32>& hash_buckets_pb = tablet_info.partition().hash_buckets();
+      std::vector<uint32_t> hash_buckets_vector(hash_buckets_pb.begin(), hash_buckets_pb.end());
+      dest.partition.hash_buckets_count = hash_buckets_vector.size();
+      dest.partition.hash_buckets = YBCPAllocStdVectorUint32(hash_buckets_vector);
+      dest.partition.partition_key_start = YBCPAllocStdString(tablet_info.partition().partition_key_start());
+      dest.partition.partition_key_end = YBCPAllocStdString(tablet_info.partition().partition_key_end());
+      dest.stale = tablet_info.stale();
+
+      const google::protobuf::RepeatedPtrField<std::string>& table_ids_pb = tablet_info.table_ids();
+      std::vector<std::string> table_ids_vector(table_ids_pb.begin(), table_ids_pb.end());
+      dest.table_ids_count = table_ids_vector.size();
+      dest.table_ids = YBCPAllocStringArray(table_ids_vector);
+      dest.split_depth = tablet_info.split_depth();
+      dest.split_parent_tablet_id = YBCPAllocStdString(tablet_info.split_parent_tablet_id());
+      dest.expected_live_replicas = tablet_info.expected_live_replicas();
+      dest.expected_read_replicas = tablet_info.expected_read_replicas();
+      dest.is_deleted = tablet_info.is_deleted();
+
+       
+    return YBCStatusOK();
+}
+
 YBCStatus YBCActiveUniverseHistory(YBCAUHDescriptor **rpcs, size_t* count) {
   const auto result = pgapi->ActiveUniverseHistory();
   if (!result.ok()) {

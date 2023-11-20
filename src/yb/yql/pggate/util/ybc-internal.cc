@@ -65,12 +65,30 @@ const char* YBCPAllocStdString(const std::string& s) {
   return result;
 }
 
+const char** YBCPAllocStringArray(const std::vector<std::string>& s) {
+  const size_t count = s.size();
+  const char** result = static_cast<const char**>(YBCPAlloc(count * sizeof(const char*)));
+  for (size_t i = 0; i < count; ++i) {
+      result[i] = YBCPAllocStdString(s[i]);
+  }
+  return result;
+}
+
 const uint64_t* YBCPAllocStdVectorUint64(const std::vector<uint64_t>& v) {
   const size_t len = v.size();
   if (len == 0)
     return nullptr;
   uint64_t* result = static_cast<uint64_t*>(YBCPAlloc(len * sizeof(uint64_t)));
   memcpy(result, v.data(), len * sizeof(uint64_t));
+  return result;
+}
+
+const uint32_t* YBCPAllocStdVectorUint32(const std::vector<uint64_t>& v) {
+  const size_t len = v.size();
+  if (len == 0)
+    return nullptr;
+  uint32_t* result = static_cast<uint32_t*>(YBCPAlloc(len * sizeof(uint32_t)));
+  memcpy(result, v.data(), len * sizeof(uint32_t));
   return result;
 }
 
