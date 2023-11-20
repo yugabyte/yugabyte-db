@@ -121,6 +121,9 @@ export const FETCH_RUNTIME_CONFIGS_RESPONSE = 'FETCH_RUNTIME_CONFIGS_RESPONSE';
 export const FETCH_RUNTIME_CONFIGS_KEY_INFO = 'FETCH_RUNTIME_CONFIGS_KEY_INFO';
 export const FETCH_RUNTIME_CONFIGS_KEY_INFO_RESPONSE = 'FETCH_RUNTIME_CONFIGS_KEY_INFO_RESPONSE';
 
+export const FETCH_PROVIDER_RUNTIME_CONFIGS = 'FETCH_PROVIDER_RUNTIME_CONFIGS';
+export const FETCH_PROVIDER_RUNTIME_CONFIGS_RESPONSE = 'FETCH_PROVIDER_RUNTIME_CONFIGS_RESPONSE';
+
 export const SET_RUNTIME_CONFIG = 'SET_RUNTIME_CONFIG';
 export const SET_RUNTIME_CONFIG_RESPONSE = 'SET_RUNTIME_CONFIG_RESPONSE';
 
@@ -944,6 +947,24 @@ export function fetchRunTimeConfigsKeyInfo() {
 export function fetchRunTimeConfigsKeyInfoResponse(response) {
   return {
     type: FETCH_RUNTIME_CONFIGS_KEY_INFO_RESPONSE,
+    payload: response
+  };
+}
+
+export function fetchProviderRunTimeConfigs(scope, includeInherited = false) {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.get(
+    `${ROOT_URL}/customers/${cUUID}/runtime_config/${scope}?includeInherited=${includeInherited}`
+  );
+  return {
+    type: FETCH_PROVIDER_RUNTIME_CONFIGS,
+    payload: request
+  };
+}
+
+export function fetchProviderRunTimeConfigsResponse(response) {
+  return {
+    type: FETCH_PROVIDER_RUNTIME_CONFIGS_RESPONSE,
     payload: response
   };
 }
