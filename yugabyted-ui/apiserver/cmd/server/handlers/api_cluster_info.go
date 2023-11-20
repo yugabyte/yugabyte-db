@@ -1450,6 +1450,21 @@ func (c *Container) GetTableInfo(ctx echo.Context) error {
 // GetClusterAlerts - Get all cluster alerts info (If Any)
 func (c *Container) GetClusterAlerts(ctx echo.Context) error {
 
+    nodeHost := ctx.QueryParam("node_address")
+    // If node_address is provided, get alerts from node at that address
+    if nodeHost != "" {
+        httpClient := &http.Client{
+            Timeout: time.Second * 10,
+        }
+        url := fmt.Sprintf("http://%s:%s/api/alerts", nodeHost, c.serverPort)
+        resp, err := httpClient.Get(url)
+        if err != nil {
+            c.logger.Errorf("Failed to get alerts from node %s: %s", nodeHost, err.Error())
+            return ctx.String(http.StatusInternalServerError, err.Error())
+        }
+        defer resp.Body.Close()
+        return ctx.Stream(resp.StatusCode, echo.MIMEApplicationJSONCharsetUTF8, resp.Body)
+    }
     alertsResponse := models.AlertsResponse {
         Data: []models.AlertsInfo{},
     }
@@ -1466,4 +1481,9 @@ func (c *Container) GetClusterAlerts(ctx echo.Context) error {
     }
 
     return ctx.JSON(http.StatusOK, alertsResponse)
+}
+
+// GetNodeAddress - Get the node address for the current node
+func (c *Container) GetNodeAddress(ctx echo.Context) error {
+    return ctx.String(http.StatusOK, helpers.HOST)
 }

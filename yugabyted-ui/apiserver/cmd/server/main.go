@@ -145,7 +145,7 @@ func main() {
     }
 
     //todo: handle the error!
-    c, _ := handlers.NewContainer(log, cluster, gocqlSession, pgxConnMap, helper)
+    c, _ := handlers.NewContainer(log, cluster, gocqlSession, pgxConnMap, helper, serverPort)
     defer c.Cleanup()
 
     // Middleware
@@ -262,6 +262,9 @@ func main() {
 
     // Get Voyager Data migration metrics
     e.GET("/api/migration_metrics", c.GetVoyagerMetrics)
+
+    // GetClusterConnections - Get the node address for the current node
+    e.GET("/api/node_address", c.GetNodeAddress)
 
     render_htmls := templates.NewTemplate()
 

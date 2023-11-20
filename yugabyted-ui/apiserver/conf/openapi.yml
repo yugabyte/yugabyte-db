@@ -482,7 +482,7 @@ paths:
       parameters:
         - name: node_address
           in: query
-          description: Specify the node ip-address from where gflags are retrieved
+          description: Specify the node ip-address from where alerts are retrieved
           required: true
           style: form
           explode: false
@@ -502,9 +502,32 @@ paths:
       operationId: getClusterAlerts
       tags:
         - cluster-info
+      parameters:
+        - name: node_address
+          in: query
+          description: Specify the node ip-address from where gflags are retrieved
+          required: true
+          style: form
+          explode: false
+          schema:
+            type: string
       responses:
         '200':
           $ref: '#/components/responses/AlertsResponse'
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '500':
+          $ref: '#/components/responses/ApiError'
+  /node_address:
+    get:
+      summary: Get the node address for the current node
+      description: Get the node address for the current node
+      operationId: getNodeAddress
+      tags:
+        - cluster-info
+      responses:
+        '200':
+          $ref: '#/components/responses/NodeAddressResponse'
         '400':
           $ref: '#/components/responses/ApiError'
         '500':
@@ -1704,6 +1727,12 @@ components:
                   $ref: '#/components/schemas/AlertsInfo'
             required:
               - data
+    NodeAddressResponse:
+      description: Node address
+      content:
+        text/plain:
+          schema:
+            type: string
   securitySchemes:
     BearerAuthToken:
       type: http

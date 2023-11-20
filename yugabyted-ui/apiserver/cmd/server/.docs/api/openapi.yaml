@@ -680,7 +680,7 @@ paths:
       description: Retrieve gflags of master and tserver process
       operationId: getGflags
       parameters:
-      - description: Specify the node ip-address from where gflags are retrieved
+      - description: Specify the node ip-address from where alerts are retrieved
         explode: false
         in: query
         name: node_address
@@ -714,6 +714,15 @@ paths:
     get:
       description: Get any alerts for the cluster
       operationId: getClusterAlerts
+      parameters:
+      - description: Specify the node ip-address from where gflags are retrieved
+        explode: false
+        in: query
+        name: node_address
+        required: true
+        schema:
+          type: string
+        style: form
       responses:
         "200":
           content:
@@ -734,6 +743,32 @@ paths:
                 $ref: '#/components/schemas/ApiError'
           description: API Error
       summary: Get any alerts for the cluster
+      tags:
+      - cluster-info
+  /node_address:
+    get:
+      description: Get the node address for the current node
+      operationId: getNodeAddress
+      responses:
+        "200":
+          content:
+            text/plain:
+              schema:
+                type: string
+          description: Node address
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get the node address for the current node
       tags:
       - cluster-info
 components:
@@ -853,6 +888,12 @@ components:
           schema:
             $ref: '#/components/schemas/Alerts_Response'
       description: Alerts information
+    NodeAddressResponse:
+      content:
+        text/plain:
+          schema:
+            type: string
+      description: Node address
   schemas:
     VoyagerMigrationDetails:
       description: Information regarding a specific voyager migration task

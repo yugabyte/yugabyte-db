@@ -40,6 +40,9 @@ export interface GetClusterActivitiesForQuery {
   status: string;
   database?: string;
 }
+export interface GetClusterAlertsForQuery {
+  node_address: string;
+}
 export interface GetClusterMetricForQuery {
   metrics: string;
   node_name?: string;
@@ -152,6 +155,7 @@ export const useGetClusterActivitiesQuery = <T = ActivitiesResponse, Error = Api
  */
 
 export const getClusterAlertsAxiosRequest = (
+  requestParameters: GetClusterAlertsForQuery,
   customAxiosInstance?: AxiosInstance
 ) => {
   return Axios<AlertsResponse>(
@@ -159,6 +163,7 @@ export const getClusterAlertsAxiosRequest = (
       url: '/alerts',
       method: 'GET',
       params: {
+        node_address: requestParameters['node_address'],
       }
     },
     customAxiosInstance
@@ -166,15 +171,18 @@ export const getClusterAlertsAxiosRequest = (
 };
 
 export const getClusterAlertsQueryKey = (
+  requestParametersQuery: GetClusterAlertsForQuery,
   pageParam = -1,
   version = 1,
 ) => [
   `/v${version}/alerts`,
   pageParam,
+  ...(requestParametersQuery ? [requestParametersQuery] : [])
 ];
 
 
 export const useGetClusterAlertsInfiniteQuery = <T = AlertsResponse, Error = ApiError>(
+  params: GetClusterAlertsForQuery,
   options?: {
     query?: UseInfiniteQueryOptions<AlertsResponse, Error, T>;
     customAxiosInstance?: AxiosInstance;
@@ -182,12 +190,12 @@ export const useGetClusterAlertsInfiniteQuery = <T = AlertsResponse, Error = Api
   pageParam = -1,
   version = 1,
 ) => {
-  const queryKey = getClusterAlertsQueryKey(pageParam, version);
+  const queryKey = getClusterAlertsQueryKey(params, pageParam, version);
   const { query: queryOptions, customAxiosInstance } = options ?? {};
 
   const query = useInfiniteQuery<AlertsResponse, Error, T>(
     queryKey,
-    () => getClusterAlertsAxiosRequest(customAxiosInstance),
+    () => getClusterAlertsAxiosRequest(params, customAxiosInstance),
     queryOptions
   );
 
@@ -198,18 +206,19 @@ export const useGetClusterAlertsInfiniteQuery = <T = AlertsResponse, Error = Api
 };
 
 export const useGetClusterAlertsQuery = <T = AlertsResponse, Error = ApiError>(
+  params: GetClusterAlertsForQuery,
   options?: {
     query?: UseQueryOptions<AlertsResponse, Error, T>;
     customAxiosInstance?: AxiosInstance;
   },
   version = 1,
 ) => {
-  const queryKey = getClusterAlertsQueryKey(version);
+  const queryKey = getClusterAlertsQueryKey(params,  version);
   const { query: queryOptions, customAxiosInstance } = options ?? {};
 
   const query = useQuery<AlertsResponse, Error, T>(
     queryKey,
-    () => getClusterAlertsAxiosRequest(customAxiosInstance),
+    () => getClusterAlertsAxiosRequest(params, customAxiosInstance),
     queryOptions
   );
 
@@ -840,6 +849,81 @@ export const useGetLiveQueriesQuery = <T = LiveQueryResponseSchema, Error = ApiE
   const query = useQuery<LiveQueryResponseSchema, Error, T>(
     queryKey,
     () => getLiveQueriesAxiosRequest(params, customAxiosInstance),
+    queryOptions
+  );
+
+  return {
+    queryKey,
+    ...query
+  };
+};
+
+
+
+/**
+ * Get the node address for the current node
+ * Get the node address for the current node
+ */
+
+export const getNodeAddressAxiosRequest = (
+  customAxiosInstance?: AxiosInstance
+) => {
+  return Axios<string>(
+    {
+      url: '/node_address',
+      method: 'GET',
+      params: {
+      }
+    },
+    customAxiosInstance
+  );
+};
+
+export const getNodeAddressQueryKey = (
+  pageParam = -1,
+  version = 1,
+) => [
+  `/v${version}/node_address`,
+  pageParam,
+];
+
+
+export const useGetNodeAddressInfiniteQuery = <T = string, Error = ApiError>(
+  options?: {
+    query?: UseInfiniteQueryOptions<string, Error, T>;
+    customAxiosInstance?: AxiosInstance;
+  },
+  pageParam = -1,
+  version = 1,
+) => {
+  const queryKey = getNodeAddressQueryKey(pageParam, version);
+  const { query: queryOptions, customAxiosInstance } = options ?? {};
+
+  const query = useInfiniteQuery<string, Error, T>(
+    queryKey,
+    () => getNodeAddressAxiosRequest(customAxiosInstance),
+    queryOptions
+  );
+
+  return {
+    queryKey,
+    ...query
+  };
+};
+
+export const useGetNodeAddressQuery = <T = string, Error = ApiError>(
+  options?: {
+    query?: UseQueryOptions<string, Error, T>;
+    customAxiosInstance?: AxiosInstance;
+  },
+  version = 1,
+) => {
+  const queryKey = getNodeAddressQueryKey(version);
+  const { query: queryOptions, customAxiosInstance } = options ?? {};
+
+  const query = useQuery<string, Error, T>(
+    queryKey,
+    () => getNodeAddressAxiosRequest(customAxiosInstance),
     queryOptions
   );
 

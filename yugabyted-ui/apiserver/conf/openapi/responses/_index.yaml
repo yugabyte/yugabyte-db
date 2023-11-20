@@ -180,3 +180,9 @@ VoyagerAssesmentResponse:
         properties:
           data:
             $ref: '../schemas/_index.yaml#/MigrationAssesmentInfo'
+NodeAddressResponse:
+  description: Node address
+  content:
+    text/plain:
+      schema:
+        type: string

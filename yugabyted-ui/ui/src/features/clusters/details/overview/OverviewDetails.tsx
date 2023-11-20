@@ -90,7 +90,9 @@ export const OverviewDetails: FC = () => {
     { activities: "INDEX_BACKFILL", status: "IN_PROGRESS" },
     { query: { enabled: false } }
   );
-  const { refetch: refetchAlerts } = useGetClusterAlertsQuery({ query: { enabled: false } });
+  const { refetch: refetchAlerts } = useGetClusterAlertsQuery(
+    { node_address: "" },
+    { query: { enabled: false } });
   const [ refreshChartController, setRefreshChartController ] = useQueryParam<boolean | undefined>("refreshChartController");
 
   const refetch = () => {
