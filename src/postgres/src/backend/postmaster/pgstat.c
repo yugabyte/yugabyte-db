@@ -74,6 +74,7 @@
 #include "commands/progress.h"
 #include "pg_yb_utils.h"
 #include "utils/syscache.h"
+#include "yb/yql/pggate/util/ybc_util.h"
 
 /* ----------
  * Timer definitions.
@@ -3603,7 +3604,11 @@ pgstat_get_wait_event_type(uint32 wait_event_info)
 
 	/* report process as not waiting. */
 	if (wait_event_info == 0)
+	{
+		if (IsYugaByteEnabled() && YBEnableAsh())
+			return "YsqlQuery";
 		return NULL;
+	}
 
 	classId = wait_event_info & 0xFF000000;
 
@@ -3638,6 +3643,8 @@ pgstat_get_wait_event_type(uint32 wait_event_info)
 			break;
 		default:
 			event_type = "???";
+			if (IsYugaByteEnabled() && YBEnableAsh())
+				event_type = YBCGetWaitEventClass(wait_event_info);
 			break;
 	}
 
@@ -3659,7 +3666,11 @@ pgstat_get_wait_event(uint32 wait_event_info)
 
 	/* report process as not waiting. */
 	if (wait_event_info == 0)
+	{
+		if (IsYugaByteEnabled() && YBEnableAsh())
+			return "QueryProcessing";
 		return NULL;
+	}
 
 	classId = wait_event_info & 0xFF000000;
 	eventId = wait_event_info & 0x0000FFFF;
@@ -3715,6 +3726,8 @@ pgstat_get_wait_event(uint32 wait_event_info)
 			}
 		default:
 			event_name = "unknown wait event";
+			if (IsYugaByteEnabled() && YBEnableAsh())
+				event_name = YBCGetWaitEventName(wait_event_info);
 			break;
 	}
 
