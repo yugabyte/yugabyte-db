@@ -24,6 +24,7 @@ import "yb/common/value.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/master/master_ddl.proto";
 import "yb/master/master_types.proto";
+import "yb/master/master_client.proto";
 import "yb/rpc/lightweight_message.proto";
 
 service PgClientService {

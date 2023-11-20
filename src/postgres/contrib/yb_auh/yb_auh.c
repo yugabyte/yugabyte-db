@@ -269,7 +269,6 @@ yb_auh_main(Datum main_arg) {
 
     pg_collect_samples(auh_sample_time, auh_sample_size);
     tserver_collect_samples(auh_sample_time, auh_sample_size);
-
     MemoryContextSwitchTo(oldcxt);
     /* No problems, so clean exit */
   }
@@ -533,7 +532,7 @@ yb_tables_internal(FunctionCallInfo fcinfo)
 	size_t size = 0;
   
   HandleYBStatus(YBCTableIDMetadata(&infolist, &size));
-  
+  const char* table_id_test;
   int i;
   for (i = 0; i < size; i++) {
 
@@ -543,7 +542,7 @@ yb_tables_internal(FunctionCallInfo fcinfo)
 
     memset(values, 0, sizeof(values));
     memset(isnull, 0, sizeof(isnull));
-
+    table_id_test = infolist[0].table_id;
     // table_id
     if (infolist[i].table_id != NULL)
         values[j] = CStringGetTextDatum(infolist[i].table_id);
@@ -613,6 +612,31 @@ yb_tables_internal(FunctionCallInfo fcinfo)
   }
 
   tuplestore_donestoring(tupstore);
+
+  YBCTabletIDMetadataInfo* inflist = NULL;
+  size_t* sz=0;
+  YBCTabletIDMetadata( inflist, sz, table_id_test);
+    ereport(LOG, (errmsg("Tablet ID: %s\n", inflist->tablet_id)));
+    ereport(LOG, (errmsg("Start Key: %s\n", inflist->start_key)));
+    ereport(LOG, (errmsg("End Key: %s\n", inflist->end_key)));
+    ereport(LOG, (errmsg("Hash Buckets:")));
+    for (size_t i = 0; i < inflist->partition.hash_buckets_count; ++i) {
+        ereport(LOG, (errmsg("  %u", inflist->partition.hash_buckets[i])));
+    }
+
+    ereport(LOG, (errmsg("Partition Key Start: %s\n", inflist->partition.partition_key_start)));
+    ereport(LOG, (errmsg("Partition Key End: %s\n", inflist->partition.partition_key_end)));
+    ereport(LOG, (errmsg("Stale: %s\n", inflist->stale ? "true" : "false")));
+    ereport(LOG, (errmsg("Table IDs:")));
+    for (size_t i = 0; i < inflist->table_ids_count; ++i) {
+        ereport(LOG, (errmsg("  %s", inflist->table_ids[i])));
+    }
+    ereport(LOG, (errmsg("Split Depth: %llu\n", inflist->split_depth)));
+    ereport(LOG, (errmsg("Split Parent Tablet ID: %s\n", inflist->split_parent_tablet_id)));
+    ereport(LOG, (errmsg("Expected Live Replicas: %u\n", inflist->expected_live_replicas)));
+    ereport(LOG, (errmsg("Expected Read Replicas: %u\n", inflist->expected_read_replicas)));
+    ereport(LOG, (errmsg("Is Deleted: %s\n", inflist->is_deleted ? "true" : "false")));
+
 }
 
 Datum

@@ -917,17 +917,12 @@ class PgClientServiceImpl::Impl {
   }
 
   Status TabletIDMetadata(const PgTabletIDMetadataRequestPB& req, PgTabletIDMetadataResponsePB* resp, rpc::RpcContext* context) {
-    //const std::string table_id;
-    const int32_t max_tablets = 0;
+
+    const int32_t max_tablets = 100;
     google::protobuf::RepeatedPtrField<master::TabletLocationsPB>* tablets=nullptr;
     
     auto status = client().GetTabletsFromTableId(req.table_id(),max_tablets,tablets);
-    //const auto& tabletInfo = *tablets
-    //for(const auto& tablet : table_id->GetTablets())
-    
     for (const auto& tabletInfo : *tablets) {
-    //     //auto tablet = resp->add_tablets();
-    //     tablet->CopyFrom(tabletInfo);
       resp->CopyFrom(tabletInfo);
     }
     return Status::OK();

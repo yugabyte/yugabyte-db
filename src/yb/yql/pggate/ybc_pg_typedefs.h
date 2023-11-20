@@ -468,6 +468,28 @@ typedef struct TableIDInfo {
   YBCTableIDMetadataInfo metadata;
 } YBCTableIDInfo;
 
+typedef struct PartitionInfo {
+  const uint32_t* hash_buckets;
+  size_t hash_buckets_count;
+  const char* partition_key_start;
+  const char* partition_key_end;
+} PartitionInfo;
+
+typedef struct TabletIDMetadataInfo {
+  const char* tablet_id;
+  const char* start_key;
+  const char* end_key;
+  PartitionInfo partition;
+  bool stale;
+  size_t table_ids_count;
+  const char** table_ids;
+  uint64_t split_depth;
+  const char* split_parent_tablet_id;
+  uint32_t expected_live_replicas;
+  uint32_t expected_read_replicas;
+  bool is_deleted;
+} YBCTabletIDMetadataInfo;
+
 typedef struct YCQLStatDescriptor {
   uint64_t queryid;
   const char* query;
