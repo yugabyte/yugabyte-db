@@ -8,9 +8,10 @@ import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.SetMultimap;
 import com.yugabyte.yw.common.BeanValidator;
-import com.yugabyte.yw.common.CloudUtil.ConfigLocationInfo;
+import com.yugabyte.yw.common.CloudUtil.CloudLocationInfo;
 import com.yugabyte.yw.common.CloudUtil.ExtraPermissionToValidate;
 import com.yugabyte.yw.common.GCPUtil;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.models.configs.CloudClientsFactory;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
@@ -67,7 +68,11 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageVali
       throwBeanValidatorError(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, ex.getMessage());
     }
 
-    validateGCSUrl(storage, CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, gcsData.backupLocation);
+    validateGCSUrl(
+        storage,
+        CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME,
+        gcsData,
+        YbcBackupUtil.DEFAULT_REGION_STRING);
     if (gcsData.regionLocations != null) {
       for (RegionLocations location : gcsData.regionLocations) {
         if (StringUtils.isEmpty(location.region)) {
@@ -75,23 +80,26 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageVali
               CustomerConfigConsts.REGION_FIELDNAME, "This field cannot be empty.");
         }
         validateUrl(CustomerConfigConsts.REGION_LOCATION_FIELDNAME, location.location, true, false);
-        validateGCSUrl(storage, CustomerConfigConsts.REGION_LOCATION_FIELDNAME, location.location);
+        validateGCSUrl(
+            storage, CustomerConfigConsts.REGION_LOCATION_FIELDNAME, gcsData, location.region);
       }
     }
   }
 
-  private void validateGCSUrl(Storage storage, String fieldName, String gsUriPath) {
+  private void validateGCSUrl(
+      Storage storage, String fieldName, CustomerConfigStorageGCSData gcsData, String region) {
+    String gsUriPath = gcpUtil.getRegionLocationsMap(gcsData).get(region);
     String protocol =
         gsUriPath.indexOf(':') >= 0 ? gsUriPath.substring(0, gsUriPath.indexOf(':')) : "";
 
     // Assuming bucket name will always start with gs:// or https:// otherwise that
-    // will be invalid. See GSPUtil.getSplitLocationValue to understand how it is
+    // will be invalid. See GCPUtil.getSplitLocationValue to understand how it is
     // processed.
     if (gsUriPath.length() < 5 || !GCS_URL_SCHEMES.contains(protocol)) {
       String exceptionMsg = "Invalid gsUriPath format: " + gsUriPath;
       throwBeanValidatorError(fieldName, exceptionMsg);
     } else {
-      ConfigLocationInfo locationInfo = gcpUtil.getConfigLocationInfo(gsUriPath);
+      CloudLocationInfo locationInfo = gcpUtil.getCloudLocationInfo(region, gcsData, gsUriPath);
       try {
         gcpUtil.validateOnBucket(storage, locationInfo.bucket, locationInfo.cloudPath, permissions);
       } catch (StorageException exp) {

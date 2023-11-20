@@ -51,6 +51,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -554,20 +555,34 @@ public class BackupUtil {
   }
 
   /**
-   * Returns a list of locations in the backup.
+   * Returns a map of region-"list of locations" across params in the backup.
    *
    * @param backup The backup to get all locations of.
-   * @return List of locations( defaul and regional) for the backup.
+   * @return Map of region-"list of locations" for the backup.
    */
-  public static List<String> getBackupLocations(Backup backup) {
-    List<String> backupLocations = new ArrayList<>();
+  public static Map<String, List<String>> getBackupLocations(Backup backup) {
+    Map<String, List<String>> backupLocationsMap = new HashMap<>();
     Map<String, String> locationsMap = new HashMap<>();
     List<BackupTableParams> bParams = backup.getBackupParamsCollection();
     for (BackupTableParams params : bParams) {
       locationsMap = getLocationMap(params);
-      locationsMap.values().forEach(l -> backupLocations.add(l));
+      locationsMap.entrySet().stream()
+          .forEach(
+              e -> {
+                backupLocationsMap.computeIfAbsent(
+                    e.getKey(),
+                    k -> {
+                      return new ArrayList<>(Arrays.asList(e.getValue()));
+                    });
+                backupLocationsMap.computeIfPresent(
+                    e.getKey(),
+                    (k, v) -> {
+                      v.add(e.getValue());
+                      return v;
+                    });
+              });
     }
-    return backupLocations;
+    return backupLocationsMap;
   }
 
   /**

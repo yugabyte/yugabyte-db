@@ -307,7 +307,8 @@ public class BackupHelper {
                   .backupStorageInfoList
                   .parallelStream()
                   .map(bSI -> bSI.storageLocation)
-                  .collect(Collectors.toSet()));
+                  .collect(Collectors.toSet()),
+              false);
     }
 
     if (taskParams.category.equals(BackupCategory.YB_CONTROLLER) && !universe.isYbcEnabled()) {
@@ -830,7 +831,7 @@ public class BackupHelper {
     storageUtilFactory
         .getStorageUtil(storageConfig.getName())
         .validateStorageConfigOnDefaultLocationsList(
-            storageConfig.getDataObject(), preflightParams.getBackupLocations());
+            storageConfig.getDataObject(), preflightParams.getBackupLocations(), false);
 
     UUID backupUUID = preflightParams.getBackupUUID();
     if (backupUUID != null) {

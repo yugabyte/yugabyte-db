@@ -365,16 +365,18 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     when(mockStorageUtilFactory.getStorageUtil(eq("S3"))).thenReturn(mockAWSUtil);
     when(mockAWSUtil.createCloudStoreSpec(anyString(), anyString(), nullable(String.class), any()))
         .thenCallRealMethod();
-    when(mockAWSUtil.getOrCreateHostBase(any(), eq("foo"), eq("us-east-1")))
+    when(mockAWSUtil.getOrCreateHostBase(any(), eq("foo"), eq("us-east-1"), anyString()))
         .thenReturn("s3.us-east-1.amazonaws.com");
-    when(mockAWSUtil.getOrCreateHostBase(any(), eq("region-1"), eq("ap-south-1")))
+    when(mockAWSUtil.getOrCreateHostBase(any(), eq("region-1"), eq("ap-south-1"), anyString()))
         .thenReturn("s3.ap-south-1.amazonaws.com");
-    when(mockAWSUtil.getOrCreateHostBase(any(), eq("region-2"), eq("eu-south-1")))
+    when(mockAWSUtil.getOrCreateHostBase(any(), eq("region-2"), eq("eu-south-1"), anyString()))
         .thenReturn("s3.eu-south-1.amazonaws.com");
-    when(mockAWSUtil.getBucketRegion(eq("foo"), any())).thenReturn("us-east-1");
-    when(mockAWSUtil.getBucketRegion(eq("region-1"), any())).thenReturn("ap-south-1");
-    when(mockAWSUtil.getBucketRegion(eq("region-2"), any())).thenReturn("eu-south-1");
+    when(mockAWSUtil.getBucketRegion(eq("foo"), any(), anyString())).thenReturn("us-east-1");
+    when(mockAWSUtil.getBucketRegion(eq("region-1"), any(), anyString())).thenReturn("ap-south-1");
+    when(mockAWSUtil.getBucketRegion(eq("region-2"), any(), anyString())).thenReturn("eu-south-1");
     when(mockAWSUtil.getRegionLocationsMap(any())).thenCallRealMethod();
+    when(mockAWSUtil.getCloudLocationInfo(nullable(String.class), any(), nullable(String.class)))
+        .thenCallRealMethod();
     CloudStoreConfig csConfig = ybcBackupUtil.createBackupConfig(storageConfig, commonDir);
     Map<String, String> s3DefaultCredsMap =
         new HashMap<String, String>() {
