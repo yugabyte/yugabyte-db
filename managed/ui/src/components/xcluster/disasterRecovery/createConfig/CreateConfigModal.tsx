@@ -165,9 +165,15 @@ export const CreateConfigModal = ({
   );
 
   const tablesQuery = useQuery<YBTable[]>(
-    universeQueryKey.tables(sourceUniverseUuid, { excludeColocatedTables: true }),
+    universeQueryKey.tables(sourceUniverseUuid, {
+      excludeColocatedTables: true,
+      onlySupportedForXCluster: true
+    }),
     () =>
-      fetchTablesInUniverse(sourceUniverseUuid, { excludeColocatedTables: true }).then(
+      fetchTablesInUniverse(sourceUniverseUuid, {
+        excludeColocatedTables: true,
+        onlySupportedForXCluster: true
+      }).then(
         (response) => response.data
       )
   );
