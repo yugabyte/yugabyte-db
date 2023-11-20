@@ -57,17 +57,17 @@ message IsFlushTablesDoneResponsePB {
   optional bool success = 3;
 }
 
-message FlushSysCatalogRequestPB{
+message FlushSysCatalogRequestPB {
 }
 
-message FlushSysCatalogResponsePB{
+message FlushSysCatalogResponsePB {
   optional MasterErrorPB error = 1;
 }
 
 message CompactSysCatalogRequestPB {
 }
 
-message CompactSysCatalogResponsePB{
+message CompactSysCatalogResponsePB {
   optional MasterErrorPB error = 1;
 }
 
