@@ -12,7 +12,7 @@ import { StorageConfigOption } from '../../sharedComponents/ReactSelectStorageCo
 import { Universe } from '../../../../redesign/helpers/dtos';
 import { YBErrorIndicator } from '../../../common/indicators';
 import { YBButton, YBModal, YBModalProps } from '../../../../redesign/components';
-import { api, drConfigQueryKey, EditDrConfigRequest } from '../../../../redesign/helpers/api';
+import { api, drConfigQueryKey, ReplaceDrReplicaRequest } from '../../../../redesign/helpers/api';
 import { assertUnreachableCase, handleServerError } from '../../../../utils/errorHandlingUtils';
 import { fetchTaskUntilItCompletes } from '../../../../actions/xClusterReplication';
 
@@ -28,7 +28,7 @@ interface EditConfigTargetModalProps {
 }
 
 export interface EditConfigTargetFormValues {
-  targetUniverse: Universe;
+  targetUniverse: { label: string; value: Universe };
   storageConfig: StorageConfigOption;
 }
 
@@ -57,15 +57,18 @@ export const EditConfigTargetModal = ({
 
   const formMethods = useForm<EditConfigTargetFormValues>();
 
-  const editDrConfigMutation = useMutation(
+  const replaceDrReplicaMutation = useMutation(
     (formValues: EditConfigTargetFormValues) => {
-      const editDrConfigRequest: EditDrConfigRequest = {
-        newTargetUniverseUuid: formValues.targetUniverse.universeUUID,
-        bootstrapBackupParams: {
-          storageConfigUUID: formValues.storageConfig.value.uuid
+      const replaceDrReplicaRequest: ReplaceDrReplicaRequest = {
+        primaryUniverseUuid: drConfig.primaryUniverseUuid ?? '',
+        drReplicaUniverseUuid: formValues.targetUniverse.value.universeUUID,
+        bootstrapParams: {
+          backupRequestParams: {
+            storageConfigUUID: formValues.storageConfig.value.uuid
+          }
         }
       };
-      return api.editDrConfig(drConfig.uuid, editDrConfigRequest);
+      return api.replaceDrReplica(drConfig.uuid, replaceDrReplicaRequest);
     },
     {
       onSuccess: (response) => {
@@ -107,7 +110,7 @@ export const EditConfigTargetModal = ({
     }
   );
 
-  if (drConfig.xClusterConfig.sourceUniverseUUID === undefined) {
+  if (drConfig.primaryUniverseUuid === undefined) {
     return (
       <YBModal
         title={t('title')}
@@ -126,7 +129,7 @@ export const EditConfigTargetModal = ({
         setCurrentFormStep(FormStep.CONFIGURE_BOOTSTRAP);
         return;
       case FormStep.CONFIGURE_BOOTSTRAP:
-        return editDrConfigMutation.mutateAsync(formValues);
+        return replaceDrReplicaMutation.mutateAsync(formValues);
       default:
         return assertUnreachableCase(currentFormStep);
     }
@@ -178,7 +181,7 @@ export const EditConfigTargetModal = ({
       <FormProvider {...formMethods}>
         <CurrentFormStep
           currentFormStep={currentFormStep}
-          sourceUniverseUUID={drConfig.xClusterConfig.sourceUniverseUUID}
+          sourceUniverseUUID={drConfig.primaryUniverseUuid}
           isFormDisabled={isFormDisabled}
         />
       </FormProvider>

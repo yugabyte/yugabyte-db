@@ -3,15 +3,19 @@ import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { FormikActions, FormikErrors, FormikProps } from 'formik';
 import { toast } from 'react-toastify';
 import { AxiosError } from 'axios';
+import { useTranslation } from 'react-i18next';
 
 import { YBModalForm } from '../../common/forms';
-import { ParallelThreads } from '../../backupv2/common/BackupUtils';
 import { YBButton, YBModal } from '../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { ConfigureBootstrapStep } from './ConfigureBootstrapStep';
-import { TableTypeLabel, Universe } from '../../../redesign/helpers/dtos';
-import { api, universeQueryKey, xClusterQueryKey } from '../../../redesign/helpers/api';
-import { isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
+import { Universe, UniverseNamespace } from '../../../redesign/helpers/dtos';
+import {
+  api,
+  drConfigQueryKey,
+  universeQueryKey,
+  xClusterQueryKey
+} from '../../../redesign/helpers/api';
 import {
   fetchTaskUntilItCompletes,
   restartXClusterConfig
@@ -29,113 +33,122 @@ export interface RestartXClusterConfigFormValues {
   tableUUIDs: string[];
   // Bootstrap fields
   storageConfig: { label: string; name: string; regions: any[]; value: string };
-  parallelThreads: number;
 }
 
 export interface RestartXClusterConfigFormErrors {
   tableUUIDs: { title: string; body: string };
   // Bootstrap fields
   storageConfig: string;
-  parallelThreads: string;
 }
 
 export interface RestartXClusterConfigFormWarnings {
   tableUUIDs?: { title: string; body: string };
   // Bootstrap fields
   storageConfig?: string;
-  parallelThreads?: string;
 }
 
-interface RestartConfigModalProps {
+interface CommonRestartConfigModalProps {
   configTableType: XClusterTableType;
   isVisible: boolean;
   onHide: () => void;
   xClusterConfig: XClusterConfig;
 }
+type RestartConfigModalProps =
+  | (CommonRestartConfigModalProps & {
+      isDrInterface: true;
+      drConfigUuid: string;
+    })
+  | (CommonRestartConfigModalProps & { isDrInterface: false });
 
 export const FormStep = {
   SELECT_TABLES: 'selectTables',
   CONFIGURE_BOOTSTRAP: 'configureBootstrap'
 } as const;
-// eslint-disable-next-line no-redeclare
 export type FormStep = typeof FormStep[keyof typeof FormStep];
 
-const MODAL_TITLE = 'Restart Replication';
 const INITIAL_VALUES: Partial<RestartXClusterConfigFormValues> = {
-  tableUUIDs: [],
-  // Bootstrap fields
-  parallelThreads: ParallelThreads.XCLUSTER_DEFAULT
+  tableUUIDs: []
 };
 
-export const RestartConfigModal = ({
-  configTableType,
-  isVisible,
-  onHide,
-  xClusterConfig
-}: RestartConfigModalProps) => {
+const TRANSLATION_KEY_PREFIX = 'clusterDetail.xCluster.restartReplicationModal';
+
+export const RestartConfigModal = (props: RestartConfigModalProps) => {
+  const { configTableType, isVisible, onHide, xClusterConfig } = props;
   // If xCluster config is in failed or initialized state, then we should restart the whole xCluster config.
   // Allowing partial restarts when the xCluster config is in intialized status is not expected behaviour.
   // Thus, we skip table selection for the xCluster config setup failed scenario.
-  const firstFormStep =
+  const isTableSelectionAllowed =
     xClusterConfig.status === XClusterConfigStatus.FAILED ||
-    xClusterConfig.status === XClusterConfigStatus.INITIALIZED
-      ? FormStep.CONFIGURE_BOOTSTRAP
-      : FormStep.SELECT_TABLES;
+    xClusterConfig.status === XClusterConfigStatus.INITIALIZED;
+  const firstFormStep = isTableSelectionAllowed
+    ? FormStep.CONFIGURE_BOOTSTRAP
+    : FormStep.SELECT_TABLES;
   const [currentStep, setCurrentStep] = useState<FormStep>(firstFormStep);
   const [formWarnings, setFormWarnings] = useState<RestartXClusterConfigFormWarnings>();
-
   // Need to store this to support navigating between pages
   const [selectedKeyspaces, setSelectedKeyspaces] = useState<string[]>([]);
 
   const queryClient = useQueryClient();
   const formik = useRef({} as FormikProps<RestartXClusterConfigFormValues>);
+  const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
 
   const sourceUniverseQuery = useQuery<Universe>(
     universeQueryKey.detail(xClusterConfig.sourceUniverseUUID),
     () => api.fetchUniverse(xClusterConfig.sourceUniverseUUID)
   );
+  const sourceUniverseNamespaceQuery = useQuery<UniverseNamespace[]>(
+    universeQueryKey.namespaces(xClusterConfig.sourceUniverseUUID),
+    () => api.fetchUniverseNamespaces(xClusterConfig.sourceUniverseUUID)
+  );
 
+  const namespaceToNamespaceUuid = Object.fromEntries(
+    sourceUniverseNamespaceQuery.data?.map((namespace) => [
+      namespace.name,
+      namespace.namespaceUUID
+    ]) ?? []
+  );
   const restartConfigMutation = useMutation(
     (values: RestartXClusterConfigFormValues) => {
-      const tables: string[] = values.tableUUIDs;
-      return restartXClusterConfig(xClusterConfig.uuid, tables, {
-        backupRequestParams: {
-          storageConfigUUID: values.storageConfig.value,
-          parallelism: values.parallelThreads,
-          sse: values.storageConfig.name === 'S3',
-          universeUUID: null
-        }
-      });
+      return props.isDrInterface
+        ? api.restartDrConfig(props.drConfigUuid, {
+            dbs: selectedKeyspaces.map((namespaceName) => namespaceToNamespaceUuid[namespaceName]),
+            bootstrapParams: {
+              backupRequestParams: { storageConfigUUID: values.storageConfig.value }
+            }
+          })
+        : restartXClusterConfig(xClusterConfig.uuid, values.tableUUIDs, {
+            backupRequestParams: {
+              storageConfigUUID: values.storageConfig.value
+            }
+          });
     },
     {
       onSuccess: (response) => {
         closeModal();
 
-        fetchTaskUntilItCompletes(
-          response.taskUUID,
-          (err: boolean) => {
-            if (err) {
-              toast.error(
-                <span className={styles.alertMsg}>
-                  <i className="fa fa-exclamation-circle" />
-                  <span>{`Failed to restart replication: ${xClusterConfig.name}`}</span>
-                  <a href={`/tasks/${response.taskUUID}`} rel="noopener noreferrer" target="_blank">
-                    View Details
-                  </a>
-                </span>
-              );
-            }
-            queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.uuid));
-          },
-          // Invalidate the cached data for current xCluster config. The xCluster config status should change to
-          // 'in progress' once the restart config task starts.
-          () => {
-            queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.uuid));
+        const invalidateQueries = () => {
+          if (props.isDrInterface) {
+            queryClient.invalidateQueries(drConfigQueryKey.detail(props.drConfigUuid));
           }
-        );
+          queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.uuid));
+        };
+        const handleTaskCompletion = (error: boolean) => {
+          if (error) {
+            toast.error(
+              <span className={styles.alertMsg}>
+                <i className="fa fa-exclamation-circle" />
+                <span>{t('error.taskFailure')}</span>
+                <a href={`/tasks/${response.taskUUID}`} rel="noopener noreferrer" target="_blank">
+                  {t('viewDetails', { keyPrefix: 'task' })}
+                </a>
+              </span>
+            );
+          }
+        };
+        fetchTaskUntilItCompletes(response.taskUUID, handleTaskCompletion, invalidateQueries);
       },
       onError: (error: Error | AxiosError) =>
-        handleServerError(error, { customErrorLabel: 'Restart replication request failed' })
+        handleServerError(error, { customErrorLabel: t('error.requestFailure') })
     }
   );
 
@@ -166,12 +179,22 @@ export const RestartConfigModal = ({
     }
   };
 
+  const getFormSubmitLabel = (formStep: FormStep) => {
+    switch (formStep) {
+      case FormStep.SELECT_TABLES:
+        return t('step.selectTables.submitButton');
+      case FormStep.CONFIGURE_BOOTSTRAP:
+        return t('step.configureBootstrap.submitButton');
+      default:
+        return assertUnreachableCase(formStep);
+    }
+  };
   const submitLabel = getFormSubmitLabel(currentStep);
   if (sourceUniverseQuery.isLoading || sourceUniverseQuery.isIdle) {
     return (
       <YBModal
         size="large"
-        title={MODAL_TITLE}
+        title={t('title')}
         visible={isVisible}
         onHide={() => {
           closeModal();
@@ -182,17 +205,21 @@ export const RestartConfigModal = ({
       </YBModal>
     );
   }
-  if (sourceUniverseQuery.isError) {
+  if (sourceUniverseQuery.isError || sourceUniverseNamespaceQuery.isError) {
     return (
       <YBModal
         size="large"
-        title={MODAL_TITLE}
+        title={t('title')}
         visible={isVisible}
         onHide={() => {
           closeModal();
         }}
       >
-        <YBErrorIndicator />
+        <YBErrorIndicator
+          customErrorMessage={t('failedToFetchSourceUniverse', {
+            keyPrefix: 'clusterDetail.xCluster.error'
+          })}
+        />
       </YBModal>
     );
   }
@@ -200,11 +227,9 @@ export const RestartConfigModal = ({
   return (
     <YBModalForm
       size="large"
-      title={MODAL_TITLE}
+      title={t('title')}
       visible={isVisible}
-      validate={(values: RestartXClusterConfigFormValues) =>
-        validateForm(values, currentStep, sourceUniverseQuery.data)
-      }
+      validate={(values: RestartXClusterConfigFormValues) => validateForm(values, currentStep)}
       onFormSubmit={handleFormSubmit}
       initialValues={INITIAL_VALUES}
       submitLabel={submitLabel}
@@ -222,9 +247,7 @@ export const RestartConfigModal = ({
             const errors = formik.current.errors as FormikErrors<RestartXClusterConfigFormErrors>;
             return (
               <>
-                <div className={styles.formInstruction}>
-                  {`1. Select the ${TableTypeLabel[configTableType]} tables you want to restart replication for.`}
-                </div>
+                <div className={styles.formInstruction}>{t('step.selectTables.instruction')}</div>
                 <ConfigTableSelect
                   {...{
                     xClusterConfig,
@@ -244,7 +267,9 @@ export const RestartConfigModal = ({
           case FormStep.CONFIGURE_BOOTSTRAP: {
             return (
               <>
-                <div className={styles.formInstruction}>2. Configure bootstrap</div>
+                <div className={styles.formInstruction}>
+                  {t('step.configureBootstrap.instruction')}
+                </div>
                 <ConfigureBootstrapStep formik={formik} />
               </>
             );
@@ -257,11 +282,7 @@ export const RestartConfigModal = ({
   );
 };
 
-const validateForm = async (
-  values: RestartXClusterConfigFormValues,
-  formStep: FormStep,
-  currentUniverse: Universe
-) => {
+const validateForm = async (values: RestartXClusterConfigFormValues, formStep: FormStep) => {
   // Since our formik verision is < 2.0 , we need to throw errors instead of
   // returning them in custom async validation:
   // https://github.com/jaredpalmer/formik/issues/1392#issuecomment-606301031
@@ -282,28 +303,10 @@ const validateForm = async (
       if (!values.storageConfig) {
         errors.storageConfig = 'Backup storage configuration is required.';
       }
-      const shouldValidateParallelThread =
-        values.parallelThreads && isYbcEnabledUniverse(currentUniverse?.universeDetails);
-      if (shouldValidateParallelThread && values.parallelThreads > ParallelThreads.MAX) {
-        errors.parallelThreads = `Parallel threads must be less than or equal to ${ParallelThreads.MAX}`;
-      } else if (shouldValidateParallelThread && values.parallelThreads < ParallelThreads.MIN) {
-        errors.parallelThreads = `Parallel threads must be greater than or equal to ${ParallelThreads.MIN}`;
-      }
 
       throw errors;
     }
     default:
       return {};
-  }
-};
-
-const getFormSubmitLabel = (formStep: FormStep) => {
-  switch (formStep) {
-    case FormStep.SELECT_TABLES:
-      return 'Next: Configure Bootstrap';
-    case FormStep.CONFIGURE_BOOTSTRAP:
-      return 'Restart Replication';
-    default:
-      return assertUnreachableCase(formStep);
   }
 };

@@ -80,7 +80,7 @@ export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailover
     api.fetchCurrentSafetimes(drConfig.uuid)
   );
 
-  const targetUniverseUuid = drConfig.xClusterConfig.targetUniverseUUID;
+  const targetUniverseUuid = drConfig.drReplicaUniverseUuid;
   const targetUniverseQuery = useQuery(
     universeQueryKey.detail(targetUniverseUuid),
     () => api.fetchUniverse(targetUniverseUuid),
@@ -94,7 +94,12 @@ export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailover
     }: {
       drConfig: DrConfig;
       namespaceIdSafetimeEpochUsMap: { [namespaceId: string]: string };
-    }) => api.initiateFailover(drConfig.uuid, namespaceIdSafetimeEpochUsMap),
+    }) =>
+      api.initiateFailover(drConfig.uuid, {
+        primaryUniverseUuid: drConfig.drReplicaUniverseUuid ?? '',
+        drReplicaUniverseUuid: drConfig.primaryUniverseUuid ?? '',
+        namespaceIdSafetimeEpochUsMap
+      }),
     {
       onSuccess: (response, { drConfig }) => {
         const invalidateQueries = () => {
@@ -103,14 +108,12 @@ export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailover
 
           // The `drConfigUuidsAsSource` and `drConfigUuidsAsTarget` fields will need to be updated as
           // we switched roles for both universes.
-          queryClient.invalidateQueries(
-            universeQueryKey.detail(drConfig.xClusterConfig.sourceUniverseUUID),
-            { exact: true }
-          );
-          queryClient.invalidateQueries(
-            universeQueryKey.detail(drConfig.xClusterConfig.targetUniverseUUID),
-            { exact: true }
-          );
+          queryClient.invalidateQueries(universeQueryKey.detail(drConfig.primaryUniverseUuid), {
+            exact: true
+          });
+          queryClient.invalidateQueries(universeQueryKey.detail(drConfig.drReplicaUniverseUuid), {
+            exact: true
+          });
         };
         const handleTaskCompletion = (error: boolean) => {
           if (error) {
@@ -132,9 +135,7 @@ export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailover
                   <Trans
                     i18nKey={`${TRANSLATION_KEY_PREFIX}.success.taskSuccess`}
                     components={{
-                      universeLink: (
-                        <a href={`/universes/${drConfig.xClusterConfig.targetUniverseUUID}`} />
-                      ),
+                      universeLink: <a href={`/universes/${drConfig.drReplicaUniverseUuid}`} />,
                       bold: <b />
                     }}
                     values={{ sourceUniverseName: targetUniverseQuery.data?.name }}
@@ -154,8 +155,8 @@ export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailover
     }
   );
 
-  if (!drConfig.xClusterConfig.sourceUniverseUUID || !drConfig.xClusterConfig.targetUniverseUUID) {
-    const i18nKey = drConfig.xClusterConfig.sourceUniverseUUID
+  if (!drConfig.primaryUniverseUuid || !drConfig.drReplicaUniverseUuid) {
+    const i18nKey = drConfig.primaryUniverseUuid
       ? 'undefinedTargetUniverseUuid'
       : 'undefinedSourceUniverseUuid';
     return (

@@ -80,7 +80,7 @@ interface CommonTableSelectProps {
   selectedTableUUIDs: string[];
   setSelectedTableUUIDs: (tableUUIDs: string[]) => void;
   isFixedTableType: boolean;
-  isDrConfig: boolean;
+  isDrInterface: boolean;
   tableType: XClusterTableType;
   setTableType: (tableType: XClusterTableType) => void;
   selectedKeyspaces: string[];
@@ -199,7 +199,7 @@ export const TableSelect = (props: TableSelectProps) => {
     selectedTableUUIDs,
     setSelectedTableUUIDs,
     tableType,
-    isDrConfig,
+    isDrInterface,
     isFixedTableType,
     setTableType,
     selectedKeyspaces,
@@ -468,7 +468,7 @@ export const TableSelect = (props: TableSelectProps) => {
   return (
     <>
       {isTransactionalAtomicityEnabled &&
-        !isDrConfig &&
+        !isDrInterface &&
         props.configAction === XClusterConfigAction.CREATE &&
         tableType === TableType.PGSQL_TABLE_TYPE && (
           <Box display="flex" gridGap="5px">
@@ -514,7 +514,7 @@ export const TableSelect = (props: TableSelectProps) => {
         )}
       <div className={styles.tableDescriptor}>{TABLE_DESCRIPTOR}</div>
       <div className={styles.tableToolbar}>
-        {!isDrConfig && (
+        {!isDrInterface && (
           <Select
             styles={TABLE_TYPE_SELECT_STYLES}
             options={TABLE_TYPE_OPTIONS}
@@ -632,7 +632,7 @@ export const TableSelect = (props: TableSelectProps) => {
           )}
         </div>
       )}
-      {!isDrConfig && (
+      {!isDrInterface && (
         <CollapsibleNote noteContent={NOTE_CONTENT} expandContent={NOTE_EXPAND_CONTENT} />
       )}
     </>
