@@ -11,7 +11,7 @@ import { Formik, Form, Field } from 'formik';
 import { YBFormInput, YBButton, YBModal, YBToggle, YBFormSelect } from '../../common/forms/fields';
 import { LDAPMappingModal } from './LDAPGroups';
 import { getLDAPRoleMapping, setLDAPRoleMapping } from '../../../actions/customers';
-import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { isRbacEnabled } from '../../../redesign/features/rbac/common/RbacUtils';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
@@ -334,6 +334,9 @@ export const LDAPAuth = (props) => {
   };
 
   const handleToggle = async (e) => {
+
+    if(!hasNecessaryPerm(ApiPermissionMap.UPDATE_LDAP_MAPPING)) return;
+
     const value = e.target.checked;
 
     if (!value) showDialog(true);
@@ -464,8 +467,12 @@ export const LDAPAuth = (props) => {
                                 <i className="fa fa-info-circle" />
                               </YBInfoTip>
                             </Col>
-
-                            {showToggle ? <LDAPToggle /> : <LDAPToggleTooltip />}
+                            <RbacValidator
+                              accessRequiredOn={ApiPermissionMap.UPDATE_LDAP_MAPPING}
+                              isControl
+                            >
+                              {showToggle ? <LDAPToggle /> : <LDAPToggleTooltip />}
+                            </RbacValidator>
                           </>
                         </Col>
                       </Row>

@@ -215,7 +215,7 @@ export const getFormData = (universeData: UniverseDetails, clusterType: ClusterT
     data.instanceConfig.masterDeviceInfo = userIntent.masterDeviceInfo;
   }
 
-   if (
+  if (
     data.cloudConfig.provider?.code === CloudType.kubernetes &&
     data.cloudConfig.masterPlacement === MasterPlacementMode.DEDICATED
   ) {
@@ -367,11 +367,6 @@ export const createUniverse = async ({
 
     //redirect to task page
     response?.universeUUID && transitToUniverse(response.universeUUID);
-    
-    setTimeout(()=>{
-      window.location.reload();
-    }, 2000);
-
     return response;
   } catch (error) {
     console.error(error);

@@ -182,14 +182,14 @@ export const CreateRole = forwardRef((_, forwardRef) => {
           label={t('form.name')}
           placeholder={t('form.namePlaceholder')}
           fullWidth
-          disabled={isNonEmptyString(currentRole?.roleUUID) && isSystemRole}
+          disabled={isNonEmptyString(currentRole?.roleUUID) || isSystemRole}
         />
         <YBInputField
           name="description"
           control={control}
           label={t('form.description')}
           placeholder={t('form.descriptionPlaceholder')}
-          disabled={isNonEmptyString(currentRole?.roleUUID) && isSystemRole}
+          disabled={isNonEmptyString(currentRole?.roleUUID) || isSystemRole}
           fullWidth
         />
         {permissionListVal.length === 0 && (

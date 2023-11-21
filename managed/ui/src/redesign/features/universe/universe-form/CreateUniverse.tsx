@@ -1,4 +1,5 @@
 import { FC, useContext } from 'react';
+import { useQueryClient } from 'react-query';
 import { useSelector } from 'react-redux';
 import { browserHistory } from 'react-router';
 import { useTranslation } from 'react-i18next';
@@ -43,6 +44,8 @@ export const CreateUniverse: FC = () => {
   } = contextMethods;
   const featureFlags = useSelector((state: any) => state.featureFlags);
   const isPrimary = clusterType === ClusterType.PRIMARY;
+
+  const queryClient = useQueryClient();
 
   useEffectOnce(() => {
     initializeForm({
@@ -151,6 +154,9 @@ export const CreateUniverse: FC = () => {
       configurePayload.encryptionAtRestConfig.configUUID = primaryData.instanceConfig.kmsConfig;
     }
     createUniverse({ configurePayload, universeContextData: contextState });
+    setTimeout(()=>{
+      queryClient.invalidateQueries('user_permissions');
+    }, 2000);
   };
 
   if (isLoading) return <YBLoading />;
