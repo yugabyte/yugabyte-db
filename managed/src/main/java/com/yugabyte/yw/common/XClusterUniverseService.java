@@ -186,11 +186,13 @@ public class XClusterUniverseService {
         gFlagsValidation.extractAutoFlags(upgradeUniverseSoftwareVersion, "yb-tserver");
     // Compare auto flags json for each universe.
     for (Universe univ : universeSet) {
+      // Once rollback support is enabled, auto flags will be promoted through finalize api.
+      if (!confGetter.getConfForScope(univ, UniverseConfKeys.promoteAutoFlag)
+          || confGetter.getConfForScope(univ, UniverseConfKeys.enableRollbackSupport)) {
+        return false;
+      }
       if (univ.getUniverseUUID().equals(univUpgradeInProgress.getUniverseUUID())) {
         continue;
-      }
-      if (!confGetter.getConfForScope(univ, UniverseConfKeys.promoteAutoFlag)) {
-        return false;
       }
       String softwareVersion =
           univ.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
