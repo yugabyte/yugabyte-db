@@ -27,10 +27,11 @@ export function fetchUniversesList() {
 export type UniverseTableFilters = {
   excludeColocatedTables?: boolean;
   includeParentTableInfo?: boolean;
+  xClusterSupportedOnly?: boolean;
 };
 export function fetchTablesInUniverse(
   universeUUID: string | undefined,
-  filters?: { excludeColocatedTables?: boolean; includeParentTableInfo?: boolean }
+  filters?: UniverseTableFilters
 ) {
   if (universeUUID) {
     const customerId = localStorage.getItem('customerId');

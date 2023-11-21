@@ -210,7 +210,7 @@ public class TablesControllerTest extends FakeDBApplication {
     LOG.info("Created customer " + customer.getUuid() + " with universe " + u1.getUniverseUUID());
     Result r =
         tablesController.listTables(
-            customer.getUuid(), u1.getUniverseUUID(), false, false, false); // modify mock
+            customer.getUuid(), u1.getUniverseUUID(), false, false, false, false); // modify mock
     JsonNode json = Json.parse(contentAsString(r));
     LOG.info("Fetched table list from universe, response: " + contentAsString(r));
     assertEquals(OK, r.status());
@@ -257,6 +257,7 @@ public class TablesControllerTest extends FakeDBApplication {
                         u1.getUniverseUUID(),
                         false,
                         false,
+                        false,
                         false)) // modify mock
             .buildResult(fakeRequest);
     assertEquals(503, r.status());
@@ -282,6 +283,7 @@ public class TablesControllerTest extends FakeDBApplication {
                     tablesController.listTables(
                         customer.getUuid(),
                         u2.getUniverseUUID(),
+                        false,
                         false,
                         false,
                         false)) // modify mock
@@ -1252,7 +1254,8 @@ public class TablesControllerTest extends FakeDBApplication {
 
     LOG.info("Created customer " + customer.getUuid() + " with universe " + u1.getUniverseUUID());
     Result r =
-        tablesController.listTables(customer.getUuid(), u1.getUniverseUUID(), true, false, false);
+        tablesController.listTables(
+            customer.getUuid(), u1.getUniverseUUID(), true, false, false, false);
     JsonNode json = Json.parse(contentAsString(r));
 
     ObjectMapper objectMapper = new ObjectMapper();
@@ -1397,7 +1400,7 @@ public class TablesControllerTest extends FakeDBApplication {
     LOG.info("Created customer " + customer.getUuid() + " with universe " + u1.getUniverseUUID());
     Result r =
         tablesController.listTables(
-            customer.getUuid(), u1.getUniverseUUID(), true, false, false); // modify mock
+            customer.getUuid(), u1.getUniverseUUID(), true, false, false, false); // modify mock
     JsonNode json = Json.parse(contentAsString(r));
 
     ObjectMapper objectMapper = new ObjectMapper();
@@ -1465,7 +1468,8 @@ public class TablesControllerTest extends FakeDBApplication {
 
     LOG.info("Created customer " + customer.getUuid() + " with universe " + u1.getUniverseUUID());
     Result r =
-        tablesController.listTables(customer.getUuid(), u1.getUniverseUUID(), false, true, false);
+        tablesController.listTables(
+            customer.getUuid(), u1.getUniverseUUID(), false, true, false, false);
     JsonNode json = Json.parse(contentAsString(r));
     LOG.info("Fetched table list from universe, response: " + contentAsString(r));
     assertEquals(OK, r.status());
@@ -1505,7 +1509,8 @@ public class TablesControllerTest extends FakeDBApplication {
 
     LOG.info("Created customer " + customer.getUuid() + " with universe " + u1.getUniverseUUID());
     Result r =
-        tablesController.listTables(customer.getUuid(), u1.getUniverseUUID(), false, false, false);
+        tablesController.listTables(
+            customer.getUuid(), u1.getUniverseUUID(), false, false, false, false);
     JsonNode json = Json.parse(contentAsString(r));
     LOG.info("Fetched table list from universe, response: " + contentAsString(r));
     assertEquals(OK, r.status());
@@ -1564,7 +1569,8 @@ public class TablesControllerTest extends FakeDBApplication {
 
     LOG.info("Created customer " + customer.getUuid() + " with universe " + u1.getUniverseUUID());
     Result r =
-        tablesController.listTables(customer.getUuid(), u1.getUniverseUUID(), false, false, true);
+        tablesController.listTables(
+            customer.getUuid(), u1.getUniverseUUID(), false, false, true, false);
     JsonNode json = Json.parse(contentAsString(r));
     LOG.info("Fetched table list from universe, response: " + contentAsString(r));
     assertEquals(OK, r.status());

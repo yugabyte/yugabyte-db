@@ -52,7 +52,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.yb.CommonTypes;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterReplicationOuterClass.GetXClusterSafeTimeResponsePB.NamespaceSafeTimePB;
-import org.yb.master.MasterTypes.RelationType;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
@@ -126,12 +125,11 @@ public class DrConfigController extends AuthenticatedController {
         getRequestedTableInfoList(createForm.dbs, sourceTableInfoList);
 
     Set<String> tableIds = XClusterConfigTaskBase.getTableIds(requestedTableInfoList);
-    CommonTypes.TableType tableType = XClusterConfigTaskBase.getTableType(requestedTableInfoList);
     Map<String, List<String>> mainTableIndexTablesMap =
         XClusterConfigTaskBase.getMainTableIndexTablesMap(this.ybService, sourceUniverse, tableIds);
 
     XClusterConfigController.xClusterCreatePreChecks(
-        tableIds, tableType, ConfigType.Txn, sourceUniverse, targetUniverse, confGetter);
+        requestedTableInfoList, ConfigType.Txn, sourceUniverse, targetUniverse, confGetter);
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList =
         XClusterConfigTaskBase.getTableInfoList(
@@ -654,7 +652,10 @@ public class DrConfigController extends AuthenticatedController {
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList) {
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
         sourceTableInfoList.stream()
-            .filter(tableInfo -> dbIds.contains(tableInfo.getNamespace().getId().toStringUtf8()))
+            .filter(
+                tableInfo ->
+                    XClusterConfigTaskBase.isXClusterSupported(tableInfo)
+                        && dbIds.contains(tableInfo.getNamespace().getId().toStringUtf8()))
             .collect(Collectors.toList());
     Set<String> foundDBIds =
         requestedTableInfoList.stream()
@@ -721,9 +722,7 @@ public class DrConfigController extends AuthenticatedController {
                       targetTableInfoList.stream()
                           .filter(
                               tableInfo ->
-                                  !tableInfo
-                                          .getRelationType()
-                                          .equals(RelationType.SYSTEM_TABLE_RELATION)
+                                  XClusterConfigTaskBase.isXClusterSupported(tableInfo)
                                       && tableInfo
                                           .getNamespace()
                                           .getId()

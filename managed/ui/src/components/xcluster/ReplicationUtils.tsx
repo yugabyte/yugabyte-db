@@ -379,6 +379,24 @@ export const getSharedXClusterConfigs = (sourceUniverse: Universe, targetUnivers
 };
 
 /**
+ * Adapt UUID to the format required for xCluster work.
+ * - UUIDs are generally given in XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX format
+ * - UUIDs used in xCluster endpoints often have the '-' stripped away
+ */
+export const formatUuidForXCluster = (tableUuid: string) => tableUuid.replaceAll('-', '');
+
+/**
+ * Adapt UUID from format required for xCluster work to the common format with dashes.
+ * - UUIDs are generally given in XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX format
+ * - UUIDs used in xCluster endpoints often have the '-' stripped away
+ */
+export const formatUuidFromXCluster = (tableUuid: string) =>
+  tableUuid.replace(
+    /^([0-9a-f]{8})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{12})$/,
+    '$1-$2-$3-$4-$5'
+  );
+
+/**
  * Adapt tableUUID to the format required for xCluster work.
  * - tableUUID is given in XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX format from
  *   /customers/<customerUUID>/universes/<universeUUID>/tables endpoint

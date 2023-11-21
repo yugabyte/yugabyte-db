@@ -92,11 +92,13 @@ export function ReplicationDetails({
 
   const sourceUniverseTableQuery = useQuery<YBTable[]>(
     universeQueryKey.tables(xClusterConfigQuery.data?.sourceUniverseUUID, {
-      excludeColocatedTables: true
+      excludeColocatedTables: true,
+      xClusterSupportedOnly: true
     }),
     () =>
       fetchTablesInUniverse(xClusterConfigQuery.data?.sourceUniverseUUID, {
-        excludeColocatedTables: true
+        excludeColocatedTables: true,
+        xClusterSupportedOnly: true
       }).then((response) => response.data),
     { enabled: xClusterConfigQuery.data?.sourceUniverseUUID !== undefined }
   );

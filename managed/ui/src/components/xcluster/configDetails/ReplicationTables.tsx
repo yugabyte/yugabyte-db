@@ -54,11 +54,13 @@ export function ReplicationTables({ xClusterConfig }: props) {
 
   const sourceUniverseTablesQuery = useQuery<YBTable[]>(
     universeQueryKey.tables(xClusterConfig.sourceUniverseUUID, {
-      excludeColocatedTables: true
+      excludeColocatedTables: true,
+      xClusterSupportedOnly: true
     }),
     () =>
       fetchTablesInUniverse(xClusterConfig.sourceUniverseUUID, {
-        excludeColocatedTables: true
+        excludeColocatedTables: true,
+        xClusterSupportedOnly: true
       }).then((respone) => respone.data)
   );
 
