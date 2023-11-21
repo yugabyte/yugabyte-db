@@ -246,7 +246,10 @@ public class UserTaskDetails {
     RollbackAutoFlags,
 
     // Validate configurations.
-    ValidateConfigurations
+    ValidateConfigurations,
+
+    // Manage Otel Collector.
+    ManageOtelCollector
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -574,6 +577,10 @@ public class UserTaskDetails {
       case ValidateConfigurations:
         title = "Validating configurations";
         description = "Validating configurations before proceeding";
+        break;
+      case ManageOtelCollector:
+        title = "Managing OpenTelemetry Collector";
+        description = "Managing OpenTelemetry Collector";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

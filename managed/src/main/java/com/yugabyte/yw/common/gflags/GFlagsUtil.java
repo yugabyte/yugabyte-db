@@ -567,7 +567,7 @@ public class GFlagsUtil {
       } else {
         gflags.put(YSQL_ENABLE_AUTH, "false");
       }
-      String ysqlPgConfCsv = getYsqlPgConfCsv(universe);
+      String ysqlPgConfCsv = getYsqlPgConfCsv(taskParam);
       if (StringUtils.isNotEmpty(ysqlPgConfCsv)) {
         gflags.put(YSQL_PG_CONF_CSV, ysqlPgConfCsv);
       }
@@ -577,10 +577,9 @@ public class GFlagsUtil {
     return gflags;
   }
 
-  private static String getYsqlPgConfCsv(Universe universe) {
+  private static String getYsqlPgConfCsv(AnsibleConfigureServers.Params taskParams) {
     List<String> ysqlPgConfCsvEntries = new ArrayList<>();
-    AuditLogConfig auditLogConfig =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.auditLogConfig;
+    AuditLogConfig auditLogConfig = taskParams.auditLogConfig;
     if (auditLogConfig != null) {
       if (auditLogConfig.getYsqlAuditConfig() != null
           && auditLogConfig.getYcqlAuditConfig().isEnabled()) {
@@ -647,17 +646,16 @@ public class GFlagsUtil {
       } else {
         gflags.put(USE_CASSANDRA_AUTHENTICATION, "false");
       }
-      gflags.putAll(getYcqlAuditFlags(universe));
+      gflags.putAll(getYcqlAuditFlags(taskParam));
     } else {
       gflags.put(START_CQL_PROXY, "false");
     }
     return gflags;
   }
 
-  private static Map<String, String> getYcqlAuditFlags(Universe universe) {
+  private static Map<String, String> getYcqlAuditFlags(AnsibleConfigureServers.Params taskParams) {
     Map<String, String> result = new HashMap<>();
-    AuditLogConfig auditLogConfig =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.getAuditLogConfig();
+    AuditLogConfig auditLogConfig = taskParams.auditLogConfig;
     if (auditLogConfig != null) {
       if (auditLogConfig.getYcqlAuditConfig() != null
           && auditLogConfig.getYcqlAuditConfig().isEnabled()) {

@@ -1999,6 +1999,21 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_silence_advisory_locks_not_supported_error", PGC_USERSET, LOCK_MANAGEMENT,
+			gettext_noop("Silence the advisory locks not supported error message."),
+			gettext_noop(
+					"Enable this with high caution. It was added to avoid disruption for users who were "
+					"already using advisory locks but seeing success messages without the lock really being "
+					"acquired. Such users should take the necessary steps to modify their application to "
+					"remove usage of advisory locks."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_silence_advisory_locks_not_supported_error,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"data_sync_retry", PGC_POSTMASTER, ERROR_HANDLING_OPTIONS,
 			gettext_noop("Whether to continue running after a failure to sync data files."),
 		},
@@ -2083,7 +2098,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_enable_replication_commands", PGC_SUSET, REPLICATION,
+		{"TEST_ysql_yb_enable_replication_commands", PGC_SUSET, REPLICATION,
 			gettext_noop("Enable the replication commands for Publication and Replication Slots."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
@@ -2351,6 +2366,18 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&ddl_rollback_enabled,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_explain_hide_non_deterministic_fields", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("If set, all fields that vary from run to run are hidden from "
+						 "the output of EXPLAIN"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_explain_hide_non_deterministic_fields,
 		false,
 		NULL, NULL, NULL
 	},

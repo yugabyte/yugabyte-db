@@ -66,6 +66,8 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/tools/yb-admin_client.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
@@ -128,7 +130,6 @@ DECLARE_bool(cdc_populate_end_markers_transactions);
 DECLARE_uint64(cdc_stream_records_threshold_size_bytes);
 DECLARE_int64(cdc_resolve_intent_lag_threshold_ms);
 DECLARE_bool(enable_tablet_split_of_cdcsdk_streamed_tables);
-DECLARE_bool(ysql_yb_enable_replication_commands);
 DECLARE_bool(cdc_enable_postgres_replica_identity);
 DECLARE_uint64(ysql_cdc_active_replication_slot_window_ms);
 
@@ -178,6 +179,15 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   };
 
   Result<string> GetUniverseId(Cluster* cluster);
+
+  std::unique_ptr<tools::ClusterAdminClient> yb_admin_client_;
+
+  void StartYbAdminClient() {
+    const auto addrs = AsString(test_cluster()->mini_master(0)->bound_rpc_addr());
+    yb_admin_client_ = std::make_unique<tools::ClusterAdminClient>(
+        addrs, MonoDelta::FromSeconds(30) /* timeout */);
+    ASSERT_OK(yb_admin_client_->Init());
+  }
 
   void VerifyCdcStateMatches(
       client::YBClient* client, const xrepl::StreamId& stream_id, const TabletId& tablet_id,
@@ -464,6 +474,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Result<GetCDCDBStreamInfoResponsePB> GetDBStreamInfo(const xrepl::StreamId db_stream_id);
 
   Status ChangeLeaderOfTablet(size_t new_leader_index, const TabletId tablet_id);
+
+  Status StepDownLeader(size_t new_leader_index, const TabletId tablet_id);
 
   Status CreateSnapshot(const NamespaceName& ns);
 

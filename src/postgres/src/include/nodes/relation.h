@@ -1173,6 +1173,8 @@ typedef struct Path
 	/* pathkeys is a List of PathKey nodes; see above */
 
 	YbPathInfo	yb_path_info;	/* fields used for YugabyteDB */
+	double		yb_estimated_num_nexts;
+	double		yb_estimated_num_seeks;
 } Path;
 
 /* Macro for extracting a path's parameterization relids; beware double eval */
@@ -1255,8 +1257,8 @@ typedef struct IndexPath
 	ScanDirection		indexscandir;
 	Cost				indextotalcost;
 	Selectivity			indexselectivity;
-	double				estimated_num_nexts;
-	double				estimated_num_seeks;
+	double				yb_estimated_num_nexts;
+	double				yb_estimated_num_seeks;
 	YbIndexPathInfo		yb_index_path_info;	/* fields used for YugabyteDB */
 } IndexPath;
 

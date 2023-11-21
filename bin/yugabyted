@@ -112,12 +112,21 @@ PREREQS_ERROR_MSGS = {
     'ntp/chrony' :'ntp/chrony package is missing for clock synchronization. For centos 7, ' +
         'we recommend installing either ntp or chrony package and for centos 8, ' +
         'we recommend installing chrony package.',
+    'mandatory_ports': 'YugabyteDB processes cannot start as the default port(s) {} already' \
+            ' in use. Please free the port(s) and rerun the {} command.',
+    'yugabyted_ui_port': 'Yugabyted UI cannot start as the default port {} is already in use.' \
+            ' Please free the port and restart with --ui=true.',
+    'ysql_metric_port': 'YSQL metrics port {} is already in use. For accessing the YSQL metrics,' \
+            ' please free the port and restart the node.',
+    'ycql_metric_port': 'YCQL metrics port {} is already in use. For accessing the YCQL metrics,' \
+            ' please free the port and restart the node.',
 }
 QUICK_START_LINKS = {
     'mac' : 'https://docs.yugabyte.com/preview/quick-start/',
     'linux' : 'https://docs.yugabyte.com/preview/quick-start/linux/',
 }
 CONFIG_LINK = "https://docs.yugabyte.com/latest/deploy/manual-deployment/system-config"
+DEFAULT_PORTS_LINK = "https://docs.yugabyte.com/preview/reference/configuration/default-ports/"
 
 # Help Message Constants
 PREFIX = {
@@ -259,6 +268,8 @@ DEFAULT_MASTER_WEBSERVER_PORT = 7000
 DEFAULT_TSERVER_WEBSERVER_PORT = 9000
 DEFAULT_YSQL_PORT = 5433
 DEFAULT_YCQL_PORT = 9042
+DEFAULT_YSQL_METRIC_PORT = 13000
+DEFAULT_YCQL_METRIC_PORT = 12000
 DEFAULT_WEBSERVER_PORT = 7200
 DEFAULT_YUGABYTED_UI_PORT = 15433
 DEFAULT_CALLHOME = True
@@ -1362,6 +1373,33 @@ class ControlScript(object):
                 thp_mode = re.search("\[(.*)\]", thp_enabled).group(1)
         return thp_mode == 'always'
 
+    def check_ports(self):
+        failed_ports = []
+        warning_ports = []
+        mandatory_port_available = True
+        recommended_port_available = True
+        advertise_ip = self.advertise_ip()
+        mandatory_ports = self.get_mandatory_ports()
+        recommended_ports = self.get_recommended_ports()
+
+        for port in mandatory_ports:
+            if not self.is_port_available(advertise_ip,
+                                          self.configs.saved_data.get(port)):
+                mandatory_port_available = False
+                failed_ports.append(str(self.configs.saved_data.get(port)))
+
+        for port in recommended_ports:
+            if not self.is_port_available(advertise_ip,
+                                          self.configs.saved_data.get(port)):
+                recommended_port_available = False
+                warning_ports.append(port)
+                PREREQS_ERROR_MSGS[port] = PREREQS_ERROR_MSGS[port].format(
+                    self.configs.saved_data.get(port)
+                )
+
+        return (failed_ports, warning_ports,
+                mandatory_port_available, recommended_port_available)
+
     # All Pre-requisites check for Linux
     def linux_prereqs_check(self):
         prereqs_failed = set()
@@ -1379,7 +1417,20 @@ class ControlScript(object):
             prereqs_warn.add('ntp/chrony')
             prereqs_warn_flag = True
 
-        return (prereqs_failed_flag, prereqs_failed, prereqs_warn_flag, prereqs_warn)
+        (failed_ports, warning_ports, mandatory_port_available,
+        recommended_port_available) = self.check_ports()
+
+        if not mandatory_port_available:
+            prereqs_failed.add('mandatory_ports')
+            PREREQS_ERROR_MSGS['mandatory_ports'] = PREREQS_ERROR_MSGS['mandatory_ports'].format(
+                    ', '.join(failed_ports), Output.make_yellow("yugabyted start")
+                )
+
+        if not recommended_port_available:
+            prereqs_warn.update(warning_ports)
+
+        return (prereqs_failed_flag, prereqs_failed, prereqs_warn_flag, prereqs_warn,
+                mandatory_port_available, recommended_port_available)
 
     # All Pre-requistes check for MacOS
     def mac_prereqs_check(self):
@@ -1388,24 +1439,73 @@ class ControlScript(object):
         prereqs_failed_flag = False
         prereqs_warn_flag = False
 
-        return (prereqs_failed_flag, prereqs_failed, prereqs_warn_flag, prereqs_warn)
+        (failed_ports, warning_ports, mandatory_port_available,
+        recommended_port_available) = self.check_ports()
+
+        if not mandatory_port_available:
+            prereqs_failed.add('mandatory_ports')
+            PREREQS_ERROR_MSGS['mandatory_ports'] = PREREQS_ERROR_MSGS['mandatory_ports'].format(
+                    ', '.join(failed_ports), Output.make_yellow("yugabyted start")
+                )
+
+        if not recommended_port_available:
+            prereqs_warn.update(warning_ports)
+
+        return (prereqs_failed_flag, prereqs_failed, prereqs_warn_flag, prereqs_warn,
+                mandatory_port_available, recommended_port_available)
+
+    def is_port_available(self, advertise_ip, port):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            return s.connect_ex((advertise_ip, int(port))) != 0
+        finally:
+            s.close()
+
+    def get_mandatory_ports(self):
+        mandatory_ports = []
+        if not self.configs.saved_data.get("read_replica"):
+            mandatory_ports.append("master_rpc_port")
+            mandatory_ports.append("master_webserver_port")
+        mandatory_ports.append("tserver_rpc_port")
+        mandatory_ports.append("tserver_webserver_port")
+        mandatory_ports.append("ysql_port")
+        mandatory_ports.append("ycql_port")
+
+        return mandatory_ports
+
+    def get_recommended_ports(self):
+        recommended_ports = []
+        if not self.configs.saved_data.get("read_replica") and self.configs.saved_data.get("ui"):
+            recommended_ports.append("yugabyted_ui_port")
+        recommended_ports.append("ysql_metric_port")
+        recommended_ports.append("ycql_metric_port")
+
+        return recommended_ports
 
     # Checks whether the prerequisites are met or not
     def prereqs_check(self, ulimits=False):
-        help_msg = ""
+        help_links = []
         # Check pre-reqs as per machine OS
         if OS_NAME == "Linux":
             check = self.linux_prereqs_check()
-            help_msg = "Please review the \'Quick start for Linux\' docs and rerun "\
-                "the start command: " + Output.make_underline(QUICK_START_LINKS['linux'])+'\n'
         else:
             check = self.mac_prereqs_check()
-            help_msg+="Please review the \'Quick start for macOS\' docs and rerun "\
-                "the start command: "+ Output.make_underline(QUICK_START_LINKS['mac'])+'\n'
-
         # Get pre-req failures and warnings
-        prereqs_failed_flag, prereqs_failed, prereqs_warn_flag, prereqs_warn = check
+        prereqs_failed_flag, prereqs_failed, prereqs_warn_flag, prereqs_warn, \
+        mandatory_port_available, recommended_port_available = check
+        if prereqs_warn_flag:
+            if OS_NAME == "Linux":
+                help_links.append("- Quick start for Linux: " +
+                                  Output.make_underline(QUICK_START_LINKS['linux']))
+            else:
+               help_links.append("- Quick start for macOS: " +
+                                 Output.make_underline(QUICK_START_LINKS['mac']))
 
+        if not mandatory_port_available or not recommended_port_available:
+            help_links.append("- Default ports: " + Output.make_underline(DEFAULT_PORTS_LINK))
+
+        help_msg = "Please review the following docs and rerun the start command:\n" + \
+        '\n'.join(help_links)
         msg = " System checks. Following pre-reqs are not met:\n"
 
         # Display message for failures
@@ -1429,16 +1529,18 @@ class ControlScript(object):
         final_msg = ""
         check_status = None
         # Final display message in case of failures
-        if prereqs_failed_flag:
+        if prereqs_failed_flag or not mandatory_port_available:
             final_msg += (Output.ANIMATION_FAIL + " " + Output.make_red("FAILED") + ": " + msg)
-            final_msg += (failed_msg+warning_msg)
+            final_msg += failed_msg
+            if warning_msg:
+                final_msg += warning_msg
             if ulimits:
                 for ulimit in ulimits:
                     final_msg+=ulimit_msg[ulimit]
             final_msg += ("\n"+help_msg+"\n")
             check_status = Output.ANIMATION_FAIL
         # Final display message in case of warnings
-        elif prereqs_warn_flag:
+        elif prereqs_warn_flag or not recommended_port_available:
             final_msg = warnings
             if ulimits:
                 for ulimit in ulimits:
@@ -1654,8 +1756,8 @@ class ControlScript(object):
                     for k in prereqs_check_result['msg'].keys():
                         warnings_for_ui.extend([k])
                 elif prereqs_check_result['status']==Output.ANIMATION_FAIL:
-                    Output.log(msg=prereqs_check_result['msg'],
-                        level=logging.ERROR)
+                    Output.print_and_log(prereqs_check_result['msg'])
+                    sys.exit(1)
 
 
                 Output.init_animation("Starting the YugabyteDB Processes...")
@@ -1708,7 +1810,8 @@ class ControlScript(object):
                         should_callhome = True
 
             if is_first_run:
-                if self.configs.saved_data.get("ui"):
+                ui_port_available = self.configs.temp_data.get("ui_port_available")
+                if self.configs.saved_data.get("ui") and ui_port_available:
                     yugabyted_ui_path = find_binary_location("yugabyted-ui")
                     if (yugabyted_ui_path is None):
                         ui_bin_not_found = "Couldn't find yugabyted-ui binary. " + \
@@ -1739,7 +1842,7 @@ class ControlScript(object):
                         self.configs.saved_data.get("log_dir"),
                         self.configs.saved_data.get("data_dir"))
 
-            if self.configs.saved_data.get("ui"):
+            if self.configs.saved_data.get("ui") and ui_port_available:
                 (_, was_started) = self.verify_start_yugabyted_ui(is_first_run, is_first_install)
                 should_callhome = should_callhome or was_started
 
@@ -1753,7 +1856,7 @@ class ControlScript(object):
                 for msg in warnings:
                     warning_msg += "- " + msg + "\n"
                 if warning_help_msg:
-                    warning_msg += warning_help_msg
+                    warning_msg += "\n" + warning_help_msg
 
             if is_first_run:
                 status = self.get_status_string() + \
@@ -1929,8 +2032,8 @@ class ControlScript(object):
                     warnings.extend(list(prereqs_check_result['msg'].values())[:-1])
                     warning_help_msg = prereqs_check_result['msg']["help_msg"]
                 elif prereqs_check_result['status']==Output.ANIMATION_FAIL:
-                    Output.log(msg=prereqs_check_result['msg'],
-                        level=logging.ERROR)
+                    Output.print_and_log(prereqs_check_result['msg'])
+                    sys.exit(1)
 
                 Output.init_animation("Starting the YugabyteDB Processes...")
 
@@ -1980,7 +2083,7 @@ class ControlScript(object):
                 for msg in warnings:
                     warning_msg += "- " + msg + "\n"
                 if warning_help_msg:
-                    warning_msg += warning_help_msg
+                    warning_msg += "\n" + warning_help_msg
 
             if is_first_run:
                 status = self.get_status_string() + \
@@ -3651,7 +3754,9 @@ class ControlScript(object):
         yb_master_status = "http://{}:{}".format(advertise_ip,
                                           self.configs.saved_data.get("master_webserver_port"))
         console_desc = "Web console"
-        if self.configs.saved_data.get("ui"):
+
+        ui_port_available = self.configs.temp_data.get("ui_port_available")
+        if self.configs.saved_data.get("ui") and ui_port_available:
             try:
                 response = urlopen(Request(yugabyted_ui_status))
                 if response.code == 200:
@@ -3660,10 +3765,10 @@ class ControlScript(object):
                 else:
                     status_info += [ (Output.make_yellow(console_desc), yb_master_status), ]
             except HTTPError as http_err:
-                Output.log('HTTP error occurred while fetching YugabyteDB UI {}', http_err)
+                Output.log('HTTP error occurred while fetching YugabyteDB UI {}'.format(http_err))
                 status_info += [ (Output.make_yellow(console_desc), yb_master_status), ]
             except Exception as err:
-                Output.log('HTTP error occurred while fetching YugabyteDB UI {}', err)
+                Output.log('Other error occurred while fetching YugabyteDB UI {}'.format(err))
                 status_info += [ (Output.make_yellow(console_desc), yb_master_status), ]
         else:
             status_info += [ (Output.make_yellow(console_desc), yb_master_status), ]
@@ -4672,6 +4777,9 @@ class ControlScript(object):
             else:
                 args.ui = self.configs.saved_data.get("ui")
 
+            self.configs.temp_data["ui_port_available"] = self.is_port_available(
+                args.advertise_address, self.configs.saved_data.get("yugabyted_ui_port"))
+
             if args.callhome is not None:
                 args.callhome = self.parse_bool(args.callhome)
             elif os.environ.get("YB_DISABLE_CALLHOME") is not None:
@@ -4711,6 +4819,7 @@ class ControlScript(object):
                     and v != self.configs.saved_data.get(k)):
                 self.configs.saved_data[k] = v
 
+        self.configs.save_configs()
 
     def parse_bool(self, config):
         return config in TRUE_CHOICES
@@ -5159,6 +5268,8 @@ class Configs(object):
             "tserver_webserver_port": DEFAULT_TSERVER_WEBSERVER_PORT,
             "ysql_port": DEFAULT_YSQL_PORT,
             "ycql_port": DEFAULT_YCQL_PORT,
+            "ysql_metric_port": DEFAULT_YSQL_METRIC_PORT,
+            "ycql_metric_port": DEFAULT_YCQL_METRIC_PORT,
             "advertise_address": "",
             "webserver_port": DEFAULT_WEBSERVER_PORT,
             "yugabyted_ui_port": DEFAULT_YUGABYTED_UI_PORT,
@@ -5204,6 +5315,7 @@ class Configs(object):
             "admin_operation_master_addresses":"",
             "rr_data_placement_constraint": "",
             "rr_replication_factor": "",
+            "ui_port_available": True,
             "collect_at_dir": os.path.join(os.path.expanduser("~"), "yugabyte_collected_logs")
         }
         self.config_file = config_file

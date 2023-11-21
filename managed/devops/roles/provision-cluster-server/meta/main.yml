@@ -33,7 +33,7 @@ dependencies:
       - node_exporter
     tags: yb-prebuilt-ami
 
-  - role: install_otel_collector
+  - role: manage_otel_collector
     when: install_otel_collector is defined and install_otel_collector|bool
 
   - role: install_backup_util

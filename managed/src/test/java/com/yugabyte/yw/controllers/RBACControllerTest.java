@@ -311,7 +311,8 @@ public class RBACControllerTest extends FakeDBApplication {
             + "\"name\": \"custom Read UniverseRole 1\","
             + "\"description\": \"test Description\","
             + "\"permissionList\": ["
-            + "{\"resourceType\": \"UNIVERSE\", \"action\": \"READ\"}"
+            + "{\"resourceType\": \"UNIVERSE\", \"action\": \"READ\"},"
+            + "{\"resourceType\": \"OTHER\", \"action\": \"READ\"}"
             + "]}";
     JsonNode bodyJson = mapper.readValue(createRoleRequestBody, JsonNode.class);
     Result result = createRole(customer.getUuid(), bodyJson);
@@ -384,13 +385,14 @@ public class RBACControllerTest extends FakeDBApplication {
             "customReadUniverseRole1",
             "testDescription",
             RoleType.Custom,
-            new HashSet<>(Arrays.asList(permission1, permission2)));
+            new HashSet<>(Arrays.asList(permission1, permission2, permission4)));
 
     // Filling the JSON object to be passed in the request body
     String createRoleRequestBody =
         "{"
             + "\"permissionList\": ["
-            + "{\"resourceType\": \"UNIVERSE\", \"action\": \"READ\"}"
+            + "{\"resourceType\": \"UNIVERSE\", \"action\": \"READ\"},"
+            + "{\"resourceType\": \"OTHER\", \"action\": \"READ\"}"
             + "]}";
     JsonNode bodyJson = mapper.readValue(createRoleRequestBody, JsonNode.class);
     Result result = editRole(customer.getUuid(), role1.getRoleUUID(), bodyJson);
@@ -410,7 +412,7 @@ public class RBACControllerTest extends FakeDBApplication {
     Role roleDb = Role.get(customer.getUuid(), "customReadUniverseRole1");
     assertEquals(roleResult, roleDb);
     // Verify if permissions got updated correctly.
-    Set<Permission> permissionList = new HashSet<>(Arrays.asList(permission2));
+    Set<Permission> permissionList = new HashSet<>(Arrays.asList(permission2, permission4));
     assertEquals(permissionList, roleDb.getPermissionDetails().getPermissionList());
   }
 
