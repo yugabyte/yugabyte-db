@@ -9,6 +9,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { getPrimaryCluster, getReadOnlyCluster } from '../../../../utils/UniverseUtils';
 import { updateTLS } from '../../../../actions/customers';
 import { YBBanner, YBBannerVariant } from '../../descriptors';
+import { getAllXClusterConfigs } from '../../../xcluster/ReplicationUtils';
 import { hasNecessaryPerm } from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import './EncryptionInTransit.scss';
