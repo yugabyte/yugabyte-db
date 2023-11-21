@@ -9,17 +9,25 @@ import java.security.NoSuchAlgorithmException;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
+import java.util.ArrayList;
+import java.util.List;
 
 public interface TrustStoreManager {
   default String getTrustStorePath(String trustStoreHome, String trustStoreFileName) {
     return String.format("%s/%s", trustStoreHome, trustStoreFileName);
   }
 
-  default Certificate getX509Certificate(String certPath) throws CertificateException, IOException {
+  default List<Certificate> getX509Certificate(String certPath)
+      throws CertificateException, IOException {
+    List<Certificate> certificates = new ArrayList<>();
     try (FileInputStream certStream = new FileInputStream(certPath)) {
       CertificateFactory certificateFactory = CertificateFactory.getInstance("X.509");
-      Certificate certificate = certificateFactory.generateCertificate(certStream);
-      return certificate;
+
+      while (certStream.available() > 0) {
+        Certificate certificate = certificateFactory.generateCertificate(certStream);
+        certificates.add(certificate);
+      }
+      return certificates;
     }
   }
 
