@@ -1125,4 +1125,22 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allows user to enter postgres hba rules and ident map rules in multiple rows",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> haDisableCertValidation =
+      new ConfKeyInfo<>(
+          "yb.ha.ws.ssl.loose.acceptAnyCertificate",
+          ScopeType.GLOBAL,
+          "Disable all cert validation for HA communication",
+          "When set, https certs will not be validated for HA communication."
+              + " Communication will still be encrypted.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> haDisableCertHostValidation =
+      new ConfKeyInfo<>(
+          "yb.ha.ws.ssl.loose.disableHostnameVerification",
+          ScopeType.GLOBAL,
+          "Disable hostname cert validation for HA communication",
+          "When set, the hostname in https certs will not be validated for HA communication."
+              + " Communication will still be encrypted.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
