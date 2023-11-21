@@ -49,13 +49,15 @@ import { api, universeQueryKey, xClusterQueryKey } from '../../../redesign/helpe
 import { getAlertConfigurations } from '../../../actions/universe';
 import { MenuItemsContainer } from '../../universes/UniverseDetail/compounds/MenuItemsContainer';
 import { SyncXClusterConfigModal } from './SyncXClusterModal';
-import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import {
+  RbacValidator,
+  hasNecessaryPerm
+} from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 import { Metrics } from '../XClusterTypes';
 import { XClusterConfig } from '../dtos';
 import { TableType, YBTable } from '../../../redesign/helpers/dtos';
-
 
 import './ReplicationDetails.scss';
 
@@ -207,8 +209,9 @@ export function ReplicationDetails({
     xClusterConfig.sourceUniverseUUID === undefined ||
     xClusterConfig.targetUniverseUUID === undefined
   ) {
-    const errorMessage = `The ${xClusterConfig.sourceUniverseUUID === undefined ? 'source' : 'target'
-      } universe is deleted. Please delete the broken xCluster configuration: ${xClusterConfig.name}`;
+    const errorMessage = `The ${
+      xClusterConfig.sourceUniverseUUID === undefined ? 'source' : 'target'
+    } universe is deleted. Please delete the broken xCluster configuration: ${xClusterConfig.name}`;
     const remainingUniverseUUID =
       xClusterConfig.sourceUniverseUUID ?? xClusterConfig.targetUniverseUUID;
     const redirectUrl = remainingUniverseUUID
@@ -282,8 +285,16 @@ export function ReplicationDetails({
           {!xClusterConfig.paused && (
             <RbacValidator
               customValidateFunction={() => {
-                return hasNecessaryPerm({ ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION, onResource: xClusterConfig.sourceUniverseUUID }) &&
-                  hasNecessaryPerm({ ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION, onResource: xClusterConfig.targetUniverseUUID });
+                return (
+                  hasNecessaryPerm({
+                    ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION,
+                    onResource: xClusterConfig.sourceUniverseUUID
+                  }) &&
+                  hasNecessaryPerm({
+                    ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION,
+                    onResource: xClusterConfig.targetUniverseUUID
+                  })
+                );
               }}
               isControl
             >
@@ -391,8 +402,16 @@ export function ReplicationDetails({
               <Row className="details-actions-button">
                 <RbacValidator
                   customValidateFunction={() => {
-                    return hasNecessaryPerm({ ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION, onResource: xClusterConfig.sourceUniverseUUID }) &&
-                      hasNecessaryPerm({ ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION, onResource: xClusterConfig.targetUniverseUUID });
+                    return (
+                      hasNecessaryPerm({
+                        ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION,
+                        onResource: xClusterConfig.sourceUniverseUUID
+                      }) &&
+                      hasNecessaryPerm({
+                        ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION,
+                        onResource: xClusterConfig.targetUniverseUUID
+                      })
+                    );
                   }}
                   isControl
                 >
@@ -428,8 +447,16 @@ export function ReplicationDetails({
                         <>
                           <RbacValidator
                             customValidateFunction={() => {
-                              return hasNecessaryPerm({ ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION, onResource: xClusterConfig.sourceUniverseUUID }) &&
-                                hasNecessaryPerm({ ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION, onResource: xClusterConfig.targetUniverseUUID });
+                              return (
+                                hasNecessaryPerm({
+                                  ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION,
+                                  onResource: xClusterConfig.sourceUniverseUUID
+                                }) &&
+                                hasNecessaryPerm({
+                                  ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION,
+                                  onResource: xClusterConfig.targetUniverseUUID
+                                })
+                              );
                             }}
                             isControl
                           >
@@ -439,7 +466,9 @@ export function ReplicationDetails({
                                   dispatch(openDialog(XClusterModalName.EDIT_CONFIG));
                                 }
                               }}
-                              disabled={!_.includes(enabledConfigActions, XClusterConfigAction.EDIT)}
+                              disabled={
+                                !_.includes(enabledConfigActions, XClusterConfigAction.EDIT)
+                              }
                             >
                               <YBLabelWithIcon
                                 className="xCluster-dropdown-button"
@@ -451,14 +480,24 @@ export function ReplicationDetails({
                           </RbacValidator>
                           <RbacValidator
                             customValidateFunction={() => {
-                              return hasNecessaryPerm({ ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION, onResource: xClusterConfig.sourceUniverseUUID }) &&
-                                hasNecessaryPerm({ ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION, onResource: xClusterConfig.targetUniverseUUID });
+                              return (
+                                hasNecessaryPerm({
+                                  ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION,
+                                  onResource: xClusterConfig.sourceUniverseUUID
+                                }) &&
+                                hasNecessaryPerm({
+                                  ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION,
+                                  onResource: xClusterConfig.targetUniverseUUID
+                                })
+                              );
                             }}
                             isControl
                           >
                             <MenuItem
                               onClick={() => {
-                                if (_.includes(enabledConfigActions, XClusterConfigAction.RESTART)) {
+                                if (
+                                  _.includes(enabledConfigActions, XClusterConfigAction.RESTART)
+                                ) {
                                   dispatch(openDialog(XClusterModalName.RESTART_CONFIG));
                                 }
                               }}
@@ -485,8 +524,16 @@ export function ReplicationDetails({
                           <MenuItem divider />
                           <RbacValidator
                             customValidateFunction={() => {
-                              return hasNecessaryPerm({ ...ApiPermissionMap.DELETE_XCLUSTER_REPLICATION, onResource: xClusterConfig.sourceUniverseUUID }) &&
-                                hasNecessaryPerm({ ...ApiPermissionMap.DELETE_XCLUSTER_REPLICATION, onResource: xClusterConfig.targetUniverseUUID });
+                              return (
+                                hasNecessaryPerm({
+                                  ...ApiPermissionMap.DELETE_XCLUSTER_REPLICATION,
+                                  onResource: xClusterConfig.sourceUniverseUUID
+                                }) &&
+                                hasNecessaryPerm({
+                                  ...ApiPermissionMap.DELETE_XCLUSTER_REPLICATION,
+                                  onResource: xClusterConfig.targetUniverseUUID
+                                })
+                              );
                             }}
                             isControl
                           >
@@ -520,7 +567,10 @@ export function ReplicationDetails({
                               </YBLabelWithIcon>
                             </MenuItem>
                             <RbacValidator
-                              accessRequiredOn={{ ...ApiPermissionMap.SYNC_XCLUSTER_REQUIREMENT, onResource: xClusterConfig.targetUniverseUUID }}
+                              accessRequiredOn={{
+                                ...ApiPermissionMap.SYNC_XCLUSTER_REQUIREMENT,
+                                onResource: xClusterConfig.targetUniverseUUID
+                              }}
                               isControl
                             >
                               <MenuItem
@@ -559,8 +609,9 @@ export function ReplicationDetails({
               <YBBanner variant={YBBannerVariant.DANGER}>
                 <div className="replication-info-banner-content">
                   <b>Error!</b>
-                  {` Write-ahead logs are deleted for ${numTablesRequiringBootstrap} ${numTablesRequiringBootstrap > 1 ? 'tables' : 'table'
-                    } and replication restart is
+                  {` Write-ahead logs are deleted for ${numTablesRequiringBootstrap} ${
+                    numTablesRequiringBootstrap > 1 ? 'tables' : 'table'
+                  } and replication restart is
                 required.`}
                   <YBButton
                     className="restart-replication-button"
@@ -579,9 +630,11 @@ export function ReplicationDetails({
             {shouldShowTableLagWarning && (
               <YBBanner variant={YBBannerVariant.WARNING}>
                 <b>Warning!</b>
-                {` Replication lag for ${numTablesAboveLagThreshold} out of ${xClusterConfigTables.length
-                  } ${xClusterConfigTables.length > 1 ? 'tables' : 'table'} ${numTablesAboveLagThreshold > 1 ? 'have' : 'has'
-                  }
+                {` Replication lag for ${numTablesAboveLagThreshold} out of ${
+                  xClusterConfigTables.length
+                } ${xClusterConfigTables.length > 1 ? 'tables' : 'table'} ${
+                  numTablesAboveLagThreshold > 1 ? 'have' : 'has'
+                }
                 exceeded the maximum acceptable lag time.`}
               </YBBanner>
             )}
@@ -670,6 +723,7 @@ export function ReplicationDetails({
         )}
         {isRestartConfigModalVisible && (
           <RestartConfigModal
+            isDrInterface={false}
             configTableType={configTableType}
             isVisible={isRestartConfigModalVisible}
             onHide={hideModal}
@@ -679,6 +733,7 @@ export function ReplicationDetails({
         {isSyncConfigModalVisible && (
           <SyncXClusterConfigModal
             xClusterConfig={xClusterConfig}
+            isDrInterface={false}
             modalProps={{ open: isSyncConfigModalVisible, onClose: hideModal }}
           />
         )}

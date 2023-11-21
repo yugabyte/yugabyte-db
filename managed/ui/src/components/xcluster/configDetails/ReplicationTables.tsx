@@ -35,7 +35,10 @@ import { TableType, TableTypeLabel, YBTable } from '../../../redesign/helpers/dt
 import { XClusterTable } from '../XClusterTypes';
 import { XClusterConfig } from '../dtos';
 
-import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import {
+  RbacValidator,
+  hasNecessaryPerm
+} from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { Action, Resource } from '../../../redesign/features/rbac';
 import styles from './ReplicationTables.module.scss';
@@ -43,12 +46,12 @@ import styles from './ReplicationTables.module.scss';
 interface props {
   xClusterConfig: XClusterConfig;
 
-  isDrConfig?: boolean;
+  isDrInterface?: boolean;
 }
 
 const TABLE_MIN_PAGE_SIZE = 10;
 
-export function ReplicationTables({ xClusterConfig, isDrConfig = false }: props) {
+export function ReplicationTables({ xClusterConfig, isDrInterface = false }: props) {
   const [deleteTableDetails, setDeleteTableDetails] = useState<XClusterTable>();
   const [openTableLagGraphDetails, setOpenTableLagGraphDetails] = useState<XClusterTable>();
 
@@ -124,8 +127,7 @@ export function ReplicationTables({ xClusterConfig, isDrConfig = false }: props)
 
   const tablesInConfig = augmentTablesWithXClusterDetails(
     sourceUniverseTablesQuery.data,
-    xClusterConfig.tableDetails,
-    xClusterConfig.txnTableDetails
+    xClusterConfig.tableDetails
   );
   const isActiveTab = window.location.search === '?tab=tables';
   const sourceUniverse = sourceUniverseQuery.data;
@@ -136,11 +138,21 @@ export function ReplicationTables({ xClusterConfig, isDrConfig = false }: props)
       <div className={styles.headerSection}>
         <span className={styles.infoText}>Tables selected for Replication</span>
         <div className={styles.actionBar}>
-          {!isDrConfig && (
+          {!isDrInterface && (
             <RbacValidator
               customValidateFunction={(userPerm) => {
-                return find(userPerm, { resourceUUID: xClusterConfig.sourceUniverseUUID, actions: [Action.BACKUP_RESTORE, Action.UPDATE], resourceType: Resource.UNIVERSE }) !== undefined &&
-                  find(userPerm, { resourceUUID: xClusterConfig.targetUniverseUUID, actions: [Action.BACKUP_RESTORE, Action.UPDATE], resourceType: Resource.UNIVERSE }) !== undefined;
+                return (
+                  find(userPerm, {
+                    resourceUUID: xClusterConfig.sourceUniverseUUID,
+                    actions: [Action.BACKUP_RESTORE, Action.UPDATE],
+                    resourceType: Resource.UNIVERSE
+                  }) !== undefined &&
+                  find(userPerm, {
+                    resourceUUID: xClusterConfig.targetUniverseUUID,
+                    actions: [Action.BACKUP_RESTORE, Action.UPDATE],
+                    resourceType: Resource.UNIVERSE
+                  }) !== undefined
+                );
               }}
               isControl
             >
@@ -168,7 +180,7 @@ export function ReplicationTables({ xClusterConfig, isDrConfig = false }: props)
           >
             Schema Name
           </TableHeaderColumn>
-          {!isDrConfig && (
+          {!isDrInterface && (
             <TableHeaderColumn
               dataField="tableType"
               dataFormat={(cell: TableType) => TableTypeLabel[cell]}
@@ -232,8 +244,16 @@ export function ReplicationTables({ xClusterConfig, isDrConfig = false }: props)
                   <Dropdown.Menu>
                     <RbacValidator
                       customValidateFunction={() => {
-                        return hasNecessaryPerm({ ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION, onResource: xClusterConfig.sourceUniverseUUID }) &&
-                          hasNecessaryPerm({ ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION, onResource: xClusterConfig.targetUniverseUUID });
+                        return (
+                          hasNecessaryPerm({
+                            ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION,
+                            onResource: xClusterConfig.sourceUniverseUUID
+                          }) &&
+                          hasNecessaryPerm({
+                            ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION,
+                            onResource: xClusterConfig.targetUniverseUUID
+                          })
+                        );
                       }}
                       isControl
                     >
@@ -258,7 +278,7 @@ export function ReplicationTables({ xClusterConfig, isDrConfig = false }: props)
       </div>
       {isAddTableModalVisible && (
         <AddTableModal
-          isDrConfig={isDrConfig}
+          isDrInterface={isDrInterface}
           isVisible={isAddTableModalVisible}
           onHide={hideModal}
           xClusterConfig={xClusterConfig}
