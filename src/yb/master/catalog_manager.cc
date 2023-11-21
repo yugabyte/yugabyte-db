@@ -8702,10 +8702,35 @@ Status CatalogManager::DeleteTablegroup(const DeleteTablegroupRequestPB* req,
     }
 
     if (!tablegroup->IsEmpty()) {
-      return SetupError(
-          resp->mutable_error(),
-          MasterErrorPB::INVALID_REQUEST,
-          STATUS(InvalidArgument, "Cannot delete tablegroup, it still has tables in it"));
+      if (!req->has_ysql_ddl_rollback_enabled()) {
+        return SetupError(
+            resp->mutable_error(),
+            MasterErrorPB::INVALID_REQUEST,
+            STATUS(InvalidArgument, "Cannot delete tablegroup, it still has tables in it"));
+      }
+
+      // Check whether the tables in this tablegroup are marked for deletion.
+      const auto tables = tablegroup->ChildTableIds();
+      for (const auto& tableid : tables) {
+        const auto table = tables_->FindTableOrNull(tableid);
+        if (!table) {
+          return SetupError(
+              resp->mutable_error(),
+              MasterErrorPB::OBJECT_NOT_FOUND,
+              STATUS_FORMAT(NotFound, "Table with ID $0 in tablegroup $1 does not exist",
+                  tableid, req->id()));
+        }
+
+        if (!table->IsBeingDroppedDueToDdlTxn(req->transaction().transaction_id(),
+                                              true /* txn_success */)) {
+          return SetupError(
+              resp->mutable_error(),
+              MasterErrorPB::INVALID_REQUEST,
+              STATUS_FORMAT(
+                  InvalidArgument, "Cannot delete non-empty tablegroup, table $0 is not deleted",
+                  tableid));
+        }
+      }
     }
 
     scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_map_, tablegroup->database_id());

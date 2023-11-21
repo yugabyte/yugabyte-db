@@ -1068,7 +1068,7 @@ TEST_F(PgDdlAtomicityColocatedDbTest, ColocatedTest) {
   sanityTest();
 }
 
-class PgDdlAtomiPgDdlAtomicityTablegroupTest : public PgDdlAtomicityColocatedTestBase {
+class PgDdlAtomicityTablegroupTest : public PgDdlAtomicityColocatedTestBase {
   void SetUp() override {
     LibPqTestBase::SetUp();
 
@@ -1091,11 +1091,11 @@ class PgDdlAtomiPgDdlAtomicityTablegroupTest : public PgDdlAtomicityColocatedTes
   const string kTablegroup = "test_tgroup";
 };
 
-TEST_F(PgDdlAtomiPgDdlAtomicityTablegroupTest, TablegroupTableTest) {
+TEST_F(PgDdlAtomicityTablegroupTest, TablegroupTableTest) {
   sanityTest(kTablegroup);
 }
 
-TEST_F(PgDdlAtomiPgDdlAtomicityTablegroupTest, TablegroupTest) {
+TEST_F(PgDdlAtomicityTablegroupTest, TablegroupTest) {
   const string tablegroup = "test_tgrp";
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   // Test that CREATE TABLEGROUP is rolled back.
@@ -1109,6 +1109,37 @@ TEST_F(PgDdlAtomiPgDdlAtomicityTablegroupTest, TablegroupTest) {
   ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
     return VERIFY_RESULT(NumTablegroupParentTables(client.get())) == 1;
   }, MonoDelta::FromSeconds(10), "Verify number of tablegroups"));
+
+  // Create many tables in the tablegroup.
+  const int num_tables = 10;
+  for (int i = 0; i < num_tables; ++i) {
+    ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE test_$0 (key INT PRIMARY KEY) TABLEGROUP $1",
+                                    i, kTablegroup));
+  }
+
+  // Wait for DDL verification to complete.
+  SleepFor(5 * 1s);
+
+  // Verify that DROP TABLEGROUP CASCADE can get rolled back successfully.
+  ASSERT_OK(conn_->TestFailDdl(Format("DROP TABLEGROUP $0 CASCADE", kTablegroup)));
+  // Wait to verify that the drop actually did not go through.
+  SleepFor(5 * 1s);
+  ASSERT_EQ(ASSERT_RESULT(NumTablegroupParentTables(client.get())), 1);
+  for (int i = 0; i < num_tables; ++i) {
+    VerifyTableExists(client.get(), kDatabase, Format("test_$0", i), 20);
+  }
+
+  // Verify that DROP TABLEGROUP CASCADE can finish successfully.
+  ASSERT_OK(conn_->ExecuteFormat("DROP TABLEGROUP $0 CASCADE", kTablegroup));
+  // Wait for DDL verification.
+  SleepFor(5 * 1s);
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    return VERIFY_RESULT(NumTablegroupParentTables(client.get())) == 0;
+  }, MonoDelta::FromSeconds(30), "Verify number of tablegroups"));
+
+  for (int i = 0; i < num_tables; ++i) {
+    VerifyTableNotExists(client.get(), kDatabase, Format("test_$0", i), 20);
+  }
 }
 
 class PgDdlAtomicitySnapshotTest : public PgDdlAtomicitySanityTest {
