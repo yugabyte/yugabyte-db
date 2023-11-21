@@ -57,6 +57,7 @@ Create a new database user, and assign the necessary user permissions.
 <div class="tab-content">
   <div id="standalone-oracle" class="tab-pane fade show active" role="tabpanel" aria-labelledby="standalone-oracle-tab">
   {{% includeMarkdown "./standalone-oracle.md" %}}
+<<<<<<< HEAD
 1. Create a writer role for the source schema for Voyager to be able to write the changes from the target YugabyteDB database to the source database (in case of a fall-back):
 
    ```sql
@@ -172,6 +173,7 @@ Create a user with [`SUPERUSER`](../../../api/ysql/the-sql-language/statements/d
 If you want yb-voyager to connect to the target database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
 
 {{< warning title="Deleting the ybvoyager user" >}}
+
 After migration, all the migrated objects (tables, views, and so on) are owned by the `ybvoyager` user. You should transfer the ownership of the objects to some other user (for example, `yugabyte`) and then delete the `ybvoyager` user. Example steps to delete the user are:
 
 ```sql
@@ -430,16 +432,22 @@ Perform the following steps as part of the cutover process:
 1. Perform a cutover after the exported events rate ("ingestion rate" in the metrics table) drops to 0 using the following command:
 
     ```sh
+<<<<<<< HEAD
     yb-voyager initiate cutover to target --export-dir <EXPORT_DIR> --prepare-for-fall-back true
     ```
 
     Refer to [initiate cutover to target](../../reference/cutover-archive/cutover/#cutover-initiate) for details about the arguments.
+
     As part of the cutover process, the following occurs in the background:
+
     1. The initiate cutover to target command stops the export data process, followed by the import data process after it has imported all the events to the target YugabyteDB database.
+
     1. The [export data from target]() command automatically starts capturing changes from the target YugabyteDB database.
     Note that the [import data](#import-data) process transforms to a `export data from target` process, so if it gets terminated for any reason, you need to restart the synchronization using the `export data from target` command as suggested in the import data output.
+
     1. The import data to source command automatically starts applying changes (captured from the target YugabyteDB) back to the source database.
     Note that the [export data](#export-data) process transforms to a `export data from target` process, so if it gets terminated for any reason, you need to restart the process using `import data to source` command as suggested in the export data output.
+
 1. Wait for the cutover process to complete. Monitor the status of the cutover process using the following command:
 
     ```sh
@@ -495,6 +503,7 @@ Perform the following steps as part of the cutover process:
 ### Cutover to the source (Optional)
 
 During this phase, switch your application over from the target YugabyteDB database back to the source database. As this step is _optional_, perform it only if the target YugabyteDB database is not working as expected.
+
 Keep monitoring the metrics displayed for `export data from target` and `import data to source` processes. After you notice that the import of events to the source database is catching up to the exported events from the target database, you are ready to cutover. You can use the "Remaining events" metric displayed in the `import data to source` process to help you determine the cutover.
 Perform the following steps as part of the cutover process:
 

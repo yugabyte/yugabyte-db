@@ -72,6 +72,7 @@ The valid *arguments* for import data are described in the following table:
 | --verbose | Display extra information in the output. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -y, --yes | Answer yes to all prompts during the export schema operation. <br>Default: false |
 
+
 ### Example
 
 #### Offline migration

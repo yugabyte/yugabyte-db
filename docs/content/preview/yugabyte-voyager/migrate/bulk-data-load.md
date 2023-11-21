@@ -8,7 +8,7 @@ menu:
   preview_yugabyte-voyager:
     identifier: bulk-data-load
     parent: migration-types
-    weight: 104
+    weight: 105
 type: docs
 ---
 

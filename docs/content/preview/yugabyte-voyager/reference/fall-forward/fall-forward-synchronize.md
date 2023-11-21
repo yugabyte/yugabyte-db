@@ -44,16 +44,17 @@ The valid *arguments* for fall-forward synchronize are described in the followin
 | [--target-ssl-crl](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
 | [--target-ssl-mode](../../yb-voyager-cli/#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
 | [--target-ssl-root-cert](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
+<<<<<<< HEAD
 | --verbose | Display extra information in the output. <br>Default: false <br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -y, --yes| Answer yes to all prompts during migration. <br>Default: false |
+=======
+| --verbose | Display extra information in the output. (default: false)<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| -y, --yes| Answer yes to all prompts during migration. (default: false) |
+>>>>>>> 7f20f24832e920c86671c3972d9b5d00c17037c2
 
 ## Example
 
 ```sh
 yb-voyager fall-forward synchronize --export-dir /dir/export-dir \
-        --target-db-host 127.0.0.1 \
-        --target-db-user ybvoyager \
-        --target-db-password 'password' \
-        --target-db-name target_db \
-        --target-db-schema target_schema
+        --target-db-password 'password'
 ```

@@ -17,7 +17,7 @@ type: docs
 
 When migrating using YugabyteDB Voyager, it is prudent to have a backup strategy if the new database doesn't work as expected. A fall-forward approach consists of creating a third database (the source-replica database) that is a replica of your original source database.
 
-A fall forward approach allows you to test the system end-to-end. This workflow is especially important in heterogeneous migration scenarios, in which source and target databases are using different engines.
+A fall-forward approach allows you to test the system end-to-end. This workflow is especially important in heterogeneous migration scenarios, in which source and target databases are using different engines.
 
 ## Fall-forward workflow
 
@@ -477,6 +477,7 @@ yb-voyager get data-migration-report --export-dir <EXPORT_DIR> \
 ### Archive changes (Optional)
 
 As the migration continuously exports changes on the source database to the `EXPORT-DIR`, disk use continues to grow. To prevent the disk from filling up, you can optionally use the `archive changes` command as follows:
+71c3972d9b5d00c17037c2
 
 ```sh
 yb-voyager archive changes --export-dir <EXPORT-DIR> --move-to <DESTINATION-DIR> --delete
@@ -524,6 +525,7 @@ Perform the following steps as part of the cutover process:
             --target-db-user <TARGET_DB_USER> \
             --target-db-schema <TARGET_DB_SCHEMA> \
             --post-import-data true
+
     ```
 
     Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
