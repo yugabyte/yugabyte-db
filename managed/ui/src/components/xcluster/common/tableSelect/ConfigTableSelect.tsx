@@ -69,12 +69,12 @@ export const ConfigTableSelect = ({
   const sourceUniverseTablesQuery = useQuery<YBTable[]>(
     universeQueryKey.tables(xClusterConfig.sourceUniverseUUID, {
       excludeColocatedTables: true,
-      onlySupportedForXCluster: true
+      xClusterSupportedOnly: true
     }),
     () =>
       fetchTablesInUniverse(xClusterConfig.sourceUniverseUUID, {
         excludeColocatedTables: true,
-        onlySupportedForXCluster: true
+        xClusterSupportedOnly: true
       }).then((response) => response.data)
   );
   const sourceUniverseQuery = useQuery<Universe>(

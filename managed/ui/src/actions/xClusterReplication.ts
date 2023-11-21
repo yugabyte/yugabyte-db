@@ -27,7 +27,7 @@ export function fetchUniversesList() {
 export type UniverseTableFilters = {
   excludeColocatedTables?: boolean;
   includeParentTableInfo?: boolean;
-  onlySupportedForXCluster?: boolean;
+  xClusterSupportedOnly?: boolean;
 };
 export function fetchTablesInUniverse(
   universeUUID: string | undefined,
