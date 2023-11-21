@@ -223,12 +223,12 @@ export const TableSelect = (props: TableSelectProps) => {
   const sourceUniverseTablesQuery = useQuery<YBTable[]>(
     universeQueryKey.tables(sourceUniverseUUID, {
       excludeColocatedTables: true,
-      onlySupportedForXCluster: true
+      xClusterSupportedOnly: true
     }),
     () =>
       fetchTablesInUniverse(sourceUniverseUUID, {
         excludeColocatedTables: true,
-        onlySupportedForXCluster: true
+        xClusterSupportedOnly: true
       }).then(
         (response) => response.data
       )
@@ -237,12 +237,12 @@ export const TableSelect = (props: TableSelectProps) => {
   const targetUniverseTablesQuery = useQuery<YBTable[]>(
     universeQueryKey.tables(targetUniverseUUID, {
       excludeColocatedTables: true,
-      onlySupportedForXCluster: true
+      xClusterSupportedOnly: true
     }),
     () =>
       fetchTablesInUniverse(targetUniverseUUID, {
         excludeColocatedTables: true,
-        onlySupportedForXCluster: true
+        xClusterSupportedOnly: true
       }).then(
         (response) => response.data
       )
