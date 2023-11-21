@@ -1688,6 +1688,15 @@ Status CatalogManager::CleanUpCDCMetadataFromSystemCatalog(
             return STATUS(
                 IllegalState, "Could not remove CDC stream from map", cdc_stream_info->id());
           }
+
+          // Delete entry from cdcsdk_replication_slots_to_stream_map_ if the stream has a
+          // replication slot name.
+          auto replication_slot_name = cdc_stream_info->GetCdcsdkYsqlReplicationSlotName();
+          if (!replication_slot_name.empty() &&
+              cdcsdk_replication_slots_to_stream_map_.contains(replication_slot_name)) {
+            cdcsdk_replication_slots_to_stream_map_.erase(replication_slot_name);
+          }
+
           streams_to_delete.push_back(cdc_stream_info);
         } else {
           // Remove those tables info, that are dropped from the cdc_stream_map_ and update the
