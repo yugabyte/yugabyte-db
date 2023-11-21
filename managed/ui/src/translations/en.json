@@ -1255,7 +1255,7 @@
           "createUser": "Create User",
           "search": "Search by user email",
           "table": {
-            "email": "User Email",
+            "email": "Username/Email",
             "role": "Role",
             "moreRoles": "+ {{count}} More",
             "connectOnly": "Connect Only (Default)",
