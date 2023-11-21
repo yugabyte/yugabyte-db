@@ -200,14 +200,16 @@ public class TablesController extends AuthenticatedController {
       UUID universeUUID,
       boolean includeParentTableInfo,
       boolean excludeColocatedTables,
-      boolean includeColocatedParentTables) {
+      boolean includeColocatedParentTables,
+      boolean xClusterSupportedOnly) {
     List<TableInfoForm.TableInfoResp> resp =
         tableHandler.listTables(
             customerUUID,
             universeUUID,
             includeParentTableInfo,
             excludeColocatedTables,
-            includeColocatedParentTables);
+            includeColocatedParentTables,
+            xClusterSupportedOnly);
     return PlatformResults.withData(resp);
   }
 

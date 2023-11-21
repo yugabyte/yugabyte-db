@@ -205,17 +205,29 @@ export const TableSelect = (props: TableSelectProps) => {
   const [isMouseOverTooltip, setIsMouseOverTooltip] = useState<boolean>(false);
 
   const sourceUniverseTablesQuery = useQuery<YBTable[]>(
-    universeQueryKey.tables(sourceUniverseUUID, { excludeColocatedTables: true }),
+    universeQueryKey.tables(sourceUniverseUUID, {
+      excludeColocatedTables: true,
+      onlySupportedForXCluster: true
+    }),
     () =>
-      fetchTablesInUniverse(sourceUniverseUUID, { excludeColocatedTables: true }).then(
+      fetchTablesInUniverse(sourceUniverseUUID, {
+        excludeColocatedTables: true,
+        onlySupportedForXCluster: true
+      }).then(
         (response) => response.data
       )
   );
 
   const targetUniverseTablesQuery = useQuery<YBTable[]>(
-    universeQueryKey.tables(targetUniverseUUID, { excludeColocatedTables: true }),
+    universeQueryKey.tables(targetUniverseUUID, {
+      excludeColocatedTables: true,
+      onlySupportedForXCluster: true
+    }),
     () =>
-      fetchTablesInUniverse(targetUniverseUUID, { excludeColocatedTables: true }).then(
+      fetchTablesInUniverse(targetUniverseUUID, {
+        excludeColocatedTables: true,
+        onlySupportedForXCluster: true
+      }).then(
         (response) => response.data
       )
   );

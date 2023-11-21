@@ -29,6 +29,7 @@ import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.DrConfigTaskParams;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.forms.TableInfoForm.TableInfoResp;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
@@ -108,6 +109,10 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
           XClusterTableConfig.Status.Updating,
           XClusterTableConfig.Status.Bootstrapping);
 
+  // XCluster setup is not supported for system, matview, and colocated tables.
+  public static final List<RelationType> X_CLUSTER_SUPPORTED_TABLE_RELATION_TYPE_LIST =
+      ImmutableList.of(RelationType.USER_TABLE_RELATION, RelationType.INDEX_TABLE_RELATION);
+
   private static final Map<XClusterConfigStatusType, List<TaskType>> STATUS_TO_ALLOWED_TASKS =
       new HashMap<>();
 
@@ -183,6 +188,26 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       throw new RuntimeException("xClusterConfig cannot be null");
     }
     return X_CLUSTER_CONFIG_MUST_DELETE_STATUS_LIST.contains(xClusterConfig.getStatus());
+  }
+
+  public static boolean isXClusterSupported(
+      MasterDdlOuterClass.ListTablesResponsePB.TableInfo tableInfo) {
+    return X_CLUSTER_SUPPORTED_TABLE_RELATION_TYPE_LIST.stream()
+        .anyMatch(relationType -> relationType.equals(tableInfo.getRelationType()));
+  }
+
+  public static boolean isXClusterSupported(TableInfoResp tableInfoResp) {
+    return X_CLUSTER_SUPPORTED_TABLE_RELATION_TYPE_LIST.stream()
+        .anyMatch(relationType -> relationType.equals(tableInfoResp.relationType));
+  }
+
+  public static Map<Boolean, List<String>> getTableIdsPartitionedByIsXClusterSupported(
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList) {
+    return tableInfoList.stream()
+        .collect(
+            Collectors.partitioningBy(
+                XClusterConfigTaskBase::isXClusterSupported,
+                Collectors.mapping(XClusterConfigTaskBase::getTableId, Collectors.toList())));
   }
 
   public static boolean isTaskAllowed(XClusterConfig xClusterConfig, TaskType taskType) {
@@ -796,7 +821,9 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
    * @return A list of {@link MasterDdlOuterClass.ListTablesResponsePB.TableInfo} containing table
    *     info of the tables whose id is specified at {@code requestedTableIds}
    */
-  // Todo: Break down this method.
+  // Todo: This method is no longer use in the code base. It is only used in the utests and should
+  //  be removed.
+  @Deprecated
   public static Pair<List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>, Set<String>>
       getRequestedTableInfoListAndVerify(
           YBClientService ybService,
@@ -1449,6 +1476,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
               "Some of the tables were not found: was %d, found %d, missing tables: %s",
               tableIds.size(), filteredTableInfoList.size(), missingTableIds));
     }
+    log.debug("filteredTableInfoList is {}", filteredTableInfoList);
     return filteredTableInfoList;
   }
 
