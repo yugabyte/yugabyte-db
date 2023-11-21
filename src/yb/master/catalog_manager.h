@@ -2974,6 +2974,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status CreateGlobalTransactionStatusTableIfNotPresent(
       rpc::RpcContext* rpc, const LeaderEpoch& epoch);
 
+  Status MaybeRestoreInitialSysCatalogSnapshotAndReloadSysCatalog(SysCatalogLoadingState* state)
+      REQUIRES(mutex_);
+
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
 
