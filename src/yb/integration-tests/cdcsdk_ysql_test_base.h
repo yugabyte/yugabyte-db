@@ -77,6 +77,7 @@
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/stol_utils.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/thread.h"
 #include "yb/tablet/tablet_types.pb.h"

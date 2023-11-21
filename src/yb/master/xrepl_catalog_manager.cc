@@ -48,6 +48,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/string_util.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/thread.h"
 #include "yb/util/trace.h"
 
@@ -1368,6 +1369,34 @@ Status CatalogManager::CleanUpCDCStreamsMetadata(
     return STATUS(IllegalState, "Client not initialized or shutting down");
   }
 
+  TEST_SYNC_POINT("CleanUpCDCStreamMetadata::StartStep1");
+  // for efficient filtering of cdc_state table entries to only the list received in streams.
+  std::unordered_set<CDCStreamId> stream_ids_metadata_to_be_cleaned_up;
+  for(const auto& stream : streams) {
+    stream_ids_metadata_to_be_cleaned_up.insert(stream->id());
+  }
+  // Step-1: Get entries from cdc_state table.
+  std::vector<std::pair<TabletId, CDCStreamId>> cdc_state_entries;
+  std::shared_ptr<client::YBSession> session = ybclient->NewSession();
+  std::shared_ptr<yb::client::TableHandle> cdc_state_table = VERIFY_RESULT(GetCDCStateTable());
+  client::TableIteratorOptions options;
+  Status failure_status;
+  options.error_handler = [&failure_status](const Status& status) {
+    LOG(WARNING) << "Scan of table failed: " << status;
+    failure_status = status;
+  };
+  options.columns = std::vector<std::string>{master::kCdcTabletId, master::kCdcStreamId};
+  for (const auto& row : client::TableRange(*cdc_state_table, options)) {
+    auto stream_id = row.column(master::kCdcStreamIdIdx).string_value();
+    auto tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
+    // only add those entries that belong to the received list of streams.
+    if(stream_ids_metadata_to_be_cleaned_up.contains(stream_id)) {
+      cdc_state_entries.emplace_back(std::make_pair(tablet_id, stream_id));
+    }
+  }
+  TEST_SYNC_POINT("CleanUpCDCStreamMetadata::CompletedStep1");
+  TEST_SYNC_POINT("CleanUpCDCStreamMetadata::StartStep2");
+  // Step-2: Get list of tablets to keep for each stream.
   // Map of valid tablets to keep for each stream.
   std::unordered_map<CDCStreamId, std::set<TabletId>> tablets_to_keep_per_stream;
   // Map to identify the list of dropped tables for the stream.
@@ -1381,25 +1410,11 @@ Status CatalogManager::CleanUpCDCStreamsMetadata(
         stream, &tablets_to_keep_per_stream[stream_id], &drop_stream_table_list[stream_id]);
   }
 
-  std::shared_ptr<client::YBSession> session = ybclient->NewSession();
-  std::shared_ptr<yb::client::TableHandle> cdc_state_table = VERIFY_RESULT(GetCDCStateTable());
-  client::TableIteratorOptions options;
-  Status failure_status;
-  options.error_handler = [&failure_status](const Status& status) {
-    LOG(WARNING) << "Scan of table failed: " << status;
-    failure_status = status;
-  };
-  options.columns = std::vector<std::string>{master::kCdcTabletId, master::kCdcStreamId};
-
   std::vector<client::YBOperationPtr> ops;
-  for (const auto& row : client::TableRange(*cdc_state_table, options)) {
-    auto stream_id = row.column(master::kCdcStreamIdIdx).string_value();
-    auto tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
-
+  for (const auto&[tablet_id, stream_id] : cdc_state_entries) {
     const auto tablets = FindOrNull(tablets_to_keep_per_stream, stream_id);
-    if (!tablets) {
-      continue;
-    }
+    RSTATUS_DCHECK(tablets, IllegalState,
+      "No entry found in tablets_to_keep_per_stream map for the stream");
 
     if (!tablets->contains(tablet_id)) {
       // Tablet is no longer part of this stream so delete it.
