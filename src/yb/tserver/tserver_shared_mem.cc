@@ -18,6 +18,8 @@
 
 #include <boost/interprocess/shared_memory_object.hpp>
 
+#include "yb/gutil/casts.h"
+
 #include "yb/util/enums.h"
 #include "yb/util/result.h"
 #include "yb/util/thread.h"
@@ -172,11 +174,7 @@ class SharedExchange::Impl {
     required_size += header->header_size();
     auto region_size = mapped_region_.get_size();
     if (required_size > region_size) {
-      auto page_size = boost::interprocess::mapped_region::get_page_size();
-      auto new_size = ((required_size + page_size - 1) / page_size) * page_size;
-      shared_memory_object_.truncate(new_size);
-      Reopen();
-      header = &this->header();
+      return nullptr;
     }
     return header->data();
   }
@@ -195,8 +193,7 @@ class SharedExchange::Impl {
     }
     failed_previous_request_ = false;
     if (*size_res + header->header_size() > mapped_region_.get_size()) {
-      Reopen();
-      header = &this->header();
+      return Slice(static_cast<const char*>(nullptr), bit_cast<const char*>(*size_res));
     }
     return Slice(header->data(), *size_res);
   }
@@ -224,12 +221,6 @@ class SharedExchange::Impl {
 
   const SharedExchangeHeader& header() const {
     return *static_cast<SharedExchangeHeader*>(mapped_region_.get_address());
-  }
-
-  void Reopen() {
-    mapped_region_ = boost::interprocess::mapped_region();
-    mapped_region_ = boost::interprocess::mapped_region(
-        shared_memory_object_, boost::interprocess::read_write);
   }
 
   const uint64_t session_id_;

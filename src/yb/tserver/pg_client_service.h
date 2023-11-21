@@ -43,6 +43,8 @@ class PgMutationCounter;
     (AlterDatabase) \
     (AlterTable) \
     (BackfillIndex) \
+    (CancelTransaction) \
+    (CheckIfPitrActive) \
     (CreateDatabase) \
     (CreateReplicationSlot) \
     (CreateSequencesDataTable) \
@@ -54,8 +56,10 @@ class PgMutationCounter;
     (DropReplicationSlot) \
     (DropTable) \
     (DropTablegroup) \
+    (FetchData) \
     (FetchSequenceTuple) \
     (FinishTransaction) \
+    (GetActiveTransactionList) \
     (GetCatalogMasterVersion) \
     (GetDatabaseInfo) \
     (GetIndexBackfillProgress) \
@@ -63,6 +67,7 @@ class PgMutationCounter;
     (GetReplicationSlotStatus) \
     (GetTableDiskSize) \
     (GetTablePartitionList) \
+    (GetTserverCatalogVersionInfo) \
     (Heartbeat) \
     (InsertSequenceTuple) \
     (IsInitDbDone) \
@@ -79,11 +84,7 @@ class PgMutationCounter;
     (TruncateTable) \
     (UpdateSequenceTuple) \
     (ValidatePlacement) \
-    (CheckIfPitrActive) \
-    (GetTserverCatalogVersionInfo) \
     (WaitForBackendsCatalogVersion) \
-    (CancelTransaction) \
-    (GetActiveTransactionList) \
     /**/
 
 // Forwards call to corresponding PgClientSession async method (see
