@@ -40,6 +40,7 @@ NOBODY_UID=65534
 RESTART_PROCESSES=true
 # When true, we will ignore the pgrestore_path and use pg_restore found on the system
 USE_SYSTEM_PG=false
+K8S_BACKUP_DIR="/opt/yugabyte"
 
 set +e
 # Check whether the script is being run from a VM running replicated-based Yugabyte Platform.
@@ -330,11 +331,11 @@ create_backup() {
       exclude_flags="${exclude_flags} --exclude_releases"
     fi
     kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- /bin/bash -c \
-      "${backup_script} create ${verbose_flag} ${exclude_flags} --output /opt/yugabyte/yugaware"
+      "${backup_script} create ${verbose_flag} ${exclude_flags} --output ${K8S_BACKUP_DIR}"
     # Determine backup archive filename.
     # Note: There is a slight race condition here. It will always use the most recent backup file.
     backup_file=$(kubectl -n "${k8s_namespace}" -c yugaware exec -it "${k8s_pod}" -c yugaware -- \
-      /bin/bash -c "cd /opt/yugabyte/yugaware && ls -1 backup*.tgz | tail -n 1")
+      /bin/bash -c "cd ${K8S_BACKUP_DIR} && ls -1 backup*.tgz | tail -n 1")
     backup_file=${backup_file%$'\r'}
     # Ensure backup succeeded.
     if [[ -z "${backup_file}" ]]; then
@@ -344,12 +345,12 @@ create_backup() {
 
     echo "Copying backup from container"
     # Copy backup archive from container to local machine.
-    kubectl -n "${k8s_namespace}" -c yugaware cp \
-      "${k8s_pod}:${backup_file}" "${output_path}/${backup_file}"
+    kubectl -n "${k8s_namespace}" -c yugaware cp --retries=10 --request-timeout="${k8s_timeout}" \
+      "${k8s_pod}:${K8S_BACKUP_DIR}/${backup_file}" "${output_path}/${backup_file}"
 
     # Delete backup archive from container.
     kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- \
-      /bin/bash -c "rm /opt/yugabyte/yugaware/backup*.tgz"
+      /bin/bash -c "rm ${K8S_BACKUP_DIR}/backup*.tgz"
     echo "Done"
     return
   fi
@@ -483,14 +484,14 @@ restore_backup() {
 
     # Copy backup archive to container.
     echo "Copying backup to container"
-    kubectl -n "${k8s_namespace}" -c yugaware cp \
-      "${input_path}" "${k8s_pod}:/opt/yugabyte/yugaware/"
+    kubectl -n "${k8s_namespace}" -c yugaware cp --retries=10 --request-timeout="${k8s_timeout}" \
+      "${input_path}" "${k8s_pod}:${K8S_BACKUP_DIR}"
     echo "Done"
 
     # Determine backup archive filename.
     # Note: There is a slight race condition here. It will always use the most recent backup file.
     backup_file=$(kubectl -n "${k8s_namespace}" -c yugaware exec -it "${k8s_pod}" -c yugaware -- \
-      /bin/bash -c "cd /opt/yugabyte/yugaware && ls -1 backup*.tgz | tail -n 1")
+      /bin/bash -c "cd ${K8S_BACKUP_DIR} && ls -1 backup*.tgz | tail -n 1")
     backup_file=${backup_file%$'\r'}
     # Run restore script in container.
     verbose_flag=""
@@ -502,19 +503,18 @@ restore_backup() {
     #Passing in the required argument for --disable_version_check if set to true, since
     #the script is called again within the Kubernetes container.
     d="--disable_version_check"
-    cont_path="/opt/yugabyte/yugaware"
 
     if [ "$disable_version_check" != true ]; then
       kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- /bin/bash -c \
-        "${backup_script} restore ${verbose_flag} --input ${cont_path}/${backup_file}"
+        "${backup_script} restore ${verbose_flag} --input ${K8S_BACKUP_DIR}/${backup_file}"
     else
       kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- /bin/bash -c \
-        "${backup_script} restore ${verbose_flag} --input ${cont_path}/${backup_file} ${d}"
+        "${backup_script} restore ${verbose_flag} --input ${K8S_BACKUP_DIR}/${backup_file} ${d}"
     fi
 
     # Delete backup archive from container.
     kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- \
-      /bin/bash -c "rm /opt/yugabyte/yugaware/backup*.tgz"
+      /bin/bash -c "rm ${K8S_BACKUP_DIR}/backup*.tgz"
     return
   fi
 
@@ -691,6 +691,7 @@ print_backup_usage() {
   echo "  -t, --prometheus_port=PORT     prometheus port (default: 9090)"
   echo "  --k8s_namespace                kubernetes namespace"
   echo "  --k8s_pod                      kubernetes pod"
+  echo "  --k8s_timeout                  kubernetes cp timeout duration (default: 30m)"
   echo "  --yba_installer                yba_installer installation (default: false)"
   echo "  --plain_sql                    output a plain-text SQL script from pg_dump"
   echo "  --ybdb                         ybdb backup (default: false)"
@@ -717,6 +718,7 @@ print_restore_usage() {
   echo "  -U, --yba_user=USERNAME        yugabyte anywhere user (default: yugabyte)"
   echo "  --k8s_namespace                kubernetes namespace"
   echo "  --k8s_pod                      kubernetes pod"
+  echo "  --k8s_timeout                  kubernetes cp timeout duration (default: 30m)"
   echo "  --disable_version_check        disable the backup version check (default: false)"
   echo "  --yba_installer                yba_installer backup (default: false)"
   echo "  --ybdb                         ybdb restore (default: false)"
@@ -761,6 +763,7 @@ prometheus_port=9090
 prometheus_user=prometheus
 k8s_namespace=""
 k8s_pod=""
+k8s_timeout="30m"
 data_dir=/opt/yugabyte
 verbose=false
 disable_version_check=false
@@ -850,6 +853,10 @@ case $command in
           ;;
         --k8s_pod)
           k8s_pod=$2
+          shift 2
+          ;;
+        --k8s_timeout)
+          k8s_timeout=$2
           shift 2
           ;;
         --yba_installer)
@@ -964,6 +971,10 @@ case $command in
           ;;
         --k8s_pod)
           k8s_pod=$2
+          shift 2
+          ;;
+        --k8s_timeout)
+          k8s_timeout=$2
           shift 2
           ;;
         --disable_version_check)
