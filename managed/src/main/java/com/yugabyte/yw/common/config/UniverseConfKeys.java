@@ -919,4 +919,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " This skips the storage config/success marker based validations done before B/R.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> nodeAgentReinstallParallelism =
+      new ConfKeyInfo<>(
+          "yb.node_agent.reinstall_parallelism",
+          ScopeType.UNIVERSE,
+          "Parallelism for Node Agent Reinstallation",
+          "Number of parallel node agent reinstallations at a time",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

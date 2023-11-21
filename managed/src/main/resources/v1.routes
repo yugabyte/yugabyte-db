@@ -544,6 +544,7 @@ POST    /customers/:cUUID/hook_scopes/:hsUUID/hooks/:hUUID                     c
 DELETE  /customers/:cUUID/hook_scopes/:hsUUID/hooks/:hUUID                     com.yugabyte.yw.controllers.HookScopeController.removeHook(cUUID: java.util.UUID, hsUUID: java.util.UUID, hUUID: java.util.UUID, request: Request)
 
 # Node Agent API
+POST   /customers/:cUUID/universes/:uniUUID/node_agents                        com.yugabyte.yw.controllers.NodeAgentController.reinstall(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 POST   /customers/:cUUID/node_agents                                           com.yugabyte.yw.controllers.NodeAgentController.register(cUUID: java.util.UUID, request: Request)
 POST   /customers/:cUUID/node_agents/page                                      com.yugabyte.yw.controllers.NodeAgentController.page(cUUID: java.util.UUID, request: Request)
 GET    /customers/:cUUID/node_agents                                           com.yugabyte.yw.controllers.NodeAgentController.list(cUUID: java.util.UUID, nodeIp: String ?= "")

@@ -6,7 +6,8 @@ import static com.yugabyte.yw.models.helpers.CommonUtils.performPagedQuery;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableSet;
-import com.typesafe.config.Config;
+import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.ReinstallNodeAgent;
 import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -14,12 +15,14 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.NodeAgentForm;
 import com.yugabyte.yw.forms.NodeAgentResp;
+import com.yugabyte.yw.forms.ReinstallNodeAgentForm;
 import com.yugabyte.yw.forms.paging.NodeAgentPagedApiResponse;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.ArchType;
 import com.yugabyte.yw.models.NodeAgent.OSType;
 import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.models.filters.NodeAgentFilter;
+import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.paging.NodeAgentPagedQuery;
 import com.yugabyte.yw.models.paging.NodeAgentPagedResponse;
 import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
@@ -55,13 +58,17 @@ public class NodeAgentHandler {
   private static final String NODE_AGENT_INSTALLER_FILE = "node-agent-installer.sh";
   private static final Duration NODE_AGENT_HEARTBEAT_TIMEOUT = Duration.ofMinutes(5);
 
+  private final Commissioner commissioner;
   private final NodeAgentManager nodeAgentManager;
   private final NodeAgentClient nodeAgentClient;
   private boolean validateConnection = true;
 
   @Inject
   public NodeAgentHandler(
-      Config appConfig, NodeAgentManager nodeAgentManager, NodeAgentClient nodeAgentClient) {
+      Commissioner commissioner,
+      NodeAgentManager nodeAgentManager,
+      NodeAgentClient nodeAgentClient) {
+    this.commissioner = commissioner;
     this.nodeAgentManager = nodeAgentManager;
     this.nodeAgentClient = nodeAgentClient;
   }
@@ -262,5 +269,12 @@ public class NodeAgentHandler {
     byte[] contents = nodeAgentManager.getInstallerScript();
     return new NodeAgentDownloadFile(
         "application/x-sh", new ByteArrayInputStream(contents), NODE_AGENT_INSTALLER_FILE);
+  }
+
+  public UUID reinstall(UUID customerUuid, UUID universeUuid, ReinstallNodeAgentForm payload) {
+    ReinstallNodeAgent.Params taskParams = new ReinstallNodeAgent.Params();
+    taskParams.setUniverseUUID(universeUuid);
+    taskParams.nodeNames = payload.nodeNames;
+    return commissioner.submit(TaskType.ReinstallNodeAgent, taskParams);
   }
 }

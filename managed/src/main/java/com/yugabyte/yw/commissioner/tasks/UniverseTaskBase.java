@@ -737,7 +737,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       log.warn("Unlock universe({}) called when it was not locked.", universeUUID);
       return null;
     }
-    final String err = error;
     // Create the update lambda.
     UniverseUpdater updater =
         universe -> {
@@ -1271,40 +1270,40 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public SubTaskGroup createInstallNodeAgentTasks(Collection<NodeDetails> nodes) {
+    return createInstallNodeAgentTasks(nodes, false);
+  }
+
+  public SubTaskGroup createInstallNodeAgentTasks(
+      Collection<NodeDetails> nodes, boolean reinstall) {
+    Map<UUID, Provider> nodeUuidProviderMap = new HashMap<>();
     SubTaskGroup subTaskGroup = createSubTaskGroup(InstallNodeAgent.class.getSimpleName());
-    NodeAgentClient nodeAgentClient = application.injector().instanceOf(NodeAgentClient.class);
     int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
     Universe universe = getUniverse();
-    for (NodeDetails node : nodes) {
-      if (node.cloudInfo == null) {
-        continue;
-      }
-      Cluster cluster = getUniverse().getCluster(node.placementUuid);
-      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-      if (nodeAgentClient.isClientEnabled(provider)) {
-        if (provider.getCloudCode() == CloudType.onprem) {
-          AccessKey accessKey =
-              AccessKey.getOrBadRequest(provider.getUuid(), cluster.userIntent.accessKeyCode);
-          if (accessKey.getKeyInfo().skipProvisioning) {
-            continue;
-          }
-        } else if (provider.getCloudCode() != CloudType.aws
-            && provider.getCloudCode() != CloudType.azu
-            && provider.getCloudCode() != CloudType.gcp) {
-          continue;
-        }
-        InstallNodeAgent.Params params = new InstallNodeAgent.Params();
-        params.nodeName = node.nodeName;
-        params.customerUuid = provider.getCustomerUUID();
-        params.azUuid = node.azUuid;
-        params.setUniverseUUID(universe.getUniverseUUID());
-        params.nodeAgentHome = NodeAgent.ROOT_NODE_AGENT_HOME;
-        params.nodeAgentPort = serverPort;
-        InstallNodeAgent task = createTask(InstallNodeAgent.class);
-        task.initialize(params);
-        subTaskGroup.addSubTask(task);
-      }
-    }
+    Customer customer = Customer.get(universe.getCustomerId());
+    filterNodesForInstallNodeAgent(universe, nodes)
+        .forEach(
+            n -> {
+              InstallNodeAgent.Params params = new InstallNodeAgent.Params();
+              Provider provider =
+                  nodeUuidProviderMap.computeIfAbsent(
+                      n.placementUuid,
+                      k -> {
+                        Cluster cluster = universe.getCluster(n.placementUuid);
+                        return Provider.getOrBadRequest(
+                            UUID.fromString(cluster.userIntent.provider));
+                      });
+              params.airgap = provider.getAirGapInstall();
+              params.nodeName = n.nodeName;
+              params.customerUuid = customer.getUuid();
+              params.azUuid = n.azUuid;
+              params.setUniverseUUID(universe.getUniverseUUID());
+              params.nodeAgentHome = NodeAgent.ROOT_NODE_AGENT_HOME;
+              params.nodeAgentPort = serverPort;
+              params.reinstall = reinstall;
+              InstallNodeAgent task = createTask(InstallNodeAgent.class);
+              task.initialize(params);
+              subTaskGroup.addSubTask(task);
+            });
     if (subTaskGroup.getSubTaskCount() > 0) {
       getRunnableTask().addSubTaskGroup(subTaskGroup);
     }

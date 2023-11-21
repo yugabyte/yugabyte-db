@@ -56,6 +56,8 @@ public class InstallNodeAgent extends AbstractTaskBase {
     public int nodeAgentPort = DEFAULT_NODE_AGENT_PORT;
     public String nodeAgentHome;
     public UUID customerUuid;
+    public boolean reinstall;
+    public boolean airgap;
   }
 
   @Override
@@ -96,7 +98,7 @@ public class InstallNodeAgent extends AbstractTaskBase {
     Optional<NodeAgent> optional = NodeAgent.maybeGetByIp(node.cloudInfo.private_ip);
     if (optional.isPresent()) {
       NodeAgent nodeAgent = optional.get();
-      if (nodeAgent.getState() == State.READY) {
+      if (!taskParams().reinstall && nodeAgent.getState() == State.READY) {
         return;
       }
       nodeAgentManager.purge(nodeAgent);
@@ -164,6 +166,9 @@ public class InstallNodeAgent extends AbstractTaskBase {
     sb.append(" --node_name ").append(node.getNodeName());
     sb.append(" --node_ip ").append(node.cloudInfo.private_ip);
     sb.append(" --node_port ").append(String.valueOf(taskParams().nodeAgentPort));
+    if (taskParams().airgap) {
+      sb.append(" --airgap");
+    }
     // Give executable permission to node-agent path.
     sb.append(" && chmod 755 /root ").append(taskParams().nodeAgentHome);
     // Remove the unused installer script.

@@ -88,7 +88,10 @@ public class CustomerTask extends Model {
     UniverseKey(true),
 
     @EnumValue("Master Key")
-    MasterKey(true);
+    MasterKey(true),
+
+    @EnumValue("Node Agent")
+    NodeAgent(false);
 
     private final boolean universeTarget;
 
@@ -321,7 +324,10 @@ public class CustomerTask extends Model {
     CreateImageBundle,
 
     @EnumValue("ReprovisionNode")
-    ReprovisionNode;
+    ReprovisionNode,
+
+    @EnumValue("Install")
+    Install;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -464,6 +470,8 @@ public class CustomerTask extends Model {
           return completed ? "Created" : "Creating";
         case ReprovisionNode:
           return completed ? "Reprovisioned" : "Reprovisioning";
+        case Install:
+          return completed ? "Installed" : "Installing";
         default:
           return null;
       }

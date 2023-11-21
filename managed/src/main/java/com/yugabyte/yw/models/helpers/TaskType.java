@@ -199,6 +199,8 @@ public enum TaskType {
 
   EditDrConfig(com.yugabyte.yw.commissioner.tasks.EditDrConfig.class),
 
+  ReinstallNodeAgent(com.yugabyte.yw.commissioner.tasks.ReinstallNodeAgent.class),
+
   // Tasks belonging to subtasks classpath
   AddAuthorizedKey(com.yugabyte.yw.commissioner.tasks.subtasks.AddAuthorizedKey.class),
 
