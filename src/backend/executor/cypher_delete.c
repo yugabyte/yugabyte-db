@@ -437,6 +437,8 @@ static void process_delete_list(CustomScanState *node)
         /*
          * Setup the scan description, with the correct snapshot and scan keys.
          */
+        estate->es_snapshot->curcid = GetCurrentCommandId(false);
+        estate->es_output_cid = GetCurrentCommandId(false);
         scan_desc = table_beginscan(resultRelInfo->ri_RelationDesc,
                                     estate->es_snapshot, 1, scan_keys);
 
@@ -501,6 +503,8 @@ static void check_for_connected_edges(CustomScanState *node)
 
         resultRelInfo = create_entity_result_rel_info(estate, graph_name,
                                                       label_name);
+        estate->es_snapshot->curcid = GetCurrentCommandId(false);
+        estate->es_output_cid = GetCurrentCommandId(false);
         scan_desc = table_beginscan(resultRelInfo->ri_RelationDesc,
                                     estate->es_snapshot, 0, NULL);
         slot = ExecInitExtraTupleSlot(

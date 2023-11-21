@@ -234,14 +234,17 @@ SELECT * FROM cypher('cypher_delete', $$CREATE (n:v)-[:e]->(:v)$$) AS (a agtype)
 (0 rows)
 
 SELECT * FROM cypher('cypher_delete', $$MATCH(n1)-[e]->() DELETE n1, e RETURN n1$$) AS (a agtype);
-ERROR:  Cannot delete a vertex that has edge(s). Delete the edge(s) first, or try DETACH DELETE.
+                                a                                
+-----------------------------------------------------------------
+ {"id": 844424930131990, "label": "v", "properties": {}}::vertex
+(1 row)
+
 --Cleanup
 SELECT * FROM cypher('cypher_delete', $$MATCH(n) DETACH DELETE n RETURN n$$) AS (a agtype);
                                 a                                
 -----------------------------------------------------------------
- {"id": 844424930131990, "label": "v", "properties": {}}::vertex
  {"id": 844424930131991, "label": "v", "properties": {}}::vertex
-(2 rows)
+(1 row)
 
 SELECT * FROM cypher('cypher_delete', $$MATCH(n) RETURN n$$) AS (a agtype);
  a 
@@ -753,6 +756,72 @@ drop cascades to table detach_delete.rel3
 drop cascades to table detach_delete.rel4
 drop cascades to table detach_delete.rel5
 NOTICE:  graph "detach_delete" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+--
+-- SET followed by DELETE
+--
+SELECT create_graph('setdelete');
+NOTICE:  graph "setdelete" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+-- MATCH (x) SET x DELETE x
+SELECT * FROM cypher('setdelete', $$ CREATE (:A), (:A), (:A) $$) as ("CREATE" agtype);
+ CREATE 
+--------
+(0 rows)
+
+SELECT * FROM cypher('setdelete', $$ MATCH (x:A) SET x.age = 24 DELETE x $$) as ("SET + DELETE" agtype);
+ SET + DELETE 
+--------------
+(0 rows)
+
+SELECT id as "expected: 0 rows" FROM setdelete._ag_label_vertex;
+ expected: 0 rows 
+------------------
+(0 rows)
+
+-- MATCH (n)-[e]->(m) SET e DETACH DELETE n
+SELECT * FROM cypher('setdelete', $$ CREATE (:n)-[:e]->(:m), (:n)-[:e]->(:m) $$) AS ("CREATE" agtype);
+ CREATE 
+--------
+(0 rows)
+
+SELECT * FROM cypher('setdelete', $$ MATCH (n)-[e]->(m) SET e.i = 1 DETACH DELETE n RETURN id(m) $$) AS ("SET + DETACH DELETE" agtype);
+ SET + DETACH DELETE 
+---------------------
+ 1688849860263937
+ 1688849860263938
+(2 rows)
+
+SELECT id as "expected: 2 rows (m vertices)" FROM setdelete._ag_label_vertex;
+ expected: 2 rows (m vertices) 
+-------------------------------
+ 1688849860263937
+ 1688849860263938
+(2 rows)
+
+SELECT id as "expected: 0 rows"              FROM setdelete._ag_label_edge;
+ expected: 0 rows 
+------------------
+(0 rows)
+
+-- clean up
+SELECT drop_graph('setdelete', true);
+NOTICE:  drop cascades to 6 other objects
+DETAIL:  drop cascades to table setdelete._ag_label_vertex
+drop cascades to table setdelete._ag_label_edge
+drop cascades to table setdelete."A"
+drop cascades to table setdelete.n
+drop cascades to table setdelete.e
+drop cascades to table setdelete.m
+NOTICE:  graph "setdelete" has been dropped
  drop_graph 
 ------------
  

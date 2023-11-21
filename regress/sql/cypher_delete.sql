@@ -284,6 +284,25 @@ SELECT * FROM cypher('detach_delete', $$ MATCH ()-[e]->() RETURN e.name $$) as (
 SELECT drop_graph('detach_delete', true);
 
 --
+-- SET followed by DELETE
+--
+SELECT create_graph('setdelete');
+
+-- MATCH (x) SET x DELETE x
+SELECT * FROM cypher('setdelete', $$ CREATE (:A), (:A), (:A) $$) as ("CREATE" agtype);
+SELECT * FROM cypher('setdelete', $$ MATCH (x:A) SET x.age = 24 DELETE x $$) as ("SET + DELETE" agtype);
+SELECT id as "expected: 0 rows" FROM setdelete._ag_label_vertex;
+
+-- MATCH (n)-[e]->(m) SET e DETACH DELETE n
+SELECT * FROM cypher('setdelete', $$ CREATE (:n)-[:e]->(:m), (:n)-[:e]->(:m) $$) AS ("CREATE" agtype);
+SELECT * FROM cypher('setdelete', $$ MATCH (n)-[e]->(m) SET e.i = 1 DETACH DELETE n RETURN id(m) $$) AS ("SET + DETACH DELETE" agtype);
+SELECT id as "expected: 2 rows (m vertices)" FROM setdelete._ag_label_vertex;
+SELECT id as "expected: 0 rows"              FROM setdelete._ag_label_edge;
+
+-- clean up
+SELECT drop_graph('setdelete', true);
+
+--
 -- Clean up
 --
 DROP FUNCTION delete_test;
