@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-When you deploy a universe, you set up the database admin credentials, which you use to access the YugabyteDB database installed on your cluster. Use this account to:
+When you deploy a universe, you set up the database admin credentials, which you use to access the YugabyteDB database installed on your universe. Use this account to:
 
 - add more database users
 - assign privileges to users
@@ -21,11 +21,13 @@ YugabyteDB uses [role-based access control](../../../secure/authorization/) (RBA
 
 For information on managing your YugabyteDB Anywhere instance users, refer to [Manage account users](../../administer-yugabyte-platform/rbac-platform/).
 
+## Default roles and users
+
 The YugabyteDB database on your universe includes a set of default users and roles in YSQL and YCQL.
 
-## YSQL default roles and users
+### YSQL default roles and users
 
-To view the roles in your universe, enter the following command:
+To view the YSQL roles in your universe, enter the following command:
 
 ```sql
 yugabyte=> \du
@@ -42,21 +44,13 @@ yugabyte=> \du
  yugabyte     | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
 ```
 
-The following table describes the default YSQL roles and users in YugabyteDB Managed clusters.
-
-<!-- Portions of this table are also under RBAC in core docs -->
-
-| Role | Description |
-| --- | --- |
-| yugabyte | The default user for your database. This user is a superuser. |
-| postgres | Superuser role created during database creation. |
-
 ## YCQL default roles and users
 
 In YCQL, there is a single superuser called `cassandra` used during database creation. The default user (by default, `admin`) added when you created the universe has superuser privileges in YCQL. As a superuser, you can delete the `cassandra` user if you choose to.
 
 ## Learn more
 
+- [Role-based access overview](../../../secure/authorization/rbac-model/)
 - [Manage Users and Roles in YugabyteDB](../../../secure/authorization/create-roles/)
 - [Role-based access control](../../../secure/authorization/)
 - [PostgreSQL extensions](../../../explore/ysql-language-features/pg-extensions/)

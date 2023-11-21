@@ -33,10 +33,22 @@ type: indexpage
     <a class="section-link icon-offset" href="ldap-authentication/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
-        <div class="title">Configure authentication</div>
+        <div class="title">Configure YugabyteDB Anywhere authentication</div>
       </div>
       <div class="body">
        Configure LDAP or OIDC authentication for YugabyteDB Anywhere login.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="anywhere-rbac/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/secure/rbac-model.png" aria-hidden="true" />
+        <div class="title">Manage YugabyteDB Anywhere users and roles</div>
+      </div>
+      <div class="body">
+       Use role-based access control to manage YugabyteDB Anywhere users and roles.
       </div>
     </a>
   </div>

@@ -3,10 +3,11 @@ title: Manage access to YugabyteDB Anywhere
 headerTitle: Manage YugabyteDB Anywhere users
 linkTitle: Manage users
 description: Use role-based access control (RBAC) in YugabyteDB Anywhere to manage users and roles.
+headcontent: Use role-based access control to manage users and roles.
 menu:
   preview_yugabyte-platform:
     parent: administer-yugabyte-platform
-    identifier: rbac-platform
+    identifier: anywhere-rbac
     weight: 27
 type: docs
 ---
@@ -21,17 +22,19 @@ Users are assigned roles, which determine what they actions they can perform.
 
 ### Create, modify, and delete users
 
-As a Super Admin or Admin, you can invite new users and manage existing users for your tenant.
+As a Super Admin or Admin, you can invite new users and manage existing users for your YugabyteDB Anywhere instance.
 
-You can invite new users to your tenant as follows:
+You can invite new users as follows:
 
-* Navigate to **Admin > User Management > Users**, and click **Add User**.
+1. Navigate to **Admin > User Management > Users**, and click **Add User**.
 
-* Complete the fields of the **Add User** dialog shown in the following illustration, and then click **Submit**:
+1. Complete the fields of the **Add User** dialog shown in the following illustration:
 
-  ![Add User](/images/yp/authorization-platform/add-user.png)
+    ![Add User](/images/yp/authorization-platform/add-user.png)
 
-To modify a user role or delete the user, navigate to **Admin > User Management > Users**. Click **Actions** that corresponds to the specific user, and then select either **Edit User Role** or **Delete User**.
+1. Click **Submit**.
+
+To modify a user role or delete the user, navigate to **Admin > User Management > Users**. Click **Actions** that corresponds to the specific user, and then choose either **Edit User Role** or **Delete User**.
 
 ## Roles
 
@@ -43,7 +46,7 @@ YugabyteDB Anywhere includes built-in roles, and you can define custom roles for
 
 The following built-in roles are available:
 
-* **Super Admin** is the first user that is created during the tenant registration. This role has the highest level of privilege that allows all read and write actions on all YugabyteDB Anywhere resources. There can be only one Super Admin in a tenant. This Super Admin can perform the following:
+* **Super Admin** is the first user that is created during the installation. This role has the highest level of privilege that allows all read and write actions on all YugabyteDB Anywhere resources. There can be only one Super Admin. This Super Admin can perform the following:
 
   * Manage all resources, including universes, nodes, backup, restore, and cloud providers.
   * Manage the user access control by creating and managing users.
@@ -64,7 +67,7 @@ The following built-in roles are available:
 
 ### Create, modify, and delete roles
 
-As a Super Admin or Admin, you can create and modify the roles for your tenant.
+As a Super Admin or Admin, you can create and modify roles.
 
 To create a custom role, do the following:
 

@@ -31,7 +31,7 @@ Roles can be assigned to grant users only the essential privileges based on the 
 
 For information on how to manage YugabyteDB Anywhere users and roles, see [Manage YugabyteDB Anywhere users](../../administer-yugabyte-platform/rbac-platform/).
 
-For information on how to manage roles and users in YugabyteDB universes, see [Database authorization](../authorization-platform).
+For information on how to manage database roles and users, see [Database authorization](../authorization-platform).
 
 ## Authentication
 
