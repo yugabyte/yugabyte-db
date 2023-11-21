@@ -320,8 +320,7 @@ Status SysCatalogTable::Load(FsManager* fs_manager) {
     }
   }
 
-  RETURN_NOT_OK(SetupTablet(metadata));
-  return Status::OK();
+  return SetupTablet(metadata);
 }
 
 Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
@@ -556,10 +555,7 @@ void SysCatalogTable::SetupTabletPeer(const scoped_refptr<tablet::RaftGroupMetad
 
 Status SysCatalogTable::SetupTablet(const scoped_refptr<tablet::RaftGroupMetadata>& metadata) {
   SetupTabletPeer(metadata);
-
-  RETURN_NOT_OK(OpenTablet(metadata));
-
-  return Status::OK();
+  return OpenTablet(metadata);
 }
 
 Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata>& metadata) {
@@ -653,9 +649,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
   if (!tablet->schema()->Equals(doc_read_context_->schema)) {
     return STATUS(Corruption, "Unexpected schema", tablet->schema()->ToString());
   }
-  RETURN_NOT_OK(mem_manager_->Init());
-
-  return Status::OK();
+  return mem_manager_->Init();
 }
 
 std::string SysCatalogTable::LogPrefix() const {

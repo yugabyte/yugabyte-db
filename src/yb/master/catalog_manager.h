@@ -2002,6 +2002,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   void StartPostLoadTasks(const SysCatalogLoadingState& state);
 
+  Status MaybeRestoreInitialSysCatalogSnapshotAndReloadSysCatalog(
+      int64_t term, SysCatalogLoadingState* state) REQUIRES(mutex_);
+
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
 
