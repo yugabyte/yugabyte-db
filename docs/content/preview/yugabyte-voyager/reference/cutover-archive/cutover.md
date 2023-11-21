@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-This page describes the following cutover commands:
+The following page describes the following cutover commands:
 
 - [cutover initiate](#cutover-initiate)
 - [cutover status](#cutover-status)
@@ -34,6 +34,7 @@ The valid *arguments* for cutover initiate are described in the following table:
 | :------- | :------------------------ |
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help for cutover initiate. |
+| --prepare-for-fall-back | Prepare for fall-back by streaming changes from the target yugabyteDB database to the source database. <br>Default false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 
 #### Example
 

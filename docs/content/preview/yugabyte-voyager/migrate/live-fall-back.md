@@ -57,9 +57,74 @@ Create a new database user, and assign the necessary user permissions.
 <div class="tab-content">
   <div id="standalone-oracle" class="tab-pane fade show active" role="tabpanel" aria-labelledby="standalone-oracle-tab">
   {{% includeMarkdown "./standalone-oracle.md" %}}
+1. Create a writer role for the source schema for Voyager to be able to write the changes from the target YugabyteDB database to the source database (in case of a fall-back):
+
+   ```sql
+   CREATE ROLE <SCHEMA_NAME>_writer_role;
+
+   BEGIN
+       FOR R IN (SELECT owner, object_name FROM all_objects WHERE owner=UPPER('<SCHEMA_NAME>') and object_type ='TABLE' MINUS SELECT owner, table_name from all_nested_tables where owner = UPPER('<SCHEMA_NAME>'))
+       LOOP
+          EXECUTE IMMEDIATE 'GRANT SELECT, INSERT, UPDATE, DELETE, ALTER on '||R.owner||'."'||R.object_name||'" to  <SCHEMA_NAME>_writer_role';
+       END LOOP;
+   END;
+   /
+
+   DECLARE
+      v_sql VARCHAR2(4000);
+   BEGIN
+      FOR table_rec IN (SELECT table_name FROM all_tables WHERE owner = 'YBVOYAGER_METADATA') LOOP
+         v_sql := 'GRANT ALL PRIVILEGES ON YBVOYAGER_METADATA.' || table_rec.table_name || ' TO <SCHEMA_NAME>_writer_role';
+         EXECUTE IMMEDIATE v_sql;
+      END LOOP;
+   END;
+   /
+
+   GRANT CREATE ANY SEQUENCE, SELECT ANY SEQUENCE, ALTER ANY SEQUENCE TO <SCHEMA_NAME>_writer_role;
+   ```
+
+1. Assign the writer role to the source database user as follows:
+
+   ```sql
+   GRANT <SCHEMA_NAME>_writer_role TO c##ybvoyager;
+   ```
+
   </div>
     <div id="rds-oracle" class="tab-pane fade" role="tabpanel" aria-labelledby="rds-oracle-tab">
   {{% includeMarkdown "./rds-oracle.md" %}}
+
+1. Create a writer role for the source schema for Voyager to be able to write the changes from the target YugabyteDB database to the source database (in case of a fall-back):
+
+   ```sql
+   CREATE ROLE <SCHEMA_NAME>_writer_role;
+
+   BEGIN
+       FOR R IN (SELECT owner, object_name FROM all_objects WHERE owner=UPPER('<SCHEMA_NAME>') and object_type ='TABLE' MINUS SELECT owner, table_name from all_nested_tables where owner = UPPER('<SCHEMA_NAME>'))
+       LOOP
+          EXECUTE IMMEDIATE 'GRANT SELECT, INSERT, UPDATE, DELETE, ALTER on '||R.owner||'."'||R.object_name||'" to  <SCHEMA_NAME>_writer_role';
+       END LOOP;
+   END;
+   /
+
+   DECLARE
+      v_sql VARCHAR2(4000);
+   BEGIN
+      FOR table_rec IN (SELECT table_name FROM all_tables WHERE owner = 'YBVOYAGER_METADATA') LOOP
+         v_sql := 'GRANT ALL PRIVILEGES ON YBVOYAGER_METADATA.' || table_rec.table_name || ' TO <SCHEMA_NAME>_writer_role';
+         EXECUTE IMMEDIATE v_sql;
+      END LOOP;
+   END;
+   /
+
+   GRANT CREATE ANY SEQUENCE, SELECT ANY SEQUENCE, ALTER ANY SEQUENCE TO <SCHEMA_NAME>_writer_role;
+   ```
+
+1. Assign the writer role to the source database user as follows:
+
+   ```sql
+   GRANT <SCHEMA_NAME>_writer_role TO ybvoyager;
+   ```
+
   </div>
 </div>
 
@@ -335,6 +400,8 @@ If the `yb-voyager import data` command terminates before completing the data in
 
 Run the `yb-voyager import data status --export-dir <EXPORT_DIR>` command to get an overall progress of the data import operation.
 
+Refer to [import data status](../../reference/data-migration/import-data/#import-data-status) for details about the arguments.
+
 ### Archive changes (Optional)
 
 As the migration continuously exports changes on the source database to the `EXPORT-DIR`, the disk utilization continues to grow indefinitely over time. To limit usage of all the disk space, optionally, you can use the `archive changes` command as follows:
@@ -393,8 +460,31 @@ Perform the following steps as part of the cutover process:
 
 1. Verify your migration. After the schema and data import is complete, the automated part of the database migration process is considered complete. You should manually run validation queries on both the source and target database to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count of each table.
 
-1. Disable indexes/triggers and foreign-key/check constraints on the source database to ensure that changes from the target YugabyteDB database can be imported correctly
-to the source database.
+1. Disable indexes/triggers and foreign-key/check constraints on the source database to ensure that changes from the target YugabyteDB database can be imported correctly to the source database using the following PLSQL commands on the source schema as a privileged user:
+
+    ```sql
+    --disable triggers
+
+    BEGIN
+        FOR R IN (SELECT owner, object_name FROM all_objects WHERE owner=UPPER('<SCHEMA_NAME>') and object_type ='TABLE' MINUS SELECT owner, table_name from all_nested_tables where owner = UPPER('<SCHEMA_NAME>'))
+        LOOP
+           EXECUTE IMMEDIATE 'ALTER TABLE '||R.owner||'."'||R.object_name||'" DISABLE ALL TRIGGERS';
+        END LOOP;
+    END;
+    /
+
+    --disable referential constraints
+
+    BEGIN
+      FOR c IN (SELECT table_name, constraint_name
+                FROM user_constraints
+                WHERE constraint_type IN ('R') AND OWNER = '<SCHEMA_NAME>')
+      LOOP
+        EXECUTE IMMEDIATE 'ALTER TABLE ' || c.table_name || ' DISABLE CONSTRAINT ' || c.constraint_name;
+      END LOOP;
+    END;
+    /
+    ```
 
 ### Switchover to the source database (Optional)
 

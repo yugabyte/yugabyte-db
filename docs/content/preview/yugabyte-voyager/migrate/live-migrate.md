@@ -360,6 +360,8 @@ If the `yb-voyager import data` command terminates before completing the data in
 
 Run the `yb-voyager import data status --export-dir <EXPORT_DIR>` command to get an overall progress of the data import operation.
 
+Refer to [import data status](../../reference/data-migration/import-data/#import-data-status) for details about the arguments.
+
 ### Archive changes (Optional)
 
 As the migration continuously exports changes on the source database to the `EXPORT-DIR`, disk use continues to grow. To prevent the disk from filling up, you can optionally use the `archive changes` command as follows:

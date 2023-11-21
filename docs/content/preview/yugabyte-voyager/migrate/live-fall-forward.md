@@ -370,9 +370,15 @@ Additionally, the CDC phase is restartable. So, if yb-voyager terminates when da
 - For Oracle where sequences are not attached to a column, resume value generation is unsupported.
 - `--parallel-jobs` argument (specifies the number of tables to be exported in parallel from the source database at a time) has no effect on live migration.
 
-Refer to [export data](../../reference/data-migration/export-data/) for details about the arguments, and [export data status](../../reference/data-migration/export-data/#export-data-status) to track the status of an export operation.
+Refer to [export data](../../reference/data-migration/export-data/) for details about the arguments of an export operation.
 
 The options passed to the command are similar to the [`yb-voyager export schema`](#export-schema) command. To export only a subset of the tables, pass a comma-separated list of table names in the `--table-list` argument.
+
+#### Export data status
+
+Run the `yb-voyager export data status --export-dir <EXPORT_DIR>` command to get an overall progress of the export data operation.
+
+Refer to [export data status](../../reference/data-migration/export-data/#export-data-status) for details about the arguments.
 
 ### Import data
 
@@ -427,6 +433,8 @@ If the `yb-voyager import data` command terminates before completing the data in
 #### Import data status
 
 Run the `yb-voyager import data status --export-dir <EXPORT_DIR>` command to get an overall progress of the data import operation.
+
+Refer to [import data status](../../reference/data-migration/import-data/#import-data-status) for details about the arguments.
 
 ### Fall-forward setup
 

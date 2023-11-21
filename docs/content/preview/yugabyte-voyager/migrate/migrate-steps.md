@@ -331,6 +331,8 @@ If the `yb-voyager import data` command terminates before completing the data in
 
 Run the `yb-voyager import data status --export-dir <EXPORT_DIR>` command to get an overall progress of the data import operation.
 
+Refer to [import data status](../../reference/data-migration/import-data/#import-data-status) for details about the arguments.
+
 ### Import indexes and triggers
 
 Import indexes and triggers using the `import schema` command with an additional `--post-import-data` flag as follows:
