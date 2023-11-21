@@ -66,6 +66,7 @@ The list of commands for various phases of migration are as follows:
 - [Cutover initiate](../../reference/cutover-archive/cutover/#cutover-initiate)
 - [Cutover status](../../reference/cutover-archive/cutover/#cutover-status)
 - [Archive changes](../../reference/cutover-archive/archive-changes)
+- [End migration](../../reference/end-migration)
 
 ## SSL Connectivity
 

@@ -14,7 +14,7 @@ menu:
 type: docs
 ---
 
-This page describes the steps to perform and verify a successful offline migration to YugabyteDB.
+The following page describes the steps to perform and verify a successful offline migration to YugabyteDB.
 
 ## Migration workflow
 
@@ -331,6 +331,8 @@ If the `yb-voyager import data` command terminates before completing the data in
 
 Run the `yb-voyager import data status --export-dir <EXPORT_DIR>` command to get an overall progress of the data import operation.
 
+Refer to [import data status](../../reference/data-migration/import-data/#import-data-status) for details about the arguments.
+
 ### Import indexes and triggers
 
 Import indexes and triggers using the `import schema` command with an additional `--post-import-data` flag as follows:
@@ -344,7 +346,7 @@ yb-voyager import schema --export-dir <EXPORT_DIR> \
         --target-db-name <TARGET_DB_NAME> \
         --target-db-user <TARGET_DB_USER> \
         --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
-        --post-import-data
+        --post-import-data true
 ```
 
 Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
@@ -366,3 +368,21 @@ In this scenario, [import data status](#import-data-status) command reports inco
 For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/yb-voyager/issues/360).
 
 {{< /warning >}}
+
+### End migration
+
+To end the migration, you need to clean up the export directory (export-dir), and Voyager state ( Voyager-related metadata) stored in the target database.
+
+Run the `yb-voyager end migration` command to perform the clean up, and to back up the schema, data, migration reports, and log files by providing the backup related flags (mandatory) as follows:
+
+```sh
+yb-voyager end migration --export-dir <EXPORT_DIR>
+        --backup-log-files <true, false, yes, no, 1, 0>
+        --backup-data-files <true, false, yes, no, 1, 0>
+        --backup-schema-files <true, false, yes, no, 1, 0>
+        --save-migration-reports <true, false, yes, no, 1, 0>
+```
+
+Note that after you end the migration, you will _not_ be able to continue further. If you want to back up the schema, data, log files, and the migration reports (`analyze-schema` report, `export data status` output, or `import data status` output) for future reference, the command provides an additional argument `--backup-dir`, using which you can pass the path of the directory where the backup content needs to be saved (based on what you choose to back up).
+
+Refer to [end migration](../../reference/end-migration/) for more details on the arguments.
