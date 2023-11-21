@@ -66,6 +66,8 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/tools/yb-admin_client.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
@@ -177,6 +179,15 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   };
 
   Result<string> GetUniverseId(Cluster* cluster);
+
+  std::unique_ptr<tools::ClusterAdminClient> yb_admin_client_;
+
+  void StartYbAdminClient() {
+    const auto addrs = AsString(test_cluster()->mini_master(0)->bound_rpc_addr());
+    yb_admin_client_ = std::make_unique<tools::ClusterAdminClient>(
+        addrs, MonoDelta::FromSeconds(30) /* timeout */);
+    ASSERT_OK(yb_admin_client_->Init());
+  }
 
   void VerifyCdcStateMatches(
       client::YBClient* client, const xrepl::StreamId& stream_id, const TabletId& tablet_id,
@@ -463,6 +474,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Result<GetCDCDBStreamInfoResponsePB> GetDBStreamInfo(const xrepl::StreamId db_stream_id);
 
   Status ChangeLeaderOfTablet(size_t new_leader_index, const TabletId tablet_id);
+
+  Status StepDownLeader(size_t new_leader_index, const TabletId tablet_id);
 
   Status CreateSnapshot(const NamespaceName& ns);
 
