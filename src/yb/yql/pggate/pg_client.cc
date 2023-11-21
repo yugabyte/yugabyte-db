@@ -86,7 +86,6 @@ struct PerformData {
                      responses.size(), operations.size()));
     uint32_t i = 0;
     for (auto& op_response : responses) {
-      // TODO(LW_PERFORM)
       auto& arena = operations[i]->arena();
       if (&arena != &operations.front()->arena()) {
         operations[i]->set_response(arena.NewObject<LWPgsqlResponsePB>(&arena, op_response));
@@ -442,29 +441,48 @@ class PgClient::Impl {
     PrepareOperations(&req, operations);
 
     if (exchange_ && exchange_->ReadyToSend()) {
-      PerformData data(&arena, std::move(*operations), callback);
-      ProcessPerformResponse(&data, ExecutePerform(&data, req));
-    } else {
-      auto data = std::make_shared<PerformData>(&arena, std::move(*operations), callback);
-      data->controller.set_invoke_callback_mode(rpc::InvokeCallbackMode::kReactorThread);
-
-      proxy_->PerformAsync(req, &data->resp, SetupController(&data->controller), [data] {
-        ProcessPerformResponse(data.get(), data->controller.CheckedResponse());
-      });
+      auto out = exchange_->Obtain(req.SerializedSize());
+      if (out) {
+        PerformData data(&arena, std::move(*operations), callback);
+        ProcessPerformResponse(&data, ExecutePerform(&data, req, out));
+        return;
+      }
     }
+    auto data = std::make_shared<PerformData>(&arena, std::move(*operations), callback);
+    data->controller.set_invoke_callback_mode(rpc::InvokeCallbackMode::kReactorThread);
+
+    proxy_->PerformAsync(req, &data->resp, SetupController(&data->controller), [data] {
+      ProcessPerformResponse(data.get(), data->controller.CheckedResponse());
+    });
   }
 
   Result<rpc::CallResponsePtr> ExecutePerform(
-      PerformData* data, const tserver::LWPgPerformRequestPB& req) {
+      PerformData* data, const tserver::LWPgPerformRequestPB& req, std::byte* out) {
     auto size = req.SerializedSize();
-    auto* out = exchange_->Obtain(size);
     auto* end = pointer_cast<std::byte*>(req.SerializeToArray(pointer_cast<uint8_t*>(out)));
-    CHECK_EQ(end - out, size);
+    SCHECK_EQ(end - out, size, InternalError, "Obtained size does not match serialized size");
 
     auto res = VERIFY_RESULT(exchange_->SendRequest(CoarseMonoClock::now() + timeout_));
 
-    rpc::CallData call_data(res.size());
-    res.CopyTo(call_data.data());
+    rpc::CallData call_data;
+    if (res.data()) {
+      call_data = rpc::CallData(res.size());
+      res.CopyTo(call_data.data());
+    } else {
+      // If data is NULL we should fetch it using RPC. Because it was too big for shared memory.
+      ThreadSafeArena arena;
+      tserver::LWPgFetchDataRequestPB fetch_req(&arena);
+      fetch_req.set_session_id(session_id_);
+      DCHECK(res.size() & tserver::kTooBigResponseMask);
+      fetch_req.set_data_id(res.size() ^ tserver::kTooBigResponseMask);
+      tserver::LWPgFetchDataResponsePB fetch_resp(&arena);
+      rpc::RpcController controller;
+      RETURN_NOT_OK(proxy_->FetchData(fetch_req, &fetch_resp, SetupController(&controller)));
+      RETURN_NOT_OK(ResponseStatus(fetch_resp));
+      auto sidecar = VERIFY_RESULT(controller.ExtractSidecar(fetch_resp.sidecar()));
+      call_data = rpc::CallData(std::move(sidecar));
+    }
+
     auto response = std::make_shared<rpc::CallResponse>();
     RETURN_NOT_OK(response->ParseFrom(&call_data));
     RETURN_NOT_OK(data->resp.ParseFromSlice(response->serialized_response()));

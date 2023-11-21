@@ -15,6 +15,8 @@
 
 #include <string>
 
+#include <boost/interprocess/mapped_region.hpp>
+
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_bool(pg_client_use_shared_memory);
@@ -68,6 +70,17 @@ TEST_F(PgSharedMemTest, TimeOut) {
       ASSERT_OK(conn.CommitTransaction());
     }
   }
+}
+
+TEST_F(PgSharedMemTest, BigData) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto value = RandomHumanReadableString(boost::interprocess::mapped_region::get_page_size());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT)"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t (key, value) VALUES (1, '$0')", value));
+
+  auto result = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
+  ASSERT_EQ(result, value);
 }
 
 } // namespace yb::pgwrapper

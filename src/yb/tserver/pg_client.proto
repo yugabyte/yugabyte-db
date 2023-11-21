@@ -99,6 +99,10 @@ service PgClientService {
   // DEPRECATED
   rpc SetActiveSubTransaction(PgSetActiveSubTransactionRequestPB)
       returns (PgSetActiveSubTransactionResponsePB);
+
+  rpc FetchData(PgFetchDataRequestPB) returns (PgFetchDataResponsePB) {
+    option (yb.rpc.lightweight_method).sides = PROXY;
+  };
 }
 
 message PgHeartbeatRequestPB {
@@ -797,4 +801,14 @@ message PgGetNewObjectIdRequestPB {
 message PgGetNewObjectIdResponsePB {
   AppStatusPB status = 1;
   uint32 new_oid = 2;
+}
+
+message PgFetchDataRequestPB {
+  uint64 session_id = 1;
+  uint64 data_id = 2;
+}
+
+message PgFetchDataResponsePB {
+  AppStatusPB status = 1;
+  uint32 sidecar = 2;
 }
