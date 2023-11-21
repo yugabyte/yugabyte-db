@@ -42,6 +42,7 @@ static const uint32_t kTemplate1Oid = 1;              // Hardcoded for template1
 
 extern const TableId kPgProcTableId;
 extern const TableId kPgYbCatalogVersionTableId;
+extern const TableId kPgYbCatalogVersionTableIdPg11;
 extern const TableId kPgTablespaceTableId;
 extern const TableId kPgSequencesDataTableId;
 extern const std::string kPgSequencesDataNamespaceId;
@@ -69,5 +70,8 @@ Result<uint32_t> GetPgsqlTablegroupOidByTableId(const TableId& table_id);
 Result<uint32_t> GetPgsqlDatabaseOidByTableId(const TableId& table_id);
 Result<uint32_t> GetPgsqlDatabaseOidByTablegroupId(const TablegroupId& tablegroup_id);
 Result<uint32_t> GetPgsqlTablespaceOid(const TablespaceId& tablespace_id);
+
+// Called with any table UUID, is it a PG15 catalog ID? All other cases return false.
+bool IsPg15CatalogId(const std::string& id);
 
 }  // namespace yb

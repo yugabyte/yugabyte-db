@@ -20,12 +20,19 @@
 #include "yb/gutil/strings/escaping.h"
 #include "yb/util/cast.h"
 #include "yb/util/result.h"
+#include "yb/util/strongly_typed_bool.h"
 
 using std::string;
 
 using boost::uuids::uuid;
 
 namespace yb {
+
+namespace {
+
+TableId GetPgsqlTableIdPg11(const uint32_t database_oid, const uint32_t table_oid);
+
+}  // namespace
 
 static constexpr int kUuidVersion = 3; // Repurpose old name-based UUID v3 to embed Postgres oids.
 
@@ -41,6 +48,8 @@ const uint32_t kPgTablespaceTableOid = 1213;
 const TableId kPgProcTableId = GetPgsqlTableId(kTemplate1Oid, kPgProcTableOid);
 const TableId kPgYbCatalogVersionTableId =
     GetPgsqlTableId(kTemplate1Oid, kPgYbCatalogVersionTableOid);
+const TableId kPgYbCatalogVersionTableIdPg11 =
+    GetPgsqlTableIdPg11(kTemplate1Oid, kPgYbCatalogVersionTableOid);
 const TableId kPgTablespaceTableId =
     GetPgsqlTableId(kTemplate1Oid, kPgTablespaceTableOid);
 const TableId kPgSequencesDataTableId =
@@ -54,14 +63,24 @@ const string kPgSequencesDataNamespaceId =
 
 namespace {
 
+YB_STRONGLY_TYPED_BOOL(IsPg15);
+
 // Layout of Postgres database and table 4-byte oids in a YugaByte 16-byte table UUID:
 //
 // +-----------------------------------------------------------------------------------------------+
 // |  0  |  1  |  2  |  3  |  4  |  5  |  6  |  7  |  8  |  9  |  10 |  11 |  12 |  13 |  14 |  15 |
 // +-----------------------------------------------------------------------------------------------+
-// |        database       |           | vsn |     | var |     |           |        table          |
+// |        database       |           | vsn |     | var | pgv |           |        table          |
 // |          oid          |           |     |     |     |     |           |         oid           |
 // +-----------------------------------------------------------------------------------------------+
+//
+// vsn = UUID version
+// var = UUID variant
+//
+// pgv = for PG catalog tables only, the PG version for the table.
+// 0 = PG11
+// 1 = PG15
+// Must be set to 0 for all user tables.
 
 void UuidSetDatabaseId(const uint32_t database_oid, uuid* id) {
   id->data[0] = database_oid >> 24 & 0xFF;
@@ -90,6 +109,24 @@ std::string UuidToString(uuid* id) {
   return b2a_hex(to_char_ptr(id->data), sizeof(id->data));
 }
 
+TableId GetPgsqlTableIdInternal(
+    const uint32_t database_oid, const uint32_t table_oid, IsPg15 is_pg15) {
+  uuid id = boost::uuids::nil_uuid();
+  UuidSetDatabaseId(database_oid, &id);
+
+  if (table_oid < kPgFirstNormalObjectId && is_pg15) {
+    // "pgv" in the above diagram
+    id.data[9] = 1;
+  }
+
+  UuidSetTableIds(table_oid, &id);
+  return UuidToString(&id);
+}
+
+TableId GetPgsqlTableIdPg11(const uint32_t database_oid, const uint32_t table_oid) {
+  return GetPgsqlTableIdInternal(database_oid, table_oid, IsPg15::kFalse);
+}
+
 } // namespace
 
 NamespaceId GetPgsqlNamespaceId(const uint32_t database_oid) {
@@ -99,10 +136,7 @@ NamespaceId GetPgsqlNamespaceId(const uint32_t database_oid) {
 }
 
 TableId GetPgsqlTableId(const uint32_t database_oid, const uint32_t table_oid) {
-  uuid id = boost::uuids::nil_uuid();
-  UuidSetDatabaseId(database_oid, &id);
-  UuidSetTableIds(table_oid, &id);
-  return UuidToString(&id);
+  return GetPgsqlTableIdInternal(database_oid, table_oid, IsPg15::kTrue);
 }
 
 TablegroupId GetPgsqlTablegroupId(const uint32_t database_oid, const uint32_t tablegroup_oid) {
@@ -182,6 +216,14 @@ Result<uint32_t> GetPgsqlDatabaseOidByTablegroupId(const TablegroupId& tablegrou
 
 Result<uint32_t> GetPgsqlTablespaceOid(const TablespaceId& tablespace_id) {
   return GetPgsqlOid(tablespace_id, 0, "tablespace id");
+}
+
+bool IsPg15CatalogId(const std::string& hex_id) {
+  if (!IsPgsqlId(hex_id)) {
+    return false;
+  }
+  std::string id = a2b_hex(hex_id);
+  return id[9] == 1;
 }
 
 namespace xrepl {
