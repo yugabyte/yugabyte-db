@@ -908,71 +908,70 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     UUID placementUuid = cluster.uuid;
     Map<String, Object> gflagOverrides = new HashMap<>();
     // Go over master flags.
-    Map<String, Object> masterOverrides =
+    Map<String, Object> masterGFlags =
         new HashMap<>(
             GFlagsUtil.getBaseGFlags(ServerType.MASTER, cluster, taskUniverseDetails.clusters));
-    if (placementCloud != null && masterOverrides.get("placement_cloud") == null) {
-      masterOverrides.put("placement_cloud", placementCloud);
+    if (placementCloud != null && masterGFlags.get("placement_cloud") == null) {
+      masterGFlags.put("placement_cloud", placementCloud);
     }
-    if (placementRegion != null && masterOverrides.get("placement_region") == null) {
-      masterOverrides.put("placement_region", placementRegion);
+    if (placementRegion != null && masterGFlags.get("placement_region") == null) {
+      masterGFlags.put("placement_region", placementRegion);
     }
-    if (placementZone != null && masterOverrides.get("placement_zone") == null) {
-      masterOverrides.put("placement_zone", placementZone);
+    if (placementZone != null && masterGFlags.get("placement_zone") == null) {
+      masterGFlags.put("placement_zone", placementZone);
     }
-    if (placementUuid != null && masterOverrides.get("placement_uuid") == null) {
-      masterOverrides.put("placement_uuid", placementUuid.toString());
+    if (placementUuid != null && masterGFlags.get("placement_uuid") == null) {
+      masterGFlags.put("placement_uuid", placementUuid.toString());
     }
     if (taskUniverseDetails.xClusterInfo.isSourceRootCertDirPathGflagConfigured()) {
-      masterOverrides.put(
+      masterGFlags.put(
           XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG,
           taskUniverseDetails.xClusterInfo.sourceRootCertDirPath);
     }
-    if (!masterOverrides.isEmpty()) {
-      gflagOverrides.put("master", masterOverrides);
+    if (!masterGFlags.isEmpty()) {
+      gflagOverrides.put("master", masterGFlags);
     }
 
     // Go over tserver flags.
-    Map<String, String> tserverOverrides =
+    Map<String, String> tserverGFlags =
         GFlagsUtil.getBaseGFlags(ServerType.TSERVER, cluster, taskUniverseDetails.clusters);
     if (!primaryClusterIntent
         .enableYSQL) { // In the UI, we can choose not to show these entries for read replica.
-      tserverOverrides.put("enable_ysql", "false");
+      tserverGFlags.put("enable_ysql", "false");
     }
     if (!primaryClusterIntent.enableYCQL) {
-      tserverOverrides.put("start_cql_proxy", "false");
+      tserverGFlags.put("start_cql_proxy", "false");
     }
-    tserverOverrides.put("start_redis_proxy", String.valueOf(primaryClusterIntent.enableYEDIS));
+    tserverGFlags.put("start_redis_proxy", String.valueOf(primaryClusterIntent.enableYEDIS));
     if (primaryClusterIntent.enableYSQL && primaryClusterIntent.enableYSQLAuth) {
-      tserverOverrides.put("ysql_enable_auth", "true");
+      tserverGFlags.put("ysql_enable_auth", "true");
       Map<String, String> DEFAULT_YSQL_HBA_CONF_MAP =
           Collections.singletonMap(GFlagsUtil.YSQL_HBA_CONF_CSV, "local all yugabyte trust");
-      GFlagsUtil.mergeCSVs(
-          tserverOverrides, DEFAULT_YSQL_HBA_CONF_MAP, GFlagsUtil.YSQL_HBA_CONF_CSV);
-      tserverOverrides.putIfAbsent(GFlagsUtil.YSQL_HBA_CONF_CSV, "local all yugabyte trust");
+      GFlagsUtil.mergeCSVs(tserverGFlags, DEFAULT_YSQL_HBA_CONF_MAP, GFlagsUtil.YSQL_HBA_CONF_CSV);
+      tserverGFlags.putIfAbsent(GFlagsUtil.YSQL_HBA_CONF_CSV, "local all yugabyte trust");
     }
     if (primaryClusterIntent.enableYCQL && primaryClusterIntent.enableYCQLAuth) {
-      tserverOverrides.put("use_cassandra_authentication", "true");
+      tserverGFlags.put("use_cassandra_authentication", "true");
     }
-    if (placementCloud != null && tserverOverrides.get("placement_cloud") == null) {
-      tserverOverrides.put("placement_cloud", placementCloud);
+    if (placementCloud != null && tserverGFlags.get("placement_cloud") == null) {
+      tserverGFlags.put("placement_cloud", placementCloud);
     }
-    if (placementRegion != null && tserverOverrides.get("placement_region") == null) {
-      tserverOverrides.put("placement_region", placementRegion);
+    if (placementRegion != null && tserverGFlags.get("placement_region") == null) {
+      tserverGFlags.put("placement_region", placementRegion);
     }
-    if (placementZone != null && tserverOverrides.get("placement_zone") == null) {
-      tserverOverrides.put("placement_zone", placementZone);
+    if (placementZone != null && tserverGFlags.get("placement_zone") == null) {
+      tserverGFlags.put("placement_zone", placementZone);
     }
-    if (placementUuid != null && tserverOverrides.get("placement_uuid") == null) {
-      tserverOverrides.put("placement_uuid", placementUuid.toString());
+    if (placementUuid != null && tserverGFlags.get("placement_uuid") == null) {
+      tserverGFlags.put("placement_uuid", placementUuid.toString());
     }
     if (taskUniverseDetails.xClusterInfo.isSourceRootCertDirPathGflagConfigured()) {
-      tserverOverrides.put(
+      tserverGFlags.put(
           XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG,
           taskUniverseDetails.xClusterInfo.sourceRootCertDirPath);
     }
-    if (!tserverOverrides.isEmpty()) {
-      gflagOverrides.put("tserver", tserverOverrides);
+    if (!tserverGFlags.isEmpty()) {
+      gflagOverrides.put("tserver", tserverGFlags);
     }
 
     if (!gflagOverrides.isEmpty()) {
@@ -996,34 +995,51 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       overrides.put("enableLoadBalancer", true);
     }
 
-    // For now the assumption is the all deployments will have the same kind of
-    // loadbalancers, so the annotations will be at the provider level.
-    // TODO (Arnav): Update this to use overrides created at the provider, region or
-    // zone level.
-    Map<String, Object> annotations;
-    String overridesYAML = null;
-    if (!azConfig.containsKey("OVERRIDES")) {
-      if (!regionConfig.containsKey("OVERRIDES")) {
-        if (config.containsKey("OVERRIDES")) {
-          overridesYAML = config.get("OVERRIDES");
-        }
-      } else {
-        overridesYAML = regionConfig.get("OVERRIDES");
-      }
-    } else {
-      overridesYAML = azConfig.get("OVERRIDES");
+    // Universe and zone name label on all the  resources
+    if (taskParams()
+        .universeConfig
+        .getOrDefault(Universe.LABEL_K8S_RESOURCES, "false")
+        .equals("true")) {
+      String sanitizedUniverseName =
+          Util.sanitizeKubernetesNamespace(
+              taskParams().universeDetails.getPrimaryCluster().userIntent.universeName, 0);
+      Map<String, String> labels = new HashMap<>();
+      labels.put("yugabyte.io/universe-name", sanitizedUniverseName);
+      labels.put("app.kubernetes.io/part-of", sanitizedUniverseName);
+      labels.put("yugabyte.io/zone", placementZone);
+      overrides.put("commonLabels", labels);
     }
 
     Map<String, Object> ybcInfo = new HashMap<>();
     ybcInfo.put("enabled", taskParams().isEnableYbc());
     overrides.put("ybc", ybcInfo);
 
-    if (overridesYAML != null) {
-      annotations = yaml.load(overridesYAML);
-      if (annotations != null) {
-        HelmUtils.mergeYaml(overrides, annotations);
+    // The overrides specified in the provider. These can be at
+    // provider, region, or zone level. There is no merging of these
+    // overrides. Precedence: zone > region > provider.
+    Map<String, Object> providerOverrides;
+    String providerOverridesYAML = null;
+    if (!azConfig.containsKey("OVERRIDES")) {
+      if (!regionConfig.containsKey("OVERRIDES")) {
+        if (config.containsKey("OVERRIDES")) {
+          providerOverridesYAML = config.get("OVERRIDES");
+        }
+      } else {
+        providerOverridesYAML = regionConfig.get("OVERRIDES");
+      }
+    } else {
+      providerOverridesYAML = azConfig.get("OVERRIDES");
+    }
+    if (providerOverridesYAML != null) {
+      providerOverrides = yaml.load(providerOverridesYAML);
+      if (providerOverrides != null) {
+        HelmUtils.mergeYaml(overrides, providerOverrides);
       }
     }
+
+    // Overrides specified by the user during universe creation. Can
+    // include overrides which apply to all AZs as well as specific
+    // AZs.
     ObjectMapper mapper = new ObjectMapper();
     String universeOverridesString = "", azOverridesString = "";
     try {

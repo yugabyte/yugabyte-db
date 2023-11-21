@@ -79,6 +79,9 @@ public class Universe extends Model {
   public static final String USE_CUSTOM_IMAGE = "useCustomImage";
   // Flag for whether we have https on for master/tserver UI
   public static final String HTTPS_ENABLED_UI = "httpsEnabledUI";
+  // Whether all the Kubernetes resources are labeled with universe
+  // name, zone name, etc.
+  public static final String LABEL_K8S_RESOURCES = "labelK8sResources";
 
   // This is a key lock for Universe by UUID.
   public static final KeyLock<UUID> UNIVERSE_KEY_LOCK = new KeyLock<UUID>();
