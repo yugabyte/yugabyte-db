@@ -17,9 +17,7 @@ YugabyteDB supports LDAP and OIDC for authenticating with databases.
 
 ### LDAP
 
-LDAP authentication is similar to password authentication, except that it uses the LDAP protocol to verify the database user's password. Before LDAP can be used for authentication, users must already exist in the database and have appropriate permissions.
-
-For more information on LDAP in YugabyteDB, refer to [LDAP authentication](../../../secure/authentication/ldap-authentication-ysql/).
+LDAP authentication is similar to password authentication, except that it uses the LDAP protocol to verify the database user's password. Before LDAP can be used for database authentication, users must already exist in the database and have appropriate permissions.
 
 For information on using LDAP to authenticate with YugabyteDB Anywhere, refer to [Enable YugabyteDB Anywhere authentication via LDAP](../../administer-yugabyte-platform/ldap-authentication/).
 
@@ -38,7 +36,7 @@ YugabyteDB supports authentication based on the OIDC protocol for access to Yuga
         <div class="title">LDAP authentication</div>
       </div>
       <div class="body">
-        Use an external LDAP service to perform client authentication.
+        Use an external LDAP service to perform database client authentication.
       </div>
     </a>
   </div>

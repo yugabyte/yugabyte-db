@@ -11,17 +11,21 @@ menu:
 type: docs
 ---
 
-YugabyteDB Anywhere allows you to configure your YugabyteDB ports for security purposes, as follows:
+When deploying a universe, YugabyteDB Anywhere allows you to configure your YugabyteDB ports for security purposes.
 
-- Navigate to **Universes** and click **Create Universe**.
+## Customize ports
 
-- Use the **Create universe > Primary cluster** page to navigate to **Advanced** and enable **Override Deployment Ports**, as per the following illustration:<br>
+On the **Create Universe > Primary Cluster** page, under **Advanced Configuration**, enable the **Override Deployment Ports** option, as shown in the following illustration:
 
-  ![Override Deployment Ports](/images/yp/security/override-deployment-ports.png)<br>
+![Override Deployment Ports](/images/yp/security/override-deployment-ports.png)
 
-- Replace the default values with the values identifying the port that each process should use. Any value from `1024` to `65535` is valid, as long as this value does not conflict with anything else running on nodes to be provisioned.
+Replace the default values with the values identifying the port that each process should use. Any value from `1024` to `65535` is valid, as long as this value does not conflict with anything else running on nodes to be provisioned.
 
-For more information, see the following:
+After deployment, you can modify the YCQL API and admin UI endpoint ports. To change ports, navigate to your universe, click **Actions**, choose **Edit YCQL Configuration**, and select the **Override YCQL Default Ports** option.
 
-- [Configure the on-premises provider](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises/#configure-the-on-premises-provider) describes how to configure a node exporter port.
+If you change the YCQL API endpoint on an active universe, be sure to update your applications as appropriate.
+
+## Learn more
+
 - [Default ports reference](../../../reference/configuration/default-ports) provides details on YugabyteDB default ports.
+- [Configure the on-premises provider](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises/#configure-the-on-premises-provider) describes how to configure a node exporter port.
