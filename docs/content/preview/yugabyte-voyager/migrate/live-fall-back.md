@@ -15,7 +15,7 @@ rightNav:
 type: docs
 ---
 
-When migrating a database, it's prudent to have a backup strategy in case the new database doesn't work as expected. A fall-back approach involves streaming changes from the YugabyteDB (target) database back to the source database after the cutover operation, enabling you to switchover to the source database at any point.
+When migrating a database, it's prudent to have a backup strategy in case the new database doesn't work as expected. A fall-back approach involves streaming changes from the YugabyteDB (target) database back to the source database after the cutover operation, enabling you to cutover to the source database at any point.
 
 A fall-back approach allows you to test the system end-to-end. This workflow is especially important in heterogeneous migration scenarios, in which source and target databases are using different engines.
 
@@ -29,7 +29,7 @@ At cutover, applications stop writing to the source database and start writing t
 
 Finally, if you need to switch back to the source database (because the current YugabyteDB system is not working as expected), you can switch back your database.
 
-![fall-back-switchover](/images/migrate/fall-back-switchover.png)
+![initiate-cutover-to-source](/images/migrate/fall-back-switchover.png)
 
 The following illustration describes the workflow for live migration using YB Voyager with the fall-back option.
 
@@ -340,11 +340,11 @@ Refer to [export data](../../reference/data-migration/export-data/) for details 
 
 The options passed to the command are similar to the [`yb-voyager export schema`](#export-schema) command. To export only a subset of the tables, pass a comma-separated list of table names in the `--table-list` argument.
 
-#### Export data status
+#### get data-migration-report
 
-Run the `yb-voyager export data status --export-dir <EXPORT_DIR>` command to get an overall progress of the export data operation.
+Run the `yb-voyager get data-migration-report --export-dir <EXPORT_DIR>` command to get a consolidated report of the overall progress of data migration concerning all the databases involved (source and target).
 
-Refer to [export data status](../../reference/data-migration/export-data/#export-data-status) for details about the arguments.
+Refer to [get data-migration-report](../../reference/data-migration/export-data/#get-data-migration-report-live-migrations-only) for details about the arguments.
 
 ### Import data
 
@@ -396,11 +396,17 @@ If the `yb-voyager import data` command terminates before completing the data in
 
 {{< /tip >}}
 
-#### Import data status
+#### get data-migration-report
 
-Run the `yb-voyager import data status --export-dir <EXPORT_DIR>` command to get an overall progress of the data import operation.
+Run the following  command to get a consolidated report of the overall progress of data migration concerning all the databases involved (source, target, and source-replica).
 
-Refer to [import data status](../../reference/data-migration/import-data/#import-data-status) for details about the arguments.
+```sh
+yb-voyager get data-migration-report --export-dir <EXPORT_DIR> \
+        --target-db-password <TARGET_DB_PASSWORD> \
+        --source-db-password <SOURCE_DB_PASSWORD>
+```
+
+Refer to [get data-migration-report](../../reference/data-migration/import-data/#get-data-migration-report) for details about the arguments.
 
 ### Archive changes (Optional)
 
@@ -424,16 +430,16 @@ Perform the following steps as part of the cutover process:
 1. Perform a cutover after the exported events rate ("ingestion rate" in the metrics table) drops to 0 using the following command:
 
     ```sh
-    yb-voyager cutover initiate --export-dir <EXPORT_DIR> --prepare-for-fall-back true
+    yb-voyager initiate cutover to target --export-dir <EXPORT_DIR> --prepare-for-fall-back true
     ```
 
-    Refer to [cutover initiate](../../reference/cutover-archive/cutover/#cutover-initiate) for details about the arguments.
+    Refer to [initiate cutover to target](../../reference/cutover-archive/cutover/#cutover-initiate) for details about the arguments.
     As part of the cutover process, the following occurs in the background:
-    1. The cutover initiate command stops the export data process, followed by the import data process after it has imported all the events to the target YugabyteDB database.
-    1. The [fall-back synchronize]() command automatically starts capturing changes from the target YugabyteDB database.
-    Note that the [import data](#import-data) process transforms to a `fall-back synchronize` process, so if it gets terminated for any reason, you need to restart the synchronization using the `fall-back synchronize` command as suggested in the import data output.
-    1. The fall-back setup command automatically starts applying changes (captured from the target YugabyteDB) back to the source database.
-    Note that the [export data](#export-data) process transforms to a `fall-back synchronize` process, so if it gets terminated for any reason, you need to restart the process using `fall-back setup` command as suggested in the export data output.
+    1. The initiate cutover to target command stops the export data process, followed by the import data process after it has imported all the events to the target YugabyteDB database.
+    1. The [export data from target]() command automatically starts capturing changes from the target YugabyteDB database.
+    Note that the [import data](#import-data) process transforms to a `export data from target` process, so if it gets terminated for any reason, you need to restart the synchronization using the `export data from target` command as suggested in the import data output.
+    1. The import data to source command automatically starts applying changes (captured from the target YugabyteDB) back to the source database.
+    Note that the [export data](#export-data) process transforms to a `export data from target` process, so if it gets terminated for any reason, you need to restart the process using `import data to source` command as suggested in the export data output.
 1. Wait for the cutover process to complete. Monitor the status of the cutover process using the following command:
 
     ```sh
@@ -476,53 +482,93 @@ Perform the following steps as part of the cutover process:
     --disable referential constraints
 
     BEGIN
-      FOR c IN (SELECT table_name, constraint_name
+        FOR c IN (SELECT table_name, constraint_name
                 FROM user_constraints
                 WHERE constraint_type IN ('R') AND OWNER = '<SCHEMA_NAME>')
-      LOOP
-        EXECUTE IMMEDIATE 'ALTER TABLE ' || c.table_name || ' DISABLE CONSTRAINT ' || c.constraint_name;
-      END LOOP;
+        LOOP
+          EXECUTE IMMEDIATE 'ALTER TABLE ' || c.table_name || ' DISABLE CONSTRAINT ' || c.constraint_name;
+        END LOOP;
     END;
     /
     ```
 
-### Switchover to the source database (Optional)
+### Cutover to the source (Optional)
 
 During this phase, switch your application over from the target YugabyteDB database back to the source database. As this step is _optional_, perform it only if the target YugabyteDB database is not working as expected.
-Keep monitoring the metrics displayed for `fall-back synchronize` and `fall-back setup` processes. After you notice that the import of events to the source database is catching up to the exported events from the target database, you are ready to switchover. You can use the "Remaining events" metric displayed in the `fall-back setup` process to help you determine the switchover.
-Perform the following steps as part of the switchover process:
+Keep monitoring the metrics displayed for `export data from target` and `import data to source` processes. After you notice that the import of events to the source database is catching up to the exported events from the target database, you are ready to cutover. You can use the "Remaining events" metric displayed in the `import data to source` process to help you determine the cutover.
+Perform the following steps as part of the cutover process:
 
 1. Quiesce your target database, that is stop application writes.
 
-1. Perform a switchover after the exported events rate ("export rate" in the metrics table) drops to using the following command:
+1. Perform a cutover after the exported events rate ("export rate" in the metrics table) drops to using the following command:
 
     ```sh
-    yb-voyager fall-back switchover --export-dir <EXPORT_DIR>
+    yb-voyager initiate cutover to source --export-dir <EXPORT_DIR>
     ```
 
-    Refer to [fall-back switchover](../../reference/fall-forward/fall-forward-switchover/) for details about the arguments.
-    The `fall-back switchover` command stops the `fall-back synchronize` process, followed by the `fall-back setup` process after it has imported all the events to the source database.
+    Refer to [initiate cutover to source](../../reference/fall-forward/initiate-cutover-to-source/) for details about the arguments.
+    The `initiate cutover to source` command stops the `export data from target` process, followed by the `import data to source` process after it has imported all the events to the source database.
 
-1. Wait for the switchover process to complete. Monitor the status of the switchover process using the following command:
+1. Wait for the cutover process to complete. Monitor the status of the cutover process using the following command:
 
     ```sh
-    yb-voyager fall-back status --export-dir <EXPORT_DIR>
+    yb-voyager cutover status --export-dir <EXPORT_DIR>
     ```
 
-    Refer to [fall-back status](../../reference/fall-back/fall-back-switchover/#fall-back-status) for details about the arguments.
+    Refer to [cutover status](../../reference/cutover-archive/cutover/#cutover-status) for details about the arguments.
 
-1. Re-enable indexes/triggers and foreign-key/check constraints on the source database.
+1. Re-enable indexes/triggers and foreign-key/check constraints on the source database using the following PLSQL commands on the source schema as a privileged user:
+
+    ```sql
+    --enable triggers
+    BEGIN
+        FOR R IN (SELECT owner, object_name FROM all_objects WHERE owner=UPPER('<SCHEMA_NAME>') and object_type ='TABLE' MINUS SELECT owner, table_name from all_nested_tables where owner = UPPER('<SCHEMA_NAME>'))
+        LOOP
+           EXECUTE IMMEDIATE 'ALTER TABLE '||R.owner||'."'||R.object_name||'" ENABLE ALL TRIGGERS';
+        END LOOP;
+    END;
+    /
+
+    --enable referential constraints
+
+    BEGIN
+        FOR c IN (SELECT table_name, constraint_name
+                FROM user_constraints
+                WHERE constraint_type IN ('R') AND OWNER = '<SCHEMA_NAME>' )
+        LOOP
+           EXECUTE IMMEDIATE 'ALTER TABLE ' || c.table_name || ' ENABLE CONSTRAINT ' || c.constraint_name;
+        END LOOP;
+    END;
+    /
+    ```
 
 1. Verify your migration. After the schema and data import is complete, the automated part of the database migration process is considered complete. You should manually run validation queries on both the source and target databases to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count of each table.
 
 1. Stop [archive changes](#archive-changes-optional).
+
+### End migration
+
+To end the migration, you need to clean up the export directory (export-dir), and Voyager state ( Voyager-related metadata) stored in the target database and source database.
+
+Run the `yb-voyager end migration` command to perform the clean up, and to back up the schema, data, migration reports, and log files by providing the backup related flags (mandatory) as follows:
+
+```sh
+yb-voyager end migration --export-dir <EXPORT_DIR>
+        --backup-log-files <true, false, yes, no, 1, 0>
+        --backup-data-files <true, false, yes, no, 1, 0>
+        --backup-schema-files <true, false, yes, no, 1, 0>
+        --save-migration-reports <true, false, yes, no, 1, 0>
+```
+
+Note that after you end the migration, you will _not_ be able to continue further. If you want to back up the schema, data, log files, and the migration reports (`analyze-schema` report and `get data-migration-report` output) for future reference, the command provides an additional argument `--backup-dir`, using which you can pass the path of the directory where the backup content needs to be saved (based on what you choose to back up).
+
+Refer to [end migration](../../reference/end-migration/) for more details on the arguments.
 
 ## Limitations
 
 In addition to the Live migration [limitations](../live-migrate/#limitations), the following additional limitations apply to the fall-back feature:
 
 1. Fall-back is unsupported with a YugabyteDB cluster running on YugabyteDB Managed.
-1. SSL Connectivity is unsupported for export or streaming events from YugabyteDB during `fall-back synchronize`.
+1. SSL Connectivity is unsupported for export or streaming events from YugabyteDB during `export data from target`.
 1. In the fall-back phase, you need to manually disable (and subsequently re-enable if required) constraints/indexes/triggers on the source database.
-1. yb-voyager provides limited datatypes support with YugabyteDB CDC during `fall-back synchronize` for datatypes such as DECIMAL and Timestamp.
-1. You need to manually delete the stream ID of YugabyteDB CDC created by Voyager during `fall-back synchronize`.
+1. yb-voyager provides limited datatypes support with YugabyteDB CDC during `export data from target` for datatypes such as DECIMAL and Timestamp.

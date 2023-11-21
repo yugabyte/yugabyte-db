@@ -30,6 +30,6 @@ The valid *arguments* for archive changes are described in the following table:
 | --fs-utilization-threshold <percentage> | Disk utilization threshold in percentage. <br>Default: 70 |
 | -h, --help | Command line help for archive changes. |
 | --move-to <path> | Destination path to move exported data to. |
-| --send-diagnostics | Send [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --send-diagnostics | Enable or disable sending [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --verbose | Display extra information in the output. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -y, --yes | Answer yes to all prompts during migration. <br>Default: false |

@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-This page describes the steps to import data in CSV or TEXT format from flat files on your local disk or in cloud storage, including AWS S3, GCS buckets, and Azure Blob.
+The following page describes the steps to import data in CSV or TEXT format from flat files on your local disk or in cloud storage, including AWS S3, GCS buckets, and Azure Blob.
 
 ## Prerequisite
 
@@ -118,3 +118,21 @@ Refer to [Sign in with Azure CLI](https://learn.microsoft.com/en-us/cli/azure/au
   {{% /tab %}}
 
 {{< /tabpane >}}
+
+## End migration
+
+To end the migration, you need to clean up the export directory (export-dir), and Voyager state ( Voyager-related metadata) stored in the target database.
+
+Run the `yb-voyager end migration` command to perform the clean up, and to back up the schema, data, migration reports, and log files by providing the backup related flags (mandatory) as follows:
+
+```sh
+yb-voyager end migration --export-dir <EXPORT_DIR>
+        --backup-log-files <true, false, yes, no, 1, 0>
+        --backup-data-files <true, false, yes, no, 1, 0>
+        --backup-schema-files <true, false, yes, no, 1, 0>
+        --save-migration-reports <true, false, yes, no, 1, 0>
+```
+
+Note that after you end the migration, you will _not_ be able to continue further. If you want to backup the log file and import data status output for future reference, the command provides an argument as `--backup-dir`, using which you can pass the path of the directory where the backup content needs to be saved (based on what you choose to back up).
+
+Refer to [end migration](../../reference/end-migration/) for more details on the arguments.

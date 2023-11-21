@@ -28,7 +28,7 @@ The valid *arguments* for fall-forward synchronize are described in the followin
 | --disable-pb | Use this argument to disable progress bar during data export and statistics printing during streaming phase. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help for synchronize. |
-| --send-diagnostics | Enable or disable to send [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --send-diagnostics | Enable or disable sending [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --table-list | Comma-separated list of the table names to export data. Table names can include glob patterns containing wildcard characters, such as an asterisk (*) (matches zero or more characters) or question mark (?) (matches one character). If the table names in the list are case-insensitive, enclose names in double quotes ("") to make them case-sensitive. <br> Example: `--table-list 'orders,"Products",items'`|
 | --exclude-table-list <tableNames> | Comma-separated list of the table names to exclude during data export. Table names follow the same convention as `--table-list`. <br> Example: `--exclude-table-list 'orders,"Products",items'`|
 | --table-list-file-path | Path of the file containing the list of table names (comma-separated or line-separated) to export. Table names use the same convention as `--table-list`. |

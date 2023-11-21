@@ -11,21 +11,30 @@ menu:
 type: docs
 ---
 
-This page describes the usage of the following import commands:
+The following page describes the usage of the following import commands:
 
 - [import data](#import-data)
 - [import data status](#import-data-status)
+- [get data-migration-report](#get-data-migration-report-live-migrations-only)
 
 ## import data
 
 For offline migration, [Import the data](../../../migrate/migrate-steps/#import-data) to the YugabyteDB database.
 
-For live migration (and fall-forward), the command [imports the data](../../../migrate/migrate-steps/#import-data) from the `data` directory to the target database, and starts ingesting the new changes captured by `export data` to the target database.
+For [live migration](../../../migrate/live-migrate/#import-data) (with [fall-forward](../../../migrate/live-fall-forward/#import-data) and [fall-back](../../../migrate/live-fall-back/#import-data)), the import data command is an alias of `import data to target` which [imports the data](../../../migrate/migrate-steps/#import-data) from the `data` directory to the target database, and starts ingesting the new changes captured by `export data` to the target database.
 
 ### Syntax
 
+Syntax for import data is as follows:
+
 ```text
-yb-voyager import data [ <arguments> ... ]
+Usage: yb-voyager import data [ <arguments> ... ]
+```
+
+Syntax for import data to target is as follows:
+
+```text
+Usage: yb-voyager import data to target [ <arguments> ... ]
 ```
 
 #### Arguments
@@ -45,11 +54,11 @@ The valid *arguments* for import data are described in the following table:
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file. |
 | -h, --help | Command line help. |
 | --parallel-jobs <connectionCount> | Number of parallel jobs to use while importing data. Depending on the YugabyteDB database configuration, the value of `--parallel-jobs` should be tweaked such that at most 50% of target cores are utilised. <br>Default: If yb-voyager can determine the total number of cores N in the YugabyteDB database cluster, it uses N/2 as the default. Otherwise, it defaults to twice the number of nodes in the cluster.|
-| --send-diagnostics | Send [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --send-diagnostics | Enable or disable sending [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --start-clean | Starts a fresh import with data files present in the `data` directory.<br>If the target YugabyteDB database has non-empty tables, you are prompted to continue the import without truncating those tables; if you go ahead without truncating, then yb-voyager starts ingesting the data present in the data files in upsert mode.<br> **Note** that for cases where a table doesn't have a primary key, duplicate data may be inserted. You can avoid duplication by excluding the table using `--exclude-table-list`, or by truncating those tables manually before using the `start-clean` flag. <br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --target-db-host <hostname> | Domain name or IP address of the machine on which target database server is running. <br>Default: "127.0.0.1" |
 | --target-db-name <name> | Target database name. |
-| --target-db-password <password>| Target database password. Alternatively, you can also specify the password by setting the environment variable `TARGET_DB_PASSWORD`. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. |
+| --target-db-password <password>| Password to connect to the target YugabyteDB server. Alternatively, you can also specify the password by setting the environment variable `TARGET_DB_PASSWORD`. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. |
 | --target-db-port <port> | Port number of the target database machine. <br>Default: 5433 |
 | --target-db-schema <schemaName> | Schema name of the target database. MySQL and Oracle migrations only. |
 | --target-db-user <username> | Username of the target database. |
@@ -65,8 +74,26 @@ The valid *arguments* for import data are described in the following table:
 
 ### Example
 
+#### Offline migration
+
+An example for offline migration is as follows:
+
 ```sh
 yb-voyager import data --export-dir /dir/export-dir \
+        --target-db-host 127.0.0.1 \
+        --target-db-user ybvoyager \
+        --target-db-password 'password' \
+        --target-db-name target_db \
+        --target-db-schema target_schema \
+        --parallel-jobs 12
+```
+
+#### Live migration
+
+An example for all live migration scenarios is as follows:
+
+```sh
+yb-voyager import data to target--export-dir /dir/export-dir \
         --target-db-host 127.0.0.1 \
         --target-db-user ybvoyager \
         --target-db-password 'password' \
@@ -78,8 +105,6 @@ yb-voyager import data --export-dir /dir/export-dir \
 ## import data status
 
 For offline migration, get the status report of an ongoing or completed data import operation. The report contains migration status of tables, number of rows or bytes imported, and percentage completion.
-
-For live migration, get the status report of import data. For live migration with fall forward, the report also includes the status of fall forward setup. The report includes the status of tables, the number of rows imported, the total number of changes imported, the number of `INSERT`, `UPDATE`, and `DELETE` events, and the final row count of the target or fall-forward database.
 
 ### Syntax
 
@@ -95,9 +120,7 @@ The valid *arguments* for import data status are described in the following tabl
 | :------- | :------------------------ |
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to keep the exported schema, data, state, and logs.|
 | -h, --help | Command line help. |
-| target-db-password | Target database password. Alternatively, you can also specify the password by setting the environment variable `TARGET_DB_PASSWORD`. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. Required for live migrations only. |
-| ff-db-password | Password to connect to the fall-forward database server. Alternatively, you can also specify the password by setting the environment variable `FF_DB_PASSWORD`. If you don't provide a password via the CLI or environment variable during any migration phase, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. Required for live migration with fall forward only. |
-| --send-diagnostics | Send [diagnostics](../../../diagnostics-report/) information to Yugabyte. |
+| --send-diagnostics | Enable or disable sending [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --verbose | Display extra information in the output. <br>Default: false |
 | -y, --yes | Answer yes to all prompts during the import data operation. <br>Default: false |
 
@@ -105,4 +128,34 @@ The valid *arguments* for import data status are described in the following tabl
 
 ```sh
 yb-voyager import data status --export-dir /dir/export-dir
+```
+
+## get data-migration-report (Live migrations only)
+
+Provides a consolidated report of data migration per table among all the databases involved in the live migration. The report includes the number of rows exported, the number of rows imported, change events exported and imported (INSERTS, UPDATES, and DELETES), and the final row count on the database.
+
+### Syntax
+
+```text
+Usage: yb-voyager get data-migration-report [ <arguments> ... ]
+```
+
+#### Arguments
+
+The valid *arguments* for get data-migration-report are described in the following table:
+
+| Argument | Description/valid options |
+| :------- | :------------------------ |
+| -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
+| -h, --help | Command line help. |
+| --send-diagnostics | Enable or disable sending [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --source-db-password <password>| Password to connect to the source database server. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. Alternatively, you can also specify the password by setting the environment variable `SOURCE_DB_PASSWORD`. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose it in single quotes. |
+| --source-replica-db-password <password> | Password to connect to the source-replica database server. Alternatively, you can also specify the password by setting the environment variable `SOURCE_REPLICA_DB_PASSWORD`. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose it in single quotes. |
+| --target-db-password <password>| Password to connect to the target YugabyteDB server. Alternatively, you can also specify the password by setting the environment variable `TARGET_DB_PASSWORD`. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. |
+| -y, --yes | Answer yes to all prompts during the export schema operation. <br>Default: false |
+
+### Example
+
+```sh
+yb-voyager get data-migration-report --export-dir /dir/export-dir
 ```
