@@ -287,8 +287,7 @@ public class XClusterUniverseService {
     }
 
     Universe sourceUniverse = Universe.getOrBadRequest(sourceUniverseUuid);
-    String sourceUniverseMasterAddresses =
-        sourceUniverse.getMasterAddresses(true /* mastersQueryable */);
+    String sourceUniverseMasterAddresses = sourceUniverse.getMasterAddresses();
     // If there is no queryable master, return the empty map.
     if (sourceUniverseMasterAddresses.isEmpty()) {
       return isBootstrapRequiredMap;

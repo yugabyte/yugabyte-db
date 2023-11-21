@@ -318,7 +318,7 @@ public class BackupHelper {
   }
 
   public List<TableInfo> getTableInfosOrEmpty(Universe universe) throws PlatformServiceException {
-    final String masterAddresses = universe.getMasterAddresses(true);
+    final String masterAddresses = universe.getMasterAddresses();
     if (masterAddresses.isEmpty()) {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Masters are not currently queryable.");

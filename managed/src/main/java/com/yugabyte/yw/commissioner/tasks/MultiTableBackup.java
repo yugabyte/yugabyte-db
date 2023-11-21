@@ -97,7 +97,7 @@ public class MultiTableBackup extends UniverseTaskBase {
       universe = lockUniverseForUpdate(-1);
 
       try {
-        String masterAddresses = universe.getMasterAddresses(true);
+        String masterAddresses = universe.getMasterAddresses();
         String certificate = universe.getCertificateNodetoNode();
 
         YBClient client = null;

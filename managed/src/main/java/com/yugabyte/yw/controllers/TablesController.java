@@ -549,7 +549,7 @@ public class TablesController extends AuthenticatedController {
   }
 
   private List<TableInfo> getTableInfosOrEmpty(Universe universe) {
-    final String masterAddresses = universe.getMasterAddresses(true);
+    final String masterAddresses = universe.getMasterAddresses();
     if (masterAddresses.isEmpty()) {
       LOG.warn("Masters are not currently queryable.");
       return Collections.emptyList();
@@ -578,7 +578,7 @@ public class TablesController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
 
-    final String masterAddresses = universe.getMasterAddresses(true);
+    final String masterAddresses = universe.getMasterAddresses();
     if (masterAddresses.isEmpty()) {
       String errMsg = "Expected error. Masters are not currently queryable.";
       LOG.warn(errMsg);

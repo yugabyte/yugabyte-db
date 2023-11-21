@@ -145,7 +145,7 @@ public class UniverseTableHandler {
         CommonUtils.isReleaseBetween("2.18.1.0-b18", "2.19.0.0-b0", universeVersion)
             || CommonUtils.isReleaseEqualOrAfter("2.19.0.0-b168", universeVersion);
 
-    final String masterAddresses = universe.getMasterAddresses(true);
+    final String masterAddresses = universe.getMasterAddresses();
     if (masterAddresses.isEmpty()) {
       throw new PlatformServiceException(SERVICE_UNAVAILABLE, MASTERS_UNAVAILABLE_ERR_MSG);
     }
@@ -236,7 +236,7 @@ public class UniverseTableHandler {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    final String masterAddresses = universe.getMasterAddresses(true);
+    final String masterAddresses = universe.getMasterAddresses();
     if (masterAddresses.isEmpty()) {
       throw new PlatformServiceException(SERVICE_UNAVAILABLE, MASTERS_UNAVAILABLE_ERR_MSG);
     }
@@ -326,7 +326,7 @@ public class UniverseTableHandler {
     // Validate universe UUID
     Universe universe = Universe.getOrBadRequest(universeUUID);
 
-    final String masterAddresses = universe.getMasterAddresses(true);
+    final String masterAddresses = universe.getMasterAddresses();
     if (masterAddresses.isEmpty()) {
       throw new PlatformServiceException(SERVICE_UNAVAILABLE, MASTERS_UNAVAILABLE_ERR_MSG);
     }
@@ -353,7 +353,7 @@ public class UniverseTableHandler {
     // Validate universe UUID
     Universe universe = Universe.getOrBadRequest(universeUUID);
     YBClient client = null;
-    String masterAddresses = universe.getMasterAddresses(true);
+    String masterAddresses = universe.getMasterAddresses();
     if (masterAddresses.isEmpty()) {
       throw new PlatformServiceException(SERVICE_UNAVAILABLE, MASTERS_UNAVAILABLE_ERR_MSG);
     }
@@ -379,7 +379,7 @@ public class UniverseTableHandler {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
 
-    final String masterAddresses = universe.getMasterAddresses(true);
+    final String masterAddresses = universe.getMasterAddresses();
     if (masterAddresses.isEmpty()) {
       return null;
     }
