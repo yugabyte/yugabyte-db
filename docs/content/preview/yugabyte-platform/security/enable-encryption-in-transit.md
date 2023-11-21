@@ -247,13 +247,37 @@ If the key is protected by a passphrase in the PKCS12 archive, you are prompted 
 
 #### Verify certificate chain
 
-To verify the certificate chain, execute the following command:
+Perform the following steps to verify your certificates:
 
-```sh
-openssl verify -CAfile bundle.pem cert.pem
-```
+1. Execute the following verify command which checks the database node certificate (node.crt) against the root CA certificate (ca.crt):
 
-The `bundle.pem` file is a certificate bundle containing the root certificate and any intermediate certificates in the PEM format.
+    ```sh
+    openssl verify ca.crt node.crt
+    ```
+
+1. Verify that the node certificate (`node.crt`) and the node private key (`node.key`) match. See [How do I verify that a private key matches a certificate?](https://www.ssl247.com/knowledge-base/detail/how-do-i-verify-that-a-private-key-matches-a-certificate-openssl-1527076112539/ka03l0000015hscaay/)
+
+1. Verify that the node certificate and Root CA certificate expiration is at least 3 months by checking the validity field in the output of the following commands:
+
+    ```sh
+    openssl x509 -in node.crt -text -noout
+    ```
+
+    ```sh
+    openssl x509 -in ca.crt -text -noout
+    ```
+
+1. Verify that the node certificate Common Name (CN) or Subject Alternate Name  (SAN) contains the IP address or DNS name of each on-prem node on which the nodes are deployed.
+
+    {{< note >}}
+Each entry you provide for the CN or SAN must match the on-prem node as entered in the provider configuration. For example, if the node address is entered as a DNS address in the on-prem provider configuration, you must use the same DNS entry in the CN or SAN, not the resolved IP address.
+    {{< /note >}}
+
+    If you face any issue with the above verification, you can customize the level of certificate validation while creating a universe that uses these certificates. Refer to [Customizing the verification of RPC server certificate by the client](https://www.yugabyte.com/blog/yugabytedb-server-to-server-encryption/#customizing-the-verification-of-rpc-server-certificate-by-the-client).
+
+{{< note >}}
+The client certificates and keys are required only if you intend to use [PostgreSQL certificate-based authentication](https://www.postgresql.org/docs/current/auth-pg-hba-conf.html#:~:text=independent%20authentication%20option-,clientcert,-%2C%20which%20can%20be).
+{{< /note >}}
 
 ### Rotate custom CA-signed certificates
 
@@ -581,7 +605,7 @@ If you created your universe with the Client-to-Node TLS option enabled, then yo
   ycqlsh>
   ```
 
-To use TLS from a different client, consult the client-specific documentation. For example, if you are using a Cassandra driver to connect to YugabyteDB, see [SSL](https://docs.datastax.com/en/developer/python-driver/3.19/security/#ssl) .
+To use TLS from a different client, consult the client-specific documentation. For example, if you are using a Cassandra driver to connect to YugabyteDB, see [SSL](https://docs.datastax.com/en/developer/python-driver/3.19/security/#ssl).
 
 ## Validate certificates
 
@@ -628,7 +652,7 @@ To enforce the minimum TLS version of 1.2, you need to specify all available sub
 ssl_protocols = tls12,tls13
 ```
 
-In addition, as the `ssl_protocols` setting does not propagate to PostgreSQL, it is recommended that you specify the minimum TLS version (`ssl_min_protocol_version`) for PostgreSQL by setting the following YB-TServer gflag:
+In addition, as the `ssl_protocols` setting does not propagate to PostgreSQL, it is recommended that you specify the minimum TLS version (`ssl_min_protocol_version`) for PostgreSQL by setting the following YB-TServer flag:
 
 ```shell
 --ysql_pg_conf_csv="ssl_min_protocol_version=TLSv1.2"
@@ -657,7 +681,7 @@ To add a certificate to the YugabyteDB Anywhere Trust Store, do the following:
 
 1. Enter a name for the certificate.
 
-1. Click **Upload**, select your certifcate (in .crt format) and click **Save CA Certificate**.
+1. Click **Upload**, select your certificate (in .crt format) and click **Save CA Certificate**.
 
 ### Rotate a certificate in your trust store
 
@@ -667,7 +691,7 @@ To rotate a certificate in your YugabyteDB Anywhere Trust Store, do the followin
 
 1. Click the **...** button for the certificate and choose **Update Certificate**.
 
-1. Click **Upload**, select your certifcate (in .crt format) and click **Save CA Certificate**.
+1. Click **Upload**, select your certificate (in .crt format) and click **Save CA Certificate**.
 
 ### Delete a certificate in your trust store
 

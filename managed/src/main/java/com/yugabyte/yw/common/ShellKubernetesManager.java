@@ -22,6 +22,7 @@ import io.fabric8.kubernetes.api.model.PersistentVolumeClaimList;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodList;
 import io.fabric8.kubernetes.api.model.PodStatus;
+import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.Service;
 import io.fabric8.kubernetes.api.model.ServiceList;
@@ -363,6 +364,22 @@ public class ShellKubernetesManager extends KubernetesManager {
   }
 
   @Override
+  public List<Quantity> getPVCSizeList(
+      Map<String, String> config,
+      String namespace,
+      String helmReleaseName,
+      String appName,
+      boolean newNamingStyle) {
+    List<PersistentVolumeClaim> pvcList =
+        getPVCs(config, namespace, helmReleaseName, appName, newNamingStyle);
+    List<Quantity> pvcSizes = new ArrayList<>();
+    for (PersistentVolumeClaim pvc : pvcList) {
+      pvcSizes.add(pvc.getSpec().getResources().getRequests().get("storage"));
+    }
+    return pvcSizes;
+  }
+
+  @Override
   public List<PersistentVolumeClaim> getPVCs(
       Map<String, String> config,
       String namespace,
@@ -509,12 +526,9 @@ public class ShellKubernetesManager extends KubernetesManager {
                     pvcConditions.get(0));
               }
               return pvcConditions.isEmpty();
-            },
-            // delay between retry of task
-            2,
-            // timeout for retry in secs
-            getTimeoutSecs(universeUUID));
-    return waitForExpand.retryUntilCond();
+            });
+    return waitForExpand.retryUntilCond(
+        2 /* delayBetweenRetrySecs */, getTimeoutSecs(universeUUID) /* timeoutSecs */);
   }
 
   @Override

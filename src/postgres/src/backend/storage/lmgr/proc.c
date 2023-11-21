@@ -84,6 +84,7 @@ NON_EXEC_STATIC slock_t *ProcStructLock = NULL;
 PROC_HDR   *ProcGlobal = NULL;
 NON_EXEC_STATIC PGPROC *AuxiliaryProcs = NULL;
 PGPROC	   *PreparedXactProcs = NULL;
+PGPROC	   *KilledProcToClean = NULL;
 int *yb_too_many_conn = NULL;
 
 /* If we are waiting for a lock, this points to the associated LOCALLOCK */
@@ -437,7 +438,8 @@ InitProcess(void)
 	MyProc->clogGroupMemberLsn = InvalidXLogRecPtr;
 	Assert(pg_atomic_read_u32(&MyProc->clogGroupNext) == INVALID_PGPROCNO);
 
-	MyProc->ybAnyLockAcquired = false;
+	MyProc->ybLWLockAcquired = false;
+	MyProc->ybSpinLocksAcquired = 0;
 
 	/*
 	 * Acquire ownership of the PGPROC's latch, so that we can use WaitLatch

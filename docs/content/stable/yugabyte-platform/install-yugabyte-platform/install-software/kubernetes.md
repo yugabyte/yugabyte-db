@@ -22,6 +22,7 @@ Note: For higher availability, one or more additional YugabyteDB Anywhere instan
     <a href="../installer/" class="nav-link">
       <i class="fa-solid fa-building"></i>YBA Installer</a>
   </li>
+
   <li>
     <a href="../default/" class="nav-link">
       <i class="fa-solid fa-cloud"></i>Replicated</a>
@@ -393,6 +394,8 @@ The PostgreSQL and Nginx containers always run as non-root. To run the rest of t
 securityContext:
   enabled: true
 ```
+
+This value is not supported on OpenShift, which runs all the containers of YugabyteDB Anywhere as non-root by default. Modifying securityContext on OpenShift could cause the containers to fail.
 
 ### Set pod labels and annotations
 

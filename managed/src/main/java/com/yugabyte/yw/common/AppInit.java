@@ -33,6 +33,7 @@ import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.diagnostics.ThreadDumpPublisher;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.common.metrics.SwamperTargetsFileUpdater;
@@ -69,6 +70,7 @@ public class AppInit {
       Application application,
       ConfigHelper configHelper,
       ReleaseManager releaseManager,
+      GFlagsValidation gFlagsValidation,
       AWSInitializer awsInitializer,
       CustomerTaskManager taskManager,
       YamlWrapper yaml,
@@ -247,6 +249,12 @@ public class AppInit {
         // Import new local releases into release metadata
         releaseManager.importLocalReleases();
         releaseManager.updateCurrentReleases();
+        releaseManager
+            .getLocalReleases()
+            .forEach(
+                (version, rm) -> {
+                  gFlagsValidation.addDBMetadataFiles(version, rm);
+                });
         // Background thread to query for latest ARM release version.
         Thread armReleaseThread =
             new Thread(
@@ -267,6 +275,7 @@ public class AppInit {
 
         // Handle incomplete tasks
         taskManager.handleAllPendingTasks();
+        taskManager.updateUniverseSoftwareUpgradeStateSet();
 
         // Schedule garbage collection of old completed tasks in database.
         taskGC.start();

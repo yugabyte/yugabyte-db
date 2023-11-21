@@ -45,6 +45,22 @@ In addition to throttling controls for compactions, YugabyteDB does a variety of
 
 YugabyteDB allows compactions to be externally triggered on a table using the [`compact_table`](../../../admin/yb-admin/#compact-table) command in the [yb-admin utility](../../../admin/yb-admin/). This is useful when new data is no longer coming into the system for a table and you might want to reclaim disk space due to overwrites or deletes that have already happened, or due to TTL expiry.
 
+### Statistics-based full compactions to improve read performance
+
+YugabyteDB tracks the number of key-value pairs that are read at the DocDB level over a sliding period of time (dictated by the [auto_compact_stat_window_seconds](../../../reference/configuration/yb-tserver#auto-compact-stat-window-seconds) YB-TServer flag). If YugabyteDB detects an overwhelming amount of the DocDB reads in a tablet are skipping over tombstoned and obsolete keys, then a full compaction will be triggered to remove the unnecessary keys.
+
+Once all of the following conditions are met in the sliding window, a full compaction is automatically triggered on the tablet:
+
+- The ratio of obsolete (for example, deleted or removed due to TTL) versus active keys read reaches the threshold [auto_compact_percent_obsolete](../../../reference/configuration/yb-tserver/#auto-compact-percent-obsolete).
+
+- Enough keys have been read ([auto_compact_min_obsolete_keys_found](../../../reference/configuration/yb-tserver/#auto-compact-min-obsolete-keys-found)).
+
+While this feature is compatible with tables with TTL, YugabyteDB won't schedule compactions on tables with TTL if the [TTL file expiration](../../../develop/learn/ttl-data-expiration-ycql/#efficient-data-expiration-for-ttl) feature is active.
+
+### Scheduled full compactions
+
+ YugabyteDB allows full compactions over all data in a tablet to be scheduled automatically using the [scheduled_full_compaction_frequency_hours](../../../reference/configuration/yb-tserver#scheduled-full-compaction-frequency-hours) and [scheduled_full_compaction_jitter_factor_percentage](../../../reference/configuration/yb-tserver#scheduled-full-compaction-jitter-factor-percentage) YB-TServer flags. This can be useful for performance and disk space reclamation for workloads with a large number of overwrites or deletes on a regular basis. This can be used with tables with TTL as well, but is not compatible with the [TTL file expiration](../../../develop/learn/ttl-data-expiration-ycql/#efficient-data-expiration-for-ttl) feature.
+
 ### Server-global memstore limit
 
 Server-global memstore limit tracks and enforces a global size across the memstores for different tablets. This is useful when there is a skew in the write rate across tablets. For example, if there are tablets belonging to multiple tables in a single YB-TServer and one of the tables gets a lot more writes than the other tables, the write-heavy table is allowed to grow much larger than it could if there was a per-tablet memory limit. This allows good write efficiency.

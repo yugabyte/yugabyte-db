@@ -346,7 +346,7 @@ class PlainTrace {
     const char* message;
     CoarseTimePoint timestamp;
 
-    void Dump(std::ostream* out) const;
+    void Dump(std::ostream* out, const std::string& nesting_prefix = "") const;
   };
 
   mutable simple_spinlock mutex_;

@@ -34,6 +34,9 @@
     "task": {
       "viewDetails": "View Details"
     },
+    "queryError": {
+      "failedToFetchUniverselist": "Error fetching universe list."
+    },
     "universeActions": {
       "encryptionAtRest": {
         "title": "Manage encryption at-Rest",
@@ -104,7 +107,9 @@
         "rootCAModifiedWarning": "You have selected a new Certificates Authority for Node to Node encryption. Rotating a Certificates Authority will automatically rotate its associated Server Certificate.",
         "clientRootCAModifiedWarning": "You have selected a new Certificates Authority for Client to Node encryption. Rotating a Certificates Authority will automatically rotate its associated Server Certificate.",
         "enableEITWarning": "Enable Node to Node encryption or Client to Node encryption to enable encryption in transit.",
-        "disableEITWarning": "Note! Enabling/Disabling of “Encryption In Transit” or Enabling/Disabling of “Node to Node” or “Client to Node” encryption will be performed as non rolling upgrade."
+        "disableEITWarning": "Note! Enabling/Disabling of “Encryption In Transit” or Enabling/Disabling of “Node to Node” or “Client to Node” encryption will be performed as non rolling upgrade.",
+        "xClusterRotateCaWarning": "Note! Rotating node to node CA certs for universes participating in xCluster replication as the source universe will interrupt the replication and require a restart of the xCluster config to resume replication after TLS rotation is completed.",
+        "xClusterToggleEncryptionWarning": "Note! Toggling on/off encryption for universes participating in xCluster replication will interrupt the replication. To enable replication again, please ensure all participating universes have matching TLS encryption setting and restart the affected xCluster configurations."
       }
     },
     "commonErrors": {
@@ -123,6 +128,8 @@
     "universeForm": {
       "master": "Master",
       "tserver": "TServer",
+      "viewPrimary": "Primary",
+      "viewReadReplica": "Read Replica",
       "configReadReplica": "Configure read replica",
       "createUniverse": "Create universe",
       "current": "Current :",
@@ -380,6 +387,11 @@
         "modalDescription": "This operation will migrate this universe and all its data to a completely new set of nodes Or alternatively you could try smart resize (This will change VM image {{value}} for existing nodes)",
         "buttonLabel": "Do Smart Resize"
       },
+      "placementModal": {
+        "modalTitle": "Confirm Update",
+        "modalDescription": "This operation will scale-up or scale-down the number of the nodes or will change master placement from colocated to dedicated or vice versa",
+        "likeToProceed": "Would you like to proceed?"
+      },
       "fullMoveModal": {
         "modalTitle": "Confirm Full Move Update",
         "submitLabel": "Do full move",
@@ -491,9 +503,9 @@
       "disasterRecovery": {
         "heading": "Disaster Recovery",
         "actionButton": {
-          "abortFailover": "Abort Failover",
+          "abortSwitchover": "Abort Switchover",
           "connectApplications": "Connect",
-          "initiateFailover": "Initiate Failover",
+          "switchover": "Switchover",
           "repairDr": "Repair DR",
           "restartReplication": "Restart Replication",
           "viewTaskDetails": "View Details",
@@ -503,9 +515,11 @@
             "editDrConfig": "Edit recovery configuration",
             "editDrConfigTarget": "Change DR Replica Universe",
             "editTables": "Select databases and tables",
-            "advancedMenu": "Advanced",
+            "switchover": "Switchover",
+            "failover": "Failover",
+            "advancedSubmenu": "Advanced",
             "restartReplication": "Restart replication",
-            "reconcileConfig": "Reconcile config with database"
+            "dbSync": "Reconcile config with database"
           }
         },
         "error": {
@@ -520,46 +534,98 @@
         "banner": {
           "enablingDr": "<bold>Enabling disaster recovery...</bold> Universe operations are not available while the operation is in progress.",
           "failoverInProgress": "<bold>Failover in progress...</bold> Universe operations are not available while the operation is in progress.",
+          "switchoverInProgress": "<bold>Switchover in progress...</bold> Universe operations are not available while the operation is in progress.",
           "connectYourApps": "<bold>Connect your applications</bold> to the new DR primary universe to direct read and writes to it.",
           "drConfigHalted": "<bold>Warning!</bold> DR replication stream has been manually halted. ",
-          "drConfigRestartRequired": "<bold>Warning!</bold> DR replication failed which means the DR replica is severely out-of-sync with the DR primary."
+          "drConfigRestartRequired": "<bold>Warning!</bold> DR replication failed which means the DR replica is severely out-of-sync with the DR primary. -- TODO: Text update."
+        },
+        "switchover": {
+          "initiateModal": {
+            "title": "Switchover",
+            "titleTooltip": "<paragraph>Switch the DR primary with the DR replica after waiting for replication drain so there will be no data loss.</paragraph>Replication drain allows the replication on the DR replica to catch up with the DR primary and be fully synchronized before initiating switchover.",
+            "instructions": "Wait for the standby cluster to be fully synchronized with the primary by <bold>draining replication</bold> before switchover.",
+            "noDataLoss": "There will be <bold>no data loss</bold> in switchover.",
+            "confirmationInstructions": "Enter DR Replica universe name to proceed.",
+            "submitButton": "Initiate Switchover",
+            "note": {
+              "stopWorkload": "<bold>Stop application workloads</bold> before initiating switchover as all <bold>writes will be rejected</bold> during failover."
+            },
+            "error": {
+              "taskFailure": "Switchover task failed.",
+              "requestFailureLabel": "Switchover request failed"
+            },
+            "success": {
+              "taskSuccess": "Switchover completed. <universeLink><bold>{{sourceUniverseName}}</bold></universeLink> is now your DR primary."
+            }
+          },
+          "abortModal": {
+            "title": "Abort Switchover",
+            "description": "Aborting switchover will revert the DR configuration to it's pre-switchover state.",
+            "submitButton": "Abort Failover",
+            "error": {
+              "requestFailureLabel": "Abort switchover request failed"
+            },
+            "success": {
+              "requestSuccess": "Aborted switchover."
+            }
+          }
         },
         "failover": {
           "initiateModal": {
             "title": "Failover",
-            "instruction": "Select failover type",
-            "submitButton": "Initiate Failover",
-            "option": {
-              "failoverImmediately": {
-                "optionName": "Failover Immediately",
-                "description": "Start failover immediately at the cost of losing some data that is not replicated to the standby universe yet."
+            "description": "Start failover immediately at the cost of <bold>losing some data</bold> that is not replicated to the DR replica.",
+            "estimatedDataLoss": {
+              "label": "Estimated Data Loss",
+              "tooltip": "Data loss is estimated based on the internal clock skew on the standby cluster. **TODO: To review this text.",
+              "rpoBenchmark": {
+                "below": "{{ms}}ms lower than RPO",
+                "above": "{{ms}}ms greater than RPO",
+                "equal": "Data loss equal to RPO"
               },
-              "waitForReplicationDrain": {
-                "optionName": "Wait for Replication Drain",
-                "description": "Wait for the standby cluster to be fully synchronized with the primary by draining replication before failing over."
+              "none": "None"
+            },
+            "confirmationInstructions": "Enter DR Replica universe name to proceed.",
+            "submitButton": "Initiate Failover",
+            "error": {
+              "taskFailure": "Failover task failed.",
+              "requestFailureLabel": "Failover request failed"
+            },
+            "success": {
+              "taskSuccess": "Failover completed. <universeLink><bold>{{sourceUniverseName}}</bold></universeLink> is now your DR primary."
+            }
+          }
+        },
+        "repairDrConfigModal": {
+          "title": "Repair DR",
+          "instructions": "Select repair type",
+          "submitButton": "Initiate Repair",
+          "option": {
+            "useExistingTargetUniverse": {
+              "optionName": "Reuse the current DR replica",
+              "description": "Create a full copy of {{sourceUniverseName}} on <bold>{{targetUniverseName}}</bold> to bring it up to the same checkpoint as your DR primary to re-establish the replication stream and have a DR replica available for failover.",
+              "backupStorageConfig": {
+                "label": "Backup Storage Config",
+                "tooltip": "<paragraph>Ensure that the backup storage config <bold>can be accessed from both source and target universe.</bold></paragraph><paragraph>Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions.</paragraph>"
               }
             },
-            "property": {
-              "estimatedDataLoss": {
-                "label": "Estimated data loss",
-                "tooltip": "Data loss is estimated based on the internal clock skew on the standby cluster.",
-                "rpoBenchmark": {
-                  "below": "{{ms}}ms lower than RPO",
-                  "above": "{{ms}}ms greater than RPO",
-                  "equal": "Data loss equal to RPO"
-                },
-                "none": "None"
-              }
-            },
-            "note": {
-              "stopWorkload": "<bold>Stop application workloads</bold> before initiating failover as all <bold>writes will be rejected</bold> during failover."
+            "useNewTargetUniverse": {
+              "optionName": "Select a new universe as DR replica",
+              "drReplica": "DR Replica Universe"
             }
           },
-          "abortModal": {
-            "title": "Abort Failover",
-            "instruction": "The replication drain is erroring out. To proceed with failover, accept the estimated data loss of {{estimatedDataLoss}}ms.",
-            "acknowledge": "I understand and acknowledge the estimated data loss of {{estimatedDataLoss}}ms.",
-            "submitButton": "Abort Failover"
+          "error": {
+            "fieldRequired": "Required",
+            "repairTypeRequired": "Please select a repair type.",
+            "restartTaskFailure": "Restart replication task failed.",
+            "changeTargetTaskFailure": "Change DR replica task failed.",
+            "restartRequestFailureLabel": "Restart replication request failed",
+            "changeTargetRequestFailureLabel": "Change DR replica request failed"
+          },
+          "success": {
+            "restartRequestSuccess": "Repairing DR configuration...",
+            "restartTaskSuccess": "Repaired DR configuration.",
+            "changeTargetRequestSuccess": "Repairing DR configuration...",
+            "changeTargetTaskSuccess": "Repaired DR configuration."
           }
         },
         "config": {
@@ -567,34 +633,50 @@
             "drConfigTabs": "DR Config Tabs"
           },
           "tab": {
-            "overview": "Overview",
-            "drStatus": "DR Status"
+            "metrics": "Metrics",
+            "tables": "Tables"
           },
-          "streamStatus": {
-            "operational": "Operational",
-            "paused": "Paused",
-            "error": "Error",
-            "inProgress": "In Progress"
+          "status": {
+            "Initializing": "Initializing",
+            "Replicating": "Replicating",
+            "Switchover in Progress": "Switchover in Progress",
+            "Failover in Progress": "Failover in Progress",
+            "Halted": {
+              "label": "Halted",
+              "tooltip": "The DR replication was halted during the failover as the DR replica is not in sync with the DR primary anymore due to the data loss during failover."
+            }
+          },
+          "sourceUniverseDrStatus": {
+            "Unconfigured for DR": "Unconfigured",
+            "Ready to replicate": "Ready to replicate",
+            "Waiting for DR": "Waiting for DR",
+            "Replicating data": "Replicating data",
+            "Preparing for switchover": "Preparing for switchover",
+            "Switching to DR replica": "Switching to DR replica",
+            "Universe marked as DR failed": "Marked as DR failed",
+            "undefined": "Undefined"
+          },
+          "targetUniverseDrStatus": {
+            "Unconfigured for DR": "Unconfigured",
+            "Bootstrapping": "Bootstrapping",
+            "Receiving data, Ready for reads": "Receiving data, Ready for reads",
+            "Switching to DR primary": "Switching to DR primary",
+            "Universe marked as DR failed": "Marked as DR failed",
+            "undefined": "Undefined"
           },
           "property": {
             "drStatus": {
               "label": "DR status",
-              "tooltip": "Disaster Recovery (DR) utilizes asynchronous replication to ensure consistency between the primary and standby universe. An unhealthy stream means there is significant replication lag."
+              "tooltip": "Disaster Recovery (DR) utilizes asynchronous replication to ensure consistency between the primary and standby universe. An unhealthy stream means there is significant replication lag. **TODO: Needs to be updated."
             },
             "estimatedDataLoss": {
-              "label": "Estimated data loss",
-              "tooltip": "If you would like to failover, this is the estimated data loss measured in time. This is estimated based on the clock skew of tablets on the standby universe."
-            },
-            "replicationLag": "Replication Lag",
-            "minSafeTimeLagAcrossAllTables": "Minimum Safe Time Lag across all tables"
+              "label": "Potential data loss on failover",
+              "tooltip": "If you would like to failover, this is the potential data loss measured in time. This is estimated based on the clock skew of tablets on the standby universe. **TODO: Needs to be updated."
+            }
           },
           "participant": {
             "drPrimary": "DR PRIMARY",
-            "drReplica": "DR REPLICA",
-            "role": {
-              "active": "Active",
-              "standby": "Standby"
-            }
+            "drReplica": "DR REPLICA"
           },
           "createModal": {
             "title": "Configure Active-Active Single-Master Disaster Recovery (DR)",
@@ -631,7 +713,7 @@
               }
             },
             "error": {
-              "requestFailure": "Create active-active single-master disaster recovery (DR) request failed",
+              "requestFailureLabel": "Create active-active single-master disaster recovery (DR) request failed",
               "taskFailure": "Failed to enable active-active single-master disaster recovery (DR)."
             },
             "success": {
@@ -646,7 +728,7 @@
             "deleteConsequence": "Your databases will no longer be replicated and there will be no DR replica universe to failover to in case of a disaster.",
             "confirmationInstructions": "Enter DR config name to proceed.",
             "error": {
-              "requestFailure": "Active-active single-master disaster recovery (DR) removal request failed",
+              "requestFailureLabel": "Active-active single-master disaster recovery (DR) removal request failed",
               "taskFailure": "Active-active single-master disaster recovery (DR) removal task failed."
             },
             "success": {
@@ -662,7 +744,7 @@
               "tooltip": "<paragraph>Ensure that the backup storage config <bold>can be accessed from both source and target universe.</bold></paragraph><paragraph>Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions.</paragraph>"
             },
             "error": {
-              "requestFailure": "Edit DR configuration request failed",
+              "requestFailureLabel": "Edit DR configuration request failed",
               "taskFailure": "Edit DR configuration task failed.",
               "backupStorageConfigRequired": "Please select a backup storage config."
             },
@@ -693,7 +775,7 @@
               }
             },
             "error": {
-              "requestFailure": "Change DR replica request failed",
+              "requestFailureLabel": "Change DR replica request failed",
               "taskFailure": "Change DR replica task failed."
             },
             "success": {
@@ -704,24 +786,91 @@
           "editTablesModal": {
             "title": "Select Databases and tables",
             "instruction": "Select the databases to enable disaster recovery for",
+            "step": {
+              "selectTables": {
+                "nextButton": "Next: Configure bootstrap",
+                "error": {
+                  "validationMinimumTableUuids": "Select at least one table to proceed."
+                }
+              },
+              "configureBootstrap": {
+                "infoText": "<paragraph>The selected databases and/or tables contain <bold>data that is not yet replicated</bold> for DR. To enable DR for these databases and/or tables, a bootstrap will be required before aynchronous replication from the DR primary universe to the DR replica universe can be established.</paragraph><paragraph>Are you sure you want to <bold>bootstrap</bold> and add these databases and/or tables?</paragraph>",
+                "backupStorageConfig": {
+                  "label": "Backup Storage Config",
+                  "tooltip": "<paragraph>Ensure that the backup storage config <bold>can be accessed from both source and target universe.</bold></paragraph><paragraph>Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions.</paragraph>"
+                },
+                "error": {
+                  "backupStorageConfigRequired": "Required."
+                }
+              }
+            },
             "submitButton": {
               "validate": "Validate Selection",
               "applyChanges": "Apply Changes"
             },
             "error": {
-              "requestFailure": "Edit tables request failed",
+              "requestFailureLabel": "Edit tables request failed",
               "taskFailure": "Edit tables task failed.",
               "fetchSourceUniverseDetailsFailure": "Failed to fetch source universe details.",
               "undefinedXClusterTableType": "The tables in this config have unknown or mixed type.",
-              "undefinedSourceUniverseUuid": "The xCluster config does not have an associated source universe",
-              "undefinedTargetUniverseUuid": "The xcluster config does not have an assoicated target universe",
-              "validationMinimumTableUuids": "Select at least one table to proceed."
+              "undefinedSourceUniverseUuid": "The xCluster config does not have an associated source universe.",
+              "undefinedTargetUniverseUuid": "The xCluster config does not have an assoicated target universe."
             },
             "success": {
               "requestSuccess": "Updating tables under replication.",
               "taskSuccess": "Updated tables under replication."
             }
           }
+        }
+      },
+      "xCluster": {
+        "selectTable": {
+          "error": {
+            "failedToFetchIsBootstrapRequired": {
+              "title": "Table bootstrap verification failed.",
+              "body": "An error occured while verifying whether the selected tables require bootstrapping."
+            },
+            "validationMinimumTableUuids": {
+              "title": "No tables selected.",
+              "body": "Select at least 1 table to proceed"
+            }
+          },
+          "warning": {
+            "insufficientDiskSpace": {
+              "title": "Insufficient disk space.",
+              "body": "Some selected tables require bootstrapping. We recommend having at least {{bootstrapMinFreeDiskSpaceGb}} GB of free disk space in the source universe."
+            }
+          }
+        },
+        "error": {
+          "undefinedXClusterTableType": "The tables in this config have unknown or mixed type.",
+          "undefinedSourceUniverseUuid": "The xCluster config does not have an associated source universe.",
+          "undefinedTargetUniverseUuid": "The xCluster config does not have an assoicated target universe.",
+          "failedToFindSourceUniverse": "Unable to find a universe with the source universe UUID: {{universeUuid}}",
+          "failedToFindTargetUniverse": "Unable to find a universe with the target universe UUID: {{universeUuid}}",
+          "failedToFetchSourceUniverse": "Unable to fetch universe details for source universe UUID: {{universeUuid}}",
+          "faliedToFetchTargetuniverse": "Unable to fetch universe details for target universe UUID: {{universeUuid}}",
+          "failedToFetchCurrentSafetimes": "Unable to fetch current safetimes."
+        },
+        "syncDbModal": {
+          "title": "Reconcile Config with Database",
+          "syncConfirmation": "If out-of-band changes to an xCluster configuration have taken place (ex. changes using yb-admin), this action will allow YBA to update it's model of the xCluster config by pulling in those changes.",
+          "submitButton": "Reconcile Config with Database",
+          "error": {
+            "taskFailure": "xCluster config DB sync task failed.",
+            "undefinedTargetUniverseUuid": "The xCluster config does not have an assoicated target universe."
+          },
+          "success": {
+            "taskSuccess": "Reconciled xCluster config with DB."
+          }
+        }
+      },
+      "taskList": {
+        "taskHistory": {
+          "title": "Task History"
+        },
+        "error": {
+          "failedToFetchUniverseTaskList": "Unable to fetch universe task list."
         }
       }
     },

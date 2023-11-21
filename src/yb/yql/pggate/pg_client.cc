@@ -57,7 +57,7 @@ DEFINE_NON_RUNTIME_int32(pg_client_extra_timeout_ms, 2000,
    "and report it.");
 
 DECLARE_bool(TEST_index_read_multiple_partitions);
-DECLARE_bool(TEST_enable_db_catalog_version_mode);
+DECLARE_bool(ysql_enable_db_catalog_version_mode);
 
 extern int yb_locks_min_txn_age;
 extern int yb_locks_max_transactions;
@@ -242,12 +242,13 @@ class PgClient::Impl {
     return BuildTablePartitionList(resp.partitions(), table_id);
   }
 
-  Status FinishTransaction(Commit commit, DdlType ddl_type) {
+  Status FinishTransaction(Commit commit, std::optional<DdlMode> ddl_mode) {
     tserver::PgFinishTransactionRequestPB req;
     req.set_session_id(session_id_);
     req.set_commit(commit);
-    req.set_ddl_mode(ddl_type != DdlType::NonDdl);
-    req.set_has_docdb_schema_changes(ddl_type == DdlType::DdlWithDocdbSchemaChanges);
+    if (ddl_mode) {
+      ddl_mode->ToPB(req.mutable_ddl_mode());
+    }
 
     tserver::PgFinishTransactionResponsePB resp;
 
@@ -306,7 +307,7 @@ class PgClient::Impl {
     req.set_db_oid(db_oid);
     req.set_seq_oid(seq_oid);
     if (is_db_catalog_version_mode) {
-      DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
+      DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
       req.set_ysql_db_catalog_version(ysql_catalog_version);
     } else {
       req.set_ysql_catalog_version(ysql_catalog_version);
@@ -333,7 +334,7 @@ class PgClient::Impl {
     req.set_db_oid(db_oid);
     req.set_seq_oid(seq_oid);
     if (is_db_catalog_version_mode) {
-      DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
+      DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
       req.set_ysql_db_catalog_version(ysql_catalog_version);
     } else {
       req.set_ysql_catalog_version(ysql_catalog_version);
@@ -367,7 +368,7 @@ class PgClient::Impl {
     req.set_db_oid(db_oid);
     req.set_seq_oid(seq_oid);
     if (is_db_catalog_version_mode) {
-      DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
+      DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
       req.set_ysql_db_catalog_version(ysql_catalog_version);
     } else {
       req.set_ysql_catalog_version(ysql_catalog_version);
@@ -394,7 +395,7 @@ class PgClient::Impl {
     req.set_db_oid(db_oid);
     req.set_seq_oid(seq_oid);
     if (is_db_catalog_version_mode) {
-      DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
+      DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
       req.set_ysql_db_catalog_version(ysql_catalog_version);
     } else {
       req.set_ysql_catalog_version(ysql_catalog_version);
@@ -520,6 +521,17 @@ class PgClient::Impl {
     RETURN_NOT_OK(proxy_->ReserveOids(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
     return std::pair<PgOid, PgOid>(resp.begin_oid(), resp.end_oid());
+  }
+
+  Result<PgOid> GetNewObjectId(PgOid db_oid) {
+    tserver::PgGetNewObjectIdRequestPB req;
+    req.set_db_oid(db_oid);
+
+    tserver::PgGetNewObjectIdResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->GetNewObjectId(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp.new_oid();
   }
 
   Result<bool> IsInitDbDone() {
@@ -795,6 +807,27 @@ class PgClient::Impl {
     return ResponseStatus(resp);
   }
 
+  Result<tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots() {
+    tserver::PgListReplicationSlotsRequestPB req;
+    tserver::PgListReplicationSlotsResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->ListReplicationSlots(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
+  Result<tserver::PgGetReplicationSlotStatusResponsePB> GetReplicationSlotStatus(
+      const ReplicationSlotName& slot_name) {
+    tserver::PgGetReplicationSlotStatusRequestPB req;
+    req.set_replication_slot_name(slot_name.ToString());
+
+    tserver::PgGetReplicationSlotStatusResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->GetReplicationSlotStatus(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
  private:
   std::string LogPrefix() const {
     return Format("Session id $0: ", session_id_);
@@ -835,6 +868,14 @@ class PgClient::Impl {
   MonoDelta timeout_ = FLAGS_yb_client_admin_operation_timeout_sec * 1s;
 };
 
+std::string DdlMode::ToString() const {
+  return YB_STRUCT_TO_STRING(has_docdb_schema_changes);
+}
+
+void DdlMode::ToPB(tserver::PgFinishTransactionRequestPB_DdlModePB* dest) const {
+  dest->set_has_docdb_schema_changes(has_docdb_schema_changes);
+}
+
 PgClient::PgClient() : impl_(new Impl) {
 }
 
@@ -867,8 +908,8 @@ Result<client::VersionedTablePartitionList> PgClient::GetTablePartitionList(
   return impl_->GetTablePartitionList(table_id);
 }
 
-Status PgClient::FinishTransaction(Commit commit, DdlType ddl_type) {
-  return impl_->FinishTransaction(commit, ddl_type);
+Status PgClient::FinishTransaction(Commit commit, std::optional<DdlMode> ddl_mode) {
+  return impl_->FinishTransaction(commit, ddl_mode);
 }
 
 Result<master::GetNamespaceInfoResponsePB> PgClient::GetDatabaseInfo(uint32_t oid) {
@@ -878,6 +919,10 @@ Result<master::GetNamespaceInfoResponsePB> PgClient::GetDatabaseInfo(uint32_t oi
 Result<std::pair<PgOid, PgOid>> PgClient::ReserveOids(
     PgOid database_oid, PgOid next_oid, uint32_t count) {
   return impl_->ReserveOids(database_oid, next_oid, count);
+}
+
+Result<PgOid> PgClient::GetNewObjectId(PgOid db_oid) {
+  return impl_->GetNewObjectId(db_oid);
 }
 
 Result<bool> PgClient::IsInitDbDone() {
@@ -1043,6 +1088,15 @@ BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_SIMPLE_METHOD_DEFINE, ~, YB_PG_CLIENT_SIMPLE_
 
 Status PgClient::CancelTransaction(const unsigned char* transaction_id) {
   return impl_->CancelTransaction(transaction_id);
+}
+
+Result<tserver::PgListReplicationSlotsResponsePB> PgClient::ListReplicationSlots() {
+  return impl_->ListReplicationSlots();
+}
+
+Result<tserver::PgGetReplicationSlotStatusResponsePB> PgClient::GetReplicationSlotStatus(
+    const ReplicationSlotName& slot_name) {
+  return impl_->GetReplicationSlotStatus(slot_name);
 }
 
 }  // namespace pggate

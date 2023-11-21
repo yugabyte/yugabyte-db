@@ -4,7 +4,7 @@ headerTitle: JSON data types and functionality
 linkTitle: JSON
 summary: JSON and JSONB data types
 description: Learn about YSQL support for JSON data types (json and jsonb) and their functions and operators.
-image: /images/section_icons/api/ysql.png
+image: /images/section_icons/api/subsection.png
 menu:
   stable:
     identifier: api-ysql-datatypes-json

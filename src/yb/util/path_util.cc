@@ -46,8 +46,6 @@
 #include <sys/sysinfo.h>
 #endif
 
-#include "yb/util/logging.h"
-
 #include "yb/util/env_util.h"
 #include "yb/util/errno.h"
 #include "yb/util/logging.h"

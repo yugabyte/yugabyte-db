@@ -4,7 +4,9 @@ package server
 
 import (
 	"context"
+	"node-agent/app/session"
 	"node-agent/util"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -28,9 +30,26 @@ func (authenticator *Authenticator) authorize(ctx context.Context, method string
 		return status.Errorf(codes.Unauthenticated, "Authorization token is not provided")
 	}
 	accessToken := values[0]
-	_, err := util.VerifyJWT(ctx, authenticator.config, accessToken)
+	// This validation enhances the performance of ansible calls.
+	claims, err := util.ExtractClaims(ctx, authenticator.config, accessToken)
+	if err == nil {
+		if sessionKey, ok := util.StringFromClaims(claims, util.JwtClaimsSessionKey); ok {
+			entry := session.GetCacheInstance().Get(ctx, sessionKey)
+			if entry != nil {
+				return nil
+			}
+		}
+	}
+	// Default to this validation if session validation does not work.
+	claims, err = util.VerifyJWT(ctx, authenticator.config, accessToken)
 	if err != nil {
 		return status.Errorf(codes.Unauthenticated, "Authorization token is invalid: %v", err)
+	}
+	if sessionKey, ok := util.StringFromClaims(claims, util.JwtClaimsSessionKey); ok {
+		if expiry, ok := util.IntFromClaims(claims, util.JwtClaimsExpiryKey); ok {
+			session.GetCacheInstance().
+				Put(ctx, &session.SessionEntry{ID: sessionKey, Info: claims, Expiry: time.Unix(expiry, 0)})
+		}
 	}
 	return nil
 }

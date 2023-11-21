@@ -40,10 +40,8 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
     public enum Action {
       // Add the tables to the replication group.
       ADD,
-      // Delete the tables from the replication group and remove their corresponding DB entry.
-      DELETE,
       // Remove the tables from the replication group but keep its DB entry.
-      REMOVE_FROM_REPLICATION_ONLY;
+      REMOVE;
 
       @Override
       public String toString() {
@@ -196,13 +194,13 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
           log.debug(
               "Table IDs to remove with replication set up: {}", tableIdsToRemoveWithReplication);
 
-          // Removing all tables from a replication config is not allowed.
+          // Removing all tables from a replication group is not allowed.
           if (tableIdsToRemoveWithReplication.size()
                   + xClusterConfig.getTableIdsWithReplicationSetup(false /* done */).size()
               == xClusterConfig.getTableIds().size()) {
             throw new RuntimeException(
                 String.format(
-                    "The operation to remove tables from replication config will remove all the "
+                    "The operation to remove tables from replication group will remove all the "
                         + "tables in replication which is not allowed; if you want to delete "
                         + "replication for all of them, please delete the replication config: %s",
                     xClusterConfig));
@@ -223,23 +221,25 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
             if (HighAvailabilityConfig.get().isPresent()) {
               getUniverse(true).incrementVersion();
             }
+            xClusterConfig
+                .getTablesById(tableIdsToRemoveWithReplication)
+                .forEach(XClusterTableConfig::reset);
           }
 
-          if (taskParams().action == Params.Action.DELETE) {
-            xClusterConfig.removeTables(tableIdsToRemove);
-          } else {
-            xClusterConfig
-                .getTablesById(tableIdsToRemove)
-                .forEach(
-                    tableConfig -> {
-                      tableConfig.setStatus(XClusterTableConfig.Status.Validated);
-                      tableConfig.setReplicationSetupDone(false);
-                      tableConfig.setStreamId(null);
-                      tableConfig.setBootstrapCreateTime(null);
-                      tableConfig.setRestoreTime(null);
-                    });
-            xClusterConfig.update();
-          }
+          // For the rest of the tables, do not reset the bootstrap ids because this subtask did
+          // not delete those replication streams from the source universe.
+          xClusterConfig
+              .getTablesById(tableIdsToRemove)
+              .forEach(
+                  tableConfig -> {
+                    tableConfig.setStatus(XClusterTableConfig.Status.Validated);
+                    tableConfig.setReplicationSetupDone(false);
+                    tableConfig.setRestoreTime(null);
+                    // We intentionally do not reset backup and restore objects in the xCluster
+                    // config because modify table parent task sets these attributes and
+                    // its subtasks use these attributes.
+                  });
+          xClusterConfig.update();
         } catch (Exception e) {
           xClusterConfig.updateStatusForTables(tableIdsToRemove, XClusterTableConfig.Status.Failed);
           throw e;

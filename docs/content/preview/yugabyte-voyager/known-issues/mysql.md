@@ -1,8 +1,8 @@
 ---
 title: MySQL source database
 linkTitle: MySQL
-headcontent: Known issues when migrating data from MySQL.
-description: Known issues and suggested workarounds for migrating data from MySQL.
+headcontent: What to watch out for when migrating data from MySQL
+description: Review limitations and suggested workarounds for migrating data from MySQL.
 menu:
   preview_yugabyte-voyager:
     identifier: mysql-issues
@@ -13,7 +13,7 @@ rightNav:
   hideH3: true
 ---
 
-This page documents known issues you may encounter and suggested workarounds when migrating data from MySQL to YugabyteDB.
+Review limitations and implement suggested workarounds to successfully migrate data from MySQL to YugabyteDB.
 
 ## Contents
 

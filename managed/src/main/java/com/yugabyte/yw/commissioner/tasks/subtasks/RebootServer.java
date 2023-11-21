@@ -12,8 +12,8 @@ import lombok.extern.slf4j.Slf4j;
 public class RebootServer extends NodeTaskBase {
 
   @Inject
-  protected RebootServer(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected RebootServer(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
   public static class Params extends NodeTaskParams {

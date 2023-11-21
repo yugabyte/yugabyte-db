@@ -17,18 +17,26 @@ import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.IProviderTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareKubernetesUpgrade;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.CertsRotateParams;
+import com.yugabyte.yw.forms.FinalizeUpgradeParams;
+import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
+import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
+import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
+import com.yugabyte.yw.forms.SystemdUpgradeParams;
+import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
@@ -51,6 +59,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -294,17 +303,9 @@ public class CustomerTaskManager {
               .map(Objects::toString)
               .collect(Collectors.joining("','"));
 
-      // Delete orphaned parent tasks which do not have any associated customer task.
-      // It is rare but can happen as a customer task and task info are not saved in transaction.
-      // TODO It can be handled better with transaction but involves bigger change.
-      String query =
-          "DELETE FROM task_info WHERE parent_uuid IS NULL AND uuid NOT IN "
-              + "(SELECT task_uuid FROM customer_task)";
-      DB.sqlUpdate(query).execute();
-
       // Retrieve all incomplete customer tasks or task in incomplete state. Task state update
       // and customer completion time update are not transactional.
-      query =
+      String query =
           "SELECT ti.uuid AS task_uuid, ct.id AS customer_task_id "
               + "FROM task_info ti, customer_task ct "
               + "WHERE ti.uuid = ct.task_uuid "
@@ -326,6 +327,55 @@ public class CustomerTaskManager {
     } catch (Exception e) {
       LOG.error("Encountered error failing pending tasks", e);
     }
+  }
+
+  /**
+   * Updates the state of the universe in the event that the most recent task performed on it was an
+   * upgrade task that failed or was aborted which is called on YBA startup.
+   */
+  public void updateUniverseSoftwareUpgradeStateSet() {
+    Set<UUID> universeUUIDSet = Universe.getAllUUIDs();
+    for (UUID uuid : universeUUIDSet) {
+      Universe universe = Universe.getOrBadRequest(uuid);
+      Customer customer = Customer.get(universe.getCustomerId());
+      UUID placementModificationTaskUuid =
+          universe.getUniverseDetails().placementModificationTaskUuid;
+      if (placementModificationTaskUuid != null) {
+        CustomerTask placementModificationTask =
+            CustomerTask.getOrBadRequest(customer.getUuid(), placementModificationTaskUuid);
+        SoftwareUpgradeState state =
+            getUniverseSoftwareUpgradeStateBasedOnTask(universe, placementModificationTask);
+        universe.updateUniverseSoftwareUpgradeState(state);
+        LOG.debug("Updated universe {} software upgrade state to  {}.", uuid, state);
+      }
+    }
+  }
+
+  private SoftwareUpgradeState getUniverseSoftwareUpgradeStateBasedOnTask(
+      Universe universe, CustomerTask customerTask) {
+    SoftwareUpgradeState state = universe.getUniverseDetails().softwareUpgradeState;
+    Optional<TaskInfo> taskInfo = TaskInfo.maybeGet(customerTask.getTaskUUID());
+    if (taskInfo.isPresent()) {
+      TaskInfo lastTaskInfo = taskInfo.get();
+      if (lastTaskInfo.getTaskState().equals(TaskInfo.State.Failure)
+          || lastTaskInfo.getTaskState().equals(TaskInfo.State.Aborted)) {
+        TaskType taskType = lastTaskInfo.getTaskType();
+        if (Arrays.asList(TaskType.RollbackUpgrade, TaskType.RollbackKubernetesUpgrade)
+            .contains(taskType)) {
+          state = SoftwareUpgradeState.RollbackFailed;
+        } else if (taskType.equals(TaskType.FinalizeUpgrade)) {
+          state = SoftwareUpgradeState.FinalizeFailed;
+        } else if (Arrays.asList(
+                TaskType.SoftwareUpgrade,
+                TaskType.SoftwareUpgradeYB,
+                TaskType.SoftwareKubernetesUpgrade,
+                TaskType.SoftwareKubernetesUpgradeYB)
+            .contains(taskType)) {
+          state = SoftwareUpgradeState.UpgradeFailed;
+        }
+      }
+    }
+    return state;
   }
 
   private void enableLoadBalancer(Universe universe) {
@@ -382,15 +432,39 @@ public class CustomerTaskManager {
       case GFlagsKubernetesUpgrade:
         taskParams = Json.fromJson(oldTaskParams, KubernetesGFlagsUpgradeParams.class);
         break;
+      case SoftwareKubernetesUpgradeYB:
       case SoftwareKubernetesUpgrade:
-        taskParams = Json.fromJson(oldTaskParams, SoftwareUpgradeParams.class);
-        break;
       case SoftwareUpgrade:
       case SoftwareUpgradeYB:
         taskParams = Json.fromJson(oldTaskParams, SoftwareUpgradeParams.class);
         break;
+      case FinalizeUpgrade:
+        taskParams = Json.fromJson(oldTaskParams, FinalizeUpgradeParams.class);
+        break;
+      case RollbackUpgrade:
+      case RollbackKubernetesUpgrade:
+        taskParams = Json.fromJson(oldTaskParams, RollbackUpgradeParams.class);
+        break;
       case VMImageUpgrade:
         taskParams = Json.fromJson(oldTaskParams, VMImageUpgradeParams.class);
+        break;
+      case RestartUniverse:
+        taskParams = Json.fromJson(oldTaskParams, RestartTaskParams.class);
+        break;
+      case RebootUniverse:
+        taskParams = Json.fromJson(oldTaskParams, UpgradeTaskParams.class);
+        break;
+      case ThirdpartySoftwareUpgrade:
+        taskParams = Json.fromJson(oldTaskParams, ThirdpartySoftwareUpgradeParams.class);
+        break;
+      case GFlagsUpgrade:
+        taskParams = Json.fromJson(oldTaskParams, GFlagsUpgradeParams.class);
+        break;
+      case CertsRotate:
+        taskParams = Json.fromJson(oldTaskParams, CertsRotateParams.class);
+        break;
+      case SystemdUpgrade:
+        taskParams = Json.fromJson(oldTaskParams, SystemdUpgradeParams.class);
         break;
       case AddNodeToUniverse:
       case RemoveNodeFromUniverse:

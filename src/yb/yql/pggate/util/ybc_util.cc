@@ -204,6 +204,14 @@ bool YBCStatusIsTryAgain(YBCStatus s) {
   return StatusWrapper(s)->IsTryAgain();
 }
 
+bool YBCStatusIsAlreadyPresent(YBCStatus s) {
+  return StatusWrapper(s)->IsAlreadyPresent();
+}
+
+bool YBCStatusIsReplicationSlotLimitReached(YBCStatus s) {
+  return StatusWrapper(s)->IsReplicationSlotLimitReached();
+}
+
 uint32_t YBCStatusPgsqlError(YBCStatus s) {
   return to_underlying(FetchErrorCode(s));
 }

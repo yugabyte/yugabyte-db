@@ -13,7 +13,6 @@
 # under the License.
 #
 set -euo pipefail
-
 script_name=${0##*/}
 script_name=${script_name%.*}
 
@@ -272,6 +271,12 @@ Test options:
     Build|Do not build fuzz targets. By default - do not build.
   --(with|no)-odyssey
     Specify whether to build Odyssey (PostgreSQL connection pooler). Not building by default.
+  --enable-ysql-conn-mgr-test
+    Use YSQL Connection Manager as an endpoint when running unit tests. Could also be set using
+    the YB_ENABLE_YSQL_CONN_MGR_IN_TESTS env variable.
+
+  --validate-args-only
+    Only validate command-line arguments and exit immediately. Suppress all unnecessary output.
 
 Debug options:
 
@@ -334,6 +339,11 @@ set_cxx_test_name() {
     if [[ $1 =~ ^(TEST_F_EX)\($identifier,\ *$identifier,\ *$identifier\) ||
           $1 =~ ^(TEST|TEST_F)\($identifier,\ *$identifier\) ]]; then
       gtest_filter=${BASH_REMATCH[2]}.${BASH_REMATCH[3]}
+    elif [[ $1 =~ ^TEST_P\($identifier,\ *$identifier\) ]]; then
+      # Create a filter with wildcards that match all possiblilities.  For example,
+      # - PackingVersion/PgPackedRowTest.AddDropColumn/kV1
+      # - PackingVersion/PgPackedRowTest.AddDropColumn/kV2
+      gtest_filter="*/${BASH_REMATCH[1]}.${BASH_REMATCH[2]}/*"
     else
       fatal "Could not determine gtest test filter from source substring $1"
     fi
@@ -964,12 +974,16 @@ build_tests=""
 build_fuzz_targets=""
 
 # These will influence what targets to build if invoked with the packaged_targets meta-target.
-build_odyssey="false"
+build_odyssey=false
 if is_linux; then
-  build_odyssey="true"
+  build_odyssey=true
 fi
 
-build_yugabyted_ui="false"
+build_yugabyted_ui=false
+
+# -------------------------------------------------------------------------------------------------
+
+validate_args_only=false
 
 # -------------------------------------------------------------------------------------------------
 # Actually parsing command-line arguments
@@ -1429,6 +1443,9 @@ while [[ $# -gt 0 ]]; do
       # shellcheck disable=SC2034
       build_odyssey=true
     ;;
+    --enable-ysql-conn-mgr-test)
+      export YB_ENABLE_YSQL_CONN_MGR_IN_TESTS=true
+    ;;
     --cmake-unit-tests)
       run_cmake_unit_tests=true
     ;;
@@ -1439,7 +1456,7 @@ while [[ $# -gt 0 ]]; do
       export YB_LINKING_TYPE=full-lto
     ;;
     --lto)
-      if [[ ! $2 =~ ^(thin|full|none) ]]; then
+      if [[ ! $2 =~ ^(thin|full|none)$ ]]; then
         fatal "Invalid LTO type: $2"
       fi
       if [[ $2 == "none" ]]; then
@@ -1489,6 +1506,9 @@ while [[ $# -gt 0 ]]; do
     ;;
     --reset-cxx-test-filter)
       reset_cxx_test_filter=true
+    ;;
+    --validate-args-only)
+      validate_args_only=true
     ;;
     *)
       if [[ $1 =~ ^(YB_[A-Z0-9_]+|postgres_FLAGS_[a-zA-Z0-9_]+)=(.*)$ ]]; then
@@ -1553,6 +1573,9 @@ if is_mac && [[ $should_build_clangd_index == "true" && ${YB_COMPILER_TYPE:-} ==
   # On macOS, we need to use our custom-built version of Clang to build the clangd index.
   YB_COMPILER_TYPE=clang16
 fi
+if [[ $validate_args_only == "true" ]]; then
+  yb_set_build_type_quietly=true
+fi
 set_cmake_build_type_and_compiler_type
 
 if [[ $should_build_clangd_index == "true" && ! ${YB_COMPILER_TYPE} =~ ^clang[0-9]+$ ]]; then
@@ -1570,8 +1593,10 @@ if [[ ${reset_cxx_test_filter} == "true" ]]; then
   set_cxx_test_filter_regex ""
 fi
 
-log "YugabyteDB build is running on host '$HOSTNAME'"
-log "YB_COMPILER_TYPE=$YB_COMPILER_TYPE"
+if [[ $validate_args_only == "false" ]]; then
+  log "YugabyteDB build is running on host '$HOSTNAME'"
+  log "YB_COMPILER_TYPE=$YB_COMPILER_TYPE"
+fi
 
 normalize_build_type
 if [[ ${verbose} == "true" ]]; then
@@ -1689,6 +1714,10 @@ then
         "--java-test <class_name>#testMethodName" \
         " or remove the --run-java-test-methods-separately flag. " \
         "To run all Java tests, replace --java-test=<test_name> with --java-tests."
+fi
+
+if [[ $validate_args_only == "true" ]]; then
+  exit
 fi
 
 # End of post-processing and validating command-line arguments.

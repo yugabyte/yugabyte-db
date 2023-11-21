@@ -13,12 +13,14 @@ import lombok.extern.slf4j.Slf4j;
 public class ChangeInstanceType extends NodeTaskBase {
 
   @Inject
-  protected ChangeInstanceType(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected ChangeInstanceType(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
   public static class Params extends NodeTaskParams {
     public boolean force = false;
+    // Amount of memory to limit the postgres process to via the ysql cgroup (in megabytes)
+    public int cgroupSize = 0;
   }
 
   @Override

@@ -1222,6 +1222,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
       req.bootstrap_source_broadcast_addr(), req.bootstrap_source_private_addr(),
       req.bootstrap_source_cloud_info(), server_->MakeCloudInfoPB()));
 
+  auto rbs_source_role = "LEADER";
   ServerRegistrationPB tablet_leader_peer_conn_info;
   if (!req.is_served_by_tablet_leader()) {
     *tablet_leader_peer_conn_info.mutable_broadcast_addresses() =
@@ -1229,6 +1230,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
     *tablet_leader_peer_conn_info.mutable_private_rpc_addresses() =
         req.tablet_leader_private_addr();
     *tablet_leader_peer_conn_info.mutable_cloud_info() = req.tablet_leader_cloud_info();
+    rbs_source_role = "FOLLOWER";
   }
 
   int64_t leader_term = req.caller_term();
@@ -1275,6 +1277,10 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
         CreateAndRegisterTabletPeer(meta, replacing_tablet ? REPLACEMENT_PEER : NEW_PEER));
   MarkTabletBeingRemoteBootstrapped(tablet_peer->tablet_id(),
       tablet_peer->tablet_metadata()->table_id());
+  // Set the bootstrap source info for the peer's status listener for external visibility.
+  tablet_peer->status_listener()->SetStatusPrefix(
+      Format("Bootstrap Source: $0 ($1) [$2]",
+             bootstrap_peer_uuid, bootstrap_peer_addr, rbs_source_role));
 
   // TODO: If we ever make this method asynchronous, we need to move this code somewhere else.
   auto se = ScopeExit([this, tablet_peer] {
@@ -1894,6 +1900,8 @@ void TSTabletManager::CompleteShutdown() {
     std::lock_guard dir_assignment_lock(dir_assignment_mutex_);
     table_data_assignment_map_.clear();
     table_wal_assignment_map_.clear();
+    data_dirs_per_drive_.clear();
+    wal_dirs_per_drive_.clear();
 
     state_ = MANAGER_SHUTDOWN;
   }
@@ -2488,24 +2496,32 @@ void TSTabletManager::GetAndRegisterDataAndWalDir(FsManager* fs_manager,
     }
   }
   // Find the data directory with the least count of tablets for this table.
+  // break ties by choosing the data directory with the least number of tablets overall.
   table_data_assignment_iter = table_data_assignment_map_.find(table_id);
   auto data_assignment_value_map = table_data_assignment_iter->second;
   string min_dir;
   uint64_t min_dir_count = kuint64max;
+  uint64_t min_tablet_counts_across_tables = kuint64max;
   for (auto it = data_assignment_value_map.begin(); it != data_assignment_value_map.end(); ++it) {
-    if (min_dir_count > it->second.size()) {
+    if (min_dir_count > it->second.size() ||
+        (min_dir_count == it->second.size() &&
+         min_tablet_counts_across_tables > data_dirs_per_drive_[it->first])) {
       min_dir = it->first;
       min_dir_count = it->second.size();
+      min_tablet_counts_across_tables = data_dirs_per_drive_[min_dir];
     }
   }
   *data_root_dir = min_dir;
   // Increment the count for min_dir.
   auto data_assignment_value_iter = table_data_assignment_map_[table_id].find(min_dir);
   data_assignment_value_iter->second.insert(tablet_id);
+  data_dirs_per_drive_[min_dir] += 1;
 
   // Find the wal directory with the least count of tablets for this table.
+  // break ties by choosing the wal directory with the least number of tablets overall.
   min_dir = "";
   min_dir_count = kuint64max;
+  min_tablet_counts_across_tables = kuint64max;
   auto wal_root_dirs = fs_manager->GetWalRootDirs();
   CHECK(!wal_root_dirs.empty()) << "No wal root directories found";
   auto table_wal_assignment_iter = table_wal_assignment_map_.find(table_id);
@@ -2518,14 +2534,18 @@ void TSTabletManager::GetAndRegisterDataAndWalDir(FsManager* fs_manager,
   table_wal_assignment_iter = table_wal_assignment_map_.find(table_id);
   auto wal_assignment_value_map = table_wal_assignment_iter->second;
   for (auto it = wal_assignment_value_map.begin(); it != wal_assignment_value_map.end(); ++it) {
-    if (min_dir_count > it->second.size()) {
+    if (min_dir_count > it->second.size() ||
+        (min_dir_count == it->second.size() &&
+         min_tablet_counts_across_tables > wal_dirs_per_drive_[it->first])) {
       min_dir = it->first;
       min_dir_count = it->second.size();
+      min_tablet_counts_across_tables = wal_dirs_per_drive_[min_dir];
     }
   }
   *wal_root_dir = min_dir;
   auto wal_assignment_value_iter = table_wal_assignment_map_[table_id].find(min_dir);
   wal_assignment_value_iter->second.insert(tablet_id);
+  wal_dirs_per_drive_[min_dir] += 1;
 }
 
 void TSTabletManager::RegisterDataAndWalDir(FsManager* fs_manager,
@@ -2562,6 +2582,8 @@ void TSTabletManager::RegisterDataAndWalDir(FsManager* fs_manager,
   } else {
     data_assignment_value_iter->second.insert(tablet_id);
   }
+  // Increment the total tablet assignments for the drive
+  data_dirs_per_drive_[data_root_dir] += 1;
 
   auto wal_root_dirs = fs_manager->GetWalRootDirs();
   CHECK(!wal_root_dirs.empty()) << "No wal root directories found";
@@ -2585,6 +2607,8 @@ void TSTabletManager::RegisterDataAndWalDir(FsManager* fs_manager,
   } else {
     wal_assignment_value_iter->second.insert(tablet_id);
   }
+  // Increment the total tablet assignments for the drive
+  wal_dirs_per_drive_[wal_root_dir] += 1;
 }
 
 TSTabletManager::TableDiskAssignmentMap* TSTabletManager::GetTableDiskAssignmentMapUnlocked(
@@ -2649,6 +2673,7 @@ void TSTabletManager::UnregisterDataWalDir(const string& table_id,
       << "No data directory index found for table: " << table_id;
     if (data_assignment_value_iter != table_data_assignment_map_[table_id].end()) {
       data_assignment_value_iter->second.erase(tablet_id);
+      data_dirs_per_drive_[data_root_dir] -= 1;
     } else {
       LOG(WARNING) << "Tablet " << tablet_id << " not in the set for data directory "
                    << data_root_dir << "for table " << table_id;
@@ -2661,6 +2686,7 @@ void TSTabletManager::UnregisterDataWalDir(const string& table_id,
       << "No wal directory index found for table: " << table_id;
     if (wal_assignment_value_iter != table_wal_assignment_map_[table_id].end()) {
       wal_assignment_value_iter->second.erase(tablet_id);
+      wal_dirs_per_drive_[data_root_dir] -= 1;
     } else {
       LOG(WARNING) << "Tablet " << tablet_id << " not in the set for wal directory "
                    << wal_root_dir << "for table " << table_id;

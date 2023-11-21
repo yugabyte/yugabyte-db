@@ -40,7 +40,7 @@ TEST_F(PgSharedMemTest, Simple) {
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT)"));
   ASSERT_OK(conn.Execute("INSERT INTO t (key, value) VALUES (1, 'hello')"));
 
-  auto value = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM t WHERE key = 1"));
+  auto value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
   ASSERT_EQ(value, "hello");
 }
 
@@ -57,7 +57,7 @@ TEST_F(PgSharedMemTest, TimeOut) {
 
     FLAGS_TEST_transactional_read_delay_ms =
         delay ? FLAGS_ysql_client_read_write_timeout_ms * 2 : 0;
-    auto result = conn.FetchValue<int64_t>(
+    auto result = conn.FetchRow<int64_t>(
         "SELECT SUM(key) FROM t WHERE key > 0 OR key < 0");
     if (delay) {
       ASSERT_NOK(result);

@@ -43,7 +43,6 @@
 #include "yb/master/xcluster_consumer_registry_service.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/server/hybrid_clock.h"
-#include "yb/tserver/xcluster_consumer.h"
 #include "yb/tserver/mini_tablet_server.h"
 
 #include "yb/util/atomic.h"
@@ -120,22 +119,29 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
         Format(
             "Num consumer tables: $0 num producer tables: $1 must be equal.",
             num_consumer_tablets.size(), num_producer_tablets.size()));
-    std::vector<YBTableName> tables;
     for (uint32_t i = 0; i < num_consumer_tablets.size(); i++) {
-      RETURN_NOT_OK(CreateTable(i, num_producer_tablets[i], producer_client(), &tables));
+      auto table_name = VERIFY_RESULT(CreateTable(i, num_producer_tablets[i], producer_client()));
 
       std::shared_ptr<client::YBTable> producer_table;
-      RETURN_NOT_OK(producer_client()->OpenTable(tables[i * 2], &producer_table));
+      RETURN_NOT_OK(producer_client()->OpenTable(table_name, &producer_table));
       producer_tables_[producer_cluster()->GetClusterId()].push_back(producer_table);
 
-      RETURN_NOT_OK(
-          CreateTable(i, num_consumer_tablets[i], consumer_client(), consumer_schema, &tables));
+      table_name = VERIFY_RESULT(
+          CreateTable(i, num_consumer_tablets[i], consumer_client(), consumer_schema));
       std::shared_ptr<client::YBTable> consumer_table;
-      RETURN_NOT_OK(consumer_client()->OpenTable(tables[(i * 2) + 1], &consumer_table));
+      RETURN_NOT_OK(consumer_client()->OpenTable(table_name, &consumer_table));
       consumer_tables_.push_back(consumer_table);
     }
     return Status::OK();
   }
+
+  Status SetUpWithParams(
+      const std::vector<uint32_t>& num_consumer_tablets,
+      const std::vector<uint32_t>& num_producer_tablets, uint32_t replication_factor,
+      uint32_t num_masters, uint32_t num_tservers) override {
+    return STATUS(NotSupported, "Not supported");
+  }
+  Status SetUpWithParams() override { return STATUS(NotSupported, "Not supported"); }
 
   Status SetUpWithParams(
       const std::vector<uint32_t>& num_consumer_tablets,

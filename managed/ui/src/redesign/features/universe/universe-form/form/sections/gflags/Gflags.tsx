@@ -7,13 +7,21 @@ import { Box, Typography, makeStyles } from '@material-ui/core';
 import { GFlagsField } from '../../fields';
 import { YBToggleField } from '../../../../../../components';
 import { ReadOnlyGflagsModal } from './ReadOnlyGflagsModal';
-import { CloudType, ClusterModes, ClusterType, UniverseFormData } from '../../../utils/dto';
+import {
+  CloudType,
+  ClusterModes,
+  ClusterType,
+  RunTimeConfigEntry,
+  UniverseFormConfigurationProps,
+  UniverseFormData
+} from '../../../utils/dto';
 import {
   PROVIDER_FIELD,
   SOFTWARE_VERSION_FIELD,
   GFLAGS_FIELD,
   INHERIT_FLAGS_FROM_PRIMARY
 } from '../../../utils/constants';
+import { RuntimeConfigKey } from '../../../../../../helpers/constants';
 import { useSectionStyles } from '../../../universeMainStyle';
 import { UniverseFormContext } from '../../../UniverseFormContainer';
 
@@ -52,7 +60,7 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-export const GFlags: FC = () => {
+export const GFlags = ({ runtimeConfigs }: UniverseFormConfigurationProps) => {
   const classes = useSectionStyles();
   const gflagClasses = useStyles();
   const { t } = useTranslation();
@@ -64,6 +72,12 @@ export const GFlags: FC = () => {
   const isPrimary = clusterType === ClusterType.PRIMARY;
   const isEditMode = mode === ClusterModes.EDIT; //Form is in edit mode
   const isEditPrimary = isEditMode && isPrimary; //Editing Primary Cluster
+
+  // Value of runtime config key
+  const isGFlagMultilineConfEnabled =
+    runtimeConfigs?.configEntries?.find(
+      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.IS_GFLAG_MULTILINE_ENABLED
+    )?.value === 'true';
 
   //form Data
   const { control, getValues } = useFormContext<Partial<UniverseFormData>>();
@@ -112,11 +126,7 @@ export const GFlags: FC = () => {
         </Box>
       )}
 
-      {(isPrimary ||
-        (enableRRGflags &&
-          !isInherited &&
-          !isPrimary &&
-          provider?.code !== CloudType.kubernetes)) && (
+      {(isPrimary || (enableRRGflags && !isInherited && !isPrimary)) && (
         <Box display="flex" width={isPrimary ? '1284px' : '1062px'} mt={4}>
           <GFlagsField
             control={control}
@@ -125,6 +135,7 @@ export const GFlags: FC = () => {
             fieldPath={GFLAGS_FIELD}
             isReadReplica={!isPrimary}
             isReadOnly={isEditMode}
+            isGFlagMultilineConfEnabled={isGFlagMultilineConfEnabled}
           />
         </Box>
       )}

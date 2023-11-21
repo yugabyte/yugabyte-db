@@ -23,9 +23,12 @@ import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.RuntimeConfigFormData;
+import com.yugabyte.yw.forms.RuntimeConfigFormData.ConfigEntry;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
@@ -88,6 +91,17 @@ public class RuntimeConfController extends AuthenticatedController {
   @AuthzPath
   public Result listKeyInfo() {
     return PlatformResults.withData(keyMetaData.values());
+  }
+
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.1.0")
+  @ApiOperation(
+      value = "YbaApi Internal. List feature flags",
+      response = ConfigEntry.class,
+      responseContainer = "List",
+      notes = "List all the feature flag runtime config keys and their values.")
+  @AuthzPath
+  public Result listFeatureFlags() {
+    return PlatformResults.withData(runtimeConfService.getFeatureFlagEntries());
   }
 
   @ApiOperation(

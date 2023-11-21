@@ -84,7 +84,7 @@ public class TestBeforeImage extends CDCBaseClass {
 
     // Create a stream.
     CDCSubscriber testSubscriber = new CDCSubscriber(getMasterAddresses());
-    testSubscriber.createStream("proto", "all");
+    testSubscriber.createStream("proto", "full");
 
     statement.execute("insert into test values (1);");
     statement.execute("update test set b = 'updated_val' where a = 1;");

@@ -725,9 +725,7 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	batchedrelids = bms_difference(batchedrelids, unbatchablerelids);
 
 	Assert(!root->yb_cur_batched_relids);
-	Assert(!root->yb_cur_unbatched_relids);
 	root->yb_cur_batched_relids = batchedrelids;
-	root->yb_cur_unbatched_relids = unbatchablerelids;
 
 	/*
 	 * Build simple index paths using the clauses.  Allow ScalarArrayOpExpr
@@ -787,7 +785,6 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	}
 
 	root->yb_cur_batched_relids = NULL;
-	root->yb_cur_unbatched_relids = NULL;
 
 	return batched_paths_added;
 }
@@ -1175,7 +1172,9 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 				 * Moreover, LSM index supports scalar array ops as
 				 * index clauses without sacrificing ordering.
 				 */
-				if (!yb_supports_distinct_pushdown && indexcol > 0)
+				bool is_yb_index = IsYugaByteEnabled() &&
+					index->relam == LSM_AM_OID;
+				if (!is_yb_index && indexcol > 0)
 				{
 					if (skip_lower_saop)
 					{

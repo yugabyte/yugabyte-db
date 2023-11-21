@@ -60,11 +60,13 @@ const renderOption = (option: Record<string, string>) => {
 interface InstanceTypeFieldProps {
   isEditMode?: boolean;
   isDedicatedMasterField?: boolean;
+  disabled: boolean;
 }
 
 export const InstanceTypeField = ({
   isEditMode,
-  isDedicatedMasterField
+  isDedicatedMasterField,
+  disabled
 }: InstanceTypeFieldProps): ReactElement => {
   const { control, setValue, getValues } = useFormContext<UniverseFormData>();
   const classes = useFormFieldStyles();
@@ -177,6 +179,7 @@ export const InstanceTypeField = ({
               >
                 <YBAutoComplete
                   loading={isLoading}
+                  disabled={disabled}
                   value={(value as unknown) as Record<string, string>}
                   options={(instanceTypes as unknown) as Record<string, string>[]}
                   getOptionLabel={getOptionLabel}

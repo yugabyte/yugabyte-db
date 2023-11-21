@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"node-agent/app/executor"
+	"node-agent/app/session"
 	"node-agent/util"
 	"os"
 	"os/signal"
@@ -44,6 +45,7 @@ func Start() {
 		util.FileLogger().Fatalf(Context(), "Node Agent ID must be set")
 	}
 	executor.Init(Context())
+	session.Init(Context())
 	disableMetricsTLS := config.Bool(util.NodeAgentDisableMetricsTLS)
 	host := config.String(util.NodeIpKey)
 	port := config.String(util.NodePortKey)

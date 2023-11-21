@@ -189,6 +189,8 @@ using yb::master::IsLoadBalancerIdleRequestPB;
 using yb::master::IsLoadBalancerIdleResponsePB;
 using yb::master::IsObjectPartOfXReplRequestPB;
 using yb::master::IsObjectPartOfXReplResponsePB;
+using yb::master::ListCDCStreamsRequestPB;
+using yb::master::ListCDCStreamsResponsePB;
 using yb::master::ListLiveTabletServersRequestPB;
 using yb::master::ListLiveTabletServersResponsePB;
 using yb::master::ListLiveTabletServersResponsePB_Entry;
@@ -1442,6 +1444,27 @@ void YBClient::CreateCDCStream(
   data_->CreateCDCStream(this, table_id, options, transactional, deadline, callback);
 }
 
+Result<xrepl::StreamId> YBClient::CreateCDCSDKStreamForNamespace(
+    const NamespaceId& namespace_id,
+    const std::unordered_map<std::string, std::string>& options,
+    const ReplicationSlotName& replication_slot_name) {
+  CreateCDCStreamRequestPB req;
+  req.set_namespace_id(namespace_id);
+  req.mutable_options()->Reserve(narrow_cast<int>(options.size()));
+  for (const auto& option : options) {
+    auto new_option = req.add_options();
+    new_option->set_key(option.first);
+    new_option->set_value(option.second);
+  }
+  if (!replication_slot_name.empty()) {
+    req.set_cdcsdk_ysql_replication_slot_name(replication_slot_name.ToString());
+  }
+
+  CreateCDCStreamResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, CreateCDCStream);
+  return xrepl::StreamId::FromString(resp.stream_id());
+}
+
 Status YBClient::GetCDCStream(
     const xrepl::StreamId& stream_id,
     NamespaceId* ns_id,
@@ -1480,6 +1503,19 @@ Status YBClient::GetCDCStream(
   return Status::OK();
 }
 
+Status YBClient::GetCDCStream(
+    const ReplicationSlotName& replication_slot_name,
+    xrepl::StreamId* stream_id) {
+  GetCDCStreamRequestPB req;
+  req.set_cdcsdk_ysql_replication_slot_name(replication_slot_name.ToString());
+
+  GetCDCStreamResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, GetCDCStream);
+
+  *stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(resp.stream().stream_id()));
+  return Status::OK();
+}
+
 void YBClient::GetCDCStream(
     const xrepl::StreamId& stream_id,
     std::shared_ptr<TableId> table_id,
@@ -1487,6 +1523,27 @@ void YBClient::GetCDCStream(
     StdStatusCallback callback) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   data_->GetCDCStream(this, stream_id, table_id, options, deadline, callback);
+}
+
+Result<std::vector<CDCSDKStreamInfo>> YBClient::ListCDCSDKStreams() {
+  ListCDCStreamsRequestPB req;
+  ListCDCStreamsResponsePB resp;
+
+  req.set_id_type(master::IdTypePB::NAMESPACE_ID);
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, ListCDCStreams);
+
+  std::vector<CDCSDKStreamInfo> stream_infos;
+  stream_infos.reserve(resp.streams_size());
+  for (const auto& stream : resp.streams()) {
+    // Skip CDCSDK streams which do not have a replication slot.
+    if (!stream.has_cdcsdk_ysql_replication_slot_name()) {
+        VLOG(4) << "Skipping stream " << stream.stream_id()
+                << " since it does not have a cdcsdk_ysql_replication_slot_name";
+        continue;
+    }
+    stream_infos.push_back(VERIFY_RESULT(CDCSDKStreamInfo::FromPB(stream)));
+  }
+  return stream_infos;
 }
 
 Status YBClient::DeleteCDCStream(
@@ -1522,6 +1579,19 @@ Status YBClient::DeleteCDCStream(
   // Setting up request.
   DeleteCDCStreamRequestPB req;
   req.add_stream_id(stream_id.ToString());
+  req.set_force_delete(force_delete);
+  req.set_ignore_errors(ignore_errors);
+
+  DeleteCDCStreamResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, DeleteCDCStream);
+  return Status::OK();
+}
+
+Status YBClient::DeleteCDCStream(
+    const ReplicationSlotName& replication_slot_name, bool force_delete, bool ignore_errors) {
+  // Setting up request.
+  DeleteCDCStreamRequestPB req;
+  req.add_cdcsdk_ysql_replication_slot_name(replication_slot_name.ToString());
   req.set_force_delete(force_delete);
   req.set_ignore_errors(ignore_errors);
 
@@ -1653,7 +1723,7 @@ Status YBClient::UpdateConsumerOnProducerSplit(
   SCHECK(stream_id, InvalidArgument, "Stream id is required.");
 
   UpdateConsumerOnProducerSplitRequestPB req;
-  req.set_producer_id(replication_group_id.ToString());
+  req.set_replication_group_id(replication_group_id.ToString());
   req.set_stream_id(stream_id.ToString());
   req.mutable_producer_split_tablet_info()->CopyFrom(split_info);
 
@@ -1675,7 +1745,7 @@ Status YBClient::UpdateConsumerOnProducerMetadata(
   SCHECK(resp != nullptr, InvalidArgument, "Response pointer is required.");
 
   master::UpdateConsumerOnProducerMetadataRequestPB req;
-  req.set_producer_id(replication_group_id.ToString());
+  req.set_replication_group_id(replication_group_id.ToString());
   req.set_stream_id(stream_id.ToString());
   req.set_colocation_id(colocation_id);
   req.set_producer_schema_version(producer_schema_version);
@@ -2343,6 +2413,29 @@ Result<std::vector<YBTableName>> YBClient::ListUserTables(
   return result;
 }
 
+Status YBClient::AreNodesSafeToTakeDown(
+      std::vector<std::string> tserver_uuids,
+      std::vector<std::string> master_uuids,
+      int follower_lag_bound_ms) {
+  master::AreNodesSafeToTakeDownRequestPB req;
+  master::AreNodesSafeToTakeDownResponsePB resp;
+
+  for (auto& tserver_uuid : tserver_uuids) {
+    req.add_tserver_uuids(std::move(tserver_uuid));
+  }
+  for (auto& master_uuid : master_uuids) {
+    req.add_master_uuids(std::move(master_uuid));
+  }
+  req.set_follower_lag_bound_ms(follower_lag_bound_ms);
+
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Admin, req, resp, AreNodesSafeToTakeDown);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
 Result<cdc::EnumOidLabelMap> YBClient::GetPgEnumOidLabelMap(const NamespaceName& ns_name) {
   GetUDTypeMetadataRequestPB req;
   GetUDTypeMetadataResponsePB resp;
@@ -2600,6 +2693,9 @@ Result<std::optional<AutoFlagsConfigPB>> YBClient::GetAutoFlagConfig() {
   }();
 
   if (status.ok()) {
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
     return std::move(resp.config());
   }
 
@@ -2608,6 +2704,38 @@ Result<std::optional<AutoFlagsConfigPB>> YBClient::GetAutoFlagConfig() {
   }
 
   return status;
+}
+
+Result<std::optional<std::pair<bool, uint32>>> YBClient::ValidateAutoFlagsConfig(
+    const AutoFlagsConfigPB& config, std::optional<AutoFlagClass> min_flag_class) {
+  master::ValidateAutoFlagsConfigRequestPB req;
+  master::ValidateAutoFlagsConfigResponsePB resp;
+  req.mutable_config()->CopyFrom(config);
+  if (min_flag_class) {
+    req.set_min_flag_class(to_underlying(*min_flag_class));
+  }
+
+  // CALL_SYNC_LEADER_MASTER_RPC_EX will return on failure. Capture the Status so that we can handle
+  // the case when master is running on an older version that does not support this RPC.
+  Status status = [&]() -> Status {
+    CALL_SYNC_LEADER_MASTER_RPC_EX(Cluster, req, resp, ValidateAutoFlagsConfig);
+    return Status::OK();
+  }();
+
+  if (!status.ok()) {
+    if (rpc::RpcError(status) == rpc::ErrorStatusPB::ERROR_NO_SUCH_METHOD) {
+      return std::nullopt;
+    }
+
+    return status;
+  }
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  SCHECK(
+      resp.has_valid() && resp.has_config_version(), IllegalState,
+      "Invalid response from ValidateAutoFlagsConfig");
+  return std::make_pair(resp.valid(), resp.config_version());
 }
 
 Result<master::StatefulServiceInfoPB> YBClient::GetStatefulServiceLocation(

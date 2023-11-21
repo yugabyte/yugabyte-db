@@ -77,6 +77,7 @@
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/stol_utils.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/thread.h"
 #include "yb/tablet/tablet_types.pb.h"
@@ -127,6 +128,9 @@ DECLARE_bool(cdc_populate_end_markers_transactions);
 DECLARE_uint64(cdc_stream_records_threshold_size_bytes);
 DECLARE_int64(cdc_resolve_intent_lag_threshold_ms);
 DECLARE_bool(enable_tablet_split_of_cdcsdk_streamed_tables);
+DECLARE_bool(ysql_yb_enable_replication_commands);
+DECLARE_bool(cdc_enable_postgres_replica_identity);
+DECLARE_uint64(ysql_cdc_active_replication_slot_window_ms);
 
 namespace yb {
 
@@ -379,7 +383,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       CDCSDKYsqlTest::ExpectedRecordWithThreeColumns expected_records, uint32_t* count,
       const bool& validate_old_tuple = false,
       CDCSDKYsqlTest::ExpectedRecordWithThreeColumns expected_before_image_records = {},
-      const bool& validate_third_column = false);
+      const bool& validate_third_column = false, const bool is_nothing_record = false);
 
   void CheckCount(const uint32_t* expected_count, uint32_t* count);
 
@@ -558,9 +562,17 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Status WaitForGetChangesToFetchRecords(
       GetChangesResponsePB* get_changes_resp, const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
-      const int& expected_count, const CDCSDKCheckpointPB* cp = nullptr, const int& tablet_idx = 0,
+      const int& expected_count, bool is_explicit_checkpoint = false,
+      const CDCSDKCheckpointPB* cp = nullptr, const int& tablet_idx = 0,
       const int64& safe_hybrid_time = -1, const int& wal_segment_index = 0,
       const double& timeout_secs = 5);
+
+  Status WaitForGetChangesToFetchRecordsAcrossTablets(
+      const xrepl::StreamId& stream_id,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+      const int& expected_count, bool is_explicit_checkpoint = false,
+      const CDCSDKCheckpointPB* cp = nullptr, const int64& safe_hybrid_time = -1,
+      const int& wal_segment_index = 0, const double& timeout_secs = 5);
 
   Status XreplValidateSplitCandidateTable(const TableId& table);
 };

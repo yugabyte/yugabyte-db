@@ -9,6 +9,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import com.google.api.client.util.Strings;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.logging.LogUtil;
@@ -26,6 +27,7 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
@@ -292,6 +294,9 @@ public class CustomerTask extends Model {
     @EnumValue("Failover")
     Failover,
 
+    @EnumValue("Switchover")
+    Switchover,
+
     @EnumValue("PrecheckNode")
     PrecheckNode,
 
@@ -453,7 +458,9 @@ public class CustomerTask extends Model {
         case SyncXClusterConfig:
           return completed ? "Synchronized xcluster config " : "Synchronizing xcluster config ";
         case Failover:
-          return completed ? "Failed over dr confing " : "Failing over dr confing ";
+          return completed ? "Failed over dr config " : "Failing over dr config ";
+        case Switchover:
+          return completed ? "Switched over dr config " : "Switching over dr config ";
         case PrecheckNode:
           return completed ? "Performed preflight check on " : "Performing preflight check on ";
         case Abort:
@@ -633,6 +640,12 @@ public class CustomerTask extends Model {
     }
   }
 
+  private static final Set<TaskType> upgradeCustomerTasksSet =
+      ImmutableSet.of(
+          CustomerTask.TaskType.FinalizeUpgrade,
+          CustomerTask.TaskType.RollbackUpgrade,
+          CustomerTask.TaskType.SoftwareUpgrade);
+
   public static final Finder<Long, CustomerTask> find =
       new Finder<Long, CustomerTask>(CustomerTask.class) {};
 
@@ -760,10 +773,17 @@ public class CustomerTask extends Model {
       return 0;
     }
     int subTaskSize = rootTaskInfo.getSubTasks().size();
-    // This performs cascade delete.
-    rootTaskInfo.delete();
+    deleteTasks(rootTaskInfo);
     delete();
     return 2 + subTaskSize;
+  }
+
+  @Transactional
+  // This is in a transaction block to not lose the parent task UUID.
+  private void deleteTasks(TaskInfo rootTaskInfo) {
+    rootTaskInfo.delete();
+    // TODO This is needed temporarily if the migration to add the FK constraint is skipped.
+    rootTaskInfo.getSubTasks().stream().forEach(TaskInfo::delete);
   }
 
   public static CustomerTask findByTaskUUID(UUID taskUUID) {
@@ -820,6 +840,10 @@ public class CustomerTask extends Model {
       Optional<Universe> optional = Universe.maybeGet(targetUUID);
       if (!optional.isPresent()) {
         return true;
+      }
+      if (upgradeCustomerTasksSet.contains(type)) {
+        LOG.debug("Universe task {} is not deletable as it is an upgrade task.", targetUUID);
+        return false;
       }
       UniverseDefinitionTaskParams taskParams = optional.get().getUniverseDetails();
       if (taskUUID.equals(taskParams.updatingTaskUUID)) {

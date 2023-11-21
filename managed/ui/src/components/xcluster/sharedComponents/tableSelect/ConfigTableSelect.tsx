@@ -20,7 +20,8 @@ import { ExpandedConfigTableSelect } from './ExpandedConfigTableSelect';
 import { SortOrder, YBTableRelationType } from '../../../../redesign/helpers/constants';
 
 import { TableType, Universe, YBTable } from '../../../../redesign/helpers/dtos';
-import { XClusterConfig, XClusterTable, XClusterTableType } from '../../XClusterTypes';
+import { XClusterTable, XClusterTableType } from '../../XClusterTypes';
+import { XClusterConfig } from '../../dtos';
 
 import styles from './ConfigTableSelect.module.scss';
 
@@ -68,11 +69,13 @@ export const ConfigTableSelect = ({
 
   const sourceUniverseTablesQuery = useQuery<YBTable[]>(
     universeQueryKey.tables(xClusterConfig.sourceUniverseUUID, {
-      excludeColocatedTables: true
+      excludeColocatedTables: true,
+      onlySupportedForXCluster: true
     }),
     () =>
       fetchTablesInUniverse(xClusterConfig.sourceUniverseUUID, {
-        excludeColocatedTables: true
+        excludeColocatedTables: true,
+        onlySupportedForXCluster: true
       }).then((response) => response.data)
   );
   const sourceUniverseQuery = useQuery<Universe>(

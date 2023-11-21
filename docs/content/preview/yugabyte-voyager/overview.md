@@ -41,8 +41,8 @@ YugabyteDB Voyager has the following features:
 You can perform migration by choosing one of the following options:
 
 - [Offline migration](../migrate/migrate-steps/) - Take your applications offline to perform the migration.
-- [Live migration](../migrate/live-migrate/) [Tech Preview] - Migrate your data while your application is running (currently Oracle only).
-- [Live migration with fall-forward](../migrate/live-fall-forward/) [Tech Preview] - Add a fall-forward database for your live migration (currently Oracle only).
+- [Live migration](../migrate/live-migrate/) {{<badge/tp>}} - Migrate your data while your application is running (currently Oracle only).
+- [Live migration with fall-forward](../migrate/live-fall-forward/) {{<badge/tp>}} - Add a fall-forward database for your live migration (currently Oracle only).
 
 ## Source databases
 
@@ -62,4 +62,4 @@ The following table shows the target database support for each migration type.
 | :------------- | :--------------------------- | ------------------ |
 | Offline | v2.16<br>v2.18<br>v2.19 | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/)<br>[YugabyteDB Managed](../../yugabyte-cloud/cloud-basics/) |
 | Live | v2.16<br>v2.18<br>v2.19 | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/)<br>[YugabyteDB Managed](../../yugabyte-cloud/cloud-basics/) |
-| Live with fall-forward | v2.18 | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/) |
+| Live with fall-forward | v2.18.2.x | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/) |

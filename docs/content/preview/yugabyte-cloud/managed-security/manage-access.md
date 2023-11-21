@@ -31,7 +31,7 @@ Users can log in to YugabyteDB Managed using either an email-based account or a 
 
 To manage the social logins available to users, do the following:
 
-1. Navigate to **Security > Access Control > Users**, then click **Login Methods** to display the **Login Methods** dialog.
+1. Navigate to **Security > Access Control > Authentication**, then click **Edit Configuration** to display the **Login Methods** dialog.
 1. Enable the social logins you want to use.
 1. Click **Save Changes**.
 

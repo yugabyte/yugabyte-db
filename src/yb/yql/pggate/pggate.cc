@@ -239,7 +239,8 @@ class PrecastRequestSender {
 Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
                             PgOid database_id,
                             std::vector<TableYbctid>* ybctids,
-                            const std::unordered_set<PgOid>& region_local_tables) {
+                            const std::unordered_set<PgOid>& region_local_tables,
+                            const bool keep_order) {
   // Group the items by the table ID.
   std::sort(ybctids->begin(), ybctids->end(), [](const auto& a, const auto& b) {
     return a.table_id < b.table_id;
@@ -277,7 +278,7 @@ Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
     // Populate doc_op with ybctids which belong to current table.
     RETURN_NOT_OK(doc_op.PopulateDmlByYbctidOps({make_lw_function([&it, table_id, end] {
       return it != end && it->table_id == table_id ? Slice((it++)->ybctid) : Slice();
-    }), static_cast<size_t>(end - it)}));
+    }), static_cast<size_t>(end - it), keep_order}));
     RETURN_NOT_OK(doc_op.Execute());
   }
 
@@ -798,6 +799,12 @@ Status PgApiImpl::ReserveOids(const PgOid database_oid,
   auto p = VERIFY_RESULT(pg_client_.ReserveOids(database_oid, next_oid, count));
   *begin_oid = p.first;
   *end_oid = p.second;
+  return Status::OK();
+}
+
+Status PgApiImpl::GetNewObjectId(PgOid db_oid, PgOid* new_oid) {
+  auto result = VERIFY_RESULT(pg_client_.GetNewObjectId(db_oid));
+  *new_oid = result;
   return Status::OK();
 }
 
@@ -2038,7 +2045,8 @@ Result<bool> PgApiImpl::ForeignKeyReferenceExists(
       LightweightTableYbctid(table_id, ybctid), make_lw_function(
           [this, database_id](std::vector<TableYbctid>* ybctids,
                               const std::unordered_set<PgOid>& region_local_tables) {
-            return FetchExistingYbctids(pg_session_, database_id, ybctids, region_local_tables);
+            return FetchExistingYbctids(
+                pg_session_, database_id, ybctids, region_local_tables, false);
           }));
 }
 
@@ -2127,6 +2135,50 @@ Result<boost::container::small_vector<RefCntSlice, 2>> PgApiImpl::GetTableKeyRan
   return pg_session_->GetTableKeyRanges(
       table_id, lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes, is_forward,
       max_key_length);
+}
+
+//--------------------------------------------------------------------------------------------------
+
+Status PgApiImpl::NewCreateReplicationSlot(const char *slot_name,
+                                           const PgOid database_oid,
+                                           PgStatement **handle) {
+  auto stmt = std::make_unique<PgCreateReplicationSlot>(pg_session_, slot_name, database_oid);
+  RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
+  return Status::OK();
+}
+
+Status PgApiImpl::ExecCreateReplicationSlot(PgStatement *handle) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_REPLICATION_SLOT)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  PgCreateReplicationSlot *pg_stmt = down_cast<PgCreateReplicationSlot*>(handle);
+  return pg_stmt->Exec();
+}
+
+Result<tserver::PgListReplicationSlotsResponsePB> PgApiImpl::ListReplicationSlots() {
+  return pg_session_->ListReplicationSlots();
+}
+
+Result<tserver::PgGetReplicationSlotStatusResponsePB> PgApiImpl::GetReplicationSlotStatus(
+    const ReplicationSlotName& slot_name) {
+  return pg_session_->GetReplicationSlotStatus(slot_name);
+}
+
+Status PgApiImpl::NewDropReplicationSlot(const char *slot_name,
+                                         PgStatement **handle) {
+  auto stmt = std::make_unique<PgDropReplicationSlot>(pg_session_, slot_name);
+  RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
+  return Status::OK();
+}
+
+Status PgApiImpl::ExecDropReplicationSlot(PgStatement *handle) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_DROP_REPLICATION_SLOT)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  PgDropReplicationSlot *pg_stmt = down_cast<PgDropReplicationSlot*>(handle);
+  return pg_stmt->Exec();
 }
 
 } // namespace pggate

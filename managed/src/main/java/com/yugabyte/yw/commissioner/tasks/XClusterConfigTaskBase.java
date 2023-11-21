@@ -14,7 +14,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ReplicateNamespaces;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetReplicationPaused;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetRestoreTime;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.WaitForReplicationDrain;
-import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModifyTables;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigRename;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetStatus;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetStatusForTables;
@@ -30,6 +29,7 @@ import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.DrConfigTaskParams;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.forms.TableInfoForm.TableInfoResp;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
@@ -57,7 +57,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.CommonTypes;
@@ -96,6 +95,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   public static final String ENABLE_PG_SAVEPOINTS_GFLAG_NAME = "enable_pg_savepoints";
   public static final String MINIMUN_VERSION_TRANSACTIONAL_XCLUSTER_SUPPORT = "2.18.1.0-b1";
   public static final int LOGICAL_CLOCK_NUM_BITS_IN_HYBRID_CLOCK = 12;
+  public static final String TXN_XCLUSTER_SAFETIME_LAG_NAME = "consumer_safe_time_lag";
 
   public static final List<XClusterConfig.XClusterConfigStatusType>
       X_CLUSTER_CONFIG_MUST_DELETE_STATUS_LIST =
@@ -108,6 +108,10 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
           XClusterTableConfig.Status.Validated,
           XClusterTableConfig.Status.Updating,
           XClusterTableConfig.Status.Bootstrapping);
+
+  // XCluster setup is not supported for system, matview, and colocated tables.
+  public static final List<RelationType> X_CLUSTER_SUPPORTED_TABLE_RELATION_TYPE_LIST =
+      ImmutableList.of(RelationType.USER_TABLE_RELATION, RelationType.INDEX_TABLE_RELATION);
 
   private static final Map<XClusterConfigStatusType, List<TaskType>> STATUS_TO_ALLOWED_TASKS =
       new HashMap<>();
@@ -184,6 +188,26 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       throw new RuntimeException("xClusterConfig cannot be null");
     }
     return X_CLUSTER_CONFIG_MUST_DELETE_STATUS_LIST.contains(xClusterConfig.getStatus());
+  }
+
+  public static boolean isXClusterSupported(
+      MasterDdlOuterClass.ListTablesResponsePB.TableInfo tableInfo) {
+    return X_CLUSTER_SUPPORTED_TABLE_RELATION_TYPE_LIST.stream()
+        .anyMatch(relationType -> relationType.equals(tableInfo.getRelationType()));
+  }
+
+  public static boolean isXClusterSupported(TableInfoResp tableInfoResp) {
+    return X_CLUSTER_SUPPORTED_TABLE_RELATION_TYPE_LIST.stream()
+        .anyMatch(relationType -> relationType.equals(tableInfoResp.relationType));
+  }
+
+  public static Map<Boolean, List<String>> getTableIdsPartitionedByIsXClusterSupported(
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList) {
+    return tableInfoList.stream()
+        .collect(
+            Collectors.partitioningBy(
+                XClusterConfigTaskBase::isXClusterSupported,
+                Collectors.mapping(XClusterConfigTaskBase::getTableId, Collectors.toList())));
   }
 
   public static boolean isTaskAllowed(XClusterConfig xClusterConfig, TaskType taskType) {
@@ -306,24 +330,6 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   protected SubTaskGroup createSetReplicationPausedTask(
       XClusterConfig xClusterConfig, String status) {
     return createSetReplicationPausedTask(xClusterConfig, status.equals("Paused"));
-  }
-
-  protected SubTaskGroup createXClusterConfigModifyTablesTask(
-      XClusterConfig xClusterConfig,
-      Set<String> tables,
-      XClusterConfigModifyTables.Params.Action action) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("XClusterConfigModifyTables");
-    XClusterConfigModifyTables.Params modifyTablesParams = new XClusterConfigModifyTables.Params();
-    modifyTablesParams.setUniverseUUID(xClusterConfig.getTargetUniverseUUID());
-    modifyTablesParams.xClusterConfig = xClusterConfig;
-    modifyTablesParams.tables = tables;
-    modifyTablesParams.action = action;
-
-    XClusterConfigModifyTables task = createTask(XClusterConfigModifyTables.class);
-    task.initialize(modifyTablesParams);
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
   }
 
   protected SubTaskGroup createXClusterConfigRenameTask(
@@ -785,6 +791,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
             .getProducerMapMap()
             .get(xClusterConfig.getReplicationGroupName());
     if (replicationGroup == null) {
+      xClusterConfig.updateReplicationSetupDone(tableIds, false /* replicationSetupDone */);
       return false;
     }
 
@@ -818,7 +825,9 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
    * @return A list of {@link MasterDdlOuterClass.ListTablesResponsePB.TableInfo} containing table
    *     info of the tables whose id is specified at {@code requestedTableIds}
    */
-  // Todo: Break down this method.
+  // Todo: This method is no longer use in the code base. It is only used in the utests and should
+  //  be removed.
+  @Deprecated
   public static Pair<List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>, Set<String>>
       getRequestedTableInfoListAndVerify(
           YBClientService ybService,
@@ -1297,17 +1306,6 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     return namespaces;
   }
 
-  public static Set<String> getTableIds(
-      Collection<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tablesInfoList,
-      @Nullable MasterDdlOuterClass.ListTablesResponsePB.TableInfo txnTableInfo) {
-    if (Objects.nonNull(txnTableInfo)) {
-      return getTableIds(
-          Stream.concat(tablesInfoList.stream(), Stream.of(txnTableInfo))
-              .collect(Collectors.toList()));
-    }
-    return getTableIds(tablesInfoList);
-  }
-
   public static Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
       groupByNamespaceId(
           Collection<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tablesInfoList) {
@@ -1483,6 +1481,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
               "Some of the tables were not found: was %d, found %d, missing tables: %s",
               tableIds.size(), filteredTableInfoList.size(), missingTableIds));
     }
+    log.debug("filteredTableInfoList is {}", filteredTableInfoList);
     return filteredTableInfoList;
   }
 

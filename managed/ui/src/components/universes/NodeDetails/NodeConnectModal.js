@@ -10,6 +10,8 @@ import { isEmptyObject } from '../../../utils/ObjectUtils';
 import { getPrimaryCluster, getReadOnlyCluster } from '../../../utils/UniverseUtils';
 import { YBCopyButton } from '../../../components/common/descriptors';
 import { MenuItem } from 'react-bootstrap';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 import './NodeConnectModal.scss';
 
@@ -43,7 +45,8 @@ class NodeConnectModal extends Component {
       providerUUID,
       runtimeConfigs,
       currentUniverse,
-      clusterType
+      clusterType,
+      universeUUID
     } = this.props;
     const nodeIPs = { privateIP: currentRow.privateIP, publicIP: currentRow.publicIP };
     let accessCommand = null;
@@ -113,9 +116,22 @@ class NodeConnectModal extends Component {
     const btnId = _.uniqueId('node_action_btn_');
     return (
       <Fragment>
-        <MenuItem eventKey={btnId} onClick={() => this.toggleConnectModal(true)}>
-          {label}
-        </MenuItem>
+        <RbacValidator
+          isControl
+          accessRequiredOn={{
+            onResource: universeUUID,
+            ...ApiPermissionMap.GET_UNIVERSES_BY_ID
+          }}
+        >
+          <MenuItem
+            eventKey={btnId}
+            data-testid="NodeAction-CONNECT"
+            onClick={() => this.toggleConnectModal(true)}
+          >
+            {label}
+          </MenuItem>
+        </RbacValidator>
+
         <YBModal
           title={accessTitle}
           visible={this.state.showConnectModal}

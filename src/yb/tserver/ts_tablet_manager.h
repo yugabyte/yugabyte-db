@@ -609,6 +609,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Map from table ID to count of children in data and wal directories.
   TableDiskAssignmentMap table_data_assignment_map_ GUARDED_BY(dir_assignment_mutex_);
   TableDiskAssignmentMap table_wal_assignment_map_ GUARDED_BY(dir_assignment_mutex_);
+  std::unordered_map<std::string, size_t> data_dirs_per_drive_ GUARDED_BY(dir_assignment_mutex_);
+  std::unordered_map<std::string, size_t> wal_dirs_per_drive_ GUARDED_BY(dir_assignment_mutex_);
   mutable std::mutex dir_assignment_mutex_;
 
   // Map of tablet ids -> reason strings where the keys are tablets whose

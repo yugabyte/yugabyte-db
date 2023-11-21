@@ -34,8 +34,6 @@
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
 
-#include "yb/util/logging.h"
-
 #include "yb/gutil/bind.h"
 
 #include "yb/util/mem_tracker.h"

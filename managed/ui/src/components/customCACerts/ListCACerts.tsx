@@ -25,8 +25,8 @@ import { YBLoadingCircleIcon } from '../common/indicators';
 import { YBTable } from '../common/YBTable';
 import { ybFormatDate } from '../../redesign/helpers/DateUtils';
 import { MoreHoriz } from '@material-ui/icons';
-import { RbacValidator, hasNecessaryPerm } from '../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../redesign/features/rbac/UserPermPathMapping';
+import { RbacValidator, hasNecessaryPerm } from '../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../redesign/features/rbac/ApiAndUserPermMapping';
 
 type ListCACertsProps = {};
 
@@ -75,19 +75,22 @@ const ListCACerts: FC<ListCACertsProps> = () => {
               getCertDetails(cert.id).then((resp) => {
                 downloadCert(resp.data);
               });
-            }
+            },
+            menuItemWrapper(elem) {
+              return <RbacValidator accessRequiredOn={ApiPermissionMap.DOWNLOAD_CERTIFICATE} isControl>{elem}</RbacValidator>;
+            },
           },
           {
             text: t('customCACerts.listing.table.moreActions.updateCert'),
             callback: () => {
-              if (!hasNecessaryPerm({ ...UserPermissionMap.createCACerts })) {
+              if (!hasNecessaryPerm(ApiPermissionMap.MODIFY_CA_CERT)) {
                 return;
               }
               setSelectedCADetails(cert);
               setShowUploadCACertModal(true);
             },
             menuItemWrapper(elem) {
-              return <RbacValidator accessRequiredOn={{ ...UserPermissionMap.createCACerts }} isControl>{elem}</RbacValidator>;
+              return <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_CA_CERT} isControl>{elem}</RbacValidator>;
             },
           },
           {
@@ -99,14 +102,14 @@ const ListCACerts: FC<ListCACertsProps> = () => {
             text: t('common.delete'),
             className: classes.deleteMenu,
             callback: () => {
-              if (!hasNecessaryPerm({ ...UserPermissionMap.deleteCACerts })) {
+              if (!hasNecessaryPerm(ApiPermissionMap.DELETE_CA_CERTS)) {
                 return;
               }
               setSelectedCADetails(cert);
               setShowDeleteCACertModal(true);
             },
             menuItemWrapper(elem) {
-              return <RbacValidator accessRequiredOn={{ ...UserPermissionMap.deleteCACerts }} isControl>{elem}</RbacValidator>;
+              return <RbacValidator accessRequiredOn={ApiPermissionMap.DELETE_CA_CERTS} isControl>{elem}</RbacValidator>;
             },
           }
         ]}
@@ -119,9 +122,7 @@ const ListCACerts: FC<ListCACertsProps> = () => {
   return (
     <Box className={classes.root}>
       <RbacValidator
-        accessRequiredOn={{
-          ...UserPermissionMap.listCACerts
-        }}
+        accessRequiredOn={ApiPermissionMap.GET_CA_CERTS}
       >
         {caCerts?.data.length === 0 ? (
           <CACertsEmpty onUpload={() => setShowUploadCACertModal(true)} />
@@ -133,9 +134,7 @@ const ListCACerts: FC<ListCACertsProps> = () => {
               </Grid>
               <Grid item xs={12} alignItems="flex-end">
                 <RbacValidator
-                  accessRequiredOn={{
-                    ...UserPermissionMap.createCACerts
-                  }}
+                  accessRequiredOn={ApiPermissionMap.CREATE_CA_CERT}
                   isControl
                   overrideStyle={{
                     float: 'right'

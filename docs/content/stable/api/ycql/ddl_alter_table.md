@@ -121,7 +121,7 @@ CREATE TABLE example.employees (
 
 ### Update a table property
 
-You can do this as shown below.
+You can do this as follows:
 
 ```sql
 ycqlsh:example> ALTER TABLE employees WITH default_time_to_live = 5;

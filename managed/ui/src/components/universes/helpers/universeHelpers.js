@@ -1,4 +1,4 @@
-import { isNonEmptyArray } from '../../../utils/ObjectUtils';
+import { isDefinedNotNull, isNonEmptyArray } from '../../../utils/ObjectUtils';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 
 import _ from 'lodash';
@@ -43,19 +43,24 @@ export const getUniverseStatus = (universe) => {
     updateInProgress,
     updateSucceeded,
     universePaused,
+    placementModificationTaskUuid,
     errorString
   } = universe.universeDetails;
-
-  if (!updateInProgress && updateSucceeded && !universePaused) {
+  /* TODO: Using placementModificationTaskUuid is a short term fix to not clear universe error
+   * state because updateSucceeded reports the state of the latest task only. This will be
+   * replaced by backend driven APIs in future.
+   */
+  const allUpdatesSucceeded = updateSucceeded && !isDefinedNotNull(placementModificationTaskUuid);
+  if (!updateInProgress && allUpdatesSucceeded && !universePaused) {
     return { state: UniverseState.GOOD, error: errorString };
   }
-  if (!updateInProgress && updateSucceeded && universePaused) {
+  if (!updateInProgress && allUpdatesSucceeded && universePaused) {
     return { state: UniverseState.PAUSED, error: errorString };
   }
   if (updateInProgress) {
     return { state: UniverseState.PENDING, error: errorString };
   }
-  if (!updateInProgress && !updateSucceeded) {
+  if (!updateInProgress && !allUpdatesSucceeded) {
     return errorString === 'Preflight checks failed.'
       ? { state: UniverseState.WARNING, error: errorString }
       : { state: UniverseState.BAD, error: errorString };

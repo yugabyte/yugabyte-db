@@ -1,5 +1,5 @@
 ---
-title: metrics-exporter resource
+title: ybm CLI metrics-exporter resource
 headerTitle: ybm metrics-exporter
 linkTitle: metrics-exporter
 description: YugabyteDB Managed CLI reference metrics-exporter resource.

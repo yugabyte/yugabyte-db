@@ -112,7 +112,7 @@ kern.maxprocperuid=2500
 kern.maxfilesperproc=1048576
 ```
 
-If this file does not exist, create the following two files:
+If this file does not exist, create the following two files (this will require sudo access):
 
 - `/Library/LaunchDaemons/limit.maxfiles.plist` and insert the following:
 
@@ -190,6 +190,8 @@ You download YugabyteDB as follows:
     ```
 
 ## Create a local cluster
+
+Use the [yugabyted](../reference/configuration/yugabyted/) utility to create and manage universes.
 
 {{< tabpane text=true >}}
 

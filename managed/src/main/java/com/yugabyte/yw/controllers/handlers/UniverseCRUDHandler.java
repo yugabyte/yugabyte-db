@@ -65,7 +65,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.UpgradeParams;
-import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
@@ -98,7 +97,6 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import javax.inject.Singleton;
-import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -107,7 +105,6 @@ import play.mvc.Http;
 import play.mvc.Http.Status;
 
 @Singleton
-@Slf4j
 public class UniverseCRUDHandler {
 
   private static final Logger LOG = LoggerFactory.getLogger(UniverseCRUDHandler.class);
@@ -527,7 +524,6 @@ public class UniverseCRUDHandler {
 
       // Set the node exporter config based on the provider
       if (!c.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
-        AccessKey accessKey = AccessKey.get(provider.getUuid(), c.userIntent.accessKeyCode);
         ProviderDetails providerDetails = provider.getDetails();
         boolean installNodeExporter = providerDetails.installNodeExporter;
         String nodeExporterUser = providerDetails.nodeExporterUser;
@@ -1324,9 +1320,11 @@ public class UniverseCRUDHandler {
     if (readOnlyCluster.userIntent.specificGFlags != null
         && readOnlyCluster.userIntent.specificGFlags.isInheritFromPrimary()) {
       SpecificGFlags primaryGFlags = primaryCluster.userIntent.specificGFlags;
-      readOnlyCluster.userIntent.specificGFlags.setPerProcessFlags(
-          primaryGFlags.getPerProcessFlags());
-      readOnlyCluster.userIntent.specificGFlags.setPerAZ(primaryGFlags.getPerAZ());
+      if (primaryGFlags != null) {
+        readOnlyCluster.userIntent.specificGFlags.setPerProcessFlags(
+            primaryGFlags.getPerProcessFlags());
+        readOnlyCluster.userIntent.specificGFlags.setPerAZ(primaryGFlags.getPerAZ());
+      }
     }
 
     TaskType taskType = TaskType.ReadOnlyClusterCreate;

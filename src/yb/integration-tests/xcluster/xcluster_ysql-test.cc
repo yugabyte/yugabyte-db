@@ -215,7 +215,7 @@ TEST_F(XClusterYsqlTest, GenerateSeries) {
   // Verify that universe was setup on consumer.
   master::GetUniverseReplicationResponsePB resp;
   ASSERT_OK(VerifyUniverseReplication(&resp));
-  ASSERT_EQ(resp.entry().producer_id(), kReplicationGroupId);
+  ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
   ASSERT_EQ(resp.entry().tables_size(), 1);
   ASSERT_EQ(resp.entry().tables(0), producer_table_->id());
 
@@ -314,10 +314,9 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
       auto consumer_conn =
           ASSERT_RESULT(consumer_cluster_.ConnectToDB(consumer_table.namespace_name()));
       auto now = CoarseMonoClock::Now();
+      auto query = Format("SELECT COUNT(*) FROM $0", GetCompleteTableName(consumer_table));
       while (CoarseMonoClock::Now() < now + duration) {
-        auto result = ASSERT_RESULT(consumer_conn.FetchFormat(
-            "select count(*) from $0", GetCompleteTableName(consumer_table)));
-        auto count = ASSERT_RESULT(GetValue<int64_t>(result.get(), 0, 0));
+        auto count = ASSERT_RESULT(consumer_conn.FetchRow<pgwrapper::PGUint64>(query));
         ASSERT_EQ(count % transaction_size, 0);
       }
     });
@@ -344,10 +343,9 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
     test_thread_holder->AddThread([this, &consumer_table, end_time]() {
       auto consumer_conn =
           ASSERT_RESULT(consumer_cluster_.ConnectToDB(consumer_table.namespace_name()));
+      auto query = Format("SELECT COUNT(*) FROM $0", GetCompleteTableName(consumer_table));
       while (CoarseMonoClock::Now() < end_time) {
-        auto result = ASSERT_RESULT(consumer_conn.FetchFormat(
-            "select count(*) from $0", GetCompleteTableName(consumer_table)));
-        auto count = ASSERT_RESULT(GetValue<int64_t>(result.get(), 0, 0));
+        auto count = ASSERT_RESULT(consumer_conn.FetchRow<pgwrapper::PGUint64>(query));
         ASSERT_EQ(count, 0);
       }
     });
@@ -669,9 +667,8 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionsWithUpdates) {
         "INSERT INTO account_balance VALUES($0, 'user$0', 1000000)", i));
   }
 
-  auto result = ASSERT_RESULT(producer_conn.FetchFormat("select sum(salary) from account_balance"));
-  ASSERT_EQ(PQntuples(result.get()), 1);
-  auto total_salary = ASSERT_RESULT(GetValue<int64_t>(result.get(), 0, 0));
+  auto total_salary = ASSERT_RESULT(producer_conn.FetchRow<int64_t>(
+      "SELECT SUM(salary) FROM account_balance"));
 
   // Transactional workload
   auto test_thread_holder = TestThreadHolder();
@@ -694,12 +691,10 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionsWithUpdates) {
   // Read validate workload.
   test_thread_holder.AddThread([this, namespace_name, total_salary]() {
     auto now = CoarseMonoClock::Now();
+    auto consumer_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
     while (CoarseMonoClock::Now() < now + MonoDelta::FromSeconds(30)) {
-      auto consumer_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
-      auto result =
-          ASSERT_RESULT(consumer_conn.FetchFormat("select sum(salary) from account_balance"));
-      ASSERT_EQ(PQntuples(result.get()), 1);
-      Result<int64_t> current_salary_result = GetValue<int64_t>(result.get(), 0, 0);
+      auto current_salary_result = consumer_conn.FetchRow<int64_t>(
+          "select sum(salary) from account_balance");
       if (!current_salary_result.ok()) {
         continue;
       }
@@ -976,22 +971,21 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, GarbageCollectExpiredTransact
 }
 
 TEST_F(XClusterYSqlTestConsistentTransactionsTest, UnevenTxnStatusTablets) {
-  // Keep same tablet count for normal tablets.
-  ASSERT_OK(CreateClusterAndTable());
-  const auto duration = MonoDelta::FromSeconds(kTransactionalConsistencyTestDurationSecs);
-
-  auto setup_write_verify_delete = [&](bool perform_bootstrap = false) {
-    if (!perform_bootstrap) {
-      ASSERT_OK(SetupReplicationAndWaitForValidSafeTime());
-    } else {
-      auto bootstrap_ids = ASSERT_RESULT(
-          BootstrapProducer(producer_cluster(), producer_client(), {producer_table_}));
-      ASSERT_OK(SetupUniverseReplication(
-          producer_tables_, bootstrap_ids, {LeaderOnly::kFalse, Transactional::kTrue}));
-      ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
-      ASSERT_OK(WaitForValidSafeTimeOnAllTServers(consumer_table_->name().namespace_id()));
-    }
-
+  const auto wait_for_txn_status_version = [](MiniCluster* cluster, uint64_t version) {
+    constexpr auto error =
+        "Timed out waiting for transaction manager to update status tablet cache version to $0";
+    ASSERT_OK(WaitFor(
+        [cluster, version] {
+          auto current_version = cluster->mini_tablet_server(0)
+                                     ->server()
+                                     ->TransactionManager()
+                                     .GetLoadedStatusTabletsVersion();
+          return current_version == version;
+        },
+        30s, strings::Substitute(error, version)));
+  };
+  const auto run_write_verify_delete_test = [&]() {
+    const auto duration = MonoDelta::FromSeconds(kTransactionalConsistencyTestDurationSecs);
     auto test_thread_holder = TestThreadHolder();
     AsyncTransactionConsistencyTest(
         producer_table_->name(), consumer_table_->name(), &test_thread_holder, duration);
@@ -1000,12 +994,20 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, UnevenTxnStatusTablets) {
     ASSERT_OK(DeleteUniverseReplication());
   };
 
+  int producer_version = 1, consumer_version = 1;
+
+  // Keep same tablet count for normal tablets.
+  ASSERT_OK(CreateClusterAndTable());
+
   // Create an additional transaction tablet on the producer before starting replication.
   auto global_txn_table_id =
       ASSERT_RESULT(client::GetTableId(producer_client(), producer_transaction_table_name));
   ASSERT_OK(producer_client()->AddTransactionStatusTablet(global_txn_table_id));
+  wait_for_txn_status_version(producer_cluster(), ++producer_version);
 
-  setup_write_verify_delete();
+  LOG(INFO) << "First run, more txn tablets on producer.";
+  ASSERT_OK(SetupReplicationAndWaitForValidSafeTime());
+  run_write_verify_delete_test();
 
   // Restart cluster to clear meta cache partition ranges.
   // TODO: don't check partition bounds for txn status tablets.
@@ -1015,7 +1017,10 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, UnevenTxnStatusTablets) {
   global_txn_table_id =
       ASSERT_RESULT(client::GetTableId(consumer_client(), producer_transaction_table_name));
   ASSERT_OK(consumer_client()->AddTransactionStatusTablet(global_txn_table_id));
+  wait_for_txn_status_version(consumer_cluster(), ++consumer_version);
   ASSERT_OK(consumer_client()->AddTransactionStatusTablet(global_txn_table_id));
+  wait_for_txn_status_version(consumer_cluster(), ++consumer_version);
+
   // Reset the role and data before setting up replication again.
   ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::ACTIVE));
   ASSERT_OK(WaitForRoleChangeToPropogateToAllTServers(cdc::XClusterRole::ACTIVE));
@@ -1024,7 +1029,16 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, UnevenTxnStatusTablets) {
     return conn.ExecuteFormat("delete from $0;", producer_table_->name().table_name());
   }));
 
-  setup_write_verify_delete(true /* perform_bootstrap */);
+  LOG(INFO) << "Second run, more txn tablets on consumer.";
+  // Need to run bootstrap flow for setup.
+  auto bootstrap_ids =
+      ASSERT_RESULT(BootstrapProducer(producer_cluster(), producer_client(), {producer_table_}));
+  ASSERT_OK(SetupUniverseReplication(
+      producer_tables_, bootstrap_ids, {LeaderOnly::kFalse, Transactional::kTrue}));
+  ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
+  ASSERT_OK(WaitForValidSafeTimeOnAllTServers(consumer_table_->name().namespace_id()));
+  // Run test.
+  run_write_verify_delete_test();
 }
 
 class XClusterYSqlTestStressTest : public XClusterYSqlTestConsistentTransactionsTest {
@@ -1074,7 +1088,7 @@ TEST_F(XClusterYsqlTest, GenerateSeriesMultipleTransactions) {
   // Verify that universe was setup on consumer.
   master::GetUniverseReplicationResponsePB resp;
   ASSERT_OK(VerifyUniverseReplication(&resp));
-  ASSERT_EQ(resp.entry().producer_id(), kReplicationGroupId);
+  ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
   ASSERT_EQ(resp.entry().tables_size(), 1);
   ASSERT_EQ(resp.entry().tables(0), producer_table_->id());
   ASSERT_OK(VerifyWrittenRecords(producer_table_, consumer_table_));
@@ -1089,7 +1103,7 @@ TEST_F(XClusterYsqlTest, ChangeRole) {
 
   master::GetUniverseReplicationResponsePB resp;
   ASSERT_OK(VerifyUniverseReplication(&resp));
-  ASSERT_EQ(resp.entry().producer_id(), kReplicationGroupId);
+  ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
 
   ASSERT_NOK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
   ASSERT_OK(DeleteUniverseReplication());
@@ -1099,7 +1113,7 @@ TEST_F(XClusterYsqlTest, ChangeRole) {
       SetupUniverseReplication({producer_table_}, {LeaderOnly::kFalse, Transactional::kTrue}));
 
   ASSERT_OK(VerifyUniverseReplication(&resp));
-  ASSERT_EQ(resp.entry().producer_id(), kReplicationGroupId);
+  ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
 
   ASSERT_NOK(ChangeXClusterRole(cdc::XClusterRole::ACTIVE));
 
@@ -1119,7 +1133,7 @@ TEST_F(XClusterYsqlTest, SetupUniverseReplication) {
   // Verify that universe was setup on consumer.
   master::GetUniverseReplicationResponsePB resp;
   ASSERT_OK(VerifyUniverseReplication(&resp));
-  ASSERT_EQ(resp.entry().producer_id(), kReplicationGroupId);
+  ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
   ASSERT_EQ(resp.entry().tables_size(), producer_tables_.size());
   for (size_t i = 0; i < producer_tables_.size(); i++) {
     ASSERT_EQ(resp.entry().tables(narrow_cast<int>(i)), producer_tables_[i]->id());
@@ -1300,7 +1314,7 @@ TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
 
   // 2. Setup replication.
   ASSERT_OK(SetupUniverseReplication({producer_table_}));
-  auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_table_->id())).ToString();
+  auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_table_->id()));
 
   // 3. Verify everything is setup correctly.
   ASSERT_OK(CorrectlyPollingAllTablets(
@@ -1348,7 +1362,7 @@ TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
       ToggleUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, true));
 
   // We read the first batch of writes with the old schema, but not the new schema writes.
-  ASSERT_NO_FATALS(VerifyReplicationError(
+  ASSERT_OK(VerifyReplicationError(
       consumer_table_->id(), stream_id, ReplicationErrorPb::REPLICATION_SCHEMA_MISMATCH));
   ASSERT_OK(data_replicated_correctly(count));
 
@@ -1362,7 +1376,7 @@ TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
 
   // 5. Verify Replication continued and new schema Producer entries are added to Consumer.
   count += kRecordBatch;
-  ASSERT_NO_FATALS(VerifyReplicationError(consumer_table_->id(), stream_id, boost::none));
+  ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
   ASSERT_OK(data_replicated_correctly(count));
 
   /***************************/
@@ -1405,7 +1419,7 @@ TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
   //  2. Expectations: Replication should add data 1x, then block because IDs don't match.
   //                   DROP is non-blocking,
   //                   re-ADD blocks until IDs match even though the Name & Type match.
-  ASSERT_NO_FATALS(VerifyReplicationError(
+  ASSERT_OK(VerifyReplicationError(
       consumer_table_->id(), stream_id, ReplicationErrorPb::REPLICATION_SCHEMA_MISMATCH));
   ASSERT_OK(data_replicated_correctly(count));
 
@@ -1415,7 +1429,7 @@ TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
       "ALTER TABLE $0 ADD COLUMN $1 VARCHAR", consumer_tbl_name, new_column));
 
   count += kRecordBatch;
-  ASSERT_NO_FATALS(VerifyReplicationError(consumer_table_->id(), stream_id, boost::none));
+  ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
   ASSERT_OK(data_replicated_correctly(count));
 
   /***************************/
@@ -1433,7 +1447,7 @@ TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
 
   // 3. Verify ALTER was parsed by Consumer, which stopped replication and hasn't read the new
   // data.
-  ASSERT_NO_FATALS(VerifyReplicationError(
+  ASSERT_OK(VerifyReplicationError(
       consumer_table_->id(), stream_id, ReplicationErrorPb::REPLICATION_SCHEMA_MISMATCH));
   ASSERT_OK(data_replicated_correctly(count));
 
@@ -1447,7 +1461,7 @@ TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
 
   // 5. Verify Replication continued and new schema Producer entries are added to Consumer.
   count += kRecordBatch;
-  ASSERT_NO_FATALS(VerifyReplicationError(consumer_table_->id(), stream_id, boost::none));
+  ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
   ASSERT_OK(data_replicated_correctly(count));
 
   /***************************/
@@ -1519,9 +1533,7 @@ TEST_F(XClusterYsqlTest, ReplicationWithCreateIndexDDL) {
   const std::string query =
       Format("SELECT * FROM $0 ORDER BY $1", producer_table_->name().table_name(), new_column);
   ASSERT_TRUE(ASSERT_RESULT(producer_conn.HasIndexScan(query)));
-  PGResultPtr res = ASSERT_RESULT(producer_conn.Fetch(query));
-  ASSERT_EQ(PQntuples(res.get()), count);
-  ASSERT_EQ(PQnfields(res.get()), 2);
+  ASSERT_OK(producer_conn.FetchMatrix(query, count, 2));
 
   // Verify that the Consumer is still getting new traffic after the index is created.
   ASSERT_OK(producer_conn.ExecuteFormat(
@@ -1536,9 +1548,7 @@ TEST_F(XClusterYsqlTest, ReplicationWithCreateIndexDDL) {
 
   // The main Table should no longer list having an index.
   ASSERT_FALSE(ASSERT_RESULT(producer_conn.HasIndexScan(query)));
-  res = ASSERT_RESULT(producer_conn.Fetch(query));
-  ASSERT_EQ(PQntuples(res.get()), count);
-  ASSERT_EQ(PQnfields(res.get()), 2);
+  ASSERT_OK(producer_conn.FetchMatrix(query, count, 2));
 
   // Verify that we're still getting traffic to the Consumer after the index drop.
   ASSERT_OK(producer_conn.ExecuteFormat(
@@ -1822,7 +1832,7 @@ TEST_F(XClusterYsqlTest, DeleteTableChecks) {
         &consumer_client()->proxy_cache(), consumer_leader_mini_master->bound_rpc_addr());
     master::AlterUniverseReplicationRequestPB alter_req;
     master::AlterUniverseReplicationResponsePB alter_resp;
-    alter_req.set_producer_id(kReplicationGroupId.ToString());
+    alter_req.set_replication_group_id(kReplicationGroupId.ToString());
     alter_req.add_producer_table_ids_to_add(producer_alter_table->id());
     rpc::RpcController rpc;
     rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
@@ -1995,7 +2005,7 @@ TEST_F(XClusterYsqlTest, ReplicationWithDefaultProducerSchemaVersion) {
   // Verify that universe was setup on consumer.
   master::GetUniverseReplicationResponsePB resp;
   ASSERT_OK(VerifyUniverseReplication(&resp));
-  ASSERT_EQ(resp.entry().producer_id(), kReplicationGroupId);
+  ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
   ASSERT_EQ(resp.entry().tables_size(), 1);
   ASSERT_EQ(resp.entry().tables(0), producer_table_->id());
 
@@ -2061,7 +2071,7 @@ TEST_F(XClusterYsqlTest, ValidateSchemaPackingGCDuringNetworkPartition) {
   // Verify that universe was setup on consumer.
   master::GetUniverseReplicationResponsePB resp;
   ASSERT_OK(VerifyUniverseReplication(&resp));
-  ASSERT_EQ(resp.entry().producer_id(), kReplicationGroupId);
+  ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
   ASSERT_EQ(resp.entry().tables_size(), 1);
   ASSERT_EQ(resp.entry().tables(0), producer_table_->id());
 
@@ -2482,7 +2492,7 @@ TEST_P(XClusterPgSchemaNameTest, SetupSameNameDifferentSchemaUniverseReplication
 
   master::GetUniverseReplicationResponsePB resp;
   ASSERT_OK(VerifyUniverseReplication(&resp));
-  ASSERT_EQ(resp.entry().producer_id(), kReplicationGroupId);
+  ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
 
   // Write different numbers of records to the 3 producers, and verify that the
   // corresponding receivers receive the records.

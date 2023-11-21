@@ -72,6 +72,7 @@
 #include "yb/master/master_encryption.proxy.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_replication.proxy.h"
+#include "yb/master/master_test.proxy.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog.h"
@@ -660,6 +661,9 @@ void ClusterAdminClient::ResetMasterProxy(const HostPort& leader_addr) {
       proxy_cache_.get(), leader_addr_);
 
   master_replication_proxy_ = std::make_unique<master::MasterReplicationProxy>(
+      proxy_cache_.get(), leader_addr_);
+
+  master_test_proxy_ = std::make_unique<master::MasterTestProxy>(
       proxy_cache_.get(), leader_addr_);
 }
 
@@ -3725,7 +3729,7 @@ Status ClusterAdminClient::WriteUniverseKeyToFile(
 
 Status ClusterAdminClient::CreateCDCSDKDBStream(
     const TypedNamespaceName& ns, const std::string& checkpoint_type,
-    const std::string& record_type) {
+    const cdc::CDCRecordType record_type) {
   HostPort ts_addr = VERIFY_RESULT(GetFirstRpcAddressForTS());
   auto cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(proxy_cache_.get(), ts_addr);
 
@@ -3734,15 +3738,7 @@ Status ClusterAdminClient::CreateCDCSDKDBStream(
 
   req.set_namespace_name(ns.name);
   req.set_db_type(ns.db_type);
-  if (record_type == yb::ToString("ALL")) {
-    req.set_record_type(cdc::CDCRecordType::ALL);
-  } else if (record_type == yb::ToString("FULL_ROW_NEW_IMAGE")) {
-    req.set_record_type(cdc::CDCRecordType::FULL_ROW_NEW_IMAGE);
-  } else if (record_type == yb::ToString("MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES")) {
-    req.set_record_type(cdc::CDCRecordType::MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES);
-  } else {
-    req.set_record_type(cdc::CDCRecordType::CHANGE);
-  }
+  req.set_record_type(record_type);
 
   req.set_record_format(cdc::CDCRecordFormat::PROTO);
   req.set_source_type(cdc::CDCRequestSource::CDCSDK);
@@ -3902,7 +3898,7 @@ Status ClusterAdminClient::GetCDCDBStreamInfo(const std::string& db_stream_id) {
 Status ClusterAdminClient::WaitForSetupUniverseReplicationToFinish(
     const string& replication_group_id) {
   master::IsSetupUniverseReplicationDoneRequestPB req;
-  req.set_producer_id(replication_group_id);
+  req.set_replication_group_id(replication_group_id);
   for (;;) {
         master::IsSetupUniverseReplicationDoneResponsePB resp;
         RpcController rpc;
@@ -4035,7 +4031,7 @@ Status ClusterAdminClient::SetupUniverseReplication(
     bool transactional) {
   master::SetupUniverseReplicationRequestPB req;
   master::SetupUniverseReplicationResponsePB resp;
-  req.set_producer_id(replication_group_id);
+  req.set_replication_group_id(replication_group_id);
   req.set_transactional(transactional);
 
   req.mutable_producer_master_addresses()->Reserve(narrow_cast<int>(producer_addresses.size()));
@@ -4080,10 +4076,10 @@ Status ClusterAdminClient::SetupUniverseReplication(
 }
 
 Status ClusterAdminClient::DeleteUniverseReplication(
-    const std::string& producer_id, bool ignore_errors) {
+    const std::string& replication_group_id, bool ignore_errors) {
   master::DeleteUniverseReplicationRequestPB req;
   master::DeleteUniverseReplicationResponsePB resp;
-  req.set_producer_id(producer_id);
+  req.set_replication_group_id(replication_group_id);
   req.set_ignore_errors(ignore_errors);
 
   RpcController rpc;
@@ -4108,16 +4104,13 @@ Status ClusterAdminClient::DeleteUniverseReplication(
 }
 
 Status ClusterAdminClient::AlterUniverseReplication(
-    const std::string& replication_group_id,
-    const std::vector<std::string>& producer_addresses,
-    const std::vector<TableId>& add_tables,
-    const std::vector<TableId>& remove_tables,
+    const std::string& replication_group_id, const std::vector<std::string>& producer_addresses,
+    const std::vector<TableId>& add_tables, const std::vector<TableId>& remove_tables,
     const std::vector<std::string>& producer_bootstrap_ids_to_add,
-    const std::string& new_producer_universe_id,
-    bool remove_table_ignore_errors) {
+    const std::string& new_replication_group_id, bool remove_table_ignore_errors) {
   master::AlterUniverseReplicationRequestPB req;
   master::AlterUniverseReplicationResponsePB resp;
-  req.set_producer_id(replication_group_id);
+  req.set_replication_group_id(replication_group_id);
   req.set_remove_table_ignore_errors(remove_table_ignore_errors);
 
   if (!producer_addresses.empty()) {
@@ -4159,8 +4152,8 @@ Status ClusterAdminClient::AlterUniverseReplication(
         }
   }
 
-  if (!new_producer_universe_id.empty()) {
-        req.set_new_producer_universe_id(new_producer_universe_id);
+  if (!new_replication_group_id.empty()) {
+    req.set_new_replication_group_id(new_replication_group_id);
   }
 
   RpcController rpc;
@@ -4202,10 +4195,10 @@ Status ClusterAdminClient::ChangeXClusterRole(cdc::XClusterRole role) {
 }
 
 Status ClusterAdminClient::SetUniverseReplicationEnabled(
-    const std::string& producer_id, bool is_enabled) {
+    const std::string& replication_group_id, bool is_enabled) {
   master::SetUniverseReplicationEnabledRequestPB req;
   master::SetUniverseReplicationEnabledResponsePB resp;
-  req.set_producer_id(producer_id);
+  req.set_replication_group_id(replication_group_id);
   req.set_is_enabled(is_enabled);
   const string toggle = (is_enabled ? "enabl" : "disabl");
 
@@ -4350,7 +4343,7 @@ Status ClusterAdminClient::SetupNSUniverseReplication(
 
   master::SetupNSUniverseReplicationRequestPB req;
   master::SetupNSUniverseReplicationResponsePB resp;
-  req.set_producer_id(replication_group_id);
+  req.set_replication_group_id(replication_group_id);
   req.set_producer_ns_name(producer_namespace.name);
   req.set_producer_ns_type(producer_namespace.db_type);
 
@@ -4374,12 +4367,12 @@ Status ClusterAdminClient::SetupNSUniverseReplication(
   return Status::OK();
 }
 
-Status ClusterAdminClient::GetReplicationInfo(const std::string& universe_uuid) {
+Status ClusterAdminClient::GetReplicationInfo(const std::string& replication_group_id) {
   master::GetReplicationStatusRequestPB req;
   master::GetReplicationStatusResponsePB resp;
 
-  if (!universe_uuid.empty()) {
-        req.set_universe_id(universe_uuid);
+  if (!replication_group_id.empty()) {
+        req.set_replication_group_id(replication_group_id);
   }
 
   RpcController rpc;

@@ -67,12 +67,12 @@ export const createErrorMessage = (payload: any) => {
     if (typeof structuredError == 'string') {
       return structuredError;
     }
-    const message = Object.keys(structuredError)
-      .map((fieldName) => {
+    const message = (Object.keys(structuredError)
+      ?.map((fieldName) => {
         const messages = structuredError[fieldName];
-        return fieldName + ': ' + messages.join(', ');
+        return fieldName + ': ' + (messages?.join(', ') ?? '');
       })
-      .join('\n');
+      ?.join('\n')) ?? 'Something went wrong. Please try again';
     return message;
   }
   return payload.message;
@@ -409,3 +409,21 @@ export const editReadReplica = async (configurePayload: UniverseConfigure) => {
     return error;
   }
 };
+
+export const getDiffClusterData = (currentClusterConfig?: Cluster, newClusterConfig?: Cluster) => {
+  if (!currentClusterConfig || !newClusterConfig) {
+    return {
+      masterPlacementChanged: false,
+      numNodesChanged: false,
+      currentNodeCount: false,
+      newNodeCount: false
+    }
+  }
+
+  return {
+    masterPlacementChanged: currentClusterConfig?.userIntent?.dedicatedNodes !== newClusterConfig?.userIntent?.dedicatedNodes,
+    numNodesChanged: currentClusterConfig?.userIntent?.numNodes !== newClusterConfig?.userIntent?.numNodes,
+    currentNodeCount: currentClusterConfig?.userIntent?.numNodes,
+    newNodeCount: newClusterConfig?.userIntent?.numNodes
+  }
+}

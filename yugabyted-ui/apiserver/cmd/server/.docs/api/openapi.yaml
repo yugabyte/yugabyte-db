@@ -680,7 +680,7 @@ paths:
       description: Retrieve gflags of master and tserver process
       operationId: getGflags
       parameters:
-      - description: Specify the node ip-address from where gflags are retrieved
+      - description: Specify the node ip-address from where alerts are retrieved
         explode: false
         in: query
         name: node_address
@@ -714,6 +714,15 @@ paths:
     get:
       description: Get any alerts for the cluster
       operationId: getClusterAlerts
+      parameters:
+      - description: Specify the node ip-address from where gflags are retrieved
+        explode: false
+        in: query
+        name: node_address
+        required: true
+        schema:
+          type: string
+        style: form
       responses:
         "200":
           content:
@@ -734,6 +743,58 @@ paths:
                 $ref: '#/components/schemas/ApiError'
           description: API Error
       summary: Get any alerts for the cluster
+      tags:
+      - cluster-info
+  /connections:
+    get:
+      description: Get YSQL connection manager stats for every node of the cluster
+      operationId: getClusterConnections
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectionsStats'
+          description: YSQL connection manager stats
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get YSQL connection manager stats for every node of the cluster
+      tags:
+      - cluster-info
+  /node_address:
+    get:
+      description: Get the node address for the current node
+      operationId: getNodeAddress
+      responses:
+        "200":
+          content:
+            text/plain:
+              schema:
+                type: string
+          description: Node address
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get the node address for the current node
       tags:
       - cluster-info
 components:
@@ -853,6 +914,18 @@ components:
           schema:
             $ref: '#/components/schemas/Alerts_Response'
       description: Alerts information
+    ConnectionsResponse:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ConnectionsStats'
+      description: YSQL connection manager stats
+    NodeAddressResponse:
+      content:
+        text/plain:
+          schema:
+            type: string
+      description: Node address
   schemas:
     VoyagerMigrationDetails:
       description: Information regarding a specific voyager migration task
@@ -1882,6 +1955,7 @@ components:
         is_node_up: true
         name: name
         host: host
+        preference_order: 0
         is_bootstrapping: true
         cloud_info:
           cloud: cloud
@@ -1890,18 +1964,18 @@ components:
         metrics:
           system_tablets_total: 0
           system_tablets_leaders: 0
-          write_ops_per_sec: 5.637376656633329
+          write_ops_per_sec: 2.3021358869347655
           ram_provisioned_bytes: 0
-          time_since_hb_sec: 2.3021358869347655
+          time_since_hb_sec: 7.061401241503109
           active_connections:
             ysql: 0
             ycql: 0
-          total_sst_file_size_bytes: 6
-          uncompressed_sst_file_size_bytes: 1
-          read_ops_per_sec: 5.962133916683182
+          total_sst_file_size_bytes: 1
+          uncompressed_sst_file_size_bytes: 5
+          read_ops_per_sec: 5.637376656633329
           user_tablets_leaders: 0
           ram_used_bytes: 0
-          memory_used_bytes: 0
+          memory_used_bytes: 6
           uptime_seconds: 0
           user_tablets_total: 0
           disk_provisioned_bytes: 0
@@ -1922,6 +1996,8 @@ components:
           type: boolean
         is_read_replica:
           type: boolean
+        preference_order:
+          type: integer
         is_master_up:
           type: boolean
         is_bootstrapping:
@@ -2435,6 +2511,63 @@ components:
       - name
       title: Alerts Info
       type: object
+    ConnectionStatsItem:
+      properties:
+        pool:
+          type: string
+        active_logical_connections:
+          format: int64
+          type: integer
+        queued_logical_connections:
+          format: int64
+          type: integer
+        idle_or_pending_logical_connections:
+          format: int64
+          type: integer
+        active_physical_connections:
+          format: int64
+          type: integer
+        idle_physical_connections:
+          format: int64
+          type: integer
+        avg_wait_time_ns:
+          format: int64
+          type: integer
+        qps:
+          format: int64
+          type: integer
+        tps:
+          format: int64
+          type: integer
+      required:
+      - active_logical_connections
+      - active_physical_connections
+      - avg_wait_time_ns
+      - idle_or_pending_logical_connections
+      - idle_physical_connections
+      - qps
+      - queued_logical_connections
+      - tps
+      type: object
+    ConnectionStats:
+      items:
+        $ref: '#/components/schemas/ConnectionStatsItem'
+      type: array
+    ConnectionsStatsData:
+      additionalProperties:
+        $ref: '#/components/schemas/ConnectionStats'
+      type: object
+    ConnectionsStats:
+      description: YSQL connection manager stats
+      example:
+        data: {}
+      properties:
+        data:
+          additionalProperties:
+            $ref: '#/components/schemas/ConnectionStats'
+          type: object
+      title: YSQL connection manager stats
+      type: object
     API_for_Plan_and_Asses_page:
       example:
         data:
@@ -2551,6 +2684,7 @@ components:
           is_node_up: true
           name: name
           host: host
+          preference_order: 0
           is_bootstrapping: true
           cloud_info:
             cloud: cloud
@@ -2559,18 +2693,18 @@ components:
           metrics:
             system_tablets_total: 0
             system_tablets_leaders: 0
-            write_ops_per_sec: 5.637376656633329
+            write_ops_per_sec: 2.3021358869347655
             ram_provisioned_bytes: 0
-            time_since_hb_sec: 2.3021358869347655
+            time_since_hb_sec: 7.061401241503109
             active_connections:
               ysql: 0
               ycql: 0
-            total_sst_file_size_bytes: 6
-            uncompressed_sst_file_size_bytes: 1
-            read_ops_per_sec: 5.962133916683182
+            total_sst_file_size_bytes: 1
+            uncompressed_sst_file_size_bytes: 5
+            read_ops_per_sec: 5.637376656633329
             user_tablets_leaders: 0
             ram_used_bytes: 0
-            memory_used_bytes: 0
+            memory_used_bytes: 6
             uptime_seconds: 0
             user_tablets_total: 0
             disk_provisioned_bytes: 0
@@ -2583,6 +2717,7 @@ components:
           is_node_up: true
           name: name
           host: host
+          preference_order: 0
           is_bootstrapping: true
           cloud_info:
             cloud: cloud
@@ -2591,18 +2726,18 @@ components:
           metrics:
             system_tablets_total: 0
             system_tablets_leaders: 0
-            write_ops_per_sec: 5.637376656633329
+            write_ops_per_sec: 2.3021358869347655
             ram_provisioned_bytes: 0
-            time_since_hb_sec: 2.3021358869347655
+            time_since_hb_sec: 7.061401241503109
             active_connections:
               ysql: 0
               ycql: 0
-            total_sst_file_size_bytes: 6
-            uncompressed_sst_file_size_bytes: 1
-            read_ops_per_sec: 5.962133916683182
+            total_sst_file_size_bytes: 1
+            uncompressed_sst_file_size_bytes: 5
+            read_ops_per_sec: 5.637376656633329
             user_tablets_leaders: 0
             ram_used_bytes: 0
-            memory_used_bytes: 0
+            memory_used_bytes: 6
             uptime_seconds: 0
             user_tablets_total: 0
             disk_provisioned_bytes: 0
@@ -2809,18 +2944,18 @@ components:
       example:
         system_tablets_total: 0
         system_tablets_leaders: 0
-        write_ops_per_sec: 5.637376656633329
+        write_ops_per_sec: 2.3021358869347655
         ram_provisioned_bytes: 0
-        time_since_hb_sec: 2.3021358869347655
+        time_since_hb_sec: 7.061401241503109
         active_connections:
           ysql: 0
           ycql: 0
-        total_sst_file_size_bytes: 6
-        uncompressed_sst_file_size_bytes: 1
-        read_ops_per_sec: 5.962133916683182
+        total_sst_file_size_bytes: 1
+        uncompressed_sst_file_size_bytes: 5
+        read_ops_per_sec: 5.637376656633329
         user_tablets_leaders: 0
         ram_used_bytes: 0
-        memory_used_bytes: 0
+        memory_used_bytes: 6
         uptime_seconds: 0
         user_tablets_total: 0
         disk_provisioned_bytes: 0

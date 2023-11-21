@@ -16,6 +16,7 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTableSpaces;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
 import com.yugabyte.yw.common.NodeUniverseManager;
@@ -133,7 +134,8 @@ public class UniverseTableHandler {
       UUID universeUUID,
       boolean includeParentTableInfo,
       boolean excludeColocatedTables,
-      boolean includeColocatedParentTables) {
+      boolean includeColocatedParentTables,
+      boolean xClusterSupportedOnly) {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
@@ -227,6 +229,12 @@ public class UniverseTableHandler {
           buildResponseFromTableInfo(
                   table, partitionInfo, parentPartitionInfo, tableSizes, hasColocationInfo)
               .build());
+    }
+    if (xClusterSupportedOnly) {
+      tableInfoRespList =
+          tableInfoRespList.stream()
+              .filter(XClusterConfigTaskBase::isXClusterSupported)
+              .collect(Collectors.toList());
     }
     return tableInfoRespList;
   }

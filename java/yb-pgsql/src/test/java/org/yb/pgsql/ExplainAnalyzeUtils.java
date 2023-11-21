@@ -100,6 +100,60 @@ public class ExplainAnalyzeUtils {
     PlanCheckerBuilder totalCost(Checker checker);
     PlanCheckerBuilder actualStartupTime(Checker checker);
     PlanCheckerBuilder actualTotalTime(Checker checker);
+
+    // Seek and Next Estimation
+    PlanCheckerBuilder estimatedSeeks(ValueChecker<Double> checker);
+    PlanCheckerBuilder estimatedNexts(ValueChecker<Double> checker);
+
+    // DocDB Metric
+    PlanCheckerBuilder metric(String key, ValueChecker<Double> checker);
+  }
+
+  public static final class ExplainAnalyzeOptionsBuilder {
+    private boolean analyze = false;
+    private boolean costs = true;
+    private boolean debug = false;
+    private boolean dist = false;
+    private boolean summary = true;
+    private boolean timing = false;
+    private boolean verbose = false;
+
+    public ExplainAnalyzeOptionsBuilder() {}
+
+    public ExplainAnalyzeOptionsBuilder analyze(boolean value) {
+      this.analyze = value;
+      return this;
+    }
+
+    public ExplainAnalyzeOptionsBuilder costs(boolean value) {
+      this.costs = value;
+      return this;
+    }
+
+    public ExplainAnalyzeOptionsBuilder debug(boolean value) {
+      this.debug = value;
+      return this;
+    }
+
+    public ExplainAnalyzeOptionsBuilder dist(boolean value) {
+      this.dist = value;
+      return this;
+    }
+
+    public ExplainAnalyzeOptionsBuilder summary(boolean value) {
+      this.summary = value;
+      return this;
+    }
+
+    public ExplainAnalyzeOptionsBuilder timing(boolean value) {
+      this.timing = value;
+      return this;
+    }
+
+    public ExplainAnalyzeOptionsBuilder verbose(boolean value) {
+      this.verbose = value;
+      return this;
+    }
   }
 
   public static void setRowAndSizeLimit(Statement statement, int rowLimit, int sizeLimitBytes)
@@ -116,13 +170,28 @@ public class ExplainAnalyzeUtils {
     statement.execute(String.format("SET yb_fetch_size_limit = '%s'", sizeLimit));
   }
 
-  private static void testExplain(
-      Statement stmt, String query, Checker checker, boolean timing, boolean debug)
+  public static void setHideNonDeterministicFields(Statement statement, boolean value)
       throws Exception {
-    LOG.info("Query: " + query);
-    ResultSet rs = stmt.executeQuery(String.format(
-        "EXPLAIN (FORMAT json, ANALYZE true, SUMMARY true, DIST true, TIMING %b, DEBUG %b) %s",
-        timing, debug, query));
+    LOG.info(String.format("Setting yb_explain_hide_non_deterministic_fields to %b", value));
+    statement.execute(String.format("SET yb_explain_hide_non_deterministic_fields = %b", value));
+  }
+
+  private static void testExplain(Statement stmt,
+                                  String query,
+                                  Checker checker,
+                                  boolean analyze,
+                                  boolean costs,
+                                  boolean debug,
+                                  boolean dist,
+                                  boolean summary,
+                                  boolean timing,
+                                  boolean verbose) throws Exception {
+    String explainQuery = String.format(
+        "EXPLAIN (FORMAT json, ANALYZE %b, COSTS %b, DEBUG %b, DIST %b, SUMMARY %b, " +
+        "TIMING %b, VERBOSE %b) %s", analyze, costs, debug, dist, summary, timing, verbose, query);
+
+    LOG.info("Query: " + explainQuery);
+    ResultSet rs = stmt.executeQuery(explainQuery);
     rs.next();
     JsonElement json = JsonParser.parseString(rs.getString(1));
     LOG.info("Response:\n" + JsonUtil.asPrettyString(json));
@@ -134,19 +203,46 @@ public class ExplainAnalyzeUtils {
                conflicts.isEmpty());
   }
 
+  private static void testExplain(
+      Statement stmt, String query, Checker checker, boolean timing, boolean debug, boolean verbose)
+      throws Exception {
+    testExplain(stmt,
+                query,
+                checker,
+                true /* analyze */,
+                true /* costs */,
+                debug,
+                true /* dist */,
+                true /* summary */,
+                timing,
+                verbose);
+  }
+
   public static void testExplain(
       Statement stmt, String query, Checker checker) throws Exception {
-    testExplain(stmt, query, checker, true, false);
+    testExplain(stmt, query, checker, true /* timing */, false /* debug */, false /* verbose */);
   }
 
   public static void testExplainDebug(
       Statement stmt, String query, Checker checker) throws Exception {
-    testExplain(stmt, query, checker, true, true);
+    testExplain(stmt, query, checker, true /* timing */, true /* debug */, false /* verbose */);
+  }
+
+  public static void testExplainDebugVerbose(
+      Statement stmt, String query, Checker checker) throws Exception {
+    testExplain(stmt, query, checker, true, true, true);
   }
 
   public static void testExplainNoTiming(
       Statement stmt, String query, Checker checker) throws Exception {
-    testExplain(stmt, query, checker, false, false);
+    testExplain(stmt, query, checker, false /* timing */, false /* debug */, false /* verbose */);
+  }
+
+  public static void testExplainWithOptions(
+    Statement stmt, ExplainAnalyzeOptionsBuilder options, String query,
+    Checker checker) throws Exception {
+    testExplain(stmt, query, checker, options.analyze, options.costs, options.debug, options.dist,
+        options.summary, options.timing, options.verbose);
   }
 
   private static TopLevelCheckerBuilder makeTopLevelBuilder() {

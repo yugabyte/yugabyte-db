@@ -123,8 +123,6 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
           TaskType.XClusterConfigSetStatusForTables,
           TaskType.BootstrapProducer,
           TaskType.XClusterConfigModifyTables,
-          TaskType.XClusterConfigModifyTables,
-          TaskType.XClusterConfigSetStatusForTables,
           TaskType.XClusterConfigSetStatus,
           TaskType.UniverseUpdateSucceeded,
           TaskType.UniverseUpdateSucceeded);

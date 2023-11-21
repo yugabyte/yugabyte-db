@@ -23,8 +23,8 @@ import { YBLoadingCircleIcon } from '../../../../../components/common/indicators
 import { DeleteUserModal } from './DeleteUserModal';
 import { YBSearchInput } from '../../../../../components/common/forms/fields/YBSearchInput';
 
-import { RbacValidator, hasNecessaryPerm } from '../../common/RbacValidator';
-import { UserPermissionMap } from '../../UserPermPathMapping';
+import { RbacValidator, hasNecessaryPerm } from '../../common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../ApiAndUserPermMapping';
 import { getAllUsers, getRoleBindingsForAllUsers } from '../../api';
 import { RbacBindings } from './UserUtils';
 import { RoleTypeComp } from '../../common/RbacUtils';
@@ -171,12 +171,15 @@ export const ViewUsers = ({ routerProps }: { routerProps: WithRouterProps }) => 
               return (
                 <RbacValidator
                   isControl
-                  accessRequiredOn={{ ...UserPermissionMap.updateUser, onResource: user.uuid }}
+                  accessRequiredOn={{
+                    ...ApiPermissionMap.MODIFY_USER,
+                    onResource: { USER: user.uuid }
+                  }}
                   overrideStyle={{ display: 'block' }}
                   customValidateFunction={() => {
                     return hasNecessaryPerm({
-                      ...UserPermissionMap.updateUser,
-                      onResource: user.uuid
+                      ...ApiPermissionMap.MODIFY_USER,
+                      onResource: { USER: user.uuid }
                     });
                   }}
                 >
@@ -190,7 +193,13 @@ export const ViewUsers = ({ routerProps }: { routerProps: WithRouterProps }) => 
             text: t('table.moreActions.deleteUser'),
             icon: <Delete />,
             callback: () => {
-              if (!hasNecessaryPerm(UserPermissionMap.deleteUser)) return;
+              if (
+                !hasNecessaryPerm({
+                  ...ApiPermissionMap.DELETE_USER,
+                  onResource: { USER: user.uuid }
+                })
+              )
+                return;
               setCurrentUser(user);
               toggleDeleteModal(true);
             },
@@ -198,7 +207,10 @@ export const ViewUsers = ({ routerProps }: { routerProps: WithRouterProps }) => 
               return (
                 <RbacValidator
                   isControl
-                  accessRequiredOn={{ ...UserPermissionMap.updateUser, onResource: user.uuid }}
+                  accessRequiredOn={{
+                    ...ApiPermissionMap.DELETE_USER,
+                    onResource: { USER: user.uuid }
+                  }}
                   overrideStyle={{ display: 'block' }}
                 >
                   {elem}
@@ -217,88 +229,88 @@ export const ViewUsers = ({ routerProps }: { routerProps: WithRouterProps }) => 
   };
 
   return (
-    // <RbacValidator accessRequiredOn={UserPermissionMap.listUser}>
-    <Box className={classes.root}>
-      <div className={classes.actions}>
-        <div className={classes.search}>
-          <div className={classes.title} data-testid="users-count">
-            {t('rowsCount', { count: users?.length })}
+    <RbacValidator accessRequiredOn={ApiPermissionMap.GET_USERS}>
+      <Box className={classes.root}>
+        <div className={classes.actions}>
+          <div className={classes.search}>
+            <div className={classes.title} data-testid="users-count">
+              {t('rowsCount', { count: users?.length })}
+            </div>
+            <YBSearchInput
+              placeHolder={t('search')}
+              onEnterPressed={(val: string) => setSearchText(val)}
+            />
           </div>
-          <YBSearchInput
-            placeHolder={t('search')}
-            onEnterPressed={(val: string) => setSearchText(val)}
-          />
+          <RbacValidator accessRequiredOn={ApiPermissionMap.CREATE_USER} isControl>
+            <YBButton
+              startIcon={<Add />}
+              size="large"
+              variant="primary"
+              onClick={() => {
+                setCurrentUser(null);
+                setCurrentPage(UserPages.CREATE_USER);
+              }}
+              data-testid={`rbac-resource-create-user`}
+            >
+              {t('createUser')}
+            </YBButton>
+          </RbacValidator>
         </div>
-        <RbacValidator accessRequiredOn={UserPermissionMap.createUser} isControl>
-          <YBButton
-            startIcon={<Add />}
-            size="large"
-            variant="primary"
-            onClick={() => {
-              setCurrentUser(null);
-              setCurrentPage(UserPages.CREATE_USER);
-            }}
-            data-testid={`rbac-resource-create-user`}
-          >
-            {t('createUser')}
-          </YBButton>
-        </RbacValidator>
-      </div>
-      <YBTable data={filteredUsers ?? []}>
-        <TableHeaderColumn dataField="uuid" hidden isKey />
-        <TableHeaderColumn dataSort dataField="email">
-          {t('table.email')}
-        </TableHeaderColumn>
-        <TableHeaderColumn
-          dataField="roles"
-          dataFormat={(_role, row: RbacUser) => {
-            const roles: RbacBindings[] = [...(roleBindings?.[row.uuid] ?? [])];
-            if (roles && roles.length > 0) {
-              const minRoles = roles.splice(3);
-              return (
-                <div className={classes.rolesTd}>
-                  <div className={classes.rolesList}>
-                    {roles.map((bindings: RbacBindings) => (
-                      <RoleTypeComp role={bindings.role} customLabel={bindings.role.name} />
-                    ))}
+        <YBTable data={filteredUsers ?? []}>
+          <TableHeaderColumn dataField="uuid" hidden isKey />
+          <TableHeaderColumn dataSort dataField="email">
+            {t('table.email')}
+          </TableHeaderColumn>
+          <TableHeaderColumn
+            dataField="roles"
+            dataFormat={(_role, row: RbacUser) => {
+              const roles: RbacBindings[] = [...(roleBindings?.[row.uuid] ?? [])];
+              if (roles && roles.length > 0) {
+                const minRoles = roles.splice(3);
+                return (
+                  <div className={classes.rolesTd}>
+                    <div className={classes.rolesList}>
+                      {roles.map((bindings: RbacBindings) => (
+                        <RoleTypeComp role={bindings.role} customLabel={bindings.role.name} />
+                      ))}
+                    </div>
+                    {minRoles.length > 0 && (
+                      <span className={classes.moreRoles}>
+                        {t('table.moreRoles', { count: minRoles.length })}
+                      </span>
+                    )}
                   </div>
-                  {minRoles.length > 0 && (
-                    <span className={classes.moreRoles}>
-                      {t('table.moreRoles', { count: minRoles.length })}
-                    </span>
-                  )}
-                </div>
-              );
-            } else {
-              return (
-                <RoleTypeComp
-                  role={{ roleType: RoleType.SYSTEM } as Role}
-                  customLabel={t('table.connectOnly')}
-                />
-              );
-            }
+                );
+              } else {
+                return (
+                  <RoleTypeComp
+                    role={{ roleType: RoleType.SYSTEM } as Role}
+                    customLabel={t('table.connectOnly')}
+                  />
+                );
+              }
+            }}
+          >
+            {t('table.role')}
+          </TableHeaderColumn>
+          <TableHeaderColumn
+            dataSort
+            dataField="creationDate"
+            dataFormat={(cell) => ybFormatDate(cell)}
+          >
+            {t('table.createdAt')}
+          </TableHeaderColumn>
+          <TableHeaderColumn dataField="actions" dataFormat={getActions}>
+            {t('table.actions')}
+          </TableHeaderColumn>
+        </YBTable>
+        <DeleteUserModal
+          open={showDeleteModal}
+          onHide={() => {
+            toggleDeleteModal(false);
           }}
-        >
-          {t('table.role')}
-        </TableHeaderColumn>
-        <TableHeaderColumn
-          dataSort
-          dataField="creationDate"
-          dataFormat={(cell) => ybFormatDate(cell)}
-        >
-          {t('table.createdAt')}
-        </TableHeaderColumn>
-        <TableHeaderColumn dataField="actions" dataFormat={getActions}>
-          {t('table.actions')}
-        </TableHeaderColumn>
-      </YBTable>
-      <DeleteUserModal
-        open={showDeleteModal}
-        onHide={() => {
-          toggleDeleteModal(false);
-        }}
-      />
-    </Box>
-    // </RbacValidator>
+        />
+      </Box>
+    </RbacValidator>
   );
 };

@@ -30,6 +30,7 @@ import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.ImageBundle.ImageBundleType;
 import com.yugabyte.yw.models.KmsHistoryId.TargetType;
 import com.yugabyte.yw.models.filters.MetricFilter;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
@@ -90,23 +91,8 @@ public class UniverseMetricProvider implements MetricsProvider {
       imageBundleMap = imageBundleUtil.collectUniversesImageBundles();
     }
 
-    Map<String, InstanceType> mapInstanceTypes = new HashMap<String, InstanceType>();
     String ybaVersion = ConfigHelper.getCurrentVersion(environment);
     for (Customer customer : Customer.getAll()) {
-      /*
-      To prevent excessive memory usage when dealing with multiple providers
-      and a large instanceType table, we load only a small subset of instanceTypes
-      with each iteration & clear the map during next iteration.
-      */
-      mapInstanceTypes.clear();
-      // Get all providers for the customer
-      List<Provider> providers = Provider.getAll(customer.getUuid());
-      // Build instanceTypeMap.
-      for (Provider provider : providers) {
-        for (InstanceType instanceType : InstanceType.findByProvider(provider, confGetter)) {
-          mapInstanceTypes.put(instanceType.getIdKey().toString(), instanceType);
-        }
-      }
       Map<UUID, NodeInstance> nodeInstances =
           NodeInstance.listByCustomer(customer.getUuid()).stream()
               .collect(Collectors.toMap(NodeInstance::getNodeUuid, Function.identity()));
@@ -321,9 +307,10 @@ public class UniverseMetricProvider implements MetricsProvider {
               if (nodeDetails.placementUuid != null) {
                 UniverseDefinitionTaskParams.Cluster cluster =
                     universe.getCluster(nodeDetails.placementUuid);
-                if (cluster != null && cluster.userIntent.deviceInfo != null) {
-                  Integer iops = cluster.userIntent.deviceInfo.diskIops;
-                  Integer throughput = cluster.userIntent.deviceInfo.throughput;
+                if (cluster != null && cluster.userIntent != null) {
+                  DeviceInfo deviceInfo = cluster.userIntent.getDeviceInfoForNode(nodeDetails);
+                  Integer iops = deviceInfo.diskIops;
+                  Integer throughput = deviceInfo.throughput;
                   if (iops != null) {
                     universeGroup.metric(
                         createNodeMetric(
@@ -349,31 +336,19 @@ public class UniverseMetricProvider implements MetricsProvider {
                             throughput));
                   }
                   if (isK8SUniverse) {
-                    // Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
-                    InstanceType instanceType =
-                        mapInstanceTypes.get(
-                            InstanceTypeKey.create(
-                                    cluster.userIntent.instanceType,
-                                    UUID.fromString(cluster.userIntent.provider))
-                                .toString());
-                    if (instanceType == null) {
-                      log.warn(
-                          "Matching instance type is not found for cluster:  ",
-                          cluster.uuid,
-                          cluster.userIntent.instanceType,
-                          cluster.userIntent.provider);
-                      continue;
-                    } else {
-                      // After PLAT-1584 is completed, read core count from user intent.
-                      universeGroup.metric(
-                          createContainerMetric(
-                              customer,
-                              universe,
-                              PlatformMetrics.CONTAINER_RESOURCE_REQUESTS_CPU_CORES,
-                              nodeDetails,
-                              KubernetesUtil.getCoreCountFromInstanceType(
-                                  instanceType, nodeDetails.isMaster)));
-                    }
+                    UserIntent userIntent =
+                        universe.getUniverseDetails().getPrimaryCluster().userIntent;
+                    double cpuCoreCount =
+                        nodeDetails.isTserver
+                            ? userIntent.tserverK8SNodeResourceSpec.cpuCoreCount
+                            : userIntent.masterK8SNodeResourceSpec.cpuCoreCount;
+                    universeGroup.metric(
+                        createContainerMetric(
+                            customer,
+                            universe,
+                            PlatformMetrics.CONTAINER_RESOURCE_REQUESTS_CPU_CORES,
+                            nodeDetails,
+                            cpuCoreCount));
                   }
                 }
               }

@@ -253,7 +253,7 @@ message SetupNamespaceReplicationWithBootstrapResponsePB {
 }
 
 message SetupUniverseReplicationRequestPB {
-  optional string producer_id = 1;
+  optional string replication_group_id = 1;
   repeated HostPortPB producer_master_addresses = 2;
   repeated string producer_table_ids = 3;
 
@@ -268,7 +268,7 @@ message SetupUniverseReplicationResponsePB {
 }
 
 message DeleteUniverseReplicationRequestPB {
-  optional string producer_id = 1;
+  optional string replication_group_id = 1;
   optional bool ignore_errors = 2 [default = false];
 }
 
@@ -279,12 +279,12 @@ message DeleteUniverseReplicationResponsePB {
 }
 
 message AlterUniverseReplicationRequestPB {
-  optional string producer_id = 1;
+  optional string replication_group_id = 1;
   // The below options are currently mutually exclusive.  Only 1 operation at a time.
   repeated HostPortPB producer_master_addresses = 2;
   repeated string producer_table_ids_to_add = 4;
   repeated string producer_table_ids_to_remove = 5;
-  optional string new_producer_universe_id = 7;
+  optional string new_replication_group_id = 7;
 
   // Optional bootstrap ids for the add table operation.
   repeated string producer_bootstrap_ids_to_add = 6;
@@ -305,7 +305,7 @@ message ChangeXClusterRoleResponsePB {
 }
 
 message SetUniverseReplicationEnabledRequestPB {
-  optional string producer_id = 1;
+  optional string replication_group_id = 1;
   optional bool is_enabled = 2;
 }
 
@@ -323,7 +323,7 @@ message PauseResumeXClusterProducerStreamsResponsePB {
 }
 
 message GetUniverseReplicationRequestPB {
-  optional string producer_id = 1;
+  optional string replication_group_id = 1;
 }
 
 message GetUniverseReplicationResponsePB {
@@ -332,7 +332,7 @@ message GetUniverseReplicationResponsePB {
 }
 
 message IsSetupUniverseReplicationDoneRequestPB {
-  optional string producer_id = 1;
+  optional string replication_group_id = 1;
 }
 
 message IsSetupUniverseReplicationDoneResponsePB {
@@ -373,7 +373,7 @@ message ProducerSplitTabletInfoPB {
 }
 
 message UpdateConsumerOnProducerSplitRequestPB {
-  optional string producer_id = 1;
+  optional string replication_group_id = 1;
   optional string stream_id = 2;
   optional ProducerSplitTabletInfoPB producer_split_tablet_info = 3;
 }
@@ -383,8 +383,8 @@ message UpdateConsumerOnProducerSplitResponsePB {
 }
 
 message GetReplicationStatusRequestPB {
-  // Filters by the universe uuid if non-empty.
-  optional string universe_id = 1;
+  // Filters by the replication group if non-empty.
+  optional string replication_group_id = 1;
 }
 
 message ReplicationStatusErrorPB {
@@ -420,7 +420,7 @@ message WaitForReplicationDrainResponsePB {
 }
 
 message SetupNSUniverseReplicationRequestPB {
-  optional string producer_id = 1;
+  optional string replication_group_id = 1;
   repeated HostPortPB producer_master_addresses = 2;
   optional string producer_ns_name = 3;
   optional YQLDatabase producer_ns_type = 4;
@@ -431,7 +431,7 @@ message SetupNSUniverseReplicationResponsePB {
 }
 
 message UpdateConsumerOnProducerMetadataRequestPB {
-  optional string producer_id = 1;
+  optional string replication_group_id = 1;
   optional string stream_id = 2;
   optional string consumer_tablet_id = 3;
   optional tablet.ChangeMetadataRequestPB producer_change_metadata_request = 4;

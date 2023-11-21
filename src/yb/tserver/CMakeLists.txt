@@ -246,7 +246,9 @@ set(TSERVER_SRCS
   xcluster_async_executor.cc
   xcluster_safe_time_map.cc
   xcluster_consumer.cc
+  xcluster_consumer_replication_error.cc
   xcluster_poller.cc
+  xcluster_poller_id.cc
   xcluster_poller_stats.cc
   xcluster_output_client.cc
   xcluster_write_implementations.cc)
@@ -363,3 +365,5 @@ YB_TEST_TARGET_LINK_LIBRARIES(encrypted_sstable-test encryption_test_util tserve
 
 ADD_YB_TEST(remote_bootstrap_rocksdb_session-test_ent)
 ADD_YB_TEST(remote_bootstrap_rocksdb_client-test_ent)
+
+ADD_YB_TEST(xcluster_consumer_replication_error-test)

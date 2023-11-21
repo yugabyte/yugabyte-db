@@ -51,7 +51,7 @@ AlmaLinux 8 is the recommended Linux development platform for YugabyteDB.
 
 {{< /note >}}
 
-The following instructions are for Ubuntu 20.04 or Ubuntu 22.04.
+The following instructions are for Ubuntu 20.04, 22.04, and 23.04.
 
 ## Install necessary packages
 
@@ -62,20 +62,13 @@ sudo apt update
 sudo apt upgrade -y
 packages=(
   autoconf
-  bison
   build-essential
-  cmake
   curl
+  gettext
   git
-  libtool
   locales
-  ninja-build
-  patchelf
   pkg-config
-  python3
-  python3-venv
   rsync
-  unzip
 )
 sudo apt install -y "${packages[@]}"
 sudo locale-gen en_US.UTF-8
@@ -126,6 +119,8 @@ sudo apt install -y npm golang-1.18
 export PATH="/usr/lib/go-1.18/bin:$PATH"
 ```
 
+For Ubuntu 23.04, install `golang-1.20` instead since 1.18 is not available.
+
 ### Ninja (optional)
 
 {{% readfile "includes/ninja.md" %}}
@@ -144,9 +139,26 @@ sudo apt install -y ccache
 export YB_CCACHE_DIR="$HOME/.cache/yb_ccache"
 ```
 
+### GCC (optional)
+
+To compile with GCC, install the following packages, and adjust the version numbers to match the GCC version you plan to use.
+
+```sh
+sudo apt install -y gcc-13 g++-13
+```
+
 ## Build the code
 
 {{% readfile "includes/build-the-code.md" %}}
+
+{{< note title="Note" >}}
+
+For Ubuntu 23.04, in order to use [downloaded third-party](#opt-yb-build), there are some additional restrictions:
+
+- build type: `debug`, `fastdebug`, or `release`
+- compiler: `--clang17` or `--gcc13`
+
+{{< /note >}}
 
 ### Build release package (optional)
 

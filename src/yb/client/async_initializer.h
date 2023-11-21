@@ -28,15 +28,15 @@ namespace client {
 
 YB_STRONGLY_TYPED_BOOL(AutoStart);
 
-class AsyncClientInitialiser {
+class AsyncClientInitializer {
  public:
-  AsyncClientInitialiser(
+  AsyncClientInitializer(
       const std::string& client_name, MonoDelta default_timeout, const std::string& tserver_uuid,
       const server::ServerBaseOptions* opts, scoped_refptr<MetricEntity> metric_entity,
       const std::shared_ptr<MemTracker>& parent_mem_tracker,
       rpc::Messenger* messenger);
 
-  ~AsyncClientInitialiser();
+  ~AsyncClientInitializer();
 
   void Shutdown() { stopping_ = true; }
 

@@ -346,7 +346,7 @@ Result<bool> PgDml::ProcessSecondaryIndexRequest(const PgExecParameters *exec_pa
   RETURN_NOT_OK(doc_op_->PopulateDmlByYbctidOps({make_lw_function(
       [&i, end = ybctids->end()] {
         return i != end ? *i++ : Slice();
-      }), ybctids->size()}));
+      }), ybctids->size(), secondary_index_query_->KeepOrder()}));
   AtomicFlagSleepMs(&FLAGS_TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms);
   return true;
 }

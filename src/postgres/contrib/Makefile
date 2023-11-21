@@ -52,6 +52,7 @@ SUBDIRS = \
 		tsm_system_time \
 		unaccent	\
 		vacuumlo    \
+		yb_ash		\
 		yb_pg_metrics \
 		yb_test_extension
 

@@ -4,6 +4,10 @@
       - systemd_option is defined
       - _mount_points is defined
 
+- set_fact:
+    server_gflags: {}
+  tags: ybc-install
+
 - name: Download ybc package
   include: download-ybc-package.yml
   become: yes
@@ -59,22 +63,33 @@
     tags:
       - ybc-install
 
-  - name: Remove existing ybc conf file
+  - name: Setup | Create ybc config directory
     file:
-      path: "{{ ybc_conf_file }}"
-      state: absent
+      path: "{{ ybc_conf_dir }}"
+      state: directory
+      mode: 0755
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
     tags:
-      - override_ybc_gflags
       - ybc-install
+
+  - name: Configure | Create ybc gflags
+    set_fact:
+      server_gflags: "{{ server_gflags | combine (ybc_flags | default({})) }}"
+    tags:
+      - ybc-install
+      - override_ybc_gflags
     when: ybc_flags is defined
 
-  - name: Configure | Set ybc flags
-    lineinfile:
+  # This overwrites the existing file at once.
+  - name: Configure | Copy ybc gflags conf file
+    template:
+      src: "roles/configure-cluster-server/templates/yb-server-gflags.conf.j2"
       dest: "{{ ybc_conf_file }}"
-      regexp: "^--{{ item.key }}=(.*)"
-      line: "--{{item.key}}={{item.value}}"
-      create: yes
-    with_dict: "{{ ybc_flags }}"
+      force: yes
+      mode: 0644
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
     tags:
       - ybc-install
       - override_ybc_gflags

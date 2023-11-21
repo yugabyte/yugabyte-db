@@ -147,7 +147,7 @@ ycqlsh:example> SELECT sum(amount) FROM orders WHERE customer_id = 1 AND order_d
 
 ### Using the timestamp type
 
-You can do this as shown below.
+You can do this as follows:
 
 ```sql
 ycqlsh:example> CREATE TABLE sensor_data(sensor_id INT, ts TIMESTAMP, value FLOAT, PRIMARY KEY(sensor_id, ts));

@@ -111,6 +111,41 @@ struct NamespaceInfo {
     bool colocated;
 };
 
+struct CDCSDKStreamInfo {
+    std::string stream_id;
+    uint32_t database_oid;
+    ReplicationSlotName cdcsdk_ysql_replication_slot_name;
+    std::unordered_map<std::string, std::string> options;
+
+    template <class PB>
+    void ToPB(PB* pb) const {
+      pb->set_stream_id(stream_id);
+      pb->set_database_oid(database_oid);
+      if (!cdcsdk_ysql_replication_slot_name.empty()) {
+        pb->set_slot_name(cdcsdk_ysql_replication_slot_name.ToString());
+      }
+    }
+
+    template <class PB>
+    static Result<CDCSDKStreamInfo> FromPB(const PB& pb) {
+      std::unordered_map<std::string, std::string> options;
+      options.reserve(pb.options_size());
+      for (const auto& option : pb.options()) {
+        options.emplace(option.key(), option.value());
+      }
+
+      auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(pb.namespace_id()));
+      auto stream_info = CDCSDKStreamInfo{
+          .stream_id = pb.stream_id(),
+          .database_oid = database_oid,
+          .cdcsdk_ysql_replication_slot_name =
+              ReplicationSlotName(pb.cdcsdk_ysql_replication_slot_name()),
+          .options = std::move(options)};
+
+      return stream_info;
+    }
+};
+
 namespace internal {
 class ClientMasterRpcBase;
 }
@@ -556,6 +591,10 @@ class YBClient {
       cdc::StreamModeTransactional transactional,
       CreateCDCStreamCallback callback);
 
+  Result<xrepl::StreamId> CreateCDCSDKStreamForNamespace(
+      const NamespaceId& namespace_id, const std::unordered_map<std::string, std::string>& options,
+      const ReplicationSlotName& replication_slot_name = ReplicationSlotName(""));
+
   // Delete multiple CDC streams.
   Status DeleteCDCStream(
       const std::vector<xrepl::StreamId>& streams,
@@ -566,6 +605,10 @@ class YBClient {
   // Delete a CDC stream.
   Status DeleteCDCStream(
       const xrepl::StreamId& stream_id, bool force_delete = false, bool ignore_errors = false);
+
+  Status DeleteCDCStream(
+      const ReplicationSlotName& replication_slot_name, bool force_delete = false,
+      bool ignore_errors = false);
 
   void DeleteCDCStream(const xrepl::StreamId& stream_id, StatusCallback callback);
 
@@ -587,11 +630,18 @@ class YBClient {
       std::unordered_map<std::string, std::string>* options,
       cdc::StreamModeTransactional* transactional);
 
+  Status GetCDCStream(
+      const ReplicationSlotName& replication_slot_name,
+      xrepl::StreamId* stream_id);
+
   void GetCDCStream(
       const xrepl::StreamId& stream_id,
       std::shared_ptr<TableId> table_id,
       std::shared_ptr<std::unordered_map<std::string, std::string>> options,
       StdStatusCallback callback);
+
+  // List all the CDCSDK streams skipping the ones which do not have a replication slot name.
+  Result<std::vector<CDCSDKStreamInfo>> ListCDCSDKStreams();
 
   void DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallback callback);
 
@@ -776,6 +826,10 @@ class YBClient {
   std::shared_ptr<YBSession> NewSession(MonoDelta delta);
   std::shared_ptr<YBSession> NewSession(CoarseTimePoint deadline);
 
+  Status AreNodesSafeToTakeDown(
+      std::vector<std::string> tserver_uuids, std::vector<std::string> master_uuids,
+      int follower_lag_bound_ms);
+
   // Return the socket address of the master leader for this client.
   HostPort GetMasterLeaderAddress();
 
@@ -875,6 +929,15 @@ class YBClient {
   // Get the AutoFlagConfig from master. Returns std::nullopt if master is runnning on an older
   // version that does not support AutoFlags.
   Result<std::optional<AutoFlagsConfigPB>> GetAutoFlagConfig();
+
+  // Check if the given AutoFlagsConfigPB is compatible with the AutoFlags config of the universe.
+  // Check the description of AutoFlagsUtil::AreAutoFlagsCompatible for more information about what
+  // compatible means.
+  // Returns the result in the bool and the current AutoFlags config version that it was validated
+  // with. Returns nullopt if the master is running on an older version that does not support this
+  // API.
+  Result<std::optional<std::pair<bool, uint32>>> ValidateAutoFlagsConfig(
+      const AutoFlagsConfigPB& config, std::optional<AutoFlagClass> min_flag_class = std::nullopt);
 
   Result<master::StatefulServiceInfoPB> GetStatefulServiceLocation(
       StatefulServiceKind service_kind);

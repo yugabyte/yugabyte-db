@@ -1,5 +1,5 @@
 ---
-title: vpc resource
+title: ybm CLI vpc resource
 headerTitle: ybm vpc
 linkTitle: vpc
 description: YugabyteDB Managed CLI reference VPC resource.

@@ -20,6 +20,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.rbac.Permission;
 import com.yugabyte.yw.common.rbac.PermissionInfo;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
@@ -34,25 +35,39 @@ import com.yugabyte.yw.models.rbac.Role;
 import com.yugabyte.yw.models.rbac.Role.RoleType;
 import com.yugabyte.yw.models.rbac.RoleBinding;
 import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.reflections.Reflections;
+import org.reflections.scanners.MethodAnnotationsScanner;
+import org.reflections.util.ClasspathHelper;
+import org.reflections.util.ConfigurationBuilder;
 import play.Environment;
 import play.Mode;
 import play.libs.Json;
 import play.mvc.Result;
+import play.routing.Router;
 
 @RunWith(MockitoJUnitRunner.class)
+@Slf4j
 public class RBACControllerTest extends FakeDBApplication {
 
   private Customer customer;
@@ -339,7 +354,7 @@ public class RBACControllerTest extends FakeDBApplication {
             + "]}";
     JsonNode bodyJson = mapper.readValue(createRoleRequestBody, JsonNode.class);
     Result result = assertPlatformException(() -> createRole(customer.getUuid(), bodyJson));
-    assertEquals(BAD_REQUEST, result.status());
+    assertEquals(CONFLICT, result.status());
     assertAuditEntry(0, customer.getUuid());
   }
 
@@ -572,5 +587,60 @@ public class RBACControllerTest extends FakeDBApplication {
     assertEquals(3, roleBindingList.get(user.getUuid()).size());
     assertTrue(roleBindingList.get(user.getUuid()).contains(roleBinding1));
     assertTrue(roleBindingList.get(user.getUuid()).contains(roleBinding2));
+  }
+
+  @Test
+  public void testAuthzAnnotationDefinitions() {
+    List<Router.RouteDocumentation> routesList =
+        app.injector().instanceOf(Router.class).documentation();
+    Map<String, String> routesMap = new HashMap<>();
+    Map<String, String> requestMap = new HashMap<>();
+    for (Router.RouteDocumentation route : routesList) {
+      String controllerMethodDef = route.getControllerMethodInvocation();
+      String controllerMethod = controllerMethodDef.split("\\(", 2)[0];
+      routesMap.put(controllerMethod, route.getPathPattern());
+      requestMap.put(controllerMethod, route.getHttpMethod());
+    }
+
+    Reflections reflections =
+        new Reflections(
+            new ConfigurationBuilder()
+                .setUrls(ClasspathHelper.forPackage("com.yugabyte.yw.controllers"))
+                .setScanners(new MethodAnnotationsScanner()));
+    Set<Method> annonatedMethods = reflections.getMethodsAnnotatedWith(AuthzPath.class);
+    for (Method aM : annonatedMethods) {
+      String className = aM.getDeclaringClass().getName();
+      AuthzPath authzPath = aM.getAnnotation(AuthzPath.class);
+      String methodName = StringUtils.join(className, ".", aM.getName());
+      if (authzPath != null && requestMap.containsKey(methodName)) {
+        for (RequiredPermissionOnResource permissionOnResource : authzPath.value()) {
+          ResourceType rType = permissionOnResource.requiredPermission().resourceType();
+          Action action = permissionOnResource.requiredPermission().action();
+          Resource resource = permissionOnResource.resourceLocation();
+          log.info(methodName);
+          switch (rType) {
+            case OTHER:
+              assertEquals(Util.CUSTOMERS, resource.path());
+              break;
+            case UNIVERSE:
+              if (resource.sourceType().equals(SourceType.ENDPOINT)) {
+                assertEquals(Util.UNIVERSES, resource.path());
+              }
+              break;
+            case USER:
+              String[] userStrings = new String[] {"user", "users", "userUUID", "role_binding"};
+              if (resource.sourceType().equals(SourceType.ENDPOINT)) {
+                assertTrue(Arrays.asList(userStrings).contains(resource.path()));
+              }
+              break;
+            case ROLE:
+              if (resource.sourceType().equals(SourceType.ENDPOINT)) {
+                assertEquals(Util.ROLE, resource.path());
+              }
+              break;
+          }
+        }
+      }
+    }
   }
 }

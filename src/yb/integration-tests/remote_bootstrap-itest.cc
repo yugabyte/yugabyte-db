@@ -77,6 +77,7 @@
 #include "yb/tserver/remote_bootstrap_session.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_admin.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/metrics.h"
@@ -447,7 +448,9 @@ void RemoteBootstrapITest::BootstrapFromClosestPeerSetUp(int bootstrap_idle_time
     "--remote_bootstrap_idle_timeout_ms="s + std::to_string(bootstrap_idle_timeout_ms),
     // decrease polling period so that expired bootstrap/log anchor sessions are detected
     // and terminated.
-    "--remote_bootstrap_timeout_poll_period_ms="s + std::to_string(bootstrap_idle_timeout_ms)
+    "--remote_bootstrap_timeout_poll_period_ms="s + std::to_string(bootstrap_idle_timeout_ms),
+    "--log_min_segments_to_retain=1",
+    "--TEST_disable_wal_retention_time=true"
   };
 
   // Start an RF5 with tservers placed in "c.r.z0,c.r.z1(2),c.r.z2(2)".
@@ -475,12 +478,19 @@ void RemoteBootstrapITest::BootstrapFromClosestPeerSetUp(int bootstrap_idle_time
     ASSERT_OK(WaitForServersToAgree(timeout, ts_map_, tablet_id, 1));
   }
 
+  crash_test_workload_.reset(new TestWorkload(cluster_.get()));
+  crash_test_workload_->set_sequential_write(true);
+  crash_test_workload_->Setup();
+  crash_test_workload_->Start();
+  crash_test_workload_->WaitInserted(100);
+
   crash_test_tablet_id_ = tablet_ids[0];
   crash_test_leader_ts_ = nullptr;
   ASSERT_OK(FindTabletLeader(
       ts_map_, crash_test_tablet_id_, crash_test_timeout_, &crash_test_leader_ts_));
   crash_test_leader_index_ = cluster_->tablet_server_index_by_uuid(crash_test_leader_ts_->uuid());
   ASSERT_NE(-1, crash_test_leader_index_);
+  crash_test_workload_->StopAndJoin();
 }
 
 void RemoteBootstrapITest::StartCrashedTabletServer(TabletDataState expected_data_state) {
@@ -1775,16 +1785,29 @@ TEST_F(RemoteBootstrapITest, TestRemoteBootstrapFromClosestPeer) {
   RemoteBootstrapITest::BootstrapFromClosestPeerSetUp();
   ASSERT_OK(cluster_->SetFlagOnTServers("TEST_assert_remote_bootstrap_happens_from_same_zone",
                                         "True"));
+  // Leader blacklist the Tablet Server in zone "z2". This would help make downstream assertions
+  // easier where we expect rbs to be served by a FOLLOWER in "z2".
+  ASSERT_OK(cluster_->AddTServerToLeaderBlacklist(
+      cluster_->GetLeaderMaster(), cluster_->tablet_server(2)));
 
+  crash_test_workload_->Start();
   AddTServerInZone("z1");
   ASSERT_OK(cluster_->WaitForTabletServerCount(4, MonoDelta::FromSeconds(20)));
   ASSERT_OK(cluster_->WaitForMasterToMarkTSAlive(3));
   ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(3, crash_test_tablet_id_, TABLET_DATA_READY));
 
+  // Run Log GC on the leader peer and check that the follower is still able to serve as rbs source.
+  // The follower would request to remotely anchor the log on the last received op id.
+  auto leader_ts = cluster_->tablet_server(crash_test_leader_index_);
+  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(
+      leader_ts, {crash_test_tablet_id_}, tserver::FlushTabletsRequestPB::LOG_GC));
+
+  ASSERT_NE(crash_test_leader_index_, 2);
   AddTServerInZone("z2");
   ASSERT_OK(cluster_->WaitForTabletServerCount(5, MonoDelta::FromSeconds(20)));
   ASSERT_OK(cluster_->WaitForMasterToMarkTSAlive(4));
   ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(4, crash_test_tablet_id_, TABLET_DATA_READY));
+  crash_test_workload_->StopAndJoin();
 }
 
 TEST_F(RemoteBootstrapITest, TestRejectRogueLeaderKeyValueType) {
@@ -1934,7 +1957,7 @@ void RemoteBootstrapITest::RBSWithLazySuperblockFlush(int num_tables) {
   auto new_conn = ASSERT_RESULT(ConnectToDB(database));
   for (int i = 0; i < num_tables; ++i) {
     auto res = ASSERT_RESULT(
-        new_conn.FetchValue<int64_t>(Format("SELECT COUNT(*) FROM $0$1", table_prefix, i)));
+        new_conn.FetchRow<int64_t>(Format("SELECT COUNT(*) FROM $0$1", table_prefix, i)));
     ASSERT_EQ(res, 2);
   }
 }

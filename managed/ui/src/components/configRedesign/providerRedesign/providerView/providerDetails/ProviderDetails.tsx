@@ -14,7 +14,7 @@ import { ProviderCode } from '../../constants';
 import { ProviderEditView } from '../../forms/ProviderEditView';
 import { ProviderOverview } from './ProviderOverview';
 import { UniverseItem, UniverseTable } from './UniverseTable';
-import { usePillStyles } from '../../utils';
+import { usePillStyles } from '../../../../../redesign/styles/styles';
 
 import { YBProvider } from '../../types';
 
@@ -113,10 +113,7 @@ export const ProviderDetails = ({ linkedUniverses, providerConfig }: ProviderDet
             />
           </TabPanel>
           <TabPanel classes={{ root: styles.tabPanel }} value={ProviderDetailsTab.CONFIG_DETAILS}>
-            <ProviderEditView
-              providerConfig={providerConfig}
-              isProviderInUse={linkedUniverses.length > 0}
-            />
+            <ProviderEditView providerConfig={providerConfig} linkedUniverses={linkedUniverses} />
           </TabPanel>
           <TabPanel classes={{ root: styles.tabPanel }} value={ProviderDetailsTab.UNIVERSES}>
             <UniverseTable linkedUniverses={linkedUniverses} />

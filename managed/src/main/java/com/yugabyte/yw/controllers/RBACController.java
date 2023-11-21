@@ -5,12 +5,17 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.rbac.Permission;
 import com.yugabyte.yw.common.rbac.PermissionInfo;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.rbac.PermissionUtil;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.common.rbac.RoleUtil;
+import com.yugabyte.yw.common.rbac.routes.Operator;
+import com.yugabyte.yw.common.rbac.routes.RbacPermissionDefinition;
+import com.yugabyte.yw.common.rbac.routes.RbacPermissionDefinitionList;
+import com.yugabyte.yw.common.rbac.routes.RouteRbacPermissionDefinition;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.rbac.ResourcePermissionData;
@@ -37,6 +42,8 @@ import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiParam;
 import io.swagger.annotations.Authorization;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -44,11 +51,18 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.inject.Provider;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.EnumUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.reflections.Reflections;
+import org.reflections.scanners.MethodAnnotationsScanner;
+import org.reflections.util.ClasspathHelper;
+import org.reflections.util.ConfigurationBuilder;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
+import play.routing.Router;
 
 @Api(
     value = "RBAC management",
@@ -61,13 +75,18 @@ public class RBACController extends AuthenticatedController {
   private final PermissionUtil permissionUtil;
   private final RoleUtil roleUtil;
   private final RoleBindingUtil roleBindingUtil;
+  private final Provider<Router> routerProvider;
 
   @Inject
   public RBACController(
-      PermissionUtil permissionUtil, RoleUtil roleUtil, RoleBindingUtil roleBindingUtil) {
+      PermissionUtil permissionUtil,
+      RoleUtil roleUtil,
+      RoleBindingUtil roleBindingUtil,
+      Provider<Router> routerProvider) {
     this.permissionUtil = permissionUtil;
     this.roleUtil = roleUtil;
     this.roleBindingUtil = roleBindingUtil;
+    this.routerProvider = routerProvider;
   }
 
   /**
@@ -227,7 +246,7 @@ public class RBACController extends AuthenticatedController {
     if (Role.get(customerUUID, roleFormData.name) != null) {
       String errorMsg = "Role with given name already exists: " + roleFormData.name;
       log.error(errorMsg);
-      throw new PlatformServiceException(BAD_REQUEST, errorMsg);
+      throw new PlatformServiceException(CONFLICT, errorMsg);
     }
 
     // Ensure that the given permission list is not empty.
@@ -310,8 +329,10 @@ public class RBACController extends AuthenticatedController {
       throw new PlatformServiceException(BAD_REQUEST, errorMsg);
     }
 
-    if (roleFormData.name != null) {
-      log.warn("Editing the role name is not supported, skipping this operation.");
+    if (roleFormData.name != null && !roleFormData.name.equals(role.getName())) {
+      String errorMsg =
+          String.format("Editing the role name is not supported. Role UUID: '%s'.", roleUUID);
+      throw new PlatformServiceException(BAD_REQUEST, errorMsg);
     }
 
     if (roleFormData.permissionList == null) {
@@ -536,5 +557,69 @@ public class RBACController extends AuthenticatedController {
     Set<ResourcePermissionData> userResourcePermissions =
         roleBindingUtil.getUserResourcePermissions(customerUUID, userUUID, resourceTypeEnum);
     return PlatformResults.withData(userResourcePermissions);
+  }
+
+  @AuthzPath
+  @YbaApi(
+      visibility = YbaApiVisibility.INTERNAL,
+      sinceYBAVersion = "2.19.3.0",
+      runtimeConfig = newAuthzRuntimeFlagPath)
+  @ApiOperation(
+      value = "YbaApi Internal. UI_ONLY",
+      nickname = "fetchRoutesPermissionDetails",
+      hidden = true,
+      notes = "Get all the authorized routes permission details")
+  public Result fetchRoutesPermissionDetails() {
+    List<Router.RouteDocumentation> routesList = routerProvider.get().documentation();
+    Map<String, String> routesMap = new HashMap<>();
+    Map<String, String> requestMap = new HashMap<>();
+    for (Router.RouteDocumentation route : routesList) {
+      String controllerMethodDef = route.getControllerMethodInvocation();
+      String controllerMethod = controllerMethodDef.split("\\(", 2)[0];
+      routesMap.put(controllerMethod, route.getPathPattern());
+      requestMap.put(controllerMethod, route.getHttpMethod());
+    }
+
+    Reflections reflections =
+        new Reflections(
+            new ConfigurationBuilder()
+                .setUrls(ClasspathHelper.forPackage("com.yugabyte.yw.controllers"))
+                .setScanners(new MethodAnnotationsScanner()));
+    Set<Method> annonatedMethods = reflections.getMethodsAnnotatedWith(AuthzPath.class);
+
+    List<RouteRbacPermissionDefinition> routeRbacPermissionDefinitionList = new ArrayList<>();
+    for (Method aM : annonatedMethods) {
+      String className = aM.getDeclaringClass().getName();
+      AuthzPath authzPath = aM.getAnnotation(AuthzPath.class);
+      String methodName = StringUtils.join(className, ".", aM.getName());
+      if (authzPath != null && requestMap.containsKey(methodName)) {
+        RouteRbacPermissionDefinition routeRbacPermissionDefinition =
+            new RouteRbacPermissionDefinition();
+        routeRbacPermissionDefinition.setRequestType(requestMap.get(methodName));
+        routeRbacPermissionDefinition.setEndpoint(routesMap.get(methodName));
+
+        RbacPermissionDefinitionList rbacPermissionDefinitions = new RbacPermissionDefinitionList();
+        rbacPermissionDefinitions.setOperator(Operator.OR);
+        List<RbacPermissionDefinition> rbacPermissionDefinitionList = new ArrayList<>();
+        rbacPermissionDefinitions.setRbacPermissionDefinitionList(rbacPermissionDefinitionList);
+
+        RbacPermissionDefinition rbacPermissionDefinition = new RbacPermissionDefinition();
+        rbacPermissionDefinitionList.add(rbacPermissionDefinition);
+        rbacPermissionDefinition.setOperator(Operator.AND);
+        List<Permission> rbacPermissionList = new ArrayList<>();
+        rbacPermissionDefinition.setRbacPermissionList(rbacPermissionList);
+
+        for (RequiredPermissionOnResource permissionOnResource : authzPath.value()) {
+          Permission rbacPermission = new Permission();
+          rbacPermission.setAction(permissionOnResource.requiredPermission().action());
+          rbacPermission.setResourceType(permissionOnResource.requiredPermission().resourceType());
+          rbacPermissionList.add(rbacPermission);
+        }
+        routeRbacPermissionDefinition.setRbacPermissionDefinitions(rbacPermissionDefinitions);
+        routeRbacPermissionDefinitionList.add(routeRbacPermissionDefinition);
+      }
+    }
+
+    return PlatformResults.withData(routeRbacPermissionDefinitionList);
   }
 }

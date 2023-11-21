@@ -137,13 +137,13 @@ func (s status) TransitionValid(next status) bool {
 	case UpgradingStatus:
 		return next == InstalledStatus || next == CleaningStatus || next == UpgradingStatus
 	case CleaningStatus:
-		return next == SoftCleanStatus
+		return next == SoftCleanStatus || next == CleaningStatus
 	case SoftCleanStatus:
 		return next == InstallingStatus
 	case UninstalledStatus:
 		return next == InstallingStatus || next == MigratingStatus || next == CleaningStatus
 	case MigratingStatus:
-		return next == RollbackStatus || next == MigrateStatus
+		return next == RollbackStatus || next == MigrateStatus || next == MigratingStatus
 	case MigrateStatus:
 		return next == RollbackStatus || next == FinishingStatus
 	// RollbackStatus should do a clean on its on. Failure here should either be another rollback

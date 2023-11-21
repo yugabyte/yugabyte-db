@@ -26,6 +26,7 @@
 #include <boost/algorithm/string.hpp>
 
 #include "yb/tserver/tablet_server_interface.h"
+
 #include "yb/util/debug/sanitizer_scopes.h"
 #include "yb/util/env_util.h"
 #include "yb/util/errno.h"
@@ -41,7 +42,11 @@
 #include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/thread.h"
+#include "yb/util/to_stream.h"
+
+#include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
+
 
 DEFINE_UNKNOWN_string(pg_proxy_bind_address, "", "Address for the PostgreSQL proxy to bind to");
 DEFINE_UNKNOWN_string(postmaster_cgroup, "", "cgroup to add postmaster process to");
@@ -386,6 +391,9 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   metricsLibs.push_back("yb_pg_metrics");
   metricsLibs.push_back("pgaudit");
   metricsLibs.push_back("pg_hint_plan");
+  if (FLAGS_enable_yb_ash) {
+    metricsLibs.push_back("yb_ash");
+  }
 
   vector<string> lines;
   string line;
@@ -551,10 +559,11 @@ Status PgWrapper::Start() {
 
   bool log_to_file = !FLAGS_logtostderr && !FLAGS_log_dir.empty() && !conf_.force_disable_log_file;
   VLOG(1) << "Deciding whether the child postgres process should to file: "
-          << EXPR_VALUE_FOR_LOG(FLAGS_logtostderr) << ", "
-          << EXPR_VALUE_FOR_LOG(FLAGS_log_dir.empty()) << ", "
-          << EXPR_VALUE_FOR_LOG(conf_.force_disable_log_file) << ": "
-          << EXPR_VALUE_FOR_LOG(log_to_file);
+          << YB_EXPR_TO_STREAM_COMMA_SEPARATED(
+              FLAGS_logtostderr,
+              FLAGS_log_dir.empty(),
+              conf_.force_disable_log_file,
+              log_to_file);
 
   vector<string> argv {};
 

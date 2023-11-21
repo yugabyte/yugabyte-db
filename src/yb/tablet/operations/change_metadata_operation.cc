@@ -32,8 +32,6 @@
 
 #include "yb/tablet/operations/change_metadata_operation.h"
 
-#include "yb/util/logging.h"
-
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 

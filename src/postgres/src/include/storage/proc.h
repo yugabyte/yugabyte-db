@@ -210,7 +210,8 @@ struct PGPROC
 	 * occasionally the number can be much higher; for example, the
 	 * pg_buffercache extension locks all buffer partitions simultaneously.
 	 */
-	bool 		ybAnyLockAcquired;
+	bool 		ybLWLockAcquired;
+	int 		ybSpinLocksAcquired;
 };
 
 /* NOTE: "typedef struct PGPROC PGPROC" appears in storage/lock.h. */
@@ -281,6 +282,7 @@ typedef struct PROC_HDR
 } PROC_HDR;
 
 extern PGDLLIMPORT PROC_HDR *ProcGlobal;
+extern PGPROC *KilledProcToClean;
 
 extern PGPROC *PreparedXactProcs;
 

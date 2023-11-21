@@ -2,10 +2,10 @@ import { Col, Row } from 'react-bootstrap';
 import { Link } from 'react-router';
 import { Box, useTheme } from '@material-ui/core';
 
-import { XClusterConfig } from '../XClusterTypes';
+import { XClusterConfig } from '../dtos';
 import { getMasterNodeAddress } from '../ReplicationUtils';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
-import { usePillStyles } from '../../configRedesign/providerRedesign/utils';
+import { usePillStyles } from '../../../redesign/styles/styles';
 import { XClusterConfigType } from '../constants';
 
 export function ReplicationOverview({

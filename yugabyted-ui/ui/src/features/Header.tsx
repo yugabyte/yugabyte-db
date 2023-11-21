@@ -1,4 +1,4 @@
-import React, { FC } from "react";
+import React, { FC, useMemo } from "react";
 import {
   AppBar,
   Box,
@@ -21,7 +21,12 @@ import FileIcon from "@app/assets/file.svg";
 import SlackIcon from "@app/assets/slack.svg";
 import HeartCheckIcon from "@app/assets/heart-check.svg";
 import AlertGreenIcon from "@app/assets/alert-green.svg";
-import { useGetClusterNodesQuery, useGetClusterQuery } from "@app/api/src";
+import {
+    useGetClusterNodesQuery,
+    useGetClusterQuery,
+    useGetGflagsQuery,
+    GflagsInfo,
+} from "@app/api/src";
 import { YBTextBadge } from "@app/components/YBTextBadge/YBTextBadge";
 
 const useStyles = makeStyles((theme) => ({
@@ -89,6 +94,16 @@ export const Header: FC = () => {
   const { data: nodesResponse } = useGetClusterNodesQuery();
   const deadNodes = nodesResponse?.data?.filter((node) => !node.is_node_up) ?? [];
   const hasReadReplica = !!nodesResponse?.data.find((node) => node.is_read_replica);
+
+  // address of a live tserver
+  const tserverAddress = nodesResponse?.data?.find((node) => node.is_node_up)?.host ?? "";
+  const { data: gflagsResponse } = useGetGflagsQuery<GflagsInfo>(
+    { node_address: tserverAddress },
+  );
+  const isConnMgrEnabled = useMemo(() => {
+    return gflagsResponse?.tserver_flags?.some(flag =>
+        flag.name === "enable_ysql_conn_mgr" && flag.value === "true")
+  }, [gflagsResponse]);
 
   return (
     <AppBar position="static" color="transparent">
@@ -175,6 +190,15 @@ export const Header: FC = () => {
             className={classes.noDecoLink}
           >
             <YBTextBadge ml={1.5}>{t("clusterDetail.nodes.readReplicaEnabled")}</YBTextBadge>
+          </Link>
+        )}
+        {isConnMgrEnabled && (
+          <Link
+            component={RouterLink}
+            to="/performance/connections"
+            className={classes.noDecoLink}
+          >
+            <YBTextBadge ml={1.5}>{t("clusterDetail.nodes.connMgrEnabled")}</YBTextBadge>
           </Link>
         )}
         <div className={classes.toRight}>

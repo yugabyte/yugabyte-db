@@ -1142,7 +1142,7 @@ namespace cdc {
       CDCSDKYsqlTest::ExpectedRecordWithThreeColumns expected_records, uint32_t* count,
       const bool& validate_old_tuple,
       CDCSDKYsqlTest::ExpectedRecordWithThreeColumns expected_before_image_records,
-      const bool& validate_third_column) {
+      const bool& validate_third_column, const bool is_nothing_record) {
     // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
     switch (record.row_message().op()) {
       case RowMessage::DDL: {
@@ -1183,18 +1183,21 @@ namespace cdc {
         count[2]++;
       } break;
       case RowMessage::DELETE: {
-        ASSERT_EQ(record.row_message().old_tuple(0).datum_int32(),
-          expected_before_image_records.key);
-        if (validate_old_tuple) {
-          if (validate_third_column) {
-            ASSERT_EQ(record.row_message().old_tuple_size(), 3);
-            ASSERT_EQ(record.row_message().new_tuple_size(), 3);
-            AssertBeforeImageKeyValue(
-                record, expected_before_image_records.key, expected_before_image_records.value,
-                true, expected_before_image_records.value2);
-          } else {
-            AssertBeforeImageKeyValue(
-                record, expected_before_image_records.key, expected_before_image_records.value);
+        if (is_nothing_record) {
+          ASSERT_EQ(record.row_message().old_tuple_size(), 0);
+          ASSERT_EQ(record.row_message().new_tuple_size(), 0);
+        } else {
+          if (validate_old_tuple) {
+            if (validate_third_column) {
+              ASSERT_EQ(record.row_message().old_tuple_size(), 3);
+              ASSERT_EQ(record.row_message().new_tuple_size(), 3);
+              AssertBeforeImageKeyValue(
+                  record, expected_before_image_records.key, expected_before_image_records.value,
+                  true, expected_before_image_records.value2);
+            } else {
+              AssertBeforeImageKeyValue(
+                  record, expected_before_image_records.key, expected_before_image_records.value);
+            }
           }
         }
         ASSERT_EQ(record.row_message().table(), kTableName);
@@ -1559,7 +1562,7 @@ namespace cdc {
     ASSERT_EQ(tablets.size(), 1);
 
     std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
-    xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream());
+    xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
 
     auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
     ASSERT_FALSE(resp.has_error());
@@ -3102,7 +3105,8 @@ namespace cdc {
   Status CDCSDKYsqlTest::WaitForGetChangesToFetchRecords(
       GetChangesResponsePB* get_changes_resp, const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
-      const int& expected_count, const CDCSDKCheckpointPB* cp, const int& tablet_idx,
+      const int& expected_count, bool is_explicit_checkpoint,
+      const CDCSDKCheckpointPB* cp, const int& tablet_idx,
       const int64& safe_hybrid_time, const int& wal_segment_index, const double& timeout_secs) {
     int actual_count = 0;
     return WaitFor(
@@ -3119,7 +3123,57 @@ namespace cdc {
               }
             }
           }
-          return actual_count == expected_count;
+          LOG_WITH_FUNC(INFO) << "Actual Count = " << actual_count
+                              << ", Expected count = " << expected_count;
+
+          bool result = actual_count == expected_count;
+          // Reset the count back to zero for explicit checkpoint since we are going to receive
+          // these records again as we are not forwarding the checkpoint in the next GetChanges
+          // call based on the rows received.
+          if (is_explicit_checkpoint) {
+            actual_count = 0;
+          }
+          return result;
+        },
+        MonoDelta::FromSeconds(timeout_secs),
+        "Waiting for GetChanges to fetch: " + std::to_string(expected_count) + " records");
+  }
+
+  Status CDCSDKYsqlTest::WaitForGetChangesToFetchRecordsAcrossTablets(
+      const xrepl::StreamId& stream_id,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+      const int& expected_count, bool is_explicit_checkpoint, const CDCSDKCheckpointPB* cp,
+      const int64& safe_hybrid_time, const int& wal_segment_index, const double& timeout_secs) {
+    int actual_count = 0;
+    return WaitFor(
+        [&]() -> Result<bool> {
+          // Call GetChanges for each tablet.
+          for (int tablet_idx = 0; tablet_idx < tablets.size(); tablet_idx++) {
+            auto get_changes_resp_result = GetChangesFromCDC(
+              stream_id, tablets, cp, tablet_idx, safe_hybrid_time, wal_segment_index);
+            if (get_changes_resp_result.ok()) {
+              for (const auto& record : get_changes_resp_result->cdc_sdk_proto_records()) {
+                if (record.row_message().op() == RowMessage::INSERT ||
+                    record.row_message().op() == RowMessage::UPDATE ||
+                    record.row_message().op() == RowMessage::DELETE) {
+                  actual_count += 1;
+                }
+              }
+            }
+          }
+
+          LOG_WITH_FUNC(INFO) << "Actual Count = " << actual_count
+                              << ", Expected count = " << expected_count;
+
+          bool result = actual_count == expected_count;
+
+          // Reset the count back to zero for explicit checkpoint since we are going to receive
+          // these records again as we are not forwarding the checkpoint in the next GetChanges
+          // call based on the rows received.
+          if (is_explicit_checkpoint) {
+            actual_count = 0;
+          }
+          return result;
         },
         MonoDelta::FromSeconds(timeout_secs),
         "Waiting for GetChanges to fetch: " + std::to_string(expected_count) + " records");

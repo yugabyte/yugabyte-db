@@ -46,7 +46,7 @@ TEST_F(AlterSchemaAbortTxnTest, AlterSchemaFailure) {
   ASSERT_OK(txn_conn.Execute("COMMIT"));
 
 
-  auto value = ASSERT_RESULT(ddl_conn.FetchValue<PGUint64>(Format("SELECT COUNT(*) FROM $0", "p")));
+  auto value = ASSERT_RESULT(ddl_conn.FetchRow<PGUint64>(Format("SELECT COUNT(*) FROM $0", "p")));
   ASSERT_EQ(value, 2);
 }
 

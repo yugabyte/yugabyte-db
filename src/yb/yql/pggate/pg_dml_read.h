@@ -72,6 +72,8 @@ class PgDmlRead : public PgDml {
   // Set forward (or backward) scan.
   void SetForwardScan(const bool is_forward_scan);
 
+  bool KeepOrder() const;
+
   // Set prefix length, in columns, of distinct index scans.
   void SetDistinctPrefixLength(const int distinct_prefix_length);
 

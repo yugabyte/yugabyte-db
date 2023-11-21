@@ -1,0 +1,6 @@
+# src/test/regress/yb_replication_slot_schedule
+#
+####################################################################################################
+# Postgres Testsuites: This suite includes tests on replication slot functions.
+####################################################################################################
+test: yb_replication_slot

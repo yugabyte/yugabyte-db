@@ -21,12 +21,21 @@ import (
 var baseReplicatedMigration = &cobra.Command{
 	Use:   "replicated-migrate",
 	Short: "Commands to handle migrating from replicated to a YBA-Installer instance.",
+	Long: `replicated-migrate subcommands provide a workflow to move from a replicated based install
+to one managed by YBA Installer. The general workflow should follow:
+1. [Optional] config: Generate the yba-ctl.yml from replicated config
+2. start: Start the migration. If the config has not been created, it will happen now.
+3. finish: Complete the migration
+
+Rollback is also available to move back to a replicated install if and only if 'finish' has not been
+run.
+`,
 }
 
 var replicatedMigrationStart = &cobra.Command{
 	Use:   "start",
 	Short: "start the replicated migration process.",
-	Long: "Start the process to migrat from replicated to YBA-Installer. This will migrate all data" +
+	Long: "Start the process to migrate from replicated to YBA-Installer. This will migrate all data" +
 		" and configs from the replicated YugabyteDB Anywhere install to one managed by YBA-Installer." +
 		" The migration will stop, but not delete, all replicated app instances.",
 	Run: func(cmd *cobra.Command, args []string) {
@@ -69,13 +78,15 @@ var replicatedMigrationStart = &cobra.Command{
 		}
 
 		// Get the uid and gid used by the prometheus container. This is used for rollback.
-		entry := config.Get("installRoot")
+		entry := config.Get("storage_path")
 		var replicatedInstallRoot string
 		if entry == replicatedctl.NilConfigEntry {
 			replicatedInstallRoot = "/opt/yugabyte"
 		} else {
 			replicatedInstallRoot = entry.Value
 		}
+		common.SetReplicatedBaseDir(replicatedInstallRoot)
+		state.Replicated.StoragePath = replicatedInstallRoot
 		checkFile := filepath.Join(replicatedInstallRoot, "prometheusv2/queries.active")
 		info, err := os.Stat(checkFile)
 		if err != nil {
@@ -205,7 +216,8 @@ var replicatedMigrationStart = &cobra.Command{
 			if match {
 				input := fmt.Sprintf("%s/%s", replBackupDir, file.Name())
 				log.Info(fmt.Sprintf("Restoring replicated backup %s to YBA.", input))
-				RestoreBackupScript(input, common.GetBaseInstall(), false, true, plat, true, false)
+				// backup path, destination, skipRestart, verbose, platform, migration, systemPG, disableVersion
+				RestoreBackupScript(input, common.GetBaseInstall(), false, true, plat, true, false, true)
 				break
 			}
 		}
@@ -342,7 +354,8 @@ func rollbackMigrations(state *ybactlstate.State) error {
 	prom := services[PrometheusServiceName].(Prometheus)
 	err := prom.RollbackMigration(
 		state.Replicated.PrometheusFileUser,
-		state.Replicated.PrometheusFileUser)
+		state.Replicated.PrometheusFileUser,
+		state.Replicated.StoragePath)
 	if err != nil {
 		log.Fatal("Failed to rollback prometheus migration: " + err.Error())
 	}

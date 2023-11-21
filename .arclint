@@ -28,6 +28,10 @@
      "(^managed/devops/roles/.*$)",
      "(^python/yb/py[.]typed$)",
      "(^managed/RUNTIME-FLAGS[.]md$)",
+     "(^managed/yba-cli/docs/.*)",
+     "(^managed/yba-cli/.*/LICENSE$)",
+     "(^managed/yba-cli/internal/formatter/tabwriter/*)",
+     "(^managed/yba-cli/internal/formatter/templates/*)",
      "(^[.]clang-tidy)",
      "(.*/py.typed)"
   ],
@@ -63,6 +67,7 @@
         "(^managed/.*[.]go$)",
         "(^managed/.*/go[.]mod)",
         "(^managed/.*/go[.]sum)",
+        "(^managed/yba-cli/GNUmakefile)",
         "(^managed/ui/)",
         "(^yugabyted-ui/.*/go[.]mod)",
         "(^yugabyted-ui/.*/go[.]sum)",

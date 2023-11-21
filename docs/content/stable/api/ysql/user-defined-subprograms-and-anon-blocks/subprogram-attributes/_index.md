@@ -25,59 +25,23 @@ The overall behavior of a user-defined function or procedure is determined by a 
 
 You can see the names of all of these rules in the grammars for _create [or replace] function_, _create [or replace] procedure_, _alter function_, and _alter procedure_, below:
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li>
-    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammar Icon">
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <img src="/icons/diagram.svg" alt="Diagram Icon">
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/create_function,create_procedure,alter_function,alter_procedure.grammar.md" %}}
-  </div>
-  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/create_function,create_procedure,alter_function,alter_procedure.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf localrefs="alterable_fn_only_attribute,alterable_fn_and_proc_attribute,special_fn_and_proc_attribute,unalterable_fn_attribute,unalterable_proc_attribute" %}}
+  create_function,
+  create_procedure,
+  alter_function,
+  alter_procedure
+{{%/ebnf%}}
 
 Here are the different attribute rules.
 
 ## Unalterable subprogram attributes
 
-The _unalterable subprogram attributes_ can be set _only_ with the _create [or replace]_ statement. Each of _function_ and _procedure_ has its own _unalterable attributes_ rule. They share _language_ and _implementation_definition_. But the status _regular function_ or _window function_ is meaningless for a procedure.
+The _unalterable subprogram attributes_ can be set _only_ with the _create [or replace]_ statement. Each of _function_ and _procedure_ has its own _unalterable attributes_ rule. They share _language_ and _subprogram_implementation_. But the status _regular function_ or _window function_ is meaningless for a procedure.
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li>
-    <a href="#grammar-2" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammar Icon">
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram-2" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <img src="/icons/diagram.svg" alt="Diagram Icon">
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar-2" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/unalterable_fn_attribute,unalterable_proc_attribute.grammar.md" %}}
-  </div>
-  <div id="diagram-2" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/unalterable_fn_attribute,unalterable_proc_attribute.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  unalterable_fn_attribute,
+  unalterable_proc_attribute
+{{%/ebnf%}}
 
 {{< note title="This major section, so far, describes only user-defined subprograms and anonymous blocks that are implemented in SQL or PL/pgSQL." >}}
 Further, it does not yet describe how to create user-defined window functions.
@@ -88,29 +52,9 @@ Further, it does not yet describe how to create user-defined window functions.
 
 The special subprogram attributes are set using a general syntax style with the _alter_ statements.
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li>
-    <a href="#grammar-3" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammar Icon">
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram-3" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <img src="/icons/diagram.svg" alt="Diagram Icon">
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar-3" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/special_fn_and_proc_attribute.grammar.md" %}}
-  </div>
-  <div id="diagram-3" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/special_fn_and_proc_attribute.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  special_fn_and_proc_attribute
+{{%/ebnf%}}
 
 The syntax diagram shows that if you want to change any of these attributes, then you must change them one at a time by issuing _alter_ repeatedly.
 
@@ -124,29 +68,9 @@ See the section [The semantics of the "depends on extension" subprogram attribut
 
 These attributes are common for both functions and procedures:
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li>
-    <a href="#grammar-4" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammar Icon">
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram-4" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <img src="/icons/diagram.svg" alt="Diagram Icon">
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar-4" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/alterable_fn_and_proc_attribute.grammar.md" %}}
-  </div>
-  <div id="diagram-4" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/alterable_fn_and_proc_attribute.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  alterable_fn_and_proc_attribute
+{{%/ebnf%}}
 
 See the subsection [Alterable subprogram attributes](./alterable-subprogram-attributes/) for the explanations of the _configuration parameter_ and _security_ attributes.
 
@@ -154,28 +78,8 @@ See the subsection [Alterable subprogram attributes](./alterable-subprogram-attr
 
 Notice that there are no procedure-specific alterable attributes. These attributes are specific to just functions:
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li>
-    <a href="#grammar-5" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammar Icon">
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram-5" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <img src="/icons/diagram.svg" alt="Diagram Icon">
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar-5" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/alterable_fn_only_attribute.grammar.md" %}}
-  </div>
-  <div id="diagram-5" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/alterable_fn_only_attribute.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  alterable_fn_only_attribute
+{{%/ebnf%}}
 
 See the subsection [Alterable function-only attributes](./alterable-function-only-attributes/) for the explanations of the _volatility_, _On NULL input_, _parallel_, _leakproof_, _cost_ and _rows_ attributes.

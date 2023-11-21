@@ -39,6 +39,7 @@ DECLARE_bool(hide_pg_catalog_table_creation_logs);
 DECLARE_bool(master_auto_run_initdb);
 DECLARE_int32(pggate_rpc_timeout_secs);
 DECLARE_bool(cdc_populate_safepoint_record);
+DECLARE_uint32(max_replication_slots);
 
 namespace yb {
 using client::YBClient;
@@ -48,6 +49,7 @@ namespace cdc {
 constexpr int kRpcTimeout = NonTsanVsTsan(60, 120);
 static const std::string kUniverseId = "test_universe";
 static const std::string kNamespaceName = "test_namespace";
+static const std::string kReplicationSlotName = "test_replication_slot";
 constexpr static const char* const kTableName = "test_table";
 constexpr static const char* const kKeyColumnName = "key";
 constexpr static const char* const kValueColumnName = "value_1";
@@ -83,6 +85,15 @@ class CDCSDKTestBase : public YBTest {
         .port = pg_host_port_.port(),
         .dbname = dbname,
       }).Connect();
+    }
+
+    Result<pgwrapper::PGConn> ConnectToDBWithReplication(const std::string& dbname) {
+      return pgwrapper::PGConnBuilder({
+        .host = pg_host_port_.host(),
+        .port = pg_host_port_.port(),
+        .dbname = dbname,
+        .replication = "database",
+      }).Connect(/*simple_query_protocol=*/true);
     }
   };
 
@@ -188,6 +199,12 @@ class CDCSDKTestBase : public YBTest {
   Result<xrepl::StreamId> CreateDBStream(
       CDCCheckpointType checkpoint_type = CDCCheckpointType::EXPLICIT,
       CDCRecordType record_type = CDCRecordType::CHANGE);
+  // Creates a DB stream on the database kNamespaceName using the Replication Slot syntax.
+  // Only supports the CDCCheckpointType::EXPLICIT and CDCRecordType::CHANGE.
+  // TODO(#19260): Support customizing the CDCRecordType.
+  Result<xrepl::StreamId> CreateDBStreamWithReplicationSlot();
+  Result<xrepl::StreamId> CreateDBStreamWithReplicationSlot(
+      const std::string& replication_slot_name);
 
  protected:
   // Every test needs to initialize this cdc_proxy_.

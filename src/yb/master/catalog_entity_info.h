@@ -40,6 +40,7 @@
 
 #include "yb/cdc/cdc_types.h"
 #include "yb/common/entity_ids.h"
+#include "yb/master/catalog_entity_base.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/qlexpr/index.h"
@@ -178,73 +179,6 @@ struct TabletReplica {
   bool IsStarting() const;
 
   std::string ToString() const;
-};
-
-// This class is a base wrapper around the protos that get serialized in the data column of the
-// sys_catalog. Subclasses of this will provide convenience getter/setter methods around the
-// protos and instances of these will be wrapped around CowObjects and locks for access and
-// modifications.
-template <class DataEntryPB, SysRowEntryType entry_type>
-struct Persistent {
-  // Type declaration to be used in templated read/write methods. We are using typename
-  // Class::data_type in templated methods for figuring out the type we need.
-  typedef DataEntryPB data_type;
-
-  // Subclasses of this need to provide a valid value of the entry type through
-  // the template class argument.
-  static SysRowEntryType type() { return entry_type; }
-
-  // The proto that is persisted in the sys_catalog.
-  DataEntryPB pb;
-};
-
-// This class is a base wrapper around accessors for the persistent proto data, through CowObject.
-// The locks are taken on subclasses of this class, around the object returned from metadata().
-template <class PersistentDataEntryPB>
-class MetadataCowWrapper {
- public:
-  // Type declaration for use in the Lock classes.
-  typedef PersistentDataEntryPB CowState;
-  typedef CowWriteLock<CowState> WriteLock;
-  typedef CowReadLock<CowState> ReadLock;
-
-  // This method should return the id to be written into the sys_catalog id column.
-  virtual const std::string& id() const = 0;
-
-  // Pretty printing.
-  virtual std::string ToString() const {
-    return Format(
-        "Object type = $0 (id = $1)", PersistentDataEntryPB::type(), id());
-  }
-
-  // Access the persistent metadata. Typically you should use
-  // MetadataLock to gain access to this data.
-  const CowObject<PersistentDataEntryPB>& metadata() const { return metadata_; }
-  CowObject<PersistentDataEntryPB>* mutable_metadata() { return &metadata_; }
-
-  ReadLock LockForRead() const {
-    return ReadLock(&metadata());
-  }
-
-  WriteLock LockForWrite() {
-    return WriteLock(mutable_metadata());
-  }
-
-  const auto& old_pb() const {
-    return metadata_.state().pb;
-  }
-
-  const auto& new_pb() const {
-    return metadata_.dirty().pb;
-  }
-
-  static auto type() {
-    return CowState::type();
-  }
-
- protected:
-  virtual ~MetadataCowWrapper() = default;
-  CowObject<PersistentDataEntryPB> metadata_;
 };
 
 // The data related to a tablet which is persisted on disk.
@@ -1006,36 +940,7 @@ struct PersistentClusterConfigInfo : public Persistent<SysClusterConfigEntryPB,
 
 // This is the in memory representation of the cluster config information serialized proto data,
 // using metadata() for CowObject access.
-class ClusterConfigInfo : public MetadataCowWrapper<PersistentClusterConfigInfo> {
- public:
-  ClusterConfigInfo() {}
-  ~ClusterConfigInfo() = default;
-
-  virtual const std::string& id() const override { return fake_id_; }
-
- private:
-  // We do not use the ID field in the sys_catalog table.
-  const std::string fake_id_;
-};
-
-// This wraps around the proto containing xcluster cluster level config information. It will be used
-// for CowObject managed access.
-struct PersistentXClusterConfigInfo
-    : public Persistent<SysXClusterConfigEntryPB, SysRowEntryType::XCLUSTER_CONFIG> {};
-
-// This is the in memory representation of the xcluster config information serialized proto
-// data, using metadata() for CowObject access.
-class XClusterConfigInfo : public MetadataCowWrapper<PersistentXClusterConfigInfo> {
- public:
-  XClusterConfigInfo() {}
-  ~XClusterConfigInfo() = default;
-
-  virtual const std::string& id() const override { return fake_id_; }
-
- private:
-  // We do not use the ID field in the sys_catalog table.
-  const std::string fake_id_;
-};
+class ClusterConfigInfo : public SingletonMetadataCowWrapper<PersistentClusterConfigInfo> {};
 
 struct PersistentRedisConfigInfo
     : public Persistent<SysRedisConfigEntryPB, SysRowEntryType::REDIS_CONFIG> {};
@@ -1184,23 +1089,6 @@ struct SplitTabletIds {
   }
 };
 
-struct PersistentXClusterSafeTimeInfo
-    : public Persistent<XClusterSafeTimePB, SysRowEntryType::XCLUSTER_SAFE_TIME> {};
-
-class XClusterSafeTimeInfo : public MetadataCowWrapper<PersistentXClusterSafeTimeInfo> {
- public:
-  XClusterSafeTimeInfo() {}
-  ~XClusterSafeTimeInfo() = default;
-
-  virtual const std::string& id() const override { return fake_id_; }
-
-  void Clear();
-
- private:
-  // This is a singleton, so We do not use the ID field.
-  const std::string fake_id_;
-};
-
 // This wraps around the proto containing CDC stream information. It will be used for
 // CowObject managed access.
 struct PersistentCDCStreamInfo : public Persistent<
@@ -1321,22 +1209,6 @@ class UniverseReplicationInfo : public UniverseReplicationInfoBase,
   // Get the Status of the last error from the current SetupUniverseReplication.
   Status GetSetupUniverseReplicationErrorStatus() const;
 
-  void StoreReplicationError(
-      const TableId& consumer_table_id,
-      const xrepl::StreamId& stream_id,
-      ReplicationErrorPb error,
-      const std::string& error_detail);
-
-  void ClearReplicationError(
-      const TableId& consumer_table_id, const xrepl::StreamId& stream_id, ReplicationErrorPb error);
-
-  // Maps from a table id -> stream id -> replication error -> error detail.
-  typedef std::unordered_map<ReplicationErrorPb, std::string> ReplicationErrorMap;
-  typedef std::unordered_map<xrepl::StreamId, ReplicationErrorMap> StreamReplicationErrorMap;
-  typedef std::unordered_map<TableId, StreamReplicationErrorMap> TableReplicationErrorMap;
-
-  TableReplicationErrorMap GetReplicationErrors() const;
-
  private:
   friend class RefCountedThreadSafe<UniverseReplicationInfo>;
   virtual ~UniverseReplicationInfo() = default;
@@ -1344,8 +1216,6 @@ class UniverseReplicationInfo : public UniverseReplicationInfoBase,
   // The last error Status of the currently running SetupUniverseReplication. Will be OK, if freshly
   // constructed object, or if the SetupUniverseReplication was successful.
   Status setup_universe_replication_error_ = Status::OK();
-
-  TableReplicationErrorMap table_replication_error_map_;
 
   DISALLOW_COPY_AND_ASSIGN(UniverseReplicationInfo);
 };

@@ -38,8 +38,6 @@
 #include <utility>
 #include <vector>
 
-#include "yb/util/logging.h"
-
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_util.h"
@@ -96,6 +94,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
 
@@ -469,6 +468,7 @@ bool TabletPeer::StartShutdown() {
 
   {
     std::lock_guard lock(lock_);
+    DEBUG_ONLY_TEST_SYNC_POINT("TabletPeer::StartShutdown:1");
     if (tablet_) {
       tablet_->StartShutdown();
     }

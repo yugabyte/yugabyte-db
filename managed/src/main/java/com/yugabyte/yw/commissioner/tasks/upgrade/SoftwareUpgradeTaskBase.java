@@ -14,6 +14,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.io.File;
@@ -21,12 +22,15 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
+import org.yb.client.YBClient;
 
 @Slf4j
 public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
@@ -46,19 +50,24 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
     return NodeState.UpgradeSoftware;
   }
 
-  protected UpgradeContext getUpgradeContext(String targetSoftwareVersion) {
+  protected UpgradeContext getUpgradeContext(
+      String targetSoftwareVersion,
+      Set<NodeDetails> nodesToSkipMasterActions,
+      Set<NodeDetails> nodesToSkipTServerActions) {
     return UpgradeContext.builder()
         .reconfigureMaster(false)
         .runBeforeStopping(false)
         .processInactiveMaster(true)
         .targetSoftwareVersion(targetSoftwareVersion)
+        .nodesToSkipMasterActions(nodesToSkipMasterActions)
+        .nodesToSkipTServerActions(nodesToSkipTServerActions)
         .build();
   }
 
   protected UpgradeContext getRollbackUpgradeContext(
+      String targetSoftwareVersion,
       Set<NodeDetails> nodesToSkipMasterActions,
-      Set<NodeDetails> nodesToSkipTServerActions,
-      String targetSoftwareVersion) {
+      Set<NodeDetails> nodesToSkipTServerActions) {
     return UpgradeContext.builder()
         .reconfigureMaster(false)
         .runBeforeStopping(false)
@@ -240,5 +249,89 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
       createAvailableMemoryCheck(allNodes, Util.AVAILABLE_MEMORY, memAvailableLimit)
           .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
     }
+  }
+
+  /**
+   * Returns a pair of list of nodes which have same DB version or in Live state.
+   *
+   * @param universe
+   * @param nodes
+   * @param requiredVersion
+   * @return pair of list of nodes
+   */
+  protected Pair<List<NodeDetails>, List<NodeDetails>> filterNodesWithSameDBVersionAndLiveState(
+      Universe universe, Pair<List<NodeDetails>, List<NodeDetails>> nodes, String requiredVersion) {
+    Set<NodeDetails> masterNodesWithSameDBVersion =
+        getNodesWithSameDBVersion(universe, nodes.getLeft(), ServerType.MASTER, requiredVersion);
+    List<NodeDetails> masterNodes =
+        nodes.getLeft().stream()
+            .filter(
+                node ->
+                    (masterNodesWithSameDBVersion.contains(node)
+                        && node.state.equals(NodeState.Live)))
+            .collect(Collectors.toList());
+    Set<NodeDetails> tserverNodesWithSameDBVersion =
+        getNodesWithSameDBVersion(universe, nodes.getRight(), ServerType.TSERVER, requiredVersion);
+    List<NodeDetails> tserverNodes =
+        nodes.getRight().stream()
+            .filter(
+                node ->
+                    (tserverNodesWithSameDBVersion.contains(node)
+                        && node.state.equals(NodeState.Live)))
+            .collect(Collectors.toList());
+    return new ImmutablePair<>(masterNodes, tserverNodes);
+  }
+
+  private Set<NodeDetails> getNodesWithSameDBVersion(
+      Universe universe,
+      List<NodeDetails> nodeDetails,
+      ServerType serverType,
+      String requiredVersion) {
+    if (!Util.isYbVersionFormatValid(requiredVersion)) {
+      return new HashSet<>();
+    }
+    try (YBClient client =
+        ybService.getClient(universe.getMasterAddresses(), universe.getCertificateClientToNode())) {
+      return nodeDetails.stream()
+          .filter(node -> isDBVersionSameOnNode(client, node, serverType, requiredVersion))
+          .collect(Collectors.toSet());
+    } catch (Exception e) {
+      log.error("Error while fetching versions on universe : {} ", universe.getUniverseUUID(), e);
+      return new HashSet<>();
+    }
+  }
+
+  private boolean isDBVersionSameOnNode(
+      YBClient client, NodeDetails node, ServerType serverType, String softwareVersion) {
+    int port = serverType.equals(ServerType.MASTER) ? node.masterRpcPort : node.tserverRpcPort;
+    try {
+
+      Optional<String> version =
+          ybService.getServerVersion(client, node.cloudInfo.private_ip, port);
+      if (version.isPresent()) {
+        String serverVersion = version.get();
+        log.debug(
+            "Found version {} on node:{} port {}", serverVersion, node.cloudInfo.private_ip, port);
+        if (!Util.isYbVersionFormatValid(serverVersion)) {
+          return false;
+        } else if (CommonUtils.isReleaseEqual(softwareVersion, serverVersion)) {
+          return true;
+        }
+      }
+    } catch (Exception e) {
+      log.error(
+          "Error fetching version info on node: {} port: {} ", node.cloudInfo.private_ip, port, e);
+    }
+    return false;
+  }
+
+  /** Returns set of nodes which requires software download before configuration. */
+  protected Set<NodeDetails> getNodesWhichRequiresSoftwareDownload(
+      Set<NodeDetails> allNodes,
+      Set<NodeDetails> nodesToSkipMaster,
+      Set<NodeDetails> nodesToSkipTServer) {
+    return allNodes.stream()
+        .filter(node -> !nodesToSkipMaster.contains(node) && !nodesToSkipTServer.contains(node))
+        .collect(Collectors.toSet());
   }
 }

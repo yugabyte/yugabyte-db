@@ -45,19 +45,17 @@
 namespace yb {
 namespace pggate {
 
-YB_DEFINE_ENUM(
-  DdlType,
-  // Not a DDL operation.
-  ((NonDdl, 0))
-  // DDL operation that does not modify the DocDB schema protobufs.
-  ((DdlWithoutDocdbSchemaChanges, 1))
-  // DDL operation that modifies the DocDB schema protobufs.
-  ((DdlWithDocdbSchemaChanges, 2))
-);
+struct DdlMode {
+  bool has_docdb_schema_changes{false};
+
+  std::string ToString() const;
+  void ToPB(tserver::PgFinishTransactionRequestPB_DdlModePB* dest) const;
+};
 
 #define YB_PG_CLIENT_SIMPLE_METHODS \
-    (AlterDatabase)(AlterTable)(CreateDatabase)(CreateTable)(CreateTablegroup) \
-    (DropDatabase)(DropTablegroup)(TruncateTable)
+    (AlterDatabase)(AlterTable) \
+    (CreateDatabase)(CreateReplicationSlot)(CreateTable)(CreateTablegroup) \
+    (DropDatabase)(DropReplicationSlot)(DropTablegroup)(TruncateTable)
 
 struct PerformResult {
   Status status;
@@ -91,11 +89,13 @@ class PgClient {
 
   Result<client::VersionedTablePartitionList> GetTablePartitionList(const PgObjectId& table_id);
 
-  Status FinishTransaction(Commit commit, DdlType ddl_type);
+  Status FinishTransaction(Commit commit, std::optional<DdlMode> ddl_mode = std::nullopt);
 
   Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
 
   Result<std::pair<PgOid, PgOid>> ReserveOids(PgOid database_oid, PgOid next_oid, uint32_t count);
+
+  Result<PgOid> GetNewObjectId(PgOid db_oid);
 
   Result<bool> IsInitDbDone();
 
@@ -178,6 +178,11 @@ class PgClient {
 
   Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo(
       bool size_only, uint32_t db_oid);
+
+  Result<tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots();
+
+  Result<tserver::PgGetReplicationSlotStatusResponsePB> GetReplicationSlotStatus(
+      const ReplicationSlotName& slot_name);
 
   using ActiveTransactionCallback = LWFunction<Status(
       const tserver::PgGetActiveTransactionListResponsePB_EntryPB&, bool is_last)>;

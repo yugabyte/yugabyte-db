@@ -42,7 +42,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
@@ -403,6 +402,37 @@ Status ExternalMiniCluster::Start(rpc::Messenger* messenger) {
     }
     RETURN_NOT_OK(WaitForTabletServerCount(
         opts_.num_tablet_servers, kTabletServerRegistrationTimeout));
+
+    if (UseYbController()) {
+      vector<string> extra_flags;
+      for (const auto& flag : opts_.extra_tserver_flags) {
+        if (flag.find("certs_dir") != string::npos) {
+          extra_flags.push_back(flag);
+        }
+      }
+      // we need 1 yb controller server for each tserver
+      // yb controller uses the same IP as corresponding tserver
+      yb_controller_servers_.reserve(opts_.num_tablet_servers);
+      // all yb controller servers need to be on the same port
+      const auto server_port = AllocateFreePort();
+      for (size_t i = 0; i < opts_.num_tablet_servers; ++i) {
+        const auto yb_controller_log_dir = GetDataPath(Format("ybc-$0/logs", i));
+        const auto yb_controller_tmp_dir = GetDataPath(Format("ybc-$0/tmp", i));
+        RETURN_NOT_OK(Env::Default()->CreateDirs(yb_controller_log_dir));
+        RETURN_NOT_OK(Env::Default()->CreateDirs(yb_controller_tmp_dir));
+        scoped_refptr<ExternalYbController> yb_controller = new ExternalYbController(
+            yb_controller_log_dir, yb_controller_tmp_dir, tablet_servers_[i]->bind_host(),
+            GetToolPath("yb-admin"), GetToolPath("../../../bin", "yb-ctl"),
+            GetToolPath("../../../bin", "ycqlsh"), GetPgToolPath("ysql_dump"),
+            GetPgToolPath("ysql_dumpall"), GetPgToolPath("ysqlsh"), server_port,
+            masters_[0]->http_port(), tablet_servers_[i]->http_port(),
+            tablet_servers_[i]->bind_host(), GetYbcToolPath("yb-controller-server"), extra_flags);
+
+        RETURN_NOT_OK_PREPEND(
+            yb_controller->Start(), "Failed to start YB Controller at index " + std::to_string(i));
+        yb_controller_servers_.push_back(yb_controller);
+      }
+    }
   } else {
     LOG(INFO) << "No need to start tablet servers";
   }
@@ -425,6 +455,10 @@ void ExternalMiniCluster::Shutdown(NodeSelectionMode mode, RequireExitCode0 requ
   for (const scoped_refptr<ExternalTabletServer>& ts : tablet_servers_) {
     ts->Shutdown(SafeShutdown::kTrue, require_exit_code_0);
   }
+
+  for (const auto& yb_controller : yb_controller_servers_) {
+    yb_controller->Shutdown();
+  }
   running_ = false;
 }
 
@@ -445,6 +479,16 @@ Status ExternalMiniCluster::Restart() {
   }
 
   RETURN_NOT_OK(WaitForTabletServerCount(tablet_servers_.size(), kTabletServerRegistrationTimeout));
+
+  if (UseYbController()) {
+    for (const auto& yb_controller : yb_controller_servers_) {
+      if (yb_controller->IsShutdown()) {
+        RETURN_NOT_OK_PREPEND(
+            yb_controller->Restart(),
+            "Cannot restart YB Controller server bound at: " + yb_controller->GetServerAddress());
+      }
+    }
+  }
 
   // Give some more time for the cluster to be ready. If we proceed to run the
   // unit test prematurely before the master/tserver are fully ready, deadlock
@@ -1642,15 +1686,14 @@ Result<tserver::GetSplitKeyResponsePB> ExternalMiniCluster::GetSplitKey(
 
 Status ExternalMiniCluster::FlushTabletsOnSingleTServer(
     ExternalTabletServer* ts, const std::vector<yb::TabletId> tablet_ids,
-    bool is_compaction) {
+    tserver::FlushTabletsRequestPB_Operation operation) {
   tserver::FlushTabletsRequestPB req;
   tserver::FlushTabletsResponsePB resp;
   rpc::RpcController controller;
   controller.set_timeout(10s * kTimeMultiplier);
 
   req.set_dest_uuid(ts->uuid());
-  req.set_operation(is_compaction ? tserver::FlushTabletsRequestPB::COMPACT
-                                  : tserver::FlushTabletsRequestPB::FLUSH);
+  req.set_operation(operation);
   for (const auto& tablet_id : tablet_ids) {
     req.add_tablet_ids(tablet_id);
   }
@@ -1882,6 +1925,15 @@ std::vector<ExternalTabletServer*> ExternalMiniCluster::tserver_daemons() const 
     result.push_back(ts.get());
   }
   return result;
+}
+
+vector<ExternalYbController*> ExternalMiniCluster::yb_controller_daemons() const {
+  vector<ExternalYbController*> results;
+  results.reserve(yb_controller_servers_.size());
+  for (const scoped_refptr<ExternalYbController>& yb_controller : yb_controller_servers_) {
+    results.push_back(yb_controller.get());
+  }
+  return results;
 }
 
 HostPort ExternalMiniCluster::pgsql_hostport(int node_index) const {
@@ -2261,7 +2313,7 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
   argv.insert(argv.end(), extra_flags_.begin(), extra_flags_.end());
   AddExtraFlagsFromEnvVar("YB_EXTRA_DAEMON_FLAGS", &argv);
 
-  std::unique_ptr<Subprocess> p(new Subprocess(exe_, argv));
+  auto p = std::make_unique<Subprocess>(exe_, argv);
   p->PipeParentStdout();
   p->PipeParentStderr();
   auto default_output_prefix = Format("[$0]", daemon_id_);
@@ -2556,6 +2608,21 @@ Result<string> ExternalDaemon::GetFlag(const std::string& flag) {
     return STATUS_FORMAT(RemoteError, "Failed to get gflag $0 value.", flag);
   }
   return resp.value();
+}
+
+Result<HybridTime> ExternalDaemon::GetServerTime() {
+  server::GenericServiceProxy proxy(proxy_cache_, bound_rpc_addr());
+
+  rpc::RpcController controller;
+  controller.set_timeout(MonoDelta::FromSeconds(30));
+  server::ServerClockRequestPB req;
+  server::ServerClockResponsePB resp;
+  RETURN_NOT_OK(proxy.ServerClock(req, &resp, &controller));
+  SCHECK(resp.has_hybrid_time(), IllegalState, "No hybrid time in response");
+  HybridTime ht;
+  RETURN_NOT_OK(ht.FromUint64(resp.hybrid_time()));
+
+  return ht;
 }
 
 LogWaiter::LogWaiter(ExternalDaemon* daemon, const std::string& string_to_wait) :

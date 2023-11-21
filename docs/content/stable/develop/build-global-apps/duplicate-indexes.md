@@ -1,5 +1,5 @@
 ---
-title: Duplicate Indexes for  global applications
+title: Duplicate Indexes for global applications
 headerTitle: Duplicate indexes
 linkTitle: Duplicate indexes
 description: Enhance the performance of global applications with Duplicate Indexes
@@ -35,7 +35,7 @@ Adding an application in `us-central` gives the following setup.
 In this scenario, the application in `us-central` has a read latency of 30 ms, whereas the application in `us-east` has a read latency of only 2 ms.
 
 {{<tip title="Goal #1">}}
-Reduce the 30 ms access latency of applications in `us-central`
+Reduce the 30 ms access latency of applications in `us-central`.
 {{</tip>}}
 
 This becomes worse when you add an application in `us-west`.
@@ -45,7 +45,7 @@ This becomes worse when you add an application in `us-west`.
 The application in `us-west` has a high read latency of 60 ms.
 
 {{<tip title="Goal #2">}}
-Reduce the 60 ms access latency of applications in `us-west`.
+Reduce the 60 ms access latency of applications in `us-west`
 {{</tip>}}
 
 ## Duplicate indexes

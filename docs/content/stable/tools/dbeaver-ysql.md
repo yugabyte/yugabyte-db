@@ -7,7 +7,7 @@ menu:
   stable:
     identifier: dbeaver-1-ysql
     parent: tools
-    weight: 40
+    weight: 50
 type: docs
 ---
 

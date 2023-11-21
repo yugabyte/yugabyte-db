@@ -2910,13 +2910,18 @@ reaper(SIGNAL_ARGS)
 	{
 		/*
 		 * We perform the following tasks when a process crashes
-		 * 1. If no locks are held during a crash, we avoid postmaster restarts.
-		 * 2. If any lock has been acquired or is in the process of being
-		 *    acquired we take a conservative approach and restart the
-		 *    postmaster.
+		 * 1. If the killed process held no locks during a crash, we avoid
+		 *    postmaster restarts.
+		 * 2. If the killed process has acquired or is in the process acquiring
+		 *    a lock we take a conservative approach and restart the postmaster.
+		 * 3. If a process is killed before it can have a Proc struct assigned,
+		 *    we take a conservative approach and restart the postmaster.
+		 *    Examples of spinlocks accessed during process creation are:
+		 *    XLogCtl->info_lck, ProcStructLock.
 		 */
 
 		int i;
+		bool foundProcStruct = false;
 		for (i = 0; i < ProcGlobal->allProcCount; i++)
 		{
 			PGPROC	   *proc = &ProcGlobal->allProcs[i];
@@ -2924,16 +2929,18 @@ reaper(SIGNAL_ARGS)
 			if (!proc || proc->pid != pid)
 				continue;
 
+			foundProcStruct = true;
+
 			/*
 			 * We take a conservative approach and restart the postmaster if
 			 * a process dies while holding a lock.
 			 */
-			if (proc->ybAnyLockAcquired)
+			if (proc->ybLWLockAcquired || proc->ybSpinLocksAcquired > 0)
 			{
 				YbCrashInUnmanageableState = true;
 				ereport(WARNING,
 						(errmsg("terminating active server processes due to backend crash while "
-								"acquiring LWLock")));
+								"acquiring %s", proc->ybLWLockAcquired ? "LWLock" : "SpinLock")));
 				break;
 			}
 
@@ -2966,6 +2973,22 @@ reaper(SIGNAL_ARGS)
 				}
 				break;
 			}
+		}
+
+		/*
+		 * If there is no proc struct (and the crash is unexpected), restart.
+		 * We need to check for an unexpected exit because if a connection attempt is made while the
+		 * database system is starting up, that backend will fail. We do not want to restart the
+		 * postmaster in those cases because the postmaster may end up in a restart loop.
+		 * EXIT_STATUS_0 is normal termination, and EXIT_STATUS_1 is the process responding to a
+		 * termination request or terminating with a FATAL.
+		 */
+		if (!foundProcStruct && !EXIT_STATUS_0(exitstatus) && !EXIT_STATUS_1(exitstatus))
+		{
+			YbCrashInUnmanageableState = true;
+			ereport(WARNING,
+					(errmsg("terminating active server processes due to backend crash of a "
+							"partially initialized process")));
 		}
 
 		/*
@@ -3394,6 +3417,7 @@ CleanupBackgroundWorker(int pid,
 static bool
 CleanupKilledProcess(PGPROC *proc)
 {
+	KilledProcToClean = proc;
 	if (proc->backendId == InvalidBackendId)
 	{
 		/* These come from ShutdownAuxiliaryProcess */
@@ -3427,6 +3451,7 @@ CleanupKilledProcess(PGPROC *proc)
 		ReleaseProcToFreeList(proc);
 	}
 
+	KilledProcToClean = NULL;
 	return true;
 }
 
@@ -3444,7 +3469,14 @@ CleanupBackend(int pid,
 	dlist_mutable_iter iter;
 
 	if (YBIsEnabledInPostgresEnvVar())
+	{
 		LogChildExit(EXIT_STATUS_0(exitstatus) ? DEBUG2 : WARNING, _("server process"), pid, exitstatus);
+
+		if (WTERMSIG(exitstatus) == SIGKILL)
+			pgstat_report_query_termination("Terminated by SIGKILL", pid);
+		else if (WTERMSIG(exitstatus) == SIGSEGV)
+			pgstat_report_query_termination("Terminated by SIGSEGV", pid);
+	}
 	else
 		LogChildExit(DEBUG2, _("server process"), pid, exitstatus);
 
@@ -3819,11 +3851,6 @@ LogChildExit(int lev, const char *procname, int pid, int exitstatus)
 				 activity ? errdetail("Failed process was running: %s", activity) : 0));
 	else if (WIFSIGNALED(exitstatus))
 	{
-		if (WTERMSIG(exitstatus) == SIGKILL)
-			pgstat_report_query_termination("Terminated by SIGKILL", pid);
-		else if (WTERMSIG(exitstatus) == SIGSEGV)
-			pgstat_report_query_termination("Terminated by SIGSEGV", pid);
-
 #if defined(WIN32)
 		ereport(lev,
 

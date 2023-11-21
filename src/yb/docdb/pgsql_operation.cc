@@ -1394,8 +1394,8 @@ Status PgsqlWriteOperation::UpdateIterator(
       /* hashed_components= */ kEmptyVec,
       /* range_components= */ kEmptyVec,
       /* condition= */ nullptr ,
-      /* hash_code= */ boost::none,
-      /* max_hash_code= */ boost::none,
+      /* hash_code= */ std::nullopt,
+      /* max_hash_code= */ std::nullopt,
       key,
       /* is_forward_scan= */ true ,
       key,
@@ -1870,7 +1870,8 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
           RETURN_NOT_OK(EvalAggregate(row));
         } else {
           RETURN_NOT_OK(PopulateResultSet(row, result_buffer));
-          response_.add_batch_orders(batch_argument.order());
+          if (batch_argument.has_order())
+            response_.add_batch_orders(batch_argument.order());
           ++fetched_rows;
         }
         break;

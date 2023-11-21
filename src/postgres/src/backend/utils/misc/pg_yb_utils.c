@@ -29,6 +29,7 @@
 #include <assert.h>
 #include <inttypes.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -440,7 +441,12 @@ IsYBReadCommitted()
 	static int cached_value = -1;
 	if (cached_value == -1)
 	{
+
+#ifdef NDEBUG
 		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_yb_enable_read_committed_isolation", false);
+#else
+		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_yb_enable_read_committed_isolation", true);
+#endif
 	}
 	return IsYugaByteEnabled() && cached_value &&
 				 (XactIsoLevel == XACT_READ_COMMITTED || XactIsoLevel == XACT_READ_UNCOMMITTED);
@@ -476,12 +482,12 @@ YBSavepointsEnabled()
 /*
  * Return true if we are in per-database catalog version mode. In order to
  * use per-database catalog version mode, two conditions must be met:
- *   * --FLAGS_TEST_enable_db_catalog_version_mode=true
+ *   * --FLAGS_ysql_enable_db_catalog_version_mode=true
  *   * the table pg_yb_catalog_version has one row per database.
  * This function takes care of the YSQL upgrade from global catalog version
  * mode to per-database catalog version mode when the default value of
- * --FLAGS_TEST_enable_db_catalog_version_mode is changed to true. In this
- * upgrade procedure --FLAGS_TEST_enable_db_catalog_version_mode is set to
+ * --FLAGS_ysql_enable_db_catalog_version_mode is changed to true. In this
+ * upgrade procedure --FLAGS_ysql_enable_db_catalog_version_mode is set to
  * true before the table pg_yb_catalog_version is updated to have one row per
  * database.
  * This function does not consider going from per-database catalog version
@@ -499,7 +505,7 @@ YBIsDBCatalogVersionMode()
 	if (cached_gflag == -1)
 	{
 		cached_gflag = YBCIsEnvVarTrueWithDefault(
-			"FLAGS_TEST_enable_db_catalog_version_mode", false);
+			"FLAGS_ysql_enable_db_catalog_version_mode", false);
 	}
 
 	/*
@@ -521,7 +527,7 @@ YBIsDBCatalogVersionMode()
 	}
 
 	/*
-	 * At this point, we know that FLAGS_TEST_enable_db_catalog_version_mode is
+	 * At this point, we know that FLAGS_ysql_enable_db_catalog_version_mode is
 	 * turned on. However in case of YSQL upgrade we may not be ready to enable
 	 * per-db catalog version mode yet. Note that we only provide support where
 	 * we go from global catalog version mode to per-db catalog version mode,
@@ -589,7 +595,7 @@ static bool
 YBCanEnableDBCatalogVersionMode()
 {
 	/*
-	 * Even when FLAGS_TEST_enable_db_catalog_version_mode is turned on we
+	 * Even when FLAGS_ysql_enable_db_catalog_version_mode is turned on we
 	 * cannot simply enable per-database catalog mode if the table
 	 * pg_yb_catalog_version does not have one row for each database.
 	 * Consider YSQL upgrade, it happens after cluster software upgrade and
@@ -629,7 +635,7 @@ YBCanEnableDBCatalogVersionMode()
 /*
  * Used to determine whether we should preload certain catalog tables.
  */
-bool YbNeedAdditionalCatalogTables() 
+bool YbNeedAdditionalCatalogTables()
 {
 	return *YBCGetGFlags()->ysql_catalog_preload_additional_tables ||
 			IS_NON_EMPTY_STR_FLAG(YBCGetGFlags()->ysql_catalog_preload_additional_table_list);
@@ -1260,6 +1266,7 @@ bool yb_disable_wait_for_backends_catalog_version = false;
 bool yb_enable_base_scans_cost_model = false;
 int yb_wait_for_backends_catalog_version_timeout = 5 * 60 * 1000;	/* 5 min */
 bool yb_prefer_bnl = false;
+bool yb_explain_hide_non_deterministic_fields = false;
 
 //------------------------------------------------------------------------------
 // YB Debug utils.
@@ -1279,6 +1286,8 @@ char *yb_test_block_index_phase = "";
 char *yb_test_fail_index_state_change = "";
 
 bool ddl_rollback_enabled = false;
+
+bool yb_silence_advisory_locks_not_supported_error = false;
 
 const char*
 YBDatumToString(Datum datum, Oid typid)
@@ -1340,11 +1349,11 @@ YBIsInitDbAlreadyDone()
 /*---------------------------------------------------------------------------*/
 
 static ProcessUtility_hook_type prev_ProcessUtility = NULL;
-typedef struct DdlTransactionState {
+typedef struct DdlTransactionState
+{
 	int nesting_level;
 	MemoryContext mem_context;
-	bool is_catalog_version_increment;
-	bool is_breaking_catalog_change;
+	uint64_t catalog_modification_aspects;
 	bool is_global_ddl;
 	NodeTag original_node_tag;
 } DdlTransactionState;
@@ -1413,13 +1422,13 @@ YBGetDdlNestingLevel()
 	return ddl_transaction_state.nesting_level;
 }
 
-void YbSetIsGlobalDDL() {
+void YbSetIsGlobalDDL()
+{
 	ddl_transaction_state.is_global_ddl = true;
 }
 
 void
-YBIncrementDdlNestingLevel(bool is_catalog_version_increment,
-						   bool is_breaking_catalog_change)
+YBIncrementDdlNestingLevel(YbDdlMode mode)
 {
 	if (ddl_transaction_state.nesting_level == 0)
 	{
@@ -1431,12 +1440,21 @@ YBIncrementDdlNestingLevel(bool is_catalog_version_increment,
 		HandleYBStatus(YBCPgEnterSeparateDdlTxnMode());
 	}
 	++ddl_transaction_state.nesting_level;
-	/*
-	* The is_catalog_version_increment and is_breaking_catalog_change flags
-	* should only be set if it is not already true.
-	*/
-	ddl_transaction_state.is_catalog_version_increment |= is_catalog_version_increment;
-	ddl_transaction_state.is_breaking_catalog_change |= is_breaking_catalog_change;
+	ddl_transaction_state.catalog_modification_aspects |= mode;
+}
+
+static YbDdlMode
+YbCatalogModificationAspectsToDdlMode(uint64_t catalog_modification_aspects)
+{
+	YbDdlMode mode = catalog_modification_aspects;
+	switch(mode)
+	{
+		case YB_DDL_MODE_SILENT: switch_fallthrough();
+		case YB_DDL_MODE_VERSION_INCREMENT: switch_fallthrough();
+		case YB_DDL_MODE_BREAKING_CHANGE: return mode;
+	}
+	Assert(false);
+	return YB_DDL_MODE_BREAKING_CHANGE;
 }
 
 void
@@ -1450,34 +1468,29 @@ YBDecrementDdlNestingLevel()
 	}
 	if (ddl_transaction_state.nesting_level == 0)
 	{
-		if (GetCurrentMemoryContext() == ddl_transaction_state.mem_context)
-			MemoryContextSwitchTo(ddl_transaction_state.mem_context->parent);
 		/*
 		 * We cannot reset the ddl memory context as we do in the abort case
 		 * (see YBResetDdlState) because there are cases where objects
 		 * allocated during the ddl transaction are still needed after this
 		 * ddl transaction commits successfully.
 		 */
-		ddl_transaction_state.mem_context = NULL;
+
+		if (GetCurrentMemoryContext() == ddl_transaction_state.mem_context)
+			MemoryContextSwitchTo(ddl_transaction_state.mem_context->parent);
 
 		YBResetEnableNonBreakingDDLMode();
-		bool is_catalog_version_increment = ddl_transaction_state.is_catalog_version_increment;
-		bool is_breaking_catalog_change = ddl_transaction_state.is_breaking_catalog_change;
-		bool is_global_ddl = ddl_transaction_state.is_global_ddl;
-		/*
-		 * Reset these flags to false prior to executing
-		 * YbIncrementMasterCatalogVersionTableEntry() such that
-		 * even when it throws an exception we still reset the flags.
-		 */
-		ddl_transaction_state.is_catalog_version_increment = false;
-		ddl_transaction_state.is_breaking_catalog_change = false;
-		ddl_transaction_state.is_global_ddl = false;
+		const YbDdlMode mode = YbCatalogModificationAspectsToDdlMode(
+			ddl_transaction_state.catalog_modification_aspects);
 
+		const bool has_write = YBCPgHasWriteOperationsInDdlTxnMode();
 		const bool increment_done =
-			is_catalog_version_increment &&
-			YBCPgHasWriteOperationsInDdlTxnMode() &&
+			(mode & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT) &&
+			has_write &&
 			YbIncrementMasterCatalogVersionTableEntry(
-					is_breaking_catalog_change, is_global_ddl);
+				mode & YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE,
+				ddl_transaction_state.is_global_ddl);
+
+		ddl_transaction_state = (DdlTransactionState){};
 
 		HandleYBStatus(YBCPgExitSeparateDdlTxnMode());
 
@@ -1541,21 +1554,19 @@ GetActualStmtNode(PlannedStmt *pstmt)
 	return pstmt->utilityStmt;
 }
 
-bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
-								 bool *is_catalog_version_increment,
-								 bool *is_breaking_catalog_change,
-								 ProcessUtilityContext context)
+YbDdlModeOptional YbGetDdlMode(
+	PlannedStmt *pstmt, ProcessUtilityContext context)
 {
+	bool is_ddl = true;
+	bool is_version_increment = true;
+	bool is_breaking_change = true;
+
 	Node *parsetree = GetActualStmtNode(pstmt);
 	NodeTag node_tag = nodeTag(parsetree);
 
 	if (context == PROCESS_UTILITY_TOPLEVEL ||
 		context == PROCESS_UTILITY_QUERY)
 	{
-		/* Assume the worst. */
-		*is_catalog_version_increment = true;
-		*is_breaking_catalog_change = true;
-
 		/*
 		 * The node tag from the top-level or atomic process utility must
 		 * be persisted so that DDL commands with multiple nested
@@ -1569,11 +1580,9 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		Assert(context == PROCESS_UTILITY_SUBCOMMAND ||
 			   context == PROCESS_UTILITY_QUERY_NONATOMIC);
 
-		*is_catalog_version_increment = false;
-		*is_breaking_catalog_change = false;
+		is_version_increment = false;
+		is_breaking_change = false;
 	}
-
-	bool is_ddl = true;
 
 	switch (node_tag) {
 		// The lists of tags here have been generated using e.g.:
@@ -1590,17 +1599,17 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_RuleStmt: // CREATE RULE
 		case T_TruncateStmt: // TRUNCATE changes system catalog in case of non-YB (i.e. TEMP) tables
 		case T_YbCreateProfileStmt:
-		{
 			/*
 			 * Simple add objects are not breaking changes, and they do not even require
 			 * a version increment because we do not do any negative caching for them.
 			 */
-			*is_catalog_version_increment = false;
-			*is_breaking_catalog_change = false;
+			is_version_increment = false;
+			is_breaking_change = false;
 			break;
-		}
+
 		case T_ViewStmt: // CREATE VIEW
-		{
+			is_breaking_change = false;
+
 			/*
 			 * For system catalog additions we need to force cache refresh
 			 * because of negative caching of pg_class and pg_type
@@ -1609,15 +1618,11 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 */
 			if (IsYsqlUpgrade &&
 				YbIsSystemNamespaceByName(castNode(ViewStmt, parsetree)->view->schemaname))
-			{
-				*is_breaking_catalog_change = false;
 				break;
-			}
 
-			*is_catalog_version_increment = false;
-			*is_breaking_catalog_change = false;
+			is_version_increment = false;
 			break;
-		}
+
 		case T_CompositeTypeStmt: // Create (composite) type
 		case T_CreateAmStmt:
 		case T_CreateCastStmt:
@@ -1637,14 +1642,12 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_CreatePublicationStmt:
 		case T_CreateRangeStmt: // Create (range) type
 		case T_CreateReplicationSlotCmd:
-		case T_CreateRoleStmt:
 		case T_CreateSchemaStmt:
 		case T_CreateStatsStmt:
 		case T_CreateSubscriptionStmt:
 		case T_CreateTransformStmt:
 		case T_CreateTrigStmt:
 		case T_CreateUserMappingStmt:
-		{
 			/*
 			 * Add objects that may reference/alter other objects so we need to increment the
 			 * catalog version to ensure the other objects' metadata is refreshed.
@@ -1655,40 +1658,45 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 *		- objects where we have negative caching enabled in
 			 *		  order to correctly invalidate negative cache entries
 			 */
-			*is_breaking_catalog_change = false;
-			if (node_tag == T_CreateRoleStmt) {
-				/*
-				 * If a create role statement does not reference another existing
-				 * role there is no need to increment catalog version.
-				 */
-				CreateRoleStmt *stmt = castNode(CreateRoleStmt, parsetree);
-				int nopts = list_length(stmt->options);
-				if (nopts == 0)
-					*is_catalog_version_increment = false;
-				else
+			is_breaking_change = false;
+			break;
+
+		case T_CreateRoleStmt:
+		{
+			is_breaking_change = false;
+			/*
+			 * If a create role statement does not reference another existing
+			 * role there is no need to increment catalog version.
+			 */
+			CreateRoleStmt *stmt = castNode(CreateRoleStmt, parsetree);
+			int nopts = list_length(stmt->options);
+			if (nopts == 0)
+				is_version_increment = false;
+			else
+			{
+				bool reference_other_role = false;
+				ListCell   *lc;
+				foreach(lc, stmt->options)
 				{
-					bool reference_other_role = false;
-					ListCell   *lc;
-					foreach(lc, stmt->options)
+					DefElem *def = (DefElem *) lfirst(lc);
+					if (strcmp(def->defname, "rolemembers") == 0 ||
+						strcmp(def->defname, "adminmembers") == 0 ||
+						strcmp(def->defname, "addroleto") == 0)
 					{
-						DefElem *def = (DefElem *) lfirst(lc);
-						if (strcmp(def->defname, "rolemembers") == 0 ||
-							strcmp(def->defname, "adminmembers") == 0 ||
-							strcmp(def->defname, "addroleto") == 0)
-						{
-							reference_other_role = true;
-							break;
-						}
+						reference_other_role = true;
+						break;
 					}
-					if (!reference_other_role)
-						*is_catalog_version_increment = false;
 				}
+				if (!reference_other_role)
+					is_version_increment = false;
 			}
 			break;
 		}
+
 		case T_CreateStmt:
 		{
 			CreateStmt *stmt = castNode(CreateStmt, parsetree);
+			is_breaking_change = false;
 			/*
 			 * If a partition table is being created, this means pg_inherits
 			 * table that is being cached should be invalidated. If the cache
@@ -1698,10 +1706,8 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 * snapshot isolation guarantees, transactions that are already
 			 * underway need not abort.
 			 */
-			if (stmt->partbound != NULL) {
-				*is_breaking_catalog_change = false;
+			if (stmt->partbound)
 				break;
-			}
 
 			/*
 			 * For system catalog additions we need to force cache refresh
@@ -1711,50 +1717,37 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 */
 			if (IsYsqlUpgrade &&
 				YbIsSystemNamespaceByName(stmt->relation->schemaname))
-			{
-				*is_breaking_catalog_change = false;
 				break;
-			}
 
-			*is_catalog_version_increment = false;
-			*is_breaking_catalog_change = false;
+			is_version_increment = false;
 			break;
 		}
+
 		/*
 		 * Create Table As Select need not include the same checks as Create Table as complex tables
 		 * (eg: partitions) cannot be created using this statement.
 		*/
 		case T_CreateTableAsStmt:
-		{
 			/*
 			 * Simple add objects are not breaking changes, and they do not even require
 			 * a version increment because we do not do any negative caching for them.
 			 */
-			*is_catalog_version_increment = false;
-			*is_breaking_catalog_change = false;
+			is_version_increment = false;
+			is_breaking_change = false;
 			break;
-		}
+
 		case T_CreateSeqStmt:
-		{
-			CreateSeqStmt *stmt = castNode(CreateSeqStmt, parsetree);
+			is_breaking_change = false;
 			/* Need to increment if owner is set to ensure its dependency cache is updated. */
-			*is_breaking_catalog_change = false;
-			if (stmt->ownerId == InvalidOid)
-			{
-				*is_catalog_version_increment = false;
-			}
+			if (!OidIsValid(castNode(CreateSeqStmt, parsetree)->ownerId))
+				is_version_increment = false;
 			break;
-		}
+
 		case T_CreateFunctionStmt:
-		{
-			CreateFunctionStmt *stmt = castNode(CreateFunctionStmt, parsetree);
-			*is_breaking_catalog_change = false;
-			if (!stmt->replace)
-			{
-				*is_catalog_version_increment = false;
-			}
+			is_breaking_change = false;
+			if (!castNode(CreateFunctionStmt, parsetree)->replace)
+				is_version_increment = false;
 			break;
-		}
 
 		// All T_Drop... tags from nodes.h:
 		case T_DropOwnedStmt:
@@ -1767,7 +1760,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 
 		case T_DropStmt:
 		case T_YbDropProfileStmt:
-			*is_breaking_catalog_change = false;
+			is_breaking_change = false;
 			break;
 
 		case T_DropdbStmt:
@@ -1775,7 +1768,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 * We already invalidate all connections to that DB by dropping it
 			 * so nothing to do on the cache side.
 			 */
-			*is_breaking_catalog_change = false;
+			is_breaking_change = false;
 			/*
 			 * In per-database catalog version mode, we do not need to rely on
 			 * catalog cache refresh to check that the database exists. We
@@ -1786,7 +1779,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 * catalog version mode.
 			 */
 			if (YBIsDBCatalogVersionMode())
-				*is_catalog_version_increment = false;
+				is_version_increment = false;
 			break;
 
 		// All T_Alter... tags from nodes.h:
@@ -1841,16 +1834,15 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 				DefElem *def = (DefElem *) linitial(stmt->options);
 				if (strcmp(def->defname, "password") == 0)
 				{
-					*is_breaking_catalog_change = false;
-					*is_catalog_version_increment = false;
+					is_breaking_change = false;
+					is_version_increment = false;
 				}
 			}
 			break;
 		}
 
 		case T_AlterTableStmt:
-		{
-			*is_breaking_catalog_change = false;
+			is_breaking_change = false;
 			/*
 			 * Must increment catalog version when creating table with foreign
 			 * key reference and refresh PG cache on ongoing transactions.
@@ -1868,29 +1860,23 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 					if (IsA(cmd->def, Constraint) &&
 						((Constraint *) cmd->def)->contype == CONSTR_FOREIGN)
 					{
-						*is_catalog_version_increment = true;
+						is_version_increment = true;
 						break;
 					}
 				}
 			}
 			break;
-		}
 
 		// T_Grant...
 		case T_GrantStmt:
-		{
 			/* Grant (add permission) is not a breaking change, but revoke is. */
-			GrantStmt *stmt = castNode(GrantStmt, parsetree);
-			*is_breaking_catalog_change = !stmt->is_grant;
+			is_breaking_change = !castNode(GrantStmt, parsetree)->is_grant;
 			break;
-		}
+
 		case T_GrantRoleStmt:
-		{
 			/* Grant (add permission) is not a breaking change, but revoke is. */
-			GrantRoleStmt *stmt = castNode(GrantRoleStmt, parsetree);
-			*is_breaking_catalog_change = !stmt->is_grant;
+			is_breaking_change = !castNode(GrantRoleStmt, parsetree)->is_grant;
 			break;
-		}
 
 		// T_Index...
 		case T_IndexStmt:
@@ -1899,13 +1885,13 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 * For (new) concurrent backfill the backfill process should wait for ongoing
 			 * transactions so we don't have to force a transaction abort on PG side.
 			 */
-			*is_breaking_catalog_change = false;
+			is_breaking_change = false;
 			break;
 
 		case T_VacuumStmt:
 			/* Vacuum with analyze updates relation and attribute statistics */
-			*is_catalog_version_increment = false;
-			*is_breaking_catalog_change = false;
+			is_version_increment = false;
+			is_breaking_change = false;
 			is_ddl = castNode(VacuumStmt, parsetree)->options & VACOPT_ANALYZE;
 			break;
 
@@ -1922,57 +1908,56 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 * corruption, manual intervention is already needed, so might as
 			 * well let the user deal with refreshing clients.
 			 */
-			*is_catalog_version_increment = false;
-			*is_breaking_catalog_change = false;
+			is_version_increment = false;
+			is_breaking_change = false;
 			break;
 
 		default:
 			/* Not a DDL operation. */
-			*is_catalog_version_increment = false;
-			*is_breaking_catalog_change = false;
 			is_ddl = false;
 			break;
 	}
+
+	if (!is_ddl)
+		return (YbDdlModeOptional){};
 
 	/*
 	 * If yb_make_next_ddl_statement_nonbreaking is true, then no DDL statement
 	 * will cause a breaking catalog change.
 	 */
 	if (yb_make_next_ddl_statement_nonbreaking)
-		*is_breaking_catalog_change = false;
+		is_breaking_change = false;
 
-	/*
-	 * For DDL, it does not make sense to get breaking catalog change without
-	 * catalog version increment.
-	 */
-	Assert(!(is_ddl &&
-			 *is_breaking_catalog_change &&
-			 !*is_catalog_version_increment));
+	uint64_t aspects = 0;
+	if (is_version_increment)
+		aspects |= YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT;
 
-	return is_ddl;
+	if (is_breaking_change)
+		aspects |= YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE;
+
+	return (YbDdlModeOptional){
+		.has_value = true,
+		.value = YbCatalogModificationAspectsToDdlMode(aspects)
+	};
 }
 
-static void YBTxnDdlProcessUtility(
-		PlannedStmt *pstmt,
-		const char *queryString,
-		ProcessUtilityContext context,
-		ParamListInfo params,
-		QueryEnvironment *queryEnv,
-		DestReceiver *dest,
-		char *completionTag) {
+static void
+YBTxnDdlProcessUtility(
+	PlannedStmt *pstmt,
+	const char *queryString,
+	ProcessUtilityContext context,
+	ParamListInfo params,
+	QueryEnvironment *queryEnv,
+	DestReceiver *dest,
+	char *completionTag)
+{
 
-	/* Assuming this is a breaking change by default. */
-	bool is_catalog_version_increment = true;
-	bool is_breaking_catalog_change = true;
-	bool is_txn_ddl = IsTransactionalDdlStatement(pstmt,
-												  &is_catalog_version_increment,
-												  &is_breaking_catalog_change,
-												  context);
+	const YbDdlModeOptional ddl_mode = YbGetDdlMode(pstmt, context);
 
-	if (is_txn_ddl) {
-		YBIncrementDdlNestingLevel(is_catalog_version_increment,
-								   is_breaking_catalog_change);
-	}
+	const bool is_ddl = ddl_mode.has_value;
+	if (is_ddl)
+		YBIncrementDdlNestingLevel(ddl_mode.value);
+
 	PG_TRY();
 	{
 		if (prev_ProcessUtility)
@@ -1986,7 +1971,8 @@ static void YBTxnDdlProcessUtility(
 	}
 	PG_CATCH();
 	{
-		if (is_txn_ddl) {
+		if (is_ddl)
+		{
 			/*
 			 * It is possible that nesting_level has wrong value due to error.
 			 * Ddl transaction state should be reset.
@@ -1996,9 +1982,9 @@ static void YBTxnDdlProcessUtility(
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
-	if (is_txn_ddl) {
+
+	if (is_ddl)
 		YBDecrementDdlNestingLevel();
-	}
 }
 
 static void YBCInstallTxnDdlHook() {
@@ -3557,6 +3543,55 @@ bool check_yb_xcluster_consistency_level(char** newval, void** extra, GucSource 
 
 void assign_yb_xcluster_consistency_level(const char* newval, void* extra) {
 	yb_xcluster_consistency_level = *((int*)extra);
+}
+
+bool
+check_yb_read_time(char **newval, void **extra, GucSource source)
+{
+	/* Read time should be convertable to unsigned long long */
+	unsigned long long read_time_ull = strtoull(*newval, NULL, 0);
+	char read_time_string[23];
+	sprintf(read_time_string, "%llu", read_time_ull);
+	if (strcmp(*newval, read_time_string))
+	{
+		GUC_check_errdetail("Accepted value is Unix timestamp in microseconds."
+							" i.e. 1694673026673528");
+		return false;
+	}
+	/* Read time should not be set to a timestamp in the future */
+	struct timeval now_tv;
+	gettimeofday(&now_tv, NULL);
+	unsigned long long now_micro_sec = ((unsigned long long)now_tv.tv_sec * USECS_PER_SEC) + now_tv.tv_usec;
+	if(read_time_ull > now_micro_sec)
+	{
+		GUC_check_errdetail("Provided timestamp is in the future.");
+		return false;
+	}
+	return true;
+}
+
+void
+assign_yb_read_time(const char* newval, void *extra)
+{
+	yb_read_time = strtoull(newval, NULL, 0);
+	ereport(NOTICE,
+			(errmsg("yb_read_time should be set with caution."),
+			 errdetail("No DDL operations should be performed while it is set and "
+			 		   "it should not be set to a timestamp before a DDL "
+					   "operation has been performed. It doesn't have well defined semantics"
+					   " for normal transactions and is only to be used after consultation")));
+}
+
+void
+yb_assign_max_replication_slots(int newval, void *extra)
+{
+	ereport(NOTICE,
+		(errmsg("max_replication_slots should be controlled using the Gflag"
+				" \"max_replication_slots\" on the YB-Master process"),
+		 errdetail("In Yugabyte clusters, the replication slots are managed by"
+		 		   " the YB-Master globally. Hence limits on the number of"
+				   " replication slots should be controlled using Gflags and"
+				   " not session-level GUC variables.")));
 }
 
 void YBCheckServerAccessIsAllowed() {

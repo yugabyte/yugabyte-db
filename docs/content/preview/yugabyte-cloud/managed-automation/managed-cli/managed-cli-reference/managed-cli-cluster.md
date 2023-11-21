@@ -1,5 +1,5 @@
 ---
-title: cluster resource
+title: ybm CLI cluster resource
 headerTitle: ybm cluster
 linkTitle: cluster
 description: YugabyteDB Managed CLI reference Cluster resource.

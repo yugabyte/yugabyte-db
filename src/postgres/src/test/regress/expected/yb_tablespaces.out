@@ -184,10 +184,10 @@ Tablespace: "regress_tblspace"
 SET default_tablespace TO '';
 -- Verify that USING INDEX TABLESPACE is not supported for primary keys.
 CREATE TABLE testschema.using_index1 (a int PRIMARY KEY USING INDEX TABLESPACE regress_tblspace);
-ERROR:  Cannot set TABLESPACE for PRIMARY KEY INDEX.
+ERROR:  cannot set TABLESPACE for PRIMARY KEY INDEX
 DETAIL:  The tablespace of the indexed table will be used.
 CREATE TABLE testschema.using_index1 (a int, PRIMARY KEY(a) USING INDEX TABLESPACE regress_tblspace);
-ERROR:  Cannot set TABLESPACE for PRIMARY KEY INDEX.
+ERROR:  cannot set TABLESPACE for PRIMARY KEY INDEX
 DETAIL:  The tablespace of the indexed table will be used.
 -- Verify that USING INDEX TABLESPACE is supported for other constraints.
 CREATE TABLE testschema.using_index2 (a int UNIQUE USING INDEX TABLESPACE regress_tblspace);

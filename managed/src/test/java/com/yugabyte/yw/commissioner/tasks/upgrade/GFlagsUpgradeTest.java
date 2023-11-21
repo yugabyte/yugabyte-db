@@ -40,6 +40,7 @@ import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -1031,6 +1032,37 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
   }
 
   @Test
+  public void testSpecificGflagChangingIntentYBM() {
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    // Verify enabled by default.
+    assertEquals(universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL, true);
+    // But having 'false' in gflags.
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        univ -> {
+          univ.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags =
+              SpecificGFlags.construct(
+                  ImmutableMap.of(GFlagsUtil.ENABLE_YSQL, "false"), Collections.emptyMap());
+        });
+    expectedUniverseVersion++;
+
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    SpecificGFlags specificGFlags =
+        SpecificGFlags.construct(
+            ImmutableMap.of(GFlagsUtil.ENABLE_YSQL, "false", "master_gflag", "m1"),
+            Collections.emptyMap());
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.specificGFlags = specificGFlags;
+
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    // Only masters
+    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL, false);
+  }
+
+  @Test
   public void testSpecificGflagChangingIntent() {
     Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     // Verify enabled by default.
@@ -1189,6 +1221,28 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     assertEquals(
         specificGFlags.getGFlags(null, TSERVER),
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.tserverGFlags);
+  }
+
+  @Test
+  public void testGFlagsUpgradePrimaryWithRRRetries() {
+    addReadReplica();
+
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    SpecificGFlags specificGFlags =
+        SpecificGFlags.construct(
+            ImmutableMap.of("master-flag", "m1"), ImmutableMap.of("tserver-flag", "t1"));
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.specificGFlags = specificGFlags;
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    super.verifyTaskRetries(
+        defaultCustomer,
+        CustomerTask.TaskType.GFlagsUpgrade,
+        CustomerTask.TargetType.Universe,
+        defaultUniverse.getUniverseUUID(),
+        TaskType.GFlagsUpgrade,
+        taskParams,
+        false);
   }
 
   private Map<String, String> getGflagsForNode(

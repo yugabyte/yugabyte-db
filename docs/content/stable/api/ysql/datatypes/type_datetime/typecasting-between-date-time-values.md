@@ -1,8 +1,8 @@
 ---
-title: Typecasting between values of different date-time datatypes [YSQL]
-headerTitle: Typecasting between values of different date-time datatypes
-linkTitle: Typecasting between date-time datatypes
-description: Describes how to typecast date-time values of different date-time datatypes. [YSQL]
+title: Typecasting between values of different date-time data types [YSQL]
+headerTitle: Typecasting between values of different date-time data types
+linkTitle: Typecasting between date-time data types
+description: Describes how to typecast date-time values of different date-time data types. [YSQL]
 menu:
   stable:
     identifier: typecasting-between-date-time-values
@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-See the [table](../../type_datetime/#synopsis) at the start of the overall "Date and time data types" section. It lists six data types, but quotes the [PostgreSQL documentation](https://www.postgresql.org/docs/11/datatype-datetime.html#DATATYPE-DATETIME-TABLE) that recommends that you avoid using the _timetz_ datatype. This leaves five _date-time_ data types that are recommended for use. Each of the two axes of the [Summary table](#summary-table) below lists these five data types  along with the _text_ data type—so there are _thirty-six_ cells.
+See the [table](../../type_datetime/#synopsis) at the start of the overall "Date and time data types" section. It lists six data types, but quotes the [PostgreSQL documentation](https://www.postgresql.org/docs/11/datatype-datetime.html#DATATYPE-DATETIME-TABLE) that recommends that you avoid using the _timetz_ data type. This leaves five _date-time_ data types that are recommended for use. Each of the two axes of the [Summary table](#summary-table) below lists these five data types  along with the _text_ data type—so there are _thirty-six_ cells.
 
 The cells on the diagonal represent the typecast from _some_type_ to the same type—and so they are tautologically uninteresting. This leaves _thirty_ cells and therefore _thirty_ rules to understand. See the section [Code to fill out the thirty interesting table cells](#code-to-fill-out-the-thirty-interesting-table-cells). This shows that _ten_ of the remaining typecasts are simply unsupported. The attempts cause the _42846_ error. This maps in PL/pgSQL code to the _cannot_coerce_ exception. You get one of these messages:
 
@@ -32,8 +32,8 @@ Each of the messages simply spells out the logical conundrum. For example, how c
 
 There remain therefore only _twenty_ typecasts whose semantics you need to understand. These are indicated by the twenty links in the table to the subsections that explain the rules.
 
-- _Thirteen_ of the typecasts do not involve _timestamptz_—neither as the source or the target datatype. The rules for these are insensitive to the reigning _UTC offset_.
-- There remain, therefore, _seven_ typecasts that do involve _timestamptz_ as either the source or the target datatype. These are shown, of course, by the non-empty cells in the row and the column labeled with that data type. Here, the rules _are_ sensitive to the reigning _UTC offset_.
+- _Thirteen_ of the typecasts do not involve _timestamptz_—neither as the source or the target data type. The rules for these are insensitive to the reigning _UTC offset_.
+- There remain, therefore, _seven_ typecasts that do involve _timestamptz_ as either the source or the target data type. These are shown, of course, by the non-empty cells in the row and the column labeled with that data type. Here, the rules _are_ sensitive to the reigning _UTC offset_.
   - The _two_ typecasts, plain _timestamp_ to _timestamptz_ and _timestamptz_ to plain _timestamp_, are critical to defining the rules of the sensitivity to the reigning _UTC offset_.
   - The _UTC offset_-sensitivity rules for the remaining _five_ typecasts can each be understood in terms of the rules for the mutual plain _timestamp_ to/from _timestamptz_ typecasts.
 

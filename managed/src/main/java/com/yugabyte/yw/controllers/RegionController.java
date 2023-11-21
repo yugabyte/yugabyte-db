@@ -153,7 +153,7 @@ public class RegionController extends AuthenticatedController {
    * @return JSON response of newly created region
    */
   @ApiOperation(
-      value = "Create a new region",
+      value = "WARNING: This is a preview API that could change. Create a new region",
       response = Region.class,
       nickname = "createProviderRegion")
   @ApiImplicitParams(
@@ -163,6 +163,7 @@ public class RegionController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.models.Region",
           required = true))
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.2.0")
   public Result createRegionNew(UUID customerUUID, UUID providerUUID, Http.Request request) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     Region region = formFactory.getFormDataOrBadRequest(request.body().asJson(), Region.class);
@@ -226,7 +227,10 @@ public class RegionController extends AuthenticatedController {
    * @param regionUUID Region UUID
    * @return JSON response on whether or not the operation was successful.
    */
-  @ApiOperation(value = "Modify a region", response = Region.class, nickname = "editProviderRegion")
+  @ApiOperation(
+      value = "WARNING: This is a preview API that could change. Modify a region",
+      response = Region.class,
+      nickname = "editProviderRegion")
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "region",
@@ -234,6 +238,7 @@ public class RegionController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.models.Region",
           required = true))
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.2.0")
   public Result editRegionNew(
       UUID customerUUID, UUID providerUUID, UUID regionUUID, Http.Request request) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);

@@ -8,7 +8,7 @@ menu:
   preview:
     parent: multi-dc
     identifier: read-replica-clusters
-    weight: 634
+    weight: 620
 type: docs
 ---
 
@@ -40,7 +40,7 @@ You can deploy a read replica cluster that asynchronously replicates data with a
     ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 add_read_replica_placement_info <placement_info> <replication_factor> [placement_uuid]
     ```
 
-    - *placement_info*: Comma-separated list of availability zones, using the format `<cloud1.region1.zone1>:<num_replicas_in_zone1>,<cloud2.region2.zone2>:<num_replicas_in_zone_2>,...` These read replica availability zones must be uniquely different from the primary availability zones defined in step 2. If you want to use the same cloud, region, and availability zone as a primary cluster, one option is to suffix the zone with `_rr` (for read replica): for example, `c1.r1.z1` vs `c1.r1.z1_rr`.
+    - *placement_info*: Comma-separated list of availability zones, using the format `<cloud1.region1.zone1>:<num_replicas_in_zone1>,<cloud2.region2.zone2>:<num_replicas_in_zone2>,...` These read replica availability zones must be uniquely different from the primary availability zones defined in step 2. If you want to use the same cloud, region, and availability zone as a primary cluster, one option is to suffix the zone with `_rr` (for read replica). For example, `c1.r1.z1_rr:2`.
     - *replication_factor*: The total number of read replicas.
     - *placement_uuid*: The identifier for the read replica cluster, using a meaningful string.
 
