@@ -2796,6 +2796,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status RemoveTableFromXcluster(const std::vector<TabletId>& table_ids);
 
+  Status MaybeRestoreInitialSysCatalogSnapshotAndReloadSysCatalog(
+      int64_t term, SysCatalogLoadingState* state) REQUIRES(mutex_);
+
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
 

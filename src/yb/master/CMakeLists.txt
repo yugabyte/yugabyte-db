@@ -217,16 +217,17 @@ set(YB_TEST_LINK_LIBS master
   ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(catalog_entity_info-test)
 ADD_YB_TEST(catalog_manager-test)
+ADD_YB_TEST(catalog_manager_mini_cluster_test)
+ADD_YB_TEST(cluster_balance_preferred_leader-test)
 ADD_YB_TEST(flush_manager-test)
 ADD_YB_TEST(master-test)
+ADD_YB_TEST(master_xrepl-test)
+ADD_YB_TEST(restore_sys_catalog_state_test)
+ADD_YB_TEST(stateful_service-test)
 ADD_YB_TEST(sys_catalog-test)
+ADD_YB_TEST(sys_catalog_xrepl-test)
 Add_YB_TEST(table_index-test)
 ADD_YB_TEST(xcluster/xcluster_safe_time_service-test)
-ADD_YB_TEST(stateful_service-test)
-ADD_YB_TEST(restore_sys_catalog_state_test)
-ADD_YB_TEST(cluster_balance_preferred_leader-test)
-ADD_YB_TEST(master_xrepl-test)
-ADD_YB_TEST(sys_catalog_xrepl-test)
 
 # Actual master executable. In LTO mode, can also act as the tablet server if executed through a
 # symlink named as the tablet server executable.
