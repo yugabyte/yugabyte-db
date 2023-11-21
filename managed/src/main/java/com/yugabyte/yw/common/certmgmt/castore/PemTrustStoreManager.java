@@ -9,6 +9,7 @@ import com.google.common.collect.Iterators;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.models.CustomCaCertificateInfo;
 import com.yugabyte.yw.models.FileData;
 import java.io.File;
 import java.io.FileInputStream;
@@ -24,8 +25,11 @@ import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
 import org.bouncycastle.openssl.jcajce.JcaPEMWriter;
 
 /** Relates to YBA's PEM trust store */
@@ -44,9 +48,9 @@ public class PemTrustStoreManager implements TrustStoreManager {
       throws KeyStoreException, CertificateException, IOException, PlatformServiceException {
     log.debug("Trying to update YBA's PEM truststore ...");
 
-    Certificate newCert = null;
-    newCert = getX509Certificate(certPath);
-    if (newCert == null) {
+    List<Certificate> newCerts = null;
+    newCerts = getX509Certificate(certPath);
+    if (CollectionUtils.isEmpty(newCerts)) {
       throw new PlatformServiceException(
           BAD_REQUEST, String.format("No new CA certificate exists at %s", certPath));
     }
@@ -60,21 +64,35 @@ public class PemTrustStoreManager implements TrustStoreManager {
       log.debug("Created an empty YBA PEM trust-store");
     } else {
       List<Certificate> trustCerts = getCertsInTrustStore(trustStorePath, trustStorePassword);
+      List<Certificate> addedCertChain = new ArrayList<Certificate>(newCerts);
       if (trustCerts != null) {
         // Check if such an alias already exists.
-        boolean exists = trustCerts.contains(newCert);
-        if (exists && !suppressErrors) {
-          String msg = "CA certificate with same content already exists";
-          log.error(msg);
-          throw new PlatformServiceException(BAD_REQUEST, msg);
+        for (int i = 0; i < addedCertChain.size(); i++) {
+          Certificate newCert = addedCertChain.get(i);
+          boolean exists = trustCerts.contains(newCert);
+          if (!exists) {
+            break;
+          }
+          // In case of certificate chain, we can have the same root/intermediate
+          // cert present in the chain. Throw error in case all of these exists.
+          if (exists && !suppressErrors && addedCertChain.size() - 1 == i) {
+            String msg = "CA certificate with same content already exists";
+            log.error(msg);
+            throw new PlatformServiceException(BAD_REQUEST, msg);
+          } else if (exists && addedCertChain.size() != i) {
+            newCerts.remove(i);
+          }
         }
       }
     }
 
     // Update the trust store in file system.
-    boolean append = true;
-    CertificateHelper.writeCertFileContentToCertPath(
-        (X509Certificate) newCert, trustStorePath, false, append);
+    List<X509Certificate> x509Certificates =
+        newCerts.stream()
+            .filter(certificate -> certificate instanceof X509Certificate)
+            .map(certificate -> (X509Certificate) certificate)
+            .collect(Collectors.toList());
+    CertificateHelper.writeCertBundleToCertPath(x509Certificates, trustStorePath, false, true);
     log.debug("Truststore '{}' now has the cert {}", trustStorePath, certAlias);
 
     // Backup up YBA's PEM trust store in DB.
@@ -99,18 +117,25 @@ public class PemTrustStoreManager implements TrustStoreManager {
     List<Certificate> trustCerts = getCertificates(trustStorePath);
 
     // Check if such a cert already exists.
-    Certificate oldCert = getX509Certificate(oldCertPath);
-    boolean exists = trustCerts.remove(oldCert);
-    if (!exists && !suppressErrors) {
-      String msg = String.format("Certificate '%s' doesn't exist to update", certAlias);
-      log.error(msg);
-      throw new PlatformServiceException(BAD_REQUEST, msg);
+    List<Certificate> oldCerts = getX509Certificate(oldCertPath);
+    boolean exists = false;
+    for (Certificate oldCert : oldCerts) {
+      if (isCertificateUsedInOtherChain(oldCert)) {
+        log.debug("Certificate {} is part of a chain, skipping replacement.", certAlias);
+        continue;
+      }
+      exists = trustCerts.remove(oldCert);
+      if (!exists && !suppressErrors) {
+        String msg = String.format("Certificate '%s' doesn't exist to update", certAlias);
+        log.error(msg);
+        throw new PlatformServiceException(BAD_REQUEST, msg);
+      }
     }
 
     // Update the trust store.
     if (exists) {
-      Certificate newCert = getX509Certificate(newCertPath);
-      trustCerts.add(newCert);
+      List<Certificate> newCerts = getX509Certificate(newCertPath);
+      trustCerts.addAll(newCerts);
       saveTo(trustStorePath, trustCerts);
       log.info("Truststore '{}' updated with new cert at alias '{}'", trustStorePath, certAlias);
     }
@@ -144,11 +169,30 @@ public class PemTrustStoreManager implements TrustStoreManager {
     log.info("Removing cert {} from PEM truststore ...", certAlias);
     String trustStorePath = getTrustStorePath(trustStoreHome, TRUSTSTORE_FILE_NAME);
     List<Certificate> trustCerts = getCertificates(trustStorePath);
-
     // Check if such an alias already exists.
-    Certificate certToRemove = getX509Certificate(certPath);
-    boolean exists =
-        Iterators.removeAll(trustCerts.iterator(), Collections.singletonList(certToRemove));
+    List<Certificate> certToRemove = getX509Certificate(certPath);
+    int certToRemoveCount = certToRemove.size();
+    // Iterate through each certificate in certToRemove and check if it's used in any chain
+    boolean exists = false;
+    Iterator<Certificate> certIterator = certToRemove.iterator();
+    while (certIterator.hasNext()) {
+      Certificate cert = certIterator.next();
+      if (isCertificateUsedInOtherChain(cert)) {
+        // Certificate is part of a chain, do not remove it
+        log.debug("Certificate {} is part of a chain, skipping removal.", certAlias);
+        certToRemoveCount -= 1;
+        certIterator.remove();
+      } else {
+        // Certificate is not part of a chain
+        exists = true;
+      }
+    }
+
+    if (certToRemoveCount == 0) {
+      log.debug(
+          "Skipping removal of cert from PEM truststore, as the cert is part of other trust chain");
+      return;
+    }
 
     if (!exists && !suppressErrors) {
       String msg = String.format("Certificate '%s' does not exist to delete", certAlias);
@@ -157,14 +201,15 @@ public class PemTrustStoreManager implements TrustStoreManager {
     }
 
     // Delete from the trust-store.
-    if (exists) {
+    if (!certToRemove.isEmpty()) {
+      Iterators.removeAll(trustCerts.iterator(), certToRemove);
       saveTo(trustStorePath, trustCerts);
       log.debug("Certificate {} is now deleted from trust-store {}", certAlias, trustStorePath);
     }
     log.info("custom CA certs deleted from YBA's PEM truststore");
   }
 
-  private List<Certificate> getCertsInTrustStore(String trustStorePath, char[] trustStorePassword) {
+  public List<Certificate> getCertsInTrustStore(String trustStorePath, char[] trustStorePassword) {
     if (trustStorePath == null) {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Cannot get CA certificates from empty path");
@@ -222,5 +267,22 @@ public class PemTrustStoreManager implements TrustStoreManager {
       log.error(msg);
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, msg);
     }
+  }
+
+  private boolean isCertificateUsedInOtherChain(Certificate cert)
+      throws CertificateException, IOException {
+    // Retrieve all the certificates from `custom_ca_certificate_info` schema.
+    // In case the passed cert is substring in more than 1 cert than it is used
+    // as part of other cert chain as well.
+    // We will skip removing it from the trust-store.
+    int certChainCount = 0;
+    List<CustomCaCertificateInfo> customCACertificates = CustomCaCertificateInfo.getAll(false);
+    for (CustomCaCertificateInfo customCA : customCACertificates) {
+      List<Certificate> certChain = getX509Certificate(customCA.getContents());
+      if (certChain.contains(cert)) {
+        certChainCount++;
+      }
+    }
+    return certChainCount > 1;
   }
 }
