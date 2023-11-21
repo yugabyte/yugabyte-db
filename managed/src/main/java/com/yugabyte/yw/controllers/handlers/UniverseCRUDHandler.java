@@ -748,6 +748,10 @@ public class UniverseCRUDHandler {
               }
             }
           }
+          // Label the Kubernetes resources with universe name, zone
+          // name. Done only for newly created universes.
+          universe.updateConfig(
+              ImmutableMap.of(Universe.LABEL_K8S_RESOURCES, Boolean.toString(true)));
           checkHelmChartExists(primaryCluster.userIntent.ybSoftwareVersion);
         } else {
           if (primaryCluster.userIntent.enableIPV6) {
