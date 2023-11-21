@@ -47,6 +47,7 @@
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
 
+DECLARE_bool(enable_ysql_conn_mgr);
 
 DEFINE_UNKNOWN_string(pg_proxy_bind_address, "", "Address for the PostgreSQL proxy to bind to");
 DEFINE_UNKNOWN_string(postmaster_cgroup, "", "cgroup to add postmaster process to");
@@ -977,8 +978,12 @@ void PgSupervisor::DeregisterPgFlagChangeNotifications() {
 std::shared_ptr<ProcessWrapper> PgSupervisor::CreateProcessWrapper() {
   auto pgwrapper = std::make_shared<PgWrapper>(conf_);
 
-  if (FLAGS_enable_ysql_conn_mgr_stats)
-    CHECK_OK(pgwrapper->SetYsqlConnManagerStatsShmKey(GetYsqlConnManagerStatsShmkey()));
+  if (FLAGS_enable_ysql_conn_mgr) {
+    if (FLAGS_enable_ysql_conn_mgr_stats)
+      CHECK_OK(pgwrapper->SetYsqlConnManagerStatsShmKey(GetYsqlConnManagerStatsShmkey()));
+  } else {
+    FLAGS_enable_ysql_conn_mgr_stats = false;
+  }
 
   return pgwrapper;
 }
