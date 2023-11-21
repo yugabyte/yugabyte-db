@@ -577,14 +577,15 @@ TEST_F(MasterChangeConfigTest, TestBlockRemoveServerWhenConfigHasTransitioningSe
     ++num_masters_;
 
     // If we try to remove the leader master, it will initiate a leader stepdown and then remove it.
-    // But since there is a peer in transition, leader step will not go through. So try removing a
-    // follower instead.
+    // But since there is a peer in transition, leader stepdown will not go through. So try removing
+    // a follower instead.
     if (cluster_->GetLeaderMaster()->uuid() == current_masters.back()->uuid()) {
       std::swap(current_masters.back(), current_masters.front());
     }
     // Even the follower removal shouldn't go through until the above added server is in transition.
-    auto status_future = std::async(std::launch::async, [&]() {
-      return cluster_->ChangeConfig(current_masters.back(), consensus::REMOVE_SERVER);
+    ExternalMaster* follower_to_remove = current_masters.back();
+    auto status_future = std::async(std::launch::async, [&, follower_to_remove]() {
+      return cluster_->ChangeConfig(follower_to_remove, consensus::REMOVE_SERVER);
     });
     ASSERT_TRUE(status_future.wait_for(10s) == std::future_status::timeout)
         << "Change Config(REMOVE_SERVER) should have been blocked for at least 10 secs.";
