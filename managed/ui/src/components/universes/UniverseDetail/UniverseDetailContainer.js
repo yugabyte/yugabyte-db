@@ -97,6 +97,12 @@ const mapDispatchToProps = (dispatch) => {
     showSoftwareUpgradesModal: () => {
       dispatch(openDialog('softwareUpgradesModal'));
     },
+    showSoftwareUpgradesNewModal: () => {
+      dispatch(openDialog('softwareUpgradesNewModal'));
+    },
+    showRollbackModal: () => {
+      dispatch(openDialog('rollbackModal'));
+    },
     showVMImageUpgradeModal: () => {
       dispatch(openDialog('vmImageUpgradeModal'));
     },
