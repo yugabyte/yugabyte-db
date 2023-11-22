@@ -1,6 +1,6 @@
 ---
 title: Back up and restore YugabyteDB Anywhere using yb-ctl
-headerTitle: Back up and restore YugabyteDB Anywhere on YBA Installer
+headerTitle: Back up and restore YugabyteDB Anywhere using YBA Installer
 description: Back up and restore YugabyteDB Anywhere using YBA Installer.
 linkTitle: Back up YugabyteDB Anywhere
 menu:
