@@ -1448,7 +1448,8 @@ Result<xrepl::StreamId> YBClient::CreateCDCSDKStreamForNamespace(
     const NamespaceId& namespace_id,
     const std::unordered_map<std::string, std::string>& options,
     bool populate_namespace_id_as_table_id,
-    const ReplicationSlotName& replication_slot_name) {
+    const ReplicationSlotName& replication_slot_name,
+    const std::optional<CDCSDKSnapshotOption>& consistent_snapshot_option) {
   CreateCDCStreamRequestPB req;
 
   if (populate_namespace_id_as_table_id) {
@@ -1465,6 +1466,9 @@ Result<xrepl::StreamId> YBClient::CreateCDCSDKStreamForNamespace(
   }
   if (!replication_slot_name.empty()) {
     req.set_cdcsdk_ysql_replication_slot_name(replication_slot_name.ToString());
+  }
+  if (consistent_snapshot_option.has_value()) {
+    req.set_cdcsdk_consistent_snapshot_option(*consistent_snapshot_option);
   }
 
   CreateCDCStreamResponsePB resp;

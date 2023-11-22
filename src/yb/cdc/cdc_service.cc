@@ -975,8 +975,16 @@ Status CDCServiceImpl::CreateCDCStreamForNamespace(
   // If FLAGS_TEST_ysql_yb_enable_replication_commands, populate the namespace id in the newly added
   // namespace_id field, otherwise use the table_id as done before.
   bool populate_namespace_id_as_table_id = !FLAGS_TEST_ysql_yb_enable_replication_commands;
+
+  // Consistent Snapshot option
+  std::optional<CDCSDKSnapshotOption> snapshot_option = std::nullopt;
+  if (req->has_cdcsdk_consistent_snapshot_option()) {
+     snapshot_option = req->cdcsdk_consistent_snapshot_option();
+  }
+
   xrepl::StreamId db_stream_id = VERIFY_RESULT_OR_SET_CODE(
-      client()->CreateCDCSDKStreamForNamespace(ns_id, options, populate_namespace_id_as_table_id),
+      client()->CreateCDCSDKStreamForNamespace(ns_id, options, populate_namespace_id_as_table_id,
+                                               ReplicationSlotName(""), snapshot_option),
       CDCError(CDCErrorPB::INTERNAL_ERROR));
   resp->set_db_stream_id(db_stream_id.ToString());
   return Status::OK();
