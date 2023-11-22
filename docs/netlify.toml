@@ -65,7 +65,7 @@
 
 [[redirects]]
   from = "/:version/deploy/docker-swarm/*"
-  to = "/v2.8/deploy/docker/docker-swarm/"
+  to = "https://docs-archive.yugabyte.com/v2.8/deploy/docker/docker-swarm/"
   force = true
 
 ##########################################################
