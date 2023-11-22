@@ -5,7 +5,7 @@ import { ClusterData, useGetClusterNodesQuery } from '@app/api/src';
 import { AXIOS_INSTANCE } from '@app/api/src';
 import { Box, LinearProgress, Link, makeStyles } from '@material-ui/core';
 import { Link as RouterLink } from 'react-router-dom';
-import { getInterval, RelativeInterval, roundDecimal } from '@app/helpers';
+import { getInterval, RelativeInterval } from '@app/helpers';
 import { getUnixTime } from 'date-fns';
 import { StringParam, useQueryParams, withDefault } from 'use-query-params';
 
@@ -75,7 +75,7 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
     [nodesResponse, clusterType, region, zone]
   );
 
-  const totalCores = roundDecimal((cluster.spec?.cluster_info?.node_info.num_cores ?? 0) / (nodesResponse?.data.length ?? 1) * (nodeList?.length ?? 0))
+  const totalCores = Math.round((cluster.spec?.cluster_info?.node_info.num_cores ?? 0) / (nodesResponse?.data.length ?? 1) * (nodeList?.length ?? 0))
 
   const [nodeCpuUsage, setNodeCpuUsage] = React.useState<number[]>();
   React.useEffect(() => {
@@ -246,9 +246,8 @@ function CpuSankeyNode(props: any) {
           fontWeight={500}
         >
           <tspan fill="#97A5B0">{cpuTextPrefix}</tspan> {/* USED or AVAILABLE depending on index = 0 or 1 */}
-          <tspan dx={index === 0 ? (cpuValue < 10 ? 68 : 58) : (cpuValue < 10 ? 34 : 26)}
+          <tspan dx={index === 0 ? (cpuValue < 10 ? 102 : 92) : (cpuValue < 10 ? 68 : 60)}
             fill="#000" fontWeight={700} fontSize="15">{cpuValue} </tspan> {/* number */}
-          <tspan fill="#444" fillOpacity={1}>{cpuTextSuffix}</tspan> {/* cores */}
           <tspan dy={15} dx={totalCores < 10 ? -52 : -56} fill="#333" fontSize={10} fillOpacity={0.6}>
             of {totalCores} {cpuTextSuffix} {/* of number cores */}
           </tspan>
