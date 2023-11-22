@@ -478,7 +478,7 @@
 
 [[redirects]]
   from = "/preview/manage/enterprise-edition/schedule-data-backup/"
-  to = "/preview/yugabyte-platform/back-up-restore-universes/schedule-data-backups/ysql/"
+  to = "/preview/yugabyte-platform/back-up-restore-universes/schedule-data-backups/"
 
 [[redirects]]
   from = "/preview/reference/default-ports/"
@@ -494,7 +494,7 @@
 
 [[redirects]]
   from = "/preview/releases/release-notes/preview-release/"
-  to = "/preview/releases/release-notes/v2.17/"
+  to = "/preview/releases/release-notes/"
 
 [[redirects]]
   from = "/preview/secure/authentication/client-authentication/"
