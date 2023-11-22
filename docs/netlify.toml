@@ -853,6 +853,11 @@
   force = true
 
 [[redirects]]
+  from = "/v2.12/*"
+  to = "https://docs-archive.yugabyte.com/v2.12/"
+  force = true
+
+[[redirects]]
   from = "/preview/develop/build-apps/java/ysql-hibernate/"
   to = "/preview/drivers-orms/orms/ysql-hibernate/"
   force = true

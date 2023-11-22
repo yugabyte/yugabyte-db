@@ -61,18 +61,6 @@
       "initialRelease": "2022-07-14",
       "endOfMaintenance": "2024-07-14",
       "endOfLife": "2025-01-14"
-    },
-    {
-      "series": "v2.12",
-      "display": "v2.12",
-      "version": "2.12.12.0",
-      "versionShort": "2.12.12",
-      "appVersion": "2.12.12.0-b12",
-      "isStable": true,
-      "isLTS": false,
-      "initialRelease": "2022-02-22",
-      "endOfMaintenance": "2023-02-22",
-      "endOfLife": "2023-08-22"
     }
   ],
   "ybaVersions":
