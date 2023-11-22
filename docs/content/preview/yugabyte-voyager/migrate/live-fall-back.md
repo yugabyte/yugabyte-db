@@ -27,7 +27,7 @@ At cutover, applications stop writing to the source database and start writing t
 
 ![cutover](/images/migrate/cutover.png)
 
-Finally, if you need to switch back to the source database (because the current YugabyteDB system is not working as expected), you can switch back your database.
+Finally, if you need to switch back to the source database (because the current YugabyteDB system is not working as expected), you can cutover to your source database.
 
 ![initiate-cutover-to-source](/images/migrate/fall-back-switchover.png)
 
@@ -300,13 +300,13 @@ Because the presence of indexes and triggers can slow down the rate at which dat
 
 {{< /note >}}
 
-### Export data
+### Export data from source
 
-Begin exporting data from the source database into the `EXPORT_DIR/data` directory using the yb-voyager export data command as follows:
+Begin exporting data from the source database into the `EXPORT_DIR/data` directory using the yb-voyager export data from source command as follows:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
-yb-voyager export data --export-dir <EXPORT_DIR> \
+yb-voyager export data from source --export-dir <EXPORT_DIR> \
         --source-db-type <SOURCE_DB_TYPE> \
         --source-db-host <SOURCE_DB_HOST> \
         --source-db-user <SOURCE_DB_USER> \
@@ -316,7 +316,7 @@ yb-voyager export data --export-dir <EXPORT_DIR> \
         --export-type snapshot-and-changes
 ```
 
-The export data command first ensures that it exports a snapshot of the data already present on the source database. Next, you start a streaming phase (CDC phase) where you begin capturing new changes made to the data on the source after the migration has started. Some important metrics such as the number of events, export rate, and so on, is displayed during the CDC phase similar to the following:
+The export data from source command first ensures that it exports a snapshot of the data already present on the source database. Next, you start a streaming phase (CDC phase) where you begin capturing new changes made to the data on the source after the migration has started. Some important metrics such as the number of events, export rate, and so on, is displayed during the CDC phase similar to the following:
 
 ```output
 | ---------------------------------------  |  ----------------------------- |
@@ -338,7 +338,7 @@ Additionally, the CDC phase is restartable. So, if yb-voyager terminates when da
 - For Oracle where sequences are not attached to a column, resume value generation is unsupported.
 - `--parallel-jobs` argument (specifies the number of tables to be exported in parallel from the source database at a time) has no effect on live migration.
 
-Refer to [export data](../../reference/data-migration/export-data/) for details about the arguments of an export operation.
+Refer to [export data](../../reference/data-migration/export-data/#export-data) for details about the arguments of an export operation.
 
 The options passed to the command are similar to the [`yb-voyager export schema`](#export-schema) command. To export only a subset of the tables, pass a comma-separated list of table names in the `--table-list` argument.
 
@@ -346,15 +346,15 @@ The options passed to the command are similar to the [`yb-voyager export schema`
 
 Run the `yb-voyager get data-migration-report --export-dir <EXPORT_DIR>` command to get a consolidated report of the overall progress of data migration concerning all the databases involved (source and target).
 
-Refer to [get data-migration-report](../../reference/data-migration/export-data/#get-data-migration-report-live-migrations-only) for details about the arguments.
+Refer to [get data-migration-report](../../reference/data-migration/export-data/#get-data-migration-report) for details about the arguments.
 
-### Import data
+### Import data to target
 
-After you have successfully imported the schema in the target database, you can start importing the data using the yb-voyager import data command as follows:
+After you have successfully imported the schema in the target database, you can start importing the data using the yb-voyager import data to target command as follows:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
-yb-voyager import data --export-dir <EXPORT_DIR> \
+yb-voyager import data to target --export-dir <EXPORT_DIR> \
         --target-db-host <TARGET_DB_HOST> \
         --target-db-user <TARGET_DB_USER> \
         --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
@@ -363,7 +363,7 @@ yb-voyager import data --export-dir <EXPORT_DIR> \
         --parallel-jobs <NUMBER_OF_JOBS>
 ```
 
-Refer to [import data](../../reference/data-migration/import-data/) for details about the arguments.
+Refer to [import data](../../reference/data-migration/import-data/#import-data) for details about the arguments.
 
 For the snapshot exported, yb-voyager splits the data dump files (from the $EXPORT_DIR/data directory) into smaller batches. yb-voyager concurrently ingests the batches such that all nodes of the target YugabyteDB database cluster are used. After the snapshot is imported, a similar approach is employed for the CDC phase, where concurrent batches of change events are applied on the target YugabyteDB database cluster.
 
@@ -392,9 +392,9 @@ For details about the arguments, refer to the [arguments table](../../reference/
 
 {{< tip title="Importing large datasets" >}}
 
-When importing a very large database, run the import data command in a `screen` session, so that the import is not terminated when the terminal session stops.
+When importing a very large database, run the import data to target command in a `screen` session, so that the import is not terminated when the terminal session stops.
 
-If the `yb-voyager import data` command terminates before completing the data ingestion, you can re-run it with the same arguments and the command will resume the data import operation.
+If the `yb-voyager import data to target` command terminates before completing the data ingestion, you can re-run it with the same arguments and the command will resume the data import operation.
 
 {{< /tip >}}
 
@@ -424,7 +424,7 @@ Refer to [archive changes](../../reference/cutover-archive/archive-changes/) for
 
 During cutover, you switch your application over from the source database to the target YugabyteDB database.
 
-Keep monitoring the metrics displayed for export data and import data processes. After you notice that the import of events is catching up to the exported events, you are ready to perform a cutover. You can use the "Remaining events" metric displayed in the import data process to help you determine the cutover.
+Keep monitoring the metrics displayed for export data from source and import data to target processes. After you notice that the import of events is catching up to the exported events, you are ready to perform a cutover. You can use the "Remaining events" metric displayed in the import data to target process to help you determine the cutover.
 
 Perform the following steps as part of the cutover process:
 
@@ -439,13 +439,13 @@ Perform the following steps as part of the cutover process:
 
     As part of the cutover process, the following occurs in the background:
 
-    1. The initiate cutover to target command stops the export data process, followed by the import data process after it has imported all the events to the target YugabyteDB database.
+    1. The initiate cutover to target command stops the export data from source process, followed by the import data to target process after it has imported all the events to the target YugabyteDB database.
 
     1. The [export data from target](../../reference/data-migration/export-data/#export-data-from-target) command automatically starts capturing changes from the target YugabyteDB database.
-    Note that the [import data](#import-data) process transforms to a `export data from target` process, so if it gets terminated for any reason, you need to restart the synchronization using the `export data from target` command as suggested in the import data output.
+    Note that the [import data to target](#import-data-to-target) process transforms to a `export data from target` process, so if it gets terminated for any reason, you need to restart the synchronization using the `export data from target` command as suggested in the import data output.
 
     1. The [import data to source](../../reference/data-migration/import-data/#import-data-to-source) command automatically starts applying changes (captured from the target YugabyteDB) back to the source database.
-    Note that the [export data](#export-data) process transforms to a `export data from target` process, so if it gets terminated for any reason, you need to restart the process using `import data to source` command as suggested in the export data output.
+    Note that the [export data from source](#export-data-from-source) process transforms to a `export data from target` process, so if it gets terminated for any reason, you need to restart the process using `import data to source` command as suggested in the export data output.
 
 1. Wait for the cutover process to complete. Monitor the status of the cutover process using the following command:
 
@@ -477,7 +477,7 @@ Perform the following steps as part of the cutover process:
 
 Suppose you have the following scenario:
 
-- [import data](#import-data) or [import data file](../bulk-data-load/#import-data-files-from-the-local-disk) command fails.
+- [import data to target](#import-data-to-target) or [import data file](../bulk-data-load/#import-data-files-from-the-local-disk) command fails.
 - To resolve this issue, you delete some of the rows from the split files.
 - After retrying, the import data to target command completes successfully.
 

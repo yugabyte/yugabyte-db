@@ -11,22 +11,24 @@ menu:
 aliases:
   - /preview/yugabyte-voyager/reference/fall-forward/fall-forward-synchronize/
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 The following page describes the following export commands:
 
-- [export data](#export-data)
+- [export data](#export-data) (and export data from source)
 - [export data status](#export-data-status)
-- [get data-migration-report](#get-data-migration-report-live-migrations-only)
+- [get data-migration-report](#get-data-migration-report)
 - [export data from target](#export-data-from-target)
 
-## export data
+### export data
 
 For offline migration, export data [dumps](../../../migrate/migrate-steps/#export-data) data of the source database in the `export-dir/data` directory on the machine where yb-voyager is running.
 
 For [live migration](../../../migrate/live-migrate/#export-data) (with [fall-forward](../../../migrate/live-fall-forward/#export-data) and [fall-back](../../../migrate/live-fall-back/#export-data)), the export data command is an alias of `export data from source` which [dumps](../../../migrate/live-migrate/#export-data) the snapshot in the `data` directory and starts capturing the new changes made to the source database.
 
-### Syntax
+#### Syntax
 
 Syntax for export data is as follows:
 
@@ -40,7 +42,7 @@ Syntax for export data from source is as follows:
 Usage: yb-voyager export data from source [ <arguments> ... ]
 ```
 
-### Arguments
+#### Arguments
 
 The valid *arguments* for export data are described in the following table:
 
@@ -79,9 +81,9 @@ The valid *arguments* for export data are described in the following table:
 | --exclude-table-list-file-path | Path of the file containing the list of table names (comma-separated or line-separated) to exclude while exporting data. Table names follow the same convention as `--table-list`. |
 | -y, --yes | Answer yes to all prompts during the export schema operation. <br>Default: false |
 
-### Example
+#### Example
 
-#### Offline migration
+##### Offline migration
 
 An example for offline migration is as follows:
 
@@ -96,7 +98,7 @@ yb-voyager export data --export-dir /dir/export-dir \
         --source-db-schema source_schema
 ```
 
-#### Live migration
+##### Live migration
 
 An example for all live migration scenarios is as follows:
 
@@ -112,17 +114,17 @@ yb-voyager export data from source --export-dir /dir/export-dir \
         --export-type "snapshot-and-change"
 ```
 
-## export data status
+### export data status
 
 For offline migration, get the status report of an ongoing or completed data export operation.
 
-### Syntax
+#### Syntax
 
 ```text
 Usage: yb-voyager export data status [ <arguments> ... ]
 ```
 
-### Arguments
+#### Arguments
 
 The valid *arguments* for export data status are described in the following table:
 
@@ -131,23 +133,23 @@ The valid *arguments* for export data status are described in the following tabl
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help. |
 
-### Example
+#### Example
 
 ```sh
 yb-voyager export data status --export-dir /dir/export-dir
 ```
 
-## get data-migration-report
+### get data-migration-report
 
 Provides a consolidated report of data migration per table among all the databases involved in the live migration. The report includes the number of rows exported, the number of rows imported, change events exported and imported (INSERTS, UPDATES, and DELETES), and the final row count on the database.
 
-### Syntax
+#### Syntax
 
 ```text
 Usage: yb-voyager get data-migration-report [ <arguments> ... ]
 ```
 
-### Arguments
+#### Arguments
 
 The valid *arguments* for get data-migration-report are described in the following table:
 
@@ -161,23 +163,23 @@ The valid *arguments* for get data-migration-report are described in the followi
 | --target-db-password <password>| Password to connect to the target YugabyteDB server. Alternatively, you can also specify the password by setting the environment variable `TARGET_DB_PASSWORD`. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. |
 | -y, --yes | Answer yes to all prompts during the export schema operation. <br>Default: false |
 
-### Example
+#### Example
 
 ```sh
 yb-voyager get data-migration-report --export-dir /dir/export-dir
 ```
 
-## export data from target
+### export data from target
 
 Exports new changes from the target YugabyteDB database to import to the source database (for fall-back migration)source-replica database (for fall-forward migration) so that the source/source-replica database can be in sync with the YugabyteDB database after cutover.
 
-## Syntax
+#### Syntax
 
 ```text
 Usage: yb-voyager export data from target [ <arguments> ... ]
 ```
 
-### Arguments
+#### Arguments
 
 The valid *arguments* for export data from target are described in the following table:
 
@@ -194,7 +196,7 @@ The valid *arguments* for export data from target are described in the following
 | --target-db-password <password>| Password to connect to the target YugabyteDB server. Alternatively, you can also specify the password by setting the environment variable `TARGET_DB_PASSWORD`. If you don't provide a password via the CLI, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. |
 | -y, --yes | Answer yes to all prompts during the export schema operation. <br>Default: false |
 
-### Example
+#### Example
 
 ```sh
 yb-voyager export data from target --export-dir /dir/export-dir \

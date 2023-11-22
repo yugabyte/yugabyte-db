@@ -17,13 +17,13 @@ type: docs
 
 When migrating using YugabyteDB Voyager, it is prudent to have a backup strategy if the new database doesn't work as expected. A fall-forward approach consists of creating a third database (the source-replica database) that is a replica of your original source database.
 
-A fall forward approach allows you to test the system end-to-end. This workflow is especially important in heterogeneous migration scenarios, in which source and target databases are using different engines.
+A fall-forward approach allows you to test the system end-to-end. This workflow is especially important in heterogeneous migration scenarios, in which source and target databases are using different engines.
 
 ## Fall-forward workflow
 
 ![fall-forward short](/images/migrate/live-fall-forward-short.png)
 
-Before starting a [live migration](../live-migrate/#live-migration-workflow), you set up the source-replica database (via [import data to source-replica](#import-data-to-source-replica)). During migration, yb-voyager replicates the snapshot data along with new changes exported from the source database to the target and source-replica databases, as shown in the following illustration:
+Before starting a live migration, you set up the source-replica database (via [import data to source-replica](#import-data-to-source-replica)). During migration, yb-voyager replicates the snapshot data along with new changes exported from the source database to the target and source-replica databases, as shown in the following illustration:
 
 ![After import data to source-replica](/images/migrate/after-fall-forward-setup.png)
 
@@ -183,7 +183,7 @@ Perform the following steps to prepare your source-replica database:
         );
     ```
 
-1. Create a writer role for source-replica schema in the source replica database as follows:
+1. Create a writer role for source-replica schema in the source-replica database as follows:
 
     ```sql
     CREATE ROLE <SCHEMA_NAME>_writer_role;
@@ -371,15 +371,15 @@ Additionally, the CDC phase is restartable. So, if yb-voyager terminates when da
 - For Oracle where sequences are not attached to a column, resume value generation is unsupported.
 - `--parallel-jobs` argument (specifies the number of tables to be exported in parallel from the source database at a time) has no effect on live migration.
 
-Refer to [export data](../../reference/data-migration/export-data/) for details about the arguments of an export operation.
+Refer to [export data](../../reference/data-migration/export-data/#export-data) for details about the arguments of an export operation.
 
 The options passed to the command are similar to the [`yb-voyager export schema`](#export-schema) command. To export only a subset of the tables, pass a comma-separated list of table names in the `--table-list` argument.
 
 #### get data-migration-report
 
-Run the `yb-voyager get data-migration-report --export-dir <EXPORT_DIR>` command to get a consolidated report of the overall progress of data migration concerning all the databases involved (source and target).
+Run the `yb-voyager get data-migration-report --export-dir <EXPORT_DIR>` command to get a consolidated report of the overall progress of data migration concerning all the databases involved (source, target, and source-replica).
 
-Refer to [get data-migration-report](../../reference/data-migration/export-data/#get-data-migration-report-live-migrations-only) for details about the arguments.
+Refer to [get data-migration-report](../../reference/data-migration/export-data/#get-data-migration-report) for details about the arguments.
 
 ### Import data to target
 
@@ -478,21 +478,21 @@ yb-voyager get data-migration-report --export-dir <EXPORT_DIR> \
 
 As the migration continuously exports changes on the source database to the `EXPORT-DIR`, disk use continues to grow. To prevent the disk from filling up, you can optionally use the `archive changes` command as follows:
 
+{{< note title = "Note" >}}
+Make sure to run the archive changes command only after completing [import data to source-replica](#import-data-to-source-replica). If you run the command before, you may archive some changes before they have been imported to the source-replica database.
+{{< /note >}}
+
 ```sh
 yb-voyager archive changes --export-dir <EXPORT-DIR> --move-to <DESTINATION-DIR> --delete
 ```
 
 Refer to [archive changes](../../reference/cutover-archive/archive-changes/) for details about the arguments.
 
-{{< note title = "Note" >}}
-Make sure to run the archive changes command only after completing [import data to source-replica](#import-data-to-source-replica). If you run the command before, you may archive some changes before they have been imported to the source-replica database.
-{{< /note >}}
-
 ### Cutover to the target
 
 Cutover is the last phase, where you switch your application over from the source database to the target YugabyteDB database.
 
-Keep monitoring the metrics displayed on export data from source and import data to target processes. After you notice that the import of events is catching up to the exported events, you are ready to cutover. You can use the "Remaining events" metric displayed in the import data to target process to help you determine the cutover.
+Keep monitoring the metrics displayed on `export data from source` and `import data to target` processes. After you notice that the import of events is catching up to the exported events, you are ready to cutover. You can use the "Remaining events" metric displayed in the import data to target process to help you determine the cutover.
 
 Perform the following steps as part of the cutover process:
 

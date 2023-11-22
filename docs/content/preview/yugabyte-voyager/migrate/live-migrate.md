@@ -296,7 +296,7 @@ Additionally, the CDC phase is restartable. So, if yb-voyager terminates when da
 - For Oracle where sequences are not attached to a column, resume value generation is unsupported.
 - `--parallel-jobs` argument (specifies the number of tables to be exported in parallel from the source database at a time) has no effect on live migration.
 
-Refer to [export data](../../reference/data-migration/export-data/) for details about the arguments of an export operation.
+Refer to [export data](../../reference/data-migration/export-data/#export-data) for details about the arguments of an export operation.
 
 The options passed to the command are similar to the [`yb-voyager export schema`](#export-schema) command. To export only a subset of the tables, pass a comma-separated list of table names in the `--table-list` argument.
 
@@ -304,7 +304,7 @@ The options passed to the command are similar to the [`yb-voyager export schema`
 
 Run the `yb-voyager get data-migration-report --export-dir <EXPORT_DIR>` command to get a consolidated report of the overall progress of data migration concerning all the databases involved (source and target).
 
-Refer to [get data-migration-report](../../reference/data-migration/export-data/#get-data-migration-report-live-migrations-only) for details about the arguments.
+Refer to [get data-migration-report](../../reference/data-migration/export-data/#get-data-migration-report) for details about the arguments.
 
 ### Import data to target
 
@@ -365,7 +365,7 @@ yb-voyager get data-migration-report --export-dir <EXPORT_DIR> \
         --target-db-password <TARGET_DB_PASSWORD>
 ```
 
-Refer to [get data-migration-report](../../reference/data-migration/import-data/#get-data-migration-report-live-migrations-only) for details about the arguments.
+Refer to [get data-migration-report](../../reference/data-migration/import-data/#get-data-migration-report) for details about the arguments.
 
 ### Archive changes (Optional)
 
@@ -389,12 +389,12 @@ Perform the following steps as part of the cutover process:
 1. Perform a cutover after the exported events rate ("ingestion rate" in the metrics table) drops to 0 using the following command:
 
     ```sh
-    yb-voyager cutover initiate --export-dir <EXPORT_DIR>
+    yb-voyager initiate cutover to target --export-dir <EXPORT_DIR>
     ```
 
-    Refer to [cutover initiate](../../reference/cutover-archive/cutover/#cutover-initiate) for details about the arguments.
+    Refer to [cutover to target](../../reference/cutover-archive/cutover/#cutover-to-target) for details about the arguments.
 
-    The cutover initiate command stops the export data process, followed by the import data process after it has imported all the events to the target YugabyteDB database.
+    The initiate cutover to target command stops the export data process, followed by the import data process after it has imported all the events to the target YugabyteDB database.
 
 1. Wait for the cutover process to complete. Monitor the status of the cutover process using the following command:
 
@@ -444,7 +444,7 @@ After migration verification, stop [archiving changes](#archive-changes-optional
 
 ### End migration
 
-To end the migration, you need to clean up the export directory (export-dir), and Voyager state ( Voyager-related metadata) stored in the target database.
+To end the migration, you need to clean up the export directory (export-dir), and Voyager state ( Voyager-related metadata) stored in the target YugabyteDB database.
 
 Run the `yb-voyager end migration` command to perform the clean up, and to back up the schema, data, migration reports, and log files by providing the backup related flags (mandatory) as follows:
 
