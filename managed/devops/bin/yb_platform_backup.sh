@@ -456,29 +456,6 @@ restore_backup() {
   ybai_data_dir="${16}"
   prometheus_dir_regex="\.\/${PROMETHEUS_SNAPSHOT_DIR}\/[[:digit:]]{8}T[[:digit:]]{6}Z-[[:alnum:]]{16}\/$"
 
-  current_metadata_path=""
-
-  if [ -f "../../src/main/resources/${VERSION_METADATA}" ]; then
-
-      current_metadata_path="../../src/main/resources/${VERSION_METADATA}"
-
-  else
-
-      metadata_regex="**/yugaware/conf/${VERSION_METADATA}"
-      if [[ "${yba_installer}" = true ]]; then
-        version=$(basename $(realpath ${data_dir}/software/active))
-        metadata_regex="**/${version}/**/yugaware/conf/${VERSION_METADATA}"
-      fi
-      current_metadata_path=$(find ${destination} -wholename ${metadata_regex})
-
-      # At least keep some default as a worst case.
-      if [ ! -f ${current_metadata_path} ] || [ -z ${current_metadata_path} ]; then
-        current_metadata_path="${data_dir}/yugaware/conf/${VERSION_METADATA}"
-      fi
-
-  fi
-
-
   # Perform K8s restore.
   if [[ -n "${k8s_namespace}" ]] || [[ -n "${k8s_pod}" ]]; then
 
@@ -519,6 +496,32 @@ restore_backup() {
   fi
 
   if [ "$disable_version_check" != true ]; then
+
+    current_metadata_path=""
+
+    if [ -f "../../src/main/resources/${VERSION_METADATA}" ]; then
+
+        current_metadata_path="../../src/main/resources/${VERSION_METADATA}"
+
+    else
+
+        metadata_regex="**/yugaware/conf/${VERSION_METADATA}"
+        if [[ "${yba_installer}" = true ]]; then
+          version=$(basename $(realpath ${data_dir}/software/active))
+          metadata_regex="**/${version}/**/yugaware/conf/${VERSION_METADATA}"
+        fi
+        # Ignore errors in case of directories where we don't have permissions
+        set +e
+        current_metadata_path=$(find ${destination} -wholename ${metadata_regex})
+        set -e
+
+        # At least keep some default as a worst case.
+        if [ ! -f ${current_metadata_path} ] || [ -z ${current_metadata_path} ]; then
+          current_metadata_path="${data_dir}/yugaware/conf/${VERSION_METADATA}"
+        fi
+
+    fi
+
     command="cat ${current_metadata_path}"
 
     version_cmd='import json, sys; print(json.load(sys.stdin)["version_number"])'
@@ -536,7 +539,14 @@ restore_backup() {
       ${VERSION_METADATA_BACKUP}"
       exit 1
     fi
-    tar -xzf ${input_path} ${backup_metadata_path}
+    tar -xzf ${input_path} -C ${K8S_BACKUP_DIR} ${backup_metadata_path}
+    set +e
+    backup_metadata_path=$(find ${K8S_BACKUP_DIR} -name ${VERSION_METADATA_BACKUP} | head -1)
+    set -e
+    if [ ! -f ${backup_metadata_path} ] || [ -z ${backup_metadata_path} ]; then
+      echo "could not find untarred ${VERSION_METADATA_BACKUP}"
+      exit 1
+    fi
     # The version_metadata.json file is always present in a release package, and it would have
     # been stored during create_backup(), so we don't need to check if the file exists before
     # restoring it from the restore path.
