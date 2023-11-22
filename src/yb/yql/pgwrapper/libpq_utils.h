@@ -343,6 +343,9 @@ class PGConnBuilder {
 Result<PGConn> Execute(Result<PGConn> connection, const std::string& query);
 Result<PGConn> SetHighPriTxn(Result<PGConn> connection);
 Result<PGConn> SetLowPriTxn(Result<PGConn> connection);
+Result<PGConn> SetDefaultTransactionIsolation(
+    Result<PGConn> connection, IsolationLevel isolation_level);
+Result<IsolationLevel> EffectiveIsolationLevel(PGConn* conn);
 Status SetMaxBatchSize(PGConn* conn, size_t max_batch_size);
 
 class PGConnPerf {

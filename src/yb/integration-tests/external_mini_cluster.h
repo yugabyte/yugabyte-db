@@ -82,6 +82,7 @@ class ExternalDaemon;
 class ExternalMaster;
 class ExternalTabletServer;
 class HostPort;
+class HybridTime;
 class OpIdPB;
 class NodeInstancePB;
 class Subprocess;
@@ -769,6 +770,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
 
   // Get the current value of the flag for the given daemon.
   Result<std::string> GetFlag(const std::string& flag);
+  Result<HybridTime> GetServerTime();
 
  protected:
   friend class RefCountedThreadSafe<ExternalDaemon>;

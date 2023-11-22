@@ -58,6 +58,7 @@
 #include "yb/server/webserver_options.h"
 #include "yb/tserver/db_server_base.h"
 #include "yb/tserver/pg_mutation_counter.h"
+#include "yb/tserver/remote_bootstrap_service.h"
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tablet_server_options.h"
@@ -118,7 +119,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::string ToString() const override;
 
   uint32_t GetAutoFlagConfigVersion() const override;
-  Status SetAutoFlagConfig(const AutoFlagsConfigPB new_config);
+  void HandleMasterHeartbeatResponse(
+      HybridTime heartbeat_sent_time, std::optional<AutoFlagsConfigPB> new_config);
+
+  Result<uint32> ValidateAndGetAutoFlagsConfigVersion() const;
 
   AutoFlagsConfigPB TEST_GetAutoFlagConfig() const;
 
@@ -297,6 +301,13 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     return pg_client_service_.lock().get();
   }
 
+  RemoteBootstrapServiceImpl* GetRemoteBootstrapService() {
+    if (auto service_ptr = remote_bootstrap_service_.lock()) {
+      return service_ptr.get();
+    }
+    return nullptr;
+  }
+
   void SetXClusterDDLOnlyMode(bool is_xcluster_read_only_mode);
 
   std::optional<uint64_t> GetCatalogVersionsFingerprint() const {
@@ -392,6 +403,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // An instance to tablet server service. This pointer is no longer valid after RpcAndWebServerBase
   // is shut down.
   std::weak_ptr<TabletServiceImpl> tablet_server_service_;
+
+  // An instance to remote bootstrap service. This pointer is no longer valid after
+  // RpcAndWebServerBase is shut down.
+  std::weak_ptr<RemoteBootstrapServiceImpl> remote_bootstrap_service_;
 
   // An instance to pg client service. This pointer is no longer valid after RpcAndWebServerBase
   // is shut down.

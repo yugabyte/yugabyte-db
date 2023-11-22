@@ -854,7 +854,7 @@ class Tablet : public AbstractTablet,
 
   // Store the new AutoFlags config to disk and then applies it. Error Status is returned only for
   // critical failures.
-  Status ApplyAutoFlagsConfig(const AutoFlagsConfigPB& config);
+  Status ProcessAutoFlagsConfigOperation(const AutoFlagsConfigPB& config);
 
   std::string LogPrefix() const;
 

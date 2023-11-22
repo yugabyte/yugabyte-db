@@ -90,7 +90,9 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLPgBasedBackup)) {
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
-TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreBackupToDBCatalogVersionMode)) {
+// TODO (#19975): Enable read committed isolation
+TEST_F(YBBackupTestWithReadCommittedDisabled,
+       YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreBackupToDBCatalogVersionMode)) {
   DoTestYSQLRestoreBackup(true /* db_catalog_version_mode */);
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }

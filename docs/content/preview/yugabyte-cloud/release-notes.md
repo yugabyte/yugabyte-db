@@ -20,6 +20,17 @@ On this page:
 
 ## Change log
 
+### November 16, 2023
+
+**New Features**
+
+- [Product Labs](../../yugabyte-cloud/managed-labs/) provides an interactive, in-product learning experience. Learn about YugabyteDB features using real-world applications running on live YugabyteDB clusters. The first lab, Create Global Applications, demonstrates how to manage latencies using three different deployment strategies.
+- Support for [exporting cluster metrics](../cloud-monitor/metrics-export/) to Sumo Logic.
+
+**Database**
+
+- Innovation track updated to 2.18.4.1.
+
 ### November 3, 2023
 
 **New Features**
@@ -30,6 +41,7 @@ On this page:
 **Database**
 
 - Production track updated to 2.14.13.0.
+- Preview track updated to 2.19.3.0.
 
 ### October 5, 2023
 

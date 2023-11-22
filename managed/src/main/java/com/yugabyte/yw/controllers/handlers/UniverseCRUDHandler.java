@@ -1320,9 +1320,11 @@ public class UniverseCRUDHandler {
     if (readOnlyCluster.userIntent.specificGFlags != null
         && readOnlyCluster.userIntent.specificGFlags.isInheritFromPrimary()) {
       SpecificGFlags primaryGFlags = primaryCluster.userIntent.specificGFlags;
-      readOnlyCluster.userIntent.specificGFlags.setPerProcessFlags(
-          primaryGFlags.getPerProcessFlags());
-      readOnlyCluster.userIntent.specificGFlags.setPerAZ(primaryGFlags.getPerAZ());
+      if (primaryGFlags != null) {
+        readOnlyCluster.userIntent.specificGFlags.setPerProcessFlags(
+            primaryGFlags.getPerProcessFlags());
+        readOnlyCluster.userIntent.specificGFlags.setPerAZ(primaryGFlags.getPerAZ());
+      }
     }
 
     TaskType taskType = TaskType.ReadOnlyClusterCreate;

@@ -163,7 +163,18 @@ void PgDmlRead::SetForwardScan(const bool is_forward_scan) {
   if (secondary_index_query_) {
     return secondary_index_query_->SetForwardScan(is_forward_scan);
   }
-  read_req_->set_is_forward_scan(is_forward_scan);
+  if (!read_req_->has_is_forward_scan()) {
+    read_req_->set_is_forward_scan(is_forward_scan);
+  } else {
+    DCHECK(read_req_->is_forward_scan() == is_forward_scan) << "Cannot change scan direction";
+  }
+}
+
+bool PgDmlRead::KeepOrder() const {
+  if (secondary_index_query_) {
+    return secondary_index_query_->KeepOrder();
+  }
+  return read_req_->has_is_forward_scan();
 }
 
 void PgDmlRead::SetDistinctPrefixLength(const int distinct_prefix_length) {
@@ -489,13 +500,13 @@ Status PgDmlRead::BindColumnCondIn(PgExpr *lhs, int n_attr_values, PgExpr **attr
       auto vals = attr_values[i]->Unpack();
       auto curr_val_it = vals.begin();
       for (const PgColumn &curr_col : cols) {
-        const PgExpr &curr_val = *curr_val_it;
+        const PgExpr &curr_val = *curr_val_it++;
+
         auto col_type = curr_val.internal_type();
         if (curr_col.internal_type() == InternalType::kBinaryValue)
             continue;
         SCHECK_EQ(curr_col.internal_type(), col_type, Corruption,
           "Attribute value type does not match column type");
-        curr_val_it++;
       }
     }
   }
@@ -692,7 +703,7 @@ Status PgDmlRead::SubstitutePrimaryBindsWithYbctids(const PgExecParameters* exec
   auto i = ybctids.begin();
   return doc_op_->PopulateDmlByYbctidOps({make_lw_function([&i, end = ybctids.end()] {
     return i != end ? Slice(*i++) : Slice();
-  }), ybctids.size()});
+  }), ybctids.size(), false});
 }
 
 // Function builds vector of ybctids from primary key binds.

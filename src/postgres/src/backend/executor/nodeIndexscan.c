@@ -105,6 +105,12 @@ IndexNext(IndexScanState *node)
 		else if (ScanDirectionIsBackward(direction))
 			direction = ForwardScanDirection;
 	}
+	/* "Don't care about order" direction. */
+	if (IsYugaByteEnabled() &&
+		ScanDirectionIsNoMovement(((IndexScan *) node->ss.ps.plan)->indexorderdir))
+	{
+		direction = NoMovementScanDirection;
+	}
 	scandesc = node->iss_ScanDesc;
 	econtext = node->ss.ps.ps_ExprContext;
 	slot = node->ss.ss_ScanTupleSlot;

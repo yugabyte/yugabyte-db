@@ -25,6 +25,7 @@
 #include <cstdarg>
 #include <cstddef>
 #include <cstdint>
+#include <ctime>
 #include <functional>
 #include <iosfwd>
 #include <limits>
@@ -83,6 +84,7 @@
 #include "yb/gutil/template_util.h"
 #include "yb/gutil/thread_annotations.h"
 #include "yb/gutil/type_traits.h"
+#include "yb/gutil/walltime.h"
 #include "yb/util/byte_buffer.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/cast.h"
@@ -97,6 +99,8 @@
 #include "yb/util/io.h"
 #include "yb/util/kv_util.h"
 #include "yb/util/locks.h"
+#include "yb/util/logging.h"
+#include "yb/util/logging_callback.h"
 #include "yb/util/math_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/opid.h"

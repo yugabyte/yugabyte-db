@@ -242,7 +242,7 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
       if (useTablespacesByDefault?.value === 'true') {
         values['useTablespaces'] = true;
       }
-      if (values['api_type'].value !== BACKUP_API_TYPES.YSQL) {
+      if (values['api_type'].value !== BACKUP_API_TYPES.YSQL || !isYbcEnabledinCurrentUniverse) {
         values['useTablespaces'] = false;
       }
       return createBackup(values, isIncrementalBackup);
@@ -298,7 +298,7 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
       if (useTablespacesByDefault?.value === 'true') {
         values['useTablespaces'] = true;
       }
-      if (values['api_type'].value !== BACKUP_API_TYPES.YSQL) {
+      if (values['api_type'].value !== BACKUP_API_TYPES.YSQL || !isYbcEnabledinCurrentUniverse) {
         values['useTablespaces'] = false;
       }
       return createBackupSchedule(values);
@@ -807,7 +807,7 @@ function BackupConfigurationForm({
       )}
 
       {
-        values['api_type'].value === BACKUP_API_TYPES.YSQL && useTablespacesByDefault?.value === 'false' && (
+        values['api_type'].value === BACKUP_API_TYPES.YSQL && useTablespacesByDefault?.value === 'false' && isYbcEnabledinCurrentUniverse &&(
           <Row>
             <Col lg={8} className='no-padding tablespaces'>
               <div>

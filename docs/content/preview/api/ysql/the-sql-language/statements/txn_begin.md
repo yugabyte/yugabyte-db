@@ -38,9 +38,9 @@ Add optional keyword — has no effect.
 
 ### *transaction_mode*
 
-Supports Serializable, Snapshot, and Read Committed Isolation<sup>$</sup> using the PostgreSQL isolation level syntax of `SERIALIZABLE`, `REPEATABLE READ`, and `READ COMMITTED` respectively. PostgreSQL's `READ UNCOMMITTED` also maps to Read Committed Isolation.
+Supports Serializable, Snapshot, and Read Committed {{<badge/tp>}} Isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE`, `REPEATABLE READ`, and `READ COMMITTED` respectively. PostgreSQL's `READ UNCOMMITTED` also maps to Read Committed Isolation.
 
-<sup>$</sup> Read Committed support is currently in [Tech Preview](/preview/releases/versioning/#feature-availability). Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of YugabyteDB's transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
+Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of YugabyteDB's transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
 
 ## Examples
 
@@ -78,7 +78,7 @@ In each shell, check the only the rows from the current transaction are visible.
 yugabyte=# SELECT * FROM sample; -- run in first shell
 ```
 
-```
+```output
  k1 | k2 | v1 | v2
 ----+----+----+----
   1 |  2 |  3 | a
@@ -92,7 +92,7 @@ yugabyte=# SELECT * FROM sample; -- run in first shell
 yugabyte=# SELECT * FROM sample; -- run in second shell
 ```
 
-```
+```output
  k1 | k2 | v1 | v2
 ----+----+----+----
   2 |  2 |  3 | a
@@ -118,7 +118,7 @@ In each shell check that only the rows from the committed transaction are visibl
 yugabyte=# SELECT * FROM sample; -- run in first shell.
 ```
 
-```
+```output
  k1 | k2 | v1 | v2
 ----+----+----+----
   1 |  2 |  3 | a
@@ -130,7 +130,7 @@ yugabyte=# SELECT * FROM sample; -- run in first shell.
 yugabyte=# SELECT * FROM sample; -- run in second shell.
 ```
 
-```
+```output
  k1 | k2 | v1 | v2
 ----+----+----+----
   1 |  2 |  3 | a
@@ -146,4 +146,3 @@ yugabyte=# SELECT * FROM sample; -- run in second shell.
 - [`ROLLBACK`](../txn_rollback)
 - [`SET TRANSACTION`](../txn_set)
 - [`START TRANSACTION`](../txn_start)
-

@@ -47,6 +47,7 @@
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
 
+DECLARE_bool(enable_ysql_conn_mgr);
 
 DEFINE_UNKNOWN_string(pg_proxy_bind_address, "", "Address for the PostgreSQL proxy to bind to");
 DEFINE_UNKNOWN_string(postmaster_cgroup, "", "cgroup to add postmaster process to");
@@ -210,7 +211,8 @@ DEFINE_NON_RUNTIME_bool(enable_ysql_conn_mgr_stats, true,
   "Enable stats collection from Ysql Connection Manager. These stats will be "
   "displayed at the endpoint '<ip_address_of_cluster>:13000/connections'");
 
-DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_replication_commands, kLocalPersisted, false, true,
+// TODO(#19211): Convert this to an auto-flag.
+DEFINE_test_flag(bool, ysql_yb_enable_replication_commands, false,
     "Enable logical replication commands for Publication and Replication Slots");
 
 static bool ValidateXclusterConsistencyLevel(const char* flagname, const std::string& value) {
@@ -391,8 +393,8 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   metricsLibs.push_back("yb_pg_metrics");
   metricsLibs.push_back("pgaudit");
   metricsLibs.push_back("pg_hint_plan");
-  if (FLAGS_enable_yb_auh) {
-    metricsLibs.push_back("yb_auh");
+  if (FLAGS_enable_yb_ash) {
+    metricsLibs.push_back("yb_ash");
   }
 
   vector<string> lines;
@@ -976,8 +978,12 @@ void PgSupervisor::DeregisterPgFlagChangeNotifications() {
 std::shared_ptr<ProcessWrapper> PgSupervisor::CreateProcessWrapper() {
   auto pgwrapper = std::make_shared<PgWrapper>(conf_);
 
-  if (FLAGS_enable_ysql_conn_mgr_stats)
-    CHECK_OK(pgwrapper->SetYsqlConnManagerStatsShmKey(GetYsqlConnManagerStatsShmkey()));
+  if (FLAGS_enable_ysql_conn_mgr) {
+    if (FLAGS_enable_ysql_conn_mgr_stats)
+      CHECK_OK(pgwrapper->SetYsqlConnManagerStatsShmKey(GetYsqlConnManagerStatsShmkey()));
+  } else {
+    FLAGS_enable_ysql_conn_mgr_stats = false;
+  }
 
   return pgwrapper;
 }

@@ -849,10 +849,10 @@ Status ClusterAdminClient::PromoteSingleAutoFlag(
      return StatusFromPB(resp.error().status());
     }
     if (!resp.flag_promoted()) {
-     std::cout << "AutoFlag " << flag_name << " from process " << process_name
-               << " was not promoted. Check the logs for more information" << std::endl;
-     std::cout << "Current config version: " << resp.new_config_version() << std::endl;
-     return Status::OK();
+      std::cout << "Failed to promote AutoFlag " << flag_name << " from process " << process_name
+                << ". Check the logs for more information" << std::endl;
+      std::cout << "Current config version: " << resp.new_config_version() << std::endl;
+      return Status::OK();
     }
 
     std::cout << "AutoFlag " << flag_name << " from process " << process_name
@@ -880,11 +880,10 @@ Status ClusterAdminClient::DemoteSingleAutoFlag(
      return StatusFromPB(resp.error().status());
     }
     if (!resp.flag_demoted()) {
-     std::cout << "AutoFlag " << flag_name << " from process " << process_name
-               << " was not demoted. Either the flag does not exist or it is not promoted"
-               << std::endl;
-     std::cout << "Current config version: " << resp.new_config_version() << std::endl;
-     return Status::OK();
+      std::cout << "Unable to demote AutoFlag " << flag_name << " from process " << process_name
+                << " because the flag is not in promoted state" << std::endl;
+      std::cout << "Current config version: " << resp.new_config_version() << std::endl;
+      return Status::OK();
     }
 
     std::cout << "AutoFlag " << flag_name << " from process " << process_name

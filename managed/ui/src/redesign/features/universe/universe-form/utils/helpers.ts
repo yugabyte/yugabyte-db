@@ -67,12 +67,12 @@ export const createErrorMessage = (payload: any) => {
     if (typeof structuredError == 'string') {
       return structuredError;
     }
-    const message = Object.keys(structuredError)
-      .map((fieldName) => {
+    const message = (Object.keys(structuredError)
+      ?.map((fieldName) => {
         const messages = structuredError[fieldName];
-        return fieldName + ': ' + messages.join(', ');
+        return fieldName + ': ' + (messages?.join(', ') ?? '');
       })
-      .join('\n');
+      ?.join('\n')) ?? 'Something went wrong. Please try again';
     return message;
   }
   return payload.message;
@@ -215,7 +215,7 @@ export const getFormData = (universeData: UniverseDetails, clusterType: ClusterT
     data.instanceConfig.masterDeviceInfo = userIntent.masterDeviceInfo;
   }
 
-   if (
+  if (
     data.cloudConfig.provider?.code === CloudType.kubernetes &&
     data.cloudConfig.masterPlacement === MasterPlacementMode.DEDICATED
   ) {
@@ -367,11 +367,6 @@ export const createUniverse = async ({
 
     //redirect to task page
     response?.universeUUID && transitToUniverse(response.universeUUID);
-    
-    setTimeout(()=>{
-      window.location.reload();
-    }, 2000);
-
     return response;
   } catch (error) {
     console.error(error);

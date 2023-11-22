@@ -441,7 +441,12 @@ IsYBReadCommitted()
 	static int cached_value = -1;
 	if (cached_value == -1)
 	{
+
+#ifdef NDEBUG
 		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_yb_enable_read_committed_isolation", false);
+#else
+		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_yb_enable_read_committed_isolation", true);
+#endif
 	}
 	return IsYugaByteEnabled() && cached_value &&
 				 (XactIsoLevel == XACT_READ_COMMITTED || XactIsoLevel == XACT_READ_UNCOMMITTED);
@@ -1261,6 +1266,7 @@ bool yb_disable_wait_for_backends_catalog_version = false;
 bool yb_enable_base_scans_cost_model = false;
 int yb_wait_for_backends_catalog_version_timeout = 5 * 60 * 1000;	/* 5 min */
 bool yb_prefer_bnl = false;
+bool yb_explain_hide_non_deterministic_fields = false;
 
 //------------------------------------------------------------------------------
 // YB Debug utils.
@@ -1280,6 +1286,8 @@ char *yb_test_block_index_phase = "";
 char *yb_test_fail_index_state_change = "";
 
 bool ddl_rollback_enabled = false;
+
+bool yb_silence_advisory_locks_not_supported_error = false;
 
 const char*
 YBDatumToString(Datum datum, Oid typid)

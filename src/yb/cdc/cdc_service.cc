@@ -182,7 +182,7 @@ DECLARE_int32(rpc_workers_limit);
 
 DECLARE_int64(cdc_intent_retention_ms);
 
-DECLARE_bool(ysql_yb_enable_replication_commands);
+DECLARE_bool(TEST_ysql_yb_enable_replication_commands);
 
 METRIC_DEFINE_entity(cdc);
 
@@ -972,17 +972,22 @@ Status CDCServiceImpl::CreateCDCStreamForNamespace(
 
   // Forward request to master directly since we support creating CDCSDK stream for a namespace
   // atomically in master now.
-  if (FLAGS_ysql_yb_enable_replication_commands) {
-    xrepl::StreamId db_stream_id = VERIFY_RESULT_OR_SET_CODE(
-        client()->CreateCDCSDKStreamForNamespace(ns_id, options),
-        CDCError(CDCErrorPB::INTERNAL_ERROR));
-    resp->set_db_stream_id(db_stream_id.ToString());
-    return Status::OK();
-  } else {
-    return STATUS(
-        ServiceUnavailable, "Creating a CDC stream is disallowed during an upgrade",
-        CDCError(CDCErrorPB::OPERATION_DISALLOWED));
+  // If FLAGS_TEST_ysql_yb_enable_replication_commands, populate the namespace id in the newly added
+  // namespace_id field, otherwise use the table_id as done before.
+  bool populate_namespace_id_as_table_id = !FLAGS_TEST_ysql_yb_enable_replication_commands;
+
+  // Consistent Snapshot option
+  std::optional<CDCSDKSnapshotOption> snapshot_option = std::nullopt;
+  if (req->has_cdcsdk_consistent_snapshot_option()) {
+     snapshot_option = req->cdcsdk_consistent_snapshot_option();
   }
+
+  xrepl::StreamId db_stream_id = VERIFY_RESULT_OR_SET_CODE(
+      client()->CreateCDCSDKStreamForNamespace(ns_id, options, populate_namespace_id_as_table_id,
+                                               ReplicationSlotName(""), snapshot_option),
+      CDCError(CDCErrorPB::INTERNAL_ERROR));
+  resp->set_db_stream_id(db_stream_id.ToString());
+  return Status::OK();
 }
 
 void CDCServiceImpl::CreateCDCStream(

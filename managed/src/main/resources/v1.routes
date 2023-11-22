@@ -390,7 +390,7 @@ POST    /customers/:cUUID/universes/:uniUUID/upgrade/reboot                    c
 POST    /customers/:cUUID/universes/:uniUUID/audit_log_config                  com.yugabyte.yw.controllers.UpgradeUniverseController.modifyAuditLogging(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 
 # Table Management API
-GET     /customers/:cUUID/universes/:uniUUID/tables                            com.yugabyte.yw.controllers.TablesController.listTables(cUUID: java.util.UUID, uniUUID: java.util.UUID, includeParentTableInfo: java.lang.Boolean ?= false, excludeColocatedTables: java.lang.Boolean ?= false, includeColocatedParentTables: java.lang.Boolean ?= false)
+GET     /customers/:cUUID/universes/:uniUUID/tables                            com.yugabyte.yw.controllers.TablesController.listTables(cUUID: java.util.UUID, uniUUID: java.util.UUID, includeParentTableInfo: java.lang.Boolean ?= false, excludeColocatedTables: java.lang.Boolean ?= false, includeColocatedParentTables: java.lang.Boolean ?= false, xClusterSupportedOnly: java.lang.Boolean ?= false)
 GET     /customers/:cUUID/universes/:uniUUID/namespaces                        com.yugabyte.yw.controllers.TablesController.listNamespaces(cUUID: java.util.UUID, uniUUID: java.util.UUID, includeSystemNamespaces: java.lang.Boolean ?= false)
 POST    /customers/:cUUID/universes/:uniUUID/tables                            com.yugabyte.yw.controllers.TablesController.create(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 GET     /customers/:cUUID/universes/:uniUUID/tables/:tableUUID                 com.yugabyte.yw.controllers.TablesController.describe(cUUID: java.util.UUID, uniUUID: java.util.UUID, tableUUID: java.util.UUID)

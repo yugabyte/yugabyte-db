@@ -27,6 +27,7 @@ import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.BackupPreflightValidate;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BackupTable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BackupTableYb;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BackupTableYbc;
@@ -68,6 +69,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.RebootServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResetUniverseVersion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreBackupYb;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreBackupYbc;
+import com.yugabyte.yw.commissioner.tasks.subtasks.RestorePreflightValidate;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeys;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeysYb;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeysYbc;
@@ -137,7 +139,6 @@ import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupNodeRetriever;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
-import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
@@ -150,8 +151,6 @@ import com.yugabyte.yw.forms.DrConfigTaskParams;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
-import com.yugabyte.yw.forms.RestorePreflightParams;
-import com.yugabyte.yw.forms.RestorePreflightResponse;
 import com.yugabyte.yw.forms.RestoreSnapshotScheduleParams;
 import com.yugabyte.yw.forms.TableInfoForm.NamespaceInfoResp;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -277,7 +276,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.RestartUniverse,
           TaskType.RebootNodeInUniverse,
           TaskType.VMImageUpgrade,
-          TaskType.ThirdpartySoftwareUpgrade);
+          TaskType.ThirdpartySoftwareUpgrade,
+          TaskType.CertsRotate);
 
   // Tasks that are allowed to run if cluster placement modification task failed.
   protected static final Set<TaskType> SAFE_TO_RUN_IF_UNIVERSE_BROKEN =
@@ -294,7 +294,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.RestartXClusterConfig,
           TaskType.SyncXClusterConfig,
           TaskType.DestroyUniverse,
-          TaskType.DestroyKubernetesUniverse);
+          TaskType.DestroyKubernetesUniverse,
+          TaskType.ReinstallNodeAgent);
 
   protected static final Set<TaskType> SOFTWARE_UPGRADE_ROLLBACK_TASKS =
       ImmutableSet.of(TaskType.RollbackKubernetesUpgrade, TaskType.RollbackUpgrade);
@@ -989,6 +990,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.enableYCQL = userIntent.enableYCQL;
     params.enableYCQLAuth = userIntent.enableYCQLAuth;
     params.enableYSQLAuth = userIntent.enableYSQLAuth;
+    params.auditLogConfig = userIntent.auditLogConfig;
 
     // The software package to install for this cluster.
     params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
@@ -1503,6 +1505,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   public SubTaskGroup createInstallNodeAgentTasks(
       Collection<NodeDetails> nodes, boolean reinstall) {
+    Map<UUID, Provider> nodeUuidProviderMap = new HashMap<>();
     SubTaskGroup subTaskGroup = createSubTaskGroup(InstallNodeAgent.class.getSimpleName());
     int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
     Universe universe = getUniverse();
@@ -1511,6 +1514,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         .forEach(
             n -> {
               InstallNodeAgent.Params params = new InstallNodeAgent.Params();
+              Provider provider =
+                  nodeUuidProviderMap.computeIfAbsent(
+                      n.placementUuid,
+                      k -> {
+                        Cluster cluster = universe.getCluster(n.placementUuid);
+                        return Provider.getOrBadRequest(
+                            UUID.fromString(cluster.userIntent.provider));
+                      });
+              params.airgap = provider.getAirGapInstall();
               params.nodeName = n.nodeName;
               params.customerUuid = customer.getUuid();
               params.azUuid = n.azUuid;
@@ -2779,9 +2791,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       boolean ybcBackup,
       @Nullable Set<String> tablesToBackup) {
     ObjectMapper mapper = new ObjectMapper();
-    BackupTableParams backupTableParams = getBackupTableParams(backupRequestParams, tablesToBackup);
     Universe universe = Universe.getOrBadRequest(backupRequestParams.getUniverseUUID());
+    backupHelper.validateBackupRequest(
+        backupRequestParams.keyspaceTableList, universe, backupRequestParams.backupType);
+    BackupTableParams backupTableParams = getBackupTableParams(backupRequestParams, tablesToBackup);
     CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
+
+    createPreflightValidateBackupTask(backupTableParams, ybcBackup);
 
     if (!ybcBackup) {
       if (cloudType != CloudType.kubernetes) {
@@ -2858,82 +2874,43 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return backup;
   }
 
-  private RestorePreflightResponse getRestorePreflightResponse(RestoreBackupParams restoreParams) {
-    RestorePreflightParams preflightParams = new RestorePreflightParams();
-    preflightParams.setUniverseUUID(taskParams().getUniverseUUID());
-    preflightParams.setStorageConfigUUID(restoreParams.storageConfigUUID);
+  // Save restore category to task params.
+  private void getAndSaveRestoreBackupCategory(
+      RestoreBackupParams restoreParams, TaskInfo taskInfo) {
     Set<String> backupLocations =
         restoreParams.backupStorageInfoList.parallelStream()
             .map(bSI -> bSI.storageLocation)
             .collect(Collectors.toSet());
-    preflightParams.setBackupLocations(backupLocations);
-
-    return backupHelper.restorePreflightWithoutBackupObject(
-        restoreParams.customerUUID, preflightParams, false);
-  }
-
-  // Save restore category to task params.
-  private void saveRestoreBackupCategory(
-      RestoreBackupParams restoreParams, BackupCategory bCategory, TaskInfo taskInfo) {
-    restoreParams.category = bCategory;
+    boolean isYbc =
+        backupHelper.checkFileExistsOnBackupLocation(
+            restoreParams.storageConfigUUID,
+            restoreParams.customerUUID,
+            backupLocations,
+            restoreParams.getUniverseUUID(),
+            YbcBackupUtil.YBC_SUCCESS_MARKER_FILE_NAME,
+            true);
+    restoreParams.category = isYbc ? BackupCategory.YB_CONTROLLER : BackupCategory.YB_BACKUP_SCRIPT;
     // Update task params for this
     ObjectMapper mapper = new ObjectMapper();
     taskInfo.setDetails(mapper.valueToTree(restoreParams));
     taskInfo.save();
   }
 
-  private void restoreActionPreflightCheck(RestoreBackupParams restoreParams, TaskInfo taskInfo) {
-    RestorePreflightResponse preflightResponse = getRestorePreflightResponse(restoreParams);
-
-    saveRestoreBackupCategory(restoreParams, preflightResponse.getBackupCategory(), taskInfo);
-    restoreParams.setSuccessMarkerMap(preflightResponse.getSuccessMarkerMap());
-    // Validate common validation points like backup category, KMS, Table type etc.
-    BackupUtil.validateRestoreActionUsingBackupMetadata(restoreParams, preflightResponse);
-
-    // TODO: Arjav garg: Validate on each cloud dir of YBC backup location( READ, LIST )
-    if (restoreParams.category.equals(BackupCategory.YB_CONTROLLER)) {
-      backupHelper.validateStorageConfigForYbcRestoreTask(
-          restoreParams.storageConfigUUID,
-          restoreParams.customerUUID,
-          restoreParams.getUniverseUUID(),
-          preflightResponse.getSuccessMarkerMap().values());
-    }
-    // For first try( i.e. non-retries ) validate overwrite.
-    if (shouldValidateRestoreOverwrite(restoreParams, taskInfo.getTaskType())) {
-      // Verify non-repetitive restore request.
-      Map<TableType, Map<String, Set<String>>> mapToRestore =
-          YbcBackupUtil.generateMapToRestoreNonRedisYBC(
-              restoreParams.backupStorageInfoList, preflightResponse.getPerLocationBackupInfoMap());
-
-      backupHelper.validateMapToRestoreWithUniverseNonRedisYBC(
-          taskParams().getUniverseUUID(), mapToRestore);
-    }
-  }
-
-  // Return whether restore overwrite should be validated.
-  private boolean shouldValidateRestoreOverwrite(
-      RestoreBackupParams restoreParams, TaskType taskType) {
-    return restoreParams.category.equals(BackupCategory.YB_CONTROLLER)
-        && taskType.equals(TaskType.RestoreBackup)
-        && (isFirstTry()
-            || (restoreParams.currentIdx == 0
-                && StringUtils.isBlank(restoreParams.currentYbcTaskId)));
-  }
-
   protected Restore createAllRestoreSubtasks(
       RestoreBackupParams restoreBackupParams, SubTaskGroupType subTaskGroupType) {
     TaskInfo taskInfo = TaskInfo.getOrBadRequest(getUserTaskUUID());
+    Universe universe = Universe.getOrBadRequest(restoreBackupParams.getUniverseUUID());
 
     // No validation for xcluster type tasks, since the backup
     // itself is used for populating restore task.
     if (taskInfo.getTaskType().equals(TaskType.RestoreBackup)) {
-      restoreActionPreflightCheck(restoreBackupParams, taskInfo);
+      getAndSaveRestoreBackupCategory(restoreBackupParams, taskInfo);
+      createPreflightValidateRestoreTask(restoreBackupParams);
     }
     if (restoreBackupParams.alterLoadBalancer) {
       createLoadBalancerStateChangeTask(false).setSubTaskGroupType(subTaskGroupType);
     }
 
-    Universe universe = Universe.getOrBadRequest(restoreBackupParams.getUniverseUUID());
     CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
     boolean isYbc = restoreBackupParams.category.equals(BackupCategory.YB_CONTROLLER);
 
@@ -2968,11 +2945,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           RestoreBackupParams restoreDataParams =
               new RestoreBackupParams(
                   restoreBackupParams, backupStorageInfo, RestoreBackupParams.ActionType.RESTORE);
-          String backupLocation = restoreDataParams.backupStorageInfoList.get(0).storageLocation;
-          YbcBackupResponse successMarker =
-              restoreBackupParams.getSuccessMarkerMap().getOrDefault(backupLocation, null);
-          createRestoreBackupYbcTask(restoreDataParams, successMarker, idx)
-              .setSubTaskGroupType(subTaskGroupType);
+          createRestoreBackupYbcTask(restoreDataParams, idx).setSubTaskGroupType(subTaskGroupType);
         }
         idx++;
       }
@@ -3108,6 +3081,39 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  public SubTaskGroup createPreflightValidateBackupTask(
+      BackupTableParams backupParams, boolean ybcBackup) {
+    return createPreflightValidateBackupTask(
+        backupParams.storageConfigUUID,
+        backupParams.customerUuid,
+        backupParams.getUniverseUUID(),
+        ybcBackup);
+  }
+
+  public SubTaskGroup createPreflightValidateBackupTask(
+      UUID storageConfigUUID, UUID customerUUID, UUID universeUUID, boolean ybcBackup) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("BackupPreflightValidate");
+    BackupPreflightValidate task = createTask(BackupPreflightValidate.class);
+    BackupPreflightValidate.Params params =
+        new BackupPreflightValidate.Params(
+            storageConfigUUID, customerUUID, universeUUID, ybcBackup);
+    task.initialize(params);
+    task.setUserTaskUUID(getUserTaskUUID());
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createPreflightValidateRestoreTask(RestoreBackupParams restoreParams) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("RestorePreflightValidate");
+    RestorePreflightValidate task = createTask(RestorePreflightValidate.class);
+    task.initialize(restoreParams);
+    task.setUserTaskUUID(getUserTaskUUID());
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
   public SubTaskGroup createTableBackupTasksYbc(
       BackupTableParams backupParams, int parallelDBBackups) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("BackupTableYbc");
@@ -3153,13 +3159,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
-  public SubTaskGroup createRestoreBackupYbcTask(
-      RestoreBackupParams taskParams, YbcBackupResponse successMarker, int index) {
+  public SubTaskGroup createRestoreBackupYbcTask(RestoreBackupParams taskParams, int index) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("RestoreBackupYbc");
     RestoreBackupYbc task = createTask(RestoreBackupYbc.class);
     RestoreBackupYbc.Params restoreParams = new RestoreBackupYbc.Params(taskParams);
     restoreParams.index = index;
-    restoreParams.setSuccessMarker(successMarker);
     task.initialize(restoreParams);
     task.setUserTaskUUID(getUserTaskUUID());
     subTaskGroup.addSubTask(task);
@@ -3852,46 +3856,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
-  }
-
-  public void createConfigureUniverseTasks(Cluster primaryCluster) {
-    // Wait for a Master Leader to be elected.
-    createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-    // Persist the placement info into the YB master leader.
-    createPlacementInfoTask(null /* blacklistNodes */)
-        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-    // Manage encryption at rest
-    SubTaskGroup manageEncryptionKeyTask = createManageEncryptionAtRestTask();
-    if (manageEncryptionKeyTask != null) {
-      manageEncryptionKeyTask.setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-    }
-
-    // Wait for a master leader to hear from all the tservers.
-    createWaitForTServerHeartBeatsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-    // Update the DNS entry for all the nodes once, using the primary cluster type.
-    createDnsManipulationTask(DnsManager.DnsCommandType.Create, false, primaryCluster)
-        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-    // Update the swamper target file.
-    createSwamperTargetUpdateTask(false /* removeFile */);
-
-    // Create alert definitions.
-    createUnivCreateAlertDefinitionsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-    // Create default redis table.
-    checkAndCreateRedisTableTask(primaryCluster);
-
-    // Create read write test table tasks.
-    checkAndCreateReadWriteTestTableTask(primaryCluster);
-
-    // Change admin password for Admin user, as specified.
-    checkAndCreateChangeAdminPasswordTask(primaryCluster);
-
-    // Marks the update of this universe as a success only if all the tasks before it succeeded.
-    createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 
   // Check if the node present in taskParams has a backing instance alive on the IaaS.

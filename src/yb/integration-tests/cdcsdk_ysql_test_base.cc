@@ -1822,6 +1822,22 @@ namespace cdc {
     return Status::OK();
   }
 
+  Status CDCSDKYsqlTest::StepDownLeader(size_t new_leader_index, const TabletId tablet_id) {
+    Status status = yb_admin_client_->SetLoadBalancerEnabled(false);
+    if (!status.ok()) {
+      return status;
+    }
+
+    status = yb_admin_client_->LeaderStepDownWithNewLeader(
+        tablet_id,
+        test_cluster()->mini_tablet_server(new_leader_index)->server()->permanent_uuid());
+    if (!status.ok()) {
+      return status;
+    }
+    SleepFor(MonoDelta::FromMilliseconds(500));
+    return Status::OK();
+  }
+
   Status CDCSDKYsqlTest::CreateSnapshot(const NamespaceName& ns) {
     string tool_path = GetToolPath("../bin", "yb-admin");
     vector<string> argv;
@@ -2682,14 +2698,14 @@ namespace cdc {
     size_t first_leader_index = -1;
     size_t first_follower_index = -1;
     GetTabletLeaderAndAnyFollowerIndex(tablets, &first_leader_index, &first_follower_index);
+    StartYbAdminClient();
     if (first_leader_index == 0) {
       // We want to avoid the scenario where the first TServer is the leader, since we want to shut
       // the leader TServer down and call GetChanges. GetChanges will be called on the cdc_proxy
       // based on the first TServer's address and we want to avoid the network issues.
-      ASSERT_OK(ChangeLeaderOfTablet(first_follower_index, tablets[0].tablet_id()));
+      ASSERT_OK(StepDownLeader(first_follower_index, tablets[0].tablet_id()));
     }
-    ASSERT_OK(ChangeLeaderOfTablet(first_follower_index, tablets[0].tablet_id()));
-    SleepFor(MonoDelta::FromSeconds(10));
+    ASSERT_OK(StepDownLeader(first_follower_index, tablets[0].tablet_id()));
 
     // Call GetChanges with new LEADER.
     change_resp =
@@ -2720,9 +2736,9 @@ namespace cdc {
       // We want to avoid the scenario where the first TServer is the leader, since we want to shut
       // the leader TServer down and call GetChanges. GetChanges will be called on the cdc_proxy
       // based on the first TServer's address and we want to avoid the network issues.
-      ASSERT_OK(ChangeLeaderOfTablet(first_follower_index, tablets[0].tablet_id()));
+      ASSERT_OK(StepDownLeader(first_follower_index, tablets[0].tablet_id()));
     }
-    ASSERT_OK(ChangeLeaderOfTablet(first_follower_index, tablets[0].tablet_id()));
+    ASSERT_OK(StepDownLeader(first_follower_index, tablets[0].tablet_id()));
     change_resp =
         ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
     // Validate the columns and insert counts.
@@ -2847,13 +2863,14 @@ namespace cdc {
     size_t first_leader_index = -1;
     size_t first_follower_index = -1;
     GetTabletLeaderAndAnyFollowerIndex(tablets, &first_leader_index, &first_follower_index);
+    StartYbAdminClient();
     if (first_leader_index == 0) {
       // We want to avoid the scenario where the first TServer is the leader, since we want to shut
       // the leader TServer down and call GetChanges. GetChanges will be called on the cdc_proxy
       // based on the first TServer's address and we want to avoid the network issues.
-      ASSERT_OK(ChangeLeaderOfTablet(first_follower_index, tablets[0].tablet_id()));
+      ASSERT_OK(StepDownLeader(first_follower_index, tablets[0].tablet_id()));
     }
-    ASSERT_OK(ChangeLeaderOfTablet(first_follower_index, tablets[0].tablet_id()));
+    ASSERT_OK(StepDownLeader(first_follower_index, tablets[0].tablet_id()));
     change_resp =
         ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
     ValidateColumnCounts(change_resp, 2);

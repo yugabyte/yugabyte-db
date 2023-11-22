@@ -19,7 +19,7 @@ export default class TasksList extends Component {
     return (
       <TaskListTable
         taskList={customerTaskList || []}
-        abortCurrentTask={this.props.abortCurrentTask}
+        abortTask={this.props.abortTask}
         hideTaskAbortModal={this.props.hideTaskAbortModal}
         showTaskAbortModal={this.props.showTaskAbortModal}
         visibleModal={this.props.visibleModal}

@@ -1132,6 +1132,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const PromoteSingleAutoFlagRequestPB* req, PromoteSingleAutoFlagResponsePB* resp);
   Status DemoteSingleAutoFlag(
       const DemoteSingleAutoFlagRequestPB* req, DemoteSingleAutoFlagResponsePB* resp);
+  Status ValidateAutoFlagsConfig(
+      const ValidateAutoFlagsConfigRequestPB* req, ValidateAutoFlagsConfigResponsePB* resp);
 
   Status ReportYsqlDdlTxnStatus(
       const ReportYsqlDdlTxnStatusRequestPB* req,
@@ -1227,6 +1229,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status CreateCDCStream(
       const CreateCDCStreamRequestPB* req, CreateCDCStreamResponsePB* resp, rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
+
+  Status PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(
+    const yb::TabletId& tablet_id,
+    const xrepl::StreamId& cdc_sdk_stream_id,
+    const yb::OpIdPB& safe_opid,
+    const yb::HybridTime& proposed_snapshot_time,
+    const bool require_history_cutoff) override;
 
   // Get the Table schema from system catalog table.
   Status GetTableSchemaFromSysCatalog(
@@ -1389,7 +1398,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status ValidateCDCSDKRequestProperties(
       const CreateCDCStreamRequestPB& req, const std::string& source_type_option_value,
-      const std::string& record_type_option_value);
+      const std::string& record_type_option_value, const std::string& id_type_option_value);
 
   // Process the newly created tables that are relevant to existing CDCSDK streams.
   Status ProcessNewTablesForCDCSDKStreams(
@@ -1776,7 +1785,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                                const AlterTableRequestPB* req = nullptr);
 
   Status SendAlterTableRequestInternal(
-      const scoped_refptr<TableInfo>& table, const TransactionId& txn_id, const LeaderEpoch& epoch);
+      const scoped_refptr<TableInfo>& table, const TransactionId& txn_id, const LeaderEpoch& epoch,
+      const AlterTableRequestPB* req = nullptr);
 
   // Starts the background task to send the SplitTablet RPC to the leader for the specified tablet.
   Status SendSplitTabletRequest(
@@ -2653,10 +2663,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status CreateNewXReplStream(
       const CreateCDCStreamRequestPB& req, CreateNewCDCStreamMode mode,
       const std::vector<TableId>& table_ids, const std::optional<const NamespaceId>& namespace_id,
-      CreateCDCStreamResponsePB* resp, const LeaderEpoch& epoch);
+      CreateCDCStreamResponsePB* resp, const LeaderEpoch& epoch, rpc::RpcContext* rpc);
 
-  Status AddTableIdToCDCStream(const CreateCDCStreamRequestPB& req) EXCLUDES(mutex_);
-
+  Status SetAllCDCSDKRetentionBarriers(
+      const CreateCDCStreamRequestPB& req, rpc::RpcContext* rpc, const LeaderEpoch& epoch,
+      const std::vector<TableId>& table_ids, const xrepl::StreamId& stream_id,
+      const bool has_consistent_snapshot_option, bool require_history_cutoff);
   Status SetWalRetentionForTable(
       const TableId& table_id, rpc::RpcContext* rpc, const LeaderEpoch& epoch);
   Status BackfillMetadataForCDC(
@@ -2998,6 +3010,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const CreateTableRequestPB& req, rpc::RpcContext* rpc, const LeaderEpoch& epoch);
   Status CreateGlobalTransactionStatusTableIfNotPresent(
       rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+
+  Status MaybeRestoreInitialSysCatalogSnapshotAndReloadSysCatalog(SysCatalogLoadingState* state)
+      REQUIRES(mutex_);
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};

@@ -39,6 +39,7 @@ import com.yugabyte.yw.models.HealthCheck.Details;
 import com.yugabyte.yw.models.HealthCheck.Details.NodeData;
 import com.yugabyte.yw.models.MasterInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.extended.DetailsExt;
 import com.yugabyte.yw.models.extended.NodeDataExt;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -90,10 +91,11 @@ public class UniverseInfoController extends AuthenticatedController {
    * @return result of the universe status operation.
    */
   @ApiOperation(
-      value = "Get a universe's status",
+      value = "Available since YBA version 2.2.0.0. Get a universe's status",
       notes = "This will return a Map of node name to its status in json format",
       responseContainer = "Map",
       response = Object.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.2.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -137,12 +139,12 @@ public class UniverseInfoController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Get a resource usage estimate for a universe",
-      hidden = true,
+      value = "Available since YBA version 2.20.0.0. Get a resource usage estimate for a universe",
       notes =
           "Expects UniverseDefinitionTaskParams in request body and calculates the resource "
               + "estimate for NodeDetailsSet in that.",
       response = UniverseResourceDetails.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.20.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -157,15 +159,19 @@ public class UniverseInfoController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Get a cost estimate for a universe",
+      value =
+          "Deprecated since YBA version 2.20.0.0(use /universe_resources). "
+              + "Get a cost estimate for a universe.",
       nickname = "getUniverseCost",
       response = UniverseResourceDetails.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @Deprecated
   public Result universeCost(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
@@ -178,10 +184,13 @@ public class UniverseInfoController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Get a cost estimate for all universes",
+      value =
+          "YbaApi Internal. Get a cost estimate for all universes"
+              + "(Will be removed in next iteration)",
       nickname = "getUniverseCostForAll",
       responseContainer = "List",
       response = UniverseResourceDetails.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.2.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -201,9 +210,10 @@ public class UniverseInfoController extends AuthenticatedController {
    * @return The private IP of the master leader.
    */
   @ApiOperation(
-      value = "Get IP address of a universe's master leader",
+      value = "Available since YBA version 2.2.0.0. Get IP address of a universe's master leader",
       nickname = "getMasterLeaderIP",
       response = Object.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.2.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -220,9 +230,10 @@ public class UniverseInfoController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Get live queries for a universe",
+      value = "Available since YBA version 2.4.0.0. Get live queries for a universe",
       nickname = "getLiveQueries",
       response = Object.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.4.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -245,9 +256,10 @@ public class UniverseInfoController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Get slow queries for a universe",
+      value = "Available since YBA version 2.6.0.0. Get slow queries for a universe",
       nickname = "getSlowQueries",
       response = Object.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.6.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -267,9 +279,10 @@ public class UniverseInfoController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Reset slow queries for a universe",
+      value = "Available since YBA version 2.6.0.0. Reset slow queries for a universe",
       nickname = "resetSlowQueries",
       response = Object.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.6.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -301,7 +314,7 @@ public class UniverseInfoController extends AuthenticatedController {
    * @return result of the checker script
    */
   @ApiOperation(
-      value = "Run a universe health check",
+      value = "Available since YBA version 2.2.0.0. Return results for the last health check",
       notes =
           "Checks the health of all tablet servers and masters in the universe, as well as certain"
               + " conditions on the machines themselves, including disk utilization, presence of"
@@ -309,6 +322,7 @@ public class UniverseInfoController extends AuthenticatedController {
       nickname = "healthCheckUniverse",
       responseContainer = "List",
       response = Details.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.2.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -324,9 +338,10 @@ public class UniverseInfoController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Trigger a universe health check",
+      value = "YbaApi Internal. Trigger a universe health check",
       notes = "Trigger a universe health check and return the trigger time.",
       response = TriggerHealthCheckResult.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.14.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -361,17 +376,19 @@ public class UniverseInfoController extends AuthenticatedController {
    * @return tar file of the tserver and master log files (if the node is a master server).
    */
   @ApiOperation(
-      value = "Download a node's logs",
+      value = "Deprecated since YBA version 2.20.0.0 (use support bundle). Download a node's logs.",
       notes = "Downloads the log files from a given node.",
       nickname = "downloadNodeLogs",
       response = String.class,
       produces = "application/x-compressed")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @Deprecated
   public CompletionStage<Result> downloadNodeLogs(
       UUID customerUUID, UUID universeUUID, String nodeName) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -397,10 +414,11 @@ public class UniverseInfoController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Get master information list",
+      value = "YbaApi Internal. Get master information list",
       nickname = "getMasterInfos",
       response = MasterInfo.class,
       responseContainer = "List")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.16.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =

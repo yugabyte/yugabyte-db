@@ -391,7 +391,7 @@ SELECT * FROM yb_locks_t WHERE k=5 FOR UPDATE;
        "Node Type": "Index Scan",      +
        "Parallel Aware": false,        +
        "Lock Type": "FOR UPDATE",      +
-       "Scan Direction": "Forward",    +
+       "Scan Direction": "NoMovement", +
        "Index Name": "yb_locks_t_pkey",+
        "Relation Name": "yb_locks_t",  +
        "Alias": "yb_locks_t",          +
@@ -457,7 +457,7 @@ EXECUTE yb_locks_plan_rr(1);
            "Parent Relationship": "Outer", +
            "Parallel Aware": false,        +
            "Lock Type": "FOR UPDATE",      +
-           "Scan Direction": "Forward",    +
+           "Scan Direction": "NoMovement", +
            "Index Name": "yb_locks_t_pkey",+
            "Relation Name": "yb_locks_t",  +
            "Alias": "yb_locks_t",          +

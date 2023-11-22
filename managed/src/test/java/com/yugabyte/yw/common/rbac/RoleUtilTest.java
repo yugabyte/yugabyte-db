@@ -119,9 +119,10 @@ public class RoleUtilTest extends FakeDBApplication {
             Arrays.asList(
                 new Permission(ResourceType.UNIVERSE, Action.DELETE),
                 new Permission(ResourceType.UNIVERSE, Action.DELETE),
+                new Permission(ResourceType.OTHER, Action.READ),
                 new Permission(ResourceType.UNIVERSE, Action.READ))));
     Role roleUpdated = Role.getOrBadRequest(customer.getUuid(), role.getRoleUUID());
-    assertEquals(2, roleUpdated.getPermissionDetails().getPermissionList().size());
+    assertEquals(3, roleUpdated.getPermissionDetails().getPermissionList().size());
     assertNotEquals(roleUpdated.getCreatedOn(), roleUpdated.getUpdatedOn());
     assertEquals(0, RoleBinding.getAll().size());
   }
@@ -168,9 +169,10 @@ public class RoleUtilTest extends FakeDBApplication {
             new HashSet<>(
                 Arrays.asList(
                     new Permission(ResourceType.UNIVERSE, Action.READ),
+                    new Permission(ResourceType.OTHER, Action.READ),
                     new Permission(ResourceType.UNIVERSE, Action.UPDATE))));
     assertNotNull(role.getRoleUUID());
-    assertEquals(2, role.getPermissionDetails().getPermissionList().size());
+    assertEquals(3, role.getPermissionDetails().getPermissionList().size());
     assertEquals(0, RoleBinding.getAll().size());
 
     // Create a user with role bindings.
@@ -181,7 +183,12 @@ public class RoleUtilTest extends FakeDBApplication {
             .resourceType(ResourceType.UNIVERSE)
             .resourceUUIDSet(new HashSet<>(Arrays.asList(universe.getUniverseUUID())))
             .build();
-    ResourceGroup rg1 = new ResourceGroup(new HashSet<>(Arrays.asList(rd1)));
+    ResourceDefinition rd2 =
+        ResourceDefinition.builder()
+            .resourceType(ResourceType.OTHER)
+            .resourceUUIDSet(new HashSet<>(Arrays.asList(customer.getUuid())))
+            .build();
+    ResourceGroup rg1 = new ResourceGroup(new HashSet<>(Arrays.asList(rd1, rd2)));
     RoleBinding roleBinding =
         roleBindingUtil.createRoleBinding(
             user.getUuid(), role.getRoleUUID(), RoleBindingType.Custom, rg1);
@@ -196,13 +203,14 @@ public class RoleUtilTest extends FakeDBApplication {
             Arrays.asList(
                 new Permission(ResourceType.UNIVERSE, Action.CREATE),
                 new Permission(ResourceType.OTHER, Action.READ),
+                new Permission(ResourceType.ROLE, Action.READ),
                 new Permission(ResourceType.UNIVERSE, Action.READ),
                 new Permission(ResourceType.UNIVERSE, Action.UPDATE))));
     Role roleUpdated = Role.getOrBadRequest(customer.getUuid(), role.getRoleUUID());
-    assertEquals(4, roleUpdated.getPermissionDetails().getPermissionList().size());
+    assertEquals(5, roleUpdated.getPermissionDetails().getPermissionList().size());
     assertEquals(1, RoleBinding.getAll().size());
     assertEquals(
-        2, RoleBinding.getAll().get(0).getResourceGroup().getResourceDefinitionSet().size());
+        3, RoleBinding.getAll().get(0).getResourceGroup().getResourceDefinitionSet().size());
     ResourceDefinition expectedRD1 =
         ResourceDefinition.builder().resourceType(ResourceType.UNIVERSE).allowAll(true).build();
     ResourceDefinition expectedRD2 =
@@ -211,8 +219,10 @@ public class RoleUtilTest extends FakeDBApplication {
             .allowAll(false)
             .resourceUUIDSet(new HashSet<>(Arrays.asList(customer.getUuid())))
             .build();
+    ResourceDefinition expectedRD3 =
+        ResourceDefinition.builder().resourceType(ResourceType.ROLE).allowAll(true).build();
     ResourceGroup expectedRG1 =
-        new ResourceGroup(new HashSet<>(Arrays.asList(expectedRD1, expectedRD2)));
+        new ResourceGroup(new HashSet<>(Arrays.asList(expectedRD1, expectedRD2, expectedRD3)));
     assertEquals(expectedRG1, RoleBinding.get(roleBinding.getUuid()).getResourceGroup());
   }
 }

@@ -147,5 +147,7 @@ struct SharedExchangeMessage {
   size_t size;
 };
 
+constexpr size_t kTooBigResponseMask = 1ULL << 63;
+
 }  // namespace tserver
 }  // namespace yb

@@ -696,20 +696,9 @@
               },
               "configureBootstrap": {
                 "instruction": "3. Configure bootstrap.",
-                "submitButton": "Next: Configure RPO",
-                "backupStorageConfig": "Select the backup storage config to use for bootstrapping.",
-                "parallelThreads": "Parallel threads",
-                "bootstrapOffPeakNote": "Note: We recommend setting up Disaster Recovery during off-peak hours if bootstrap is required."
-              },
-              "configureRpo": {
-                "instruction": "4. Configure RPO threshold to receive alerts.",
                 "submitButton": "Set up and Enable Disaster Recovery",
-                "rpo": "Recovery Point Objective (RPO)",
-                "duration": {
-                  "second": "Second",
-                  "minute": "Minute",
-                  "hour": "Hour"
-                }
+                "backupStorageConfig": "Select the backup storage config to use for bootstrapping.",
+                "bootstrapOffPeakNote": "Note: We recommend setting up Disaster Recovery during off-peak hours if bootstrap is required."
               }
             },
             "error": {
@@ -862,6 +851,23 @@
           },
           "success": {
             "taskSuccess": "Reconciled xCluster config with DB."
+          }
+        },
+        "restartReplicationModal": {
+          "title": "Restart Replication",
+          "step": {
+            "selectTables": {
+              "instruction": "1. Select the tables you want to restart replication for.",
+              "submitButton": "Next: Configure boostrap"
+            },
+            "configureBootstrap": {
+              "instruction": "2. Configure bootstrap.",
+              "submitButton": "Restart Replication"
+            }
+          },
+          "error": {
+            "requestFailure": "Restart replication request failed.",
+            "taskFailure": "Restart replication task failed."
           }
         }
       },
@@ -1255,7 +1261,7 @@
           "createUser": "Create User",
           "search": "Search by user email",
           "table": {
-            "email": "User Email",
+            "email": "Username/Email",
             "role": "Role",
             "moreRoles": "+ {{count}} More",
             "connectOnly": "Connect Only (Default)",

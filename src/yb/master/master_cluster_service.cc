@@ -386,6 +386,7 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
     (RollbackAutoFlags)
     (PromoteSingleAutoFlag)
     (DemoteSingleAutoFlag)
+    (ValidateAutoFlagsConfig)
   )
 
   MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(XClusterManager,

@@ -75,7 +75,10 @@ Status EnsureDupKeyError(Status status, const std::string& constraint_name) {
 // The test checks that multiple writes into single table with single tablet
 // are performed with single RPC. Multiple scenarios are checked.
 TEST_F(PgOpBufferingTest, GeneralOptimization) {
-  auto conn = ASSERT_RESULT(Connect());
+  // TODO(#18566): In READ COMMITTED we flush buffered operations for each PL/PGSQL statement, so
+  //               there won't be any batching.
+  auto conn =
+      ASSERT_RESULT(SetDefaultTransactionIsolation(Connect(), IsolationLevel::SNAPSHOT_ISOLATION));
   ASSERT_OK(CreateTable(&conn));
 
   const auto series_insert_rpc_count = ASSERT_RESULT(write_rpc_watcher_->Delta([&conn]() {
@@ -131,7 +134,10 @@ TEST_F(PgOpBufferingTest, GeneralOptimization) {
 // The test checks that buffering mechanism splits operations into batches with respect to
 // 'ysql_session_max_batch_size' configuration parameter. This parameter can be changed via GUC.
 TEST_F(PgOpBufferingTest, MaxBatchSize) {
-  auto conn = ASSERT_RESULT(Connect());
+  // TODO(#18566): In READ COMMITTED we flush buffered operations for each PL/PGSQL statement, so
+  //               there won't be any batching.
+  auto conn =
+      ASSERT_RESULT(SetDefaultTransactionIsolation(Connect(), IsolationLevel::SNAPSHOT_ISOLATION));
   ASSERT_OK(CreateTable(&conn));
   const size_t max_batch_size = 10;
   const size_t max_insert_count = max_batch_size * 3;
@@ -186,13 +192,24 @@ TEST_F(PgOpBufferingTest, ConflictingOps) {
             kTable),
         PKConstraintName(kTable));
   }));
-  ASSERT_EQ(write_rpc_count, 2);
+  //
+  // TODO: In READ COMMITTED we flush buffered operations for each PL/PGSQL statement, so there
+  //       won't be any batching. This is added here intentionally so that this test starts failing
+  //       as soon as we resolve #18566. Enable read committed on all tests in this file, and remove
+  //       this this as soon as we resolve #18566
+  if (ASSERT_RESULT(EffectiveIsolationLevel(&conn)) == IsolationLevel::READ_COMMITTED)
+    ASSERT_EQ(write_rpc_count, 3);
+  else
+    ASSERT_EQ(write_rpc_count, 2);
 }
 
 // The test checks that the 'duplicate key value violates unique constraint' error is correctly
 // handled for buffered operations. In the test row with existing ybctid is used (conflict by PK).
 TEST_F(PgOpBufferingTest, PKConstraintConflict) {
-  auto conn = ASSERT_RESULT(Connect());
+  // TODO(#18566): In READ COMMITTED we flush buffered operations for each PL/PGSQL statement, so
+  //               there won't be any batching.
+  auto conn =
+      ASSERT_RESULT(SetDefaultTransactionIsolation(Connect(), IsolationLevel::SNAPSHOT_ISOLATION));
   ASSERT_OK(CreateTable(&conn));
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES(1)", kTable));
   const auto write_rpc_count = ASSERT_RESULT(write_rpc_watcher_->Delta([&conn]() {
