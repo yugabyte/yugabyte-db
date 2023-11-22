@@ -8,6 +8,8 @@ menu:
     identifier: voyager-export-data
     parent: data-migration
     weight: 20
+aliases:
+  - /preview/yugabyte-voyager/reference/fall-forward/fall-forward-synchronize/
 type: docs
 ---
 
@@ -16,6 +18,7 @@ The following page describes the following export commands:
 - [export data](#export-data)
 - [export data status](#export-data-status)
 - [get data-migration-report](#get-data-migration-report-live-migrations-only)
+- [export data from target](#export-data-from-target)
 
 ## export data
 
@@ -37,7 +40,7 @@ Syntax for export data from source is as follows:
 Usage: yb-voyager export data from source [ <arguments> ... ]
 ```
 
-#### Arguments
+### Arguments
 
 The valid *arguments* for export data are described in the following table:
 
@@ -74,7 +77,6 @@ The valid *arguments* for export data are described in the following table:
 | --exclude-table-list <tableNames> | Comma-separated list of the tables for which data needs to be excluded during export. Table names follow the same convention as `--table-list`. <br> This argument is unsupported for live migration. |
 | --table-list-file-path | Path of the file containing the list of table names (comma-separated or line-separated) to export. Table names use the same convention as `--table-list`. |
 | --exclude-table-list-file-path | Path of the file containing the list of table names (comma-separated or line-separated) to exclude while exporting data. Table names follow the same convention as `--table-list`. |
-| --verbose | Display extra information in the output. <br>Default: false <br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -y, --yes | Answer yes to all prompts during the export schema operation. <br>Default: false |
 
 ### Example
@@ -120,7 +122,7 @@ For offline migration, get the status report of an ongoing or completed data exp
 Usage: yb-voyager export data status [ <arguments> ... ]
 ```
 
-#### Arguments
+### Arguments
 
 The valid *arguments* for export data status are described in the following table:
 
@@ -135,7 +137,7 @@ The valid *arguments* for export data status are described in the following tabl
 yb-voyager export data status --export-dir /dir/export-dir
 ```
 
-## get data-migration-report (Live migrations only)
+## get data-migration-report
 
 Provides a consolidated report of data migration per table among all the databases involved in the live migration. The report includes the number of rows exported, the number of rows imported, change events exported and imported (INSERTS, UPDATES, and DELETES), and the final row count on the database.
 
@@ -145,7 +147,7 @@ Provides a consolidated report of data migration per table among all the databas
 Usage: yb-voyager get data-migration-report [ <arguments> ... ]
 ```
 
-#### Arguments
+### Arguments
 
 The valid *arguments* for get data-migration-report are described in the following table:
 
@@ -163,4 +165,38 @@ The valid *arguments* for get data-migration-report are described in the followi
 
 ```sh
 yb-voyager get data-migration-report --export-dir /dir/export-dir
+```
+
+## export data from target
+
+Exports new changes from the target YugabyteDB database to import to the source database (for fall-back migration)source-replica database (for fall-forward migration) so that the source/source-replica database can be in sync with the YugabyteDB database after cutover.
+
+## Syntax
+
+```text
+Usage: yb-voyager export data from target [ <arguments> ... ]
+```
+
+### Arguments
+
+The valid *arguments* for export data from target are described in the following table:
+
+| Argument | Description/valid options |
+| :------- | :------------------------ |
+| --disable-pb | Use this argument to disable progress bar during data export and printing statistics during the streaming phase. (default false).<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --exclude-table-list <tableNames> | Comma-separated list of tables to exclude while exporting data. <br> Table names can include glob wildcard characters `?` (matches one character) and `*` (matches zero or more characters). In case the table names are case sensitive, double-quote them. For example, `--exclude-table-list 'orders,"Products",items'`. |
+| --exclude-table-list-file-path | Path of the file containing comma-separated list of table names to exclude while exporting data. |
+| -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
+| -h, --help | Command line help for synchronize. |
+| --send-diagnostics | Enable or disable sending [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --table-list | Comma-separated list of the table names to export data. Table names can include glob wildcard characters `?` (matches one character) and `*` (matches zero or more characters). In case the table names are case sensitive, double-quote them. For example `--table-list 'orders,"Products",items'`. |
+| --table-list-file-path | Path to the file containing comma-separated list of table names to export data. |
+| --target-db-password <password>| Password to connect to the target YugabyteDB server. Alternatively, you can also specify the password by setting the environment variable `TARGET_DB_PASSWORD`. If you don't provide a password via the CLI, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. |
+| -y, --yes | Answer yes to all prompts during the export schema operation. <br>Default: false |
+
+### Example
+
+```sh
+yb-voyager export data from target --export-dir /dir/export-dir \
+        --target-db-password 'password' \
 ```

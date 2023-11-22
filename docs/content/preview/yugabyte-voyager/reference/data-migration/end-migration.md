@@ -12,13 +12,13 @@ type: docs
 
 Cleans up all the migration-related information and metadata stored in the export directory (export-dir) and databases (source, target, and source-replica). The command also provides an option to back up the schema, data, migration reports and log files.
 
-### Syntax
+## Syntax
 
 ```text
 Usage: yb-voyager end migration [ <arguments> ... ]
 ```
 
-#### Arguments
+### Arguments
 
 The valid *arguments* for end migration are described in the following table:
 

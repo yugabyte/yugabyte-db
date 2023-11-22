@@ -56,10 +56,9 @@ The valid *arguments* for import schema are described in the following table:
 | [--target-ssl-crl](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
 | [--target-ssl-mode](../../yb-voyager-cli/#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
 | [--target-ssl-root-cert](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
-| --verbose | Display extra information in the output. <br>Default: false <br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -y, --yes | Answer yes to all prompts during the export schema operation. <br>Default: false |
 
-## Examples
+### Examples
 
 ```sh
 yb-voyager import schema --export-dir /dir/export-dir \

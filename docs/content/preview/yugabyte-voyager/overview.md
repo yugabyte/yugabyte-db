@@ -34,7 +34,7 @@ YugabyteDB Voyager has the following features:
 - In case of failures, data import can be resumed.
 - Parallelism of data across tables.
 - Support for direct data import from CSV or TEXT format files present on local disk or on any cloud storage.
-- Live migration with fall-forward is supported for Oracle (Tech Preview).
+- Live migration with fall-forward and fall-back is supported for Oracle.{{<badge/tp>}}
 
 ## Migration types
 
@@ -42,7 +42,8 @@ You can perform migration by choosing one of the following options:
 
 - [Offline migration](../migrate/migrate-steps/) - Take your applications offline to perform the migration.
 - [Live migration](../migrate/live-migrate/) {{<badge/tp>}} - Migrate your data while your application is running (currently Oracle only).
-- [Live migration with fall-forward](../migrate/live-fall-forward/) {{<badge/tp>}} - Add a fall-forward database for your live migration (currently Oracle only).
+- [Live migration with fall-forward](../migrate/live-fall-forward/) {{<badge/tp>}} - Fall forward to the source-replica database for your live migration (currently Oracle only).
+- [Live migration with fall-back](../migrate/live-fall-back/) {{<badge/tp>}} - Fall back to the source database for your live migration (currently Oracle only).
 
 ## Source databases
 
@@ -62,4 +63,4 @@ The following table shows the target database support for each migration type.
 | :------------- | :--------------------------- | ------------------ |
 | Offline | v2.16<br>v2.18<br>v2.19 | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/)<br>[YugabyteDB Managed](../../yugabyte-cloud/cloud-basics/) |
 | Live | v2.16<br>v2.18<br>v2.19 | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/)<br>[YugabyteDB Managed](../../yugabyte-cloud/cloud-basics/) |
-| Live with fall-forward | v2.18.2.x | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/) |
+| Live with fall-forward <br> Live with fall-back | v2.18.2.x | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/) |

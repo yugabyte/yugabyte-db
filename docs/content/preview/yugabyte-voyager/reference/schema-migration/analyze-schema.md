@@ -29,10 +29,9 @@ The valid *arguments* for analyze schema are described in the following table:
 | -h, --help | Command line help. |
 | --output-format <format> | Format in which the report file is generated. One of `html`, `txt`, `json`, or `xml`. |
 | --send-diagnostics | Enable or disable sending [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
-| --verbose | Display extra information in the output. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -y, --yes | Answer yes to all prompts during the export schema operation. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 
-#### Example
+### Example
 
 ```sh
 yb-voyager analyze-schema --export-dir /dir/export-dir --output-format txt

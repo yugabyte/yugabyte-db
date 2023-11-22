@@ -57,7 +57,7 @@ Create a new database user, and assign the necessary user permissions.
 <div class="tab-content">
   <div id="standalone-oracle" class="tab-pane fade show active" role="tabpanel" aria-labelledby="standalone-oracle-tab">
   {{% includeMarkdown "./standalone-oracle.md" %}}
-<<<<<<< HEAD
+
 1. Create a writer role for the source schema for Voyager to be able to write the changes from the target YugabyteDB database to the source database (in case of a fall-back):
 
    ```sql
@@ -296,7 +296,7 @@ yb-voyager applies the DDL SQL files located in the `$EXPORT_DIR/schema` directo
 
 {{< note title="Importing indexes and triggers" >}}
 
-Because the presence of indexes and triggers can slow down the rate at which data is imported, by default `import schema` does not import indexes and triggers. You should complete the data import without creating indexes and triggers. Only after data import is complete, create indexes and triggers using the `import schema` command with an additional `--post-import-data` flag.
+Because the presence of indexes and triggers can slow down the rate at which data is imported, by default `import schema` does not import indexes (except UNIQUE indexes to avoid any issues during import of schema because of foreign key dependencies on the index) and triggers. You should complete the data import without creating indexes and triggers. Only after data import is complete, create indexes and triggers using the `import schema` command with an additional `--post-import-data` flag.
 
 {{< /note >}}
 
@@ -432,7 +432,6 @@ Perform the following steps as part of the cutover process:
 1. Perform a cutover after the exported events rate ("ingestion rate" in the metrics table) drops to 0 using the following command:
 
     ```sh
-<<<<<<< HEAD
     yb-voyager initiate cutover to target --export-dir <EXPORT_DIR> --prepare-for-fall-back true
     ```
 
@@ -442,10 +441,10 @@ Perform the following steps as part of the cutover process:
 
     1. The initiate cutover to target command stops the export data process, followed by the import data process after it has imported all the events to the target YugabyteDB database.
 
-    1. The [export data from target]() command automatically starts capturing changes from the target YugabyteDB database.
+    1. The [export data from target](../../reference/data-migration/export-data/#export-data-from-target) command automatically starts capturing changes from the target YugabyteDB database.
     Note that the [import data](#import-data) process transforms to a `export data from target` process, so if it gets terminated for any reason, you need to restart the synchronization using the `export data from target` command as suggested in the import data output.
 
-    1. The import data to source command automatically starts applying changes (captured from the target YugabyteDB) back to the source database.
+    1. The [import data to source](../../reference/data-migration/import-data/#import-data-to-source) command automatically starts applying changes (captured from the target YugabyteDB) back to the source database.
     Note that the [export data](#export-data) process transforms to a `export data from target` process, so if it gets terminated for any reason, you need to restart the process using `import data to source` command as suggested in the export data output.
 
 1. Wait for the cutover process to complete. Monitor the status of the cutover process using the following command:
@@ -473,6 +472,20 @@ Perform the following steps as part of the cutover process:
     Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
 
 1. Verify your migration. After the schema and data import is complete, the automated part of the database migration process is considered complete. You should manually run validation queries on both the source and target database to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count of each table.
+
+    {{< warning title = "Caveat associated with rows reported by get data-migration-report" >}}
+
+Suppose you have the following scenario:
+
+- [import data](#import-data) or [import data file](../bulk-data-load/#import-data-files-from-the-local-disk) command fails.
+- To resolve this issue, you delete some of the rows from the split files.
+- After retrying, the import data to target command completes successfully.
+
+In this scenario, the [get data-migration-report](#get data-migration-report) command reports an incorrect imported row count because it doesn't take into account the deleted rows.
+
+For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/yb-voyager/issues/360).
+
+    {{< /warning >}}
 
 1. Disable indexes/triggers and foreign-key/check constraints on the source database to ensure that changes from the target YugabyteDB database can be imported correctly to the source database using the following PLSQL commands on the source schema as a privileged user:
 
@@ -515,7 +528,8 @@ Perform the following steps as part of the cutover process:
     yb-voyager initiate cutover to source --export-dir <EXPORT_DIR>
     ```
 
-    Refer to [initiate cutover to source](../../reference/fall-forward/initiate-cutover-to-source/) for details about the arguments.
+    Refer to [cutover to source](../../reference/cutover-archive/cutover/#cutover-to-source) for details about the arguments.
+
     The `initiate cutover to source` command stops the `export data from target` process, followed by the `import data to source` process after it has imported all the events to the source database.
 
 1. Wait for the cutover process to complete. Monitor the status of the cutover process using the following command:

@@ -31,7 +31,7 @@ At [cutover](#cutover-to-the-target), applications stop writing to the source da
 
 ![After cutover](/images/migrate/after-cutover.png)
 
-Finally, if you need to switch to the source-replica database (because the current YugabyteDB system is not working as expected), you can [cutover to source-replica](#cutover-to-source-replica-optional).
+Finally, if you need to switch to the source-replica database (because the current YugabyteDB system is not working as expected), you can initiate [cutover to source-replica](#cutover-to-source-replica-optional).
 
 ![After initiate cutover to source-replica](/images/migrate/after-fall-fwd-switchover.png)
 
@@ -320,7 +320,7 @@ yb-voyager applies the DDL SQL files located in the `$EXPORT_DIR/schema` directo
 
 {{< note title="Importing indexes and triggers" >}}
 
-Because the presence of indexes and triggers can slow down the rate at which data is imported, by default `import schema` does not import indexes and triggers. You should complete the data import without creating indexes and triggers. Only after data import is complete, create indexes and triggers using the `import schema` command with an additional `--post-import-data` flag.
+Because the presence of indexes and triggers can slow down the rate at which data is imported, by default `import schema` does not import indexes (except UNIQUE indexes to avoid any issues during import of schema because of foreign key dependencies on the index) and triggers. You should complete the data import without creating indexes and triggers. Only after data import is complete, create indexes and triggers using the `import schema` command with an additional `--post-import-data` flag.
 
 {{< /note >}}
 
@@ -329,7 +329,7 @@ Because the presence of indexes and triggers can slow down the rate at which dat
 Manually, set up the source-replica database with the same schema as that of the source database with the following considerations:
 
 - The table names on the source-replica database need to be case insensitive (YB Voyager currently does not support case-sensitivity).
-- Do not create indexes and triggers at the schema setup stage, as it will degrade performance of importing data into the source-replica database. Create them later as described in [initiate cutover to source-replica](#initiate-cutover-to-source-replica-optional).
+- Do not create indexes and triggers at the schema setup stage, as it will degrade performance of importing data into the source-replica database. Create them later as described in [cutover to source-replica](#cutover-to-source-replica-optional).
 
 - Disable foreign key constraints and check constraints on the source-replica database.
 
@@ -396,7 +396,7 @@ yb-voyager import data to target --export-dir <EXPORT_DIR> \
         --parallel-jobs <NUMBER_OF_JOBS>
 ```
 
-Refer to [import data](../../reference/data-migration/import-data/) for details about the arguments.
+Refer to [import data](../../reference/data-migration/import-data/#import-data) for details about the arguments.
 
 For the snapshot exported, yb-voyager splits the data dump files (from the $EXPORT_DIR/data directory) into smaller batches. yb-voyager concurrently ingests the batches such that all nodes of the target YugabyteDB database cluster are used. After the snapshot is imported, a similar approach is employed for the CDC phase, where concurrent batches of change events are applied on the target YugabyteDB database cluster.
 
@@ -458,7 +458,7 @@ yb-voyager import data to source-replica --export-dir <EXPORT-DIR> \
 --parallel-jobs <COUNT>
 ```
 
-Refer to [import data to source-replica](../../reference/fall-forward/import-data-to-source-replica/) for details about the arguments.
+Refer to [import data to source-replica](../../reference/data-migration/import-data/#import-data-to-source-replica) for details about the arguments.
 
 Similar to [import data to target](#import-data-to-target), during fall-forward:
 
@@ -477,7 +477,6 @@ yb-voyager get data-migration-report --export-dir <EXPORT_DIR> \
 ### Archive changes (Optional)
 
 As the migration continuously exports changes on the source database to the `EXPORT-DIR`, disk use continues to grow. To prevent the disk from filling up, you can optionally use the `archive changes` command as follows:
-71c3972d9b5d00c17037c2
 
 ```sh
 yb-voyager archive changes --export-dir <EXPORT-DIR> --move-to <DESTINATION-DIR> --delete
@@ -504,13 +503,13 @@ Perform the following steps as part of the cutover process:
     yb-voyager initiate cutover to target --export-dir <EXPORT_DIR>
     ```
 
-    Refer to [initiate cutover to target](../../reference/cutover-archive/cutover/#initiate-cutover-to-target) for details about the arguments.
+    Refer to [initiate cutover to target](../../reference/cutover-archive/cutover/#cutover-to-target) for details about the arguments.
 
     As part of the cutover process, the following occurs in the background:
 
     1. The initiate cutover to target command stops the export data from source process, followed by the import data to target process after it has imported all the events to the target YugabyteDB database.
 
-    1. The [export data from target](../../reference/fall-forward/export-data-from-target/) command automatically starts synchronizing changes from the target YugabyteDB database to the source-replica database.
+    1. The [export data from target](../../reference/data-migration/export-data/#export-data-from-target) command automatically starts synchronizing changes from the target YugabyteDB database to the source-replica database.
     Note that the [import data to target](#import-data-to-target) process transforms to a `export data from target` process, so if it gets terminated for any reason, you need to restart the synchronization using the `export data from target` command as suggested in the import data to target output.
 
 1. Import indexes and triggers using the `import schema` command with an additional `--post-import-data` flag as follows:
@@ -561,7 +560,7 @@ Perform the following steps as part of the cutover process:
     yb-voyager initiate cutover to source-replica --export-dir <EXPORT_DIR>
     ```
 
-    Refer to [initiate cutover to source-replica](../../reference/fall-forward/initiate-cutover-to-source-replica/) for details about the arguments.
+    Refer to [cutover to source-replica](../../reference/cutover-archive/cutover/#cutover-to-source-replica) for details about the arguments.
 
     The `initiate cutover to source-replica` command stops the `export data from target` process, followed by the `import data to source-replica` process after it has imported all the events to the source-replica database.
 

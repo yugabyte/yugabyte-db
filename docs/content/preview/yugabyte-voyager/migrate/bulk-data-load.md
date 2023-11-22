@@ -8,7 +8,7 @@ menu:
   preview_yugabyte-voyager:
     identifier: bulk-data-load
     parent: migration-types
-    weight: 104
+    weight: 105
 type: docs
 ---
 
@@ -136,3 +136,21 @@ yb-voyager end migration --export-dir <EXPORT_DIR>
 Note that after you end the migration, you will _not_ be able to continue further. If you want to backup the log file and import data status output for future reference, the command provides an argument as `--backup-dir`, using which you can pass the path of the directory where the backup content needs to be saved (based on what you choose to back up).
 
 Refer to [end migration](../../reference/end-migration/) for more details on the arguments.
+
+## Verify migration
+
+After the data import is complete, the automated part of the importing the data from files is considered complete. You should manually run validation queries on the target database to ensure that the data is correctly imported. A sample query to validate the databases can include checking the row count of each table.
+
+{{< warning title = "Caveat associated with rows reported by import data status" >}}
+
+Suppose you have the following scenario:
+
+- [import data file](../bulk-data-load/#import-data-files-from-the-local-disk) command fails.
+- To resolve this issue, you delete some of the rows from the split files.
+- After retrying, the import data to target command completes successfully.
+
+In this scenario, the [get data-migration-report](#get data-migration-report) command reports an incorrect imported row count because it doesn't take into account the deleted rows.
+
+For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/yb-voyager/issues/360).
+
+    {{< /warning >}}
