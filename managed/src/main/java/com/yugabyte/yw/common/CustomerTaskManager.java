@@ -116,7 +116,8 @@ public class CustomerTaskManager {
               });
 
       Optional<Universe> optUniv =
-          customerTask.getTargetType().isUniverseTarget()
+          (customerTask.getTargetType().isUniverseTarget()
+                  || customerTask.getTargetType().equals(TargetType.Backup))
               ? Universe.maybeGet(customerTask.getTargetUUID())
               : Optional.empty();
       if (LOAD_BALANCER_TASK_TYPES.contains(taskInfo.getTaskType())) {
