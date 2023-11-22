@@ -722,6 +722,12 @@ public class Backup extends Model {
     return backupList;
   }
 
+  public static List<Backup> findAllBackupWithState(UUID customerUUID, List<BackupState> states) {
+    List<Backup> backupList =
+        find.query().where().eq("customer_uuid", customerUUID).in("state", states).findList();
+    return backupList;
+  }
+
   public static List<Backup> findAllFinishedBackupsWithCustomerConfig(UUID customerConfigUUID) {
     List<Backup> backupList =
         find.query()
