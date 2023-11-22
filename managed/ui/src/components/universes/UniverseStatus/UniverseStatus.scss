@@ -159,8 +159,24 @@
     overflow: hidden;
     white-space: nowrap;
   }
+
+  &__noHideText {
+    width: 'auto';
+    white-space: nowrap;
+  }
 }
 
 .universe-pending-spinner {
   display: inline;
+}
+
+.pre-finalize-pending {
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  color: #c88900;
+}
+
+.blue-loader {
+  color: #44518b;
 }

@@ -220,6 +220,9 @@ export interface UniverseDetails {
   enableYbc: boolean;
   updateOptions: string[];
   useSpotInstance: boolean;
+  softwareUpgradeState: string;
+  prevYBSoftwareConfig: { softwareVersion: string };
+  universePaused: boolean;
 }
 
 export type UniverseConfigure = Partial<UniverseDetails>;
@@ -684,17 +687,17 @@ export interface AccessKey {
 }
 
 export interface YBSoftwareMetadata {
-    state: string;
-    notes: string[];
-    filePath: string[];
-    chartPath: string;
-    imageTag: string;
-    packages: YBSoftwareMetadataPackages[];
+  state: string;
+  notes: string[];
+  filePath: string[];
+  chartPath: string;
+  imageTag: string;
+  packages: YBSoftwareMetadataPackages[];
 }
 
 export interface YBSoftwareMetadataPackages {
-    path: string;
-    arch: string;
+  path: string;
+  arch: string;
 }
 
 export interface Provider {

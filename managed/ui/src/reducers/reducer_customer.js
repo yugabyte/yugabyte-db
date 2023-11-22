@@ -132,6 +132,7 @@ const INITIAL_STATE = {
   error: null,
   loading: false,
   softwareVersions: [],
+  softwareVersionswithMetaData: [],
   alerts: {
     alertsList: [],
     updated: null
@@ -223,9 +224,13 @@ export default function (state = INITIAL_STATE, action) {
     case RESET_CUSTOMER:
       return { ...state, currentCustomer: getInitialState({}), authToken: getInitialState({}) };
     case FETCH_SOFTWARE_VERSIONS:
-      return { ...state, softwareVersions: [] };
+      return { ...state, softwareVersions: [], softwareVersionswithMetaData: [] };
     case FETCH_SOFTWARE_VERSIONS_SUCCESS:
-      return { ...state, softwareVersions: action.payload.data.sort(sortVersion) };
+      return {
+        ...state,
+        softwareVersions: action.payload.data.sort(sortVersion),
+        softwareVersionswithMetaData: action.payload.releasesWithMetadata
+      };
     case FETCH_SOFTWARE_VERSIONS_FAILURE:
       return { ...state };
     case FETCH_TLS_CERTS:
