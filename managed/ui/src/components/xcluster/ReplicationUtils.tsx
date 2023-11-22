@@ -439,8 +439,7 @@ export const isTableSelectable = (
  */
 export const augmentTablesWithXClusterDetails = (
   ybTable: YBTable[],
-  xClusterConfigTables: XClusterTableDetails[],
-  txnTableDetails: XClusterTableDetails | undefined
+  xClusterConfigTables: XClusterTableDetails[]
 ): XClusterTable[] => {
   const ybTableMap = new Map<string, YBTable>();
   ybTable.forEach((table) => {
@@ -460,20 +459,6 @@ export const augmentTablesWithXClusterDetails = (
     }
     return tables;
   }, []);
-  if (txnTableDetails) {
-    const { tableId: txnTableId, ...txnTable } = txnTableDetails;
-    tables.push({
-      isIndexTable: false,
-      keySpace: 'system',
-      pgSchemaName: '',
-      relationType: YBTableRelationType.SYSTEM_TABLE_RELATION,
-      sizeBytes: -1,
-      tableName: 'transactions',
-      tableType: TableType.TRANSACTION_STATUS_TABLE_TYPE,
-      tableUUID: txnTableId,
-      ...txnTable
-    });
-  }
   return tables;
 };
 

@@ -166,7 +166,8 @@ const ListRoles = () => {
         setCurrentRole({
           ...role,
           roleUUID: '',
-          name: ''
+          name: '',
+          roleType: RoleType.CUSTOM
         });
         setEditView(EditViews.CONFIGURATIONS);
         setCurrentPage(Pages.CREATE_ROLE);

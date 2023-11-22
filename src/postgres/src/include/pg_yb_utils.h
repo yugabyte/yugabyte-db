@@ -231,7 +231,7 @@ extern bool YBRelHasSecondaryIndices(Relation relation);
 extern bool YBTransactionsEnabled();
 
 /*
- * Whether the current txn is of READ COMMITTED (or READ UNCOMMITTED) isolation level and it it uses
+ * Whether the current txn is of READ COMMITTED (or READ UNCOMMITTED) isolation level, and it uses
  * the new READ COMMITTED implementation instead of mapping to REPEATABLE READ level. The latter
  * condition is dictated by the value of gflag yb_enable_read_committed_isolation.
  */
@@ -519,6 +519,12 @@ extern int yb_wait_for_backends_catalog_version_timeout;
  */
 extern bool yb_prefer_bnl;
 
+/*
+ * If true, all fields that vary from run to run are hidden from the
+ * output of EXPLAIN.
+ */
+extern bool yb_explain_hide_non_deterministic_fields;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;
@@ -576,6 +582,12 @@ extern char *yb_test_fail_index_state_change;
  * back upon failure.
 */
 extern bool ddl_rollback_enabled;
+
+/*
+ * GUC to allow user to silence the error saying that advisory locks are not
+ * supported.
+ */
+extern bool yb_silence_advisory_locks_not_supported_error;
 
 /*
  * See also ybc_util.h which contains additional such variable declarations for

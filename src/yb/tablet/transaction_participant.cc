@@ -129,6 +129,9 @@ METRIC_DEFINE_event_stats(tablet, conflict_resolution_num_keys_scanned,
 DEFINE_test_flag(int32, txn_participant_inject_latency_on_apply_update_txn_ms, 0,
                  "How much latency to inject when a update txn operation is applied.");
 
+DEFINE_test_flag(int32, txn_participant_inject_delay_on_start_shutdown_ms, 0,
+                 "How much delay to inject before starting participant shutdown.");
+
 namespace yb {
 namespace tablet {
 
@@ -200,6 +203,7 @@ class TransactionParticipant::Impl
   }
 
   bool StartShutdown() {
+    AtomicFlagSleepMs(&FLAGS_TEST_txn_participant_inject_delay_on_start_shutdown_ms);
     bool expected = false;
     if (!closing_.compare_exchange_strong(expected, true)) {
       return false;

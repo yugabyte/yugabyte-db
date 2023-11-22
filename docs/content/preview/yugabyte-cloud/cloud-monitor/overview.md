@@ -1,5 +1,6 @@
 ---
-title: YBM Performance metrics
+title: YugabyteDB Managed Performance metrics
+headerTitle: Performance metrics
 linkTitle: Performance metrics
 description: View time series charts of cluster metrics.
 headcontent: Evaluate cluster performance with time series charts

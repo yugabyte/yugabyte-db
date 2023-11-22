@@ -9,8 +9,6 @@ import { TableTypeLabel, Universe, YBTable } from '../../../../redesign/helpers/
 import { assertUnreachableCase, handleServerError } from '../../../../utils/errorHandlingUtils';
 import { YBButton, YBModal } from '../../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
-import { isYbcEnabledUniverse } from '../../../../utils/UniverseUtils';
-import { ParallelThreads } from '../../../backupv2/common/BackupUtils';
 import { YBModalForm } from '../../../common/forms';
 import { ConfigureBootstrapStep } from './ConfigureBootstrapStep';
 import {
@@ -38,21 +36,18 @@ export interface AddTableFormValues {
   tableUUIDs: string[];
   // Bootstrap fields
   storageConfig: { label: string; name: string; regions: any[]; value: string };
-  parallelThreads: number;
 }
 
 export interface AddTableFormErrors {
   tableUUIDs: { title: string; body: string };
   // Bootstrap fields
   storageConfig: string;
-  parallelThreads: string;
 }
 
 export interface AddTableFormWarnings {
   tableUUIDs?: { title: string; body: string };
   // Bootstrap fields
   storageConfig?: string;
-  parallelThreads?: string;
 }
 
 interface AddTableModalProps {
@@ -60,7 +55,7 @@ interface AddTableModalProps {
   onHide: () => void;
   xClusterConfig: XClusterConfig;
 
-  isDrConfig?: boolean;
+  isDrInterface?: boolean;
 }
 
 const MODAL_TITLE = 'Add Tables to Replication';
@@ -75,9 +70,7 @@ export type FormStep = typeof FormStep[keyof typeof FormStep];
 const FIRST_FORM_STEP = FormStep.SELECT_TABLES;
 
 const INITIAL_VALUES: Partial<AddTableFormValues> = {
-  tableUUIDs: [],
-  // Bootstrap fields
-  parallelThreads: ParallelThreads.XCLUSTER_DEFAULT
+  tableUUIDs: []
 };
 
 /**
@@ -87,7 +80,7 @@ export const AddTableModal = ({
   isVisible,
   onHide,
   xClusterConfig,
-  isDrConfig = false
+  isDrInterface = false
 }: AddTableModalProps) => {
   const [currentStep, setCurrentStep] = useState<FormStep>(FIRST_FORM_STEP);
   const [formWarnings, setFormWarnings] = useState<AddTableFormWarnings>();
@@ -107,11 +100,13 @@ export const AddTableModal = ({
 
   const sourceUniverseTablesQuery = useQuery<YBTable[]>(
     universeQueryKey.tables(xClusterConfig.sourceUniverseUUID, {
-      excludeColocatedTables: true
+      excludeColocatedTables: true,
+      xClusterSupportedOnly: true
     }),
     () =>
       fetchTablesInUniverse(xClusterConfig.sourceUniverseUUID, {
-        excludeColocatedTables: true
+        excludeColocatedTables: true,
+        xClusterSupportedOnly: true
       }).then((response) => response.data)
   );
 
@@ -122,10 +117,7 @@ export const AddTableModal = ({
           ? {
               tables: bootstrapRequiredTableUUIDs,
               backupRequestParams: {
-                storageConfigUUID: formValues.storageConfig.value,
-                parallelism: formValues.parallelThreads,
-                sse: formValues.storageConfig.name === 'S3',
-                universeUUID: null
+                storageConfigUUID: formValues.storageConfig.value
               }
             }
           : undefined;
@@ -315,7 +307,7 @@ export const AddTableModal = ({
                 <TableSelect
                   {...{
                     configAction: XClusterConfigAction.ADD_TABLE,
-                    isDrConfig,
+                    isDrInterface,
                     isFixedTableType: true,
                     selectedKeyspaces,
                     selectedTableUUIDs: formik.current.values.tableUUIDs,
@@ -438,13 +430,6 @@ const validateForm = async (
       const errors: Partial<AddTableFormErrors> = {};
       if (!values.storageConfig) {
         errors.storageConfig = 'Backup storage configuration is required.';
-      }
-      const shouldValidateParallelThread =
-        values.parallelThreads && isYbcEnabledUniverse(sourceUniverse?.universeDetails);
-      if (shouldValidateParallelThread && values.parallelThreads > ParallelThreads.MAX) {
-        errors.parallelThreads = `Parallel threads must be less than or equal to ${ParallelThreads.MAX}`;
-      } else if (shouldValidateParallelThread && values.parallelThreads < ParallelThreads.MIN) {
-        errors.parallelThreads = `Parallel threads must be greater than or equal to ${ParallelThreads.MIN}`;
       }
 
       throw errors;

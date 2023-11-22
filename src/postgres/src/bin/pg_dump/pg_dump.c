@@ -422,7 +422,7 @@ main(int argc, char **argv)
 		{"no-tablegroups", no_argument, &dopt.no_tablegroups, 1},
 		{"no-tablegroup-creations", no_argument, &dopt.no_tablegroup_creations, 1},
 		{"include-yb-metadata", no_argument, &dopt.include_yb_metadata, 1},
-
+		{"read-time", required_argument, NULL, 8},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -608,6 +608,19 @@ main(int argc, char **argv)
 
 			case 7:				/* no-sync */
 				dosync = false;
+				break;
+
+			case 8:				/* read-time */
+				dopt.yb_read_time = pg_strdup(optarg);
+				/* Read time should be convertable to unsigned long long */
+				unsigned long long read_time_ull = strtoull(optarg, NULL, 0);
+				char readTimeAsString[23];
+				sprintf(readTimeAsString, "%llu", read_time_ull);
+				if (strcmp(optarg, readTimeAsString))
+				{
+					write_msg(NULL, "read-time must be in Unix timestamp in microseconds. Ex: 1694679081741370\n");
+					exit_nicely(1);
+				}
 				break;
 
 			default:
@@ -1222,7 +1235,13 @@ setup_connection(Archive *AH, const char *dumpencoding,
 	 * TODO(Piyush): Remove this hack once the issue is fixed properly
 	 */
 	ExecuteSqlStatement(AH, "SET DEFAULT_TRANSACTION_ISOLATION TO 'repeatable read'");
-
+	if (dopt->yb_read_time)
+	{
+		PQExpBuffer query = createPQExpBuffer();
+		appendPQExpBuffer(query, "SET yb_read_time To %s", dopt->yb_read_time);
+		ExecuteSqlStatement(AH, query->data);
+		destroyPQExpBuffer(query);
+	}
 	/*
 	 * Start transaction-snapshot mode transaction to dump consistent data.
 	 */

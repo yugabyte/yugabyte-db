@@ -1,5 +1,5 @@
 ---
-title: network-allow-list resource
+title: ybm CLI etwork-allow-list resource
 headerTitle: ybm network-allow-list
 linkTitle: network-allow-list
 description: YugabyteDB Managed CLI reference Network allow list resource.

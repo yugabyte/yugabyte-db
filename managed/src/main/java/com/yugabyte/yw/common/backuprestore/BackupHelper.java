@@ -200,7 +200,6 @@ public class BackupHelper {
               "Invalid parallel backups value provided for universe %s",
               universe.getUniverseUUID()));
     }
-    validateBackupRequest(taskParams.keyspaceTableList, universe, taskParams.backupType);
 
     if (taskParams.timeBeforeDelete != 0L && taskParams.expiryTimeUnit == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Please provide time unit for backup expiry");
@@ -288,7 +287,7 @@ public class BackupHelper {
     if (CollectionUtils.isEmpty(taskParams.backupStorageInfoList)) {
       throw new PlatformServiceException(BAD_REQUEST, "Backup information not provided");
     }
-    validateRestoreOverwrites(taskParams.backupStorageInfoList, universe, taskParams.category);
+
     CustomerConfig customerConfig =
         customerConfigService.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
     if (!customerConfig.getState().equals(ConfigState.Active)) {
@@ -445,10 +444,8 @@ public class BackupHelper {
     storageUtilFactory.getStorageUtil(config.getName()).validateStorageConfig(configData);
   }
 
-  // API facing restore overwrite check to fail upfront at controller level. This is
-  // not a comprehensive check( atleast for YBC, for yb_backup this is the most we can do ).
   public void validateRestoreOverwrites(
-      List<BackupStorageInfo> backupStorageInfos, Universe universe, Backup.BackupCategory category)
+      List<BackupStorageInfo> backupStorageInfos, Universe universe)
       throws PlatformServiceException {
     List<TableInfo> tableInfoList = getTableInfosOrEmpty(universe);
     for (BackupStorageInfo backupInfo : backupStorageInfos) {
@@ -989,8 +986,6 @@ public class BackupHelper {
       CustomerConfig storageConfig,
       boolean filterIndexes,
       Universe universe) {
-    validateStorageConfigForSuccessMarkerDownloadOnUniverse(
-        storageConfig, universe, preflightParams.getBackupLocations());
     Map<String, YbcBackupResponse> ybcSuccessMarkerMap =
         getYbcSuccessMarker(
             storageConfig, preflightParams.getBackupLocations(), preflightParams.getUniverseUUID());
@@ -1017,6 +1012,18 @@ public class BackupHelper {
                             universe, e.getValue().tablespaceInfos, universeTablespaces)));
     return YbcBackupUtil.generateYBCRestorePreflightResponseUsingMetadata(
         ybcSuccessMarkerMap, selectiveRestoreYbcCheck, filterIndexes, tablespaceResponsesMap);
+  }
+
+  public boolean checkFileExistsOnBackupLocation(
+      UUID configUUID,
+      UUID customerUUID,
+      Set<String> storagelocationList,
+      UUID universeUUID,
+      String fileName,
+      boolean checkExistsOnAll) {
+    CustomerConfig storageConfig = customerConfigService.getOrBadRequest(customerUUID, configUUID);
+    return checkFileExistsOnBackupLocation(
+        storageConfig, storagelocationList, universeUUID, fileName, checkExistsOnAll);
   }
 
   // Pass list of locations and particular file. The checkExistsOnAll
@@ -1131,7 +1138,7 @@ public class BackupHelper {
     }
   }
 
-  protected void validateStorageConfigForSuccessMarkerDownloadOnUniverse(
+  public void validateStorageConfigForSuccessMarkerDownloadOnUniverse(
       CustomerConfig config, Universe universe, Set<String> successMarkerLocations) {
     if (isSkipConfigBasedPreflightValidation(universe)) {
       return;

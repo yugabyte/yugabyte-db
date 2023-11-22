@@ -12,6 +12,13 @@ export enum ClusterType {
   ASYNC = 'ASYNC'
 }
 
+export enum UpdateActions {
+  FULL_MOVE = 'FULL_MOVE',
+  SMART_RESIZE = 'SMART_RESIZE',
+  SMART_RESIZE_NON_RESTART = 'SMART_RESIZE_NON_RESTART',
+  UPDATE = 'UPDATE'
+}
+
 export enum CloudType {
   unknown = 'unknown',
   aws = 'aws',

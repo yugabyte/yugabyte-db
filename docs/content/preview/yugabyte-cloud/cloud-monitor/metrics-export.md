@@ -1,5 +1,6 @@
 ---
-title: Export metrics
+title: Export metrics from YugabyteDB Managed
+headerTitle: Export metrics
 linkTitle: Export metrics
 description: Export cluster metrics to third-party tools.
 headcontent: Export cluster metrics to third-party tools
@@ -16,7 +17,7 @@ You can export cluster metrics to third-party tools for analysis and customizati
 1. Create an export configuration. An export configuration defines the settings and login information for the tool that you want to export your metrics to.
 1. Assign a configuration to the cluster. Once created, you can assign an export configuration to one or more clusters. While the connection is active, metrics are automatically streamed to the tool.
 
-Currently, YugabyteDB Managed supports export to [Datadog](https://docs.datadoghq.com/) and [Grafana](https://grafana.com/docs/?plcmt=learn-nav). Metrics export is not available for Sandbox clusters.
+Currently, YugabyteDB Managed supports export to [Datadog](https://docs.datadoghq.com/), [Grafana](https://grafana.com/docs/?plcmt=learn-nav), and [Sumo Logic](https://www.sumologic.com). Metrics export is not available for Sandbox clusters.
 
 Exporting metrics counts against your data transfer allowance, and may incur additional costs for network transfer, especially for cross-region and internet-based transfers, if usage exceeds your cluster allowance. Refer to [Data transfer costs](../../cloud-admin/cloud-billing-costs/#data-transfer-costs).
 
@@ -32,6 +33,11 @@ Exporting metrics counts against your data transfer allowance, and may incur add
 - Grafana account and stack. For best performance and lower data transfer costs, deploy your stack in the region closest to your cluster. For a list of supported regions, see the [Grafana documentation](https://grafana.com/docs/grafana-cloud/monitor-infrastructure/otlp/send-data-otlp/#send-data-using-opentelemetry-protocol-otlp).
 - Access policy token. You need to create an Access policy with metrics:write scope, and then add a token. For more information, see [Grafana Cloud Access Policies](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/authorize-services/) in the Grafana documentation.
 
+### Sumo Logic
+
+- Create an [access ID and access key](https://help.sumologic.com/docs/manage/security/access-keys/) on the **Preferences** page under your profile name.
+- [Installation token](https://help.sumologic.com/docs/manage/security/installation-tokens/). These are available under **Administration > Security > Installation Tokens**.
+
 ## Export configuration
 
 Create export configurations and assign them to clusters on the **Integrations > Metrics** tab.
@@ -46,11 +52,11 @@ You can also access metrics export on the cluster **Settings** tab under **Expor
 
 You can add, edit, and delete export configurations. You can't delete a configuration that is assigned to a cluster.
 
-To create an export configuration, do the following:
-
 {{< tabpane text=true >}}
 
   {{% tab header="Datadog" lang="datadog" %}}
+
+To create an export configuration, do the following:
 
 1. On the **Integrations** page, select the **Metrics** tab.
 1. Click **Create Export Configuration** or, if one or more configurations are already available, **Add Export Configuration**.
@@ -66,6 +72,8 @@ To create an export configuration, do the following:
 
   {{% tab header="Grafana" lang="grafana" %}}
 
+To create an export configuration, do the following:
+
 1. On the **Integrations** page, select the **Metrics** tab.
 1. Click **Create Export Configuration** or, if one or more configurations are already available, **Add Export Configuration**.
 1. Enter a name for the configuration.
@@ -74,6 +82,21 @@ To create an export configuration, do the following:
 1. Enter your Grafana [Access policy token](#grafana).
 1. Enter your Grafana instance ID and zone. Obtain these by navigating to the Cloud portal, selecting your stack, and on the Grafana tile, clicking **Details**. They are displayed under **Instance Details**.
 1. Optionally, click **Download** to download the Grafana dashboard template. You can [import this JSON format template](https://grafana.com/docs/grafana-cloud/visualizations/dashboards/manage-dashboards/#export-and-import-dashboards) into your Grafana account and use it as a starting point for visualizing your cluster data in Grafana. The dashboard is also available from the [Grafana Dashboards](https://grafana.com/grafana/dashboards/19815-yugabytedb-managed-clusters/) page.
+1. Click **Test Configuration** to make sure your connection is working.
+1. Click **Create Configuration**.
+
+  {{% /tab %}}
+
+  {{% tab header="Sumo Logic" lang="sumo" %}}
+
+To create an export configuration, do the following:
+
+1. On the **Integrations** page, select the **Metrics** tab.
+1. Click **Create Export Configuration** or, if one or more configurations are already available, **Add Export Configuration**.
+1. Enter a name for the configuration.
+1. Choose Sumo Logic.
+1. Enter your installation token, access ID, and access key.
+1. Optionally, click **Download** to download the Sumo Logic dashboard template. You can import this JSON format template into your Sumo Logic account and use it as a starting point for visualizing your cluster data.
 1. Click **Test Configuration** to make sure your connection is working.
 1. Click **Create Configuration**.
 

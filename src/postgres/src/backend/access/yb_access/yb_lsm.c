@@ -396,9 +396,6 @@ ybcinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,	ScanKey orderbys
 static bool
 ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 {
-	Assert(dir == ForwardScanDirection || dir == BackwardScanDirection);
-	const bool is_forward_scan = (dir == ForwardScanDirection);
-
 	YbScanDesc ybscan = (YbScanDesc) scan->opaque;
 	ybscan->exec_params = scan->yb_exec_params;
 	/* exec_params can be NULL in case of systable_getnext, for example. */
@@ -418,8 +415,7 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 		scan->xs_recheck = YbNeedsRecheck(ybscan);
 		if (!ybscan->is_exec_done)
 		{
-			HandleYBStatus(YBCPgSetForwardScan(ybscan->handle,
-											   is_forward_scan));
+			/* Request with aggregates does not care of scan direction */
 			HandleYBStatus(YBCPgExecSelect(ybscan->handle,
 										   ybscan->exec_params));
 			ybscan->is_exec_done = true;
@@ -440,7 +436,7 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 	bool has_tuple = false;
 	if (ybscan->prepare_params.index_only_scan)
 	{
-		IndexTuple tuple = ybc_getnext_indextuple(ybscan, is_forward_scan, &scan->xs_recheck);
+		IndexTuple tuple = ybc_getnext_indextuple(ybscan, dir, &scan->xs_recheck);
 		if (tuple)
 		{
 			scan->xs_itup = tuple;
@@ -450,7 +446,7 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 	}
 	else
 	{
-		HeapTuple tuple = ybc_getnext_heaptuple(ybscan, is_forward_scan, &scan->xs_recheck);
+		HeapTuple tuple = ybc_getnext_heaptuple(ybscan, dir, &scan->xs_recheck);
 		if (tuple)
 		{
 			scan->xs_ctup.t_ybctid = tuple->t_ybctid;

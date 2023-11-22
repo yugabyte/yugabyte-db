@@ -66,7 +66,6 @@
 #include "yb/util/port_picker.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status_format.h"
-#include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
 
 using namespace std::literals;
@@ -1161,16 +1160,15 @@ TEST_F(AdminCliTest, PromoteAutoFlags) {
 
   auto status = CallAdmin(kPromoteAutoFlagsCmd, "invalid");
   ASSERT_NOK(status);
-  ASSERT_TRUE(HasSubstring(status.ToString(), "Invalid value provided for max_flags_class"));
+  ASSERT_STR_CONTAINS(status.ToString(), "Invalid value provided for max_flags_class");
 
   status = CallAdmin(kPromoteAutoFlagsCmd, "kExternal", "invalid");
   ASSERT_NOK(status);
-  ASSERT_TRUE(
-      HasSubstring(status.ToString(), "Invalid value provided for promote_non_runtime_flags"));
+  ASSERT_STR_CONTAINS(status.ToString(), "Invalid value provided for promote_non_runtime_flags");
 
   status = CallAdmin(kPromoteAutoFlagsCmd, "kExternal", "true", "invalid");
   ASSERT_NOK(status);
-  ASSERT_TRUE(HasSubstring(status.ToString(), "Invalid arguments for operation"));
+  ASSERT_STR_CONTAINS(status.ToString(), "Invalid arguments for operation");
 
   ASSERT_OK(CallAdmin(kPromoteAutoFlagsCmd, "kLocalVolatile", "false"));
   ASSERT_OK(CallAdmin(kPromoteAutoFlagsCmd, "kLocalVolatile", "true"));
@@ -1182,24 +1180,24 @@ TEST_F(AdminCliTest, PromoteAutoFlags) {
   ASSERT_OK(CallAdmin(kPromoteAutoFlagsCmd, "kExternal", "true"));
 
   auto result = ASSERT_RESULT(CallAdmin(kPromoteAutoFlagsCmd, "kLocalVolatile", "false"));
-  ASSERT_TRUE(HasSubstring(
+  ASSERT_STR_CONTAINS(
       result,
       "PromoteAutoFlags completed successfully\n"
       "No new AutoFlags eligible to promote\n"
-      "Current config version: 1"));
+      "Current config version: 1");
 
   result = ASSERT_RESULT(CallAdmin(kPromoteAutoFlagsCmd, "kLocalVolatile", "false", "force"));
-  ASSERT_TRUE(HasSubstring(
+  ASSERT_STR_CONTAINS(
       result,
       "PromoteAutoFlags completed successfully\n"
       "New AutoFlags were promoted\n"
-      "New config version: 2"));
+      "New config version: 2");
 
   status = CallAdmin(kPromoteAutoFlagsCmd, "kNewInstallsOnly", "true", "force");
   ASSERT_NOK(status);
-  ASSERT_TRUE(HasSubstring(
+  ASSERT_STR_CONTAINS(
       status.ToString(),
-      "Unable to promote AutoFlags: max_class cannot be set to kNewInstallsOnly."));
+      "Unable to promote AutoFlags: max_class cannot be set to kNewInstallsOnly.");
 }
 
 TEST_F(AdminCliTest, RollbackAutoFlags) {
@@ -1217,51 +1215,46 @@ TEST_F(AdminCliTest, RollbackAutoFlags) {
 
   status = CallAdmin(kRollbackAutoFlagsCmd, std::numeric_limits<int64_t>::max());
   ASSERT_NOK(status);
-  ASSERT_TRUE(HasSubstring(status.ToString(), "rollback_version exceeds bounds"));
+  ASSERT_STR_CONTAINS(status.ToString(), "rollback_version exceeds bounds");
 
   auto result = ASSERT_RESULT(CallAdmin(kRollbackAutoFlagsCmd, 0));
-  ASSERT_TRUE(HasSubstring(
-      status.ToString(),
+  ASSERT_STR_CONTAINS(
+      result,
       "RollbackAutoFlags completed successfully\n"
       "No AutoFlags have been promoted since version 0\n"
-      "Current config version: 0"))
-      << status;
+      "Current config version: 0");
 
   result = ASSERT_RESULT(CallAdmin(kPromoteAutoFlagsCmd, "kLocalVolatile"));
-  ASSERT_TRUE(HasSubstring(
+  ASSERT_STR_CONTAINS(
       result,
       "New AutoFlags were promoted\n"
-      "New config version:"))
-      << result;
+      "New config version:");
 
   result = ASSERT_RESULT(CallAdmin(kRollbackAutoFlagsCmd, 0));
-  ASSERT_TRUE(HasSubstring(
+  ASSERT_STR_CONTAINS(
       result,
       "RollbackAutoFlags completed successfully\n"
       "AutoFlags that were promoted after config version 0 were successfully rolled back\n"
-      "New config version: 2"))
-      << result;
+      "New config version: 2");
 
   result = ASSERT_RESULT(CallAdmin(kRollbackAutoFlagsCmd, 0));
-  ASSERT_TRUE(HasSubstring(
+  ASSERT_STR_CONTAINS(
       result,
       "RollbackAutoFlags completed successfully\n"
       "No AutoFlags have been promoted since version 0\n"
-      "Current config version: 2"))
-      << result;
+      "Current config version: 2");
 
   result = ASSERT_RESULT(CallAdmin(kPromoteAutoFlagsCmd));
-  ASSERT_TRUE(HasSubstring(
+  ASSERT_STR_CONTAINS(
       result,
       "PromoteAutoFlags completed successfully\n"
       "New AutoFlags were promoted\n"
-      "New config version: 3"))
-      << result;
+      "New config version: 3");
 
   // Rollback external AutoFlags should fail.
   status = CallAdmin(kRollbackAutoFlagsCmd, 0);
   ASSERT_NOK(status);
-  ASSERT_TRUE(HasSubstring(status.ToString(), "is not eligible for rollback")) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "is not eligible for rollback");
 }
 
 TEST_F(AdminCliTest, PromoteDemoteSingleAutoFlag) {
@@ -1270,52 +1263,52 @@ TEST_F(AdminCliTest, PromoteDemoteSingleAutoFlag) {
   const auto kDemoteSingleFlagCmd = "demote_single_auto_flag";
 
   // Promote a single AutoFlag
-  auto status = CallAdmin(kPromoteSingleFlaCmd, "NAProcess", "NAFlag");
-  ASSERT_NOK(status);
-  ASSERT_TRUE(HasSubstring(status.ToString(), "Process NAProcess not found"));
+  auto result = CallAdmin(kPromoteSingleFlaCmd, "NAProcess", "NAFlag");
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.ToString(), "Process NAProcess not found");
 
-  status = CallAdmin(kPromoteSingleFlaCmd, "yb-master", "NAFlag");
-  ASSERT_NOK(status);
-  ASSERT_TRUE(HasSubstring(status.ToString(), "AutoFlag NAFlag not found in process yb-master"));
+  result = CallAdmin(kPromoteSingleFlaCmd, "yb-master", "NAFlag");
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.ToString(), "AutoFlag NAFlag not found in process yb-master");
 
-  status = CallAdmin(kPromoteSingleFlaCmd, "yb-master", "TEST_auto_flags_initialized");
-  ASSERT_OK(status);
-  ASSERT_TRUE(HasSubstring(
-      status.ToString(),
-      "AutoFlag TEST_auto_flags_initialized from process yb-master was not promoted. Check the "
+  result = CallAdmin(kPromoteSingleFlaCmd, "yb-master", "TEST_auto_flags_initialized");
+  ASSERT_OK(result);
+  ASSERT_STR_CONTAINS(
+      result.ToString(),
+      "Failed to promote AutoFlag TEST_auto_flags_initialized from process yb-master. Check the "
       "logs for more information\n"
-      "Current config version: 2"));
+      "Current config version: 1");
 
   // Demote a single AutoFlag
-  status = CallAdmin(kDemoteSingleFlagCmd, "NAProcess", "NAFlag", "force");
-  ASSERT_OK(status);
-  ASSERT_TRUE(HasSubstring(
-      status.ToString(),
-      "AutoFlag NAFlag from process NAProcess was not demoted. Either the flag does not exist or "
-      "it is not promoted\n"
-      "Current config version: 1"));
+  result = CallAdmin(kDemoteSingleFlagCmd, "NAProcess", "NAFlag", "force");
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.ToString(), "Process NAProcess not found");
 
-  status = CallAdmin(kDemoteSingleFlagCmd, "yb-master", "NAFlag", "force");
-  ASSERT_OK(status);
-  ASSERT_TRUE(HasSubstring(
-      status.ToString(),
-      "AutoFlag NAFlag from process yb-master was not demoted. Either the flag does not exist or "
-      "it is not promoted\n"
-      "Current config version: 1"));
+  result = CallAdmin(kDemoteSingleFlagCmd, "yb-master", "NAFlag", "force");
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.ToString(), "AutoFlag NAFlag not found in process yb-master");
 
-  status = CallAdmin(kDemoteSingleFlagCmd, "yb-master", "TEST_auto_flags_initialized", "force");
-  ASSERT_OK(status);
-  ASSERT_TRUE(HasSubstring(
-      status.ToString(),
+  result = CallAdmin(kDemoteSingleFlagCmd, "yb-master", "TEST_auto_flags_initialized", "force");
+  ASSERT_OK(result);
+  ASSERT_STR_CONTAINS(
+      result.ToString(),
       "AutoFlag TEST_auto_flags_initialized from process yb-master was successfully demoted\n"
-      "New config version: 2"));
+      "New config version: 2");
 
-  status = CallAdmin(kPromoteSingleFlaCmd, "yb-master", "TEST_auto_flags_initialized");
-  ASSERT_OK(status);
-  ASSERT_TRUE(HasSubstring(
-      status.ToString(),
+  result = CallAdmin(kDemoteSingleFlagCmd, "yb-master", "TEST_auto_flags_initialized", "force");
+  ASSERT_OK(result);
+  ASSERT_STR_CONTAINS(
+      result.ToString(),
+      "Unable to demote AutoFlag TEST_auto_flags_initialized from process yb-master because the "
+      "flag is not in promoted state\n"
+      "Current config version: 2");
+
+  result = CallAdmin(kPromoteSingleFlaCmd, "yb-master", "TEST_auto_flags_initialized");
+  ASSERT_OK(result);
+  ASSERT_STR_CONTAINS(
+      result.ToString(),
       "AutoFlag TEST_auto_flags_initialized from process yb-master was successfully promoted\n"
-      "New config version: 3"));
+      "New config version: 3");
 }
 
 TEST_F(AdminCliTest, TestListNamespaces) {

@@ -31,47 +31,47 @@
 #include "pgstat.h"
 
 PG_MODULE_MAGIC;
-PG_FUNCTION_INFO_V1(yb_active_universe_history);
+PG_FUNCTION_INFO_V1(yb_active_session_history);
 
 /* GUC variables */
 static int circular_buffer_size;
-static int auh_sampling_interval_ms;
-static int auh_sample_size;
+static int ash_sampling_interval_ms;
+static int ash_sample_size;
 
 /* Saved hook values in case of unload */
 static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
 
-typedef struct YbAuhEntry
+typedef struct YbAshEntry
 {
-	TimestampTz	auh_sample_time;
+	TimestampTz	ash_sample_time;
 	uint32		wait_event;
 	char		wait_event_aux[16];
 	float8		sample_rate;
-} YbAuhEntry;
+} YbAshEntry;
 
-typedef struct YbAuh
+typedef struct YbAsh
 {
 	LWLock	   *lock;			/* Protects the circular buffer */
 	int			index;			/* Index to insert new buffer entry */
 	int			max_entries;	/* Maximum # of entries in the buffer */
-	YbAuhEntry	circular_buffer[FLEXIBLE_ARRAY_MEMBER];
-} YbAuh;
+	YbAshEntry	circular_buffer[FLEXIBLE_ARRAY_MEMBER];
+} YbAsh;
 
-YbAuh *yb_auh = NULL;
+YbAsh *yb_ash = NULL;
 
 void _PG_init(void);
 void _PG_fini(void);
 
-static int yb_auh_cb_max_entries(void);
-static Size yb_auh_memsize(void);
-static void yb_auh_startup(void);
+static int yb_ash_cb_max_entries(void);
+static Size yb_ash_memsize(void);
+static void yb_ash_startup(void);
 
-static void yb_auh_startup_hook(void);
+static void yb_ash_startup_hook(void);
 
 static volatile sig_atomic_t got_sigterm = false;
 static volatile sig_atomic_t got_sighup = false;
 
-void yb_auh_main(Datum);
+void yb_ash_main(Datum);
 
 /*
  * Module load callback
@@ -82,7 +82,7 @@ _PG_init(void)
 	if (!process_shared_preload_libraries_in_progress)
 		return;
 
-	DefineCustomIntVariable("yb_auh.circular_buffer_size",
+	DefineCustomIntVariable("yb_ash.circular_buffer_size",
 							"Size of the circular buffer that stores wait events",
 							NULL,
 							&circular_buffer_size,
@@ -95,10 +95,10 @@ _PG_init(void)
 							GUC_UNIT_KB,
 							NULL, NULL, NULL);
 
-	DefineCustomIntVariable("yb_auh.sampling_interval",
+	DefineCustomIntVariable("yb_ash.sampling_interval",
 							"Duration between each sample",
 							NULL,
-							&auh_sampling_interval_ms,
+							&ash_sampling_interval_ms,
 							1000,
 							1,
 							INT_MAX,
@@ -106,10 +106,10 @@ _PG_init(void)
 							GUC_UNIT_MS,
 							NULL, NULL, NULL);
 
-	DefineCustomIntVariable("yb_auh.sample_size",
+	DefineCustomIntVariable("yb_ash.sample_size",
 							"Number of wait events captured in each sample",
 							NULL,
-							&auh_sample_size,
+							&ash_sample_size,
 							500,
 							0,
 							INT_MAX,
@@ -117,21 +117,21 @@ _PG_init(void)
 							0,
 							NULL, NULL, NULL);
 
-	EmitWarningsOnPlaceholders("yb_auh");
+	EmitWarningsOnPlaceholders("yb_ash");
 
-	RequestAddinShmemSpace(yb_auh_memsize());
-	RequestNamedLWLockTranche("yb_auh", 1);
+	RequestAddinShmemSpace(yb_ash_memsize());
+	RequestNamedLWLockTranche("yb_ash", 1);
 
 	BackgroundWorker worker;
 	memset(&worker, 0, sizeof(worker));
-	sprintf(worker.bgw_name, "yb_auh collector");
-	sprintf(worker.bgw_type, "yb_auh collector");
+	sprintf(worker.bgw_name, "yb_ash collector");
+	sprintf(worker.bgw_type, "yb_ash collector");
 	worker.bgw_flags = BGWORKER_SHMEM_ACCESS;
 	worker.bgw_start_time = BgWorkerStart_PostmasterStart;
-	/* Value of 1 allows the background worker for yb_auh to restart */
+	/* Value of 1 allows the background worker for yb_ash to restart */
 	worker.bgw_restart_time = 1;
-	sprintf(worker.bgw_library_name, "yb_auh");
-	sprintf(worker.bgw_function_name, "yb_auh_main");
+	sprintf(worker.bgw_library_name, "yb_ash");
+	sprintf(worker.bgw_function_name, "yb_ash_main");
 	worker.bgw_main_arg = (Datum) 0;
 	worker.bgw_notify_pid = 0;
 	RegisterBackgroundWorker(&worker);
@@ -140,7 +140,7 @@ _PG_init(void)
 	 * Install hooks.
 	 */
 	prev_shmem_startup_hook = shmem_startup_hook;
-	shmem_startup_hook = yb_auh_startup_hook;
+	shmem_startup_hook = yb_ash_startup_hook;
 }
 
 /*
@@ -154,50 +154,50 @@ _PG_fini(void)
 }
 
 static void
-yb_auh_startup_hook(void)
+yb_ash_startup_hook(void)
 {
 	if (prev_shmem_startup_hook)
 		prev_shmem_startup_hook();
 
-	yb_auh_startup();
+	yb_ash_startup();
 }
 
 static int
-yb_auh_cb_max_entries(void)
+yb_ash_cb_max_entries(void)
 {
-	return circular_buffer_size * 1024 / sizeof(YbAuhEntry);
+	return circular_buffer_size * 1024 / sizeof(YbAshEntry);
 }
 
 static Size
-yb_auh_memsize(void)
+yb_ash_memsize(void)
 {
 	Size		size;
 
-	size = offsetof(YbAuh, circular_buffer);
-	size = add_size(size, mul_size(yb_auh_cb_max_entries(),
-								   sizeof(YbAuhEntry)));
+	size = offsetof(YbAsh, circular_buffer);
+	size = add_size(size, mul_size(yb_ash_cb_max_entries(),
+								   sizeof(YbAshEntry)));
 
 	return size;
 }
 
 static void
-yb_auh_startup(void)
+yb_ash_startup(void)
 {
 	bool		found = false;
 
-	yb_auh = ShmemInitStruct("yb_auh_circular_buffer",
-							 yb_auh_memsize(),
+	yb_ash = ShmemInitStruct("yb_ash_circular_buffer",
+							 yb_ash_memsize(),
 							 &found);
 	if (!found)
 	{
-		yb_auh->lock = &(GetNamedLWLockTranche("yb_auh"))->lock;
-		yb_auh->index = 0;
-		yb_auh->max_entries = yb_auh_cb_max_entries();
+		yb_ash->lock = &(GetNamedLWLockTranche("yb_ash"))->lock;
+		yb_ash->index = 0;
+		yb_ash->max_entries = yb_ash_cb_max_entries();
 	}
 }
 
 static void
-yb_auh_sigterm(SIGNAL_ARGS)
+yb_ash_sigterm(SIGNAL_ARGS)
 {
 	int			save_errno = errno;
 
@@ -208,7 +208,7 @@ yb_auh_sigterm(SIGNAL_ARGS)
 }
 
 static void
-yb_auh_sighup(SIGNAL_ARGS)
+yb_ash_sighup(SIGNAL_ARGS)
 {
 	int			save_errno = errno;
 
@@ -219,27 +219,27 @@ yb_auh_sighup(SIGNAL_ARGS)
 }
 
 void
-yb_auh_main(Datum main_arg)
+yb_ash_main(Datum main_arg)
 {
 	ereport(LOG,
-			(errmsg("starting bgworker yb_auh collector with max buffer entries %d",
-					yb_auh->max_entries)));
+			(errmsg("starting bgworker yb_ash collector with max buffer entries %d",
+					yb_ash->max_entries)));
 
 	/* Register functions for SIGTERM/SIGHUP management */
-	pqsignal(SIGHUP, yb_auh_sighup);
-	pqsignal(SIGTERM, yb_auh_sigterm);
+	pqsignal(SIGHUP, yb_ash_sighup);
+	pqsignal(SIGTERM, yb_ash_sigterm);
 
 	/* We're now ready to receive signals */
 	BackgroundWorkerUnblockSignals();
 
-	pgstat_report_appname("yb_auh collector");
+	pgstat_report_appname("yb_ash collector");
 
 	while (!got_sigterm)
 	{
 		int rc;
 		/* Wait necessary amount of time */
 		rc = WaitLatch(MyLatch, WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
-					   auh_sampling_interval_ms, PG_WAIT_EXTENSION);
+					   ash_sampling_interval_ms, PG_WAIT_EXTENSION);
 		ResetLatch(MyLatch);
 
 		/* Bailout if postmaster has died */
@@ -253,7 +253,7 @@ yb_auh_main(Datum main_arg)
 			got_sighup = false;
 			ProcessConfigFile(PGC_SIGHUP);
 			ereport(LOG,
-					(errmsg("bgworker yb_auh signal: processed SIGHUP")));
+					(errmsg("bgworker yb_ash signal: processed SIGHUP")));
 		}
 
 		/* TODO(asaha): poll Tserver and PG wait events */

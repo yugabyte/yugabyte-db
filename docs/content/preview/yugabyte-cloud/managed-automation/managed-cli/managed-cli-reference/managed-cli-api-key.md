@@ -1,5 +1,5 @@
 ---
-title: api-key resource
+title: ybm CLI api-key resource
 headerTitle: ybm api-key
 linkTitle: api-key
 description: YugabyteDB Managed CLI reference api-key resource.

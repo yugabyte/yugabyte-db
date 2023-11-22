@@ -82,6 +82,8 @@ class TabletStatusListener {
 
   void StatusMessage(const std::string& status);
 
+  void SetStatusPrefix(const std::string& prefix);
+
   const std::string tablet_id() const;
 
   const std::string namespace_name() const;
@@ -96,7 +98,7 @@ class TabletStatusListener {
 
   std::string last_status() const {
     SharedLock<std::shared_timed_mutex> l(lock_);
-    return last_status_;
+    return status_prefix_ + last_status_;
   }
 
  private:
@@ -104,6 +106,7 @@ class TabletStatusListener {
 
   RaftGroupMetadataPtr meta_;
   std::string last_status_;
+  std::string status_prefix_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletStatusListener);
 };

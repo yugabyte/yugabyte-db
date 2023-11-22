@@ -165,7 +165,7 @@ namespace master {
 Master::Master(const MasterOptions& opts)
     : DbServerBase("Master", opts, "yb.master", server::CreateMemTrackerForServer()),
       state_(kStopped),
-      auto_flags_manager_(new AutoFlagsManager("yb-master", fs_manager_.get())),
+      auto_flags_manager_(new AutoFlagsManager("yb-master", clock(), fs_manager_.get())),
       ts_manager_(new TSManager()),
       catalog_manager_(new CatalogManager(this)),
       ysql_backends_manager_(new YsqlBackendsManager(this, catalog_manager_->AsyncTaskPool())),
@@ -235,16 +235,18 @@ Status Master::Init() {
 }
 
 Status Master::InitAutoFlags() {
+  RETURN_NOT_OK(auto_flags_manager_->Init(options_.HostsString()));
+
   if (!VERIFY_RESULT(auto_flags_manager_->LoadFromFile())) {
     if (fs_manager_->LookupTablet(kSysCatalogTabletId)) {
       // Pre-existing cluster
-      RETURN_NOT_OK(CreateEmptyAutoFlagsConfig(auto_flags_manager_.get()));
+      RETURN_NOT_OK(CreateEmptyAutoFlagsConfig(*auto_flags_manager_.get()));
     } else if (!opts().AreMasterAddressesProvided()) {
       // New master in Shell mode
       LOG(INFO) << "AutoFlags initialization delayed as master is in Shell mode.";
     } else {
       // New cluster
-      RETURN_NOT_OK(CreateAutoFlagsConfigForNewCluster(auto_flags_manager_.get()));
+      RETURN_NOT_OK(CreateAutoFlagsConfigForNewCluster(*auto_flags_manager_.get()));
     }
   }
 
@@ -261,7 +263,7 @@ Status Master::InitAutoFlagsFromMasterLeader(const HostPort& leader_address) {
       "Cannot load AutoFlags from another master when not in shell mode.");
 
   return auto_flags_manager_->LoadFromMaster(
-      options_.HostsString(), {{leader_address}}, ApplyNonRuntimeAutoFlags::kTrue);
+      options_.HostsString(), {{leader_address}});
 }
 
 MonoDelta Master::default_client_timeout() {

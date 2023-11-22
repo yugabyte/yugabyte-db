@@ -23,6 +23,8 @@ import {
 import {
   fetchRunTimeConfigs,
   fetchRunTimeConfigsResponse,
+  fetchProviderRunTimeConfigs,
+  fetchProviderRunTimeConfigsResponse,
   getAlerts,
   getAlertsSuccess,
   getAlertsFailure
@@ -167,7 +169,7 @@ const mapDispatchToProps = (dispatch) => {
         }
       });
     },
-    abortCurrentTask: (taskUUID) => {
+    abortTask: (taskUUID) => {
       return dispatch(abortTask(taskUUID)).then((response) => {
         return dispatch(abortTaskResponse(response.payload));
       });
@@ -181,6 +183,11 @@ const mapDispatchToProps = (dispatch) => {
     fetchRunTimeConfigs: (universeUUID) => {
       return dispatch(fetchRunTimeConfigs(universeUUID, true)).then((response) =>
         dispatch(fetchRunTimeConfigsResponse(response.payload))
+      );
+    },
+    fetchProviderRunTimeConfigs: (providerUUID) => {
+      return dispatch(fetchProviderRunTimeConfigs(providerUUID, true)).then((response) =>
+        dispatch(fetchProviderRunTimeConfigsResponse(response.payload))
       );
     }
   };

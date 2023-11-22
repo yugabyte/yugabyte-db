@@ -65,8 +65,8 @@ class PgAutoAnalyzeTest : public PgMiniTestBase {
     // Set low values for the node level mutation reporting and the cluster level persisting
     // intervals ensures that the aggregate mutations are frequently applied to the underlying YCQL
     // table, hence capping the test time low.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_node_level_mutation_reporting_interval_ms) = 50;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_cluster_level_mutation_persist_interval_ms) = 50;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_node_level_mutation_reporting_interval_ms) = 10;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_cluster_level_mutation_persist_interval_ms) = 10;
 
     PgMiniTestBase::SetUp();
 
@@ -112,7 +112,7 @@ class PgAutoAnalyzeTest : public PgMiniTestBase {
     // service.
     auto wait_for_mutation_reporting_and_persisting_ms =
         FLAGS_ysql_node_level_mutation_reporting_interval_ms +
-        FLAGS_ysql_cluster_level_mutation_persist_interval_ms + 10 * kTimeMultiplier;
+        FLAGS_ysql_cluster_level_mutation_persist_interval_ms + 50 * kTimeMultiplier;
     std::this_thread::sleep_for(wait_for_mutation_reporting_and_persisting_ms * 1ms);
 
     std::unordered_map<TableId, uint64> table_mutations_in_cql_table_after;

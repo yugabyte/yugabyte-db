@@ -1,0 +1,9 @@
+{{/* get the page path so determine depth and version */}}
+{{- $path := split $.Page.File.Dir "/" -}}
+{{/* version is the first path of the path. eg: preview/stable/v2.12 ...*/}}
+{{- $version := index $path 0 -}}
+<a class="yb-badge"
+  style="background: #7879F1; color:#FFF; border: 0px solid #7879F1; margin: 0px;"
+  href="/{{$version}}/releases/versioning/#feature-availability">
+  EA
+</a>

@@ -122,6 +122,7 @@ class UniverseDetail extends Component {
         const primaryCluster = getPrimaryCluster(response.payload.data?.universeDetails?.clusters);
         const providerUUID = primaryCluster?.userIntent?.provider;
         this.props.fetchSupportedReleases(providerUUID);
+        this.props.fetchProviderRunTimeConfigs(providerUUID);
       });
 
       if (isDisabled(currentCustomer.data.features, 'universes.details.health')) {
@@ -251,7 +252,7 @@ class UniverseDetail extends Component {
       updateBackupState,
       closeModal,
       customer,
-      customer: { currentCustomer, currentUser, runtimeConfigs },
+      customer: { currentCustomer, currentUser, runtimeConfigs, providerRuntimeConfigs },
       params: { tab },
       featureFlags,
       providers,
@@ -279,6 +280,7 @@ class UniverseDetail extends Component {
 
     const providerUUID = primaryCluster?.userIntent?.provider;
     const provider = providers.data.find((provider) => provider.uuid === providerUUID);
+    const isProviderNodeAgentEnabled = provider?.details?.enableNodeAgent;
     let onPremSkipProvisioning = false;
     if (provider && provider.code === 'onprem') {
       const onPremKey = accessKeys.data.find(
@@ -287,6 +289,13 @@ class UniverseDetail extends Component {
       onPremSkipProvisioning = onPremKey?.keyInfo.skipProvisioning;
     }
 
+    const isNodeAgentClientEnabled =
+      providerRuntimeConfigs?.data?.configEntries?.find(
+        (config) => config.key === RuntimeConfigKey.ENABLE_NODE_AGENT
+      )?.value === 'true';
+    runtimeConfigs?.data?.configEntries?.find(
+      (config) => config.key === RuntimeConfigKey.PERFOMANCE_ADVISOR_UI_FEATURE_FLAG
+    )?.value === 'true';
     const isPerfAdvisorEnabled =
       runtimeConfigs?.data?.configEntries?.find(
         (config) => config.key === RuntimeConfigKey.PERFOMANCE_ADVISOR_UI_FEATURE_FLAG
@@ -472,7 +481,7 @@ class UniverseDetail extends Component {
           >
             <UniverseTaskList
               universeUuid={currentUniverse.data.universeUUID}
-              abortTask={this.props.abortCurrentTask}
+              abortTask={this.props.abortTask}
               hideTaskAbortModal={this.props.hideTaskAbortModal}
               showTaskAbortModal={this.props.showTaskAbortModal}
               refreshUniverseData={this.getUniverseInfo}
@@ -517,6 +526,7 @@ class UniverseDetail extends Component {
                   currentUser={currentUser}
                   closeModal={closeModal}
                   visibleModal={visibleModal}
+                  isNodeAgentEnabled={isProviderNodeAgentEnabled && isNodeAgentClientEnabled}
                 />
               </Tab.Pane>
             )

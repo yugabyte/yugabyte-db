@@ -434,6 +434,12 @@ public enum TaskType {
 
   RestoreUniverseKeysYbc(com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeysYbc.class),
 
+  RestorePreflightValidate(
+      com.yugabyte.yw.commissioner.tasks.subtasks.RestorePreflightValidate.class),
+
+  BackupPreflightValidate(
+      com.yugabyte.yw.commissioner.tasks.subtasks.BackupPreflightValidate.class),
+
   WaitForLeadersOnPreferredOnly(
       com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLeadersOnPreferredOnly.class),
 
@@ -520,6 +526,11 @@ public enum TaskType {
 
   ModifyAuditLoggingConfig(
       com.yugabyte.yw.commissioner.tasks.upgrade.ModifyAuditLoggingConfig.class),
+
+  ManageOtelCollector(com.yugabyte.yw.commissioner.tasks.subtasks.ManageOtelCollector.class),
+
+  UpdateAndPersistAuditLoggingConfig(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistAuditLoggingConfig.class),
 
   MarkUniverseForHealthScriptReUpload(
       com.yugabyte.yw.commissioner.tasks.subtasks.MarkUniverseForHealthScriptReUpload.class),
@@ -654,6 +665,7 @@ public enum TaskType {
           .put(RollbackUpgrade, 52)
           .put(SoftwareKubernetesUpgradeYB, 53)
           .put(RollbackKubernetesUpgrade, 54)
+          .put(ModifyAuditLoggingConfig, 55)
           // Node operations (70-89):
           .put(AddNodeToUniverse, 70)
           .put(DeleteNodeFromUniverse, 71)

@@ -113,7 +113,7 @@ public class MetaMasterController extends Controller {
         }
       }
     } catch (Exception e) {
-      LOG.error("Failed to get list of masters in universe " + universeUUID, e);
+      LOG.warn("Failed to get list of masters in universe {} - {} ", universeUUID, e.getMessage());
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     } finally {
       ybService.closeClient(client, masterAddresses);
@@ -121,7 +121,10 @@ public class MetaMasterController extends Controller {
     return PlatformResults.withData(masters);
   }
 
-  @ApiOperation(value = "List a master node's addresses", response = String.class)
+  @ApiOperation(
+      value = "Available since YBA version 2.2.0.0. List a master node's addresses",
+      response = String.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.2.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -132,7 +135,10 @@ public class MetaMasterController extends Controller {
     return getServerAddresses(customerUUID, universeUUID, ServerType.MASTER);
   }
 
-  @ApiOperation(value = "List a YQL server's addresses", response = String.class)
+  @ApiOperation(
+      value = "Available since YBA version 2.2.0.0. List a YQL server's addresses",
+      response = String.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.2.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -143,7 +149,10 @@ public class MetaMasterController extends Controller {
     return getServerAddresses(customerUUID, universeUUID, ServerType.YQLSERVER);
   }
 
-  @ApiOperation(value = "List a YSQL server's addresses", response = String.class)
+  @ApiOperation(
+      value = "Available since YBA version 2.2.0.0. List a YSQL server's addresses",
+      response = String.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.2.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -154,7 +163,10 @@ public class MetaMasterController extends Controller {
     return getServerAddresses(customerUUID, universeUUID, ServerType.YSQLSERVER);
   }
 
-  @ApiOperation(value = "List a REDIS server's addresses", response = String.class)
+  @ApiOperation(
+      value = "Available since YBA version 2.2.0.0. List a REDIS server's addresses",
+      response = String.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.2.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =

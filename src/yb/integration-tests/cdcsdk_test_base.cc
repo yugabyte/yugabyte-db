@@ -408,16 +408,19 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStream(
   return xrepl::StreamId::FromString(resp.db_stream_id());
 }
 
-Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStreamWithReplicationSlot() {
+Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStreamWithReplicationSlot(
+  CDCSDKSnapshotOption snapshot_option, CDCRecordType record_type) {
   // Generate a unique name for the replication slot as a UUID. Replication slot names cannot
   // contain dash. Hence, we remove them from here.
   auto uuid_without_dash = StringReplace(Uuid::Generate().ToString(), "-", "", true);
   auto slot_name = Format("test_replication_slot_$0", uuid_without_dash);
-  return CreateDBStreamWithReplicationSlot(slot_name);
+  return CreateDBStreamWithReplicationSlot(slot_name, snapshot_option, record_type);
 }
 
 Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStreamWithReplicationSlot(
-    const std::string& replication_slot_name) {
+    const std::string& replication_slot_name,
+    CDCSDKSnapshotOption snapshot_option,
+    CDCRecordType record_type) {
   auto conn = VERIFY_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
   RETURN_NOT_OK(conn.FetchFormat(
       "SELECT * FROM pg_create_logical_replication_slot('$0', 'yboutput', false)",

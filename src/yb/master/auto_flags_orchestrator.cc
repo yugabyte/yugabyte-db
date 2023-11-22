@@ -102,7 +102,7 @@ PromoteAutoFlagsOutcome InsertFlagsToConfig(
   auto non_runtime_flags_added = false;
   bool config_changed = false;
   // Initial config or forced version bump.
-  if (config->config_version() == 0 || force_version_change) {
+  if (config->config_version() == kInvalidAutoFlagsConfigVersion || force_version_change) {
     config_changed = true;
   }
   auto new_config_version = config->config_version() + 1;
@@ -164,15 +164,14 @@ PromoteAutoFlagsOutcome InsertFlagsToConfig(
 // Remove flags from the config if they were promoted on a version higher than rollback_version.
 // Bumps up the config version if any flags were removed. Returns the list of removed flags per
 // process.
-std::map<ProcessName, std::vector<std::string>> RemoveFlagsFromConfig(
-    uint32_t rollback_version, AutoFlagsConfigPB* config) {
+AutoFlagsNameMap RemoveFlagsFromConfig(uint32_t rollback_version, AutoFlagsConfigPB* config) {
   bool config_changed = false;
-  std::map<ProcessName, std::vector<std::string>> flags_removed;
+  AutoFlagsNameMap flags_removed;
 
   for (auto& promoted_flags : *config->mutable_promoted_flags()) {
     for (int i = 0; i < promoted_flags.flag_infos().size();) {
       if (promoted_flags.flag_infos(i).promoted_version() > rollback_version) {
-        flags_removed[promoted_flags.process_name()].push_back(promoted_flags.flags(i));
+        flags_removed[promoted_flags.process_name()].insert(promoted_flags.flags(i));
         Erase(promoted_flags.mutable_flags(), i);
         Erase(promoted_flags.mutable_flag_infos(), i);
         config_changed = true;
@@ -212,37 +211,67 @@ Result<bool> RemoveFlagFromConfig(
   return false;
 }
 
-Status StoreAutoFlagsConfig(const AutoFlagsConfigPB& new_config, CatalogManager* catalog_manager) {
-  consensus::ChangeAutoFlagsConfigOpResponsePB operation_res;
-  // SubmitToSysCatalog will set the correct tablet
-  auto operation = std::make_unique<tablet::ChangeAutoFlagsConfigOperation>(nullptr /* tablet */);
-  *operation->AllocateRequest() = new_config;
-  CountDownLatch latch(1);
-  operation->set_completion_callback(
-      tablet::MakeLatchOperationCompletionCallback(&latch, &operation_res));
+Status StoreAutoFlagsConfig(
+    AutoFlagsManager& auto_flag_manager, AutoFlagsConfigPB& new_config,
+    CatalogManager* catalog_manager) {
+  auto persist_config_to_sys_catalog =
+      [catalog_manager](const AutoFlagsConfigPB& new_config) -> Status {
+    consensus::ChangeAutoFlagsConfigOpResponsePB operation_res;
+    // SubmitToSysCatalog will set the correct tablet
+    auto operation = std::make_unique<tablet::ChangeAutoFlagsConfigOperation>(nullptr /* tablet */);
+    *operation->AllocateRequest() = new_config;
+    CountDownLatch latch(1);
+    operation->set_completion_callback(
+        tablet::MakeLatchOperationCompletionCallback(&latch, &operation_res));
 
-  RETURN_NOT_OK(catalog_manager->SubmitToSysCatalog(std::move(operation)));
+    RETURN_NOT_OK_PREPEND(
+        catalog_manager->SubmitToSysCatalog(std::move(operation)),
+        "Failed to store AutoFlags config");
 
-  latch.Wait();
+    latch.Wait();
 
-  if (operation_res.has_error()) {
-    auto status = StatusFromPB(operation_res.error().status());
-    LOG(WARNING) << "Failed to apply new AutoFlags config: " << status.ToString();
-    return status;
-  }
+    if (operation_res.has_error()) {
+      auto status = StatusFromPB(operation_res.error().status());
+      LOG(WARNING) << "Failed to apply new AutoFlags config: " << status.ToString();
+      return status;
+    }
 
-  return OK();
+    return OK();
+  };
+
+  return auto_flag_manager.StoreUpdatedConfig(new_config, persist_config_to_sys_catalog);
 }
+
+AutoFlagsNameMap GetFlagsFromConfig(const AutoFlagsConfigPB& config) {
+  AutoFlagsNameMap result;
+  for (auto& per_process_flags : config.promoted_flags()) {
+    auto& process_flags = result[per_process_flags.process_name()];
+    for (auto& flag_name : per_process_flags.flags()) {
+      process_flags.insert(flag_name);
+    }
+  }
+  return result;
+}
+
+Result<AutoFlagInfo> GetFlagInfo(const ProcessName& process_name, const std::string& flag_name) {
+  auto all_flags = VERIFY_RESULT(AutoFlagsUtil::GetAvailableAutoFlags());
+
+  SCHECK(all_flags.contains(process_name), NotFound, "Process $0 not found", process_name);
+  auto flag_info = FindOrNullptr(all_flags[process_name], flag_name);
+  SCHECK(flag_info, NotFound, "AutoFlag $0 not found in process $1", flag_name, process_name);
+
+  return *flag_info;
+}
+
 }  // namespace
 
-Status CreateAutoFlagsConfigForNewCluster(AutoFlagsManager* auto_flag_manager) {
+Status CreateAutoFlagsConfigForNewCluster(AutoFlagsManager& auto_flag_manager) {
   LOG(INFO) << "Creating AutoFlags configuration for new cluster.";
 
   if (FLAGS_limit_auto_flag_promote_for_new_universe != 0) {
     const auto max_flag_class = VERIFY_RESULT(yb::UnderlyingToEnumSlow<yb::AutoFlagClass>(
         FLAGS_limit_auto_flag_promote_for_new_universe));
     const auto promote_non_runtime = PromoteNonRuntimeAutoFlags::kTrue;
-    const auto apply_non_runtime = ApplyNonRuntimeAutoFlags::kTrue;
 
     if (FLAGS_disable_auto_flags_management) {
       LOG(WARNING) << "AutoFlags management is disabled.";
@@ -250,34 +279,33 @@ Status CreateAutoFlagsConfigForNewCluster(AutoFlagsManager* auto_flag_manager) {
     }
 
     LOG(INFO) << "Promoting AutoFlags. max_flag_class: " << ToString(max_flag_class)
-              << ", promote_non_runtime: " << promote_non_runtime
-              << ", apply_non_runtime: " << apply_non_runtime;
+              << ", promote_non_runtime: " << promote_non_runtime;
 
     const auto eligible_flags = VERIFY_RESULT(
         AutoFlagsUtil::GetFlagsEligibleForPromotion(max_flag_class, promote_non_runtime));
 
-    auto new_config = auto_flag_manager->GetConfig();
+    auto new_config = auto_flag_manager.GetConfig();
     InsertFlagsToConfig(eligible_flags, &new_config, true /* force */);
+    DCHECK_GE(new_config.config_version(), kMinAutoFlagsConfigVersion);
 
-    RETURN_NOT_OK(auto_flag_manager->LoadFromConfig(std::move(new_config), apply_non_runtime));
+    RETURN_NOT_OK(auto_flag_manager.LoadNewConfig(std::move(new_config)));
   }
 
   return OK();
 }
 
-Status CreateEmptyAutoFlagsConfig(AutoFlagsManager* auto_flag_manager) {
+Status CreateEmptyAutoFlagsConfig(AutoFlagsManager& auto_flag_manager) {
   LOG(INFO) << "Creating empty AutoFlags configuration.";
 
   AutoFlagsConfigPB new_config;
-  new_config.set_config_version(0);
-  RETURN_NOT_OK(
-      auto_flag_manager->LoadFromConfig(std::move(new_config), ApplyNonRuntimeAutoFlags::kTrue));
+  new_config.set_config_version(kInvalidAutoFlagsConfigVersion);
+  RETURN_NOT_OK(auto_flag_manager.LoadNewConfig(std::move(new_config)));
   return OK();
 }
 
 Result<std::pair<uint32_t, PromoteAutoFlagsOutcome>> PromoteAutoFlags(
     const AutoFlagClass max_flag_class, const PromoteNonRuntimeAutoFlags promote_non_runtime_flags,
-    const bool force_version_change, const AutoFlagsManager& auto_flag_manager,
+    const bool force_version_change, AutoFlagsManager& auto_flag_manager,
     CatalogManager* catalog_manager) {
   SCHECK(!FLAGS_disable_auto_flags_management, NotSupported, "AutoFlags management is disabled.");
 
@@ -292,14 +320,14 @@ Result<std::pair<uint32_t, PromoteAutoFlagsOutcome>> PromoteAutoFlags(
   auto outcome = InsertFlagsToConfig(eligible_flags, &new_config, force_version_change);
 
   if (outcome != PromoteAutoFlagsOutcome::kNoFlagsPromoted) {
-    RETURN_NOT_OK(StoreAutoFlagsConfig(new_config, catalog_manager));
+    RETURN_NOT_OK(StoreAutoFlagsConfig(auto_flag_manager, new_config, catalog_manager));
   }
 
   return std::make_pair(new_config.config_version(), outcome);
 }
 
 Result<std::pair<uint32_t, bool>> RollbackAutoFlags(
-    uint32_t rollback_version, const AutoFlagsManager& auto_flag_manager,
+    uint32_t rollback_version, AutoFlagsManager& auto_flag_manager,
     CatalogManager* catalog_manager) {
   SCHECK(!FLAGS_disable_auto_flags_management, NotSupported, "AutoFlags management is disabled.");
 
@@ -331,30 +359,24 @@ Result<std::pair<uint32_t, bool>> RollbackAutoFlags(
             << ", flags_removed: " << yb::ToString(removed_flags)
             << ", new_config_version: " << new_config.config_version();
 
-  RETURN_NOT_OK(StoreAutoFlagsConfig(new_config, catalog_manager));
+  RETURN_NOT_OK(StoreAutoFlagsConfig(auto_flag_manager, new_config, catalog_manager));
 
   return std::make_pair(new_config.config_version(), true);
 }
 
 Result<std::pair<uint32_t, PromoteAutoFlagsOutcome>> PromoteSingleAutoFlag(
     const ProcessName& process_name, const std::string& flag_name,
-    const AutoFlagsManager& auto_flag_manager, CatalogManager* catalog_manager) {
+    AutoFlagsManager& auto_flag_manager, CatalogManager* catalog_manager) {
   SCHECK(!FLAGS_disable_auto_flags_management, NotSupported, "AutoFlags management is disabled.");
 
-  auto all_flags = VERIFY_RESULT(AutoFlagsUtil::GetAvailableAutoFlags());
-
-  SCHECK(all_flags.contains(process_name), NotFound, "Process $0 not found", process_name);
-  auto flag_info = FindOrNullptr(all_flags[process_name], flag_name);
-  SCHECK(flag_info, NotFound, "AutoFlag $0 not found in process $1", flag_name, process_name);
-
   AutoFlagsInfoMap flag_to_insert;
-  flag_to_insert[process_name].emplace_back(*flag_info);
+  flag_to_insert[process_name].emplace_back(VERIFY_RESULT(GetFlagInfo(process_name, flag_name)));
 
   auto new_config = auto_flag_manager.GetConfig();
   auto outcome = InsertFlagsToConfig(flag_to_insert, &new_config, /* force_version_change */ false);
 
   if (outcome != PromoteAutoFlagsOutcome::kNoFlagsPromoted) {
-    RETURN_NOT_OK(StoreAutoFlagsConfig(new_config, catalog_manager));
+    RETURN_NOT_OK(StoreAutoFlagsConfig(auto_flag_manager, new_config, catalog_manager));
   }
 
   LOG(INFO) << "Promote AutoFlag. process_name: " << process_name << ", flag_name: " << flag_name
@@ -365,8 +387,11 @@ Result<std::pair<uint32_t, PromoteAutoFlagsOutcome>> PromoteSingleAutoFlag(
 
 Result<std::pair<uint32_t, bool>> DemoteSingleAutoFlag(
     const ProcessName& process_name, const std::string& flag_name,
-    const AutoFlagsManager& auto_flag_manager, CatalogManager* catalog_manager) {
+    AutoFlagsManager& auto_flag_manager, CatalogManager* catalog_manager) {
   SCHECK(!FLAGS_disable_auto_flags_management, NotSupported, "AutoFlags management is disabled.");
+
+  // Make sure process and AutoFlag exists.
+  RETURN_NOT_OK(GetFlagInfo(process_name, flag_name));
 
   auto new_config = auto_flag_manager.GetConfig();
   if (!VERIFY_RESULT(RemoveFlagFromConfig(process_name, flag_name, &new_config))) {
@@ -377,8 +402,20 @@ Result<std::pair<uint32_t, bool>> DemoteSingleAutoFlag(
   LOG(INFO) << "Demote AutoFlag. process_name: " << process_name << ", flag_name: " << flag_name
             << ", new_config_version: " << new_config.config_version();
 
-  RETURN_NOT_OK(StoreAutoFlagsConfig(new_config, catalog_manager));
+  RETURN_NOT_OK(StoreAutoFlagsConfig(auto_flag_manager, new_config, catalog_manager));
 
   return std::make_pair(new_config.config_version(), true);
 }
+
+Result<bool> AreAutoFlagsCompatible(
+    const AutoFlagsConfigPB& base_config, const AutoFlagsConfigPB& config_to_check,
+    AutoFlagClass min_class) {
+  const auto base_flags = GetFlagsFromConfig(base_config);
+  const auto to_check_flags = GetFlagsFromConfig(config_to_check);
+  const auto auto_flag_infos = VERIFY_RESULT(AutoFlagsUtil::GetAvailableAutoFlags());
+
+  return AutoFlagsUtil::AreAutoFlagsCompatible(
+      base_flags, to_check_flags, auto_flag_infos, min_class);
+}
+
 }  // namespace yb::master

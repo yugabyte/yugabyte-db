@@ -9,6 +9,7 @@
     "python*_modules.tar.gz",
     "preprovision.yml",
     "use_custom_ssh_port.yml",
+    "yb-otel-collector.yml",
     "yb-server-ctl.yml",
     "yb-server-provision.yml",
     "send_sudo_pass.yml",

@@ -15,6 +15,7 @@
 #include <string>
 
 #include "yb/common/json_util.h"
+#include "yb/gutil/map-util.h"
 #include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/env_util.h"
 #include "yb/util/path_util.h"
@@ -177,6 +178,41 @@ Result<AutoFlagsInfoMap> GetFlagsEligibleForPromotion(
 
   return GetFlagsEligibleForPromotion(available_flags, max_flag_class, promote_non_runtime);
 }
+
+Result<bool> AreAutoFlagsCompatible(
+    const AutoFlagsNameMap& base_flags, const AutoFlagsNameMap& to_check_flags,
+    const AutoFlagsInfoMap& auto_flag_infos, AutoFlagClass min_class) {
+  for (const auto& [process_name, base_process_flags] : base_flags) {
+    auto process_flag_info = FindOrNull(auto_flag_infos, process_name);
+    SCHECK(process_flag_info, NotFound, "AutoFlags info for process $0 not found", process_name);
+
+    auto to_check_flags_set = FindOrNull(to_check_flags, process_name);
+    uint32 num_flags = 0;
+
+    for (const auto& flag : *process_flag_info) {
+      if (!base_process_flags.contains(flag.name)) {
+        continue;
+      }
+      num_flags++;
+      if (flag.flag_class < min_class) {
+        continue;
+      }
+
+      if (!to_check_flags_set || !to_check_flags_set->contains(flag.name)) {
+        LOG_WITH_FUNC(INFO) << "Flag " << flag.name << " of process " << process_name
+                            << " with class " << flag.flag_class
+                            << " not found in config to validate";
+        return false;
+      }
+    }
+
+    SCHECK_EQ(
+        num_flags, base_process_flags.size(), NotFound, "AutoFlags info for some flags not found");
+  }
+
+  return true;
+}
+
 }  // namespace AutoFlagsUtil
 
 }  // namespace yb

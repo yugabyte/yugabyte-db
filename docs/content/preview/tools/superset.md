@@ -33,7 +33,7 @@ Launch Superset in your browser at `http://<hostname-or-IP-address>:8088`. If yo
 
 To connect Apache Superset to YugabyteDB:
 
-1. Navigate to Data > Databases > + Databases, and choose **PostgreSQL** from the **Connect a database** menu.
+1. Navigate to **Data > Databases > + Databases**, and choose **PostgreSQL** from the **Connect a database** menu.
 
     ![Connect Database](/images/develop/tools/superset/connect-database.png)
 

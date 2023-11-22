@@ -65,13 +65,13 @@ public class CreateCDCStreamRequest extends YRpc<CreateCDCStreamResponse> {
         this.recordType = CdcService.CDCRecordType.MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES;
       } else if (recordType.equalsIgnoreCase("CHANGE")) {
         this.recordType = CdcService.CDCRecordType.CHANGE;
-      } else if (recordType.equalsIgnoreCase("PG_FULL")) {
+      } else if (recordType.equalsIgnoreCase("FULL")) {
         this.recordType = CdcService.CDCRecordType.PG_FULL;
-      } else if (recordType.equalsIgnoreCase("PG_CHANGE_OLD_NEW")) {
+      } else if (recordType.equalsIgnoreCase("CHANGE_OLD_NEW")) {
         this.recordType = CdcService.CDCRecordType.PG_CHANGE_OLD_NEW;
-      } else if (recordType.equalsIgnoreCase("PG_DEFAULT")) {
+      } else if (recordType.equalsIgnoreCase("DEFAULT")) {
         this.recordType = CdcService.CDCRecordType.PG_DEFAULT;
-      } else if (recordType.equalsIgnoreCase("PG_NOTHING")) {
+      } else if (recordType.equalsIgnoreCase("NOTHING")) {
         this.recordType = CdcService.CDCRecordType.PG_NOTHING;
       } else {
         throw new IllegalArgumentException("Invalid record type: " + recordType);

@@ -10,7 +10,6 @@ import {
   fetchTaskUntilItCompletes,
   fetchUniverseDiskUsageMetric
 } from '../../../actions/xClusterReplication';
-import { ParallelThreads } from '../../backupv2/common/BackupUtils';
 import { YBModalForm } from '../../common/forms';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import {
@@ -22,7 +21,7 @@ import { ConfigureBootstrapStep } from './ConfigureBootstrapStep';
 import { SelectTargetUniverseStep } from './SelectTargetUniverseStep';
 import { YBButton, YBModal } from '../../common/forms/fields';
 import { api, universeQueryKey } from '../../../redesign/helpers/api';
-import { getPrimaryCluster, isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
+import { getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { assertUnreachableCase, handleServerError } from '../../../utils/errorHandlingUtils';
 import {
   XCLUSTER_CONFIG_NAME_ILLEGAL_PATTERN,
@@ -44,7 +43,6 @@ export interface CreateXClusterConfigFormValues {
   tableUUIDs: string[];
   // Bootstrap fields
   storageConfig: { label: string; name: string; regions: any[]; value: string };
-  parallelThreads: number;
 }
 
 export interface CreateXClusterConfigFormErrors {
@@ -53,7 +51,6 @@ export interface CreateXClusterConfigFormErrors {
   tableUUIDs: { title: string; body: string };
   // Bootstrap fields
   storageConfig: string;
-  parallelThreads: string;
 }
 
 export interface CreateXClusterConfigFormWarnings {
@@ -62,7 +59,6 @@ export interface CreateXClusterConfigFormWarnings {
   tableUUIDs?: { title: string; body: string };
   // Bootstrap fields
   storageConfig?: string;
-  parallelThreads?: string;
 }
 
 interface ConfigureReplicationModalProps {
@@ -85,9 +81,7 @@ const DEFAULT_TABLE_TYPE = TableType.PGSQL_TABLE_TYPE;
 const INITIAL_VALUES: Partial<CreateXClusterConfigFormValues> = {
   configName: '',
   isTransactionalConfig: false,
-  tableUUIDs: [],
-  // Bootstrap fields
-  parallelThreads: ParallelThreads.XCLUSTER_DEFAULT
+  tableUUIDs: []
 };
 
 export const CreateConfigModal = ({
@@ -119,10 +113,7 @@ export const CreateConfigModal = ({
         const bootstrapParams = {
           tables: bootstrapRequiredTableUUIDs,
           backupRequestParams: {
-            storageConfigUUID: values.storageConfig.value,
-            parallelism: values.parallelThreads,
-            sse: values.storageConfig.name === 'S3',
-            universeUUID: null
+            storageConfigUUID: values.storageConfig.value
           }
         };
         return createXClusterReplication(
@@ -178,10 +169,14 @@ export const CreateConfigModal = ({
 
   const tablesQuery = useQuery<YBTable[]>(
     universeQueryKey.tables(sourceUniverseUUID, {
-      excludeColocatedTables: true
+      excludeColocatedTables: true,
+      xClusterSupportedOnly: true
     }),
     () =>
-      fetchTablesInUniverse(sourceUniverseUUID, { excludeColocatedTables: true }).then(
+      fetchTablesInUniverse(sourceUniverseUUID, {
+        excludeColocatedTables: true,
+        xClusterSupportedOnly: true
+      }).then(
         (response) => response.data
       )
   );
@@ -413,7 +408,7 @@ export const CreateConfigModal = ({
                         formik.current
                       );
                     },
-                    isDrConfig: false,
+                    isDrInterface: false,
                     isFixedTableType: false,
                     isTransactionalConfig: values.isTransactionalConfig,
                     selectedKeyspaces,
@@ -558,13 +553,6 @@ const validateForm = async (
       const errors: Partial<CreateXClusterConfigFormErrors> = {};
       if (!values.storageConfig) {
         errors.storageConfig = 'Backup storage configuration is required.';
-      }
-      const shouldValidateParallelThread =
-        values.parallelThreads && isYbcEnabledUniverse(sourceUniverse?.universeDetails);
-      if (shouldValidateParallelThread && values.parallelThreads > ParallelThreads.MAX) {
-        errors.parallelThreads = `Parallel threads must be less than or equal to ${ParallelThreads.MAX}`;
-      } else if (shouldValidateParallelThread && values.parallelThreads < ParallelThreads.MIN) {
-        errors.parallelThreads = `Parallel threads must be greater than or equal to ${ParallelThreads.MIN}`;
       }
 
       throw errors;

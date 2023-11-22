@@ -90,6 +90,9 @@ public class XClusterUniverseServiceTest extends FakeDBApplication {
       when(mockConfGetter.getConfForScope(
               any(Universe.class), eq(UniverseConfKeys.promoteAutoFlag)))
           .thenReturn(true);
+      when(mockConfGetter.getConfForScope(
+              any(Universe.class), eq(UniverseConfKeys.enableRollbackSupport)))
+          .thenReturn(false);
       GFlagsValidation.AutoFlagDetails flag = new GFlagsValidation.AutoFlagDetails();
       flag.name = "FLAG_1";
       GFlagsValidation.AutoFlagsPerServer flagsPerServer =

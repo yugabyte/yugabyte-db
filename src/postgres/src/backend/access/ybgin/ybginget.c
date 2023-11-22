@@ -494,10 +494,13 @@ ybginSetupTargets(IndexScanDesc scan)
 static void
 ybginExecSelect(IndexScanDesc scan, ScanDirection dir)
 {
-	bool		is_forward_scan = (dir == ForwardScanDirection);
 	YbginScanOpaque ybso = (YbginScanOpaque) scan->opaque;
 
-	HandleYBStatus(YBCPgSetForwardScan(ybso->handle, is_forward_scan));
+	Assert(!ScanDirectionIsBackward(dir));
+	/* Set scan direction, if matters */
+	if (ScanDirectionIsForward(dir))
+		HandleYBStatus(YBCPgSetForwardScan(ybso->handle, true));
+
 	HandleYBStatus(YBCPgExecSelect(ybso->handle, NULL /* exec_params */));
 }
 
@@ -588,7 +591,7 @@ ybgingettuple(IndexScanDesc scan, ScanDirection dir)
 	YbginScanOpaque ybso = (YbginScanOpaque) scan->opaque;
 
 	/* Sanity check: amcanbackward. */
-	Assert(dir == ForwardScanDirection);
+	Assert(!ScanDirectionIsBackward(dir));
 
 	if (!ybso->is_exec_done)
 	{

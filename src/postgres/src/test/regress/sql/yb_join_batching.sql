@@ -100,6 +100,30 @@ drop table d2;
 drop table d3;
 drop table d4;
 
+create table test (
+    id   uuid NOT NULL,
+    num  int4 NOT NULL,
+    PRIMARY KEY ((id)HASH, num DESC)
+);
+insert into test(id, num) VALUES
+('774cee8f-f0e9-4c46-8f3d-3b5e7db8b839'::uuid, 1);
+
+/*+ Set(yb_bnl_batch_size 3) */ explain (costs off)
+select * from test t1
+join test t2 on (t1.id = t2.id and t1.num = t2.num)
+where t1.id in (
+	'774cee8f-f0e9-4c46-8f3d-3b5e7db8b839'::uuid,
+	'884cee8f-f0e9-4c46-8f3d-3b5e7db8b847'::uuid);
+
+/*+ Set(yb_bnl_batch_size 3) */
+select * from test t1
+join test t2 on (t1.id = t2.id and t1.num = t2.num)
+where t1.id in (
+	'774cee8f-f0e9-4c46-8f3d-3b5e7db8b839'::uuid,
+	'884cee8f-f0e9-4c46-8f3d-3b5e7db8b847'::uuid);
+
+drop table test;
+
 EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 LEFT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.a <= 100 AND t2.a <= 100) s ON t3.a = s.a WHERE t3.a <= 30;
 SELECT * FROM p3 t3 LEFT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.a <= 100 AND t2.a <= 100) s ON t3.a = s.a WHERE t3.a <= 30;
 
@@ -316,6 +340,35 @@ SELECT '' AS "xxx", t1.a, t2.e
   FROM J1_TBL t1 (a, b, c), J2_TBL t2 (d, e)
   WHERE t1.a = t2.d  order by 1, 2, 3;
 
+create table p1(a int, primary key(a asc));
+create table p2(a int, primary key(a asc));
+create table p3(a int, primary key(a asc));
+
+insert into p1 select generate_series(1, 1000);
+insert into p2 select generate_series(1, 1000);
+insert into p3 select generate_series(1, 1000);
+
+analyze p1;
+analyze p2;
+analyze p3;
+
+-- The following hints try to force an illegal BNL
+/*+YbBatchedNL(p1 p2 p3) YbBatchedNL(p2 p3) Leading((p1 (p2 p3))) IndexScan(p3)*/explain (costs off) select * from p1, p2, p3 where p1.a + 1 = p2.a and
+p3.a = p1.a + p2.a;
+
+/*+YbBatchedNL(p1 p2 p3) NestLoop(p2 p3) Leading((p1 (p2 p3))) IndexScan(p3)*/explain (costs off) select * from p1, p2, p3 where p1.a + 1 = p2.a and
+p3.a = p1.a + p2.a;
+
+/*+NestLoop(p1 p2 p3) NestLoop(p2 p3) Leading((p1 (p2 p3))) IndexScan(p3)*/explain (costs off) select * from p1, p2, p3 where p1.a + 1 = p2.a and
+p3.a = p1.a + p2.a;
+
+-- This is a legal BNL
+/*+YbBatchedNL(p1 p2 p3) Leading(((p1 p2) p3)) IndexScan(p3)*/explain (costs off) select * from p1, p2, p3 where p1.a + 1 = p2.a and
+p3.a = p1.a + p2.a;
+
+drop table p1;
+drop table p2;
+drop table p3;
 --
 --
 -- Inner joins (equi-joins)
@@ -545,3 +598,22 @@ select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
 on (x1 = xx1) where (y2 is not null) order by 1;
 select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
 on (x1 = xx1) where (xx2 is not null) order by 1;
+
+-- Tests for EXPLAIN output of BNL
+-- These tests ensure we don't resolve fieldnames for batched expressions in Index Cond
+CREATE FUNCTION public.dummy(OUT a integer, OUT b integer)
+RETURNS SETOF record
+LANGUAGE sql
+IMMUTABLE PARALLEL SAFE STRICT
+AS 'SELECT 1, 1';
+EXPLAIN (COSTS OFF) SELECT 1 FROM pg_type t, (SELECT dummy() as x) AS ss WHERE t.oid = (ss.x).a;
+
+CREATE TABLE tbl (c1 INT, c2 INT, PRIMARY KEY (c1 ASC, c2 ASC));
+/*+Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_material off)*/ EXPLAIN (COSTS OFF) SELECT 1 FROM tbl, (SELECT dummy() as x) AS ss, (SELECT dummy() as x2) AS ss2 WHERE tbl.c1 = (ss.x).a AND tbl.c2 = (ss2.x2).a;
+
+CREATE TABLE tbl2 (c1 int, c2 int, PRIMARY KEY(c1  ASC, c2 ASC));
+/*+Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_material off) NestLoop(tbl tbl2) YbBatchedNL(ss tbl tbl2) IndexScan(tbl) SeqScan(tbl2)*/
+EXPLAIN (COSTS OFF) SELECT 1 FROM (SELECT dummy() as x) AS ss LEFT JOIN (SELECT tbl.c1 FROM tbl, tbl2) j1 ON j1.c1 = (ss.x).a;
+
+/*+Set(enable_mergejoin off) Set(enable_hashjoin off) Set(yb_bnl_batch_size 3) Set(enable_material off) YbBatchedNL(tbl2 ss tbl) NestLoop(ss tbl) IndexScan(tbl)*/
+EXPLAIN (COSTS OFF) SELECT 1 FROM (SELECT dummy() as x) AS ss, tbl, tbl2 WHERE tbl2.c1 = (ss.x).a AND (ss.x).a < 40 AND tbl.c1 = ANY(ARRAY[(ss.x).a, (ss.x).a]);

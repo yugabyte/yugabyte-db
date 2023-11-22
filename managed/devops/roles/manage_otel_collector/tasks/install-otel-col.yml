@@ -8,7 +8,7 @@
   set_fact:
     otel_col_local_path: "{{ local_package_path }}/{{ otel_col_package_file }}"
     _mount_logs_dir: "{{ _mount_points[0] }}/otel-collector/logs"
-    _mount_psq_dir: "{{ _mount_points[0] }}/otel-collector/psq"
+    _mount_queue_dir: "{{ _mount_points[0] }}/otel-collector/queue"
 
 - name: Install OpenTelemetry collector | Clean up OpenTelemetry collector temp directory
   file:
@@ -64,14 +64,14 @@
 
 - name: Install OpenTelemetry collector | Create OpenTelemetry collector persistent queues directory
   file:
-    path: "{{ _mount_psq_dir }}"
+    path: "{{ _mount_queue_dir }}"
     state: directory
     mode: 0755
 
 - name: Install OpenTelemetry collector | Symlink OpenTelemetry collector persistent queues directory
   file:
-    src: "{{ _mount_psq_dir }}"
-    dest: "{{ otel_col_psq_dir }}"
+    src: "{{ _mount_queue_dir }}"
+    dest: "{{ otel_col_queue_dir }}"
     mode: 0755
     state: link
     force: yes
