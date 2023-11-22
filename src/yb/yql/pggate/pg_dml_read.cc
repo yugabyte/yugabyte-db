@@ -485,13 +485,13 @@ Status PgDmlRead::BindColumnCondIn(PgExpr *lhs, int n_attr_values, PgExpr **attr
       auto vals = attr_values[i]->Unpack();
       auto curr_val_it = vals.begin();
       for (const PgColumn &curr_col : cols) {
-        const PgExpr &curr_val = *curr_val_it;
+        const PgExpr &curr_val = *curr_val_it++;
+
         auto col_type = curr_val.internal_type();
         if (curr_col.internal_type() == InternalType::kBinaryValue)
             continue;
         SCHECK_EQ(curr_col.internal_type(), col_type, Corruption,
           "Attribute value type does not match column type");
-        curr_val_it++;
       }
     }
   }
