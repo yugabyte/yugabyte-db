@@ -1,6 +1,6 @@
 ---
 title: Data types in YCQL
-headerTitle: Data types
+headerTitle: Data types in YCQL
 linkTitle: Data types
 description: Learn about the data types in YCQL.
 menu:
