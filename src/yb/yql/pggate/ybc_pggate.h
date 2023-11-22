@@ -582,6 +582,7 @@ double YBCGetTransactionPriority();
 TxnPriorityRequirement YBCGetTransactionPriorityType();
 YBCStatus YBCPgGetSelfActiveTransaction(YBCPgUuid *txn_id, bool *is_null);
 YBCStatus YBCPgActiveTransactions(YBCPgSessionTxnInfo *infos, size_t num_infos);
+bool YBCPgIsDdlMode();
 
 // System validation -------------------------------------------------------------------------------
 // Validate placement information
