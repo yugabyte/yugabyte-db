@@ -62,7 +62,7 @@ The valid *arguments* for import data are described in the following table:
 | -h, --help | Command line help. |
 | --parallel-jobs <connectionCount> | Number of parallel jobs to use while importing data. Depending on the YugabyteDB database configuration, the value of `--parallel-jobs` should be tweaked such that at most 50% of target cores are utilised. <br>Default: If yb-voyager can determine the total number of cores N in the YugabyteDB database cluster, it uses N/2 as the default. Otherwise, it defaults to twice the number of nodes in the cluster.|
 | --send-diagnostics | Enable or disable sending [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
-| --start-clean | Starts a fresh import with data files present in the `data` directory.<br>If the target YugabyteDB database has non-empty tables, you are prompted to continue the import without truncating those tables; if you go ahead without truncating, then yb-voyager starts ingesting the data present in the data files in upsert mode.<br> **Note** that for cases where a table doesn't have a primary key, duplicate data may be inserted. You can avoid duplication by excluding the table using `--exclude-table-list`, or by truncating those tables manually before using the `start-clean` flag. <br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --start-clean | Starts a fresh import with data files present in the `data` directory.<br>If the target YugabyteDB database has non-empty tables, you are prompted to continue the import without truncating those tables; if you go ahead without truncating, then yb-voyager starts ingesting the data present in the data files in upsert mode.<br> **Note** that for cases where a table doesn't have a primary key, duplicate data may be inserted. You can avoid duplication by excluding the table using `--exclude-table-list`, or by truncating those tables manually before using the `start-clean` flag. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --target-db-host <hostname> | Domain name or IP address of the machine on which target database server is running. <br>Default: "127.0.0.1" |
 | --target-db-name <name> | Target database name. |
 | --target-db-password <password>| Password to connect to the target YugabyteDB server. Alternatively, you can also specify the password by setting the environment variable `TARGET_DB_PASSWORD`. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. |
@@ -126,7 +126,6 @@ The valid *arguments* for import data status are described in the following tabl
 | :------- | :------------------------ |
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to keep the exported schema, data, state, and logs.|
 | -h, --help | Command line help. |
-| --send-diagnostics | Enable or disable sending [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -y, --yes | Answer yes to all prompts during the import data operation. <br>Default: false |
 
 #### Example
@@ -155,11 +154,9 @@ The valid *arguments* for get data-migration-report are described in the followi
 | :------- | :------------------------ |
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help. |
-| --send-diagnostics | Enable or disable sending [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --source-db-password <password>| Password to connect to the source database server. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. Alternatively, you can also specify the password by setting the environment variable `SOURCE_DB_PASSWORD`. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose it in single quotes. |
 | --source-replica-db-password <password> | Password to connect to the source-replica database server. Alternatively, you can also specify the password by setting the environment variable `SOURCE_REPLICA_DB_PASSWORD`. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose it in single quotes. |
 | --target-db-password <password>| Password to connect to the target YugabyteDB server. Alternatively, you can also specify the password by setting the environment variable `TARGET_DB_PASSWORD`. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. |
-| -y, --yes | Answer yes to all prompts during the export schema operation. <br>Default: false |
 
 #### Example
 
@@ -187,9 +184,10 @@ The valid *arguments* for import data to source are described in the following t
 | :------- | :------------------------ |
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help for import data to source. |
+| --parallel-jobs | Number of parallel jobs to use while importing data. <br>Default: 16(Oracle) |
 | --send-diagnostics | Enable or disable sending [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --source-db-password | Password to connect to the source database server. |
-| --start-clean | Starts a fresh import with exported data files present in the export-dir/data directory. <br> If any table on YugabyteDB database is non-empty, it prompts whether you want to continue the import without truncating those tables; if you go ahead without truncating, then yb-voyager starts ingesting the data present in the data files with upsert mode. <br>Note that for the cases where a table doesn't have a primary key, this may lead to insertion of duplicate data. To avoid this, exclude the table using the --exclude-file-list or truncate those tables manually before using the start-clean flag. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --start-clean | Starts a fresh import with exported data files present in the export-dir/data directory. <br> If any table on YugabyteDB database is non-empty, it prompts whether you want to continue the import without truncating those tables; if you go ahead without truncating, then yb-voyager starts ingesting the data present in the data files with upsert mode. <br>Note that for the cases where a table doesn't have a primary key, this may lead to insertion of duplicate data. To avoid this, exclude the table using the --exclude-file-list or truncate those tables manually before using the start-clean flag. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -y, --yes | Answer yes to all prompts during the migration. <br>Default: false |
 
 #### Example
@@ -227,16 +225,18 @@ The valid *arguments* for import data to source-replica are described in the fol
 | --source-replica-db-schema <schemaName> | Schema name of the source-replica database. |
 | --source-replica-db-sid <SID> | Oracle System Identifier (SID) that you wish to use while importing data to Oracle instances. Oracle migrations only. |
 | --source-replica-db-user <username>| Username to connect to the source-replica database server. |
-| --source-replica-db-ssl-cert <path>| Source-replica database SSL Certificate path. |
-| --source-replica-db-ssl-crl <list>| Source-replica database SSL Root Certificate Revocation List (CRL). |
-| --source-replica-db-ssl-key <Keypath> | Source-replica database SSL key path. |
-| --source-replica-db-ssl-mode <SSLmode>| One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
-| --source-replica-db-ssl-root-cert | Source-replica database SSL Root Certificate path. |
+| --source-replica-ssl-cert <path>| Source-replica database SSL Certificate path. |
+| --source-replica-ssl-crl <list>| Source-replica database SSL Root Certificate Revocation List (CRL). |
+| --source-replica-ssl-key <Keypath> | Source-replica database SSL key path. |
+| --source-replica-ssl-mode <SSLmode>| One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
+| --source-replica-ssl-root-cert | Source-replica database SSL Root Certificate path. |
 | -h, --help | Command line help for import data to source-replica. |
 | --oracle-home <path> | Path to set $ORACLE_HOME environment variable. `tnsnames.ora` is found in `$ORACLE_HOME/network/admin`. Oracle migrations only.|
 | [--oracle-tns-alias](../../yb-voyager-cli/#ssl-connectivity) <alias> | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
 | --parallel-jobs <connectionCount> | The number of parallel batches issued to the source-replica database. <br> Default: 1 |
-| --start-clean | Starts a fresh import with data files present in the `data` directory.<br>If there's any non-empty table on the target YugabyteDB database, you get a prompt whether to continue the import without truncating those tables; if you go ahead without truncating, then yb-voyager starts ingesting the data present in the data files with upsert mode.<br> **Note** that for cases where a table doesn't have a primary key, it may lead to insertion of duplicate data. In that case, you can avoid the duplication by excluding the table from the `--exclude-table-list`, or truncating those tables manually before using the `start-clean` flag. <br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --start-clean | Starts a fresh import with data files present in the `data` directory.<br>If there's any non-empty table on the target YugabyteDB database, you get a prompt whether to continue the import without truncating those tables; if you go ahead without truncating, then yb-voyager starts ingesting the data present in the data files with upsert mode.<br> **Note** that for cases where a table doesn't have a primary key, it may lead to insertion of duplicate data. In that case, you can avoid the duplication by excluding the table from the `--exclude-table-list`, or truncating those tables manually before using the `start-clean` flag. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --send-diagnostics | Enable or disable sending [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| -y, --yes | Answer yes to all prompts during the migration. <br>Default: false |
 
 #### Example
 

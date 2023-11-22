@@ -67,14 +67,12 @@ The valid *arguments* for export data are described in the following table:
 | --source-db-schema <schemaName> | Schema name of the source database. Not applicable for MySQL. For Oracle, you can specify only one schema name using this option. For PostgreSQL, you can specify a list of comma-separated schema names. Case-sensitive schema names are not yet supported. Refer to [Importing with case-sensitive schema names](../../../known-issues/general-issues/#importing-with-case-sensitive-schema-names) for more details. |
 | --source-db-type <databaseType> | One of `postgresql`, `mysql`, or `oracle`. |
 | --source-db-user <username> | Username of the source database. |
-| [--source-ssl-cert](../../yb-voyager-cli/#ssl-connectivity) <certificateName> | Path to a file containing
- the certificate which is part of the SSL `<cert,key>` pair. |
-| [--source-ssl-key](../../yb-voyager-cli/#ssl-connectivity) <keyName> | Path to a file containing
- the key which is part of the SSL `<cert,key>` pair. |
+| [--source-ssl-cert](../../yb-voyager-cli/#ssl-connectivity) <certificateName> | Path to a file containing the certificate which is part of the SSL `<cert,key>` pair. |
+| [--source-ssl-key](../../yb-voyager-cli/#ssl-connectivity) <keyName> | Path to a file containing the key which is part of the SSL `<cert,key>` pair. |
 | [--source-ssl-crl](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
 | [--source-ssl-mode](../../yb-voyager-cli/#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
 | [--source-ssl-root-cert](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
-| --start-clean | Starts a fresh data export after clearing all data from the `data` directory. <br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --start-clean | Starts a fresh data export after clearing all data from the `data` directory. <br> Default: false <br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --table-list | Comma-separated list of the tables for which data needs to be exported. By default, table names in the list are case-insensitive. Enclose names in double quotes ("") to make them case-sensitive.<br>Table names can also be glob patterns containing wildcard characters, such as an asterisk (*) (matches zero or more characters) or question mark (?) (matches one character). To use a glob pattern for table names, enclose the list in single quotes ('').<br> For example, `--table-list '"Products", order*'`.<br> This argument is unsupported for live migration. |
 | --exclude-table-list <tableNames> | Comma-separated list of the tables for which data needs to be excluded during export. Table names follow the same convention as `--table-list`. <br> This argument is unsupported for live migration. |
 | --table-list-file-path | Path of the file containing the list of table names (comma-separated or line-separated) to export. Table names use the same convention as `--table-list`. |
@@ -202,5 +200,5 @@ The valid *arguments* for export data from target are described in the following
 
 ```sh
 yb-voyager export data from target --export-dir /dir/export-dir \
-        --target-db-password 'password' \
+        --target-db-password 'password'
 ```
