@@ -3242,7 +3242,7 @@ Status CatalogManager::DeleteNotServingTablet(
   const auto tablet_info = VERIFY_RESULT(GetTabletInfo(tablet_id));
 
   if (PREDICT_FALSE(FLAGS_TEST_reject_delete_not_serving_tablet_rpc)) {
-    TEST_SYNC_POINT("CatalogManager::DeleteNotServingTablet:Reject");
+    DEBUG_ONLY_TEST_SYNC_POINT("CatalogManager::DeleteNotServingTablet:Reject");
     return STATUS(
         InvalidArgument, "Rejecting due to FLAGS_TEST_reject_delete_not_serving_tablet_rpc");
   }

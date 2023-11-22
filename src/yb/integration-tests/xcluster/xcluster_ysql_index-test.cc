@@ -333,7 +333,6 @@ TEST_F(XClusterYsqlIndexTest, FailedCreateIndex) {
   ASSERT_OK(ValidateRows());
 }
 
-#ifndef NDEBUG
 TEST_F(XClusterYsqlIndexTest, MasterFailoverRetryAddTableToXcluster) {
   ASSERT_OK(CreateIndex(*producer_conn_));
 
@@ -369,7 +368,6 @@ TEST_F(XClusterYsqlIndexTest, MasterFailoverRetryAddTableToXcluster) {
 
   ASSERT_OK(ValidateRows());
 }
-#endif
 
 class XClusterYsqlNonTransactionalTest : public XClusterYsqlIndexTest {
  public:

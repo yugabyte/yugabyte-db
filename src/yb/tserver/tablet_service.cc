@@ -2084,8 +2084,8 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
         static CountDownLatch row_mark_exclusive_latch(FLAGS_TEST_wait_row_mark_exclusive_count);
         row_mark_exclusive_latch.CountDown();
         row_mark_exclusive_latch.Wait();
-        TEST_SYNC_POINT("TabletServiceImpl::Read::RowMarkExclusive:1");
-        TEST_SYNC_POINT("TabletServiceImpl::Read::RowMarkExclusive:2");
+        DEBUG_ONLY_TEST_SYNC_POINT("TabletServiceImpl::Read::RowMarkExclusive:1");
+        DEBUG_ONLY_TEST_SYNC_POINT("TabletServiceImpl::Read::RowMarkExclusive:2");
         break;
       }
     }

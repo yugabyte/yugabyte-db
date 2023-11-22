@@ -58,6 +58,7 @@ DEFINE_NON_RUNTIME_string(test_leave_files, "on_failure",
 DEFINE_NON_RUNTIME_int32(test_random_seed, 0, "Random seed to use for randomized tests");
 DECLARE_int64(memory_limit_hard_bytes);
 DECLARE_bool(enable_tracing);
+DECLARE_bool(TEST_enable_sync_points);
 DECLARE_bool(TEST_running_test);
 DECLARE_bool(never_fsync);
 DECLARE_string(vmodule);
@@ -132,6 +133,7 @@ YBTest::~YBTest() {
 
 void YBTest::SetUp() {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_running_test) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
 
   InitSpinLockContentionProfiling();
   InitGoogleLoggingSafeBasic("yb_test");

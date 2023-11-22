@@ -334,10 +334,10 @@ bool Compaction::InputCompressionMatchesOutput() const {
   bool matches = (GetCompressionType(*cfd_->ioptions(), start_level_,
                                      base_level) == output_compression_);
   if (matches) {
-    TEST_SYNC_POINT("Compaction::InputCompressionMatchesOutput:Matches");
+    DEBUG_ONLY_TEST_SYNC_POINT("Compaction::InputCompressionMatchesOutput:Matches");
     return true;
   }
-  TEST_SYNC_POINT("Compaction::InputCompressionMatchesOutput:DidntMatch");
+  DEBUG_ONLY_TEST_SYNC_POINT("Compaction::InputCompressionMatchesOutput:DidntMatch");
   return matches;
 }
 

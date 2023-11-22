@@ -233,11 +233,11 @@ class MergingIterator final : public InternalIterator {
           child.Seek(key());
           if (child.Valid()) {
             // Child is at first entry >= key().  Step back one to be < key()
-            TEST_SYNC_POINT_CALLBACK("MergeIterator::Prev:BeforePrev", &child);
+            DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("MergeIterator::Prev:BeforePrev", &child);
             child.Prev();
           } else {
             // Child has no entries >= key().  Position at last entry.
-            TEST_SYNC_POINT("MergeIterator::Prev:BeforeSeekToLast");
+            DEBUG_ONLY_TEST_SYNC_POINT("MergeIterator::Prev:BeforeSeekToLast");
             child.SeekToLast();
           }
         }

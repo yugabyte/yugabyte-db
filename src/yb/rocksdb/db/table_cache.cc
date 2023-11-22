@@ -164,7 +164,7 @@ Status TableCache::DoGetTableReader(
     }
     (*table_reader)->SetDataFileReader(std::move(data_file_reader));
   }
-  TEST_SYNC_POINT("TableCache::GetTableReader:0");
+  DEBUG_ONLY_TEST_SYNC_POINT("TableCache::GetTableReader:0");
   return s;
 }
 
@@ -178,8 +178,7 @@ Status TableCache::FindTable(const EnvOptions& env_options,
   uint64_t number = fd.GetNumber();
   Slice key = GetSliceForFileNumber(&number);
   *handle = cache_->Lookup(key, query_id);
-  TEST_SYNC_POINT_CALLBACK("TableCache::FindTable:0",
-      const_cast<bool*>(&no_io));
+  DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("TableCache::FindTable:0", const_cast<bool*>(&no_io));
 
   if (*handle == nullptr) {
     if (no_io) {  // Don't do IO and return a not-found status

@@ -240,8 +240,8 @@ void AsyncRpc::Finished(const Status& status) {
     if (PREDICT_FALSE(ANNOTATE_UNPROTECTED_READ(FLAGS_TEST_asyncrpc_finished_set_timedout))) {
       new_status = STATUS(
           TimedOut, "Fake TimedOut for testing due to FLAGS_TEST_asyncrpc_finished_set_timedout");
-      TEST_SYNC_POINT("AsyncRpc::Finished:SetTimedOut:1");
-      TEST_SYNC_POINT("AsyncRpc::Finished:SetTimedOut:2");
+      DEBUG_ONLY_TEST_SYNC_POINT("AsyncRpc::Finished:SetTimedOut:1");
+      DEBUG_ONLY_TEST_SYNC_POINT("AsyncRpc::Finished:SetTimedOut:2");
     }
 
   }

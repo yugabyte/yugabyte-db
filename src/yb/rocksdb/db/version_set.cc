@@ -2341,7 +2341,7 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
 
     mu->Unlock();
 
-    TEST_SYNC_POINT("VersionSet::LogAndApply:WriteManifest");
+    DEBUG_ONLY_TEST_SYNC_POINT("VersionSet::LogAndApply:WriteManifest");
     if (!edit->IsColumnFamilyManipulation() &&
         db_options_->max_open_files == -1) {
       // unlimited table cache. Pre-load table handle now.
@@ -2428,13 +2428,13 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
     }
 
     if (edit->is_column_family_drop_) {
-      TEST_SYNC_POINT("VersionSet::LogAndApply::ColumnFamilyDrop:0");
-      TEST_SYNC_POINT("VersionSet::LogAndApply::ColumnFamilyDrop:1");
-      TEST_SYNC_POINT("VersionSet::LogAndApply::ColumnFamilyDrop:2");
+      DEBUG_ONLY_TEST_SYNC_POINT("VersionSet::LogAndApply::ColumnFamilyDrop:0");
+      DEBUG_ONLY_TEST_SYNC_POINT("VersionSet::LogAndApply::ColumnFamilyDrop:1");
+      DEBUG_ONLY_TEST_SYNC_POINT("VersionSet::LogAndApply::ColumnFamilyDrop:2");
     }
 
     LogFlush(db_options_->info_log);
-    TEST_SYNC_POINT("VersionSet::LogAndApply:WriteManifestDone");
+    DEBUG_ONLY_TEST_SYNC_POINT("VersionSet::LogAndApply:WriteManifestDone");
     mu->Lock();
 
     if (!obsolete_manifest.empty()) {

@@ -671,7 +671,7 @@ std::unique_ptr<Compaction> CompactionPicker::CompactRange(
   // level0 compaction in this case? looks like this is the reason for #16798.
   if ((input_level == 0) && (!level0_compactions_in_progress_.empty())) {
     // Only one level 0 compaction allowed
-    TEST_SYNC_POINT("CompactionPicker::CompactRange:Conflict");
+    DEBUG_ONLY_TEST_SYNC_POINT("CompactionPicker::CompactRange:Conflict");
     *manual_conflict = true;
     return nullptr;
   }
@@ -754,7 +754,7 @@ std::unique_ptr<Compaction> CompactionPicker::CompactRange(
     return nullptr;
   }
 
-  TEST_SYNC_POINT_CALLBACK("CompactionPicker::CompactRange:Return", compaction.get());
+  DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("CompactionPicker::CompactRange:Return", compaction.get());
   if (input_level == 0) {
     MarkL0FilesForDeletion(vstorage, &ioptions_);
     level0_compactions_in_progress_.insert(compaction.get());
@@ -1184,7 +1184,7 @@ std::unique_ptr<Compaction> LevelCompactionPicker::PickCompaction(
                                      dummy_compaction_options_fifo);
   }
 
-  TEST_SYNC_POINT_CALLBACK("LevelCompactionPicker::PickCompaction:Return", c.get());
+  DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("LevelCompactionPicker::PickCompaction:Return", c.get());
 
   return c;
 }
@@ -1237,7 +1237,7 @@ bool LevelCompactionPicker::PickCompactionBySize(VersionStorageInfo* vstorage,
   // could be made better by looking at key-ranges that are
   // being compacted at level 0.
   if (level == 0 && !level0_compactions_in_progress_.empty()) {
-    TEST_SYNC_POINT("LevelCompactionPicker::PickCompactionBySize:0");
+    DEBUG_ONLY_TEST_SYNC_POINT("LevelCompactionPicker::PickCompactionBySize:0");
     return false;
   }
 
@@ -1521,7 +1521,7 @@ std::unique_ptr<Compaction> UniversalCompactionPicker::PickCompaction(
       return result;
     }
   }
-  TEST_SYNC_POINT("UniversalCompactionPicker::PickCompaction:SkippingCompaction");
+  DEBUG_ONLY_TEST_SYNC_POINT("UniversalCompactionPicker::PickCompaction:SkippingCompaction");
   return nullptr;
 }
 

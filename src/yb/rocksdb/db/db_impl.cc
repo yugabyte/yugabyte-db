@@ -2014,8 +2014,7 @@ Result<FileNumbersHolder> DBImpl::FlushMemTableToOutputFile(
     }
     if (sfm->IsMaxAllowedSpaceReached() && bg_error_.ok()) {
       bg_error_ = STATUS(IOError, "Max allowed space was reached");
-      TEST_SYNC_POINT(
-          "DBImpl::FlushMemTableToOutputFile:MaxAllowedSpaceReached");
+      DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::FlushMemTableToOutputFile:MaxAllowedSpaceReached");
     }
   }
   return file_number_holder;
@@ -2212,8 +2211,8 @@ Status DBImpl::CompactRange(const CompactRangeOptions& options,
       } else if (output_level > final_output_level) {
         final_output_level = output_level;
       }
-      TEST_SYNC_POINT("DBImpl::RunManualCompaction()::1");
-      TEST_SYNC_POINT("DBImpl::RunManualCompaction()::2");
+      DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::RunManualCompaction()::1");
+      DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::RunManualCompaction()::2");
     }
   }
   if (!s.ok()) {
@@ -2419,8 +2418,8 @@ Status DBImpl::CompactFilesImpl(
       listener->OnCompactionStarted();
     }
     auto file_numbers_holder = compaction_job.Run();
-    TEST_SYNC_POINT("CompactFilesImpl:2");
-    TEST_SYNC_POINT("CompactFilesImpl:3");
+    DEBUG_ONLY_TEST_SYNC_POINT("CompactFilesImpl:2");
+    DEBUG_ONLY_TEST_SYNC_POINT("CompactFilesImpl:3");
     mutex_.Lock();
 
     status = compaction_job.Install(*c->mutable_cf_options());
@@ -2810,8 +2809,8 @@ Status DBImpl::SyncWAL() {
     status = directories_.GetWalDir()->Fsync();
   }
 
-  TEST_SYNC_POINT("DBImpl::SyncWAL:BeforeMarkLogsSynced:1");
-  TEST_SYNC_POINT("DBImpl::SyncWAL:BeforeMarkLogsSynced:2");
+  DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::SyncWAL:BeforeMarkLogsSynced:1");
+  DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::SyncWAL:BeforeMarkLogsSynced:2");
 
   {
     InstrumentedMutexLock l(&mutex_);
@@ -2869,7 +2868,7 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level, int o
     uint32_t output_path_id, const Slice* begin, const Slice* end, bool exclusive,
     CompactionReason compaction_reason, uint64_t file_number_upper_bound,
     uint64_t input_size_limit_per_job, bool disallow_trivial_move) {
-  TEST_SYNC_POINT("DBImpl::RunManualCompaction");
+  DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::RunManualCompaction");
 
   DCHECK(input_level == ColumnFamilyData::kCompactAllLevels ||
          input_level >= 0);
@@ -2930,10 +2929,10 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level, int o
   // others will wait on a condition variable until it completes.
 
   AddManualCompaction(&manual_compaction);
-  TEST_SYNC_POINT_CALLBACK("DBImpl::RunManualCompaction:NotScheduled", &mutex_);
+  DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("DBImpl::RunManualCompaction:NotScheduled", &mutex_);
   if (exclusive) {
     while (unscheduled_compactions_ + bg_compaction_scheduled_ + compaction_tasks_.size() > 0) {
-      TEST_SYNC_POINT("DBImpl::RunManualCompaction()::Conflict");
+      DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::RunManualCompaction()::Conflict");
       MaybeScheduleFlushOrCompaction();
       while (bg_compaction_scheduled_ + compaction_tasks_.size() > 0) {
         RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
@@ -2972,7 +2971,7 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level, int o
       DCHECK(!exclusive || !manual_conflict)
           << "exclusive manual compactions should not see a conflict during CompactRange";
       if (manual_conflict) {
-        TEST_SYNC_POINT("DBImpl::RunManualCompaction()::Conflict");
+        DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::RunManualCompaction()::Conflict");
       }
 
       // TODO(pscompact): what if the system has only one compaction ever and it is finished
@@ -3133,7 +3132,7 @@ Status DBImpl::WaitForFlushMemTable(ColumnFamilyData* cfd) {
 
 Status DBImpl::EnableAutoCompaction(
     const std::vector<ColumnFamilyHandle*>& column_family_handles) {
-  TEST_SYNC_POINT("DBImpl::EnableAutoCompaction");
+  DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::EnableAutoCompaction");
   Status s;
   for (auto cf_ptr : column_family_handles) {
     Status status =
@@ -3306,21 +3305,21 @@ void DBImpl::SchedulePendingCompaction(ColumnFamilyData* cfd) {
       ++unscheduled_compactions_;
     }
   }
-  TEST_SYNC_POINT("DBImpl::SchedulePendingCompaction:Done");
+  DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::SchedulePendingCompaction:Done");
 }
 
 void DBImpl::BGWorkFlush(void* db) {
   IOSTATS_SET_THREAD_POOL_ID(Env::Priority::HIGH);
-  TEST_SYNC_POINT("DBImpl::BGWorkFlush");
+  DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::BGWorkFlush");
   reinterpret_cast<DBImpl*>(db)->BackgroundCallFlush(nullptr /* cfd */);
-  TEST_SYNC_POINT("DBImpl::BGWorkFlush:done");
+  DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::BGWorkFlush:done");
 }
 
 void DBImpl::BGWorkCompaction(void* arg) {
   CompactionArg ca = *(reinterpret_cast<CompactionArg*>(arg));
   delete reinterpret_cast<CompactionArg*>(arg);
   IOSTATS_SET_THREAD_POOL_ID(Env::Priority::LOW);
-  TEST_SYNC_POINT("DBImpl::BGWorkCompaction");
+  DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::BGWorkCompaction");
   reinterpret_cast<DBImpl*>(ca.db)->BackgroundCallCompaction(ca.m);
 }
 
@@ -3330,7 +3329,7 @@ void DBImpl::UnscheduleCallback(void* arg) {
   if (ca.m != nullptr) {
     ca.m->compaction.reset();
   }
-  TEST_SYNC_POINT("DBImpl::UnscheduleCallback");
+  DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::UnscheduleCallback");
 }
 
 Result<FileNumbersHolder> DBImpl::BackgroundFlush(
@@ -3511,7 +3510,7 @@ void DBImpl::BackgroundCallCompaction(ManualCompaction* m, std::unique_ptr<Compa
     }
 
     s = yb::ResultToStatus(file_numbers_holder);
-    TEST_SYNC_POINT("BackgroundCallCompaction:1");
+    DEBUG_ONLY_TEST_SYNC_POINT("BackgroundCallCompaction:1");
     WaitAfterBackgroundError(s, "compaction", &log_buffer);
   }
 
@@ -3653,9 +3652,9 @@ Result<FileNumbersHolder> DBImpl::BackgroundCompaction(
 
     if (is_large_compaction) {
       num_running_large_compactions_++;
-      TEST_SYNC_POINT("DBImpl:BackgroundCompaction:LargeCompaction");
+      DEBUG_ONLY_TEST_SYNC_POINT("DBImpl:BackgroundCompaction:LargeCompaction");
     } else {
-      TEST_SYNC_POINT("DBImpl:BackgroundCompaction:SmallCompaction");
+      DEBUG_ONLY_TEST_SYNC_POINT("DBImpl:BackgroundCompaction:SmallCompaction");
     }
 
     if (c != nullptr) {
@@ -3707,7 +3706,7 @@ Result<FileNumbersHolder> DBImpl::BackgroundCompaction(
                 c->num_input_files(0));
     *made_progress = true;
   } else if (!trivial_move_disallowed && c->IsTrivialMove()) {
-    TEST_SYNC_POINT("DBImpl::BackgroundCompaction:TrivialMove");
+    DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::BackgroundCompaction:TrivialMove");
 
     compaction_job_stats.num_input_files = c->num_input_files(0);
 
@@ -3758,8 +3757,7 @@ Result<FileNumbersHolder> DBImpl::BackgroundCompaction(
     *made_progress = true;
   } else {
     int output_level  __attribute__((unused)) = c->output_level();
-    TEST_SYNC_POINT_CALLBACK("DBImpl::BackgroundCompaction:NonTrivial",
-                             &output_level);
+    DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("DBImpl::BackgroundCompaction:NonTrivial", &output_level);
 
     SequenceNumber earliest_write_conflict_snapshot;
     std::vector<SequenceNumber> snapshot_seqs =
@@ -3779,7 +3777,7 @@ Result<FileNumbersHolder> DBImpl::BackgroundCompaction(
 
     mutex_.Unlock();
     result = compaction_job.Run();
-    TEST_SYNC_POINT("DBImpl::BackgroundCompaction:NonTrivial:AfterRun");
+    DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::BackgroundCompaction:NonTrivial:AfterRun");
     mutex_.Lock();
 
     status = compaction_job.Install(*c->mutable_cf_options());
@@ -4437,7 +4435,7 @@ Status DBImpl::AddFile(ColumnFamilyHandle* column_family,
       }
     }
 
-    TEST_SYNC_POINT("DBImpl::AddFile:FileCopied");
+    DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::AddFile:FileCopied");
     if (!status.ok()) {
       return status;
     }
@@ -5394,7 +5392,7 @@ Status DBImpl::DelayWrite(uint64_t num_bytes) {
     if (delay > 0) {
       mutex_.Unlock();
       delayed = true;
-      TEST_SYNC_POINT("DBImpl::DelayWrite:Sleep");
+      DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::DelayWrite:Sleep");
       // hopefully we don't have to sleep more than 2 billion microseconds
       env_->SleepForMicroseconds(static_cast<int>(delay));
       mutex_.Lock();
@@ -5405,7 +5403,7 @@ Status DBImpl::DelayWrite(uint64_t num_bytes) {
     // in this case.
     while (bg_error_.ok() && write_controller_.IsStopped() && !IsShuttingDown()) {
       delayed = true;
-      TEST_SYNC_POINT("DBImpl::DelayWrite:Wait");
+      DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::DelayWrite:Wait");
       bg_cv_.Wait();
     }
   }
@@ -5961,7 +5959,7 @@ Status DBImpl::DeleteFile(std::string name) {
       return STATUS(InvalidArgument, "File in level 0, but not oldest");
     }
 
-    TEST_SYNC_POINT("DBImpl::DeleteFile:DecidedToDelete");
+    DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::DeleteFile:DecidedToDelete");
 
     metadata->being_deleted = true;
 
@@ -6458,7 +6456,7 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
       }
     }
   }
-  TEST_SYNC_POINT("DBImpl::Open:Opened");
+  DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::Open:Opened");
   Status persist_options_status;
   if (s.ok()) {
     // Persist RocksDB Options before scheduling the compaction.
