@@ -29,7 +29,7 @@ If you use Python, check out the Jupyter notebooks in the [yugabyte-db GitHub re
     title="Get Started"
     description="Manage YugabyteDB Anywhere using the API."
     buttonText="API Documentation"
-    buttonUrl="https://api-docs.yugabyte.com/docs/yugabyte-platform/"
+    buttonUrl="https://api-docs.yugabyte.com/docs/yugabyte-platform/f10502c9c9623-yugabyte-db-anywhere-api-overview"
   >}}
 
 {{< /sections/2-boxes >}}
