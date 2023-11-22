@@ -10588,15 +10588,29 @@ Status CatalogManager::SendAlterTableRequest(
     txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req->transaction().transaction_id()));
   }
 
-  return SendAlterTableRequestInternal(table, txn_id, epoch);
+  return SendAlterTableRequestInternal(table, txn_id, epoch, req);
 }
 
 Status CatalogManager::SendAlterTableRequestInternal(
-    const scoped_refptr<TableInfo>& table, const TransactionId& txn_id, const LeaderEpoch& epoch) {
+    const scoped_refptr<TableInfo>& table, const TransactionId& txn_id, const LeaderEpoch& epoch,
+    const AlterTableRequestPB* req) {
   auto tablets = table->GetTablets();
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {
-    auto call =
-        std::make_shared<AsyncAlterTable>(master_, AsyncTaskPool(), tablet, table, txn_id, epoch);
+     std::shared_ptr<AsyncAlterTable> call;
+
+    // CDC SDK Create Stream context
+    if (req && req->has_cdc_sdk_stream_id()) {
+      LOG(INFO) << " CDC stream id context : " << req->cdc_sdk_stream_id();
+      xrepl::StreamId stream_id =
+        VERIFY_RESULT(xrepl::StreamId::FromString(req->cdc_sdk_stream_id()));
+      call = std::make_shared<AsyncAlterTable>(master_, AsyncTaskPool(), tablet, table,
+                                               txn_id, epoch,
+                                               stream_id,
+                                               req->cdc_sdk_require_history_cutoff());
+    } else {
+      call = std::make_shared<AsyncAlterTable>(master_, AsyncTaskPool(), tablet, table,
+                                               txn_id, epoch);
+    }
     table->AddTask(call);
     if (PREDICT_FALSE(FLAGS_TEST_slowdown_alter_table_rpcs_ms > 0)) {
       LOG(INFO) << "Sleeping for " << tablet->id() << " " << FLAGS_TEST_slowdown_alter_table_rpcs_ms
