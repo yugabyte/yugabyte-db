@@ -148,6 +148,7 @@ Datadog
 datasource
 datasources
 datetime
+datatypes
 Debezium
 Debian
 Decompressor

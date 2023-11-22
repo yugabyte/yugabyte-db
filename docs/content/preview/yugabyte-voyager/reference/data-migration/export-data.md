@@ -185,7 +185,7 @@ The valid *arguments* for export data from target are described in the following
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| --disable-pb | Use this argument to disable progress bar during data export and printing statistics during the streaming phase. (default false).<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --disable-pb | Use this argument to disable progress bar during data export and printing statistics during the streaming phase. <br>Default false.<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --exclude-table-list <tableNames> | Comma-separated list of tables to exclude while exporting data. <br> Table names can include glob wildcard characters `?` (matches one character) and `*` (matches zero or more characters). In case the table names are case sensitive, double-quote them. For example, `--exclude-table-list 'orders,"Products",items'`. |
 | --exclude-table-list-file-path | Path of the file containing comma-separated list of table names to exclude while exporting data. |
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
