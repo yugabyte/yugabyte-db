@@ -76,6 +76,7 @@ public class BackupGarbageCollector {
   private static final String GCS = Util.GCS;
   private static final String S3 = Util.S3;
   private static final String NFS = Util.NFS;
+  private static final int BACKUP_DELETION_MAX_RETRIES_COUNT = 3;
 
   public static final Gauge DELETE_BACKUP_FAILURE =
       Gauge.build("ybp_delete_backup_failure", "Count of failed delete backup attempt")
@@ -106,6 +107,7 @@ public class BackupGarbageCollector {
 
   public void start() {
     Duration gcInterval = this.gcRunInterval();
+    handleDeleteInProgressBackups();
     platformScheduler.schedule(
         getClass().getSimpleName(), Duration.ZERO, gcInterval, this::scheduleRunner);
   }
@@ -116,6 +118,18 @@ public class BackupGarbageCollector {
 
   private int getDeleteExpiredBackupMaxGCCount() {
     return confGetter.getGlobalConf(GlobalConfKeys.deleteExpiredBackupMaxGCSize);
+  }
+
+  public void handleDeleteInProgressBackups() {
+    for (Customer customer : Customer.getAll()) {
+      List<Backup> deleteInProgressBackups =
+          Backup.findAllBackupWithState(
+              customer.getUuid(), Collections.singletonList(BackupState.DeleteInProgress));
+      if (deleteInProgressBackups != null) {
+        deleteInProgressBackups.forEach(
+            backup -> backup.transitionState(BackupState.QueuedForDeletion));
+      }
+    }
   }
 
   void scheduleRunner() {
@@ -307,11 +321,27 @@ public class BackupGarbageCollector {
           case AZ:
             CloudUtil cloudUtil = storageUtilFactory.getCloudUtil(customerConfig.getName());
             backupLocations = BackupUtil.getBackupLocations(backup);
-            cloudUtil.deleteKeyIfExists(customerConfig.getDataObject(), backupLocations.get(0));
-            cloudUtil.deleteStorage(customerConfig.getDataObject(), backupLocations);
-            backup.delete();
-            deletedSuccessfully = true;
-            log.info("Backup {} is successfully deleted", backupUUID);
+            int numRetries = 0;
+            long sleepTimeInMilliSeconds = 5000;
+            while (numRetries < BACKUP_DELETION_MAX_RETRIES_COUNT && !deletedSuccessfully) {
+              if (cloudUtil.deleteKeyIfExists(
+                      customerConfig.getDataObject(), backupLocations.get(0))
+                  && cloudUtil.deleteStorage(customerConfig.getDataObject(), backupLocations)) {
+                deletedSuccessfully = true;
+              }
+              if (!deletedSuccessfully) {
+                Thread.sleep(sleepTimeInMilliSeconds);
+                sleepTimeInMilliSeconds = sleepTimeInMilliSeconds * 2;
+              }
+              numRetries++;
+            }
+            if (deletedSuccessfully) {
+              backup.delete();
+              log.info("Backup {} is successfully deleted", backupUUID);
+            } else {
+              backup.transitionState(Backup.BackupState.FailedToDelete);
+              log.info("Backup {} deletion failed", backupUUID);
+            }
             break;
           case NFS:
             if (isUniversePresent(backup)) {
