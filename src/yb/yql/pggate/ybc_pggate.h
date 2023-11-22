@@ -33,7 +33,8 @@ void YBCInterruptPgGate();
 // Environment and Session.
 
 // Initialize a session to process statements that come from the same client connection.
-YBCStatus YBCPgInitSession(const char* database_name, YBCPgExecStatsState* session_stats);
+YBCStatus YBCPgInitSession(
+    const char* database_name, YBCPgExecStatsState* session_stats, bool is_binary_upgrade);
 
 // Initialize YBCPgMemCtx.
 // - Postgres uses memory context to hold all of its allocated space. Once all associated operations

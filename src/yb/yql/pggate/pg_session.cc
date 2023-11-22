@@ -387,7 +387,8 @@ PgSession::PgSession(
     scoped_refptr<server::HybridClock>
         clock,
     const YBCPgCallbacks& pg_callbacks,
-    YBCPgExecStatsState* stats_state)
+    YBCPgExecStatsState* stats_state,
+    bool is_binary_upgrade)
     : pg_client_(*pg_client),
       pg_txn_manager_(std::move(pg_txn_manager)),
       clock_(std::move(clock)),
@@ -397,7 +398,8 @@ PgSession::PgSession(
               &PgSession::FlushOperations, this, std::placeholders::_1, std::placeholders::_2),
           buffering_settings_,
           &metrics_),
-      pg_callbacks_(pg_callbacks) {
+      pg_callbacks_(pg_callbacks),
+      upgrade_mode_(is_binary_upgrade) {
   Update(&buffering_settings_);
 }
 

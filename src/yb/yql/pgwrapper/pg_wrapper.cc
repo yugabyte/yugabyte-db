@@ -100,6 +100,9 @@ DECLARE_string(tmp_dir);
 DEFINE_test_flag(bool, online_pg11_to_pg15_upgrade, false,
     "Enter the mode in which the master creates PG15 catalogs alongside PG11 catalogs, leaving "
     "PG11 catalogs as they are, using pg_restore. This flag is only meaningful on the YB master.");
+DEFINE_test_flag(bool, pg_binary_upgrade, false,
+    "Send the binary upgrade flag -b to all postgres binaries used by this tserver. For use by YB "
+    "internal tools only, during major PG version upgrades.");
 
 // gFlag wrappers over Postgres GUC parameter.
 // The value type should match the GUC parameter, or it should be a string, in which case Postgres
@@ -638,6 +641,10 @@ Status PgWrapper::Start() {
   if (FLAGS_pg_verbose_error_log) {
     argv.push_back("-c");
     argv.push_back("log_error_verbosity=VERBOSE");
+  }
+
+  if (FLAGS_TEST_pg_binary_upgrade) {
+    argv.push_back("-b");
   }
 
   proc_.emplace(argv[0], argv);

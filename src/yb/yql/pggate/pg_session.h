@@ -124,7 +124,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
       scoped_refptr<server::HybridClock>
           clock,
       const YBCPgCallbacks& pg_callbacks,
-      YBCPgExecStatsState* stats_state);
+      YBCPgExecStatsState* stats_state,
+      bool is_binary_upgrade);
   virtual ~PgSession();
 
   // Resets the read point for catalog tables.
@@ -432,6 +433,9 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   const YBCPgCallbacks& pg_callbacks_;
   bool has_write_ops_in_ddl_mode_ = false;
   std::variant<TxnSerialNoPerformInfo> last_perform_on_txn_serial_no_;
+
+  // This session is upgrading to PG15.
+  const bool upgrade_mode_;
 };
 
 }  // namespace pggate

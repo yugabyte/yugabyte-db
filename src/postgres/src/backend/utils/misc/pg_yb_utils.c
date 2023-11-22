@@ -662,7 +662,8 @@ YBInitPostgresBackend(
 		 * TODO: do we really need to DB name / username here?
 		 */
 		HandleYBStatus(YBCPgInitSession(db_name ? db_name : user_name,
-										&yb_session_stats.current_state));
+										&yb_session_stats.current_state,
+										IsBinaryUpgrade));
 		YBCSetTimeout(StatementTimeout, NULL);
 	}
 }

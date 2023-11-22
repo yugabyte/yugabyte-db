@@ -179,10 +179,12 @@ Status InitPgGateImpl(const YBCPgTypeEntity* data_type_table,
   });
 }
 
-Status PgInitSessionImpl(const char* database_name, YBCPgExecStatsState* session_stats) {
+Status PgInitSessionImpl(
+    const char* database_name, YBCPgExecStatsState* session_stats, bool is_binary_upgrade) {
   const std::string db_name(database_name ? database_name : "");
-  return WithMaskedYsqlSignals(
-      [&db_name, session_stats] { return pgapi->InitSession(db_name, session_stats); });
+  return WithMaskedYsqlSignals([&db_name, session_stats, is_binary_upgrade] {
+    return pgapi->InitSession(db_name, session_stats, is_binary_upgrade);
+  });
 }
 
 // ql_value is modified in-place.
@@ -313,8 +315,9 @@ const YBCPgCallbacks *YBCGetPgCallbacks() {
   return pgapi->pg_callbacks();
 }
 
-YBCStatus YBCPgInitSession(const char* database_name, YBCPgExecStatsState* session_stats) {
-  return ToYBCStatus(PgInitSessionImpl(database_name, session_stats));
+YBCStatus YBCPgInitSession(
+    const char* database_name, YBCPgExecStatsState* session_stats, bool is_binary_upgrade) {
+  return ToYBCStatus(PgInitSessionImpl(database_name, session_stats, is_binary_upgrade));
 }
 
 YBCPgMemctx YBCPgCreateMemctx() {

@@ -131,7 +131,8 @@ class PgApiImpl {
 
   // Initialize a session to process statements that come from the same client connection.
   // If database_name is empty, a session is created without connecting to any database.
-  Status InitSession(const std::string& database_name, YBCPgExecStatsState* session_stats);
+  Status InitSession(
+      const std::string& database_name, YBCPgExecStatsState* session_stats, bool is_binary_upgrade);
 
   PgMemctx *CreateMemctx();
   Status DestroyMemctx(PgMemctx *memctx);

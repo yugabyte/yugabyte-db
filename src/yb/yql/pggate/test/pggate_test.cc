@@ -163,7 +163,8 @@ Status PggateTest::Init(const char *test_name,
   YBCInitPgGate(type_table, count, callbacks);
 
   // Setup session.
-  CHECK_YBC_STATUS(YBCPgInitSession(nullptr /* database_name */, session_stats));
+  CHECK_YBC_STATUS(
+      YBCPgInitSession(nullptr /* database_name */, session_stats, false /* is_binary_upgrade */));
 
   // Setup database
   SetupDB();
