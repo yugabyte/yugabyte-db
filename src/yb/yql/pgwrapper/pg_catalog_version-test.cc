@@ -299,10 +299,7 @@ class PgCatalogVersionTest : public LibPqTestBase {
     constexpr auto* kTestGroup = "test_group";
     constexpr auto* kTestTablespace = "test_tsp";
     // Test setup.
-    // TODO (#19975): Enable read committed isolation
-    auto conn_yugabyte = ASSERT_RESULT(
-        SetDefaultTransactionIsolation(ConnectToDB(kYugabyteDatabase),
-        IsolationLevel::SNAPSHOT_ISOLATION));
+    auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
     ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte));
     if (disable_global_ddl) {
       RestartClusterWithDBCatalogVersionMode(
@@ -312,10 +309,7 @@ class PgCatalogVersionTest : public LibPqTestBase {
     }
     LOG(INFO) << "Connects to database " << kYugabyteDatabase << " on node at index 0.";
     pg_ts = cluster_->tablet_server(0);
-    // TODO (#19975): Enable read committed isolation
-    conn_yugabyte = ASSERT_RESULT(EnableCacheEventLog(
-        SetDefaultTransactionIsolation(ConnectToDB(kYugabyteDatabase),
-        IsolationLevel::SNAPSHOT_ISOLATION)));
+    conn_yugabyte = ASSERT_RESULT(EnableCacheEventLog(ConnectToDB(kYugabyteDatabase)));
     LOG(INFO) << "Create a new database";
     ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE DATABASE $0", kTestDatabase));
     LOG(INFO) << "Create two new test users";
@@ -403,9 +397,7 @@ class PgCatalogVersionTest : public LibPqTestBase {
 
     LOG(INFO) << "Connects to database template1 on node at index 0.";
     pg_ts = cluster_->tablet_server(0);
-    // TODO (#19975): Enable read committed isolation
-    auto conn_template1 = ASSERT_RESULT(SetDefaultTransactionIsolation(
-        ConnectToDB("template1"), IsolationLevel::SNAPSHOT_ISOLATION));
+    auto conn_template1 = ASSERT_RESULT(ConnectToDB("template1"));
 
     // The following ALTER is a global DDL that writes to shared relations
     // pg_authid and pg_auth_members so it should cause catalog cache refresh
@@ -706,9 +698,7 @@ TEST_F(PgCatalogVersionTest, IncrementAllDBCatalogVersions) {
 // with pg_database according to 'per_database_mode' argument.
 TEST_F(PgCatalogVersionTest, FixCatalogVersionTable) {
   RestartClusterWithDBCatalogVersionMode();
-  // TODO (#19975): Enable read committed isolation
-  auto conn_template1 = ASSERT_RESULT(
-      SetDefaultTransactionIsolation(ConnectToDB("template1"), IsolationLevel::SNAPSHOT_ISOLATION));
+  auto conn_template1 = ASSERT_RESULT(ConnectToDB("template1"));
   // Prepare the table pg_yb_catalog_version for per-db catalog version mode.
   ASSERT_OK(PrepareDBCatalogVersion(&conn_template1, true /* per_database_mode */));
   // Verify pg_database and pg_yb_catalog_version are in sync.
@@ -739,9 +729,7 @@ TEST_F(PgCatalogVersionTest, FixCatalogVersionTable) {
   WaitForCatalogVersionToPropagate();
 
   // Connect to database "yugabyte".
-  // TODO (#19975): Enable read committed isolation
-  auto conn_yugabyte = ASSERT_RESULT(
-      SetDefaultTransactionIsolation(ConnectToDB("yugabyte"), IsolationLevel::SNAPSHOT_ISOLATION));
+  auto conn_yugabyte = ASSERT_RESULT(ConnectToDB("yugabyte"));
   // Prepare the table pg_yb_catalog_version for global catalog version mode.
   // Note that this is not a supported scenario where the table pg_yb_catalog_version
   // shrinks while the gflag --ysql_enable_db_catalog_version_mode is still on.
@@ -790,16 +778,12 @@ TEST_F(PgCatalogVersionTest, FixCatalogVersionTable) {
   // true, the fact that the table pg_yb_catalog_version has only one row prevents
   // a new connection to enter per-database catalog version mode. Verify that we
   // can make a new connection to database "yugabyte".
-  // TODO (#19975): Enable read committed isolation
-  ASSERT_RESULT(
-      SetDefaultTransactionIsolation(ConnectToDB("yugabyte"), IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_RESULT(ConnectToDB("yugabyte"));
 
   // We can also make a new connection to database "template1" but the fact that
   // now it is the only database that has a row in pg_yb_catalog_version table is
   // not relevant.
-  // TODO (#19975): Enable read committed isolation
-  conn_template1 = ASSERT_RESULT(
-      SetDefaultTransactionIsolation(ConnectToDB("template1"), IsolationLevel::SNAPSHOT_ISOLATION));
+  conn_template1 = ASSERT_RESULT(ConnectToDB("template1"));
 
   // Sync up pg_yb_catalog_version with pg_database.
   ASSERT_OK(PrepareDBCatalogVersion(&conn_template1, true /* per_database_mode */));
@@ -807,11 +791,8 @@ TEST_F(PgCatalogVersionTest, FixCatalogVersionTable) {
   ASSERT_TRUE(ASSERT_RESULT(
       VerifyCatalogVersionTableDbOids(&conn_template1, false /* single_row */)));
   // Verify that we can connect to "yugabyte" and "template1".
-  // TODO (#19975): Enable read committed isolation
-  ASSERT_RESULT(
-      SetDefaultTransactionIsolation(ConnectToDB("yugabyte"), IsolationLevel::SNAPSHOT_ISOLATION));
-  ASSERT_RESULT(
-      SetDefaultTransactionIsolation(ConnectToDB("template1"), IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_RESULT(ConnectToDB("yugabyte"));
+  ASSERT_RESULT(ConnectToDB("template1"));
 }
 
 // This test exercises the wrap around logic in tserver shared memory free
