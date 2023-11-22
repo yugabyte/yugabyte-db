@@ -1871,6 +1871,25 @@ Status get_change_data_stream_info_action(
   return Status::OK();
 }
 
+const auto ysql_backfill_change_data_stream_with_replication_slot_args =
+    "<stream_id> <replication_slot_name>";
+Status ysql_backfill_change_data_stream_with_replication_slot_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 2) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  const string stream_id = args[0];
+  const string replication_slot_name = args[1];
+
+  RETURN_NOT_OK_PREPEND(
+      client->YsqlBackfillReplicationSlotNameToCDCSDKStream(stream_id, replication_slot_name),
+      Format(
+          "Unable to backfill CDC stream $0 with replication slot $1", stream_id,
+          replication_slot_name));
+  return Status::OK();
+}
+
 const auto setup_universe_replication_args =
     "<producer_universe_uuid> <producer_master_addresses> "
     "<comma_separated_list_of_table_ids> [<comma_separated_list_of_producer_bootstrap_ids>] "
@@ -2277,6 +2296,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(list_cdc_streams);
   REGISTER_COMMAND(list_change_data_streams);
   REGISTER_COMMAND(get_change_data_stream_info);
+  REGISTER_COMMAND(ysql_backfill_change_data_stream_with_replication_slot);
   // xCluster commands
   REGISTER_COMMAND(setup_universe_replication);
   REGISTER_COMMAND(delete_universe_replication);

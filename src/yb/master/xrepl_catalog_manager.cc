@@ -133,6 +133,12 @@ DEFINE_RUNTIME_AUTO_bool(cdc_enable_postgres_replica_identity, kLocalPersisted, 
 DEFINE_test_flag(bool, yb_enable_cdc_consistent_snapshot_streams, false,
                  "Enable support for CDC Consistent Snapshot Streams");
 
+DEFINE_RUNTIME_bool(enable_backfilling_cdc_stream_with_replication_slot, false,
+    "When enabled, allows adding a replication slot name to an existing CDC stream via the yb-admin"
+    " ysql_backfill_change_data_stream_with_replication_slot command."
+    "Intended to be used for making CDC streams created before replication slot support work with"
+    " the replication slot commands.");
+
 DECLARE_bool(xcluster_wait_on_ddl_alter);
 DECLARE_int32(master_rpc_timeout_ms);
 DECLARE_bool(TEST_ysql_yb_enable_replication_commands);
@@ -155,9 +161,9 @@ DECLARE_bool(enable_xcluster_auto_flag_validation);
 #define VERIFY_RESULT_MARK_BOOTSTRAP_FAILED(expr) \
   RESULT_CHECKER_HELPER(expr, MARK_BOOTSTRAP_FAILED_NOT_OK(ResultToStatus(__result)))
 
-#define RETURN_INVALID_REQUEST_STATUS(error_msg, req) \
+#define RETURN_INVALID_REQUEST_STATUS(error_msg) \
 return STATUS( \
-      InvalidArgument, error_msg, req.ShortDebugString(), \
+      InvalidArgument, error_msg, \
       MasterError(MasterErrorPB::INVALID_REQUEST))
 
 namespace yb {
@@ -747,7 +753,7 @@ Status CatalogManager::CreateCDCStream(
   LOG(INFO) << "CreateCDCStream from " << RequestorString(rpc) << ": " << req->ShortDebugString();
 
   if (!req->has_table_id() && !req->has_namespace_id()) {
-    RETURN_INVALID_REQUEST_STATUS("One of table_id or namespace_id must be provided", (*req));
+    RETURN_INVALID_REQUEST_STATUS("One of table_id or namespace_id must be provided");
   }
 
   std::string id_type_option_value(cdc::kTableId);
@@ -1394,19 +1400,19 @@ Status CatalogManager::ValidateCDCSDKRequestProperties(
     const CreateCDCStreamRequestPB& req, const std::string& source_type_option_value,
     const std::string& record_type_option_value, const std::string& id_type_option_value) {
   if (source_type_option_value != CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK)) {
-    RETURN_INVALID_REQUEST_STATUS("Namespace CDC stream is only supported for CDCSDK", req);
+    RETURN_INVALID_REQUEST_STATUS("Namespace CDC stream is only supported for CDCSDK");
   }
 
   if (id_type_option_value != cdc::kNamespaceId) {
     RETURN_INVALID_REQUEST_STATUS(
-        "Invalid id_type in options. Expected to be NAMESPACEID for all CDCSDK streams", req);
+        "Invalid id_type in options. Expected to be NAMESPACEID for all CDCSDK streams");
   }
 
   if (!FLAGS_TEST_ysql_yb_enable_replication_commands &&
       req.has_cdcsdk_ysql_replication_slot_name()) {
     // Should never happen since the YSQL commands also check the flag.
     RETURN_INVALID_REQUEST_STATUS(
-        "Creation of CDCSDK stream with a replication slot name is disallowed", req);
+        "Creation of CDCSDK stream with a replication slot name is disallowed");
   }
 
   cdc::CDCRecordType record_type_pb;
@@ -5550,6 +5556,98 @@ Status CatalogManager::GetReplicationStatus(
 
   for (const auto& [replication_id, _] : xcluster_consumer_replication_error_map_) {
     RETURN_NOT_OK(PopulateReplicationGroupErrors(replication_id, resp));
+  }
+
+  return Status::OK();
+}
+
+Status CatalogManager::YsqlBackfillReplicationSlotNameToCDCSDKStream(
+    const YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB* req,
+    YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  LOG(INFO) << "Servicing YsqlBackfillReplicationSlotNameToCDCSDKStream request from "
+            << RequestorString(rpc) << ": " << req->ShortDebugString();
+
+  if (!FLAGS_TEST_ysql_yb_enable_replication_commands ||
+      !FLAGS_enable_backfilling_cdc_stream_with_replication_slot) {
+    RETURN_INVALID_REQUEST_STATUS("Backfilling replication slot name is disabled");
+  }
+
+  if (!req->has_stream_id() || !req->has_cdcsdk_ysql_replication_slot_name()) {
+    RETURN_INVALID_REQUEST_STATUS(
+        "Both CDC Stream ID and Replication slot name must be provided");
+  }
+
+  RETURN_NOT_OK(ReplicationSlotValidateName(req->cdcsdk_ysql_replication_slot_name()));
+
+  auto replication_slot_name = ReplicationSlotName(req->cdcsdk_ysql_replication_slot_name());
+  auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(req->stream_id()));
+
+  CDCStreamInfoPtr stream;
+  {
+    SharedLock lock(mutex_);
+    stream = FindPtrOrNull(cdc_stream_map_, stream_id);
+  }
+
+  if (stream == nullptr || stream->LockForRead()->is_deleting()) {
+    return STATUS(
+        NotFound, "Could not find CDC stream", MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
+  }
+
+  auto namespace_id = stream->LockForRead()->namespace_id();
+  auto ns = VERIFY_RESULT(FindNamespaceById(namespace_id));
+
+  if (ns->database_type() != YQLDatabase::YQL_DATABASE_PGSQL) {
+    RETURN_INVALID_REQUEST_STATUS(
+        "Only CDCSDK streams created on PGSQL namespaces can have a replication slot name");
+  }
+
+  if (!stream->GetCdcsdkYsqlReplicationSlotName().empty()) {
+    RETURN_INVALID_REQUEST_STATUS(
+        "Cannot update the replication slot name of a CDCSDK stream");
+  }
+
+  LOG_WITH_FUNC(INFO) << "Valid request. Updating the replication slot name";
+  {
+    LockGuard lock(mutex_);
+
+    if (cdcsdk_replication_slots_to_stream_map_.contains(replication_slot_name)) {
+      return STATUS(
+          AlreadyPresent, "A CDC stream with the replication slot name already exists",
+          MasterError(MasterErrorPB::OBJECT_ALREADY_PRESENT));
+    }
+
+    auto stream_lock = stream->LockForWrite();
+    auto& pb = stream_lock.mutable_data()->pb;
+
+    pb.set_cdcsdk_ysql_replication_slot_name(req->cdcsdk_ysql_replication_slot_name());
+    cdcsdk_replication_slots_to_stream_map_.insert_or_assign(replication_slot_name, stream_id);
+
+    stream_lock.Commit();
+  }
+
+  return Status::OK();
+}
+
+// Validate that the given replication slot name is valid.
+// This function is a duplicate of the ReplicationSlotValidateName function from
+// src/postgres/src/backend/replication/slot.c
+Status CatalogManager::ReplicationSlotValidateName(const std::string& replication_slot_name) {
+  if (replication_slot_name.empty()) {
+    RETURN_INVALID_REQUEST_STATUS("Replication slot name cannot be empty");
+  }
+
+  // The 64 comes from the NAMEDATALEN constant in YSQL.
+  if (replication_slot_name.size() >= 64) {
+    RETURN_INVALID_REQUEST_STATUS("Replication slot name length must be < 64");
+  }
+
+  for (auto c : replication_slot_name) {
+    if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || (c == '_'))) {
+      RETURN_INVALID_REQUEST_STATUS(
+          "Replication slot names may only contain lower case letters, numbers, and the underscore "
+          "character.");
+    }
   }
 
   return Status::OK();
