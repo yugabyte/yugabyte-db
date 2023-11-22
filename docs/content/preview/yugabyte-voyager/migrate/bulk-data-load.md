@@ -43,6 +43,12 @@ yb-voyager import data file --export-dir <EXPORT_DIR> \
 
 Refer to [import data file](../../reference/bulk-data-load/import-data-file/) for details about the arguments.
 
+### Import data status
+
+Run the `yb-voyager import data status --export-dir <EXPORT_DIR>` command to get an overall progress of the data import operation.
+
+Refer to [import data status](../../reference/data-migration/import-data/#import-data-status) for details about the arguments.
+
 ### Load multiple files into the same table
 
 The import data file command also supports importing multiple files to the same table by providing the `--file-table-map` flag with a `<fileName>:<tableName>` entry for each file, or by passing a glob expression in place of the file name. For example, `fileName1:tableName,fileName2:tableName` or `fileName*:tableName`.
@@ -52,24 +58,28 @@ The import data file command also supports importing multiple files to the same 
 You can also import files to the same table across multiple runs. For example, you could import `orders1.csv` as follows:
 
 ```sh
+# Replace the argument values with those applicable for your migration.
 yb-voyager import data file --file-table-map 'orders1.csv:orders' ...
 ```
 
 And then subsequently import `orders2.csv` to the same table as follows:
 
 ```sh
+# Replace the argument values with those applicable for your migration.
 yb-voyager import data file --file-table-map 'orders2.csv:orders' ...
 ```
 
 To import an updated version of the same file (that is, having the same file name and data-dir), use the `--start-clean` flag and proceed without truncating the table. yb-voyager ingests the data present in the file in upsert mode. For example:
 
 ```sh
+# Replace the argument values with those applicable for your migration.
 yb-voyager import data file --data-dir /dir/data-dir --file-table-map 'orders.csv:orders' ...
 ```
 
 After new rows are added to `orders.csv`, use the following command to load them with `--start-clean`:
 
 ```sh
+# Replace the argument values with those applicable for your migration.
 yb-voyager import data file --data-dir /dir/data-dir --file-table-map 'orders.csv:orders' --start-clean ...`
 ```
 
@@ -86,6 +96,7 @@ Using the `import data file` command, you can import data from files in cloud st
 To import data from AWS S3, provide the S3 bucket URI in the `data-dir` flag as follows:
 
 ```sh
+# Replace the argument values with those applicable for your migration.
 yb-voyager import data file .... \
         --data-dir s3://voyager-data
 ```
@@ -98,6 +109,7 @@ The authentication mechanism for accessing an S3 bucket using yb-voyager is the 
 To import data from GCS buckets, provide the GCS bucket URI in the `data-dir` flag as follows:
 
 ```sh
+# Replace the argument values with those applicable for your migration.
 yb-voyager import data file .... \
         --data-dir gs://voyager-data
 ```
@@ -109,6 +121,7 @@ The authentication mechanism for accessing a GCS bucket using yb-voyager is the 
 To import data from Azure blob storage containers, provide the Azure container URI in the `data-dir` flag as follows:
 
 ```sh
+# Replace the argument values with those applicable for your migration.
 yb-voyager import data file .... \
         --data-dir https://<account_name>.blob.core.windows.net/<container_name>...
 ```
@@ -119,24 +132,6 @@ Refer to [Sign in with Azure CLI](https://learn.microsoft.com/en-us/cli/azure/au
 
 {{< /tabpane >}}
 
-## End migration
-
-To end the migration, you need to clean up the export directory (export-dir), and Voyager state ( Voyager-related metadata) stored in the target database.
-
-Run the `yb-voyager end migration` command to perform the clean up, and to back up the schema, data, migration reports, and log files by providing the backup related flags (mandatory) as follows:
-
-```sh
-yb-voyager end migration --export-dir <EXPORT_DIR>
-        --backup-log-files <true, false, yes, no, 1, 0>
-        --backup-data-files <true, false, yes, no, 1, 0>
-        --backup-schema-files <true, false, yes, no, 1, 0>
-        --save-migration-reports <true, false, yes, no, 1, 0>
-```
-
-Note that after you end the migration, you will _not_ be able to continue further. If you want to backup the log file and import data status output for future reference, the command provides an argument as `--backup-dir`, using which you can pass the path of the directory where the backup content needs to be saved (based on what you choose to back up).
-
-Refer to [end migration](../../reference/end-migration/) for more details on the arguments.
-
 ## Verify migration
 
 After the data import is complete, the automated part of the importing the data from files is considered complete. You should manually run validation queries on the target database to ensure that the data is correctly imported. A sample query to validate the databases can include checking the row count of each table.
@@ -145,12 +140,33 @@ After the data import is complete, the automated part of the importing the data 
 
 Suppose you have the following scenario:
 
-- [import data file](../bulk-data-load/#import-data-files-from-the-local-disk) command fails.
-- To resolve this issue, you delete some of the rows from the split files.
-- After retrying, the import data to target command completes successfully.
+* [import data file](../bulk-data-load/#import-data-files-from-the-local-disk) command fails.
+* To resolve this issue, you delete some of the rows from the split files.
+* After retrying, the import data to target command completes successfully.
 
-In this scenario, the [get data-migration-report](#get data-migration-report) command reports an incorrect imported row count because it doesn't take into account the deleted rows.
+In this scenario, the [import data status](#import-data-status) command reports an incorrect imported row count because it doesn't take into account the deleted rows.
 
 For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/yb-voyager/issues/360).
 
-    {{< /warning >}}
+{{< /warning >}}
+
+## End migration
+
+To end the migration, you need to clean up the export directory (export-dir), and Voyager state ( Voyager-related metadata) stored in the target database.
+
+Run the `yb-voyager end migration` command to perform the clean up, and to back up the schema, data, migration reports, and log files by providing the backup related flags (mandatory) as follows:
+
+```sh
+# Replace the argument values with those applicable for your migration.
+yb-voyager end migration --export-dir <EXPORT_DIR> \
+        --backup-log-files <true, false, yes, no, 1, 0> \
+        --backup-data-files <true, false, yes, no, 1, 0> \
+        --backup-schema-files <true, false, yes, no, 1, 0> \
+        --save-migration-reports <true, false, yes, no, 1, 0> \
+        # Set optional argument to store a back up of any of the above arguments.
+        --backup-dir <BACKUP_DIR>
+```
+
+If you want to backup the log file and import data status output for future reference, the command provides an argument as `--backup-dir`, using which you can pass the path of the directory where the backup content needs to be saved (based on what you choose to back up).
+
+Refer to [end migration](../../reference/end-migration/) for more details on the arguments.

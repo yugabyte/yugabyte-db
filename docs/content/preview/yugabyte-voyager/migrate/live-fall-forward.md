@@ -144,13 +144,14 @@ The export directory has the following sub-directories and files:
 
 Perform the following steps to prepare your source-replica database:
 
-1. Create `ybvoyager_metadata` schema or user, and tables, and assign its privileges to `ybvoyager` as follows:
+1. Create `ybvoyager_metadata` schema or user, and tables as follows:
 
     ```sql
     CREATE USER ybvoyager_metadata IDENTIFIED BY "password";
     GRANT CONNECT, RESOURCE TO ybvoyager_metadata;
     ALTER USER ybvoyager_metadata QUOTA UNLIMITED ON USERS;
 
+    --upgraded to ybvoyager_import_data_batches_metainfo_v3 post v1.6
     CREATE TABLE ybvoyager_metadata.ybvoyager_import_data_batches_metainfo_v3 (
                migration_uuid VARCHAR2(36),
                data_file_name VARCHAR2(250),
@@ -183,7 +184,7 @@ Perform the following steps to prepare your source-replica database:
         );
     ```
 
-1. Create a writer role for source-replica schema in the source-replica database as follows:
+1. Create a writer role for source-replica schema in the source-replica database, and assign privileges for `ybvoyager_metadata` as follows:
 
     ```sql
     CREATE ROLE <SCHEMA_NAME>_writer_role;
@@ -340,13 +341,13 @@ Begin exporting data from the source database into the `EXPORT_DIR/data` directo
 ```sh
 # Replace the argument values with those applicable for your migration.
 yb-voyager export data from source --export-dir <EXPORT_DIR> \
---source-db-type <SOURCE_DB_TYPE> \
---source-db-host <SOURCE_DB_HOST> \
---source-db-user <SOURCE_DB_USER> \
---source-db-password <SOURCE_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
---source-db-name <SOURCE_DB_NAME> \
---source-db-schema <SOURCE_DB_SCHEMA> \
---export-type snapshot-and-changes
+        --source-db-type <SOURCE_DB_TYPE> \
+        --source-db-host <SOURCE_DB_HOST> \
+        --source-db-user <SOURCE_DB_USER> \
+        --source-db-password <SOURCE_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
+        --source-db-name <SOURCE_DB_NAME> \
+        --source-db-schema <SOURCE_DB_SCHEMA> \
+        --export-type snapshot-and-changes
 ```
 
 The export data from source command first ensures that it exports a snapshot of the data already present on the source database. Next, you start a streaming phase (CDC phase) where you begin capturing new changes made to the data on the source after the migration has started. Some important metrics such as number of events, export rate, and so on will be displayed during the CDC phase similar to the following:
@@ -436,6 +437,7 @@ If the `yb-voyager import data to target` command terminates before completing t
 Run the following  command to get a consolidated report of the overall progress of data migration concerning all the databases involved (source, target, and source-replica).
 
 ```sh
+# Replace the argument values with those applicable for your migration.
 yb-voyager get data-migration-report --export-dir <EXPORT_DIR> \
         --target-db-password <TARGET_DB_PASSWORD>
 ```
@@ -449,26 +451,28 @@ Note that the import data to source-replica is applicable for data migration onl
 The import data to source-replica refers to replicating the snapshot data along with the changes exported from the source database to the source-replica database. The command to start the setup is as follows:
 
 ```sh
+# Replace the argument values with those applicable for your migration.
 yb-voyager import data to source-replica --export-dir <EXPORT-DIR> \
---ff-db-host <HOST> \
---ff-db-user <USERNAME> \
---ff-db-password <PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
---ff-db-name <DB-NAME> \
---ff-db-schema <SCHEMA-NAME> \
---parallel-jobs <COUNT>
+        --source-replica-db-host <HOST> \
+        --source-replica-db-user <USERNAME> \
+        --source-replica-db-password <PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
+        --source-replica-db-name <DB-NAME> \
+        --source-replica-db-schema <SCHEMA-NAME> \
+        --parallel-jobs <COUNT>
 ```
 
 Refer to [import data to source-replica](../../reference/data-migration/import-data/#import-data-to-source-replica) for details about the arguments.
 
-Similar to [import data to target](#import-data-to-target), during fall-forward:
+Similar to [import data to target](#import-data-to-target), during `import data to source-replica`:
 
 - The snapshot is first imported, following which, the change events are imported to the source-replica database.
 - Some important metrics such as the number of events, events rate, and so on, are displayed.
-- The setup is restartable.
+- You can restart the command if it fails for any reason.
 
 Additionally, when you run the `import data to source-replica` command, the [get data-migration-report](#get-data-migration-report) command also shows progress of importing all changes to the source-replica database. To view overall progress of the data import operation and streaming changes to the source-replica database, use the following command:
 
 ```sh
+# Replace the argument values with those applicable for your migration.
 yb-voyager get data-migration-report --export-dir <EXPORT_DIR> \
         --target-db-password <TARGET_DB_PASSWORD> \
         --source-replica-db-password <SOURCE_REPLICA_DB_PASSWORD>
@@ -483,7 +487,8 @@ Make sure to run the archive changes command only after completing [import data 
 {{< /note >}}
 
 ```sh
-yb-voyager archive changes --export-dir <EXPORT-DIR> --move-to <DESTINATION-DIR> --delete
+# Replace the argument values with those applicable for your migration.
+yb-voyager archive changes --export-dir <EXPORT-DIR> --move-to <DESTINATION-DIR> --delete-changes-without-archiving
 ```
 
 Refer to [archive changes](../../reference/cutover-archive/archive-changes/) for details about the arguments.
@@ -500,6 +505,7 @@ Perform the following steps as part of the cutover process:
 1. Perform a cutover after the exported events rate ("ingestion rate" in the metrics table) drops to 0 using the following command:
 
     ```sh
+    # Replace the argument values with those applicable for your migration.
     yb-voyager initiate cutover to target --export-dir <EXPORT_DIR>
     ```
 
@@ -509,8 +515,8 @@ Perform the following steps as part of the cutover process:
 
     1. The initiate cutover to target command stops the export data from source process, followed by the import data to target process after it has imported all the events to the target YugabyteDB database.
 
-    1. The [export data from target](../../reference/data-migration/export-data/#export-data-from-target) command automatically starts synchronizing changes from the target YugabyteDB database to the source-replica database.
-    Note that the [import data to target](#import-data-to-target) process transforms to a `export data from target` process, so if it gets terminated for any reason, you need to restart the synchronization using the `export data from target` command as suggested in the import data to target output.
+    1. The [export data from target](../../reference/data-migration/export-data/#export-data-from-target) command automatically starts capturing changes from the target YugabyteDB database to the source-replica database.
+    Note that the [import data to target](#import-data-to-target) process transforms to an `export data from target` process, so if it gets terminated for any reason, you need to restart process using the `export data from target` command as suggested in the `import data to target` output.
 
 1. Import indexes and triggers using the `import schema` command with an additional `--post-import-data` flag as follows:
 
@@ -524,7 +530,6 @@ Perform the following steps as part of the cutover process:
             --target-db-user <TARGET_DB_USER> \
             --target-db-schema <TARGET_DB_SCHEMA> \
             --post-import-data true
-
     ```
 
     Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
@@ -535,7 +540,7 @@ Perform the following steps as part of the cutover process:
 
 Suppose you have the following scenario:
 
-- [import data to target](#import-data-to-target) or [import data file](../bulk-data-load/#import-data-files-from-the-local-disk) command fails.
+- [import data to target](#import-data-to-target) command fails.
 - To resolve this issue, you delete some of the rows from the split files.
 - After retrying, the import data to target command completes successfully.
 
@@ -557,6 +562,7 @@ Perform the following steps as part of the cutover process:
 1. Perform a cutover after the exported events rate ("ingestion rate" in the metrics table) drops to using the following command:
 
     ```sh
+    # Replace the argument values with those applicable for your migration.
     yb-voyager initiate cutover to source-replica --export-dir <EXPORT_DIR>
     ```
 
@@ -567,6 +573,7 @@ Perform the following steps as part of the cutover process:
 1. Wait for the cutover process to complete. Monitor the status of the cutover process using the following command:
 
     ```sh
+    # Replace the argument values with those applicable for your migration.
     yb-voyager cutover status --export-dir <EXPORT_DIR>
     ```
 
@@ -580,7 +587,7 @@ Perform the following steps as part of the cutover process:
 
 Suppose you have a scenario where,
 
-- [import data to target](#import-data-to-target) or [import data file](../bulk-data-load/#import-data-files-from-the-local-disk) command fails.
+- [import data to source-replica](#import-data-to-source-replica) command fails.
 - To resolve this issue, you delete some of the rows from the split files.
 - After retrying, the import data to target command completes successfully.
 
@@ -589,8 +596,6 @@ In this scenario, [get data-migration-report](#get-data-migration-report) comman
 For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/yb-voyager/issues/360).
 
     {{< /warning >}}
-
-1. Stop [archive changes](#archive-changes-optional).
 
 {{< note >}}
 During `export data from target`, yb-voyager creates a CDC stream ID on the target YugabyteDB database to fetch the new changes from the target database which is displayed as part of the `export data from target` output. You need to manually delete the stream ID after `initiate cutover to source-replica` is completed.
@@ -603,11 +608,14 @@ To end the migration, you need to clean up the export directory (export-dir), an
 Run the `yb-voyager end migration` command to perform the clean up, and to back up the schema, data, migration reports, and log files by providing the backup related flags (mandatory) as follows:
 
 ```sh
-yb-voyager end migration --export-dir <EXPORT_DIR>
-        --backup-log-files <true, false, yes, no, 1, 0>
-        --backup-data-files <true, false, yes, no, 1, 0>
-        --backup-schema-files <true, false, yes, no, 1, 0>
-        --save-migration-reports <true, false, yes, no, 1, 0>
+# Replace the argument values with those applicable for your migration.
+yb-voyager end migration --export-dir <EXPORT_DIR> \
+        --backup-log-files <true, false, yes, no, 1, 0> \
+        --backup-data-files <true, false, yes, no, 1, 0> \
+        --backup-schema-files <true, false, yes, no, 1, 0> \
+        --save-migration-reports <true, false, yes, no, 1, 0> \
+        # Set optional argument to store a back up of any of the above arguments.
+        --backup-dir <BACKUP_DIR>
 ```
 
 Note that after you end the migration, you will _not_ be able to continue further. If you want to back up the schema, data, log files, and the migration reports (`analyze-schema` report and `get data-migration-report` output) for future reference, the command provides an additional argument `--backup-dir`, using which you can pass the path of the directory where the backup content needs to be saved (based on what you choose to back up).

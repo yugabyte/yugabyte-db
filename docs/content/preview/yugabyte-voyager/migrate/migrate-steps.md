@@ -376,11 +376,14 @@ To end the migration, you need to clean up the export directory (export-dir), an
 Run the `yb-voyager end migration` command to perform the clean up, and to back up the schema, data, migration reports, and log files by providing the backup related flags (mandatory) as follows:
 
 ```sh
-yb-voyager end migration --export-dir <EXPORT_DIR>
-        --backup-log-files <true, false, yes, no, 1, 0>
-        --backup-data-files <true, false, yes, no, 1, 0>
-        --backup-schema-files <true, false, yes, no, 1, 0>
-        --save-migration-reports <true, false, yes, no, 1, 0>
+# Replace the argument values with those applicable for your migration.
+yb-voyager end migration --export-dir <EXPORT_DIR> \
+        --backup-log-files <true, false, yes, no, 1, 0> \
+        --backup-data-files <true, false, yes, no, 1, 0> \
+        --backup-schema-files <true, false, yes, no, 1, 0> \
+        --save-migration-reports <true, false, yes, no, 1, 0> \
+        # Set optional argument to store a back up of any of the above arguments.
+        --backup-dir <BACKUP_DIR>
 ```
 
 Note that after you end the migration, you will _not_ be able to continue further. If you want to back up the schema, data, log files, and the migration reports (`analyze-schema` report, `export data status` output, or `import data status` output) for future reference, the command provides an additional argument `--backup-dir`, using which you can pass the path of the directory where the backup content needs to be saved (based on what you choose to back up).

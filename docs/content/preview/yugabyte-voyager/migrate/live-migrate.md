@@ -361,6 +361,7 @@ If the `yb-voyager import data to target` command terminates before completing t
 Run the following  command to get a consolidated report of the overall progress of data migration concerning all the databases involved (source or target).
 
 ```sh
+# Replace the argument values with those applicable for your migration.
 yb-voyager get data-migration-report --export-dir <EXPORT_DIR> \
         --target-db-password <TARGET_DB_PASSWORD>
 ```
@@ -372,7 +373,8 @@ Refer to [get data-migration-report](../../reference/data-migration/import-data/
 As the migration continuously exports changes on the source database to the `EXPORT-DIR`, disk use continues to grow. To prevent the disk from filling up, you can optionally use the `archive changes` command as follows:
 
 ```sh
-yb-voyager archive changes --export-dir <EXPORT-DIR> --move-to <DESTINATION-DIR> --delete
+# Replace the argument values with those applicable for your migration.
+yb-voyager archive changes --export-dir <EXPORT-DIR> --move-to <DESTINATION-DIR> --delete-changes-without-archiving
 ```
 
 Refer to [archive changes](../../reference/cutover-archive/archive-changes/) for details about the arguments.
@@ -389,6 +391,7 @@ Perform the following steps as part of the cutover process:
 1. Perform a cutover after the exported events rate ("ingestion rate" in the metrics table) drops to 0 using the following command:
 
     ```sh
+    # Replace the argument values with those applicable for your migration.
     yb-voyager initiate cutover to target --export-dir <EXPORT_DIR>
     ```
 
@@ -399,6 +402,7 @@ Perform the following steps as part of the cutover process:
 1. Wait for the cutover process to complete. Monitor the status of the cutover process using the following command:
 
     ```sh
+    # Replace the argument values with those applicable for your migration.
     yb-voyager cutover status --export-dir <EXPORT_DIR>
     ```
 
@@ -440,8 +444,6 @@ For more details, refer to GitHub issue [#360](https://github.com/yugabyte/yb-vo
 
 {{< /warning >}}
 
-After migration verification, stop [archiving changes](#archive-changes-optional).
-
 ### End migration
 
 To end the migration, you need to clean up the export directory (export-dir), and Voyager state ( Voyager-related metadata) stored in the target YugabyteDB database.
@@ -449,11 +451,14 @@ To end the migration, you need to clean up the export directory (export-dir), an
 Run the `yb-voyager end migration` command to perform the clean up, and to back up the schema, data, migration reports, and log files by providing the backup related flags (mandatory) as follows:
 
 ```sh
-yb-voyager end migration --export-dir <EXPORT_DIR>
-        --backup-log-files <true, false, yes, no, 1, 0>
-        --backup-data-files <true, false, yes, no, 1, 0>
-        --backup-schema-files <true, false, yes, no, 1, 0>
-        --save-migration-reports <true, false, yes, no, 1, 0>
+# Replace the argument values with those applicable for your migration.
+yb-voyager end migration --export-dir <EXPORT_DIR> \
+        --backup-log-files <true, false, yes, no, 1, 0> \
+        --backup-data-files <true, false, yes, no, 1, 0> \
+        --backup-schema-files <true, false, yes, no, 1, 0> \
+        --save-migration-reports <true, false, yes, no, 1, 0> \
+        # Set optional argument to store a back up of any of the above arguments.
+        --backup-dir <BACKUP_DIR>
 ```
 
 Note that after you end the migration, you will _not_ be able to continue further. If you wish to back up the schema, data, log files, and the migration reports (`analyze-schema` report and `get data-migration-report` output) for future reference, the command provides an additional argument `--backup-dir`, using which you can pass the path of the directory where the backup content needs to be saved (based on what you choose to back up).

@@ -141,6 +141,8 @@ yb-voyager export data status --export-dir /dir/export-dir
 
 ### get data-migration-report
 
+**Note** that this command is applicable for Live migrations only.
+
 Provides a consolidated report of data migration per table among all the databases involved in the live migration. The report includes the number of rows exported, the number of rows imported, change events exported and imported (INSERTS, UPDATES, and DELETES), and the final row count on the database.
 
 #### Syntax
@@ -157,11 +159,9 @@ The valid *arguments* for get data-migration-report are described in the followi
 | :------- | :------------------------ |
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help. |
-| --send-diagnostics | Enable or disable sending [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --source-db-password <password>| Password to connect to the source database server. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. Alternatively, you can also specify the password by setting the environment variable `SOURCE_DB_PASSWORD`. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose it in single quotes. |
 | --source-replica-db-password <password> | Password to connect to the source-replica database server. Alternatively, you can also specify the password by setting the environment variable `SOURCE_REPLICA_DB_PASSWORD`. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose it in single quotes. |
 | --target-db-password <password>| Password to connect to the target YugabyteDB server. Alternatively, you can also specify the password by setting the environment variable `TARGET_DB_PASSWORD`. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. |
-| -y, --yes | Answer yes to all prompts during the export schema operation. <br>Default: false |
 
 #### Example
 
@@ -170,6 +170,8 @@ yb-voyager get data-migration-report --export-dir /dir/export-dir
 ```
 
 ### export data from target
+
+**Note** that this command is applicable for Live migrations only.
 
 Exports new changes from the target YugabyteDB database to import to the source database (for fall-back migration)source-replica database (for fall-forward migration) so that the source/source-replica database can be in sync with the YugabyteDB database after cutover.
 

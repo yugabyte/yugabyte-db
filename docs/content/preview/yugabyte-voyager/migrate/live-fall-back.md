@@ -400,9 +400,10 @@ If the `yb-voyager import data to target` command terminates before completing t
 
 #### get data-migration-report
 
-Run the following  command to get a consolidated report of the overall progress of data migration concerning all the databases involved (source, target, and source-replica).
+Run the following  command to get a consolidated report of the overall progress of data migration concerning all the databases involved (source and target).
 
 ```sh
+# Replace the argument values with those applicable for your migration.
 yb-voyager get data-migration-report --export-dir <EXPORT_DIR> \
         --target-db-password <TARGET_DB_PASSWORD> \
         --source-db-password <SOURCE_DB_PASSWORD>
@@ -415,7 +416,8 @@ Refer to [get data-migration-report](../../reference/data-migration/import-data/
 As the migration continuously exports changes on the source database to the `EXPORT-DIR`, the disk utilization continues to grow indefinitely over time. To limit usage of all the disk space, optionally, you can use the `archive changes` command as follows:
 
 ```sh
-yb-voyager archive changes --export-dir <EXPORT-DIR> --move-to <DESTINATION-DIR> --delete
+# Replace the argument values with those applicable for your migration.
+yb-voyager archive changes --export-dir <EXPORT-DIR> --move-to <DESTINATION-DIR> --delete-changes-without-archiving
 ```
 
 Refer to [archive changes](../../reference/cutover-archive/archive-changes/) for details about the arguments.
@@ -432,6 +434,7 @@ Perform the following steps as part of the cutover process:
 1. Perform a cutover after the exported events rate ("ingestion rate" in the metrics table) drops to 0 using the following command:
 
     ```sh
+    # Replace the argument values with those applicable for your migration.
     yb-voyager initiate cutover to target --export-dir <EXPORT_DIR> --prepare-for-fall-back true
     ```
 
@@ -442,14 +445,15 @@ Perform the following steps as part of the cutover process:
     1. The initiate cutover to target command stops the export data from source process, followed by the import data to target process after it has imported all the events to the target YugabyteDB database.
 
     1. The [export data from target](../../reference/data-migration/export-data/#export-data-from-target) command automatically starts capturing changes from the target YugabyteDB database.
-    Note that the [import data to target](#import-data-to-target) process transforms to a `export data from target` process, so if it gets terminated for any reason, you need to restart the synchronization using the `export data from target` command as suggested in the import data output.
+    Note that the [import data to target](#import-data-to-target) process transforms to an `export data from target` process, so if it gets terminated for any reason, you need to restart the process using the `export data from target` command as suggested in the `import data to target` output.
 
     1. The [import data to source](../../reference/data-migration/import-data/#import-data-to-source) command automatically starts applying changes (captured from the target YugabyteDB) back to the source database.
-    Note that the [export data from source](#export-data-from-source) process transforms to a `export data from target` process, so if it gets terminated for any reason, you need to restart the process using `import data to source` command as suggested in the export data output.
+    Note that the [export data from source](#export-data-from-source) process transforms to a `import data to source` process, so if it gets terminated for any reason, you need to restart the process using `import data to source` command as suggested in the `export data from source` output.
 
 1. Wait for the cutover process to complete. Monitor the status of the cutover process using the following command:
 
     ```sh
+    # Replace the argument values with those applicable for your migration.
     yb-voyager cutover status --export-dir <EXPORT_DIR>
     ```
 
@@ -525,6 +529,7 @@ Perform the following steps as part of the cutover process:
 1. Perform a cutover after the exported events rate ("export rate" in the metrics table) drops to using the following command:
 
     ```sh
+    # Replace the argument values with those applicable for your migration.
     yb-voyager initiate cutover to source --export-dir <EXPORT_DIR>
     ```
 
@@ -535,6 +540,7 @@ Perform the following steps as part of the cutover process:
 1. Wait for the cutover process to complete. Monitor the status of the cutover process using the following command:
 
     ```sh
+    # Replace the argument values with those applicable for your migration.
     yb-voyager cutover status --export-dir <EXPORT_DIR>
     ```
 
@@ -567,8 +573,6 @@ Perform the following steps as part of the cutover process:
 
 1. Verify your migration. After the schema and data import is complete, the automated part of the database migration process is considered complete. You should manually run validation queries on both the source and target databases to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count of each table.
 
-1. Stop [archive changes](#archive-changes-optional).
-
 ### End migration
 
 To end the migration, you need to clean up the export directory (export-dir), and Voyager state ( Voyager-related metadata) stored in the target database and source database.
@@ -576,11 +580,14 @@ To end the migration, you need to clean up the export directory (export-dir), an
 Run the `yb-voyager end migration` command to perform the clean up, and to back up the schema, data, migration reports, and log files by providing the backup related flags (mandatory) as follows:
 
 ```sh
-yb-voyager end migration --export-dir <EXPORT_DIR>
-        --backup-log-files <true, false, yes, no, 1, 0>
-        --backup-data-files <true, false, yes, no, 1, 0>
-        --backup-schema-files <true, false, yes, no, 1, 0>
-        --save-migration-reports <true, false, yes, no, 1, 0>
+# Replace the argument values with those applicable for your migration.
+yb-voyager end migration --export-dir <EXPORT_DIR> \
+        --backup-log-files <true, false, yes, no, 1, 0> \
+        --backup-data-files <true, false, yes, no, 1, 0> \
+        --backup-schema-files <true, false, yes, no, 1, 0> \
+        --save-migration-reports <true, false, yes, no, 1, 0> \
+        # Set optional argument to store a back up of any of the above arguments.
+        --backup-dir <BACKUP_DIR>
 ```
 
 Note that after you end the migration, you will _not_ be able to continue further. If you want to back up the schema, data, log files, and the migration reports (`analyze-schema` report and `get data-migration-report` output) for future reference, the command provides an additional argument `--backup-dir`, using which you can pass the path of the directory where the backup content needs to be saved (based on what you choose to back up).
