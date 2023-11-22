@@ -1266,6 +1266,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status UpdateCDCStream(
       const UpdateCDCStreamRequestPB* req, UpdateCDCStreamResponsePB* resp, rpc::RpcContext* rpc);
 
+  Status YsqlBackfillReplicationSlotNameToCDCSDKStream(
+      const YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB* req,
+      YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB* resp,
+      rpc::RpcContext* rpc);
+
   // Query if Bootstrapping is required for a CDC stream (e.g. Are we missing logs).
   Status IsBootstrapRequired(
       const IsBootstrapRequiredRequestPB* req,
@@ -2680,6 +2685,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const TableId& table_id, rpc::RpcContext* rpc, const LeaderEpoch& epoch);
   Status BackfillMetadataForCDC(
       const TableId& table_id, rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+
+  Status ReplicationSlotValidateName(const std::string& replication_slot_name);
 
   // Create the cdc_state table if needed (i.e. if it does not exist already).
   //

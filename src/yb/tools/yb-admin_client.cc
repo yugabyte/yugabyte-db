@@ -3910,6 +3910,27 @@ Status ClusterAdminClient::GetCDCDBStreamInfo(const std::string& db_stream_id) {
   return Status::OK();
 }
 
+Status ClusterAdminClient::YsqlBackfillReplicationSlotNameToCDCSDKStream(
+    const std::string& stream_id, const std::string& replication_slot_name) {
+  master::YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB req;
+  master::YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB resp;
+  req.set_stream_id(stream_id);
+  req.set_cdcsdk_ysql_replication_slot_name(replication_slot_name);
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(
+      master_replication_proxy_->YsqlBackfillReplicationSlotNameToCDCSDKStream(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+        cout << "Error CDC stream with replication slot: " << resp.error().status().message()
+             << endl;
+        return StatusFromPB(resp.error().status());
+  }
+
+  return Status::OK();
+}
+
 Status ClusterAdminClient::WaitForSetupUniverseReplicationToFinish(
     const string& replication_group_id) {
   master::IsSetupUniverseReplicationDoneRequestPB req;
