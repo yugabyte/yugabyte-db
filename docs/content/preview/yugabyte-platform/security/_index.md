@@ -99,16 +99,4 @@ type: indexpage
     </a>
   </div>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="network-security/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/index/secure.png" aria-hidden="true" />
-        <div class="title">Network security</div>
-      </div>
-      <div class="body">
-        Restrict machine and port access to run in trusted network environments.
-      </div>
-    </a>
-  </div>
-
 </div>

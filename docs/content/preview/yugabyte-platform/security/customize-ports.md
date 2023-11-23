@@ -7,11 +7,13 @@ menu:
   preview_yugabyte-platform:
     parent: security
     identifier: customize-ports
-    weight: 15
+    weight: 20
 type: docs
 ---
 
-When deploying a universe, YugabyteDB Anywhere allows you to configure your YugabyteDB ports for security purposes.
+YugabyteDB universes use a set of [default ports](../../../reference/configuration/default-ports) to manage access to services.
+
+When deploying a universe, YugabyteDB Anywhere allows you to customize these ports.
 
 ## Customize ports
 

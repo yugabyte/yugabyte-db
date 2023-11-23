@@ -1,39 +1,41 @@
 ---
 title: Create a KMS configuration using Google Cloud
-headerTitle: Create a KMS configuration using Google Cloud
+headerTitle: Create a KMS configuration
 linkTitle: Create a KMS configuration
 description: Use YugabyteDB Anywhere to create a KMS configuration for Google Cloud KMS.
 menu:
   preview_yugabyte-platform:
     parent: security
     identifier: create-kms-config-1-google-kms
-    weight: 27
+    weight: 50
 type: docs
 ---
 
+Encryption at rest uses a master key to encrypt and decrypt universe keys. The master key details are stored in YugabyteDB Anywhere in key management service (KMS) configurations. You enable encryption at rest for a universe by assigning the universe a KMS configuration. The master key designated in the configuration is then used for generating the universe keys used for encrypting the universe data.
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="{{< relref "./aws-kms.md" >}}" class="nav-link">
+    <a href="../aws-kms/" class="nav-link">
       <i class="fa-brands fa-aws" aria-hidden="true"></i>
       AWS KMS
     </a>
   </li>
   <li >
-    <a href="{{< relref "./google-kms.md" >}}" class="nav-link active">
+    <a href="../google-kms/" class="nav-link active">
       <i class="fa-brands fa-google" aria-hidden="true"></i>
       Google KMS
     </a>
   </li>
 
   <li >
-    <a href="{{< relref "./azure-kms.md" >}}" class="nav-link">
+    <a href="../azure-kms/" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       Azure Key Vault
     </a>
   </li>
 
   <li >
-    <a href="{{< relref "./hashicorp-kms.md" >}}" class="nav-link">
+    <a href="../hashicorp-kms/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       HashiCorp Vault
     </a>
@@ -41,11 +43,11 @@ type: docs
 
 </ul>
 
-Encryption at rest uses a master key to encrypt and decrypt universe keys. The master key details are stored in YugabyteDB Anywhere in key management service (KMS) configurations. You enable encryption at rest for a universe by assigning the universe a KMS configuration. The master key designated in the configuration is then used for generating the universe keys used for encrypting the universe data.
-
 Encryption at rest in YugabyteDB Anywhere supports the use of [Google Cloud KMS](https://cloud.google.com/security-key-management).
 
 Conceptually, Google Cloud KMS consists of a key ring containing one or more cryptographic keys, with each key capable of having multiple versions.
+
+## Prerequisites
 
 The Google Cloud user associated with a KMS configuration requires a custom role assigned to the service account with the following KMS-related permissions:
 

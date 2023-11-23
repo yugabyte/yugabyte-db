@@ -13,6 +13,8 @@ menu:
 type: docs
 ---
 
+Role-based access control (RBAC) consists of a collection of permissions on resources given to roles.
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
@@ -30,8 +32,6 @@ type: docs
   </li>
 
 </ul>
-
-The role-based access control (RBAC) model in YSQL is a collection of privileges on resources given to roles. Thus, the entire RBAC model is built around roles, resources, and privileges. It is essential to understand these concepts in order to understand the RBAC model.
 
 ## Roles
 
