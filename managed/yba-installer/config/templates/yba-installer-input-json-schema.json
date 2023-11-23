@@ -159,6 +159,12 @@
             "port": {
               "type": "integer"
             },
+            "hsts_enabled": {
+              "type": "boolean"
+            },
+            "custom_headers": {
+              "type": "array"
+            },
             "keyStorePassword": {
               "type": "string"
             },
