@@ -400,6 +400,12 @@ public class UpgradeUniverseController extends AuthenticatedController {
           required = true,
           paramType = "body"))
   @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result modifyAuditLogging(UUID customerUuid, UUID universeUuid, Http.Request request) {
     return requestHandler(
         request,
