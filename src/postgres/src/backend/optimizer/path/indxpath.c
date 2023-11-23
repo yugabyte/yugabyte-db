@@ -1138,7 +1138,16 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 					/* Caller had better intend this only for bitmap scan */
 					Assert(scantype == ST_BITMAPSCAN);
 				}
-				if (indexcol > 0)
+				/*
+				 * YB: No reason to believe lower saop prevents ordering.
+				 * LSM index uses skip based scan, a machinery that also
+				 * enables distinct index scans.
+				 * Moreover, LSM index supports scalar array ops as
+				 * index clauses without sacrificing ordering.
+				 */
+				bool is_yb_index = IsYugaByteEnabled() &&
+					index->relam == LSM_AM_OID;
+				if (!is_yb_index && indexcol > 0)
 				{
 					if (skip_lower_saop)
 					{
