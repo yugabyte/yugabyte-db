@@ -91,7 +91,7 @@ Prepare your target YugabyteDB database cluster by creating a database, and a us
 
 ### Create the target database
 
-Create the target database in your YugabyteDB cluster. The database name can be the same or different from the source database name. If the target database name is not provided, yb-voyager assumes the target database name to be `yugabyte`. If you do not want to import in the default `yugabyte` database, specify the name of the target database name using the `--target-db-name` argument to the `yb-voyager import` commands.
+Create the target YugabyteDB database in your YugabyteDB cluster. The database name can be the same or different from the source database name. If the target YugabyteDB database name is not provided, yb-voyager assumes the target YugabyteDB database name to be `yugabyte`. If you do not want to import in the default `yugabyte` database, specify the name of the target YugabyteDB database name using the `--target-db-name` argument to the `yb-voyager import` commands.
 
 ```sql
 CREATE DATABASE target_db_name;
@@ -107,7 +107,7 @@ Create a user with [`SUPERUSER`](../../../api/ysql/the-sql-language/statements/d
      CREATE USER ybvoyager SUPERUSER PASSWORD 'password';
      ```
 
-If you want yb-voyager to connect to the target database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
+If you want yb-voyager to connect to the target YugabyteDB database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
 
 {{< warning title="Deleting the ybvoyager user" >}}
 
@@ -136,7 +136,7 @@ The export directory has the following sub-directories and files:
 
 - `reports` directory contains the generated _Schema Analysis Report_.
 - `schema` directory contains the source database schema translated to PostgreSQL. The schema is partitioned into smaller files by the schema object type such as tables, views, and so on.
-- `data` directory contains CSV (Comma Separated Values) files that are passed to the COPY command on the target database.
+- `data` directory contains CSV (Comma Separated Values) files that are passed to the COPY command on the target YugabyteDB database.
 - `metainfo` and `temp` directories are used by yb-voyager for internal bookkeeping.
 - `logs` directory contains the log files for each command.
 
@@ -299,7 +299,7 @@ Import the schema using the `yb-voyager import schema` command.
 
 {{< note title="Usage for target_db_schema" >}}
 
-`yb-voyager` imports the source database into the `public` schema of the target database. By specifying `--target-db-schema` argument during import, you can instruct `yb-voyager` to create a non-public schema and use it for the schema/data import.
+`yb-voyager` imports the source database into the `public` schema of the target YugabyteDB database. By specifying `--target-db-schema` argument during import, you can instruct `yb-voyager` to create a non-public schema and use it for the schema/data import.
 
 {{< /note >}}
 
@@ -317,7 +317,7 @@ yb-voyager import schema --export-dir <EXPORT_DIR> \
 
 Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
 
-yb-voyager applies the DDL SQL files located in the `$EXPORT_DIR/schema` directory to the target database. If yb-voyager terminates before it imports the entire schema, you can rerun it by adding the `--ignore-exist` option.
+yb-voyager applies the DDL SQL files located in the `$EXPORT_DIR/schema` directory to the target YugabyteDB database. If yb-voyager terminates before it imports the entire schema, you can rerun it by adding the `--ignore-exist` option.
 
 {{< note title="Importing indexes and triggers" >}}
 
@@ -384,7 +384,7 @@ Refer to [get data-migration-report](../../reference/data-migration/export-data/
 
 ### Import data to target
 
-After you have successfully imported the schema in the target database, and the CDC phase has started in export data from source (which you can monitor using the get data-migration-report command), you can start importing the data using the yb-voyager import data to target command as follows:
+After you have successfully imported the schema in the target YugabyteDB database, and the CDC phase has started in export data from source (which you can monitor using the get data-migration-report command), you can start importing the data using the yb-voyager import data to target command as follows:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
@@ -534,7 +534,7 @@ Perform the following steps as part of the cutover process:
 
     Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
 
-1. Verify your migration. After the schema and data import is complete, the automated part of the database migration process is considered complete. You should manually run validation queries on both the source and target database to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count of each table.
+1. Verify your migration. After the schema and data import is complete, the automated part of the database migration process is considered complete. You should manually run validation queries on both the source and target YugabyteDB database to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count of each table.
 
     {{< warning title = "Caveat associated with rows reported by get data-migration-report" >}}
 
@@ -554,11 +554,11 @@ For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/y
 
 During this phase, switch your application over from the target YugabyteDB database to the source-replica database. As this step is optional, perform it _only_ if the target YugabyteDB database is not working as expected.
 
-Keep monitoring the metrics displayed for `export data from target` and `import data to source-replica` processes. After you notice that the import of events to the source-replica database is catching up to the exported events from the target database, you are ready to cutover. You can use the "Remaining events" metric displayed in the import data to source-replica process to help you determine the cutover.
+Keep monitoring the metrics displayed for `export data from target` and `import data to source-replica` processes. After you notice that the import of events to the source-replica database is catching up to the exported events from the target YugabyteDB database, you are ready to cutover. You can use the "Remaining events" metric displayed in the import data to source-replica process to help you determine the cutover.
 
 Perform the following steps as part of the cutover process:
 
-1. Quiesce your target database, that is stop application writes.
+1. Quiesce your target YugabyteDB database, that is stop application writes.
 1. Perform a cutover after the exported events rate ("Export rate" in the metrics table) drops to using the following command:
 
     ```sh
@@ -599,7 +599,7 @@ For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/y
 
 ### End migration
 
-To end the migration, you need to clean up the export directory (export-dir), and Voyager state ( Voyager-related metadata) stored in the target database and source-replica database.
+To end the migration, you need to clean up the export directory (export-dir), and Voyager state ( Voyager-related metadata) stored in the target YugabyteDB database and source-replica database.
 
 Run the `yb-voyager end migration` command to perform the clean up, and to back up the schema, data, migration reports, and log files by providing the backup related flags (mandatory) as follows:
 

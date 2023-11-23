@@ -134,7 +134,7 @@ Refer to [Sign in with Azure CLI](https://learn.microsoft.com/en-us/cli/azure/au
 
 ## Verify migration
 
-After the data import is complete, the automated part of the importing the data from files is considered complete. You should manually run validation queries on the target database to ensure that the data is correctly imported. A sample query to validate the databases can include checking the row count of each table.
+After the data import is complete, the automated part of the importing the data from files is considered complete. You should manually run validation queries on the target YugabyteDB database to ensure that the data is correctly imported. A sample query to validate the databases can include checking the row count of each table.
 
 {{< warning title = "Caveat associated with rows reported by import data status" >}}
 
@@ -152,7 +152,7 @@ For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/y
 
 ## End migration
 
-To end the migration, you need to clean up the export directory (export-dir), and Voyager state ( Voyager-related metadata) stored in the target database.
+To end the migration, you need to clean up the export directory (export-dir), and Voyager state ( Voyager-related metadata) stored in the target YugabyteDB database.
 
 Run the `yb-voyager end migration` command to perform the clean up, and to back up the schema, data, migration reports, and log files by providing the backup related flags (mandatory) as follows:
 

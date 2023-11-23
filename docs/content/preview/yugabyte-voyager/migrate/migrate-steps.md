@@ -86,7 +86,7 @@ Prepare your target YugabyteDB database cluster by creating a database, and a us
 
 ### Create the target database
 
-Create the target database in your YugabyteDB cluster. The database name can be the same or different from the source database name. If the target database name is not provided, yb-voyager assumes the target database name to be `yugabyte`. If you do not want to import in the default `yugabyte` database, specify the name of the target database name using the `--target-db-name` argument to the `yb-voyager import` commands.
+Create the target YugabyteDB database in your YugabyteDB cluster. The database name can be the same or different from the source database name. If the target YugabyteDB database name is not provided, yb-voyager assumes the target YugabyteDB database name to be `yugabyte`. If you do not want to import in the default `yugabyte` database, specify the name of the target YugabyteDB database name using the `--target-db-name` argument to the `yb-voyager import` commands.
 
 ```sql
 CREATE DATABASE target_db_name;
@@ -109,7 +109,7 @@ Create a user with [`SUPERUSER`](../../../api/ysql/the-sql-language/statements/d
      GRANT yb_superuser TO ybvoyager;
      ```
 
-If you want yb-voyager to connect to the target database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
+If you want yb-voyager to connect to the target YugabyteDB database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
 
 {{< warning title="Deleting the ybvoyager user" >}}
 
@@ -138,7 +138,7 @@ The export directory has the following sub-directories and files:
 
 - `reports` directory contains the generated *Schema Analysis Report*.
 - `schema` directory contains the source database schema translated to PostgreSQL. The schema is partitioned into smaller files by the schema object type such as tables, views, and so on.
-- `data` directory contains CSV (Comma Separated Values) files that are passed to the COPY command on the target database.
+- `data` directory contains CSV (Comma Separated Values) files that are passed to the COPY command on the target YugabyteDB database.
 - `metainfo` and `temp` directories are used by yb-voyager for internal bookkeeping.
 - `logs` directory contains the log files for each command.
 
@@ -240,7 +240,7 @@ The options passed to the command are similar to the [`yb-voyager export schema`
 
 {{< note title="Sequence migration considerations" >}}
 
-Sequence migration consists of two steps: sequence creation and setting resume value (resume value refers to the `NEXTVAL` of a sequence on a source database). A sequence object is generated during export schema and the resume values for sequences are generated during export data. These resume values are then set on the target database just after the data is imported for all tables.
+Sequence migration consists of two steps: sequence creation and setting resume value (resume value refers to the `NEXTVAL` of a sequence on a source database). A sequence object is generated during export schema and the resume values for sequences are generated during export data. These resume values are then set on the target YugabyteDB database just after the data is imported for all tables.
 
 Note that there are some special cases involving sequences such as the following:
 
@@ -273,8 +273,8 @@ Import the schema using the `yb-voyager import schema` command.
 
 {{< note title="Usage for target_db_schema" >}}
 
-The `target_db_schema` argument specifies the schema of the target database and is applicable _only for_ MySQL and Oracle.
-`yb-voyager` imports the source database into the `public` schema of the target database. By specifying `--target-db-schema` argument during import, you can instruct `yb-voyager` to create a non-public schema and use it for the schema/data import.
+The `target_db_schema` argument specifies the schema of the target YugabyteDB database and is applicable _only for_ MySQL and Oracle.
+`yb-voyager` imports the source database into the `public` schema of the target YugabyteDB database. By specifying `--target-db-schema` argument during import, you can instruct `yb-voyager` to create a non-public schema and use it for the schema/data import.
 
 {{< /note >}}
 
@@ -292,7 +292,7 @@ yb-voyager import schema --export-dir <EXPORT_DIR> \
 
 Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
 
-yb-voyager applies the DDL SQL files located in the `$EXPORT_DIR/schema` directory to the target database. If yb-voyager terminates before it imports the entire schema, you can rerun it by adding the `--ignore-exist` option.
+yb-voyager applies the DDL SQL files located in the `$EXPORT_DIR/schema` directory to the target YugabyteDB database. If yb-voyager terminates before it imports the entire schema, you can rerun it by adding the `--ignore-exist` option.
 
 {{< note title="Importing indexes and triggers" >}}
 
@@ -302,7 +302,7 @@ Because the presence of indexes and triggers can slow down the rate at which dat
 
 ### Import data
 
-After you have successfully exported the source data and imported the schema in the target database, you can import the data using the `yb-voyager import data` command as follows:
+After you have successfully exported the source data and imported the schema in the target YugabyteDB database, you can import the data using the `yb-voyager import data` command as follows:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
@@ -355,7 +355,7 @@ Refer to [import schema](../../reference/schema-migration/import-schema/) for de
 
 ### Verify migration
 
-After the schema and data import is complete, the automated part of the database migration process is considered complete. You should manually run validation queries on both the source and target database to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count of each table.
+After the schema and data import is complete, the automated part of the database migration process is considered complete. You should manually run validation queries on both the source and target YugabyteDB database to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count of each table.
 
 {{< warning title = "Caveat associated with rows reported by import data status" >}}
 
@@ -373,7 +373,7 @@ For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/y
 
 ### End migration
 
-To end the migration, you need to clean up the export directory (export-dir), and Voyager state ( Voyager-related metadata) stored in the target database.
+To end the migration, you need to clean up the export directory (export-dir), and Voyager state ( Voyager-related metadata) stored in the target YugabyteDB database.
 
 Run the `yb-voyager end migration` command to perform the clean up, and to back up the schema, data, migration reports, and log files by providing the backup related flags (mandatory) as follows:
 
