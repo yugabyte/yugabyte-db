@@ -129,11 +129,19 @@ double		cpu_operator_cost = DEFAULT_CPU_OPERATOR_COST;
 double		parallel_tuple_cost = DEFAULT_PARALLEL_TUPLE_COST;
 double		parallel_setup_cost = DEFAULT_PARALLEL_SETUP_COST;
 
+/* Following parameters are used by the older heuristics-based cost model */
 double		yb_network_fetch_cost = YB_DEFAULT_FETCH_COST;
+double		yb_intercloud_cost = YB_DEFAULT_INTERCLOUD_COST;
+double		yb_interregion_cost = YB_DEFAULT_INTERREGION_COST;
+double		yb_interzone_cost = YB_DEFAULT_INTERZONE_COST;
+double		yb_local_cost = YB_DEFAULT_LOCAL_COST;
 
+/* 
+ * Following parameters are used in the newer cost model that aims to model the
+ * pggate and DocDB storage layer and LSM index lookup more precisely.
+ */
 double		yb_seq_block_cost = DEFAULT_SEQ_PAGE_COST;
 double		yb_random_block_cost = DEFAULT_RANDOM_PAGE_COST;
-
 double		yb_docdb_next_cpu_cycles = YB_DEFAULT_DOCDB_NEXT_CPU_CYCLES;
 double 		yb_seek_cost_factor = YB_DEFAULT_SEEK_COST_FACTOR;
 double 		yb_backward_seek_cost_factor = YB_DEFAULT_BACKWARD_SEEK_COST_FACTOR;
@@ -141,12 +149,6 @@ int 		yb_docdb_merge_cpu_cycles = YB_DEFAULT_DOCDB_MERGE_CPU_CYCLES;
 int 		yb_docdb_remote_filter_overhead_cycles = YB_DEFAULT_DOCDB_REMOTE_FILTER_OVERHEAD_CYCLES;
 double		yb_local_latency_cost = YB_DEFAULT_LOCAL_LATENCY_COST;
 double		yb_local_throughput_cost = YB_DEFAULT_LOCAL_THROUGHPUT_COST;
-
-double		yb_intercloud_cost = YB_DEFAULT_INTERCLOUD_COST;
-double		yb_interregion_cost = YB_DEFAULT_INTERREGION_COST;
-double		yb_interzone_cost = YB_DEFAULT_INTERZONE_COST;
-
-double		yb_local_cost = YB_DEFAULT_LOCAL_COST;
 
 int			effective_cache_size = DEFAULT_EFFECTIVE_CACHE_SIZE;
 
@@ -5661,6 +5663,10 @@ yb_compute_result_transfer_cost(double result_tuples, int result_width)
 	double		result_page_size_mb;
 	Cost 		per_result_page_cost;
 
+	// TODO(#19113): tuple size is inflated on DocDB side. Estimate it at
+	// 25% larger for network cost estimation.
+	result_width *= 1.25;
+
 	/* Network costs */
 	if (yb_fetch_size_limit == 0 &&
 		yb_fetch_row_limit == 0)
@@ -5673,12 +5679,11 @@ yb_compute_result_transfer_cost(double result_tuples, int result_width)
 			 (yb_fetch_row_limit == 0 ||
 			  result_width * yb_fetch_row_limit > yb_fetch_size_limit))
 	{
-		int results_per_page = yb_fetch_size_limit / (result_width * 1.25);
-		// TODO(#19113): tuple size is inflated on DocDB side. Estimate it at
-		// 25% larger.
-
-		num_result_pages = ceil(result_tuples / results_per_page);
-		result_page_size_mb = (double) results_per_page * result_width / MEGA;
+		int max_results_per_page = yb_fetch_size_limit / result_width;
+		num_result_pages = ceil(result_tuples / max_results_per_page);
+		result_page_size_mb = 
+			fmin(result_tuples, max_results_per_page) * 
+			result_width / MEGA;
 	}
 	else
 	{
@@ -5706,6 +5711,10 @@ yb_get_num_result_pages(double result_tuples, int result_width)
 {
 	uint32_t	num_result_pages = 0;
 
+	// TODO(#19113): tuple size is inflated on DocDB side. Estimate it at
+	// 25% larger for network cost estimation.
+	result_width *= 1.25;
+
 	if (yb_fetch_size_limit == 0 &&
 		yb_fetch_row_limit == 0)
 	{
@@ -5715,9 +5724,8 @@ yb_get_num_result_pages(double result_tuples, int result_width)
 			 (yb_fetch_row_limit == 0 ||
 			  result_width * yb_fetch_row_limit > yb_fetch_size_limit))
 	{
-		int 		results_per_page =
-			floor(((double)yb_fetch_size_limit) / result_width);
-		num_result_pages = ceil(result_tuples / results_per_page);
+		int max_results_per_page = yb_fetch_size_limit / result_width;
+		num_result_pages = ceil(result_tuples / max_results_per_page);
 	}
 	else
 	{
