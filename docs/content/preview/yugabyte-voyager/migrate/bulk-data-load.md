@@ -160,12 +160,20 @@ Run the `yb-voyager end migration` command to perform the clean up, and to back 
 # Replace the argument values with those applicable for your migration.
 yb-voyager end migration --export-dir <EXPORT_DIR> \
         --backup-log-files <true, false, yes, no, 1, 0> \
-        --backup-data-files <true, false, yes, no, 1, 0> \
-        --backup-schema-files <true, false, yes, no, 1, 0> \
+        --backup-data-files false \
+        --backup-schema-files false \
         --save-migration-reports <true, false, yes, no, 1, 0> \
         # Set optional argument to store a back up of any of the above arguments.
         --backup-dir <BACKUP_DIR>
 ```
+
+{{< note title="Note" >}}
+
+* Note that if you end the migration, you will not be able to continue the import data file operation further on this export directory (export-dir).
+
+* Set the arguments `--backup-data-files` and `backup-schema-files` to false  as import data file operation is not a complete migration that includes export/import of schema, or export of data. If you set the arguments with any other boolean value (true, yes, no, 1, 0), it will internally be set to false.
+
+{{< /note >}}
 
 If you want to backup the log file and import data status output for future reference, the command provides an argument as `--backup-dir`, using which you can pass the path of the directory where the backup content needs to be saved (based on what you choose to back up).
 
