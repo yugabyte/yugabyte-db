@@ -240,6 +240,12 @@ public class DrConfigController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.DrConfigSetTablesForm",
           paramType = "body",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result setTables(UUID customerUUID, UUID drConfigUuid, Http.Request request) {
     log.info("Received set tables drConfig request");
 
@@ -304,6 +310,12 @@ public class DrConfigController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.DrConfigRestartForm",
           paramType = "body",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result restart(
       UUID customerUUID, UUID drConfigUuid, boolean isForceDelete, Http.Request request) {
     log.info("Received restart drConfig request");
@@ -499,6 +511,12 @@ public class DrConfigController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.DrConfigSwitchoverForm",
           paramType = "body",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result switchover(UUID customerUUID, UUID drConfigUuid, Http.Request request) {
     log.info("Received switchover drConfig request");
 
@@ -768,6 +786,12 @@ public class DrConfigController extends AuthenticatedController {
       nickname = "syncDrConfig",
       value = "Sync disaster recovery config",
       response = YBPTask.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result sync(UUID customerUUID, UUID drConfigUuid, Http.Request request) {
     log.info("Received sync drConfig request");
 

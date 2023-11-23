@@ -384,6 +384,12 @@ public class CustomerTaskController extends AuthenticatedController {
       value = "Resume a paused task",
       notes = "Resumes a paused task",
       response = YBPSuccess.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   // Hidden API for internal consumption.
   public Result resumeTask(UUID customerUUID, UUID taskUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);

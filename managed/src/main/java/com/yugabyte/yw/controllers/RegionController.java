@@ -163,6 +163,12 @@ public class RegionController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.models.Region",
           required = true))
   @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.2.0")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result createRegionNew(UUID customerUUID, UUID providerUUID, Http.Request request) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     Region region = formFactory.getFormDataOrBadRequest(request.body().asJson(), Region.class);
@@ -238,6 +244,12 @@ public class RegionController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.models.Region",
           required = true))
   @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.2.0")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result editRegionNew(
       UUID customerUUID, UUID providerUUID, UUID regionUUID, Http.Request request) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
