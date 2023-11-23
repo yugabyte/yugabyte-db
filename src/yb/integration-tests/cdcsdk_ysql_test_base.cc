@@ -913,7 +913,9 @@ namespace cdc {
 
           if (set_checkpoint_resp.has_error() &&
               set_checkpoint_resp.error().code() != CDCErrorPB::TABLET_NOT_FOUND &&
-              set_checkpoint_resp.error().code() != CDCErrorPB::LEADER_NOT_READY) {
+              set_checkpoint_resp.error().code() != CDCErrorPB::LEADER_NOT_READY &&
+              set_checkpoint_resp.error().status().message().find("TRY_AGAIN_CODE") ==
+                  std::string::npos) {
             return STATUS_FORMAT(
                 InternalError, "Response had error: $0", set_checkpoint_resp.DebugString());
           }
