@@ -290,6 +290,11 @@ public class ExplainAnalyzeUtils {
       return this.value.equals(otherCost.value);
     }
 
+    @Override
+    public String toString() {
+      return value.toString();
+    }
+
     private BigDecimal value;
   }
 

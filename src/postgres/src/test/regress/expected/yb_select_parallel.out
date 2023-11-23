@@ -102,16 +102,14 @@ select sp_parallel_restricted(unique1) from tenk1
 -- test parallel plan when group by expression is in target list.
 explain (costs off)
 	select length(stringu1) from tenk1 group by length(stringu1);
-                    QUERY PLAN
----------------------------------------------------
- Finalize HashAggregate
+               QUERY PLAN
+-----------------------------------------
+ HashAggregate
    Group Key: (length((stringu1)::text))
    ->  Gather
          Workers Planned: 4
-         ->  Partial HashAggregate
-               Group Key: length((stringu1)::text)
-               ->  Parallel Seq Scan on tenk1
-(7 rows)
+         ->  Parallel Seq Scan on tenk1
+(5 rows)
 
 select length(stringu1) from tenk1 group by length(stringu1);
  length
@@ -123,12 +121,12 @@ explain (costs off)
 	select stringu1, count(*) from tenk1 group by stringu1 order by stringu1;
                      QUERY PLAN
 ----------------------------------------------------
- Sort
-   Sort Key: stringu1
-   ->  Finalize HashAggregate
-         Group Key: stringu1
-         ->  Gather
-               Workers Planned: 4
+ Finalize GroupAggregate
+   Group Key: stringu1
+   ->  Gather Merge
+         Workers Planned: 4
+         ->  Sort
+               Sort Key: stringu1
                ->  Partial HashAggregate
                      Group Key: stringu1
                      ->  Parallel Seq Scan on tenk1
@@ -755,12 +753,12 @@ explain (costs off)
     (select two from tenk1 b where stringu1 like '%AAAA' limit 3);
                               QUERY PLAN
 ----------------------------------------------------------------------
- Hash Semi Join
-   Hash Cond: (a.two = b.two)
+ Nested Loop Semi Join
+   Join Filter: (a.two = b.two)
    ->  Gather
          Workers Planned: 4
          ->  Parallel Seq Scan on tenk1 a
-   ->  Hash
+   ->  Materialize
          ->  Limit
                ->  Gather
                      Workers Planned: 4
