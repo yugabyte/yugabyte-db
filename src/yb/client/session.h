@@ -291,5 +291,8 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
 // be retried by the session internally without returning error to upper layers.
 bool ShouldSessionRetryError(const Status& status);
 
+int YsqlClientReadWriteTimeoutMs();
+int RetryableRequestTimeoutSecs(TableType table_type);
+
 } // namespace client
 } // namespace yb
