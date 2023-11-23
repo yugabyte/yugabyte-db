@@ -16,6 +16,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert.Update
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseConfig;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeManager.CertRotateAction;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.utils.Version;
 import com.yugabyte.yw.forms.CertsRotateParams;
@@ -215,7 +216,8 @@ public class CertsRotate extends UpgradeTaskBase {
       UpgradeOption upgradeOption,
       boolean ybcInstalled) {
 
-    if (isCertReloadable(universe)) {
+    boolean n2nCertExpired = CertificateHelper.checkNode2NodeCertsExpiry(universe);
+    if (isCertReloadable(universe) && !n2nCertExpired) {
       // cert reload can be performed.
       log.info("adding cert rotate via reload task ...");
       createCertReloadTask(nodes, universe.getUniverseUUID(), getUserTaskUUID());
