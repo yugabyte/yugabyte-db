@@ -67,13 +67,25 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
               (isReadReplica && node.is_read_replica) || (!isReadReplica && !node.is_read_replica)
           )
         : nodesResponse?.data
-      )?.filter(
-        (node) =>
-          (!region && !zone) ||
-          (node.cloud_info.region === region && node.cloud_info.zone === zone)
       ),
-    [nodesResponse, clusterType, region, zone]
+    [nodesResponse, clusterType, isReadReplica]
   );
+
+  const highlightNodes = React.useMemo(() => {
+    if (!nodeList) {
+      return [];
+    }
+
+    if (filteredNode) {
+      return [filteredNode];
+    }
+
+    if (region && zone) {
+      return nodeList.filter((node) => node.cloud_info.region === region && node.cloud_info.zone === zone).map(node => node.name);
+    }
+
+    return [];
+  }, [nodeList, filteredNode, region, zone])
 
   const totalCores = Math.round((cluster.spec?.cluster_info?.node_info.num_cores ?? 0) / (nodesResponse?.data.length ?? 1) * (nodeList?.length ?? 0))
 
@@ -184,10 +196,10 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
         right: 225,
         bottom: 5,
       }}
-      node={<CpuSankeyNode filteredNode={filteredNode} totalCores={totalCores} />}
+      node={<CpuSankeyNode highlightNodes={highlightNodes} totalCores={totalCores} />}
       nodeWidth={4}
       nodePadding={10}
-      link={<CpuSankeyLink nodeWidth={4} filteredNode={filteredNode} />}
+      link={<CpuSankeyLink nodeWidth={4} highlightNodes={highlightNodes} />}
       {...sankeyProps}
     >
       {showTooltip && <Tooltip />}
@@ -199,8 +211,11 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
 function CpuSankeyNode(props: any) {
   const classes = useStyles();
 
-  const { x, y, width, height, index, payload, filteredNode, totalCores } = props;
+  const { x, y, width, height, index, payload, highlightNodes, totalCores } = props;
   const isLeftNode = index <= 1;
+
+  const hasHighlight = !!highlightNodes?.length;
+  const highlightNode = highlightNodes?.includes(payload.name);
 
   const { isReadReplica } = payload;
   const splitPayload = payload.name.split(' ') as string[];
@@ -213,17 +228,17 @@ function CpuSankeyNode(props: any) {
   }
 
   return (
-    <Layer key={`CustomNode${index}`} opacity={!filteredNode ? 1 :
-      (((isLeftNode && index === 0) || (!isLeftNode && payload.name === filteredNode)) ? 1 : 0.4 )}>
+    <Layer key={`CustomNode${index}`} opacity={!hasHighlight ? 1 :
+      (((isLeftNode && index === 0) || (!isLeftNode && highlightNode)) ? 1 : 0.4 )}>
       <Rectangle
-        x={x} y={y} opacity={isLeftNode ? (!filteredNode ? 1 : 0.4) : undefined}
+        x={x} y={y} opacity={isLeftNode ? (!hasHighlight ? 1 : 0.4) : undefined}
         width={width} height={height}
         fill={isLeftNode ? "#2B59C3" : "#8047F5"}
         fillOpacity={isLeftNode ? 0.6 : 0.5} />
       {!isLeftNode ?
         // Right node
         <Link className={classes.link} component={RouterLink}
-          to={`/performance/metrics?nodeName=${payload.name}&clusterType=${isReadReplica ? 'READ_REPLICA' : 'PRIMARY'}`}>
+          to={`/performance/metrics?nodeName=${payload.name}&region=&clusterType=${isReadReplica ? 'READ_REPLICA' : 'PRIMARY'}`}>
           <text
             textAnchor={'start'}
             x={x + width + 15}
@@ -262,7 +277,10 @@ class CpuSankeyLink extends Component<any, any> {
 
   render() {
     const { sourceX, targetX, sourceY, targetY, sourceControlX, targetControlX, linkWidth,
-      filteredNode, index, nodeWidth, payload } = this.props;
+      highlightNodes, index, nodeWidth, payload } = this.props;
+
+    const hasHighlight = !!highlightNodes?.length;
+    const highlightNode = highlightNodes?.includes(payload.target.name);
 
     if (!payload.target.name) {
       return null;
@@ -274,8 +292,7 @@ class CpuSankeyLink extends Component<any, any> {
     const fill = this.state?.fill ?? `url(#${gradientID})`;
 
     return (
-      <Layer key={`CustomLink${index}`} opacity={!filteredNode ? 1 :
-        (payload.target.name === filteredNode ? 1 : 0.4 )}>
+      <Layer key={`CustomLink${index}`} opacity={!hasHighlight ? 1 : (highlightNode ? 1 : 0.4)}>
         <defs>
           <linearGradient id={gradientID}>
             <stop offset="20%" stopColor={"#2B59C3"} stopOpacity={"0.18"} />
@@ -284,7 +301,7 @@ class CpuSankeyLink extends Component<any, any> {
         </defs>
 
         <Link component={RouterLink}
-          to={`/performance/metrics?nodeName=${payload.target.name}&clusterType=${isReadReplica ? 'READ_REPLICA' : 'PRIMARY'}`}>
+          to={`/performance/metrics?nodeName=${payload.target.name}&region=&clusterType=${isReadReplica ? 'READ_REPLICA' : 'PRIMARY'}`}>
           <path
             d={`
               M${sourceX},${sourceY + linkWidth / 2}
@@ -307,7 +324,7 @@ class CpuSankeyLink extends Component<any, any> {
           />
         </Link>
 
-        {filteredNode && payload.target.name === filteredNode &&
+        {hasHighlight && highlightNode &&
           <Rectangle
             x={sourceX - nodeWidth} y={sourceY - linkWidth / 2}
             width={nodeWidth} height={linkWidth}
