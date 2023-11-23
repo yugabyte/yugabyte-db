@@ -25,6 +25,8 @@ Exporting metrics counts against your data transfer allowance, and may incur add
 
 ### Datadog
 
+The YugabyteDB Managed [Datadog integration](https://docs.datadoghq.com/integrations/yugabytedb_managed/) requires the following:
+
 - Datadog account
 - Datadog [API key](https://docs.datadoghq.com/account_management/api-app-keys/)
 
@@ -37,6 +39,7 @@ Exporting metrics counts against your data transfer allowance, and may incur add
 
 - Create an [access ID and access key](https://help.sumologic.com/docs/manage/security/access-keys/) on the **Preferences** page under your profile name.
 - [Installation token](https://help.sumologic.com/docs/manage/security/installation-tokens/). These are available under **Administration > Security > Installation Tokens**.
+- To use the dashboard template, [install the YugabyteDB app](https://help.sumologic.com/docs/get-started/apps-integrations/) (coming soon) in your Sumo Logic account.
 
 ## Export configuration
 
@@ -64,7 +67,7 @@ To create an export configuration, do the following:
 1. Choose Datadog.
 1. Enter your Datadog [API key](https://docs.datadoghq.com/account_management/api-app-keys/).
 1. Choose the Datadog site to connect to, or choose Self-hosted and enter your URL.
-1. Optionally, click **Download** to download the Datadog dashboard template. You can import this JSON format template into your Datadog account and use it as a starting point for visualizing your cluster data in Datadog.
+1. Optionally, click **Download** to download the Datadog [dashboard](https://docs.datadoghq.com/dashboards/) template. You can import this JSON format template into your Datadog account and use it as a starting point for visualizing your cluster data in Datadog.
 1. Click **Test Configuration** to make sure your connection is working.
 1. Click **Create Configuration**.
 
@@ -96,7 +99,7 @@ To create an export configuration, do the following:
 1. Enter a name for the configuration.
 1. Choose Sumo Logic.
 1. Enter your installation token, access ID, and access key.
-1. Optionally, click **Download** to download the Sumo Logic dashboard template. You can import this JSON format template into your Sumo Logic account and use it as a starting point for visualizing your cluster data.
+1. Optionally, click **Download** to download the Sumo Logic dashboard template. After you install the [YugabyteDB app](https://help.sumologic.com/docs/get-started/apps-integrations/) (coming soon) in your Sumo Logic account, you can import this JSON format template and use it as a starting point for visualizing your cluster data.
 1. Click **Test Configuration** to make sure your connection is working.
 1. Click **Create Configuration**.
 
