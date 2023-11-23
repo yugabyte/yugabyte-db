@@ -1776,10 +1776,6 @@ pgsm_store(pgsmEntry * entry)
 
 	pgsm = pgsm_get_ss();
 
-	/*
-	 * We should lock the hash table here what if the bucket is removed; e.g.
-	 * reset is called - HAMID
-	 */
 	prev_bucket_id = pg_atomic_read_u64(&pgsm->current_wbucket);
 	bucketid = get_next_wbucket(pgsm);
 
@@ -1882,6 +1878,11 @@ pgsm_store(pgsmEntry * entry)
 
 		if (shared_hash_entry == NULL)
 		{
+			LWLockRelease(pgsm->lock);
+
+			if (DsaPointerIsValid(dsa_query_pointer))
+				dsa_free(query_dsa_area, dsa_query_pointer);
+
 			/*
 			 * Out of memory; report only if the state has changed now.
 			 * Otherwise we risk filling up the log file with these message.
@@ -1890,17 +1891,15 @@ pgsm_store(pgsmEntry * entry)
 			{
 				pgsm->pgsm_oom = true;
 
-				ereport(WARNING,
-						(errcode(ERRCODE_OUT_OF_MEMORY),
-						 errmsg("[pg_stat_monitor] pgsm_store: Hash table is out of memory and can no longer store queries!"),
-						 errdetail("You may reset the view or when the buckets are deallocated, pg_stat_monitor will resume saving " \
-								   "queries. Alternatively, try increasing the value of pg_stat_monitor.pgsm_max.")));
+				PGSM_DISABLE_ERROR_CAPUTRE();
+				{
+					ereport(WARNING,
+							(errcode(ERRCODE_OUT_OF_MEMORY),
+							errmsg("[pg_stat_monitor] pgsm_store: Hash table is out of memory and can no longer store queries!"),
+							errdetail("You may reset the view or when the buckets are deallocated, pg_stat_monitor will resume saving " \
+									"queries. Alternatively, try increasing the value of pg_stat_monitor.pgsm_max.")));
+				} PGSM_END_DISABLE_ERROR_CAPTURE();
 			}
-
-			LWLockRelease(pgsm->lock);
-
-			if (DsaPointerIsValid(dsa_query_pointer))
-				dsa_free(query_dsa_area, dsa_query_pointer);
 
 			return;
 		}
