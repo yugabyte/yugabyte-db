@@ -345,7 +345,7 @@ create_backup() {
 
     echo "Copying backup from container"
     # Copy backup archive from container to local machine.
-    kubectl -n "${k8s_namespace}" -c yugaware cp --retries=10 --request-timeout="${k8s_timeout}" \
+    kubectl -n "${k8s_namespace}" -c yugaware cp --request-timeout="${k8s_timeout}" \
       "${k8s_pod}:${K8S_BACKUP_DIR}/${backup_file}" "${output_path}/${backup_file}"
 
     # Delete backup archive from container.
@@ -461,7 +461,7 @@ restore_backup() {
 
     # Copy backup archive to container.
     echo "Copying backup to container"
-    kubectl -n "${k8s_namespace}" -c yugaware cp --retries=10 --request-timeout="${k8s_timeout}" \
+    kubectl -n "${k8s_namespace}" -c yugaware cp --request-timeout="${k8s_timeout}" \
       "${input_path}" "${k8s_pod}:${K8S_BACKUP_DIR}"
     echo "Done"
 
@@ -606,7 +606,8 @@ restore_backup() {
       fi
     done
   else
-    $tar_cmd "${input_path}" --directory "${destination}"
+    # Skipping old files due to issues with k8s restore without permission to overwrite
+    $tar_cmd "${input_path}" --directory "${destination}" --skip-old-files
   fi
 
   if [[ "${ybdb}" = true ]]; then
