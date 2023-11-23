@@ -277,7 +277,9 @@ public class ApiUtils {
       @Override
       public void run(Universe universe) {
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+        final UniverseDefinitionTaskParams.Cluster primaryCluster =
+            universeDetails.getPrimaryCluster();
+        UserIntent userIntent = primaryCluster.userIntent;
         // Add a desired number of nodes.
         universeDetails.nodeDetailsSet = new HashSet<>();
         userIntent.numNodes = userIntent.replicationFactor;
@@ -287,12 +289,14 @@ public class ApiUtils {
                   idx,
                   NodeDetails.NodeState.Live,
                   setMasters && idx <= userIntent.replicationFactor);
+          node.placementUuid = primaryCluster.uuid;
           universeDetails.nodeDetailsSet.add(node);
         }
         universeDetails.upsertPrimaryCluster(userIntent, null);
 
         NodeDetails node =
             getDummyNodeDetails(userIntent.numNodes + 1, NodeDetails.NodeState.Removed);
+        node.placementUuid = primaryCluster.uuid;
         universeDetails.nodeDetailsSet.add(node);
         universeDetails.nodePrefix = "host";
         universe.setUniverseDetails(universeDetails);
