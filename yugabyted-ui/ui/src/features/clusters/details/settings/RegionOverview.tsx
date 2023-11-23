@@ -69,16 +69,21 @@ export const RegionOverview: FC<RegionOverviewProps> = ({ readReplica }) => {
 
   // Get nodes
   const { data: nodesResponse } = useGetClusterNodesQuery();
-  const nodeList = React.useMemo(() => 
+  const nodeList = React.useMemo(() =>
     nodesResponse?.data.filter(node => (readReplica && node.is_read_replica) || (!readReplica && !node.is_read_replica))
   ,[nodesResponse, readReplica]);
+
   const totalCores = roundDecimal((clusterSpec?.cluster_info?.node_info.num_cores ?? 0) / (nodesResponse?.data.length ?? 1) * (nodeList?.length ?? 0));
   const totalDiskSize = roundDecimal((clusterSpec?.cluster_info.node_info.disk_size_gb ?? 0) / (nodesResponse?.data.length ?? 1) * (nodeList?.length ?? 0));
-  const totalRamProvisionedGb = clusterSpec?.cluster_info?.node_info.ram_provisioned_gb ?? 0;
+  const totalRamProvisionedGb = (clusterSpec?.cluster_info?.node_info.ram_provisioned_gb ?? 0);
 
   const regionData = useMemo(() => {
     const set = new Set<string>();
     nodeList?.forEach(node => set.add(node.cloud_info.region + "#" + node.cloud_info.zone));
+
+    const isLocalCluster = !!nodeList?.find(node => node.host.startsWith("127."));
+    const divideFactor = isLocalCluster ? 1 : (nodeList?.length ?? 1);
+
     return Array.from(set).map(regionZone => {
       const [region, zone] = regionZone.split('#');
       return {
@@ -86,11 +91,11 @@ export const RegionOverview: FC<RegionOverviewProps> = ({ readReplica }) => {
           name: `${region} (${zone})`,
           code: getRegionCode({ region, zone }),
         },
-        nodeCount: nodeList?.filter(node => 
+        nodeCount: nodeList?.filter(node =>
           node.cloud_info.region === region && node.cloud_info.zone === zone).length,
-        vCpuPerNode: totalCores / (nodeList?.length ?? 1),
-        ramPerNode: getRamUsageText(totalRamProvisionedGb / (nodeList?.length ?? 1)),
-        diskPerNode: getDiskSizeText(totalDiskSize / (nodeList?.length ?? 1)),
+        vCpuPerNode: totalCores / divideFactor,
+        ramPerNode: getRamUsageText(totalRamProvisionedGb / divideFactor),
+        diskPerNode: getDiskSizeText(totalDiskSize / divideFactor),
       }
     })
   }, [nodeList, totalCores, totalRamProvisionedGb, totalDiskSize, readReplica])
