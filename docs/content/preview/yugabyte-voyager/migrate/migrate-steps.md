@@ -32,6 +32,8 @@ The following page describes the steps to perform and verify a successful offlin
 | [Import schema](#import-schema) | Import the modified schema to the target YugabyteDB database using the `yb-voyager import schema` command. |
 | [Import data](#import-data) | Import the data to the target YugabyteDB database using the `yb-voyager import data` command. |
 | [Import&nbsp;indexes&nbsp;and triggers](#import-indexes-and-triggers) | Import indexes and triggers to the target YugabyteDB database using the `yb-voyager import schema` command with an additional `--post-import-data` flag. |
+| [Verify migration](#verify-migration) | Check if the offline migration is successful. |
+| [End migration](#end-migration) | Clean up the migration information stored in export directory and databases (source and target). |
 
 Before proceeding with migration, ensure that you have completed the following steps:
 

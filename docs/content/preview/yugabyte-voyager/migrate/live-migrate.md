@@ -48,6 +48,7 @@ The following illustration shows the steps in a live migration using YugabyteDB 
 | [Wait for cutover to complete](#cutover-to-the-target) | Monitor the wait status using the [cutover status](../../reference/cutover-archive/cutover/#cutover-status) command. |
 | [Import&nbsp;indexes&nbsp;and triggers](#import-indexes-and-triggers) | Import indexes and triggers to the target YugabyteDB database using the `yb-voyager import schema` command with an additional `--post-import-data` flag. |
 | [Verify migration](#verify-migration) | Check if the live migration is successful. |
+| [End migration](#end-migration) | Clean up the migration information stored in export directory and databases (source and target). |
 
 Before proceeding with migration, ensure that you have completed the following steps:
 
@@ -388,7 +389,7 @@ Keep monitoring the metrics displayed for export data and import data processes.
 Perform the following steps as part of the cutover process:
 
 1. Quiesce your source database, that is stop application writes.
-1. Perform a cutover after the exported events rate ("ingestion rate" in the metrics table) drops to 0 using the following command:
+1. Perform a cutover after the exported events rate ("Export rate" in the metrics table) drops to 0 using the following command:
 
     ```sh
     # Replace the argument values with those applicable for your migration.

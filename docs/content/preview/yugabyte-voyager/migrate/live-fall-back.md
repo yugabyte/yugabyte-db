@@ -431,7 +431,7 @@ Keep monitoring the metrics displayed for export data from source and import dat
 Perform the following steps as part of the cutover process:
 
 1. Quiesce your source database, that is stop application writes.
-1. Perform a cutover after the exported events rate ("ingestion rate" in the metrics table) drops to 0 using the following command:
+1. Perform a cutover after the exported events rate ("Export rate" in the metrics table) drops to 0 using the following command:
 
     ```sh
     # Replace the argument values with those applicable for your migration.
@@ -485,13 +485,13 @@ Suppose you have the following scenario:
 - To resolve this issue, you delete some of the rows from the split files.
 - After retrying, the import data to target command completes successfully.
 
-In this scenario, the [get data-migration-report](#get data-migration-report) command reports an incorrect imported row count because it doesn't take into account the deleted rows.
+In this scenario, the [get data-migration-report](#get-data-migration-report) command reports an incorrect imported row count because it doesn't take into account the deleted rows.
 
 For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/yb-voyager/issues/360).
 
     {{< /warning >}}
 
-1. Disable indexes/triggers and foreign-key/check constraints on the source database to ensure that changes from the target YugabyteDB database can be imported correctly to the source database using the following PLSQL commands on the source schema as a privileged user:
+1. Disable triggers and foreign-key constraints on the source database to ensure that changes from the target YugabyteDB database can be imported correctly to the source database using the following PLSQL commands on the source schema as a privileged user:
 
     ```sql
     --disable triggers
@@ -526,7 +526,7 @@ Perform the following steps as part of the cutover process:
 
 1. Quiesce your target database, that is stop application writes.
 
-1. Perform a cutover after the exported events rate ("export rate" in the metrics table) drops to using the following command:
+1. Perform a cutover after the exported events rate ("Export rate" in the metrics table) drops to using the following command:
 
     ```sh
     # Replace the argument values with those applicable for your migration.
@@ -546,7 +546,7 @@ Perform the following steps as part of the cutover process:
 
     Refer to [cutover status](../../reference/cutover-archive/cutover/#cutover-status) for details about the arguments.
 
-1. Re-enable indexes/triggers and foreign-key/check constraints on the source database using the following PLSQL commands on the source schema as a privileged user:
+1. Re-enable triggers and foreign-key constraints on the source database using the following PLSQL commands on the source schema as a privileged user:
 
     ```sql
     --enable triggers

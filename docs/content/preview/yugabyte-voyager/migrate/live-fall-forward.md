@@ -25,7 +25,7 @@ A fall-forward approach allows you to test the system end-to-end. This workflow 
 
 Before starting a live migration, you set up the source-replica database (via [import data to source-replica](#import-data-to-source-replica)). During migration, yb-voyager replicates the snapshot data along with new changes exported from the source database to the target and source-replica databases, as shown in the following illustration:
 
-![After import data to source-replica](/images/migrate/after-fall-forward-setup.png)
+![After import data to source-replica](/images/migrate/after-import-data-to-sr.png)
 
 At [cutover](#cutover-to-the-target), applications stop writing to the source database and start writing to the target YugabyteDB database. After the cutover process is complete, YB Voyager keeps the source-replica database synchronized with changes from the target Yugabyte DB as shown in the following illustration:
 
@@ -448,7 +448,7 @@ Refer to [get data-migration-report](../../reference/data-migration/import-data/
 
 Note that the import data to source-replica is applicable for data migration only (schema migration needs to be done manually).
 
-The import data to source-replica refers to replicating the snapshot data along with the changes exported from the source database to the source-replica database. The command to start the setup is as follows:
+The import data to source-replica refers to replicating the snapshot data along with the changes exported from the source database to the source-replica database. The command to start the import is as follows:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
@@ -502,7 +502,7 @@ Keep monitoring the metrics displayed on `export data from source` and `import d
 Perform the following steps as part of the cutover process:
 
 1. Quiesce your source database, that is stop application writes.
-1. Perform a cutover after the exported events rate ("ingestion rate" in the metrics table) drops to 0 using the following command:
+1. Perform a cutover after the exported events rate ("Export rate" in the metrics table) drops to 0 using the following command:
 
     ```sh
     # Replace the argument values with those applicable for your migration.
@@ -544,7 +544,7 @@ Suppose you have the following scenario:
 - To resolve this issue, you delete some of the rows from the split files.
 - After retrying, the import data to target command completes successfully.
 
-In this scenario, the [get data-migration-report](#get data-migration-report) command reports an incorrect imported row count because it doesn't take into account the deleted rows.
+In this scenario, the [get data-migration-report](#get-data-migration-report) command reports an incorrect imported row count because it doesn't take into account the deleted rows.
 
 For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/yb-voyager/issues/360).
 
@@ -559,7 +559,7 @@ Keep monitoring the metrics displayed for `export data from target` and `import 
 Perform the following steps as part of the cutover process:
 
 1. Quiesce your target database, that is stop application writes.
-1. Perform a cutover after the exported events rate ("ingestion rate" in the metrics table) drops to using the following command:
+1. Perform a cutover after the exported events rate ("Export rate" in the metrics table) drops to using the following command:
 
     ```sh
     # Replace the argument values with those applicable for your migration.
@@ -597,10 +597,6 @@ For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/y
 
     {{< /warning >}}
 
-{{< note >}}
-During `export data from target`, yb-voyager creates a CDC stream ID on the target YugabyteDB database to fetch the new changes from the target database which is displayed as part of the `export data from target` output. You need to manually delete the stream ID after `initiate cutover to source-replica` is completed.
-{{< /note >}}
-
 ### End migration
 
 To end the migration, you need to clean up the export directory (export-dir), and Voyager state ( Voyager-related metadata) stored in the target database and source-replica database.
@@ -628,6 +624,5 @@ In addition to the Live migration [limitations](../live-migrate/#limitations), t
 
 - Fall-forward is unsupported with a YugabyteDB cluster running on [YugabyteDB Managed](../../../yugabyte-cloud).
 - [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity) is unsupported for export or streaming events from YugabyteDB during `export data from target`.
-- You need to manually disable constraints on the source-replica database.
 - yb-voyager provides limited datatypes support with YugabyteDB CDC during `export data from target` for datatypes such as DECIMAL, and Timestamp.
 - You need to manually delete the stream ID of YugabyteDB CDC created by Voyager during `export data from target`.
