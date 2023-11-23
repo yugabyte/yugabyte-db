@@ -15636,6 +15636,24 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 		{
 			binary_upgrade_set_pg_class_oids(fout, q,
 											 tbinfo->dobj.catId.oid, false);
+
+			/*
+			 * Yugabyte-specific
+			 *
+			 * If there is a primary key, then in the case of binary upgrade,
+			 * we need to set the index oid & relfilenode at the time of table
+			 * creation.
+			 *
+			 * YB_TODO: Figure out how to handle a table partition where the
+			 * parent defines the primary key. (See use of
+			 * parent_has_primary_key, below.)
+			 */
+			if (dopt->include_yb_metadata && tbinfo->primaryKeyIndex)
+			{
+				IndxInfo *indxinfo = tbinfo->primaryKeyIndex;
+				binary_upgrade_set_pg_class_oids(fout, q,
+												indxinfo->dobj.catId.oid, true);
+			}
 		}
 
 		/* Get the table properties from YB, if relevant. */
