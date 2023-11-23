@@ -10,6 +10,7 @@
 
 package com.yugabyte.yw.models.common;
 
+import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -28,6 +29,8 @@ public @interface YbaApi {
 
   // Optional runtime config flag associated with this API
   public String runtimeConfig() default "";
+
+  public ScopeType runtimeConfigScope() default ScopeType.GLOBAL;
 
   public enum YbaApiVisibility {
     PUBLIC,
