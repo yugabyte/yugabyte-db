@@ -27,11 +27,11 @@ Before starting a live migration, you set up the source-replica database (via [i
 
 ![After import data to source-replica](/images/migrate/after-import-data-to-sr.png)
 
-At [cutover](#cutover-to-the-target), applications stop writing to the source database and start writing to the target YugabyteDB database. After the cutover process is complete, YB Voyager keeps the source-replica database synchronized with changes from the target Yugabyte DB as shown in the following illustration:
+At [cutover to target](#cutover-to-the-target), applications stop writing to the source database and start writing to the target YugabyteDB database. After the cutover process is complete, YB Voyager keeps the source-replica database synchronized with changes from the target Yugabyte DB as shown in the following illustration:
 
 ![After cutover](/images/migrate/cutover-to-target.png)
 
-Finally, if you need to switch to the source-replica database (because the current YugabyteDB system is not working as expected), you can initiate [cutover to source-replica](#cutover-to-source-replica-optional).
+Finally, if you need to switch to the source-replica database (because the current YugabyteDB system is not working as expected), you can initiate [cutover to your source-replica](#cutover-to-source-replica-optional).
 
 ![After initiate cutover to source-replica](/images/migrate/cutover-to-source-replica.png)
 

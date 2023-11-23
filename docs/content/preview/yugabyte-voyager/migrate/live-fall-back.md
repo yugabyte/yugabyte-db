@@ -21,13 +21,15 @@ A fall-back approach allows you to test the system end-to-end. This workflow is 
 
 ## Fall-back workflow
 
+Before starting a live migration, you set up the [source](#prepare-the-source-database) and [target](#prepare-the-target-database) database. During migration, yb-voyager replicates the snapshot data along with new changes exported from the source database to the target database, as shown in the following illustration:
+
 ![fall-back](/images/migrate/live-fall-back.png)
 
-At cutover, applications stop writing to the source database and start writing to the target YugabyteDB database. After the cutover process is complete, Voyager keeps the source database synchronized with changes from the target YugabyteDB database as shown in the following illustration:
+At [cutover to target](#cutover-to-the-target), applications stop writing to the source database and start writing to the target YugabyteDB database. After the cutover process is complete, Voyager keeps the source database synchronized with changes from the target YugabyteDB database as shown in the following illustration:
 
 ![cutover](/images/migrate/cutover-to-target-fb.png)
 
-Finally, if you need to switch back to the source database (because the current YugabyteDB system is not working as expected), you can cutover to your source database.
+Finally, if you need to switch back to the source database (because the current YugabyteDB system is not working as expected), you can [cutover to your source](#cutover-to-the-source-optional) database.
 
 ![initiate-cutover-to-source](/images/migrate/cutover-to-source-fb.png)
 
