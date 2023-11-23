@@ -187,7 +187,7 @@ export const Metrics: FC = () => {
       relativeInterval,
       queryParams.nodeName,
       displayedCharts ?? [],
-      region
+      queryParams.region
     );
   }, [queryParams.nodeName])
 
@@ -197,7 +197,7 @@ export const Metrics: FC = () => {
         relativeInterval,
         ALL_NODES.value,
         displayedCharts ?? [],
-        region
+        queryParams.region
       );
     }
   }, [region])
