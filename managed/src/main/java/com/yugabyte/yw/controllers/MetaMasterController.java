@@ -85,6 +85,12 @@ public class MetaMasterController extends Controller {
       response = MasterNodesInfo.class,
       responseContainer = "List")
   @YbaApi(visibility = YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.21.1.0")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result getMasterNodesInfo(UUID customerUUID, UUID universeUUID) {
     // Validate customer UUID.
     Customer.getOrBadRequest(customerUUID);
