@@ -28,6 +28,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -47,6 +48,7 @@ import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.ChangeConfigResponse;
 import org.yb.client.ChangeMasterClusterConfigResponse;
+import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.ListMastersResponse;
 import org.yb.client.ListTabletServersResponse;
@@ -170,6 +172,8 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
       when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
       when(mockClient.listMasters()).thenReturn(listMastersResponse);
       when(mockClient.waitForAreLeadersOnPreferredOnlyCondition(anyLong())).thenReturn(true);
+      GetLoadMovePercentResponse gpr = new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null);
+      when(mockClient.getLoadMoveCompletion()).thenReturn(gpr);
     } catch (Exception e) {
       fail();
     }
@@ -332,6 +336,53 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         taskParams.getUniverseUUID(),
         TaskType.EditUniverse,
         taskParams);
+  }
+
+  @Test
+  public void testVolumeSizeValidation() {
+    Universe universe = defaultUniverse;
+    UniverseDefinitionTaskParams taskParams = performFullMove(universe);
+    taskParams.getPrimaryCluster().userIntent.deviceInfo.volumeSize--;
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Failure, taskInfo.getTaskState());
+    assertTrue(taskInfo.getErrorMessage().contains("Cannot decrease volume size from 100 to 99"));
+    RuntimeConfigEntry.upsertGlobal("yb.edit.allow_volume_decrease", "true");
+    taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testVolumeSizeValidationIncNum() {
+    Universe universe = defaultUniverse;
+    UniverseDefinitionTaskParams taskParams = performFullMove(universe);
+    taskParams.getPrimaryCluster().userIntent.deviceInfo.volumeSize--;
+    taskParams.getPrimaryCluster().userIntent.deviceInfo.numVolumes++;
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  private UniverseDefinitionTaskParams performFullMove(Universe universe) {
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
+    taskParams.expectedUniverseVersion = 2;
+    taskParams.nodePrefix = universe.getUniverseDetails().nodePrefix;
+    taskParams.nodeDetailsSet = universe.getUniverseDetails().nodeDetailsSet;
+    taskParams.clusters = universe.getUniverseDetails().clusters;
+    taskParams.creatingUser = defaultUser;
+    Cluster primaryCluster = taskParams.getPrimaryCluster();
+    UniverseDefinitionTaskParams.UserIntent newUserIntent = primaryCluster.userIntent.clone();
+    taskParams.getPrimaryCluster().userIntent = newUserIntent;
+    newUserIntent.instanceType = "c10.large";
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams, defaultCustomer.getId(), primaryCluster.uuid, EDIT);
+
+    int iter = 1;
+    for (NodeDetails node : taskParams.nodeDetailsSet) {
+      node.cloudInfo.private_ip = "10.9.22." + iter;
+      node.tserverRpcPort = 3333;
+      iter++;
+    }
+    return taskParams;
   }
 
   private UniverseDefinitionTaskParams performExpand(Universe universe) {
