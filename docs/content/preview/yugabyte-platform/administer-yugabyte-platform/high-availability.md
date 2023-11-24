@@ -63,7 +63,7 @@ You can configure the active instance as follows:
 
     The address for this active instance should be the only information under **Instances**.
 
-1. If the active instance is using the HTTPS protocol and self-signed certificates (that is, not signed by a trusted Certificate Authority (CA)), you need to get the root CA certificate that was used to sign the client certificate for the active instance.
+1. If the active instance is using the HTTPS protocol and self-signed certificates (that is, not signed by a trusted Certificate Authority (CA)), you need to obtain the root CA certificate that was used to sign the client certificate for the active instance.
 
     If you installed YBA using YBA Installer, copy the certificate from `/opt/yugabyte/data/yba-installer/certs`.
 
