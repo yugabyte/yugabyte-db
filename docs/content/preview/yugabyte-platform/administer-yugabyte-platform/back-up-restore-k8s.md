@@ -3,6 +3,7 @@ title: Back up and restore YugabyteDB Anywhere
 headerTitle: Back up and restore YugabyteDB Anywhere
 description: Use a script to back up and restore YugabyteDB Anywhere on Kubernetes.
 linkTitle: Back up YugabyteDB Anywhere
+headcontent: Back up your YugabyteDB Anywhere installation
 menu:
   preview_yugabyte-platform:
     identifier: back-up-restore-k8s
@@ -10,6 +11,8 @@ menu:
     weight: 30
 type: docs
 ---
+
+YugabyteDB Anywhere installations include configuration settings, certificates and keys, and other components required for creating and managing YugabyteDB universes.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
@@ -32,8 +35,6 @@ type: docs
     </a>
   </li>
 </ul>
-
-YugabyteDB Anywhere installations include configuration settings, certificates and keys, and other components required for creating and managing YugabyteDB universes.
 
 You can use the YugabyteDB Anywhere `yb_platform_backup.sh` script to back up an existing YugabyteDB Anywhere server and restore it, when needed, for disaster recovery or migrating to a new server.
 

@@ -3,6 +3,7 @@ title: Manage runtime configuration settings
 headerTitle: Manage runtime configuration settings
 linkTitle: Manage runtime configuration
 description: Manage your universes by setting runtime configuration keys based on different scopes.
+headcontent: Customize your YugabyteDB Anywhere installation
 menu:
   preview_yugabyte-platform:
     identifier: manage-runtime-config
@@ -24,11 +25,11 @@ Currently, the scopes can be categorized as follows:
 | Scope | Description | User Access |
 |:--- |:--- | :--- |
 | Global | Applies to the entire platform, persists across installs and any value defined in this scope overrides the defaults. | Super Admin |
-| Customer | Applies to a specific customer, persists across installs and any value defined in this scope overrides defaults in Global scope.| Super Admin, Admin |
-| Provider | Applies to a specific provider, persists across installs and any value defined in this scope overrides defaults in Customer scope. | Super Admin, Admin |
-| Universe | Applies to a specific universe, persists across installs and any value defined in this scope overrides defaults in Customer scope. | Super Admin, Admin |
+| Customer | Applies to a specific customer, persists across installs and any value defined in this scope overrides defaults in Global scope.| Super&nbsp;Admin,<br>Admin |
+| Provider | Applies to a specific provider, persists across installs and any value defined in this scope overrides defaults in Customer scope. | Super Admin,<br>Admin |
+| Universe | Applies to a specific universe, persists across installs and any value defined in this scope overrides defaults in Customer scope. | Super Admin,<br>Admin |
 
-For more details about the flags and their scopes, refer to the [list of supported runtime configuration flags](https://github.com/yugabyte/yugabyte-db/blob/2.17.3/managed/RUNTIME-FLAGS.md)
+For more details about the flags and their scopes, refer to the [list of supported runtime configuration flags](https://github.com/yugabyte/yugabyte-db/blob/master/managed/RUNTIME-FLAGS.md)
 
 ## Edit or reset runtime configuration keys
 
