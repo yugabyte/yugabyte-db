@@ -33,6 +33,12 @@ platform:
    # the running Platform instance for HTTPS. Defaults to 443, override
    # if you want to use a different port.
    port: 443
+   hsts_enabled: true
+   # In case client wants to enable the additional headers to the YBA's http response
+   # Previously, it was possible via nginx, but given that we no longer have it, we can
+   # expose the same as application config/runtime config.
+   # Example: ["X-Content-Type-Options: nosniff", "Keep-Alive: timeout=5, max=1000"]
+   custom_headers: []
 
    # OAuth related settings
    # useOauth: The boolean that determine if OIDC SSO needs to be
