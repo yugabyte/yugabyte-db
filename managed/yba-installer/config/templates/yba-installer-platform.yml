@@ -104,6 +104,14 @@ services:
         # Interval at which to send a status report email. Default: 12 hours.
         health.status_interval_ms = 43200000
         installation = "yba-installer"
+        security {
+          headers {
+            {{ if eq (yamlPath "platform.hsts_enabled") "true" }}
+              hsts_enabled = true
+            {{ end }}
+            custom_headers = {{ yamlPathSlice "platform.custom_headers" }}
+          }
+        }
         # If SSO needs to be enabled on the platform.
         security.use_oauth = false
         security.use_oauth = "{{ yamlPath "platform.useOauth" }}"
