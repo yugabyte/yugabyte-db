@@ -48,6 +48,9 @@ const useStyles = makeStyles((theme) => ({
   infoBanner: {
     marginTop: 'auto'
   },
+  confirmTextInputBox: {
+    width: '400px'
+  },
   dialogContentRoot: {
     display: 'flex',
     flexDirection: 'column'
@@ -211,7 +214,7 @@ export const InitiateSwitchoverModal = ({ drConfig, modalProps }: InitiateSwitch
           {t('confirmationInstructions')}
         </Typography>
         <YBInput
-          fullWidth
+          className={classes.confirmTextInputBox}
           placeholder={targetUniverseName}
           value={confirmationText}
           onChange={(event) => setConfirmationText(event.target.value)}

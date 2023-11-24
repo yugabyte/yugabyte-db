@@ -4,8 +4,6 @@ import { Box, makeStyles, Typography } from '@material-ui/core';
 import { Trans, useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
-import { ArrowDropDown } from '@material-ui/icons';
-import clsx from 'clsx';
 
 import { ReactComponent as InfoIcon } from '../../../../redesign/assets/info-message.svg';
 import { YBInput, YBModal, YBModalProps, YBTooltip } from '../../../../redesign/components';
@@ -14,6 +12,7 @@ import { fetchTaskUntilItCompletes } from '../../../../actions/xClusterReplicati
 import { handleServerError } from '../../../../utils/errorHandlingUtils';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { getNamespaceIdSafetimeEpochUsMap } from '../utils';
+import { EstimatedDataLossLabel } from '../drConfig/EstimatedDataLossLabel';
 
 import { DrConfig } from '../dtos';
 
@@ -58,6 +57,9 @@ const useStyles = makeStyles((theme) => ({
   },
   rpoBenchmarkIcon: {
     fontSize: '16px'
+  },
+  confirmTextInputBox: {
+    width: '400px'
   },
   success: {
     color: theme.palette.ybacolors.success
@@ -233,16 +235,9 @@ export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailover
               <InfoIcon className={classes.infoIcon} />
             </YBTooltip>
           </div>
-          <Box display="flex" justifyContent="space-between">
-            <Typography variant="body1">Placeholder</Typography>
-            <Box display="flex" alignItems="center">
-              {/* TODO: Check estimate data loss vs. RPO to determine the icon to show. */}
-              <ArrowDropDown className={clsx(classes.rpoBenchmarkIcon, classes.success)} />
-              <Typography variant="body2">
-                {t('estimatedDataLoss.rpoBenchmark.below', { ms: 100 })}
-              </Typography>
-            </Box>
-          </Box>
+          <div>
+            <EstimatedDataLossLabel drConfigUuid={drConfig.uuid} />
+          </div>
         </div>
       </div>
       <Box marginTop={4}>
@@ -250,7 +245,7 @@ export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailover
           {t('confirmationInstructions')}
         </Typography>
         <YBInput
-          fullWidth
+          className={classes.confirmTextInputBox}
           placeholder={targetUniverseName}
           value={confirmationText}
           onChange={(event) => setConfirmationText(event.target.value)}

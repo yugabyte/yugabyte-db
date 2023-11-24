@@ -8,6 +8,7 @@ import { DrConfigStateLabel } from '../DrConfigStateLabel';
 import { UniverseXClusterRole } from '../../constants';
 import { ReplicationIcon } from '../../icons/ReplicationIcon';
 import { getXClusterConfig } from '../utils';
+import { EstimatedDataLossLabel } from './EstimatedDataLossLabel';
 
 import { DrConfig } from '../dtos';
 
@@ -78,7 +79,7 @@ export const DrConfigOverview = ({ drConfig }: DrConfigOverviewProps) => {
               <InfoIcon className={classes.infoIcon} />
             </YBTooltip>
           </div>
-          <div>Placeholder ms</div>
+          <EstimatedDataLossLabel drConfigUuid={drConfig.uuid} />
         </Box>
       </Box>
       <Box
