@@ -27,7 +27,7 @@ Before starting a live migration, you set up the source-replica database (via [i
 
 ![After import data to source-replica](/images/migrate/after-import-data-to-sr.png)
 
-At [cutover to target](#cutover-to-the-target), applications stop writing to the source database and start writing to the target YugabyteDB database. After the cutover process is complete, YB Voyager keeps the source-replica database synchronized with changes from the target Yugabyte DB as shown in the following illustration:
+At [cutover to target](#cutover-to-the-target), applications stop writing to the source database and start writing to the target YugabyteDB database. After the cutover process is complete, Voyager keeps the source-replica database synchronized with changes from the target Yugabyte database as shown in the following illustration:
 
 ![After cutover](/images/migrate/cutover-to-target.png)
 
@@ -91,7 +91,9 @@ Prepare your target YugabyteDB database cluster by creating a database, and a us
 
 ### Create the target database
 
-Create the target YugabyteDB database in your YugabyteDB cluster. The database name can be the same or different from the source database name. If the target YugabyteDB database name is not provided, yb-voyager assumes the target YugabyteDB database name to be `yugabyte`. If you do not want to import in the default `yugabyte` database, specify the name of the target YugabyteDB database name using the `--target-db-name` argument to the `yb-voyager import` commands.
+Create the target YugabyteDB database in your YugabyteDB cluster. The database name can be the same or different from the source database name.
+
+If you don't provide the target YugabyteDB database name during import, yb-voyager assumes the target YugabyteDB database name is `yugabyte`. To specify the target YugabyteDB database name during import, use the `--target-db-name` argument with the `yb-voyager import` commands.
 
 ```sql
 CREATE DATABASE target_db_name;
@@ -579,7 +581,7 @@ Perform the following steps as part of the cutover process:
 
     Refer to [cutover status](../../reference/cutover-archive/cutover/#cutover-status) for details about the arguments.
 
-1. Setup indexes and triggers to the source-replica database manually. Also, re-enable the foreign key and check constraints.
+1. Set up indexes and triggers to the source-replica database manually. Also, re-enable the foreign key and check constraints.
 
 1. Verify your migration. After the schema and data import is complete, the automated part of the database migration process is considered complete. You should manually run validation queries on both the source and source-replica databases to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count of each table.
 
