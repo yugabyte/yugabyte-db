@@ -375,7 +375,7 @@ As the migration continuously exports changes on the source database to the `EXP
 
 ```sh
 # Replace the argument values with those applicable for your migration.
-yb-voyager archive changes --export-dir <EXPORT-DIR> --move-to <DESTINATION-DIR> --delete-changes-without-archiving
+yb-voyager archive changes --export-dir <EXPORT-DIR> --move-to <DESTINATION-DIR>
 ```
 
 Refer to [archive changes](../../reference/cutover-archive/archive-changes/) for details about the arguments.

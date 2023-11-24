@@ -48,9 +48,9 @@ The valid *arguments* for import schema are described in the following table:
 | --target-db-host <hostname> | Domain name or IP address of the machine on which target database server is running. <br>Default: 127.0.0.1|
 | --target-db-name <name> | Target database name. <br>Default: yugabyte |
 | --target-db-password <password>| Target database password. Alternatively, you can also specify the password by setting the environment variable `TARGET_DB_PASSWORD`. If you don't provide a password via the CLI or environment variable during any migration phase, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. |
-| --target-db-port <port> | Port number of the target database machine. <br>Default: 5433 |
-| --target-db-schema <schemaName> | Schema name of the target database. MySQL and Oracle migrations only. |
-| --target-db-user <username> | Username of the target database. |
+| --target-db-port <port> | Port number of the target database server. <br>Default: 5433 |
+| --target-db-schema <schemaName> | Schema name of the target YugabyteDB database. MySQL and Oracle migrations only. |
+| --target-db-user <username> | Username of the target YugabyteDB database. |
 | [--target-ssl-cert](../../yb-voyager-cli/#ssl-connectivity) <certificateName> | Path to a file containing the certificate which is part of the SSL `<cert,key>` pair. |
 | [--target-ssl-key](../../yb-voyager-cli/#ssl-connectivity) <keyName> | Path to a file containing the key which is part of the SSL `<cert,key>` pair. |
 | [--target-ssl-crl](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|

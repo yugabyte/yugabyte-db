@@ -98,5 +98,5 @@ The default is true.
 Alternatively, you can use the following environment variable to set a value for this flag globally on the client machine where yb-voyager is running.
 
 ```sh
-export YB_VOYAGER_SEND_DIAGNOSTICS [true|false|yes|no|1|0]
+export YB_VOYAGER_SEND_DIAGNOSTICS=[true|false|yes|no|1|0]
 ```

@@ -58,28 +58,24 @@ The import data file command also supports importing multiple files to the same 
 You can also import files to the same table across multiple runs. For example, you could import `orders1.csv` as follows:
 
 ```sh
-# Replace the argument values with those applicable for your migration.
 yb-voyager import data file --file-table-map 'orders1.csv:orders' ...
 ```
 
 And then subsequently import `orders2.csv` to the same table as follows:
 
 ```sh
-# Replace the argument values with those applicable for your migration.
 yb-voyager import data file --file-table-map 'orders2.csv:orders' ...
 ```
 
 To import an updated version of the same file (that is, having the same file name and data-dir), use the `--start-clean` flag and proceed without truncating the table. yb-voyager ingests the data present in the file in upsert mode. For example:
 
 ```sh
-# Replace the argument values with those applicable for your migration.
 yb-voyager import data file --data-dir /dir/data-dir --file-table-map 'orders.csv:orders' ...
 ```
 
 After new rows are added to `orders.csv`, use the following command to load them with `--start-clean`:
 
 ```sh
-# Replace the argument values with those applicable for your migration.
 yb-voyager import data file --data-dir /dir/data-dir --file-table-map 'orders.csv:orders' --start-clean ...`
 ```
 
@@ -96,7 +92,6 @@ Using the `import data file` command, you can import data from files in cloud st
 To import data from AWS S3, provide the S3 bucket URI in the `data-dir` flag as follows:
 
 ```sh
-# Replace the argument values with those applicable for your migration.
 yb-voyager import data file .... \
         --data-dir s3://voyager-data
 ```
@@ -109,7 +104,6 @@ The authentication mechanism for accessing an S3 bucket using yb-voyager is the 
 To import data from GCS buckets, provide the GCS bucket URI in the `data-dir` flag as follows:
 
 ```sh
-# Replace the argument values with those applicable for your migration.
 yb-voyager import data file .... \
         --data-dir gs://voyager-data
 ```
@@ -121,7 +115,7 @@ The authentication mechanism for accessing a GCS bucket using yb-voyager is the 
 To import data from Azure blob storage containers, provide the Azure container URI in the `data-dir` flag as follows:
 
 ```sh
-# Replace the argument values with those applicable for your migration.
+
 yb-voyager import data file .... \
         --data-dir https://<account_name>.blob.core.windows.net/<container_name>...
 ```
