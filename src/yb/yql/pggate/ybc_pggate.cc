@@ -18,6 +18,7 @@
 #include <string>
 #include <utility>
 
+#include "yb/client/session.h"
 #include "yb/client/tablet_server.h"
 #include "yb/client/table_info.h"
 
@@ -56,8 +57,6 @@
 
 using std::string;
 
-DEFINE_int32(ysql_client_read_write_timeout_ms, -1, "Timeout for YSQL's yb-client read/write "
-             "operations. Falls back on max(client_read_write_timeout_ms, 600s) if set to -1." );
 DEFINE_int32(pggate_num_connections_to_server, 1,
              "Number of underlying connections to each server from a PostgreSQL backend process. "
              "This overrides the value of --num_connections_to_server.");
@@ -1318,10 +1317,7 @@ void YBCSetTimeout(int timeout_ms, void* extra) {
   if (!pgapi) {
     return;
   }
-  const auto default_client_timeout_ms =
-      (FLAGS_ysql_client_read_write_timeout_ms < 0
-           ? std::max(FLAGS_client_read_write_timeout_ms, 600000)
-           : FLAGS_ysql_client_read_write_timeout_ms);
+  const auto default_client_timeout_ms = client::YsqlClientReadWriteTimeoutMs();
   // We set the rpc timeouts as a min{STATEMENT_TIMEOUT,
   // FLAGS(_ysql)?_client_read_write_timeout_ms}.
   // Note that 0 is a valid value of timeout_ms, meaning no timeout in Postgres.
