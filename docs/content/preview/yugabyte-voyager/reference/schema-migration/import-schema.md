@@ -43,7 +43,7 @@ The valid *arguments* for import schema are described in the following table:
 | --post-import-data | Imports indexes and triggers in the YugabyteDB database after data import is complete. This argument assumes that data import is already done and imports only indexes and triggers in the YugabyteDB database. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --refresh-mviews | Refreshes the materialized views on target during the post-import-data phase. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --send-diagnostics | Enable or disable sending [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
-| --start-clean | Starts a fresh schema import on the target yugabyteDB database for the schema present in the `schema` directory.<br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --start-clean | Starts a fresh schema import on the target YugabyteDB database for the schema present in the `schema` directory.<br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --straight-order | Imports the schema objects in the order specified via the `--object-type-list` flag. <br>Default: false<br> Example: `yb-voyager import schema ... --object-type-list 'TYPE,TABLE,VIEW...'  --straight-order true` |
 | --target-db-host <hostname> | Domain name or IP address of the machine on which target database server is running. <br>Default: 127.0.0.1|
 | --target-db-name <name> | Target database name. <br>Default: yugabyte |

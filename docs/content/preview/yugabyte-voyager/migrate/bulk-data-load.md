@@ -134,13 +134,13 @@ Refer to [Sign in with Azure CLI](https://learn.microsoft.com/en-us/cli/azure/au
 
 ## Verify migration
 
-After the data import is complete, the automated part of the importing the data from files is considered complete. You should manually run validation queries on the target YugabyteDB database to ensure that the data is correctly imported. A sample query to validate the databases can include checking the row count of each table.
+After the data import is complete, manually run validation queries on the target YugabyteDB database to ensure that the data is correctly imported. For example, run queries to check the row count of each table.
 
-{{< warning title = "Caveat associated with rows reported by import data status" >}}
+{{< warning title = "Row count reported by import data status" >}}
 
 Suppose you have the following scenario:
 
-* [import data file](../bulk-data-load/#import-data-files-from-the-local-disk) command fails.
+* The [import data file](../bulk-data-load/#import-data-files-from-the-local-disk) command fails.
 * To resolve this issue, you delete some of the rows from the split files.
 * After retrying, the import data to target command completes successfully.
 
@@ -152,7 +152,7 @@ For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/y
 
 ## End migration
 
-To end the migration, you need to clean up the export directory (export-dir), and Voyager state ( Voyager-related metadata) stored in the target YugabyteDB database.
+To complete the migration, you need to clean up the export directory (export-dir) and Voyager state (Voyager-related metadata) stored in the target YugabyteDB database.
 
 Run the `yb-voyager end migration` command to perform the clean up, and to back up the schema, data, migration reports, and log files by providing the backup related flags (mandatory) as follows:
 
@@ -169,12 +169,12 @@ yb-voyager end migration --export-dir <EXPORT_DIR> \
 
 {{< note title="Note" >}}
 
-* Note that if you end the migration, you will not be able to continue the import data file operation further on this export directory (export-dir).
+* After performing end migration, you can't continue import data file operations using the specified export directory (export-dir).
 
 * Consider setting the arguments `--backup-data-files` and `backup-schema-files` to false as import data file operation is not a complete migration that includes export/import of schema, or export of data.
 
 {{< /note >}}
 
-If you want to backup the log file and import data status output for future reference, the command provides an argument as `--backup-dir`, using which you can pass the path of the directory where the backup content needs to be saved (based on what you choose to back up).
+If you want to back up the log file and import data status output for future reference, use the `--backup-dir` argument, and provide the path of the directory where you want to save the backup content (based on what you choose to back up).
 
 Refer to [end migration](../../reference/end-migration/) for more details on the arguments.

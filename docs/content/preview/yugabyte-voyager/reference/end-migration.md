@@ -10,7 +10,7 @@ menu:
 type: docs
 ---
 
-Cleans up all the migration-related information and metadata stored in the export directory (export-dir) and databases (source, target, and source-replica). The command also provides an option to back up the schema, data, migration reports and log files.
+Cleans up all the migration-related information and metadata stored in the export directory (export-dir) and databases (source, target, and source-replica). The command also provides an option to back up the schema, data, migration reports, and log files.
 
 ## Syntax
 
@@ -29,7 +29,7 @@ The valid *arguments* for end migration are described in the following table:
 | --backup-schema-files | Back up migration schema files. <br>Accepted parameters: true, false, yes, no, 0, 1 |
 | --save-migration-reports | Saves all the reports generated in the migration workflow (`analyze-schema` report, `export data status` output, `import data status` output, or `get data-migration-report`). <br>Accepted parameters: true, false, yes, no, 0, 1 |
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
-| --backup-dir | A directory where all the back up files of schema, data, logs, and reports are saved.<br> **Note** that this argument is mandatory only if any of these flags are set to true or yes or 1:  `--backup-data-files`,  `--backup-log-files`,  `--backup-schema-files`, `--save-migration-reports`. |
+| --backup-dir | Directory where the schema, data, logs, and reports are backed up.<br> **Note**: Mandatory if any of the following flags are set to true or yes or 1:  `--backup-data-files`,  `--backup-log-files`,  `--backup-schema-files`, `--save-migration-reports`. |
 | -h, --help | Command line help for end migration. |
 | -y, --yes | Answer yes to all prompts during the export schema operation. <br>Default: false |
 
