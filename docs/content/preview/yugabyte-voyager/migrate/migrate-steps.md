@@ -33,7 +33,7 @@ The following page describes the steps to perform and verify a successful offlin
 | [Import data](#import-data) | Import the data to the target YugabyteDB database using the `yb-voyager import data` command. |
 | [Import&nbsp;indexes&nbsp;and triggers](#import-indexes-and-triggers) | Import indexes and triggers to the target YugabyteDB database using the `yb-voyager import schema` command with an additional `--post-import-data` flag. |
 | [Verify migration](#verify-migration) | Check if the offline migration is successful. |
-| [End migration](#end-migration) | Clean up the migration information stored in export directory and databases (source and target). |
+| [End migration](#end-migration) | Clean up the migration information stored in the export directory and databases (source and target). |
 
 Before proceeding with migration, ensure that you have completed the following steps:
 
@@ -86,7 +86,7 @@ Prepare your target YugabyteDB database cluster by creating a database, and a us
 
 ### Create the target database
 
-Create the target YugabyteDB database in your YugabyteDB cluster. The database name can be the same or different from the source database name. If the target YugabyteDB database name is not provided, yb-voyager assumes the target YugabyteDB database name to be `yugabyte`. If you do not want to import in the default `yugabyte` database, specify the name of the target YugabyteDB database name using the `--target-db-name` argument to the `yb-voyager import` commands.
+Create the target YugabyteDB database in your YugabyteDB cluster. The database name can be the same or different from the source database name. If the target YugabyteDB database name is not provided, yb-voyager assumes the target YugabyteDB database name to be `yugabyte`. If you do not want to import to the default `yugabyte` database, specify the name of the target YugabyteDB database using the `--target-db-name` argument of the `yb-voyager import` command.
 
 ```sql
 CREATE DATABASE target_db_name;
@@ -296,7 +296,7 @@ yb-voyager applies the DDL SQL files located in the `$EXPORT_DIR/schema` directo
 
 {{< note title="Importing indexes and triggers" >}}
 
-Because the presence of indexes and triggers can slow down the rate at which data is imported, by default `import schema` does not import indexes (except UNIQUE indexes to avoid any issues during import of schema because of foreign key dependencies on the index) and triggers. You should complete the data import without creating indexes and triggers. Only after data import is complete, create indexes and triggers using the `import schema` command with an additional `--post-import-data` flag.
+Because the presence of indexes and triggers can slow down the rate at which data is imported, by default `import schema` does not import indexes and triggers (with the exception of UNIQUE indexes, to avoid any issues during import of schema because of foreign key dependencies on the index). You should complete the data import without creating indexes and triggers. After data import is complete, create indexes and triggers using the `import schema` command with an additional `--post-import-data` flag.
 
 {{< /note >}}
 
@@ -355,7 +355,7 @@ Refer to [import schema](../../reference/schema-migration/import-schema/) for de
 
 ### Verify migration
 
-After the schema and data import is complete, the automated part of the database migration process is considered complete. You should manually run validation queries on both the source and target YugabyteDB database to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count of each table.
+After the schema and data import is complete, manually run validation queries on both the source and target YugabyteDB database to ensure that the data is correctly migrated. For example, you can validate the databases by running queries to check the row count of each table.
 
 {{< warning title = "Caveat associated with rows reported by import data status" >}}
 
@@ -373,7 +373,7 @@ For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/y
 
 ### End migration
 
-To end the migration, you need to clean up the export directory (export-dir), and Voyager state ( Voyager-related metadata) stored in the target YugabyteDB database.
+To complete the migration, you need to clean up the export directory (export-dir) and Voyager state (Voyager-related metadata) stored in the target YugabyteDB database.
 
 Run the `yb-voyager end migration` command to perform the clean up, and to back up the schema, data, migration reports, and log files by providing the backup related flags (mandatory) as follows:
 
@@ -388,6 +388,8 @@ yb-voyager end migration --export-dir <EXPORT_DIR> \
         --backup-dir <BACKUP_DIR>
 ```
 
-Note that after you end the migration, you will _not_ be able to continue further. If you want to back up the schema, data, log files, and the migration reports (`analyze-schema` report, `export data status` output, or `import data status` output) for future reference, the command provides an additional argument `--backup-dir`, using which you can pass the path of the directory where the backup content needs to be saved (based on what you choose to back up).
+After you run end migration, you will _not_ be able to continue further.
+
+If you want to back up the schema, data, log files, and the migration reports (`analyze-schema` report, `export data status` output, or `import data status` output) for future reference, use the `--backup-dir` argument, and provide the path of the directory where you want to save the backup content (based on what you choose to back up).
 
 Refer to [end migration](../../reference/end-migration/) for more details on the arguments.

@@ -34,7 +34,7 @@ YugabyteDB Voyager has the following features:
 - In case of failures, data import can be resumed.
 - Parallelism of data across tables.
 - Support for direct data import from CSV or TEXT format files present on local disk or on any cloud storage.
-- Live migration with fall-forward and fall-back is supported for Oracle.{{<badge/tp>}}
+- Live migration of Oracle databases with fall-forward and fall-back. {{<badge/tp>}}
 
 ## Migration types
 

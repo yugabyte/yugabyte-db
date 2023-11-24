@@ -47,8 +47,8 @@ The valid *arguments* for import data file are described in the following table:
 | --target-db-port <port> | Port number of the target database machine. <br> Default: 5433 |
 | --target-db-schema <schemaName> | Schema name of the target database. MySQL and Oracle migrations only. |
 | --target-db-user <username> | Username of the target database. |
-| --target-db-host <hostname> | Domain name or IP address of the machine on which target database server is running. <br>Default: "127.0.0.1" |
-| --target-endpoints <nodeEndpoints> | Comma-separated list of node's endpoint to use for parallel import of data <br>Default: Use all the nodes in the cluster. For example: "host1:port1,host2:port2" or "host1,host2". Note: use-public-ip flag will be ignored if this is used. |
+| --target-db-host <hostname> | Domain name or IP address of the machine on which the target database server is running. <br>Default: "127.0.0.1" |
+| --target-endpoints <nodeEndpoints> | Comma-separated list of node endpoints to use for parallel import of data.<br>Default: Use all the nodes in the cluster. For example: "host1:port1,host2:port2" or "host1,host2". Note: use-public-ip flag is ignored if this is used. |
 | [--target-ssl-cert](../../yb-voyager-cli/#ssl-connectivity) <certificateName> | Path to a file containing the certificate which is part of the SSL `<cert,key>` pair. |
 | [--target-ssl-key](../../yb-voyager-cli/#ssl-connectivity) <keyName> | Path to a file containing the key which is part of the SSL `<cert,key>` pair. |
 | [--target-ssl-crl](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
