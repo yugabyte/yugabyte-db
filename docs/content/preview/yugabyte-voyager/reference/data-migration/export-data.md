@@ -50,7 +50,7 @@ The valid *arguments* for export data are described in the following table:
 | :------- | :------------------------ |
 | --disable-pb |Use this argument to disable progress bar during data export and statistics printing during streaming phase. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
-| --export-type | Choose migration type between `snapshot-only` (offline) or `snapshot-and-changes`(live, and optionally fall-forward). <br>Default: `snapshot-only` |
+| --export-type | Specify the migration type as `snapshot-only` (offline) or `snapshot-and-changes` (live, and optionally fall-forward). <br>Default: `snapshot-only` |
 | -h, --help | Command line help. |
 | --oracle-cdb-name <name> | Oracle Container Database Name in case you are using a multi-tenant container database. Required for Oracle live migrations only. |
 | --oracle-cdb-sid <SID> | Oracle System Identifier (SID) of the Container Database that you wish to use while exporting data from Oracle instances. Required for Oracle live migrations only. |
@@ -74,7 +74,7 @@ The valid *arguments* for export data are described in the following table:
 | [--source-ssl-root-cert](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
 | --start-clean | Starts a fresh data export after clearing all data from the `data` directory. <br> Default: false <br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --table-list | Comma-separated list of the tables for which data needs to be exported. By default, table names in the list are case-insensitive. Enclose names in double quotes ("") to make them case-sensitive.<br>Table names can also be glob patterns containing wildcard characters, such as an asterisk (*) (matches zero or more characters) or question mark (?) (matches one character). To use a glob pattern for table names, enclose the list in single quotes ('').<br> For example, `--table-list '"Products", order*'`. |
-| --exclude-table-list <tableNames> | Comma-separated list of the tables for which data needs to be excluded during export. Table names follow the same convention as `--table-list`. |
+| --exclude-table-list <tableNames> | Comma-separated list of the tables to exclude during export. Table names follow the same convention as `--table-list`. |
 | --table-list-file-path | Path of the file containing the list of table names (comma-separated or line-separated) to export. Table names use the same convention as `--table-list`. |
 | --exclude-table-list-file-path | Path of the file containing the list of table names (comma-separated or line-separated) to exclude while exporting data. Table names follow the same convention as `--table-list`. |
 | -y, --yes | Answer yes to all prompts during the export schema operation. <br>Default: false |
@@ -185,8 +185,8 @@ The valid *arguments* for export data from target are described in the following
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| --disable-pb | Use this argument to disable progress bar during data export and printing statistics during the streaming phase. <br>Default false.<br> Accepted parameters: true, false, yes, no, 0, 1 |
-| --exclude-table-list <tableNames> | Comma-separated list of tables to exclude while exporting data. <br> Table names can include glob wildcard characters `?` (matches one character) and `*` (matches zero or more characters). In case the table names are case sensitive, double-quote them. For example, `--exclude-table-list 'orders,"Products",items'`. |
+| --disable-pb | Use this argument to disable the progress bar during data export and printing statistics during the streaming phase. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --exclude-table-list <tableNames> | Comma-separated list of tables to exclude while exporting data. <br> Table names can include glob wildcard characters `?` (matches one character) and `*` (matches zero or more characters). Enclose names in double quotes ("") to make them case-sensitive. For example, `--exclude-table-list 'orders,"Products",items'`. |
 | --exclude-table-list-file-path | Path of the file containing comma-separated list of table names to exclude while exporting data. |
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help for synchronize. |
