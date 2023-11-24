@@ -501,7 +501,7 @@ For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/y
 
     {{< /warning >}}
 
-1. Disable triggers and foreign-key constraints on the source database to ensure that changes from the target YugabyteDB database can be imported correctly to the source database using the following PLSQL commands on the source schema as a privileged user:
+1. Disable triggers and foreign-key constraints on the source database to ensure that changes from the target YugabyteDB database can be imported correctly to the source database using the following PL/SQL commands on the source schema as a privileged user:
 
     ```sql
     --disable triggers
@@ -532,6 +532,7 @@ For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/y
 During this phase, switch your application over from the target YugabyteDB database back to the source database. As this step is _optional_, perform it only if the target YugabyteDB database is not working as expected.
 
 Keep monitoring the metrics displayed for `export data from target` and `import data to source` processes. After you notice that the import of events to the source database is catching up to the exported events from the target YugabyteDB database, you are ready to cutover. You can use the "Remaining events" metric displayed in the `import data to source` process to help you determine the cutover.
+
 Perform the following steps as part of the cutover process:
 
 1. Quiesce your target YugabyteDB database, that is stop application writes.
@@ -556,7 +557,7 @@ Perform the following steps as part of the cutover process:
 
     Refer to [cutover status](../../reference/cutover-archive/cutover/#cutover-status) for details about the arguments.
 
-1. Re-enable triggers and foreign-key constraints on the source database using the following PLSQL commands on the source schema as a privileged user:
+1. Re-enable triggers and foreign-key constraints on the source database using the following PL/SQL commands on the source schema as a privileged user:
 
     ```sql
     --enable triggers
