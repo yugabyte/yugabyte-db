@@ -54,7 +54,7 @@ The valid *arguments* for import data file are described in the following table:
 | [--target-ssl-crl](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
 | [--target-ssl-mode](../../yb-voyager-cli/#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer` (default), `require`, `verify-ca`, or `verify-full`. |
 | [--target-ssl-root-cert](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
-| --use-public-ip | Use the node public IP addresses to distribute `--parallel-jobs` uniformly on data import. <br>Default: false<br> **Note** that you may need to configure the database with public IP addresses by setting [server-broadcast-addresses](../../../../reference/configuration/yb-tserver/#server-broadcast-addresses).<br>Example: `yb-voyager import data status ... --use-public-ip true`<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --use-public-ip | Use the node public IP addresses to distribute `--parallel-jobs` uniformly on data import. <br>Default: false<br> **Note** that you may need to configure the YugabyteDB cluster with public IP addresses by setting [server-broadcast-addresses](../../../../reference/configuration/yb-tserver/#server-broadcast-addresses).<br>Example: `yb-voyager import data status ... --use-public-ip true`<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -y, --yes  | Answer yes to all prompts during the export schema operation. |
 
 ## Examples

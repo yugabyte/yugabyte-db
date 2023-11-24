@@ -559,7 +559,7 @@ Keep monitoring the metrics displayed for `export data from target` and `import 
 Perform the following steps as part of the cutover process:
 
 1. Quiesce your target YugabyteDB database, that is stop application writes.
-1. Perform a cutover after the exported events rate ("Export rate" in the metrics table) drops to using the following command:
+1. Perform a cutover after the exported events rate ("Export rate" in the metrics table) drops to 0 using the following command:
 
     ```sh
     # Replace the argument values with those applicable for your migration.

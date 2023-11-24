@@ -37,6 +37,14 @@ The following illustration describes the workflow for live migration using YB Vo
 
 ![fall-back-workflow](/images/migrate/fall-back-workflow.png)
 
+Before proceeding with migration, ensure that you have completed the following steps:
+
+- [Install yb-voyager](../../install-yb-voyager/#install-yb-voyager).
+- Review the [guidelines for your migration](../../known-issues/).
+- Review [data modeling](../../reference/data-modeling/) strategies.
+- [Prepare the source database](#prepare-the-source-database).
+- [Prepare the target database](#prepare-the-target-database).
+
 ## Prepare the source database
 
 Create a new database user, and assign the necessary user permissions.
