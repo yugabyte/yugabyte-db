@@ -44,7 +44,7 @@ Currently only the Azure Active Directory (AAD) IdP and the OIDC protocol are su
 
 Before configuring federated authentication, keep in mind the following:
 
-- Be sure to allow popups from your IdP. While configuring federated authentication, the provider needs to confirm your identity in a new window.
+- Be sure to allow pop-ups from your IdP. While configuring federated authentication, the provider needs to confirm your identity in a new window.
 - Use your own AAD account to test the connection.
 
 #### Register an application
@@ -75,4 +75,4 @@ To configure federated authentication, do the following:
 1. Enter your AAD application client ID and secret.
 1. Click **Enable**.
 
-You are redirected to sign in to your IdP to test the connection. Once test connection is successful, federated authentication is enabled
+You are redirected to sign in to your IdP to test the connection. Once test connection is successful, federated authentication is enabled.
