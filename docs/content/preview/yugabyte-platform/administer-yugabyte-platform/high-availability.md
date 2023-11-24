@@ -67,6 +67,8 @@ You can configure the active instance as follows:
 
     If you installed YBA using YBA Installer, copy the certificate from `/opt/yugabyte/data/yba-installer/certs`.
 
+    If you installed YBA using Replicated, copy the certificate from `/var/lib/replicated/secrets/`.
+
 1. Add the active instance root certificate to the [YugabyteDB Anywhere trust store](../../security/enable-encryption-in-transit/#add-certificates-to-your-trust-store) of the active instance.
 
     This allows a standby to connect to the active instance if the standby is promoted to active status.
@@ -90,6 +92,8 @@ After the active instance has been configured, you can configure one or more sta
 1. If the standby instance is using the HTTPS protocol and self-signed certificates (that is, not signed by a trusted Certificate Authority (CA)), you need to get the root CA certificate that was used to sign the client certificate for the standby instance.
 
     If you installed YBA using YBA Installer, copy the certificate from `/opt/yugabyte/data/yba-installer/certs`.
+
+    If you installed YBA using Replicated, copy the certificate from `/var/lib/replicated/secrets/`.
 
 1. Switch to the active instance.
 
