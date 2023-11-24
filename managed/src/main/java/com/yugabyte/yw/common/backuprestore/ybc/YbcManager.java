@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common.backuprestore.ybc;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
@@ -363,18 +364,7 @@ public class YbcManager {
       UUID universeUUID, Map<String, Integer> currentValues) {
     Universe u = Universe.getOrBadRequest(universeUUID);
     NodeDetails n = u.getTServersInPrimaryCluster().get(0);
-    String instanceType = n.cloudInfo.instance_type;
-    int numCores =
-        (int)
-            Math.ceil(
-                InstanceType.getOrBadRequest(
-                        UUID.fromString(
-                            u.getUniverseDetails()
-                                .getClusterByUuid(n.placementUuid)
-                                .userIntent
-                                .provider),
-                        instanceType)
-                    .getNumCores());
+    int numCores = getCoreCountForTserver(u, n);
     Map<String, YbcThrottleParametersResponse.ThrottleParamValue> throttleParams = new HashMap<>();
     throttleParams.put(
         GFlagsUtil.YBC_MAX_CONCURRENT_DOWNLOADS,
@@ -915,6 +905,29 @@ public class YbcManager {
     return Region.getOrBadRequest(customer.getUuid(), providerUuid, regionUuid);
   }
 
+  @VisibleForTesting
+  protected int getCoreCountForTserver(Universe u, NodeDetails n) {
+    int hardwareConcurrency = 2;
+    UserIntent userIntent = u.getUniverseDetails().getClusterByUuid(n.placementUuid).userIntent;
+    if (!(Util.isKubernetesBasedUniverse(u)
+        && confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources))) {
+      hardwareConcurrency =
+          (int)
+              Math.ceil(
+                  InstanceType.getOrBadRequest(
+                          UUID.fromString(userIntent.provider), n.cloudInfo.instance_type)
+                      .getNumCores());
+    } else {
+      if (userIntent.tserverK8SNodeResourceSpec != null) {
+        hardwareConcurrency = (int) Math.ceil(userIntent.tserverK8SNodeResourceSpec.cpuCoreCount);
+      } else {
+        LOG.warn(
+            "Could not determine hardware concurrency based on resource spec, assuming default");
+      }
+    }
+    return hardwareConcurrency;
+  }
+
   public void copyYbcPackagesOnK8s(
       Map<String, String> config,
       Universe universe,
@@ -932,25 +945,7 @@ public class YbcManager {
         Provider.get(Customer.get(universe.getCustomerId()).getUuid(), providerUUID);
     boolean listenOnAllInterfaces =
         confGetter.getConfForScope(provider, ProviderConfKeys.ybcListenOnAllInterfacesK8s);
-    int hardwareConcurrency;
-    UserIntent userIntent =
-        universe.getUniverseDetails().getClusterByUuid(nodeDetails.placementUuid).userIntent;
-    if (!confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
-      hardwareConcurrency =
-          (int)
-              Math.ceil(
-                  InstanceType.getOrBadRequest(
-                          provider.getUuid(), nodeDetails.cloudInfo.instance_type)
-                      .getNumCores());
-    } else {
-      if (userIntent.tserverK8SNodeResourceSpec != null) {
-        hardwareConcurrency = (int) Math.ceil(userIntent.tserverK8SNodeResourceSpec.cpuCoreCount);
-      } else {
-        hardwareConcurrency = 2;
-        LOG.warn(
-            "Could not determine hardware concurrency based on resource spec, assuming default");
-      }
-    }
+    int hardwareConcurrency = getCoreCountForTserver(universe, nodeDetails);
     Map<String, String> ybcGflags =
         GFlagsUtil.getYbcFlagsForK8s(
             universe.getUniverseUUID(),
