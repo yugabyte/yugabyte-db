@@ -22,13 +22,13 @@ The following page describes the following export commands:
 - [get data-migration-report](#get-data-migration-report)
 - [export data from target](#export-data-from-target)
 
-### export data
+## export data
 
 For offline migration, export data [dumps](../../../migrate/migrate-steps/#export-data) data of the source database in the `export-dir/data` directory on the machine where yb-voyager is running.
 
 For [live migration](../../../migrate/live-migrate/#export-data) (with [fall-forward](../../../migrate/live-fall-forward/#export-data) and [fall-back](../../../migrate/live-fall-back/#export-data)), the export data command is an alias of `export data from source` which [dumps](../../../migrate/live-migrate/#export-data) the snapshot in the `data` directory and starts capturing the new changes made to the source database.
 
-#### Syntax
+### Syntax
 
 Syntax for export data is as follows:
 
@@ -42,7 +42,7 @@ Syntax for export data from source is as follows:
 Usage: yb-voyager export data from source [ <arguments> ... ]
 ```
 
-#### Arguments
+### Arguments
 
 The valid *arguments* for export data are described in the following table:
 
@@ -73,15 +73,16 @@ The valid *arguments* for export data are described in the following table:
 | [--source-ssl-mode](../../yb-voyager-cli/#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
 | [--source-ssl-root-cert](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
 | --start-clean | Starts a fresh data export after clearing all data from the `data` directory. <br> Default: false <br> Accepted parameters: true, false, yes, no, 0, 1 |
-| --table-list | Comma-separated list of the tables for which data needs to be exported. By default, table names in the list are case-insensitive. Enclose names in double quotes ("") to make them case-sensitive.<br>Table names can also be glob patterns containing wildcard characters, such as an asterisk (*) (matches zero or more characters) or question mark (?) (matches one character). To use a glob pattern for table names, enclose the list in single quotes ('').<br> For example, `--table-list '"Products", order*'`. |
+| --table-list | Comma-separated list of the tables to export data. By default, table names in the list are case-insensitive. Enclose names in double quotes ("") to make them case-sensitive.<br>Table names can also be glob patterns containing wildcard characters, such as an asterisk (*) (matches zero or more characters) or question mark (?) (matches one character). To use a glob pattern for table names, enclose the list in single quotes ('').<br> For example, `--table-list '"Products", order*'`. |
+Comma-separated list of the table names to export data. Table names can include glob wildcard characters `?` (matches one character) and `*` (matches zero or more characters). In case the table names are case sensitive, double-quote them. For example `--table-list 'orders,"Products",items'`. |
 | --exclude-table-list <tableNames> | Comma-separated list of the tables to exclude during export. Table names follow the same convention as `--table-list`. |
 | --table-list-file-path | Path of the file containing the list of table names (comma-separated or line-separated) to export. Table names use the same convention as `--table-list`. |
 | --exclude-table-list-file-path | Path of the file containing the list of table names (comma-separated or line-separated) to exclude while exporting data. Table names follow the same convention as `--table-list`. |
 | -y, --yes | Answer yes to all prompts during the export schema operation. <br>Default: false |
 
-#### Example
+### Example
 
-##### Offline migration
+#### Offline migration
 
 An example for offline migration is as follows:
 
@@ -96,7 +97,7 @@ yb-voyager export data --export-dir /dir/export-dir \
         --source-db-schema source_schema
 ```
 
-##### Live migration
+#### Live migration
 
 An example for all live migration scenarios is as follows:
 
@@ -112,17 +113,17 @@ yb-voyager export data from source --export-dir /dir/export-dir \
         --export-type "snapshot-and-change"
 ```
 
-### export data status
+## export data status
 
 For offline migration, get the status report of an ongoing or completed data export operation.
 
-#### Syntax
+### Syntax
 
 ```text
 Usage: yb-voyager export data status [ <arguments> ... ]
 ```
 
-#### Arguments
+### Arguments
 
 The valid *arguments* for export data status are described in the following table:
 
@@ -131,25 +132,25 @@ The valid *arguments* for export data status are described in the following tabl
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help. |
 
-#### Example
+### Example
 
 ```sh
 yb-voyager export data status --export-dir /dir/export-dir
 ```
 
-### get data-migration-report
+## get data-migration-report
 
 **Note** that this command is applicable for Live migrations only.
 
 Provides a consolidated report of data migration per table among all the databases involved in the live migration. The report includes the number of rows exported, the number of rows imported, change events exported and imported (INSERTS, UPDATES, and DELETES), and the final row count on the database.
 
-#### Syntax
+### Syntax
 
 ```text
 Usage: yb-voyager get data-migration-report [ <arguments> ... ]
 ```
 
-#### Arguments
+### Arguments
 
 The valid *arguments* for get data-migration-report are described in the following table:
 
@@ -161,25 +162,25 @@ The valid *arguments* for get data-migration-report are described in the followi
 | --source-replica-db-password <password> | Password to connect to the source-replica database. Alternatively, you can also specify the password by setting the environment variable `SOURCE_REPLICA_DB_PASSWORD`. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose it in single quotes. |
 | --target-db-password <password>| Password to connect to the target YugabyteDB database. Alternatively, you can also specify the password by setting the environment variable `TARGET_DB_PASSWORD`. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. |
 
-#### Example
+### Example
 
 ```sh
 yb-voyager get data-migration-report --export-dir /dir/export-dir
 ```
 
-### export data from target
+## export data from target
 
 **Note** that this command is applicable for Live migrations only.
 
 Exports new changes from the target YugabyteDB database to import to the source database (for fall-back migration)source-replica database (for fall-forward migration) so that the source/source-replica database can be in sync with the YugabyteDB database after cutover.
 
-#### Syntax
+### Syntax
 
 ```text
 Usage: yb-voyager export data from target [ <arguments> ... ]
 ```
 
-#### Arguments
+### Arguments
 
 The valid *arguments* for export data from target are described in the following table:
 
@@ -196,7 +197,7 @@ The valid *arguments* for export data from target are described in the following
 | --target-db-password <password>| Password to connect to the target YugabyteDB database. Alternatively, you can also specify the password by setting the environment variable `TARGET_DB_PASSWORD`. If you don't provide a password via the CLI, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. |
 | -y, --yes | Answer yes to all prompts during the export schema operation. <br>Default: false |
 
-#### Example
+### Example
 
 ```sh
 yb-voyager export data from target --export-dir /dir/export-dir \

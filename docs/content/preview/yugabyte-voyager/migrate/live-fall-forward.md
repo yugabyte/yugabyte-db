@@ -488,7 +488,7 @@ Make sure to run the archive changes command only after completing [import data 
 
 ```sh
 # Replace the argument values with those applicable for your migration.
-yb-voyager archive changes --export-dir <EXPORT-DIR> --move-to <DESTINATION-DIR> --delete-changes-without-archiving
+yb-voyager archive changes --export-dir <EXPORT-DIR> --move-to <DESTINATION-DIR>
 ```
 
 Refer to [archive changes](../../reference/cutover-archive/archive-changes/) for details about the arguments.
@@ -599,7 +599,7 @@ For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/y
 
 ### End migration
 
-To end the migration, you need to clean up the export directory (export-dir), and Voyager state ( Voyager-related metadata) stored in the target YugabyteDB database and source-replica database.
+To complete the migration, you need to clean up the export directory (export-dir), and Voyager state ( Voyager-related metadata) stored in the target YugabyteDB database and source-replica database.
 
 Run the `yb-voyager end migration` command to perform the clean up, and to back up the schema, data, migration reports, and log files by providing the backup related flags (mandatory) as follows:
 

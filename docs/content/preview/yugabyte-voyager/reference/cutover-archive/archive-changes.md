@@ -13,7 +13,7 @@ type: docs
 
 The archive changes command limits the disk space used by the locally queued CDC events. After the changes from the local queue are applied on the target YugabyteDB database (and source-replica database), they are eligible for deletion. The command gives an option to archive the changes before deleting by moving them to another directory.
 
-Note that even if some changes are applied to the target databases, they are deleted only after the disk space utilisation exceeds 70%.
+Note that even if some changes are applied to the target databases, the locally stored queue files of CDC events are deleted only after the disk space utilisation exceeds 70%.
 
 ## Syntax
 

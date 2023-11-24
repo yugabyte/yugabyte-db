@@ -148,7 +148,7 @@ For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/y
 
 To complete the migration, you need to clean up the export directory (export-dir) and Voyager state (Voyager-related metadata) stored in the target YugabyteDB database.
 
-Run the `yb-voyager end migration` command to perform the clean up, and to back up the schema, data, migration reports, and log files by providing the backup related flags (mandatory) as follows:
+Run the `yb-voyager end migration` command to perform the clean up, and to back up the migration report, and the log files by providing the backup related flags (mandatory) as follows:
 
 ```sh
 # Replace the argument values with those applicable for your migration.

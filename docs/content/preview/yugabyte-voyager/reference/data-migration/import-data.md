@@ -24,13 +24,13 @@ The following page describes the usage of the following import commands:
 - [import data to source](#import-data-to-source)
 - [import data to source-replica](#import-data-to-source-replica)
 
-### import data
+## import data
 
 For offline migration, [Import the data](../../../migrate/migrate-steps/#import-data) to the YugabyteDB database.
 
 For [live migration](../../../migrate/live-migrate/#import-data) (with [fall-forward](../../../migrate/live-fall-forward/#import-data) and [fall-back](../../../migrate/live-fall-back/#import-data)), the import data command is an alias of `import data to target` which [imports the data](../../../migrate/migrate-steps/#import-data) from the `data` directory to the target database, and starts ingesting the new changes captured by `export data` to the target database.
 
-#### Syntax
+### Syntax
 
 Syntax for import data is as follows:
 
@@ -44,7 +44,7 @@ Syntax for import data to target is as follows:
 Usage: yb-voyager import data to target [ <arguments> ... ]
 ```
 
-#### Arguments
+### Arguments
 
 The valid *arguments* for import data are described in the following table:
 
@@ -77,9 +77,9 @@ The valid *arguments* for import data are described in the following table:
 | [--target-ssl-root-cert](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
 | -y, --yes | Answer yes to all prompts during the export schema operation. <br>Default: false |
 
-#### Example
+### Example
 
-##### Offline migration
+#### Offline migration
 
 An example for offline migration is as follows:
 
@@ -93,7 +93,7 @@ yb-voyager import data --export-dir /dir/export-dir \
         --parallel-jobs 12
 ```
 
-##### Live migration
+#### Live migration
 
 An example for all live migration scenarios is as follows:
 
@@ -107,17 +107,17 @@ yb-voyager import data to target--export-dir /dir/export-dir \
         --parallel-jobs 12
 ```
 
-### import data status
+## import data status
 
 For offline migration, get the status report of an ongoing or completed data import operation. The report contains migration status of tables, number of rows or bytes imported, and percentage completion.
 
-#### Syntax
+### Syntax
 
 ```text
 Usage: yb-voyager import data status [ <arguments> ... ]
 ```
 
-#### Arguments
+### Arguments
 
 The valid *arguments* for import data status are described in the following table:
 
@@ -127,25 +127,25 @@ The valid *arguments* for import data status are described in the following tabl
 | -h, --help | Command line help. |
 | -y, --yes | Answer yes to all prompts during the import data operation. <br>Default: false |
 
-#### Example
+### Example
 
 ```sh
 yb-voyager import data status --export-dir /dir/export-dir
 ```
 
-### get data-migration-report
+## get data-migration-report
 
 **Note** that this command is applicable for Live migrations only.
 
 Provides a consolidated report of data migration per table among all the databases involved in the live migration. The report includes the number of rows exported, the number of rows imported, change events exported and imported (INSERTS, UPDATES, and DELETES), and the final row count on the database.
 
-#### Syntax
+### Syntax
 
 ```text
 Usage: yb-voyager get data-migration-report [ <arguments> ... ]
 ```
 
-#### Arguments
+### Arguments
 
 The valid *arguments* for get data-migration-report are described in the following table:
 
@@ -157,25 +157,25 @@ The valid *arguments* for get data-migration-report are described in the followi
 | --source-replica-db-password <password> | Password to connect to the source-replica database. Alternatively, you can also specify the password by setting the environment variable `SOURCE_REPLICA_DB_PASSWORD`. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose it in single quotes. |
 | --target-db-password <password>| Password to connect to the target YugabyteDB database. Alternatively, you can also specify the password by setting the environment variable `TARGET_DB_PASSWORD`. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. |
 
-#### Example
+### Example
 
 ```sh
 yb-voyager get data-migration-report --export-dir /dir/export-dir
 ```
 
-### import data to source
+## import data to source
 
 **Note** that this command is applicable for Live migrations only.
 
 Imports data to the source database, and streams new changes from the YugabyteDB database to the source database.
 
-#### Syntax
+### Syntax
 
 ```text
 Usage: yb-voyager import data to source [ <arguments> ... ]
 ```
 
-#### Arguments
+### Arguments
 
 The valid *arguments* for import data to source are described in the following table:
 
@@ -189,26 +189,26 @@ The valid *arguments* for import data to source are described in the following t
 | --start-clean | Starts a fresh import with exported data files present in the export-dir/data directory. <br> If any table on YugabyteDB database is non-empty, it prompts whether you want to continue the import without truncating those tables; if you go ahead without truncating, then yb-voyager starts ingesting the data present in the data files with upsert mode. <br>Note that for the cases where a table doesn't have a primary key, this may lead to insertion of duplicate data. To avoid this, exclude the table using the --exclude-file-list or truncate those tables manually before using the start-clean flag. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -y, --yes | Answer yes to all prompts during the migration. <br>Default: false |
 
-#### Example
+### Example
 
 ```sh
 yb-voyager import data to source --export-dir /dir/export-dir \
         --source-db-password 'password'
 ```
 
-### import data to source-replica
+## import data to source-replica
 
 **Note** that this command is applicable for Live migrations only.
 
 Imports data to the source-replica database, and streams new changes from the YugabyteDB database to the source-replica database.
 
-#### Syntax
+### Syntax
 
 ```text
 Usage: yb-voyager import data to source-replica [ <arguments> ... ]
 ```
 
-#### Arguments
+### Arguments
 
 The valid *arguments* for import data to source-replica are described in the following table:
 
@@ -237,7 +237,7 @@ The valid *arguments* for import data to source-replica are described in the fol
 | --send-diagnostics | Enable or disable sending [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -y, --yes | Answer yes to all prompts during the migration. <br>Default: false |
 
-#### Example
+### Example
 
 ```sh
 yb-voyager import data to source-replica --export-dir /dir/export-dir \

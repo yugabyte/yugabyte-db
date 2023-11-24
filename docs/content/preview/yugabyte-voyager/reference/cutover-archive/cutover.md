@@ -20,17 +20,17 @@ The following page describes the following cutover commands:
 - [cutover to source-replica](#cutover-to-source-replica)
 - [cutover status](#cutover-status)
 
-### cutover to target
+## cutover to target
 
 Initiate [cutover](../../../migrate/live-migrate/#cutover-to-the-target) to the target YugabyteDB database.
 
-#### Syntax
+### Syntax
 
 ```text
 Usage: yb-voyager initiate cutover to target [ <arguments> ... ]
 ```
 
-#### Arguments
+### Arguments
 
 The valid *arguments* for initiate cutover to target are described in the following table:
 
@@ -40,23 +40,23 @@ The valid *arguments* for initiate cutover to target are described in the follow
 | -h, --help | Command line help for initiate cutover to target. |
 | --prepare-for-fall-back | Prepare for fall-back by streaming changes from the target YugabyteDB database to the source database. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 
-#### Example
+### Example
 
 ```sh
 yb-voyager initiate cutover to target --export-dir /dir/export-dir
 ```
 
-### cutover to source
+## cutover to source
 
 Initiate a [cutover](../../../migrate/live-fall-back/#cutover-to-the-source-optional) to the source database.
 
-#### Syntax
+### Syntax
 
 ```text
 Usage: yb-voyager initiate cutover to source [ <arguments> ... ]
 ```
 
-#### Arguments
+### Arguments
 
 The valid *arguments* for initiate cutover to source are described in the following table:
 
@@ -65,23 +65,23 @@ The valid *arguments* for initiate cutover to source are described in the follow
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help for cutover. |
 
-#### Example
+### Example
 
 ```sh
 yb-voyager initiate cutover to source --export-dir /path/to/yb/export/dir
 ```
 
-### cutover to source-replica
+## cutover to source-replica
 
 Initiate a [cutover](../../../migrate/live-fall-forward/#cutover-to-source-replica-optional) to the source-replica database.
 
-#### Syntax
+### Syntax
 
 ```text
 Usage: yb-voyager initiate cutover to source-replica [ <arguments> ... ]
 ```
 
-#### Arguments
+### Arguments
 
 The valid *arguments* for initiate cutover to source-replica are described in the following table:
 
@@ -90,23 +90,23 @@ The valid *arguments* for initiate cutover to source-replica are described in th
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help for cutover. |
 
-#### Example
+### Example
 
 ```sh
 yb-voyager initiate cutover to source-replica --export-dir /path/to/yb/export/dir
 ```
 
-### cutover status
+## cutover status
 
 Shows the status of the cutover process, whether it is [cutover to target](#cutover-to-target), [cutover to source-replica](#cutover-to-source-replica), or [cutover to source](#cutover-to-source). Status can be INITIATED, NOT INITIATED, or COMPLETED.
 
-#### Syntax
+### Syntax
 
 ```text
 Usage: yb-voyager cutover status [ <arguments> ... ]
 ```
 
-#### Arguments
+### Arguments
 
 The valid *arguments* for cutover status are described in the following table:
 
@@ -115,7 +115,7 @@ The valid *arguments* for cutover status are described in the following table:
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help for cutover status. |
 
-#### Example
+### Example
 
 ```sh
 yb-voyager cutover status --export-dir /dir/export-dir

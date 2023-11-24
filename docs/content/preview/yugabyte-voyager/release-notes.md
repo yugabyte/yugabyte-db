@@ -13,6 +13,42 @@ type: docs
 
 What follows are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
 
+## v1.6 - November 28, 2023
+
+### New Features
+
+- Live migration
+
+  - Support for [live migration](../migrate/live-migrate/) from Oracle databases (with the option of [fall-back](../migrate/live-fall-back/)) {{<badge/tp>}}, using which you can fall back to the original source database if an issue arises during live migration.
+
+  - Various commands that are used in live migration workflows (including fall-forward) have been modified. Refer to [live migration](../migrate/live-migrate/) documentation for more details.
+
+  - A new command `yb-voyager get data-migration-report` has been added to display table-wise statistics during and post live migration.
+
+- End migration
+
+A new command `yb-voyager end migration` has been added to complete migration by cleaning up metadata on all databases involved in migration, and backing up migration reports, schema, data, and log files.
+
+### Enhancements
+
+- Boolean arguments in yb-voyager commands have been standardized as string arguments for consistent CLI usage. For example, use `--send-diagnostics true` to specify the `--send-diagnostics` argument.
+- For yb-voyager export/import data, the argument `--table-list` can now be provided via a file using the arguments `--table-list-file-path` or `exclude-table-list-file-path`. The table-list arguments now support glob wildcard characters `?` (matches one character) and `*` (matches zero or more characters). Furthermore, the `table-list` and `exclude-table-list` arguments can be used together in a command, which can be beneficial with glob support.
+- Object types in `yb-voyager export schema` can now be filtered via the arguments `--object-types-list` or `--exclude-object-types-list`.
+- In yb-voyager import-data, table names provided via any `table-list` argument are now by default, case-insensitive. To make it case-sensitive, enclose each name in double quotes.
+- The `--verbose` argument has been removed from all yb-voyager commands.
+- The `--delete` argument in `yb-voyager archive-changes` has been renamed to `--delete-changes-without-archiving`.
+- `yb-voyager analyze-schema` now provides additional details in the report, indicating indices that don't get exported, such as reverse indexes, which are unsupported in YugabyteDB.
+
+### Bug fix
+
+Removed redundant ALTER COLUMN DDLs present in the exported schema for certain cases.
+
+### Known issues
+
+- Compared to earlier releases, Voyager v1.6 uses a different and incompatible structure to represent the import data state. As a result, Voyager v1.6 can't "continue" a data import operation that was started using Voyager v1.5 or earlier.
+
+- If you are using [dockerised yb-voyager](../install-yb-voyager/#install-yb-voyager), export schema and export data from Oracle database with SSL (via --oracle-tns-alias) fails. Use a non-docker version of yb-voyager to work around this limitation.
+
 ## v1.5 - September 11, 2023
 
 ### New feature
