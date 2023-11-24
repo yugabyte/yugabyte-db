@@ -627,13 +627,7 @@
             "description": "Start failover immediately at the cost of <bold>losing some data</bold> that is not replicated to the DR replica.",
             "estimatedDataLoss": {
               "label": "Estimated Data Loss",
-              "tooltip": "Data loss is estimated based on the internal clock skew on the standby cluster. **TODO: To review this text.",
-              "rpoBenchmark": {
-                "below": "{{ms}}ms lower than RPO",
-                "above": "{{ms}}ms greater than RPO",
-                "equal": "Data loss equal to RPO"
-              },
-              "none": "None"
+              "tooltip": "The estimated data loss is determined by the DR replica's safe time lag at the last known safe time."
             },
             "confirmationInstructions": "Enter DR Replica universe name to proceed.",
             "submitButton": "Initiate Failover",
@@ -722,7 +716,7 @@
             },
             "estimatedDataLoss": {
               "label": "Potential data loss on failover",
-              "tooltip": "If you would like to failover, this is the potential data loss measured in time. This is estimated based on the clock skew of tablets on the standby universe. **TODO: Needs to be updated."
+              "tooltip": "If you would like to failover, this is the potential data loss measured in time. This estimated is determined by the DR replica's safe time lag at the last known safe time."
             }
           },
           "participant": {

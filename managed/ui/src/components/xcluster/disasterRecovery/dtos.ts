@@ -105,5 +105,6 @@ export interface DrConfigSafetimeResponse {
     safetimeEpochUs: number;
     safetimeLagUs: number;
     safetimeSkewUs: number;
+    estimatedDataLossMs: number;
   }[];
 }
