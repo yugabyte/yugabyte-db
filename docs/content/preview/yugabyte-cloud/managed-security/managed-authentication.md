@@ -47,18 +47,25 @@ Before configuring federated authentication, keep in mind the following:
 - Be sure to allow popups from your IdP. While configuring federated authentication, the provider needs to confirm your identity in a new window.
 - Use your own AAD account to test the connection.
 
-#### AAD prerequisites
+#### Register an application
 
-To use AAD for your IdP, you need to register an application in the Azure portal so the Microsoft identity platform can provide authentication and authorization services for your application. The sign-in audience for the application should be **Accounts in any organizational directory** (Multitenant).
+To use AAD for your IdP, you need to register an application in the Azure portal so the Microsoft identity platform can provide authentication and authorization services for your application. Configure the application as follows:
 
-![Azure account types](/images/yb-cloud/managed-authentication-azure-account-types.png)
+- Provide a name for the application.
+- Set the sign-in audience for the application to **Accounts in any organizational directory** (Multitenant).
 
-In addition, you need the following to configure federated authenticaion using AAD:
+    ![Azure account types](/images/yb-cloud/managed-authentication-azure-account-types.png)
 
-- Client ID of the application you registered.
-- Client secret of the application. Refer to [Create a new client secret](https://learn.microsoft.com/en-us/entra/identity-platform/howto-create-service-principal-portal#option-3-create-a-new-client-secret) in the Microsoft documentation.
+- Set the Redirect URI platform to Web, and the URI to `https://yugabyte-cloud.okta.com/oauth2/v1/authorize/callback`.
 
 For more information, refer to [Register an application with the Microsoft identity platform](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app) in the Microsoft documentation.
+
+In addition, to configure AAD federated authentication in YugabyteDB Managed, you need the following:
+
+- Client ID of the application you registered.
+- Client secret of the application.
+
+Refer to [Create a new client secret](https://learn.microsoft.com/en-us/entra/identity-platform/howto-create-service-principal-portal#option-3-create-a-new-client-secret) in the Microsoft documentation.
 
 ### Configure
 
