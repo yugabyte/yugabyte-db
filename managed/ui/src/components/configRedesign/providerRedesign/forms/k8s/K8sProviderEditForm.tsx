@@ -532,6 +532,15 @@ const constructProviderPayload = async (
               existingRegion,
               azFormValues.code
             );
+
+            // When the current az has no kubeConfig or user indicates they are editing the existing kubeConfig,
+            // we need to take kubeConfig from the form as the input for the edit provider request.
+            // Note: kubeConfig of `''` is considered as a special case on the YBA backend. This indicates that the user wants
+            // to use the service account configs. This is why we are checking for `undefined` instead of falsy on the existing zone.
+            const shouldReadKubeConfigOnForm =
+              existingZone?.details?.cloudInfo.kubernetes.kubeConfig === undefined ||
+              azFormValues.editKubeConfigContent;
+
             return {
               ...(existingZone && {
                 active: existingZone.active,
@@ -542,8 +551,7 @@ const constructProviderPayload = async (
               details: {
                 cloudInfo: {
                   [ProviderCode.KUBERNETES]: {
-                    ...(!existingZone?.details?.cloudInfo.kubernetes.kubeConfig ||
-                    azFormValues.editKubeConfigContent
+                    ...(shouldReadKubeConfigOnForm
                       ? {
                           ...(azFormValues.kubeConfigContent && {
                             kubeConfigContent:
@@ -554,9 +562,9 @@ const constructProviderPayload = async (
                           })
                         }
                       : {
-                          ...(existingZone?.details.cloudInfo.kubernetes.kubeConfig && {
-                            kubeConfig: existingZone?.details.cloudInfo.kubernetes.kubeConfig
-                          })
+                          // YBA backend has special handling for kubeConfig. It is possibly `''` to indicate
+                          // the user wants to use service account configs. This is why we're not dropping `''` strings here.
+                          kubeConfig: existingZone?.details?.cloudInfo.kubernetes.kubeConfig
                         }),
                     ...(azFormValues.kubeDomain && { kubeDomain: azFormValues.kubeDomain }),
                     ...(azFormValues.kubeNamespace && {
@@ -609,7 +617,7 @@ const constructProviderPayload = async (
     kubernetesImagePullSecretName: existingKubernetesImagePullSecretName,
     kubernetesPullSecret: existingKubernetesPullSecret,
     kubernetesPullSecretName: existingKubernetesPullSecretName
-  } = providerConfig?.details.cloudInfo.kubernetes;
+  } = providerConfig.details.cloudInfo.kubernetes;
   return {
     code: ProviderCode.KUBERNETES,
     name: formValues.providerName,
@@ -625,9 +633,9 @@ const constructProviderPayload = async (
                 })
               }
             : {
-                ...(providerConfig?.details.cloudInfo.kubernetes.kubeConfig && {
-                  kubeConfig: providerConfig?.details.cloudInfo.kubernetes.kubeConfig
-                })
+                // YBA backend has special handling for kubeConfig. It is possibly `''` to indicate
+                // the user wants to use service account configs. This is why we're not dropping `''` strings here.
+                kubeConfig: providerConfig.details.cloudInfo.kubernetes.kubeConfig
               }),
           kubernetesImageRegistry: formValues.kubernetesImageRegistry,
           kubernetesProvider: formValues.kubernetesProvider.value,
