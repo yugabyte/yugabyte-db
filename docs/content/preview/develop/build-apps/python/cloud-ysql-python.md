@@ -5,7 +5,7 @@ linkTitle: Python
 description: Build a simple Python application using the Python psycopg2 driver and using the YSQL API to connect to and interact with a YugabyteDB Managed cluster.
 headContent: "Client driver: psycopg2"
 menu:
-  preview:
+  preview_tutorials:
     parent: build-apps
     name: Python
     identifier: cloud-python

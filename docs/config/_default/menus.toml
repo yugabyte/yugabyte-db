@@ -62,8 +62,15 @@
 ########## Secondary header menu
 
 [[main]]
-  name = "Products"
+  name = "Get Started"
   weight = 1
+  url = "/preview/tutorials/"
+  [main.params]
+    excludeVersion = true
+
+[[main]]
+  name = "Products"
+  weight = 2
   identifier = "products"
   url = "/"
   [main.params]
@@ -106,13 +113,6 @@
     description = "Database migration service"
     excludeVersion = true
     imageUrl = "/images/migrate/migration-icon.svg"
-
-[[main]]
-  name = "Get Started"
-  weight = 3
-  url = "/preview/tutorials/"
-  [main.params]
-    excludeVersion = true
 
 [[main]]
   name = "Integrations"
@@ -309,14 +309,14 @@
 
 ########## Menus for root (Docs Home)
 
-[[home]]
-  name = "Docs Home"
-  weight = 1
-  identifier = "home"
-  url = "/"
-  [home.params]
-    classes = "separator"
-    showSection = true
+#[[home]]
+#  name = "Docs Home"
+#  weight = 1
+#  identifier = "home"
+#  url = "/"
+#  [home.params]
+#    classes = "separator"
+#    showSection = true
 
 [[home]]
   name = "YugabyteDB"
@@ -352,14 +352,14 @@
 
 ########## Menus for preview
 
-[[preview]]
-  name = "Docs Home"
-  weight = 1
-  identifier = "home"
-  url = "/"
-  [preview.params]
-    classes = "separator"
-    showSection = true
+#[[preview]]
+#  name = "Docs Home"
+#  weight = 1
+#  identifier = "home"
+#  url = "/"
+#  [preview.params]
+#    classes = "separator"
+#    showSection = true
 
 [[preview]]
   name = "YugabyteDB"
@@ -500,7 +500,6 @@
   url = "/preview/develop/build-apps/"
   [preview_tutorials.params]
     showSection = true
-    hideChildren = true
 
 
 ########## Menus (in preview) for Integrations

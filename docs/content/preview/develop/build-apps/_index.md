@@ -7,11 +7,6 @@ headcontent: Use your favorite programming language to build an application that
 image: /images/section_icons/develop/api-icon.png
 aliases:
   - /preview/quick-start/build-apps/
-menu:
-  preview:
-    identifier: build-apps
-    parent: tutorials
-    weight: 150
 type: indexpage
 ---
 
