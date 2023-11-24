@@ -76,6 +76,9 @@ class RetryableRequests {
 
   void SetServerClock(const server::ClockPtr& clock);
 
+  void SetRequestTimeout(int timeout_secs);
+  int request_timeout_secs() const;
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;

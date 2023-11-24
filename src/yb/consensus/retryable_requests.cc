@@ -37,9 +37,6 @@
 
 using namespace std::literals;
 
-DEFINE_RUNTIME_int32(retryable_request_timeout_secs, 660,
-    "Amount of time to keep write request in index, to prevent duplicate writes.");
-
 // We use this limit to prevent request range from infinite grow, because it will block log
 // cleanup. I.e. even we have continous request range, it will be split by blocks, that could be
 // dropped independently.
@@ -50,6 +47,8 @@ DEFINE_UNKNOWN_bool(enable_check_retryable_request_timeout, true,
                     "Whether to check if retryable request exceeds the timeout.");
 
 DECLARE_uint64(max_clock_skew_usec);
+
+DECLARE_int32(retryable_request_timeout_secs);
 
 METRIC_DEFINE_gauge_int64(tablet, running_retryable_requests,
                           "Number of running retryable requests.",
@@ -263,8 +262,7 @@ class RetryableRequests::Impl {
         FLAGS_enable_check_retryable_request_timeout &&
         server_clock_ &&
         data.write().start_time_micros() > 0) {
-      const auto retryable_request_timeout =
-          GetAtomicFlag(&FLAGS_retryable_request_timeout_secs) * 1s;
+      const auto retryable_request_timeout = request_timeout_secs_ * 1s;
       const auto max_clock_skew = FLAGS_max_clock_skew_usec * 1us;
       if (PREDICT_TRUE(retryable_request_timeout > max_clock_skew)) {
         const auto now_micros = server_clock_->Now().GetPhysicalValueMicros();
@@ -301,7 +299,7 @@ class RetryableRequests::Impl {
   OpId CleanExpiredReplicatedAndGetMinOpId() {
     OpId result = OpId::Max();
     auto now = clock_.Now();
-    auto clean_start = now - GetAtomicFlag(&FLAGS_retryable_request_timeout_secs) * 1s;
+    auto clean_start = now - request_timeout_secs_ * 1s;
     for (auto ci = clients_.begin(); ci != clients_.end();) {
       ClientRetryableRequests& client_retryable_requests = ci->second;
       auto& op_id_index = client_retryable_requests.replicated.get<OpIdIndex>();
@@ -413,6 +411,14 @@ class RetryableRequests::Impl {
 
   void SetServerClock(const server::ClockPtr& clock) {
     server_clock_ = clock;
+  }
+
+  void SetRequestTimeout(int timeout_secs) {
+    request_timeout_secs_ = timeout_secs;
+  }
+
+  int request_timeout_secs() const {
+    return request_timeout_secs_;
   }
 
   RetryableRequestsCounts TEST_Counts() {
@@ -580,6 +586,7 @@ class RetryableRequests::Impl {
   }
 
   std::string log_prefix_;
+  int request_timeout_secs_;
   std::unordered_map<ClientId, ClientRetryableRequests, ClientIdHash> clients_;
   RestartSafeCoarseMonoClock clock_;
   server::ClockPtr server_clock_;
@@ -649,5 +656,14 @@ void RetryableRequests::set_log_prefix(const std::string& log_prefix) {
 void RetryableRequests::SetServerClock(const server::ClockPtr& clock) {
   impl_->SetServerClock(clock);
 }
+
+void RetryableRequests::SetRequestTimeout(int timeout_secs) {
+  impl_->SetRequestTimeout(timeout_secs);
+}
+
+int RetryableRequests::request_timeout_secs() const {
+  return impl_->request_timeout_secs();
+}
+
 } // namespace consensus
 } // namespace yb
