@@ -580,7 +580,10 @@
         "enableDrPrompt": {
           "featureDescription": "Enable <bold>Active-Active Single-Master Disaster Recovery</bold> (DR) for near-zero recovery point objective (RPO) & recovery time objective (RTO) in the event of a universe outage.",
           "actionButton": "Configure & Enable Disaster Recovery",
-          "learnMore": "Learn more about <docsLink>DR.</docsLink>"
+          "learnMore": "Learn more about <docsLink>DR.</docsLink>",
+          "tooltip": {
+            "universeLinkedToTxnXCluster": "This universe can't be used for disaster recovery as it is already participating in a transactional xCluster config."
+          }
         },
         "banner": {
           "enablingDr": "<bold>Enabling disaster recovery...</bold> Universe operations are not available while the operation is in progress.",
@@ -858,6 +861,16 @@
         }
       },
       "xCluster": {
+        "heading": "Replication",
+        "actionButton": {
+          "createXClusterConfig": {
+            "label": "Configure Replication",
+            "tooltip": {
+              "universeLinkedToTxnXCluster": "Another xCluster replication config cannot be configure as this universe is already participating in a transactional xCluster config."
+            }
+          },
+          "configureReplicationLagAlert": "Max acceptable lag time"
+        },
         "selectTable": {
           "error": {
             "failedToFetchIsBootstrapRequired": {
@@ -884,6 +897,7 @@
           "failedToFindTargetUniverse": "Unable to find a universe with the target universe UUID: {{universeUuid}}",
           "failedToFetchSourceUniverse": "Unable to fetch universe details for source universe UUID: {{universeUuid}}",
           "faliedToFetchTargetuniverse": "Unable to fetch universe details for target universe UUID: {{universeUuid}}",
+          "failedToFetchUniverse": "Unable to fetch universe details for universe UUID: {{universeUuid}}",
           "failedToFetchCurrentSafetimes": "Unable to fetch current safetimes."
         },
         "syncDbModal": {
