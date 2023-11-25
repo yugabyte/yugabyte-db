@@ -174,7 +174,7 @@ class LockablePgClientSession : public PgClientSession {
         lifetime_(lifetime), expiration_(NewExpiration()) {
   }
 
-  void StartExchange(const Uuid& instance_id) {
+  void StartExchange(const std::string& instance_id) {
     exchange_.emplace(instance_id, id(), Create::kTrue, [this](size_t size) {
       Touch();
       std::shared_ptr<CountDownLatch> latch;
@@ -374,16 +374,20 @@ class PgClientServiceImpl::Impl {
         xcluster_context_(xcluster_context),
         pg_node_level_mutation_counter_(pg_node_level_mutation_counter),
         response_cache_(parent_mem_tracker, metric_entity),
-        instance_id_(Uuid::Generate()),
+        instance_id_(permanent_uuid),
         transaction_builder_([this](auto&&... args) {
           return BuildTransaction(std::forward<decltype(args)>(args)...);
         }) {
+    DCHECK(!permanent_uuid.empty());
     ScheduleCheckExpiredSessions(CoarseMonoClock::now());
     cdc_state_client_init_ = std::make_unique<client::AsyncClientInitializer>(
         "cdc_state_client", std::chrono::milliseconds(FLAGS_cdc_read_rpc_timeout_ms),
         permanent_uuid, tablet_server_opts, metric_entity, parent_mem_tracker, messenger);
     cdc_state_client_init_->Start();
     cdc_state_table_ = std::make_shared<cdc::CDCStateTable>(cdc_state_client_init_.get());
+    if (FLAGS_pg_client_use_shared_memory) {
+      WARN_NOT_OK(SharedExchange::Cleanup(instance_id_), "Cleanup shared memory failed");
+    }
   }
 
   ~Impl() {
@@ -411,7 +415,7 @@ class PgClientServiceImpl::Impl {
         pg_node_level_mutation_counter_, &response_cache_, &sequence_cache_);
     resp->set_session_id(session_id);
     if (FLAGS_pg_client_use_shared_memory) {
-      resp->set_instance_id(instance_id_.data(), instance_id_.size());
+      resp->set_instance_id(instance_id_);
       session_info->session().StartExchange(instance_id_);
     }
 
@@ -1477,7 +1481,7 @@ class PgClientServiceImpl::Impl {
 
   PgSequenceCache sequence_cache_;
 
-  const Uuid instance_id_;
+  const std::string instance_id_;
 
   std::array<rw_spinlock, 8> txns_assignment_mutexes_;
   TransactionBuilder transaction_builder_;

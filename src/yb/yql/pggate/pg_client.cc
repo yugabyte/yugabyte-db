@@ -193,8 +193,8 @@ class PgClient::Impl {
         if (!status.ok()) {
           create_session_promise_.set_value(status);
         } else {
-          auto instance_id = Uuid::TryFullyDecode(heartbeat_resp_.instance_id());
-          if (!instance_id.IsNil()) {
+          auto instance_id = heartbeat_resp_.instance_id();
+          if (!instance_id.empty()) {
             exchange_.emplace(instance_id, heartbeat_resp_.session_id(), tserver::Create::kFalse);
           }
           create_session_promise_.set_value(heartbeat_resp_.session_id());
