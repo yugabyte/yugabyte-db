@@ -21,8 +21,14 @@
 #include "yb/gutil/casts.h"
 
 #include "yb/util/enums.h"
+#include "yb/util/env.h"
+#include "yb/util/flags.h"
+#include "yb/util/path_util.h"
 #include "yb/util/result.h"
 #include "yb/util/thread.h"
+
+DEFINE_test_flag(bool, skip_remove_tserver_shared_memory_object, false,
+                 "Skip remove tserver shared memory object in tests.");
 
 namespace yb::tserver {
 
@@ -144,8 +150,12 @@ class SharedExchangeHeader {
   std::byte data_[0];
 };
 
-std::string MakeSharedMemoryName(const Uuid& instance_id, uint64_t session_id) {
-  return Format("yb_pg_$0_$1", instance_id, session_id);
+std::string MakeSharedMemoryPrefix(const std::string& instance_id) {
+  return Format("yb_pg_$0_", instance_id);
+}
+
+std::string MakeSharedMemoryName(const std::string& instance_id, uint64_t session_id) {
+  return MakeSharedMemoryPrefix(instance_id) + std::to_string(session_id);
 }
 
 } // namespace
@@ -153,19 +163,28 @@ std::string MakeSharedMemoryName(const Uuid& instance_id, uint64_t session_id) {
 class SharedExchange::Impl {
  public:
   template <class T>
-  Impl(T type, const Uuid& instance_id, uint64_t session_id)
+  Impl(T type, const std::string& instance_id, uint64_t session_id)
       : session_id_(session_id),
+        owner_(std::is_same_v<T, boost::interprocess::create_only_t>),
         shared_memory_object_(type, MakeSharedMemoryName(instance_id, session_id).c_str(),
                               boost::interprocess::read_write) {
-    constexpr auto create = std::is_same_v<T, boost::interprocess::create_only_t>;
-    if (create) {
+    if (owner_) {
       shared_memory_object_.truncate(boost::interprocess::mapped_region::get_page_size());
     }
     mapped_region_ = boost::interprocess::mapped_region(
         shared_memory_object_, boost::interprocess::read_write);
-    if (create) {
+    if (owner_) {
       new (mapped_region_.get_address()) SharedExchangeHeader();
     }
+  }
+
+  ~Impl() {
+    if (!owner_ || FLAGS_TEST_skip_remove_tserver_shared_memory_object) {
+      return;
+    }
+    std::string shared_memory_object_name(shared_memory_object_.get_name());
+    shared_memory_object_ = boost::interprocess::shared_memory_object();
+    boost::interprocess::shared_memory_object::remove(shared_memory_object_name.c_str());
   }
 
   std::byte* Obtain(size_t required_size) {
@@ -224,21 +243,45 @@ class SharedExchange::Impl {
   }
 
   const uint64_t session_id_;
+  const bool owner_;
   boost::interprocess::shared_memory_object shared_memory_object_;
   boost::interprocess::mapped_region mapped_region_;
   size_t last_size_;
   bool failed_previous_request_ = false;
 };
 
-SharedExchange::SharedExchange(const Uuid& instance_id, uint64_t session_id, Create create) {
-  if (create) {
-    impl_ = std::make_unique<Impl>(boost::interprocess::create_only, instance_id, session_id);
-  } else {
-    impl_ = std::make_unique<Impl>(boost::interprocess::open_only, instance_id, session_id);
+SharedExchange::SharedExchange(const std::string& instance_id, uint64_t session_id, Create create) {
+  try {
+    if (create) {
+      impl_ = std::make_unique<Impl>(boost::interprocess::create_only, instance_id, session_id);
+    } else {
+      impl_ = std::make_unique<Impl>(boost::interprocess::open_only, instance_id, session_id);
+    }
+  } catch (boost::interprocess::interprocess_exception& exc) {
+    LOG(FATAL) << "Failed to create shared exchange for " << instance_id << "/" << session_id
+               << ", mode: " << create << ", error: " << exc.what();
   }
 }
 
 SharedExchange::~SharedExchange() = default;
+
+Status SharedExchange::Cleanup(const std::string& instance_id) {
+  std::string dir;
+#if defined(BOOST_INTERPROCESS_POSIX_SHARED_MEMORY_OBJECTS)
+  dir = "/dev/shm";
+#else
+  boost::interprocess::ipcdetail::get_shared_dir(dir);
+#endif
+  auto& env = *Env::Default();
+  auto files = VERIFY_RESULT(env.GetChildren(dir, ExcludeDots::kTrue));
+  auto prefix = MakeSharedMemoryPrefix(instance_id);
+  for (const auto& file : files) {
+    if (boost::starts_with(file, prefix)) {
+      boost::interprocess::shared_memory_object::remove(file.c_str());
+    }
+  }
+  return Status::OK();
+}
 
 std::byte* SharedExchange::Obtain(size_t required_size) {
   return impl_->Obtain(required_size);
@@ -269,7 +312,7 @@ uint64_t SharedExchange::session_id() const {
 }
 
 SharedExchangeThread::SharedExchangeThread(
-    const Uuid& instance_id, uint64_t session_id, Create create,
+    const std::string& instance_id, uint64_t session_id, Create create,
     const SharedExchangeListener& listener)
     : exchange_(instance_id, session_id, create) {
   CHECK_OK(Thread::Create(
