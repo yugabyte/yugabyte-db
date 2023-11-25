@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useQuery, useQueryClient } from 'react-query';
+import { useQueries, useQuery, useQueryClient, UseQueryResult } from 'react-query';
 import { Box, makeStyles, Typography, useTheme } from '@material-ui/core';
 import { DropdownButton, MenuItem } from 'react-bootstrap';
 import { useInterval } from 'react-use';
@@ -14,12 +14,18 @@ import { EnableDrPrompt } from './EnableDrPrompt';
 import {
   PollingIntervalMs,
   TRANSITORY_XCLUSTER_CONFIG_STATUSES,
-  XClusterConfigAction
+  XClusterConfigAction,
+  XClusterConfigType
 } from '../constants';
 import { YBButton } from '../../../redesign/components';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
-import { api, drConfigQueryKey, universeQueryKey } from '../../../redesign/helpers/api';
-import { getEnabledConfigActions } from '../ReplicationUtils';
+import {
+  api,
+  drConfigQueryKey,
+  universeQueryKey,
+  xClusterQueryKey
+} from '../../../redesign/helpers/api';
+import { getEnabledConfigActions, getXClusterConfigUuids } from '../ReplicationUtils';
 import { getEnabledDrConfigActions, getXClusterConfig } from './utils';
 import { RestartConfigModal } from '../restartConfig/RestartConfigModal';
 import { EditConfigTargetModal } from './editConfigTarget/EditConfigTargetModal';
@@ -40,6 +46,8 @@ import {
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 import { TableType } from '../../../redesign/helpers/dtos';
+import { fetchXClusterConfig } from '../../../actions/xClusterReplication';
+import { XClusterConfig } from '../dtos';
 
 interface DrPanelProps {
   currentUniverseUuid: string;
@@ -131,6 +139,24 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
     { enabled: !!drConfigUuid, staleTime: PollingIntervalMs.DR_CONFIG }
   );
 
+  const { sourceXClusterConfigUuids, targetXClusterConfigUuids } = getXClusterConfigUuids(
+    currentUniverseQuery.data
+  );
+  // List the XCluster Configurations for which the current universe is a source or a target.
+  const universeXClusterConfigUUIDs: string[] = [
+    ...sourceXClusterConfigUuids,
+    ...targetXClusterConfigUuids
+  ];
+  // The unsafe cast is needed due to issue with useQueries typing
+  // Upgrading react-query to v3.28 may solve this issue: https://github.com/TanStack/query/issues/1675
+  const xClusterConfigQueries = useQueries(
+    universeXClusterConfigUUIDs.map((uuid: string) => ({
+      queryKey: xClusterQueryKey.detail(uuid),
+      queryFn: () => fetchXClusterConfig(uuid),
+      enabled: currentUniverseQuery.data?.universeDetails !== undefined
+    }))
+  ) as UseQueryResult<XClusterConfig>[];
+
   // Polling for metrics and config updates.
   useInterval(() => {
     queryClient.invalidateQueries('xcluster-metric'); // TODO: Add a dedicated key for 'latest xCluster metrics'.
@@ -157,7 +183,13 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
   );
 
   if (currentUniverseQuery.isError || participantUniverseQuery.isError) {
-    return <YBErrorIndicator customErrorMessage={t('error.failToFetchUniverse')} />;
+    return (
+      <YBErrorIndicator
+        customErrorMessage={t('error.failToFetchUniverse', {
+          universeUuid: currentUniverseQuery.isError ? currentUniverseUuid : participantUniveresUuid
+        })}
+      />
+    );
   }
   if (drConfigQuery.isError) {
     return (
@@ -174,6 +206,9 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
     return <YBLoading />;
   }
 
+  const universeHasTxnXCluster = xClusterConfigQueries.some(
+    (xClusterConfigQuery) => xClusterConfigQuery.data?.type === XClusterConfigType.TXN
+  );
   const drConfig = drConfigQuery.data;
   const openCreateConfigModal = () => setIsCreateConfigModalOpen(true);
   const closeCreateConfigModal = () => setIsCreateConfigModalOpen(false);
@@ -183,7 +218,10 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
         <div className={classes.header}>
           <Typography variant="h3">{t('heading')}</Typography>
         </div>
-        <EnableDrPrompt onConfigureDrButtonClick={openCreateConfigModal} />
+        <EnableDrPrompt
+          onConfigureDrButtonClick={openCreateConfigModal}
+          isDisabled={universeHasTxnXCluster}
+        />
         <CreateConfigModal
           onHide={closeCreateConfigModal}
           visible={isCreateConfigModalOpen}

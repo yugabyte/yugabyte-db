@@ -286,10 +286,12 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
 
   if (!sourceUniverse || !targetUniverse) {
     const i18nKey = sourceUniverse ? 'failedToFindTargetUniverse' : 'failedToFindSourceUniverse';
+    const universeUuid = sourceUniverse ? targetUniverseUuid : sourceUniverseUuid;
     return (
       <YBErrorIndicator
         customErrorMessage={t(i18nKey, {
-          keyPrefix: 'clusterDetail.xCluster.error'
+          keyPrefix: 'clusterDetail.xCluster.error',
+          universeUuid: universeUuid
         })}
       />
     );
