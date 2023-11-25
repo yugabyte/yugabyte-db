@@ -152,15 +152,16 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
     }
   );
 
+  const defaultValues =
+    sourceUniverseTablesQuery.data && sourceUniverseNamespacesQuery.data
+      ? getDefaultFormValues(
+          xClusterConfig,
+          sourceUniverseTablesQuery.data,
+          sourceUniverseNamespacesQuery.data
+        )
+      : {};
   const formMethods = useForm<EditTablesFormValues>({
-    defaultValues:
-      sourceUniverseTablesQuery.data && sourceUniverseNamespacesQuery.data
-        ? getDefaultFormValues(
-            xClusterConfig,
-            sourceUniverseTablesQuery.data,
-            sourceUniverseNamespacesQuery.data
-          )
-        : {}
+    defaultValues: defaultValues
   });
 
   const modalTitle = t('title');
@@ -346,7 +347,7 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
     setIsTableSelectionValidated(false);
     formMethods.setValue('tableUuids', tableUuids, { shouldValidate: false });
   };
-  const setSelectedNamespaces = (namespaces: string[]) => {
+  const setSelectedNamespaceUuids = (namespaces: string[]) => {
     setIsTableSelectionValidated(false);
     formMethods.setValue('namespaceUuids', namespaces, { shouldValidate: false });
   };
@@ -390,6 +391,7 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
       cancelTestId={`${MODAL_NAME}-CancelButton`}
       isSubmitting={formMethods.formState.isSubmitting}
       maxWidth="xl"
+      size={currentFormStep === FormStep.SELECT_TABLES ? 'fit' : 'md'}
       overrideWidth="960px"
       footerAccessory={
         currentFormStep !== FIRST_FORM_STEP && (
@@ -408,11 +410,12 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
             configAction: XClusterConfigAction.MANAGE_TABLE,
             isDrInterface: props.isDrInterface,
             isFixedTableType: true, // Users are not allowed to change xCluster table type after creation.
-            selectedKeyspaces: selectedNamespaceUuids,
+            selectedNamespaceUuids: selectedNamespaceUuids,
             selectedTableUUIDs: selectedTableUuids,
             selectionError,
             selectionWarning,
-            setSelectedKeyspaces: setSelectedNamespaces,
+            initialNamespaceUuids: defaultValues.namespaceUuids ?? [],
+            setSelectedNamespaceUuids: setSelectedNamespaceUuids,
             setSelectedTableUUIDs: setSelectedTableUuids,
             setTableType: (_) => null, // Users are not allowed to change xCluster table type after creation.
             sourceUniverseUUID: sourceUniverseUuid,

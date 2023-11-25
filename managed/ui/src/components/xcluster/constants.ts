@@ -1,3 +1,4 @@
+import { TableType } from '../../redesign/helpers/dtos';
 import { Metrics } from './XClusterTypes';
 
 //------------------------------------------------------------------------------------
@@ -101,6 +102,10 @@ export const XCLUSTER_TABLE_INELIGIBLE_STATUSES: readonly XClusterTableEligibili
   XClusterTableEligibility.INELIGIBLE_NO_MATCH
 ] as const;
 
+export const XCLUSTER_SUPPORTED_TABLE_TYPES = [
+  TableType.PGSQL_TABLE_TYPE,
+  TableType.YQL_TABLE_TYPE
+] as const;
 //------------------------------------------------------------------------------------
 
 //------------------------------------------------------------------------------------

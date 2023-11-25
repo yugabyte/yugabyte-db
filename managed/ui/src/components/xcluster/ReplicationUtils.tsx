@@ -428,7 +428,7 @@ export const getXClusterConfigTableType = (xClusterConfig: XClusterConfig) => {
 /**
  * Returns whether the provided table can be added/removed from the xCluster config.
  */
-export const isTableSelectable = (
+export const isTableToggleable = (
   table: XClusterTableCandidate,
   xClusterConfigAction: XClusterConfigAction
 ) =>
