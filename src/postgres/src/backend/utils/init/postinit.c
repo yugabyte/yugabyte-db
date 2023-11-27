@@ -637,6 +637,8 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 	 */
 	InitBufferPoolBackend();
 
+	MyProc->ybInitializationCompleted = true;
+
 	/*
 	 * Initialize local process's access to XLOG.
 	 */

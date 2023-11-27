@@ -835,6 +835,8 @@ StartBackgroundWorker(void)
 	 * BackgroundWorkerInitializeConnection().
 	 */
 
+	MyProc->ybInitializationCompleted = true;
+
 	/*
 	 * Now invoke the user-defined worker code
 	 */
