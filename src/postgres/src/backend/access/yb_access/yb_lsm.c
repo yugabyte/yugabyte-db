@@ -402,10 +402,8 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 	if (ybscan->exec_params)
 		ybscan->exec_params->work_mem = work_mem;
 
-    if (!ybscan->is_exec_done)
-    {
-        pgstat_count_index_scan(scan->indexRelation);
-    }
+	if (!ybscan->is_exec_done)
+		pgstat_count_index_scan(scan->indexRelation);
     
 	/* Special case: aggregate pushdown. */
 	if (scan->yb_aggrefs)
