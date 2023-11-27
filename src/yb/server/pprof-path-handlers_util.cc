@@ -75,16 +75,24 @@ void SortSamplesByOrder(vector<Sample>* samples, SampleOrder order) {
 #endif // YB_TCMALLOC_ENABLED
 
 #if YB_GOOGLE_TCMALLOC
-tcmalloc::Profile GetAllocationProfile(int seconds, int64_t sample_freq_bytes) {
+Result<tcmalloc::Profile> GetHeapProfile(int seconds, int64_t sample_freq_bytes) {
+  static std::atomic<bool> heap_profile_running{false};
+  bool expected = false;
+  if (!heap_profile_running.compare_exchange_strong(expected, /* desired= */ true)) {
+    return STATUS_FORMAT(IllegalState, "A heap profile is already running.");
+  }
+
   auto prev_sample_rate = tcmalloc::MallocExtension::GetProfileSamplingRate();
   tcmalloc::MallocExtension::SetProfileSamplingRate(sample_freq_bytes);
-  tcmalloc::MallocExtension::AllocationProfilingToken token;
-  token = tcmalloc::MallocExtension::StartLifetimeProfiling(false /* seed_with_live_allocs */);
+  auto token =
+      tcmalloc::MallocExtension::StartLifetimeProfiling(/* seed_with_live_allocs= */ false);
 
   LOG(INFO) << Format("Sleeping for $0 seconds while profile is collected.", seconds);
   SleepFor(MonoDelta::FromSeconds(seconds));
   tcmalloc::MallocExtension::SetProfileSamplingRate(prev_sample_rate);
-  return std::move(token).Stop();
+  auto profile = std::move(token).Stop();
+  heap_profile_running = false;
+  return profile;
 }
 
 tcmalloc::Profile GetHeapSnapshot(HeapSnapshotType snapshot_type) {

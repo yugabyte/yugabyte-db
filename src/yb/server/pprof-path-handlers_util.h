@@ -52,7 +52,7 @@ YB_DEFINE_ENUM(SampleOrder, (kSampledCount)(kSampledBytes)(kEstimatedBytes));
 
 #if YB_GOOGLE_TCMALLOC
 
-tcmalloc::Profile GetAllocationProfile(int seconds, int64_t sample_freq_bytes);
+Result<tcmalloc::Profile> GetHeapProfile(int seconds, int64_t sample_freq_bytes);
 
 YB_DEFINE_ENUM(HeapSnapshotType, (kCurrentHeap)(kPeakHeap));
 
