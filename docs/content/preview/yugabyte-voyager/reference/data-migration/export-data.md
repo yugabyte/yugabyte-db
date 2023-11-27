@@ -50,7 +50,7 @@ The valid *arguments* for export data are described in the following table:
 | :------- | :------------------------ |
 | --disable-pb |Use this argument to disable progress bar during data export and statistics printing during streaming phase. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
-| --export-type | Specify the migration type as `snapshot-only` (offline) or `snapshot-and-changes` (live, and optionally fall-forward). <br>Default: `snapshot-only` |
+| --export-type | Specify the migration type as `snapshot-only` (offline) or `snapshot-and-changes` (live, with fall-forward and fall-back). <br>Default: `snapshot-only` |
 | -h, --help | Command line help. |
 | --oracle-cdb-name <name> | Oracle Container Database Name in case you are using a multi-tenant container database. Required for Oracle live migrations only. |
 | --oracle-cdb-sid <SID> | Oracle System Identifier (SID) of the Container Database that you wish to use while exporting data from Oracle instances. Required for Oracle live migrations only. |
@@ -171,7 +171,7 @@ yb-voyager get data-migration-report --export-dir /dir/export-dir
 
 **Note** that this command is applicable for Live migrations only.
 
-Exports new changes from the target YugabyteDB database to import to the source database (for fall-back migration)source-replica database (for fall-forward migration) so that the source/source-replica database can be in sync with the YugabyteDB database after cutover.
+Exports new changes from the target YugabyteDB database to be imported to either the source database (for fall-back migration) or source-replica database (for fall-forward migration) to ensure synchronization between the source or source-replica database and the YugabyteDB database after the cutover.
 
 ### Syntax
 
