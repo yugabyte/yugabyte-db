@@ -202,6 +202,9 @@ public class AppInit {
       // Handle incomplete tasks
       taskManager.handleAllPendingTasks();
 
+      // Fail all incomplete support bundle creations.
+      supportBundleCleanup.markAllRunningSupportBundlesFailed();
+
       // Schedule garbage collection of old completed tasks in database.
       taskGC.start();
       alertsGC.start();

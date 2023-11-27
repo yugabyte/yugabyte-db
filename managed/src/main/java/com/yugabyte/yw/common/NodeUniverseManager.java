@@ -554,6 +554,11 @@ public class NodeUniverseManager extends DevopsBase {
 
     ShellResponse scriptOutput = runScript(node, universe, NODE_UTILS_SCRIPT, params);
 
+    if (!scriptOutput.isSuccess()) {
+      throw new RuntimeException(
+          String.format("Failed to run command. Got error: '%s'", scriptOutput.getMessage()));
+    }
+
     if (scriptOutput.extractRunCommandOutput().trim().equals("1")) {
       return true;
     } else {
