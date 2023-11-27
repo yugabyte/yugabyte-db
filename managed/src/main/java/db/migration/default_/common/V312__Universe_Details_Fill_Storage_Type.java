@@ -4,8 +4,8 @@ package db.migration.default_.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.NullNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import com.yugabyte.yw.commissioner.Common;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -18,7 +18,7 @@ import org.flywaydb.core.api.migration.Context;
 import play.libs.Json;
 
 @Slf4j
-public class V208__Universe_Details_Fill_Storage_Type extends BaseJavaMigration {
+public class V312__Universe_Details_Fill_Storage_Type extends BaseJavaMigration {
 
   @Override
   public void migrate(Context context) throws SQLException {
@@ -59,7 +59,11 @@ public class V208__Universe_Details_Fill_Storage_Type extends BaseJavaMigration 
       }
       JsonNode deviceInfoNode = userIntentNode.get("deviceInfo");
 
-      if (deviceInfoNode.has("storageType") && deviceInfoNode.get("storageType").asText() != null) {
+      if (!deviceInfoNode.has("storageType")) {
+        continue;
+      }
+      JsonNode storageTypeNode = deviceInfoNode.get("storageType");
+      if (storageTypeNode.asText() == null) {
         continue;
       }
 
@@ -77,18 +81,15 @@ public class V208__Universe_Details_Fill_Storage_Type extends BaseJavaMigration 
       JsonNode cloudData = cloudList.get(0);
       String providerCode = cloudData.get("code").asText();
 
-      if (!providerCode.equals(Common.CloudType.aws.toString())
-          && !providerCode.equals(Common.CloudType.gcp.toString())) {
+      if (!providerCode.equals(Common.CloudType.onprem.toString())
+          && !providerCode.equals(Common.CloudType.kubernetes.toString())) {
         continue;
       }
-      StorageType storageType =
-          providerCode.equals(Common.CloudType.aws.toString())
-              ? StorageType.GP2
-              : StorageType.Scratch;
+
       ObjectNode deviceInfo = (ObjectNode) deviceInfoNode;
-      deviceInfo.put("storageType", Json.toJson(storageType.name()));
+      deviceInfo.put("storageType", NullNode.getInstance());
       updated = true;
-      log.warn("setting storagetype to {} for universe {}", storageType.name(), univUuid);
+      log.warn("setting storagetype to NULL for universe {}", univUuid);
     }
     return updated;
   }
