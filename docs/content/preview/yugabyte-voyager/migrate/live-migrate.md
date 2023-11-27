@@ -393,7 +393,7 @@ Perform the following steps as part of the cutover process:
 
     ```sh
     # Replace the argument values with those applicable for your migration.
-    yb-voyager initiate cutover to target --export-dir <EXPORT_DIR>
+    yb-voyager initiate cutover to target --export-dir <EXPORT_DIR> --prepare-for-fall-back false
     ```
 
     Refer to [cutover to target](../../reference/cutover-archive/cutover/#cutover-to-target) for details about the arguments.

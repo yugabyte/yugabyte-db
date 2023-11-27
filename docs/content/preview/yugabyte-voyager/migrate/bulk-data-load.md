@@ -154,8 +154,8 @@ Run the `yb-voyager end migration` command to perform the clean up, and to back 
 # Replace the argument values with those applicable for your migration.
 yb-voyager end migration --export-dir <EXPORT_DIR> \
         --backup-log-files <true, false, yes, no, 1, 0> \
-        --backup-data-files <true, false, yes, no, 1, 0> \
-        --backup-schema-files <true, false, yes, no, 1, 0> \
+        --backup-data-files false \
+        --backup-schema-files false \
         --save-migration-reports <true, false, yes, no, 1, 0> \
         # Set optional argument to store a back up of any of the above arguments.
         --backup-dir <BACKUP_DIR>
@@ -165,7 +165,7 @@ yb-voyager end migration --export-dir <EXPORT_DIR> \
 
 * After performing end migration, you can't continue import data file operations using the specified export directory (export-dir).
 
-* Consider setting the arguments `--backup-data-files` and `backup-schema-files` to false as import data file operation is not a complete migration that includes export/import of schema, or export of data.
+* Set arguments `--backup-data-files` and `backup-schema-files` to false as import data file operation is not a complete migration that includes export/import of schema, or export of data.
 
 {{< /note >}}
 

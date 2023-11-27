@@ -34,7 +34,7 @@ The valid *arguments* for import schema are described in the following table:
 | Argument | Description/valid options |
 | :------- | :------------------------ |
 | --continue-on-error | Continue to import all the exported schema even if there are errors, and output all the erroneous DDLs to the `failed.sql` file in the `export-dir/schema` directory. <br>Default: false <br> Example: `yb-voyager import schema ... --continue-on-error true`<br> Accepted parameters: true, false, yes, no, 0, 1 |
-| --enable-orafce | Enables Orafce extension on target (if source database type is Oracle). <br>Default: true |
+| --enable-orafce | Enables Orafce extension on target (if source database type is Oracle). <br>Default: true <br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --exclude-object-type-list <objectTypes> | Comma-separated list of schema object types (object types are case-insensitive) to exclude while importing schema (ignored if --object-type-list is used).<br> Example: `--exclude-object-type-list 'FUNCTION,PROCEDURE'` |
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file. |
 | -h, --help | Command line help. |
@@ -44,7 +44,7 @@ The valid *arguments* for import schema are described in the following table:
 | --refresh-mviews | Refreshes the materialized views on target during the post-import-data phase. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --send-diagnostics | Enable or disable sending [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --start-clean | Starts a fresh schema import on the target YugabyteDB database for the schema present in the `schema` directory.<br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
-| --straight-order | Imports the schema objects in the order specified via the `--object-type-list` flag. <br>Default: false<br> Example: `yb-voyager import schema ... --object-type-list 'TYPE,TABLE,VIEW...'  --straight-order true` |
+| --straight-order | Imports the schema objects in the order specified via the `--object-type-list` flag. <br>Default: false<br> Example: `yb-voyager import schema ... --object-type-list 'TYPE,TABLE,VIEW...'  --straight-order true` <br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --target-db-host <hostname> | Domain name or IP address of the machine on which target database server is running. <br>Default: 127.0.0.1|
 | --target-db-name <name> | Target database name. <br>Default: yugabyte |
 | --target-db-password <password>| Target database password. Alternatively, you can also specify the password by setting the environment variable `TARGET_DB_PASSWORD`. If you don't provide a password via the CLI or environment variable during any migration phase, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. |

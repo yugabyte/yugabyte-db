@@ -43,7 +43,7 @@ The valid *arguments* for initiate cutover to target are described in the follow
 ### Example
 
 ```sh
-yb-voyager initiate cutover to target --export-dir /dir/export-dir
+yb-voyager initiate cutover to target --export-dir /dir/export-dir --prepare-for-fall-back false
 ```
 
 ## cutover to source
