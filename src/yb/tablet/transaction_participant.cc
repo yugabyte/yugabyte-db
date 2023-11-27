@@ -413,6 +413,9 @@ class TransactionParticipant::Impl
     auto lock_and_iterator = VERIFY_RESULT(LockAndFind(
         id, "metadata with write id"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist}));
     if (!lock_and_iterator.found()) {
+      if (lock_and_iterator.did_txn_deadlock()) {
+        return lock_and_iterator.deadlock_status;
+      }
       return boost::none;
     }
     auto& transaction = lock_and_iterator.transaction();
