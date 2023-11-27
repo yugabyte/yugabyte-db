@@ -1083,6 +1083,52 @@ END $$;
   thread_holder.Stop();
 }
 
+TEST_F(PgCatalogVersionTest, ResetIsGlobalDdlState) {
+  auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(conn_yugabyte.Execute("CREATE TABLE foo(a int)"));
+  ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte));
+  RestartClusterWithDBCatalogVersionMode();
+
+  conn_yugabyte = ASSERT_RESULT(EnableCacheEventLog(ConnectToDB(kYugabyteDatabase)));
+  const auto yugabyte_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn_yugabyte, kYugabyteDatabase));
+  // Get the initial catalog version map.
+  constexpr CatalogVersion kInitialCatalogVersion{1, 1};
+  auto expected_versions = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte));
+  ASSERT_TRUE(expected_versions.find(yugabyte_db_oid) != expected_versions.end());
+  for (const auto& entry : expected_versions) {
+    ASSERT_OK(CheckMatch(entry.second, kInitialCatalogVersion));
+  }
+
+  ASSERT_OK(conn_yugabyte.Execute("SET yb_test_fail_next_inc_catalog_version=true"));
+  // The following ALTER ROLE is a global impact DDL statement. It will
+  // fail due to yb_test_fail_next_inc_catalog_version=true.
+  auto status = conn_yugabyte.Execute("ALTER ROLE yugabyte SUPERUSER");
+  ASSERT_TRUE(status.IsNetworkError()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "Failed increment catalog version as requested");
+
+  // Verify that the above failed global impact DDL statement does not change
+  // any of the catalog versions.
+  expected_versions = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte));
+  for (const auto& entry : expected_versions) {
+    ASSERT_OK(CheckMatch(entry.second, kInitialCatalogVersion));
+  }
+
+  // The following ALTER TABLE is a not a global impact DDL statement, if
+  // we had not reset is_global_ddl state in DdlTransactionState because of
+  // the above injected error, this ALTER TABLE would be incorrectly treated
+  // as a global impact DDL statement and caused catalog versions of all
+  // the databases to increase.
+  ASSERT_OK(conn_yugabyte.Execute("ALTER TABLE foo ADD COLUMN b int"));
+  expected_versions = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte));
+  for (const auto& entry : expected_versions) {
+    if (entry.first != yugabyte_db_oid) {
+      ASSERT_OK(CheckMatch(entry.second, kInitialCatalogVersion));
+    } else {
+      ASSERT_OK(CheckMatch(entry.second, {2, 1}));
+    }
+  }
+}
+
 TEST_F(PgCatalogVersionTest, NonBreakingDDLMode) {
   const string kDatabaseName = "yugabyte";
 

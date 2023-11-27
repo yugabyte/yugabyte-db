@@ -566,6 +566,12 @@ extern bool yb_test_system_catalogs_creation;
 extern bool yb_test_fail_next_ddl;
 
 /*
+ * If set to true, next increment catalog version operation will fail and
+ * reset this back to false.
+ */
+extern bool yb_test_fail_next_inc_catalog_version;
+
+/*
  * Block the given index creation phase.
  * - "indisready": index state change to indisready
  *   (not supported for non-concurrent)
