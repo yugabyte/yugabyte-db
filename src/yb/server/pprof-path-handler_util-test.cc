@@ -12,25 +12,31 @@
 
 #include "yb/server/pprof-path-handler_util-test.h"
 
+#include <chrono>
 #include <memory>
 #include <string>
 #include <thread>
 
 #include <gflags/gflags_declare.h>
-#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
 #include "yb/gutil/dynamic_annotations.h"
+
 #include "yb/server/pprof-path-handlers_util.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/tcmalloc_util.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "yb/util/thread.h"
 
 DECLARE_int32(v);
 DECLARE_string(vmodule);
 
+using std::literals::chrono_literals::operator""s;
 using std::vector;
 
 namespace yb {
@@ -143,7 +149,7 @@ TEST_F(SamplingProfilerTest, HeapSnapshot) {
 }
 
 // Basic test for pprof/heap.
-TEST_F(SamplingProfilerTest, AllocationProfile) {
+TEST_F(SamplingProfilerTest, HeapProfile) {
   SetProfileSamplingRate(1);
   const int64_t kAllocSizeExcluded = 1_MB;
   const int64_t kAllocSizeAllocated = 2_MB;
@@ -177,6 +183,32 @@ TEST_F(SamplingProfilerTest, AllocationProfile) {
   samples = AggregateAndSortProfile(profile, true /* only_growth */, SampleOrder::kSampledBytes);
   ASSERT_EQ(GetTestAllocs(samples).size(), 1);
   ASSERT_EQ(samples[0].second.sampled_allocated_bytes, kAllocSizeAllocated);
+}
+
+TEST_F(SamplingProfilerTest, OnlyOneHeapProfile) {
+  auto StartHeapProfileWithFrequency = [](int64_t sample_freq_bytes, Status* status) {
+    Result<tcmalloc::Profile> profile = GetHeapProfile(3 /* seconds */, sample_freq_bytes);
+    *status = profile.ok() ? Status::OK() : profile.status();
+  };
+
+  SetProfileSamplingRate(1);
+
+  yb::ThreadPtr thread1, thread2;
+  Status status1, status2;
+  ASSERT_OK(yb::Thread::Create(
+      CURRENT_TEST_NAME(), "heap profile",
+      std::bind(StartHeapProfileWithFrequency, 2, &status1), &thread1));
+  SleepFor(1s);
+  ASSERT_OK(yb::Thread::Create(
+      CURRENT_TEST_NAME(), "heap profile",
+      std::bind(StartHeapProfileWithFrequency, 3, &status2), &thread2));
+  thread1->Join();
+  ASSERT_OK(status1);
+  thread2->Join();
+  ASSERT_NOK(status2);
+  ASSERT_STR_CONTAINS(status2.message().ToBuffer(), "A heap profile is already running");
+
+  ASSERT_EQ(GetTCMallocSamplingFrequency(), 1);
 }
 
 // Verify that the estimated bytes and count are close to their actual values.
