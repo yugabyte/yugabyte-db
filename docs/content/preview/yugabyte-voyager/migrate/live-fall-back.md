@@ -532,12 +532,11 @@ For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/y
 During this phase, switch your application over from the target YugabyteDB database back to the source database. As this step is _optional_, perform it only if the target YugabyteDB database is not working as expected.
 
 Keep monitoring the metrics displayed for `export data from target` and `import data to source` processes. After you notice that the import of events to the source database is catching up to the exported events from the target YugabyteDB database, you are ready to cutover. You can use the "Remaining events" metric displayed in the `import data to source` process to help you determine the cutover.
-
 Perform the following steps as part of the cutover process:
 
 1. Quiesce your target YugabyteDB database, that is stop application writes.
 
-1. Perform a cutover after the exported events rate ("Export rate" in the metrics table) drops to using the following command:
+1. Perform a cutover after the exported events rate ("Export rate" in the metrics table) drops to 0 using the following command:
 
     ```sh
     # Replace the argument values with those applicable for your migration.
@@ -612,4 +611,4 @@ In addition to the Live migration [limitations](../live-migrate/#limitations), t
 1. Fall-back is unsupported with a YugabyteDB cluster running on YugabyteDB Managed.
 1. SSL Connectivity is unsupported for export or streaming events from YugabyteDB during `export data from target`.
 1. In the fall-back phase, you need to manually disable (and subsequently re-enable if required) constraints/indexes/triggers on the source database.
-1. yb-voyager provides limited datatypes support with YugabyteDB CDC during `export data from target` for datatypes such as DECIMAL and Timestamp.
+1. yb-voyager provides limited support for datatypes during CDC of `export data from target` phase. For example, datatypes such as DECIMAL and Timestamp are not supported.

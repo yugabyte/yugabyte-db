@@ -21,7 +21,14 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
   - Support for [live migration](../migrate/live-migrate/) from Oracle databases (with the option of [fall-back](../migrate/live-fall-back/)) {{<badge/tp>}}, using which you can fall back to the original source database if an issue arises during live migration.
 
-  - Various commands that are used in live migration workflows (including fall-forward) have been modified. Refer to [live migration](../migrate/live-migrate/) documentation for more details.
+  - Various commands that are used in live migration workflows (including [fall-forward](../migrate/live-fall-forward/)) have been modified. Yugabyte is transitioning from the use of the term "fall-forward database" to the more preferred "source-replica database" terminology. The following table includes the list of modified commands.
+
+      | Old command | New command |
+      | :---------- | :---------- |
+      | yb-voyager fall-forward setup ... | yb-voyager import data to source-replica ... |
+      | yb-voyager fall-forward synchronize ... | yb-voyager export data from target ... |
+      | yb-voyager fall-forward switchover ... | yb-voyager initiate cutover to source-replica ... |
+      | yb-voyager cutover initiate ... | yb-voyager initiate cutover to target ... |
 
   - A new command `yb-voyager get data-migration-report` has been added to display table-wise statistics during and post live migration.
 
@@ -31,9 +38,10 @@ A new command `yb-voyager end migration` has been added to complete migration by
 
 ### Enhancements
 
-- Boolean arguments in yb-voyager commands have been standardized as string arguments for consistent CLI usage. For example, use `--send-diagnostics true` to specify the `--send-diagnostics` argument.
+- Boolean arguments in yb-voyager commands have been standardized as string arguments for consistent CLI usage.
+In all yb-voyager commands, there is no need to explicitly use `=` while setting boolean flags to false; a white-space would work (just like arguments of other types). As a side effect of this action, you cannot use boolean flag names without any value. For example, use `--send-diagnostics true` instead of `--send-diagnostics`. The boolean values can now be specified as `true/false, yes/no, 1/0`.
 - For yb-voyager export/import data, the argument `--table-list` can now be provided via a file using the arguments `--table-list-file-path` or `exclude-table-list-file-path`. The table-list arguments now support glob wildcard characters `?` (matches one character) and `*` (matches zero or more characters). Furthermore, the `table-list` and `exclude-table-list` arguments can be used together in a command, which can be beneficial with glob support.
-- Object types in `yb-voyager export schema` can now be filtered via the arguments `--object-types-list` or `--exclude-object-types-list`.
+- Object types in `yb-voyager export schema` can now be filtered via the arguments `--object-type-list` or `--exclude-object-type-list`.
 - In yb-voyager import-data, table names provided via any `table-list` argument are now by default, case-insensitive. To make it case-sensitive, enclose each name in double quotes.
 - The `--verbose` argument has been removed from all yb-voyager commands.
 - The `--delete` argument in `yb-voyager archive-changes` has been renamed to `--delete-changes-without-archiving`.

@@ -34,3 +34,17 @@ The valid *arguments* for archive changes are described in the following table:
 | --move-to <path> | Path to the directory where the imported change events are to be moved to. Note that the changes are deleted from the export directory only after the disk use exceeds 70%. |
 | --send-diagnostics | Enable or disable sending [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -y, --yes | Answer yes to all prompts during migration. <br>Default: false |
+
+### Examples
+
+Example to delete changes without archiving them to another destination is as follows:
+
+```sh
+yb-voyager archive changes --export-dir /dir/export-dir --delete-changes-without-archiving true
+```
+
+Example to archive changes from the export directory to another destination is as follows:
+
+```sh
+yb-voyager archive changes --export-dir /dir/export-dir --move-to /dir/archived-changes-dir
+```

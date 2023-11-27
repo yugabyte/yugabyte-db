@@ -27,7 +27,7 @@ Before starting a live migration, you set up the source-replica database (via [i
 
 ![After import data to source-replica](/images/migrate/after-import-data-to-sr.png)
 
-At [cutover to target](#cutover-to-the-target), applications stop writing to the source database and start writing to the target YugabyteDB database. After the cutover process is complete, Voyager keeps the source-replica database synchronized with changes from the target Yugabyte database as shown in the following illustration:
+At [cutover to target](#cutover-to-the-target), applications stop writing to the source database and start writing to the target YugabyteDB database. After the cutover process is complete, Voyager keeps the source-replica database synchronized with changes from the target YugabyteDB database as shown in the following illustration:
 
 ![After cutover](/images/migrate/cutover-to-target.png)
 
@@ -583,7 +583,7 @@ Perform the following steps as part of the cutover process:
 
 1. Set up indexes and triggers to the source-replica database manually. Also, re-enable the foreign key and check constraints.
 
-1. Verify your migration. After the schema and data import is complete, the automated part of the database migration process is considered complete. You should manually run validation queries on both the source and source-replica databases to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count of each table.
+1. Verify your migration. After the schema and data import is complete, the automated part of the database migration process is considered complete. You should manually run validation queries on both the target and source-replica databases to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count of each table.
 
     {{< warning title = "Caveat associated with rows reported by get data-migration-report" >}}
 
@@ -626,5 +626,4 @@ In addition to the Live migration [limitations](../live-migrate/#limitations), t
 
 - Fall-forward is unsupported with a YugabyteDB cluster running on [YugabyteDB Managed](../../../yugabyte-cloud).
 - [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity) is unsupported for export or streaming events from YugabyteDB during `export data from target`.
-- yb-voyager provides limited datatypes support with YugabyteDB CDC during `export data from target` for datatypes such as DECIMAL, and Timestamp.
-- You need to manually delete the stream ID of YugabyteDB CDC created by Voyager during `export data from target`.
+- yb-voyager provides limited support for datatypes during CDC of `export data from target` phase. For example, datatypes such as DECIMAL and Timestamp are not supported.
