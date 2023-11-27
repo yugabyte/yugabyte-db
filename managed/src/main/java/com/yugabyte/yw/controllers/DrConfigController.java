@@ -410,18 +410,7 @@ public class DrConfigController extends AuthenticatedController {
     Universe newTargetUniverse =
         Universe.getOrBadRequest(replaceReplicaForm.drReplicaUniverseUuid, customer);
 
-    // Todo: Revisit this restriction.
-    if (!xClusterConfig.getStatus().equals(XClusterConfigStatusType.Running)
-        || !xClusterConfig.getTableDetails().stream()
-            .map(XClusterTableConfig::getStatus)
-            .allMatch(tableConfigStatus -> tableConfigStatus.equals(Status.Running))) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          "the underlying xCluster config and all of its replication streams must "
-              + "be running status.");
-    }
-
-    Set<String> tableIds = xClusterConfig.getTableIdsWithReplicationSetup();
+    Set<String> tableIds = xClusterConfig.getTableIds();
 
     // Add index tables.
     Map<String, List<String>> mainTableIndexTablesMap =
