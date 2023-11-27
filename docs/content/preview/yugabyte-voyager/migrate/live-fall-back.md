@@ -233,7 +233,7 @@ The `source_db_schema` argument specifies the schema of the source database.
 
 {{< /note >}}
 
-An example invocation of the command is as follows:
+An example invocation of the command with required arguments is as follows:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
@@ -253,7 +253,7 @@ Refer to [export schema](../../reference/schema-migration/export-schema/) for de
 
 The schema exported in the previous step may not yet be suitable for importing into YugabyteDB. Even though YugabyteDB is PostgreSQL compatible, given its distributed nature, you may need to make minor manual changes to the schema.
 
-The `yb-voyager analyze-schema` command analyses the PostgreSQL schema dumped in the [export schema](#export-schema) step, and prepares a report that lists the DDL statements which need manual changes. An example invocation of the command is as follows:
+The `yb-voyager analyze-schema` command analyses the PostgreSQL schema dumped in the [export schema](#export-schema) step, and prepares a report that lists the DDL statements which need manual changes. An example invocation of the command with required arguments is as follows:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
@@ -288,7 +288,7 @@ Import the schema using the `yb-voyager import schema` command.
 
 {{< /note >}}
 
-An example invocation of the command is as follows:
+An example invocation of the command with required arguments is as follows:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
@@ -312,7 +312,7 @@ Because the presence of indexes and triggers can slow down the rate at which dat
 
 ### Export data from source
 
-Begin exporting data from the source database into the `EXPORT_DIR/data` directory using the yb-voyager export data from source command as follows:
+Begin exporting data from the source database into the `EXPORT_DIR/data` directory using the yb-voyager export data from source command with required arguments as follows:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
@@ -410,7 +410,7 @@ If the `yb-voyager import data to target` command terminates before completing t
 
 #### get data-migration-report
 
-Run the following  command to get a consolidated report of the overall progress of data migration concerning all the databases involved (source and target).
+Run the following command with required arguments to get a consolidated report of the overall progress of data migration concerning all the databases involved (source and target).
 
 ```sh
 # Replace the argument values with those applicable for your migration.

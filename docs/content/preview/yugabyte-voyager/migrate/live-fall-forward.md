@@ -248,7 +248,7 @@ The `source_db_schema` argument specifies the schema of the source database.
 
 {{< /note >}}
 
-An example invocation of the command is as follows:
+An example invocation of the command with required arguments is as follows:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
@@ -268,7 +268,7 @@ Refer to [export schema](../../reference/schema-migration/export-schema/) for de
 
 The schema exported in the previous step may not yet be suitable for importing into YugabyteDB. Even though YugabyteDB is PostgreSQL compatible, given its distributed nature, you may need to make minor manual changes to the schema.
 
-The `yb-voyager analyze-schema` command analyses the PostgreSQL schema dumped in the [export schema](#export-schema) step, and prepares a report that lists the DDL statements which need manual changes. An example invocation of the command is as follows:
+The `yb-voyager analyze-schema` command analyses the PostgreSQL schema dumped in the [export schema](#export-schema) step, and prepares a report that lists the DDL statements which need manual changes. An example invocation of the command with required arguments is as follows:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
@@ -305,7 +305,7 @@ Import the schema using the `yb-voyager import schema` command.
 
 {{< /note >}}
 
-An example invocation of the command is as follows:
+An example invocation of the command with required arguments is as follows:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
@@ -338,7 +338,7 @@ Manually, set up the source-replica database with the same schema as that of the
 
 ### Export data from source
 
-Begin exporting data from the source database into the `EXPORT_DIR/data` directory using the yb-voyager export data from source command as follows:
+Begin exporting data from the source database into the `EXPORT_DIR/data` directory using the yb-voyager export data from source command with required arguments as follows:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
@@ -380,13 +380,13 @@ The options passed to the command are similar to the [`yb-voyager export schema`
 
 #### get data-migration-report
 
-Run the `yb-voyager get data-migration-report --export-dir <EXPORT_DIR>` command to get a consolidated report of the overall progress of data migration concerning all the databases involved (source, target, and source-replica).
+Run the `yb-voyager get data-migration-report --export-dir <EXPORT_DIR>` command with to get a consolidated report of the overall progress of data migration concerning all the databases involved (source, target, and source-replica).
 
 Refer to [get data-migration-report](../../reference/data-migration/export-data/#get-data-migration-report) for details about the arguments.
 
 ### Import data to target
 
-After you have successfully imported the schema in the target YugabyteDB database, and the CDC phase has started in export data from source (which you can monitor using the get data-migration-report command), you can start importing the data using the yb-voyager import data to target command as follows:
+After you have successfully imported the schema in the target YugabyteDB database, and the CDC phase has started in export data from source (which you can monitor using the get data-migration-report command), you can start importing the data using the yb-voyager import data to target command with required arguments as follows:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
@@ -436,7 +436,7 @@ If the `yb-voyager import data to target` command terminates before completing t
 
 #### get data-migration-report
 
-Run the following  command to get a consolidated report of the overall progress of data migration concerning all the databases involved (source, target, and source-replica).
+Run the following command with required arguments to get a consolidated report of the overall progress of data migration concerning all the databases involved (source, target, and source-replica).
 
 ```sh
 # Replace the argument values with those applicable for your migration.
@@ -450,7 +450,7 @@ Refer to [get data-migration-report](../../reference/data-migration/import-data/
 
 Note that the import data to source-replica is applicable for data migration only (schema migration needs to be done manually).
 
-The import data to source-replica refers to replicating the snapshot data along with the changes exported from the source database to the source-replica database. The command to start the import is as follows:
+The import data to source-replica refers to replicating the snapshot data along with the changes exported from the source database to the source-replica database. The command to start the import with required arguments is as follows:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
@@ -471,7 +471,7 @@ Similar to [import data to target](#import-data-to-target), during `import data 
 - Some important metrics such as the number of events, events rate, and so on, are displayed.
 - You can restart the command if it fails for any reason.
 
-Additionally, when you run the `import data to source-replica` command, the [get data-migration-report](#get-data-migration-report) command also shows progress of importing all changes to the source-replica database. To view overall progress of the data import operation and streaming changes to the source-replica database, use the following command:
+Additionally, when you run the `import data to source-replica` command, the [get data-migration-report](#get-data-migration-report) command also shows progress of importing all changes to the source-replica database. To view overall progress of the data import operation and streaming changes to the source-replica database, use the following command with required arguments:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
@@ -482,7 +482,7 @@ yb-voyager get data-migration-report --export-dir <EXPORT_DIR> \
 
 ### Archive changes (Optional)
 
-As the migration continuously exports changes on the source database to the `EXPORT-DIR`, disk use continues to grow. To prevent the disk from filling up, you can optionally use the `archive changes` command as follows:
+As the migration continuously exports changes on the source database to the `EXPORT-DIR`, disk use continues to grow. To prevent the disk from filling up, you can optionally use the `archive changes` command with required arguments as follows:
 
 {{< note title = "Note" >}}
 Make sure to run the archive changes command only after completing [import data to source-replica](#import-data-to-source-replica). If you run the command before, you may archive some changes before they have been imported to the source-replica database.

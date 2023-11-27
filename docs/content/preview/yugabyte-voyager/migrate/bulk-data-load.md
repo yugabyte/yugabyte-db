@@ -20,7 +20,7 @@ The following page describes the steps to import data in CSV or TEXT format from
 
 ## Import data files from the local disk
 
-If your data files are in CSV or TEXT format and are present on the local disk, and you have already created a schema in your target YugabyteDB database, you can use the following `yb-voyager import data file` command to load the data into the target table directly from the flat file(s).
+If your data files are in CSV or TEXT format and are present on the local disk, and you have already created a schema in your target YugabyteDB database, you can use the following `yb-voyager import data file` command with required arguments to load the data into the target table directly from the flat file(s).
 
 ```sh
 # Replace the argument values with those applicable to your migration.
