@@ -1265,6 +1265,8 @@ bool yb_test_system_catalogs_creation = false;
 
 bool yb_test_fail_next_ddl = false;
 
+bool yb_test_fail_next_inc_catalog_version = false;
+
 char *yb_test_block_index_phase = "";
 
 char *yb_test_fail_index_state_change = "";
@@ -1962,12 +1964,12 @@ static void YBTxnDdlProcessUtility(
 												  &is_breaking_catalog_change,
 												  context);
 
-	if (is_txn_ddl) {
-		YBIncrementDdlNestingLevel(is_catalog_version_increment,
-								   is_breaking_catalog_change);
-	}
 	PG_TRY();
 	{
+		if (is_txn_ddl)
+			YBIncrementDdlNestingLevel(is_catalog_version_increment,
+									   is_breaking_catalog_change);
+
 		if (prev_ProcessUtility)
 			prev_ProcessUtility(pstmt, queryString,
 								context, params, queryEnv,
@@ -1976,6 +1978,9 @@ static void YBTxnDdlProcessUtility(
 			standard_ProcessUtility(pstmt, queryString,
 									context, params, queryEnv,
 									dest, completionTag);
+
+		if (is_txn_ddl)
+			YBDecrementDdlNestingLevel();
 	}
 	PG_CATCH();
 	{
@@ -1989,9 +1994,6 @@ static void YBTxnDdlProcessUtility(
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
-	if (is_txn_ddl) {
-		YBDecrementDdlNestingLevel();
-	}
 }
 
 static void YBCInstallTxnDdlHook() {
