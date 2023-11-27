@@ -778,6 +778,22 @@ Status ClusterAdminClient::GetWalRetentionSecs(const YBTableName& table_name) {
   return Status::OK();
 }
 
+Status ClusterAdminClient::GetAutoFlagsConfig() {
+  master::GetAutoFlagsConfigRequestPB req;
+  master::GetAutoFlagsConfigResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_cluster_proxy_->GetAutoFlagsConfig(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  std::cout << "AutoFlags config:" << std::endl;
+  std::cout << resp.config().DebugString() << std::endl;
+
+  return Status::OK();
+}
+
 Status ClusterAdminClient::PromoteAutoFlags(
     const string& max_flag_class, const bool promote_non_runtime_flags, const bool force) {
   master::PromoteAutoFlagsRequestPB req;
