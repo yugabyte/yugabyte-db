@@ -1154,6 +1154,14 @@ TEST_F_EX(AdminCliTest, ListTabletDefaultTenTablets, AdminCliListTabletsTest) {
   ASSERT_EQ(count, 20);
 }
 
+TEST_F(AdminCliTest, GetAutoFlagsConfig) {
+  BuildAndStart();
+  auto message = ASSERT_RESULT(CallAdmin("get_auto_flags_config"));
+  ASSERT_STR_CONTAINS(message, R"#(AutoFlags config:
+config_version: 1
+promoted_flags {)#");
+}
+
 TEST_F(AdminCliTest, PromoteAutoFlags) {
   BuildAndStart();
   const auto master_address = ToString(cluster_->master()->bound_rpc_addr());
