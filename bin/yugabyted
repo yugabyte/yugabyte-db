@@ -2191,8 +2191,9 @@ class ControlScript(object):
     # add a new master computed during configure data_placement command
     def add_master_for_data_placement(self, master_addr, new_master):
 
+        new_master_rpc_port = self.configs.saved_data.get("master_rpc_port")
         Output.log("Adding master {} to the cluster.".format(new_master))
-        if not YBAdminProxy.add_master(master_addr, new_master):
+        if not YBAdminProxy.add_master(master_addr, new_master, new_master_rpc_port):
             Output.log_error_and_exit("Failed to add master {} to the cluster."
                             .format(new_master))
         if not self.wait_get_master(new_master):
@@ -2204,8 +2205,9 @@ class ControlScript(object):
     # remove an master computed during configure data_placement command
     def remove_master_for_data_placement(self, master_addr, old_master):
 
+        old_master_rpc_port = self.configs.saved_data.get("master_rpc_port")
         Output.log("Removing master {} from the cluster.".format(old_master))
-        if not YBAdminProxy.remove_master(master_addr, old_master):
+        if not YBAdminProxy.remove_master(master_addr, old_master, old_master_rpc_port):
             Output.log_error_and_exit("Failed to remove master {} from the cluster."
                             .format(old_master))
         if not self.wait_remove_master(old_master):
@@ -2514,11 +2516,12 @@ class ControlScript(object):
         # and we have a valid join_ip
 
         advertise_ip = self.advertise_ip()
+        master_rpc_port = self.configs.saved_data.get("master_rpc_port")
 
         if len(master_uuids) >= 3:
             # this is going to be a standalone shell master
             return True
-        if not YBAdminProxy.add_master(master_addrs, advertise_ip):
+        if not YBAdminProxy.add_master(master_addrs, advertise_ip, master_rpc_port):
             Output.log_error_and_exit("Unable to add master {} to existing cluster at {}.".format(
                 advertise_ip, join_ip))
             return False
@@ -3392,19 +3395,22 @@ class ControlScript(object):
 
                 Output.print_and_log("Fetching configs from join IP...")
                 try:
-                    leaderMasterURL = "http://{}:7000/api/v1/varz".format(args.join)
+                    leaderMasterURL = "http://{}:{}/api/v1/varz".format(args.join,
+                                            self.configs.saved_data.get("master_webserver_port"))
                     response = urlopen(Request(leaderMasterURL))
                     Output.log("Trying to hit endpoint {}".format(leaderMasterURL) +
                             " to check if join IP is reachable. (Timeout=60s)")
                     response = urlopen(Request(leaderMasterURL), timeout=60)
                 except HTTPError as http_err:
                     Output.log("HTTP Error occured while hitting the api endpoint " +
-                        "http://{}:7000/api/v1/varz: {}".format(args.join, http_err))
+                        "http://{}:{}/api/v1/varz: {}".format(args.join,
+                                    self.configs.saved_data.get("master_webserver_port"), http_err))
                     Output.log_error_and_exit(Output.make_red("ERROR:") + "master at the join ip " +
                         "provided is not reachable.")
                 except Exception as err:
                     Output.log("Error occured while hitting the api endpoint " +
-                        "http://{}:7000/api/v1/varz: {}".format(args.join, err))
+                        "http://{}:{}/api/v1/varz: {}".format(args.join,
+                                    self.configs.saved_data.get("master_webserver_port"), err))
                     Output.log_error_and_exit(Output.make_red("ERROR:") + "master at the join ip " +
                         "provided is not reachable.")
 
@@ -3419,7 +3425,8 @@ class ControlScript(object):
 
             if args.insecure:
                 if args.join:
-                    master_hostport = "{}:7000".format(args.join)
+                    master_hostport = "{}:{}".format(args.join,
+                            self.configs.saved_data.get("master_webserver_port"))
                     if self.is_leader_master_secure(master_hostport):
                         # Case Scenario: When a User starts the 1st node in secure mode and tries
                         # to start the second node in insecure mode
@@ -3429,7 +3436,8 @@ class ControlScript(object):
                             "secure and an insecure node.")
             elif args.secure:
                 if args.join:
-                    master_hostport = "{}:7000".format(args.join)
+                    master_hostport = "{}:{}".format(args.join,
+                            self.configs.saved_data.get("master_webserver_port"))
                     if not self.is_leader_master_secure(master_hostport):
                         # Case Scenario: When the user starts the 1st node in insecure mode and
                         # tries to start the second node in secure mode.
@@ -4298,16 +4306,16 @@ class YBAdminProxy(object):
             YBAdminProxy.cmd_args.append('--certs_dir_name={}'.format(certs_dir_name[0].group(1)))
 
     @staticmethod
-    def add_master(master_addrs, new_master_ip, timeout=10):
+    def add_master(master_addrs, new_master_ip, new_master_rpc_port, timeout=10):
         cmd = YBAdminProxy.cmd_args + ["--init_master_addrs", master_addrs,
-              "change_master_config", "ADD_SERVER", new_master_ip, "7100"]
+              "change_master_config", "ADD_SERVER", new_master_ip, str(new_master_rpc_port)]
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
         return (0 == ret_code)
 
     @staticmethod
-    def remove_master(master_addrs, old_master, timeout=10):
+    def remove_master(master_addrs, old_master, old_master_rpc_port, timeout=10):
         cmd = YBAdminProxy.cmd_args + ["--init_master_addrs", master_addrs,
-              "change_master_config", "REMOVE_SERVER", old_master, "7100"]
+              "change_master_config", "REMOVE_SERVER", old_master, str(old_master_rpc_port)]
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
         return (0 == ret_code)
 
