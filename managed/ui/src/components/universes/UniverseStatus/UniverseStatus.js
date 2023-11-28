@@ -4,7 +4,7 @@ import React, { Component } from 'react';
 import { ProgressBar } from 'react-bootstrap';
 import { browserHistory } from 'react-router';
 
-import { isNonEmptyObject } from '../../../utils/ObjectUtils';
+import { isNonEmptyObject, isDefinedNotNull } from '../../../utils/ObjectUtils';
 import { YBButton } from '../../common/forms/fields';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import {
@@ -108,13 +108,28 @@ export default class UniverseStatus extends Component {
       universeStatus.state === UniverseState.BAD ||
       universeStatus.state === UniverseState.WARNING
     ) {
-      const currentUniverseFailedTask = customerTaskList?.filter((task) => {
-        return (
-          task.targetUUID === currentUniverse.universeUUID &&
-          (task.status === 'Failure' || task.status === 'Aborted')
-        );
-      });
-      const failedTask = currentUniverseFailedTask?.[0];
+      const currentUniverseFailedTask = () => {
+        // Find the latest task (first in the list) for this universe.
+        const latestTask = customerTaskList?.find((task) => {
+          return task.targetUUID === currentUniverse.universeUUID;
+        });
+
+        if (latestTask?.status === 'Failure' || latestTask?.status === 'Aborted') {
+          return latestTask;
+        }
+        const universeDetails = currentUniverse.universeDetails;
+        // Last universe task succeeded, but there can be a placement modification task failure.
+        if (isDefinedNotNull(universeDetails.placementModificationTaskUuid)) {
+          return customerTaskList?.find((task) => {
+            return (
+              task.targetUUID === currentUniverse.universeUUID &&
+              task.id === universeDetails.placementModificationTaskUuid
+            );
+          });
+        }
+        return null;
+      };
+      const failedTask = currentUniverseFailedTask();
       statusDisplay = (
         <div className={showLabelText ? 'status-error' : ''}>
           <i className="fa fa-warning" />
