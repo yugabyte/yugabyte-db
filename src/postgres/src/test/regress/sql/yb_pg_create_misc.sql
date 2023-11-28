@@ -8,4 +8,4 @@
 
 INSERT INTO tenk2 SELECT * FROM tenk1;
 
-SELECT * INTO TABLE onek2 FROM onek;
+CREATE TABLE onek2 AS SELECT * FROM onek;
