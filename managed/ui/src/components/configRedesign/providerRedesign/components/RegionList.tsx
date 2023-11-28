@@ -16,6 +16,8 @@ import { ProviderCode, CloudVendorProviders } from '../constants';
 import { K8sRegionField } from '../forms/configureRegion/ConfigureK8sRegionModal';
 import { ConfigureOnPremRegionFormValues } from '../forms/configureRegion/ConfigureOnPremRegionModal';
 import { RegionOperation } from '../forms/configureRegion/constants';
+import { getRegionToInUseAz } from '../utils';
+import { UniverseItem } from '../providerView/providerDetails/UniverseTable';
 
 import { SupportedRegionField } from '../forms/configureRegion/types';
 
@@ -25,10 +27,12 @@ interface RegionListCommmonProps {
   showAddRegionFormModal: () => void;
   showEditRegionFormModal: (regionOperation: RegionOperation) => void;
   showDeleteRegionModal: () => void;
-  isProviderInUse: boolean;
+  disabled: boolean;
 
+  providerUuid?: string;
   existingRegions?: string[];
-  disabled?: boolean;
+  linkedUniverses?: UniverseItem[];
+  isEditInUseProviderEnabled?: boolean;
   isError?: boolean;
 }
 interface CloudVendorRegionListProps extends RegionListCommmonProps {
@@ -82,8 +86,10 @@ export const RegionList = (props: RegionListProps) => {
 };
 
 const contextualHelpers = ({
+  providerUuid,
   disabled,
-  isProviderInUse,
+  linkedUniverses = [],
+  isEditInUseProviderEnabled = false,
   existingRegions,
   providerCode,
   regions,
@@ -91,6 +97,10 @@ const contextualHelpers = ({
   showEditRegionFormModal,
   showDeleteRegionModal
 }: RegionListProps) => {
+  const isProviderInUse = linkedUniverses.length > 0;
+  const regionToInUseAz = providerUuid
+    ? getRegionToInUseAz(providerUuid, linkedUniverses)
+    : new Map<string, Set<String>>();
   switch (providerCode) {
     case ProviderCode.AWS:
     case ProviderCode.AZU:
@@ -114,9 +124,10 @@ const contextualHelpers = ({
       const formatZones = (zones: typeof regions[number]['zones']) =>
         pluralize('zone', zones.length, true);
       const formatRegionActions = (_: unknown, row: CloudVendorRegionField) => {
+        const isRegionInUse = !!regionToInUseAz.get(row.code);
         return (
           <div className={styles.buttonContainer}>
-            {isProviderInUse ? (
+            {isProviderInUse && !isEditInUseProviderEnabled ? (
               <YBButton
                 btnText="View"
                 btnClass="btn btn-default"
@@ -128,7 +139,7 @@ const contextualHelpers = ({
               <YBButton
                 className={clsx(disabled && styles.disabledButton)}
                 btnIcon="fa fa-pencil"
-                btnText={isProviderInUse ? 'View' : 'Edit'}
+                btnText="Edit"
                 btnClass="btn btn-default"
                 btnType="button"
                 onClick={() => handleEditRegion(row)}
@@ -143,7 +154,7 @@ const contextualHelpers = ({
               btnClass="btn btn-default"
               btnType="button"
               onClick={() => handleDeleteRegion(row)}
-              disabled={disabled}
+              disabled={disabled || isRegionInUse}
               data-testid="RegionList-DeleteRegion"
             />
           </div>
@@ -176,9 +187,10 @@ const contextualHelpers = ({
       const formatZones = (zones: typeof regions[number]['zones']) =>
         pluralize('zone', zones.length, true);
       const formatRegionActions = (_: unknown, row: K8sRegionField) => {
+        const isRegionInUse = !!regionToInUseAz.get(row.code);
         return (
           <div className={styles.buttonContainer}>
-            {isProviderInUse ? (
+            {isProviderInUse && !isEditInUseProviderEnabled ? (
               <YBButton
                 btnText="View"
                 btnClass="btn btn-default"
@@ -190,7 +202,7 @@ const contextualHelpers = ({
               <YBButton
                 className={clsx(disabled && styles.disabledButton)}
                 btnIcon="fa fa-pencil"
-                btnText={isProviderInUse ? 'View' : 'Edit'}
+                btnText="Edit"
                 btnClass="btn btn-default"
                 btnType="button"
                 onClick={() => handleEditRegion(row)}
@@ -205,7 +217,7 @@ const contextualHelpers = ({
               btnClass="btn btn-default"
               btnType="button"
               onClick={() => handleDeleteRegion(row)}
-              disabled={disabled}
+              disabled={disabled || isRegionInUse}
               data-testid="RegionList-DeleteRegion"
             />
           </div>
@@ -238,9 +250,10 @@ const contextualHelpers = ({
       const formatZones = (zones: typeof regions[number]['zones']) =>
         pluralize('zone', zones.length, true);
       const formatRegionActions = (_: unknown, row: ConfigureOnPremRegionFormValues) => {
+        const isRegionInUse = !!regionToInUseAz.get(row.code);
         return (
           <div className={styles.buttonContainer}>
-            {isProviderInUse ? (
+            {isProviderInUse && !isEditInUseProviderEnabled ? (
               <YBButton
                 btnText="View"
                 btnClass="btn btn-default"
@@ -252,7 +265,7 @@ const contextualHelpers = ({
               <YBButton
                 className={clsx(disabled && styles.disabledButton)}
                 btnIcon="fa fa-pencil"
-                btnText={isProviderInUse ? 'View' : 'Edit'}
+                btnText="Edit"
                 btnClass="btn btn-default"
                 btnType="button"
                 onClick={() => handleEditRegion(row)}
@@ -267,7 +280,7 @@ const contextualHelpers = ({
               btnClass="btn btn-default"
               btnType="button"
               onClick={() => handleDeleteRegion(row)}
-              disabled={disabled}
+              disabled={disabled || isRegionInUse}
               data-testid="RegionList-DeleteRegion"
             />
           </div>

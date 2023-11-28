@@ -110,6 +110,16 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
               + "view and improves the provider creation form for AWS, AZU, GCP, and K8s",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableInUseProviderEditing =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.edit_in_use_provider",
+          ScopeType.CUSTOMER,
+          "Enable partial editing of in use providers",
+          "A subset of fields from in use providers can be edited. Users can edit in use "
+              + "providers directly through the YBA API. This config is used to enable this "
+              + "functionality through YBA UI as well.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> useK8CustomResources =
       new ConfKeyInfo<>(
           "yb.ui.feature_flags.k8s_custom_resources",

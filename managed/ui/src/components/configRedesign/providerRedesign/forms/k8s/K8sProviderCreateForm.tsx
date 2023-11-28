@@ -1,3 +1,4 @@
+// @ts-ignore
 /*
  * Copyright 2023 YugaByte, Inc. and Contributors
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License")
@@ -379,7 +380,6 @@ export const K8sProviderCreateForm = ({
                 showDeleteRegionModal={showDeleteRegionModal}
                 disabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
-                isProviderInUse={false}
               />
               {formMethods.formState.errors.regions?.message && (
                 <FormHelperText error={true}>

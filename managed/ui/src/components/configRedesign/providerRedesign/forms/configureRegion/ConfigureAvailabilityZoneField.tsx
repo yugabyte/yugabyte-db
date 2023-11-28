@@ -19,6 +19,8 @@ import { CloudVendorAvailabilityZoneMutation } from '../../types';
 interface ConfigureAvailabilityZoneFieldProps {
   isFormDisabled: boolean;
   zoneCodeOptions: string[] | undefined;
+  inUseZones: Set<String>;
+
   className?: string;
 }
 
@@ -48,9 +50,10 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 export const ConfigureAvailabilityZoneField = ({
+  className,
+  inUseZones,
   isFormDisabled,
-  zoneCodeOptions,
-  className
+  zoneCodeOptions
 }: ConfigureAvailabilityZoneFieldProps) => {
   const classes = useStyles();
   const { control, watch } = useFormContext<ConfigureRegionFormValues>();
@@ -79,31 +82,35 @@ export const ConfigureAvailabilityZoneField = ({
         data-testid="ConfigureAvailabilityZonField-AddZoneButton"
       />
       <div className={classes.zonesContainer}>
-        {fields.map((zone, index) => (
-          <div key={zone.id} className={classes.zoneConfigContainer}>
-            <YBReactSelectField
-              control={control}
-              name={`zones.${index}.code`}
-              options={selectZoneCodeOptions}
-              placeholder="Zone"
-              isDisabled={isFormDisabled}
-            />
-            <YBInputField
-              control={control}
-              name={`zones.${index}.subnet`}
-              placeholder="Subnet"
-              disabled={isFormDisabled}
-              fullWidth
-            />
-            <YBButton
-              className={classes.removeZoneButton}
-              btnIcon="fa fa-trash-o"
-              btnType="button"
-              onClick={() => remove(index)}
-              disabled={isFormDisabled}
-            />
-          </div>
-        ))}
+        {fields.map((zone, index) => {
+          const isZoneInUse = zone?.code?.value !== undefined && inUseZones.has(zone.code.value);
+          const isFieldDisabled = isZoneInUse || isFormDisabled;
+          return (
+            <div key={zone.id} className={classes.zoneConfigContainer}>
+              <YBReactSelectField
+                control={control}
+                name={`zones.${index}.code`}
+                options={selectZoneCodeOptions}
+                placeholder="Zone"
+                isDisabled={isFieldDisabled}
+              />
+              <YBInputField
+                control={control}
+                name={`zones.${index}.subnet`}
+                placeholder="Subnet"
+                disabled={isFieldDisabled}
+                fullWidth
+              />
+              <YBButton
+                className={classes.removeZoneButton}
+                btnIcon="fa fa-trash-o"
+                btnType="button"
+                onClick={() => remove(index)}
+                disabled={isFieldDisabled}
+              />
+            </div>
+          );
+        })}
       </div>
     </div>
   );

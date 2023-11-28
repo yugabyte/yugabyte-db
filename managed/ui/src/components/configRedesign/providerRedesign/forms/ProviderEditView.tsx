@@ -7,6 +7,8 @@
 import React from 'react';
 import { AxiosError } from 'axios';
 import { MutateOptions, useQueryClient } from 'react-query';
+import { toast } from 'react-toastify';
+import { makeStyles } from '@material-ui/core';
 
 import { AWSProviderEditForm } from './aws/AWSProviderEditForm';
 import { AZUProviderEditForm } from './azu/AZUProviderEditForm';
@@ -16,16 +18,16 @@ import { OnPremProviderEditForm } from './onPrem/OnPremProviderEditForm';
 import { ProviderCode } from '../constants';
 import { UseCreateProviderParams, useEditProvider } from '../../../../redesign/helpers/hooks';
 import { YBPBeanValidationError, YBPError, YBPTask } from '../../../../redesign/helpers/dtos';
-import { YBProvider, YBProviderMutation } from '../types';
 import { assertUnreachableCase } from '../../../../utils/errorHandlingUtils';
 import { providerQueryKey } from '../../../../redesign/helpers/api';
 import { fetchTaskUntilItCompletes } from '../../../../actions/xClusterReplication';
-import { toast } from 'react-toastify';
-import { makeStyles } from '@material-ui/core';
+import { UniverseItem } from '../providerView/providerDetails/UniverseTable';
+
+import { YBProvider, YBProviderMutation } from '../types';
 
 interface ProviderEditViewProps {
+  linkedUniverses: UniverseItem[];
   providerConfig: YBProvider;
-  isProviderInUse: boolean;
 }
 
 /**
@@ -55,7 +57,7 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-export const ProviderEditView = ({ isProviderInUse, providerConfig }: ProviderEditViewProps) => {
+export const ProviderEditView = ({ linkedUniverses, providerConfig }: ProviderEditViewProps) => {
   const queryClient = useQueryClient();
   const classes = useStyles();
 
@@ -112,7 +114,7 @@ export const ProviderEditView = ({ isProviderInUse, providerConfig }: ProviderEd
         <AWSProviderEditForm
           providerConfig={providerConfig}
           editProvider={editProvider}
-          isProviderInUse={isProviderInUse}
+          linkedUniverses={linkedUniverses}
         />
       );
     case ProviderCode.GCP:
@@ -120,7 +122,7 @@ export const ProviderEditView = ({ isProviderInUse, providerConfig }: ProviderEd
         <GCPProviderEditForm
           providerConfig={providerConfig}
           editProvider={editProvider}
-          isProviderInUse={isProviderInUse}
+          linkedUniverses={linkedUniverses}
         />
       );
     case ProviderCode.AZU:
@@ -128,7 +130,7 @@ export const ProviderEditView = ({ isProviderInUse, providerConfig }: ProviderEd
         <AZUProviderEditForm
           providerConfig={providerConfig}
           editProvider={editProvider}
-          isProviderInUse={isProviderInUse}
+          linkedUniverses={linkedUniverses}
         />
       );
     case ProviderCode.KUBERNETES:
@@ -136,7 +138,7 @@ export const ProviderEditView = ({ isProviderInUse, providerConfig }: ProviderEd
         <K8sProviderEditForm
           providerConfig={providerConfig}
           editProvider={editProvider}
-          isProviderInUse={isProviderInUse}
+          linkedUniverses={linkedUniverses}
         />
       );
     case ProviderCode.ON_PREM:
@@ -144,7 +146,7 @@ export const ProviderEditView = ({ isProviderInUse, providerConfig }: ProviderEd
         <OnPremProviderEditForm
           providerConfig={providerConfig}
           editProvider={editProvider}
-          isProviderInUse={isProviderInUse}
+          linkedUniverses={linkedUniverses}
         />
       );
     default: {

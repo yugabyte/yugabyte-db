@@ -212,7 +212,6 @@ export const OnPremProviderCreateForm = ({
                 showDeleteRegionModal={showDeleteRegionModal}
                 disabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
-                isProviderInUse={false}
               />
               {formMethods.formState.errors.regions?.message ? (
                 <FormHelperText error={true}>

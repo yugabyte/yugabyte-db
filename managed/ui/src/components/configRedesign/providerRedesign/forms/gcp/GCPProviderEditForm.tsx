@@ -37,6 +37,7 @@ import {
   deleteItem,
   editItem,
   generateLowerCaseAlphanumericId,
+  getIsFieldDisabled,
   getIsFormDisabled,
   readFileAsText
 } from '../utils';
@@ -45,21 +46,23 @@ import { ACCEPTABLE_CHARS } from '../../../../config/constants';
 import { FormField } from '../components/FormField';
 import { FieldLabel } from '../components/FieldLabel';
 import { YBErrorIndicator, YBLoading } from '../../../../common/indicators';
-import { api, hostInfoQueryKey } from '../../../../../redesign/helpers/api';
+import { api, hostInfoQueryKey, runtimeConfigQueryKey } from '../../../../../redesign/helpers/api';
 import {
   findExistingRegion,
   getDeletedRegions,
+  getInUseAzs,
   getLatestAccessKey,
   getNtpSetupType,
   getYBAHost
 } from '../../utils';
-import { YBAHost } from '../../../../../redesign/helpers/constants';
+import { RuntimeConfigKey, YBAHost } from '../../../../../redesign/helpers/constants';
 import { RegionOperation } from '../configureRegion/constants';
 import { toast } from 'react-toastify';
 import { assertUnreachableCase } from '../../../../../utils/errorHandlingUtils';
 import { EditProvider } from '../ProviderEditView';
 import { VersionWarningBanner } from '../components/VersionWarningBanner';
 import { NTP_SERVER_REGEX } from '../constants';
+import { UniverseItem } from '../../providerView/providerDetails/UniverseTable';
 
 import {
   GCPRegionMutation,
@@ -72,11 +75,11 @@ import {
 
 interface GCPProviderEditFormProps {
   editProvider: EditProvider;
-  isProviderInUse: boolean;
+  linkedUniverses: UniverseItem[];
   providerConfig: GCPProvider;
 }
 
-interface GCPProviderEditFormFieldValues {
+export interface GCPProviderEditFormFieldValues {
   dbNodePublicInternetAccess: boolean;
   destVpcId: string;
   editCloudCredentials: boolean;
@@ -154,7 +157,7 @@ const FORM_NAME = 'GCPProviderEditForm';
 
 export const GCPProviderEditForm = ({
   editProvider,
-  isProviderInUse,
+  linkedUniverses,
   providerConfig
 }: GCPProviderEditFormProps) => {
   const [isRegionFormModalOpen, setIsRegionFormModalOpen] = useState<boolean>(false);
@@ -168,13 +171,28 @@ export const GCPProviderEditForm = ({
     resolver: yupResolver(VALIDATION_SCHEMA)
   });
 
+  const customerUUID = localStorage.getItem('customerId') ?? '';
+  const customerRuntimeConfigQuery = useQuery(
+    runtimeConfigQueryKey.customerScope(customerUUID),
+    () => api.fetchRuntimeConfigs(customerUUID, true)
+  );
   const hostInfoQuery = useQuery(hostInfoQueryKey.ALL, () => api.fetchHostInfo());
 
-  if (hostInfoQuery.isLoading || hostInfoQuery.isIdle) {
-    return <YBLoading />;
-  }
   if (hostInfoQuery.isError) {
     return <YBErrorIndicator customErrorMessage="Error fetching host info." />;
+  }
+  if (customerRuntimeConfigQuery.isError) {
+    return (
+      <YBErrorIndicator message="Error fetching runtime configurations for current customer." />
+    );
+  }
+  if (
+    hostInfoQuery.isLoading ||
+    hostInfoQuery.isIdle ||
+    customerRuntimeConfigQuery.isLoading ||
+    customerRuntimeConfigQuery.isIdle
+  ) {
+    return <YBLoading />;
   }
 
   const onFormSubmit: SubmitHandler<GCPProviderEditFormFieldValues> = async (formValues) => {
@@ -278,7 +296,20 @@ export const GCPProviderEditForm = ({
     : providerConfig.details.cloudInfo.gcp.gceApplicationCredentials?.client_email;
   const latestAccessKey = getLatestAccessKey(providerConfig.allAccessKeys);
   const existingRegions = providerConfig.regions.map((region) => region.code);
-  const isFormDisabled = getIsFormDisabled(formMethods.formState, isProviderInUse, providerConfig);
+  const runtimeConfigEntries = customerRuntimeConfigQuery.data.configEntries ?? [];
+  /**
+   * In use zones for selected region.
+   */
+  const inUseZones = getInUseAzs(providerConfig.uuid, linkedUniverses, regionSelection?.code);
+  const isEditInUseProviderEnabled = runtimeConfigEntries.some(
+    (config: any) =>
+      config.key === RuntimeConfigKey.EDIT_IN_USE_PORIVDER_UI_FEATURE_FLAG &&
+      config.value === 'true'
+  );
+  const isProviderInUse = linkedUniverses.length > 0;
+  const isFormDisabled =
+    (!isEditInUseProviderEnabled && isProviderInUse) ||
+    getIsFormDisabled(formMethods.formState, providerConfig);
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
@@ -292,7 +323,12 @@ export const GCPProviderEditForm = ({
             <YBInputField
               control={formMethods.control}
               name="providerName"
-              disabled={isFormDisabled}
+              disabled={getIsFieldDisabled(
+                ProviderCode.GCP,
+                'providerName',
+                isFormDisabled,
+                isProviderInUse
+              )}
               fullWidth
             />
           </FormField>
@@ -315,7 +351,12 @@ export const GCPProviderEditForm = ({
                 <YBToggleField
                   name="editCloudCredentials"
                   control={formMethods.control}
-                  disabled={isFormDisabled}
+                  disabled={getIsFieldDisabled(
+                    ProviderCode.GCP,
+                    'editCloudCredentials',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
                 />
               </FormField>
               {editCloudCredentials && (
@@ -327,7 +368,12 @@ export const GCPProviderEditForm = ({
                       control={formMethods.control}
                       options={credentialOptions}
                       orientation={RadioGroupOrientation.HORIZONTAL}
-                      isDisabled={isFormDisabled}
+                      isDisabled={getIsFieldDisabled(
+                        ProviderCode.GCP,
+                        'providerCredentialType',
+                        isFormDisabled,
+                        isProviderInUse
+                      )}
                     />
                   </FormField>
                   {providerCredentialType === ProviderCredentialType.SPECIFIED_SERVICE_ACCOUNT && (
@@ -339,7 +385,12 @@ export const GCPProviderEditForm = ({
                         actionButtonText="Upload Google service account JSON"
                         multipleFiles={false}
                         showHelpText={false}
-                        disabled={isFormDisabled}
+                        disabled={getIsFieldDisabled(
+                          ProviderCode.GCP,
+                          'googleServiceAccount',
+                          isFormDisabled,
+                          isProviderInUse
+                        )}
                       />
                     </FormField>
                   )}
@@ -348,7 +399,12 @@ export const GCPProviderEditForm = ({
                     <YBInputField
                       control={formMethods.control}
                       name="gceProject"
-                      disabled={isFormDisabled}
+                      disabled={getIsFieldDisabled(
+                        ProviderCode.GCP,
+                        'gceProject',
+                        isFormDisabled,
+                        isProviderInUse
+                      )}
                       fullWidth
                     />
                   </FormField>
@@ -371,7 +427,12 @@ export const GCPProviderEditForm = ({
                       formMethods.setValue('destVpcId', '');
                     }
                   }}
-                  isDisabled={isFormDisabled}
+                  isDisabled={getIsFieldDisabled(
+                    ProviderCode.GCP,
+                    'vpcSetupType',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
                 />
               </FormField>
               {(vpcSetupType === VPCSetupType.EXISTING || vpcSetupType === VPCSetupType.NEW) && (
@@ -380,7 +441,12 @@ export const GCPProviderEditForm = ({
                   <YBInputField
                     control={formMethods.control}
                     name="destVpcId"
-                    disabled={isFormDisabled}
+                    disabled={getIsFieldDisabled(
+                      ProviderCode.GCP,
+                      'destVpcId',
+                      isFormDisabled,
+                      isProviderInUse
+                    )}
                     fullWidth
                   />
                 </FormField>
@@ -396,7 +462,12 @@ export const GCPProviderEditForm = ({
                     btnClass="btn btn-default"
                     btnType="button"
                     onClick={showAddRegionFormModal}
-                    disabled={isFormDisabled}
+                    disabled={getIsFieldDisabled(
+                      ProviderCode.GCP,
+                      'regions',
+                      isFormDisabled,
+                      isProviderInUse
+                    )}
                     data-testid={`${FORM_NAME}-AddRegionButton`}
                   />
                 ) : null
@@ -404,15 +475,22 @@ export const GCPProviderEditForm = ({
             >
               <RegionList
                 providerCode={ProviderCode.GCP}
+                providerUuid={providerConfig.uuid}
                 regions={regions}
                 existingRegions={existingRegions}
                 setRegionSelection={setRegionSelection}
                 showAddRegionFormModal={showAddRegionFormModal}
                 showEditRegionFormModal={showEditRegionFormModal}
                 showDeleteRegionModal={showDeleteRegionModal}
-                disabled={isFormDisabled}
+                disabled={getIsFieldDisabled(
+                  ProviderCode.GCP,
+                  'regions',
+                  isFormDisabled,
+                  isProviderInUse
+                )}
                 isError={!!formMethods.formState.errors.regions}
-                isProviderInUse={isProviderInUse}
+                linkedUniverses={linkedUniverses}
+                isEditInUseProviderEnabled={isEditInUseProviderEnabled}
               />
               {formMethods.formState.errors.regions?.message && (
                 <FormHelperText error={true}>
@@ -426,7 +504,12 @@ export const GCPProviderEditForm = ({
                 <YBInputField
                   control={formMethods.control}
                   name="sshUser"
-                  disabled={isFormDisabled}
+                  disabled={getIsFieldDisabled(
+                    ProviderCode.GCP,
+                    'sshUser',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
                   fullWidth
                 />
               </FormField>
@@ -437,7 +520,12 @@ export const GCPProviderEditForm = ({
                   name="sshPort"
                   type="number"
                   inputProps={{ min: 1, max: 65535 }}
-                  disabled={isFormDisabled}
+                  disabled={getIsFieldDisabled(
+                    ProviderCode.GCP,
+                    'sshPort',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
                   fullWidth
                 />
               </FormField>
@@ -454,7 +542,12 @@ export const GCPProviderEditForm = ({
                 <YBToggleField
                   name="editSSHKeypair"
                   control={formMethods.control}
-                  disabled={isFormDisabled}
+                  disabled={getIsFieldDisabled(
+                    ProviderCode.GCP,
+                    'editSSHKeypair',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
                 />
               </FormField>
               {editSSHKeypair && (
@@ -466,7 +559,12 @@ export const GCPProviderEditForm = ({
                       control={formMethods.control}
                       options={KEY_PAIR_MANAGEMENT_OPTIONS}
                       orientation={RadioGroupOrientation.HORIZONTAL}
-                      isDisabled={isFormDisabled}
+                      isDisabled={getIsFieldDisabled(
+                        ProviderCode.GCP,
+                        'sshKeypairManagement',
+                        isFormDisabled,
+                        isProviderInUse
+                      )}
                     />
                   </FormField>
                   {keyPairManagement === KeyPairManagement.SELF_MANAGED && (
@@ -476,7 +574,12 @@ export const GCPProviderEditForm = ({
                         <YBInputField
                           control={formMethods.control}
                           name="sshKeypairName"
-                          disabled={isFormDisabled}
+                          disabled={getIsFieldDisabled(
+                            ProviderCode.GCP,
+                            'sshKeypairName',
+                            isFormDisabled,
+                            isProviderInUse
+                          )}
                           fullWidth
                         />
                       </FormField>
@@ -488,7 +591,12 @@ export const GCPProviderEditForm = ({
                           actionButtonText="Upload SSH Key PEM File"
                           multipleFiles={false}
                           showHelpText={false}
-                          disabled={isFormDisabled}
+                          disabled={getIsFieldDisabled(
+                            ProviderCode.GCP,
+                            'sshPrivateKeyContent',
+                            isFormDisabled,
+                            isProviderInUse
+                          )}
                         />
                       </FormField>
                     </>
@@ -503,7 +611,12 @@ export const GCPProviderEditForm = ({
                   control={formMethods.control}
                   name="ybFirewallTags"
                   placeholder="my-firewall-tag-1,my-firewall-tag-2"
-                  disabled={isFormDisabled}
+                  disabled={getIsFieldDisabled(
+                    ProviderCode.GCP,
+                    'ybFirewallTags',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
                   fullWidth
                 />
               </FormField>
@@ -517,12 +630,25 @@ export const GCPProviderEditForm = ({
                 <YBToggleField
                   name="dbNodePublicInternetAccess"
                   control={formMethods.control}
-                  disabled={isFormDisabled}
+                  disabled={getIsFieldDisabled(
+                    ProviderCode.GCP,
+                    'dbNodePublicInternetAccess',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
                 />
               </FormField>
               <FormField>
                 <FieldLabel>NTP Setup</FieldLabel>
-                <NTPConfigField isDisabled={isFormDisabled} providerCode={ProviderCode.GCP} />
+                <NTPConfigField
+                  isDisabled={getIsFieldDisabled(
+                    ProviderCode.GCP,
+                    'ntpServers',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
+                  providerCode={ProviderCode.GCP}
+                />
               </FormField>
             </FieldGroup>
             {(formMethods.formState.isValidating || formMethods.formState.isSubmitting) && (
@@ -553,7 +679,13 @@ export const GCPProviderEditForm = ({
         <ConfigureRegionModal
           configuredRegions={regions}
           isEditProvider={true}
-          isProviderFormDisabled={isFormDisabled}
+          isProviderFormDisabled={getIsFieldDisabled(
+            ProviderCode.GCP,
+            'regions',
+            isFormDisabled,
+            isProviderInUse
+          )}
+          inUseZones={inUseZones}
           onClose={hideRegionFormModal}
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}
@@ -679,17 +811,33 @@ const constructProviderPayload = async (
     providerConfig.allAccessKeys
   );
 
+  const {
+    airGapInstall,
+    cloudInfo,
+    ntpServers,
+    setUpChrony,
+    sshPort,
+    sshUser,
+    ...unexposedProviderDetailFields
+  } = providerConfig.details;
   return {
     code: ProviderCode.GCP,
     name: formValues.providerName,
     ...allAccessKeysPayload,
     details: {
+      ...unexposedProviderDetailFields,
       airGapInstall: !formValues.dbNodePublicInternetAccess,
       cloudInfo: {
         [ProviderCode.GCP]: {
-          ...providerConfig.details.cloudInfo.gcp,
           ...vpcConfig,
-          ...(formValues.editCloudCredentials && { ...gcpCredentials }),
+          ...(formValues.editCloudCredentials
+            ? { ...gcpCredentials }
+            : {
+                useHostCredentials: cloudInfo.gcp.useHostCredentials,
+                gceProject: cloudInfo.gcp.gceProject,
+                gceApplicationCredentials: cloudInfo.gcp.gceApplicationCredentials,
+                gceApplicationCredentialsPath: cloudInfo.gcp.gceApplicationCredentialsPath
+              }),
           ...(formValues.ybFirewallTags && { ybFirewallTags: formValues.ybFirewallTags })
         }
       },

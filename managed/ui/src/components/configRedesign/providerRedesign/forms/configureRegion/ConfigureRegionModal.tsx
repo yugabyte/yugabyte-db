@@ -45,6 +45,7 @@ interface ConfigureRegionModalProps extends YBModalProps {
   isEditProvider: boolean;
   isProviderFormDisabled: boolean;
 
+  inUseZones?: Set<string>;
   ybImageType?: YBImageType;
   regionSelection?: CloudVendorRegionField;
   vpcSetupType?: VPCSetupType;
@@ -91,6 +92,7 @@ export const ConfigureRegionModal = ({
   configuredRegions,
   isEditProvider,
   isProviderFormDisabled,
+  inUseZones = new Set<string>(),
   onClose,
   onRegionSubmit,
   providerCode,
@@ -232,6 +234,8 @@ export const ConfigureRegionModal = ({
   };
 
   const isFormDisabled = isProviderFormDisabled || getIsRegionFormDisabled(formMethods.formState);
+  const isRegionInUse = inUseZones.size > 0;
+  const isRegionFieldDisabled = isFormDisabled || isRegionInUse;
   return (
     <FormProvider {...formMethods}>
       <YBModal
@@ -260,7 +264,7 @@ export const ConfigureRegionModal = ({
               name="regionData"
               options={regionOptions}
               onChange={onRegionChange}
-              isDisabled={isFormDisabled}
+              isDisabled={isRegionFieldDisabled}
             />
           </div>
         )}
@@ -271,7 +275,7 @@ export const ConfigureRegionModal = ({
               control={formMethods.control}
               name="vnet"
               placeholder="Enter..."
-              disabled={isFormDisabled}
+              disabled={isRegionFieldDisabled}
               fullWidth
             />
           </div>
@@ -283,7 +287,7 @@ export const ConfigureRegionModal = ({
               control={formMethods.control}
               name="securityGroupId"
               placeholder="Enter..."
-              disabled={isFormDisabled}
+              disabled={isRegionFieldDisabled}
               fullWidth
             />
           </div>
@@ -297,6 +301,7 @@ export const ConfigureRegionModal = ({
               placeholder="Enter..."
               disabled={
                 isFormDisabled ||
+                isRegionFieldDisabled ||
                 (providerCode === ProviderCode.AWS &&
                   regionOperation === RegionOperation.EDIT_EXISTING)
               }
@@ -311,7 +316,7 @@ export const ConfigureRegionModal = ({
               control={formMethods.control}
               name="sharedSubnet"
               placeholder="Enter..."
-              disabled={isFormDisabled}
+              disabled={isRegionFieldDisabled}
               fullWidth
             />
           </div>
@@ -323,7 +328,7 @@ export const ConfigureRegionModal = ({
               control={formMethods.control}
               name="instanceTemplate"
               placeholder="Enter..."
-              disabled={isFormDisabled}
+              disabled={isRegionFieldDisabled}
               fullWidth
             />
           </div>
@@ -334,6 +339,7 @@ export const ConfigureRegionModal = ({
               className={classes.manageAvailabilityZoneField}
               zoneCodeOptions={selectedRegion?.value?.zoneOptions}
               isFormDisabled={isFormDisabled}
+              inUseZones={inUseZones}
             />
             {formMethods.formState.errors.zones?.message && (
               <FormHelperText error={true}>

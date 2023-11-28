@@ -300,7 +300,6 @@ export const AZUProviderCreateForm = ({
                 showDeleteRegionModal={showDeleteRegionModal}
                 disabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
-                isProviderInUse={false}
               />
               {formMethods.formState.errors.regions?.message && (
                 <FormHelperText error={true}>
@@ -460,7 +459,9 @@ const constructProviderPayload = async (formValues: AZUProviderCreateFormFieldVa
           azuRG: formValues.azuRG,
           ...(formValues.azuNetworkRG && { azuNetworkRG: formValues.azuNetworkRG }),
           azuSubscriptionId: formValues.azuSubscriptionId,
-          ...(formValues.azuNetworkSubscriptionId && { azuNetworkSubscriptionId: formValues.azuNetworkSubscriptionId }),
+          ...(formValues.azuNetworkSubscriptionId && {
+            azuNetworkSubscriptionId: formValues.azuNetworkSubscriptionId
+          }),
           azuTenantId: formValues.azuTenantId
         }
       },
