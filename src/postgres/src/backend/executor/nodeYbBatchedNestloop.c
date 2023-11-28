@@ -338,6 +338,16 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 	ExprContext *econtext = GetPerTupleExprContext(estate);
 	TupleDesc outer_tdesc = outerPlanState(bnlstate)->ps_ResultTupleDesc;
 
+	const TupleTableSlotOps * innerops = bnlstate->js.ps.innerops;
+	bool inneropsfixed = bnlstate->js.ps.inneropsfixed;
+	bool inneropsset = bnlstate->js.ps.inneropsset;
+	bnlstate->js.ps.innerops = &TTSOpsMinimalTuple;
+	bnlstate->js.ps.inneropsfixed = true;
+	bnlstate->js.ps.inneropsset = true;
+
+	bnlstate->js.ps.ps_ExprContext->ecxt_outertuple =
+		ExecInitExtraTupleSlot(estate, outer_tdesc, &TTSOpsMinimalTuple);
+
 	Assert(UseHash(plan, bnlstate));
 
 	int num_hashClauseInfos = plan->num_hashClauseInfos;
@@ -387,6 +397,10 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 
 	bnlstate->hashiterinit = false;
 	bnlstate->current_hash_entry = NULL;
+
+	bnlstate->js.ps.innerops = innerops;
+	bnlstate->js.ps.inneropsfixed = inneropsfixed;
+	bnlstate->js.ps.inneropsset = inneropsset;
 }
 
 bool
@@ -470,7 +484,7 @@ GetNewOuterTupleHash(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 			continue;
 		}
 
-		ExecForceStoreMinimalTuple(btinfo->tuple, econtext->ecxt_outertuple, false);
+		ExecStoreMinimalTuple(btinfo->tuple, econtext->ecxt_outertuple, false);
 
 		bnlstate->current_ht_tuple = btinfo;
 
@@ -549,7 +563,6 @@ AddTupleToOuterBatchHash(YbBatchedNestLoopState *bnlstate,
 
 	binfo->tuples = list_append_unique_ptr(tl, tupinfo);
 	binfo->current = list_head(binfo->tuples);
-	ExecForceStoreMinimalTuple(tuple, slot, false);
 	MemoryContextSwitchTo(cxt);
 }
 
@@ -728,9 +741,8 @@ CreateBatch(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 		}
 		else
 		{
-			elog(DEBUG2, "saving new outer tuple information");
-			econtext->ecxt_outertuple = outerTupleSlot;
-			LOCAL_JOIN_FN(AddTupleToOuterBatch, bnlstate, outerTupleSlot);
+			ExecCopySlot(econtext->ecxt_outertuple, outerTupleSlot);
+			LOCAL_JOIN_FN(AddTupleToOuterBatch, bnlstate, econtext->ecxt_outertuple);
 		}
 
 		/*
@@ -839,6 +851,14 @@ ExecInitYbBatchedNestLoop(YbBatchedNestLoop *plan, EState *estate, int eflags)
 	else
 		eflags &= ~EXEC_FLAG_REWIND;
 	innerPlanState(bnlstate) = ExecInitNode(innerPlan(plan), estate, eflags);
+
+	if (UseHash(plan, bnlstate))
+	{
+		/* the outer tuple isn't the child's tuple, but always a minimal tuple */
+		bnlstate->js.ps.outerops = &TTSOpsMinimalTuple;
+		bnlstate->js.ps.outeropsfixed = true;
+		bnlstate->js.ps.outeropsset = true;
+	}
 
 	/*
 	 * Initialize result slot, type and projection.
