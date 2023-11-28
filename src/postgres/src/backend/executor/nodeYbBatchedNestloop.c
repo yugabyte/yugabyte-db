@@ -345,9 +345,6 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 	bnlstate->js.ps.inneropsfixed = true;
 	bnlstate->js.ps.inneropsset = true;
 
-	bnlstate->js.ps.ps_ExprContext->ecxt_outertuple =
-		ExecInitExtraTupleSlot(estate, outer_tdesc, &TTSOpsMinimalTuple);
-
 	Assert(UseHash(plan, bnlstate));
 
 	int num_hashClauseInfos = plan->num_hashClauseInfos;
@@ -852,13 +849,13 @@ ExecInitYbBatchedNestLoop(YbBatchedNestLoop *plan, EState *estate, int eflags)
 		eflags &= ~EXEC_FLAG_REWIND;
 	innerPlanState(bnlstate) = ExecInitNode(innerPlan(plan), estate, eflags);
 
-	if (UseHash(plan, bnlstate))
-	{
-		/* the outer tuple isn't the child's tuple, but always a minimal tuple */
-		bnlstate->js.ps.outerops = &TTSOpsMinimalTuple;
-		bnlstate->js.ps.outeropsfixed = true;
-		bnlstate->js.ps.outeropsset = true;
-	}
+	/* the outer tuple isn't the child's tuple, but always a minimal tuple */
+	bnlstate->js.ps.outerops = &TTSOpsMinimalTuple;
+	bnlstate->js.ps.outeropsfixed = true;
+	bnlstate->js.ps.outeropsset = true;
+
+	bnlstate->js.ps.ps_ExprContext->ecxt_outertuple =
+		ExecInitExtraTupleSlot(estate, outerPlanState(bnlstate)->ps_ResultTupleDesc, &TTSOpsMinimalTuple);
 
 	/*
 	 * Initialize result slot, type and projection.
