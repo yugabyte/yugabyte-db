@@ -144,7 +144,8 @@ class PgClient::Impl {
 
   Status Start(rpc::ProxyCache* proxy_cache,
                rpc::Scheduler* scheduler,
-               const tserver::TServerSharedObject& tserver_shared_object) {
+               const tserver::TServerSharedObject& tserver_shared_object,
+               std::optional<uint64_t> session_id) {
     CHECK_NOTNULL(&tserver_shared_object);
     MonoDelta resolve_cache_timeout;
     const auto& tserver_shared_data_ = *tserver_shared_object;
@@ -158,9 +159,13 @@ class PgClient::Impl {
     proxy_ = std::make_unique<tserver::PgClientServiceProxy>(
         proxy_cache, host_port, nullptr /* protocol */, resolve_cache_timeout);
 
-    auto future = create_session_promise_.get_future();
-    Heartbeat(true);
-    session_id_ = VERIFY_RESULT(future.get());
+    if (!session_id) {
+      auto future = create_session_promise_.get_future();
+      Heartbeat(true);
+      session_id_ = VERIFY_RESULT(future.get());
+    } else {
+      session_id_ = *session_id;
+    }
     LOG_WITH_PREFIX(INFO) << "Session id acquired. Postgres backend pid: " << getpid();
     heartbeat_poller_.Start(scheduler, FLAGS_pg_client_heartbeat_interval_ms * 1ms);
     return Status::OK();
@@ -753,10 +758,10 @@ class PgClient::Impl {
     return Status::OK();
   }
 
-  Result<boost::container::small_vector<RefCntSlice, 2>> GetTableKeyRanges(
+  Result<TableKeyRangesWithHt> GetTableKeyRanges(
       const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
       uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward,
-      uint32_t max_key_length) {
+      uint32_t max_key_length, uint64_t read_time_serial_no) {
     tserver::PgGetTableKeyRangesRequestPB req;
     tserver::PgGetTableKeyRangesResponsePB resp;
     req.set_session_id(session_id_);
@@ -771,6 +776,7 @@ class PgClient::Impl {
     req.set_range_size_bytes(range_size_bytes);
     req.set_is_forward(is_forward);
     req.set_max_key_length(max_key_length);
+    req.set_read_time_serial_no(read_time_serial_no);
 
     auto* controller = PrepareController();
 
@@ -779,9 +785,11 @@ class PgClient::Impl {
       return StatusFromPB(resp.status());
     }
 
-    boost::container::small_vector<RefCntSlice, 2> result;
+    TableKeyRangesWithHt result;
+    result.current_ht = HybridTime(resp.current_ht());
+
     for (size_t i = 0; i < controller->GetSidecarsCount(); ++i) {
-      result.push_back(VERIFY_RESULT(controller->ExtractSidecar(i)));
+      result.encoded_range_end_keys.push_back(VERIFY_RESULT(controller->ExtractSidecar(i)));
     }
     return result;
   }
@@ -902,8 +910,9 @@ PgClient::~PgClient() {
 
 Status PgClient::Start(
     rpc::ProxyCache* proxy_cache, rpc::Scheduler* scheduler,
-    const tserver::TServerSharedObject& tserver_shared_object) {
-  return impl_->Start(proxy_cache, scheduler, tserver_shared_object);
+    const tserver::TServerSharedObject& tserver_shared_object,
+    std::optional<uint64_t> session_id) {
+  return impl_->Start(proxy_cache, scheduler, tserver_shared_object, session_id);
 }
 
 void PgClient::Shutdown() {
@@ -1077,12 +1086,13 @@ Result<bool> PgClient::IsObjectPartOfXRepl(const PgObjectId& table_id) {
   return impl_->IsObjectPartOfXRepl(table_id);
 }
 
-Result<boost::container::small_vector<RefCntSlice, 2>> PgClient::GetTableKeyRanges(
+Result<TableKeyRangesWithHt> PgClient::GetTableKeyRanges(
     const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
-    uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length) {
+    uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length,
+    uint64_t read_time_serial_no) {
   return impl_->GetTableKeyRanges(
       table_id, lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes, is_forward,
-      max_key_length);
+      max_key_length, read_time_serial_no);
 }
 
 Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> PgClient::GetTserverCatalogVersionInfo(

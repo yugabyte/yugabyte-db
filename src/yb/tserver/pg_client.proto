@@ -788,10 +788,12 @@ message PgGetTableKeyRangesRequestPB {
   uint64 range_size_bytes = 6;
   bool is_forward = 7;
   uint32 max_key_length = 8;
+  uint64 read_time_serial_no = 9;
 }
 
 message PgGetTableKeyRangesResponsePB {
   AppStatusPB status = 1;
+  fixed64 current_ht = 2;
 }
 
 message PgGetNewObjectIdRequestPB {

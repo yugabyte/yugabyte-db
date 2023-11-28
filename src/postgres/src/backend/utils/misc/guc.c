@@ -33,6 +33,7 @@
 #include "access/twophase.h"
 #include "access/xact.h"
 #include "access/xlog_internal.h"
+#include "access/yb_scan.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_authid.h"
 #include "commands/async.h"
@@ -94,7 +95,6 @@
 #include "utils/tzparser.h"
 #include "utils/varlena.h"
 #include "utils/xml.h"
-
 #include "pg_yb_utils.h"
 
 #ifndef PG_KRB_SRVTAB
@@ -3783,6 +3783,16 @@ static struct config_int ConfigureNamesInt[] =
 			NULL, GUC_UNIT_BYTE
 		},
 		&yb_fetch_size_limit,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_parallel_range_rows", PGC_USERSET, QUERY_TUNING,
+			gettext_noop("The number of rows to plan per parallel worker"),
+			NULL
+		},
+		&yb_parallel_range_rows,
 		0, 0, INT_MAX,
 		NULL, NULL, NULL
 	},

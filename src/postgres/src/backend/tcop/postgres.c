@@ -5011,7 +5011,7 @@ PostgresMain(int argc, char *argv[],
 	 * it inside InitPostgres() instead.  In particular, anything that
 	 * involves database access should be there, not here.
 	 */
-	InitPostgres(dbname, InvalidOid, username, InvalidOid, NULL, false);
+	InitPostgres(dbname, InvalidOid, username, InvalidOid, NULL, NULL, false);
 
 	/*
 	 * If the PostmasterContext is still around, recycle the space; we don't

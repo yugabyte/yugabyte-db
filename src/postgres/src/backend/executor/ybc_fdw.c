@@ -141,7 +141,7 @@ ybcGetForeignPaths(PlannerInfo *root,
 													NULL, /* no outer rel either */
 													NULL, /* no extra plan */
 													NULL  /* no options yet */);
-		
+
 		yb_cost_seqscan((Path*) seq_scan_path, root, baserel, NULL);
 		add_path(baserel, (Path*) seq_scan_path);
 	}
@@ -149,7 +149,7 @@ ybcGetForeignPaths(PlannerInfo *root,
 	{
 		Cost startup_cost;
 		Cost total_cost;
-		
+
 		/* Estimate costs */
 		ybcCostEstimate(baserel, YBC_FULL_SCAN_SELECTIVITY,
 						false /* is_backwards scan */,
@@ -482,7 +482,6 @@ ybcIterateForeignScan(ForeignScanState *node)
 	 *
 	 * - YbSeqNext
 	 *   - YbInstantiatePushdownParams
-	 *   - ybc_remote_beginscan
 	 *     - YbDmlAppendQuals/YbDmlAppendColumnRefs
 	 * - IndexScan/IndexNextWithReorder/ExecReScanIndexScan
 	 *   - YbInstantiatePushdownParams

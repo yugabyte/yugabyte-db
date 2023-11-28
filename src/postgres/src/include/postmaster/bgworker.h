@@ -145,6 +145,10 @@ extern void BackgroundWorkerInitializeConnection(const char *dbname, const char 
 /* Just like the above, but specifying database and user by OID. */
 extern void BackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid, uint32 flags);
 
+/* Just like the above, but specifying session to share with main backend. */
+extern void YbBackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid,
+											uint64_t *session_id, uint32 flags);
+
 /*
  * Flags to BackgroundWorkerInitializeConnection et al
  *
