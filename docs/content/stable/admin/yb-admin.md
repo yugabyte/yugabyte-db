@@ -2418,62 +2418,9 @@ yb-admin \
 
 Refer to [Upgrade a deployment](../../manage/upgrade-deployment/) to learn about how to upgrade a YugabyteDB cluster.
 
-Refer to [AutoFlags](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/auto_flags.md) to learn about AutoFlags how protect new features that modify the format of data sent over the wire or stored on-disk.
-
-#### get_auto_flags_config
-
-Returns the current AutoFlags configuration of the universe.
-
-**Syntax**
-
-```sh
-yb-admin \
-    -master_addresses <master-addresses> \
-    get_auto_flags_config
-```
-
-**Example**
-
-```sh
-./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 get_auto_flags_config
-```
-
-If the operation is successful you should see output similar to the following:
-
-```output
-AutoFlags config:
-config_version: 1
-promoted_flags {
-  process_name: "yb-master"
-  flags: "enable_automatic_tablet_splitting"
-  flags: "master_enable_universe_uuid_heartbeat_check"
-  flag_infos {
-    promoted_version: 1
-  }
-  flag_infos {
-    promoted_version: 1
-  }
-}
-promoted_flags {
-  process_name: "yb-tserver"
-  flags: "regular_tablets_data_block_key_value_encoding"
-  flags: "remote_bootstrap_from_leader_only"
-  flags: "ysql_yb_enable_expression_pushdown"
-  flag_infos {
-    promoted_version: 1
-  }
-  flag_infos {
-    promoted_version: 1
-  }
-  flag_infos {
-    promoted_version: 1
-  }
-}
-```
-
 #### promote_auto_flags
 
-After all YugabyteDB processes have been upgraded to the new version, these features can be enabled by promoting their AutoFlags.
+[AutoFlags](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/auto_flags.md) protect new features that modify the format of data sent over the wire or stored on-disk. After all YugabyteDB processes have been upgraded to the new version, these features can be enabled by promoting their AutoFlags.
 
 **Syntax**
 
