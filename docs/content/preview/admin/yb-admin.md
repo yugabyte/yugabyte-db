@@ -2416,8 +2416,6 @@ yb-admin \
 
 ### Upgrade
 
-### Upgrade
-
 Refer to [Upgrade a deployment](../../manage/upgrade-deployment/) to learn about how to upgrade a YugabyteDB cluster.
 
 For information on AutoFlags and how it secures upgrades with new data formats, refer to [AutoFlags](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/auto_flags.md).
