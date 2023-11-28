@@ -1226,6 +1226,13 @@ Status get_wal_retention_secs_action(
   return Status::OK();
 }
 
+const auto get_auto_flags_config_args = "";
+Status get_auto_flags_config_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  RETURN_NOT_OK_PREPEND(client->GetAutoFlagsConfig(), "Unable to get AutoFlags config");
+  return Status::OK();
+}
+
 const auto promote_auto_flags_args =
     "[<max_flags_class> (default kExternal) [<promote_non_runtime_flags> (default true) [force]]]";
 Status promote_auto_flags_action(
@@ -2192,6 +2199,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(upgrade_ysql);
   REGISTER_COMMAND(set_wal_retention_secs);
   REGISTER_COMMAND(get_wal_retention_secs);
+  REGISTER_COMMAND(get_auto_flags_config);
   REGISTER_COMMAND(promote_auto_flags);
   REGISTER_COMMAND(rollback_auto_flags);
   REGISTER_COMMAND(promote_single_auto_flag);

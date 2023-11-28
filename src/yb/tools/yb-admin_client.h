@@ -320,6 +320,8 @@ class ClusterAdminClient {
 
   Status GetWalRetentionSecs(const client::YBTableName& table_name);
 
+  Status GetAutoFlagsConfig();
+
   Status PromoteAutoFlags(
       const std::string& max_flag_class, const bool promote_non_runtime_flags, const bool force);
 
