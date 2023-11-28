@@ -1,5 +1,5 @@
 import { FC, useContext } from 'react';
-import { useQuery } from 'react-query';
+import { useQuery, useQueryClient } from 'react-query';
 import { useSelector } from 'react-redux';
 import { browserHistory } from 'react-router';
 import { useTranslation } from 'react-i18next';
@@ -52,6 +52,8 @@ export const CreateUniverse: FC = () => {
   const globalRuntimeConfigQuery = useQuery(QUERY_KEY.fetchGlobalRunTimeConfigs, () =>
     api.fetchRunTimeConfigs(true)
   );
+
+  const queryClient = useQueryClient();
 
   useEffectOnce(() => {
     initializeForm({
@@ -160,6 +162,9 @@ export const CreateUniverse: FC = () => {
       configurePayload.encryptionAtRestConfig.configUUID = primaryData.instanceConfig.kmsConfig;
     }
     createUniverse({ configurePayload, universeContextData: contextState });
+    setTimeout(()=>{
+      queryClient.invalidateQueries('user_permissions');
+    }, 2000);
   };
 
   if (isLoading) return <YBLoading />;

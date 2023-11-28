@@ -1448,6 +1448,10 @@ YBCStatus YBCPgActiveTransactions(YBCPgSessionTxnInfo *infos, size_t num_infos) 
   return ToYBCStatus(pgapi->GetActiveTransactions(infos, num_infos));
 }
 
+bool YBCPgIsDdlMode() {
+  return pgapi->IsDdlMode();
+}
+
 //------------------------------------------------------------------------------------------------
 // System validation.
 //------------------------------------------------------------------------------------------------

@@ -20,6 +20,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -28,7 +29,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.INTERNAL_SERVER_ERROR;
 import static play.test.Helpers.contentAsString;
 
@@ -47,6 +47,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.rbac.Permission;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
+import com.yugabyte.yw.controllers.handlers.AccessKeyHandler;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AccessKey.KeyInfo;
 import com.yugabyte.yw.models.Customer;
@@ -76,6 +77,8 @@ import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
+import org.mockito.MockitoAnnotations;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
@@ -89,6 +92,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
   Region defaultRegion;
   Role role;
   ResourceDefinition rd1;
+  @InjectMocks private AccessKeyHandler accessKeyHandler;
 
   static final Integer SSH_PORT = 12345;
   static final String DEFAULT_SUDO_SSH_USER = "ssh-user";
@@ -100,6 +104,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
 
   @Before
   public void before() {
+    MockitoAnnotations.initMocks(this);
     defaultCustomer = ModelFactory.testCustomer();
     defaultUser = ModelFactory.testUser(defaultCustomer);
     defaultProvider = ModelFactory.onpremProvider(defaultCustomer);
@@ -918,12 +923,21 @@ public class AccessKeyControllerTest extends FakeDBApplication {
 
   @Test
   public void testDeleteAccessKeyWithValidAccessKeyCode() {
-    AccessKey.create(defaultProvider.getUuid(), "key-code-1", new AccessKey.KeyInfo());
-    Result result = deleteAccessKey(defaultProvider.getUuid(), "key-code-1");
-    assertEquals(OK, result.status());
-    assertAuditEntry(1, defaultCustomer.getUuid());
-    assertThat(
-        contentAsString(result),
-        allOf(notNullValue(), containsString("Deleted KeyCode: key-code-1")));
+    KeyInfo keyInfo = new KeyInfo();
+    keyInfo.publicKey = createTempFile("PUBLIC-KEY");
+    keyInfo.privateKey = createTempFile("PRIVATE-KEY");
+    keyInfo.vaultFile = createTempFile("VAULT-FILE");
+    keyInfo.vaultPasswordFile = createTempFile("VAULT-PASSWORD-FILE");
+    AccessKey accessKey = AccessKey.create(defaultProvider.getUuid(), "key-code-1", keyInfo);
+
+    accessKeyHandler.delete(accessKey);
+    assertTrue(Files.notExists(Paths.get(accessKey.getKeyInfo().publicKey)));
+    assertTrue(Files.notExists(Paths.get(accessKey.getKeyInfo().privateKey)));
+    assertTrue(Files.notExists(Paths.get(accessKey.getKeyInfo().vaultFile)));
+    assertTrue(Files.notExists(Paths.get(accessKey.getKeyInfo().vaultPasswordFile)));
+    Result result =
+        assertPlatformException(
+            () -> AccessKey.getOrBadRequest(defaultProvider.getUuid(), "key-code-1"));
+    assertBadRequest(result, "KeyCode not found: key-code-1");
   }
 }

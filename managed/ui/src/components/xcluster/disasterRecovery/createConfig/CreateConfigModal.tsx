@@ -15,14 +15,17 @@ import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { formatUuidForXCluster } from '../../ReplicationUtils';
 import { XClusterConfigAction } from '../../constants';
 import { assertUnreachableCase, handleServerError } from '../../../../utils/errorHandlingUtils';
-import { api, CreateDrConfigRequest, universeQueryKey } from '../../../../redesign/helpers/api';
+import {
+  api,
+  CreateDrConfigRequest,
+  drConfigQueryKey,
+  universeQueryKey
+} from '../../../../redesign/helpers/api';
 import { YBButton, YBModal } from '../../../common/forms/fields';
 import { TableSelect } from '../../sharedComponents/tableSelect/TableSelect';
 import { getPrimaryCluster } from '../../../../utils/universeUtilsTyped';
 import { SelectTargetUniverseStep } from './SelectTargetUniverseStep';
 import { ConfigureBootstrapStep } from './ConfigureBootstrapStep';
-import { ConfigureRpoStep } from './ConfigureRpoStep';
-import { RpoUnit, RPO_UNIT_TO_SECONDS } from '../constants';
 import { generateUniqueName } from '../../../../redesign/helpers/utils';
 
 import { TableType, Universe, YBTable } from '../../../../redesign/helpers/dtos';
@@ -34,9 +37,6 @@ export interface CreateDrConfigFormValues {
   tableUUIDs: string[];
   // Bootstrap configuration fields
   storageConfig: { label: string; name: string; regions: any[]; value: string };
-  // RPO configuration fields
-  rpo: number;
-  rpoUnit: { label: string; value: RpoUnit };
 }
 
 export interface CreateDrConfigFormErrors {
@@ -44,9 +44,6 @@ export interface CreateDrConfigFormErrors {
   tableUUIDs: { title: string; body: string };
   // Bootstrap configuration fields
   storageConfig: string;
-  // RPO configuration fields
-  rpo: string;
-  rpoUnit: string;
 }
 
 export interface CreateXClusterConfigFormWarnings {
@@ -54,9 +51,6 @@ export interface CreateXClusterConfigFormWarnings {
   tableUUIDs?: { title: string; body: string };
   // Bootstrap configuration fields
   storageConfig?: string;
-  // RPO configuration fields
-  rpo?: string;
-  rpoUnit?: string;
 }
 
 interface CreateConfigModalProps {
@@ -73,8 +67,7 @@ const useStyles = makeStyles((theme) => ({
 export const FormStep = {
   SELECT_TARGET_UNIVERSE: 'selectTargetUniverse',
   SELECT_TABLES: 'selectDatabases',
-  CONFIGURE_BOOTSTRAP: 'configureBootstrap',
-  CONFIGURE_RPO: 'configureRpo'
+  CONFIGURE_BOOTSTRAP: 'configureBootstrap'
 } as const;
 export type FormStep = typeof FormStep[keyof typeof FormStep];
 
@@ -113,9 +106,6 @@ export const CreateConfigModal = ({
         dbs: selectedKeyspaces.map(formatUuidForXCluster),
         bootstrapBackupParams: {
           storageConfigUUID: formValues.storageConfig.value
-        },
-        pitrParams: {
-          retentionPeriodSec: getPitrRetentionPeriod(formValues.rpo, formValues.rpoUnit.value)
         }
       };
       return api.createDrConfig(createDrConfigRequest);
@@ -123,6 +113,7 @@ export const CreateConfigModal = ({
     {
       onSuccess: (response, values) => {
         const invalidateQueries = () => {
+          queryClient.invalidateQueries(drConfigQueryKey.detail(response.resourceUUID));
           // The new DR config will update the sourceXClusterConfigs for the source universe and
           // to targetXClusterConfigs for the target universe.
           // Invalidate queries for the participating universes.
@@ -167,15 +158,13 @@ export const CreateConfigModal = ({
   const tablesQuery = useQuery<YBTable[]>(
     universeQueryKey.tables(sourceUniverseUuid, {
       excludeColocatedTables: true,
-      onlySupportedForXCluster: true
+      xClusterSupportedOnly: true
     }),
     () =>
       fetchTablesInUniverse(sourceUniverseUuid, {
         excludeColocatedTables: true,
-        onlySupportedForXCluster: true
-      }).then(
-        (response) => response.data
-      )
+        xClusterSupportedOnly: true
+      }).then((response) => response.data)
   );
   const universeQuery = useQuery<Universe>(universeQueryKey.detail(sourceUniverseUuid), () =>
     api.fetchUniverse(sourceUniverseUuid)
@@ -246,10 +235,6 @@ export const CreateConfigModal = ({
         return;
       }
       case FormStep.CONFIGURE_BOOTSTRAP:
-        setCurrentStep(FormStep.CONFIGURE_RPO);
-        actions.setSubmitting(false);
-        return;
-      case FormStep.CONFIGURE_RPO:
         drConfigMutation.mutate(values, { onSettled: () => actions.setSubmitting(false) });
         return;
       default:
@@ -265,10 +250,6 @@ export const CreateConfigModal = ({
       case FormStep.CONFIGURE_BOOTSTRAP:
         setCurrentStep(FormStep.SELECT_TABLES);
         return;
-      case FormStep.CONFIGURE_RPO: {
-        setCurrentStep(FormStep.CONFIGURE_BOOTSTRAP);
-        return;
-      }
       default:
         assertUnreachableCase(currentStep);
     }
@@ -285,8 +266,6 @@ export const CreateConfigModal = ({
         return t('step.selectDatabases.submitButton');
       case FormStep.CONFIGURE_BOOTSTRAP:
         return t('step.configureBootstrap.submitButton');
-      case FormStep.CONFIGURE_RPO:
-        return t('step.configureRpo.submitButton');
       default:
         return assertUnreachableCase(formStep);
     }
@@ -330,9 +309,7 @@ export const CreateConfigModal = ({
   }
 
   const INITIAL_VALUES: Partial<CreateDrConfigFormValues> = {
-    tableUUIDs: [],
-    // RPO configuration fields
-    rpoUnit: { label: t('step.configureRpo.duration.second'), value: RpoUnit.SECOND }
+    tableUUIDs: []
   };
   return (
     <YBModalForm
@@ -407,14 +384,15 @@ export const CreateConfigModal = ({
                   {...{
                     configAction: XClusterConfigAction.CREATE,
                     handleTransactionalConfigCheckboxClick: () => {},
-                    isDrConfig: true,
+                    isDrInterface: true,
                     isFixedTableType: false,
                     isTransactionalConfig: true,
-                    selectedKeyspaces,
+                    initialNamespaceUuids: [],
+                    selectedNamespaceUuids: selectedKeyspaces,
                     selectedTableUUIDs: values.tableUUIDs,
                     selectionError: errors.tableUUIDs,
                     selectionWarning: formWarnings?.tableUUIDs,
-                    setSelectedKeyspaces,
+                    setSelectedNamespaceUuids: setSelectedKeyspaces,
                     setSelectedTableUUIDs: (tableUUIDs: string[]) =>
                       setSelectedTableUUIDs(tableUUIDs, formik.current),
                     setTableType: () => {},
@@ -428,8 +406,6 @@ export const CreateConfigModal = ({
           }
           case FormStep.CONFIGURE_BOOTSTRAP:
             return <ConfigureBootstrapStep formik={formik} />;
-          case FormStep.CONFIGURE_RPO:
-            return <ConfigureRpoStep formik={formik} />;
           default:
             return assertUnreachableCase(currentStep);
         }
@@ -488,20 +464,7 @@ const validateForm = async (
       }
       throw errors;
     }
-    case FormStep.CONFIGURE_RPO: {
-      const errors: Partial<CreateDrConfigFormErrors> = {};
-      if (!values.rpo) {
-        errors.rpo = 'An RPO must be specified.';
-      }
-      throw errors;
-    }
     default:
       return {};
   }
 };
-
-/**
- * This function returns the retention period in milliseconds.
- */
-const getPitrRetentionPeriod = (rpo: number, rpoUnit: RpoUnit): number =>
-  rpo * RPO_UNIT_TO_SECONDS[rpoUnit];

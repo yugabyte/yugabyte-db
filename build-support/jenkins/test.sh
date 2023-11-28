@@ -245,6 +245,10 @@ fi
 
 export YB_SKIP_INITIAL_SYS_CATALOG_SNAPSHOT=1
 
+if [[ ${YB_ENABLE_YSQL_CONN_MGR:-} == "1" ]]; then
+  YB_ENABLE_YSQL_CONN_MGR_IN_TESTS=true
+fi
+
 # -------------------------------------------------------------------------------------------------
 # Running initdb
 # -------------------------------------------------------------------------------------------------

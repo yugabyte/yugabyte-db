@@ -126,7 +126,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     config.put("KUBECONFIG", "test");
     defaultAZ.updateConfig(config);
     defaultAZ.save();
-    defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
+    defaultUniverse = ModelFactory.createUniverse("demo-universe", defaultCustomer.getId());
     defaultUniverse = updateUniverseDetails("small");
     new File(CERTS_DIR).mkdirs();
     Config spyConf = spy(app.config());
@@ -327,25 +327,25 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     // All flags as overrides.
     Map<String, Object> gflagOverrides = new HashMap<>();
     // Master flags.
-    Map<String, Object> masterOverrides = new HashMap<>(defaultUserIntent.masterGFlags);
-    masterOverrides.put("placement_cloud", defaultProvider.getCode());
-    masterOverrides.put("placement_region", defaultRegion.getCode());
-    masterOverrides.put("placement_zone", defaultAZ.getCode());
+    Map<String, Object> masterGFlags = new HashMap<>(defaultUserIntent.masterGFlags);
+    masterGFlags.put("placement_cloud", defaultProvider.getCode());
+    masterGFlags.put("placement_region", defaultRegion.getCode());
+    masterGFlags.put("placement_zone", defaultAZ.getCode());
     // masterOverrides.put("placement_uuid",
     // defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
-    masterOverrides.put("placement_uuid", hackPlacementUUID.toString());
-    gflagOverrides.put("master", masterOverrides);
+    masterGFlags.put("placement_uuid", hackPlacementUUID.toString());
+    gflagOverrides.put("master", masterGFlags);
 
     // Tserver flags.
-    Map<String, Object> tserverOverrides = new HashMap<>(defaultUserIntent.tserverGFlags);
-    tserverOverrides.put("placement_cloud", defaultProvider.getCode());
-    tserverOverrides.put("placement_region", defaultRegion.getCode());
-    tserverOverrides.put("placement_zone", defaultAZ.getCode());
+    Map<String, Object> tserverGFlags = new HashMap<>(defaultUserIntent.tserverGFlags);
+    tserverGFlags.put("placement_cloud", defaultProvider.getCode());
+    tserverGFlags.put("placement_region", defaultRegion.getCode());
+    tserverGFlags.put("placement_zone", defaultAZ.getCode());
     // tserverOverrides.put("placement_uuid",
     // defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
-    tserverOverrides.put("placement_uuid", hackPlacementUUID.toString());
-    tserverOverrides.put("start_redis_proxy", "true");
-    gflagOverrides.put("tserver", tserverOverrides);
+    tserverGFlags.put("placement_uuid", hackPlacementUUID.toString());
+    tserverGFlags.put("start_redis_proxy", "true");
+    gflagOverrides.put("tserver", tserverGFlags);
     // Put all the flags together.
     expectedOverrides.put("gflags", gflagOverrides);
 
@@ -353,30 +353,39 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ybcOverrides.put("enabled", false);
     expectedOverrides.put("ybc", ybcOverrides);
 
+    Map<String, String> universeConfig = defaultUniverse.getConfig();
+    if (universeConfig.getOrDefault(Universe.LABEL_K8S_RESOURCES, "false").equals("true")) {
+      expectedOverrides.put(
+          "commonLabels",
+          ImmutableMap.of(
+              "yugabyte.io/universe-name", "demo-universe",
+              "app.kubernetes.io/part-of", "demo-universe",
+              "yugabyte.io/zone", "az-1"));
+    }
+
     Map<String, String> regionConfig = CloudInfoInterface.fetchEnvVars(defaultRegion);
     Map<String, String> azConfig = CloudInfoInterface.fetchEnvVars(defaultAZ);
 
-    String overridesYAML = null;
+    String providerOverridesYAML = null;
     if (!azConfig.containsKey("OVERRIDES")) {
       if (!regionConfig.containsKey("OVERRIDES")) {
         if (config.containsKey("OVERRIDES")) {
-          overridesYAML = config.get("OVERRIDES");
+          providerOverridesYAML = config.get("OVERRIDES");
         }
       } else {
-        overridesYAML = regionConfig.get("OVERRIDES");
+        providerOverridesYAML = regionConfig.get("OVERRIDES");
       }
     } else {
-      overridesYAML = azConfig.get("OVERRIDES");
+      providerOverridesYAML = azConfig.get("OVERRIDES");
     }
 
-    if (overridesYAML != null) {
-      Map<String, Object> annotations = yaml.load(overridesYAML);
-      if (annotations != null) {
-        expectedOverrides.putAll(annotations);
+    if (providerOverridesYAML != null) {
+      Map<String, Object> providerOverrides = yaml.load(providerOverridesYAML);
+      if (providerOverrides != null) {
+        expectedOverrides.putAll(providerOverrides);
       }
     }
     expectedOverrides.put("disableYsql", !defaultUserIntent.enableYSQL);
-    Map<String, String> universeConfig = defaultUniverse.getConfig();
     boolean helmLegacy =
         Universe.HelmLegacy.valueOf(universeConfig.get(Universe.HELM2_LEGACY))
             == Universe.HelmLegacy.V2TO3;
@@ -1177,6 +1186,50 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     InputStream is = new FileInputStream(new File(expectedOverrideFile.getValue()));
     Map<String, Object> overrides = yaml.loadAs(is, Map.class);
 
+    assertEquals(getExpectedOverrides(true), overrides);
+  }
+
+  @Test
+  public void testHelmInstallResourceLabels() throws IOException {
+    defaultUniverse.updateConfig(ImmutableMap.of(Universe.LABEL_K8S_RESOURCES, "true"));
+    defaultUniverse.save();
+    assertEquals(hackPlacementUUID, defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        createExecutor(
+            KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
+    kubernetesCommandExecutor.run();
+    assertEquals(hackPlacementUUID, defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
+
+    ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<UUID> expectedProviderUUID = ArgumentCaptor.forClass(UUID.class);
+    ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
+    ArgumentCaptor<UUID> expectedUniverseUUID = ArgumentCaptor.forClass(UUID.class);
+    verify(kubernetesManager, times(1))
+        .helmInstall(
+            expectedUniverseUUID.capture(),
+            expectedYbSoftwareVersion.capture(),
+            expectedConfig.capture(),
+            expectedProviderUUID.capture(),
+            expectedNodePrefix.capture(),
+            expectedNamespace.capture(),
+            expectedOverrideFile.capture());
+    assertEquals(ybSoftwareVersion, expectedYbSoftwareVersion.getValue());
+    assertEquals(config, expectedConfig.getValue());
+    assertEquals(hackPlacementUUID, defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
+    assertEquals(defaultProvider.getUuid(), expectedProviderUUID.getValue());
+    assertEquals(defaultUniverse.getUniverseDetails().nodePrefix, expectedNodePrefix.getValue());
+    assertEquals(namespace, expectedNamespace.getValue());
+    String overrideFileRegex = "(.*)" + defaultUniverse.getUniverseUUID() + "(.*).yml";
+    assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
+    Yaml yaml = new Yaml();
+    InputStream is = new FileInputStream(new File(expectedOverrideFile.getValue()));
+    Map<String, Object> overrides = yaml.loadAs(is, Map.class);
+
+    // TODO implement exposeAll false case
+    assertEquals(hackPlacementUUID, defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
     assertEquals(getExpectedOverrides(true), overrides);
   }
 

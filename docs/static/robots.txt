@@ -4,7 +4,6 @@ Disallow: */api/ysql/syntax_resources/
 Allow: /preview/api/ysql/syntax_resources/grammar_diagrams/
 Disallow: */binary/
 # don't index the non-current docs (just preview and stable)
-Disallow: /v2.12/
 Disallow: /v2.14/
 Disallow: /v2.16/
 Disallow: /v2.18/

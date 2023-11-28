@@ -55,6 +55,7 @@ message CreateCDCStreamRequestPB {
   optional bool transactional = 6; // [default = false]
   optional string namespace_id = 7;
   optional string cdcsdk_ysql_replication_slot_name = 8;
+  optional CDCSDKSnapshotOption cdcsdk_consistent_snapshot_option = 9;
 }
 
 message CreateCDCStreamResponsePB {

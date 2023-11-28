@@ -1,6 +1,6 @@
 ---
-title: Back up and restore YugabyteDB Anywhere
-headerTitle: Back up and restore YugabyteDB Anywhere
+title: Back up and restore YugabyteDB Anywhere on Kubernetes
+headerTitle: Back up and restore YugabyteDB Anywhere on Kubernetes
 description: Use a script to back up and restore YugabyteDB Anywhere on Kubernetes.
 linkTitle: Back up YugabyteDB Anywhere
 headcontent: Back up your YugabyteDB Anywhere installation

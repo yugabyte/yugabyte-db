@@ -17,6 +17,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteCertificate;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RemoveUniverseEntry;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -24,6 +25,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.DrConfig;
+import com.yugabyte.yw.models.SupportBundle;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -44,12 +46,16 @@ import lombok.extern.slf4j.Slf4j;
 public class DestroyUniverse extends UniverseTaskBase {
 
   private final XClusterUniverseService xClusterUniverseService;
+  private final SupportBundleUtil supportBundleUtil;
 
   @Inject
   public DestroyUniverse(
-      BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
+      BaseTaskDependencies baseTaskDependencies,
+      XClusterUniverseService xClusterUniverseService,
+      SupportBundleUtil supportBundleUtil) {
     super(baseTaskDependencies);
     this.xClusterUniverseService = xClusterUniverseService;
+    this.supportBundleUtil = supportBundleUtil;
   }
 
   public static class Params extends UniverseTaskParams {
@@ -100,6 +106,9 @@ public class DestroyUniverse extends UniverseTaskBase {
         createDeleteBackupYbTasks(backupList, params().customerUUID)
             .setSubTaskGroupType(SubTaskGroupType.DeletingBackup);
       }
+
+      // cleanup the supportBundles if any
+      deleteSupportBundle(universe.getUniverseUUID());
 
       preTaskActions();
 
@@ -318,6 +327,15 @@ public class DestroyUniverse extends UniverseTaskBase {
         throw new RuntimeException(e);
       } else {
         log.debug("Error ignored because isForceDelete is true");
+      }
+    }
+  }
+
+  protected void deleteSupportBundle(UUID universeUUID) {
+    List<SupportBundle> supportBundles = SupportBundle.getAll(universeUUID);
+    if (!supportBundles.isEmpty()) {
+      for (SupportBundle supportBundle : supportBundles) {
+        supportBundleUtil.deleteFile(supportBundle.getPathObject());
       }
     }
   }

@@ -2098,7 +2098,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_enable_replication_commands", PGC_SUSET, REPLICATION,
+		{"TEST_ysql_yb_enable_replication_commands", PGC_SUSET, REPLICATION,
 			gettext_noop("Enable the replication commands for Publication and Replication Slots."),
 			NULL,
 			GUC_NOT_IN_SAMPLE

@@ -24,7 +24,7 @@ export interface YBModalProps extends DialogProps {
   onClose: () => void;
 
   title?: string;
-  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'fit';
   overrideHeight?: string | number;
   overrideWidth?: string | number;
   isSidePanel?: boolean;
@@ -77,6 +77,10 @@ const useStyles = makeStyles<Theme, Partial<YBModalProps>>((theme) => ({
   dialogXl: {
     width: ({ overrideWidth }) => overrideWidth ?? 1125,
     height: ({ overrideHeight }) => overrideHeight ?? 900
+  },
+  dialogFit: {
+    width: ({ overrideWidth }) => overrideWidth ?? 'fit-content',
+    height: ({ overrideHeight }) => overrideHeight ?? 'fit-content'
   },
   form: {
     display: 'flex',
@@ -191,6 +195,9 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
       break;
     case 'xl':
       dialogClasses = classes.dialogXl;
+      break;
+    case 'fit':
+      dialogClasses = classes.dialogFit;
       break;
     case 'md':
     default:

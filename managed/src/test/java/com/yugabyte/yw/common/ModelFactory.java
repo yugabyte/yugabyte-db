@@ -15,6 +15,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.TableSpaceStructures.PlacementBlock;
 import com.yugabyte.yw.common.TableSpaceStructures.TableSpaceInfo;
 import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
@@ -34,6 +35,7 @@ import com.yugabyte.yw.forms.CreateTablespaceParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
 import com.yugabyte.yw.forms.filters.AlertConfigurationApiFilter;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertChannel;
@@ -283,6 +285,42 @@ public class ModelFactory {
     }
     params.upsertPrimaryCluster(userIntent, pi);
     return Universe.create(params, customerId);
+  }
+
+  public static Universe createK8sUniverseCustomCores(
+      String universeName,
+      UUID universeUUID,
+      long customerId,
+      PlacementInfo pi,
+      UUID rootCA,
+      boolean enableYbc,
+      double cores) {
+    Customer c = Customer.get(customerId);
+    // Custom setup a default AWS provider, can be overridden later.
+    List<Provider> providerList = Provider.get(c.getUuid(), CloudType.kubernetes);
+    Provider p =
+        providerList.isEmpty() ? newProvider(c, CloudType.kubernetes) : providerList.get(0);
+
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        new UniverseDefinitionTaskParams.UserIntent();
+    userIntent.universeName = universeName;
+    userIntent.provider = p.getUuid().toString();
+    userIntent.providerType = CloudType.kubernetes;
+    userIntent.ybSoftwareVersion = "2.17.0.0-b1";
+    K8SNodeResourceSpec spec = new K8SNodeResourceSpec();
+    spec.cpuCoreCount = cores;
+    userIntent.tserverK8SNodeResourceSpec = spec;
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.setUniverseUUID(universeUUID);
+    params.nodeDetailsSet = new HashSet<>();
+    params.nodePrefix = universeName;
+    params.rootCA = rootCA;
+    params.setEnableYbc(enableYbc);
+    params.setYbcInstalled(enableYbc);
+    params.nodePrefix = Util.getNodePrefix(customerId, universeName);
+    params.upsertPrimaryCluster(userIntent, pi);
+    Universe u = Universe.create(params, customerId);
+    return addNodesToUniverse(u.getUniverseUUID(), 3);
   }
 
   public static Universe addNodesToUniverse(UUID universeUUID, int numNodesToAdd) {

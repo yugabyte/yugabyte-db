@@ -253,7 +253,7 @@ public class FileData extends Model {
         .findOne();
   }
 
-  private static String getRelativePath(String filePath) {
+  public static String getRelativePath(String filePath) {
     return filePath.replace(AppConfigHelper.getStoragePath(), "");
   }
 

@@ -4,7 +4,7 @@ import pluralize from 'pluralize';
 import { Box, Theme, Typography, makeStyles } from '@material-ui/core';
 import { YBModal } from '../../../../components';
 import { Cluster, MasterPlacementMode, UniverseDetails } from '../utils/dto';
-import { getDiffClusterData, getPrimaryCluster } from '../utils/helpers';
+import { getAsyncCluster, getDiffClusterData, getPrimaryCluster } from '../utils/helpers';
 
 const useStyles = makeStyles((theme: Theme) => ({
   greyText: {
@@ -26,6 +26,7 @@ interface PlacementModalProps {
   newConfigData: UniverseDetails;
   oldConfigData: UniverseDetails;
   open: boolean;
+  isPrimary: boolean;
   onClose: () => void;
   onSubmit: () => void;
 }
@@ -34,14 +35,15 @@ export const PlacementModal: FC<PlacementModalProps> = ({
   newConfigData,
   oldConfigData,
   open,
+  isPrimary,
   onClose,
   onSubmit
 }) => {
   const { t } = useTranslation();
   const classes = useStyles();
-  const oldPrimaryCluster = getPrimaryCluster(oldConfigData);
-  const newPrimaryCluster = getPrimaryCluster(newConfigData);
-  const diffClusterData = getDiffClusterData(oldPrimaryCluster, newPrimaryCluster);
+  const oldCluster = isPrimary ? getPrimaryCluster(oldConfigData) : getAsyncCluster(oldConfigData);
+  const newCluster = isPrimary ? getPrimaryCluster(newConfigData) : getAsyncCluster(newConfigData);
+  const diffClusterData = getDiffClusterData(oldCluster, newCluster);
 
   const renderConfig = (cluster: Cluster, isNew: boolean) => {
     const { placementInfo, userIntent } = cluster;
@@ -57,7 +59,7 @@ export const PlacementModal: FC<PlacementModalProps> = ({
         <Typography variant="h5">
           {isNew ? t('universeForm.new') : t('universeForm.current')}
         </Typography>
-        {diffClusterData.masterPlacementChanged && (
+        {isPrimary && diffClusterData.masterPlacementChanged && (
           <Box className={classes.configConfirmationBox}>
             <b>
               {userIntent?.dedicatedNodes
@@ -128,8 +130,8 @@ export const PlacementModal: FC<PlacementModalProps> = ({
           </Typography>
         </Box>
         <Box mt={2} display="flex" flexDirection="row">
-          {oldPrimaryCluster && renderConfig(oldPrimaryCluster, false)}
-          {newPrimaryCluster && renderConfig(newPrimaryCluster, true)}
+          {oldCluster && renderConfig(oldCluster, false)}
+          {newCluster && renderConfig(newCluster, true)}
         </Box>
         <Box mt={2} display="flex" flexDirection="row">
           <Typography variant="body2">{t('universeForm.placementModal.likeToProceed')}</Typography>

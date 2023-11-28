@@ -25,6 +25,7 @@ import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
+import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.SystemdUpgradeParams;
 import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
@@ -65,6 +66,8 @@ public class UpgradeUniverseController extends AuthenticatedController {
   @Inject RuntimeConfGetter confGetter;
 
   @Inject GFlagsAuditHandler gFlagsAuditHandler;
+
+  public static final String rollbackSupportRuntimeFlagPath = "yb.upgrade.enable_rollback_support";
 
   /**
    * API that restarts all nodes in the universe. Supports rolling and non-rolling restart
@@ -146,7 +149,11 @@ public class UpgradeUniverseController extends AuthenticatedController {
    * @param universeUuid ID of universe
    * @return Result of update operation with task id
    */
-  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.21.0.0-b1")
+  @YbaApi(
+      visibility = YbaApiVisibility.PREVIEW,
+      sinceYBAVersion = "2.21.0.0-b1",
+      runtimeConfig = rollbackSupportRuntimeFlagPath,
+      runtimeConfigScope = ScopeType.UNIVERSE)
   @ApiOperation(
       value = "WARNING: This is a preview API that could change. Finalize Upgrade.",
       notes = "Queues a task to finalize upgrade in a universe.",
@@ -182,7 +189,11 @@ public class UpgradeUniverseController extends AuthenticatedController {
    * @param universeUuid ID of universe
    * @return Result of update operation with task id
    */
-  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.21.0.0-b1")
+  @YbaApi(
+      visibility = YbaApiVisibility.PREVIEW,
+      sinceYBAVersion = "2.21.0.0-b1",
+      runtimeConfig = rollbackSupportRuntimeFlagPath,
+      runtimeConfigScope = ScopeType.UNIVERSE)
   @ApiOperation(
       value = "WARNING: This is a preview API that could change. Rollback Upgrade",
       notes = "Queues a task to rollback upgrade in a universe.",
@@ -389,6 +400,12 @@ public class UpgradeUniverseController extends AuthenticatedController {
           required = true,
           paramType = "body"))
   @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result modifyAuditLogging(UUID customerUuid, UUID universeUuid, Http.Request request) {
     return requestHandler(
         request,

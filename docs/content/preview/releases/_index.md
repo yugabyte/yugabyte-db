@@ -1,5 +1,5 @@
 ---
-title: YugabyteDB releases
+title: Releases in YugabyteDB
 headerTitle: Releases
 linkTitle: Releases
 description: An overview of the preview and current stable YugabyteDB database releases, and upcoming releases.

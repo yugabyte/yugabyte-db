@@ -277,6 +277,9 @@ public class AppInit {
         taskManager.handleAllPendingTasks();
         taskManager.updateUniverseSoftwareUpgradeStateSet();
 
+        // Fail all incomplete support bundle creations.
+        supportBundleCleanup.markAllRunningSupportBundlesFailed();
+
         // Schedule garbage collection of old completed tasks in database.
         taskGC.start();
         alertsGC.start();

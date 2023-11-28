@@ -2035,6 +2035,10 @@ Status PgApiImpl::GetActiveTransactions(YBCPgSessionTxnInfo* infos, size_t num_i
       }));
 }
 
+bool PgApiImpl::IsDdlMode() const {
+  return pg_txn_manager_->IsDdlMode();
+}
+
 void PgApiImpl::ResetCatalogReadTime() {
   pg_session_->ResetCatalogReadPoint();
 }

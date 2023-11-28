@@ -665,9 +665,9 @@ YugabyteDB Anywhere uses TLS to protect data in transit when connecting to other
 - LDAP
 - OIDC
 - Webhook
-- S3 backup storage
+- [S3 backup storage](../../back-up-restore-universes/configure-backup-storage/)
 - Hashicorp Vault
-- YBA high availability
+- [YBA high availability](../../administer-yugabyte-platform/high-availability/)
 
 If you are using self-signed or custom CA certificates, YugabyteDB cannot verify your TLS connections unless you add the certificates to the YugabyteDB Anywhere Trust Store.
 

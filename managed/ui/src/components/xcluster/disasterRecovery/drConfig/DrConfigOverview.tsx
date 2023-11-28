@@ -7,6 +7,8 @@ import { YBTooltip } from '../../../../redesign/components';
 import { DrConfigStateLabel } from '../DrConfigStateLabel';
 import { UniverseXClusterRole } from '../../constants';
 import { ReplicationIcon } from '../../icons/ReplicationIcon';
+import { getXClusterConfig } from '../utils';
+import { EstimatedDataLossLabel } from './EstimatedDataLossLabel';
 
 import { DrConfig } from '../dtos';
 
@@ -51,6 +53,7 @@ export const DrConfigOverview = ({ drConfig }: DrConfigOverviewProps) => {
   const classes = useStyles();
   const theme = useTheme();
 
+  const xClusterConfig = getXClusterConfig(drConfig);
   return (
     <div className={classes.overviewContainer}>
       <Box display="flex" flexDirection="column" gridGap={theme.spacing(2)}>
@@ -76,7 +79,7 @@ export const DrConfigOverview = ({ drConfig }: DrConfigOverviewProps) => {
               <InfoIcon className={classes.infoIcon} />
             </YBTooltip>
           </div>
-          <div>Placeholder ms</div>
+          <EstimatedDataLossLabel drConfigUuid={drConfig.uuid} />
         </Box>
       </Box>
       <Box
@@ -89,7 +92,7 @@ export const DrConfigOverview = ({ drConfig }: DrConfigOverviewProps) => {
         <div className={classes.drParticipantContainer}>
           <Typography variant="subtitle1">{t('participant.drPrimary')}</Typography>
           <DrParticipantCard
-            xClusterConfig={drConfig.xClusterConfig}
+            xClusterConfig={xClusterConfig}
             universeXClusterRole={UniverseXClusterRole.SOURCE}
           />
         </div>
@@ -97,7 +100,7 @@ export const DrConfigOverview = ({ drConfig }: DrConfigOverviewProps) => {
         <div className={classes.drParticipantContainer}>
           <Typography variant="subtitle1">{t('participant.drReplica')}</Typography>
           <DrParticipantCard
-            xClusterConfig={drConfig.xClusterConfig}
+            xClusterConfig={xClusterConfig}
             universeXClusterRole={UniverseXClusterRole.TARGET}
           />
         </div>

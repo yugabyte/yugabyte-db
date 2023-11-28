@@ -19,6 +19,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
@@ -46,15 +47,18 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
 
   private final XClusterUniverseService xClusterUniverseService;
   private final OperatorStatusUpdater kubernetesStatus;
+  private final SupportBundleUtil supportBundleUtil;
 
   @Inject
   public DestroyKubernetesUniverse(
       BaseTaskDependencies baseTaskDependencies,
       XClusterUniverseService xClusterUniverseService,
-      OperatorStatusUpdaterFactory statusUpdaterFactory) {
-    super(baseTaskDependencies, xClusterUniverseService);
+      OperatorStatusUpdaterFactory statusUpdaterFactory,
+      SupportBundleUtil supportBundleUtil) {
+    super(baseTaskDependencies, xClusterUniverseService, supportBundleUtil);
     this.xClusterUniverseService = xClusterUniverseService;
     this.kubernetesStatus = statusUpdaterFactory.create();
+    this.supportBundleUtil = supportBundleUtil;
   }
 
   @Override
@@ -91,6 +95,9 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
         createDeleteBackupYbTasks(backupList, params().customerUUID)
             .setSubTaskGroupType(SubTaskGroupType.DeletingBackup);
       }
+
+      // cleanup the supportBundles if any
+      deleteSupportBundle(universe.getUniverseUUID());
 
       preTaskActions();
 

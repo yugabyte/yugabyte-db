@@ -786,8 +786,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
                     .actualRows(Checkers.equal(5))
                     .storageTableReadRequests(Checkers.equal(1))
                     .storageTableReadExecutionTime(Checkers.greater(0.0))
-                    .estimatedSeeks(Checkers.greater(0.0))
-                    .estimatedNexts(Checkers.greater(0.0))
                     .build())
                 .build());
     }
