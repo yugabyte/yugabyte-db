@@ -63,13 +63,13 @@ You can configure the active instance as follows:
 
     The address for this active instance should be the only information under **Instances**.
 
-1. If the active instance is using the HTTPS protocol and self-signed certificates (that is, not signed by a trusted Certificate Authority (CA)), you need to obtain the root CA certificate that was used to sign the client certificate for the active instance.
+1. If the active instance is using the HTTPS protocol and was set up to use self-signed certificates instead of a trusted Certificate Authority (CA), you will need to obtain the CA certificate for this YBA instance.
 
-    If you installed YBA using YBA Installer, copy the certificate from `/opt/yugabyte/data/yba-installer/certs`.
+    1.1 If you installed YBA using [YBA Installer](../install-yugabyte-platform/install-software/installer.md), locate the CA certificate from the path `/opt/yugabyte/data/yba-installer/certs/ca_cert.pem` on the YBA instance. You may need to replace `/opt/yugabyte` with the path to a custom install root if [yba installer was configured this way](../install-yugabyte-platform/install-software/installer.md#configuration-options). 
 
-    If you installed YBA using Replicated, copy the certificate from `/var/lib/replicated/secrets/`.
+    1.2 If you installed YBA using [Replicated](../install-yugabyte-platform/install-software/replicated.md), locate the CA certificate from the path `/var/lib/replicated/secrets/ca.crt` on the YBA instance.
 
-1. Add the active instance root certificate to the [YugabyteDB Anywhere trust store](../../security/enable-encryption-in-transit/#add-certificates-to-your-trust-store) of the active instance.
+1. Add the active instance CA certificate to the [YugabyteDB Anywhere trust store](../../security/enable-encryption-in-transit/#add-certificates-to-your-trust-store) of the active instance.
 
     This allows a standby to connect to the active instance if the standby is promoted to active status.
 
@@ -89,17 +89,17 @@ After the active instance has been configured, you can configure one or more sta
 
 1. Click **Create**.
 
-1. If the standby instance is using the HTTPS protocol and self-signed certificates (that is, not signed by a trusted Certificate Authority (CA)), you need to get the root CA certificate that was used to sign the client certificate for the standby instance.
+1. If the standby instance is using the HTTPS protocol and self-signed certificates instead of a trusted Certificate Authority (CA), you need to get the CA certificate for this YBA instance.
 
-    If you installed YBA using YBA Installer, copy the certificate from `/opt/yugabyte/data/yba-installer/certs`.
+    1.1 If you installed YBA using [YBA Installer](../install-yugabyte-platform/install-software/installer.md), locate the CA certificate from the path `/opt/yugabyte/data/yba-installer/certs/ca_cert.pem` on the YBA instance. You may need to replace `/opt/yugabyte` with the path to a custom install root if [yba installer was configured this way](../install-yugabyte-platform/install-software/installer.md#configuration-options). 
 
-    If you installed YBA using Replicated, copy the certificate from `/var/lib/replicated/secrets/`.
+    1.2 If you installed YBA using [Replicated](../install-yugabyte-platform/install-software/replicated.md), locate the CA certificate from the path `/var/lib/replicated/secrets/ca.crt` on the YBA instance.
 
-1. Switch to the active instance.
+1. Switch to the active instance. 
 
-1. Add the standby instance root certificate to the [YugabyteDB Anywhere trust store](../../security/enable-encryption-in-transit/#add-certificates-to-your-trust-store) on the active instance.
+1. Add the standby instance root certificate to the [YugabyteDB Anywhere trust store](../../security/enable-encryption-in-transit/#add-certificates-to-your-trust-store) on the active instance. **NOTE** Make sure to perform this step on the active instance, not the standby instance.
 
-    This allows a standby to connect to the active instance if the standby is promoted to active status.
+    This allows the primary to connect to the standby instance if the standby.
 
 1. Navigate to **Admin > High Availability > Replication Configuration** and select **Instance Configuration**.
 
@@ -188,3 +188,7 @@ If you are using custom ports for Prometheus in your YugabyteDB Anywhere install
     The default Prometheus port for YugabyteDB Anywhere is `9090`. Custom ports are configured through the settings section of the Replicated installer UI that is typically available at `https://<yugabyteanywhere-ip>:8800/`.
 
     For information on how to access the Replicated settings page, see [Install YugabyteDB Anywhere](../../install-yugabyte-platform/install-software/default/).
+
+## Troubleshooting
+
+If you face issues setting up a high availability configuration when the YBA instances are setup to use the https protocol, please follow the steps above to add CA certificates appropriately to the trust store. If that does not solve the problem, one workaround is to relax the certificate validation requirements by enabling the runtime configuration `yb.ha.ws.ssl.loose.acceptAnyCertificate` (to set it to `true`).
