@@ -57,7 +57,7 @@ Create an export configuration.
 | Flag | Description |
 | :--- | :--- |
 | --config-name | Required. Name for the export configuration. |
-| --type | Required. The third party tool to exported metrics to. Options: DATADOG, GRAFANA, SUMOLOGIC. |
+| --type | Required. The third party tool to export metrics to. Options: DATADOG, GRAFANA, SUMOLOGIC. |
 | --datadog-spec | Required for type DATADOG. The Datadog export details, provided as key-value pairs.<br>Arguments:<ul><li>api-key - your Datadog API key.</li><li>site - your Datadog site parameters.</li></ul> |
 | --grafana-spec | Required for type GRAFANA. The Grafana export details, provided as key-value pairs.<br>Arguments:<ul><li>access-policy-token - your Grafana token.</li><li>org-slug - your organization name.</li><li>instance-id - your Grafana instance ID.</li><li>zone - your Grafana instance zone.</li></ul> |
 | --sumologic-spec | Required for type SUMOLOGIC. The Sumo Logic export details, provided as key-value pairs.<br>Arguments:<ul><li>access-key - your Sumo Logic access key.</li><li>access-id - your Sumo Logic access ID.</li><li>installation-token - your Sumo Logic installation token.</li></ul> |
