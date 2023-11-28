@@ -738,6 +738,7 @@ CreateBatch(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 		}
 		else
 		{
+			elog(DEBUG2, "saving new outer tuple information");
 			ExecCopySlot(econtext->ecxt_outertuple, outerTupleSlot);
 			LOCAL_JOIN_FN(AddTupleToOuterBatch, bnlstate, econtext->ecxt_outertuple);
 		}
