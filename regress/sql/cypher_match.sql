@@ -562,10 +562,6 @@ SELECT * FROM cypher('cypher_match',
 AS (exists agtype);
 
 SELECT * FROM cypher('cypher_match',
- $$MATCH p=(u)-[e]->(v) RETURN EXISTS((p)) $$)
-AS (exists agtype);
-
-SELECT * FROM cypher('cypher_match',
  $$MATCH (u)-[e]->(v) RETURN EXISTS((u)-[e]->(v)-[e]->(u))$$)
 AS (exists agtype);
 
@@ -579,6 +575,11 @@ AS (u agtype, e agtype, v agtype);
 SELECT * FROM cypher('cypher_match',
  $$MATCH (u)-[e]->(v) WHERE EXISTS((u)-[e]->(x)) RETURN u, e, v $$)
 AS (u agtype, e agtype, v agtype);
+
+-- path variable not allowed in EXISTS
+SELECT * FROM cypher('cypher_match',
+ $$MATCH p=(u)-[e]->(v) RETURN EXISTS((p)) $$)
+AS (exists agtype);
 
 --
 -- Tests for EXISTS(property)
@@ -950,9 +951,9 @@ SELECT * FROM cypher('cypher_match', $$
 SELECT * FROM cypher('cypher_match', $$
     MATCH (a) RETURN a $$) as (a agtype);
 SELECT * FROM cypher('cypher_match', $$
-    MATCH (a) WHERE exists(a.name) RETURN a $$) as (a agtype);
+    MATCH (a) WHERE EXISTS(a.name) RETURN a $$) as (a agtype);
 SELECT * FROM cypher('cypher_match', $$
-    MATCH (a) WHERE exists(a.name) SET a.age = 4 RETURN a $$) as (a agtype);
+    MATCH (a) WHERE EXISTS(a.name) SET a.age = 4 RETURN a $$) as (a agtype);
 
 SELECT * FROM cypher('cypher_match', $$
 	MATCH (a),(b) WHERE a.age = 4 AND a.name = "T" AND b.age = 6
@@ -988,10 +989,10 @@ SELECT * FROM cypher('cypher_match', $$
     MATCH (a {name: "orphan"}) MATCH (a {age:3}) RETURN a $$) as (a agtype);
 
 SELECT * FROM cypher('cypher_match', $$
-    MATCH (a) WHERE exists(a.age) AND exists(a.name) RETURN a $$) as (a agtype);
+    MATCH (a) WHERE EXISTS(a.age) AND EXISTS(a.name) RETURN a $$) as (a agtype);
 
 SELECT * FROM cypher('cypher_match', $$
-    MATCH (a) WHERE exists(a.age) AND NOT exists(a.name) RETURN a $$) as (a agtype);
+    MATCH (a) WHERE EXISTS(a.age) AND NOT EXISTS(a.name) RETURN a $$) as (a agtype);
 
 -- check reuse of 'r' clause-to-clause - edges
 SELECT * FROM cypher('cypher_match', $$
@@ -1185,43 +1186,43 @@ SELECT create_graph('issue_1399');
 -- this is an empty graph so these should return 0
 SELECT * FROM cypher('issue_1399', $$
   MATCH (foo)
-  WHERE exists((foo)-[]->())
+  WHERE EXISTS((foo)-[]->())
   RETURN foo
 $$) as (c agtype);
 SELECT * FROM cypher('issue_1399', $$
   MATCH (foo)
-  WHERE NOT exists((foo)-[]->())
+  WHERE NOT EXISTS((foo)-[]->())
   RETURN foo
 $$) as (c agtype);
 SELECT * FROM cypher('issue_1399', $$
   MATCH (foo)
-  WHERE exists((foo)-[:BAR]->())
+  WHERE EXISTS((foo)-[:BAR]->())
   RETURN foo
 $$) as (c agtype);
 SELECT * FROM cypher('issue_1399', $$
   MATCH (foo)
-  WHERE NOT exists((foo)-[:BAR]->())
+  WHERE NOT EXISTS((foo)-[:BAR]->())
   RETURN foo
 $$) as (c agtype);
 -- this is an empty graph so these should return false
 SELECT * FROM cypher('issue_1399', $$
   MATCH (foo)
-  WHERE exists((foo)-[]->())
+  WHERE EXISTS((foo)-[]->())
   RETURN count(foo) > 0
 $$) as (c agtype);
 SELECT * FROM cypher('issue_1399', $$
   MATCH (foo)
-  WHERE NOT exists((foo)-[]->())
+  WHERE NOT EXISTS((foo)-[]->())
   RETURN count(foo) > 0
 $$) as (c agtype);
 SELECT * FROM cypher('issue_1399', $$
   MATCH (foo)
-  WHERE exists((foo)-[:BAR]->())
+  WHERE EXISTS((foo)-[:BAR]->())
   RETURN count(foo) > 0
 $$) as (c agtype);
 SELECT * FROM cypher('issue_1399', $$
   MATCH (foo)
-  WHERE NOT exists((foo)-[:BAR]->())
+  WHERE NOT EXISTS((foo)-[:BAR]->())
   RETURN count(foo) > 0
 $$) as (c agtype);
 -- create 1 path
@@ -1232,36 +1233,154 @@ $$) as (c agtype);
 -- only one vertex can match.
 SELECT * FROM cypher('issue_1399', $$
   MATCH (foo)
-  WHERE exists((foo)-[]->())
+  WHERE EXISTS((foo)-[]->())
   RETURN foo
 $$) as (c agtype);
 SELECT * FROM cypher('issue_1399', $$
   MATCH (foo)
-  WHERE NOT exists((foo)-[]->())
+  WHERE NOT EXISTS((foo)-[]->())
   RETURN foo
 $$) as (c agtype);
 SELECT * FROM cypher('issue_1399', $$
   MATCH (foo)
-  WHERE exists((foo)-[:BAR]->())
+  WHERE EXISTS((foo)-[:BAR]->())
   RETURN foo
 $$) as (c agtype);
 SELECT * FROM cypher('issue_1399', $$
   MATCH (foo)
-  WHERE NOT exists((foo)-[:BAR]->())
+  WHERE NOT EXISTS((foo)-[:BAR]->())
   RETURN foo
 $$) as (c agtype);
 -- this should return 0 rows as it can't exist - that path isn't in BAR2
 SELECT * FROM cypher('issue_1399', $$
   MATCH (foo)
-  WHERE exists((foo)-[:BAR2]->())
+  WHERE EXISTS((foo)-[:BAR2]->())
   RETURN foo
 $$) as (c agtype);
 -- this should return 2 rows as they all exist
 SELECT * FROM cypher('issue_1399', $$
   MATCH (foo)
-  WHERE NOT exists((foo)-[:BAR2]->())
+  WHERE NOT EXISTS((foo)-[:BAR2]->())
   RETURN foo
 $$) as (c agtype);
+
+-- Issue 1393 EXISTS doesn't see previous clauses' variables
+SELECT FROM create_graph('issue_1393');
+SELECT * FROM cypher('issue_1393', $$
+  CREATE (n1:Object) RETURN n1
+$$) AS (n1 agtype);
+-- vertex cases
+SELECT * FROM cypher('issue_1393', $$
+  MATCH (n1:Object) MATCH (n2:Object) WHERE EXISTS((n1)-[]->(n2)) RETURN n1,n2
+$$) AS (n1 agtype, n2 agtype);
+SELECT * FROM cypher('issue_1393', $$
+  MATCH (n1:Object) MATCH (n2:Object) WHERE EXISTS((n1:Object)-[]->(n2:Object)) RETURN n1,n2
+$$) AS (n1 agtype, n2 agtype);
+SELECT * FROM cypher('issue_1393', $$
+  MATCH (n1:Object) MATCH (n2:Object) WHERE NOT EXISTS((n1)-[]->(n2)) RETURN n1,n2
+$$) AS (n1 agtype, n2 agtype);
+SELECT * FROM cypher('issue_1393', $$
+  MATCH (n1:Object) MATCH (n2:Object) WHERE NOT EXISTS((n1:Object)-[]->(n2:Object)) RETURN n1,n2
+$$) AS (n1 agtype, n2 agtype);
+SELECT * FROM cypher('issue_1393', $$
+  MATCH (n1:Object) MATCH (n2:Object) WHERE EXISTS((n1)-[]->()) RETURN n1,n2
+$$) AS (n1 agtype, n2 agtype);
+SELECT * FROM cypher('issue_1393', $$
+  MATCH (n1:Object) MATCH (n2:Object) WHERE NOT EXISTS((n1)-[]->()) RETURN n1,n2
+$$) AS (n1 agtype, n2 agtype);
+SELECT * FROM cypher('issue_1393', $$
+  CREATE (n1:Object)-[e:knows]->(n2:Object) RETURN n1, e, n2
+$$) AS (n1 agtype, e agtype, n2 agtype);
+SELECT * FROM cypher('issue_1393', $$
+  MATCH (n1:Object) MATCH (n2:Object) WHERE EXISTS((n1)-[]->(n2)) RETURN n1,n2
+$$) AS (n1 agtype, n2 agtype);
+SELECT * FROM cypher('issue_1393', $$
+  MATCH (n1:Object) MATCH (n2:Object) WHERE EXISTS((n1:Object)-[]->(n2:Object)) RETURN n1,n2
+$$) AS (n1 agtype, n2 agtype);
+SELECT * FROM cypher('issue_1393', $$
+  MATCH (n1:Object) MATCH (n2:Object) WHERE NOT EXISTS((n1)-[]->(n2)) RETURN n1,n2
+$$) AS (n1 agtype, n2 agtype);
+SELECT * FROM cypher('issue_1393', $$
+  MATCH (n1:Object) MATCH (n2:Object) WHERE NOT EXISTS((n1:Object)-[]->(n2:Object)) RETURN n1,n2
+$$) AS (n1 agtype, n2 agtype);
+SELECT * FROM cypher('issue_1393', $$
+  MATCH (n1:Object) MATCH (n2:Object) WHERE EXISTS((n1)-[]->()) RETURN n1,n2
+$$) AS (n1 agtype, n2 agtype);
+SELECT * FROM cypher('issue_1393', $$
+  MATCH (n1:Object) MATCH (n2:Object) WHERE NOT EXISTS((n1)-[]->()) RETURN n1,n2
+$$) AS (n1 agtype, n2 agtype);
+SELECT * FROM cypher('issue_1393', $$
+  MATCH (n1:Object) MATCH (n2:Object) WHERE EXISTS((n1:Object)-[]->()) RETURN n1,n2
+$$) AS (n1 agtype, n2 agtype);
+SELECT * FROM cypher('issue_1393', $$
+  MATCH (n1:Object) MATCH (n2:Object) WHERE NOT EXISTS((n1:Object)-[]->()) RETURN n1,n2
+$$) AS (n1 agtype, n2 agtype);
+-- should error
+SELECT * FROM cypher('issue_1393', $$
+  MATCH (n1:Object) MATCH (n2:Object) WHERE EXISTS((n1:object)-[]->()) RETURN n1,n2
+$$) AS (n1 agtype, n2 agtype);
+SELECT * FROM cypher('issue_1393', $$
+  MATCH (n1:Object) MATCH (n2:Object) WHERE NOT EXISTS((n1:object)-[]->()) RETURN n1,n2
+$$) AS (n1 agtype, n2 agtype);
+SELECT * FROM cypher('issue_1393', $$
+  MATCH (n1:Object) MATCH (n2:Object) WHERE NOT EXISTS((n1)-[e]->()) RETURN n1,n2,e
+$$) AS (n1 agtype, n2 agtype, e agtype);
+-- edge cases
+SELECT * FROM cypher('issue_1393', $$
+  MATCH (n1:Object)-[e1:knows]->() MATCH (n2:Object) WHERE EXISTS((n1)-[e1]->(n2)) RETURN e1
+$$) AS (e1 agtype);
+SELECT * FROM cypher('issue_1393', $$
+  MATCH (n1:Object)-[e1:knows]->() MATCH (n2:Object) WHERE EXISTS((n1:Object)-[e1:knows]->(n2:Object)) RETURN e1
+$$) AS (e1 agtype);
+SELECT * FROM cypher('issue_1393', $$
+  MATCH (n1:Object)-[e1:knows]->() MATCH (n2:Object) WHERE NOT EXISTS((n1)-[e1]->(n2)) RETURN e1
+$$) AS (e1 agtype);
+SELECT * FROM cypher('issue_1393', $$
+  MATCH (n1:Object)-[e1:knows]->() MATCH (n2:Object) WHERE NOT EXISTS((n1:Object)-[e1:knows]->(n2:Object)) RETURN e1
+$$) AS (e1 agtype);
+SELECT * FROM cypher('issue_1393', $$
+  MATCH (n1:Object)-[e1:knows]->() MATCH (n2:Object) WHERE EXISTS((n1)-[e1]->()) RETURN e1
+$$) AS (e1 agtype);
+SELECT * FROM cypher('issue_1393', $$
+  MATCH (n1:Object)-[e1:knows]->() MATCH (n2:Object) WHERE EXISTS((n1:Object)-[e1:knows]->(n2:Object)) RETURN e1
+$$) AS (e1 agtype);
+SELECT * FROM cypher('issue_1393', $$
+  MATCH (n1:Object)-[e1:knows]->() MATCH (n2:Object) WHERE NOT EXISTS((n1)-[e1]->()) RETURN e1
+$$) AS (e1 agtype);
+SELECT * FROM cypher('issue_1393', $$
+  MATCH (n1:Object)-[e1:knows]->() MATCH (n2:Object) WHERE NOT EXISTS((n1:Object)-[e1:knows]->(n2:Object)) RETURN e1
+$$) AS (e1 agtype);
+-- should error
+SELECT * FROM cypher('issue_1393', $$
+  MATCH (n1:Object)-[e1:knows]->() MATCH (n2:Object) WHERE EXISTS((n1:Object)-[e1:Knows]->(n2:Object)) RETURN e1
+$$) AS (e1 agtype);
+SELECT * FROM cypher('issue_1393', $$
+  MATCH (n1:Object)-[e1:knows]->() MATCH (n2:Object) WHERE NOT EXISTS((n1:Object)-[e1:Knows]->(n2:Object)) RETURN e1
+$$) AS (e1 agtype);
+SELECT * FROM cypher('issue_1393', $$
+  MATCH (n1:Object)-[e1:knows]->() MATCH (n2:Object) WHERE EXISTS((e1:Object)-[e1:Knows]->(n2:Object)) RETURN e1
+$$) AS (e1 agtype);
+SELECT * FROM cypher('issue_1393', $$
+  MATCH (n1:Object)-[e1:knows]->() MATCH (n2:Object) WHERE NOT EXISTS((n1:Object)-[e1:knows]->(e1)) RETURN e1
+$$) AS (e1 agtype);
+SELECT * FROM cypher('issue_1393', $$
+  MATCH (n1:Object)-[e1:knows]->() MATCH (n2:Object) WHERE NOT EXISTS((n1:Object)-[e1:knows]->(e2)) RETURN e1
+$$) AS (e1 agtype);
+SELECT * FROM cypher('issue_1393', $$
+  MATCH p=(n1:Object)-[e1:knows]->() MATCH (n2:Object) WHERE EXISTS((n1:Object)-[p]->(e2)) RETURN e1
+$$) AS (e1 agtype);
+SELECT * FROM cypher('issue_1393', $$
+  MATCH p=(n1)-[e1]->() MATCH (n2) WHERE EXISTS((n1)-[p]->(e2)) RETURN p
+$$) AS (e1 agtype);
+-- long cases
+SELECT * FROM cypher('issue_1393', $$
+  MATCH (n1) MATCH (n2) MATCH (n1)-[e1]->() MATCH (n2)<-[e2]-(n1) MATCH (n3)
+  WHERE EXISTS((n3)-[e1]->(n2)) RETURN n1,n2,n3,e1
+$$) AS (n1 agtype, n2 agtype, n3 agtype, e1 agtype);
+SELECT * FROM cypher('issue_1393', $$
+  MATCH (n1:Object) MATCH (n2:Object) MATCH (n1)-[e1:knows]->() MATCH (n2)<-[e2:knows]-(n1) MATCH (n3:Object)
+  WHERE EXISTS((n3:Object)-[e1:knows]->(n2:Object)) RETURN n1,n2,n3,e1
+$$) AS (n1 agtype, n2 agtype, n3 agtype, e1 agtype);
 
 --
 -- Clean up
@@ -1271,6 +1390,7 @@ SELECT drop_graph('test_retrieve_var', true);
 SELECT drop_graph('test_enable_containment', true);
 SELECT drop_graph('issue_945', true);
 SELECT drop_graph('issue_1399', true);
+SELECT drop_graph('issue_1393', true);
 
 --
 -- End
