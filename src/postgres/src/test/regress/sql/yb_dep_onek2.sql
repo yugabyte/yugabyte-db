@@ -14,7 +14,7 @@
 -- create_misc
 --
 
-SELECT * INTO TABLE onek2 FROM onek;
+CREATE TABLE onek2 AS SELECT * FROM onek;
 
 --
 -- yb_pg_create_index
