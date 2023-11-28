@@ -215,6 +215,9 @@ DEFINE_NON_RUNTIME_bool(enable_ysql_conn_mgr_stats, true,
 DEFINE_test_flag(bool, ysql_yb_enable_replication_commands, false,
     "Enable logical replication commands for Publication and Replication Slots");
 
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(int32, yb_parallel_range_rows, 0,
+    "The number of rows to plan per parallel worker, zero disables the feature");
+
 static bool ValidateXclusterConsistencyLevel(const char* flagname, const std::string& value) {
   if (value != "database" && value != "tablet") {
     fprintf(

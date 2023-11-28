@@ -4970,7 +4970,7 @@ StartSubTransaction(void)
 
 	ShowTransactionState("StartSubTransaction");
 
-	/* 
+	/*
 	 * Update the value of the sticky objects from parent transaction
 	 */
 	if(CurrentTransactionState->parent)
@@ -5455,9 +5455,17 @@ SerializeTransactionState(Size maxsize, char *start_address)
 	{
 		if (TransactionIdIsValid(s->transactionId))
 			workspace[i++] = s->transactionId;
-		memcpy(&workspace[i], s->childXids,
-			   s->nChildXids * sizeof(TransactionId));
-		i += s->nChildXids;
+		/*
+		 * In Yugabyte it is valid if childXids is NULL, but memcpy's arguments
+		 * are supposed to be not null. Even when Yugabyte is not enabled,
+		 * if s->nChildXids is 0, it is good to skip those no-op lines.
+		 */
+		if (s->nChildXids)
+		{
+			memcpy(&workspace[i], s->childXids,
+				s->nChildXids * sizeof(TransactionId));
+			i += s->nChildXids;
+		}
 	}
 	Assert(i == nxids);
 

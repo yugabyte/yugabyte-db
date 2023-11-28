@@ -801,7 +801,8 @@ void
 YBInitPostgresBackend(
 	const char *program_name,
 	const char *db_name,
-	const char *user_name)
+	const char *user_name,
+	uint64_t *session_id)
 {
 	HandleYBStatus(YBCInit(program_name, palloc, cstring_to_text_with_len));
 
@@ -824,7 +825,7 @@ YBInitPostgresBackend(
 		callbacks.UnixEpochToPostgresEpoch = &YbUnixEpochToPostgresEpoch;
 		callbacks.ConstructArrayDatum = &YbConstructArrayDatum;
 		callbacks.CheckUserMap = &check_usermap;
-		YBCInitPgGate(type_table, count, callbacks);
+		YBCInitPgGate(type_table, count, callbacks, session_id);
 		YBCInstallTxnDdlHook();
 
 		/*
@@ -845,6 +846,12 @@ YBInitPostgresBackend(
 		 */
 		yb_pgstat_add_session_info(YBCPgGetSessionID());
 	}
+}
+
+bool
+YbGetCurrentSessionId(uint64_t *session_id)
+{
+	return YBCGetCurrentPgSessionId(session_id);
 }
 
 void

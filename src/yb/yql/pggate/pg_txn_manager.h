@@ -84,6 +84,11 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   double GetTransactionPriority() const;
   TxnPriorityRequirement GetTransactionPriorityType() const;
 
+  uint64_t GetReadTimeSerialNo() { return read_time_serial_no_; }
+  void ForceReadTimeSerialNo(uint64_t read_time_serial_no) {
+    read_time_serial_no_ = read_time_serial_no;
+  }
+
  private:
   YB_STRONGLY_TYPED_BOOL(NeedsHigherPriorityTxn);
   YB_STRONGLY_TYPED_BOOL(SavePriority);

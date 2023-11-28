@@ -5915,7 +5915,8 @@ BackgroundWorkerInitializeConnection(const char *dbname, const char *username, u
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("database connection requirement not indicated during registration")));
 
-	InitPostgres(dbname, InvalidOid, username, InvalidOid, NULL, (flags & BGWORKER_BYPASS_ALLOWCONN) != 0);
+	InitPostgres(dbname, InvalidOid, username, InvalidOid, NULL, NULL,
+				 (flags & BGWORKER_BYPASS_ALLOWCONN) != 0);
 
 	/* it had better not gotten out of "init" mode yet */
 	if (!IsInitProcessingMode())
@@ -5928,7 +5929,8 @@ BackgroundWorkerInitializeConnection(const char *dbname, const char *username, u
  * Connect background worker to a database using OIDs.
  */
 void
-BackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid, uint32 flags)
+YbBackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid,
+											uint64_t *session_id, uint32 flags)
 {
 	BackgroundWorker *worker = MyBgworkerEntry;
 
@@ -5938,13 +5940,21 @@ BackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid, uint32 flags)
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("database connection requirement not indicated during registration")));
 
-	InitPostgres(NULL, dboid, NULL, useroid, NULL, (flags & BGWORKER_BYPASS_ALLOWCONN) != 0);
+	InitPostgres(NULL, dboid, NULL, useroid, NULL, session_id,
+				 (flags & BGWORKER_BYPASS_ALLOWCONN) != 0);
 
 	/* it had better not gotten out of "init" mode yet */
 	if (!IsInitProcessingMode())
 		ereport(ERROR,
 				(errmsg("invalid processing mode in background worker")));
 	SetProcessingMode(NormalProcessing);
+}
+
+void
+BackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid,
+										  uint32 flags)
+{
+	YbBackgroundWorkerInitializeConnectionByOid(dboid, useroid, NULL, flags);
 }
 
 /*

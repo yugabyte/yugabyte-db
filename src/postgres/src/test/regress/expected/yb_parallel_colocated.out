@@ -1,0 +1,747 @@
+--
+-- PARALLEL queries to colocated tables
+--
+CREATE DATABASE pctest colocation = true;
+\c pctest
+-- create tables
+CREATE TABLE pctest1(k int primary key, a int, b int, c int, d text)
+    WITH (colocation = true);
+CREATE TABLE pctest2(k int primary key, a int, b int, c int, d text)
+    WITH (colocation = true);
+CREATE UNIQUE INDEX ON pctest1(a);
+CREATE INDEX ON pctest1(c);
+CREATE INDEX ON pctest2(b);
+INSERT INTO pctest1
+    SELECT i, 1000 - i, i/3, i%50, 'Value' || i::text FROM generate_series(1, 1000) i;
+INSERT INTO pctest2
+    SELECT i, 200 + i, i/5, i%10, 'Other value ' || i::text FROM generate_series(1, 200) i;
+-- enable parallel query for YB tables
+set yb_parallel_range_rows  to 1;
+set yb_enable_base_scans_cost_model to true;
+-- encourage use of parallel plans
+set parallel_setup_cost=0;
+set parallel_tuple_cost=0;
+-- Parallel sequential scan
+EXPLAIN (costs off)
+SELECT * FROM pctest1 WHERE d LIKE 'Value_9';
+                  QUERY PLAN
+-----------------------------------------------
+ Gather
+   Workers Planned: 2
+   ->  Parallel Seq Scan on pctest1
+         Remote Filter: (d ~~ 'Value_9'::text)
+(4 rows)
+
+SELECT * FROM pctest1 WHERE d LIKE 'Value_9';
+ k  |  a  | b  | c  |    d
+----+-----+----+----+---------
+ 19 | 981 |  6 | 19 | Value19
+ 29 | 971 |  9 | 29 | Value29
+ 39 | 961 | 13 | 39 | Value39
+ 49 | 951 | 16 | 49 | Value49
+ 59 | 941 | 19 |  9 | Value59
+ 69 | 931 | 23 | 19 | Value69
+ 79 | 921 | 26 | 29 | Value79
+ 89 | 911 | 29 | 39 | Value89
+ 99 | 901 | 33 | 49 | Value99
+(9 rows)
+
+-- with aggregates
+EXPLAIN (costs off)
+SELECT count(*) FROM pctest1 WHERE d LIKE 'Value_9';
+                        QUERY PLAN
+-----------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather
+         Workers Planned: 2
+         ->  Partial Aggregate
+               ->  Parallel Seq Scan on pctest1
+                     Remote Filter: (d ~~ 'Value_9'::text)
+(6 rows)
+
+SELECT count(*) FROM pctest1 WHERE d LIKE 'Value_9';
+ count
+-------
+     9
+(1 row)
+
+-- with sort
+EXPLAIN (costs off)
+SELECT * FROM pctest1 WHERE d LIKE 'Value_9' ORDER BY b DESC;
+                     QUERY PLAN
+-----------------------------------------------------
+ Gather Merge
+   Workers Planned: 2
+   ->  Sort
+         Sort Key: b DESC
+         ->  Parallel Seq Scan on pctest1
+               Remote Filter: (d ~~ 'Value_9'::text)
+(6 rows)
+
+SELECT * FROM pctest1 WHERE d LIKE 'Value_9' ORDER BY b DESC;
+ k  |  a  | b  | c  |    d
+----+-----+----+----+---------
+ 99 | 901 | 33 | 49 | Value99
+ 89 | 911 | 29 | 39 | Value89
+ 79 | 921 | 26 | 29 | Value79
+ 69 | 931 | 23 | 19 | Value69
+ 59 | 941 | 19 |  9 | Value59
+ 49 | 951 | 16 | 49 | Value49
+ 39 | 961 | 13 | 39 | Value39
+ 29 | 971 |  9 | 29 | Value29
+ 19 | 981 |  6 | 19 | Value19
+(9 rows)
+
+-- with grouping
+EXPLAIN (costs off)
+SELECT b, count(*) FROM pctest1 WHERE d LIKE 'Value9%' GROUP BY b;
+                           QUERY PLAN
+-----------------------------------------------------------------
+ Finalize GroupAggregate
+   Group Key: b
+   ->  Gather Merge
+         Workers Planned: 2
+         ->  Partial GroupAggregate
+               Group Key: b
+               ->  Sort
+                     Sort Key: b
+                     ->  Parallel Seq Scan on pctest1
+                           Remote Filter: (d ~~ 'Value9%'::text)
+(10 rows)
+
+SELECT b, count(*) FROM pctest1 WHERE d LIKE 'Value9%' GROUP BY b;
+  b  | count
+-----+-------
+   3 |     1
+  30 |     3
+  31 |     3
+  32 |     3
+  33 |     1
+ 300 |     3
+ 301 |     3
+ 302 |     3
+ 303 |     3
+ 304 |     3
+ 305 |     3
+ 306 |     3
+ 307 |     3
+ 308 |     3
+ 309 |     3
+ 310 |     3
+ 311 |     3
+ 312 |     3
+ 313 |     3
+ 314 |     3
+ 315 |     3
+ 316 |     3
+ 317 |     3
+ 318 |     3
+ 319 |     3
+ 320 |     3
+ 321 |     3
+ 322 |     3
+ 323 |     3
+ 324 |     3
+ 325 |     3
+ 326 |     3
+ 327 |     3
+ 328 |     3
+ 329 |     3
+ 330 |     3
+ 331 |     3
+ 332 |     3
+ 333 |     1
+(39 rows)
+
+-- Parallel index scan
+EXPLAIN (costs off)
+SELECT * FROM pctest1 WHERE k < 10;
+                       QUERY PLAN
+---------------------------------------------------------
+ Gather
+   Workers Planned: 2
+   ->  Parallel Index Scan using pctest1_pkey on pctest1
+         Index Cond: (k < 10)
+(4 rows)
+
+SELECT * FROM pctest1 WHERE k < 10;
+ k |  a  | b | c |   d
+---+-----+---+---+--------
+ 1 | 999 | 0 | 1 | Value1
+ 2 | 998 | 0 | 2 | Value2
+ 3 | 997 | 1 | 3 | Value3
+ 4 | 996 | 1 | 4 | Value4
+ 5 | 995 | 1 | 5 | Value5
+ 6 | 994 | 2 | 6 | Value6
+ 7 | 993 | 2 | 7 | Value7
+ 8 | 992 | 2 | 8 | Value8
+ 9 | 991 | 3 | 9 | Value9
+(9 rows)
+
+EXPLAIN (costs off)
+SELECT * FROM pctest1 WHERE d LIKE 'Value_9' ORDER BY k;
+                       QUERY PLAN
+---------------------------------------------------------
+ Gather Merge
+   Workers Planned: 2
+   ->  Parallel Index Scan using pctest1_pkey on pctest1
+         Remote Filter: (d ~~ 'Value_9'::text)
+(4 rows)
+
+SELECT * FROM pctest1 WHERE d LIKE 'Value_9' ORDER BY k;
+ k  |  a  | b  | c  |    d
+----+-----+----+----+---------
+ 19 | 981 |  6 | 19 | Value19
+ 29 | 971 |  9 | 29 | Value29
+ 39 | 961 | 13 | 39 | Value39
+ 49 | 951 | 16 | 49 | Value49
+ 59 | 941 | 19 |  9 | Value59
+ 69 | 931 | 23 | 19 | Value69
+ 79 | 921 | 26 | 29 | Value79
+ 89 | 911 | 29 | 39 | Value89
+ 99 | 901 | 33 | 49 | Value99
+(9 rows)
+
+--secondary index
+EXPLAIN (costs off)
+SELECT * FROM pctest1 WHERE c = 10;
+                        QUERY PLAN
+----------------------------------------------------------
+ Gather
+   Workers Planned: 2
+   ->  Parallel Index Scan using pctest1_c_idx on pctest1
+         Index Cond: (c = 10)
+(4 rows)
+
+SELECT * FROM pctest1 WHERE c = 10;
+  k  |  a  |  b  | c  |    d
+-----+-----+-----+----+----------
+  10 | 990 |   3 | 10 | Value10
+  60 | 940 |  20 | 10 | Value60
+ 110 | 890 |  36 | 10 | Value110
+ 160 | 840 |  53 | 10 | Value160
+ 210 | 790 |  70 | 10 | Value210
+ 260 | 740 |  86 | 10 | Value260
+ 310 | 690 | 103 | 10 | Value310
+ 360 | 640 | 120 | 10 | Value360
+ 410 | 590 | 136 | 10 | Value410
+ 460 | 540 | 153 | 10 | Value460
+ 510 | 490 | 170 | 10 | Value510
+ 560 | 440 | 186 | 10 | Value560
+ 610 | 390 | 203 | 10 | Value610
+ 660 | 340 | 220 | 10 | Value660
+ 710 | 290 | 236 | 10 | Value710
+ 760 | 240 | 253 | 10 | Value760
+ 810 | 190 | 270 | 10 | Value810
+ 860 | 140 | 286 | 10 | Value860
+ 910 |  90 | 303 | 10 | Value910
+ 960 |  40 | 320 | 10 | Value960
+(20 rows)
+
+--secondary index
+EXPLAIN (costs off)
+SELECT * FROM pctest1 ORDER BY a LIMIT 10;
+                           QUERY PLAN
+----------------------------------------------------------------
+ Limit
+   ->  Gather Merge
+         Workers Planned: 2
+         ->  Parallel Index Scan using pctest1_a_idx on pctest1
+(4 rows)
+
+SELECT * FROM pctest1 ORDER BY a LIMIT 10;
+  k   | a |  b  | c  |     d
+------+---+-----+----+-----------
+ 1000 | 0 | 333 |  0 | Value1000
+  999 | 1 | 333 | 49 | Value999
+  998 | 2 | 332 | 48 | Value998
+  997 | 3 | 332 | 47 | Value997
+  996 | 4 | 332 | 46 | Value996
+  995 | 5 | 331 | 45 | Value995
+  994 | 6 | 331 | 44 | Value994
+  993 | 7 | 331 | 43 | Value993
+  992 | 8 | 330 | 42 | Value992
+  991 | 9 | 330 | 41 | Value991
+(10 rows)
+
+-- with aggregates
+EXPLAIN (costs off)
+SELECT count(*) FROM pctest1 WHERE k > 123;
+                             QUERY PLAN
+---------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather
+         Workers Planned: 2
+         ->  Partial Aggregate
+               ->  Parallel Index Scan using pctest1_pkey on pctest1
+                     Index Cond: (k > 123)
+(6 rows)
+
+SELECT count(*) FROM pctest1 WHERE k > 123;
+ count
+-------
+   877
+(1 row)
+
+-- index only
+EXPLAIN (costs off)
+SELECT a FROM pctest1 WHERE a < 10;
+                          QUERY PLAN
+---------------------------------------------------------------
+ Gather
+   Workers Planned: 2
+   ->  Parallel Index Only Scan using pctest1_a_idx on pctest1
+         Index Cond: (a < 10)
+(4 rows)
+
+SELECT a FROM pctest1 WHERE a < 10;
+ a
+---
+ 0
+ 1
+ 2
+ 3
+ 4
+ 5
+ 6
+ 7
+ 8
+ 9
+(10 rows)
+
+-- with grouping
+EXPLAIN (costs off)
+SELECT c, count(*) FROM pctest1 WHERE c > 40 GROUP BY c;
+                             QUERY PLAN
+---------------------------------------------------------------------
+ HashAggregate
+   Group Key: c
+   ->  Gather
+         Workers Planned: 2
+         ->  Parallel Index Only Scan using pctest1_c_idx on pctest1
+               Index Cond: (c > 40)
+(6 rows)
+
+SELECT c, count(*) FROM pctest1 WHERE c > 40 GROUP BY c;
+ c  | count
+----+-------
+ 44 |    20
+ 42 |    20
+ 43 |    20
+ 48 |    20
+ 45 |    20
+ 41 |    20
+ 46 |    20
+ 49 |    20
+ 47 |    20
+(9 rows)
+
+-- Joins
+-- Nest loop
+EXPLAIN (costs off)
+SELECT pctest1.* FROM pctest1, pctest2
+  WHERE pctest1.a = pctest2.b and pctest1.a % 10 = 0;
+                         QUERY PLAN
+------------------------------------------------------------
+ Gather
+   Workers Planned: 2
+   ->  Nested Loop
+         ->  Parallel Seq Scan on pctest1
+               Remote Filter: ((a % 10) = 0)
+         ->  Index Only Scan using pctest2_b_idx on pctest2
+               Index Cond: (b = pctest1.a)
+(7 rows)
+
+SELECT pctest1.* FROM pctest1, pctest2
+  WHERE pctest1.a = pctest2.b and pctest1.a % 10 = 0;
+  k   | a  |  b  | c  |     d
+------+----+-----+----+-----------
+  960 | 40 | 320 | 10 | Value960
+  970 | 30 | 323 | 20 | Value970
+  970 | 30 | 323 | 20 | Value970
+  970 | 30 | 323 | 20 | Value970
+  970 | 30 | 323 | 20 | Value970
+  970 | 30 | 323 | 20 | Value970
+  980 | 20 | 326 | 30 | Value980
+  980 | 20 | 326 | 30 | Value980
+  980 | 20 | 326 | 30 | Value980
+  980 | 20 | 326 | 30 | Value980
+  980 | 20 | 326 | 30 | Value980
+  990 | 10 | 330 | 40 | Value990
+  990 | 10 | 330 | 40 | Value990
+  990 | 10 | 330 | 40 | Value990
+  990 | 10 | 330 | 40 | Value990
+  990 | 10 | 330 | 40 | Value990
+ 1000 |  0 | 333 |  0 | Value1000
+ 1000 |  0 | 333 |  0 | Value1000
+ 1000 |  0 | 333 |  0 | Value1000
+ 1000 |  0 | 333 |  0 | Value1000
+(20 rows)
+
+EXPLAIN (costs off)
+/*+YbBatchedNL(pctest1 pctest2)*/ SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
+  WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
+                                    QUERY PLAN
+----------------------------------------------------------------------------------
+ Gather Merge
+   Workers Planned: 2
+   ->  Sort
+         Sort Key: pctest1.k
+         ->  YB Batched Nested Loop Join
+               Join Filter: (pctest1.k = pctest2.k)
+               ->  Parallel Index Scan using pctest1_c_idx on pctest1
+                     Index Cond: (c = 42)
+               ->  Index Scan using pctest2_pkey on pctest2
+                     Index Cond: (k = ANY (ARRAY[pctest1.k, $1, $2, ..., $1023]))
+(10 rows)
+
+/*+YbBatchedNL(pctest1 pctest2)*/ SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
+  WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
+  k  |  a  | b  | c  |    d     |  k
+-----+-----+----+----+----------+-----
+  42 | 958 | 14 | 42 | Value42  |  42
+  92 | 908 | 30 | 42 | Value92  |  92
+ 142 | 858 | 47 | 42 | Value142 | 142
+ 192 | 808 | 64 | 42 | Value192 | 192
+(4 rows)
+
+-- Hash join
+EXPLAIN (costs off)
+SELECT pctest1.k, pctest2.k FROM pctest1 JOIN pctest2 USING (a, c);
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Gather
+   Workers Planned: 2
+   ->  Parallel Hash Join
+         Hash Cond: ((pctest2.a = pctest1.a) AND (pctest2.c = pctest1.c))
+         ->  Parallel Seq Scan on pctest2
+         ->  Parallel Hash
+               ->  Parallel Seq Scan on pctest1
+(7 rows)
+
+SELECT pctest1.k, pctest2.k FROM pctest1 JOIN pctest2 USING (a, c);
+  k  |  k
+-----+-----
+ 755 |  45
+ 750 |  50
+ 705 |  95
+ 700 | 100
+ 655 | 145
+ 650 | 150
+ 605 | 195
+ 600 | 200
+(8 rows)
+
+-- Merge join
+set enable_hashjoin to false;
+EXPLAIN (costs off)
+SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
+  WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
+                              QUERY PLAN
+----------------------------------------------------------------------
+ Merge Join
+   Merge Cond: (pctest2.k = pctest1.k)
+   ->  Gather Merge
+         Workers Planned: 2
+         ->  Parallel Index Scan using pctest2_pkey on pctest2
+   ->  Sort
+         Sort Key: pctest1.k
+         ->  Gather
+               Workers Planned: 2
+               ->  Parallel Index Scan using pctest1_c_idx on pctest1
+                     Index Cond: (c = 42)
+(11 rows)
+
+SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
+  WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
+  k  |  a  | b  | c  |    d     |  k
+-----+-----+----+----+----------+-----
+  42 | 958 | 14 | 42 | Value42  |  42
+  92 | 908 | 30 | 42 | Value92  |  92
+ 142 | 858 | 47 | 42 | Value142 | 142
+ 192 | 808 | 64 | 42 | Value192 | 192
+(4 rows)
+
+reset enable_hashjoin;
+-- Subquery
+EXPLAIN (costs off)
+SELECT x, d FROM
+  (SELECT pctest1.* FROM pctest1, pctest2
+     WHERE pctest1.k = pctest2.k AND pctest1.c = pctest2.c) ss RIGHT JOIN
+  (values (15),(16),(17)) v(x) on ss.b = v.x ORDER BY x;
+                                      QUERY PLAN
+--------------------------------------------------------------------------------------
+ Sort
+   Sort Key: "*VALUES*".column1
+   ->  Hash Right Join
+         Hash Cond: (pctest1.b = "*VALUES*".column1)
+         ->  Gather
+               Workers Planned: 2
+               ->  Parallel Hash Join
+                     Hash Cond: ((pctest1.k = pctest2.k) AND (pctest1.c = pctest2.c))
+                     ->  Parallel Seq Scan on pctest1
+                     ->  Parallel Hash
+                           ->  Parallel Seq Scan on pctest2
+         ->  Hash
+               ->  Values Scan on "*VALUES*"
+(13 rows)
+
+SELECT x, d FROM
+  (SELECT pctest1.* FROM pctest1, pctest2
+     WHERE pctest1.k = pctest2.k AND pctest1.c = pctest2.c) ss RIGHT JOIN
+  (values (15),(16),(17)) v(x) on ss.b = v.x ORDER BY x;
+ x  |    d
+----+---------
+ 15 |
+ 16 | Value50
+ 17 | Value51
+ 17 | Value52
+ 17 | Value53
+(5 rows)
+
+EXPLAIN (costs off)
+SELECT * FROM
+  (SELECT pctest1.* FROM pctest1, pctest2
+     WHERE pctest1.k = pctest2.k AND pctest1.c = pctest2.c) s1 JOIN
+  (SELECT pctest2.* FROM pctest1, pctest2
+     WHERE pctest1.k = pctest2.k AND pctest1.b = pctest2.b) s2 ON s1.b = s2.c;
+                                          QUERY PLAN
+----------------------------------------------------------------------------------------------
+ Nested Loop
+   Join Filter: (pctest1.b = pctest2_1.c)
+   ->  Gather
+         Workers Planned: 2
+         ->  Parallel Hash Join
+               Hash Cond: ((pctest1.k = pctest2.k) AND (pctest1.c = pctest2.c))
+               ->  Parallel Seq Scan on pctest1
+               ->  Parallel Hash
+                     ->  Parallel Seq Scan on pctest2
+   ->  Materialize
+         ->  Gather
+               Workers Planned: 2
+               ->  Parallel Hash Join
+                     Hash Cond: ((pctest1_1.k = pctest2_1.k) AND (pctest1_1.b = pctest2_1.b))
+                     ->  Parallel Seq Scan on pctest1 pctest1_1
+                     ->  Parallel Hash
+                           ->  Parallel Seq Scan on pctest2 pctest2_1
+(17 rows)
+
+SELECT * FROM
+  (SELECT pctest1.* FROM pctest1, pctest2
+     WHERE pctest1.k = pctest2.k AND pctest1.c = pctest2.c) s1 JOIN
+  (SELECT pctest2.* FROM pctest1, pctest2
+     WHERE pctest1.k = pctest2.k AND pctest1.b = pctest2.b) s2 ON s1.b = s2.c;
+ k |  a  | b | c |   d    | k |  a  | b | c |       d
+---+-----+---+---+--------+---+-----+---+---+---------------
+ 3 | 997 | 1 | 3 | Value3 | 1 | 201 | 0 | 1 | Other value 1
+ 4 | 996 | 1 | 4 | Value4 | 1 | 201 | 0 | 1 | Other value 1
+ 5 | 995 | 1 | 5 | Value5 | 1 | 201 | 0 | 1 | Other value 1
+ 6 | 994 | 2 | 6 | Value6 | 2 | 202 | 0 | 2 | Other value 2
+ 7 | 993 | 2 | 7 | Value7 | 2 | 202 | 0 | 2 | Other value 2
+ 8 | 992 | 2 | 8 | Value8 | 2 | 202 | 0 | 2 | Other value 2
+(6 rows)
+
+-- no parallelism
+EXPLAIN (costs off)
+SELECT * from pctest2
+  WHERE b < (SELECT avg(b) / 20 FROM pctest1 WHERE c = pctest2.c);
+                       QUERY PLAN
+---------------------------------------------------------
+ Seq Scan on pctest2
+   Filter: ((b)::numeric < (SubPlan 1))
+   SubPlan 1
+     ->  Finalize Aggregate
+           ->  Index Scan using pctest1_c_idx on pctest1
+                 Index Cond: (c = pctest2.c)
+                 Partial Aggregate: true
+(7 rows)
+
+SELECT * from pctest2
+  WHERE b < (SELECT avg(b) / 20 FROM pctest1 WHERE c = pctest2.c);
+ k  |  a  | b | c |       d
+----+-----+---+---+----------------
+  1 | 201 | 0 | 1 | Other value 1
+  2 | 202 | 0 | 2 | Other value 2
+  3 | 203 | 0 | 3 | Other value 3
+  4 | 204 | 0 | 4 | Other value 4
+  5 | 205 | 1 | 5 | Other value 5
+  6 | 206 | 1 | 6 | Other value 6
+  7 | 207 | 1 | 7 | Other value 7
+  8 | 208 | 1 | 8 | Other value 8
+  9 | 209 | 1 | 9 | Other value 9
+ 10 | 210 | 2 | 0 | Other value 10
+ 11 | 211 | 2 | 1 | Other value 11
+ 12 | 212 | 2 | 2 | Other value 12
+ 13 | 213 | 2 | 3 | Other value 13
+ 14 | 214 | 2 | 4 | Other value 14
+ 15 | 215 | 3 | 5 | Other value 15
+ 16 | 216 | 3 | 6 | Other value 16
+ 17 | 217 | 3 | 7 | Other value 17
+ 18 | 218 | 3 | 8 | Other value 18
+ 19 | 219 | 3 | 9 | Other value 19
+ 20 | 220 | 4 | 0 | Other value 20
+ 21 | 221 | 4 | 1 | Other value 21
+ 22 | 222 | 4 | 2 | Other value 22
+ 23 | 223 | 4 | 3 | Other value 23
+ 24 | 224 | 4 | 4 | Other value 24
+ 25 | 225 | 5 | 5 | Other value 25
+ 26 | 226 | 5 | 6 | Other value 26
+ 27 | 227 | 5 | 7 | Other value 27
+ 28 | 228 | 5 | 8 | Other value 28
+ 29 | 229 | 5 | 9 | Other value 29
+ 30 | 230 | 6 | 0 | Other value 30
+ 31 | 231 | 6 | 1 | Other value 31
+ 32 | 232 | 6 | 2 | Other value 32
+ 33 | 233 | 6 | 3 | Other value 33
+ 34 | 234 | 6 | 4 | Other value 34
+ 35 | 235 | 7 | 5 | Other value 35
+ 36 | 236 | 7 | 6 | Other value 36
+ 37 | 237 | 7 | 7 | Other value 37
+ 38 | 238 | 7 | 8 | Other value 38
+ 39 | 239 | 7 | 9 | Other value 39
+ 40 | 240 | 8 | 0 | Other value 40
+(40 rows)
+
+-- passing parameters to workers
+EXPLAIN (costs off)
+SELECT * from pctest2
+  WHERE c IN (SELECT b FROM pctest1 WHERE d LIKE 'Value_9')
+    AND b < (SELECT avg(b) FROM pctest1 WHERE d LIKE 'Value_9');
+                            QUERY PLAN
+-------------------------------------------------------------------
+ Gather
+   Workers Planned: 2
+   Params Evaluated: $1
+   InitPlan 1 (returns $1)
+     ->  Finalize Aggregate
+           ->  Gather
+                 Workers Planned: 2
+                 ->  Partial Aggregate
+                       ->  Parallel Seq Scan on pctest1 pctest1_1
+                             Remote Filter: (d ~~ 'Value_9'::text)
+   ->  Parallel Hash Semi Join
+         Hash Cond: (pctest2.c = pctest1.b)
+         ->  Parallel Seq Scan on pctest2
+               Remote Filter: ((b)::numeric < $1)
+         ->  Parallel Hash
+               ->  Parallel Seq Scan on pctest1
+                     Remote Filter: (d ~~ 'Value_9'::text)
+(17 rows)
+
+SELECT * from pctest2
+  WHERE c IN (SELECT b FROM pctest1 WHERE d LIKE 'Value_9')
+    AND b < (SELECT avg(b) FROM pctest1 WHERE d LIKE 'Value_9');
+ k  |  a  | b  | c |       d
+----+-----+----+---+----------------
+  6 | 206 |  1 | 6 | Other value 6
+  9 | 209 |  1 | 9 | Other value 9
+ 16 | 216 |  3 | 6 | Other value 16
+ 19 | 219 |  3 | 9 | Other value 19
+ 26 | 226 |  5 | 6 | Other value 26
+ 29 | 229 |  5 | 9 | Other value 29
+ 36 | 236 |  7 | 6 | Other value 36
+ 39 | 239 |  7 | 9 | Other value 39
+ 46 | 246 |  9 | 6 | Other value 46
+ 49 | 249 |  9 | 9 | Other value 49
+ 56 | 256 | 11 | 6 | Other value 56
+ 59 | 259 | 11 | 9 | Other value 59
+ 66 | 266 | 13 | 6 | Other value 66
+ 69 | 269 | 13 | 9 | Other value 69
+ 76 | 276 | 15 | 6 | Other value 76
+ 79 | 279 | 15 | 9 | Other value 79
+ 86 | 286 | 17 | 6 | Other value 86
+ 89 | 289 | 17 | 9 | Other value 89
+ 96 | 296 | 19 | 6 | Other value 96
+ 99 | 299 | 19 | 9 | Other value 99
+(20 rows)
+
+-- test rescan cases
+set enable_material = false;
+EXPLAIN (costs off)
+select * from
+  (SELECT count(*) FROM pctest1 WHERE b > 10) ss
+  right join (values (1),(2),(3)) v(x) on true;
+                      QUERY PLAN
+------------------------------------------------------
+ Nested Loop Left Join
+   ->  Values Scan on "*VALUES*"
+   ->  Finalize Aggregate
+         ->  Gather
+               Workers Planned: 2
+               ->  Partial Aggregate
+                     ->  Parallel Seq Scan on pctest1
+                           Remote Filter: (b > 10)
+(8 rows)
+
+select * from
+  (SELECT count(*) FROM pctest1 WHERE b > 10) ss
+  right join (values (1),(2),(3)) v(x) on true;
+ count | x
+-------+---
+   968 | 1
+   968 | 2
+   968 | 3
+(3 rows)
+
+EXPLAIN (costs off)
+select * from
+  (SELECT count(*) FROM pctest1 WHERE c > 10) ss
+  right join (values (1),(2),(3)) v(x) on true;
+                                   QUERY PLAN
+---------------------------------------------------------------------------------
+ Nested Loop Left Join
+   ->  Values Scan on "*VALUES*"
+   ->  Finalize Aggregate
+         ->  Gather
+               Workers Planned: 2
+               ->  Partial Aggregate
+                     ->  Parallel Index Only Scan using pctest1_c_idx on pctest1
+                           Index Cond: (c > 10)
+(8 rows)
+
+select * from
+  (SELECT count(*) FROM pctest1 WHERE c > 10) ss
+  right join (values (1),(2),(3)) v(x) on true;
+ count | x
+-------+---
+   780 | 1
+   780 | 2
+   780 | 3
+(3 rows)
+
+reset enable_material;
+-- Modify table (no parallelism)
+EXPLAIN (costs off)
+UPDATE pctest1 SET b = 0 WHERE d LIKE 'Value_9';
+                  QUERY PLAN
+-----------------------------------------------
+ Update on pctest1
+   ->  Seq Scan on pctest1
+         Remote Filter: (d ~~ 'Value_9'::text)
+(3 rows)
+
+UPDATE pctest1 SET b = 0 WHERE d LIKE 'Value_9';
+SELECT count(*) FROM pctest1 WHERE b = 0;
+ count
+-------
+    11
+(1 row)
+
+EXPLAIN (costs off)
+DELETE FROM pctest1 WHERE d LIKE 'Value_8';
+                  QUERY PLAN
+-----------------------------------------------
+ Delete on pctest1
+   ->  Seq Scan on pctest1
+         Remote Filter: (d ~~ 'Value_8'::text)
+(3 rows)
+
+DELETE FROM pctest1 WHERE d LIKE 'Value_8';
+SELECT count(*) FROM pctest1;
+ count
+-------
+   991
+(1 row)
+
+DROP TABLE pctest1;
+DROP TABLE pctest2;
