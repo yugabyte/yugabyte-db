@@ -41,14 +41,14 @@ ybm metrics-exporter attach \
 
 ## Commands
 
-### attach
+### assign
 
 Assign an export configuration to the specified cluster.
 
 | Flag | Description |
 | :--- | :--- |
-| --config-name | Required. Name of the export configuration. |
 | --cluster-name | Required. Name of the cluster. |
+| --config-name | Required. Name of the export configuration. |
 
 ### create
 
@@ -57,9 +57,10 @@ Create an export configuration.
 | Flag | Description |
 | :--- | :--- |
 | --config-name | Required. Name for the export configuration. |
-| --type | Required. The third party tool to exported metrics to. Options: DATADOG or GRAFANA. |
+| --type | Required. The third party tool to export metrics to. Options: DATADOG, GRAFANA, SUMOLOGIC. |
 | --datadog-spec | Required for type DATADOG. The Datadog export details, provided as key-value pairs.<br>Arguments:<ul><li>api-key - your Datadog API key.</li><li>site - your Datadog site parameters.</li></ul> |
 | --grafana-spec | Required for type GRAFANA. The Grafana export details, provided as key-value pairs.<br>Arguments:<ul><li>access-policy-token - your Grafana token.</li><li>org-slug - your organization name.</li><li>instance-id - your Grafana instance ID.</li><li>zone - your Grafana instance zone.</li></ul> |
+| --sumologic-spec | Required for type SUMOLOGIC. The Sumo Logic export details, provided as key-value pairs.<br>Arguments:<ul><li>access-key - your Sumo Logic access key.</li><li>access-id - your Sumo Logic access ID.</li><li>installation-token - your Sumo Logic installation token.</li></ul> |
 
 ### delete
 
@@ -69,9 +70,17 @@ Delete a specified export configuration. You can't delete configurations that ar
 | :--- | :--- |
 | --config-name | Required. Name of the export configuration. |
 
+### describe
+
+Describe a specified export configuration.
+
+| Flag | Description |
+| :--- | :--- |
+| --config-name | Required. Name of the export configuration. |
+
 ### list
 
-Display the export configurations.
+List the export configurations.
 
 ### pause
 
@@ -81,17 +90,9 @@ Pause the export of metrics from the specified cluster.
 | :--- | :--- |
 | --cluster-name | Required. Name of the cluster. |
 
-### remove-from-cluster
+### unassign
 
 Remove the export configuration from the specified cluster.
-
-| Flag | Description |
-| :--- | :--- |
-| --cluster-name | Required. Name of the cluster. |
-
-### resume
-
-Resume the export of metrics from the specified cluster.
 
 | Flag | Description |
 | :--- | :--- |
@@ -103,7 +104,9 @@ Update an export configuration.
 
 | Flag | Description |
 | :--- | :--- |
-| --config-name | Required. Name for the export configuration. |
-| --type | Required. The third party tool to exported metrics to. Options: DATADOG or GRAFANA. |
-| --datadog-spec | Required for type DATADOG. The Datadog export details, provided as key-value pairs.<br>Arguments:<ul><li>api-key - your Datadog API key.</li><li>site - your datadog site parameters.</li></ul> |
+| --config-name | Required. Name of the export configuration. |
+| --new-config-name | New name for the export configuration. |
+| --type | Required. The third party tool to exported metrics to. Options: DATADOG, GRAFANA, SUMOLOGIC. |
+| --datadog-spec | Required for type DATADOG. The Datadog export details, provided as key-value pairs.<br>Arguments:<ul><li>api-key - your Datadog API key.</li><li>site - your Datadog site parameters.</li></ul> |
 | --grafana-spec | Required for type GRAFANA. The Grafana export details, provided as key-value pairs.<br>Arguments:<ul><li>access-policy-token - your Grafana token.</li><li>org-slug - your organization name.</li><li>instance-id - your Grafana instance ID.</li><li>zone - your Grafana instance zone.</li></ul> |
+| --sumologic-spec | Required for type SUMOLOGIC. The Sumo Logic export details, provided as key-value pairs.<br>Arguments:<ul><li>access-key - your Sumo Logic access key.</li><li>access-id - your Sumo Logic access ID.</li><li>installation-token - your Sumo Logic installation token.</li></ul> |
