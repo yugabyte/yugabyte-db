@@ -2029,7 +2029,6 @@ class ControlScript(object):
                 "--rpc_bind_addresses={}:{}".format(advertise_ip, master_rpc_port),
                 "--server_broadcast_addresses={}:{}".format(advertise_ip, master_rpc_port),
                 "--replication_factor=1",
-                "--use_initial_sys_catalog_snapshot",
                 "--server_dump_info_path={}".format(
                     os.path.join(self.configs.saved_data.get("data_dir"), "master-info")),
                 "--master_enable_metrics_snapshotter=true",
