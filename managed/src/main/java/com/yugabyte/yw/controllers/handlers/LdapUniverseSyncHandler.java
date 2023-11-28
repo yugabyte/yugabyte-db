@@ -31,6 +31,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class LdapUniverseSyncHandler {
@@ -80,7 +81,9 @@ public class LdapUniverseSyncHandler {
     }
 
     throw new PlatformServiceException(
-        BAD_REQUEST, String.format("%s is required: %s", fieldName, value));
+        BAD_REQUEST,
+        String.format(
+            "Couldnt extract the value from the gflag. %s(%s) is required.", fieldName, value));
   }
 
   public String validateAndExtractValueFromGFlag(
@@ -98,37 +101,42 @@ public class LdapUniverseSyncHandler {
 
     // fallback to gflag value, if formData has any of these (ldapServer, ldapPort
     // ldapBindDn, ldapPass, ldapSearchFilter, ldapBasedn) values as empty.
-    if (ldapUnivSyncFormData.getLdapServer().isEmpty()) {
+    if (StringUtils.isEmpty(ldapUnivSyncFormData.getLdapServer())) {
       ldapUnivSyncFormData.setLdapServer(
           validateAndExtractValueFromGFlag(gFlag, "ldapServer", "ldapserver"));
     }
-    if (ldapUnivSyncFormData.getLdapPort() == null) {
-      String port = validateAndExtractValueFromGFlag(gFlag, "ldapPort", "ldapport");
-      if (port == null) {
-        ldapUnivSyncFormData.setLdapPort(389);
-      } else {
-        ldapUnivSyncFormData.setLdapPort(Integer.valueOf(port));
-      }
-    }
-    if (ldapUnivSyncFormData.getLdapBindDn().isEmpty()) {
+    if (StringUtils.isEmpty(ldapUnivSyncFormData.getLdapBindDn())) {
       ldapUnivSyncFormData.setLdapBindDn(
           validateAndExtractValueFromGFlag(gFlag, "ldapBindDn", "ldapbinddn"));
     }
-    if (ldapUnivSyncFormData.getLdapBindPassword().isEmpty()) {
+    if (StringUtils.isEmpty(ldapUnivSyncFormData.getLdapBindPassword())) {
       ldapUnivSyncFormData.setLdapBindPassword(
           validateAndExtractValueFromGFlag(gFlag, "ldapBindPassword", "ldapbindpasswd"));
     }
-    if (ldapUnivSyncFormData.getLdapSearchFilter().isEmpty()) {
+    if (StringUtils.isEmpty(ldapUnivSyncFormData.getLdapSearchFilter())) {
       ldapUnivSyncFormData.setLdapSearchFilter(
           validateAndExtractValueFromGFlag(gFlag, "ldapSearchFilter", "ldapsearchfilter"));
     }
-    if (ldapUnivSyncFormData.getLdapBasedn().isEmpty()) {
+    if (StringUtils.isEmpty(ldapUnivSyncFormData.getLdapBasedn())) {
       ldapUnivSyncFormData.setLdapBasedn(
           validateAndExtractValueFromGFlag(gFlag, "ldapBasedn", "ldapbasedn"));
     }
     if (ldapUnivSyncFormData.getUseLdapTls() == null) {
       String tls = validateAndExtractValueFromGFlag(gFlag, "useLdapTls", "ldaptls");
       ldapUnivSyncFormData.setUseLdapTls((tls != null) && tls.equals("1"));
+    }
+    if (ldapUnivSyncFormData.getLdapPort() == null) {
+      String port = validateAndExtractValueFromGFlag(gFlag, "ldapPort", "ldapport");
+      if (port == null) {
+        // Set the default LDAP port based on whether LDAP TLS is used
+        if (ldapUnivSyncFormData.getUseLdapTls()) {
+          ldapUnivSyncFormData.setLdapPort(636);
+        } else {
+          ldapUnivSyncFormData.setLdapPort(389);
+        }
+      } else {
+        ldapUnivSyncFormData.setLdapPort(Integer.valueOf(port));
+      }
     }
 
     return ldapUnivSyncFormData;
@@ -139,7 +147,7 @@ public class LdapUniverseSyncHandler {
 
     // fallback to gflag value, if formData has any of these (ldapServer, ldapPort,
     // ldapBindDn, ldapPass, ldapSearchFilter, ldapBasedn) values as empty.
-    if (ldapUnivSyncFormData.getLdapServer().isEmpty()
+    if (StringUtils.isEmpty(ldapUnivSyncFormData.getLdapServer())
         || ldapUnivSyncFormData.getLdapPort() == null) {
       String serverIpPort =
           validateAndExtractValueFromGFlag("ldapServer", YCQL_LDAP_SERVER, tserverMap);
@@ -155,7 +163,7 @@ public class LdapUniverseSyncHandler {
           throw new PlatformServiceException(BAD_REQUEST, errorMsg);
         }
         // Get the host (server IP)
-        if (ldapUnivSyncFormData.getLdapServer().isEmpty()) {
+        if (StringUtils.isEmpty(ldapUnivSyncFormData.getLdapServer())) {
           ldapUnivSyncFormData.setLdapServer(uri.getHost());
         }
         if (ldapUnivSyncFormData.getLdapPort() == null) {
@@ -164,20 +172,20 @@ public class LdapUniverseSyncHandler {
       }
     }
 
-    if (ldapUnivSyncFormData.getLdapBindDn().isEmpty()) {
+    if (StringUtils.isEmpty(ldapUnivSyncFormData.getLdapBindDn())) {
       ldapUnivSyncFormData.setLdapBindDn(
           validateAndExtractValueFromGFlag("ldapBindDn", YCQL_LDAP_BIND_DN, tserverMap));
     }
-    if (ldapUnivSyncFormData.getLdapBindPassword().isEmpty()) {
+    if (StringUtils.isEmpty(ldapUnivSyncFormData.getLdapBindPassword())) {
       ldapUnivSyncFormData.setLdapBindPassword(
           validateAndExtractValueFromGFlag("ldapBindPassword", YCQL_LDAP_BIND_PASSWD, tserverMap));
     }
-    if (ldapUnivSyncFormData.getLdapSearchFilter().isEmpty()) {
+    if (StringUtils.isEmpty(ldapUnivSyncFormData.getLdapSearchFilter())) {
       ldapUnivSyncFormData.setLdapSearchFilter(
           validateAndExtractValueFromGFlag(
               "ldapSearchFilter", YCQL_LDAP_SEARCH_FILTER, tserverMap));
     }
-    if (ldapUnivSyncFormData.getLdapBasedn().isEmpty()) {
+    if (StringUtils.isEmpty(ldapUnivSyncFormData.getLdapBasedn())) {
       ldapUnivSyncFormData.setLdapBasedn(
           validateAndExtractValueFromGFlag("ldapBasedn", YCQL_LDAP_BASE_DN, tserverMap));
     }
