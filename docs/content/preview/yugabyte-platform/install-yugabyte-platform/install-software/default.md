@@ -44,6 +44,12 @@ Note: For higher availability, one or more additional YugabyteDB Anywhere instan
 
 You can install YugabyteDB Anywhere on a host machine using Replicated in both online and airgapped environments.
 
+{{< note title="Replicated end of life" >}}
+
+YugabyteDB Anywhere will end support for Replicated installation at the end of 2024. You can migrate existing Replicated YugabyteDB Anywhere installations using YBA Installer. See [Migrate from Replicated](../installer/#migrate-from-replicated).
+
+{{< /note >}}
+
 ## Install Replicated
 
 {{< tabpane text=true >}}
