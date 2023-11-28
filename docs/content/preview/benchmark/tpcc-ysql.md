@@ -359,7 +359,7 @@ Once the execution is completed, the TPM-C number along with the efficiency is p
 - **Delivery** Avg: 310.19 ms, p99: 5259.951 ms
 - **StockLevel** Avg: 652.827 ms, p99: 8455.325 ms
 
-When the execution is completed, the TPM-C number along with the efficiency is printed, as follows:
+When the execution is completed, the TPM-C number along with the efficiency is displayed, as follows:
 
 ```output
 17:18:58,728 (DBWorkload.java:955) INFO  - Throughput: Results(nanoSeconds=1800000716759, measuredRequests=842216) = 467.8975914612168 requests/sec reqs/sec
