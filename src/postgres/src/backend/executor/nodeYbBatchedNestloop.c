@@ -741,7 +741,10 @@ CreateBatch(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 		else
 		{
 			elog(DEBUG2, "saving new outer tuple information");
-			ExecCopySlot(econtext->ecxt_outertuple, outerTupleSlot);
+			if (TTS_IS_MINIMALTUPLE(outerTupleSlot))
+				econtext->ecxt_outertuple = outerTupleSlot;
+			else
+				ExecCopySlot(econtext->ecxt_outertuple, outerTupleSlot);
 			LOCAL_JOIN_FN(AddTupleToOuterBatch, bnlstate, econtext->ecxt_outertuple);
 		}
 
@@ -852,13 +855,18 @@ ExecInitYbBatchedNestLoop(YbBatchedNestLoop *plan, EState *estate, int eflags)
 		eflags &= ~EXEC_FLAG_REWIND;
 	innerPlanState(bnlstate) = ExecInitNode(innerPlan(plan), estate, eflags);
 
-	/* the outer tuple isn't the child's tuple, but always a minimal tuple */
-	bnlstate->js.ps.outerops = &TTSOpsMinimalTuple;
-	bnlstate->js.ps.outeropsfixed = true;
-	bnlstate->js.ps.outeropsset = true;
-
-	bnlstate->js.ps.ps_ExprContext->ecxt_outertuple =
-		ExecInitExtraTupleSlot(estate, outerPlanState(bnlstate)->ps_ResultTupleDesc, &TTSOpsMinimalTuple);
+	PlanState *outerPlan = outerPlanState(bnlstate);
+	if (outerPlan->resultopsset && outerPlan->resultops != &TTSOpsMinimalTuple)
+	{
+		/* the outer tuple always has to be a minimal tuple */
+		bnlstate->js.ps.outerops = &TTSOpsMinimalTuple;
+		bnlstate->js.ps.outeropsfixed = true;
+		bnlstate->js.ps.outeropsset = true;
+		bnlstate->js.ps.ps_ExprContext->ecxt_outertuple =
+			ExecInitExtraTupleSlot(estate,
+								   outerPlan->ps_ResultTupleDesc,
+								   &TTSOpsMinimalTuple);
+	}
 
 	/*
 	 * Initialize result slot, type and projection.
