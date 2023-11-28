@@ -2933,7 +2933,8 @@ reaper(SIGNAL_ARGS)
 
 			/*
 			 * We take a conservative approach and restart the postmaster if
-			 * a process dies while holding a lock.
+			 * a process dies while holding a lock. Otherwise, we can do some
+			 * cleanup.
 			 */
 			if (proc->ybLWLockAcquired || proc->ybSpinLocksAcquired > 0)
 			{
@@ -2944,46 +2945,42 @@ reaper(SIGNAL_ARGS)
 				break;
 			}
 
-			/*
-			 * If the process died but was not holding a lock, then we can do some cleanup
-			 */
-			if (WIFSIGNALED(exitstatus))
+			if (!WIFSIGNALED(exitstatus))
+				break;
+
+			if (WTERMSIG(exitstatus) != SIGABRT &&
+				WTERMSIG(exitstatus) != SIGKILL &&
+				WTERMSIG(exitstatus) != SIGSEGV)
 			{
-				if (WTERMSIG(exitstatus) == SIGABRT ||
-					WTERMSIG(exitstatus) == SIGKILL ||
-					WTERMSIG(exitstatus) == SIGSEGV)
-				{
-					YBC_LOG_INFO("cleaning up after process with pid %d exited with status %d",
-								 pid, exitstatus);
-					CleanupKilledProcess(proc);
-				}
-				else
-				{
-					YbCrashInUnmanageableState = true;
-					ereport(WARNING,
-							(errmsg("terminating active server processes due to backend crash from "
-									"unexpected error code %d",
-							 WTERMSIG(exitstatus))));
-					break;
-				}
+				YbCrashInUnmanageableState = true;
+				ereport(WARNING,
+						(errmsg("terminating active server processes due to backend crash from "
+								"unexpected error code %d",
+							WTERMSIG(exitstatus))));
 				break;
 			}
-		}
 
-		/*
-		 * If there is no proc struct (and the crash is unexpected), restart.
-		 * We need to check for an unexpected exit because if a connection attempt is made while the
-		 * database system is starting up, that backend will fail. We do not want to restart the
-		 * postmaster in those cases because the postmaster may end up in a restart loop.
-		 * EXIT_STATUS_0 is normal termination, and EXIT_STATUS_1 is the process responding to a
-		 * termination request or terminating with a FATAL.
-		 */
-		if (!foundProcStruct && !EXIT_STATUS_0(exitstatus) && !EXIT_STATUS_1(exitstatus))
-		{
-			YbCrashInUnmanageableState = true;
-			ereport(WARNING,
-					(errmsg("terminating active server processes due to backend crash of a "
-							"partially initialized process")));
+			if (!proc->ybInitializationCompleted)
+			{
+				YbCrashInUnmanageableState = true;
+				ereport(WARNING,
+						(errmsg("terminating active server processes due to backend crash of a "
+								"process while it was initializing")));
+				break;
+			}
+
+			if (proc->ybTerminationStarted)
+			{
+				YbCrashInUnmanageableState = true;
+				ereport(WARNING,
+						(errmsg("terminating active server processes due to backend crash of a "
+								"process while it was terminating")));
+				break;
+			}
+
+			elog(INFO, "cleaning up after process with pid %d exited with status %d",
+				 pid, exitstatus);
+			CleanupKilledProcess(proc);
 		}
 
 		/*
@@ -3274,7 +3271,22 @@ reaper(SIGNAL_ARGS)
 
 		/*
 		 * Else do standard backend child cleanup.
+		 *
+		 * If there is no proc struct (and the crash is unexpected), restart.
+		 * We need to check for an unexpected exit because if a connection attempt is made while the
+		 * database system is starting up, that backend will fail. We do not want to restart the
+		 * postmaster in those cases because the postmaster may end up in a restart loop.
+		 * EXIT_STATUS_0 is normal termination, and EXIT_STATUS_1 is the process responding to a
+		 * termination request or terminating with a FATAL.
 		 */
+		if (!foundProcStruct && !EXIT_STATUS_0(exitstatus) && !EXIT_STATUS_1(exitstatus))
+		{
+			YbCrashInUnmanageableState = true;
+			ereport(WARNING,
+					(errmsg("terminating active server processes due to backend crash of a "
+							"partially initialized process")));
+		}
+
 		CleanupBackend(pid, exitstatus);
 		if (!YbCrashInUnmanageableState && !FatalError)
 		{
