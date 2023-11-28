@@ -341,9 +341,6 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 	const TupleTableSlotOps * innerops = bnlstate->js.ps.innerops;
 	bool inneropsfixed = bnlstate->js.ps.inneropsfixed;
 	bool inneropsset = bnlstate->js.ps.inneropsset;
-	bnlstate->js.ps.innerops = &TTSOpsMinimalTuple;
-	bnlstate->js.ps.inneropsfixed = true;
-	bnlstate->js.ps.inneropsset = true;
 
 	Assert(UseHash(plan, bnlstate));
 
@@ -371,6 +368,11 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 	Oid *eqFuncOids;
 	execTuplesHashPrepare(num_hashClauseInfos, eqops, &eqFuncOids,
 						  &bnlstate->hashFunctions);
+
+	/* temporarily change the innerops while compiling the expression */
+	bnlstate->js.ps.innerops = &TTSOpsMinimalTuple;
+	bnlstate->js.ps.inneropsfixed = true;
+	bnlstate->js.ps.inneropsset = true;
 
 	ExprState *tab_eq_fn =
 		ybPrepareOuterExprsEqualFn(outerParamExprs,
