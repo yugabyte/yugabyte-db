@@ -165,7 +165,7 @@ yb-voyager end migration --export-dir <EXPORT_DIR> \
 
 * After performing end migration, you can't continue import data file operations using the specified export directory (export-dir).
 
-* Set arguments `--backup-data-files` and `backup-schema-files` to false as import data file operation is not a complete migration that includes export/import of schema, or export of data.
+* Because import data file only imports data (and doesn't import or export the schema or export data), set the `--backup-data-files` and `backup-schema-files` arguments to false.
 
 {{< /note >}}
 
