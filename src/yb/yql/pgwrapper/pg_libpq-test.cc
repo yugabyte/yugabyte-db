@@ -208,21 +208,16 @@ TEST_F(PgLibPqTest, PgStatIdxScanNoIncrementOnErrorTest) {
     predicateErrorQuery += Format("c$0 = 1 and c$0 < 2 and c$0 > 0 and ", i);
   predicateErrorQuery += " true";
 
-  std::string successfulQuery = "select * from many where c1 = 1 and c1 < 2 and c2 > 0 and c2 = 1 and c2 < 2 and c3 > 0 and c3 = 1 and c3 < 2 and c4 > 0 and c4 = 1 and c4 < 2 and c5 > 0 and c5 = 1 and c5 < 2 and c1 > 0 and true";
-  std::string getIndexCount = "select idx_scan from pg_stat_user_indexes";
-
   ASSERT_OK(conn.Execute(createTableStmt));
   ASSERT_OK(conn.Execute(createIndexStmt));
 
-  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(successfulQuery)));
-
-  const auto rows = ASSERT_RESULT((conn.FetchRows<int64_t>(getIndexCount)));
-  ASSERT_EQ(rows, (decltype(rows){0, 0})); // should expect 0, 1
-
   ASSERT_NOK(conn.Fetch(predicateErrorQuery));
+  const auto noIncrementRows = ASSERT_RESULT((conn.FetchRows<int64_t>("select idx_scan from pg_stat_user_indexes")));
+  ASSERT_EQ(noIncrementRows, (decltype(noIncrementRows){0, 0}));
 
-  const auto rows1 = ASSERT_RESULT((conn.FetchRows<int64_t>(getIndexCount)));
-  ASSERT_EQ(rows1, (decltype(rows1){0, 0}));
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan("select * from many where c1 = 1")));
+  const auto incrementRows = ASSERT_RESULT((conn.FetchRows<int64_t>("select idx_scan from pg_stat_user_indexes")));
+  ASSERT_EQ(incrementRows, (decltype(incrementRows){0, 0})); // should expect 0, 1
 }
 
 TEST_F_EX(PgLibPqTest, SerializableColoring, PgLibPqFailOnConflictTest) {
