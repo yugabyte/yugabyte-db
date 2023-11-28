@@ -53,11 +53,11 @@ Follow the steps in the [vulnerability disclosure policy](/preview/secure/vulner
 
 ## Installation
 
-### How are the build artifacts packaged and stored for YugabyteDB Anywhere?
+<!--### How are the build artifacts packaged and stored for YugabyteDB Anywhere?
 
 YugabyteDB Anywhere software is packaged as a set of Docker container images hosted on the [Quay.io](https://quay.io/) container registry and managed by the [Replicated](https://www.replicated.com/) management tool. Replicated ensures that YugabyteDB Anywhere remains highly available, and allows for instant upgrades by pulling the incremental container images associated with a newer YugabyteDB Anywhere release. If the host running the YugabyteDB Anywhere UI does not have the Internet connectivity, a fully air-gapped installation option is also available.
 
-The data node (YugabyteDB) software is packaged into the YugabyteDB Anywhere application.
+The data node (YugabyteDB) software is packaged into the YugabyteDB Anywhere application.-->
 
 ### How does YugabyteDB Anywhere installation work?
 
@@ -67,7 +67,7 @@ You install YugabyteDB Anywhere using a standalone installer that you download f
 
 {{< note title="Replicated end of life" >}}
 
-YugabyteDB Anywhere was previously installed using Replicated. However, YugabyteDB Anywhere will end support for Replicated installation at the end of 2024. You can migrate existing Replicated YugabyteDB Anywhere installations using YBA Installer. See [Migrate from Replicated](../../install-software/installer/#migrate-from-replicated).
+YugabyteDB Anywhere was previously installed using Replicated. However, YugabyteDB Anywhere will end support for Replicated installation at the end of 2024. You can migrate existing Replicated YugabyteDB Anywhere installations using YBA Installer. See [Migrate from Replicated](../../yugabyte-platform/install-yugabyte-platform/install-software/installer/#migrate-from-replicated).
 
 {{< /note >}}
 
