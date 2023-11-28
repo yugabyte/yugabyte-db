@@ -78,7 +78,7 @@ yb-voyager import schema --export-dir /dir/export-dir \
         --target-db-user ybvoyager \
         --target-db-password 'password' \
         --target-db-name target_db \
-        --target-db-schema target_schema
-        --post-import-data true
+        --target-db-schema target_schema \
+        --post-import-data true \
         --refresh-mviews true
 ```

@@ -231,7 +231,7 @@ yb-voyager import data file --export-dir /dir/export-dir \
         --target-db-name target_db \
         --target-db-schema target_schema \
         --data-dir gs://xyz-hospital/data \
-        --file-table-map 'patients.txt:"Patients",doctors.txt:"Doctors",appointments.txt:"Appointments"'\
+        --file-table-map 'patients.txt:"Patients",doctors.txt:"Doctors",appointments.txt:"Appointments"' \
         --format text \
         --delimiter '-'
 ```

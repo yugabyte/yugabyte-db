@@ -13,7 +13,7 @@ type: docs
 
 What follows are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
 
-## v1.6 - November 28, 2023
+## v1.6 - November 29, 2023
 
 ### New Features
 
@@ -21,7 +21,7 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
   - Support for [live migration](../migrate/live-migrate/) from Oracle databases (with the option of [fall-back](../migrate/live-fall-back/)) {{<badge/tp>}}, using which you can fall back to the original source database if an issue arises during live migration.
 
-  - Various commands that are used in live migration workflows (including [fall-forward](../migrate/live-fall-forward/)) have been modified. Yugabyte is transitioning from the use of the term "fall-forward database" to the more preferred "source-replica database" terminology. The following table includes the list of modified commands.
+  - Various commands that are used in live migration workflows (including [fall-forward](../migrate/live-fall-forward/)) have been modified. YugabyteDB Voyager is transitioning from the use of the term "fall-forward database" to the more preferred "source-replica database" terminology. The following table includes the list of modified commands.
 
       | Old command | New command |
       | :---------- | :---------- |
