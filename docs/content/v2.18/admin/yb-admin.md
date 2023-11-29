@@ -2118,20 +2118,20 @@ table id: 000030ad000030008000000000004000, CDC bootstrap id: dd5ea73b5d384b2c9e
 The CDC bootstrap ids are the ones that should be used with [`setup_universe_replication`](#setup-universe-replication) and [`alter_universe_replication`](#alter-universe-replication).
 {{< /note >}}
 
----
-
 #### get_replication_status
 
-Returns the replication status of all consumer streams. If *producer_universe_uuid* is provided, this will only return streams that belong to an associated universe key.
+Returns the replication status of all consumer streams. If *source_universe_uuid* is provided, this will only return streams that belong to an associated universe key. If *replication_name* is provided, this will only return the stream that belongs to the specified replication.
 
 **Syntax**
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> get_replication_status [ <producer_universe_uuid> ]
+    -master_addresses <master-addresses> \
+    get_replication_status [ <source_universe_uuid>_<replication_name> ]
 ```
 
-* *producer_universe_uuid*: Optional universe-unique identifier (can be any string, such as a string of a UUID).
+* *source_universe_uuid*: (Optional) The UUID of the source universe.
+* *replication_name*: (Optional) The name of the replication stream.
 
 **Example**
 
@@ -2151,6 +2151,8 @@ statuses {
   }
 }
 ```
+
+---
 
 ### Decommissioning commands
 

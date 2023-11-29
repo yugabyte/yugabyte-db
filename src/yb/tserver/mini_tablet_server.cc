@@ -139,9 +139,7 @@ Status MiniTabletServer::Start(WaitTabletsBootstrapped wait_tablets_bootstrapped
 
   server_.swap(server);
 
-  LOG(WARNING) << "hk!! ts Reconnect s";
   RETURN_NOT_OK(Reconnect());
-  LOG(WARNING) << "hk!! ts Reconnect e";
 
   started_ = true;
   return wait_tablets_bootstrapped ? WaitStarted() : Status::OK();
@@ -181,10 +179,7 @@ Status MiniTabletServer::Reconnect() {
 }
 
 Status MiniTabletServer::WaitStarted() {
-  LOG(WARNING) << "hk!! WaitStarted";
   return server_->WaitInited();
-
-  LOG(WARNING) << "hk!! WaitStarted end";
 }
 
 void MiniTabletServer::Shutdown() {

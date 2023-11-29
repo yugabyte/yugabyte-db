@@ -4,13 +4,17 @@ package com.yugabyte.yw.common.gflags;
 
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Universe;
 import java.io.IOException;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
@@ -122,5 +126,52 @@ public class AutoFlagUtil {
       }
     }
     return autoFlags;
+  }
+
+  public boolean upgradeRequireFinalize(String oldVersion, String newVersion) throws IOException {
+    for (ServerType serverType : ImmutableSet.of(ServerType.MASTER, ServerType.TSERVER)) {
+      Set<GFlagsValidation.AutoFlagDetails> oldAutoFlags =
+          new HashSet<>(gFlagsValidation.extractAutoFlags(oldVersion, serverType).autoFlagDetails);
+      Set<GFlagsValidation.AutoFlagDetails> newAutoFlags =
+          new HashSet<>(gFlagsValidation.extractAutoFlags(newVersion, serverType).autoFlagDetails);
+      Set<String> newFlags =
+          newAutoFlags.stream()
+              .filter(
+                  flag ->
+                      flag.flagClass != LOCAL_VOLATILE_AUTO_FLAG_CLASS
+                          && !oldAutoFlags.contains(flag))
+              .map(flag -> flag.name)
+              .collect(Collectors.toSet());
+      if (newFlags.size() != 0) {
+        LOG.debug(
+            "Upgrade from {} to {} will require finalize as new auto flags for {} are added {}.",
+            oldVersion,
+            newVersion,
+            serverType,
+            newFlags);
+        return true;
+      }
+    }
+
+    Set<String> oldMigrationFiles = gFlagsValidation.getYsqlMigrationFilesList(oldVersion);
+    Set<String> newMigrationFiles = gFlagsValidation.getYsqlMigrationFilesList(newVersion);
+    Set<String> newFiles =
+        Sets.union(
+            newMigrationFiles.stream()
+                .filter(file -> oldMigrationFiles.contains(file))
+                .collect(Collectors.toSet()),
+            oldMigrationFiles.stream()
+                .filter(file -> newMigrationFiles.contains(file))
+                .collect(Collectors.toSet()));
+    if (newFiles.size() != 0) {
+      LOG.debug(
+          "Upgrade from {} to {} will require finalize as new migration files are added {}.",
+          oldVersion,
+          newVersion,
+          newFiles);
+      return true;
+    }
+
+    return false;
   }
 }

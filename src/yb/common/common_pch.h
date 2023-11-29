@@ -4,7 +4,6 @@
 
 #include <assert.h>
 #include <dirent.h>
-#include <fcntl.h>
 #include <float.h>
 #include <inttypes.h>
 #include <openssl/ossl_typ.h>
@@ -35,10 +34,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
-#include <cstring>
 #include <ctime>
 #include <deque>
-#include <fstream>
 #include <functional>
 #include <initializer_list>
 #include <iosfwd>
@@ -46,7 +43,6 @@
 #include <iterator>
 #include <limits>
 #include <list>
-#include <locale>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -69,7 +65,6 @@
 
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/predicate.hpp>
-#include <boost/algorithm/string/replace.hpp>
 #include <boost/algorithm/string/trim.hpp>
 #include <boost/asio/ip/address.hpp>
 #include <boost/asio/ip/address_v4.hpp>
@@ -77,6 +72,7 @@
 #include <boost/atomic.hpp>
 #include <boost/container/small_vector.hpp>
 #include <boost/core/demangle.hpp>
+#include <boost/core/enable_if.hpp>
 #include <boost/date_time/c_local_time_adjustor.hpp>
 #include <boost/date_time/posix_time/time_formatters.hpp>
 #include <boost/functional/hash.hpp>
@@ -104,10 +100,12 @@
 #include <boost/preprocessor/stringize.hpp>
 #include <boost/preprocessor/variadic/to_seq.hpp>
 #include <boost/range/iterator_range.hpp>
+#include <boost/range/iterator_range_core.hpp>
 #include <boost/signals2/dummy_mutex.hpp>
 #include <boost/smart_ptr/detail/yield_k.hpp>
 #include <boost/system/error_code.hpp>
 #include <boost/tti/has_type.hpp>
+#include <boost/type_traits.hpp>
 #include <boost/type_traits/is_const.hpp>
 #include <boost/type_traits/make_signed.hpp>
 #include <boost/unordered_map.hpp>
@@ -175,6 +173,7 @@
 #include "yb/gutil/thread_annotations.h"
 #include "yb/gutil/type_traits.h"
 #include "yb/gutil/walltime.h"
+#include "yb/util/aggregate_stats.h"
 #include "yb/util/algorithm_util.h"
 #include "yb/util/atomic.h"
 #include "yb/util/bitmap.h"
@@ -196,27 +195,35 @@
 #include "yb/util/errno.h"
 #include "yb/util/fast_varint.h"
 #include "yb/util/faststring.h"
-#include "yb/util/fault_injection.h"
 #include "yb/util/file_system.h"
 #include "yb/util/flags.h"
 #include "yb/util/flags/auto_flags.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/flags/flags_callback.h"
 #include "yb/util/format.h"
+#include "yb/util/hdr_histogram.h"
+#include "yb/util/high_water_mark.h"
 #include "yb/util/init.h"
 #include "yb/util/io.h"
+#include "yb/util/jsonwriter.h"
 #include "yb/util/kv_util.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/logging_callback.h"
 #include "yb/util/malloc.h"
 #include "yb/util/math_util.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/memcmpable_varint.h"
 #include "yb/util/memory/arena.h"
 #include "yb/util/memory/arena_fwd.h"
 #include "yb/util/memory/arena_list.h"
 #include "yb/util/memory/mc_types.h"
 #include "yb/util/memory/memory.h"
+#include "yb/util/memory/memory_usage.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/metrics.h"
+#include "yb/util/metrics_fwd.h"
+#include "yb/util/metrics_writer.h"
 #include "yb/util/monotime.h"
 #include "yb/util/mutex.h"
 #include "yb/util/net/inetaddress.h"
@@ -232,7 +239,7 @@
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/result.h"
 #include "yb/util/rw_semaphore.h"
-#include "yb/util/scope_exit.h"
+#include "yb/util/shared_lock.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/slice.h"
 #include "yb/util/stack_trace.h"
@@ -246,12 +253,15 @@
 #include "yb/util/string_case.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/string_util.h"
+#include "yb/util/striped64.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/strongly_typed_string.h"
 #include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/tcmalloc_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
+#include "yb/util/threadlocal.h"
 #include "yb/util/timestamp.h"
 #include "yb/util/tostring.h"
 #include "yb/util/tsan_util.h"

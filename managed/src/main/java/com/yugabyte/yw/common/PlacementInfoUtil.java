@@ -1642,6 +1642,7 @@ public class PlacementInfoUtil {
     result.state = NodeState.ToBeAdded;
     result.nodeIdx = -1; // Erasing index.
     result.nodeName = null;
+    result.nodeUuid = null;
     return result;
   }
 

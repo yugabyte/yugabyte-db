@@ -459,7 +459,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithLea
   }
 
   // Leadership Change.
-  ASSERT_OK(ChangeLeaderOfTablet(first_follower_index, tablets[0].tablet_id()));
+  StartYbAdminClient();
+  ASSERT_OK(StepDownLeader(first_follower_index, tablets[0].tablet_id()));
 
   auto all_pending_changes = GetAllPendingChangesFromCdc(
       stream_id,

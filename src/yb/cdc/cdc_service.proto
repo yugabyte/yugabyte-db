@@ -160,6 +160,7 @@ message CreateCDCStreamRequestPB {
   optional CDCCheckpointType checkpoint_type = 6;
   optional bool transactional = 7; // [default = false]
   optional YQLDatabase db_type = 8 [default = YQL_DATABASE_PGSQL] ;
+  optional CDCSDKSnapshotOption cdcsdk_consistent_snapshot_option = 9;
 }
 
 message CreateCDCStreamResponsePB {

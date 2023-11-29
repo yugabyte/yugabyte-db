@@ -441,7 +441,12 @@ IsYBReadCommitted()
 	static int cached_value = -1;
 	if (cached_value == -1)
 	{
+
+#ifdef NDEBUG
 		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_yb_enable_read_committed_isolation", false);
+#else
+		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_yb_enable_read_committed_isolation", true);
+#endif
 	}
 	return IsYugaByteEnabled() && cached_value &&
 				 (XactIsoLevel == XACT_READ_COMMITTED || XactIsoLevel == XACT_READ_UNCOMMITTED);
@@ -796,7 +801,8 @@ void
 YBInitPostgresBackend(
 	const char *program_name,
 	const char *db_name,
-	const char *user_name)
+	const char *user_name,
+	uint64_t *session_id)
 {
 	HandleYBStatus(YBCInit(program_name, palloc, cstring_to_text_with_len));
 
@@ -819,7 +825,7 @@ YBInitPostgresBackend(
 		callbacks.UnixEpochToPostgresEpoch = &YbUnixEpochToPostgresEpoch;
 		callbacks.ConstructArrayDatum = &YbConstructArrayDatum;
 		callbacks.CheckUserMap = &check_usermap;
-		YBCInitPgGate(type_table, count, callbacks);
+		YBCInitPgGate(type_table, count, callbacks, session_id);
 		YBCInstallTxnDdlHook();
 
 		/*
@@ -840,6 +846,12 @@ YBInitPostgresBackend(
 		 */
 		yb_pgstat_add_session_info(YBCPgGetSessionID());
 	}
+}
+
+bool
+YbGetCurrentSessionId(uint64_t *session_id)
+{
+	return YBCGetCurrentPgSessionId(session_id);
 }
 
 void
@@ -1261,6 +1273,7 @@ bool yb_disable_wait_for_backends_catalog_version = false;
 bool yb_enable_base_scans_cost_model = false;
 int yb_wait_for_backends_catalog_version_timeout = 5 * 60 * 1000;	/* 5 min */
 bool yb_prefer_bnl = false;
+bool yb_explain_hide_non_deterministic_fields = false;
 
 //------------------------------------------------------------------------------
 // YB Debug utils.
@@ -1280,6 +1293,8 @@ char *yb_test_block_index_phase = "";
 char *yb_test_fail_index_state_change = "";
 
 bool ddl_rollback_enabled = false;
+
+bool yb_silence_advisory_locks_not_supported_error = false;
 
 const char*
 YBDatumToString(Datum datum, Oid typid)

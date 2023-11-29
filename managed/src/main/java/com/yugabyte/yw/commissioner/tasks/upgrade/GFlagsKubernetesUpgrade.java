@@ -83,14 +83,6 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
             taskParams()
                 .checkXClusterAutoFlags(universe, gFlagsValidation, xClusterUniverseService);
           }
-          // TODO can we avoid this and save this on task params for now
-          // Update the list of parameter key/values in the universe with the new ones.
-          updateGFlagsPersistTasks(
-                  cluster,
-                  taskParams().masterGFlags,
-                  taskParams().tserverGFlags,
-                  getPrimaryClusterSpecificGFlags())
-              .setSubTaskGroupType(getTaskSubGroupType());
 
           // Always update both master and tserver,
           // Helm update will finish without any restarts if there are no updates
@@ -122,6 +114,13 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
             }
             installThirdPartyPackagesTaskK8s(
                 universe, InstallThirdPartySoftwareK8s.SoftwareUpgradeType.JWT_JWKS);
+            // task to persist changed GFlags to universe in DB
+            updateGFlagsPersistTasks(
+                    cluster,
+                    taskParams().masterGFlags,
+                    taskParams().tserverGFlags,
+                    getPrimaryClusterSpecificGFlags())
+                .setSubTaskGroupType(getTaskSubGroupType());
           } catch (Throwable t) {
             th = t;
             throw t;

@@ -53,8 +53,11 @@
 #include "yb/util/monotime.h"
 #include "yb/util/mutex.h"
 #include "yb/util/status.h"
+#include "yb/util/unique_lock.h"
 
 namespace yb {
+
+YB_STRONGLY_TYPED_BOOL(StopWaitIfFailed);
 
 class Thread;
 class ThreadPool;
@@ -533,7 +536,12 @@ class TaskRunner {
     }
   }
 
-  Status Wait();
+  Status status() {
+    std::lock_guard lock(mutex_);
+    return first_failure_;
+  }
+
+  Status Wait(StopWaitIfFailed stop_wait_if_failed);
 
  private:
   void CompleteTask(const Status& status);
@@ -541,9 +549,9 @@ class TaskRunner {
   std::unique_ptr<ThreadPool> thread_pool_;
   std::atomic<size_t> running_tasks_{0};
   std::atomic<bool> failed_{false};
-  Status first_failure_;
+  Status first_failure_ GUARDED_BY(mutex_);
   std::mutex mutex_;
-  std::condition_variable cond_;
+  std::condition_variable cond_ GUARDED_BY(mutex_);
 };
 
 } // namespace yb

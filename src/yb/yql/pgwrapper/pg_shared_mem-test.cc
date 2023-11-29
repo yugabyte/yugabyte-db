@@ -15,9 +15,14 @@
 
 #include <string>
 
+#include <boost/interprocess/mapped_region.hpp>
+
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
+using namespace std::literals;
+
 DECLARE_bool(pg_client_use_shared_memory);
+DECLARE_bool(TEST_skip_remove_tserver_shared_memory_object);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
 DECLARE_int32(pg_client_extra_timeout_ms);
 DECLARE_int32(TEST_transactional_read_delay_ms);
@@ -44,6 +49,21 @@ TEST_F(PgSharedMemTest, Simple) {
   ASSERT_EQ(value, "hello");
 }
 
+TEST_F(PgSharedMemTest, Restart) {
+  FLAGS_TEST_skip_remove_tserver_shared_memory_object = true;
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t (key) VALUES (1)"));
+
+  ASSERT_OK(RestartCluster());
+
+  conn = ASSERT_RESULT(Connect());
+  auto value = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT * FROM t"));
+  ASSERT_EQ(value, 1);
+}
+
 TEST_F(PgSharedMemTest, TimeOut) {
   constexpr auto kNumRows = 100;
 
@@ -68,6 +88,17 @@ TEST_F(PgSharedMemTest, TimeOut) {
       ASSERT_OK(conn.CommitTransaction());
     }
   }
+}
+
+TEST_F(PgSharedMemTest, BigData) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto value = RandomHumanReadableString(boost::interprocess::mapped_region::get_page_size());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT)"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t (key, value) VALUES (1, '$0')", value));
+
+  auto result = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
+  ASSERT_EQ(result, value);
 }
 
 } // namespace yb::pgwrapper

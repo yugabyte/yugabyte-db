@@ -10,6 +10,8 @@
       "exported_instance": "host-n3",
       "node_name":"host-n3",
       "node_address":"10.0.0.3",
+      "node_region": "test-region",
+      "node_cluster_type": "PRIMARY",
       "__param_metrics": "async_replication_sent_lag_micros,async_replication_committed_lag_micros,block_cache_,cpu_utime,cpu_stime,generic_current_allocated_bytes,generic_heap_size,glog,follower_lag_ms,handler_latency_yb_consensus_ConsensusService,handler_latency_yb_cqlserver_SQLProcessor,handler_latency_yb_cqlserver_CQLServerService,handler_latency_yb_master,handler_latency_yb_tserver_TabletServerService,handler_latency_yb_redisserver_RedisServerService_,handler_latency_yb_client,handler_latency_yb_ysqlserver_SQLProcessor,handler_latency_outbound_transfer,handler_latency_outbound_call_queue_time,threads_running,threads_started,involuntary_context_switches,voluntary_context_switches,spinlock_contention_time,majority_sst_files_rejections,leader_memory_pressure_rejections,follower_memory_pressure_rejections,operation_memory_pressure_rejections,rocksdb_current_version_sst_files_size,rpc_connections_alive,rpc_inbound_calls_created,rpc_incoming_queue_time,rpcs_in_queue,rpcs_queue_overflow,rpcs_timed_out_in_queue,transaction_pool_cache,yb_ysqlserver_connection_total,yb_ysqlserver_active_connection_total,yb_ysqlserver_new_connection_total,yb_ysqlserver_connection_over_limit_total,hybrid_clock_skew,log_wal_size",
       "__param_priority_regex": "async_replication_[^_]+_lag_micros|majority_sst_files_rejections|follower_lag_ms|[^_]+_memory_pressure_rejections|rocksdb_current_version_sst_files_size|log_wal_size",
       "__param_show_help": "false"
@@ -26,6 +28,8 @@
       "exported_instance": "host-n3",
       "node_name":"host-n3",
       "node_address":"10.0.0.3",
+      "node_region": "test-region",
+      "node_cluster_type": "PRIMARY",
       "__param_metrics": "async_replication_sent_lag_micros,async_replication_committed_lag_micros,block_cache_,cpu_utime,cpu_stime,generic_current_allocated_bytes,generic_heap_size,glog,follower_lag_ms,handler_latency_yb_consensus_ConsensusService,handler_latency_yb_cqlserver_SQLProcessor,handler_latency_yb_cqlserver_CQLServerService,handler_latency_yb_master,handler_latency_yb_tserver_TabletServerService,handler_latency_yb_redisserver_RedisServerService_,handler_latency_yb_client,handler_latency_yb_ysqlserver_SQLProcessor,handler_latency_outbound_transfer,handler_latency_outbound_call_queue_time,threads_running,threads_started,involuntary_context_switches,voluntary_context_switches,spinlock_contention_time,majority_sst_files_rejections,leader_memory_pressure_rejections,follower_memory_pressure_rejections,operation_memory_pressure_rejections,rocksdb_current_version_sst_files_size,rpc_connections_alive,rpc_inbound_calls_created,rpc_incoming_queue_time,rpcs_in_queue,rpcs_queue_overflow,rpcs_timed_out_in_queue,transaction_pool_cache,yb_ysqlserver_connection_total,yb_ysqlserver_active_connection_total,yb_ysqlserver_new_connection_total,yb_ysqlserver_connection_over_limit_total,hybrid_clock_skew,log_wal_size",
       "__param_priority_regex": "async_replication_[^_]+_lag_micros|majority_sst_files_rejections|follower_lag_ms|[^_]+_memory_pressure_rejections|rocksdb_current_version_sst_files_size|log_wal_size",
       "__param_show_help": "false"
@@ -42,6 +46,8 @@
       "exported_instance": "host-n3",
       "node_name":"host-n3",
       "node_address":"10.0.0.3",
+      "node_region": "test-region",
+      "node_cluster_type": "PRIMARY",
       "__param_metrics": "async_replication_sent_lag_micros,async_replication_committed_lag_micros,block_cache_,cpu_utime,cpu_stime,generic_current_allocated_bytes,generic_heap_size,glog,follower_lag_ms,handler_latency_yb_consensus_ConsensusService,handler_latency_yb_cqlserver_SQLProcessor,handler_latency_yb_cqlserver_CQLServerService,handler_latency_yb_master,handler_latency_yb_tserver_TabletServerService,handler_latency_yb_redisserver_RedisServerService_,handler_latency_yb_client,handler_latency_yb_ysqlserver_SQLProcessor,handler_latency_outbound_transfer,handler_latency_outbound_call_queue_time,threads_running,threads_started,involuntary_context_switches,voluntary_context_switches,spinlock_contention_time,majority_sst_files_rejections,leader_memory_pressure_rejections,follower_memory_pressure_rejections,operation_memory_pressure_rejections,rocksdb_current_version_sst_files_size,rpc_connections_alive,rpc_inbound_calls_created,rpc_incoming_queue_time,rpcs_in_queue,rpcs_queue_overflow,rpcs_timed_out_in_queue,transaction_pool_cache,yb_ysqlserver_connection_total,yb_ysqlserver_active_connection_total,yb_ysqlserver_new_connection_total,yb_ysqlserver_connection_over_limit_total,hybrid_clock_skew,log_wal_size",
       "__param_priority_regex": "async_replication_[^_]+_lag_micros|majority_sst_files_rejections|follower_lag_ms|[^_]+_memory_pressure_rejections|rocksdb_current_version_sst_files_size|log_wal_size",
       "__param_show_help": "false"
@@ -58,6 +64,8 @@
       "exported_instance": "host-n2",
       "node_name":"host-n2",
       "node_address":"10.0.0.2",
+      "node_region": "test-region",
+      "node_cluster_type": "PRIMARY",
       "__param_metrics": "async_replication_sent_lag_micros,async_replication_committed_lag_micros,block_cache_,cpu_utime,cpu_stime,generic_current_allocated_bytes,generic_heap_size,glog,follower_lag_ms,handler_latency_yb_consensus_ConsensusService,handler_latency_yb_cqlserver_SQLProcessor,handler_latency_yb_cqlserver_CQLServerService,handler_latency_yb_master,handler_latency_yb_tserver_TabletServerService,handler_latency_yb_redisserver_RedisServerService_,handler_latency_yb_client,handler_latency_yb_ysqlserver_SQLProcessor,handler_latency_outbound_transfer,handler_latency_outbound_call_queue_time,threads_running,threads_started,involuntary_context_switches,voluntary_context_switches,spinlock_contention_time,majority_sst_files_rejections,leader_memory_pressure_rejections,follower_memory_pressure_rejections,operation_memory_pressure_rejections,rocksdb_current_version_sst_files_size,rpc_connections_alive,rpc_inbound_calls_created,rpc_incoming_queue_time,rpcs_in_queue,rpcs_queue_overflow,rpcs_timed_out_in_queue,transaction_pool_cache,yb_ysqlserver_connection_total,yb_ysqlserver_active_connection_total,yb_ysqlserver_new_connection_total,yb_ysqlserver_connection_over_limit_total,hybrid_clock_skew,log_wal_size",
       "__param_priority_regex": "async_replication_[^_]+_lag_micros|majority_sst_files_rejections|follower_lag_ms|[^_]+_memory_pressure_rejections|rocksdb_current_version_sst_files_size|log_wal_size",
       "__param_show_help": "false"
@@ -74,6 +82,8 @@
       "exported_instance": "host-n2",
       "node_name":"host-n2",
       "node_address":"10.0.0.2",
+      "node_region": "test-region",
+      "node_cluster_type": "PRIMARY",
       "__param_metrics": "async_replication_sent_lag_micros,async_replication_committed_lag_micros,block_cache_,cpu_utime,cpu_stime,generic_current_allocated_bytes,generic_heap_size,glog,follower_lag_ms,handler_latency_yb_consensus_ConsensusService,handler_latency_yb_cqlserver_SQLProcessor,handler_latency_yb_cqlserver_CQLServerService,handler_latency_yb_master,handler_latency_yb_tserver_TabletServerService,handler_latency_yb_redisserver_RedisServerService_,handler_latency_yb_client,handler_latency_yb_ysqlserver_SQLProcessor,handler_latency_outbound_transfer,handler_latency_outbound_call_queue_time,threads_running,threads_started,involuntary_context_switches,voluntary_context_switches,spinlock_contention_time,majority_sst_files_rejections,leader_memory_pressure_rejections,follower_memory_pressure_rejections,operation_memory_pressure_rejections,rocksdb_current_version_sst_files_size,rpc_connections_alive,rpc_inbound_calls_created,rpc_incoming_queue_time,rpcs_in_queue,rpcs_queue_overflow,rpcs_timed_out_in_queue,transaction_pool_cache,yb_ysqlserver_connection_total,yb_ysqlserver_active_connection_total,yb_ysqlserver_new_connection_total,yb_ysqlserver_connection_over_limit_total,hybrid_clock_skew,log_wal_size",
       "__param_priority_regex": "async_replication_[^_]+_lag_micros|majority_sst_files_rejections|follower_lag_ms|[^_]+_memory_pressure_rejections|rocksdb_current_version_sst_files_size|log_wal_size",
       "__param_show_help": "false"
@@ -90,6 +100,8 @@
       "exported_instance": "host-n2",
       "node_name":"host-n2",
       "node_address":"10.0.0.2",
+      "node_region": "test-region",
+      "node_cluster_type": "PRIMARY",
       "__param_metrics": "async_replication_sent_lag_micros,async_replication_committed_lag_micros,block_cache_,cpu_utime,cpu_stime,generic_current_allocated_bytes,generic_heap_size,glog,follower_lag_ms,handler_latency_yb_consensus_ConsensusService,handler_latency_yb_cqlserver_SQLProcessor,handler_latency_yb_cqlserver_CQLServerService,handler_latency_yb_master,handler_latency_yb_tserver_TabletServerService,handler_latency_yb_redisserver_RedisServerService_,handler_latency_yb_client,handler_latency_yb_ysqlserver_SQLProcessor,handler_latency_outbound_transfer,handler_latency_outbound_call_queue_time,threads_running,threads_started,involuntary_context_switches,voluntary_context_switches,spinlock_contention_time,majority_sst_files_rejections,leader_memory_pressure_rejections,follower_memory_pressure_rejections,operation_memory_pressure_rejections,rocksdb_current_version_sst_files_size,rpc_connections_alive,rpc_inbound_calls_created,rpc_incoming_queue_time,rpcs_in_queue,rpcs_queue_overflow,rpcs_timed_out_in_queue,transaction_pool_cache,yb_ysqlserver_connection_total,yb_ysqlserver_active_connection_total,yb_ysqlserver_new_connection_total,yb_ysqlserver_connection_over_limit_total,hybrid_clock_skew,log_wal_size",
       "__param_priority_regex": "async_replication_[^_]+_lag_micros|majority_sst_files_rejections|follower_lag_ms|[^_]+_memory_pressure_rejections|rocksdb_current_version_sst_files_size|log_wal_size",
       "__param_show_help": "false"
@@ -106,6 +118,8 @@
       "exported_instance": "host-n1",
       "node_name":"host-n1",
       "node_address":"10.0.0.1",
+      "node_region": "test-region",
+      "node_cluster_type": "PRIMARY",
       "__param_metrics": "async_replication_sent_lag_micros,async_replication_committed_lag_micros,block_cache_,cpu_utime,cpu_stime,generic_current_allocated_bytes,generic_heap_size,glog,follower_lag_ms,handler_latency_yb_consensus_ConsensusService,handler_latency_yb_cqlserver_SQLProcessor,handler_latency_yb_cqlserver_CQLServerService,handler_latency_yb_master,handler_latency_yb_tserver_TabletServerService,handler_latency_yb_redisserver_RedisServerService_,handler_latency_yb_client,handler_latency_yb_ysqlserver_SQLProcessor,handler_latency_outbound_transfer,handler_latency_outbound_call_queue_time,threads_running,threads_started,involuntary_context_switches,voluntary_context_switches,spinlock_contention_time,majority_sst_files_rejections,leader_memory_pressure_rejections,follower_memory_pressure_rejections,operation_memory_pressure_rejections,rocksdb_current_version_sst_files_size,rpc_connections_alive,rpc_inbound_calls_created,rpc_incoming_queue_time,rpcs_in_queue,rpcs_queue_overflow,rpcs_timed_out_in_queue,transaction_pool_cache,yb_ysqlserver_connection_total,yb_ysqlserver_active_connection_total,yb_ysqlserver_new_connection_total,yb_ysqlserver_connection_over_limit_total,hybrid_clock_skew,log_wal_size",
       "__param_priority_regex": "async_replication_[^_]+_lag_micros|majority_sst_files_rejections|follower_lag_ms|[^_]+_memory_pressure_rejections|rocksdb_current_version_sst_files_size|log_wal_size",
       "__param_show_help": "false"
@@ -122,6 +136,8 @@
       "exported_instance": "host-n1",
       "node_name":"host-n1",
       "node_address":"10.0.0.1",
+      "node_region": "test-region",
+      "node_cluster_type": "PRIMARY",
       "__param_metrics": "async_replication_sent_lag_micros,async_replication_committed_lag_micros,block_cache_,cpu_utime,cpu_stime,generic_current_allocated_bytes,generic_heap_size,glog,follower_lag_ms,handler_latency_yb_consensus_ConsensusService,handler_latency_yb_cqlserver_SQLProcessor,handler_latency_yb_cqlserver_CQLServerService,handler_latency_yb_master,handler_latency_yb_tserver_TabletServerService,handler_latency_yb_redisserver_RedisServerService_,handler_latency_yb_client,handler_latency_yb_ysqlserver_SQLProcessor,handler_latency_outbound_transfer,handler_latency_outbound_call_queue_time,threads_running,threads_started,involuntary_context_switches,voluntary_context_switches,spinlock_contention_time,majority_sst_files_rejections,leader_memory_pressure_rejections,follower_memory_pressure_rejections,operation_memory_pressure_rejections,rocksdb_current_version_sst_files_size,rpc_connections_alive,rpc_inbound_calls_created,rpc_incoming_queue_time,rpcs_in_queue,rpcs_queue_overflow,rpcs_timed_out_in_queue,transaction_pool_cache,yb_ysqlserver_connection_total,yb_ysqlserver_active_connection_total,yb_ysqlserver_new_connection_total,yb_ysqlserver_connection_over_limit_total,hybrid_clock_skew,log_wal_size",
       "__param_priority_regex": "async_replication_[^_]+_lag_micros|majority_sst_files_rejections|follower_lag_ms|[^_]+_memory_pressure_rejections|rocksdb_current_version_sst_files_size|log_wal_size",
       "__param_show_help": "false"
@@ -138,6 +154,8 @@
       "exported_instance": "host-n1",
       "node_name":"host-n1",
       "node_address":"10.0.0.1",
+      "node_region": "test-region",
+      "node_cluster_type": "PRIMARY",
       "__param_metrics": "async_replication_sent_lag_micros,async_replication_committed_lag_micros,block_cache_,cpu_utime,cpu_stime,generic_current_allocated_bytes,generic_heap_size,glog,follower_lag_ms,handler_latency_yb_consensus_ConsensusService,handler_latency_yb_cqlserver_SQLProcessor,handler_latency_yb_cqlserver_CQLServerService,handler_latency_yb_master,handler_latency_yb_tserver_TabletServerService,handler_latency_yb_redisserver_RedisServerService_,handler_latency_yb_client,handler_latency_yb_ysqlserver_SQLProcessor,handler_latency_outbound_transfer,handler_latency_outbound_call_queue_time,threads_running,threads_started,involuntary_context_switches,voluntary_context_switches,spinlock_contention_time,majority_sst_files_rejections,leader_memory_pressure_rejections,follower_memory_pressure_rejections,operation_memory_pressure_rejections,rocksdb_current_version_sst_files_size,rpc_connections_alive,rpc_inbound_calls_created,rpc_incoming_queue_time,rpcs_in_queue,rpcs_queue_overflow,rpcs_timed_out_in_queue,transaction_pool_cache,yb_ysqlserver_connection_total,yb_ysqlserver_active_connection_total,yb_ysqlserver_new_connection_total,yb_ysqlserver_connection_over_limit_total,hybrid_clock_skew,log_wal_size",
       "__param_priority_regex": "async_replication_[^_]+_lag_micros|majority_sst_files_rejections|follower_lag_ms|[^_]+_memory_pressure_rejections|rocksdb_current_version_sst_files_size|log_wal_size",
       "__param_show_help": "false"

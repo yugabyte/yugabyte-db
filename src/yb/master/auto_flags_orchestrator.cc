@@ -253,6 +253,16 @@ AutoFlagsNameMap GetFlagsFromConfig(const AutoFlagsConfigPB& config) {
   return result;
 }
 
+Result<AutoFlagInfo> GetFlagInfo(const ProcessName& process_name, const std::string& flag_name) {
+  auto all_flags = VERIFY_RESULT(AutoFlagsUtil::GetAvailableAutoFlags());
+
+  SCHECK(all_flags.contains(process_name), NotFound, "Process $0 not found", process_name);
+  auto flag_info = FindOrNullptr(all_flags[process_name], flag_name);
+  SCHECK(flag_info, NotFound, "AutoFlag $0 not found in process $1", flag_name, process_name);
+
+  return *flag_info;
+}
+
 }  // namespace
 
 Status CreateAutoFlagsConfigForNewCluster(AutoFlagsManager& auto_flag_manager) {
@@ -359,14 +369,8 @@ Result<std::pair<uint32_t, PromoteAutoFlagsOutcome>> PromoteSingleAutoFlag(
     AutoFlagsManager& auto_flag_manager, CatalogManager* catalog_manager) {
   SCHECK(!FLAGS_disable_auto_flags_management, NotSupported, "AutoFlags management is disabled.");
 
-  auto all_flags = VERIFY_RESULT(AutoFlagsUtil::GetAvailableAutoFlags());
-
-  SCHECK(all_flags.contains(process_name), NotFound, "Process $0 not found", process_name);
-  auto flag_info = FindOrNullptr(all_flags[process_name], flag_name);
-  SCHECK(flag_info, NotFound, "AutoFlag $0 not found in process $1", flag_name, process_name);
-
   AutoFlagsInfoMap flag_to_insert;
-  flag_to_insert[process_name].emplace_back(*flag_info);
+  flag_to_insert[process_name].emplace_back(VERIFY_RESULT(GetFlagInfo(process_name, flag_name)));
 
   auto new_config = auto_flag_manager.GetConfig();
   auto outcome = InsertFlagsToConfig(flag_to_insert, &new_config, /* force_version_change */ false);
@@ -385,6 +389,9 @@ Result<std::pair<uint32_t, bool>> DemoteSingleAutoFlag(
     const ProcessName& process_name, const std::string& flag_name,
     AutoFlagsManager& auto_flag_manager, CatalogManager* catalog_manager) {
   SCHECK(!FLAGS_disable_auto_flags_management, NotSupported, "AutoFlags management is disabled.");
+
+  // Make sure process and AutoFlag exists.
+  RETURN_NOT_OK(GetFlagInfo(process_name, flag_name));
 
   auto new_config = auto_flag_manager.GetConfig();
   if (!VERIFY_RESULT(RemoveFlagFromConfig(process_name, flag_name, &new_config))) {

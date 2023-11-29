@@ -778,6 +778,22 @@ Status ClusterAdminClient::GetWalRetentionSecs(const YBTableName& table_name) {
   return Status::OK();
 }
 
+Status ClusterAdminClient::GetAutoFlagsConfig() {
+  master::GetAutoFlagsConfigRequestPB req;
+  master::GetAutoFlagsConfigResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_cluster_proxy_->GetAutoFlagsConfig(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  std::cout << "AutoFlags config:" << std::endl;
+  std::cout << resp.config().DebugString() << std::endl;
+
+  return Status::OK();
+}
+
 Status ClusterAdminClient::PromoteAutoFlags(
     const string& max_flag_class, const bool promote_non_runtime_flags, const bool force) {
   master::PromoteAutoFlagsRequestPB req;
@@ -849,10 +865,10 @@ Status ClusterAdminClient::PromoteSingleAutoFlag(
      return StatusFromPB(resp.error().status());
     }
     if (!resp.flag_promoted()) {
-     std::cout << "AutoFlag " << flag_name << " from process " << process_name
-               << " was not promoted. Check the logs for more information" << std::endl;
-     std::cout << "Current config version: " << resp.new_config_version() << std::endl;
-     return Status::OK();
+      std::cout << "Failed to promote AutoFlag " << flag_name << " from process " << process_name
+                << ". Check the logs for more information" << std::endl;
+      std::cout << "Current config version: " << resp.new_config_version() << std::endl;
+      return Status::OK();
     }
 
     std::cout << "AutoFlag " << flag_name << " from process " << process_name
@@ -880,11 +896,10 @@ Status ClusterAdminClient::DemoteSingleAutoFlag(
      return StatusFromPB(resp.error().status());
     }
     if (!resp.flag_demoted()) {
-     std::cout << "AutoFlag " << flag_name << " from process " << process_name
-               << " was not demoted. Either the flag does not exist or it is not promoted"
-               << std::endl;
-     std::cout << "Current config version: " << resp.new_config_version() << std::endl;
-     return Status::OK();
+      std::cout << "Unable to demote AutoFlag " << flag_name << " from process " << process_name
+                << " because the flag is not in promoted state" << std::endl;
+      std::cout << "Current config version: " << resp.new_config_version() << std::endl;
+      return Status::OK();
     }
 
     std::cout << "AutoFlag " << flag_name << " from process " << process_name

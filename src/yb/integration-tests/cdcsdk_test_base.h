@@ -40,6 +40,7 @@ DECLARE_bool(master_auto_run_initdb);
 DECLARE_int32(pggate_rpc_timeout_secs);
 DECLARE_bool(cdc_populate_safepoint_record);
 DECLARE_uint32(max_replication_slots);
+DECLARE_bool(TEST_ysql_yb_enable_replication_commands);
 
 namespace yb {
 using client::YBClient;
@@ -105,6 +106,9 @@ class CDCSDKTestBase : public YBTest {
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_check_broadcast_address) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = false;
+
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_commands) = true;
+
     google::SetVLOGLevel("cdc*", 4);
   }
 
@@ -202,9 +206,14 @@ class CDCSDKTestBase : public YBTest {
   // Creates a DB stream on the database kNamespaceName using the Replication Slot syntax.
   // Only supports the CDCCheckpointType::EXPLICIT and CDCRecordType::CHANGE.
   // TODO(#19260): Support customizing the CDCRecordType.
-  Result<xrepl::StreamId> CreateDBStreamWithReplicationSlot();
   Result<xrepl::StreamId> CreateDBStreamWithReplicationSlot(
-      const std::string& replication_slot_name);
+    CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT,
+    CDCRecordType record_type = CDCRecordType::CHANGE
+  );
+  Result<xrepl::StreamId> CreateDBStreamWithReplicationSlot(
+      const std::string& replication_slot_name,
+      CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT,
+      CDCRecordType record_type = CDCRecordType::CHANGE);
 
  protected:
   // Every test needs to initialize this cdc_proxy_.

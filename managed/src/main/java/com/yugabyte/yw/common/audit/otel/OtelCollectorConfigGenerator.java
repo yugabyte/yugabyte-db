@@ -1,8 +1,11 @@
 package com.yugabyte.yw.common.audit.otel;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.FileHelperService;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
@@ -26,7 +29,6 @@ import play.Environment;
 
 @Singleton
 public class OtelCollectorConfigGenerator {
-  private final Environment environment;
   private final FileHelperService fileHelperService;
   private final TelemetryProviderService telemetryProviderService;
 
@@ -35,13 +37,15 @@ public class OtelCollectorConfigGenerator {
       Environment environment,
       FileHelperService fileHelperService,
       TelemetryProviderService telemetryProviderService) {
-    this.environment = environment;
     this.fileHelperService = fileHelperService;
     this.telemetryProviderService = telemetryProviderService;
   }
 
   public Path generateConfigFile(
-      NodeTaskParams nodeParams, Provider provider, AuditLogConfig auditLogConfig) {
+      NodeTaskParams nodeParams,
+      Provider provider,
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      AuditLogConfig auditLogConfig) {
     Path path =
         fileHelperService.createTempFile(
             "otel_collector_config_" + nodeParams.getUniverseUUID() + "_" + nodeParams.nodeUuid,
@@ -55,13 +59,19 @@ public class OtelCollectorConfigGenerator {
           && auditLogConfig.getYsqlAuditConfig().isEnabled()) {
         collectorConfigFormat
             .getReceivers()
-            .put("filelog/ysql", createYsqlReceiver(provider, auditLogConfig.getYsqlAuditConfig()));
+            .put(
+                "filelog/ysql",
+                createYsqlReceiver(
+                    provider, auditLogConfig.getYsqlAuditConfig(), nodeParams.nodeName));
       }
       if (auditLogConfig.getYcqlAuditConfig() != null
           && auditLogConfig.getYcqlAuditConfig().isEnabled()) {
         collectorConfigFormat
             .getReceivers()
-            .put("filelog/ycql", createYcqlReceiver(provider, auditLogConfig.getYcqlAuditConfig()));
+            .put(
+                "filelog/ycql",
+                createYcqlReceiver(
+                    provider, auditLogConfig.getYcqlAuditConfig(), nodeParams.nodeName));
       }
 
       // Exporters
@@ -74,7 +84,7 @@ public class OtelCollectorConfigGenerator {
       // Extensions
       collectorConfigFormat
           .getExtensions()
-          .put("file_storage/psq", createStorageExtension(provider));
+          .put("file_storage/queue", createStorageExtension(provider, userIntent));
 
       // Service
       OtelCollectorConfigFormat.Service service = new OtelCollectorConfigFormat.Service();
@@ -101,31 +111,43 @@ public class OtelCollectorConfigGenerator {
   }
 
   private OtelCollectorConfigFormat.Receiver createYsqlReceiver(
-      Provider provider, YSQLAuditConfig ysqlAuditConfig) {
-    OtelCollectorConfigFormat.FileLogReceiver receiver = createFileLogReceiver();
+      Provider provider, YSQLAuditConfig ysqlAuditConfig, String nodeName) {
+    OtelCollectorConfigFormat.FileLogReceiver receiver = createFileLogReceiver(nodeName);
     receiver.setInclude(ImmutableList.of(provider.getYbHome() + "/tserver/logs/postgresql-*.log"));
     return receiver;
   }
 
   private OtelCollectorConfigFormat.Receiver createYcqlReceiver(
-      Provider provider, YCQLAuditConfig ysqlAuditConfig) {
-    OtelCollectorConfigFormat.FileLogReceiver receiver = createFileLogReceiver();
+      Provider provider, YCQLAuditConfig ysqlAuditConfig, String nodeName) {
+    OtelCollectorConfigFormat.FileLogReceiver receiver = createFileLogReceiver(nodeName);
     receiver.setInclude(
         ImmutableList.of(provider.getYbHome() + "/tserver/logs/yb-tserver.*.WARNING.*"));
     return receiver;
   }
 
-  private OtelCollectorConfigFormat.FileLogReceiver createFileLogReceiver() {
+  private OtelCollectorConfigFormat.FileLogReceiver createFileLogReceiver(String nodeName) {
     OtelCollectorConfigFormat.FileLogReceiver receiver =
         new OtelCollectorConfigFormat.FileLogReceiver();
     receiver.setStart_at("beginning");
-    receiver.setStorage("file_storage/psq");
-    OtelCollectorConfigFormat.MultilineConfig multilineConfig =
-        new OtelCollectorConfigFormat.MultilineConfig();
-    multilineConfig.setLine_start_pattern(
-        "[A-Z]\\d{4}\\s\\d{2}:\\d{2}:\\d{2}\\.\\d{6}\\s[\\d\\s]{5}\\s.*\\.cc:\\d+\\]");
-    receiver.setMultiline(multilineConfig);
-    receiver.setOperators(ImmutableList.of(/*TODO*/ ));
+    receiver.setStorage("file_storage/queue");
+    OtelCollectorConfigFormat.RegexOperator regexOperator =
+        new OtelCollectorConfigFormat.RegexOperator();
+    regexOperator.setType("regex_parser");
+    regexOperator.setRegex(
+        "^(?P<time>\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}[.]\\d{3} \\w{3}) [[](?P<pid>\\d+)[]]"
+            + " (?P<sev>\\w+):  AUDIT: (?P<msg>.*)$");
+    regexOperator.setOn_error("drop");
+    OtelCollectorConfigFormat.OperatorTimestamp timestamp =
+        new OtelCollectorConfigFormat.OperatorTimestamp();
+    timestamp.setParse_from("attributes.time");
+    timestamp.setLayout("%Y-%m-%d %H:%M:%S.%f %Z");
+    regexOperator.setTimestamp(timestamp);
+    OtelCollectorConfigFormat.OperatorSeverity severity =
+        new OtelCollectorConfigFormat.OperatorSeverity();
+    severity.setParse_from("attributes.sev");
+    regexOperator.setSeverity(severity);
+    receiver.setOperators(ImmutableList.of(regexOperator));
+    receiver.setAttributes(ImmutableMap.of("host.name", nodeName));
     return receiver;
   }
 
@@ -145,7 +167,8 @@ public class OtelCollectorConfigGenerator {
         apiConfig.setSite(dataDogConfig.getSite());
         dataDogExporter.setApi(apiConfig);
         exporters.put(
-            "datadog/" + telemetryProvider.getName(), setExporterCommonConfig(dataDogExporter));
+            "datadog/" + telemetryProvider.getName(),
+            setExporterCommonConfig(dataDogExporter, true));
         break;
       case SPLUNK:
         SplunkConfig splunkConfig = (SplunkConfig) telemetryProvider.getConfig();
@@ -157,7 +180,8 @@ public class OtelCollectorConfigGenerator {
         splunkExporter.setSourcetype(splunkConfig.getSourceType());
         splunkExporter.setIndex(splunkConfig.getIndex());
         exporters.put(
-            "splunkhec/" + telemetryProvider.getName(), setExporterCommonConfig(splunkExporter));
+            "splunkhec/" + telemetryProvider.getName(),
+            setExporterCommonConfig(splunkExporter, true));
         break;
       case AWS_CLOUDWATCH:
         AWSCloudWatchConfig awsCloudWatchConfig =
@@ -168,7 +192,9 @@ public class OtelCollectorConfigGenerator {
         awsCloudWatchExporter.setRegion(awsCloudWatchConfig.getRegion());
         awsCloudWatchExporter.setLog_group_name(awsCloudWatchConfig.getLogGroup());
         awsCloudWatchExporter.setLog_stream_name(awsCloudWatchConfig.getLogStream());
-        exporters.put("awscloudwatchlog/" + telemetryProvider.getName(), awsCloudWatchExporter);
+        exporters.put(
+            "awscloudwatchlog/" + telemetryProvider.getName(),
+            setExporterCommonConfig(awsCloudWatchExporter, false));
         // TODO Pass credentials
         break;
       case GCP_CLOUD_MONITORING:
@@ -177,37 +203,52 @@ public class OtelCollectorConfigGenerator {
         OtelCollectorConfigFormat.GCPCloudMonitoringExporter gcpCloudMonitoringExporter =
             new OtelCollectorConfigFormat.GCPCloudMonitoringExporter();
         gcpCloudMonitoringExporter.setProject(gcpCloudMonitoringConfig.getProject());
-        exporters.put("googlecloud/" + telemetryProvider.getName(), gcpCloudMonitoringExporter);
+        exporters.put(
+            "googlecloud/" + telemetryProvider.getName(),
+            setExporterCommonConfig(gcpCloudMonitoringExporter, true));
         // TODO Pass credentials
         break;
     }
   }
 
   private OtelCollectorConfigFormat.Exporter setExporterCommonConfig(
-      OtelCollectorConfigFormat.Exporter exporter) {
+      OtelCollectorConfigFormat.Exporter exporter, boolean setQueueEnabled) {
     OtelCollectorConfigFormat.RetryConfig retryConfig = new OtelCollectorConfigFormat.RetryConfig();
     retryConfig.setEnabled(true);
     retryConfig.setInitial_interval("1m");
     retryConfig.setMax_interval("1800m");
     exporter.setRetry_on_failure(retryConfig);
     OtelCollectorConfigFormat.QueueConfig queueConfig = new OtelCollectorConfigFormat.QueueConfig();
-    queueConfig.setStorage("file_storage/psq");
+    if (setQueueEnabled) {
+      queueConfig.setEnabled(true);
+    }
+    queueConfig.setStorage("file_storage/queue");
     exporter.setSending_queue(queueConfig);
     return exporter;
   }
 
-  private OtelCollectorConfigFormat.Extension createStorageExtension(Provider provider) {
+  private OtelCollectorConfigFormat.Extension createStorageExtension(
+      Provider provider, UniverseDefinitionTaskParams.UserIntent userIntent) {
     OtelCollectorConfigFormat.StorageExtension extension =
         new OtelCollectorConfigFormat.StorageExtension();
-    extension.setDirectory(provider.getYbHome() + "/otel-collector/psq");
+    extension.setDirectory(getFirstMountPoint(provider, userIntent) + "/otel-collector/queue");
     OtelCollectorConfigFormat.StorageCompaction compaction =
         new OtelCollectorConfigFormat.StorageCompaction();
     compaction.setDirectory(extension.getDirectory());
     compaction.setOn_start(true);
     compaction.setOn_rebound(true);
-    compaction.setRebound_trigger_threshold_mib(3);
-    compaction.setRebound_needed_threshold_mib(5);
+    compaction.setRebound_trigger_threshold_mib(10);
+    compaction.setRebound_needed_threshold_mib(100);
     extension.setCompaction(compaction);
     return extension;
+  }
+
+  private String getFirstMountPoint(
+      Provider provider, UniverseDefinitionTaskParams.UserIntent userIntent) {
+    if (provider.getCloudCode() == Common.CloudType.onprem) {
+      String mountPoints = userIntent.deviceInfo.mountPoints;
+      return mountPoints.split(",")[0];
+    }
+    return "/mnt/d0";
   }
 }

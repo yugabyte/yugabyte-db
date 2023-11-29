@@ -16,7 +16,8 @@ from ybops.cloud.common.method import CreateInstancesMethod, ProvisionInstancesM
     UpdateDiskMethod, CronCheckMethod, AccessEditVaultMethod, AccessDeleteKeyMethod, \
     CreateRootVolumesMethod, ReplaceRootVolumeMethod, ChangeInstanceTypeMethod, \
     UpdateMountedDisksMethod, DeleteRootVolumesMethod, TransferXClusterCerts, VerifySSHConnection, \
-    AddAuthorizedKey, RemoveAuthorizedKey, RebootInstancesMethod, RunHooks, WaitForConnection
+    AddAuthorizedKey, RemoveAuthorizedKey, RebootInstancesMethod, RunHooks, WaitForConnection, \
+    ManageOtelCollector
 
 
 class InstanceCommand(AbstractPerCloudCommand):
@@ -51,6 +52,7 @@ class InstanceCommand(AbstractPerCloudCommand):
         self.add_method(RebootInstancesMethod(self))
         self.add_method(RunHooks(self))
         self.add_method(WaitForConnection(self))
+        self.add_method(ManageOtelCollector(self))
 
 
 class NetworkCommand(AbstractPerCloudCommand):

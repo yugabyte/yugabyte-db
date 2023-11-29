@@ -71,7 +71,6 @@ import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.yb.CommonTypes;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterReplicationOuterClass.GetXClusterSafeTimeResponsePB.NamespaceSafeTimePB;
-import org.yb.master.MasterTypes.RelationType;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
@@ -153,12 +152,11 @@ public class DrConfigController extends AuthenticatedController {
         getRequestedTableInfoList(createForm.dbs, sourceTableInfoList);
 
     Set<String> tableIds = XClusterConfigTaskBase.getTableIds(requestedTableInfoList);
-    CommonTypes.TableType tableType = XClusterConfigTaskBase.getTableType(requestedTableInfoList);
     Map<String, List<String>> mainTableIndexTablesMap =
         XClusterConfigTaskBase.getMainTableIndexTablesMap(this.ybService, sourceUniverse, tableIds);
 
     XClusterConfigController.xClusterCreatePreChecks(
-        tableIds, tableType, ConfigType.Txn, sourceUniverse, targetUniverse, confGetter);
+        requestedTableInfoList, ConfigType.Txn, sourceUniverse, targetUniverse, confGetter);
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList =
         XClusterConfigTaskBase.getTableInfoList(
@@ -242,6 +240,12 @@ public class DrConfigController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.DrConfigSetTablesForm",
           paramType = "body",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result setTables(UUID customerUUID, UUID drConfigUuid, Http.Request request) {
     log.info("Received set tables drConfig request");
 
@@ -306,6 +310,12 @@ public class DrConfigController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.DrConfigRestartForm",
           paramType = "body",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result restart(
       UUID customerUUID, UUID drConfigUuid, boolean isForceDelete, Http.Request request) {
     log.info("Received restart drConfig request");
@@ -400,18 +410,7 @@ public class DrConfigController extends AuthenticatedController {
     Universe newTargetUniverse =
         Universe.getOrBadRequest(replaceReplicaForm.drReplicaUniverseUuid, customer);
 
-    // Todo: Revisit this restriction.
-    if (!xClusterConfig.getStatus().equals(XClusterConfigStatusType.Running)
-        || !xClusterConfig.getTableDetails().stream()
-            .map(XClusterTableConfig::getStatus)
-            .allMatch(tableConfigStatus -> tableConfigStatus.equals(Status.Running))) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          "the underlying xCluster config and all of its replication streams must "
-              + "be running status.");
-    }
-
-    Set<String> tableIds = xClusterConfig.getTableIdsWithReplicationSetup();
+    Set<String> tableIds = xClusterConfig.getTableIds();
 
     // Add index tables.
     Map<String, List<String>> mainTableIndexTablesMap =
@@ -507,6 +506,12 @@ public class DrConfigController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.DrConfigSwitchoverForm",
           paramType = "body",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result switchover(UUID customerUUID, UUID drConfigUuid, Http.Request request) {
     log.info("Received switchover drConfig request");
 
@@ -776,6 +781,12 @@ public class DrConfigController extends AuthenticatedController {
       nickname = "syncDrConfig",
       value = "Sync disaster recovery config",
       response = YBPTask.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result sync(UUID customerUUID, UUID drConfigUuid, Http.Request request) {
     log.info("Received sync drConfig request");
 
@@ -1007,7 +1018,10 @@ public class DrConfigController extends AuthenticatedController {
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList) {
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
         sourceTableInfoList.stream()
-            .filter(tableInfo -> dbIds.contains(tableInfo.getNamespace().getId().toStringUtf8()))
+            .filter(
+                tableInfo ->
+                    XClusterConfigTaskBase.isXClusterSupported(tableInfo)
+                        && dbIds.contains(tableInfo.getNamespace().getId().toStringUtf8()))
             .collect(Collectors.toList());
     Set<String> foundDBIds =
         requestedTableInfoList.stream()
@@ -1074,9 +1088,7 @@ public class DrConfigController extends AuthenticatedController {
                       targetTableInfoList.stream()
                           .filter(
                               tableInfo ->
-                                  !tableInfo
-                                          .getRelationType()
-                                          .equals(RelationType.SYSTEM_TABLE_RELATION)
+                                  XClusterConfigTaskBase.isXClusterSupported(tableInfo)
                                       && tableInfo
                                           .getNamespace()
                                           .getId()

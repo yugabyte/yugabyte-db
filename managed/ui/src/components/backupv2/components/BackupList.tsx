@@ -46,11 +46,13 @@ import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import BackupRestoreNewModal from './restore/BackupRestoreNewModal';
 import {
   RbacValidator,
+  customPermValidateFunction,
   hasNecessaryPerm
 } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 
 import './BackupList.scss';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { Action, Resource } from '../../../redesign/features/rbac';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const reactWidgets = require('react-widgets');
@@ -257,10 +259,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
 
   const canDeleteBackup = hasNecessaryPerm(ApiPermissionMap.DELETE_BACKUP);
 
-  const canRestoreBackup = hasNecessaryPerm({
-    ...ApiPermissionMap.RESTORE_BACKUP,
-    onResource: universeUUID ?? ''
-  });
+  const canRestoreBackup = customPermValidateFunction((userPerm) => find(userPerm, { actions: [Action.BACKUP_RESTORE], resourceType: Resource.UNIVERSE }) !== undefined);
 
   const canChangeRetentionPeriod = hasNecessaryPerm(ApiPermissionMap.EDIT_BACKUP);
 
@@ -291,10 +290,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
         onClick={(e) => e.stopPropagation()}
       >
         <RbacValidator
-          accessRequiredOn={{
-            onResource: universeUUID,
-            ...ApiPermissionMap.RESTORE_BACKUP,
-          }}
+          customValidateFunction={(userPerm) => find(userPerm, { actions: [Action.BACKUP_RESTORE], resourceType: Resource.UNIVERSE }) !== undefined}
           isControl
           overrideStyle={{ display: 'block' }}
         >

@@ -113,14 +113,8 @@ const VALIDATION_SCHEMA = object().shape({
       'Provider name cannot contain special characters other than "-", and "_".'
     ),
   kubernetesProvider: object().required('Kubernetes provider is required.'),
-  kubeConfigContent: mixed().when('editKubeConfigContent', {
-    is: true,
-    then: mixed().required('Please provide a Kube config file.')
-  }),
-  kubernetesPullSecretContent: mixed().when('editPullSecretContent', {
-    is: true,
-    then: mixed().required('Please provide a Kuberentes pull secret file.')
-  }),
+  kubeConfigContent: mixed(),
+  kubernetesPullSecretContent: mixed(),
   kubernetesImageRegistry: string().required('Image registry is required.'),
   regions: array().min(1, 'Provider configurations must contain at least one region.')
 });
@@ -356,7 +350,12 @@ export const K8sProviderEditForm = ({
                 />
               </FormField>
               <FormField>
-                <FieldLabel>Change Pull Secret File</FieldLabel>
+                <FieldLabel
+                  infoTitle="Replace Pull Secret File"
+                  infoContent="If no new pull secret file is uploaded, the existing pull secret is simply removed from the provider."
+                >
+                  Replace Pull Secret File
+                </FieldLabel>
                 <YBToggleField
                   name="editPullSecretContent"
                   control={formMethods.control}
@@ -400,7 +399,12 @@ export const K8sProviderEditForm = ({
                 />
               </FormField>
               <FormField>
-                <FieldLabel>Change Kube Config File</FieldLabel>
+                <FieldLabel
+                  infoTitle="Replace Kube Config File"
+                  infoContent="If no new Kube config file is uploaded, the existing Kube config file is simply removed from the provider."
+                >
+                  Replace Kube Config File
+                </FieldLabel>
                 <YBToggleField
                   name="editKubeConfigContent"
                   control={formMethods.control}
@@ -414,7 +418,7 @@ export const K8sProviderEditForm = ({
               </FormField>
               {editKubeConfigContent && (
                 <FormField>
-                  <FieldLabel>Kube Config</FieldLabel>
+                  <FieldLabel>Kube Config (Optional)</FieldLabel>
                   <YBDropZoneField
                     name="kubeConfigContent"
                     control={formMethods.control}
@@ -632,6 +636,15 @@ const constructProviderPayload = async (
               existingRegion,
               azFormValues.code
             );
+
+            // When the current az has no kubeConfig or user indicates they are editing the existing kubeConfig,
+            // we need to take kubeConfig from the form as the input for the edit provider request.
+            // Note: kubeConfig of `''` is considered as a special case on the YBA backend. This indicates that the user wants
+            // to use the service account configs. This is why we are checking for `undefined` instead of falsy on the existing zone.
+            const shouldReadKubeConfigOnForm =
+              existingZone?.details?.cloudInfo.kubernetes.kubeConfig === undefined ||
+              azFormValues.editKubeConfigContent;
+
             return {
               ...(existingZone && {
                 active: existingZone.active,
@@ -642,8 +655,7 @@ const constructProviderPayload = async (
               details: {
                 cloudInfo: {
                   [ProviderCode.KUBERNETES]: {
-                    ...(!existingZone?.details?.cloudInfo.kubernetes.kubeConfig ||
-                    azFormValues.editKubeConfigContent
+                    ...(shouldReadKubeConfigOnForm
                       ? {
                           ...(azFormValues.kubeConfigContent && {
                             kubeConfigContent:
@@ -654,9 +666,9 @@ const constructProviderPayload = async (
                           })
                         }
                       : {
-                          ...(existingZone?.details.cloudInfo.kubernetes.kubeConfig && {
-                            kubeConfig: existingZone?.details.cloudInfo.kubernetes.kubeConfig
-                          })
+                          // YBA backend has special handling for kubeConfig. It is possibly `''` to indicate
+                          // the user wants to use service account configs. This is why we're not dropping `''` strings here.
+                          kubeConfig: existingZone?.details?.cloudInfo.kubernetes.kubeConfig
                         }),
                     ...(azFormValues.kubeDomain && { kubeDomain: azFormValues.kubeDomain }),
                     ...(azFormValues.kubeNamespace && {
@@ -709,7 +721,7 @@ const constructProviderPayload = async (
     kubernetesImagePullSecretName: existingKubernetesImagePullSecretName,
     kubernetesPullSecret: existingKubernetesPullSecret,
     kubernetesPullSecretName: existingKubernetesPullSecretName
-  } = providerConfig?.details.cloudInfo.kubernetes;
+  } = providerConfig.details.cloudInfo.kubernetes;
   const { airGapInstall, cloudInfo, ...unexposedProviderDetailFields } = providerConfig.details;
   return {
     code: ProviderCode.KUBERNETES,
@@ -719,24 +731,26 @@ const constructProviderPayload = async (
       airGapInstall: !formValues.dbNodePublicInternetAccess,
       cloudInfo: {
         [ProviderCode.KUBERNETES]: {
-          ...(formValues.editKubeConfigContent && formValues.kubeConfigContent
+          ...(formValues.editKubeConfigContent
             ? {
-                kubeConfigContent: kubeConfigContent,
-                ...(formValues.kubeConfigContent.name && {
+                ...(formValues.kubeConfigContent && { kubeConfigContent: kubeConfigContent }),
+                ...(formValues.kubeConfigContent?.name && {
                   kubeConfigName: formValues.kubeConfigContent.name
                 })
               }
             : {
-                ...(providerConfig?.details.cloudInfo.kubernetes.kubeConfig && {
-                  kubeConfig: providerConfig?.details.cloudInfo.kubernetes.kubeConfig
-                })
+                // YBA backend has special handling for kubeConfig. It is possibly `''` to indicate
+                // the user wants to use service account configs. This is why we're not dropping `''` strings here.
+                kubeConfig: providerConfig.details.cloudInfo.kubernetes.kubeConfig
               }),
           kubernetesImageRegistry: formValues.kubernetesImageRegistry,
           kubernetesProvider: formValues.kubernetesProvider.value,
-          ...(formValues.editPullSecretContent && formValues.kubernetesPullSecretContent
+          ...(formValues.editPullSecretContent
             ? {
-                kubernetesPullSecretContent: kubernetesPullSecretContent,
-                ...(formValues.kubernetesPullSecretContent.name && {
+                ...(formValues.kubernetesPullSecretContent && {
+                  kubernetesPullSecretContent: kubernetesPullSecretContent
+                }),
+                ...(formValues.kubernetesPullSecretContent?.name && {
                   kubernetesPullSecretName: formValues.kubernetesPullSecretContent.name
                 }),
                 ...(kubernetesImagePullSecretName && {

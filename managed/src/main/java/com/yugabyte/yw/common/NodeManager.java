@@ -31,23 +31,8 @@ import com.yugabyte.yw.commissioner.tasks.params.DetachedNodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.INodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeAccessTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.*;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer.Params;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
-import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteRootVolumes;
-import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
-import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.RebootServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.RunHooks;
-import com.yugabyte.yw.commissioner.tasks.subtasks.TransferXClusterCerts;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateMountedDisks;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorConfigGenerator;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
@@ -192,7 +177,8 @@ public class NodeManager extends DevopsBase {
     Reboot,
     RunHooks,
     Wait_For_Connection,
-    Hard_Reboot
+    Hard_Reboot,
+    Manage_Otel_Collector
   }
 
   public enum CertRotateAction {
@@ -374,10 +360,15 @@ public class NodeManager extends DevopsBase {
       } else {
         subCommand.add(providerDetails.sshUser);
       }
-    } else if (type == NodeCommandType.Wait_For_Connection) {
+    } else if (type == NodeCommandType.Wait_For_Connection
+        || type == NodeCommandType.Manage_Otel_Collector) {
+      boolean installOtelCol =
+          params instanceof ManageOtelCollector.Params
+              && ((ManageOtelCollector.Params) params).installOtelCollector;
       if (provider.getCloudCode() == CloudType.onprem
           && providerDetails.skipProvisioning
-          && getNodeAgentClient().isClientEnabled(provider)) {
+          && getNodeAgentClient().isClientEnabled(provider)
+          && !installOtelCol) {
         subCommand.add("--ssh_user");
         subCommand.add("yugabyte");
       } else if (StringUtils.isNotBlank(providerDetails.sshUser)) {
@@ -868,7 +859,8 @@ public class NodeManager extends DevopsBase {
                 ybcPackage, YBC_PACKAGE_REGEX));
       }
       ybcDir = "ybc" + matcher.group(1);
-      ybcFlags = GFlagsUtil.getYbcFlags(universe, taskParam, confGetter, config);
+      ybcFlags =
+          GFlagsUtil.getYbcFlags(universe, taskParam, confGetter, config, taskParam.ybcGflags);
       boolean enableVerbose =
           confGetter.getConfForScope(universe, UniverseConfKeys.ybcEnableVervbose);
       if (enableVerbose) {
@@ -1302,6 +1294,15 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("Invalid taskSubType property: " + subType);
           }
         }
+        break;
+      case YbcGFlags:
+        subcommand.add("--ybc_flags");
+        subcommand.add(Json.stringify(Json.toJson(ybcFlags)));
+        subcommand.add("--configure_ybc");
+        subcommand.add("--ybc_dir");
+        subcommand.add(ybcDir);
+        subcommand.add("--tags");
+        subcommand.add("override_ybc_gflags");
         break;
       default:
         break;
@@ -1838,7 +1839,13 @@ public class NodeManager extends DevopsBase {
             // aws uses instance_type to determine device names for mounting
             addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, true);
           }
-          addOtelColArgs(commandArgs, taskParam, userIntent, provider);
+          addOtelColArgs(
+              commandArgs,
+              taskParam,
+              taskParam.otelCollectorEnabled,
+              userIntent.auditLogConfig,
+              provider,
+              userIntent);
 
           String imageBundleDefaultImage = "";
           UUID imageBundleUUID = getImageBundleUUID(arch, userIntent, nodeTaskParam);
@@ -1944,7 +1951,7 @@ public class NodeManager extends DevopsBase {
             commandArgs.add("systemd_upgrade");
             commandArgs.add("--systemd_services");
           } else if (taskParam.useSystemd) {
-            // Systemd for new universes
+            // Systemd for new universes.
             commandArgs.add("--systemd_services");
           }
           if (taskParam.installThirdPartyPackages) {
@@ -2339,6 +2346,30 @@ public class NodeManager extends DevopsBase {
           commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
           break;
         }
+      case Manage_Otel_Collector:
+        {
+          if (!(nodeTaskParam instanceof ManageOtelCollector.Params)) {
+            throw new RuntimeException("NodeTaskParams is not ManageOtelCollector.Params");
+          }
+          ManageOtelCollector.Params params = (ManageOtelCollector.Params) nodeTaskParam;
+          addOtelColArgs(
+              commandArgs,
+              params,
+              params.installOtelCollector,
+              params.auditLogConfig,
+              provider,
+              userIntent);
+          commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
+          if (nodeTaskParam.deviceInfo != null) {
+            commandArgs.addAll(getDeviceArgs(nodeTaskParam));
+          }
+          String localPackagePath = getThirdpartyPackagePath();
+          if (localPackagePath != null) {
+            commandArgs.add("--local_package_path");
+            commandArgs.add(localPackagePath);
+          }
+          break;
+        }
       default:
         break;
     }
@@ -2625,27 +2656,28 @@ public class NodeManager extends DevopsBase {
 
   private void addOtelColArgs(
       List<String> commandArgs,
-      AnsibleSetupServer.Params taskParams,
-      UserIntent intent,
-      Provider provider) {
-    if (taskParams.otelCollectorEnabled) {
+      NodeTaskParams taskParams,
+      boolean installOtelCollector,
+      AuditLogConfig config,
+      Provider provider,
+      UserIntent userIntent) {
+    if (installOtelCollector) {
       commandArgs.add("--install_otel_collector");
-      AuditLogConfig config = intent.auditLogConfig;
-      if (config == null) {
-        return;
-      }
-      if ((config.getYsqlAuditConfig() == null || !config.getYsqlAuditConfig().isEnabled())
-          && (config.getYcqlAuditConfig() == null || !config.getYcqlAuditConfig().isEnabled())) {
-        return;
-      }
-      if (CollectionUtils.isNotEmpty(config.getUniverseLogsExporterConfig())) {
-        commandArgs.add("--otel_col_config_file");
-        commandArgs.add(
-            otelCollectorConfigGenerator
-                .generateConfigFile(taskParams, provider, config)
-                .toAbsolutePath()
-                .toString());
-      }
+    }
+    if (config == null) {
+      return;
+    }
+    if ((config.getYsqlAuditConfig() == null || !config.getYsqlAuditConfig().isEnabled())
+        && (config.getYcqlAuditConfig() == null || !config.getYcqlAuditConfig().isEnabled())) {
+      return;
+    }
+    if (CollectionUtils.isNotEmpty(config.getUniverseLogsExporterConfig())) {
+      commandArgs.add("--otel_col_config_file");
+      commandArgs.add(
+          otelCollectorConfigGenerator
+              .generateConfigFile(taskParams, provider, userIntent, config)
+              .toAbsolutePath()
+              .toString());
     }
   }
 }

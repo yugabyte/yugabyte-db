@@ -1,5 +1,5 @@
 ---
-title: authenticate resource
+title: ybm CLI authenticate resource
 headerTitle: ybm auth
 linkTitle: auth
 description: YugabyteDB Managed CLI reference auth resource.

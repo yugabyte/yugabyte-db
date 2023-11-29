@@ -2159,20 +2159,20 @@ table id: 000030ad000030008000000000004000, CDC bootstrap id: dd5ea73b5d384b2c9e
 The CDC bootstrap ids are the ones that should be used with [`setup_universe_replication`](#setup-universe-replication) and [`alter_universe_replication`](#alter-universe-replication).
 {{< /note >}}
 
----
-
 #### get_replication_status
 
-Returns the replication status of all consumer streams. If *producer_universe_uuid* is provided, this will only return streams that belong to an associated universe key.
+Returns the replication status of all consumer streams. If *source_universe_uuid* is provided, this will only return streams that belong to an associated universe key. If *replication_name* is provided, this will only return the stream that belongs to the specified replication.
 
 **Syntax**
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> get_replication_status [ <producer_universe_uuid> ]
+    -master_addresses <master-addresses> \
+    get_replication_status [ <source_universe_uuid>_<replication_name> ]
 ```
 
-* *producer_universe_uuid*: Optional universe-unique identifier (can be any string, such as a string of a UUID).
+* *source_universe_uuid*: (Optional) The UUID of the source universe.
+* *replication_name*: (Optional) The name of the replication stream.
 
 **Example**
 
@@ -2192,6 +2192,8 @@ statuses {
   }
 }
 ```
+
+---
 
 ### Decommissioning commands
 
@@ -2416,9 +2418,62 @@ yb-admin \
 
 Refer to [Upgrade a deployment](../../manage/upgrade-deployment/) to learn about how to upgrade a YugabyteDB cluster.
 
+For information on AutoFlags and how it secures upgrades with new data formats, refer to [AutoFlags](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/auto_flags.md).
+
+#### get_auto_flags_config
+
+Returns the current AutoFlags configuration of the universe.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    get_auto_flags_config
+```
+
+**Example**
+
+```sh
+./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 get_auto_flags_config
+```
+
+If the operation is successful you should see output similar to the following:
+
+```output
+AutoFlags config:
+config_version: 1
+promoted_flags {
+  process_name: "yb-master"
+  flags: "enable_automatic_tablet_splitting"
+  flags: "master_enable_universe_uuid_heartbeat_check"
+  flag_infos {
+    promoted_version: 1
+  }
+  flag_infos {
+    promoted_version: 1
+  }
+}
+promoted_flags {
+  process_name: "yb-tserver"
+  flags: "regular_tablets_data_block_key_value_encoding"
+  flags: "remote_bootstrap_from_leader_only"
+  flags: "ysql_yb_enable_expression_pushdown"
+  flag_infos {
+    promoted_version: 1
+  }
+  flag_infos {
+    promoted_version: 1
+  }
+  flag_infos {
+    promoted_version: 1
+  }
+}
+```
+
 #### promote_auto_flags
 
-[AutoFlags](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/auto_flags.md) protect new features that modify the format of data sent over the wire or stored on-disk. After all YugabyteDB processes have been upgraded to the new version, these features can be enabled by promoting their AutoFlags.
+After all YugabyteDB processes have been upgraded to the new version, these features can be enabled by promoting their AutoFlags.
 
 **Syntax**
 

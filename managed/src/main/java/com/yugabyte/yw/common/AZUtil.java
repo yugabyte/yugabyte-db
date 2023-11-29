@@ -130,8 +130,7 @@ public class AZUtil implements CloudUtil {
   }
 
   @Override
-  public void deleteKeyIfExists(CustomerConfigData configData, String defaultBackupLocation)
-      throws Exception {
+  public boolean deleteKeyIfExists(CustomerConfigData configData, String defaultBackupLocation) {
     CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
     String[] splitLocation = getSplitLocationValue(defaultBackupLocation);
     String azureUrl = "https://" + splitLocation[0];
@@ -150,12 +149,12 @@ public class AZUtil implements CloudUtil {
         retrieveAndDeleteObjects(pagedResponse, blobContainerClient);
       } else {
         log.info("Specified Location " + keyLocation + " does not contain objects");
-        return;
       }
-    } catch (BlobStorageException e) {
-      log.error("Error while deleting key object from container " + container, e.getMessage());
-      throw e;
+    } catch (Exception e) {
+      log.error("Error while deleting key object at location: {}", keyLocation, e);
+      return false;
     }
+    return true;
   }
 
   // Returns a map for <container_url, SAS token>
@@ -278,8 +277,7 @@ public class AZUtil implements CloudUtil {
   }
 
   @Override
-  public void deleteStorage(CustomerConfigData configData, List<String> backupLocations)
-      throws Exception {
+  public boolean deleteStorage(CustomerConfigData configData, List<String> backupLocations) {
     CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
     Map<String, String> containerTokenMap = getContainerTokenMap(azData);
     for (String backupLocation : backupLocations) {
@@ -291,7 +289,8 @@ public class AZUtil implements CloudUtil {
         String containerEndpoint = String.format("%s/%s", azureUrl, container);
         String sasToken = containerTokenMap.get(containerEndpoint);
         if (StringUtils.isEmpty(sasToken)) {
-          throw new Exception(String.format("No SAS token for given location %s", backupLocation));
+          log.error("No SAS token for given location {}", backupLocation);
+          return false;
         }
         BlobContainerClient blobContainerClient =
             createBlobContainerClient(azureUrl, sasToken, container);
@@ -301,16 +300,16 @@ public class AZUtil implements CloudUtil {
         Iterator<PagedResponse<BlobItem>> pagedResponse = pagedIterable.iterableByPage().iterator();
         log.debug("Retrieved blobs info for container " + container + " with prefix " + blob);
         retrieveAndDeleteObjects(pagedResponse, blobContainerClient);
-      } catch (BlobStorageException e) {
-        log.error(" Error in deleting objects at location " + backupLocation, e.getMessage());
-        throw e;
+      } catch (Exception e) {
+        log.error(" Error in deleting objects at location " + backupLocation, e);
+        return false;
       }
     }
+    return true;
   }
 
   public static void retrieveAndDeleteObjects(
-      Iterator<PagedResponse<BlobItem>> pagedResponse, BlobContainerClient blobContainerClient)
-      throws Exception {
+      Iterator<PagedResponse<BlobItem>> pagedResponse, BlobContainerClient blobContainerClient) {
     while (pagedResponse.hasNext()) {
       PagedResponse<BlobItem> response = pagedResponse.next();
       BlobClient blobClient;

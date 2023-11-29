@@ -1772,6 +1772,13 @@ ExecGrant_Attribute(InternalGrant *istmt, Oid relOid, const char *relname,
 								 NameStr(pg_attribute_tuple->attname));
 
 	/*
+	 * The original old_acl is pfree'd by merge_acl_with_grant. If the
+	 * original column acl value is null, we cannot skip catalog update.
+	 */
+	Acl *yb_copy_of_old_acl =
+		(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
+
+	/*
 	 * Generate new ACL.
 	 */
 	new_acl = merge_acl_with_grant(old_acl, istmt->is_grant,
@@ -1779,6 +1786,16 @@ ExecGrant_Attribute(InternalGrant *istmt, Oid relOid, const char *relname,
 								   istmt->behavior, istmt->grantees,
 								   col_privileges, grantorId,
 								   ownerId);
+
+	/* Skip catalog update if there is no ACL change. */
+	if (IsYugaByteEnabled() &&
+		yb_copy_of_old_acl &&
+		YbCheckAclCopiesEqual(yb_copy_of_old_acl, aclcopy(new_acl)))
+	{
+		pfree(new_acl);
+		ReleaseSysCache(attr_tuple);
+		return;
+	}
 
 	/*
 	 * We need the members of both old and new ACLs so we can correct the

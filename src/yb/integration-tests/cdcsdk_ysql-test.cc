@@ -1818,11 +1818,12 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentCountPersistencyBootstr
   size_t first_leader_index = -1;
   size_t first_follower_index = -1;
   GetTabletLeaderAndAnyFollowerIndex(tablets, &first_leader_index, &first_follower_index);
+  StartYbAdminClient();
   if (first_leader_index == 0) {
     // We want to avoid the scenario where the first TServer is the leader, since we want to shut
     // the leader TServer down and call GetChanges. GetChanges will be called on the cdc_proxy based
     // on the first TServer's address and we want to avoid the network issues.
-    ASSERT_OK(ChangeLeaderOfTablet(first_follower_index, tablets[0].tablet_id()));
+    ASSERT_OK(StepDownLeader(first_follower_index, tablets[0].tablet_id()));
     std::swap(first_leader_index, first_follower_index);
   }
 
@@ -1831,7 +1832,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentCountPersistencyBootstr
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
-  ASSERT_OK(ChangeLeaderOfTablet(first_follower_index, tablets[0].tablet_id()));
+  ASSERT_OK(StepDownLeader(first_follower_index, tablets[0].tablet_id()));
   // Shutdown tserver hosting tablet initial leader, now it is a follower.
   test_cluster()->mini_tablet_server(first_leader_index)->Shutdown();
   LOG(INFO) << "TServer hosting tablet leader shutdown";
@@ -3192,8 +3193,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWithLeaderChange))
       FindTserversWithCacheHit(stream_id, tablets[0].tablet_id(), num_tservers);
   ASSERT_GE(cache_hit_tservers, 1);
 
+  StartYbAdminClient();
   // change LEADER of the tablet to tserver-2
-  ASSERT_OK(ChangeLeaderOfTablet(1, tablets[0].tablet_id()));
+  ASSERT_OK(StepDownLeader(1, tablets[0].tablet_id()));
 
   // check the condition of cache after LEADER step down.
   // we will see prev as well as current LEADER cache, search stream exist.
@@ -3211,7 +3213,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWithLeaderChange))
   }
 
   // change LEADER of the tablet to tserver-1
-  ASSERT_OK(ChangeLeaderOfTablet(0, tablets[0].tablet_id()));
+  ASSERT_OK(StepDownLeader(0, tablets[0].tablet_id()));
 
   auto result = GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint());
   ASSERT_OK(result);
@@ -3259,7 +3261,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWithLeaderReElect)
   GetChangesResponsePB change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
   LOG(INFO) << "Number of records after first transaction: " << change_resp_1.records().size();
 
-  ASSERT_OK(ChangeLeaderOfTablet(first_follower_index, tablets[0].tablet_id()));
+  StartYbAdminClient();
+  ASSERT_OK(StepDownLeader(first_follower_index, tablets[0].tablet_id()));
 
   size_t second_leader_index = -1;
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets2;
@@ -3300,7 +3303,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWithLeaderReElect)
             << correct_expiry_time.time_since_epoch().count();
 
   // we need to ensure the initial leader get's back leadership
-  ASSERT_OK(ChangeLeaderOfTablet(first_follower_index, tablets[0].tablet_id()));
+  ASSERT_OK(StepDownLeader(first_follower_index, tablets[0].tablet_id()));
   LOG(INFO) << "Changed leadership back to the first leader TServer";
 
   // Call the test RPC to get last active time of the current leader (original), and it should
@@ -3353,7 +3356,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWithLeaderRestart)
   LOG(INFO) << "Total records read by GetChanges call on stream_id_1: " << record_size;
   SleepFor(MonoDelta::FromSeconds(10));
 
-  ASSERT_OK(ChangeLeaderOfTablet(first_follower_index, tablets[0].tablet_id()));
+  StartYbAdminClient();
+  ASSERT_OK(StepDownLeader(first_follower_index, tablets[0].tablet_id()));
 
   // Shutdown tserver hosting tablet leader.
   test_cluster()->mini_tablet_server(first_leader_index)->Shutdown();
@@ -3418,7 +3422,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWithLeaderRestart)
             << " : " << correct_expiry_time.time_since_epoch().count();
 
   // We need to ensure the initial leader get's back leadership.
-  ASSERT_OK(ChangeLeaderOfTablet(first_leader_index, tablets[0].tablet_id()));
+  StartYbAdminClient();
+  ASSERT_OK(StepDownLeader(first_leader_index, tablets[0].tablet_id()));
 
   ASSERT_OK(WriteRowsHelper(200 /* start */, 300 /* end */, &test_cluster_, true));
   ASSERT_OK(test_client()->FlushTables(
@@ -3498,7 +3503,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKActiveTimeCacheInSyncWi
   LOG(INFO) << "The active time is equal in both the cache and cdc_state table";
 
   const size_t& second_leader_index = first_follower_index;
-  ASSERT_OK(ChangeLeaderOfTablet(second_leader_index, tablets[0].tablet_id()));
+  StartYbAdminClient();
+  ASSERT_OK(StepDownLeader(second_leader_index, tablets[0].tablet_id()));
 
   // Insert some records in transaction after first leader stepdown.
   ASSERT_OK(WriteRowsHelper(100 /* start */, 200 /* end */, &test_cluster_, true));
@@ -6218,13 +6224,14 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithMultipleAlterAn
   size_t first_leader_index = -1;
   size_t first_follower_index = -1;
   GetTabletLeaderAndAnyFollowerIndex(tablets, &first_leader_index, &first_follower_index);
+  StartYbAdminClient();
   if (first_leader_index == 0) {
     // We want to avoid the scenario where the first TServer is the leader, since we want to shut
     // the leader TServer down and call GetChanges. GetChanges will be called on the cdc_proxy
     // based on the first TServer's address and we want to avoid the network issues.
-    ASSERT_OK(ChangeLeaderOfTablet(first_follower_index, tablets[0].tablet_id()));
+    ASSERT_OK(StepDownLeader(first_follower_index, tablets[0].tablet_id()));
   }
-  ASSERT_OK(ChangeLeaderOfTablet(first_follower_index, tablets[0].tablet_id()));
+  ASSERT_OK(StepDownLeader(first_follower_index, tablets[0].tablet_id()));
 
   conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
   ASSERT_OK(conn.Execute("BEGIN"));
@@ -7068,22 +7075,21 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestUnrelatedTableDropUponTserver
       GetChangesFromCDCWithoutRetry(stream_id, tablets, &change_resp_2.cdc_sdk_checkpoint()));
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCStreamCreationDisabledDuringUpgrade)) {
-  ASSERT_OK(SetUpWithParams(/*replication_factor=*/3, /*num_masters=*/1, /*colocated=*/false));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = false;
+void TestStreamCreationViaCDCService(CDCSDKYsqlTest* test_class, bool enable_replication_commands) {
+  ASSERT_OK(test_class->SetUpWithParams(
+      /*replication_factor=*/3, /*num_masters=*/1, /*colocated=*/false));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_commands) =
+      enable_replication_commands;
 
-  CreateCDCStreamRequestPB req;
-  CreateCDCStreamResponsePB resp;
-  rpc::RpcController rpc;
-  rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
-  InitCreateStreamRequest(&req);
-  ASSERT_OK(cdc_proxy_->CreateCDCStream(req, &resp, &rpc));
+  ASSERT_OK(test_class->CreateDBStream());
+}
 
-  ASSERT_TRUE(resp.has_error());
-  ASSERT_NE(
-      resp.error().status().message().find("Creating a CDC stream is disallowed during an upgrade"),
-      std::string::npos)
-      << resp.error().status().message();
+TEST_F(CDCSDKYsqlTest, TestCDCStreamCreationViaCDCServiceWithReplicationCommandsEnabled) {
+  TestStreamCreationViaCDCService(this, /* enable_replication_commands */ true);
+}
+
+TEST_F(CDCSDKYsqlTest, TestCDCStreamCreationViaCDCServiceWithReplicationCommandsDisabled) {
+  TestStreamCreationViaCDCService(this, /* enable_replication_commands */ false);
 }
 
 TEST_F(CDCSDKYsqlTest, TestReplicationSlotDropWithActiveInvalid) {

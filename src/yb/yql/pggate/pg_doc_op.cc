@@ -393,8 +393,6 @@ Result<std::list<PgDocResult>> PgDocOp::ProcessResponseImpl(
   auto result = VERIFY_RESULT(ProcessCallResponse(*data.response));
 
   if (data.used_in_txn_limit) {
-    VLOG(5) << "Received used_in_txn_limit_ht in resp=" << data.used_in_txn_limit
-            << ", existing in_txn_limit_ht: " << GetInTxnLimitHt();
     GetInTxnLimitHt() = data.used_in_txn_limit.ToUint64();
   }
   RETURN_NOT_OK(CompleteProcessResponse());
@@ -559,14 +557,14 @@ Result<bool> PgDocReadOp::DoCreateRequests() {
         return false;
       }
     }
-    pgsql_ops_.emplace_back(read_op_);
-    pgsql_ops_.back()->set_active(true);
+    ClonePgsqlOps(1);
+    auto& read_op = GetReadOp(0);
+    read_op.set_active(true);
     active_op_count_ = 1;
     if (req.has_ybctid_column_value()) {
-      const Slice& ybctid =
-        read_op_->read_request().mutable_ybctid_column_value()->mutable_value()->binary_value();
+      const Slice& ybctid = req.ybctid_column_value().value().binary_value();
       const size_t partition = VERIFY_RESULT(table_->FindPartitionIndex(ybctid));
-      return SetLowerUpperBound(&read_op_->read_request(), partition);
+      return SetLowerUpperBound(&read_op.read_request(), partition);
     }
     return true;
   }
@@ -1399,6 +1397,15 @@ void PgDocReadOp::ResetInactivePgsqlOps() {
           }),
       batch_row_orders_.end());
   }
+}
+
+Status PgDocReadOp::ResetPgsqlOps() {
+  SCHECK_EQ(active_op_count_, 0,
+            IllegalState,
+            "Can't reset operations when some of them are active");
+  pgsql_ops_.clear();
+  request_population_completed_ = false;
+  return Status::OK();
 }
 
 void PgDocReadOp::FormulateRequestForRollingUpgrade(LWPgsqlReadRequestPB *read_req) {

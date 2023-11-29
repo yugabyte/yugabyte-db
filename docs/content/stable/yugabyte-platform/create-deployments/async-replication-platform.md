@@ -21,8 +21,8 @@ In the concept of replication, universes are divided into the following categori
 
 For additional information on xCluster replication in YugabyteDB, see the following:
 
-- [xCluster replication: overview and architecture](/preview/architecture/docdb-replication/async-replication/)
-- [xCluster replication between universes in YugabyteDB](/preview/deploy/multi-dc/async-replication/)
+- [xCluster replication: overview and architecture](../../../architecture/docdb-replication/async-replication/)
+- [xCluster replication between universes in YugabyteDB](../../../deploy/multi-dc/async-replication/)
 
 You can use the YugabyteDB Anywhere UI to set up and configure xCluster replication for universes. In addition, you can perform monitoring by accessing the information about the replication lag and enabling alerts on excessive lag.
 
@@ -54,7 +54,7 @@ You can set up xCluster replication as follows:
 
     Note that you cannot set up replication for colocated tables.
 
-1. Select the **Enable transactional atomicity** option (YSQL tables only) so that the read operations on the target universe will be transactional. For more information, refer to [Transactional xCluster deployment](../../../deploy/multi-dc/async-replication-transactional/). Currently, this has the following limitations:
+1. Select the **Enable transactional atomicity** option (YSQL tables only) so that the read operations on the target universe will be transactional. For more information, refer to [Transactional xCluster deployment](../../../deploy/multi-dc/async-replication/async-replication-transactional/). Currently, this has the following limitations:
 
     - Point in time restore must be enabled on the target universe for the databases that you want to replicate, and matching databases must exist on both universes prior to creating the replication.
     - Neither the source universe nor the target universe should be a participant in any other xCluster configuration.

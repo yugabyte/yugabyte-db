@@ -2121,7 +2121,7 @@ class CDCServiceTestThreeServers : public CDCServiceTest {
     // We don't want the tablets to move in the middle of the test.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_failure_max_missed_heartbeat_periods) = 12.0;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 2;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 5;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_log_retention_by_op_idx) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 20 * 1000 * kTimeMultiplier;
 

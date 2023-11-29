@@ -171,6 +171,7 @@ public class GFlagsUtil {
   // DB internal glag to suppress going into shell mode and delete files on master removal.
   public static final String NOTIFY_PEER_OF_REMOVAL_FROM_CLUSTER =
       "notify_peer_of_removal_from_cluster";
+  public static final String MASTER_JOIN_EXISTING_UNIVERSE = "master_join_existing_universe";
 
   private static final Set<String> GFLAGS_FORBIDDEN_TO_OVERRIDE =
       ImmutableSet.<String>builder()
@@ -345,7 +346,8 @@ public class GFlagsUtil {
       Universe universe,
       AnsibleConfigureServers.Params taskParam,
       RuntimeConfGetter confGetter,
-      Config config) {
+      Config config,
+      Map<String, String> customYbcGflags) {
     NodeDetails node = universe.getNode(taskParam.nodeName);
     // Both for old clusters and new, binding to both IPs works.
     boolean isDualNet =
@@ -409,12 +411,17 @@ public class GFlagsUtil {
     }
     String nfsDirs = confGetter.getConfForScope(universe, UniverseConfKeys.nfsDirs);
     ybcFlags.put("nfs_dirs", nfsDirs);
+    ybcFlags.putAll(customYbcGflags);
     return ybcFlags;
   }
 
   /** Return the map of ybc flags which will be passed to the db nodes. */
   public static Map<String, String> getYbcFlagsForK8s(
-      UUID universeUUID, String nodeName, boolean listenOnAllInterfaces, int hardwareConcurrency) {
+      UUID universeUUID,
+      String nodeName,
+      boolean listenOnAllInterfaces,
+      int hardwareConcurrency,
+      Map<String, String> customYbcGflags) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     NodeDetails node = universe.getNode(nodeName);
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
@@ -451,6 +458,7 @@ public class GFlagsUtil {
       ybcFlags.put("certs_dir_name", "/opt/certs/yugabyte");
       ybcFlags.put("cert_node_filename", node.cloudInfo.private_ip);
     }
+    ybcFlags.putAll(customYbcGflags);
     return ybcFlags;
   }
 
@@ -566,7 +574,7 @@ public class GFlagsUtil {
       } else {
         gflags.put(YSQL_ENABLE_AUTH, "false");
       }
-      String ysqlPgConfCsv = getYsqlPgConfCsv(universe);
+      String ysqlPgConfCsv = getYsqlPgConfCsv(taskParam);
       if (StringUtils.isNotEmpty(ysqlPgConfCsv)) {
         gflags.put(YSQL_PG_CONF_CSV, ysqlPgConfCsv);
       }
@@ -576,10 +584,9 @@ public class GFlagsUtil {
     return gflags;
   }
 
-  private static String getYsqlPgConfCsv(Universe universe) {
+  private static String getYsqlPgConfCsv(AnsibleConfigureServers.Params taskParams) {
     List<String> ysqlPgConfCsvEntries = new ArrayList<>();
-    AuditLogConfig auditLogConfig =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.auditLogConfig;
+    AuditLogConfig auditLogConfig = taskParams.auditLogConfig;
     if (auditLogConfig != null) {
       if (auditLogConfig.getYsqlAuditConfig() != null
           && auditLogConfig.getYcqlAuditConfig().isEnabled()) {
@@ -646,17 +653,16 @@ public class GFlagsUtil {
       } else {
         gflags.put(USE_CASSANDRA_AUTHENTICATION, "false");
       }
-      gflags.putAll(getYcqlAuditFlags(universe));
+      gflags.putAll(getYcqlAuditFlags(taskParam));
     } else {
       gflags.put(START_CQL_PROXY, "false");
     }
     return gflags;
   }
 
-  private static Map<String, String> getYcqlAuditFlags(Universe universe) {
+  private static Map<String, String> getYcqlAuditFlags(AnsibleConfigureServers.Params taskParams) {
     Map<String, String> result = new HashMap<>();
-    AuditLogConfig auditLogConfig =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.getAuditLogConfig();
+    AuditLogConfig auditLogConfig = taskParams.auditLogConfig;
     if (auditLogConfig != null) {
       if (auditLogConfig.getYcqlAuditConfig() != null
           && auditLogConfig.getYcqlAuditConfig().isEnabled()) {
@@ -792,7 +798,12 @@ public class GFlagsUtil {
       gflags.put(NOTIFY_PEER_OF_REMOVAL_FROM_CLUSTER, String.valueOf(notifyPeerOnRemoval));
       gflags.put(UNDEFOK, NOTIFY_PEER_OF_REMOVAL_FROM_CLUSTER);
     }
-
+    if (taskParam.isMasterInShellMode || taskParam.masterJoinExistingCluster) {
+      // Always set this to true in shell mode to avoid forming a cluster even if the master
+      // addresses are set by mistake. Once the master joins an existing cluster, this is ignored.
+      gflags.put(MASTER_JOIN_EXISTING_UNIVERSE, "true");
+      gflags.merge(UNDEFOK, MASTER_JOIN_EXISTING_UNIVERSE, (v1, v2) -> mergeCSVs(v1, v2));
+    }
     return gflags;
   }
 
@@ -1031,33 +1042,34 @@ public class GFlagsUtil {
     return trimData;
   }
 
+  public static String mergeCSVs(String csv1, String csv2) {
+    StringWriter writer = new StringWriter();
+    try {
+      CSVFormat csvFormat = CSVFormat.DEFAULT.builder().setRecordSeparator("").build();
+      try (CSVPrinter csvPrinter = new CSVPrinter(writer, csvFormat)) {
+        Set<String> records = new LinkedHashSet<>();
+        CSVParser parser = new CSVParser(new StringReader(csv1), csvFormat);
+        for (CSVRecord record : parser) {
+          records.addAll(record.toList());
+        }
+        parser = new CSVParser(new StringReader(csv2), csvFormat);
+        for (CSVRecord record : parser) {
+          records.addAll(record.toList());
+        }
+        csvPrinter.printRecord(records);
+        csvPrinter.flush();
+      }
+    } catch (IOException ignored) {
+      // can't really happen
+    }
+    return writer.toString();
+  }
+
   public static void mergeCSVs(
       Map<String, String> userGFlags, Map<String, String> platformGFlags, String key) {
     if (userGFlags.containsKey(key)) {
-      String userValue = userGFlags.get(key).toString();
-      try {
-        CSVFormat csvFormat = CSVFormat.DEFAULT;
-        CSVParser userValueParser = new CSVParser(new StringReader(userValue), csvFormat);
-        CSVParser platformValuesParser =
-            new CSVParser(
-                new StringReader(platformGFlags.getOrDefault(key, "").toString()), csvFormat);
-        Set<String> records = new LinkedHashSet<>();
-        StringWriter writer = new StringWriter();
-        try (CSVPrinter csvPrinter = new CSVPrinter(writer, csvFormat)) {
-          for (CSVRecord record : userValueParser) {
-            records.addAll(record.toList());
-          }
-          for (CSVRecord record : platformValuesParser) {
-            records.addAll(record.toList());
-          }
-          csvPrinter.printRecord(records);
-          csvPrinter.flush();
-        }
-        String result = writer.toString();
-        userGFlags.put(key, result.replaceAll("\n", "").replace("\r", ""));
-      } catch (IOException ignored) {
-        // can't really happen
-      }
+      String userValue = userGFlags.get(key);
+      userGFlags.put(key, mergeCSVs(userValue, platformGFlags.getOrDefault(key, "")));
     }
   }
 

@@ -217,8 +217,7 @@ public class AWSUtil implements CloudUtil {
   }
 
   @Override
-  public void deleteKeyIfExists(CustomerConfigData configData, String defaultBackupLocation)
-      throws Exception {
+  public boolean deleteKeyIfExists(CustomerConfigData configData, String defaultBackupLocation) {
     String[] splitLocation = getSplitLocationValue(defaultBackupLocation);
     String bucketName = splitLocation[0];
     String objectPrefix = splitLocation[1];
@@ -230,17 +229,17 @@ public class AWSUtil implements CloudUtil {
       ListObjectsV2Result listObjectsResult = s3Client.listObjectsV2(bucketName, keyLocation);
       if (listObjectsResult.getKeyCount() == 0) {
         log.info("Specified Location " + keyLocation + " does not contain objects");
-        return;
       } else {
         log.debug("Retrieved blobs info for bucket " + bucketName + " with prefix " + keyLocation);
         retrieveAndDeleteObjects(listObjectsResult, bucketName, s3Client);
       }
-    } catch (AmazonS3Exception e) {
-      log.error("Error while deleting key object from bucket " + bucketName, e.getErrorMessage());
-      throw e;
+    } catch (Exception e) {
+      log.error("Error while deleting key object at location: {}", keyLocation, e);
+      return false;
     } finally {
       maybeEnableCertVerification();
     }
+    return true;
   }
 
   // For S3 location: s3://bucket/suffix
@@ -420,8 +419,7 @@ public class AWSUtil implements CloudUtil {
   }
 
   @Override
-  public void deleteStorage(CustomerConfigData configData, List<String> backupLocations)
-      throws Exception {
+  public boolean deleteStorage(CustomerConfigData configData, List<String> backupLocations) {
     for (String backupLocation : backupLocations) {
       try {
         maybeDisableCertVerification();
@@ -450,13 +448,14 @@ public class AWSUtil implements CloudUtil {
               "Retrieved blobs info for bucket " + bucketName + " with prefix " + objectPrefix);
           retrieveAndDeleteObjects(listObjectsResult, bucketName, s3Client);
         } while (nextContinuationToken != null);
-      } catch (AmazonS3Exception e) {
-        log.error(" Error in deleting objects at location " + backupLocation, e.getErrorMessage());
-        throw e;
+      } catch (Exception e) {
+        log.error(" Error in deleting objects at location " + backupLocation, e);
+        return false;
       } finally {
         maybeEnableCertVerification();
       }
     }
+    return true;
   }
 
   @Override

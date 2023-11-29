@@ -493,7 +493,7 @@ Status ExternalMiniCluster::Restart() {
   // Give some more time for the cluster to be ready. If we proceed to run the
   // unit test prematurely before the master/tserver are fully ready, deadlock
   // can happen which leads to test flakiness.
-  SleepFor(2s);
+  SleepFor(2s * kTimeMultiplier);
   running_ = true;
   return Status::OK();
 }

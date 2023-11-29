@@ -897,7 +897,9 @@ TEST_F_EX(PgIndexBackfillTest,
   for (int i = 0; i < kNumThreads; ++i) {
     thread_holder_.AddThreadFunctor([i, this, &statuses] {
       LOG(INFO) << "Begin thread " << i;
-      PGConn create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+      // TODO (#19975): Enable read committed isolation
+      PGConn create_conn = ASSERT_RESULT(SetDefaultTransactionIsolation(
+          ConnectToDB(kDatabaseName), IsolationLevel::SNAPSHOT_ISOLATION));
       statuses[i] = MoveStatus(create_conn.ExecuteFormat(
           "CREATE INDEX $0 ON $1 (i)",
           kIndexName, kTableName));

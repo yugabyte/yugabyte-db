@@ -291,6 +291,9 @@ public enum TaskType {
   UpdateUniverseYbcDetails(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseYbcDetails.class),
 
+  UpdateUniverseYbcGflagsDetails(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseYbcGflagsDetails.class),
+
   VerifyNodeSSHAccess(com.yugabyte.yw.commissioner.tasks.subtasks.VerifyNodeSSHAccess.class),
 
   WaitForDataMove(com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDataMove.class),
@@ -527,6 +530,11 @@ public enum TaskType {
   ModifyAuditLoggingConfig(
       com.yugabyte.yw.commissioner.tasks.upgrade.ModifyAuditLoggingConfig.class),
 
+  ManageOtelCollector(com.yugabyte.yw.commissioner.tasks.subtasks.ManageOtelCollector.class),
+
+  UpdateAndPersistAuditLoggingConfig(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistAuditLoggingConfig.class),
+
   MarkUniverseForHealthScriptReUpload(
       com.yugabyte.yw.commissioner.tasks.subtasks.MarkUniverseForHealthScriptReUpload.class),
 
@@ -546,6 +554,8 @@ public enum TaskType {
       com.yugabyte.yw.commissioner.tasks.subtasks.InstallYbcSoftwareOnK8s.class),
 
   UpgradeUniverseYbc(com.yugabyte.yw.commissioner.tasks.UpgradeUniverseYbc.class),
+
+  UpgradeYbcGFlags(com.yugabyte.yw.commissioner.tasks.UpgradeYbcGFlags.class),
 
   DisableYbc(com.yugabyte.yw.commissioner.tasks.DisableYbc.class),
 
@@ -660,6 +670,7 @@ public enum TaskType {
           .put(RollbackUpgrade, 52)
           .put(SoftwareKubernetesUpgradeYB, 53)
           .put(RollbackKubernetesUpgrade, 54)
+          .put(ModifyAuditLoggingConfig, 55)
           // Node operations (70-89):
           .put(AddNodeToUniverse, 70)
           .put(DeleteNodeFromUniverse, 71)
@@ -700,6 +711,7 @@ public enum TaskType {
           .put(SetUniverseKey, 135)
           .put(UpdateLoadBalancerConfig, 136)
           .put(LdapUniverseSync, 137)
+          .put(UpgradeYbcGFlags, 138)
           .build();
 
   TaskType(Class<? extends ITask> taskClass) {

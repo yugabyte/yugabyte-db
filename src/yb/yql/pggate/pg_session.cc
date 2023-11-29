@@ -976,14 +976,22 @@ Result<bool> PgSession::IsObjectPartOfXRepl(const PgObjectId& table_id) {
   return pg_client_.IsObjectPartOfXRepl(table_id);
 }
 
-Result<boost::container::small_vector<RefCntSlice, 2>> PgSession::GetTableKeyRanges(
+Result<TableKeyRangesWithHt> PgSession::GetTableKeyRanges(
     const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
     uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length) {
   // TODO(ysql_parallel_query): consider async population of range boundaries to avoid blocking
   // calling worker on waiting for range boundaries.
   return pg_client_.GetTableKeyRanges(
       table_id, lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes, is_forward,
-      max_key_length);
+      max_key_length, pg_txn_manager_->GetReadTimeSerialNo());
+}
+
+uint64_t PgSession::GetReadTimeSerialNo() {
+  return pg_txn_manager_->GetReadTimeSerialNo();
+}
+
+void PgSession::ForceReadTimeSerialNo(uint64_t read_time_serial_no) {
+  pg_txn_manager_->ForceReadTimeSerialNo(read_time_serial_no);
 }
 
 Result<tserver::PgListReplicationSlotsResponsePB> PgSession::ListReplicationSlots() {

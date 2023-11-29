@@ -42,10 +42,11 @@ class ExternalYbController : public RefCountedThreadSafe<ExternalYbController> {
 
   uint16_t GetServerPort() const { return server_port_; }
 
-  // Currently this uses SIGKILL for non graceful shutdown
+  // Gracefully shutsdown the server.
+  // Sends SIGKILL if unsuccessful.
   void Shutdown();
 
-  // Returns true if the process isn't running
+  // Returns true if the process isn't running.
   bool IsShutdown() const;
 
  protected:
