@@ -195,19 +195,19 @@ TEST_F(PgLibPqTest, PgStatIdxScanNoIncrementOnErrorTest) {
 
   constexpr int kNumColumns = 30;
 
-  std::ostringstream create_table_stmt;
-  create_table_stmt << "CREATE TABLE many (";
+  std::ostringstream create_table_ss;
+  create_table_ss << "CREATE TABLE many (";
   for (int i = 1; i <= kNumColumns; ++i)
-    create_table_stmt << "c" << i << " INT,";
-  create_table_stmt << "k INT PRIMARY KEY)";
-  ASSERT_OK(conn.Execute(create_table_stmt.str()));
+    create_table_ss << "c" << i << " INT,";
+  create_table_ss << "k INT PRIMARY KEY)";
+  ASSERT_OK(conn.Execute(create_table_ss.str()));
 
-  std::ostringstream create_index_stmt;
-  create_index_stmt << "CREATE INDEX ON many (c1 ASC";
+  std::ostringstream create_index_ss;
+  create_index_ss << "CREATE INDEX ON many (c1 ASC";
   for (int i = 2; i <= kNumColumns; ++i)
-    create_index_stmt << ", c" << i;
-  create_index_stmt << ")";
-  ASSERT_OK(conn.Execute(create_index_stmt.str()));
+    create_index_ss << ", c" << i;
+  create_index_ss << ")";
+  ASSERT_OK(conn.Execute(create_index_ss.str()));
 
   std::ostringstream predicate_error_query;
   predicate_error_query << "SELECT * FROM many WHERE ";
