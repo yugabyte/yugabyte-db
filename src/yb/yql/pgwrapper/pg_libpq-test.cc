@@ -249,6 +249,7 @@ TEST_F(PgLibPqTest, PgStatIdxScanNoIncrementOnErrorTest) {
   query_ss << " AND c" << kNumColumns << " < 2";
 
   // Unsuccessful scan should not increment idx_scan.
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query_ss.str())));
   auto status = ResultToStatus(conn.Fetch(query_ss.str()));
   ASSERT_NOK(status);
   ASSERT_STR_CONTAINS(status.ToString(),
