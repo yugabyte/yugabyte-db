@@ -46,10 +46,11 @@ explain (costs off)
  Finalize Aggregate
    ->  Gather
          Workers Planned: 4
-         ->  Partial Aggregate
+         ->  Noop Aggregate
                ->  Parallel Seq Scan on tenk1
                      Remote Filter: (stringu1 = 'GRAAAA'::name)
-(6 rows)
+                     Partial Aggregate: true
+(7 rows)
 
 select count(*) from tenk1 where stringu1 = 'GRAAAA';
  count
@@ -67,10 +68,11 @@ explain (costs off)
  Finalize Aggregate
    ->  Gather
          Workers Planned: 4
-         ->  Partial Aggregate
+         ->  Noop Aggregate
                ->  Parallel Seq Scan on tenk1
                      Remote Filter: (stringu1 = 'GRAAAA'::name)
-(6 rows)
+                     Partial Aggregate: true
+(7 rows)
 
 select count(*) from tenk1 where stringu1 = 'GRAAAA';
  count
@@ -154,10 +156,11 @@ explain (costs off) execute tenk1_count(1);
  Finalize Aggregate
    ->  Gather
          Workers Planned: 4
-         ->  Partial Aggregate
+         ->  Noop Aggregate
                ->  Parallel Seq Scan on tenk1
                      Remote Filter: (hundred > 1)
-(6 rows)
+                     Partial Aggregate: true
+(7 rows)
 
 execute tenk1_count(1);
  count
@@ -217,15 +220,17 @@ explain (costs off)
      ->  Finalize Aggregate
            ->  Gather
                  Workers Planned: 4
-                 ->  Partial Aggregate
+                 ->  Noop Aggregate
                        ->  Parallel Seq Scan on tenk2
+                             Partial Aggregate: true
    ->  Gather
          Workers Planned: 4
          Params Evaluated: $2
-         ->  Partial Aggregate
+         ->  Noop Aggregate
                ->  Parallel Seq Scan on tenk1
                      Remote Filter: (unique1 = $2)
-(13 rows)
+                     Partial Aggregate: true
+(15 rows)
 
 select count(*) from tenk1
     where tenk1.unique1 = (Select max(tenk2.unique1) from tenk2);
@@ -247,10 +252,11 @@ explain (costs off)
  Finalize Aggregate
    ->  Gather
          Workers Planned: 4
-         ->  Partial Aggregate
+         ->  Noop Aggregate
                ->  Parallel Index Scan using tenk1_hundred on tenk1
                      Index Cond: (hundred > 1)
-(6 rows)
+                     Partial Aggregate: true
+(7 rows)
 
 select  count((unique1)) from tenk1 where hundred > 1;
  count
@@ -266,10 +272,11 @@ explain (costs off)
  Finalize Aggregate
    ->  Gather
          Workers Planned: 4
-         ->  Partial Aggregate
+         ->  Noop Aggregate
                ->  Parallel Index Only Scan using tenk1_thous_tenthous on tenk1
                      Index Cond: (thousand > 95)
-(6 rows)
+                     Partial Aggregate: true
+(7 rows)
 
 select  count(*) from tenk1 where thousand > 95;
  count
@@ -290,10 +297,11 @@ select * from
    ->  Finalize Aggregate
          ->  Gather
                Workers Planned: 4
-               ->  Partial Aggregate
+               ->  Noop Aggregate
                      ->  Parallel Index Scan using tenk1_hundred on tenk1
                            Index Cond: (hundred > 10)
-(8 rows)
+                           Partial Aggregate: true
+(9 rows)
 
 select * from
   (select count(unique1) from tenk1 where hundred > 10) ss
@@ -316,10 +324,11 @@ select * from
    ->  Finalize Aggregate
          ->  Gather
                Workers Planned: 4
-               ->  Partial Aggregate
+               ->  Noop Aggregate
                      ->  Parallel Index Only Scan using tenk1_thous_tenthous on tenk1
                            Index Cond: (thousand > 99)
-(8 rows)
+                           Partial Aggregate: true
+(9 rows)
 
 select * from
   (select count(*) from tenk1 where thousand > 99) ss

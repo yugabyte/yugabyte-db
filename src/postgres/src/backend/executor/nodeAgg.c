@@ -1627,7 +1627,7 @@ yb_agg_pushdown_supported(AggState *aggstate)
 			return;
 
 		/* Simple split. */
-		if (aggref->aggsplit != AGGSPLIT_SIMPLE)
+		if (aggref->aggsplit == AGGSPLIT_FINAL_DESERIAL)
 			return;
 
 

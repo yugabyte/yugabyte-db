@@ -54,10 +54,11 @@ SELECT count(*) FROM pctest1 WHERE d LIKE 'Value_9';
  Finalize Aggregate
    ->  Gather
          Workers Planned: 2
-         ->  Partial Aggregate
+         ->  Noop Aggregate
                ->  Parallel Seq Scan on pctest1
                      Remote Filter: (d ~~ 'Value_9'::text)
-(6 rows)
+                     Partial Aggregate: true
+(7 rows)
 
 SELECT count(*) FROM pctest1 WHERE d LIKE 'Value_9';
  count
@@ -272,10 +273,11 @@ SELECT count(*) FROM pctest1 WHERE k > 123;
  Finalize Aggregate
    ->  Gather
          Workers Planned: 2
-         ->  Partial Aggregate
+         ->  Noop Aggregate
                ->  Parallel Index Scan using pctest1_pkey on pctest1
                      Index Cond: (k > 123)
-(6 rows)
+                     Partial Aggregate: true
+(7 rows)
 
 SELECT count(*) FROM pctest1 WHERE k > 123;
  count
@@ -616,9 +618,10 @@ SELECT * from pctest2
      ->  Finalize Aggregate
            ->  Gather
                  Workers Planned: 2
-                 ->  Partial Aggregate
+                 ->  Noop Aggregate
                        ->  Parallel Seq Scan on pctest1 pctest1_1
                              Remote Filter: (d ~~ 'Value_9'::text)
+                             Partial Aggregate: true
    ->  Parallel Hash Semi Join
          Hash Cond: (pctest2.c = pctest1.b)
          ->  Parallel Seq Scan on pctest2
@@ -626,7 +629,7 @@ SELECT * from pctest2
          ->  Parallel Hash
                ->  Parallel Seq Scan on pctest1
                      Remote Filter: (d ~~ 'Value_9'::text)
-(17 rows)
+(18 rows)
 
 SELECT * from pctest2
   WHERE c IN (SELECT b FROM pctest1 WHERE d LIKE 'Value_9')
@@ -668,10 +671,11 @@ select * from
    ->  Finalize Aggregate
          ->  Gather
                Workers Planned: 2
-               ->  Partial Aggregate
+               ->  Noop Aggregate
                      ->  Parallel Seq Scan on pctest1
                            Remote Filter: (b > 10)
-(8 rows)
+                           Partial Aggregate: true
+(9 rows)
 
 select * from
   (SELECT count(*) FROM pctest1 WHERE b > 10) ss
@@ -694,10 +698,11 @@ select * from
    ->  Finalize Aggregate
          ->  Gather
                Workers Planned: 2
-               ->  Partial Aggregate
+               ->  Noop Aggregate
                      ->  Parallel Index Only Scan using pctest1_c_idx on pctest1
                            Index Cond: (c > 10)
-(8 rows)
+                           Partial Aggregate: true
+(9 rows)
 
 select * from
   (SELECT count(*) FROM pctest1 WHERE c > 10) ss
