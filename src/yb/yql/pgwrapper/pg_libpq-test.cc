@@ -192,8 +192,8 @@ TEST_F(PgLibPqTest, Simple) {
 
 TEST_F(PgLibPqTest, PgStatIdxScanNoIncrementOnErrorTest) {
   auto conn = ASSERT_RESULT(Connect());
-
-  constexpr int kNumColumns = 30;
+  constexpr auto kNumColumns = 30;
+  constexpr auto kMaxPredicates = 64;
 
   std::ostringstream create_table_ss;
   create_table_ss << "CREATE TABLE many (";
@@ -209,25 +209,41 @@ TEST_F(PgLibPqTest, PgStatIdxScanNoIncrementOnErrorTest) {
   create_index_ss << ")";
   ASSERT_OK(conn.Execute(create_index_ss.str()));
 
-  std::ostringstream predicate_error_query;
-  predicate_error_query << "SELECT * FROM many WHERE ";
-  for (int i = 1; i <= kNumColumns; ++i)
-    predicate_error_query << Format("c$0 = 1 AND c$0 < 2 AND c$0 > 0 AND ", i);
-  predicate_error_query << " TRUE";
-
-  auto status = ResultToStatus(conn.Fetch(predicate_error_query.str()));
-  ASSERT_NOK(status);
-  ASSERT_STR_CONTAINS(status.ToString(),
-                      "ERROR:  cannot use more than 64 predicates in a table or index scan");
-
   // There should be only two indexes: pkey index and secondary index.  We want to get stats for the
   // secondary index, but its name is too long, so filter by != 'many_pkey'.
   const auto idx_scan_query =
       "SELECT idx_scan FROM pg_stat_user_indexes WHERE indexrelname != 'many_pkey'";
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(idx_scan_query)), 0);
-  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan("SELECT c1 FROM many WHERE c1 = 1")));
-  ASSERT_OK(conn.FetchMatrix("SELECT c1 FROM many WHERE c1 = 1", 0, 1));
 
+  std::ostringstream query_ss;
+  query_ss << "SELECT k FROM many WHERE TRUE";
+  auto num_predicates = 0;
+  for (int i = 1; i <= kNumColumns && num_predicates < kMaxPredicates; ++i, ++num_predicates) {
+    query_ss << " AND c" << i << " = 1";
+  }
+  for (int i = 1; i <= kNumColumns && num_predicates < kMaxPredicates; ++i, ++num_predicates) {
+    query_ss << " AND c" << i << " > 0";
+  }
+  for (int i = 1; i <= kNumColumns && num_predicates < kMaxPredicates; ++i, ++num_predicates) {
+    query_ss << " AND c" << i << " < 2";
+  }
+
+  // Successful scan.
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query_ss.str())));
+  ASSERT_OK(conn.FetchMatrix(query_ss.str(), 0, 1));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(idx_scan_query)), 0);
+
+  // Add last predicate, which should not have been added from above and therefore is a new
+  // predicate.
+  static_assert(kMaxPredicates < kNumColumns * 3);
+  query_ss << " AND c" << kNumColumns << " < 2";
+
+  // Unsuccessful scan.
+  auto status = ResultToStatus(conn.Fetch(query_ss.str()));
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(),
+                      Format("ERROR:  cannot use more than $0 predicates in a table or index scan",
+                             kMaxPredicates));
   // Stats can take time to update, so retry-loop.
   ASSERT_OK(WaitFor(
       [&conn, &idx_scan_query]() -> Result<bool> {
