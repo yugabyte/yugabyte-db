@@ -56,7 +56,7 @@ public class AutoFlagUtil {
    * @param universe
    * @return autoFlagConfig
    */
-  public WireProtocol.AutoFlagsConfigPB getAutoFlagConfigForUniverse(Universe universe) {
+  private WireProtocol.AutoFlagsConfigPB getAutoFlagConfigForUniverse(Universe universe) {
     String masterAddresses = universe.getMasterAddresses();
     String certificate = universe.getCertificateNodetoNode();
     try (YBClient client = ybClientService.getClient(masterAddresses, certificate)) {
@@ -98,6 +98,7 @@ public class AutoFlagUtil {
             .get()
             .getFlagsList()
             .stream()
+            .filter(flag -> !GFlagsValidation.TEST_AUTO_FLAGS.contains(flag))
             .collect(Collectors.toSet());
 
     // Add auto flags which are modified through gflags override in the promoted auto flags list.
