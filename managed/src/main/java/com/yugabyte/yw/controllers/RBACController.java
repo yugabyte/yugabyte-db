@@ -441,13 +441,17 @@ public class RBACController extends AuthenticatedController {
     @RequiredPermissionOnResource(
         requiredPermission =
             @PermissionAttribute(resourceType = ResourceType.USER, action = Action.READ),
-        resourceLocation = @Resource(path = "userUUID", sourceType = SourceType.ENDPOINT))
+        resourceLocation = @Resource(path = "userUUID", sourceType = SourceType.ENDPOINT),
+        checkOnlyPermission = true)
   })
   public Result listRoleBinding(
       UUID customerUUID,
       @ApiParam(value = "Optional user UUID to filter role binding map") UUID userUUID) {
     // Check if customer exists.
     Customer.getOrBadRequest(customerUUID);
+    UserWithFeatures u = RequestContext.get(TokenAuthenticator.USER);
+    Set<UUID> resourceUUIDs =
+        roleBindingUtil.getResourceUuids(u.getUser().getUuid(), ResourceType.USER, Action.READ);
 
     Map<UUID, List<RoleBinding>> roleBindingMap = new HashMap<>();
     if (userUUID != null) {
@@ -459,7 +463,9 @@ public class RBACController extends AuthenticatedController {
       // Merge all the role bindings for users of the customer.
       List<Users> usersInCustomer = Users.getAll(customerUUID);
       for (Users user : usersInCustomer) {
-        roleBindingMap.put(user.getUuid(), RoleBinding.getAll(user.getUuid()));
+        if (resourceUUIDs.contains(user.getUuid())) {
+          roleBindingMap.put(user.getUuid(), RoleBinding.getAll(user.getUuid()));
+        }
       }
     }
     return PlatformResults.withData(roleBindingMap);
