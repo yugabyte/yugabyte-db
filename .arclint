@@ -36,7 +36,11 @@
      "(^managed/yba-cli/internal/formatter/tabwriter/*)",
      "(^managed/yba-cli/internal/formatter/templates/*)",
      "(^[.]clang-tidy)",
-     "(.*/py.typed)"
+     "(.*/py.typed)",
+     "(^troubleshoot/backend/gradlew)",
+     "(^troubleshoot/backend/gradlew[.]bat)",
+     "(^troubleshoot/backend/build.gradle.kts)",
+     "(^troubleshoot/backend/.*/application[.]properties)"
   ],
   "linters": {
     "go-files": {
