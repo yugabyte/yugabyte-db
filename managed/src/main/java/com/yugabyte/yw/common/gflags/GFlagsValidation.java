@@ -13,6 +13,7 @@ import com.fasterxml.jackson.dataformat.xml.JacksonXmlModule;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlElementWrapper;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -68,6 +69,10 @@ public class GFlagsValidation {
   public static final String MASTER_GFLAG_FILE_NAME = "master_flags.xml";
 
   public static final String TSERVER_GFLAG_FILE_NAME = "tserver_flags.xml";
+
+  // Skip these test auto flags while computing auto flags in YBA.
+  public static final Set<String> TEST_AUTO_FLAGS =
+      ImmutableSet.of("TEST_auto_flags_new_install", "TEST_auto_flags_initialized");
 
   public static final List<String> GFLAG_FILENAME_LIST =
       ImmutableList.of(
@@ -309,10 +314,18 @@ public class GFlagsValidation {
     ObjectMapper objectMapper = new ObjectMapper();
     try (InputStream inputStream = FileUtils.getInputStreamOrFail(autoFlagFile)) {
       AutoFlags data = objectMapper.readValue(inputStream, AutoFlags.class);
-      return data.autoFlagsPerServers.stream()
-          .filter(flags -> flags.serverType.equals(serverType))
-          .findFirst()
-          .get();
+      AutoFlagsPerServer autoFlags =
+          data.autoFlagsPerServers.stream()
+              .filter(flags -> flags.serverType.equals(serverType))
+              .findFirst()
+              .get();
+      if (autoFlags != null) {
+        autoFlags.autoFlagDetails =
+            autoFlags.autoFlagDetails.stream()
+                .filter(flag -> !TEST_AUTO_FLAGS.contains(flag.name))
+                .collect(Collectors.toList());
+      }
+      return autoFlags;
     }
   }
 
