@@ -221,15 +221,16 @@ TEST_F(PgLibPqTest, PgStatIdxScanNoIncrementOnErrorTest) {
   ASSERT_STR_CONTAINS(status.ToString(),
                       "ERROR:  cannot use more than 64 predicates in a table or index scan");
 
-  const auto idx_scan_query = "SELECT idx_scan FROM pg_stat_user_indexes";
-  const auto no_increment_rows = ASSERT_RESULT(conn.FetchRows<int64_t>(idx_scan_query));
-  ASSERT_EQ(no_increment_rows, (decltype(no_increment_rows){0, 0}));
+  // There should be only two indexes: pkey index and secondary index.  We want to get stats for the
+  // secondary index, but its name is too long, so filter by != 'many_pkey'.
+  const auto idx_scan_query =
+      "SELECT idx_scan FROM pg_stat_user_indexes WHERE indexrelname != 'many_pkey'";
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(idx_scan_query)), 0);
   ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan("SELECT c1 FROM many WHERE c1 = 1")));
   auto values = ASSERT_RESULT(conn.FetchRows<int32_t>("SELECT c1 FROM many WHERE c1 = 1"));
   ASSERT_EQ(values.size(), 0);
 
-  const auto increment_rows = ASSERT_RESULT(conn.FetchRows<int64_t>(idx_scan_query));
-  ASSERT_EQ(increment_rows, (decltype(increment_rows){0, 0})); // should expect 0, 1
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(idx_scan_query)), 0); // should expect 1
 }
 
 TEST_F_EX(PgLibPqTest, SerializableColoring, PgLibPqFailOnConflictTest) {
