@@ -5557,19 +5557,21 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 			Oid scalar_type = InvalidOid;
 			Oid collid = InvalidOid;
 
-			Expr *inner_expr = (Expr*) linitial(opexpr->args);
+			Expr *inner_expr = (Expr *) linitial(opexpr->args);
 			saop->args = lappend(saop->args, inner_expr);
 
-			if(IsA(inner_expr, RowExpr))
+			Expr *outer_expr = (Expr *) lsecond(opexpr->args);
+			outer_expr = ((YbBatchedExpr *) outer_expr)->orig_expr;
+
+			if(IsA(outer_expr, RowExpr))
 			{
-				RowExpr *rowexpr = (RowExpr *) inner_expr;
+				RowExpr *rowexpr = (RowExpr *) outer_expr;
 				scalar_type = rowexpr->row_typeid;
 			}
 			else
 			{
-				Assert(IsA(inner_expr, Var) || IsA(inner_expr, RelabelType));
-				scalar_type = exprType((Node*) inner_expr);
-				collid = exprCollation((Node*)inner_expr);
+				scalar_type = exprType((Node*) outer_expr);
+				collid = exprCollation((Node*) outer_expr);
 			}
 
 			ArrayExpr *arrexpr = makeNode(ArrayExpr);

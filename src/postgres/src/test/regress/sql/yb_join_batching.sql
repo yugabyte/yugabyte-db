@@ -87,6 +87,54 @@ DROP TABLE t10;
 DROP TABLE t11;
 DROP TABLE t12;
 
+CREATE TABLE strtable(a varchar(26), b varchar(23), primary key(a, b));
+CREATE TABLE strtable2(a varchar(26), b varchar(23), primary key(a, b));
+INSERT INTO strtable VALUES ('123', 'abc'), ('1234', 'abcd'), ('123', 'pqr');
+INSERT INTO strtable2 VALUES ('123', 'abc'), ('123', 'abcd'), ('123', 'pqr');
+
+EXPLAIN (COSTS OFF) SELECT * FROM strtable, strtable2 WHERE strtable.a = strtable2.a;
+SELECT * FROM strtable, strtable2 WHERE strtable.a = strtable2.a;
+
+EXPLAIN (COSTS OFF) SELECT * FROM strtable, strtable2 WHERE strtable.a = strtable2.a AND strtable.b = strtable2.b;
+SELECT * FROM strtable, strtable2 WHERE strtable.a = strtable2.a AND strtable.b = strtable2.b;
+
+DROP TABLE strtable;
+DROP TABLE strtable2;
+
+create table q1 (a double precision, b double precision, primary key (a, b));
+insert into q1 values (12.34, 99.99), (12.345, 99.99);
+create table q2 (a decimal(6, 2), b decimal(6, 2), primary key (a, b));
+insert into q2 values (12.34, 99.99), (12.345, 99.99);
+explain (costs off) select * from q1, q2 where q1.a = q2.a and q1.b = q2.b;
+select * from q1, q2 where q1.a = q2.a and q1.b = q2.b;
+
+create table q3 (a char(6), b char(6), primary key (a, b));
+insert into q3 values ('abc', 'def'), ('xyz', 'uvw');
+create table q4 (a varchar(6), b varchar(6), primary key (a, b));
+insert into q4 values ('abc  ', 'def  '), ('xyz', 'uvw');
+explain (costs off) select * from q3, q4 where q3.a = q4.a and q3.b = q4.b;
+select * from q3, q4 where q3.a = q4.a and q3.b = q4.b;
+
+explain (costs off) select * from q1, q2 where q1.a::decimal = q2.a and q1.b::decimal = q2.b;
+select * from q1, q2 where q1.a::decimal = q2.a and q1.b::decimal = q2.b;
+explain (costs off) select * from q1, q2 where q1.a = q2.a::decimal and q1.b = q2.b::decimal;
+select * from q1, q2 where q1.a = q2.a::decimal and q1.b = q2.b::decimal;
+explain (costs off) select * from q3, q4 where q3.a::text = q4.a and q3.b::text = q4.b;
+select * from q3, q4 where q3.a::text = q4.a and q3.b::text = q4.b;
+explain (costs off) select * from q3, q4 where q3.a = q4.a::text and q3.b = q4.b::text;
+select * from q3, q4 where q3.a = q4.a::text and q3.b = q4.b::text;
+
+explain (costs off) /*+ Leading((q3 q4)) IndexScan(q4) */select * from q3, q4 where q3.a = q4.a and q3.b = q4.b;
+/*+ Leading((q3 q4)) IndexScan(q4) */select * from q3, q4 where q3.a = q4.a and q3.b = q4.b;
+
+explain (costs off) /*+ Leading((q3 q4)) IndexScan(q4) */select * from q3, q4 where q3.a::text = q4.a and q3.b::text = q4.b;
+/*+ Leading((q3 q4)) IndexScan(q4) */select * from q3, q4 where q3.a::text = q4.a and q3.b::text = q4.b;
+
+drop table q1;
+drop table q2;
+drop table q3;
+drop table q4;
+
 create table d1(a int, primary key(a));
 create table d2(a int, primary key(a));
 create table d3(a int, primary key(a));
