@@ -227,8 +227,7 @@ TEST_F(PgLibPqTest, PgStatIdxScanNoIncrementOnErrorTest) {
       "SELECT idx_scan FROM pg_stat_user_indexes WHERE indexrelname != 'many_pkey'";
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(idx_scan_query)), 0);
   ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan("SELECT c1 FROM many WHERE c1 = 1")));
-  auto values = ASSERT_RESULT(conn.FetchRows<int32_t>("SELECT c1 FROM many WHERE c1 = 1"));
-  ASSERT_EQ(values.size(), 0);
+  ASSERT_OK(conn.FetchMatrix("SELECT c1 FROM many WHERE c1 = 1", 0, 1));
 
   // Stats can take time to update, so retry-loop.
   ASSERT_OK(WaitFor(
