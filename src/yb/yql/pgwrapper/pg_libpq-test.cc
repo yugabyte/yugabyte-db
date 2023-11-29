@@ -225,7 +225,6 @@ TEST_F(PgLibPqTest, PgStatIdxScanNoIncrementOnErrorTest) {
   const auto no_increment_rows = ASSERT_RESULT(conn.FetchRows<int64_t>(idx_scan_query));
   ASSERT_EQ(no_increment_rows, (decltype(no_increment_rows){0, 0}));
   ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan("SELECT c1 FROM many WHERE c1 = 1")));
-  // ASSERT_OK(conn.Fetch("SELECT * FROM many WHERE c1 = 1"));
   auto values = ASSERT_RESULT(conn.FetchRows<int32_t>("SELECT c1 FROM many WHERE c1 = 1"));
   ASSERT_EQ(values.size(), 0);
 
