@@ -229,7 +229,7 @@ TEST_F(PgLibPqTest, PgStatIdxScanNoIncrementOnErrorTest) {
     query_ss << " AND c" << i << " < 2";
   }
 
-  // Successful scan.
+  // Successful scan should increment idx_scan.
   ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query_ss.str())));
   ASSERT_OK(conn.FetchMatrix(query_ss.str(), 0, 1));
   // Stats can take time to update, so retry-loop.
@@ -245,7 +245,7 @@ TEST_F(PgLibPqTest, PgStatIdxScanNoIncrementOnErrorTest) {
   static_assert(kMaxPredicates < kNumColumns * 3);
   query_ss << " AND c" << kNumColumns << " < 2";
 
-  // Unsuccessful scan.
+  // Unsuccessful scan should not increment idx_scan.
   auto status = ResultToStatus(conn.Fetch(query_ss.str()));
   ASSERT_NOK(status);
   ASSERT_STR_CONTAINS(status.ToString(),
