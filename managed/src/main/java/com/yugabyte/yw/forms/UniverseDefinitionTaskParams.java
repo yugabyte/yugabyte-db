@@ -49,6 +49,7 @@ import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.builder.HashCodeBuilder;
 import play.data.validation.Constraints;
 import play.libs.Json;
 
@@ -326,7 +327,20 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       this.userIntent = userIntent;
     }
 
-    public boolean equals(Cluster other) {
+    @Override
+    public int hashCode() {
+      return new HashCodeBuilder(17, 37).append(uuid).toHashCode();
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+      if (this == obj) {
+        return true;
+      }
+      if (obj == null || obj.getClass() != getClass()) {
+        return false;
+      }
+      Cluster other = (Cluster) obj;
       return uuid.equals(other.uuid);
     }
 
@@ -910,8 +924,42 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return deviceInfo;
     }
 
+    @Override
+    public int hashCode() {
+      return new HashCodeBuilder(17, 37)
+          .append(universeName)
+          .append(provider)
+          .append(providerType)
+          .append(replicationFactor)
+          .append(regionList)
+          .append(preferredRegion)
+          .append(instanceType)
+          .append(numNodes)
+          .append(ybSoftwareVersion)
+          .append(accessKeyCode)
+          .append(assignPublicIP)
+          .append(useSpotInstance)
+          .append(spotPrice)
+          .append(assignStaticPublicIP)
+          .append(useTimeSync)
+          .append(useSystemd)
+          .append(dedicatedNodes)
+          .append(masterInstanceType)
+          .append(masterInstanceType)
+          .append(userIntentOverrides)
+          .build();
+    }
+
     // NOTE: If new fields are checked, please add them to the toString() as well.
-    public boolean equals(UserIntent other) {
+    @Override
+    public boolean equals(Object obj) {
+      if (this == obj) {
+        return true;
+      }
+      if (obj == null || obj.getClass() != getClass()) {
+        return false;
+      }
+      UserIntent other = (UserIntent) obj;
       if (universeName.equals(other.universeName)
           && provider.equals(other.provider)
           && providerType == other.providerType

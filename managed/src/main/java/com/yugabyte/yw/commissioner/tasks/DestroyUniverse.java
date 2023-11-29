@@ -34,6 +34,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -167,11 +168,14 @@ public class DestroyUniverse extends UniverseTaskBase {
       // Run all the tasks.
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
-      // If for any reason destroy fails we would just unlock the universe for update
-      try {
-        unlockUniverseForUpdate();
-      } catch (Throwable t1) {
-        // Ignore the error
+      Optional<Universe> optional = Universe.maybeGet(taskParams().getUniverseUUID());
+      if (optional.isPresent()) {
+        // If for any reason destroy fails we would just unlock the universe for update
+        try {
+          unlockUniverseForUpdate();
+        } catch (Throwable t1) {
+          // Ignore the error
+        }
       }
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;

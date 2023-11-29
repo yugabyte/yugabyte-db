@@ -108,7 +108,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
             log.error("Error executing task {} with error: ", getName(), t);
 
             if (taskParams().getUniverseSoftwareUpgradeStateOnFailure() != null) {
-              Universe universe = getUniverse(true);
+              Universe universe = getUniverse();
               if (!UniverseDefinitionTaskParams.IN_PROGRESS_UNIV_SOFTWARE_UPGRADE_STATES.contains(
                   universe.getUniverseDetails().softwareUpgradeState)) {
                 log.debug("Skipping universe upgrade state as actual task was not started.");
@@ -678,10 +678,11 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   }
 
   public LinkedHashSet<NodeDetails> fetchNodesForCluster() {
+    Universe universe = getUniverse();
     return toOrderedSet(
         new ImmutablePair<>(
-            filterForClusters(fetchMasterNodes(taskParams().upgradeOption)),
-            filterForClusters(fetchTServerNodes(taskParams().upgradeOption))));
+            filterForClusters(fetchMasterNodes(universe, taskParams().upgradeOption)),
+            filterForClusters(fetchTServerNodes(universe, taskParams().upgradeOption))));
   }
 
   public LinkedHashSet<NodeDetails> fetchAllNodes(UpgradeOption upgradeOption) {
@@ -694,18 +695,26 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   }
 
   public List<NodeDetails> fetchMasterNodes(UpgradeOption upgradeOption) {
-    List<NodeDetails> masterNodes = getUniverse().getMasters();
+    return fetchMasterNodes(getUniverse(), upgradeOption);
+  }
+
+  private List<NodeDetails> fetchMasterNodes(Universe universe, UpgradeOption upgradeOption) {
+    List<NodeDetails> masterNodes = universe.getMasters();
     if (upgradeOption == UpgradeOption.ROLLING_UPGRADE) {
-      final String leaderMasterAddress = getUniverse().getMasterLeaderHostText();
+      final String leaderMasterAddress = universe.getMasterLeaderHostText();
       return sortMastersInRestartOrder(leaderMasterAddress, masterNodes);
     }
     return masterNodes;
   }
 
   public List<NodeDetails> fetchTServerNodes(UpgradeOption upgradeOption) {
-    List<NodeDetails> tServerNodes = getUniverse().getTServers();
+    return fetchTServerNodes(getUniverse(), upgradeOption);
+  }
+
+  private List<NodeDetails> fetchTServerNodes(Universe universe, UpgradeOption upgradeOption) {
+    List<NodeDetails> tServerNodes = universe.getTServers();
     if (upgradeOption == UpgradeOption.ROLLING_UPGRADE) {
-      return sortTServersInRestartOrder(getUniverse(), tServerNodes);
+      return sortTServersInRestartOrder(universe, tServerNodes);
     }
     return tServerNodes;
   }

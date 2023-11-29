@@ -214,6 +214,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import javax.annotation.Nullable;
@@ -345,7 +346,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   private final AtomicReference<ExecutionContext> executionContext = new AtomicReference<>();
 
   public class ExecutionContext {
-    private Universe universe;
     private final boolean blacklistLeaders;
     private final int leaderBacklistWaitTimeMs;
     private final boolean followerLagCheckEnabled;
@@ -353,7 +353,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     private final Set<UUID> lockedUniversesUuid = ConcurrentHashMap.newKeySet();
 
     ExecutionContext() {
-      universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+      Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
       blacklistLeaders =
           confGetter.getConfForScope(universe, UniverseConfKeys.ybUpgradeBlacklistLeaders);
 
@@ -438,7 +438,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   /**
    * Once the {@link #createPrecheckTasks(Universe)} is invoked, this method to make any DB changes
-   * in transaction with freezing the universe.
+   * in transaction with freezing the universe. This is invoked on the first try only but can be
+   * called multiple times due to transaction retry.
    *
    * @param universe the universe which is read in serializable transaction.
    */
@@ -455,8 +456,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     Universe universe = lockUniverseForFreezeAndUpdate(taskParams().expectedUniverseVersion);
     try {
       createPrecheckTasks(universe);
-      createFreezeUniverseTask(this::freezeUniverseInTxn)
-          .setSubTaskGroupType(SubTaskGroupType.ValidateConfigurations);
+      if (isFirstTry()) {
+        createFreezeUniverseTask(this::freezeUniverseInTxn)
+            .setSubTaskGroupType(SubTaskGroupType.ValidateConfigurations);
+        // Run to apply the change first before adding the rest of the subtasks.
+        getRunnableTask().runSubTasks();
+      } else {
+        createFreezeUniverseTask().setSubTaskGroupType(SubTaskGroupType.ValidateConfigurations);
+      }
       updateLambda.run();
     } catch (RuntimeException e) {
       log.error("Error occurred in running task", e);
@@ -467,22 +474,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   protected Universe getUniverse() {
-    return getUniverse(false);
+    return Universe.getOrBadRequest(taskParams().getUniverseUUID());
   }
 
   protected ExecutionContext getOrCreateExecutionContext() {
+    if (!getUserTaskUUID().equals(getTaskUUID())) {
+      log.warn(
+          "Execution context is getting created for subtasks {} in task {}",
+          getUserTaskUUID(),
+          getTaskUUID());
+    }
     if (executionContext.get() == null) {
       executionContext.compareAndSet(null, new ExecutionContext());
     }
     return executionContext.get();
-  }
-
-  protected Universe getUniverse(boolean fetchFromDB) {
-    if (fetchFromDB) {
-      return Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    } else {
-      return getOrCreateExecutionContext().universe;
-    }
   }
 
   protected boolean isLeaderBlacklistValidRF(NodeDetails nodeDetails) {
@@ -494,11 +499,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   protected UserIntent getUserIntent() {
-    return getUserIntent(false);
-  }
-
-  protected UserIntent getUserIntent(boolean fetchFromDB) {
-    return getUniverse(fetchFromDB).getUniverseDetails().getPrimaryCluster().userIntent;
+    return getUniverse().getUniverseDetails().getPrimaryCluster().userIntent;
   }
 
   private UniverseUpdater getLockingUniverseUpdater(
@@ -958,10 +959,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Update the progress flag to false irrespective of the version increment failure.
     // Universe version in master does not need to be updated as this does not change
     // the Universe state. It simply sets updateInProgress flag to false.
-    executionContext.universe = Universe.saveDetails(universeUUID, updater, false);
+    Universe universe = Universe.saveDetails(universeUUID, updater, false);
     executionContext.unlockUniverse(universeUUID);
     log.info("Unlocked universe {} for updates.", universeUUID);
-    return executionContext.universe;
+    return universe;
   }
 
   public Universe unlockUniverseForUpdate(UUID universeUUID, String error) {
@@ -1411,6 +1412,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       boolean deleteRootVolumes) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleDestroyServers");
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    nodes = filterUniverseNodes(universe, nodes, n -> true);
     for (NodeDetails node : nodes) {
       // Check if the private ip for the node is set. If not, that means we don't have
       // a clean state to delete the node. Log it, free up the onprem node
@@ -1497,6 +1499,29 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                       return true;
                     }))
         .collect(Collectors.toSet());
+  }
+
+  /**
+   * Filter out nodes that are not in the given universe and do not satisfy the predicate.
+   *
+   * @param universe the universe against which the nodes are checked.
+   * @param nodes the given nodes.
+   * @param predicate the predicate on the universe node.
+   * @return set of filtered nodes.
+   */
+  protected Set<NodeDetails> filterUniverseNodes(
+      Universe universe, Collection<NodeDetails> nodes, Predicate<NodeDetails> predicate) {
+    if (universe != null) {
+      Map<String, NodeDetails> universeNodeDetailsMap =
+          universe.getNodes().stream()
+              .collect(Collectors.toMap(NodeDetails::getNodeName, Function.identity()));
+      return nodes.stream()
+          .map(n -> universeNodeDetailsMap.get(n.getNodeName()))
+          .filter(Objects::nonNull)
+          .filter(n -> predicate == null || predicate.test(n))
+          .collect(Collectors.toSet());
+    }
+    return Collections.emptySet();
   }
 
   public SubTaskGroup createInstallNodeAgentTasks(Collection<NodeDetails> nodes) {
@@ -1852,7 +1877,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       int sleepAfterCmdMillis,
       Consumer<AnsibleClusterServerCtl.Params> paramsCustomizer) {
     AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
-    UserIntent userIntent = getUserIntent(true);
+    UserIntent userIntent = getUserIntent();
     // Add the node name.
     params.nodeName = node.nodeName;
     // Add the universe uuid.
@@ -2291,7 +2316,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       NodeDetails currentNode, String taskType, boolean isIgnoreError) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleClusterServerCtl");
     AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
-    UserIntent userIntent = getUserIntent(true);
+    UserIntent userIntent = getUserIntent();
     // Add the node name.
     params.nodeName = currentNode.nodeName;
     // Add the universe uuid.
@@ -2393,7 +2418,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleClusterServerCtl");
     for (NodeDetails node : nodes) {
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
-      UserIntent userIntent = getUserIntent(true);
+      UserIntent userIntent = getUserIntent();
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add the universe uuid.
@@ -2428,7 +2453,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleClusterServerCtl");
     for (NodeDetails node : nodes) {
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
-      UserIntent userIntent = getUserIntent(true);
+      UserIntent userIntent = getUserIntent();
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add the universe uuid.
@@ -2496,7 +2521,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleClusterServerCtl");
     for (NodeDetails node : nodes) {
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
-      UserIntent userIntent = getUserIntent(true);
+      UserIntent userIntent = getUserIntent();
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add the universe uuid.
