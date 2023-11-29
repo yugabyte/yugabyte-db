@@ -80,18 +80,18 @@ To access the YugabyteDB Anywhere from outside the Azure environment, you would 
 
 * Access the YugabyteDB Anywhere instance over SSH (port `tcp:22`).
 * Check, manage, and upgrade YugabyteDB Anywhere (port `tcp:8800`).
-* View the YugabyteDB Anywhere UI (port `tcp:80`).
+* View the YugabyteDB Anywhere UI (port `tcp:80` or `tcp:443`).
 
 If you are using your own custom Virtual Private Cloud (VPC), as it is typically the case for a self-managed configuration, the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 18018, 11000, 12000, 9300, 9042, 5433, and 6379. For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).
 
-YugabyteDB Anywhere will provision and access database nodes in a later step; you need to provide a virtual network where YugabyteDB Anywhere will create the database nodes. Therefore, you have to ensure connectivity between the YugabyteDB Anywhere VM virtual network and database VMs virtual network. You may also require virtual network peering based on your network configuration. Ensure that YugabyteDB Anywhere can access these nodes on the database VM’s virtual network.
+YugabyteDB Anywhere will provision and access database nodes in a later step; you need to provide a virtual network where YugabyteDB Anywhere will create the database nodes. Therefore, you have to ensure connectivity between the YugabyteDB Anywhere VM virtual network and database VM's virtual network. You may also require virtual network peering based on your network configuration. Ensure that YugabyteDB Anywhere can access these nodes on the database VM's virtual network.
 
 To create a security group that enables these artifacts, navigate to **Network Security Groups > Add**, then choose subscription, select the resource group used in the previous step, then add name and region, click **Create Security Group**, and then add the following values:
 
-* In the Name field, enter yugaware-sg or any other name.
+* In the **Name** field, enter yugaware-sg or any other name.
 * Edit inbound security rules, as follows:
   * Add the appropriate IP addresses to the **Source IP ranges** field. To allow access from any machine, enter 0.0.0.0/0, but note that this is not very secure.
-  * Add the ports 22, 8800, and 80 to the **Port Range** field. The protocol selected must be TCP. For a self-managed configuration, also add 7000, 7100, 9000, 9100, 18018, 11000, 12000, 9300, 9042, 5433, and 6379 to the **Port Range** field.
+  * Add the ports 22, 8800, 80, and 443 to the **Port Range** field. The protocol selected must be TCP. For a self-managed configuration, also add 7000, 7100, 9000, 9100, 18018, 11000, 12000, 9300, 9042, 5433, and 6379 to the **Port Range** field.
 
 ## Create a service principal
 
@@ -114,7 +114,7 @@ Complete the following steps to create the application registration:
 * Add a description of your client secret.
 * Select a duration.
 * Click **Add**.
-* Record the secret's value to be used later for configuring YugabyteDB Anywhere, as it is never displayed again after you leave this page.
+* Record the secret's value to be used later for configuring YugabyteDB Anywhere, as it is never displayed again after you leave the page.
 
   ![Prepare Azure cloud](/images/yb-platform/install/azure/platform-azure-prepare-cloud-env-2.png)
 
@@ -137,7 +137,7 @@ Proceed by performing the following:
 
   You should be able to see your application in the list of users with a role for that scope.
 
-Since your service principal is set up, you can start using it for configuring YugabyteDB Anywhere.
+After your service principal is set up, you can start using it for configuring YugabyteDB Anywhere.
 
 ## Provision instance for YugabyteDB Anywhere
 
@@ -150,7 +150,7 @@ To create an instance to run the YugabyteDB Anywhere server, navigate to **Virtu
 * Change the disk image to Ubuntu 16.04.
 * Choose Standard_D4s_v3 - 4 CPU/16GB memory instance.
 * Select the authentication type as the SSH public key. Select an existing key pair or create a new one to access the machine. Ensure that you have the SSH access key, as this is important for enabling SSH access to this machine.
-* Select public inbound ports based on the network configuration. You can disable public access if you wish to access the instance from within a private network.
+* Select public inbound ports based on the network configuration. You can disable public access if you wish to access the instance from in a private network.
 * On the disks page, select any OS disk type.
 * Increase the OS disk size to at least 100GB. For information on how to do this, see [Increase the size of the OS disk](https://learn.microsoft.com/en-us/azure/virtual-machines/linux/expand-disks?tabs=ubuntu#increase-the-size-of-the-os-disk).
 * Continue to the next networking section and fill out the details for the virtual network and security group you created in [Create network security group](#create-network-security-group-(optional)).

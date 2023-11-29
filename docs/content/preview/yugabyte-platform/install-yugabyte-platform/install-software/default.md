@@ -213,7 +213,7 @@ You can set up YBA to use an HTTP/HTTPS proxy server via **Application config**,
 
 When completing the **Enable Proxy** settings, keep in mind the following:
 
-- If your proxy is using the default ports for each protocol, then set the ports for the HTTP and HTTPS proxies to the default, 80 and 443 respectively, instead of 8080 and 8443 as shown in the preceding illustration.
+- If your proxy is using the default ports for each protocol, then set the ports for the HTTP and HTTPS proxies to the default (80 and 443 respectively), instead of 8080 and 8443 as shown in the preceding illustration.
 
 - If you have only one proxy set up (HTTP or HTTPS), then set the same values for both.
 
