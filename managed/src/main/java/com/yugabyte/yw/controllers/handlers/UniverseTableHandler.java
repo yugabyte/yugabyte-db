@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
-import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
 import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
 import static com.yugabyte.yw.forms.TableDefinitionTaskParams.createFromResponse;
 import static com.yugabyte.yw.forms.TableInfoForm.NamespaceInfoResp;
@@ -26,10 +25,12 @@ import com.yugabyte.yw.common.TableSpaceStructures;
 import com.yugabyte.yw.common.TableSpaceUtil;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.common.table.TableInfoUtil;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.CreateTablespaceParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
+import com.yugabyte.yw.forms.TableInfoForm.NamespaceInfoResp;
 import com.yugabyte.yw.forms.TableInfoForm.TableInfoResp;
 import com.yugabyte.yw.forms.TableInfoForm.TablePartitionInfo;
 import com.yugabyte.yw.forms.TableInfoForm.TablePartitionInfoKey;
@@ -56,6 +57,7 @@ import java.util.UUID;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.CommonTypes;
@@ -71,6 +73,7 @@ import play.Environment;
 import play.libs.Json;
 
 @Singleton
+@Slf4j
 public class UniverseTableHandler {
 
   private static final Logger LOG = LoggerFactory.getLogger(UniverseTableHandler.class);
@@ -95,23 +98,6 @@ public class UniverseTableHandler {
       new HashSet<>(Arrays.asList("system_platform", "template0", "template1"));
   private static final Set<String> YCQL_SYSTEM_NAMESPACES_LIST =
       new HashSet<>(Arrays.asList("system_schema", "system_auth", "system"));
-
-  private boolean isColocatedParentTable(MasterDdlOuterClass.ListTablesResponsePB.TableInfo table) {
-    return table.getRelationType() == MasterTypes.RelationType.COLOCATED_PARENT_TABLE_RELATION;
-  }
-
-  private boolean isSystemTable(MasterDdlOuterClass.ListTablesResponsePB.TableInfo table) {
-    return table.getRelationType() == MasterTypes.RelationType.SYSTEM_TABLE_RELATION
-        || (table.getTableType() == CommonTypes.TableType.PGSQL_TABLE_TYPE
-            && table.getNamespace().getName().equals(SYSTEM_PLATFORM_DB));
-  }
-
-  private boolean isSystemRedis(MasterDdlOuterClass.ListTablesResponsePB.TableInfo table) {
-    return table.getTableType() == CommonTypes.TableType.REDIS_TABLE_TYPE
-        && table.getRelationType() == MasterTypes.RelationType.SYSTEM_TABLE_RELATION
-        && table.getNamespace().getName().equals("system_redis")
-        && table.getName().equals("redis");
-  }
 
   @Inject
   public UniverseTableHandler(
@@ -141,6 +127,15 @@ public class UniverseTableHandler {
     // Validate universe UUID
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
+    if (xClusterSupportedOnly && (!includeColocatedParentTables || excludeColocatedTables)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "xClusterSupportedOnly: %b, includeColocatedParentTables: %b,"
+                  + " excludeColocatedTables: %b is not supported",
+              xClusterSupportedOnly, includeColocatedParentTables, excludeColocatedTables));
+    }
+
     String universeVersion =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
     boolean hasColocationInfo =
@@ -163,7 +158,8 @@ public class UniverseTableHandler {
     // First filter out all system tables except redis table.
     tableInfoList =
         tableInfoList.stream()
-            .filter(table -> !isSystemTable(table) || isSystemRedis(table))
+            .filter(
+                table -> !TableInfoUtil.isSystemTable(table) || TableInfoUtil.isSystemRedis(table))
             .collect(Collectors.toList());
     List<TableInfoResp> tableInfoRespList = new ArrayList<>(tableInfoList.size());
 
@@ -171,7 +167,7 @@ public class UniverseTableHandler {
     Map<TablePartitionInfoKey, MasterDdlOuterClass.ListTablesResponsePB.TableInfo>
         colocatedParentTablesMap =
             tableInfoList.stream()
-                .filter(this::isColocatedParentTable)
+                .filter(TableInfoUtil::isColocatedParentTable)
                 .collect(
                     Collectors.toMap(
                         ti -> new TablePartitionInfoKey(ti.getName(), ti.getNamespace().getName()),
