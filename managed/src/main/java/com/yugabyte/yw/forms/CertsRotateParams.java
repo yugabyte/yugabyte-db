@@ -48,10 +48,29 @@ public class CertsRotateParams extends UpgradeTaskParams {
   public void verifyParams(Universe universe) {
     super.verifyParams(universe);
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    verifyCertificateValidity(universe);
     if (!userIntent.providerType.equals(CloudType.kubernetes)) {
       verifyParamsForNormalUpgrade(universe);
     } else {
       verifyParamsForKubernetesUpgrade(universe);
+    }
+  }
+
+  private void verifyCertificateValidity(Universe universe) {
+    boolean n2nCertExpired = CertificateHelper.checkNode2NodeCertsExpiry(universe);
+    /*
+     We will fail for cases -
+     1. CA certs are rotated.
+     2. Only Node to node certs are rotated.
+    */
+    if (n2nCertExpired && upgradeOption != UpgradeOption.NON_ROLLING_UPGRADE) {
+      if (!selfSignedServerCertRotate && selfSignedClientCertRotate) {
+        return;
+      }
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST,
+          "Your node-to-node certificates have expired, so a rolling upgrade will not work. Retry"
+              + " using the non-rolling option at a suitable time");
     }
   }
 
