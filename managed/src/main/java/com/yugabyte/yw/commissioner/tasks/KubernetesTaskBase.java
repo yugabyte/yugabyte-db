@@ -975,12 +975,10 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       boolean isReadOnlyCluster,
       boolean enableYbc) {
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster == null) {
-      primaryCluster =
-          Universe.getOrBadRequest(taskParams().getUniverseUUID())
-              .getUniverseDetails()
-              .getPrimaryCluster();
+      primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
     }
     params.providerUUID =
         isReadOnlyCluster
@@ -1018,6 +1016,11 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
               config,
               taskParams().useNewHelmNamingStyle,
               isReadOnlyCluster);
+    }
+    // sending in the entire taskParams only for selected commandTypes that need it
+    if (commandType == CommandType.HELM_INSTALL || commandType == CommandType.HELM_UPGRADE) {
+      params.universeDetails = taskParams();
+      params.universeConfig = universe.getConfig();
     }
     params.masterPartition = masterPartition;
     params.tserverPartition = tserverPartition;
@@ -1160,12 +1163,10 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       String ybcSoftwareVersion) {
     SubTaskGroup subTaskGroup = createSubTaskGroup(commandType.getSubTaskGroupName(), ignoreErrors);
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster == null) {
-      primaryCluster =
-          Universe.getOrBadRequest(taskParams().getUniverseUUID())
-              .getUniverseDetails()
-              .getPrimaryCluster();
+      primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
     }
     params.providerUUID =
         isReadOnlyCluster
@@ -1183,6 +1184,11 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.universeOverrides = universeOverrides;
     params.azOverrides = azOverrides;
     params.universeName = universeName;
+    // sending in the entire taskParams only for selected commandTypes that need it
+    if (commandType == CommandType.HELM_INSTALL || commandType == CommandType.HELM_UPGRADE) {
+      params.universeDetails = taskParams();
+      params.universeConfig = universe.getConfig();
+    }
 
     if (masterAddresses != null) {
       params.masterAddresses = masterAddresses;
