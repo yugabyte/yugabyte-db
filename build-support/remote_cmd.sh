@@ -25,8 +25,7 @@ if [[ $# -lt 3 ]]; then
   exit 1
 fi
 
-cd "$work_dir"
-if [[ $? -ne 0 ]]; then
+if ! cd "$work_dir"; then
   echo "Failed to set current directory to '$work_dir'" >&2
   exit 1
 fi
@@ -43,12 +42,12 @@ if [[ -z ${YB_ENCODED_REMOTE_CMD_LINE:-} ]]; then
 fi
 
 while [[ $YB_ENCODED_REMOTE_CMD_LINE == *$ARG_SEPARATOR ]]; do
-  args+=( "${YB_ENCODED_REMOTE_CMD_LINE%%$ARG_SEPARATOR*}" )
+  args+=( "${YB_ENCODED_REMOTE_CMD_LINE%%"$ARG_SEPARATOR"*}" )
   if [[ ${#args[@]} -gt 1000 ]]; then
     echo "Too many args encoded in YB_ENCODED_REMOTE_CMD_LINE (${#args[@]}): ${args[*]}" >&2
     exit 1
   fi
-  YB_ENCODED_REMOTE_CMD_LINE=${YB_ENCODED_REMOTE_CMD_LINE#*$ARG_SEPARATOR}
+  YB_ENCODED_REMOTE_CMD_LINE=${YB_ENCODED_REMOTE_CMD_LINE#*"$ARG_SEPARATOR"}
 done
 
 if [[ -n $YB_ENCODED_REMOTE_CMD_LINE ]]; then

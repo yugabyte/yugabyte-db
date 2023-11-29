@@ -49,7 +49,6 @@ while [ $# -gt 0 ]; do
       echo "Invalid option: $1" >&2
       exit 1
   esac
-  shift
 done
 
 JOB_NAME=${JOB_NAME:-}
