@@ -27,6 +27,7 @@ DEFINE_RUNTIME_bool(freeze_wait_states, true, "Fetches the frozen wait state, as
                     "GetAUHMetadata was called, instead of getting a jagged-edge across different rpcs.");
 DEFINE_RUNTIME_bool(export_wait_state_names, yb::IsDebug(), "Exports wait-state name as a human "
                     "understandable string.");
+DEFINE_RUNTIME_bool(enforce_auh_asserts, false, "Assert that wait-states are tagged appropriately");
 namespace yb::util {
 
 thread_local WaitStateInfoPtr WaitStateInfo::threadlocal_wait_state_;
@@ -359,7 +360,7 @@ void WaitStateInfo::AssertIOAllowed() {
     LOG_IF(INFO, inserted) << wait_state->ToString() << " does_io Added " << util::ToString(state);
     LOG_IF(INFO, inserted && !WaitsForIO(state)) << "WaitForIO( " << util::ToString(state) << ") should be true";
     // LOG_IF(INFO, inserted && !WaitsForIO(state)) << " at\n" << yb::GetStackTrace();
-    DCHECK(wait_state->query_id() == 0 || wait_state->query_id() == -1 || WaitsForIO(state)) << "WaitForIO( " << util::ToString(state) << ") should be true " << wait_state->ToString();
+    DCHECK(!GetAtomicFlag(&FLAGS_enforce_auh_asserts) || wait_state->query_id() == 0 || wait_state->query_id() == -1 || WaitsForIO(state)) << "WaitForIO( " << util::ToString(state) << ") should be true " << wait_state->ToString();
   }
 }
 
@@ -377,7 +378,7 @@ void WaitStateInfo::AssertWaitAllowed() {
     // LOG_IF(INFO, inserted && !WaitsForLock(state)) << " at\n" << yb::GetStackTrace();
     LOG_IF(INFO, !WaitsForLock(state)) << "WaitsForLock( " << util::ToString(state) << ") should be true";
     // LOG_IF(INFO, !WaitsForLock(state)) << " at\n" << yb::GetStackTrace();
-    DCHECK(wait_state->query_id() == 0 || wait_state->query_id() == -1 || WaitsForLock(state)) << "WaitsForLock( " << util::ToString(state) << ") should be true " << wait_state->ToString();
+    DCHECK(!GetAtomicFlag(&FLAGS_enforce_auh_asserts) || wait_state->query_id() == 0 || wait_state->query_id() == -1 || WaitsForLock(state)) << "WaitsForLock( " << util::ToString(state) << ") should be true " << wait_state->ToString();
   }
 }
 
@@ -396,7 +397,7 @@ void WaitStateInfo::check_and_update_thread_id(WaitStateCode prev, WaitStateCode
     LOG_IF(INFO, !WaitsForThread(prev)) << "WaitsForThread( " << util::ToString(prev) << ") should be true. "
                 << "Setting state to " << util::ToString(next) << " on " << cur_thread_name
                 << " was previously " << util::ToString(prev) << " set on " << thread_name_;
-    DCHECK(query_id() == 0 || query_id() == -1 || WaitsForThread(prev)) << "WaitsForThread( " << util::ToString(prev) << ") should be true " << ToString();
+    DCHECK(!GetAtomicFlag(&FLAGS_enforce_auh_asserts) || query_id() == 0 || query_id() == -1 || WaitsForThread(prev)) << "WaitsForThread( " << util::ToString(prev) << ") should be true " << ToString();
     thread_name_ = std::move(cur_thread_name);
     thread_id_ = tid;
   }
