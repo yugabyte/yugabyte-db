@@ -194,7 +194,10 @@ TEST_F(PgLibPqTest, PgStatIdxScanNoIncrementOnErrorTest) {
   auto conn = ASSERT_RESULT(Connect());
   constexpr auto kNumColumns = 30;
   constexpr auto kMaxPredicates = 64;
-  const auto kMaxStatUpdateTime = RegularBuildVsDebugVsSanitizers(2s, 4s, 4s);
+  // This matches PGSTAT_STAT_INTERVAL.
+  const auto kPgstatStatInterval = 500ms;
+  // This matches PGSTAT_MAX_WAIT_TIME.
+  const auto kPgstatMaxWaitTime = 10000ms;
 
   std::ostringstream create_table_ss;
   create_table_ss << "CREATE TABLE many (";
@@ -237,7 +240,7 @@ TEST_F(PgLibPqTest, PgStatIdxScanNoIncrementOnErrorTest) {
       [&conn, &idx_scan_query]() -> Result<bool> {
         return VERIFY_RESULT(conn.FetchRow<int64_t>(idx_scan_query)) == 1;
       },
-      kMaxStatUpdateTime,
+      kPgstatMaxWaitTime,
       "idx_scan == 1"));
 
   // Add last predicate, which should not have been added from above and therefore is a new
@@ -251,7 +254,10 @@ TEST_F(PgLibPqTest, PgStatIdxScanNoIncrementOnErrorTest) {
   ASSERT_STR_CONTAINS(status.ToString(),
                       Format("ERROR:  cannot use more than $0 predicates in a table or index scan",
                              kMaxPredicates));
-  SleepFor(kMaxStatUpdateTime);
+  // To avoid sleeping too long, wait the minimum time (x2) rather than maximum time.  In most
+  // cases, the stats should be updated at the minimum pace, so this should be sufficient to catch
+  // regressions.
+  SleepFor(kPgstatStatInterval * 2);
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(idx_scan_query)), 1);
 }
 
