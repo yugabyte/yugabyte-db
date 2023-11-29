@@ -73,7 +73,6 @@ import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -1122,11 +1121,6 @@ public class UniverseCRUDHandler {
       }
     }
 
-    // Update all current tasks for this universe to be marked as done if it is a force delete.
-    if (isForceDelete) {
-      markAllUniverseTasksAsCompleted(universe.getUniverseUUID());
-    }
-
     UUID taskUUID = commissioner.submit(taskType, taskParams);
     LOG.info(
         "Submitted destroy universe for "
@@ -1528,17 +1522,6 @@ public class UniverseCRUDHandler {
             throw new IllegalArgumentException(msg);
           }
         }
-      }
-    }
-  }
-
-  void markAllUniverseTasksAsCompleted(UUID universeUUID) {
-    for (CustomerTask task : CustomerTask.findIncompleteByTargetUUID(universeUUID)) {
-      task.markAsCompleted();
-      TaskInfo taskInfo = TaskInfo.get(task.getTaskUUID());
-      if (taskInfo != null) {
-        taskInfo.setTaskState(TaskInfo.State.Failure);
-        taskInfo.save();
       }
     }
   }

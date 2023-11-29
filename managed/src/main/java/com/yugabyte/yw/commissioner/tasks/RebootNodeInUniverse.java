@@ -7,6 +7,7 @@ import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeActionType;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
@@ -19,6 +20,7 @@ import java.util.HashSet;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import play.mvc.Http;
 
 @Slf4j
 @Retryable
@@ -44,44 +46,50 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
   }
 
   @Override
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    Universe universe = getUniverse();
+    NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+
+    if (currentNode == null) {
+      String msg =
+          String.format(
+              "No node %s is found in universe %s", taskParams().nodeName, universe.getName());
+      log.error(msg);
+      throw new PlatformServiceException(Http.Status.BAD_REQUEST, msg);
+    }
+
+    currentNode.validateActionOnState(
+        taskParams().isHardReboot ? NodeActionType.HARD_REBOOT : NodeActionType.REBOOT);
+
+    UUID providerUuid =
+        UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider);
+    Provider provider = Provider.getOrBadRequest(providerUuid);
+    ProviderDetails providerDetails = provider.getDetails();
+    if (provider.getCloudCode() == CloudType.onprem && providerDetails.skipProvisioning == true) {
+      throw new PlatformServiceException(
+          Http.Status.BAD_REQUEST, "Cannot reboot manually provisioned nodes through YBA");
+    }
+  }
+
+  @Override
   public void run() {
-    NodeDetails currentNode;
     boolean isHardReboot = taskParams().isHardReboot;
     boolean skipWaitingForMasterLeader = taskParams().skipWaitingForMasterLeader;
-
+    checkUniverseVersion();
+    Universe universe =
+        lockAndFreezeUniverseForUpdate(
+            taskParams().expectedUniverseVersion, null /* Txn callback */);
     try {
-      checkUniverseVersion();
-
-      // Set the 'updateInProgress' flag to prevent other updates from happening.
-      Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-      currentNode = universe.getNode(taskParams().nodeName);
-
-      if (currentNode == null) {
-        String msg =
-            "No node " + taskParams().nodeName + " found in universe " + universe.getName();
-        log.error(msg);
-        throw new RuntimeException(msg);
-      }
-
+      NodeDetails currentNode = universe.getNode(taskParams().nodeName);
       taskParams().azUuid = currentNode.azUuid;
       taskParams().placementUuid = currentNode.placementUuid;
-
-      UUID providerUuid =
-          UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider);
-      Provider provider = Provider.getOrBadRequest(providerUuid);
-      ProviderDetails providerDetails = provider.getDetails();
-      if (provider.getCloudCode() == CloudType.onprem && providerDetails.skipProvisioning == true) {
-        throw new RuntimeException("Cannot reboot manually provisioned nodes through YBA");
-      }
 
       if (!instanceExists(taskParams())) {
         String msg = "No instance exists for " + taskParams().nodeName;
         log.error(msg);
         throw new RuntimeException(msg);
       }
-
-      currentNode.validateActionOnState(
-          isHardReboot ? NodeActionType.HARD_REBOOT : NodeActionType.REBOOT);
 
       preTaskActions();
 

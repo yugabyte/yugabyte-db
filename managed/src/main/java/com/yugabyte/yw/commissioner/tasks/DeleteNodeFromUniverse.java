@@ -38,37 +38,43 @@ public class DeleteNodeFromUniverse extends UniverseTaskBase {
   }
 
   @Override
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    Universe universe = getUniverse();
+    NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+
+    if (currentNode == null) {
+      String msg =
+          String.format(
+              "No node %s is found in universe %s", taskParams().nodeName, universe.getName());
+      log.error(msg);
+      throw new RuntimeException(msg);
+    }
+
+    if (!currentNode.isRemovable()) {
+      String msg =
+          String.format(
+              "Node %s with state %s is not removable from universe %s",
+              currentNode.nodeName, currentNode.state, universe.getName());
+      log.error(msg);
+      throw new RuntimeException(msg);
+    }
+  }
+
+  @Override
   public void run() {
+    checkUniverseVersion();
+    Universe universe =
+        lockAndFreezeUniverseForUpdate(
+            taskParams().expectedUniverseVersion, null /* Txn callback */);
     try {
-      checkUniverseVersion();
-      // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
-      // to prevent other updates from happening.
-      Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
+      NodeDetails currentNode = universe.getNode(taskParams().nodeName);
       log.info(
           "Delete Node with name {} from universe {}",
           taskParams().nodeName,
           taskParams().getUniverseUUID());
 
       preTaskActions();
-
-      NodeDetails currentNode = universe.getNode(taskParams().nodeName);
-      if (currentNode == null) {
-        String msg =
-            String.format(
-                "No node %s is found in universe %s", taskParams().nodeName, universe.getName());
-        log.error(msg);
-        throw new RuntimeException(msg);
-      }
-
-      // This same check is also done in DeleteNode subtask.
-      if (!currentNode.isRemovable()) {
-        String msg =
-            String.format(
-                "Node %s with state %s is not removable from universe %s",
-                currentNode.nodeName, currentNode.state, universe.getName());
-        log.error(msg);
-        throw new IllegalStateException(msg);
-      }
 
       UserIntent userIntent =
           universe.getUniverseDetails().getClusterByUuid(currentNode.placementUuid).userIntent;
@@ -78,8 +84,9 @@ public class DeleteNodeFromUniverse extends UniverseTaskBase {
       taskParams().placementUuid = currentNode.placementUuid;
 
       // DELETE action is allowed on InstanceCreated, SoftwareInstalled states etc.
-      // A failed AddNodeToUniverse after ReleaseInstanceFromUniverse can leave instances behind.
-      if (instanceExists(taskParams()) || isOnprem) {
+      // A failed AddNodeToUniverse after ReleaseInstanceFromUniverse can leave instances
+      // behind.
+      if (isOnprem || instanceExists(taskParams())) {
         Collection<NodeDetails> currentNodeDetails = Sets.newHashSet(currentNode);
         // Create tasks to terminate that instance.
         // If destroy of the instance fails for some reason, this task can always be retried

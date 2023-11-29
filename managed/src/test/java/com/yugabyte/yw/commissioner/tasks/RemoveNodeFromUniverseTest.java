@@ -150,6 +150,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> REMOVE_NODE_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForDataMove,
@@ -161,6 +162,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> REMOVE_NODE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Removing")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -172,6 +174,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> REMOVE_NODE_WITH_MASTER_REPLACE =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForDataMove,
@@ -202,6 +205,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> REMOVE_NODE_WITH_MASTER_REPLACE_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Removing")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -236,6 +240,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> REMOVE_NODE_WITH_MASTER =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForDataMove,
@@ -256,6 +261,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> REMOVE_NODE_WITH_MASTER_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Removing")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -279,6 +285,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> REMOVE_NOT_EXISTS_NODE_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.UpdatePlacementInfo,
           TaskType.UpdateNodeProcess,
@@ -288,6 +295,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> REMOVE_NOT_EXISTS_NODE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Removing")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", false)),

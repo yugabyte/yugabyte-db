@@ -17,7 +17,6 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.NodeActionFormData;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -56,52 +55,58 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
   }
 
   @Override
-  public void run() {
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    Universe universe = getUniverse();
+    NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+    if (currentNode == null) {
+      String msg = "No node " + taskParams().nodeName + " found in universe " + universe.getName();
+      log.error(msg);
+      throw new RuntimeException(msg);
+    }
+  }
 
-    try {
-      checkUniverseVersion();
+  @Override
+  protected void createPrecheckTasks(Universe universe) {
+    NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+    if (currentNode.isTserver) {
+      createNodePrecheckTasks(
+          currentNode,
+          EnumSet.of(ServerType.TSERVER),
+          SubTaskGroupType.StoppingNodeProcesses,
+          null);
+    }
+  }
 
-      // Set the 'updateInProgress' flag to prevent other updates from happening.
-      Universe universe =
-          lockUniverseForUpdate(
-              taskParams().expectedUniverseVersion,
-              u -> {
-                if (isFirstTry()) {
-                  NodeDetails node = u.getNode(taskParams().nodeName);
-                  if (node == null) {
-                    String msg =
-                        "No node " + taskParams().nodeName + " found in universe " + u.getName();
-                    log.error(msg);
-                    throw new RuntimeException(msg);
-                  }
-                  if (node.isMaster) {
-                    NodeDetails newMasterNode = findNewMasterIfApplicable(u, node);
-                    if (newMasterNode != null && newMasterNode.masterState == null) {
-                      newMasterNode.masterState = MasterState.ToStart;
-                    }
-                    node.masterState = MasterState.ToStop;
-                  }
-                }
-              });
-
-      log.info(
-          "Stop Node with name {} from universe {} ({})",
-          taskParams().nodeName,
-          taskParams().getUniverseUUID(),
-          universe.getName());
-
-      isBlacklistLeaders =
-          confGetter.getConfForScope(universe, UniverseConfKeys.ybUpgradeBlacklistLeaders);
-      leaderBacklistWaitTimeMs =
-          confGetter.getConfForScope(universe, UniverseConfKeys.ybUpgradeBlacklistLeaderWaitTimeMs);
-
-      NodeDetails currentNode = universe.getNode(taskParams().nodeName);
-      if (currentNode == null) {
-        String msg =
-            "No node " + taskParams().nodeName + " found in universe " + universe.getName();
-        log.error(msg);
-        throw new RuntimeException(msg);
+  private void freezeUniverseInTxn(Universe universe) {
+    NodeDetails node = universe.getNode(taskParams().nodeName);
+    if (node == null) {
+      String msg = "No node " + taskParams().nodeName + " found in universe " + universe.getName();
+      log.error(msg);
+      throw new RuntimeException(msg);
+    }
+    if (node.isMaster) {
+      NodeDetails newMasterNode = findNewMasterIfApplicable(universe, node);
+      if (newMasterNode != null && newMasterNode.masterState == null) {
+        newMasterNode.masterState = MasterState.ToStart;
       }
+      node.masterState = MasterState.ToStop;
+    }
+  }
+
+  @Override
+  public void run() {
+    log.info(
+        "Stop Node with name {} from universe uuid={}",
+        taskParams().nodeName,
+        taskParams().getUniverseUUID());
+    checkUniverseVersion();
+    Universe universe =
+        lockAndFreezeUniverseForUpdate(
+            taskParams().expectedUniverseVersion, this::freezeUniverseInTxn);
+    try {
+      NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+
       preTaskActions();
       List<NodeDetails> nodeList = Collections.singletonList(currentNode);
 
@@ -112,14 +117,6 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
       // Update Node State to Stopping
       createSetNodeStateTask(currentNode, NodeState.Stopping)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-
-      if (currentNode.isTserver) {
-        createNodePrecheckTasks(
-            currentNode,
-            EnumSet.of(ServerType.TSERVER),
-            SubTaskGroupType.StoppingNodeProcesses,
-            null);
-      }
 
       taskParams().azUuid = currentNode.azUuid;
       taskParams().placementUuid = currentNode.placementUuid;
@@ -175,7 +172,6 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
     } finally {
       unlockUniverseForUpdate();
     }
-
     log.info("Finished {} task.", getName());
   }
 }

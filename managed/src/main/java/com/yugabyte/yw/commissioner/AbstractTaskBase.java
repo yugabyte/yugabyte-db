@@ -73,6 +73,7 @@ public abstract class AbstractTaskBase implements ITask {
   protected final TableManagerYb tableManagerYb;
   private final PlatformExecutorFactory platformExecutorFactory;
   private final TaskExecutor taskExecutor;
+  private final Commissioner commissioner;
   protected final HealthChecker healthChecker;
   protected final NodeManager nodeManager;
   protected final BackupHelper backupHelper;
@@ -94,6 +95,7 @@ public abstract class AbstractTaskBase implements ITask {
     this.tableManagerYb = baseTaskDependencies.getTableManagerYb();
     this.platformExecutorFactory = baseTaskDependencies.getExecutorFactory();
     this.taskExecutor = baseTaskDependencies.getTaskExecutor();
+    this.commissioner = baseTaskDependencies.getCommissioner();
     this.healthChecker = baseTaskDependencies.getHealthChecker();
     this.nodeManager = baseTaskDependencies.getNodeManager();
     this.backupHelper = baseTaskDependencies.getBackupHelper();
@@ -198,6 +200,10 @@ public abstract class AbstractTaskBase implements ITask {
 
   protected TaskExecutor getTaskExecutor() {
     return taskExecutor;
+  }
+
+  protected Commissioner getCommissioner() {
+    return commissioner;
   }
 
   // Returns the RunnableTask instance to which SubTaskGroup instances can be added and run.

@@ -63,28 +63,26 @@ public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
     try {
       checkUniverseVersion();
 
-      // Set the 'updateInProgress' flag to prevent other updates from happening.
       Universe universe =
-          lockUniverseForUpdate(
+          lockAndFreezeUniverseForUpdate(
               taskParams().expectedUniverseVersion,
               u -> {
-                if (isFirstTry()) {
-                  NodeDetails node = u.getNode(taskParams().nodeName);
-                  if (node == null) {
-                    String msg =
-                        "No node " + taskParams().nodeName + " found in universe " + u.getName();
-                    log.error(msg);
-                    throw new RuntimeException(msg);
+                NodeDetails node = u.getNode(taskParams().nodeName);
+                if (node == null) {
+                  String msg =
+                      "No node " + taskParams().nodeName + " found in universe " + u.getName();
+                  log.error(msg);
+                  throw new RuntimeException(msg);
+                }
+                if (node.isMaster) {
+                  NodeDetails newMasterNode = findNewMasterIfApplicable(u, node);
+                  if (newMasterNode != null && newMasterNode.masterState == null) {
+                    newMasterNode.masterState = MasterState.ToStart;
                   }
-                  if (node.isMaster) {
-                    NodeDetails newMasterNode = findNewMasterIfApplicable(u, node);
-                    if (newMasterNode != null && newMasterNode.masterState == null) {
-                      newMasterNode.masterState = MasterState.ToStart;
-                    }
-                    node.masterState = MasterState.ToStop;
-                  }
+                  node.masterState = MasterState.ToStop;
                 }
               });
+
       log.info(
           "Started {} task for node {} in univ uuid={}",
           getName(),
