@@ -292,9 +292,7 @@ static bool FatalError = false; /* T if recovering from backend crash */
 /* Crashed before fully acquiring a lock, or with unexpected error code.  */
 static bool YbCrashInUnmanageableState = false;
 
-#ifdef __linux__
 static char *YbBackendOomScoreAdj = NULL;
-#endif
 
 /*
  * We use a simple state machine to control startup, shutdown, and
@@ -4265,6 +4263,41 @@ TerminateChildren(int signal)
 }
 
 /*
+ * SetOomScoreAdjForPid - sets /proc/<pid>/oom_score_adj for the given PID
+ *
+ * oom_score_adj varies from -1000 to 1000. The lower the value, the lower the
+ * chance that it's going to be killed. A high value is more likely to be
+ * killed by the OOM killer.
+ */
+static void
+SetOomScoreAdjForPid(pid_t pid, char *oom_score_adj)
+{
+#ifdef __linux__
+	if (oom_score_adj == NULL)
+		return;
+
+	char file_name[64];
+	snprintf(file_name, sizeof(file_name), "/proc/%d/oom_score_adj", pid);
+	FILE * fPtr;
+	fPtr = fopen(file_name, "w");
+
+	if(fPtr == NULL)
+	{
+		int saved_errno = errno;
+		ereport(LOG,
+			(errcode_for_file_access(),
+				errmsg("error %d: %s, unable to open file %s", saved_errno,
+				strerror(saved_errno), file_name)));
+	}
+	else
+	{
+		fputs(oom_score_adj, fPtr);
+		fclose(fPtr);
+	}
+#endif
+}
+
+/*
  * BackendStartup -- start backend process
  *
  * returns: STATUS_ERROR if the fork failed, STATUS_OK otherwise.
@@ -4387,33 +4420,7 @@ BackendStartup(Port *port)
 		ShmemBackendArrayAdd(bn);
 #endif
 
-#ifdef __linux__
-	char file_name[64];
-	snprintf(file_name, sizeof(file_name), "/proc/%d/oom_score_adj", pid);
-	FILE * fPtr;
-	fPtr = fopen(file_name, "w");
-
-    /*
-	 * oom_score_adj varies from -1000 to 1000. The lower the value, the lower
-	 * the chance that it's going to be killed. Here, we are setting low priority
-	 * (YbBackendOomScoreAdj) for postgres connections so that during out of
-	 * memory, postgres connections are killed first. We do that be setting a
-	 * high oom_score_adj value for the postgres connection.
-	 */
-	if(fPtr == NULL)
-	{
-		int saved_errno = errno;
-		ereport(LOG,
-			(errcode_for_file_access(),
-				errmsg("error %d: %s, unable to open file %s", saved_errno,
-				strerror(saved_errno), file_name)));
-	}
-	else
-	{
-		fputs(YbBackendOomScoreAdj, fPtr);
-		fclose(fPtr);
-	}
-#endif
+	SetOomScoreAdjForPid(pid, YbBackendOomScoreAdj);
 
 	return STATUS_OK;
 }
@@ -6068,6 +6075,8 @@ do_start_bgworker(RegisteredBgWorker *rw)
 			MemoryContextSwitchTo(TopMemoryContext);
 			MemoryContextDelete(PostmasterContext);
 			PostmasterContext = NULL;
+
+			SetOomScoreAdjForPid(MyProcPid, rw->rw_worker.bgw_oom_score_adj);
 
 			StartBackgroundWorker();
 
