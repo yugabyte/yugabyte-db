@@ -40,10 +40,7 @@
 #include "yb/util/rw_mutex.h"
 #include "yb/util/status_format.h"
 
-#include "yb/gutil/strings/substitute.h"
-
 using namespace std::literals;
-using strings::Substitute;
 
 // We use this limit to prevent request range from infinite grow, because it will block log
 // cleanup. I.e. even we have continous request range, it will be split by blocks, that could be
