@@ -615,17 +615,15 @@ Flush the memstores of the specified table on all tablet servers to disk.
 ```sh
 yb-admin \
     -master_addresses <master-addresses> \
-    flush_table <table_name> | <table_id> <db_type>.<namespace> [timeout_in_seconds] [ADD_INDEXES]
+    flush_table <table> | <db_type>.<namespace> [timeout_in_seconds] [ADD_INDEXES]
 ```
 
 * *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *db_type*: The type of database. Valid values include ysql, ycql, yedis, and unknown.
 * *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
-* *table_name*: The name of the table to flush.
-* *table_id*: The unique UUID of the table to flush.
-* *timeout_in_seconds*: Specifies duration, in seconds when the cli timeouts waiting for flushing to end. Default value is `20`.
-* *ADD_INDEXES*: If the DB should also flush the secondary indexes associated with the table. Default is `false`.
-
+* *table*: The name of the table to flush.
+* *timeout_in_seconds*: Specifies duration, in seconds when the CLI timeouts waiting for flushing to end. Default value is `20`.
+* *ADD_INDEXES*: If the database should also flush the secondary indexes associated with the table. Default is `false`.
 
 **Example**
 
@@ -633,7 +631,7 @@ yb-admin \
 ./bin/yb-admin \
     -master_addresses $MASTER_RPC_ADDRS \
     flush_table ysql.yugabyte table_name
-    
+
 ```
 ```output
 Flushed [yugabyte.table_name] tables.
@@ -1985,7 +1983,7 @@ Sets the xCluster role to `STANDBY` or `ACTIVE`.
 yb-admin \
     -master_addresses <master_addresses> \
     change_xcluster_role \
-    <role> 
+    <role>
 ```
 
 * *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`. These are the addresses of the master nodes where the role is to be applied. For example, to change the target to `STANDBY`, use target universe master addresses, and to change the source universe role, use source universe master addresses.
@@ -2009,7 +2007,7 @@ Reports the current xCluster safe time for each namespace, which is the time at 
 yb-admin \
     -master_addresses <target_master_addresses> \
     get_xcluster_safe_time \
-    [include_lag_and_skew] 
+    [include_lag_and_skew]
 ```
 
 * *target_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
@@ -2447,14 +2445,14 @@ yb-admin \
 If the operation is successful you should see output similar to the following:
 
 ```output
-PromoteAutoFlags status: 
+PromoteAutoFlags status:
 New AutoFlags were promoted. Config version: 2
 ```
 
 OR
 
 ```output
-PromoteAutoFlags status: 
+PromoteAutoFlags status:
 No new AutoFlags to promote
 ```
 
