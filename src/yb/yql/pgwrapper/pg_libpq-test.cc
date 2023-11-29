@@ -209,7 +209,7 @@ TEST_F(PgLibPqTest, PgStatIdxScanNoIncrementOnErrorTest) {
 
   std::ostringstream predicate_error_query;
   predicate_error_query << "SELECT * FROM many WHERE ";
-  for (int i = 0; i <= kNumColumns; ++i)
+  for (int i = 1; i <= kNumColumns; ++i)
     predicate_error_query << Format("c$0 = 1 AND c$0 < 2 AND c$0 > 0 AND ", i);
   predicate_error_query << " TRUE";
 
