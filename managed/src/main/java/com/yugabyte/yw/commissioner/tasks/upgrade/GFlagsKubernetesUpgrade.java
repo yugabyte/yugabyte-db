@@ -103,13 +103,6 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
             taskParams()
                 .checkXClusterAutoFlags(universe, gFlagsValidation, xClusterUniverseService);
           }
-          // Update the list of parameter key/values in the universe with the new ones.
-          updateGFlagsPersistTasks(
-                  cluster,
-                  taskParams().masterGFlags,
-                  taskParams().tserverGFlags,
-                  getPrimaryClusterSpecificGFlags())
-              .setSubTaskGroupType(getTaskSubGroupType());
 
           boolean updateMaster = areGflagsModified(ServerType.MASTER);
           boolean updateTserver = areGflagsModified(ServerType.TSERVER);
@@ -140,6 +133,13 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
             }
             installThirdPartyPackagesTaskK8s(
                 universe, InstallThirdPartySoftwareK8s.SoftwareUpgradeType.JWT_JWKS);
+            // task to persist changed GFlags to universe in DB
+            updateGFlagsPersistTasks(
+                    cluster,
+                    taskParams().masterGFlags,
+                    taskParams().tserverGFlags,
+                    getPrimaryClusterSpecificGFlags())
+                .setSubTaskGroupType(getTaskSubGroupType());
           } catch (Throwable t) {
             th = t;
             throw t;
