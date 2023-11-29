@@ -1493,6 +1493,7 @@
         },
         "isSoftwareRollbackAllowed" : {
           "description" : "Available since YBA version 2.21.0.0.",
+          "readOnly" : true,
           "type" : "boolean"
         },
         "itestS3PackagePath" : {
@@ -3265,6 +3266,7 @@
         },
         "isSoftwareRollbackAllowed" : {
           "description" : "Available since YBA version 2.21.0.0.",
+          "readOnly" : true,
           "type" : "boolean"
         },
         "itestS3PackagePath" : {
@@ -5122,6 +5124,7 @@
         },
         "isSoftwareRollbackAllowed" : {
           "description" : "Available since YBA version 2.21.0.0.",
+          "readOnly" : true,
           "type" : "boolean"
         },
         "itestS3PackagePath" : {
@@ -5431,6 +5434,7 @@
         },
         "isSoftwareRollbackAllowed" : {
           "description" : "Available since YBA version 2.21.0.0.",
+          "readOnly" : true,
           "type" : "boolean"
         },
         "itestS3PackagePath" : {
@@ -6194,6 +6198,7 @@
         },
         "isSoftwareRollbackAllowed" : {
           "description" : "Available since YBA version 2.21.0.0.",
+          "readOnly" : true,
           "type" : "boolean"
         },
         "itestS3PackagePath" : {
@@ -9249,6 +9254,7 @@
         },
         "isSoftwareRollbackAllowed" : {
           "description" : "Available since YBA version 2.21.0.0.",
+          "readOnly" : true,
           "type" : "boolean"
         },
         "itestS3PackagePath" : {
@@ -9544,6 +9550,7 @@
         },
         "isSoftwareRollbackAllowed" : {
           "description" : "Available since YBA version 2.21.0.0.",
+          "readOnly" : true,
           "type" : "boolean"
         },
         "itestS3PackagePath" : {
@@ -10516,6 +10523,7 @@
         },
         "isSoftwareRollbackAllowed" : {
           "description" : "Available since YBA version 2.21.0.0.",
+          "readOnly" : true,
           "type" : "boolean"
         },
         "itestS3PackagePath" : {
@@ -11083,6 +11091,7 @@
         },
         "isSoftwareRollbackAllowed" : {
           "description" : "Available since YBA version 2.21.0.0.",
+          "readOnly" : true,
           "type" : "boolean"
         },
         "itestS3PackagePath" : {
@@ -11597,6 +11606,7 @@
         },
         "isSoftwareRollbackAllowed" : {
           "description" : "Available since YBA version 2.21.0.0.",
+          "readOnly" : true,
           "type" : "boolean"
         },
         "itestS3PackagePath" : {
@@ -12184,6 +12194,7 @@
         },
         "isSoftwareRollbackAllowed" : {
           "description" : "Available since YBA version 2.21.0.0.",
+          "readOnly" : true,
           "type" : "boolean"
         },
         "itestS3PackagePath" : {
@@ -12439,6 +12450,7 @@
         },
         "isSoftwareRollbackAllowed" : {
           "description" : "Available since YBA version 2.21.0.0.",
+          "readOnly" : true,
           "type" : "boolean"
         },
         "itestS3PackagePath" : {
@@ -12767,6 +12779,7 @@
         },
         "isSoftwareRollbackAllowed" : {
           "description" : "Available since YBA version 2.21.0.0.",
+          "readOnly" : true,
           "type" : "boolean"
         },
         "itestS3PackagePath" : {
@@ -12999,6 +13012,7 @@
         },
         "isSoftwareRollbackAllowed" : {
           "description" : "Available since YBA version 2.21.0.0.",
+          "readOnly" : true,
           "type" : "boolean"
         },
         "itestS3PackagePath" : {
@@ -13228,6 +13242,7 @@
         },
         "isSoftwareRollbackAllowed" : {
           "description" : "Available since YBA version 2.21.0.0.",
+          "readOnly" : true,
           "type" : "boolean"
         },
         "itestS3PackagePath" : {
@@ -13684,6 +13699,7 @@
         },
         "isSoftwareRollbackAllowed" : {
           "description" : "Available since YBA version 2.21.0.0.",
+          "readOnly" : true,
           "type" : "boolean"
         },
         "itestS3PackagePath" : {
@@ -14315,6 +14331,7 @@
         },
         "isSoftwareRollbackAllowed" : {
           "description" : "Available since YBA version 2.21.0.0.",
+          "readOnly" : true,
           "type" : "boolean"
         },
         "itestS3PackagePath" : {
