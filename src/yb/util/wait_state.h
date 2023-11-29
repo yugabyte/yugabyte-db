@@ -184,14 +184,6 @@ YB_DEFINE_ENUM_TYPE(
     (DmlRead)(DmlWrite)
     )
 
-uint32_t ToUint32(WaitStateComponent comp, WaitStateCode code) {
-  uint32_t res = to_underlying(comp);
-  CHECK_LE(res, 0xF);
-  res = (res << 28);
-  res = res | to_underlying(code);
-  return res;
-}
-
 YB_DEFINE_ENUM(MessengerType, (kTserver)(kCQLServer))
 
 struct AUHMetadata {
@@ -341,12 +333,21 @@ class WaitStateInfo {
     }
   }
 
+  static uint32_t ToUint32(WaitStateComponent comp, WaitStateCode code) {
+    uint32_t res = to_underlying(comp);
+    CHECK_LE(res, 0xF);
+    res = (res << 28);
+    res = res | to_underlying(code);
+    return res;
+  }
+
   template <class PB>
   void ToPB(PB *pb) {
     std::lock_guard<simple_spinlock> l(mutex_);
     metadata_.ToPB(pb->mutable_metadata());
+    WaitStateComponent component = metadata_.component;
     WaitStateCode code = get_state();
-    pb->set_wait_status_code(yb::to_underlying(code));
+    pb->set_wait_status_code(ToUint32(component, code));
     if (FLAGS_export_wait_state_names) {
       pb->set_wait_status_code_as_string(yb::ToString(code));
     }

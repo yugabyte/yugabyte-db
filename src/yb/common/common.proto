@@ -632,7 +632,7 @@ message AUHAuxDataPB {
 
 message WaitStateInfoPB {
   optional AUHMetadataPB metadata = 1;
-  optional uint64 wait_status_code = 2;
+  optional uint32 wait_status_code = 2;
   optional AUHAuxDataPB aux_info = 3;
   optional string wait_status_code_as_string = 4;
 }

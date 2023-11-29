@@ -48,7 +48,8 @@ typedef struct ybauhEntry {
   TimestampTz auh_sample_time;
   uint64_t top_level_request_id[2];
   uint64_t request_id;
-  uint32 wait_event;
+  uint8_t wait_component;
+  uint32_t wait_event;
   char wait_event_aux[16];
   uint64_t top_level_node_id[2];
   uint32 client_node_host;
@@ -115,6 +116,7 @@ static void pg_active_universe_history_internal(FunctionCallInfo fcinfo);
 static void auh_entry_store(TimestampTz auh_time,
                             const uint64_t* top_level_request_id,
                             uint64_t request_id,
+                            uint8 wait_component,
                             uint32 wait_event,
                             const char* wait_event_aux,
                             const uint64_t* top_level_node_id,
@@ -276,6 +278,8 @@ yb_auh_main(Datum main_arg) {
   proc_exit(0);
 }
 
+uint8 kPgAshComponent = 1;
+
 static void pg_collect_samples(TimestampTz auh_sample_time, uint16 num_procs_to_sample)
 {
   size_t procCount = 0;
@@ -291,7 +295,7 @@ static void pg_collect_samples(TimestampTz auh_sample_time, uint16 num_procs_to_
     PGProcAUHEntryList proc = current->data;
     if (random() < sample_rate * MAX_RANDOM_VALUE)
     {
-      auh_entry_store(auh_sample_time, proc.top_level_request_id, 0,
+      auh_entry_store(auh_sample_time, proc.top_level_request_id, 0, kPgAshComponent,
                       proc.wait_event_info, "", proc.top_level_node_id,
                       proc.client_node_host, proc.client_node_port,
                       proc.queryid, auh_sample_time, sample_rate);
@@ -313,7 +317,7 @@ static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 num_rpcs
   for (int i = 0; i < numrpcs; i++) {
     if(random() <= sample_rate * MAX_RANDOM_VALUE){
       auh_entry_store(auh_sample_time, rpcs[i].metadata.top_level_request_id,
-                    rpcs[i].metadata.current_request_id, rpcs[i].wait_status_code,
+                    rpcs[i].metadata.current_request_id, rpcs[i].metadata.component, rpcs[i].wait_status_code,
                     (rpcs[i].aux_info.tablet_id[0] == '\0' ? rpcs[i].aux_info.table_id : rpcs[i].aux_info.tablet_id),
                     rpcs[i].metadata.top_level_node_id,
                     rpcs[i].metadata.client_node_host, rpcs[i].metadata.client_node_port,
@@ -344,6 +348,7 @@ yb_auh_circularBufferIndexSize(void)
 static void auh_entry_store(TimestampTz auh_time,
                             const uint64_t* top_level_request_id,
                             uint64_t request_id,
+                            uint8_t wait_component,
                             uint32 wait_event,
                             const char* wait_event_aux,
                             const uint64_t* top_level_node_id,
@@ -361,6 +366,7 @@ static void auh_entry_store(TimestampTz auh_time,
   inserted = CircularBufferIndexArray[0].index - 1;
 
   AUHEntryArray[inserted].auh_sample_time = auh_time;
+  AUHEntryArray[inserted].wait_component = wait_component;
   AUHEntryArray[inserted].wait_event = wait_event;
   AUHEntryArray[inserted].request_id = request_id;
 
