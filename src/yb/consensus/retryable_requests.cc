@@ -40,7 +40,10 @@
 #include "yb/util/rw_mutex.h"
 #include "yb/util/status_format.h"
 
+#include "yb/gutil/strings/substitute.h"
+
 using namespace std::literals;
+using strings::Substitute;
 
 // We use this limit to prevent request range from infinite grow, because it will block log
 // cleanup. I.e. even we have continous request range, it will be split by blocks, that could be
@@ -244,18 +247,37 @@ std::ostream& operator<<(std::ostream& out, const ReplicateData& data) {
 
 } // namespace
 
+std::string LogPrefix(const std::string& tablet_id, const std::string& uuid) {
+  return "T " + tablet_id + " P " + uuid + ": ";
+}
+
+RetryableRequestsManager::RetryableRequestsManager(
+    const TabletId& tablet_id, FsManager* const fs_manager, const std::string& wal_dir,
+    const MemTrackerPtr& mem_tracker, const std::string log_prefix)
+    : tablet_id_(tablet_id),
+      fs_manager_(fs_manager),
+      dir_(wal_dir),
+      retryable_requests_(std::make_unique<RetryableRequests>(mem_tracker, std::move(log_prefix))),
+      log_prefix_(std::move(log_prefix)) {
+    // Several tests (e.g. tablet_peer-test) erroneously set the log_prefix argument to ""
+    // We add logic to set it to the right prefix ourselves if it is empty
+    if (log_prefix_.empty()) {
+      log_prefix_ = consensus::LogPrefix(tablet_id_, fs_manager_->uuid());
+    }
+}
+
 Status RetryableRequestsManager::Init(const server::ClockPtr& clock) {
   retryable_requests_->SetServerClock(clock);
   retryable_requests_->SetRequestTimeout(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs));
   if (!fs_manager_->Exists(dir_)) {
-    LOG(INFO) << "Wal dir is not created, skip initializing RetryableRequestsManager for "
+    LOG_WITH_PREFIX(INFO) << "Wal dir is not created, skip initializing RetryableRequestsManager for "
               << tablet_id_;
     // For first startup.
     has_file_on_disk_ = false;
     return Status::OK();
   }
   RETURN_NOT_OK(DoInit());
-  LOG(INFO) << "Initialized RetryableRequestsManager, found a file ? "
+  LOG_WITH_PREFIX(INFO) << "Initialized RetryableRequestsManager, found a file ? "
             << (has_file_on_disk_ ? "yes" : "no")
             << ", wal dir=" << dir_;
   return Status::OK();
@@ -269,7 +291,7 @@ Status RetryableRequestsManager::SaveToDisk(std::unique_ptr<RetryableRequests> r
   RetryableRequestsPB pb;
   retryable_requests->ToPB(&pb);
   auto path = NewFilePath();
-  LOG(INFO) << "Saving retryable requests up to " << pb.last_op_id() << " to " << path;
+  LOG_WITH_PREFIX(INFO) << "Saving retryable requests up to " << pb.last_op_id() << " to " << path;
   auto* env = fs_manager()->env();
   RETURN_NOT_OK_PREPEND(pb_util::WritePBContainerToPath(
                             env, path, pb,
@@ -279,7 +301,7 @@ Status RetryableRequestsManager::SaveToDisk(std::unique_ptr<RetryableRequests> r
   if (has_file_on_disk_) {
     RETURN_NOT_OK(env->DeleteFile(CurrentFilePath()));
   }
-  LOG(INFO) << "Renaming " << NewFileName() << " to " << FileName();
+  LOG_WITH_PREFIX(INFO) << "Renaming " << NewFileName() << " to " << FileName();
   RETURN_NOT_OK(env->RenameFile(NewFilePath(), CurrentFilePath()));
   has_file_on_disk_ = true;
   return env->SyncDir(dir_);
@@ -295,7 +317,7 @@ Status RetryableRequestsManager::LoadFromDisk() {
       pb_util::ReadPBContainerFromPath(fs_manager()->env(), path, &pb),
       Format("Could not load retryable requests from $0", path));
   retryable_requests_->FromPB(pb);
-  LOG(INFO) << Format("Loaded tablet ($0) retryable requests "
+  LOG_WITH_PREFIX(INFO) << Format("Loaded tablet ($0) retryable requests "
                       "(max_replicated_op_id_=$1) from $2",
                       tablet_id_, pb.last_op_id(), path);
   return Status::OK();
@@ -308,7 +330,7 @@ Status RetryableRequestsManager::CopyTo(const std::string& dest_path) {
   auto* env = fs_manager()->env();
   auto path = CurrentFilePath();
   auto dest_path_tmp = pb_util::MakeTempPath(dest_path);
-  LOG(INFO) << "Copying retryable requests from " << path << " to " << dest_path;
+  LOG_WITH_PREFIX(INFO) << "Copying retryable requests from " << path << " to " << dest_path;
   DCHECK(fs_manager()->Exists(path));
 
   WritableFileOptions options;
@@ -349,6 +371,14 @@ Status RetryableRequestsManager::DoInit() {
   }
   has_file_on_disk_ = has_new || has_current;
   return env->SyncDir(dir_);
+}
+
+void RetryableRequestsManager::set_log_prefix(const std::string& log_prefix) {
+  log_prefix_ = log_prefix;
+}
+
+std::string RetryableRequestsManager::LogPrefix() const {
+  return log_prefix_;
 }
 
 class RetryableRequests::Impl {
