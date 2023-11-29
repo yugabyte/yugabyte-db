@@ -129,7 +129,7 @@ You can enable EAR using a CMK for clusters (database version 2.16.7 and later o
 
 1. On the cluster **Settings** tab, select **Encryption at rest**.
 1. Click **Enable Cluster Encryption at Rest**.
-1. Provide the Azure [tenant ID](https://learn.microsoft.com/en-us/entra/fundamentals/how-to-find-tenant), the vault URI (for example, https://myvault.vault.azure.net), and the name of the key.
+1. Provide the Azure [tenant ID](https://learn.microsoft.com/en-us/entra/fundamentals/how-to-find-tenant), the vault URI (for example, `https://myvault.vault.azure.net`), and the name of the key.
 1. Enter the client ID and secret for an application with permission to encrypt and decrypt using the CMK.
 
   {{% /tab %}}
