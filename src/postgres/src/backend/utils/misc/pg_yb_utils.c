@@ -3977,7 +3977,7 @@ ycql_stat_statements(PG_FUNCTION_ARGS)
   static int ncols = 0;
 
   if (ncols < expected_ncols)
-    ncols = YbGetNumberOfFunctionOutputColumns(8067 /* yb_servers function
+    ncols = YbGetNumberOfFunctionOutputColumns(8067 /* ycql_stat_statements function
 												   oid hardcoded in pg_proc.dat */);
   if (SRF_IS_FIRSTCALL())
   {
