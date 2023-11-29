@@ -24,7 +24,7 @@ To use a CMK, select the **Enable cluster encryption at rest** option and set th
 
 - For Azure:
 
-  - The Azure [tenant ID](https://learn.microsoft.com/en-us/entra/fundamentals/how-to-find-tenant), the vault URI (for example, https://myvault.vault.azure.net), and the name of the key.
+  - The Azure [tenant ID](https://learn.microsoft.com/en-us/entra/fundamentals/how-to-find-tenant), the vault URI (for example, `https://myvault.vault.azure.net`), and the name of the key.
   - The client ID and secret for an application with permission to encrypt and decrypt using the CMK.
 
 - For GCP:

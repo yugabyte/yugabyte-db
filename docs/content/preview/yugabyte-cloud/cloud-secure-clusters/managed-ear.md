@@ -55,6 +55,25 @@ Create a key vault using the [Azure portal](https://docs.microsoft.com/en-us/azu
 - Set the vault permission model as Vault access policy.
 - Add the application to the key vault access policies with the minimum key management operations permissions of Get and Create (unless you are pre-creating the key), as well as cryptographic operations permissions of Unwrap Key and Wrap Key.
 
+    Required permissions are as follows:
+
+    ```json
+    "permissions": [ {
+        "actions": [ 
+          "Microsoft.KeyVault/vaults/keys/read", 
+          "Microsoft.KeyVault/vaults/read" 
+        ], 
+        "notActions": [], 
+        "dataActions": [ 
+          "Microsoft.KeyVault/vaults/keys/read", 
+          "Microsoft.KeyVault/vaults/keyrotationpolicies/read", 
+          "Microsoft.KeyVault/vaults/keys/wrap/action", 
+          "Microsoft.KeyVault/vaults/keys/unwrap/action"
+        ], 
+        "notDataActions": [] 
+    } ]
+    ```
+
 If you are planning to use an existing cryptographic key with the same name, it must meet the following criteria:
 
 - The primary key version should be in the Enabled state.
