@@ -194,7 +194,6 @@ TEST_F(PgLibPqTest, PgStatIdxScanNoIncrementOnErrorTest) {
   auto conn = ASSERT_RESULT(Connect());
 
   constexpr int kNumColumns = 30;
-  constexpr int kMaxPredicates = 64;
 
   std::ostringstream create_table_stmt;
   create_table_stmt << "CREATE TABLE many (";
