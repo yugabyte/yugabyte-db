@@ -190,6 +190,8 @@ TEST_F(PgLibPqTest, Simple) {
   ASSERT_EQ(row, (decltype(row){1, "hello"}));
 }
 
+// Make sure index scan queries that error at the beginning of scanning don't bump up the pgstat
+// idx_scan metric.
 TEST_F(PgLibPqTest, PgStatIdxScanNoIncrementOnErrorTest) {
   auto conn = ASSERT_RESULT(Connect());
   constexpr auto kNumColumns = 30;
