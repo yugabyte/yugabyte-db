@@ -86,7 +86,7 @@ struct YBTabletServerPlacementInfo {
 
 struct YBActiveUniverseHistoryInfo {
   util::AUHMetadata metadata;
-  uint64_t wait_status_code;
+  uint32_t wait_status_code;
   util::AUHAuxInfo aux_info;
   std::string wait_status_code_as_string;
 

@@ -2333,7 +2333,7 @@ tserver_stat_get_activity(PG_FUNCTION_ARGS)
 		values[2] = CStringGetTextDatum(top_level_node_id);
 		values[3] = Int64GetDatum(rpc->metadata.current_request_id);
 		values[4] = Int64GetDatum(rpc->metadata.query_id);
-		values[5] = UInt64GetDatum(rpc->wait_status_code);
+		values[5] = UInt32GetDatum(rpc->wait_status_code);
 		values[6] = Int64GetDatum(rpc->aux_info.table_id);
 		values[7] = Int64GetDatum(rpc->aux_info.tablet_id);
 		values[8] = CStringGetTextDatum(rpc->wait_status_code_as_string);

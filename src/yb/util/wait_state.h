@@ -184,6 +184,14 @@ YB_DEFINE_ENUM_TYPE(
     (DmlRead)(DmlWrite)
     )
 
+uint32_t ToUint32(WaitStateComponent comp, WaitStateCode code) {
+  uint32_t res = to_underlying(comp);
+  CHECK_LE(res, 0xF);
+  res = (res << 28);
+  res = res | to_underlying(code);
+  return res;
+}
+
 YB_DEFINE_ENUM(MessengerType, (kTserver)(kCQLServer))
 
 struct AUHMetadata {

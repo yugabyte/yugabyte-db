@@ -439,7 +439,7 @@ typedef struct AUHAuxDescriptor {
 
 typedef struct AUHDescriptor {
   YBCAUHMetadataDescriptor metadata;
-  uint64_t wait_status_code;
+  uint32_t wait_status_code;
   YBCAUHAuxDescriptor aux_info;
   const char* wait_status_code_as_string;
 } YBCAUHDescriptor;
