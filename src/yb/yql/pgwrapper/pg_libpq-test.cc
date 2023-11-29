@@ -198,23 +198,22 @@ TEST_F(PgLibPqTest, PgStatIdxScanNoIncrementOnErrorTest) {
   std::ostringstream create_table_stmt;
   create_table_stmt << "CREATE TABLE many (";
   for (int i = 1; i <= kNumColumns; ++i)
-    create_table_stmt << Format("c$0 INT,", i);
+    create_table_stmt << "c" << i << " INT,";
   create_table_stmt << "k INT PRIMARY KEY)";
+  ASSERT_OK(conn.Execute(create_table_stmt.str()));
 
   std::ostringstream create_index_stmt;
-  create_index_stmt << "CREATE INDEX ON many (";
-  for (int i = 1; i <= kNumColumns; ++i)
-    create_index_stmt << Format("c$0,", i);
-  create_index_stmt << "c1 ASC)";
+  create_index_stmt << "CREATE INDEX ON many (c1 ASC";
+  for (int i = 2; i <= kNumColumns; ++i)
+    create_index_stmt << ", c" << i;
+  create_index_stmt << ")";
+  ASSERT_OK(conn.Execute(create_index_stmt.str()));
 
   std::ostringstream predicate_error_query;
   predicate_error_query << "SELECT * FROM many WHERE ";
   for (int i = 1; i <= kNumColumns; ++i)
     predicate_error_query << Format("c$0 = 1 AND c$0 < 2 AND c$0 > 0 AND ", i);
   predicate_error_query << " TRUE";
-
-  ASSERT_OK(conn.Execute(create_table_stmt.str()));
-  ASSERT_OK(conn.Execute(create_index_stmt.str()));
 
   auto status = ResultToStatus(conn.Fetch(predicate_error_query.str()));
   ASSERT_NOK(status);
