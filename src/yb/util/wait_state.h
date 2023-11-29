@@ -248,9 +248,7 @@ struct AUHMetadata {
     if (client_node_port != 0) {
       pb->set_client_node_port(client_node_port);
     }
-    if (component != 0) {
-      pb->set_component(component);
-    }
+    // component is not saved in the PB.
   }
 
   template <class PB>
@@ -262,33 +260,8 @@ struct AUHMetadata {
         .current_request_id = pb.current_request_id(),
         .client_node_host = pb.client_node_host(),
         .client_node_port = static_cast<uint16_t>(pb.client_node_port()),
-        .component = WaitStateComponent(static_cast<uint8_t>(pb.component()))
+        .component = WaitStateComponent::Unused
     };
-  }
-
-  template <class PB>
-  void UpdateFromPB(const PB& pb) {
-    if (pb.has_top_level_node_id()) {
-      top_level_node_id = std::vector<uint64_t>(pb.top_level_node_id().begin(), pb.top_level_node_id().end());
-    }
-    if (pb.has_top_level_request_id()) {
-      top_level_request_id = std::vector<uint64_t>(pb.top_level_request_id().begin(), pb.top_level_request_id().end());
-    }
-    if (pb.has_query_id()) {
-      query_id = pb.query_id();
-    }
-    if (pb.has_client_node_host()) {
-      client_node_host = pb.client_node_host();
-    }
-    if (pb.client_node_port()) {
-      client_node_port = static_cast<uint16_t>(pb.client_node_port());
-    }
-    if (pb.has_current_request_id()) {
-      current_request_id = pb.current_request_id();
-    }
-    if (pb.has_component()) {
-      component = pb.component();
-    }
   }
 };
 

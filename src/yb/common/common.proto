@@ -622,7 +622,6 @@ message AUHMetadataPB {
   repeated uint64 top_level_node_id = 4;
   optional int64 current_request_id = 5;
   optional int64 query_id = 6;
-  optional uint8 component = 7;
 }
 
 message AUHAuxDataPB {
