@@ -72,7 +72,7 @@ InboundCall::InboundCall(ConnectionPtr conn, RpcMetrics* rpc_metrics,
       trace_(trace_holder_.get()),
       // TBD: Initialise this in the Parse function instead.
       wait_state_(std::make_shared<util::WaitStateInfo>(
-          util::AUHMetadata{})),
+          util::AUHMetadata{.component = yb::util::WaitStateComponent::TServer})),
       conn_(std::move(conn)),
       rpc_metrics_(rpc_metrics ? rpc_metrics : &conn_->rpc_metrics()),
       call_processed_listener_(call_processed_listener) {

@@ -96,6 +96,11 @@ namespace yb {
 namespace util {
 
 YB_DEFINE_ENUM_TYPE(
+    WaitStateComponent,
+    uint8_t,
+    (Unused)(PG)(YCQL)(TServer)(PGPerform));
+
+YB_DEFINE_ENUM_TYPE(
     WaitStateCode,
     uint32_t,
     ((Unused, 0))
@@ -188,12 +193,13 @@ struct AUHMetadata {
   int64_t current_request_id = 0;
   uint32_t client_node_host = 0;
   uint16_t client_node_port = 0;
+  WaitStateComponent component = WaitStateComponent::Unused;
 
   void set_client_node_ip(const std::string &endpoint);
 
   std::string ToString() const {
-    return yb::Format("{ top_level_node_id: $0, top_level_request_id: $1, query_id: $2, current_request_id: $3, client_node_ip: $4:$5 }",
-                      top_level_node_id, top_level_request_id, query_id, current_request_id, client_node_host, client_node_port);
+    return yb::Format("{ top_level_node_id: $0, top_level_request_id: $1, query_id: $2, current_request_id: $3, client_node_ip: $4:$5, component: $6 }",
+                      top_level_node_id, top_level_request_id, query_id, current_request_id, client_node_host, client_node_port, component);
   }
 
   void UpdateFrom(const AUHMetadata &other) {
@@ -214,6 +220,9 @@ struct AUHMetadata {
     }
     if (other.client_node_port != 0) {
       client_node_port = other.client_node_port;
+    }
+    if (other.component != WaitStateComponent::Unused) {
+      component = other.component;
     }
   }
 
@@ -239,6 +248,9 @@ struct AUHMetadata {
     if (client_node_port != 0) {
       pb->set_client_node_port(client_node_port);
     }
+    if (component != 0) {
+      pb->set_component(component);
+    }
   }
 
   template <class PB>
@@ -249,7 +261,8 @@ struct AUHMetadata {
         .query_id = pb.query_id(),
         .current_request_id = pb.current_request_id(),
         .client_node_host = pb.client_node_host(),
-        .client_node_port = static_cast<uint16_t>(pb.client_node_port())
+        .client_node_port = static_cast<uint16_t>(pb.client_node_port()),
+        .component = WaitStateComponent(static_cast<uint8_t>(pb.component()))
     };
   }
 
@@ -272,6 +285,9 @@ struct AUHMetadata {
     }
     if (pb.has_current_request_id()) {
       current_request_id = pb.current_request_id();
+    }
+    if (pb.has_component()) {
+      component = pb.component();
     }
   }
 };

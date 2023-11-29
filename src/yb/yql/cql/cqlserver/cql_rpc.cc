@@ -154,6 +154,7 @@ CQLInboundCall::CQLInboundCall(rpc::ConnectionPtr conn,
     : InboundCall(std::move(conn), nullptr /* rpc_metrics */, call_processed_listener),
       ql_session_(std::move(ql_session)),
       deadline_(CoarseMonoClock::now() + FLAGS_client_read_write_timeout_ms * 1ms) {
+  wait_state()->UpdateMetadata({.component = util::WaitStateComponent::YCQL});
 }
 
 Status CQLInboundCall::ParseFrom(const MemTrackerPtr& call_tracker, rpc::CallData* call_data) {

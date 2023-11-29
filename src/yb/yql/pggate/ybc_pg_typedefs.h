@@ -428,6 +428,7 @@ typedef struct AUHMetadataDescriptor {
   const uint64_t* top_level_node_id;
   int64_t current_request_id;
   int64_t query_id;
+  uint8_t component;
 } YBCAUHMetadataDescriptor;
 
 typedef struct AUHAuxDescriptor {

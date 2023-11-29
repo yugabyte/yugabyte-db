@@ -967,6 +967,10 @@ class PgClientServiceImpl::Impl {
   }
 
   void Perform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
+    auto wait_state = util::WaitStateInfo::CurrentWaitState();
+    if (wait_state) {
+      wait_state->UpdateMetadata({.component = util::WaitStateComponent::PGPerform});
+    }
     auto status = DoPerform(req, resp, context);
     if (!status.ok()) {
       Respond(status, resp, context);
