@@ -194,6 +194,7 @@ TEST_F(PgLibPqTest, PgStatIdxScanNoIncrementOnErrorTest) {
   auto conn = ASSERT_RESULT(Connect());
   constexpr auto kNumColumns = 30;
   constexpr auto kMaxPredicates = 64;
+  const auto kMaxStatUpdateTime = RegularBuildVsDebugVsSanitizers(10s, 20s, 20s);
 
   std::ostringstream create_table_ss;
   create_table_ss << "CREATE TABLE many (";
@@ -231,7 +232,13 @@ TEST_F(PgLibPqTest, PgStatIdxScanNoIncrementOnErrorTest) {
   // Successful scan.
   ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query_ss.str())));
   ASSERT_OK(conn.FetchMatrix(query_ss.str(), 0, 1));
-  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(idx_scan_query)), 0);
+  // Stats can take time to update, so retry-loop.
+  ASSERT_OK(LoggedWaitFor(
+      [&conn, &idx_scan_query]() -> Result<bool> {
+        return VERIFY_RESULT(conn.FetchRow<int64_t>(idx_scan_query)) == 1;
+      },
+      kMaxStatUpdateTime,
+      "idx_scan == 1"));
 
   // Add last predicate, which should not have been added from above and therefore is a new
   // predicate.
@@ -244,13 +251,8 @@ TEST_F(PgLibPqTest, PgStatIdxScanNoIncrementOnErrorTest) {
   ASSERT_STR_CONTAINS(status.ToString(),
                       Format("ERROR:  cannot use more than $0 predicates in a table or index scan",
                              kMaxPredicates));
-  // Stats can take time to update, so retry-loop.
-  ASSERT_OK(WaitFor(
-      [&conn, &idx_scan_query]() -> Result<bool> {
-        return VERIFY_RESULT(conn.FetchRow<int64_t>(idx_scan_query)) == 1;
-      },
-      30s,
-      "idx_scan == 1"));
+  SleepFor(kMaxStatUpdateTime);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(idx_scan_query)), 1);
 }
 
 TEST_F_EX(PgLibPqTest, SerializableColoring, PgLibPqFailOnConflictTest) {
