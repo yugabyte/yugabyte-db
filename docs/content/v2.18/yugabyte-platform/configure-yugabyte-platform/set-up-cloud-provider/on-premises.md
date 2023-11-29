@@ -238,4 +238,4 @@ To add the instances, do the following:
 
 YugabyteDB Anywhere runs the check and displays the status in the **Preflight Check** column. Click in the column to view details; you can also view the results under **Tasks**.
 
-If all your instances successfully pass the preflight check, your on-premises cloud provider configuration is ready, and you can proceed to [Configure the backup target](../../backup-target/) or [Create deployments](../../../create-deployments/).
+If all your instances successfully pass the preflight check, your on-premises cloud provider configuration is ready, and you can proceed to [Configure the backup target](../../backup-target/) or [deploy universes](../../../create-deployments/).
