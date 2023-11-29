@@ -99,7 +99,7 @@ After the active instance has been configured, you can configure one or more sta
 
 1. Add the standby instance root certificate to the [YugabyteDB Anywhere trust store](../../security/enable-encryption-in-transit/#add-certificates-to-your-trust-store) on the active instance. **Note**  that you need to perform this step on the active instance, and not the standby instance.
 
-    This allows the primary to connect to the standby instance if the standby.
+    This allows the primary to connect to the standby instance.
 
 1. Navigate to **Admin > High Availability > Replication Configuration** and select **Instance Configuration**.
 
