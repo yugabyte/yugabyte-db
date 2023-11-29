@@ -215,7 +215,11 @@ TEST_F(PgLibPqTest, PgStatIdxScanNoIncrementOnErrorTest) {
   const auto noIncrementRows = ASSERT_RESULT((conn.FetchRows<int64_t>("select idx_scan from pg_stat_user_indexes")));
   ASSERT_EQ(noIncrementRows, (decltype(noIncrementRows){0, 0}));
 
-  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan("select * from many where c1 = 1")));
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan("select c1 from many where c1 = 1")));
+  // ASSERT_OK(conn.Fetch("select * from many where c1 = 1"));
+  auto values = ASSERT_RESULT(conn.FetchRows<int32_t>("select c1 from many where c1 = 1"));
+  ASSERT_EQ(values.size(), 0);
+
   const auto incrementRows = ASSERT_RESULT((conn.FetchRows<int64_t>("select idx_scan from pg_stat_user_indexes")));
   ASSERT_EQ(incrementRows, (decltype(incrementRows){0, 0})); // should expect 0, 1
 }
