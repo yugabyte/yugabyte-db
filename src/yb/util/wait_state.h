@@ -163,15 +163,15 @@ YB_DEFINE_ENUM_TYPE(
     (CQLRead)(CQLWrite)
     (CQLWaitingOnDocdb)
 
-    ((PgPerformHandling, YB_PG_CLIENT_SERVICE))
-    (PGWaitingOnDocdb)
-    (PGActiveOnCPU)
+    // ((PgPerformHandling, YB_PG_CLIENT_SERVICE))
+    // (PGWaitingOnDocdb)
+    // (PGActiveOnCPU)
 
     // YBClient
-    ((YBCActiveOnCPU, YB_CLIENT))
-      (LookingUpTablet)
-      (YBCSyncLeaderMasterRpc)
-      (YBCFindMasterProxy)
+    // ((YBCActiveOnCPU, YB_CLIENT))
+    //   (LookingUpTablet)
+    //   (YBCSyncLeaderMasterRpc)
+    //   (YBCFindMasterProxy)
 
     // Perform Wait Events
     ((StorageRead, YB_PG_WAIT_PERFORM))

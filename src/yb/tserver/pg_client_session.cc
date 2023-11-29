@@ -929,7 +929,7 @@ template <class DataPtr>
 Status PgClientSession::DoPerform(const DataPtr& data, CoarseTimePoint deadline,
                                   rpc::RpcContext* context) {
   auto& options = *data->req.mutable_options();
-  SET_WAIT_STATUS(util::WaitStateCode::PgPerformHandling);
+  // SET_WAIT_STATUS(util::WaitStateCode::PgPerformHandling);
   if (options.has_auh_metadata()) {
     util::WaitStateInfo::UpdateMetadataFromPB(options.auh_metadata());
   }
@@ -981,11 +981,11 @@ Status PgClientSession::DoPerform(const DataPtr& data, CoarseTimePoint deadline,
   data->ops = VERIFY_RESULT(PrepareOperations(
       &data->req, session, &data->sidecars, &table_cache_));
 
-  SET_WAIT_STATUS(util::WaitStateCode::PGWaitingOnDocdb);
+  // SET_WAIT_STATUS(util::WaitStateCode::PGWaitingOnDocdb);
   session->FlushAsync([this, data, wait_state = util::WaitStateInfo::CurrentWaitState()]
       (client::FlushStatus* flush_status) {
     SCOPED_ADOPT_WAIT_STATE(wait_state);
-    SET_WAIT_STATUS(util::WaitStateCode::PGActiveOnCPU);
+    // SET_WAIT_STATUS(util::WaitStateCode::PGActiveOnCPU);
     data->FlushDone(flush_status);
     const auto ops_count = data->ops.size();
     if (data->transaction) {

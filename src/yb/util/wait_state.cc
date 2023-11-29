@@ -248,8 +248,8 @@ bool WaitsForLock(WaitStateCode c) {
     case WaitStateCode::TxnResolveSealedStatus:
     case WaitStateCode::PgClientSessionStartExchange:
     case WaitStateCode::WaitForYsqlBackendsCatalogVersion:
-    case WaitStateCode::YBCSyncLeaderMasterRpc:
-    case WaitStateCode::YBCFindMasterProxy:
+    // case WaitStateCode::YBCSyncLeaderMasterRpc:
+    // case WaitStateCode::YBCFindMasterProxy:
     case WaitStateCode::ReplicaStateTakeUpdateLock:
     case WaitStateCode::ReplicaStateWaitForMajorityReplicatedHtLeaseExpiration:
     case WaitStateCode::DumpRunningRpcWaitOnReactor:
@@ -258,7 +258,7 @@ bool WaitsForLock(WaitStateCode c) {
     case WaitStateCode::RaftWaitingForQuorum:
     case WaitStateCode::WaitOnTxnConflict:
     case WaitStateCode::WaitOnTxnResolve:
-    case WaitStateCode::PGWaitingOnDocdb:
+    // case WaitStateCode::PGWaitingOnDocdb:
     case WaitStateCode::WaitOnShutdown:
     // We may be taking locks while running in ActiveOnCPU. Distinct wait states
     // have only been created for places where we are waiting on a condition variable.
@@ -295,7 +295,7 @@ bool WaitsForThread(WaitStateCode c) {
   switch (c) {
     case WaitStateCode::Created:
     case WaitStateCode::RaftWaitingForQuorum:
-    case WaitStateCode::LookingUpTablet:
+    // case WaitStateCode::LookingUpTablet:
     case WaitStateCode::ResponseQueued:
     case WaitStateCode::Unused:
     // We could be transitioning from one thread to another. We don't expect
@@ -305,12 +305,12 @@ bool WaitsForThread(WaitStateCode c) {
     case WaitStateCode::PassiveOnCPU:
     case WaitStateCode::WaitOnTxnConflict:
     case WaitStateCode::WaitOnTxnResolve:
-    case WaitStateCode::PgPerformHandling:
+    // case WaitStateCode::PgPerformHandling:
     case WaitStateCode::SysCatalogTableSyncWrite:
     // We need this as per log. Not really sure I understand the details.
     case WaitStateCode::MVCCWaitForSafeTime:
     case WaitStateCode::ApplyingRaftEdits:
-    case WaitStateCode::PGWaitingOnDocdb:
+    // case WaitStateCode::PGWaitingOnDocdb:
 
      return true;
     default:
