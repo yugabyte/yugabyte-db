@@ -1,7 +1,7 @@
 ---
 title: Manage YugabyteDB universe deployments
-headerTitle: Manage YugabyteDB universe deployments
-linkTitle: Manage deployments
+headerTitle: Manage universes
+linkTitle: Manage universes
 description: Manage YugabyteDB universe deployments
 image: /images/section_icons/quick_start/sample_apps.png
 menu:
