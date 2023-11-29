@@ -152,9 +152,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @ApiModelProperty public SoftwareUpgradeState softwareUpgradeState = SoftwareUpgradeState.Ready;
 
   // Set to true when software rollback is allowed.
-  @ApiModelProperty(value = "Available since YBA version 2.21.0.0.")
+  @ApiModelProperty(
+      value = "Available since YBA version 2.21.0.0.",
+      accessMode = AccessMode.READ_ONLY)
   @YbaApi(visibility = YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.21.0.0")
-  @JsonProperty(access = JsonProperty.Access.READ_ONLY)
   public boolean isSoftwareRollbackAllowed = false;
 
   public enum SoftwareUpgradeState {

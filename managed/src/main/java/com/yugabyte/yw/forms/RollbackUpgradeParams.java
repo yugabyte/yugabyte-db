@@ -5,7 +5,6 @@ package com.yugabyte.yw.forms;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -13,6 +12,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import io.swagger.annotations.ApiModelProperty;
+import io.swagger.annotations.ApiModelProperty.AccessMode;
 import java.util.Set;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -23,10 +23,11 @@ public class RollbackUpgradeParams extends UpgradeTaskParams {
   // so that customer can identify version change on older rollback tasks.
   // YBA stores this from UniverseDefinitionTaskParams.prevYBSoftwareConfig
   // runtime while initializing the task.
-  @JsonProperty(value = "ybSoftwareVersion", access = JsonProperty.Access.READ_ONLY)
   @ApiModelProperty(
-      "YbaApi Internal. Target software version during rollback which will be set by YBA itself and"
-          + " overridden in case user provides it.")
+      value =
+          "YbaApi Internal. Target software version during rollback which will be set by YBA itself"
+              + " and overridden in case user provides it.",
+      accessMode = AccessMode.READ_ONLY)
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.21.0.0")
   public String ybSoftwareVersion = null;
 
