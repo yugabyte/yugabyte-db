@@ -230,7 +230,13 @@ TEST_F(PgLibPqTest, PgStatIdxScanNoIncrementOnErrorTest) {
   auto values = ASSERT_RESULT(conn.FetchRows<int32_t>("SELECT c1 FROM many WHERE c1 = 1"));
   ASSERT_EQ(values.size(), 0);
 
-  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(idx_scan_query)), 0); // should expect 1
+  // Stats can take time to update, so retry-loop.
+  ASSERT_OK(WaitFor(
+      [&conn, &idx_scan_query]() -> Result<bool> {
+        return VERIFY_RESULT(conn.FetchRow<int64_t>(idx_scan_query)) == 1;
+      },
+      30s,
+      "idx_scan == 1"));
 }
 
 TEST_F_EX(PgLibPqTest, SerializableColoring, PgLibPqFailOnConflictTest) {
