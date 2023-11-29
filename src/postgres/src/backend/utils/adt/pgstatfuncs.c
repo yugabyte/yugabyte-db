@@ -2333,10 +2333,11 @@ tserver_stat_get_activity(PG_FUNCTION_ARGS)
 		values[2] = CStringGetTextDatum(top_level_node_id);
 		values[3] = Int64GetDatum(rpc->metadata.current_request_id);
 		values[4] = Int64GetDatum(rpc->metadata.query_id);
-		values[5] = UInt32GetDatum(rpc->wait_status_code);
-		values[6] = Int64GetDatum(rpc->aux_info.table_id);
-		values[7] = Int64GetDatum(rpc->aux_info.tablet_id);
-		values[8] = CStringGetTextDatum(rpc->wait_status_code_as_string);
+		values[5] = UInt8GetDatum(rpc->metadata.component);
+		values[6] = UInt32GetDatum(rpc->wait_status_code);
+		values[7] = Int64GetDatum(rpc->aux_info.table_id);
+		values[8] = Int64GetDatum(rpc->aux_info.tablet_id);
+		values[9] = CStringGetTextDatum(rpc->wait_status_code_as_string);
 		memset(nulls, 0, sizeof(nulls));
 		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
 		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));

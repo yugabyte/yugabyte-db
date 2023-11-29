@@ -444,6 +444,8 @@ typedef struct AUHDescriptor {
   const char* wait_status_code_as_string;
 } YBCAUHDescriptor;
 
+// uint8_t kPgAshComponent  = 1;
+
 typedef struct NamespaceIdentifierPB {
   const char* id;
   const char* name;

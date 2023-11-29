@@ -1764,6 +1764,7 @@ YBCStatus YBCActiveUniverseHistory(YBCAUHDescriptor **rpcs, size_t* count) {
           .top_level_node_id = YBCPAllocStdVectorUint64(info.metadata.top_level_node_id),
           .current_request_id = info.metadata.current_request_id,
           .query_id = info.metadata.query_id,
+          // .component = kPgAshComponent;
         },
         .wait_status_code = info.wait_status_code,
         .aux_info = {
