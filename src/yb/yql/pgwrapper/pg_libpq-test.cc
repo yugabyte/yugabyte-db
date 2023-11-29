@@ -193,35 +193,43 @@ TEST_F(PgLibPqTest, Simple) {
 TEST_F(PgLibPqTest, PgStatIdxScanNoIncrementOnErrorTest) {
   auto conn = ASSERT_RESULT(Connect());
 
-  std::string createTableStmt = "create table many (";
-  for (int i = 1; i <= 30; ++i)
-    createTableStmt += Format("c$0 int,", i);
-  createTableStmt += "k int primary key)";
+  constexpr int kNumColumns = 30;
+  constexpr int kMaxPredicates = 64;
 
-  std::string createIndexStmt = "create index on many (";
-  for (int i = 1; i <= 30; ++i)
-    createIndexStmt += Format("c$0,", i);
-  createIndexStmt += "c1 asc)";
+  std::ostringstream create_table_stmt;
+  create_table_stmt << "CREATE TABLE many (";
+  for (int i = 1; i <= kNumColumns; ++i)
+    create_table_stmt << Format("c$0 INT,", i);
+  create_table_stmt << "k INT PRIMARY KEY)";
 
-  std::string predicateErrorQuery = "select * from many where ";
-  for (int i = 1; i <= 30; ++i)
-    predicateErrorQuery += Format("c$0 = 1 and c$0 < 2 and c$0 > 0 and ", i);
-  predicateErrorQuery += " true";
+  std::ostringstream create_index_stmt;
+  create_index_stmt << "CREATE INDEX ON many (";
+  for (int i = 1; i <= kNumColumns; ++i)
+    create_index_stmt << Format("c$0,", i);
+  create_index_stmt << "c1 ASC)";
 
-  ASSERT_OK(conn.Execute(createTableStmt));
-  ASSERT_OK(conn.Execute(createIndexStmt));
+  std::ostringstream predicate_error_query;
+  predicate_error_query << "SELECT * FROM many WHERE ";
+  for (int i = 0; i <= kNumColumns; ++i)
+    predicate_error_query << Format("c$0 = 1 AND c$0 < 2 AND c$0 > 0 AND ", i);
+  predicate_error_query << " TRUE";
 
-  ASSERT_NOK(conn.Fetch(predicateErrorQuery));
-  const auto noIncrementRows = ASSERT_RESULT((conn.FetchRows<int64_t>("select idx_scan from pg_stat_user_indexes")));
-  ASSERT_EQ(noIncrementRows, (decltype(noIncrementRows){0, 0}));
+  ASSERT_OK(conn.Execute(create_table_stmt.str()));
+  ASSERT_OK(conn.Execute(create_index_stmt.str()));
 
-  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan("select c1 from many where c1 = 1")));
-  // ASSERT_OK(conn.Fetch("select * from many where c1 = 1"));
-  auto values = ASSERT_RESULT(conn.FetchRows<int32_t>("select c1 from many where c1 = 1"));
+  auto status = ResultToStatus(conn.Fetch(predicate_error_query.str()));
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "ERROR:  cannot use more than 64 predicates in a table or index scan");
+
+  const auto no_increment_rows = ASSERT_RESULT((conn.FetchRows<int64_t>("SELECT idx_scan FROM pg_stat_user_indexes")));
+  ASSERT_EQ(no_increment_rows, (decltype(no_increment_rows){0, 0}));
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan("SELECT c1 FROM many WHERE c1 = 1")));
+  // ASSERT_OK(conn.Fetch("SELECT * FROM many WHERE c1 = 1"));
+  auto values = ASSERT_RESULT(conn.FetchRows<int32_t>("SELECT c1 FROM many WHERE c1 = 1"));
   ASSERT_EQ(values.size(), 0);
 
-  const auto incrementRows = ASSERT_RESULT((conn.FetchRows<int64_t>("select idx_scan from pg_stat_user_indexes")));
-  ASSERT_EQ(incrementRows, (decltype(incrementRows){0, 0})); // should expect 0, 1
+  const auto increment_rows = ASSERT_RESULT((conn.FetchRows<int64_t>("SELECT idx_scan FROM pg_stat_user_indexes")));
+  ASSERT_EQ(increment_rows, (decltype(increment_rows){0, 0})); // should expect 0, 1
 }
 
 TEST_F_EX(PgLibPqTest, SerializableColoring, PgLibPqFailOnConflictTest) {
