@@ -1035,6 +1035,11 @@ CREATE VIEW tserver_stat_activity AS
     SELECT *
     FROM tserver_stat_get_activity();
 
+CREATE VIEW ycql_stat_statements AS
+    SELECT *
+    FROM ycql_stat_statements();
+REVOKE ALL ON ycql_stat_statements FROM public;
+
 -- All columns of pg_subscription except subconninfo are readable.
 REVOKE ALL ON pg_subscription FROM public;
 GRANT SELECT (subdbid, subname, subowner, subenabled, subslotname, subpublications)

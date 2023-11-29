@@ -17303,6 +17303,12 @@ SELECT * FROM pg_ls_dir('.') WITH ORDINALITY AS t(ls,n);
        <entry><type>text</type></entry>
        <entry><productname>PostgreSQL</productname> version information. See also <xref linkend="guc-server-version-num"/> for a machine-readable version.</entry>
       </row>
+
+      <row>
+        <entry><literal><function>ycql_stat_statements()</function></literal></entry>
+        <entry><type>record</type></entry>
+        <entry>Return stats about all YCQL statements executed on this node</entry>
+      </row>
      </tbody>
     </tgroup>
    </table>

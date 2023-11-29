@@ -3964,3 +3964,81 @@ YbReadWholeFile(const char *filename, int* length, int elevel)
 	buf[*length] = '\0';
 	return buf;
 }
+
+/*
+ * For backward compatibility, this function dynamically adapts to the number
+ * of output columns defined in pg_proc.
+ */
+Datum
+ycql_stat_statements(PG_FUNCTION_ARGS)
+{
+  FuncCallContext *funcctx;
+  int expected_ncols = 9;
+  static int ncols = 0;
+
+  if (ncols < expected_ncols)
+    ncols = YbGetNumberOfFunctionOutputColumns(8067 /* ycql_stat_statements function
+												   oid hardcoded in pg_proc.dat */);
+  if (SRF_IS_FIRSTCALL())
+  {
+    MemoryContext oldcontext;
+    TupleDesc tupdesc;
+
+    funcctx = SRF_FIRSTCALL_INIT();
+    oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+    tupdesc = CreateTemplateTupleDesc(ncols, false);
+
+    TupleDescInitEntry(tupdesc, (AttrNumber) 1,
+                       "queryid", INT8OID, -1, 0);
+    TupleDescInitEntry(tupdesc, (AttrNumber) 2,
+                       "query", TEXTOID, -1, 0);
+    TupleDescInitEntry(tupdesc, (AttrNumber) 3,
+                       "is_prepared", BOOLOID, -1, 0);
+    TupleDescInitEntry(tupdesc, (AttrNumber) 4,
+                       "calls", INT8OID, -1, 0);
+    TupleDescInitEntry(tupdesc, (AttrNumber) 5,
+                       "total_time", FLOAT8OID, -1, 0);
+    TupleDescInitEntry(tupdesc, (AttrNumber) 6,
+                       "min_time", FLOAT8OID, -1, 0);
+    TupleDescInitEntry(tupdesc, (AttrNumber) 7,
+                       "max_time", FLOAT8OID, -1, 0);
+    TupleDescInitEntry(tupdesc, (AttrNumber) 8,
+                       "mean_time", FLOAT8OID, -1, 0);
+    TupleDescInitEntry(tupdesc, (AttrNumber) 9,
+                         "stddev_time", FLOAT8OID, -1, 0);
+    funcctx->tuple_desc = BlessTupleDesc(tupdesc);
+
+    YCQLStatDescriptor *stats = NULL;
+    size_t num_stats = 0;
+    HandleYBStatus(YBCYCQLStatStatements(&stats, &num_stats));
+    funcctx->max_calls = num_stats;
+    funcctx->user_fctx = stats;
+    MemoryContextSwitchTo(oldcontext);
+  }
+  funcctx = SRF_PERCALL_SETUP();
+  if (funcctx->call_cntr < funcctx->max_calls)
+  {
+    Datum		values[ncols];
+    bool		nulls[ncols];
+    HeapTuple	tuple;
+
+    int cntr = funcctx->call_cntr;
+    YCQLStatDescriptor *stats = (YCQLStatDescriptor *)funcctx->user_fctx + cntr;
+
+    values[0] = Int64GetDatum(stats->queryid);
+    values[1] = CStringGetTextDatum(stats->query);
+    values[2] = BoolGetDatum(stats->is_prepared);
+    values[3] = Int64GetDatum(stats->calls);
+    values[4] = Float8GetDatumFast(stats->total_time);
+    values[5] = Float8GetDatumFast(stats->min_time);
+    values[6] = Float8GetDatumFast(stats->max_time);
+    values[7] = Float8GetDatumFast(stats->mean_time);
+    values[8] = Float8GetDatumFast(stats->stddev_time);
+
+    memset(nulls, 0, sizeof(nulls));
+    tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
+    SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
+  }
+  else
+    SRF_RETURN_DONE(funcctx);
+}

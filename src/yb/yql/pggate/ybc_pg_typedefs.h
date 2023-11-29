@@ -468,6 +468,18 @@ typedef struct TableIDInfo {
   YBCTableIDMetadataInfo metadata;
 } YBCTableIDInfo;
 
+typedef struct YCQLStatDescriptor {
+  uint64_t queryid;
+  const char* query;
+  bool is_prepared;
+  int64_t calls;
+  double total_time;
+  double min_time;
+  double max_time;
+  double mean_time;
+  double stddev_time;
+} YCQLStatDescriptor;
+
 typedef struct PgColumnInfo {
   bool is_primary;
   bool is_hash;

@@ -192,5 +192,10 @@ rpc::Messenger* MasterTabletServer::GetMessenger(yb::util::MessengerType messeng
   return nullptr;
 }
 
+const std::shared_ptr<CQLServiceImpl> MasterTabletServer::GetCQLService() const {
+  LOG(FATAL) << "Unexpected call of GetCQLService()";
+  return nullptr;
+}
+
 } // namespace master
 } // namespace yb

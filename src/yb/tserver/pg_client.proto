@@ -90,6 +90,8 @@ service PgClientService {
       returns (PgTableIDMetadataResponsePB);
   rpc GetActiveTransactionList(PgGetActiveTransactionListRequestPB)
       returns (PgGetActiveTransactionListResponsePB);
+  rpc YCQLStatStatements(PgYCQLStatStatementsRequestPB)
+      returns (PgYCQLStatStatementsResponsePB);
 }
 
 message PgHeartbeatRequestPB {
@@ -735,4 +737,23 @@ message PgGetActiveTransactionListResponsePB {
   }
   AppStatusPB status = 1;
   repeated EntryPB entries = 2;
+}
+
+message PgYCQLStatStatementsRequestPB {}
+
+message PgYCQLStatStatementsResponsePB {
+  AppStatusPB status = 1;
+  repeated YCQLStatementStatsPB statements = 2;
+}
+
+message YCQLStatementStatsPB {
+  uint64 queryid = 1;
+  string query = 2;
+  bool is_prepared = 3;
+  int64 calls = 4;
+  double total_time = 5;
+  double min_time = 6;
+  double max_time = 7;
+  double mean_time = 8;
+  double stddev_time = 9;
 }

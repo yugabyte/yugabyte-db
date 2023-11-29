@@ -10485,4 +10485,13 @@
   proretset => 't', provolatile => 'v', prorettype => 'text',
   proargtypes => '', proallargtypes => '{text}', proargmodes => '{o}',
   proargnames => '{wait_state}', prosrc => 'tserver_stat_get_activity' },
+
+{ oid => '8067', descr => 'Return stats about all YCQL statements executed on this node',
+  proname => 'ycql_stat_statements', proretset => 't', provolatile => 's', proisstrict => 'f',
+  prorettype => 'record', prorows => '100',
+  proargtypes => '',
+  proallargtypes => '{int8,text,bool,int8,float8,float8,float8,float8,float8}',
+  proargmodes => '{o,o,o,o,o,o,o,o,o}',
+  proargnames => '{queryid,query,is_prepared,calls,total_time,min_time,max_time,mean_time,stddev_time}',
+  prosrc => 'ycql_stat_statements' },
 ]

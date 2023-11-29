@@ -2138,5 +2138,9 @@ Result<bool> PgApiImpl::IsObjectPartOfXRepl(const PgObjectId& table_id) {
   return pg_session_->IsObjectPartOfXRepl(table_id);
 }
 
+Result<client::YCQLStatStatementsInfo> PgApiImpl::YCQLStatStatements() {
+  return pg_session_->YCQLStatStatements();
+}
+
 } // namespace pggate
 } // namespace yb

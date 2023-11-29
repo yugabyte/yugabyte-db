@@ -101,5 +101,44 @@ struct YBActiveUniverseHistoryInfo {
   }
 };
 
+struct YCQLStatStatementInfo {
+  uint64_t queryid;
+  std::string query;
+  bool is_prepared;
+  int64_t calls;
+  double total_time;
+  double min_time;
+  double max_time;
+  double mean_time;
+  double stddev_time;
+  template <class PB>
+  static YCQLStatStatementInfo FromPB(const PB& pb) {
+    return YCQLStatStatementInfo {
+        .queryid = pb.queryid(),
+        .query = pb.query(),
+        .is_prepared = pb.is_prepared(),
+        .calls = pb.calls(),
+        .total_time = pb.total_time(),
+        .min_time = pb.min_time(),
+        .max_time = pb.max_time(),
+        .mean_time = pb.mean_time(),
+        .stddev_time = pb.stddev_time(),
+    };
+  }
+
+  template <class PB>
+  void ToPB(PB* pb) const {
+    pb->set_queryid(queryid);
+    pb->set_query(query);
+    pb->set_is_prepared(is_prepared);
+    pb->set_calls(calls);
+    pb->set_total_time(total_time);
+    pb->set_min_time(min_time);
+    pb->set_max_time(max_time);
+    pb->set_mean_time(mean_time);
+    pb->set_stddev_time(stddev_time);
+  }
+};
+
 } // namespace client
 } // namespace yb
