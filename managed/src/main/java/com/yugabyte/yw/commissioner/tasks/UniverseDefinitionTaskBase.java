@@ -2409,7 +2409,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         getAnsibleConfigureServerParams(node, processType, UpgradeTaskType.Software, taskSubType);
     if (softwareVersion == null) {
       UserIntent userIntent =
-          getUniverse(true).getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
+          getUniverse().getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
     } else {
       params.ybSoftwareVersion = softwareVersion;
@@ -2440,7 +2440,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       UpgradeTaskType type,
       UpgradeTaskSubType taskSubType) {
     return getAnsibleConfigureServerParams(
-        getUniverse(true).getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent,
+        getUniverse().getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent,
         node,
         processType,
         type,
