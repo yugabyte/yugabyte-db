@@ -82,7 +82,11 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   void SetCQLServerMessenger(tserver::CQLServerMessenger messenger) override {};
 
-rpc::Messenger* GetMessenger(yb::util::MessengerType messenger_type) const override;
+  void SetCQLService(std::shared_ptr<CQLServiceImpl> service) override {};
+
+  rpc::Messenger* GetMessenger(yb::util::MessengerType messenger_type) const override;
+
+  const std::shared_ptr<CQLServiceImpl> GetCQLService() const override;
 
  private:
   Master* master_ = nullptr;

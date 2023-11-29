@@ -109,6 +109,9 @@ Result<int> GetMajorVersionFromSystemCatalogState(PGConn* pgconn) {
   // V8: #7850 introducing ybgin access method.
   INCREMENT_VERSION_OR_RETURN_IT(FunctionExists(pgconn, "ybginhandler"))
 
+  // V9: #8067 introducing ycql_stat_statements access method.
+  INCREMENT_VERSION_OR_RETURN_IT(FunctionExists(pgconn, "ycql_stat_statements"))
+
   return major_version;
 }
 

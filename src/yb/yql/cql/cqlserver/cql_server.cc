@@ -111,6 +111,7 @@ Status CQLServer::Start() {
 
   if (tserver_) {
     tserver_->SetCQLServerMessenger(std::bind(&CQLServer::messenger, this));
+    tserver_->SetCQLService(cql_service_);
   }
 
   return Status::OK();

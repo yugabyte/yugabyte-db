@@ -301,8 +301,14 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void SetCQLServerMessenger(CQLServerMessenger messenger) override;
 
+  void SetCQLService(std::shared_ptr<CQLServiceImpl> service) override;
+
   rpc::Messenger* GetMessenger(util::MessengerType messenger_type) const override;
-  
+
+  const std::shared_ptr<CQLServiceImpl> GetCQLService() const override {
+    return cql_service_;
+  }
+
   std::shared_ptr<cdc::CDCServiceImpl> GetCDCService() const { return cdc_service_; }
 
  protected:
@@ -429,6 +435,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::unique_ptr<encryption::UniverseKeyManager> universe_key_manager_;
 
   CQLServerMessenger cql_server_messenger_;
+
+  std::shared_ptr<cqlserver::CQLServiceImpl> cql_service_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };

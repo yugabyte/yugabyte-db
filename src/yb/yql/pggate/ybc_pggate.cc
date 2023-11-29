@@ -1801,6 +1801,36 @@ YBCStatus YBCIsObjectPartOfXRepl(YBCPgOid database_oid, YBCPgOid table_oid,
   return ToYBCStatus(res.status());
 }
 
+YBCStatus YBCYCQLStatStatements(YCQLStatDescriptor **stats, size_t* num_stats) {
+  const auto result = pgapi->YCQLStatStatements();
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+  const auto &statements_stat = result.get();
+  *num_stats = statements_stat.size();
+  *stats = NULL;
+  if (!statements_stat.empty()) {
+    *stats = static_cast<YCQLStatDescriptor *>(
+        YBCPAlloc(sizeof(YCQLStatDescriptor) * statements_stat.size()));
+    YCQLStatDescriptor *dest = *stats;
+    for (const auto &info : statements_stat) {
+      new (dest) YCQLStatDescriptor {
+          .queryid = info.queryid,
+          .query = YBCPAllocStdString(info.query),
+          .is_prepared = info.is_prepared,
+          .calls = info.calls,
+          .total_time = info.total_time,
+          .min_time = info.min_time,
+          .max_time = info.max_time,
+          .mean_time = info.mean_time,
+          .stddev_time = info.stddev_time,
+      };
+      ++dest;
+    }
+  }
+  return YBCStatusOK();
+}
+
 YBCStatus YBCPgCancelTransaction(const unsigned char* transaction_id) {
   return ToYBCStatus(pgapi->CancelTransaction(transaction_id));
 }

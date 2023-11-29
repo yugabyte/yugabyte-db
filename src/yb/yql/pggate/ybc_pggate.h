@@ -724,6 +724,8 @@ YBCStatus YBCIsObjectPartOfXRepl(YBCPgOid database_oid, YBCPgOid table_oid,
 
 YBCStatus YBCPgCancelTransaction(const unsigned char* transaction_id);
 
+YBCStatus YBCYCQLStatStatements(YCQLStatDescriptor **stats, size_t* num_stats);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

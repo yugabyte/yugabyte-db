@@ -12,7 +12,7 @@
 [
 
 # For better version control conflict detection, list latest migration filename
-# here: V44__22222__add_wait_event_info.sql
-{ major => '44', minor => '0', name => '<baseline>', time_applied => '_null_' }
+# here: V45__11111__ycql_stat_statements.sql
+{ major => '45', minor => '0', name => '<baseline>', time_applied => '_null_' }
 
 ]

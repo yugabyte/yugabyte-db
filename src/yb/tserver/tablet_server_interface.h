@@ -28,9 +28,12 @@
 #include "yb/tserver/local_tablet_server.h"
 #include "yb/util/wait_state.h"
 
+#include "yb/yql/cql/cqlserver/cql_service.h"
+
 namespace yb {
 
 class MemTracker;
+using cqlserver::CQLServiceImpl;
 
 namespace tserver {
 
@@ -82,6 +85,10 @@ class TabletServerIf : public LocalTabletServer {
   virtual std::vector<yb::util::WaitStateInfoPtr> GetThreadpoolWaitStates() const = 0;
 
   virtual void SetCQLServerMessenger(CQLServerMessenger messenger) = 0;
+
+  virtual void SetCQLService(std::shared_ptr<CQLServiceImpl> service) = 0;
+
+  virtual const std::shared_ptr<CQLServiceImpl> GetCQLService() const = 0;
 
   virtual rpc::Messenger* GetMessenger(util::MessengerType messenger_type) const = 0;
 };

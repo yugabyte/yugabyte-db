@@ -1289,6 +1289,10 @@ void TabletServer::SetCQLServerMessenger(CQLServerMessenger messenger) {
   cql_server_messenger_ = messenger;
 }
 
+void TabletServer::SetCQLService(std::shared_ptr<CQLServiceImpl> service) {
+  cql_service_ = service;
+}
+
 rpc::Messenger* TabletServer::GetMessenger(util::MessengerType messenger_type) const {
   switch (messenger_type) {
     case util::MessengerType::kTserver:

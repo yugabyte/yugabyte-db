@@ -67,6 +67,8 @@
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 
+#include "yb/yql/cql/cqlserver/cql_server.h"
+
 using namespace std::literals;
 
 DEFINE_UNKNOWN_uint64(pg_client_session_expiration_ms, 60000,
@@ -1103,6 +1105,33 @@ class PgClientServiceImpl::Impl {
     }
 
     StatusToPB(status, resp->mutable_status());
+    return Status::OK();
+  }
+
+  Status YCQLStatStatements(
+      const PgYCQLStatStatementsRequestPB& req, PgYCQLStatStatementsResponsePB* resp,
+      rpc::RpcContext* context) {
+    auto cql_service = tablet_server_.GetCQLService();
+    using cqlserver::IsPrepare;
+    using cqlserver::StmtCountersMap;
+    for (const IsPrepare is_prepare : {IsPrepare::kTrue, IsPrepare::kFalse}) {
+      const StmtCountersMap stmt_counters = cql_service->GetStatementCountersForMetrics(is_prepare);
+      for (auto &stmt : stmt_counters) {
+        auto &stmt_pb = *resp->add_statements();
+        stmt_pb.set_queryid(std::stoull(b2a_hex(stmt.first).substr(
+            0, std::min(16, static_cast<int>(stmt.first.size()))), 0, 16));
+        stmt_pb.set_query(stmt.second.query);
+        stmt_pb.set_is_prepared(is_prepare == IsPrepare::kTrue);
+        stmt_pb.set_calls(stmt.second.num_calls);
+        stmt_pb.set_total_time(stmt.second.total_time_in_msec);
+        stmt_pb.set_min_time(stmt.second.min_time_in_msec);
+        stmt_pb.set_max_time(stmt.second.max_time_in_msec);
+        stmt_pb.set_mean_time(stmt.second.total_time_in_msec / stmt.second.num_calls);
+        const double stddev_time = stmt.second.num_calls == 0 ? 0. :
+            sqrt(stmt.second.sum_var_time_in_msec / stmt.second.num_calls);
+        stmt_pb.set_stddev_time(stddev_time);
+      }
+    }
     return Status::OK();
   }
 
