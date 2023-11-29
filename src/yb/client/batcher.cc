@@ -312,7 +312,7 @@ void Batcher::CombineError(const InFlightOp& in_flight_op) {
 }
 
 void Batcher::LookupTabletFor(InFlightOp* op) {
-  PUSH_WAIT_STATUS(util::WaitStateCode::LookingUpTablet);
+  // PUSH_WAIT_STATUS(util::WaitStateCode::LookingUpTablet);
   auto shared_this = shared_from_this();
   client_->data_->meta_cache_->LookupTabletByKey(
       op->yb_op->mutable_table(), op->partition_key, deadline_,
@@ -415,7 +415,7 @@ void Batcher::AllLookupsDone() {
   // 2. All outstanding ops have finished lookup. Why? To avoid a situation
   //    where ops are flushed one by one as they finish lookup.
 
-  POP_WAIT_STATUS(util::WaitStateCode::LookingUpTablet);
+  // POP_WAIT_STATUS(util::WaitStateCode::LookingUpTablet);
   if (state_ != BatcherState::kResolvingTablets) {
     LOG(DFATAL) << __func__ << " is invoked in wrong state: " << state_;
     return;
