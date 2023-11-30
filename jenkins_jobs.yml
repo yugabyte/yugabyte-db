@@ -51,7 +51,7 @@ jobs:
     architecture: x86_64
     release_artifact: true
 
-  - os: ubuntu20.04
+  - os: ubuntu22.04
     compiler: clang16
     build_type: debug
     release_artifact: false
