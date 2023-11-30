@@ -41,7 +41,7 @@ ybcstat_get_wait_event_component(uint32_t wait_event_info) {
     if (wait_event_info == 0)
         return NULL;
 
-    componentId = wait_event_info & 0xF0000000;
+    componentId = (wait_event_info & 0xF0000000) >> 28;
 
     switch (componentId) {
         case YB_PGGATE:
@@ -50,13 +50,17 @@ ybcstat_get_wait_event_component(uint32_t wait_event_info) {
         case YB_TSERVER:
             event_component = "TServer";
             break;
-        case YB_PG:
-            event_component = "PG";
+        case YB_PERFORM:
+            event_component = "Pg Perform";
             break;
         case YB_YBC:
             event_component = "Proxy/YBClient";
             break;
+        case YB_PG:
+            event_component = "PG";
+            break;
         default:
+            LOG(ERROR) << "Unknown componenet " << std::hex << componentId << " for wait_event " << std::hex << wait_event_info;
             event_component = "???";
             break;
     }
@@ -79,7 +83,7 @@ ybcstat_get_wait_event_type(uint32_t wait_event_info) {
     if (wait_event_info == 0)
         return NULL;
 
-    classId = wait_event_info & 0xFF000000;
+    classId = wait_event_info & 0x0FF00000;
 
     switch (classId) {
         case YB_PG_WAIT_PERFORM:
@@ -113,6 +117,7 @@ ybcstat_get_wait_event_type(uint32_t wait_event_info) {
             event_type = "CQL Query";
             break;
         default:
+            LOG(ERROR) << "Unknown class " << std::hex << classId << " for wait_event " << std::hex << wait_event_info;
             event_type = "???";
             break;
     }
@@ -129,7 +134,7 @@ ybcstat_get_wait_event_type(uint32_t wait_event_info) {
 const char *
 ybcstat_get_wait_event(uint32_t wait_event_info)
 {
-    return yb::pggate::yb_stat_get_wait_event(wait_event_info);
+    return yb::pggate::yb_stat_get_wait_event(wait_event_info & 0x0FFFFFFF);
 }
 
 }
