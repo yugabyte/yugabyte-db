@@ -36,7 +36,7 @@ public class RollbackUpgradeParams extends UpgradeTaskParams {
   private static final Set<SoftwareUpgradeState> ALLOWED_UNIVERSE_SOFTWARE_UPGRADE_STATE_SET =
       ImmutableSet.of(
           SoftwareUpgradeState.PreFinalize,
-          SoftwareUpgradeState.RollbackFailed,
+          SoftwareUpgradeState.Ready,
           SoftwareUpgradeState.UpgradeFailed);
 
   @Override
