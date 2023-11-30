@@ -168,6 +168,11 @@ To rotate the CMK used for EAR, do the following:
     - **Customer managed key (CMK)**: Enter the Amazon Resource Name (ARN) of the new CMK to use to encrypt the cluster.
     - **Access key**: Provide an access key of an [IAM identity](https://docs.aws.amazon.com/IAM/latest/UserGuide/id.html) with permissions for the CMK. An access key consists of an access key ID and the secret access key.
 
+    For Azure, provide the following details:
+
+    - Provide the Azure [tenant ID](https://learn.microsoft.com/en-us/entra/fundamentals/how-to-find-tenant), the vault URI (for example, `https://myvault.vault.azure.net`), and the name of the new key.
+    - Enter the client ID and secret for the application with permission to encrypt and decrypt using the CMK.
+
     For GCP:
     - **Resource ID**: Enter the resource ID of the key ring where the new CMK is stored.
     - **Service Account Credentials**: Click **Add Key** to select the credentials JSON file you downloaded when creating credentials for the service account that has permissions to encrypt and decrypt using the CMK.
