@@ -5,7 +5,6 @@ package com.yugabyte.yw.common.gflags;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
@@ -156,20 +155,13 @@ public class AutoFlagUtil {
 
     Set<String> oldMigrationFiles = gFlagsValidation.getYsqlMigrationFilesList(oldVersion);
     Set<String> newMigrationFiles = gFlagsValidation.getYsqlMigrationFilesList(newVersion);
-    Set<String> newFiles =
-        Sets.union(
-            newMigrationFiles.stream()
-                .filter(file -> oldMigrationFiles.contains(file))
-                .collect(Collectors.toSet()),
-            oldMigrationFiles.stream()
-                .filter(file -> newMigrationFiles.contains(file))
-                .collect(Collectors.toSet()));
-    if (newFiles.size() != 0) {
+    newMigrationFiles.removeAll(oldMigrationFiles);
+    if (newMigrationFiles.size() != 0) {
       LOG.debug(
           "Upgrade from {} to {} will require finalize as new migration files are added {}.",
           oldVersion,
           newVersion,
-          newFiles);
+          newMigrationFiles);
       return true;
     }
 
