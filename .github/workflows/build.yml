@@ -41,33 +41,20 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: "Clang 16, debug, CentOS 7"
-            os: ubuntu-20.04
-            yb_build_args: --clang16 debug --no-linuxbrew
-
-          - name: "Clang 16, fastdebug, CentOS 7"
-            os: ubuntu-20.04
-            yb_build_args: --clang16 fastdebug --no-linuxbrew
-
           - name: "Clang 16, release, CentOS 7"
             os: ubuntu-20.04
             yb_build_args: --clang16 release --no-linuxbrew
+            docker_image:  yugabyteci/yb_build_infra_centos7_x86_64:v2023-10-25T03_33_02
 
-          - name: "Clang 16, release, CentOS 7"
-            os: ubuntu-20.04
-            yb_build_args: --clang16 release --no-linuxbrew
-
-          - name: "GCC 11, debug, CentOS 7"
-            os: ubuntu-20.04
-            yb_build_args: --gcc11 debug --no-linuxbrew
-
-          - name: "GCC 11, fastdebug, CentOS 7"
+          - name: "GCC 11, fastdebug, Almalinux 8"
             os: ubuntu-20.04
             yb_build_args: --gcc11 fastdebug --no-linuxbrew
+            docker_image:  yugabyteci/yb_build_infra_almalinux8_x86_64:v2023-10-25T03_33_01
 
-          - name: "GCC 11, release, CentOS 7"
+          - name: "Clang 16, debug, Ubuntu22.04"
             os: ubuntu-20.04
-            yb_build_args: --gcc11 release --no-linuxbrew
+            yb_build_args: --clang16 debug --no-linuxbrew
+            docker_image:  yugabyteci/yb_build_infra_ubuntu2204_x86_64:v2023-10-25T03_33_00
     if: >
       (github.event_name == 'push' &&
        !contains(github.event.head_commit.message, 'skip ci') &&
@@ -95,7 +82,7 @@ jobs:
               -i \
               "-w=$build_dir_in_container" \
               --mount type=bind,source="$PWD",target="$build_dir_in_container" \
-              "yugabyteci/yb_build_infra_centos7:v2022-05-05T04_49_22" \
+              "${{ matrix.docker_image }}" \
               bash -c '
                 set -euo pipefail -x
                 echo "OSTYPE (inside Docker): $OSTYPE"
