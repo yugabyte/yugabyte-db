@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks;
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.mockito.Mockito.*;
 import static play.inject.Bindings.bind;
 
@@ -103,7 +104,7 @@ import play.libs.Json;
 
 @Slf4j
 public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseTest {
-  private static final int MAX_RETRY_COUNT = 2000;
+  protected static final int MAX_RETRY_COUNT = 2000;
   protected static final String ENABLE_CUSTOM_HOOKS_PATH =
       "yb.security.custom_hooks.enable_custom_hooks";
   protected static final String ENABLE_SUDO_PATH = "yb.security.custom_hooks.enable_sudo";
@@ -209,6 +210,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     when(mockBaseTaskDependencies.getHealthChecker()).thenReturn(mockHealthChecker);
     when(mockBaseTaskDependencies.getNodeManager()).thenReturn(mockNodeManager);
     when(mockBaseTaskDependencies.getBackupHelper()).thenReturn(mockBackupHelper);
+    when(mockBaseTaskDependencies.getCommissioner()).thenReturn(commissioner);
   }
 
   @Override
@@ -307,7 +309,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
           new GetMasterClusterConfigResponse(0, "", configBuilder.build(), null);
       when(mockClient.getMasterClusterConfig()).thenReturn(gcr);
     } catch (Exception e) {
-      e.printStackTrace();
+      fail(e.getMessage());
     }
   }
 
@@ -349,10 +351,33 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
             + TaskInfo.getOrBadRequest(taskUUID).getTaskState());
   }
 
+  public boolean waitForTaskRunning(UUID taskUUID) throws InterruptedException {
+    int numRetries = 0;
+    while (numRetries < MAX_RETRY_COUNT) {
+      // Here is a hack to decrease amount of accidental problems for tests using this
+      // function:
+      // Surrounding the next block with try {} catch {} as sometimes h2 raises NPE
+      // inside the get() request. We are not afraid of such exception as the next
+      // request will succeeded.
+      boolean isRunning = commissioner.isTaskRunning(taskUUID);
+      if (isRunning) {
+        return isRunning;
+      }
+      TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+      if (TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())) {
+        return false;
+      }
+      Thread.sleep(100);
+      numRetries++;
+    }
+    throw new RuntimeException(
+        "WaitFor task running exceeded maxRetries! Task state is "
+            + TaskInfo.getOrBadRequest(taskUUID).getTaskState());
+  }
+
   public void waitForTaskPaused(UUID taskUuid) throws InterruptedException {
     int numRetries = 0;
     while (numRetries < MAX_RETRY_COUNT) {
-      System.out.println(numRetries);
       if (!commissioner.isTaskRunning(taskUuid)) {
         throw new RuntimeException(String.format("Task %s is not running", taskUuid));
       }

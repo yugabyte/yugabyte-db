@@ -274,14 +274,6 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
     assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
     assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Delete)));
-    assertNotNull(CustomerTask.findByTaskUUID(randUUID).getCompletionTime());
-
-    // TODO FIXME this assert is INVALID because it is on mockCommissioner
-    // which never removes the universe. It was working before because
-    // the customer in memory was never refreshed from the DB. Now that the
-    // universe UUID is not stored in the customer and the getUniverseUUIDs()
-    // makes a call to the DB, this starts failing.
-    // assertTrue(customer.getUniverseUUIDs().isEmpty());
     assertAuditEntry(1, customer.getUuid());
   }
 

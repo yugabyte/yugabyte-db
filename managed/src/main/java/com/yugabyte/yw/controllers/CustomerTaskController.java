@@ -379,7 +379,7 @@ public class CustomerTaskController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
     // Validate if task belongs to the user or not
     CustomerTask.getOrBadRequest(customerUUID, taskUUID);
-    boolean isSuccess = commissioner.abortTask(taskUUID);
+    boolean isSuccess = commissioner.abortTask(taskUUID, false);
     if (!isSuccess) {
       return YBPSuccess.withMessage("Task is not running.");
     }
