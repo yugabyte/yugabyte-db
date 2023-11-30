@@ -649,25 +649,39 @@ class PgClientServiceImpl::Impl {
     if (req->transactions_by_tablet().empty() && req->transaction_ids().empty()) {
       return Status::OK();
     }
-    // TODO(pglocks): parallelize RPCs
-    rpc::RpcController controller;
+
+    std::vector<std::future<Status>> status_futures;
+    status_futures.reserve(remote_tservers.size());
+    std::vector<std::shared_ptr<GetLockStatusResponsePB>> node_responses;
+    node_responses.reserve(remote_tservers.size());
     for (const auto& remote_tserver : remote_tservers) {
       auto proxy = remote_tserver->proxy();
-      GetLockStatusResponsePB node_resp;
-      controller.Reset();
-      auto s = proxy->GetLockStatus(*req, &node_resp, &controller);
+      auto status_promise = std::make_shared<std::promise<Status>>();
+      status_futures.push_back(status_promise->get_future());
+      auto node_resp = std::make_shared<GetLockStatusResponsePB>();
+      node_responses.push_back(node_resp);
+      std::shared_ptr<rpc::RpcController> controller = std::make_shared<rpc::RpcController>();
+      proxy->GetLockStatusAsync(
+          *req, node_resp.get(), controller.get(), [controller, status_promise] {
+            status_promise->set_value(controller->status());
+          });
+    }
+
+    for (size_t i = 0; i < status_futures.size(); i++) {
+      auto& node_resp = node_responses[i];
+      auto s = status_futures[i].get();
       if (!s.ok()) {
         resp->Clear();
         return s;
       }
-      if (node_resp.has_error()) {
+      if (node_resp->has_error()) {
         resp->Clear();
-        *resp->mutable_status() = node_resp.error().status();
+        *resp->mutable_status() = node_resp->error().status();
         return Status::OK();
       }
       auto* node_locks = resp->add_node_locks();
-      node_locks->set_permanent_uuid(remote_tserver->permanent_uuid());
-      node_locks->mutable_tablet_lock_infos()->Swap(node_resp.mutable_tablet_lock_infos());
+      node_locks->set_permanent_uuid(remote_tservers[i]->permanent_uuid());
+      node_locks->mutable_tablet_lock_infos()->Swap(node_resp->mutable_tablet_lock_infos());
       VLOG(4) << "Adding node locks to PgGetLockStatusResponsePB: "
               << node_locks->ShortDebugString();
     }
