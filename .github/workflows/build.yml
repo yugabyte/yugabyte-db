@@ -51,10 +51,10 @@ jobs:
             yb_build_args: --gcc11 fastdebug --no-linuxbrew
             docker_image:  yugabyteci/yb_build_infra_almalinux8_x86_64:v2023-10-25T03_33_01
 
-          - name: "Clang 16, debug, Ubuntu20.04"
+          - name: "Clang 16, debug, Almalinux 8"
             os: ubuntu-20.04
             yb_build_args: --clang16 debug --no-linuxbrew
-            docker_image:  yugabyteci/yb_build_infra_ubuntu2004_x86_64:v2023-10-25T03_33_01
+            docker_image:  yugabyteci/yb_build_infra_almalinux8_x86_64:v2023-10-25T03_33_01
     if: >
       (github.event_name == 'push' &&
        !contains(github.event.head_commit.message, 'skip ci') &&
