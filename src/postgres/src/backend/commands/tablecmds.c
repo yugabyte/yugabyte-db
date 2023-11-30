@@ -17397,6 +17397,17 @@ YbATCloneTableAndGetMappings(CreateStmt *create_stmt, const Relation old_rel,
 							 AttrNumber **new2old_attmap,
 							 bool ignore_type_mismatch)
 {
+
+	if (!YBSuppressUnsafeAlterNotice())
+		ereport(NOTICE,
+				(errmsg("table rewrite may lead to inconsistencies"),
+				 errdetail("Concurrent DMLs may not be reflected in the new"
+						   " table."),
+				 errhint("See https://github.com/yugabyte/yugabyte-db/issues/"
+						 "19860. Set 'ysql_suppress_unsafe_alter_notice'"
+						 " yb-tserver gflag to true to suppress this"
+						 " notice.")));
+
 	/* clang-format on */
 	ObjectAddress address =
 		DefineRelation(create_stmt, RELKIND_RELATION, old_rel->rd_rel->relowner,
