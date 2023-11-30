@@ -33,6 +33,7 @@
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/xcluster/xcluster_manager.h"
+#include "yb/master/xcluster/xcluster_replication_group.h"
 #include "yb/master/xcluster_consumer_registry_service.h"
 #include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/master.h"
@@ -135,6 +136,7 @@ DEFINE_test_flag(bool, yb_enable_cdc_consistent_snapshot_streams, false,
 DECLARE_bool(xcluster_wait_on_ddl_alter);
 DECLARE_int32(master_rpc_timeout_ms);
 DECLARE_bool(TEST_ysql_yb_enable_replication_commands);
+DECLARE_bool(enable_xcluster_auto_flag_validation);
 
 
 #define RETURN_ACTION_NOT_OK(expr, action) \
@@ -294,6 +296,8 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
 };
 
 void CatalogManager::ClearXReplState() {
+  xcluster_auto_flags_revalidation_needed_ = true;
+
   // Clear CDC stream map.
   cdc_stream_map_.clear();
 
@@ -2319,6 +2323,30 @@ CatalogManager::CreateUniverseReplicationInfoForProducer(
     LockGuard lock(mutex_);
     universe_replication_map_[ri->ReplicationGroupId()] = ri;
   }
+
+  // Make sure the AutoFlags are compatible.
+  // This is done after the replication info is persisted since it performs RPC calls to source
+  // universe and we can crash during this call.
+  // TODO: When new master starts it can retry this step or mark the replication group as failed.
+  if (FLAGS_enable_xcluster_auto_flag_validation) {
+    const auto auto_flags_config = master_->GetAutoFlagsConfig();
+    auto status = ResultToStatus(GetAutoFlagConfigVersionIfCompatible(*ri, auto_flags_config));
+
+    if (!status.ok()) {
+      MarkUniverseReplicationFailed(ri, status);
+      return status.CloneAndAddErrorCode(MasterError(MasterErrorPB::INVALID_REQUEST));
+    }
+
+    auto l = ri->LockForWrite();
+    l.mutable_data()->pb.set_validated_local_auto_flags_config_version(
+        auto_flags_config.config_version());
+
+    RETURN_NOT_OK(CheckLeaderStatus(
+        sys_catalog_->Upsert(leader_ready_term(), ri),
+        "inserting universe replication info into sys-catalog"));
+
+    l.Commit();
+  }
   return ri;
 }
 
@@ -3607,11 +3635,12 @@ void CatalogManager::AddCDCStreamToUniverseAndInitConsumer(
         } else {
           auto xcluster_rpc_tasks = *xcluster_rpc_tasks_result;
           Status s = InitXClusterConsumer(
-              consumer_info, HostPort::ToCommaSeparatedString(hp),
-              cdc::ReplicationGroupId(l->pb.replication_group_id()), xcluster_rpc_tasks);
+              consumer_info, HostPort::ToCommaSeparatedString(hp), *universe.get(),
+              xcluster_rpc_tasks);
           if (!s.ok()) {
             LOG(ERROR) << "Error registering subscriber: " << s;
             l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::FAILED);
+            universe->SetSetupUniverseReplicationErrorStatus(s);
           } else {
             if (cdc::IsAlterReplicationGroupId(universe->ReplicationGroupId())) {
               // Don't enable ALTER universes, merge them into the main universe instead.
@@ -3741,27 +3770,26 @@ Status CatalogManager::UpdateCDCProducerOnTabletSplit(
 
 Status CatalogManager::InitXClusterConsumer(
     const std::vector<XClusterConsumerStreamInfo>& consumer_info, const std::string& master_addrs,
-    const cdc::ReplicationGroupId& replication_group_id,
+    UniverseReplicationInfo& replication_info,
     std::shared_ptr<XClusterRpcTasks> xcluster_rpc_tasks) {
-  scoped_refptr<UniverseReplicationInfo> universe;
-  {
-    SharedLock lock(mutex_);
-    universe = FindPtrOrNull(universe_replication_map_, replication_group_id);
-    if (universe == nullptr) {
-      return STATUS(NotFound, "Could not find CDC producer universe",
-                    replication_group_id.ToString(), MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
-    }
-  }
-  auto universe_l = universe->LockForRead();
+  auto universe_l = replication_info.LockForRead();
   auto schema_version_mappings = universe_l->pb.schema_version_mappings();
 
   // Get the tablets in the consumer table.
   cdc::ProducerEntryPB producer_entry;
+
+  if (FLAGS_enable_xcluster_auto_flag_validation) {
+    auto compatible_auto_flag_config_version = VERIFY_RESULT(
+        GetAutoFlagConfigVersionIfCompatible(replication_info, master_->GetAutoFlagsConfig()));
+    producer_entry.set_compatible_auto_flag_config_version(compatible_auto_flag_config_version);
+    producer_entry.set_validated_auto_flags_config_version(compatible_auto_flag_config_version);
+  }
+
   auto cluster_config = ClusterConfig();
   auto l = cluster_config->LockForWrite();
   auto* consumer_registry = l.mutable_data()->pb.mutable_consumer_registry();
   auto transactional = universe_l->pb.transactional();
-  if (!cdc::IsAlterReplicationGroupId(universe->ReplicationGroupId())) {
+  if (!cdc::IsAlterReplicationGroupId(replication_info.ReplicationGroupId())) {
     consumer_registry->set_transactional(transactional);
   }
   for (const auto& stream_info : consumer_info) {
@@ -3809,19 +3837,19 @@ Status CatalogManager::InitXClusterConsumer(
   }
 
   auto* replication_group_map = consumer_registry->mutable_producer_map();
-  auto it = replication_group_map->find(replication_group_id.ToString());
-  if (it != replication_group_map->end()) {
-    return STATUS(InvalidArgument, "Already created a consumer for this universe");
-  }
+  SCHECK_EQ(
+      replication_group_map->count(replication_info.id()), 0, InvalidArgument,
+      "Already created a consumer for this universe");
 
   // TServers will use the ClusterConfig to create CDC Consumers for applicable local tablets.
-  (*replication_group_map)[replication_group_id.ToString()] = std::move(producer_entry);
+  (*replication_group_map)[replication_info.id()] = std::move(producer_entry);
   l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
   RETURN_NOT_OK(CheckStatus(
       sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
       "updating cluster config in sys-catalog"));
 
-  SyncXClusterConsumerReplicationStatusMap(replication_group_id, *replication_group_map);
+  SyncXClusterConsumerReplicationStatusMap(
+      replication_info.ReplicationGroupId(), *replication_group_map);
   l.Commit();
 
   xcluster_manager_->CreateXClusterSafeTimeTableAndStartService();
@@ -4297,7 +4325,7 @@ Status CatalogManager::AlterUniverseReplication(
         MasterError(MasterErrorPB::INVALID_REQUEST));
   }
 
-  // Verify that there is an existing Universe config
+  // Verify that there is an existing Universe config.
   scoped_refptr<UniverseReplicationInfo> original_ri;
   {
     SharedLock lock(mutex_);
@@ -5575,7 +5603,7 @@ Status CatalogManager::PopulateReplicationGroupErrors(
       resp_error->set_error_detail(
           Format("Producer Tablet IDs: $0", JoinStringsLimitCount(tablet_ids, ",", 20)));
       if (VLOG_IS_ON(4)) {
-        VLOG(4) << "Replication error " << error_pb
+        VLOG(4) << "Replication error " << ReplicationErrorPb_Name(error_pb)
                 << " for ReplicationGroup: " << replication_group_id << ", stream id: " << stream_id
                 << ", consumer table: " << consumer_table_id << ", producer tablet IDs:";
         for (const auto& tablet_id : tablet_ids) {
@@ -5795,7 +5823,7 @@ Status CatalogManager::ResumeXClusterConsumerAfterNewSchema(
   return Status::OK();
 }
 
-Status CatalogManager::RunXClusterBgTasks(const LeaderEpoch& epoch) {
+void CatalogManager::RunXClusterBgTasks(const LeaderEpoch& epoch) {
   // Clean up Deleted CDC Streams on the Producer.
   std::vector<CDCStreamInfoPtr> streams;
   WARN_NOT_OK(FindCDCStreamsMarkedAsDeleting(&streams), "Failed Finding Deleting CDC Streams");
@@ -5824,6 +5852,15 @@ Status CatalogManager::RunXClusterBgTasks(const LeaderEpoch& epoch) {
   // Run periodic task for namespace-level replications.
   ScheduleXClusterNSReplicationAddTableTask();
 
+  WARN_NOT_OK(
+      XClusterProcessPendingSchemaChanges(epoch),
+      "Failed processing xCluster Pending Schema Changes");
+
+  WARN_NOT_OK(
+      XClusterRefreshLocalAutoFlagConfig(epoch), "Failed refreshing local AutoFlags config");
+}
+
+Status CatalogManager::XClusterProcessPendingSchemaChanges(const LeaderEpoch& epoch) {
   if (PREDICT_FALSE(!GetAtomicFlag(&FLAGS_xcluster_wait_on_ddl_alter))) {
     // See if any Streams are waiting on a pending_schema.
     bool found_pending_schema = false;
@@ -5856,11 +5893,12 @@ Status CatalogManager::RunXClusterBgTasks(const LeaderEpoch& epoch) {
       // Bump the ClusterConfig version so we'll broadcast new schema version & resume operation.
       cl.mutable_data()->pb.set_version(cl.mutable_data()->pb.version() + 1);
       RETURN_NOT_OK(CheckStatus(
-          sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
+          sys_catalog_->Upsert(epoch.leader_term, cluster_config.get()),
           "updating cluster config after Schema for CDC"));
       cl.Commit();
     }
   }
+
   return Status::OK();
 }
 
@@ -6621,6 +6659,7 @@ Status CatalogManager::FillHeartbeatResponseCDC(
   if (cdc_enabled_.load(std::memory_order_acquire)) {
     resp->set_xcluster_enabled_on_producer(true);
   }
+
   if (cluster_config.has_consumer_registry()) {
     if (req->cluster_config_version() < cluster_config.version()) {
       const auto& consumer_registry = cluster_config.consumer_registry();
@@ -6979,6 +7018,92 @@ std::unordered_set<xrepl::StreamId> CatalogManager::GetAllXreplStreamIds() const
   }
 
   return result;
+}
+
+Status CatalogManager::XClusterReportNewAutoFlagConfigVersion(
+    const XClusterReportNewAutoFlagConfigVersionRequestPB* req,
+    XClusterReportNewAutoFlagConfigVersionResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG_WITH_FUNC(INFO) << " from " << RequestorString(rpc) << ": " << req->DebugString();
+
+  const cdc::ReplicationGroupId replication_group_id(req->replication_group_id());
+  const auto new_version = req->auto_flag_config_version();
+
+  // Verify that there is an existing Universe config
+  scoped_refptr<UniverseReplicationInfo> replication_info;
+  {
+    SharedLock lock(mutex_);
+    replication_info = FindPtrOrNull(universe_replication_map_, replication_group_id);
+    SCHECK(
+        replication_info, NotFound, "Missing replication group $0",
+        replication_group_id.ToString());
+  }
+
+  auto cluster_config = ClusterConfig();
+
+  return RefreshAutoFlagConfigVersion(
+      *sys_catalog_, *replication_info, *cluster_config.get(), new_version,
+      [master = master_]() { return master->GetAutoFlagsConfig(); }, epoch);
+}
+
+void CatalogManager::NotifyAutoFlagsConfigChanged() {
+  xcluster_auto_flags_revalidation_needed_ = true;
+}
+
+Status CatalogManager::XClusterRefreshLocalAutoFlagConfig(const LeaderEpoch& epoch) {
+  if (!xcluster_auto_flags_revalidation_needed_) {
+    return Status::OK();
+  }
+
+  bool operation_succeeded = false;
+  auto se = ScopeExit([this, &operation_succeeded] {
+    if (!operation_succeeded) {
+      xcluster_auto_flags_revalidation_needed_ = true;
+    }
+  });
+  xcluster_auto_flags_revalidation_needed_ = false;
+
+  std::vector<cdc::ReplicationGroupId> replication_group_ids;
+  bool update_failed = false;
+  {
+    SharedLock lock(mutex_);
+    for (const auto& [replication_group_id, _] : universe_replication_map_) {
+      replication_group_ids.push_back(replication_group_id);
+    }
+  }
+
+  if (replication_group_ids.empty()) {
+    return Status::OK();
+  }
+
+  const auto local_auto_flags_config = master_->GetAutoFlagsConfig();
+  auto cluster_config = ClusterConfig();
+
+  for (const auto& replication_group_id : replication_group_ids) {
+    scoped_refptr<UniverseReplicationInfo> replication_info;
+    {
+      SharedLock lock(mutex_);
+      replication_info = FindPtrOrNull(universe_replication_map_, replication_group_id);
+    }
+    if (!replication_info) {
+      // Replication group was deleted before we could process it.
+      continue;
+    }
+
+    auto status = HandleLocalAutoFlagsConfigChange(
+        *sys_catalog_, *replication_info, *cluster_config.get(), local_auto_flags_config, epoch);
+    if (!status.ok()) {
+      LOG(WARNING) << "Failed to handle local AutoFlags config change for replication group "
+                   << replication_group_id << ": " << status;
+      update_failed = true;
+    }
+  }
+
+  SCHECK(!update_failed, IllegalState, "Failed to handle local AutoFlags config change");
+
+  operation_succeeded = true;
+
+  return Status::OK();
 }
 
 }  // namespace master

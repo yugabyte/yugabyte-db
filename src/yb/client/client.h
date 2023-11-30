@@ -681,6 +681,9 @@ class YBClient {
       uint32_t consumer_schema_version,
       master::UpdateConsumerOnProducerMetadataResponsePB* resp);
 
+  Status XClusterReportNewAutoFlagConfigVersion(
+      const cdc::ReplicationGroupId& replication_group_id, uint32 auto_flag_config_version);
+
   void GetTableLocations(
       const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
       PartitionsOnly partitions_only, GetTableLocationsCallback callback);

@@ -628,6 +628,8 @@ message SysUniverseReplicationEntryPB {
 
   // Set when consistent transactions are enabled for a replication group.
   optional bool transactional = 11; // [default = false]
+
+  optional uint32 validated_local_auto_flags_config_version = 12;
 }
 
 message XClusterSafeTimePB {
