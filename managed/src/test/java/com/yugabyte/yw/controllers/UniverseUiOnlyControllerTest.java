@@ -2087,8 +2087,9 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testUniverseUpdateChangeVolumeSizeK8sOk() {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CheckTServers);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
-        .thenReturn(UUID.randomUUID());
+        .thenReturn(fakeTaskUUID);
     Universe u = setUpUniverse(CloudType.kubernetes);
     u =
         Universe.saveDetails(
