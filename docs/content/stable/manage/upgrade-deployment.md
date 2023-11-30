@@ -81,7 +81,7 @@ New YugabyteDB features may require changes to the format of data that is sent o
 
 [AutoFlags](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/auto_flags.md) simplify this process so that you don't need to identify these features, find their corresponding flags, or determine what values to set them to. All new AutoFlags can be promoted to their desired target value using a single command.
 
-Use the [yb-admin](../../admin/yb-admin/#promote-auto-flags) utility to promote the new AutoFlags, as follows:
+Use the [yb-admin](../../admin/yb-admin/) utility to promote the new AutoFlags, as follows:
 
 ```sh
 ./bin/yb-admin \
