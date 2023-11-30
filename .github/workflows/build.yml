@@ -4,17 +4,6 @@ name: CI
 # events but only for the master branch
 on:
   push:
-    branches:
-      - master
-    paths-ignore:
-      # TODO: how to avoid duplicating this list?
-      - README.md
-      - 'docs/**'
-      - 'architecture/**'
-      - 'managed/**'
-      - '.gitignore'
-      - '.github/vale-styles/**'
-
   pull_request:
     branches:
       - master

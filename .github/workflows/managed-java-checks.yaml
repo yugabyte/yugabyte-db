@@ -2,13 +2,6 @@ name: Lint java code under managed
 
 on:
   push:
-    branches:
-      - master
-      - '2.6'
-    paths:
-      - .github/workflows/managed-java-checks.yaml
-      - managed/**/*.java
-
   pull_request:
     branches:
       - master
@@ -16,7 +9,6 @@ on:
     paths:
       - .github/workflows/managed-java-checks.yaml
       - managed/**/*.java
-
 
 jobs:
   lint-checks:
