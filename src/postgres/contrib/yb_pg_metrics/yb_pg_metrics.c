@@ -424,6 +424,9 @@ _PG_init(void)
   strcpy(worker.bgw_library_name, "yb_pg_metrics");
   strcpy(worker.bgw_function_name, "webserver_worker_main");
   worker.bgw_notify_pid = 0;
+  if (getenv("FLAGS_yb_webserver_oom_score_adj") != NULL)
+    strncpy(worker.bgw_oom_score_adj, getenv("FLAGS_yb_webserver_oom_score_adj"), BGW_MAXLEN);
+
   RegisterBackgroundWorker(&worker);
   /*
    * Set the value of the hooks.
