@@ -29,12 +29,12 @@
 #include "yb/util/test_thread_holder.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
 #include "yb/tools/tools_test_utils.h"
 
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(enable_wait_queues);
 DECLARE_uint64(max_clock_skew_usec);
-DECLARE_int32(ysql_max_write_restart_attempts);
 DECLARE_string(ysql_pg_conf_csv);
 
 METRIC_DECLARE_counter(picked_read_time_on_docdb);
@@ -53,11 +53,11 @@ class PgReadTimeTest : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
 
-    // TODO: Remove the below guc setting once it becomes the default.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = "yb_lock_pk_single_rpc=true";
+    // TODO: Remove yb_lock_pk_single_rpc once it becomes the default.
+    // yb_max_query_layer_retries is required for TestConflictRetriesOnDocdb
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) =
+        "yb_lock_pk_single_rpc=true," + MaxQueryLayerRetriesConf(0);
 
-    // for TestConflictRetriesOnDocdb
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_max_write_restart_attempts) = 0;
     PgMiniTestBase::SetUp();
   }
 
@@ -130,7 +130,7 @@ TEST_F(PgReadTimeTest, TestConflictRetriesOnDocdb) {
     // the query layer for the below SELECT FOR UPDATE.
     //
     // If there were no retries for kConflict on docdb, then the following statement would fail
-    // because FLAGS_ysql_max_write_restart_attempts=0 and so there are no query layer retries.
+    // because yb_max_query_layer_retries=0 and so there are no query layer retries.
     ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
     ASSERT_OK(conn.Fetch("SELECT * FROM test WHERE k=1 FOR UPDATE"));
     ASSERT_OK(conn.CommitTransaction());
