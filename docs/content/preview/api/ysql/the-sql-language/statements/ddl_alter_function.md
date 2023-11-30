@@ -96,7 +96,7 @@ alter function s3.f(int)
   set statement_timeout = 1;
 ```
 
-Check the effect by inspecting the function's metadata. See the section [The «pg_proc» catalog table for subprograms](../../../user-defined-subprograms-and-anon-blocks/pg-proc-catalog-table/) for information on how to  query subprogram metadata.
+Check the effect by inspecting the function's metadata. See the section [The "pg_proc" catalog table for subprograms](../../../user-defined-subprograms-and-anon-blocks/pg-proc-catalog-table/) for information on how to  query subprogram metadata.
 
 ```plpgsql
 select

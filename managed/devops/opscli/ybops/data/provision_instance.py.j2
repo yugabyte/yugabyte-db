@@ -101,11 +101,11 @@ def execute_command(cmd, password=None):
     stdout, stderr = p.communicate()
     if p.returncode != 0:
         print("Failed running cmd: {}".format(cmd))
-        print(stdout)
-        print(stderr)
+        print(stdout.decode('utf-8'))
+        print(stderr.decode('utf-8'))
         sys.exit(1)
     else:
-        return stdout
+        return stdout.decode('utf-8')
 
 
 if __name__ == '__main__':

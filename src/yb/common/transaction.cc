@@ -25,9 +25,6 @@ using namespace std::literals;
 DEFINE_UNKNOWN_int64(transaction_rpc_timeout_ms, 5000 * yb::kTimeMultiplier,
              "Timeout used by transaction related RPCs in milliseconds.");
 
-DEFINE_RUNTIME_int64(external_transaction_rpc_timeout_ms, 30000,
-                     "Timeout for external transactions in milliseconds.");
-
 namespace yb {
 
 YB_STRONGLY_TYPED_UUID_IMPL(TransactionId);
@@ -71,7 +68,6 @@ void DoToPB(const TransactionMetadata& source, PB* dest) {
   dest->set_priority(source.priority);
   dest->set_start_hybrid_time(source.start_time.ToUint64());
   dest->set_locality(source.locality);
-  dest->set_external_transaction(source.external_transaction);
 }
 
 } // namespace
@@ -95,7 +91,6 @@ Result<TransactionMetadata> TransactionMetadata::DoFromPB(const PB& source) {
   } else {
     result.locality = TransactionLocality::GLOBAL;
   }
-  result.external_transaction = IsExternalTransaction(source.external_transaction());
 
   return result;
 }
@@ -176,14 +171,6 @@ MonoDelta TransactionRpcTimeout() {
 // TODO(dtxn) correct deadline should be calculated and propagated.
 CoarseTimePoint TransactionRpcDeadline() {
   return CoarseMonoClock::Now() + TransactionRpcTimeout();
-}
-
-MonoDelta ExternalTransactionRpcTimeout() {
-  return FLAGS_external_transaction_rpc_timeout_ms * 1ms * kTimeMultiplier;
-}
-
-CoarseTimePoint ExternalTransactionRpcDeadline() {
-  return CoarseMonoClock::Now() + ExternalTransactionRpcTimeout();
 }
 
 TransactionOperationContext::TransactionOperationContext()

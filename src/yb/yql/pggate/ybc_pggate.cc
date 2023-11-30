@@ -30,6 +30,7 @@
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/partition.h"
+#include "yb/dockv/pg_key_decoder.h"
 #include "yb/dockv/pg_row.h"
 #include "yb/dockv/primitive_value.h"
 #include "yb/dockv/reader_projection.h"
@@ -88,9 +89,12 @@ DEFINE_UNKNOWN_bool(ysql_disable_server_file_access, false,
 
 DEFINE_NON_RUNTIME_bool(ysql_enable_profile, false, "Enable PROFILE feature.");
 
-DEFINE_NON_RUNTIME_bool(ysql_catalog_preload_additional_tables, false,
-            "If true, YB catalog preloads additional tables upon "
-            "connection creation and cache refresh.");
+DEPRECATE_FLAG(bool, ysql_catalog_preload_additional_tables, "07_2023");
+
+DEFINE_NON_RUNTIME_string(ysql_catalog_preload_additional_table_list, "",
+    "A list of catalog tables that YSQL preloads additionally upon "
+    "connection start-up and cache refreshes. Catalog table names must start with pg_."
+    "Invalid catalog names are ignored. Comma separated. Example: pg_range,pg_proc");
 
 DEFINE_NON_RUNTIME_bool(ysql_disable_global_impact_ddl_statements, false,
             "If true, disable global impact ddl statements in per database catalog "
@@ -101,6 +105,23 @@ DEPRECATE_FLAG(bool, ysql_disable_per_tuple_memory_context_in_update_relattrs, "
 DEFINE_NON_RUNTIME_bool(
     ysql_minimal_catalog_caches_preload, false,
     "Fill postgres' caches with system items only");
+
+namespace {
+
+bool PreloadAdditionalCatalogListValidator(const char* flag_name, const std::string& flag_val) {
+  for (const char& c : flag_val) {
+    if (c != '_' && c != ',' && !islower(c)) {
+      LOG(ERROR) << "Found invalid character " << c << " in flag " << flag_name;
+      return false;
+    }
+  }
+
+  return true;
+}
+
+} // namespace
+
+DEFINE_validator(ysql_catalog_preload_additional_table_list, PreloadAdditionalCatalogListValidator);
 
 namespace yb::pggate {
 
@@ -222,7 +243,8 @@ Status GetSplitPoints(YBCPgTableDesc table_desc,
         split_datums[split_datum_idx].datum_kind = YB_YQL_DATUM_LIMIT_MAX;
       } else {
         table_row.Reset();
-        RETURN_NOT_OK(table_row.DecodeKey(col_idx, &column_bounds));
+        RETURN_NOT_OK(dockv::PgKeyDecoder::DecodeEntry(
+            &column_bounds, schema.column(col_idx), &table_row, col_idx));
         split_datums[split_datum_idx].datum_kind = YB_YQL_DATUM_STANDARD_VALUE;
 
         auto val = table_row.GetValueByIndex(col_idx);
@@ -1409,9 +1431,9 @@ uint64_t YBCGetSharedAuthKey() {
 }
 
 const YBCPgGFlagsAccessor* YBCGetGFlags() {
+  // clang-format off
   static YBCPgGFlagsAccessor accessor = {
       .log_ysql_catalog_versions                = &FLAGS_log_ysql_catalog_versions,
-      .ysql_catalog_preload_additional_tables   = &FLAGS_ysql_catalog_preload_additional_tables,
       .ysql_disable_index_backfill              = &FLAGS_ysql_disable_index_backfill,
       .ysql_disable_server_file_access          = &FLAGS_ysql_disable_server_file_access,
       .ysql_enable_reindex                      = &FLAGS_ysql_enable_reindex,
@@ -1431,8 +1453,11 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_ysql_disable_global_impact_ddl_statements,
       .ysql_minimal_catalog_caches_preload      = &FLAGS_ysql_minimal_catalog_caches_preload,
       .ysql_enable_create_database_oid_collision_retry =
-          &FLAGS_ysql_enable_create_database_oid_collision_retry
+          &FLAGS_ysql_enable_create_database_oid_collision_retry,
+      .ysql_catalog_preload_additional_table_list =
+          FLAGS_ysql_catalog_preload_additional_table_list.c_str(),
   };
+  // clang-format on
   return &accessor;
 }
 

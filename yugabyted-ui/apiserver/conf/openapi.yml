@@ -150,6 +150,14 @@ paths:
         explode: false
         schema:
           type: string
+      - name: zone
+        in: query
+        description: Zone to filter for the given cluster
+        required: false
+        style: form
+        explode: false
+        schema:
+          type: string
       - name: start_time
         in: query
         description: Start of range of time series data (in epoch seconds)

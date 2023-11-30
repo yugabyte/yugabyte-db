@@ -1241,7 +1241,7 @@ class WaitQueue::Impl {
     MaybeSignalWaitingTransactions(id, res);
   }
 
-  Status GetLockStatus(const std::set<TransactionId>& transaction_ids,
+  Status GetLockStatus(const std::map<TransactionId, SubtxnSet>& transactions,
                        const TableInfoProvider& table_info_provider,
                        TabletLockInfoPB* tablet_lock_info) const {
     std::vector<WaiterLockStatusInfo> waiter_lock_entries;
@@ -1250,8 +1250,8 @@ class WaitQueue::Impl {
       // If the wait-queue is being shutdown, waiter_status_ would  be empty. No need to
       // explicitly check 'shutting_down_' and return.
 
-      if (transaction_ids.empty()) {
-        // When transaction_ids is empty, return awaiting locks info of all waiters.
+      if (transactions.empty()) {
+        // When transactions is empty, return awaiting locks info of all waiters.
         for (const auto& [_, waiter_data] : waiter_status_) {
           waiter_lock_entries.push_back(waiter_data->GetWaiterLockStatusInfo());
         }
@@ -1259,7 +1259,7 @@ class WaitQueue::Impl {
           waiter_lock_entries.push_back(waiter_data->GetWaiterLockStatusInfo());
         }
       } else {
-        for (const auto& txn_id : transaction_ids) {
+        for (const auto& [txn_id, _] : transactions) {
           const auto& it = waiter_status_.find(txn_id);
           if (it != waiter_status_.end()) {
             waiter_lock_entries.push_back(it->second->GetWaiterLockStatusInfo());
@@ -1621,10 +1621,10 @@ void WaitQueue::SignalPromoted(const TransactionId& id, TransactionStatusResult&
   return impl_->SignalPromoted(id, std::move(res));
 }
 
-Status WaitQueue::GetLockStatus(const std::set<TransactionId>& transaction_ids,
+Status WaitQueue::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transactions,
                                 const TableInfoProvider& table_info_provider,
                                 TabletLockInfoPB* tablet_lock_info) const {
-  return impl_->GetLockStatus(transaction_ids, table_info_provider, tablet_lock_info);
+  return impl_->GetLockStatus(transactions, table_info_provider, tablet_lock_info);
 }
 
 }  // namespace docdb

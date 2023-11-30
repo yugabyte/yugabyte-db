@@ -174,12 +174,6 @@ Status AddRecord(
     const cdc::CDCRecordPB& record,
     docdb::KeyValueWriteBatchPB* write_batch) {
   if (record.operation() == cdc::CDCRecordPB::APPLY) {
-    if (process_record_info.enable_replicate_transaction_status_table) {
-      // If we are replicating the transaction status table, we don't need to process individual
-      // APPLY records since the target txn status table will be responsible for fanning out Apply
-      // RPCs to involved tablets.
-      return Status::OK();
-    }
     auto* apply_txn = write_batch->mutable_apply_external_transactions()->Add();
     apply_txn->set_transaction_id(record.transaction_state().transaction_id());
     auto aborted_subtransactions =
@@ -189,8 +183,7 @@ Status AddRecord(
     return Status::OK();
   }
 
-  if (!process_record_info.enable_replicate_transaction_status_table &&
-      record.has_transaction_state()) {
+  if (record.has_transaction_state()) {
     auto* write_pair = write_batch->mutable_write_pairs()->Add();
     return CombineExternalIntents(
         record.transaction_state(),
@@ -219,16 +212,6 @@ Status AddRecord(
       write_pair->set_external_hybrid_time(yb::kInitialHybridTimeValue);
     } else {
       write_pair->set_external_hybrid_time(record.time());
-    }
-    if (record.has_transaction_state()) {
-      // enable_replicate_transaction_status_table is true.
-      TransactionMetadataPB metadata;
-      metadata.set_transaction_id(record.transaction_state().transaction_id());
-      metadata.set_status_tablet(process_record_info.status_tablet_id);
-      metadata.set_isolation(IsolationLevel::SNAPSHOT_ISOLATION);
-      *write_pair->mutable_transaction() = metadata;
-      write_batch->set_enable_replicate_transaction_status_table(
-          true /* enable_replicate_transaction_status_table */);
     }
   }
 
@@ -261,38 +244,6 @@ class XClusterWriteImplementation : public XClusterWriteInterface {
     return AddRecord(process_record_info, record, write_batch);
   }
 
-  Status ProcessCreateRecord(
-      const std::string& status_tablet, const cdc::CDCRecordPB& record) override {
-    SCHECK_EQ(
-        record.operation(), cdc::CDCRecordPB::TRANSACTION_CREATED, IllegalState,
-        Format("Invalid operation type $0", record.operation()));
-    transaction_metadatas_.push_back(client::ExternalTransactionMetadata{
-        .transaction_id =
-            VERIFY_RESULT(FullyDecodeTransactionId(record.transaction_state().transaction_id())),
-        .status_tablet = status_tablet,
-        .operation_type = client::ExternalTransactionMetadata::OperationType::CREATE,
-        .hybrid_time = record.time(),
-        .involved_tablet_ids = {}});
-    return Status::OK();
-  }
-
-  Status ProcessCommitRecord(
-      const std::string& status_tablet,
-      const std::vector<std::string>& involved_target_tablet_ids,
-      const cdc::CDCRecordPB& record) override {
-    SCHECK_EQ(
-        record.operation(), cdc::CDCRecordPB::TRANSACTION_COMMITTED, IllegalState,
-        Format("Invalid operation type $0", record.operation()));
-    transaction_metadatas_.push_back(client::ExternalTransactionMetadata{
-        .transaction_id =
-            VERIFY_RESULT(FullyDecodeTransactionId(record.transaction_state().transaction_id())),
-        .status_tablet = status_tablet,
-        .operation_type = client::ExternalTransactionMetadata::OperationType::COMMIT,
-        .hybrid_time = record.time(),
-        .involved_tablet_ids = involved_target_tablet_ids});
-    return Status::OK();
-  }
-
   std::unique_ptr<WriteRequestPB> FetchNextRequest() override {
     if (records_.empty()) {
       return nullptr;
@@ -302,15 +253,10 @@ class XClusterWriteImplementation : public XClusterWriteInterface {
     return next_req;
   }
 
-  std::vector<client::ExternalTransactionMetadata>& GetTransactionMetadatas() override {
-    return transaction_metadatas_;
-  }
-
  private:
   // Contains key value pairs to apply to regular and intents db. The key of this map is the
   // tablet to send to.
   std::unordered_map<TabletId, std::unique_ptr<WriteRequestPB>> records_;
-  std::vector<client::ExternalTransactionMetadata> transaction_metadatas_;
 };
 
 void ResetWriteInterface(std::unique_ptr<XClusterWriteInterface>* write_strategy) {

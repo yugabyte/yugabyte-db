@@ -21,7 +21,10 @@ export const getValidationSchema = (
 ) => {
   const contxt = {};
 
-  const { backupDetails } = restoreContext;
+  const {
+    backupDetails,
+    formData: { generalSettings }
+  } = restoreContext;
 
   const validationSchema = yup.object<Partial<IRenameKeyspace>>({
     renamedKeyspaces: yup
@@ -36,8 +39,13 @@ export const getValidationSchema = (
               excludeEmptyString: true
             })
             .when('renamedKeyspaces', {
-              // check if the given name is already present in the database, only for YSQL
-              is: () => backupDetails?.backupType === TableType.PGSQL_TABLE_TYPE,
+              // check if the given name is already present in the database
+              // we do this for all YSQL backups,
+              // and for ycql, we do if it is not a single keyspace restore.(i.e)
+              // in single keyspace restore, user is allowed to restore a particular table on same keyspace
+              is: () =>
+                backupDetails?.backupType === TableType.PGSQL_TABLE_TYPE ||
+                !generalSettings?.incrementalBackupProps.singleKeyspaceRestore,
               then: yup
                 .string()
                 .notOneOf(

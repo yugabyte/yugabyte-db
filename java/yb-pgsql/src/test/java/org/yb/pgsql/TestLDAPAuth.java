@@ -124,6 +124,8 @@ public class TestLDAPAuth extends BasePgSQLTest {
     super.customizeMiniClusterBuilder(builder);
     if (connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR)
       builder.enableYsqlConnMgr(true);
+      builder.addCommonTServerFlag("ysql_conn_mgr_dowarmup", "false");
+
   }
 
   @ClassRule

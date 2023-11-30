@@ -10,7 +10,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
-import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.AddGFlagMetadata;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -76,7 +75,6 @@ public class ReleaseManager {
   private final ConfigHelper configHelper;
   private final Config appConfig;
   private final GFlagsValidation gFlagsValidation;
-  private final Commissioner commissioner;
   private final AWSUtil awsUtil;
   private final GCPUtil gcpUtil;
   private final RuntimeConfGetter confGetter;
@@ -88,7 +86,6 @@ public class ReleaseManager {
       ConfigHelper configHelper,
       Config appConfig,
       GFlagsValidation gFlagsValidation,
-      Commissioner commissioner,
       AWSUtil awsUtil,
       GCPUtil gcpUtil,
       RuntimeConfGetter confGetter,
@@ -97,7 +94,6 @@ public class ReleaseManager {
     this.configHelper = configHelper;
     this.appConfig = appConfig;
     this.gFlagsValidation = gFlagsValidation;
-    this.commissioner = commissioner;
     this.awsUtil = awsUtil;
     this.gcpUtil = gcpUtil;
     this.confGetter = confGetter;

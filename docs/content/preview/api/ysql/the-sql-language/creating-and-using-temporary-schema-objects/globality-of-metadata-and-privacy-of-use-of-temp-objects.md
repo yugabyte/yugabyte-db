@@ -98,7 +98,7 @@ using a schema-qualified identifier for the temporary table that starts with the
  t    | false      | pg_temp_5
 ```
 
-Notice that that _pg_my_temp_schema()_ returned _true_ for _pg_temp_3_ and_false_ for the other two temporary schemas. The same pattern continues: _pg_temp_4_ is the temporary schema for _"Session 2"_; and _pg_temp_5_ is the temporary schema for _"Session 3"_.
+Notice that _pg_my_temp_schema()_ returned _true_ for _pg_temp_3_ and_false_ for the other two temporary schemas. The same pattern continues: _pg_temp_4_ is the temporary schema for _"Session 2"_; and _pg_temp_5_ is the temporary schema for _"Session 3"_.
 
 Now exit each of _"Session 3"_, _"Session 2"_, and _"Session 1"_, in turn, and after exiting each repeat _execute qry_ in _"Session 0"_. You'll see that when each session exits, its temporary schema vanishes.
 

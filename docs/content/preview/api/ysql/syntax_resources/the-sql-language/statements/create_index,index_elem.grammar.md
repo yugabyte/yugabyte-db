@@ -5,7 +5,7 @@ create_index ::= CREATE [ UNIQUE ] INDEX
                  [ USING access_method_name ] ( index_elem [ , ... ] ) 
                   [ INCLUDE ( column_name [ , ... ] ) ]  
                  [ TABLESPACE tablespace_name ]  
-                 [ SPLIT { INTO integer TABLETS
+                 [ SPLIT { INTO int_literal TABLETS
                            | AT VALUES ( split_row [ , ... ] ) } ] 
                  [ WHERE boolean_expression ]
 

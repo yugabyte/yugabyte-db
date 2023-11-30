@@ -39,7 +39,8 @@ public class V273__ModifyLdapsServerCertVerification extends BaseJavaMigration {
       ResultSet ldapsConfig = connection.createStatement().executeQuery(sVal);
       if (ldapsConfig.next()) {
         String ldapsEnabled = ldapsConfig.getString("value");
-        if (StringUtils.equals(ldapsEnabled, "\"true\"")) {
+        if (StringUtils.equals(ldapsEnabled, "\"true\"")
+            || StringUtils.equals(ldapsEnabled, "true")) {
           log.warn("LDAPs is configured, disabling server cert verification with LDAPs");
           connection.createStatement().executeUpdate(noVerify);
         }
@@ -52,7 +53,8 @@ public class V273__ModifyLdapsServerCertVerification extends BaseJavaMigration {
         ResultSet ldapTlsVal = connection.createStatement().executeQuery(tlsQ);
         if (ldapTlsVal.next()) {
           String ldapTlsEnabled = ldapTlsVal.getString("value");
-          if (StringUtils.equals(ldapTlsEnabled, "\"true\"")) {
+          if (StringUtils.equals(ldapTlsEnabled, "\"true\"")
+              || StringUtils.equals(ldapTlsEnabled, "true")) {
             log.warn("LDAP-TLS is configured, disabling server cert verification with LDAP-TLS");
             connection.createStatement().executeUpdate(noVerify);
           }

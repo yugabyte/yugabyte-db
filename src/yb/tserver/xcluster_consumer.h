@@ -75,20 +75,13 @@ class XClusterConsumer {
  public:
   static Result<std::unique_ptr<XClusterConsumer>> Create(
       std::function<bool(const std::string&)> is_leader_for_tablet,
-      std::function<int64_t(const TabletId&)>
-          get_leader_term,
-      rpc::ProxyCache* proxy_cache,
+      std::function<int64_t(const TabletId&)> get_leader_term, rpc::ProxyCache* proxy_cache,
       TabletServer* tserver);
 
   XClusterConsumer(
       std::function<bool(const std::string&)> is_leader_for_tablet,
-      std::function<int64_t(const TabletId&)>
-          get_leader_term,
-      rpc::ProxyCache* proxy_cache,
-      const std::string& ts_uuid,
-      std::unique_ptr<XClusterClient>
-          local_client,
-      client::TransactionManager* transaction_manager);
+      std::function<int64_t(const TabletId&)> get_leader_term, rpc::ProxyCache* proxy_cache,
+      const std::string& ts_uuid, std::unique_ptr<XClusterClient> local_client);
 
   ~XClusterConsumer();
   void Shutdown() EXCLUDES(shutdown_mutex_);
@@ -118,11 +111,6 @@ class XClusterConsumer {
   Status ReloadCertificates();
 
   Status PublishXClusterSafeTime();
-
-  client::TransactionManager* TransactionManager();
-
-  Result<cdc::ConsumerTabletInfo> GetConsumerTableInfo(
-      const TabletId& producer_tablet_id) EXCLUDES (master_data_mutex_);
 
   // Stores a replication error and detail. This overwrites a previously stored 'error'.
   void StoreReplicationError(
@@ -244,12 +232,6 @@ class XClusterConsumer {
 
   bool xcluster_safe_time_table_ready_ GUARDED_BY(safe_time_update_mutex_) = false;
   std::unique_ptr<client::TableHandle> safe_time_table_ GUARDED_BY(safe_time_update_mutex_);
-
-  client::TransactionManager* transaction_manager_;
-
-  std::vector<TabletId> global_transaction_status_tablets_ GUARDED_BY(master_data_mutex_);
-
-  bool enable_replicate_transaction_status_table_;
 
   mutable simple_spinlock tablet_replication_error_map_lock_;
   cdc::TabletReplicationErrorMap tablet_replication_error_map_

@@ -24,10 +24,14 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.kms.algorithms.SupportedAlgorithmInterface;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
+import com.yugabyte.yw.forms.EncryptionAtRestConfig;
+import com.yugabyte.yw.forms.EncryptionAtRestConfig.OpType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.KmsHistoryId;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import io.ebean.annotation.EnumValue;
 import java.io.File;
 import java.lang.reflect.Constructor;
@@ -330,6 +334,30 @@ public class EncryptionAtRestUtil {
                     Arrays.copyOfRange(dirParts, dirParts.length - 3, dirParts.length - 1))));
 
     return new File(storageLocationDir.getAbsolutePath(), BACKUP_KEYS_FILE_NAME);
+  }
+
+  public static void updateUniverseEARState(
+      UUID universeUUID, EncryptionAtRestConfig encryptionAtRestConfig) {
+    UniverseUpdater updater =
+        new UniverseUpdater() {
+          @Override
+          public void run(Universe universe) {
+            LOG.info(
+                "Setting EAR status to {} for universe {} in the universe details.",
+                encryptionAtRestConfig.opType.name(),
+                universe.getUniverseUUID());
+            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+            universeDetails.encryptionAtRestConfig = encryptionAtRestConfig;
+            universeDetails.encryptionAtRestConfig.encryptionAtRestEnabled =
+                encryptionAtRestConfig.opType.equals(OpType.ENABLE);
+            universe.setUniverseDetails(universeDetails);
+            LOG.info(
+                "Successfully set EAR status {} for universe {} in the universe details.",
+                encryptionAtRestConfig.opType.name(),
+                universeUUID);
+          }
+        };
+    Universe.saveDetails(universeUUID, updater, false);
   }
 
   public static class BackupEntry {

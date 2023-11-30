@@ -26,6 +26,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.NLBHealthCheckConfiguration;
 import com.yugabyte.yw.models.helpers.NodeID;
 import com.yugabyte.yw.models.helpers.provider.AzureCloudInfo;
 import java.util.ArrayList;
@@ -331,7 +332,8 @@ public class AZUCloudImpl implements CloudAPI {
       } else {
         BackendAddressPoolInner backendAddressPool = backends.get(0);
         backendAddressPool =
-            apiClient.updateIPsInBackendPool(lbName, ipToVmName, backendAddressPool);
+            apiClient.updateIPsInBackendPool(
+                lbName, ipToVmName, backendAddressPool, virtualNetwork);
         backends.set(0, backendAddressPool);
       }
       return backends;
@@ -374,10 +376,11 @@ public class AZUCloudImpl implements CloudAPI {
       String regionCode,
       String lbName,
       Map<AvailabilityZone, Set<NodeID>> azToNodeIDs,
-      String protocol,
-      List<Integer> ports) {
+      List<Integer> ports,
+      NLBHealthCheckConfiguration healthCheckConfig) {
     AzureCloudInfo azureCloudInfo = CloudInfoInterface.get(provider);
     AZUResourceGroupApiClient apiClient = new AZUResourceGroupApiClient(azureCloudInfo);
+    String protocol = healthCheckConfig.getHealthCheckProtocol().toString();
     manageNodeGroup(provider, regionCode, lbName, azToNodeIDs, protocol, ports, apiClient);
   }
 

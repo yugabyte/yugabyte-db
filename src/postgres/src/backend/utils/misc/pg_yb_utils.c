@@ -61,7 +61,9 @@
 #include "catalog/pg_partitioned_table.h"
 #include "catalog/pg_policy.h"
 #include "catalog/pg_proc.h"
+#include "catalog/pg_range_d.h"
 #include "catalog/pg_rewrite.h"
+#include "catalog/pg_statistic_d.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_trigger.h"
 #include "catalog/pg_type.h"
@@ -3367,8 +3369,14 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 		case RelationRelationId:                          // pg_class
 			sys_table_index_id = ClassNameNspIndexId;
 			break;
+		case RangeRelationId:                             // pg_range
+			sys_only_filter_attr = Anum_pg_range_rngtypid;
+			break;
 		case RewriteRelationId:                           // pg_rewrite
 			sys_table_index_id = RewriteRelRulenameIndexId;
+			break;
+		case StatisticRelationId:                         // pg_statistic
+			sys_only_filter_attr = Anum_pg_statistic_starelid;
 			break;
 		case TriggerRelationId:                           // pg_trigger
 			sys_table_index_id = TriggerRelidNameIndexId;
@@ -3682,4 +3690,27 @@ bool YbIsColumnPartOfKey(Relation rel, const char *column_name)
 		}
 	}
 	return false;
+}
+
+/*
+ * ```yb_committed_sticky_object_count``` is the count of the database objects
+ * that requires the sticky connection
+ * These objects are
+ * 1. WITH HOLD CURSORS
+ * 2. TEMP TABLE
+ */
+int yb_committed_sticky_object_count = 0;
+
+/*
+ * ```YbIsStickyConnection(int *change)``` updates the number of objects that requires a sticky
+ * connection and returns whether or not the client connection
+ * requires stickiness. i.e. if there is any `WITH HOLD CURSOR` or `TEMP TABLE`
+ * at the end of the transaction.
+ */
+bool YbIsStickyConnection(int *change)
+{
+	yb_committed_sticky_object_count += *change;
+	*change = 0; /* Since it is updated it will be set to 0 */
+	elog(DEBUG5, "Number of sticky objects: %d", yb_committed_sticky_object_count);
+	return (yb_committed_sticky_object_count > 0);
 }

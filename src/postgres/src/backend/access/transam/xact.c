@@ -222,6 +222,9 @@ typedef struct TransactionStateData
 	List		*YBPostponedDdlOps; /* We postpone execution of non-revertable
 				                     * DocDB operations (e.g. drop table/index)
 				                     * until the rest of the txn succeeds */
+	int			ybUncommittedStickyObjectCount;	/* Count of objects that require stickiness
+									 		 * within a certain transaction (e.g. TEMP
+									 		 * TABLES/WITH HOLD CURSORS)*/
 } TransactionStateData;
 
 typedef TransactionStateData *TransactionState;
@@ -2266,6 +2269,7 @@ StartTransaction(void)
 
 	YBStartTransaction(s);
 
+	s->ybUncommittedStickyObjectCount = 0;
 	ShowTransactionState("StartTransaction");
 }
 
@@ -3042,6 +3046,9 @@ AbortTransaction(void)
 	}
 
 	YBCAbortTransaction();
+
+	/* Reset the value of the sticky connection */
+	s->ybUncommittedStickyObjectCount = 0;
 
 	/*
 	 * State remains TRANS_ABORT until CleanupTransaction().
@@ -5144,7 +5151,9 @@ TransactionBlockStatusCode(void)
 	{
 		case TBLOCK_DEFAULT:
 		case TBLOCK_STARTED:
-			return 'I';			/* idle --- not in transaction */
+			return ((YbIsClientYsqlConnMgr() && \
+					YbIsStickyConnection(&(s->ybUncommittedStickyObjectCount)))
+				? 'i' : 'I');			/* idle --- not in transaction */
 		case TBLOCK_BEGIN:
 		case TBLOCK_SUBBEGIN:
 		case TBLOCK_INPROGRESS:
@@ -5228,6 +5237,13 @@ StartSubTransaction(void)
 						 s->parent->subTransactionId);
 
 	ShowTransactionState("StartSubTransaction");
+
+	/* 
+	 * Update the value of the sticky objects from parent transaction
+	 */
+	if(CurrentTransactionState->parent)
+		CurrentTransactionState->ybUncommittedStickyObjectCount =
+			CurrentTransactionState->parent->ybUncommittedStickyObjectCount;
 }
 
 /*
@@ -6589,4 +6605,22 @@ void YbClearCurrentTransactionId()
 {
 	CurrentTransactionState->fullTransactionId = InvalidFullTransactionId;
 	MyProc->xid = InvalidTransactionId;
+}
+
+/*
+ * ```increment_sticky_object_count()``` is called when any database object which requires
+ * stickiness is created.
+ */
+void increment_sticky_object_count()
+{
+	CurrentTransactionState->ybUncommittedStickyObjectCount++;
+}
+
+/*
+ * ```decrement_sticky_object_count()``` is called when any database object which required
+ * stickiness is deleted.
+ */
+void decrement_sticky_object_count()
+{
+	CurrentTransactionState->ybUncommittedStickyObjectCount--;
 }

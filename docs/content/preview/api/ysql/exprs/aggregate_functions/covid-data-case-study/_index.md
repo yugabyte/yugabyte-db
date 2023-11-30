@@ -6,7 +6,7 @@ linkTitle: >
 headerTitle: >
   Case study: linear regression analysis of COVID data from Carnegie Mellon's COVIDcast project
 description: Case study—using the YSQL regr_r2(), regr_slope(), regr_intercept() to examine the correlation between COVID-like symptoms and mask-wearing using data from Carnegie Mellon's COVIDcast.
-image: /images/section_icons/api/ysql.png
+image: /images/section_icons/api/subsection.png
 menu:
   preview:
     identifier: covid-data-case-study

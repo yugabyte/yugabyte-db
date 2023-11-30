@@ -24,8 +24,8 @@ message KeyValuePairPB {
   optional bytes key = 1;
   optional bytes value = 2;
   optional fixed64 external_hybrid_time = 3;
-  // For external intent writes, the transaction metadata associated with the key value pair.
-  optional TransactionMetadataPB transaction = 4;
+  // Reserved for transaction field which was used in xcluster external intent writes.
+  reserved 4;
 }
 
 message ApplyExternalTransactionPB {
@@ -67,7 +67,8 @@ message KeyValueWriteBatchPB {
   // We could have writes to multiple cotables in a single write batch.
   repeated TableSchemaVersionPB table_schema_version = 11;
 
-  optional bool enable_replicate_transaction_status_table = 12;
+  // Reserved for deprecated enable_replicate_transaction_status_table field.
+  reserved 12;
 }
 
 message PerDbFilterPB {

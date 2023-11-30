@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.common;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.EXPECTATION_FAILED;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
@@ -10,6 +12,8 @@ import com.google.api.gax.paging.Page;
 import com.google.auth.Credentials;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.cloud.storage.Blob;
+import com.google.cloud.storage.BlobId;
+import com.google.cloud.storage.BlobInfo;
 import com.google.cloud.storage.Bucket;
 import com.google.cloud.storage.Storage;
 import com.google.cloud.storage.Storage.BucketListOption;
@@ -22,6 +26,7 @@ import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData.RegionLocations;
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -37,6 +42,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.StreamSupport;
@@ -361,5 +367,160 @@ public class GCPUtil implements CloudUtil {
       log.error("Fetch gcp spot prices failed with error {}", e.getMessage());
     }
     return Double.NaN;
+  }
+
+  /**
+   * Validates create permission on the GCP configuration on default region and other regions, apart
+   * from other permissions if specified.
+   */
+  @Override
+  public void validate(CustomerConfigData configData, List<ExtraPermissionToValidate> permissions)
+      throws Exception {
+    CustomerConfigStorageGCSData gcsData = (CustomerConfigStorageGCSData) configData;
+    if (!StringUtils.isEmpty(gcsData.gcsCredentialsJson)) {
+      Storage storage = null;
+      try {
+        storage = getStorageService(gcsData);
+      } catch (IOException ex) {
+        throw new PlatformServiceException(
+            EXPECTATION_FAILED, "Error while creating Storage service from GCS Data!");
+      }
+
+      validateOnLocation(storage, gcsData.backupLocation, permissions);
+
+      if (CollectionUtils.isNotEmpty(gcsData.regionLocations)) {
+        for (RegionLocations location : gcsData.regionLocations) {
+          if (StringUtils.isEmpty(location.region)) {
+            throw new PlatformServiceException(
+                EXPECTATION_FAILED, "Region of a location cannot be empty.");
+          }
+
+          validateOnLocation(storage, location.location, permissions);
+        }
+      }
+    } else {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "CRUD Validation for GCP Backup Configuration not carried out"
+              + " because JSON Credentials are null.");
+    }
+  }
+
+  /** Validates create permission on a Bucket, apart from read or list permissions if specified. */
+  public void validateOnBucket(
+      Storage storage,
+      String bucketName,
+      String prefix,
+      List<ExtraPermissionToValidate> permissions) {
+    Optional<ExtraPermissionToValidate> unsupportedPermission =
+        permissions.stream()
+            .filter(
+                permission ->
+                    permission != ExtraPermissionToValidate.READ
+                        && permission != ExtraPermissionToValidate.LIST)
+            .findAny();
+
+    if (unsupportedPermission.isPresent()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Unsupported permission "
+              + unsupportedPermission.get().toString()
+              + " validation is not supported!");
+    }
+
+    String fileName = getRandomUUID().toString() + ".txt";
+    String completeFileName = BackupUtil.getPathWithPrefixSuffixJoin(prefix, fileName);
+
+    createObject(storage, bucketName, DUMMY_DATA, completeFileName);
+
+    if (permissions.contains(ExtraPermissionToValidate.READ)) {
+      validateReadBlob(storage, bucketName, completeFileName, DUMMY_DATA);
+    }
+
+    if (permissions.contains(ExtraPermissionToValidate.LIST)) {
+      validateListBlobs(storage, bucketName, completeFileName);
+    }
+
+    validateDelete(storage, bucketName, completeFileName);
+  }
+
+  /**
+   * Validates create permission on a GCP backup location, apart from read or list permissions if
+   * specified.
+   */
+  private void validateOnLocation(
+      Storage storage, String location, List<ExtraPermissionToValidate> permissions) {
+    ConfigLocationInfo locationInfo = getConfigLocationInfo(location);
+    validateOnBucket(storage, locationInfo.bucket, locationInfo.cloudPath, permissions);
+  }
+
+  /**
+   * Deletes the given fileName from the container. Checks absence of deleted blob via read
+   * operation. Throws exception in case anything fails, hence validating.
+   */
+  private void validateDelete(Storage storage, String bucketName, String fileName) {
+    if (!storage.delete(BlobId.of(bucketName, fileName))) {
+      throw new PlatformServiceException(
+          EXPECTATION_FAILED,
+          "Deletion of test blob " + fileName + " could not proceed because it was not found.");
+    }
+    if (containsBlobWithName(storage, bucketName, fileName)) {
+      throw new PlatformServiceException(
+          EXPECTATION_FAILED, "Deleted blob \"" + fileName + "\" is still in the bucket.");
+    }
+  }
+
+  /** Checks if the given fileName blob's existence can be verified via the list operation. */
+  private void validateListBlobs(Storage storage, String bucketName, String fileName) {
+    if (!listContainsBlobWithName(storage, bucketName, fileName)) {
+      throw new PlatformServiceException(
+          EXPECTATION_FAILED, "Created blob with name \"" + fileName + "\" not found in list.");
+    }
+  }
+
+  private boolean listContainsBlobWithName(Storage storage, String bucketName, String fileName) {
+    Optional<Blob> blob =
+        StreamSupport.stream(
+                storage
+                    .list(
+                        bucketName,
+                        new Storage.BlobListOption[] {Storage.BlobListOption.prefix(fileName)})
+                    .iterateAll()
+                    .spliterator(),
+                false)
+            .filter(b -> b.getName().equals(fileName))
+            .findAny();
+    return blob.isPresent();
+  }
+
+  private boolean containsBlobWithName(Storage storage, String bucketName, String fileName) {
+    return storage.get(bucketName, fileName) != null;
+  }
+
+  private void createObject(Storage storage, String bucketName, String content, String fileName) {
+    storage.create(
+        BlobInfo.newBuilder(BlobId.of(bucketName, fileName)).setContentType("text/plain").build(),
+        content.getBytes());
+  }
+
+  private void validateReadBlob(
+      Storage storage, String bucketName, String fileName, String content) {
+    String readString = readBlob(storage, bucketName, fileName, content.getBytes().length);
+    if (!readString.equals(content)) {
+      throw new PlatformServiceException(
+          EXPECTATION_FAILED,
+          "Error reading test blob "
+              + fileName
+              + ", expected: \""
+              + content
+              + "\", got: \""
+              + readString
+              + "\"");
+    }
+  }
+
+  private String readBlob(Storage storage, String bucketName, String fileName, int bytesToRead) {
+    byte[] readBytes = storage.readAllBytes(bucketName, fileName);
+    return new String(readBytes);
   }
 }

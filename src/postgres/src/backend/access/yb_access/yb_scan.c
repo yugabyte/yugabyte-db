@@ -450,10 +450,12 @@ static HeapTuple ybcFetchNextHeapTuple(YbScanDesc ybScan, bool is_forward_scan)
 	return tuple;
 }
 
-static IndexTuple ybcFetchNextIndexTuple(YbScanDesc ybScan, Relation index, bool is_forward_scan)
+static IndexTuple
+ybcFetchNextIndexTuple(YbScanDesc ybScan, bool is_forward_scan)
 {
 	IndexTuple tuple    = NULL;
 	bool       has_data = false;
+	Relation   index    = ybScan->index;
 	TupleDesc  tupdesc  = ybScan->target_desc;
 
 	Datum           *values = (Datum *) palloc0(tupdesc->natts * sizeof(Datum));
@@ -800,10 +802,10 @@ YbGetIndexAttnum(AttrNumber table_attno, Relation index)
 }
 
 /*
- * Add regular key to ybScan.
+ * Add ordinary key to ybScan.
  */
 static void
-ybAddRegularScanKey(ScanKey key, YbScanDesc ybScan)
+ybAddOrdinaryScanKey(ScanKey key, YbScanDesc ybScan)
 {
 	if (ybScan->nkeys >= YB_MAX_SCAN_KEYS)
 		ereport(ERROR,
@@ -830,7 +832,7 @@ ybExtractScanKeys(ScanKey keys, int nkeys, YbScanDesc ybScan)
 		}
 		else
 		{
-			ybAddRegularScanKey(key, ybScan);
+			ybAddOrdinaryScanKey(key, ybScan);
 
 			/* Extract subkeys in case of row comparison. */
 			if (YbIsRowHeader(key))
@@ -838,7 +840,7 @@ ybExtractScanKeys(ScanKey keys, int nkeys, YbScanDesc ybScan)
 				ScanKey subkey = (ScanKey) key->sk_argument;
 				do
 				{
-					ybAddRegularScanKey(subkey, ybScan);
+					ybAddOrdinaryScanKey(subkey, ybScan);
 				}
 				while (((subkey++)->sk_flags & SK_ROW_END) == 0);
 			}
@@ -1277,9 +1279,15 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 	}
 }
 
+/*
+ * is_for_precheck signifies that the caller only wants to use this for
+ * predetermine-recheck purposes, so don't actually do binds but still
+ * calculate all_ordinary_keys_bound.
+ * TODO(jason): do a proper cleanup.
+ */
 static bool
 YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
-				  int skey_index, bool is_column_bound[],
+				  int skey_index, bool is_for_precheck, bool is_column_bound[],
 				  bool *bail_out)
 {
 	/* based on _bt_preprocess_array_keys() */
@@ -1422,16 +1430,19 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 
 	if (is_row)
 	{
-		AttrNumber attnums[length_of_key];
-		/* Subkeys for this rowkey start at i+1. */
-		for (int j = 1; j <= length_of_key; j++)
+		if (!is_for_precheck)
 		{
-			attnums[j - 1] = scan_plan->bind_key_attnums[i + j];
-		}
+			AttrNumber attnums[length_of_key];
+			/* Subkeys for this rowkey start at i+1. */
+			for (int j = 1; j <= length_of_key; j++)
+			{
+				attnums[j - 1] = scan_plan->bind_key_attnums[i + j];
+			}
 
-		ybcBindTupleExprCondIn(ybScan, scan_plan->bind_desc,
-								length_of_key - 1, attnums,
-								num_elems, elem_values);
+			ybcBindTupleExprCondIn(ybScan, scan_plan->bind_desc,
+									length_of_key - 1, attnums,
+									num_elems, elem_values);
+		}
 
 		for (int j = i + 1; j < i + length_of_key; j++)
 		{
@@ -1440,7 +1451,7 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 			is_column_bound[bound_idx] = true;
 		}
 	}
-	else
+	else if (!is_for_precheck)
 	{
 		ybcBindColumnCondIn(ybScan, scan_plan->bind_desc,
 							scan_plan->bind_key_attnums[i],
@@ -1452,15 +1463,36 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 	return true;
 }
 
-/* Use the scan-descriptor and scan-plan to setup binds for the queryplan */
+/*
+ * Use the scan-descriptor and scan-plan to setup binds for the queryplan.
+ * is_for_precheck signifies that the caller only wants to use this for
+ * predetermine-recheck purposes, so don't actually do binds but still
+ * calculate all_ordinary_keys_bound.
+ * TODO(jason): do a proper cleanup.
+ */
 static bool
-YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
+YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 {
 	Relation relation = ((TableScanDesc)ybScan)->rs_rd;
 
-	ybScan->is_full_cond_bound = yb_bypass_cond_recheck &&
-								 yb_pushdown_strict_inequality &&
-								 yb_pushdown_is_not_null;
+	/*
+	 * Best-effort try to determine if all non-yb_hash_code keys are bound.
+	 * - GUCs: these are AUTO_PG_FLAGs for rolling-upgrade purposes.  Until
+	 *   upgrade is complete, it is possible that a bind that is formed here is
+	 *   not properly interpreted by the tserver, so returned rows ought to be
+	 *   rechecked (assuming error is not returned).  Since it shouldn't be
+	 *   common for these GUCs to be false, don't bother with a more detailed
+	 *   inspection (e.g. conditions may all be unrelated to strict inequality
+	 *   and all be bound, yet if yb_pushdown_strict_inequality is false, this
+	 *   logic lazily thinks everything isn't bound).
+	 * - YBCIsSysTablePrefetchingStarted: if this scan is for system table
+	 *   prefetching, it is a special case that doesn't push down conditions,
+	 *   so assume the worst.
+	 */
+	ybScan->all_ordinary_keys_bound = (yb_bypass_cond_recheck &&
+									   yb_pushdown_strict_inequality &&
+									   yb_pushdown_is_not_null &&
+									   !YBCIsSysTablePrefetchingStarted());
 
 	/*
 	 * Set up the arrays to store the search intervals for each PG/YSQL
@@ -1515,11 +1547,14 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 	{
 		length_of_key = YbGetLengthOfKey(&ybScan->keys[i]);
 		ScanKey key = ybScan->keys[i];
-		/* Check if this is full key row comparison expression */
-		if (YbIsRowHeader(key) &&
-			!YbIsSearchArray(key))
+		if (!is_for_precheck)
 		{
-			YbBindRowComparisonKeys(ybScan, scan_plan, i);
+			/* Check if this is full key row comparison expression */
+			if (YbIsRowHeader(key) &&
+				!YbIsSearchArray(key))
+			{
+				YbBindRowComparisonKeys(ybScan, scan_plan, i);
+			}
 		}
 
 		/* Check if this is primary columns */
@@ -1527,7 +1562,7 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 		int idx = YBAttnumToBmsIndex(relation, bind_key_attnum);
 		if (!bms_is_member(idx, scan_plan->sk_cols))
 		{
-			ybScan->is_full_cond_bound = false;
+			ybScan->all_ordinary_keys_bound = false;
 			continue;
 		}
 
@@ -1594,7 +1629,7 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 		if (is_column_bound[idx] ||
 			!YbCheckScanTypes(ybScan, scan_plan, i))
 		{
-			ybScan->is_full_cond_bound = false;
+			ybScan->all_ordinary_keys_bound = false;
 			continue;
 		}
 
@@ -1615,19 +1650,22 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 				if (YbIsBasicOpSearch(key) || YbIsSearchNull(key))
 				{
 					/* Either c = NULL or c IS NULL. */
-					bool is_null = (key->sk_flags & SK_ISNULL) == SK_ISNULL;
-					YbBindColumn(ybScan, scan_plan->bind_desc,
-					             scan_plan->bind_key_attnums[i],
-					             key->sk_argument, is_null);
+					if (!is_for_precheck)
+					{
+						bool is_null = (key->sk_flags & SK_ISNULL) == SK_ISNULL;
+						YbBindColumn(ybScan, scan_plan->bind_desc,
+									 scan_plan->bind_key_attnums[i],
+									 key->sk_argument, is_null);
+					}
 					is_column_bound[idx] = true;
 				}
 				else if (YbIsSearchArray(key))
 				{
 					bool bail_out = false;
-					bool is_bound =
-						YbBindSearchArray(ybScan, scan_plan,
-										  i, is_column_bound,
-									  	  &bail_out);
+					bool is_bound = YbBindSearchArray(ybScan, scan_plan, i,
+													  is_for_precheck,
+													  is_column_bound,
+													  &bail_out);
 					if (bail_out)
 						return false;
 
@@ -1700,26 +1738,69 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 		/* Do not bind more than one condition to a column */
 		if (is_column_bound[idx])
 		{
-			ybScan->is_full_cond_bound = false;
+			ybScan->all_ordinary_keys_bound = false;
 			continue;
 		}
 
-		if (start_valid[idx] || end_valid[idx])
+		if (!is_for_precheck)
 		{
-			YbBindColumnCondBetween(ybScan, scan_plan->bind_desc,
-									YBBmsIndexToAttnum(relation, idx),
-									start_valid[idx], start_inclusive[idx],
-									start[idx], end_valid[idx],
-									end_inclusive[idx], end[idx]);
-		}
-		else if (yb_pushdown_is_not_null)
-		{
-			/* is_not_null[idx] must be true */
-			YbBindColumnNotNull(ybScan, scan_plan->bind_desc,
-								YBBmsIndexToAttnum(relation, idx));
+			if (start_valid[idx] || end_valid[idx])
+			{
+				YbBindColumnCondBetween(ybScan, scan_plan->bind_desc,
+										YBBmsIndexToAttnum(relation, idx),
+										start_valid[idx], start_inclusive[idx],
+										start[idx], end_valid[idx],
+										end_inclusive[idx], end[idx]);
+			}
+			else if (yb_pushdown_is_not_null)
+			{
+				/* is_not_null[idx] must be true */
+				YbBindColumnNotNull(ybScan, scan_plan->bind_desc,
+									YBBmsIndexToAttnum(relation, idx));
+			}
 		}
 	}
 	return true;
+}
+
+/*
+ * Before beginning execution, determine whether recheck is needed.  Use as
+ * little resources as possible to make this determination.  This is largely a
+ * dup of ybcBeginScan minus the unessential parts.
+ * TODO(jason): there may be room for further cleanup/optimization.
+ */
+bool
+YbPredetermineNeedsRecheck(Relation relation,
+						   Relation index,
+						   bool xs_want_itup,
+						   ScanKey keys,
+						   int nkeys)
+{
+	YbScanDescData ybscan;
+	memset(&ybscan, 0, sizeof(YbScanDescData));
+	TableScanDesc tsdesc = (TableScanDesc) &ybscan;
+	tsdesc->rs_rd = relation;
+	tsdesc->rs_key = keys;
+	tsdesc->rs_nkeys = nkeys;
+
+	ybExtractScanKeys(keys, nkeys, &ybscan);
+
+	if (YbIsUnsatisfiableCondition(ybscan.nkeys, ybscan.keys))
+		return false;
+
+	ybscan.index = index;
+
+	/* Set up the scan plan */
+	YbScanPlanData scan_plan;
+	ybcSetupScanPlan(xs_want_itup, &ybscan, &scan_plan);
+	ybcSetupScanKeys(&ybscan, &scan_plan);
+
+	YbBindScanKeys(&ybscan, &scan_plan, true /* is_for_precheck */);
+
+	/*
+	 * Finally, ybscan has everything needed to determine recheck.  Do it now.
+	 */
+	return YbNeedsRecheck(&ybscan);
 }
 
 typedef struct {
@@ -2269,7 +2350,8 @@ ybcBeginScan(Relation relation,
 								  &ybScan->handle));
 
 	/* Set up binds */
-	if (!YbBindScanKeys(ybScan, &scan_plan) || !YbBindHashKeys(ybScan))
+	if (!YbBindScanKeys(ybScan, &scan_plan, false /* is_for_precheck */) ||
+		!YbBindHashKeys(ybScan))
 	{
 		ybScan->quit_scan = true;
 		bms_free(scan_plan.hash_key);
@@ -2326,13 +2408,25 @@ ybcBeginScan(Relation relation,
 	return ybScan;
 }
 
+/*
+ * Return true if the given tuple does not match the ordinary
+ * (non-yb_hash_code) scan keys.  Returning false is not a guarantee for match.
+ *
+ * Any modifications here may need to be reflected in YbNeedsRecheck as well.
+ */
 static bool
-ybc_keys_match(HeapTuple tup, YbScanDesc ybScan, bool *recheck)
+ybIsTupMismatch(HeapTuple tup, YbScanDesc ybScan)
 {
 	ScanKey	   *keys	 = ybScan->keys;
 	AttrNumber *sk_attno = ybScan->target_key_attnums;
 
-	*recheck = false;
+	/*
+	 * This function tries to find mismatches on ordinary keys.  If ordinary
+	 * keys are already known to be pushed down, it is futile to try to find a
+	 * mismatch.
+	 */
+	if (ybScan->all_ordinary_keys_bound)
+		return false;
 
 	for (int i = 0; i < ybScan->nkeys; i += YbGetLengthOfKey(&keys[i]))
 	{
@@ -2349,7 +2443,7 @@ ybc_keys_match(HeapTuple tup, YbScanDesc ybScan, bool *recheck)
 			if (is_null)
 				continue;
 			else
-				return false;
+				return true;
 		}
 
 		if (key->sk_flags & SK_SEARCHNOTNULL)
@@ -2357,85 +2451,85 @@ ybc_keys_match(HeapTuple tup, YbScanDesc ybScan, bool *recheck)
 			if (!is_null)
 				continue;
 			else
-				return false;
+				return true;
 		}
 
-		/*
-			* TODO: support the different search options like SK_SEARCHARRAY.
-			*/
+		/* TODO: support the different search options like SK_SEARCHARRAY. */
 		if (key->sk_flags != 0)
-		{
-			*recheck = true;
 			continue;
-		}
 
 		if (is_null)
-			return false;
+			return true;
 
 		bool matches = DatumGetBool(FunctionCall2Coll(
 			&key->sk_func, key->sk_collation, res_datum, key->sk_argument));
 		if (!matches)
-			return false;
-	}
-
-	return true;
-}
-
-static bool is_index_functional(Relation index)
-{
-	if (!index->rd_indexprs)
-		return false;
-
-	ListCell   *indexpr_item;
-
-	foreach(indexpr_item, index->rd_indexprs)
-	{
-		Expr    *indexvar = (Expr *) lfirst(indexpr_item);
-		if (IsA(indexvar, FuncExpr))
-		{
 			return true;
-		}
-
 	}
+
 	return false;
 }
 
-HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck)
+/*
+ * Whether rows returned by DocDB need to be rechecked.  Currently, it can be
+ * predetermined for the entire scan before tuples are fetched.
+ */
+bool
+YbNeedsRecheck(YbScanDesc ybScan)
+{
+	/* In case of yb_hash_code pushdown, always recheck. */
+	if (ybScan->hash_code_keys != NIL)
+		return true;
+
+	if (ybScan->prepare_params.index_only_scan)
+	{
+		/*
+		 * For IndexOnlyScan, always recheck if any ordinary key was not bound.
+		 */
+		return !ybScan->all_ordinary_keys_bound;
+	}
+	else
+	{
+		/*
+		 * Scans besides IndexOnlyScan have a preliminary check ybIsTupMismatch
+		 * which helps do most filtering.  The preliminary check is not
+		 * sufficient in case any ordinary keys have unsupported flags.
+		 */
+		ScanKey *keys = ybScan->keys;
+		for (int i = 0; i < ybScan->nkeys; i += YbGetLengthOfKey(&keys[i]))
+		{
+			if (ybScan->target_key_attnums[i] == InvalidAttrNumber)
+				continue;
+			if (keys[i]->sk_flags & ~(SK_SEARCHNULL | SK_SEARCHNOTNULL))
+				return true;
+		}
+	}
+
+	return false;
+}
+
+HeapTuple
+ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck)
 {
 	HeapTuple   tup      = NULL;
 
 	if (ybScan->quit_scan)
 		return NULL;
 
-	/* In case of yb_hash_code pushdown tuple must be rechecked. */
-	bool tuple_recheck_required = (ybScan->hash_code_keys != NIL);
+	*recheck = YbNeedsRecheck(ybScan);
 
-	/* If the index is on a function, we need to recheck. */
-	if (ybScan->index)
-		tuple_recheck_required |= is_index_functional(ybScan->index);
-
-	/*
-	 * YB Scan may not be able to push down the scan key condition so we may
-	 * need additional filtering here.
-	 */
-	while (HeapTupleIsValid(tup = ybcFetchNextHeapTuple(ybScan, is_forward_scan)))
+	/* Loop over rows from pggate. */
+	while (HeapTupleIsValid(tup = ybcFetchNextHeapTuple(ybScan,
+														is_forward_scan)))
 	{
-		if (tuple_recheck_required)
-			break;
-
-		bool recheck = false;
-		if ((ybScan->is_full_cond_bound && !YBCIsSysTablePrefetchingStarted())
-			|| ybc_keys_match(tup, ybScan, &recheck))
+		/* Do a preliminary check to skip rows we can guarantee don't match. */
+		if (ybIsTupMismatch(tup, ybScan))
 		{
-			tuple_recheck_required = recheck;
-			break;
+			heap_freetuple(tup);
+			continue;
 		}
-
-		heap_freetuple(tup);
+		break;
 	}
-	Assert(!tuple_recheck_required || recheck);
-	if (recheck)
-		*recheck = tuple_recheck_required;
 	return tup;
 }
 
@@ -2443,14 +2537,8 @@ IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool 
 {
 	if (ybScan->quit_scan)
 		return NULL;
-
-	/*
-	 * If we have a yb_hash_code pushdown or not all conditions were
-	 * bound tuple must be rechecked.
-	 */
-	*recheck = (ybScan->hash_code_keys != NIL) || !ybScan->is_full_cond_bound;
-
-	return ybcFetchNextIndexTuple(ybScan, ybScan->index, is_forward_scan);
+	*recheck = YbNeedsRecheck(ybScan);
+	return ybcFetchNextIndexTuple(ybScan, is_forward_scan);
 }
 
 void ybc_free_ybscan(YbScanDesc ybscan)

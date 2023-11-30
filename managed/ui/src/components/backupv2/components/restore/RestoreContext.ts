@@ -12,7 +12,7 @@ import { IBackup } from "../../common/IBackup";
 import { IGeneralSettings } from "./pages/generalSettings/GeneralSettings";
 import { ISelectTables } from "./pages/selectTables/TablesSelect";
 import { PreflightResponseParams } from "./api";
-import { getNextPage } from "./RestoreUtils";
+import { getNextPage, getPrevPage } from "./RestoreUtils";
 import { IRenameKeyspace } from "./pages/renameKeyspace/RenameKeyspace";
 
 
@@ -86,6 +86,7 @@ export const RestoreFormContext = createContext<RestoreContext>(initialRestoreCo
 
 export const restoreMethods = (context: RestoreContext) => ({
     moveToNextPage: () => getNextPage(context),
+    moveToPrevPage: () => getPrevPage(context),
     moveToPage: (page: Page): RestoreContext => ({
         ...context,
         formProps: {
@@ -151,4 +152,5 @@ export type RestoreContextMethods = [
 
 export type PageRef = {
     onNext: () => void;
+    onPrev: () => void;
 }

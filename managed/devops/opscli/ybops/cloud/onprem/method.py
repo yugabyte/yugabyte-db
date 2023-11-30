@@ -553,6 +553,9 @@ class OnPremInstallNodeAgentMethod(AbstractInstancesMethod):
                          headers=self.auth_header)
             with open(self.local_installer_path, "wb") as file:
                 response = conn.getresponse()
+                if response.status != 200:
+                    raise YBOpsRuntimeError("Failed({}) to download node-agent installer."
+                                            .format(response.status))
                 file.write(response.read())
             st = os.stat(self.local_installer_path)
             os.chmod(self.local_installer_path,
@@ -567,12 +570,17 @@ class OnPremInstallNodeAgentMethod(AbstractInstancesMethod):
     def uninstall_node_agent(self, args):
         remote_shell = RemoteShell(self.extra_vars)
         try:
-            uninstall_cmd = ["bash", "-c", f"cd {args.remote_tmp_dir}"
-                             f" && . {self.sudo_pass_file}"
-                             f" && echo -n $YB_SUDO_PASS | sudo -H -S"
-                             f" {self.remote_installer_path} -c uninstall -u {args.yba_url}"
-                             f" -t {args.api_token} --node_ip {args.node_agent_ip}"
-                             " --skip_verify_cert"]
+            sudo_pass = os.getenv("YB_SUDO_PASS", None)
+            uninstall_cmd_args = f"cd {args.remote_tmp_dir} &&"
+            if sudo_pass:
+                uninstall_cmd_args += f" . {self.sudo_pass_file}"
+                uninstall_cmd_args += " && echo -n $YB_SUDO_PASS | sudo -H -S"
+            else:
+                uninstall_cmd_args += " sudo -H -n"
+            uninstall_cmd_args += f" {self.remote_installer_path} -c uninstall -u {args.yba_url}"
+            uninstall_cmd_args += f" -t {args.api_token} --node_ip {args.node_agent_ip}"
+            uninstall_cmd_args += " --skip_verify_cert"
+            uninstall_cmd = ["bash", "-c", uninstall_cmd_args]
             remote_shell.run_command(uninstall_cmd)
         finally:
             remote_shell.close()
@@ -580,21 +588,35 @@ class OnPremInstallNodeAgentMethod(AbstractInstancesMethod):
     def install_node_agent(self, args):
         remote_shell = RemoteShell(self.extra_vars)
         try:
-            install_cmd = ["bash", "-c", f"cd {args.remote_tmp_dir}"
-                           f" && . {self.sudo_pass_file}"
-                           f" && echo -n $YB_SUDO_PASS | sudo -H -S -u {self.install_user}"
-                           f" {self.remote_installer_path} -c install -u {args.yba_url}"
-                           f" -t {args.api_token} --skip_verify_cert --silent"
-                           f" --user {self.install_user}"
-                           f" --node_name {args.node_name} --node_ip {args.node_agent_ip}"
-                           f" --node_port {args.node_agent_port} --provider_id {args.provider_id}"
-                           f" --instance_type {args.instance_type} --zone_name {args.zone_name}"]
+            sudo_pass = os.getenv("YB_SUDO_PASS", None)
+            install_cmd_args = f"cd {args.remote_tmp_dir} &&"
+            if sudo_pass:
+                install_cmd_args += f". {self.sudo_pass_file}"
+                install_cmd_args += " && echo -n $YB_SUDO_PASS | sudo -H -S"
+            else:
+                install_cmd_args += " sudo -H -n"
+            install_cmd_args += f" -u {self.install_user}"
+            install_cmd_args += f" {self.remote_installer_path} -c install -u {args.yba_url}"
+            install_cmd_args += f" -t {args.api_token} --skip_verify_cert --silent"
+            install_cmd_args += f" --user {self.install_user}"
+            install_cmd_args += f" --node_name {args.node_name} --node_ip {args.node_agent_ip}"
+            install_cmd_args += f" --node_port {args.node_agent_port}"
+            install_cmd_args += f" --provider_id {args.provider_id}"
+            install_cmd_args += f" --instance_type {args.instance_type}"
+            install_cmd_args += f" --zone_name {args.zone_name}"
+            install_cmd = ["bash", "-c", install_cmd_args]
             # Run the installer script.
             remote_shell.run_command(install_cmd)
             # Install service as root.
-            service_cmd = ["bash", "-c", f"cd {args.remote_tmp_dir} && . {self.sudo_pass_file}"
-                           f" && echo -n $YB_SUDO_PASS | sudo -H -S {self.remote_installer_path}"
-                           f" -c install_service --user {self.install_user}"]
+            service_cmd_args = f"cd {args.remote_tmp_dir} &&"
+            if sudo_pass:
+                service_cmd_args += f" . {self.sudo_pass_file}"
+                service_cmd_args += " && echo -n $YB_SUDO_PASS | sudo -H -S"
+            else:
+                service_cmd_args += " sudo -H -n"
+            service_cmd_args += f" {self.remote_installer_path}"
+            service_cmd_args += f" -c install_service --user {self.install_user}"
+            service_cmd = ["bash", "-c", service_cmd_args]
             remote_shell.run_command(service_cmd)
         finally:
             remote_shell.close()

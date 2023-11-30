@@ -10,15 +10,11 @@ import { YBLoading } from '../../common/indicators';
 import { FlexShrink, FlexContainer } from '../../common/flexbox/YBFlexBox';
 import { fetchGFlags, fetchParticularFlag } from '../../../actions/universe';
 import { GFlagsConf } from './GFlagsConf';
-import { GFLAG_EDIT } from '../../../utils/UniverseUtils';
+import { GFLAG_EDIT, MULTILINE_GFLAGS_ARRAY } from '../../../utils/UniverseUtils';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 //Icons
 import Bulb from '../images/bulb.svg';
 import BookOpen from '../images/book_open.svg';
-
-const ConfKeys = {
-  HBA_CONF: 'ysql_hba_conf_csv'
-};
 
 const AddGFlag = ({ formProps, gFlagProps }) => {
   const featureFlags = useSelector((state) => state.featureFlags);
@@ -32,9 +28,9 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
   const [selectedFlag, setSelectedFlag] = useState(null);
   const [apiError, setAPIError] = useState(null);
 
-  // HBA Conf GFlag
-  const enableGFlagHBAConf =
-    featureFlags.test.enableGFlagHBAConf || featureFlags.released.enableGFlagHBAConf;
+  // Multiline Conf GFlag
+  const isGFlagMultilineConfEnabled =
+    featureFlags.test.enableGFlagMultilineConf || featureFlags.released.enableGFlagMultilineConf;
 
   //Declarative methods
   const filterByText = (arr, text) => arr.filter((e) => e?.name?.includes(text));
@@ -163,6 +159,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
       : selectedFlag?.hasOwnProperty('default')
       ? 'default'
       : 'target';
+
     switch (flag?.type) {
       case 'bool':
         return (
@@ -191,8 +188,15 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
         );
 
       case 'string':
-        if (flag?.name === 'ysql_hba_conf_csv' && enableGFlagHBAConf) {
-          return <GFlagsConf formProps={formProps} mode={mode} />;
+        if (MULTILINE_GFLAGS_ARRAY.includes(flag?.name) && isGFlagMultilineConfEnabled) {
+          return (
+            <GFlagsConf
+              formProps={formProps}
+              mode={mode}
+              serverType={server}
+              flagName={flag?.name}
+            />
+          );
         } else {
           return <Field name="flagvalue" type="text" label={valueLabel} component={YBFormInput} />;
         }
@@ -298,7 +302,9 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
             </div>
           </div>
           <div className="gflag-form">{renderFormComponent(selectedFlag)}</div>
-          {selectedFlag.name !== ConfKeys.HBA_CONF && <span className="gflag-form-separator" />}
+          {!MULTILINE_GFLAGS_ARRAY.includes(selectedFlag.name) && (
+            <span className="gflag-form-separator" />
+          )}
         </>
       );
     } else return infoText;

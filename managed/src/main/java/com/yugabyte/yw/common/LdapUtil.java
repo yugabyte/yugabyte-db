@@ -573,8 +573,7 @@ public class LdapUtil {
       }
     } catch (LdapException e) {
       log.error(String.format("LDAP error while attempting to auth email %s", email), e);
-      String errorMessage = "LDAP parameters are not configured correctly. " + e.getMessage();
-      throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+      throw e;
     } catch (Exception e) {
       log.error(String.format("Failed to authenticate with LDAP for email %s", email), e);
       String errorMessage = "Invalid LDAP credentials. " + e.getMessage();

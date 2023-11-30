@@ -6,7 +6,6 @@ import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
-import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static junit.framework.TestCase.assertNull;
@@ -19,6 +18,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -31,6 +31,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.Common;
@@ -39,6 +40,7 @@ import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.models.AccessKey;
@@ -59,11 +61,8 @@ import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -121,6 +120,23 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
         user.createAuthToken());
   }
 
+  private Result editRegion(UUID providerUUID, UUID regionUUID, JsonNode body) {
+    String uri =
+        String.format(
+            "/api/customers/%s/providers/%s/regions/%s",
+            defaultCustomer.getUuid(), providerUUID, regionUUID);
+    return doRequestWithBody("PUT", uri, body);
+  }
+
+  private Result addRegion(UUID providerUUID, JsonNode regionJson) {
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+        app,
+        "POST",
+        "/api/customers/" + defaultCustomer.getUuid() + "/providers/" + providerUUID + "/regions",
+        user.createAuthToken(),
+        regionJson);
+  }
+
   @Override
   public void setUp() {
     super.setUp();
@@ -159,9 +175,11 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
                 "us-west1", regionMetadata,
                 "us-west2", regionMetadata,
                 "us-east1", regionMetadata));
-    String kubeFile = createTempFile("test2.conf", "test5678");
+
+    // If we don't use this the value is set to null, and we actually
+    // depend on this value being non-null
     when(mockAccessManager.createKubernetesConfig(anyString(), anyMap(), anyBoolean()))
-        .thenReturn(kubeFile);
+        .thenReturn("/tmp/some-fake-path-here/kubernetes.conf");
   }
 
   private void setUpCredsValidation(boolean valid) {
@@ -308,23 +326,35 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
   public void testEditProviderKubernetesConfigEdit() throws InterruptedException {
     Provider k8sProvider = createK8sProvider();
     k8sProvider.getDetails().getCloudInfo().kubernetes.setKubeConfigName("test2.conf");
-    k8sProvider.getDetails().getCloudInfo().kubernetes.setKubeConfigContent("test5678");
+    k8sProvider
+        .getDetails()
+        .getCloudInfo()
+        .kubernetes
+        .setKubeConfigContent(TestUtils.readResource("test-kubeconfig-updated.conf"));
     Result result = editProvider(k8sProvider, false);
 
     assertOk(result);
     assertAuditEntry(2, defaultCustomer.getUuid());
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(k8sProvider.getUuid(), UUID.fromString(json.get("resourceUUID").asText()));
-    waitForTask(UUID.fromString(json.get("taskUUID").asText()));
+    TaskInfo taskInfo = waitForTask(UUID.fromString(json.get("taskUUID").asText()));
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+
     k8sProvider = Provider.getOrBadRequest(k8sProvider.getUuid());
-    Map<String, String> config = CloudInfoInterface.fetchEnvVars(k8sProvider);
-    Path path = Paths.get(config.get("KUBECONFIG"));
-    try {
-      List<String> contents = Files.readAllLines(path);
-      assertEquals(contents.get(0), "test5678");
-    } catch (IOException e) {
-      // Do nothing
-    }
+    KubernetesInfo k8sInfo = CloudInfoInterface.get(k8sProvider);
+    assertEquals("https://5.6.7.8", k8sInfo.getApiServerEndpoint());
+
+    // Creat provider
+    verify(mockAccessManager, times(1)).createKubernetesConfig(anyString(), anyMap(), eq(false));
+    verify(mockAccessManager, times(2))
+        .createKubernetesAuthDataFile(anyString(), anyString(), anyString(), eq(false));
+    // Edit provider
+    verify(mockAccessManager, times(1)).createKubernetesConfig(anyString(), anyMap(), eq(true));
+    verify(mockAccessManager, times(2))
+        .createKubernetesAuthDataFile(anyString(), anyString(), anyString(), eq(true));
+
+    // Gets called twice as we do both create  and edit
+    verify(mockPrometheusConfigManager, times(2)).updateK8sScrapeConfigs();
   }
 
   @Test
@@ -349,16 +379,27 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
   public void testEditProviderKubernetes() throws InterruptedException {
     Provider k8sProvider = createK8sProvider();
     k8sProvider.getDetails().getCloudInfo().kubernetes.setKubernetesStorageClass("slow");
+    // Remove the hidden/masked fields which UI won't be sending us.
+    k8sProvider.getDetails().getCloudInfo().kubernetes.setApiServerEndpoint(null);
 
     Result result = editProvider(k8sProvider, false);
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(k8sProvider.getUuid(), UUID.fromString(json.get("resourceUUID").asText()));
-    waitForTask(UUID.fromString(json.get("taskUUID").asText()));
+    TaskInfo taskInfo = waitForTask(UUID.fromString(json.get("taskUUID").asText()));
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+
     Provider p = Provider.getOrBadRequest(k8sProvider.getUuid());
     Map<String, String> config = CloudInfoInterface.fetchEnvVars(p);
     assertEquals("slow", config.get("STORAGE_CLASS"));
     assertAuditEntry(2, defaultCustomer.getUuid());
+
+    // Shouldn't be any modification to kubeconfig and related fields
+    verify(mockAccessManager, times(0)).createKubernetesConfig(anyString(), anyMap(), eq(true));
+    verify(mockAccessManager, times(0))
+        .createKubernetesAuthDataFile(anyString(), anyString(), anyString(), eq(true));
+    KubernetesInfo k8sInfo = CloudInfoInterface.get(p);
+    assertEquals("https://1.2.3.4", k8sInfo.getApiServerEndpoint());
   }
 
   @Test
@@ -489,7 +530,6 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     ObjectNode zone = Json.newObject();
     zone.put("name", "Zone 2");
     zone.put("code", "zone-2");
-    zone.put("subnet", "subnet-2");
     zones.add(zone);
     ((ObjectNode) region).set("zones", zones);
     ArrayNode regionsNode = Json.newArray();
@@ -507,6 +547,9 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
 
     assertEquals(2, p.getRegions().get(0).getZones().size());
     assertEquals("zone-2", p.getRegions().get(0).getZones().get(1).getCode());
+
+    // Gets called twice as we do both create  and edit
+    verify(mockPrometheusConfigManager, times(2)).updateK8sScrapeConfigs();
   }
 
   @Test
@@ -574,7 +617,6 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     ObjectNode zone = Json.newObject();
     zone.put("name", "Zone 2");
     zone.put("code", "zone-2");
-    zone.put("subnet", "subnet-2");
     zones.add(zone);
     region.set("zones", zones);
 
@@ -642,39 +684,26 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
   public void testK8sProviderConfigEditAtZoneLevel() throws InterruptedException {
     Provider k8sProvider = createK8sProvider(false);
     Provider p = Provider.getOrBadRequest(k8sProvider.getUuid());
-    p.getRegions()
-        .get(0)
-        .getZones()
-        .get(0)
-        .getDetails()
-        .getCloudInfo()
-        .getKubernetes()
-        .setKubeConfigName("Test-2");
+    KubernetesRegionInfo k8sRegInfo =
+        p.getRegions().get(0).getZones().get(0).getDetails().getCloudInfo().getKubernetes();
+    k8sRegInfo.setKubeConfigName("test2.conf");
+    k8sRegInfo.setKubeConfigContent(TestUtils.readResource("test-kubeconfig-updated.conf"));
 
     UUID taskUUID = doEditProvider(p, false);
     TaskInfo taskInfo = waitForTask(taskUUID);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     p = Provider.getOrBadRequest(p.getUuid());
 
-    assertNull(
-        p.getRegions()
-            .get(0)
-            .getZones()
-            .get(0)
-            .getDetails()
-            .getCloudInfo()
-            .getKubernetes()
-            .getKubeConfigName());
+    k8sRegInfo =
+        p.getRegions().get(0).getZones().get(0).getDetails().getCloudInfo().getKubernetes();
 
-    assertNotNull(
-        p.getRegions()
-            .get(0)
-            .getZones()
-            .get(0)
-            .getDetails()
-            .getCloudInfo()
-            .getKubernetes()
-            .getKubeConfig());
+    assertNull(k8sRegInfo.getKubeConfigName());
+    assertNotNull(k8sRegInfo.getKubeConfig());
+    assertEquals("https://5.6.7.8", k8sRegInfo.getApiServerEndpoint());
+
+    verify(mockAccessManager, times(1)).createKubernetesConfig(anyString(), anyMap(), eq(true));
+    verify(mockAccessManager, times(2))
+        .createKubernetesAuthDataFile(anyString(), anyString(), anyString(), eq(true));
   }
 
   @Test
@@ -690,6 +719,44 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     p = Provider.getOrBadRequest(p.getUuid());
     assertEquals(
         "Test-2", p.getDetails().getCloudInfo().getKubernetes().getKubernetesStorageClass());
+  }
+
+  @Test
+  public void testK8sProviderEditMaskedFieldsAtZone() throws InterruptedException {
+    Provider k8sProvider = createK8sProvider(false);
+
+    // Add config at zone
+    Provider p = Provider.getOrBadRequest(k8sProvider.getUuid());
+    KubernetesRegionInfo k8sRegInfo =
+        p.getRegions().get(0).getZones().get(0).getDetails().getCloudInfo().getKubernetes();
+    k8sRegInfo.setKubeConfigName("test1.conf");
+    k8sRegInfo.setKubeConfigContent(TestUtils.readResource("test-kubeconfig.conf"));
+    UUID taskUUID = doEditProvider(p, false);
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+
+    // Modify the zone
+    p = Provider.getOrBadRequest(p.getUuid());
+    k8sRegInfo =
+        p.getRegions().get(0).getZones().get(0).getDetails().getCloudInfo().getKubernetes();
+    k8sRegInfo.setKubernetesStorageClass("new-sc");
+    // Remove the hidden/masked fields which UI won't be sending us.
+    k8sRegInfo.setApiServerEndpoint(null);
+    taskUUID = doEditProvider(p, false);
+    taskInfo = waitForTask(taskUUID);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+
+    // Verify masked fields
+    p = Provider.getOrBadRequest(p.getUuid());
+    k8sRegInfo =
+        p.getRegions().get(0).getZones().get(0).getDetails().getCloudInfo().getKubernetes();
+    assertEquals("https://1.2.3.4", k8sRegInfo.getApiServerEndpoint());
+
+    // Should happen only when we add kubeconfig to the zone, not the
+    // second time when we modify the storage class.
+    verify(mockAccessManager, times(1)).createKubernetesConfig(anyString(), anyMap(), eq(true));
+    verify(mockAccessManager, times(2))
+        .createKubernetesAuthDataFile(anyString(), anyString(), anyString(), eq(true));
   }
 
   @Test
@@ -801,6 +868,133 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     assertEquals("new name", Provider.getOrBadRequest(provider.getUuid()).getName());
   }
 
+  @Test
+  public void testImageBundleEditViaProviderRegionAdd() throws InterruptedException {
+    Provider awsProvider = ModelFactory.newProvider(defaultCustomer, Common.CloudType.aws);
+    Region.create(awsProvider, "us-west-1", "us-west-1", "yb-image1");
+    ImageBundleDetails details = new ImageBundleDetails();
+    Map<String, ImageBundleDetails.BundleInfo> regionImageInfo = new HashMap<>();
+    regionImageInfo.put("us-west-1", new ImageBundleDetails.BundleInfo());
+    details.setRegions(regionImageInfo);
+    ImageBundle.create(awsProvider, "ib-1", details, true);
+
+    Result providerRes = getProvider(awsProvider.getUuid());
+    JsonNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
+    awsProvider = Json.fromJson(bodyJson, Provider.class);
+
+    // Add a region to the provider
+    awsProvider.getRegions().add(Json.fromJson(getAWSRegionJson(), Region.class));
+    UUID taskUUID = doEditProvider(awsProvider, false);
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    awsProvider = Provider.getOrBadRequest(awsProvider.getUuid());
+    ImageBundle ib1 = awsProvider.getImageBundles().get(0);
+    Map<String, ImageBundleDetails.BundleInfo> bundleInfoMap = ib1.getDetails().getRegions();
+    assertEquals(2, bundleInfoMap.size());
+    assertTrue(bundleInfoMap.keySet().contains("us-west-2"));
+
+    // Edit an existing region.
+    Region region = Region.getByCode(awsProvider, "us-west-2");
+    region.getDetails().getCloudInfo().getAws().setYbImage("Updated YB Image");
+    List<Region> regions = ImmutableList.of(region);
+    awsProvider.setRegions(regions);
+    taskUUID = doEditProvider(awsProvider, false);
+    taskInfo = waitForTask(taskUUID);
+    awsProvider = Provider.getOrBadRequest(awsProvider.getUuid());
+    ib1 = awsProvider.getImageBundles().get(0);
+    bundleInfoMap = ib1.getDetails().getRegions();
+    assertEquals(2, bundleInfoMap.size());
+    assertTrue(bundleInfoMap.keySet().contains("us-west-2"));
+    ImageBundleDetails.BundleInfo bInfo = ib1.getDetails().getRegions().get("us-west-2");
+    assertEquals("Updated YB Image", bInfo.getYbImage());
+  }
+
+  @Test
+  public void testImageBundleEditRegionAdd() {
+    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.disableImageBundleValidation.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(
+        GlobalConfKeys.useLegacyPayloadForRegionAndAZs.getKey(), "false");
+    Provider p = ModelFactory.newProvider(defaultCustomer, Common.CloudType.aws);
+    Region.create(p, "us-west-1", "us-west-1", "yb-image1");
+    ImageBundleDetails details = new ImageBundleDetails();
+    Map<String, ImageBundleDetails.BundleInfo> regionImageInfo = new HashMap<>();
+    regionImageInfo.put("us-west-1", new ImageBundleDetails.BundleInfo());
+    details.setRegions(regionImageInfo);
+    details.setGlobalYbImage("yb_image");
+    ImageBundle.create(p, "ib-1", details, true);
+
+    // Ensure adding a region updates the imageBundle
+    JsonNode regionBody = getAWSRegionJson();
+    Result region = addRegion(p.getUuid(), regionBody);
+    JsonNode bodyJson = (ObjectNode) Json.parse(contentAsString(region));
+    Region cRegion = Json.fromJson(bodyJson, Region.class);
+
+    Result providerRes = getProvider(p.getUuid());
+    bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
+    p = Json.fromJson(bodyJson, Provider.class);
+
+    ImageBundle ib1 = p.getImageBundles().get(0);
+    Map<String, ImageBundleDetails.BundleInfo> bundleInfoMap = ib1.getDetails().getRegions();
+    assertEquals(2, bundleInfoMap.size());
+    assertTrue(bundleInfoMap.keySet().contains("us-west-2"));
+
+    // Ensure editing a region updates the imageBundle.
+    cRegion.getDetails().getCloudInfo().getAws().setYbImage("Updated YB Image");
+    region = editRegion(p.getUuid(), cRegion.getUuid(), Json.toJson(cRegion));
+    providerRes = getProvider(p.getUuid());
+    bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
+    p = Json.fromJson(bodyJson, Provider.class);
+
+    ib1 = p.getImageBundles().get(0);
+    bundleInfoMap = ib1.getDetails().getRegions();
+    ImageBundleDetails.BundleInfo bInfo = bundleInfoMap.get(cRegion.getCode());
+    assertEquals("Updated YB Image", bInfo.getYbImage());
+  }
+
+  @Test
+  public void testImageBundleEditRegionAddLegacyPayload() {
+    JsonNode vpcInfo = Json.parse("{\"us-west-2\": {\"zones\": {\"us-west-2a\": \"subnet-1\"}}}");
+    when(mockNetworkManager.bootstrap(any(), any(), any())).thenReturn(vpcInfo);
+    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.disableImageBundleValidation.getKey(), "true");
+    Provider p = ModelFactory.newProvider(defaultCustomer, Common.CloudType.aws);
+    Region.create(p, "us-west-1", "us-west-1", "yb-image1");
+    ImageBundleDetails details = new ImageBundleDetails();
+    Map<String, ImageBundleDetails.BundleInfo> regionImageInfo = new HashMap<>();
+    regionImageInfo.put("us-west-1", new ImageBundleDetails.BundleInfo());
+    details.setRegions(regionImageInfo);
+    details.setGlobalYbImage("yb_image");
+    ImageBundle.create(p, "ib-1", details, true);
+
+    // Ensure adding a region using legacy region updates the imageBundle (YBM)
+    JsonNode regionBody = getAWSRegionJsonLegacy();
+    Result region = addRegion(p.getUuid(), regionBody);
+    JsonNode bodyJson = (ObjectNode) Json.parse(contentAsString(region));
+    Region cRegion = Json.fromJson(bodyJson, Region.class);
+
+    Result providerRes = getProvider(p.getUuid());
+    bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
+    p = Json.fromJson(bodyJson, Provider.class);
+
+    ImageBundle ib1 = p.getImageBundles().get(0);
+    Map<String, ImageBundleDetails.BundleInfo> bundleInfoMap = ib1.getDetails().getRegions();
+    assertEquals(2, bundleInfoMap.size());
+    assertTrue(bundleInfoMap.keySet().contains("us-west-2"));
+
+    // Ensure editing a region using legacy region updates the imageBundle (YBM)
+    ObjectNode regionEditFormData = Json.newObject();
+    regionEditFormData.put("ybImage", "Updated YB Image");
+    regionEditFormData.put("securityGroupId", "securityGroupId");
+    regionEditFormData.put("vnetName", "vnetName");
+    region = editRegion(p.getUuid(), cRegion.getUuid(), regionEditFormData);
+    providerRes = getProvider(p.getUuid());
+    bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
+    p = Json.fromJson(bodyJson, Provider.class);
+
+    ib1 = p.getImageBundles().get(0);
+    bundleInfoMap = ib1.getDetails().getRegions();
+    ImageBundleDetails.BundleInfo bInfo = bundleInfoMap.get(cRegion.getCode());
+    assertEquals("Updated YB Image", bInfo.getYbImage());
+  }
+
   private Provider createK8sProvider() {
     return createK8sProvider(true);
   }
@@ -815,7 +1009,7 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     ObjectNode configJson = Json.newObject();
     if (withConfig) {
       configJson.put("KUBECONFIG_NAME", "test");
-      configJson.put("KUBECONFIG_CONTENT", "test");
+      configJson.put("KUBECONFIG_CONTENT", TestUtils.readResource("test-kubeconfig.conf"));
     }
     configJson.put("KUBECONFIG_PROVIDER", "GKE");
     bodyJson.set("config", configJson);
@@ -866,5 +1060,41 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
   private void verifyEditError(Provider provider, boolean validate, String error) {
     Result result = assertPlatformException(() -> editProvider(provider, validate));
     assertBadRequest(result, error);
+  }
+
+  private JsonNode getAWSRegionJson() {
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("code", "us-west-2");
+    bodyJson.put("name", "us-west-2");
+    ObjectNode cloudInfo = Json.newObject();
+    ObjectNode aws = Json.newObject();
+    aws.put("vnet", "vnet");
+    aws.put("securityGroupId", "securityGroupId");
+    aws.put("ybImage", "ybImage");
+    cloudInfo.set("aws", aws);
+
+    ObjectNode details = Json.newObject();
+    details.set("cloudInfo", cloudInfo);
+    bodyJson.set("details", details);
+    ArrayNode zones = Json.newArray();
+    ObjectNode zone = Json.newObject();
+    zone.put("name", "us-west-2a");
+    zone.put("code", "us-west-2a");
+    zone.put("subnet", "subnet");
+    zones.add(zone);
+    bodyJson.set("zones", zones);
+
+    return bodyJson;
+  }
+
+  private JsonNode getAWSRegionJsonLegacy() {
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("code", "us-west-2");
+    bodyJson.put("name", "us-west-2");
+    bodyJson.put("ybImage", "ybImage");
+    bodyJson.put("securityGroupId", "securityGroupId");
+    bodyJson.put("vnetName", "vnetName");
+
+    return bodyJson;
   }
 }

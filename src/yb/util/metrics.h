@@ -256,6 +256,7 @@
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/atomic.h"
+#include "yb/util/hdr_histogram.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/metrics_writer.h"
 #include "yb/util/monotime.h"
@@ -488,7 +489,8 @@ class MetricRegistry {
 
   scoped_refptr<MetricEntity> FindOrCreateEntity(const MetricEntityPrototype* prototype,
                                                  const std::string& id,
-                                                 const MetricEntity::AttributeMap& initial_attrs);
+                                                 const MetricEntity::AttributeMap& initial_attrs,
+                                                 std::shared_ptr<MemTracker> mem_tracker = nullptr);
 
   // Writes metrics in this registry to 'writer'.
   //
@@ -1064,6 +1066,8 @@ class Histogram : public Metric {
   //   // is thread safe.
   const HdrHistogram* histogram() const { return histogram_.get(); }
 
+  size_t DynamicMemoryUsage() const { return histogram_->DynamicMemoryUsage() + sizeof(*this); }
+
   uint64_t CountInBucketForValueForTests(uint64_t value) const;
   uint64_t MinValueForTests() const;
   uint64_t MaxValueForTests() const;
@@ -1131,6 +1135,7 @@ inline scoped_refptr<AtomicGauge<T>> MetricEntity::FindOrCreateGauge(
   if (it == metric_map_.end()) {
     auto result = new AtomicGauge<T>(proto, initial_value);
     metric_map_.emplace(proto, result);
+    AddConsumption(sizeof(AtomicGauge<T>));
     return result;
   }
   return down_cast<AtomicGauge<T>*>(it->second.get());
@@ -1148,6 +1153,7 @@ inline scoped_refptr<AtomicGauge<T> > MetricEntity::FindOrCreateGauge(
   }
   auto result = new AtomicGauge<T>(std::move(proto), initial_value);
   metric_map_.emplace(result->prototype(), result);
+  AddConsumption(sizeof(AtomicGauge<T>));
   return result;
 }
 
@@ -1163,6 +1169,7 @@ inline scoped_refptr<FunctionGauge<T> > MetricEntity::FindOrCreateFunctionGauge(
   }
   auto result = new FunctionGauge<T>(proto, function);
   metric_map_.emplace(proto, result);
+  AddConsumption(sizeof(FunctionGauge<T>));
   return result;
 }
 

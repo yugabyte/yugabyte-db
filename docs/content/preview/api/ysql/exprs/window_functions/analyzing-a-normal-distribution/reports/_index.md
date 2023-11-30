@@ -3,7 +3,7 @@ title: Reports
 linkTitle: Reports
 headerTitle: Reports
 description: Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation (reports of results).
-image: /images/section_icons/api/ysql.png
+image: /images/section_icons/api/subsection.png
 menu:
   preview:
     identifier: normal-distribution-analysis-reports

@@ -28,6 +28,7 @@
 #include "yb/docdb/read_operation_data.h"
 
 #include "yb/dockv/dockv_fwd.h"
+#include "yb/dockv/pg_key_decoder.h"
 #include "yb/dockv/reader_projection.h"
 
 #include "yb/util/status_fwd.h"
@@ -179,6 +180,7 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   dockv::KeyBytes row_key_;
 
   const dockv::ReaderProjection& projection_;
+  std::optional<dockv::PgKeyDecoder> pg_key_decoder_;
 
   // Key for seeking a YSQL tuple. Used only when the table has a cotable id.
   boost::optional<dockv::KeyBytes> tuple_key_;

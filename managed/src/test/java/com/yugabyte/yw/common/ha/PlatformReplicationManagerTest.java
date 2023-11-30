@@ -29,6 +29,7 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.PlatformScheduler;
+import com.yugabyte.yw.common.PrometheusConfigHelper;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -67,6 +68,8 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
 
   @Mock FileDataService mockFileDataService;
 
+  @Mock PrometheusConfigHelper mockPrometheusConfigHelper;
+
   private static final String STORAGE_PATH = "yb.storage.path";
   private static final String PG_DUMP_PATH = "/tmp/pg_dump";
   private static final String PG_RESTORE_PATH = "/tmp/pg_restore";
@@ -86,8 +89,8 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
       int dbPort,
       boolean isYbaInstaller) {
     when(mockReplicationUtil.getBackupDir()).thenReturn(new File("/tmp/foo.bar").toPath());
-    when(mockReplicationUtil.getPrometheusHost()).thenReturn(prometheusHost);
-    when(mockReplicationUtil.getPrometheusPort()).thenReturn(9090);
+    when(mockPrometheusConfigHelper.getPrometheusHost()).thenReturn(prometheusHost);
+    when(mockPrometheusConfigHelper.getPrometheusPort()).thenReturn(9090);
     when(mockReplicationUtil.getDBHost()).thenReturn(dbHost);
     when(mockReplicationUtil.getDBPort()).thenReturn(dbPort);
     when(mockReplicationUtil.getDBUser()).thenReturn(dbUsername);
@@ -201,7 +204,10 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
     setupConfig(prometheusHost, dbUsername, dbPassword, dbHost, dbPort, isYbaInstaller);
     PlatformReplicationManager backupManager =
         new PlatformReplicationManager(
-            mockPlatformScheduler, mockReplicationUtil, mockFileDataService);
+            mockPlatformScheduler,
+            mockReplicationUtil,
+            mockFileDataService,
+            mockPrometheusConfigHelper);
 
     List<String> expectedCommandArgs =
         getExpectedPlatformBackupCommandArgs(
@@ -250,7 +256,10 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
       PlatformReplicationManager backupManager =
           spy(
               new PlatformReplicationManager(
-                  mockPlatformScheduler, mockReplicationUtil, mockFileDataService));
+                  mockPlatformScheduler,
+                  mockReplicationUtil,
+                  mockFileDataService,
+                  mockPrometheusConfigHelper));
 
       List<File> backups = backupManager.listBackups(testUrl);
       assertEquals(3, backups.size());

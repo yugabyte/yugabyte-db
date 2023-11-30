@@ -32,7 +32,6 @@ import com.amazonaws.services.s3.model.DeleteObjectsRequest.KeyVersion;
 import com.amazonaws.services.s3.model.GetBucketLocationRequest;
 import com.amazonaws.services.s3.model.ListObjectsV2Request;
 import com.amazonaws.services.s3.model.ListObjectsV2Result;
-import com.amazonaws.services.s3.model.ObjectListing;
 import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.google.inject.Inject;
@@ -749,16 +748,20 @@ public class AWSUtil implements CloudUtil {
     String completeObjectPath = BackupUtil.getPathWithPrefixSuffixJoin(prefix, objectName);
 
     createObject(client, bucketName, DUMMY_DATA, completeObjectPath);
+    log.debug("S3: Test object created");
 
     if (permissions.contains(ExtraPermissionToValidate.READ)) {
       validateReadObject(client, bucketName, completeObjectPath, DUMMY_DATA);
+      log.debug("S3: Test object read");
     }
 
     if (permissions.contains(ExtraPermissionToValidate.LIST)) {
-      validateListObjects(client, bucketName, prefix, completeObjectPath);
+      validateListObjects(client, bucketName, completeObjectPath);
+      log.debug("S3: Test object listed");
     }
 
     validateDeleteObject(client, bucketName, completeObjectPath);
+    log.debug("S3: Test object deleted");
   }
 
   private void createObject(AmazonS3 client, String bucketName, String content, String fileName) {
@@ -802,9 +805,8 @@ public class AWSUtil implements CloudUtil {
     return new String(data);
   }
 
-  private void validateListObjects(
-      AmazonS3 client, String bucketName, String prefix, String objectName) {
-    if (!listContainsObject(client, bucketName, prefix, objectName)) {
+  private void validateListObjects(AmazonS3 client, String bucketName, String objectName) {
+    if (!listContainsObject(client, bucketName, objectName)) {
       throw new PlatformServiceException(
           EXPECTATION_FAILED,
           "Test object "
@@ -815,27 +817,15 @@ public class AWSUtil implements CloudUtil {
     }
   }
 
-  private boolean listContainsObject(
-      AmazonS3 client, String bucketName, String prefix, String objectName) {
+  private boolean listContainsObject(AmazonS3 client, String bucketName, String objectName) {
     Optional<S3ObjectSummary> objSum;
-    ObjectListing objListing = client.listObjects(bucketName, prefix);
+    ListObjectsV2Result objListing = client.listObjectsV2(bucketName, objectName);
     objSum =
         objListing
             .getObjectSummaries()
             .parallelStream()
             .filter(oS -> oS.getKey().equals(objectName))
             .findAny();
-
-    while (!objSum.isPresent() && objListing.isTruncated()) {
-      objListing = client.listNextBatchOfObjects(objListing);
-      objSum =
-          objListing
-              .getObjectSummaries()
-              .parallelStream()
-              .filter(oS -> oS.getKey().equals(objectName))
-              .findAny();
-    }
-
     return objSum.isPresent();
   }
 

@@ -79,6 +79,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Hidden because this key has dedicated UI",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.UIDriven));
+  public static final ConfKeyInfo<Boolean> displayJWTToken =
+      new ConfKeyInfo<>(
+          "yb.security.showJWTInfoOnLogin",
+          ScopeType.GLOBAL,
+          "Display JWT Token on Login Screen",
+          "Display JWT Token on Login Screen",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
   public static final ConfKeyInfo<String> ybClientID =
       new ConfKeyInfo<>(
           "yb.security.clientID",
@@ -942,6 +950,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Install Locales DB nodes",
           "If enabled YBA will install locales on the DB nodes",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> disableImageBundleValidation =
+      new ConfKeyInfo<>(
+          "yb.edit_provider.new.disable_image_bundle_validations",
+          ScopeType.GLOBAL,
+          "Image Bundle Validation",
+          "Disables Image Bundle Validation",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 }

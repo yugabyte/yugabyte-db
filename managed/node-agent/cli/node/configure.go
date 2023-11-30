@@ -360,7 +360,7 @@ func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
 					for _, zone := range region.Zones {
 						if zone.Id() == in {
 							config.Update(util.NodeAzIdKey, zone.Uuid)
-							return zone.Uuid, nil
+							return zone.Id(), nil
 						}
 					}
 				}

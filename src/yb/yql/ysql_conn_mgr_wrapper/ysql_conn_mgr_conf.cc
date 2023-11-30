@@ -34,6 +34,7 @@ DECLARE_uint32(ysql_conn_mgr_pool_size);
 DECLARE_uint32(ysql_conn_mgr_idle_time);
 DECLARE_string(pgsql_proxy_bind_address);
 DECLARE_string(rpc_bind_addresses);
+DECLARE_uint32(ysql_conn_mgr_num_workers);
 
 namespace yb {
 namespace ysql_conn_mgr_wrapper {
@@ -93,6 +94,15 @@ void WriteConfig(const std::string& output_path, const std::map<std::string, std
             << output_path;
 }
 
+std::string get_num_workers(uint32_t value) {
+  // If value is 0, return "auto". Odyssey config reader sets the number of workers as
+  // (number of cpu cores / 2) if workers is set as "auto".
+  if (!value)
+    return "\"auto\"";
+
+  return std::to_string(value);
+}
+
 std::string YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
   const auto conf_file_path = JoinPathSegments(data_dir_, conf_file_name_);
 
@@ -105,7 +115,7 @@ std::string YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
     {"{%control_connection_pool_size%}", std::to_string(control_connection_pool_size_)},
     {"{%global_pool_size%}", std::to_string(global_pool_size_)},
     {"{%num_resolver_threads%}", std::to_string(num_resolver_threads_)},
-    {"{%num_worker_threads%}", std::to_string(num_worker_threads_)},
+    {"{%num_worker_threads%}", get_num_workers(FLAGS_ysql_conn_mgr_num_workers)},
     {"{%server_lifetime%}", std::to_string(server_lifetime_)},
     {"{%ysql_conn_mgr_idle_time%}", std::to_string(FLAGS_ysql_conn_mgr_idle_time)},
     {"{%ysql_conn_mgr_port%}", std::to_string(FLAGS_ysql_conn_mgr_port)},

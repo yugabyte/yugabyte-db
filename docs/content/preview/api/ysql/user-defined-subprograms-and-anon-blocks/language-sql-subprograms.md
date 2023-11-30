@@ -1,15 +1,15 @@
 ---
-title: SQL (a.k.a. "language sql") subprograms [YSQL]
-headerTitle: SQL (a.k.a. "language sql") subprograms
-linkTitle: «language sql» subprograms
-description: Describes SQL functions and procedures.  Describes PL/pgSQL functions and procedures. These are also known as "language sql" subprograms.)[YSQL].
+title: SQL subprograms (a.k.a. "language sql" subprograms) [YSQL]
+headerTitle: SQL subprograms (a.k.a. "language sql" subprograms)
+linkTitle: >
+  "language sql" subprograms
+description: Describes SQL functions and procedures. These are also known as "language sql" subprograms. [YSQL].
 menu:
   preview:
     identifier: language-sql-subprograms
     parent: user-defined-subprograms-and-anon-blocks
     weight: 20
 type: docs
-
 ---
 
 {{< tip title="Regard the PostgreSQL documentation as the canonical definitional reference on this topic." >}}
@@ -1068,7 +1068,7 @@ Consider a _security definer_ _language sql_ subprogram with no formal parameter
 There are, however, critical mutually exclusive differences. A view wins in these ways:
 
 - When a view is used in a _select_ statement that itself expresses a restriction, the combined effect of the using statement and the view's defining _select_ statement can be flattened into a single statement _before_ the execution plan is determined. This cannot happen with a function.
-- When a view's definition meets certain criteria, the view can be the target of an _update_ or _delete_ statement.  This cannot happen with a function.
+- When a view's definition meets certain criteria, the view can be the target of an _update_ or _delete_ statement. This cannot happen with a function.
 
 And a function wins in this way:
 

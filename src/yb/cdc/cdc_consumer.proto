@@ -93,13 +93,9 @@ enum XClusterRole {
 message ConsumerRegistryPB {
   // Map from producer universe uuid to metadata for that producer.
   map<string, ProducerEntryPB> producer_map = 1;
-  // Enable the replication of the txn status table for ordered and atomic multi shard transaction
-  // support.
-  bool enable_replicate_transaction_status_table = 2;
+  // Reserved for deprecated enable_replicate_transaction_status_table field.
+  reserved 2;
   XClusterRole role = 3;
-  // Does this replication group support consistent transactions. There are two possible ways to
-  // support transactions depending on enable_replicate_transaction_status_table.
-  // false: Use the producer's xcluster_consistent_wal feature without replicating txn status table.
-  // true (DEPRECATED): Replicate the transaction status table.
+  // Does this replication group support consistent transactions.
   bool transactional = 4;
 }

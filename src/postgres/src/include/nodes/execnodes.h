@@ -1661,6 +1661,8 @@ typedef struct IndexScanState
  *		PscanLen		   size of parallel index-only scan descriptor
  *
  *	YB specific attributes
+ *		might_recheck	   true if the scan might recheck indexquals (currently
+ *						   only used for aggregate pushdown purposes)
  *		aggrefs			   aggregate pushdown information
  * ----------------
  */
@@ -1683,6 +1685,7 @@ typedef struct IndexOnlyScanState
 	Size		ioss_PscanLen;
 
 	/* YB specific attributes. */
+	bool		yb_ioss_might_recheck;
 	List	   *yb_ioss_aggrefs;
 	/*
 	 * yb_indexqual_for_recheck is the modified version of indexqual.

@@ -369,7 +369,6 @@ typedef struct PgCallbacks {
 
 typedef struct PgGFlagsAccessor {
   const bool*     log_ysql_catalog_versions;
-  const bool*     ysql_catalog_preload_additional_tables;
   const bool*     ysql_disable_index_backfill;
   const bool*     ysql_disable_server_file_access;
   const bool*     ysql_enable_reindex;
@@ -387,6 +386,7 @@ typedef struct PgGFlagsAccessor {
   const bool*     ysql_disable_global_impact_ddl_statements;
   const bool*     ysql_minimal_catalog_caches_preload;
   const bool*     ysql_enable_create_database_oid_collision_retry;
+  const char*     ysql_catalog_preload_additional_table_list;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {

@@ -1,8 +1,8 @@
 ---
-title: The 'pg_proc' catalog table for subprograms [YSQL]
-headerTitle: The 'pg_proc' catalog table for subprograms
-linkTitle: The pg_proc catalog table
-description: Explains how to use the 'pg_proc' catalog table to see subprogram metadata [YSQL].
+title: The "pg_proc" catalog table for subprograms [YSQL]
+headerTitle: The "pg_proc" catalog table for subprograms
+linkTitle: The "pg_proc" catalog table
+description: Explains how to use the "pg_proc" catalog table to see subprogram metadata [YSQL].
 menu:
   preview:
     identifier: pg-proc-catalog-table
@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-## Querying 'pg_proc' explicitly
+## Querying "pg_proc" explicitly
 
 The [_pg_proc_](https://www.postgresql.org/docs/11/catalog-pg-proc.html) section in the PostgreSQL documentation, within the [System Catalogs](https://www.postgresql.org/docs/11/catalogs.html) enclosing chapter, describes the dedicated catalog table for subprogram metadata. It's a wide table with a column for every single fact that characterizes functions and procedures.
 

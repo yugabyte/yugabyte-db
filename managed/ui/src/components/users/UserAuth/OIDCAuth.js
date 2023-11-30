@@ -10,7 +10,7 @@ import { Formik, Form, Field } from 'formik';
 import { YBFormInput, YBButton, YBModal, YBToggle } from '../../common/forms/fields';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
 import OIDCMetadataModal from './OIDCMetadataModal';
-import { setSSO } from '../../../config';
+import { setSSO, setShowJWTTokenInfo } from '../../../config';
 import WarningIcon from '../icons/warning_icon';
 
 const VALIDATION_SCHEMA = Yup.object().shape({
@@ -28,7 +28,8 @@ const OIDC_FIELDS = [
   'discoveryURI',
   'oidcProviderMetadata',
   'oidcScope',
-  'oidcEmailAttribute'
+  'oidcEmailAttribute',
+  'showJWTInfoOnLogin'
 ];
 
 const TOAST_OPTIONS = { autoClose: 1750 };
@@ -44,6 +45,7 @@ export const OIDCAuth = (props) => {
   } = props;
   const [showToggle, setToggleVisible] = useState(false);
   const [dialog, showDialog] = useState(false);
+  const [showJWTTokenToggle, setShowJWTTokenToggle] = useState(false);
   const [oidcEnabled, setOIDC] = useState(false);
   const [OIDCMetadata, setOIDCMetadata] = useState(null);
   const [showMetadataModel, setShowMetadataModal] = useState(false);
@@ -78,6 +80,9 @@ export const OIDCAuth = (props) => {
         fData[key] = escapedStr ? JSON.stringify(JSON.parse(escapedStr), null, 2) : '';
       } else {
         fData[key] = escapeStr(config.value);
+      }
+      if (key === 'showJWTInfoOnLogin') {
+        fData[key] = config.value === 'true';
       }
       return fData;
     }, {});
@@ -155,7 +160,12 @@ export const OIDCAuth = (props) => {
       key: `${OIDC_PATH}.use_oauth`,
       value: 'false'
     });
+    await setRunTimeConfig({
+      key: `${OIDC_PATH}.showJWTInfoOnLogin`,
+      value: 'false'
+    });
     setSSO(false);
+    setShowJWTTokenInfo(false);
     fetchRunTimeConfigs();
     toast.warn(`OIDC authentication is disabled`, TOAST_OPTIONS);
   };
@@ -164,6 +174,10 @@ export const OIDCAuth = (props) => {
     const oidcConfig = configEntries.find((config) =>
       config.key.includes(`${OIDC_PATH}.use_oauth`)
     );
+    const isOIDCEnhancementEnabled =
+      configEntries.find((c) => c.key === `${OIDC_PATH}.oidc_feature_enhancements`).value ===
+      'true';
+    setShowJWTTokenToggle(isOIDCEnhancementEnabled);
     setToggleVisible(!!oidcConfig);
     setOIDC(escapeStr(oidcConfig?.value) === 'true');
   }, [configEntries, setToggleVisible, setOIDC]);
@@ -238,6 +252,14 @@ export const OIDCAuth = (props) => {
                 </div>
               </OverlayTrigger>
             );
+
+            const displayJWTToggled = async (event) => {
+              await setRunTimeConfig({
+                key: `${OIDC_PATH}.showJWTInfoOnLogin`,
+                value: `${event.target.checked}`
+              });
+              setShowJWTTokenInfo(event.target.checked);
+            };
 
             const renderOIDCMetadata = () => {
               return (
@@ -408,6 +430,42 @@ export const OIDCAuth = (props) => {
                     </Row>
                   </Col>
                 </Row>
+
+                {showJWTTokenToggle && (
+                  <Row key="oidc_show_jwt_attribute">
+                    <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
+                      <Row className="ua-field-row">
+                        <Col className="ua-label-c">
+                          <div>
+                            Display JWT token on login&nbsp;
+                            <YBInfoTip
+                              title="Display JWT token on login"
+                              content="Option to display button to retrieve the JWT token"
+                            >
+                              <i className="fa fa-info-circle" />
+                            </YBInfoTip>
+                          </div>
+                        </Col>
+                        <Col lg={12} className="ua-field">
+                          <Field name="showJWTInfoOnLogin">
+                            {({ field }) => (
+                              <YBToggle
+                                name="showJWTInfoOnLogin"
+                                onToggle={displayJWTToggled}
+                                input={{
+                                  value: field.value,
+                                  onChange: field.onChange
+                                }}
+                                isReadOnly={isDisabled}
+                                defaultChecked={false}
+                              />
+                            )}
+                          </Field>
+                        </Col>
+                      </Row>
+                    </Col>
+                  </Row>
+                )}
 
                 <Row key="oidc_provider_meta">
                   <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">

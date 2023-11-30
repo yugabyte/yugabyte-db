@@ -43,6 +43,7 @@
  */
 #include "postgres.h"
 
+#include <inttypes.h>
 #include <math.h>
 #include <sys/stat.h>
 #include <stddef.h>
@@ -54,6 +55,7 @@
 #include "executor/instrument.h"
 #include "funcapi.h"
 #include "jit/jit.h"
+#include "lib/stringinfo.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "optimizer/planner.h"
@@ -439,8 +441,7 @@ yb_get_histogram_jsonb_args(uint64 queryid, Oid userid, Oid dbid);
 static void yb_add_hdr_jsonb_object(JsonbParseState *state, char *buf,
 	count_t count, JsonbPair *pair);
 static Datum yb_add_histogram_jsonb(JsonbParseState *state,
-	hdr_histogram *h, int64_t value_units_first_bucket,
-	size_t yb_slow_executions);
+	hdr_histogram *h, size_t yb_slow_executions);
 static void yb_hdr_reset(hdr_histogram *h);
 static int read_entry_original(int header, FILE *file, FILE *qfile,
 	pgssReaderContext *context);
@@ -624,6 +625,34 @@ resetYsqlStatementStats()
 }
 
 static void
+yb_add_hist_json(void *cb_arg, hdr_histogram *h, size_t yb_slow_executions) {
+	hdr_iter iter;
+	StringInfoData buf;
+	initStringInfo(&buf);
+
+	hdr_iter_init(&iter, h);
+	while (hdr_iter_next(&iter))
+	{
+		if (iter.count > 0)
+		{
+			resetStringInfo(&buf);
+			appendStringInfo(&buf, "[%.1f,%.1f)",
+				(iter.value_iterated_to) * yb_hdr_latency_res_ms,
+				(iter.highest_equivalent_value + 1) * yb_hdr_latency_res_ms);
+			WriteHistElemToJson(cb_arg, buf.data, &iter.count);
+		}
+	}
+
+	if (yb_slow_executions > 0)
+	{
+		resetStringInfo(&buf);
+		appendStringInfo(&buf, "[%.1f,)", yb_hdr_max_value * yb_hdr_latency_res_ms);
+		WriteHistElemToJson(cb_arg, buf.data, &yb_slow_executions);
+	}
+	pfree(buf.data);
+}
+
+static void
 getYsqlStatementStats(void *cb_arg)
 {
 	HASH_SEQ_STATUS hash_seq;
@@ -641,27 +670,32 @@ getYsqlStatementStats(void *cb_arg)
 	hash_seq_init(&hash_seq, pgss_hash);
 	while ((entry = hash_seq_search(&hash_seq)) != NULL)
 	{
-    // some entries have 0 calls and strange query text - ignore them
-    if (!entry->counters.calls)
-      continue;
+		// some entries have 0 calls and strange query text - ignore them
+		if (!entry->counters.calls)
+		continue;
 
-    char *qry = qtext_fetch(entry->query_offset, entry->query_len, qbuffer, qbuffer_size);
-    if (qry != NULL)
-    {
-      tmp.query        = qry;
-      tmp.calls        = entry->counters.calls;
+		char *qry = qtext_fetch(entry->query_offset, entry->query_len, qbuffer, qbuffer_size);
+		if (qry != NULL)
+		{
+			tmp.query        = qry;
+			tmp.calls        = entry->counters.calls;
 
-      tmp.total_time   = entry->counters.total_time;
-      tmp.min_time     = entry->counters.min_time;
-      tmp.max_time     = entry->counters.max_time;
-      tmp.mean_time    = entry->counters.mean_time;
-      tmp.sum_var_time = entry->counters.sum_var_time;
+			tmp.total_time   = entry->counters.total_time;
+			tmp.min_time     = entry->counters.min_time;
+			tmp.max_time     = entry->counters.max_time;
+			tmp.mean_time    = entry->counters.mean_time;
+			tmp.sum_var_time = entry->counters.sum_var_time;
 
-      tmp.rows         = entry->counters.rows;
-      tmp.query_id     = entry->key.queryid;
+			tmp.rows         = entry->counters.rows;
+			tmp.query_id     = entry->key.queryid;
 
-      WriteStatArrayElemToJson(cb_arg, &tmp);
-    }
+			WriteStartObjectToJson(cb_arg);
+			WriteStatArrayElemToJson(cb_arg, &tmp);
+			WriteHistArrayBeginToJson(cb_arg);
+			yb_add_hist_json(cb_arg, &entry->yb_hdr_histogram, entry->yb_slow_executions);
+			WriteHistArrayEndToJson(cb_arg);
+			WriteEndObjectToJson(cb_arg);
+		}
 	}
 
 	LWLockRelease(pgss->lock);
@@ -3369,7 +3403,7 @@ yb_get_histogram_jsonb_args(uint64 queryid, Oid userid, Oid dbid)
 	}
 
 	JsonbParseState *state = NULL;
-	return yb_add_histogram_jsonb(state, &entry->yb_hdr_histogram, 1,
+	return yb_add_histogram_jsonb(state, &entry->yb_hdr_histogram,
 		entry->yb_slow_executions);
 }
 
@@ -3378,14 +3412,14 @@ yb_get_histogram_jsonb_args(uint64 queryid, Oid userid, Oid dbid)
  */
 static Datum
 yb_add_histogram_jsonb(JsonbParseState *state, hdr_histogram *h,
-	int64_t value_units_first_bucket, size_t yb_slow_executions)
+	size_t yb_slow_executions)
 {
 	hdr_iter iter;
 
-	JsonbValue *res;
-	const int buffer_size = 32;
-	char buf[buffer_size];
+	StringInfoData buf;
+	initStringInfo(&buf);
 
+	JsonbValue *res;
 	JsonbPair pair;
 	pair.key.type = jbvString;
 	pair.value.type = jbvNumeric;
@@ -3401,39 +3435,26 @@ yb_add_histogram_jsonb(JsonbParseState *state, hdr_histogram *h,
 	{
 		if (iter.count > 0)
 		{
-			memset(buf, 0, buffer_size);
-			/*
-			 * TODO:
-			 * %.1f will need to change to for latency_res smaller than 0.1ms...
-			 * addressing when we implement latency_res fully
-			 * TODO: adjust buffer_size to avoid overflowing large latency_res
-			 */
-			snprintf(buf, buffer_size, "[%.1f,%.1f)",
+			resetStringInfo(&buf);
+			appendStringInfo(&buf, "[%.1f,%.1f)",
 				(iter.value_iterated_to) * yb_hdr_latency_res_ms,
 				(iter.highest_equivalent_value + 1) * yb_hdr_latency_res_ms);
-			yb_add_hdr_jsonb_object(state, buf, iter.count, &pair);
+			yb_add_hdr_jsonb_object(state, buf.data, iter.count, &pair);
 		}
 	}
 
 	if (yb_slow_executions > 0)
 	{
-		memset(buf, 0, buffer_size);
-		/*
-		* TODO:
-		* %.1f will need to change to for latency_res smaller than 0.1ms...
-		* addressing when we implement latency_res fully
-		* TODO: adjust buffer_size to avoid overflowing large latency_res
-		*/
-		snprintf(buf, buffer_size,"[%.1f,)", yb_hdr_max_value
-			* yb_hdr_latency_res_ms);
-
-		yb_add_hdr_jsonb_object(state, buf, yb_slow_executions, &pair);
+		resetStringInfo(&buf);
+		appendStringInfo(&buf, "[%.1f,)", yb_hdr_max_value * yb_hdr_latency_res_ms);
+		yb_add_hdr_jsonb_object(state, buf.data, yb_slow_executions, &pair);
 	}
 
 	res = pushJsonbValue(&state, WJB_END_ARRAY, NULL);
 	MemoryContextSwitchTo(oldContext);
 	Jsonb *ret = JsonbValueToJsonb(res);
 	MemoryContextDelete(tempContext);
+	pfree(buf.data);
 
 	PG_RETURN_POINTER(ret);
 }

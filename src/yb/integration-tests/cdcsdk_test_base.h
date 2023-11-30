@@ -38,6 +38,7 @@ DECLARE_bool(enable_ysql);
 DECLARE_bool(hide_pg_catalog_table_creation_logs);
 DECLARE_bool(master_auto_run_initdb);
 DECLARE_int32(pggate_rpc_timeout_secs);
+DECLARE_bool(cdc_populate_safepoint_record);
 
 namespace yb {
 using client::YBClient;
@@ -120,9 +121,8 @@ class CDCSDKTestBase : public YBTest {
   Status InitPostgres(Cluster* cluster);
 
   Status SetUpWithParams(
-      uint32_t replication_factor,
-      uint32_t num_masters = 1,
-      bool colocated = false);
+      uint32_t replication_factor, uint32_t num_masters = 1, bool colocated = false,
+      bool cdc_populate_safepoint_record = false);
 
   Result<YBTableName> GetTable(
       Cluster* cluster,
