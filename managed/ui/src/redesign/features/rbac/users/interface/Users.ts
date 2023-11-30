@@ -22,6 +22,7 @@ export interface RbacUser {
   confirmPassword?: string;
   creationDate?: string;
   userType?: UserTypes;
+  ldapSpecifiedRole?: boolean;
 }
 
 export interface RbacUserWithResources extends Partial<RbacUser> {

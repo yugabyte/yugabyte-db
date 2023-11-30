@@ -168,6 +168,7 @@ export default class UniverseStatus extends Component {
             ))}
           {shouldDisplayTaskButton &&
             !universePendingTask &&
+            failedTask !== undefined &&
             (![
               SoftwareUpgradeTaskType.ROLLBACK_UPGRADE,
               SoftwareUpgradeTaskType.SOFTWARE_UPGRADE
@@ -183,7 +184,8 @@ export default class UniverseStatus extends Component {
             )}
           {shouldDisplayTaskButton &&
             !universePendingTask &&
-            failedTask?.retryable &&
+            failedTask !== undefined &&
+            failedTask.retryable &&
             (![
               SoftwareUpgradeTaskType.ROLLBACK_UPGRADE,
               SoftwareUpgradeTaskType.SOFTWARE_UPGRADE
