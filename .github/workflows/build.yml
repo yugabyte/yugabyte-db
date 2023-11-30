@@ -17,7 +17,7 @@ on:
   pull_request:
     branches:
       - master
-    # Duplicated because github does not support YAML anchors.
+    # Duplicated list because github does not support YAML anchors.
     # https://github.com/actions/runner/issues/1182
     paths-ignore:
       - README.md
