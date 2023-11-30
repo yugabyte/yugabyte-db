@@ -179,6 +179,7 @@ class ListTableGrid extends Component {
               currentRow={row}
               actionType="import"
               disabled={actions_disabled}
+              universeUUID={currentUniverse.universeUUID}
             />
           ]);
         }
