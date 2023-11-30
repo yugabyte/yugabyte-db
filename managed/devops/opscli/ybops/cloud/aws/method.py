@@ -26,9 +26,20 @@ class AwsReplaceRootVolumeMethod(ReplaceRootVolumeMethod):
     def __init__(self, base_command):
         super(AwsReplaceRootVolumeMethod, self).__init__(base_command)
 
+    def add_extra_args(self):
+        super(AwsReplaceRootVolumeMethod, self).add_extra_args()
+        self.parser.add_argument("--root_device_name",
+                                 required=True,
+                                 help="The path where to attach the root device.")
+
+    def _replace_root_volume(self, args, host_info, current_root_volume):
+        # update specifically for AWS
+        host_info["root_device_name"] = args.root_device_name if args.root_device_name else None
+        return super(AwsReplaceRootVolumeMethod, self)._replace_root_volume(
+            args, host_info, current_root_volume)
+
     def _mount_root_volume(self, host_info, volume):
-        self.cloud.mount_disk(host_info, volume,
-                              get_root_label(host_info["region"], host_info["ami"]))
+        self.cloud.mount_disk(host_info, volume, host_info["root_device_name"])
 
     def _host_info_with_current_root_volume(self, args, host_info):
         return (host_info, host_info.get("root_volume"))

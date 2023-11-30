@@ -44,7 +44,6 @@ class YsqlConnMgrConf {
 
   uint16_t global_pool_size_ = 10;
   uint16_t control_connection_pool_size_;
-  uint num_worker_threads_ = 16;
   uint num_resolver_threads_ = 1;
   uint16_t server_lifetime_ = 3600;
 

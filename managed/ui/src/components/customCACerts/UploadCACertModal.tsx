@@ -176,7 +176,13 @@ const UploadCACertModal: FC<UploadCACertModalProps> = ({ visible, onHide, editCA
       <Typography variant="subtitle1">
         {t('customCACerts.uploadCACertModal.certNameTitle')}
       </Typography>
-      <YBInputField className={classes.nameInput} name="certName" control={control} data-testid="certName"/>
+      <YBInputField
+        className={classes.nameInput}
+        name="certName"
+        control={control}
+        data-testid="certName"
+        disabled={editCADetails !== null}
+      />
       <div className={classes.uploadCertPanel}>
         <YBDropZone
           name="certFile"

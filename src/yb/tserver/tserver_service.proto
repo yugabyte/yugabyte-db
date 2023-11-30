@@ -114,11 +114,18 @@ service TabletServerService {
 // shouldn't be set together nor should be left empty together.
 message GetLockStatusRequestPB {
   message TransactionInfoPB {
-    repeated bytes transaction_ids = 1;
+    optional bytes id = 1;
+    optional SubtxnSetPB aborted = 2;
   }
-  // Tablets to scan. Limit per tablet results to the specified transaction_ids in TransactionInfoPB
-  // when non-empty. If empty, include lock info of all transactions at that tablet.
-  map<string, TransactionInfoPB> transactions_by_tablet = 1;
+
+  message TabletTransactionInfoPB {
+    repeated TransactionInfoPB transactions = 1;
+  }
+
+  // Tablets to scan. Limit per tablet results to the specified transaction_ids in
+  // TabletTransactionInfoPB when non-empty. If empty, include lock info of all transactions at that
+  // tablet.
+  map<string, TabletTransactionInfoPB> transactions_by_tablet = 1;
 
   optional bool include_trace = 2 [ default = false ];
 
@@ -197,7 +204,8 @@ message UpdateTransactionRequestPB {
   optional tablet.TransactionStatePB state = 2;
 
   optional fixed64 propagated_hybrid_time = 3;
-  optional bool is_external = 4;
+  // Reserved for xcluster deprecated field is_external.
+  reserved 4;
   optional fixed64 start_time = 5;
 }
 
@@ -212,7 +220,8 @@ message GetTransactionStatusRequestPB {
   optional bytes tablet_id = 1;
   repeated bytes transaction_id = 2;
   optional fixed64 propagated_hybrid_time = 3;
-  optional fixed64 external_hybrid_time = 4;
+  // Reserved for xcluster deprecated field external_hybrid_time.
+  reserved 4;
 }
 
 message GetTransactionStatusResponsePB {

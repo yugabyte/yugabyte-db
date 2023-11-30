@@ -9,7 +9,7 @@
 
 import { find, flatten, intersection, values } from "lodash";
 import { BACKUP_API_TYPES, ITable, IUniverse } from "../..";
-import { RestoreContext } from "./RestoreContext";
+import { Page, RestoreContext } from "./RestoreContext";
 import { PreflightResponseParams } from "./api";
 import { isYbcEnabledUniverse } from "../../../../utils/UniverseUtils";
 
@@ -86,6 +86,30 @@ const currentPageIsGeneralSettings = (restoreContext: RestoreContext): RestoreCo
 
 };
 
+export const getPrevPage = (restoreContext: RestoreContext): RestoreContext => {
+    const { formProps: { currentPage }, formData: { generalSettings } } = restoreContext;
+    switch (currentPage) {
+        case 'RENAME_KEYSPACES':
+            return {
+                ...restoreContext,
+                formProps: {
+                    ...restoreContext.formProps,
+                    currentPage: 'GENERAL_SETTINGS'
+                }
+            };
+        case 'SELECT_TABLES':
+            return {
+                ...restoreContext,
+                formProps: {
+                    ...restoreContext.formProps,
+                    currentPage: generalSettings?.renameKeyspace ? 'RENAME_KEYSPACES' : 'GENERAL_SETTINGS'
+                }
+            };
+        default:
+            return restoreContext;
+    }
+};
+
 export const getKeyspacesFromPreflighResponse = (preflight: PreflightResponseParams) => {
     return Object.keys(preflight.perLocationBackupInfoMap).map((k) => {
         return preflight.perLocationBackupInfoMap[k].perBackupLocationKeyspaceTables.originalKeyspace;
@@ -114,7 +138,7 @@ export const isDuplicateKeyspaceExistsinUniverse = (preflight: PreflightResponse
 };
 
 export const isSelectiveRestoreSupported = (preflightResp: PreflightResponseParams) => {
-    if(!preflightResp) return false;
+    if (!preflightResp) return false;
 
     return values(preflightResp.perLocationBackupInfoMap).some((pl) => pl.isSelectiveRestoreSupported);
 };
@@ -122,4 +146,8 @@ export const isSelectiveRestoreSupported = (preflightResp: PreflightResponsePara
 export const isYBCEnabledInUniverse = (universeList: IUniverse[], currentUniverseUUID: string) => {
     const universe = find(universeList, { universeUUID: currentUniverseUUID });
     return isYbcEnabledUniverse(universe?.universeDetails);
-  };
+};
+
+export const getBackButDisableState = (currentPage: Page) => {
+    return ['PREFETCH_CONFIGS', 'GENERAL_SETTINGS', 'RESTORE_FINAL'].includes(currentPage);
+};

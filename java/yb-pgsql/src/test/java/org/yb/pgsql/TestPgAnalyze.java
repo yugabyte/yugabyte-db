@@ -51,25 +51,27 @@ public class TestPgAnalyze extends BasePgSQLTest {
       stmt.execute(
           "CREATE TABLE t_small(h int, r1 int, r2 int, v1 int, v2 int, v3 text, " +
           "PRIMARY KEY (h, r1, r2)) SPLIT INTO 10 TABLETS;");
-      stmt.execute(
-        "INSERT INTO t_small (h, r1, r2, v1, v2, v3) " +
-        "    SELECT a, " +
-        "           (b - 50) * 1000, " +
-        "           (c + 20)," +
-        "           a + b + c," +
-        "           CASE " +
-        "             WHEN ((a + b + c) % 7 = 0) THEN null" +
-        "     WHEN ((a + b + c) % 7 = 1) THEN 77" +
-        "             WHEN ((a + b + c) % 7 = 2) THEN 87" +
-        "             WHEN ((a + b + c) % 7 = 3) THEN 97" +
-        "             WHEN ((a + b + c) % 7 = 4) THEN 107" +
-        "             WHEN ((a + b + c) % 7 = 5) THEN 117" +
-        "             ELSE (a + b + c) % 70" +
-        "           END," +
-        "           repeat('xyz', c)" +
-        "    FROM generate_series(1, 100) as b, " +
-        "         generate_series(1, 5) as c," +
-        "         generate_series(1, 100) as a;");
+      for (int i = 0; i < 10; i++) {
+        stmt.execute(
+          "INSERT INTO t_small (h, r1, r2, v1, v2, v3) " +
+          "    SELECT a, " +
+          "           (b - 50) * 1000, " +
+          "           (c + 20)," +
+          "           a + b + c," +
+          "           CASE " +
+          "             WHEN ((a + b + c) % 7 = 0) THEN null" +
+          "     WHEN ((a + b + c) % 7 = 1) THEN 77" +
+          "             WHEN ((a + b + c) % 7 = 2) THEN 87" +
+          "             WHEN ((a + b + c) % 7 = 3) THEN 97" +
+          "             WHEN ((a + b + c) % 7 = 4) THEN 107" +
+          "             WHEN ((a + b + c) % 7 = 5) THEN 117" +
+          "             ELSE (a + b + c) % 70" +
+          "           END," +
+          "           repeat('xyz', c)" +
+          "    FROM generate_series(1, 100) as b, " +
+          "         generate_series(1, 5) as c," +
+          String.format("         generate_series(%d, %d) as a;", i * 10 + 1, (i + 1) * 10));
+      }
       stmt.execute("ANALYZE t_small");
       ResultSet rs = stmt.executeQuery(
           "SELECT attname, null_frac, avg_width, n_distinct FROM pg_stats " +

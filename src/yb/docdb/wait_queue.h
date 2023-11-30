@@ -116,9 +116,9 @@ class WaitQueue {
   void DumpStatusHtml(std::ostream& out);
 
   // Populate tablet_locks_info with awaiting lock information corresponding to waiter transactions
-  // from this wait queue. If transaction_ids is not empty, restrict returned information to locks
-  // which are requested by the given set of transaction_ids.
-  Status GetLockStatus(const std::set<TransactionId>& transaction_ids,
+  // from this wait queue. If transactions is not empty, restrict returned information to locks
+  // which are requested by the given set of transactions.
+  Status GetLockStatus(const std::map<TransactionId, SubtxnSet>& transactions,
                        const TableInfoProvider& table_info_provider,
                        TabletLockInfoPB* tablet_lock_info) const;
 

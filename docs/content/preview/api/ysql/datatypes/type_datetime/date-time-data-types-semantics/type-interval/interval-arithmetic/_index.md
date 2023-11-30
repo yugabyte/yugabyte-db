@@ -10,6 +10,7 @@ menu:
     parent: type-interval
     weight: 40
 type: indexpage
+showRightNav: true
 ---
 
 This section uses the term "moment" as an umbrella for a _timestamptz_ value, a _timestamp_ value, or a _time_ value. (In a broader scenario, a _date_ value is also a moment. But you get an _integer_ value when you subtract one _date_ value from another. And you cannot add or subtract an _interval_ value to/from a _date_ value.) The term "_interval_ arithmetic" is used somewhat loosely to denote these three distinct scenarios:

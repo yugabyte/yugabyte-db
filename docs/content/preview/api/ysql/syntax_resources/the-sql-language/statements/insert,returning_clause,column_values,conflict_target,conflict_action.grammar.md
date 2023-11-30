@@ -1,9 +1,9 @@
 ```output.ebnf
-insert ::= [ WITH [ RECURSIVE ] { common_table_expression [ , ... ] } ] 
-            INSERT INTO table_name [ AS alias ] [ ( column_names ) ]  
-           { DEFAULT VALUES
-             | VALUES ( column_values ) [ ,(column_values ... ]
-             | subquery }  
+insert ::= [ with_clause ]  INSERT INTO table_name [ AS alias ] 
+           [ ( column_names ) ]  { DEFAULT VALUES
+                                   | VALUES ( column_values ) 
+                                     [ ,(column_values ... ]
+                                   | subquery }  
            [ ON CONFLICT [ conflict_target ] conflict_action ]  
            [ returning_clause ]
 

@@ -26,6 +26,7 @@
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 #include "yb/yql/pggate/pg_function.h"
 #include "yb/yql/pggate/pg_function_helpers.h"
@@ -140,7 +141,7 @@ Status PgFunction::GetNext(uint64_t* values, bool* is_nulls, bool* has_data) {
 //--------------------------------------------------------------------------------------------------
 
 Result<PgTableRow> AddLock(
-    const ReaderProjection& projection, const Schema& schema, const std::string& permanent_uuid,
+    const ReaderProjection& projection, const Schema& schema, const std::string& node_id,
     const TableId& parent_table_id, const std::string& tablet_id, const yb::LockInfoPB& lock,
     const Uuid& transaction_id = Uuid::Nil(), HybridTime wait_start_ht = HybridTime::kMin,
     const std::vector<std::string>& blocking_txn_ids = {}) {
@@ -195,9 +196,8 @@ Result<PgTableRow> AddLock(
     RETURN_NOT_OK(SetColumnValue(
         "waitend", HybridTime(lock.wait_end_ht()).GetPhysicalValueMicros(), schema, &row));
 
-  // TODO: this should be the node of the backend holding the lock, not the node where the
-  //       lock is held.
-  RETURN_NOT_OK(SetColumnValue("node", permanent_uuid, schema, &row));
+  if (!node_id.empty())
+    RETURN_NOT_OK(SetColumnValue("node", node_id, schema, &row));
   RETURN_NOT_OK(SetColumnValue("tablet_id", tablet_id, schema, &row));
 
   if (!transaction_id.IsNil()) {
@@ -220,7 +220,8 @@ Result<PgTableRow> AddLock(
     RETURN_NOT_OK(SetColumnValue("column_id", lock.column_id(), schema, &row));
   RETURN_NOT_OK(SetColumnValue("multiple_rows_locked", lock.multiple_rows_locked(), schema, &row));
 
-  RETURN_NOT_OK(SetColumnValue("blocked_by", blocking_txn_ids, schema, &row));
+  if (!blocking_txn_ids.empty())
+    RETURN_NOT_OK(SetColumnValue("blocked_by", blocking_txn_ids, schema, &row));
 
   return row;
 }
@@ -252,15 +253,52 @@ Result<std::list<PgTableRow>> PgLockStatusRequestor(
   const auto lock_status = VERIFY_RESULT(pg_session->GetLockStatusData(
       table_id, transaction_null ? std::string() : transaction.AsSlice().ToBuffer()));
 
+  VLOG(2) << "retrieved locks " << lock_status.DebugString();
+
   std::list<PgTableRow> data;
+
+  std::unordered_map<Uuid, std::string, UuidHash> node_by_transaction;
+
+  // Reverse the transaction map so that we can look up a node by transaction ID below
+  for (const auto& [node, transaction_list] : lock_status.transactions_by_node()) {
+    for (const auto& txn : transaction_list.transaction_ids()) {
+      const Uuid transaction_id = VERIFY_RESULT(Uuid::FullyDecode(txn));
+      auto [iterator, was_inserted] = node_by_transaction.emplace(transaction_id, node);
+
+      // Duplicate UUIDs can occasionally occur with transaction promotion or status tablet
+      // leadership changes, but this should be rare
+      if (!was_inserted) {
+        RSTATUS_DCHECK_EQ(
+            node, iterator->second, InternalError,
+            Format(
+                "nodes with different UUIDs exist in the map for transaction $0 lock $1",
+                transaction_id.ToString(), lock_status.DebugString()));
+
+        VLOG(3) << "duplicate node " << node << " exists in the map for transaction "
+                << transaction_id.ToString();
+      }
+    }
+  }
 
   for (const auto& node : lock_status.node_locks()) {
     for (const auto& tab : node.tablet_lock_infos()) {
-      for (const auto& [transaction_id, transaction_locks] : tab.transaction_locks()) {
+      for (const auto& [txn_string, transaction_locks] : tab.transaction_locks()) {
+        const Uuid transaction_id = VERIFY_RESULT(Uuid::FromString(txn_string));
+
+        auto node_iter = node_by_transaction.find(transaction_id);
+        // The node must exist, unless transaction_id was supplied as an argument to yb_lock_status.
+        // TODO: Once issue #16913 is resolved, a node will always be returned, eliminating the need
+        //       to check for transaction_null.
+        DCHECK(!transaction_null || (node_iter != node_by_transaction.end()))
+            << "no node found for transaction ID " << transaction_id.ToString() << " with locks "
+            << lock_status.DebugString();
+
+        const std::string node_id =
+            (node_iter != node_by_transaction.end()) ? node_iter->second : "";
+
         for (const auto& lock : transaction_locks.granted_locks()) {
           PgTableRow row = VERIFY_RESULT(AddLock(
-              projection, schema, node.permanent_uuid(), tab.table_id(), tab.tablet_id(), lock,
-              VERIFY_RESULT(Uuid::FromString(transaction_id))));
+              projection, schema, node_id, tab.table_id(), tab.tablet_id(), lock, transaction_id));
           data.emplace_back(row);
         }
 
@@ -270,7 +308,7 @@ Result<std::list<PgTableRow>> PgLockStatusRequestor(
         for (const auto& lock : transaction_locks.waiting_locks().locks()) {
           PgTableRow row = VERIFY_RESULT(AddLock(
               projection, schema, node.permanent_uuid(), tab.table_id(), tab.tablet_id(), lock,
-              VERIFY_RESULT(Uuid::FromString(transaction_id)), wait_start_ht, blocking_txn_ids));
+              transaction_id, wait_start_ht, blocking_txn_ids));
           data.emplace_back(row);
         }
       }

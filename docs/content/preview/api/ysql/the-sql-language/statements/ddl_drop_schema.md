@@ -93,3 +93,4 @@ DROP SCHEMA
 ## See also
 
 - [`CREATE SCHEMA`](../ddl_create_schema)
+- [`ALTER SCHEMA`](../ddl_alter_schema)

@@ -157,7 +157,7 @@ class XClusterSafeTimeTest : public XClusterTestBase {
   }
 
   Status WaitForSafeTime(HybridTime min_safe_time) {
-    RETURN_NOT_OK(CorrectlyPollingAllTablets(consumer_cluster(), kTabletCount));
+    RETURN_NOT_OK(CorrectlyPollingAllTablets(kTabletCount));
 
     return XClusterTestBase::WaitForSafeTime(namespace_id_, min_safe_time);
   }

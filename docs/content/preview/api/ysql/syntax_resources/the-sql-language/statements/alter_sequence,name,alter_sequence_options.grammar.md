@@ -2,14 +2,15 @@
 alter_sequence ::= ALTER SEQUENCE [ IF EXISTS ] sequence_name 
                    alter_sequence_options
 
-name ::= '<Text Literal>'
+name ::= text_literal
 
 alter_sequence_options ::= [ AS seq_data_type ]  
                            [ INCREMENT [ BY ] int_literal ]  
                            [ MINVALUE int_literal | NO MINVALUE ]  
-                           [ MAXVALUE maxvalue | NO MAXVALUE ]  
+                           [ MAXVALUE int_literal | NO MAXVALUE ]  
                            [ START [ WITH ] int_literal ]  
                            [ RESTART [ [ WITH ] int_literal ] ]  
-                           [ CACHE cache ]  [ [ NO ] CYCLE ]  
-                           [ OWNED BY table_name.table_column | NONE ]
+                           [ CACHE int_literal ]  [ [ NO ] CYCLE ]  
+                           [ OWNED BY table_name . column_name
+                             | NONE ]
 ```

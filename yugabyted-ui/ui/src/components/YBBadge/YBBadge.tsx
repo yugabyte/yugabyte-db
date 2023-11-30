@@ -30,6 +30,9 @@ const useStyles = makeStyles((theme) => ({
     gap: theme.spacing(0.5),
     alignItems: 'center',
     width: 'fit-content',
+    '& span:first-letter': {
+      textTransform: 'uppercase',
+    }
   }),
   icon: {
     height: "14px",
@@ -58,7 +61,7 @@ const useStyles = makeStyles((theme) => ({
   },
   error: {
     background: theme.palette.error[100],
-    color: theme.palette.error[900],
+    color: theme.palette.error[500],
   },
   errorIcon: {
     color: theme.palette.error[700],

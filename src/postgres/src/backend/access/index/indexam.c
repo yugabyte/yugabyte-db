@@ -34,6 +34,8 @@
  *		index_getprocid - get a support procedure OID
  *		index_getprocinfo - get a support procedure's lookup info
  *
+ *		yb_index_might_recheck - could the scan possibly recheck indexquals?
+ *
  * NOTES
  *		This file contains the index_ routines which used
  *		to be a scattered collection of stuff in access/genam.
@@ -1042,4 +1044,17 @@ index_opclass_options(Relation indrel, AttrNumber attnum, Datum attoptions,
 	(void) FunctionCall1(procinfo, PointerGetDatum(&relopts));
 
 	return build_local_reloptions(&relopts, attoptions, validate);
+}
+
+bool
+yb_index_might_recheck(Relation heapRelation, Relation indexRelation,
+					   bool xs_want_itup, ScanKey keys, int nkeys)
+{
+	RELATION_CHECKS;
+	CHECK_REL_PROCEDURE(yb_ammightrecheck);
+
+	return indexRelation->rd_indam->yb_ammightrecheck(heapRelation,
+													  indexRelation,
+													  xs_want_itup, keys,
+													  nkeys);
 }

@@ -10,6 +10,7 @@ menu:
     parent: timezones
     weight: 20
 type: indexpage
+showRightNav: true
 ---
 
 {{< tip title="Download and install the date-time utilities code." >}}
@@ -22,7 +23,9 @@ Once you have the data in a plain text file, it's easy to use the \\_copy_ meta-
 The kit also includes the code to create the  user-defined function _[jan_and_jul_tz_abbrevs_and_offsets()](../catalog-views/#the-jan-and-jul-tz-abbrevs-and-offsets-table-function)_ that creating the _extended_timezone_names_ view depends upon. It also creates the views that are used to produce the lists that this page's child pages show.
 {{< /tip >}}
 
-**This page has these child pages:**
+## Overview
+
+This page has these child pages:
 
 - [extended_timezone_names — unrestricted, full projection](./unrestricted-full-projection/)
 - [Real timezones that observe Daylight Savings Time](./canonical-real-country-with-dst/)

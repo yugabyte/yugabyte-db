@@ -9,6 +9,249 @@
 #include <machinarium.h>
 #include <odyssey.h>
 
+#include <pthread.h>
+#include <libpq-fe.h>
+#include <unistd.h>
+
+/* Max number connection attempts during the warmup process. */
+#define YB_MAX_CONNECTION_ATTEMPTS 10
+
+/* Delay (in ms) before retrying to connect during the warmup process. */
+#define YB_CONNECTION_RETRY_DELAY_MS 1000
+
+typedef struct {
+	od_config_listen_t *config;
+	char *conn_str;
+	od_instance_t *instance;
+	od_router_t *router;
+	int num_warmup_threads;
+} yb_warmup_info;
+
+PGconn *get_connection(od_instance_t *instance, char *conn_str)
+{
+	int delay_ms = YB_CONNECTION_RETRY_DELAY_MS;
+	int attempt = 1;
+
+	for (;; ++attempt) {
+		PGconn *conn = PQconnectdb(conn_str);
+
+		if (PQstatus(conn) == CONNECTION_OK) {
+			return conn;
+		}
+
+		char *error_message = strdup(PQerrorMessage(conn));
+
+		od_error(&instance->logger, "warmup", NULL, NULL,
+			 "Connection to the database failed: %s",
+			 error_message);
+		PQfinish(conn);
+
+		if (attempt < YB_MAX_CONNECTION_ATTEMPTS) {
+			od_debug(
+				&instance->logger, "warmup", NULL, NULL,
+				"Retrying connection in %d ms. Got error message: %s",
+				delay_ms, error_message);
+			usleep(delay_ms * 1000);
+			delay_ms = (delay_ms + 500) < 10000 ? (delay_ms + 500) :
+							      10000;
+		} else {
+			/* Reached the maximum number of attempts, throw an error. */
+			od_error(
+				&instance->logger, "warmup", NULL, NULL,
+				"Failed to establish a connection after %d attempts",
+				YB_MAX_CONNECTION_ATTEMPTS);
+			return NULL;
+		}
+	}
+}
+
+int yb_log_server_conn_count(od_route_t *route, void **argv)
+{
+	od_instance_t *instance = (od_instance_t *)argv[0];
+	od_log(&instance->logger, "warmup", NULL, NULL,
+	       "Total number of server connections in the %s pool are %d",
+	       (route->rule->pool->routing == OD_RULE_POOL_INTERVAL) ?
+		       "control connection" :
+		       "global",
+	       route->server_pool.count_active + route->server_pool.count_idle);
+	return 0;
+}
+
+/* Create a connection to the Odyssey and execute queries on it */
+void *yb_get_initialized_conn(void *arg)
+{
+	yb_warmup_info *thread_args = (yb_warmup_info *)arg;
+	od_instance_t *instance = thread_args->instance;
+
+	PGconn *conn = get_connection(instance, thread_args->conn_str);
+	if (conn == NULL) {
+		return NULL;
+	}
+
+	PGresult *res = PQexec(conn, "BEGIN");
+	if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+		od_error(&instance->logger, "warmup", NULL, NULL,
+			 "Transaction start failed: %s", PQerrorMessage(conn));
+		PQfinish(conn);
+		return NULL;
+	}
+	PQclear(res);
+
+	res = PQexec(conn, "SELECT 1");
+	if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+		od_error(&instance->logger, "warmup", NULL, NULL,
+			 "Query execution failed: %s", PQerrorMessage(conn));
+		PQclear(res);
+		PQexec(conn, "ROLLBACK");
+		PQfinish(conn);
+		return NULL;
+	}
+
+	PQclear(res);
+	return conn;
+}
+
+void *yb_warmup_thread(void *arg)
+{
+	yb_warmup_info *thread_args = (yb_warmup_info *)arg;
+	od_instance_t *instance = thread_args->instance;
+
+	/* Create the connection string */
+	const int conn_str_size =
+		snprintf(NULL, 0,
+			 "host=%s port=%d dbname=yugabyte user=%s password=%s",
+			 thread_args->config->host, thread_args->config->port,
+			 getenv("YB_YSQL_CONN_MGR_USER"),
+			 getenv("YB_YSQL_CONN_MGR_PASSWORD"));
+
+	if (conn_str_size < 0) {
+		od_error(&instance->logger, "warmup", NULL, NULL,
+			 "Unable to create connection string.");
+		return NULL;
+	}
+
+	char conn_str[conn_str_size + 1];
+
+	int rc = snprintf(conn_str, conn_str_size + 1,
+			  "host=%s port=%d dbname=yugabyte user=%s password=%s",
+			  thread_args->config->host, thread_args->config->port,
+			  getenv("YB_YSQL_CONN_MGR_USER"),
+			  getenv("YB_YSQL_CONN_MGR_PASSWORD"));
+	if (rc < 0) {
+		od_error(&instance->logger, "warmup", NULL, NULL,
+			 "Unable to create connection string.");
+		return NULL;
+	}
+
+	thread_args->conn_str = conn_str;
+
+	/* Sleep for 10 sec, so that cluster can get ready. */
+	usleep(10000000);
+
+	const int num_connections = thread_args->num_warmup_threads;
+	PGconn *connections[num_connections];
+
+	/* Create connections parallely so that the control connection pool can be populated. */
+	pthread_t threads[thread_args->num_warmup_threads];
+	for (int i = 0; i < thread_args->num_warmup_threads; i++) {
+		if (pthread_create(&threads[i], NULL, yb_get_initialized_conn,
+				   (void *)thread_args) == -1) {
+			od_error(&instance->logger, "warmup", NULL, NULL,
+				 "Failed to create warmup threads");
+		}
+	}
+
+	for (int i = 0; i < thread_args->num_warmup_threads; i++) {
+		pthread_join(threads[i], (void **)&connections[i]);
+	}
+
+	for (int i = 0; i < num_connections; i++) {
+		if (connections[i] == NULL) {
+			od_error(&instance->logger, "warmup", NULL, NULL,
+				 "Connection creation failed");
+
+			for (int j = i; j < num_connections; j++) {
+				if (connections[j] != NULL)
+					PQfinish(connections[j]);
+			}
+			free(thread_args);
+			return NULL;
+		}
+
+		PGresult *res = PQexec(connections[i], "COMMIT");
+		if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+			od_error(&instance->logger, "warmup", NULL, NULL,
+				 "Transaction commit failed, %s",
+				 PQerrorMessage(connections[i]));
+			PQclear(res);
+
+			for (int j = i; j < num_connections; j++) {
+				if (connections[j] != NULL)
+					PQfinish(connections[j]);
+			}
+
+			free(thread_args);
+			return NULL;
+		}
+
+		PQclear(res);
+		PQfinish(connections[i]);
+	}
+
+	void *argv = { &instance };
+	od_log(&instance->logger, "warmup", NULL, NULL, "Warmup completed");
+	od_route_pool_foreach(&thread_args->router->route_pool,
+			      yb_log_server_conn_count, argv);
+
+	free(thread_args);
+	return NULL;
+}
+
+void yb_warmup(od_instance_t *instance, od_config_listen_t *config,
+	       od_router_t *router)
+{
+	const char *is_warmup_needed = getenv("YB_YSQL_CONN_MGR_DOWARMUP");
+	if (is_warmup_needed == NULL || strcmp(is_warmup_needed, "true") != 0)
+		return;
+
+	/* Total number of connections to be created will be same as the size of global pool. */
+	int num_warmup_threads = -1;
+
+	{
+		od_list_t *i;
+		/* rules */
+		od_list_foreach(&router->rules.rules, i)
+		{
+			od_rule_t *rule;
+			rule = od_container_of(i, od_rule_t, link);
+
+			if (rule->pool->routing ==
+			    OD_RULE_POOL_CLIENT_VISIBLE) {
+				num_warmup_threads = rule->pool->size;
+				break;
+			}
+		}
+
+		if (num_warmup_threads == -1) {
+			od_error(
+				&instance->logger, "warmup", NULL, NULL,
+				"Unable to find the value for 'num_warmup_threads', skipping warmup.");
+			return;
+		}
+	}
+
+	yb_warmup_info *thread_args =
+		(yb_warmup_info *)malloc(sizeof(yb_warmup_info));
+	thread_args->instance = instance;
+	thread_args->router = router;
+	thread_args->num_warmup_threads = num_warmup_threads;
+	thread_args->config = config;
+
+	pthread_t id;
+
+	pthread_create(&id, NULL, yb_warmup_thread, (void *)thread_args);
+}
+
 static inline od_retcode_t od_system_server_pre_stop(od_system_server_t *server)
 {
 	/* shutdown */
@@ -279,6 +522,9 @@ static inline od_retcode_t od_system_server_start(od_system_t *system,
 	od_list_append(&router->servers, &server->link);
 	od_dbg_printf_on_dvl_lvl(1, "server %s started successfully on %s\n",
 				 server->sid.id, addr_name);
+
+	yb_warmup(instance, config, system->global->router);
+
 	return OK_RESPONSE;
 
 error:

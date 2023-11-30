@@ -25,6 +25,7 @@
 
 #include "yb/qlexpr/qlexpr_fwd.h"
 
+#include "yb/util/algorithm_util.h"
 #include "yb/util/kv_util.h"
 
 namespace yb {
@@ -99,7 +100,6 @@ class PgTableRow {
   void SetNull();
   void SetNull(size_t column_idx);
 
-  Status DecodeKey(size_t column_idx, Slice* value);
   Status DecodeValue(size_t column_idx, Slice value);
 
   bool IsNull(size_t index) const {
@@ -115,6 +115,16 @@ class PgTableRow {
   QLValuePB GetQLValuePB(ColumnIdRep column_id) const;
 
   PgValue TrimString(size_t idx, size_t skip_prefix, size_t new_len);
+
+  void SetDatum(size_t column_idx, PgValueDatum datum) {
+    is_null_[column_idx] = false;
+    values_[column_idx] = datum;
+  }
+
+  Result<const char*> DecodeComparableString(
+      size_t column_idx, const char* input, const char* end, bool append_zero,
+      SortOrder sort_order);
+  void SetBinary(size_t column_idx, Slice value, bool append_zero);
 
  private:
   PgValueDatum GetDatum(size_t idx) const;

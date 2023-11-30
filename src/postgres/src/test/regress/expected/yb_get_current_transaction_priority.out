@@ -2,7 +2,7 @@
 -- priority of a distributed transaction in Yugabyte if one has been started. If a distributed
 -- transaction hasn't been started, it returns 0.
 --
--- The priority space of distributed transactions is unit64_t. The 64 bit range is split into 2
+-- The priority space of distributed transactions is uint64_t. The 64 bit range is split into 2
 -- priority buckets -
 --   1. Normal priority bucket:
 --        [yb::kRegularTxnLowerBound, yb::kRegularTxnUpperBound] i.e., 0 to uint32_t_max-1

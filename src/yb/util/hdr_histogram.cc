@@ -372,6 +372,10 @@ void HdrHistogram::DumpHumanReadable(std::ostream* out) const {
   }
 }
 
+size_t HdrHistogram::DynamicMemoryUsage() const {
+  return sizeof(*this) + sizeof(Atomic64) * counts_array_length_;
+}
+
 ///////////////////////////////////////////////////////////////////////
 // AbstractHistogramIterator
 ///////////////////////////////////////////////////////////////////////

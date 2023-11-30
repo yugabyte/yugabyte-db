@@ -119,15 +119,6 @@ void CleanupAbortsTask::FilterTransactions() {
   for (const TransactionId& transaction_id : transactions_to_cleanup_) {
     VLOG_WITH_PREFIX(1) << "Checking if transaction needs to be cleaned up: " << transaction_id;
 
-    auto is_external_transaction_result =
-        status_manager_.IsExternalTransactionResult(transaction_id);
-    if (is_external_transaction_result && *is_external_transaction_result) {
-      // Always clean up external transactions because they use a time based retention policy,
-      // and this task is only triggered for transactions that are older than the retention window.
-      --left_wait;
-      continue;
-    }
-
     // If transaction is committed, no action required
     auto commit_time = status_manager_.LocalCommitTime(transaction_id);
     if (commit_time.is_valid()) {

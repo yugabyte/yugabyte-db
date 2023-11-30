@@ -13,6 +13,7 @@ import {
   resetCustomer
 } from './actions/customers';
 import { App } from './app/App';
+import { OIDCJWTToken } from './pages/OIDCJWTToken';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import AuthenticatedArea from './pages/AuthenticatedArea';
@@ -226,6 +227,7 @@ export default (store) => {
     // rest un-authenticated route
     <Route path="/" component={App}>
       <Route path="/login" component={Login} />
+      <Route path="/jwt_token" component={OIDCJWTToken} />
       <Route path="/register" component={Register} />
       <Route
         onEnter={authenticatedSession}

@@ -390,6 +390,16 @@ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_smal
    Storage Index Read Requests: 1
 (4 rows)
 
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_small WHERE v > '' LIMIT 1;
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Limit (actual rows=1 loops=1)
+   ->  Index Scan using t_small_v_idx_asc on t_small (actual rows=1 loops=1)
+         Index Cond: ((v)::text > ''::text)
+         Storage Table Read Requests: 1
+         Storage Index Read Requests: 1
+(5 rows)
+
 -- index only scan
 EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT v FROM t_large WHERE v > '';
                                   QUERY PLAN

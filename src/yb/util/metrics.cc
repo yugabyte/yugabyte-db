@@ -327,11 +327,12 @@ void MetricPrototype::WriteFields(JsonWriter* writer,
 scoped_refptr<MetricEntity> MetricRegistry::FindOrCreateEntity(
     const MetricEntityPrototype* prototype,
     const std::string& id,
-    const MetricEntity::AttributeMap& initial_attributes) {
+    const MetricEntity::AttributeMap& initial_attributes,
+    std::shared_ptr<MemTracker> mem_tracker) {
   std::lock_guard l(lock_);
   scoped_refptr<MetricEntity> e = FindPtrOrNull(entities_, id);
   if (!e) {
-    e = new MetricEntity(prototype, id, initial_attributes);
+    e = new MetricEntity(prototype, id, initial_attributes, std::move(mem_tracker));
     InsertOrDie(&entities_, id, e);
   } else {
     e->SetAttributes(initial_attributes);

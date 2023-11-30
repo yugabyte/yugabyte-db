@@ -1286,7 +1286,15 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 				{
 					Oid constraint_oid = get_relation_constraint_oid(relationId,
 																	 cmd->name,
-																	 false);
+																	 cmd->missing_ok);
+					/*
+					 * If the constraint doesn't exists and IF EXISTS is specified,
+					 * A NOTICE will be reported later in ATExecDropConstraint.
+					 */
+					if (!OidIsValid(constraint_oid))
+					{
+						return handles;
+					}
 					HeapTuple tuple = SearchSysCache1(
 						CONSTROID, ObjectIdGetDatum(constraint_oid));
 					if (!HeapTupleIsValid(tuple))

@@ -46,7 +46,6 @@ set(CLIENT_SRCS
   client_utils.cc
   error.cc
   error_collector.cc
-  external_transaction.cc
   in_flight_op.cc
   meta_cache.cc
   meta_data_cache.cc

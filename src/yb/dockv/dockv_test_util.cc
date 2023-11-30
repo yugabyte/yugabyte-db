@@ -14,9 +14,12 @@
 #include "yb/dockv/dockv_test_util.h"
 
 #include "yb/common/ql_value.h"
+#include "yb/common/value.messages.h"
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/primitive_value.h"
+
+#include "yb/util/random_util.h"
 
 namespace yb::dockv {
 
@@ -212,6 +215,36 @@ std::vector<KeyEntryValue> GenRandomKeyEntryValues(
     result.push_back(GenRandomKeyEntryValue(rng));
   }
   return result;
+}
+
+QLValuePB RandomQLValue(DataType type) {
+  switch (type) {
+    case DataType::BOOL: {
+      QLValuePB result;
+      result.set_bool_value(RandomUniformBool());
+      return result;
+    }
+    case DataType::INT8: {
+      QLValuePB result;
+      result.set_int8_value(RandomUniformInt<int8_t>());
+      return result;
+    }
+    case DataType::INT16: {
+      QLValuePB result;
+      result.set_int16_value(RandomUniformInt<int16_t>());
+      return result;
+    }
+    case DataType::INT32:
+      return QLValue::Primitive(RandomUniformInt<int32_t>());
+    case DataType::INT64:
+      return QLValue::Primitive(RandomUniformInt<int64_t>());
+    case DataType::STRING:
+      return QLValue::Primitive(RandomHumanReadableString(RandomUniformInt(0, 32)));
+    case DataType::DOUBLE:
+      return QLValue::Primitive(RandomUniformReal<double>());
+    default:
+      CHECK(false) << "Not supported data type: " << type;
+  }
 }
 
 }  // namespace yb::dockv

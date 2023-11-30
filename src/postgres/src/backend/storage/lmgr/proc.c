@@ -824,7 +824,6 @@ static void
 ProcKill(int code, Datum arg)
 {
 	PGPROC	   *proc;
-	PGPROC	   *volatile *procgloballist;
 
 	Assert(MyProc != NULL);
 
@@ -851,38 +850,8 @@ ProcKill(int code, Datum arg)
 	/* Cancel any pending condition variable sleep, too */
 	ConditionVariableCancelSleep();
 
-	/*
-	 * Detach from any lock group of which we are a member.  If the leader
-	 * exist before all other group members, its PGPROC will remain allocated
-	 * until the last group process exits; that process must return the
-	 * leader's PGPROC to the appropriate list.
-	 */
 	if (MyProc->lockGroupLeader != NULL)
-	{
-		PGPROC	   *leader = MyProc->lockGroupLeader;
-		LWLock	   *leader_lwlock = LockHashPartitionLockByProc(leader);
-
-		LWLockAcquire(leader_lwlock, LW_EXCLUSIVE);
-		Assert(!dlist_is_empty(&leader->lockGroupMembers));
-		dlist_delete(&MyProc->lockGroupLink);
-		if (dlist_is_empty(&leader->lockGroupMembers))
-		{
-			leader->lockGroupLeader = NULL;
-			if (leader != MyProc)
-			{
-				procgloballist = leader->procgloballist;
-
-				/* Leader exited first; return its PGPROC. */
-				SpinLockAcquire(ProcStructLock);
-				leader->links.next = (SHM_QUEUE *) *procgloballist;
-				*procgloballist = leader;
-				SpinLockRelease(ProcStructLock);
-			}
-		}
-		else if (leader != MyProc)
-			MyProc->lockGroupLeader = NULL;
-		LWLockRelease(leader_lwlock);
-	}
+		RemoveLockGroupLeader(MyProc);
 
 	/*
 	 * Reset MyLatch to the process local one.  This is so that signal
@@ -900,7 +869,60 @@ ProcKill(int code, Datum arg)
 	MyProc = NULL;
 	DisownLatch(&proc->procLatch);
 
-	procgloballist = proc->procgloballist;
+	ReleaseProcToFreeList(proc);
+
+	/*
+	 * This process is no longer present in shared memory in any meaningful
+	 * way, so tell the postmaster we've cleaned up acceptably well. (XXX
+	 * autovac launcher should be included here someday)
+	 */
+	if (IsUnderPostmaster && !IsAutoVacuumLauncherProcess())
+		MarkPostmasterChildInactive();
+
+	/* wake autovac launcher if needed -- see comments in FreeWorkerInfo */
+	if (AutovacuumLauncherPid != 0)
+		kill(AutovacuumLauncherPid, SIGUSR2);
+}
+
+/*
+ * Detach from any lock group of which we are a member.  If the leader
+ * exist before all other group members, its PGPROC will remain allocated
+ * until the last group process exits; that process must return the
+ * leader's PGPROC to the appropriate list.
+ */
+void
+RemoveLockGroupLeader(PGPROC *proc)
+{
+	PGPROC	   *volatile *procgloballist;
+	PGPROC	   *leader = MyProc->lockGroupLeader;
+	LWLock	   *leader_lwlock = LockHashPartitionLockByProc(leader);
+
+	LWLockAcquire(leader_lwlock, LW_EXCLUSIVE);
+	Assert(!dlist_is_empty(&leader->lockGroupMembers));
+	dlist_delete(&MyProc->lockGroupLink);
+	if (dlist_is_empty(&leader->lockGroupMembers))
+	{
+		leader->lockGroupLeader = NULL;
+		if (leader != MyProc)
+		{
+			procgloballist = leader->procgloballist;
+
+			/* Leader exited first; return its PGPROC. */
+			SpinLockAcquire(ProcStructLock);
+			leader->links.next = (SHM_QUEUE *) *procgloballist;
+			*procgloballist = leader;
+			SpinLockRelease(ProcStructLock);
+		}
+	}
+	else if (leader != MyProc)
+		MyProc->lockGroupLeader = NULL;
+	LWLockRelease(leader_lwlock);
+}
+
+void
+ReleaseProcToFreeList(PGPROC *proc)
+{
+	PGPROC	   *volatile *procgloballist = proc->procgloballist;
 	SpinLockAcquire(ProcStructLock);
 
 	/*
@@ -922,18 +944,6 @@ ProcKill(int code, Datum arg)
 	ProcGlobal->spins_per_delay = update_spins_per_delay(ProcGlobal->spins_per_delay);
 
 	SpinLockRelease(ProcStructLock);
-
-	/*
-	 * This process is no longer present in shared memory in any meaningful
-	 * way, so tell the postmaster we've cleaned up acceptably well. (XXX
-	 * autovac launcher should be included here someday)
-	 */
-	if (IsUnderPostmaster && !IsAutoVacuumLauncherProcess())
-		MarkPostmasterChildInactive();
-
-	/* wake autovac launcher if needed -- see comments in FreeWorkerInfo */
-	if (AutovacuumLauncherPid != 0)
-		kill(AutovacuumLauncherPid, SIGUSR2);
 }
 
 /*

@@ -19,6 +19,7 @@ import com.google.common.collect.SetMultimap;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.VersionCheckMode;
+import com.yugabyte.yw.common.CloudUtil.Protocol;
 import com.yugabyte.yw.common.LdapUtil.TlsProtocol;
 import com.yugabyte.yw.common.NodeManager.SkipCertValidationType;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -125,6 +126,20 @@ public class ConfDataType<T> {
           SetMultimap.class,
           (config, path) -> getSetMultimap(config.getStringList(path)),
           ConfDataType::parseSetMultimap);
+
+  static ConfDataType<Protocol> ProtocolEnum =
+      new ConfDataType<>(
+          "Protocol",
+          Protocol.class,
+          new EnumGetter<>(Protocol.class),
+          (s) -> {
+            try {
+              return Protocol.valueOf(s);
+            } catch (Exception e) {
+              String failMsg = String.format("%s is not a valid value for desired key\n", s);
+              throw new PlatformServiceException(BAD_REQUEST, failMsg + e.getMessage());
+            }
+          });
 
   static ConfDataType<VersionCheckMode> VersionCheckModeEnum =
       new ConfDataType<>(

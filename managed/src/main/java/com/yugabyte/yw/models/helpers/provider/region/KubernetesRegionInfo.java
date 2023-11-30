@@ -68,6 +68,6 @@ public class KubernetesRegionInfo extends KubernetesInfo {
 
   @JsonIgnore
   public void mergeMaskedFields(CloudInfoInterface providerCloudInfo) {
-    // Pass
+    super.mergeMaskedFields(providerCloudInfo);
   }
 }

@@ -141,7 +141,7 @@ const std::string kParentMemTrackerId = "transactions";
 std::string TransactionApplyData::ToString() const {
   return YB_STRUCT_TO_STRING(
       leader_term, transaction_id, aborted, op_id, commit_ht, log_ht, sealed, status_tablet,
-      apply_state, is_external);
+      apply_state);
 }
 
 void UpdateHistoricalMaxOpId(std::atomic<OpId>* historical_max_op_id, OpId const& op_id) {
@@ -273,10 +273,6 @@ class TransactionParticipant::Impl
       return status.CloneAndAddErrorCode(TransactionError(TransactionErrorCode::kAborted));
     }
     VLOG_WITH_PREFIX(4) << "Create new transaction: " << metadata.transaction_id;
-    if (metadata.external_transaction && metadata.status_tablet.empty()) {
-      return STATUS(InvalidArgument, Format("For external transaction $0, status tablet is empty",
-                                             metadata.transaction_id));
-    }
 
     VLOG_WITH_PREFIX(3) << "Adding a new transaction txn_id: " << metadata.transaction_id
                         << " with begin_time: " << metadata.start_time.ToUint64();
@@ -761,11 +757,9 @@ class TransactionParticipant::Impl
         CHECK(transactions_.modify(lock_and_iterator.iterator, [&data](auto& txn) {
           txn->SetLocalCommitData(data.commit_ht, data.aborted);
         }));
-        if (!lock_and_iterator.transaction().external_transaction()) {
-          LOG_IF_WITH_PREFIX(DFATAL, data.log_ht < last_safe_time_)
-              << "Apply transaction before last safe time " << data.transaction_id
-              << ": " << data.log_ht << " vs " << last_safe_time_;
-        }
+        LOG_IF_WITH_PREFIX(DFATAL, data.log_ht < last_safe_time_)
+            << "Apply transaction before last safe time " << data.transaction_id << ": "
+            << data.log_ht << " vs " << last_safe_time_;
       }
     }
 
@@ -1232,17 +1226,6 @@ class TransactionParticipant::Impl
     return std::move(metadata);
   }
 
-  Result<IsExternalTransaction> IsExternalTransactionResult(
-      const TransactionId& transaction_id) {
-    auto lock_and_iterator = VERIFY_RESULT(LockAndFind(transaction_id,
-                                         "is external transaction"s,
-                                         TransactionLoadFlags{TransactionLoadFlag::kMustExist}));
-    if (!lock_and_iterator.found()) {
-      return STATUS(NotFound, Format("Unknown transaction $0", transaction_id));
-    }
-    return lock_and_iterator.transaction().external_transaction();
-  }
-
   void RecordConflictResolutionKeysScanned(int64_t num_keys) {
     metric_conflict_resolution_num_keys_scanned_->Increment(num_keys);
   }
@@ -1416,9 +1399,7 @@ class TransactionParticipant::Impl
       while (!remove_queue_.empty()) {
         auto& front = remove_queue_.front();
         auto it = transactions_.find(front.id);
-        if (it == transactions_.end() ||
-            (**it).local_commit_time().is_valid() ||
-            (**it).external_transaction()) {
+        if (it == transactions_.end() || (**it).local_commit_time().is_valid()) {
           // A couple possibilities:
           // 1. This is an xcluster transaction so we want to skip the remove path for ABORTED
           // transactions.
@@ -1513,8 +1494,7 @@ class TransactionParticipant::Impl
       std::unique_lock<std::mutex> lock(mutex_);
       auto it = transactions_.find(id);
       if (it != transactions_.end()) {
-        if (!(**it).external_transaction() &&
-            (**it).start_ht() <= ignore_all_transactions_started_before_) {
+        if ((**it).start_ht() <= ignore_all_transactions_started_before_) {
           YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 1)
               << "Ignore transaction for '" << reason << "' because of limit: "
               << ignore_all_transactions_started_before_ << ", txn: " << AsString(**it);
@@ -1708,8 +1688,7 @@ class TransactionParticipant::Impl
       .commit_ht = commit_time,
       .log_ht = data.hybrid_time,
       .sealed = data.sealed,
-      .status_tablet = data.state.tablets().front().ToBuffer(),
-      .is_external = data.state.has_external_hybrid_time()
+      .status_tablet = data.state.tablets().front().ToBuffer()
     };
     if (!data.already_applied_to_regular_db) {
       return ProcessApply(apply_data);
@@ -1775,9 +1754,6 @@ class TransactionParticipant::Impl
       auto& index = transactions_.get<AbortCheckTimeTag>();
       for (;;) {
         auto& txn = **index.begin();
-        if (txn.external_transaction()) {
-          break;
-        }
         if (txn.abort_check_ht() > now) {
           break;
         }
@@ -2006,11 +1982,6 @@ void TransactionParticipant::Handle(
 
 Status TransactionParticipant::Cleanup(TransactionIdSet&& set) {
   return impl_->Cleanup(std::move(set), this);
-}
-
-Result<IsExternalTransaction> TransactionParticipant::IsExternalTransactionResult(
-    const TransactionId& transaction_id) {
-  return impl_->IsExternalTransactionResult(transaction_id);
 }
 
 Status TransactionParticipant::ProcessReplicated(const ReplicatedData& data) {

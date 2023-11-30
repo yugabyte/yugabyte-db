@@ -266,7 +266,13 @@ IndexOnlyNext(IndexOnlyScanState *node)
 			StoreIndexTuple(slot, scandesc->xs_itup, scandesc->xs_itupdesc);
 		else if (IsYugaByteEnabled() && scandesc->yb_aggrefs)
 		{
-			/* Slot should have already been updated by YB amgettuple. */
+			/*
+			 * Slot should have already been updated by YB amgettuple.
+			 *
+			 * Also, index only aggregate pushdown cannot support recheck, and
+			 * this should have been prevented by earlier logic.
+			 */
+			Assert(!scandesc->xs_recheck);
 		}
 		else
 			elog(ERROR, "no data returned for index-only scan");
@@ -642,9 +648,13 @@ ExecInitIndexOnlyScan(IndexOnlyScan *node, EState *estate, int eflags)
 	 * If we are just doing EXPLAIN (ie, aren't going to run the plan), stop
 	 * here.  This allows an index-advisor plugin to EXPLAIN a plan containing
 	 * references to nonexistent indexes.
+	 *
+	 * YB note: For aggregate pushdown, we need recheck knowledge to determine
+	 * whether aggregates can be pushed down or not.
 	 */
 	if (eflags & EXEC_FLAG_EXPLAIN_ONLY)
-		return indexstate;
+		if (!(IsYugaByteEnabled() && (eflags & EXEC_FLAG_YB_AGG_PARENT)))
+			return indexstate;
 
 	/* Open the index relation. */
 	lockmode = exec_rt_fetch(node->scan.scanrelid, estate)->rellockmode;
@@ -670,6 +680,27 @@ ExecInitIndexOnlyScan(IndexOnlyScan *node, EState *estate, int eflags)
 						   &indexstate->ioss_NumRuntimeKeys,
 						   NULL,	/* no ArrayKeys */
 						   NULL);
+
+	/*
+	 * For aggregate pushdown purposes, using the scan keys, determine ahead of
+	 * beginning the scan whether indexqual recheck might happen, and pass that
+	 * information up to the aggregate node.  Only attempt this for YB
+	 * relations since pushdown is not supported otherwise.
+	 */
+	if (IsYBRelation(indexstate->ioss_RelationDesc) &&
+		(eflags & EXEC_FLAG_YB_AGG_PARENT))
+	{
+		indexstate->yb_ioss_might_recheck =
+			yb_index_might_recheck(currentRelation,
+								   indexstate->ioss_RelationDesc,
+								   true /* xs_want_itup */,
+								   indexstate->ioss_ScanKeys,
+								   indexstate->ioss_NumScanKeys);
+
+		/* Got the info for aggregate pushdown.  EXPLAIN can return now. */
+		if  (eflags & EXEC_FLAG_EXPLAIN_ONLY)
+			return indexstate;
+	}
 
 	/*
 	 * any ORDER BY exprs have to be turned into scankeys in the same way

@@ -19,7 +19,6 @@
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
-#include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/master/master_defaults.h"
@@ -151,7 +150,7 @@ Result<std::unique_ptr<XClusterConsumer>> XClusterConsumer::Create(
   local_client->client->SetLocalTabletServer(tserver->permanent_uuid(), tserver->proxy(), tserver);
   auto xcluster_consumer = std::make_unique<XClusterConsumer>(
       std::move(is_leader_for_tablet), std::move(get_leader_term), proxy_cache,
-      tserver->permanent_uuid(), std::move(local_client), &tserver->TransactionManager());
+      tserver->permanent_uuid(), std::move(local_client));
 
   // TODO(NIC): Unify xcluster_consumer thread_pool & remote_client_ threadpools
   RETURN_NOT_OK(yb::Thread::Create(
@@ -168,20 +167,14 @@ Result<std::unique_ptr<XClusterConsumer>> XClusterConsumer::Create(
 
 XClusterConsumer::XClusterConsumer(
     std::function<bool(const std::string&)> is_leader_for_tablet,
-    std::function<int64_t(const TabletId&)>
-        get_leader_term,
-    rpc::ProxyCache* proxy_cache,
-    const string& ts_uuid,
-    std::unique_ptr<XClusterClient>
-        local_client,
-    client::TransactionManager* transaction_manager)
+    std::function<int64_t(const TabletId&)> get_leader_term, rpc::ProxyCache* proxy_cache,
+    const string& ts_uuid, std::unique_ptr<XClusterClient> local_client)
     : is_leader_for_tablet_(std::move(is_leader_for_tablet)),
       get_leader_term_(std::move(get_leader_term)),
       rpcs_(new rpc::Rpcs),
       log_prefix_(Format("[TS $0]: ", ts_uuid)),
       local_client_(std::move(local_client)),
-      last_safe_time_published_at_(MonoTime::Now()),
-      transaction_manager_(transaction_manager) {
+      last_safe_time_published_at_(MonoTime::Now()) {
   rate_limiter_ = std::unique_ptr<rocksdb::RateLimiter>(rocksdb::NewGenericRateLimiter(
       GetAtomicFlag(&FLAGS_apply_changes_max_send_rate_mbps) * 1_MB));
   rate_limiter_->EnableLoggingWithDescription("XCluster Output Client");
@@ -315,33 +308,6 @@ void XClusterConsumer::UpdateInMemoryState(
     return;
   }
 
-  if (consumer_registry->enable_replicate_transaction_status_table() &&
-      global_transaction_status_tablets_.empty()) {
-    auto global_transaction_status_table_name = client::YBTableName(
-        YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
-
-    std::vector<TabletId> tablets;
-    const auto get_tablets_status = local_client_->client->GetTablets(
-        global_transaction_status_table_name, 0 /* max_tablets */, &tablets, nullptr /* ranges */);
-
-    if (!get_tablets_status.ok() || tablets.empty()) {
-      // We could not open the transaction status table, so return without setting any in-memory
-      // state.
-      LOG(WARNING) << "Error getting global transaction status tablets: " << get_tablets_status;
-      run_thread_cond_.notify_all();
-      return;
-    }
-
-    // Sort tablets to ensure we have the same order across all XClusterConsumers.
-    sort(tablets.begin(), tablets.end());
-
-    // TODO handle adding of new txn status tablets (GH #16307).
-    // Currently we block add_transaction_tablet for xCluster enabled clusters, since adding in a
-    // new txn status tablet would disrupt the deterministic mapping we have for txn id -> status
-    // tablet (since we would need to support existing txns and new ones).
-    global_transaction_status_tablets_ = std::move(tablets);
-  }
-
   cluster_config_version_.store(cluster_config_version, std::memory_order_release);
   producer_consumer_tablet_map_from_master_.clear();
   decltype(uuid_master_addrs_) old_uuid_master_addrs;
@@ -350,9 +316,6 @@ void XClusterConsumer::UpdateInMemoryState(
   if (!consumer_registry) {
     LOG_WITH_PREFIX(INFO) << "Given empty xCluster consumer registry: removing Pollers";
     consumer_role_ = cdc::XClusterRole::ACTIVE;
-    // Clear the tablets list in case users want to increase number of txn status tablets in between
-    // having active replication setups.
-    global_transaction_status_tablets_.clear();
     run_thread_cond_.notify_all();
     return;
   }
@@ -450,29 +413,7 @@ void XClusterConsumer::UpdateInMemoryState(
       }
     }
   }
-  enable_replicate_transaction_status_table_ =
-      consumer_registry->enable_replicate_transaction_status_table();
   run_thread_cond_.notify_all();
-}
-
-Result<cdc::ConsumerTabletInfo> XClusterConsumer::GetConsumerTableInfo(
-    const TabletId& producer_tablet_id) {
-  SharedLock lock(master_data_mutex_);
-  const auto& index_by_tablet = producer_consumer_tablet_map_from_master_.get<TabletTag>();
-  auto count = index_by_tablet.count(producer_tablet_id);
-  SCHECK(
-      count, NotFound,
-      Format("No consumer tablets found for producer tablet $0.", producer_tablet_id));
-
-  if (count != 1) {
-    return STATUS(
-        IllegalState, Format(
-                          "For producer tablet $0, found $1 consumer tablets when exactly 1 "
-                          "expected for transactional workloads.",
-                          producer_tablet_id, count));
-  }
-  auto it = index_by_tablet.find(producer_tablet_id);
-  return it->consumer_tablet_info;
 }
 
 void XClusterConsumer::TriggerPollForNewTablets() {
@@ -580,7 +521,6 @@ void XClusterConsumer::TriggerPollForNewTablets() {
         auto xcluster_poller = std::make_shared<XClusterPoller>(
             producer_tablet_info, consumer_tablet_info, thread_pool_.get(), rpcs_.get(),
             local_client_, remote_clients_[replication_group_id], this, use_local_tserver,
-            global_transaction_status_tablets_, enable_replicate_transaction_status_table_,
             last_compatible_consumer_schema_version, rate_limiter_.get(), get_leader_term_);
 
         UpdatePollerSchemaVersionMaps(xcluster_poller, producer_tablet_info.stream_id);
@@ -702,8 +642,6 @@ std::string XClusterConsumer::LogPrefix() { return log_prefix_; }
 int32_t XClusterConsumer::cluster_config_version() const {
   return cluster_config_version_.load(std::memory_order_acquire);
 }
-
-client::TransactionManager* XClusterConsumer::TransactionManager() { return transaction_manager_; }
 
 Status XClusterConsumer::ReloadCertificates() {
   if (local_client_->secure_context) {

@@ -168,3 +168,6 @@
 | "YSQL Queries Timeout" | "yb.ysql_timeout_secs" | "UNIVERSE" | "Timeout in secs for YSQL queries" | "Long" |
 | "Number of cores to keep" | "yb.num_cores_to_keep" | "UNIVERSE" | "Controls the configuration to set the number of cores to keep in the Ansible layer" | "Integer" |
 | "Whether to check YBA xCluster object is in sync with DB replication group" | "yb.xcluster.ensure_sync_get_replication_status" | "UNIVERSE" | "It ensures that the YBA XCluster object for tables that are in replication is in sync with replication group in DB. If they are not in sync and this is true, getting the xCluster object will throw an exception and the user has to resync the xCluster config." | "Boolean" |
+| "Network Load balancer health check port" | "yb.universe.network_load_balancer.custom_health_check_port" | "UNIVERSE" | "Port to use for health checks performed by the network load balancer. -1 indicates default port" | "Integer" |
+| "Network Load balancer health check protocol" | "yb.universe.network_load_balancer.custom_health_check_protocol" | "UNIVERSE" | "Protocol to use for health checks performed by the network load balancer" | "Protocol" |
+| "Network Load balancer health check path" | "yb.universe.network_load_balancer.custom_health_check_path" | "UNIVERSE" | "Path probed by HTTP/HTTPS health checks performed by the network load balancer" | "String" |

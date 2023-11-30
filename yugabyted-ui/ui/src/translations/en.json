@@ -741,9 +741,9 @@
         "tablets": "Tablets",
         "total": "Total",
         "activities": "Activities",
-        "noActivities": "No in progress activities",
+        "noActivities": "No activities available",
         "alerts": "Alerts",
-        "noAlerts": "No unread alerts",
+        "noAlerts": "No alerts available",
         "comingsoon": "This feature is coming soon",
         "underReplicated": "Under-Replicated",
         "unavailable": "Unavailable"
@@ -1134,7 +1134,10 @@
         "status": "Status",
         "starttime": "Start time",
         "endtime": "End time",
-        "noactivity": "There is no activity",
+        "index": "Index name",
+        "noactivities": "There are no activities available",
+        "noInprogressActivities": "There are no in-progress activities",
+        "noCompletedActivities": "There are no completed activities",
         "createCluster": "Create Cluster",
         "deleteCluster": "Delete Cluster",
         "editCluster": "Edit Cluster",
@@ -1146,10 +1149,13 @@
         "pauseCluster": "Pause Cluster",
         "resumeCluster": "Resume Cluster",
         "unknown": "Unknown",
+        "database": "Database",
+        "inprogressActivities": "In-Progress Activities",
+        "completedActivities": "Completed Activities",
         "details": {
           "title": "Activity Details",
           "operationName": "Operation Name",
-          "status": "Operation Status",
+          "status": "Status",
           "jobID": "Job ID",
           "startTime": "Start Time",
           "elapsedTime": "Elapsed Time",
@@ -1159,6 +1165,32 @@
           "failed": "Failed",
           "completed": "Completed",
           "inProgress": "In Progress"
+        }
+      },
+      "alerts": {
+        "tabNotifications": "Notifications",
+        "tabConfiguration": "Configuration",
+        "notification": {
+          "filters": "Filters",
+          "xnotifications": "{{count}} Notifications",
+          "severe": "Severe",
+          "warning": "Warning",
+          "name": "Name",
+          "node": "Node",
+          "severity": "Severity",
+          "triggertime": "Trigger Time",
+          "duration": "Duration",
+          "nonotifications": "No notifications available"
+        },
+        "configuration": {
+          "name": "Name",
+          "severity": "Severity",
+          "status": "Status",
+          "severe": "Severe",
+          "warning": "Warning",
+          "enabled": "Enabled",
+          "disabled": "Disabled",
+          "noconfigurations": "No configurations available"
         }
       },
       "settings": {

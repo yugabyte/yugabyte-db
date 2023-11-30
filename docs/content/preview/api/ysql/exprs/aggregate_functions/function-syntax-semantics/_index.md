@@ -3,7 +3,7 @@ title: YSQL aggregate functions signature and purpose
 linkTitle: Per function signature and purpose
 headerTitle: Signature and purpose of each aggregate function
 description: This section summarizes the signature and purpose of each of the YSQL aggregate functions and links to their individual accounts.
-image: /images/section_icons/api/ysql.png
+image: /images/section_icons/api/subsection.png
 menu:
   preview:
     identifier: aggregate-function-syntax-semantics
@@ -12,6 +12,7 @@ menu:
 aliases:
   - /preview/api/ysql/exprs/aggregate_functions
 type: indexpage
+showRightNav: true
 ---
 
 The aggregate functions are categorized into four classes:

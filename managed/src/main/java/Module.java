@@ -34,6 +34,8 @@ import com.yugabyte.yw.common.NativeKubernetesManager;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformScheduler;
+import com.yugabyte.yw.common.PrometheusConfigHelper;
+import com.yugabyte.yw.common.PrometheusConfigManager;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
@@ -200,6 +202,8 @@ public class Module extends AbstractModule {
       bind(PermissionUtil.class).asEagerSingleton();
       bind(RoleUtil.class).asEagerSingleton();
       bind(RoleBindingUtil.class).asEagerSingleton();
+      bind(PrometheusConfigManager.class).asEagerSingleton();
+      bind(PrometheusConfigHelper.class).asEagerSingleton();
       requestStaticInjection(CertificateInfo.class);
       requestStaticInjection(HealthCheck.class);
       requestStaticInjection(AppConfigHelper.class);

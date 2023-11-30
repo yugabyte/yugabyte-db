@@ -3899,7 +3899,8 @@ class ControlScript(object):
     def validate_security_configs(self, args):
         home_dir = os.path.expanduser("~")
         default_base_dir = os.path.join(home_dir, "var")
-        base_dir = os.path.abspath(args.base_dir) if args.base_dir else default_base_dir
+        base_dir = os.path.abspath(os.path.expanduser(args.base_dir)) if args.base_dir \
+            else default_base_dir
 
         default_certs_dir = os.path.join(base_dir, "certs")
 

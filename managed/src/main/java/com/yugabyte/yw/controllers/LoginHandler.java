@@ -54,8 +54,10 @@ public class LoginHandler {
       try {
         user = ldapUtil.loginWithLdap(data);
       } catch (LdapException e) {
-        SessionController.LOG.error(
-            "LDAP error {} authenticating user {}", e.getMessage(), data.getEmail());
+        String errMsg =
+            String.format("LDAP error %s authenticating user %s", e.getMessage(), data.getEmail());
+        SessionController.LOG.error(errMsg);
+        throw new PlatformServiceException(Status.BAD_REQUEST, errMsg);
       }
     }
 

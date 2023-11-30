@@ -10,7 +10,12 @@ menu:
     parent: ways-to-spec-offset
     weight: 10
 type: indexpage
+showRightNav: true
 ---
+
+## The rules
+
+
 **Note:** If the text contains a digit, then it is taken as POSIX syntax. See the appendix [B.5. POSIX Time Zone Specifications](https://www.postgresql.org/docs/11/datetime-posix-timezone-specs.html) in the PostgreSQL documentation.
 
 When a string is used to identify a _UTC offset_, there might seem _a priori_ to be three contexts in which it might be resolved:

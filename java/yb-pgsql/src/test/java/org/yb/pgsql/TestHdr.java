@@ -18,24 +18,27 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
-
+import org.yb.minicluster.Metrics;
+import org.yb.minicluster.Metrics.YSQLStat;
+import org.yb.minicluster.MiniYBDaemon;
 import com.google.common.collect.Range;
 import com.google.common.collect.ImmutableMap;
 import com.google.gson.JsonParser;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
-
+import com.google.gson.JsonObject;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.yb.util.json.JsonUtil;
 
 import java.lang.Math;
+import java.net.URL;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Iterator;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.Scanner;
 
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertGreaterThanOrEqualTo;
@@ -126,20 +129,39 @@ public class TestHdr extends BasePgSQLTest {
     return new BucketInterval(trunc_bottom, trunc_top);
   }
 
+  /*
+   * Matches for strings formatted [num1,num2) and returns num1 and num2
+   * If overflow bucket [num1,), returns num2 as INFINITY
+   */
+  private static BucketInterval parseInterval(String input) {
+    int startIndex = input.indexOf('[') + 1;
+    int commaIndex = input.indexOf(',');
+
+    // Extract the substring containing num1
+    String num1Str = input.substring(startIndex, commaIndex).trim();
+    double num1 = Double.parseDouble(num1Str);
+
+    int endIndex = input.indexOf(')');
+    double num2 = Double.POSITIVE_INFINITY;
+    if (endIndex - commaIndex > 1)
+    {
+      // Extract the substring containing num2
+      String num2Str = input.substring(commaIndex + 1, endIndex).trim();
+      num2 = Double.parseDouble(num2Str);
+    }
+
+    return new BucketInterval(num1, num2);
+}
+
   private static void checkJSONObject(JSONObject jsonObject, int expCount, double actualLatency,
       BucketInterval expInterval) {
     Iterator<String> keys = jsonObject.keys();
-    String regex = "^\\[(\\d+\\.?\\d*),(\\d+\\.?\\d*)\\).*$";
-    Pattern pattern = Pattern.compile(regex);
 
     while (keys.hasNext()) {
       String key = keys.next();
-      assertTrue(key.matches(regex));
-      Matcher matcher = pattern.matcher(key);
-      assertTrue(matcher.find());
-      double lowerBound = Double.parseDouble(matcher.group(1));
-      double upperBound = Double.parseDouble(matcher.group(2));
-      BucketInterval parsedInterval = new BucketInterval(lowerBound, upperBound);
+      BucketInterval parsedInterval = parseInterval(key);
+      double lowerBound = parsedInterval.lower;
+      double upperBound = parsedInterval.upper;
 
       /* verify jsonb matches with derived interval for this latency */
       assertEquals(expInterval, parsedInterval);
@@ -153,8 +175,6 @@ public class TestHdr extends BasePgSQLTest {
   private static void checkJSONArray(JSONArray jsonArray, int expCount, double minTime,
       double maxTime, int bucketFactor) {
     JSONObject jsonObject;
-    String regex = "^\\[(\\d+\\.?\\d*),(\\d+\\.?\\d*)\\).*$";
-    Pattern pattern = Pattern.compile(regex);
     double prevUpper = 0.0;
     int currCount = 0;
 
@@ -163,12 +183,9 @@ public class TestHdr extends BasePgSQLTest {
       Iterator<String> keys = jsonObject.keys();
       while (keys.hasNext()) {
         String key = keys.next();
-        assertTrue(key.matches(regex));
-        Matcher matcher = pattern.matcher(key);
-        assertTrue(matcher.find());
-        double lowerBound = Double.parseDouble(matcher.group(1));
-        double upperBound = Double.parseDouble(matcher.group(2));
-        BucketInterval parsedInterval = new BucketInterval(lowerBound, upperBound);
+        BucketInterval parsedInterval = parseInterval(key);
+        double lowerBound = parsedInterval.lower;
+        double upperBound = parsedInterval.upper;
         BucketInterval expInterval = getExpInterval(lowerBound, bucketFactor, true);
         currCount += jsonObject.getInt(key);
 
@@ -187,6 +204,39 @@ public class TestHdr extends BasePgSQLTest {
     }
     /* verify histogram total counts */
     assertEquals(expCount, currCount);
+  }
+
+  private static int checkJsonArray(JsonArray jsonArray, double minTime, double maxTime,
+      int bucketFactor) {
+    LOG.info("Response:\n" + JsonUtil.asPrettyString(jsonArray));
+    JsonObject jsonObject;
+    double prevUpper = 0.0;
+    int currCount = 0;
+
+    for (int i = 0; i < jsonArray.size(); i++) {
+      jsonObject = jsonArray.get(i).getAsJsonObject();
+      for (String key : jsonObject.keySet()) {
+        BucketInterval parsedInterval = parseInterval(key);
+        double lowerBound = parsedInterval.lower;
+        double upperBound = parsedInterval.upper;
+        BucketInterval expInterval = getExpInterval(lowerBound, bucketFactor, true);
+        currCount += jsonObject.get(key).getAsInt();
+
+        /* verify ends of array contain global max/min */
+        if (i == 0) {
+          assertTrue(Range.closedOpen(lowerBound, upperBound).contains(minTime));
+        } else if (i == jsonArray.size() - 1) {
+          assertTrue(Range.closedOpen(lowerBound, upperBound).contains(maxTime));
+        }
+        /* verify each jsonObject matches its lower bound's expected interval */
+        assertEquals(expInterval, parsedInterval);
+        /* verify jsonObjects follow ascending ordering */
+        assertGreaterThanOrEqualTo(lowerBound, prevUpper);
+        prevUpper = upperBound;
+      }
+    }
+    /* return histogram total counts */
+    return currCount;
   }
 
   private static void runCheckSleepQuery(Statement statement, int bucketFactor)
@@ -289,6 +339,43 @@ public class TestHdr extends BasePgSQLTest {
   @Test
   public void testPgRegressPercentile() throws Exception {
     runPgRegressTest("yb_percentile_schedule");
+  }
+
+  private static void verifyStatementHist(String statName, int iterations) throws Exception {
+    int currIterations = 0;
+    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
+      URL url = new URL(
+          String.format("http://%s:%d/statements", ts.getLocalhostIP(), ts.getPgsqlWebPort()));
+      try (Scanner scanner = new Scanner(url.openConnection().getInputStream())) {
+        JsonElement tree = JsonParser.parseString(scanner.useDelimiter("\\A").next());
+        JsonObject obj = tree.getAsJsonObject();
+        YSQLStat ysqlStat = new Metrics(obj, true).getYSQLStat(statName);
+        if (ysqlStat != null) {
+          double minTime = ysqlStat.min_time;
+          double maxTime = ysqlStat.max_time;
+          currIterations += checkJsonArray(ysqlStat.yb_latency_histogram, minTime, maxTime,
+              DEFAULT_YB_HDR_BUCKET_FACTOR);
+        }
+      }
+    }
+    assertEquals(iterations, currIterations);
+  }
+
+  @Test
+  public void testStatementHist() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      double minVal = 0.001;
+      double maxVal = 0.01;
+      int iterations = 1000;
+      statement.execute("select pg_stat_statements_reset()");
+      for (int i = 0; i < iterations; i++) {
+        double randVal = minVal + (Math.random() * (maxVal - minVal));
+        String randString = String.format("select pg_sleep(%f)", randVal);
+        statement.execute(randString);
+      }
+
+      verifyStatementHist("select pg_sleep($1)", iterations);
+    }
   }
 
 }

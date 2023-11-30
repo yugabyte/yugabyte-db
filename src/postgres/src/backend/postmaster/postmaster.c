@@ -290,7 +290,8 @@ static int	Shutdown = NoShutdown;
 
 static bool FatalError = false; /* T if recovering from backend crash */
 
-static bool YbCrashWhileLockIntermediateState = false; /* Crashed before fully acquiring a lock */
+/* Crashed before fully acquiring a lock, or with unexpected error code.  */
+static bool YbCrashInUnmanageableState = false;
 
 #ifdef __linux__
 static char *YbBackendOomScoreAdj = NULL;
@@ -3130,10 +3131,10 @@ reaper(SIGNAL_ARGS)
 			 */
 			if (proc->ybAnyLockAcquired)
 			{
-				YbCrashWhileLockIntermediateState = true;
-				ereport(LOG,
+				YbCrashInUnmanageableState = true;
+				ereport(WARNING,
 						(errmsg("terminating active server processes due to backend crash while "
-						"acquiring LWLock")));
+								"acquiring LWLock")));
 				break;
 			}
 
@@ -3142,7 +3143,23 @@ reaper(SIGNAL_ARGS)
 			 */
 			if (WIFSIGNALED(exitstatus))
 			{
-				CleanupKilledProcess(proc);
+				if (WTERMSIG(exitstatus) == SIGABRT ||
+					WTERMSIG(exitstatus) == SIGKILL ||
+					WTERMSIG(exitstatus) == SIGSEGV)
+				{
+					YBC_LOG_INFO("cleaning up after process with pid %d exited with status %d",
+								 pid, exitstatus);
+					CleanupKilledProcess(proc);
+				}
+				else
+				{
+					YbCrashInUnmanageableState = true;
+					ereport(WARNING,
+							(errmsg("terminating active server processes due to backend crash from "
+									"unexpected error code %d",
+							 WTERMSIG(exitstatus))));
+					break;
+				}
 				break;
 			}
 		}
@@ -3238,7 +3255,7 @@ reaper(SIGNAL_ARGS)
 			pmState = PM_RUN;
 			connsAllowed = true;
 
-			YbCrashWhileLockIntermediateState = false;
+			YbCrashInUnmanageableState = false;
 
 			/*
 			 * Crank up the background tasks, if we didn't do that already
@@ -3429,7 +3446,7 @@ reaper(SIGNAL_ARGS)
 		 * Else do standard backend child cleanup.
 		 */
 		CleanupBackend(pid, exitstatus);
-		if (!YbCrashWhileLockIntermediateState && !FatalError)
+		if (!YbCrashInUnmanageableState && !FatalError)
 		{
 			/*
 			 * Since this is not a fatal crash, we are pursuing a clean exit. All
@@ -3553,10 +3570,9 @@ CleanupBackgroundWorker(int pid,
 	return false;
 }
 
-static void CleanupKilledProcess(PGPROC *proc)
+static void
+CleanupKilledProcess(PGPROC *proc)
 {
-	PGPROC	   *volatile *procgloballist;
-
 	if (proc->backendId == InvalidBackendId)
 	{
 		/* These come from ShutdownAuxiliaryProcess */
@@ -3582,55 +3598,12 @@ static void CleanupKilledProcess(PGPROC *proc)
 		SyncRepCleanupAtProcExit(proc);
 		ConditionVariableCancelSleepForProc(proc);
 
-		/*
-		* Detach from any lock group of which we are a member.  If the leader
-		* exist before all other group members, it's PGPROC will remain allocated
-		* until the last group process exits; that process must return the
-		* leader's PGPROC to the appropriate list.
-		*/
 		if (proc->lockGroupLeader != NULL)
-		{
-			PGPROC	   *leader = proc->lockGroupLeader;
-
-			if (leader)
-			{
-				Assert(!dlist_is_empty(&leader->lockGroupMembers));
-				dlist_delete(&proc->lockGroupLink);
-				if (dlist_is_empty(&leader->lockGroupMembers))
-				{
-					leader->lockGroupLeader = NULL;
-					if (leader != proc)
-					{
-						procgloballist = leader->procgloballist;
-
-						/* Leader exited first; return its PGPROC. */
-						leader->links.next = (SHM_QUEUE *) *procgloballist;
-						*procgloballist = leader;
-					}
-				}
-				else if (leader != proc)
-					proc->lockGroupLeader = NULL;
-			}
-		}
-
-		procgloballist = proc->procgloballist;
+			RemoveLockGroupLeader(proc);
 
 		DisownLatchOnBehalfOfPid(&proc->procLatch, proc->pid);
 
-		/*
-		* If we're still a member of a locking group, that means we're a leader
-		* which has somehow exited before its children.  The last remaining child
-		* will release our PGPROC.  Otherwise, release it now.
-		*/
-		if (proc->lockGroupLeader == NULL)
-		{
-			/* Since lockGroupLeader is NULL, lockGroupMembers should be empty. */
-			Assert(dlist_is_empty(&proc->lockGroupMembers));
-
-			/* Return PGPROC structure (and semaphore) to appropriate freelist */
-			proc->links.next = (SHM_QUEUE *) *procgloballist;
-			*procgloballist = proc;
-		}
+		ReleaseProcToFreeList(proc);
 	}
 }
 
@@ -3752,15 +3725,14 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 	 */
 	if (YBIsEnabledInPostgresEnvVar() && !YBShouldRestartAllChildrenIfOneCrashes())
 	{
-		take_action = take_action && YbCrashWhileLockIntermediateState;
-		if (YbCrashWhileLockIntermediateState)
-			YbCrashWhileLockIntermediateState = false;
+		take_action = take_action && YbCrashInUnmanageableState;
 	}
 
 	if (take_action)
 	{
-		LogChildExit(LOG, procname, pid, exitstatus);
-		ereport(LOG,
+		int level = YBIsEnabledInPostgresEnvVar() ? INFO : LOG;
+		LogChildExit(level, procname, pid, exitstatus);
+		ereport(level,
 				(errmsg("terminating any other active server processes")));
 		SetQuitSignalReason(PMQUIT_FOR_CRASH);
 	}
@@ -3804,7 +3776,7 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 			 */
 			if (take_action)
 			{
-				ereport(DEBUG2,
+				ereport(INFO,
 						(errmsg_internal("sending %s to process %d",
 										 (SendStop ? "SIGSTOP" : "SIGQUIT"),
 										 (int) rw->rw_pid)));

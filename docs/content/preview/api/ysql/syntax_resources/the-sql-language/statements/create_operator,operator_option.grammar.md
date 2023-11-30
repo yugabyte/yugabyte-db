@@ -1,5 +1,5 @@
 ```output.ebnf
-create_operator ::= CREATE OPERATOR operator_name ( 
+create_operator ::= CREATE OPERATOR operator_name  ( 
                     { FUNCTION = subprogram_name
                       | PROCEDURE = subprogram_name } 
                     [ , operator_option [ ... ] ] )

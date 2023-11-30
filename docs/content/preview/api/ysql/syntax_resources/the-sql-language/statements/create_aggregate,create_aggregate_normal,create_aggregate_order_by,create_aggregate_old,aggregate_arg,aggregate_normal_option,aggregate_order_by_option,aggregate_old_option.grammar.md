@@ -4,19 +4,19 @@ create_aggregate ::= create_aggregate_normal
                      | create_aggregate_old
 
 create_aggregate_normal ::= CREATE AGGREGATE aggregate_name ( 
-                            { aggregate_arg [ , ... ] | * } ) ( SFUNC 
+                            { aggregate_arg [ , ... ] | * } )  ( SFUNC 
                             = sfunc , STYPE = state_data_type 
                             [ , aggregate_normal_option [ ... ] ] )
 
 create_aggregate_order_by ::= CREATE AGGREGATE aggregate_name ( 
                               [ aggregate_arg [ , ... ] ] ORDER BY 
-                              aggregate_arg [ , ... ] ) ( SFUNC = 
+                              aggregate_arg [ , ... ] )  ( SFUNC = 
                               sfunc , STYPE = state_data_type 
                               [ , aggregate_order_by_option [ ... ] ] 
                               )
 
 create_aggregate_old ::= CREATE AGGREGATE aggregate_name ( BASETYPE = 
-                         base_type , SFUNC = sfunc , STYPE = 
+                         base_type ,  SFUNC = sfunc , STYPE = 
                          state_data_type 
                          [ , aggregate_old_option [ ... ] ] )
 

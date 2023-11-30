@@ -231,8 +231,8 @@ message CDCRecordPB {
     APPLY = 3;
     SPLIT_OP = 4;
     CHANGE_METADATA = 5;
-    TRANSACTION_COMMITTED = 6;
-    TRANSACTION_CREATED = 7;
+    // Reserved for deprecated TRANSACTION_COMMITTED and TRANSACTION_CREATED fields.
+    reserved 6, 7;
   }
   optional uint64 time = 1;
   optional OperationType operation = 2;

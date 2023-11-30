@@ -33,6 +33,13 @@ func (yc *YbaCtlComponent) Install() error {
 	log.Info("Installing yba-ctl")
 
 	for _, file := range []string{common.GoBinaryName, common.VersionMetadataJSON} {
+		// Remove the existing file and ignore not exists errors.
+		err := os.Remove(filepath.Join(common.YbactlInstallDir(), file))
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("failed to remove existing file %s: %w",
+				filepath.Join(common.YbactlInstallDir(), file), err)
+		}
+
 		if err := common.Copy(file, common.YbactlInstallDir(), false, true); err != nil {
 			return fmt.Errorf("failed to copy %s during yba-ctl install: %w", file, err)
 		}

@@ -704,6 +704,7 @@ function BackupConfigurationForm({
             options={[ALL_DB_OPTION, ...uniqueKeyspaces]}
             onChange={(_: any, val: any) => {
               setFieldValue('db_to_backup', val);
+              setFieldValue('backup_tables', Backup_Options_Type.ALL);
               if (
                 values['api_type'].value === BACKUP_API_TYPES.YCQL ||
                 values['api_type'].value === BACKUP_API_TYPES.YEDIS

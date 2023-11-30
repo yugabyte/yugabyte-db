@@ -137,9 +137,8 @@ Status CDCSDKTestBase::InitPostgres(Cluster* cluster) {
 
 // Set up a cluster with the specified parameters.
 Status CDCSDKTestBase::SetUpWithParams(
-    uint32_t replication_factor,
-    uint32_t num_masters,
-    bool colocated) {
+    uint32_t replication_factor, uint32_t num_masters, bool colocated,
+    bool cdc_populate_safepoint_record) {
   master::SetDefaultInitialSysCatalogSnapshotFlags();
   CDCSDKTestBase::SetUp();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = true;
@@ -148,6 +147,7 @@ Status CDCSDKTestBase::SetUpWithParams(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_rpc_timeout_secs) = 120;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_factor) = replication_factor;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_pack_full_row_update) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_populate_safepoint_record) = cdc_populate_safepoint_record;
 
   MiniClusterOptions opts;
   opts.num_masters = num_masters;

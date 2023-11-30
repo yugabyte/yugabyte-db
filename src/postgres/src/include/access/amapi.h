@@ -144,6 +144,13 @@ typedef IndexBuildResult *(*yb_ambackfill_function) (Relation heapRelation,
 													 struct YbBackfillInfo *bfinfo,
 													 struct YbPgExecOutParam *bfresult);
 
+/* return whether this Yugabyte-based index might recheck indexquals */
+typedef bool (*yb_ammightrecheck_function) (Relation heap,
+											Relation index,
+											bool xs_want_itup,
+											ScanKey keys,
+											int nkeys);
+
 /* bulk delete */
 typedef IndexBulkDeleteResult *(*ambulkdelete_function) (IndexVacuumInfo *info,
 														 IndexBulkDeleteResult *stats,
@@ -316,6 +323,7 @@ typedef struct IndexAmRoutine
 	yb_aminsert_function yb_aminsert;
 	yb_amdelete_function yb_amdelete;
 	yb_ambackfill_function yb_ambackfill;
+	yb_ammightrecheck_function yb_ammightrecheck;
 
 } IndexAmRoutine;
 

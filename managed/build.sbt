@@ -228,6 +228,7 @@ libraryDependencies ++= Seq(
   "com.squareup.okhttp3" % "mockwebserver" % "4.9.2" % Test,
   "io.grpc" % "grpc-testing" % "1.48.0" % Test,
   "io.zonky.test" % "embedded-postgres" % "2.0.1" % Test,
+  "org.springframework" % "spring-test" % "5.3.9" % Test,
 )
 
 // Clear default resolvers.

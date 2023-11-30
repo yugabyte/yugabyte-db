@@ -26,7 +26,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
@@ -74,6 +73,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.naming.TestCaseName;
@@ -1210,16 +1210,28 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     // AZ 4 has 2 nodes so return 2 volumes here
     createVolumeOutput.put(az4.getUuid(), Arrays.asList("root-volume-4", "root-volume-5"));
 
+    // Use output for verification and response is the raw string that parses into output.
+    Map<UUID, String> createVolumeOutputResponse =
+        Stream.of(az1, az2, az3)
+            .collect(
+                Collectors.toMap(
+                    az -> az.getUuid(),
+                    az ->
+                        String.format(
+                            "{\"boot_disks_per_zone\":[\"root-volume-%s\"], "
+                                + "\"root_device_name\":\"/dev/sda1\"}",
+                            az.getCode())));
+    createVolumeOutputResponse.put(
+        az4.getUuid(),
+        "{\"boot_disks_per_zone\":[\"root-volume-4\", \"root-volume-5\"], "
+            + "\"root_device_name\":\"/dev/sda1\"}");
+
     ObjectMapper om = new ObjectMapper();
-    for (Map.Entry<UUID, List<String>> e : createVolumeOutput.entrySet()) {
-      try {
-        when(mockNodeManager.nodeCommand(
-                eq(NodeCommandType.Create_Root_Volumes),
-                argThat(new CreateRootVolumesMatcher(e.getKey()))))
-            .thenReturn(ShellResponse.create(0, om.writeValueAsString(e.getValue())));
-      } catch (JsonProcessingException ex) {
-        throw new RuntimeException(ex);
-      }
+    for (Map.Entry<UUID, String> e : createVolumeOutputResponse.entrySet()) {
+      when(mockNodeManager.nodeCommand(
+              eq(NodeCommandType.Create_Root_Volumes),
+              argThat(new CreateRootVolumesMatcher(e.getKey()))))
+          .thenReturn(ShellResponse.create(0, e.getValue()));
     }
 
     TaskInfo taskInfo =

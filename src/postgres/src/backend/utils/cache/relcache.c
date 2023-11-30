@@ -60,8 +60,10 @@
 #include "catalog/pg_partitioned_table.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_publication.h"
+#include "catalog/pg_range_d.h"
 #include "catalog/pg_rewrite.h"
 #include "catalog/pg_shseclabel.h"
+#include "catalog/pg_statistic_d.h"
 #include "catalog/pg_statistic_ext.h"
 #include "catalog/pg_subscription.h"
 #include "catalog/pg_tablespace.h"
@@ -2189,7 +2191,9 @@ typedef enum YbPFetchTable
 	YB_PFETCH_TABLE_PG_PARTITIONED_TABLE,
 	YB_PFETCH_TABLE_PG_POLICY,
 	YB_PFETCH_TABLE_PG_PROC,
+	YB_PFETCH_TABLE_PG_RANGE,
 	YB_PFETCH_TABLE_PG_REWRITE,
+	YB_PFETCH_TABLE_PG_STATISTIC,
 	YB_PFETCH_TABLE_PG_TABLESPACE,
 	YB_PFETCH_TABLE_PG_TRIGGER,
 	YB_PFETCH_TABLE_PG_TYPE,
@@ -2198,6 +2202,60 @@ typedef enum YbPFetchTable
 
 	YB_PFETCH_TABLE_LAST
 } YbPFetchTable;
+
+typedef struct YbCatalogNameToPfTableId
+{
+	const char* name;
+	YbPFetchTable pfetchTable;
+} YbCatNamePfId;
+
+/*
+ * Comparator for binary searching the YbCatalogNamesPfIds array.
+ */
+static int
+YbBinSearchCatNamesComp(const void *a, const void *b)
+{
+	return strcmp(((YbCatNamePfId *) a)->name, ((YbCatNamePfId *) b)->name);
+}
+
+/*
+ * This is an incomplete mapping between PG catalog names to Prefetch tables.
+ * However, it is extensible as needed to accomdate different use cases.
+ * This list must be sorted in alpabetical order.
+ * NOTE: Not all catalogs can be preloaded as part of additional catalogs to
+ * preload. Please validate whether a catalog can be preloaded before using it 
+ * in production.
+ */
+static const YbCatNamePfId YbCatalogNamesPfIds[] = {
+	{"pg_am", YB_PFETCH_TABLE_PG_AM},
+	{"pg_amop", YB_PFETCH_TABLE_PG_AMOP},
+	{"pg_amproc", YB_PFETCH_TABLE_PG_AMPROC},
+	{"pg_attrdef", YB_PFETCH_TABLE_PG_ATTRDEF},
+	{"pg_attribute", YB_PFETCH_TABLE_PG_ATTRIBUTE},
+	{"pg_auth_members", YB_PFETCH_TABLE_PG_AUTH_MEMBERS},
+	{"pg_authid", YB_PFETCH_TABLE_PG_AUTHID},
+	{"pg_cast", YB_PFETCH_TABLE_PG_CAST},
+	{"pg_class", YB_PFETCH_TABLE_PG_CLASS},
+	{"pg_constraint", YB_PFETCH_TABLE_PG_CONSTRAINT},
+	{"pg_database", YB_PFETCH_TABLE_PG_DATABASE},
+	{"pg_db_role_setting", YB_PFETCH_TABLE_PG_DB_ROLE_SETTINGS},
+	{"pg_index", YB_PFETCH_TABLE_PG_INDEX},
+	{"pg_inherits", YB_PFETCH_TABLE_PG_INHERITS},
+	{"pg_namespace", YB_PFETCH_TABLE_PG_NAMESPACE},
+	{"pg_opclass", YB_PFETCH_TABLE_PG_OPCLASS},
+	{"pg_operator", YB_PFETCH_TABLE_PG_OPERATOR},
+	{"pg_partitioned_table", YB_PFETCH_TABLE_PG_PARTITIONED_TABLE},
+	{"pg_policy", YB_PFETCH_TABLE_PG_POLICY},
+	{"pg_proc", YB_PFETCH_TABLE_PG_PROC},
+	{"pg_range", YB_PFETCH_TABLE_PG_RANGE},
+	{"pg_rewrite", YB_PFETCH_TABLE_PG_REWRITE},
+	{"pg_statistic", YB_PFETCH_TABLE_PG_STATISTIC},
+	{"pg_tablespace", YB_PFETCH_TABLE_PG_TABLESPACE},
+	{"pg_trigger", YB_PFETCH_TABLE_PG_TRIGGER},
+	{"pg_type", YB_PFETCH_TABLE_PG_TYPE},
+	{"pg_yb_profile", YB_PFETCH_TABLE_YB_PG_PROFILIE},
+	{"pg_yb_role_profile", YB_PFETCH_TABLE_YB_PG_ROLE_PROFILE},
+};
 
 typedef enum YbPFetchTableState
 {
@@ -2287,9 +2345,15 @@ YbGetPrefetchableTableInfoImpl(YbPFetchTable table)
 	case YB_PFETCH_TABLE_PG_PROC:
 		return (YbPFetchTableInfo)
 			{ ProcedureRelationId, PROCOID, PROCNAMEARGSNSP };
+	case YB_PFETCH_TABLE_PG_RANGE:
+		return (YbPFetchTableInfo)
+			{ RangeRelationId, RANGETYPE, YB_INVALID_CACHE_ID };
 	case YB_PFETCH_TABLE_PG_REWRITE:
 		return (YbPFetchTableInfo)
 			{ RewriteRelationId, RULERELNAME, YB_INVALID_CACHE_ID };
+	case YB_PFETCH_TABLE_PG_STATISTIC:
+		return (YbPFetchTableInfo)
+			{ StatisticRelationId, STATRELATTINH, YB_INVALID_CACHE_ID };
 	case YB_PFETCH_TABLE_PG_TABLESPACE:
 		return (YbPFetchTableInfo)
 			{ TableSpaceRelationId, TABLESPACEOID, YB_INVALID_CACHE_ID };
@@ -2349,7 +2413,10 @@ YbRegisterTables(YbTablePrefetcherState* prefetcher,
 				 size_t count)
 {
 	for (const YbPFetchTable* end = table + count; table != end; ++table)
-		YbRegisterTable(prefetcher, *table);
+	{
+		if (*table != YB_PFETCH_TABLE_LAST)
+			YbRegisterTable(prefetcher, *table);
+	}
 }
 
 static YBCStatus
@@ -2577,6 +2644,94 @@ YbUpdateRelationCache(YbRunWithPrefetcherContext *ctx)
 	return status;
 }
 
+/*
+ * Parse catalog names from gflag and fill up the prefetch_tables by looking up
+ * the YbCatalogNamesPfIds map.
+ */
+static void
+YbParseAdditionalCatalogList(YbPFetchTable **prefetch_tables,
+							 int *prefetch_count)
+{
+	const char *preload_cat_flag =
+		YBCGetGFlags()->ysql_catalog_preload_additional_table_list;
+
+	if (!IS_NON_EMPTY_STR_FLAG(preload_cat_flag))
+		return;
+
+	// strtok only takes non-const char* and will modify it. So make a copy.
+	char *preload_catstr = (char *) palloc(strlen(preload_cat_flag) + 1);
+	// Excluded empty string case. There must be at least one token here.
+	int d = 0, s = 0, cnt = 1;
+	char c;
+	while ((c = preload_cat_flag[s++]) != '\0')
+	{
+		preload_catstr[d++] = c;
+		if (c == ',')
+			++cnt;
+	}
+	preload_catstr[d] = '\0';
+
+#ifndef NDEBUG
+	/*
+	 * Check if the YbCatalogNamesPfIds array are sorted properly for searching.
+	 */
+	for (int i = YB_PFETCH_TABLE_FIRST; i < YB_PFETCH_TABLE_LAST - 1; ++i)
+		Assert(strcmp(YbCatalogNamesPfIds[i].name,
+					  YbCatalogNamesPfIds[i + 1].name) < 0);
+#endif
+
+	*prefetch_tables = (YbPFetchTable *) palloc0(sizeof(YbPFetchTable) * cnt);
+
+	int filled = 0;
+	for (char *cattoken = strtok(preload_catstr, ","); cattoken != NULL;
+		 cattoken = strtok(NULL, ","))
+	{
+		YbCatNamePfId entry = {cattoken, YB_PFETCH_TABLE_LAST};
+		const YbCatNamePfId *found =
+			bsearch(&entry, YbCatalogNamesPfIds, YB_PFETCH_TABLE_LAST,
+					sizeof(YbCatNamePfId), YbBinSearchCatNamesComp);
+		if (found)
+		{
+			(*prefetch_tables)[filled++] = found->pfetchTable;
+			ereport(DEBUG1, (errmsg("found catalog %s for additional preload",
+									cattoken)));
+		}
+		else
+			/* Don't fail the process on invalid pg_* tables. */
+			YBC_LOG_WARNING("Found unrecognized catalog \"%s\" in the flag. "
+							"Ignored.",
+							cattoken);
+	}
+
+	*prefetch_count = filled;
+	pfree(preload_catstr);
+
+	if (filled == 0)
+		YBC_LOG_WARNING("No valid PG catalog found for additional preload.");
+}
+
+/*
+ * Try to register addition catalogs if the catalog tables are present in the
+ * ysql_catalog_preload_additional_table_list flag.
+ */
+static void
+YbRegisterAdditionalCatalogs(YbTablePrefetcherState *prefetcher)
+{
+	YbPFetchTable *additional_tables = NULL;
+	int count = 0;
+
+	YbParseAdditionalCatalogList(&additional_tables, &count);
+	if (count > 0)
+	{
+		YBC_LOG_INFO("YSQL is prefetching additional catalogs.");
+		Assert(additional_tables != NULL);
+		YbRegisterTables(prefetcher, additional_tables, count);
+	}
+
+	if (additional_tables)
+		pfree(additional_tables);
+}
+
 static YBCStatus
 YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 {
@@ -2605,16 +2760,7 @@ YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 	YbTryRegisterCatalogVersionTableForPrefetching();
 	YbRegisterTables(prefetcher, core_tables, lengthof(core_tables));
 
-	if (*YBCGetGFlags()->ysql_catalog_preload_additional_tables)
-	{
-		static const YbPFetchTable tables[] = {
-			YB_PFETCH_TABLE_PG_AMOP,
-			YB_PFETCH_TABLE_PG_AMPROC,
-			YB_PFETCH_TABLE_PG_CAST,
-			YB_PFETCH_TABLE_PG_TABLESPACE
-		};
-		YbRegisterTables(prefetcher, tables, lengthof(tables));
-	}
+	YbRegisterAdditionalCatalogs(prefetcher);
 
 	if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist)
 	{
@@ -7953,7 +8099,8 @@ load_relcache_init_file(bool shared)
 	 * below.
 	 */
 	if (IsYugaByteEnabled() &&
-		*YBCGetGFlags()->ysql_catalog_preload_additional_tables)
+		IS_NON_EMPTY_STR_FLAG(
+			YBCGetGFlags()->ysql_catalog_preload_additional_table_list))
 		return false;
 
 	RelCacheInitFileName(initfilename, shared);
