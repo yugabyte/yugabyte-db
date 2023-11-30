@@ -1579,8 +1579,6 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_disable_index_backfill              = &FLAGS_ysql_disable_index_backfill,
       .ysql_disable_server_file_access          = &FLAGS_ysql_disable_server_file_access,
       .ysql_enable_reindex                      = &FLAGS_ysql_enable_reindex,
-      .ysql_max_read_restart_attempts           = &FLAGS_ysql_max_read_restart_attempts,
-      .ysql_max_write_restart_attempts          = &FLAGS_ysql_max_write_restart_attempts,
       .ysql_num_databases_reserved_in_db_catalog_version_mode =
           &FLAGS_ysql_num_databases_reserved_in_db_catalog_version_mode,
       .ysql_output_buffer_size                  = &FLAGS_ysql_output_buffer_size,

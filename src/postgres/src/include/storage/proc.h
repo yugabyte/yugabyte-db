@@ -348,6 +348,7 @@ extern bool log_lock_waits;
 extern int	RetryMaxBackoffMsecs;
 extern int	RetryMinBackoffMsecs;
 extern double RetryBackoffMultiplier;
+extern int yb_max_query_layer_retries;
 
 /* Metrics */
 extern int *yb_too_many_conn;
