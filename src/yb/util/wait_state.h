@@ -74,26 +74,28 @@ DECLARE_bool(export_wait_state_names);
 // #define YB_PERFORM   0xD0000000U
 // #define YB_YBC       0xC0000000U
 // #define YB_PG        0x00000000U
-#define YB_PGGATE    0xF
-#define YB_TSERVER   0xE
-#define YB_PERFORM   0xD
-#define YB_YBC       0xC
 #define YB_PG        0x0
+#define YB_TSERVER   0x4
+#define YB_YBC       0x8
+#define YB_PERFORM   0xC
+#define YB_PGGATE    0xD
 /* ----------
  * YB AUH Wait Classes
  * ----------
  */
-#define YB_PG_WAIT_PERFORM           0x01000000U
-#define YB_RPC                       0x02000000U
-#define YB_FLUSH_AND_COMPACTION      0x03000000U
-#define YB_CONSENSUS                 0x04000000U
-#define YB_TABLET_WAIT               0x05000000U
-#define YB_ROCKSDB                   0x06000000U
-#define YB_COMMON                    0x07000000U
+ // 0x01 - 0x0C used in pgstat.h for Pg Wait classes
+#define YB_PG_CLIENT_SERVICE         0x0D000000U
+#define YB_PG_WAIT_PERFORM           0x0E000000U
+
+#define YB_RPC                       0x10000000U
+#define YB_FLUSH_AND_COMPACTION      0x11000000U
+#define YB_CONSENSUS                 0x12000000U
+#define YB_TABLET_WAIT               0x13000000U
+#define YB_ROCKSDB                   0x14000000U
+#define YB_COMMON                    0x15000000U
                                          
-#define YB_PG_CLIENT_SERVICE         0x08000000U
-#define YB_CQL_WAIT_STATE            0x09000000U
-#define YB_CLIENT                    0x0A000000U
+#define YB_CQL_WAIT_STATE            0x16000000U
+#define YB_CLIENT                    0x17000000U
 
 // For debugging purposes:
 // Uncomment the following line to track state changes in wait events.
