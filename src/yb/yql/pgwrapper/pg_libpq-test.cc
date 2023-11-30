@@ -191,6 +191,80 @@ TEST_F(PgLibPqTest, Simple) {
   ASSERT_EQ(row, (decltype(row){1, "hello"}));
 }
 
+// Make sure index scan queries that error at the beginning of scanning don't bump up the pgstat
+// idx_scan metric.
+TEST_F(PgLibPqTest, PgStatIdxScanNoIncrementOnErrorTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  constexpr auto kNumColumns = 30;
+  constexpr auto kMaxPredicates = 64;
+  // This matches PGSTAT_STAT_INTERVAL.
+  const auto kPgstatStatInterval = 500ms;
+  // This matches PGSTAT_MAX_WAIT_TIME.
+  const auto kPgstatMaxWaitTime = 10000ms;
+
+  std::ostringstream create_table_ss;
+  create_table_ss << "CREATE TABLE many (";
+  for (int i = 1; i <= kNumColumns; ++i)
+    create_table_ss << "c" << i << " INT,";
+  create_table_ss << "k INT PRIMARY KEY)";
+  ASSERT_OK(conn.Execute(create_table_ss.str()));
+
+  std::ostringstream create_index_ss;
+  create_index_ss << "CREATE INDEX ON many (c1 ASC";
+  for (int i = 2; i <= kNumColumns; ++i)
+    create_index_ss << ", c" << i;
+  create_index_ss << ")";
+  ASSERT_OK(conn.Execute(create_index_ss.str()));
+
+  // There should be only two indexes: pkey index and secondary index.  We want to get stats for the
+  // secondary index, but its name is too long, so filter by != 'many_pkey'.
+  const auto idx_scan_query =
+      "SELECT idx_scan FROM pg_stat_user_indexes WHERE indexrelname != 'many_pkey'";
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(idx_scan_query)), 0);
+
+  std::ostringstream query_ss;
+  query_ss << "SELECT k FROM many WHERE TRUE";
+  auto num_predicates = 0;
+  for (int i = 1; i <= kNumColumns && num_predicates < kMaxPredicates; ++i, ++num_predicates) {
+    query_ss << " AND c" << i << " = 1";
+  }
+  for (int i = 1; i <= kNumColumns && num_predicates < kMaxPredicates; ++i, ++num_predicates) {
+    query_ss << " AND c" << i << " > 0";
+  }
+  for (int i = 1; i <= kNumColumns && num_predicates < kMaxPredicates; ++i, ++num_predicates) {
+    query_ss << " AND c" << i << " < 2";
+  }
+
+  // Successful scan should increment idx_scan.
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query_ss.str())));
+  ASSERT_OK(conn.FetchMatrix(query_ss.str(), 0, 1));
+  // Stats can take time to update, so retry-loop.
+  ASSERT_OK(LoggedWaitFor(
+      [&conn, &idx_scan_query]() -> Result<bool> {
+        return VERIFY_RESULT(conn.FetchRow<int64_t>(idx_scan_query)) == 1;
+      },
+      kPgstatMaxWaitTime,
+      "idx_scan == 1"));
+
+  // Add last predicate, which should not have been added from above and therefore is a new
+  // predicate.
+  static_assert(kMaxPredicates < kNumColumns * 3);
+  query_ss << " AND c" << kNumColumns << " < 2";
+
+  // Unsuccessful scan should not increment idx_scan.
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query_ss.str())));
+  auto status = ResultToStatus(conn.Fetch(query_ss.str()));
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(),
+                      Format("ERROR:  cannot use more than $0 predicates in a table or index scan",
+                             kMaxPredicates));
+  // To avoid sleeping too long, wait the minimum time (x2) rather than maximum time.  In most
+  // cases, the stats should be updated at the minimum pace, so this should be sufficient to catch
+  // regressions.
+  SleepFor(kPgstatStatInterval * 2);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(idx_scan_query)), 1);
+}
+
 TEST_F_EX(PgLibPqTest, SerializableColoring, PgLibPqFailOnConflictTest) {
   SerializableColoringHelper();
 }
