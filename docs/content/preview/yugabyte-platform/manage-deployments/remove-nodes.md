@@ -13,20 +13,21 @@ menu:
 type: docs
 ---
 
-If a virtual machine or a physical server in a universe reaches its end of life and has unrecoverable hardware or other system issues, such as problems with its operating system, disk, and so on, it is detected and displayed in the YugabyteDB Anywhere UI as an unreachable node, as per the following illustration:
+If a virtual machine or a physical server in a universe reaches its end of life and has unrecoverable hardware or other system issues (such as problems with its operating system, disk, and so on) it is detected and displayed in the YugabyteDB Anywhere UI as an unreachable node, as per the following illustration:
 
 ![Unreachable Node Actions](/images/ee/node-actions-unreachable.png)
 
-When this happens, new Master leaders are elected for the underlying data shards, but since the universe enters a partially under-replicated state, it would not be able to tolerate additional failures. To remedy the situation, you can eliminate the unreachable node by taking actions in the following sequence:
+When this happens, new Master leaders are elected for the underlying data shards. Because the universe enters a partially under-replicated state, it would not be able to tolerate additional failures. To remedy the situation, you can eliminate the unreachable node by taking actions in the following sequence:
 
 - Step 1: [Remove node](#remove-node)
 - Step 2: [Start a new Master process](#start-a-new-master-process), if necessary
 - Step 3: [Release node instance](#release-node-instance)
 - Step 4: [Delete node](#delete-node)
+- Step 5: For on-premises deployments only, if you want to reuse the node, you must manually remove YugabyteDB components from the server node. Refer to [Delete on-premises database server nodes](../../install-yugabyte-platform/uninstall-software/#delete-on-premises-database-server-nodes).
 
 {{< note title="Note" >}}
 
-A node status displayed in the UI is not always entirely indicative of the node's internal state. For example, a node whose status is shown as Unreachable can have various internal states, some of which are recoverable and others are not.
+A node status displayed in the UI is not always entirely indicative of the node's internal state. For example, a node whose status is shown as Unreachable can have various internal states, some of which are recoverable, and others that are not.
 
 {{< /note >}}
 
@@ -69,13 +70,14 @@ A typical universe has an RF of 3 or 5. At the end of the [node removal](#remove
 
 1. Select a node in the same availability zone as the removed node.
 
-2. Click **Actions > Start Master** corresponding to the node, as per the following illustration. 
+2. Click **Actions > Start Master** corresponding to the node, as per the following illustration.
 
    This action is only available if there are additional nodes in the same availability zone and these nodes do not have a running Master process.
 
 ![Start master](/images/yp/start-master.png)
 
 When you execute the start Master action, YugabyteDB Anywhere performs the following:
+
 1. Configures the Master on the subject node.
 
 2. Starts a new Master process on the subject node (in Shell mode).
@@ -83,7 +85,6 @@ When you execute the start Master action, YugabyteDB Anywhere performs the follo
 3. Adds the new Master to the existing Master quorum.
 
 4. Updates the Master addresses g-flag on all other nodes to inform them of the new Master.
-
 
 ## Release node instance
 
@@ -119,3 +120,5 @@ Taking this action completely eliminates the node, as follows:
 
 1. Removes the node record from the universe metadata.
 2. Updates metadata in the database only.
+
+Note that, for on-premises deployments only, if you want to reuse the node, after deleting it you must manually remove YugabyteDB components from the server node. Refer to [Delete on-premises database server nodes](../../install-yugabyte-platform/uninstall-software/#delete-on-premises-database-server-nodes).
