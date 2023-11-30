@@ -760,25 +760,7 @@
 [[preview_yugabyte-voyager]]
   name = "Cutover and archive"
   parent = "yb-voyager-cli"
-  weight = 6
-  identifier = "cutover-archive"
-  [preview_yugabyte-voyager.params]
-    showSection = true
-    hideLink = true
-
-[[preview_yugabyte-voyager]]
-  name = "Fall-forward"
-  parent = "yb-voyager-cli"
   weight = 5
-  identifier = "fall-forward"
-  [preview_yugabyte-voyager.params]
-    showSection = true
-    hideLink = true
-
-[[preview_yugabyte-voyager]]
-  name = "Cutover and archive"
-  parent = "yb-voyager-cli"
-  weight = 6
   identifier = "cutover-archive"
   [preview_yugabyte-voyager.params]
     showSection = true
@@ -787,7 +769,7 @@
 [[preview_yugabyte-voyager]]
   name = "Bulk data load"
   parent = "yb-voyager-cli"
-  weight = 7
+  weight = 6
   identifier = "bulk-data-load-ref"
   [preview_yugabyte-voyager.params]
     showSection = true
