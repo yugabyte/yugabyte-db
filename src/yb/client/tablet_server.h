@@ -86,7 +86,7 @@ struct YBTabletServerPlacementInfo {
 
 struct YBActiveUniverseHistoryInfo {
   util::AUHMetadata metadata;
-  uint32_t wait_status_code;
+  uint32_t encoded_wait_status_code;
   util::AUHAuxInfo aux_info;
   std::string wait_status_code_as_string;
 
@@ -94,7 +94,7 @@ struct YBActiveUniverseHistoryInfo {
   static YBActiveUniverseHistoryInfo FromPB(const PB& pb) {
     return YBActiveUniverseHistoryInfo {
       .metadata = util::AUHMetadata::FromPB(pb.metadata()),
-      .wait_status_code = pb.wait_status_code(),
+      .encoded_wait_status_code = pb.encoded_wait_status_code(),
       .aux_info = util::AUHAuxInfo::FromPB(pb.aux_info()),
       .wait_status_code_as_string = pb.wait_status_code_as_string(),
     };

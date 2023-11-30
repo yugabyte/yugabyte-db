@@ -347,7 +347,7 @@ class WaitStateInfo {
     metadata_.ToPB(pb->mutable_metadata());
     WaitStateComponent component = metadata_.component;
     WaitStateCode code = get_state();
-    pb->set_wait_status_code(ToUint32(component, code));
+    pb->set_encoded_wait_status_code(ToUint32(component, code));
     if (FLAGS_export_wait_state_names) {
       pb->set_wait_status_code_as_string(yb::ToString(code));
     }
