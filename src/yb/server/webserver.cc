@@ -771,6 +771,7 @@ void Webserver::Impl::BootstrapPageFooter(stringstream* output) {
 
 int Webserver::Impl::EnterWorkerThreadCallbackStatic() {
   try {
+    cds::Initialize();
     cds::threading::Manager::attachThread();
   } catch (const std::system_error&) {
     return 1;
@@ -780,6 +781,7 @@ int Webserver::Impl::EnterWorkerThreadCallbackStatic() {
 
 void Webserver::Impl::LeaveWorkerThreadCallbackStatic() {
   cds::threading::Manager::detachThread();
+  cds::Terminate();
 }
 
 Webserver::Webserver(const WebserverOptions& opts, const std::string& server_name)
