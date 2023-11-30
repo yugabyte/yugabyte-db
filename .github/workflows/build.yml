@@ -6,7 +6,7 @@ on:
   push:
     branches:
       - master
-    paths-ignore: &ignored-list
+    paths-ignore:
       - README.md
       - 'docs/**'
       - 'architecture/**'
@@ -17,7 +17,15 @@ on:
   pull_request:
     branches:
       - master
-    paths-ignore: *ignored-list
+    # Duplicated because github does not support YAML anchors.
+    # https://github.com/actions/runner/issues/1182
+    paths-ignore:
+      - README.md
+      - 'docs/**'
+      - 'architecture/**'
+      - 'managed/**'
+      - '.gitignore'
+      - '.github/vale-styles/**'
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
