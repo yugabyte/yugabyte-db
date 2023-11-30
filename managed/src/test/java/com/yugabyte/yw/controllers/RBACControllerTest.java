@@ -29,6 +29,7 @@ import com.yugabyte.yw.common.rbac.PermissionUtil;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.Users.UserType;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
 import com.yugabyte.yw.models.rbac.ResourceGroup.ResourceDefinition;
 import com.yugabyte.yw.models.rbac.Role;
@@ -167,6 +168,14 @@ public class RBACControllerTest extends FakeDBApplication {
               customerUUID.toString(), userUUID.toString());
     }
     return doRequestWithAuthToken("GET", uri, user.createAuthToken());
+  }
+
+  private Result setRoleBindings(UUID customerUUID, UUID userUUID, JsonNode bodyJson) {
+    String uri =
+        String.format(
+            "/api/customers/%s/rbac/role_binding/%s", customerUUID.toString(), userUUID.toString());
+    return doRequestWithAuthTokenAndBody(
+        "POST", String.format(uri, customerUUID.toString()), user.createAuthToken(), bodyJson);
   }
 
   /* ==== API Tests ==== */
@@ -589,6 +598,19 @@ public class RBACControllerTest extends FakeDBApplication {
     assertEquals(3, roleBindingList.get(user.getUuid()).size());
     assertTrue(roleBindingList.get(user.getUuid()).contains(roleBinding1));
     assertTrue(roleBindingList.get(user.getUuid()).contains(roleBinding2));
+  }
+
+  @Test
+  public void testSetRoleBindingsForLdapUser() {
+    // Set the user to LDAP user.
+    user.setUserType(UserType.ldap);
+    user.setLdapSpecifiedRole(true);
+    user.save();
+
+    // Call API and assert that role bindings cannot be set for users with LDAP specified role.
+    Result result =
+        assertPlatformException(() -> setRoleBindings(customer.getUuid(), user.getUuid(), null));
+    assertEquals(BAD_REQUEST, result.status());
   }
 
   @Test

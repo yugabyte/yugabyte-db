@@ -24,6 +24,7 @@ import com.yugabyte.yw.forms.rbac.RoleFormData;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.Users.UserType;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
@@ -499,7 +500,12 @@ public class RBACController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
 
     // Check if user UUID exists within the above customer
-    Users.getOrBadRequest(customerUUID, userUUID);
+    Users user = Users.getOrBadRequest(customerUUID, userUUID);
+
+    // Validate that the user does not have LDAP specified role.
+    if (UserType.ldap.equals(user.getUserType()) && user.isLdapSpecifiedRole()) {
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot set role bindings for LDAP user.");
+    }
 
     // Parse request body.
     JsonNode requestBody = request.body().asJson();
