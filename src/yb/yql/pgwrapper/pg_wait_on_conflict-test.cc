@@ -51,11 +51,11 @@ DECLARE_uint64(force_single_shard_waiter_retry_ms);
 DECLARE_uint64(rpc_connection_timeout_ms);
 DECLARE_uint64(transactions_status_poll_interval_ms);
 DECLARE_int32(TEST_sleep_amidst_iterating_blockers_ms);
-DECLARE_int32(ysql_max_write_restart_attempts);
 DECLARE_uint64(refresh_waiter_timeout_ms);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_pack_full_row_update);
 DECLARE_bool(TEST_drop_participant_signal);
+DECLARE_string(ysql_pg_conf_csv);
 
 using namespace std::literals;
 
@@ -73,7 +73,7 @@ class PgWaitQueuesTest : public PgMiniTestBase {
     FLAGS_enable_deadlock_detection = true;
     FLAGS_TEST_select_all_status_tablets = true;
     FLAGS_force_single_shard_waiter_retry_ms = 10000;
-    FLAGS_ysql_max_write_restart_attempts = 0;
+    FLAGS_ysql_pg_conf_csv = MaxQueryLayerRetriesConf(0);
     PgMiniTestBase::SetUp();
   }
 
@@ -758,7 +758,7 @@ class PgTabletSplittingWaitQueuesTest : public PgTabletSplitTestBase,
     FLAGS_enable_wait_queues = true;
     FLAGS_enable_deadlock_detection = true;
     FLAGS_enable_automatic_tablet_splitting = false;
-    FLAGS_ysql_max_write_restart_attempts = 0;
+    FLAGS_ysql_pg_conf_csv = MaxQueryLayerRetriesConf(0);
     PgTabletSplitTestBase::SetUp();
   }
 
@@ -850,7 +850,7 @@ class PgWaitQueueContentionStressTest : public PgMiniTestBase {
     FLAGS_enable_wait_queues = true;
     FLAGS_wait_queue_poll_interval_ms = 2;
     FLAGS_transactions_status_poll_interval_ms = 5;
-    FLAGS_ysql_max_write_restart_attempts = 0;
+    FLAGS_ysql_pg_conf_csv = MaxQueryLayerRetriesConf(0);
     PgMiniTestBase::SetUp();
   }
 

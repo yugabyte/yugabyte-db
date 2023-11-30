@@ -435,8 +435,8 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
         assertTrue("Should not reach here since the statement is supposed to fail", false);
       } catch (SQLException e) {
         // If txn2 had a lower priority than txn1, instead of attempting retries for
-        // ysql_max_write_restart_attempts, it would fail immediately due to the NOWAIT clause
-        // with the appropriate message.
+        // yb_max_query_layer_retries, it would fail immediately due to the NOWAIT clause with the
+        // appropriate message.
         assertTrue(StringUtils.containsIgnoreCase(e.getMessage(),
           "ERROR: could not obtain lock on row in relation \"test\""));
 

@@ -358,8 +358,6 @@ typedef struct PgGFlagsAccessor {
   const bool*     ysql_disable_index_backfill;
   const bool*     ysql_disable_server_file_access;
   const bool*     ysql_enable_reindex;
-  const int32_t*  ysql_max_read_restart_attempts;
-  const int32_t*  ysql_max_write_restart_attempts;
   const int32_t*  ysql_num_databases_reserved_in_db_catalog_version_mode;
   const int32_t*  ysql_output_buffer_size;
   const int32_t*  ysql_sequence_cache_minval;

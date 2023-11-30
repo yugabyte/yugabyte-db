@@ -43,8 +43,7 @@ public class TestPgWriteRestart extends BasePgSQLTest {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flags = super.getTServerFlags();
-    flags.put("ysql_sleep_before_retry_on_txn_conflict", "true");
-    flags.put("ysql_max_write_restart_attempts", "20");
+    flags.put("ysql_pg_conf_csv", maxQueryLayerRetriesConf(20));
     return flags;
   }
 

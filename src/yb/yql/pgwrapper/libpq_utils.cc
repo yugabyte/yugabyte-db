@@ -699,6 +699,10 @@ bool IsRetryable(const Status& status) {
   return HasSubstring(status.message(), kExpectedErrors);
 }
 
+std::string MaxQueryLayerRetriesConf(uint16_t max_retries) {
+  return Format("yb_max_query_layer_retries=$0", max_retries);
+}
+
 PGConnBuilder::PGConnBuilder(const PGConnSettings& settings)
     : conn_str_(BuildConnectionString(settings)),
       conn_str_for_log_(BuildConnectionString(settings, true /* mask_password */)),

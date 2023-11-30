@@ -25,11 +25,19 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 @RunWith(value=YBTestRunner.class)
 public class TestPgForeignKey extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgForeignKey.class);
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("ysql_pg_conf_csv", maxQueryLayerRetriesConf(2));
+    return flagMap;
+  }
 
   @Override
   public int getTestMethodTimeoutSec() {
