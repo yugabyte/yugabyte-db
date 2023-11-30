@@ -242,6 +242,11 @@ create view myview as  select * from mytmp;
 insert into myview values (3, 'foo') on conflict (id) do update set id = myview.id + 1;
 select * from myview;
 
+-- Index on tmp table
+create temp table prtx2 (a integer, b integer, c integer);
+insert into prtx2 select 1 + i%10, i, i from generate_series(1,5000) i, generate_series(1,10) j;
+create index on prtx2 (c);
+
 -- Cleanup
 DROP TABLE IF EXISTS address, address2, emp, emp2, emp_par1, emp_par1_1_100, emp_par2, emp_par3,
   fastpath, myemp, myemp2, myemp2_101_200, myemp2_1_100, p1, p2, pk_range_int_asc,
