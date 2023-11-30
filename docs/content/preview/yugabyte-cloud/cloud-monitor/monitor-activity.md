@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-Review activity on your cluster using the **Activity** tab. The tab lists cluster activity, including the activity type, status, and start and end time.
+Review activity on your cluster using the **Activity** tab. The tab lists cluster activity, including the activity type, status, start time, and end time.
 
 To review all account activity, use the [**Activity** tab](../../cloud-secure-clusters/cloud-activity/) on the **Security** page.
 
