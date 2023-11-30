@@ -61,6 +61,7 @@ set(INTEGRATION_TESTS_SRCS
   ts_itest-base.cc
   yb_mini_cluster_test_base.cc
   yb_table_test_base.cc
+  xcluster/xcluster_external_mini_cluster_base.cc
   xcluster/xcluster_test_base.cc
   cdcsdk_test_base.cc
   cdcsdk_ysql_test_base.cc
@@ -204,6 +205,7 @@ ADD_YB_TEST(encryption-test)
 ADD_YB_TEST(secure_connection_test)
 ADD_YB_TEST(xcluster/xcluster_consistency-test)
 ADD_YB_TEST(xcluster/xcluster_dr-itest)
+ADD_YB_TEST(xcluster/xcluster_upgrade-test)
 ADD_YB_TEST(xcluster/xcluster_safe_time-itest)
 ADD_YB_TEST(xcluster/xcluster_topologies-test)
 ADD_YB_TEST(xcluster/xcluster_ysql_colocated-test)

@@ -235,6 +235,7 @@ Status StoreAutoFlagsConfig(
       LOG(WARNING) << "Failed to apply new AutoFlags config: " << status.ToString();
       return status;
     }
+    catalog_manager->NotifyAutoFlagsConfigChanged();
 
     return OK();
   };
