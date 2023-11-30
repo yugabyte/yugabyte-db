@@ -83,7 +83,7 @@ ybcstat_get_wait_event_type(uint32_t wait_event_info) {
     if (wait_event_info == 0)
         return NULL;
 
-    classId = wait_event_info & 0x0FF00000;
+    classId = wait_event_info & 0x0F000000;
 
     switch (classId) {
         case YB_PG_WAIT_PERFORM:
