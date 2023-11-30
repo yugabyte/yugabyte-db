@@ -93,7 +93,7 @@ jobs:
                 ( set -x; which ninja )
                 ( set -x; which cmake )
                 set -e
-                chown -R yugabyteci .
+                sudo chown -R yugabyteci .
                 sudo -u yugabyteci bash -c "
                   set -euo pipefail
                   export PATH=/usr/local/bin:\$PATH
