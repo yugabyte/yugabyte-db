@@ -1,4 +1,4 @@
-package db.migration.default_.common;
+package db.migration.default_.postgres;
 
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.models.FileData;
