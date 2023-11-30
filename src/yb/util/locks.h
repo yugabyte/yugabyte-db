@@ -84,6 +84,51 @@ class CAPABILITY("mutex") simple_spinlock {
   DISALLOW_COPY_AND_ASSIGN(simple_spinlock);
 };
 
+// Saves timestamp of locking in order to log when it is held for too long
+class CAPABILITY("mutex") simple_spinlock_with_timestamp {
+ public:
+  simple_spinlock_with_timestamp() {}
+
+  void lock() ACQUIRE() {
+    spinlock_.lock();
+    lock_timestamp_ = std::chrono::steady_clock::now();
+  }
+
+  void unlock() RELEASE() {
+    auto unlock_timestamp = std::chrono::steady_clock::now();
+    auto duration =
+        std::chrono::duration_cast<std::chrono::milliseconds>(unlock_timestamp - lock_timestamp_)
+            .count();
+
+    if (duration > warning_threshold_ms_) {
+      LOG(WARNING) << "simple_spinlock locked for too long: " << duration << " ms";
+    }
+    spinlock_.unlock();
+  }
+
+  bool try_lock() TRY_ACQUIRE(true) {
+    auto success_locked = spinlock_.try_lock();
+    if (success_locked) {
+      lock_timestamp_ = std::chrono::steady_clock::now();
+    }
+    return success_locked;
+  }
+
+  bool is_locked() {
+    return spinlock_.is_locked();
+  }
+
+  // Set the threshold duration for warnings
+  void set_warning_threshold(long long threshold_ms) {
+    warning_threshold_ms_ = threshold_ms;
+  }
+
+ private:
+  simple_spinlock spinlock_;
+  std::chrono::steady_clock::time_point lock_timestamp_;
+  long long warning_threshold_ms_ = 1000;  // Default threshold
+};
+
 struct padded_spinlock : public simple_spinlock {
   static constexpr size_t kPaddingSize =
       CACHELINE_SIZE - (sizeof(simple_spinlock) % CACHELINE_SIZE);

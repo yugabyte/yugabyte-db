@@ -417,8 +417,8 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
                       std::bind(&Peer::ProcessResponse, retain_self, trace));
 }
 
-std::unique_lock<simple_spinlock> Peer::StartProcessingUnlocked() {
-  std::unique_lock<simple_spinlock> lock(peer_lock_);
+std::unique_lock<simple_spinlock_with_timestamp> Peer::StartProcessingUnlocked() {
+  std::unique_lock<simple_spinlock_with_timestamp> lock(peer_lock_);
 
   if (state_ == kPeerClosed) {
     lock.unlock();
