@@ -126,6 +126,17 @@ YBUnsupportedFeatureSignalLevel()
 }
 
 bool
+YBSuppressUnsafeAlterNotice()
+{
+	static int cached_value = -1;
+	if (cached_value == -1) {
+		cached_value = YBCIsEnvVarTrue(
+			"FLAGS_ysql_suppress_unsafe_alter_notice");
+	}
+	return cached_value;
+}
+
+bool
 YBIsNonTxnCopyEnabled()
 {
 	static int cached_value = -1;
