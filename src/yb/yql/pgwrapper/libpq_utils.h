@@ -239,6 +239,7 @@ class PGConnBuilder {
 
 bool HasTransactionError(const Status& status);
 bool IsRetryable(const Status& status);
+std::string MaxQueryLayerRetriesConf(uint16_t max_retries);
 
 Result<PGConn> Execute(Result<PGConn> connection, const std::string& query);
 

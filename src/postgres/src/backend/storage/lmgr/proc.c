@@ -66,6 +66,7 @@ bool		log_lock_waits = false;
 int			RetryMaxBackoffMsecs;
 int			RetryMinBackoffMsecs;
 double		RetryBackoffMultiplier;
+int yb_max_query_layer_retries;
 
 /* Pointer to this process's PGPROC and PGXACT structs, if any */
 PGPROC	   *MyProc = NULL;

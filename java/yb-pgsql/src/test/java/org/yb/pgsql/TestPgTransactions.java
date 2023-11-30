@@ -41,6 +41,7 @@ import java.util.List;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Map;
 import java.util.Random;
 
 import static org.yb.AssertionWrappers.*;
@@ -67,6 +68,13 @@ public class TestPgTransactions extends BasePgSQLTest {
     // Coin Toss Problem: 100 iterations, 25 heads.  False positive probability == 1 in 1.6M
     assertLessThan("First Win Too Low", totalIterations / 4, numFirstWinners);
     assertLessThan("Second Win Too Low", totalIterations / 4, numSecondWinners);
+  }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flags = super.getTServerFlags();
+    flags.put("ysql_pg_conf_csv", maxQueryLayerRetriesConf(2));
+    return flags;
   }
 
   @Override

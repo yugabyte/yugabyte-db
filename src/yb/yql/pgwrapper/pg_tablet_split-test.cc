@@ -58,14 +58,16 @@
 #include "yb/util/tsan_util.h"
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_tablet_split_test_base.h"
+
 
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_wait_queues);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
-DECLARE_int32(ysql_max_write_restart_attempts);
 DECLARE_bool(ysql_enable_packed_row);
+DECLARE_string(ysql_pg_conf_csv);
 
 DECLARE_bool(TEST_skip_deleting_split_tablets);
 DECLARE_int32(TEST_fetch_next_delay_ms);
@@ -1203,7 +1205,7 @@ class PgPartitioningWaitQueuesOffTest : public PgPartitioningTest {
     // request times out.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
     // Fail txn early in case of conflict to reduce test runtime.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_max_write_restart_attempts) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = MaxQueryLayerRetriesConf(0);
     PgPartitioningTest::SetUp();
   }
 };
