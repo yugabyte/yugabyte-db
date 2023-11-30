@@ -36,6 +36,7 @@
 #include "yb/util/barrier.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
+#include "yb/util/os-util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
@@ -2832,11 +2833,14 @@ class PgLibPqYSQLBackendCrash: public PgLibPqTest {
     options->extra_tserver_flags.push_back(
         Format("--TEST_yb_lwlock_crash_after_acquire_pg_stat_statements_reset=true"));
     options->extra_tserver_flags.push_back(
-        Format("--yb_backend_oom_score_adj=" + expected_oom_score));
+        Format("--yb_backend_oom_score_adj=" + expected_backend_oom_score));
+    options->extra_tserver_flags.push_back(
+        Format("--yb_webserver_oom_score_adj=" + expected_webserver_oom_score));
   }
 
  protected:
-  const std::string expected_oom_score = "123";
+  const std::string expected_backend_oom_score = "123";
+  const std::string expected_webserver_oom_score = "456";
 };
 
 TEST_F_EX(PgLibPqTest,
@@ -2869,7 +2873,32 @@ TEST_F_EX(PgLibPqTest,
   std::ifstream fPtr(file_name);
   std::string oom_score_adj;
   getline(fPtr, oom_score_adj);
-  ASSERT_EQ(oom_score_adj, expected_oom_score);
+  ASSERT_EQ(oom_score_adj, expected_backend_oom_score);
+}
+TEST_F_EX(PgLibPqTest,
+          TestOomScoreAdjPGWebserver,
+          PgLibPqYSQLBackendCrash) {
+
+  // Find the postmaster pid (parent process of our webserver)
+  string postmaster_pid;
+  auto conn = ASSERT_RESULT(Connect());
+  auto res = ASSERT_RESULT(conn.Fetch("SELECT pg_backend_pid()"));
+
+  auto backend_pid = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+  RunShellProcess(Format("ps -o ppid= $0", backend_pid), &postmaster_pid);
+
+  // Get the webserver pid using postmaster pid
+  string webserver_pid;
+  RunShellProcess(Format("pgrep -f 'YSQL webserver' -P $0", postmaster_pid), &webserver_pid);
+  webserver_pid.erase(std::remove(webserver_pid.begin(), webserver_pid.end(), '\n'),
+                      webserver_pid.end());
+
+  // Check the webserver's OOM score
+  std::string file_name = "/proc/" + webserver_pid + "/oom_score_adj";
+  std::ifstream fPtr(file_name);
+  std::string oom_score_adj;
+  getline(fPtr, oom_score_adj);
+  ASSERT_EQ(oom_score_adj, expected_webserver_oom_score);
 }
 #endif
 

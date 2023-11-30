@@ -45,6 +45,8 @@ DEFINE_bool(pg_transactions_enabled, true,
             "True to enable transactions in YugaByte PostgreSQL API.");
 DEFINE_string(yb_backend_oom_score_adj, "900",
               "oom_score_adj of postgres backends in linux environments");
+DEFINE_string(yb_webserver_oom_score_adj, "900",
+              "oom_score_adj of YSQL webserver in linux environments");
 DEFINE_bool(yb_pg_terminate_child_backend, false,
             "Terminate other active server processes when a backend is killed");
 DEFINE_bool(pg_verbose_error_log, false,
@@ -528,6 +530,7 @@ Status PgWrapper::Start() {
   pg_proc_->SetEnv("FLAGS_yb_pg_terminate_child_backend",
                     FLAGS_yb_pg_terminate_child_backend ? "true" : "false");
   pg_proc_->SetEnv("FLAGS_yb_backend_oom_score_adj", FLAGS_yb_backend_oom_score_adj);
+  pg_proc_->SetEnv("FLAGS_yb_webserver_oom_score_adj", FLAGS_yb_webserver_oom_score_adj);
   pg_proc_->SetEnv(
       "FLAGS_pg_mem_tracker_tcmalloc_gc_release_bytes",
       std::to_string(FLAGS_pg_mem_tracker_tcmalloc_gc_release_bytes));
