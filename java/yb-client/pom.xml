@@ -25,12 +25,12 @@
   <parent>
     <groupId>org.yb</groupId>
     <artifactId>yb-parent</artifactId>
-    <version>0.8.72-SNAPSHOT</version>
+    <version>0.8.73-SNAPSHOT</version>
   </parent>
 
   <artifactId>yb-client</artifactId>
   <name>YB Java Client</name>
-  <version>0.8.72-SNAPSHOT</version>
+  <version>0.8.73-SNAPSHOT</version>
   <properties>
     <yb.thirdparty.dir>${project.basedir}/../../thirdparty</yb.thirdparty.dir>
   </properties>
