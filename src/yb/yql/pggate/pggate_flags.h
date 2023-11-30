@@ -35,6 +35,7 @@ DECLARE_int32(ysql_sequence_cache_minval);
 DECLARE_int32(ysql_num_databases_reserved_in_db_catalog_version_mode);
 
 DECLARE_bool(ysql_suppress_unsupported_error);
+DECLARE_bool(ysql_suppress_unsafe_alter_notice);
 
 DECLARE_bool(ysql_beta_features);
 DECLARE_bool(ysql_beta_feature_tablegroup);
