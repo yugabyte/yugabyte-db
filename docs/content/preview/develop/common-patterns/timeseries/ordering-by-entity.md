@@ -1,7 +1,7 @@
 ---
-title: Order by entity
-headerTitle: Order by entity
-linkTitle: Order by entity
+title: Order by time per entity
+headerTitle: Order by time per entity
+linkTitle: Ordering by time per entity
 description: Keep entity data together using Entity-wise or Bucket-based ordering
 headcontent: Keep entity data together in a time series data model
 menu:
@@ -20,7 +20,7 @@ The following sections describe how to order by entity with a few examples.
 
 {{<cluster-setup-tabs>}}
 
-## Entity-wise ordering
+## Ordering per entity
 
 Consider a speed metrics tracking system that tracks the data from the speed sensor of many cars.
 
@@ -51,24 +51,26 @@ INSERT INTO entity_order1 (ts, car, speed)
 Retrieve some data from the table as follows:
 
 ```sql
-SELECT *, yb_hash_code(car) % 3 as tablet FROM entity_order1;
+SELECT * FROM entity_order1 WHERE car = 'car-1' ;
 ```
 
 ```output
-        ts          |  car  | speed | tablet
----------------------+-------+-------+--------
- 2023-07-01 00:00:03 | car-2 |    50 |      1
- 2023-07-01 00:00:05 | car-2 |     8 |      1
- 2023-07-01 00:00:07 | car-2 |    19 |      1
- 2023-07-01 00:00:09 | car-2 |    56 |      1
- ...
- 2023-07-01 00:00:01 | car-1 |     2 |      2
- 2023-07-01 00:00:02 | car-1 |    38 |      2
- 2023-07-01 00:00:04 | car-1 |    51 |      2
- 2023-07-01 00:00:06 | car-1 |    10 |      2
+         ts          |  car  | speed
+---------------------+-------+-------
+ 2023-07-01 00:00:01 | car-1 |    22
+ 2023-07-01 00:00:03 | car-1 |    43
+ 2023-07-01 00:00:04 | car-1 |    11
+ 2023-07-01 00:00:07 | car-1 |    39
+ 2023-07-01 00:00:08 | car-1 |    21
+ 2023-07-01 00:00:14 | car-1 |     5
+ 2023-07-01 00:00:15 | car-1 |    31
+ 2023-07-01 00:00:16 | car-1 |    21
+ 2023-07-01 00:00:18 | car-1 |    14
+ 2023-07-01 00:00:19 | car-1 |    46
+ 2023-07-01 00:00:20 | car-1 |     4
 ```
 
-Notice that the data for each car is together (in the same tablet), but at the same time, the data is automatically sorted. The key thing to note here is that all the data for a specific car (say `car-1`) will be located in the same tablet (`2`), because you have defined the data to be distributed on the hash of `car` (`PRIMARY KEY(car HASH, ts ASC)`).
+Notice that the data for `car-1` is together, but at the same time, the data is automatically sorted. The key thing to note here is that all the data for a specific car (say `car-1`) will be located in the same tablet (`2`), because you have defined the data to be distributed on the hash of `car` (`PRIMARY KEY(car HASH, ts ASC)`).
 
 Distributing the data by the entity (`car`) and ordering the data by timestamp for each entity solves the problem of keeping data together for an entity and at the same time maintains a global distribution across different entities across the different tablets. But this could lead to a hot shard problem if there are too many operations on the same car.
 
@@ -104,23 +106,27 @@ Because the default value of `bucketid` is set to `random()*8`, you do not have 
 Retrieve the data from the table as follows:
 
 ```sql
-SELECT *, yb_hash_code(car,bucketid) % 3 as tablet FROM entity_order2;
+SELECT * FROM entity_order2;
 ```
 
 ```output
-         ts          |  car  | speed | bucketid | tablet
----------------------+-------+-------+----------+--------
- 2023-07-01 00:00:21 | car-1 |    45 |        7 |      2
- 2023-07-01 00:00:22 | car-1 |     9 |        7 |      2
- 2023-07-01 00:00:37 | car-1 |    32 |        7 |      2
- ...
- 2023-07-01 00:00:27 | car-2 |    26 |        1 |      2
- 2023-07-01 00:00:40 | car-2 |    26 |        1 |      2
- 2023-07-01 00:01:10 | car-2 |    46 |        1 |      2
- ...
- 2023-07-01 00:00:08 | car-1 |    43 |        2 |      1
- 2023-07-01 00:00:13 | car-1 |    20 |        2 |      1
- 2023-07-01 00:00:20 | car-1 |    53 |        2 |      1
+         ts          |  car  | speed | bucketid
+---------------------+-------+-------+----------
+ 2023-07-01 00:00:06 | car-1 |     4 |        7
+ 2023-07-01 00:00:09 | car-1 |    55 |        7
+...
+ 2023-07-01 00:00:53 | car-1 |     5 |        7
+ 2023-07-01 00:01:05 | car-1 |     9 |        7
+ 2023-07-01 00:00:14 | car-2 |    29 |        1
+...
+ 2023-07-01 00:01:00 | car-1 |    24 |        2
+ 2023-07-01 00:01:37 | car-1 |    13 |        2
+ 2023-07-01 00:00:11 | car-2 |    30 |        6
+ 2023-07-01 00:00:30 | car-2 |    30 |        6
+...
+ 2023-07-01 00:01:35 | car-2 |    14 |        6
+ 2023-07-01 00:00:31 | car-2 |    55 |        0
+ 2023-07-01 00:00:44 | car-2 |    45 |        0
 ```
 
 Notice that the data for each car is split into buckets and that the data is ordered on by `ts` in each bucket, and that the buckets are distributed across different tablets.
