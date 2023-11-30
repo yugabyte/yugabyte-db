@@ -62,6 +62,7 @@
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pgwrapper/pg_tablet_split_test_base.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_wait_queues);
@@ -69,9 +70,9 @@ DECLARE_bool(ysql_enable_packed_row);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
-DECLARE_int32(ysql_max_write_restart_attempts);
 DECLARE_int64(db_block_size_bytes);
 DECLARE_uint64(post_split_compaction_input_size_threshold_bytes);
+DECLARE_string(ysql_pg_conf_csv);
 
 DECLARE_bool(TEST_asyncrpc_common_response_check_fail_once);
 DECLARE_bool(TEST_pause_before_full_compaction);
@@ -1501,7 +1502,7 @@ class PgPartitioningWaitQueuesOffTest : public PgPartitioningTest {
     // request times out.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
     // Fail txn early in case of conflict to reduce test runtime.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_max_write_restart_attempts) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = MaxQueryLayerRetriesConf(0);
     PgPartitioningTest::SetUp();
   }
 };
