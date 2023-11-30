@@ -5088,6 +5088,9 @@ CommitSubTransaction(void)
 
 	s->state = TRANS_DEFAULT;
 
+	/* Conserve sticky object count before popping transaction state. */
+	s->parent->ybUncommittedStickyObjectCount = s->ybUncommittedStickyObjectCount;
+	
 	PopTransaction();
 }
 
