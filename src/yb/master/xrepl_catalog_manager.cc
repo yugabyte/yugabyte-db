@@ -986,14 +986,6 @@ Status CatalogManager::CreateNewXReplStream(
       }
     }
 
-    if (has_consistent_snapshot_option) {
-      // TEMPORARY: The creation of the cdc_state table sometimes interferes with the write into
-      // the table from the AsyncAlterTable callback
-      // Just wait for the cdc_state table creation to finish
-      // TODO(#19211): Need to fix this as part of making createStream synchronous
-      SleepFor(MonoDelta::FromMilliseconds(100*kTimeMultiplier));
-    }
-
     auto require_history_cutoff = consistent_snapshot_option_use || record_type_option_all;
     RETURN_NOT_OK(SetAllCDCSDKRetentionBarriers(
         req, rpc, epoch, table_ids, stream->StreamId(), has_consistent_snapshot_option,
@@ -1120,9 +1112,11 @@ Status CatalogManager::SetAllCDCSDKRetentionBarriers(
     }
   }
 
-  // TEMPORARY: Just sleep a bit to allow ALTER TABLEs to finish.
-  // TODO(#19211): Make this function synchronous
-  SleepFor(MonoDelta::FromMilliseconds(500*kTimeMultiplier));
+  auto deadline = rpc->GetClientDeadline();
+  // TODO(#18934): Handle partial failures by rolling back all changes.
+  for (const auto& table_id : table_ids) {
+    RETURN_NOT_OK(WaitForAlterTableToFinish(table_id, deadline));
+  }
 
   return Status::OK();
 }
@@ -1160,8 +1154,8 @@ Status CatalogManager::SetWalRetentionForTable(
 Status CatalogManager::PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(
     const scoped_refptr<TableInfo>& table,
     const yb::TabletId& tablet_id,
-    const xrepl::StreamId&  cdc_sdk_stream_id,
-    const yb::OpIdPB&   snapshot_safe_opid,
+    const xrepl::StreamId& cdc_sdk_stream_id,
+    const yb::OpIdPB& snapshot_safe_opid,
     const yb::HybridTime& proposed_snapshot_time,
     bool require_history_cutoff) {
 
@@ -1172,8 +1166,6 @@ Status CatalogManager::PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(
                       << " and " << snapshot_safe_opid.index()
                       << ", proposed snapshot time: " << proposed_snapshot_time.ToUint64()
                       << ", require history cutoff: " << require_history_cutoff;
-
-  SharedLock lock(mutex_);
 
   std::vector<cdc::CDCStateTableEntry> entries;
 
