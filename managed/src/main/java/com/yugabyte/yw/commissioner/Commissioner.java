@@ -157,11 +157,12 @@ public class Commissioner {
    * check the task status for the final state.
    *
    * @param taskUUID the UUID of the task to be aborted.
+   * @param force skip some checks like abortable if it is set.
    * @return true if the task is found running and abort is triggered successfully, else false.
    */
-  public boolean abortTask(UUID taskUUID) {
+  public boolean abortTask(UUID taskUUID, boolean force) {
     TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
-    if (!isTaskAbortable(taskInfo.getTaskType())) {
+    if (!force && !isTaskAbortable(taskInfo.getTaskType())) {
       throw new PlatformServiceException(
           BAD_REQUEST, String.format("Invalid task type: Task %s cannot be aborted", taskUUID));
     }
@@ -175,7 +176,7 @@ public class Commissioner {
       // Resume if it is already paused to abort faster.
       latch.countDown();
     }
-    Optional<TaskInfo> optional = taskExecutor.abort(taskUUID);
+    Optional<TaskInfo> optional = taskExecutor.abort(taskUUID, force);
     boolean success = optional.isPresent();
     if (success && BackupUtil.BACKUP_TASK_TYPES.contains(taskInfo.getTaskType())) {
       Backup.fetchAllBackupsByTaskUUID(taskUUID)
