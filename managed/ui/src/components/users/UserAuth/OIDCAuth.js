@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import * as Yup from 'yup';
 import clsx from 'clsx';
-import { trimStart, trimEnd, isString } from 'lodash';
+import { trimStart, trimEnd, isString, find } from 'lodash';
 import { toast } from 'react-toastify';
 import { Row, Col, OverlayTrigger, Tooltip } from 'react-bootstrap';
 import { Formik, Form, Field } from 'formik';
@@ -12,7 +12,7 @@ import YBInfoTip from '../../common/descriptors/YBInfoTip';
 import OIDCMetadataModal from './OIDCMetadataModal';
 import { setSSO, setShowJWTTokenInfo } from '../../../config';
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
-import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { Action } from '../../../redesign/features/rbac';
 import WarningIcon from '../icons/warning_icon';
 
 const VALIDATION_SCHEMA = Yup.object().shape({
@@ -41,9 +41,7 @@ export const OIDCAuth = (props) => {
     fetchRunTimeConfigs,
     setRunTimeConfig,
     deleteRunTimeConfig,
-    runtimeConfigs: {
-      data: { configEntries }
-    }
+    runtimeConfigs
   } = props;
   const [showToggle, setToggleVisible] = useState(false);
   const [dialog, showDialog] = useState(false);
@@ -53,6 +51,7 @@ export const OIDCAuth = (props) => {
   const [showMetadataModel, setShowMetadataModal] = useState(false);
   let submitAction = undefined;
 
+  const configEntries = runtimeConfigs?.data?.configEntries ?? [];
   const transformData = (values) => {
     const escStr = values.oidcProviderMetadata
       ? values.oidcProviderMetadata.replace(/[\r\n]/gm, '')
@@ -197,7 +196,7 @@ export const OIDCAuth = (props) => {
       config.key.includes(`${OIDC_PATH}.use_oauth`)
     );
     const isOIDCEnhancementEnabled =
-      configEntries.find((c) => c.key === `${OIDC_PATH}.oidc_feature_enhancements`).value ===
+      configEntries.find((c) => c.key === `${OIDC_PATH}.oidc_feature_enhancements`)?.value ===
       'true';
     setShowJWTTokenToggle(isOIDCEnhancementEnabled);
     setToggleVisible(!!oidcConfig);
@@ -206,7 +205,7 @@ export const OIDCAuth = (props) => {
 
   return (
     <RbacValidator
-      accessRequiredOn={ApiPermissionMap.GET_LDAP_MAPPINGS}
+      customValidateFunction={(userPerm) => find(userPerm, { actions: [Action.SUPER_ADMIN_ACTIONS] }) !== undefined}
     >
       <div className="bottom-bar-padding">
         {dialog && (

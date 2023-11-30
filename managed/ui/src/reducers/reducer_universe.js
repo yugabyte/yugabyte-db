@@ -250,7 +250,7 @@ export default function (state = INITIAL_STATE, action) {
           action.payload.data.tserver_rpcs_per_sec_by_universe.data;
         isNonEmptyArray(universeReadWriteMetricList) &&
           universeReadWriteMetricList.forEach(function (metricData) {
-            for (let counter = 0; counter < currentUniverseList.length; counter++) {
+            for (let counter = 0; counter < currentUniverseList?.length; counter++) {
               const nodePrefix = currentUniverseList[counter].universeDetails.nodePrefix;
               if (nodePrefix && nodePrefix.trim() === metricData.name.trim()) {
                 if (metricData.labels['service_method'] === 'Read') {

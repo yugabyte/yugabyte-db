@@ -736,7 +736,7 @@ export const ApiPermissionMap = {
         requestType: ApiRequestType.PUT,
         endpoint: '/universes/$uniUUID<[^/]+>/tables/$tableUUID<[^/]+>'
     },
-    BULK_IMPORT_UNIVERSE: {
+    BULK_IMPORT_TABLES: {
         requestType: ApiRequestType.PUT,
         endpoint: '/universes/$uniUUID<[^/]+>/tables/$tableUUID<[^/]+>/bulk_import'
     },
