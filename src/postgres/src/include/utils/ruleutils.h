@@ -35,4 +35,7 @@ extern List *select_rtable_names_for_explain(List *rtable,
 extern char *generate_collation_name(Oid collid);
 extern char *get_range_partbound_string(List *bound_datums);
 
+extern void yb_get_dependent_views(Oid relid, List **view_oids,
+								   List **view_defs);
+
 #endif							/* RULEUTILS_H */
