@@ -1,43 +1,41 @@
 ---
-title: Steps to perform live migration with fall-forward using YugabyteDB Voyager
-headerTitle: Live migration with fall-forward
-linkTitle: Live migration with fall-forward
-headcontent: Steps for a live migration with fall-forward using YugabyteDB Voyager
-description: Steps to ensure a successful live migration with fall-forward using YugabyteDB Voyager.
+title: Steps to perform live migration of your database using YugabyteDB Voyager
+headerTitle: Live migration with fall-back
+linkTitle: Live migration with fall-back
+headcontent: Steps for a live migration with fall-back using YugabyteDB Voyager
+description: Steps to ensure a successful live migration with fall-back using YugabyteDB Voyager.
 menu:
   preview_yugabyte-voyager:
-    identifier: live-fall-forward
+    identifier: live-fall-back
     parent: migration-types
-    weight: 103
+    weight: 104
 techPreview: /preview/releases/versioning/#feature-availability
 rightNav:
   hideH4: true
 type: docs
 ---
 
-When migrating using YugabyteDB Voyager, it is prudent to have a backup strategy if the new database doesn't work as expected. A fall-forward approach consists of creating a third database (the source-replica database) that is a replica of your original source database.
+When migrating a database, it's prudent to have a backup strategy in case the new database doesn't work as expected. A fall-back approach involves streaming changes from the YugabyteDB (target) database back to the source database after the cutover operation, enabling you to cutover to the source database at any point.
 
-A fall-forward approach allows you to test the system end-to-end. This workflow is especially important in heterogeneous migration scenarios, in which source and target databases are using different engines.
+A fall-back approach allows you to test the system end-to-end. This workflow is especially important in heterogeneous migration scenarios, in which source and target databases are using different engines.
 
-## Fall-forward workflow
+## Fall-back workflow
 
-![fall-forward short](/images/migrate/live-fall-forward-short.png)
+Before starting a live migration, you set up the [source](#prepare-the-source-database) and [target](#prepare-the-target-database) database. During migration, yb-voyager replicates the snapshot data along with new changes exported from the source database to the target YugabyteDB database, as shown in the following illustration:
 
-Before starting a live migration, you set up the source-replica database (via [import data to source-replica](#import-data-to-source-replica)). During migration, yb-voyager replicates the snapshot data along with new changes exported from the source database to the target and source-replica databases, as shown in the following illustration:
+![fall-back](/images/migrate/live-fall-back.png)
 
-![After import data to source-replica](/images/migrate/after-import-data-to-sr.png)
+At [cutover to target](#cutover-to-the-target), applications stop writing to the source database and start writing to the target YugabyteDB database. After the cutover process is complete, Voyager keeps the source database synchronized with changes from the target YugabyteDB database as shown in the following illustration:
 
-At [cutover to target](#cutover-to-the-target), applications stop writing to the source database and start writing to the target YugabyteDB database. After the cutover process is complete, Voyager keeps the source-replica database synchronized with changes from the target YugabyteDB database as shown in the following illustration:
+![cutover](/images/migrate/cutover-to-target-fb.png)
 
-![After cutover](/images/migrate/cutover-to-target.png)
+Finally, if you need to switch back to the source database (because the current YugabyteDB system is not working as expected), you can [cutover to your source](#cutover-to-the-source-optional) database.
 
-Finally, if you need to switch to the source-replica database (because the current YugabyteDB system is not working as expected), you can initiate [cutover to your source-replica](#cutover-to-source-replica-optional).
+![initiate-cutover-to-source](/images/migrate/cutover-to-source-fb.png)
 
-![After initiate cutover to source-replica](/images/migrate/cutover-to-source-replica.png)
+The following illustration describes the workflow for live migration using YB Voyager with the fall-back option.
 
-The following illustration describes the workflow for live migration using YB Voyager with the fall-forward option.
-
-![Live migration with fall-forward workflow](/images/migrate/live-fall-forward.png)
+![fall-back-workflow](/images/migrate/fall-back-workflow.png)
 
 Before proceeding with migration, ensure that you have completed the following steps:
 
@@ -69,16 +67,82 @@ Create a new database user, and assign the necessary user permissions.
 <div class="tab-content">
   <div id="standalone-oracle" class="tab-pane fade show active" role="tabpanel" aria-labelledby="standalone-oracle-tab">
   {{% includeMarkdown "./standalone-oracle.md" %}}
+
+1. Create a writer role for the source schema for Voyager to be able to write the changes from the target YugabyteDB database to the source database (in case of a fall-back):
+
+   ```sql
+   CREATE ROLE <SCHEMA_NAME>_writer_role;
+
+   BEGIN
+       FOR R IN (SELECT owner, object_name FROM all_objects WHERE owner=UPPER('<SCHEMA_NAME>') and object_type ='TABLE' MINUS SELECT owner, table_name from all_nested_tables where owner = UPPER('<SCHEMA_NAME>'))
+       LOOP
+          EXECUTE IMMEDIATE 'GRANT SELECT, INSERT, UPDATE, DELETE, ALTER on '||R.owner||'."'||R.object_name||'" to  <SCHEMA_NAME>_writer_role';
+       END LOOP;
+   END;
+   /
+
+   DECLARE
+      v_sql VARCHAR2(4000);
+   BEGIN
+      FOR table_rec IN (SELECT table_name FROM all_tables WHERE owner = 'YBVOYAGER_METADATA') LOOP
+         v_sql := 'GRANT ALL PRIVILEGES ON YBVOYAGER_METADATA.' || table_rec.table_name || ' TO <SCHEMA_NAME>_writer_role';
+         EXECUTE IMMEDIATE v_sql;
+      END LOOP;
+   END;
+   /
+
+   GRANT CREATE ANY SEQUENCE, SELECT ANY SEQUENCE, ALTER ANY SEQUENCE TO <SCHEMA_NAME>_writer_role;
+   ```
+
+1. Assign the writer role to the source database user as follows:
+
+   ```sql
+   GRANT <SCHEMA_NAME>_writer_role TO c##ybvoyager;
+   ```
+
   </div>
     <div id="rds-oracle" class="tab-pane fade" role="tabpanel" aria-labelledby="rds-oracle-tab">
   {{% includeMarkdown "./rds-oracle.md" %}}
+
+1. Create a writer role for the source schema for Voyager to be able to write the changes from the target YugabyteDB database to the source database (in case of a fall-back):
+
+   ```sql
+   CREATE ROLE <SCHEMA_NAME>_writer_role;
+
+   BEGIN
+       FOR R IN (SELECT owner, object_name FROM all_objects WHERE owner=UPPER('<SCHEMA_NAME>') and object_type ='TABLE' MINUS SELECT owner, table_name from all_nested_tables where owner = UPPER('<SCHEMA_NAME>'))
+       LOOP
+          EXECUTE IMMEDIATE 'GRANT SELECT, INSERT, UPDATE, DELETE, ALTER on '||R.owner||'."'||R.object_name||'" to  <SCHEMA_NAME>_writer_role';
+       END LOOP;
+   END;
+   /
+
+   DECLARE
+      v_sql VARCHAR2(4000);
+   BEGIN
+      FOR table_rec IN (SELECT table_name FROM all_tables WHERE owner = 'YBVOYAGER_METADATA') LOOP
+         v_sql := 'GRANT ALL PRIVILEGES ON YBVOYAGER_METADATA.' || table_rec.table_name || ' TO <SCHEMA_NAME>_writer_role';
+         EXECUTE IMMEDIATE v_sql;
+      END LOOP;
+   END;
+   /
+
+   GRANT CREATE ANY SEQUENCE, SELECT ANY SEQUENCE, ALTER ANY SEQUENCE TO <SCHEMA_NAME>_writer_role;
+   ```
+
+1. Assign the writer role to the source database user as follows:
+
+   ```sql
+   GRANT <SCHEMA_NAME>_writer_role TO ybvoyager;
+   ```
+
   </div>
 </div>
 
 If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
 
 {{< note title="Connecting to Oracle instances" >}}
-You can use only one of the following arguments to connect to your Oracle instance.
+You can use only one of the following arguments to connect to your Oracle instance:
 
 - --source-db-schema (Schema name of the source database.)
 - --oracle-db-sid (Oracle System Identifier you can use while exporting data from Oracle instances.)
@@ -109,6 +173,13 @@ Create a user with [`SUPERUSER`](../../../api/ysql/the-sql-language/statements/d
      CREATE USER ybvoyager SUPERUSER PASSWORD 'password';
      ```
 
+- For YugabyteDB Managed, create a user with [`yb_superuser`](../../../yugabyte-cloud/cloud-secure-clusters/cloud-users/#admin-and-yb-superuser) role using the following command:
+
+     ```sql
+     CREATE USER ybvoyager PASSWORD 'password';
+     GRANT yb_superuser TO ybvoyager;
+     ```
+
 If you want yb-voyager to connect to the target YugabyteDB database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
 
 {{< warning title="Deleting the ybvoyager user" >}}
@@ -125,7 +196,7 @@ DROP USER ybvoyager;
 
 ## Create an export directory
 
-yb-voyager keeps all of its migration state, including exported schema and data, in a local directory called the _export directory_.
+yb-voyager keeps all of its migration state, including exported schema and data, in a local directory called the *export directory*.
 
 Before starting migration, you should create the export directory on a file system that has enough space to keep the entire source database. Next, you should provide the path of the export directory as a mandatory argument (`--export-dir`) to each invocation of the yb-voyager command in an environment variable.
 
@@ -136,97 +207,11 @@ export EXPORT_DIR=$HOME/export-dir
 
 The export directory has the following sub-directories and files:
 
-- `reports` directory contains the generated _Schema Analysis Report_.
+- `reports` directory contains the generated *Schema Analysis Report*.
 - `schema` directory contains the source database schema translated to PostgreSQL. The schema is partitioned into smaller files by the schema object type such as tables, views, and so on.
 - `data` directory contains CSV (Comma Separated Values) files that are passed to the COPY command on the target YugabyteDB database.
 - `metainfo` and `temp` directories are used by yb-voyager for internal bookkeeping.
 - `logs` directory contains the log files for each command.
-
-## Prepare source-replica database
-
-Perform the following steps to prepare your source-replica database:
-
-1. Create `ybvoyager_metadata` schema or user, and tables as follows:
-
-    ```sql
-    CREATE USER ybvoyager_metadata IDENTIFIED BY "password";
-    GRANT CONNECT, RESOURCE TO ybvoyager_metadata;
-    ALTER USER ybvoyager_metadata QUOTA UNLIMITED ON USERS;
-
-    --upgraded to ybvoyager_import_data_batches_metainfo_v3 post v1.6
-    CREATE TABLE ybvoyager_metadata.ybvoyager_import_data_batches_metainfo_v3 (
-               migration_uuid VARCHAR2(36),
-               data_file_name VARCHAR2(250),
-               batch_number NUMBER(10),
-               schema_name VARCHAR2(250),
-               table_name VARCHAR2(250),
-               rows_imported NUMBER(19),
-               PRIMARY KEY (migration_uuid, data_file_name, batch_number, schema_name, table_name)
-    );
-
-    CREATE TABLE ybvoyager_metadata.ybvoyager_import_data_event_channels_metainfo (
-                migration_uuid VARCHAR2(36),
-                channel_no INT,
-                last_applied_vsn NUMBER(19),
-                num_inserts NUMBER(19),
-                num_updates NUMBER(19),
-                num_deletes NUMBER(19),
-                PRIMARY KEY (migration_uuid, channel_no)
-            );
-
-    CREATE TABLE ybvoyager_metadata.ybvoyager_imported_event_count_by_table (
-            migration_uuid VARCHAR2(36),
-            table_name VARCHAR2(250),
-            channel_no INT,
-            total_events NUMBER(19),
-            num_inserts NUMBER(19),
-            num_updates NUMBER(19),
-            num_deletes NUMBER(19),
-            PRIMARY KEY (migration_uuid, table_name, channel_no)
-        );
-    ```
-
-1. Create a writer role for source-replica schema in the source-replica database, and assign privileges for `ybvoyager_metadata` as follows:
-
-    ```sql
-    CREATE ROLE <SCHEMA_NAME>_writer_role;
-
-    BEGIN
-        FOR R IN (SELECT owner, object_name FROM all_objects WHERE owner=UPPER('<SCHEMA_NAME>') and object_type ='TABLE' MINUS SELECT owner, table_name from all_nested_tables where owner = UPPER('<SCHEMA_NAME>'))
-        LOOP
-           EXECUTE IMMEDIATE 'GRANT SELECT, INSERT, UPDATE, DELETE, ALTER on '||R.owner||'."'||R.object_name||'" to  <SCHEMA_NAME>_writer_role';
-        END LOOP;
-    END;
-    /
-
-    DECLARE
-       v_sql VARCHAR2(4000);
-    BEGIN
-        FOR table_rec IN (SELECT table_name FROM all_tables WHERE owner = 'YBVOYAGER_METADATA') LOOP
-         v_sql := 'GRANT ALL PRIVILEGES ON YBVOYAGER_METADATA.' || table_rec.table_name || ' TO <SCHEMA_NAME>_writer_role';
-          EXECUTE IMMEDIATE v_sql;
-        END LOOP;
-    END;
-    /
-
-    GRANT CREATE ANY SEQUENCE, SELECT ANY SEQUENCE, ALTER ANY SEQUENCE TO <SCHEMA_NAME>_writer_role;
-    ```
-
-1. Create a user and grant the preceding writer role to the user as follows:
-
-    ```sql
-    CREATE USER YBVOYAGER_FF IDENTIFIED BY password;
-    GRANT CONNECT TO YBVOYAGER_FF;
-    GRANT <SCHEMA_NAME>_writer_role TO YBVOYAGER_FF;
-    ```
-
-1. Set the following variables on the client machine on where yb-voyager is running (Only if yb-voyager is installed on Ubuntu / RHEL) :
-
-    ```sh
-    export ORACLE_HOME=/usr/lib/oracle/21/client64
-    export LD_LIBRARY_PATH=$ORACLE_HOME/lib
-    export PATH=$PATH:$ORACLE_HOME/bin
-    ```
 
 ## Migrate your database to YugabyteDB
 
@@ -275,7 +260,7 @@ The `yb-voyager analyze-schema` command analyses the PostgreSQL schema dumped in
 yb-voyager analyze-schema --export-dir <EXPORT_DIR> --output-format <FORMAT>
 ```
 
-The above command generates a report file under the `EXPORT_DIR/reports/` directory.
+The preceding command generates a report file under the `EXPORT_DIR/reports/` directory.
 
 Refer to [analyze schema](../../reference/schema-migration/analyze-schema/) for details about the arguments.
 
@@ -289,11 +274,9 @@ To learn more about modelling strategies using YugabyteDB, refer to [Data modeli
 
 {{< note title="Manual schema changes" >}}
 
-Include the primary key definition in the `CREATE TABLE` statement. Primary Key cannot be added to a partitioned table using the `ALTER TABLE` statement.
+- Include the primary key definition in the `CREATE TABLE` statement. Primary Key cannot be added to a partitioned table using the `ALTER TABLE` statement.
 
 {{< /note >}}
-
-Refer to the [Manual review guideline](../../known-issues/) for a detailed list of limitations and suggested workarounds associated with the source databases when migrating to YugabyteDB Voyager.
 
 ### Import schema
 
@@ -327,15 +310,6 @@ Because the presence of indexes and triggers can slow down the rate at which dat
 
 {{< /note >}}
 
-### Export and import schema to source-replica database
-
-Manually, set up the source-replica database with the same schema as that of the source database with the following considerations:
-
-- The table names on the source-replica database need to be case insensitive (YB Voyager currently does not support case-sensitivity).
-- Do not create indexes and triggers at the schema setup stage, as it will degrade performance of importing data into the source-replica database. Create them later as described in [cutover to source-replica](#cutover-to-source-replica-optional).
-
-- Disable foreign key constraints and check constraints on the source-replica database.
-
 ### Export data from source
 
 Begin exporting data from the source database into the `EXPORT_DIR/data` directory using the yb-voyager export data from source command with required arguments as follows:
@@ -352,7 +326,7 @@ yb-voyager export data from source --export-dir <EXPORT_DIR> \
         --export-type snapshot-and-changes
 ```
 
-The export data from source command first ensures that it exports a snapshot of the data already present on the source database. Next, you start a streaming phase (CDC phase) where you begin capturing new changes made to the data on the source after the migration has started. Some important metrics such as number of events, export rate, and so on will be displayed during the CDC phase similar to the following:
+The export data from source command first ensures that it exports a snapshot of the data already present on the source database. Next, you start a streaming phase (CDC phase) where you begin capturing new changes made to the data on the source after the migration has started. Some important metrics such as the number of events, export rate, and so on, is displayed during the CDC phase similar to the following:
 
 ```output
 | ---------------------------------------  |  ----------------------------- |
@@ -365,7 +339,7 @@ The export data from source command first ensures that it exports a snapshot of 
 | ---------------------------------------  |  ----------------------------- |
 ```
 
-Note that the CDC phase will start only after a snapshot of the entire interested table-set is completed.
+Note that the CDC phase will start only after a snapshot of the entire table-set is completed.
 Additionally, the CDC phase is restartable. So, if yb-voyager terminates when data export is in progress, it resumes from its current state after the CDC phase is restarted.
 
 #### Caveats
@@ -380,13 +354,13 @@ The options passed to the command are similar to the [`yb-voyager export schema`
 
 #### get data-migration-report
 
-Run the `yb-voyager get data-migration-report --export-dir <EXPORT_DIR>` command with to get a consolidated report of the overall progress of data migration concerning all the databases involved (source, target, and source-replica).
+Run the `yb-voyager get data-migration-report --export-dir <EXPORT_DIR>` command to get a consolidated report of the overall progress of data migration concerning all the databases involved (source and target).
 
 Refer to [get data-migration-report](../../reference/data-migration/export-data/#get-data-migration-report) for details about the arguments.
 
 ### Import data to target
 
-After you have successfully imported the schema in the target YugabyteDB database, and the CDC phase has started in export data from source (which you can monitor using the get data-migration-report command), you can start importing the data using the yb-voyager import data to target command with required arguments as follows:
+After you have successfully imported the schema in the target YugabyteDB database, you can start importing the data using the yb-voyager import data to target command as follows:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
@@ -403,7 +377,7 @@ Refer to [import data](../../reference/data-migration/import-data/#import-data) 
 
 For the snapshot exported, yb-voyager splits the data dump files (from the $EXPORT_DIR/data directory) into smaller batches. yb-voyager concurrently ingests the batches such that all nodes of the target YugabyteDB database cluster are used. After the snapshot is imported, a similar approach is employed for the CDC phase, where concurrent batches of change events are applied on the target YugabyteDB database cluster.
 
-Some important metrics such as number of events, ingestion rate, and so on, will be displayed during the CDC phase similar to the following:
+Some important metrics such as the number of events, ingestion rate, and so on, is displayed during the CDC phase similar to the following:
 
 ```output
 | -----------------------------  |  ----------------------------- |
@@ -419,7 +393,7 @@ Some important metrics such as number of events, ingestion rate, and so on, will
 | -----------------------------  |  ----------------------------- |
 ```
 
-The entire import process is designed to be _restartable_ if yb-voyager terminates while the data import is in progress. If restarted, the data import resumes from its current state.
+The entire import process is designed to be _restartable_ if yb-voyager terminates when the data import is in progress. If restarted, the data import resumes from its current state.
 
 {{< note title="Note">}}
 The arguments `table-list` and `exclude-table-list` are not supported in live migration.
@@ -436,57 +410,20 @@ If the `yb-voyager import data to target` command terminates before completing t
 
 #### get data-migration-report
 
-Run the following command with required arguments to get a consolidated report of the overall progress of data migration concerning all the databases involved (source, target, and source-replica).
-
-```sh
-# Replace the argument values with those applicable for your migration.
-yb-voyager get data-migration-report --export-dir <EXPORT_DIR> \
-        --target-db-password <TARGET_DB_PASSWORD>
-```
-
-Refer to [get data-migration-report](../../reference/data-migration/import-data/#get-data-migration-report) for details about the arguments.
-
-### Import data to source-replica
-
-Note that the import data to source-replica is applicable for data migration only (schema migration needs to be done manually).
-
-The import data to source-replica refers to replicating the snapshot data along with the changes exported from the source database to the source-replica database. The command to start the import with required arguments is as follows:
-
-```sh
-# Replace the argument values with those applicable for your migration.
-yb-voyager import data to source-replica --export-dir <EXPORT-DIR> \
-        --source-replica-db-host <HOST> \
-        --source-replica-db-user <USERNAME> \
-        --source-replica-db-password <PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
-        --source-replica-db-name <DB-NAME> \
-        --source-replica-db-schema <SCHEMA-NAME> \
-        --parallel-jobs <COUNT>
-```
-
-Refer to [import data to source-replica](../../reference/data-migration/import-data/#import-data-to-source-replica) for details about the arguments.
-
-Similar to [import data to target](#import-data-to-target), during `import data to source-replica`:
-
-- The snapshot is first imported, following which, the change events are imported to the source-replica database.
-- Some important metrics such as the number of events, events rate, and so on, are displayed.
-- You can restart the command if it fails for any reason.
-
-Additionally, when you run the `import data to source-replica` command, the [get data-migration-report](#get-data-migration-report) command also shows progress of importing all changes to the source-replica database. To view overall progress of the data import operation and streaming changes to the source-replica database, use the following command with required arguments:
+Run the following command with required arguments to get a consolidated report of the overall progress of data migration concerning all the databases involved (source and target).
 
 ```sh
 # Replace the argument values with those applicable for your migration.
 yb-voyager get data-migration-report --export-dir <EXPORT_DIR> \
         --target-db-password <TARGET_DB_PASSWORD> \
-        --source-replica-db-password <SOURCE_REPLICA_DB_PASSWORD>
+        --source-db-password <SOURCE_DB_PASSWORD>
 ```
+
+Refer to [get data-migration-report](../../reference/data-migration/import-data/#get-data-migration-report) for details about the arguments.
 
 ### Archive changes (Optional)
 
-As the migration continuously exports changes on the source database to the `EXPORT-DIR`, disk use continues to grow. To prevent the disk from filling up, you can optionally use the `archive changes` command with required arguments as follows:
-
-{{< note title = "Note" >}}
-Make sure to run the archive changes command only after completing [import data to source-replica](#import-data-to-source-replica). If you run the command before, you may archive some changes before they have been imported to the source-replica database.
-{{< /note >}}
+As the migration continuously exports changes on the source database to the `EXPORT-DIR`, the disk utilization continues to grow indefinitely over time. To limit usage of all the disk space, optionally, you can use the `archive changes` command as follows:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
@@ -497,9 +434,9 @@ Refer to [archive changes](../../reference/cutover-archive/archive-changes/) for
 
 ### Cutover to the target
 
-Cutover is the last phase, where you switch your application over from the source database to the target YugabyteDB database.
+During cutover, you switch your application over from the source database to the target YugabyteDB database.
 
-Keep monitoring the metrics displayed on `export data from source` and `import data to target` processes. After you notice that the import of events is catching up to the exported events, you are ready to cutover. You can use the "Remaining events" metric displayed in the import data to target process to help you determine the cutover.
+Keep monitoring the metrics displayed for export data from source and import data to target processes. After you notice that the import of events is catching up to the exported events, you are ready to perform a cutover. You can use the "Remaining events" metric displayed in the import data to target process to help you determine the cutover.
 
 Perform the following steps as part of the cutover process:
 
@@ -508,17 +445,29 @@ Perform the following steps as part of the cutover process:
 
     ```sh
     # Replace the argument values with those applicable for your migration.
-    yb-voyager initiate cutover to target --export-dir <EXPORT_DIR>
+    yb-voyager initiate cutover to target --export-dir <EXPORT_DIR> --prepare-for-fall-back true
     ```
 
-    Refer to [initiate cutover to target](../../reference/cutover-archive/cutover/#cutover-to-target) for details about the arguments.
+    Refer to [initiate cutover to target](../../reference/cutover-archive/cutover/#cutover-initiate) for details about the arguments.
 
     As part of the cutover process, the following occurs in the background:
 
     1. The initiate cutover to target command stops the export data from source process, followed by the import data to target process after it has imported all the events to the target YugabyteDB database.
 
-    1. The [export data from target](../../reference/data-migration/export-data/#export-data-from-target) command automatically starts capturing changes from the target YugabyteDB database to the source-replica database.
-    Note that the [import data to target](#import-data-to-target) process transforms to an `export data from target` process, so if it gets terminated for any reason, you need to restart process using the `export data from target` command as suggested in the `import data to target` output.
+    1. The [export data from target](../../reference/data-migration/export-data/#export-data-from-target) command automatically starts capturing changes from the target YugabyteDB database.
+    Note that the [import data to target](#import-data-to-target) process transforms to an `export data from target` process, so if it gets terminated for any reason, you need to restart the process using the `export data from target` command as suggested in the `import data to target` output.
+
+    1. The [import data to source](../../reference/data-migration/import-data/#import-data-to-source) command automatically starts applying changes (captured from the target YugabyteDB) back to the source database.
+    Note that the [export data from source](#export-data-from-source) process transforms to a `import data to source` process, so if it gets terminated for any reason, you need to restart the process using `import data to source` command as suggested in the `export data from source` output.
+
+1. Wait for the cutover process to complete. Monitor the status of the cutover process using the following command:
+
+    ```sh
+    # Replace the argument values with those applicable for your migration.
+    yb-voyager cutover status --export-dir <EXPORT_DIR>
+    ```
+
+    Refer to [cutover status](../../reference/cutover-archive/cutover/#cutover-status) for details about the arguments.
 
 1. Import indexes and triggers using the `import schema` command with an additional `--post-import-data` flag as follows:
 
@@ -542,7 +491,7 @@ Perform the following steps as part of the cutover process:
 
 Suppose you have the following scenario:
 
-- [import data to target](#import-data-to-target) command fails.
+- [import data to target](#import-data-to-target) or [import data file](../bulk-data-load/#import-data-files-from-the-local-disk) command fails.
 - To resolve this issue, you delete some of the rows from the split files.
 - After retrying, the import data to target command completes successfully.
 
@@ -552,25 +501,51 @@ For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/y
 
     {{< /warning >}}
 
-### Cutover to source-replica (Optional)
+1. Disable triggers and foreign-key constraints on the source database to ensure that changes from the target YugabyteDB database can be imported correctly to the source database using the following PL/SQL commands on the source schema as a privileged user:
 
-During this phase, switch your application over from the target YugabyteDB database to the source-replica database. As this step is optional, perform it _only_ if the target YugabyteDB database is not working as expected.
+    ```sql
+    --disable triggers
 
-Keep monitoring the metrics displayed for `export data from target` and `import data to source-replica` processes. After you notice that the import of events to the source-replica database is catching up to the exported events from the target YugabyteDB database, you are ready to cutover. You can use the "Remaining events" metric displayed in the import data to source-replica process to help you determine the cutover.
+    BEGIN
+        FOR R IN (SELECT owner, object_name FROM all_objects WHERE owner=UPPER('<SCHEMA_NAME>') and object_type ='TABLE' MINUS SELECT owner, table_name from all_nested_tables where owner = UPPER('<SCHEMA_NAME>'))
+        LOOP
+           EXECUTE IMMEDIATE 'ALTER TABLE '||R.owner||'."'||R.object_name||'" DISABLE ALL TRIGGERS';
+        END LOOP;
+    END;
+    /
 
+    --disable referential constraints
+
+    BEGIN
+        FOR c IN (SELECT table_name, constraint_name
+                FROM user_constraints
+                WHERE constraint_type IN ('R') AND OWNER = '<SCHEMA_NAME>')
+        LOOP
+          EXECUTE IMMEDIATE 'ALTER TABLE ' || c.table_name || ' DISABLE CONSTRAINT ' || c.constraint_name;
+        END LOOP;
+    END;
+    /
+    ```
+
+### Cutover to the source (Optional)
+
+During this phase, switch your application over from the target YugabyteDB database back to the source database. As this step is _optional_, perform it only if the target YugabyteDB database is not working as expected.
+
+Keep monitoring the metrics displayed for `export data from target` and `import data to source` processes. After you notice that the import of events to the source database is catching up to the exported events from the target YugabyteDB database, you are ready to cutover. You can use the "Remaining events" metric displayed in the `import data to source` process to help you determine the cutover.
 Perform the following steps as part of the cutover process:
 
 1. Quiesce your target YugabyteDB database, that is stop application writes.
+
 1. Perform a cutover after the exported events rate ("Export rate" in the metrics table) drops to 0 using the following command:
 
     ```sh
     # Replace the argument values with those applicable for your migration.
-    yb-voyager initiate cutover to source-replica --export-dir <EXPORT_DIR>
+    yb-voyager initiate cutover to source --export-dir <EXPORT_DIR>
     ```
 
-    Refer to [cutover to source-replica](../../reference/cutover-archive/cutover/#cutover-to-source-replica) for details about the arguments.
+    Refer to [cutover to source](../../reference/cutover-archive/cutover/#cutover-to-source) for details about the arguments.
 
-    The `initiate cutover to source-replica` command stops the `export data from target` process, followed by the `import data to source-replica` process after it has imported all the events to the source-replica database.
+    The `initiate cutover to source` command stops the `export data from target` process, followed by the `import data to source` process after it has imported all the events to the source database.
 
 1. Wait for the cutover process to complete. Monitor the status of the cutover process using the following command:
 
@@ -581,27 +556,36 @@ Perform the following steps as part of the cutover process:
 
     Refer to [cutover status](../../reference/cutover-archive/cutover/#cutover-status) for details about the arguments.
 
-1. Set up indexes and triggers to the source-replica database manually. Also, re-enable the foreign key and check constraints.
+1. Re-enable triggers and foreign-key constraints on the source database using the following PL/SQL commands on the source schema as a privileged user:
 
-1. Verify your migration. After the schema and data import is complete, the automated part of the database migration process is considered complete. You should manually run validation queries on both the target and source-replica databases to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count of each table.
+    ```sql
+    --enable triggers
+    BEGIN
+        FOR R IN (SELECT owner, object_name FROM all_objects WHERE owner=UPPER('<SCHEMA_NAME>') and object_type ='TABLE' MINUS SELECT owner, table_name from all_nested_tables where owner = UPPER('<SCHEMA_NAME>'))
+        LOOP
+           EXECUTE IMMEDIATE 'ALTER TABLE '||R.owner||'."'||R.object_name||'" ENABLE ALL TRIGGERS';
+        END LOOP;
+    END;
+    /
 
-    {{< warning title = "Caveat associated with rows reported by get data-migration-report" >}}
+    --enable referential constraints
 
-Suppose you have a scenario where,
+    BEGIN
+        FOR c IN (SELECT table_name, constraint_name
+                FROM user_constraints
+                WHERE constraint_type IN ('R') AND OWNER = '<SCHEMA_NAME>' )
+        LOOP
+           EXECUTE IMMEDIATE 'ALTER TABLE ' || c.table_name || ' ENABLE CONSTRAINT ' || c.constraint_name;
+        END LOOP;
+    END;
+    /
+    ```
 
-- [import data to source-replica](#import-data-to-source-replica) command fails.
-- To resolve this issue, you delete some of the rows from the split files.
-- After retrying, the import data to target command completes successfully.
-
-In this scenario, [get data-migration-report](#get-data-migration-report) command reports incorrect imported row count; because it doesn't take into account the deleted rows.
-
-For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/yb-voyager/issues/360).
-
-    {{< /warning >}}
+1. Verify your migration. After the schema and data import is complete, the automated part of the database migration process is considered complete. You should manually run validation queries on both the source and target databases to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count of each table.
 
 ### End migration
 
-To complete the migration, you need to clean up the export directory (export-dir), and Voyager state ( Voyager-related metadata) stored in the target YugabyteDB database and source-replica database.
+To complete the migration, you need to clean up the export directory (export-dir), and Voyager state ( Voyager-related metadata) stored in the target YugabyteDB database and source database.
 
 Run the `yb-voyager end migration` command to perform the clean up, and to back up the schema, data, migration reports, and log files by providing the backup related flags (mandatory) as follows:
 
@@ -622,8 +606,9 @@ Refer to [end migration](../../reference/end-migration/) for more details on the
 
 ## Limitations
 
-In addition to the Live migration [limitations](../live-migrate/#limitations), the following additional limitations apply to the fall-forward feature:
+In addition to the Live migration [limitations](../live-migrate/#limitations), the following additional limitations apply to the fall-back feature:
 
-- Fall-forward is unsupported with a YugabyteDB cluster running on [YugabyteDB Managed](../../../yugabyte-cloud).
-- [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity) is unsupported for export or streaming events from YugabyteDB during `export data from target`.
-- yb-voyager provides limited support for datatypes during CDC of `export data from target` phase. For example, datatypes such as DECIMAL and Timestamp are not supported.
+1. Fall-back is unsupported with a YugabyteDB cluster running on YugabyteDB Managed.
+1. SSL Connectivity is unsupported for export or streaming events from YugabyteDB during `export data from target`.
+1. In the fall-back phase, you need to manually disable (and subsequently re-enable if required) constraints/indexes/triggers on the source database.
+1. yb-voyager provides limited support for datatypes during CDC of `export data from target` phase. For example, datatypes such as DECIMAL and Timestamp are not supported.
