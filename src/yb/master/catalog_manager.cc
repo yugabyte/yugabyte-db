@@ -5172,6 +5172,44 @@ Status CatalogManager::WaitForCreateTableToFinish(
       std::bind(&CatalogManager::IsCreateTableInProgress, this, table_id, _1, _2));
 }
 
+Status CatalogManager::IsAlterTableInProgress(const TableId& table_id,
+                                               CoarseTimePoint deadline,
+                                               bool* alter_in_progress) {
+  DCHECK_ONLY_NOTNULL(alter_in_progress);
+  DCHECK(!table_id.empty());
+
+  IsAlterTableDoneRequestPB req;
+  IsAlterTableDoneResponsePB resp;
+
+  req.mutable_table()->set_table_id(table_id);
+  RETURN_NOT_OK(IsAlterTableDone(&req, &resp));
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  *alter_in_progress = !resp.done();
+  return Status::OK();
+}
+
+Status CatalogManager::WaitForAlterTableToFinish(
+    const TableId& table_id, CoarseTimePoint deadline) {
+  return WaitFor(
+      [&table_id, &deadline, this]() -> Result<bool> {
+        bool alter_in_progress = false;
+
+        auto s = IsAlterTableInProgress(table_id, deadline, &alter_in_progress);
+        if (!s.ok()) {
+          return false;
+        }
+
+        return !alter_in_progress;
+      },
+      deadline - CoarseMonoClock::now(),
+      Format("Waiting on Alter Table to be completed for table_id: $0", table_id),
+      100ms /* initial_delay */, 1 /* delay_multiplier */);
+}
+
 Result<bool> CatalogManager::IsTransactionStatusTableCreated() {
   TableIdentifierPB table_id;
 
