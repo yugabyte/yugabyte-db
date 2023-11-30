@@ -292,9 +292,7 @@ static bool FatalError = false; /* T if recovering from backend crash */
 /* Crashed before fully acquiring a lock, or with unexpected error code.  */
 static bool YbCrashInUnmanageableState = false;
 
-#ifdef __linux__
 static char *YbBackendOomScoreAdj = NULL;
-#endif
 
 /*
  * We use a simple state machine to control startup, shutdown, and
@@ -2933,7 +2931,8 @@ reaper(SIGNAL_ARGS)
 
 			/*
 			 * We take a conservative approach and restart the postmaster if
-			 * a process dies while holding a lock.
+			 * a process dies while holding a lock. Otherwise, we can do some
+			 * cleanup.
 			 */
 			if (proc->ybLWLockAcquired || proc->ybSpinLocksAcquired > 0)
 			{
@@ -2944,51 +2943,49 @@ reaper(SIGNAL_ARGS)
 				break;
 			}
 
-			/*
-			 * If the process died but was not holding a lock, then we can do some cleanup
-			 */
-			if (WIFSIGNALED(exitstatus))
+			if (!WIFSIGNALED(exitstatus))
+				break;
+
+			if (WTERMSIG(exitstatus) != SIGABRT &&
+				WTERMSIG(exitstatus) != SIGKILL &&
+				WTERMSIG(exitstatus) != SIGSEGV)
 			{
-				if (WTERMSIG(exitstatus) == SIGABRT ||
-					WTERMSIG(exitstatus) == SIGKILL ||
-					WTERMSIG(exitstatus) == SIGSEGV)
-				{
-					elog(INFO, "cleaning up after process with pid %d exited with status %d",
-						 pid, exitstatus);
-					if (!CleanupKilledProcess(proc))
-					{
-						YbCrashInUnmanageableState = true;
-						ereport(WARNING,
-								(errmsg("terminating active server processes due to backend crash "
-										"that is unable to be cleaned up")));
-					}
-				}
-				else
-				{
-					YbCrashInUnmanageableState = true;
-					ereport(WARNING,
-							(errmsg("terminating active server processes due to backend crash from "
-									"unexpected error code %d",
-							 WTERMSIG(exitstatus))));
-				}
+				YbCrashInUnmanageableState = true;
+				ereport(WARNING,
+						(errmsg("terminating active server processes due to backend crash from "
+								"unexpected error code %d",
+							WTERMSIG(exitstatus))));
 				break;
 			}
-		}
 
-		/*
-		 * If there is no proc struct (and the crash is unexpected), restart.
-		 * We need to check for an unexpected exit because if a connection attempt is made while the
-		 * database system is starting up, that backend will fail. We do not want to restart the
-		 * postmaster in those cases because the postmaster may end up in a restart loop.
-		 * EXIT_STATUS_0 is normal termination, and EXIT_STATUS_1 is the process responding to a
-		 * termination request or terminating with a FATAL.
-		 */
-		if (!foundProcStruct && !EXIT_STATUS_0(exitstatus) && !EXIT_STATUS_1(exitstatus))
-		{
-			YbCrashInUnmanageableState = true;
-			ereport(WARNING,
-					(errmsg("terminating active server processes due to backend crash of a "
-							"partially initialized process")));
+			if (!proc->ybInitializationCompleted)
+			{
+				YbCrashInUnmanageableState = true;
+				ereport(WARNING,
+						(errmsg("terminating active server processes due to backend crash of a "
+								"process while it was initializing")));
+				break;
+			}
+
+			if (proc->ybTerminationStarted)
+			{
+				YbCrashInUnmanageableState = true;
+				ereport(WARNING,
+						(errmsg("terminating active server processes due to backend crash of a "
+								"process while it was terminating")));
+				break;
+			}
+
+			elog(INFO, "cleaning up after process with pid %d exited with status %d",
+				 pid, exitstatus);
+			if (!CleanupKilledProcess(proc))
+			{
+				YbCrashInUnmanageableState = true;
+				ereport(WARNING,
+						(errmsg("terminating active server processes due to backend crash that is "
+								"unable to be cleaned up")));
+				break;
+			}
 		}
 
 		/*
@@ -3279,7 +3276,22 @@ reaper(SIGNAL_ARGS)
 
 		/*
 		 * Else do standard backend child cleanup.
+		 *
+		 * If there is no proc struct (and the crash is unexpected), restart.
+		 * We need to check for an unexpected exit because if a connection attempt is made while the
+		 * database system is starting up, that backend will fail. We do not want to restart the
+		 * postmaster in those cases because the postmaster may end up in a restart loop.
+		 * EXIT_STATUS_0 is normal termination, and EXIT_STATUS_1 is the process responding to a
+		 * termination request or terminating with a FATAL.
 		 */
+		if (!foundProcStruct && !EXIT_STATUS_0(exitstatus) && !EXIT_STATUS_1(exitstatus))
+		{
+			YbCrashInUnmanageableState = true;
+			ereport(WARNING,
+					(errmsg("terminating active server processes due to backend crash of a "
+							"partially initialized process")));
+		}
+
 		CleanupBackend(pid, exitstatus);
 		if (!YbCrashInUnmanageableState && !FatalError)
 		{
@@ -4251,6 +4263,41 @@ TerminateChildren(int signal)
 }
 
 /*
+ * SetOomScoreAdjForPid - sets /proc/<pid>/oom_score_adj for the given PID
+ *
+ * oom_score_adj varies from -1000 to 1000. The lower the value, the lower the
+ * chance that it's going to be killed. A high value is more likely to be
+ * killed by the OOM killer.
+ */
+static void
+SetOomScoreAdjForPid(pid_t pid, char *oom_score_adj)
+{
+#ifdef __linux__
+	if (oom_score_adj == NULL)
+		return;
+
+	char file_name[64];
+	snprintf(file_name, sizeof(file_name), "/proc/%d/oom_score_adj", pid);
+	FILE * fPtr;
+	fPtr = fopen(file_name, "w");
+
+	if(fPtr == NULL)
+	{
+		int saved_errno = errno;
+		ereport(LOG,
+			(errcode_for_file_access(),
+				errmsg("error %d: %s, unable to open file %s", saved_errno,
+				strerror(saved_errno), file_name)));
+	}
+	else
+	{
+		fputs(oom_score_adj, fPtr);
+		fclose(fPtr);
+	}
+#endif
+}
+
+/*
  * BackendStartup -- start backend process
  *
  * returns: STATUS_ERROR if the fork failed, STATUS_OK otherwise.
@@ -4373,33 +4420,7 @@ BackendStartup(Port *port)
 		ShmemBackendArrayAdd(bn);
 #endif
 
-#ifdef __linux__
-	char file_name[64];
-	snprintf(file_name, sizeof(file_name), "/proc/%d/oom_score_adj", pid);
-	FILE * fPtr;
-	fPtr = fopen(file_name, "w");
-
-    /*
-	 * oom_score_adj varies from -1000 to 1000. The lower the value, the lower
-	 * the chance that it's going to be killed. Here, we are setting low priority
-	 * (YbBackendOomScoreAdj) for postgres connections so that during out of
-	 * memory, postgres connections are killed first. We do that be setting a
-	 * high oom_score_adj value for the postgres connection.
-	 */
-	if(fPtr == NULL)
-	{
-		int saved_errno = errno;
-		ereport(LOG,
-			(errcode_for_file_access(),
-				errmsg("error %d: %s, unable to open file %s", saved_errno,
-				strerror(saved_errno), file_name)));
-	}
-	else
-	{
-		fputs(YbBackendOomScoreAdj, fPtr);
-		fclose(fPtr);
-	}
-#endif
+	SetOomScoreAdjForPid(pid, YbBackendOomScoreAdj);
 
 	return STATUS_OK;
 }
@@ -5901,7 +5922,8 @@ BackgroundWorkerInitializeConnection(const char *dbname, const char *username, u
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("database connection requirement not indicated during registration")));
 
-	InitPostgres(dbname, InvalidOid, username, InvalidOid, NULL, (flags & BGWORKER_BYPASS_ALLOWCONN) != 0);
+	InitPostgres(dbname, InvalidOid, username, InvalidOid, NULL, NULL,
+				 (flags & BGWORKER_BYPASS_ALLOWCONN) != 0);
 
 	/* it had better not gotten out of "init" mode yet */
 	if (!IsInitProcessingMode())
@@ -5914,7 +5936,8 @@ BackgroundWorkerInitializeConnection(const char *dbname, const char *username, u
  * Connect background worker to a database using OIDs.
  */
 void
-BackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid, uint32 flags)
+YbBackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid,
+											uint64_t *session_id, uint32 flags)
 {
 	BackgroundWorker *worker = MyBgworkerEntry;
 
@@ -5924,13 +5947,21 @@ BackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid, uint32 flags)
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("database connection requirement not indicated during registration")));
 
-	InitPostgres(NULL, dboid, NULL, useroid, NULL, (flags & BGWORKER_BYPASS_ALLOWCONN) != 0);
+	InitPostgres(NULL, dboid, NULL, useroid, NULL, session_id,
+				 (flags & BGWORKER_BYPASS_ALLOWCONN) != 0);
 
 	/* it had better not gotten out of "init" mode yet */
 	if (!IsInitProcessingMode())
 		ereport(ERROR,
 				(errmsg("invalid processing mode in background worker")));
 	SetProcessingMode(NormalProcessing);
+}
+
+void
+BackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid,
+										  uint32 flags)
+{
+	YbBackgroundWorkerInitializeConnectionByOid(dboid, useroid, NULL, flags);
 }
 
 /*
@@ -6044,6 +6075,8 @@ do_start_bgworker(RegisteredBgWorker *rw)
 			MemoryContextSwitchTo(TopMemoryContext);
 			MemoryContextDelete(PostmasterContext);
 			PostmasterContext = NULL;
+
+			SetOomScoreAdjForPid(MyProcPid, rw->rw_worker.bgw_oom_score_adj);
 
 			StartBackgroundWorker();
 

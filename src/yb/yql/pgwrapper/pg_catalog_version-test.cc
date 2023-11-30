@@ -299,10 +299,7 @@ class PgCatalogVersionTest : public LibPqTestBase {
     constexpr auto* kTestGroup = "test_group";
     constexpr auto* kTestTablespace = "test_tsp";
     // Test setup.
-    // TODO (#19975): Enable read committed isolation
-    auto conn_yugabyte = ASSERT_RESULT(
-        SetDefaultTransactionIsolation(ConnectToDB(kYugabyteDatabase),
-        IsolationLevel::SNAPSHOT_ISOLATION));
+    auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
     ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte));
     if (disable_global_ddl) {
       RestartClusterWithDBCatalogVersionMode(
@@ -312,10 +309,7 @@ class PgCatalogVersionTest : public LibPqTestBase {
     }
     LOG(INFO) << "Connects to database " << kYugabyteDatabase << " on node at index 0.";
     pg_ts = cluster_->tablet_server(0);
-    // TODO (#19975): Enable read committed isolation
-    conn_yugabyte = ASSERT_RESULT(EnableCacheEventLog(
-        SetDefaultTransactionIsolation(ConnectToDB(kYugabyteDatabase),
-        IsolationLevel::SNAPSHOT_ISOLATION)));
+    conn_yugabyte = ASSERT_RESULT(EnableCacheEventLog(ConnectToDB(kYugabyteDatabase)));
     LOG(INFO) << "Create a new database";
     ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE DATABASE $0", kTestDatabase));
     LOG(INFO) << "Create two new test users";
@@ -403,9 +397,7 @@ class PgCatalogVersionTest : public LibPqTestBase {
 
     LOG(INFO) << "Connects to database template1 on node at index 0.";
     pg_ts = cluster_->tablet_server(0);
-    // TODO (#19975): Enable read committed isolation
-    auto conn_template1 = ASSERT_RESULT(SetDefaultTransactionIsolation(
-        ConnectToDB("template1"), IsolationLevel::SNAPSHOT_ISOLATION));
+    auto conn_template1 = ASSERT_RESULT(ConnectToDB("template1"));
 
     // The following ALTER is a global DDL that writes to shared relations
     // pg_authid and pg_auth_members so it should cause catalog cache refresh
@@ -428,6 +420,12 @@ class PgCatalogVersionTest : public LibPqTestBase {
       ASSERT_TRUE(status.IsNetworkError()) << status;
       ASSERT_STR_CONTAINS(status.ToString(), "permission denied for table t5");
     }
+  }
+  static void IncrementAllDBCatalogVersions(PGConn* conn, bool breaking) {
+    ASSERT_OK(conn->Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
+    ASSERT_OK(conn->FetchFormat(
+        "SELECT yb_increment_all_db_catalog_versions($0)", breaking ? "true" : "false"));
+    ASSERT_OK(conn->Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=0"));
   }
 };
 
@@ -677,12 +675,8 @@ TEST_F(PgCatalogVersionTest, IncrementAllDBCatalogVersions) {
   }
   ASSERT_OK(CheckMatch(expected_versions, ASSERT_RESULT(GetShmCatalogVersionMap())));
 
-  // Get ready to execute yb_increment_all_db_catalog_versions.
-  ASSERT_OK(conn_yugabyte.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
-
   constexpr CatalogVersion kSecondCatalogVersion{2, 1};
-  ASSERT_RESULT(conn_yugabyte.Fetch("SELECT yb_increment_all_db_catalog_versions(false)"));
-  ASSERT_OK(conn_yugabyte.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=0"));
+  IncrementAllDBCatalogVersions(&conn_yugabyte, false);
   WaitForCatalogVersionToPropagate();
   expected_versions = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte));
   for (const auto& entry : expected_versions) {
@@ -691,24 +685,36 @@ TEST_F(PgCatalogVersionTest, IncrementAllDBCatalogVersions) {
   ASSERT_OK(CheckMatch(expected_versions, ASSERT_RESULT(GetShmCatalogVersionMap())));
 
   constexpr CatalogVersion kThirdCatalogVersion{3, 3};
-  ASSERT_OK(conn_yugabyte.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
-  ASSERT_RESULT(conn_yugabyte.Fetch("SELECT yb_increment_all_db_catalog_versions(true)"));
-  ASSERT_OK(conn_yugabyte.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=0"));
+  IncrementAllDBCatalogVersions(&conn_yugabyte, true);
   WaitForCatalogVersionToPropagate();
   expected_versions = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte));
   for (const auto& entry : expected_versions) {
     ASSERT_OK(CheckMatch(entry.second, kThirdCatalogVersion));
   }
   ASSERT_OK(CheckMatch(expected_versions, ASSERT_RESULT(GetShmCatalogVersionMap())));
+
+  // Ensure that PUBLICATION will not cause yb_increment_all_db_catalog_versions
+  // to fail.
+  ASSERT_OK(conn_yugabyte.Execute("CREATE PUBLICATION testpub_foralltables FOR ALL TABLES"));
+  IncrementAllDBCatalogVersions(&conn_yugabyte, true);
+
+  // Ensure that in global catalog version mode, by turning on
+  // yb_non_ddl_txn_for_sys_tables_allowed, we can perform both update and
+  // delete on pg_yb_catalog_version table.
+  RestartClusterWithoutDBCatalogVersionMode();
+  conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+
+  // This involves deleting all rows except for template1 from pg_yb_catalog_version.
+  ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte, false));
+  // Update the row for template1 to increment catalog version.
+  IncrementAllDBCatalogVersions(&conn_yugabyte, false);
 }
 
 // Test yb_fix_catalog_version_table, that will sync up pg_yb_catalog_version
 // with pg_database according to 'per_database_mode' argument.
 TEST_F(PgCatalogVersionTest, FixCatalogVersionTable) {
   RestartClusterWithDBCatalogVersionMode();
-  // TODO (#19975): Enable read committed isolation
-  auto conn_template1 = ASSERT_RESULT(
-      SetDefaultTransactionIsolation(ConnectToDB("template1"), IsolationLevel::SNAPSHOT_ISOLATION));
+  auto conn_template1 = ASSERT_RESULT(ConnectToDB("template1"));
   // Prepare the table pg_yb_catalog_version for per-db catalog version mode.
   ASSERT_OK(PrepareDBCatalogVersion(&conn_template1, true /* per_database_mode */));
   // Verify pg_database and pg_yb_catalog_version are in sync.
@@ -739,9 +745,7 @@ TEST_F(PgCatalogVersionTest, FixCatalogVersionTable) {
   WaitForCatalogVersionToPropagate();
 
   // Connect to database "yugabyte".
-  // TODO (#19975): Enable read committed isolation
-  auto conn_yugabyte = ASSERT_RESULT(
-      SetDefaultTransactionIsolation(ConnectToDB("yugabyte"), IsolationLevel::SNAPSHOT_ISOLATION));
+  auto conn_yugabyte = ASSERT_RESULT(ConnectToDB("yugabyte"));
   // Prepare the table pg_yb_catalog_version for global catalog version mode.
   // Note that this is not a supported scenario where the table pg_yb_catalog_version
   // shrinks while the gflag --ysql_enable_db_catalog_version_mode is still on.
@@ -790,16 +794,12 @@ TEST_F(PgCatalogVersionTest, FixCatalogVersionTable) {
   // true, the fact that the table pg_yb_catalog_version has only one row prevents
   // a new connection to enter per-database catalog version mode. Verify that we
   // can make a new connection to database "yugabyte".
-  // TODO (#19975): Enable read committed isolation
-  ASSERT_RESULT(
-      SetDefaultTransactionIsolation(ConnectToDB("yugabyte"), IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_RESULT(ConnectToDB("yugabyte"));
 
   // We can also make a new connection to database "template1" but the fact that
   // now it is the only database that has a row in pg_yb_catalog_version table is
   // not relevant.
-  // TODO (#19975): Enable read committed isolation
-  conn_template1 = ASSERT_RESULT(
-      SetDefaultTransactionIsolation(ConnectToDB("template1"), IsolationLevel::SNAPSHOT_ISOLATION));
+  conn_template1 = ASSERT_RESULT(ConnectToDB("template1"));
 
   // Sync up pg_yb_catalog_version with pg_database.
   ASSERT_OK(PrepareDBCatalogVersion(&conn_template1, true /* per_database_mode */));
@@ -807,11 +807,8 @@ TEST_F(PgCatalogVersionTest, FixCatalogVersionTable) {
   ASSERT_TRUE(ASSERT_RESULT(
       VerifyCatalogVersionTableDbOids(&conn_template1, false /* single_row */)));
   // Verify that we can connect to "yugabyte" and "template1".
-  // TODO (#19975): Enable read committed isolation
-  ASSERT_RESULT(
-      SetDefaultTransactionIsolation(ConnectToDB("yugabyte"), IsolationLevel::SNAPSHOT_ISOLATION));
-  ASSERT_RESULT(
-      SetDefaultTransactionIsolation(ConnectToDB("template1"), IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_RESULT(ConnectToDB("yugabyte"));
+  ASSERT_RESULT(ConnectToDB("template1"));
 }
 
 // This test exercises the wrap around logic in tserver shared memory free

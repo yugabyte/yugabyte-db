@@ -117,7 +117,7 @@ static const char *explain_get_index_name(Oid indexId);
 static void show_buffer_usage(ExplainState *es, const BufferUsage *usage);
 static void show_yb_rpc_stats(PlanState *planstate, bool indexScan, ExplainState *es);
 static void ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
-						double estimated_num_nexts, double estimated_num_seeks,
+						double yb_estimated_num_nexts, double yb_estimated_num_seeks,
 						ExplainState *es);
 static void ExplainScanTarget(Scan *plan, ExplainState *es);
 static void ExplainModifyTarget(ModifyTable *plan, ExplainState *es);
@@ -2003,7 +2003,15 @@ ExplainNode(PlanState *planstate, List *ancestors,
 
 				if (DO_AGGSPLIT_SKIPFINAL(agg->aggsplit))
 				{
-					partialmode = "Partial";
+					if (((AggState*) planstate)->yb_pushdown_supported)
+						/*
+						 * If partial aggregate is pushed down, it does not
+						 * really do anything, since entire operation is
+						 * delegated to DocDB.
+						 */
+						partialmode = "Noop";
+					else
+						partialmode = "Partial";
 					pname = psprintf("%s %s", partialmode, pname);
 				}
 				else if (DO_AGGSPLIT_COMBINE(agg->aggsplit) ||
@@ -2124,8 +2132,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				YbExplainScanLocks(indexscan->yb_lock_mechanism, es);
 				ExplainIndexScanDetails(indexscan->indexid,
 										indexscan->indexorderdir,
-										indexscan->estimated_num_nexts,
-										indexscan->estimated_num_seeks,
+										indexscan->yb_estimated_num_nexts,
+										indexscan->yb_estimated_num_seeks,
 										es);
 				ExplainScanTarget((Scan *) indexscan, es);
 			}
@@ -2136,8 +2144,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 
 				ExplainIndexScanDetails(indexonlyscan->indexid,
 										indexonlyscan->indexorderdir,
-										indexonlyscan->estimated_num_nexts,
-										indexonlyscan->estimated_num_seeks,
+										indexonlyscan->yb_estimated_num_nexts,
+										indexonlyscan->yb_estimated_num_seeks,
 										es);
 				ExplainScanTarget((Scan *) indexonlyscan, es);
 			}
@@ -2381,14 +2389,14 @@ ExplainNode(PlanState *planstate, List *ancestors,
 										   planstate, es);
 			if (is_yb_rpc_stats_required)
 				show_yb_rpc_stats(planstate, true/*indexScan*/, es);
-			if (es->verbose && yb_enable_base_scans_cost_model)
+			if (es->debug && yb_enable_base_scans_cost_model)
 			{
 				ExplainPropertyFloat(
-					"Estimated Seeks", NULL, 
-					((IndexScan *) plan)->estimated_num_seeks, 0, es);
+					"Estimated Seeks", NULL,
+					((IndexScan *) plan)->yb_estimated_num_seeks, 0, es);
 				ExplainPropertyFloat(
-					"Estimated Nexts", NULL, 
-					((IndexScan *) plan)->estimated_num_nexts, 0, es);
+					"Estimated Nexts", NULL,
+					((IndexScan *) plan)->yb_estimated_num_nexts, 0, es);
 			}
 			break;
 		case T_IndexOnlyScan:
@@ -2420,14 +2428,14 @@ ExplainNode(PlanState *planstate, List *ancestors,
 									 planstate->instrument->ntuples2, 0, es);
 			if (is_yb_rpc_stats_required)
 				show_yb_rpc_stats(planstate, true/*indexScan*/, es);
-			if (es->verbose && yb_enable_base_scans_cost_model)
+			if (es->debug && yb_enable_base_scans_cost_model)
 			{
 				ExplainPropertyFloat(
-					"Estimated Seeks", NULL, 
-					((IndexOnlyScan *) plan)->estimated_num_seeks, 0, es);
+					"Estimated Seeks", NULL,
+					((IndexOnlyScan *) plan)->yb_estimated_num_seeks, 0, es);
 				ExplainPropertyFloat(
-					"Estimated Nexts", NULL, 
-					((IndexOnlyScan *) plan)->estimated_num_nexts, 0, es);
+					"Estimated Nexts", NULL,
+					((IndexOnlyScan *) plan)->yb_estimated_num_nexts, 0, es);
 			}
 			break;
 		case T_BitmapIndexScan:
@@ -2477,6 +2485,15 @@ ExplainNode(PlanState *planstate, List *ancestors,
 										   planstate, es);
 			if (is_yb_rpc_stats_required)
 				show_yb_rpc_stats(planstate, false /*indexScan*/, es);
+			if (es->debug && yb_enable_base_scans_cost_model)
+			{
+				ExplainPropertyFloat(
+					"Estimated Seeks", NULL,
+					((YbSeqScan *) plan)->yb_estimated_num_seeks, 0, es);
+				ExplainPropertyFloat(
+					"Estimated Nexts", NULL,
+					((YbSeqScan *) plan)->yb_estimated_num_nexts, 0, es);
+			}
 			break;
 		case T_Gather:
 			{
@@ -3890,7 +3907,7 @@ show_yb_rpc_stats(PlanState *planstate, bool indexScan, ExplainState *es)
  */
 static void
 ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
-						double estimated_num_nexts, double estimated_num_seeks,
+						double yb_estimated_num_nexts, double yb_estimated_num_seeks,
 						ExplainState *es)
 {
 	const char *indexname = explain_get_index_name(indexid);
@@ -3922,10 +3939,10 @@ ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
 		}
 		ExplainPropertyText("Scan Direction", scandir, es);
 		ExplainPropertyText("Index Name", indexname, es);
-		if (yb_enable_base_scans_cost_model)
+		if (es->debug && yb_enable_base_scans_cost_model)
 		{
-			ExplainPropertyFloat("Estimated Seeks", NULL, estimated_num_seeks, 0, es);
-			ExplainPropertyFloat("Estimated Nexts", NULL, estimated_num_nexts, 0, es);
+			ExplainPropertyFloat("Estimated Seeks", NULL, yb_estimated_num_seeks, 0, es);
+			ExplainPropertyFloat("Estimated Nexts", NULL, yb_estimated_num_nexts, 0, es);
 		}
 	}
 }

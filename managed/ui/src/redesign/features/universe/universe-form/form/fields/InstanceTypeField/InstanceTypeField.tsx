@@ -132,7 +132,7 @@ export const InstanceTypeField = ({
       refetch();
     };
     getProviderRuntimeConfigs();
-  }, [provider]);
+  }, [provider?.uuid]);
 
   const instanceTypes = sortAndGroup(data, provider?.code);
 

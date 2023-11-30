@@ -1249,6 +1249,64 @@ Status CatalogManager::GetTableDiskSize(const GetTableDiskSizeRequestPB* req,
   return Status::OK();
 }
 
+Status CatalogManager::MaybeRestoreInitialSysCatalogSnapshotAndReloadSysCatalog(
+    SysCatalogLoadingState* state) {
+  if (!FLAGS_enable_ysql || FLAGS_initial_sys_catalog_snapshot_path.empty() ||
+      FLAGS_create_initial_sys_catalog_snapshot) {
+    return Status::OK();
+  }
+  if (!master_->fs_manager()->initdb_done_set_after_sys_catalog_restore()) {
+    // Since this field is not set, this means that is an existing cluster created without
+    // D19510. So skip restoring sys catalog.
+    LOG_WITH_PREFIX(INFO)
+        << "This is an existing cluster, not initializing from a sys catalog snapshot.";
+    return Status::OK();
+  }
+  // This is a cluster created with D19510, so check the value of initdb_done.
+  Result<bool> dir_exists = Env::Default()->IsDirectory(FLAGS_initial_sys_catalog_snapshot_path);
+  if (!dir_exists.ok() || !dir_exists.get()) {
+    LOG_WITH_PREFIX(WARNING) << "Initial sys catalog snapshot directory does not exist: "
+                             << FLAGS_initial_sys_catalog_snapshot_path
+                             << (dir_exists.ok() ? ", path is not a directory"
+                                                 : ", status: " + dir_exists.status().ToString());
+    return Status::OK();
+  }
+
+  if (ysql_catalog_config_->LockForRead()->pb.ysql_catalog_config().initdb_done()) {
+    LOG_WITH_PREFIX(INFO) << "initdb has been run before, no need to restore sys catalog from "
+                          << "the initial snapshot";
+    return Status::OK();
+  }
+
+  LOG_WITH_PREFIX(INFO) << "Restoring snapshot in sys catalog";
+  if (GetAtomicFlag(&FLAGS_master_join_existing_universe)) {
+    return STATUS(
+        IllegalState,
+        "Master is joining an existing universe but wants to restore initial sys catalog snapshot. "
+        "This should have been done during initial universe creation.");
+  }
+  RETURN_NOT_OK_PREPEND(
+      RestoreInitialSysCatalogSnapshot(
+          FLAGS_initial_sys_catalog_snapshot_path, sys_catalog_->tablet_peer().get(),
+          state->epoch.leader_term),
+      "Failed restoring snapshot in sys catalog");
+  LOG_WITH_PREFIX(INFO) << "Re-initializing cluster config";
+  cluster_config_.reset();
+  RETURN_NOT_OK(PrepareDefaultClusterConfig(state->epoch.leader_term));
+
+  LOG_WITH_PREFIX(INFO) << "Re-initializing xcluster config";
+  RETURN_NOT_OK(xcluster_manager_->PrepareDefaultXClusterConfig(
+      state->epoch.leader_term, /* recreate = */ true));
+
+  LOG_WITH_PREFIX(INFO) << "Restoring snapshot completed, considering initdb finished";
+  RETURN_NOT_OK(InitDbFinished(Status::OK(), state->epoch.leader_term));
+  // TODO(asrivastava): Can we get rid of this Reset() by calling RunLoaders just once
+  // instead of calling it here and in VisitSysCatalog?
+  state->Reset();
+  RETURN_NOT_OK(RunLoaders(state));
+  return Status::OK();
+}
+
 Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
   // Block new catalog operations, and wait for existing operations to finish.
   int64_t term = state->epoch.leader_term;
@@ -1281,59 +1339,7 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
     // Prepare various default system configurations.
     RETURN_NOT_OK(PrepareDefaultSysConfig(term));
 
-    if (FLAGS_enable_ysql && !FLAGS_initial_sys_catalog_snapshot_path.empty() &&
-        !FLAGS_create_initial_sys_catalog_snapshot) {
-      if (!master_->fs_manager()->initdb_done_set_after_sys_catalog_restore()) {
-        // Since this field is not set, this means that is an existing cluster created without
-        // D19510. So skip restoring sys catalog.
-        LOG_WITH_PREFIX(INFO)
-            << "This is an existing cluster, not initializing from a sys catalog snapshot.";
-      } else {
-        // This is a cluster created with D19510, so check the value of initdb_done.
-        Result<bool> dir_exists =
-            Env::Default()->DoesDirectoryExist(FLAGS_initial_sys_catalog_snapshot_path);
-        if (dir_exists.ok() && *dir_exists) {
-          bool initdb_was_already_done = false;
-          {
-            auto l = ysql_catalog_config_->LockForRead();
-            initdb_was_already_done = l->pb.ysql_catalog_config().initdb_done();
-          }
-          if (initdb_was_already_done) {
-            LOG_WITH_PREFIX(INFO)
-                << "initdb has been run before, no need to restore sys catalog from "
-                << "the initial snapshot";
-          } else {
-            LOG_WITH_PREFIX(INFO) << "Restoring snapshot in sys catalog";
-            Status restore_status = RestoreInitialSysCatalogSnapshot(
-                FLAGS_initial_sys_catalog_snapshot_path, sys_catalog_->tablet_peer().get(), term);
-            if (!restore_status.ok()) {
-              LOG_WITH_PREFIX(ERROR) << "Failed restoring snapshot in sys catalog";
-              return restore_status;
-            }
-
-            LOG_WITH_PREFIX(INFO) << "Re-initializing cluster config";
-            cluster_config_.reset();
-            RETURN_NOT_OK(PrepareDefaultClusterConfig(term));
-
-            LOG_WITH_PREFIX(INFO) << "Re-initializing xcluster config";
-            RETURN_NOT_OK(
-                xcluster_manager_->PrepareDefaultXClusterConfig(term, /* recreate = */ true));
-
-            LOG_WITH_PREFIX(INFO) << "Restoring snapshot completed, considering initdb finished";
-            RETURN_NOT_OK(InitDbFinished(Status::OK(), term));
-            // TODO(asrivastava): Can we get rid of this Reset() by calling RunLoaders just once
-            // instead of calling it here and above?
-            state->Reset();
-            RETURN_NOT_OK(RunLoaders(state));
-          }
-        } else {
-          LOG_WITH_PREFIX(WARNING)
-              << "Initial sys catalog snapshot directory does not exist: "
-              << FLAGS_initial_sys_catalog_snapshot_path
-              << (dir_exists.ok() ? "" : ", status: " + dir_exists.status().ToString());
-        }
-      }
-    }
+    RETURN_NOT_OK(MaybeRestoreInitialSysCatalogSnapshotAndReloadSysCatalog(state));
 
     // Create the system namespaces (created only if they don't already exist).
     RETURN_NOT_OK(PrepareDefaultNamespaces(term));
@@ -1696,6 +1702,13 @@ Result<bool> CatalogManager::StartRunningInitDbIfNeeded(int64_t term) {
   if (!FLAGS_master_auto_run_initdb) {
     LOG(INFO) << "--master_auto_run_initdb is set to false, not running initdb";
     return false;
+  }
+
+  if (GetAtomicFlag(&FLAGS_master_join_existing_universe)) {
+    return STATUS(
+        IllegalState,
+        "Master is joining an existing universe but wants to run initdb. "
+        "This should have been done during initial universe creation.");
   }
 
   LOG(INFO) << "initdb has never been run on this cluster, running it";
@@ -2076,7 +2089,6 @@ Status CatalogManager::InitSysCatalogAsync() {
 
   // Optimistically try to load data from disk.
   Status s = sys_catalog_->Load(master_->fs_manager());
-
   if (s.ok() || !s.IsNotFound()) { return s; }
   LOG(INFO) << "Did not find previous SysCatalogTable data on disk. " << s;
 
@@ -9998,10 +10010,10 @@ Status CatalogManager::InitDbFinished(Status initdb_status, int64_t term) {
   auto l = CHECK_NOTNULL(ysql_catalog_config_.get())->LockForWrite();
   auto* mutable_ysql_catalog_config = l.mutable_data()->pb.mutable_ysql_catalog_config();
   mutable_ysql_catalog_config->set_initdb_done(true);
-  if (!initdb_status.ok()) {
-    mutable_ysql_catalog_config->set_initdb_error(initdb_status.ToString());
-  } else {
+  if (initdb_status.ok()) {
     mutable_ysql_catalog_config->clear_initdb_error();
+  } else {
+    mutable_ysql_catalog_config->set_initdb_error(initdb_status.ToString());
   }
 
   RETURN_NOT_OK(sys_catalog_->Upsert(term, ysql_catalog_config_));
@@ -10576,15 +10588,29 @@ Status CatalogManager::SendAlterTableRequest(
     txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req->transaction().transaction_id()));
   }
 
-  return SendAlterTableRequestInternal(table, txn_id, epoch);
+  return SendAlterTableRequestInternal(table, txn_id, epoch, req);
 }
 
 Status CatalogManager::SendAlterTableRequestInternal(
-    const scoped_refptr<TableInfo>& table, const TransactionId& txn_id, const LeaderEpoch& epoch) {
+    const scoped_refptr<TableInfo>& table, const TransactionId& txn_id, const LeaderEpoch& epoch,
+    const AlterTableRequestPB* req) {
   auto tablets = table->GetTablets();
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {
-    auto call =
-        std::make_shared<AsyncAlterTable>(master_, AsyncTaskPool(), tablet, table, txn_id, epoch);
+     std::shared_ptr<AsyncAlterTable> call;
+
+    // CDC SDK Create Stream context
+    if (req && req->has_cdc_sdk_stream_id()) {
+      LOG(INFO) << " CDC stream id context : " << req->cdc_sdk_stream_id();
+      xrepl::StreamId stream_id =
+        VERIFY_RESULT(xrepl::StreamId::FromString(req->cdc_sdk_stream_id()));
+      call = std::make_shared<AsyncAlterTable>(master_, AsyncTaskPool(), tablet, table,
+                                               txn_id, epoch,
+                                               stream_id,
+                                               req->cdc_sdk_require_history_cutoff());
+    } else {
+      call = std::make_shared<AsyncAlterTable>(master_, AsyncTaskPool(), tablet, table,
+                                               txn_id, epoch);
+    }
     table->AddTask(call);
     if (PREDICT_FALSE(FLAGS_TEST_slowdown_alter_table_rpcs_ms > 0)) {
       LOG(INFO) << "Sleeping for " << tablet->id() << " " << FLAGS_TEST_slowdown_alter_table_rpcs_ms

@@ -228,11 +228,6 @@ public class ExplainAnalyzeUtils {
     testExplain(stmt, query, checker, true /* timing */, true /* debug */, false /* verbose */);
   }
 
-  public static void testExplainDebugVerbose(
-      Statement stmt, String query, Checker checker) throws Exception {
-    testExplain(stmt, query, checker, true, true, true);
-  }
-
   public static void testExplainNoTiming(
       Statement stmt, String query, Checker checker) throws Exception {
     testExplain(stmt, query, checker, false /* timing */, false /* debug */, false /* verbose */);

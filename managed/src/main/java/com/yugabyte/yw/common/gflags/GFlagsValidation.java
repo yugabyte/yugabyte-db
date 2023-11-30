@@ -7,11 +7,13 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.xml.JacksonXmlModule;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlElementWrapper;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -40,6 +42,7 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.inject.Singleton;
+import lombok.EqualsAndHashCode;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
@@ -61,8 +64,22 @@ public class GFlagsValidation {
 
   public static final Logger LOG = LoggerFactory.getLogger(GFlagsValidation.class);
 
+  public static final String YSQL_MIGRATION_FILES_LIST_FILE_NAME = "ysql_migration_files_list.json";
+
+  public static final String MASTER_GFLAG_FILE_NAME = "master_flags.xml";
+
+  public static final String TSERVER_GFLAG_FILE_NAME = "tserver_flags.xml";
+
+  // Skip these test auto flags while computing auto flags in YBA.
+  public static final Set<String> TEST_AUTO_FLAGS =
+      ImmutableSet.of("TEST_auto_flags_new_install", "TEST_auto_flags_initialized");
+
   public static final List<String> GFLAG_FILENAME_LIST =
-      ImmutableList.of("master_flags.xml", "tserver_flags.xml", "auto_flags.json");
+      ImmutableList.of(
+          MASTER_GFLAG_FILE_NAME,
+          TSERVER_GFLAG_FILE_NAME,
+          Util.AUTO_FLAG_FILENAME,
+          YSQL_MIGRATION_FILES_LIST_FILE_NAME);
 
   public static final String DB_BUILD_WITH_FLAG_FILES = "2.17.0.0-b1";
 
@@ -88,7 +105,10 @@ public class GFlagsValidation {
         // Fetch gFlags files from DB package if it does not exist
         ReleaseManager.ReleaseMetadata rm = releaseManager.getReleaseByVersion(version);
         try (InputStream inputStream = releaseManager.getTarGZipDBPackageInputStream(version, rm)) {
-          String gFlagFileName = serverType.toLowerCase() + "_flags.xml";
+          String gFlagFileName =
+              serverType.equals(ServerType.MASTER.name())
+                  ? MASTER_GFLAG_FILE_NAME
+                  : TSERVER_GFLAG_FILE_NAME;
           fetchGFlagFilesFromTarGZipInputStream(
               inputStream, version, Collections.singletonList(gFlagFileName), releasesPath);
           flagStream = FileUtils.getInputStreamOrFail(file);
@@ -147,10 +167,18 @@ public class GFlagsValidation {
       List<String> requiredGFlagFileList,
       String releasesPath)
       throws IOException {
+    LOG.info("Adding {} files for DB version {}", requiredGFlagFileList, dbVersion);
+    YsqlMigrationFilesList migrationFilesList = new YsqlMigrationFilesList();
     try (TarArchiveInputStream tarInput =
         new TarArchiveInputStream(new GzipCompressorInputStream(inputStream))) {
       TarArchiveEntry currentEntry;
       while ((currentEntry = tarInput.getNextTarEntry()) != null) {
+        if (isYSQLMigrationFile(currentEntry.getName())) {
+          String migrationFileName = getYsqlMigrationFiles(currentEntry.getName());
+          migrationFilesList.ysqlMigrationsFilesList.add(migrationFileName);
+          continue;
+        }
+
         // Ignore all non-flag xml and auto flags files.
         if (!currentEntry.isFile() || !isFlagFile(currentEntry.getName())) {
           continue;
@@ -187,8 +215,22 @@ public class GFlagsValidation {
           }
         }
       }
+      if (requiredGFlagFileList.contains(YSQL_MIGRATION_FILES_LIST_FILE_NAME)) {
+        File ysqlMigrationFileListFile =
+            new File(
+                String.format(
+                    "%s/%s/%s", releasesPath, dbVersion, YSQL_MIGRATION_FILES_LIST_FILE_NAME));
+        if (!Files.exists(Paths.get(ysqlMigrationFileListFile.getAbsolutePath()))) {
+          ysqlMigrationFileListFile.getParentFile().mkdirs();
+          ysqlMigrationFileListFile.createNewFile();
+          ObjectMapper mapper = new ObjectMapper();
+          FileUtils.writeJsonFile(
+              ysqlMigrationFileListFile.getAbsolutePath(),
+              (JsonNode) mapper.valueToTree(migrationFilesList));
+        }
+      }
     } catch (IOException e) {
-      LOG.error("Caught an error while adding gFlags metadata for version: {}", dbVersion, e);
+      LOG.error("Caught an error while adding DB metadata for version: {}", dbVersion, e);
       throw e;
     }
   }
@@ -206,11 +248,6 @@ public class GFlagsValidation {
       return extractAutoFlags(version, "yb-tserver");
     }
     return null;
-  }
-
-  public void addDBMetadataFiles(String version) {
-    ReleaseManager.ReleaseMetadata rm = releaseManager.getReleaseByVersion(version);
-    addDBMetadataFiles(version, rm);
   }
 
   public void addDBMetadataFiles(String version, ReleaseManager.ReleaseMetadata rm) {
@@ -244,6 +281,10 @@ public class GFlagsValidation {
         && !CommonUtils.isAutoFlagSupported(version)) {
       missingFiles.remove(Util.AUTO_FLAG_FILENAME);
     }
+    if (missingFiles.contains(YSQL_MIGRATION_FILES_LIST_FILE_NAME)
+        && !CommonUtils.isReleaseEqualOrAfter(Util.YBDB_ROLLBACK_DB_VERSION, version)) {
+      missingFiles.remove(YSQL_MIGRATION_FILES_LIST_FILE_NAME);
+    }
     return missingFiles;
   }
 
@@ -273,10 +314,18 @@ public class GFlagsValidation {
     ObjectMapper objectMapper = new ObjectMapper();
     try (InputStream inputStream = FileUtils.getInputStreamOrFail(autoFlagFile)) {
       AutoFlags data = objectMapper.readValue(inputStream, AutoFlags.class);
-      return data.autoFlagsPerServers.stream()
-          .filter(flags -> flags.serverType.equals(serverType))
-          .findFirst()
-          .get();
+      AutoFlagsPerServer autoFlags =
+          data.autoFlagsPerServers.stream()
+              .filter(flags -> flags.serverType.equals(serverType))
+              .findFirst()
+              .get();
+      if (autoFlags != null) {
+        autoFlags.autoFlagDetails =
+            autoFlags.autoFlagDetails.stream()
+                .filter(flag -> !TEST_AUTO_FLAGS.contains(flag.name))
+                .collect(Collectors.toList());
+      }
+      return autoFlags;
     }
   }
 
@@ -302,20 +351,6 @@ public class GFlagsValidation {
     return filteredList;
   }
 
-  /**
-   * Return list of auto flags from gflags metadata files. The list might not contains hidden auto
-   * flags.
-   *
-   * @param version
-   * @param serverType
-   * @return
-   * @throws IOException
-   */
-  public List<GFlagDetails> listAllAutoFlags(String version, String serverType) throws IOException {
-    List<GFlagDetails> allGFlags = extractGFlags(version, serverType, false /* mostUsedGFlags */);
-    return allGFlags.stream().filter(flag -> isAutoFlag(flag)).collect(Collectors.toList());
-  }
-
   private Set<String> getFlagsTagSet(GFlagDetails flagDetails) {
     if (StringUtils.isEmpty(flagDetails.tags)) {
       return new HashSet<>();
@@ -329,6 +364,43 @@ public class GFlagsValidation {
 
   private boolean isFlagFile(String fileName) {
     return fileName.endsWith("flags.xml") || fileName.endsWith(Util.AUTO_FLAG_FILENAME);
+  }
+
+  private boolean isYSQLMigrationFile(String fileName) {
+    return fileName.contains("ysql_migration") && fileName.endsWith(".sql");
+  }
+
+  private String getYsqlMigrationFiles(String fileFullPath) {
+    List<String> migrationFileNameList = Arrays.asList(fileFullPath.split("/"));
+    String migrationFileName = migrationFileNameList.get(migrationFileNameList.size() - 1);
+    return migrationFileName.substring(migrationFileName.indexOf("__") + 2);
+  }
+
+  public Set<String> getYsqlMigrationFilesList(String version) throws IOException {
+    String releasesPath = confGetter.getStaticConf().getString(Util.YB_RELEASES_PATH);
+    String filePath =
+        String.format("%s/%s/%s", releasesPath, version, YSQL_MIGRATION_FILES_LIST_FILE_NAME);
+    File file = new File(filePath);
+    if (!Files.exists(Paths.get(file.getAbsolutePath()))) {
+      ReleaseManager.ReleaseMetadata rm = releaseManager.getReleaseByVersion(version);
+      try (InputStream inputStream = releaseManager.getTarGZipDBPackageInputStream(version, rm)) {
+        fetchGFlagFilesFromTarGZipInputStream(
+            inputStream,
+            version,
+            Collections.singletonList(YSQL_MIGRATION_FILES_LIST_FILE_NAME),
+            releasesPath);
+      } catch (Exception e) {
+        LOG.error("Error in extracting YSQL migration from DB package", e);
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR, "Error in extracting YSQL migration form DB package");
+      }
+    }
+    ObjectMapper objectMapper = new ObjectMapper();
+    try (InputStream inputStream = FileUtils.getInputStreamOrFail(file)) {
+      YsqlMigrationFilesList data =
+          objectMapper.readValue(inputStream, YsqlMigrationFilesList.class);
+      return data.ysqlMigrationsFilesList;
+    }
   }
 
   /** Structure to capture GFlags metadata from xml file. */
@@ -367,6 +439,7 @@ public class GFlagsValidation {
     public List<AutoFlagDetails> autoFlagDetails;
   }
 
+  @EqualsAndHashCode(callSuper = false)
   public static class AutoFlagDetails {
     @JsonAlias(value = "name")
     public String name;
@@ -376,5 +449,10 @@ public class GFlagsValidation {
 
     @JsonAlias(value = "is_runtime")
     public boolean runtime;
+  }
+
+  public static class YsqlMigrationFilesList {
+    @JsonAlias(value = "ysqlMigrationsFilesList")
+    public Set<String> ysqlMigrationsFilesList = new HashSet<>();
   }
 }

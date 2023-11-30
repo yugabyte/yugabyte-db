@@ -6,9 +6,11 @@ import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertUnauthorized;
+import static com.yugabyte.yw.common.AssertHelper.assertUnauthorizedNoException;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
@@ -30,6 +32,9 @@ import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.common.rbac.Permission;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
 import com.yugabyte.yw.forms.NodeAgentForm;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
@@ -45,10 +50,20 @@ import com.yugabyte.yw.models.NodeAgent.OSType;
 import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.NodeConfig;
+import com.yugabyte.yw.models.rbac.ResourceGroup;
+import com.yugabyte.yw.models.rbac.ResourceGroup.ResourceDefinition;
+import com.yugabyte.yw.models.rbac.Role;
+import com.yugabyte.yw.models.rbac.Role.RoleType;
+import com.yugabyte.yw.models.rbac.RoleBinding;
+import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
+import java.nio.file.Path;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.Before;
@@ -70,6 +85,11 @@ public class NodeAgentControllerTest extends FakeDBApplication {
   private Region region;
   private AvailabilityZone zone;
   private Users user;
+  private Role role;
+  private ResourceDefinition rd1;
+
+  Permission permission1 = new Permission(ResourceType.OTHER, Action.READ);
+  Permission permission2 = new Permission(ResourceType.UNIVERSE, Action.READ);
 
   @Before
   public void setup() {
@@ -108,6 +128,25 @@ public class NodeAgentControllerTest extends FakeDBApplication {
     when(mockShellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
         .thenReturn(response);
     configHelper.loadConfigToDB(ConfigType.SoftwareVersion, ImmutableMap.of("version", "2.16.0.0"));
+    role =
+        Role.create(
+            customer.getUuid(),
+            "FakeRole1",
+            "testDescription",
+            RoleType.Custom,
+            new HashSet<>(Arrays.asList(permission1)));
+    rd1 =
+        ResourceDefinition.builder()
+            .resourceType(ResourceType.OTHER)
+            .resourceUUIDSet(new HashSet<>(Arrays.asList(customer.getUuid())))
+            .build();
+  }
+
+  private Result downloadNodeAgent(String downloadType, String os, String arch, String authToken) {
+    String endpoint =
+        String.format(
+            "/api/node_agents/download?downloadType=%s&os=%s&arch=%s", downloadType, os, arch);
+    return doRequestWithAuthToken("GET", endpoint, authToken);
   }
 
   private Result registerNodeAgent(NodeAgentForm formData) {
@@ -197,6 +236,8 @@ public class NodeAgentControllerTest extends FakeDBApplication {
     assertEquals(result.status(), BAD_REQUEST);
     result = unregisterNodeAgent(nodeAgentUuid, jwt);
     assertOk(result);
+    Path certPath = nodeAgentManager.getNodeAgentBaseCertDirectory(nodeAgent);
+    assertTrue(!certPath.toFile().exists());
     result = assertPlatformException(() -> getNodeAgent(nodeAgentUuid, jwt));
     assertUnauthorized(result, "Invalid token");
   }
@@ -243,6 +284,38 @@ public class NodeAgentControllerTest extends FakeDBApplication {
     } catch (Exception e) {
       fail(e.getMessage());
     }
+  }
+
+  @Test
+  public void testDownloadNodeAgent() {
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
+
+    ResourceDefinition rD =
+        ResourceDefinition.builder()
+            .resourceType(ResourceType.OTHER)
+            .resourceUUIDSet(new HashSet<>(Arrays.asList(UUID.randomUUID())))
+            .build();
+    ResourceGroup rG = new ResourceGroup(new HashSet<>(Arrays.asList(rD)));
+    RoleBinding.create(user, RoleBindingType.Custom, role, rG);
+    Result result =
+        downloadNodeAgent(
+            "INSTALLER",
+            OSType.LINUX.toString(),
+            ArchType.AMD64.toString(),
+            user.createAuthToken());
+    assertUnauthorizedNoException(result, "Unable to authorize user");
+
+    ResourceGroup rG1 = new ResourceGroup(new HashSet<>(Arrays.asList(rd1)));
+    RoleBinding.create(user, RoleBindingType.Custom, role, rG1);
+
+    assertThrows(
+        RuntimeException.class,
+        () ->
+            downloadNodeAgent(
+                "INSTALLER",
+                OSType.LINUX.toString(),
+                ArchType.AMD64.toString(),
+                user.createAuthToken()));
   }
 
   public Set<NodeConfig> getTestNodeConfigsSet() {

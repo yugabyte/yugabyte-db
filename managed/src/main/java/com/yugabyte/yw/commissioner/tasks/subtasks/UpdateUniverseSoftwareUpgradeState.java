@@ -22,6 +22,7 @@ public class UpdateUniverseSoftwareUpgradeState extends UniverseTaskBase {
 
   public static class Params extends UniverseTaskParams {
     public SoftwareUpgradeState state;
+    public Boolean isSoftwareRollbackAllowed;
   }
 
   protected Params taskParams() {
@@ -52,6 +53,12 @@ public class UpdateUniverseSoftwareUpgradeState extends UniverseTaskBase {
                 throw new RuntimeException(msg);
               }
               universeDetails.softwareUpgradeState = taskParams().state;
+              if (taskParams().isSoftwareRollbackAllowed != null) {
+                universeDetails.isSoftwareRollbackAllowed = taskParams().isSoftwareRollbackAllowed;
+                if (!taskParams().isSoftwareRollbackAllowed) {
+                  universeDetails.prevYBSoftwareConfig = null;
+                }
+              }
               universe.setUniverseDetails(universeDetails);
             }
           };

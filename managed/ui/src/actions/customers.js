@@ -453,12 +453,21 @@ export function fetchSoftwareVersions() {
 }
 
 export function fetchSoftwareVersionsSuccess(result) {
-  const activeReleases = Object.entries(result?.data)
-    .filter((e) => e[1]?.state === 'ACTIVE')
-    .map((e) => e[0]);
+  const activeReleasesMap = {};
+  const activeReleases = Object.entries(result?.data).filter((e) => {
+    if (e[1]?.state === 'ACTIVE') {
+      activeReleasesMap[e[0]] = e[1];
+      return true;
+    } else return false;
+  });
+
   return {
     type: FETCH_SOFTWARE_VERSIONS_SUCCESS,
-    payload: { ...result, data: activeReleases }
+    payload: {
+      ...result,
+      data: activeReleases.map((e) => e[0]),
+      releasesWithMetadata: activeReleasesMap
+    }
   };
 }
 

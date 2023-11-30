@@ -1832,15 +1832,11 @@ class ControlScript(object):
                             yugabyted_ui_cmd.extend(["-secure=true",
                                 "-database_password={}".format(
                                 self.configs.saved_data.get("database_password"))])
-                    if self.configs.saved_data.get("secure"):
-                        yugabyted_ui_cmd.extend(["-secure=true",
-                            "-database_password={}".format(
-                            self.configs.saved_data.get("database_password"))])
 
-                    self.processes["yugabyted-ui"] = ProcessManager(
-                        "yugabyted-ui", yugabyted_ui_cmd,
-                        self.configs.saved_data.get("log_dir"),
-                        self.configs.saved_data.get("data_dir"))
+                        self.processes["yugabyted-ui"] = ProcessManager(
+                            "yugabyted-ui", yugabyted_ui_cmd,
+                            self.configs.saved_data.get("log_dir"),
+                            self.configs.saved_data.get("data_dir"))
 
             if self.configs.saved_data.get("ui") and ui_port_available:
                 (_, was_started) = self.verify_start_yugabyted_ui(is_first_run, is_first_install)
@@ -2189,7 +2185,6 @@ class ControlScript(object):
                 "--rpc_bind_addresses={}:{}".format(advertise_ip, master_rpc_port),
                 "--server_broadcast_addresses={}:{}".format(advertise_ip, master_rpc_port),
                 "--replication_factor=1",
-                "--use_initial_sys_catalog_snapshot",
                 "--server_dump_info_path={}".format(
                     os.path.join(self.configs.saved_data.get("data_dir"), "master-info")),
                 "--master_enable_metrics_snapshotter=true",
@@ -2637,6 +2632,8 @@ class ControlScript(object):
     # of the tserver. Use the node address given with the --join flag or use the
     # advertise address if join flag is not provided.
     def get_current_masters_from_api(self, tserverIp):
+        if not tserverIp:
+            return ""
         tserver_addr = "{}:{}".format(tserverIp,
                             self.configs.saved_data.get("tserver_webserver_port"))
         try:
@@ -2721,12 +2718,12 @@ class ControlScript(object):
             return jsonResponseFromMaster
         except HTTPError as http_err:
             Output.log("HTTP Error occured while hitting the api endpoint " +
-                "http://{}:7000/api/v1/tablet-servers: {}".format(master_hostport, http_err))
+                "http://{}/api/v1/tablet-servers: {}".format(master_hostport, http_err))
             Output.log_error_and_exit(Output.make_red("ERROR:") + " Master node " +
                 "present at {} is not reachable.".format(master_hostport))
         except Exception as err:
             Output.log("HTTP Error occured while hitting the api endpoint " +
-                "http://{}:7000/api/v1/tablet-servers: {}".format(master_hostport, err))
+                "http://{}/api/v1/tablet-servers: {}".format(master_hostport, err))
             Output.log_error_and_exit(Output.make_red("ERROR:") + " Master node " +
                 "present at {} is not reachable.".format(master_hostport))
 
@@ -2825,8 +2822,9 @@ class ControlScript(object):
     # add a new master computed during configure data_placement command
     def add_master_for_data_placement(self, master_addr, new_master):
 
+        new_master_rpc_port = self.configs.saved_data.get("master_rpc_port")
         Output.log("Adding master {} to the cluster.".format(new_master))
-        if not YBAdminProxy.add_master(master_addr, new_master):
+        if not YBAdminProxy.add_master(master_addr, new_master, new_master_rpc_port):
             Output.log_error_and_exit("Failed to add master {} to the cluster."
                             .format(new_master))
         if not self.wait_get_master(new_master):
@@ -2838,8 +2836,9 @@ class ControlScript(object):
     # remove an master computed during configure data_placement command
     def remove_master_for_data_placement(self, master_addr, old_master):
 
+        old_master_rpc_port = self.configs.saved_data.get("master_rpc_port")
         Output.log("Removing master {} from the cluster.".format(old_master))
-        if not YBAdminProxy.remove_master(master_addr, old_master):
+        if not YBAdminProxy.remove_master(master_addr, old_master, old_master_rpc_port):
             Output.log_error_and_exit("Failed to remove master {} from the cluster."
                             .format(old_master))
         if not self.wait_remove_master(old_master):
@@ -3527,11 +3526,12 @@ class ControlScript(object):
         # The master was not in the current list of masters
         # and we have a valid join_ip
         advertise_ip = self.advertise_ip()
+        master_rpc_port = self.configs.saved_data.get("master_rpc_port")
 
         if len(master_uuids) >= 3:
             # this is going to be a standalone shell master
             return True
-        if not YBAdminProxy.add_master(master_addrs, advertise_ip):
+        if not YBAdminProxy.add_master(master_addrs, advertise_ip, master_rpc_port):
             Output.log_error_and_exit("Unable to add master {} to existing cluster at {}.".format(
                 advertise_ip, join_ip))
             return False
@@ -4277,8 +4277,10 @@ class ControlScript(object):
     # Get the current master leader known to a tserver using api/v1/masters endpoint
     # of the tserver.
     def get_current_master_leader_from_api(self, tserverIP, timeout=60):
+        tserver_addr = "{}:{}".format(tserverIP,
+                            self.configs.saved_data.get("tserver_webserver_port"))
         try:
-            tserverMastersAPI = "http://{}:9000/api/v1/masters".format(tserverIP)
+            tserverMastersAPI = "http://{}/api/v1/masters".format(tserver_addr)
             Output.log("Trying to get masters information from {}".format(tserverMastersAPI) +
                         " (Timeout={})".format(timeout))
             response = urlopen(Request(tserverMastersAPI), timeout=timeout)
@@ -4299,17 +4301,17 @@ class ControlScript(object):
 
         except HTTPError as http_err:
             Output.log("HTTP Error occured while hitting the api endpoint " +
-                "http://{}:9000/api/v1/masters: {}".format(tserverIP, http_err))
+                "http://{}/api/v1/masters: {}".format(tserver_addr, http_err))
             Output.log_error_and_exit(Output.make_red("ERROR:") + " Node at the join ip " +
                 "provided is not reachable.")
         except URLError as url_error:
             Output.log("Some error occured while hitting the api endpoint " +
-                "http://{}:9000/api/v1/masters: {}".format(tserverIP, url_error))
+                "http://{}/api/v1/masters: {}".format(tserver_addr, url_error))
             Output.log_error_and_exit(Output.make_red("ERROR:") + " Node at the join ip " +
                 "provided is not reachable.")
         except Exception as err:
             Output.log("Error occured while hitting the api endpoint " +
-                "http://{}:9000/api/v1/masters: {}".format(tserverIP, err))
+                "http://{}/api/v1/masters: {}".format(tserver_addr, err))
             Output.log_error_and_exit(Output.make_red("ERROR:") + " Node at the join ip " +
                 "provided is not reachable.")
 
@@ -4679,7 +4681,8 @@ class ControlScript(object):
                 args.join = master_leader
 
                 # Get info on all tservers
-                master_leader_hostport = "{}:7000".format(master_leader)
+                master_leader_hostport = "{}:{}".format(master_leader,
+                                    self.configs.saved_data.get("master_webserver_port"))
                 tservers_info = dict(self.get_all_tserver_info(master_leader_hostport))
 
                 # Check if any existing node has the same IP as advertise address
@@ -4743,7 +4746,8 @@ class ControlScript(object):
 
             if args.insecure:
                 if args.join:
-                    master_hostport = "{}:7000".format(args.join)
+                    master_hostport = "{}:{}".format(args.join,
+                            self.configs.saved_data.get("master_webserver_port"))
                     if self.is_leader_master_secure(master_hostport):
                         # Case Scenario: When a User starts the 1st node in secure mode and tries
                         # to start the second node in insecure mode
@@ -4753,7 +4757,8 @@ class ControlScript(object):
                             "secure and an insecure node.")
             elif args.secure:
                 if args.join:
-                    master_hostport = "{}:7000".format(args.join)
+                    master_hostport = "{}:{}".format(args.join,
+                            self.configs.saved_data.get("master_webserver_port"))
                     if not self.is_leader_master_secure(master_hostport):
                         # Case Scenario: When the user starts the 1st node in insecure mode and
                         # tries to start the second node in secure mode.
@@ -5718,16 +5723,16 @@ class YBAdminProxy(object):
             YBAdminProxy.cmd_args.append('--certs_dir_name={}'.format(certs_dir_name[0].group(1)))
 
     @staticmethod
-    def add_master(master_addrs, new_master_ip, timeout=10):
+    def add_master(master_addrs, new_master_ip, new_master_rpc_port, timeout=10):
         cmd = YBAdminProxy.cmd_args + ["--init_master_addrs", master_addrs,
-              "change_master_config", "ADD_SERVER", new_master_ip, "7100"]
+              "change_master_config", "ADD_SERVER", new_master_ip, str(new_master_rpc_port)]
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
         return (0 == ret_code)
 
     @staticmethod
-    def remove_master(master_addrs, old_master, timeout=10):
+    def remove_master(master_addrs, old_master, old_master_rpc_port, timeout=10):
         cmd = YBAdminProxy.cmd_args + ["--init_master_addrs", master_addrs,
-              "change_master_config", "REMOVE_SERVER", old_master, "7100"]
+              "change_master_config", "REMOVE_SERVER", old_master, str(old_master_rpc_port)]
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
         return (0 == ret_code)
 

@@ -47,11 +47,9 @@ public interface CloudUtil extends StorageUtil {
 
   public ConfigLocationInfo getConfigLocationInfo(String location);
 
-  public void deleteKeyIfExists(CustomerConfigData configData, String defaultBackupLocation)
-      throws Exception;
+  public boolean deleteKeyIfExists(CustomerConfigData configData, String defaultBackupLocation);
 
-  public void deleteStorage(CustomerConfigData configData, List<String> backupLocations)
-      throws Exception;
+  public boolean deleteStorage(CustomerConfigData configData, List<String> backupLocations);
 
   public <T> T listBuckets(CustomerConfigData configData);
 

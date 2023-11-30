@@ -382,6 +382,7 @@ set_vars_for_cxx_test() {
   test_existence_check=false
 }
 
+# shellcheck disable=SC2317
 print_report_line() {
   local format_suffix=$1
   shift
@@ -390,6 +391,7 @@ print_report_line() {
 
 # Report the time taken for a particular operation, based on the start and end time variables.
 # If these variables are not set, then no report line is printed.
+# shellcheck disable=SC2317
 report_time() {
   expect_num_args 2 "$@"
   local description=$1
@@ -407,6 +409,7 @@ report_time() {
   fi
 }
 
+# shellcheck disable=SC2317
 print_report() {
   if [[ ${show_report} == "true" ]]; then
     (
@@ -791,6 +794,7 @@ disable_initdb() {
   export YB_SKIP_INITIAL_SYS_CATALOG_SNAPSHOT=1
 }
 
+# shellcheck disable=SC2317
 cleanup() {
   local YB_BUILD_EXIT_CODE=$?
   print_report
@@ -1865,9 +1869,9 @@ export YB_COMPILER_TYPE
 
 if [[ ${verbose} == "true" ]]; then
   # http://stackoverflow.com/questions/22803607/debugging-cmakelists-txt
-  cmake_opts+=( -Wdev --debug-output --trace -DYB_VERBOSE=1 )
+  cmake_opts+=( -Wdev --debug-output --trace "-DYB_VERBOSE=1" )
   if ! using_ninja; then
-    make_opts+=( VERBOSE=1 SH="bash -x" )
+    make_opts+=( "VERBOSE=1" "SH=bash -x" )
   fi
   export YB_SHOW_COMPILER_COMMAND_LINE=1
 fi
@@ -1897,7 +1901,7 @@ if [[ ${no_tcmalloc} == "true" && ${must_use_tcmalloc} == "true" ]]; then
 fi
 
 if [[ ${no_tcmalloc} == "true" ]]; then
-  cmake_opts+=( -DYB_TCMALLOC_ENABLED=0 )
+  cmake_opts+=( "-DYB_TCMALLOC_ENABLED=0" )
 elif [[ -n ${YB_TCMALLOC_ENABLED:-} ]]; then
   cmake_opts+=( "-DYB_TCMALLOC_ENABLED=$YB_TCMALLOC_ENABLED" )
 fi
@@ -1906,7 +1910,7 @@ if [[ ${use_google_tcmalloc} == "true" ]]; then
   if ! is_linux; then
     fatal "Google TCMalloc is only supported on linux. is_linux is: '${is_linux}'."
   fi
-  cmake_opts+=( -DYB_GOOGLE_TCMALLOC=1 )
+  cmake_opts+=( "-DYB_GOOGLE_TCMALLOC=1" )
 fi
 
 if [[ $pgo_data_path != "" ]]; then
@@ -1975,7 +1979,7 @@ fi
 # shellcheck disable=SC2206
 user_mvn_opts_for_java_test=( $user_mvn_opts )
 
-java_build_common_opts+=( install -DbinDir="$BUILD_ROOT/bin" )
+java_build_common_opts+=( install "-DbinDir=$BUILD_ROOT/bin" )
 
 # Build Java code and prepare for running the tests, if necessary, but do not run them yet.
 if [[ ${build_java} == "true" ]]; then
@@ -1993,7 +1997,7 @@ if [[ ${build_java} == "true" ]]; then
     # Assembly jars are jars that contain all dependencies. It takes a long time to build these,
     # and in general we don't need them when running tests, so skip them in the most common
     # development workflow when running a single test.
-    java_build_opts+=( -Dassembly.skipAssembly=true )
+    java_build_opts+=( "-Dassembly.skipAssembly=true" )
   fi
 
   if [[ ${resolve_java_dependencies} == "true" ]]; then

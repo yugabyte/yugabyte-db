@@ -23,7 +23,8 @@ import {
   MasterPlacementMode,
   UniverseConfigure,
   UniverseFormData,
-  UniverseDetails
+  UniverseDetails,
+  UpdateActions
 } from './utils/dto';
 import {
   DEVICE_INFO_FIELD,
@@ -42,12 +43,6 @@ import {
   SPOT_INSTANCE_FIELD
 } from './utils/constants';
 
-export enum UPDATE_ACTIONS {
-  FULL_MOVE = 'FULL_MOVE',
-  SMART_RESIZE = 'SMART_RESIZE',
-  SMART_RESIZE_NON_RESTART = 'SMART_RESIZE_NON_RESTART',
-  UPDATE = 'UPDATE'
-}
 interface EditUniverseProps {
   uuid: string;
   isViewMode: boolean;
@@ -169,12 +164,12 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid, isViewMode }) => {
 
       if (!isK8sUniverse) {
         if (
-          _.intersection(updateOptions, [UPDATE_ACTIONS.SMART_RESIZE, UPDATE_ACTIONS.FULL_MOVE])
+          _.intersection(updateOptions, [UpdateActions.SMART_RESIZE, UpdateActions.FULL_MOVE])
             .length > 1
         )
           setSRModal(true);
-        else if (updateOptions.includes(UPDATE_ACTIONS.SMART_RESIZE_NON_RESTART)) setRNModal(true);
-        else if (updateOptions.includes(UPDATE_ACTIONS.FULL_MOVE)) setFMModal(true);
+        else if (updateOptions.includes(UpdateActions.SMART_RESIZE_NON_RESTART)) setRNModal(true);
+        else if (updateOptions.includes(UpdateActions.FULL_MOVE)) setFMModal(true);
         else setPlacementModal(true);
       } else submitEditUniverse(finalPayload);
     } else
@@ -197,6 +192,7 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid, isViewMode }) => {
           {showRNModal && (
             <ResizeNodeModal
               open={showRNModal}
+              isPrimary={true}
               universeData={universePayload}
               onClose={() => setRNModal(false)}
             />
@@ -204,6 +200,7 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid, isViewMode }) => {
           {showSRModal && (
             <SmartResizeModal
               open={showSRModal}
+              isPrimary={true}
               oldConfigData={originalData.universeDetails}
               newConfigData={universePayload}
               onClose={() => setSRModal(false)}
@@ -217,6 +214,7 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid, isViewMode }) => {
           {showFMModal && (
             <FullMoveModal
               open={showFMModal}
+              isPrimary={true}
               oldConfigData={originalData.universeDetails}
               newConfigData={universePayload}
               onClose={() => setFMModal(false)}
@@ -226,6 +224,7 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid, isViewMode }) => {
           {showPlacementModal && (
             <PlacementModal
               open={showPlacementModal}
+              isPrimary={true}
               oldConfigData={originalData.universeDetails}
               newConfigData={universePayload}
               onClose={() => setPlacementModal(false)}

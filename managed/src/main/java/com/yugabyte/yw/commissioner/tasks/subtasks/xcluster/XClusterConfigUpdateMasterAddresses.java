@@ -134,7 +134,7 @@ public class XClusterConfigUpdateMasterAddresses extends XClusterConfigTaskBase 
             sourceUniverse.getMasterAddresses());
 
         if (HighAvailabilityConfig.get().isPresent()) {
-          getUniverse(true).incrementVersion();
+          getUniverse().incrementVersion();
         }
       }
     } catch (Exception e) {

@@ -266,13 +266,33 @@ public class RestoreBackupYbc extends YbcTaskBase {
       if (backupConfig == null) {
         return;
       }
-      // Restore universe DB version should be greater or equal to the backup DB version.
+      // Restore universe DB version should be greater or equal to the backup universe DB current
+      // version or
+      // version to which it can rollback.
       if (backupConfig.ybdbVersion != null
           && Util.compareYbVersions(
                   restoreUniverseDBVersion, backupConfig.ybdbVersion, true /*suppressFormatError*/)
               < 0) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "Unable to restore backup as it was taken on higher DB version.");
+        if (backupConfig.rollbackYbdbVersion == null) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "Unable to restore backup as it was taken on higher DB version.");
+        }
+        if (backupConfig.rollbackYbdbVersion != null
+            && Util.compareYbVersions(
+                    restoreUniverseDBVersion,
+                    backupConfig.rollbackYbdbVersion,
+                    true /*suppressFormatError*/)
+                < 0) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              String.format(
+                  "Unable to restore as the current universe is at an older DB version %s but the"
+                      + " backup was taken on a universe with DB version %s that can rollback only"
+                      + " to %s",
+                  restoreUniverseDBVersion,
+                  backupConfig.ybdbVersion,
+                  backupConfig.rollbackYbdbVersion));
+        }
       }
       // Validate that all master and tserver auto flags present during backup
       // should exist in restore universe.

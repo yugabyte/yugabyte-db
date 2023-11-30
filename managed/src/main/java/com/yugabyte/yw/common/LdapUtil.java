@@ -48,6 +48,7 @@ import org.apache.directory.api.ldap.model.message.SearchScope;
 import org.apache.directory.ldap.client.api.LdapConnectionConfig;
 import org.apache.directory.ldap.client.api.LdapNetworkConnection;
 import org.apache.directory.ldap.client.api.NoVerificationTrustManager;
+import org.apache.directory.ldap.client.api.exception.LdapConnectionTimeOutException;
 
 @Slf4j
 public class LdapUtil {
@@ -612,6 +613,12 @@ public class LdapUtil {
       }
       DB.commitTransaction();
 
+    } catch (LdapConnectionTimeOutException e) {
+      String errorMessage =
+          "Cannot reach the LDAP server. Verify the server configuration and ensure it's running on"
+              + " the specified setting.";
+      log.error(errorMessage, e);
+      throw new PlatformServiceException(BAD_REQUEST, errorMessage);
     } catch (LdapException e) {
       log.error(String.format("LDAP error while attempting to auth email %s", email), e);
       throw e;
@@ -620,7 +627,7 @@ public class LdapUtil {
       String errorMessage = "Invalid LDAP credentials. " + e.getMessage();
       throw new PlatformServiceException(UNAUTHORIZED, errorMessage);
     } finally {
-      if (connection != null) {
+      if (connection != null && connection.isConnected()) {
         connection.unBind();
         connection.close();
       }

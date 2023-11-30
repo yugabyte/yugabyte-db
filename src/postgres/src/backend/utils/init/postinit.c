@@ -581,13 +581,18 @@ BaseInit(void)
  * As of PostgreSQL 8.2, we expect InitProcess() was already called, so we
  * already have a PGPROC struct ... but it's not completely filled in yet.
  *
+ * YB extension: session_id. If greater than zero, connect local YbSession
+ * to existing YbClientSession instance in TServer, rather than requesting new.
+ * Helpful to initialize background worker backends that need to share state.
+ *
  * Note:
  *		Be very careful with the order of calls in the InitPostgres function.
  * --------------------------------
  */
 static void
 InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
-				 Oid useroid, char *out_dbname, bool override_allow_connections)
+				 Oid useroid, char *out_dbname, uint64_t *session_id,
+				 bool override_allow_connections)
 {
 	bool		bootstrap = IsBootstrapProcessingMode();
 	bool		am_superuser;
@@ -637,6 +642,8 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 	 */
 	InitBufferPoolBackend();
 
+	MyProc->ybInitializationCompleted = true;
+
 	/*
 	 * Initialize local process's access to XLOG.
 	 */
@@ -683,9 +690,9 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 
 	/* Connect to YugaByte cluster. */
 	if (bootstrap)
-		YBInitPostgresBackend("postgres", "", username);
+		YBInitPostgresBackend("postgres", "", username, session_id);
 	else
-		YBInitPostgresBackend("postgres", in_dbname, username);
+		YBInitPostgresBackend("postgres", in_dbname, username, session_id);
 
 	if (IsYugaByteEnabled() && !bootstrap)
 	{
@@ -1166,12 +1173,13 @@ YbEnsureSysTablePrefetchingStopped()
 
 void
 InitPostgres(const char *in_dbname, Oid dboid, const char *username,
-             Oid useroid, char *out_dbname, bool override_allow_connections)
+			 Oid useroid, char *out_dbname, uint64_t *session_id,
+			 bool override_allow_connections)
 {
 	PG_TRY();
 	{
 		InitPostgresImpl(
-			in_dbname, dboid, username, useroid, out_dbname,
+			in_dbname, dboid, username, useroid, out_dbname, session_id,
 			override_allow_connections);
 	}
 	PG_CATCH();

@@ -253,7 +253,11 @@ public class AppInit {
             .getLocalReleases()
             .forEach(
                 (version, rm) -> {
-                  gFlagsValidation.addDBMetadataFiles(version, rm);
+                  try {
+                    gFlagsValidation.addDBMetadataFiles(version, rm);
+                  } catch (Exception e) {
+                    log.error("Error: ", e);
+                  }
                 });
         // Background thread to query for latest ARM release version.
         Thread armReleaseThread =
@@ -276,6 +280,9 @@ public class AppInit {
         // Handle incomplete tasks
         taskManager.handleAllPendingTasks();
         taskManager.updateUniverseSoftwareUpgradeStateSet();
+
+        // Fail all incomplete support bundle creations.
+        supportBundleCleanup.markAllRunningSupportBundlesFailed();
 
         // Schedule garbage collection of old completed tasks in database.
         taskGC.start();

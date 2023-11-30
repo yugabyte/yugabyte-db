@@ -254,8 +254,7 @@ public class PlatformReplicationManager {
             .map(
                 backup ->
                     replicationHelper.exportBackups(
-                            config, clusterKey, remoteInstance.getAddress(), backup)
-                        && remoteInstance.updateLastBackup())
+                        config, clusterKey, remoteInstance.getAddress(), backup))
             .orElse(false);
     if (!result) {
       log.error("Error sending platform backup to " + remoteInstance.getAddress());
@@ -312,7 +311,16 @@ public class PlatformReplicationManager {
                             // Sync the HA cluster state to all followers that successfully received
                             // a
                             // backup.
-                            instancesToSync.forEach(replicationHelper::syncToRemoteInstance);
+                            instancesToSync.forEach(
+                                instance -> {
+                                  if (replicationHelper.syncToRemoteInstance(instance)) {
+                                    instance.updateLastBackup();
+                                  } else {
+                                    log.error(
+                                        "Error syncing backup to remote instance {}",
+                                        instance.getAddress());
+                                  }
+                                });
                           });
                 } catch (Exception e) {
                   log.error("Error running sync for HA config {}", config.getUuid(), e);

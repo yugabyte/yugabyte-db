@@ -39,11 +39,13 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse.
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse.SnapshotObjectDetails.TableData;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.RestorePreflightResponse;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.backuprestore.Tablespace;
@@ -220,6 +222,12 @@ public class YbcBackupUtil {
     @JsonProperty("ybdb_version")
     @Valid
     public String ybdbVersion;
+
+    @JsonProperty("rollback_ybdb_version")
+    @Valid
+    public String rollbackYbdbVersion;
+
+    ;
 
     @JsonProperty("master_auto_flags")
     @Valid
@@ -908,6 +916,14 @@ public class YbcBackupUtil {
       String ybdbSoftwareVersion =
           universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
       config.ybdbVersion = ybdbSoftwareVersion;
+      UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+      if (universeDetails.isSoftwareRollbackAllowed
+          && universeDetails.prevYBSoftwareConfig != null) {
+        // Adding DB version on which users can rollback from current state.
+        // This is needed to support restore of backups taken on pre-finalize state
+        // or upgrades which does not require finalize.
+        config.rollbackYbdbVersion = universeDetails.prevYBSoftwareConfig.getSoftwareVersion();
+      }
       if (Util.compareYbVersions(
               ybdbSoftwareVersion,
               YBDB_AUTOFLAG_BACKUP_SUPPORT_VERSION,
@@ -968,11 +984,14 @@ public class YbcBackupUtil {
               UniverseTaskBase.ServerType.MASTER,
               AutoFlagUtil.LOCAL_PERSISTED_AUTO_FLAG_CLASS);
       for (String flag : masterAutoFlags) {
-        if (!targetMasterAutoFlags.contains(flag)) {
-          throw new PlatformServiceException(
-              BAD_REQUEST,
-              "Cannot restore backup as " + flag + " is missing on target universe master server.");
-        }
+        if (GFlagsValidation.TEST_AUTO_FLAGS.contains(flag))
+          if (!targetMasterAutoFlags.contains(flag)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                "Cannot restore backup as "
+                    + flag
+                    + " is missing on target universe master server.");
+          }
       }
     }
     if (!CollectionUtils.isEmpty(tserverAutoFlags)) {
@@ -982,6 +1001,9 @@ public class YbcBackupUtil {
               UniverseTaskBase.ServerType.MASTER,
               AutoFlagUtil.LOCAL_PERSISTED_AUTO_FLAG_CLASS);
       for (String flag : tserverAutoFlags) {
+        if (GFlagsValidation.TEST_AUTO_FLAGS.contains(flag)) {
+          continue;
+        }
         if (!targetTServerAutoFlags.contains(flag)) {
           throw new PlatformServiceException(
               BAD_REQUEST,
