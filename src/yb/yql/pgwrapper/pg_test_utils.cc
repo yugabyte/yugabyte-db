@@ -97,4 +97,8 @@ std::string_view SerializeAccessErrorMessageSubstring() {
   return "could not serialize access due to concurrent update"sv;
 }
 
+std::string MaxQueryLayerRetriesConf(uint16_t max_retries) {
+  return Format("yb_max_query_layer_retries=$0", max_retries);
+}
+
 } // namespace yb::pgwrapper
