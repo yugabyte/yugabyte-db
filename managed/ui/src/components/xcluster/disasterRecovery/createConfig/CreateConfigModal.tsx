@@ -124,6 +124,8 @@ export const CreateConfigModal = ({
             universeQueryKey.detail(values.targetUniverse.value.universeUUID),
             { exact: true }
           );
+
+          queryClient.invalidateQueries(drConfigQueryKey.detail(response.resourceUUID));
         };
         const handleTaskCompletion = (error: boolean) => {
           if (error) {
@@ -147,6 +149,11 @@ export const CreateConfigModal = ({
           }
         };
 
+        toast.success(
+          <Typography variant="body2" component="span">
+            {t('success.requestSuccess')}
+          </Typography>
+        );
         closeModal();
         fetchTaskUntilItCompletes(response.taskUUID, handleTaskCompletion, invalidateQueries);
       },
@@ -465,6 +472,6 @@ const validateForm = async (
       throw errors;
     }
     default:
-      return {};
+      throw {};
   }
 };

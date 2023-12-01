@@ -172,8 +172,8 @@ export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailover
   if (targetUniverseQuery.isError) {
     return (
       <YBErrorIndicator
-        customErrorMessage={t('faliedToFetchTargetuniverse', {
-          keyPrefix: 'clusterDetail.xCluster.error',
+        customErrorMessage={t('failedToFetchTargetuniverse', {
+          keyPrefix: 'queryError.error',
           universeUuid: drConfig.drReplicaUniverseUuid
         })}
       />

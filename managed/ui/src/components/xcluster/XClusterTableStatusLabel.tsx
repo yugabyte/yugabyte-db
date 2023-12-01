@@ -1,21 +1,22 @@
 import { useQuery } from 'react-query';
 import clsx from 'clsx';
 
-import { REPLICATION_LAG_ALERT_NAME, XClusterTableStatus } from './constants';
+import { AlertName, XClusterTableStatus } from './constants';
 import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
-import { queryLagMetricsForTable } from '../../actions/xClusterReplication';
+import { fetchReplicationLag, queryLagMetricsForTable } from '../../actions/xClusterReplication';
 import { getAlertConfigurations } from '../../actions/universe';
 import { getLatestMaxNodeLag } from './ReplicationUtils';
 import { YBLoadingCircleIcon } from '../common/indicators';
 
 import styles from './XClusterTableStatusLabel.module.scss';
+import { alertConfigQueryKey, metricQueryKey } from '../../redesign/helpers/api';
 
 interface XClusterTableStatusProps {
   status: XClusterTableStatus;
   streamId: string;
-  tableUUID: string;
-  nodePrefix: string;
-  universeUUID: string;
+  sourceUniverseTableUuid: string;
+  sourceUniverseNodePrefix: string;
+  sourceUniverseUuid: string;
 }
 
 const OPERATIONAL_LABEL = (
@@ -70,33 +71,39 @@ const UNABLE_TO_FETCH_LABEL = (
 export const XClusterTableStatusLabel = ({
   status,
   streamId,
-  tableUUID,
-  nodePrefix,
-  universeUUID
+  sourceUniverseTableUuid,
+  sourceUniverseNodePrefix,
+  sourceUniverseUuid
 }: XClusterTableStatusProps) => {
   const alertConfigFilter = {
-    name: REPLICATION_LAG_ALERT_NAME,
-    targetUuid: universeUUID
+    name: AlertName.REPLICATION_LAG,
+    targetUuid: sourceUniverseUuid
   };
-  const maxAcceptableLagQuery = useQuery(['alert', 'configurations', alertConfigFilter], () =>
+  const maxAcceptableLagQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>
     getAlertConfigurations(alertConfigFilter)
   );
-  const tableLagQuery = useQuery(
-    ['xcluster-metric', nodePrefix, tableUUID, streamId, 'metric'],
-    () => queryLagMetricsForTable(streamId, tableUUID, nodePrefix)
+
+  const replciationLagMetricRequestParams = {
+    nodePrefix: sourceUniverseNodePrefix,
+    streamId,
+    tableId: sourceUniverseTableUuid
+  };
+  const tableReplicationLagQuery = useQuery(
+    metricQueryKey.detail(replciationLagMetricRequestParams),
+    () => fetchReplicationLag(replciationLagMetricRequestParams)
   );
 
   switch (status) {
     case XClusterTableStatus.RUNNING: {
       if (
-        tableLagQuery.isLoading ||
-        tableLagQuery.isIdle ||
+        tableReplicationLagQuery.isLoading ||
+        tableReplicationLagQuery.isIdle ||
         maxAcceptableLagQuery.isLoading ||
         maxAcceptableLagQuery.isIdle
       ) {
         return <YBLoadingCircleIcon />;
       }
-      if (tableLagQuery.isError || maxAcceptableLagQuery.isError) {
+      if (tableReplicationLagQuery.isError || maxAcceptableLagQuery.isError) {
         return <span>-</span>;
       }
 
@@ -105,7 +112,7 @@ export const XClusterTableStatusLabel = ({
           (alertConfig: any): number => alertConfig.thresholds.SEVERE.threshold
         )
       );
-      const maxNodeLag = getLatestMaxNodeLag(tableLagQuery.data);
+      const maxNodeLag = getLatestMaxNodeLag(tableReplicationLagQuery.data);
       return maxNodeLag === undefined || maxNodeLag > maxAcceptableLag
         ? WARNING_LABEL
         : OPERATIONAL_LABEL;

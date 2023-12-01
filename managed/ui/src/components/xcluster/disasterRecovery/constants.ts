@@ -1,5 +1,3 @@
-import { DrConfigState } from './dtos';
-
 export const DrConfigActions = {
   CREATE: 'createDrConfig',
   DELETE: 'deleteDrConfig',
@@ -10,18 +8,18 @@ export const DrConfigActions = {
 } as const;
 export type DrConfigActions = typeof DrConfigActions[keyof typeof DrConfigActions];
 
-export const RpoUnit = {
+export const DurationUnit = {
   SECOND: 'second',
   MINUTE: 'minute',
   HOUR: 'hour'
 } as const;
-export type RpoUnit = typeof RpoUnit[keyof typeof RpoUnit];
+export type DurationUnit = typeof DurationUnit[keyof typeof DurationUnit];
 
 /**
  * Map from RPO units to milliseconds.
  */
-export const RPO_UNIT_TO_SECONDS = {
-  [RpoUnit.SECOND]: 1,
-  [RpoUnit.MINUTE]: 60,
-  [RpoUnit.HOUR]: 3_600
+export const DURATION_UNIT_TO_MS = {
+  [DurationUnit.SECOND]: 1000,
+  [DurationUnit.MINUTE]: 60 * 1000,
+  [DurationUnit.HOUR]: 60 * 60 * 1000
 } as const;
