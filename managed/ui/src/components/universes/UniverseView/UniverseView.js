@@ -58,6 +58,7 @@ import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPerm
 import { customPermValidateFunction, RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { Action, Resource } from '../../../redesign/features/rbac';
 import { getWrappedChildren } from '../../../redesign/features/rbac/common/validator/ValidatorUtils';
+import { userhavePermInRoleBindings } from '../../../redesign/features/rbac/common/RbacUtils';
 import './UniverseView.scss';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 
@@ -581,8 +582,8 @@ export const UniverseView = (props) => {
   }
 
 
-  if (!customPermValidateFunction((userPermissions) => {
-    return find(userPermissions, { resourceType: Resource.UNIVERSE, actions: [Action.READ] }) !== undefined;
+  if (!customPermValidateFunction(() => {
+    return userhavePermInRoleBindings(Resource.UNIVERSE, Action.READ);
   })) {
     return getWrappedChildren({});
   }
