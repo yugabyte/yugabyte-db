@@ -44,9 +44,6 @@ ybcstat_get_wait_event_component(uint32_t wait_event_info) {
     componentId = (wait_event_info & 0xF0000000) >> 28;
 
     switch (componentId) {
-        case YB_PGGATE:
-            event_component = "PGGate";
-            break;
         case YB_TSERVER:
             event_component = "TServer";
             break;

@@ -276,8 +276,6 @@ yb_auh_main(Datum main_arg) {
   proc_exit(0);
 }
 
-uint8 kPgAshComponent = 1;
-
 static void pg_collect_samples(TimestampTz auh_sample_time, uint16 num_procs_to_sample)
 {
   size_t procCount = 0;
@@ -316,7 +314,6 @@ static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 num_rpcs
     if(random() <= sample_rate * MAX_RANDOM_VALUE){
       auh_entry_store(auh_sample_time, rpcs[i].metadata.top_level_request_id,
                     rpcs[i].metadata.current_request_id, 
-                    // rpcs[i].metadata.component, rpcs[i].wait_status_code,
                     rpcs[i].encoded_wait_status_code,
                     (rpcs[i].aux_info.tablet_id[0] == '\0' ? rpcs[i].aux_info.table_id : rpcs[i].aux_info.tablet_id),
                     rpcs[i].metadata.top_level_node_id,

@@ -339,10 +339,10 @@ bool YBInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
   if (req.get_wait_state()) {
     auto wait_state = this->wait_state();
     if (wait_state) {
-      // TBD: Add WaitStateInfoPB to the response instead of the string.
       wait_state->ToPB(resp->mutable_wait_state());
-      TRACE_TO(trace(), "Pulled $0", resp->wait_state().encoded_wait_status_code());
-      // yb::ToString(util::WaitStateCode(resp->wait_state().encoded_wait_status_code())));
+      TRACE_TO(trace(), "Pulled $0 : $1",
+        yb::ToString(util::WaitStateInfo::DecodeWaitStateComponent(resp->wait_state().encoded_wait_status_code())),
+        yb::ToString(util::WaitStateInfo::DecodeWaitStateCode(resp->wait_state().encoded_wait_status_code())));
     }
   }
   resp->set_elapsed_millis(MonoTime::Now().GetDeltaSince(timing_.time_received)
