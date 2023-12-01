@@ -61,6 +61,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.NodeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistResizeNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistSystemdUpgrade;
+import com.yugabyte.yw.commissioner.tasks.subtasks.PreflightNodeCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PromoteAutoFlags;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RebootServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResetUniverseVersion;
@@ -3741,46 +3742,30 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   // Perform preflight checks on the given node.
-  public String performPreflightCheck(
+  public void performPreflightCheck(
       Cluster cluster,
       NodeDetails currentNode,
       @Nullable UUID rootCA,
       @Nullable UUID clientRootCA) {
-    if (cluster.userIntent.providerType != com.yugabyte.yw.commissioner.Common.CloudType.onprem) {
-      return null;
+    if (cluster.userIntent.providerType == com.yugabyte.yw.commissioner.Common.CloudType.onprem) {
+      PreflightNodeCheck.Params preflightTaskParams = new PreflightNodeCheck.Params();
+      UserIntent userIntent = cluster.userIntent;
+      preflightTaskParams.nodeName = currentNode.nodeName;
+      preflightTaskParams.nodeUuid = currentNode.nodeUuid;
+      preflightTaskParams.deviceInfo = userIntent.getDeviceInfoForNode(currentNode);
+      preflightTaskParams.azUuid = currentNode.azUuid;
+      preflightTaskParams.setUniverseUUID(taskParams().getUniverseUUID());
+      preflightTaskParams.rootCA = rootCA;
+      preflightTaskParams.setClientRootCA(clientRootCA);
+      UniverseTaskParams.CommunicationPorts.exportToCommunicationPorts(
+          preflightTaskParams.communicationPorts, currentNode);
+      preflightTaskParams.extraDependencies.installNodeExporter =
+          taskParams().extraDependencies.installNodeExporter;
+      log.info("Running preflight checks for node {}.", preflightTaskParams.nodeName);
+      PreflightNodeCheck task = createTask(PreflightNodeCheck.class);
+      task.initialize(preflightTaskParams);
+      task.run();
     }
-    NodeTaskParams preflightTaskParams = new NodeTaskParams();
-    UserIntent userIntent = cluster.userIntent;
-    preflightTaskParams.nodeName = currentNode.nodeName;
-    preflightTaskParams.nodeUuid = currentNode.nodeUuid;
-    preflightTaskParams.deviceInfo = userIntent.getDeviceInfoForNode(currentNode);
-    preflightTaskParams.azUuid = currentNode.azUuid;
-    preflightTaskParams.setUniverseUUID(taskParams().getUniverseUUID());
-    preflightTaskParams.rootCA = rootCA;
-    preflightTaskParams.setClientRootCA(clientRootCA);
-    UniverseTaskParams.CommunicationPorts.exportToCommunicationPorts(
-        preflightTaskParams.communicationPorts, currentNode);
-    preflightTaskParams.extraDependencies.installNodeExporter =
-        taskParams().extraDependencies.installNodeExporter;
-    // Create the process to fetch information about the node from the cloud provider.
-    log.info("Running preflight checks for node {}.", preflightTaskParams.nodeName);
-    ShellResponse response =
-        nodeManager.nodeCommand(NodeManager.NodeCommandType.Precheck, preflightTaskParams);
-    if (response.code == 0) {
-      JsonNode responseJson = Json.parse(response.message);
-      for (JsonNode nodeContent : responseJson) {
-        if (!nodeContent.isBoolean() || !nodeContent.asBoolean()) {
-          String errString =
-              "Failed preflight checks for node "
-                  + preflightTaskParams.nodeName
-                  + ":\n"
-                  + response.message;
-          log.error(errString);
-          return response.message;
-        }
-      }
-    }
-    return null;
   }
 
   protected boolean isServerAlive(NodeDetails node, ServerType server, String masterAddrs) {

@@ -1624,57 +1624,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
-   * Performs preflight checks for nodes in cluster. No fail tasks are created.
-   *
-   * @return map of failed nodes
-   */
-  private Map<String, String> performClusterPreflightChecks(Cluster cluster) {
-    Map<String, String> failedNodes = new HashMap<>();
-    // This check is only applied to onperm nodes
-    if (cluster.userIntent.providerType != CloudType.onprem) {
-      return failedNodes;
-    }
-    Set<NodeDetails> nodes = taskParams().getNodesInCluster(cluster.uuid);
-    Collection<NodeDetails> nodesToProvision = PlacementInfoUtil.getNodesToProvision(nodes);
-    UserIntent userIntent = cluster.userIntent;
-    Boolean rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
-    Boolean rootCARequired =
-        EncryptionInTransitUtil.isRootCARequired(userIntent, rootAndClientRootCASame);
-    Boolean clientRootCARequired =
-        EncryptionInTransitUtil.isClientRootCARequired(userIntent, rootAndClientRootCASame);
-
-    for (NodeDetails currentNode : nodesToProvision) {
-      String preflightStatus =
-          performPreflightCheck(
-              cluster,
-              currentNode,
-              rootCARequired ? taskParams().rootCA : null,
-              clientRootCARequired ? taskParams().getClientRootCA() : null);
-      if (preflightStatus != null) {
-        failedNodes.put(currentNode.nodeName, preflightStatus);
-      }
-    }
-
-    return failedNodes;
-  }
-
-  /**
-   * Performs preflight checks and creates failed preflight tasks.
-   *
-   * @return true if everything is OK
-   */
-  public boolean performUniversePreflightChecks(Collection<Cluster> clusters) {
-    Map<String, String> failedNodes = new HashMap<>();
-    for (Cluster cluster : clusters) {
-      failedNodes.putAll(performClusterPreflightChecks(cluster));
-    }
-    if (!failedNodes.isEmpty()) {
-      createFailedPrecheckTask(failedNodes).setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
-    }
-    return failedNodes.isEmpty();
-  }
-
-  /**
    * Finds the given list of nodes in the universe. The lookup is done by the node name.
    *
    * @param universe Universe to which the node belongs.
