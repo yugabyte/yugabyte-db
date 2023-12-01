@@ -8,11 +8,13 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.models.Universe;
+import java.util.Set;
 import play.mvc.Http.Status;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -40,6 +42,9 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
     return SoftwareUpgradeState.UpgradeFailed;
   }
 
+  public static final Set<SoftwareUpgradeState> ALLOWED_UNIVERSE_SOFTWARE_UPGRADE_STATE_SET =
+      ImmutableSet.of(SoftwareUpgradeState.Ready, SoftwareUpgradeState.UpgradeFailed);
+
   public void verifyParams(Universe universe, boolean isFirstTry) {
     super.verifyParams(universe, isFirstTry);
 
@@ -59,12 +64,12 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
           Status.BAD_REQUEST, "Software version is already: " + ybSoftwareVersion);
     }
 
-    if (universe
-        .getUniverseDetails()
-        .softwareUpgradeState
-        .equals(SoftwareUpgradeState.PreFinalize)) {
+    if (!ALLOWED_UNIVERSE_SOFTWARE_UPGRADE_STATE_SET.contains(
+        universe.getUniverseDetails().softwareUpgradeState)) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "Software upgrade cannot be preformed on universe in pre-finalize state.");
+          BAD_REQUEST,
+          "Software upgrade cannot be preformed on universe in state "
+              + universe.getUniverseDetails().softwareUpgradeState);
     }
 
     RuntimeConfigFactory runtimeConfigFactory =

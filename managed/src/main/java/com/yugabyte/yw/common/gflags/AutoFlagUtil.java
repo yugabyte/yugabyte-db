@@ -153,8 +153,10 @@ public class AutoFlagUtil {
       }
     }
 
-    Set<String> oldMigrationFiles = gFlagsValidation.getYsqlMigrationFilesList(oldVersion);
-    Set<String> newMigrationFiles = gFlagsValidation.getYsqlMigrationFilesList(newVersion);
+    Set<String> oldMigrationFiles =
+        new HashSet<>(gFlagsValidation.getYsqlMigrationFilesList(oldVersion));
+    Set<String> newMigrationFiles =
+        new HashSet<>(gFlagsValidation.getYsqlMigrationFilesList(newVersion));
     newMigrationFiles.removeAll(oldMigrationFiles);
     if (newMigrationFiles.size() != 0) {
       LOG.debug(

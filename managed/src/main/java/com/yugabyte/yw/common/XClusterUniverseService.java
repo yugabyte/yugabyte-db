@@ -602,9 +602,7 @@ public class XClusterUniverseService {
     Set<UUID> targetUniverseUUIDSet =
         getActiveXClusterTargetUniverseSet(universe.getUniverseUUID());
     Set<Universe> targetUniverseSet =
-        targetUniverseUUIDSet.stream()
-            .map(uuid -> Universe.getOrBadRequest(uuid))
-            .collect(Collectors.toSet());
+        targetUniverseUUIDSet.stream().map(Universe::getOrBadRequest).collect(Collectors.toSet());
     String softwareVersion =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
     for (ServerType serverType : ImmutableSet.of(ServerType.MASTER, ServerType.TSERVER)) {
