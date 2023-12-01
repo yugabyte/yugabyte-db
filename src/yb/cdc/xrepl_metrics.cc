@@ -29,7 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#include "yb/cdc/cdc_metrics.h"
+#include "yb/cdc/xrepl_metrics.h"
 
 #include "yb/util/metrics.h"
 #include "yb/util/trace.h"
@@ -132,11 +132,11 @@ METRIC_DEFINE_counter(server, cdc_rpc_proxy_count, "CDC Rpc Proxy Count", yb::Me
 
 
 namespace yb {
-namespace cdc {
+namespace xrepl {
 
 #define MINIT(x) x(METRIC_##x.Instantiate(entity))
 #define GINIT(x) x(METRIC_##x.Instantiate(entity, 0))
-CDCTabletMetrics::CDCTabletMetrics(const scoped_refptr<MetricEntity>& entity)
+XClusterTabletMetrics::XClusterTabletMetrics(const scoped_refptr<MetricEntity>& entity)
     : MINIT(rpc_payload_bytes_responded),
       MINIT(rpc_heartbeats_responded),
       GINIT(last_read_opid_term),
@@ -154,7 +154,7 @@ CDCTabletMetrics::CDCTabletMetrics(const scoped_refptr<MetricEntity>& entity)
       GINIT(last_caughtup_physicaltime),
       entity_(entity) {}
 
-void CDCTabletMetrics::ClearMetrics() {
+void XClusterTabletMetrics::ClearMetrics() {
   last_read_opid_term->set_value(0);
   last_read_opid_index->set_value(0);
   last_checkpoint_opid_index->set_value(0);
@@ -178,11 +178,20 @@ CDCSDKTabletMetrics::CDCSDKTabletMetrics(const scoped_refptr<MetricEntity>& enti
       GINIT(cdcsdk_last_sent_physicaltime),
       entity_(entity) {}
 
+void CDCSDKTabletMetrics::ClearMetrics() {
+  cdcsdk_sent_lag_micros->set_value(0);
+  cdcsdk_traffic_sent.reset();
+  cdcsdk_change_event_count.reset();
+  cdcsdk_expiry_time_ms->set_value(0);
+  cdcsdk_last_sent_physicaltime->set_value(0);
+}
+
 CDCServerMetrics::CDCServerMetrics(const scoped_refptr<MetricEntity>& entity)
     : MINIT(cdc_rpc_proxy_count),
       entity_(entity) { }
 #undef MINIT
 #undef GINIT
 
-} // namespace cdc
+}  // namespace xrepl
+
 } // namespace yb

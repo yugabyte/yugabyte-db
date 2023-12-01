@@ -1294,7 +1294,7 @@ TEST_P(XClusterTest, PollAndObserveIdleDampening) {
   // After creating the cluster, make sure all tablets being polled for.
   ASSERT_OK(CorrectlyPollingAllTablets(1));
 
-  // Write some Info and query GetChanges to setup the CDCTabletMetrics.
+  // Write some Info and query GetChanges to setup the XClusterTabletMetrics.
   ASSERT_OK(InsertRowsAndVerify(0, 5));
 
   /*****************************************************************
@@ -1361,8 +1361,7 @@ TEST_P(XClusterTest, PollAndObserveIdleDampening) {
   // Find the CDCTabletMetric associated with the above pair.
   auto cdc_service = dynamic_cast<cdc::CDCServiceImpl*>(
       cdc_ts->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
-  std::shared_ptr<cdc::CDCTabletMetrics> metrics = std::static_pointer_cast<cdc::CDCTabletMetrics>(
-      cdc_service->GetCDCTabletMetrics({{}, stream_id, tablet_id}));
+  auto metrics = ASSERT_RESULT(GetXClusterTabletMetrics(*cdc_service, tablet_id, stream_id));
 
   /***********************************
    * Setup Complete.  Starting test. *
@@ -2712,14 +2711,14 @@ TEST_P(XClusterTest, TestNonZeroLagMetricsWithoutGetChange) {
       [&]() { return cdc_service->CDCEnabled(); }, MonoDelta::FromSeconds(30), "IsCDCEnabled"));
 
   // Check that the time_since_last_getchanges metric is updated, even without GetChanges.
-  std::shared_ptr<cdc::CDCTabletMetrics> metrics;
+  std::shared_ptr<xrepl::XClusterTabletMetrics> metrics;
   ASSERT_OK(WaitFor(
       [&]() {
-        metrics = std::static_pointer_cast<cdc::CDCTabletMetrics>(
-            cdc_service->GetCDCTabletMetrics({{}, stream_id, tablet_id}));
-        if (!metrics) {
+        auto metrics_result = GetXClusterTabletMetrics(*cdc_service, tablet_id, stream_id);
+        if (!metrics_result) {
           return false;
         }
+        metrics = metrics_result.get();
         return metrics->time_since_last_getchanges->value() > 0;
       },
       MonoDelta::FromSeconds(30),

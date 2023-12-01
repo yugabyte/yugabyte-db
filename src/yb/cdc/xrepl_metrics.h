@@ -41,17 +41,17 @@
 namespace yb {
 
 class Counter;
-template<class T>
+template <class T>
 class AtomicGauge;
 class EventStats;
 class MetricEntity;
 
-namespace cdc {
+namespace xrepl {
 
 // Container for all metrics specific to a single tablet.
-class CDCTabletMetrics {
+class XClusterTabletMetrics {
  public:
-  explicit CDCTabletMetrics(const scoped_refptr<MetricEntity>& metric_entity_cdc);
+  explicit XClusterTabletMetrics(const scoped_refptr<MetricEntity>& metric_entity);
 
   // Reset all the metrics to 0, except for the rpc_* related metrics.
   void ClearMetrics();
@@ -61,28 +61,28 @@ class CDCTabletMetrics {
   // For rpc_latency & rpcs_responded_count, use 'handler_latency_yb_cdc_CDCService_GetChanges'.
 
   // Info about ID last read by CDC Consumer.
-  scoped_refptr<AtomicGauge<int64_t> > last_read_opid_term;
-  scoped_refptr<AtomicGauge<int64_t> > last_read_opid_index;
-  scoped_refptr<AtomicGauge<int64_t> > last_checkpoint_opid_index;
-  scoped_refptr<AtomicGauge<uint64_t> > last_read_hybridtime;
-  scoped_refptr<AtomicGauge<uint64_t> > last_read_physicaltime;
-  scoped_refptr<AtomicGauge<uint64_t> > last_checkpoint_physicaltime;
+  scoped_refptr<AtomicGauge<int64_t>> last_read_opid_term;
+  scoped_refptr<AtomicGauge<int64_t>> last_read_opid_index;
+  scoped_refptr<AtomicGauge<int64_t>> last_checkpoint_opid_index;
+  scoped_refptr<AtomicGauge<uint64_t>> last_read_hybridtime;
+  scoped_refptr<AtomicGauge<uint64_t>> last_read_physicaltime;
+  scoped_refptr<AtomicGauge<uint64_t>> last_checkpoint_physicaltime;
 
   // Info about last majority-replicated OpID by CDC Producer (upon last poll).
-  scoped_refptr<AtomicGauge<int64_t> > last_readable_opid_index;
+  scoped_refptr<AtomicGauge<int64_t>> last_readable_opid_index;
   // For last_committed_hybridtime, use 'hybrid_clock_hybrid_time'.
 
   // Lag between commit time of last record polled and last record applied on producer.
-  scoped_refptr<AtomicGauge<int64_t> > async_replication_sent_lag_micros;
+  scoped_refptr<AtomicGauge<int64_t>> async_replication_sent_lag_micros;
   // Lag between last record applied on consumer and producer.
-  scoped_refptr<AtomicGauge<int64_t> > async_replication_committed_lag_micros;
+  scoped_refptr<AtomicGauge<int64_t>> async_replication_committed_lag_micros;
 
   // Info about if a tablet has fallen too far behind in replication.
   scoped_refptr<AtomicGauge<bool>> is_bootstrap_required;
 
   // Info on the received GetChanges requests.
-  scoped_refptr<AtomicGauge<uint64_t> > last_getchanges_time;
-  scoped_refptr<AtomicGauge<int64_t> > time_since_last_getchanges;
+  scoped_refptr<AtomicGauge<uint64_t>> last_getchanges_time;
+  scoped_refptr<AtomicGauge<int64_t>> time_since_last_getchanges;
 
   // Info on the time till which the consumer is caught-up with the producer.
   scoped_refptr<AtomicGauge<uint64_t>> last_caughtup_physicaltime;
@@ -93,7 +93,9 @@ class CDCTabletMetrics {
 
 class CDCSDKTabletMetrics {
  public:
-  explicit CDCSDKTabletMetrics(const scoped_refptr<MetricEntity>& metric_entity_cdcsdk);
+  explicit CDCSDKTabletMetrics(const scoped_refptr<MetricEntity>& metric_entity);
+
+  void ClearMetrics();
 
   // Lag between last committed record in the producer and last sent record.
   scoped_refptr<AtomicGauge<int64_t>> cdcsdk_sent_lag_micros;
@@ -121,5 +123,5 @@ class CDCServerMetrics {
   scoped_refptr<MetricEntity> entity_;
 };
 
-} // namespace cdc
-} // namespace yb
+}  // namespace xrepl
+}  // namespace yb
