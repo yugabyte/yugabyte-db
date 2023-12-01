@@ -287,7 +287,8 @@ class ExternalIntentsBatchWriter : public rocksdb::DirectWriter,
 
   // Parse the merged external intent value, and write them to regular writer handler. Also updates
   // min/max schema version.
-  Status PrepareApplyExternalIntentsBatch(
+  // Returns true when the entire batch was applied, and false if some intents were skipped.
+  Result<bool> PrepareApplyExternalIntentsBatch(
       const Slice& original_input_value, ExternalTxnApplyStateData* apply_data,
       rocksdb::DirectWriteHandler* regular_write_handler);
 
