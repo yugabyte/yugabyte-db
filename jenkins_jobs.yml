@@ -12,7 +12,7 @@ jobs:
     release_artifact: false
 
   - os: centos7
-    compiler: clang17
+    compiler: gcc11
     build_type: debug
     release_artifact: false
 
@@ -51,7 +51,7 @@ jobs:
     architecture: x86_64
     release_artifact: true
 
-  - os: ubuntu20.04
+  - os: ubuntu22.04
     compiler: clang16
     build_type: debug
     release_artifact: false
