@@ -123,22 +123,15 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
                     // otherwise running it second time can succeed. This check must be
                     // performed only when a new node is picked as Add after Remove can
                     // leave processes that require sudo access.
-                    String preflightStatus =
-                        performPreflightCheck(
-                            cluster,
-                            currentNode,
-                            EncryptionInTransitUtil.isRootCARequired(taskParams())
-                                ? taskParams().rootCA
-                                : null,
-                            EncryptionInTransitUtil.isClientRootCARequired(taskParams())
-                                ? taskParams().getClientRootCA()
-                                : null);
-                    if (preflightStatus != null) {
-                      throw new RuntimeException(
-                          String.format(
-                              "Node %s (%s) failed preflight check. Error: %s",
-                              node.getNodeName(), node.getNodeUuid(), preflightStatus));
-                    }
+                    performPreflightCheck(
+                        cluster,
+                        currentNode,
+                        EncryptionInTransitUtil.isRootCARequired(taskParams())
+                            ? taskParams().rootCA
+                            : null,
+                        EncryptionInTransitUtil.isClientRootCARequired(taskParams())
+                            ? taskParams().getClientRootCA()
+                            : null);
                   });
         }
       }

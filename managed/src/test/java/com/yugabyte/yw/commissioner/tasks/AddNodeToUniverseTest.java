@@ -414,7 +414,8 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     verify(mockNodeManager, times(1)).nodeCommand(any(), any());
     assertThat(
         taskInfo.getErrorMessage(),
-        containsString("failed preflight check. Error: {\"test\": false}"));
+        containsString(
+            "Failed preflight checks for node host-n1. Code: 1. Output: {\"test\": false}"));
 
     // Node must not be reserved on failure.
     assertFalse(NodeInstance.maybeGetByName(DEFAULT_NODE_NAME).isPresent());
