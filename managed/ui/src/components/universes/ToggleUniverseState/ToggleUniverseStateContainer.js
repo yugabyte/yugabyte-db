@@ -1,6 +1,6 @@
 import { connect } from 'react-redux';
 import { withRouter } from 'react-router';
-
+import { toast } from 'react-toastify';
 import { ToggleUniverseState } from '../';
 import {
   fetchUniverseMetadata,
@@ -10,12 +10,19 @@ import {
   restartUniverse,
   restartUniverseResponse
 } from '../../../actions/universe';
+import { createErrorMessage } from '../../../utils/ObjectUtils';
 
 const mapDispatchToProps = (dispatch) => {
   return {
     submitPauseUniverse: (universeUUID) => {
       dispatch(pauseUniverse(universeUUID)).then((res) => {
-        dispatch(pauseUniverseResponse(res.payload));
+        if (res.error) {
+          if (res.payload.status !== 200) {
+            toast.error(createErrorMessage(res.payload));
+          }
+        } else {
+          dispatch(pauseUniverseResponse(res.payload));
+        }
       });
     },
     submitRestartUniverse: (universeUUID) => {
