@@ -99,17 +99,17 @@
 #include "yb/util/flags.h"
 #include "yb/util/tostring.h"
 
-DEFINE_UNKNOWN_bool(wait_if_no_leader_master, false,
+DEFINE_NON_RUNTIME_bool(wait_if_no_leader_master, false,
             "When yb-admin connects to the cluster and no leader master is present, "
             "this flag determines if yb-admin should wait for the entire duration of timeout or"
             "in case a leader master appears in that duration or return error immediately.");
 
-DEFINE_UNKNOWN_string(certs_dir_name, "",
+DEFINE_NON_RUNTIME_string(certs_dir_name, "",
               "Directory with certificates to use for secure server connection.");
 
-DEFINE_UNKNOWN_string(client_node_name, "", "Client node name.");
+DEFINE_NON_RUNTIME_string(client_node_name, "", "Client node name.");
 
-DEFINE_UNKNOWN_bool(disable_graceful_transition, false,
+DEFINE_NON_RUNTIME_bool(disable_graceful_transition, false,
     "During a leader stepdown, disable graceful leadership transfer "
     "to an up to date peer");
 
