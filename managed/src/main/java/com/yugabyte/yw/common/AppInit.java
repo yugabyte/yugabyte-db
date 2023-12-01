@@ -96,6 +96,7 @@ public class AppInit {
       FileDataService fileDataService,
       KubernetesOperator kubernetesOperator,
       RuntimeConfGetter confGetter,
+      PrometheusConfigManager prometheusConfigManager,
       @Named("AppStartupTimeMs") Long startupTime)
       throws ReflectiveOperationException {
     try {
@@ -237,6 +238,8 @@ public class AppInit {
         pitrConfigPoller.start();
 
         ybcUpgrade.start();
+
+        prometheusConfigManager.updateK8sScrapeConfigs();
 
         if (confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled)) {
           if (!HighAvailabilityConfig.isFollower()) {

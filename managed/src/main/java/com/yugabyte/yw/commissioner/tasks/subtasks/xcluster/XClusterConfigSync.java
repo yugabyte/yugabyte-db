@@ -203,7 +203,7 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
 
     xClusterConfig.setStatus(XClusterConfigStatusType.Running);
     xClusterConfig.setPaused(replicationGroupEntry.getDisableStream());
-    xClusterConfig.addTablesIfNotExist(xClusterConfigTables);
+    xClusterConfig.syncTables(xClusterConfigTables);
 
     syncXClusterConfigWithReplicationGroup(config, xClusterConfig, xClusterConfigTables);
   }

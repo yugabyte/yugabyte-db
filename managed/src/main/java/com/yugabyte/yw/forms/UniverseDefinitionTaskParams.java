@@ -4,11 +4,7 @@ package com.yugabyte.yw.forms;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import com.fasterxml.jackson.annotation.JsonGetter;
-import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.*;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.util.StdConverter;
 import com.google.common.base.Strings;
@@ -26,24 +22,11 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.XClusterConfig;
-import com.yugabyte.yw.models.helpers.ClusterAZ;
-import com.yugabyte.yw.models.helpers.DeviceInfo;
-import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.PlacementInfo;
-import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.*;
 import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
 import java.io.File;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import javax.validation.constraints.Size;
@@ -76,6 +59,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       ImmutableSet.of("i3.", "c5d.", "c6gd.");
 
   public static final String UPDATING_TASK_UUID_FIELD = "updatingTaskUUID";
+  public static final String PLACEMENT_MODIFICATION_TASK_UUID_FIELD =
+      "placementModificationTaskUuid";
 
   @Constraints.Required()
   @Size(min = 1)
@@ -135,6 +120,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   // This tracks whether the universe is in the paused state or not.
   @ApiModelProperty public boolean universePaused = false;
+
+  // UUID of last failed task that applied modification to cluster state.
+  @ApiModelProperty public UUID placementModificationTaskUuid = null;
 
   // The next cluster index to be used when a new read-only cluster is added.
   @ApiModelProperty public int nextClusterIndex = 1;

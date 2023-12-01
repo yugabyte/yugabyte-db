@@ -102,7 +102,7 @@ The attempt draws a warning in the current _preview_ version of YugabyteDB, thus
 
 and the _hint_ refers you to [GitHub Issue #2717](https://github.com/YugaByte/yugabyte-db/issues/2717)
 
-In spite of the warning, the attempt actually has the intended effect. You can see this by inspecting the procedure's metadata. See the section [The «pg_proc» catalog table for subprograms](../../../user-defined-subprograms-and-anon-blocks/pg-proc-catalog-table/) for information on how to  query subprogram metadata.
+In spite of the warning, the attempt actually has the intended effect. You can see this by inspecting the procedure's metadata. See the section [The "pg_proc" catalog table for subprograms](../../../user-defined-subprograms-and-anon-blocks/pg-proc-catalog-table/) for information on how to  query subprogram metadata.
 
 ```plpgsql
 select

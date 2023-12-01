@@ -400,4 +400,45 @@ struct IsNonConstResultRvalue<Result<T>&&> : std::true_type {};
 #define ASSERT_RESULT_FAST(expr) \
   RESULT_CHECKER_HELPER(expr, ASSERT_OK_FAST(__result))
 
+template<class T>
+T&& OptionalWrapMove(Result<T>&& result) {
+  return std::move(*result);
+}
+
+template<class T>
+T&& OptionalWrapMove(T&& result) {
+  return std::move(result);
+}
+
+template<class T>
+bool OptionalResultIsOk(const Result<T>& result) {
+  return result.ok();
+}
+
+template<class T>
+constexpr bool OptionalResultIsOk(const T& result) {
+  return true;
+}
+
+template<class TValue>
+Status&& OptionalMoveStatus(Result<TValue>&& result) {
+  return std::move(result.status());
+}
+
+template<class TValue>
+Status OptionalMoveStatus(TValue&& value) {
+  return Status::OK();
+}
+
+// When expr type is Result, then it works as VERIFY_RESULT. Otherwise, just returns expr.
+// Could be used in templates to work with functions that returns Result in some instantiations,
+// and plain value in others.
+#define OPTIONAL_VERIFY_RESULT(expr) \
+  __extension__ ({ \
+    auto&& __result = (expr); \
+    if (!::yb::OptionalResultIsOk(__result)) { \
+      return ::yb::OptionalMoveStatus(std::move(__result)); \
+    } \
+    ::yb::OptionalWrapMove(std::move(__result)); })
+
 } // namespace yb

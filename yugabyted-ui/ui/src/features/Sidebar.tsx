@@ -3,7 +3,6 @@ import clsx from 'clsx';
 import { Link, NavLink, NavLinkProps, useRouteMatch } from 'react-router-dom';
 import { makeStyles, Typography, Link as MUILink, Box } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
-import { createGlobalState } from 'react-use';
 import { browserStorage } from '@app/helpers';
 
 import YBLogoFull from '@app/assets/yugabyteDB-logo.svg';
@@ -16,9 +15,10 @@ import DoubleArrowIcon from '@app/assets/double-arrow-left.svg';
 import AlertsIcon from '@app/assets/bell.svg';
 import DatabaseIcon from '@app/assets/database.svg'
 import { themeVariables } from '@app/theme/variables';
+import { useAlerts } from './clusters/details/alerts/alerts';
 
 // Global state for setting and getting new alert flag that can be used on alerts list page
-export const useAlertGlobalValue = createGlobalState<boolean>(() => false);
+// export const useAlertGlobalValue = createGlobalState<boolean>(() => false);
 
 const useStyles = makeStyles((theme) => ({
   filler: {
@@ -138,7 +138,7 @@ const useStyles = makeStyles((theme) => ({
     background: theme.palette.error[500],
     width: 9,
     position: 'absolute',
-    right: theme.spacing(2.4),
+    right: theme.spacing(3),
     top: theme.spacing(-0.3),
     height: 9
   }
@@ -170,7 +170,7 @@ export const Sidebar: FC<{ projectId: string }> = ({ projectId }) => {
     browserStorage.sidebarCollapsed = newValue;
   };
 
-  const [isNewAlert] = useAlertGlobalValue();
+  const { data: alerts } = useAlerts(true);
 
   // const { data: runtimeConfig } = useRuntimeConfig();
  
@@ -274,14 +274,14 @@ export const Sidebar: FC<{ projectId: string }> = ({ projectId }) => {
         {isAlertsEnabled && (
           <NavLinkWithDisable
             disabled={isDisabled}
-            to={`/alerts`}
+            to={`/alerts/tabNotifications`}
             isActive={(_, location) => /^\/alerts/.test(location.pathname)}
             className={classes.link}
             activeClassName={classes.linkActive}
             data-testid="alertsPageNav"
           >
             <Box position="relative">
-              {isNewAlert && <Box className={classes.newAlerts}></Box>}
+              {alerts.length > 0 && <Box className={classes.newAlerts}></Box>}
               <AlertsIcon className={classes.icon} />
             </Box>
             <Typography variant="body2" noWrap className={clsx(isCollapsed && classes.fadeOut)}>

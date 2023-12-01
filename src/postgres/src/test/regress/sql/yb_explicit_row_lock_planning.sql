@@ -97,6 +97,11 @@ EXPLAIN (COSTS OFF)
 SELECT * FROM yb_locks_t2 WHERE v=4 FOR UPDATE;
 SELECT * FROM yb_locks_t2 WHERE v=4 FOR UPDATE;
 
+-- Test only the indexed column.
+EXPLAIN (COSTS OFF)
+SELECT v FROM yb_locks_t2 WHERE v=4 FOR UPDATE;
+SELECT v FROM yb_locks_t2 WHERE v=4 FOR UPDATE;
+
 -- Isolation level SERIALIZABLE still locks with the scan though (no LockRows).
 BEGIN ISOLATION LEVEL SERIALIZABLE;
 

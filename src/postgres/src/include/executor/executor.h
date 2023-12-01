@@ -54,6 +54,11 @@
  * AfterTriggerBeginQuery/AfterTriggerEndQuery.  This does not necessarily
  * mean that the plan can't queue any AFTER triggers; just that the caller
  * is responsible for there being a trigger context for them to be queued in.
+ *
+ * YB_AGG_PARENT tells the plan node that the parent node is an Agg node.  This
+ * context is used to signal the plan node to make an extra effort to determine
+ * whether aggregates can be pushed down.  It should only be set for plan nodes
+ * that have no children, such as IndexOnlyScan.
  */
 #define EXEC_FLAG_EXPLAIN_ONLY	0x0001	/* EXPLAIN, no ANALYZE */
 #define EXEC_FLAG_REWIND		0x0002	/* need efficient rescan */
@@ -61,6 +66,8 @@
 #define EXEC_FLAG_MARK			0x0008	/* need mark/restore */
 #define EXEC_FLAG_SKIP_TRIGGERS 0x0010	/* skip AfterTrigger calls */
 #define EXEC_FLAG_WITH_NO_DATA	0x0020	/* rel scannability doesn't matter */
+
+#define EXEC_FLAG_YB_AGG_PARENT	0x8000	/* parent node is Agg */
 
 
 /* Hook for plugins to get control in ExecutorStart() */

@@ -126,9 +126,6 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
         }
 
         EncryptionAtRestUtil.activateKeyRef(universeUUID, kmsConfigUUID, universeKeyRef);
-
-        universe.incrementVersion();
-        log.info("Incremented universe version to {} ", universe.getVersion());
       } else if (!kmsConfigUUID.equals(activeKmsHistory.getConfigUuid())) {
         // Master key rotation case, when the given KMS config differs from the active one.
         log.info(
@@ -140,10 +137,13 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
                 KmsConfig.getOrBadRequest(kmsConfigUUID).getName(),
                 kmsConfigUUID));
         keyManager.reEncryptActiveUniverseKeys(universeUUID, kmsConfigUUID);
-
-        universe.incrementVersion();
-        log.info("Incremented universe version to {} ", universe.getVersion());
       }
+      // Update the state of the universe EAR to the intended state only if above tasks run without
+      // any error.
+      EncryptionAtRestUtil.updateUniverseEARState(
+          universeUUID, taskParams().encryptionAtRestConfig);
+      universe.incrementVersion();
+      log.info("Incremented universe version to {} ", universe.getVersion());
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage(), e);
       throw new RuntimeException(e);

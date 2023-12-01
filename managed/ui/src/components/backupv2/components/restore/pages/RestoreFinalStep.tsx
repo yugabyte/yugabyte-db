@@ -18,6 +18,7 @@ import { restoreBackup, restoreBackupProps } from '../api';
 import { Keyspace_Table, RESTORE_ACTION_TYPE } from '../../../common/IBackup';
 import { createErrorMessage } from '../../../../../redesign/features/universe/universe-form/utils/helpers';
 import { YBLoadingCircleIcon } from '../../../../common/indicators';
+import { TableType } from '../../../../../redesign/helpers/dtos';
 
 // this is the final page of the restore modal;
 // prepares the payload and triggers the api request
@@ -94,13 +95,9 @@ const preparePayload = (restoreContext: RestoreContextMethods): restoreBackupPro
           backupDetails?.commonBackupInfo.responseList[index].defaultLocation
       };
 
-      if (selectedTables.selectedTables.length > 0) {
-        const origKeyspace = find(renamedKeyspaces.renamedKeyspaces, {
-          perBackupLocationKeyspaceTables: { originalKeyspace: keyspace.keyspace }
-        });
-        if (generalSettings?.tableSelectionType === 'ALL_TABLES') {
-          infoList['tableNameList'] = origKeyspace?.perBackupLocationKeyspaceTables.tableNameList;
-        } else {
+      if (backupDetails?.backupType === TableType.YQL_TABLE_TYPE) {
+        infoList['tableNameList'] = backupDetails?.commonBackupInfo.responseList[index].tablesList;
+        if (generalSettings?.tableSelectionType === 'SUBSET_OF_TABLES') {
           infoList['tableNameList'] = selectedTables.selectedTables;
           infoList['selectiveTableRestore'] = true;
         }

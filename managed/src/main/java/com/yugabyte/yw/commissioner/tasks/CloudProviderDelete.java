@@ -6,6 +6,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.tasks.params.IProviderTaskParams;
 import com.yugabyte.yw.common.AccessManager;
+import com.yugabyte.yw.common.CloudProviderHelper;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
@@ -24,11 +25,16 @@ public class CloudProviderDelete extends AbstractTaskBase {
 
   private AccessManager accessManager;
 
+  private CloudProviderHelper cloudProviderHelper;
+
   @Inject
   protected CloudProviderDelete(
-      BaseTaskDependencies baseTaskDependencies, AccessManager accessManager) {
+      BaseTaskDependencies baseTaskDependencies,
+      AccessManager accessManager,
+      CloudProviderHelper cloudProviderHelper) {
     super(baseTaskDependencies);
     this.accessManager = accessManager;
+    this.cloudProviderHelper = cloudProviderHelper;
   }
 
   // IProviderTaskParams automatically enables locking logic in ProviderEditRestrictionManager
@@ -64,8 +70,8 @@ public class CloudProviderDelete extends AbstractTaskBase {
     String keyFileBasePath = accessManager.getOrCreateKeyFilePath(provider.getUuid());
     // We would delete only the files for k8s provider
     // others are already taken care off during access key deletion.
-    FileData.deleteFiles(
-        keyFileBasePath, provider.getCode().equals(CloudType.kubernetes.toString()));
+    boolean isKubernetes = provider.getCode().equals(CloudType.kubernetes.toString());
+    FileData.deleteFiles(keyFileBasePath, isKubernetes);
 
     // Clear Access Key related metadata
     for (AccessKey accessKey : AccessKey.getAll(provider.getUuid())) {
@@ -85,6 +91,9 @@ public class CloudProviderDelete extends AbstractTaskBase {
 
     // Delete the provider.
     provider.delete();
+
+    cloudProviderHelper.updatePrometheusConfig(provider);
+
     log.info("Finished {} task.", getName());
   }
 }

@@ -83,6 +83,7 @@ public class TestSnapshot extends CDCBaseClass {
     try {
       setServerFlag(getTserverHostAndPort(), CDC_BATCH_SIZE_GFLAG,
         String.valueOf(DEFAULT_BATCH_SIZE));
+        setServerFlag(getTserverHostAndPort(), CDC_POPULATE_SAFEPOINT_RECORD, "false");
     } catch (Exception e) {
       LOG.error("Error while setting up default flag value for " + CDC_BATCH_SIZE_GFLAG, e);
       System.exit(-1);
@@ -181,6 +182,7 @@ public class TestSnapshot extends CDCBaseClass {
       CDCSubscriber testSubscriber = new CDCSubscriber(getMasterAddresses());
 
       setServerFlag(getTserverHostAndPort(), CDC_BATCH_SIZE_GFLAG, "2500");
+      setServerFlag(getTserverHostAndPort(), CDC_POPULATE_SAFEPOINT_RECORD, "false");
       testSubscriber.createStreamAndGetSnapshot(outputList);
 
       // We get one extra record in outputList, that record is the initial DDL containing the

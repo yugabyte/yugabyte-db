@@ -10,11 +10,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Strings;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Sets;
-import com.google.common.collect.Streams;
+import com.google.common.collect.*;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -23,104 +19,14 @@ import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.BackupTable;
-import com.yugabyte.yw.commissioner.tasks.subtasks.BackupTableYb;
-import com.yugabyte.yw.commissioner.tasks.subtasks.BackupTableYbc;
-import com.yugabyte.yw.commissioner.tasks.subtasks.BackupUniverseKeys;
-import com.yugabyte.yw.commissioner.tasks.subtasks.BulkImport;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeAdminPassword;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
-import com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets;
-import com.yugabyte.yw.commissioner.tasks.subtasks.CreateAlertDefinitions;
-import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTable;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteKeyspace;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteNode;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteRootVolumes;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTablesFromUniverse;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DestroyEncryptionAtRest;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DisableEncryptionAtRest;
-import com.yugabyte.yw.commissioner.tasks.subtasks.EnableEncryptionAtRest;
-import com.yugabyte.yw.commissioner.tasks.subtasks.HardRebootServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.InstallNodeAgent;
-import com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s;
-import com.yugabyte.yw.commissioner.tasks.subtasks.InstallYbcSoftwareOnK8s;
-import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ManageAlertDefinitions;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ManageLoadBalancerGroup;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask;
-import com.yugabyte.yw.commissioner.tasks.subtasks.MarkUniverseForHealthScriptReUpload;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList;
-import com.yugabyte.yw.commissioner.tasks.subtasks.NodeTaskBase;
-import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.PersistResizeNode;
-import com.yugabyte.yw.commissioner.tasks.subtasks.PersistSystemdUpgrade;
-import com.yugabyte.yw.commissioner.tasks.subtasks.PromoteAutoFlags;
-import com.yugabyte.yw.commissioner.tasks.subtasks.RebootServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ResetUniverseVersion;
-import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreBackupYb;
-import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreBackupYbc;
-import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeys;
-import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeysYb;
-import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeysYbc;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.RunYsqlUpgrade;
-import com.yugabyte.yw.commissioner.tasks.subtasks.SetActiveUniverseKeys;
-import com.yugabyte.yw.commissioner.tasks.subtasks.SetFlagInMemory;
-import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
-import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeStatus;
-import com.yugabyte.yw.commissioner.tasks.subtasks.SwamperTargetsFileUpdate;
-import com.yugabyte.yw.commissioner.tasks.subtasks.TransferXClusterCerts;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UnivSetCertificate;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateSucceeded;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistGFlags;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateMountedDisks;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateSoftwareVersion;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseYbcDetails;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpgradeYbc;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForClockSync;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDataMove;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDuration;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForEncryptionKeyInMemory;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForFollowerLag;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLeaderBlacklistCompletion;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLeadersOnPreferredOnly;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLoadBalance;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForNodeAgent;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForYbcServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.YBCBackupSucceeded;
+import com.yugabyte.yw.commissioner.tasks.subtasks.*;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckSoftwareVersion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckUpgrade;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckXUniverseAutoFlags;
 import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
-import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ChangeXClusterRole;
-import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteBootstrapIds;
-import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteReplication;
-import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteXClusterConfigEntry;
-import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ResetXClusterConfigEntry;
-import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigUpdateMasterAddresses;
-import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterInfoPersist;
-import com.yugabyte.yw.common.DnsManager;
-import com.yugabyte.yw.common.NodeAgentClient;
-import com.yugabyte.yw.common.NodeAgentManager;
-import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.UniverseInProgressException;
-import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.*;
+import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupNodeRetriever;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
@@ -129,66 +35,22 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.controllers.TablesController.NamespaceInfoResp;
-import com.yugabyte.yw.forms.BackupRequestParams;
-import com.yugabyte.yw.forms.BackupTableParams;
-import com.yugabyte.yw.forms.BulkImportParams;
-import com.yugabyte.yw.forms.CreatePitrConfigParams;
-import com.yugabyte.yw.forms.ITaskParams;
-import com.yugabyte.yw.forms.RestoreBackupParams;
+import com.yugabyte.yw.forms.*;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
-import com.yugabyte.yw.forms.RestorePreflightParams;
-import com.yugabyte.yw.forms.RestorePreflightResponse;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.forms.UpgradeTaskParams;
-import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
-import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.HighAvailabilityConfig;
-import com.yugabyte.yw.models.NodeAgent;
-import com.yugabyte.yw.models.NodeInstance;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Restore;
-import com.yugabyte.yw.models.TaskInfo;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
-import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.ConfigType;
-import com.yugabyte.yw.models.helpers.ClusterAZ;
-import com.yugabyte.yw.models.helpers.ColumnDetails;
+import com.yugabyte.yw.models.helpers.*;
 import com.yugabyte.yw.models.helpers.ColumnDetails.YQLDataType;
-import com.yugabyte.yw.models.helpers.CommonUtils;
-import com.yugabyte.yw.models.helpers.DeviceInfo;
-import com.yugabyte.yw.models.helpers.LoadBalancerConfig;
-import com.yugabyte.yw.models.helpers.LoadBalancerPlacement;
-import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.NodeStatus;
-import com.yugabyte.yw.models.helpers.PlacementInfo;
-import com.yugabyte.yw.models.helpers.TableDetails;
-import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
 import java.io.IOException;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -199,20 +61,15 @@ import java.util.stream.IntStream;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
-import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.MDC;
 import org.yb.ColumnSchema.SortOrder;
 import org.yb.CommonTypes;
 import org.yb.CommonTypes.TableType;
 import org.yb.cdc.CdcConsumer.XClusterRole;
-import org.yb.client.GetTableSchemaResponse;
-import org.yb.client.ListMastersResponse;
-import org.yb.client.ListNamespacesResponse;
-import org.yb.client.ListTablesResponse;
-import org.yb.client.ModifyClusterConfigIncrementVersion;
-import org.yb.client.YBClient;
+import org.yb.client.*;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterTypes;
 import org.yb.util.ServerInfo;
@@ -220,6 +77,37 @@ import play.libs.Json;
 
 @Slf4j
 public abstract class UniverseTaskBase extends AbstractTaskBase {
+
+  // Tasks that modify cluster placement.
+  // If one of such tasks is failed, we should not allow starting most of other tasks,
+  // until failed task is retried.
+  private static final Set<TaskType> PLACEMENT_MODIFICATION_TASKS =
+      ImmutableSet.of(
+          TaskType.AddNodeToUniverse,
+          TaskType.RemoveNodeFromUniverse,
+          TaskType.DeleteNodeFromUniverse,
+          TaskType.EditUniverse,
+          //          TaskType.EditKubernetesUniverse, Cannot use it here as it is not @Retryable.
+          TaskType.ReleaseInstanceFromUniverse,
+          TaskType.StartNodeInUniverse,
+          TaskType.StopNodeInUniverse,
+          TaskType.ResizeNode);
+
+  // Tasks that are allowed to run if cluster placement modification task failed.
+  private static final Set<TaskType> SAFE_TO_RUN_IF_UNIVERSE_BROKEN =
+      ImmutableSet.of(
+          TaskType.CreateBackup,
+          TaskType.BackupUniverse,
+          TaskType.MultiTableBackup,
+          TaskType.RestoreBackup,
+          TaskType.CreatePitrConfig,
+          TaskType.DeletePitrConfig,
+          TaskType.CreateXClusterConfig,
+          TaskType.EditXClusterConfig,
+          TaskType.DeleteXClusterConfig,
+          TaskType.RestartXClusterConfig,
+          TaskType.SyncXClusterConfig,
+          TaskType.DestroyUniverse);
 
   protected Set<UUID> lockedXClusterUniversesUuidSet = null;
 
@@ -362,7 +250,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       Consumer<Universe> callback) {
     TaskType owner = getTaskExecutor().getTaskType(getClass());
     if (owner == null) {
-      log.trace("TaskType not found for class " + this.getClass().getCanonicalName());
+      String msg = "TaskType not found for class " + this.getClass().getCanonicalName();
+      log.error(msg);
+      throw new IllegalStateException(msg);
     }
     return universe -> {
       if (isFirstTry()) {
@@ -382,17 +272,34 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         log.error(msg);
         throw new UniverseInProgressException(msg);
       }
-      // If the task is retried, check if the task UUID is same as the one in the universe.
-      // Check this condition only on retry to retain same behavior as before.
-      if (!isForceUpdate
-          && !universeDetails.updateSucceeded
-          && taskParams().getPreviousTaskUUID() != null
-          && !Objects.equals(
-              taskParams().getPreviousTaskUUID(), universeDetails.updatingTaskUUID)) {
-        // else throw error.
-        String msg = "Only the last task " + taskParams().getPreviousTaskUUID() + " can be retried";
-        log.error(msg);
-        throw new RuntimeException(msg);
+      if (taskParams().getPreviousTaskUUID() != null) {
+        // If the task is retried, check if the task UUID is same as the one in the universe.
+        // Check this condition only on retry to retain same behavior as before.
+        boolean isLastTaskOrLastPlacementTaskRetry =
+            Objects.equals(taskParams().getPreviousTaskUUID(), universeDetails.updatingTaskUUID)
+                || Objects.equals(
+                    taskParams().getPreviousTaskUUID(),
+                    universeDetails.placementModificationTaskUuid);
+        if (!isForceUpdate && !isLastTaskOrLastPlacementTaskRetry) {
+          String msg =
+              "Only the last task " + taskParams().getPreviousTaskUUID() + " can be retried";
+          log.error(msg);
+          throw new RuntimeException(msg);
+        }
+      } else {
+        // If we're in the middle of placement modification task (failed and waiting to be retried)
+        // only allow subset of safe to execute tasks
+        if (universeDetails.placementModificationTaskUuid != null
+            && !SAFE_TO_RUN_IF_UNIVERSE_BROKEN.contains(owner)) {
+          String msg =
+              "Universe "
+                  + taskParams().getUniverseUUID()
+                  + " placement update failed - can't run "
+                  + owner.name()
+                  + " task until placement update succeeds";
+          log.error(msg);
+          throw new RuntimeException(msg);
+        }
       }
       markUniverseUpdateInProgress(owner, universe, checkSuccess);
       if (callback != null) {
@@ -408,6 +315,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     universeDetails.updateInProgress = true;
     universeDetails.updatingTask = owner;
     universeDetails.updatingTaskUUID = userTaskUUID;
+    if (PLACEMENT_MODIFICATION_TASKS.contains(owner)) {
+      universeDetails.placementModificationTaskUuid = userTaskUUID;
+    }
     if (checkSuccess) {
       universeDetails.updateSucceeded = false;
     }
@@ -677,14 +587,17 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           }
           // Persist the updated information about the universe. Mark it as being not edited.
           universeDetails.updateInProgress = false;
-          universeDetails.updatingTask = null;
           universeDetails.errorString = err;
           if (universeDetails.updateSucceeded && updateTaskDetails) {
-            // Clear the task UUID only if the update succeeded.
+            // Clear the task UUIDs only if the update succeeded.
             universeDetails.updatingTaskUUID = null;
+            if (PLACEMENT_MODIFICATION_TASKS.contains(universeDetails.updatingTask)) {
+              universeDetails.placementModificationTaskUuid = null;
+            }
             // Do not save the transient state in the universe.
             universeDetails.nodeDetailsSet.forEach(n -> n.masterState = null);
           }
+          universeDetails.updatingTask = null;
           universe.setUniverseDetails(universeDetails);
         };
     // Update the progress flag to false irrespective of the version increment failure.
@@ -2165,8 +2078,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           if (CollectionUtils.isNotEmpty(keyspaceTable.tableUUIDList)) {
             Set<UUID> tableSet = new HashSet<>(keyspaceTable.tableUUIDList);
             for (UUID tableUUID : tableSet) {
-              GetTableSchemaResponse tableSchema =
-                  client.getTableSchemaByUUID(tableUUID.toString().replace("-", ""));
+              GetTableSchemaResponse tableSchema = null;
+              try {
+                tableSchema = client.getTableSchemaByUUID(tableUUID.toString().replace("-", ""));
+              } catch (Exception e) {
+                log.warn(
+                    "Error fetching table with UUID: "
+                        + tableUUID.toString()
+                        + ", skipping backup.");
+                continue;
+              }
               // If table is not REDIS or YCQL, ignore.
               if (tableSchema.getTableType().equals(TableType.PGSQL_TABLE_TYPE)
                   || !tableSchema.getTableType().equals(backupRequestParams.backupType)
@@ -2174,7 +2095,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                   || !keyspaceTable.keyspace.equals(tableSchema.getNamespace())) {
                 log.info(
                     "Skipping backup of table with UUID: "
-                        + tableUUID
+                        + tableUUID.toString()
                         + " and keyspace: "
                         + keyspaceTable.keyspace);
                 continue;

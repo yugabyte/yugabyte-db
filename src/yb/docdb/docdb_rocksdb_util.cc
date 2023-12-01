@@ -613,6 +613,7 @@ void InitRocksDBOptions(
   } else {
     options->write_buffer_size = FLAGS_memstore_size_mb * 1_MB;
   }
+  LOG(INFO) << log_prefix << "Write buffer size: " << options->write_buffer_size;
   options->env = tablet_options.rocksdb_env;
   options->checkpoint_env = rocksdb::Env::Default();
   options->priority_thread_pool_for_compactions_and_flushes = GetGlobalPriorityThreadPool();

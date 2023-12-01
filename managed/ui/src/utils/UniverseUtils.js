@@ -11,6 +11,8 @@ import {
 import { PROVIDER_TYPES, BASE_URL } from '../config';
 import { NodeState } from '../redesign/helpers/dtos';
 
+export const MULTILINE_GFLAGS_ARRAY = ['ysql_hba_conf_csv', 'ysql_ident_conf_csv'];
+
 const LDAP_KEYS = [
   'ldapserver',
   'ldapport',
@@ -47,6 +49,11 @@ export const nodeInClusterStates = [
   NodeState.Unreachable,
   NodeState.MetricsUnavailable
 ];
+
+export const MultilineGFlags = {
+  YSQL_HBA_CONF_CSV: 'ysql_hba_conf_csv',
+  YSQL_IDENT_CONF_CSV: 'ysql_ident_conf_csv'
+};
 
 export function isNodeRemovable(nodeState) {
   return nodeState === 'To Be Added';
@@ -435,4 +442,12 @@ export const verifyLDAPAttributes = (GFlagInput) => {
     }
   }
   return { isAttributeInvalid, errorMessage, isWarning };
+};
+
+export const optimizeVersion = (version) => {
+  if (parseInt(version[version.length - 1], 10) === 0) {
+    return optimizeVersion(version.slice(0, version.length - 1));
+  } else {
+    return version.join('.');
+  }
 };

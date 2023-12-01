@@ -1078,28 +1078,6 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
   state->set_completion_callback(MakeRpcOperationCompletionCallback(
       std::move(context), resp, server_->Clock()));
 
-  if (req->is_external() && req->state().status() == TransactionStatus::APPLYING) {
-    auto namespace_name = tablet.peer->tablet_metadata()->namespace_name();
-    auto namespace_id_result = tablet.peer->GetNamespaceId();
-    if (!namespace_id_result.ok()) {
-      state->CompleteWithStatus(STATUS(TryAgain, namespace_id_result.status().message()));
-      return;
-    }
-    auto commit_ht = HybridTime(req->state().commit_hybrid_time());
-    auto tablet_caught_up_result =
-        server_->tablet_manager()->server()->XClusterSafeTimeCaughtUpToCommitHt(
-            *namespace_id_result, commit_ht);
-    if (!tablet_caught_up_result.ok()) {
-      state->CompleteWithStatus(STATUS(TryAgain, tablet_caught_up_result.status().message()));
-      return;
-    }
-    if (!*tablet_caught_up_result) {
-      state->CompleteWithStatus(STATUS(TryAgain, Format("Commit time greater than safe "
-                                                        "time for xcluster replication.")));
-      return;
-    }
-  }
-
   if (req->state().status() == TransactionStatus::APPLYING || cleanup) {
     auto* participant = tablet.tablet->transaction_participant();
     if (participant) {
@@ -2739,9 +2717,9 @@ void TabletServiceImpl::GetLockStatus(const GetLockStatusRequestPB* req,
   }
 
   TabletPeers tablet_peers;
-  std::set<TransactionId> limit_resp_to_txns;
+  std::map<TransactionId, SubtxnSet> limit_resp_to_txns;
   for (const auto& [tablet_id, _] : req->transactions_by_tablet()) {
-    // GetLockStatusRequestPB may include tablets that aren't hosted by at this tablet server.
+    // GetLockStatusRequestPB may include tablets that aren't hosted at this tablet server.
     auto res = LookupTabletPeer(server_->tablet_manager(), tablet_id);
     if (!res.ok()) {
       continue;
@@ -2751,6 +2729,8 @@ void TabletServiceImpl::GetLockStatus(const GetLockStatusRequestPB* req,
 
   if (req->transaction_ids().size() > 0) {
     // If this request specifies transaction_ids, then we check every tablet leader at this tserver
+    // TODO(pglocks): We should have involved tablet info in this case as well. See
+    // https://github.com/yugabyte/yugabyte-db/issues/16913
     tablet_peers = server_->tablet_manager()->GetTabletPeers();
   }
   for (auto& txn_id : req->transaction_ids()) {
@@ -2759,7 +2739,8 @@ void TabletServiceImpl::GetLockStatus(const GetLockStatusRequestPB* req,
       SetupErrorAndRespond(resp->mutable_error(), id_or_status.status(), &context);
       return;
     }
-    limit_resp_to_txns.insert(*id_or_status);
+    // TODO(pglocks): Include aborted_subtxn info here as well.
+    limit_resp_to_txns.emplace(std::make_pair(*id_or_status, SubtxnSet()));
   }
 
   for (const auto& tablet_peer : tablet_peers) {
@@ -2770,17 +2751,25 @@ void TabletServiceImpl::GetLockStatus(const GetLockStatusRequestPB* req,
       auto* tablet_lock_info = resp->add_tablet_lock_infos();
       Status s = Status::OK();
       if (req->transactions_by_tablet().count(tablet_id) > 0) {
-        std::set<TransactionId> transaction_ids;
-        for (auto& txn_id : req->transactions_by_tablet().at(tablet_id).transaction_ids()) {
+        std::map<TransactionId, SubtxnSet> transactions;
+        for (auto& txn : req->transactions_by_tablet().at(tablet_id).transactions()) {
+          auto& txn_id = txn.id();
           auto id_or_status = FullyDecodeTransactionId(txn_id);
           if (!id_or_status.ok()) {
             resp->Clear();
             SetupErrorAndRespond(resp->mutable_error(), id_or_status.status(), &context);
             return;
           }
-          transaction_ids.insert(*id_or_status);
+          auto aborted_subtxns_or_status = SubtxnSet::FromPB(txn.aborted().set());
+          if (!aborted_subtxns_or_status.ok()) {
+            resp->Clear();
+            SetupErrorAndRespond(
+                resp->mutable_error(), aborted_subtxns_or_status.status(), &context);
+            return;
+          }
+          transactions.emplace(std::make_pair(*id_or_status, *aborted_subtxns_or_status));
         }
-        s = tablet_peer->shared_tablet()->GetLockStatus(transaction_ids, tablet_lock_info);
+        s = tablet_peer->shared_tablet()->GetLockStatus(transactions, tablet_lock_info);
       } else {
         DCHECK(!limit_resp_to_txns.empty());
         s = tablet_peer->shared_tablet()->GetLockStatus(limit_resp_to_txns, tablet_lock_info);

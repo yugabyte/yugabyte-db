@@ -1,6 +1,6 @@
 ```output.ebnf
 alter_default_priv ::= ALTER DEFAULT PRIVILEGES 
-                       [ FOR { ROLE | USER } role_name [ , ... ] ] 
+                       [ FOR { ROLE | USER } role_name [ , ... ] ]  
                        [ IN SCHEMA schema_name [ , ... ] ] 
                        abbr_grant_or_revoke
 

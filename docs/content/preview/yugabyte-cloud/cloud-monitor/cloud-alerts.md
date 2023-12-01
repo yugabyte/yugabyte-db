@@ -52,9 +52,9 @@ YugabyteDB monitors the health of your clusters based on [cluster alert](#cluste
 
 | Status | Alert | Level |
 | :----- | :---- | :---- |
-| Healthy | No alerts<br/>[Fewer than 34% of nodes down](#fix-nodes-reporting-as-down-alerts) | <br/>Info |
-| Needs Attention | [Node free storage](#fix-storage-alerts)<br/>[More than 34% of nodes down](#fix-nodes-reporting-as-down-alerts)<br/>[Memory Utilization](#fix-memory-alerts)<br/>[YSQL Connections](#fix-ysql-connection-alerts)<br/>[CPU Utilization](#fix-cpu-alerts) | Warning or Severe<br/>Warning<br/>Warning or Severe<br/>Warning or Severe<br/>Warning or Severe
-| Unhealthy | [More than 66% of nodes down](#fix-nodes-reporting-as-down-alerts)<br/>[CMK unavailable](#fix-cmk-unavailable-alerts) | Warning |
+| Healthy | No alerts<br/>[Disk throughput](#fix-throughput-alerts)<br/>[Disk IOPS](#fix-iops-alerts)<br/>[Fewer than 34% of nodes down](#fix-nodes-reporting-as-down-alerts) | <br/>Warning<br/>Warning<br/>Info |
+| Needs Attention | [Node free storage](#fix-storage-alerts)<br/>[More than 34% of nodes down](#fix-nodes-reporting-as-down-alerts)<br/>[Memory Utilization](#fix-memory-alerts)<br/>[YSQL Connections](#fix-ysql-connection-alerts)<br/>[CPU Utilization](#fix-cpu-alerts) | Warning or Severe<br/>Warning or Severe<br/>Warning or Severe<br/>Warning<br/>Warning or Severe<br/>Warning or Severe<br/>Warning or Severe
+| Unhealthy | [More than 66% of nodes down](#fix-nodes-reporting-as-down-alerts)<br/>[CMK unavailable](#fix-cmk-unavailable-alerts)  | Severe<br/>Warning |
 
 To see the alert conditions that caused the current health condition, click the cluster health icon.
 
@@ -72,15 +72,17 @@ Alerts can have two severity levels: Warning or Severe. The nodes down alert has
 
 When you receive a cluster alert, the first step is to review the chart for the metric over time (if available) to evaluate trends and monitor your progress.
 
-| Alert | Review |
+| Alert | Metric |
 | :--- | :--- |
+| [Disk Throughput](#fix-throughput-alerts) | Disk IOPS |
+| [Disk IOPS](#fix-iops-alerts) | Disk IOPS |
 | [Node Free Storage](#fix-storage-alerts) | Disk Usage metric |
-| [Nodes down](#fix-nodes-reporting-as-down-alerts) | Go to the cluster **Nodes** tab to see which nodes are down |
+| [Nodes Down](#fix-nodes-reporting-as-down-alerts) | Go to the cluster **Nodes** tab to see which nodes are down |
 | [Memory Use](#fix-memory-alerts) | Memory Usage metric |
 | [Cluster Queues Overflow](#fix-database-overload-alerts) | RPC Queue Size metric |
 | [Compaction Overload](#fix-database-overload-alerts) | Compaction metric |
 | [YSQL Connections](#fix-ysql-connection-alerts) | YSQL Operations/Sec metric |
-| [CMK unavailable](#fix-cmk-unavailable-alerts) | N/A |
+| [CMK Unavailable](#fix-cmk-unavailable-alerts) | N/A |
 | [CPU Utilization](#fix-cpu-alerts) | CPU Usage metric |
 
 You can view metrics on the cluster **Performance** tab. Refer to [Performance metrics](../overview/#performance-metrics).
@@ -90,6 +92,30 @@ You can view metrics on the cluster **Performance** tab. Refer to [Performance m
 If you get frequent cluster alerts on a [Sandbox cluster](../../cloud-basics/create-clusters/create-clusters-free/#limitations), you may have reached the performance limits for Sandbox clusters. Consider upgrading to a Dedicated cluster.
 
 {{< /note >}}
+
+#### Fix throughput alerts
+
+YugabyteDB Managed sends a notification when the disk throughput on any node in the cluster exceeds the threshold, as follows:
+
+- Node disk throughput utilization exceeded 80% (Warning).
+- Node disk throughput utilization reached 100% (Warning).
+
+If disk throughput consistently exceeds 80% for any node, consider taking action to remove any bottlenecks on performance. For clusters deployed on AWS, increase the maximum disk IOPS per node. Throughput is automatically scaled together with IOPS. For clusters deployed on GCP or Azure, add more vCPUs or increase the disk size.
+
+For information on scaling clusters, refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
+
+#### Fix IOPS alerts
+
+YugabyteDB Managed sends a notification when the disk input output (I/O) operations per second (IOPS) on any node in the cluster (AWS only) exceeds the threshold, as follows:
+
+- Node disk IOPS utilization exceeded 80% (Warning).
+- Node disk IOPS utilization reached 100% (Warning).
+
+For large datasets or clusters with high concurrent transactions, higher IOPS is recommended.
+
+If disk IOPS consistently exceeds 80% for any node, consider taking action to remove any bottlenecks on performance. For clusters deployed on AWS, increase the maximum disk IOPS per node. For clusters deployed in GCP and Azure, add more vCPUs and/or increase the disk size.
+
+For information on scaling clusters, refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
 
 #### Fix storage alerts
 

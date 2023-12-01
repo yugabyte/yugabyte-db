@@ -30,6 +30,7 @@ class KeyBytes;
 class KeyEntryValue;
 class Partition;
 class PartitionSchema;
+class PgKeyDecoder;
 class PgTableRow;
 class PgValue;
 class PrimitiveValue;

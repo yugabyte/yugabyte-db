@@ -180,7 +180,7 @@ Result<tserver::GetLockStatusResponsePB> PgLocksTestBase::GetLockStatus(
   tserver::GetLockStatusRequestPB req;
   auto& txn_info = (*req.mutable_transactions_by_tablet())[tablet_id];
   for (const auto& txn_id : transactions_ids) {
-    txn_info.add_transaction_ids(txn_id.data(), txn_id.size());
+    txn_info.add_transactions()->set_id(txn_id.data(), txn_id.size());
   }
   return GetLockStatus(req);
 }

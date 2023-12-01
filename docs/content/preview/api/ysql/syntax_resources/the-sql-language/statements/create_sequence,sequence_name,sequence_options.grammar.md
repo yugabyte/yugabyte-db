@@ -4,9 +4,9 @@ create_sequence ::= CREATE [ TEMPORARY | TEMP ] SEQUENCE
 
 sequence_name ::= qualified_name
 
-sequence_options ::= [ INCREMENT [ BY ] int_literal ] 
+sequence_options ::= [ INCREMENT [ BY ] int_literal ]  
                      [ MINVALUE int_literal | NO MINVALUE ] 
                      [ MAXVALUE int_literal | NO MAXVALUE ] 
-                     [ START [ WITH ] int_literal ] 
+                     [ START [ WITH ] int_literal ]  
                      [ CACHE positive_int_literal ] [ [ NO ] CYCLE ]
 ```

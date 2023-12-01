@@ -90,6 +90,7 @@ import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.helpers.NLBHealthCheckConfiguration;
 import com.yugabyte.yw.models.helpers.NodeID;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import java.util.ArrayList;
@@ -436,9 +437,10 @@ public class AWSCloudImpl implements CloudAPI {
       String regionCode,
       String lbName,
       Map<AvailabilityZone, Set<NodeID>> azToNodeIDs,
-      String protocol,
-      List<Integer> ports) {
+      List<Integer> ports,
+      NLBHealthCheckConfiguration healthCheckConfiguration) {
     try {
+      String protocol = healthCheckConfiguration.getHealthCheckProtocol().toString();
       // Get aws clients
       AmazonElasticLoadBalancing lbClient = getELBClient(provider, regionCode);
       AmazonEC2 ec2Client = getEC2Client(provider, regionCode);

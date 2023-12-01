@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
@@ -39,6 +40,7 @@ import javax.annotation.Nullable;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.ToString;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
@@ -514,6 +516,39 @@ public abstract class KubernetesManager {
     return events.stream().map(x -> toReadableString(x)).collect(Collectors.joining("\n"));
   }
 
+  /**
+   * Checks if the given kubeConfig points to the same Kubernetes cluster where YBA is running. This
+   * is done by checking existance of the YBA pod in the given cluster.
+   *
+   * @param kubeConfig the kubeConfig of the cluster to check.
+   * @return true if it is home cluster, false if pod is not found.
+   */
+  public boolean isHomeCluster(String kubeConfig) {
+    if (StringUtils.isBlank(kubeConfig)) {
+      return true;
+    }
+
+    String ns = getPlatformNamespace();
+    String podName = getPlatformPodName();
+
+    // TODO(bhavin192): verify the .metadata.uid of the pod object to
+    // ensure it is the same pod.
+    // Map<String, String> homeConfig = ImmutableMap.of("KUBECONFIG", "");
+    // Pod homePod = k8s.getPodObject(homeConfig, ns, podName);
+
+    Map<String, String> config = ImmutableMap.of("KUBECONFIG", kubeConfig);
+    try {
+      getPodObject(config, ns, podName);
+    } catch (RuntimeException e) {
+      if (e.getMessage().contains("Error from server (NotFound): namespaces")
+          || e.getMessage().contains("Error from server (NotFound): pods")) {
+        return false;
+      }
+      throw e;
+    }
+    return true;
+  }
+
   /* kubernetes interface */
 
   public abstract void createNamespace(Map<String, String> config, String universePrefix);
@@ -644,6 +679,8 @@ public abstract class KubernetesManager {
   public abstract String getK8sVersion(Map<String, String> config, String outputFormat);
 
   public abstract String getPlatformNamespace();
+
+  public abstract String getPlatformPodName();
 
   public abstract String getHelmValues(
       Map<String, String> config, String namespace, String helmReleaseName, String outputFormat);

@@ -1,7 +1,8 @@
 ---
 title: PL/pgSQL (a.k.a. "language plpgsql") subprograms [YSQL]
 headerTitle: PL/pgSQL (a.k.a. "language plpgsql") subprograms
-linkTitle: «language plpgsql» subprograms
+linkTitle: >
+  "language plpgsql" subprograms
 description: Describes PL/pgSQL functions and procedures. These are also known as "language plpgsql" subprograms.) [YSQL].
 image: /images/section_icons/api/subsection.png
 menu:
@@ -10,7 +11,7 @@ menu:
     parent: user-defined-subprograms-and-anon-blocks
     weight: 30
 type: indexpage
-showRightNav: false
+showRightNav: true
 ---
 
 PL/pgSQL is a conventional, block-structured, imperative programming language designed to execute in the PostgreSQL server, and by extension in the YSQL server, for the specific purpose of executing SQL statements and dealing with the outcomes that they produce. It executes in the same process as SQL itself. And it uses the same underlying implementation primitives. This has these hugely valuable consequences:

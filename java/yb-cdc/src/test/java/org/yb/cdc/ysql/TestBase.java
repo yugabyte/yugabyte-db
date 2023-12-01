@@ -72,6 +72,7 @@ public class TestBase extends CDCBaseClass {
   @Before
   public void setUp() throws Exception {
     super.setUp();
+    setServerFlag(getTserverHostAndPort(), CDC_POPULATE_SAFEPOINT_RECORD, "false");
     statement = connection.createStatement();
     statement.execute("drop table if exists test;");
     statement.execute("create table test (a int primary key, b int);");

@@ -240,18 +240,16 @@ Result<YBTableName> XClusterYsqlTestBase::CreateYsqlTable(
       verify_schema_name);
 }
 
-Status XClusterYsqlTestBase::CreateYsqlTable(
-    uint32_t idx, uint32_t num_tablets, Cluster* cluster, std::vector<YBTableName>* table_names,
+Result<YBTableName> XClusterYsqlTestBase::CreateYsqlTable(
+    uint32_t idx, uint32_t num_tablets, Cluster* cluster,
     const boost::optional<std::string>& tablegroup_name, bool colocated,
     const bool ranged_partitioned) {
   // Generate colocation_id based on index so that we have the same colocation_id for
   // producer/consumer.
   const int colocation_id = (tablegroup_name.has_value() || colocated) ? (idx + 1) * 111111 : 0;
-  auto table = VERIFY_RESULT(CreateYsqlTable(
+  return CreateYsqlTable(
       cluster, kNamespaceName, "" /* schema_name */, Format("test_table_$0", idx), tablegroup_name,
-      num_tablets, colocated, colocation_id, ranged_partitioned));
-  table_names->push_back(table);
-  return OK();
+      num_tablets, colocated, colocation_id, ranged_partitioned);
 }
 
 Result<std::string> XClusterYsqlTestBase::GetUniverseId(Cluster* cluster) {

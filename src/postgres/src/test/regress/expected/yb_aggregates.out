@@ -399,6 +399,169 @@ INSERT INTO ybaggtest (id, float_4, float_8) VALUES (101, 'NaN', 'NaN');
    100 | NaN | NaN | 2.2
 (1 row)
 
+-- In case indexquals are planned to be rechecked, pushdown should be avoided.
+\set query 'SELECT COUNT(*) FROM ybaggtest WHERE float_4 > 0'
+:run;
+                        QUERY PLAN
+----------------------------------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest
+         Remote Filter: (float_4 > '0'::double precision)
+         Partial Aggregate: true
+(4 rows)
+
+                        QUERY PLAN
+----------------------------------------------------------
+ Finalize Aggregate
+   ->  YB Seq Scan on ybaggtest
+         Remote Filter: (float_4 > '0'::double precision)
+         Partial Aggregate: true
+(4 rows)
+
+                       QUERY PLAN
+---------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using ybaggtestindex on ybaggtest
+         Index Cond: (float_4 > '0'::double precision)
+(3 rows)
+
+ count
+-------
+   100
+(1 row)
+
+ count
+-------
+   100
+(1 row)
+
+ count
+-------
+   100
+(1 row)
+
+\set query 'SELECT COUNT(*) FROM ybaggtest WHERE int_4 > 0 AND float_8 > 0'
+:run;
+                                 QUERY PLAN
+----------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest
+         Remote Filter: ((int_4 > 0) AND (float_8 > '0'::double precision))
+         Partial Aggregate: true
+(4 rows)
+
+                                 QUERY PLAN
+----------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  YB Seq Scan on ybaggtest
+         Remote Filter: ((int_4 > 0) AND (float_8 > '0'::double precision))
+         Partial Aggregate: true
+(4 rows)
+
+                        QUERY PLAN
+----------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using ybaggtestindex on ybaggtest
+         Index Cond: (int_4 > 0)
+         Remote Filter: (float_8 > '0'::double precision)
+(4 rows)
+
+ count
+-------
+    99
+(1 row)
+
+ count
+-------
+    99
+(1 row)
+
+ count
+-------
+    99
+(1 row)
+
+\set query 'SELECT COUNT(*) FROM ybaggtest WHERE int_8 = 9223372036854775807'
+:run;
+                           QUERY PLAN
+----------------------------------------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest
+         Remote Filter: (int_8 = '9223372036854775807'::bigint)
+         Partial Aggregate: true
+(4 rows)
+
+                           QUERY PLAN
+----------------------------------------------------------------
+ Finalize Aggregate
+   ->  YB Seq Scan on ybaggtest
+         Remote Filter: (int_8 = '9223372036854775807'::bigint)
+         Partial Aggregate: true
+(4 rows)
+
+                         QUERY PLAN
+-------------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using ybaggtestindex on ybaggtest
+         Index Cond: (int_8 = '9223372036854775807'::bigint)
+(3 rows)
+
+ count
+-------
+    99
+(1 row)
+
+ count
+-------
+    99
+(1 row)
+
+ count
+-------
+    99
+(1 row)
+
+\set query 'SELECT COUNT(*) FROM ybaggtest WHERE int_8 = 9223372036854775807 AND int_2 = 32767'
+:run;
+                                    QUERY PLAN
+-----------------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ybaggtestindex on ybaggtest
+         Index Cond: ((int_8 = '9223372036854775807'::bigint) AND (int_2 = 32767))
+         Partial Aggregate: true
+(4 rows)
+
+                                      QUERY PLAN
+--------------------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  YB Seq Scan on ybaggtest
+         Remote Filter: ((int_8 = '9223372036854775807'::bigint) AND (int_2 = 32767))
+         Partial Aggregate: true
+(4 rows)
+
+                                    QUERY PLAN
+-----------------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ybaggtestindex on ybaggtest
+         Index Cond: ((int_8 = '9223372036854775807'::bigint) AND (int_2 = 32767))
+         Partial Aggregate: true
+(4 rows)
+
+ count
+-------
+    99
+(1 row)
+
+ count
+-------
+    99
+(1 row)
+
+ count
+-------
+    99
+(1 row)
+
 -- Negative tests - pushdown not supported
 EXPLAIN (COSTS OFF) SELECT int_2, COUNT(*), SUM(int_4) FROM ybaggtest GROUP BY int_2;
          QUERY PLAN
@@ -433,7 +596,7 @@ CREATE TABLE ybaggtest2 (
 -- Create index where column a is not part of the key.
 CREATE INDEX NONCONCURRENTLY ybaggtest2index ON ybaggtest2 ((1)) INCLUDE (a);
 -- Insert NULL rows.
-INSERT INTO ybaggtest2 VALUES (NULL), (NULL), (NULL);
+INSERT INTO ybaggtest2 VALUES (NULL), (NULL);
 -- Insert regular rows.
 INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 -- Verify NULL rows are included in COUNT(*) but not in COUNT(row).
@@ -464,17 +627,17 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 
  count
 -------
-     6
+     5
 (1 row)
 
  count
 -------
-     6
+     5
 (1 row)
 
  count
 -------
-     6
+     5
 (1 row)
 
 -- TODO(#16417): update the following three index only scan explains to have
@@ -542,17 +705,17 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 
  count | count
 -------+-------
-     6 |     3
+     5 |     3
 (1 row)
 
  count | count
 -------+-------
-     6 |     3
+     5 |     3
 (1 row)
 
  count | count
 -------+-------
-     6 |     3
+     5 |     3
 (1 row)
 
 -- Verify MAX/MIN respect NULL values.
@@ -619,17 +782,17 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 
  sum | max | min
 -----+-----+-----
-  12 |   2 |   2
+  10 |   2 |   2
 (1 row)
 
  sum | max | min
 -----+-----+-----
-  12 |   2 |   2
+  10 |   2 |   2
 (1 row)
 
  sum | max | min
 -----+-----+-----
-  12 |   2 |   2
+  10 |   2 |   2
 (1 row)
 
 \set query 'SELECT SUM(NULL::int), MAX(NULL), MIN(NULL) FROM ybaggtest2'
@@ -668,6 +831,89 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
  sum | max | min
 -----+-----+-----
      |     |
+(1 row)
+
+-- Verify IS NULL, IS NOT NULL quals.
+\set query 'SELECT COUNT(*) FROM ybaggtest2 WHERE a IS NULL'
+:run;
+             QUERY PLAN
+------------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest2
+         Remote Filter: (a IS NULL)
+         Partial Aggregate: true
+(4 rows)
+
+             QUERY PLAN
+------------------------------------
+ Finalize Aggregate
+   ->  YB Seq Scan on ybaggtest2
+         Remote Filter: (a IS NULL)
+         Partial Aggregate: true
+(4 rows)
+
+                        QUERY PLAN
+-----------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ybaggtest2index on ybaggtest2
+         Remote Filter: (a IS NULL)
+         Partial Aggregate: true
+(4 rows)
+
+ count
+-------
+     2
+(1 row)
+
+ count
+-------
+     2
+(1 row)
+
+ count
+-------
+     2
+(1 row)
+
+\set query 'SELECT COUNT(*) FROM ybaggtest2 WHERE a IS NOT NULL'
+:run;
+               QUERY PLAN
+----------------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest2
+         Remote Filter: (a IS NOT NULL)
+         Partial Aggregate: true
+(4 rows)
+
+               QUERY PLAN
+----------------------------------------
+ Finalize Aggregate
+   ->  YB Seq Scan on ybaggtest2
+         Remote Filter: (a IS NOT NULL)
+         Partial Aggregate: true
+(4 rows)
+
+                        QUERY PLAN
+-----------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ybaggtest2index on ybaggtest2
+         Remote Filter: (a IS NOT NULL)
+         Partial Aggregate: true
+(4 rows)
+
+ count
+-------
+     3
+(1 row)
+
+ count
+-------
+     3
+(1 row)
+
+ count
+-------
+     3
 (1 row)
 
 --

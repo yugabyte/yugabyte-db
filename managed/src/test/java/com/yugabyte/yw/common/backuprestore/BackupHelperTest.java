@@ -16,6 +16,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.google.protobuf.ByteString;
+import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -76,6 +77,7 @@ public class BackupHelperTest extends FakeDBApplication {
     testUniverse = ModelFactory.createUniverse(testCustomer.getId());
     mockConfigService = mock(CustomerConfigService.class);
     mockRuntimeConfGetter = mock(RuntimeConfGetter.class);
+    mockCommissioner = mock(Commissioner.class);
     spyBackupHelper =
         Mockito.spy(
             new BackupHelper(
@@ -83,7 +85,8 @@ public class BackupHelperTest extends FakeDBApplication {
                 mockService,
                 mockConfigService,
                 mockRuntimeConfGetter,
-                mockStorageUtilFactory));
+                mockStorageUtilFactory,
+                mockCommissioner));
     when(mockStorageUtilFactory.getStorageUtil(eq("S3"))).thenReturn(mockAWSUtil);
     when(mockStorageUtilFactory.getStorageUtil(eq("NFS"))).thenReturn(mockNfsUtil);
   }

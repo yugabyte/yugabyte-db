@@ -41,4 +41,6 @@ KeyEntryValue GenRandomKeyEntryValue(RandomNumberGenerator* rng);
 
 std::vector<KeyEntryValue> GenRandomKeyEntryValues(RandomNumberGenerator* rng, int max_num = 10);
 
+QLValuePB RandomQLValue(DataType type);
+
 }  // namespace yb::dockv

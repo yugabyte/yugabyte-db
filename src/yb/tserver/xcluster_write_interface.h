@@ -16,7 +16,6 @@
 #include <string>
 
 #include "yb/cdc/cdc_types.h"
-#include "yb/client/external_transaction.h"
 
 namespace yb {
 namespace cdc {
@@ -31,10 +30,6 @@ class WriteRequestPB;
 struct ProcessRecordInfo {
   TabletId tablet_id;
 
-  // Only used for intent records.
-  bool enable_replicate_transaction_status_table;
-  TabletId status_tablet_id;
-
   // Map of producer-consumer schema versions for the record.
   const cdc::XClusterSchemaVersionMap schema_versions_map;
 };
@@ -45,13 +40,6 @@ class XClusterWriteInterface {
   virtual std::unique_ptr<WriteRequestPB> FetchNextRequest() = 0;
   virtual Status ProcessRecord(
       const ProcessRecordInfo& process_record_info, const cdc::CDCRecordPB& record) = 0;
-  virtual Status ProcessCreateRecord(
-      const std::string& status_tablet, const cdc::CDCRecordPB& record) = 0;
-  virtual Status ProcessCommitRecord(
-      const std::string& status_tablet,
-      const std::vector<std::string>& involved_target_tablet_ids,
-      const cdc::CDCRecordPB& record) = 0;
-  virtual std::vector<client::ExternalTransactionMetadata>& GetTransactionMetadatas() = 0;
 };
 
 void ResetWriteInterface(std::unique_ptr<XClusterWriteInterface>* write_strategy);

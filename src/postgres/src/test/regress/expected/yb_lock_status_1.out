@@ -493,6 +493,15 @@ SELECT COUNT(DISTINCT(tablet_id)) FROM yb_lock_status('yb_lock_tests'::regclass,
      2
 (1 row)
 
+-- Validate node field
+SELECT COUNT(DISTINCT (node)) > 0 AS valid_node
+FROM yb_lock_status(null, null) l
+         INNER JOIN yb_servers() s ON l.node = s.uuid;
+ valid_node
+------------
+ t
+(1 row)
+
 ABORT;
 -- Validate attnum
 CREATE TABLE attno_test_table(a int, b int, c int, d int, e int, f int, PRIMARY KEY((e, f) hash, b));

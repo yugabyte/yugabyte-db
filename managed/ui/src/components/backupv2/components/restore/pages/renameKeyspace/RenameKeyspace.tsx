@@ -11,7 +11,7 @@ import React, { useCallback, useContext, useImperativeHandle, useState } from 'r
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { Box, Grid, Typography, makeStyles } from '@material-ui/core';
-import { differenceWith, intersectionWith, values } from 'lodash';
+import { differenceWith, intersectionWith, uniqBy, values } from 'lodash';
 import { useMount } from 'react-use';
 import { useQuery } from 'react-query';
 import { yupResolver } from '@hookform/resolvers/yup';
@@ -22,6 +22,7 @@ import { PerLocationBackupInfo } from '../../api';
 import { YBInput, YBInputField } from '../../../../../../redesign/components';
 import { fetchTablesInUniverse } from '../../../../../../actions/xClusterReplication';
 import { getValidationSchema } from './ValidationSchema';
+import { isNonEmptyString } from '../../../../../../utils/ObjectUtils';
 import { ITable } from '../../../../common/IBackup';
 import { YBLoadingCircleIcon } from '../../../../../common/indicators';
 
@@ -78,16 +79,43 @@ const RenameKeyspace = React.forwardRef<PageRef>((_, forwardRef) => {
   const [
     {
       backupDetails,
-      formData: { generalSettings, preflightResponse }
+      formData: { generalSettings, preflightResponse, renamedKeyspaces }
     },
-    { moveToNextPage, setSubmitLabel, saveRenamedKeyspacesFormData }
+    { moveToNextPage, moveToPrevPage, setSubmitLabel, saveRenamedKeyspacesFormData }
   ] = restoreContext;
 
   const { t } = useTranslation();
 
+  const isTableByTableBackup = backupDetails?.commonBackupInfo.tableByTableBackup;
+
   const saveValues = useCallback(
-    (val) => {
-      saveRenamedKeyspacesFormData(val);
+    (val: IRenameKeyspace) => {
+      const renamedKeyspaceValues = { ...val };
+
+      if (isTableByTableBackup) {
+        
+        // In table by table backup, there will be multiple keyspace group. 
+        // But, we display only one keyspaces for a group to the user.
+        // if it is renamed, we then updated the name to all keyspaces in that group
+
+        const renameKeyspaceMap = {};
+        //collect the keyspaces which are renamed
+        val.renamedKeyspaces.forEach((r) => {
+          if (isNonEmptyString(r.renamedKeyspace)) {
+            renameKeyspaceMap[r.perBackupLocationKeyspaceTables.originalKeyspace] =
+              r.renamedKeyspace;
+          }
+        });
+
+        renamedKeyspaceValues.renamedKeyspaces = val.renamedKeyspaces.map((r) => ({
+          ...r,
+          renamedKeyspace:
+            renameKeyspaceMap[r.perBackupLocationKeyspaceTables.originalKeyspace] ??
+            r.perBackupLocationKeyspaceTables.originalKeyspace
+        }));
+      }
+
+      saveRenamedKeyspacesFormData(renamedKeyspaceValues);
       moveToNextPage();
     },
     [moveToNextPage, saveRenamedKeyspacesFormData]
@@ -110,7 +138,7 @@ const RenameKeyspace = React.forwardRef<PageRef>((_, forwardRef) => {
       .map((t: ITable) => t.keySpace) ?? [];
 
   // move the keyspaces which are duplicate to the top.
-  const sortByTableDuplicate = [
+  let sortByTableDuplicate = [
     ...intersectionWith(
       values(preflightResponse?.perLocationBackupInfoMap),
       keyspacesAvailableInTargetUniverse,
@@ -127,9 +155,19 @@ const RenameKeyspace = React.forwardRef<PageRef>((_, forwardRef) => {
     )
   ];
 
+  if (isTableByTableBackup) {
+    sortByTableDuplicate = uniqBy(
+      sortByTableDuplicate,
+      (e) => e.perBackupLocationKeyspaceTables.originalKeyspace
+    );
+  }
+
   const methods = useForm<IRenameKeyspace>({
     defaultValues: {
-      renamedKeyspaces: sortByTableDuplicate
+      renamedKeyspaces:
+        renamedKeyspaces.renamedKeyspaces.length > 0
+          ? renamedKeyspaces.renamedKeyspaces
+          : sortByTableDuplicate
     },
     resolver: yupResolver(
       getValidationSchema(restoreContext[0], keyspacesAvailableInTargetUniverse, t),
@@ -143,8 +181,9 @@ const RenameKeyspace = React.forwardRef<PageRef>((_, forwardRef) => {
   const [searchText, setSearchText] = useState('');
 
   const onNext = useCallback(() => handleSubmit(saveValues)(), [handleSubmit, saveValues]);
+  const onPrev = useCallback(() => moveToPrevPage(), [moveToPrevPage]);
 
-  useImperativeHandle(forwardRef, () => ({ onNext }), [onNext]);
+  useImperativeHandle(forwardRef, () => ({ onNext, onPrev }), [onNext]);
 
   useMount(() => {
     if (generalSettings?.tableSelectionType === 'SUBSET_OF_TABLES') {

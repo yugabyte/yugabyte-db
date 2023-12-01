@@ -87,6 +87,10 @@ inline int32_t DecodeInt32FromKey(const char* data) {
   return BigEndian::Load32(data) ^ kInt32SignBitFlipMask;
 }
 
+inline int32_t DecodeInt32FromKey(const uint8_t* data) {
+  return BigEndian::Load32(data) ^ kInt32SignBitFlipMask;
+}
+
 inline int32_t DecodeInt32FromKey(const Slice& slice) {
   return DecodeInt32FromKey(slice.cdata());
 }

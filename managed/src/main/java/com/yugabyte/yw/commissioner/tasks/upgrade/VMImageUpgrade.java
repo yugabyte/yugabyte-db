@@ -43,6 +43,7 @@ import org.apache.commons.lang3.StringUtils;
 public class VMImageUpgrade extends UpgradeTaskBase {
 
   private final Map<UUID, List<String>> replacementRootVolumes = new ConcurrentHashMap<>();
+  private final Map<UUID, String> replacementRootDevices = new ConcurrentHashMap<>();
 
   private final RuntimeConfGetter confGetter;
   private final ImageBundleUtil imageBundleUtil;
@@ -290,6 +291,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
           params.numVolumes = numVolumes;
           params.setMachineImage(machineImage);
           params.bootDisksPerZone = this.replacementRootVolumes;
+          params.rootDevicePerZone = this.replacementRootDevices;
 
           log.info(
               "Creating {} root volumes using {} in AZ {}",
@@ -313,6 +315,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
     replaceParams.azUuid = node.azUuid;
     replaceParams.setUniverseUUID(taskParams().getUniverseUUID());
     replaceParams.bootDisksPerZone = this.replacementRootVolumes;
+    replaceParams.rootDevicePerZone = this.replacementRootDevices;
 
     ReplaceRootVolume replaceDiskTask = createTask(ReplaceRootVolume.class);
     replaceDiskTask.initialize(replaceParams);

@@ -682,6 +682,26 @@ public class AccessManager extends DevopsBase {
     }
   }
 
+  public String createKubernetesAuthDataFile(
+      String path, String name, String content, boolean edit) {
+    String filePath = getOrCreateKeyFilePath(path);
+    Path file = Paths.get(filePath, FileUtils.getFileName(name));
+    if (!edit && Files.exists(file)) {
+      throw new RuntimeException("File " + file.getFileName() + " already exists.");
+    }
+
+    Set<PosixFilePermission> ownerRW = PosixFilePermissions.fromString(KUBECONFIG_PERMISSIONS);
+    try {
+      Files.write(file, content.getBytes());
+      Files.setPosixFilePermissions(file, ownerRW);
+      FileData.upsertFileInDB(file.toAbsolutePath().toString());
+      return file.toAbsolutePath().toString();
+    } catch (Exception e) {
+      log.error(e.getMessage());
+      throw new RuntimeException("Failed to create kubernetes authentication files", e);
+    }
+  }
+
   public Map<UUID, UUID> rotateAccessKey(
       UUID customerUUID, UUID providerUUID, List<UUID> universeUUIDs, String newKeyCode) {
     Customer customer = Customer.getOrBadRequest(customerUUID);

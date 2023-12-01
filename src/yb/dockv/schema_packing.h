@@ -145,6 +145,10 @@ class SchemaPackingStorage {
 
   bool HasVersionBelow(SchemaVersion version) const;
 
+  TableType table_type() const {
+    return table_type_;
+  }
+
   std::string ToString() const;
 
   bool operator==(const SchemaPackingStorage&) const = default;

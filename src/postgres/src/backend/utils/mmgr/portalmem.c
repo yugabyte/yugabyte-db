@@ -28,6 +28,7 @@
 #include "utils/memutils.h"
 #include "utils/snapmgr.h"
 #include "utils/timestamp.h"
+#include "pg_yb_utils.h"
 
 /*
  * Estimate of the maximum number of open portals a user would have,
@@ -582,6 +583,13 @@ PortalDrop(Portal portal, bool isTopCommit)
 		ResourceOwnerDelete(portal->resowner);
 	}
 	portal->resowner = NULL;
+
+	/*
+	 * If the portal is WITH HOLD, decrease the count of database
+	 * objects that need stickiness.
+	 */
+	if (YbIsClientYsqlConnMgr()	&& (portal->cursorOptions & CURSOR_OPT_HOLD))
+		decrement_sticky_object_count();
 
 	/*
 	 * Delete tuplestore if present.  We should do this even under error

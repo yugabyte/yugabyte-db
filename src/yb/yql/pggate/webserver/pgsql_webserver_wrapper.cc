@@ -337,12 +337,41 @@ static void PgPrometheusMetricsHandler(
 }
 
 extern "C" {
+void WriteStartObjectToJson(void *p1) {
+  JsonWriter *writer = static_cast<JsonWriter *>(p1);
+  writer->StartObject();
+}
+
 void WriteStatArrayElemToJson(void *p1, void *p2) {
   JsonWriter *writer = static_cast<JsonWriter *>(p1);
   YsqlStatementStat *stat = static_cast<YsqlStatementStat *>(p2);
 
-  writer->StartObject();
   DoWriteStatArrayElemToJson(writer, stat);
+}
+
+void WriteHistArrayBeginToJson(void *p1) {
+  JsonWriter *writer = static_cast<JsonWriter *>(p1);
+  writer->String("yb_latency_histogram");
+  writer->StartArray();
+}
+
+void WriteHistElemToJson(void *p1, void *p2, void *p3) {
+  JsonWriter *writer = static_cast<JsonWriter *>(p1);
+  char *key = static_cast<char*>(p2);
+  int64_t *value = static_cast<int64_t *>(p3);
+  writer->StartObject();
+  writer->String(key);
+  writer->Int64(*value);
+  writer->EndObject();
+}
+
+void WriteHistArrayEndToJson(void* p1) {
+  JsonWriter *writer = static_cast<JsonWriter *>(p1);
+  writer->EndArray();
+}
+
+void WriteEndObjectToJson(void *p1) {
+  JsonWriter *writer = static_cast<JsonWriter *>(p1);
   writer->EndObject();
 }
 

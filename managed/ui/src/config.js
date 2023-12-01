@@ -27,6 +27,12 @@ export const isSSOEnabled = () => _.get(window, 'YB_Platform_Config.use_oauth', 
 
 export const setSSO = (value) => _.set(window, 'YB_Platform_Config.use_oauth', value);
 
+export const setShowJWTTokenInfo = (value) =>
+  _.set(window, 'YB_Platform_Config.show_jwt_token_info', value);
+
+export const shouldShowJWTTokenInfo = () =>
+  _.get(window, 'YB_Platform_Config.show_jwt_token_info', false);
+
 // TODO : probably fetch the provider metadata (name and code from backend)
 export const PROVIDER_TYPES = [
   { code: 'aws', name: 'Amazon', label: 'Amazon Web Services' },

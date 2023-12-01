@@ -2177,6 +2177,13 @@ yb_agg_pushdown_supported(AggState *aggstate)
 	/* No WHERE quals. */
 	if (ss->ps.qual)
 		return;
+	/* No indexquals that might be rechecked. */
+	if (IsA(ss, IndexOnlyScanState))
+	{
+		IndexOnlyScanState *ioss = castNode(IndexOnlyScanState, ss);
+		if (ioss->yb_ioss_might_recheck)
+			return;
+	}
 
 	check_outer_plan = false;
 
@@ -3659,7 +3666,17 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	if (node->aggstrategy == AGG_HASHED)
 		eflags &= ~EXEC_FLAG_REWIND;
 	outerPlan = outerPlan(node);
-	outerPlanState(aggstate) = ExecInitNode(outerPlan, estate, eflags);
+
+	/*
+	 * For YB index only scan outer plan, we need to collect recheck
+	 * information, so set that flag for the index only scan.
+	 */
+	int yb_eflags = 0;
+	if (IsYugaByteEnabled() && IsA(outerPlan, IndexOnlyScan))
+		yb_eflags |= EXEC_FLAG_YB_AGG_PARENT;
+
+	outerPlanState(aggstate) = ExecInitNode(outerPlan, estate,
+											eflags | yb_eflags);
 
 	/*
 	 * initialize source tuple type.

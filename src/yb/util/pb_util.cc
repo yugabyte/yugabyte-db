@@ -638,8 +638,8 @@ Status ReadablePBContainerFile::ValidateAndRead(size_t length, EofOK eofOK,
       case EOF_NOT_OK:
         return STATUS(Corruption, "File size not large enough to be valid",
                                   Substitute("Proto container file $0: "
-                                      "tried to read $0 bytes at offset "
-                                      "$1 but file size is only $2",
+                                      "tried to read $1 bytes at offset "
+                                      "$2 but file size is only $3",
                                       reader_->filename(), length,
                                       offset_, file_size));
       default:

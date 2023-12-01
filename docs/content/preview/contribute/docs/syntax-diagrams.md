@@ -270,6 +270,10 @@ Suppose that a [_syntax rule_](#syntax-rule) includes a reference to another [_s
 
 If you don't follow this rule, then (as long as you specify the right path to the [_free-standing generated grammar-diagram pair_](#free-standing-generated-grammar-diagram-pair) in the [_diagram inclusion HTML_](#diagram-inclusion-HTML), you _will_ get the diagram in the `wants-to-include.md`, just as you want it. But the links to diagrams in the [_grammar diagrams file_](#grammar-diagrams-file) for rules that are not defined in the same included diagram will be broken. You should therefore always check manually that these links work when you first confirm that you see the generated [_syntax diagram_](#syntax-diagram) that you want at the location that you want it. And you should check again just before creating a Pull Request.
 
+{{< note title="The 'underscore-index.md' files are special." >}}
+An ordinary humanly typed _.md_ file is, tautologically, considered to live on the directory where it's found. But an _\_index.md_ file is considered to live on the parent directory of the directory where it's found. You must take this into account when an _\_index.md_ file wants to include a **[_free-standing generated grammar-diagram pair_](#free-standing-generated-grammar-diagram-pair)**. You must correspondingly locate the referenced _\*grammar.md_ and _\*diagram.md_ files under the _syntax_resources_ directory in the parent "mirror" directory of where the referring _\_index.md_ file is located. 
+{{< /note >}}
+
 ### Syntax diagram set
 
 - **The set of [_syntax diagrams_](#syntax-diagram) specified by spelling `<rule-name>[ , ... ]` in the first part of the filenames of the [_free-standing generated grammar-diagram pair_](#free-standing-generated-grammar-diagram-pair)**.
