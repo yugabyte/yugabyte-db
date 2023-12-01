@@ -70,7 +70,7 @@ SELECT * FROM entity_order1 WHERE car = 'car-1' ;
  2023-07-01 00:00:20 | car-1 |     4
 ```
 
-Notice that the data for `car-1` is together, but at the same time, the data is automatically sorted. The key thing to note here is that all the data for a specific car (say `car-1`) will be located in the same tablet (`2`), because you have defined the data to be distributed on the hash of `car` (`PRIMARY KEY(car HASH, ts ASC)`).
+Notice that the data for `car-1` is automatically sorted without explicitly asking for ordering. This is because all the data for a specific car (say `car-1`) will be located in the same tablet, because you have defined the data to be distributed on the hash of `car` (`PRIMARY KEY(car HASH, ts ASC)`) and will be stored in the order of `ts`.
 
 Distributing the data by the entity (`car`) and ordering the data by timestamp for each entity solves the problem of keeping data together for an entity and at the same time maintains a global distribution across different entities across the different tablets. But this could lead to a hot shard problem if there are too many operations on the same car.
 
