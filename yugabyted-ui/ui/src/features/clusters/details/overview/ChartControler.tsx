@@ -32,6 +32,7 @@ interface ChartContainerProps {
   unitKey?: TFuncKey<Namespace>;
   refreshFromParent?: number;
   regionName?: string;
+  zone?: string;
 }
 
 /*
@@ -75,7 +76,8 @@ export const ChartController: FC<ChartContainerProps> = ({
   chartDrawingType,
   unitKey,
   refreshFromParent,
-  regionName
+  regionName,
+  zone,
 }) => {
   const [interval, setNewInterval] = useState(() => getInterval(relativeInterval));
   const { t } = useTranslation();
@@ -86,7 +88,8 @@ export const ChartController: FC<ChartContainerProps> = ({
       node_name: newNodeName,
       start_time: getUnixTime(interval.start),
       end_time: getUnixTime(interval.end),
-      region: regionName === '' ? undefined : regionName
+      region: regionName === '' ? undefined : regionName,
+      zone: zone === '' ? undefined : zone,
     },
     {
       query: {

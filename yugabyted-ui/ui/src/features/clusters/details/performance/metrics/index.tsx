@@ -1,4 +1,4 @@
-import React, { FC, useState, useEffect } from 'react';
+import React, { FC, useState, useEffect, useMemo } from 'react';
 import { Box, Grid, makeStyles, MenuItem, LinearProgress } from '@material-ui/core';
 // import { useLocalStorage } from 'react-use';
 import { useTranslation } from 'react-i18next';
@@ -6,7 +6,7 @@ import clsx from 'clsx';
 import { ArrayParam, StringParam, useQueryParams, withDefault } from 'use-query-params';
 
 // Local imports
-import { RelativeInterval } from '@app/helpers';
+import { RelativeInterval, countryToFlag, getRegionCode } from '@app/helpers';
 import { ItemTypes } from '@app/helpers/dnd/types';
 import { YBButton, YBSelect, YBDragableAndDropable, YBDragableAndDropableItem } from '@app/components';
 import {
@@ -71,7 +71,7 @@ export const Metrics: FC = () => {
   // const isMultiRegionEnabled =
   //   runtimeConfig &&
   //   (runtimeConfig?.MultiRegionEnabled || runtimeConfigAccount?.MultiRegionEnabled);
-  
+
   const isMultiRegionEnabled = false;
 
   const { data: clusterData } = useGetClusterQuery();
@@ -89,14 +89,24 @@ export const Metrics: FC = () => {
   const [nodeName, setNodeName] = useState<string | undefined>(queryParams.nodeName);
   const [relativeInterval, setRelativeInterval] = useState<string>(queryParams.interval);
 
-  const [selectedRegion, setSelectedRegion] = useState<string | undefined>(queryParams.region);
+  const [region, setRegion] = React.useState<string>(queryParams.region || '');
+  const [selectedRegion, selectedZone] = region ? region.split('#') : ['', ''];
 
   const { data: nodesResponse, isLoading: isClusterNodesLoading } = useGetClusterNodesQuery();
 
-  const nodesNamesList = [
-    ALL_NODES,
-    ...(nodesResponse?.data.map((node) => ({ label: node.name, value: node.name })) ?? [])
-  ];
+  const nodesNamesList = useMemo(
+    () => [
+      ALL_NODES,
+      ...(nodesResponse?.data
+        .filter(
+          (node) =>
+            (selectedRegion === "" && selectedZone === "") ||
+            (node.cloud_info.region === selectedRegion && node.cloud_info.zone === selectedZone)
+        )
+        .map((node) => ({ label: node.name, value: node.name })) ?? []),
+    ],
+    [nodesResponse?.data, selectedRegion, selectedZone]
+  );
 
   const handleSetDndOrderedCharts = (newDisplayedChart: string[]) => {
     setSavedCharts(newDisplayedChart);
@@ -105,15 +115,18 @@ export const Metrics: FC = () => {
   const handleChangeFilterOrChangeDisplayChart = (
     newInterval: string,
     newNodeName: string | undefined,
-    newChartList: string[]
+    newChartList: string[],
+    newRegion: string,
   ) => {
     setRelativeInterval(newInterval);
     setNodeName(newNodeName);
     setSavedCharts(newChartList);
+    setRegion(newRegion);
     setQueryParams({
       interval: newInterval,
       nodeName: newNodeName,
-      showGraph: newChartList
+      showGraph: newChartList,
+      region: newRegion,
     });
   };
 
@@ -121,9 +134,21 @@ export const Metrics: FC = () => {
     handleChangeFilterOrChangeDisplayChart(
       relativeInterval,
       queryParams.nodeName,
-      displayedCharts ?? []
+      displayedCharts ?? [],
+      queryParams.region
     );
   }, [queryParams.nodeName])
+
+  useEffect(() => {
+    if (nodeName && !nodesNamesList.find((node) => node.value === nodeName)) {
+      handleChangeFilterOrChangeDisplayChart(
+        relativeInterval,
+        ALL_NODES.value,
+        displayedCharts ?? [],
+        queryParams.region
+      );
+    }
+  }, [region])
 
   useEffect(() => {
     doRefresh((prev) => prev + 1);
@@ -139,6 +164,19 @@ export const Metrics: FC = () => {
     ALL_REGIONS,
     ...(regionsList.map((region) => ({ label: region.placement_info.cloud_info.region, value: region.placement_info.cloud_info.region })) ?? [])
   ];
+
+  const regionData = useMemo(() => {
+    const set = new Set<string>();
+    nodesResponse?.data.forEach(node => set.add(node.cloud_info.region + "#" + node.cloud_info.zone));
+    return Array.from(set).map(regionZone => {
+      const [region, zone] = regionZone.split('#');
+      return {
+        region,
+        zone,
+        flag: countryToFlag(getRegionCode({ region, zone })),
+      }
+    });
+  }, [nodesResponse]);
 
   // const onRegionChange = (region: string) => {
   //   setSelectedRegion(region);
@@ -169,9 +207,9 @@ export const Metrics: FC = () => {
             />*/}
                 <YBSelect
                   className={classes.selectBox}
-                  value={selectedRegion}
+                  value={region}
                   onChange={(e) => {
-                    setSelectedRegion((e.target as HTMLInputElement).value);
+                    setRegion((e.target as HTMLInputElement).value);
                   }}
                 >
                   {regionsNamesList?.map((el) => {
@@ -186,12 +224,35 @@ export const Metrics: FC = () => {
             )}
             <YBSelect
               className={classes.selectBox}
+              value={region}
+              onChange={(e) => {
+                handleChangeFilterOrChangeDisplayChart(
+                  relativeInterval,
+                  nodeName,
+                  displayedCharts ?? [],
+                  (e.target as HTMLInputElement).value
+                )
+              }}
+            >
+              <MenuItem value={''}>
+                {t('clusterDetail.performance.metrics.allRegions')}
+              </MenuItem>
+              {/* <Divider className={classes.dropdownDivider} /> */}
+              {regionData.map(data => (
+                <MenuItem key={data.region + '#' + data.zone} value={data.region + '#' + data.zone}>
+                  {data.flag && <Box mr={1}>{data.flag}</Box>} {data.region} ({data.zone})
+                </MenuItem>
+              ))}
+            </YBSelect>
+            <YBSelect
+              className={classes.selectBox}
               value={nodeName}
               onChange={(e) => {
                 handleChangeFilterOrChangeDisplayChart(
                   relativeInterval,
                   (e.target as HTMLInputElement).value,
-                  displayedCharts ?? []
+                  displayedCharts ?? [],
+                  region
                 );
               }}
             >
@@ -210,7 +271,8 @@ export const Metrics: FC = () => {
                 handleChangeFilterOrChangeDisplayChart(
                   (e.target as HTMLInputElement).value,
                   nodeName,
-                  displayedCharts ?? []
+                  displayedCharts ?? [],
+                  region
                 );
               }}
             >
@@ -276,6 +338,7 @@ export const Metrics: FC = () => {
                     relativeInterval={relativeInterval as RelativeInterval}
                     refreshFromParent={refresh}
                     regionName={selectedRegion}
+                    zone={selectedZone}
                   />
                 </YBDragableAndDropableItem>
               );

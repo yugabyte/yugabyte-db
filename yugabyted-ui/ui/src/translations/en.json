@@ -876,6 +876,7 @@
         },
         "metrics": {
           "allNodes": "All Nodes",
+          "allRegions": "All Regions",
           "metricsOptions": "Metrics Options",
           "displayMetrics": "DISPLAY THE FOLLOWING METRICS:",
           "region": "region",
@@ -1214,6 +1215,10 @@
           "region": "Region",
           "zone": "Zone",
           "nodes": "Nodes",
+          "totalNodes": "Total Nodes",
+          "totalvCPU": "Total vCPU",
+          "totalMemory": "Total Memory",
+          "totalDiskSize": "Total Disk Size",
           "vCPU_per_node": "vCPU / Node",
           "ram_per_node": "RAM / Node",
           "disk_per_node": "Disk / Node",
