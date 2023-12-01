@@ -46,14 +46,13 @@ public class GFlagsUpgradeParams extends UpgradeWithGFlags {
 
     runtimeConfGetter = StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
 
-    if (universe
-            .getUniverseDetails()
-            .softwareUpgradeState
-            .equals(UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize)
+    if (!universe.getUniverseDetails().softwareUpgradeState.equals(SoftwareUpgradeState.Ready)
         && !runtimeConfGetter.getConfForScope(
             universe, UniverseConfKeys.allowGFlagsOverrideDuringPreFinalize)) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "Cannot upgrade gflags on universe in pre-finalize state.");
+          BAD_REQUEST,
+          "Cannot upgrade gflags on universe in state "
+              + universe.getUniverseDetails().softwareUpgradeState);
     }
 
     if (masterGFlags == null) {
