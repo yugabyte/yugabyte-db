@@ -149,8 +149,8 @@ export const InitiateSwitchoverModal = ({ drConfig, modalProps }: InitiateSwitch
   if (targetUniverseQuery.isError) {
     return (
       <YBErrorIndicator
-        customErrorMessage={t('faliedToFetchTargetuniverse', {
-          keyPrefix: 'clusterDetail.xCluster.error',
+        customErrorMessage={t('failedToFetchTargetuniverse', {
+          keyPrefix: 'queryError.error',
           universeUuid: drConfig.drReplicaUniverseUuid
         })}
       />

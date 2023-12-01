@@ -52,3 +52,18 @@ export const usePillStyles = makeStyles((theme) => ({
   danger: {},
   inactive: {}
 }));
+
+export const useIconStyles = makeStyles(() => ({
+  interactiveIcon: {
+    '&:hover': {
+      cursor: 'pointer'
+    }
+  }
+}));
+
+export const useAnchorStyles = makeStyles(() => ({
+  iconAnchor: {
+    display: 'flex',
+    alignItems: 'center'
+  }
+}));

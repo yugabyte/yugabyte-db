@@ -37,7 +37,11 @@
       "viewDetails": "View Details"
     },
     "queryError": {
-      "failedToFetchUniverselist": "Error fetching universe list."
+      "failedToFetchUniverselist": "Error fetching universe list.",
+      "failedToFetchCustomerRuntimeCOnfig": "Error fetching runtime configurations for the current customer.",
+      "failedToFetchSourceUniverse": "Unable to fetch universe details for source universe UUID: {{universeUuid}}",
+      "failedToFetchTargetuniverse": "Unable to fetch universe details for target universe UUID: {{universeUuid}}",
+      "failedToFetchMetrics": "Failed to fetch metrics."
     },
     "universeActions": {
       "encryptionAtRest": {
@@ -555,7 +559,6 @@
         "heading": "Disaster Recovery",
         "actionButton": {
           "abortSwitchover": "Abort Switchover",
-          "connectApplications": "Connect",
           "switchover": "Switchover",
           "repairDr": "Repair DR",
           "restartReplication": "Restart Replication",
@@ -746,7 +749,18 @@
                 "instruction": "3. Configure bootstrap.",
                 "submitButton": "Set up and Enable Disaster Recovery",
                 "backupStorageConfig": "Select the backup storage config to use for bootstrapping.",
+                "parallelThreads": "Parallel threads",
                 "bootstrapOffPeakNote": "Note: We recommend setting up Disaster Recovery during off-peak hours if bootstrap is required."
+              },
+              "configureAlert": {
+                "instruction": "4. Specify replication lag threshold to receive alerts. (Optional)",
+                "submitButton": "Set up and Enable Disaster Recovery",
+                "maxAcceptableLag": "Max Acceptable Lag",
+                "duration": {
+                  "second": "Second",
+                  "minute": "Minute",
+                  "hour": "Hour"
+                }
               }
             },
             "error": {
@@ -889,6 +903,31 @@
             }
           }
         },
+        "metricsPanel": {
+          "graphFilter": {
+            "nodeAggregation": {
+              "max": "Max",
+              "min": "Min",
+              "average": "Average"
+            },
+            "splitType": {
+              "cluster": "Cluster",
+              "node": "Node",
+              "namespace": "Database",
+              "table": "Table"
+            },
+            "splitMode": {
+              "all": "All",
+              "top": "Top K",
+              "bottom": "Bottom K"
+            }
+          },
+          "graphTitle": {
+            "asyncReplicationSentLag": "Async Replication Lag",
+            "consumerSafeTimeLag": "Consumer Safe Time Lag",
+            "consumerSafeTimeSkew": "Consumer Safe Time Skew"
+          }
+        },
         "error": {
           "undefinedXClusterTableType": "The tables in this config have unknown or mixed type.",
           "undefinedSourceUniverseUuid": "The xCluster config does not have an associated source universe.",
@@ -898,7 +937,8 @@
           "failedToFetchSourceUniverse": "Unable to fetch universe details for source universe UUID: {{universeUuid}}",
           "faliedToFetchTargetuniverse": "Unable to fetch universe details for target universe UUID: {{universeUuid}}",
           "failedToFetchUniverse": "Unable to fetch universe details for universe UUID: {{universeUuid}}",
-          "failedToFetchCurrentSafetimes": "Unable to fetch current safetimes."
+          "failedToFetchCurrentSafetimes": "Unable to fetch current safetimes.",
+          "failedToFetchConfigReplicationLagMetric": "Failed to fetch replication lag metric for the current config."
         },
         "syncDbModal": {
           "title": "Reconcile Config with Database",
@@ -937,6 +977,11 @@
         "error": {
           "failedToFetchUniverseTaskList": "Unable to fetch universe task list."
         }
+      }
+    },
+    "metric": {
+      "tooltip": {
+        "viewInPrometheus": "View this metric in Prometheus"
       }
     },
     "admin": {

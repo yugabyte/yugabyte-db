@@ -46,12 +46,19 @@ import styles from './ReplicationTables.module.scss';
 interface props {
   xClusterConfig: XClusterConfig;
 
+  // isActive determines whether the component will make periodic
+  // queries for metrics.
+  isActive?: boolean;
   isDrInterface?: boolean;
 }
 
 const TABLE_MIN_PAGE_SIZE = 10;
 
-export function ReplicationTables({ xClusterConfig, isDrInterface = false }: props) {
+export function ReplicationTables({
+  xClusterConfig,
+  isActive = true,
+  isDrInterface = false
+}: props) {
   const [deleteTableDetails, setDeleteTableDetails] = useState<XClusterTable>();
   const [openTableLagGraphDetails, setOpenTableLagGraphDetails] = useState<XClusterTable>();
 
@@ -129,7 +136,6 @@ export function ReplicationTables({ xClusterConfig, isDrInterface = false }: pro
     sourceUniverseTablesQuery.data,
     xClusterConfig.tableDetails
   );
-  const isActiveTab = window.location.search === '?tab=tables';
   const sourceUniverse = sourceUniverseQuery.data;
   const isAddTableModalVisible =
     showModal && visibleModal === XClusterModalName.ADD_TABLE_TO_CONFIG;
@@ -198,9 +204,9 @@ export function ReplicationTables({ xClusterConfig, isDrInterface = false }: pro
               <XClusterTableStatusLabel
                 status={cell}
                 streamId={row.streamId}
-                tableUUID={row.tableUUID}
-                nodePrefix={sourceUniverse.universeDetails.nodePrefix}
-                universeUUID={sourceUniverse.universeUUID}
+                sourceUniverseTableUuid={row.tableUUID}
+                sourceUniverseNodePrefix={sourceUniverse.universeDetails.nodePrefix}
+                sourceUniverseUuid={sourceUniverse.universeUUID}
               />
             )}
           >
@@ -211,9 +217,9 @@ export function ReplicationTables({ xClusterConfig, isDrInterface = false }: pro
               <span className="lag-text">
                 <CurrentTableReplicationLag
                   streamId={row.streamId}
-                  tableUUID={row.tableUUID}
+                  tableId={row.tableUUID}
                   nodePrefix={sourceUniverse.universeDetails.nodePrefix}
-                  queryEnabled={isActiveTab}
+                  queryEnabled={isActive}
                   sourceUniverseUUID={xClusterConfig.sourceUniverseUUID}
                   xClusterConfigStatus={xClusterConfig.status}
                 />
@@ -290,7 +296,7 @@ export function ReplicationTables({ xClusterConfig, isDrInterface = false }: pro
           replicationUUID={xClusterConfig.uuid}
           universeUUID={sourceUniverse.universeUUID}
           nodePrefix={sourceUniverse.universeDetails.nodePrefix}
-          queryEnabled={isActiveTab}
+          queryEnabled={isActive}
           visible={visibleModal === XClusterModalName.TABLE_REPLICATION_LAG_GRAPH}
           onHide={hideModal}
         />
