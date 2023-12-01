@@ -1493,6 +1493,17 @@ static Node *transform_CaseExpr(cypher_parsestate *cpstate, CaseExpr
         warg = (Node *) w->expr;
         if (placeholder)
         {
+            if(is_ag_node(warg, cypher_comparison_aexpr) ||
+               is_ag_node(warg, cypher_comparison_boolexpr) )
+            {
+                List *funcname = list_make1(makeString("ag_catalog"));
+                funcname = lappend(funcname, makeString("bool_to_agtype"));
+
+                warg = (Node *) makeFuncCall(funcname, list_make1(warg),
+                                             COERCE_EXPLICIT_CAST,
+                                             cexpr->location);
+            }
+
             /* shorthand form was specified, so expand... */
             warg = (Node *) makeSimpleA_Expr(AEXPR_OP, "=",
                                              (Node *) placeholder,
@@ -1506,6 +1517,18 @@ static Node *transform_CaseExpr(cypher_parsestate *cpstate, CaseExpr
                                                 "CASE/WHEN");
 
         warg = (Node *) w->result;
+
+        if(is_ag_node(warg, cypher_comparison_aexpr) ||
+           is_ag_node(warg, cypher_comparison_boolexpr) )
+        {
+            List *funcname = list_make1(makeString("ag_catalog"));
+            funcname = lappend(funcname, makeString("bool_to_agtype"));
+
+            warg = (Node *) makeFuncCall(funcname, list_make1(warg),
+                                         COERCE_EXPLICIT_CAST,
+                                         cexpr->location);
+        }
+
         neww->result = (Expr *) transform_cypher_expr_recurse(cpstate, warg);
         neww->location = w->location;
 

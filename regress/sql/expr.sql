@@ -2742,6 +2742,101 @@ SELECT * FROM cypher('case_statement', $$
   END
 $$ ) AS (case_statement agtype);
 
+--CASE chained expressions
+
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)
+  RETURN CASE
+    WHEN null THEN 'should not return me'
+    WHEN n.i = 1 = 1 THEN n
+    ELSE 'none'
+  END
+$$ ) AS (case_statement agtype);
+
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)
+  RETURN CASE
+    WHEN null THEN 'should not return me'
+    WHEN n.i = (1 = 1) THEN n
+    ELSE 'none'
+  END
+$$ ) AS (case_statement agtype);
+ 
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)
+  RETURN CASE n
+    WHEN null THEN 'should not return me'
+    WHEN n.i = 1 THEN n
+    ELSE 'none'
+  END
+$$ ) AS (case_statement agtype);
+
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)
+  RETURN CASE n = 1
+    WHEN null THEN 'should not return me'
+    WHEN n.i = 1 = 1 THEN n
+    ELSE 'none'
+  END
+$$ ) AS (case_statement agtype);
+
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)
+  RETURN CASE n = 1
+    WHEN null THEN 'should not return me'
+    WHEN n.i = (1 = 1) THEN n
+    ELSE 'none'
+  END
+$$ ) AS (case_statement agtype);
+
+--should return n
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)
+  RETURN CASE n = 1
+    WHEN null THEN 'should not return me'
+    WHEN n = 1 = 1 THEN n
+    ELSE 'none'
+  END
+$$ ) AS (case_statement agtype);
+
+--chained expression in THEN
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)
+  RETURN CASE 
+    WHEN null THEN 'should not return me'
+    WHEN n.i = 1 THEN n.i = 1 = 1
+    ELSE 'none'
+  END
+$$ ) AS (case_statement agtype);
+
+--order of operations in then
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)
+  RETURN CASE n
+    WHEN null THEN 'should not return me'
+    WHEN n THEN (n.i = 1) = 1
+    ELSE 'none'
+  END
+$$ ) AS (case_statement agtype);
+
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)
+  RETURN CASE n
+    WHEN null THEN 'should not return me'
+    WHEN n THEN n.i = (1 = 1)
+    ELSE 'none'
+  END
+$$ ) AS (case_statement agtype);
+
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)
+  RETURN CASE n
+    WHEN null THEN 'should not return me'
+    WHEN n THEN n.i = (1 = 0)
+    ELSE 'none'
+  END
+$$ ) AS (case_statement agtype);
+
 --CASE with count()
 
 --count(*)

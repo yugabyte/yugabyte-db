@@ -6635,6 +6635,191 @@ $$ ) AS (case_statement agtype);
  {"id": 844424930131970, "label": "connected_to", "end_id": 281474976710660, "start_id": 281474976710659, "properties": {"k": 1, "id": 2}}::edge
 (2 rows)
 
+--CASE chained expressions
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)
+  RETURN CASE
+    WHEN null THEN 'should not return me'
+    WHEN n.i = 1 = 1 THEN n
+    ELSE 'none'
+  END
+$$ ) AS (case_statement agtype);
+                                case_statement                                 
+-------------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {"i": 1, "id": 1}}::vertex
+ "none"
+ "none"
+ "none"
+ "none"
+ "none"
+(6 rows)
+
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)
+  RETURN CASE
+    WHEN null THEN 'should not return me'
+    WHEN n.i = (1 = 1) THEN n
+    ELSE 'none'
+  END
+$$ ) AS (case_statement agtype);
+                                        case_statement                                        
+----------------------------------------------------------------------------------------------
+ "none"
+ "none"
+ "none"
+ {"id": 281474976710660, "label": "", "properties": {"i": true, "j": false, "id": 4}}::vertex
+ "none"
+ "none"
+(6 rows)
+
+ 
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)
+  RETURN CASE n
+    WHEN null THEN 'should not return me'
+    WHEN n.i = 1 THEN n
+    ELSE 'none'
+  END
+$$ ) AS (case_statement agtype);
+ case_statement 
+----------------
+ "none"
+ "none"
+ "none"
+ "none"
+ "none"
+ "none"
+(6 rows)
+
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)
+  RETURN CASE n = 1
+    WHEN null THEN 'should not return me'
+    WHEN n.i = 1 = 1 THEN n
+    ELSE 'none'
+  END
+$$ ) AS (case_statement agtype);
+                                         case_statement                                         
+------------------------------------------------------------------------------------------------
+ "none"
+ {"id": 281474976710658, "label": "", "properties": {"i": "a", "j": "b", "id": 2}}::vertex
+ {"id": 281474976710659, "label": "", "properties": {"i": 0, "j": 1, "id": 3}}::vertex
+ {"id": 281474976710660, "label": "", "properties": {"i": true, "j": false, "id": 4}}::vertex
+ {"id": 281474976710661, "label": "", "properties": {"i": [], "j": [0, 1, 2], "id": 5}}::vertex
+ {"id": 281474976710662, "label": "", "properties": {"i": {}, "j": {"i": 1}, "id": 6}}::vertex
+(6 rows)
+
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)
+  RETURN CASE n = 1
+    WHEN null THEN 'should not return me'
+    WHEN n.i = (1 = 1) THEN n
+    ELSE 'none'
+  END
+$$ ) AS (case_statement agtype);
+                                         case_statement                                         
+------------------------------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {"i": 1, "id": 1}}::vertex
+ {"id": 281474976710658, "label": "", "properties": {"i": "a", "j": "b", "id": 2}}::vertex
+ {"id": 281474976710659, "label": "", "properties": {"i": 0, "j": 1, "id": 3}}::vertex
+ "none"
+ {"id": 281474976710661, "label": "", "properties": {"i": [], "j": [0, 1, 2], "id": 5}}::vertex
+ {"id": 281474976710662, "label": "", "properties": {"i": {}, "j": {"i": 1}, "id": 6}}::vertex
+(6 rows)
+
+--should return n
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)
+  RETURN CASE n = 1
+    WHEN null THEN 'should not return me'
+    WHEN n = 1 = 1 THEN n
+    ELSE 'none'
+  END
+$$ ) AS (case_statement agtype);
+                                         case_statement                                         
+------------------------------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {"i": 1, "id": 1}}::vertex
+ {"id": 281474976710658, "label": "", "properties": {"i": "a", "j": "b", "id": 2}}::vertex
+ {"id": 281474976710659, "label": "", "properties": {"i": 0, "j": 1, "id": 3}}::vertex
+ {"id": 281474976710660, "label": "", "properties": {"i": true, "j": false, "id": 4}}::vertex
+ {"id": 281474976710661, "label": "", "properties": {"i": [], "j": [0, 1, 2], "id": 5}}::vertex
+ {"id": 281474976710662, "label": "", "properties": {"i": {}, "j": {"i": 1}, "id": 6}}::vertex
+(6 rows)
+
+--chained expression in THEN
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)
+  RETURN CASE 
+    WHEN null THEN 'should not return me'
+    WHEN n.i = 1 THEN n.i = 1 = 1
+    ELSE 'none'
+  END
+$$ ) AS (case_statement agtype);
+ case_statement 
+----------------
+ true
+ "none"
+ "none"
+ "none"
+ "none"
+ "none"
+(6 rows)
+
+--order of operations in then
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)
+  RETURN CASE n
+    WHEN null THEN 'should not return me'
+    WHEN n THEN (n.i = 1) = 1
+    ELSE 'none'
+  END
+$$ ) AS (case_statement agtype);
+ case_statement 
+----------------
+ false
+ false
+ false
+ false
+ false
+ false
+(6 rows)
+
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)
+  RETURN CASE n
+    WHEN null THEN 'should not return me'
+    WHEN n THEN n.i = (1 = 1)
+    ELSE 'none'
+  END
+$$ ) AS (case_statement agtype);
+ case_statement 
+----------------
+ false
+ false
+ false
+ true
+ false
+ false
+(6 rows)
+
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)
+  RETURN CASE n
+    WHEN null THEN 'should not return me'
+    WHEN n THEN n.i = (1 = 0)
+    ELSE 'none'
+  END
+$$ ) AS (case_statement agtype);
+ case_statement 
+----------------
+ false
+ false
+ false
+ false
+ false
+ false
+(6 rows)
+
 --CASE with count()
 --count(*)
 SELECT * FROM cypher('case_statement', $$
