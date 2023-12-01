@@ -228,7 +228,7 @@ function CpuSankeyNode(props: any) {
           <text
             textAnchor={'start'}
             x={x + width + 15}
-            y={y + height / 2 + width / 2 - 5}
+            y={y + height / 2 + width / 2 + 3}
             fontSize="12"
             stroke="#888"
             strokeOpacity="0.5"
