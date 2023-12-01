@@ -23,6 +23,7 @@ import {
 } from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { Action, Resource } from '../../../../redesign/features/rbac';
+import { userhavePermInRoleBindings } from '../../../../redesign/features/rbac/common/RbacUtils';
 import './certificates.scss';
 
 const validationSchema = Yup.object().shape({
@@ -272,9 +273,8 @@ class Certificates extends Component {
           </MenuItem>
         </RbacValidator>
         <RbacValidator
-          customValidateFunction={(userPermissions) =>
-            find(userPermissions, { resourceType: Resource.UNIVERSE, actions: Action.READ }) !==
-            undefined
+          customValidateFunction={() =>
+            userhavePermInRoleBindings(Resource.UNIVERSE, Action.READ)
           }
           isControl
           overrideStyle={{ display: 'block' }}

@@ -14,6 +14,7 @@ import { isAvailable, showOrRedirect } from '../../utils/LayoutUtils';
 import { customPermValidateFunction } from '../../redesign/features/rbac/common/RbacApiPermValidator';
 import { getWrappedChildren } from '../../redesign/features/rbac/common/validator/ValidatorUtils';
 import { Action, Resource } from '../../redesign/features/rbac';
+import { userhavePermInRoleBindings } from '../../redesign/features/rbac/common/RbacUtils';
 
 export default class Dashboard extends Component {
   componentDidMount() {
@@ -26,11 +27,9 @@ export default class Dashboard extends Component {
     } = this.props;
     showOrRedirect(currentCustomer.data.features, 'menu.dashboard');
 
-    if (!customPermValidateFunction((userPermissions) => {
+    if (!customPermValidateFunction(() => {
 
-      return (
-        find(userPermissions, { resourceType: Resource.UNIVERSE, actions: [Action.READ] }) !== undefined
-      );
+      return userhavePermInRoleBindings(Resource.UNIVERSE, Action.READ);
     })) {
       return getWrappedChildren({});
     }
