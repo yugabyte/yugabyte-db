@@ -77,7 +77,11 @@ DECLARE_bool(export_wait_state_names);
  * YB AUH Wait Classes
  * ----------
  */
- // 0x01 - 0x0C used in pgstat.h for Pg Wait classes
+
+// 0x01 - 0x0C used in pgstat.h for Pg Wait classes
+// For wait-events used in PG, we should avoid using these classes
+#define YB_PG_WAIT_PERFORM           0x0D000000U
+
 #define YB_RPC                       0x00000000U
 #define YB_FLUSH_AND_COMPACTION      0x01000000U
 #define YB_CONSENSUS                 0x02000000U
@@ -87,9 +91,7 @@ DECLARE_bool(export_wait_state_names);
                                           
 #define YB_CQL_WAIT_STATE            0x06000000U
 #define YB_CLIENT                    0x07000000U
-
-#define YB_PG_WAIT_PERFORM           0x08000000U
-#define YB_PG_CLIENT_SERVICE         0x09000000U
+#define YB_PG_CLIENT_SERVICE         0x08000000U
 
 // For debugging purposes:
 // Uncomment the following line to track state changes in wait events.
