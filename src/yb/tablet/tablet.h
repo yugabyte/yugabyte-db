@@ -740,9 +740,11 @@ class Tablet : public AbstractTablet,
   }
 
   // Allows us to add tablet-specific information that will get deref'd when the tablet does.
-  void AddAdditionalMetadata(const std::string& key, std::shared_ptr<void> additional_metadata) {
+  std::shared_ptr<void> AddAdditionalMetadata(
+      const std::string& key, std::shared_ptr<void> additional_metadata) {
     std::lock_guard lock(control_path_mutex_);
-    additional_metadata_.emplace(key, std::move(additional_metadata));
+    auto result = additional_metadata_.emplace(key, std::move(additional_metadata));
+    return result.first->second;
   }
 
   std::shared_ptr<void> GetAdditionalMetadata(const std::string& key) {

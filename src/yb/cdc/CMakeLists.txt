@@ -99,7 +99,7 @@ ADD_YB_LIBRARY(
 
 set(CDC_SRCS
   cdc_service.cc
-  cdc_metrics.cc
+  xrepl_metrics.cc
   xcluster_producer.cc
   xcluster_producer_bootstrap.cc
   cdcsdk_producer.cc
