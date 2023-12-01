@@ -2145,7 +2145,7 @@ _PG_init(void)
 
         "Specifies whether logging will include the statement text and "
         "parameters with the first log entry for a statement/substatement "
-        "combination or with every entry.  Disabling this setting will result "
+        "combination or with every entry.  Enabling this setting will result "
         "in less verbose logging but may make it more difficult to determine "
         "the statement that generated a log entry, though the "
         "statement/substatement pair along with the process id should suffice "
