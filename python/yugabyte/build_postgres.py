@@ -24,6 +24,7 @@ import pathlib
 import re
 import semantic_version  # type: ignore
 import shlex
+import shutil
 import subprocess
 import sys
 import time
@@ -571,7 +572,7 @@ class PostgresBuilder(YbBuildToolBase):
                 '--enable-depend'
         ]
         if (not re.search(r'ubuntu2[23]\.04', local_sys_conf().short_os_name_and_version()) or
-            subprocess.run(('msgfmt', '--version'),stdout=subprocess.DEVNULL).returncode == 0):
+            shutil.which('msgfmt')):
             # With GCC 13 build on Ubuntu 23.04, we run into an error where Postgres configure
             # complains about not finding the msgfmt tool if we try to build Postgres with NLS.
             # This fails on our Ubuntu 23.04 x86_64 build infra Docker image but might work in a
