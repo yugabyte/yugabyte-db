@@ -39,7 +39,7 @@ The following illustration describes the workflow for live migration using YB Vo
 
 <!-- ![Live migration with fall-forward workflow](/images/migrate/fall-forward-new.png) -->
 
-![Live migration with fall-forward workflow](/images/migrate/fall-fwd.png)
+![Live migration with fall-forward workflow](/images/migrate/migration-fall-forward.png)
 
 Before proceeding with migration, ensure that you have completed the following steps:
 
