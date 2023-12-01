@@ -12,6 +12,23 @@ menu:
 type: docs
 ---
 
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li class="active">
+    <a href="../yb-rust-postgres/" class="nav-link">
+      YSQL
+    </a>
+  </li>
+</ul>
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="../yb-rust-postgres/" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YugabyteDB Rust-Postgres Smart Driver
+    </a>
+  </li>
+</ul>
+
 The [YugabyteDB Rust-Postgres Smart Driver](https://github.com/yugabyte/rust-postgres) is a rust driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL rust-postgres driver,](https://github.com/sfackler/rust-postgres), with additional [connection load balancing](../../smart-drivers/) features.
 
 ## CRUD operations
