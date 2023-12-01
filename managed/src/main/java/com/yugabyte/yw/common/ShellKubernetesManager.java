@@ -561,6 +561,11 @@ public class ShellKubernetesManager extends KubernetesManager {
       patchSuccess &=
           response.isSuccess() && waitForPVCExpand(universeUUID, config, namespace, pvcName);
     }
+    if (!patchSuccess) {
+      String msg = String.format("Failed expanding PVCs %s to size %s", pvcNames, newDiskSize);
+      throw new RuntimeException(msg);
+    }
+    // this return value is ignored, so can be removed
     return patchSuccess;
   }
 
