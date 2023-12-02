@@ -13,6 +13,7 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
+#include "yb/util/path_util.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 
@@ -67,7 +68,7 @@ class PgCatalogVersionTest : public LibPqTestBase {
   }
 
   void RestartClusterSetDBCatalogVersionMode(
-      bool enabled, const std::vector<string>& extra_tserver_flags) {
+      bool enabled, const std::vector<string>& extra_tserver_flags = {}) {
     LOG(INFO) << "Restart the cluster and turn "
               << (enabled ? "on" : "off") << " --ysql_enable_db_catalog_version_mode";
     cluster_->Shutdown();
@@ -426,6 +427,45 @@ class PgCatalogVersionTest : public LibPqTestBase {
     ASSERT_OK(conn->FetchFormat(
         "SELECT yb_increment_all_db_catalog_versions($0)", breaking ? "true" : "false"));
     ASSERT_OK(conn->Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=0"));
+  }
+  static size_t CountRelCacheInitFiles(const string& dirpath) {
+    auto CloseDir = [](DIR* d) { closedir(d); };
+    std::unique_ptr<DIR, decltype(CloseDir)> d(opendir(dirpath.c_str()),
+                                               CloseDir);
+    CHECK(d);
+    struct dirent* entry;
+    unsigned int count = 0;
+    while ((entry = readdir(d.get())) != nullptr) {
+      if (strstr(entry->d_name, "pg_internal.init")) {
+        LOG(INFO) << "found rel cache init file " << dirpath << "/" << entry->d_name;
+        count++;
+      }
+    }
+    return count;
+  }
+  void RemoveRelCacheInitFilesHelper(bool per_database_mode) {
+    // Prepare an existing cluster that is the expected mode.
+    auto conn_yugabyte = ASSERT_RESULT(Connect());
+    ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte, per_database_mode));
+    RestartClusterSetDBCatalogVersionMode(per_database_mode);
+    conn_yugabyte = ASSERT_RESULT(Connect());
+    // Under per-database catalog version mode, there is one shared rel
+    // cache init file for each database. Test this by making a second
+    // connection to the template1 database.
+    auto conn_template1 = ASSERT_RESULT(ConnectToDB("template1"));
+    auto data_root = cluster_->data_root();
+    auto pg_data_root = JoinPathSegments(data_root, "ts-1", "pg_data");
+    auto pg_data_global = JoinPathSegments(pg_data_root, "global");
+    ASSERT_EQ(CountRelCacheInitFiles(pg_data_global), per_database_mode ? 2 : 1);
+    ASSERT_EQ(CountRelCacheInitFiles(pg_data_root), 2);
+
+    // Restart the cluster. The rel cache init files should be removed
+    // during postmaster startup.
+    cluster_->Shutdown();
+    ASSERT_OK(cluster_->Restart());
+
+    ASSERT_EQ(CountRelCacheInitFiles(pg_data_global), 0);
+    ASSERT_EQ(CountRelCacheInitFiles(pg_data_root), 0);
   }
 };
 
@@ -1157,6 +1197,11 @@ ALTER PUBLICATION testpub_foralltables SET (publish = 'insert, update, delete, t
       ASSERT_OK(CheckMatch(entry.second, {3, 3}));
     }
   }
+}
+
+TEST_F(PgCatalogVersionTest, RemoveRelCacheInitFiles) {
+  RemoveRelCacheInitFilesHelper(true /* per_database_mode */);
+  RemoveRelCacheInitFilesHelper(false /* per_database_mode */);
 }
 
 TEST_F(PgCatalogVersionTest, NonBreakingDDLMode) {
