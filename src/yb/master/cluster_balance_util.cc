@@ -380,6 +380,9 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
   if (tablet_meta.has_wrong_placements()) {
     tablets_wrong_placement_.insert(tablet_id);
   }
+  if (tablet_meta.has_badly_placed_leader()) {
+    tablets_with_badly_placed_leaders_.insert(tablet_id);
+  }
 
   return Status::OK();
 }

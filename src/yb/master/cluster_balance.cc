@@ -134,6 +134,33 @@ METRIC_DEFINE_gauge_int64(cluster,
                           "Is load balancing enabled in the cluster where "
                           "1 indicates it is enabled.");
 
+METRIC_DEFINE_gauge_uint32(cluster,
+                           tablets_in_wrong_placement,
+                           "Tablets in Wrong/Blacklisted Placement",
+                           yb::MetricUnit::kUnits,
+                           "Number of tablet peers in invalid or blacklisted locations.");
+
+METRIC_DEFINE_gauge_uint32(cluster,
+                           blacklisted_leaders,
+                           "Blacklisted Leaders",
+                           yb::MetricUnit::kUnits,
+                           "Number of tablet leaders in locations from which leaders are "
+                           "blacklisted.");
+
+METRIC_DEFINE_gauge_uint32(cluster,
+                           total_table_load_difference,
+                           "Sum of Table Load Difference",
+                           yb::MetricUnit::kUnits,
+                           "This metric is the sum of every table's load difference, where a "
+                           "table's load difference is the maximum load difference for that table "
+                           "between all pairs of TServers that are valid hosts for its tablets. "
+                           "Here, the load difference for a table between a pair of TServers is "
+                           "the positive difference between the number of running/starting tablet "
+                           "peers belonging to that table hosted on those TServers. Exception: "
+                           "the load difference is defined as 0 if it otherwise would be 1 because "
+                           "the load balancer cannot fix a load difference of 1 by moving a tablet "
+                           "peer from one TServer to another.");
+
 namespace yb {
 namespace master {
 
@@ -255,6 +282,10 @@ size_t ClusterLoadBalancer::get_total_wrong_placement() const {
   return state_->tablets_wrong_placement_.size();
 }
 
+size_t ClusterLoadBalancer::get_badly_placed_leaders() const {
+  return state_->tablets_with_badly_placed_leaders_.size();
+}
+
 size_t ClusterLoadBalancer::get_total_blacklisted_servers() const {
   return global_state_->blacklisted_servers_.size();
 }
@@ -311,6 +342,12 @@ ClusterLoadBalancer::~ClusterLoadBalancer() = default;
 
 void ClusterLoadBalancer::InitMetrics() {
   is_load_balancing_enabled_metric_ = METRIC_is_load_balancing_enabled.Instantiate(
+      catalog_manager_->master_->metric_entity_cluster(), 0);
+  tablets_in_wrong_placement_metric_ = METRIC_tablets_in_wrong_placement.Instantiate(
+      catalog_manager_->master_->metric_entity_cluster(), 0);
+  blacklisted_leaders_metric_ = METRIC_blacklisted_leaders.Instantiate(
+      catalog_manager_->master_->metric_entity_cluster(), 0);
+  total_table_load_difference_metric_ = METRIC_total_table_load_difference.Instantiate(
       catalog_manager_->master_->metric_entity_cluster(), 0);
 }
 
@@ -452,6 +489,10 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
   // At the start of the run, report LB state that might prevent it from running smoothly.
   ReportUnusualLoadBalancerState();
 
+  uint32_t total_tablets_in_wrong_placement = 0;
+  uint32_t total_blacklisted_leaders = 0;
+  uint32_t total_table_load_difference = 0;
+
   // Loop over all tables to analyze the global and per-table load.
   for (const auto& table : GetTables()) {
     if (SkipLoadBalancing(*table)) {
@@ -474,7 +515,28 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
       per_table_states_.erase(table->id());
       master_errors++;
     }
+
+    if (!state_->sorted_load_.empty()) {
+      // Only report values greater than 1 since the LB cannot fix a load difference of 1.
+      // This makes the total table load difference metric more interpretable since we would
+      // otherwise add 1 for every table has a difference of 1 between its most/least loaded
+      // tservers, even though the table load is balanced.
+      const auto& low_load_uuid = state_->sorted_load_.front();
+      const auto& high_load_uuid = state_->sorted_load_.back();
+      const int actual_load_difference =
+          narrow_cast<int>(state_->GetLoad(high_load_uuid) - state_->GetLoad(low_load_uuid));
+      if (actual_load_difference > 1) {
+        total_table_load_difference += actual_load_difference;
+      }
+    }
+    total_tablets_in_wrong_placement += get_total_wrong_placement();
+    total_blacklisted_leaders += get_badly_placed_leaders();
   }
+
+  // Update metrics.
+  tablets_in_wrong_placement_metric_->set_value(total_tablets_in_wrong_placement);
+  blacklisted_leaders_metric_->set_value(total_blacklisted_leaders);
+  total_table_load_difference_metric_->set_value(total_table_load_difference);
 
   VLOG(1) << "Global state after analyzing all tablets: " << global_state_->ToString();
 
