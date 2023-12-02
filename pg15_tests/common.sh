@@ -83,3 +83,10 @@ yb_ctl_wipe_restart() {
   done
   return 1
 }
+
+ysqlsh() {
+  # -X: ignore psqlrc
+  # -v "ON_ERROR_STOP=1": on error, return bad exit code
+  # "$@": user-supplied extra args
+  bin/ysqlsh -X -v "ON_ERROR_STOP=1" "$@"
+}
