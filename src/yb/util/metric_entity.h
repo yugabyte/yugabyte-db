@@ -149,6 +149,7 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
 
   // Return the metric instantiated from the given prototype, or NULL if none has been
   // instantiated. Primarily used by tests trying to read metric values.
+  template<typename Metric>
   scoped_refptr<Metric> FindOrNull(const MetricPrototype& prototype) const;
 
   const std::string& id() const { return id_; }
@@ -246,6 +247,12 @@ scoped_refptr<Metric> MetricEntity::FindOrCreateMetric(PrototypePtr proto, Args&
     AddConsumption(*m);
   }
   return m;
+}
+
+template<typename Metric>
+scoped_refptr<Metric> MetricEntity::FindOrNull(const MetricPrototype& prototype) const {
+  std::lock_guard l(lock_);
+  return down_cast<Metric*>(FindPtrOrNull(metric_map_, &prototype).get());
 }
 
 void WriteRegistryAsJson(JsonWriter* writer);
