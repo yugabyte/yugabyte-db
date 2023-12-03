@@ -63,6 +63,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -170,6 +171,18 @@ Status CDCSDKTestBase::SetUpWithParams(
 
   LOG(INFO) << "Cluster created successfully for CDCSDK";
   return Status::OK();
+}
+
+Result<tablet::TabletPeerPtr> CDCSDKTestBase::SetUpWithOneTablet(
+  uint32_t replication_factor, uint32_t num_masters, bool colocated) {
+
+  RETURN_NOT_OK(SetUpWithParams(replication_factor, num_masters, colocated));
+  auto table = VERIFY_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  RETURN_NOT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  SCHECK_EQ(tablets.size(), 1, InternalError, "Only 1 tablet was expected");
+
+  return GetLeaderPeerForTablet(test_cluster(), tablets.begin()->tablet_id());
 }
 
 Result<YBTableName> CDCSDKTestBase::GetTable(
@@ -432,6 +445,27 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStreamWithReplicationSlot(
       replication_slot_name)));
   return xrepl::StreamId::FromString(stream_id);
 }
+
+// This creates a Consistent Snapshot stream on the database kNamespaceName by default.
+Result<xrepl::StreamId> CDCSDKTestBase::CreateCSStream(
+    CDCSDKSnapshotOption snapshot_option,
+    CDCCheckpointType checkpoint_type,
+    CDCRecordType record_type) {
+  CreateCDCStreamRequestPB req;
+  CreateCDCStreamResponsePB resp;
+
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
+
+  InitCreateStreamRequest(&req, checkpoint_type, record_type);
+  req.set_cdcsdk_consistent_snapshot_option(snapshot_option);
+
+  RETURN_NOT_OK(cdc_proxy_->CreateCDCStream(req, &resp, &rpc));
+
+  return xrepl::StreamId::FromString(resp.db_stream_id());
+}
+
+
 
 }  // namespace cdc
 }  // namespace yb
