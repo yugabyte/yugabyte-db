@@ -16,6 +16,7 @@
 #include <atomic>
 #include <mutex>
 
+#include <boost/interprocess/sync/interprocess_semaphore.hpp>
 #include <boost/interprocess/shared_memory_object.hpp>
 
 #include "yb/gutil/casts.h"
@@ -26,6 +27,9 @@
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
 #include "yb/util/thread.h"
+
+DEFINE_test_flag(bool, pg_client_crash_on_shared_memory_send, false,
+                 "Crash while performing pg client send via shared memory.");
 
 DEFINE_test_flag(bool, skip_remove_tserver_shared_memory_object, false,
                  "Skip remove tserver shared memory object in tests.");
@@ -80,26 +84,25 @@ class SharedExchangeHeader {
   Result<size_t> SendRequest(
       bool failed_previous_request, uint64_t session_id,
       size_t size, std::chrono::system_clock::time_point deadline) {
-    std::unique_lock<boost::interprocess::interprocess_mutex> lock(mutex_);
     auto state = state_.load(std::memory_order_acquire);
     if (!ReadyToSend(failed_previous_request)) {
-      lock.unlock();
       return STATUS_FORMAT(IllegalState, "Send request in wrong state: $0", state);
+    }
+    if (ANNOTATE_UNPROTECTED_READ(FLAGS_TEST_pg_client_crash_on_shared_memory_send)) {
+      LOG(FATAL) << "For test: crashing while sending request";
     }
     state_.store(SharedExchangeState::kRequestSent, std::memory_order_release);
     data_size_ = size;
-    cond_.notify_one();
+    request_semaphore_.post();
 
-    RETURN_NOT_OK(DoWait(SharedExchangeState::kResponseSent, deadline, &lock));
+    RETURN_NOT_OK(DoWait(SharedExchangeState::kResponseSent, deadline, &response_semaphore_));
     state_.store(SharedExchangeState::kIdle, std::memory_order_release);
     return data_size_;
   }
 
   void Respond(size_t size) {
-    std::unique_lock<boost::interprocess::interprocess_mutex> lock(mutex_);
     auto state = state_.load(std::memory_order_acquire);
     if (state != SharedExchangeState::kRequestSent) {
-      lock.unlock();
       LOG_IF(DFATAL, state != SharedExchangeState::kShutdown)
           << "Respond in wrong state: " << AsString(state);
       return;
@@ -107,44 +110,48 @@ class SharedExchangeHeader {
 
     data_size_ = size;
     state_.store(SharedExchangeState::kResponseSent, std::memory_order_release);
-    cond_.notify_one();
+    response_semaphore_.post();
   }
 
   Result<size_t> Poll() {
-    std::unique_lock<boost::interprocess::interprocess_mutex> lock(mutex_);
     RETURN_NOT_OK(DoWait(
-        SharedExchangeState::kRequestSent, std::chrono::system_clock::time_point::max(), &lock));
+        SharedExchangeState::kRequestSent, std::chrono::system_clock::time_point::max(),
+        &request_semaphore_));
     return data_size_;
   }
 
   void SignalStop() {
-    std::unique_lock<boost::interprocess::interprocess_mutex> lock(mutex_);
     state_.store(SharedExchangeState::kShutdown, std::memory_order_release);
-    cond_.notify_all();
+    request_semaphore_.post();
   }
 
  private:
-  Status DoWait(SharedExchangeState expected_state, std::chrono::system_clock::time_point deadline,
-                std::unique_lock<boost::interprocess::interprocess_mutex>* lock) {
+  Status DoWait(
+      SharedExchangeState expected_state,
+      std::chrono::system_clock::time_point deadline,
+      boost::interprocess::interprocess_semaphore* semaphore) {
+    auto state = state_.load(std::memory_order_acquire);
     for (;;) {
-      auto state = state_.load(std::memory_order_acquire);
+      if (state == SharedExchangeState::kShutdown) {
+        return STATUS_FORMAT(ShutdownInProgress, "Shutting down shared exchange");
+      }
+      if (!semaphore->timed_wait(deadline)) {
+        state = state_.load(std::memory_order_acquire);
+        return STATUS_FORMAT(TimedOut, "Timed out waiting $0, state: $1", expected_state, state);
+      }
+      state = state_.load(std::memory_order_acquire);
       if (state == expected_state) {
         return Status::OK();
       }
-      if (state == SharedExchangeState::kShutdown) {
-        lock->unlock();
-        return STATUS_FORMAT(ShutdownInProgress, "Shutting down shared exchange");
-      }
-      if (!cond_.timed_wait(*lock, deadline)) {
-        state = state_.load(std::memory_order_acquire);
-        lock->unlock();
-        return STATUS_FORMAT(TimedOut, "Timed out waiting $0, state: $1", expected_state, state);
+      if (state != SharedExchangeState::kShutdown) {
+        return STATUS_FORMAT(
+            IllegalState, "Wait finished in wrong state: $0, expected: $1", state, expected_state);
       }
     }
   }
 
-  boost::interprocess::interprocess_mutex mutex_;
-  boost::interprocess::interprocess_condition cond_;
+  boost::interprocess::interprocess_semaphore request_semaphore_{0};
+  boost::interprocess::interprocess_semaphore response_semaphore_{0};
   std::atomic<SharedExchangeState> state_{SharedExchangeState::kIdle};
   size_t data_size_;
   std::byte data_[0];
