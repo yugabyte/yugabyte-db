@@ -139,6 +139,9 @@ class CDCSDKTestBase : public YBTest {
       uint32_t replication_factor, uint32_t num_masters = 1, bool colocated = false,
       bool cdc_populate_safepoint_record = false);
 
+  Result<tablet::TabletPeerPtr> SetUpWithOneTablet(
+      uint32_t replication_factor, uint32_t num_masters = 1, bool colocated = false);
+
   Result<YBTableName> GetTable(
       Cluster* cluster,
       const std::string& namespace_name,
@@ -213,6 +216,11 @@ class CDCSDKTestBase : public YBTest {
   Result<xrepl::StreamId> CreateDBStreamWithReplicationSlot(
       const std::string& replication_slot_name,
       CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT,
+      CDCRecordType record_type = CDCRecordType::CHANGE);
+
+  Result<xrepl::StreamId> CreateCSStream(
+      CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::USE_SNAPSHOT,
+      CDCCheckpointType checkpoint_type = CDCCheckpointType::EXPLICIT,
       CDCRecordType record_type = CDCRecordType::CHANGE);
 
  protected:
