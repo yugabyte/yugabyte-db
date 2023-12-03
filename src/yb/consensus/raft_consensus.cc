@@ -3235,14 +3235,16 @@ LeaderLeaseStatus RaftConsensus::GetLeaderLeaseStatusUnlocked(MicrosTime* ht_lea
 
 ConsensusStatePB RaftConsensus::ConsensusState(
     ConsensusConfigType type,
-    LeaderLeaseStatus* leader_lease_status) const {
+    LeaderLeaseStatus* leader_lease_status, 
+    ListAllOpIdPB* opid_list) const {
   auto lock = state_->LockForRead();
-  return ConsensusStateUnlocked(type, leader_lease_status);
+  return ConsensusStateUnlocked(type, leader_lease_status, opid_list);
 }
 
 ConsensusStatePB RaftConsensus::ConsensusStateUnlocked(
     ConsensusConfigType type,
-    LeaderLeaseStatus* leader_lease_status) const {
+    LeaderLeaseStatus* leader_lease_status, 
+    ListAllOpIdPB* opid_list) const {
   CHECK(state_->IsLocked());
   if (leader_lease_status) {
     if (GetRoleUnlocked() == PeerRole::LEADER) {
@@ -3252,6 +3254,14 @@ ConsensusStatePB RaftConsensus::ConsensusStateUnlocked(
       *leader_lease_status = LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;
     }
   }
+  opid_list->set_last_received_opid_index(
+    state_->GetLastReceivedOpIdUnlocked().index);
+  opid_list->set_last_committed_opid_index(
+    state_->GetCommittedOpIdUnlocked().index);
+  opid_list->set_last_committed_opid_index(
+    state_->GetLastAppliedOpIdUnlocked().index);
+  opid_list->set_all_applied_opid_index(
+    queue_->GetAllAppliedOpId().index);
   return state_->ConsensusStateUnlocked(type);
 }
 

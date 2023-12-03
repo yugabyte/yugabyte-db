@@ -526,6 +526,11 @@ message GetConsensusStateResponsePB {
   // Allows returning the leader lease status in the same RPC. Useful for waiting for the leader
   // to be allowed to serve requests.
   optional LeaderLeaseStatus leader_lease_status = 3;
+
+  // Lists all operation id indexes (last_received_opid_index, last_committed_opid_index,
+  // last_applied_opid_index, all_opid_index).
+  // message ListAllOpIdPB is defined in metadata.proto. 
+  optional ListAllOpIdPB current_opid_list = 4;
 }
 
 message StartRemoteBootstrapRequestPB {

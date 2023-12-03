@@ -139,6 +139,20 @@ message ConsensusStatePB {
   required RaftConfigPB config = 3;
 }
 
+message ListAllOpIdPB {
+  // Operation ID for the latest request received.
+  optional int64 last_received_opid_index = 1;
+  
+  // Operation ID for the latest entry known to be committed.
+  optional int64 last_committed_opid_index = 2;
+
+  // Operation ID of the highest log entry applied to state machine.
+  optional int64 last_applied_opid_index = 3;
+
+  // Returns all applied Operation ID.
+  optional int64 all_applied_opid_index = 4;
+}
+
 // This PB is used to serialize all of the persistent state needed for
 // Consensus that is not in the WAL, such as leader election and
 // communication on startup.
