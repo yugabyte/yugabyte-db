@@ -95,8 +95,10 @@ using std::string;
 
 DECLARE_int32(replication_factor);
 DECLARE_int32(cdc_max_apply_batch_num_records);
+DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
 DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_bool(enable_delete_truncate_xcluster_replicated_table);
+DECLARE_bool(enable_tablet_split_of_xcluster_replicated_tables);
 DECLARE_int32(update_min_cdc_indices_interval_secs);
 DECLARE_int32(log_cache_size_limit_mb);
 DECLARE_int32(log_min_seconds_to_retain);
@@ -794,6 +796,18 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
     return std::make_pair(producer_table, consumer_table);
   }
 
+  Status SplitSingleTablet(MiniCluster* cluster, const client::YBTablePtr& table) {
+    RETURN_NOT_OK(cluster->FlushTablets());
+    auto tablets = ListTableActiveTabletLeadersPeers(cluster, table->id());
+    if (tablets.size() != 1) {
+      return STATUS_FORMAT(InternalError, "Expected single tablet, found $0.", tablets.size());
+    }
+    auto tablet_id = tablets.front()->tablet_id();
+    auto catalog_manager =
+        &CHECK_NOTNULL(VERIFY_RESULT(cluster->GetLeaderMiniMaster()))->catalog_manager();
+    return catalog_manager->SplitTablet(tablet_id, master::ManualSplit::kTrue);
+  }
+
   Status SetupReplicationAndWaitForValidSafeTime(
       const std::pair<client::YBTablePtr, client::YBTablePtr>& tables) {
     auto producer_table = tables.first;
@@ -827,6 +841,9 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
         },
         MonoDelta::FromSeconds(30), "Intents cleaned up");
   }
+
+  Status RunInsertUpdateDeleteTransactionWithSplitTest(
+      int num_tablets, const std::vector<std::shared_ptr<client::YBTable>>& tables);
 };
 
 constexpr uint32_t kTransactionSize = 50;
@@ -3591,6 +3608,131 @@ TEST_F_EX(XClusterYsqlTest, DdlAndReadOperationsAllowedOnStandbyCluster, XCluste
     // Test that reading from tables is still allowed.
     ASSERT_RESULT(conn.FetchFormat("SELECT * FROM $0", kNewTestTableName));
   }
+}
+
+TEST_F(XClusterYsqlTest, InsertUpdateDeleteTransactionsWithUnevenTabletPartitions) {
+  // This test will setup uneven tablets and then run transactions on the producer that touch the
+  // same row within the txn. We want to ensure that even if the txn is split into multiple batches,
+  // no records are missed or overwritten due to write_id resetting on later batches.
+
+  // Create table with 2 tablets on producer, and 1 tablet on consumer.
+  const auto kProducerTabletCount = 2;
+  const auto kConsumerTabletCount = 1;
+  auto tables = ASSERT_RESULT(
+      SetUpWithParams({kConsumerTabletCount}, {kProducerTabletCount}, /* replication_factor */ 1));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = false;
+
+  std::shared_ptr<client::YBTable> producer_table(tables[0]), consumer_table(tables[1]);
+  const auto producer_table_name = producer_table->name();
+  const auto table_name = GetCompleteTableName(producer_table_name);
+  const auto new_col_name = "new_col";
+  // Add an extra column to the tables so that we can also test updates.
+  auto p_conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(p_conn.ExecuteFormat("alter table $0 add column $1 text", table_name, new_col_name));
+
+  auto c_conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(c_conn.ExecuteFormat("alter table $0 add column $1 text", table_name, new_col_name));
+
+  ASSERT_OK(SetupUniverseReplication({producer_table}));
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), kProducerTabletCount));
+
+  const auto kNumBatches = 10;
+  const auto kBatchSize = 10;
+  for (int i = 0; i < kNumBatches; ++i) {
+    const auto start = kBatchSize * i;
+    const auto end = kBatchSize * (i + 1) - 1;
+    ASSERT_OK(p_conn.Execute("BEGIN"));
+    ASSERT_OK(p_conn.ExecuteFormat(
+        "INSERT INTO $0 SELECT id, 'i' FROM generate_series($1, $2) id", table_name, start, end));
+    ASSERT_OK(p_conn.ExecuteFormat(
+        "UPDATE $0 SET $1 = 'u' WHERE $2 >= $3 AND $2 <= $4", table_name, new_col_name,
+        kKeyColumnName, start, end));
+    ASSERT_OK(p_conn.ExecuteFormat(
+        "DELETE FROM $0 WHERE $1 >= $2 AND $1 <= $3", table_name, kKeyColumnName, start, end));
+    ASSERT_OK(p_conn.Execute("COMMIT"));
+  }
+
+  ASSERT_OK(VerifyWrittenRecords(producer_table_name, consumer_table->name()));
+}
+
+Status XClusterYSqlTestConsistentTransactionsTest::RunInsertUpdateDeleteTransactionWithSplitTest(
+    int num_tablets, const std::vector<std::shared_ptr<client::YBTable>>& tables) {
+  std::shared_ptr<client::YBTable> producer_table(tables[0]), consumer_table(tables[1]);
+  const auto producer_table_name = producer_table->name();
+  const auto table_name = GetCompleteTableName(producer_table_name);
+  const auto new_col_name = "new_col";
+
+  // Add an extra column to the tables so that we can also test updates.
+  auto p_conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(kNamespaceName));
+  RETURN_NOT_OK(
+      p_conn.ExecuteFormat("alter table $0 add column $1 text", table_name, new_col_name));
+
+  auto c_conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(kNamespaceName));
+  RETURN_NOT_OK(
+      c_conn.ExecuteFormat("alter table $0 add column $1 text", table_name, new_col_name));
+
+  RETURN_NOT_OK(SetupUniverseReplication({producer_table}));
+  RETURN_NOT_OK(CorrectlyPollingAllTablets(consumer_cluster(), num_tablets));
+
+  // Insert some initial data and flush so that we have a tablet to flush.
+  RETURN_NOT_OK(p_conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT id, 'x' FROM generate_series($1, $2) id", table_name, 1000, 2000));
+
+  // Begin the transaction.
+  const auto start = 0;
+  const auto end = 100;
+  RETURN_NOT_OK(p_conn.Execute("BEGIN"));
+  RETURN_NOT_OK(p_conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT id, 'i' FROM generate_series($1, $2) id", table_name, start, end));
+
+  // Split the tablet in the middle of the txn.
+  RETURN_NOT_OK(SplitSingleTablet(producer_cluster(), producer_table));
+  RETURN_NOT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        std::vector<TabletId> tablet_ids;
+        RETURN_NOT_OK(producer_cluster_.client_->GetTablets(
+            producer_table_name, 0 /* max_tablets */, &tablet_ids, NULL));
+        return tablet_ids.size() == 2;
+      },
+      MonoDelta::FromSeconds(kRpcTimeout), "Wait for tablet to be split."));
+
+  // Complete the rest of the txn.
+  RETURN_NOT_OK(p_conn.ExecuteFormat(
+      "UPDATE $0 SET $1 = 'u' WHERE $2 >= $3 AND $2 <= $4", table_name, new_col_name,
+      kKeyColumnName, start, end));
+  RETURN_NOT_OK(p_conn.ExecuteFormat(
+      "DELETE FROM $0 WHERE $1 >= $2 AND $1 <= $3", table_name, kKeyColumnName, start, 300));
+  RETURN_NOT_OK(p_conn.Execute("COMMIT"));
+
+  return VerifyWrittenRecords(producer_table_name, consumer_table->name());
+}
+
+TEST_F(XClusterYSqlTestConsistentTransactionsTest, InsertUpdateDeleteTransactionWithSplit) {
+  const auto kNumTablets = 1;
+  // Set before creating clusters so that the first run doesn't wait 30s.
+  // Lowering to 5s here to speed up tests.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 5;
+  auto tables =
+      ASSERT_RESULT(SetUpWithParams({kNumTablets}, {kNumTablets}, /* replication_factor */ 1));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
+  ASSERT_OK(RunInsertUpdateDeleteTransactionWithSplitTest(kNumTablets, tables));
+}
+
+TEST_F(
+    XClusterYSqlTestConsistentTransactionsTest, InsertUpdateDeleteTransactionWithSplitWithPacked) {
+  const auto kNumTablets = 1;
+  // Set before creating clusters so that the first run doesn't wait 30s.
+  // Lowering to 5s here to speed up tests.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 5;
+  auto tables =
+      ASSERT_RESULT(SetUpWithParams({kNumTablets}, {kNumTablets}, /* replication_factor */ 1));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+
+  ASSERT_OK(RunInsertUpdateDeleteTransactionWithSplitTest(kNumTablets, tables));
 }
 
 }  // namespace yb

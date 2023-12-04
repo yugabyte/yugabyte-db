@@ -710,11 +710,12 @@ Result<ExternalTxnApplyState> ProcessApplyExternalTransactions(
     auto aborted_subtransactions =
         VERIFY_RESULT(SubtxnSet::FromPB(apply.aborted_subtransactions().set()));
     result.emplace(
-        txn_id,
-        ExternalTxnApplyStateData{
-            .commit_ht = commit_ht,
-            .aborted_subtransactions = aborted_subtransactions,
-        });
+        txn_id, ExternalTxnApplyStateData{
+                    .commit_ht = commit_ht,
+                    .aborted_subtransactions = aborted_subtransactions,
+                    // If filter keys are not specified then default to full key range.
+                    .filter_range = {apply.filter_start_key(), apply.filter_end_key()},
+                });
   }
 
   return result;
@@ -722,12 +723,14 @@ Result<ExternalTxnApplyState> ProcessApplyExternalTransactions(
 
 }  // namespace
 
-Status ExternalIntentsBatchWriter::PrepareApplyExternalIntentsBatch(
+Result<bool> ExternalIntentsBatchWriter::PrepareApplyExternalIntentsBatch(
     HybridTime commit_ht,
     const SubtxnSet& aborted_subtransactions,
+    const KeyBounds& filter_range,
     const Slice& original_input_value,
     rocksdb::DirectWriteHandler* regular_write_handler,
     IntraTxnWriteId* write_id) {
+  bool can_delete_entire_batch = true;
   auto input_value = original_input_value;
   DocHybridTimeBuffer doc_ht_buffer;
   RETURN_NOT_OK(input_value.consume_byte(KeyEntryTypeAsChar::kUuid));
@@ -749,7 +752,7 @@ Status ExternalIntentsBatchWriter::PrepareApplyExternalIntentsBatch(
   }
   if (aborted_subtransactions.Test(subtransaction_id)) {
     // Skip applying provisional writes that belong to subtransactions that got aborted.
-    return Status::OK();
+    return can_delete_entire_batch;
   }
   for (;;) {
     auto key_size = VERIFY_RESULT(util::FastDecodeUnsignedVarInt(&input_value));
@@ -767,6 +770,20 @@ Status ExternalIntentsBatchWriter::PrepareApplyExternalIntentsBatch(
     }
     auto output_value = input_value.Prefix(value_size);
     input_value.remove_prefix(value_size);
+
+    // Remove the key entry prefix byte(s) and verify the key is valid.
+    auto output_key_value = output_key;
+    auto output_key_value_byte = ConsumeKeyEntryType(&output_key_value);
+    SCHECK_NE(output_key_value_byte, KeyEntryType::kInvalid, Corruption, "Wrong first byte");
+    if (!filter_range.IsWithinBounds(output_key_value)) {
+      // Skip this entry. Ensure that we don't delete this batch, as another apply will need this
+      // skipped intent.
+      can_delete_entire_batch = false;
+      continue;
+    }
+    // Since external intents only contain one key since D24185, this should be all or nothing.
+    DCHECK(can_delete_entire_batch);
+
     std::array<Slice, 2> key_parts = {{
         output_key,
         doc_ht_buffer.EncodeWithValueType(commit_ht, *write_id),
@@ -781,7 +798,7 @@ Status ExternalIntentsBatchWriter::PrepareApplyExternalIntentsBatch(
     RETURN_NOT_OK(UpdateSchemaVersion(output_key, output_value));
   }
 
-  return Status::OK();
+  return can_delete_entire_batch;
 }
 
 // Reads all stored external intents for provided transactions and prepares batches that will apply
@@ -810,11 +827,15 @@ Status ExternalIntentsBatchWriter::PrepareApplyExternalIntents(
         break;
       }
 
-      RETURN_NOT_OK(PrepareApplyExternalIntentsBatch(
-          apply_data.commit_ht, apply_data.aborted_subtransactions, intents_db_iter_.value(),
-          handler, &write_id));
+      // Returns whether or not we filtered out any intents, if we did then do not delete as a later
+      // apply (with a different filter) might still need it.
+      bool can_delete_entire_batch = VERIFY_RESULT(PrepareApplyExternalIntentsBatch(
+          apply_data.commit_ht, apply_data.aborted_subtransactions, apply_data.filter_range,
+          intents_db_iter_.value(), handler, &write_id));
 
-      intents_write_batch_->SingleDelete(input_key);
+      if (can_delete_entire_batch) {
+        intents_write_batch_->SingleDelete(input_key);
+      }
 
       intents_db_iter_.Next();
     }
@@ -856,8 +877,8 @@ Result<bool> ExternalIntentsBatchWriter::AddExternalPairToWriteBatch(
   if (it != apply_external_transactions->end()) {
     // The same write operation could contain external intents and instruct us to apply them.
     RETURN_NOT_OK(PrepareApplyExternalIntentsBatch(
-        it->second.commit_ht, it->second.aborted_subtransactions, key_value, regular_write_handler,
-        &it->second.write_id));
+        it->second.commit_ht, it->second.aborted_subtransactions, it->second.filter_range,
+        key_value, regular_write_handler, &it->second.write_id));
     return false;
   }
 
