@@ -279,6 +279,7 @@ bool RecordHasValidOp(const CDCSDKProtoRecordPB& record) {
   return record.row_message().op() == RowMessage_Op_INSERT ||
          record.row_message().op() == RowMessage_Op_UPDATE ||
          record.row_message().op() == RowMessage_Op_DELETE ||
+         record.row_message().op() == RowMessage_Op_SAFEPOINT ||
          record.row_message().op() == RowMessage_Op_READ;
 }
 
@@ -1988,7 +1989,8 @@ void ComputeLagMetric(
       metric->set_value(lag_metric > 0 ? lag_metric : 0);
     }
   } else {
-    metric->set_value(last_replicated_micros - metric_last_timestamp_micros);
+    auto lag_metric = last_replicated_micros - metric_last_timestamp_micros;
+    metric->set_value(lag_metric > 0 ? lag_metric : 0);
   }
 }
 
