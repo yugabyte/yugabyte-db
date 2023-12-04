@@ -906,7 +906,8 @@
         "database": "Database",
         "tables": "Tables",
         "copyBackupLocation": "Copy backup location",
-        "copied": "Copied"
+        "copied": "Copied",
+        "restoreFailed": "Restore Failed"
       }
     }
   }
