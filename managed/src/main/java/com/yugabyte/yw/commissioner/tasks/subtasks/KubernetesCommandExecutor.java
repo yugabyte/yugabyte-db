@@ -96,6 +96,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     UPDATE_NUM_NODES,
     HELM_DELETE,
     VOLUME_DELETE,
+    VOLUME_DELETE_SHELL_MODE_MASTER,
     NAMESPACE_DELETE,
     POD_DELETE,
     DELETE_ALL_SERVER_TYPE_PODS,
@@ -121,6 +122,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           return UserTaskDetails.SubTaskGroupType.UpdateNumNodes.name();
         case HELM_DELETE:
           return UserTaskDetails.SubTaskGroupType.HelmDelete.name();
+        case VOLUME_DELETE_SHELL_MODE_MASTER:
+          return UserTaskDetails.SubTaskGroupType.KubernetesVolumeDeleteMasterShellMode.name();
         case VOLUME_DELETE:
           return UserTaskDetails.SubTaskGroupType.KubernetesVolumeDelete.name();
         case NAMESPACE_DELETE:
@@ -225,6 +228,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     public Map<String, String> ybcGflags = new HashMap<>();
     public String command = null;
     public String azCode = null;
+    public String pvcName = null;
+    public int newPlacementAzMasterCount = 0;
   }
 
   protected KubernetesCommandExecutor.Params taskParams() {
@@ -333,6 +338,21 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         kubernetesManagerFactory
             .getManager()
             .helmDelete(config, taskParams().helmReleaseName, taskParams().namespace);
+        break;
+      case VOLUME_DELETE_SHELL_MODE_MASTER:
+        // We are deleting only master volumes for now,
+        // perhaps tserver volumes should also be deleted ?
+        Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+        String appLabelValue = "yb-master";
+        kubernetesManagerFactory
+            .getManager()
+            .deleteUnusedPVCs(
+                config,
+                taskParams().namespace,
+                taskParams().helmReleaseName,
+                appLabelValue,
+                universe.getUniverseDetails().useNewHelmNamingStyle,
+                taskParams().newPlacementAzMasterCount); // ReplicaCount to Assert.
         break;
       case VOLUME_DELETE:
         kubernetesManagerFactory

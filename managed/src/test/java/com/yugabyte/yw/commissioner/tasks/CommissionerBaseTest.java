@@ -351,6 +351,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   public void waitForTaskPaused(UUID taskUuid) throws InterruptedException {
     int numRetries = 0;
     while (numRetries < MAX_RETRY_COUNT) {
+      System.out.println(numRetries);
       if (!commissioner.isTaskRunning(taskUuid)) {
         throw new RuntimeException(String.format("Task %s is not running", taskUuid));
       }
