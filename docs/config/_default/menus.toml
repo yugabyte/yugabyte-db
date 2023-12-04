@@ -414,6 +414,13 @@
   [preview.params]
     showSection = true
 
+[[preview]]
+  name = "Tutorials"
+  weight = 6
+  identifier = "tutorials"
+  [preview.params]
+    showSection = true
+
 # [[preview]]
 #   name = "Migrate"
 #   weight = 6
