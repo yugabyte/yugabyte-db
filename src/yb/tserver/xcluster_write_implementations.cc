@@ -180,6 +180,11 @@ Status AddRecord(
         VERIFY_RESULT(SubtxnSet::FromPB(record.transaction_state().aborted().set()));
     aborted_subtransactions.ToPB(apply_txn->mutable_aborted_subtransactions()->mutable_set());
     apply_txn->set_commit_hybrid_time(record.transaction_state().commit_hybrid_time());
+
+    // Only apply records within the same range that the producer applied.
+    apply_txn->set_filter_start_key(record.partition().partition_key_start());
+    apply_txn->set_filter_end_key(record.partition().partition_key_end());
+
     return Status::OK();
   }
 
