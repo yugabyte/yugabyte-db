@@ -56,92 +56,111 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
   }
 
   @Override
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    Universe universe = getUniverse();
+    NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+
+    if (currentNode == null) {
+      String msg =
+          String.format(
+              "No node %s is found in universe %s", taskParams().nodeName, universe.getName());
+      log.error(msg);
+      throw new RuntimeException(msg);
+    }
+
+    // Validate state check for Action only on first try as the task could fail on various
+    // intermediate states
+    if (isFirstTry) {
+      currentNode.validateActionOnState(NodeActionType.ADD);
+    } else {
+      log.info(
+          "Retrying task to add node {} in state {}", taskParams().nodeName, currentNode.state);
+    }
+    Cluster cluster = universe.getUniverseDetails().getClusterByUuid(currentNode.placementUuid);
+    UserIntent userIntent = cluster.userIntent;
+
+    if (currentNode.state == NodeState.Decommissioned
+        && userIntent.providerType.equals(CloudType.onprem)) {
+      Optional<NodeInstance> nodeInstance = NodeInstance.maybeGetByName(currentNode.nodeName);
+      if (nodeInstance.isPresent()) {
+        // Illegal state if it is unused because both node name and in-use fields are updated
+        // together.
+        checkState(nodeInstance.get().isInUse(), "Node name is set but the node is not in use");
+      }
+    }
+  }
+
+  private void freezeUniverseInTxn(Universe universe) {
+    NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+    Cluster cluster = universe.getUniverseDetails().getClusterByUuid(currentNode.placementUuid);
+    UserIntent userIntent = cluster.userIntent;
+    boolean wasDecommissioned = currentNode.state == NodeState.Decommissioned;
+    Optional<NodeInstance> nodeInstance = NodeInstance.maybeGetByName(currentNode.nodeName);
+    if (wasDecommissioned
+        && userIntent.providerType.equals(CloudType.onprem)
+        && !nodeInstance.isPresent()) {
+      // Reserve a node if it is not assigned yet, and persist the universe details and node
+      // reservation in transaction so that universe is aware of the reservation.
+      Map<UUID, List<String>> onpremAzToNodes =
+          Collections.singletonMap(
+              currentNode.azUuid, Collections.singletonList(currentNode.nodeName));
+
+      Map<String, NodeInstance> nodeMap =
+          NodeInstance.pickNodes(onpremAzToNodes, currentNode.cloudInfo.instance_type);
+      currentNode.nodeUuid = nodeMap.get(currentNode.nodeName).getNodeUuid();
+      currentNode.nodeUuid = currentNode.nodeUuid;
+      // This needs to be set because DB fetch of this universe later can override the
+      // field as the universe details object is transient and not tracked by DB.
+      universe.setUniverseDetails(universe.getUniverseDetails());
+      // Perform preflight check. If it fails, the node must not be in use,
+      // otherwise running it second time can succeed. This check must be
+      // performed only when a new node is picked as Add after Remove can
+      // leave processes that require sudo access.
+      performPreflightCheck(
+          cluster,
+          currentNode,
+          EncryptionInTransitUtil.isRootCARequired(taskParams()) ? taskParams().rootCA : null,
+          EncryptionInTransitUtil.isClientRootCARequired(taskParams())
+              ? taskParams().getClientRootCA()
+              : null);
+    }
+  }
+
+  @Override
+  protected void createPrecheckTasks(Universe universe) {
+    NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+    if (currentNode.state != NodeState.Decommissioned) {
+      // Validate instance existence and connectivity before changing the state.
+      createInstanceExistsCheckTasks(
+          universe.getUniverseUUID(), taskParams(), Collections.singletonList(currentNode));
+    }
+  }
+
+  @Override
   public void run() {
     log.info(
         "Started {} task for node {} in universe {}",
         getName(),
         taskParams().nodeName,
         taskParams().getUniverseUUID());
-    String errorString = null;
 
+    Universe universe =
+        lockAndFreezeUniverseForUpdate(
+            taskParams().expectedUniverseVersion, this::freezeUniverseInTxn);
     try {
-      checkUniverseVersion();
-      // Update the DB to prevent other changes from happening.
-      Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-
       final NodeDetails currentNode = universe.getNode(taskParams().nodeName);
-      if (currentNode == null) {
-        String msg =
-            String.format("No node %s in universe %s", taskParams().nodeName, universe.getName());
-        log.error(msg);
-        throw new RuntimeException(msg);
-      }
-
-      // Validate state check for Action only on first try as the task could fail on various
-      // intermediate states
-      if (isFirstTry()) {
-        currentNode.validateActionOnState(NodeActionType.ADD);
-      } else {
-        log.info(
-            "Retrying task to add node {} in state {}", taskParams().nodeName, currentNode.state);
-      }
 
       preTaskActions();
 
       Cluster cluster = universe.getUniverseDetails().getClusterByUuid(currentNode.placementUuid);
 
       UserIntent userIntent = cluster.userIntent;
-      boolean wasDecommissioned = currentNode.state == NodeState.Decommissioned;
 
       // For on-prem universes, allocate an available node
       // from the provider's node_instance table.
-      if (wasDecommissioned && userIntent.providerType.equals(CloudType.onprem)) {
-        Optional<NodeInstance> nodeInstance = NodeInstance.maybeGetByName(currentNode.nodeName);
-        if (nodeInstance.isPresent()) {
-          // Illegal state if it is unused because both node name and in-use fields are updated
-          // together.
-          checkState(nodeInstance.get().isInUse(), "Node name is set but the node is not in use");
-        } else {
-          // Reserve a node if it is not assigned yet, and persist the universe details and node
-          // reservation in transaction so that universe is aware of the reservation.
-          Map<UUID, List<String>> onpremAzToNodes =
-              Collections.singletonMap(
-                  currentNode.azUuid, Collections.singletonList(currentNode.nodeName));
-          universe =
-              saveUniverseDetails(
-                  u -> {
-                    NodeDetails node = u.getNode(taskParams().nodeName);
-                    Map<String, NodeInstance> nodeMap =
-                        NodeInstance.pickNodes(
-                            onpremAzToNodes, currentNode.cloudInfo.instance_type);
-                    node.nodeUuid = nodeMap.get(currentNode.nodeName).getNodeUuid();
-                    currentNode.nodeUuid = node.nodeUuid;
-                    // This needs to be set because DB fetch of this universe later can override the
-                    // field as the universe details object is transient and not tracked by DB.
-                    u.setUniverseDetails(u.getUniverseDetails());
-                    // Perform preflight check. If it fails, the node must not be in use,
-                    // otherwise running it second time can succeed. This check must be
-                    // performed only when a new node is picked as Add after Remove can
-                    // leave processes that require sudo access.
-                    performPreflightCheck(
-                        cluster,
-                        currentNode,
-                        EncryptionInTransitUtil.isRootCARequired(taskParams())
-                            ? taskParams().rootCA
-                            : null,
-                        EncryptionInTransitUtil.isClientRootCARequired(taskParams())
-                            ? taskParams().getClientRootCA()
-                            : null);
-                  });
-        }
-      }
 
       Set<NodeDetails> nodeSet = Collections.singleton(currentNode);
-
-      if (!wasDecommissioned) {
-        // Validate instance existence and connectivity before changing the state.
-        createInstanceExistsCheckTasks(universe.getUniverseUUID(), taskParams(), nodeSet);
-      }
 
       // Update Node State to being added if it is not in one of the intermediate states.
       // We must be successful in setting node state to Adding on initial state, even on retry.
@@ -170,7 +189,8 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       if (addTServer) {
         tServersToAdd = nodeSet;
       }
-      // State checking is disabled as generic callee checks for node to be in ServerSetup state.
+      // State checking is disabled as generic callee checks for node to be in ServerSetup
+      // state.
       // 1. Install software
       // 2. Set GFlags for master and TServer as applicable.
       // 3. All necessary node setup done and node is ready to join cluster.
@@ -291,11 +311,9 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
-      errorString = t.getMessage();
       throw t;
     } finally {
-      // Mark the update of the universe as done. This will allow future updates to the universe.
-      unlockUniverseForUpdate(errorString);
+      unlockUniverseForUpdate(universe.getUniverseUUID());
     }
     log.info("Finished {} task.", getName());
   }
