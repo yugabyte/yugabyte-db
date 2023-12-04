@@ -183,6 +183,10 @@ client::TransactionPool& MasterTabletServer::TransactionPool() {
   return *temp;
 }
 
+std::vector<tserver::ListTabletsResponsePB::StatusAndSchemaPB> MasterTabletServer::GetTabletList(rpc::RpcContext *context) const {
+  return {};
+}
+
 std::vector<yb::util::WaitStateInfoPtr> MasterTabletServer::GetThreadpoolWaitStates() const {
   return {};
 }

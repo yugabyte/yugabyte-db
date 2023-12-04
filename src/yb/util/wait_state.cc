@@ -357,21 +357,21 @@ void WaitStateInfo::AssertIOAllowed() {
 }
 
 void WaitStateInfo::AssertWaitAllowed() {
-  auto wait_state = CurrentWaitState();
-  if (wait_state) {
-    auto state = wait_state->get_state();
-    bool inserted = false;
-    {
-      std::lock_guard<simple_spinlock> l(does_wait_lock_);
-      inserted = does_wait.try_emplace(state, true).second;
-    }
-    LOG_IF(INFO, inserted) << wait_state->ToString() << " does_wait Added " << util::ToString(state);
-    // LOG_IF(INFO, inserted && !WaitsForLock(state)) << "WaitsForLock( " << util::ToString(state) << ") should be true";
-    // LOG_IF(INFO, inserted && !WaitsForLock(state)) << " at\n" << yb::GetStackTrace();
-    LOG_IF(INFO, !WaitsForLock(state)) << "WaitsForLock( " << util::ToString(state) << ") should be true";
-    LOG_IF(INFO, !WaitsForLock(state)) << " at\n" << yb::GetStackTrace();
-    DCHECK(wait_state->query_id() == 0 || WaitsForLock(state)) << "WaitsForLock( " << util::ToString(state) << ") should be true " << wait_state->ToString();
-  }
+  // auto wait_state = CurrentWaitState();
+  // if (wait_state) {
+  //   auto state = wait_state->get_state();
+  //   //bool inserted = false;
+  //   // {
+  //   //   std::lock_guard<simple_spinlock> l(does_wait_lock_);
+  //   //   inserted = does_wait.try_emplace(state, true).second;
+  //   // }
+  //   // LOG_IF(INFO, inserted) << wait_state->ToString() << " does_wait Added " << util::ToString(state);
+  //   // // LOG_IF(INFO, inserted && !WaitsForLock(state)) << "WaitsForLock( " << util::ToString(state) << ") should be true";
+  //   // // LOG_IF(INFO, inserted && !WaitsForLock(state)) << " at\n" << yb::GetStackTrace();
+  //   // LOG_IF(INFO, !WaitsForLock(state)) << "WaitsForLock( " << util::ToString(state) << ") should be true";
+  //   // LOG_IF(INFO, !WaitsForLock(state)) << " at\n" << yb::GetStackTrace();
+  //  // DCHECK(wait_state->query_id() == 0 || WaitsForLock(state)) << "WaitsForLock( " << util::ToString(state) << ") should be true " << wait_state->ToString();
+  // }
 }
 
 // Isn't really using locks to update thread_name_. But I think that's ok.

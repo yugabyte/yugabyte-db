@@ -24,6 +24,7 @@
 
 #include "yb/tablet/tablet_fwd.h"
 
+#include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/local_tablet_server.h"
 #include "yb/util/wait_state.h"
@@ -78,6 +79,8 @@ class TabletServerIf : public LocalTabletServer {
   client::YBClient* client() const {
     return client_future().get();
   }
+
+  virtual std::vector<ListTabletsResponsePB::StatusAndSchemaPB> GetTabletList(rpc::RpcContext *context) const = 0;
 
   virtual std::vector<yb::util::WaitStateInfoPtr> GetThreadpoolWaitStates() const = 0;
 

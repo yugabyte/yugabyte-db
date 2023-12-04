@@ -41,6 +41,7 @@
 PG_MODULE_MAGIC;
 PG_FUNCTION_INFO_V1(pg_active_universe_history);
 PG_FUNCTION_INFO_V1(yb_tables);
+PG_FUNCTION_INFO_V1(yb_tablets);
 
 #define PG_ACTIVE_UNIVERSE_HISTORY_COLS        12
 
@@ -613,36 +614,176 @@ yb_tables_internal(FunctionCallInfo fcinfo)
 
   tuplestore_donestoring(tupstore);
 
-  YBCTabletIDMetadataInfo* inflist = NULL;
-  size_t* sz=0;
-  YBCTabletIDMetadata( inflist, sz, table_id_test);
-    ereport(LOG, (errmsg("Tablet ID: %s\n", inflist->tablet_id)));
-    ereport(LOG, (errmsg("Start Key: %s\n", inflist->start_key)));
-    ereport(LOG, (errmsg("End Key: %s\n", inflist->end_key)));
-    ereport(LOG, (errmsg("Hash Buckets:")));
-    for (size_t i = 0; i < inflist->partition.hash_buckets_count; ++i) {
-        ereport(LOG, (errmsg("  %u", inflist->partition.hash_buckets[i])));
-    }
-
-    ereport(LOG, (errmsg("Partition Key Start: %s\n", inflist->partition.partition_key_start)));
-    ereport(LOG, (errmsg("Partition Key End: %s\n", inflist->partition.partition_key_end)));
-    ereport(LOG, (errmsg("Stale: %s\n", inflist->stale ? "true" : "false")));
-    ereport(LOG, (errmsg("Table IDs:")));
-    for (size_t i = 0; i < inflist->table_ids_count; ++i) {
-        ereport(LOG, (errmsg("  %s", inflist->table_ids[i])));
-    }
-    ereport(LOG, (errmsg("Split Depth: %llu\n", inflist->split_depth)));
-    ereport(LOG, (errmsg("Split Parent Tablet ID: %s\n", inflist->split_parent_tablet_id)));
-    ereport(LOG, (errmsg("Expected Live Replicas: %u\n", inflist->expected_live_replicas)));
-    ereport(LOG, (errmsg("Expected Read Replicas: %u\n", inflist->expected_read_replicas)));
-    ereport(LOG, (errmsg("Is Deleted: %s\n", inflist->is_deleted ? "true" : "false")));
-
 }
 
 Datum
 yb_tables(PG_FUNCTION_ARGS)
 {
 	yb_tables_internal(fcinfo);
+  return (Datum) 0;
+}
+
+static void 
+yb_tablets_internal(FunctionCallInfo fcinfo)
+{
+  ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+  TupleDesc       tupdesc;
+  Tuplestorestate *tupstore;
+  MemoryContext per_query_ctx;
+  MemoryContext oldcontext;
+
+  if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+    ereport(ERROR,
+            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                errmsg("set-valued function called in context that cannot accept a set")));
+  if (!(rsinfo->allowedModes & SFRM_Materialize))
+    ereport(ERROR,
+            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                errmsg("materialize mode required, but it is not " \
+					   "allowed in this context")));
+
+  if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+    elog(ERROR, "return type must be a row type");
+
+  per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
+  oldcontext = MemoryContextSwitchTo(per_query_ctx); 
+
+  tupstore = tuplestore_begin_heap(true, false, work_mem);
+  rsinfo->returnMode = SFRM_Materialize;
+  rsinfo->setResult = tupstore;
+  rsinfo->setDesc = tupdesc;
+
+  MemoryContextSwitchTo(oldcontext);
+
+  YBCTabletIDMetadataInfo *status_and_schema = NULL;
+	size_t size = 0;
+  
+  HandleYBStatus(YBCTabletIDMetadata(&status_and_schema, &size));
+  //int i;
+ereport(LOG, (errmsg("table_id: %s", status_and_schema->tablet_status.table_id)));
+
+ereport(LOG, (errmsg("num_tablets: %d", status_and_schema->schema.table_properties.num_tablets)));
+
+ereport(LOG, (errmsg("last_status: %s", status_and_schema->tablet_status.last_status)));
+
+ereport(LOG, (errmsg("partition_key_start: %s",
+                     status_and_schema->tablet_status.partition.partition_key_start)));
+
+ereport(LOG, (errmsg("partition_key_end: %s",
+                     status_and_schema->tablet_status.partition.partition_key_end)));
+
+ereport(LOG, (errmsg("estimated_on_disk_size: %lld",
+                     status_and_schema->tablet_status.estimated_on_disk_size)));
+
+ereport(LOG, (errmsg("consensus_metadata_disk_size: %lld",
+                     status_and_schema->tablet_status.consensus_metadata_disk_size)));
+
+ereport(LOG, (errmsg("wal_files_disk_size: %lld",
+                     status_and_schema->tablet_status.wal_files_disk_size)));
+
+ereport(LOG, (errmsg("sst_files_disk_size: %lld",
+                     status_and_schema->tablet_status.sst_files_disk_size)));
+
+ereport(LOG, (errmsg("uncompressed_sst_files_disk_size: %lld",
+                     status_and_schema->tablet_status.uncompressed_sst_files_disk_size)));
+  //for (i = 0; i < size; i++) {
+    // Datum values[13]; 
+    // bool nulls[13]; 
+    // int j = 0;
+
+    // memset(values, 0, sizeof(values));
+    // memset(nulls, 0, sizeof(nulls));
+
+    // if (status_and_schema->tablet_status.tablet_id != NULL) {
+    //     values[j++] = CStringGetTextDatum(status_and_schema->tablet_status.tablet_id);
+    // } else {
+    //     nulls[j++] = true;
+    // }
+
+    // if (status_and_schema->tablet_status.namespace_name != NULL) {
+    //     values[j++] = CStringGetTextDatum(status_and_schema->tablet_status.namespace_name);
+    // } else {
+    //     nulls[j++] = true;
+    // }
+
+    // if (status_and_schema->tablet_status.table_name != NULL) {
+    //     values[j++] = CStringGetTextDatum(status_and_schema->tablet_status.table_name);
+    // } else {
+    //     nulls[j++] = true;
+    // }
+
+    // if (status_and_schema->tablet_status.table_id != NULL) {
+    //     values[j++] = CStringGetTextDatum(status_and_schema->tablet_status.table_id);
+    // } else {
+    //     nulls[j++] = true;
+    // }
+
+    // if (status_and_schema->schema.table_properties.num_tablets != '\0') {
+    //     values[j++] = status_and_schema->schema.table_properties.num_tablets;
+    // } else {
+    //     nulls[j++] = true;
+    // }
+
+    // if (status_and_schema->tablet_status.last_status != NULL) {
+    //     values[j++] = CStringGetTextDatum(status_and_schema->tablet_status.last_status);
+    // } else {
+    //     nulls[j++] = true;
+    // }
+
+    // if (status_and_schema->tablet_status.partition.partition_key_start != NULL) {
+    //     values[j++] = CStringGetTextDatum(status_and_schema->tablet_status.partition.partition_key_start);
+    // } else {
+    //     nulls[j++] = true;
+    // }
+
+    // if (status_and_schema->tablet_status.partition.partition_key_end != NULL) {
+    //     values[j++] = CStringGetTextDatum(status_and_schema->tablet_status.partition.partition_key_end);
+    // } else {
+    //     nulls[j++] = true;
+    // }
+
+    // if (status_and_schema->tablet_status.estimated_on_disk_size != '\0') {
+    // values[j++] = status_and_schema->tablet_status.estimated_on_disk_size;
+    // } else {
+    //     nulls[j++] = true;
+    // }
+
+    // if (status_and_schema->tablet_status.consensus_metadata_disk_size != '\0') {
+    //     values[j++] = status_and_schema->tablet_status.consensus_metadata_disk_size;
+    // } else {
+    //     nulls[j++] = true;
+    // }
+
+    // if (status_and_schema->tablet_status.wal_files_disk_size != '\0') {
+    //     values[j++] = status_and_schema->tablet_status.wal_files_disk_size;
+    // } else {
+    //     nulls[j++] = true;
+    // }
+
+    // if (status_and_schema->tablet_status.sst_files_disk_size != '\0') {
+    //     values[j++] = status_and_schema->tablet_status.sst_files_disk_size;
+    // } else {
+    //     nulls[j++] = true;
+    // }
+
+    // if (status_and_schema->tablet_status.uncompressed_sst_files_disk_size != '\0') {
+    //     values[j++] = status_and_schema->tablet_status.uncompressed_sst_files_disk_size;
+    // } else {
+    //     nulls[j++] = true;
+    // }
+
+
+   // tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+  //}
+
+  tuplestore_donestoring(tupstore);
+
+}
+
+Datum
+yb_tablets(PG_FUNCTION_ARGS)
+{
+	yb_tablets_internal(fcinfo);
   return (Datum) 0;
 }
 
