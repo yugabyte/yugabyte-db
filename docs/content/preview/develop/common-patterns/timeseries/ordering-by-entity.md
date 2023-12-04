@@ -18,7 +18,7 @@ The following sections describe how to order by entity with a few examples.
 
 ## Setup
 
-{{<cluster-setup-tabs>}}
+{{<explore-setup-multinode>}}
 
 ## Ordering per entity
 
