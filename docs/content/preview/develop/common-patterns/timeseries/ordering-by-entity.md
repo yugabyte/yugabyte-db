@@ -129,7 +129,7 @@ SELECT * FROM entity_order2;
  2023-07-01 00:00:44 | car-2 |    45 |        0
 ```
 
-Notice that the data for each car is split into buckets and that the data is ordered on by `ts` in each bucket, and that the buckets are distributed across different tablets.
+Now the data for each car is split into buckets, the data in each bucket is ordered by `ts`, and the buckets are distributed across different tablets.
 
 Because the query planner does not know about the different values of `bucketid`, it must perform a sequential scan for the preceding query. To efficiently retrieve all the data for a specific car, say `car-1`, modify the query to explicitly call out the buckets as follows:
 
