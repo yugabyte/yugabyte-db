@@ -1,4 +1,5 @@
 import { FC, useEffect, useState } from 'react';
+import { find } from 'lodash';
 import { DropdownButton, OverlayTrigger, MenuItem, Tooltip } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { useTranslation } from 'react-i18next';
@@ -7,14 +8,15 @@ import { YBCheckBox } from '../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../common/indicators';
 import { EditConfig } from './EditConfig';
 import { ResetConfig } from './ResetConfig';
-import { RunTimeConfigData } from '../../redesign/utils/dtos';
+import { RunTimeConfigData, RunTimeConfigScope } from '../../redesign/utils/dtos';
 import { getPromiseState } from '../../utils/PromiseUtils';
 import { isNonEmptyArray } from '../../utils/ObjectUtils';
 
-import { RbacValidator } from '../../redesign/features/rbac/common/RbacApiPermValidator';
+import { RbacValidator, hasNecessaryPerm } from '../../redesign/features/rbac/common/RbacApiPermValidator';
 
-import './AdvancedConfig.scss';
 import { ApiPermissionMap } from '../../redesign/features/rbac/ApiAndUserPermMapping';
+import { Action } from '../../redesign/features/rbac';
+import './AdvancedConfig.scss';
 
 const DEFAULT_RUNTIME_TAG_FILTER = ['PUBLIC'];
 const ConfigScopePriority = {
@@ -152,7 +154,11 @@ export const ConfigData: FC<GlobalConfigProps> = ({
         pullRight
       >
         <RbacValidator
-          accessRequiredOn={ApiPermissionMap.MODIFY_RUNTIME_CONFIG_BY_KEY}
+          customValidateFunction={(userPerm) =>
+            scope === RunTimeConfigScope.GLOBAL ?
+              find(userPerm, { actions: [Action.SUPER_ADMIN_ACTIONS] }) !== undefined :
+              hasNecessaryPerm(ApiPermissionMap.MODIFY_RUNTIME_CONFIG_BY_KEY)
+          }
           isControl
         >
           <MenuItem
@@ -165,7 +171,11 @@ export const ConfigData: FC<GlobalConfigProps> = ({
         </RbacValidator>
         {!row.isConfigInherited && (
           <RbacValidator
-            accessRequiredOn={ApiPermissionMap.MODIFY_RUNTIME_CONFIG_BY_KEY}
+            customValidateFunction={(userPerm) =>
+              scope === RunTimeConfigScope.GLOBAL ?
+                find(userPerm, { actions: [Action.SUPER_ADMIN_ACTIONS] }) !== undefined :
+                hasNecessaryPerm(ApiPermissionMap.MODIFY_RUNTIME_CONFIG_BY_KEY)
+            }
             isControl
             overrideStyle={{ display: 'block' }}
           >
