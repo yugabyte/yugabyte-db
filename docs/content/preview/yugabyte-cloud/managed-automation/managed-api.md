@@ -16,6 +16,7 @@ type: docs
 The YugabyteDB Managed REST API allows you to deploy and manage your database clusters in YugabyteDB Managed programmatically. Some examples of what you can accomplish using this API include:
 
 - Deploy and manage clusters
+- Deploy and manage read replicas
 - Pause and resume clusters automatically, based on a schedule or external events
 - Run on-demand backups and restores
 - Change backup and maintenance schedules

@@ -16,6 +16,7 @@ type: docs
 Use the YugabyteDB Managed Terraform Provider to deploy and manage clusters programmatically. Some examples of what you can accomplish using this provider include:
 
 - Deploy and manage clusters
+- Deploy and manage read replicas
 - Pause and resume clusters automatically, based on a schedule or external events
 - Run on-demand backups and restores
 - Change backup and maintenance schedules
