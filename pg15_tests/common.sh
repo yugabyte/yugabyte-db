@@ -120,7 +120,7 @@ _wait_for_ysqlsh() {
 # to.  Remaining args are passed through to ysqlsh.
 ysqlsh() {
   host_args=()
-  if [ $# -gt 1 ]; then
+  if [ $# -gt 0 ]; then
     maybe_idx=$1
     if grep -Eq '^[0-9]$' <<<"$maybe_idx"; then
       host_args=(
