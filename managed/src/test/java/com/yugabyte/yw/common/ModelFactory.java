@@ -276,10 +276,12 @@ public class ModelFactory {
     if (enableYbc) {
       params.setYbcSoftwareVersion("1.0.0-b1");
       NodeDetails node = new NodeDetails();
+      node.nodeUuid = UUID.randomUUID();
       node.cloudInfo = new CloudSpecificInfo();
       node.cloudInfo.private_ip = "127.0.0.1";
       params.nodeDetailsSet.add(node);
       NodeDetails node2 = node.clone();
+      node2.nodeUuid = UUID.randomUUID();
       node2.cloudInfo.private_ip = "127.0.0.2";
       params.nodeDetailsSet.add(node2);
     }

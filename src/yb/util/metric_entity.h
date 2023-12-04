@@ -19,6 +19,8 @@
 #include <map>
 #include <unordered_map>
 
+#include <boost/regex.hpp>
+
 #include "yb/gutil/callback_forward.h"
 #include "yb/gutil/map-util.h"
 
@@ -29,6 +31,9 @@
 #include "yb/util/status_fwd.h"
 
 namespace yb {
+
+static const char* const kCdcMetricEntityName = "cdc";
+static const char* const kCdcsdkMetricEntityName = "cdcsdk";
 
 class JsonWriter;
 
@@ -49,11 +54,12 @@ enum class MetricLevel {
   kWarn = 2
 };
 
-enum class AggregationMetricLevel {
-  kServer,
-  kTable,
-  kStream
-};
+using AggregationLevels = unsigned int;
+constexpr AggregationLevels kServerLevel = 1 << 0;
+constexpr AggregationLevels kStreamLevel = 1 << 1;
+constexpr AggregationLevels kTableLevel = 1 << 2;
+
+using MetricAggregationMap = std::unordered_map<std::string, AggregationLevels>;
 
 struct MetricOptions {
   // Determine whether system reset histogram or not
@@ -63,6 +69,9 @@ struct MetricOptions {
   // Include the metrics at a level and above.
   // Default: debug
   MetricLevel level = MetricLevel::kDebug;
+
+  // Missing vector means select all metrics.
+  std::optional<std::vector<std::string>> general_metrics_allowlist;
 };
 
 struct MetricJsonOptions : public MetricOptions {
@@ -81,22 +90,12 @@ struct MetricJsonOptions : public MetricOptions {
 YB_STRONGLY_TYPED_BOOL(ExportHelpAndType);
 
 struct MetricPrometheusOptions : public MetricOptions {
-  // Number of tables to include metrics for.
-  uint32_t max_tables_metrics_breakdowns;
-
   // Include #TYPE and #HELP in Prometheus metrics output
   ExportHelpAndType export_help_and_type{ExportHelpAndType::kFalse};
+
+  // Metrics that shows on table level.
+  std::string priority_regex_string = ".*";
 };
-
-struct MetricEntityOptions {
-  std::vector<std::string> metrics;
-  std::vector<std::string> exclude_metrics;
-
-  // Regex for metrics that should always be included for all tables.
-  std::string priority_regex;
-};
-
-using MeticEntitiesOptions = std::map<AggregationMetricLevel, MetricEntityOptions>;
 
 class MetricEntityPrototype {
  public:
@@ -129,12 +128,8 @@ enum AggregationFunction {
 
 class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
  public:
-  typedef std::unordered_map<const MetricPrototype*, scoped_refptr<Metric> > MetricMap;
+  typedef std::map<const MetricPrototype*, scoped_refptr<Metric> > MetricMap;
   typedef std::unordered_map<std::string, std::string> AttributeMap;
-  typedef std::function<void (JsonWriter* writer, const MetricJsonOptions& opts)>
-    ExternalJsonMetricsCb;
-  typedef std::function<void (PrometheusWriter* writer, const MetricPrometheusOptions& opts)>
-    ExternalPrometheusMetricsCb;
 
   template<typename Metric, typename PrototypePtr, typename ...Args>
   scoped_refptr<Metric> FindOrCreateMetric(PrototypePtr proto, Args&&... args);
@@ -147,12 +142,10 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
 
   // See MetricRegistry::WriteAsJson()
   Status WriteAsJson(JsonWriter* writer,
-                     const MetricEntityOptions& entity_options,
                      const MetricJsonOptions& opts) const;
 
   Status WriteForPrometheus(PrometheusWriter* writer,
-                            const MetricEntityOptions& entity_options,
-                            const MetricPrometheusOptions& opts) const;
+                            const MetricPrometheusOptions& opts);
 
   const MetricMap& UnsafeMetricsMapForTests() const { return metric_map_; }
 
@@ -180,16 +173,6 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
     return metric_map_.size();
   }
 
-  void AddExternalJsonMetricsCb(const ExternalJsonMetricsCb &external_metrics_cb) {
-    std::lock_guard l(lock_);
-    external_json_metrics_cbs_.push_back(external_metrics_cb);
-  }
-
-  void AddExternalPrometheusMetricsCb(const ExternalPrometheusMetricsCb&external_metrics_cb) {
-    std::lock_guard l(lock_);
-    external_prometheus_metrics_cbs_.push_back(external_metrics_cb);
-  }
-
   const MetricEntityPrototype& prototype() const { return *prototype_; }
 
   void Remove(const MetricPrototype* proto);
@@ -212,6 +195,9 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
   template<typename Pointer>
   void AddConsumption(const Pointer& value) REQUIRES(lock_);
 
+  MetricMap GetFilteredMetricMap(
+      const std::optional<std::vector<std::string>>& match_params_optional) const REQUIRES(lock_);
+
   const MetricEntityPrototype* const prototype_;
   const std::string id_;
 
@@ -227,12 +213,6 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
 
   // The set of metrics which should never be retired. Protected by lock_.
   std::vector<scoped_refptr<Metric> > never_retire_metrics_;
-
-  // Callbacks fired each time WriteAsJson is called.
-  std::vector<ExternalJsonMetricsCb> external_json_metrics_cbs_;
-
-  // Callbacks fired each time WriteForPrometheus is called.
-  std::vector<ExternalPrometheusMetricsCb> external_prometheus_metrics_cbs_;
 };
 
 template<typename T>

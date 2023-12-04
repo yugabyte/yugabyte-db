@@ -2185,7 +2185,6 @@ class ControlScript(object):
                 "--rpc_bind_addresses={}:{}".format(advertise_ip, master_rpc_port),
                 "--server_broadcast_addresses={}:{}".format(advertise_ip, master_rpc_port),
                 "--replication_factor=1",
-                "--use_initial_sys_catalog_snapshot",
                 "--server_dump_info_path={}".format(
                     os.path.join(self.configs.saved_data.get("data_dir"), "master-info")),
                 "--master_enable_metrics_snapshotter=true",
@@ -2633,6 +2632,8 @@ class ControlScript(object):
     # of the tserver. Use the node address given with the --join flag or use the
     # advertise address if join flag is not provided.
     def get_current_masters_from_api(self, tserverIp):
+        if not tserverIp:
+            return ""
         tserver_addr = "{}:{}".format(tserverIp,
                             self.configs.saved_data.get("tserver_webserver_port"))
         try:

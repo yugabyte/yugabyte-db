@@ -1693,6 +1693,7 @@ void PgClientSession::GetTableKeyRanges(
     yb::tserver::PgGetTableKeyRangesRequestPB const& req,
     yb::tserver::PgGetTableKeyRangesResponsePB* resp, yb::rpc::RpcContext context) {
   const auto table = table_cache_.Get(PgObjectId::GetYbTableIdFromPB(req.table_id()));
+  resp->set_current_ht(clock_->Now().ToUint64());
   if (!table.ok()) {
     StatusToPB(table.status(), resp->mutable_status());
     context.RespondSuccess();
@@ -1701,6 +1702,11 @@ void PgClientSession::GetTableKeyRanges(
 
   auto session = EnsureSession(PgClientSessionKind::kPlain, context.GetClientDeadline());
   auto shared_context = std::make_shared<rpc::RpcContext>(std::move(context));
+  client::YBTransaction* transaction = Transaction(PgClientSessionKind::kPlain).get();
+  if (!transaction && (read_time_serial_no_ != req.read_time_serial_no())) {
+    ResetReadPoint(PgClientSessionKind::kPlain);
+  }
+  read_time_serial_no_ = req.read_time_serial_no();
   GetTableKeyRanges(
       session, *table, req.lower_bound_key(), req.upper_bound_key(), req.max_num_ranges(),
       req.range_size_bytes(), req.is_forward(), req.max_key_length(), &shared_context->sidecars(),

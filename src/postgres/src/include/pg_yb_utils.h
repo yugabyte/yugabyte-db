@@ -279,7 +279,10 @@ extern void HandleYBTableDescStatus(YBCStatus status, YBCPgTableDesc table);
  */
 extern void YBInitPostgresBackend(const char *program_name,
 								  const char *db_name,
-								  const char *user_name);
+								  const char *user_name,
+								  uint64_t *session_id);
+
+extern bool YbGetCurrentSessionId(uint64_t *session_id);
 
 /*
  * This should be called on all exit paths from the PostgreSQL backend process.
@@ -561,6 +564,12 @@ extern bool yb_test_system_catalogs_creation;
  * resetting this back to false.
  */
 extern bool yb_test_fail_next_ddl;
+
+/*
+ * If set to true, next increment catalog version operation will fail and
+ * reset this back to false.
+ */
+extern bool yb_test_fail_next_inc_catalog_version;
 
 /*
  * Block the given index creation phase.

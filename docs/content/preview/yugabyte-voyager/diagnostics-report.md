@@ -90,7 +90,7 @@ To control whether to send diagnostics to Yugabyte, you can use the `--send-diag
 Set the flag as follows:
 
 ```sh
-yb-voyager ... --send-diagnostics=[true|false]
+yb-voyager ... --send-diagnostics [true|false|yes|no|1|0]
 ```
 
 The default is true.
@@ -98,5 +98,5 @@ The default is true.
 Alternatively, you can use the following environment variable to set a value for this flag globally on the client machine where yb-voyager is running.
 
 ```sh
-export YB_VOYAGER_SEND_DIAGNOSTICS=[true|false]
+export YB_VOYAGER_SEND_DIAGNOSTICS=[true|false|yes|no|1|0]
 ```

@@ -7194,5 +7194,15 @@ TEST_F(CDCSDKYsqlTest, TestCreateCDCStreamReplicationSlotLimit) {
   ASSERT_RESULT(CreateDBStreamWithReplicationSlot(Format("repl_slot_limit_test_$0", limit + 1)));
 }
 
+// Test for https://github.com/yugabyte/yugabyte-db/issues/20073
+TEST_F(CDCSDKYsqlTest, TestPgReplicationSlotsWithoutCDCStateTable) {
+  ASSERT_OK(
+      SetUpWithParams(3 /* replication_factor */, 1 /* num_masters */, false /* colocated */));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.Fetch("SELECT * FROM pg_replication_slots"));
+}
+
 }  // namespace cdc
 }  // namespace yb

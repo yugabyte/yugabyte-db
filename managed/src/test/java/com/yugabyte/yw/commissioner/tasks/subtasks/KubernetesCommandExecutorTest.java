@@ -82,13 +82,6 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   CertificateInfo defaultCert;
   CertificateHelper certificateHelper;
   RuntimeConfGetter runtimeConfGetter;
-  // TODO: when trying to fetch the cluster UUID directly, we get:
-  // javax.persistence.EntityNotFoundException: Bean not found during lazy load or refresh
-  //
-  // This is mostly because we cache the defaultUniverse, but actually update the universe itself
-  // through calls to saveDetails, which OBVIOUSLY will not be reflected into the defaultUniverse
-  // field in the test...
-  UUID hackPlacementUUID;
   UniverseDefinitionTaskParams.UserIntent defaultUserIntent;
   InstanceType instanceType;
   String ybSoftwareVersion = "1.0.0";
@@ -168,7 +161,6 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
         Universe.saveDetails(
             defaultUniverse.getUniverseUUID(),
             ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
-    hackPlacementUUID = u.getUniverseDetails().getPrimaryCluster().uuid;
     return u;
   }
 
@@ -184,6 +176,8 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     params.universeName = defaultUniverse.getName();
     params.helmReleaseName = defaultUniverse.getUniverseDetails().nodePrefix;
     params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.universeConfig = defaultUniverse.getConfig();
+    params.universeDetails = defaultUniverse.getUniverseDetails();
     if (setNamespace) {
       params.namespace = namespace;
     }
@@ -203,6 +197,8 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     params.setUniverseUUID(defaultUniverse.getUniverseUUID());
     params.config = config;
     params.universeName = defaultUniverse.getName();
+    params.universeConfig = defaultUniverse.getConfig();
+    params.universeDetails = defaultUniverse.getUniverseDetails();
     params.placementInfo = placementInfo;
     kubernetesCommandExecutor.initialize(params);
     return kubernetesCommandExecutor;
@@ -331,9 +327,8 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     masterGFlags.put("placement_cloud", defaultProvider.getCode());
     masterGFlags.put("placement_region", defaultRegion.getCode());
     masterGFlags.put("placement_zone", defaultAZ.getCode());
-    // masterOverrides.put("placement_uuid",
-    // defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
-    masterGFlags.put("placement_uuid", hackPlacementUUID.toString());
+    masterGFlags.put(
+        "placement_uuid", defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid.toString());
     gflagOverrides.put("master", masterGFlags);
 
     // Tserver flags.
@@ -341,9 +336,8 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     tserverGFlags.put("placement_cloud", defaultProvider.getCode());
     tserverGFlags.put("placement_region", defaultRegion.getCode());
     tserverGFlags.put("placement_zone", defaultAZ.getCode());
-    // tserverOverrides.put("placement_uuid",
-    // defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
-    tserverGFlags.put("placement_uuid", hackPlacementUUID.toString());
+    tserverGFlags.put(
+        "placement_uuid", defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid.toString());
     tserverGFlags.put("start_redis_proxy", "true");
     gflagOverrides.put("tserver", tserverGFlags);
     // Put all the flags together.
@@ -402,12 +396,10 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
   @Test
   public void testHelmInstall() throws IOException {
-    assertEquals(hackPlacementUUID, defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
     kubernetesCommandExecutor.run();
-    assertEquals(hackPlacementUUID, defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
 
     ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<UUID> expectedProviderUUID = ArgumentCaptor.forClass(UUID.class);
@@ -427,7 +419,6 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
             expectedOverrideFile.capture());
     assertEquals(ybSoftwareVersion, expectedYbSoftwareVersion.getValue());
     assertEquals(config, expectedConfig.getValue());
-    assertEquals(hackPlacementUUID, defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
     assertEquals(defaultProvider.getUuid(), expectedProviderUUID.getValue());
     assertEquals(defaultUniverse.getUniverseDetails().nodePrefix, expectedNodePrefix.getValue());
     assertEquals(namespace, expectedNamespace.getValue());
@@ -438,7 +429,6 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     Map<String, Object> overrides = yaml.loadAs(is, Map.class);
 
     // TODO implement exposeAll false case
-    assertEquals(hackPlacementUUID, defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
     assertEquals(getExpectedOverrides(true), overrides);
   }
 
@@ -449,7 +439,6 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
         Universe.saveDetails(
             defaultUniverse.getUniverseUUID(),
             ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
-    hackPlacementUUID = u.getUniverseDetails().getPrimaryCluster().uuid;
 
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
@@ -494,7 +483,6 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
         Universe.saveDetails(
             defaultUniverse.getUniverseUUID(),
             ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
-    hackPlacementUUID = u.getUniverseDetails().getPrimaryCluster().uuid;
 
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
@@ -533,14 +521,14 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
   @Test
   public void testHelmInstallWithGflags() throws IOException {
-    defaultUserIntent.masterGFlags = ImmutableMap.of("yb-master-flag", "demo-flag");
-    defaultUserIntent.tserverGFlags = ImmutableMap.of("yb-tserver-flag", "demo-flag");
+    defaultUserIntent.masterGFlags = new HashMap<>(ImmutableMap.of("yb-master-flag", "demo-flag"));
+    defaultUserIntent.tserverGFlags =
+        new HashMap<>(ImmutableMap.of("yb-tserver-flag", "demo-flag"));
     defaultUserIntent.ybSoftwareVersion = ybSoftwareVersion;
     Universe u =
         Universe.saveDetails(
             defaultUniverse.getUniverseUUID(),
             ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
-    hackPlacementUUID = u.getUniverseDetails().getPrimaryCluster().uuid;
 
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
@@ -580,19 +568,14 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
   @Test
   public void testHelmInstallWithTLS() throws IOException {
-    defaultUserIntent.masterGFlags = ImmutableMap.of("yb-master-flag", "demo-flag");
-    defaultUserIntent.tserverGFlags = ImmutableMap.of("yb-tserver-flag", "demo-flag");
+    defaultUserIntent.masterGFlags = new HashMap<>(ImmutableMap.of("yb-master-flag", "demo-flag"));
+    defaultUserIntent.tserverGFlags =
+        new HashMap<>(ImmutableMap.of("yb-tserver-flag", "demo-flag"));
     defaultUserIntent.ybSoftwareVersion = ybSoftwareVersion;
     defaultUserIntent.enableNodeToNodeEncrypt = true;
     defaultUserIntent.enableClientToNodeEncrypt = true;
-    Universe u =
-        Universe.saveDetails(
-            defaultUniverse.getUniverseUUID(),
-            ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
-    u =
-        Universe.saveDetails(
-            u.getUniverseUUID(), ApiUtils.mockUniverseUpdater(defaultCert.getUuid()));
-    hackPlacementUUID = u.getUniverseDetails().getPrimaryCluster().uuid;
+    defaultUniverse.getUniverseDetails().upsertPrimaryCluster(defaultUserIntent, null);
+    defaultUniverse.getUniverseDetails().rootCA = defaultCert.getUuid();
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
@@ -632,19 +615,14 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
   @Test
   public void testHelmInstallWithTLSNodeToNode() throws IOException {
-    defaultUserIntent.masterGFlags = ImmutableMap.of("yb-master-flag", "demo-flag");
-    defaultUserIntent.tserverGFlags = ImmutableMap.of("yb-tserver-flag", "demo-flag");
+    defaultUserIntent.masterGFlags = new HashMap<>(ImmutableMap.of("yb-master-flag", "demo-flag"));
+    defaultUserIntent.tserverGFlags =
+        new HashMap<>(ImmutableMap.of("yb-tserver-flag", "demo-flag"));
     defaultUserIntent.ybSoftwareVersion = ybSoftwareVersion;
     defaultUserIntent.enableNodeToNodeEncrypt = true;
     defaultUserIntent.enableClientToNodeEncrypt = false;
-    Universe u =
-        Universe.saveDetails(
-            defaultUniverse.getUniverseUUID(),
-            ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
-    u =
-        Universe.saveDetails(
-            u.getUniverseUUID(), ApiUtils.mockUniverseUpdater(defaultCert.getUuid()));
-    hackPlacementUUID = u.getUniverseDetails().getPrimaryCluster().uuid;
+    defaultUniverse.getUniverseDetails().upsertPrimaryCluster(defaultUserIntent, null);
+    defaultUniverse.getUniverseDetails().rootCA = defaultCert.getUuid();
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
@@ -684,19 +662,14 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
   @Test
   public void testHelmInstallWithTLSClientToServer() throws IOException {
-    defaultUserIntent.masterGFlags = ImmutableMap.of("yb-master-flag", "demo-flag");
-    defaultUserIntent.tserverGFlags = ImmutableMap.of("yb-tserver-flag", "demo-flag");
+    defaultUserIntent.masterGFlags = new HashMap<>(ImmutableMap.of("yb-master-flag", "demo-flag"));
+    defaultUserIntent.tserverGFlags =
+        new HashMap<>(ImmutableMap.of("yb-tserver-flag", "demo-flag"));
     defaultUserIntent.ybSoftwareVersion = ybSoftwareVersion;
     defaultUserIntent.enableNodeToNodeEncrypt = false;
     defaultUserIntent.enableClientToNodeEncrypt = true;
-    Universe u =
-        Universe.saveDetails(
-            defaultUniverse.getUniverseUUID(),
-            ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
-    u =
-        Universe.saveDetails(
-            u.getUniverseUUID(), ApiUtils.mockUniverseUpdater(defaultCert.getUuid()));
-    hackPlacementUUID = u.getUniverseDetails().getPrimaryCluster().uuid;
+    defaultUniverse.getUniverseDetails().upsertPrimaryCluster(defaultUserIntent, null);
+    defaultUniverse.getUniverseDetails().rootCA = defaultCert.getUuid();
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
@@ -1108,7 +1081,6 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
         Universe.saveDetails(
             defaultUniverse.getUniverseUUID(),
             ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
-    hackPlacementUUID = u.getUniverseDetails().getPrimaryCluster().uuid;
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
@@ -1192,13 +1164,10 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   @Test
   public void testHelmInstallResourceLabels() throws IOException {
     defaultUniverse.updateConfig(ImmutableMap.of(Universe.LABEL_K8S_RESOURCES, "true"));
-    defaultUniverse.save();
-    assertEquals(hackPlacementUUID, defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
     kubernetesCommandExecutor.run();
-    assertEquals(hackPlacementUUID, defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
 
     ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<UUID> expectedProviderUUID = ArgumentCaptor.forClass(UUID.class);
@@ -1218,7 +1187,6 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
             expectedOverrideFile.capture());
     assertEquals(ybSoftwareVersion, expectedYbSoftwareVersion.getValue());
     assertEquals(config, expectedConfig.getValue());
-    assertEquals(hackPlacementUUID, defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
     assertEquals(defaultProvider.getUuid(), expectedProviderUUID.getValue());
     assertEquals(defaultUniverse.getUniverseDetails().nodePrefix, expectedNodePrefix.getValue());
     assertEquals(namespace, expectedNamespace.getValue());
@@ -1229,7 +1197,6 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     Map<String, Object> overrides = yaml.loadAs(is, Map.class);
 
     // TODO implement exposeAll false case
-    assertEquals(hackPlacementUUID, defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
     assertEquals(getExpectedOverrides(true), overrides);
   }
 
@@ -1469,15 +1436,12 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     when(kubernetesManager.getServices(any(), any(), any())).thenReturn(services);
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V2TO3.toString()));
-    defaultUniverse.save();
-    assertEquals(hackPlacementUUID, defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
             KubernetesCommandExecutor.CommandType.HELM_INSTALL,
             defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo);
     kubernetesCommandExecutor.taskParams().namespace = namespace;
     kubernetesCommandExecutor.run();
-    assertEquals(hackPlacementUUID, defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
 
     ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<UUID> expectedProviderUUID = ArgumentCaptor.forClass(UUID.class);
@@ -1500,7 +1464,6 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedNamespace.capture());
     assertEquals(ybSoftwareVersion, expectedYbSoftwareVersion.getValue());
     assertEquals(config, expectedConfig.getValue());
-    assertEquals(hackPlacementUUID, defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
     assertEquals(defaultProvider.getUuid(), expectedProviderUUID.getValue());
     assertEquals(defaultUniverse.getUniverseDetails().nodePrefix, expectedNodePrefix.getValue());
     assertEquals(namespace, expectedNamespace.getValue());
@@ -1511,7 +1474,6 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     Map<String, Object> overrides = yaml.loadAs(is, Map.class);
 
     // TODO implement exposeAll false case
-    assertEquals(hackPlacementUUID, defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
     assertEquals(getExpectedOverrides(true), overrides);
   }
 

@@ -5,7 +5,6 @@ package com.yugabyte.yw.common.gflags;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
@@ -56,7 +55,7 @@ public class AutoFlagUtil {
    * @param universe
    * @return autoFlagConfig
    */
-  public WireProtocol.AutoFlagsConfigPB getAutoFlagConfigForUniverse(Universe universe) {
+  private WireProtocol.AutoFlagsConfigPB getAutoFlagConfigForUniverse(Universe universe) {
     String masterAddresses = universe.getMasterAddresses();
     String certificate = universe.getCertificateNodetoNode();
     try (YBClient client = ybClientService.getClient(masterAddresses, certificate)) {
@@ -98,6 +97,7 @@ public class AutoFlagUtil {
             .get()
             .getFlagsList()
             .stream()
+            .filter(flag -> !GFlagsValidation.TEST_AUTO_FLAGS.contains(flag))
             .collect(Collectors.toSet());
 
     // Add auto flags which are modified through gflags override in the promoted auto flags list.
@@ -155,20 +155,13 @@ public class AutoFlagUtil {
 
     Set<String> oldMigrationFiles = gFlagsValidation.getYsqlMigrationFilesList(oldVersion);
     Set<String> newMigrationFiles = gFlagsValidation.getYsqlMigrationFilesList(newVersion);
-    Set<String> newFiles =
-        Sets.union(
-            newMigrationFiles.stream()
-                .filter(file -> oldMigrationFiles.contains(file))
-                .collect(Collectors.toSet()),
-            oldMigrationFiles.stream()
-                .filter(file -> newMigrationFiles.contains(file))
-                .collect(Collectors.toSet()));
-    if (newFiles.size() != 0) {
+    newMigrationFiles.removeAll(oldMigrationFiles);
+    if (newMigrationFiles.size() != 0) {
       LOG.debug(
           "Upgrade from {} to {} will require finalize as new migration files are added {}.",
           oldVersion,
           newVersion,
-          newFiles);
+          newMigrationFiles);
       return true;
     }
 

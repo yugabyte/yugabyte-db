@@ -153,8 +153,6 @@ test_set_cmake_build_type_and_compiler_type() {
   assert_equals "$expected_exit_code" "$exit_code"
 }
 
-arch=$( uname -m )
-
 # Parameters:                               build_type OSTYPE    Compiler   Expected   Expected
 #                                                                type       build_type YB_COMPILER_
 #                                                                preference            TYPE

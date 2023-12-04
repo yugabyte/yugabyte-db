@@ -933,35 +933,39 @@ class PgClientServiceImpl::Impl {
   Status ListReplicationSlots(
       const PgListReplicationSlotsRequestPB& req, PgListReplicationSlotsResponsePB* resp,
       rpc::RpcContext* context) {
-    std::unordered_map<xrepl::StreamId, uint64_t> stream_to_latest_active_time;
-    Status iteration_status;
-    auto range_result = VERIFY_RESULT(cdc_state_table_->GetTableRange(
-        cdc::CDCStateTableEntrySelector().IncludeActiveTime(), &iteration_status));
-
-    for (auto entry_result : range_result) {
-      RETURN_NOT_OK(entry_result);
-      const auto& entry = *entry_result;
-
-      auto stream_id = entry.key.stream_id;
-      auto active_time = entry.active_time;
-      // If active_time isn't populated, then the (stream_id, tablet_id) pair hasn't been consumed
-      // yet by the client. So treat it is as an inactive case.
-      if (!active_time) {
-        continue;
-      }
-
-      if (stream_to_latest_active_time.contains(stream_id)) {
-        stream_to_latest_active_time[stream_id] =
-            std::max(stream_to_latest_active_time[stream_id], *active_time);
-      } else {
-        stream_to_latest_active_time[stream_id] = *active_time;
-      }
-    }
-    SCHECK(
-        iteration_status.ok(), InternalError, "Unable to read the CDC state table",
-        iteration_status);
-
     auto streams = VERIFY_RESULT(client().ListCDCSDKStreams());
+
+    // Determine latest active time of each stream if there are any.
+    std::unordered_map<xrepl::StreamId, uint64_t> stream_to_latest_active_time;
+    if (!streams.empty()) {
+      Status iteration_status;
+      auto range_result = VERIFY_RESULT(cdc_state_table_->GetTableRange(
+          cdc::CDCStateTableEntrySelector().IncludeActiveTime(), &iteration_status));
+
+      for (auto entry_result : range_result) {
+        RETURN_NOT_OK(entry_result);
+        const auto& entry = *entry_result;
+
+        auto stream_id = entry.key.stream_id;
+        auto active_time = entry.active_time;
+        // If active_time isn't populated, then the (stream_id, tablet_id) pair hasn't been consumed
+        // yet by the client. So treat it is as an inactive case.
+        if (!active_time) {
+          continue;
+        }
+
+        if (stream_to_latest_active_time.contains(stream_id)) {
+          stream_to_latest_active_time[stream_id] =
+              std::max(stream_to_latest_active_time[stream_id], *active_time);
+        } else {
+          stream_to_latest_active_time[stream_id] = *active_time;
+        }
+      }
+      SCHECK(
+          iteration_status.ok(), InternalError, "Unable to read the CDC state table",
+          iteration_status);
+    }
+
     auto current_time = GetCurrentTimeMicros();
     for (const auto& stream : streams) {
       auto stream_id = xrepl::StreamId::FromString(stream.stream_id);

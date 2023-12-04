@@ -202,6 +202,18 @@ public class Commissioner {
       runnableTask.setTaskExecutionListener(getTaskExecutionListener());
     }
     latch.countDown();
+    // Wait for the task to come out of the wait and starts running.
+    while (true) {
+      try {
+        CountDownLatch currentLatch = pauseLatches.get(taskUUID);
+        if (currentLatch == null || currentLatch != latch) {
+          break;
+        }
+        Thread.sleep(100);
+      } catch (InterruptedException e) {
+        throw new RuntimeException(e);
+      }
+    }
     return true;
   }
 
@@ -413,20 +425,20 @@ public class Commissioner {
           taskInfo -> {
             if (taskInfo.getPosition() >= subTaskPausePosition) {
               log.debug("Pausing task {} at position {}", taskInfo, taskInfo.getPosition());
-              final UUID subTaskUUID = taskInfo.getParentUuid();
+              final UUID parentTaskUUID = taskInfo.getParentUuid();
               try {
                 // Insert if absent and get the latch.
-                pauseLatches.computeIfAbsent(subTaskUUID, k -> new CountDownLatch(1)).await();
-                // Resume can set a new listener.
-                RunnableTask runnableTask = runningTasks.get(taskInfo.getParentUuid());
-                TaskExecutionListener listener = runnableTask.getTaskExecutionListener();
-                if (listener != null) {
-                  listener.beforeTask(taskInfo);
-                }
+                pauseLatches.computeIfAbsent(parentTaskUUID, k -> new CountDownLatch(1)).await();
               } catch (InterruptedException e) {
                 throw new CancellationException("Subtask cancelled: " + e.getMessage());
               } finally {
-                pauseLatches.remove(subTaskUUID);
+                pauseLatches.remove(parentTaskUUID);
+              }
+              // Resume can set a new listener.
+              RunnableTask runnableTask = runningTasks.get(taskInfo.getParentUuid());
+              TaskExecutionListener listener = runnableTask.getTaskExecutionListener();
+              if (listener != null) {
+                listener.beforeTask(taskInfo);
               }
             }
           };

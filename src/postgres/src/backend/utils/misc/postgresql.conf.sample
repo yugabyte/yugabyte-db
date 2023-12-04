@@ -344,6 +344,7 @@
 #min_parallel_table_scan_size = 8MB
 #min_parallel_index_scan_size = 512kB
 #effective_cache_size = 4GB
+#yb_parallel_range_rows = 0
 
 # - Genetic Query Optimizer -
 

@@ -2003,7 +2003,15 @@ ExplainNode(PlanState *planstate, List *ancestors,
 
 				if (DO_AGGSPLIT_SKIPFINAL(agg->aggsplit))
 				{
-					partialmode = "Partial";
+					if (((AggState*) planstate)->yb_pushdown_supported)
+						/*
+						 * If partial aggregate is pushed down, it does not
+						 * really do anything, since entire operation is
+						 * delegated to DocDB.
+						 */
+						partialmode = "Noop";
+					else
+						partialmode = "Partial";
 					pname = psprintf("%s %s", partialmode, pname);
 				}
 				else if (DO_AGGSPLIT_COMBINE(agg->aggsplit) ||
@@ -2384,10 +2392,10 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			if (es->debug && yb_enable_base_scans_cost_model)
 			{
 				ExplainPropertyFloat(
-					"Estimated Seeks", NULL, 
+					"Estimated Seeks", NULL,
 					((IndexScan *) plan)->yb_estimated_num_seeks, 0, es);
 				ExplainPropertyFloat(
-					"Estimated Nexts", NULL, 
+					"Estimated Nexts", NULL,
 					((IndexScan *) plan)->yb_estimated_num_nexts, 0, es);
 			}
 			break;
@@ -2423,10 +2431,10 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			if (es->debug && yb_enable_base_scans_cost_model)
 			{
 				ExplainPropertyFloat(
-					"Estimated Seeks", NULL, 
+					"Estimated Seeks", NULL,
 					((IndexOnlyScan *) plan)->yb_estimated_num_seeks, 0, es);
 				ExplainPropertyFloat(
-					"Estimated Nexts", NULL, 
+					"Estimated Nexts", NULL,
 					((IndexOnlyScan *) plan)->yb_estimated_num_nexts, 0, es);
 			}
 			break;
@@ -2480,10 +2488,10 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			if (es->debug && yb_enable_base_scans_cost_model)
 			{
 				ExplainPropertyFloat(
-					"Estimated Seeks", NULL, 
+					"Estimated Seeks", NULL,
 					((YbSeqScan *) plan)->yb_estimated_num_seeks, 0, es);
 				ExplainPropertyFloat(
-					"Estimated Nexts", NULL, 
+					"Estimated Nexts", NULL,
 					((YbSeqScan *) plan)->yb_estimated_num_nexts, 0, es);
 			}
 			break;

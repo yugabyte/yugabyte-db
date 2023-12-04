@@ -73,10 +73,12 @@ Create a cluster.
 | --cluster-type | Deployment type. `SYNCHRONOUS` or `GEO_PARTITIONED`. |
 | --credentials | Required. Database credentials for the default user, provided as key-value pairs.<br>Arguments:<ul><li>username</li><li>password</li></ul> |
 | --database-version | Database version to use for the cluster. `Innovation`, `Production`, or `Preview`. |
+| --default-region | The primary region in a [partition-by-region](../../../../cloud-basics/create-clusters/create-clusters-geopartition/) cluster. The primary region is where all the tables not created in a tablespace reside. |
 | --encryption-spec | customer managed key (CMK) credentials for encryption at rest, provided as key-value pairs.<br>Arguments:<ul><li>cloud-provider - cloud provider (`AWS` or `GCP`); required</li><li>aws-access-key - access key ID (AWS only; required)</li><li>aws-secret-key - secret access key (AWS only)</li><li>aws-arn - Amazon resource name of the CMK (AWS only; required)</li><li>gcp-resource-id - cloud KMS resource ID (GCP only; required)</li><li>gcp-service-account-path - path to the service account credentials key file (GCP only; required)</li></ul>If not provided, you are prompted for the secret access key.</br>AWS secret access key can also be configured using the YBM_AWS_SECRET_KEY [environment variable](../../managed-cli-overview/#environment-variables). |
 | --fault-tolerance | Fault tolerance for the cluster. `NONE`, `NODE`, `ZONE`, or `REGION`. |
 | --node-config | Number of vCPUs, disk size, and IOPS per node for the cluster, provided as key-value pairs.<br>Arguments:<ul><li>num-cores - number of vCPUs per node</li><li>disk-size-gb - disk size in GB per node</li><li>disk-iops - disk IOPS per node (AWS only)</li></ul>If specified, num-cores is required and disk-size-gb and disk-iops are optional. |
 | --num-faults-to-tolerate | The number of faults to tolerate. 0 for NONE; 1 for ZONE; 1, 2, or 3 for NODE and REGION. Default is 1 (or 0 for NONE). |
+| --preferred-region | The [preferred region](../../../../cloud-basics/create-clusters/create-clusters-multisync/#preferred-region) in a multi-region cluster. Specify the name of the region. |
 | --region-info | Region details for multi-region cluster, provided as key-value pairs.<br>Arguments:<ul><li>region - name of the region</li><li>num-nodes - number of nodes for the region</li><li>vpc - name of the VPC</li></ul>Specify one `--region-info` flag for each region in the cluster.<br>If specified, region and num-nodes is required, vpc is optional. |
 
 ### delete

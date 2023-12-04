@@ -49,6 +49,7 @@ import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.builder.HashCodeBuilder;
 import play.data.validation.Constraints;
 import play.libs.Json;
 
@@ -151,9 +152,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @ApiModelProperty public SoftwareUpgradeState softwareUpgradeState = SoftwareUpgradeState.Ready;
 
   // Set to true when software rollback is allowed.
-  @ApiModelProperty(value = "Available since YBA version 2.21.0.0.")
+  @ApiModelProperty(
+      value = "Available since YBA version 2.21.0.0.",
+      accessMode = AccessMode.READ_ONLY)
   @YbaApi(visibility = YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.21.0.0")
-  @JsonProperty(access = JsonProperty.Access.READ_ONLY)
   public boolean isSoftwareRollbackAllowed = false;
 
   public enum SoftwareUpgradeState {
@@ -326,7 +328,20 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       this.userIntent = userIntent;
     }
 
-    public boolean equals(Cluster other) {
+    @Override
+    public int hashCode() {
+      return new HashCodeBuilder(17, 37).append(uuid).toHashCode();
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+      if (this == obj) {
+        return true;
+      }
+      if (obj == null || obj.getClass() != getClass()) {
+        return false;
+      }
+      Cluster other = (Cluster) obj;
       return uuid.equals(other.uuid);
     }
 
@@ -711,7 +726,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // Flags for YB-Controller.
     @ApiModelProperty public Map<String, String> ybcFlags = new HashMap<>();
 
-    // Instance tags (used for AWS only).
+    // Instance tags
     @ApiModelProperty public Map<String, String> instanceTags = new HashMap<>();
 
     // True if user wants to have dedicated nodes for master and tserver processes.
@@ -910,8 +925,42 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return deviceInfo;
     }
 
+    @Override
+    public int hashCode() {
+      return new HashCodeBuilder(17, 37)
+          .append(universeName)
+          .append(provider)
+          .append(providerType)
+          .append(replicationFactor)
+          .append(regionList)
+          .append(preferredRegion)
+          .append(instanceType)
+          .append(numNodes)
+          .append(ybSoftwareVersion)
+          .append(accessKeyCode)
+          .append(assignPublicIP)
+          .append(useSpotInstance)
+          .append(spotPrice)
+          .append(assignStaticPublicIP)
+          .append(useTimeSync)
+          .append(useSystemd)
+          .append(dedicatedNodes)
+          .append(masterInstanceType)
+          .append(masterInstanceType)
+          .append(userIntentOverrides)
+          .build();
+    }
+
     // NOTE: If new fields are checked, please add them to the toString() as well.
-    public boolean equals(UserIntent other) {
+    @Override
+    public boolean equals(Object obj) {
+      if (this == obj) {
+        return true;
+      }
+      if (obj == null || obj.getClass() != getClass()) {
+        return false;
+      }
+      UserIntent other = (UserIntent) obj;
       if (universeName.equals(other.universeName)
           && provider.equals(other.provider)
           && providerType == other.providerType
@@ -1206,6 +1255,22 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return null;
     }
     return nodeDetailsSet.stream().filter(n -> n.isInPlacement(uuid)).collect(Collectors.toSet());
+  }
+
+  /**
+   * Helper API to retrieve tserver nodes that are in a specified cluster.
+   *
+   * @param uuid UUID of the cluster that we want tserver nodes from.
+   * @return A Set of NodeDetails that are in the specified cluster.
+   */
+  @JsonIgnore
+  public Set<NodeDetails> getTserverNodesInCluster(UUID uuid) {
+    if (nodeDetailsSet == null) {
+      return null;
+    }
+    return nodeDetailsSet.stream()
+        .filter(n -> n.isInPlacement(uuid) && n.isTserver)
+        .collect(Collectors.toSet());
   }
 
   @JsonIgnore

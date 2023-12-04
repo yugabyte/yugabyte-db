@@ -545,6 +545,9 @@ public class Audit extends Model {
     @EnumValue("Install Ybc")
     InstallYbc,
 
+    @EnumValue("Upgrade Ybc GFlags")
+    UpgradeYbcGFlags,
+
     @EnumValue("Set YB-Controller throttle params")
     SetThrottleParams,
 

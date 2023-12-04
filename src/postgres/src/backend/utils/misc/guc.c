@@ -33,6 +33,7 @@
 #include "access/twophase.h"
 #include "access/xact.h"
 #include "access/xlog_internal.h"
+#include "access/yb_scan.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_authid.h"
 #include "commands/async.h"
@@ -94,7 +95,6 @@
 #include "utils/tzparser.h"
 #include "utils/varlena.h"
 #include "utils/xml.h"
-
 #include "pg_yb_utils.h"
 
 #ifndef PG_KRB_SRVTAB
@@ -2158,6 +2158,19 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_test_fail_next_inc_catalog_version", PGC_USERSET,DEVELOPER_OPTIONS,
+			gettext_noop("When set, the next increment catalog version will "
+						 "fail right before it's done. This only works when "
+						 "catalog version is stored in pg_yb_catalog_version."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_fail_next_inc_catalog_version,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"force_global_transaction", PGC_USERSET, UNGROUPED,
 			gettext_noop("Forces use of global transaction table."),
 			NULL
@@ -3783,6 +3796,16 @@ static struct config_int ConfigureNamesInt[] =
 			NULL, GUC_UNIT_BYTE
 		},
 		&yb_fetch_size_limit,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_parallel_range_rows", PGC_USERSET, QUERY_TUNING,
+			gettext_noop("The number of rows to plan per parallel worker"),
+			NULL
+		},
+		&yb_parallel_range_rows,
 		0, 0, INT_MAX,
 		NULL, NULL, NULL
 	},

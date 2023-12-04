@@ -241,8 +241,8 @@ export const UniverseForm: FC<UniverseFormProps> = ({
               &nbsp;
               <RbacValidator
                 accessRequiredOn={{
-                  onResource: !isEditMode && isPrimary ? undefined : universeUUID,
-                  ...(!isEditMode && isPrimary
+                  onResource: !isEditMode ? undefined : universeUUID,
+                  ...(!isEditMode 
                     ? ApiPermissionMap.CREATE_UNIVERSE
                     : ApiPermissionMap.MODIFY_UNIVERSE)
                 }}

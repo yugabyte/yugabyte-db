@@ -211,13 +211,18 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       // Install YBC on the pods
       if (taskParams().isEnableYbc()) {
         installYbcOnThePods(
-            universe.getName(), tserversAdded, false, taskParams().getYbcSoftwareVersion());
+            universe.getName(),
+            tserversAdded,
+            false,
+            taskParams().getYbcSoftwareVersion(),
+            taskParams().getPrimaryCluster().userIntent.ybcFlags);
         if (readClusters.size() == 1) {
           installYbcOnThePods(
               universe.getName(),
               readOnlyTserversAdded,
               true,
-              taskParams().getYbcSoftwareVersion());
+              taskParams().getYbcSoftwareVersion(),
+              taskParams().getReadOnlyClusters().get(0).userIntent.ybcFlags);
         }
         createWaitForYbcServerTask(allTserversAdded);
         createUpdateYbcTask(taskParams().getYbcSoftwareVersion())

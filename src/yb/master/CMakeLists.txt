@@ -134,6 +134,7 @@ set(MASTER_SRCS
   xcluster/xcluster_consumer_metrics.cc
   xcluster/xcluster_safe_time_service.cc
   xcluster/xcluster_manager.cc
+  xcluster/xcluster_replication_group.cc
   xrepl_catalog_manager.cc
   yql_aggregates_vtable.cc
   yql_auth_resource_role_permissions_index.cc
