@@ -31,6 +31,7 @@ GET     /customer_count                                                        c
 GET     /app_version                                                           com.yugabyte.yw.controllers.SessionController.appVersion()
 GET     /logs/:maxLines                                                        com.yugabyte.yw.controllers.SessionController.getLogs(maxLines: Integer)
 GET     /logs                                                                  com.yugabyte.yw.controllers.SessionController.getFilteredLogs(maxLines: Integer ?= 10000, universeName: String ?= null, queryRegex: String ?= null, startDate: String ?= null, endDate: String ?= null)
+GET     /ha_leader                                                             com.yugabyte.yw.controllers.HANoAuthController.isHALeader(request: Request)
 # --
 
 POST    /logging_config                                                        com.yugabyte.yw.controllers.LoggingConfigController.setLoggingSettings(request: Request)
