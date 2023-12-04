@@ -65,9 +65,9 @@ The following table shows the mapping between the PostgreSQL isolation levels in
 
 The strictest isolation level is Serializable, which requires that any concurrent execution of a set of Serializable transactions is guaranteed to produce the same effect as running them in some serial order (one transaction at a time).
 
-The other levels are defined by which anomalies (none of which are possible with serializable) must not occur as a result of interactions between concurrent transactions. Due to the definition of Serializable isolation, none of these anomalies are possible at that level.
+The other levels are defined by which anomalies (none of which are possible with serializable) must not occur as a result of interactions between concurrent transactions.
 
-The following are the various transaction anomalies:
+The transaction anomalies are as follows:
 
 - Dirty read: A transaction reads data written by a concurrent uncommitted transaction.
 
