@@ -21,4 +21,9 @@ find . -name '*.sh' \
 source "\${BASH_SOURCE[0]%/*}"/common.sh
 
 EOT
+  # All tests besides this one should not contain "/ysqlsh", which suggests
+  # running the ysqlsh executable.  Instead, they should use the ysqlsh helper
+  # function defined in common.sh.
+  [ "$test_file" != ./"${BASH_SOURCE[0]##*/}" ] && \
+    ! grep "/ysqlsh" "$test_file"
 done
