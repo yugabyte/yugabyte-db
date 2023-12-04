@@ -1744,5 +1744,18 @@ Result<OpId> PeerMessageQueue::TEST_GetLastOpIdWithType(
   return log_cache_.TEST_GetLastOpIdWithType(max_allowed_index, op_type);
 }
 
+std::vector<FollowerCommunicationTime> PeerMessageQueue::GetFollowerCommunicationTimes() const {
+  std::vector<FollowerCommunicationTime> result;
+  std::lock_guard lock(queue_lock_);
+  result.reserve(peers_map_.size());
+  for (const auto& [peer_uuid, peer] : peers_map_) {
+    if (peer_uuid == local_peer_uuid_) {
+      continue;
+    }
+    result.emplace_back(peer_uuid, peer->last_successful_communication_time);
+  }
+  return result;
+}
+
 }  // namespace consensus
 }  // namespace yb

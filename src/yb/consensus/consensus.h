@@ -41,6 +41,7 @@
 #include "yb/common/entity_ids_types.h"
 
 #include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/consensus_types.h"
 #include "yb/consensus/consensus_types.pb.h"
 #include "yb/consensus/metadata.pb.h"
 
@@ -170,7 +171,7 @@ class Consensus {
 
   // Implement a LeaderStepDown() request.
   virtual Status StepDown(const LeaderStepDownRequestPB* req,
-                                  LeaderStepDownResponsePB* resp);
+                          LeaderStepDownResponsePB* resp);
 
   // Wait until the node has LEADER role.
   // Returns Status::TimedOut if the role is not LEADER within 'timeout'.
@@ -244,16 +245,18 @@ class Consensus {
   // Messages sent from CANDIDATEs to voting peers to request their vote
   // in leader election.
   virtual Status RequestVote(const VoteRequestPB* request,
-                                     VoteResponsePB* response) = 0;
+                             VoteResponsePB* response) = 0;
 
   // Implement a ChangeConfig() request.
   virtual Status ChangeConfig(const ChangeConfigRequestPB& req,
-                                      const StdStatusCallback& client_cb,
-                                      boost::optional<tserver::TabletServerErrorPB::Code>* error);
+                              const StdStatusCallback& client_cb,
+                              boost::optional<tserver::TabletServerErrorPB::Code>* error);
 
   virtual Status UnsafeChangeConfig(
       const UnsafeChangeConfigRequestPB& req,
       boost::optional<tserver::TabletServerErrorPB::Code>* error_code) = 0;
+
+  virtual std::vector<FollowerCommunicationTime> GetFollowerCommunicationTimes() = 0;
 
   // Returns the current Raft role of this instance.
   virtual PeerRole role() const = 0;

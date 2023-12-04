@@ -25,5 +25,14 @@ struct ConsensusOptions {
   std::string tablet_id;
 };
 
+// Return value for GetFollowerCommunicationTimes.
+struct FollowerCommunicationTime {
+  std::string peer_uuid;
+  MonoTime last_successful_communication;
+
+  explicit FollowerCommunicationTime(std::string peer_uuid, MonoTime last_successful_communication)
+      : peer_uuid(peer_uuid), last_successful_communication(last_successful_communication) {}
+};
+
 } // namespace consensus
 } // namespace yb
