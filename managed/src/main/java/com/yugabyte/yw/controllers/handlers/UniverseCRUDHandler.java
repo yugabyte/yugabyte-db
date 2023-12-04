@@ -575,6 +575,20 @@ public class UniverseCRUDHandler {
 
       taskParams.otelCollectorEnabled =
           confGetter.getConfForScope(provider, ProviderConfKeys.otelCollectorEnabled);
+
+      if (c.userIntent.specificGFlags != null) {
+        c.userIntent.masterGFlags =
+            GFlagsUtil.getBaseGFlags(UniverseTaskBase.ServerType.MASTER, c, taskParams.clusters);
+        c.userIntent.tserverGFlags =
+            GFlagsUtil.getBaseGFlags(UniverseTaskBase.ServerType.TSERVER, c, taskParams.clusters);
+      } else {
+        if (c.clusterType == ClusterType.ASYNC) {
+          c.userIntent.specificGFlags = SpecificGFlags.constructInherited();
+        } else {
+          c.userIntent.specificGFlags =
+              SpecificGFlags.construct(c.userIntent.masterGFlags, c.userIntent.tserverGFlags);
+        }
+      }
     }
 
     if (taskParams.getPrimaryCluster() != null) {
@@ -1357,14 +1371,25 @@ public class UniverseCRUDHandler {
     boolean isAuthEnforced = confGetter.getConfForScope(customer, CustomerConfKeys.isAuthEnforced);
     readOnlyCluster.userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
     readOnlyCluster.validate(!cloudEnabled, isAuthEnforced, taskParams.nodeDetailsSet);
-    if (readOnlyCluster.userIntent.specificGFlags != null
-        && readOnlyCluster.userIntent.specificGFlags.isInheritFromPrimary()) {
-      SpecificGFlags primaryGFlags = primaryCluster.userIntent.specificGFlags;
-      if (primaryGFlags != null) {
-        readOnlyCluster.userIntent.specificGFlags.setPerProcessFlags(
-            primaryGFlags.getPerProcessFlags());
-        readOnlyCluster.userIntent.specificGFlags.setPerAZ(primaryGFlags.getPerAZ());
+    if (readOnlyCluster.userIntent.specificGFlags != null) {
+      if (readOnlyCluster.userIntent.specificGFlags.isInheritFromPrimary()) {
+        SpecificGFlags primaryGFlags = primaryCluster.userIntent.specificGFlags;
+        if (primaryGFlags != null) {
+          readOnlyCluster.userIntent.specificGFlags.setPerProcessFlags(
+              primaryGFlags.getPerProcessFlags());
+          readOnlyCluster.userIntent.specificGFlags.setPerAZ(primaryGFlags.getPerAZ());
+        }
       }
+      List<Cluster> clusters = new ArrayList<>(universe.getUniverseDetails().clusters);
+      clusters.add(readOnlyCluster);
+      readOnlyCluster.userIntent.masterGFlags =
+          GFlagsUtil.getBaseGFlags(UniverseTaskBase.ServerType.MASTER, readOnlyCluster, clusters);
+      readOnlyCluster.userIntent.tserverGFlags =
+          GFlagsUtil.getBaseGFlags(UniverseTaskBase.ServerType.TSERVER, readOnlyCluster, clusters);
+    } else {
+      readOnlyCluster.userIntent.specificGFlags = SpecificGFlags.constructInherited();
+      readOnlyCluster.userIntent.masterGFlags = primaryCluster.userIntent.masterGFlags;
+      readOnlyCluster.userIntent.tserverGFlags = primaryCluster.userIntent.tserverGFlags;
     }
 
     TaskType taskType = TaskType.ReadOnlyClusterCreate;

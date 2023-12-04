@@ -720,8 +720,19 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // Info of all the gflags that the user would like to save to the universe. These will be
     // used during edit universe, for example, to set the flags on new nodes to match
     // existing nodes' settings.
-    @ApiModelProperty public Map<String, String> masterGFlags = new HashMap<>();
-    @ApiModelProperty public Map<String, String> tserverGFlags = new HashMap<>();
+    @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.18.6.0")
+    @Deprecated
+    @ApiModelProperty(
+        "User-defined gflags for master. "
+            + "Deprecated since YBA version 2.18.6.0, use specificGFlags")
+    public Map<String, String> masterGFlags = new HashMap<>();
+
+    @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.18.6.0")
+    @Deprecated
+    @ApiModelProperty(
+        "User-defined gflags for tserver. "
+            + "Deprecated since YBA version 2.18.6.0, use specificGFlags")
+    public Map<String, String> tserverGFlags = new HashMap<>();
 
     // Flags for YB-Controller.
     @ApiModelProperty public Map<String, String> ybcFlags = new HashMap<>();
@@ -739,7 +750,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @Nullable @ApiModelProperty public DeviceInfo masterDeviceInfo;
 
     // New version of gflags. If present - replaces old masterGFlags/tserverGFlags thing
-    @ApiModelProperty public SpecificGFlags specificGFlags;
+    @ApiModelProperty("User-defined gflags for all processes.")
+    public SpecificGFlags specificGFlags;
 
     // Overrides for some of user intent values per AZ or/and process type.
     @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.19.3.0")
