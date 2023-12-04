@@ -28,6 +28,7 @@
 
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_util_fwd.h"
 
 #include "yb/util/lw_function.h"
@@ -367,7 +368,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   Result<client::RpcsInfo> ActiveUniverseHistory();
   
-  Result<tserver::PgTabletIDMetadataResponsePB>TabletIDMetadata(std::string table_id); 
+  Result<std::vector<tserver::ListTabletsResponsePB::StatusAndSchemaPB>>TabletIDMetadata(); 
   
   Result<tserver::PgTableIDMetadataResponsePB>TableIDMetadata();
 

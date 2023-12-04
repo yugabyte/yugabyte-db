@@ -46,6 +46,7 @@
 #include "yb/server/secure.h"
 
 #include "yb/tserver/pg_client.pb.h"
+#include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -2118,8 +2119,8 @@ Result<client::RpcsInfo> PgApiImpl::ActiveUniverseHistory() {
   return pg_session_->ActiveUniverseHistory();
 }
 
-Result<tserver::PgTabletIDMetadataResponsePB> PgApiImpl::TabletIDMetadata(std::string table_id) {
-    return pg_session_->TabletIDMetadata(table_id);
+Result<std::vector<tserver::ListTabletsResponsePB::StatusAndSchemaPB>> PgApiImpl::TabletIDMetadata() {
+    return pg_session_->TabletIDMetadata();
 }
 
 Result<tserver::PgTableIDMetadataResponsePB> PgApiImpl::TableIDMetadata() {

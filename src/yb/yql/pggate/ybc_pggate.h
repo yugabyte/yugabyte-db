@@ -711,7 +711,7 @@ YBCStatus YBCPgCheckIfPitrActive(bool* is_active);
 
 YBCStatus YBCTableIDMetadata(YBCTableIDMetadataInfo** infolist, size_t* count);
 
-YBCStatus YBCTabletIDMetadata(YBCTabletIDMetadataInfo* infolist, size_t* count, const char* table_id);
+YBCStatus YBCTabletIDMetadata(YBCTabletIDMetadataInfo** infolist, size_t* count);
 
 YBCStatus YBCActiveUniverseHistory(YBCAUHDescriptor **rpcs, size_t* numrpcs);
 

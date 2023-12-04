@@ -697,7 +697,7 @@ class PgApiImpl {
   // Active Universe History.
   Result<client::RpcsInfo> ActiveUniverseHistory();
 
-  Result<tserver::PgTabletIDMetadataResponsePB> TabletIDMetadata(std::string table_id);
+  Result<std::vector<tserver::ListTabletsResponsePB::StatusAndSchemaPB>> TabletIDMetadata();
   
   Result<tserver::PgTableIDMetadataResponsePB> TableIDMetadata();
 

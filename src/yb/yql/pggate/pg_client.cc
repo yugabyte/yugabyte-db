@@ -745,13 +745,18 @@ class PgClient::Impl {
     return resp;
   }
 
-  Result<tserver::PgTabletIDMetadataResponsePB>TabletIDMetadata(std::string table_id) {
+  Result<std::vector<tserver::ListTabletsResponsePB::StatusAndSchemaPB>> TabletIDMetadata() {
     tserver::PgTabletIDMetadataRequestPB req;
-    req.set_table_id(std::move(table_id));
     tserver::PgTabletIDMetadataResponsePB resp;
     RETURN_NOT_OK(proxy_->TabletIDMetadata(req, &resp, PrepareController()));
-    return resp;
+    std::vector<tserver::ListTabletsResponsePB::StatusAndSchemaPB> result;
+    LOG(INFO) << "size:" << resp.tablets().status_and_schema_size();  
+    // for (const auto& status_and_schema : resp.tablets().status_and_schema()) {
+    //     result.push_back(status_and_schema);
+    // }
+    return result;
   }
+
 
   Result<tserver::PgTableIDMetadataResponsePB> TableIDMetadata() {
     tserver::PgTableIDMetadataRequestPB req; 
@@ -1050,8 +1055,8 @@ Result<client::RpcsInfo> PgClient::ActiveUniverseHistory() {
   return impl_->ActiveUniverseHistory();
 }
 
-Result<tserver::PgTabletIDMetadataResponsePB> PgClient::TabletIDMetadata(std::string table_id) {
-  return impl_->TabletIDMetadata(table_id);
+Result<std::vector<tserver::ListTabletsResponsePB::StatusAndSchemaPB>> PgClient::TabletIDMetadata() {
+  return impl_->TabletIDMetadata();
 }
 
 Result<tserver::PgTableIDMetadataResponsePB> PgClient::TableIDMetadata() {

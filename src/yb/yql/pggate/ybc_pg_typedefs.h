@@ -468,6 +468,51 @@ typedef struct TableIDInfo {
   YBCTableIDMetadataInfo metadata;
 } YBCTableIDInfo;
 
+typedef struct ColocatedTableIdentifierInfo {
+  uint32_t colocation_id;
+  const char* cotable_id;
+} ColocatedTableIdentifierInfo;
+
+typedef struct ColumnSchemaInfo {
+  uint32_t id;
+  const char* name;
+  bool is_key;
+  bool is_hash_key;
+  bool is_nullable;
+  bool is_static;
+  bool is_counter;
+  int32_t order;
+  uint32_t sorting_type;
+  uint32_t pg_type_oid;
+  bool marked_for_deletion;
+} ColumnSchemaInfo;
+
+typedef struct TablePropertiesInfo {
+  uint64_t default_time_to_live;
+  bool contain_counters;
+  bool is_transactional;
+  const char* consistency_level;
+  bool use_mangled_column_name;
+  int32_t num_tablets;
+  bool is_ysql_catalog_table;
+  bool retain_delete_markers;
+  uint64_t backfilling_timestamp;
+  uint32_t partitioning_version;
+} TablePropertiesInfo;
+
+typedef struct SchemaInfo {
+  ColumnSchemaInfo columns;
+  TablePropertiesInfo table_properties;
+  ColocatedTableIdentifierInfo colocated_table_id;
+  const char* pgschema_name;
+} SchemaInfo;
+
+typedef struct PartitionSchemaInfo {
+  uint32_t column_identifier_id;
+  const char* column_identifier_name;
+  uint64_t range_split_column_bounds;
+} PartitionSchemaInfo;
+
 typedef struct PartitionInfo {
   const uint32_t* hash_buckets;
   size_t hash_buckets_count;
@@ -475,19 +520,32 @@ typedef struct PartitionInfo {
   const char* partition_key_end;
 } PartitionInfo;
 
+typedef struct TabletStatus {
+    const char* tablet_id;
+    const char* namespace_name;
+    const char* table_name;
+    const char* table_id;
+    const char* raft_group_state;
+    const char* tablet_data_state;
+    const char* last_status;
+    const char* start_key;
+    const char* end_key;
+    int64_t estimated_on_disk_size;
+    int64_t consensus_metadata_disk_size;
+    int64_t wal_files_disk_size;
+    int64_t sst_files_disk_size;
+    int64_t uncompressed_sst_files_disk_size;
+    uint32_t column_identifier_id;
+    const char* table_type;
+    PartitionInfo partition;
+    bool is_hidden;
+    bool parent_data_compacted;
+} TabletStatus;
+
 typedef struct TabletIDMetadataInfo {
-  const char* tablet_id;
-  const char* start_key;
-  const char* end_key;
-  PartitionInfo partition;
-  bool stale;
-  size_t table_ids_count;
-  const char** table_ids;
-  uint64_t split_depth;
-  const char* split_parent_tablet_id;
-  uint32_t expected_live_replicas;
-  uint32_t expected_read_replicas;
-  bool is_deleted;
+  SchemaInfo schema;
+  PartitionSchemaInfo partition_schema;
+  TabletStatus tablet_status;
 } YBCTabletIDMetadataInfo;
 
 typedef struct YCQLStatDescriptor {

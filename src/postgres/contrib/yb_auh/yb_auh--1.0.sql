@@ -37,6 +37,26 @@ RETURNS SETOF record
 AS 'MODULE_PATHNAME', 'yb_tables'
 LANGUAGE C STRICT VOLATILE PARALLEL SAFE;
 
+CREATE FUNCTION yb_tablets(
+    OUT tablet_id text,
+    OUT namespace_name text,
+    OUT table_name text,
+    OUT table_id text,
+    OUT num_tablets text,
+    OUT last_status text,
+    OUT partition_key_start text,
+    OUT partition_key_end text,
+    OUT estimated_on_disk_size BIGINT,
+    OUT consensus_metadata_disk_size BIGINT,
+    OUT wal_files_disk_size BIGINT,
+    OUT sst_files_disk_size BIGINT,
+    OUT uncompressed_sst_files_disk_size BIGINT
+)
+
+RETURNS SETOF record
+AS 'MODULE_PATHNAME', 'yb_tablets'
+LANGUAGE C STRICT VOLATILE PARALLEL SAFE;
+
 -- Register a view on the function for ease of use.
 CREATE VIEW pg_active_universe_history AS
   SELECT * FROM pg_active_universe_history();
@@ -47,3 +67,8 @@ CREATE VIEW yb_tables AS
   SELECT * FROM yb_tables();
 
 GRANT SELECT ON yb_tables TO PUBLIC;
+
+CREATE VIEW yb_tablets AS
+  SELECT * FROM yb_tablets();
+
+GRANT SELECT ON yb_tablets TO PUBLIC;
