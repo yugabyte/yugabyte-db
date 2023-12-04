@@ -84,7 +84,7 @@ class CAPABILITY("mutex") simple_spinlock {
   DISALLOW_COPY_AND_ASSIGN(simple_spinlock);
 };
 
-// Saves timestamp of locking in order to log when it is held for too long
+// Saves timestamp of locking in order to log when it is held for too long.
 class CAPABILITY("mutex") simple_spinlock_with_timestamp {
  public:
   simple_spinlock_with_timestamp() {}
