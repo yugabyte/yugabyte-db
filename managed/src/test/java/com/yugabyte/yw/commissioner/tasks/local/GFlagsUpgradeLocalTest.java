@@ -8,6 +8,7 @@ import static org.junit.Assert.assertEquals;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -22,6 +23,11 @@ import java.util.Map;
 import org.junit.Test;
 
 public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
+
+  @Override
+  protected Pair<Integer, Integer> getIpRange() {
+    return new Pair(30, 60);
+  }
 
   @Test
   public void testNonRestartUpgrade() throws InterruptedException {

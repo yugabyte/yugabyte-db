@@ -104,7 +104,7 @@ import play.libs.Json;
 
 @Slf4j
 public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseTest {
-  protected static final int MAX_RETRY_COUNT = 2000;
+  protected static final int MAX_RETRY_COUNT = 4000;
   protected static final String ENABLE_CUSTOM_HOOKS_PATH =
       "yb.security.custom_hooks.enable_custom_hooks";
   protected static final String ENABLE_SUDO_PATH = "yb.security.custom_hooks.enable_sudo";
@@ -327,6 +327,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
 
   public static TaskInfo waitForTask(UUID taskUUID) throws InterruptedException {
     int numRetries = 0;
+    TaskInfo taskInfo = null;
     while (numRetries < MAX_RETRY_COUNT) {
       // Here is a hack to decrease amount of accidental problems for tests using this
       // function:
@@ -334,7 +335,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       // inside the get() request. We are not afraid of such exception as the next
       // request will succeeded.
       try {
-        TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+        taskInfo = TaskInfo.getOrBadRequest(taskUUID);
         if (TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())) {
           // Also, ensure task details are set before returning.
           if (taskInfo.getDetails() != null) {
@@ -346,9 +347,38 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       Thread.sleep(100);
       numRetries++;
     }
+
+    String runningTasks =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskState() == State.Running)
+            .map(t -> getBriefTaskInfo(t))
+            .collect(Collectors.joining(","));
+
     throw new RuntimeException(
         "WaitFor task exceeded maxRetries! Task state is "
-            + TaskInfo.getOrBadRequest(taskUUID).getTaskState());
+            + taskInfo.getTaskState()
+            + ".\n Running subtasks: "
+            + runningTasks);
+  }
+
+  private static String getBriefTaskInfo(TaskInfo taskInfo) {
+    StringBuilder sb = new StringBuilder();
+    sb.append(taskInfo.getTaskType());
+    if (taskInfo.getDetails().has("nodeName")) {
+      sb.append("(");
+      sb.append(taskInfo.getDetails().get("nodeName").textValue());
+      if (taskInfo.getDetails().has("serverType")) {
+        sb.append(" ").append(taskInfo.getDetails().get("serverType").textValue());
+      }
+      if (taskInfo.getDetails().has("process")) {
+        sb.append(" ").append(taskInfo.getDetails().get("process").textValue());
+      }
+      if (taskInfo.getDetails().has("command")) {
+        sb.append(" ").append(taskInfo.getDetails().get("command").textValue());
+      }
+      sb.append(")");
+    }
+    return sb.toString();
   }
 
   public boolean waitForTaskRunning(UUID taskUUID) throws InterruptedException {

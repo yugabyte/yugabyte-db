@@ -28,6 +28,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.RestartTaskParams;
@@ -76,10 +77,11 @@ import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.junit.After;
-import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.Rule;
+import org.junit.rules.TestWatcher;
+import org.junit.runner.Description;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
@@ -106,7 +108,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
       "https://downloads.yugabyte.com/releases/2.19.2.0/" + "yugabyte-2.19.2.0-b121-%s-%s.tar.gz";
   private static final String YBC_BASE_S3_URL = "https://downloads.yugabyte.com/ybc/";
   private static final String YBC_BIN_ENV_KEY = "YBC_PATH";
-  private static final boolean KEEP_UNIVERSE = false;
+  private static final boolean KEEP_FAILED_UNIVERSE = false;
 
   public static Map<String, String> GFLAGS = new HashMap<>();
 
@@ -138,6 +140,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
   protected static String arch;
   protected static String os;
   protected static String subDir;
+  protected static String testName;
 
   protected LocalNodeManager localNodeManager;
   protected LocalNodeUniverseManager localNodeUniverseManager;
@@ -314,9 +317,6 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     return URL.substring(40, 48);
   }
 
-  @AfterClass
-  public static void tearDownEnv() {}
-
   @Before
   public void setUp() {
     universeCRUDHandler = app.injector().instanceOf(UniverseCRUDHandler.class);
@@ -329,23 +329,21 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     backupHelper = app.injector().instanceOf(BackupHelper.class);
     subDir = DATE_FORMAT.format(new Date());
 
+    Pair<Integer, Integer> ipRange = getIpRange();
+    localNodeManager.setIpRangeStart(ipRange.getFirst());
+    localNodeManager.setIpRangeEnd(ipRange.getSecond());
+
     setUpYBCSoftware(os, arch);
     File baseDirFile = new File(baseDir);
     File curDir = new File(baseDirFile, subDir);
-    if (baseDirFile.exists()) {
-      for (File child : baseDirFile.listFiles()) {
-        if (child.getName().equals(subDir) && !KEEP_UNIVERSE) {
-          try {
-            FileUtils.deleteDirectory(child);
-          } catch (IOException ignored) {
-          }
-        }
+    if (!baseDirFile.exists() || !curDir.exists()) {
+      curDir.mkdirs();
+      if (!KEEP_FAILED_UNIVERSE) {
+        curDir.deleteOnExit();
       }
     }
-    curDir.mkdirs();
-    if (!KEEP_UNIVERSE) {
-      curDir.deleteOnExit();
-    }
+    File testDir = new File(curDir, testName);
+    testDir.mkdirs();
 
     YugawareProperty.addConfigProperty(
         ReleaseManager.CONFIG_TYPE.name(), getMetadataJson(ybVersion, false), "release");
@@ -357,7 +355,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
     LocalCloudInfo localCloudInfo = new LocalCloudInfo();
-    localCloudInfo.setDataHomeDir(curDir.toString());
+    localCloudInfo.setDataHomeDir(testDir.toString());
     localCloudInfo.setYugabyteBinDir(ybBinPath);
     localCloudInfo.setYbcBinDir(ybcBinPath);
     ProviderDetails.CloudInfo cloudInfo = new ProviderDetails.CloudInfo();
@@ -393,6 +391,13 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
             new InstanceType.InstanceTypeDetails());
   }
 
+  /**
+   * Range of IPs to use. Two last bytes of each number are used to form 127.0.x.y ip
+   *
+   * @return
+   */
+  protected abstract Pair<Integer, Integer> getIpRange();
+
   private JsonNode getMetadataJson(String release, boolean isYbc) {
     ReleaseManager.ReleaseMetadata releaseMetadata = new ReleaseManager.ReleaseMetadata();
     releaseMetadata.state = ReleaseManager.ReleaseState.ACTIVE;
@@ -409,12 +414,35 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     return object;
   }
 
-  @After
-  public void tearDown() {
-    if (!KEEP_UNIVERSE) {
+  @Rule(order = Integer.MIN_VALUE)
+  public TestWatcher testWatcher =
+      new TestWatcher() {
+
+        @Override
+        protected void starting(Description description) {
+          testName =
+              description.getClassName().replaceAll(".*\\.", "")
+                  + "_"
+                  + description.getMethodName();
+        }
+
+        @Override
+        protected void succeeded(Description description) {
+          tearDown(false);
+        }
+
+        @Override
+        protected void failed(Throwable e, Description description) {
+          tearDown(true);
+        }
+      };
+
+  private void tearDown(boolean failed) {
+    System.err.println("tear down " + testName + " failed " + failed);
+    if (!failed || !KEEP_FAILED_UNIVERSE) {
       localNodeManager.shutdown();
       try {
-        FileUtils.deleteDirectory(new File(new File(baseDir), subDir));
+        FileUtils.deleteDirectory(new File(new File(new File(baseDir), subDir), testName));
       } catch (Exception ignored) {
       }
     }
