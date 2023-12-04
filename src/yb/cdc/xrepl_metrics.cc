@@ -35,54 +35,83 @@
 #include "yb/util/trace.h"
 
 
-// CDC Tablet metrics.
+// xCluster Tablet metrics.
 // Todo(Rahul): Figure out appropriate aggregation functions for these metrics.
-METRIC_DEFINE_event_stats(cdc, rpc_payload_bytes_responded, "CDC Bytes Responded",
+METRIC_DEFINE_event_stats(xcluster, rpc_payload_bytes_responded, "xCluster Bytes Responded",
     yb::MetricUnit::kBytes,
-    "Payload size of responses to CDC GetChanges requests (only when records are included)");
+    "Payload size of responses to xCluster GetChanges requests (only when records are included)");
 
-METRIC_DEFINE_counter(cdc, rpc_heartbeats_responded, "CDC Rpc Heartbeat Count",
+METRIC_DEFINE_counter(xcluster, rpc_heartbeats_responded, "xCluster Rpc Heartbeat Count",
     yb::MetricUnit::kRequests,
-    "Number of responses to CDC GetChanges requests without a record payload.");
+    "Number of responses to xCluster GetChanges requests without a record payload.");
 
-METRIC_DEFINE_gauge_int64(cdc, last_read_opid_term, "CDC Last Read OpId (Term)",
+METRIC_DEFINE_gauge_int64(xcluster, last_read_opid_term, "xCluster Last Read OpId (Term)",
     yb::MetricUnit::kOperations,
-    "ID of the Last Read Producer Operation from a CDC GetChanges request. Format = term.index");
+    "ID of the Last Read Producer Operation from a xCluster GetChanges request. Format = "
+    "term.index");
 
-METRIC_DEFINE_gauge_int64(cdc, last_read_opid_index, "CDC Last Read OpId (Index)",
+METRIC_DEFINE_gauge_int64(xcluster, last_read_opid_index, "xCluster Last Read OpId (Index)",
     yb::MetricUnit::kOperations,
-    "ID of the Last Read Producer Operation from a CDC GetChanges request. Format = term.index");
+    "ID of the Last Read Producer Operation from a xCluster GetChanges request. Format = "
+    "term.index");
 
-METRIC_DEFINE_gauge_int64(cdc, last_checkpoint_opid_index, "CDC Last Checkpoint OpId (Index)",
+METRIC_DEFINE_gauge_int64(xcluster, last_checkpoint_opid_index, "xCluster Last Checkpoint OpId "
+"(Index)",
     yb::MetricUnit::kOperations,
-    "ID of the Last Checkpoint Sent by Consumer in a CDC GetChanges request. Format = term.index");
+    "ID of the Last Checkpoint Sent by Consumer in a xCluster GetChanges request. Format = "
+    "term.index");
 
-METRIC_DEFINE_gauge_uint64(cdc, last_read_hybridtime, "CDC Last Read HybridTime.",
+METRIC_DEFINE_gauge_uint64(xcluster, last_read_hybridtime, "xCluster Last Read HybridTime.",
     yb::MetricUnit::kMicroseconds,
-    "HybridTime of the Last Read Operation from a CDC GetChanges request");
+    "HybridTime of the Last Read Operation from a xCluster GetChanges request");
 
-METRIC_DEFINE_gauge_uint64(cdc, last_read_physicaltime, "CDC Last Read Physical TIme.",
+METRIC_DEFINE_gauge_uint64(xcluster, last_read_physicaltime, "xCluster Last Read Physical TIme.",
     yb::MetricUnit::kMicroseconds,
-    "Physical Time of the Last Read Operation from a CDC GetChanges request");
+    "Physical Time of the Last Read Operation from a xCluster GetChanges request");
 
-METRIC_DEFINE_gauge_uint64(cdc, last_checkpoint_physicaltime, "CDC Last Committed Physical Time.",
+METRIC_DEFINE_gauge_uint64(xcluster, last_checkpoint_physicaltime,
+    "xCluster Last Committed Physical Time.",
     yb::MetricUnit::kMicroseconds,
     "Physical Time of the Last Committed Operation on Consumer.");
 
-METRIC_DEFINE_gauge_int64(cdc, last_readable_opid_index, "CDC Last Readable OpId (Index)",
+METRIC_DEFINE_gauge_int64(xcluster, last_readable_opid_index, "xCluster Last Readable OpId (Index)",
     yb::MetricUnit::kOperations,
-    "Index of the Last Producer Operation that a CDC GetChanges request COULD read.");
+    "Index of the Last Producer Operation that a xCluster GetChanges request COULD read.");
 
-METRIC_DEFINE_gauge_int64(cdc, async_replication_sent_lag_micros, "CDC Physical Time Lag Last Sent",
+METRIC_DEFINE_gauge_int64(xcluster, async_replication_sent_lag_micros,
+    "xCluster Physical Time Lag Last Sent",
     yb::MetricUnit::kMicroseconds,
     "Lag between commit time of last record polled and last record applied on producer.",
     {0 /* zero means we don't expose it as counter */, yb::AggregationFunction::kMax});
 
-METRIC_DEFINE_gauge_int64(cdc, async_replication_committed_lag_micros,
-    "CDC Physical Time Lag Last Committed",
+METRIC_DEFINE_gauge_int64(xcluster, async_replication_committed_lag_micros,
+    "xCluster Physical Time Lag Last Committed",
     yb::MetricUnit::kMicroseconds, "Lag between last record applied on consumer and producer.",
     {0 /* zero means we don't expose it as counter */, yb::AggregationFunction::kMax});
 
+METRIC_DEFINE_gauge_bool(xcluster, is_bootstrap_required, "Is Bootstrap Required",
+    yb::MetricUnit::kUnits,
+    "Is bootstrap required for the replication universe.");
+
+METRIC_DEFINE_gauge_uint64(xcluster, last_getchanges_time, "xCluster Last GetChanges Physical Time",
+    yb::MetricUnit::kMicroseconds,
+    "Physical time of the last GetChanges request received from the "
+    "consumer.",
+    {0 /* zero means we don't expose it as counter */, yb::AggregationFunction::kMax});
+
+METRIC_DEFINE_gauge_int64(xcluster, time_since_last_getchanges,
+    "xCluster Physical Time Last GetChanges",
+    yb::MetricUnit::kMicroseconds,
+    "Physical time ellapsed since the last GetChanges request received from "
+    "the consumer.",
+    {0 /* zero means we don't expose it as counter */, yb::AggregationFunction::kMax});
+
+METRIC_DEFINE_gauge_uint64(xcluster, last_caughtup_physicaltime,
+    "xCluster Last Caught-up Physical Time.",
+    yb::MetricUnit::kMicroseconds,
+    "Physical Time till which consumer has caught-up with producer.");
+
+// CdcSdk Tablet metrics.
 METRIC_DEFINE_gauge_int64(cdcsdk, cdcsdk_sent_lag_micros, "CDCSDK sent Lag",
     yb::MetricUnit::kMicroseconds,
     "Lag between last committed record in the producer and the last sent record.",
@@ -105,31 +134,9 @@ METRIC_DEFINE_gauge_uint64(cdcsdk, cdcsdk_last_sent_physicaltime, "CDCSDK Last R
     "Physical Time of the Last Read Operation from a CDCSDK GetChanges request",
     {0 /* zero means we don't expose it as counter */, yb::AggregationFunction::kMax});
 
-METRIC_DEFINE_gauge_bool(cdc, is_bootstrap_required, "Is Bootstrap Required",
-    yb::MetricUnit::kUnits,
-    "Is bootstrap required for the replication universe.");
-
-METRIC_DEFINE_gauge_uint64(cdc, last_getchanges_time, "CDC Last GetChanges Physical Time",
-    yb::MetricUnit::kMicroseconds,
-    "Physical time of the last GetChanges request received from the "
-    "consumer.",
-    {0 /* zero means we don't expose it as counter */, yb::AggregationFunction::kMax});
-
-METRIC_DEFINE_gauge_int64(cdc, time_since_last_getchanges, "CDC Physical Time Last GetChanges",
-    yb::MetricUnit::kMicroseconds,
-    "Physical time ellapsed since the last GetChanges request received from "
-    "the consumer.",
-    {0 /* zero means we don't expose it as counter */, yb::AggregationFunction::kMax});
-
-METRIC_DEFINE_gauge_uint64(cdc, last_caughtup_physicaltime, "CDC Last Caught-up Physical Time.",
-    yb::MetricUnit::kMicroseconds,
-    "Physical Time till which consumer has caught-up with producer.");
-
 // CDC Server Metrics
 METRIC_DEFINE_counter(server, cdc_rpc_proxy_count, "CDC Rpc Proxy Count", yb::MetricUnit::kRequests,
   "Number of CDC GetChanges requests that required proxy forwarding");
-
-
 
 namespace yb {
 namespace xrepl {
