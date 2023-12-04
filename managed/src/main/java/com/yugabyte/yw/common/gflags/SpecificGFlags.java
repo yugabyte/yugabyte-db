@@ -20,6 +20,7 @@ import java.util.UUID;
 import javax.annotation.Nullable;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import org.apache.commons.collections.MapUtils;
 
 @Data
 @ApiModel(description = "GFlags for current cluster")
@@ -89,6 +90,18 @@ public class SpecificGFlags {
         perProcessFlags.value.getOrDefault(serverType, new HashMap<>()).remove(gflagKey);
       }
     }
+  }
+
+  public boolean hasPerAZOverrides() {
+    if (MapUtils.isEmpty(perAZ)) {
+      return false;
+    }
+    for (PerProcessFlags value : perAZ.values()) {
+      if (value != null && !MapUtils.isEmpty(value.value)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private PerProcessFlags clone(PerProcessFlags perProcessFlags) {

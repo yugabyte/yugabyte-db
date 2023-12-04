@@ -13952,12 +13952,6 @@
         "masterDeviceInfo" : {
           "$ref" : "#/definitions/DeviceInfo"
         },
-        "masterGFlags" : {
-          "additionalProperties" : {
-            "type" : "string"
-          },
-          "type" : "object"
-        },
         "masterInstanceType" : {
           "type" : "string"
         },
@@ -13991,17 +13985,12 @@
           "type" : "integer"
         },
         "specificGFlags" : {
-          "$ref" : "#/definitions/SpecificGFlags"
+          "$ref" : "#/definitions/SpecificGFlags",
+          "description" : "User-defined gflags for all processes."
         },
         "spotPrice" : {
           "format" : "double",
           "type" : "number"
-        },
-        "tserverGFlags" : {
-          "additionalProperties" : {
-            "type" : "string"
-          },
-          "type" : "object"
         },
         "tserverK8SNodeResourceSpec" : {
           "$ref" : "#/definitions/K8SNodeResourceSpec"

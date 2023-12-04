@@ -13,6 +13,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.LocalNodeManager;
 import com.yugabyte.yw.common.LocalNodeUniverseManager;
@@ -518,7 +519,20 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     UniverseResp universeResp = universeCRUDHandler.createUniverse(customer, taskParams);
     TaskInfo taskInfo = waitForTask(universeResp.taskUUID);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
-    return Universe.getOrBadRequest(universeResp.universeUUID);
+    Universe result = Universe.getOrBadRequest(universeResp.universeUUID);
+    assertEquals(
+        result.getUniverseDetails().getPrimaryCluster().userIntent.masterGFlags,
+        GFlagsUtil.getBaseGFlags(
+            UniverseTaskBase.ServerType.MASTER,
+            result.getUniverseDetails().getPrimaryCluster(),
+            result.getUniverseDetails().clusters));
+    assertEquals(
+        result.getUniverseDetails().getPrimaryCluster().userIntent.tserverGFlags,
+        GFlagsUtil.getBaseGFlags(
+            UniverseTaskBase.ServerType.TSERVER,
+            result.getUniverseDetails().getPrimaryCluster(),
+            result.getUniverseDetails().clusters));
+    return result;
   }
 
   protected void initYSQL(Universe universe) {
