@@ -846,7 +846,13 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         createSubTaskGroup(
             KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE.getSubTaskGroupName());
     namespaceDeletes.setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
-
+    // In case we are keeping deployment and reducing the number of masters, we need to remove the
+    // PVCs for masters.
+    SubTaskGroup pvcDeletes =
+        createSubTaskGroup(
+            KubernetesCommandExecutor.CommandType.VOLUME_DELETE_SHELL_MODE_MASTER
+                .getSubTaskGroupName());
+    pvcDeletes.setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
     SubTaskGroup podsWait =
         createSubTaskGroup(KubernetesCheckNumPod.CommandType.WAIT_FOR_PODS.getSubTaskGroupName());
     podsWait.setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
@@ -873,6 +879,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
           continue;
         }
       }
+
       if (keepDeployment) {
         PlacementInfo tempPI = new PlacementInfo();
         PlacementInfoUtil.addPlacementZone(azUUID, tempPI);
@@ -898,6 +905,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 azOverrides,
                 isReadOnlyCluster,
                 enableYbc));
+
         podsWait.addSubTask(
             createKubernetesCheckPodNumTask(
                 universeName,
@@ -906,6 +914,17 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 config,
                 newPlacement.tservers.get(azUUID) + newPlacement.masters.getOrDefault(azUUID, 0),
                 isReadOnlyCluster));
+        // New Masters are up, garbage colllect the extra master volumes now.
+        pvcDeletes.addSubTask(
+            garbageCollectMasterVolumes(
+                universeName,
+                taskParams().nodePrefix,
+                azCode,
+                config,
+                newPlacement.masters.getOrDefault(azUUID, 0),
+                isReadOnlyCluster,
+                taskParams().useNewHelmNamingStyle,
+                taskParams().getUniverseUUID()));
       } else {
         // Delete the helm deployments.
         helmDeletes.addSubTask(
@@ -945,6 +964,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     getRunnableTask().addSubTaskGroup(volumeDeletes);
     getRunnableTask().addSubTaskGroup(namespaceDeletes);
     getRunnableTask().addSubTaskGroup(podsWait);
+    getRunnableTask().addSubTaskGroup(pvcDeletes);
   }
 
   // TODO(bhavin192): should we just override the getNodeName from
@@ -1030,7 +1050,13 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       int numNewReplicas = newPlacement.getOrDefault(azUUID, 0);
       for (int i = numCurrReplicas - 1; i >= numNewReplicas; i--) {
         NodeDetails node = getKubernetesNodeName(i, azCode, serverType, isMultiAz, isReadCluster);
-        podsToRemove.add(universe.getNode(node.nodeName));
+        NodeDetails universeNode = universe.getNode(node.nodeName);
+        // This node can be null if we are coming here on a retry.
+        // This means node has already been removed from the universe so we will not find in
+        // podInfos that we have collected the last time round.
+        if (universeNode != null) {
+          podsToRemove.add(universeNode);
+        }
       }
     }
     return podsToRemove;
@@ -1174,6 +1200,69 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     }
   }
 
+  public KubernetesCommandExecutor garbageCollectMasterVolumes(
+      String universeName,
+      String nodePrefix,
+      String azCode,
+      Map<String, String> config,
+      int newPlacementAzMasterCount,
+      boolean isReadOnlyCluster,
+      boolean useNewHelmNamingStyle,
+      UUID universeUUID) {
+    KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+    params.universeName = universeName;
+    params.commandType = KubernetesCommandExecutor.CommandType.VOLUME_DELETE_SHELL_MODE_MASTER;
+    params.azCode = azCode;
+    params.helmReleaseName =
+        KubernetesUtil.getHelmReleaseName(
+            taskParams().nodePrefix,
+            universeName,
+            azCode,
+            isReadOnlyCluster,
+            useNewHelmNamingStyle);
+    params.config = config;
+    params.newPlacementAzMasterCount = newPlacementAzMasterCount;
+    String namespace =
+        KubernetesUtil.getKubernetesNamespace(
+            nodePrefix, azCode, config, useNewHelmNamingStyle, isReadOnlyCluster);
+    params.namespace = namespace;
+    params.setUniverseUUID(universeUUID);
+    KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
+    task.initialize(params);
+    task.setUserTaskUUID(getUserTaskUUID());
+    return task;
+  }
+
+  // Create Kubernetes Executor task for copying YBC package and conf file to the pod
+  public void createKubernetesYbcExecutorTask(
+      SubTaskGroup subTaskGroup,
+      String universeName,
+      KubernetesCommandExecutor.CommandType commandType,
+      Set<NodeDetails> servers,
+      boolean isReadOnlyCluster,
+      String ybcSoftwareVersion) {
+    for (NodeDetails node : servers) {
+      KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+      Cluster primaryCluster = taskParams().getPrimaryCluster();
+      Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+      if (primaryCluster == null) {
+        primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+      }
+      params.commandType = commandType;
+      params.setUniverseUUID(taskParams().getUniverseUUID());
+      params.ybcServerName = node.nodeName;
+      params.setYbcSoftwareVersion(ybcSoftwareVersion);
+      params.providerUUID =
+          isReadOnlyCluster
+              ? UUID.fromString(taskParams().getReadOnlyClusters().get(0).userIntent.provider)
+              : UUID.fromString(primaryCluster.userIntent.provider);
+      KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
+      task.initialize(params);
+      task.setUserTaskUUID(getUserTaskUUID());
+      subTaskGroup.addSubTask(task);
+    }
+  }
+
   // Create Kubernetes Executor task for perform ybc
   public void createKubernetesYbcExecutorTask(
       SubTaskGroup subTaskGroup,
@@ -1228,7 +1317,10 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster == null) {
-      primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+      primaryCluster =
+          Universe.getOrBadRequest(taskParams().getUniverseUUID())
+              .getUniverseDetails()
+              .getPrimaryCluster();
     }
     params.providerUUID =
         isReadOnlyCluster
