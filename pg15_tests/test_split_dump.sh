@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 source "${BASH_SOURCE[0]%/*}"/common.sh
 
-yb_ctl_wipe_restart
+yb_ctl_destroy_create
 ysqlsh <<EOT
 CREATE TABLE t1 (a int) SPLIT INTO 2 TABLETS;
 CREATE TABLE t2 (k int, PRIMARY KEY (k ASC)) SPLIT AT VALUES ((100));
