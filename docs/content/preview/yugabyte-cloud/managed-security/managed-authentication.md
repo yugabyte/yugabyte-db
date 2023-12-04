@@ -38,18 +38,18 @@ Using federated authentication, you can use an IdP to manage access to your Yuga
 
 Note that after federated authentication is enabled, only Admin users can sign in using email-based login.
 
-Currently only the Azure Active Directory (AAD) IdP and the OIDC protocol are supported.
+Currently only the Microsoft Entra ID IdP and the OIDC protocol are supported.
 
 ### Prerequisites
 
 Before configuring federated authentication, keep in mind the following:
 
 - Be sure to allow pop-ups from your IdP. While configuring federated authentication, the provider needs to confirm your identity in a new window.
-- Use your own AAD account to test the connection.
+- Use your own Entra account to test the connection.
 
 #### Register an application
 
-To use AAD for your IdP, you need to register an application in the Azure portal so the Microsoft identity platform can provide authentication and authorization services for your application. Configure the application as follows:
+To use Entra for your IdP, you need to register an application with Microsoft Entra so the Microsoft identity platform can provide authentication and authorization services for your application. Configure the application as follows:
 
 - Provide a name for the application.
 - Set the sign-in audience for the application to **Accounts in any organizational directory** (Multitenant).
@@ -60,7 +60,7 @@ To use AAD for your IdP, you need to register an application in the Azure portal
 
 For more information, refer to [Register an application with the Microsoft identity platform](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app) in the Microsoft documentation.
 
-In addition, to configure AAD federated authentication in YugabyteDB Managed, you need the following:
+In addition, to configure Entra federated authentication in YugabyteDB Managed, you need the following:
 
 - Client ID of the application you registered.
 - Client secret of the application.
@@ -72,7 +72,7 @@ Refer to [Create a new client secret](https://learn.microsoft.com/en-us/entra/id
 To configure federated authentication, do the following:
 
 1. Navigate to **Security > Access Control > Authentication**, then click **Enable Federated Authentication** to display the **Enable Federated Authentication** dialog.
-1. Enter your AAD application client ID and secret.
+1. Enter your Entra application client ID and secret.
 1. Click **Enable**.
 
 You are redirected to sign in to your IdP to test the connection. Once test connection is successful, federated authentication is enabled.
