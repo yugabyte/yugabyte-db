@@ -295,7 +295,7 @@ Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
     // This is tablet_id in the case of tablet, but otherwise names the server type, eg: yb.master
     prometheus_attr["metric_id"] = id_;
     aggregation_levels = kServerLevel;
-  } else if (strcmp(prototype_->name(), kCdcMetricEntityName) == 0) {
+  } else if (strcmp(prototype_->name(), kXClusterMetricEntityName) == 0) {
     prometheus_attr["table_id"] = attrs["table_id"];
     prometheus_attr["table_name"] = attrs["table_name"];
     prometheus_attr["table_type"] = attrs["table_type"];

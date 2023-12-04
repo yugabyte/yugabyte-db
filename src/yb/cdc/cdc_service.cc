@@ -187,7 +187,7 @@ DECLARE_int64(cdc_intent_retention_ms);
 DECLARE_bool(TEST_ysql_yb_enable_replication_commands);
 DECLARE_bool(enable_xcluster_auto_flag_validation);
 
-METRIC_DEFINE_entity(cdc);
+METRIC_DEFINE_entity(xcluster);
 
 METRIC_DEFINE_entity(cdcsdk);
 
@@ -328,7 +328,7 @@ Result<std::shared_ptr<T>> GetOrCreateXreplTabletMetrics(
 
     scoped_refptr<MetricEntity> entity;
     if (source_type == XCLUSTER) {
-      entity = METRIC_ENTITY_cdc.Instantiate(
+      entity = METRIC_ENTITY_xcluster.Instantiate(
           metric_registry, metric_id, attrs);
     } else {
       entity = METRIC_ENTITY_cdcsdk.Instantiate(
