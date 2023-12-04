@@ -200,9 +200,15 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCLagMetric)) {
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
+  // The lag value should not be higher than 35s.
+  // 5s of induced sleep, 30s for flush tables (worst case).
+  int64_t max_lag_value = 35000000;
   ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> { return metrics->cdcsdk_sent_lag_micros->value() >= 5000000; },
-      MonoDelta::FromSeconds(30) * kTimeMultiplier, "Wait for Lag to be around 5 seconds"));
+      [&]() -> Result<bool> {
+        return (
+          metrics->cdcsdk_sent_lag_micros->value() >= 5000000 &&
+          metrics->cdcsdk_sent_lag_micros->value() <= max_lag_value
+        );}, MonoDelta::FromSeconds(30) * kTimeMultiplier, "Wait for Lag to be around 5 seconds"));
 }
 
 // Begin transaction, perform some operations and abort transaction.
