@@ -36,6 +36,7 @@ DECLARE_int32(TEST_old_txn_status_abort_delay_ms);
 DECLARE_int32(TEST_transaction_inject_flushed_delay_ms);
 DECLARE_int32(TEST_txn_status_moved_rpc_handle_delay_ms);
 DECLARE_int32(TEST_txn_status_moved_rpc_send_delay_ms);
+DECLARE_int32(TEST_new_txn_status_initial_heartbeat_delay_ms);
 DECLARE_int64(transaction_rpc_timeout_ms);
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_uint64(TEST_inject_sleep_before_applying_write_batch_ms);
@@ -286,6 +287,14 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
     auto insert_status = conn1.ExecuteFormat(
         "INSERT INTO $0$1_1(value, other_value) VALUES (1, 1)", kTablePrefix, kOtherRegion);
     ASSERT_TRUE(!insert_status.ok() || !conn1.CommitTransaction().ok());
+  }
+};
+
+class GeoTransactionsPromotionConflictAbortTest : public GeoTransactionsPromotionTest {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
+    GeoTransactionsPromotionTest::SetUp();
   }
 };
 
@@ -598,6 +607,50 @@ TEST_F(GeoTransactionsPromotionTest,
        YB_DISABLE_TEST_IN_TSAN(TestPromotionReturningToAbortedState)) {
   // Wait for heartbeat for conn1 to be informed about abort due to conflict before promotion.
   PerformConflictTest(0 /* delay_before_promotion_us */);
+}
+
+TEST_F(GeoTransactionsPromotionConflictAbortTest, TestConflictAbortBeforeNewHeartbeat) {
+  auto conn0 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn0.ExecuteFormat(
+      "CREATE UNIQUE INDEX $0$1_1_key ON $0$1_1(value) TABLESPACE tablespace$1",
+      kTablePrefix, kLocalRegion));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_new_txn_status_initial_heartbeat_delay_ms) =
+      400 * kTimeMultiplier;
+
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn1.Execute("SET force_global_transaction = false"));
+  ASSERT_OK(conn2.Execute("SET force_global_transaction = false"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_override_transaction_priority) = 100;
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  ASSERT_OK(conn1.ExecuteFormat(
+      "INSERT INTO $0$1_1(value, other_value) VALUES (1, 1)", kTablePrefix, kLocalRegion));
+
+  TestThreadHolder thread_holder;
+
+  thread_holder.AddThreadFunctor([&conn1] {
+    // Trigger promotion.
+    (void) conn1.ExecuteFormat(
+        "INSERT INTO $0$1_1(value, other_value) VALUES (2, 1)", kTablePrefix, kOtherRegion);
+    ASSERT_NOK(conn1.CommitTransaction());
+  });
+
+  thread_holder.AddThreadFunctor([&conn2] {
+    // Give time for promotion to start, but not for initial heartbeat to be sent.
+    std::this_thread::sleep_for(200ms * kTimeMultiplier);
+
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_override_transaction_priority) = 200;
+    ASSERT_OK(conn2.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+    // Trigger abort on conn1.
+    ASSERT_OK(conn2.ExecuteFormat(
+        "INSERT INTO $0$1_1(value, other_value) VALUES (1, 2)", kTablePrefix, kLocalRegion));
+    ASSERT_OK(conn2.CommitTransaction());
+  });
+  thread_holder.WaitAndStop(1000ms * kTimeMultiplier);
 }
 
 TEST_F(GeoTransactionsPromotionRF1Test,
