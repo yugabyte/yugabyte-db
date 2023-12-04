@@ -207,15 +207,22 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCLagMetric)) {
 
   SleepFor(MonoDelta::FromSeconds(5));
   ASSERT_OK(WriteRowsHelper(3, 4, &test_cluster_, true));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  // The lag value should not be higher than 35s.
+  // 5s of induced sleep, 30s for flush tables (worst case).
+  int64_t max_lag_value = 35000000;
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         auto metrics =
             std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
                 {"" /* UUID */, stream_id[0], tablets[0].tablet_id()}, nullptr, CDCSDK));
-        return metrics->cdcsdk_sent_lag_micros->value() <= 5500000 &&
-               metrics->cdcsdk_sent_lag_micros->value() > 5000000;
-      },
-      MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag to be around 5 seconds"));
+        return (
+          metrics->cdcsdk_sent_lag_micros->value() >= 5000000 &&
+          metrics->cdcsdk_sent_lag_micros->value() <= max_lag_value
+        );}, MonoDelta::FromSeconds(30) * kTimeMultiplier, "Wait for Lag to be around 5 seconds"));
 }
 
 // Begin transaction, perform some operations and abort transaction.
