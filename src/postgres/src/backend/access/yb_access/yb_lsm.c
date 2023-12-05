@@ -383,7 +383,8 @@ ybcinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,	ScanKey orderbys
 									 scan->yb_scan_plan, scan->yb_rel_pushdown,
 									 scan->yb_idx_pushdown, scan->yb_aggrefs,
 									 scan->yb_distinct_prefixlen,
-									 scan->yb_exec_params);
+									 scan->yb_exec_params,
+									 false /* is_internal_scan */);
 	scan->opaque = ybScan;
 	if (scan->parallel_scan)
 	{
