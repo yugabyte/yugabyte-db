@@ -4496,9 +4496,9 @@
     "DrConfigCreateForm" : {
       "description" : "drConfig create form",
       "properties" : {
-        "bootstrapBackupParams" : {
-          "$ref" : "#/definitions/BootstarpBackupParams",
-          "description" : "Parameters used to do Backup/restore"
+        "bootstrapParams" : {
+          "$ref" : "#/definitions/RestartBootstrapParams",
+          "description" : "Parameters needed for the bootstrap flow including backup/restore"
         },
         "dbs" : {
           "description" : "Source Universe DB IDs",
