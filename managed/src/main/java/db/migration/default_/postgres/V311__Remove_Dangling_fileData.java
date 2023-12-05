@@ -3,7 +3,6 @@ package db.migration.default_.postgres;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.models.FileData;
 import io.ebean.DB;
-import io.ebean.Ebean;
 import io.ebean.SqlRow;
 import java.io.File;
 import java.util.ArrayList;
@@ -31,7 +30,7 @@ public class V311__Remove_Dangling_fileData extends BaseJavaMigration {
   public static void removeDanglingFileData() {
     // Existing provider(s) on DB
     String providerGet = "SELECT uuid from provider";
-    List<SqlRow> providerResultList = Ebean.createSqlQuery(providerGet).findList();
+    List<SqlRow> providerResultList = DB.sqlQuery(providerGet).findList();
     List<String> providerUUIDs = new ArrayList<>();
     for (SqlRow row : providerResultList) {
       String providerUUID = row.getString("uuid");
@@ -40,7 +39,7 @@ public class V311__Remove_Dangling_fileData extends BaseJavaMigration {
 
     // Existing customer(s) on DB
     String customerGet = "SELECT uuid from customer";
-    List<SqlRow> customerResultList = Ebean.createSqlQuery(customerGet).findList();
+    List<SqlRow> customerResultList = DB.sqlQuery(customerGet).findList();
     List<String> customerUUIDs = new ArrayList<>();
     for (SqlRow row : customerResultList) {
       String customerUUID = row.getString("uuid");
@@ -49,7 +48,7 @@ public class V311__Remove_Dangling_fileData extends BaseJavaMigration {
 
     // Existing universe(s) on DB
     String UniverseGet = "SELECT name from universe";
-    List<SqlRow> universeResultList = Ebean.createSqlQuery(UniverseGet).findList();
+    List<SqlRow> universeResultList = DB.sqlQuery(UniverseGet).findList();
     List<String> universeNames = new ArrayList<>();
     for (SqlRow row : universeResultList) {
       String universeName = row.getString("name");
@@ -57,7 +56,7 @@ public class V311__Remove_Dangling_fileData extends BaseJavaMigration {
     }
 
     String CertsGet = "Select uuid, customer_uuid from certificate_info;";
-    List<SqlRow> certsResultList = Ebean.createSqlQuery(CertsGet).findList();
+    List<SqlRow> certsResultList = DB.sqlQuery(CertsGet).findList();
     Map<String, List<String>> customerCerts = new HashMap<>();
     for (SqlRow row : certsResultList) {
       String customerUUID = row.getString("customer_uuid");

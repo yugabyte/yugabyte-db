@@ -3,7 +3,6 @@
 import static com.yugabyte.yw.commissioner.Commissioner.SUBTASK_ABORT_POSITION_PROPERTY;
 import static com.yugabyte.yw.commissioner.Commissioner.SUBTASK_PAUSE_POSITION_PROPERTY;
 
-import akka.stream.Materializer;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
@@ -12,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Function;
+import org.apache.pekko.stream.Materializer;
 import org.slf4j.MDC;
 import play.mvc.Filter;
 import play.mvc.Http;

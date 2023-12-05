@@ -554,7 +554,7 @@ public class CommonUtils {
       List<T> list, T entry, BiFunction<T, T, Boolean> equalityCheck) {
     if (list instanceof BeanList) {
       BeanList<T> beanList = (BeanList<T>) list;
-      Set<T> removedBeans = beanList.getModifyRemovals();
+      Set<T> removedBeans = beanList.modifyRemovals();
       if (CollectionUtils.isEmpty(removedBeans)) {
         return null;
       }
