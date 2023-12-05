@@ -13,12 +13,16 @@
 
 #pragma once
 
-#include <map>
+#include <unordered_map>
 #include "yb/util/flags/auto_flags.h"
 #include "yb/util/status.h"
 #include "yb/util/strongly_typed_string.h"
 
 namespace yb {
+
+constexpr uint32 kInvalidAutoFlagsConfigVersion = 0;
+constexpr uint32 kMinAutoFlagsConfigVersion = 0;
+
 namespace server {
 class ServerBaseOptions;
 }
@@ -37,7 +41,10 @@ struct AutoFlagInfo {
 
 YB_STRONGLY_TYPED_BOOL(PromoteNonRuntimeAutoFlags)
 
-typedef std::map<ProcessName, std::vector<AutoFlagInfo>> AutoFlagsInfoMap;
+// Map from ProcessName to AutoFlag infos.
+using AutoFlagsInfoMap = std::unordered_map<ProcessName, std::vector<AutoFlagInfo>>;
+// Map from ProcessName to AutoFlag names.
+using AutoFlagsNameMap = std::unordered_map<ProcessName, std::unordered_set<std::string>>;
 
 namespace AutoFlagsUtil {
 std::string DumpAutoFlagsToJSON(const ProcessName& program_name);
@@ -50,6 +57,14 @@ Result<AutoFlagsInfoMap> GetFlagsEligibleForPromotion(
 AutoFlagsInfoMap GetFlagsEligibleForPromotion(
     const AutoFlagsInfoMap& available_flags, const AutoFlagClass max_flag_class,
     const PromoteNonRuntimeAutoFlags promote_non_runtime);
+
+// Returns true if all flags in base_config with class greater to or equal to min_class are found in
+// the base_config.
+// That is, base_config is a superset of flags with class greater to or equal to min_class.
+Result<bool> AreAutoFlagsCompatible(
+    const AutoFlagsNameMap& base_flags, const AutoFlagsNameMap& to_check_flags,
+    const AutoFlagsInfoMap& auto_flag_infos, AutoFlagClass min_class);
+
 };  // namespace AutoFlagsUtil
 
 }  // namespace yb

@@ -2600,6 +2600,9 @@ Result<std::optional<AutoFlagsConfigPB>> YBClient::GetAutoFlagConfig() {
   }();
 
   if (status.ok()) {
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
     return std::move(resp.config());
   }
 
@@ -2608,6 +2611,38 @@ Result<std::optional<AutoFlagsConfigPB>> YBClient::GetAutoFlagConfig() {
   }
 
   return status;
+}
+
+Result<std::optional<std::pair<bool, uint32>>> YBClient::ValidateAutoFlagsConfig(
+    const AutoFlagsConfigPB& config, std::optional<AutoFlagClass> min_flag_class) {
+  master::ValidateAutoFlagsConfigRequestPB req;
+  master::ValidateAutoFlagsConfigResponsePB resp;
+  req.mutable_config()->CopyFrom(config);
+  if (min_flag_class) {
+    req.set_min_flag_class(to_underlying(*min_flag_class));
+  }
+
+  // CALL_SYNC_LEADER_MASTER_RPC_EX will return on failure. Capture the Status so that we can handle
+  // the case when master is running on an older version that does not support this RPC.
+  Status status = [&]() -> Status {
+    CALL_SYNC_LEADER_MASTER_RPC_EX(Cluster, req, resp, ValidateAutoFlagsConfig);
+    return Status::OK();
+  }();
+
+  if (!status.ok()) {
+    if (rpc::RpcError(status) == rpc::ErrorStatusPB::ERROR_NO_SUCH_METHOD) {
+      return std::nullopt;
+    }
+
+    return status;
+  }
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  SCHECK(
+      resp.has_valid() && resp.has_config_version(), IllegalState,
+      "Invalid response from ValidateAutoFlagsConfig");
+  return std::make_pair(resp.valid(), resp.config_version());
 }
 
 Result<master::StatefulServiceInfoPB> YBClient::GetStatefulServiceLocation(

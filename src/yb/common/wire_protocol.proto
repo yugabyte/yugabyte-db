@@ -170,4 +170,7 @@ message PromotedFlagsPerProcessPB {
 message AutoFlagsConfigPB {
   required uint32 config_version = 1;
   repeated PromotedFlagsPerProcessPB promoted_flags = 2;
+
+  // Physical time at which the new config should be applied.
+  optional fixed64 config_apply_time = 3;
 }

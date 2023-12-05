@@ -373,7 +373,9 @@ Status MiniCluster::AddTabletServer(const tserver::TabletServerOptions& extra_op
   if (options_.ts_env) {
     tablet_server->options()->env = options_.ts_env;
   }
+
   RETURN_NOT_OK(tablet_server->Start(tserver::WaitTabletsBootstrapped::kFalse));
+
   mini_tablet_servers_.push_back(tablet_server);
   return Status::OK();
 }

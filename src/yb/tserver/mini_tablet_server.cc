@@ -178,9 +178,7 @@ Status MiniTabletServer::Reconnect() {
   return Status::OK();
 }
 
-Status MiniTabletServer::WaitStarted() {
-  return server_->WaitInited();
-}
+Status MiniTabletServer::WaitStarted() { return server_->WaitInited(); }
 
 void MiniTabletServer::Shutdown() {
   TEST_SetThreadPrefixScoped prefix_se(Format("ts-$0", index_));

@@ -262,6 +262,17 @@ message GetAutoFlagsConfigResponsePB {
   optional MasterErrorPB error = 3;
 }
 
+message ValidateAutoFlagsConfigRequestPB {
+  required AutoFlagsConfigPB config = 1;
+  optional uint32 min_flag_class = 2;
+}
+
+message ValidateAutoFlagsConfigResponsePB {
+  optional MasterErrorPB error = 1;
+  optional bool valid = 2;
+  optional uint32 config_version = 3;
+}
+
 message PromoteAutoFlagsRequestPB {
   required string max_flag_class = 1;
   required bool promote_non_runtime_flags = 2;
@@ -328,6 +339,8 @@ service MasterCluster {
       returns (PromoteSingleAutoFlagResponsePB);
   rpc DemoteSingleAutoFlag(DemoteSingleAutoFlagRequestPB)
       returns (DemoteSingleAutoFlagResponsePB);
+  rpc ValidateAutoFlagsConfig(ValidateAutoFlagsConfigRequestPB)
+      returns (ValidateAutoFlagsConfigResponsePB);
 
   // Get the ready status from the catalog manager for this master.
   // NOTE: Should be used only for unit testing purposes.

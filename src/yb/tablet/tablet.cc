@@ -4299,7 +4299,7 @@ HybridTime Tablet::DeleteMarkerRetentionTime(const std::vector<rocksdb::FileMeta
   return result;
 }
 
-Status Tablet::ApplyAutoFlagsConfig(const AutoFlagsConfigPB& config) {
+Status Tablet::ProcessAutoFlagsConfigOperation(const AutoFlagsConfigPB& config) {
   if (!is_sys_catalog()) {
     LOG_WITH_PREFIX_AND_FUNC(DFATAL) << "AutoFlags config change ignored on non-sys_catalog tablet";
     return Status::OK();
@@ -4310,7 +4310,7 @@ Status Tablet::ApplyAutoFlagsConfig(const AutoFlagsConfigPB& config) {
     return STATUS(InternalError, "AutoFlags manager not found");
   }
 
-  return auto_flags_manager_->LoadFromConfig(config, ApplyNonRuntimeAutoFlags::kFalse);
+  return auto_flags_manager_->ProcessAutoFlagsConfigOperation(config);
 }
 
 Status PopulateLockInfoFromIntent(
