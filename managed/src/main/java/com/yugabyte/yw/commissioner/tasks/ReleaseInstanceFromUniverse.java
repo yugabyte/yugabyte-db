@@ -61,6 +61,14 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
   }
 
   @Override
+  protected void createPrecheckTasks(Universe universe) {
+
+    NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+    Collection<NodeDetails> currentNodeDetails = Collections.singleton(currentNode);
+    createCheckNodeSafeToDeleteTasks(universe, currentNodeDetails);
+  }
+
+  @Override
   public void run() {
     log.info(
         "Started {} task for node {} in univ uuid={}",
@@ -105,16 +113,18 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
       createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
 
       if (instanceExists) {
-        // Set the node states to Removing.
+        // Set the node states to Terminating.
         createSetNodeStateTasks(currentNodeDetails, NodeDetails.NodeState.Terminating)
             .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
+
         // Create tasks to terminate that instance. Force delete and ignore errors.
         createDestroyServerTasks(
                 universe,
                 currentNodeDetails,
                 true /* isForceDelete */,
                 false /* deleteNode */,
-                true /* deleteRootVolumes */)
+                true /* deleteRootVolumes */,
+                false /* skipDestroyPrecheck */)
             .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
       }
 

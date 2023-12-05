@@ -224,7 +224,7 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     universeDetails.clusters.add(cluster);
     Mockito.when(universe.getCluster(Mockito.any())).thenReturn(cluster);
     Mockito.when(universe.getUniverseDetails()).thenReturn(universeDetails);
-    universeTaskBase.createDestroyServerTasks(universe, nodes, false, false, false);
+    universeTaskBase.createDestroyServerTasks(universe, nodes, false, false, false, true);
     for (int i = 0; i < NUM_NODES; i++) {
       // Node should not be in use.
       NodeInstance ni = NodeInstance.get(nodes.get(i).nodeUuid);

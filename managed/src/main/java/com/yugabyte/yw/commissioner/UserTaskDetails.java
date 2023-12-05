@@ -228,7 +228,9 @@ public class UserTaskDetails {
     PromoteAutoFlags,
 
     // Validate configurations.
-    ValidateConfigurations
+    ValidateConfigurations,
+
+    ValidatingNode
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -531,6 +533,10 @@ public class UserTaskDetails {
       case ValidateConfigurations:
         title = "Validating configurations";
         description = "Validating configurations before proceeding";
+        break;
+      case ValidatingNode:
+        title = "Validating node status";
+        description = "Validating node's current state before proceeding";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

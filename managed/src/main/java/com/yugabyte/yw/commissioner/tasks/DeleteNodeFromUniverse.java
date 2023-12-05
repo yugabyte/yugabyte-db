@@ -96,7 +96,8 @@ public class DeleteNodeFromUniverse extends UniverseTaskBase {
                 currentNodeDetails,
                 true /* isForceDelete */,
                 false /* deleteNode */,
-                true /* deleteRootVolumes */)
+                true /* deleteRootVolumes */,
+                false /* skipDestroyPrecheck */)
             .setSubTaskGroupType(SubTaskGroupType.DeletingNode);
       }
 

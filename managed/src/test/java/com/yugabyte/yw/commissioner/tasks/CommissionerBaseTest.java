@@ -78,6 +78,8 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -201,6 +203,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     when(mockBaseTaskDependencies.getHealthChecker()).thenReturn(mockHealthChecker);
     when(mockBaseTaskDependencies.getNodeManager()).thenReturn(mockNodeManager);
     when(mockBaseTaskDependencies.getCommissioner()).thenReturn(commissioner);
+    when(mockBaseTaskDependencies.getNodeUIApiHelper()).thenReturn(mockNodeUIApiHelper);
   }
 
   @Override
@@ -555,22 +558,41 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
         .thenReturn(underReplicatedTabletsJson);
   }
 
+  /**
+   * Mocks the dump entities endpoint response.
+   *
+   * @param universe the universe we are getting the dump entities endpoint response from.
+   * @param nodeName if specified will add the specified node as a replica. If none is specified,
+   *     will set all nodes in universe as a replica.
+   * @param hasTablets whether or not the nodes will have tablets assigned.
+   */
   public void setDumpEntitiesMock(Universe universe, String nodeName, boolean hasTablets) {
-    NodeDetails node = universe.getNode(nodeName);
-    Replica replica = new Replica();
-    replica.setAddr(node.cloudInfo.private_ip + ":" + node.tserverRpcPort);
     Tablet tablet = new Tablet();
     tablet.setTabletId("Tablet id 1");
-    if (hasTablets) {
-      tablet.setReplicas(Arrays.asList(replica));
+
+    Collection<NodeDetails> nodes = new HashSet<>();
+    if (nodeName.isEmpty()) {
+      nodes = universe.getNodes();
     } else {
-      tablet.setReplicas(new ArrayList<Replica>());
+      nodes.add(universe.getNode(nodeName));
+    }
+
+    List<Replica> replicas = new ArrayList<Replica>();
+    tablet.setReplicas(replicas);
+
+    if (hasTablets) {
+      for (NodeDetails node : nodes) {
+        // Replica replica = tablet.getReplicas() == null ? new Replica() : tablet.getReplicas();
+        Replica replica = new Replica();
+        replica.setAddr(node.cloudInfo.private_ip + ":" + node.tserverRpcPort);
+        replicas.add(replica);
+      }
     }
 
     DumpEntitiesResponse response = new DumpEntitiesResponse();
     response.setTablets(Arrays.asList(tablet));
     ObjectNode dumpEntitiesJson = (ObjectNode) Json.toJson(response);
-    when(mockNodeUIApiHelper.getRequest(endsWith(RemoveNodeFromUniverse.DUMP_ENTITIES_URL_SUFFIX)))
+    when(mockNodeUIApiHelper.getRequest(endsWith(UniverseTaskBase.DUMP_ENTITIES_URL_SUFFIX)))
         .thenReturn(dumpEntitiesJson);
   }
 }

@@ -142,7 +142,8 @@ public class DestroyUniverse extends UniverseTaskBase {
                 universe.getNodes(),
                 params().isForceDelete,
                 true /* delete node */,
-                true /* deleteRootVolumes */)
+                true /* deleteRootVolumes */,
+                true /* skipDestroyPrecheck */)
             .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
       }
 
