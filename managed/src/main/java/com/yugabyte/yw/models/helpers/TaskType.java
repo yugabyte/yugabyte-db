@@ -574,7 +574,14 @@ public enum TaskType {
 
   SoftwareUpgradeYB(com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareUpgradeYB.class),
 
-  ReprovisionNode(com.yugabyte.yw.commissioner.tasks.ReprovisionNode.class);
+  ReprovisionNode(com.yugabyte.yw.commissioner.tasks.ReprovisionNode.class),
+
+  LdapUniverseSync(com.yugabyte.yw.commissioner.tasks.LdapUnivSync.class),
+
+  // Tasks belonging to subtasks.ldap classpath
+  QueryLdapServer(com.yugabyte.yw.commissioner.tasks.subtasks.ldapsync.QueryLdapServer.class),
+
+  DbLdapSync(com.yugabyte.yw.commissioner.tasks.subtasks.ldapsync.DbLdapSync.class);
 
   private final Class<? extends ITask> taskClass;
 
@@ -661,6 +668,7 @@ public enum TaskType {
           .put(RunApiTriggeredHooks, 134)
           .put(SetUniverseKey, 135)
           .put(UpdateLoadBalancerConfig, 136)
+          .put(LdapUniverseSync, 137)
           .build();
 
   TaskType(Class<? extends ITask> taskClass) {

@@ -25,6 +25,7 @@ import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.LdapUtil;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.NodeManager;
@@ -116,6 +117,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected AlertConfigurationService alertConfigurationService;
   protected YcqlQueryExecutor mockYcqlQueryExecutor;
   protected YsqlQueryExecutor mockYsqlQueryExecutor;
+  protected LdapUtil mockLdapUtil;
   protected NodeUniverseManager mockNodeUniverseManager;
   protected TaskExecutor taskExecutor;
   protected EncryptionAtRestManager mockEARManager;
@@ -215,6 +217,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     mockMetricQueryHelper = mock(MetricQueryHelper.class);
     mockYcqlQueryExecutor = mock(YcqlQueryExecutor.class);
     mockYsqlQueryExecutor = mock(YsqlQueryExecutor.class);
+    mockLdapUtil = mock(LdapUtil.class);
     mockNodeUniverseManager = mock(NodeUniverseManager.class);
     mockEARManager = mock(EncryptionAtRestManager.class);
     mockSupportBundleComponent = mock(SupportBundleComponent.class);
@@ -257,6 +260,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                         .toInstance(mockSupportBundleComponentFactory))
                 .overrides(bind(YcqlQueryExecutor.class).toInstance(mockYcqlQueryExecutor))
                 .overrides(bind(YsqlQueryExecutor.class).toInstance(mockYsqlQueryExecutor))
+                .overrides(bind(LdapUtil.class).toInstance(mockLdapUtil))
                 .overrides(bind(NodeUniverseManager.class).toInstance(mockNodeUniverseManager))
                 .overrides(
                     bind(ExecutorServiceProvider.class).to(DefaultExecutorServiceProvider.class))

@@ -1001,4 +1001,13 @@ public class Util {
     InetAddressValidator ipValidator = InetAddressValidator.getInstance();
     return ipValidator.isValidInet4Address(maybeIp) || ipValidator.isValidInet6Address(maybeIp);
   }
+
+  public static String extractRegexValue(String input, String patternStr) {
+    Pattern pattern = Pattern.compile(patternStr);
+    Matcher matcher = pattern.matcher(input);
+    if (matcher.find()) {
+      return matcher.group(1);
+    }
+    return null;
+  }
 }

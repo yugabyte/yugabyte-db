@@ -41,6 +41,12 @@ public class UserTaskDetails {
     // placement info, wait for the tservers to start up, etc.
     ConfigureUniverse,
 
+    // Querying the upstream LDAP server
+    QueryLdapServer,
+
+    // Db-Ldap Sync
+    DbLdapSync,
+
     // Increasing disk size
     ResizingDisk,
 
@@ -272,6 +278,16 @@ public class UserTaskDetails {
         description =
             "Creating and populating the universe config, waiting for the various"
                 + " machines to discover one another.";
+        break;
+      case QueryLdapServer:
+        title = "Querying LDAP Server";
+        description = "Querying the LDAP Server for user-group mapping";
+        break;
+      case DbLdapSync:
+        title = "Syncing DB roles with LDAP groups";
+        description =
+            "Performing a manual sync of user groups and roles between the Universe DB nodes and"
+                + " the upstream LDAP Server.";
         break;
       case ResizingDisk:
         title = "Increasing disk size";

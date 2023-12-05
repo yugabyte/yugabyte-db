@@ -927,6 +927,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Number of parallel node agent reinstallations at a time",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> ldapUniverseSync =
+      new ConfKeyInfo<>(
+          "yb.security.ldap.ldap_universe_sync",
+          ScopeType.UNIVERSE,
+          "To perform sync of user-groups between the Universe DB nodes and LDAP Server",
+          "If configured, this feature allows users to synchronise user groups configured"
+              + " on the upstream LDAP Server with user roles in YBDB nodes associated"
+              + " with the universe.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> allowVolumeDecrease =
       new ConfKeyInfo<>(
           "yb.edit.allow_volume_decrease",
