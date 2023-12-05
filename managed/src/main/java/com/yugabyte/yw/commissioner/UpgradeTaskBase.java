@@ -363,7 +363,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       if (activeRole) {
         for (ServerType processType : processTypes) {
           if (followerLagCheckEnabled) {
-            createWaitForFollowerLagTask(node, processType).setSubTaskGroupType(subGroupType);
+            createCheckFollowerLagTask(node, processType).setSubTaskGroupType(subGroupType);
           }
         }
         if (isYbcPresent) {

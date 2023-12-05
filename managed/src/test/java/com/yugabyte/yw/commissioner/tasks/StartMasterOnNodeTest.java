@@ -102,6 +102,8 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
     when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
     UniverseModifyBaseTest.mockGetMasterRegistrationResponse(
         mockClient, ImmutableList.of("10.0.0.2"), Collections.emptyList());
+
+    setFollowerLagMock();
   }
 
   private TaskInfo submitTask(NodeTaskParams taskParams, String nodeName) {
@@ -129,7 +131,7 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
           TaskType.UpdateNodeProcess,
           TaskType.WaitForServer,
           TaskType.ChangeMasterConfig,
-          TaskType.WaitForFollowerLag,
+          TaskType.CheckFollowerLag,
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleConfigureServers,
           TaskType.SetFlagInMemory,

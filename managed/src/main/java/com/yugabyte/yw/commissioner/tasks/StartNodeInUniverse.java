@@ -128,7 +128,7 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
         createStartTserverProcessTasks(nodeCollection, cluster.userIntent.isYSQLAuthEnabled());
 
         if (followerLagCheckEnabled) {
-          createWaitForFollowerLagTask(currentNode, ServerType.TSERVER)
+          createCheckFollowerLagTask(currentNode, ServerType.TSERVER)
               .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
         }
       }

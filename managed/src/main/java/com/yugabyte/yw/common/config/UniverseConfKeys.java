@@ -725,6 +725,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Controls the max time out when performing follower lag checks",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> followerLagMaxThreshold =
+      new ConfKeyInfo<>(
+          "yb.checks.follower_lag.max_threshold",
+          ScopeType.UNIVERSE,
+          "Max threshold for follower lag",
+          "The maximum time that we allow a tserver to be behind its peers",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Long> checkMemoryTimeoutSecs =
       new ConfKeyInfo<>(
           "yb.dbmem.checks.timeout",
