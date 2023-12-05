@@ -14,6 +14,9 @@ spec:
         properties:
           spec:
             type: object
+            x-kubernetes-validations:
+              - message: replicationFactor <= numNodes
+                rule: self.replicationFactor <= self.numNodes
             properties:
               universeName:
                 type: string
@@ -112,11 +115,6 @@ spec:
                 type: string
                 x-kubernetes-validations:
                   - message:   AccessKeycode cannot be changed once set.
-                    rule: self == oldSelf
-              replicationFactor:
-                type: integer
-                x-kubernetes-validations:
-                  - message:   replication Factor cannot be changed once set.
                     rule: self == oldSelf
               deviceInfo:
                 properties:
