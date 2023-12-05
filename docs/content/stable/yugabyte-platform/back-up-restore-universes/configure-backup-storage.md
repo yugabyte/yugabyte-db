@@ -80,17 +80,21 @@ You can configure Google Cloud Storage (GCS) as your backup target, as follows:
 
 1. Navigate to **Configs > Backup > Google Cloud Storage**.
 
-2. Click **Create GCS Backup** to access the configuration form shown in the following illustration:
+1. Click **Create GCS Backup** to access the configuration form shown in the following illustration:
 
-    ![GCS Configuration](/images/yp/cloud-provider-configuration-backup-gcs.png)
+    ![GCS Configuration](/images/yp/cloud-provider-configuration-backup-gcs-stable.png)
 
-3. Use the **Configuration Name** field to provide a meaningful name for your backup configuration.
+1. Use the **Configuration Name** field to provide a meaningful name for your backup configuration.
 
-4. Complete the **GCS Bucket** and **GCS Credentials** fields.
+1. Complete the **GCS Bucket** field.
+
+1. Select **Use GCP IAM** if you're using GKE service account for backup and restore.
+
+1. Complete the **GCS Credentials** field.
 
     For information on how to obtain GCS credentials, see [Cloud Storage authentication](https://cloud.google.com/storage/docs/authentication).
 
-5. Click **Save**.
+1. Click **Save**.
 
 You can configure access control for the GCS bucket as follows:
 
