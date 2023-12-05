@@ -173,8 +173,9 @@ Status CDCSDKTestBase::SetUpWithParams(
   return Status::OK();
 }
 
-Result<tablet::TabletPeerPtr> CDCSDKTestBase::SetUpWithOneTablet(
-  uint32_t replication_factor, uint32_t num_masters, bool colocated) {
+Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>>
+    CDCSDKTestBase::SetUpWithOneTablet(
+        uint32_t replication_factor, uint32_t num_masters, bool colocated) {
 
   RETURN_NOT_OK(SetUpWithParams(replication_factor, num_masters, colocated));
   auto table = VERIFY_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
@@ -182,7 +183,7 @@ Result<tablet::TabletPeerPtr> CDCSDKTestBase::SetUpWithOneTablet(
   RETURN_NOT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   SCHECK_EQ(tablets.size(), 1, InternalError, "Only 1 tablet was expected");
 
-  return GetLeaderPeerForTablet(test_cluster(), tablets.begin()->tablet_id());
+  return tablets;
 }
 
 Result<YBTableName> CDCSDKTestBase::GetTable(
@@ -447,7 +448,7 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStreamWithReplicationSlot(
 }
 
 // This creates a Consistent Snapshot stream on the database kNamespaceName by default.
-Result<xrepl::StreamId> CDCSDKTestBase::CreateCSStream(
+Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStream(
     CDCSDKSnapshotOption snapshot_option,
     CDCCheckpointType checkpoint_type,
     CDCRecordType record_type) {
@@ -461,6 +462,8 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateCSStream(
   req.set_cdcsdk_consistent_snapshot_option(snapshot_option);
 
   RETURN_NOT_OK(cdc_proxy_->CreateCDCStream(req, &resp, &rpc));
+  // Sleep for 1 second - temporary till synchronous implementation of CreateCDCStream
+  SleepFor(MonoDelta::FromSeconds(1));
 
   return xrepl::StreamId::FromString(resp.db_stream_id());
 }
