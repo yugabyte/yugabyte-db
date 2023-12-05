@@ -47,20 +47,41 @@ spec:
                 type: boolean
               enableYSQL:
                 type: boolean
+                x-kubernetes-validations:
+                - message: enableYSQL cannot be changed
+                  rule: self == oldSelf
               enableYEDIS:
                 type: boolean
+                x-kubernetes-validations:
+                - message: enableYEDIS cannot be changed
+                  rule: self == oldSelf
               enableNodeToNodeEncrypt:
                 type: boolean
+                x-kubernetes-validations:
+                - message: enableNodeToNodeEncrypt cannot be changed
+                  rule: self == oldSelf
               enableClientToNodeEncrypt:
                 type: boolean
+                x-kubernetes-validations:
+                - message: enableClientToNodeEncrypt cannot be changed
+                  rule: self == oldSelf
               enableVolumeEncryption:
                 type: boolean
+                x-kubernetes-validations:
+                - message: enableVolumeEncryption cannot be changed
+                  rule: self == oldSelf
               ybSoftwareVersion:
                 type: string
               providerName:
                 type: string
+                x-kubernetes-validations:
+                - message: providerName cannot be changed
+                  rule: self == oldSelf
               zoneFilter:
                 type: array
+                x-kubernetes-validations:
+                - message: zoneFilter cannot be changed
+                  rule: self == oldSelf
                 items:
                   type: string
               enableYSQLAuth:
@@ -124,12 +145,24 @@ spec:
                     type: integer
                   diskIops:
                     type: integer
+                    x-kubernetes-validations:
+                      - message:   DiskIops cannot be changed once set.
+                        rule: self == oldSelf
                   throughput:
                     type: integer
+                    x-kubernetes-validations:
+                    - message:   thoughput cannot be changed once set.
+                      rule: self == oldSelf
                   storageClass:
                     type: string
+                    x-kubernetes-validations:
+                      - message:   StorageClass cannot be changed once set.
+                        rule: self == oldSelf
                   mountPoints:
                     type: string
+                    x-kubernetes-validations:
+                      - message:   mountPoints cannot be changed once set.
+                        rule: self == oldSelf
                   storageType:
                     enum:
                     - IO1
@@ -144,6 +177,9 @@ spec:
                     - iopsProvisioning
                     - throughputProvisioning
                     type: string
+                    x-kubernetes-validations:
+                      - message:   StroageType cannot be changed once set.
+                        rule: self == oldSelf
                 type: object
               kubernetesOverrides:
                 type: object
