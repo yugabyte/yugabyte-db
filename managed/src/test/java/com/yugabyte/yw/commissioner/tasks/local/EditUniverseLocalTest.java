@@ -4,32 +4,20 @@ package com.yugabyte.yw.commissioner.tasks.local;
 
 import static org.junit.Assert.assertEquals;
 
-import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import java.util.Map;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Test;
 
 @Slf4j
 public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
-
-  public static Map<String, String> GFLAGS =
-      ImmutableMap.<String, String>builder()
-          .put("load_balancer_max_over_replicated_tablets", "15")
-          .put("load_balancer_max_concurrent_adds", "15")
-          .put("load_balancer_max_concurrent_removals", "15")
-          .put("transaction_table_num_tablets", "3")
-          .put(GFlagsUtil.LOAD_BALANCER_INITIAL_DELAY_SECS, "120")
-          .build();
 
   @Test
   public void testExpand() throws InterruptedException {

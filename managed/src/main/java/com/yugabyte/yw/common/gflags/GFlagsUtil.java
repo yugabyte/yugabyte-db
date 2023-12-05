@@ -12,6 +12,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
@@ -412,6 +413,11 @@ public class GFlagsUtil {
     String nfsDirs = confGetter.getConfForScope(universe, UniverseConfKeys.nfsDirs);
     ybcFlags.put("nfs_dirs", nfsDirs);
     ybcFlags.putAll(customYbcGflags);
+    if (userIntent.providerType == CloudType.local) {
+      // In case of local provider, we want ybc to use /tmp directory
+      // inside the respective node folder.
+      ybcFlags.put(TMP_DIRECTORY, getYbHomeDir(providerUUID) + "/tmp");
+    }
     return ybcFlags;
   }
 

@@ -2956,10 +2956,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       RestoreBackupParams restoreBackupParams, SubTaskGroupType subTaskGroupType) {
     TaskInfo taskInfo = TaskInfo.getOrBadRequest(getUserTaskUUID());
     Universe universe = Universe.getOrBadRequest(restoreBackupParams.getUniverseUUID());
+    Cluster pCluster = universe.getUniverseDetails().getPrimaryCluster();
 
-    // No validation for xcluster type tasks, since the backup
+    // No validation for xcluster/localProvider type tasks, since the backup
     // itself is used for populating restore task.
-    if (taskInfo.getTaskType().equals(TaskType.RestoreBackup)) {
+    if (taskInfo.getTaskType().equals(TaskType.RestoreBackup)
+        && pCluster.userIntent.providerType != CloudType.local) {
       getAndSaveRestoreBackupCategory(restoreBackupParams, taskInfo);
       createPreflightValidateRestoreTask(restoreBackupParams);
     }
