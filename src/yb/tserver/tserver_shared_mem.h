@@ -122,7 +122,9 @@ class SharedExchange {
   ~SharedExchange();
 
   std::byte* Obtain(size_t required_size);
-  Result<Slice> SendRequest(CoarseTimePoint deadline);
+  Status SendRequest();
+  Result<Slice> FetchResponse(CoarseTimePoint deadline);
+  bool ResponseReady() const;
   bool ReadyToSend() const;
   void Respond(size_t size);
   Result<size_t> Poll();

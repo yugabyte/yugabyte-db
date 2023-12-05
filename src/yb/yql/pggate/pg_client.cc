@@ -70,14 +70,60 @@ namespace pggate {
 
 namespace {
 
+using PerformCallback = std::function<void(const PerformResult&)>;
+
+class BigDataFetcher {
+ public:
+  virtual Result<rpc::CallData> FetchBigData(uint64_t data_id) = 0;
+  virtual ~BigDataFetcher() = default;
+};
+
+} // namespace
+
 struct PerformData {
   PgsqlOps operations;
   tserver::LWPgPerformResponsePB resp;
   rpc::RpcController controller;
+
+  tserver::SharedExchange* exchange = nullptr;
+  CoarseTimePoint deadline;
+  BigDataFetcher* big_data_fetcher;
+
   PerformCallback callback;
 
   PerformData(ThreadSafeArena* arena, PgsqlOps&& operations_, const PerformCallback& callback_)
       : operations(std::move(operations_)), resp(arena), callback(callback_) {
+  }
+
+  void SetupExchange(
+      tserver::SharedExchange* exchange_, BigDataFetcher* big_data_fetcher_, MonoDelta timeout) {
+    exchange = exchange_;
+    big_data_fetcher = big_data_fetcher_;
+    deadline = CoarseMonoClock::now() + timeout;
+  }
+
+  bool ResponseReady() {
+    return exchange->ResponseReady();
+  }
+
+  Result<rpc::CallResponsePtr> CompletePerform() {
+    auto res = VERIFY_RESULT(exchange->FetchResponse(deadline));
+
+    rpc::CallData call_data;
+    if (res.data()) {
+      call_data = rpc::CallData(res.size());
+      res.CopyTo(call_data.data());
+    } else {
+      // If data is NULL we should fetch it using RPC. Because it was too big for shared memory.
+      DCHECK(res.size() & tserver::kTooBigResponseMask);
+      call_data = VERIFY_RESULT(big_data_fetcher->FetchBigData(
+          res.size() ^ tserver::kTooBigResponseMask));
+    }
+
+    auto response = std::make_shared<rpc::CallResponse>();
+    RETURN_NOT_OK(response->ParseFrom(&call_data));
+    RETURN_NOT_OK(resp.ParseFromSlice(response->serialized_response()));
+    return response;
   }
 
   Status Process() {
@@ -98,6 +144,35 @@ struct PerformData {
     return Status::OK();
   }
 };
+
+namespace {
+
+Status DoProcessPerformResponse(PerformData* data, PerformResult* result) {
+  RETURN_NOT_OK(ResponseStatus(data->resp));
+  RETURN_NOT_OK(data->Process());
+  if (data->resp.has_catalog_read_time()) {
+    result->catalog_read_time = ReadHybridTime::FromPB(data->resp.catalog_read_time());
+  }
+  result->used_in_txn_limit = HybridTime::FromPB(data->resp.used_in_txn_limit_ht());
+  return Status::OK();
+}
+
+PerformResult MakePerformResult(
+    PerformData* data, const Result<rpc::CallResponsePtr>& response) {
+  PerformResult result;
+  if (response.ok()) {
+    result.response = *response;
+    result.status = DoProcessPerformResponse(data, &result);
+  } else {
+    result.status = response.status();
+  }
+  return result;
+}
+
+void ProcessPerformResponse(
+    PerformData* data, const Result<rpc::CallResponsePtr>& response) {
+  data->callback(MakePerformResult(data, response));
+}
 
 std::string PrettyFunctionName(const char* name) {
   std::string result;
@@ -133,7 +208,7 @@ client::VersionedTablePartitionList BuildTablePartitionList(
 
 } // namespace
 
-class PgClient::Impl {
+class PgClient::Impl : public BigDataFetcher {
  public:
   Impl() : heartbeat_poller_(std::bind(&Impl::Heartbeat, this, false)) {
     tablet_server_count_cache_.fill(0);
@@ -441,10 +516,8 @@ class PgClient::Impl {
     return ResponseStatus(resp);
   }
 
-  void PerformAsync(
-      tserver::PgPerformOptionsPB* options,
-      PgsqlOps* operations,
-      const PerformCallback& callback) {
+  PerformResultFuture PerformAsync(
+      tserver::PgPerformOptionsPB* options, PgsqlOps* operations) {
     auto& arena = operations->front()->arena();
     tserver::LWPgPerformRequestPB req(&arena);
 
@@ -462,75 +535,52 @@ class PgClient::Impl {
     *req.mutable_options() = std::move(*options);
     PrepareOperations(&req, operations);
 
+    auto promise = std::make_shared<std::promise<PerformResult>>();
+    auto callback = [promise](const PerformResult& result) {
+      promise->set_value(result);
+    };
+
+    auto data = std::make_shared<PerformData>(&arena, std::move(*operations), callback);
     if (exchange_ && exchange_->ReadyToSend()) {
       auto out = exchange_->Obtain(req.SerializedSize());
       if (out) {
-        PerformData data(&arena, std::move(*operations), callback);
-        ProcessPerformResponse(&data, ExecutePerform(&data, req, out));
-        return;
+        auto status = StartPerform(data.get(), req, out);
+        if (!status.ok()) {
+          ProcessPerformResponse(data.get(), status);
+          return promise->get_future();
+        }
+        data->SetupExchange(&exchange_.value(), this, timeout_);
+        return PerformExchangeFuture(std::move(data));
       }
     }
-    auto data = std::make_shared<PerformData>(&arena, std::move(*operations), callback);
     data->controller.set_invoke_callback_mode(rpc::InvokeCallbackMode::kReactorThread);
 
     proxy_->PerformAsync(req, &data->resp, SetupController(&data->controller), [data] {
       ProcessPerformResponse(data.get(), data->controller.CheckedResponse());
     });
+    return promise->get_future();
   }
 
-  Result<rpc::CallResponsePtr> ExecutePerform(
+  Status StartPerform(
       PerformData* data, const tserver::LWPgPerformRequestPB& req, std::byte* out) {
     auto size = req.SerializedSize();
     auto* end = pointer_cast<std::byte*>(req.SerializeToArray(pointer_cast<uint8_t*>(out)));
     SCHECK_EQ(end - out, size, InternalError, "Obtained size does not match serialized size");
 
-    auto res = VERIFY_RESULT(exchange_->SendRequest(CoarseMonoClock::now() + timeout_));
-
-    rpc::CallData call_data;
-    if (res.data()) {
-      call_data = rpc::CallData(res.size());
-      res.CopyTo(call_data.data());
-    } else {
-      // If data is NULL we should fetch it using RPC. Because it was too big for shared memory.
-      ThreadSafeArena arena;
-      tserver::LWPgFetchDataRequestPB fetch_req(&arena);
-      fetch_req.set_session_id(session_id_);
-      DCHECK(res.size() & tserver::kTooBigResponseMask);
-      fetch_req.set_data_id(res.size() ^ tserver::kTooBigResponseMask);
-      tserver::LWPgFetchDataResponsePB fetch_resp(&arena);
-      rpc::RpcController controller;
-      RETURN_NOT_OK(proxy_->FetchData(fetch_req, &fetch_resp, SetupController(&controller)));
-      RETURN_NOT_OK(ResponseStatus(fetch_resp));
-      auto sidecar = VERIFY_RESULT(controller.ExtractSidecar(fetch_resp.sidecar()));
-      call_data = rpc::CallData(std::move(sidecar));
-    }
-
-    auto response = std::make_shared<rpc::CallResponse>();
-    RETURN_NOT_OK(response->ParseFrom(&call_data));
-    RETURN_NOT_OK(data->resp.ParseFromSlice(response->serialized_response()));
-    return response;
+    return exchange_->SendRequest();
   }
 
-  static void ProcessPerformResponse(
-      PerformData* data, const Result<rpc::CallResponsePtr>& response) {
-    PerformResult result;
-    if (response.ok()) {
-      result.response = *response;
-      result.status = DoProcessPerformResponse(data, &result);
-    } else {
-      result.status = response.status();
-    }
-    data->callback(result);
-  }
-
-  static Status DoProcessPerformResponse(PerformData* data, PerformResult* result) {
-    RETURN_NOT_OK(ResponseStatus(data->resp));
-    RETURN_NOT_OK(data->Process());
-    if (data->resp.has_catalog_read_time()) {
-      result->catalog_read_time = ReadHybridTime::FromPB(data->resp.catalog_read_time());
-    }
-    result->used_in_txn_limit = HybridTime::FromPB(data->resp.used_in_txn_limit_ht());
-    return Status::OK();
+  Result<rpc::CallData> FetchBigData(uint64_t data_id) override {
+    ThreadSafeArena arena;
+    tserver::LWPgFetchDataRequestPB fetch_req(&arena);
+    fetch_req.set_session_id(session_id_);
+    fetch_req.set_data_id(data_id);
+    tserver::LWPgFetchDataResponsePB fetch_resp(&arena);
+    rpc::RpcController controller;
+    RETURN_NOT_OK(proxy_->FetchData(fetch_req, &fetch_resp, SetupController(&controller)));
+    RETURN_NOT_OK(ResponseStatus(fetch_resp));
+    auto sidecar = VERIFY_RESULT(controller.ExtractSidecar(fetch_resp.sidecar()));
+    return rpc::CallData(std::move(sidecar));
   }
 
   void PrepareOperations(tserver::LWPgPerformRequestPB* req, PgsqlOps* operations) {
@@ -1092,11 +1142,9 @@ Status PgClient::DeleteDBSequences(int64_t db_oid) {
   return impl_->DeleteDBSequences(db_oid);
 }
 
-void PgClient::PerformAsync(
-    tserver::PgPerformOptionsPB* options,
-    PgsqlOps* operations,
-    const PerformCallback& callback) {
-  impl_->PerformAsync(options, operations, callback);
+PerformResultFuture PgClient::PerformAsync(
+    tserver::PgPerformOptionsPB* options, PgsqlOps* operations) {
+  return impl_->PerformAsync(options, operations);
 }
 
 Result<bool> PgClient::CheckIfPitrActive() {
@@ -1146,6 +1194,54 @@ Result<tserver::PgListReplicationSlotsResponsePB> PgClient::ListReplicationSlots
 Result<tserver::PgGetReplicationSlotStatusResponsePB> PgClient::GetReplicationSlotStatus(
     const ReplicationSlotName& slot_name) {
   return impl_->GetReplicationSlotStatus(slot_name);
+}
+
+void PerformExchangeFuture::wait() const {
+  if (!value_) {
+    value_ = MakePerformResult(data_.get(), data_->CompletePerform());
+  }
+}
+
+bool PerformExchangeFuture::ready() const {
+  return data_->ResponseReady();
+}
+
+PerformResult PerformExchangeFuture::get() {
+  wait();
+  data_.reset();
+  return *value_;
+}
+
+void Wait(const PerformResultFuture& future) {
+  std::visit([](const auto& future) {
+    future.wait();
+  }, future);
+}
+
+bool Ready(const std::future<PerformResult>& future) {
+  return future.wait_for(std::chrono::microseconds(0)) == std::future_status::ready;
+}
+
+bool Ready(const PerformExchangeFuture& future) {
+  return future.ready();
+}
+
+bool Ready(const PerformResultFuture& future) {
+  return std::visit([](const auto& future) {
+    return Ready(future);
+  }, future);
+}
+
+bool Valid(const PerformResultFuture& future) {
+  return std::visit([](const auto& future) {
+    return future.valid();
+  }, future);
+}
+
+PerformResult Get(PerformResultFuture* future) {
+  return std::visit([](auto& future) {
+    return future.get();
+  }, *future);
 }
 
 }  // namespace pggate

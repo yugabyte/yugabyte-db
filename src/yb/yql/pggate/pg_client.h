@@ -73,7 +73,44 @@ struct TableKeyRangesWithHt {
   HybridTime current_ht;
 };
 
-using PerformCallback = std::function<void(const PerformResult&)>;
+struct PerformData;
+
+class PerformExchangeFuture {
+ public:
+  PerformExchangeFuture() = default;
+  explicit PerformExchangeFuture(std::shared_ptr<PerformData> data)
+      : data_(std::move(data)) {}
+
+  PerformExchangeFuture(PerformExchangeFuture&& rhs) noexcept : data_(std::move(rhs.data_)) {
+  }
+
+  PerformExchangeFuture& operator=(PerformExchangeFuture&& rhs) noexcept {
+    data_ = std::move(rhs.data_);
+    return *this;
+  }
+
+  bool valid() const {
+    return data_ != nullptr;
+  }
+
+  void wait() const;
+  bool ready() const;
+
+  PerformResult get();
+
+ private:
+  std::shared_ptr<PerformData> data_;
+  mutable std::optional<PerformResult> value_;
+};
+
+using PerformResultFuture = std::variant<std::future<PerformResult>, PerformExchangeFuture>;
+
+void Wait(const PerformResultFuture& future);
+bool Ready(const std::future<PerformResult>& future);
+bool Ready(const PerformExchangeFuture& future);
+bool Ready(const PerformResultFuture& future);
+bool Valid(const PerformResultFuture& future);
+PerformResult Get(PerformResultFuture* future);
 
 class PgClient {
  public:
@@ -170,10 +207,9 @@ class PgClient {
 
   Status DeleteDBSequences(int64_t db_oid);
 
-  void PerformAsync(
+  PerformResultFuture PerformAsync(
       tserver::PgPerformOptionsPB* options,
-      PgsqlOps* operations,
-      const PerformCallback& callback);
+      PgsqlOps* operations);
 
   Result<bool> CheckIfPitrActive();
 
