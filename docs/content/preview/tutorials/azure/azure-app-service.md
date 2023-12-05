@@ -105,13 +105,15 @@ Next, use the Azure CLI to deploy your application code to the cloud, as follows
 
 1. Install the Azure CLI.
 1. In the Azure Deployment Center, configure your Local Git / FTPS Credentials under User Scope
-1. Configure the project for local git deployment.
+1. Configure the project for local git deployment as follows:
 
     ```sh
     az webapp deployment source config-local-git --name APPLICATION_NAME --resource-group RESOURCE_GROUP
+    ```
 
-    # output will contain git URL, i.e.
+    This outputs the git URL, similar to the following:
 
+    ```output
     {
     "url": "https://bhoyer@yb-shoe-sales.scm.azurewebsites.net/yb-shoe-sales.git"
     }
