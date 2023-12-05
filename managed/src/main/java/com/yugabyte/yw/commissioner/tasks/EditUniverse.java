@@ -499,7 +499,8 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
               nodesToBeRemoved,
               false /* isForceDelete */,
               true /* deleteNode */,
-              true /* deleteRootVolumes */)
+              true /* deleteRootVolumes */,
+              false /* skipDestroyPrecheck */)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
     }
 

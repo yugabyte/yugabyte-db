@@ -13,6 +13,7 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.RestoreManagerYb;
 import com.yugabyte.yw.common.TableManager;
@@ -54,4 +55,5 @@ public class BaseTaskDependencies {
   private final AutoFlagUtil autoFlagUtil;
   private final Commissioner commissioner;
   private final ImageBundleUtil imageBundleUtil;
+  private final NodeUIApiHelper nodeUIApiHelper;
 }
