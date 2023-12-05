@@ -507,6 +507,13 @@ public class XClusterConfigController extends AuthenticatedController {
         xClusterConfig.getTableIdsWithReplicationSetup(), false /* needBootstrap */);
 
     if (!tableIdsToAdd.isEmpty()) {
+      // Add table to xCluster configs used for DR must have bootstrapParams.
+      if (xClusterConfig.isUsedForDr() && Objects.isNull(bootstrapParams)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "To add table to an xCluster config used for DR, bootstrapParams in the payload "
+                + "must be passed in");
+      }
       Set<String> allTableIds =
           bootstrapParams == null
               ? tableIdsToAdd
