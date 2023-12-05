@@ -1,4 +1,3 @@
-import akka.stream.Materializer;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
@@ -6,6 +5,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import org.apache.pekko.stream.Materializer;
 import play.mvc.Filter;
 import play.mvc.Http;
 import play.mvc.Result;

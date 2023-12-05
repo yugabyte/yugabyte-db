@@ -2,9 +2,9 @@
 
 package com.yugabyte.yw.forms;
 
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import javax.annotation.Nullable;
-import javax.persistence.EnumType;
-import javax.persistence.Enumerated;
 import javax.validation.constraints.Min;
 import javax.validation.constraints.NotNull;
 import lombok.Data;

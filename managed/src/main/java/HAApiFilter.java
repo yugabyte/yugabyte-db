@@ -1,6 +1,5 @@
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
-import akka.stream.Materializer;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -10,6 +9,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Function;
 import java.util.regex.Pattern;
+import org.apache.pekko.stream.Materializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.mvc.Filter;
