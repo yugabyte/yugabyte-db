@@ -10,17 +10,13 @@
 
 package com.yugabyte.yw.controllers;
 
-import static io.ebean.Ebean.beginTransaction;
-import static io.ebean.Ebean.commitTransaction;
-import static io.ebean.Ebean.endTransaction;
-import static io.ebean.Ebean.saveAll;
-
 import com.yugabyte.yw.forms.LdapDnToYbaRoleData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.LdapDnToYbaRole;
 import com.yugabyte.yw.models.Users.Role;
+import io.ebean.DB;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -95,7 +91,7 @@ public class LdapDnToYbaRoleController extends AuthenticatedController {
     LdapDnToYbaRoleData data = parseJsonAndValidate(request, LdapDnToYbaRoleData.class);
     data.validate();
 
-    beginTransaction();
+    DB.getDefault().beginTransaction();
 
     LdapDnToYbaRole.find.query().delete();
 
@@ -119,11 +115,11 @@ public class LdapDnToYbaRoleController extends AuthenticatedController {
               ldapMappingsMap.get(distinguishedName).ybaRole = Role.union(role, dnRole);
             });
 
-    saveAll(ldapMappingsMap.values());
+    DB.getDefault().saveAll(ldapMappingsMap.values());
 
-    commitTransaction();
+    DB.getDefault().commitTransaction();
 
-    endTransaction();
+    DB.getDefault().endTransaction();
 
     auditService().createAuditEntry(request, request.body().asJson(), Audit.ActionType.Set);
 

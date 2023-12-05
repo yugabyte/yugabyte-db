@@ -8,8 +8,8 @@ import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.common.YBADeprecated;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import jakarta.persistence.Column;
 import java.util.Date;
-import javax.persistence.Column;
 import lombok.Data;
 import lombok.experimental.Accessors;
 

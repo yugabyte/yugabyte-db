@@ -73,12 +73,7 @@ import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.CompletionStage;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -184,10 +179,10 @@ public class SessionController extends AbstractPlatformController {
   public Result getSessionInfo(Http.Request request) {
     Users user = CommonUtils.getUserFromContext();
     Customer cust = Customer.get(user.getCustomerUUID());
-    Cookie authCookie = request.cookie(AUTH_TOKEN);
+    Optional<Cookie> authCookie = request.cookie(AUTH_TOKEN);
     SessionInfo sessionInfo =
         new SessionInfo(
-            authCookie == null ? null : authCookie.value(),
+            authCookie.isPresent() ? authCookie.get().value() : null,
             user.getApiToken(),
             cust.getUuid(),
             user.getUuid());
@@ -316,7 +311,7 @@ public class SessionController extends AbstractPlatformController {
 
     String authToken = user.createAuthToken();
     SessionInfo sessionInfo = new SessionInfo(authToken, null, cust.getUuid(), user.getUuid());
-    RequestContext.put(IS_AUDITED, true);
+    RequestContext.update(IS_AUDITED, val -> val.set(true));
     Audit.create(
         user,
         request.path(),
@@ -359,7 +354,7 @@ public class SessionController extends AbstractPlatformController {
 
     SessionInfo sessionInfo =
         new SessionInfo(null, user.getApiToken(), cust.getUuid(), user.getUuid());
-    RequestContext.put(IS_AUDITED, true);
+    RequestContext.update(IS_AUDITED, val -> val.set(true));
     Audit.create(
         user,
         request.path(),
@@ -395,7 +390,7 @@ public class SessionController extends AbstractPlatformController {
 
     Customer cust = Customer.get(user.getCustomerUUID());
 
-    RequestContext.put(IS_AUDITED, true);
+    RequestContext.update(IS_AUDITED, val -> val.set(true));
     Audit.create(
         user,
         request.path(),
@@ -516,7 +511,7 @@ public class SessionController extends AbstractPlatformController {
 
       SessionInfo sessionInfo =
           new SessionInfo(null, apiToken, user.getCustomerUUID(), user.getUuid());
-      RequestContext.put(IS_AUDITED, true);
+      RequestContext.update(IS_AUDITED, val -> val.set(true));
       Audit.create(
           user,
           request.path(),
