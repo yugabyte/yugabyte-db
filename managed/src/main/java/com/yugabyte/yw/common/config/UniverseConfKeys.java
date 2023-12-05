@@ -978,6 +978,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Always run wait for data move during remove node",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> clusterMembershipCheckEnabled =
+      new ConfKeyInfo<>(
+          "yb.checks.cluster_membership.enabled",
+          ScopeType.UNIVERSE,
+          "Enable check for cluster membership",
+          "If enabled, performs a pre-check to make sure node is not part of master quorum"
+              + "and the node does not have any tablets assigned to it in the tserver quorum.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> skipConfigBasedPreflightValidation =
       new ConfKeyInfo<>(
           "yb.backup.skip_config_based_preflight_validation",
