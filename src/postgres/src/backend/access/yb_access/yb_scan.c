@@ -2367,7 +2367,8 @@ ybcBeginScan(Relation relation,
 			 PushdownExprs *idx_pushdown,
 			 List *aggrefs,
 			 int distinct_prefixlen,
-			 YBCPgExecParameters *exec_params)
+			 YBCPgExecParameters *exec_params,
+			 bool is_internal_scan)
 {
 	/* Set up Yugabyte scan description */
 	YbScanDesc ybScan = (YbScanDesc) palloc0(sizeof(YbScanDescData));
@@ -2441,12 +2442,15 @@ ybcBeginScan(Relation relation,
 
 	/*
 	 * Set the current syscatalog version (will check that we are up to
-	 * date). Avoid it for syscatalog tables so that we can still use this
-	 * for refreshing the caches when we are behind.
-	 * Note: This works because we do not allow modifying schemas
-	 * (alter/drop) for system catalog tables.
+	 * date). Avoid it for internal syscatalog requests because that is the way
+	 * it has been since the early days of YSQL. For tighter correctness, it
+	 * should be sent for syscatalog requests, but this will result in more
+	 * cases of catalog version mismatch.
+	 * TODO(jason): revisit this for #15080. Condition could instead be
+	 * (!IsBootstrapProcessingMode()) which skips initdb and catalog
+	 * prefetching.
 	 */
-	if (!IsSystemRelation(relation))
+	if (!(is_internal_scan && IsSystemRelation(relation)))
 		YbSetCatalogCacheVersion(ybScan->handle,
 								 YbGetCatalogCacheVersion());
 
@@ -2650,7 +2654,8 @@ SysScanDesc ybc_systable_beginscan(Relation relation,
 									 NULL /* idx_pushdown */,
 									 NULL /* aggrefs */,
 									 0 /* distinct_prefixlen */,
-									 NULL /* exec_params */);
+									 NULL /* exec_params */,
+									 true /* is_internal_scan */);
 
 	/* Set up Postgres sys table scan description */
 	SysScanDesc scan_desc = (SysScanDesc) palloc0(sizeof(SysScanDescData));
@@ -2704,7 +2709,8 @@ HeapScanDesc ybc_heap_beginscan(Relation relation,
 									 NULL /* idx_pushdown */,
 									 NULL /* aggrefs */,
 									 0 /* distinct_prefixlen */,
-									 NULL /* exec_params */);
+									 NULL /* exec_params */,
+									 true /* is_internal_scan */);
 
 	/* Set up Postgres sys table scan description */
 	HeapScanDesc scan_desc = (HeapScanDesc) palloc0(sizeof(HeapScanDescData));
@@ -2768,7 +2774,8 @@ ybc_remote_beginscan(Relation relation,
 									 NULL /* idx_pushdown */,
 									 aggrefs,
 									 0 /* distinct_prefixlen */,
-									 exec_params);
+									 exec_params,
+									 false /* is_internal_scan */);
 
 	/* Set up Postgres sys table scan description */
 	HeapScanDesc scan_desc = (HeapScanDesc) palloc0(sizeof(HeapScanDescData));
