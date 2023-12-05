@@ -267,6 +267,8 @@ public enum TaskType {
 
   CheckFollowerLag(com.yugabyte.yw.commissioner.tasks.subtasks.CheckFollowerLag.class),
 
+  CheckNodeSafeToDelete(com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeSafeToDelete.class),
+
   ManipulateDnsRecordTask(
       com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask.class),
 
