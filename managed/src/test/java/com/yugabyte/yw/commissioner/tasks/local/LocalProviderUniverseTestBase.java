@@ -15,12 +15,17 @@ import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.LocalNodeManager;
+import com.yugabyte.yw.common.LocalNodeUniverseManager;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.backuprestore.BackupHelper;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
@@ -56,8 +61,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -68,6 +75,7 @@ import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
@@ -93,10 +101,23 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
   private static final String BASE_DIR_ENV_KEY = "TEST_BASE_DIR";
 
   private static final String DEFAULT_BASE_DIR = "/tmp/testing";
-  private static final String YBC_VERSION = "2.0.0.0-b10"; // TODO
+  protected static final String YBC_VERSION = "2.0.0.0-b20";
   private static final String DOWNLOAD_URL =
       "https://downloads.yugabyte.com/releases/2.19.2.0/" + "yugabyte-2.19.2.0-b121-%s-%s.tar.gz";
+  private static final String YBC_BASE_S3_URL = "https://downloads.yugabyte.com/ybc/";
+  private static final String YBC_BIN_ENV_KEY = "YBC_PATH";
   private static final boolean KEEP_UNIVERSE = false;
+
+  public static Map<String, String> GFLAGS = new HashMap<>();
+
+  static {
+    GFLAGS.put("load_balancer_max_over_replicated_tablets", "15");
+    GFLAGS.put("load_balancer_max_concurrent_adds", "15");
+    GFLAGS.put("load_balancer_max_concurrent_removals", "15");
+    GFLAGS.put("transaction_table_num_tablets", "3");
+    GFLAGS.put(GFlagsUtil.LOAD_BALANCER_INITIAL_DELAY_SECS, "120");
+    GFLAGS.put("tmp_dir", "/tmp/testing");
+  }
 
   protected Customer customer;
   protected Provider provider;
@@ -112,22 +133,27 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
 
   protected static String ybVersion;
   protected static String ybBinPath;
+  protected static String ybcBinPath;
   protected static String baseDir;
   protected static String arch;
   protected static String os;
   protected static String subDir;
 
   protected LocalNodeManager localNodeManager;
+  protected LocalNodeUniverseManager localNodeUniverseManager;
   protected UniverseCRUDHandler universeCRUDHandler;
   protected UpgradeUniverseHandler upgradeUniverseHandler;
   protected NodeUIApiHelper nodeUIApiHelper;
   protected YBClientService ybClientService;
+  protected RuntimeConfGetter confGetter;
+  protected BackupHelper backupHelper;
 
   @BeforeClass
   public static void setUpEnv() {
     log.debug("Setting up environment");
     os = IS_LINUX ? "linux" : "darwin";
     String systemArch = System.getProperty("os.arch");
+    setUpBaseDir();
 
     if (systemArch.equalsIgnoreCase("aarch64")) {
       arch = "arm64";
@@ -135,59 +161,123 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
       arch = "x86_64";
     }
 
-    String downloadURL = String.format(DOWNLOAD_URL, os, arch);
+    setUpYBSoftware(os, arch);
+  }
+
+  private static void setUpBaseDir() {
     if (System.getenv(BASE_DIR_ENV_KEY) != null) {
       baseDir = System.getenv(BASE_DIR_ENV_KEY);
     } else {
       baseDir = DEFAULT_BASE_DIR;
     }
+  }
+
+  private static void setUpYBSoftware(String os, String arch) {
+    String downloadURL = String.format(DOWNLOAD_URL, os, arch);
     log.debug("Using base dir {}", baseDir);
+
+    ybBinPath = determineYBBinPath();
+    if (ybBinPath == null) {
+      downloadAndSetUpYBSoftware(os, arch, downloadURL);
+    }
+
+    log.debug("YB version {} bin path {}", ybVersion, ybBinPath);
+  }
+
+  private void setUpYBCSoftware(String os, String arch) {
+    ybcBinPath = System.getenv(YBC_BIN_ENV_KEY);
+    if (ybcBinPath == null) {
+      String ybcVersion = confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion);
+      validateYBCVersion(ybcVersion);
+      log.debug("ybc Version to use {}", ybcVersion);
+      downloadAndSetUpYBCSoftware(os, arch, ybcVersion);
+    }
+
+    log.debug("Using ybc binaries from path {}", ybcBinPath);
+  }
+
+  private static String determineYBBinPath() {
     if (System.getenv(YB_PATH_ENV_KEY) != null) {
-      ybBinPath = System.getenv(YB_PATH_ENV_KEY) + "/bin";
-      File binFile = new File(ybBinPath);
-      ybVersion = binFile.getParentFile().getName().replaceAll("yugabyte-", "");
-    } else {
-      log.debug("Downloading and extracting " + downloadURL);
-      String baseDownloadPath = baseDir + "/yugabyte";
-      File downloadPathFile = new File(baseDownloadPath);
-      boolean alreadyDownloaded = false;
-      if (downloadPathFile.exists()) {
-        for (File child : downloadPathFile.listFiles()) {
-          if (child.getName().startsWith("yugabyte-")) {
-            File binFolder = new File(child, "bin");
-            if (binFolder.exists()) {
-              Set<String> neededExecutables = new HashSet<>(CONTROL_FILES);
-              for (File file : binFolder.listFiles()) {
-                neededExecutables.remove(file.getName());
-              }
-              if (neededExecutables.isEmpty()) {
-                log.debug("Already downloaded!");
-                alreadyDownloaded = true;
-                ybVersion = extractVersionFromFolder(child.getName());
-                ybBinPath = binFolder.getPath();
-              }
-            }
-          }
-        }
-      }
-      if (!alreadyDownloaded) {
-        downloadFromUrl(baseDownloadPath, downloadURL);
+      File binFile = new File(System.getenv(YB_PATH_ENV_KEY), "bin");
+      if (binFile.exists()) {
+        ybVersion = binFile.getParentFile().getName().replaceAll("yugabyte-", "");
+        return binFile.getPath();
       }
     }
-    log.debug("YB version {} bin path {}", ybVersion, ybBinPath);
-    subDir = DATE_FORMAT.format(new Date());
+    return null;
+  }
+
+  private static void downloadAndSetUpYBSoftware(String os, String arch, String downloadURL) {
+    String baseDownloadPath = baseDir + "/yugabyte";
+    File downloadPathFile = new File(baseDownloadPath);
+
+    for (File child : Optional.ofNullable(downloadPathFile.listFiles()).orElse(new File[0])) {
+      if (child.getName().startsWith("yugabyte-") && hasRequiredExecutables(child)) {
+        ybVersion = extractVersionFromFolder(child.getName());
+        ybBinPath = new File(child, "bin").getPath();
+        log.debug("Already downloaded!");
+        return;
+      }
+    }
+
+    String filePath = baseDownloadPath + "/yugabyte.tar.gz";
+    try {
+      downloadFromUrl(filePath, downloadURL);
+      ybVersion = extractVersionFromURL(downloadURL);
+      ybBinPath = baseDownloadPath + "/yugabyte-" + ybVersion + "/bin";
+      runPostInstallScript(ybBinPath);
+    } catch (IOException | InterruptedException e) {
+      throw new RuntimeException("Failed to download package", e);
+    }
+  }
+
+  private static boolean hasRequiredExecutables(File folder) {
+    File binFolder = new File(folder, "bin");
+    if (binFolder.exists()) {
+      Set<String> neededExecutables = new HashSet<>(CONTROL_FILES);
+      for (File file : Optional.ofNullable(binFolder.listFiles()).orElse(new File[0])) {
+        neededExecutables.remove(file.getName());
+      }
+      return neededExecutables.isEmpty();
+    }
+    return false;
+  }
+
+  private static void runPostInstallScript(String binPath)
+      throws IOException, InterruptedException {
+    ProcessBuilder pb = new ProcessBuilder("./post_install.sh").directory(new File(binPath));
+    Process proc = pb.start();
+    int res = proc.waitFor();
+    if (res != 0) {
+      log.error(
+          "post_install exited with {} and output \r\n {}",
+          res,
+          new String(proc.getErrorStream().readAllBytes()));
+      throw new IllegalStateException();
+    }
+  }
+
+  private void downloadAndSetUpYBCSoftware(String os, String arch, String ybcVersion) {
+    String ybcS3URL = YBC_BASE_S3_URL + ybcVersion + "/ybc-" + ybcVersion + "-%s-%s.tar.gz";
+    String ybcDownloadURL = String.format(ybcS3URL, os, arch);
+    String ybcBaseDir = baseDir + "/ybc/ybc-" + ybcVersion + "-%s-%s.tar.gz";
+    String ybaBaseDownloadDir = String.format(ybcBaseDir, os, arch);
+    downloadFromUrl(ybaBaseDownloadDir, ybcDownloadURL);
+    String ybcLibPath = String.format("/ybc-%s-%s-%s", ybcVersion, os, arch);
+    ybcBinPath = baseDir + "/ybc" + ybcLibPath + "/bin";
+    log.info("YBC extracted successfully.");
   }
 
   private static void downloadFromUrl(String baseDownloadPath, String downloadURL) {
-    String fileName = baseDownloadPath + "/yugabyte.tar.gz";
-    File downloadPathDir = new File(baseDownloadPath);
+    File downloadPathDir = new File(baseDownloadPath).getParentFile();
     try (InputStream in = new URL(downloadURL).openStream()) {
       downloadPathDir.mkdirs();
-      Files.copy(in, Paths.get(fileName), StandardCopyOption.REPLACE_EXISTING);
-      log.debug("downloaded to {}", fileName);
+      Files.copy(in, Paths.get(baseDownloadPath), StandardCopyOption.REPLACE_EXISTING);
+      log.debug("downloaded to {}", baseDownloadPath);
       Path destination = downloadPathDir.toPath();
       try (TarArchiveInputStream tarInput =
-          new TarArchiveInputStream(new GzipCompressorInputStream(new FileInputStream(fileName)))) {
+          new TarArchiveInputStream(
+              new GzipCompressorInputStream(new FileInputStream(baseDownloadPath)))) {
         TarArchiveEntry currentEntry;
         while ((currentEntry = tarInput.getNextTarEntry()) != null) {
           Path extractTo = destination.resolve(currentEntry.getName());
@@ -204,21 +294,15 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
           }
         }
       }
-      Files.delete(Paths.get(fileName));
-      ybVersion = extractVersionFromURL(downloadURL);
-      ybBinPath = baseDownloadPath + "/yugabyte-" + ybVersion + "/bin";
-      ProcessBuilder pb = new ProcessBuilder("./post_install.sh").directory(new File(ybBinPath));
-      Process proc = pb.start();
-      int res = proc.waitFor();
-      if (res != 0) {
-        log.error(
-            "post_install exited with {} and output \r\n {}",
-            res,
-            new String(proc.getErrorStream().readAllBytes()));
-        throw new IllegalStateException();
-      }
-    } catch (InterruptedException | IOException e) {
+      Files.delete(Paths.get(baseDownloadPath));
+    } catch (IOException e) {
       throw new RuntimeException("Failed to download package", e);
+    }
+  }
+
+  private static void validateYBCVersion(String ybcVersion) {
+    if (StringUtils.isEmpty(ybcVersion)) {
+      throw new RuntimeException("YBC version is not configured. Can't continue");
     }
   }
 
@@ -239,8 +323,13 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     upgradeUniverseHandler = app.injector().instanceOf(UpgradeUniverseHandler.class);
     nodeUIApiHelper = app.injector().instanceOf(NodeUIApiHelper.class);
     localNodeManager = app.injector().instanceOf(LocalNodeManager.class);
+    localNodeUniverseManager = app.injector().instanceOf(LocalNodeUniverseManager.class);
     ybClientService = app.injector().instanceOf(YBClientService.class);
+    confGetter = app.injector().instanceOf(RuntimeConfGetter.class);
+    backupHelper = app.injector().instanceOf(BackupHelper.class);
+    subDir = DATE_FORMAT.format(new Date());
 
+    setUpYBCSoftware(os, arch);
     File baseDirFile = new File(baseDir);
     File curDir = new File(baseDirFile, subDir);
     if (baseDirFile.exists()) {
@@ -259,10 +348,10 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     }
 
     YugawareProperty.addConfigProperty(
-        ReleaseManager.CONFIG_TYPE.name(), getMetadataJson(ybVersion), "release");
+        ReleaseManager.CONFIG_TYPE.name(), getMetadataJson(ybVersion, false), "release");
     YugawareProperty.addConfigProperty(
         ReleaseManager.YBC_CONFIG_TYPE.name(),
-        getMetadataJson("ybc-" + YBC_VERSION + "-" + os + "-" + arch),
+        getMetadataJson("ybc-" + YBC_VERSION, true),
         "release");
 
     customer = ModelFactory.testCustomer();
@@ -270,7 +359,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     LocalCloudInfo localCloudInfo = new LocalCloudInfo();
     localCloudInfo.setDataHomeDir(curDir.toString());
     localCloudInfo.setYugabyteBinDir(ybBinPath);
-    //    localCloudInfo.setYbcBinDir("TODO");
+    localCloudInfo.setYbcBinDir(ybcBinPath);
     ProviderDetails.CloudInfo cloudInfo = new ProviderDetails.CloudInfo();
     cloudInfo.setLocal(localCloudInfo);
     ProviderDetails providerDetails = new ProviderDetails();
@@ -304,15 +393,18 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
             new InstanceType.InstanceTypeDetails());
   }
 
-  private JsonNode getMetadataJson(String release) {
+  private JsonNode getMetadataJson(String release, boolean isYbc) {
     ReleaseManager.ReleaseMetadata releaseMetadata = new ReleaseManager.ReleaseMetadata();
     releaseMetadata.state = ReleaseManager.ReleaseState.ACTIVE;
-    releaseMetadata.filePath = "/tmp" + release + ".tar.gz";
+    releaseMetadata.filePath = "/tmp/" + release + "-" + os + "-" + arch + ".tar.gz";
     ReleaseManager.ReleaseMetadata.Package pkg = new ReleaseManager.ReleaseMetadata.Package();
     pkg.arch = PublicCloudConstants.Architecture.valueOf(arch);
     pkg.path = releaseMetadata.filePath;
     releaseMetadata.packages = Collections.singletonList(pkg);
     ObjectNode object = Json.newObject();
+    if (isYbc) {
+      release += "-" + os + "-" + arch;
+    }
     object.set(release, Json.toJson(releaseMetadata));
     return object;
   }
@@ -345,13 +437,23 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
   }
 
   protected UniverseDefinitionTaskParams.UserIntent getDefaultUserIntent() {
+    return getDefaultUserIntent(null, false);
+  }
+
+  protected UniverseDefinitionTaskParams.UserIntent getDefaultUserIntent(
+      String univName, boolean disableTls) {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         ApiUtils.getTestUserIntent(region, provider, instanceType, 3);
     userIntent.universeName = "test-universe";
+    if (univName != null) {
+      userIntent.universeName = univName;
+    }
     userIntent.ybSoftwareVersion = ybVersion;
     userIntent.accessKeyCode = accessKey.getKeyCode();
-    userIntent.enableNodeToNodeEncrypt = true;
-    userIntent.enableClientToNodeEncrypt = true;
+    if (!disableTls) {
+      userIntent.enableNodeToNodeEncrypt = true;
+      userIntent.enableClientToNodeEncrypt = true;
+    }
     userIntent.specificGFlags =
         SpecificGFlags.construct(
             Map.of("transaction_table_num_tablets", "3"),
@@ -394,7 +496,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
   protected void initYSQL(Universe universe) {
     NodeDetails nodeDetails = universe.getUniverseDetails().nodeDetailsSet.iterator().next();
     ShellResponse response =
-        localNodeManager.runYsqlCommand(
+        localNodeUniverseManager.runYsqlCommand(
             nodeDetails,
             universe,
             YUGABYTE_DB,
@@ -402,7 +504,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
             10);
     assertTrue(response.isSuccess());
     response =
-        localNodeManager.runYsqlCommand(
+        localNodeUniverseManager.runYsqlCommand(
             nodeDetails,
             universe,
             YUGABYTE_DB,
@@ -417,6 +519,10 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
   }
 
   protected void verifyYSQL(Universe universe, boolean readFromRR) {
+    verifyYSQL(universe, readFromRR, YUGABYTE_DB);
+  }
+
+  protected void verifyYSQL(Universe universe, boolean readFromRR, String dbName) {
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     UUID cluserUUID =
         readFromRR
@@ -428,8 +534,8 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
             .findFirst()
             .get();
     ShellResponse response =
-        localNodeManager.runYsqlCommand(
-            nodeDetails, universe, YUGABYTE_DB, "select count(*) from some_table", 10);
+        localNodeUniverseManager.runYsqlCommand(
+            nodeDetails, universe, dbName, "select count(*) from some_table", 10);
     assertTrue(response.isSuccess());
     assertEquals("3", LocalNodeManager.getRawCommandOutput(response.getMessage()));
   }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2023 YugaByte, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -70,7 +70,7 @@ public class LocalNodeManager {
   public static final String CONTROLLER_EXECUTABLE = "yb-controller-server";
 
   private static final String LOOPBACK_PREFIX = "127.0.0.";
-  private static final String COMMAND_OUTPUT_PREFIX = "Command output:";
+  public static final String COMMAND_OUTPUT_PREFIX = "Command output:";
   private static final boolean RUN_LOG_THREADS = false;
 
   private Map<Integer, String> predefinedConfig = null;
@@ -170,62 +170,21 @@ public class LocalNodeManager {
     return result;
   }
 
-  public ShellResponse runYsqlCommand(
-      NodeDetails node, Universe universe, String dbName, String ysqlCommand, long timeoutSec) {
-    UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
-    LocalCloudInfo cloudInfo = getCloudInfo(node, universe);
-    List<String> bashCommand = new ArrayList<>();
-    bashCommand.add(cloudInfo.getYugabyteBinDir() + "/ysqlsh");
-    bashCommand.add("-h");
-    bashCommand.add(node.cloudInfo.private_ip);
-    bashCommand.add("-t");
-    bashCommand.add("-p");
-    bashCommand.add(String.valueOf(node.ysqlServerRpcPort));
-    bashCommand.add("-U");
-    bashCommand.add("yugabyte");
-    bashCommand.add("-d");
-    bashCommand.add(dbName);
-    bashCommand.add("-c");
-    ysqlCommand = ysqlCommand.replace("\"", "");
-    bashCommand.add(ysqlCommand);
-
-    ProcessBuilder processBuilder =
-        new ProcessBuilder(bashCommand.toArray(new String[0])).redirectErrorStream(true);
-    if (cluster.userIntent.enableClientToNodeEncrypt && !cluster.userIntent.enableYSQLAuth) {
-      processBuilder.environment().put("sslmode", "require");
-    }
-    try {
-      log.debug("Running command {}", String.join(" ", bashCommand));
-      Process process = processBuilder.start();
-      long timeOut = timeoutSec * 1000;
-      while (process.isAlive() && timeOut > 0) {
-        Thread.sleep(50);
-        timeOut -= 50;
-      }
-      if (process.isAlive()) {
-        throw new RuntimeException("Timed out waiting for query");
-      }
-      return ShellResponse.create(process.exitValue(), COMMAND_OUTPUT_PREFIX + getOutput(process));
-    } catch (IOException | InterruptedException e) {
-      throw new RuntimeException(e);
-    }
-  }
-
   public static String getRawCommandOutput(String str) {
     String result = str.replaceFirst(COMMAND_OUTPUT_PREFIX, "");
     return result.strip();
   }
 
-  private LocalCloudInfo getCloudInfo(NodeDetails nodeDetails, Universe universe) {
+  public static LocalCloudInfo getCloudInfo(NodeDetails nodeDetails, Universe universe) {
     return getCloudInfo(universe.getCluster(nodeDetails.placementUuid).userIntent);
   }
 
-  private LocalCloudInfo getCloudInfo(UniverseDefinitionTaskParams.UserIntent userIntent) {
+  public static LocalCloudInfo getCloudInfo(UniverseDefinitionTaskParams.UserIntent userIntent) {
     Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
     return CloudInfoInterface.get(provider);
   }
 
-  private String getOutput(Process process) throws IOException {
+  public static String getOutput(Process process) throws IOException {
     StringBuilder builder = new StringBuilder();
     String separator = System.getProperty("line.separator");
     String line = null;
@@ -433,7 +392,7 @@ public class LocalNodeManager {
     log.info("Starting process: {}", Joiner.on(" ").join(args));
     try {
       Process proc = procBuilder.start();
-      Thread.sleep(100);
+      Thread.sleep(200);
       if (!proc.isAlive()) {
         throw new RuntimeException(
             "Process exited with code " + proc.exitValue() + " and output " + getOutput(proc));
