@@ -3387,7 +3387,7 @@ TEST_F_EX(PgLibPqTest,
   string webserver_pid;
   RunShellProcess(Format("pgrep -f 'YSQL webserver' -P $0", postmaster_pid), &webserver_pid);
   webserver_pid.erase(std::remove(webserver_pid.begin(), webserver_pid.end(), '\n'),
-                      webserver_pid.cend());
+                      webserver_pid.end());
 
   // Check the webserver's OOM score
   std::string file_name = "/proc/" + webserver_pid + "/oom_score_adj";
