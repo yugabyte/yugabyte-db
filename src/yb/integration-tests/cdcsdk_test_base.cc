@@ -465,7 +465,11 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateCSStream(
   return xrepl::StreamId::FromString(resp.db_stream_id());
 }
 
-
+Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStreamBasedOnCheckpointType(
+    CDCCheckpointType checkpoint_type) {
+  return checkpoint_type == CDCCheckpointType::EXPLICIT ? CreateDBStreamWithReplicationSlot()
+                                                        : CreateDBStream(IMPLICIT);
+}
 
 }  // namespace cdc
 }  // namespace yb
