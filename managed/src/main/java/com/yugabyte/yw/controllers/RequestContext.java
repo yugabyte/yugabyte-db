@@ -12,6 +12,7 @@ package com.yugabyte.yw.controllers;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.typedmap.TypedKey;
 
@@ -30,6 +31,16 @@ public class RequestContext {
     context.get().put(key, value);
     log.trace(
         "[" + Thread.currentThread().getName() + "]" + " Set key " + key + " to value " + value);
+  }
+
+  public static <T> void update(TypedKey<T> key, Consumer<T> value) {
+    T currentValue = getIfPresent(key);
+    if (currentValue == null) {
+      log.trace("[" + Thread.currentThread().getName() + "]" + " Nothing to update for key " + key);
+      return;
+    }
+    value.accept(currentValue);
+    log.trace("[" + Thread.currentThread().getName() + "]" + " Updated value for key " + key);
   }
 
   public static <T> void putIfAbsent(TypedKey<T> key, T value) {
