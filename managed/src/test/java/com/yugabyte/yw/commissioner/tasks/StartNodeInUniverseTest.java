@@ -6,6 +6,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -23,6 +24,7 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -175,6 +177,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
 
   List<TaskType> START_NODE_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleConfigureServers,
@@ -187,6 +190,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
 
   List<JsonNode> START_NODE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Starting")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -199,6 +203,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
 
   List<TaskType> WITH_MASTER_UNDER_REPLICATED =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleConfigureServers,
@@ -228,6 +233,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
 
   List<JsonNode> WITH_MASTER_UNDER_REPLICATED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Starting")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -318,9 +324,8 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
   public void testStartUnknownNode() {
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
-    TaskInfo taskInfo = submitTask(taskParams, "host-n9");
-    verify(mockNodeManager, times(0)).nodeCommand(any(), any());
-    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    // Throws at validateParams check.
+    assertThrows(PlatformServiceException.class, () -> submitTask(taskParams, "host-n9"));
   }
 
   @Test
