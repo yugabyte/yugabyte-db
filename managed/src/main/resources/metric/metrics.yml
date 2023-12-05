@@ -3271,3 +3271,66 @@ tserver_live_tablet_peers:
     yaxis:
       alias:
         "ts_live_tablet_peers": "Live Tablet Peers"
+
+otel_read_log_records:
+  metric: "otelcol_receiver_accepted_log_records"
+  function: "rate|sum"
+  range: true
+  panel_group: "Otel Collector"
+  group_by: receiver
+  layout:
+    "title": "Audit Log Records Read / Sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "filelog/ysql": "YSQL"
+        "filelog/ycql": "YCQL"
+
+otel_refused_log_records:
+  metric: "otelcol_receiver_refused_log_records"
+  function: "rate|sum"
+  range: true
+  panel_group: "Otel Collector"
+  group_by: receiver
+  layout:
+    "title": "Audit Log Records Refused / Sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "filelog/ysql": "YSQL"
+        "filelog/ycql": "YCQL"
+
+otel_sent_log_records:
+  metric: "otelcol_exporter_sent_log_records"
+  function: "rate|sum"
+  range: true
+  panel_group: "Otel Collector"
+  group_by: exporter
+  layout:
+    "title": "Audit Log Records Sent / Sec"
+    xaxis:
+      type: "date"
+
+otel_send_failed_log_records:
+  metric: "otelcol_exporter_send_failed_log_records"
+  function: "rate|sum"
+  range: true
+  panel_group: "Otel Collector"
+  group_by: exporter
+  layout:
+    "title": "Audit Log Records Send Failed / Sec"
+    xaxis:
+      type: "date"
+
+otel_exporter_queue_size:
+  metric: "otelcol_exporter_queue_size"
+  function: "avg_over_time|sum"
+  range: true
+  panel_group: "Otel Collector"
+  group_by: exporter
+  layout:
+    "title": "Audit Log Send Queue Size"
+    xaxis:
+      type: "date"

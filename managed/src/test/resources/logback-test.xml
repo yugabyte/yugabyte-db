@@ -66,7 +66,7 @@
   <logger name="oshi.software.os.linux.LinuxFileSystem" level="ERROR" />
 
   <root level="WARN">
-    <!-- <appender-ref ref="ASYNCSTDOUT" /> -->
+    <appender-ref ref="ASYNCSTDOUT" />
   </root>
 
 </configuration>

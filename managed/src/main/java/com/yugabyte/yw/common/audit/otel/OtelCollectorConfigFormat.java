@@ -4,8 +4,10 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import lombok.NoArgsConstructor;
 
 @Data
 public class OtelCollectorConfigFormat {
@@ -22,6 +24,7 @@ public class OtelCollectorConfigFormat {
   @EqualsAndHashCode(callSuper = true)
   public static class FileLogReceiver extends Receiver {
     private List<String> include;
+    private List<String> exclude;
     private String start_at;
     private String storage;
     private MultilineConfig multiline;
@@ -50,8 +53,15 @@ public class OtelCollectorConfigFormat {
   }
 
   @Data
+  @EqualsAndHashCode(callSuper = true)
+  public static class FilterOperator extends Operator {
+    private String expr;
+  }
+
+  @Data
   public static class OperatorTimestamp {
     private String parse_from;
+    private String layout_type;
     private String layout;
   }
 
@@ -82,9 +92,25 @@ public class OtelCollectorConfigFormat {
   }
 
   @Data
+  @EqualsAndHashCode(callSuper = true)
+  public static class AttributesProcessor extends Processor {
+    private List<AttributeAction> actions;
+  }
+
+  @Data
+  @AllArgsConstructor
+  @NoArgsConstructor
+  public static class AttributeAction {
+    private String key;
+    private String value;
+    private String action;
+  }
+
+  @Data
   public static class Exporter {
     private RetryConfig retry_on_failure;
     private QueueConfig sending_queue;
+    private TlsSettings tls;
   }
 
   @Data
@@ -98,6 +124,11 @@ public class OtelCollectorConfigFormat {
   public static class QueueConfig {
     private boolean enabled;
     private String storage;
+  }
+
+  @Data
+  public static class TlsSettings {
+    private boolean insecure_skip_verify;
   }
 
   @Data
@@ -135,6 +166,12 @@ public class OtelCollectorConfigFormat {
   @EqualsAndHashCode(callSuper = true)
   public static class GCPCloudMonitoringExporter extends Exporter {
     private String project;
+    private GCPCloudMonitoringLog log;
+  }
+
+  @Data
+  public static class GCPCloudMonitoringLog {
+    private String default_log_name;
   }
 
   @Data

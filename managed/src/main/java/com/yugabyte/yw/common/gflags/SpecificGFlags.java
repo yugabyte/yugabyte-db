@@ -8,7 +8,6 @@ import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.TSE
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
-import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
@@ -44,15 +43,7 @@ public class SpecificGFlags {
   @ApiModelProperty(value = "Overrides for gflags per availability zone")
   private Map<UUID, PerProcessFlags> perAZ = new HashMap<>();
 
-  @JsonIgnore
-  public Map<String, String> getGFlags(
-      NodeDetails nodeDetails, UniverseTaskBase.ServerType process) {
-    UUID azUUID = nodeDetails == null ? null : nodeDetails.azUuid;
-    return getGFlags(azUUID, process);
-  }
-
-  private Map<String, String> getGFlags(
-      @Nullable UUID azUuid, UniverseTaskBase.ServerType process) {
+  public Map<String, String> getGFlags(@Nullable UUID azUuid, UniverseTaskBase.ServerType process) {
     Map<String, String> result = new HashMap<>();
     if (perProcessFlags != null) {
       result.putAll(perProcessFlags.value.getOrDefault(process, new HashMap<>()));

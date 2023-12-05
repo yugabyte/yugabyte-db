@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ManageOtelCollector;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterUserIntent;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -24,6 +25,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
+import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -630,6 +632,42 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
           getAnsibleConfigureServerTask(userIntent, node, processType, oldGFlags, newGFlags));
     }
     subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  protected void createManageOtelCollectorTasks(
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      List<NodeDetails> nodes,
+      boolean installOtelCollector,
+      AuditLogConfig auditLogConfig,
+      Function<NodeDetails, Map<String, String>> nodeToGflags) {
+    // If the node list is empty, we don't need to do anything.
+    if (nodes.isEmpty()) {
+      return;
+    }
+    String subGroupDescription =
+        String.format(
+            "AnsibleConfigureServers (%s) for: %s",
+            SubTaskGroupType.ManageOtelCollector, taskParams().nodePrefix);
+    TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
+    for (NodeDetails node : nodes) {
+      ManageOtelCollector.Params params = new ManageOtelCollector.Params();
+      params.nodeName = node.nodeName;
+      params.setUniverseUUID(taskParams().getUniverseUUID());
+      params.azUuid = node.azUuid;
+      params.installOtelCollector = installOtelCollector;
+      params.otelCollectorEnabled =
+          installOtelCollector || getUniverse().getUniverseDetails().otelCollectorEnabled;
+      params.auditLogConfig = auditLogConfig;
+      params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+      params.gflags = nodeToGflags.apply(node);
+
+      ManageOtelCollector task = createTask(ManageOtelCollector.class);
+      task.initialize(params);
+      task.setUserTaskUUID(getUserTaskUUID());
+      subTaskGroup.addSubTask(task);
+    }
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.ManageOtelCollector);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 

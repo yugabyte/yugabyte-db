@@ -17,6 +17,7 @@
      "(^managed/src/main/resources/swagger[.]json$)",
      "(^managed/src/main/resources/swagger-strict[.]json$)",
      "(^managed/src/test/resources/alert/test_alert_definition[.]yml$)",
+     "(^managed/src/test/resources/audit/.*[.]yml$)",
      "(^managed/src/test/resources/metric/targets_.*[.]json$)",
      "(^managed/src/test/resources/backup/ybc_success_file_with_index_tables.json$)",
      "(^managed/build[.]sbt$)",
