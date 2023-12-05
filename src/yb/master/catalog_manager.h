@@ -1237,6 +1237,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const LeaderEpoch& epoch);
 
   Status PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(
+    const scoped_refptr<TableInfo>& table,
     const yb::TabletId& tablet_id,
     const xrepl::StreamId& cdc_sdk_stream_id,
     const yb::OpIdPB& safe_opid,
@@ -2682,6 +2683,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const CreateCDCStreamRequestPB& req, CreateNewCDCStreamMode mode,
       const std::vector<TableId>& table_ids, const std::optional<const NamespaceId>& namespace_id,
       CreateCDCStreamResponsePB* resp, const LeaderEpoch& epoch, rpc::RpcContext* rpc);
+
+  Status PopulateCDCStateTable(const xrepl::StreamId& stream_id,
+                               const std::vector<TableId>& table_ids,
+                               bool has_consistent_snapshot_option,
+                               bool consistent_snapshot_option_use,
+                               uint64_t consistent_snapshot_time);
 
   Status SetAllCDCSDKRetentionBarriers(
       const CreateCDCStreamRequestPB& req, rpc::RpcContext* rpc, const LeaderEpoch& epoch,
