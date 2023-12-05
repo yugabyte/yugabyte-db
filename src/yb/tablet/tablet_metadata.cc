@@ -1272,17 +1272,13 @@ void RaftGroupMetadata::SetSchemaAndTableName(
   SetTableNameUnlocked(namespace_name, table_name, op_id, table_id);
 }
 
-void RaftGroupMetadata::AddTable(const std::string& table_id,
-                                 const std::string& namespace_name,
-                                 const std::string& table_name,
-                                 const TableType table_type,
-                                 const Schema& schema,
-                                 const IndexMap& index_map,
-                                 const dockv::PartitionSchema& partition_schema,
-                                 const boost::optional<IndexInfo>& index_info,
-                                 const SchemaVersion schema_version,
-                                 const OpId& op_id) {
+void RaftGroupMetadata::AddTable(
+    const std::string& table_id, const std::string& namespace_name, const std::string& table_name,
+    const TableType table_type, const Schema& schema, const IndexMap& index_map,
+    const dockv::PartitionSchema& partition_schema, const boost::optional<IndexInfo>& index_info,
+    const SchemaVersion schema_version, const OpId& op_id) {
   DCHECK(schema.has_column_ids());
+  std::lock_guard lock(data_mutex_);
   Primary primary(table_id == primary_table_id_);
   TableInfoPtr new_table_info = std::make_shared<TableInfo>(log_prefix_,
                                                             primary,
@@ -1302,7 +1298,6 @@ void RaftGroupMetadata::AddTable(const std::string& table_id,
       new_table_info->doc_read_context->SetCotableId(new_table_info->cotable_id);
     }
   }
-  std::lock_guard lock(data_mutex_);
   auto& tables = kv_store_.tables;
   auto[iter, inserted] = tables.emplace(table_id, new_table_info);
   OnChangeMetadataOperationAppliedUnlocked(op_id);
@@ -1694,6 +1689,7 @@ Result<docdb::CompactionSchemaInfo> RaftGroupMetadata::ColocationPacking(
 }
 
 std::string RaftGroupMetadata::GetSubRaftGroupWalDir(const RaftGroupId& raft_group_id) const {
+  std::lock_guard lock(data_mutex_);
   return JoinPathSegments(DirName(wal_dir_), MakeTabletDirName(raft_group_id));
 }
 

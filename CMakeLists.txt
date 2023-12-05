@@ -364,6 +364,7 @@ if(IS_CLANG)
   ADD_CXX_FLAGS("-Werror=implicit-fallthrough")
   ADD_CXX_FLAGS("-D_LIBCPP_ENABLE_THREAD_SAFETY_ANNOTATIONS")
   ADD_CXX_FLAGS("-Wthread-safety-analysis")
+  ADD_CXX_FLAGS("-Wthread-safety-reference")
 
   if("$ENV{YB_ENABLE_STATIC_ANALYZER}" STREQUAL "1")
     if(APPLE)

@@ -1754,16 +1754,16 @@ TEST_F(CDCServiceTestMaxRentionTime, TestLogRetentionByOpId_MaxRentionTime) {
   // Since we haven't updated the minimum cdc index, and the elapsed time is less than
   // kMaxSecondsToRetain, no log files should be returned.
   log::SegmentSequence segment_sequence;
-  ASSERT_OK(tablet_peer->log()->GetSegmentsToGCUnlocked(std::numeric_limits<int64_t>::max(),
-                                                        &segment_sequence));
+  ASSERT_OK(
+      tablet_peer->log()->GetSegmentsToGC(std::numeric_limits<int64_t>::max(), &segment_sequence));
   ASSERT_EQ(segment_sequence.size(), 0);
   LOG(INFO) << "No segments to be GCed because less than " << kMaxSecondsToRetain
             << " seconds have elapsed";
 
   SleepFor(time_to_sleep);
 
-  ASSERT_OK(tablet_peer->log()->GetSegmentsToGCUnlocked(std::numeric_limits<int64_t>::max(),
-                                                              &segment_sequence));
+  ASSERT_OK(
+      tablet_peer->log()->GetSegmentsToGC(std::numeric_limits<int64_t>::max(), &segment_sequence));
   ASSERT_GT(segment_sequence.size(), 0);
   const auto& segments_violate =
       *(tablet_peer->log()->reader_->TEST_segments_violate_max_time_policy_);
@@ -1945,14 +1945,14 @@ TEST_F(CDCServiceTestMinSpace, TestLogRetentionByOpId_MinSpace) {
   }
 
   log::SegmentSequence segment_sequence;
-  ASSERT_OK(tablet_peer->log()->GetSegmentsToGCUnlocked(std::numeric_limits<int64_t>::max(),
-                                                        &segment_sequence));
+  ASSERT_OK(
+      tablet_peer->log()->GetSegmentsToGC(std::numeric_limits<int64_t>::max(), &segment_sequence));
   ASSERT_EQ(segment_sequence.size(), 0);
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_free_space_bytes) = 128;
 
-  ASSERT_OK(tablet_peer->log()->GetSegmentsToGCUnlocked(std::numeric_limits<int64_t>::max(),
-                                                        &segment_sequence));
+  ASSERT_OK(
+      tablet_peer->log()->GetSegmentsToGC(std::numeric_limits<int64_t>::max(), &segment_sequence));
   ASSERT_GT(segment_sequence.size(), 0);
   const auto& segments_violate =
       *(tablet_peer->log()->reader_->TEST_segments_violate_min_space_policy_);

@@ -1923,7 +1923,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status EnableBgTasks();
 
   // Helper function for RebuildYQLSystemPartitions to get the system.partitions tablet.
-  Status GetYQLPartitionsVTable(std::shared_ptr<SystemTablet>* tablet);
+  Status GetYQLPartitionsVTable(std::shared_ptr<SystemTablet>* tablet) REQUIRES(mutex_);
   // Background task for automatically rebuilding system.partitions every
   // partitions_vtable_cache_refresh_secs seconds.
   void RebuildYQLSystemPartitions();

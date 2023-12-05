@@ -123,6 +123,7 @@ typedef Callback<void(tablet::TabletPeerPtr)> ConsensusChangeCallback;
 
 // Type of tablet directory.
 YB_DEFINE_ENUM(TabletDirType, (kData)(kWal));
+YB_DEFINE_ENUM(TabletRemoteSessionType, (kBootstrap)(kSnapshotTransfer));
 
 // Keeps track of the tablets hosted on the tablet server side.
 //
@@ -572,7 +573,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       std::function<Status()> callback = [] { return Status::OK(); });
 
   void WaitForRemoteSessionsToEnd(
-      const RemoteClients& remote_clients, const std::string& debug_session_string) const;
+      TabletRemoteSessionType session_type, const std::string& debug_session_string) const
+      EXCLUDES(mutex_);
 
   void DecrementRemoteSessionCount(const std::string& private_addr, RemoteClients* remote_clients);
 
@@ -700,7 +702,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   std::shared_ptr<TabletMemoryManager> mem_manager_;
 
   RemoteClients remote_bootstrap_clients_ GUARDED_BY(mutex_);
-  RemoteClients snapshot_transfer_clients GUARDED_BY(mutex_);
+  RemoteClients snapshot_transfer_clients_ GUARDED_BY(mutex_);
 
   // Gauge to monitor applied split operations.
   scoped_refptr<yb::AtomicGauge<uint64_t>> ts_split_op_apply_;

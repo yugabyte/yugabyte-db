@@ -56,6 +56,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/unique_lock.h"
 
 using std::vector;
 using std::string;
@@ -136,7 +137,7 @@ struct NoOp {
 // Finds appropriate entry in passed collection and invokes Done on it.
 template <class Collection, class PostProcess = NoOp>
 auto MakeDoneCallback(
-    std::mutex* mutex, const Collection& collection, const typename Collection::key_type& key,
+    std::mutex* mutex, const Collection* collection, const typename Collection::key_type& key,
     const TabletId& tablet_id, const PostProcess& post_process = PostProcess()) {
   struct DoneFunctor {
     std::mutex& mutex;
@@ -158,12 +159,12 @@ auto MakeDoneCallback(
     }
   };
 
-  return DoneFunctor {
-    .mutex = *mutex,
-    .collection = collection,
-    .key = key,
-    .tablet_id = tablet_id,
-    .post_process = post_process,
+  return DoneFunctor{
+      .mutex = *mutex,
+      .collection = *collection,
+      .key = key,
+      .tablet_id = tablet_id,
+      .post_process = post_process,
   };
 }
 
@@ -327,12 +328,11 @@ class MasterSnapshotCoordinator::Impl {
     return Status::OK();
   }
 
-  void UpdateSnapshotIfPresent(const TxnSnapshotId& id, int64_t leader_term)
-      NO_THREAD_SAFETY_ANALYSIS EXCLUDES(mutex_) {
-    std::unique_lock<std::mutex> lock(mutex_);
+  void UpdateSnapshotIfPresent(const TxnSnapshotId& id, int64_t leader_term) EXCLUDES(mutex_) {
+    UniqueLock lock(mutex_);
     auto it = snapshots_.find(id);
     if (it != snapshots_.end()) {
-      UpdateSnapshot(it->get(), leader_term, &lock);
+      UpdateSnapshot(it->get(), leader_term, &GetLockForCondition(&lock));
     }
   }
 
@@ -340,7 +340,7 @@ class MasterSnapshotCoordinator::Impl {
   Status LoadEntryOfType(
       tablet::Tablet* tablet, const SysRowEntryType& type, Map* m) REQUIRES(mutex_) {
     return EnumerateSysCatalog(tablet, context_.schema(), type,
-        [this, &m](const Slice& id, const Slice& data) NO_THREAD_SAFETY_ANALYSIS -> Status {
+        [this, &m](const Slice& id, const Slice& data) REQUIRES(mutex_) -> Status {
           return LoadEntry<Pb>(id, data, m);
     });
   }
@@ -1226,7 +1226,7 @@ class MasterSnapshotCoordinator::Impl {
       const TabletSnapshotOperation& operation, const TabletInfoPtr& tablet_info,
       int64_t leader_term) {
     auto callback = MakeDoneCallback(
-        &mutex_, snapshots_, operation.snapshot_id, operation.tablet_id,
+        &mutex_, &snapshots_, operation.snapshot_id, operation.tablet_id,
         std::bind(&Impl::UpdateSnapshot, this, _1, leader_term, _2));
     if (!tablet_info) {
       callback(STATUS_EC_FORMAT(NotFound, MasterError(MasterErrorPB::TABLET_NOT_RUNNING),
@@ -1296,7 +1296,7 @@ class MasterSnapshotCoordinator::Impl {
       const TabletRestoreOperation& operation, const TabletInfoPtr& tablet_info,
       int64_t leader_term) {
     auto callback = MakeDoneCallback(
-        &mutex_, restorations_, operation.restoration_id, operation.tablet_id,
+        &mutex_, &restorations_, operation.restoration_id, operation.tablet_id,
         std::bind(&Impl::FinishRestoration, this, _1, leader_term));
     if (!tablet_info) {
       callback(STATUS_EC_FORMAT(
@@ -1390,10 +1390,11 @@ class MasterSnapshotCoordinator::Impl {
         }
         r->PrepareOperations(&restore_operations, tablets_snapshot, db_oid);
       }
+      for (const auto& id : cleanup_snapshots) {
+        CleanupObject(leader_term, id, snapshots_, EncodedSnapshotKey(id, &context_));
+      }
     }
-    for (const auto& id : cleanup_snapshots) {
-      CleanupObject(leader_term, id, snapshots_, EncodedSnapshotKey(id, &context_));
-    }
+
     ExecuteOperations(operations, leader_term);
     PollSchedulesComplete(schedules_data, l.epoch());
     ExecuteRestoreOperations(restore_operations, leader_term);
@@ -1465,11 +1466,13 @@ class MasterSnapshotCoordinator::Impl {
           WARN_NOT_OK(ExecuteScheduleOperation(operation, epoch.leader_term),
                       Format("Failed to execute operation on $0", operation.schedule_id));
           break;
-        case SnapshotScheduleOperationType::kCleanup:
+        case SnapshotScheduleOperationType::kCleanup: {
+          std::lock_guard l(mutex_);
           CleanupObject(
               epoch.leader_term, operation.schedule_id, schedules_,
               SnapshotScheduleState::EncodedKey(operation.schedule_id, &context_));
           break;
+        }
         default:
           LOG(DFATAL) << "Unexpected operation type: " << operation.type;
           break;

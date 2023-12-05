@@ -1202,11 +1202,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   void DoCommit(
       CoarseTimePoint deadline, SealOnly seal_only, const Status& status,
       const YBTransactionPtr& transaction) EXCLUDES(mutex_) {
+    UniqueLock lock(mutex_);
     VLOG_WITH_PREFIX(1)
         << Format("Commit, seal_only: $0, tablets: $1, status: $2",
                   seal_only, tablets_, status);
-
-    UniqueLock lock(mutex_);
 
     if (!status.ok()) {
       VLOG_WITH_PREFIX(4) << "Commit failed: " << status;
@@ -1537,9 +1536,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         client::UseCache::kTrue);
   }
 
-  void LookupTabletDone(const Result<client::internal::RemoteTabletPtr>& result,
-                        const YBTransactionPtr& transaction,
-                        TransactionPromoting promoting) {
+  void LookupTabletDone(
+      const Result<client::internal::RemoteTabletPtr>& result, const YBTransactionPtr& transaction,
+      TransactionPromoting promoting) EXCLUDES(mutex_) {
     TRACE_TO(trace_, __func__);
     VLOG_WITH_PREFIX(1) << "Lookup tablet done: " << yb::ToString(result);
 
@@ -1553,7 +1552,12 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     if (status == TransactionStatus::ABORTED) {
       DCHECK(promoting);
-      SendAbortToOldStatusTabletIfNeeded(TransactionRpcDeadline(), transaction, old_status_tablet_);
+      decltype(old_status_tablet_) old_status_tablet;
+      {
+        SharedLock lock(mutex_);
+        old_status_tablet = old_status_tablet_;
+      }
+      SendAbortToOldStatusTabletIfNeeded(TransactionRpcDeadline(), transaction, old_status_tablet);
     } else {
       SendHeartbeat(status, metadata_.transaction_id, transaction_->shared_from_this(),
                     SendHeartbeatToNewTablet(promoting));

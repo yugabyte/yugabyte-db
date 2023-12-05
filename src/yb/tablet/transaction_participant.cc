@@ -226,14 +226,13 @@ class TransactionParticipant::Impl
     return true;
   }
 
-  void CompleteShutdown() {
+  void CompleteShutdown() EXCLUDES(mutex_, status_resolvers_mutex_) {
     LOG_IF_WITH_PREFIX(DFATAL, !Closing()) << __func__ << " w/o StartShutdown";
 
     if (wait_queue_) {
       wait_queue_->CompleteShutdown();
     }
 
-    decltype(status_resolvers_) status_resolvers;
     {
       UniqueLock lock(mutex_);
       WaitOnConditionVariable(
@@ -244,8 +243,14 @@ class TransactionParticipant::Impl
       DumpClear(RemoveReason::kShutdown);
       transactions_.clear();
       TransactionsModifiedUnlocked(&min_running_notifier);
-      status_resolvers.swap(status_resolvers_);
+
       mem_tracker_->UnregisterFromParent();
+    }
+
+    decltype(status_resolvers_) status_resolvers;
+    {
+      std::lock_guard lock(status_resolvers_mutex_);
+      status_resolvers.swap(status_resolvers_);
     }
 
     rpcs_.Shutdown();
@@ -1562,7 +1567,7 @@ class TransactionParticipant::Impl
     bool recently_removed;
     Status deadlock_status;
     {
-      std::unique_lock<std::mutex> lock(mutex_);
+      UniqueLock<std::mutex> lock(mutex_);
       auto it = transactions_.find(id);
       if (it != transactions_.end()) {
         if ((**it).start_ht() <= ignore_all_transactions_started_before_) {
@@ -1571,7 +1576,7 @@ class TransactionParticipant::Impl
               << ignore_all_transactions_started_before_ << ", txn: " << AsString(**it);
           return LockAndFindResult{};
         }
-        return LockAndFindResult{ std::move(lock), it };
+        return LockAndFindResult{std::move(GetLockForCondition(&lock)), it};
       }
       recently_removed = WasTransactionRecentlyRemoved(id);
       deadlock_status = GetTransactionDeadlockStatusUnlocked(id);

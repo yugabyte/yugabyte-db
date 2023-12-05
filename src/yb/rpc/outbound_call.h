@@ -385,9 +385,13 @@ class OutboundCall : public RpcCall {
 
   size_t ObjectSize() const override { return sizeof(*this); }
 
-  size_t DynamicMemoryUsage() const override {
-    return DynamicMemoryUsageAllowSizeOf(error_pb_) +
-           DynamicMemoryUsageOf(buffer_, call_response_, trace_);
+  size_t DynamicMemoryUsage() const override ON_REACTOR_THREAD EXCLUDES(mtx_) {
+    size_t allow_size_of;
+    {
+      std::lock_guard lock(mtx_);
+      allow_size_of = DynamicMemoryUsageAllowSizeOf(error_pb_);
+    }
+    return allow_size_of + DynamicMemoryUsageOf(buffer_, call_response_, trace_);
   }
 
   CoarseTimePoint CallStartTime() const { return start_; }

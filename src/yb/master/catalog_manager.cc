@@ -2674,7 +2674,7 @@ void CatalogManager::RefreshTablespaceInfoPeriodically() {
     return;
   }
 
-  LeaderEpoch epoch(-1);
+  LeaderEpoch epoch;
   {
     SCOPED_LEADER_SHARED_LOCK(l, this);
     if (!l.IsInitializedAndIsLeader()) {
@@ -9845,12 +9845,13 @@ Status CatalogManager::GetUDTypeInfo(const GetUDTypeInfoRequestPB* req,
   }
 
   if (req->type().has_type_id()) {
+    SharedLock lock(mutex_);
     tp = FindPtrOrNull(udtype_ids_map_, req->type().type_id());
   } else if (req->type().has_type_name() && req->type().has_namespace_()) {
     // Lookup the type and verify if it exists.
     TRACE("Looking up namespace");
     ns = VERIFY_NAMESPACE_FOUND(FindNamespace(req->type().namespace_()), resp);
-
+    SharedLock lock(mutex_);
     tp = FindPtrOrNull(udtype_names_map_, std::make_pair(ns->id(), req->type().type_name()));
   }
 

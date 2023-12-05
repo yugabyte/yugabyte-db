@@ -1358,10 +1358,10 @@ Status TSTabletManager::StartRemoteSnapshotTransfer(
   // ScopeExit before calling RegisterRemoteClientAndLookupTablet so that if it fails,
   // we cleanup as expected.
   auto decrement_num_session = ScopeExit([this, &private_addr]() {
-    DecrementRemoteSessionCount(private_addr, &snapshot_transfer_clients);
+    DecrementRemoteSessionCount(private_addr, &snapshot_transfer_clients_);
   });
   TabletPeerPtr tablet = VERIFY_RESULT(RegisterRemoteClientAndLookupTablet(
-      tablet_id, private_addr, kLogPrefix, &snapshot_transfer_clients));
+      tablet_id, private_addr, kLogPrefix, &snapshot_transfer_clients_));
 
   SCHECK(tablet, InvalidArgument, Format("Could not find tablet $0", tablet_id));
   const auto& rocksdb_dir = tablet->tablet_metadata()->rocksdb_dir();
@@ -1550,8 +1550,8 @@ Status TSTabletManager::StartTabletStateTransition(
 }
 
 bool TSTabletManager::IsTabletInTransition(const TabletId& tablet_id) const {
-  std::unique_lock<std::mutex> lock(transition_in_progress_mutex_);
-  return ContainsKey(transition_in_progress_, tablet_id);
+  std::lock_guard lock(transition_in_progress_mutex_);
+  return transition_in_progress_.contains(tablet_id);
 }
 
 Status TSTabletManager::OpenTabletMeta(const string& tablet_id,
@@ -1831,8 +1831,9 @@ void TSTabletManager::StartShutdown() {
   full_compaction_manager_->Shutdown();
 
   // Wait for all remote operations to finish.
-  WaitForRemoteSessionsToEnd(remote_bootstrap_clients_, kDebugBootstrapString);
-  WaitForRemoteSessionsToEnd(snapshot_transfer_clients, kDebugSnapshotTransferString);
+  WaitForRemoteSessionsToEnd(TabletRemoteSessionType::kBootstrap, kDebugBootstrapString);
+  WaitForRemoteSessionsToEnd(
+      TabletRemoteSessionType::kSnapshotTransfer, kDebugSnapshotTransferString);
 
   // Shut down the bootstrap pool, so new tablets are registered after this point.
   open_tablet_pool_->Shutdown();
@@ -2893,7 +2894,7 @@ void TSTabletManager::FlushDirtySuperblocks() {
 }
 
 void TSTabletManager::WaitForRemoteSessionsToEnd(
-    const RemoteClients& remote_clients, const std::string& debug_session_string) const {
+    TabletRemoteSessionType session_type, const std::string& debug_session_string) const {
   const MonoDelta kSingleWait = 10ms;
   const MonoDelta kReportInterval = 5s;
   const MonoDelta kMaxWait = 30s;
@@ -2902,6 +2903,9 @@ void TSTabletManager::WaitForRemoteSessionsToEnd(
   while (true) {
     {
       std::lock_guard lock(mutex_);
+      auto& remote_clients = session_type == TabletRemoteSessionType::kBootstrap
+                                 ? remote_bootstrap_clients_
+                                 : snapshot_transfer_clients_;
       const auto& remaining_sessions = remote_clients.num_clients_;
       const auto& source_addresses = remote_clients.source_addresses_;
       if (remaining_sessions == 0) return;
