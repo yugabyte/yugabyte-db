@@ -1383,6 +1383,10 @@
     "AuditLogConfig" : {
       "description" : "Audit Log Configuration",
       "properties" : {
+        "exportActive" : {
+          "description" : "Universe logs export active",
+          "type" : "boolean"
+        },
         "universeLogsExporterConfig" : {
           "description" : "Universe logs exporter config",
           "items" : {
@@ -7596,6 +7600,11 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "otelCollectorMetricsPort" : {
+          "description" : "Otel collector metrics port",
+          "format" : "int32",
+          "type" : "integer"
+        },
         "placementUuid" : {
           "description" : "UUID of the cluster to which this node belongs",
           "format" : "uuid",
@@ -7774,6 +7783,11 @@
           "description" : "Node UUID",
           "format" : "uuid",
           "type" : "string"
+        },
+        "otelCollectorMetricsPort" : {
+          "description" : "Otel collector metrics port",
+          "format" : "int32",
+          "type" : "integer"
         },
         "placementUuid" : {
           "description" : "UUID of the cluster to which this node belongs",

@@ -34,6 +34,46 @@
         dest: "{{ otel_col_config_file }}"
       when: otel_col_config_file_local is defined
 
+    - name: Control OpenTelemetry collector | Create AWS credentials dir
+      file:
+        path: "{{ yb_home_dir }}/.aws"
+        state: directory
+
+    - name: Control OpenTelemetry collector | Check AWS credentials file exists
+      stat:
+        path: "{{ aws_creds }}"
+      register: aws_creds_file
+
+    - name: Control OpenTelemetry collector | Remove existing AWS credentials
+      blockinfile:
+        path: "{{ aws_creds }}"
+        block: ""
+        marker: "# {mark} ANSIBLE MANAGED BLOCK - OTEL COLLECTOR CREDENTIALS"
+      when: aws_creds_file.stat.exists
+
+    - name: Control OpenTelemetry collector | Write AWS credentials
+      blockinfile:
+        path: "{{ aws_creds }}"
+        block: |
+          [otel-collector]
+          aws_access_key_id = {{ otel_col_aws_access_key }}
+          aws_secret_access_key = {{ otel_col_aws_secret_key }}
+        marker: "# {mark} ANSIBLE MANAGED BLOCK - OTEL COLLECTOR CREDENTIALS"
+        create: yes
+        mode: 0440
+      when: otel_col_aws_access_key is defined and otel_col_aws_secret_key is defined
+
+    - name: Control OpenTelemetry collector | Remove existing GCP credentials
+      file:
+        path: "{{ otel_col_gcp_creds }}"
+        state: absent
+
+    - name: Control OpenTelemetry collector | Write GCP credentials
+      copy:
+        src: "{{ otel_col_gcp_creds_local }}"
+        dest: "{{ otel_col_gcp_creds }}"
+      when: otel_col_gcp_creds_local is defined
+
     - name: Control OpenTelemetry collector | User mode systemd | Enable and start OpenTelemetry collector
       systemd:
         name: otel-collector
@@ -52,3 +92,13 @@
           shell:
             cmd: "sudo systemctl start otel-collector"
       when: systemd_system.stat.exists and otel_col_config_file_local is defined
+
+    - name: Control OpenTelemetry collector | Write logs cleanup settings for export enabled systems
+      blockinfile:
+        path: "{{ otel_col_log_cleanup_env }}"
+        block: |
+          preserve_audit_logs=true
+          ycql_audit_log_level={{ ycql_audit_log_level }}
+        create: yes
+        mode: 0440
+      when: otel_col_config_file_local is defined

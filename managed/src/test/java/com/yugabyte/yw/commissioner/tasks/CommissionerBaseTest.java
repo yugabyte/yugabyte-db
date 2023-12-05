@@ -92,6 +92,7 @@ import org.mockito.Mockito;
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
+import org.slf4j.LoggerFactory;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
@@ -437,6 +438,15 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       ITaskParams taskParams,
       boolean checkStrictOrdering) {
     try {
+
+      // Turning off logs for task retry tests as we're doing 194 retries in this test sometimes,
+      // and it spams logs like crazy - which will cause OOMs in Jenkins
+      // - as Jenkins caches stdout in memory until test finishes.
+      ch.qos.logback.classic.Logger rootLogger =
+          (ch.qos.logback.classic.Logger)
+              LoggerFactory.getLogger(ch.qos.logback.classic.Logger.ROOT_LOGGER_NAME);
+      rootLogger.detachAppender("ASYNCSTDOUT");
+
       setPausePosition(0);
       UUID taskUuid = commissioner.submit(taskType, taskParams);
       CustomerTask.create(

@@ -159,7 +159,7 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
     for (NodeDetails node : universe.getNodes()) {
       for (UniverseTaskBase.ServerType serverType : node.getAllProcesses()) {
         Map<String, String> varz = getVarz(node, universe, serverType);
-        Map<String, String> gflags = specificGFlags.getGFlags(node, serverType);
+        Map<String, String> gflags = specificGFlags.getGFlags(node.azUuid, serverType);
         gflags.forEach(
             (k, v) -> {
               String actual = varz.getOrDefault(k, "?????");
