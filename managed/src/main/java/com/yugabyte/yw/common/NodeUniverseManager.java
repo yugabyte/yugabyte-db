@@ -376,8 +376,10 @@ public class NodeUniverseManager extends DevopsBase {
     bashCommand.add(String.valueOf(node.ysqlServerRpcPort));
     bashCommand.add("-U");
     bashCommand.add("yugabyte");
-    bashCommand.add("-d");
-    bashCommand.add(dbName);
+    if (StringUtils.isNotEmpty(dbName)) {
+      bashCommand.add("-d");
+      bashCommand.add(dbName);
+    }
     bashCommand.add("-c");
     // Escaping double quotes and $ at first.
     String escapedYsqlCommand = ysqlCommand.replace("\"", "\\\"");

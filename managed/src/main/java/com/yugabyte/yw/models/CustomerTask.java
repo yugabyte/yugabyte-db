@@ -150,6 +150,9 @@ public class CustomerTask extends Model {
     @EnumValue("Synchronize")
     Sync,
 
+    @EnumValue("LdapSync")
+    LdapSync,
+
     @EnumValue("RestartUniverse")
     RestartUniverse,
 
@@ -360,6 +363,8 @@ public class CustomerTask extends Model {
           return completed ? "Edited " : "Editing ";
         case Sync:
           return completed ? "Synchronized " : "Synchronizing ";
+        case LdapSync:
+          return completed ? "LDAP Sync Completed on " : "LDAP Sync in Progress on ";
         case RestartUniverse:
           return completed ? "Restarted " : "Restarting ";
         case SoftwareUpgrade:
