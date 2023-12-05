@@ -24,6 +24,57 @@ class CDCSDKTabletSplitTest : public CDCSDKYsqlTest {
     CDCSDKYsqlTest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables) = true;
   }
+
+  void TestIntentPersistencyAfterTabletSplit(CDCCheckpointType checkpoint_type);
+
+  void TestCheckpointPersistencyAfterTabletSplit(CDCCheckpointType checkpoint_type);
+
+  void TestTransactionInsertAfterTabletSplit(CDCCheckpointType checkpoint_type);
+
+  void TestGetChangesReportsTabletSplitErrorOnRetries(CDCCheckpointType checkpoint_type);
+
+  void TestGetChangesAfterTabletSplitWithMasterShutdown(CDCCheckpointType checkpoint_type);
+
+  void TestGetChangesOnChildrenOnSplit(CDCCheckpointType checkpoint_type);
+
+  void TestGetChangesOnParentTabletAfterTabletSplit(CDCCheckpointType checkpoint_type);
+
+  void TestGetChangesMultipleStreamsTabletSplit(CDCCheckpointType checkpoint_type);
+
+  void TestSetCDCCheckpointAfterTabletSplit(CDCCheckpointType checkpoint_type);
+
+  void TestCDCStateTableAfterTabletSplit(CDCCheckpointType checkpoint_type);
+
+  void TestGetTabletListToPollForCDCAfterTabletSplitReported(CDCCheckpointType checkpoint_type);
+
+  void TestGetTabletListToPollForCDCBeforeTabletSplitReported(CDCCheckpointType checkpoint_type);
+
+  void TestGetTabletListToPollForCDCBootstrapWithTabletSplit(CDCCheckpointType checkpoint_type);
+
+  void TestGetTabletListToPollForCDCBootstrapWithTwoTabletSplits(CDCCheckpointType checkpoint_type);
+
+  void TestGetTabletListToPollForCDCWithTwoTabletSplits(CDCCheckpointType checkpoint_type);
+
+  void TestTabletSplitOnAddedTableForCDC(CDCCheckpointType checkpoint_type);
+
+  void TestTabletSplitOnAddedTableForCDCWithMasterRestart(CDCCheckpointType checkpoint_type);
+
+  void TestTransactionCommitAfterTabletSplit(CDCCheckpointType checkpoint_type);
+
+  void TestTabletSplitBeforeBootstrapGetCheckpoint(CDCCheckpointType checkpoint_type);
+
+  void TestGetTabletListToPollForCDCWithOnlyOnePolledChild(CDCCheckpointType checkpoint_type);
+
+  void TestRecordCountsAfterMultipleTabletSplits(CDCCheckpointType checkpoint_type);
+
+  void TestRecordCountAfterMultipleTabletSplitsInMultiNodeCluster(
+      CDCCheckpointType checkpoint_type);
+
+  void TestStreamMetaDataCleanupDropTableAfterTabletSplit(CDCCheckpointType checkpoint_type);
+
+  void TestGetTabletListToPollForCDCWithTabletId(CDCCheckpointType checkpoint_type);
+
+  void TestCleanUpCDCStreamsMetadataDuringTabletSplit(CDCCheckpointType checkpoint_type);
 };
 
 TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitDisabledForTablesWithStream)) {
@@ -43,7 +94,7 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitDisabledFor
   // Should be ok to split before creating a stream.
   ASSERT_OK(XreplValidateSplitCandidateTable(table_id));
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream());
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
 
@@ -62,7 +113,8 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitDisabledFor
   ASSERT_OK(XreplValidateSplitCandidateTable(table_id));
 }
 
-TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestIntentPersistencyAfterTabletSplit)) {
+void CDCSDKTabletSplitTest::TestIntentPersistencyAfterTabletSplit(
+    CDCCheckpointType checkpoint_type) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 1;
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
@@ -73,7 +125,7 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestIntentPersistencyAfter
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
 
@@ -103,7 +155,11 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestIntentPersistencyAfter
   ASSERT_GE(change_resp_1.cdc_sdk_proto_records_size(), 100);
 }
 
-TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestCheckpointPersistencyAfterTabletSplit)) {
+CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKTabletSplitTest,
+                                        TestIntentPersistencyAfterTabletSplit);
+
+void CDCSDKTabletSplitTest::TestCheckpointPersistencyAfterTabletSplit(
+    CDCCheckpointType checkpoint_type) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ASSERT_OK(SetUpWithParams(1, 1, false));
@@ -114,7 +170,7 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestCheckpointPersistencyA
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
 
@@ -163,7 +219,11 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestCheckpointPersistencyA
   }
 }
 
-TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionInsertAfterTabletSplit)) {
+CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKTabletSplitTest,
+                                        TestCheckpointPersistencyAfterTabletSplit);
+
+void CDCSDKTabletSplitTest::TestTransactionInsertAfterTabletSplit(
+    CDCCheckpointType checkpoint_type) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ASSERT_OK(SetUpWithParams(1, 1, false));
@@ -174,7 +234,7 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionInsertAfter
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
 
@@ -243,9 +303,11 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionInsertAfter
       change_resp_2.cdc_sdk_proto_records_size() + change_resp_3.cdc_sdk_proto_records_size(), 100);
 }
 
-TEST_F(
-    CDCSDKTabletSplitTest,
-    YB_DISABLE_TEST_IN_TSAN(TestGetChangesReportsTabletSplitErrorOnRetries)) {
+CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKTabletSplitTest,
+                                        TestTransactionInsertAfterTabletSplit);
+
+void CDCSDKTabletSplitTest::TestGetChangesReportsTabletSplitErrorOnRetries(
+    CDCCheckpointType checkpoint_type) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ASSERT_OK(SetUpWithParams(1, 1, false));
@@ -256,7 +318,7 @@ TEST_F(
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
 
@@ -306,9 +368,11 @@ TEST_F(
       MonoDelta::FromSeconds(90), "GetChanges did not report error for tablet split"));
 }
 
-TEST_F(
-    CDCSDKTabletSplitTest,
-    YB_DISABLE_TEST_IN_TSAN(TestGetChangesAfterTabletSplitWithMasterShutdown)) {
+CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKTabletSplitTest,
+                                        TestGetChangesReportsTabletSplitErrorOnRetries);
+
+void CDCSDKTabletSplitTest::TestGetChangesAfterTabletSplitWithMasterShutdown(
+    CDCCheckpointType checkpoint_type) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_aborted_intent_cleanup_ms) = 1000;
@@ -320,7 +384,7 @@ TEST_F(
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
   GetChangesResponsePB change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
@@ -355,7 +419,10 @@ TEST_F(
   ASSERT_NOK(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
 }
 
-TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestGetChangesOnChildrenOnSplit)) {
+CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKTabletSplitTest,
+                                        TestGetChangesAfterTabletSplitWithMasterShutdown);
+
+void CDCSDKTabletSplitTest::TestGetChangesOnChildrenOnSplit(CDCCheckpointType checkpoint_type) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_aborted_intent_cleanup_ms) = 1000;
@@ -367,7 +434,7 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestGetChangesOnChildrenOn
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
   GetChangesResponsePB change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
@@ -401,8 +468,11 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestGetChangesOnChildrenOn
                                       safe_hybrid_time, wal_segment_index, false));
 }
 
-TEST_F(
-    CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestGetChangesOnParentTabletAfterTabletSplit)) {
+CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKTabletSplitTest,
+                                        TestGetChangesOnChildrenOnSplit);
+
+void CDCSDKTabletSplitTest::TestGetChangesOnParentTabletAfterTabletSplit(
+    CDCCheckpointType checkpoint_type) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_aborted_intent_cleanup_ms) = 1000;
@@ -414,7 +484,7 @@ TEST_F(
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
   GetChangesResponsePB change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
@@ -449,7 +519,11 @@ TEST_F(
   ASSERT_NOK(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
 }
 
-TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestGetChangesMultipleStreamsTabletSplit)) {
+CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKTabletSplitTest,
+                                        TestGetChangesOnParentTabletAfterTabletSplit);
+
+void CDCSDKTabletSplitTest::TestGetChangesMultipleStreamsTabletSplit(
+    CDCCheckpointType checkpoint_type) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_aborted_intent_cleanup_ms) = 1000;
@@ -461,8 +535,8 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestGetChangesMultipleStre
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  xrepl::StreamId stream_id_1 = ASSERT_RESULT(CreateDBStream(IMPLICIT));
-  xrepl::StreamId stream_id_2 = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id_1 = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
+  xrepl::StreamId stream_id_2 = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id_1, tablets));
   ASSERT_FALSE(resp.has_error());
   resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id_2, tablets));
@@ -510,7 +584,11 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestGetChangesMultipleStre
   ASSERT_NOK(GetChangesFromCDC(stream_id_2, tablets, &change_resp_2.cdc_sdk_checkpoint()));
 }
 
-TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestSetCDCCheckpointAfterTabletSplit)) {
+CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKTabletSplitTest,
+                                        TestGetChangesMultipleStreamsTabletSplit);
+
+void CDCSDKTabletSplitTest::TestSetCDCCheckpointAfterTabletSplit(
+    CDCCheckpointType checkpoint_type) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_aborted_intent_cleanup_ms) = 1000;
@@ -523,7 +601,7 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestSetCDCCheckpointAfterT
       table, 0, &tablets_before_split, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets_before_split.size(), num_tablets);
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
 
   ASSERT_OK(WriteRowsHelper(0, 1000, &test_cluster_, true));
   ASSERT_OK(test_client()->FlushTables(
@@ -545,6 +623,9 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestSetCDCCheckpointAfterT
   resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets_after_split, OpId::Min(), true, 1));
   ASSERT_FALSE(resp.has_error());
 }
+
+CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKTabletSplitTest,
+                                        TestSetCDCCheckpointAfterTabletSplit);
 
 // TODO Adithya: This test is failing in alma linux with clang builds.
 TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST(TestTabletSplitBeforeBootstrap)) {
@@ -609,7 +690,7 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST(TestTabletSplitBeforeBootstrap)) {
   }
 }
 
-TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestCDCStateTableAfterTabletSplit)) {
+void CDCSDKTabletSplitTest::TestCDCStateTableAfterTabletSplit(CDCCheckpointType checkpoint_type) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_aborted_intent_cleanup_ms) = 1000;
@@ -623,7 +704,7 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestCDCStateTableAfterTabl
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
   GetChangesResponsePB change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
@@ -669,6 +750,9 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestCDCStateTableAfterTabl
 
   ASSERT_EQ(seen_rows, 3);
 }
+
+CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKTabletSplitTest,
+                                        TestCDCStateTableAfterTabletSplit);
 
 // TODO Adithya: This test is failing in alma linux with clang builds.
 TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST(TestCDCStateTableAfterTabletSplitReported)) {
@@ -791,9 +875,8 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST(TestCDCStateTableAfterTabletSplitR
   }
 }
 
-TEST_F(
-    CDCSDKTabletSplitTest,
-    YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollForCDCAfterTabletSplitReported)) {
+void CDCSDKTabletSplitTest::TestGetTabletListToPollForCDCAfterTabletSplitReported(
+    CDCCheckpointType checkpoint_type) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_aborted_intent_cleanup_ms) = 1000;
@@ -807,7 +890,7 @@ TEST_F(
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
   GetChangesResponsePB change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
@@ -866,9 +949,11 @@ TEST_F(
   ASSERT_TRUE(saw_row_child_one && saw_row_child_two);
 }
 
-TEST_F(
-    CDCSDKTabletSplitTest,
-    YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollForCDCBeforeTabletSplitReported)) {
+CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKTabletSplitTest,
+                                        TestGetTabletListToPollForCDCAfterTabletSplitReported);
+
+void CDCSDKTabletSplitTest::TestGetTabletListToPollForCDCBeforeTabletSplitReported(
+    CDCCheckpointType checkpoint_type) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_aborted_intent_cleanup_ms) = 1000;
@@ -882,8 +967,7 @@ TEST_F(
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
-  ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
   GetChangesResponsePB change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
@@ -915,9 +999,11 @@ TEST_F(
   }
 }
 
-TEST_F(
-    CDCSDKTabletSplitTest,
-    YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollForCDCBootstrapWithTabletSplit)) {
+CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKTabletSplitTest,
+    TestGetTabletListToPollForCDCBeforeTabletSplitReported);
+
+void CDCSDKTabletSplitTest::TestGetTabletListToPollForCDCBootstrapWithTabletSplit(
+    CDCCheckpointType checkpoint_type) {
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   const uint32_t num_tablets = 1;
@@ -926,7 +1012,7 @@ TEST_F(
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
   TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
 
   ASSERT_OK(WriteRowsHelper(1, 200, &test_cluster_, true));
@@ -962,9 +1048,11 @@ TEST_F(
   ASSERT_TRUE(saw_row_child_one && saw_row_child_two);
 }
 
-TEST_F(
-    CDCSDKTabletSplitTest,
-    YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollForCDCBootstrapWithTwoTabletSplits)) {
+CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKTabletSplitTest,
+                                        TestGetTabletListToPollForCDCBootstrapWithTabletSplit);
+
+void CDCSDKTabletSplitTest::TestGetTabletListToPollForCDCBootstrapWithTwoTabletSplits(
+    CDCCheckpointType checkpoint_type) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(SetUpWithParams(3, 1, false));
@@ -974,7 +1062,7 @@ TEST_F(
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
   TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
 
   ASSERT_OK(WriteRowsHelper(1, 200, &test_cluster_, true));
@@ -1014,9 +1102,11 @@ TEST_F(
   ASSERT_EQ(get_tablets_resp.tablet_checkpoint_pairs_size(), 3);
 }
 
-TEST_F(
-    CDCSDKTabletSplitTest,
-    YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollForCDCWithTwoTabletSplits)) {
+CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKTabletSplitTest,
+    TestGetTabletListToPollForCDCBootstrapWithTwoTabletSplits);
+
+void CDCSDKTabletSplitTest::TestGetTabletListToPollForCDCWithTwoTabletSplits(
+    CDCCheckpointType checkpoint_type) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_aborted_intent_cleanup_ms) = 1000;
@@ -1030,7 +1120,7 @@ TEST_F(
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
   GetChangesResponsePB change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
@@ -1107,7 +1197,10 @@ TEST_F(
       GetChangesFromCDC(stream_id, tablets_after_first_split, &change_resp_1.cdc_sdk_checkpoint()));
 }
 
-TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitOnAddedTableForCDC)) {
+CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKTabletSplitTest,
+                                        TestGetTabletListToPollForCDCWithTwoTabletSplits);
+
+void CDCSDKTabletSplitTest::TestTabletSplitOnAddedTableForCDC(CDCCheckpointType checkpoint_type) {
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 1;
@@ -1120,7 +1213,7 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitOnAddedTabl
   expected_table_ids.reserve(2);
   TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
   expected_table_ids.push_back(table_id);
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
 
   std::unordered_set<TabletId> expected_tablet_ids;
   for (const auto& tablet : tablets) {
@@ -1168,9 +1261,11 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitOnAddedTabl
   ASSERT_NOK(GetChangesFromCDC(stream_id, tablets_2, &change_resp.cdc_sdk_checkpoint()));
 }
 
-TEST_F(
-    CDCSDKTabletSplitTest,
-    YB_DISABLE_TEST_IN_TSAN(TestTabletSplitOnAddedTableForCDCWithMasterRestart)) {
+CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKTabletSplitTest,
+                                        TestTabletSplitOnAddedTableForCDC);
+
+void CDCSDKTabletSplitTest::TestTabletSplitOnAddedTableForCDCWithMasterRestart(
+    CDCCheckpointType checkpoint_type) {
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 1;
@@ -1183,7 +1278,7 @@ TEST_F(
   expected_table_ids.reserve(2);
   TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
   expected_table_ids.push_back(table_id);
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
 
   std::unordered_set<TabletId> expected_tablet_ids;
   for (const auto& tablet : tablets) {
@@ -1294,7 +1389,8 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitDuringSnaps
   ASSERT_EQ(reads_snapshot, 200);
 }
 
-TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionCommitAfterTabletSplit)) {
+void CDCSDKTabletSplitTest::TestTransactionCommitAfterTabletSplit(
+    CDCCheckpointType checkpoint_type) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
 
@@ -1310,7 +1406,7 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionCommitAfter
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
 
@@ -1381,8 +1477,11 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionCommitAfter
   ASSERT_GE(child1_record_count + child2_record_count, 200);
 }
 
-TEST_F(
-    CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitBeforeBootstrapGetCheckpoint)) {
+CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKTabletSplitTest,
+                                        TestTransactionCommitAfterTabletSplit);
+
+void CDCSDKTabletSplitTest::TestTabletSplitBeforeBootstrapGetCheckpoint(
+    CDCCheckpointType checkpoint_type) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_aborted_intent_cleanup_ms) = 1000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_metrics_interval_ms) = 5000;
@@ -1397,7 +1496,7 @@ TEST_F(
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
 
   TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
   ASSERT_OK(WriteRowsHelper(1, 200, &test_cluster_, true));
@@ -1418,9 +1517,11 @@ TEST_F(
   }
 }
 
-TEST_F(
-    CDCSDKTabletSplitTest,
-    YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollForCDCWithOnlyOnePolledChild)) {
+CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKTabletSplitTest,
+                                        TestTabletSplitBeforeBootstrapGetCheckpoint);
+
+void CDCSDKTabletSplitTest::TestGetTabletListToPollForCDCWithOnlyOnePolledChild(
+    CDCCheckpointType checkpoint_type) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_aborted_intent_cleanup_ms) = 1000;
@@ -1434,8 +1535,7 @@ TEST_F(
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
-  ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
   GetChangesResponsePB change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
@@ -1483,7 +1583,11 @@ TEST_F(
   }
 }
 
-TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestRecordCountsAfterMultipleTabletSplits)) {
+CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKTabletSplitTest,
+                                        TestGetTabletListToPollForCDCWithOnlyOnePolledChild);
+
+void CDCSDKTabletSplitTest::TestRecordCountsAfterMultipleTabletSplits(
+    CDCCheckpointType checkpoint_type) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_aborted_intent_cleanup_ms) = 1000;
@@ -1497,7 +1601,7 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestRecordCountsAfterMulti
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
 
@@ -1540,7 +1644,8 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestRecordCountsAfterMulti
   int record_count[] = {0, 0, 0, 0, 0, 0, 0, 0};
 
   GetRecordsAndSplitCount(
-      stream_id, tablets[0].tablet_id(), table_id, record_count, &total_records, &total_splits);
+      stream_id, tablets[0].tablet_id(), table_id, checkpoint_type, record_count, &total_records,
+      &total_splits);
 
   for (int i = 0; i < 8; i++) {
     ASSERT_EQ(expected_records_count[i], record_count[i]);
@@ -1551,9 +1656,11 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestRecordCountsAfterMulti
   ASSERT_EQ(expected_total_splits, total_splits);
 }
 
-TEST_F(
-    CDCSDKTabletSplitTest,
-    YB_DISABLE_TEST_IN_TSAN(TestRecordCountsAfterMultipleTabletSplitsInMultiNodeCluster)) {
+CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKTabletSplitTest,
+                                        TestRecordCountsAfterMultipleTabletSplits);
+
+void CDCSDKTabletSplitTest::TestRecordCountAfterMultipleTabletSplitsInMultiNodeCluster(
+    CDCCheckpointType checkpoint_type) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_aborted_intent_cleanup_ms) = 1000;
@@ -1567,7 +1674,7 @@ TEST_F(
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
 
@@ -1595,7 +1702,8 @@ TEST_F(
   int record_count[] = {0, 0, 0, 0, 0, 0, 0, 0};
 
   GetRecordsAndSplitCount(
-      stream_id, tablets[0].tablet_id(), table_id, record_count, &total_records, &total_splits);
+      stream_id, tablets[0].tablet_id(), table_id, checkpoint_type, record_count, &total_records,
+      &total_splits);
 
   for (int i = 0; i < 8; i++) {
     ASSERT_EQ(expected_records_count[i], record_count[i]);
@@ -1606,11 +1714,13 @@ TEST_F(
   ASSERT_EQ(expected_total_splits, total_splits);
 }
 
+CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKTabletSplitTest,
+                                        TestRecordCountAfterMultipleTabletSplitsInMultiNodeCluster);
+
 // Ensures that a drop table (table 2) after a tablet split (table 1) from the same namespace
 // doesn't lead to the deletion of parent tablet entry for table 1 in the cdc_state table.
-TEST_F(
-    CDCSDKTabletSplitTest,
-    YB_DISABLE_TEST_IN_TSAN(TestStreamMetaDataCleanupDropTableAfterTabletSplit)) {
+void CDCSDKTabletSplitTest::TestStreamMetaDataCleanupDropTableAfterTabletSplit(
+    CDCCheckpointType checkpoint_type) {
   // Setup cluster.
   ASSERT_OK(SetUpWithParams(3, 1, false));
   const vector<string> table_list_suffix = {"_1", "_2", "_3"};
@@ -1631,7 +1741,7 @@ TEST_F(
         0 /* start */, 100 /* end */, &test_cluster_, table_suffix, kNamespaceName, kTableName));
     idx += 1;
   }
-  auto stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  auto stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
 
   // Consume changes for table 1 whose tablet will be split later. It ensures that the parent tablet
   // remains in the cdc_state table after the split is complete.
@@ -1712,7 +1822,11 @@ TEST_F(
   ASSERT_TRUE(DeleteCDCStream(stream_id));
 }
 
-TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollForCDCWithTabletId)) {
+CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKTabletSplitTest,
+                                        TestStreamMetaDataCleanupDropTableAfterTabletSplit);
+
+void CDCSDKTabletSplitTest::TestGetTabletListToPollForCDCWithTabletId(
+    CDCCheckpointType checkpoint_type) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_aborted_intent_cleanup_ms) = 1000;
@@ -1725,7 +1839,7 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollFor
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
   GetChangesResponsePB change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
@@ -1780,7 +1894,11 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollFor
   ASSERT_TRUE(saw_row_child_one && saw_row_child_two);
 }
 
-TEST_F(CDCSDKTabletSplitTest, TestCleanUpCDCStreamsMetadataDuringTabletSplit) {
+CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKTabletSplitTest,
+                                        TestGetTabletListToPollForCDCWithTabletId);
+
+void CDCSDKTabletSplitTest::TestCleanUpCDCStreamsMetadataDuringTabletSplit(
+    CDCCheckpointType checkpoint_type) {
   SyncPoint::GetInstance()->LoadDependency(
       {{"Test::AfterTableDrop", "CleanUpCDCStreamMetadata::StartStep1"},
       {"CleanUpCDCStreamMetadata::CompletedStep1", "Test::InitiateTabletSplit"},
@@ -1803,7 +1921,7 @@ TEST_F(CDCSDKTabletSplitTest, TestCleanUpCDCStreamsMetadataDuringTabletSplit) {
         0 /* start */, 100 /* end */, &test_cluster_, table_suffix, kNamespaceName, kTableName));
     idx += 1;
   }
-  auto stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  auto stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
 
   // Consume changes for table 1 whose tablet will be split later. It ensures that the parent tablet
   // remains in the cdc_state table after the split is complete.
@@ -1876,6 +1994,9 @@ TEST_F(CDCSDKTabletSplitTest, TestCleanUpCDCStreamsMetadataDuringTabletSplit) {
 
   ASSERT_TRUE(DeleteCDCStream(stream_id));
 }
+
+CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKTabletSplitTest,
+                                        TestCleanUpCDCStreamsMetadataDuringTabletSplit);
 
 }  // namespace cdc
 }  // namespace yb

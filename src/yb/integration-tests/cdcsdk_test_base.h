@@ -47,6 +47,12 @@ using client::YBClient;
 using client::YBTableName;
 
 namespace cdc {
+// TODO(#19752): Remove the YB_DISABLE_TEST_IN_TSAN
+#define CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(fixture, test_name)                       \
+  TEST_F(fixture, YB_DISABLE_TEST_IN_TSAN(test_name##Explicit)) { test_name(EXPLICIT); }  \
+                                                                                          \
+  TEST_F(fixture, YB_DISABLE_TEST_IN_TSAN(test_name##Implicit)) { test_name(IMPLICIT); }
+
 constexpr int kRpcTimeout = NonTsanVsTsan(60, 120);
 static const std::string kUniverseId = "test_universe";
 static const std::string kNamespaceName = "test_namespace";
