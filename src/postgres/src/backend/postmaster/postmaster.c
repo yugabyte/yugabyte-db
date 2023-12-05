@@ -4256,7 +4256,7 @@ static void
 SetOomScoreAdjForPid(pid_t pid, char *oom_score_adj)
 {
 #ifdef __linux__
-	if (oom_score_adj == NULL)
+	if (oom_score_adj[0] == 0)
 		return;
 
 	char file_name[64];
