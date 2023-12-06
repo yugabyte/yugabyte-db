@@ -103,6 +103,8 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     mockWaits(mockClient, 4);
     when(mockClient.waitForLoadBalance(anyLong(), anyInt())).thenReturn(true);
     when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
+
+    setFollowerLagMock();
   }
 
   // Updates one of the nodes using a passed consumer.
@@ -286,7 +288,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl,
           TaskType.ChangeMasterConfig, // master done
-          TaskType.WaitForFollowerLag, // master done
+          TaskType.CheckFollowerLag, // master done
           TaskType.WaitForServer,
           TaskType.UpdateNodeProcess,
           TaskType.AnsibleClusterServerCtl,

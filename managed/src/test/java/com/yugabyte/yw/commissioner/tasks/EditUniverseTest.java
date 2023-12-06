@@ -84,7 +84,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForLeadersOnPreferredOnly,
           TaskType.ChangeMasterConfig, // Add
-          TaskType.WaitForFollowerLag, // Add
+          TaskType.CheckFollowerLag, // Add
           TaskType.ChangeMasterConfig, // Remove
           TaskType.AnsibleClusterServerCtl, // Stop master
           TaskType.WaitForMasterLeader,
@@ -123,7 +123,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForLeadersOnPreferredOnly,
           TaskType.ChangeMasterConfig, // Add
-          TaskType.WaitForFollowerLag, // Add
+          TaskType.CheckFollowerLag, // Add
           TaskType.ChangeMasterConfig, // Remove
           TaskType.AnsibleClusterServerCtl, // Stop master
           TaskType.WaitForMasterLeader,
@@ -206,6 +206,8 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
     mockGetMasterRegistrationResponses(
         ImmutableList.of("10.9.22.1", "10.9.22.2", "10.9.22.3", "10.9.22.4", "10.9.22.5"));
+
+    setFollowerLagMock();
   }
 
   private TaskInfo submitTask(UniverseDefinitionTaskParams taskParams) {

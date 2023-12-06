@@ -10,11 +10,9 @@ import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
@@ -130,9 +128,9 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     createInstanceType(defaultProvider.getUuid(), NEW_INSTANCE_TYPE);
     createInstanceType(defaultProvider.getUuid(), NEW_READ_ONLY_INSTANCE_TYPE);
 
-    ObjectNode bodyJson = Json.newObject();
-    bodyJson.put("underreplicated_tablets", Json.newArray());
-    when(mockNodeUIApiHelper.getRequest(anyString())).thenReturn(bodyJson);
+    setUnderReplicatedTabletsMock();
+    setFollowerLagMock();
+
     UniverseModifyBaseTest.mockGetMasterRegistrationResponses(
         mockClient,
         ImmutableList.of("10.0.0.1", "10.0.0.2", "10.0.0.3", "1.1.1.1", "1.1.1.2", "1.1.1.3"));
@@ -1564,7 +1562,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       List<TaskType> startSequence = new ArrayList<>(PROCESS_START_SEQ);
       if (processType == MASTER && waitForMasterLeader) {
         startSequence.add(2, TaskType.ChangeMasterConfig);
-        startSequence.add(3, TaskType.WaitForFollowerLag);
+        startSequence.add(3, TaskType.CheckFollowerLag);
       }
       for (TaskType taskType : startSequence) {
         if (taskType == AnsibleClusterServerCtl) {
@@ -1579,7 +1577,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
                   processType == TSERVER));
         } else if (taskType == TaskType.ChangeMasterConfig) {
           paramsForTask.put(index, ImmutableMap.of("opType", "AddMaster"));
-        } else if (taskType == TaskType.WaitForFollowerLag) {
+        } else if (taskType == TaskType.CheckFollowerLag) {
           paramsForTask.put(index, ImmutableMap.of());
         } else {
           paramsForTask.put(index, ImmutableMap.of("serverType", processType.name()));
@@ -1590,7 +1588,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     // Skipping WaitForEncryptionKeyInMemory and ModifyBlacklist (if not RF1).
     index += isRf1 ? 1 : 2;
     for (ServerType processType : processTypes) {
-      taskTypesSequence.add(index++, TaskType.WaitForFollowerLag);
+      taskTypesSequence.add(index++, TaskType.CheckFollowerLag);
     }
     if (changeInstance) {
       taskTypesSequence.add(index++, TaskType.UpdateNodeDetails);

@@ -262,6 +262,8 @@ public enum TaskType {
   CheckUnderReplicatedTablets(
       com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets.class),
 
+  CheckFollowerLag(com.yugabyte.yw.commissioner.tasks.subtasks.CheckFollowerLag.class),
+
   ManipulateDnsRecordTask(
       com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask.class),
 

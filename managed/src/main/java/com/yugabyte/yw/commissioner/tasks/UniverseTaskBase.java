@@ -23,6 +23,7 @@ import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
@@ -34,6 +35,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.BackupUniverseKeys;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BulkImport;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeAdminPassword;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckFollowerLag;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateAlertDefinitions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
@@ -1576,6 +1578,19 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  public SubTaskGroup createCheckFollowerLagTask(NodeDetails node, ServerType serverType) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("CheckFollowerLag");
+    ServerSubTaskParams params = new ServerSubTaskParams();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.serverType = serverType;
+    params.nodeName = node.nodeName;
+    CheckFollowerLag task = createTask(CheckFollowerLag.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
   /**
    * Create tasks to execute Cluster CTL command against specific process in parallel
    *
@@ -2002,7 +2017,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         confGetter.getConfForScope(getUniverse(), UniverseConfKeys.followerLagCheckEnabled);
     createChangeConfigTask(node, isAdd, subTask);
     if (isAdd && followerLagCheckEnabled) {
-      createWaitForFollowerLagTask(node, ServerType.MASTER);
+      createCheckFollowerLagTask(node, ServerType.MASTER);
     }
   }
 

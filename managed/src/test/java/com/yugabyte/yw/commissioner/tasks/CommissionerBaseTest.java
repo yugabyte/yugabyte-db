@@ -4,11 +4,12 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.junit.Assert.assertEquals;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 import static play.inject.Bindings.bind;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;
@@ -19,6 +20,8 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.DefaultExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.ExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.TaskExecutor;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckFollowerLag;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.CloudQueryHelper;
@@ -84,6 +87,7 @@ import org.yb.master.CatalogEntityInfo;
 import play.Application;
 import play.Environment;
 import play.inject.guice.GuiceApplicationBuilder;
+import play.libs.Json;
 
 public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseTest {
   private static final int MAX_RETRY_COUNT = 2000;
@@ -478,5 +482,19 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     } finally {
       clearAbortOrPausePositions();
     }
+  }
+
+  public void setFollowerLagMock() {
+    ObjectMapper mapper = new ObjectMapper();
+    ArrayNode followerLagJson = mapper.createArrayNode();
+    when(mockNodeUIApiHelper.getRequest(endsWith(CheckFollowerLag.URL_SUFFIX)))
+        .thenReturn(followerLagJson);
+  }
+
+  public void setUnderReplicatedTabletsMock() {
+    ObjectNode underReplicatedTabletsJson = Json.newObject();
+    underReplicatedTabletsJson.put("underreplicated_tablets", Json.newArray());
+    when(mockNodeUIApiHelper.getRequest(endsWith(CheckUnderReplicatedTablets.URL_SUFFIX)))
+        .thenReturn(underReplicatedTabletsJson);
   }
 }

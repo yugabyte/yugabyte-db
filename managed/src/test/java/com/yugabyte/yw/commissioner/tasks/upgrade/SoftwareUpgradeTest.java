@@ -12,12 +12,10 @@ import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
@@ -59,7 +57,6 @@ import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import org.yb.client.IsInitDbDoneResponse;
 import org.yb.client.UpgradeYsqlResponse;
-import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
 public class SoftwareUpgradeTest extends UpgradeTaskTest {
@@ -78,7 +75,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
           TaskType.WaitForEncryptionKeyInMemory,
-          TaskType.WaitForFollowerLag,
+          TaskType.CheckFollowerLag,
           TaskType.RunHooks,
           TaskType.SetNodeState);
 
@@ -93,7 +90,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
           TaskType.WaitForEncryptionKeyInMemory,
-          TaskType.WaitForFollowerLag,
+          TaskType.CheckFollowerLag,
           TaskType.RunHooks,
           TaskType.SetNodeState);
 
@@ -111,7 +108,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
           TaskType.WaitForServerReady,
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.ModifyBlackList,
-          TaskType.WaitForFollowerLag,
+          TaskType.CheckFollowerLag,
           TaskType.RunHooks,
           TaskType.SetNodeState);
 
@@ -130,7 +127,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
           TaskType.WaitForServerReady,
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.ModifyBlackList,
-          TaskType.WaitForFollowerLag,
+          TaskType.CheckFollowerLag,
           TaskType.RunHooks,
           TaskType.SetNodeState);
 
@@ -208,9 +205,8 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         .forUniverse(defaultUniverse)
         .setValue(RunYsqlUpgrade.USE_SINGLE_CONNECTION_PARAM, "true");
 
-    ObjectNode bodyJson = Json.newObject();
-    bodyJson.put("underreplicated_tablets", Json.newArray());
-    when(mockNodeUIApiHelper.getRequest(anyString())).thenReturn(bodyJson);
+    setUnderReplicatedTabletsMock();
+    setFollowerLagMock();
   }
 
   private TaskInfo submitTask(SoftwareUpgradeParams requestParams) {
