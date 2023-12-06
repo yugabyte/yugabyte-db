@@ -226,7 +226,8 @@ cloud1 datacenter1 rack1 node1 639235e1.16c3b 2022-12-08 14:11:52.317 SESSION,8,
 cloud1 datacenter1 rack1 node1 639235e1.16c3b 2022-12-08 14:11:54.374 SESSION,9,1,MISC,COMMIT,,,commit;,<none>
 ```
 
-## Read more
+## Learn more
 
+- [Audit logging in YugabteDB](https://www.youtube.com/watch?v=ecYN9Z5_Hzc)
 - [pgaudit GitHub project](https://github.com/pgaudit/pgaudit/)
 - [PostgreSQL Extensions](../../../explore/ysql-language-features/pg-extensions/)
