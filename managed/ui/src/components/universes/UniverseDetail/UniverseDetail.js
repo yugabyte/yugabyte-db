@@ -457,6 +457,7 @@ class UniverseDetail extends Component {
               abortTask={this.props.abortTask}
               hideTaskAbortModal={this.props.hideTaskAbortModal}
               showTaskAbortModal={this.props.showTaskAbortModal}
+              refreshUniverseData={this.getUniverseInfo}
               visibleModal={visibleModal}
             />
           </Tab.Pane>
@@ -852,7 +853,9 @@ class UniverseDetail extends Component {
                           isControl
                           accessRequiredOn={{
                             onResource: uuid,
-                            ...this.hasReadReplica(universeInfo) ? ApiPermissionMap.GET_UNIVERSES_BY_ID : ApiPermissionMap.CREATE_READ_REPLICA
+                            ...(this.hasReadReplica(universeInfo)
+                              ? ApiPermissionMap.GET_UNIVERSES_BY_ID
+                              : ApiPermissionMap.CREATE_READ_REPLICA)
                           }}
                         >
                           <YBMenuItem
