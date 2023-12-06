@@ -145,6 +145,13 @@ export const EditUser = () => {
         })();
       }}
       saveLabel={t('title')}
+      disableSave={
+        currentUser?.uuid !== undefined &&
+        !hasNecessaryPerm({
+          ...ApiPermissionMap.MODIFY_USER,
+          onResource: { USER: currentUser?.uuid }
+        })
+      }
     >
       <Box className={classes.root}>
         <div className={classes.header}>

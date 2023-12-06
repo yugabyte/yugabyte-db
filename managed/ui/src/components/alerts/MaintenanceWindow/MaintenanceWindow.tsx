@@ -6,6 +6,8 @@ import { YBLoading } from '../../common/indicators';
 import { CreateMaintenanceWindow } from './CreateMaintenanceWindow';
 
 import { MaintenanceWindowsList } from './MaintenanceWindowsList';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 enum VIEW_STATES {
@@ -39,15 +41,19 @@ export const MaintenanceWindow: FC = () => {
   }
 
   return (
-    <MaintenanceWindowsList
-      universeList={universeList}
-      showCreateView={() => {
-        setCurrentView(VIEW_STATES.CREATE);
-      }}
-      setSelectedWindow={(selectedWindow) => {
-        setSelectedWindow(selectedWindow);
-        setCurrentView(VIEW_STATES.CREATE);
-      }}
-    />
+    <RbacValidator
+      accessRequiredOn={ApiPermissionMap.GET_MAINTENANCE_WINDOWS}
+    >
+      <MaintenanceWindowsList
+        universeList={universeList}
+        showCreateView={() => {
+          setCurrentView(VIEW_STATES.CREATE);
+        }}
+        setSelectedWindow={(selectedWindow) => {
+          setSelectedWindow(selectedWindow);
+          setCurrentView(VIEW_STATES.CREATE);
+        }}
+      />
+    </RbacValidator>
   );
 };

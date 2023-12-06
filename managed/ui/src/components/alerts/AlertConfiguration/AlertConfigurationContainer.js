@@ -111,6 +111,7 @@ const mapDispatchToProps = (dispatch) => {
     getAlertChannels: () => {
       return dispatch(getAlertChannels()).then((response) => {
         if (response.error) {
+          if(isRbacEnabled() && response?.payload?.response?.status === 401) return;
           toast.error(createErrorMessage(response.payload));
           return;
         }
