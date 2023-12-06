@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
@@ -34,6 +35,21 @@ var reconfigureCmd = &cobra.Command{
 
 		if err := state.ValidateReconfig(); err != nil {
 			log.Fatal("invalid reconfigure: " + err.Error())
+		}
+
+		isSelfSigned := state.Config.SelfSignedCert ||
+			(viper.GetString("server_cert_path") == "" && viper.GetString("server_key_path") == "")
+		if state.Config.Hostname != viper.GetString("host") && isSelfSigned {
+			log.Info("Detected hostname change for self signed certs, regenerating the certs")
+			serverCertPath, serverKeyPath := common.RegenerateSelfSignedCerts()
+			common.SetYamlValue(common.InputFile(), "server_cert_path", serverCertPath)
+			common.SetYamlValue(common.InputFile(), "server_key_path", serverKeyPath)
+			common.InitViper()
+			if err := createPemFormatKeyAndCert(); err != nil {
+				log.Fatal("failed to create server.pem: " + err.Error())
+			}
+			state.Config.Hostname = viper.GetString("host")
+			state.Config.SelfSignedCert = true // Ensure we track self signed certs after reconfig
 		}
 
 		for _, name := range serviceOrder {
