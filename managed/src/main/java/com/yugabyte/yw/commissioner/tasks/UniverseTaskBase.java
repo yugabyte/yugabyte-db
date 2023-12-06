@@ -91,7 +91,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpgradeYbc;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDataMove;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDuration;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForEncryptionKeyInMemory;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForFollowerLag;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLeaderBlacklistCompletion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLeadersOnPreferredOnly;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLoadBalance;
@@ -1654,27 +1653,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.serverType = serverType;
     params.waitTimeMs = sleepTimeMs;
     WaitForServerReady task = createTask(WaitForServerReady.class);
-    task.initialize(params);
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
-  }
-
-  /**
-   * Create task to check if a specific process is caught up to other processes.
-   *
-   * @param node node for which the check needs to be executed.
-   * @param serverType server process type on the node to the check.
-   * @return SubTaskGroup
-   */
-  public SubTaskGroup createWaitForFollowerLagTask(NodeDetails node, ServerType serverType) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("WaitForLeaderBlacklistCompletion");
-    WaitForFollowerLag.Params params = new WaitForFollowerLag.Params();
-    params.setUniverseUUID(taskParams().getUniverseUUID());
-    params.serverType = serverType;
-    params.node = node;
-    params.nodeName = node.nodeName;
-    WaitForFollowerLag task = createTask(WaitForFollowerLag.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);

@@ -425,7 +425,9 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
   @Test
   public void testAddNodeWithUnderReplicatedMaster() {
-    mockGetMasterRegistrationResponse(ImmutableList.of("10.0.0.1"), Collections.emptyList());
+    UniverseModifyBaseTest.mockMasterAndPeerRoles(
+        mockClient, ImmutableList.of("10.0.0.1", "10.0.0.2", "10.0.0.3"));
+
     verify(mockNodeManager, never()).nodeCommand(any(), any());
     Universe.saveDetails(
         defaultUniverse.getUniverseUUID(),
@@ -537,7 +539,8 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
   @Test
   public void testAddNodeRetries() {
     // This is set up with under-replicated master to execute master addition flow.
-    mockGetMasterRegistrationResponse(ImmutableList.of("10.0.0.1"), Collections.emptyList());
+    UniverseModifyBaseTest.mockMasterAndPeerRoles(
+        mockClient, ImmutableList.of("10.0.0.1", "10.0.0.2", "10.0.0.3"));
     verify(mockNodeManager, never()).nodeCommand(any(), any());
     Universe universe =
         Universe.saveDetails(

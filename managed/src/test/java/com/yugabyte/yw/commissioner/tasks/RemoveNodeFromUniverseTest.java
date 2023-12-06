@@ -27,6 +27,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -47,6 +48,7 @@ import play.libs.Json;
 public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
+  private YBClient mockClient;
 
   public void setUp(boolean withMaster, int numNodes, int replicationFactor, boolean multiZone) {
     super.setUp();
@@ -90,7 +92,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
 
-    YBClient mockClient = mock(YBClient.class);
+    mockClient = mock(YBClient.class);
     when(mockNodeManager.nodeCommand(any(), any()))
         .then(
             invocation -> {
@@ -346,7 +348,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     taskParams.expectedUniverseVersion = 3;
 
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
-    assertEquals(Success, taskInfo.getTaskState());
+    assertEquals(taskInfo.getErrorMessage(), Success, taskInfo.getTaskState());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -404,6 +406,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testRemoveNodeRetries() {
+    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
     setUp(true, 4, 3, false);
     NodeTaskParams taskParams =
         UniverseControllerRequestBinder.deepCopy(

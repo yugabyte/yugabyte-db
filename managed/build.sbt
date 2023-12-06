@@ -443,7 +443,7 @@ runPlatform := {
 }
 
 libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b38"
-libraryDependencies += "org.yb" % "yb-client" % "0.8.55.7-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.55.8-SNAPSHOT"
 // This is temporary until we land Play 3.0 migration
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b31.1"
 

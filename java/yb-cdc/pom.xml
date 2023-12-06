@@ -5,7 +5,7 @@
   <parent>
     <groupId>org.yb</groupId>
     <artifactId>yb-parent</artifactId>
-    <version>0.8.55.7-SNAPSHOT</version>
+    <version>0.8.55.8-SNAPSHOT</version>
   </parent>
   <groupId>org.yb</groupId>
   <artifactId>yb-cdc</artifactId>
@@ -43,12 +43,12 @@
     <dependency>
       <groupId>org.yb</groupId>
       <artifactId>yb-client</artifactId>
-      <version>0.8.55.7-SNAPSHOT</version>
+      <version>0.8.55.8-SNAPSHOT</version>
     </dependency>
     <dependency>
       <groupId>org.yb</groupId>
       <artifactId>yb-client</artifactId>
-      <version>0.8.55.7-SNAPSHOT</version>
+      <version>0.8.55.8-SNAPSHOT</version>
       <type>test-jar</type>
       <scope>test</scope>
     </dependency>
