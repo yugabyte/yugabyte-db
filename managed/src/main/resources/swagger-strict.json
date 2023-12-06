@@ -5865,6 +5865,90 @@
       "required" : [ "distinguishedName", "ybaRole" ],
       "type" : "object"
     },
+    "LdapUnivSyncFormData" : {
+      "description" : "Config to sync universe roles with ldap users",
+      "properties" : {
+        "allowDropSuperuser" : {
+          "description" : "Allow the API to drop a superuser role which is not an LDAP group",
+          "type" : "boolean"
+        },
+        "createGroups" : {
+          "description" : "Allow the API to create the LDAP groups as DB superusers",
+          "type" : "boolean"
+        },
+        "dbUser" : {
+          "description" : "Database user to connect: yugabyte for ysql, cassandra for ycql",
+          "type" : "string"
+        },
+        "dbuserPassword" : {
+          "type" : "string"
+        },
+        "excludeUsers" : {
+          "description" : "List of users to exclude while revoking and dropping",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "ldapBasedn" : {
+          "description" : "Dn of the search starting point.",
+          "example" : "dc=example,dc=org",
+          "type" : "string"
+        },
+        "ldapBindDn" : {
+          "description" : "Dn of the user authenticating to LDAP.",
+          "example" : "cn=user,dc=example,dc=com",
+          "type" : "string"
+        },
+        "ldapBindPassword" : {
+          "description" : "Password of the user authenticating to LDAP.",
+          "type" : "string"
+        },
+        "ldapGroupMemberOfAttribute" : {
+          "description" : "LDAP group dn attribute to which the user belongs",
+          "type" : "string"
+        },
+        "ldapGroupfield" : {
+          "description" : "LDAP field to get the group information",
+          "example" : "cn",
+          "type" : "string"
+        },
+        "ldapPort" : {
+          "description" : "Port of the ldap server : 389 or 636(tls)",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "ldapSearchFilter" : {
+          "description" : "LDAP search filter to get the user entries",
+          "example" : "(objectclass=person)",
+          "type" : "string"
+        },
+        "ldapServer" : {
+          "description" : "IP address of the LDAP server",
+          "type" : "string"
+        },
+        "ldapTlsProtocol" : {
+          "description" : "TLS versions for LDAPS : TLSv1, TLSv1_1, TLSv1_2",
+          "enum" : [ "TLSv1", "TLSv1_1", "TLSv1_2" ],
+          "type" : "string"
+        },
+        "ldapUserfield" : {
+          "description" : "LDAP field to get the user information",
+          "example" : "cn",
+          "type" : "string"
+        },
+        "targetApi" : {
+          "enum" : [ "ysql", "ycql" ],
+          "type" : "string"
+        },
+        "useLdapTls" : {
+          "description" : "Use LDAP TLS",
+          "type" : "boolean"
+        }
+      },
+      "required" : [ "dbuserPassword", "ldapGroupfield", "ldapUserfield", "targetApi" ],
+      "type" : "object"
+    },
     "LogData" : {
       "properties" : {
         "lines" : {
@@ -23656,7 +23740,7 @@
     "/api/v1/customers/{cUUID}/universes/{univUUID}/ldap_roles_sync" : {
       "post" : {
         "description" : "UNSTABLE - This API will undergo changes in future.",
-        "operationId" : "LDAP-Universe Sync",
+        "operationId" : "syncLdapUniverse",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -23673,6 +23757,14 @@
           "in" : "query",
           "name" : "request",
           "required" : false
+        }, {
+          "description" : "config to sync universe roles with ldap users",
+          "in" : "body",
+          "name" : "syncLdapUniverse",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/LdapUnivSyncFormData"
+          }
         } ],
         "responses" : {
           "200" : {
@@ -23685,8 +23777,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Perform a LDAP user sync on the universe",
-        "tags" : [ "LDAP Universe Sync" ]
+        "summary" : "WARNING: This is a preview API that could change. Perform an LDAP users sync on the universe",
+        "tags" : [ "LDAP Role management" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{universeUUID}/nodes/{nodeName}" : {
@@ -24955,8 +25047,6 @@
     "name" : "KubernetesOverridesController"
   }, {
     "name" : "LDAP Role management"
-  }, {
-    "name" : "LDAP Universe Sync"
   }, {
     "name" : "License management"
   }, {
