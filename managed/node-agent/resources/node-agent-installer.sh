@@ -201,7 +201,6 @@ setup_symlink() {
 check_sudo_access() {
   SUDO_ACCESS="false"
   set +e
-  sudo -n pwd >/dev/null 2>&1
   if sudo -n pwd >/dev/null 2>&1; then
     SUDO_ACCESS="true"
   fi
