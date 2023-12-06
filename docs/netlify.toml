@@ -1135,7 +1135,87 @@
   for = "/*"
   [headers.values]
     Strict-Transport-Security = "max-age=31536000; includeSubDomains"
-    Content-Security-Policy = "default-src 'self' 'unsafe-inline'; connect-src 'self' https://kapa-widget-proxy-la7dkmplpq-uc.a.run.app https://www.yugabyte.com https://ka-f.fontawesome.com/releases/ https://www.google-analytics.com/ https://stats.g.doubleclick.net/ https://umbcujcbe8-dsn.algolia.net/ https://umbcujcbe8-1.algolianet.com/ https://umbcujcbe8-2.algolianet.com/ https://umbcujcbe8-3.algolianet.com/ https://raw.githubusercontent.com/; script-src 'self' 'unsafe-eval' 'unsafe-inline'  https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/ https://cdnjs.cloudflare.com https://maxcdn.bootstrapcdn.com https://cdn.jsdelivr.net https://www.googletagmanager.com/ https://kit.fontawesome.com/ https://www.google-analytics.com/ https://umbcujcbe8-dsn.algolia.net/ https://umbcujcbe8-1.algolianet.com/ https://umbcujcbe8-2.algolianet.com/ https://umbcujcbe8-3.algolianet.com/ https://code.jquery.com/jquery-3.6.0.min.js https://netlify-cdp-loader.netlify.app/ https://widget.kapa.ai/kapa-widget.bundle.js; style-src 'self' 'unsafe-inline' https://maxcdn.bootstrapcdn.com https://cdnjs.cloudflare.com https://fonts.googleapis.com https://use.fontawesome.com https://docs.yugabyte.com https://ka-f.fontawesome.com/releases/ https://cdn.jsdelivr.net/gh/rastikerdar/vazir-font@v27.0.1/dist/font-face.css https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.css; font-src 'self' https://docs.yugabyte.com/fonts/ https://cdnjs.cloudflare.com/ https://cdn.jsdelivr.net/ https://use.fontawesome.com https://fonts.gstatic.com https://ka-f.fontawesome.com/releases/; object-src 'none'; img-src 'self' https://www.yugabyte.com https://docs.yugabyte.com/images/favicon.ico https://www.google-analytics.com/ https://raw.githubusercontent.com/ https://portal.azure.com/ https://docs.camunda.org/ https://pbs.twimg.com/profile_images/1646120217481805825/; child-src 'self' 'unsafe-inline' https://www.google.com/ https://www.youtube.com/ https://app.netlify.com/ https://app.supademo.com/; frame-ancestors 'self' https://deploy-preview-12849--infallible-bardeen-164bc9.netlify.app/ https://yugabyte.thinkific.com/ https://*.yugabyte.com/;"
+    Content-Security-Policy = '''
+        default-src 'self' 'unsafe-inline'
+        ;
+        
+        connect-src 'self'
+            https://ka-f.fontawesome.com/releases/
+            https://kapa-widget-proxy-la7dkmplpq-uc.a.run.app
+            https://raw.githubusercontent.com/
+            https://stats.g.doubleclick.net/
+            https://umbcujcbe8-1.algolianet.com/
+            https://umbcujcbe8-2.algolianet.com/
+            https://umbcujcbe8-3.algolianet.com/
+            https://umbcujcbe8-dsn.algolia.net/
+            https://www.google-analytics.com/
+            https://www.yugabyte.com
+        ;
+        
+        script-src 'self' 'unsafe-eval' 'unsafe-inline'
+            https://cdn.jsdelivr.net
+            https://cdnjs.cloudflare.com
+            https://code.jquery.com/jquery-3.6.0.min.js
+            https://kit.fontawesome.com/
+            https://maxcdn.bootstrapcdn.com
+            https://netlify-cdp-loader.netlify.app/
+            https://umbcujcbe8-1.algolianet.com/
+            https://umbcujcbe8-2.algolianet.com/
+            https://umbcujcbe8-3.algolianet.com/
+            https://umbcujcbe8-dsn.algolia.net/
+            https://widget.kapa.ai/kapa-widget.bundle.js
+            https://www.google-analytics.com/
+            https://www.google.com/recaptcha/
+            https://www.googletagmanager.com/
+            https://www.gstatic.com/recaptcha/
+        ;
+        
+        style-src 'self' 'unsafe-inline'
+            https://cdn.jsdelivr.net/gh/rastikerdar/vazir-font@v27.0.1/dist/font-face.css
+            https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.css
+            https://cdnjs.cloudflare.com
+            https://docs.yugabyte.com
+            https://fonts.googleapis.com
+            https://ka-f.fontawesome.com/releases/
+            https://maxcdn.bootstrapcdn.com
+            https://use.fontawesome.com
+        ;
+        
+        font-src 'self'
+            https://cdn.jsdelivr.net/
+            https://cdnjs.cloudflare.com/
+            https://docs.yugabyte.com/fonts/
+            https://fonts.gstatic.com
+            https://ka-f.fontawesome.com/releases/
+            https://use.fontawesome.com
+        ;
+        
+        object-src 'none'
+        ;
+        
+        img-src 'self'
+            https://docs.camunda.org/
+            https://docs.yugabyte.com/images/favicon.ico
+            https://pbs.twimg.com/profile_images/1646120217481805825/
+            https://portal.azure.com/
+            https://raw.githubusercontent.com/
+            https://www.google-analytics.com/
+            https://www.yugabyte.com
+        ;
+        
+        child-src 'self' 'unsafe-inline'
+            https://app.netlify.com/
+            https://app.supademo.com/
+            https://www.google.com/
+            https://www.youtube.com/
+        ;
+        
+        frame-ancestors 'self'
+            https://*.yugabyte.com/
+            https://deploy-preview-12849--infallible-bardeen-164bc9.netlify.app/
+            https://yugabyte.thinkific.com/
+        ;
+'''
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin"
     Permissions-Policy = "disabled"
