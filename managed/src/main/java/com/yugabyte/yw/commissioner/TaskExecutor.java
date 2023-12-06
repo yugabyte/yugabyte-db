@@ -305,12 +305,12 @@ public class TaskExecutor {
    * @param taskType the task type.
    * @param taskParams the task parameters.
    */
-  public RunnableTask createRunnableTask(TaskType taskType, ITaskParams taskParams) {
+  public RunnableTask createRunnableTask(TaskType taskType, ITaskParams taskParams, UUID taskUUID) {
     checkNotNull(taskType, "Task type must be set");
     checkNotNull(taskParams, "Task params must be set");
     ITask task = taskTypeMap.get(taskType).get();
     task.initialize(taskParams);
-    return createRunnableTask(task);
+    return createRunnableTask(task, taskUUID);
   }
 
   /**
@@ -318,7 +318,7 @@ public class TaskExecutor {
    *
    * @param task the task.
    */
-  public RunnableTask createRunnableTask(ITask task) {
+  public RunnableTask createRunnableTask(ITask task, UUID taskUUID) {
     checkNotNull(task, "Task must be set");
     try {
       task.validateParams(task.isFirstTry());
@@ -329,7 +329,7 @@ public class TaskExecutor {
       log.error("Params validation failed for task " + task, e);
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }
-    TaskInfo taskInfo = createTaskInfo(task);
+    TaskInfo taskInfo = createTaskInfo(task, taskUUID);
     taskInfo.setPosition(-1);
     taskInfo.save();
     return new RunnableTask(task, taskInfo);
@@ -478,10 +478,18 @@ public class TaskExecutor {
   }
 
   @VisibleForTesting
-  TaskInfo createTaskInfo(ITask task) {
+  TaskInfo createTaskInfo(ITask task, UUID taskUUID) {
     TaskType taskType = getTaskType(task.getClass());
     // Create a new task info object.
-    TaskInfo taskInfo = new TaskInfo(taskType);
+    TaskInfo taskInfo = null;
+    if (taskUUID != null) {
+      taskInfo = TaskInfo.get(taskUUID);
+    }
+    if (taskInfo == null) {
+      taskInfo = new TaskInfo(taskType, null);
+    } else {
+      taskInfo.setTaskState(State.Created);
+    }
     // Set the task details.
     taskInfo.setDetails(
         RedactingService.filterSecretFields(task.getTaskDetails(), RedactionTarget.APIS));
@@ -562,7 +570,7 @@ public class TaskExecutor {
         log.debug(
             "Details for task #{}: {} details= {}", subTaskCount, subTask.getName(), redactedTask);
       }
-      TaskInfo taskInfo = createTaskInfo(subTask);
+      TaskInfo taskInfo = createTaskInfo(subTask, null);
       taskInfo.setSubTaskGroupType(subTaskGroupType);
       subTasks.add(new RunnableSubTask(subTask, taskInfo));
     }

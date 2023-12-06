@@ -156,13 +156,13 @@ public class TaskGarbageCollectorTest extends FakeDBApplication {
 
   @Test
   public void testDeletableDBConstraints() {
-    TaskInfo parentTask = new TaskInfo(TaskType.CreateUniverse);
+    TaskInfo parentTask = new TaskInfo(TaskType.CreateUniverse, null);
     parentTask.setOwner("test");
     parentTask.setTaskState(TaskInfo.State.Success);
     parentTask.setDetails(mapper.createObjectNode());
     parentTask.save();
 
-    TaskInfo subTask = new TaskInfo(TaskType.CreateUniverse);
+    TaskInfo subTask = new TaskInfo(TaskType.CreateUniverse, null);
     subTask.setOwner("test");
     subTask.setParentUuid(parentTask.getUuid());
     subTask.setPosition(0);
@@ -193,7 +193,7 @@ public class TaskGarbageCollectorTest extends FakeDBApplication {
   @Test
   @Parameters({"SoftwareUpgrade", "RollbackUpgrade", "FinalizeUpgrade"})
   public void testDeleteUpgradeTask(CustomerTask.TaskType taskType) {
-    TaskInfo parentTask = new TaskInfo(TaskType.CreateUniverse);
+    TaskInfo parentTask = new TaskInfo(TaskType.CreateUniverse, null);
     parentTask.setOwner("test");
     parentTask.setTaskState(TaskInfo.State.Success);
     parentTask.setDetails(mapper.createObjectNode());
