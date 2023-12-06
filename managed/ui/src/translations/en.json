@@ -477,6 +477,14 @@
           "Connections": "Connections",
           "Queries": "Queries"
         }
+      },
+      "taskList": {
+        "taskHistory": {
+          "title": "Task History"
+        },
+        "error": {
+          "failedToFetchUniverseTaskList": "Unable to fetch universe task list."
+        }
       }
     },
     "admin": {

@@ -9,7 +9,10 @@ import { YBPanelItem } from '../../panels';
 import { timeFormatter, successStringFormatter } from '../../../utils/TableFormatters';
 import { YBConfirmModal } from '../../modals';
 
-import { hasNecessaryPerm, RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import {
+  hasNecessaryPerm,
+  RbacValidator
+} from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import './TasksList.scss';
 
@@ -40,7 +43,7 @@ export default class TaskListTable extends Component {
     }
 
     const abortTaskClicked = (taskUUID) => {
-      this.props.abortCurrentTask(taskUUID).then((response) => {
+      this.props.abortTask(taskUUID).then((response) => {
         const taskResponse = response?.payload?.response;
         // eslint-disable-next-line no-empty
         if (taskResponse && (taskResponse.status === 200 || taskResponse.status === 201)) {
@@ -96,9 +99,7 @@ export default class TaskListTable extends Component {
     };
     const tableBodyContainer = { marginBottom: '1%', paddingBottom: '1%' };
     return (
-      <RbacValidator
-        accessRequiredOn={ApiPermissionMap.GET_TASKS_LIST}
-      >
+      <RbacValidator accessRequiredOn={ApiPermissionMap.GET_TASKS_LIST}>
         <YBPanelItem
           header={<h2 className="task-list-header content-title">{title}</h2>}
           body={
