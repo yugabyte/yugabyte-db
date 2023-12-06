@@ -37,7 +37,9 @@ public class AllowedActionsHelper {
     this.node = node;
   }
 
-  /** @throws PlatformServiceException if action not allowed on this node */
+  /**
+   * @throws PlatformServiceException if action not allowed on this node
+   */
   public void allowedOrBadRequest(NodeActionType action) {
     String errMsg = nodeActionErrOrNull(action);
     if (errMsg != null) {
@@ -170,7 +172,9 @@ public class AllowedActionsHelper {
     return null;
   }
 
-  /** @return err message if disallowed or null */
+  /**
+   * @return err message if disallowed or null
+   */
   private String startMasterErrOrNull() {
     if (node.isMaster) {
       return errorMsg(START_MASTER, "It is already master.");

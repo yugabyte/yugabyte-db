@@ -470,8 +470,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     Result result = assertPlatformException(() -> testPasswordPolicy(8, 3, 3, 2, 1));
     assertBadRequest(
         result,
-        "{\"data\":[\"Minimal length should be not less than"
-            + " the sum of minimal counts for upper case, lower case, digits and special characters\"]}");
+        "{\"data\":[\"Minimal length should be not less than the sum of minimal counts for upper"
+            + " case, lower case, digits and special characters\"]}");
     assertEquals(0, CustomerConfig.getAll(defaultCustomer.getUuid()).size());
     assertAuditEntry(0, defaultCustomer.getUuid());
   }

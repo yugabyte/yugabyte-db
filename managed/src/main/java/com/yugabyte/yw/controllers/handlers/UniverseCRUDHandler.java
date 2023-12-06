@@ -80,7 +80,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
-import io.ebean.Ebean;
+import io.ebean.DB;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -638,8 +638,7 @@ public class UniverseCRUDHandler {
     // for this customer id.
     Universe universe;
     TaskType taskType = TaskType.CreateUniverse;
-
-    Ebean.beginTransaction();
+    DB.beginTransaction();
     try {
       universe = Universe.create(taskParams, customer.getId());
       LOG.info("Created universe {} : {}.", universe.getUniverseUUID(), universe.getName());
@@ -754,13 +753,13 @@ public class UniverseCRUDHandler {
               Boolean.toString(taskParams.nodeDetailsSet.stream().allMatch(n -> n.ybPrebuiltAmi))));
       universe.save();
 
-      Ebean.commitTransaction();
+      DB.commitTransaction();
 
     } catch (Exception e) {
       LOG.info("Universe wasn't created because of the error: {}", e.getMessage());
       throw e;
     } finally {
-      Ebean.endTransaction();
+      DB.endTransaction();
     }
 
     // Submit the task to create the universe.

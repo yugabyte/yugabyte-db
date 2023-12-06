@@ -7,8 +7,8 @@ import static org.yb.perf_advisor.module.PerfAdvisorDB.DATABASE_NAME_PARAM;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
-import io.ebean.Ebean;
-import io.ebean.EbeanServer;
+import io.ebean.DB;
+import io.ebean.Database;
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
 import java.io.IOException;
 import java.util.HashMap;
@@ -33,7 +33,7 @@ public class FakePerfAdvisorDBTest extends FakeDBApplication {
 
   protected PerformanceRecommendationService performanceRecommendationService;
 
-  protected EbeanServer perfAdvisorEbeanServer;
+  protected Database perfAdvisorEbeanServer;
 
   {
     try {
@@ -61,7 +61,7 @@ public class FakePerfAdvisorDBTest extends FakeDBApplication {
     universe = ModelFactory.createUniverse();
     performanceRecommendationService =
         app.injector().instanceOf(PerformanceRecommendationService.class);
-    perfAdvisorEbeanServer = Ebean.getServer(app.config().getString(DATABASE_NAME_PARAM));
+    perfAdvisorEbeanServer = DB.byName(app.config().getString(DATABASE_NAME_PARAM));
   }
 
   private static final Map<String, Object> PERF_ADVISOR_DB_PROPERTIES =

@@ -197,6 +197,7 @@ public class RunYsqlUpgrade extends UniverseTaskBase {
       break;
     }
   }
+
   /*
    * Tries to find alive tserver in same region as the master leader region. If not,
    *   will try to find an alive tserver in any region.

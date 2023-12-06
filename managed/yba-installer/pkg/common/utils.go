@@ -45,7 +45,7 @@ const GoBinaryName = "yba-ctl"
 
 const VersionMetadataJSON = "version_metadata.json"
 
-const javaBinaryGlob = "yba_installer-*linux*/OpenJDK8U-jdk_x64_linux_*.tar.gz"
+const javaBinaryGlob = "yba_installer-*linux*/OpenJDK17U-jdk_x64_linux_*.tar.gz"
 
 const tarTemplateDirGlob = "yba_installer-*linux*/" + ConfigDir
 

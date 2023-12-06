@@ -181,9 +181,7 @@ public class AWSCloudImpl implements CloudAPI {
         new Filter().withName("instance-type").withValues(instanceTypesFilter);
     // TODO: get rid of parallelStream in favour of async api using aws sdk 2.x
     List<DescribeInstanceTypeOfferingsResult> results =
-        azByRegionMap
-            .entrySet()
-            .parallelStream()
+        azByRegionMap.entrySet().parallelStream()
             .map(
                 regionAZListEntry -> {
                   Filter locationFilter =

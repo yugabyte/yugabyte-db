@@ -14,22 +14,22 @@ groups:
             {{ range $index, $element := query "max by (universe_uuid, node_name) ((avg_over_time(node_memory_MemTotal_bytes{universe_uuid='<universe_uuid>'}[10m]) - ignoring (saved_name) (avg_over_time(node_memory_Buffers_bytes{universe_uuid='<universe_uuid>'}[10m])) - ignoring (saved_name) (avg_over_time(node_memory_Cached_bytes{universe_uuid='<universe_uuid>'}[10m])) - ignoring (saved_name) (avg_over_time(node_memory_MemFree_bytes{universe_uuid='<universe_uuid>'}[10m])) - ignoring (saved_name) (avg_over_time(node_memory_Slab_bytes{universe_uuid='<universe_uuid>'}[10m]))) / ignoring (saved_name) (avg_over_time(node_memory_MemTotal_bytes{universe_uuid='<universe_uuid>'}[10m]))) * 100 > 1" }}{{ if $index }},{{ end }}{{ $element.Labels.node_name }}{{ end }}
           definition_uuid: |-
             <definition_uuid>
-          customer_uuid: |-
-            <customer_uuid>
-          one: |-
-            two
           foo: |-
             bar
+          one: |-
+            two
+          customer_uuid: |-
+            <customer_uuid>
           universe_uuid: |-
+            <universe_uuid>
+          configuration_uuid: |-
+            <configuration_uuid>
+          threshold: |-
+            1
+          source_uuid: |-
             <universe_uuid>
           source_type: |-
             universe
-          source_uuid: |-
-            <universe_uuid>
-          threshold: |-
-            1
-          configuration_uuid: |-
-            <configuration_uuid>
           configuration_type: |-
             UNIVERSE
           alert_type: |-

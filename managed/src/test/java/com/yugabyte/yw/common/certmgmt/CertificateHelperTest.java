@@ -137,8 +137,12 @@ public class CertificateHelperTest extends FakeDBApplication {
 
   @Test
   public void testCreateCustomerCertToString()
-      throws CertificateException, NoSuchAlgorithmException, InvalidKeyException,
-          NoSuchProviderException, SignatureException, IOException {
+      throws CertificateException,
+          NoSuchAlgorithmException,
+          InvalidKeyException,
+          NoSuchProviderException,
+          SignatureException,
+          IOException {
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "test-universe";
     UUID rootCA = certificateHelper.createRootCA(spyConf, taskParams.nodePrefix, c.getUuid());
@@ -166,8 +170,12 @@ public class CertificateHelperTest extends FakeDBApplication {
 
   @Test
   public void testCreateCustomerCertToFile()
-      throws CertificateException, NoSuchAlgorithmException, InvalidKeyException,
-          NoSuchProviderException, SignatureException, IOException {
+      throws CertificateException,
+          NoSuchAlgorithmException,
+          InvalidKeyException,
+          NoSuchProviderException,
+          SignatureException,
+          IOException {
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "test-universe";
     UUID rootCA = certificateHelper.createRootCA(spyConf, taskParams.nodePrefix, c.getUuid());

@@ -245,22 +245,30 @@ public class CustomerTask extends Model {
     @EnumValue("ExternalScript")
     ExternalScript,
 
-    /** @deprecated TargetType name must not be part of TaskType. Use {@link #Create} instead. */
+    /**
+     * @deprecated TargetType name must not be part of TaskType. Use {@link #Create} instead.
+     */
     @Deprecated
     @EnumValue("CreateXClusterConfig")
     CreateXClusterConfig,
 
-    /** @deprecated TargetType name must not be part of TaskType. Use {@link #Edit} instead. */
+    /**
+     * @deprecated TargetType name must not be part of TaskType. Use {@link #Edit} instead.
+     */
     @Deprecated
     @EnumValue("EditXClusterConfig")
     EditXClusterConfig,
 
-    /** @deprecated TargetType name must not be part of TaskType. Use {@link #Delete} instead. */
+    /**
+     * @deprecated TargetType name must not be part of TaskType. Use {@link #Delete} instead.
+     */
     @Deprecated
     @EnumValue("DeleteXClusterConfig")
     DeleteXClusterConfig,
 
-    /** @deprecated TargetType name must not be part of TaskType. Use {@link #Sync} instead. */
+    /**
+     * @deprecated TargetType name must not be part of TaskType. Use {@link #Sync} instead.
+     */
     @Deprecated
     @EnumValue("SyncXClusterConfig")
     SyncXClusterConfig,

@@ -560,9 +560,7 @@ public class BackupsController extends AuthenticatedController {
         .getStorageUtil(customerConfig.getName())
         .validateStorageConfigOnLocationsList(
             configData,
-            taskParams
-                .backupStorageInfoList
-                .parallelStream()
+            taskParams.backupStorageInfoList.parallelStream()
                 .map(bSI -> bSI.storageLocation)
                 .collect(Collectors.toSet()));
 

@@ -411,6 +411,7 @@ public class HealthCheckerReport {
             + "white-space: pre-wrap;border-radius:5px;\">%s</pre>\n",
         content);
   }
+
   // @formatter:off
 
   private static String assembleMailRow(JsonNode rowData, boolean isFirstCcheck, String timestamp) {

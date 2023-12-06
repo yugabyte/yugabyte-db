@@ -16,6 +16,7 @@ import static com.yugabyte.yw.models.helpers.CommonUtils.performPagedQuery;
 import static com.yugabyte.yw.models.helpers.EntityOperation.CREATE;
 import static com.yugabyte.yw.models.helpers.EntityOperation.DELETE;
 import static com.yugabyte.yw.models.helpers.EntityOperation.UPDATE;
+import static io.ebean.DB.beginTransaction;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.cronutils.utils.StringUtils;
@@ -97,69 +98,74 @@ public class AlertConfigurationService {
     this.runtimeConfigFactory = runtimeConfigFactory;
   }
 
-  @Transactional
   public List<AlertConfiguration> save(UUID customerUuid, List<AlertConfiguration> configurations) {
     if (CollectionUtils.isEmpty(configurations)) {
       return configurations;
     }
 
-    List<AlertConfiguration> beforeConfigurations = Collections.emptyList();
-    Set<UUID> configurationUuids =
-        configurations.stream()
-            .filter(configuration -> !configuration.isNew())
-            .map(AlertConfiguration::getUuid)
-            .collect(Collectors.toSet());
-    if (!configurationUuids.isEmpty()) {
-      AlertConfigurationFilter filter =
-          AlertConfigurationFilter.builder().uuids(configurationUuids).build();
-      beforeConfigurations = list(filter);
-    }
-    Map<UUID, AlertConfiguration> beforeConfigMap =
-        beforeConfigurations.stream()
-            .collect(Collectors.toMap(AlertConfiguration::getUuid, Function.identity()));
-
-    Map<String, Set<String>> validLabels =
-        AlertTemplateVariable.list(customerUuid).stream()
-            .collect(
-                Collectors.toMap(
-                    AlertTemplateVariable::getName, AlertTemplateVariable::getPossibleValues));
-    Map<EntityOperation, List<AlertConfiguration>> toCreateAndUpdate =
-        configurations.stream()
-            .peek(
-                configuration ->
-                    prepareForSave(configuration, beforeConfigMap.get(configuration.getUuid())))
-            .peek(
-                configuration ->
-                    validate(
-                        configuration, beforeConfigMap.get(configuration.getUuid()), validLabels))
-            .collect(
-                Collectors.groupingBy(configuration -> configuration.isNew() ? CREATE : UPDATE));
-
-    List<AlertConfiguration> toCreate =
-        toCreateAndUpdate.getOrDefault(CREATE, Collections.emptyList());
-    toCreate.forEach(configuration -> configuration.setCreateTime(nowWithoutMillis()));
-    toCreate.forEach(AlertConfiguration::generateUUID);
-
-    List<AlertConfiguration> toUpdate =
-        toCreateAndUpdate.getOrDefault(UPDATE, Collections.emptyList());
-
-    Set<UUID> toUpdateUuids =
-        toUpdate.stream().map(AlertConfiguration::getUuid).collect(Collectors.toSet());
+    beginTransaction();
     try {
-      configUuidLock.acquireLocks(toUpdateUuids);
-      if (!CollectionUtils.isEmpty(toCreate)) {
-        DB.getDefault().saveAll(toCreate);
+      List<AlertConfiguration> beforeConfigurations = Collections.emptyList();
+      Set<UUID> configurationUuids =
+          configurations.stream()
+              .filter(configuration -> !configuration.isNew())
+              .map(AlertConfiguration::getUuid)
+              .collect(Collectors.toSet());
+      if (!configurationUuids.isEmpty()) {
+        AlertConfigurationFilter filter =
+            AlertConfigurationFilter.builder().uuids(configurationUuids).build();
+        beforeConfigurations = list(filter);
       }
-      if (!CollectionUtils.isEmpty(toUpdate)) {
-        DB.getDefault().updateAll(toUpdate);
+      Map<UUID, AlertConfiguration> beforeConfigMap =
+          beforeConfigurations.stream()
+              .collect(Collectors.toMap(AlertConfiguration::getUuid, Function.identity()));
+
+      Map<String, Set<String>> validLabels =
+          AlertTemplateVariable.list(customerUuid).stream()
+              .collect(
+                  Collectors.toMap(
+                      AlertTemplateVariable::getName, AlertTemplateVariable::getPossibleValues));
+      Map<EntityOperation, List<AlertConfiguration>> toCreateAndUpdate =
+          configurations.stream()
+              .map(
+                  configuration ->
+                      prepareForSave(configuration, beforeConfigMap.get(configuration.getUuid())))
+              .map(
+                  configuration ->
+                      validate(
+                          configuration, beforeConfigMap.get(configuration.getUuid()), validLabels))
+              .collect(
+                  Collectors.groupingBy(configuration -> configuration.isNew() ? CREATE : UPDATE));
+
+      List<AlertConfiguration> toCreate =
+          toCreateAndUpdate.getOrDefault(CREATE, Collections.emptyList());
+      toCreate.forEach(configuration -> configuration.setCreateTime(nowWithoutMillis()));
+      toCreate.forEach(AlertConfiguration::generateUUID);
+
+      List<AlertConfiguration> toUpdate =
+          toCreateAndUpdate.getOrDefault(UPDATE, Collections.emptyList());
+
+      Set<UUID> toUpdateUuids =
+          toUpdate.stream().map(AlertConfiguration::getUuid).collect(Collectors.toSet());
+      try {
+        configUuidLock.acquireLocks(toUpdateUuids);
+        if (!CollectionUtils.isEmpty(toCreate)) {
+          DB.getDefault().saveAll(toCreate);
+        }
+        if (!CollectionUtils.isEmpty(toUpdate)) {
+          DB.getDefault().updateAll(toUpdate);
+        }
+
+        manageDefinitions(configurations, beforeConfigurations);
+
+        log.debug("{} alert configurations saved", configurations.size());
+        DB.commitTransaction();
+        return configurations;
+      } finally {
+        configUuidLock.releaseLocks(toUpdateUuids);
       }
-
-      manageDefinitions(configurations, beforeConfigurations);
-
-      log.debug("{} alert configurations saved", configurations.size());
-      return configurations;
     } finally {
-      configUuidLock.releaseLocks(toUpdateUuids);
+      DB.endTransaction();
     }
   }
 
@@ -252,15 +258,17 @@ public class AlertConfigurationService {
     }
   }
 
-  private void prepareForSave(AlertConfiguration configuration, AlertConfiguration before) {
+  private AlertConfiguration prepareForSave(
+      AlertConfiguration configuration, AlertConfiguration before) {
     if (before != null) {
       configuration.setCreateTime(before.getCreateTime());
     } else {
       configuration.setCreateTime(nowWithoutMillis());
     }
+    return configuration;
   }
 
-  private void validate(
+  private AlertConfiguration validate(
       AlertConfiguration configuration,
       AlertConfiguration before,
       Map<String, Set<String>> validLabels) {
@@ -407,6 +415,7 @@ public class AlertConfigurationService {
                 }
               });
     }
+    return configuration;
   }
 
   @Transactional

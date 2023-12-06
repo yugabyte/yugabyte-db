@@ -512,7 +512,7 @@ components:
             container_path: /prometheus_configs
         env_vars:
           - name: JAVA_OPTS
-            static_val: '-XX:PermSize=1024m -XX:MaxPermSize=1024m {{repl if ConfigOptionEquals "enable_proxy" "1"}} -Dhttp.nonProxyHosts={{repl ConfigOption "java_non_proxy"}} -Dhttp.proxyHost={{repl ConfigOption "java_http_proxy_host"}} -Dhttp.proxyPort={{repl ConfigOption "java_http_proxy_port"}} -Dhttps.proxyHost={{repl ConfigOption "java_https_proxy_host"}} -Dhttps.proxyPort={{repl ConfigOption "java_https_proxy_port"}}{{repl end}}'
+            static_val: '{{repl if ConfigOptionEquals "enable_proxy" "1"}} -Dhttp.nonProxyHosts={{repl ConfigOption "java_non_proxy"}} -Dhttp.proxyHost={{repl ConfigOption "java_http_proxy_host"}} -Dhttp.proxyPort={{repl ConfigOption "java_http_proxy_port"}} -Dhttps.proxyHost={{repl ConfigOption "java_https_proxy_host"}} -Dhttps.proxyPort={{repl ConfigOption "java_https_proxy_port"}}{{repl end}}'
           - name: HTTP_PROXY
             value: '{{repl ConfigOption "http_proxy"}}'
             when: '{{repl ConfigOptionEquals "enable_proxy" "1"}}'

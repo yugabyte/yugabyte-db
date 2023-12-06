@@ -1,9 +1,9 @@
 // Copyright (c) Yugabyte, Inc.
 package com.yugabyte.yw.models;
 
-import static io.ebean.Ebean.beginTransaction;
-import static io.ebean.Ebean.commitTransaction;
-import static io.ebean.Ebean.endTransaction;
+import static io.ebean.DB.beginTransaction;
+import static io.ebean.DB.commitTransaction;
+import static io.ebean.DB.endTransaction;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import static play.mvc.Http.Status.BAD_REQUEST;
@@ -24,7 +24,7 @@ import com.yugabyte.yw.models.helpers.ProviderAndRegion;
 import com.yugabyte.yw.models.helpers.provider.region.AWSRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
-import io.ebean.Ebean;
+import io.ebean.DB;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Junction;
@@ -142,7 +142,8 @@ public class Region extends Model {
   public long getNodeCount() {
     Set<UUID> azUUIDs = getZones().stream().map(az -> az.getUuid()).collect(Collectors.toSet());
     return Customer.get(getProvider().getCustomerUUID())
-        .getUniversesForProvider(getProvider().getUuid()).stream()
+        .getUniversesForProvider(getProvider().getUuid())
+        .stream()
         .flatMap(u -> u.getUniverseDetails().nodeDetailsSet.stream())
         .filter(nd -> azUUIDs.contains(nd.azUuid))
         .count();
@@ -457,7 +458,7 @@ public class Region extends Model {
             + "  where r.uuid = :r_UUID and p.uuid = :p_UUID and p.customer_uuid = :c_UUID";
 
     RawSql rawSql = RawSqlBuilder.parse(regionQuery).create();
-    Query<Region> query = Ebean.find(Region.class);
+    Query<Region> query = DB.find(Region.class);
     query.setRawSql(rawSql);
     query.setParameter("r_UUID", regionUUID);
     query.setParameter("p_UUID", providerUUID);
@@ -497,7 +498,7 @@ public class Region extends Model {
 
     RawSql rawSql =
         RawSqlBuilder.parse(regionQuery).columnMapping("r.provider_uuid", "provider.uuid").create();
-    Query<Region> query = Ebean.find(Region.class);
+    Query<Region> query = DB.find(Region.class);
     query.setRawSql(rawSql);
     query.setParameter("p_UUIDs", providerUUIDs);
     query.setParameter("c_UUID", customerUUID);
@@ -522,10 +523,10 @@ public class Region extends Model {
       update();
       String s =
           "UPDATE availability_zone set active = :active_flag where region_uuid = :region_UUID";
-      SqlUpdate updateStmt = Ebean.createSqlUpdate(s);
+      SqlUpdate updateStmt = DB.sqlUpdate(s);
       updateStmt.setParameter("active_flag", false);
       updateStmt.setParameter("region_UUID", getUuid());
-      Ebean.execute(updateStmt);
+      DB.getDefault().execute(updateStmt);
       commitTransaction();
     } catch (Exception e) {
       throw new RuntimeException("Unable to flag Region UUID as deleted: " + getUuid());

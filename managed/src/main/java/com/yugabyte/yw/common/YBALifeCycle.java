@@ -12,8 +12,9 @@ package com.yugabyte.yw.common;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
-import io.ebean.Ebean;
+import io.ebean.DB;
 import play.Environment;
+import play.db.ebean.EbeanDynamicEvolutions;
 
 /** Play lifecycle does not give onStartup event */
 public class YBALifeCycle {
@@ -27,7 +28,8 @@ public class YBALifeCycle {
       Config config,
       ConfigHelper configHelper,
       Environment environment,
-      StaticInjectorHolder staticInjectorHolder) {
+      StaticInjectorHolder staticInjectorHolder,
+      EbeanDynamicEvolutions ebeanDynamicEvolutions) {
     this.config = config;
     this.configHelper = configHelper;
     this.environment = environment;
@@ -45,7 +47,7 @@ public class YBALifeCycle {
    */
   private void checkIfDowngrade() {
     boolean isFreshInstall =
-        !Ebean.getDefaultServer()
+        !DB.getDefault()
             .createSqlQuery(
                 "SELECT * FROM information_schema.tables WHERE table_name = 'schema_version'")
             .findOneOrEmpty()

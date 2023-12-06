@@ -21,7 +21,9 @@ import io.ebean.event.ServerConfigStartup;
 public class PlatformEBeanTestServerConfigStartup implements ServerConfigStartup {
   @Override
   public void onStart(DatabaseConfig databaseConfig) {
-    databaseConfig.setDatabasePlatform(new H2V2Platform());
-    databaseConfig.setDbEncrypt(new YbH2DbEncrypt());
+    if (databaseConfig.getName().equals("default")) {
+      databaseConfig.setDatabasePlatform(new H2V2Platform());
+      databaseConfig.setDbEncrypt(new YbH2DbEncrypt());
+    }
   }
 }

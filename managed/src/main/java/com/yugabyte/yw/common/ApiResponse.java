@@ -13,14 +13,18 @@ import play.mvc.Results;
 public class ApiResponse {
   public static final Logger LOG = LoggerFactory.getLogger(ApiResponse.class);
 
-  /** @deprecated Instead throw {@link PlatformServiceException} */
+  /**
+   * @deprecated Instead throw {@link PlatformServiceException}
+   */
   @Deprecated
   public static Result error(int status, Object message) {
     LOG.error("Hit error " + status + ", message: " + errorJSON(message));
     return Results.status(status, errorJSON(message));
   }
 
-  /** @deprecated Instead throw {@link PlatformServiceException} */
+  /**
+   * @deprecated Instead throw {@link PlatformServiceException}
+   */
   @Deprecated
   public static JsonNode errorJSON(Object message) {
     ObjectNode jsonMsg = Json.newObject();

@@ -259,10 +259,7 @@ public class BackupHelperTest extends FakeDBApplication {
     assertEquals(backup.getCategory(), preflightResponse.getBackupCategory());
     assertTrue(preflightResponse.getHasKMSHistory().equals(isKMS));
     assertFalse(bInfo.getIsYSQLBackup());
-    bInfo
-        .getPerBackupLocationKeyspaceTables()
-        .getTableNameList()
-        .parallelStream()
+    bInfo.getPerBackupLocationKeyspaceTables().getTableNameList().parallelStream()
         .forEach(t -> assertTrue(tableNameList.contains(t)));
     assertTrue(bInfo.getPerBackupLocationKeyspaceTables().getOriginalKeyspace().equals("foo"));
   }

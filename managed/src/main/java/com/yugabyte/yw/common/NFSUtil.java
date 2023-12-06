@@ -151,8 +151,7 @@ public class NFSUtil implements StorageUtil {
       UUID universeUUID,
       boolean checkExistsOnAll) {
     List<String> absoluteLocationsList =
-        locations
-            .parallelStream()
+        locations.parallelStream()
             .map(l -> BackupUtil.getPathWithPrefixSuffixJoin(l, fileName))
             .collect(Collectors.toList());
     Map<String, Boolean> locationsFileCheckResultMap =
@@ -276,9 +275,7 @@ public class NFSUtil implements StorageUtil {
 
     // Check SnapshotInfoPB file exists on all locations.
     boolean snapshotFileDoesNotExist =
-        cloudLocationsFileExistenceMap
-            .entrySet()
-            .parallelStream()
+        cloudLocationsFileExistenceMap.entrySet().parallelStream()
             .anyMatch(
                 bLEntry ->
                     bLEntry.getKey().endsWith(BackupUtil.SNAPSHOT_PB)
@@ -289,9 +286,7 @@ public class NFSUtil implements StorageUtil {
 
     // Check KMS history
     boolean hasKMSHistory =
-        cloudLocationsFileExistenceMap
-            .entrySet()
-            .parallelStream()
+        cloudLocationsFileExistenceMap.entrySet().parallelStream()
             .filter(
                 bLEntry ->
                     bLEntry.getKey().endsWith(BackupUtil.BACKUP_KEYS_JSON)
@@ -357,7 +352,8 @@ public class NFSUtil implements StorageUtil {
                       r -> {
                         if (!regionBucketMap.containsKey(r) || !regionLocationsMap.containsKey(r)) {
                           throw new RuntimeException(
-                              "NFS backup delete failed: Config does not contain all regions used in backup.");
+                              "NFS backup delete failed: Config does not contain all regions used"
+                                  + " in backup.");
                         }
                         String nfsDir = regionLocationsMap.get(r);
                         String bucket = regionBucketMap.get(r);

@@ -511,27 +511,20 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     // when(mockAppConfig.getString("yb.kubernetes.pullSecretName")).thenReturn(pullSecretName);
 
     String nodeInfos =
-        "{\"items\": ["
-            + "{\"metadata\": {\"labels\": "
-            + "{\"failure-domain.beta.kubernetes.io/region\": \"deprecated\", "
-            + "\"failure-domain.beta.kubernetes.io/zone\": \"deprecated\", "
-            + "\"topology.kubernetes.io/region\": \"region-1\", \"topology.kubernetes.io/zone\": \"r1-az1\"}, "
-            + "\"name\": \"node-1\"}}, "
-            + "{\"metadata\": {\"labels\": "
-            + "{\"failure-domain.beta.kubernetes.io/region\": \"region-2\", "
-            + "\"failure-domain.beta.kubernetes.io/zone\": \"r2-az1\"}, "
-            + "\"name\": \"node-2\"}}, "
-            + "{\"metadata\": {\"labels\": "
-            + "{\"topology.kubernetes.io/region\": \"region-3\", \"topology.kubernetes.io/zone\": \"r3-az1\"}, "
-            + "\"name\": \"node-3\"}}"
-            + "]}";
+        "{\"items\": [{\"metadata\": {\"labels\": {\"failure-domain.beta.kubernetes.io/region\":"
+            + " \"deprecated\", \"failure-domain.beta.kubernetes.io/zone\": \"deprecated\","
+            + " \"topology.kubernetes.io/region\": \"region-1\", \"topology.kubernetes.io/zone\":"
+            + " \"r1-az1\"}, \"name\": \"node-1\"}}, {\"metadata\": {\"labels\":"
+            + " {\"failure-domain.beta.kubernetes.io/region\": \"region-2\","
+            + " \"failure-domain.beta.kubernetes.io/zone\": \"r2-az1\"}, \"name\": \"node-2\"}},"
+            + " {\"metadata\": {\"labels\": {\"topology.kubernetes.io/region\": \"region-3\","
+            + " \"topology.kubernetes.io/zone\": \"r3-az1\"}, \"name\": \"node-3\"}}]}";
     List<Node> nodes = TestUtils.deserialize(nodeInfos, NodeList.class).getItems();
     when(mockKubernetesManager.getNodeInfos(any())).thenReturn(nodes);
 
     String secretContent =
-        "{\"metadata\": {"
-            + "\"annotations\": {\"kubectl.kubernetes.io/last-applied-configuration\": \"removed\"}, "
-            + "\"creationTimestamp\": \"2021-03-05\", \"name\": \""
+        "{\"metadata\": {\"annotations\": {\"kubectl.kubernetes.io/last-applied-configuration\":"
+            + " \"removed\"}, \"creationTimestamp\": \"2021-03-05\", \"name\": \""
             + pullSecretName
             + "\", "
             + "\"namespace\": \"testns\", "

@@ -4,9 +4,9 @@ package com.yugabyte.yw.metrics;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
-import static org.mockito.Matchers.anyMap;
-import static org.mockito.Matchers.anyString;
-import static org.mockito.Matchers.eq;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -29,7 +29,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -348,8 +348,8 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
 
     JsonNode responseJson =
         Json.parse(
-            "{\"status\":\"error\",\"errorType\":\"bad_data\","
-                + "\"error\":\"parse error at char 44: unexpected \\\"{\\\" in aggregation, expected \\\")\\\"\"}");
+            "{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"parse error at char 44:"
+                + " unexpected \\\"{\\\" in aggregation, expected \\\")\\\"\"}");
     when(mockApiHelper.getRequest(anyString(), anyMap(), anyMap()))
         .thenReturn(Json.toJson(responseJson));
     JsonNode response = qe.call();

@@ -16,7 +16,7 @@ import com.yugabyte.yw.models.migrations.V_252.Provider;
 import com.yugabyte.yw.models.migrations.V_252.ProviderDetails;
 import com.yugabyte.yw.models.migrations.V_252.Region;
 import com.yugabyte.yw.models.migrations.V_252.Universe;
-import io.ebean.Ebean;
+import io.ebean.DB;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,7 +31,7 @@ public class V253__GenerateImageBundle extends BaseJavaMigration {
 
   @Override
   public void migrate(Context context) {
-    Ebean.execute(V253__GenerateImageBundle::generateImageBundles);
+    DB.execute(V253__GenerateImageBundle::generateImageBundles);
   }
 
   public static void generateImageBundles() {

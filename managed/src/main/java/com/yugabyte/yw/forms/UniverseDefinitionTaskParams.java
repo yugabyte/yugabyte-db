@@ -160,6 +160,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // Override the default DB present in pre-built Ami
   @ApiModelProperty(hidden = true)
   public boolean overridePrebuiltAmiDBVersion = false;
+
   // if we want to use a different SSH_USER instead of  what is defined in the accessKey
   // Use imagebundle to overwrite the sshPort
   @Nullable @ApiModelProperty @Deprecated public String sshUserOverride;

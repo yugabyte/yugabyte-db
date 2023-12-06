@@ -7,7 +7,7 @@ import com.yugabyte.yw.common.kms.util.HashicorpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.models.KmsConfig;
-import io.ebean.Ebean;
+import io.ebean.DB;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.flywaydb.core.api.migration.BaseJavaMigration;
@@ -18,7 +18,7 @@ public class V235__HashicorpVaultAddKeyName extends BaseJavaMigration {
 
   @Override
   public void migrate(Context context) {
-    Ebean.execute(V235__HashicorpVaultAddKeyName::addKeyNameToAuthConfig);
+    DB.execute(V235__HashicorpVaultAddKeyName::addKeyNameToAuthConfig);
   }
 
   public static void addKeyNameToAuthConfig() {

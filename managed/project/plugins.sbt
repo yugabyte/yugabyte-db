@@ -19,13 +19,15 @@ val jacksonOverrides = Seq(
 
 dependencyOverrides ++= jacksonOverrides
 
+dependencyOverrides += "com.google.googlejavaformat" % "google-java-format" % "1.17.0"
+
 libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.2.11"
 
 // The Play plugin
 addSbtPlugin("com.typesafe.play" % "sbt-plugin" % "2.8.19")
 
 // ORM
-addSbtPlugin("com.typesafe.play" % "sbt-play-ebean" % "6.2.0-RC4")
+addSbtPlugin("com.typesafe.play" % "sbt-play-ebean" % "6.2.0-RC5")
 
 addSbtPlugin("com.github.sbt" % "sbt-native-packager" % "1.9.16")
 

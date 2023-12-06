@@ -216,7 +216,9 @@ public class UniverseInfoController extends AuthenticatedController {
   @ApiOperation(
       value = "Run a universe health check",
       notes =
-          "Checks the health of all tablet servers and masters in the universe, as well as certain conditions on the machines themselves, including disk utilization, presence of FATAL or core files, and more.",
+          "Checks the health of all tablet servers and masters in the universe, as well as certain"
+              + " conditions on the machines themselves, including disk utilization, presence of"
+              + " FATAL or core files, and more.",
       nickname = "healthCheckUniverse",
       responseContainer = "List",
       response = Details.class)

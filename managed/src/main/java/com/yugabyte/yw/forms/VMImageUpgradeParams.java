@@ -51,6 +51,7 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
               + "rhel-8-v20221102'\n"
               + "  }")
   public Map<UUID, String> machineImages = new HashMap<>();
+
   // Use whenwe want to use a different SSH_USER instead of what is defined in the default
   // accessKey.
   @YBADeprecated(sinceDate = "2023-03-30", sinceYBAVersion = "2.18.0")

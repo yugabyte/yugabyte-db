@@ -46,7 +46,7 @@ import com.yugabyte.yw.models.MetricConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.queries.QueryHelper;
 import com.yugabyte.yw.scheduler.Scheduler;
-import io.ebean.Ebean;
+import io.ebean.DB;
 import io.prometheus.client.hotspot.DefaultExports;
 import java.util.List;
 import java.util.Map;
@@ -111,7 +111,7 @@ public class AppInit {
 
         List<?> all =
             yaml.load(environment.resourceAsStream("db_seed.yml"), application.classloader());
-        Ebean.saveAll(all);
+        DB.saveAll(all);
         Customer customer = Customer.getAll().get(0);
         alertDestinationService.createDefaultDestination(customer.getUuid());
         alertConfigurationService.createDefaultConfigs(customer);

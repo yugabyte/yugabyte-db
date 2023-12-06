@@ -152,7 +152,8 @@ public class AlertRuleTemplateSubstitutor implements PlaceholderSubstitutorIF {
       AlertDefinition definition,
       AlertConfiguration.Severity severity) {
     return definition
-        .getEffectiveLabels(templateDescription, configuration, templateSettings, severity).stream()
+        .getEffectiveLabels(templateDescription, configuration, templateSettings, severity)
+        .stream()
         .collect(Collectors.toMap(AlertDefinitionLabel::getName, AlertDefinitionLabel::getValue));
   }
 

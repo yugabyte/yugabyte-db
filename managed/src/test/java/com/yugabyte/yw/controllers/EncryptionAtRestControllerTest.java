@@ -18,8 +18,8 @@ import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.eq;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static play.test.Helpers.contentAsString;
@@ -47,7 +47,7 @@ import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -142,7 +142,8 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
   }
 
   @Ignore(
-      "This test passes locally but fails on Jenkins due to Guice not injecting mocked ApiHelper for an unknown reason")
+      "This test passes locally but fails on Jenkins due to Guice not injecting mocked ApiHelper"
+          + " for an unknown reason")
   @Test
   public void testCreateAndRecoverKey() {
     String kmsConfigUrl = "/api/customers/" + customer.getUuid() + "/kms_configs/SMARTKEY";

@@ -158,6 +158,7 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of("state", "Live")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()));
+
   // @formatter:on
 
   private void assertStartMasterSequence(Map<Integer, List<TaskInfo>> subTasksByPosition) {

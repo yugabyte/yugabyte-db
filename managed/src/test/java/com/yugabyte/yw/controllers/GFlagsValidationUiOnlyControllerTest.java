@@ -7,8 +7,8 @@ import static com.yugabyte.yw.controllers.handlers.GFlagsValidationHandler.GFLAG
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.when;
 import static play.test.Helpers.contentAsString;
 

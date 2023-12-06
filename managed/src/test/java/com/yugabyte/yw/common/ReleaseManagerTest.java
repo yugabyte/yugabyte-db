@@ -44,7 +44,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.Spy;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -69,6 +69,11 @@ public class ReleaseManagerTest extends FakeDBApplication {
     new File(TMP_REPLACE_STORAGE_PATH).mkdirs();
     new File(TMP_DOCKER_STORAGE_PATH).mkdirs();
 
+    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbReleasePathRegex))
+        .thenReturn("[^.]+yugabyte-(?:ee-)?(.*)-(alma|centos|linux|el8|darwin)(.*).tar.gz");
+    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbHelmReleasePathRegex))
+        .thenReturn("[^.]+yugabyte-(.*)-helm.tar.gz");
+    when(appConfig.getString("yb.releases.path")).thenReturn(TMP_STORAGE_PATH);
     when(confGetter.getGlobalConf(GlobalConfKeys.ybdbReleasePathRegex))
         .thenReturn("[^.]+yugabyte-(?:ee-)?(.*)-(alma|centos|linux|el8|darwin)(.*).tar.gz");
     when(confGetter.getGlobalConf(GlobalConfKeys.ybdbHelmReleasePathRegex))

@@ -21,7 +21,7 @@ import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Backup.BackupVersion;
 import com.yugabyte.yw.models.configs.CustomerConfig;
-import io.ebean.Ebean;
+import io.ebean.DB;
 import io.ebean.SqlUpdate;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -324,7 +324,7 @@ public class BackupTest extends FakeDBApplication {
     assertNotNull(b);
 
     SqlUpdate sqlUpdate =
-        Ebean.createSqlUpdate(
+        DB.sqlUpdate(
             "update public.backup set backup_info = '"
                 + jsonWithUnknownFields
                 + "'  where backup_uuid::text = '"

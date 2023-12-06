@@ -40,7 +40,7 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.*;
-import io.ebean.Ebean;
+import io.ebean.DB;
 import io.ebean.SqlUpdate;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
@@ -931,13 +931,13 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
             + "instance_type_details )"
             + "VALUES ("
             + ":providerUUID, :typeCode, true, :numCores, :memSize, :details)";
-    SqlUpdate update = Ebean.createSqlUpdate(updateQuery);
+    SqlUpdate update = DB.sqlUpdate(updateQuery);
     update.setParameter("providerUUID", defaultProvider.getUuid());
     update.setParameter("typeCode", intendedInstanceType);
     update.setParameter("numCores", 8);
     update.setParameter("memSize", 16);
     update.setParameter("details", "{\"volumeDetailsList\":[],\"tenancy\":\"Shared\"}");
-    int modifiedCount = Ebean.execute(update);
+    int modifiedCount = DB.getDefault().execute(update);
     assertEquals(1, modifiedCount);
 
     Region secondRegion = Region.create(defaultProvider, "region-2", "Region 2", "yb-image-1");

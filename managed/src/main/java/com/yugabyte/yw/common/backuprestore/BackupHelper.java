@@ -133,8 +133,7 @@ public class BackupHelper {
         if (backupInfo.backupType.equals(TableType.YQL_TABLE_TYPE)
             && CollectionUtils.isNotEmpty(backupInfo.tableNameList)) {
           List<TableInfo> tableInfos =
-              tableInfoList
-                  .parallelStream()
+              tableInfoList.parallelStream()
                   .filter(tableInfo -> backupInfo.backupType.equals(tableInfo.getTableType()))
                   .filter(
                       tableInfo -> backupInfo.keyspace.equals(tableInfo.getNamespace().getName()))
@@ -149,8 +148,7 @@ public class BackupHelper {
           }
         } else if (backupInfo.backupType.equals(TableType.PGSQL_TABLE_TYPE)) {
           List<TableInfo> tableInfos =
-              tableInfoList
-                  .parallelStream()
+              tableInfoList.parallelStream()
                   .filter(tableInfo -> backupInfo.backupType.equals(tableInfo.getTableType()))
                   .filter(
                       tableInfo -> backupInfo.keyspace.equals(tableInfo.getNamespace().getName()))
@@ -183,8 +181,7 @@ public class BackupHelper {
   public void validateMapToRestoreWithUniverseNonRedisYBC(
       UUID universeUUID, Map<TableType, Map<String, Set<String>>> restoreMap) {
     List<TableInfo> tableInfos = getTableInfosOrEmpty(Universe.getOrBadRequest(universeUUID));
-    tableInfos
-        .parallelStream()
+    tableInfos.parallelStream()
         .filter(t -> !t.getTableType().equals(TableType.REDIS_TABLE_TYPE))
         .forEach(
             t -> {
@@ -269,8 +266,7 @@ public class BackupHelper {
     List<TableInfo> tableInfoList = getTableInfosOrEmpty(universe);
     if (keyspace != null && CollectionUtils.isEmpty(tableUuids)) {
       tableInfoList =
-          tableInfoList
-              .parallelStream()
+          tableInfoList.parallelStream()
               .filter(tableInfo -> keyspace.equals(tableInfo.getNamespace().getName()))
               .filter(tableInfo -> tableType.equals(tableInfo.getTableType()))
               .collect(Collectors.toList());
@@ -283,8 +279,7 @@ public class BackupHelper {
 
     if (keyspace == null) {
       tableInfoList =
-          tableInfoList
-              .parallelStream()
+          tableInfoList.parallelStream()
               .filter(tableInfo -> tableType.equals(tableInfo.getTableType()))
               .collect(Collectors.toList());
       if (CollectionUtils.isEmpty(tableInfoList)) {

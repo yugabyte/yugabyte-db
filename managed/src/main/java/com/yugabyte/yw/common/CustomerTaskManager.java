@@ -142,7 +142,8 @@ public class CustomerTaskManager {
                               || backup.getState().equals(Backup.BackupState.Stopped))
                   .collect(Collectors.groupingBy(Backup::getCategory));
 
-          backupCategoryMap.getOrDefault(BackupCategory.YB_BACKUP_SCRIPT, new ArrayList<>())
+          backupCategoryMap
+              .getOrDefault(BackupCategory.YB_BACKUP_SCRIPT, new ArrayList<>())
               .stream()
               .forEach(backup -> backup.transitionState(Backup.BackupState.Failed));
           List<Backup> ybcBackups =

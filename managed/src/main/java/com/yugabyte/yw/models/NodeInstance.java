@@ -10,7 +10,6 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.ebean.DB;
-import io.ebean.Ebean;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -152,7 +151,7 @@ public class NodeInstance extends Model {
             + "'";
     RawSql rawSql =
         RawSqlBuilder.unparsed(nodeQuery).columnMapping("node_uuid", "nodeUuid").create();
-    Query<NodeInstance> query = Ebean.find(NodeInstance.class);
+    Query<NodeInstance> query = DB.find(NodeInstance.class);
     query.setRawSql(rawSql);
     List<NodeInstance> list = query.findList();
     return list;
@@ -195,9 +194,9 @@ public class NodeInstance extends Model {
 
   public static int deleteByProvider(UUID providerUUID) {
     String deleteNodeQuery =
-        "delete from node_instance where zone_uuid in"
-            + " (select az.uuid from availability_zone az join region r on az.region_uuid = r.uuid and r.provider_uuid=:provider_uuid)";
-    SqlUpdate deleteStmt = Ebean.createSqlUpdate(deleteNodeQuery);
+        "delete from node_instance where zone_uuid in (select az.uuid from availability_zone az"
+            + " join region r on az.region_uuid = r.uuid and r.provider_uuid=:provider_uuid)";
+    SqlUpdate deleteStmt = DB.sqlUpdate(deleteNodeQuery);
     deleteStmt.setParameter("provider_uuid", providerUUID);
     return deleteStmt.execute();
   }

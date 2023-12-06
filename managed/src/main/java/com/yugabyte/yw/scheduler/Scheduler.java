@@ -133,6 +133,7 @@ public class Scheduler {
               }
             });
   }
+
   /** Iterates through all the schedule entries and runs the tasks that are due to be scheduled. */
   @VisibleForTesting
   void scheduleRunner() {

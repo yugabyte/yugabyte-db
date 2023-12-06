@@ -38,6 +38,7 @@ import org.slf4j.LoggerFactory;
 @ApiModel(description = "Details of a cloud node")
 public class NodeDetails {
   public static final Logger LOG = LoggerFactory.getLogger(NodeDetails.class);
+
   // The id of the node. This is usually present in the node name.
   @ApiModelProperty(value = "Node ID")
   public int nodeIdx = -1;

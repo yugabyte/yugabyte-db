@@ -113,12 +113,10 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
               break;
             case NFS:
               List<Backup> nfsBackupList =
-                  backupList
-                      .parallelStream()
+                  backupList.parallelStream()
                       .filter(backup -> isUniversePresent(backup))
                       .collect(Collectors.toList());
-              backupList
-                  .parallelStream()
+              backupList.parallelStream()
                   .filter(backup -> !isUniversePresent(backup))
                   .forEach(backup -> backup.transitionState(Backup.BackupState.FailedToDelete));
               if (!nfsBackupList.isEmpty()) {
@@ -129,8 +127,7 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
               log.error("Invalid Config type {} provided", customerConfig.getName());
           }
         } else {
-          backupList
-              .parallelStream()
+          backupList.parallelStream()
               .forEach(backup -> backup.transitionState(Backup.BackupState.FailedToDelete));
         }
       }

@@ -13,7 +13,7 @@ import com.yugabyte.yw.models.migrations.V231.CloudInfoInterface_Clone;
 import com.yugabyte.yw.models.migrations.V231.Customer;
 import com.yugabyte.yw.models.migrations.V231.Provider;
 import com.yugabyte.yw.models.migrations.V231.Region;
-import io.ebean.Ebean;
+import io.ebean.DB;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,7 +25,7 @@ public class V231__ProviderDetailsPersist extends BaseJavaMigration {
 
   @Override
   public void migrate(Context context) {
-    Ebean.execute(V231__ProviderDetailsPersist::migrateConfigToDetails);
+    DB.execute(V231__ProviderDetailsPersist::migrateConfigToDetails);
   }
 
   public static void migrateConfigToDetails() {

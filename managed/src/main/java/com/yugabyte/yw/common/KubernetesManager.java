@@ -89,6 +89,7 @@ public abstract class KubernetesManager {
     ShellResponse response = execCommand(config, commandList);
     processHelmResponse(config, helmReleaseName, namespace, response);
   }
+
   // Log a diff before applying helm upgrade.
   public void diff(Map<String, String> config, String inputYamlFilePath) {
     List<String> diffCommandList =
@@ -547,7 +548,9 @@ public abstract class KubernetesManager {
   public abstract PodStatus getPodStatus(
       Map<String, String> config, String namespace, String podName);
 
-  /** @return the first that exists of loadBalancer.hostname, loadBalancer.ip, clusterIp */
+  /**
+   * @return the first that exists of loadBalancer.hostname, loadBalancer.ip, clusterIp
+   */
   public abstract String getPreferredServiceIP(
       Map<String, String> config,
       String universePrefix,

@@ -10,8 +10,8 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.eq;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
@@ -740,7 +740,20 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     Map<String, String> defaultAnnotations = new HashMap<>();
     defaultAnnotations.put(
         "OVERRIDES",
-        "serviceEndpoints:\n  - name: yb-master-service\n    type: LoadBalancer\n    app: yb-master\n    annotations:\n      annotation-1: foo\n    ports:\n      ui: 7000\n\n  - name: yb-tserver-service\n    type: LoadBalancer\n    app: yb-tserver\n    ports:\n      ycql-port: 9042\n      yedis-port: 6379");
+        "serviceEndpoints:\n"
+            + "  - name: yb-master-service\n"
+            + "    type: LoadBalancer\n"
+            + "    app: yb-master\n"
+            + "    annotations:\n"
+            + "      annotation-1: foo\n"
+            + "    ports:\n"
+            + "      ui: 7000\n\n"
+            + "  - name: yb-tserver-service\n"
+            + "    type: LoadBalancer\n"
+            + "    app: yb-tserver\n"
+            + "    ports:\n"
+            + "      ycql-port: 9042\n"
+            + "      yedis-port: 6379");
     defaultProvider.setConfigMap(defaultAnnotations);
     defaultProvider.save();
     KubernetesCommandExecutor kubernetesCommandExecutor =
@@ -785,7 +798,20 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     Map<String, String> defaultAnnotations = new HashMap<>();
     defaultAnnotations.put(
         "OVERRIDES",
-        "serviceEndpoints:\n  - name: yb-master-service\n    type: LoadBalancer\n    app: yb-master\n    annotations:\n      annotation-1: bar\n    ports:\n      ui: 7000\n\n  - name: yb-tserver-service\n    type: LoadBalancer\n    app: yb-tserver\n    ports:\n      ycql-port: 9042\n      yedis-port: 6379");
+        "serviceEndpoints:\n"
+            + "  - name: yb-master-service\n"
+            + "    type: LoadBalancer\n"
+            + "    app: yb-master\n"
+            + "    annotations:\n"
+            + "      annotation-1: bar\n"
+            + "    ports:\n"
+            + "      ui: 7000\n\n"
+            + "  - name: yb-tserver-service\n"
+            + "    type: LoadBalancer\n"
+            + "    app: yb-tserver\n"
+            + "    ports:\n"
+            + "      ycql-port: 9042\n"
+            + "      yedis-port: 6379");
     defaultRegion.setConfig(defaultAnnotations);
     defaultRegion.save();
     KubernetesCommandExecutor kubernetesCommandExecutor =
@@ -830,7 +856,20 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     Map<String, String> defaultAnnotations = new HashMap<>();
     defaultAnnotations.put(
         "OVERRIDES",
-        "serviceEndpoints:\n  - name: yb-master-service\n    type: LoadBalancer\n    app: yb-master\n    annotations:\n      annotation-1: bar\n    ports:\n      ui: 7000\n\n  - name: yb-tserver-service\n    type: LoadBalancer\n    app: yb-tserver\n    ports:\n      ycql-port: 9042\n      yedis-port: 6379");
+        "serviceEndpoints:\n"
+            + "  - name: yb-master-service\n"
+            + "    type: LoadBalancer\n"
+            + "    app: yb-master\n"
+            + "    annotations:\n"
+            + "      annotation-1: bar\n"
+            + "    ports:\n"
+            + "      ui: 7000\n\n"
+            + "  - name: yb-tserver-service\n"
+            + "    type: LoadBalancer\n"
+            + "    app: yb-tserver\n"
+            + "    ports:\n"
+            + "      ycql-port: 9042\n"
+            + "      yedis-port: 6379");
     defaultAZ.updateConfig(defaultAnnotations);
     defaultAZ.save();
     KubernetesCommandExecutor kubernetesCommandExecutor =

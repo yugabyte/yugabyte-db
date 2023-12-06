@@ -469,7 +469,8 @@ public class CertificateInfo extends Model {
 
   @ApiModelProperty(
       value =
-          "Indicates whether the certificate is in use. This value is `true` if the universe contains a reference to the certificate.",
+          "Indicates whether the certificate is in use. This value is `true` if the universe"
+              + " contains a reference to the certificate.",
       accessMode = READ_ONLY)
   // Returns if there is an in use reference to the object.
   public boolean getInUse() {

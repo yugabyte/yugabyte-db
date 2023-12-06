@@ -175,7 +175,7 @@ services:
       Group={{ yamlPath "service_username" }}
       Type=simple
 
-      Environment="JAVA_HOME={{ installVersionDir }}/jdk8u362-b09/"
+      Environment="JAVA_HOME={{ installVersionDir }}/jdk-17.0.7+7/"
       Environment="YB_OIDC_SECRET={{ yamlPath "platform.ybOidcSecret" }}"
       Environment="PLATFORM_APP_SECRET={{ yamlPath "platform.appSecret" }}"
 

@@ -43,6 +43,7 @@ public class RegionController extends AuthenticatedController {
   @Inject RuntimeConfGetter runtimeConfGetter;
 
   public static final Logger LOG = LoggerFactory.getLogger(RegionController.class);
+
   // This constant defines the minimum # of PlacementAZ we need to tag a region as Multi-PlacementAZ
   // complaint
 

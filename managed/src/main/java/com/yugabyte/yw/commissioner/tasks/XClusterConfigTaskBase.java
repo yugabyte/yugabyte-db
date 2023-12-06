@@ -530,7 +530,9 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
         .collect(Collectors.toSet());
   }
 
-  /** @see #getTablesNeedBootstrap(Set) */
+  /**
+   * @see #getTablesNeedBootstrap(Set)
+   */
   protected Set<XClusterTableConfig> getTablesNeedBootstrap() {
     return getTablesNeedBootstrap(getXClusterConfigFromTaskParams().getTableIds());
   }
@@ -561,7 +563,9 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
         .collect(Collectors.toSet());
   }
 
-  /** @see #getTablesNotNeedBootstrap(Set) */
+  /**
+   * @see #getTablesNotNeedBootstrap(Set)
+   */
   protected Set<XClusterTableConfig> getTablesNotNeedBootstrap() {
     return getTablesNotNeedBootstrap(getXClusterConfigFromTaskParams().getTableIds());
   }
@@ -1352,6 +1356,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     }
     return tablesInfoList.get(0).getTableType();
   }
+
   // --------------------------------------------------------------------------------
   // End of TableInfo helpers.
 

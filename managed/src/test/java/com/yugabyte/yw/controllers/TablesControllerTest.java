@@ -27,7 +27,6 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyObject;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
@@ -99,7 +98,7 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.Matchers;
+import org.mockito.ArgumentMatchers;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnit;
@@ -160,9 +159,7 @@ public class TablesControllerTest extends FakeDBApplication {
     tablesController.setAuditService(auditService);
 
     mockedFileUtils = Mockito.mockStatic(FileUtils.class);
-    mockedFileUtils
-        .when(() -> FileUtils.readResource(anyString(), anyObject()))
-        .thenReturn("QUERY");
+    mockedFileUtils.when(() -> FileUtils.readResource(anyString(), any())).thenReturn("QUERY");
 
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
@@ -342,7 +339,8 @@ public class TablesControllerTest extends FakeDBApplication {
   public void testCreateCassandraTableWithValidParams() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(
-            Matchers.any(TaskType.class), Matchers.any(TableDefinitionTaskParams.class)))
+            ArgumentMatchers.any(TaskType.class),
+            ArgumentMatchers.any(TableDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     String authToken = user.createAuthToken();
     Universe universe = createUniverse(customer.getId());
@@ -527,7 +525,7 @@ public class TablesControllerTest extends FakeDBApplication {
   public void testBulkImportWithValidParams() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(
-            Matchers.any(TaskType.class), Matchers.any(BulkImportParams.class)))
+            ArgumentMatchers.any(TaskType.class), ArgumentMatchers.any(BulkImportParams.class)))
         .thenReturn(fakeTaskUUID);
 
     ModelFactory.awsProvider(customer);
@@ -558,7 +556,7 @@ public class TablesControllerTest extends FakeDBApplication {
   public void testBulkImportWithInvalidParams() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(
-            Matchers.any(TaskType.class), Matchers.any(BulkImportParams.class)))
+            ArgumentMatchers.any(TaskType.class), ArgumentMatchers.any(BulkImportParams.class)))
         .thenReturn(fakeTaskUUID);
     ModelFactory.awsProvider(customer);
     String authToken = user.createAuthToken();
@@ -1247,11 +1245,9 @@ public class TablesControllerTest extends FakeDBApplication {
             ShellResponse.ERROR_CODE_SUCCESS,
             TestUtils.readResource(
                 "com/yugabyte/yw/controllers/table_partitions_shell_response.txt"));
-    when(mockNodeUniverseManager.runYsqlCommand(
-            anyObject(), anyObject(), eq("$$$Default"), anyObject()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), eq("$$$Default"), any()))
         .thenReturn(shellResponse);
-    when(mockNodeUniverseManager.runYsqlCommand(
-            anyObject(), anyObject(), eq("system"), anyObject()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), eq("system"), any()))
         .thenReturn(ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, ""));
 
     LOG.info("Created customer " + customer.getUuid() + " with universe " + u1.getUniverseUUID());
@@ -1389,14 +1385,13 @@ public class TablesControllerTest extends FakeDBApplication {
             ShellResponse.ERROR_CODE_SUCCESS,
             TestUtils.readResource(
                 "com/yugabyte/yw/controllers/table_partitions_db2_shell_response.txt"));
-    when(mockNodeUniverseManager.runYsqlCommand(anyObject(), anyObject(), eq("db1"), anyObject()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), eq("db1"), any()))
         .thenReturn(shellResponse1);
-    when(mockNodeUniverseManager.runYsqlCommand(anyObject(), anyObject(), eq("db2"), anyObject()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), eq("db2"), any()))
         .thenReturn(shellResponse2);
-    when(mockNodeUniverseManager.runYsqlCommand(anyObject(), anyObject(), eq("db3"), anyObject()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), eq("db3"), any()))
         .thenReturn(ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, ""));
-    when(mockNodeUniverseManager.runYsqlCommand(
-            anyObject(), anyObject(), eq("system"), anyObject()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), eq("system"), any()))
         .thenReturn(ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, ""));
 
     LOG.info("Created customer " + customer.getUuid() + " with universe " + u1.getUniverseUUID());

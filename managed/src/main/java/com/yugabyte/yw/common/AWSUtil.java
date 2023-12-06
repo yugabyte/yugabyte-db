@@ -438,8 +438,7 @@ public class AWSUtil implements CloudUtil {
       throws AmazonS3Exception {
     List<S3ObjectSummary> objectSummary = listObjectsResult.getObjectSummaries();
     List<DeleteObjectsRequest.KeyVersion> objectKeys =
-        objectSummary
-            .parallelStream()
+        objectSummary.parallelStream()
             .map(o -> new KeyVersion(o.getKey()))
             .collect(Collectors.toList());
     DeleteObjectsRequest deleteRequest =
@@ -581,8 +580,7 @@ public class AWSUtil implements CloudUtil {
       }
       AmazonS3 client = createS3Client(s3Data);
       List<Bucket> buckets = client.listBuckets();
-      buckets
-          .parallelStream()
+      buckets.parallelStream()
           .forEach(
               b ->
                   bucketHostBaseMap.put(

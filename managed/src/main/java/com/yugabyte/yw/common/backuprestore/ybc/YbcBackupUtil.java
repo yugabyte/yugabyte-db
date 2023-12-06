@@ -165,8 +165,7 @@ public class YbcBackupUtil {
         if (!hasIndexTables) {
           return new HashSet<>();
         }
-        return indexTableRelations
-            .parallelStream()
+        return indexTableRelations.parallelStream()
             .map(iT -> iT.indexTableName)
             .collect(Collectors.toSet());
       }
@@ -175,9 +174,7 @@ public class YbcBackupUtil {
     @JsonIgnore
     public Set<String> getIndexTables(Set<String> parentTables) {
       Set<String> tablesSet =
-          tableDetailsMap
-              .entrySet()
-              .parallelStream()
+          tableDetailsMap.entrySet().parallelStream()
               .filter(
                   tDE ->
                       CollectionUtils.isNotEmpty(parentTables)
@@ -201,9 +198,7 @@ public class YbcBackupUtil {
     @JsonIgnore
     public Map<String, Set<String>> getTablesWithIndexesMap() {
       Map<String, Set<String>> tablesWithIndexesMap =
-          tableDetailsMap
-              .entrySet()
-              .parallelStream()
+          tableDetailsMap.entrySet().parallelStream()
               .filter(tDE -> tDE.getValue().hasIndexTables)
               .collect(
                   Collectors.toMap(Map.Entry::getKey, tDE -> tDE.getValue().getAllIndexTables()));
@@ -790,9 +785,7 @@ public class YbcBackupUtil {
     Map<String, String> parentTablesMap = new ConcurrentHashMap<>();
 
     // Get parent tables first
-    successMarker
-        .snapshotObjectDetails
-        .parallelStream()
+    successMarker.snapshotObjectDetails.parallelStream()
         .filter(
             sOD ->
                 sOD.type.equals(SnapshotObjectType.TABLE)
@@ -811,9 +804,7 @@ public class YbcBackupUtil {
 
     // Add index tables if required
     if (!filterIndexTables) {
-      successMarker
-          .snapshotObjectDetails
-          .parallelStream()
+      successMarker.snapshotObjectDetails.parallelStream()
           .filter(
               sOD ->
                   sOD.type.equals(SnapshotObjectType.TABLE)
@@ -1109,9 +1100,7 @@ public class YbcBackupUtil {
                       perLocationBackupInfoBuilder.backupLocation(e.getKey());
                       YbcBackupResponse sMarker = e.getValue();
                       SnapshotObjectData namespaceDetails =
-                          sMarker
-                              .snapshotObjectDetails
-                              .parallelStream()
+                          sMarker.snapshotObjectDetails.parallelStream()
                               .filter(sOD -> sOD.type.equals(SnapshotObjectType.NAMESPACE))
                               .findAny()
                               .get()

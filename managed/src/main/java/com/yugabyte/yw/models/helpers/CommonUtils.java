@@ -803,6 +803,7 @@ public class CommonUtils {
     }
     return new String(logTableName).trim();
   }
+
   /**
    * This method extracts the json from shell response where the shell executes a SQL Query that
    * aggregates the response as JSON e.g. select jsonb_agg() The resultant shell output has json
