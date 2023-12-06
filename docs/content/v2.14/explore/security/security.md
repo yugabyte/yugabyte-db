@@ -31,13 +31,13 @@ Using client authentication, you can define how the database server establishes 
 
 The methods include the following:
 
-* **Password** - authenticate using MD5 or SCRAM-SHA-256.<br/>
+* **Password** - authenticate using MD5 or SCRAM-SHA-256.
 
   MD5 is the default password encryption for YugabyteDB clusters. To set SCRAM-SHA-256 authentication, you must set the YB-TServer `--ysql_hba_conf_csv` flag to `scram-sha-256`.
 
 * **LDAP** - use external LDAP services to perform client authentication.
 
-* **Host-based** - authenticate local and remote clients based on IP address and using TLS certificates.<br/>
+* **Host-based** - authenticate local and remote clients based on IP address and using TLS certificates.
 
   The default YugabyteDB `listen_addresses` setting accepts connections only from localhost. To allow remote connections, you must add client authentication records to the YB-TServer `--ysql_hba_conf_csv` flag.
 
@@ -206,6 +206,6 @@ Ensure that YugabyteDB runs in a trusted network environment, such that:
 
 * Servers running YugabyteDB services are directly accessible only by the servers running the application and database administrators.
 
-* Only servers running applications can connect to YugabyteDB services on the RPC ports. Access to the [YugabyteDB ports](../../../deploy/checklist/#default-ports-reference) should be denied to all others.
+* Only servers running applications can connect to YugabyteDB services on the RPC ports. Access to the [YugabyteDB ports](../../../reference/configuration/default-ports/) should be denied to all others.
 
 In addition, you can limit the interfaces on which YugabyteDB instances listen for incoming connections. To specify just the required interfaces when starting `yb-master` and `yb-tserver`, use the `--rpc_bind_addresses` YB-TServer flag. Do not bind to the loopback address. Refer to the [Admin Reference](../../../reference/configuration/yb-tserver/) for more information on using these flags.
