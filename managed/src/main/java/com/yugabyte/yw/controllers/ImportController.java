@@ -635,7 +635,7 @@ public class ImportController extends AuthenticatedController {
   private boolean executeITask(ITask task, String taskName, ImportUniverseResponseData results) {
     // Submit the task, and get a future object.
     try {
-      UUID taskUUID = taskExecutor.submit(taskExecutor.createRunnableTask(task), executor);
+      UUID taskUUID = taskExecutor.submit(taskExecutor.createRunnableTask(task, null), executor);
       // Wait for the task to complete.
       taskExecutor.waitForTask(taskUUID);
       // Indicate that this task executed successfully.
