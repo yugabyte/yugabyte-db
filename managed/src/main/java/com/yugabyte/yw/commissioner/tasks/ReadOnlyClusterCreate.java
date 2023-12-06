@@ -39,34 +39,30 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
   @Override
   public void run() {
     log.info("Started {} task for uuid={}", getName(), taskParams().getUniverseUUID());
+    // Set the 'updateInProgress' flag to prevent other updates from happening.
+    Universe universe =
+        lockAndFreezeUniverseForUpdate(
+            taskParams().expectedUniverseVersion,
+            u -> {
+              // Fetch the task params from the DB to start from fresh on retry.
+              // Otherwise, some operations like name assignment can fail.
+              fetchTaskDetailsFromDB();
+              preTaskActions(u);
+              // Set all the in-memory node names.
+              setNodeNames(u);
+              // Set non on-prem node UUIDs.
+              setCloudNodeUuids(u);
+              // Update on-prem node UUIDs.
+              updateOnPremNodeUuidsOnTaskParams();
+              // Set the prepared data to universe in-memory.
+              setUserIntentToUniverse(u, taskParams(), true);
+              // There is a rare possibility that this succeeds and
+              // saving the Universe fails. It is ok because the retry
+              // will just fail.
+              updateTaskDetailsInDB(taskParams());
+            });
 
     try {
-
-      // Set the 'updateInProgress' flag to prevent other updates from happening.
-      Universe universe =
-          lockUniverseForUpdate(
-              taskParams().expectedUniverseVersion,
-              u -> {
-                if (isFirstTry()) {
-                  // Fetch the task params from the DB to start from fresh on retry.
-                  // Otherwise, some operations like name assignment can fail.
-                  fetchTaskDetailsFromDB();
-                  preTaskActions(u);
-                  // Set all the in-memory node names.
-                  setNodeNames(u);
-                  // Set non on-prem node UUIDs.
-                  setCloudNodeUuids(u);
-                  // Update on-prem node UUIDs.
-                  updateOnPremNodeUuidsOnTaskParams();
-                  // Set the prepared data to universe in-memory.
-                  setUserIntentToUniverse(u, taskParams(), true);
-                  // There is a rare possibility that this succeeds and
-                  // saving the Universe fails. It is ok because the retry
-                  // will just fail.
-                  updateTaskDetailsInDB(taskParams());
-                }
-              });
-
       // Sanity checks for clusters list validity are performed in the controller.
       Cluster cluster = taskParams().getReadOnlyClusters().get(0);
       Set<NodeDetails> readOnlyNodes = taskParams().getNodesInCluster(cluster.uuid);
@@ -151,7 +147,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
     } finally {
       // Mark the update of the universe as done. This will allow future edits/updates to the
       // universe to happen.
-      Universe universe = unlockUniverseForUpdate();
+      universe = unlockUniverseForUpdate();
       if (universe.getConfig().getOrDefault(Universe.USE_CUSTOM_IMAGE, "false").equals("true")) {
         universe.updateConfig(
             ImmutableMap.of(

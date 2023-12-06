@@ -151,6 +151,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> STOP_NODE_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.ModifyBlackList,
           TaskType.SetNodeState,
           TaskType.CheckUnderReplicatedTablets,
@@ -166,6 +167,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
   private static final List<JsonNode> STOP_NODE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Stopping")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -179,6 +181,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> STOP_NODE_WITH_YBC_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.ModifyBlackList,
           TaskType.SetNodeState,
           TaskType.CheckUnderReplicatedTablets,
@@ -195,6 +198,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
   private static final List<JsonNode> STOP_NODE_WITH_YBC_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Stopping")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -209,6 +213,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> STOP_NODE_TASK_SEQUENCE_MASTER =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.ModifyBlackList,
           TaskType.SetNodeState,
           TaskType.CheckUnderReplicatedTablets,
@@ -233,6 +238,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
   private static final List<JsonNode> STOP_NODE_TASK_SEQUENCE_MASTER_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Stopping")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -255,6 +261,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> STOP_NODE_WITH_YBC_TASK_SEQUENCE_MASTER =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.ModifyBlackList,
           TaskType.SetNodeState,
           TaskType.CheckUnderReplicatedTablets,
@@ -280,6 +287,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
   private static final List<JsonNode> STOP_NODE_WITH_YBC_TASK_SEQUENCE_MASTER_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Stopping")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -303,6 +311,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> STOP_NODE_TASK_SEQUENCE_DEDICATED_MASTER =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.ChangeMasterConfig,
           TaskType.AnsibleClusterServerCtl,
@@ -319,6 +328,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> STOP_NODE_DEDICATED_MASTER_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Stopping")),
           Json.toJson(ImmutableMap.of("opType", "RemoveMaster")),
           Json.toJson(ImmutableMap.of("process", "master", "command", "stop")),

@@ -31,7 +31,7 @@ public class RebootUniverse extends UpgradeTaskBase {
   }
 
   @Override
-  public void validateParams() {
+  public void validateParams(boolean isFirstTry) {
     if (taskParams().upgradeOption != UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST, "Only ROLLING_UPGRADE option is supported for reboot.");

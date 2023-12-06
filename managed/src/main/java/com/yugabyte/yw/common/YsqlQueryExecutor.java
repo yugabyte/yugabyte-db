@@ -220,7 +220,6 @@ public class YsqlQueryExecutor {
     String queryType = getQueryType(queryParams.query);
     String queryString =
         queryType.equals("SELECT") ? wrapJsonAgg(queryParams.query) : queryParams.query;
-
     ShellResponse shellResponse = new ShellResponse();
     try {
       shellResponse =

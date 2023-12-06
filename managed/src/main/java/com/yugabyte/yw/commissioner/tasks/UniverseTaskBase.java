@@ -10,6 +10,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Stopwatch;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -47,6 +48,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTablesFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DestroyEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DisableEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.EnableEncryptionAtRest;
+import com.yugabyte.yw.commissioner.tasks.subtasks.FreezeUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.HardRebootServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstallNodeAgent;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s;
@@ -159,6 +161,7 @@ import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.Universe.UniverseUpdaterConfig;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.helpers.ClusterAZ;
@@ -192,6 +195,7 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import javax.annotation.Nullable;
@@ -292,27 +296,74 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     super(baseTaskDependencies);
   }
 
-  private Universe universe = null;
-
   // The task params.
   @Override
   protected UniverseTaskParams taskParams() {
     return (UniverseTaskParams) taskParams;
   }
 
-  protected Universe getUniverse() {
-    return getUniverse(false);
+  @Override
+  public void validateParams(boolean isFirstTry) {
+    TaskType taskType = getTaskExecutor().getTaskType(getClass());
+    if (taskType == null) {
+      String msg = "TaskType not found for class " + getClass().getCanonicalName();
+      log.error(msg);
+      throw new IllegalStateException(msg);
+    }
+    if (taskParams().getUniverseUUID() != null) {
+      Universe.maybeGet(taskParams().getUniverseUUID())
+          .ifPresent(
+              universe -> {
+                if (isFirstTry) {
+                  UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+                  if (universeDetails.placementModificationTaskUuid != null
+                      && !SAFE_TO_RUN_IF_UNIVERSE_BROKEN.contains(taskType)) {
+                    String msg =
+                        String.format(
+                            "Universe %s placement update failed - can't run %s task until"
+                                + " placement update succeeds",
+                            universe.getUniverseUUID(), taskType.name());
+                    log.error(msg);
+                    throw new RuntimeException(msg);
+                  }
+                }
+                validateUniverseState(universe);
+              });
+    }
   }
 
-  protected Universe getUniverse(boolean fetchFromDB) {
-    if (fetchFromDB) {
-      return Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    } else {
-      if (universe == null) {
-        universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-      }
-      return universe;
+  /**
+   * Override this to perform additional universe state check in addition to {@link
+   * #validateParams(boolean)}.
+   */
+  protected void validateUniverseState(Universe universe) {
+    TaskType taskType = getTaskExecutor().getTaskType(getClass());
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    boolean isResumeOrDelete =
+        (taskType == TaskType.ResumeUniverse || taskType == TaskType.DestroyUniverse);
+    if (universeDetails.universePaused && !isResumeOrDelete) {
+      String msg = "Universe " + universe.getUniverseUUID() + " is currently paused";
+      log.error(msg);
+      throw new RuntimeException(msg);
     }
+    // If this universe is already being edited, fail the request.
+    if (universeDetails.updateInProgress) {
+      String msg = "Universe " + universe.getUniverseUUID() + " is already being updated";
+      log.error(msg);
+      throw new UniverseInProgressException(msg);
+    }
+  }
+
+  /**
+   * This is first invoked with the universe to create long running async validation subtasks after
+   * the universe is locked.
+   *
+   * @param universe the locked universe.
+   */
+  protected void createPrecheckTasks(Universe universe) {}
+
+  protected Universe getUniverse() {
+    return Universe.getOrBadRequest(taskParams().getUniverseUUID());
   }
 
   protected boolean isLeaderBlacklistValidRF(String nodeName) {
@@ -324,107 +375,131 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   protected UserIntent getUserIntent() {
-    return getUserIntent(false);
+    return getUniverse().getUniverseDetails().getPrimaryCluster().userIntent;
   }
 
-  protected UserIntent getUserIntent(boolean fetchFromDB) {
-    return getUniverse(fetchFromDB).getUniverseDetails().getPrimaryCluster().userIntent;
-  }
-
-  private UniverseUpdater getLockingUniverseUpdater(
-      int expectedUniverseVersion, boolean checkSuccess) {
-    return getLockingUniverseUpdater(expectedUniverseVersion, checkSuccess, false, false);
-  }
-
-  private UniverseUpdater getLockingUniverseUpdater(
-      int expectedUniverseVersion,
-      boolean checkSuccess,
-      boolean isForceUpdate,
-      boolean isResumeOrDelete) {
-    return getLockingUniverseUpdater(
-        expectedUniverseVersion, checkSuccess, isForceUpdate, isResumeOrDelete, null);
-  }
-
-  private UniverseUpdater getLockingUniverseUpdater(
-      int expectedUniverseVersion,
-      boolean checkSuccess,
-      boolean isForceUpdate,
-      boolean isResumeOrDelete,
-      Consumer<Universe> callback) {
+  private UniverseUpdater getLockingUniverseUpdater(UniverseUpdaterConfig updaterConfig) {
     TaskType owner = getTaskExecutor().getTaskType(getClass());
     if (owner == null) {
       String msg = "TaskType not found for class " + this.getClass().getCanonicalName();
       log.error(msg);
       throw new IllegalStateException(msg);
     }
-    return universe -> {
-      if (isFirstTry()) {
-        // Universe already has a reference to the last task UUID in case of retry.
-        // Check version only when it is a first try.
-        verifyUniverseVersion(expectedUniverseVersion, universe);
-      }
-      UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-      if (universeDetails.universePaused && !isResumeOrDelete) {
-        String msg = "Universe " + taskParams().getUniverseUUID() + " is currently paused";
-        log.error(msg);
-        throw new RuntimeException(msg);
-      }
-      // If this universe is already being edited, fail the request.
-      if (!isForceUpdate && universeDetails.updateInProgress) {
-        String msg = "Universe " + taskParams().getUniverseUUID() + " is already being updated";
-        log.error(msg);
-        throw new UniverseInProgressException(msg);
-      }
-      if (taskParams().getPreviousTaskUUID() != null) {
-        // If the task is retried, check if the task UUID is same as the one in the universe.
-        // Check this condition only on retry to retain same behavior as before.
-        boolean isLastTaskOrLastPlacementTaskRetry =
-            Objects.equals(taskParams().getPreviousTaskUUID(), universeDetails.updatingTaskUUID)
-                || Objects.equals(
-                    taskParams().getPreviousTaskUUID(),
-                    universeDetails.placementModificationTaskUuid);
-        if (!isForceUpdate && !isLastTaskOrLastPlacementTaskRetry) {
-          String msg =
-              "Only the last task " + taskParams().getPreviousTaskUUID() + " can be retried";
+    return new UniverseUpdater() {
+      @Override
+      public void run(Universe universe) {
+        if (isFirstTry()) {
+          // Universe already has a reference to the last task UUID in case of retry.
+          // Check version only when it is a first try.
+          verifyUniverseVersion(getConfig().getExpectedUniverseVersion(), universe);
+        }
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+        boolean isResumeOrDelete =
+            (owner == TaskType.ResumeUniverse || owner == TaskType.DestroyUniverse);
+        if (universeDetails.universePaused && !isResumeOrDelete) {
+          String msg = "Universe " + universe.getUniverseUUID() + " is currently paused";
           log.error(msg);
           throw new RuntimeException(msg);
         }
-      } else {
-        // If we're in the middle of placement modification task (failed and waiting to be retried)
-        // only allow subset of safe to execute tasks
-        if (universeDetails.placementModificationTaskUuid != null
-            && !SAFE_TO_RUN_IF_UNIVERSE_BROKEN.contains(owner)) {
-          String msg =
-              "Universe "
-                  + taskParams().getUniverseUUID()
-                  + " placement update failed - can't run "
-                  + owner.name()
-                  + " task until placement update succeeds";
+        // If this universe is already being edited, fail the request.
+        if (!getConfig().isForceUpdate() && universeDetails.updateInProgress) {
+          String msg = "Universe " + universe.getUniverseUUID() + " is already being updated";
           log.error(msg);
-          throw new RuntimeException(msg);
+          throw new UniverseInProgressException(msg);
         }
+        if (taskParams().getPreviousTaskUUID() != null) {
+          // If the task is retried, check if the task UUID is same as the one in the universe.
+          // Check this condition only on retry to retain same behavior as before.
+          boolean isLastTaskOrLastPlacementTaskRetry =
+              Objects.equals(taskParams().getPreviousTaskUUID(), universeDetails.updatingTaskUUID)
+                  || Objects.equals(
+                      taskParams().getPreviousTaskUUID(),
+                      universeDetails.placementModificationTaskUuid);
+          if (!getConfig().isForceUpdate() && !isLastTaskOrLastPlacementTaskRetry) {
+            String msg =
+                "Only the last task " + taskParams().getPreviousTaskUUID() + " can be retried";
+            log.error(msg);
+            throw new RuntimeException(msg);
+          }
+        } else {
+          // If we're in the middle of placement modification task (failed and waiting to be
+          // retried)
+          // only allow subset of safe to execute tasks
+          if (universeDetails.placementModificationTaskUuid != null
+              && !SAFE_TO_RUN_IF_UNIVERSE_BROKEN.contains(owner)) {
+            String msg =
+                "Universe "
+                    + universe.getUniverseUUID()
+                    + " placement update failed - can't run "
+                    + owner.name()
+                    + " task until placement update succeeds";
+            log.error(msg);
+            throw new RuntimeException(msg);
+          }
+        }
+        markUniverseUpdateInProgress(owner, universe, getConfig());
       }
-      markUniverseUpdateInProgress(owner, universe, checkSuccess);
-      if (callback != null) {
-        callback.accept(universe);
+
+      @Override
+      public UniverseUpdaterConfig getConfig() {
+        return updaterConfig;
+      }
+    };
+  }
+
+  protected UniverseUpdater getFreezeUniverseUpdater(UniverseUpdaterConfig updaterConfig) {
+    TaskType owner = getRunnableTask().getTaskInfo().getTaskType();
+    if (owner == null) {
+      String msg = "User task is not found for class " + this.getClass().getCanonicalName();
+      log.error(msg);
+      throw new IllegalStateException(msg);
+    }
+    return new UniverseUpdater() {
+      @Override
+      public void run(Universe universe) {
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+        if (!universeDetails.updateInProgress) {
+          String msg = "Universe " + universe.getUniverseUUID() + " is not being updated";
+          log.error(msg);
+          throw new IllegalStateException(msg);
+        }
+        if (getUserTaskUUID().equals(universeDetails.updatingTaskUUID)) {
+          // Freeze always sets this to the UUID of the currently run task. If it is already set to
+          // the current task UUID, freeze is already run for this task.
+          String msg = "Universe " + universe.getUniverseUUID() + " is already frozen";
+          log.error(msg);
+          throw new IllegalStateException(msg);
+        }
+        markUniverseUpdateInProgress(owner, universe, getConfig());
+      }
+
+      @Override
+      public UniverseUpdaterConfig getConfig() {
+        return updaterConfig;
       }
     };
   }
 
   private void markUniverseUpdateInProgress(
-      TaskType owner, Universe universe, boolean checkSuccess) {
+      TaskType owner, Universe universe, UniverseUpdaterConfig updaterConfig) {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-    // Persist the updated information about the universe. Mark it as being edited.
+    // This locks the universe.
     universeDetails.updateInProgress = true;
-    universeDetails.updatingTask = owner;
-    universeDetails.updatingTaskUUID = userTaskUUID;
-    if (PLACEMENT_MODIFICATION_TASKS.contains(owner)) {
-      universeDetails.placementModificationTaskUuid = userTaskUUID;
+    if (updaterConfig.isFreezeUniverse()) {
+      universeDetails.updatingTask = owner;
+      universeDetails.updatingTaskUUID = getUserTaskUUID();
+      if (PLACEMENT_MODIFICATION_TASKS.contains(owner)) {
+        universeDetails.placementModificationTaskUuid = getUserTaskUUID();
+      }
+      if (updaterConfig.isCheckSuccess()) {
+        universeDetails.updateSucceeded = false;
+      }
+      universe.setUniverseDetails(universeDetails);
+      Consumer<Universe> callback = updaterConfig.getCallback();
+      if (callback != null) {
+        callback.accept(universe);
+      }
     }
-    if (checkSuccess) {
-      universeDetails.updateSucceeded = false;
-    }
-    universe.setUniverseDetails(universeDetails);
   }
 
   /**
@@ -453,25 +528,82 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
-  private Universe lockUniverseForUpdate(
-      UUID universeUuid, int expectedUniverseVersion, UniverseUpdater updater, boolean checkExist) {
-    // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
-    // catch as we want to fail.
-    Universe universe = saveUniverseDetails(universeUuid, updater, checkExist);
-    lockedUniversesUuid.add(universeUuid);
-    log.trace("Locked universe {} at version {}.", universeUuid, expectedUniverseVersion);
-    // Return the universe object that we have already updated.
+  // Abort the ongoing task on the universe and grab the lock forcefully.
+  private Universe lockUniversePremptively(
+      Universe universe, long timeoutSecs, UniverseUpdater updater) {
+    // Ensure that the force update is set.
+    updater.getConfig().setForceUpdate(true);
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    if (universeDetails.updatingTaskUUID != null) {
+      log.info(
+          "Lock preempively universe {} at version {}.",
+          universe.getUniverseUUID(),
+          updater.getConfig().getExpectedUniverseVersion());
+      // Abort the current task if it is running before grabbing the lock on this universe.
+      getCommissioner().abortTask(universeDetails.updatingTaskUUID, true);
+      Stopwatch stopwatch = Stopwatch.createStarted();
+      // The task will always abort. This timeout loop is just for safety.
+      while (getCommissioner().isTaskRunning(universeDetails.updatingTaskUUID)) {
+        if (stopwatch.elapsed(TimeUnit.SECONDS) > timeoutSecs) {
+          String msg = "Universe " + universe.getUniverseUUID() + " could not be aborted in time";
+          log.error(msg);
+          throw new UniverseInProgressException(msg);
+        }
+        log.debug("Waiting for running task {} to abort", universeDetails.updatingTaskUUID);
+        UniverseTaskBase.this.waitFor(SLEEP_TIME_FORCE_LOCK_RETRY);
+      }
+    }
+    universe = saveUniverseDetails(universe.getUniverseUUID(), updater);
+    lockedUniversesUuid.add(universe.getUniverseUUID());
+    log.debug("Locked universe {}", universe.getUniverseUUID());
     return universe;
   }
 
-  private Universe lockUniverseForUpdate(
-      UUID universeUuid, int expectedUniverseVersion, UniverseUpdater updater) {
-    return lockUniverseForUpdate(
-        universeUuid, expectedUniverseVersion, updater, false /* checkExist */);
-  }
-
-  private Universe lockUniverseForUpdate(int expectedUniverseVersion, UniverseUpdater updater) {
-    return lockUniverseForUpdate(taskParams().getUniverseUUID(), expectedUniverseVersion, updater);
+  private Universe lockUniverseForUpdate(UUID universeUuid, UniverseUpdater updater) {
+    if (!updater.getConfig().isForceUpdate()) {
+      Universe universe = saveUniverseDetails(universeUuid, updater);
+      lockedUniversesUuid.add(universe.getUniverseUUID());
+      log.debug("Locked universe {}", universeUuid);
+      return universe;
+    }
+    log.info(
+        "Force lock universe {} at version {}.",
+        universeUuid,
+        updater.getConfig().getExpectedUniverseVersion());
+    Universe universe = Universe.getOrBadRequest(universeUuid);
+    long retryNumber = 0;
+    long timeoutSecs =
+        config.getDuration("yb.task.max_force_universe_lock_timeout", TimeUnit.SECONDS);
+    Stopwatch stopwatch = Stopwatch.createStarted();
+    while (true) {
+      try {
+        // This allows switching the runtime flag from wait-retry to preemptive lock in the loop.
+        if (confGetter.getConfForScope(universe, UniverseConfKeys.taskOverrideForceUniverseLock)) {
+          return lockUniversePremptively(universe, timeoutSecs, updater);
+        }
+        // TODO Need to investigate the effectiveness of the wait below in real scenario.
+        // Override force locking to false and retry.
+        updater.getConfig().setForceUpdate(false);
+        universe = saveUniverseDetails(universeUuid, updater);
+        lockedUniversesUuid.add(universe.getUniverseUUID());
+        log.debug("Locked universe {}", universeUuid);
+        return universe;
+      } catch (UniverseInProgressException e) {
+        if (updater.getConfig().isForceUpdate()
+            || stopwatch.elapsed(TimeUnit.SECONDS) > timeoutSecs) {
+          // If it is either preemptive lock or time is up, throw the exception.
+          throw e;
+        }
+        retryNumber++;
+        log.warn(
+            "Universe {} was locked: {}; retrying after {} seconds. Completed attempt {}",
+            universeUuid,
+            e.getMessage(),
+            SLEEP_TIME_FORCE_LOCK_RETRY.getSeconds(),
+            retryNumber);
+      }
+      waitFor(SLEEP_TIME_FORCE_LOCK_RETRY);
+    }
   }
 
   public SubTaskGroup createManageEncryptionAtRestTask() {
@@ -540,19 +672,17 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return super.getName() + "(" + taskParams().getUniverseUUID() + ")";
   }
 
+  /** Similar to {@link #lockUniverseForUpdate(UUID, int, Consumer)} without the callback. */
+  public Universe lockUniverseForUpdate(UUID universeUuid, int expectedUniverseVersion) {
+    return lockUniverseForUpdate(universeUuid, expectedUniverseVersion, null);
+  }
+
   /**
-   * Locks the universe for updates by setting the 'updateInProgress' flag. If the universe is
-   * already being modified, then throws an exception.
-   *
-   * @param expectedUniverseVersion Lock only if the current version of the universe is at this
-   *     version. -1 implies always lock the universe.
-   * @param callback Callback is invoked for any pre-processing to be done on the Universe before it
-   *     is saved in transaction with 'updateInProgress' flag.
+   * Similar to {@link #lockUniverseForUpdate(UUID, int, Consumer)} with the universe UUID from this
+   * task and other parameters set to null.
    */
-  public Universe lockUniverseForUpdate(int expectedUniverseVersion, Consumer<Universe> callback) {
-    UniverseUpdater updater =
-        getLockingUniverseUpdater(expectedUniverseVersion, true, false, false, callback);
-    return lockUniverseForUpdate(expectedUniverseVersion, updater);
+  public Universe lockUniverseForUpdate(int expectedUniverseVersion) {
+    return lockUniverseForUpdate(taskParams().getUniverseUUID(), expectedUniverseVersion, null);
   }
 
   /**
@@ -564,70 +694,26 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *     version; -1 implies always lock the universe
    * @return The locked universe
    */
-  public Universe lockUniverseForUpdate(UUID universeUuid, int expectedUniverseVersion) {
-    UniverseUpdater updater =
-        getLockingUniverseUpdater(expectedUniverseVersion, true, false, false);
-    return lockUniverseForUpdate(universeUuid, expectedUniverseVersion, updater);
-  }
-
-  /**
-   * Locks the universe for updates by setting the 'updateInProgress' flag. If the universe is
-   * already being modified, then throws an exception.
-   *
-   * @param expectedUniverseVersion Lock only if the current version of the universe is at this
-   *     version. -1 implies always lock the universe.
-   */
-  public Universe lockUniverseForUpdate(int expectedUniverseVersion) {
-    return lockUniverseForUpdate(expectedUniverseVersion, false /* isResumeOrDelete */);
-  }
-
-  public Universe lockUniverseForUpdate(int expectedUniverseVersion, boolean isResumeOrDelete) {
-    UniverseUpdater updater =
-        getLockingUniverseUpdater(expectedUniverseVersion, true, false, isResumeOrDelete);
-    return lockUniverseForUpdate(expectedUniverseVersion, updater);
+  private Universe lockUniverseForUpdate(
+      UUID universeUuid, int expectedUniverseVersion, @Nullable Consumer<Universe> callback) {
+    UniverseUpdaterConfig updaterConfig =
+        UniverseUpdaterConfig.builder()
+            .callback(callback)
+            .checkSuccess(true)
+            .expectedUniverseVersion(expectedUniverseVersion)
+            .build();
+    return lockUniverseForUpdate(universeUuid, getLockingUniverseUpdater(updaterConfig));
   }
 
   public Universe forceLockUniverseForUpdate(int expectedUniverseVersion) {
-    return forceLockUniverseForUpdate(expectedUniverseVersion, false /* isResumeOrDelete */);
-  }
-
-  public Universe forceLockUniverseForUpdate(
-      int expectedUniverseVersion, boolean isResumeOrDelete) {
-    log.info(
-        "Force lock universe {} at version {}.",
-        taskParams().getUniverseUUID(),
-        expectedUniverseVersion);
-    if (confGetter.getConfForScope(
-        Universe.getOrBadRequest(taskParams().getUniverseUUID()),
-        UniverseConfKeys.taskOverrideForceUniverseLock)) {
-      UniverseUpdater updater =
-          getLockingUniverseUpdater(
-              expectedUniverseVersion,
-              true /* checkSuccess */,
-              true /* isForceUpdate */,
-              isResumeOrDelete);
-      return lockUniverseForUpdate(expectedUniverseVersion, updater);
-    }
-    long retryNumber = 0;
-    long maxNumberOfRetries =
-        config.getDuration("yb.task.max_force_universe_lock_timeout", TimeUnit.SECONDS)
-            / SLEEP_TIME_FORCE_LOCK_RETRY.getSeconds();
-    while (retryNumber < maxNumberOfRetries) {
-      retryNumber++;
-      try {
-        return lockUniverseForUpdate(expectedUniverseVersion, isResumeOrDelete);
-      } catch (UniverseInProgressException e) {
-        log.debug(
-            "Universe {} was locked: {}; retrying after {} seconds... (try number {} out of {})",
-            taskParams().getUniverseUUID(),
-            e.getMessage(),
-            SLEEP_TIME_FORCE_LOCK_RETRY.getSeconds(),
-            retryNumber,
-            maxNumberOfRetries);
-      }
-      waitFor(SLEEP_TIME_FORCE_LOCK_RETRY);
-    }
-    return lockUniverseForUpdate(expectedUniverseVersion, isResumeOrDelete);
+    UniverseUpdaterConfig updaterConfig =
+        UniverseUpdaterConfig.builder()
+            .checkSuccess(true)
+            .expectedUniverseVersion(expectedUniverseVersion)
+            .forceUpdate(true)
+            .build();
+    return lockUniverseForUpdate(
+        taskParams().getUniverseUUID(), getLockingUniverseUpdater(updaterConfig));
   }
 
   /**
@@ -639,19 +725,86 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *     version. -1 implies always lock the universe.
    */
   public Universe lockUniverse(int expectedUniverseVersion) {
-    return lockUniverse(taskParams().getUniverseUUID(), expectedUniverseVersion);
+    UniverseUpdaterConfig updaterConfig =
+        UniverseUpdaterConfig.builder().expectedUniverseVersion(expectedUniverseVersion).build();
+    UniverseUpdater updater = getLockingUniverseUpdater(updaterConfig);
+    return lockUniverseForUpdate(taskParams().getUniverseUUID(), updater);
   }
 
-  public Universe lockUniverse(UUID universeUuid, int expectedUniverseVersion) {
-    UniverseUpdater updater = getLockingUniverseUpdater(expectedUniverseVersion, false);
-    return lockUniverseForUpdate(universeUuid, expectedUniverseVersion, updater);
+  /**
+   * This method locks the universe, runs {@link #createPrecheckTasks(Universe)}, and freezes the
+   * universe with the given txnCallback. By freezing, the association between the task and the
+   * universe is set up such that the universe always has a reference to the task.
+   *
+   * @param expectedUniverseVersion Lock only if the current version of the universe is at this
+   *     version. -1 implies always lock the universe.
+   * @param firstRunTxnCallback the callback to be invoked in transaction when the universe is
+   *     frozen on the first run of the task.
+   * @return the universe.
+   */
+  public Universe lockAndFreezeUniverseForUpdate(
+      int expectedUniverseVersion, @Nullable Consumer<Universe> firstRunTxnCallback) {
+    UniverseUpdaterConfig updaterConfig =
+        UniverseUpdaterConfig.builder()
+            .expectedUniverseVersion(expectedUniverseVersion)
+            .freezeUniverse(false)
+            .build();
+    UniverseUpdater updater = getLockingUniverseUpdater(updaterConfig);
+    Universe universe = lockUniverseForUpdate(taskParams().getUniverseUUID(), updater);
+    try {
+      createPrecheckTasks(universe);
+      if (isFirstTry()) {
+        createFreezeUniverseTask(firstRunTxnCallback)
+            .setSubTaskGroupType(SubTaskGroupType.ValidateConfigurations);
+        // Run to apply the change first before adding the rest of the subtasks.
+        getRunnableTask().runSubTasks();
+      } else {
+        createFreezeUniverseTask().setSubTaskGroupType(SubTaskGroupType.ValidateConfigurations);
+      }
+      return getUniverse();
+    } catch (RuntimeException e) {
+      unlockUniverseForUpdate();
+      throw e;
+    }
   }
 
+  /**
+   * Similar to {@link #createFreezeUniverseTask(Consumer)} without the callback.
+   *
+   * @return
+   */
+  private SubTaskGroup createFreezeUniverseTask() {
+    return createFreezeUniverseTask(null);
+  }
+
+  /**
+   * Creates a subtask to freeze the universe {@link #freezeUniverse(Consumer)}.
+   *
+   * @param callback the callback to be executed in transaction when the universe is frozen.
+   * @return the subtask group.
+   */
+  private SubTaskGroup createFreezeUniverseTask(@Nullable Consumer<Universe> callback) {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup(
+            FreezeUniverse.class.getSimpleName(), SubTaskGroupType.ValidateConfigurations);
+    FreezeUniverse task = createTask(FreezeUniverse.class);
+    FreezeUniverse.Params params = new FreezeUniverse.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.setCallback(callback);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /** Similar to {@link #lockUniverse(int)} but it ignores if the universe does not exist. */
   public Universe lockUniverseIfExist(UUID universeUuid, int expectedUniverseVersion) {
-    UniverseUpdater updater =
-        getLockingUniverseUpdater(expectedUniverseVersion, false /*checkSuccess*/);
-    return lockUniverseForUpdate(
-        universeUuid, expectedUniverseVersion, updater, true /* checkExist */);
+    UniverseUpdaterConfig updaterConfig =
+        UniverseUpdaterConfig.builder()
+            .expectedUniverseVersion(expectedUniverseVersion)
+            .ignoreAbsence(true)
+            .build();
+    return lockUniverseForUpdate(universeUuid, getLockingUniverseUpdater(updaterConfig));
   }
 
   public Universe unlockUniverseForUpdate(UUID universeUuid) {
@@ -677,7 +830,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       log.warn("Unlock universe({}) called when it was not locked.", universeUUID);
       return null;
     }
-    final String err = error;
     // Create the update lambda.
     UniverseUpdater updater =
         universe -> {
@@ -706,9 +858,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Update the progress flag to false irrespective of the version increment failure.
     // Universe version in master does not need to be updated as this does not change
     // the Universe state. It simply sets updateInProgress flag to false.
-    universe = Universe.saveDetails(universeUUID, updater, false);
-    lockedUniversesUuid.remove(universeUUID);
-    log.trace("Unlocked universe {} for updates.", universeUUID);
+    Universe universe = Universe.saveDetails(universeUUID, updater, false);
+    lockedUniversesUuid.remove(universe.getUniverseUUID());
+    log.info("Unlocked universe {} for updates.", universeUUID);
     return universe;
   }
 
@@ -1111,6 +1263,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       boolean deleteRootVolumes) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleDestroyServers");
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    nodes = filterUniverseNodes(universe, nodes, n -> true);
     for (NodeDetails node : nodes) {
       // Check if the private ip for the node is set. If not, that means we don't have
       // a clean state to delete the node. Log it, free up the onprem node
@@ -1197,6 +1350,29 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                       return true;
                     }))
         .collect(Collectors.toSet());
+  }
+
+  /**
+   * Filter out nodes that are not in the given universe and do not satisfy the predicate.
+   *
+   * @param universe the universe against which the nodes are checked.
+   * @param nodes the given nodes.
+   * @param predicate the predicate on the universe node.
+   * @return set of filtered nodes.
+   */
+  protected Set<NodeDetails> filterUniverseNodes(
+      Universe universe, Collection<NodeDetails> nodes, Predicate<NodeDetails> predicate) {
+    if (universe != null) {
+      Map<String, NodeDetails> universeNodeDetailsMap =
+          universe.getNodes().stream()
+              .collect(Collectors.toMap(NodeDetails::getNodeName, Function.identity()));
+      return nodes.stream()
+          .map(n -> universeNodeDetailsMap.get(n.getNodeName()))
+          .filter(Objects::nonNull)
+          .filter(n -> predicate == null || predicate.test(n))
+          .collect(Collectors.toSet());
+    }
+    return Collections.emptySet();
   }
 
   public SubTaskGroup createInstallNodeAgentTasks(Collection<NodeDetails> nodes) {
@@ -1552,7 +1728,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       int sleepAfterCmdMillis,
       Consumer<AnsibleClusterServerCtl.Params> paramsCustomizer) {
     AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
-    UserIntent userIntent = getUserIntent(true);
+    UserIntent userIntent = getUserIntent();
     // Add the node name.
     params.nodeName = node.nodeName;
     // Add the universe uuid.
@@ -1991,7 +2167,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       NodeDetails currentNode, String taskType, boolean isIgnoreError) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleClusterServerCtl");
     AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
-    UserIntent userIntent = getUserIntent(true);
+    UserIntent userIntent = getUserIntent();
     // Add the node name.
     params.nodeName = currentNode.nodeName;
     // Add the universe uuid.
@@ -2093,7 +2269,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleClusterServerCtl");
     for (NodeDetails node : nodes) {
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
-      UserIntent userIntent = getUserIntent(true);
+      UserIntent userIntent = getUserIntent();
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add the universe uuid.
@@ -2128,7 +2304,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleClusterServerCtl");
     for (NodeDetails node : nodes) {
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
-      UserIntent userIntent = getUserIntent(true);
+      UserIntent userIntent = getUserIntent();
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add the universe uuid.
@@ -2196,7 +2372,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleClusterServerCtl");
     for (NodeDetails node : nodes) {
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
-      UserIntent userIntent = getUserIntent(true);
+      UserIntent userIntent = getUserIntent();
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add the universe uuid.

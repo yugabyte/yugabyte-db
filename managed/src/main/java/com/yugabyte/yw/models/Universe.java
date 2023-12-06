@@ -47,6 +47,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import javax.persistence.CascadeType;
 import javax.persistence.Column;
@@ -56,6 +57,8 @@ import javax.persistence.OneToMany;
 import javax.persistence.Table;
 import javax.persistence.Transient;
 import javax.persistence.UniqueConstraint;
+import lombok.Builder;
+import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
 import org.apache.commons.lang3.StringUtils;
@@ -421,6 +424,23 @@ public class Universe extends Model {
    */
   public interface UniverseUpdater {
     void run(Universe universe);
+
+    // Returns the config associated with this updater.
+    default UniverseUpdaterConfig getConfig() {
+      return UniverseUpdaterConfig.builder().build();
+    }
+  }
+
+  /** Config parameters for the universe updater. */
+  @Builder
+  @Data
+  public static class UniverseUpdaterConfig {
+    @Builder.Default private int expectedUniverseVersion = -1;
+    private boolean checkSuccess;
+    private boolean forceUpdate;
+    @Builder.Default private boolean freezeUniverse = true;
+    private boolean ignoreAbsence;
+    private Consumer<Universe> callback;
   }
 
   /**

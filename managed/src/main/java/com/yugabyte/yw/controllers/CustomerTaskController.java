@@ -307,7 +307,9 @@ public class CustomerTaskController extends AuthenticatedController {
       response = YBPSuccess.class)
   public Result abortTask(UUID customerUUID, UUID taskUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
-    boolean isSuccess = commissioner.abortTask(taskUUID);
+    // Validate if task belongs to the user or not
+    CustomerTask.getOrBadRequest(customerUUID, taskUUID);
+    boolean isSuccess = commissioner.abortTask(taskUUID, false);
     if (!isSuccess) {
       return YBPSuccess.withMessage("Task is not running.");
     }

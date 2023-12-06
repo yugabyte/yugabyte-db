@@ -154,11 +154,12 @@ public class Commissioner {
    * check the task status for the final state.
    *
    * @param taskUUID the UUID of the task to be aborted.
+   * @param force skip some checks like abortable if it is set.
    * @return true if the task is found running and abort is triggered successfully, else false.
    */
-  public boolean abortTask(UUID taskUUID) {
+  public boolean abortTask(UUID taskUUID, boolean force) {
     TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
-    if (!isTaskAbortable(taskInfo.getTaskType())) {
+    if (!force && !isTaskAbortable(taskInfo.getTaskType())) {
       throw new PlatformServiceException(
           BAD_REQUEST, String.format("Invalid task type: Task %s cannot be aborted", taskUUID));
     }
@@ -172,7 +173,7 @@ public class Commissioner {
       // Resume if it is already paused to abort faster.
       latch.countDown();
     }
-    Optional<TaskInfo> optional = taskExecutor.abort(taskUUID);
+    Optional<TaskInfo> optional = taskExecutor.abort(taskUUID, force);
     boolean success = optional.isPresent();
     if (success && BackupUtil.BACKUP_TASK_TYPES.contains(taskInfo.getTaskType())) {
       Backup.fetchAllBackupsByTaskUUID(taskUUID)
@@ -199,6 +200,18 @@ public class Commissioner {
       runnableTask.setTaskExecutionListener(getTaskExecutionListener());
     }
     latch.countDown();
+    // Wait for the task to come out of the wait and starts running.
+    while (true) {
+      try {
+        CountDownLatch currentLatch = pauseLatches.get(taskUUID);
+        if (currentLatch == null || currentLatch != latch) {
+          break;
+        }
+        Thread.sleep(100);
+      } catch (InterruptedException e) {
+        throw new RuntimeException(e);
+      }
+    }
     return true;
   }
 
@@ -385,20 +398,20 @@ public class Commissioner {
           taskInfo -> {
             if (taskInfo.getPosition() >= subTaskPausePosition) {
               log.debug("Pausing task {} at position {}", taskInfo, taskInfo.getPosition());
-              final UUID subTaskUUID = taskInfo.getParentUuid();
+              final UUID parentTaskUUID = taskInfo.getParentUuid();
               try {
                 // Insert if absent and get the latch.
-                pauseLatches.computeIfAbsent(subTaskUUID, k -> new CountDownLatch(1)).await();
-                // Resume can set a new listener.
-                RunnableTask runnableTask = runningTasks.get(taskInfo.getParentUuid());
-                TaskExecutionListener listener = runnableTask.getTaskExecutionListener();
-                if (listener != null) {
-                  listener.beforeTask(taskInfo);
-                }
+                pauseLatches.computeIfAbsent(parentTaskUUID, k -> new CountDownLatch(1)).await();
               } catch (InterruptedException e) {
                 throw new CancellationException("Subtask cancelled: " + e.getMessage());
               } finally {
-                pauseLatches.remove(subTaskUUID);
+                pauseLatches.remove(parentTaskUUID);
+              }
+              // Resume can set a new listener.
+              RunnableTask runnableTask = runningTasks.get(taskInfo.getParentUuid());
+              TaskExecutionListener listener = runnableTask.getTaskExecutionListener();
+              if (listener != null) {
+                listener.beforeTask(taskInfo);
               }
             }
           };

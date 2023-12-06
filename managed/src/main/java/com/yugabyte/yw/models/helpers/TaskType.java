@@ -534,7 +534,9 @@ public enum TaskType {
 
   CreateBackupSchedule(com.yugabyte.yw.commissioner.tasks.CreateBackupSchedule.class),
 
-  ReprovisionNode(com.yugabyte.yw.commissioner.tasks.ReprovisionNode.class);
+  ReprovisionNode(com.yugabyte.yw.commissioner.tasks.ReprovisionNode.class),
+
+  FreezeUniverse(com.yugabyte.yw.commissioner.tasks.subtasks.FreezeUniverse.class);
 
   private final Class<? extends ITask> taskClass;
 

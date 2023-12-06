@@ -27,6 +27,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.builder.HashCodeBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -294,6 +295,32 @@ public class NodeDetails {
     clone.disksAreMountedByUUID = this.disksAreMountedByUUID;
     clone.dedicatedTo = this.dedicatedTo;
     return clone;
+  }
+
+  @Override
+  public int hashCode() {
+    return new HashCodeBuilder(17, 37).append(getNodeUuid()).append(getNodeName()).toHashCode();
+  }
+
+  @Override
+  public boolean equals(Object obj) {
+    if (this == obj) {
+      return true;
+    }
+    if (obj == null || obj.getClass() != getClass()) {
+      return false;
+    }
+    NodeDetails other = (NodeDetails) obj;
+    UUID thisNodeUuid = getNodeUuid();
+    if (thisNodeUuid != null) {
+      return thisNodeUuid.equals(other.getNodeUuid());
+    }
+    String thisNodeName = getNodeName();
+    if (thisNodeName != null) {
+      return thisNodeName.equals(other.getNodeName());
+    }
+    // They are not equal as equality cannot be determined.
+    return false;
   }
 
   @Override

@@ -174,7 +174,7 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
-
+    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     // Assert that the first task is the pre-upgrade hooks
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
 

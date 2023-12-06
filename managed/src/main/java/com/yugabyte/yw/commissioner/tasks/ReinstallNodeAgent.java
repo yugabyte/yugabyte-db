@@ -39,7 +39,7 @@ public class ReinstallNodeAgent extends UniverseDefinitionTaskBase {
 
   @Override
   public void run() {
-    Universe universe = lockUniverseForUpdate(-1, u -> preTaskActions(u));
+    Universe universe = lockAndFreezeUniverseForUpdate(-1, u -> preTaskActions(u));
     try {
       List<NodeDetails> nodeDetailsList =
           filterNodesForInstallNodeAgent(universe, universe.getNodes()).stream()

@@ -58,7 +58,7 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
     try {
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
-      Universe universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */, true);
+      Universe universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
       Collection<NodeDetails> nodes = universe.getNodes();
 

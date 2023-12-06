@@ -73,7 +73,7 @@ public class SetReplicationPaused extends XClusterConfigTaskBase {
       }
 
       if (HighAvailabilityConfig.get().isPresent()) {
-        getUniverse(true).incrementVersion();
+        getUniverse().incrementVersion();
       }
 
       // Save the pause state in the DB.

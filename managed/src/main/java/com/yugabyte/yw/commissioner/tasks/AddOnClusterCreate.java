@@ -36,7 +36,7 @@ public class AddOnClusterCreate extends UniverseDefinitionTaskBase {
     try {
 
       Universe universe =
-          lockUniverseForUpdate(
+          lockAndFreezeUniverseForUpdate(
               taskParams().expectedUniverseVersion,
               u -> {
                 if (isFirstTry()) {

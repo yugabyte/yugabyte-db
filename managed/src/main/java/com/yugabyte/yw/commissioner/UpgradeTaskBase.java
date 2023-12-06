@@ -88,19 +88,17 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   // Wrapper that takes care of common pre and post upgrade tasks and user has
   // flexibility to manipulate subTaskGroupQueue through the lambda passed in parameter
   public void runUpgrade(Runnable upgradeLambda) {
+    checkUniverseVersion();
+    Universe universe =
+        lockAndFreezeUniverseForUpdate(
+            taskParams().expectedUniverseVersion, null /* Txn callback */);
     try {
       isBlacklistLeaders =
-          confGetter.getConfForScope(getUniverse(), UniverseConfKeys.ybUpgradeBlacklistLeaders);
+          confGetter.getConfForScope(universe, UniverseConfKeys.ybUpgradeBlacklistLeaders);
       leaderBacklistWaitTimeMs =
-          confGetter.getConfForScope(
-              getUniverse(), UniverseConfKeys.ybUpgradeBlacklistLeaderWaitTimeMs);
+          confGetter.getConfForScope(universe, UniverseConfKeys.ybUpgradeBlacklistLeaderWaitTimeMs);
       followerLagCheckEnabled =
-          confGetter.getConfForScope(getUniverse(), UniverseConfKeys.followerLagCheckEnabled);
-      checkUniverseVersion();
-      // Update the universe DB with the update to be performed and set the
-      // 'updateInProgress' flag to prevent other updates from happening.
-      lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-
+          confGetter.getConfForScope(universe, UniverseConfKeys.followerLagCheckEnabled);
       Set<NodeDetails> nodeList = fetchAllNodes(taskParams().upgradeOption);
 
       // Run the pre-upgrade hooks
@@ -119,28 +117,28 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       // Run all the tasks.
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
-      log.error("Error executing task {} with error={}.", getName(), t);
+      log.error("Error executing task {} with error: ", getName(), t);
 
-      // This clears all the previously added subtasks.
-      getRunnableTask().reset();
       // If the task failed, we don't want the loadbalancer to be
       // disabled, so we enable it again in case of errors.
       if (!isLoadBalancerOn) {
-        createLoadBalancerStateChangeTask(true)
-            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+        setTaskQueueAndRun(
+            () -> {
+              createLoadBalancerStateChangeTask(true)
+                  .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+            });
       }
-      getRunnableTask().runSubTasks();
-
       throw t;
     } finally {
       try {
         if (isBlacklistLeaders && hasRollingUpgrade) {
-          // This clears all the previously added subtasks.
-          getRunnableTask().reset();
-          List<NodeDetails> tServerNodes = fetchTServerNodes(taskParams().upgradeOption);
-          createModifyBlackListTask(tServerNodes, false /* isAdd */, true /* isLeaderBlacklist */)
-              .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-          getRunnableTask().runSubTasks();
+          setTaskQueueAndRun(
+              () -> {
+                List<NodeDetails> tServerNodes = fetchTServerNodes(taskParams().upgradeOption);
+                createModifyBlackListTask(
+                        tServerNodes, false /* isAdd */, true /* isLeaderBlacklist */)
+                    .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+              });
         }
       } finally {
         try {
@@ -711,10 +709,11 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   }
 
   public LinkedHashSet<NodeDetails> fetchNodesForCluster() {
+    Universe universe = getUniverse();
     return toOrderedSet(
         new ImmutablePair<>(
-            filterForClusters(fetchMasterNodes(taskParams().upgradeOption)),
-            filterForClusters(fetchTServerNodes(taskParams().upgradeOption))));
+            filterForClusters(fetchMasterNodes(universe, taskParams().upgradeOption)),
+            filterForClusters(fetchTServerNodes(universe, taskParams().upgradeOption))));
   }
 
   public LinkedHashSet<NodeDetails> fetchAllNodes(UpgradeOption upgradeOption) {
@@ -727,18 +726,26 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   }
 
   public List<NodeDetails> fetchMasterNodes(UpgradeOption upgradeOption) {
-    List<NodeDetails> masterNodes = getUniverse().getMasters();
+    return fetchMasterNodes(getUniverse(), upgradeOption);
+  }
+
+  private List<NodeDetails> fetchMasterNodes(Universe universe, UpgradeOption upgradeOption) {
+    List<NodeDetails> masterNodes = universe.getMasters();
     if (upgradeOption == UpgradeOption.ROLLING_UPGRADE) {
-      final String leaderMasterAddress = getUniverse().getMasterLeaderHostText();
+      final String leaderMasterAddress = universe.getMasterLeaderHostText();
       return sortMastersInRestartOrder(leaderMasterAddress, masterNodes);
     }
     return masterNodes;
   }
 
   public List<NodeDetails> fetchTServerNodes(UpgradeOption upgradeOption) {
-    List<NodeDetails> tServerNodes = getUniverse().getTServers();
+    return fetchTServerNodes(getUniverse(), upgradeOption);
+  }
+
+  private List<NodeDetails> fetchTServerNodes(Universe universe, UpgradeOption upgradeOption) {
+    List<NodeDetails> tServerNodes = universe.getTServers();
     if (upgradeOption == UpgradeOption.ROLLING_UPGRADE) {
-      return sortTServersInRestartOrder(getUniverse(), tServerNodes);
+      return sortTServersInRestartOrder(universe, tServerNodes);
     }
     return tServerNodes;
   }

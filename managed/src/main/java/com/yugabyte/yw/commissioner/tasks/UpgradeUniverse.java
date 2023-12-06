@@ -235,7 +235,6 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
         }
         break;
       case Certs:
-        System.out.println("CERT1 " + universe.getUniverseDetails().nodePrefix);
         if (taskParams().certUUID == null) {
           throw new IllegalArgumentException("CertUUID cannot be null");
         }

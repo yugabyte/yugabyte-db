@@ -437,9 +437,11 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    int position =
+    int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
+    position =
         assertAllNodesActions(
-            0,
+            position,
             subTasksByPosition,
             TaskType.SetNodeState,
             TaskType.InstanceActions,
@@ -924,8 +926,8 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
     assertEquals(1, updateMounts.size());
     assertEquals(nodeName.get(), updateMounts.get(0).getDetails().get("nodeName").textValue());
-    assertEquals(0L, (long) updateMounts.get(0).getPosition());
-    assertTasksSequence(1, subTasks, true, true, true, false);
+    assertEquals(1L, (long) updateMounts.get(0).getPosition());
+    assertTasksSequence(2, subTasks, true, true, true, false);
     assertEquals(Success, taskInfo.getTaskState());
     assertUniverseData(true, true);
   }
@@ -1051,6 +1053,9 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
     assertEquals(subTasks.size(), subTasksByPosition.size());
     int position = startPosition;
+    if (startPosition == 0) {
+      assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
+    }
     assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
 
     position =

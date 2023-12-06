@@ -32,7 +32,6 @@ import play.Application;
 @Getter
 @RequiredArgsConstructor(onConstructor_ = {@Inject})
 public class BaseTaskDependencies {
-
   private final Application application;
   private final play.Environment environment;
   private final Config config;
@@ -50,4 +49,5 @@ public class BaseTaskDependencies {
   private final HealthChecker healthChecker;
   private final NodeManager nodeManager;
   private final BackupHelper backupHelper;
+  private final Commissioner commissioner;
 }

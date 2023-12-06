@@ -45,30 +45,35 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
   }
 
   @Override
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    Universe universe = getUniverse();
+    NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+    if (currentNode == null) {
+      String msg = "No node " + taskParams().nodeName + " found in universe " + universe.getName();
+      log.error(msg);
+      throw new RuntimeException(msg);
+    }
+
+    if (isFirstTry) {
+      currentNode.validateActionOnState(NodeActionType.RELEASE);
+    }
+  }
+
+  @Override
   public void run() {
     log.info(
         "Started {} task for node {} in univ uuid={}",
         getName(),
         taskParams().nodeName,
         taskParams().getUniverseUUID());
-    NodeDetails currentNode = null;
+    checkUniverseVersion();
+    Universe universe =
+        lockAndFreezeUniverseForUpdate(
+            taskParams().expectedUniverseVersion, null /* Txn callback */);
     try {
-      checkUniverseVersion();
+      NodeDetails currentNode = universe.getNode(taskParams().nodeName);
 
-      // Set the 'updateInProgress' flag to prevent other updates from happening.
-      Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-
-      currentNode = universe.getNode(taskParams().nodeName);
-      if (currentNode == null) {
-        String msg =
-            "No node " + taskParams().nodeName + " found in universe " + universe.getName();
-        log.error(msg);
-        throw new RuntimeException(msg);
-      }
-
-      if (isFirstTry()) {
-        currentNode.validateActionOnState(NodeActionType.RELEASE);
-      }
       preTaskActions();
 
       // Update Node State to BeingDecommissioned.

@@ -225,7 +225,10 @@ public class UserTaskDetails {
     InstallingThirdPartySoftware,
 
     // Promote Auto Flags
-    PromoteAutoFlags
+    PromoteAutoFlags,
+
+    // Validate configurations.
+    ValidateConfigurations
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -524,6 +527,10 @@ public class UserTaskDetails {
       case PromoteAutoFlags:
         title = "Promote Auto flags";
         description = "Promote Auto flags for a universe";
+        break;
+      case ValidateConfigurations:
+        title = "Validating configurations";
+        description = "Validating configurations before proceeding";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

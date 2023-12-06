@@ -273,7 +273,6 @@ public class AWSCloudImpl implements CloudAPI {
     List<LoadBalancer> lbs = null;
     try {
       lbs = lbClient.describeLoadBalancers(request).getLoadBalancers();
-      System.out.print(lbs);
       if (lbs.size() > 1) {
         throw new Exception("Failure: More than one load balancer with name \"" + lbName + "\"!");
       } else if (lbs.size() == 0) {
