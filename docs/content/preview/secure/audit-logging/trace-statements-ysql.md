@@ -38,7 +38,7 @@ To log the appropriate session information, you need to set the following config
     --ysql_pg_conf_csv="log_line_prefix='%m [%p %l %c] %q[%C %R %Z %H] [%r%a %u %d] '"
     ```
 
-    The parameters are similar to that of PostgreSQL, with the addition of H, C, R, and Z to add host, cloud, region, and zone information relevant to distributed systems.
+    The parameters are similar to that of PostgreSQL, with the addition of H, C, R, and Z to add host, cloud, region, and zone information relevant to distributed systems. You can also add `%U` and `%N` to add the cluster UUID, and node and cluster name respectively.
 
     For information on setting server options, refer to [PostgreSQL server options](../../../reference/configuration/yb-tserver/#postgresql-server-options).
 
