@@ -1,4 +1,7 @@
 <div class="td-content">
+  {{- if .Site.Params.search_banner -}}
+    {{ partial "search-banner.html" . }}
+  {{- end -}}
 	<div class="main-heading-with-version heading-without-image">
     <div class="heading-content">
       <div>
