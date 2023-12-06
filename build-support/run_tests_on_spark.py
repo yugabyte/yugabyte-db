@@ -515,15 +515,11 @@ def initialize_remote_task() -> yb_dist_tests.GlobalTestConfig:
     # later.
     remote_yb_src_root = global_conf.yb_src_root
     remote_yb_src_job_dir = os.path.dirname(remote_yb_src_root)
-    # Job clean-up directory should be common on spark worker node for all jobs and should be on
-    # same filesystem as yb_src_root for efficient two-stage clean-up.
-    remote_yb_src_removal = os.environ.get('YB_SPARK_CLEAN_DIR', '/tmp/SPARK_TO_REMOVE')
 
     try:
         subprocess.check_call([
             'mkdir',
             '-p',
-            remote_yb_src_removal,
             remote_yb_src_job_dir])
 
         untar_script_path = os.path.join(
@@ -542,31 +538,16 @@ def initialize_remote_task() -> yb_dist_tests.GlobalTestConfig:
 set -euo pipefail
 (
     PATH=/usr/local/bin:$PATH
-    # Options for asynchronous clean-up jobs.
-    # Optional argument for checking workspace path associated with this spark app.
-    if [[ "${{1:-none}}" == "path" ]]; then
-      echo '{remote_yb_src_root}'
-      exit 0
-    fi
-    # Optional argument for marking workspace to be removed.
-    if [[ "${{1:-none}}" == "remove" ]]; then
-      rm -f '{archive_path}'
-      mv '{remote_yb_src_job_dir}' '{remote_yb_src_removal}/'
-      exit 0
-    fi
     flock -w 180 200 || exit 5
-    # Clean up any pending removals before we unpack the archive.
-    rm -rf {remote_yb_src_removal}/*
     # Check existing workspace.
     if [[ -d '{remote_yb_src_root}' ]]; then
         previous_sha256_file_path='{remote_yb_src_root}/extracted_from_archive.sha256'
         if [[ ! -f $previous_sha256_file_path ]]; then
-            # Prevent accidental deletion of directories that were not installed by untarring
-            # an archive.
             echo "File $previous_sha256_file_path does not exist!" >&2
-            exit 1
+            previous_sha256sum="None-Found"
+        else
+            previous_sha256sum=$(<"$previous_sha256_file_path")
         fi
-        previous_sha256sum=$(<"$previous_sha256_file_path")
         if [[ $previous_sha256sum == '{expected_archive_sha256sum}' ]]; then
             echo "Found existing archive installation at '{remote_yb_src_root}' with correct" \
                  "expected checksum '$previous_sha256sum'."
