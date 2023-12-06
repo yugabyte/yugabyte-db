@@ -245,16 +245,17 @@ public class CustomerTaskManager {
               return;
           }
           taskParams.setPreviousTaskUUID(taskUUID);
-          UUID newTaskUUID = commissioner.submit(taskType, taskParams);
+          taskInfo
+              .getSubTasks()
+              .forEach(
+                  subtask -> {
+                    subtask.delete();
+                  });
+          UUID newTaskUUID = commissioner.submit(taskType, taskParams, taskUUID);
           beginTransaction();
           try {
             customerTask.updateTaskUUID(newTaskUUID);
             customerTask.resetCompletionTime();
-            Optional<TaskInfo> optional = TaskInfo.maybeGet(taskUUID);
-            if (optional.isPresent()) {
-              optional.get().getSubTasks().forEach(st -> st.delete());
-              optional.get().delete();
-            }
             commitTransaction();
           } catch (Exception e) {
             throw new RuntimeException("Unable to delete the previous task info: " + taskUUID);
@@ -295,9 +296,7 @@ public class CustomerTaskManager {
               + "AND (ct.completion_time IS NULL "
               + "OR ti.task_state IN ('"
               + incompleteStates
-              + "') OR "
-              + "(ti.task_state='Aborted' AND ti.details->>'errorString' = 'Platform shutdown'"
-              + " AND ct.completion_time IS NULL))";
+              + "'))";
       // TODO use Finder.
       DB.sqlQuery(query)
           .findList()

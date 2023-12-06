@@ -109,6 +109,17 @@ public class Commissioner {
    * @param taskParams the task parameters.
    */
   public UUID submit(TaskType taskType, ITaskParams taskParams) {
+    return submit(taskType, taskParams, null);
+  }
+
+  /**
+   * Creates a new task runnable to run the required task, and submits it to the TaskExecutor.
+   *
+   * @param taskType the task type.
+   * @param taskParams the task parameters.
+   * @param taskUUID the task UUID
+   */
+  public UUID submit(TaskType taskType, ITaskParams taskParams, UUID taskUUID) {
     RunnableTask taskRunnable = null;
     try {
       if (runtimeConfGetter.getGlobalConf(
@@ -120,11 +131,11 @@ public class Commissioner {
             "Executing TaskType {} with params {}", taskType.toString(), redactedJson.toString());
       }
       // Create the task runnable object based on the various parameters passed in.
-      taskRunnable = taskExecutor.createRunnableTask(taskType, taskParams);
+      taskRunnable = taskExecutor.createRunnableTask(taskType, taskParams, taskUUID);
       // Add the consumer to handle before task if available.
       taskRunnable.setTaskExecutionListener(getTaskExecutionListener());
       onTaskCreated(taskRunnable, taskParams);
-      UUID taskUUID = taskExecutor.submit(taskRunnable, executor);
+      taskUUID = taskExecutor.submit(taskRunnable, executor);
       // Add this task to our queue.
       runningTasks.put(taskUUID, taskRunnable);
       return taskRunnable.getTaskUUID();
