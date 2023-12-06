@@ -299,7 +299,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.SyncXClusterConfig,
           TaskType.DestroyUniverse,
           TaskType.DestroyKubernetesUniverse,
-          TaskType.ReinstallNodeAgent);
+          TaskType.ReinstallNodeAgent,
+          TaskType.ReadOnlyClusterDelete);
 
   protected static final Set<TaskType> SOFTWARE_UPGRADE_ROLLBACK_TASKS =
       ImmutableSet.of(TaskType.RollbackKubernetesUpgrade, TaskType.RollbackUpgrade);
