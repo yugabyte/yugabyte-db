@@ -237,7 +237,11 @@ void WriteQuery::Finished(WriteOperation* operation, const Status& status) {
 }
 
 void WriteQuery::Cancel(const Status& status) {
-  LOG_IF(DFATAL, !operation_) << "Cancelled submitted operation: " << status;
+  if (operation_) {
+    operation_->ResetPreparingToken();
+  } else {
+    LOG(DFATAL) << "Cancelled submitted operation: " << status;
+  }
 
   Complete(status);
 }
@@ -755,6 +759,7 @@ bool WriteQuery::CqlCheckSchemaVersion() {
   if (!tablet_result.ok()) {
     YB_LOG_EVERY_N_SECS(WARNING, 1)
         << "Tablet has already been destroyed in WriteQuery::CqlCheckSchemaVersion.";
+    StartSynchronization(std::move(self_), tablet_result.status());
     return false;
   }
   auto tablet = *tablet_result;

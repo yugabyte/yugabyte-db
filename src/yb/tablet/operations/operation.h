@@ -118,7 +118,7 @@ class Operation {
     preparing_token_ = std::move(preparing_token);
   }
 
-  void SubmittedToPreparer() {
+  void ResetPreparingToken() {
     preparing_token_ = ScopedOperation();
   }
 
