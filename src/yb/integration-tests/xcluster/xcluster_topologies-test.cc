@@ -236,6 +236,11 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
   }
 
   Status VerifyNumRecords(
+      const std::shared_ptr<client::YBTable>& table, YBClient* client, size_t expected_size) {
+    return XClusterYcqlTestBase::VerifyNumRecords(table, client, expected_size);
+  }
+
+  Status VerifyNumRecords(
       const std::unordered_set<XClusterTestBase::Cluster*>& expected_fail_clusters,
       size_t expected_size) {
     for (size_t i = 0; i < consumer_clusters_.size(); ++i) {
@@ -243,7 +248,7 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
         const auto& table =
             consumer_tables_[j + (i * producer_tables_[producer_cluster()->GetClusterId()].size())];
         YBClient* client = consumer_clusters_[i]->client_.get();
-        Status s = DoVerifyNumRecords(table->name(), client, expected_size);
+        Status s = VerifyNumRecords(table, client, expected_size);
         if (!expected_fail_clusters.contains(consumer_clusters_[i]) && !s.ok()) {
           return s;
         } else if (expected_fail_clusters.contains(consumer_clusters_[i]) && s.ok()) {
@@ -263,8 +268,7 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
       int timeout = kRpcTimeout) {
     for (size_t i = 0; i < producer_tables.size(); ++i) {
       const auto& producer_table = producer_tables[i];
-      LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
-      WriteWorkload(start, end, producer_client(), producer_table->name());
+      RETURN_NOT_OK(InsertRowsInProducer(start, end, producer_table));
     }
     RETURN_NOT_OK(VerifyWrittenRecords(expected_fail_consumer_clusters, skip_clusters, timeout));
     return Status::OK();
@@ -288,8 +292,7 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
     size_t size = stream_ids.size() ? stream_ids.size() : producer_tables.size();
     for (size_t i = 0; i < size; i++) {
       const auto& producer_table = producer_tables[i];
-      LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
-      WriteWorkload(start, end, producer_client(), producer_table->name());
+      RETURN_NOT_OK(InsertRowsInProducer(start, end, producer_table));
     }
     RETURN_NOT_OK(VerifyWrittenRecords(expected_fail_consumer_clusters, skip_clusters, timeout));
     return Status::OK();
@@ -323,7 +326,7 @@ TEST_F(XClusterTopologiesTest, TestBasicBroadcastTopology) {
   for (int i = 0; i < kNumTables; ++i) {
     const auto& producer_table = producer_tables_[producer_cluster()->GetClusterId()][i];
     LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
-    WriteWorkload(0, 10, producer_client(), producer_table->name());
+    ASSERT_OK(InsertRowsInProducer(0, 10, producer_table));
   }
 
   ASSERT_OK(VerifyWrittenRecords());

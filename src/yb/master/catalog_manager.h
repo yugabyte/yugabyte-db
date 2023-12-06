@@ -1204,7 +1204,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status InitXClusterConsumer(
       const std::vector<XClusterConsumerStreamInfo>& consumer_info, const std::string& master_addrs,
-      const cdc::ReplicationGroupId& producer_universe_uuid,
+      UniverseReplicationInfo& replication_info,
       std::shared_ptr<XClusterRpcTasks> xcluster_rpc_tasks);
 
   void HandleCreateTabletSnapshotResponse(TabletInfo* tablet, bool error) override;
@@ -1358,7 +1358,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const UpdateConsumerOnProducerMetadataRequestPB* req,
       UpdateConsumerOnProducerMetadataResponsePB* resp,
       rpc::RpcContext* rpc);
-  //
+
+  Status XClusterReportNewAutoFlagConfigVersion(
+      const XClusterReportNewAutoFlagConfigVersionRequestPB* req,
+      XClusterReportNewAutoFlagConfigVersionResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+
   // Wait for replication to drain on CDC streams.
   typedef std::pair<xrepl::StreamId, TabletId> StreamTabletIdPair;
   typedef boost::hash<StreamTabletIdPair> StreamTabletIdHash;
@@ -1433,7 +1438,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   void ReenableTabletSplitting(const std::string& feature) override;
 
-  Status RunXClusterBgTasks(const LeaderEpoch& epoch);
+  void RunXClusterBgTasks(const LeaderEpoch& epoch);
 
   Status SetUniverseUuidIfNeeded(const LeaderEpoch& epoch);
 
@@ -1470,6 +1475,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status PromoteTableToRunningState(TableInfoPtr table_info, const LeaderEpoch& epoch) override;
 
   std::unordered_set<xrepl::StreamId> GetAllXreplStreamIds() const EXCLUDES(mutex_);
+
+  void NotifyAutoFlagsConfigChanged();
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
@@ -2976,6 +2983,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status CreateGlobalTransactionStatusTableIfNotPresent(
       rpc::RpcContext* rpc, const LeaderEpoch& epoch);
 
+  Status XClusterRefreshLocalAutoFlagConfig(const LeaderEpoch& epoch);
+
+  Status XClusterProcessPendingSchemaChanges(const LeaderEpoch& epoch);
+
   Status MaybeRestoreInitialSysCatalogSnapshotAndReloadSysCatalog(SysCatalogLoadingState* state)
       REQUIRES(mutex_);
 
@@ -3105,6 +3116,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   std::unordered_map<cdc::ReplicationGroupId, xcluster::ReplicationGroupErrors>
       xcluster_consumer_replication_error_map_
           GUARDED_BY(xcluster_consumer_replication_error_map_mutex_);
+
+  std::atomic<bool> xcluster_auto_flags_revalidation_needed_{true};
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

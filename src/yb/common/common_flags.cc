@@ -139,6 +139,9 @@ void RpcThrottleThresholdBytesValidator() {
 REGISTER_CALLBACK(rpc_throttle_threshold_bytes, "RpcThrottleThresholdBytesValidator",
     &RpcThrottleThresholdBytesValidator);
 
+DEFINE_RUNTIME_AUTO_bool(enable_xcluster_auto_flag_validation, kLocalPersisted, false, true,
+    "Enables validation of AutoFlags between the xcluster universes");
+
 namespace yb {
 
 void InitCommonFlags() {

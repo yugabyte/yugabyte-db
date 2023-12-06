@@ -300,6 +300,10 @@ class CDCServiceContextImpl : public cdc::CDCServiceContext {
         tablet_server_.metric_entity(), tablet_server_.mem_tracker(), tablet_server_.messenger());
   }
 
+  Result<uint32> GetAutoFlagsConfigVersion() const override {
+    return tablet_server_.ValidateAndGetAutoFlagsConfigVersion();
+  }
+
  private:
   TabletServer& tablet_server_;
 };

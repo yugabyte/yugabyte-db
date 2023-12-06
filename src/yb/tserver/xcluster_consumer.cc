@@ -29,6 +29,7 @@
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/secure_stream.h"
 #include "yb/tserver/xcluster_consumer.h"
+#include "yb/tserver/xcluster_consumer_auto_flags_info.h"
 #include "yb/tserver/xcluster_output_client.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/xcluster_poller.h"
@@ -168,6 +169,9 @@ XClusterConsumer::XClusterConsumer(
   rate_limiter_callback_ = CHECK_RESULT(RegisterFlagUpdateCallback(
       &FLAGS_apply_changes_max_send_rate_mbps, "xclusterConsumerRateLimiter",
       std::bind(&XClusterConsumer::SetRateLimiterSpeed, this)));
+
+  auto_flags_version_handler_ =
+      std::make_unique<xcluster::AutoFlagsVersionHandler>(local_client_->client);
 }
 
 XClusterConsumer::~XClusterConsumer() {
@@ -358,6 +362,10 @@ void XClusterConsumer::HandleMasterHeartbeatResponse(
 void XClusterConsumer::UpdateReplicationGroupInMemState(
     const cdc::ReplicationGroupId& replication_group_id,
     const yb::cdc::ProducerEntryPB& producer_entry_pb) {
+  auto_flags_version_handler_->InsertOrUpdate(
+      replication_group_id, producer_entry_pb.compatible_auto_flag_config_version(),
+      producer_entry_pb.validated_auto_flags_config_version());
+
   for (const auto& [stream_id_str, stream_entry_pb] : producer_entry_pb.stream_map()) {
     auto stream_id_result = xrepl::StreamId::FromString(stream_id_str);
     if (!stream_id_result) {
@@ -552,10 +560,13 @@ void XClusterConsumer::TriggerPollForNewTablets() {
         // Now create the poller.
         bool use_local_tserver =
             streams_with_local_tserver_optimization_.contains(producer_tablet_info.stream_id);
+
         std::shared_ptr<XClusterPoller> xcluster_poller = std::make_unique<XClusterPoller>(
-            producer_tablet_info, consumer_tablet_info, thread_pool_.get(), rpcs_.get(),
-            local_client_, remote_clients_[replication_group_id], this,
-            last_compatible_consumer_schema_version, leader_term, get_leader_term_func_);
+            producer_tablet_info, consumer_tablet_info,
+            auto_flags_version_handler_->GetAutoFlagsCompatibleVersion(
+                producer_tablet_info.replication_group_id),
+            thread_pool_.get(), rpcs_.get(), local_client_, remote_clients_[replication_group_id],
+            this, last_compatible_consumer_schema_version, leader_term, get_leader_term_func_);
         xcluster_poller->Init(use_local_tserver, rate_limiter_.get());
 
         UpdatePollerSchemaVersionMaps(xcluster_poller, producer_tablet_info.stream_id);
@@ -627,8 +638,10 @@ void XClusterConsumer::TriggerDeletionOfOldPollers() {
       pollers_to_shutdown.emplace_back(poller);
       it = pollers_map_.erase(it);
 
-      // Check if no more objects with this UUID exist after registry refresh.
+      // Check if no more objects with this ReplicationGroup exist after registry refresh.
       if (!ContainsKey(uuid_master_addrs_, producer_info.replication_group_id)) {
+        auto_flags_version_handler_->Delete(producer_info.replication_group_id);
+
         auto clients_it = remote_clients_.find(producer_info.replication_group_id);
         if (clients_it != remote_clients_.end()) {
           clients_to_delete.emplace_back(clients_it->second);
@@ -812,6 +825,12 @@ void XClusterConsumer::PopulateMasterHeartbeatRequest(
       }
     }
   }
+}
+
+Status XClusterConsumer::ReportNewAutoFlagConfigVersion(
+    const cdc::ReplicationGroupId& replication_group_id, uint32_t new_version) const {
+  return auto_flags_version_handler_->ReportNewAutoFlagConfigVersion(
+      replication_group_id, new_version);
 }
 
 }  // namespace tserver

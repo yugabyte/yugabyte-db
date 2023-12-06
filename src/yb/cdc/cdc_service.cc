@@ -82,6 +82,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/thread.h"
 #include "yb/util/trace.h"
 
@@ -181,6 +182,7 @@ DECLARE_int32(cdc_checkpoint_opid_interval_ms);
 DECLARE_int32(rpc_workers_limit);
 
 DECLARE_int64(cdc_intent_retention_ms);
+DECLARE_bool(enable_xcluster_auto_flag_validation);
 
 METRIC_DEFINE_entity(cdc);
 
@@ -1673,11 +1675,22 @@ void CDCServiceImpl::GetChanges(
   bool report_tablet_split = false;
   // Read the latest changes from the Log.
   if (record.GetSourceType() == XCLUSTER) {
+    // Check AutoFlags version and fail early on errors before scanning the WAL.
+    if (!ValidateAutoFlagsConfigVersion(*req, *resp, context)) {
+      return;
+    }
+    TEST_SYNC_POINT("GetChanges::AfterFirstValidateAutoFlagsConfigVersion1");
+    TEST_SYNC_POINT("GetChanges::AfterFirstValidateAutoFlagsConfigVersion2");
     status = GetChangesForXCluster(
         stream_id, req->tablet_id(), from_op_id, tablet_peer,
         std::bind(
             &CDCServiceImpl::UpdateChildrenTabletsOnSplitOpForXCluster, this, producer_tablet, _1),
         mem_tracker, get_changes_deadline, &record, &msgs_holder, resp, &last_readable_index);
+
+    // Check AutoFlags version again if we are sending any records back.
+    if (resp->records_size() > 0 && !ValidateAutoFlagsConfigVersion(*req, *resp, context)) {
+      return;
+    }
   } else {
     uint64_t commit_timestamp;
     OpId last_streamed_op_id;
@@ -4114,6 +4127,36 @@ void CDCServiceImpl::CheckReplicationDrain(
 void CDCServiceImpl::AddTabletCheckpoint(
     OpId op_id, const xrepl::StreamId& stream_id, const TabletId& tablet_id) {
   impl_->AddTabletCheckpoint(op_id, stream_id, tablet_id);
+}
+
+bool CDCServiceImpl::ValidateAutoFlagsConfigVersion(
+    const GetChangesRequestPB& req, GetChangesResponsePB& resp, rpc::RpcContext& context) {
+  if (!FLAGS_enable_xcluster_auto_flag_validation || !req.has_auto_flags_config_version()) {
+    return true;
+  }
+
+  const auto get_auto_flags_version_result = context_->GetAutoFlagsConfigVersion();
+
+  if (!get_auto_flags_version_result) {
+    SetupErrorAndRespond(
+        resp.mutable_error(), get_auto_flags_version_result.status(), CDCErrorPB::INTERNAL_ERROR,
+        &context);
+    return false;
+  }
+  const auto local_auto_flags_config_version = *get_auto_flags_version_result;
+
+  if (local_auto_flags_config_version == req.auto_flags_config_version()) {
+    return true;
+  }
+
+  resp.set_auto_flags_config_version(local_auto_flags_config_version);
+  SetupErrorAndRespond(
+      resp.mutable_error(),
+      STATUS_FORMAT(
+          InvalidArgument, "AutoFlags config version mismatch. Expected: $0, Actual: $1",
+          req.auto_flags_config_version(), local_auto_flags_config_version),
+      CDCErrorPB::AUTO_FLAGS_CONFIG_VERSION_MISMATCH, &context);
+  return false;
 }
 
 }  // namespace cdc
