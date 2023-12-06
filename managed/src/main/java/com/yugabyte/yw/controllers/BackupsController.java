@@ -790,7 +790,7 @@ public class BackupsController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result editBackup(UUID customerUUID, UUID backupUUID, Http.Request request) {
