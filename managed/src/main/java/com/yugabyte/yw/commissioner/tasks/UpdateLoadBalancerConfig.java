@@ -40,7 +40,7 @@ public class UpdateLoadBalancerConfig extends UniverseDefinitionTaskBase {
       // Update the universe DB with the changes to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       universe =
-          lockUniverseForUpdate(
+          lockAndFreezeUniverseForUpdate(
               taskParams().expectedUniverseVersion,
               u -> {
                 // Get expected LB config
