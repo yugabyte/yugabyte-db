@@ -27,6 +27,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -53,6 +54,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -86,6 +88,8 @@ public class LocalNodeManager {
 
   private Map<String, NodeInfo> nodesByNameMap = new ConcurrentHashMap<>();
 
+  private SpecificGFlags additionalGFlags;
+
   @Setter private int ipRangeStart = 2;
   @Setter private int ipRangeEnd = 100;
 
@@ -93,6 +97,11 @@ public class LocalNodeManager {
 
   public void setPredefinedConfig(Map<Integer, String> predefinedConfig) {
     this.predefinedConfig = predefinedConfig;
+  }
+
+  public void setAdditionalGFlags(SpecificGFlags additionalGFlags) {
+    log.debug("Set additional gflags: {}", additionalGFlags.getPerProcessFlags().value);
+    this.additionalGFlags = additionalGFlags;
   }
 
   // Temporary method.
@@ -448,7 +457,11 @@ public class LocalNodeManager {
       UniverseTaskBase.ServerType serverType,
       NodeInfo nodeInfo)
       throws IOException {
-    log.debug("Write gflags {} to file {}", gflags, serverType);
+    Map<String, String> gflagsToWrite = new LinkedHashMap<>(gflags);
+    if (additionalGFlags != null) {
+      gflagsToWrite.putAll(additionalGFlags.getPerProcessFlags().value.get(serverType));
+    }
+    log.debug("Write gflags {} to file {}", gflagsToWrite, serverType);
     File flagFileTmpPath = new File(getNodeGFlagsFile(userIntent, serverType, nodeInfo));
     if (!flagFileTmpPath.exists()) {
       flagFileTmpPath.getParentFile().mkdirs();
@@ -457,8 +470,8 @@ public class LocalNodeManager {
     try (FileOutputStream fis = new FileOutputStream(flagFileTmpPath);
         OutputStreamWriter writer = new OutputStreamWriter(fis);
         BufferedWriter buf = new BufferedWriter(writer)) {
-      for (String key : gflags.keySet()) {
-        buf.write("--" + key + "=" + gflags.get(key));
+      for (String key : gflagsToWrite.keySet()) {
+        buf.write("--" + key + "=" + gflagsToWrite.get(key));
         buf.newLine();
       }
       buf.flush();
