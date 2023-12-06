@@ -108,7 +108,7 @@ Make sure that you have created a new rust project as part of the [prerequisites
     yb-postgres = "0.19.7-yb-1-beta"
     ```
 
-1. Replace the existing code in `src/main.rs` with the following sample code to set up tables and query the table contents. Replace the connection string `connection_url` with the cluster credential, if required.
+1. Replace the existing code in `src/main.rs` with the following sample code to set up tables and query the table contents. Replace the values in the connection string `connection_url` with the database credentials, if required.
 
     ```rust
     use yb_postgres::{Client, NoTls, Error};
