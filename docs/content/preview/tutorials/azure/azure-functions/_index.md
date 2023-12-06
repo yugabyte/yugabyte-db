@@ -5,12 +5,11 @@ linkTitle: Azure Functions
 description: How to Develop Azure Functions with YugabyteDB
 image: /images/tutorials/azure/icons/Function-App-Icon.svg
 headcontent: How to Develop Azure Functions with YugabyteDB
-aliases:
-  - /preview/tutorials/azure/functions
 menu:
   preview:
     identifier: tutorials-azure-functions
     parent: tutorials-azure
+    weight: 20
 type: indexpage
 ---
 

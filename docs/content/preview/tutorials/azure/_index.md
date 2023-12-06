@@ -33,7 +33,7 @@ type: indexpage
         <div class="title">Azure Functions</div>
       </div>
       <div class="body">
-        How to Develop Azure Functions with YugabyteDB
+        Use YugabyteDB as the database backend for your Azure functions.
       </div>
     </a>
     </div>
@@ -44,7 +44,7 @@ type: indexpage
         <div class="title">Azure Key Vault</div>
       </div>
       <div class="body">
-        How to Develop Azure Functions with YugabyteDB
+        Develop an application using an Azure SDK to access YugabyteDB credentials stored in the cloud.
       </div>
     </a>
     </div>
@@ -55,7 +55,7 @@ type: indexpage
         <div class="title">Azure OpenAI</div>
       </div>
       <div class="body">
-        How to Develop Azure Functions with YugabyteDB
+        Build a scalable generative AI application using YugabyteDB as the database backend.
       </div>
     </a>
   </div>
@@ -66,7 +66,7 @@ type: indexpage
         <div class="title">Azure Private Link</div>
       </div>
       <div class="body">
-        How to Develop Azure Functions with YugabyteDB
+        Connect a node.js application to YugabyteDB over Azure Private Link.
       </div>
     </a>
   </div>
@@ -77,7 +77,7 @@ type: indexpage
         <div class="title">Azure API Management</div>
       </div>
       <div class="body">
-        How to Develop Azure Functions with YugabyteDB
+        Use YugabyteDB as the database backend for your API Management service.
       </div>
     </a>
   </div>
