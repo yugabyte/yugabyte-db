@@ -3301,7 +3301,7 @@ class PgLibPqYSQLBackendCrash: public PgLibPqTest {
   void GetPostmasterPid(std::string *postmaster_pid) {
     auto conn = ASSERT_RESULT(Connect());
     auto backend_pid = ASSERT_RESULT(conn.FetchValue<int32_t>("SELECT pg_backend_pid()"));
-    RunShellProcess(Format("ps -o ppid= $0", backend_pid), &postmaster_pid);
+    RunShellProcess(Format("ps -o ppid= $0", backend_pid), postmaster_pid);
 
     postmaster_pid->erase(std::remove(postmaster_pid->begin(), postmaster_pid->end(), '\n'),
                           postmaster_pid->end());
