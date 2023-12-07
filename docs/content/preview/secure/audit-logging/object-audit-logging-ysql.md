@@ -26,48 +26,35 @@ Object audit logging is intended to be a finer-grained replacement for `pgaudit.
 
 In YugabyteDB, object-level audit logging is implemented by reusing the PG role system. The `pgaudit.role` setting defines the role that will be used for audit logging. A relation ( TABLE, VIEW, etc.) will be audit logged when the audit role has permissions for the command executed or inherits the permissions from another role. This allows you to effectively have multiple audit roles even though there is a single master role in any context.
 
+## Object-level example
+
 In this example object audit logging is used to illustrate how a granular approach may be taken towards logging of SELECT and DML statements.
 
-## Step 1. Connect using `ysql`
+### Setup
 
-Open the YSQL shell (ysqlsh), specifying the `yugabyte` user and prompting for the password.
+{{% explore-setup-single %}}
 
-```sh
-$ ./ysqlsh -U yugabyte -W
-```
-
-When prompted for the password, enter the yugabyte password. You should be able to log in and see a response similar to the following:
-
-```output
-ysqlsh (11.2-YB-2.5.0.0-b0)
-Type "help" for help.
-yugabyte=#
-```
-
-## Step 2. Enable `pgaudit`
-
-Enable `pgaudit` extension on the YugabyteDB cluster.
+Using ysqlsh, connect to the database and enable the `pgaudit` extension on the YugabyteDB cluster as follows:
 
 ```sql
 \c yugabyte yugabyte;
-
 CREATE EXTENSION IF NOT EXISTS pgaudit;
 ```
 
-## Step 3. Enable object auditing
+### Enable object auditing
 
 Set [pgaudit.role](https://github.com/pgaudit/pgaudit/blob/master/README.md#pgauditrole) to `auditor` and grant `SELECT` and `UPDATE` privileges on the `account` table. Any `SELECT` or `UPDATE` statements on the `account` table will now be logged. Note that logging on the `account` table is controlled by column-level permissions, while logging on the `account_role_map` table is table-level.
 
 ```sql
 CREATE ROLE auditor;
 
-set pgaudit.role = 'auditor';
+SET pgaudit.role = 'auditor';
 ```
 
-## Step 4. Create a table
+### Create a table
 
 ```sql
-create table account
+CREATE TABLE account
 (
     id int,
     name text,
@@ -75,44 +62,42 @@ create table account
     description text
 );
 
-grant select (password)
-   on public.account
-   to auditor;
+GRANT SELECT (password)
+   ON public.account
+   TO auditor;
 
-select id, name
-  from account;
+SELECT id, name FROM account;
 
-select password
-  from account;
+SELECT password FROM account;
 
-grant update (name, password)
-   on public.account
-   to auditor;
+GRANT UPDATE (name, password)
+   ON public.account
+   TO auditor;
 
-update account
-   set description = 'yada, yada';
+UPDATE account
+   SET description = 'yada, yada';
 
-update account
-   set password = 'HASH2';
+UPDATE account
+   SET password = 'HASH2';
 
-create table account_role_map
+CREATE TABLE account_role_map
 (
     account_id int,
     role_id int
 );
 
-grant select
-   on public.account_role_map
-   to auditor;
+GRANT SELECT
+   ON public.account_role_map
+   TO auditor;
 
-select account.password,
+SELECT account.password,
        account_role_map.role_id
-  from account
-       inner join account_role_map
-            on account.id = account_role_map.account_id;
+  FROM account
+       INNER JOIN account_role_map
+            ON account.id = account_role_map.account_id;
 ```
 
-## Step 5. Verify output
+### Verify output
 
 You should see the following output in the logs:
 

@@ -2,7 +2,6 @@
 title: Configure audit logging in YSQL
 headerTitle: Configure audit logging in YSQL
 description: Configure audit logging in YSQL.
-image: /images/section_icons/secure/authentication.png
 menu:
   stable:
     name: Configure audit logging
@@ -53,6 +52,8 @@ To enable audit logging, first configure audit logging for the cluster. This is 
 
     `SET` only affects the value used by the current session. For more information, see the [PostgreSQL documentation](https://www.postgresql.org/docs/11/sql-set.html).
 
+### Create the extension
+
 After configuring the YB-TServer and starting the cluster, create the `pgaudit` extension by executing the following statement in ysqlsh:
 
 ```sql
@@ -77,35 +78,34 @@ You can customize YSQL audit logging using the `pgaudit` flags, as per the follo
 | pgaudit.log_statement_once | Include the statement text and parameters for a statement or sub-statement combination with the first log entry only. Ordinarily, statement text and parameters are included with every log entry. Enable this setting for less verbose logging; however, this can make it more difficult to determine the statement that generated a log entry. | OFF |
 | pgaudit.role | Specifies the master role to use for object audit logging. To define multiple audit roles, grant the roles to the master role; this allows multiple groups to be in charge of different aspects of audit logging. | None |
 
-## Example 1
+## Examples
 
-Use the following steps to configure audit logging in a YugabyteDB cluster with bare minimum configurations.
+{{% explore-setup-single %}}
 
-### Enable audit logging
+Using ysqlsh, connect to the database and enable the `pgaudit` extension on the YugabyteDB cluster as follows:
 
-Start the YugabyteDB cluster with the following audit logging configuration:
-
-```shell
---ysql_pg_conf_csv="pgaudit.log='DDL',pgaudit.log_level=notice,pgaudit.log_client=ON"
+```sql
+\c yugabyte yugabyte;
+CREATE EXTENSION IF NOT EXISTS pgaudit;
 ```
 
-Alternatively, start ysqlsh and execute the following commands:
+### Basic audit logging
 
-```shell
+In ysqlsh, execute the following commands:
+
+```sql
 SET pgaudit.log='DDL';
 SET pgaudit.log_client=ON;
 SET pgaudit.log_level=notice;
 ```
 
-### Load the pgaudit extension
+To configure a cluster, you would start your cluster with the pgaudit options set in the `ysql_pg_conf_csv` flag as follows:
 
-To enable the `pgaudit` extension on the YugabyteDB cluster, create the `pgaudit` extension on any node as follows:
-
-```sql
-yugabyte=# CREATE EXTENSION IF NOT EXISTS pgaudit;
+```shell
+--ysql_pg_conf_csv="pgaudit.log='DDL',pgaudit.log_level=notice,pgaudit.log_client=ON"
 ```
 
-### Create a table and verify the log
+#### Create a table and verify the log
 
 As `pgaudit.log='DDL'` is configured, `CREATE TABLE` YSQL statements are logged and the corresponding log is shown in the YSQL client:
 
@@ -123,28 +123,20 @@ CREATE TABLE
 
 Notice that audit logs are generated for DDL statements.
 
-## Example 2
+### Advanced audit logging
 
-Use the following steps to configure advanced audit logging in a YugabyteDB cluster.
-
-### Enable audit logging
-
-Start the YugabyteDB cluster with the following audit logging configuration:
+For this example, start a new cluster with the following audit logging configuration:
 
 ```shell
 --ysql_pg_conf_csv="log_line_prefix='%m [%p %l %c] %q[%C %R %Z %H] [%r %a %u %d] '",pgaudit.log='all',pgaudit.log_parameter=on,pgaudit.log_relation=on,pgaudit.log_catalog=off,suppress_nonpg_logs=on
 ```
 
-### Load the pgaudit extension
-
-To enable the `pgaudit` extension on the YugabyteDB cluster, create the `pgaudit` extension on any node as follows:
+Enable the `pgaudit` extension on any node as follows:
 
 ```sql
-yugabyte=# CREATE EXTENSION IF NOT EXISTS pgaudit;
-yugabyte=# CREATE TABLE IF NOT EXISTS my_table ( h int, r int, v int, primary key(h,r));
+CREATE EXTENSION IF NOT EXISTS pgaudit;
+CREATE TABLE IF NOT EXISTS my_table ( h int, r int, v int, primary key(h,r));
 ```
-
-### Generate a scenario with concurrent transactions
 
 Start two sessions and execute transactions concurrently as follows:
 
@@ -164,8 +156,8 @@ Start two sessions and execute transactions concurrently as follows:
    <td>
 
 ```sql
-yugabyte=# BEGIN;
-yugabyte=# INSERT INTO my_table VALUES (5,2,2);
+BEGIN;
+INSERT INTO my_table VALUES (5,2,2);
 ```
 
    </td>
@@ -178,9 +170,9 @@ yugabyte=# INSERT INTO my_table VALUES (5,2,2);
    <td>
 
 ```sql
-yugabyte=# BEGIN;
-yugabyte=# INSERT INTO my_table VALUES (6,2,2);
-yugabyte=# COMMIT;
+BEGIN;
+INSERT INTO my_table VALUES (6,2,2);
+COMMIT;
 ```
 
    </td>
@@ -189,7 +181,7 @@ yugabyte=# COMMIT;
    <td>
 
 ```sql
-yugabyte=# INSERT INTO my_table VALUES (7,2,2);
+INSERT INTO my_table VALUES (7,2,2);
 COMMIT;
 ```
 
