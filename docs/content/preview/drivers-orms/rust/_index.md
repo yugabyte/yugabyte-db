@@ -17,10 +17,10 @@ showRightNav: true
 
 The following project is recommended for implementing Rust applications using the YugabyteDB YSQL API.
 
-| Project | Documentation and Guides | Example Apps |
-| ------- | ------------------------ | ------------ |
-| YugabyteDB Rust-Postgres Smart Driver [Recommended] | [Documentation](yb-rust-postgres/) |  |
-| Diesel | [Documentation](diesel/) <br/> [Hello World](../orms/rust/ysql-diesel/) | [Diesel app](https://github.com/YugabyteDB-Samples/orm-examples/tree/master/rust/diesel)
+| Project | Documentation and Guides | Latest Driver Version | Supported YugabyteDB Version | Example Apps |
+| ------- | ------------------------ | --------------------- | ---------------------------- | ------------ |
+| YugabyteDB Rust-Postgres Smart Driver [Recommended] | [Documentation](yb-rust-postgres/) | [yb-postgres](https://crates.io/crates/yb-postgres) (synchronous YSQL client): v0.19.7-yb-1-beta <br/> [yb-tokio-postgres](https://crates.io/crates/yb-tokio-postgres) (asynchronous YSQL client): v0.7.10-yb-1-beta |
+| Diesel | [Documentation](diesel/) <br/> [Hello World](../orms/rust/ysql-diesel/) | | |[Diesel app](https://github.com/YugabyteDB-Samples/orm-examples/tree/master/rust/diesel) |
 
 Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the **Hello World** examples.
 
