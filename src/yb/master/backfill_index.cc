@@ -124,6 +124,12 @@ DEFINE_bool(defer_index_backfill, false,
 TAG_FLAG(defer_index_backfill, advanced);
 TAG_FLAG(defer_index_backfill, runtime);
 
+DEFINE_bool(allow_batching_non_deferred_indexes, true,
+    "If enabled, indexes on the same (YCQL) table may be batched together during "
+    "backfill, even if they were not deferred.");
+TAG_FLAG(allow_batching_non_deferred_indexes, advanced);
+TAG_FLAG(allow_batching_non_deferred_indexes, runtime);
+
 DEFINE_test_flag(int32, slowdown_backfill_alter_table_rpcs_ms, 0,
     "Slows down the send alter table rpc's so that the master may be stopped between "
     "different phases.");
@@ -511,6 +517,13 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
     VLOG(1) << "Not necessary to launch next version";
     return ClearFullyAppliedAndUpdateState(
         catalog_manager, indexed_table, current_version, /* change state to RUNNING */ true);
+  }
+
+  if (!GetAtomicFlag(&FLAGS_allow_batching_non_deferred_indexes) &&
+      indexes_to_backfill.size() > 1) {
+    LOG(INFO) << "Batching of non-deferred index-backfill(s) is disabled. Will be only backfilling "
+                 "one index at a time.";
+    indexes_to_backfill.erase(indexes_to_backfill.begin() + 1, indexes_to_backfill.end());
   }
 
   // For YSQL online schema migration of indexes, instead of master driving the schema changes,
