@@ -219,7 +219,7 @@ void PggateTest::BeginDDLTransaction() {
 }
 
 void PggateTest::CommitDDLTransaction() {
-  CHECK_YBC_STATUS(YBCPgExitSeparateDdlTxnMode());
+  CHECK_YBC_STATUS(YBCPgExitSeparateDdlTxnMode(0 /* db_oid */, false /* is_silent_altering */));
 }
 
 void PggateTest::BeginTransaction() {
