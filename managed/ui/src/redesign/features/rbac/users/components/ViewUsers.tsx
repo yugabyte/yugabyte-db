@@ -217,7 +217,7 @@ export const ViewUsers = ({ routerProps }: { routerProps: WithRouterProps }) => 
                 </RbacValidator>
               );
             },
-            disabled: isSuperAdmin
+            disabled: isSuperAdmin || user.uuid === localStorage.getItem('userId')
           }
         ]}
       >

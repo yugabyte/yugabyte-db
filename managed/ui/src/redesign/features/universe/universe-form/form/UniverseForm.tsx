@@ -22,7 +22,7 @@ import { api, QUERY_KEY } from '../utils/api';
 import { UniverseFormData, ClusterType, ClusterModes } from '../utils/dto';
 import { UNIVERSE_NAME_FIELD, TOAST_AUTO_DISMISS_INTERVAL } from '../utils/constants';
 import { useFormMainStyles } from '../universeMainStyle';
-import { RbacValidator } from '../../../rbac/common/RbacApiPermValidator';
+import { RbacValidator, hasNecessaryPerm } from '../../../rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../rbac/ApiAndUserPermMapping';
 
 // ! How to add new form field ?
@@ -228,11 +228,25 @@ export const UniverseForm: FC<UniverseFormProps> = ({
               )}
               &nbsp;
               <RbacValidator
-                accessRequiredOn={{
-                  onResource: !isEditMode ? undefined : universeUUID,
-                  ...(!isEditMode 
-                    ? ApiPermissionMap.CREATE_UNIVERSE
-                    : ApiPermissionMap.MODIFY_UNIVERSE)
+                customValidateFunction={() => {
+                  //create mode
+                  if (!isEditMode) {
+                    // we are creating primary
+                    if (isPrimary) return hasNecessaryPerm(ApiPermissionMap.CREATE_UNIVERSE);
+                    // if the universe is already created , then we need update universe perm
+                    // or else we need universe create perm
+                    return universeUUID === undefined ?
+                      hasNecessaryPerm(ApiPermissionMap.CREATE_UNIVERSE) :
+                      hasNecessaryPerm({
+                        ...ApiPermissionMap.MODIFY_UNIVERSE,
+                        onResource: universeUUID
+                      });
+                  }
+                  // for edit mode , we need universe.update perm
+                  return hasNecessaryPerm({
+                    ...ApiPermissionMap.MODIFY_UNIVERSE,
+                    onResource: universeUUID
+                  });
                 }}
                 isControl
               >

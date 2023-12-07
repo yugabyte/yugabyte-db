@@ -51,13 +51,18 @@ export const RuntimeConfig: FC<RuntimeConfigProps> = ({
           title={t('admin.advanced.globalConfig.GlobalConfigTitle')}
           unmountOnExit
         >
-          <GlobalRuntimeConfig
-            setRuntimeConfig={setRuntimeConfig}
-            deleteRunTimeConfig={deleteRunTimeConfig}
-            fetchRuntimeConfigs={fetchRuntimeConfigs}
-            resetRuntimeConfigs={resetRuntimeConfigs}
-            configTagFilter={configTagFilter}
-          />
+          <RbacValidator
+            accessRequiredOn={ApiPermissionMap.GET_RUNTIME_CONFIG_BY_SCOPE}
+            overrideStyle={{ marginTop: '150px' }}
+          >
+            <GlobalRuntimeConfig
+              setRuntimeConfig={setRuntimeConfig}
+              deleteRunTimeConfig={deleteRunTimeConfig}
+              fetchRuntimeConfigs={fetchRuntimeConfigs}
+              resetRuntimeConfigs={resetRuntimeConfigs}
+              configTagFilter={configTagFilter}
+            />
+          </RbacValidator>
         </Tab>
 
         <Tab
