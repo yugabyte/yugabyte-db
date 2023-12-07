@@ -3067,49 +3067,7 @@ void
 CommitTransactionCommand(void)
 {
 	TransactionState s = CurrentTransactionState;
-
-	/* Update the session parameter to the shared memory */
-	if (YbIsClientYsqlConnMgr())
-	{
-		/*
-		 * At the end of a single query transaction (when autocommit is enabled)
-		 * the blockState will be TBLOCK_STARTED.
-		 * At the end of a normal transaction (when autocommit is disabled)
-		 * the blockState will be TBLOCK_END.
-		 * So in the case of TBLOCK_ENDand TBLOCK_STARTED,
-		 *
-		 * UpdateSharedMemory is called at the end of a transaction.
-		 * i.e. TBLOCK_END and TBLOCK_STARTED, not TBLOCK_BEGIN.
-		 * This is done to update the shared memory in case any
-		 * session parameter might have changed.
-		 *
-		 * YbCleanChangedSessionParameter is called both at the beginning
-		 * and at the end of the transaction (after updating shared memory) .
-		 * YbCleanChangedSessionParameter basically cleans the local cach, so
-		 * when a logical connection is attached to a new physical connection,
-		 * the cach needs to be cleaned. Also once this cach has been used to
-		 * update the shared memory (YbUpdateSharedMemory) this cach should be
-		 * cleaned.
-		 */
-		switch (s->blockState)
-		{
-			case TBLOCK_END:	 /* COMMIT received */
-			case TBLOCK_STARTED: /* running single-query transaction */
-				/* Copy the session parameter from the local memory to the
-				 * shared memory */
-				YbUpdateSharedMemory();
-
-				YbCleanChangedSessionParameters();
-				break;
-			case TBLOCK_BEGIN:
-				YbCleanChangedSessionParameters();
-				break;
-			default:
-				/* do nothing for sub transaction, process changed session
-				 * parameters only at the end of the transaction. */
-				break;
-		}
-	}
+	TBlockState prevState = s->blockState;
 
 	switch (s->blockState)
 	{
@@ -3340,6 +3298,49 @@ CommitTransactionCommand(void)
 				s->blockState = TBLOCK_SUBINPROGRESS;
 			}
 			break;
+	}
+
+	/* Update the session parameter values in the shared memory */
+	if (YbIsClientYsqlConnMgr())
+	{
+		/*
+		 * At the end of a single query transaction (when autocommit is enabled)
+		 * the blockState will be TBLOCK_STARTED.
+		 * At the end of a normal transaction (when autocommit is disabled)
+		 * the blockState will be TBLOCK_END.
+		 * So in the case of TBLOCK_ENDand TBLOCK_STARTED,
+		 *
+		 * UpdateSharedMemory is called at the end of a transaction.
+		 * i.e. TBLOCK_END and TBLOCK_STARTED, not TBLOCK_BEGIN.
+		 * This is done to update the shared memory in case any
+		 * session parameter might have changed.
+		 *
+		 * YbCleanChangedSessionParameter is called both at the beginning
+		 * and at the end of the transaction (after updating shared memory) .
+		 * YbCleanChangedSessionParameter basically cleans the local cach, so
+		 * when a logical connection is attached to a new physical connection,
+		 * the cach needs to be cleaned. Also once this cach has been used to
+		 * update the shared memory (YbUpdateSharedMemory) this cach should be
+		 * cleaned.
+		 */
+		switch (prevState)
+		{
+			case TBLOCK_END:	 /* COMMIT received */
+			case TBLOCK_STARTED: /* running single-query transaction */
+				/* Copy the session parameter from the local memory to the
+				 * shared memory */
+				YbUpdateSharedMemory();
+
+				YbCleanChangedSessionParameters();
+				break;
+			case TBLOCK_BEGIN:
+				YbCleanChangedSessionParameters();
+				break;
+			default:
+				/* do nothing for sub transaction, process changed session
+				 * parameters only at the end of the transaction. */
+				break;
+		}
 	}
 }
 
