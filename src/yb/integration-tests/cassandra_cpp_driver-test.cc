@@ -70,6 +70,10 @@ METRIC_DECLARE_histogram(handler_latency_yb_client_read_local);
 METRIC_DECLARE_histogram(handler_latency_yb_cqlserver_SQLProcessor_InsertStmt);
 METRIC_DECLARE_histogram(handler_latency_yb_cqlserver_SQLProcessor_UseStmt);
 
+METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerAdminService_BackfillDone);
+METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerAdminService_BackfillIndex);
+METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerAdminService_GetSafeTime);
+
 DECLARE_int64(external_mini_cluster_max_log_bytes);
 DECLARE_int32(TEST_slowdown_backfill_job_deletion_ms);
 DECLARE_int32(index_backfill_tablet_split_completion_timeout_sec);
@@ -473,6 +477,21 @@ class Metrics {
 std::ostream& operator <<(std::ostream& s, const Metrics& m) {
   return s << m.ToString();
 }
+
+struct BackfillMetrics : public Metrics {
+  explicit BackfillMetrics(const Metrics& m) : Metrics(m) {}
+
+  explicit BackfillMetrics(const ExternalMiniCluster& cluster) : Metrics(cluster, false) {
+    add_proto(
+        "backfill_index",
+        &METRIC_handler_latency_yb_tserver_TabletServerAdminService_BackfillIndex);
+    add_proto(
+        "backfill_done", &METRIC_handler_latency_yb_tserver_TabletServerAdminService_BackfillDone);
+    add_proto(
+        "get_safe_time", &METRIC_handler_latency_yb_tserver_TabletServerAdminService_GetSafeTime);
+    load();
+  }
+};
 
 struct IOMetrics : public Metrics {
   explicit IOMetrics(const Metrics& m) : Metrics(m) {}
@@ -1997,7 +2016,64 @@ class CppCassandraDriverTestSlowTServer : public CppCassandraDriverTest {
     flags.push_back("--ysql_num_tablets=1");
     return flags;
   }
+
+ protected:
+  void testBackfillBatching(bool batching_enabled);
 };
+
+void CppCassandraDriverTestSlowTServer::testBackfillBatching(bool batching_enabled) {
+  ASSERT_OK(cluster_->SetFlagOnMasters(
+      "allow_batching_non_deferred_indexes", ToString(batching_enabled)));
+  constexpr int64_t kNumTabletsPerTable = 1;
+  ASSERT_OK(cluster_->SetFlagOnTServers("ycql_num_tablets", ToString(kNumTabletsPerTable)));
+
+  TestTable<cass_int32_t, string> table;
+  auto session = ASSERT_RESULT(EstablishSession());
+  constexpr auto kNamespace = "test";
+  const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");
+  ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"}, true));
+
+  constexpr int kNumIndexes = 10;
+  int num_deferred_indexes = 0;
+  BackfillMetrics before(*cluster_);
+  std::vector<YBTableName> indexes;
+  for (int i = 0; i < kNumIndexes; ++i) {
+    const YBTableName index_name(YQL_DATABASE_CQL, kNamespace, Format("idx$0", i));
+    const bool defer = i % 2 == 0;
+    ASSERT_OK(session_.ExecuteQueryFormat(
+        "CREATE $0 INDEX $1 ON test_table (v)", (defer ? "DEFERRED" : ""),
+        index_name.table_name()));
+    indexes.push_back(std::move(index_name));
+    num_deferred_indexes += defer;
+  }
+
+  for (const auto& index_name : indexes) {
+    const auto expected_index_state = IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE;
+    auto perm = ASSERT_RESULT(
+        client_->WaitUntilIndexPermissionsAtLeast(table_name, index_name, expected_index_state));
+    ASSERT_EQ(perm, expected_index_state);
+  }
+
+  BackfillMetrics after(*cluster_);
+  // CppCassandraDriverTestSlowTServer slows the BackfillIndex rpc at the TServer, but not
+  // the Alters at the master/tserver. Thus, by the time the first index backfill is done,
+  // all other indexes should be at DO_BACKFILL.
+  // Thus, when batching of non-deferred index backfills is allowed, we expect to see 2 batches.
+  const int64_t kNumBatchesExpected = (batching_enabled ? 2 : kNumIndexes - num_deferred_indexes);
+  const int64_t kNumApiCallsExpected = kNumBatchesExpected * kNumTabletsPerTable;
+  ASSERT_EQ(0, before.get("backfill_index"));
+  ASSERT_EQ(kNumApiCallsExpected, after.get("backfill_index"));
+  ASSERT_EQ(0, before.get("get_safe_time"));
+  ASSERT_EQ(kNumApiCallsExpected, after.get("get_safe_time"));
+}
+
+TEST_F_EX(CppCassandraDriverTest, TestBackfillBatchingEnabled, CppCassandraDriverTestSlowTServer) {
+  testBackfillBatching(true);
+}
+
+TEST_F_EX(CppCassandraDriverTest, TestBackfillBatchingDisabled, CppCassandraDriverTestSlowTServer) {
+  testBackfillBatching(false);
+}
 
 TEST_F_EX(
     CppCassandraDriverTest,
