@@ -945,4 +945,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Allow decrease volume size for universe during full move",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> notifyPeerOnRemoval =
+      new ConfKeyInfo<>(
+          "yb.gflags.notify_peer_of_removal_from_cluster",
+          ScopeType.UNIVERSE,
+          "Notify Peers in Cluster on Node Removal",
+          "Notify peers in cluster on a master node removal",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

@@ -22,6 +22,7 @@ import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -157,6 +158,9 @@ public class GFlagsUtil {
   public static final String JWT_JWKS_FILE_PATH = "jwt_jwks_path";
   public static final String JWT_AUTH = "jwt";
   public static final String GFLAG_REMOTE_FILES_PATH = TSERVER_DIR + "/conf/gflag_files/";
+  // DB internal glag to suppress going into shell mode and delete files on master removal.
+  public static final String NOTIFY_PEER_OF_REMOVAL_FROM_CLUSTER =
+      "notify_peer_of_removal_from_cluster";
 
   private static final Set<String> GFLAGS_FORBIDDEN_TO_OVERRIDE =
       ImmutableSet.<String>builder()
@@ -217,7 +221,8 @@ public class GFlagsUtil {
       Universe universe,
       UniverseDefinitionTaskParams.UserIntent userIntent,
       boolean useHostname,
-      Config config) {
+      Config config,
+      RuntimeConfGetter confGetter) {
     Map<String, String> extra_gflags = new TreeMap<>();
     extra_gflags.put(PLACEMENT_CLOUD, taskParam.getProvider().getCode());
     extra_gflags.put(PLACEMENT_REGION, taskParam.getRegion().getCode());
@@ -280,8 +285,12 @@ public class GFlagsUtil {
               isDualNet,
               configCgroup));
     } else {
-      extra_gflags.putAll(
-          getMasterDefaultGFlags(taskParam, universe, useHostname, useSecondaryIp, isDualNet));
+      Map<String, String> masterGFlags =
+          getMasterDefaultGFlags(
+              taskParam, universe, useHostname, useSecondaryIp, isDualNet, confGetter);
+      // Merge into masterGFlags.
+      mergeCSVs(masterGFlags, extra_gflags, UNDEFOK);
+      extra_gflags.putAll(masterGFlags);
     }
 
     // Set on both master and tserver processes to allow db to validate inter-node RPCs.
@@ -613,7 +622,8 @@ public class GFlagsUtil {
       Universe universe,
       Boolean useHostname,
       Boolean useSecondaryIp,
-      Boolean isDualNet) {
+      Boolean isDualNet,
+      RuntimeConfGetter confGetter) {
     Map<String, String> gflags = new TreeMap<>();
     NodeDetails node = universe.getNode(taskParam.nodeName);
     String masterAddresses = universe.getMasterAddresses(false, useSecondaryIp);
@@ -651,6 +661,14 @@ public class GFlagsUtil {
 
     gflags.put(WEBSERVER_PORT, Integer.toString(node.masterHttpPort));
     gflags.put(WEBSERVER_INTERFACE, privateIp);
+
+    boolean notifyPeerOnRemoval =
+        confGetter.getConfForScope(universe, UniverseConfKeys.notifyPeerOnRemoval);
+    if (!notifyPeerOnRemoval) {
+      // By default, it is true in the DB.
+      gflags.put(NOTIFY_PEER_OF_REMOVAL_FROM_CLUSTER, String.valueOf(notifyPeerOnRemoval));
+      gflags.put(UNDEFOK, NOTIFY_PEER_OF_REMOVAL_FROM_CLUSTER);
+    }
 
     return gflags;
   }
@@ -902,15 +920,16 @@ public class GFlagsUtil {
                 new StringReader(platformGFlags.getOrDefault(key, "").toString()), csvFormat);
         Set<String> records = new LinkedHashSet<>();
         StringWriter writer = new StringWriter();
-        CSVPrinter csvPrinter = new CSVPrinter(writer, csvFormat);
-        for (CSVRecord record : userValueParser) {
-          records.addAll(record.toList());
+        try (CSVPrinter csvPrinter = new CSVPrinter(writer, csvFormat)) {
+          for (CSVRecord record : userValueParser) {
+            records.addAll(record.toList());
+          }
+          for (CSVRecord record : platformValuesParser) {
+            records.addAll(record.toList());
+          }
+          csvPrinter.printRecord(records);
+          csvPrinter.flush();
         }
-        for (CSVRecord record : platformValuesParser) {
-          records.addAll(record.toList());
-        }
-        csvPrinter.printRecord(records);
-        csvPrinter.flush();
         String result = writer.toString();
         userGFlags.put(key, result.replaceAll("\n", "").replace("\r", ""));
       } catch (IOException ignored) {
@@ -1119,7 +1138,7 @@ public class GFlagsUtil {
    * @param userIntent current user intent.
    * @param universe to check.
    * @param userGFlags provider user gflags.
-   * @param config
+   * @param confGetter
    * @return
    */
   public static String checkForbiddenToOverride(
@@ -1128,13 +1147,14 @@ public class GFlagsUtil {
       UniverseDefinitionTaskParams.UserIntent userIntent,
       Universe universe,
       Map<String, String> userGFlags,
-      Config config) {
+      Config config,
+      RuntimeConfGetter confGetter) {
     boolean useHostname =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.useHostname
             || !isIpAddress(node.cloudInfo.private_ip);
 
     Map<String, String> platformGFlags =
-        getAllDefaultGFlags(taskParams, universe, userIntent, useHostname, config);
+        getAllDefaultGFlags(taskParams, universe, userIntent, useHostname, config, confGetter);
     for (String gflag : GFLAGS_FORBIDDEN_TO_OVERRIDE) {
       if (userGFlags.containsKey(gflag)
           && platformGFlags.containsKey(gflag)

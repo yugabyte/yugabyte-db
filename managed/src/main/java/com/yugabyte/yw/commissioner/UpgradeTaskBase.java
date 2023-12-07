@@ -4,7 +4,6 @@ package com.yugabyte.yw.commissioner;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
@@ -587,14 +586,14 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       UniverseDefinitionTaskParams.UserIntent userIntent,
       Universe universe,
       ServerType processType,
-      Map<String, String> newGFlags,
-      Config config) {
+      Map<String, String> newGFlags) {
     AnsibleConfigureServers.Params params =
         getAnsibleConfigureServerParams(
             userIntent, node, processType, UpgradeTaskType.GFlags, UpgradeTaskSubType.None);
 
     String errorMsg =
-        GFlagsUtil.checkForbiddenToOverride(node, params, userIntent, universe, newGFlags, config);
+        GFlagsUtil.checkForbiddenToOverride(
+            node, params, userIntent, universe, newGFlags, config, confGetter);
     if (errorMsg != null) {
       throw new PlatformServiceException(
           BAD_REQUEST,
