@@ -62,7 +62,7 @@
 
 using namespace std::literals;
 
-DEFINE_UNKNOWN_int64(memory_limit_hard_bytes, 0,
+DEFINE_NON_RUNTIME_int64(memory_limit_hard_bytes, 0,
              "Maximum amount of memory this daemon should use, in bytes. "
              "A value of 0 autosizes based on the total system memory. "
              "A value of -1 disables all memory limiting.");
@@ -72,7 +72,7 @@ DEFINE_NON_RUNTIME_double(default_memory_limit_to_ram_ratio, 0.85,
               "set to default_memory_limit_to_ram_ratio * Available RAM.");
 TAG_FLAG(default_memory_limit_to_ram_ratio, advanced);
 
-DEFINE_UNKNOWN_int32(memory_limit_soft_percentage, 85,
+DEFINE_NON_RUNTIME_int32(memory_limit_soft_percentage, 85,
              "Percentage of the hard memory limit that this daemon may "
              "consume before memory throttling of writes begins. The greater "
              "the excess, the higher the chance of throttling. In general, a "
@@ -80,20 +80,20 @@ DEFINE_UNKNOWN_int32(memory_limit_soft_percentage, 85,
              "decreased throughput, and vice versa for a higher soft limit.");
 TAG_FLAG(memory_limit_soft_percentage, advanced);
 
-DEFINE_UNKNOWN_int32(memory_limit_warn_threshold_percentage, 98,
+DEFINE_RUNTIME_int32(memory_limit_warn_threshold_percentage, 98,
              "Percentage of the hard memory limit that this daemon may "
              "consume before WARNING level messages are periodically logged.");
 TAG_FLAG(memory_limit_warn_threshold_percentage, advanced);
 
-DEFINE_UNKNOWN_int32(tcmalloc_max_free_bytes_percentage, 10,
+DEFINE_RUNTIME_int32(tcmalloc_max_free_bytes_percentage, 10,
                      "Maximum percentage of the RSS that tcmalloc is allowed to use for "
                      "reserved but unallocated memory.");
 TAG_FLAG(tcmalloc_max_free_bytes_percentage, advanced);
 
-DEFINE_UNKNOWN_bool(mem_tracker_logging, false,
+DEFINE_NON_RUNTIME_bool(mem_tracker_logging, false,
             "Enable logging of memory tracker consume/release operations");
 
-DEFINE_UNKNOWN_bool(mem_tracker_log_stack_trace, false,
+DEFINE_NON_RUNTIME_bool(mem_tracker_log_stack_trace, false,
             "Enable logging of stack traces on memory tracker consume/release operations. "
             "Only takes effect if mem_tracker_logging is also enabled.");
 
