@@ -282,6 +282,24 @@ main {
   }
 }
 
+body.is-safari {
+  main {
+    .td-content {
+      pre {
+        button.copy {
+          z-index: 2;
+        }
+      }
+
+      pre.can-be-copied {
+        &::after {
+          z-index: 1;
+        }
+      }
+    }
+  }
+}
+
 body .tab-content .tab-pane li .highlight {
   margin: 20px 0;
 }
