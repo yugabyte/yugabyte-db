@@ -149,8 +149,7 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
                           universe,
                           ServerType.MASTER,
                           GFlagsUtil.getGFlagsForNode(
-                              node, ServerType.MASTER, newCluster, newClusters.values()),
-                          config));
+                              node, ServerType.MASTER, newCluster, newClusters.values())));
               tServerNodes.forEach(
                   node ->
                       checkForbiddenToOverrideGFlags(
@@ -159,8 +158,7 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
                           universe,
                           ServerType.TSERVER,
                           GFlagsUtil.getGFlagsForNode(
-                              node, ServerType.TSERVER, newCluster, newClusters.values()),
-                          config));
+                              node, ServerType.TSERVER, newCluster, newClusters.values())));
             }
             // Upgrade GFlags in all nodes
             createGFlagUpgradeTasks(

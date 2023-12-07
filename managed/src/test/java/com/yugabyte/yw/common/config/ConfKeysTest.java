@@ -1,3 +1,5 @@
+// Copyright (c) YugaByte, Inc.
+
 package com.yugabyte.yw.common.config;
 
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
@@ -11,19 +13,23 @@ import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
@@ -162,5 +168,53 @@ public class ConfKeysTest extends FakeDBApplication {
         }
       }
     }
+  }
+
+  @Test
+  public void testFeatureFlagRuntimeConfigEntries() throws Exception {
+    Map<Class<? extends RuntimeConfigKeysModule>, ScopeType> modules =
+        ImmutableMap.of(
+            GlobalConfKeys.class,
+            ScopeType.GLOBAL,
+            CustomerConfKeys.class,
+            ScopeType.CUSTOMER,
+            UniverseConfKeys.class,
+            ScopeType.UNIVERSE,
+            ProviderConfKeys.class,
+            ScopeType.PROVIDER);
+    for (Map.Entry<Class<? extends RuntimeConfigKeysModule>, ScopeType> entry :
+        modules.entrySet()) {
+      scanConfKeys(entry.getKey(), entry.getValue(), keyInfo -> {});
+    }
+  }
+
+  // This scans and verifies if each ConfKeyInfo is declared in its respective file.
+  private void scanConfKeys(
+      Class<? extends RuntimeConfigKeysModule> moduleClass,
+      ScopeType scopeType,
+      Consumer<ConfKeyInfo<?>> consumer) {
+    Arrays.stream(moduleClass.getDeclaredFields())
+        .filter(f -> Modifier.isStatic(f.getModifiers()))
+        .filter(f -> Modifier.isPublic(f.getModifiers()))
+        .forEach(
+            f -> {
+              try {
+                Object obj = f.get(null);
+                if (obj instanceof ConfKeyInfo) {
+                  ConfKeyInfo<?> keyInfo = (ConfKeyInfo<?>) obj;
+                  if (keyInfo.getScope() != scopeType) {
+                    fail(
+                        String.format(
+                            "Wrong scope type %s defined in %s for %s",
+                            keyInfo.getScope(), moduleClass.getSimpleName(), f.getName()));
+                  }
+                  if (consumer != null) {
+                    consumer.accept(keyInfo);
+                  }
+                }
+              } catch (Exception e) {
+                fail(e.getMessage());
+              }
+            });
   }
 }
