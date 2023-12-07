@@ -24,7 +24,7 @@ On this page:
 
 **New Features**
 
-- Support for [federated authentication](../managed-security/managed-authentication/), which allows you to use an identity provider to manage access to your YugabyteDB Managed account. Initial support includes the Microsoft identity platform, providing single sign on access for your account users using their Microsoft identities.
+- Support for [federated authentication](../managed-security/managed-authentication/), which allows you to use an identity provider to manage access to your YugabyteDB Managed account. Initial support includes the Microsoft Entra ID (Azure AD) platform, providing single sign on access for your account users using their Microsoft identities.
 - Added ability to [audit account login activity](../cloud-secure-clusters/cloud-activity/). Navigate to **Security > Activity > Access History** to review the access history, including the client IP address, activity type, number of attempts, timestamp, and result.
 - Added ability to use different instance types and node sizes for different [read replica regions](../cloud-clusters/managed-read-replica/) in a cluster. Specify higher vCPU and disk size per node for replicas in high traffic regions, and vice-versa for lower traffic regions.
 - Support for Azure Key Vault for enabling and disabling YugabyteDB [encryption at rest](../cloud-secure-clusters/managed-ear/) using a customer managed key.
