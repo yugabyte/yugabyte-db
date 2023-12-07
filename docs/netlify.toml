@@ -1138,7 +1138,7 @@
     Content-Security-Policy = '''
         default-src 'self' 'unsafe-inline'
         ;
-        
+
         connect-src 'self'
             https://ka-f.fontawesome.com/releases/
             https://kapa-widget-proxy-la7dkmplpq-uc.a.run.app
@@ -1151,7 +1151,7 @@
             https://www.google-analytics.com/
             https://www.yugabyte.com
         ;
-        
+
         script-src 'self' 'unsafe-eval' 'unsafe-inline'
             https://cdn.jsdelivr.net
             https://cdnjs.cloudflare.com
@@ -1169,7 +1169,7 @@
             https://www.googletagmanager.com/
             https://www.gstatic.com/recaptcha/
         ;
-        
+
         style-src 'self' 'unsafe-inline'
             https://cdn.jsdelivr.net/gh/rastikerdar/vazir-font@v27.0.1/dist/font-face.css
             https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.css
@@ -1180,7 +1180,7 @@
             https://maxcdn.bootstrapcdn.com
             https://use.fontawesome.com
         ;
-        
+
         font-src 'self'
             https://cdn.jsdelivr.net/
             https://cdnjs.cloudflare.com/
@@ -1189,27 +1189,26 @@
             https://ka-f.fontawesome.com/releases/
             https://use.fontawesome.com
         ;
-        
+
         object-src 'none'
         ;
-        
+
         img-src 'self'
             https://docs.camunda.org/
             https://docs.yugabyte.com/images/favicon.ico
-            https://pbs.twimg.com/profile_images/1646120217481805825/
             https://portal.azure.com/
             https://raw.githubusercontent.com/
             https://www.google-analytics.com/
             https://www.yugabyte.com
         ;
-        
+
         child-src 'self' 'unsafe-inline'
             https://app.netlify.com/
             https://app.supademo.com/
             https://www.google.com/
             https://www.youtube.com/
         ;
-        
+
         frame-ancestors 'self'
             https://*.yugabyte.com/
             https://deploy-preview-12849--infallible-bardeen-164bc9.netlify.app/
