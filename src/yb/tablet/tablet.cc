@@ -2460,6 +2460,13 @@ bool CanProceedToBackfillMoreRows(
   return CanProceedToBackfillMoreRows(backfill_params, number_of_rows_processed);
 }
 
+void SlowdownBackfillForTests() {
+  if (PREDICT_FALSE(FLAGS_TEST_slowdown_backfill_by_ms > 0)) {
+    TRACE("Sleeping for $0 ms", FLAGS_TEST_slowdown_backfill_by_ms);
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_backfill_by_ms));
+  }
+}
+
 }  // namespace
 
 // Assume that we are already in the Backfilling mode.
@@ -2473,13 +2480,10 @@ Status Tablet::BackfillIndexesForYsql(
     const uint64_t postgres_auth_key,
     size_t* number_of_rows_processed,
     std::string* backfilled_until) {
-  if (PREDICT_FALSE(FLAGS_TEST_slowdown_backfill_by_ms > 0)) {
-    TRACE("Sleeping for $0 ms", FLAGS_TEST_slowdown_backfill_by_ms);
-    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_backfill_by_ms));
-  }
   LOG(INFO) << "Begin " << __func__ << " at " << read_time << " from "
             << (backfill_from.empty() ? "<start-of-the-tablet>" : strings::b2a_hex(backfill_from))
             << " for " << AsString(indexes);
+  SlowdownBackfillForTests();
   *backfilled_until = backfill_from;
   BackfillParams backfill_params(deadline);
   auto conn = VERIFY_RESULT(ConnectToPostgres(
@@ -2611,11 +2615,8 @@ Status Tablet::BackfillIndexes(
     std::string* backfilled_until,
     std::unordered_set<TableId>* failed_indexes) {
   TRACE(__func__);
-  if (PREDICT_FALSE(FLAGS_TEST_slowdown_backfill_by_ms > 0)) {
-    TRACE("Sleeping for $0 ms", FLAGS_TEST_slowdown_backfill_by_ms);
-    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_backfill_by_ms));
-  }
   VLOG(2) << "Begin BackfillIndexes at " << read_time << " for " << AsString(indexes);
+  SlowdownBackfillForTests();
 
   std::vector<TableId> index_ids = GetIndexIds(indexes);
   auto columns = GetColumnSchemasForIndex(indexes);
