@@ -808,7 +808,7 @@
       },
       "permissions": {
         "title": "User Roles",
-        "connectOnly": "Users without a role are automatically assigned the '<b>Connect Only</b>' role, limiting access to login and view their profile page",
+        "connectOnly": "Users without any built-in role are automatically assigned the '<b>Connect Only</b>' role, allowing access to login and view their profile page",
         "noUniverses": "There are no Universes deployed in this account. Selected roles will be applied to all future Universes by default. You can modify role's scope after deployment.",
         "role": "Role",
         "for": "for",
