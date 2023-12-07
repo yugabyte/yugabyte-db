@@ -436,7 +436,8 @@ public class TablesControllerTest extends FakeDBApplication {
     universe = Universe.saveDetails(universe.getUniverseUUID(), ApiUtils.mockUniverseUpdater());
 
     Result result =
-        tablesController.describe(customer.getUuid(), universe.getUniverseUUID(), tableUUID);
+        tablesController.describe(
+            customer.getUuid(), universe.getUniverseUUID(), tableUUID.toString());
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(tableUUID.toString(), json.get("tableUUID").asText());
@@ -464,7 +465,8 @@ public class TablesControllerTest extends FakeDBApplication {
     Result result =
         assertPlatformException(
             () ->
-                tablesController.describe(customer.getUuid(), u.getUniverseUUID(), mockTableUUID2));
+                tablesController.describe(
+                    customer.getUuid(), u.getUniverseUUID(), mockTableUUID2.toString()));
     assertEquals(BAD_REQUEST, result.status());
     // String errMsg = "Invalid Universe UUID: " + universe.universeUUID;
     String errMsg =

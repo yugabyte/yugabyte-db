@@ -11223,6 +11223,11 @@
           "description" : "Keyspace",
           "type" : "string"
         },
+        "mainTableUUID" : {
+          "description" : "Main Table UUID of index tables",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "nameSpace" : {
           "description" : "Namespace or Schema",
           "type" : "string"
@@ -23250,7 +23255,6 @@
           "required" : true,
           "type" : "string"
         }, {
-          "format" : "uuid",
           "in" : "path",
           "name" : "tableUUID",
           "required" : true,
