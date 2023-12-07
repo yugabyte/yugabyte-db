@@ -4,7 +4,6 @@ headerTitle: What's new in YugabyteDB Managed
 linkTitle: Change log
 description: YugabyteDB Managed Change Log and known issues.
 headcontent: New features and known issues
-image: /images/section_icons/index/quick_start.png
 menu:
   preview_yugabyte-cloud:
     identifier: yugabytedb-managed-releases

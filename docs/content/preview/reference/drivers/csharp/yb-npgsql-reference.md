@@ -4,7 +4,6 @@ headerTitle: C# Drivers
 linkTitle: C# Drivers
 description: C# Npgsql Smart Driver for YSQL
 headcontent: C# Drivers for YSQL
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
     name: C# Drivers
