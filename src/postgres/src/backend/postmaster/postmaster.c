@@ -2973,6 +2973,7 @@ reaper(SIGNAL_ARGS)
 			elog(INFO, "cleaning up after process with pid %d exited with status %d",
 				 pid, exitstatus);
 			CleanupKilledProcess(proc);
+			break;
 		}
 
 		/*
@@ -3427,19 +3428,19 @@ CleanupKilledProcess(PGPROC *proc)
 
 		/* From SharedInvalBackendInit */
 		CleanupInvalidationStateForProc(proc);
-
-		/* From ProcKill */
-		ReplicationSlotCleanupForProc(proc);
-		SyncRepCleanupAtProcExit(proc);
-		ConditionVariableCancelSleepForProc(proc);
-
-		if (proc->lockGroupLeader != NULL)
-			RemoveLockGroupLeader(proc);
-
-		DisownLatchOnBehalfOfPid(&proc->procLatch, proc->pid);
-
-		ReleaseProcToFreeList(proc);
 	}
+
+	/* From ProcKill */
+	ReplicationSlotCleanupForProc(proc);
+	SyncRepCleanupAtProcExit(proc);
+	ConditionVariableCancelSleepForProc(proc);
+
+	if (proc->lockGroupLeader != NULL)
+		RemoveLockGroupLeader(proc);
+
+	DisownLatchOnBehalfOfPid(&proc->procLatch, proc->pid);
+
+	ReleaseProcToFreeList(proc);
 
 	KilledProcToClean = NULL;
 }
