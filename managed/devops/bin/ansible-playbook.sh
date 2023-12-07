@@ -25,17 +25,14 @@ if [ "$is_mac" == false ] && \
   pythonpath=$(head -n 1 "$pex_venv_dir/bin/ansible-playbook")
   if [[ "$pythonpath" =~ ^#\!\/.* ]]; then
     # Remove the #! from beginning of shebang
-    set -x
     ${pythonpath:2} $pex_venv_dir/bin/ansible-playbook "$@"
   else
     log "Found \"$pythonpath\" shebang in PEX ansible-playbook script, invoking directly."
-    set -x
     ansible-playbook "$@"
   fi
 
 else
   activate_virtualenv
-  set -x
   "$devops_bin_dir/ansible_runner.sh" ansible-playbook "$@"
 
 fi
