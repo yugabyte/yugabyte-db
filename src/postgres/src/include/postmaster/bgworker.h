@@ -97,7 +97,7 @@ typedef struct BackgroundWorker
 	Datum		bgw_main_arg;
 	char		bgw_extra[BGW_EXTRALEN];
 	pid_t		bgw_notify_pid; /* SIGUSR1 this backend on start/stop */
-	char	   *bgw_oom_score_adj; /* ignored if null */
+	char		bgw_oom_score_adj[BGW_MAXLEN]; /* ignored if empty */
 } BackgroundWorker;
 
 typedef enum BgwHandleStatus
