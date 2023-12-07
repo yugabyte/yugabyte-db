@@ -60,6 +60,9 @@ public class TableInfoForm {
     @ApiModelProperty(value = "Parent Table UUID")
     public final UUID parentTableUUID;
 
+    @ApiModelProperty(value = "Main Table UUID of index tables")
+    public final UUID mainTableUUID;
+
     @ApiModelProperty(value = "Postgres schema name of the table", example = "public")
     public final String pgSchemaName;
 
