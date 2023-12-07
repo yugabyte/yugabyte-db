@@ -195,12 +195,12 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   ConsensusStatePB ConsensusState(
       ConsensusConfigType type,
       LeaderLeaseStatus* leader_lease_status,
-      ListAllOpIdPB* opid_list) const override;
+      ConsensusWatermarksPB* consensus_watermarks_opid_list) const override;
 
   ConsensusStatePB ConsensusStateUnlocked(
       ConsensusConfigType type,
       LeaderLeaseStatus* leader_lease_status, 
-      ListAllOpIdPB* opid_list) const override;
+      ConsensusWatermarksPB* consensus_watermarks_opid_list) const override;
 
   RaftConfigPB CommittedConfig() const override;
   RaftConfigPB CommittedConfigUnlocked() const;

@@ -527,11 +527,27 @@ message GetConsensusStateResponsePB {
   // to be allowed to serve requests.
   optional LeaderLeaseStatus leader_lease_status = 3;
 
-  // Lists all operation id indexes (last_received_opid_index, last_committed_opid_index,
-  // last_applied_opid_index, all_opid_index).
-  // message ListAllOpIdPB is defined in metadata.proto. 
-  optional ListAllOpIdPB current_opid_list = 4;
+  // Lists all operation id protos (last_received_opidPB, last_committed_opidPB,
+  // last_applied_opidPB, all_applied_opidPB).
+  // message ConsensusWatermarksPB is defined in metadata.proto. 
+  optional ConsensusWatermarksPB consensus_watermarks_opid_list = 4;
 }
+
+
+message ConsensusWatermarksPB {
+  // Operation ID for the latest request received.
+  optional OpIdPB last_received_opid = 1;
+  
+  // Operation ID for the latest entry known to be committed.
+  optional OpIdPB last_committed_opid = 2;
+
+  // Operation ID of the highest log entry applied to state machine.
+  optional OpIdPB last_applied_opid = 3;
+
+  // Returns all applied Operation ID.
+  optional OpIdPB all_applied_opid = 4;
+}
+
 
 message StartRemoteBootstrapRequestPB {
   // UUID of server this request is addressed to.

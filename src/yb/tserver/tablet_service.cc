@@ -2479,10 +2479,10 @@ void ConsensusServiceImpl::GetConsensusState(const consensus::GetConsensusStateR
     return;
   }
   LeaderLeaseStatus leader_lease_status;
-  consensus::ListAllOpIdPB list_all_opid;
-  *resp->mutable_cstate() = scope->ConsensusState(req->type(), &leader_lease_status, &list_all_opid);
+  consensus::ConsensusWatermarksPB consensus_watermarks_opid_list;
+  *resp->mutable_cstate() = scope->ConsensusState(req->type(), &leader_lease_status, &consensus_watermarks_opid_list);
   resp->set_leader_lease_status(leader_lease_status);
-  *resp->mutable_current_opid_list() = list_all_opid;
+  *resp->mutable_consensus_watermarks_opid_list() = consensus_watermarks_opid_list;
 }
 
 void ConsensusServiceImpl::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB* req,
