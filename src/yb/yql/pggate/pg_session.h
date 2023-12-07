@@ -253,7 +253,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
       ForceNonBufferable force_non_bufferable = ForceNonBufferable::kFalse);
 
   struct CacheOptions {
-    uint64_t key_group;
+    uint32_t key_group;
     std::string key_value;
     std::optional<uint32_t> lifetime_threshold_ms;
   };

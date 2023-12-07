@@ -36,12 +36,13 @@
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
-METRIC_DECLARE_counter(pg_response_cache_queries);
-METRIC_DECLARE_counter(pg_response_cache_hits);
-METRIC_DECLARE_counter(pg_response_cache_renew_soft);
-METRIC_DECLARE_counter(pg_response_cache_renew_hard);
-METRIC_DECLARE_counter(pg_response_cache_gc_calls);
+METRIC_DECLARE_counter(pg_response_cache_disable_calls);
 METRIC_DECLARE_counter(pg_response_cache_entries_removed_by_gc);
+METRIC_DECLARE_counter(pg_response_cache_hits);
+METRIC_DECLARE_counter(pg_response_cache_gc_calls);
+METRIC_DECLARE_counter(pg_response_cache_queries);
+METRIC_DECLARE_counter(pg_response_cache_renew_hard);
+METRIC_DECLARE_counter(pg_response_cache_renew_soft);
 
 DECLARE_bool(ysql_enable_read_request_caching);
 DECLARE_bool(ysql_minimal_catalog_caches_preload);
@@ -81,13 +82,14 @@ struct MetricCounters {
     size_t renew_hard;
     size_t gc_calls;
     size_t entries_removed_by_gc;
+    size_t disable_calls;
   };
 
   ResponseCache cache;
   size_t master_read_rpc;
 };
 
-struct MetricCountersDescriber : public MetricWatcherDeltaDescriberTraits<MetricCounters, 7> {
+struct MetricCountersDescriber : public MetricWatcherDeltaDescriberTraits<MetricCounters, 8> {
   explicit MetricCountersDescriber(
       std::reference_wrapper<const MetricEntity::MetricMap> master_metric,
       std::reference_wrapper<const MetricEntity::MetricMap> tserver_metric)
@@ -107,7 +109,10 @@ struct MetricCountersDescriber : public MetricWatcherDeltaDescriberTraits<Metric
               &delta.cache.gc_calls, tserver_metric, METRIC_pg_response_cache_gc_calls},
           Descriptor{
               &delta.cache.entries_removed_by_gc,
-              tserver_metric, METRIC_pg_response_cache_entries_removed_by_gc}}
+              tserver_metric, METRIC_pg_response_cache_entries_removed_by_gc},
+          Descriptor{
+              &delta.cache.disable_calls,
+              tserver_metric, METRIC_pg_response_cache_disable_calls}}
   {}
 
   DeltaType delta;
@@ -185,8 +190,7 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
 
   Result<uint64_t> RPCCountOnStartUp(const std::string& db_name = {}) {
     auto res = VERIFY_RESULT(metrics_->Delta([this, &db_name] {
-      VERIFY_RESULT(ConnectToDB(db_name));
-      return static_cast<Status>(Status::OK());
+      return ResultToStatus(ConnectToDB(db_name));
     })).master_read_rpc;
     return res;
   }
@@ -584,6 +588,88 @@ TEST_F_EX(PgCatalogPerfTest,
   ASSERT_EQ(first_connect_rpc_count, kFirstConnectionRPCCountWithAdditionalTables);
   const auto subsequent_connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
   ASSERT_EQ(subsequent_connect_rpc_count, kSubsequentConnectionRPCCount);
+}
+
+// The test checks that response cache for specific DB is invalidated in case of closure of
+// connection with temp tables. Response cache for other DBs is not affected.
+TEST_F_EX(PgCatalogPerfTest,
+          ResponseCacheInvalidationOnConnectionWithTempTableClosure,
+          PgCatalogWithUnlimitedCachePerfTest) {
+  constexpr auto* kDBName = "aux_db";
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDBName));
+
+  {
+    auto conn_with_temp_table = ASSERT_RESULT(ConnectToDB(kDBName));
+    ASSERT_OK(conn_with_temp_table.Execute("CREATE TEMP TABLE t(k INT PRIMARY KEY)"));
+  }
+
+  // Wait for cleanup completion of all closed connections.
+  std::this_thread::sleep_for(RegularBuildVsDebugVsSanitizers(3s, 5s, 5s));
+
+  const auto default_db_connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
+  ASSERT_EQ(default_db_connect_rpc_count, kSubsequentConnectionRPCCount);
+
+  for (auto expected_rpc_count : {kFirstConnectionRPCCountWithAdditionalTables,
+                                  kSubsequentConnectionRPCCount}) {
+    const auto connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp(kDBName));
+    ASSERT_EQ(connect_rpc_count, expected_rpc_count);
+  }
+}
+
+// The test checks that response cache for specific DB is invalidated in case of discarding temp
+// tables. Response cache for other DBs is not affected.
+TEST_F_EX(PgCatalogPerfTest,
+          ResponseCacheInvalidationOnDiscardTempTables,
+          PgCatalogWithUnlimitedCachePerfTest) {
+  constexpr auto* kDBName = "aux_db";
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDBName));
+  auto aux_conn = ASSERT_RESULT(ConnectToDB(kDBName));
+  ASSERT_OK(aux_conn.Execute("CREATE TEMP TABLE t(k INT PRIMARY KEY)"));
+
+  const auto disable_calls = ASSERT_RESULT(metrics_->Delta([&aux_conn] {
+    return aux_conn.Execute("DISCARD ALL");
+  })).cache.disable_calls;
+  ASSERT_EQ(disable_calls, 1);
+
+  const auto default_db_connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
+  ASSERT_EQ(default_db_connect_rpc_count, kSubsequentConnectionRPCCount);
+
+  for (auto expected_rpc_count : {kFirstConnectionRPCCountWithAdditionalTables,
+                                  kSubsequentConnectionRPCCount}) {
+    const auto connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp(kDBName));
+    ASSERT_EQ(connect_rpc_count, expected_rpc_count);
+  }
+}
+
+// The test checks that different connections can use same temp table names in case of temp
+// namespace reusing when response cache is enabled.
+TEST_F_EX(PgCatalogPerfTest,
+          SameTempTableCreationWithResponseCache,
+          PgCatalogWithUnlimitedCachePerfTest) {
+  const auto temp_table_creator = [](PGConn* conn) {
+    return conn->Execute("CREATE TEMP TABLE temptest(k INT)");
+  };
+
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(temp_table_creator(&conn));
+    // Trigger catalog version update.
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(k INT);DROP TABLE $0", "t"));
+    // New connection will reload catalog cache and fill response cache with the data.
+    // Response data contains info about temporary table.
+    auto aux_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(aux_conn.Fetch("SELECT 1"));
+  }
+  // Wait for cleanup completion of all closed connections.
+  std::this_thread::sleep_for(RegularBuildVsDebugVsSanitizers(3s, 5s, 5s));
+  auto conn = ASSERT_RESULT(Connect());
+  const auto disable_calls = ASSERT_RESULT(metrics_->Delta([&conn, &temp_table_creator] {
+    return temp_table_creator(&conn);
+  })).cache.disable_calls;
+  // Check that response cache has not been invalidated while temp namespace reusing.
+  ASSERT_EQ(disable_calls, 0);
 }
 
 } // namespace yb::pgwrapper

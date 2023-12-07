@@ -1443,8 +1443,8 @@ bool YBCPgHasWriteOperationsInDdlTxnMode() {
   return pgapi->HasWriteOperationsInDdlTxnMode();
 }
 
-YBCStatus YBCPgExitSeparateDdlTxnMode() {
-  return ToYBCStatus(pgapi->ExitSeparateDdlTxnMode());
+YBCStatus YBCPgExitSeparateDdlTxnMode(YBCPgOid db_oid, bool is_silent_altering) {
+  return ToYBCStatus(pgapi->ExitSeparateDdlTxnMode(db_oid, is_silent_altering));
 }
 
 YBCStatus YBCPgClearSeparateDdlTxnMode() {

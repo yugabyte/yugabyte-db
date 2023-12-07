@@ -1991,10 +1991,10 @@ bool PgApiImpl::HasWriteOperationsInDdlTxnMode() const {
   return pg_session_->HasWriteOperationsInDdlMode();
 }
 
-Status PgApiImpl::ExitSeparateDdlTxnMode() {
+Status PgApiImpl::ExitSeparateDdlTxnMode(PgOid db_oid, bool is_silent_modification) {
   // Flush all buffered operations as ddl txn use its own transaction session.
   RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
-  RETURN_NOT_OK(pg_txn_manager_->ExitSeparateDdlTxnMode(Commit::kTrue));
+  RETURN_NOT_OK(pg_txn_manager_->ExitSeparateDdlTxnModeWithCommit(db_oid, is_silent_modification));
   // Next reads from catalog tables have to see changes made by the DDL transaction.
   ResetCatalogReadTime();
   return Status::OK();
@@ -2002,7 +2002,7 @@ Status PgApiImpl::ExitSeparateDdlTxnMode() {
 
 Status PgApiImpl::ClearSeparateDdlTxnMode() {
   pg_session_->DropBufferedOperations();
-  return pg_txn_manager_->ExitSeparateDdlTxnMode(Commit::kFalse);
+  return pg_txn_manager_->ExitSeparateDdlTxnModeWithAbort();
 }
 
 Status PgApiImpl::SetActiveSubTransaction(SubTransactionId id) {

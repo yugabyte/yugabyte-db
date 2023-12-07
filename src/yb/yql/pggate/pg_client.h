@@ -42,11 +42,11 @@
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
-namespace yb {
-namespace pggate {
+namespace yb::pggate {
 
 struct DdlMode {
   bool has_docdb_schema_changes{false};
+  std::optional<uint32_t> silently_altered_db;
 
   std::string ToString() const;
   void ToPB(tserver::PgFinishTransactionRequestPB_DdlModePB* dest) const;
@@ -133,7 +133,7 @@ class PgClient {
 
   Result<client::VersionedTablePartitionList> GetTablePartitionList(const PgObjectId& table_id);
 
-  Status FinishTransaction(Commit commit, std::optional<DdlMode> ddl_mode = std::nullopt);
+  Status FinishTransaction(Commit commit, const std::optional<DdlMode>& ddl_mode = {});
 
   Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
 
@@ -247,5 +247,4 @@ class PgClient {
   std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

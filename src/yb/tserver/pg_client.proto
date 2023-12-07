@@ -105,6 +105,20 @@ service PgClientService {
   };
 }
 
+// TODO: Remove the OptionalUint32PB helper message after updating protobuf generator to allow
+// 'optional' in proto3
+message OptionalFixed64PB {
+  fixed64 value = 1;
+}
+
+message OptionalUint32PB {
+  uint32 value = 1;
+}
+
+message OptionalUint64PB {
+  uint64 value = 1;
+}
+
 message PgHeartbeatRequestPB {
   uint64 session_id = 1;
 }
@@ -310,6 +324,7 @@ message PgFinishTransactionRequestPB {
   message DdlModePB {
     // This transaction contains changes to the DocDB schema protobufs.
     bool has_docdb_schema_changes = 1;
+    OptionalUint32PB silently_altered_db = 2;
   }
 
   uint64 session_id = 1;
@@ -480,21 +495,9 @@ enum ReadTimeManipulation {
   ENSURE_READ_TIME_IS_SET = 2;
 }
 
-// TODO: Remove the OptionalUint32PB helper message after updating protobuf generator to allow
-// 'optional' in proto3
-message OptionalFixed64PB {
-  fixed64 value = 1;
-}
-
-message OptionalUint32PB {
-  uint32 value = 1;
-}
-
-message OptionalUint64PB { uint64 value = 1; }
-
 message PgPerformOptionsPB {
   message CachingInfoPB {
-    uint64 key_group = 1;
+    uint32 key_group = 1;
     bytes key_value = 2;
     OptionalUint32PB lifetime_threshold_ms = 3;
   }
