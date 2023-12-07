@@ -51,10 +51,10 @@ Session information is written to the PostgreSQL logs, located in the YugabyteDB
 Create a local cluster and configure `ysql_log_statement` to log all statements, and `log_line_prefix` to log timestamp, PostgreSQL PID, and session identifier as follows:
 
 ```sh
-./bin/yb-ctl create --tserver_flags="ysql_log_statement=all,ysql_pg_conf_csv=\"log_line_prefix='timestamp: %m, pid: %p session: %c '\"" --rf 1
+./bin/yugabyted start --tserver_flags="ysql_log_statement=all,ysql_pg_conf_csv=\"log_line_prefix='timestamp: %m, pid: %p session: %c '\""
 ```
 
-For local clusters created using yb-ctl, `postgresql` logs are located in `~/yugabyte-data/node-1/disk-1/yb-data/tserver/logs`.
+For local clusters created using yugabyted, `postgresql` logs are located in `~/var/data/yb-data/tserver/logs`.
 
 Connect to the cluster using ysqlsh as follows:
 
@@ -74,7 +74,7 @@ yugabyte=#
 Execute the following commands:
 
 ```sql
-yugabyte=# CREATE TABLE my_table ( h int, r int, v int, primary key(h,r));
+CREATE TABLE my_table ( h int, r int, v int, primary key(h,r));
 ```
 
 ```output
@@ -82,7 +82,7 @@ CREATE TABLE
 ```
 
 ```sql
-yugabyte=# INSERT INTO my_table VALUES (1, 1, 1);
+INSERT INTO my_table VALUES (1, 1, 1);
 ```
 
 ```output
@@ -101,7 +101,7 @@ timestamp: 2022-10-24 16:51:01.258 UTC --pid: 1930 session: 6356c208.78a LOG:  s
 Start an explicit transaction as follows:
 
 ```sql
-yugabyte=# BEGIN;
+BEGIN;
 ```
 
 ```output
@@ -109,7 +109,7 @@ BEGIN
 ```
 
 ```sql
-yugabyte=# INSERT INTO my_table VALUES (2,2,2);
+INSERT INTO my_table VALUES (2,2,2);
 ```
 
 ```output
@@ -117,7 +117,7 @@ INSERT 0 1
 ```
 
 ```sql
-yugabyte=# DELETE FROM my_table WHERE h = 1;
+DELETE FROM my_table WHERE h = 1;
 ```
 
 ```output
@@ -125,7 +125,7 @@ DELETE 1
 ```
 
 ```sql
-yugabyte=# COMMIT;
+COMMIT;
 ```
 
 ```output
@@ -161,8 +161,8 @@ Start two sessions and execute transactions concurrently as follows:
    <td>
 
 ```sql
-yugabyte=# BEGIN;
-yugabyte=# INSERT INTO my_table VALUES (5,2,2);
+BEGIN;
+INSERT INTO my_table VALUES (5,2,2);
 ```
 
    </td>
@@ -175,9 +175,9 @@ yugabyte=# INSERT INTO my_table VALUES (5,2,2);
    <td>
 
 ```sql
-yugabyte=# BEGIN;
-yugabyte=# INSERT INTO my_table VALUES (6,2,2);
-yugabyte=# COMMIT;
+BEGIN;
+INSERT INTO my_table VALUES (6,2,2);
+COMMIT;
 ```
 
    </td>
