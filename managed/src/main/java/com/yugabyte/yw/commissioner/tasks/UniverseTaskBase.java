@@ -244,11 +244,18 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.RemoveNodeFromUniverse,
           TaskType.DeleteNodeFromUniverse,
           TaskType.EditUniverse,
-          //          TaskType.EditKubernetesUniverse, Cannot use it here as it is not @Retryable.
           TaskType.ReleaseInstanceFromUniverse,
           TaskType.StartNodeInUniverse,
           TaskType.StopNodeInUniverse,
-          TaskType.ResizeNode);
+          TaskType.ResizeNode,
+          // Kubernetes Upgrade Tasks, found all subclasses of KubernetesUpgradeTaskBase
+          TaskType.KubernetesOverridesUpgrade,
+          TaskType.GFlagsKubernetesUpgrade,
+          TaskType.SoftwareKubernetesUpgrade,
+          TaskType.EditKubernetesUniverse,
+          TaskType.RestartUniverseKubernetesUpgrade,
+          TaskType.CertsRotateKubernetesUpgrade,
+          TaskType.ConfigureDBApisKubernetes);
 
   // Tasks that are allowed to run if cluster placement modification task failed.
   private static final Set<TaskType> SAFE_TO_RUN_IF_UNIVERSE_BROKEN =
