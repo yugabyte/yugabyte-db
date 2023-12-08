@@ -34,17 +34,21 @@ The goal of the YSQL audit logging is to provide YugabyteDB users with capabilit
 
 To enable audit logging, first configure audit logging for the cluster. This is done in one of the following ways:
 
-- Use the [--ysql_pg_conf_csv](../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) YB-TServer flag.
+- At database startup.
+
+    Use the [--ysql_pg_conf_csv](../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) YB-TServer flag.
 
     Database administrators can use `ysql_pg_conf_csv` to configure audit logging with [pgaudit flags](#customize-audit-logging).
 
-    For example, `ysql_pg_conf_csv="pgaudit.log='DDL',pgaudit.log_level=notice"`
+    Provide the options as a comma separated values. For example, `ysql_pg_conf_csv="pgaudit.log='DDL',pgaudit.log_level=notice"`.
 
     Use double quotes to enclose any settings that include commas.
 
     These configuration values are set when the YugabyteDB cluster is created and therefore apply for all users and for every session.
 
-- Use the [SET](../../../api/ysql/the-sql-language/statements/cmd_set/) command in a running session.
+- Per session.
+
+    Use the [SET](../../../api/ysql/the-sql-language/statements/cmd_set/) command in a running session.
 
     The `SET` command essentially changes the run-time configuration parameters.
 
@@ -75,6 +79,8 @@ You can customize YSQL audit logging using the `pgaudit` flags, as per the follo
 | pgaudit.log_parameter | Include the parameters that were passed with the statement in the logs. When parameters are present, they are included in CSV format after the statement text. | OFF |
 | pgaudit.log_parameter_max_size | Specifies the size, in bytes, of parameters to include in the logs if `pgaudit.log_parameter` is on. Parameters longer than this value are not logged and replaced with `<long param suppressed>`. The default of 0 indicates that all parameters are logged regardless of length. | 0 |
 | pgaudit.log_relation | Create separate log entries for each relation (TABLE, VIEW, and so on) referenced in a SELECT or DML statement. This is a shortcut for exhaustive logging without using [object audit logging](../object-audit-logging-ysql/). | OFF |
+| pgaudit.log_rows | Include the rows retrieved or affected by a statement. The rows field is included after the parameter field. | OFF |
+| pgaudit.log_statement | Include the statement text and parameters. Depending on requirements, an audit log might not require this and it makes the logs less verbose. | ON |
 | pgaudit.log_statement_once | Include the statement text and parameters for a statement or sub-statement combination with the first log entry only. Ordinarily, statement text and parameters are included with every log entry. Enable this setting for less verbose logging; however, this can make it more difficult to determine the statement that generated a log entry. | OFF |
 | pgaudit.role | Specifies the master role to use for object audit logging. To define multiple audit roles, grant the roles to the master role; this allows multiple groups to be in charge of different aspects of audit logging. | None |
 
@@ -99,15 +105,9 @@ SET pgaudit.log_client=ON;
 SET pgaudit.log_level=notice;
 ```
 
-To configure a cluster, you would start your cluster with the pgaudit options set in the `ysql_pg_conf_csv` flag as follows:
-
-```shell
---ysql_pg_conf_csv="pgaudit.log='DDL',pgaudit.log_level=notice,pgaudit.log_client=ON"
-```
-
 #### Create a table and verify the log
 
-As `pgaudit.log='DDL'` is configured, `CREATE TABLE` YSQL statements are logged and the corresponding log is shown in the YSQL client:
+As `pgaudit.log='DDL'` is configured, `CREATE TABLE` YSQL statements are logged and the corresponding log is shown in ysqlsh:
 
 ```sql
 CREATE TABLE employees (empno int, ename text, address text,
