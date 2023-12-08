@@ -23,6 +23,24 @@ class CDCSDKConsistentSnapshotTest : public CDCSDKYsqlTest {
     CDCSDKYsqlTest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_yb_enable_cdc_consistent_snapshot_streams) = true;
   }
+
+  Result<master::GetCDCStreamResponsePB> GetCDCStream(const xrepl::StreamId& db_stream_id) {
+    master::GetCDCStreamRequestPB get_req;
+    master::GetCDCStreamResponsePB get_resp;
+    get_req.set_stream_id(db_stream_id.ToString());
+
+    RpcController get_rpc;
+    get_rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
+
+    master::MasterReplicationProxy master_proxy_(
+        &test_client()->proxy_cache(),
+        VERIFY_RESULT(test_cluster_.mini_cluster_->GetLeaderMasterBoundRpcAddr()));
+
+    RETURN_NOT_OK(master_proxy_.GetCDCStream(get_req, &get_resp, &get_rpc));
+
+    return get_resp;
+  }
+
 };
 
 
@@ -112,6 +130,33 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestTwoCSStream) {
   //  Check that all the barriers are for the slowest consumer
   //  which would be stream1 as it was created before stream 2
   ASSERT_EQ(state1, state2);
+}
+
+// The goal of this test is to confirm that the consistent snapshot related metadata is
+// persisted in the sys_catalog
+TEST_F(CDCSDKConsistentSnapshotTest, TestConsistentSnapshotMetadataPersistence) {
+  auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
+  // Temporary - this will create cdc_state table
+  ASSERT_RESULT(CreateDBStream());
+
+  // Create a Consistent Snapshot Stream with USE_SNAPSHOT option
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  // Restart the universe
+  test_cluster()->Shutdown();
+  ASSERT_OK(test_cluster()->StartSync());
+
+  auto resp = ASSERT_RESULT(GetCDCStream(stream_id));
+  ASSERT_TRUE(resp.stream().has_cdcsdk_consistent_snapshot_option());
+  ASSERT_TRUE(resp.stream().has_cdcsdk_consistent_snapshot_time());
+  for (const auto& option : resp.stream().options()) {
+    if (option.key() == "state") {
+      master::SysCDCStreamEntryPB_State state;
+      ASSERT_TRUE(
+          master::SysCDCStreamEntryPB_State_Parse(option.value(), &state));
+      ASSERT_EQ(state, master::SysCDCStreamEntryPB_State::SysCDCStreamEntryPB_State_ACTIVE);
+    }
+  }
 }
 
 // Insert a row before snapshot. Insert a row after snapshot.

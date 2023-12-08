@@ -42,7 +42,7 @@ public abstract class MDCPropagatingDispatcherTestBase extends PlatformGuiceAppl
     Config config =
         ConfigFactory.parseMap(testDatabase())
             .withValue(
-                "akka.actor.default-dispatcher.type",
+                "pekko.actor.default-dispatcher.type",
                 ConfigValueFactory.fromAnyRef(
                     "com.yugabyte.yw.common.logging.MDCPropagatingDispatcherConfigurator"));
     return new GuiceApplicationBuilder()

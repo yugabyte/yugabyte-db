@@ -20,10 +20,10 @@ import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import jakarta.persistence.OptimisticLockException;
 import java.util.Collections;
 import java.util.Map;
 import java.util.UUID;
-import javax.persistence.OptimisticLockException;
 import org.junit.Before;
 import org.junit.Test;
 

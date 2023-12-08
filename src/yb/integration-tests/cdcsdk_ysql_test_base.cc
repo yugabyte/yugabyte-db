@@ -3042,6 +3042,7 @@ namespace cdc {
 
   void CDCSDKYsqlTest::GetRecordsAndSplitCount(
       const xrepl::StreamId& stream_id, const TabletId& tablet_id, const TableId& table_id,
+      CDCCheckpointType checkpoint_type,
       int* record_count, int* total_records, int* total_splits) {
     std::vector<pair<TabletId, CDCSDKCheckpointPB>> tablets;
     tablets.push_back({tablet_id, {}});
@@ -3069,7 +3070,9 @@ namespace cdc {
             ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table_id, tablet_id));
         for (const auto& tablet_checkpoint_pair : get_tablets_resp.tablet_checkpoint_pairs()) {
           auto new_tablet = tablet_checkpoint_pair.tablet_locations();
-          auto new_checkpoint = tablet_checkpoint_pair.cdc_sdk_checkpoint();
+          auto new_checkpoint = (checkpoint_type == CDCCheckpointType::EXPLICIT)
+                                    ? change_resp.cdc_sdk_checkpoint()
+                                    : tablet_checkpoint_pair.cdc_sdk_checkpoint();
           tablets.push_back({new_tablet.tablet_id(), new_checkpoint});
         }
       }

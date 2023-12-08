@@ -17,18 +17,20 @@
 
 #include "postgres.h"
 
+#include "executor/executor.h"
+#include "miscadmin.h"
+#include "parser/analyze.h"
+#include "pgstat.h"
 #include "postmaster/bgworker.h"
-
 #include "storage/ipc.h"
 #include "storage/latch.h"
 #include "storage/lwlock.h"
 #include "storage/shmem.h"
-
+#include "tcop/utility.h"
 #include "utils/guc.h"
 #include "utils/timestamp.h"
 
-#include "miscadmin.h"
-#include "pgstat.h"
+#include "pg_yb_utils.h"
 
 PG_MODULE_MAGIC;
 PG_FUNCTION_INFO_V1(yb_active_session_history);
@@ -40,6 +42,10 @@ static int ash_sample_size;
 
 /* Saved hook values in case of unload */
 static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
+static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
+static ExecutorStart_hook_type prev_ExecutorStart = NULL;
+static ExecutorEnd_hook_type prev_ExecutorEnd = NULL;
+static ProcessUtility_hook_type prev_ProcessUtility = NULL;
 
 typedef struct YbAshEntry
 {
@@ -65,8 +71,17 @@ void _PG_fini(void);
 static int yb_ash_cb_max_entries(void);
 static Size yb_ash_memsize(void);
 static void yb_ash_startup(void);
+static void yb_set_ash_metadata(uint64_t query_id);
+static void yb_unset_ash_metadata();
 
 static void yb_ash_startup_hook(void);
+static void yb_ash_post_parse_analyze(ParseState *pstate, Query *query);
+static void yb_ash_ExecutorStart(QueryDesc *queryDesc, int eflags);
+static void yb_ash_ExecutorEnd(QueryDesc *queryDesc);
+static void yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
+								  ProcessUtilityContext context, ParamListInfo params,
+								  QueryEnvironment *queryEnv, DestReceiver *dest,
+								  char *completionTag);
 
 static volatile sig_atomic_t got_sigterm = false;
 static volatile sig_atomic_t got_sighup = false;
@@ -141,6 +156,18 @@ _PG_init(void)
 	 */
 	prev_shmem_startup_hook = shmem_startup_hook;
 	shmem_startup_hook = yb_ash_startup_hook;
+
+	prev_post_parse_analyze_hook = post_parse_analyze_hook;
+	post_parse_analyze_hook = yb_ash_post_parse_analyze;
+
+	prev_ExecutorStart = ExecutorStart_hook;
+	ExecutorStart_hook = yb_ash_ExecutorStart;
+
+	prev_ExecutorEnd = ExecutorEnd_hook;
+	ExecutorEnd_hook = yb_ash_ExecutorEnd;
+
+	prev_ProcessUtility = ProcessUtility_hook;
+	ProcessUtility_hook = yb_ash_ProcessUtility;
 }
 
 /*
@@ -151,6 +178,10 @@ _PG_fini(void)
 {
 	/* Uninstall hooks. */
 	shmem_startup_hook = prev_shmem_startup_hook;
+	post_parse_analyze_hook = prev_post_parse_analyze_hook;
+	ExecutorStart_hook = prev_ExecutorStart;
+	ExecutorEnd_hook = prev_ExecutorEnd;
+	ProcessUtility_hook = prev_ProcessUtility;
 }
 
 static void
@@ -194,6 +225,97 @@ yb_ash_startup(void)
 		yb_ash->index = 0;
 		yb_ash->max_entries = yb_ash_cb_max_entries();
 	}
+}
+
+static void
+yb_ash_post_parse_analyze(ParseState *pstate, Query *query)
+{
+	if (prev_post_parse_analyze_hook)
+		prev_post_parse_analyze_hook(pstate, query);
+
+	/* query_id will be set to zero if pg_stat_statements is disabled. */
+	yb_set_ash_metadata(query->queryId);
+}
+
+static void
+yb_ash_ExecutorStart(QueryDesc *queryDesc, int eflags)
+{
+	/*
+	 * In case of prepared statements, the 'Parse' phase might be skipped.
+	 * We set the ASH metadata here if it's not been set yet.
+	 * Note that query_id may be set to zero for utility stmts, but this
+	 * function will not be executed in that case.
+	 */
+	if (MyProc->yb_ash_metadata.query_id == 0)
+		yb_set_ash_metadata(queryDesc->plannedstmt->queryId);
+
+	if (prev_ExecutorStart)
+		prev_ExecutorStart(queryDesc, eflags);
+	else
+		standard_ExecutorStart(queryDesc, eflags);
+}
+
+static void
+yb_ash_ExecutorEnd(QueryDesc *queryDesc)
+{
+	if (prev_ExecutorEnd)
+		prev_ExecutorEnd(queryDesc);
+	else
+		standard_ExecutorEnd(queryDesc);
+
+	/*
+	 * Unset ASH metadata. Utility statements do not go through this
+	 * code path.
+	 */
+	yb_unset_ash_metadata();
+}
+
+static void
+yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
+					  ProcessUtilityContext context, ParamListInfo params,
+					  QueryEnvironment *queryEnv, DestReceiver *dest,
+					  char *completionTag)
+{
+	if (prev_ProcessUtility)
+		prev_ProcessUtility(pstmt, queryString,
+								 context, params, queryEnv,
+								 dest, completionTag);
+	else
+		standard_ProcessUtility(pstmt, queryString,
+								context, params, queryEnv,
+								dest, completionTag);
+
+	/*
+	 * Unset ASH metadata in case of utility statements. This function
+	 * might recurse, and we only want to unset in the last step.
+	 */
+	if (YBGetDdlNestingLevel() == 0)
+		yb_unset_ash_metadata();
+}
+
+static void
+yb_set_ash_metadata(uint64_t query_id)
+{
+	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
+
+	MyProc->yb_ash_metadata.query_id = query_id;
+	YBCGenerateAshRootRequestId(MyProc->yb_ash_metadata.root_request_id);
+	MyProc->yb_ash_metadata.is_set = true;
+
+	LWLockRelease(&MyProc->yb_ash_metadata_lock);
+}
+
+static void
+yb_unset_ash_metadata()
+{
+	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
+
+	MyProc->yb_ash_metadata.query_id = 0;
+	MemSet(MyProc->yb_ash_metadata.root_request_id, 0,
+		   sizeof(MyProc->yb_ash_metadata.root_request_id));
+	MyProc->yb_ash_metadata.is_set = false;
+
+	LWLockRelease(&MyProc->yb_ash_metadata_lock);
 }
 
 static void

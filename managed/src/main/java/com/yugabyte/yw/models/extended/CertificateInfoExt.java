@@ -9,8 +9,8 @@ import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import jakarta.persistence.Column;
 import java.util.Date;
-import javax.persistence.Column;
 import lombok.Data;
 import lombok.experimental.Accessors;
 

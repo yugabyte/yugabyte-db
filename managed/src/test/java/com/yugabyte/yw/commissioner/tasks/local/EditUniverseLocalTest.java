@@ -7,6 +7,7 @@ import static org.junit.Assert.assertEquals;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.TaskInfo;
@@ -18,6 +19,11 @@ import org.junit.Test;
 
 @Slf4j
 public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
+
+  @Override
+  protected Pair<Integer, Integer> getIpRange() {
+    return new Pair(2, 30);
+  }
 
   @Test
   public void testExpand() throws InterruptedException {

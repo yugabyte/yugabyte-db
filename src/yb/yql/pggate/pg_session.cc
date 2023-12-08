@@ -700,7 +700,6 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
         "DDL operation should not be performed while yb_read_time is set to nonzero.");
     ReadHybridTime::FromMicros(yb_read_time).ToPB(options.mutable_read_time());
   }
-  auto promise = std::make_shared<std::promise<PerformResult>>();
 
   // If all operations belong to the same database then set the namespace.
   // System database template1 is ignored as we may read global system catalog like tablespaces
@@ -755,10 +754,8 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
 
   DCHECK(!options.has_read_time() || options.isolation() != IsolationLevel::SERIALIZABLE_ISOLATION);
 
-  pg_client_.PerformAsync(&options, &ops.operations, [promise](const PerformResult& result) {
-    promise->set_value(result);
-  });
-  return PerformFuture(promise->get_future(), this, std::move(ops.relations));
+  auto future = pg_client_.PerformAsync(&options, &ops.operations);
+  return PerformFuture(std::move(future), this, std::move(ops.relations));
 }
 
 Result<bool> PgSession::ForeignKeyReferenceExists(const LightweightTableYbctid& key,
