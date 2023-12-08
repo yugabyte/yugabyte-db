@@ -2,7 +2,6 @@
 title: Enable users in YSQL
 headerTitle: Enable users in YSQL
 description: Enable users in YSQL.
-image: /images/section_icons/secure/authentication.png
 menu:
   stable:
     name: Enable users
