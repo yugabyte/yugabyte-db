@@ -10,7 +10,7 @@ import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -461,12 +461,11 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
   @Test
   public void testGFlagsUpgradeWithEmptyFlags() {
     GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
-    TaskInfo taskInfo = submitTask(taskParams);
+    assertThrows(RuntimeException.class, () -> submitTask(taskParams));
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
-    assertEquals(Failure, taskInfo.getTaskState());
+    assertThrows(RuntimeException.class, () -> submitTask(taskParams));
     defaultUniverse.refresh();
     assertEquals(2, defaultUniverse.getVersion());
-    assertTrue(taskInfo.getSubTasks().isEmpty());
   }
 
   @Test
@@ -668,10 +667,9 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     // this will cause both processes to be updated
     taskParams.masterGFlags = ImmutableMap.of(GFlagsUtil.ENABLE_YSQL, "false");
     taskParams.tserverGFlags = ImmutableMap.of(GFlagsUtil.ENABLE_YSQL, "true");
-    TaskInfo taskInfo = submitTask(taskParams);
-    assertEquals(Failure, taskInfo.getTaskState());
+    Exception thrown = assertThrows(RuntimeException.class, () -> submitTask(taskParams));
     assertThat(
-        taskInfo.getErrorMessage(),
+        thrown.getMessage(),
         containsString(
             "G-Flag value for 'enable_ysql' is inconsistent "
                 + "between master and tserver ('false' vs 'true')"));
@@ -870,14 +868,12 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
             ImmutableMap.of(GFlagsUtil.ENABLE_YSQL, "false"));
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
     taskParams.getPrimaryCluster().userIntent.specificGFlags = specificGFlags;
-
-    TaskInfo taskInfo = submitTask(taskParams);
-    assertEquals(Failure, taskInfo.getTaskState());
+    Exception thrown = assertThrows(RuntimeException.class, () -> submitTask(taskParams));
     assertThat(
-        taskInfo.getErrorMessage(),
+        thrown.getMessage(),
         containsString(
-            "G-Flag value for 'enable_ysql' is inconsistent "
-                + "between master and tserver ('true' vs 'false')"));
+            "G-Flag value for 'enable_ysql' is inconsistent between master and tserver ('true' vs"
+                + " 'false')"));
   }
 
   @Test
@@ -896,10 +892,9 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
 
     GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
-    TaskInfo taskInfo = submitTask(taskParams);
-    assertEquals(Failure, taskInfo.getTaskState());
+    Exception thrown = assertThrows(RuntimeException.class, () -> submitTask(taskParams));
     assertThat(
-        taskInfo.getErrorMessage(),
+        thrown.getMessage(),
         containsString("No changes in gflags (modify specificGflags in cluster)"));
   }
 
@@ -922,11 +917,9 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
         SpecificGFlags.construct(ImmutableMap.of("master-flag", "m2"), ImmutableMap.of("a", "b"));
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
     taskParams.getPrimaryCluster().userIntent.specificGFlags = specificGFlags;
-
-    TaskInfo taskInfo = submitTask(taskParams);
-    assertEquals(Failure, taskInfo.getTaskState());
+    Exception thrown = assertThrows(RuntimeException.class, () -> submitTask(taskParams));
     assertThat(
-        taskInfo.getErrorMessage(),
+        thrown.getMessage(),
         containsString("Cannot delete gFlags through non-restart upgrade option."));
   }
 

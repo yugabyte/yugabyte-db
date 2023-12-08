@@ -2,9 +2,9 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
-import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -84,18 +84,16 @@ public class RebootUniverseTest extends UpgradeTaskTest {
   public void testNonRollingReboot() {
     UpgradeTaskParams taskParams = new UpgradeTaskParams();
     taskParams.upgradeOption = UpgradeOption.NON_ROLLING_UPGRADE;
-    TaskInfo taskInfo = submitTask(taskParams);
+    assertThrows(RuntimeException.class, () -> submitTask(taskParams));
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
-    assertEquals(Failure, taskInfo.getTaskState());
   }
 
   @Test
   public void tesNonRestartUpgradeReboot() {
     UpgradeTaskParams taskParams = new UpgradeTaskParams();
     taskParams.upgradeOption = UpgradeOption.NON_RESTART_UPGRADE;
-    TaskInfo taskInfo = submitTask(taskParams);
+    assertThrows(RuntimeException.class, () -> submitTask(taskParams));
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
-    assertEquals(Failure, taskInfo.getTaskState());
   }
 
   @Test

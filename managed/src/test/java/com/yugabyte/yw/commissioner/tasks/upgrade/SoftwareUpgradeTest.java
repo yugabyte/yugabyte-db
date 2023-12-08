@@ -5,9 +5,9 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 import static com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType.DownloadingSoftware;
 import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.TSERVER;
-import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -374,26 +374,20 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     taskParams.ybSoftwareVersion = "2.14.12.0-b1";
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
 
-    TaskInfo taskInfo = submitTask(taskParams);
+    assertThrows(RuntimeException.class, () -> submitTask(taskParams));
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
-    assertEquals(Failure, taskInfo.getTaskState());
     defaultUniverse.refresh();
     assertEquals(2, defaultUniverse.getVersion());
-    // In case of an exception, only RunHooks task should be queued.
-    assertEquals(3, taskInfo.getSubTasks().size());
   }
 
   @Test
   public void testSoftwareUpgradeWithoutVersion() {
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
-    TaskInfo taskInfo = submitTask(taskParams);
+    assertThrows(RuntimeException.class, () -> submitTask(taskParams));
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
-    assertEquals(Failure, taskInfo.getTaskState());
     defaultUniverse.refresh();
     assertEquals(2, defaultUniverse.getVersion());
-    // In case of an exception, only RunHooks tasks should be queued.
-    assertEquals(3, taskInfo.getSubTasks().size());
   }
 
   @Test
