@@ -204,6 +204,7 @@ public class UniverseCRUDHandler {
           || !cluster.areTagsSame(currentCluster)
           || PlacementInfoUtil.didAffinitizedLeadersChange(
               currentCluster.placementInfo, cluster.placementInfo)
+          || isRegionListUpdate(cluster, currentCluster)
           || isKubernetesVolumeUpdate(cluster, currentCluster)) {
         result.add(UniverseDefinitionTaskParams.UpdateOptions.UPDATE);
       } else if (GFlagsUtil.checkGFlagsByIntentChange(
@@ -225,6 +226,18 @@ public class UniverseCRUDHandler {
       }
     }
     return result;
+  }
+
+  private boolean isRegionListUpdate(Cluster cluster, Cluster currentCluster) {
+    List<UUID> newList =
+        cluster.userIntent.regionList == null
+            ? new ArrayList<>()
+            : new ArrayList<>(cluster.userIntent.regionList);
+    List<UUID> currentList =
+        currentCluster.userIntent.regionList == null
+            ? new ArrayList<>()
+            : new ArrayList<>(currentCluster.userIntent.regionList);
+    return !Objects.equals(newList, currentList);
   }
 
   private boolean isKubernetesVolumeUpdate(Cluster cluster, Cluster currentCluster) {
