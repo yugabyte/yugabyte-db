@@ -1,10 +1,10 @@
 ---
 title: Azure with YugabyteDB
-headerTitle: How to Develop Applications with Azure and YugabyteDB
+headerTitle: Develop applications with Azure and YugabyteDB
 linkTitle: Azure
 description: How to Develop Applications with Azure and YugabyteDB
 image: /images/tutorials/azure/azure-logo.png
-headcontent: How to Develop Applications with Azure and YugabyteDB
+headcontent: Add a scalable and highly-available database to your Azure projects
 aliases:
   - /preview/tutorials/azure/
 menu:

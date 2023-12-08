@@ -1,8 +1,8 @@
 ---
-title: Developing Centralized APIs Using Azure API Management and YugaybteDB
+title: How to Develop Centralized APIs With Azure API Management and YugaybteDB
 headerTitle: Develop centralized APIs using Azure API Management and YugaybteDB
 linkTitle: Azure API Management
-description: Developing Centralized APIs Using Azure API Management and YugaybteDB
+description: Learn to deploy APIs using Azure API Management and YugabyteDB, covering geo-partitioned clusters and Azure Function development.
 image: /images/tutorials/azure/icons/API-Management-Icon.svg
 headcontent: Use YugaybteDB as the database backend for your API
 menu:
@@ -15,7 +15,7 @@ type: docs
 
 [Azure API Management (APIM)](https://azure.microsoft.com/en-us/products/api-management/) can be used to design, manage, and protect your APIs. This service acts as a centralized hub for your APIs, providing API gateway functionality, security measures, rate limiting, analytics, and monitoring, among other features.
 
-In this tutorial, we'll walk through the steps required to develop and deploy an API using Azure API Management with Node.js and our fully-managed deployment of [YugabyteDB](https://www.yugabyte.com/yugabytedb/) (formerly known as YugabyteDB Managed).
+In this tutorial, we'll walk through the steps required to develop and deploy an API using Azure API Management with Node.js and [YugabyteDB Managed](https://www.yugabyte.com/yugabytedb/). It covers the deployment of a geo-partitioned YugabyteDB cluster, the development of Azure Functions for database queries, and the creation of an API using Azure API Management.
 
 In the following sections, we will:
 
@@ -23,7 +23,7 @@ In the following sections, we will:
 1. Develop and provision an Azure Function to connect to and query our database in a specific region.
 1. Create an Azure API Management instance to design an API with an Azure Function backend.
 
-**Prerequisites**
+## Prerequisites
 
 - A YugabyteDB Managed account. Sign up for a [free trial](https://cloud.yugabyte.com/signup/).
 - An Azure Cloud account with permission to create services.
@@ -37,7 +37,7 @@ Begin by deploying a multi-region, [geo-partitioned cluster](../../../yugabyte-c
 
     ![Geo-partitioned YugabyteDB deployment on Azure](/images/tutorials/azure/azure-private-link/yb-deployment.png "Geo-partitioned YugabyteDB deployment on Azure")
 
-1. Enable public access on the cluster and add 0.0.0.0/0 to the cluster IP Allow List. This setup allows connections to the cluster from all IP addresses.
+1. Enable public access on the cluster and add 0.0.0.0/0 to the cluster [IP Allow List](../../../yugabyte-cloud/cloud-secure-clusters/add-connections/). This setup allows connections to the cluster from all IP addresses.
 
     {{< note title="Note" >}}
 In a production application, [Azure Private Link](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/managed-endpoint-azure/) can be used with [private service endpoints](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/managed-endpoint-azure/#create-a-pse-in-yugabytedb-managed) to create a secure connection between your application and database VPCs.
@@ -66,6 +66,8 @@ Update the function and its corresponding configuration by doing the following:
 This function uses the supplied region route parameter to determine which database node it should connect to. It then queries the database for orders partitioned in this region.
 
 ## Create an Azure API Management service
+
+Create the service as follows:
 
 1. Configure an Azure API Management (APIM) service instance in the _westus3_ region.
 
@@ -125,11 +127,3 @@ If you're interested in creating a secure connection between Azure and YugabyteD
 - [Link to Azure Private Link tutorial]
 
 If you would like to explore the different deployment options of YugabyteDB (including self-managed, co-managed, fully managed, and open source), explore our [database comparison page](https://www.yugabyte.com/compare-products/).
-
-SEO:
-
-SEO Title: How to Develop Centralized APIs With Azure API Management and YugaybteDB
-
-Excerpt (if needed): Check out our step-by-step guide on developing and deploying an API using Azure API Management in conjunction with Node.js and YugabyteDB. It covers the deployment of a geo-partitioned YugabyteDB cluster, the development of Azure Functions for database queries, and the creation of an API using Azure API Management.
-
-Meta description: Learn to deploy APIs using Azure API Management and YugabyteDB, covering geo-partitioned clusters and Azure Function development.

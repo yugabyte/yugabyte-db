@@ -17,31 +17,31 @@ The [Azure Event Hubs](https://learn.microsoft.com/en-us/azure/event-hubs/event-
 
 In this tutorial, we'll examine how the [YugabyteDB CDC](https://docs.yugabyte.com/preview/explore/change-data-capture/cdc-overview/) can be used with Azure Event Hubs to stream real-time data for downstream processing.
 
-## Prerequisites
-
-* An Azure Cloud account with permissions to create services
-* [Download Apache Kafka](https://kafka.apache.org/downloads) version 2.12-3.2.0
-* [Download YugabyteDB](https://download.yugabyte.com/#/) version 2.16.8.0
-* [Download Debezium Connector for YugabyteDB](https://github.com/yugabyte/debezium-connector-yugabytedb/tree/v1.9.5.y.15) version 1.9.5.y.15
-* Node.js version 18
-
 ## What you'll build
 
-[Find the full project on GitHub](https://github.com/YugabyteDB-Samples/yugabytedb-azure-event-hubs-demo-nodejs), which uses an eCommerce application and DB schema along with YugabyteDB CDC functionality to send data to Azure Event Hubs via Kafka Connect.
+[Find the full project on GitHub](https://github.com/YugabyteDB-Samples/yugabytedb-azure-event-hubs-demo-nodejs). The project uses an eCommerce application and DB schema along with YugabyteDB CDC functionality to send data to Azure Event Hubs via Kafka Connect.
 
 This application runs a Node.js process to insert order records to a YugabyteDB cluster at a regular, configurable interval. The records are then automatically captured and sent to Azure Event Hubs.
 
-## Get Started with YugabyteDB
+### Prerequisites
 
-With YugabyteDB downloaded on your machine, run a cluster and seed it with data.
+- An Azure Cloud account with permissions to create services
+- [Download Apache Kafka](https://kafka.apache.org/downloads) version 2.12-3.2.0
+- [Download YugabyteDB](https://download.yugabyte.com/#/) version 2.16.8.0
+- [Download Debezium Connector for YugabyteDB](https://github.com/yugabyte/debezium-connector-yugabytedb/tree/v1.9.5.y.15) version 1.9.5.y.15
+- Node.js version 18
 
-1. Start a cluster using the [yugabyted utility](https://docs.yugabyte.com/preview/reference/configuration/yugabyted/).
+## Get started with YugabyteDB
+
+With YugabyteDB downloaded on your machine, create a cluster and seed it with data:
+
+1. Start a single-node cluster using [yugabyted](https://docs.yugabyte.com/preview/reference/configuration/yugabyted/).
 
     ```sh
     ./path/to/bin/yugabyted start 
     ```
 
-1. Connect to the cluster using the [YugabyteDB SQL shell](https://docs.yugabyte.com/preview/admin/ysqlsh/).
+1. Connect to the cluster using [ysqlsh](https://docs.yugabyte.com/preview/admin/ysqlsh/).
 
     ```sh
     ./path/to/bin/ysqlsh -U yugabyte
@@ -154,7 +154,7 @@ A Kafka Connect configuration file is required to provide information about the 
     consumer.sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username="$ConnectionString" password="{YOUR.EVENTHUBS.CONNECTION.STRING}";
     ```
 
-1. Replace the {YOUR.EVENTHUBS.FQDN} with the Event Hubs Namespace host name.
+1. Replace {YOUR.EVENTHUBS.FQDN} with the Event Hubs Namespace host name.
 
     ![Locate domain name for Event Hubs Namespace](/images/tutorials/azure/azure-event-hubs/azure-event-hubs-host-name.png "Locate domain name for Event Hubs Namespace")
 
@@ -168,13 +168,13 @@ A Kafka Connect configuration file is required to provide information about the 
    cp /path/to/event-hubs.config  /path/to/kafka_2.12-3.2.0/bin
    ```
 
-1. Copy the Debezium Connector for YugabyteDB to the Kafka _/libs_ directory.
+1. Copy the Debezium Connector for YugabyteDB to the Kafka _libs_ directory.
 
     ```sh
     cp /path/to/debezium-connector-yugabytedb-1.9.5.y.15.jar /path/to/kafka_2.12-3.2.0/libs
     ```
 
-1. Run Kafka Connect via the _connect-distributed.sh script from the Kafka root directory.
+1. Run Kafka Connect via the _connect-distributed.sh_ script from the Kafka root directory.
 
     ```sh
     ./bin/connect-distributed.sh ./bin/event-hubs.config
@@ -316,6 +316,4 @@ We can test this real-time functionality by running a sample application to inse
 
 YugabyteDB CDC combined with Azure Event Hubs enables real-time application development using a familiar Kafka interface.
 
-If you're interested in real-time data processing on Azure, you might want to consider:
-
-* [Azure Synapse Analytics integration using Azure Event Hubs](https://docs.yugabyte.com/preview/explore/change-data-capture/cdc-tutorials/cdc-azure-event-hub/)
+If you're interested in real-time data processing on Azure, check out [Azure Synapse Analytics integration using Azure Event Hubs](https://docs.yugabyte.com/preview/explore/change-data-capture/cdc-tutorials/cdc-azure-event-hub/).

@@ -13,9 +13,9 @@ menu:
 type: docs
 ---
 
-In this article, we’ll explore some ways that [Azure SDKs](https://azure.microsoft.com/en-us/downloads/) can be leveraged to interact with [Azure services](https://azure.microsoft.com/en-us/products#compute) and how SDKs can be used with database-backed applications, like those running YugabyteDB.
+In this tutorial, we'll explore how you can leverage [Azure SDKs](https://azure.microsoft.com/en-us/downloads/) to interact with [Azure services](https://azure.microsoft.com/en-us/products#compute) and use SDKs with database-backed applications, like those running YugabyteDB.
 
-The Azure SDKs are developed in a modular fashion. They provide developers with hooks into the services that their applications rely upon, without bloating bundle sizes. The SDKs are developed for parity across many programming languages, but here we will explore how we can use the [JavaScript SDK](https://learn.microsoft.com/en-us/azure/developer/javascript/core/use-azure-sdk) for Node.js.
+The Azure SDKs are developed in a modular fashion. They provide developers with hooks into the services that their applications rely on, without bloating bundle sizes. The SDKs are developed for parity across many programming languages, but in this example we will use the [JavaScript SDK](https://learn.microsoft.com/en-us/azure/developer/javascript/core/use-azure-sdk) for Node.js.
 
 ## Prerequisites
 
@@ -28,15 +28,15 @@ The Azure SDKs are developed in a modular fashion. They provide developers with 
 
 As the Azure Cloud continues to expand and evolve, so do the mechanisms used to deploy and interact with its services. Azure provides well over [150 SDKs](https://learn.microsoft.com/en-us/javascript/api/overview/azure/?view=azure-node-latest), and the list is growing.
 
-For instance, Azure’s new [OpenAI SDK](https://github.com/Azure/azure-sdk-for-js/tree/main/sdk/openai/openai) can be used to [build generative AI applications](https://www.yugabyte.com/blog/build-generative-ai-low-latency/).
+For instance, Azure's new [OpenAI SDK](https://github.com/Azure/azure-sdk-for-js/tree/main/sdk/openai/openai) can be used to [build generative AI applications](https://www.yugabyte.com/blog/build-generative-ai-low-latency/).
 
 SDKs provide an interface to interact with Azure services via application code, but there are also [tools](https://azure.microsoft.com/en-us/downloads/) available for download, including a rich command-line interface and a comprehensive set of Visual Studio Code extensions.
 
 Now, let's build a sample application which connects to the [Azure Key Vault](https://azure.microsoft.com/en-us/products/key-vault) from Node.js. We'll then use the secrets stored in this service to connect to a YugabyteDB Managed cluster.
 
-## Example SDK Usage
+## Example SDK usage
 
-A reference to the application we’ll be developing can be found [on GitHub](https://github.com/YugabyteDB-Samples/yugabytedb-azure-key-vault-sdk-demo-nodejs).
+A reference to the application we'll be developing can be found [on GitHub](https://github.com/YugabyteDB-Samples/yugabytedb-azure-key-vault-sdk-demo-nodejs).
 
 1. Initialize a new directory for your project.
 
@@ -79,7 +79,7 @@ A reference to the application we’ll be developing can be found [on GitHub](ht
     DB_HOST="[YB_DB_HOST]"
     ```
 
-1. Connect to the Azure Key Store from Node.js
+1. Connect to the Azure Key Store from Node.js.
 
     ```javascript
     // createSecrets.js

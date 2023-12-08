@@ -24,11 +24,15 @@ In this tutorial you will:
 1. Provision a database cluster on YugabyteDB Managed and seed it with data.
 1. Deploy YB Shoes to Azure App Service from a local repository.
 
-Let's start by introducing YB Shoes and its functionality.
+## Prerequisites
+
+- A YugabyteDB Managed account. Sign up for a [free trial](https://cloud.yugabyte.com/signup/).
+- An Azure Cloud account with permission to create services.
+- [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/)
 
 ## Introducing YB Shoes
 
-YB Shoes is an eCommerce dashboard that displays current shoe inventory and recent sales. YB Shoes is backed by a Node.js server which connects to YugabyteDB Managed. The queried inventory and sales data is displayed on a ReactJS frontend.
+Let's start by introducing YB Shoes and its functionality. YB Shoes is an eCommerce dashboard that displays current shoe inventory and recent sales. YB Shoes is backed by a Node.js server which connects to YugabyteDB Managed. The queried inventory and sales data is displayed on a ReactJS frontend.
 
 First, visit GitHub for the [web application](https://github.com/YugabyteDB-Samples/yugabytedb-azure-app-service-demo-nodejs) you will be deploying to Azure App Service.
 

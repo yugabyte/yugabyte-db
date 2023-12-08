@@ -17,8 +17,6 @@ This tutorial outlines the steps required to build a scalable, generative AI app
 
 Follow the guide to learn how to programmatically interface with the Azure OpenAI GPT and Embeddings models, store embeddings in YugabyteDB, and perform a similarity search across a distributed YugabyteDB cluster with the [pgvector extension](https://github.com/pgvector/pgvector).
 
-[Explore Additional Updates to YugabyteDB with Release 2.19 >>>](https://www.yugabyte.com/blog/postgresql-turbocharging/)
-
 The [sample application](https://github.com/YugabyteDB-Samples/yugabytedb-azure-openai-lodging-service) we will use is a lodging recommendations service for travelers going to San Francisco. It supports two distinct modes:
 
 ![Architecture of a lodging recommendation service built on the Azure OpenAI Service and YugabyteDB](/images/tutorials/azure/azure-openai/architecture-diagram.png "Architecture of a lodging recommendation service built on the Azure OpenAI Service and YugabyteDB
@@ -33,8 +31,8 @@ The [sample application](https://github.com/YugabyteDB-Samples/yugabytedb-azure-
 - Access to the [Azure OpenAI Service](https://azure.microsoft.com/en-us/products/ai-services/openai-service) resource
 - The latest [Node.js version](https://github.com/nodejs/release#release-schedule)
 - The latest version of Docker
-- A YugabyteDB cluster of running [v2.19.2 or later](https://download.yugabyte.com/)
-- [psql](https://www.postgresql.org/docs/current/app-psql.html) or [ysqlsh](https://docs.yugabyte.com/preview/admin/ysqlsh/) tool
+- A YugabyteDB cluster running [v2.19.2 or later](https://download.yugabyte.com/)
+- [psql](https://www.postgresql.org/docs/current/app-psql.html) or [ysqlsh](https://docs.yugabyte.com/preview/admin/ysqlsh/)
 
 ## Deploy Azure OpenAI models
 
@@ -43,8 +41,8 @@ This application employs both the GPT and Embeddings models to showcase the dist
 Follow the [Microsoft OpenAI guide](https://learn.microsoft.com/en-us/azure/ai-services/openai/how-to/create-resource) to:
 
 - Create the Azure OpenAI resource under your subscription.
-- Deploy a GPT model of **gpt-35-turbo** (or later). Name the deployment **gpt-model**.
-- Deploy an Embedding model of **text-embedding-ada-002** version. Name it **embeddings-model**.
+- Deploy a GPT model of **gpt-35-turbo** (or later). Name the deployment `gpt-model`.
+- Deploy an Embedding model of **text-embedding-ada-002** version. Name it `embeddings-model`.
 
 After the resources are provisioned, you'll see them in your Azure OpenAI Studio:
 
@@ -78,7 +76,7 @@ Download the application and provide settings specific to your Azure OpenAI Serv
 
 ## Set up YugabyteDB
 
-YugabyteDB introduced support for the PostgreSQL pgvector extension in version 2.19.2. This extension makes it possible to use [PostgreSQL](https://www.yugabyte.com/postgresql/) and YugabyteDB as a vectorized database.
+YugabyteDB introduced support for the PostgreSQL pgvector extension in v2.19.2. This extension makes it possible to use [PostgreSQL](https://www.yugabyte.com/postgresql/) and YugabyteDB as a vectorized database.
 
 Start a 3-node YugabyteDB cluster in Docker (or feel free to use another deployment option):
 
@@ -301,3 +299,5 @@ The application performs the following steps to generate the recommendations (se
 The Azure OpenAI Service simplifies the process of designing, building, and productizing generative AI applications by offering developer APIs for various major programming languages.
 
 YugabyteDB enhances the scalability of these applications by distributing data and embeddings across a cluster of nodes, facilitating similarity searches on a large scale.
+
+[Explore Additional Updates to YugabyteDB with Release 2.19](https://www.yugabyte.com/blog/postgresql-turbocharging/).
