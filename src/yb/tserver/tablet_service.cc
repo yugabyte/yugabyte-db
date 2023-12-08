@@ -672,6 +672,8 @@ void TabletServiceAdminImpl::BackfillIndex(
     return;
   }
 
+  const uint32_t our_schema_version = tablet.peer->tablet_metadata()->schema_version();
+  const uint32_t their_schema_version = req->schema_version();
   bool all_at_backfill = true;
   bool all_past_backfill = true;
   bool is_pg_table = tablet.tablet->table_type() == TableType::PGSQL_TABLE_TYPE;
@@ -700,9 +702,16 @@ void TabletServiceAdminImpl::BackfillIndex(
       all_past_backfill &=
           idx_info_pb.index_permissions() > IndexPermissions::INDEX_PERM_DO_BACKFILL;
     } else {
-      LOG(WARNING) << "index " << idx.table_id() << " not found in tablet metadata";
-      all_at_backfill = false;
-      all_past_backfill = false;
+      const auto& index_table_id = idx.table_id();
+      LOG(INFO) << "index " << index_table_id << " not found in tablet metadata";
+      *resp->add_failed_index_ids() = index_table_id;
+      SetupErrorAndRespond(
+          resp->mutable_error(),
+          STATUS_SUBSTITUTE(
+              InvalidArgument, "Index $0 not found in index_map. Current schema is $1",
+              index_table_id, our_schema_version),
+          TabletServerErrorPB::OPERATION_NOT_SUPPORTED, &context);
+      return;
     }
   }
 
@@ -719,8 +728,6 @@ void TabletServiceAdminImpl::BackfillIndex(
       return;
     }
 
-    uint32_t our_schema_version = tablet.peer->tablet_metadata()->schema_version();
-    uint32_t their_schema_version = req->schema_version();
     DCHECK_NE(our_schema_version, their_schema_version);
     SetupErrorAndRespond(
         resp->mutable_error(),
