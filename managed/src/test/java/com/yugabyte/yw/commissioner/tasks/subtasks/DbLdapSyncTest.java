@@ -27,7 +27,6 @@ public class DbLdapSyncTest extends CommissionerBaseTest {
   private LdapUnivSync.Params params;
   private DbLdapSync task;
 
-  private List<String> dbStateSuperusers = new ArrayList<>();
   private HashMap<String, List<String>> dbStateUsers = new HashMap<>();
   private HashMap<String, List<String>> userToGroup = new HashMap<>();
   private List<String> ldapGroups = new ArrayList<>();
@@ -57,10 +56,6 @@ public class DbLdapSyncTest extends CommissionerBaseTest {
     ldapGroups.add("groupC");
 
     // Setup DB State
-    dbStateSuperusers.add("groupA");
-    dbStateSuperusers.add("groupC");
-    dbStateSuperusers.add("groupD");
-
     String user1DB = "userOne";
     List<String> groupsUser1DB = new ArrayList<>();
     groupsUser1DB.add("groupA");
@@ -87,71 +82,53 @@ public class DbLdapSyncTest extends CommissionerBaseTest {
   /* ==== API Tests ==== */
   @Test
   public void testQueriesCreateGroups() {
-    // ldapGroups: {A,B,C} dbSuperusers: {A,C,D} : Create groups B on DB
-    List<String> queriesYsql = task.computeQueriesCreateGroups(dbStateSuperusers, true);
-    List<String> queriesYcql = task.computeQueriesCreateGroups(dbStateSuperusers, false);
+    // ldapGroups: {A,B,C} dbStateUsers: {A,C,D, userOne, userThree} : Create groups B on DB
+    List<String> queriesYsql = task.computeQueriesCreateGroups(dbStateUsers.keySet(), true);
+    List<String> queriesYcql = task.computeQueriesCreateGroups(dbStateUsers.keySet(), false);
 
-    assertTrue(
-        queriesYsql.get(0).contains("CREATE ROLE \"groupB\" WITH SUPERUSER LOGIN PASSWORD "));
+    assertTrue(queriesYsql.get(0).contains("CREATE ROLE \"groupB\""));
     assertEquals(queriesYsql.size(), 1);
 
-    assertTrue(
-        queriesYcql.get(0).contains("CREATE ROLE IF NOT EXISTS \"groupB\" WITH SUPERUSER = true"));
+    assertTrue(queriesYcql.get(0).contains("CREATE ROLE IF NOT EXISTS \"groupB\""));
     assertEquals(queriesYcql.size(), 1);
   }
 
   @Test
   public void testQueriesUsers() {
-    // dbState: userOne:{A,C} userThree:{D} A:{} C:{} D:{} and ldapState: userOne:{A,B}
-    // userTwo:{B,C}
-    // ldapGroups: A, B, C dbStateSuperusers: A, C, D
-    // diff: not equal: only on left={groupD=[], userThree=[groupD], groupA=[], groupC=[]}: only on
-    // right={userTwo=[groupB, groupC]}: value differences={userOne=([groupA, groupC], [groupA,
-    // groupB])}
+    // dbState: userOne:{A,C} userThree:{D} A:{} C:{} D:{}
+    // ldapState: userOne:{A,B} userTwo:{B,C}
+    // ldapGroups: A, B, C
+    // diff: not equal: only on left={userThree=[groupD], A=[], C=[], D=[]}
+    // only on right={userTwo=[B, C]}
+    // value differences={userOne=([A, C], [A, B])}
     List<String> excludeUsers = new ArrayList<>();
-    List<String> queriesYsql =
-        task.computeQueriesViaDiffUsers(dbStateUsers, dbStateSuperusers, true, excludeUsers, false);
-    List<String> queriesYcql =
-        task.computeQueriesViaDiffUsers(
-            dbStateUsers, dbStateSuperusers, false, excludeUsers, false);
+    List<String> queriesYsql = task.computeQueriesViaDiffUsers(dbStateUsers, true, excludeUsers);
+    List<String> queriesYcql = task.computeQueriesViaDiffUsers(dbStateUsers, false, excludeUsers);
 
     // queries: create userTwo, grant B to userTwo, grant C to userTwo, revoke C from userone, grant
     // B to userOne,
     // drop userThree
-    assertTrue(queriesYsql.get(0).contains("CREATE ROLE \"userTwo\" WITH LOGIN PASSWORD "));
+    assertEquals(queriesYsql.get(0), "CREATE ROLE \"userTwo\" WITH LOGIN;");
     assertEquals(queriesYsql.get(1), "GRANT \"groupB\" TO \"userTwo\";");
     assertEquals(queriesYsql.get(2), "GRANT \"groupC\" TO \"userTwo\";");
     assertEquals(queriesYsql.get(3), "REVOKE \"groupC\" FROM \"userOne\";");
     assertEquals(queriesYsql.get(4), "GRANT \"groupB\" TO \"userOne\";");
-    assertEquals(queriesYsql.get(5), "DROP ROLE IF EXISTS \"userThree\";");
+    assertEquals(queriesYsql.get(5), "DROP ROLE IF EXISTS \"groupD\";");
+    assertEquals(queriesYsql.get(6), "DROP ROLE IF EXISTS \"userThree\";");
 
-    assertTrue(
-        queriesYcql
-            .get(0)
-            .contains("CREATE ROLE IF NOT EXISTS \"userTwo\" WITH SUPERUSER = false"));
+    assertEquals(queriesYcql.get(0), "CREATE ROLE IF NOT EXISTS \"userTwo\" WITH LOGIN = true;");
     assertEquals(queriesYcql.get(1), "GRANT \"groupB\" TO \"userTwo\";");
     assertEquals(queriesYcql.get(2), "GRANT \"groupC\" TO \"userTwo\";");
     assertEquals(queriesYcql.get(3), "REVOKE \"groupC\" FROM \"userOne\";");
     assertEquals(queriesYcql.get(4), "GRANT \"groupB\" TO \"userOne\";");
-    assertEquals(queriesYcql.get(5), "DROP ROLE IF EXISTS \"userThree\";");
+    assertEquals(queriesYcql.get(5), "DROP ROLE IF EXISTS \"groupD\";");
+    assertEquals(queriesYcql.get(6), "DROP ROLE IF EXISTS \"userThree\";");
 
     excludeUsers.add("userThree");
-    queriesYsql =
-        task.computeQueriesViaDiffUsers(dbStateUsers, dbStateSuperusers, true, excludeUsers, false);
-    queriesYcql =
-        task.computeQueriesViaDiffUsers(
-            dbStateUsers, dbStateSuperusers, false, excludeUsers, false);
+    queriesYsql = task.computeQueriesViaDiffUsers(dbStateUsers, true, excludeUsers);
+    queriesYcql = task.computeQueriesViaDiffUsers(dbStateUsers, false, excludeUsers);
 
     assertFalse(queriesYsql.contains("DROP ROLE IF EXISTS \"userThree\";"));
     assertFalse(queriesYcql.contains("DROP ROLE IF EXISTS \"userThree\";"));
-
-    // drop D
-    queriesYsql =
-        task.computeQueriesViaDiffUsers(dbStateUsers, dbStateSuperusers, true, excludeUsers, true);
-    queriesYcql =
-        task.computeQueriesViaDiffUsers(dbStateUsers, dbStateSuperusers, false, excludeUsers, true);
-
-    assertTrue(queriesYsql.contains("DROP ROLE IF EXISTS \"groupD\";"));
-    assertTrue(queriesYcql.contains("DROP ROLE IF EXISTS \"groupD\";"));
   }
 }
