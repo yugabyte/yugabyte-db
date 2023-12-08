@@ -48,7 +48,7 @@ For a configuration that provides fault tolerance across availability zones, dep
 
 ![Deploy a 3-node YugabyteDB Managed cluster to Azure.](/images/tutorials/azure/azure-functions/yb-cluster.png "Deploy a 3-node YugabyteDB Managed cluster to Azure.")
 
-Add the [outbound addresses for your function app](https://learn.microsoft.com/en-us/azure/azure-functions/ip-addresses?tabs=azurecli), which can be found in the networking tab of the Azure portal. This will ensure that a connection can be made between Azure Functions and YugabyteDB.
+Add the [outbound addresses for your function app](https://learn.microsoft.com/en-us/azure/azure-functions/ip-addresses?tabs=azurecli) to your cluster's [IP allow list](https://docs.yugabyte.com/preview/yugabyte-cloud/cloud-secure-clusters/add-connections/). These addresses can can be found in the networking tab of the Azure portal. This will ensure that a connection can be made between Azure Functions and YugabyteDB.
 
 ![Locate outbound IP addresses in the Azure web portal.](/images/tutorials/azure/azure-functions/azure-networking.png "Locate outbound IP addresses in the Azure web portal.")
 
