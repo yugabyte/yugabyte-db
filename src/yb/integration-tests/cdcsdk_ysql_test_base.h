@@ -563,6 +563,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void GetRecordsAndSplitCount(
       const xrepl::StreamId& stream_id, const TabletId& tablet_id, const TableId& table_id,
+      CDCCheckpointType checkpoint_type,
       int* record_count, int* total_records, int* total_splits);
 
   void PerformSingleAndMultiShardInserts(

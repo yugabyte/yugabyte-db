@@ -649,6 +649,7 @@ Status WriteQuery::DoTransactionalConflictsResolved() {
     safe_time = VERIFY_RESULT(tablet->SafeTime(RequireLease::kTrue));
     read_time_ = ReadHybridTime::FromHybridTimeRange(
         {safe_time, tablet->clock()->NowRange().second});
+    tablet->metrics()->Increment(tablet::TabletCounters::kPickReadTimeOnDocDB);
   } else if (prepare_result_.need_read_snapshot &&
              isolation_level_ == IsolationLevel::SERIALIZABLE_ISOLATION) {
     return STATUS_FORMAT(
@@ -668,6 +669,7 @@ void WriteQuery::CompleteExecute(HybridTime safe_time) {
 Status WriteQuery::DoCompleteExecute(HybridTime safe_time) {
   auto tablet = VERIFY_RESULT(tablet_safe());
   if (prepare_result_.need_read_snapshot && !read_time_) {
+    // A read_time will be picked by the below ScopedReadOperation::Create() call.
     tablet->metrics()->Increment(tablet::TabletCounters::kPickReadTimeOnDocDB);
   }
   auto read_op = prepare_result_.need_read_snapshot

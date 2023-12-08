@@ -26,6 +26,8 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -50,13 +52,18 @@ import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import javax.inject.Singleton;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.MapUtils;
 import play.libs.Json;
@@ -69,7 +76,10 @@ public class LocalNodeManager {
   public static final String TSERVER_EXECUTABLE = "yb-tserver";
   public static final String CONTROLLER_EXECUTABLE = "yb-controller-server";
 
-  private static final String LOOPBACK_PREFIX = "127.0.0.";
+  private static final String MAX_MEM_RATIO_TSERVER = "0.1";
+  private static final String MAX_MEM_RATIO_MASTER = "0.05";
+
+  private static final String LOOPBACK_PREFIX = "127.0.";
   public static final String COMMAND_OUTPUT_PREFIX = "Command output:";
   private static final boolean RUN_LOG_THREADS = false;
 
@@ -78,10 +88,20 @@ public class LocalNodeManager {
 
   private Map<String, NodeInfo> nodesByNameMap = new ConcurrentHashMap<>();
 
+  private SpecificGFlags additionalGFlags;
+
+  @Setter private int ipRangeStart = 2;
+  @Setter private int ipRangeEnd = 100;
+
   @Inject private RuntimeConfGetter confGetter;
 
   public void setPredefinedConfig(Map<Integer, String> predefinedConfig) {
     this.predefinedConfig = predefinedConfig;
+  }
+
+  public void setAdditionalGFlags(SpecificGFlags additionalGFlags) {
+    log.debug("Set additional gflags: {}", additionalGFlags.getPerProcessFlags().value);
+    this.additionalGFlags = additionalGFlags;
   }
 
   // Temporary method.
@@ -92,12 +112,20 @@ public class LocalNodeManager {
             process -> {
               try {
                 log.debug("Destroying {}", process.pid());
-                process.destroy();
+                killProcess(process.pid());
               } catch (Exception e) {
                 log.error("Failed to destroy process " + process, e);
               }
             });
     nodesByNameMap.clear();
+  }
+
+  private void killProcess(long pid) throws IOException, InterruptedException {
+    int exitCode = Runtime.getRuntime().exec(String.format("kill -SIGTERM %d", pid)).waitFor();
+    if (exitCode != 0) {
+      throw new IllegalStateException(
+          String.format("Failed to kill process %d - exit code is %d", pid, exitCode));
+    }
   }
 
   private enum NodeState {
@@ -308,6 +336,14 @@ public class LocalNodeManager {
         value = value.replace(CommonUtils.DEFAULT_YB_HOME_DIR, getNodeRoot(userIntent, nodeInfo));
         gflags.put(key, value);
       }
+      if (!gflags.containsKey(GFlagsUtil.DEFAULT_MEMORY_LIMIT_TO_RAM_RATIO)
+          && serverType != UniverseTaskBase.ServerType.CONTROLLER) {
+        gflags.put(
+            GFlagsUtil.DEFAULT_MEMORY_LIMIT_TO_RAM_RATIO,
+            serverType == UniverseTaskBase.ServerType.TSERVER
+                ? MAX_MEM_RATIO_TSERVER
+                : MAX_MEM_RATIO_MASTER);
+      }
       processCerts(args, gflags, nodeInfo, userIntent);
       writeGFlagsToFile(userIntent, gflags, serverType, nodeInfo);
     } catch (IOException e) {
@@ -421,7 +457,11 @@ public class LocalNodeManager {
       UniverseTaskBase.ServerType serverType,
       NodeInfo nodeInfo)
       throws IOException {
-    log.debug("Write gflags {} to file {}", gflags, serverType);
+    Map<String, String> gflagsToWrite = new LinkedHashMap<>(gflags);
+    if (additionalGFlags != null) {
+      gflagsToWrite.putAll(additionalGFlags.getPerProcessFlags().value.get(serverType));
+    }
+    log.debug("Write gflags {} to file {}", gflagsToWrite, serverType);
     File flagFileTmpPath = new File(getNodeGFlagsFile(userIntent, serverType, nodeInfo));
     if (!flagFileTmpPath.exists()) {
       flagFileTmpPath.getParentFile().mkdirs();
@@ -430,8 +470,8 @@ public class LocalNodeManager {
     try (FileOutputStream fis = new FileOutputStream(flagFileTmpPath);
         OutputStreamWriter writer = new OutputStreamWriter(fis);
         BufferedWriter buf = new BufferedWriter(writer)) {
-      for (String key : gflags.keySet()) {
-        buf.write("--" + key + "=" + gflags.get(key));
+      for (String key : gflagsToWrite.keySet()) {
+        buf.write("--" + key + "=" + gflagsToWrite.get(key));
         buf.newLine();
       }
       buf.flush();
@@ -482,8 +522,11 @@ public class LocalNodeManager {
             nodeDetails.tserverRpcPort,
             nodeDetails.ysqlServerHttpPort,
             nodeDetails.yqlServerRpcPort);
-    for (int suffix = 2; suffix < 255; suffix++) {
-      String ip = LOOPBACK_PREFIX + suffix;
+    List<Integer> ips =
+        IntStream.range(ipRangeStart, ipRangeEnd).boxed().collect(Collectors.toList());
+    Collections.shuffle(ips);
+    for (Integer lastTwoBytes : ips) {
+      String ip = LOOPBACK_PREFIX + ((lastTwoBytes >> 8) & 0xFF) + "." + (lastTwoBytes & 0xFF);
       if (usedIPs.contains(ip)) {
         continue;
       }

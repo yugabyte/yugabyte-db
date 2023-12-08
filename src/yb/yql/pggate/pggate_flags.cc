@@ -162,6 +162,5 @@ TAG_FLAG(ysql_enable_create_database_oid_collision_retry, advanced);
 
 DEFINE_NON_RUNTIME_bool(ysql_use_relcache_file, true, "Use relcache init file");
 
-DEFINE_NON_RUNTIME_PREVIEW_bool(enable_yb_ash, false,
-                                "True to enable Active Session History");
-TAG_FLAG(enable_yb_ash, hidden);
+DEFINE_test_flag(bool, yb_enable_ash, false,
+                 "True to enable Active Session History");

@@ -3,7 +3,6 @@ title: Benchmark YSQL performance with key-value workloads
 headerTitle: Key-value workload
 linkTitle: Key-value workload
 description: Benchmark YSQL performance with key-value workloads.
-image: /images/section_icons/explore/high_performance.png
 headcontent: Benchmark YSQL performance with key-value workloads
 menu:
   stable:

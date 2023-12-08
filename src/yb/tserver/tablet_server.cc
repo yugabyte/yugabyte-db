@@ -500,6 +500,8 @@ Status TabletServer::Init() {
     shared_object().SetPostgresAuthKey(RandomUniformInt<uint64_t>());
   }
 
+  shared_object().SetTserverUuid(fs_manager()->uuid());
+
   return Status::OK();
 }
 

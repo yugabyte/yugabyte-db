@@ -81,9 +81,7 @@ class SharedExchangeHeader {
            (failed_previous_request && state == SharedExchangeState::kResponseSent);
   }
 
-  Result<size_t> SendRequest(
-      bool failed_previous_request, uint64_t session_id,
-      size_t size, std::chrono::system_clock::time_point deadline) {
+  Status SendRequest(bool failed_previous_request, size_t size) {
     auto state = state_.load(std::memory_order_acquire);
     if (!ReadyToSend(failed_previous_request)) {
       return STATUS_FORMAT(IllegalState, "Send request in wrong state: $0", state);
@@ -94,7 +92,14 @@ class SharedExchangeHeader {
     state_.store(SharedExchangeState::kRequestSent, std::memory_order_release);
     data_size_ = size;
     request_semaphore_.post();
+    return Status::OK();
+  }
 
+  bool ResponseReady() {
+    return state_.load(std::memory_order_acquire) == SharedExchangeState::kResponseSent;
+  }
+
+  Result<size_t> FetchResponse(std::chrono::system_clock::time_point deadline) {
     RETURN_NOT_OK(DoWait(SharedExchangeState::kResponseSent, deadline, &response_semaphore_));
     state_.store(SharedExchangeState::kIdle, std::memory_order_release);
     return data_size_;
@@ -209,19 +214,26 @@ class SharedExchange::Impl {
     return session_id_;
   }
 
-  Result<Slice> SendRequest(CoarseTimePoint deadline) {
-    auto* header = &this->header();
-    auto size_res = header->SendRequest(
-        failed_previous_request_, session_id_, last_size_, ToSystem(deadline));
+  Status SendRequest() {
+    return header().SendRequest(failed_previous_request_, last_size_);
+  }
+
+  bool ResponseReady() {
+    return header().ResponseReady();
+  }
+
+  Result<Slice> FetchResponse(CoarseTimePoint deadline) {
+    auto& header = this->header();
+    auto size_res = header.FetchResponse(ToSystem(deadline));
     if (!size_res.ok()) {
       failed_previous_request_ = true;
       return size_res.status();
     }
     failed_previous_request_ = false;
-    if (*size_res + header->header_size() > mapped_region_.get_size()) {
+    if (*size_res + header.header_size() > mapped_region_.get_size()) {
       return Slice(static_cast<const char*>(nullptr), bit_cast<const char*>(*size_res));
     }
-    return Slice(header->data(), *size_res);
+    return Slice(header.data(), *size_res);
   }
 
   bool ReadyToSend() const {
@@ -294,8 +306,16 @@ std::byte* SharedExchange::Obtain(size_t required_size) {
   return impl_->Obtain(required_size);
 }
 
-Result<Slice> SharedExchange::SendRequest(CoarseTimePoint deadline) {
-  return impl_->SendRequest(deadline);
+Status SharedExchange::SendRequest() {
+  return impl_->SendRequest();
+}
+
+bool SharedExchange::ResponseReady() const {
+  return impl_->ResponseReady();
+}
+
+Result<Slice> SharedExchange::FetchResponse(CoarseTimePoint deadline) {
+  return impl_->FetchResponse(deadline);
 }
 
 bool SharedExchange::ReadyToSend() const {

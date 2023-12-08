@@ -3,7 +3,6 @@ title: Connect applications
 linkTitle: Connect applications
 description: Connect applications to YugabyteDB Managed clusters
 headcontent: Get the database connection parameters for your application
-image: /images/section_icons/deploy/enterprise.png
 menu:
   preview_yugabyte-cloud:
     identifier: connect-applications
