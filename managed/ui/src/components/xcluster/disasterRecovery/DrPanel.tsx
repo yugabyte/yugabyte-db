@@ -235,11 +235,12 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
           onConfigureDrButtonClick={openCreateConfigModal}
           isDisabled={universeHasTxnXCluster}
         />
-        <CreateConfigModal
-          onHide={closeCreateConfigModal}
-          visible={isCreateConfigModalOpen}
-          sourceUniverseUuid={currentUniverseUuid}
-        />
+        {isCreateConfigModalOpen && (
+          <CreateConfigModal
+            sourceUniverseUuid={currentUniverseUuid}
+            modalProps={{ open: isCreateConfigModalOpen, onClose: closeCreateConfigModal }}
+          />
+        )}
       </>
     );
   }
