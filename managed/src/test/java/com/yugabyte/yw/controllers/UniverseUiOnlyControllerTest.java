@@ -1919,6 +1919,14 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   }
 
   @Test
+  public void testGetUpdateOptionsEditRegions() throws IOException {
+    testGetAvailableOptions(
+        x -> x.getPrimaryCluster().userIntent.regionList.add(UUID.randomUUID()),
+        EDIT,
+        UniverseDefinitionTaskParams.UpdateOptions.UPDATE);
+  }
+
+  @Test
   public void testGetUpdateOptionsEditSmartResizeAndFullMove() throws IOException {
     testGetAvailableOptions(
         u -> {
