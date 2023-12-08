@@ -65,7 +65,7 @@ class XClusterManager {
 
   void LoadXClusterConfig(const SysXClusterConfigEntryPB& metadata);
 
-  void SysCatalogLoaded(const SysCatalogLoadingState& state);
+  void SysCatalogLoaded();
 
   XClusterSafeTimeService* TEST_xcluster_safe_time_service() {
     return xcluster_safe_time_service_.get();

@@ -47,11 +47,7 @@ TEST_F(
   ASSERT_OK(Env::Default()->CreateDir(FLAGS_initial_sys_catalog_snapshot_path));
   auto& catalog_manager =
       ASSERT_RESULT(mini_cluster()->GetLeaderMiniMaster())->catalog_manager_impl();
-  SysCatalogLoadingState state{
-      .parent_to_child_tables = {},
-      .post_load_tasks = {},
-      .epoch = catalog_manager.GetLeaderEpochInternal(),
-  };
+  SysCatalogLoadingState state{ catalog_manager.GetLeaderEpochInternal() };
   auto status = catalog_manager.VisitSysCatalog(&state);
   ASSERT_TRUE(status.IsIllegalState())
       << "Visiting sys catalog should fail with IllegalState status, instead status was: "

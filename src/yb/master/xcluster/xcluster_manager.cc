@@ -59,7 +59,7 @@ void XClusterManager::LoadXClusterConfig(const SysXClusterConfigEntryPB& metadat
   xcluster_config_->Load(metadata);
 }
 
-void XClusterManager::SysCatalogLoaded(const SysCatalogLoadingState& state) {
+void XClusterManager::SysCatalogLoaded() {
   xcluster_safe_time_service_->ScheduleTaskIfNeeded();
 }
 

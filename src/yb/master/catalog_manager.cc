@@ -925,6 +925,28 @@ void InitializeTabletLocationsPB(
   locs_pb->set_split_parent_tablet_id(pb.split_parent_tablet_id());
 }
 
+IndexStatusPB::BackfillStatus GetBackfillStatus(IndexPermissions permissions) {
+  switch (permissions) {
+    case INDEX_PERM_READ_WRITE_AND_DELETE:
+      return IndexStatusPB::BACKFILL_SUCCESS;
+    case INDEX_PERM_DELETE_ONLY:                     [[fallthrough]];
+    case INDEX_PERM_WRITE_AND_DELETE:                [[fallthrough]];
+    case INDEX_PERM_DO_BACKFILL:                     [[fallthrough]];
+    case INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING: [[fallthrough]];
+    case INDEX_PERM_DELETE_ONLY_WHILE_REMOVING:      [[fallthrough]];
+    case INDEX_PERM_INDEX_UNUSED:                    [[fallthrough]];
+    case INDEX_PERM_NOT_USED:
+      return IndexStatusPB::BACKFILL_UNKNOWN;
+  }
+  FATAL_INVALID_ENUM_VALUE(IndexPermissions, permissions);
+}
+
+IndexStatusPB::BackfillStatus GetBackfillStatus(const IndexInfoPB& index) {
+  // It is expected index permissions are always specified.
+  return index.has_index_permissions() ? GetBackfillStatus(index.index_permissions())
+                                       : IndexStatusPB::BACKFILL_UNKNOWN;
+}
+
 }  // anonymous namespace
 
 ////////////////////////////////////////////////////////////
@@ -1156,11 +1178,8 @@ void CatalogManager::LoadSysCatalogDataTask() {
   }
 
   LOG_WITH_PREFIX(INFO) << "Loading table and tablet metadata into memory for term " << term;
-  SysCatalogLoadingState state {
-    .parent_to_child_tables = {},
-    .post_load_tasks = {},
-    .epoch = LeaderEpoch(term, pitr_count()),
-  };
+  SysCatalogLoadingState state{ LeaderEpoch(term, pitr_count()) };
+
   LOG_SLOW_EXECUTION(WARNING, 1000, LogPrefix() + "Loading metadata into memory") {
     Status status = VisitSysCatalog(&state);
     if (!status.ok()) {
@@ -1190,7 +1209,10 @@ void CatalogManager::LoadSysCatalogDataTask() {
     is_catalog_loaded_ = true;
     LOG_WITH_PREFIX(INFO) << "Completed load of sys catalog in term " << term;
   }
-  SysCatalogLoaded(state);
+
+  // Finalize state and do post loading work.
+  SysCatalogLoaded(std::move(state));
+
   // Once we have loaded the SysCatalog, reset and regenerate the yql partitions table in order to
   // regenerate entries for previous tables.
   GetYqlPartitionsVtable().ResetAndRegenerateCache();
@@ -1304,6 +1326,37 @@ Status CatalogManager::MaybeRestoreInitialSysCatalogSnapshotAndReloadSysCatalog(
   state->Reset();
   RETURN_NOT_OK(RunLoaders(state));
   return Status::OK();
+}
+
+void CatalogManager::ValidateIndexTablesPostLoad(
+    std::unordered_map<TableId, TableIdSet>&& indexes_map, TableIdSet* tables_to_persist) {
+  for (auto& [table_id, indexes] : indexes_map) {
+    VLOG_WITH_PREFIX_AND_FUNC(2) << "indexes to validate: " << yb::ToString(indexes);
+    GetBackfillStatus(
+        table_id, std::move(indexes),
+        [this, tables_to_persist = DCHECK_NOTNULL(tables_to_persist)](
+            const Status& status, const TableId& index_id,
+            IndexStatusPB::BackfillStatus backfill_status) {
+          DCHECK(status.ok());
+          if (!status.ok()) {
+            LOG(ERROR) << "ValidateIndexTablesPostLoad: Failed to get backfill status for "
+                       << "index table " << index_id << ": " << status;
+            return;
+          }
+
+          // We are interested only in index with backfilling successfully completed.
+          if (backfill_status != IndexStatusPB::BACKFILL_SUCCESS) {
+            return;
+          }
+
+          // Update in-memory state, persisting to the sys catalog / disk will be done later.
+          auto index_table = CHECK_RESULT(GetTableById(index_id));
+          auto index_table_wlock = index_table->LockForWrite();
+          BackfillTable::UnsetIndexTableRetainsDeleteMarkers(index_table_wlock.mutable_data());
+          index_table_wlock.Commit();
+          tables_to_persist->emplace(index_id);
+        });
+  }
 }
 
 Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
@@ -5840,38 +5893,61 @@ Status CatalogManager::GetBackfillJobs(
   return Status::OK();
 }
 
-namespace {
+void CatalogManager::GetBackfillStatus(
+    const TableId& indexed_table_id, TableIdSet&& indexes, auto&& callback) {
+  CHECK(!indexed_table_id.empty());
 
-IndexStatusPB::BackfillStatus GetBackfillStatus(IndexPermissions permissions) {
-  switch (permissions) {
-    case INDEX_PERM_READ_WRITE_AND_DELETE:
-      return IndexStatusPB::BACKFILL_SUCCESS;
-    case INDEX_PERM_DELETE_ONLY:                     [[fallthrough]];
-    case INDEX_PERM_WRITE_AND_DELETE:                [[fallthrough]];
-    case INDEX_PERM_DO_BACKFILL:                     [[fallthrough]];
-    case INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING: [[fallthrough]];
-    case INDEX_PERM_DELETE_ONLY_WHILE_REMOVING:      [[fallthrough]];
-    case INDEX_PERM_INDEX_UNUSED:                    [[fallthrough]];
-    case INDEX_PERM_NOT_USED:
-      return IndexStatusPB::BACKFILL_UNKNOWN;
+  // Utility functor to respond with the provided error for the remaining indexes.
+  auto callback_failure = [&callback, &indexes](const Status& status) {
+    for (const auto& index : indexes) {
+      callback(status, index, IndexStatusPB::BACKFILL_UNKNOWN);
+    }
+  };
+
+  auto indexed_table = GetTableInfo(indexed_table_id);
+  if (!indexed_table) {
+    callback_failure(STATUS_FORMAT(NotFound, "Indexed table $0 is not found", indexed_table));
+    return;
   }
-  FATAL_INVALID_ENUM_VALUE(IndexPermissions, permissions);
-}
 
-} // namespace
+  const bool filter_by_index = !indexes.empty();
+  auto indexed_table_lock = indexed_table->LockForRead();
+  for (const auto& index_info_pb : indexed_table_lock->pb.indexes()) {
+    if (filter_by_index) {
+      if (indexes.empty()) {
+        break; // Iterated through all the requested indexes, no need to continue.
+      }
+
+      auto index_it = indexes.find(index_info_pb.table_id());
+      if (index_it == indexes.cend()) {
+        continue; // Not interested in the current index.
+      }
+
+      // Need to erase from the map to be able to track not found indexes.
+      indexes.erase(index_it);
+    }
+
+    VLOG_WITH_PREFIX_AND_FUNC(1) << Format(
+        "Index table $0 permissions: [$1]",
+        index_info_pb.table_id(),
+        index_info_pb.has_index_permissions() ?
+            IndexPermissions_Name(index_info_pb.index_permissions()) : "-");
+
+    callback(Status::OK(), index_info_pb.table_id(), master::GetBackfillStatus(index_info_pb));
+  }
+
+  // Nofify the caller with the remaining indexes. There's a chance some of the indexes
+  // have been removed right before locking the indexed table.
+  if (!indexes.empty()) {
+    callback_failure(STATUS(NotFound, "Index table is not found"));
+  }
+}
 
 Status CatalogManager::GetBackfillStatus(
     const GetBackfillStatusRequestPB* req,
     GetBackfillStatusResponsePB* resp,
-    rpc::RpcContext* rpc) {
+    rpc::RpcContext*) {
   VLOG_WITH_PREFIX_AND_FUNC(1) << "request: " << req->ShortDebugString();
-
-  // Helper lambda to respond with an error for the index table.
-  auto set_table_error = [resp](const TableIdentifierPB& identifier, const Status& status) {
-    auto* index_status = resp->add_index_status();
-    index_status->mutable_index_table()->CopyFrom(identifier);
-    StatusToPB(status, index_status->mutable_error());
-  };
 
   // The caller expects results for every specified table.
   resp->mutable_index_status()->Reserve(req->index_tables_size());
@@ -5879,8 +5955,8 @@ Status CatalogManager::GetBackfillStatus(
   // First step is to group all incoming index tables by indexed table id to lock that particular
   // indexed table only once. Also it is required to keep input table identifiers to re-use them
   // in the response as is.
-  using IndexIdentifierMap = std::unordered_map<TableId, const TableIdentifierPB*>;
-  std::unordered_map<TableId, IndexIdentifierMap> indexed_table_to_index_map;
+  std::unordered_map<TableId, TableIdSet> indexed_table_to_indexes_map;
+  std::unordered_map<TableId, const TableIdentifierPB*> index_to_identifier_map;
   for (const auto& index_table_pb : req->index_tables()) {
     Status status = Status::OK();
     auto result = FindTable(index_table_pb);
@@ -5893,65 +5969,42 @@ Status CatalogManager::GetBackfillStatus(
         status = STATUS_FORMAT(InvalidArgument,
             "Table $0 is not an index table", index_table_pb.ShortDebugString());
       } else {
-        indexed_table_to_index_map[indexed_table_id].insert({table_info->id(), &index_table_pb});
+        indexed_table_to_indexes_map[indexed_table_id].emplace(table_info->id());
+        index_to_identifier_map.emplace(table_info->id(), &index_table_pb);
       }
     }
+
     if (!status.ok()) {
-      set_table_error(index_table_pb, status);
+      auto* index_status = resp->add_index_status();
+      index_status->mutable_index_table()->CopyFrom(index_table_pb);
+      StatusToPB(status, index_status->mutable_error());
       LOG_WITH_PREFIX_AND_FUNC(INFO) << "Failed to get index status for table "
           << index_table_pb.ShortDebugString() << ", status: " << status;
     }
   }
 
   // Second step is to iterate over indexed_table_map and get the statuses for all required indexes.
-  for (auto& [table_id, index_map] : indexed_table_to_index_map) {
-    // Sanity check, should not happen.
-    if (index_map.empty()) {
+  for (auto& [table_id, indexes] : indexed_table_to_indexes_map) {
+    if (indexes.empty()) {
       LOG_WITH_PREFIX(DFATAL) << "No index tables are specified for table " << table_id;
       continue;
     }
 
-    auto indexed_table = GetTableInfo(table_id);
-    if (!indexed_table) {
-      // Need to provide a response for all input indexes.
-      const auto status = STATUS_FORMAT(NotFound, "Indexed table $0 is not found", table_id);
-      for (const auto& index : index_map) {
-        set_table_error(*index.second, status);
-      }
-      LOG_WITH_PREFIX_AND_FUNC(INFO) << status;
-      continue;
-    }
-
-    // Denoting the scope for indexed table lock.
-    {
-      auto indexed_table_pb = indexed_table->LockForRead();
-      for (const auto& index_info_pb : indexed_table_pb->pb.indexes()) {
-        auto it = index_map.find(index_info_pb.table_id());
-        if (it == index_map.end()) {
-          continue;
-        }
-
-        auto* index_status = resp->add_index_status();
-        index_status->mutable_index_table()->CopyFrom(*it->second);
-        if (index_info_pb.has_index_permissions()) {
-          index_status->set_backfill_status(
-              master::GetBackfillStatus(index_info_pb.index_permissions()));
-        }
-        VLOG_WITH_PREFIX_AND_FUNC(1) << Format(
-            "Index table $0 permissions: [$1]",
-            index_info_pb.table_id(),
-            index_info_pb.has_index_permissions() ?
-                IndexPermissions_Name(index_info_pb.index_permissions()) : "-");
-
-        // Need to erase from the map to be able to track removed indexes.
-        index_map.erase(it);
-      }
-    }
-
-    // Check remaining indexes, there's a chance it was removed before locking the indexed table.
-    for (const auto& index : index_map) {
-      set_table_error(*index.second, STATUS(NotFound, "Index table is not found"));
-    }
+    GetBackfillStatus(
+        table_id, std::move(indexes),
+        [&index_to_identifier_map, &resp](
+            const Status& status, const TableId& index_id,
+            IndexStatusPB::BackfillStatus backfill_status) {
+          auto identifier_it = index_to_identifier_map.find(index_id);
+          CHECK(identifier_it != index_to_identifier_map.end());
+          auto* index_status = resp->add_index_status();
+          index_status->mutable_index_table()->CopyFrom(*identifier_it->second);
+          if (status.ok()) {
+            index_status->set_backfill_status(backfill_status);
+          } else {
+             StatusToPB(status, index_status->mutable_error());
+          }
+        });
   }
 
   return Status::OK();
@@ -13504,10 +13557,16 @@ void CatalogManager::Started() {
   snapshot_coordinator_.Start();
 }
 
-void CatalogManager::SysCatalogLoaded(const SysCatalogLoadingState& state) {
-  StartPostLoadTasks(state);
+void CatalogManager::SysCatalogLoaded(SysCatalogLoadingState&& state) {
+  ValidateIndexTablesPostLoad(std::move(state.validate_backfill_status_index_tables),
+                              &state.write_to_disk_tables);
+
+  StartPostLoadTasks(std::move(state.post_load_tasks));
+  StartWriteTableToSysCatalogTasks(std::move(state.write_to_disk_tables));
+
   snapshot_coordinator_.SysCatalogLoaded(state.epoch.leader_term);
-  xcluster_manager_->SysCatalogLoaded(state);
+
+  xcluster_manager_->SysCatalogLoaded();
   ScheduleAddTableToXClusterTaskForAllTables(state.epoch);
 }
 
@@ -13593,14 +13652,27 @@ Status CatalogManager::GetCompactionStatus(
   return Status::OK();
 }
 
-void CatalogManager::StartPostLoadTasks(const SysCatalogLoadingState& state) {
-  for (const auto& task_and_msg : state.post_load_tasks) {
-    auto s = background_tasks_thread_pool_->SubmitFunc(task_and_msg.first);
-    if (s.ok()) {
-      LOG(INFO) << "Successfully submitted post load task: " << task_and_msg.second;
+void CatalogManager::StartPostLoadTasks(SysCatalogPostLoadTasks&& post_load_tasks) {
+  for (auto& [task, msg] : post_load_tasks) {
+    auto status = background_tasks_thread_pool_->SubmitFunc(std::move(task));
+    if (status.ok()) {
+      LOG(INFO) << "Successfully submitted post load task: " << msg;
     } else {
-      LOG(WARNING) << Format("Failed to submit post load task: $0. Reason: $1",
-          task_and_msg.second, s);
+      LOG(WARNING) << Format("Failed to submit post load task: $0. Reason: $1", msg, status);
+    }
+  }
+}
+
+void CatalogManager::StartWriteTableToSysCatalogTasks(TableIdSet&& tables_to_persist) {
+  // Check if some tables metadata requires writing to disk. Currently we are submitting one task
+  // per table, alternatively we may submit one task to iterate through all the tables.
+  for (auto& table_id : tables_to_persist) {
+    auto status = background_tasks_thread_pool_->SubmitFunc(
+        [this, table_id = std::move(table_id)]() { WriteTableToSysCatalog(table_id); });
+    if (status.ok()) {
+      LOG(INFO) << "Successfully submitted post load task: WriteTableToSysCatalog";
+    } else {
+      LOG(WARNING) << "Failed to submit post load task: WriteTableToSysCatalog. Reason: " << status;
     }
   }
 }
