@@ -159,6 +159,10 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 
   const LeaderEpoch& epoch() const { return epoch_; }
 
+  static bool GetIndexTableRetainsDeleteMarkers(const PersistentTableInfo& index_table);
+
+  static void UnsetIndexTableRetainsDeleteMarkers(PersistentTableInfo* index_table);
+
  private:
   void LaunchBackfillOrAbort();
   Status WaitForTabletSplitting();
