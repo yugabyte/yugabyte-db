@@ -79,7 +79,7 @@ You may choose not to create a new security group and instead use an existing on
 To access the YugabyteDB Anywhere from outside the Azure environment, you would need to enable access by assigning an appropriate network security group to the YugabyteDB Anywhere machine. At a minimum, you need to be able to do the following:
 
 * Access the YugabyteDB Anywhere instance over SSH (port `tcp:22`).
-* Check, manage, and upgrade YugabyteDB Anywhere (port `tcp:8800`).
+* Check, manage, and upgrade YugabyteDB Anywhere (port `tcp:8800`) (Replicated installations only).
 * View the YugabyteDB Anywhere UI (port `tcp:80` or `tcp:443`).
 
 If you are using your own custom Virtual Private Cloud (VPC), as it is typically the case for a self-managed configuration, the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 18018, 11000, 12000, 9300, 9042, 5433, and 6379. For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).

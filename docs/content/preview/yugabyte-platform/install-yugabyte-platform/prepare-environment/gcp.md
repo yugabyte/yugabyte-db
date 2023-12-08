@@ -72,25 +72,25 @@ YugabyteDB Anywhere requires a service account with the appropriate permissions 
 
 To create a service account, perform the following:
 
-- Open your project in GCP and use the left-side menu to navigate to **IAM & Admin > Service Accounts**.
+1. Open your project in GCP and use the left-side menu to navigate to **IAM & Admin > Service Accounts**.
 
-- Click **Create Service Account**.
+1. Click **Create Service Account**.
 
-- Complete the **Service account details** fields and click **Create and Continue**.
+1. Complete the **Service account details** fields and click **Create and Continue**.
 
-- In the **Grant this service account access to project** section, select the **Owner** role.
+1. In the **Grant this service account access to project** section, select the **Owner** role.
 
-- In the **Grant users access to this service account** section, enter the email associated with this service account. To retrieve the email information, navigate to **IAM & Admin > Service Accounts** and copy the **Email** value.
+1. In the **Grant users access to this service account** section, enter the email associated with this service account. To retrieve the email information, navigate to **IAM & Admin > Service Accounts** and copy the **Email** value.
 
-- Navigate back to **IAM & Admin > Service Accounts**, click the email address of the service account, and then select the **KEYS** tab.
+1. Navigate back to **IAM & Admin > Service Accounts**, click the email address of the service account, and then select the **KEYS** tab.
 
-- Click **ADD KEY** and select **Create new key**.
+1. Click **ADD KEY** and select **Create new key**.
 
-- In the **Create private key** dialog, select **JSON** as the key type, and then click **Create** to download a service account key file. Note that after you download the key, you need to store this file, as you cannot download it again and this key is required for configuring the YugabyteDB Anywhere UI.
+1. In the **Create private key** dialog, select **JSON** as the key type, and then click **Create** to download a service account key file. Note that after you download the key, you need to store this file, as you cannot download it again and this key is required for configuring the YugabyteDB Anywhere UI.
 
-  For additional information, see [Creating and managing service account keys](https://cloud.google.com/iam/docs/creating-managing-service-account-keys) in the GCP documentation.
+    For additional information, see [Creating and managing service account keys](https://cloud.google.com/iam/docs/creating-managing-service-account-keys) in the GCP documentation.
 
-- Navigate to **IAM & Admin > IAM**, click **ADD**, and then provide principals and roles.
+1. Navigate to **IAM & Admin > IAM**, click **ADD**, and then provide principals and roles.
 
 For more information, see [Creating and managing service accounts](https://cloud.google.com/iam/docs/creating-managing-service-accounts) in the GCP documentation.
 
@@ -99,7 +99,7 @@ For more information, see [Creating and managing service accounts](https://cloud
 In order to access YugabyteDB Anywhere from outside the GCP environment, you have to enable firewall rules. At a minimum, you need to be able to do the following:
 
 - Access the YugabyteDB Anywhere instance over SSH (port `tcp:22`).
-- Check, manage, and upgrade YugabyteDB Anywhere (port `tcp:8800`).
+- Check, manage, and upgrade YugabyteDB Anywhere (port `tcp:8800`) (Replicated installations only).
 - View the YugabyteDB Anywhere UI (port `tcp:80` or `tcp:443`).
 
 If you are using your own Virtual Private Cloud (VPC) as a self-managed configuration, the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 18018, 11000, 12000, 13000, 9300, 9042, 5433, 6379, 54422. For more information, see [Default ports](../../../../reference/configuration/default-ports).

@@ -98,8 +98,7 @@ Installing YugabyteDB Anywhere on airgapped hosts (without access to any Interne
 
 - Ensure that the following ports are open on the YugabyteDB Anywhere host:
   - 8800 – HTTP access to the Replicated UI
-  - 80 – HTTP access to the YugabyteDB Anywhere UI
-  - 443 – HTTPS access to the YugabyteDB Anywhere UI
+  - 80 or 443 – HTTP and HTTPS access to the YugabyteDB Anywhere UI, respectively
   - 22 – SSH
 - Obtain the YugabyteDB Anywhere airgapped install package. Contact {{% support-platform %}} for more information.
 - Sign the Yugabyte license agreement. Contact {{% support-platform %}} for more information.
