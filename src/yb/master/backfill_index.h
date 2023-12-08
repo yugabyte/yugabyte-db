@@ -156,6 +156,10 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 
   const uint64_t number_rows_processed() const { return number_rows_processed_; }
 
+  static bool GetIndexTableRetainsDeleteMarkers(const PersistentTableInfo& index_table);
+
+  static void UnsetIndexTableRetainsDeleteMarkers(PersistentTableInfo* index_table);
+
  private:
   void LaunchBackfill();
   Status WaitForTabletSplitting();

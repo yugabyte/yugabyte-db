@@ -52,6 +52,7 @@ DECLARE_bool(TEST_disable_proactive_txn_cleanup_on_abort);
 DECLARE_int32(TEST_fetch_next_delay_ms);
 DECLARE_uint64(TEST_inject_txn_get_status_delay_ms);
 DECLARE_bool(TEST_writequery_stuck_from_callback_leak);
+DECLARE_bool(TEST_simulate_cannot_enable_compactions);
 
 namespace yb {
 
@@ -106,12 +107,45 @@ TEST_F(CqlIndexTest, EmptyIndex) {
   const client::YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "t");
   const client::YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace, "idx");
 
-  LOG(INFO) << "Waiting for idx got " << future.Wait();
+  ASSERT_OK(future.Wait());
   auto perm = ASSERT_RESULT(client_->WaitUntilIndexPermissionsAtLeast(
       table_name, index_table_name, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE));
   CHECK_EQ(perm, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
   auto index = ASSERT_RESULT(client_->GetYBTableInfo(index_table_name));
   ASSERT_FALSE(index.schema.table_properties().retain_delete_markers());
+}
+
+TEST_F(CqlIndexTest, EmptyIndexRecovery) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_cannot_enable_compactions) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_index_backfill) = false;
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+
+  WARN_NOT_OK(session.ExecuteQuery(
+      "CREATE TABLE ttt(key INT PRIMARY KEY, value INT) WITH transactions = { 'enabled' : true }"),
+      "Create table failed.");
+  auto future = session.ExecuteGetFuture(
+      "CREATE INDEX ttt_idx ON ttt(value) WITH transactions = { 'enabled' : true }");
+
+  constexpr auto kNamespace = "test";
+  const client::YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "ttt");
+  const client::YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace, "ttt_idx");
+
+  ASSERT_OK(future.Wait());
+  {
+    auto perm = ASSERT_RESULT(client_->WaitUntilIndexPermissionsAtLeast(
+        table_name, index_table_name, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE));
+    CHECK_EQ(perm, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+    auto index = ASSERT_RESULT(client_->GetYBTableInfo(index_table_name));
+    ASSERT_TRUE(index.schema.table_properties().retain_delete_markers());
+  }
+
+  // Restart and make sure retain delete markers value has been fixed (is unset now).
+  ASSERT_OK(RestartCluster());
+  LOG(INFO) << "Cluster restarted, checking table properties";
+  {
+    auto index = ASSERT_RESULT(client_->GetYBTableInfo(index_table_name));
+    ASSERT_FALSE(index.schema.table_properties().retain_delete_markers());
+  }
 }
 
 TEST_F(CqlIndexTest, MultipleIndex) {

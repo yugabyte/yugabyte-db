@@ -574,7 +574,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   void Started() override;
 
-  void SysCatalogLoaded(int64_t term, const SysCatalogLoadingState& state) override;
+  void SysCatalogLoaded(int64_t term, SysCatalogLoadingState&& state) override;
 
   Status AddNamespaceEntriesToPB(
       const std::vector<TableDescription>& tables,

@@ -6561,8 +6561,8 @@ bool CatalogManager::IsPitrActive() {
   return snapshot_coordinator_.IsPitrActive();
 }
 
-void CatalogManager::SysCatalogLoaded(int64_t term, const SysCatalogLoadingState& state) {
-  super::SysCatalogLoaded(term, state);
+void CatalogManager::SysCatalogLoaded(int64_t term, SysCatalogLoadingState&& state) {
+  super::SysCatalogLoaded(term, std::move(state));
   return snapshot_coordinator_.SysCatalogLoaded(term);
 }
 
