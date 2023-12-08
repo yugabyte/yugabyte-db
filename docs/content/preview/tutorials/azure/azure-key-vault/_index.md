@@ -41,153 +41,153 @@ A reference to the application we’ll be developing can be found [here on GitHu
 
 1. Initialize a new directory for your project.
 
-```sh
-% mkdir YBAzureKeyStore && cd YBAzureKeyStore
-% npm init -y
-```
+    ```sh
+    mkdir YBAzureKeyStore && cd YBAzureKeyStore
+    npm init -y
+    ```
 
-2. Install the [YugabyteDB node-postgres Smart Driver](https://docs.yugabyte.com/preview/drivers-orms/nodejs/yugabyte-node-driver/).
+1. Install the [YugabyteDB node-postgres Smart Driver](https://docs.yugabyte.com/preview/drivers-orms/nodejs/yugabyte-node-driver/).
 
-```sh
-% npm install @yugabytedb/pg
-```
+    ```sh
+    npm install @yugabytedb/pg
+    ```
 
-3. Install the Azure Key Vault secrets client library.
+1. Install the Azure Key Vault secrets client library.
 
-```sh
-% npm install @azure/keyvault-secrets
-```
+    ```sh
+    npm install @azure/keyvault-secrets
+    ```
 
-4. Install the Azure Identity client library.
+1. Install the Azure Identity client library.
 
-```sh
-% npm install @azure/identity
-```
+    ```sh
+    npm install @azure/identity
+    ```
 
-5. Install [Dotenv](https://www.npmjs.com/package/dotenv) and use it to set environment variables.
+1. Install [Dotenv](https://www.npmjs.com/package/dotenv) and use it to set environment variables.
 
-```
-% npm install dotenv --save-dev
-```
+    ```
+    npm install dotenv --save-dev
+    ```
 
-```conf
-// .env
-KEY_VAULT_NAME="[NAME_OF_KEY_VAULT_IN_AZURE]"
-DB_USERNAME="admin"
-DB_PASSWORD="[YB_MANAGED_DB_PASSWORD]"
-//TIP: convert certificate to single line string for ease of use with DB client
-DB_CERTIFICATE="[YB_MANAGED_CERTIFICATE]"
-DB_HOST="[YB_DB_HOST]"
-```
+    ```conf
+    // .env
+    KEY_VAULT_NAME="[NAME_OF_KEY_VAULT_IN_AZURE]"
+    DB_USERNAME="admin"
+    DB_PASSWORD="[YB_MANAGED_DB_PASSWORD]"
+    //TIP: convert certificate to single line string for ease of use with DB client
+    DB_CERTIFICATE="[YB_MANAGED_CERTIFICATE]"
+    DB_HOST="[YB_DB_HOST]"
+    ```
 
-6. Connect to the Azure Key Store from Node.js
+1. Connect to the Azure Key Store from Node.js
 
-```javascript
-// createSecrets.js
+    ```javascript
+    // createSecrets.js
 
-const { SecretClient } = require("@azure/keyvault-secrets");
-const { DefaultAzureCredential } = require("@azure/identity");
+    const { SecretClient } = require("@azure/keyvault-secrets");
+    const { DefaultAzureCredential } = require("@azure/identity");
 
-async function main() {
-// As stated by Microsoft, if you're using MSI, DefaultAzureCredential should "just work".
-// Otherwise, DefaultAzureCredential expects the following three environment variables:
-// - AZURE_TENANT_ID: The tenant ID in Azure Active Directory
-// - AZURE_CLIENT_ID: The application (client) ID registered in the AAD tenant
-// - AZURE_CLIENT_SECRET: The client secret for the registered application
-const credential = new DefaultAzureCredential();
+    async function main() {
+    // As stated by Microsoft, if you're using MSI, DefaultAzureCredential should "just work".
+    // Otherwise, DefaultAzureCredential expects the following three environment variables:
+    // - AZURE_TENANT_ID: The tenant ID in Azure Active Directory
+    // - AZURE_CLIENT_ID: The application (client) ID registered in the AAD tenant
+    // - AZURE_CLIENT_SECRET: The client secret for the registered application
+    const credential = new DefaultAzureCredential();
 
-const keyVaultName = process.env["KEY_VAULT_NAME"];
-if (!keyVaultName) throw new Error("KEY_VAULT_NAME is empty");
-const url = "https://" + keyVaultName + ".vault.azure.net";
+    const keyVaultName = process.env["KEY_VAULT_NAME"];
+    if (!keyVaultName) throw new Error("KEY_VAULT_NAME is empty");
+    const url = "https://" + keyVaultName + ".vault.azure.net";
 
-const client = new SecretClient(url, credential);
-```
+    const client = new SecretClient(url, credential);
+    ```
 
-7. Use the secret client to set the secrets needed to establish a YugabyteDB Managed connection.
+1. Use the secret client to set the secrets needed to establish a YugabyteDB Managed connection.
 
-```javascript
-// createSecrets.js
+    ```javascript
+    // createSecrets.js
 
-async function main(){
-...
-// Create secrets for YugabyteDB Managed connection
-await client.setSecret("DBUSERNAME", process.env.DB_USERNAME);
-await client.setSecret("DBPASSWORD", process.env.DB_PASSWORD);
-await client.setSecret("DBCERTIFICATE", process.env.DB_CERTIFICATE);
-await client.setSecret("DBHOST", process.env.DB_HOST);
+    async function main(){
+    ...
+    // Create secrets for YugabyteDB Managed connection
+    await client.setSecret("DBUSERNAME", process.env.DB_USERNAME);
+    await client.setSecret("DBPASSWORD", process.env.DB_PASSWORD);
+    await client.setSecret("DBCERTIFICATE", process.env.DB_CERTIFICATE);
+    await client.setSecret("DBHOST", process.env.DB_HOST);
 
-// Get secrets to confirm they've been set in Azure Key Vault
-for await (let secretProperties of client.listPropertiesOfSecrets())
-  {
-    console.log("Secret Name: ", secretProperties.name);
-    const secret = await client.getSecret(secretProperties.name);
-    console.log("Secret Val:", secret.value);
-  }
-}
+    // Get secrets to confirm they've been set in Azure Key Vault
+    for await (let secretProperties of client.listPropertiesOfSecrets())
+    {
+        console.log("Secret Name: ", secretProperties.name);
+        const secret = await client.getSecret(secretProperties.name);
+        console.log("Secret Val:", secret.value);
+    }
+    }
 
-main().catch((error) => {
-  console.error("An error occurred:", error);
-  process.exit(1);
-});
-```
+    main().catch((error) => {
+    console.error("An error occurred:", error);
+    process.exit(1);
+    });
+    ```
 
-```sh
-% node createSecrets.js
-```
+    ```sh
+    node createSecrets.js
+    ```
 
-8. Read these secrets from Azure and connect to YugabyteDB Managed.
+1. Read these secrets from Azure and connect to YugabyteDB Managed.
 
-```javascript
-// index.js
+    ```javascript
+    // index.js
 
-const { Client } = require("@yugabytedb/pg");
-const { SecretClient } = require("@azure/keyvault-secrets");
-const { DefaultAzureCredential } = require("@azure/identity");
+    const { Client } = require("@yugabytedb/pg");
+    const { SecretClient } = require("@azure/keyvault-secrets");
+    const { DefaultAzureCredential } = require("@azure/identity");
 
-async function main() {
-  const credential = new DefaultAzureCredential();
+    async function main() {
+    const credential = new DefaultAzureCredential();
 
-  const keyVaultName = process.env["KEY_VAULT_NAME"];
-  if (!keyVaultName) throw new Error("KEY_VAULT_NAME is empty");
-  const url = "https://" + keyVaultName + ".vault.azure.net";
+    const keyVaultName = process.env["KEY_VAULT_NAME"];
+    if (!keyVaultName) throw new Error("KEY_VAULT_NAME is empty");
+    const url = "https://" + keyVaultName + ".vault.azure.net";
 
-  const secretClient = new SecretClient(url, credential);
+    const secretClient = new SecretClient(url, credential);
 
-  const dbhost = await secretClient.getSecret("DBHOST");
-  const dbusername = await secretClient.getSecret("DBUSERNAME");
-  const dbpassword = await secretClient.getSecret("DBPASSWORD");
-  const dbcertificate = await secretClient.getSecret("DBCERTIFICATE");
+    const dbhost = await secretClient.getSecret("DBHOST");
+    const dbusername = await secretClient.getSecret("DBUSERNAME");
+    const dbpassword = await secretClient.getSecret("DBPASSWORD");
+    const dbcertificate = await secretClient.getSecret("DBCERTIFICATE");
 
-  const ybclient = new Client({
-    database: "yugabyte",
-    host: dbhost.value,
-    user: dbusername.value,
-    port: 5433,
-    password: dbpassword.value,
-    max: 10,
-    idleTimeoutMillis: 0,
-    ssl: {
-      rejectUnauthorized: true,
-      ca: dbcertificate.value,
-      servername: dbhost.value,
-    },
-  });
-  console.log("Establishing connection with YugabyteDB Managed");
-  await ybclient.connect();
-  console.log("Connected successfully.");
-}
+    const ybclient = new Client({
+        database: "yugabyte",
+        host: dbhost.value,
+        user: dbusername.value,
+        port: 5433,
+        password: dbpassword.value,
+        max: 10,
+        idleTimeoutMillis: 0,
+        ssl: {
+        rejectUnauthorized: true,
+        ca: dbcertificate.value,
+        servername: dbhost.value,
+        },
+    });
+    console.log("Establishing connection with YugabyteDB Managed");
+    await ybclient.connect();
+    console.log("Connected successfully.");
+    }
 
-main().catch((error) => {
-  console.error("An error occurred:", error);
-  process.exit(1);
-});
-```
+    main().catch((error) => {
+    console.error("An error occurred:", error);
+    process.exit(1);
+    });
+    ```
 
-```sh
-% node index.js
-Establishing connection with YugabyteDB Managed...
-Connected successfully.
-```
+    ```sh
+    node index.js
+    Establishing connection with YugabyteDB Managed...
+    Connected successfully.
+    ```
 
 Thanks to the Azure Key Vault SDK, we’ve successfully connected to YugabyteDB, using credentials stored securely in the cloud. This protects our data and ensures a simplified development environment, where credentials can be centrally updated by multiple end users.
 

@@ -20,8 +20,8 @@ In this tutorial, we'll walk through the steps required to develop and deploy an
 In the following sections, we will:
 
 1. Deploy and configure a geo-partitioned YugabyteDB cluster.
-2. Develop and provision an Azure Function to connect to and query our database in a specific region.
-3. Create an Azure API Management instance to design an API with an Azure Function backend.
+1. Develop and provision an Azure Function to connect to and query our database in a specific region.
+1. Create an Azure API Management instance to design an API with an Azure Function backend.
 
 **Prerequisites**
 
@@ -33,23 +33,23 @@ In the following sections, we will:
 Begin by deploying a multi-region, [geo-partitioned cluster](../../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-geopartition/) in YugabyteDB. This will partition data by region, reducing latencies by fetching data from the closest cluster nodes.
 
 1. A VPC is required for each region when deploying YugabyteDB on Azure. Create separate VPCs in the _eastus_, _westus2_, and _westus3_ regions.
-2. Deploy a 3-node cluster running on Azure, with nodes in the _eastus_, _westus2_, and _westus3_ regions. Under **Data Distribution**, select **Partition by region**.
+1. Deploy a 3-node cluster running on Azure, with nodes in the _eastus_, _westus2_, and _westus3_ regions. Under **Data Distribution**, select **Partition by region**.
 
     ![Geo-partitioned YugabyteDB deployment on Azure](/images/tutorials/azure/azure-private-link/yb-deployment.png "Geo-partitioned YugabyteDB deployment on Azure")
 
-3. Enable public access on the cluster and add 0.0.0.0/0 to the cluster IP Allow List. This setup allows connections to the cluster from all IP addresses.
-
-    Note: In a production application, [Azure Private Link](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/managed-endpoint-aws/) can be used with [private service endpoints](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/managed-endpoint-azure/#create-a-pse-in-yugabytedb-managed) to create a secure connection between your application and database VPCs.
-
-4. Upon creation, save the credentials and [download the CA certificate](../../../develop/build-apps/cloud-add-ip/#download-your-cluster-certificate) once everything is up and running. This is essential for secure connections using the Node.js Smart Client.
+1. Enable public access on the cluster and add 0.0.0.0/0 to the cluster IP Allow List. This setup allows connections to the cluster from all IP addresses.
+    {{< note title="Note" >}}
+In a production application, [Azure Private Link](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/managed-endpoint-aws/) can be used with [private service endpoints](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/managed-endpoint-azure/#create-a-pse-in-yugabytedb-managed) to create a secure connection between your application and database VPCs.
+   {{< /note >}}
+1. Upon creation, save the credentials and [download the CA certificate](../../../develop/build-apps/cloud-add-ip/#download-your-cluster-certificate) once everything is up and running. This is essential for secure connections using the Node.js Smart Client.
 
 ## Create tables and insert records
 
 Connect to your YugabyteDB cluster running on Azure via the [Cloud Shell](../../../yugabyte-cloud/cloud-connect/connect-cloud-shell/) and execute the following commands:
 
 1. Create the _orders_ table and partition it by region.
-2. Create partition tables using the automatically created [regional tablespaces](../../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-geopartition/).
-3. Seed the database with some orders. These records will be stored in the appropriate cluster node according to the supplied region.
+1. Create partition tables using the automatically created [regional tablespaces](../../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-geopartition/).
+1. Seed the database with some orders. These records will be stored in the appropriate cluster node according to the supplied region.
 
 ## Develop an Azure function
 
@@ -58,8 +58,8 @@ Follow the instructions in [Develop Azure Functions with YugabyteDB](../azure-fu
 Update the function and its corresponding configuration by doing the following:
 
 1. Deploy the function to the _uswest3_ region.
-2. Use the YugabyteDB host provided for the _westus3_ region.
-3. Update the contents of the function to GET orders using a connection pool.
+1. Use the YugabyteDB host provided for the _westus3_ region.
+1. Update the contents of the function to GET orders using a connection pool.
 
 This function uses the supplied region route parameter to determine which database node it should connect to. It then queries the database for orders partitioned in this region.
 
@@ -69,11 +69,15 @@ This function uses the supplied region route parameter to determine which databa
 
     ![API Management instance in westus3 region](/images/tutorials/azure/azure-api-management/azure-api-mgmt-config.png "API Management instance in westus3 region")
 
-2. Add HTTP/2 as a client-side protocol so that you can communicate with the API Management service using HTTP.
+1. Add HTTP/2 as a client-side protocol so that you can communicate with the API Management service using HTTP.
 
     ![Add http protocol to APIM instance](/images/tutorials/azure/azure-api-management/azure-api-mgmt-http.png "Add http protocol to APIM instance")
 
-3. Review and install your APIM instance. **Note**: This can take around 15-30 minutes depending on Azure's resources.
+1. Review and install your APIM instance. 
+    {{< note title="Note" >}}
+This can take around 15-30 minutes depending on Azure's resources.
+    {{< /note >}}
+    
 
 ## Design a REST API in Azure
 

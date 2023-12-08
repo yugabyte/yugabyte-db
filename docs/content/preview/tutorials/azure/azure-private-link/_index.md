@@ -1,10 +1,10 @@
 ---
-title: Developing Secure Node.js Applications Using Azure Private Link and YugabyteDB
-headerTitle:
+title: Develop Secure Applications with Azure Private Link
+headerTitle: Develop Secure Applications Using Azure Private Link
 linkTitle: Azure Private Link
-description: Developing Secure Node.js Applications Using Azure Private Link and YugabyteDB
+description: Using a Node.js app to demonstrate, see how YugabyteDB enhances Azure connectivity with Azure Private Service Endpoints.
 image: /images/tutorials/azure/icons/Private-Link-Icon.svg
-headcontent: Developing Secure Node.js Applications Using Azure Private Link and YugabyteDB
+headcontent:
 aliases:
   - /preview/tutorials/azure/private-link
 menu:
@@ -23,15 +23,13 @@ In Azure Cloud, you can achieve a similar result by making use of [Private Servi
 - An account to Yugabyte’s fully-managed deployment option (formerly known as YugabyteDB Managed).
 - An Azure Cloud account with permissions to create services
 
-CTA button: Fully-Managed Free Trial
-
-URL [https://cloud.yugabyte.com/signup/](https://cloud.yugabyte.com/signup/)
+[Fully-Managed Free Trial](https://cloud.yugabyte.com/signup/)
 
 ## Getting started with YugabyteDB Managed
 
-Create a 3-node cluster on Azure in the \_uswest3 \_region.
+Create a 3-node cluster on Azure in the _uswest3_ region.
 
-![alt_text](/images/tutorials/azure/azure-private-link/yb-deployment.png "image_tooltip")
+![3-node YugabyteDB deployment in uswest3](/images/tutorials/azure/azure-private-link/yb-deployment.png "3-node YugabyteDB deployment in uswest3")
 
 Remember to save the credentials after creation and [download the CA certificate](https://docs.yugabyte.com/preview/develop/build-apps/cloud-add-ip/#download-your-cluster-certificate) once operational, ensuring a secure connection through the Node.js Smart Client.
 
@@ -43,12 +41,12 @@ To test the connection between Azure and YugabyteDB using Azure Private Link, st
 
 ![Create an Ubuntu VM in Azure](/images/tutorials/azure/azure-private-link/azure-create-vm.png "Create an Ubuntu VM in Azure")
 
-2. **Configure the networking settings on this VM, placing it in a Virtual Network (VNet)**. If there is no existing VNet in the region selected (in this case, West US 3), a new one will be created by default.
+1. **Configure the networking settings on this VM, placing it in a Virtual Network (VNet)**. If there is no existing VNet in the region selected (in this case, West US 3), a new one will be created by default.
 
 ![Configure network settings on the VM](/images/tutorials/azure/azure-private-link/azure-networking.png "Configure network settings on the VM")
 
-3. **Enable a basic Network Security Group** to limit the inbound and outbound traffic to the VM.
-4. **Enable SSH access **to securely install system and application dependencies, and copy files to the VM.
+1. **Enable a basic Network Security Group** to limit the inbound and outbound traffic to the VM.
+1. **Enable SSH access** to securely install system and application dependencies, and copy files to the VM.
 
 ## Setting up Azure Private Link
 
@@ -58,30 +56,49 @@ Follow [these instructions to configure Azure Private Link](https://docs.yugabyt
 
 This simple application can be run inside your Azure VNet to verify the connectivity between your application services and the database cluster.
 
-1. Clone the application [LINK TO REPOSITORY] on GitHub.
-2. Edit the database connection details in the _.env_ file and copy the YugabyteDB CA certificate to the root directory of the project.
-3. SSH into the virtual machine from the terminal.
-4. Prepare the Node.js runtime environment in the VM.
-5. In another terminal window, securely copy the application files to the VM.
-6. Install the application dependencies on the VM.
-7. Run the application to verify the database connection.
+1. Clone the [application on GitHub](https://github.com/YugabyteDB-Samples/yugabytedb-azure-private-link-demo-nodejs).
+1. Edit the database connection details in the _.env_ file and copy the YugabyteDB CA certificate to the root directory of the project.
+1. SSH into the virtual machine from the terminal.
+
+    ```sh
+    ssh -i  /path/to/vm/private/key.pem azureuser@[PUBLIC_IP_ADDRESS]
+    ```
+
+1. Prepare the Node.js runtime environment in the VM.
+
+    ```sh
+    sudo apt update
+    curl https://raw.githubusercontent.com/creationix/nvm/master/install.sh | bash
+    source ~/.bashrc
+    nvm install 18
+    ```
+
+2. In another terminal window, securely copy the application files to the VM.
+
+    ```sh
+    scp -r /path/to/YBAzureNetworking/ azureuser@[PUBLIC_IP_ADDRESS]:/home/azureuser
+    ```
+
+3. Install the application dependencies on the VM.
+
+    ```sh
+    npm install
+    ```
+
+4. Run the application to verify the database connection.
+
+    ```sh
+    npm run start
+    # Establishing connection with YugabyteDB Managed...
+    # Connected successfully.
+    ```
 
 ## Conclusion
 
 Azure Private Link simplifies establishing a secure connection between Azure-based applications and YugabyteDB.
 
-If you’re interested in developing other applications on Azure, check out: \
+If you’re interested in developing other applications on Azure, check out:
 
-- [LINK TO AZURE APP SERVICE TUTORIAL IN DOCS]
+- [Build Applications Using Azure App Service](/preview/tutorials/azure/azure-app-service/)
 
 If you would like to explore the different deployment options of YugabyteDB (including self-managed, co-managed, fully managed, and open source) explore our [database comparison page](https://www.yugabyte.com/compare-products/).
-
-SEO Title: Building Secure Node.js Apps with Azure Private Link and YugabyteDB
-
-Meta: Using a Node.js app to demonstrate, see how YugabyteDB enhances Azure connectivity with Azure Private Service Endpoints.
-
-Excerpt: YugabyteDB offers various networking options like VPC peering, enhancing security, reliability, and latency, allowing applications in GCP or AWS to seamlessly connect as if on the same network. Similarly, in Azure Cloud, Private Service Endpoints achieve comparable results. Let’s see how.
-
-Author: Brett
-
-- Tags: Azure, Application Development, Node.js

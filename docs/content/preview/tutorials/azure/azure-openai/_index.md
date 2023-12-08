@@ -57,8 +57,9 @@ Once the resources are provisioned, you’ll see them in your Azure OpenAI Studi
 Download the application and provide settings specific to your Azure OpenAI Service deployment:
 
 1.  Clone the repository:
-    _git clone https://github.com/YugabyteDB-Samples/yugabytedb-azure-openai-lodging-service
-    _
+    ```sh
+    git clone https://github.com/YugabyteDB-Samples/yugabytedb-azure-openai-lodging-service
+    ```
 1.  Initialize the project:
 
     ```sh
@@ -128,7 +129,7 @@ Open up the YugabyteDB UI to confirm that the database is up and running:
 
 As long as the application provides a lodging recommendation service for San Francisco, you can leverage a publicly available Airbnb data set with over 7500 relevant listings:
 
-- Create the** airbnb_listing** table (feel free to use [ysqlsh](https://docs.yugabyte.com/preview/admin/ysqlsh/) or another comparable SQL tool instead of psql):
+- Create the **airbnb_listing** table (feel free to use [ysqlsh](https://docs.yugabyte.com/preview/admin/ysqlsh/) or another comparable SQL tool instead of psql):
 
 ```sh
 psql -h 127.0.0.1 -p 5433 -U yugabyte -d yugabyte {project_dir}/sql/0_airbnb_listings.sql
@@ -213,38 +214,38 @@ Internally, the application performs the following steps (see the **{project_dir
 
 1.  It prepares system and user messages for the neural network; the system message clarifies what is expected from the GPT model:
 
-```javascript
-const messages = [
-  {
-    role: "system",
-    content:
-      "You're a helpful assistant that helps to find lodging in San Francisco. Suggest three options. Send back a JSON object in the format below." +
-      '[{"name": "&lt;hotel name>", "description": "&lt;hotel description>", "price": &lt;hotel price>}]' +
-      "Don't add any other text to the response.",
-  },
+    ```javascript
+    const messages = [
+    {
+        role: "system",
+        content:
+        "You're a helpful assistant that helps to find lodging in San Francisco. Suggest three options. Send back a JSON object in the format below." +
+        '[{"name": "&lt;hotel name>", "description": "&lt;hotel description>", "price": &lt;hotel price>}]' +
+        "Don't add any other text to the response.",
+    },
 
-  {
-    role: "user",
-    content: prompt,
-  },
-];
-```
+    {
+        role: "user",
+        content: prompt,
+    },
+    ];
+    ```
 
 2.  The messages are sent to the Azure OpenAI Service:
 
-```javascript
-const chatCompletion = await this.#azureOpenAi.getChatCompletions(this.#gptModel, messages);
-```
+    ```javascript
+    const chatCompletion = await this.#azureOpenAi.getChatCompletions(this.#gptModel, messages);
+    ```
 
 3.  The application extracts the JSON data with recommendations from the response and returns those recommendations to the React frontend:
 
-```javascript
-const message = chatCompletion.choices[0].message.content;
-const jsonStart = message.indexOf("[");
-const jsonEnd = message.indexOf("]");
-const places = JSON.parse(message.substring(jsonStart, jsonEnd + 1));
-return places;
-```
+    ```javascript
+    const message = chatCompletion.choices[0].message.content;
+    const jsonStart = message.indexOf("[");
+    const jsonEnd = message.indexOf("]");
+    const places = JSON.parse(message.substring(jsonStart, jsonEnd + 1));
+    return places;
+    ```
 
 Depending on the selected model type, your subscription, and the neural network’s workload, it can take between 5 and 20 seconds for the Chat Completions API to generate the recommendations.
 
@@ -262,37 +263,37 @@ The application performs the following steps to generate the recommendations (se
 
 1.  The application generates a vectorized representation of the user prompt using the Azure OpenAI Embeddings model:
 
-```javascript
-const embeddingResp = await this.#azureOpenAi.getEmbeddings(this.#embeddingModel, prompt);
-```
+    ```javascript
+    const embeddingResp = await this.#azureOpenAi.getEmbeddings(this.#embeddingModel, prompt);
+    ```
 
 2.  The app uses the generated vector to retrieve the most relevant Airbnb properties stored in YugabyteDB:
 
-```javascript
-const res = await this.#dbClient.query(
-  "SELECT name, description, price, 1 - (description_embedding <=> $1) as similarity " +
-    "FROM airbnb_listing WHERE 1 - (description_embedding <=> $1) > $2 ORDER BY similarity DESC LIMIT $3",
-  ["[" + embeddingResp.data[0].embedding + "]", matchThreshold, matchCnt]
-);
-```
+    ```javascript
+    const res = await this.#dbClient.query(
+    "SELECT name, description, price, 1 - (description_embedding <=> $1) as similarity " +
+        "FROM airbnb_listing WHERE 1 - (description_embedding <=> $1) > $2 ORDER BY similarity DESC LIMIT $3",
+    ["[" + embeddingResp.data[0].embedding + "]", matchThreshold, matchCnt]
+    );
+    ```
 
-The similarity is calculated as a cosine distance between the embeddings stored in the description_embedding column and the user prompt’s vector.
+    The similarity is calculated as a cosine distance between the embeddings stored in the description_embedding column and the user prompt’s vector.
 
 3.  The suggested Airbnb properties are returned in the JSON format to the React frontend:
 
-```javascript
-for (let i = 0; i < res.rows.length; i++) {
-  const row = res.rows[i];
+    ```javascript
+    for (let i = 0; i < res.rows.length; i++) {
+    const row = res.rows[i];
 
-  places.push({
-    name: row.name,
-    description: row.description,
-    price: row.price,
-    similarity: row.similarity,
-  });
-}
-return places;
-```
+    places.push({
+        name: row.name,
+        description: row.description,
+        price: row.price,
+        similarity: row.similarity,
+    });
+    }
+    return places;
+    ```
 
 ## In Conclusion…
 

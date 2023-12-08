@@ -59,8 +59,8 @@ In addition to the outbound IP addresses in Azure, add your machine’s IP addre
 Now that our cluster is running in the cloud, we can seed it with data using the provided `schema.sql` and `data.sql` files.
 
 1. Use the [YugabyteDB Cloud Shell](https://docs.yugabyte.com/preview/yugabyte-cloud/cloud-connect/connect-cloud-shell/) to connect to your cluster.
-2. Execute the `schema.sql` script against your cluster.
-3. Execute the `data.sql` script against your cluster.
+2. Execute the commands in the `schema.sql` script against your cluster.
+3. Execute the commands in the `data.sql` script against your cluster.
 
 With your cluster seeded with data, it's time to build the serverless function to connect to it.
 
@@ -70,99 +70,99 @@ The Azure Functions Core Tools provide a command-line interface for developing f
 
 1. Initialize a new Azure Functions project.
 
-```sh
-% func init YBAzureFunctions --worker-runtime javascript --model V4
-```
+    ```sh
+    func init YBAzureFunctions --worker-runtime javascript --model V4
+    ```
 
-2. Create a new HTTP trigger function.
+1. Create a new HTTP trigger function.
 
-```sh
-% cd YBAzureFunctions
-% func new --template "Http Trigger" --name GetShoeInventory
-```
+    ```sh
+    cd YBAzureFunctions
+    func new --template "Http Trigger" --name GetShoeInventory
+    ```
 
-3. Install the YugabyteDB node-postgres Smart Driver.
+2. Install the YugabyteDB node-postgres Smart Driver.
 
-```sh
-% npm install @yugabytedb/pg
-```
+    ```sh
+    npm install @yugabytedb/pg
+    ```
 
-4. Update the boilerplate code in _GetShoeInventory.js_.
+3. Update the boilerplate code in _GetShoeInventory.js_.
 
-```javascript
-const { app } = require("@azure/functions");
-const { Client } = require("pg");
+    ```javascript
+    const { app } = require("@azure/functions");
+    const { Client } = require("pg");
 
-app.http("GetShoeInventory", {
-  methods: ["GET"],
-  authLevel: "anonymous",
-  handler: async () => {
-    // Read the PostgreSQL connection settings from local.settings.json
-    console.log("process.env.DB_HOST:", process.env.DB_HOST);
-    const client = new Client({
-      user: process.env.DB_USERNAME,
-      host: process.env.DB_HOST,
-      database: "yugabyte",
-      password: process.env.DB_PASSWORD,
-      port: 5433,
-      max: 10,
-      idleTimeoutMillis: 0,
-      ssl: {
-        rejectUnauthorized: true,
-        ca: atob(process.env.DB_CERTIFICATE),
-        servername: process.env.DB_HOST,
-      },
+    app.http("GetShoeInventory", {
+    methods: ["GET"],
+    authLevel: "anonymous",
+    handler: async () => {
+        // Read the PostgreSQL connection settings from local.settings.json
+        console.log("process.env.DB_HOST:", process.env.DB_HOST);
+        const client = new Client({
+        user: process.env.DB_USERNAME,
+        host: process.env.DB_HOST,
+        database: "yugabyte",
+        password: process.env.DB_PASSWORD,
+        port: 5433,
+        max: 10,
+        idleTimeoutMillis: 0,
+        ssl: {
+            rejectUnauthorized: true,
+            ca: atob(process.env.DB_CERTIFICATE),
+            servername: process.env.DB_HOST,
+        },
+        });
+        try {
+        // Connect to the PostgreSQL database
+        await client.connect();
+        // Query YugabyteDB for shoe inventory
+        const query =
+            "SELECT i.quantity, s.model, s.brand from inventory i INNER JOIN shoes s on i.shoe_id = s.id;";
+        const result = await client.query(query);
+        // Process the query result
+        const data = result.rows;
+        // Close the database connection
+        await client.end();
+        return {
+            status: 200,
+            body: JSON.stringify(data),
+        };
+        } catch (error) {
+        console.error("Error connecting to the database:", error);
+        return {
+            status: 500,
+            body: "Internal Server Error",
+        };
+        }
+    },
     });
-    try {
-      // Connect to the PostgreSQL database
-      await client.connect();
-      // Query YugabyteDB for shoe inventory
-      const query =
-        "SELECT i.quantity, s.model, s.brand from inventory i INNER JOIN shoes s on i.shoe_id = s.id;";
-      const result = await client.query(query);
-      // Process the query result
-      const data = result.rows;
-      // Close the database connection
-      await client.end();
-      return {
-        status: 200,
-        body: JSON.stringify(data),
-      };
-    } catch (error) {
-      console.error("Error connecting to the database:", error);
-      return {
-        status: 500,
-        body: "Internal Server Error",
-      };
-    }
-  },
-});
 ```
 
-5. Update _local.settings.json_ with the configuration settings required to run the GetShoeInventory function locally.
+1. Update _local.settings.json_ with the configuration settings required to run the GetShoeInventory function locally.
 
-```conf
-# convert the downloaded CA certificate from YugabyteDB Managed to a single line string, then Base64 encode it
-# Azure Configuration Settings forbid special characters, so this ensures the cert can be passed properly to our application
-# Tip: Run this command to convert cert file to base64 encoded single line string:
-# cat /path/to/cert/file | base64
+    ```conf
+    # convert the downloaded CA certificate from YugabyteDB Managed to a single line string, then Base64 encode it
+    # Azure Configuration Settings forbid special characters, so this ensures the cert can be passed properly to our application
+    # Tip: Run this command to convert cert file to base64 encoded single line string:
+    # cat /path/to/cert/file | base64
 
-local.settings.json
-...
-"DB_USERNAME": "admin",
-"DB_PASSWORD": [YUGABYTE_DB_PASSWORD],
-"DB_HOST": [YUGABYTE_DB_HOST],
-"DB_NAME": "yugabyte",
-"DB_CERTIFICATE": [BASE_64_ENCODED_YUGABYTE_DB_CERTIFICATE]
-```
+    local.settings.json
+    ...
+    "DB_USERNAME": "admin",
+    "DB_PASSWORD": [YUGABYTE_DB_PASSWORD],
+    "DB_HOST": [YUGABYTE_DB_HOST],
+    "DB_NAME": "yugabyte",
+    "DB_CERTIFICATE": [BASE_64_ENCODED_YUGABYTE_DB_CERTIFICATE]
+    ```
 
-6. Run the function locally.
+2. Run the function locally.
 
-```sh
-% func start
-```
+    ```sh
+    func start
+    ```
 
-Test your function in the browser at <code>[http://localhost:7071/api/GetShoeInventory](http://localhost:7071/api/GetShoeInventory).</code>
+Test your function in the browser at [http://localhost:7071/api/GetShoeInventory](http://localhost:7071/api/GetShoeInventory).
 
 It’s now time to deploy our function to Azure.
 
@@ -172,29 +172,29 @@ We can deploy our application to Azure using the Azure CLI.
 
 1. Create a Function App.
 
-```sh
-% az functionapp create --resource-group RESOURCE_GROUP_NAME --consumption-plan-location eastus2 --runtime node --runtime-version 18 --functions-version 4 --name YBAzureFunctions --storage-account STORAGE_ACCOUNT_NAME
-```
+    ```sh
+    az functionapp create --resource-group RESOURCE_GROUP_NAME --consumption-plan-location eastus2 --runtime node --runtime-version 18 --functions-version 4 --name YBAzureFunctions --storage-account STORAGE_ACCOUNT_NAME
+    ```
 
-2. Configure the application settings.
+1. Configure the application settings.
 
-```sh
-% az functionapp config appsettings set -g RESOURCE_GROUP_NAME -n APPLICATION_NAME --setting DB_HOST=[YUGABYTE_DB_HOST] DB_USERNAME=admin DB_PASSWORD=[YUGABYTE_DB_PASSWORD] DB_CERTIFICATE=[BASE_64_ENCODED_YUGABYTE_DB_CERTIFICATE]
-```
+    ```sh
+    az functionapp config appsettings set -g RESOURCE_GROUP_NAME -n APPLICATION_NAME --setting DB_HOST=[YUGABYTE_DB_HOST] DB_USERNAME=admin DB_PASSWORD=[YUGABYTE_DB_PASSWORD] DB_CERTIFICATE=[BASE_64_ENCODED_YUGABYTE_DB_CERTIFICATE]
+    ```
 
-3. Publish Function App to Azure.
+1. Publish Function App to Azure.
 
-```sh
-% func azure functionapp publish YBAzureFunctions
-```
+    ```sh
+    func azure functionapp publish YBAzureFunctions
+    ```
 
-4. Verify that the function was published successfully.
+1. Verify that the function was published successfully.
 
-```sh
-% curl https://ybazurefunctions.azurewebsites.net/api/GetShoeInventory
+    ```sh
+    curl https://ybazurefunctions.azurewebsites.net/api/GetShoeInventory
 
-[{"quantity":24,"model":"speedgoat 5","brand":"hoka one one"},{"quantity":74,"model":"adizero adios pro 3","brand":"adidas"},{"quantity":13,"model":"torrent 2","brand":"hoka one one"},{"quantity":99,"model":"vaporfly 3","brand":"nike"}]
-```
+    [{"quantity":24,"model":"speedgoat 5","brand":"hoka one one"},{"quantity":74,"model":"adizero adios pro 3","brand":"adidas"},{"quantity":13,"model":"torrent 2","brand":"hoka one one"},{"quantity":99,"model":"vaporfly 3","brand":"nike"}]
+    ```
 
 ## Wrapping Up
 
