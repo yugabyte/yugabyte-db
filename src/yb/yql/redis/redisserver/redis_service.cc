@@ -340,8 +340,7 @@ class SessionPool {
     client::YBSession* result = nullptr;
     if (!queue_.pop(result)) {
       std::lock_guard lock(mutex_);
-      auto session = client_->NewSession();
-      session->SetTimeout(
+      auto session = client_->NewSession(
           MonoDelta::FromMilliseconds(FLAGS_redis_service_yb_client_timeout_millis));
       sessions_.push_back(session);
       allocated_sessions_metric_->IncrementBy(1);

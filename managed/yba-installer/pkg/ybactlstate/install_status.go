@@ -14,12 +14,13 @@ type status int
 
 const (
 	NoStatus          status = iota // When a previous version of state was not aware of status
-	InstalledStatus                 // Install is in progress
-	InstallingStatus                // YBA is installed
+	InstalledStatus                 // YBA is installed
+	InstallingStatus                // Install is in progress
 	UpgradingStatus                 // Upgrade is in progress
 	CleaningStatus                  // In the process of running clean
 	SoftCleanStatus                 // A soft clean has been performed (data still remains)
 	UninstalledStatus               // No yba software or data is installed
+	MigratingStatus									// Migration is in progress
 	endStatus                       // Not a real status, used for validation
 )
 
@@ -30,6 +31,7 @@ var toStatus = map[string]status{
 	"Cleaning":     CleaningStatus,
 	"Soft Cleaned": SoftCleanStatus,
 	"Uninstalled":  UninstalledStatus,
+	"Migrating": 		MigratingStatus,
 }
 
 // String value of the status
@@ -47,6 +49,8 @@ func (s status) String() string {
 		return "Soft Cleaned"
 	case UninstalledStatus:
 		return "Uninstalled"
+	case MigratingStatus:
+		return "Migrating"
 	default:
 		return "unknown status " + strconv.Itoa(int(s))
 	}

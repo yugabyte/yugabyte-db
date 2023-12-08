@@ -5,21 +5,11 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.models.Users.Role;
-import static org.hamcrest.CoreMatchers.allOf;
-import static org.hamcrest.CoreMatchers.equalTo;
-import static org.hamcrest.CoreMatchers.notNullValue;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.FORBIDDEN;
-import static play.mvc.Http.Status.OK;
-import static play.mvc.Http.Status.UNAUTHORIZED;
+import static org.hamcrest.CoreMatchers.*;
+import static org.junit.Assert.*;
+import static play.mvc.Http.Status.*;
 import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
-import static play.test.Helpers.route;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -55,6 +45,28 @@ public class UsersControllerTest extends FakeDBApplication {
     customer2 = ModelFactory.testCustomer("tc2", "Test Customer 2");
     user1 = ModelFactory.testUser(customer1, "tc1@test.com");
     authToken1 = user1.createAuthToken();
+  }
+
+  @Test
+  public void testGetSingleUserNoApiTokenAndVersion() throws IOException {
+    user1.upsertApiToken();
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken1).build();
+    Result result =
+        route(
+            fakeRequest(
+                    "GET",
+                    String.format(baseRoute, customer1.getUuid())
+                        + "/"
+                        + user1.getUuid().toString())
+                .cookie(validCookie));
+    JsonNode json = Json.parse(contentAsString(result));
+    UserWithFeatures userWithFeatures = Json.fromJson(json, UserWithFeatures.class);
+    assertThat(
+        userWithFeatures.getUser().getUuid(), allOf(notNullValue(), equalTo(user1.getUuid())));
+    assertEquals(userWithFeatures.getUser().getEmail(), user1.getEmail());
+    assertThat(userWithFeatures.getUser().getApiTokenVersion(), equalTo(0L));
+    assertThat(userWithFeatures.getUser().getApiToken(), nullValue());
+    assertAuditEntry(0, customer1.getUuid());
   }
 
   public List<UserWithFeatures> getListOfUsers(String authToken, Customer customer)

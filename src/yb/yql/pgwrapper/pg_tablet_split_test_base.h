@@ -58,12 +58,17 @@ class PgTabletSplitTestBase : public PgMiniTestBase {
  protected:
   void SetUp() override;
 
+  Result<TabletId> GetOnlyTabletId(const TableId& table_id);
+  Status SplitTablet(const TabletId& tablet_id);
   Status SplitSingleTablet(const TableId& table_id);
+  Status SplitSingleTabletAndWaitForActiveChildTablets(const TableId& table_id);
   Status InvokeSplitTabletRpc(const std::string& tablet_id);
   Status InvokeSplitTabletRpcAndWaitForSplitCompleted(const std::string& tablet_id);
   Status InvokeSplitsAndWaitForCompletion(
       const TableId& table_id, SelectTabletCallback select_tablet);
   Status DisableCompaction(std::vector<tablet::TabletPeerPtr>* peers);
+
+  Status WaitForSplitCompletion(const TableId& table_id, size_t expected_active_leaders = 2);
 
  private:
   virtual size_t NumTabletServers() override;

@@ -7,12 +7,15 @@ import { Dropdown, MenuItem, Alert } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { Highlighter } from '../../helpers/Highlighter';
 import { YBPanelItem } from '../panels';
-import { LegacyQueryInfoSidePanel } from './LegacyQueryInfoSidePanel';
 import { YBButtonLink } from '../common/forms/fields';
 import { useLiveQueriesApi, filterBySearchTokens } from './helpers/queriesHelper';
 import { YBLoadingCircleIcon } from '../common/indicators';
 import { getProxyNodeAddress } from '../../utils/UniverseUtils';
 import { QuerySearchInput } from './QuerySearchInput';
+import { QueryType } from './helpers/constants';
+import { QueryInfoSidePanel } from './QueryInfoSidePanel';
+import { QueryApi } from '../../redesign/helpers/constants';
+
 import './LiveQueries.scss';
 
 const dropdownColKeys = {
@@ -184,7 +187,7 @@ const LiveQueriesComponent = ({ location }) => {
         header={
           <div className="live-queries__container-title clearfix spacing-top">
             <div className="pull-left">
-              <h2 className="content-title pull-left">
+              <h2 className="content-title pull-left" data-testid="LiveQueries-Header">
                 Live Queries
                 {loading && !universePaused && (
                   <span className="live-queries__loading-indicator">
@@ -283,10 +286,12 @@ const LiveQueriesComponent = ({ location }) => {
           </div>
         }
       />
-      <LegacyQueryInfoSidePanel
-        visible={selectedRow.length}
+      <QueryInfoSidePanel
         onHide={() => setSelectedRow([])}
         queryData={displayedQueries.find((x) => selectedRow.length && x.id === selectedRow[0])}
+        queryType={QueryType.LIVE}
+        queryApi={isYSQL ? QueryApi.YSQL : QueryApi.YCQL}
+        visible={selectedRow.length}
       />
     </div>
   );

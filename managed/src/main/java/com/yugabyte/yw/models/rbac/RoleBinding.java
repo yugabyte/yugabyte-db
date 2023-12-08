@@ -15,6 +15,7 @@ import io.ebean.annotation.WhenCreated;
 import io.ebean.annotation.WhenModified;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Date;
+import java.util.List;
 import java.util.UUID;
 import javax.persistence.Column;
 import javax.persistence.Entity;
@@ -25,6 +26,7 @@ import javax.persistence.JoinColumn;
 import javax.persistence.ManyToOne;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import play.data.validation.Constraints;
@@ -32,6 +34,7 @@ import play.data.validation.Constraints;
 @Slf4j
 @Entity
 @AllArgsConstructor
+@NoArgsConstructor
 @Getter
 @Setter
 public class RoleBinding extends Model {
@@ -105,6 +108,10 @@ public class RoleBinding extends Model {
           BAD_REQUEST, "Invalid RoleBinding UUID:" + roleBindingUUID);
     }
     return roleBinding;
+  }
+
+  public static List<RoleBinding> getAll(UUID userUUID) {
+    return find.query().where().eq("user_uuid", userUUID).findList();
   }
 
   public void edit(Role role, ResourceGroup resourceGroup) {

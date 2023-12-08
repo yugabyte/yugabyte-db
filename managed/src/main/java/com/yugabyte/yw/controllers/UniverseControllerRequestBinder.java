@@ -18,10 +18,18 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.io.IOException;
@@ -52,13 +60,43 @@ public class UniverseControllerRequestBinder {
     //    pushed to post deserialization.
     // 2. encryptionAtRestConfig - See @JsonAlias annotations on the EncryptionAtRestConfig props
     // 3. cluster.userIntent gflags list to maps - TODO
+
+    // This is only for until we need the config switch for Usek8sCustomResources.
+    // Once we turn turn default we can remove this.
+    // Also eventually we will deprecate instanceType for k8s.
+    RuntimeConfGetter runtimeConfGetter =
+        StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
+
     try {
       ObjectNode formData = (ObjectNode) request.body().asJson();
       List<UniverseDefinitionTaskParams.Cluster> clusters = mapClustersInParams(formData, true);
       T taskParams = Json.mapper().treeToValue(formData, paramType);
+
       taskParams.clusters = clusters;
       taskParams.creatingUser = CommonUtils.getUserFromContext();
       taskParams.platformUrl = request.host();
+      if (UniverseDefinitionTaskParams.class.isAssignableFrom(paramType)) {
+        // We can get rid of this if when we default to new style resource spec.
+        for (Cluster cluster : taskParams.clusters) {
+          UserIntent ui = cluster.userIntent;
+          if (ui.providerType == CloudType.kubernetes) {
+            if (ui.instanceType != null) {
+              if (runtimeConfGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
+                InstanceType instanceType =
+                    InstanceType.getOrBadRequest(UUID.fromString(ui.provider), ui.instanceType);
+                // set K8s resource spec from instance type data.
+                ui.masterK8SNodeResourceSpec = new K8SNodeResourceSpec();
+                ui.tserverK8SNodeResourceSpec = new K8SNodeResourceSpec();
+                ui.masterK8SNodeResourceSpec.memoryGib = instanceType.getMemSizeGB();
+                ui.masterK8SNodeResourceSpec.cpuCoreCount = instanceType.getNumCores();
+                ui.tserverK8SNodeResourceSpec.memoryGib = instanceType.getMemSizeGB();
+                ui.tserverK8SNodeResourceSpec.cpuCoreCount = instanceType.getNumCores();
+              }
+            }
+          }
+        }
+      }
+
       return taskParams;
     } catch (JsonProcessingException exception) {
       throw new PlatformServiceException(
@@ -82,11 +120,13 @@ public class UniverseControllerRequestBinder {
           JsonNode tserverGFlagsNode = null;
           JsonNode instanceTagsNode = null;
           JsonNode specificGFlags = null;
+          JsonNode userIntentOverrides = null;
           if (userIntent != null) {
             masterGFlagsNode = userIntent.remove("masterGFlags");
             tserverGFlagsNode = userIntent.remove("tserverGFlags");
             instanceTagsNode = userIntent.remove("instanceTags");
             specificGFlags = userIntent.remove("specificGFlags");
+            userIntentOverrides = userIntent.remove("userIntentOverrides");
           }
           UniverseDefinitionTaskParams.Cluster currentCluster;
           if (clusterJson.has("uuid")) {
@@ -131,6 +171,11 @@ public class UniverseControllerRequestBinder {
           checkAndAddMapField(instanceTagsNode, tags -> cluster.userIntent.instanceTags = tags);
           if (specificGFlags != null) {
             cluster.userIntent.specificGFlags = Json.fromJson(specificGFlags, SpecificGFlags.class);
+          }
+          if (userIntentOverrides != null) {
+            cluster.userIntent.setUserIntentOverrides(
+                Json.fromJson(
+                    userIntentOverrides, UniverseDefinitionTaskParams.UserIntentOverrides.class));
           }
           clusters.add(cluster);
         }

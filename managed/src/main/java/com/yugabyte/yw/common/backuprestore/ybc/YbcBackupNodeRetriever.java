@@ -6,6 +6,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.forms.BackupTableParams.ParallelBackupState;
 import com.yugabyte.yw.models.Universe;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -43,19 +44,11 @@ public class YbcBackupNodeRetriever {
             .map(bDBS -> bDBS.getValue().nodeIp)
             .collect(Collectors.toSet());
     int nodeIPsToAdd = universeTserverIPs.remainingCapacity() - nodeIPsAlreadyAssigned.size();
-    Universe universe = Universe.getOrBadRequest(universeUUID);
-    String certFile = universe.getCertificateNodetoNode();
-    int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
-    universe.getLiveTServersInPrimaryCluster().stream()
-        .map(nD -> nD.cloudInfo.private_ip)
-        .filter(
-            ip ->
-                !nodeIPsAlreadyAssigned.contains(ip)
-                    && ybcManager.ybcPingCheck(ip, certFile, ybcPort))
-        .limit(nodeIPsToAdd)
-        .forEach(ip -> universeTserverIPs.add(ip));
-
+    if (nodeIPsToAdd == 0) {
+      log.debug("Nodes already assigned for backup task.");
+    }
     if (nodeIPsToAdd != 0) {
+      addUniverseTserverIPs(nodeIPsAlreadyAssigned, nodeIPsToAdd);
       if (universeTserverIPs.size() == 0) {
         throw new RuntimeException("YB-Controller servers unavailable.");
       }
@@ -83,5 +76,18 @@ public class YbcBackupNodeRetriever {
   @VisibleForTesting
   protected String peekNodeIpForBackup() {
     return universeTserverIPs.peek();
+  }
+
+  private void addUniverseTserverIPs(Set<String> nodeIPsAlreadyAssigned, int nodeIPsToAdd) {
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
+    String certFile = universe.getCertificateNodetoNode();
+    List<String> nodeIPs =
+        YbcManager.getPreferenceBasedYBCNodeIPsList(universe, nodeIPsAlreadyAssigned);
+    nodeIPs.stream()
+        .filter(ip -> ybcManager.ybcPingCheck(ip, certFile, ybcPort))
+        .limit(nodeIPsToAdd)
+        .forEach(ip -> universeTserverIPs.add(ip));
+    log.info("Node IPs list for backup: {}", universeTserverIPs.toString());
   }
 }

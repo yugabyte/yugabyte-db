@@ -58,6 +58,13 @@ $$
        -- Delete migration Alter Architecture Type that was moved from 212 to 216
        DELETE FROM SCHEMA_VERSION WHERE VERSION='212' AND DESCRIPTION='Alter Architecture Type';
 
+       -- Fix migration 93
+       UPDATE schema_version SET checksum = -906427156
+       WHERE version = '93' AND checksum = 664171038;
+
+       -- Rerun migration 281 with right values
+       DELETE FROM SCHEMA_VERSION WHERE VERSION = '281' AND checksum = -875441828;
+
        -- Fix next migration here
     END IF;
   END;

@@ -23,13 +23,18 @@ import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.HealthChecker;
+import com.yugabyte.yw.common.AWSUtil;
+import com.yugabyte.yw.common.AZUtil;
+import com.yugabyte.yw.common.GCPUtil;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.UniverseInterruptionResult;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.Customer;
@@ -68,6 +73,9 @@ public class UniverseInfoHandler {
   @Inject private YBClientService ybService;
   @Inject private NodeUniverseManager nodeUniverseManager;
   @Inject private HealthChecker healthChecker;
+  @Inject private AWSUtil awsUtil;
+  @Inject private AZUtil azUtil;
+  @Inject private GCPUtil gcpUtil;
 
   public UniverseResourceDetails getUniverseResources(
       Customer customer, UniverseDefinitionTaskParams taskParams) {
@@ -122,6 +130,22 @@ public class UniverseInfoHandler {
     }
     if (result.has("error")) {
       throw new PlatformServiceException(BAD_REQUEST, result.get("error"));
+    }
+    return result;
+  }
+
+  public UniverseInterruptionResult spotUniverseStatus(Universe universe) {
+    UniverseInterruptionResult result = new UniverseInterruptionResult(universe.getName());
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    switch (userIntent.providerType) {
+      case aws:
+        result = awsUtil.spotInstanceUniverseStatus(universe);
+        break;
+      case gcp:
+        result = gcpUtil.spotInstanceUniverseStatus(universe);
+        break;
+      case azu:
+        result = azUtil.spotInstanceUniverseStatus(universe);
     }
     return result;
   }

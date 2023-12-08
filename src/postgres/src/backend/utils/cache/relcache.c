@@ -738,8 +738,9 @@ RelationBuildTupleDesc(Relation relation)
 		if (attp->atthasdef)
 			ndef++;
 
+		/* YB note: attmissingval is unused in YB relations. */
 		/* If the column has a "missing" value, put it in the attrmiss array */
-		if (attp->atthasmissing)
+		if (!IsYBRelation(relation) && attp->atthasmissing)
 		{
 			Datum		missingval;
 			bool		missingNull;
@@ -1760,8 +1761,9 @@ YbApplyAttr(YbAttrProcessorState *state, Relation attrel, HeapTuple htup)
 		++processing->ndef;
 	}
 
+	/* YB note: attmissingval is unused in YB relations. */
 	/* Likewise for a missing value */
-	if (attp->atthasmissing)
+	if (!IsYBRelation(relation) && attp->atthasmissing)
 	{
 		bool missingNull;
 
@@ -2220,10 +2222,10 @@ YbBinSearchCatNamesComp(const void *a, const void *b)
 
 /*
  * This is an incomplete mapping between PG catalog names to Prefetch tables.
- * However, it is extensible as needed to accomdate different use cases.
+ * However, it is extensible as needed to accommodate different use cases.
  * This list must be sorted in alpabetical order.
  * NOTE: Not all catalogs can be preloaded as part of additional catalogs to
- * preload. Please validate whether a catalog can be preloaded before using it 
+ * preload. Please validate whether a catalog can be preloaded before using it
  * in production.
  */
 static const YbCatNamePfId YbCatalogNamesPfIds[] = {
@@ -2654,13 +2656,35 @@ YbParseAdditionalCatalogList(YbPFetchTable **prefetch_tables,
 {
 	const char *preload_cat_flag =
 		YBCGetGFlags()->ysql_catalog_preload_additional_table_list;
+	const bool preload_additional_tables =
+		*YBCGetGFlags()->ysql_catalog_preload_additional_tables;
+	const char *default_additional_tables =
+		"pg_am,pg_amproc,pg_cast,pg_tablespace";
+	const char *extra_tables = NULL;
 
 	if (!IS_NON_EMPTY_STR_FLAG(preload_cat_flag))
-		return;
+	{
+		/* Neither gflag is set. */
+		if (!preload_additional_tables)
+			return;
+		/* Only the old boolean gflag is set. */
+		preload_cat_flag = default_additional_tables;
+	}
+	else if (preload_additional_tables)
+	{
+		/* Both gflags are set */
+		extra_tables = default_additional_tables;
+	}
 
-	// strtok only takes non-const char* and will modify it. So make a copy.
-	char *preload_catstr = (char *) palloc(strlen(preload_cat_flag) + 1);
-	// Excluded empty string case. There must be at least one token here.
+	/* strtok only takes non-const char* and will modify it. So make a copy. */
+	Size length = strlen(preload_cat_flag) + 1;
+	if (extra_tables)
+		length += strlen(extra_tables) + 1;
+	char *preload_catstr = (char *) palloc(length);
+	/*
+	 * Excluded empty string case. There must be at least one token in
+	 * preload_cat_flag.
+	 */
 	int d = 0, s = 0, cnt = 1;
 	char c;
 	while ((c = preload_cat_flag[s++]) != '\0')
@@ -2668,6 +2692,18 @@ YbParseAdditionalCatalogList(YbPFetchTable **prefetch_tables,
 		preload_catstr[d++] = c;
 		if (c == ',')
 			++cnt;
+	}
+	if (extra_tables)
+	{
+		s = 0;
+		preload_catstr[d++] = ',';
+		++cnt;
+		while ((c = extra_tables[s++]) != '\0')
+		{
+			preload_catstr[d++] = c;
+			if (c == ',')
+				++cnt;
+		}
 	}
 	preload_catstr[d] = '\0';
 
@@ -2723,7 +2759,7 @@ YbRegisterAdditionalCatalogs(YbTablePrefetcherState *prefetcher)
 	YbParseAdditionalCatalogList(&additional_tables, &count);
 	if (count > 0)
 	{
-		YBC_LOG_INFO("YSQL is prefetching additional catalogs.");
+		YBC_LOG_INFO("YSQL is prefetching %d additional catalogs.", count);
 		Assert(additional_tables != NULL);
 		YbRegisterTables(prefetcher, additional_tables, count);
 	}
@@ -8099,8 +8135,9 @@ load_relcache_init_file(bool shared)
 	 * below.
 	 */
 	if (IsYugaByteEnabled() &&
-		IS_NON_EMPTY_STR_FLAG(
-			YBCGetGFlags()->ysql_catalog_preload_additional_table_list))
+		(IS_NON_EMPTY_STR_FLAG(
+			YBCGetGFlags()->ysql_catalog_preload_additional_table_list) ||
+			*YBCGetGFlags()->ysql_catalog_preload_additional_tables))
 		return false;
 
 	RelCacheInitFileName(initfilename, shared);

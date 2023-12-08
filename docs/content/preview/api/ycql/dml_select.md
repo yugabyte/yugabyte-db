@@ -46,7 +46,7 @@ Where
 
 - `table_name` and `column_name` are identifiers (`table_name` may be qualified with a keyspace name).
 - `limit_expression` is an integer literal (or a bind variable marker for prepared statements).
-- Restrictions for `where_expression` are discussed in the Semantics section below.
+- Restrictions for `where_expression` are discussed in the Semantics section.
 - See [Expressions](..#expressions) for more information on syntax rules.
 
 ## Semantics

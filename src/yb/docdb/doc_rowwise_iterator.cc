@@ -303,7 +303,7 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
     if (doc_reader_ == nullptr) {
       doc_reader_ = std::make_unique<DocDBTableReader>(
           db_iter_.get(), read_operation_data_.deadline, &projection_, table_type_,
-          schema_packing_storage());
+          schema_packing_storage(), schema());
       RETURN_NOT_OK(doc_reader_->UpdateTableTombstoneTime(
           VERIFY_RESULT(GetTableTombstoneTime(row_key))));
       if (!ignore_ttl_) {

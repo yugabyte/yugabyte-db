@@ -125,9 +125,9 @@ inline bool operator==(const ConnectionId& lhs, const ConnectionId& rhs) {
 struct OutboundCallMetrics {
   explicit OutboundCallMetrics(const scoped_refptr<MetricEntity>& metric_entity);
 
-  scoped_refptr<Histogram> queue_time;
-  scoped_refptr<Histogram> send_time;
-  scoped_refptr<Histogram> time_to_response;
+  scoped_refptr<EventStats> queue_time;
+  scoped_refptr<EventStats> send_time;
+  scoped_refptr<EventStats> time_to_response;
 };
 
 // A response to a call, on the client side.

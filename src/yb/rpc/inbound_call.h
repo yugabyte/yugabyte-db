@@ -69,6 +69,7 @@ class Message;
 
 namespace yb {
 
+class EventStats;
 class Histogram;
 class Trace;
 
@@ -141,7 +142,7 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   // Updates the Histogram with time elapsed since the call was received,
   // and should only be called once on a given instance.
   // Not thread-safe. Should only be called by the current "owner" thread.
-  virtual void RecordHandlingStarted(scoped_refptr<Histogram> incoming_queue_time);
+  virtual void RecordHandlingStarted(scoped_refptr<EventStats> incoming_queue_time);
 
   // When RPC call Handle() completed execution on the server side.
   // Updates the Histogram with time elapsed since the call was started,

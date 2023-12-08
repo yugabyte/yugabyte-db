@@ -37,6 +37,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/thread.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
@@ -48,6 +49,7 @@ DECLARE_bool(enable_tablet_split_of_xcluster_replicated_tables);
 DECLARE_int32(replication_factor);
 DECLARE_string(certs_for_cdc_dir);
 DECLARE_string(certs_dir);
+DECLARE_int32(catalog_manager_bg_task_wait_ms);
 
 namespace yb {
 
@@ -82,7 +84,7 @@ Status XClusterTestBase::InitClusters(const MiniClusterOptions& opts) {
 
   {
     TEST_SetThreadPrefixScoped prefix_se("P");
-    RETURN_NOT_OK(producer_cluster()->StartSync());
+    RETURN_NOT_OK(producer_cluster()->StartAsync());
   }
 
   auto consumer_opts = opts;
@@ -91,15 +93,14 @@ Status XClusterTestBase::InitClusters(const MiniClusterOptions& opts) {
 
   {
     TEST_SetThreadPrefixScoped prefix_se("C");
-    RETURN_NOT_OK(consumer_cluster()->StartSync());
+    RETURN_NOT_OK(consumer_cluster()->StartAsync());
   }
 
-  RETURN_NOT_OK(RunOnBothClusters([&opts](MiniCluster* cluster) {
-    return cluster->WaitForTabletServerCount(opts.num_tablet_servers);
+  RETURN_NOT_OK(RunOnBothClusters([](Cluster* cluster) {
+    RETURN_NOT_OK(cluster->mini_cluster_->WaitForAllTabletServers());
+    cluster->client_ = VERIFY_RESULT(cluster->mini_cluster_->CreateClient());
+    return Status();
   }));
-
-  producer_cluster_.client_ = VERIFY_RESULT(producer_cluster()->CreateClient());
-  consumer_cluster_.client_ = VERIFY_RESULT(consumer_cluster()->CreateClient());
 
   return Status::OK();
 }
@@ -165,12 +166,18 @@ Status XClusterTestBase::RunOnBothClusters(std::function<Status(Cluster*)> run_o
 }
 
 Status XClusterTestBase::WaitForLoadBalancersToStabilize() {
-  RETURN_NOT_OK(
-      producer_cluster()->WaitForLoadBalancerToStabilize(MonoDelta::FromSeconds(kRpcTimeout)));
-  return consumer_cluster()->WaitForLoadBalancerToStabilize(MonoDelta::FromSeconds(kRpcTimeout));
+  auto se = ScopeExit([catalog_manager_bg_task_wait_ms = FLAGS_catalog_manager_bg_task_wait_ms] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) =
+        catalog_manager_bg_task_wait_ms;
+  });
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 10;
+
+  RETURN_NOT_OK(WaitForLoadBalancerToStabilize(producer_cluster()));
+  RETURN_NOT_OK(WaitForLoadBalancerToStabilize(consumer_cluster()));
+  return Status::OK();
 }
 
-Status XClusterTestBase::WaitForLoadBalancersToStabilize(MiniCluster* cluster) {
+Status XClusterTestBase::WaitForLoadBalancerToStabilize(MiniCluster* cluster) {
   return cluster->WaitForLoadBalancerToStabilize(MonoDelta::FromSeconds(kRpcTimeout));
 }
 
@@ -199,34 +206,38 @@ Result<YBTableName> XClusterTestBase::CreateTable(
 
 Status XClusterTestBase::SetupUniverseReplication(const std::vector<string>& producer_table_ids) {
   return SetupUniverseReplication(
-      producer_cluster(), consumer_cluster(), consumer_client(), kReplicationGroupId, producer_table_ids);
+      producer_cluster(), consumer_cluster(), consumer_client(), kReplicationGroupId,
+      producer_table_ids);
 }
 
 Status XClusterTestBase::SetupUniverseReplication(
     const std::vector<std::shared_ptr<client::YBTable>>& producer_tables,
     const std::vector<xrepl::StreamId>& bootstrap_ids, SetupReplicationOptions opts) {
   return SetupUniverseReplication(
-      producer_cluster(), consumer_cluster(), consumer_client(), kReplicationGroupId, producer_tables,
-      bootstrap_ids, opts);
+      producer_cluster(), consumer_cluster(), consumer_client(), kReplicationGroupId,
+      producer_tables, bootstrap_ids, opts);
 }
 
 Status XClusterTestBase::SetupUniverseReplication(
-    const std::vector<std::shared_ptr<client::YBTable>>& producer_tables, SetupReplicationOptions opts) {
+    const std::vector<std::shared_ptr<client::YBTable>>& producer_tables,
+    SetupReplicationOptions opts) {
   return SetupUniverseReplication(kReplicationGroupId, producer_tables, opts);
 }
 
 Status XClusterTestBase::SetupUniverseReplication(
     const cdc::ReplicationGroupId& replication_group_id,
-    const std::vector<std::shared_ptr<client::YBTable>>& producer_tables, SetupReplicationOptions opts) {
+    const std::vector<std::shared_ptr<client::YBTable>>& producer_tables,
+    SetupReplicationOptions opts) {
   return SetupUniverseReplication(
-      producer_cluster(), consumer_cluster(), consumer_client(), replication_group_id, producer_tables,
-      {} /* bootstrap_ids */, opts);
+      producer_cluster(), consumer_cluster(), consumer_client(), replication_group_id,
+      producer_tables, {} /* bootstrap_ids */, opts);
 }
 
 Status XClusterTestBase::SetupReverseUniverseReplication(
     const std::vector<std::shared_ptr<client::YBTable>>& producer_tables) {
   return SetupUniverseReplication(
-      consumer_cluster(), producer_cluster(), producer_client(), kReplicationGroupId, producer_tables);
+      consumer_cluster(), producer_cluster(), producer_client(), kReplicationGroupId,
+      producer_tables);
 }
 
 Status XClusterTestBase::SetupUniverseReplication(
@@ -246,7 +257,8 @@ Status XClusterTestBase::SetupUniverseReplication(
 
 Status XClusterTestBase::SetupUniverseReplication(
     MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
-    const cdc::ReplicationGroupId& replication_group_id, const std::vector<TableId>& producer_table_ids,
+    const cdc::ReplicationGroupId& replication_group_id,
+    const std::vector<TableId>& producer_table_ids,
     const std::vector<xrepl::StreamId>& bootstrap_ids, SetupReplicationOptions opts) {
   // If we have certs for encryption in FLAGS_certs_dir then we need to copy it over to the
   // universe_id subdirectory in FLAGS_certs_for_cdc_dir.
@@ -653,21 +665,22 @@ Status XClusterTestBase::WaitForRoleChangeToPropogateToAllTServers(
 
 Result<std::vector<xrepl::StreamId>> XClusterTestBase::BootstrapProducer(
     MiniCluster* producer_cluster, YBClient* producer_client,
-    const std::vector<std::shared_ptr<yb::client::YBTable>>& tables) {
+    const std::vector<std::shared_ptr<yb::client::YBTable>>& tables, int proxy_tserver_index) {
   std::vector<string> table_ids;
   for (const auto& table : tables) {
     table_ids.push_back(table->id());
   }
 
-  return BootstrapProducer(producer_cluster, producer_client, table_ids);
+  return BootstrapProducer(producer_cluster, producer_client, table_ids, proxy_tserver_index);
 }
 
 Result<std::vector<xrepl::StreamId>> XClusterTestBase::BootstrapProducer(
-    MiniCluster* producer_cluster, YBClient* producer_client,
-    const std::vector<string>& table_ids) {
+    MiniCluster* producer_cluster, YBClient* producer_client, const std::vector<string>& table_ids,
+    int proxy_tserver_index) {
   std::unique_ptr<cdc::CDCServiceProxy> producer_cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(
       &producer_client->proxy_cache(),
-      HostPort::FromBoundEndpoint(producer_cluster->mini_tablet_server(0)->bound_rpc_addr()));
+      HostPort::FromBoundEndpoint(
+          producer_cluster->mini_tablet_server(proxy_tserver_index)->bound_rpc_addr()));
   cdc::BootstrapProducerRequestPB req;
   cdc::BootstrapProducerResponsePB resp;
 

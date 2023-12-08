@@ -77,7 +77,7 @@
 
 namespace yb {
 
-class Histogram;
+class EventStats;
 
 namespace client {
 
@@ -160,7 +160,7 @@ class RemoteTabletServer {
   std::shared_ptr<tserver::TabletServerServiceProxy> proxy_;
   ::yb::HostPort proxy_endpoint_;
   const tserver::LocalTabletServer* const local_tserver_ = nullptr;
-  scoped_refptr<Histogram> dns_resolve_histogram_;
+  scoped_refptr<EventStats> dns_resolve_stats_;
   std::vector<CapabilityId> capabilities_ GUARDED_BY(mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(RemoteTabletServer);

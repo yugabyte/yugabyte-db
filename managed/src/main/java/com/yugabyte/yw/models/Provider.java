@@ -348,7 +348,8 @@ public class Provider extends Model {
   public enum UsabilityState {
     READY,
     UPDATING,
-    ERROR
+    ERROR,
+    DELETING
   }
 
   /** Query Helper for Provider with uuid */

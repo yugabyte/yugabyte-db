@@ -1,7 +1,5 @@
 
-Run `ycqlsh` to connect to the service.
-
-You can do this as shown below.
+Run `ycqlsh` to connect to the service as follows:
 
 ```sh
 $ ./bin/ycqlsh

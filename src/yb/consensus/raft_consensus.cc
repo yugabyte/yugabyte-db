@@ -177,7 +177,7 @@ METRIC_DEFINE_gauge_int64(tablet, is_raft_leader,
                           "Keeps track whether tablet is raft leader"
                           "1 indicates that the tablet is raft leader");
 
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
   table, dns_resolve_latency_during_update_raft_config,
   "yb.consensus.RaftConsensus.UpdateRaftConfig DNS Resolve",
   yb::MetricUnit::kMicroseconds,
@@ -420,14 +420,14 @@ RaftConsensus::RaftConsensus(
       step_down_check_tracker_(&peer_proxy_factory_->messenger()->scheduler()),
       mark_dirty_clbk_(std::move(mark_dirty_clbk)),
       shutdown_(false),
-      follower_memory_pressure_rejections_(tablet_metric_entity->FindOrCreateCounter(
+      follower_memory_pressure_rejections_(tablet_metric_entity->FindOrCreateMetric<Counter>(
           &METRIC_follower_memory_pressure_rejections)),
-      term_metric_(tablet_metric_entity->FindOrCreateGauge(&METRIC_raft_term,
-                                                    cmeta->current_term())),
+      term_metric_(tablet_metric_entity->FindOrCreateMetric<AtomicGauge<int64_t>>(
+          &METRIC_raft_term, cmeta->current_term())),
       follower_last_update_time_ms_metric_(
-          tablet_metric_entity->FindOrCreateAtomicMillisLag(&METRIC_follower_lag_ms)),
-      is_raft_leader_metric_(tablet_metric_entity->FindOrCreateGauge(&METRIC_is_raft_leader,
-                                                              static_cast<int64_t>(0))),
+          tablet_metric_entity->FindOrCreateMetric<AtomicMillisLag>(&METRIC_follower_lag_ms)),
+      is_raft_leader_metric_(tablet_metric_entity->FindOrCreateMetric<AtomicGauge<int64_t>>(
+          &METRIC_is_raft_leader, static_cast<int64_t>(0))),
       parent_mem_tracker_(std::move(parent_mem_tracker)),
       table_type_(table_type),
       update_raft_config_dns_latency_(
@@ -3199,6 +3199,8 @@ void RaftConsensus::DumpStatusHtml(std::ostream& out) const {
   }
 
   if (role == PeerRole::LEADER) {
+    peer_manager_->DumpToHtml(out);
+    out << "<hr/>" << std::endl;
     out << "<h2>Queue overview</h2>" << std::endl;
     out << "<pre>" << EscapeForHtmlToString(queue_->ToString()) << "</pre>" << std::endl;
     out << "<hr/>" << std::endl;

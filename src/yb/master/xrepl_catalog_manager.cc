@@ -39,6 +39,7 @@
 #include "yb/master/master_replication.pb.h"
 #include "yb/master/master_util.h"
 #include "yb/master/scoped_leader_shared_lock-internal.h"
+#include "yb/master/snapshot_transfer_manager.h"
 #include "yb/master/sys_catalog-internal.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
 #include "yb/master/ysql_tablegroup_manager.h"
@@ -108,16 +109,38 @@ DEFINE_test_flag(bool, exit_unfinished_deleting, false,
 DEFINE_test_flag(bool, exit_unfinished_merging, false,
     "Whether to exit part way through the merging universe process.");
 
+DEFINE_test_flag(
+    bool, xcluster_fail_create_consumer_snapshot, false,
+    "In the SetupReplicationWithBootstrap flow, test failure to create snapshot on consumer.");
+
+DEFINE_test_flag(
+    bool, xcluster_fail_restore_consumer_snapshot, false,
+    "In the SetupReplicationWithBootstrap flow, test failure to restore snapshot on consumer.");
+
 DECLARE_bool(xcluster_wait_on_ddl_alter);
 DECLARE_int32(master_rpc_timeout_ms);
 
 #define RETURN_ACTION_NOT_OK(expr, action) \
   RETURN_NOT_OK_PREPEND((expr), Format("An error occurred while $0", action))
 
+// assumes the existence of a local variable bootstrap_info
+#define MARK_BOOTSTRAP_FAILED_NOT_OK(s) \
+  do { \
+    auto&& _s = (s); \
+    if (PREDICT_FALSE(!_s.ok())) { \
+      MarkReplicationBootstrapFailed(bootstrap_info, _s); \
+      return; \
+    } \
+  } while (false)
+
+#define VERIFY_RESULT_MARK_BOOTSTRAP_FAILED(expr) \
+  RESULT_CHECKER_HELPER(expr, MARK_BOOTSTRAP_FAILED_NOT_OK(ResultToStatus(__result)))
+
 namespace yb {
 using client::internal::RemoteTabletServer;
 
 namespace master {
+using TableMetaPB = ImportSnapshotMetaResponsePB::TableMetaPB;
 
 ////////////////////////////////////////////////////////////
 // CDC Stream Loader
@@ -388,6 +411,78 @@ Status CatalogManager::LoadUniverseReplication() {
   return Status::OK();
 }
 
+////////////////////////////////////////////////////////////
+// Universe Replication Bootstrap Loader
+////////////////////////////////////////////////////////////
+
+class UniverseReplicationBootstrapLoader
+    : public Visitor<PersistentUniverseReplicationBootstrapInfo> {
+ public:
+  explicit UniverseReplicationBootstrapLoader(CatalogManager* catalog_manager)
+      : catalog_manager_(catalog_manager) {}
+
+  Status Visit(
+      const std::string& replication_group_id_str,
+      const SysUniverseReplicationBootstrapEntryPB& metadata) REQUIRES(catalog_manager_->mutex_) {
+    const cdc::ReplicationGroupId replication_group_id(replication_group_id_str);
+    DCHECK(!ContainsKey(
+        catalog_manager_->universe_replication_bootstrap_map_,
+        cdc::ReplicationGroupId(replication_group_id)))
+        << "Producer universe already exists: " << replication_group_id;
+
+    // Setup the universe replication info.
+    scoped_refptr<UniverseReplicationBootstrapInfo> const bootstrap_info =
+        new UniverseReplicationBootstrapInfo(replication_group_id);
+    {
+      auto l = bootstrap_info->LockForWrite();
+      l.mutable_data()->pb.CopyFrom(metadata);
+
+      if (!l->is_done() && !l->is_deleted_or_failed()) {
+        // Replication was not fully setup.
+        LOG(WARNING) << "Universe replication bootstrap in transient state: "
+                     << replication_group_id;
+
+        // Delete tasks in transient state.
+        l.mutable_data()->pb.set_failed_on(l->state());
+        l.mutable_data()->pb.set_state(SysUniverseReplicationBootstrapEntryPB::DELETING);
+        catalog_manager_->replication_bootstraps_to_clear_.push_back(
+            bootstrap_info->ReplicationGroupId());
+      }
+
+      // Add universe replication bootstrap info to the universe replication map.
+      catalog_manager_->universe_replication_bootstrap_map_[bootstrap_info->ReplicationGroupId()] =
+          bootstrap_info;
+
+      // Add any failed bootstraps to be cleared
+      if (l->is_deleted_or_failed() ||
+          l->pb.state() == SysUniverseReplicationBootstrapEntryPB::DELETING) {
+        catalog_manager_->replication_bootstraps_to_clear_.push_back(
+            bootstrap_info->ReplicationGroupId());
+      }
+      l.Commit();
+    }
+
+    LOG(INFO) << "Loaded metadata for universe replication bootstrap" << bootstrap_info->ToString();
+    VLOG(1) << "Metadata for universe replication bootstrap " << bootstrap_info->ToString() << ": "
+            << metadata.ShortDebugString();
+
+    return Status::OK();
+  }
+
+ private:
+  CatalogManager* catalog_manager_;
+};
+
+Status CatalogManager::LoadUniverseReplicationBootstrap() {
+  LOG_WITH_FUNC(INFO) << "Loading universe replication bootstrap info into memory.";
+  auto loader = std::make_unique<UniverseReplicationBootstrapLoader>(this);
+  RETURN_NOT_OK_PREPEND(
+      sys_catalog_->Visit(loader.get()),
+      "Failed while visiting universe replication bootstrap info in sys catalog");
+
+  return Status::OK();
+}
+
 // Helper class to print a vector of CDCStreamInfo pointers.
 namespace {
 
@@ -529,7 +624,7 @@ void CatalogManager::GetAllCDCStreams(std::vector<scoped_refptr<CDCStreamInfo>>*
 }
 
 Status CatalogManager::BackfillMetadataForCDC(
-    scoped_refptr<TableInfo> table, rpc::RpcContext* rpc) {
+    scoped_refptr<TableInfo> table, const LeaderEpoch& epoch, rpc::RpcContext* rpc) {
   TableId table_id;
   AlterTableRequestPB alter_table_req_pg_type;
   bool backfill_required = false;
@@ -595,7 +690,7 @@ Status CatalogManager::BackfillMetadataForCDC(
     // consumption because the former is generally done manually.
     alter_table_req_pg_type.mutable_table()->set_table_id(table_id);
     AlterTableResponsePB alter_table_resp_pg_type;
-    return this->AlterTable(&alter_table_req_pg_type, &alter_table_resp_pg_type, rpc);
+    return this->AlterTable(&alter_table_req_pg_type, &alter_table_resp_pg_type, rpc, epoch);
   } else {
     LOG_WITH_FUNC(INFO)
         << "found pgschema_name and pg_type_oid, no backfilling required for table id: "
@@ -605,7 +700,8 @@ Status CatalogManager::BackfillMetadataForCDC(
 }
 
 Status CatalogManager::CreateCDCStream(
-    const CreateCDCStreamRequestPB* req, CreateCDCStreamResponsePB* resp, rpc::RpcContext* rpc) {
+    const CreateCDCStreamRequestPB* req, CreateCDCStreamResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
   LOG(INFO) << "CreateCDCStream from " << RequestorString(rpc) << ": " << req->ShortDebugString();
   std::string id_type_option_value(cdc::kTableId);
 
@@ -631,14 +727,14 @@ Status CatalogManager::CreateCDCStream(
     alter_table_req.mutable_table()->set_table_id(req->table_id());
     alter_table_req.set_wal_retention_secs(FLAGS_cdc_wal_retention_time_secs);
     AlterTableResponsePB alter_table_resp;
-    Status s = this->AlterTable(&alter_table_req, &alter_table_resp, rpc);
+    Status s = this->AlterTable(&alter_table_req, &alter_table_resp, rpc, epoch);
     if (!s.ok()) {
       return STATUS(
           InternalError, "Unable to change the WAL retention time for table", req->table_id(),
           MasterError(MasterErrorPB::INTERNAL_ERROR));
     }
 
-    Status status = BackfillMetadataForCDC(table, rpc);
+    Status status = BackfillMetadataForCDC(table, epoch, rpc);
     if (!status.ok()) {
       return STATUS(
           InternalError, "Unable to backfill pgschema_name and/or pg_type_oid", req->table_id(),
@@ -647,7 +743,7 @@ Status CatalogManager::CreateCDCStream(
   }
 
   if (!req->has_db_stream_id()) {
-    RETURN_NOT_OK(CreateNewCDCStream(*req, id_type_option_value, resp, rpc));
+    RETURN_NOT_OK(CreateNewCDCStream(*req, id_type_option_value, resp, rpc, epoch));
   } else {
     // Update and add table_id.
     RETURN_NOT_OK(AddTableIdToCDCStream(*req));
@@ -661,7 +757,7 @@ Status CatalogManager::CreateCDCStream(
 
 Status CatalogManager::CreateNewCDCStream(
     const CreateCDCStreamRequestPB& req, const std::string& id_type_option_value,
-    CreateCDCStreamResponsePB* resp, rpc::RpcContext* rpc) {
+    CreateCDCStreamResponsePB* resp, rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
   scoped_refptr<CDCStreamInfo> stream;
   {
     TRACE("Acquired catalog manager lock");
@@ -708,7 +804,8 @@ Status CatalogManager::CreateNewCDCStream(
   CreateTableResponsePB table_resp;
   RETURN_NOT_OK(CreateTableIfNotFound(
       cdc::CDCStateTable::GetNamespaceName(), cdc::CDCStateTable::GetTableName(),
-      &cdc::CDCStateTable::GenerateCreateCdcStateTableRequest, &table_resp, /* rpc */ nullptr));
+      &cdc::CDCStateTable::GenerateCreateCdcStateTableRequest, &table_resp, /* rpc */ nullptr,
+      epoch));
   TRACE("Created CDC state table");
 
   // Skip if disable_cdc_state_insert_on_setup is set.
@@ -1222,8 +1319,8 @@ Status CatalogManager::CleanUpCDCMetadataFromSystemCatalog(
 
   // Do system catalog UPDATE and DELETE based on the streams_to_update and streams_to_delete.
   auto writer = sys_catalog_->NewWriter(leader_ready_term());
-  RETURN_NOT_OK(writer->Mutate(QLWriteRequestPB::QL_STMT_DELETE, streams_to_delete));
-  RETURN_NOT_OK(writer->Mutate(QLWriteRequestPB::QL_STMT_UPDATE, streams_to_update));
+  RETURN_NOT_OK(writer->Mutate<true>(QLWriteRequestPB::QL_STMT_DELETE, streams_to_delete));
+  RETURN_NOT_OK(writer->Mutate<true>(QLWriteRequestPB::QL_STMT_UPDATE, streams_to_update));
   RETURN_NOT_OK(CheckStatus(
       sys_catalog_->SyncWrite(writer.get()), "Cleaning CDC streams from system catalog"));
   LOG(INFO) << "Successfully cleaned up the streams " << JoinStreamsCSVLine(streams_to_delete)
@@ -1783,6 +1880,52 @@ CatalogManager::CreateUniverseReplicationInfoForProducer(
   return ri;
 }
 
+Result<scoped_refptr<UniverseReplicationBootstrapInfo>>
+CatalogManager::CreateUniverseReplicationBootstrapInfoForProducer(
+    const cdc::ReplicationGroupId& replication_group_id,
+    const google::protobuf::RepeatedPtrField<HostPortPB>& master_addresses,
+    const LeaderEpoch& epoch, bool transactional) {
+  scoped_refptr<UniverseReplicationBootstrapInfo> bootstrap_info;
+  {
+    TRACE("Acquired catalog manager lock");
+    SharedLock lock(mutex_);
+
+    if (FindPtrOrNull(universe_replication_bootstrap_map_, replication_group_id) != nullptr) {
+      return STATUS(
+          InvalidArgument, "Bootstrap already present", replication_group_id.ToString(),
+          MasterError(MasterErrorPB::INVALID_REQUEST));
+    }
+  }
+
+  // Create an entry in the system catalog DocDB for this new universe replication.
+  bootstrap_info = new UniverseReplicationBootstrapInfo(replication_group_id);
+  bootstrap_info->mutable_metadata()->StartMutation();
+
+  SysUniverseReplicationBootstrapEntryPB* metadata =
+      &bootstrap_info->mutable_metadata()->mutable_dirty()->pb;
+  metadata->set_replication_group_id(replication_group_id.ToString());
+  metadata->mutable_producer_master_addresses()->CopyFrom(master_addresses);
+  metadata->set_state(SysUniverseReplicationBootstrapEntryPB::INITIALIZING);
+  metadata->set_transactional(transactional);
+  metadata->set_leader_term(epoch.leader_term);
+  metadata->set_pitr_count(epoch.pitr_count);
+
+  RETURN_NOT_OK(CheckLeaderStatus(
+      sys_catalog_->Upsert(leader_ready_term(), bootstrap_info),
+      "inserting universe replication bootstrap info into sys-catalog"));
+
+  TRACE("Wrote universe replication bootstrap info to sys-catalog");
+  // Commit the in-memory state now that it's added to the persistent catalog.
+  bootstrap_info->mutable_metadata()->CommitMutation();
+  LOG(INFO) << "Setup universe replication bootstrap from producer " << bootstrap_info->ToString();
+
+  {
+    LockGuard lock(mutex_);
+    universe_replication_bootstrap_map_[bootstrap_info->ReplicationGroupId()] = bootstrap_info;
+  }
+  return bootstrap_info;
+}
+
 Status CatalogManager::ValidateMasterAddressesBelongToDifferentCluster(
     const google::protobuf::RepeatedPtrField<HostPortPB>& master_addresses) {
   std::vector<ServerEntryPB> cluster_master_addresses;
@@ -1812,13 +1955,167 @@ Status CatalogManager::ValidateMasterAddressesBelongToDifferentCluster(
   return Status::OK();
 }
 
-Status CatalogManager::SetupNamespaceReplicationWithBootstrap(
-    const SetupNamespaceReplicationWithBootstrapRequestPB* req,
-    SetupNamespaceReplicationWithBootstrapResponsePB* resp, rpc::RpcContext* rpc) {
-  LOG(INFO) << "SetupNamespaceReplicationWithBootstrap from " << RequestorString(rpc) << ": "
-            << req->DebugString();
+Result<SnapshotInfoPB> CatalogManager::DoReplicationBootstrapCreateSnapshot(
+    const std::vector<client::YBTableName>& tables,
+    scoped_refptr<UniverseReplicationBootstrapInfo> bootstrap_info) {
+  LOG(INFO) << Format(
+      "SetupReplicationWithBootstrap: create producer snapshot for replication $0",
+      bootstrap_info->id());
+  SetReplicationBootstrapState(
+      bootstrap_info, SysUniverseReplicationBootstrapEntryPB::CREATE_PRODUCER_SNAPSHOT);
 
-  // Sanity checking section.
+  auto cdc_rpc_tasks = VERIFY_RESULT(bootstrap_info->GetOrCreateCDCRpcTasks(
+      bootstrap_info->LockForRead()->pb.producer_master_addresses()));
+
+  TxnSnapshotId old_snapshot_id = TxnSnapshotId::Nil();
+
+  // Send create request and wait for completion.
+  auto snapshot_result = cdc_rpc_tasks->CreateSnapshot(tables, &old_snapshot_id);
+
+  // If the producer failed to complete the snapshot, we still want to store the snapshot_id for
+  // cleanup purposes.
+  if (!old_snapshot_id.IsNil()) {
+    auto l = bootstrap_info->LockForWrite();
+    l.mutable_data()->set_old_snapshot_id(old_snapshot_id);
+
+    // Update sys_catalog.
+    const Status s = sys_catalog_->Upsert(leader_ready_term(), bootstrap_info);
+    l.CommitOrWarn(s, "updating universe replication bootstrap info in sys-catalog");
+  }
+
+  return snapshot_result;
+}
+
+Result<std::vector<TableMetaPB>> CatalogManager::DoReplicationBootstrapImportSnapshot(
+    const SnapshotInfoPB& snapshot,
+    scoped_refptr<UniverseReplicationBootstrapInfo> bootstrap_info) {
+  ///////////////////////////
+  // ImportSnapshotMeta
+  ///////////////////////////
+  LOG(INFO) << Format(
+      "SetupReplicationWithBootstrap: import snapshot for replication $0", bootstrap_info->id());
+  SetReplicationBootstrapState(
+      bootstrap_info, SysUniverseReplicationBootstrapEntryPB::IMPORT_SNAPSHOT);
+
+  ImportSnapshotMetaResponsePB import_resp;
+  NamespaceMap namespace_map;
+  UDTypeMap type_map;
+  ExternalTableSnapshotDataMap tables_data;
+
+  // ImportSnapshotMeta timeout should be a function of the table size.
+  auto deadline = CoarseMonoClock::Now() + MonoDelta::FromSeconds(10 + 1 * tables_data.size());
+  auto epoch = bootstrap_info->LockForRead()->epoch();
+  RETURN_NOT_OK(DoImportSnapshotMeta(
+      snapshot, epoch, &import_resp, &namespace_map, &type_map, &tables_data, deadline));
+
+  // Update sys catalog with new information.
+  {
+    auto l = bootstrap_info->LockForWrite();
+    l.mutable_data()->set_new_snapshot_objects(namespace_map, type_map, tables_data);
+
+    // Update sys_catalog.
+    const Status s = sys_catalog_->Upsert(leader_ready_term(), bootstrap_info);
+    l.CommitOrWarn(s, "updating universe replication bootstrap info in sys-catalog");
+  }
+  auto tables_meta = import_resp.tables_meta();
+
+  ///////////////////////////
+  // CreateConsumerSnapshot
+  ///////////////////////////
+  LOG(INFO) << Format(
+      "SetupReplicationWithBootstrap: create consumer snapshot for replication $0",
+      bootstrap_info->id());
+  SetReplicationBootstrapState(
+      bootstrap_info, SysUniverseReplicationBootstrapEntryPB::CREATE_CONSUMER_SNAPSHOT);
+
+  CreateSnapshotRequestPB snapshot_req;
+  CreateSnapshotResponsePB snapshot_resp;
+
+  for (const auto& table_meta : tables_meta) {
+    SCHECK(
+        ImportSnapshotMetaResponsePB_TableType_IsValid(table_meta.table_type()), InternalError,
+        Format("Found unknown table type: $0", table_meta.table_type()));
+
+    const string& new_table_id = table_meta.table_ids().new_id();
+    RETURN_NOT_OK(WaitForCreateTableToFinish(new_table_id, deadline));
+
+    snapshot_req.mutable_tables()->Add()->set_table_id(new_table_id);
+  }
+
+  snapshot_req.set_add_indexes(false);
+  snapshot_req.set_transaction_aware(true);
+  snapshot_req.set_imported(true);
+  RETURN_NOT_OK(CreateTransactionAwareSnapshot(snapshot_req, &snapshot_resp, deadline));
+
+  // Update sys catalog with new information.
+  {
+    auto l = bootstrap_info->LockForWrite();
+    l.mutable_data()->set_new_snapshot_id(TryFullyDecodeTxnSnapshotId(snapshot_resp.snapshot_id()));
+
+    // Update sys_catalog.
+    const Status s = sys_catalog_->Upsert(leader_ready_term(), bootstrap_info);
+    l.CommitOrWarn(s, "updating universe replication bootstrap info in sys-catalog");
+  }
+
+  return std::vector<TableMetaPB>(tables_meta.begin(), tables_meta.end());
+}
+
+Status CatalogManager::DoReplicationBootstrapTransferAndRestoreSnapshot(
+    const std::vector<TableMetaPB>& tables_meta,
+    scoped_refptr<UniverseReplicationBootstrapInfo> bootstrap_info) {
+  // Retrieve required data from PB.
+  TxnSnapshotId old_snapshot_id = TxnSnapshotId::Nil();
+  TxnSnapshotId new_snapshot_id = TxnSnapshotId::Nil();
+  google::protobuf::RepeatedPtrField<HostPortPB> producer_masters;
+  auto epoch = bootstrap_info->epoch();
+  {
+    auto l = bootstrap_info->LockForRead();
+    old_snapshot_id = l->old_snapshot_id();
+    new_snapshot_id = l->new_snapshot_id();
+    producer_masters.CopyFrom(l->pb.producer_master_addresses());
+  }
+
+  auto cdc_rpc_tasks = VERIFY_RESULT(bootstrap_info->GetOrCreateCDCRpcTasks(producer_masters));
+
+  // Transfer snapshot.
+  SetReplicationBootstrapState(
+      bootstrap_info, SysUniverseReplicationBootstrapEntryPB::TRANSFER_SNAPSHOT);
+  auto snapshot_transfer_manager =
+      std::make_shared<SnapshotTransferManager>(master_, this, cdc_rpc_tasks->client());
+  RETURN_NOT_OK_PREPEND(
+      snapshot_transfer_manager->TransferSnapshot(
+          old_snapshot_id, new_snapshot_id, tables_meta, epoch),
+      Format("Failed to transfer snapshot $0 from producer", old_snapshot_id.ToString()));
+
+  // Restore snapshot.
+  SetReplicationBootstrapState(
+      bootstrap_info, SysUniverseReplicationBootstrapEntryPB::RESTORE_SNAPSHOT);
+  auto restoration_id = VERIFY_RESULT(
+      snapshot_coordinator_.Restore(new_snapshot_id, HybridTime(), epoch.leader_term));
+
+  if (PREDICT_FALSE(FLAGS_TEST_xcluster_fail_restore_consumer_snapshot)) {
+    return STATUS(Aborted, "Test failure");
+  }
+
+  // Wait for restoration to complete.
+  return WaitFor(
+      [this, &new_snapshot_id, &restoration_id]() -> Result<bool> {
+        ListSnapshotRestorationsResponsePB resp;
+        RETURN_NOT_OK(
+            snapshot_coordinator_.ListRestorations(restoration_id, new_snapshot_id, &resp));
+
+        SCHECK_EQ(
+            resp.restorations_size(), 1, IllegalState,
+            Format("Expected 1 restoration, got $0", resp.restorations_size()));
+        const auto& restoration = *resp.restorations().begin();
+        const auto& state = restoration.entry().state();
+        return state == SysSnapshotEntryPB::RESTORED;
+      },
+      MonoDelta::kMax, "Waiting for restoration to finish", 100ms);
+}
+
+Status CatalogManager::ValidateReplicationBootstrapRequest(
+    const SetupNamespaceReplicationWithBootstrapRequestPB* req) {
   SCHECK(
       !req->replication_id().empty(), InvalidArgument, "Replication ID must be provided",
       req->ShortDebugString());
@@ -1838,20 +2135,138 @@ Status CatalogManager::SetupNamespaceReplicationWithBootstrap(
       ValidateMasterAddressesBelongToDifferentCluster(req->producer_master_addresses()),
       req->ShortDebugString());
 
-  // Connect to producer universe.
-  const cdc::ReplicationGroupId replication_id(req->replication_id());
-  std::vector<HostPort> hp;
-  HostPortsFromPBs(req->producer_master_addresses(), &hp);
-  std::string master_addrs = HostPort::ToCommaSeparatedString(hp);
-  auto cdc_rpc_tasks =
-      VERIFY_RESULT(CDCRpcTasks::CreateWithMasterAddrs(replication_id, master_addrs));
+  GetUniverseReplicationRequestPB universe_req;
+  GetUniverseReplicationResponsePB universe_resp;
+  universe_req.set_producer_id(req->replication_id());
+  SCHECK(
+      GetUniverseReplication(&universe_req, &universe_resp, /* RpcContext */ nullptr).IsNotFound(),
+      InvalidArgument, Format("Can't bootstrap replication that already exists"));
 
-  // TODO: Make this async.
-  auto tables = VERIFY_RESULT(cdc_rpc_tasks->client()->ListUserTables(req->producer_namespace()));
+  return Status::OK();
+}
 
-  // TODO: these bootstrap IDs will be used later.
+void CatalogManager::DoReplicationBootstrap(
+    const cdc::ReplicationGroupId& replication_id, const std::vector<client::YBTableName>& tables,
+    Result<TableBootstrapIdsMap> bootstrap_producer_result) {
+  // First get the universe.
+  scoped_refptr<UniverseReplicationBootstrapInfo> bootstrap_info;
+  {
+    SharedLock lock(mutex_);
+    TRACE("Acquired catalog manager lock");
+
+    bootstrap_info = FindPtrOrNull(universe_replication_bootstrap_map_, replication_id);
+    if (bootstrap_info == nullptr) {
+      LOG(ERROR) << "UniverseReplicationBootstrap not found: " << replication_id;
+      return;
+    }
+  }
+
+  // Verify the result from BootstrapProducer & update values in PB if successful.
   auto table_bootstrap_ids =
-      VERIFY_RESULT(cdc_rpc_tasks->BootstrapProducer(req->producer_namespace(), tables));
+      VERIFY_RESULT_MARK_BOOTSTRAP_FAILED(std::move(bootstrap_producer_result));
+  {
+    auto l = bootstrap_info->LockForWrite();
+    auto map = l.mutable_data()->pb.mutable_table_bootstrap_ids();
+    for (const auto& [table_id, bootstrap_id] : table_bootstrap_ids) {
+      (*map)[table_id] = bootstrap_id.ToString();
+    }
+
+    // Update sys_catalog.
+    const Status s = sys_catalog_->Upsert(leader_ready_term(), bootstrap_info);
+    l.CommitOrWarn(s, "updating universe replication bootstrap info in sys-catalog");
+  }
+
+  // Create producer snapshot.
+  auto snapshot = VERIFY_RESULT_MARK_BOOTSTRAP_FAILED(
+      DoReplicationBootstrapCreateSnapshot(tables, bootstrap_info));
+
+  // Import snapshot and create consumer snapshot.
+  auto tables_meta = VERIFY_RESULT_MARK_BOOTSTRAP_FAILED(
+      DoReplicationBootstrapImportSnapshot(snapshot, bootstrap_info));
+
+  // Transfer and restore snapshot.
+  MARK_BOOTSTRAP_FAILED_NOT_OK(
+      DoReplicationBootstrapTransferAndRestoreSnapshot(tables_meta, bootstrap_info));
+
+  // Call SetupUniverseReplication
+  SetupUniverseReplicationRequestPB replication_req;
+  SetupUniverseReplicationResponsePB replication_resp;
+  {
+    auto l = bootstrap_info->LockForRead();
+    replication_req.set_producer_id(l->pb.replication_group_id());
+    replication_req.set_transactional(l->pb.transactional());
+    replication_req.mutable_producer_master_addresses()->CopyFrom(
+        l->pb.producer_master_addresses());
+    for (const auto& [table_id, bootstrap_id] : table_bootstrap_ids) {
+      replication_req.add_producer_table_ids(table_id);
+      replication_req.add_producer_bootstrap_ids(bootstrap_id.ToString());
+    }
+  }
+
+  SetReplicationBootstrapState(
+      bootstrap_info, SysUniverseReplicationBootstrapEntryPB::SETUP_REPLICATION);
+  MARK_BOOTSTRAP_FAILED_NOT_OK(
+      SetupUniverseReplication(&replication_req, &replication_resp, /* rpc = */ nullptr));
+
+  LOG(INFO) << Format(
+      "Successfully completed replication bootstrap for $0", replication_id.ToString());
+  SetReplicationBootstrapState(bootstrap_info, SysUniverseReplicationBootstrapEntryPB::DONE);
+}
+
+/*
+ * SetupNamespaceReplicationWithBootstrap is setup in 5 stages.
+ * 1. Validates user input & connect to producer.
+ * 2. Calls BootstrapProducer with all user tables in namespace.
+ * 3. Create snapshot on producer and import onto consumer.
+ * 4. Download snapshots from producer and restore on consumer.
+ * 5. SetupUniverseReplication.
+ */
+Status CatalogManager::SetupNamespaceReplicationWithBootstrap(
+    const SetupNamespaceReplicationWithBootstrapRequestPB* req,
+    SetupNamespaceReplicationWithBootstrapResponsePB* resp,
+    rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG(INFO) << Format(
+      "SetupNamespaceReplicationWithBootstrap from $0: $1", RequestorString(rpc),
+      req->DebugString());
+
+  // PHASE 1: Validating user input.
+  RETURN_NOT_OK(ValidateReplicationBootstrapRequest(req));
+
+  // Create entry in sys catalog.
+  auto replication_id = cdc::ReplicationGroupId(req->replication_id());
+  auto transactional = req->has_transactional() ? req->transactional() : false;
+  auto bootstrap_info = VERIFY_RESULT(CreateUniverseReplicationBootstrapInfoForProducer(
+      replication_id, req->producer_master_addresses(), epoch, transactional));
+
+  // Connect to producer.
+  auto cdc_rpc_result = bootstrap_info->GetOrCreateCDCRpcTasks(req->producer_master_addresses());
+  if (!cdc_rpc_result.ok()) {
+    auto s = ResultToStatus(cdc_rpc_result);
+    MarkReplicationBootstrapFailed(bootstrap_info, s);
+    return s;
+  }
+  auto cdc_rpc_tasks = std::move(*cdc_rpc_result);
+
+  // Get user tables in producer namespace.
+  auto tables_result = cdc_rpc_tasks->client()->ListUserTables(req->producer_namespace());
+  if (!tables_result.ok()) {
+    auto s = ResultToStatus(tables_result);
+    MarkReplicationBootstrapFailed(bootstrap_info, s);
+    return s;
+  }
+  auto tables = std::move(*tables_result);
+
+  // Bootstrap producer.
+  SetReplicationBootstrapState(
+      bootstrap_info, SysUniverseReplicationBootstrapEntryPB::BOOTSTRAP_PRODUCER);
+  auto s = cdc_rpc_tasks->BootstrapProducer(
+      req->producer_namespace(), tables,
+      Bind(&CatalogManager::DoReplicationBootstrap, Unretained(this), replication_id, tables));
+  if (!s.ok()) {
+    MarkReplicationBootstrapFailed(bootstrap_info, s);
+    return s;
+  }
 
   return Status::OK();
 }
@@ -1997,6 +2412,49 @@ void CatalogManager::MarkUniverseReplicationFailed(
   const Status s = sys_catalog_->Upsert(leader_ready_term(), universe);
 
   l.CommitOrWarn(s, "updating universe replication info in sys-catalog");
+}
+
+void CatalogManager::MarkReplicationBootstrapFailed(
+    scoped_refptr<UniverseReplicationBootstrapInfo> bootstrap_info,
+    const Status& failure_status) {
+  auto l = bootstrap_info->LockForWrite();
+  MarkReplicationBootstrapFailed(failure_status, &l, bootstrap_info);
+}
+
+void CatalogManager::MarkReplicationBootstrapFailed(
+    const Status& failure_status,
+    CowWriteLock<PersistentUniverseReplicationBootstrapInfo>* bootstrap_info_lock,
+    scoped_refptr<UniverseReplicationBootstrapInfo> bootstrap_info) {
+  auto& l = *bootstrap_info_lock;
+  auto state = l->pb.state();
+  if (state == SysUniverseReplicationBootstrapEntryPB::DELETED) {
+    l.mutable_data()->pb.set_state(SysUniverseReplicationBootstrapEntryPB::DELETED_ERROR);
+  } else {
+    l.mutable_data()->pb.set_state(SysUniverseReplicationBootstrapEntryPB::FAILED);
+    l.mutable_data()->pb.set_failed_on(state);
+  }
+
+  LOG(WARNING) << Format(
+      "Replication bootstrap $0 failed: $1", bootstrap_info->ToString(),
+      failure_status.ToString());
+
+  bootstrap_info->SetReplicationBootstrapErrorStatus(failure_status);
+
+  // Update sys_catalog.
+  const Status s = sys_catalog_->Upsert(leader_ready_term(), bootstrap_info);
+
+  l.CommitOrWarn(s, "updating universe replication bootstrap info in sys-catalog");
+}
+
+void CatalogManager::SetReplicationBootstrapState(
+    scoped_refptr<UniverseReplicationBootstrapInfo> bootstrap_info,
+    const SysUniverseReplicationBootstrapEntryPB::State& state) {
+  auto l = bootstrap_info->LockForWrite();
+  l.mutable_data()->set_state(state);
+
+  // Update sys_catalog.
+  const Status s = sys_catalog_->Upsert(leader_ready_term(), bootstrap_info);
+  l.CommitOrWarn(s, "updating universe replication bootstrap info in sys-catalog");
 }
 
 Status CatalogManager::IsBootstrapRequiredOnProducer(
@@ -3019,7 +3477,7 @@ void CatalogManager::MergeUniverseReplication(
     {
       // Need both these updates to be atomic.
       auto w = sys_catalog_->NewWriter(leader_ready_term());
-      auto s = w->Mutate(
+      auto s = w->Mutate<true>(
           QLWriteRequestPB::QL_STMT_UPDATE,
           original_universe.get(),
           universe.get(),
@@ -3561,8 +4019,8 @@ Status CatalogManager::UpdateProducerAddress(
     {
       // Need both these updates to be atomic.
       auto w = sys_catalog_->NewWriter(leader_ready_term());
-      RETURN_NOT_OK(
-          w->Mutate(QLWriteRequestPB::QL_STMT_UPDATE, universe.get(), cluster_config.get()));
+      RETURN_NOT_OK(w->Mutate<true>(
+          QLWriteRequestPB::QL_STMT_UPDATE, universe.get(), cluster_config.get()));
       RETURN_NOT_OK(CheckStatus(
           sys_catalog_->SyncWrite(w.get()),
           "Updating universe replication info and cluster config in sys-catalog"));
@@ -3686,7 +4144,8 @@ Status CatalogManager::RemoveTablesFromReplication(
     {
       // Need both these updates to be atomic.
       auto w = sys_catalog_->NewWriter(leader_ready_term());
-      auto s = w->Mutate(QLWriteRequestPB::QL_STMT_UPDATE, universe.get(), cluster_config.get());
+      auto s = w->Mutate<true>(
+          QLWriteRequestPB::QL_STMT_UPDATE, universe.get(), cluster_config.get());
       if (s.ok()) {
         s = sys_catalog_->SyncWrite(w.get());
       }
@@ -3878,9 +4337,9 @@ Status CatalogManager::RenameUniverseReplication(
     {
       // Need both these updates to be atomic.
       auto w = sys_catalog_->NewWriter(leader_ready_term());
-      RETURN_NOT_OK(w->Mutate(QLWriteRequestPB::QL_STMT_DELETE, universe.get()));
+      RETURN_NOT_OK(w->Mutate<true>(QLWriteRequestPB::QL_STMT_DELETE, universe.get()));
       RETURN_NOT_OK(
-          w->Mutate(QLWriteRequestPB::QL_STMT_UPDATE, new_ri.get(), cluster_config.get()));
+          w->Mutate<true>(QLWriteRequestPB::QL_STMT_UPDATE, new_ri.get(), cluster_config.get()));
       RETURN_NOT_OK(CheckStatus(
           sys_catalog_->SyncWrite(w.get()),
           "Updating universe replication info and cluster config in sys-catalog"));
@@ -4009,6 +4468,64 @@ Status CatalogManager::IsSetupUniverseReplicationDone(
     }
 
     return Status::OK();
+  }
+
+  // Not done yet.
+  resp->set_done(false);
+  return Status::OK();
+}
+
+Status CatalogManager::IsSetupNamespaceReplicationWithBootstrapDone(
+    const IsSetupNamespaceReplicationWithBootstrapDoneRequestPB* req,
+    IsSetupNamespaceReplicationWithBootstrapDoneResponsePB* resp, rpc::RpcContext* rpc) {
+  LOG(INFO) << Format(
+      "IsSetupNamespaceReplicationWithBootstrapDone $0: $1", RequestorString(rpc),
+      req->DebugString());
+
+  SCHECK(req->has_replication_group_id(), InvalidArgument, "Replication group ID must be provided");
+  const cdc::ReplicationGroupId replication_group_id(req->replication_group_id());
+
+  scoped_refptr<UniverseReplicationBootstrapInfo> bootstrap_info;
+  {
+    SharedLock lock(mutex_);
+
+    bootstrap_info = FindPtrOrNull(universe_replication_bootstrap_map_, replication_group_id);
+    SCHECK(
+        bootstrap_info != nullptr, NotFound,
+        Format(
+            "Could not find universe replication bootstrap $0", replication_group_id.ToString()));
+  }
+
+  // Terminal states are DONE or some failure state.
+  {
+    auto l = bootstrap_info->LockForRead();
+    resp->set_state(l->state());
+
+    if (l->is_done()) {
+      resp->set_done(true);
+      StatusToPB(Status::OK(), resp->mutable_bootstrap_error());
+      return Status::OK();
+    }
+
+    if (l->is_deleted_or_failed()) {
+      resp->set_done(true);
+
+      if (!bootstrap_info->GetReplicationBootstrapErrorStatus().ok()) {
+        StatusToPB(
+            bootstrap_info->GetReplicationBootstrapErrorStatus(), resp->mutable_bootstrap_error());
+      } else {
+        LOG(WARNING) << "Did not find setup universe replication bootstrap error status.";
+        StatusToPB(STATUS(InternalError, "unknown error"), resp->mutable_bootstrap_error());
+      }
+
+      // Add failed bootstrap to GC now that we've responded to the user.
+      {
+        LockGuard lock(mutex_);
+        replication_bootstraps_to_clear_.push_back(bootstrap_info->ReplicationGroupId());
+      }
+
+      return Status::OK();
+    }
   }
 
   // Not done yet.
@@ -4881,6 +5398,9 @@ Status CatalogManager::RunXClusterBgTasks() {
   // Clean up Failed Universes on the Consumer.
   WARN_NOT_OK(ClearFailedUniverse(), "Failed Clearing Failed Universe");
 
+  // Clean up Failed Replication Bootstrap on the Consumer.
+  WARN_NOT_OK(ClearFailedReplicationBootstrap(), "Failed Clearing Failed Replication Bootstrap");
+
   // DELETING_METADATA special state is used by CDC, to do CDC streams metadata cleanup from
   // cache as well as from the system catalog for the drop table scenario.
   std::vector<scoped_refptr<CDCStreamInfo>> cdcsdk_streams;
@@ -4970,6 +5490,173 @@ Status CatalogManager::ClearFailedUniverse() {
   return Status::OK();
 }
 
+Status CatalogManager::DoClearFailedReplicationBootstrap(
+    const CleanupFailedReplicationBootstrapInfo& info) {
+  const auto& [
+    state,
+    cdc_rpc_task,
+    bootstrap_ids,
+    old_snapshot_id,
+    new_snapshot_id,
+    namespace_map,
+    type_map,
+    tables_data,
+    epoch
+  ] = info;
+
+  Status s = Status::OK();
+  switch (state) {
+    case SysUniverseReplicationBootstrapEntryPB_State_SETUP_REPLICATION:
+      FALLTHROUGH_INTENDED;
+    case SysUniverseReplicationBootstrapEntryPB_State_RESTORE_SNAPSHOT:
+      FALLTHROUGH_INTENDED;
+    case SysUniverseReplicationBootstrapEntryPB_State_TRANSFER_SNAPSHOT:
+      FALLTHROUGH_INTENDED;
+    case SysUniverseReplicationBootstrapEntryPB_State_CREATE_CONSUMER_SNAPSHOT: {
+      if (!new_snapshot_id.IsNil()) {
+        auto deadline = CoarseMonoClock::Now() + 30s;
+        s = snapshot_coordinator_.Delete(new_snapshot_id, leader_ready_term(), deadline);
+        if (!s.ok()) {
+          LOG(WARNING) << Format("Failed to delete snapshot on consumer on status: $0", s);
+        }
+      }
+    }
+      FALLTHROUGH_INTENDED;
+    case SysUniverseReplicationBootstrapEntryPB_State_IMPORT_SNAPSHOT:
+      DeleteNewSnapshotObjects(namespace_map, type_map, tables_data, epoch);
+      FALLTHROUGH_INTENDED;
+    case SysUniverseReplicationBootstrapEntryPB_State_CREATE_PRODUCER_SNAPSHOT: {
+      if (!old_snapshot_id.IsNil()) {
+        DeleteSnapshotResponsePB resp;
+        s = cdc_rpc_task->client()->DeleteSnapshot(old_snapshot_id, &resp);
+        if (!s.ok()) {
+          LOG(WARNING) << Format(
+              "Failed to send delete snapshot request to producer on status: $0", s);
+        }
+        if (resp.has_error()) {
+          LOG(WARNING) << Format(
+              "Failed to delete snapshot on producer with error: $0", resp.error());
+        }
+      }
+    }
+      FALLTHROUGH_INTENDED;
+    case SysUniverseReplicationBootstrapEntryPB_State_BOOTSTRAP_PRODUCER: {
+      DeleteCDCStreamResponsePB resp;
+      s = cdc_rpc_task->client()->DeleteCDCStream(
+          bootstrap_ids, /* force_delete = */ true, /* ignore_failures = */ false, &resp);
+      if (!s.ok()) {
+        LOG(WARNING) << Format(
+            "Failed to send delete CDC streams request to producer on status: $0", s);
+      }
+      if (resp.has_error()) {
+        LOG(WARNING) << Format(
+            "Failed to delete CDC streams on producer with error: $0", resp.error());
+      }
+    }
+      FALLTHROUGH_INTENDED;
+    case SysUniverseReplicationBootstrapEntryPB_State_INITIALIZING:
+      FALLTHROUGH_INTENDED;
+    case SysUniverseReplicationBootstrapEntryPB_State_DONE:
+      FALLTHROUGH_INTENDED;
+    case SysUniverseReplicationBootstrapEntryPB_State_FAILED:
+      FALLTHROUGH_INTENDED;
+    case SysUniverseReplicationBootstrapEntryPB_State_DELETED:
+      FALLTHROUGH_INTENDED;
+    case SysUniverseReplicationBootstrapEntryPB_State_DELETED_ERROR:
+      FALLTHROUGH_INTENDED;
+    case SysUniverseReplicationBootstrapEntryPB_State_DELETING:
+      break;
+  }
+  return s;
+}
+
+Status CatalogManager::ClearFailedReplicationBootstrap() {
+  cdc::ReplicationGroupId replication_id;
+  {
+    LockGuard lock(mutex_);
+
+    if (replication_bootstraps_to_clear_.empty()) {
+      return Status::OK();
+    }
+    // Get the first bootstrap.  Only try once to avoid failure loops.
+    replication_id = replication_bootstraps_to_clear_.front();
+    replication_bootstraps_to_clear_.pop_front();
+  }
+
+  // First get the universe.
+  scoped_refptr<UniverseReplicationBootstrapInfo> bootstrap_info;
+  {
+    SharedLock lock(mutex_);
+    TRACE("Acquired catalog manager lock");
+
+    bootstrap_info = FindPtrOrNull(universe_replication_bootstrap_map_, replication_id);
+    if (bootstrap_info == nullptr) {
+      auto error_msg =
+          Format("UniverseReplicationBootstrap not found: $0", replication_id.ToString());
+      LOG(ERROR) << error_msg;
+      return STATUS(NotFound, error_msg);
+    }
+  }
+
+  // Retrieve information required to cleanup replication bootstrap.
+  CleanupFailedReplicationBootstrapInfo info;
+
+  {
+    auto l = bootstrap_info->LockForRead();
+    info.state = l->failed_on();
+    info.epoch = l->epoch();
+    info.old_snapshot_id = l->old_snapshot_id();
+    info.new_snapshot_id = l->new_snapshot_id();
+    info.cdc_rpc_task =
+        VERIFY_RESULT(bootstrap_info->GetOrCreateCDCRpcTasks(l->pb.producer_master_addresses()));
+
+    for (const auto& entry : l->pb.table_bootstrap_ids()) {
+      info.bootstrap_ids.emplace_back(VERIFY_RESULT(xrepl::StreamIdFromString(entry.second)));
+    }
+
+    l->set_into_namespace_map(&info.namespace_map);
+    l->set_into_tables_data(&info.tables_data);
+    l->set_into_ud_type_map(&info.type_map);
+  }
+
+  // Set sys catalog state to be DELETING.
+  {
+    auto l = bootstrap_info->LockForWrite();
+    l.mutable_data()->pb.set_state(SysUniverseReplicationBootstrapEntryPB::DELETING);
+    Status s = sys_catalog_->Upsert(leader_ready_term(), bootstrap_info);
+    RETURN_NOT_OK(
+        CheckLeaderStatus(s, "Updating delete universe replication info into sys-catalog"));
+    TRACE("Wrote universe replication bootstrap info to sys-catalog");
+    l.Commit();
+  }
+
+  // Start cleanup.
+  auto l = bootstrap_info->LockForWrite();
+  l.mutable_data()->pb.set_state(SysUniverseReplicationBootstrapEntryPB::DELETED);
+
+  // Cleanup any objects created during the bootstrap process.
+  WARN_NOT_OK(
+      DoClearFailedReplicationBootstrap(info),
+      "Failed to delete newly created objects in replication bootstrap");
+
+  // Try to delete from sys catalog.
+  RETURN_ACTION_NOT_OK(
+      sys_catalog_->Delete(leader_ready_term(), bootstrap_info),
+      Format("updating sys-catalog, replication_group_id: $0", bootstrap_info->id()));
+
+  // Remove it from the map.
+  LockGuard lock(mutex_);
+  if (universe_replication_bootstrap_map_.erase(bootstrap_info->ReplicationGroupId()) < 1) {
+    LOG(WARNING) << "Failed to remove replication info from map: replication_group_id: "
+                 << bootstrap_info->id();
+  }
+
+  TRACE("Wrote universe replication bootstrap info to sys-catalog");
+  l.Commit();
+
+  return Status::OK();
+}
+
 void CatalogManager::StartCDCParentTabletDeletionTaskIfStopped() {
   if (GetAtomicFlag(&FLAGS_cdc_parent_tablet_deletion_task_retry_secs) <= 0) {
     // Task is disabled.
@@ -5042,7 +5729,6 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion() {
 
     size_t count_tablet_streams_to_delete = 0;
     size_t count_streams_already_deleted = 0;
-    vector<xrepl::StreamId> streams_where_parent_unpolled;
 
     for (const auto& stream_id : stream_ids) {
       // Check parent entry, if it doesn't exist, then it was already deleted.
@@ -5074,7 +5760,6 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion() {
             (checkpoint == OpId::Min() && !entry_opt->last_replication_time)) {
           VLOG(2) << "The stream: " << stream_id << ", is not active for tablet: " << tablet_id;
           count_tablet_streams_to_delete++;
-          streams_where_parent_unpolled.push_back(stream_id);
           continue;
         }
       }
@@ -5105,19 +5790,6 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion() {
         // Also delete the parent tablet from cdc_state for all completed streams.
         entries_to_delete.emplace_back(cdc::CDCStateTableKey{tablet_id, stream_id});
         count_tablet_streams_to_delete++;
-      }
-    }
-
-    // Set the checkpoint as -1.-1 for child entries on whose parent's we have not started polling
-    // yet, to prevent unnecessary retention of intents for the children tablets.
-    for (auto& child_tablet_id : hidden_tablet.split_tablets_) {
-      for (const auto& stream_id : streams_where_parent_unpolled) {
-        cdc::CDCStateTableEntry entry(child_tablet_id, stream_id);
-        entry.checkpoint = OpId::Invalid();
-        entries_to_update.push_back(std::move(entry));
-        LOG(INFO) << "Resetting checkpoint of child tablet: " << child_tablet_id << " in stream "
-                  << stream_id << " to -1.-1 ."
-                  << "Reason: Consumer has not started polling on these tablets yet";
       }
     }
 

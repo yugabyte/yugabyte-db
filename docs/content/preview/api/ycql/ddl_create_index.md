@@ -312,7 +312,7 @@ ycqlsh:example> SELECT SUM(amount) FROM orders
 
 ### Create a table with a unique index
 
-You can do this as shown below.
+You can do this as follows:
 
 ```sql
 ycqlsh:example> CREATE TABLE emp (enum INT primary key,
@@ -355,8 +355,8 @@ ycqlsh:example> SELECT * FROM emp;
 
 ### Create an index specifying the number of tablets
 
-You can use the `CREATE INDEX` statement with the `WITH tablets = <num>` clause to specify the number of tablets for an index. This is useful to scale the index up or down based on requirements. 
-For example, for smaller or partial indexes, it may be wasteful to have a large number of shards (tablets). In that case, you can use this to reduce the number of tablets created for the index. 
+You can use the `CREATE INDEX` statement with the `WITH tablets = <num>` clause to specify the number of tablets for an index. This is useful to scale the index up or down based on requirements.
+For example, for smaller or partial indexes, it may be wasteful to have a large number of shards (tablets). In that case, you can use this to reduce the number of tablets created for the index.
 Similarly, for a very large index, you can use this statement to presplit the index into a large number of shards to get improved performance.
 
 Note that YugabyteDB, by default, presplits an index in `yb_num_shards_per_tserver * num_of_tserver` shards. This clause can be used to override that setting on per-index basis.

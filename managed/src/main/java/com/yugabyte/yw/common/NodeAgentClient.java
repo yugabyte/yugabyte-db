@@ -350,7 +350,6 @@ public class NodeAgentClient {
     return Jwts.builder()
         .setIssuer("https://www.yugabyte.com")
         .setSubject("Platform")
-        .setIssuedAt(new Date())
         .setExpiration(Date.from(Instant.now().plusSeconds(tokenLifetime.getSeconds())))
         .signWith(SignatureAlgorithm.RS512, privateKey)
         .compact();

@@ -115,8 +115,8 @@ Result<YBTransactionPtr> QLEnv::NewTransaction(const YBTransactionPtr& transacti
   return result;
 }
 
-YBSessionPtr QLEnv::NewSession() {
-  auto session = std::make_shared<YBSession>(client_, clock_);
+YBSessionPtr QLEnv::NewSession(CoarseTimePoint deadline) {
+  auto session = std::make_shared<YBSession>(client_, deadline, clock_);
   session->set_allow_local_calls_in_curr_thread(FLAGS_ycql_allow_local_calls_in_curr_thread);
   return session;
 }

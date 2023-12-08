@@ -5,6 +5,8 @@ CREATE TABLE yb_locks_t (k int PRIMARY KEY);
 INSERT INTO yb_locks_t VALUES (1),(2),(3),(4),(5);
 CREATE TABLE yb_locks_t2 (k1 int, k2 int, k3 int, v int, PRIMARY KEY(k1, k2, k3));
 INSERT INTO yb_locks_t2 VALUES (1,2,3,4),(5,6,7,8);
+CREATE TABLE yb_locks_tasc (k int, PRIMARY KEY (k ASC));
+INSERT INTO yb_locks_tasc VALUES (1),(2),(3);
 SET yb_lock_pk_single_rpc TO ON;
 -- Test plain (unlocked case).
 EXPLAIN (COSTS OFF)
@@ -148,6 +150,22 @@ SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UP
   1 |  2 |  3 | 4 | 1
 (2 rows)
 
+-- Test LockRows node is used with ASC table when YB Sequential Scan is used.
+/*+ SeqScan(yb_locks_tasc) */ EXPLAIN (COSTS OFF)
+SELECT * FROM yb_locks_tasc WHERE k=1 FOR UPDATE;
+             QUERY PLAN             
+------------------------------------
+ LockRows
+   ->  YB Seq Scan on yb_locks_tasc
+         Remote Filter: (k = 1)
+(3 rows)
+
+/*+ SeqScan(yb_locks_tasc) */ SELECT * FROM yb_locks_tasc WHERE k=1 FOR UPDATE;
+ k 
+---
+ 1
+(1 row)
+
 -- In isolation level SERIALIZABLE, all locks are done during scans.
 BEGIN ISOLATION LEVEL SERIALIZABLE;
 -- Test same locking as for REPEATABLE READ (default isolation).
@@ -200,6 +218,39 @@ SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UP
   5 |  6 |  7 | 8 | 5
   1 |  2 |  3 | 4 | 1
 (2 rows)
+
+-- Test locking, and no LockRows node, when using an ASC table and YB Sequential Scan.
+-- (No WHERE clause.)
+/*+ SeqScan(yb_locks_tasc) */ EXPLAIN (COSTS OFF)
+SELECT * FROM yb_locks_tasc FOR UPDATE;
+                    QUERY PLAN                    
+--------------------------------------------------
+ YB Seq Scan (Locked FOR UPDATE) on yb_locks_tasc
+(1 row)
+
+/*+ SeqScan(yb_locks_tasc) */ SELECT * FROM yb_locks_tasc FOR UPDATE;
+ k 
+---
+ 1
+ 2
+ 3
+(3 rows)
+
+-- For an ASC table, should lock inline, with no LockRows node.
+EXPLAIN (COSTS OFF)
+SELECT * FROM yb_locks_tasc ORDER BY k FOR UPDATE;
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Index Scan (Locked FOR UPDATE) using yb_locks_tasc_pkey on yb_locks_tasc
+(1 row)
+
+SELECT * FROM yb_locks_tasc ORDER BY k FOR UPDATE;
+ k 
+---
+ 1
+ 2
+ 3
+(3 rows)
 
 COMMIT;
 -- Test with single-RPC select+lock turned off.
@@ -341,4 +392,4 @@ SELECT * FROM yb_locks_t WHERE k=5 FOR UPDATE;
  ]
 (1 row)
 
-DROP TABLE yb_locks_t, yb_locks_t2, yb_locks_partition;
+DROP TABLE yb_locks_t, yb_locks_t2, yb_locks_tasc, yb_locks_partition;

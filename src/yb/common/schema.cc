@@ -78,9 +78,10 @@ ColumnSchema::ColumnSchema(std::string name,
                            bool is_counter,
                            int32_t order,
                            int32_t pg_type_oid,
-                           bool marked_for_deletion)
+                           bool marked_for_deletion,
+                           const QLValuePB& missing_value)
     : ColumnSchema(std::move(name), QLType::Create(type), kind, is_nullable, is_static, is_counter,
-                   order, pg_type_oid, marked_for_deletion) {
+                   order, pg_type_oid, marked_for_deletion, missing_value) {
 }
 
 const TypeInfo* ColumnSchema::type_info() const {
@@ -151,7 +152,8 @@ bool ColumnSchema::TEST_Equals(const ColumnSchema& lhs, const ColumnSchema& rhs)
                           is_counter_,
                           order_,
                           pg_type_oid_,
-                          marked_for_deletion_);
+                          marked_for_deletion_,
+                          missing_value_);
 }
 
 SortingType ColumnSchema::sorting_type() const {
@@ -600,6 +602,20 @@ Result<const ColumnSchema&> Schema::column_by_id(ColumnId id) const {
     return STATUS_FORMAT(InvalidArgument, "Column id $0 not found", id.ToString());
   }
   return cols_[idx];
+}
+
+void Schema::UpdateMissingValuesFrom(
+    const google::protobuf::RepeatedPtrField<ColumnSchemaPB>& columns) {
+  for (int i = 0; i < columns.size(); ++i) {
+    if (columns[i].has_missing_value()) {
+      cols_[i].set_missing_value(columns[i].missing_value());
+    }
+  }
+}
+
+Result<const QLValuePB&> Schema::GetMissingValueByColumnId(ColumnId id) const {
+  const auto& column_schema = VERIFY_RESULT_REF(column_by_id(id));
+  return column_schema.missing_value();
 }
 
 bool Schema::TEST_Equals(const Schema& lhs, const Schema& rhs) {

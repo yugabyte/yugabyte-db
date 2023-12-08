@@ -41,9 +41,11 @@ To use Azure Private Link, you need the following:
 
 Make sure that default security group in your application Azure Virtual Network (VNet) allows internal connectivity. Otherwise, your application may not be able to reach the endpoint.
 
-To use Private Link to connect your cluster to an Azure VNet that hosts your application, first create a private service endpoint (PSE) on your cluster, then create an endpoint in Azure.
+To use Azure Private Link to connect your cluster to an Azure VNet that hosts your application, first create a private service endpoint (PSE) on your cluster, then create an endpoint in Azure.
 
 ## Create a PSE in YugabyteDB Managed
+
+You create the PSE for your cluster using [ybm CLI](../../../managed-automation/managed-cli/).
 
 To create a PSE, do the following:
 
@@ -81,8 +83,16 @@ To create a PSE, do the following:
 
 Note the following values:
 
-- **Host** - The host name of the PSE. You will use this to connect to your cluster. The host name of a PSE for Azure always ends in `azure.ybdb.io`. The PSE Host is also displayed in YugabyteDB Managed on the cluster **Settings** tab under **Connection Parameters**.
+- **Host** - The host name of the PSE. You will use this to [connect to your cluster](../../../cloud-connect/connect-applications/). The host name of a PSE for Azure always ends in `azure.ybdb.io`. The PSE Host is also displayed in YugabyteDB Managed on the cluster **Settings** tab under **Connection Parameters**.
 - **Service Name** - The Service Name is also referred to as an alias in Azure. You will use this service name when creating the private endpoint in Azure.
+
+To delete a PSE, enter the following command:
+
+```sh
+ybm cluster network endpoint delete \
+    --cluster-name <yugabytedb_cluster> \
+    --endpoint-id <endpoint_id> \
+```
 
 ## Create a private endpoint in Azure
 
@@ -219,7 +229,7 @@ To create the private endpoint and connect it to your YBM PSE (called a private 
 az network private-endpoint create \
     --connection-name <private_link_service_connection_name> \
     --name <private_endpoint_name> \
-    --private-connection-resource-id <service_name> \
+    --private-connection-resource-id <pse_service_name> \
     --resource-group <resource_group_name> \
     --subnet <subnet_name> \
     --vnet-name <private_endpoint_vnet_name> \
@@ -230,7 +240,7 @@ Replace values as follows:
 
 - `private_link_service_connection_name` - provide a name for the private link connection from the private endpoint to the private link service.
 - `private_endpoint_name` - provide a name for the private endpoint.
-- `service_name` - the Service Name of the PSE, which you noted down when creating the PSE.
+- `pse_service_name` - the Service Name of the PSE, which you noted down when creating the PSE.
 - `resource_group_name` - the resource group in which the private endpoint will be created.
 - `subnet_name` - the name of the subnet in the resource group in which the private endpoint will be created.
 - `private_endpoint_vnet_name` - the name of the VNet where the private endpoint will be created.
@@ -312,3 +322,8 @@ To be able to connect to your cluster using DNS (rather than the bare IP address
     - `private_endpoint_ipv4_address` - the IP address of the private endpoint.
     - `record_set_name` - provide a name for the record.
     - `resource_group_name` - the resource group in which the private endpoint was created.
+
+## Next steps
+
+- [Connect your application](../../../cloud-connect/connect-applications/)
+- [Add database users](../../../cloud-secure-clusters/add-users/)

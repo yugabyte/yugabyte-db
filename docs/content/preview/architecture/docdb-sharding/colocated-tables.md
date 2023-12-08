@@ -102,7 +102,7 @@ You can create a backup of a database that was colocated with the deprecated syn
 All the tables in a colocated database are colocated by default. There is no need to enable colocation when creating tables. You can choose to opt specific tables out of colocation in a colocated database. To do this, use the following command:
 
 ```sql
-CREATE TABLE <name> (WITH COLOCATION = false);
+CREATE TABLE <name> (columns) WITH (COLOCATION = false);
 ```
 
 Note that you cannot create a colocated table in a non-colocated database.
@@ -140,7 +140,7 @@ To view metrics such as table size, use the name of the parent colocation table.
 ## Limitations and considerations
 
 - Creating colocated tables with tablespaces is disallowed. This will be supported in future releases.
-- Metrics for table metrics such as table size are available for the colocation table, not for individual colocated tables that are part of the colocation.
+- Metrics for table metrics such as table size are available for the colocation tablet, not for individual colocated tables that are part of the colocation.
 - Tablet splitting is disabled for colocated tables.
 - You can't configure xCluster replication for colocated tables using the YugabyteDB Anywhere UI in the 2.18.0 release. This functionality will be available in a future release.
 

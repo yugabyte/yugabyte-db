@@ -1855,7 +1855,6 @@ ReadCommonScan(Scan *local_node)
 	ReadCommonPlan(&local_node->plan);
 
 	READ_UINT_FIELD(scanrelid);
-	READ_ENUM_FIELD(yb_lock_mechanism, YbLockMechanism);
 }
 
 /*
@@ -1937,6 +1936,8 @@ _readIndexScan(void)
 	READ_NODE_FIELD(yb_idx_pushdown.colrefs);
 	READ_NODE_FIELD(yb_rel_pushdown.quals);
 	READ_NODE_FIELD(yb_rel_pushdown.colrefs);
+	READ_INT_FIELD(yb_distinct_prefixlen);
+	READ_ENUM_FIELD(yb_lock_mechanism, YbLockMechanism);
 
 	READ_DONE();
 }
@@ -1959,6 +1960,7 @@ _readIndexOnlyScan(void)
 	READ_ENUM_FIELD(indexorderdir, ScanDirection);
 	READ_NODE_FIELD(yb_pushdown.quals);
 	READ_NODE_FIELD(yb_pushdown.colrefs);
+	READ_INT_FIELD(yb_distinct_prefixlen);
 
 	READ_DONE();
 }
@@ -2258,12 +2260,12 @@ _readYbBatchedNestLoop(void)
 
 	YbBNLHashClauseInfo *current_hinfo = local_node->hashClauseInfos;
 	for (int i = 0; i < num_hashClauseInfos; i++)
-	{	
+	{
 		const char *tok = pg_strtok(&length);
 		(void) tok;
 		tok = pg_strtok(&length);
 		current_hinfo->hashOp = atoi(tok);
-		
+
 		tok = pg_strtok(&length);
 		(void) tok;
 		tok = pg_strtok(&length);

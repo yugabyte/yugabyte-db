@@ -158,6 +158,7 @@ struct TableIteratorOptions {
   ReadHybridTime read_time;
   std::string tablet;
   StatusFunctor error_handler;
+  MonoDelta timeout = MonoDelta::FromSeconds(60);
 };
 
 class TableIterator : public std::iterator<

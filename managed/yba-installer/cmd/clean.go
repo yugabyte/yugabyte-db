@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"path/filepath"
+	// "path/filepath"
 
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
@@ -21,12 +21,6 @@ func cleanCmd() *cobra.Command {
 		Args:    cobra.MaximumNArgs(1),
 		// Confirm with the user before deleting ALL data.
 		PreRun: func(cmd *cobra.Command, args []string) {
-			// Version check before clean
-			if !common.RunFromInstalled() {
-				path := filepath.Join(common.YbactlInstallDir(), "yba-ctl")
-				log.Fatal("clean must be run from " + path +
-					". It may be in the systems $PATH for easy of use.")
-			}
 
 			// Prompt for remmoving all data
 			if removeData {

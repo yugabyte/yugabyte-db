@@ -121,6 +121,14 @@ void PgDmlRead::SetForwardScan(const bool is_forward_scan) {
   read_req_->set_is_forward_scan(is_forward_scan);
 }
 
+void PgDmlRead::SetDistinctPrefixLength(const int distinct_prefix_length) {
+  if (secondary_index_query_) {
+    secondary_index_query_->SetDistinctPrefixLength(distinct_prefix_length);
+  } else {
+    read_req_->set_prefix_length(distinct_prefix_length);
+  }
+}
+
 //--------------------------------------------------------------------------------------------------
 // DML support.
 // TODO(neil) WHERE clause is not yet supported. Revisit this function when it is.
@@ -161,9 +169,6 @@ void PgDmlRead::ClearColRefPBs() {
 //   SELECT column_l, column_m, column_n FROM ...
 
 void PgDmlRead::SetColumnRefs() {
-  if (secondary_index_query_) {
-    DCHECK(!has_aggregate_targets()) << "Aggregate pushdown should not happen with index";
-  }
   read_req_->set_is_aggregate(has_aggregate_targets());
   // Populate column references in the read request
   ColRefsToPB();
@@ -278,62 +283,6 @@ bool PgDmlRead::IsConcreteRowRead() const {
                                   read_req_->range_column_values().size())));
 }
 
-void PgDmlRead::SetDistinctScan(const PgExecParameters *exec_params) {
-  if (exec_params && exec_params->yb_can_pushdown_distinct) {
-    // If we have a nested index requested (due to a colocated index scan), we want
-    // to set prefix length based on that nested index scan, not the higher level scan.
-    if (secondary_index_query_) {
-      return;
-    }
-
-    // Prefix length is determined by the (1-based) index of the last column referenced
-    // in the request.
-    size_t prefix_length = 0;
-    for (const auto& col_ref : read_req_->col_refs()) {
-      if (col_ref.has_column_id()) {
-        auto attr_num = col_ref.attno();
-        // Ignore the virtual column when computing the prefix!
-        if (attr_num == to_underlying(PgSystemAttrNum::kYBTupleId)) {
-          continue;
-        }
-
-        auto col_idx = CHECK_RESULT(bind_->FindColumn(attr_num));
-
-        // Avoid setting the prefix when there are column references to non-key columns
-        //
-        // Example:
-        // ========
-        // Consider a table T
-        // ------------
-        // r1 | r2 | s
-        // ------------
-        // 1  | 1  | 1
-        // 1  | 2  | 2
-        //
-        // SELECT DISTINCT r1 FROM T WHERE r1 = 1 AND s = 2;
-        //
-        // The query must not skip over the second row simply because
-        // the primary index found an entry with r1 = 1
-        //
-        // It is not immediately obvious why doing this is sufficient but
-        // all the fields required for filtering on both the DocDB side and
-        // the postgres side are registered as column references/target list.
-        //
-        // Alternatively, we cannot simply check for additional where_clauses since
-        // not all of the filters are pushed down! Take join predicates for example.
-        // However, all the columns required by such predicates are part of the column
-        // references
-        if (col_idx >= bind_->schema().num_key_columns()) {
-          return;
-        }
-
-        prefix_length = std::max(prefix_length, col_idx + 1);
-      }
-    }
-    read_req_->set_prefix_length(prefix_length);
-  }
-}
-
 Status PgDmlRead::Exec(const PgExecParameters *exec_params) {
   // Save IN/OUT parameters from Postgres.
   pg_exec_params_ = exec_params;
@@ -348,7 +297,6 @@ Status PgDmlRead::Exec(const PgExecParameters *exec_params) {
       CanBuildYbctidsFromPrimaryBinds()) {
     RETURN_NOT_OK(SubstitutePrimaryBindsWithYbctids(exec_params));
   } else {
-    SetDistinctScan(exec_params);
     RETURN_NOT_OK(ProcessEmptyPrimaryBinds());
     if (has_doc_op()) {
       if (row_mark_type == RowMarkType::ROW_MARK_KEYSHARE && !IsConcreteRowRead()) {

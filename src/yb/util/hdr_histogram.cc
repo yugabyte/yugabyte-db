@@ -108,7 +108,7 @@ HdrHistogram::HdrHistogram(const HdrHistogram& other)
   NoBarrier_Store(&current_count_, total_copied_count);
 }
 
-void HdrHistogram::ResetPercentiles() {
+void HdrHistogram::Reset() {
   for (int i = 0; i < counts_array_length_; i++) {
     NoBarrier_Store(&counts_[i], 0);
   }

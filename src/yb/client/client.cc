@@ -83,6 +83,8 @@
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/master_admin.proxy.h"
+#include "yb/master/master_backup.pb.h"
+#include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_client.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_dcl.proxy.h"
@@ -97,6 +99,7 @@
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc.h"
 
+#include "yb/tools/yb-admin_util.h"
 #include "yb/util/atomic.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
@@ -135,6 +138,8 @@ using yb::master::CreateNamespaceRequestPB;
 using yb::master::CreateNamespaceResponsePB;
 using yb::master::CreateRoleRequestPB;
 using yb::master::CreateRoleResponsePB;
+using yb::master::CreateSnapshotRequestPB;
+using yb::master::CreateSnapshotResponsePB;
 using yb::master::CreateTransactionStatusTableRequestPB;
 using yb::master::CreateTransactionStatusTableResponsePB;
 using yb::master::CreateUDTypeRequestPB;
@@ -191,6 +196,8 @@ using yb::master::ListMastersRequestPB;
 using yb::master::ListMastersResponsePB;
 using yb::master::ListNamespacesRequestPB;
 using yb::master::ListNamespacesResponsePB;
+using yb::master::ListSnapshotsRequestPB;
+using yb::master::ListSnapshotsResponsePB;
 using yb::master::ListTablegroupsRequestPB;
 using yb::master::ListTablegroupsResponsePB;
 using yb::master::ListTablesRequestPB;
@@ -209,6 +216,7 @@ using yb::master::ReplicationInfoPB;
 using yb::master::ReservePgsqlOidsRequestPB;
 using yb::master::ReservePgsqlOidsResponsePB;
 using yb::master::TabletLocationsPB;
+using yb::master::TableIdentifierPB;
 using yb::master::UpdateCDCStreamRequestPB;
 using yb::master::UpdateCDCStreamResponsePB;
 using yb::master::UpdateConsumerOnProducerSplitRequestPB;
@@ -682,7 +690,8 @@ Status YBClient::DeleteTable(const string& table_id,
 
 Status YBClient::DeleteIndexTable(const YBTableName& table_name,
                                   YBTableName* indexed_table_name,
-                                  bool wait) {
+                                  bool wait,
+                                  const TransactionMetadata *txn) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->DeleteTable(this,
                             table_name,
@@ -690,12 +699,14 @@ Status YBClient::DeleteIndexTable(const YBTableName& table_name,
                             true /* is_index_table */,
                             deadline,
                             indexed_table_name,
-                            wait);
+                            wait,
+                            txn);
 }
 
 Status YBClient::DeleteIndexTable(const string& table_id,
                                   YBTableName* indexed_table_name,
                                   bool wait,
+                                  const TransactionMetadata *txn,
                                   CoarseTimePoint deadline) {
   return data_->DeleteTable(this,
                             YBTableName(),
@@ -703,7 +714,8 @@ Status YBClient::DeleteIndexTable(const string& table_id,
                             true /* is_index_table */,
                             PatchAdminDeadline(deadline),
                             indexed_table_name,
-                            wait);
+                            wait,
+                            txn);
 }
 
 Status YBClient::FlushTables(const std::vector<TableId>& table_ids,
@@ -1135,11 +1147,13 @@ Status YBClient::CreateTablegroup(const std::string& namespace_name,
                                  txn);
 }
 
-Status YBClient::DeleteTablegroup(const std::string& tablegroup_id) {
+Status YBClient::DeleteTablegroup(const std::string& tablegroup_id,
+                                  const TransactionMetadata* txn) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->DeleteTablegroup(this,
                                  deadline,
-                                 tablegroup_id);
+                                 tablegroup_id,
+                                 txn);
 }
 
 Result<vector<master::TablegroupIdentifierPB>>
@@ -2146,6 +2160,39 @@ std::future<Result<std::vector<internal::RemoteTabletPtr>>> YBClient::LookupAllT
   });
 }
 
+Status YBClient::CreateSnapshot(
+    const std::vector<YBTableName>& tables, CreateSnapshotCallback callback) {
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  return data_->CreateSnapshot(this, tables, deadline, std::move(callback));
+}
+
+Status YBClient::DeleteSnapshot(
+    const TxnSnapshotId& snapshot_id, master::DeleteSnapshotResponsePB* ret) {
+  master::DeleteSnapshotRequestPB req;
+  if (!snapshot_id.IsNil()) req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
+
+  if (ret) {
+    CALL_SYNC_LEADER_MASTER_RPC_EX(Backup, req, (*ret), DeleteSnapshot);
+  } else {
+    master::DeleteSnapshotResponsePB resp;
+    CALL_SYNC_LEADER_MASTER_RPC_EX(Backup, req, resp, DeleteSnapshot);
+  }
+
+  return Status::OK();
+}
+
+Result<RepeatedPtrField<master::SnapshotInfoPB>> YBClient::ListSnapshots(
+    const TxnSnapshotId& snapshot_id, bool prepare_for_backup) {
+  ListSnapshotsRequestPB req;
+  ListSnapshotsResponsePB resp;
+  req.set_prepare_for_backup(prepare_for_backup);
+  if (!snapshot_id.IsNil()) req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
+
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Backup, req, resp, ListSnapshots);
+
+  return resp.snapshots();
+}
+
 HostPort YBClient::GetMasterLeaderAddress() {
   return data_->leader_master_hostport();
 }
@@ -2434,8 +2481,12 @@ void YBClient::GetTableSchemaCallback(std::shared_ptr<YBTableInfo> info,
       });
 }
 
-shared_ptr<YBSession> YBClient::NewSession() {
-  return std::make_shared<YBSession>(this);
+shared_ptr<YBSession> YBClient::NewSession(MonoDelta delta) {
+  return std::make_shared<YBSession>(this, delta);
+}
+
+shared_ptr<YBSession> YBClient::NewSession(CoarseTimePoint deadline) {
+  return std::make_shared<YBSession>(this, deadline);
 }
 
 bool YBClient::IsMultiMaster() const {

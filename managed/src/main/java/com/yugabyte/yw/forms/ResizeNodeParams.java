@@ -20,17 +20,19 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
-import java.util.function.Function;
 import java.util.regex.Pattern;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -99,10 +101,11 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
 
     boolean hasClustersToResize = false;
     for (Cluster cluster : clusters) {
+      Collection<NodeDetails> nodesInCluster = universe.getNodesInCluster(cluster.uuid);
       UserIntent newUserIntent = cluster.userIntent;
       UserIntent currentUserIntent =
           universe.getUniverseDetails().getClusterByUuid(cluster.uuid).userIntent;
-      if (!hasResizeChanges(currentUserIntent, newUserIntent)) {
+      if (!hasResizeChanges(currentUserIntent, newUserIntent, nodesInCluster)) {
         continue;
       }
 
@@ -122,14 +125,27 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
     }
   }
 
-  private boolean hasResizeChanges(UserIntent currentUserIntent, UserIntent newUserIntent) {
+  private boolean hasResizeChanges(
+      UserIntent currentUserIntent,
+      UserIntent newUserIntent,
+      Collection<NodeDetails> nodesInCluster) {
     if (currentUserIntent == null || newUserIntent == null) {
       return false;
     }
-    return !(Objects.equals(currentUserIntent.instanceType, newUserIntent.instanceType)
-        && Objects.equals(currentUserIntent.masterInstanceType, newUserIntent.masterInstanceType)
-        && Objects.equals(currentUserIntent.deviceInfo, newUserIntent.deviceInfo)
-        && Objects.equals(currentUserIntent.masterDeviceInfo, newUserIntent.masterDeviceInfo));
+    return nodesInCluster.stream()
+        .filter(
+            n -> {
+              String oldInstanceType = currentUserIntent.getInstanceTypeForNode(n);
+              String newInstanceType = newUserIntent.getInstanceTypeForNode(n);
+
+              DeviceInfo oldDevice = currentUserIntent.getDeviceInfoForNode(n);
+              DeviceInfo newDevice = newUserIntent.getDeviceInfoForNode(n);
+
+              return !Objects.equals(oldInstanceType, newInstanceType)
+                  || !Objects.equals(oldDevice, newDevice);
+            })
+        .findFirst()
+        .isPresent();
   }
 
   /**
@@ -224,107 +240,80 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
     if (currentUserIntent.dedicatedNodes != newUserIntent.dedicatedNodes) {
       return "Smart resize is not possible if is dedicated mode changed";
     }
+    Collection<NodeDetails> nodes = universe.getUniverseDetails().getNodesInCluster(clusterUUID);
+    boolean hasChanges = false;
+    Map<String, InstanceType> instanceTypeMap = new HashMap<>();
+    for (NodeDetails node : nodes) {
+      String newInstanceTypeCode = newUserIntent.getInstanceTypeForNode(node);
+      String currentInstanceTypeCode = currentUserIntent.getInstanceTypeForNode(node);
+      boolean instanceTypeChanged = false;
+      if (!Objects.equals(newInstanceTypeCode, currentInstanceTypeCode)) {
+        if (!instanceTypeMap.containsKey(newInstanceTypeCode)) {
+          InstanceType instanceType =
+              getInstanceType(currentUserIntent, newInstanceTypeCode, allowUnsupportedInstances);
+          instanceTypeMap.put(newInstanceTypeCode, instanceType);
+          if (instanceType == null) {
+            return String.format(
+                "Provider %s of type %s does not contain the intended instance type '%s'",
+                currentUserIntent.provider, currentUserIntent.providerType, newInstanceTypeCode);
+          }
+          if (currentUserIntent.providerType == Common.CloudType.azu
+              && isAzureWithLocalDisk(currentInstanceTypeCode)
+                  != isAzureWithLocalDisk(newInstanceTypeCode)) {
+            return String.format(
+                "Cannot switch between instances with and without local disk (%s and %s)",
+                currentInstanceTypeCode, newInstanceTypeCode);
+          }
+        }
+        instanceTypeChanged = true;
+        hasChanges = true;
+      }
+      DeviceInfo curDeviceInfo = currentUserIntent.getDeviceInfoForNode(node);
+      DeviceInfo newDeviceInfo = newUserIntent.getDeviceInfoForNode(node);
+      AtomicReference<String> error = new AtomicReference<>();
+      boolean nodeDiskChanged =
+          checkDiskChanged(
+              currentUserIntent.providerType,
+              curDeviceInfo,
+              newDeviceInfo,
+              error::set,
+              verifyVolumeSize);
+      if (error.get() != null) {
+        return error.get();
+      }
+      if (nodeDiskChanged) {
+        if (curDeviceInfo.storageType == PublicCloudConstants.StorageType.UltraSSD_LRS) {
+          return "UltraSSD doesn't support resizing without downtime";
+        }
+        if (currentUserIntent.providerType == Common.CloudType.azu
+            && curDeviceInfo.volumeSize <= AZU_DISK_LIMIT_NO_DOWNTIME
+            && newDeviceInfo.volumeSize > AZU_DISK_LIMIT_NO_DOWNTIME) {
+          return "Cannot expand from "
+              + curDeviceInfo.volumeSize
+              + "GB to "
+              + newDeviceInfo.volumeSize
+              + "GB without VM deallocation";
+        }
+        hasChanges = true;
+      }
+      if (currentUserIntent.providerType == Common.CloudType.aws
+          && (nodeDiskChanged || !verifyVolumeSize)) {
+        int cooldownInHours =
+            runtimeConfGetter.getGlobalConf(GlobalConfKeys.awsDiskResizeCooldownHours);
+        if (node.lastVolumeUpdateTime != null
+            && DateUtils.addHours(node.lastVolumeUpdateTime, cooldownInHours).after(new Date())) {
+          return String.format(
+              "Resize cooldown in aws (%d hours) is still active", cooldownInHours);
+        }
+      }
 
-    List<String> errors = new ArrayList<>();
-    // Checking disk.
-    boolean diskChanged =
-        checkDiskChanged(
-            currentUserIntent,
-            newUserIntent,
-            intent -> intent.deviceInfo,
-            errors::add,
-            verifyVolumeSize);
-    boolean masterDiskChanged =
-        newUserIntent.dedicatedNodes
-            ? masterDiskChanged =
-                checkDiskChanged(
-                    currentUserIntent,
-                    newUserIntent,
-                    intent -> intent.masterDeviceInfo,
-                    errors::add,
-                    verifyVolumeSize)
-            : false;
-    // Checking instance type.
-    boolean instanceTypeChanged =
-        checkInstanceTypeChanged(
-            currentUserIntent,
-            newUserIntent,
-            intent -> intent.instanceType,
-            errors::add,
-            allowUnsupportedInstances);
-    boolean masterInstanceTypeChanged =
-        newUserIntent.dedicatedNodes
-            ? checkInstanceTypeChanged(
-                currentUserIntent,
-                newUserIntent,
-                intent -> intent.masterInstanceType,
-                errors::add,
-                allowUnsupportedInstances)
-            : false;
-
-    if (errors.size() > 0) {
-      return errors.get(0);
-    }
-    if ((diskChanged || instanceTypeChanged)
-        && hasEphemeralStorage(
-            currentUserIntent.providerType,
-            currentUserIntent.instanceType,
-            currentUserIntent.deviceInfo)) {
-      return "ResizeNode operation is not supported for instances with ephemeral drives";
-    }
-    if ((diskChanged || masterDiskChanged)
-        && currentUserIntent.providerType == Common.CloudType.azu) {
-      if (diskChanged
-          && currentUserIntent.deviceInfo.storageType
-              == PublicCloudConstants.StorageType.UltraSSD_LRS) {
-        return "UltraSSD doesn't support resizing without downtime";
-      }
-      if (masterDiskChanged
-          && currentUserIntent.masterDeviceInfo.storageType
-              == PublicCloudConstants.StorageType.UltraSSD_LRS) {
-        return "UltraSSD doesn't support resizing without downtime";
-      }
-      if (diskChanged
-          && currentUserIntent.deviceInfo.volumeSize <= AZU_DISK_LIMIT_NO_DOWNTIME
-          && newUserIntent.deviceInfo.volumeSize > AZU_DISK_LIMIT_NO_DOWNTIME) {
-        return "Cannot expand from "
-            + currentUserIntent.deviceInfo.volumeSize
-            + "GB to "
-            + newUserIntent.deviceInfo.volumeSize
-            + "GB without VM deallocation";
-      }
-      if (masterDiskChanged
-          && currentUserIntent.masterDeviceInfo.volumeSize <= AZU_DISK_LIMIT_NO_DOWNTIME
-          && newUserIntent.masterDeviceInfo.volumeSize > AZU_DISK_LIMIT_NO_DOWNTIME) {
-        return "Cannot expand from "
-            + currentUserIntent.masterDeviceInfo.volumeSize
-            + "GB to "
-            + newUserIntent.masterDeviceInfo.volumeSize
-            + "GB without VM deallocation";
+      if ((instanceTypeChanged || nodeDiskChanged)
+          && hasEphemeralStorage(
+              currentUserIntent.providerType, currentInstanceTypeCode, curDeviceInfo)) {
+        return "ResizeNode operation is not supported for instances with ephemeral drives";
       }
     }
-    if ((masterDiskChanged || masterInstanceTypeChanged)
-        && hasEphemeralStorage(
-            currentUserIntent.providerType,
-            currentUserIntent.masterInstanceType,
-            currentUserIntent.masterDeviceInfo)) {
-      return "ResizeNode operation is not supported for instances with ephemeral drives";
-    }
-    if (currentUserIntent.providerType == Common.CloudType.aws) {
-      int cooldownInHours =
-          runtimeConfGetter.getGlobalConf(GlobalConfKeys.awsDiskResizeCooldownHours);
-      boolean checkTservers = diskChanged || !verifyVolumeSize;
-      if ((checkTservers && isAwsCooldown(universe, clusterUUID, true, cooldownInHours))
-          || masterDiskChanged && isAwsCooldown(universe, clusterUUID, false, cooldownInHours)) {
-        return String.format("Resize cooldown in aws (%d hours) is still active", cooldownInHours);
-      }
-    }
-
-    if (verifyVolumeSize
-        && !diskChanged
-        && !instanceTypeChanged
-        && !masterDiskChanged
-        && !masterInstanceTypeChanged) {
+    if (verifyVolumeSize && !hasChanges) {
       return "Nothing changed!";
     }
 
@@ -344,14 +333,11 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
   }
 
   private static boolean checkDiskChanged(
-      UserIntent currentUserIntent,
-      UserIntent newUserIntent,
-      Function<UserIntent, DeviceInfo> getter,
+      Common.CloudType providerType,
+      DeviceInfo currentDeviceInfo,
+      DeviceInfo newDeviceInfo,
       Consumer<String> errorConsumer,
       boolean verifyVolumeSize) {
-    DeviceInfo newDeviceInfo = getter.apply(newUserIntent);
-    DeviceInfo currentDeviceInfo = getter.apply(currentUserIntent);
-
     // Disk will not be resized if the universe has no currently defined device info.
     if (currentDeviceInfo != null && newDeviceInfo != null) {
       DeviceInfo currentDeviceInfoCloned = currentDeviceInfo.clone();
@@ -370,7 +356,7 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
         if (newDeviceInfo.diskIops == null) {
           newDeviceInfo.diskIops = currentDeviceInfo.diskIops;
         }
-        if (currentUserIntent.providerType != Common.CloudType.aws) {
+        if (providerType != Common.CloudType.aws) {
           errorConsumer.accept("Disk IOPS provisioning is only supported for AWS");
           return true;
         }
@@ -399,7 +385,7 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
         if (newDeviceInfo.throughput == null) {
           newDeviceInfo.throughput = currentDeviceInfo.throughput;
         }
-        if (currentUserIntent.providerType != Common.CloudType.aws) {
+        if (providerType != Common.CloudType.aws) {
           errorConsumer.accept("Disk Throughput provisioning is only supported for AWS");
           return true;
         }
@@ -434,44 +420,18 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
     return false;
   }
 
-  private static boolean checkInstanceTypeChanged(
-      UserIntent currentUserIntent,
-      UserIntent newUserIntent,
-      Function<UserIntent, String> getter,
-      Consumer<String> errorConsumer,
-      boolean allowUnsupportedInstances) {
-    String currentInstanceTypeCode = getter.apply(currentUserIntent);
-    String newInstanceTypeCode = getter.apply(newUserIntent);
-    if (newInstanceTypeCode != null
-        && !Objects.equals(newInstanceTypeCode, currentInstanceTypeCode)) {
-      String provider = currentUserIntent.provider;
-      List<InstanceType> instanceTypes =
-          InstanceType.findByProvider(
-              Provider.getOrBadRequest(UUID.fromString(provider)),
-              StaticInjectorHolder.injector().instanceOf(Config.class),
-              allowUnsupportedInstances);
-      InstanceType newInstanceType =
-          instanceTypes.stream()
-              .filter(type -> type.getInstanceTypeCode().equals(newInstanceTypeCode))
-              .findFirst()
-              .orElse(null);
-      if (newInstanceType == null) {
-        errorConsumer.accept(
-            String.format(
-                "Provider %s of type %s does not contain the intended instance type '%s'",
-                currentUserIntent.provider, currentUserIntent.providerType, newInstanceTypeCode));
-      }
-      if (currentUserIntent.providerType == Common.CloudType.azu
-          && isAzureWithLocalDisk(currentInstanceTypeCode)
-              != isAzureWithLocalDisk(newInstanceTypeCode)) {
-        errorConsumer.accept(
-            String.format(
-                "Cannot switch between instances with and without local disk (%s and %s)",
-                currentInstanceTypeCode, newInstanceTypeCode));
-      }
-      return true;
-    }
-    return false;
+  private static InstanceType getInstanceType(
+      UserIntent userIntent, String instanceTypeCode, boolean allowUnsupportedInstances) {
+    String provider = userIntent.provider;
+    List<InstanceType> instanceTypes =
+        InstanceType.findByProvider(
+            Provider.getOrBadRequest(UUID.fromString(provider)),
+            StaticInjectorHolder.injector().instanceOf(Config.class),
+            allowUnsupportedInstances);
+    return instanceTypes.stream()
+        .filter(type -> type.getInstanceTypeCode().equals(instanceTypeCode))
+        .findFirst()
+        .orElse(null);
   }
 
   private static boolean isAzureWithLocalDisk(String instanceType) {

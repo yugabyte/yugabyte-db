@@ -78,7 +78,8 @@ void ConsensusFrontier::ToPB(google::protobuf::Any* any) const {
   ConsensusFrontierPB pb;
   op_id_.ToPB(pb.mutable_op_id());
   pb.set_hybrid_time(hybrid_time_.ToUint64());
-  pb.set_history_cutoff(history_cutoff_.ToUint64());
+  pb.set_primary_cutoff_ht(history_cutoff_.primary_cutoff_ht.ToUint64());
+  pb.set_cotables_cutoff_ht(history_cutoff_.cotables_cutoff_ht.ToUint64());
   int64_t ht = ExtractGlobalFilter(hybrid_time_filter_.AsSlice());
   // Global HT filter can be invalid in two cases:
   // 1. when only the per db filters then the first 8 bytes of hybrid_time_filter_ are invalid
@@ -109,7 +110,14 @@ Status ConsensusFrontier::FromPB(const google::protobuf::Any& any) {
   }
   op_id_ = OpId::FromPB(pb.op_id());
   hybrid_time_ = HybridTime(pb.hybrid_time());
-  history_cutoff_ = NormalizeHistoryCutoff(HybridTime(pb.history_cutoff()));
+  if (pb.has_primary_cutoff_ht()) {
+    history_cutoff_.primary_cutoff_ht =
+        NormalizeHistoryCutoff(HybridTime(pb.primary_cutoff_ht()));
+  }
+  if (pb.has_cotables_cutoff_ht()) {
+    history_cutoff_.cotables_cutoff_ht =
+        NormalizeHistoryCutoff(HybridTime(pb.cotables_cutoff_ht()));
+  }
   max_value_level_ttl_expiration_time_ =
       HybridTime::FromPB(pb.max_value_level_ttl_expiration_time());
   for (const auto& p : pb.table_schema_version()) {
@@ -265,7 +273,10 @@ void ConsensusFrontier::Update(
   const ConsensusFrontier& rhs = down_cast<const ConsensusFrontier&>(pre_rhs);
   UpdateField(&op_id_, rhs.op_id_, update_type);
   UpdateField(&hybrid_time_, rhs.hybrid_time_, update_type);
-  UpdateField(&history_cutoff_, rhs.history_cutoff_, update_type);
+  UpdateField(
+      &history_cutoff_.primary_cutoff_ht, rhs.history_cutoff_.primary_cutoff_ht, update_type);
+  UpdateField(&history_cutoff_.cotables_cutoff_ht,
+              rhs.history_cutoff_.cotables_cutoff_ht, update_type);
   // Reset filters after compaction.
   hybrid_time_filter_.clear();
   UpdateField(&max_value_level_ttl_expiration_time_,

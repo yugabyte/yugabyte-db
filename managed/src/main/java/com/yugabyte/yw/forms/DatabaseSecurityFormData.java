@@ -55,18 +55,12 @@ public class DatabaseSecurityFormData {
     }
   }
 
-  public void validatePassword(PasswordPolicyService policyService, boolean checkPasswordLeak) {
+  public void validatePassword(PasswordPolicyService policyService) {
     if (!StringUtils.isEmpty(ysqlAdminPassword)) {
       policyService.checkPasswordPolicy(null, ysqlAdminPassword);
-      if (checkPasswordLeak) {
-        policyService.validatePasswordNotLeaked("YSQL", ysqlAdminPassword);
-      }
     }
     if (!StringUtils.isEmpty(ycqlAdminPassword)) {
       policyService.checkPasswordPolicy(null, ycqlAdminPassword);
-      if (checkPasswordLeak) {
-        policyService.validatePasswordNotLeaked("YCQL", ycqlAdminPassword);
-      }
     }
   }
 }

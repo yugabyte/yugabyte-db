@@ -30,8 +30,8 @@
 
 namespace yb {
 class MetricEntity;
-class Histogram;
-class HistogramPrototype;
+class EventStats;
+class EventStatsPrototype;
 
 template <class T>
 class AtomicGauge;
@@ -63,7 +63,7 @@ class StatisticsMetricImpl : public Statistics {
   const char* GetTickerName(uint32_t ticker_type) const override;
 
  private:
-  std::vector<scoped_refptr<yb::Histogram>> histograms_;
+  std::vector<scoped_refptr<yb::EventStats>> histograms_;
   std::vector<scoped_refptr<yb::AtomicGauge<uint64_t>>> tickers_;
 };
 

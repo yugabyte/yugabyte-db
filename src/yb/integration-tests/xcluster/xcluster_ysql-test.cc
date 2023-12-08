@@ -174,8 +174,9 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
   void TestReplicationWithPackedColumns(bool colocated, bool bootstrap);
 
   Status SetUpWithParams(
-      std::vector<uint32_t> num_consumer_tablets, std::vector<uint32_t> num_producer_tablets,
-      uint32_t replication_factor, uint32_t num_masters = 1, bool colocated = false,
+      const std::vector<uint32_t>& num_consumer_tablets,
+      const std::vector<uint32_t>& num_producer_tablets, uint32_t replication_factor,
+      uint32_t num_masters = 1, bool colocated = false,
       boost::optional<std::string> tablegroup_name = boost::none,
       const bool ranged_partitioned = false) {
     RETURN_NOT_OK(Initialize(replication_factor, num_masters));
@@ -187,30 +188,35 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
                             num_consumer_tablets.size(), num_producer_tablets.size()));
     }
 
-    RETURN_NOT_OK(RunOnBothClusters(
-        [&](Cluster* cluster) { return CreateDatabase(cluster, kNamespaceName, colocated); }));
-
-    if (tablegroup_name.has_value()) {
+    if (colocated) {
+      // Only create colocated db, else use the default yugabyte db.
+      namespace_name = "colocated_db";
       RETURN_NOT_OK(RunOnBothClusters([&](Cluster* cluster) {
-        return CreateTablegroup(cluster, kNamespaceName, tablegroup_name.get());
+        return CreateDatabase(cluster, namespace_name, /* colocated */ true);
       }));
     }
 
-    YBTableName table_name;
-    std::shared_ptr<client::YBTable> table;
-    for (uint32_t i = 0; i < num_consumer_tablets.size(); i++) {
-      auto table_name = VERIFY_RESULT(CreateYsqlTable(
-          i, num_producer_tablets[i], &producer_cluster_, tablegroup_name, colocated,
-          ranged_partitioned));
-      RETURN_NOT_OK(producer_client()->OpenTable(table_name, &table));
-      producer_tables_.push_back(table);
-
-      table_name = VERIFY_RESULT(CreateYsqlTable(
-          i, num_consumer_tablets[i], &consumer_cluster_, tablegroup_name, colocated,
-          ranged_partitioned));
-      RETURN_NOT_OK(consumer_client()->OpenTable(table_name, &table));
-      consumer_tables_.push_back(table);
+    if (tablegroup_name.has_value()) {
+      RETURN_NOT_OK(RunOnBothClusters([&](Cluster* cluster) {
+        return CreateTablegroup(cluster, namespace_name, tablegroup_name.get());
+      }));
     }
+
+    RETURN_NOT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {
+      const auto* num_tablets = &num_producer_tablets;
+      if (cluster == &consumer_cluster_) {
+        num_tablets = &num_consumer_tablets;
+      }
+
+      for (uint32_t i = 0; i < num_tablets->size(); i++) {
+        auto table_name = VERIFY_RESULT(CreateYsqlTable(
+            i, num_tablets->at(i), cluster, tablegroup_name, colocated, ranged_partitioned));
+        std::shared_ptr<client::YBTable> table;
+        RETURN_NOT_OK(cluster->client_->OpenTable(table_name, &table));
+        cluster->tables_.push_back(table);
+      }
+      return Status::OK();
+    }));
 
     if (!producer_tables_.empty()) {
       producer_table_ = producer_tables_.front();
@@ -233,11 +239,11 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
       // Legacy colocated database
       GetNamespaceInfoResponsePB ns_resp;
       RETURN_NOT_OK(
-          producer_client()->GetNamespaceInfo("", kNamespaceName, YQL_DATABASE_PGSQL, &ns_resp));
+          producer_client()->GetNamespaceInfo("", namespace_name, YQL_DATABASE_PGSQL, &ns_resp));
       return GetColocatedDbParentTableId(ns_resp.namespace_().id());
     }
     // Colocated database
-    return GetTablegroupParentTable(&producer_cluster_, kNamespaceName);
+    return GetTablegroupParentTable(&producer_cluster_, namespace_name);
   }
 
   /*
@@ -479,12 +485,12 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
 
     // Also create an additional non-colocated table in each database.
     auto non_colocated_table = VERIFY_RESULT(CreateYsqlTable(
-        &producer_cluster_, kNamespaceName, "" /* schema_name */, "test_table_2",
+        &producer_cluster_, namespace_name, "" /* schema_name */, "test_table_2",
         boost::none /* tablegroup */, kNTabletsPerTable, false /* colocated */));
     std::shared_ptr<client::YBTable> non_colocated_producer_table;
     RETURN_NOT_OK(producer_client()->OpenTable(non_colocated_table, &non_colocated_producer_table));
     non_colocated_table = VERIFY_RESULT(CreateYsqlTable(
-        &consumer_cluster_, kNamespaceName, "" /* schema_name */, "test_table_2",
+        &consumer_cluster_, namespace_name, "" /* schema_name */, "test_table_2",
         boost::none /* tablegroup */, kNTabletsPerTable, false /* colocated */));
     std::shared_ptr<client::YBTable> non_colocated_consumer_table;
     RETURN_NOT_OK(consumer_client()->OpenTable(non_colocated_table, &non_colocated_consumer_table));
@@ -614,7 +620,7 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
     {
       const int co_id = (idx)*111111;
       auto table = VERIFY_RESULT(CreateYsqlTable(
-          &producer_cluster_, kNamespaceName, "", Format("test_table_$0", idx), boost::none,
+          &producer_cluster_, namespace_name, "", Format("test_table_$0", idx), boost::none,
           kNTabletsPerColocatedTable, true, co_id));
       RETURN_NOT_OK(producer_client()->OpenTable(table, &new_colocated_producer_table));
     }
@@ -627,7 +633,7 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
       // Matching schema to consumer should succeed.
       const int co_id = (idx)*111111;
       auto table = VERIFY_RESULT(CreateYsqlTable(
-          &consumer_cluster_, kNamespaceName, "", Format("test_table_$0", idx), boost::none,
+          &consumer_cluster_, namespace_name, "", Format("test_table_$0", idx), boost::none,
           kNTabletsPerColocatedTable, true, co_id));
       RETURN_NOT_OK(consumer_client()->OpenTable(table, &new_colocated_consumer_table));
     }
@@ -658,7 +664,7 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
     // 6. Drop the new table and ensure that data is getting replicated correctly for
     // the other tables
     RETURN_NOT_OK(
-        DropYsqlTable(&producer_cluster_, kNamespaceName, "", Format("test_table_$0", idx)));
+        DropYsqlTable(&producer_cluster_, namespace_name, "", Format("test_table_$0", idx)));
     LOG(INFO) << Format("Dropped test_table_$0 on Producer side", idx);
 
     // 7. Add additional data to the original tables.
@@ -899,7 +905,8 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
     auto tablet_id = tablets.front()->tablet_id();
     auto catalog_manager =
         &CHECK_NOTNULL(VERIFY_RESULT(cluster->GetLeaderMiniMaster()))->catalog_manager();
-    return catalog_manager->SplitTablet(tablet_id, master::ManualSplit::kTrue);
+    return catalog_manager->SplitTablet(
+        tablet_id, master::ManualSplit::kTrue, catalog_manager->GetLeaderEpochInternal());
   }
 
   Status SetupReplicationAndWaitForValidSafeTime() {
@@ -1862,7 +1869,9 @@ TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
     LOG(INFO) << "Checking records for table " << consumer_table_->name().ToString();
     auto consumer_results = ScanToStrings(consumer_table_->name(), &consumer_cluster_);
     auto consumer_results_size = PQntuples(consumer_results.get());
-    LOG(INFO) << "data_replicated_correctly Found = " << consumer_results_size;
+    LOG(INFO)
+        << "data_replicated_correctly Found = " << consumer_results_size << ", expected: "
+        << num_results;
     if (num_results != consumer_results_size) {
       return false;
     }
@@ -1870,6 +1879,7 @@ TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
     for (int i = 0; i < num_results; ++i) {
       result = VERIFY_RESULT(GetInt32(consumer_results.get(), i, 0));
       if (i != result) {
+        LOG(INFO) << "Different value for key " << i << ": " << result;
         return false;
       }
     }
@@ -2361,13 +2371,13 @@ TEST_F(XClusterYsqlTest, ColocatedDatabaseDifferentColocationIds) {
   ASSERT_OK(SetUpWithParams({}, {}, 3, 1, true /* colocated */));
 
   // Create two tables with different colocation ids.
-  auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
   auto table_info = ASSERT_RESULT(CreateYsqlTable(
-      &producer_cluster_, kNamespaceName, "" /* schema_name */, "test_table_0",
+      &producer_cluster_, namespace_name, "" /* schema_name */, "test_table_0",
       boost::none /* tablegroup */, 1 /* num_tablets */, true /* colocated */,
       123456 /* colocation_id */));
   ASSERT_RESULT(CreateYsqlTable(
-      &consumer_cluster_, kNamespaceName, "" /* schema_name */, "test_table_0",
+      &consumer_cluster_, namespace_name, "" /* schema_name */, "test_table_0",
       boost::none /* tablegroup */, 1 /* num_tablets */, true /* colocated */,
       123457 /* colocation_id */));
   std::shared_ptr<client::YBTable> producer_table;
@@ -2391,7 +2401,7 @@ TEST_F(XClusterYsqlTest, TablegroupReplication) {
 
   // 2. Setup replication for the tablegroup.
   auto tablegroup_parent_table_id =
-      ASSERT_RESULT(GetTablegroupParentTable(&producer_cluster_, kNamespaceName));
+      ASSERT_RESULT(GetTablegroupParentTable(&producer_cluster_, namespace_name));
   LOG(INFO) << "Tablegroup id to replicate: " << tablegroup_parent_table_id;
 
   rpc::RpcController rpc;
@@ -2489,10 +2499,8 @@ TEST_F(XClusterYsqlTest, TablegroupReplicationMismatch) {
 
   boost::optional<std::string> tablegroup_name("mytablegroup");
 
-  ASSERT_OK(CreateDatabase(&producer_cluster_, kNamespaceName, false /* colocated */));
-  ASSERT_OK(CreateDatabase(&consumer_cluster_, kNamespaceName, false /* colocated */));
-  ASSERT_OK(CreateTablegroup(&producer_cluster_, kNamespaceName, tablegroup_name.get()));
-  ASSERT_OK(CreateTablegroup(&consumer_cluster_, kNamespaceName, tablegroup_name.get()));
+  ASSERT_OK(CreateTablegroup(&producer_cluster_, namespace_name, tablegroup_name.get()));
+  ASSERT_OK(CreateTablegroup(&consumer_cluster_, namespace_name, tablegroup_name.get()));
 
   // We intentionally set up so that the number of producer and consumer tables don't match.
   // The replication should fail during validation.
@@ -2508,7 +2516,7 @@ TEST_F(XClusterYsqlTest, TablegroupReplicationMismatch) {
   }
 
   auto tablegroup_parent_table_id =
-      ASSERT_RESULT(GetTablegroupParentTable(&producer_cluster_, kNamespaceName));
+      ASSERT_RESULT(GetTablegroupParentTable(&producer_cluster_, namespace_name));
 
   // Try to set up replication.
   rpc::RpcController rpc;
@@ -3140,9 +3148,8 @@ void InitCreateStreamRequest(
   create_req->set_source_type(cdc::CDCSDK);
 }
 
-// This creates a DB stream on the database kNamespaceName by default.
 Result<xrepl::StreamId> CreateDBStream(
-    const std::unique_ptr<cdc::CDCServiceProxy>& cdc_proxy,
+    const string& namespace_name, const std::unique_ptr<cdc::CDCServiceProxy>& cdc_proxy,
     cdc::CDCCheckpointType checkpoint_type) {
   cdc::CreateCDCStreamRequestPB req;
   cdc::CreateCDCStreamResponsePB resp;
@@ -3150,7 +3157,7 @@ Result<xrepl::StreamId> CreateDBStream(
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
 
-  InitCreateStreamRequest(&req, checkpoint_type, kNamespaceName);
+  InitCreateStreamRequest(&req, checkpoint_type, namespace_name);
   RETURN_NOT_OK(cdc_proxy->CreateCDCStream(req, &resp, &rpc));
   return xrepl::StreamId::FromString(resp.db_stream_id());
 }
@@ -3224,7 +3231,7 @@ void XClusterYsqlTest::ValidateRecordsXClusterWithCDCSDK(
       nullptr));
   ASSERT_EQ(tablets.size(), 1);
   xrepl::StreamId db_stream_id =
-      ASSERT_RESULT(CreateDBStream(sdk_proxy, cdc::CDCCheckpointType::IMPLICIT));
+      ASSERT_RESULT(CreateDBStream(namespace_name, sdk_proxy, cdc::CDCCheckpointType::IMPLICIT));
   ASSERT_OK(SetInitialCheckpoint(sdk_proxy, client, db_stream_id, tablets));
 
   // 1. Write some data.
@@ -3397,7 +3404,7 @@ TEST_F(XClusterYsqlTest, DeletingDatabaseContainingReplicatedTable) {
   };
   // Create the tables in the producer test_namespace database that will contain some replicated
   // tables.
-  create_tables(kNamespaceName, producer_cluster_, true, producer_table_names);
+  create_tables(namespace_name, producer_cluster_, true, producer_table_names);
   // Create non replicated tables in the producer's test_namespace2 database. This is done to
   // ensure that its deletion isn't affected by other producer databases that are a part of
   // replication.
@@ -3408,7 +3415,7 @@ TEST_F(XClusterYsqlTest, DeletingDatabaseContainingReplicatedTable) {
   create_tables(kNamespaceName2, consumer_cluster_, false, consumer_table_names);
   // Create tables in the consumer's test_namesapce database, only have the second table be
   // replicated.
-  create_tables(kNamespaceName, consumer_cluster_, false, consumer_table_names);
+  create_tables(namespace_name, consumer_cluster_, false, consumer_table_names);
 
   // Setup universe replication for the tables.
   ASSERT_OK(SetupUniverseReplication(producer_tables_));
@@ -3416,15 +3423,15 @@ TEST_F(XClusterYsqlTest, DeletingDatabaseContainingReplicatedTable) {
   ASSERT_OK(WaitForSetupUniverseReplication(
       consumer_cluster(), consumer_client(), kReplicationGroupId, &is_resp));
 
-  ASSERT_NOK(producer_client()->DeleteNamespace(kNamespaceName, YQL_DATABASE_PGSQL));
-  ASSERT_NOK(consumer_client()->DeleteNamespace(kNamespaceName, YQL_DATABASE_PGSQL));
+  ASSERT_NOK(producer_client()->DeleteNamespace(namespace_name, YQL_DATABASE_PGSQL));
+  ASSERT_NOK(consumer_client()->DeleteNamespace(namespace_name, YQL_DATABASE_PGSQL));
   ASSERT_OK(producer_client()->DeleteNamespace(kNamespaceName2, YQL_DATABASE_PGSQL));
   ASSERT_OK(consumer_client()->DeleteNamespace(kNamespaceName2, YQL_DATABASE_PGSQL));
 
   ASSERT_OK(DeleteUniverseReplication());
 
-  ASSERT_OK(producer_client()->DeleteNamespace(kNamespaceName, YQL_DATABASE_PGSQL));
-  ASSERT_OK(consumer_client()->DeleteNamespace(kNamespaceName, YQL_DATABASE_PGSQL));
+  ASSERT_OK(producer_client()->DeleteNamespace(namespace_name, YQL_DATABASE_PGSQL));
+  ASSERT_OK(consumer_client()->DeleteNamespace(namespace_name, YQL_DATABASE_PGSQL));
 }
 
 struct XClusterPgSchemaNameParams {
@@ -3464,7 +3471,7 @@ TEST_P(XClusterPgSchemaNameTest, SetupSameNameDifferentSchemaUniverseReplication
   std::vector<YBTableName> producer_table_names;
   for (int i = 0; i < kNumTables; i++) {
     auto t = ASSERT_RESULT(CreateYsqlTable(
-        &producer_cluster_, kNamespaceName, schema_name(i), "test_table_1",
+        &producer_cluster_, namespace_name, schema_name(i), "test_table_1",
         boost::none /* tablegroup */, kNTabletsPerTable));
     // Need to set pgschema_name ourselves if it was not set due to flag.
     t.set_pgschema_name(schema_name(i));
@@ -3483,7 +3490,7 @@ TEST_P(XClusterPgSchemaNameTest, SetupSameNameDifferentSchemaUniverseReplication
   consumer_table_names.reserve(kNumTables);
   for (int i = kNumTables - 1; i >= 0; i--) {
     auto t = ASSERT_RESULT(CreateYsqlTable(
-        &consumer_cluster_, kNamespaceName, schema_name(i), "test_table_1",
+        &consumer_cluster_, namespace_name, schema_name(i), "test_table_1",
         boost::none /* tablegroup */, kNTabletsPerTable));
     t.set_pgschema_name(schema_name(i));
     consumer_table_names.push_back(t);
@@ -3521,10 +3528,15 @@ class XClusterYsqlTestReadOnly : public XClusterYsqlTest {
 
   Result<Connections> PrepareClusters() {
     RETURN_NOT_OK(Initialize(3 /* replication factor */));
-    const std::vector<std::string> namespaces{kNamespaceName, "test_namespace2"};
+    const auto namespace_2 = "test_namespace2";
+    const std::vector<std::string> namespaces{namespace_name, namespace_2};
+
+    RETURN_NOT_OK(RunOnBothClusters([&namespace_2, this](Cluster* cluster) -> Status {
+      return CreateDatabase(cluster, namespace_2);
+    }));
+
     for (const auto& namespace_name : namespaces) {
-      RETURN_NOT_OK(RunOnBothClusters([&namespace_name, this](Cluster* cluster) -> Status {
-        RETURN_NOT_OK(this->CreateDatabase(cluster, namespace_name));
+      RETURN_NOT_OK(RunOnBothClusters([&namespace_name](Cluster* cluster) -> Status {
         auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
         return conn.ExecuteFormat("CREATE TABLE $0(id INT PRIMARY KEY, balance INT)", kTableName);
       }));
@@ -3639,8 +3651,8 @@ TEST_F(XClusterYsqlTest, TestAlterOperationTableRewrite) {
   constexpr auto kColumnName = "c1";
   ASSERT_OK(SetupUniverseReplication(producer_tables_));
   for (int i = 0; i <= 1; ++i) {
-    auto conn = i == 0 ? EXPECT_RESULT(producer_cluster_.ConnectToDB(kNamespaceName))
-                       : EXPECT_RESULT(consumer_cluster_.ConnectToDB(kNamespaceName));
+    auto conn = i == 0 ? EXPECT_RESULT(producer_cluster_.ConnectToDB(namespace_name))
+                       : EXPECT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
     const auto kTableName =
         i == 0 ? producer_table_->name().table_name() : consumer_table_->name().table_name();
     // Verify alter primary key, column type operations are disallowed on the table.

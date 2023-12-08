@@ -86,7 +86,7 @@ DEFINE_UNKNOWN_string(ysql_pg_conf_csv, "",
 DEFINE_UNKNOWN_string(ysql_hba_conf_csv, "",
               "CSV formatted line represented list of postgres hba rules (in order)");
 TAG_FLAG(ysql_hba_conf_csv, sensitive_info);
-DEFINE_NON_RUNTIME_PREVIEW_string(ysql_ident_conf_csv, "",
+DEFINE_NON_RUNTIME_string(ysql_ident_conf_csv, "",
               "CSV formatted line represented list of postgres ident map rules (in order)");
 
 DEFINE_UNKNOWN_string(ysql_pg_conf, "",
@@ -97,37 +97,6 @@ DEFINE_UNKNOWN_string(ysql_hba_conf, "",
               "Comma separated list of postgres hba rules (in order)");
 TAG_FLAG(ysql_hba_conf, sensitive_info);
 DECLARE_string(tmp_dir);
-
-// gFlag wrappers over Postgres GUC parameter.
-// The value type should match the GUC parameter, or it should be a string, in which case Postgres
-// will convert it to the correct type.
-// The default values of gFlag are visible to customers via flags metadata xml, documentation, and
-// platform UI. So, it's important to keep these values as accurate as possible. The default_value
-// or target_value (for AutoFlags) should match the default specified in guc.c.
-// Use an empty string or 0 for parameters like timezone and max_connections whose default is
-// computed at runtime so that they show up as an undefined value instead of an incorrect value. If
-// 0 is a valid value for the parameter, then use an empty string. These are enforced by the
-// PgWrapperFlagsTest.VerifyGFlagDefaults test.
-#define DEFINE_NON_RUNTIME_PG_FLAG(type, name, default_value, description) \
-  BOOST_PP_CAT(DEFINE_NON_RUNTIME_, type)(BOOST_PP_CAT(ysql_, name), default_value, description); \
-  _TAG_FLAG(BOOST_PP_CAT(ysql_, name), ::yb::FlagTag::kPg, pg)
-
-#define DEFINE_RUNTIME_PG_FLAG(type, name, default_value, description) \
-  BOOST_PP_CAT(DEFINE_RUNTIME_, type)(BOOST_PP_CAT(ysql_, name), default_value, description); \
-  _TAG_FLAG(BOOST_PP_CAT(ysql_, name), ::yb::FlagTag::kPg, pg)
-
-#define DEFINE_NON_RUNTIME_PG_PREVIEW_FLAG(type, name, default_value, description) \
-  DEFINE_NON_RUNTIME_PG_FLAG(type, name, default_value, description); \
-  _TAG_FLAG(BOOST_PP_CAT(ysql_, name), ::yb::FlagTag::kPreview, preview)
-
-#define DEFINE_RUNTIME_PG_PREVIEW_FLAG(type, name, default_value, description) \
-  DEFINE_RUNTIME_PG_FLAG(type, name, default_value, description); \
-  _TAG_FLAG(BOOST_PP_CAT(ysql_, name), ::yb::FlagTag::kPreview, preview)
-
-#define DEFINE_RUNTIME_AUTO_PG_FLAG(type, name, flag_class, initial_val, target_val, description) \
-  BOOST_PP_CAT(DEFINE_RUNTIME_AUTO_, type)(ysql_##name, flag_class, initial_val, target_val, \
-                                           description); \
-  _TAG_FLAG(BOOST_PP_CAT(ysql_, name), ::yb::FlagTag::kPg, pg)
 
 DEFINE_RUNTIME_PG_FLAG(string, timezone, "",
     "Overrides the default ysql timezone for displaying and interpreting timestamps. If no value "
@@ -160,6 +129,9 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_memory_tracking, true,
 
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_expression_pushdown, kLocalVolatile, false, true,
     "Push supported expressions from ysql down to DocDB for evaluation.");
+
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_index_aggregate_pushdown, kLocalVolatile, false, true,
+    "Push supported aggregates from ysql down to DocDB for evaluation. Affects IndexScan only.");
 
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_pushdown_strict_inequality, kLocalVolatile, false, true,
     "Push down strict inequality filters");
@@ -212,6 +184,13 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_disable_wait_for_backends_catalog_version, false
     " issues, which could be mitigated by setting high ysql_yb_index_state_flags_update_delay."
     " Although it is runtime-settable, the effects won't take place for any in-progress"
     " queries.");
+
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_add_column_missing_default, kExternal, false, true,
+                            "Enable using the default value for existing rows after an ADD COLUMN"
+                            " ... DEFAULT operation");
+
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_base_scans_cost_model, false,
+    "Enable cost model enhancements");
 
 DEFINE_RUNTIME_PG_FLAG(uint64, yb_fetch_row_limit, 1024,
     "Maximum number of rows to fetch per scan.");

@@ -189,8 +189,13 @@
   }
 
   .ua-auth-radio-field {
+    display: flex;
+    align-items: center;
     flex-shrink: 1;
     margin-right: 16px;
+    input {
+      margin: unset;
+    }
   }
 
   .ua-field {
@@ -424,7 +429,7 @@
 
 .config-membership {
   .form-item-label {
-    font-weight: 300;
+    font-weight: 400;
     font-size: 13px;
   }
   .ua-field-row {
@@ -459,7 +464,7 @@
       color: #818182;
     }
     .helper-text-2 {
-      font-weight: 300;
+      font-weight: 400;
     }
   }
 }
@@ -510,6 +515,13 @@
   .ua-field-row-c {
     width: 100%;
     padding-left: 24px;
+  }
+}
+
+.mapping-toggle,
+.serv-acc-toggle {
+  .yb-field-group {
+    padding-bottom: unset;
   }
 }
 

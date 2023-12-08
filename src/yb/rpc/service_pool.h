@@ -55,7 +55,7 @@ template<class T>
 class AtomicGauge;
 
 class Counter;
-class Histogram;
+class EventStats;
 class MetricEntity;
 class Socket;
 

@@ -21,6 +21,7 @@ import com.azure.resourcemanager.network.models.TransportProtocol;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.cloud.CloudAPI;
+import com.yugabyte.yw.common.CloudUtil.Protocol;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
@@ -192,49 +193,78 @@ public class AZUCloudImpl implements CloudAPI {
    * Create a new health probe object on a specific port for a protocol. Note that this function
    * does not create a new probe in the Azure cloud
    *
-   * @param protocol Protocol for which the helath probe needs to be created. Currently only TCP is
-   *     allowed
    * @param port Port that the health probe needs to probe
    * @return Newly create ProbeInner Object
    */
   @VisibleForTesting
-  protected ProbeInner createNewProbeForPort(String protocol, Integer port) {
-    if (protocol.equals("TCP")) {
-      String probeName = "probe-" + port.toString() + "-" + UUID.randomUUID().toString();
-      return new ProbeInner().withName(probeName).withPort(port).withProtocol(ProbeProtocol.TCP);
-    }
-    throw new PlatformServiceException(BAD_REQUEST, "Only TCP probes are supported");
+  protected ProbeInner createNewTCPProbeForPort(Integer port) {
+    String probeName = "probe-" + port.toString() + "-" + UUID.randomUUID().toString();
+    return new ProbeInner().withName(probeName).withPort(port).withProtocol(ProbeProtocol.TCP);
+  }
+
+  /**
+   * Create a new health probe object on a specific port for a protocol. Note that this function
+   * does not create a new probe in the Azure cloud
+   *
+   * @param port Port that the health probe needs to probe
+   * @param requestPath The HTTP path at which the probe hits to check health
+   * @return Newly create ProbeInner Object
+   */
+  @VisibleForTesting
+  protected ProbeInner createNewHttpProbeForPort(Integer port, String requestPath) {
+    String probeName = "probe-" + port.toString() + "-" + UUID.randomUUID().toString();
+    return new ProbeInner()
+        .withName(probeName)
+        .withPort(port)
+        .withProtocol(ProbeProtocol.HTTP)
+        .withRequestPath(requestPath);
   }
 
   /**
    * Method to update existing Health probes, and create objects for the missing ones
    *
-   * @param protocol Protocol for which the helath probe needs to be created. Currently only TCP is
-   *     allowed
-   * @param ports Ports which need to be probed
+   * @param healthCheckConfiguration The configuration to be used to configure health probes
    * @param probes List of existing health probes
    * @return Updated list of health probes
    */
   @VisibleForTesting
   protected List<ProbeInner> ensureProbesForPorts(
-      String protocol, List<Integer> ports, List<ProbeInner> probes) {
+      NLBHealthCheckConfiguration healthCheckConfiguration, List<ProbeInner> probes) {
+    Protocol healthCheckProtocol = healthCheckConfiguration.getHealthCheckProtocol();
     Set<Integer> portsAlreadyProbed = new HashSet();
     if (!probes.isEmpty()) {
-      portsAlreadyProbed = probes.stream().map(probe -> probe.port()).collect(Collectors.toSet());
+      portsAlreadyProbed =
+          probes.stream()
+              .filter(
+                  probe ->
+                      probe.protocol().toString().toUpperCase().equals(healthCheckProtocol.name()))
+              .map(probe -> probe.port())
+              .collect(Collectors.toSet());
     }
-    Set<Integer> portsToProbe = new HashSet(ports);
+    Set<Integer> portsToProbe = new HashSet(healthCheckConfiguration.getHealthCheckPorts());
     Set<Integer> newPortsNeeded = SetUtils.difference(portsToProbe, portsAlreadyProbed);
     Set<Integer> portsToVerify = SetUtils.intersection(portsToProbe, portsAlreadyProbed);
     // Not deleting probes as they can be used by user for other purposes
     for (ProbeInner probe : probes) {
-      if (portsToVerify.contains(probe.port())) {
-        if (probe.protocol() != ProbeProtocol.TCP) {
-          probe = probe.withProtocol(ProbeProtocol.TCP);
-        }
+      if (portsToVerify.contains(probe.port()) && healthCheckProtocol == Protocol.HTTP) {
+        probe =
+            probe.withRequestPath(
+                healthCheckConfiguration.getHealthCheckPortsToPathsMap().get(probe.port()));
       }
     }
     for (Integer port : newPortsNeeded) {
-      probes.add(createNewProbeForPort(protocol, port));
+      switch (healthCheckProtocol) {
+        case TCP:
+          probes.add(createNewTCPProbeForPort(port));
+          break;
+        case HTTP:
+          probes.add(
+              createNewHttpProbeForPort(
+                  port, healthCheckConfiguration.getHealthCheckPortsToPathsMap().get(port)));
+          break;
+        default:
+          throw new PlatformServiceException(BAD_REQUEST, "Only TCP and HTTP probes are supported");
+      }
     }
     return probes;
   }
@@ -348,9 +378,12 @@ public class AZUCloudImpl implements CloudAPI {
    * important for health checks to function correctly
    *
    * @param loadBalancer LoadBalancerInner object whose lbRules needs to be updated
+   * @param healthCheckConfiguration The health check configuration used to create the health checks
+   *     for the load balancer
    * @return Updated LoadBalancerInner object
    */
-  private LoadBalancerInner associateProbesWithLbRules(LoadBalancerInner loadBalancer) {
+  private LoadBalancerInner associateProbesWithLbRules(
+      LoadBalancerInner loadBalancer, NLBHealthCheckConfiguration healthCheckConfiguration) {
     List<ProbeInner> probes = loadBalancer.probes();
     List<LoadBalancingRuleInner> loadBalancingRules = loadBalancer.loadBalancingRules();
     try {
@@ -359,8 +392,18 @@ public class AZUCloudImpl implements CloudAPI {
       Map<Integer, ProbeInner> portToProbeMap =
           probes.stream().collect(Collectors.toMap(ProbeInner::port, Function.identity()));
       for (LoadBalancingRuleInner loadBalancingRule : loadBalancingRules) {
-        loadBalancingRule =
-            loadBalancingRule.withProbe(portToProbeMap.get(loadBalancingRule.backendPort()));
+        ProbeInner probe = portToProbeMap.get(loadBalancingRule.backendPort());
+        if (probe != null) {
+          loadBalancingRule = loadBalancingRule.withProbe(probe);
+        } else {
+          // If there is no health probe corrosponding to the port that is being forwareded, we
+          // select the 0th indexed port as the default health check for that forwarding rule
+          // This is because this case would only arise in case of custom health checks
+          // TODO: Find a way to link the correct custom health check to the correct forwarding rule
+          loadBalancingRule =
+              loadBalancingRule.withProbe(
+                  portToProbeMap.get(healthCheckConfiguration.getHealthCheckPorts().get(0)));
+        }
       }
       return loadBalancer.withLoadBalancingRules(loadBalancingRules);
     } catch (IllegalStateException exception) {
@@ -380,8 +423,8 @@ public class AZUCloudImpl implements CloudAPI {
       NLBHealthCheckConfiguration healthCheckConfig) {
     AzureCloudInfo azureCloudInfo = CloudInfoInterface.get(provider);
     AZUResourceGroupApiClient apiClient = new AZUResourceGroupApiClient(azureCloudInfo);
-    String protocol = healthCheckConfig.getHealthCheckProtocol().toString();
-    manageNodeGroup(provider, regionCode, lbName, azToNodeIDs, protocol, ports, apiClient);
+    manageNodeGroup(
+        provider, regionCode, lbName, azToNodeIDs, "TCP", ports, healthCheckConfig, apiClient);
   }
 
   /**
@@ -400,8 +443,9 @@ public class AZUCloudImpl implements CloudAPI {
       String regionCode,
       String lbName,
       Map<AvailabilityZone, Set<NodeID>> azToNodeIDs,
-      String protocol,
-      List<Integer> ports,
+      String lbProtocol,
+      List<Integer> portsToForward,
+      NLBHealthCheckConfiguration healthCheckConfiguration,
       AZUResourceGroupApiClient apiClient) {
     LoadBalancerInner loadBalancer = apiClient.getLoadBalancerByName(lbName);
     if (!loadBalancer.location().equals(regionCode)) {
@@ -425,17 +469,18 @@ public class AZUCloudImpl implements CloudAPI {
     List<LoadBalancingRuleInner> loadBalancingRules = loadBalancer.loadBalancingRules();
     // The 0th index forwarding IP configuration is assumed to be the primary
     loadBalancingRules =
-        ensureLoadBalancingRules(protocol, ports, loadBalancingRules, backends, frontends.get(0));
+        ensureLoadBalancingRules(
+            lbProtocol, portsToForward, loadBalancingRules, backends, frontends.get(0));
     loadBalancer = loadBalancer.withLoadBalancingRules(loadBalancingRules);
     // Update health checks
     List<ProbeInner> probes = loadBalancer.probes();
-    probes = ensureProbesForPorts(protocol, ports, probes);
+    probes = ensureProbesForPorts(healthCheckConfiguration, probes);
     loadBalancer = loadBalancer.withProbes(probes);
     loadBalancer = apiClient.updateLoadBalancer(lbName, loadBalancer);
     // Double update of load balancer object is required because newly created probes are assigned
     // IDs only after the first update, and those IDs are requires to associate load balancing rules
     // with health probes.
-    loadBalancer = associateProbesWithLbRules(loadBalancer);
+    loadBalancer = associateProbesWithLbRules(loadBalancer, healthCheckConfiguration);
     apiClient.updateLoadBalancer(lbName, loadBalancer);
   }
 

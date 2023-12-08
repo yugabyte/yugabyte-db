@@ -43,6 +43,34 @@
 #define DEFAULT_RECURSIVE_WORKTABLE_FACTOR  10.0
 #define DEFAULT_EFFECTIVE_CACHE_SIZE  524288	/* measured in pages */
 
+#define YB_DEFAULT_DOCDB_BLOCK_SIZE 32768
+
+/* LSM Lookup costs */
+#define YB_DEFAULT_DOCDB_NEXT_CPU_CYCLES 50
+#define YB_DEFAULT_SEEK_COST_FACTOR 50
+#define YB_DEFAULT_BACKWARD_SEEK_COST_FACTOR 10
+
+/* DocDB row decode and process cost */
+#define YB_DEFAULT_DOCDB_MERGE_CPU_CYCLES 50
+
+/* DocDB Remote filter cost */
+#define YB_DEFAULT_DOCDB_REMOTE_FILTER_OVERHEAD_CYCLES 50
+
+/* Network transfer cost */
+#define YB_DEFAULT_LOCAL_LATENCY_COST 10.0
+#define YB_DEFAULT_LOCAL_THROUGHPUT_COST 10.0
+
+/* 
+ * TODO : Since we cannot currently estimate the number of key value pairs per 
+ * tuple, we use a constant heuristic value of 3. 
+ */
+#define YB_DEFAULT_NUM_KEY_VALUE_PAIRS_PER_TUPLE 3
+/* 
+ * TODO : Since we cannot currently estimate the number of SST files per 
+ * table, we use a constant heuristic value of 3. 
+ */
+#define YB_DEFAULT_NUM_SST_FILES_PER_TABLE 3
+
 typedef enum
 {
 	CONSTRAINT_EXCLUSION_OFF,	/* do not use c_e */
@@ -62,6 +90,15 @@ extern PGDLLIMPORT double yb_intercloud_cost;
 extern PGDLLIMPORT double yb_interregion_cost;
 extern PGDLLIMPORT double yb_interzone_cost;
 extern PGDLLIMPORT double yb_local_cost;
+
+extern PGDLLIMPORT double yb_seq_block_cost;
+extern PGDLLIMPORT double yb_random_block_cost;
+extern PGDLLIMPORT int yb_docdb_merge_cpu_cycles;
+extern PGDLLIMPORT int yb_docdb_remote_filter_overhead_cycles;
+extern PGDLLIMPORT double yb_docdb_next_cpu_cycles;
+extern PGDLLIMPORT double yb_local_latency_cost;
+extern PGDLLIMPORT double yb_local_throughput_cost;
+extern PGDLLIMPORT double yb_seek_cost_factor;
 
 extern PGDLLIMPORT Cost disable_cost;
 extern PGDLLIMPORT int max_parallel_workers_per_gather;
@@ -89,10 +126,14 @@ extern PGDLLIMPORT int constraint_exclusion;
 
 extern double index_pages_fetched(double tuples_fetched, BlockNumber pages,
 								  double index_pages, PlannerInfo *root);
+extern void yb_cost_seqscan(Path *path, PlannerInfo *root,
+				RelOptInfo *baserel, ParamPathInfo *param_info);
 extern void cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 						 ParamPathInfo *param_info);
 extern void cost_samplescan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 							ParamPathInfo *param_info);
+extern void yb_cost_index(IndexPath *path, PlannerInfo *root,
+		   double loop_count, bool partial_path);
 extern void cost_index(IndexPath *path, PlannerInfo *root,
 					   double loop_count, bool partial_path);
 extern void cost_bitmap_heap_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,

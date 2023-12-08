@@ -14,14 +14,12 @@ import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.config.impl.MetricCollectionLevelListener;
+import com.yugabyte.yw.common.config.impl.MonitoredMountRootsListener;
 import com.yugabyte.yw.common.config.impl.WSClientKeyListener;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 
@@ -36,12 +34,15 @@ public class RuntimeConfigChangeNotifier {
   }
 
   @Inject
-  public RuntimeConfigChangeNotifier(MetricCollectionLevelListener metricCollectionLevelListener) {
+  public RuntimeConfigChangeNotifier(
+      MetricCollectionLevelListener metricCollectionLevelListener,
+      MonitoredMountRootsListener monitoredMountRootsListener) {
     List<String> refreshableClients = AppConfigHelper.getRefreshableClients();
     for (String wsClientKey : refreshableClients) {
       addListener(new WSClientKeyListener(wsClientKey));
     }
     addListener(metricCollectionLevelListener);
+    addListener(monitoredMountRootsListener);
   }
 
   public void notifyListeners(UUID scopeUUID, String path) {
@@ -55,13 +56,18 @@ public class RuntimeConfigChangeNotifier {
       Customer customer = Customer.get(scopeUUID);
       if (customer != null) {
         listeners.forEach(listener -> listener.processCustomer(customer));
-      } else {
-        Universe.maybeGet(scopeUUID)
-            .ifPresent(
-                universe -> {
-                  listeners.forEach(listener -> listener.processUniverse(universe));
-                });
+        return;
       }
+      Provider provider = Provider.get(scopeUUID);
+      if (provider != null) {
+        listeners.forEach(listener -> listener.processProvider(provider));
+        return;
+      }
+      Universe.maybeGet(scopeUUID)
+          .ifPresent(
+              universe -> {
+                listeners.forEach(listener -> listener.processUniverse(universe));
+              });
     }
   }
 }

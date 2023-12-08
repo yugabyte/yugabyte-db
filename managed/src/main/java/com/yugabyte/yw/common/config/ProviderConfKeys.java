@@ -13,6 +13,7 @@ package com.yugabyte.yw.common.config;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
+import java.time.Duration;
 
 public class ProviderConfKeys extends RuntimeConfigKeysModule {
 
@@ -330,21 +331,21 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "A remote temporary directory should be used for performing operations on nodes within the provider scope.",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Long> operationStatusPollingInterval =
+  public static final ConfKeyInfo<Duration> operationStatusPollingInterval =
       new ConfKeyInfo<>(
-          "yb.gcp.operation_status_polling_interval",
+          "yb.gcp.operations.status_polling_interval",
           ScopeType.PROVIDER,
-          "Polling interval for Opertion status",
-          "Interval to poll the status of ongoing resource creation operations.",
-          ConfDataType.LongType,
+          "Polling interval for GCP Opertion status",
+          "Interval to poll the status of an ongoing GCP resource creation operation.",
+          ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Long> operationTimeoutInterval =
+  public static final ConfKeyInfo<Duration> operationTimeoutInterval =
       new ConfKeyInfo<>(
-          "yb.gcp.operation_timeout_interval",
+          "yb.gcp.operations.timeout_interval",
           ScopeType.PROVIDER,
-          "Operation Timeout interval",
-          "Timeout interval to wait for resource creation operations to complete sucessfully.",
-          ConfDataType.LongType,
+          "GCP Operation Timeout interval",
+          "Timeout interval to wait for GCP resource creation operations to complete sucessfully.",
+          ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> ybcListenOnAllInterfacesK8s =
       new ConfKeyInfo<>(
@@ -376,6 +377,15 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           ScopeType.PROVIDER,
           "Azure Network Interface Params blob",
           "Custom JSON of Azure parameters to apply on top of network interface creation.",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<String> monitoredMountRoots =
+      new ConfKeyInfo<>(
+          "yb.provider.monitored_mount_roots",
+          ScopeType.PROVIDER,
+          "Monitored mount roots",
+          "Mount roots, which we show on the merics dashboard and which we're alerting on.",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

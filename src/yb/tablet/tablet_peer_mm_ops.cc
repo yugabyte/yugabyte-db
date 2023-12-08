@@ -50,7 +50,7 @@ METRIC_DEFINE_gauge_uint32(table, log_gc_running,
                            "Log GCs Running",
                            yb::MetricUnit::kOperations,
                            "Number of log GC operations currently running.");
-METRIC_DEFINE_coarse_histogram(table, log_gc_duration,
+METRIC_DEFINE_event_stats(table, log_gc_duration,
                         "Log GC Duration",
                         yb::MetricUnit::kMilliseconds,
                         "Time spent garbage collecting the logs.");
@@ -104,7 +104,7 @@ void LogGCOp::Perform() {
   sem_.unlock();
 }
 
-scoped_refptr<Histogram> LogGCOp::DurationHistogram() const {
+scoped_refptr<EventStats> LogGCOp::DurationHistogram() const {
   return log_gc_duration_;
 }
 

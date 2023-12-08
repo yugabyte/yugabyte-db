@@ -36,6 +36,7 @@
 #include "utils/rel.h"
 
 /* Yugabyte includes */
+#include "executor/ybcExpr.h"
 #include "pg_yb_utils.h"
 
 static void expand_partitioned_rtentry(PlannerInfo *root, RelOptInfo *relinfo,
@@ -888,6 +889,7 @@ apply_child_basequals(PlannerInfo *root, RelOptInfo *parentrel,
 		{
 			Node	   *onecq = (Node *) lfirst(lc2);
 			bool		pseudoconstant;
+			RestrictInfo *childri;
 
 			/* check for pseudoconstant (no Vars or volatile functions) */
 			pseudoconstant =
@@ -899,14 +901,24 @@ apply_child_basequals(PlannerInfo *root, RelOptInfo *parentrel,
 				root->hasPseudoConstantQuals = true;
 			}
 			/* reconstitute RestrictInfo with appropriate properties */
-			childquals = lappend(childquals,
-								 make_restrictinfo(root,
-												   (Expr *) onecq,
-												   rinfo->is_pushed_down,
-												   rinfo->outerjoin_delayed,
-												   pseudoconstant,
-												   rinfo->security_level,
-												   NULL, NULL, NULL));
+			childri = make_restrictinfo(root,
+										(Expr *) onecq,
+										rinfo->is_pushed_down,
+										rinfo->outerjoin_delayed,
+										pseudoconstant,
+										rinfo->security_level,
+										NULL, NULL, NULL);
+			if (childrel->is_yb_relation)
+			{
+				/*
+				 * Even if parent clause was not pushable, parts of it still
+				 * maybe after they have been split by make_ands_implicit.
+				 * Hence re-evaluate pushability.
+				 */
+				childri->yb_pushable = rinfo->yb_pushable ||
+					YbCanPushdownExpr(childri->clause, NULL);
+			}
+			childquals = lappend(childquals, childri);
 			/* track minimum security level among child quals */
 			cq_min_security = Min(cq_min_security, rinfo->security_level);
 		}

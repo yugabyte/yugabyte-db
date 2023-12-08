@@ -64,7 +64,7 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
   [nodesResponse, clusterType]);
   const totalCores = roundDecimal((cluster.spec?.cluster_info?.node_info.num_cores ?? 0) / (nodesResponse?.data.length ?? 1) * (nodeList?.length ?? 0))
 
-  const [nodeCpuUsage, setNodeCpuUsage] = React.useState<number[]>([]);
+  const [nodeCpuUsage, setNodeCpuUsage] = React.useState<number[]>();
   React.useEffect(() => {
     if (!nodeList) {
       return;
@@ -110,6 +110,10 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
   }, [nodeList])
 
   const data = useMemo(() => {
+    if (nodeCpuUsage === undefined) {
+      return undefined;
+    }
+
     const data =  {
       nodes: [
         // Usage node
@@ -147,7 +151,7 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
     return data;
   }, [nodeCpuUsage, nodeList])
 
-  if (isFetching) {
+  if (isFetching || data === undefined) {
     return (
       <Box textAlign="center" pt={9} pb={9} width="100%">
         <LinearProgress />

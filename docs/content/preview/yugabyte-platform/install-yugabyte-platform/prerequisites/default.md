@@ -54,6 +54,7 @@ YugabyteDB Anywhere is supported on all Linux distributions that Replicated supp
 - Ubuntu 20
 - RedHat Enterprise Linux 7
 - RedHat Enterprise Linux 8
+- SUSE Linux Enterprise Server (SLES) 15 SP4 (Tech Preview)
 
 ## Hardware requirements
 

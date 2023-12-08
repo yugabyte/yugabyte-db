@@ -48,7 +48,7 @@ using std::string;
 using strings::Substitute;
 using yb::QLValuePB;
 using yb::util::CompareUsingLessThan;
-using yb::util::FastDecodeSignedVarIntUnsafe;
+using yb::FastDecodeSignedVarIntUnsafe;
 using yb::util::kInt32SignBitFlipMask;
 using yb::util::AppendBigEndianUInt64;
 using yb::util::AppendBigEndianUInt32;
@@ -64,7 +64,8 @@ using yb::util::DecodeDoubleFromKey;
     case ValueEntryType::kInvalid: FALLTHROUGH_INTENDED; \
     case ValueEntryType::kJsonb: FALLTHROUGH_INTENDED; \
     case ValueEntryType::kObject: FALLTHROUGH_INTENDED; \
-    case ValueEntryType::kPackedRow: FALLTHROUGH_INTENDED; \
+    case ValueEntryType::kPackedRowV1: FALLTHROUGH_INTENDED; \
+    case ValueEntryType::kPackedRowV2: FALLTHROUGH_INTENDED; \
     case ValueEntryType::kRedisList: FALLTHROUGH_INTENDED; \
     case ValueEntryType::kRedisSet: FALLTHROUGH_INTENDED; \
     case ValueEntryType::kRedisSortedSet: FALLTHROUGH_INTENDED;  \
@@ -167,7 +168,7 @@ KeyEntryType VirtualValueToKeyEntryType(QLVirtualValuePB value) {
 }
 
 std::string VarIntToString(const std::string& str_val) {
-  util::VarInt varint;
+  VarInt varint;
   auto status = varint.DecodeFromComparable(str_val);
   if (!status.ok()) {
     LOG(ERROR) << "Unable to decode varint: " << status.message().ToString();
@@ -208,7 +209,7 @@ std::string FrozenToString(const FrozenContainer& frozen) {
 // Postgres it indicates this is a collation encoded string and we use kCollString:
 // (1) in Postgres kCollString means a collation encoded string;
 // (2) in both YCQL and Redis kCollString is a synonym for kString so it is also correct;
-inline bool IsCollationEncodedString(const Slice& val) {
+inline bool IsCollationEncodedString(Slice val) {
   return !val.empty() && val[0] == '\0';
 }
 
@@ -283,8 +284,10 @@ std::string PrimitiveValue::ValueToString() const {
       return "l";
     case ValueEntryType::kArrayIndex:
       return Substitute("ArrayIndex($0)", int64_val_);
-    case ValueEntryType::kPackedRow:
+    case ValueEntryType::kPackedRowV1:
       return "<PACKED ROW>";
+    case ValueEntryType::kPackedRowV2:
+      return "<PACKED ROW V2>";
     case ValueEntryType::kObject:
       return "{}";
     case ValueEntryType::kRedisSet:
@@ -588,7 +591,7 @@ class SizeCounter {
     ++value_;
   }
 
-  void append(const std::string& str) {
+  void append(const std::string_view& str) {
     value_ += str.size();
   }
 
@@ -600,8 +603,8 @@ class SizeCounter {
   size_t value_ = 0;
 };
 
-template <class Buffer>
-void DoAppendEncodedValue(const QLValuePB& value, Buffer* out) {
+template <class Value, class Buffer>
+void DoAppendEncodedValue(const Value& value, Buffer* out) {
   switch (value.value_case()) {
     case QLValuePB::kInt8Value:
       out->push_back(ValueEntryTypeAsChar::kInt32);
@@ -694,16 +697,15 @@ void DoAppendEncodedValue(const QLValuePB& value, Buffer* out) {
       QLValue::timeuuid_value(value).AppendEncodedComparable(out);
       return;
     case QLValuePB::kFrozenValue: {
-      const QLSeqValuePB& frozen = value.frozen_value();
+      const auto& frozen = value.frozen_value();
       out->push_back(ValueEntryTypeAsChar::kFrozen);
       auto null_value_type = KeyEntryType::kNullLow;
       KeyBytes key;
-      for (int i = 0; i < frozen.elems_size(); i++) {
-        if (IsNull(frozen.elems(i))) {
+      for (const auto& elem : frozen.elems()) {
+        if (IsNull(elem)) {
           key.AppendKeyEntryType(null_value_type);
         } else {
-          KeyEntryValue::FromQLValuePB(frozen.elems(i), SortingType::kNotSpecified).AppendToKey(
-              &key);
+          KeyEntryValue::FromQLValuePB(elem, SortingType::kNotSpecified).AppendToKey(&key);
         }
       }
       key.AppendKeyEntryType(KeyEntryType::kGroupEnd);
@@ -743,7 +745,17 @@ void AppendEncodedValue(const QLValuePB& value, std::string* out) {
   DoAppendEncodedValue(value, out);
 }
 
+void AppendEncodedValue(const LWQLValuePB& value, ValueBuffer* out) {
+  DoAppendEncodedValue(value, out);
+}
+
 size_t EncodedValueSize(const QLValuePB& value) {
+  SizeCounter counter;
+  DoAppendEncodedValue(value, &counter);
+  return counter.value();
+}
+
+size_t EncodedValueSize(const LWQLValuePB& value) {
   SizeCounter counter;
   DoAppendEncodedValue(value, &counter);
   return counter.value();
@@ -871,7 +883,7 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
 
     case KeyEntryType::kVarIntDescending: FALLTHROUGH_INTENDED;
     case KeyEntryType::kVarInt: {
-      util::VarInt varint;
+      yb::VarInt varint;
       Slice slice_temp(slice->data(), slice->size());
       size_t num_decoded_bytes = 0;
       RETURN_NOT_OK(varint.DecodeFromComparable(slice_temp, &num_decoded_bytes));
@@ -1260,7 +1272,7 @@ Status PrimitiveValue::DecodeFromValue(const Slice& rocksdb_slice) {
     }
 
     case ValueEntryType::kVarInt: {
-      util::VarInt varint;
+      yb::VarInt varint;
       size_t num_decoded_bytes = 0;
       RETURN_NOT_OK(varint.DecodeFromComparable(slice.ToString(), &num_decoded_bytes));
       type_ = value_type;
@@ -1322,8 +1334,9 @@ Status PrimitiveValue::DecodeFromValue(const Slice& rocksdb_slice) {
       return Status::OK();
     }
 
-    case ValueEntryType::kInvalid: FALLTHROUGH_INTENDED;
-    case ValueEntryType::kPackedRow: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kInvalid: [[fallthrough]];
+    case ValueEntryType::kPackedRowV1: [[fallthrough]];
+    case ValueEntryType::kPackedRowV2: [[fallthrough]];
     case ValueEntryType::kMaxByte:
       return STATUS_FORMAT(Corruption, "$0 is not allowed in a RocksDB PrimitiveValue", value_type);
   }
@@ -1441,7 +1454,7 @@ Status PrimitiveValue::DecodeToQLValuePB(
     case ValueEntryType::kVarInt: {
       // TODO(kpopali): check if we can simply put the slice value, instead of decoding and
       // encoding it again.
-      util::VarInt varint;
+      yb::VarInt varint;
       size_t num_decoded_bytes = 0;
       RETURN_NOT_OK(varint.DecodeFromComparable(slice.ToString(), &num_decoded_bytes));
       if (data_type != DataType::VARINT) {
@@ -1544,9 +1557,10 @@ Status PrimitiveValue::DecodeToQLValuePB(
     case ValueEntryType::kGinNull:
       break;
 
-    case ValueEntryType::kInvalid: FALLTHROUGH_INTENDED;
-    case ValueEntryType::kPackedRow: FALLTHROUGH_INTENDED;
-    case ValueEntryType::kRowLock: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kInvalid: [[fallthrough]];
+    case ValueEntryType::kPackedRowV1: [[fallthrough]];
+    case ValueEntryType::kPackedRowV2: [[fallthrough]];
+    case ValueEntryType::kRowLock: [[fallthrough]];
     case ValueEntryType::kMaxByte:
       return STATUS_FORMAT(Corruption, "$0 is not allowed in a RocksDB PrimitiveValue", value_type);
   }

@@ -79,7 +79,7 @@ class ExpirationFilterTest : public YBTest {
 
 ConsensusFrontier CreateConsensusFrontier(
     HybridTime ht, HybridTime expire_ht = HybridTime::kInvalid) {
-  ConsensusFrontier f{{0, 1}, ht, HybridTime::kInvalid};
+  ConsensusFrontier f{{0, 1}, ht, { HybridTime::kInvalid, HybridTime::kInvalid }};
   if (expire_ht != HybridTime::kInvalid) {
     f.set_max_value_level_ttl_expiration_time(expire_ht);
   }

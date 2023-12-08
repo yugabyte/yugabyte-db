@@ -92,7 +92,7 @@ Status XClusterYsqlTestBase::InitClusters(const MiniClusterOptions& opts) {
 
   {
     TEST_SetThreadPrefixScoped prefix_se("P");
-    RETURN_NOT_OK(producer_cluster()->StartSync());
+    RETURN_NOT_OK(producer_cluster()->StartAsync());
   }
 
   auto consumer_opts = opts;
@@ -106,12 +106,11 @@ Status XClusterYsqlTestBase::InitClusters(const MiniClusterOptions& opts) {
 
   {
     TEST_SetThreadPrefixScoped prefix_se("C");
-    RETURN_NOT_OK(consumer_cluster()->StartSync());
+    RETURN_NOT_OK(consumer_cluster()->StartAsync());
   }
 
-  RETURN_NOT_OK(RunOnBothClusters([&opts](MiniCluster* cluster) {
-    return cluster->WaitForTabletServerCount(opts.num_tablet_servers);
-  }));
+  RETURN_NOT_OK(
+      RunOnBothClusters([](MiniCluster* cluster) { return cluster->WaitForAllTabletServers(); }));
 
   // Verify the that the selected tablets have their rpc servers bound to the expected pg addr.
   CHECK_EQ(producer_cluster_.mini_cluster_->mini_tablet_server(pg_ts_idx)->bound_rpc_addr().
@@ -175,7 +174,7 @@ Result<std::string> XClusterYsqlTestBase::GetNamespaceId(YBClient* client) {
   master::GetNamespaceInfoResponsePB resp;
 
   RETURN_NOT_OK(
-      client->GetNamespaceInfo({} /* namespace_id */, kDatabaseName, YQL_DATABASE_PGSQL, &resp));
+      client->GetNamespaceInfo({} /* namespace_id */, namespace_name, YQL_DATABASE_PGSQL, &resp));
 
   return resp.namespace_().id();
 }
@@ -248,7 +247,7 @@ Result<YBTableName> XClusterYsqlTestBase::CreateYsqlTable(
   // producer/consumer.
   const int colocation_id = (tablegroup_name.has_value() || colocated) ? (idx + 1) * 111111 : 0;
   return CreateYsqlTable(
-      cluster, kNamespaceName, "" /* schema_name */, Format("test_table_$0", idx), tablegroup_name,
+      cluster, namespace_name, "" /* schema_name */, Format("test_table_$0", idx), tablegroup_name,
       num_tablets, colocated, colocation_id, ranged_partitioned);
 }
 

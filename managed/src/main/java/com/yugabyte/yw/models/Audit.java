@@ -102,6 +102,9 @@ public class Audit extends Model {
     @EnumValue("XCluster Configuration")
     XClusterConfig,
 
+    @EnumValue("Disaster Recovery Configuration")
+    DrConfig,
+
     @EnumValue("Table")
     Table,
 
@@ -141,6 +144,9 @@ public class Audit extends Model {
     @EnumValue("Support Bundle")
     SupportBundle,
 
+    @EnumValue("Telemetry Provider")
+    TelemetryProvider,
+
     @EnumValue("GFlags")
     GFlags,
 
@@ -166,7 +172,10 @@ public class Audit extends Model {
     PerformanceAdvisorRun,
 
     @EnumValue("Role")
-    Role
+    Role,
+
+    @EnumValue("RoleBinding")
+    RoleBinding
   }
 
   public enum ActionType {
@@ -265,6 +274,12 @@ public class Audit extends Model {
 
     @EnumValue("Upgrade GFlags")
     UpgradeGFlags,
+
+    @EnumValue("Create Telemetry Provider Config")
+    CreateTelemetryConfig,
+
+    @EnumValue("Delete Telemetry Provider Config")
+    DeleteTelemetryConfig,
 
     @EnumValue("Upgrade Kubernetes Overrides")
     UpgradeKubernetesOverrides,

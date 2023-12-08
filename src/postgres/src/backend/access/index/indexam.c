@@ -633,7 +633,13 @@ index_fetch_heap(IndexScanDesc scan, TupleTableSlot *slot)
 {
 	if (IsYBRelation(scan->heapRelation))
 	{
-		ExecStoreHeapTuple(scan->xs_hitup, slot, false /* shouldFree */);
+		/*
+		 * For aggregate pushdown, slot should have already been updated by YB
+		 * amgettuple.
+		 */
+		if (!scan->yb_aggrefs)
+			ExecStoreHeapTuple(scan->xs_hitup, slot, false /* shouldFree */);
+
 		return true;
 	}
 

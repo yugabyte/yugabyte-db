@@ -1,9 +1,11 @@
 package com.yugabyte.yw.models.helpers;
 
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.ITask;
 import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /** These are the various types of user tasks and internal tasks. */
@@ -179,6 +181,10 @@ public enum TaskType {
 
   RestartXClusterConfig(com.yugabyte.yw.commissioner.tasks.RestartXClusterConfig.class),
 
+  CreateDrConfig(com.yugabyte.yw.commissioner.tasks.CreateDrConfig.class),
+
+  DeleteDrConfig(com.yugabyte.yw.commissioner.tasks.DeleteDrConfig.class),
+
   // Tasks belonging to subtasks classpath
   AddAuthorizedKey(com.yugabyte.yw.commissioner.tasks.subtasks.AddAuthorizedKey.class),
 
@@ -320,6 +326,8 @@ public enum TaskType {
 
   DeleteXClusterConfigEntry(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteXClusterConfigEntry.class),
+
+  DeleteDrConfigEntry(com.yugabyte.yw.commissioner.tasks.subtasks.DeleteDrConfigEntry.class),
 
   ResetXClusterConfigEntry(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ResetXClusterConfigEntry.class),
@@ -527,9 +535,95 @@ public enum TaskType {
 
   YBCBackupSucceeded(com.yugabyte.yw.commissioner.tasks.subtasks.YBCBackupSucceeded.class),
 
-  CloudProviderEdit(com.yugabyte.yw.commissioner.tasks.CloudProviderEdit.class);
+  CloudProviderEdit(com.yugabyte.yw.commissioner.tasks.CloudProviderEdit.class),
+
+  ReprovisionNode(com.yugabyte.yw.commissioner.tasks.ReprovisionNode.class);
 
   private final Class<? extends ITask> taskClass;
+
+  /**
+   * Used to fill in an active task metric value for universe. For now only universe related tasks
+   * are marked with that.
+   */
+  private static final Map<TaskType, Integer> TASK_CODES_MAP =
+      ImmutableMap.<TaskType, Integer>builder()
+          // Cluster operations (1-29):
+          .put(AddOnClusterCreate, 1)
+          .put(AddOnClusterDelete, 2)
+          .put(CreateKubernetesUniverse, 3)
+          .put(CreateUniverse, 4)
+          .put(DestroyKubernetesUniverse, 5)
+          .put(DestroyUniverse, 6)
+          .put(EditKubernetesUniverse, 7)
+          .put(EditUniverse, 8)
+          .put(PauseUniverse, 9)
+          .put(ReadOnlyClusterCreate, 10)
+          .put(ReadOnlyClusterDelete, 11)
+          .put(ReadOnlyKubernetesClusterCreate, 12)
+          .put(ReadOnlyKubernetesClusterDelete, 13)
+          .put(ResumeUniverse, 14)
+          // Upgrade/Maintenance (30-69):
+          .put(CertsRotate, 30)
+          .put(ConfigureDBApis, 31)
+          .put(GFlagsUpgrade, 32)
+          .put(RebootUniverse, 33)
+          .put(ResizeNode, 34)
+          .put(RestartUniverse, 35)
+          .put(SoftwareUpgrade, 36)
+          .put(SystemdUpgrade, 37)
+          .put(ThirdpartySoftwareUpgrade, 38)
+          .put(TlsToggle, 39)
+          .put(VMImageUpgrade, 40)
+          .put(UpdateDiskSize, 41)
+          .put(UpgradeUniverse, 42)
+          .put(CertsRotateKubernetesUpgrade, 43)
+          .put(ConfigureDBApisKubernetes, 44)
+          .put(GFlagsKubernetesUpgrade, 45)
+          .put(KubernetesOverridesUpgrade, 46)
+          .put(RestartUniverseKubernetesUpgrade, 47)
+          .put(SoftwareKubernetesUpgrade, 48)
+          .put(UpdateKubernetesDiskSize, 49)
+          .put(UpgradeKubernetesUniverse, 50)
+          // Node operations (70-89):
+          .put(AddNodeToUniverse, 70)
+          .put(DeleteNodeFromUniverse, 71)
+          .put(RebootNodeInUniverse, 72)
+          .put(ReleaseInstanceFromUniverse, 73)
+          .put(RemoveNodeFromUniverse, 74)
+          .put(StartMasterOnNode, 75)
+          .put(StartNodeInUniverse, 76)
+          .put(StopNodeInUniverse, 77)
+          // Backup/restore (90-109):
+          .put(BackupUniverse, 90)
+          .put(CreateBackup, 91)
+          .put(CreateBackupSchedule, 92)
+          .put(CreatePitrConfig, 93)
+          .put(DeleteCustomerConfig, 94)
+          .put(DeleteCustomerStorageConfig, 95)
+          .put(DeletePitrConfig, 96)
+          .put(MultiTableBackup, 97)
+          .put(RestoreBackup, 98)
+          .put(RestoreSnapshotSchedule, 99)
+          // Table ops (110-119):
+          .put(CreateCassandraTable, 110)
+          .put(CreateTableSpacesInUniverse, 111)
+          .put(DeleteTable, 112)
+          .put(ImportIntoTable, 113)
+          // XCluster (120-129):
+          .put(CreateXClusterConfig, 120)
+          .put(DeleteXClusterConfig, 121)
+          .put(EditXClusterConfig, 122)
+          .put(RestartXClusterConfig, 123)
+          .put(SyncXClusterConfig, 124)
+          // Other (130+):
+          .put(DisableYbc, 130)
+          .put(InstallYbcSoftware, 131)
+          .put(UpgradeUniverseYbc, 132)
+          .put(RotateAccessKey, 133)
+          .put(RunApiTriggeredHooks, 134)
+          .put(SetUniverseKey, 135)
+          .put(UpdateLoadBalancerConfig, 136)
+          .build();
 
   TaskType(Class<? extends ITask> taskClass) {
     this.taskClass = taskClass;
@@ -551,5 +645,9 @@ public enum TaskType {
 
   public Class<? extends ITask> getTaskClass() {
     return taskClass;
+  }
+
+  public Integer getCode() {
+    return TASK_CODES_MAP.getOrDefault(this, 0);
   }
 }

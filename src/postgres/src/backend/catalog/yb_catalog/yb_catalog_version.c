@@ -219,7 +219,20 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(
 						__func__, is_breaking_change ? "" : "non", tmpbuf)));
 	}
 	HandleYBStatus(YBCPgDmlExecWriteOp(update_stmt, &rows_affected_count));
-	Assert(rows_affected_count == 1);
+	/*
+	 * Under normal situation rows_affected_count should be exactly 1. However
+	 * when a connection is established in per-database catalog version mode,
+	 * if the table pg_yb_catalog_version is updated to only have one row
+	 * for database template1 which is part of the process of converting to
+	 * global catalog version mode, this connection remains in per-database
+	 * catalog version mode. In this case rows_affected_count will be 0 unless
+	 * MyDatabaseId is template1 because in pg_yb_catalog_version the row for
+	 * MyDatabaseId no longer exists.
+	 */
+	if (rows_affected_count == 0)
+		Assert(YBIsDBCatalogVersionMode());
+	else
+		Assert(rows_affected_count == 1);
 
 	/* Cleanup. */
 	update_stmt = NULL;

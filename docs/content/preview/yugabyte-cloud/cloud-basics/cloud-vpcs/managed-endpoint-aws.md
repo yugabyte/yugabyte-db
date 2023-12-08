@@ -43,11 +43,11 @@ Make sure that default security group in your application VPC allows internal co
 
 Make sure that the **Enable DNS resolution** and **Enable DNS hostnames** DNS settings in your application VPC are enabled. To access these settings, in the AWS [VPC console](https://console.aws.amazon.com/vpc/), select the VPC, click **Actions**, and choose **Edit VPC Settings**.
 
-## Set up a private link for AWS
+To use AWS PrivateLink to connect your cluster to a VPC in AWS that hosts your application, first create a private service endpoint (PSE) on your cluster, then create an endpoint in AWS.
 
-To use PrivateLink to connect your cluster to a VPC in AWS that hosts your application, first create a private service endpoint (PSE) on your cluster, then create an endpoint in AWS.
+## Create a PSE in YugabyteDB Managed
 
-### Create a PSE in YugabyteDB Managed
+You create the PSEs (one for each region) for your cluster using [ybm CLI](../../../managed-automation/managed-cli/).
 
 To create a PSE, do the following:
 
@@ -83,13 +83,24 @@ To create a PSE, do the following:
     ybm cluster network endpoint describe --cluster-name <yugabytedb_cluster> --endpoint-id <endpoint_id>
     ```
 
-    Note the service name of the endpoint you want to link to your client application VPC in AWS.
+Note the following values:
 
-### Create a private endpoint in AWS
+- **Host** - The host name of the PSE. You will use this to [connect to your cluster](../../../cloud-connect/connect-applications/). The host name of a PSE for AWS always ends in `aws.ybdb.io`. The PSE Host is also displayed in YugabyteDB Managed on the cluster **Settings** tab under **Connection Parameters**.
+- **Service Name** - You will use this service name when creating the private endpoint in AWS.
+
+To delete a PSE, enter the following command:
+
+```sh
+ybm cluster network endpoint delete \
+    --cluster-name <yugabytedb_cluster> \
+    --endpoint-id <endpoint_id> \
+```
+
+## Create a private endpoint in AWS
 
 You can create the AWS endpoint using the AWS [VPC console](https://console.aws.amazon.com/vpc/) or from the command line using the [AWS CLI](https://docs.aws.amazon.com/cli/).
 
-#### Use the Amazon VPC console
+### Use the Amazon VPC console
 
 To create an interface endpoint to connect to your cluster PSE, do the following:
 
@@ -109,7 +120,9 @@ To create an interface endpoint to connect to your cluster PSE, do the following
 
 1. In the **VPC** field, enter the ID of the VPC where you want to create the AWS endpoint.
 
-1. Under **Subnets**, select the subnets (Availability Zones) to use. At least one of the subnets should match the zones in your cluster.
+1. Under **Subnets**, select the subnets (Availability Zones) to use.
+
+    At least one of the subnets should match the zones in your cluster. The endpoint service can only connect from a subnet in the same availability zone as the PSE; if there isn't a subnet in the same zone, [create one](https://docs.aws.amazon.com/vpc/latest/userguide/create-subnets.html). Always verify the [Availability Zone ID](https://docs.aws.amazon.com/ram/latest/userguide/working-with-az-ids.html) as availability zone names can vary across different accounts.
 
 1. Under **Security groups**, select the security groups to associate with the endpoint network interfaces.
 
@@ -125,20 +138,101 @@ To create an interface endpoint to connect to your cluster PSE, do the following
 
 The initial endpoint status is _Pending_. After the link is validated, the status is _Available_. The private DNS name may take a few minutes to propagate before you can connect.
 
-#### Use AWS CLI
+### Use AWS CLI
 
-Enter the following command:
+#### Set up DNS support
+
+Check if `enableDnsHostnames` and `enableDnsSupport` are set to true for the application VPC where you want to add the VPC interface endpoint:
 
 ```sh
-aws ec2 create-vpc-endpoint --vpc-id <application_vpc_id> \
-  --region <region> --service-name <pse_service_name> \
-  --vpc-endpoint-type Interface --subnet-ids <subnet_ids> \
-  --private-dns-enabled
+aws ec2 describe-vpc-attribute --vpc-id <application_vpc_id> --attribute enableDnsSupport
+
+aws ec2 describe-vpc-attribute --vpc-id <application_vpc_id> --attribute enableDnsHostnames
 ```
 
 Replace values as follows:
 
 - `application_vpc_id` - ID of the AWS VPC. Find this value on the VPC dashboard in your AWS account.
-- `region` - region where you want the VPC endpoint. The region needs to be the same as a region where your cluster is deployed.
-- `pse_service_name` - service name of your PSE.
-- `subnet_ids` - string that identifies the [subnets](https://docs.aws.amazon.com/vpc/latest/userguide/modify-subnets.html) that your AWS VPC uses. Find these values under **Subnets** in your AWS VPC console.
+
+If they are not set to true, set them as follows:
+
+```sh
+aws ec2 modify-vpc-attribute \
+    --enable-dns-hostnames \
+    --enable-dns-support \
+    --vpc-id <application_vpc_id>
+```
+
+#### Create a security group for the endpoint
+
+Create a separate security group for the interface endpoint to simplify security management (by default, AWS creates the endpoint service in the default security group) and add a rule to allow traffic to the YBM PSE. Note that the rule may take a few minutes to propagate to the endpoint NICs in the security group.
+
+```sh
+aws ec2 create-security-group \
+    --group-name ybm-interface-endpoint \
+    --description "Security group for interface endpoint that connects to ybm pse" \
+    --vpc-id <application_vpc_id>
+```
+
+This command returns the security group ID as, for example, `GroupId: sg-903004f8`. This ID is referred to as `endpoint_security_group_id` in the following commands.
+
+Add an ingress rule for YSQL as follows:
+
+```sh
+aws ec2 authorize-security-group-ingress \
+    --group-id <endpoint_security_group_id> \
+    --port 5433 \
+    --source-group <application_security_group_id> \
+    --protocol tcp
+```
+
+And an ingress rule for YCQL as follows:
+
+```sh
+aws ec2 authorize-security-group-ingress \
+    --group-id <endpoint_security_group_id> \
+    --port 9042 \
+    --source-group <application_security_group_id> \
+    --protocol tcp
+```
+
+Replace values as follows:
+
+- `endpoint_security_group_id` - the security group ID of the endpoint
+- `application_security_group_id` - the security group ID of the application VPC
+
+#### Create a VPC interface endpoint
+
+Obtain the [subnet](https://docs.aws.amazon.com/vpc/latest/userguide/modify-subnets.html) IDs of the application VPC, as follows:
+
+```sh
+aws ec2 describe-subnets \
+    --filters "Name=vpc-id,Values=<application_vpc_id>" \
+    --query "Subnets[*].SubnetId" 
+```
+
+This command returns the subnet IDs of the of the application VPC (`subnet_ids` in the following command). Note that the endpoint service can connect only from a subnet in the same availability zone as the PSE. If there isn't a subnet in the same zone, create one.
+
+Create the VPC interface endpoint, as follows:
+
+```sh
+aws ec2 create-vpc-endpoint \
+    --vpc-endpoint-type Interface \ 
+    --vpc-id <application_vpc_id> \
+    --service-name <pse_service_name> \
+    --subnet-ids <subnet_ids> \
+    --security-group-ids <endpoint_security_group_id> \
+    -–private-dns-enabled 
+```
+
+Replace values as follows:
+
+- `application_vpc_id` - ID of the AWS VPC. Find this value on the VPC dashboard in your AWS account.
+- `pse_service_name` - service name of your PSE, which you noted down when creating the PSE.
+- `subnet_ids` - the subnet IDs, separated by whitespace, that your AWS VPC uses. You can also find these values under **Subnets** in your AWS VPC console. The endpoint service can connect only from a subnet in the same availability zone as the PSE. If there isn't a subnet in the same zone, [create one](https://docs.aws.amazon.com/vpc/latest/userguide/create-subnets.html). Always verify the [Availability Zone ID](https://docs.aws.amazon.com/ram/latest/userguide/working-with-az-ids.html) as availability zone names can vary across different accounts.
+- `endpoint_security_group_id` - the security group ID of the endpoint
+
+## Next steps
+
+- [Connect your application](../../../cloud-connect/connect-applications/)
+- [Add database users](../../../cloud-secure-clusters/add-users/)

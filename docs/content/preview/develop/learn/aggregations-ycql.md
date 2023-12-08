@@ -29,7 +29,7 @@ type: docs
 
 </ul>
 
-YugabyteDB supports a number of standard aggregation functions. Let us go through some of these using an example. Consider a products table as shown below.
+YugabyteDB supports a number of standard aggregation functions. For example, consider the following products table:
 
 | ProductID | ProductName          | SupplierID | CategoryID | Unit | Price | Quantity
 | ---       | ---                  | ---        | ---        | ---  | --- | ---
@@ -49,7 +49,7 @@ ycqlsh> CREATE KEYSPACE store;
 ycqlsh> CREATE TABLE store.products (ProductID BIGINT PRIMARY KEY, ProductName VARCHAR, SupplierID INT, CategoryID INT, Unit TEXT, Price FLOAT, Quantity INT);
 ```
 
-Now let us populate the sample data.
+Now populate the sample data.
 
 ```sql
 INSERT INTO store.products (ProductID, ProductName, SupplierID, CategoryID, Unit, Price, Quantity) VALUES (1, 'Chais', 1, 1, '10 boxes x 20 bags', 18, 25);
@@ -61,92 +61,90 @@ INSERT INTO store.products (ProductID, ProductName, SupplierID, CategoryID, Unit
 
 ## Counts
 
-- Finding the number of item types in the store can be done as follows.
+- Find the number of item types in the store as follows:
 
-```sql
-ycqlsh> SELECT COUNT(ProductID) FROM store.products;
-```
+    ```sql
+    ycqlsh> SELECT COUNT(ProductID) FROM store.products;
+    ```
 
-```output
- count(productid)
-------------------
+    ```output
+    count(productid)
+    ------------------
+                    5
+
+    (1 rows)
+    ```
+
+- Give an alias name to the count column as follows:
+
+    ```sql
+    ycqlsh> SELECT COUNT(ProductID) as num_products FROM store.products;
+    ```
+
+    ```output
+    num_products
+    --------------
                 5
 
-(1 rows)
-```
+    (1 rows)
+    ```
 
-- We can give an alias name to the count column as follows.
+- Find the number of item types for supplier 1 as follows:
 
-```sql
-ycqlsh> SELECT COUNT(ProductID) as num_products FROM store.products;
-```
+    ```sql
+    ycqlsh> SELECT COUNT(ProductID) as supplier1_num_products FROM store.products WHERE SupplierID=1;
+    ```
 
-```output
- num_products
---------------
-            5
+    ```output
+    supplier1_num_products
+    ------------------------
+                          3
 
-(1 rows)
-```
-
-- Finding the number of item types for supplier 1 can be done as follows.
-
-You can do this as shown below.
-
-```sql
-ycqlsh> SELECT COUNT(ProductID) as supplier1_num_products FROM store.products WHERE SupplierID=1;
-```
-
-```output
- supplier1_num_products
-------------------------
-                      3
-
-(1 rows)
-```
+    (1 rows)
+    ```
 
 ## Numeric aggregation functions
 
 The standard aggregate functions of `min`, `max`, `sum`, `avg` and `count` are built-in functions.
 
-- To find the total number of items in the store, run the following query.
+- To find the total number of items in the store, run the following query:
 
-```sql
-ycqlsh> SELECT SUM(Quantity) FROM store.products;
-```
+    ```sql
+    ycqlsh> SELECT SUM(Quantity) FROM store.products;
+    ```
 
-```output
- sum(quantity)
----------------
-            96
+    ```output
+    sum(quantity)
+    ---------------
+                96
 
-(1 rows)
-```
+    (1 rows)
+    ```
 
-- To find the price of the cheapest and the most expensive item, run the following.
+- To find the price of the cheapest and the most expensive item, run the following:
 
-```sql
-ycqlsh> SELECT MIN(Price), MAX(Price) FROM store.products;
-```
+    ```sql
+    ycqlsh> SELECT MIN(Price), MAX(Price) FROM store.products;
+    ```
 
-```output
- min(price) | max(price)
-------------+------------
-         10 |         22
+    ```output
+    min(price) | max(price)
+    ------------+------------
+            10 |         22
 
-(1 rows)
-```
+    (1 rows)
+    ```
 
-- To find the average price of all the items in the store, run the following.
+- To find the average price of all the items in the store, run the following:
 
-```sql
-ycqlsh> SELECT AVG(price) FROM store.products;
-```
+    ```sql
+    ycqlsh> SELECT AVG(price) FROM store.products;
+    ```
 
-```output
- system.avg(price)
--------------------
-             18.07
+    ```output
+    system.avg(price)
+    -------------------
+                18.07
 
-(1 rows)
-```
+    (1 rows)
+    ```

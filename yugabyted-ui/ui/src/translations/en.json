@@ -751,7 +751,10 @@
       "tables": {
         "numTables": "{{count}} Table",
         "numTables_plural": "{{count}} Tables",
-        "noTablesCopy": "You do not have any tables",
+        "clusterTables": "Cluster Tables",
+        "indexTables": "Index Tables",
+        "noClusterTables": "There are no cluster tables available",
+        "noIndexTables": "There are no index tables available",
         "noTabletsCopy": "You do not have any tablets",
         "filterKeyword": "Filter by keyword",
         "tableName": "Table Name",

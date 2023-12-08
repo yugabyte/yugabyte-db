@@ -153,31 +153,8 @@ public class ResizeNode extends UpgradeTaskBase {
                 ServerType.EITHER,
                 DEFAULT_CONTEXT);
 
-            Integer newDiskSize = null, newDiskIops = null, newDiskThroughput = null;
-            if (userIntent.deviceInfo != null) {
-              newDiskSize = userIntent.deviceInfo.volumeSize;
-              newDiskIops = userIntent.deviceInfo.diskIops;
-              newDiskThroughput = userIntent.deviceInfo.throughput;
-            }
-            Integer newMasterDiskSize = null,
-                newMasterDiskIops = null,
-                newMasterDiskThroughput = null;
-            if (userIntent.masterDeviceInfo != null) {
-              newMasterDiskSize = userIntent.masterDeviceInfo.volumeSize;
-              newMasterDiskIops = userIntent.masterDeviceInfo.diskIops;
-              newMasterDiskThroughput = userIntent.masterDeviceInfo.throughput;
-            }
             // Persist changes in the universe.
-            createPersistResizeNodeTask(
-                    userIntent.instanceType,
-                    newDiskSize,
-                    newDiskIops,
-                    newDiskThroughput,
-                    userIntent.masterInstanceType,
-                    newMasterDiskSize,
-                    newMasterDiskIops,
-                    newMasterDiskThroughput,
-                    Collections.singletonList(cluster.uuid))
+            createPersistResizeNodeTask(userIntent, cluster.uuid)
                 .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ChangeInstanceType);
           }
           // Need to run gflag upgrades for the nodes that weren't updated.
@@ -348,12 +325,18 @@ public class ResizeNode extends UpgradeTaskBase {
     }
     byServerType.forEach(
         (type, nodes) -> {
-          String newInstanceType = newIntent.getInstanceTypeForProcessType(type);
-          DeviceInfo newDeviceInfo = newIntent.getDeviceInfoForProcessType(type);
-          String currentInstanceType = currentIntent.getInstanceTypeForProcessType(type);
-          DeviceInfo currentDeviceInfo = currentIntent.getDeviceInfoForProcessType(type);
-          createResizeNodeTasks(
-              nodes, newInstanceType, newDeviceInfo, currentInstanceType, currentDeviceInfo);
+          for (NodeDetails node : nodes) {
+            DeviceInfo newDeviceInfo = newIntent.getDeviceInfoForNode(node);
+            String newInstanceType = newIntent.getInstanceType(type, node.getAzUuid());
+            String currentInstanceType = node.cloudInfo.instance_type;
+            DeviceInfo currentDeviceInfo = currentIntent.getDeviceInfoForNode(node);
+            createResizeNodeTasks(
+                Collections.singletonList(node),
+                newInstanceType,
+                newDeviceInfo,
+                currentInstanceType,
+                currentDeviceInfo);
+          }
         });
   }
 

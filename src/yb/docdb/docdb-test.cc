@@ -47,8 +47,8 @@ TEST_F(DocDBTestQl, LastProjectionIsNull) {
   bool subdoc_found_in_rocksdb = false;
   dockv::ReaderProjection projection;
   projection.columns = {
-    { .id = ColumnId(1), .subkey = KeyEntryValue("p1"), .data_type = DataType::NULL_VALUE_TYPE },
-    { .id = ColumnId(2), .subkey = KeyEntryValue("p2"), .data_type = DataType::NULL_VALUE_TYPE },
+    { .id = ColumnId(1), .subkey = KeyEntryValue("p1"), .data_type = DataType::NULL_VALUE_TYPE},
+    { .id = ColumnId(2), .subkey = KeyEntryValue("p2"), .data_type = DataType::NULL_VALUE_TYPE},
   };
 
   GetSubDocQl(

@@ -62,11 +62,12 @@ export type ArchitectureType = typeof ArchitectureType[keyof typeof Architecture
 export const ProviderStatus = {
   READY: 'READY',
   UPDATING: 'UPDATING',
-  ERROR: 'ERROR'
+  ERROR: 'ERROR',
+  DELETING: 'DELETING'
 } as const;
 export type ProviderStatus = typeof ProviderStatus[keyof typeof ProviderStatus];
 
-export const TRANSITORY_PROVIDER_STATUSES = [ProviderStatus.UPDATING] as const;
+export const TRANSITORY_PROVIDER_STATUSES = [ProviderStatus.UPDATING, ProviderStatus.DELETING] as const;
 
 // --------------------------------------------------------------------------------------
 // Route Constants
@@ -179,7 +180,8 @@ export const ProviderLabel = {
 export const ProviderStatusLabel = {
   [ProviderStatus.ERROR]: 'Error',
   [ProviderStatus.READY]: 'Ready',
-  [ProviderStatus.UPDATING]: 'Updating'
+  [ProviderStatus.UPDATING]: 'Updating',
+  [ProviderStatus.DELETING]: 'Deleting'
 };
 
 export const NTPSetupTypeLabel = {

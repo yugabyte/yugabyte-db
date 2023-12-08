@@ -26,8 +26,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.AvailabilityZoneEditData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -51,7 +49,6 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
   Users defaultUser;
   Provider defaultProvider;
   Region defaultRegion;
-  SettableRuntimeConfigFactory runtimeConfigFactory;
 
   @Before
   public void setUp() {
@@ -61,16 +58,12 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
     defaultRegion =
         Region.create(
             defaultProvider, "default-region", "Default PlacementRegion", "default-image");
-    runtimeConfigFactory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
-    runtimeConfigFactory
-        .globalRuntimeConf()
-        .setValue(GlobalConfKeys.useLegacyPayloadForRegionAndAZs.getKey(), "true");
   }
 
-  private Result createZone(UUID providerUUID, UUID regionUUID, JsonNode body) {
+  private Result createZoneV2(UUID providerUUID, UUID regionUUID, JsonNode body) {
     String uri =
         String.format(
-            "/api/customers/%s/providers/%s/regions/%s/zones",
+            "/api/customers/%s/providers/%s/provider_regions/%s/region_zones",
             defaultCustomer.getUuid(), providerUUID, regionUUID);
     return doRequestWithBody("POST", uri, body);
   }
@@ -300,13 +293,8 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateZoneV2Payload() {
-    // use v2 APIs payload for region creation.
-    runtimeConfigFactory
-        .globalRuntimeConf()
-        .setValue(GlobalConfKeys.useLegacyPayloadForRegionAndAZs.getKey(), "false");
-
     JsonNode azBody = generateAZRequestBody(defaultRegion);
-    Result result = createZone(defaultProvider.getUuid(), defaultRegion.getUuid(), azBody);
+    Result result = createZoneV2(defaultProvider.getUuid(), defaultRegion.getUuid(), azBody);
     AvailabilityZone zone =
         Json.fromJson(Json.parse(contentAsString(result)), AvailabilityZone.class);
     assertEquals(OK, result.status());

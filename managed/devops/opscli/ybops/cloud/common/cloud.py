@@ -237,7 +237,8 @@ class AbstractCloud(AbstractCommandParser):
         logging.info("[app] Configuring second NIC")
         subnet_network, subnet_netmask = subnet_cidr.split('/')
         # Copy and run script to configure routes
-        copy_to_tmp(extra_vars, get_datafile_path('configure_nic.sh'), remote_tmp_dir=args.remote_tmp_dir)
+        copy_to_tmp(extra_vars, get_datafile_path('configure_nic.sh'),
+                    remote_tmp_dir=args.remote_tmp_dir)
         cmd = ("sudo {}/configure_nic.sh "
                "--subnet_network {} --subnet_netmask {} --cloud {} --tmp_dir {}").format(
             args.remote_tmp_dir, subnet_network, subnet_netmask, self.name, args.remote_tmp_dir)
@@ -260,7 +261,8 @@ class AbstractCloud(AbstractCommandParser):
 
         # Verify that the command ran successfully:
         rc, stdout, stderr = remote_exec_command(extra_vars,
-                                                 'ls {}/dhclient-script-*'.format(args.remote_tmp_dir))
+                                                 'ls {}/dhclient-script-*'
+                                                 .format(args.remote_tmp_dir))
         if rc:
             raise YBOpsRecoverableError(
                 "Second nic not configured at start up")
@@ -730,3 +732,6 @@ class AbstractCloud(AbstractCommandParser):
         """Map the cloud specific instance state to the generic normalized instance state.
         """
         return InstanceState.UNKNOWN
+
+    def update_user_data(self, args):
+        pass

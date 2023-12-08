@@ -111,6 +111,7 @@ public class CreateSupportBundle extends AbstractTaskBase {
         supportBundleComponent.downloadComponentBetweenDates(
             customer, universe, globalComponentsDirPath, startDate, endDate, null);
       } catch (Exception e) {
+        log.error("Error occurred in support bundle collection", e);
         throw new RuntimeException(
             String.format(
                 "Error while trying to download the global level component files : %s",
@@ -135,6 +136,7 @@ public class CreateSupportBundle extends AbstractTaskBase {
           supportBundleComponent.downloadComponentBetweenDates(
               customer, universe, nodeComponentsDirPath, startDate, endDate, node);
         } catch (Exception e) {
+          log.error("Error occurred in support bundle collection", e);
           throw new RuntimeException(
               String.format(
                   "Error while trying to download the node level component files : %s",

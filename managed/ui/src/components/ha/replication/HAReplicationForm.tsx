@@ -22,6 +22,7 @@ import { getPromiseState } from '../../../utils/PromiseUtils';
 
 import './HAReplicationForm.scss';
 import { ManagePeerCertsModal } from '../modals/ManagePeerCertsModal';
+import { isCertCAEnabledInRuntimeConfig } from '../../customCACerts';
 
 export enum HAInstanceTypes {
   Active = 'Active',
@@ -184,10 +185,13 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
   const ybHAWebService: YbHAWebService =
     runtimeConfigs?.data && getPromiseState(runtimeConfigs).isSuccess()
       ? JSON.parse(
-          runtimeConfigs.data.configEntries.find((c: any) => c.key === YB_HA_WS_RUNTIME_CONFIG_KEY)
-            .value
-        )
+        runtimeConfigs.data.configEntries.find((c: any) => c.key === YB_HA_WS_RUNTIME_CONFIG_KEY)
+          .value
+      )
       : EMPTY_YB_HA_WEBSERVICE;
+
+  const isCACertStoreEnabled = isCertCAEnabledInRuntimeConfig(runtimeConfigs?.data);
+
   const peerCerts = getPeerCerts(ybHAWebService);
   return (
     <div className="ha-replication-form" data-testid="ha-replication-config-form">
@@ -205,17 +209,16 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
         {(formikProps) => {
           // workaround for outdated version of Formik to access form methods outside of <Formik>
           formik.current = formikProps;
-
+          
           const isHTTPS = formikProps.values?.instanceAddress?.startsWith('https:');
           const { instanceType, clusterKey } = formikProps.values;
           return (
             <>
               <div className="ha-replication-form__action-bar">
-                {instanceType === HAInstanceTypes.Active && (
+                {instanceType === HAInstanceTypes.Active && !isCACertStoreEnabled && (
                   <YBButton
-                    btnText={`${
-                      getPeerCerts(ybHAWebService).length > 0 ? 'Manage' : 'Add'
-                    } Peer Certificates`}
+                    btnText={`${getPeerCerts(ybHAWebService).length > 0 ? 'Manage' : 'Add'
+                      } Peer Certificates`}
                     onClick={(e: any) => {
                       showAddPeerCertModal();
                       e.currentTarget.blur();
@@ -307,11 +310,10 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
                       )}
                       <YBInfoTip
                         title="Replication Configuration"
-                        content={`The key used to authenticate the High Availability cluster ${
-                          instanceType === HAInstanceTypes.Standby
+                        content={`The key used to authenticate the High Availability cluster ${instanceType === HAInstanceTypes.Standby
                             ? '(generated on active instance)'
                             : ''
-                        }`}
+                          }`}
                       />
                     </Col>
                   </Row>
@@ -362,13 +364,13 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
                       </Col>
                     </Row>
                   </div>
-                  {instanceType === HAInstanceTypes.Active && (
+                  {instanceType === HAInstanceTypes.Active && !isCACertStoreEnabled && (
                     <Row className="ha-replication-form__row">
                       <Col xs={2} className="ha-replication-form__label">
                         Peer Certificates
                       </Col>
                       <Col xs={10} className="ha-replication-form__certs">
-                        {peerCerts.length === 0 ? (
+                        {!isCACertStoreEnabled && peerCerts.length === 0 ? (
                           <button
                             className="ha-replication-form__no-cert--add-button"
                             onClick={(e) => {
@@ -376,9 +378,8 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
                               showAddPeerCertModal();
                             }}
                           >
-                            {`Add a peer certificate ${
-                              isHTTPS ? '(Required for HTTPS setup)' : ''
-                            }`}
+                            {`Add a peer certificate ${isHTTPS ? '(Required for HTTPS setup)' : ''
+                              }`}
                           </button>
                         ) : (
                           peerCerts.map((peerCert) => {
@@ -408,7 +409,7 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
                         disabled={
                           formikProps.isSubmitting ||
                           !formikProps.isValid ||
-                          (instanceType === HAInstanceTypes.Active &&
+                          (!isCACertStoreEnabled && instanceType === HAInstanceTypes.Active &&
                             isHTTPS &&
                             peerCerts.length === 0)
                         }

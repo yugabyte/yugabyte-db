@@ -44,7 +44,10 @@ public class BundleDetails {
     YbcLogs(ComponentLevel.NodeLevel),
 
     @EnumValue("K8sInfo")
-    K8sInfo(ComponentLevel.GlobalLevel);
+    K8sInfo(ComponentLevel.GlobalLevel),
+
+    @EnumValue("NodeAgent")
+    NodeAgent(ComponentLevel.NodeLevel);
 
     private final ComponentLevel componentLevel;
 

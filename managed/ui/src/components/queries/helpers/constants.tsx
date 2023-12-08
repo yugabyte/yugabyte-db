@@ -1,3 +1,5 @@
+import { QueryResponseKeys } from './types';
+
 export const EXTERNAL_LINKS: Record<string, string> = {
   PERF_ADVISOR_DOCS_LINK:
     'https://docs.yugabyte.com/preview/yugabyte-platform/alerts-monitoring/performance-advisor/',
@@ -21,7 +23,7 @@ export const CONST_VAR: Record<string, string> = {
   AVG_NODES: 'Avg of the other nodes'
 };
 
-export const DURATION_FIELDS = [
+export const DURATION_FIELDS: readonly QueryResponseKeys[] = [
   'P25',
   'P50',
   'P90',
@@ -31,10 +33,12 @@ export const DURATION_FIELDS = [
   'mean_time',
   'min_time',
   'stddev_time',
-  'total_time'
+  'total_time',
+  'elapsedMillis'
 ] as const;
-
 export const DURATION_FIELD_DECIMALS = 2;
+
+export const TIMESTAMP_FIELDS: readonly QueryResponseKeys[] = ['queryStartTime'] as const;
 
 export const QueryType = {
   SLOW: 'slowQuery',

@@ -49,7 +49,6 @@ using YBTables = std::vector<std::shared_ptr<client::YBTable>>;
 constexpr int kRpcTimeout = NonTsanVsTsan(60, 120);
 static const std::string kUniverseId = "test_universe";
 static const cdc::ReplicationGroupId kReplicationGroupId("test_replication_group");
-static const std::string kNamespaceName = "test_namespace";
 static const std::string kKeyColumnName = "key";
 static const uint32_t kRangePartitionInterval = 500;
 
@@ -60,6 +59,11 @@ auto GetSafeTime(const TabletServer* tserver, const NamespaceId& namespace_id) {
 
 class XClusterTestBase : public YBTest {
  public:
+  std::string namespace_name = "yugabyte";
+
+  XClusterTestBase()
+      : producer_tables_(producer_cluster_.tables_), consumer_tables_(consumer_cluster_.tables_) {}
+
   class Cluster {
    public:
     std::unique_ptr<MiniCluster> mini_cluster_;
@@ -68,6 +72,7 @@ class XClusterTestBase : public YBTest {
     HostPort pg_host_port_;
     boost::optional<client::TransactionManager> txn_mgr_;
     size_t pg_ts_idx_;
+    YBTables tables_;
 
     Result<pgwrapper::PGConn> Connect() {
       return ConnectToDB(std::string() /* dbname */);
@@ -131,10 +136,10 @@ class XClusterTestBase : public YBTest {
 
   Status WaitForLoadBalancersToStabilize();
 
-  Status WaitForLoadBalancersToStabilize(MiniCluster* cluster);
+  Status WaitForLoadBalancerToStabilize(MiniCluster* cluster);
 
   Status CreateDatabase(
-      Cluster* cluster, const std::string& namespace_name = kNamespaceName, bool colocated = false);
+      Cluster* cluster, const std::string& namespace_name, bool colocated = false);
 
   static Result<client::YBTableName> CreateTable(
       YBClient* client, const std::string& namespace_name, const std::string& table_name,
@@ -242,11 +247,11 @@ class XClusterTestBase : public YBTest {
 
   Result<std::vector<xrepl::StreamId>> BootstrapProducer(
       MiniCluster* producer_cluster, YBClient* producer_client,
-      const std::vector<std::shared_ptr<yb::client::YBTable>>& tables);
+      const std::vector<std::shared_ptr<yb::client::YBTable>>& tables, int proxy_tserver_index = 0);
 
   Result<std::vector<xrepl::StreamId>> BootstrapProducer(
       MiniCluster* producer_cluster, YBClient* producer_client,
-      const std::vector<std::string>& table_ids);
+      const std::vector<std::string>& table_ids, int proxy_tserver_index = 0);
 
   // Wait for replication drain on a list of tables.
   Status WaitForReplicationDrain(
@@ -327,6 +332,9 @@ class XClusterTestBase : public YBTest {
   Cluster producer_cluster_;
   Cluster consumer_cluster_;
   MonoDelta propagation_timeout_;
+  YBTables &producer_tables_, &consumer_tables_;
+  // The first table in producer_tables_ and consumer_tables_ is the default table.
+  std::shared_ptr<client::YBTable> producer_table_, consumer_table_;
 
  private:
   // Function that translates the api response from a WaitForReplicationDrainResponsePB call into

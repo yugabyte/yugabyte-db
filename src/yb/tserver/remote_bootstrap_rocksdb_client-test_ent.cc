@@ -212,7 +212,7 @@ class RemoteSnapshotTransferDocksDBClientTest : public RemoteBootstrapRocksDBCli
 
     HostPort host_port = HostPortFromPB(leader_.last_known_private_addr()[0]);
     ASSERT_OK(
-        client_->Start(proxy_cache_.get(), leader_.permanent_uuid(), host_port, rocksdb_dir_));
+        client_->Start(proxy_cache_.get(), GetTabletId(), host_port, rocksdb_dir_));
   }
 
  protected:

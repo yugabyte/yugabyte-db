@@ -93,8 +93,7 @@ const RenameKeyspace = React.forwardRef<PageRef>((_, forwardRef) => {
       const renamedKeyspaceValues = { ...val };
 
       if (isTableByTableBackup) {
-        
-        // In table by table backup, there will be multiple keyspace group. 
+        // In table by table backup, there will be multiple keyspace group.
         // But, we display only one keyspaces for a group to the user.
         // if it is renamed, we then updated the name to all keyspaces in that group
 

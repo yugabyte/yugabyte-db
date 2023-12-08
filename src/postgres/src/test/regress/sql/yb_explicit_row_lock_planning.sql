@@ -8,6 +8,9 @@ INSERT INTO yb_locks_t VALUES (1),(2),(3),(4),(5);
 CREATE TABLE yb_locks_t2 (k1 int, k2 int, k3 int, v int, PRIMARY KEY(k1, k2, k3));
 INSERT INTO yb_locks_t2 VALUES (1,2,3,4),(5,6,7,8);
 
+CREATE TABLE yb_locks_tasc (k int, PRIMARY KEY (k ASC));
+INSERT INTO yb_locks_tasc VALUES (1),(2),(3);
+
 SET yb_lock_pk_single_rpc TO ON;
 
 -- Test plain (unlocked case).
@@ -53,6 +56,11 @@ EXPLAIN (COSTS OFF)
 SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UPDATE;
 SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UPDATE;
 
+-- Test LockRows node is used with ASC table when YB Sequential Scan is used.
+/*+ SeqScan(yb_locks_tasc) */ EXPLAIN (COSTS OFF)
+SELECT * FROM yb_locks_tasc WHERE k=1 FOR UPDATE;
+/*+ SeqScan(yb_locks_tasc) */ SELECT * FROM yb_locks_tasc WHERE k=1 FOR UPDATE;
+
 -- In isolation level SERIALIZABLE, all locks are done during scans.
 BEGIN ISOLATION LEVEL SERIALIZABLE;
 
@@ -70,6 +78,17 @@ SELECT * FROM yb_locks_t FOR UPDATE;
 EXPLAIN (COSTS OFF)
 SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UPDATE;
 SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UPDATE;
+
+-- Test locking, and no LockRows node, when using an ASC table and YB Sequential Scan.
+-- (No WHERE clause.)
+/*+ SeqScan(yb_locks_tasc) */ EXPLAIN (COSTS OFF)
+SELECT * FROM yb_locks_tasc FOR UPDATE;
+/*+ SeqScan(yb_locks_tasc) */ SELECT * FROM yb_locks_tasc FOR UPDATE;
+
+-- For an ASC table, should lock inline, with no LockRows node.
+EXPLAIN (COSTS OFF)
+SELECT * FROM yb_locks_tasc ORDER BY k FOR UPDATE;
+SELECT * FROM yb_locks_tasc ORDER BY k FOR UPDATE;
 
 COMMIT;
 
@@ -127,4 +146,4 @@ COMMIT;
 EXPLAIN (COSTS OFF, FORMAT JSON)
 SELECT * FROM yb_locks_t WHERE k=5 FOR UPDATE;
 
-DROP TABLE yb_locks_t, yb_locks_t2, yb_locks_partition;
+DROP TABLE yb_locks_t, yb_locks_t2, yb_locks_tasc, yb_locks_partition;

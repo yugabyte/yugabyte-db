@@ -2264,19 +2264,20 @@ check_python_script_syntax() {
 
 run_shellcheck() {
   local scripts_to_check=(
+    bin/release_package_docker_test.sh
     build-support/common-build-env.sh
     build-support/common-cli-env.sh
     build-support/common-test-env.sh
-    build-support/jenkins/common-lto.sh
     build-support/compiler-wrappers/compiler-wrapper.sh
     build-support/find_linuxbrew.sh
     build-support/jenkins/build.sh
+    build-support/jenkins/common-lto.sh
     build-support/jenkins/test.sh
     build-support/jenkins/yb-jenkins-build.sh
     build-support/jenkins/yb-jenkins-test.sh
     build-support/run-test.sh
-    yugabyted-ui/build.sh
     yb_build.sh
+    yugabyted-ui/build.sh
   )
   pushd "$YB_SRC_ROOT"
   local script_path

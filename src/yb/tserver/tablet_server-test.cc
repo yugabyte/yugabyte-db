@@ -734,12 +734,13 @@ TEST_F(TabletServerTest, TestConcurrentDeleteTablet) {
 
 TEST_F(TabletServerTest, TestInsertLatencyMicroBenchmark) {
   METRIC_DEFINE_entity(test);
-  METRIC_DEFINE_coarse_histogram(test, insert_latency,
+  METRIC_DEFINE_event_stats(test, insert_latency,
                           "Insert Latency",
                           MetricUnit::kMicroseconds,
                           "TabletServer single threaded insert latency.");
 
-  scoped_refptr<Histogram> histogram = METRIC_insert_latency.Instantiate(ts_test_metric_entity_);
+  scoped_refptr<EventStats> stats =
+      METRIC_insert_latency.Instantiate(ts_test_metric_entity_);
 
   auto warmup = AllowSlowTests() ?
       FLAGS_single_threaded_insert_latency_bench_warmup_rows : 10;
@@ -758,7 +759,7 @@ TEST_F(TabletServerTest, TestInsertLatencyMicroBenchmark) {
     InsertTestRowsRemote(0, i, 1);
     MonoTime after = MonoTime::Now();
     MonoDelta delta = after.GetDeltaSince(before);
-    histogram->Increment(delta.ToMicroseconds());
+    stats->Increment(delta.ToMicroseconds());
   }
 
   MonoTime end = MonoTime::Now();
@@ -767,7 +768,7 @@ TEST_F(TabletServerTest, TestInsertLatencyMicroBenchmark) {
   // Generate the JSON.
   std::stringstream out;
   JsonWriter writer(&out, JsonWriter::PRETTY);
-  ASSERT_OK(histogram->WriteAsJson(&writer, MetricJsonOptions()));
+  ASSERT_OK(stats->WriteAsJson(&writer, MetricJsonOptions()));
 
   LOG(INFO) << "Throughput: " << throughput << " rows/sec.";
   LOG(INFO) << out.str();

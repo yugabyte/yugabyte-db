@@ -130,23 +130,25 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
                 .setSubTaskGroupType(getTaskSubGroupType());
           }
 
-          if (taskParams().upgradeSystemCatalog) {
-            // Run YSQL upgrade on the universe.
-            createRunYsqlUpgradeTask(newVersion).setSubTaskGroupType(getTaskSubGroupType());
-          }
+          if (!confGetter.getConfForScope(universe, UniverseConfKeys.skipUpgradeFinalize)) {
+            // Promote Auto flags on compatible versions.
+            if (confGetter.getConfForScope(universe, UniverseConfKeys.promoteAutoFlag)
+                && CommonUtils.isAutoFlagSupported(newVersion)) {
+              createCheckSoftwareVersionTask(allNodes, newVersion)
+                  .setSubTaskGroupType(getTaskSubGroupType());
+              createPromoteAutoFlagsAndLockOtherUniversesForUniverseSet(
+                  Collections.singleton(universe.getUniverseUUID()),
+                  Collections.singleton(universe.getUniverseUUID()),
+                  xClusterUniverseService,
+                  new HashSet<>(),
+                  universe,
+                  newVersion);
+            }
 
-          // Promote Auto flags on compatible versions.
-          if (confGetter.getConfForScope(universe, UniverseConfKeys.promoteAutoFlag)
-              && CommonUtils.isAutoFlagSupported(newVersion)) {
-            createCheckSoftwareVersionTask(allNodes, newVersion)
-                .setSubTaskGroupType(getTaskSubGroupType());
-            createPromoteAutoFlagsAndLockOtherUniversesForUniverseSet(
-                Collections.singleton(universe.getUniverseUUID()),
-                Collections.singleton(universe.getUniverseUUID()),
-                xClusterUniverseService,
-                new HashSet<>(),
-                universe,
-                newVersion);
+            if (taskParams().upgradeSystemCatalog) {
+              // Run YSQL upgrade on the universe.
+              createRunYsqlUpgradeTask(newVersion).setSubTaskGroupType(getTaskSubGroupType());
+            }
           }
 
           // Update software version in the universe metadata.

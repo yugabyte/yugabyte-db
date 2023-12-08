@@ -246,7 +246,6 @@ def copy_file_k8s(args, client):
 
 
 def handle_copy_file(args, client):
-    logging.info("args here {}".format(args))
     local_path = Path(args.local_file)
     cmd = ['mkdir', '-p', str(local_path.parent.absolute())]
     client.exec_command(cmd)
@@ -280,7 +279,6 @@ def upload_file_k8s(args, client):
 
 
 def handle_upload_file(args, client):
-    logging.info("args here {}".format(args))
     target_path = Path(args.target_file)
     cmd = ['mkdir', '-p', str(target_path.parent.absolute())]
     client.exec_command(cmd)

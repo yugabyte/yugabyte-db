@@ -524,11 +524,8 @@ Result<bool> PgDocReadOp::DoCreateRequests() {
   // table. Such scan is able to return rows ordered, and that order may be relied upon by upper
   // plan nodes, but parallel execution messes the order up. Here where we are preparing the
   // requests, we do not know if the query relies on the row order, we even may not be able to tell,
-  // if we are doing sequential or primary key scan, hence we should not parallelize scans on range
-  // partitioned tables. In the past neither aggregates nor where clause pushdown was supported by
-  // the index scan, so the same criteria worked and only sequential scans over range tables were
-  // parallelized. As of today, IndexScan still does not support aggregate pushdown, so we allow
-  // parallel execution of requests with aggregates, but this implicit criteria is not reliable.
+  // if we are doing sequential or primary key scan, hence we should not parallelize non-aggregate
+  // scans on range partitioned tables.
   // TODO(GHI 13737): as explained above, explicitly indicate, if operation should return ordered
   // results.
   } else if (req.is_aggregate() ||

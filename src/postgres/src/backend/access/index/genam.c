@@ -135,6 +135,7 @@ RelationGetIndexScan(Relation indexRelation, int nkeys, int norderbys)
 	scan->yb_idx_pushdown = NULL;
 	scan->yb_aggrefs = NIL;
 	scan->yb_agg_slot = NULL;
+	scan->yb_distinct_prefixlen = 0;
 	return scan;
 }
 

@@ -186,7 +186,10 @@ public class PlacementInfoUtil {
       zones =
           zones.stream()
               .filter(
-                  az -> NodeInstance.listByZone(az.getUuid(), userIntent.instanceType).size() > 0)
+                  az -> {
+                    String instanceType = userIntent.getInstanceType(az.getUuid());
+                    return NodeInstance.listByZone(az.getUuid(), instanceType).size() > 0;
+                  })
               .collect(Collectors.toList());
     }
     return zones;
@@ -594,7 +597,7 @@ public class PlacementInfoUtil {
                           "Couldn't find %d nodes of type %s in %s zone "
                               + "(%d is free and %d currently occupied)",
                           az.numNodesInAZ,
-                          cluster.userIntent.instanceType,
+                          cluster.userIntent.getInstanceType(az.uuid),
                           availabilityZone.getName(),
                           available,
                           occupied + willBeFreed));
@@ -666,7 +669,7 @@ public class PlacementInfoUtil {
                   });
         } else {
           throw new IllegalStateException(
-              "Couldn't find " + deltaNodes + " nodes of type " + userIntent.instanceType);
+              "Couldn't find " + deltaNodes + " nodes of type " + userIntent.getBaseInstanceType());
         }
       }
       changed = false;
@@ -1312,7 +1315,8 @@ public class PlacementInfoUtil {
                       node.state == NodeState.ToBeRemoved
                           && node.isTserver
                           && Objects.equals(
-                              node.cloudInfo.instance_type, cluster.userIntent.instanceType),
+                              node.cloudInfo.instance_type,
+                              cluster.userIntent.getInstanceType(node.getAzUuid())),
                   nodesInCluster,
                   placementAZ.uuid,
                   true);
@@ -1587,7 +1591,7 @@ public class PlacementInfoUtil {
     nodeDetails.cloudInfo.az = placementAZ.name;
     nodeDetails.cloudInfo.subnet_id = placementAZ.subnet;
     nodeDetails.cloudInfo.secondary_subnet_id = placementAZ.secondarySubnet;
-    nodeDetails.cloudInfo.instance_type = cluster.userIntent.instanceType;
+    nodeDetails.cloudInfo.instance_type = cluster.userIntent.getInstanceTypeForNode(nodeDetails);
     nodeDetails.cloudInfo.assignPublicIP = cluster.userIntent.assignPublicIP;
     nodeDetails.cloudInfo.useTimeSync = cluster.userIntent.useTimeSync;
     // Set the tablet server role to true.
@@ -1610,10 +1614,7 @@ public class PlacementInfoUtil {
 
   public static NodeDetails createDedicatedMasterNode(
       NodeDetails exampleNode, UserIntent userIntent) {
-    String instanceType =
-        userIntent.masterInstanceType == null
-            ? userIntent.instanceType
-            : userIntent.masterInstanceType;
+    String instanceType = userIntent.getInstanceType(ServerType.MASTER, exampleNode.getAzUuid());
     NodeDetails result = exampleNode.clone();
     result.cloudInfo.private_ip = null;
     result.cloudInfo.secondary_private_ip = null;

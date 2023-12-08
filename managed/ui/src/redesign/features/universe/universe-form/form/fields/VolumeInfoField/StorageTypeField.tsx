@@ -14,7 +14,6 @@ import {
 import { StorageType, UniverseFormData, CloudType } from '../../../utils/dto';
 import {
   DEVICE_INFO_FIELD,
-  MASTER_INSTANCE_TYPE_FIELD,
   MASTER_DEVICE_INFO_FIELD,
   PROVIDER_FIELD,
   INSTANCE_TYPE_FIELD
@@ -43,7 +42,6 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disableStorageType
   const masterFieldValue = useWatch({ name: MASTER_DEVICE_INFO_FIELD });
   const provider = useWatch({ name: PROVIDER_FIELD });
   const instanceType = useWatch({ name: INSTANCE_TYPE_FIELD });
-  const masterInstanceType = useWatch({ name: MASTER_INSTANCE_TYPE_FIELD });
   const { setValue } = useFormContext<UniverseFormData>();
 
   //field actions
@@ -96,16 +94,7 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disableStorageType
   );
 
   const instance = instanceTypes?.find((item) => item.instanceTypeCode === instanceType);
-  const masterInstance = instanceTypes?.find(
-    (item) => item.instanceTypeCode === masterInstanceType
-  );
   if (!instance) return null;
-
-  const { volumeDetailsList } = instance.instanceTypeDetails;
-  const { volumeType } = volumeDetailsList[0];
-
-  const masterVolumeDetailsList = masterInstance?.instanceTypeDetails;
-  const masterVolumeType = masterVolumeDetailsList?.[0];
 
   const storageType = fieldValue.storageType;
 
@@ -132,7 +121,7 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disableStorageType
                 'data-testid': 'VolumeInfoFieldDedicated-Common-StorageTypeSelect'
               }}
               onChange={(event) =>
-                onStorageTypeChanged((event?.target.value as unknown) as StorageType)
+                onStorageTypeChanged(event?.target.value as unknown as StorageType)
               }
             >
               {getStorageTypeOptions(provider?.code).map((item) => (

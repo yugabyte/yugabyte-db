@@ -79,7 +79,13 @@ message PerDbFilterPB {
 message ConsensusFrontierPB {
   optional OpIdPB op_id = 1;
   optional fixed64 hybrid_time = 2;
-  optional fixed64 history_cutoff = 3;
+  // History cutoff of all the tables of this tablet.
+  // On the master, this field is used for the sys catalog table.
+  // For cotables (i.e. ysql system tables) for which
+  // the cotables_history_cutoff field is used. On tservers,
+  // this field is used for everything i.e. both colocated and non colocated tables
+  // and the cotables_history_cutoff field is invalid.
+  optional fixed64 primary_cutoff_ht = 3;
   // Filter applies to all the entries of the sst file.
   // Only set for the largest frontier.
   optional fixed64 hybrid_time_filter = 4;
@@ -89,6 +95,8 @@ message ConsensusFrontierPB {
   // to selectively restore some databases. Only set for
   // the largest frontier.
   repeated PerDbFilterPB db_oid_to_ht_filter = 7;
+  // Set only on the master for cotables.
+  optional fixed64 cotables_cutoff_ht = 8;
 }
 
 message ApplyTransactionStatePB {

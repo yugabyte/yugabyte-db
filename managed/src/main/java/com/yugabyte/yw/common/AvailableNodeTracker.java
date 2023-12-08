@@ -62,12 +62,12 @@ public class AvailableNodeTracker {
   }
 
   public void markExcessiveAsFree(PlacementInfo placementInfo) {
-    String instanceType =
-        getUserIntent().getInstanceTypeForProcessType(UniverseTaskBase.ServerType.TSERVER);
     placementInfo
         .azStream()
         .forEach(
             az -> {
+              String instanceType =
+                  getUserIntent().getInstanceType(UniverseTaskBase.ServerType.TSERVER, az.uuid);
               AtomicInteger cnt = new AtomicInteger();
               getNodesForCurrentCluster().stream()
                   .filter(n -> az.uuid.equals(n.azUuid))
@@ -93,7 +93,7 @@ public class AvailableNodeTracker {
     if (!isOnprem()) {
       return Integer.MAX_VALUE;
     }
-    String instanceType = getUserIntent().getInstanceTypeForProcessType(serverType);
+    String instanceType = getUserIntent().getInstanceType(serverType, zoneId);
     Pair<String, UUID> key = new Pair(instanceType, zoneId);
     Integer dbCount = getFreeInDB(zoneId, serverType);
     int res = dbCount - temporaryCounts.getOrDefault(key, 0);
@@ -117,7 +117,7 @@ public class AvailableNodeTracker {
       return;
     }
     int available = getAvailableForZone(zoneId, serverType);
-    String instanceType = getUserIntent().getInstanceTypeForProcessType(serverType);
+    String instanceType = getUserIntent().getInstanceType(serverType, zoneId);
     if (available <= 0) {
       throw new IllegalStateException(
           "No available instances of type " + instanceType + " in zone " + zoneId);
@@ -142,7 +142,7 @@ public class AvailableNodeTracker {
   }
 
   public int getOccupiedByZone(UUID zoneId, UniverseTaskBase.ServerType serverType) {
-    String instanceType = getUserIntent().getInstanceTypeForProcessType(serverType);
+    String instanceType = getUserIntent().getInstanceType(serverType, zoneId);
     return occupied.getOrDefault(new Pair(instanceType, zoneId), 0);
   }
 
@@ -151,21 +151,21 @@ public class AvailableNodeTracker {
   }
 
   public int getFreeInDB(UUID zoneId, UniverseTaskBase.ServerType serverType) {
-    String instanceType = getUserIntent().getInstanceTypeForProcessType(serverType);
+    String instanceType = getUserIntent().getInstanceType(serverType, zoneId);
     return dbCounts.computeIfAbsent(
         new Pair(instanceType, zoneId), k -> NodeInstance.listByZone(zoneId, instanceType).size());
   }
 
-  public int getWillBeFreed(UUID uuid) {
-    return getWillBeFreed(uuid, UniverseTaskBase.ServerType.TSERVER);
+  public int getWillBeFreed(UUID zoneId) {
+    return getWillBeFreed(zoneId, UniverseTaskBase.ServerType.TSERVER);
   }
 
-  public int getWillBeFreed(UUID uuid, UniverseTaskBase.ServerType serverType) {
-    String instanceType = getUserIntent().getInstanceTypeForProcessType(serverType);
+  public int getWillBeFreed(UUID zoneId, UniverseTaskBase.ServerType serverType) {
+    String instanceType = getUserIntent().getInstanceType(serverType, zoneId);
     return (int)
         currentNodes.stream()
             .filter(n -> n.state == NodeDetails.NodeState.ToBeRemoved)
-            .filter(n -> instanceType.equals(n.cloudInfo.instance_type) && uuid.equals(n.azUuid))
+            .filter(n -> instanceType.equals(n.cloudInfo.instance_type) && zoneId.equals(n.azUuid))
             .count();
   }
 

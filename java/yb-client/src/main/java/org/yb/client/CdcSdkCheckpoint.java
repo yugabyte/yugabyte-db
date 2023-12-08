@@ -2,12 +2,16 @@ package org.yb.client;
 
 import java.util.Arrays;
 
+/**
+ * Class to represent the checkpoint for the CDCSDK service.
+ * Containes term, index, key, writeId and time as protected fields, with getters.
+ */
 public class CdcSdkCheckpoint {
-  private final long term;
-  private final long index;
-  private final byte[] key;
-  private final int writeId;
-  private final long time;
+  protected final long term;
+  protected final long index;
+  protected final byte[] key;
+  protected final int writeId;
+  protected long time;
 
   public CdcSdkCheckpoint(long term, long index, byte[] key, int writeId, long time) {
     this.term = term;

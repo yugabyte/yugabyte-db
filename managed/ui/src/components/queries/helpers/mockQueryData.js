@@ -41,7 +41,7 @@ export const mockLiveYsqlQueries = [
     privateIp: '192.180.10.1',
     dbName: 'postgres',
     query: 'SELECT * FROM cars WHERE price > 20000',
-    type: 'active',
+    sessionStatus: 'active',
     elapsedMillis: 3,
     clientHost: '10.12.113.8',
     clientPort: 5433

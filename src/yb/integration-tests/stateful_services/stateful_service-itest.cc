@@ -218,8 +218,7 @@ TEST_F(StatefulServiceTest, TestEchoService) {
 
   auto service_table = std::make_unique<client::TableHandle>();
   ASSERT_OK(service_table->Open(service_table_name, client_.get()));
-  std::shared_ptr<client::YBSession> session = client_->NewSession();
-  session->SetTimeout(kTimeout);
+  auto session = client_->NewSession(kTimeout);
 
   stateful_service::GetEchoRequestPB echo_req;
   stateful_service::GetEchoCountRequestPB count_req;

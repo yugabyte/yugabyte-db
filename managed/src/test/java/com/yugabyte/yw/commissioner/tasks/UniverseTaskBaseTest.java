@@ -212,14 +212,17 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
   // @formatter:on
   public void testCreateDestroyServerTasks(
       CloudType cloudType, @Nullable String privateIp, boolean detailsCleanExpected) {
-
     List<NodeDetails> nodes = setupNodeDetails(cloudType, privateIp);
     Universe universe = Mockito.mock(Universe.class);
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        new UniverseDefinitionTaskParams.UserIntent();
     UniverseDefinitionTaskParams.Cluster cluster =
         new UniverseDefinitionTaskParams.Cluster(
-            UniverseDefinitionTaskParams.ClusterType.PRIMARY,
-            new UniverseDefinitionTaskParams.UserIntent());
+            UniverseDefinitionTaskParams.ClusterType.PRIMARY, userIntent);
+    UniverseDefinitionTaskParams universeDetails = new UniverseDefinitionTaskParams();
+    universeDetails.clusters.add(cluster);
     Mockito.when(universe.getCluster(Mockito.any())).thenReturn(cluster);
+    Mockito.when(universe.getUniverseDetails()).thenReturn(universeDetails);
     universeTaskBase.createDestroyServerTasks(universe, nodes, false, false, false);
     for (int i = 0; i < NUM_NODES; i++) {
       // Node should not be in use.

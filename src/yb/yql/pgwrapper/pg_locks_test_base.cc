@@ -207,10 +207,7 @@ Result<TransactionId> PgLocksTestBase::GetSingularTransactionOnTablet(const Tabl
   RSTATUS_DCHECK(tablet_lock_info.transaction_locks().size() == 1,
                  IllegalState,
                  "Expected to see single transaction, but found more than one.");
-  const auto& it = tablet_lock_info.transaction_locks().begin();
-  std::string txn_id_str = it->first;
-  RSTATUS_DCHECK(!txn_id_str.empty(), IllegalState, "Expected to see one txn, but found none.");
-  return TransactionId::FromString(txn_id_str);
+  return FullyDecodeTransactionId(tablet_lock_info.transaction_locks(0).id());
 }
 
 Result<TransactionId> PgLocksTestBase::OpenTransaction(
@@ -260,10 +257,13 @@ Result<std::future<Status>> PgLocksTestBase::ExpectBlockedAsync(
   auto status = std::async(std::launch::async, [&conn, query]() {
     return conn->Execute(query);
   });
-
+  // TODO: Once https://github.com/yugabyte/yugabyte-db/issues/17295 is fixed, remove the
+  // below annotations ignoring race.
+  ANNOTATE_IGNORE_READS_BEGIN();
   RETURN_NOT_OK(WaitFor([&conn] () {
     return conn->IsBusy();
   }, 1s * kTimeMultiplier, "Wait for blocking request to be submitted to the query layer"));
+  ANNOTATE_IGNORE_READS_END();
   return status;
 }
 

@@ -3,9 +3,7 @@
 package com.yugabyte.yw.models;
 
 import static com.yugabyte.yw.models.Users.Role;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
+import static org.junit.Assert.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.typesafe.config.Config;
@@ -127,6 +125,32 @@ public class UsersTest extends FakeDBApplication {
     assertNotNull(apiToken);
 
     Users apiUser = Users.authWithApiToken(apiToken);
+    assertEquals(apiUser.getUuid(), u.getUuid());
+  }
+
+  @Test
+  public void testUpsertApiTokenWithVersion() {
+    Users u = Users.create("foo@foo.com", "password", Role.Admin, customer.getUuid(), false);
+    assertNotNull(u.getUuid());
+
+    String apiToken = u.upsertApiToken();
+    assertNotNull(apiToken);
+
+    Users updatedUser = Users.getOrBadRequest(u.getUuid());
+    assertEquals((Long) 1L, updatedUser.getApiTokenVersion());
+
+    assertThrows(
+        "API token version has changed",
+        PlatformServiceException.class,
+        () -> updatedUser.upsertApiToken(0L));
+
+    assertThrows(
+        "API token version has changed",
+        PlatformServiceException.class,
+        () -> updatedUser.upsertApiToken(2L));
+
+    String updatedToken = updatedUser.upsertApiToken(1L);
+    Users apiUser = Users.authWithApiToken(updatedToken);
     assertEquals(apiUser.getUuid(), u.getUuid());
   }
 

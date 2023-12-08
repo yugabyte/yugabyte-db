@@ -281,8 +281,11 @@ class QueuePerformanceHelper {
         cds::container::optimistic_queue::make_traits<OptAllocator>::type>>(
             "OptimisticQueue/BlockAllocator/DHP");
     TestQueue<cds::container::RWQueue<ptrdiff_t>>("RWQueue");
-    TestQueue<cds::container::SegmentedQueue<cds::gc::HP, ptrdiff_t>>("SegmentedQueue/16", 16);
-    TestQueue<cds::container::SegmentedQueue<cds::gc::HP, ptrdiff_t>>("SegmentedQueue/128", 128);
+    // On GCC11, segmented queue seems to call sized delete with a different size than it allocates
+    // with, which causes a segfault in tcmalloc.
+    // See issue https://github.com/khizmax/libcds/issues/181.
+    // TestQueue<cds::container::SegmentedQueue<cds::gc::HP, ptrdiff_t>>("SegmentedQueue/16", 16);
+    // TestQueue<cds::container::SegmentedQueue<cds::gc::HP, ptrdiff_t>>("SegmentedQueue/128", 128);
     TestQueue<cds::container::VyukovMPMCCycleQueue<ptrdiff_t>>("VyukovMPMCCycleQueue", 50000);
   }
  private:

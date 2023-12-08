@@ -166,8 +166,8 @@ public class TestPgDdlFaultTolerance extends BasePgSQLTest {
         statement.execute("INSERT INTO ddl_ft_table VALUES (7, '8', 9.0, 10)");
 
         expectedRows.clear();
-        expectedRows.add(new Row(1, "2", 3.0, null));
-        expectedRows.add(new Row(4, "5", 6.0, null));
+        expectedRows.add(new Row(1, "2", 3.0, 99));
+        expectedRows.add(new Row(4, "5", 6.0, 99));
         expectedRows.add(new Row(7, "8", 9.0, 10));
         assertRowSet(statement, selectStmt, expectedRows);
 

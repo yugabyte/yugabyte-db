@@ -118,6 +118,11 @@ YBColumnSpec* YBColumnSpec::RenameTo(const std::string& new_name) {
   return this;
 }
 
+YBColumnSpec* YBColumnSpec::SetMissing(const QLValuePB& missing_value) {
+  data_->missing_value = missing_value;
+  return this;
+}
+
 Status YBColumnSpec::ToColumnSchema(YBColumnSchema* col) const {
   // Verify that the user isn't trying to use any methods that
   // don't make sense for CREATE.
@@ -134,7 +139,7 @@ Status YBColumnSpec::ToColumnSchema(YBColumnSchema* col) const {
 
   *col = YBColumnSchema(
       data_->name, data_->type, data_->kind, data_->nullable, data_->static_column,
-      data_->is_counter, data_->order, data_->pg_type_oid);
+      data_->is_counter, data_->order, data_->pg_type_oid, data_->missing_value);
 
   return Status::OK();
 }
@@ -256,9 +261,11 @@ YBColumnSchema::YBColumnSchema(const std::string &name,
                                bool is_static,
                                bool is_counter,
                                int32_t order,
-                               int32_t pg_type_oid) {
+                               int32_t pg_type_oid,
+                               const QLValuePB& missing_value) {
   col_ = std::make_unique<ColumnSchema>(
-      name, type, kind, is_nullable, is_static, is_counter, order, pg_type_oid);
+      name, type, kind, is_nullable, is_static, is_counter, order, pg_type_oid,
+      false, missing_value);
 }
 
 YBColumnSchema::YBColumnSchema(const YBColumnSchema& other) {

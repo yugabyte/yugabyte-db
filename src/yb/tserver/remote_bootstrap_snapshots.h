@@ -31,14 +31,20 @@ class RemoteBootstrapSnapshotsComponent : public RemoteBootstrapComponent {
   Status Download() override;
   Status Download(const SnapshotId* snapshot_id);
 
- private:
-  FsManager& fs_manager() const {
-    return downloader_.fs_manager();
-  }
+  // snapshot_id must be specified if new_snapshot_id is specified.
+  // If snapshot_id == nullptr, download all snapshot files.
+  // If snapshot_id != nullptr, download all files relevant to the specified snapshot.
+  // If new_snapshot_id != nullptr, download the snapshot files into the specified directory.
+  Status DownloadInto(
+      const SnapshotId* snapshot_id = nullptr, const SnapshotId* new_snapshot_id = nullptr);
 
-  Status Download(
+ private:
+  FsManager& fs_manager() const { return downloader_.fs_manager(); }
+
+  // Downloads the snapshot file into the directory of new_snapshot_id.
+  Status DownloadFileInto(
       const std::string& top_snapshots_dir, const tablet::SnapshotFilePB& snapshot,
-      std::unordered_set<SnapshotId>* failed_snapshot_ids);
+      const SnapshotId& new_snapshot_id, std::unordered_set<SnapshotId>* failed_snapshot_ids);
 
   RemoteBootstrapFileDownloader& downloader_;
   tablet::RaftGroupReplicaSuperBlockPB& new_superblock_;

@@ -1,5 +1,11 @@
 import { UniverseState } from '../../components/universes/helpers/universeHelpers';
 
+export const QueryApi = {
+  YSQL: 'ysql',
+  YCQL: 'ycql'
+} as const;
+export type QueryApi = typeof QueryApi[keyof typeof QueryApi];
+
 export const YBTableRelationType = {
   SYSTEM_TABLE_RELATION: 'SYSTEM_TABLE_RELATION',
   USER_TABLE_RELATION: 'USER_TABLE_RELATION',

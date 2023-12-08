@@ -76,7 +76,7 @@ METRIC_DEFINE_counter(tablet, log_reader_entries_read, "Entries Read From Log",
                       yb::MetricUnit::kEntries,
                       "Number of entries read from the WAL since tablet start");
 
-METRIC_DEFINE_coarse_histogram(table, log_reader_read_batch_latency, "Log Read Latency",
+METRIC_DEFINE_event_stats(table, log_reader_read_batch_latency, "Log Read Latency",
                         yb::MetricUnit::kBytes,
                         "Microseconds spent reading log entry batches");
 
@@ -375,7 +375,7 @@ Result<std::shared_ptr<LWLogEntryBatchPB>> LogReader::ReadBatchUsingIndexEntry(
 
   CHECK_GT(index_entry.offset_in_segment, 0);
   int64_t offset = index_entry.offset_in_segment;
-  ScopedLatencyMetric scoped(read_batch_latency_.get());
+  ScopedLatencyMetric<EventStats> scoped(read_batch_latency_.get());
   auto result = segment->ReadEntryHeaderAndBatch(&offset);
   RETURN_NOT_OK_PREPEND(
       result,

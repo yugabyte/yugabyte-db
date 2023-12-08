@@ -1259,7 +1259,7 @@ TEST_F_EX(
 
   const auto leader_idx = CHECK_RESULT(cluster_->GetTabletLeaderIndex(tablets[0].tablet_id()));
   // Wait for compaction to complete.
-  ASSERT_OK(WaitForTabletFullyCompacted(leader_idx, tablets[0].tablet_id()));
+  ASSERT_OK(WaitForTabletPostSplitCompacted(leader_idx, tablets[0].tablet_id()));
   ASSERT_OK(test_admin_client_->SplitTabletAndWait(
       default_db_, table_name, /* wait_for_parent_deletion */ kWaitForParentDeletion,
       tablets[0].tablet_id()));
@@ -1315,48 +1315,40 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestBackupChecksumsDisabled))
 }
 
 YB_STRONGLY_TYPED_BOOL(SourceDatabaseIsColocated);
+YB_STRONGLY_TYPED_BOOL(PackedRowsEnabled);
 
-class YBBackupCrossColocation : public YBBackupTest,
-                                public ::testing::WithParamInterface<SourceDatabaseIsColocated> {
- protected:
-  void SetUp() override {
-    YBBackupTest::SetUp();
-    if (GetParam()) {
-      ASSERT_NO_FATALS(RunPsqlCommand(
-          Format("CREATE DATABASE $0 WITH COLOCATION=TRUE", backup_db_name), "CREATE DATABASE"));
-      SetDbName(backup_db_name);
-    }
-  }
-
-  const std::string backup_db_name = GetParam() ? "colo_db" : "yugabyte";
-  const std::string restore_db_name = "restored_db";
-};
-
-class YBBackupTestWithPackedRows : public YBBackupCrossColocation {
+class YBBackupTestWithPackedRowsAndColocation :
+    public YBBackupTest,
+    public ::testing::WithParamInterface<std::tuple<PackedRowsEnabled, SourceDatabaseIsColocated>> {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     YBBackupTest::UpdateMiniClusterOptions(options);
-    // Add flags to enable packed row feature.
-    options->extra_master_flags.push_back("--enable_automatic_tablet_splitting=false");
-    options->extra_tserver_flags.push_back("--ysql_enable_packed_row=true");
-    options->extra_tserver_flags.push_back("--ysql_enable_packed_row_for_colocated_table=true");
+    if (std::get<0>(GetParam())) {
+      // Add flags to enable packed row feature.
+      options->extra_master_flags.push_back("--enable_automatic_tablet_splitting=false");
+      options->extra_tserver_flags.push_back("--ysql_enable_packed_row=true");
+      options->extra_tserver_flags.push_back("--ysql_enable_packed_row_for_colocated_table=true");
+    } else {
+      options->extra_tserver_flags.push_back("--ysql_enable_packed_row=false");
+      options->extra_tserver_flags.push_back("--ysql_enable_packed_row_for_colocated_table=false");
+    }
   }
 
   void SetUp() override {
     YBBackupTest::SetUp();
-    if (GetParam()) {
+    if (std::get<1>(GetParam())) {
       ASSERT_NO_FATALS(RunPsqlCommand(
           Format("CREATE DATABASE $0 WITH COLOCATION=TRUE", backup_db_name), "CREATE DATABASE"));
       SetDbName(backup_db_name);
     }
   }
 
-  const std::string backup_db_name = GetParam() ? "colo_db" : "yugabyte";
+  const std::string backup_db_name = std::get<1>(GetParam()) ? "colo_db" : "yugabyte";
   const std::string restore_db_name = "restored_db";
 };
 
 TEST_P(
-    YBBackupTestWithPackedRows,
+    YBBackupTestWithPackedRowsAndColocation,
     YB_DISABLE_TEST_IN_SANITIZERS(YSQLSchemaPackingWithSnapshotGreaterVersionThanRestore)) {
   const std::string table_name = "test1";
   // Create a table.
@@ -1436,7 +1428,7 @@ TEST_P(
 }
 
 TEST_P(
-    YBBackupTestWithPackedRows,
+    YBBackupTestWithPackedRowsAndColocation,
     YB_DISABLE_TEST_IN_SANITIZERS(YSQLSchemaPackingWithSnapshotLowerVersionThanRestore)) {
   const std::string table_name = "test1";
   // Create a table.
@@ -1493,8 +1485,11 @@ TEST_P(
 }
 
 INSTANTIATE_TEST_CASE_P(
-    PackedRows, YBBackupTestWithPackedRows,
-    ::testing::Values(SourceDatabaseIsColocated::kFalse, SourceDatabaseIsColocated::kTrue));
+    PackedRows, YBBackupTestWithPackedRowsAndColocation,
+    ::testing::Values(std::make_tuple(PackedRowsEnabled::kTrue, SourceDatabaseIsColocated::kFalse),
+        std::make_tuple(PackedRowsEnabled::kTrue, SourceDatabaseIsColocated::kTrue)));
+
+class YBBackupCrossColocation : public YBBackupTestWithPackedRowsAndColocation {};
 
 TEST_P(YBBackupCrossColocation, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreWithInvalidIndex)) {
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE t1 (id INT NOT NULL, c1 INT, PRIMARY KEY (id))"));
@@ -1539,7 +1534,52 @@ TEST_P(YBBackupCrossColocation, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreWit
 
 INSTANTIATE_TEST_CASE_P(
     CrossColocationTests, YBBackupCrossColocation,
-    ::testing::Values(SourceDatabaseIsColocated::kFalse, SourceDatabaseIsColocated::kTrue));
+    ::testing::Values(
+        std::make_tuple(PackedRowsEnabled::kFalse, SourceDatabaseIsColocated::kFalse),
+        std::make_tuple(PackedRowsEnabled::kFalse, SourceDatabaseIsColocated::kTrue)));
+
+class YBAddColumnDefaultBackupTest : public YBBackupTestWithPackedRowsAndColocation {};
+
+TEST_P(YBAddColumnDefaultBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLDefaultMissingValues)) {
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE t1 (id INT)"));
+  ASSERT_NO_FATALS(InsertRows("INSERT INTO t1 VALUES (generate_series(1, 3))", 3));
+  ASSERT_NO_FATALS(
+      RunPsqlCommand("ALTER TABLE t1 ADD COLUMN c1 TEXT DEFAULT 'default'", "ALTER TABLE"));
+  ASSERT_NO_FATALS(InsertRows("INSERT INTO t1 VALUES (generate_series(4, 6), null)", 3));
+  ASSERT_NO_FATALS(InsertOneRow("INSERT INTO t1 VALUES (7, 'not default')"));
+  ASSERT_NO_FATALS(RunPsqlCommand("UPDATE t1 SET c1 = null WHERE id = 1", "UPDATE 1"));
+  const std::string backup_dir = GetTempDir("backup");
+  const auto backup_keyspace = Format("ysql.$0", backup_db_name);
+  const auto restore_keyspace = Format("ysql.$0", restore_db_name);
+  ASSERT_OK(
+      RunBackupCommand({"--backup_location", backup_dir, "--keyspace", backup_keyspace, "create"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", restore_keyspace, "restore"}));
+
+  SetDbName(restore_db_name);
+
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT * from t1 ORDER BY id;",
+      R"#(
+                 id |     c1
+                ----+-------------
+                  1 |
+                  2 | default
+                  3 | default
+                  4 |
+                  5 |
+                  6 |
+                  7 | not default
+                (7 rows)
+      )#"));
+}
+
+INSTANTIATE_TEST_CASE_P(
+    AddColumnDefault, YBAddColumnDefaultBackupTest,
+    ::testing::Values(std::make_tuple(PackedRowsEnabled::kTrue, SourceDatabaseIsColocated::kFalse),
+        std::make_tuple(PackedRowsEnabled::kTrue, SourceDatabaseIsColocated::kTrue),
+        std::make_tuple(PackedRowsEnabled::kFalse, SourceDatabaseIsColocated::kFalse),
+        std::make_tuple(PackedRowsEnabled::kTrue, SourceDatabaseIsColocated::kFalse)));
 
 }  // namespace tools
 }  // namespace yb

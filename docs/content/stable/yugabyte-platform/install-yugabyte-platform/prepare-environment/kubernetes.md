@@ -163,7 +163,7 @@ Generally, the process involves the following:
 
 You need to perform the following steps:
 
-- Login to [quay.io](https://quay.io/) to access the YugabyteDB private registry using the user name and password provided in the secret YAML file. To find the `auth` field, use `base64 -d` to decode the data inside the `yaml` file twice. In this field, the user name and password are separated by a colon. For example, `yugabyte+<user-name>:ZQ66Z9C1K6AHD5A9VU28B06Q7N0AXZAQSR`.
+- Log in to [quay.io](https://quay.io/) to access the YugabyteDB private registry using the user name and password provided in the secret YAML file. To find the `auth` field, use `base64 -d` to decode the data inside the `yaml` file twice. In this field, the user name and password are separated by a colon. For example, `yugabyte+<user-name>:ZQ66Z9C1K6AHD5A9VU28B06Q7N0AXZAQSR`.
 
   ```sh
   docker login -u "your_yugabyte_username" -p "yugabyte_provided_password" quay.
@@ -248,7 +248,7 @@ You need to perform the following steps:
   docker pull nginxinc/nginx-unprivileged:1.23.3
   ```
 
-- Login to your target container registry, as per the following example that uses Google Container Registry (GCR):
+- Log in to your target container registry, as per the following example that uses Google Container Registry (GCR):
 
   ```sh
   docker login -u _json_key --password-stdin https://gcr.io < .ssh/my-service-account-key.json

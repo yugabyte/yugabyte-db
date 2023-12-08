@@ -551,6 +551,7 @@ void Batcher::ExecuteOperations(Initial initial) {
   // Now flush the ops for each group.
   // Consistent read is not required when whole batch fits into one command.
   const auto need_consistent_read = force_consistent_read || ops_info_.groups.size() > 1;
+  VLOG_WITH_PREFIX_AND_FUNC(3) << "need_consistent_read=" << need_consistent_read;
 
   auto self = shared_from_this();
   for (const auto& group : ops_info_.groups) {

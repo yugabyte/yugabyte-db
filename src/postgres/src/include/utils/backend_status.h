@@ -199,6 +199,10 @@ typedef struct PgBackendStatus
 
 	/* YB catalog version */
 	YbPgBackendCatalogVersionStatus yb_st_catalog_version;
+
+	/* YB (pg_client <--> tserver) Session ID */
+	uint64_t yb_session_id;
+
 } PgBackendStatus;
 
 
@@ -351,5 +355,11 @@ extern PgBackendStatus *pgstat_fetch_stat_beentry(int beid);
 extern LocalPgBackendStatus *pgstat_fetch_stat_local_beentry(int beid);
 extern char *pgstat_clip_activity(const char *raw_activity);
 extern PgBackendStatus **getBackendStatusArrayPointer(void);
+
+/* ----------
+ * YB functions called from backends
+ * ----------
+ */
+extern void yb_pgstat_add_session_info(uint64_t session_id);
 
 #endif							/* BACKEND_STATUS_H */

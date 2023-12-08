@@ -1,9 +1,9 @@
 ---
 title: Automatic Data Expiration
-headerTitle: Automatic Data Expiration
+headerTitle: Automatic data expiration
 linkTitle: Automatic data expiration
-description: Distribute your time-ordered data and retrieve fast
-headcontent: Distribute your time-ordered data and retrieve fast
+description: Expire data using the `USING TTL` operator
+headcontent: Expire data using time-to-live
 menu:
   preview:
     identifier: timeseries-automatic-expiration
@@ -12,8 +12,7 @@ menu:
 type: docs
 ---
 
-
-Consider a scenario where you only need the last few values and the older data is not of any value and can be purged.You would have to set up a background job to clean out older data using many other databases. With YugabyteDB however, you can set an expiration value to the columns with `USING TTL` operator.
+Consider a scenario where you only need the last few values and the older data is not of any value and can be purged. Typically, this requires setting up a separate background job. Using YugabyteDB however, you can set an expiration value for columns using the `USING TTL` operator.
 
 {{<note title="Note">}}
 TTL-based expiration is only available in [YCQL](../../../../api/ycql/).
@@ -56,7 +55,7 @@ SELECT * from exp_demo;
 
 ## Column-level TTL
 
-Instead of setting the TTL on an entire row, you can set TTL per column for more fine-grained expiration. For example,
+For more fine-grained expiration, instead of setting the TTL on an entire row, you can set TTL per column. For example, do the following:
 
 1. Add a row.
 
@@ -76,13 +75,13 @@ Instead of setting the TTL on an entire row, you can set TTL per column for more
      car-5 | 2023-08-01 17:00:01.000000+0000 |    50
     ```
 
-1. Now, set the expiry on the speed column of that row.
+1. Set an expiration on the speed column of that row as follows:
 
     ```sql
     UPDATE exp_demo USING TTL 5 SET speed=10 WHERE car='car-5' AND ts ='2023-08-01 10:00:01';
     ```
 
-1. Wait for `5` seconds and fetch the row for `car-5`.
+1. Wait for five seconds and fetch the row for `car-5`.
 
     ```sql
     SELECT * FROM exp_demo WHERE car='car-5';
@@ -98,9 +97,9 @@ Note that the row is present but the value for the `speed` column is `null`.
 
 ## Table-level TTL
 
-Instead of explicitly setting the TTL at the row level or column level, you can set a TTL on the table. This also saves a lot of space as the TTL value is stored in only one place and not per row or column.
+Instead of explicitly setting the TTL at the row or column level, you can set a TTL on the table. This also has the benefit of saving space as the TTL value is stored in only one place and not per row or column.
 
-The table-level TTL can be defined using the [default_time_to_live property](../../../../api/ycql/ddl_create_table/#table-properties-1).
+Define table-level TTL using the [default_time_to_live property](../../../../api/ycql/ddl_create_table/#table-properties-1).
 
 ## Learn more
 

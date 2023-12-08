@@ -53,17 +53,17 @@ Distributed transactions not yet available in MongoDB Sharded Clusters. On the o
 
 ## Strongly consistent global secondary indexes
 
-MongoDB secondary indexes are not global and have to be updated often with all updates blocked for special cases such as unique secondary indexes. On the other hand, global secondary indexes leverage distributed txns to remain always consistent without any need for out-of-band index re-builds.
+MongoDB secondary indexes are not global and have to be updated often with all updates blocked for special cases such as unique secondary indexes. On the other hand, global secondary indexes leverage distributed transactions to remain always consistent without any need for out-of-band index re-builds.
 
 ## High data density
 
-MongoDB's [WiredTiger storage engine runs only the B-Tree mode](https://www.yugabyte.com/blog/a-busy-developers-guide-to-database-storage-engines-the-basics/) even though WiredTiger itself has support for the Log Structured Merge (LSM) mode. B-Tree engines are good for fast searches while LSM engines are suitable for storing large amounts of data on modern SSDs. While LSM engines can be optimzied to increase read informance, optimizing write performance in a B-Tree engine is not easy. This choice of B-Tree engine tends to make MongoDB suitable only for small workloads where each ReplicaSet primary node is a terabyte or less. However, YugabyteDB can store multi-terabytes of data per node and elastically scale as needed.
+MongoDB's [WiredTiger storage engine runs only the B-Tree mode](https://www.yugabyte.com/blog/a-busy-developers-guide-to-database-storage-engines-the-basics/) even though WiredTiger itself has support for the Log Structured Merge (LSM) mode. B-Tree engines are good for fast searches while LSM engines are suitable for storing large amounts of data on modern SSDs. While LSM engines can be optimized to increase read performance, optimizing write performance in a B-Tree engine is not easy. This choice of B-Tree engine tends to make MongoDB suitable only for small workloads where each ReplicaSet primary node is a terabyte or less. However, YugabyteDB can store multi-terabytes of data per node and elastically scale as needed.
 
 ## Relevant blog posts
 
-A few blog posts that highlight how YugabyteDB differs from MongoDB are below.
+The following blog posts highlight how YugabyteDB differs from MongoDB:
 
-- [Are MongoDB’s ACID Transactions Ready for High Performance Applications?](https://www.yugabyte.com/blog/are-mongodb-acid-transactions-ready-for-high-performance-applications/)
+- [Are MongoDB's ACID Transactions Ready for High Performance Applications?](https://www.yugabyte.com/blog/are-mongodb-acid-transactions-ready-for-high-performance-applications/)
 
 - [Overcoming MongoDB Sharding and Replication Limitations with YugabyteDB](https://www.yugabyte.com/blog/overcoming-mongodb-sharding-and-replication-limitations-with-yugabyte-db/)
 

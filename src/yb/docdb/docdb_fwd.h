@@ -56,6 +56,7 @@ struct ApplyTransactionState;
 struct DocDB;
 struct DocReadContext;
 struct FetchedEntry;
+struct HistoryRetentionDirective;
 struct IntentKeyValueForCDC;
 struct KeyBounds;
 struct LockBatchEntry;

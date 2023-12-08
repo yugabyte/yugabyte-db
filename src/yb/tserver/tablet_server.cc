@@ -171,6 +171,10 @@ DEFINE_UNKNOWN_int32(cql_proxy_webserver_port, 0, "Webserver port for CQL proxy"
 DEFINE_NON_RUNTIME_string(pgsql_proxy_bind_address, "", "Address to bind the PostgreSQL proxy to");
 DECLARE_int32(pgsql_proxy_webserver_port);
 
+DEFINE_NON_RUNTIME_PREVIEW_bool(enable_ysql_conn_mgr, false,
+    "Enable Ysql Connection Manager for the cluster. Tablet Server will start a "
+    "Ysql Connection Manager process as a child process.");
+
 DEFINE_UNKNOWN_int64(inbound_rpc_memory_limit, 0, "Inbound RPC memory limit");
 
 DEFINE_UNKNOWN_bool(tserver_enable_metrics_snapshotter, false,
@@ -225,9 +229,9 @@ DEFINE_UNKNOWN_int32(
 TAG_FLAG(get_universe_key_registry_max_backoff_sec, stable);
 TAG_FLAG(get_universe_key_registry_max_backoff_sec, advanced);
 
-DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_port, 6433,
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_port, yb::pgwrapper::PgProcessConf::kDefaultPort,
     "Ysql Connection Manager port to which clients will connect. This must be different from the "
-    "postgres port set via pgsql_proxy_bind_address. Default is 6433.");
+    "postgres port set via pgsql_proxy_bind_address. Default is 5433.");
 
 namespace yb {
 namespace tserver {
@@ -242,11 +246,18 @@ uint16_t GetPostgresPort() {
 }
 
 void PostgresAndYsqlConnMgrPortValidator() {
+  if (!FLAGS_enable_ysql_conn_mgr) {
+    return;
+  }
   const auto pg_port = GetPostgresPort();
   if (FLAGS_ysql_conn_mgr_port == pg_port) {
-    LOG(FATAL) << "Postgres port (pgsql_proxy_bind_address: " << pg_port
-               << ") and Ysql Connection Manager port (ysql_conn_mgr_port:"
-               << FLAGS_ysql_conn_mgr_port << ") cannot be the same.";
+    if (pg_port != pgwrapper::PgProcessConf::kDefaultPort) {
+      LOG(FATAL) << "Postgres port (pgsql_proxy_bind_address: " << pg_port
+                 << ") and Ysql Connection Manager port (ysql_conn_mgr_port:"
+                 << FLAGS_ysql_conn_mgr_port << ") cannot be the same.";
+    } else {
+      // Ignore. t-server will resolve the conflict in SetProxyAddresses.
+    }
   }
 }
 
@@ -520,7 +531,13 @@ AutoFlagsConfigPB TabletServer::TEST_GetAutoFlagConfig() const {
 
 Status TabletServer::GetRegistration(ServerRegistrationPB* reg, server::RpcOnly rpc_only) const {
   RETURN_NOT_OK(RpcAndWebServerBase::GetRegistration(reg, rpc_only));
-  reg->set_pg_port(pgsql_proxy_bind_address().port());
+  // This makes the yb_servers() function return the connection manager port instead
+  // of th backend db.
+  if (FLAGS_enable_ysql_conn_mgr) {
+    reg->set_pg_port(FLAGS_ysql_conn_mgr_port);
+  } else {
+    reg->set_pg_port(pgsql_proxy_bind_address().port());
+  }
   return Status::OK();
 }
 
@@ -846,6 +863,7 @@ void TabletServer::SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_brea
 
 void TabletServer::SetYsqlDBCatalogVersions(
   const master::DBCatalogVersionDataPB& db_catalog_version_data) {
+  DCHECK_GT(db_catalog_version_data.db_catalog_versions_size(), 0);
   std::lock_guard l(lock_);
 
   bool catalog_changed = false;
@@ -894,7 +912,8 @@ void TabletServer::SetYsqlDBCatalogVersions(
                     << "New: " << new_version << ", Old: " << existing_entry.current_version;
       } else {
         // It is not possible to have same current_version but different last_breaking_version.
-        CHECK_EQ(new_breaking_version, existing_entry.last_breaking_version);
+        CHECK_EQ(new_breaking_version, existing_entry.last_breaking_version)
+            << "db_oid: " << db_oid << ", new_version: " << new_version;
       }
     } else {
       auto& inserted_entry = it.first->second;
@@ -940,6 +959,22 @@ void TabletServer::SetYsqlDBCatalogVersions(
         LOG_WITH_FUNC(INFO) << "set db " << db_oid
                             << " catalog version: " << new_version
                             << ", breaking version: " << new_breaking_version;
+      }
+      // During upgrade, it is possible that the table pg_yb_catalog_version has
+      // just been upgraded to have a row for each database, but there is a race
+      // condition where some PG backends have not yet seen this and continue to
+      // use global catalog version. Here we also set the global catalog version
+      // variables which can be used to check against RPC requests from such lagging
+      // PG backends. Note that it is uncommon for database template1 to have
+      // a connection. But even if there is a template1 connection operating in
+      // per-db-mode, such a connection may receive more catalog version bumps
+      // than needed from unrelated connections that are still operating in
+      // global-mode, this only results in more RPC rejections but no correctness
+      // issue.
+      if (db_oid == kTemplate1Oid) {
+        ysql_catalog_version_ = new_version;
+        shared_object().SetYsqlCatalogVersion(new_version);
+        ysql_last_breaking_catalog_version_ = new_breaking_version;
       }
     }
   }

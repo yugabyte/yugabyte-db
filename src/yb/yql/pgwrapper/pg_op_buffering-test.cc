@@ -70,10 +70,6 @@ Status EnsureDupKeyError(Status status, const std::string& constraint_name) {
   return Status::OK();
 }
 
-Status SetMaxBatchSize(PGConn* conn, size_t max_batch_size) {
-  return conn->ExecuteFormat("SET ysql_session_max_batch_size = $0", max_batch_size);
-}
-
 } // namespace
 
 // The test checks that multiple writes into single table with single tablet

@@ -28,13 +28,19 @@ class DocKeyDecoder;
 class DocPath;
 class KeyBytes;
 class KeyEntryValue;
+class PackedValueV1;
+class PackedValueV2;
+class PackedRowDecoderBase;
+class PackedRowDecoderV1;
+class PackedRowDecoderV2;
 class Partition;
 class PartitionSchema;
 class PgKeyDecoder;
 class PgTableRow;
 class PgValue;
 class PrimitiveValue;
-class RowPacker;
+class RowPackerV1;
+class RowPackerV2;
 class SchemaPacking;
 class SchemaPackingStorage;
 class SubDocKey;
@@ -47,6 +53,9 @@ struct ValueControlFields;
 
 using DocKeyHash = uint16_t;
 using KeyEntryValues = std::vector<KeyEntryValue>;
+
+// TODO(packed_row) Remove after full support for packed row v2 is merged.
+using RowPacker = RowPackerV1;
 
 enum class KeyEntryType;
 enum class ValueEntryType;

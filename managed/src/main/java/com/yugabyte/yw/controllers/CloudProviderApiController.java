@@ -167,7 +167,7 @@ public class CloudProviderApiController extends AuthenticatedController {
         Provider.get(customer.getUuid(), reqProvider.getName(), providerCode);
     if (existingProvider != null) {
       throw new PlatformServiceException(
-          BAD_REQUEST,
+          CONFLICT,
           String.format("Provider with the name %s already exists", reqProvider.getName()));
     }
 

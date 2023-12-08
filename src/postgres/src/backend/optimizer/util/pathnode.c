@@ -16,6 +16,7 @@
 
 #include <math.h>
 
+#include "catalog/pg_am.h"
 #include "foreign/fdwapi.h"
 #include "miscadmin.h"
 #include "nodes/extensible.h"
@@ -217,6 +218,21 @@ compare_path_costs_fuzzily(Path *path1, Path *path2, double fuzz_factor)
 #undef CONSIDER_PATH_STARTUP_COST
 }
 
+static BMS_Comparison
+yb_bms_compare_ppi(Path *path1, Path *path2)
+{
+	Relids path1_batchinfo = path1->param_info ?
+		path1->param_info->yb_ppi_req_outer_batched : NULL;
+
+	Relids path2_batchinfo = path2->param_info ?
+		path2->param_info->yb_ppi_req_outer_batched : NULL;
+
+	if (bms_is_empty(path1_batchinfo) ^ bms_is_empty(path2_batchinfo))
+		return BMS_DIFFERENT;
+
+	return bms_subset_compare(PATH_REQ_OUTER(path1), PATH_REQ_OUTER(path2));
+}
+
 /*
  * set_cheapest
  *	  Find the minimum-cost paths from among a relation's paths,
@@ -287,8 +303,8 @@ set_cheapest(RelOptInfo *parent_rel)
 				best_param_path = path;
 			else
 			{
-				switch (bms_subset_compare(PATH_REQ_OUTER(path),
-										   PATH_REQ_OUTER(best_param_path)))
+				switch (yb_bms_compare_ppi(path,
+													best_param_path))
 				{
 					case BMS_EQUAL:
 						/* keep the cheaper one */
@@ -446,11 +462,11 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 	 */
 	foreach(p1, parent_rel->pathlist)
 	{
-		Path	   *old_path = (Path *) lfirst(p1);
-		bool		remove_old = false; /* unless new proves superior */
-		PathCostComparison costcmp;
-		PathKeysComparison keyscmp;
-		BMS_Comparison outercmp;
+		Path	 		   *old_path = (Path *) lfirst(p1);
+		bool				remove_old = false; /* unless new proves superior */
+		PathCostComparison  costcmp;
+		PathKeysComparison  keyscmp;
+		BMS_Comparison		outercmp;
 
 		/*
 		 * Do a fuzzy cost comparison with standard fuzziness limit.
@@ -477,6 +493,19 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 			old_path_pathkeys = old_path->param_info ? NIL : old_path->pathkeys;
 			keyscmp = compare_pathkeys(new_path_pathkeys,
 									   old_path_pathkeys);
+
+			/*
+			 * YB: If one is batched and the other isn't we consider
+			 * the two parameterizations to be different.
+			 */
+			bool is_new_path_batched = new_path->param_info &&
+				!bms_is_empty(new_path->param_info->yb_ppi_req_outer_batched);
+
+			bool is_old_path_batched = old_path->param_info &&
+				!bms_is_empty(old_path->param_info->yb_ppi_req_outer_batched);
+			bool considering_batchedness =
+				is_new_path_batched || is_old_path_batched;
+
 			if (keyscmp != PATHKEYS_DIFFERENT)
 			{
 				switch (costcmp)
@@ -484,6 +513,13 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 					case COSTS_EQUAL:
 						outercmp = bms_subset_compare(PATH_REQ_OUTER(new_path),
 													  PATH_REQ_OUTER(old_path));
+						if (considering_batchedness)
+						{
+							outercmp = BMS_DIFFERENT;
+							if (!is_new_path_batched)
+								insert_at = foreach_current_index(p1) + 1;
+						}
+
 						if (keyscmp == PATHKEYS_BETTER1)
 						{
 							if ((outercmp == BMS_EQUAL ||
@@ -553,6 +589,14 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 						{
 							outercmp = bms_subset_compare(PATH_REQ_OUTER(new_path),
 														  PATH_REQ_OUTER(old_path));
+
+							if (considering_batchedness)
+							{
+								outercmp = BMS_DIFFERENT;
+								if (!is_new_path_batched)
+									insert_at = foreach_current_index(p1) + 1;
+							}
+
 							if ((outercmp == BMS_EQUAL ||
 								 outercmp == BMS_SUBSET1) &&
 								new_path->rows <= old_path->rows &&
@@ -565,6 +609,14 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 						{
 							outercmp = bms_subset_compare(PATH_REQ_OUTER(new_path),
 														  PATH_REQ_OUTER(old_path));
+
+							if (considering_batchedness)
+							{
+								outercmp = BMS_DIFFERENT;
+								if (!is_new_path_batched)
+									insert_at = foreach_current_index(p1) + 1;
+							}
+
 							if ((outercmp == BMS_EQUAL ||
 								 outercmp == BMS_SUBSET2) &&
 								new_path->rows >= old_path->rows &&
@@ -599,7 +651,6 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 		}
 		else
 		{
-			/* new belongs after this old path if it has cost >= old's */
 			if (new_path->total_cost >= old_path->total_cost)
 				insert_at = foreach_current_index(p1) + 1;
 		}
@@ -920,43 +971,9 @@ add_partial_path_precheck(RelOptInfo *parent_rel, Cost total_cost,
 }
 
 /*
- * If there are rowMarks and we're in a serializable transaction, we lock
- * whole prefix ranges during scans instead of locking only the rows
- * returned to the user. This is required to locks rows that might not yet
- * have been inserted in the table, which is necessary to block concurrent
- * transactions from inserting new rows that match the locked predicate.
- */
-static void
-yb_maybe_set_range_lock_mechanism(List *rowMarks,
-								  YbLockMechanism *yb_lock_mechanism)
-{
-	if (!IsYugaByteEnabled())
-		return;
-
-	if (IsolationIsSerializable() && rowMarks)
-		*yb_lock_mechanism = YB_RANGE_LOCK_ON_SCAN;
-}
-
-/*
  * Propagate YugabyteDB fields between a parent and a single child.
  *
- * Currently there is only one field to propagate, yb_lock_mechanism.
- * yb_lock_mechanism indicates whether locks can be taken in the same RPC
- * as a SELECT. This field is unconventional because we let the parent
- * affect the child, in the case of YB_PK_FOR_UPDATE_LOCK. This is because
- * we have only one actual scan node that has a flag indicating whether it
- * can lock, and in some cases, a node above needs to disable such locking
- * because it would lead to over-locking. (In that case a LockRows node
- * will be inserted to do the correct locking on exactly the right rows.)
- * It would be nice if there could be a locked scan node and an unlocked
- * scan node, with a pruning step eliminating the locked node. However
- * in practice it's difficult to prune during path creation, and seems error-
- * prone to traverse the paths to prune them later. Because it's a matter of
- * correctness in locking, and a single RPC is strictly better than two RPCs
- * otherwise, this is safe to do without complicating costs.
- *
- * Other than this case, Path data generally flows upward, from children to
- * parents, as the serializable lock information does currently. Therefore this
+ * Path data generally flows upward, from children to parents. Therefore this
  * function is expected to simply copy information from children to parents for
  * future fields.
  */
@@ -966,10 +983,7 @@ yb_propagate_fields(YbPathInfo *parent_fields, YbPathInfo *child_fields)
 	if (!IsYugaByteEnabled())
 		return;
 
-	if (child_fields->yb_lock_mechanism == YB_RANGE_LOCK_ON_SCAN)
-		parent_fields->yb_lock_mechanism = YB_RANGE_LOCK_ON_SCAN;
-	else
-		child_fields->yb_lock_mechanism = YB_NO_SCAN_LOCK;
+	parent_fields->yb_uniqkeys = list_copy(child_fields->yb_uniqkeys);
 }
 
 /*
@@ -983,16 +997,19 @@ yb_propagate_fields2(YbPathInfo *parent_fields, YbPathInfo *child1_fields,
 	if (!IsYugaByteEnabled())
 		return;
 
-	if (child1_fields->yb_lock_mechanism == YB_RANGE_LOCK_ON_SCAN ||
-		child2_fields->yb_lock_mechanism == YB_RANGE_LOCK_ON_SCAN)
-	{
-		Assert(child1_fields->yb_lock_mechanism != YB_LOCK_CLAUSE_ON_PK);
-		Assert(child2_fields->yb_lock_mechanism != YB_LOCK_CLAUSE_ON_PK);
-		parent_fields->yb_lock_mechanism = YB_RANGE_LOCK_ON_SCAN;
-	}
-	else
-		child1_fields->yb_lock_mechanism = child2_fields->yb_lock_mechanism =
-			YB_NO_SCAN_LOCK;
+	/*
+	 * Compute uniqkeys for the parent only when uniqkeys are available on both
+	 * the children. We do this because uniqkeys = NIL does not mean that the
+	 * path has no uniqkeys. For example, consider a plain sequential scan such
+	 * as that from 'SELECT * FROM t'. The path has no uniqkeys, but it is
+	 * still distinct on its primary key. In other words, uniqkeys = NIL is a
+	 * proxy for uniqkeys being indeterminate and we should avoid setting
+	 * uniqkeys in such a case.
+	 */
+	if (child1_fields->yb_uniqkeys && child2_fields->yb_uniqkeys)
+		parent_fields->yb_uniqkeys = list_concat(
+			list_copy(child1_fields->yb_uniqkeys),
+			list_copy(child2_fields->yb_uniqkeys));
 }
 
 /*
@@ -1002,32 +1019,16 @@ yb_propagate_fields2(YbPathInfo *parent_fields, YbPathInfo *child1_fields,
 static void
 yb_propagate_fields_list(YbPathInfo *parent_fields, List *child_paths)
 {
-	ListCell   *lc;
-	bool		found_serializable_lock = false;
-
 	if (!IsYugaByteEnabled())
 		return;
 
-	foreach(lc, child_paths)
-	{
-		Path   *subpath = (Path *) lfirst(lc);
-
-		if (subpath->yb_path_info.yb_lock_mechanism == YB_RANGE_LOCK_ON_SCAN)
-		{
-			parent_fields->yb_lock_mechanism = YB_RANGE_LOCK_ON_SCAN;
-			found_serializable_lock = true;
-			break;
-		}
-	}
-	foreach(lc, child_paths)
-	{
-		Path   *subpath = (Path *) lfirst(lc);
-		if (!found_serializable_lock)
-			subpath->yb_path_info.yb_lock_mechanism = YB_NO_SCAN_LOCK;
-		else
-			Assert(subpath->yb_path_info.yb_lock_mechanism !=
-				   YB_LOCK_CLAUSE_ON_PK);
-	}
+	/*
+	 * TODO: Leaving this for a future change since computing uniqkeys optimally
+	 * is involved. For example, we can set the parent's uniqkeys to those of
+	 * the children. However, we need to ensure that there are no duplicate
+	 * values across the child pathnodes before we can do that.
+	 */
+	parent_fields->yb_uniqkeys = NIL;
 }
 
 /*
@@ -1038,32 +1039,8 @@ yb_propagate_fields_list(YbPathInfo *parent_fields, List *child_paths)
 static void
 yb_propagate_mmagg_fields(YbPathInfo *parent_fields, List *mmaggregates)
 {
-	ListCell   *lc;
-	bool		found_serializable_lock = false;
-
 	if (!IsYugaByteEnabled())
 		return;
-
-	foreach(lc, mmaggregates)
-	{
-		MinMaxAggInfo  *mminfo = (MinMaxAggInfo *) lfirst(lc);
-		if (mminfo->path->yb_path_info.yb_lock_mechanism ==
-			YB_RANGE_LOCK_ON_SCAN)
-		{
-			parent_fields->yb_lock_mechanism = YB_RANGE_LOCK_ON_SCAN;
-			found_serializable_lock = true;
-			break;
-		}
-	}
-	foreach(lc, mmaggregates)
-	{
-		MinMaxAggInfo  *mminfo = (MinMaxAggInfo *) lfirst(lc);
-		if (!found_serializable_lock)
-			mminfo->path->yb_path_info.yb_lock_mechanism = YB_NO_SCAN_LOCK;
-		else
-			Assert(mminfo->path->yb_path_info.yb_lock_mechanism !=
-				   YB_LOCK_CLAUSE_ON_PK);
-	}
 }
 
 
@@ -1092,24 +1069,27 @@ create_seqscan_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->parallel_workers = parallel_workers;
 	pathnode->pathkeys = NIL;	/* seqscan has unordered result */
 
-	yb_maybe_set_range_lock_mechanism(
-		root->parse->rowMarks,
-		&pathnode->yb_path_info.yb_lock_mechanism);
-
 	/*
 	 * The ybcCostEstimate is used to cost a ForeignScan node on YB table,
 	 * so use it here too, to get consistent results.
 	 */
 	if (rel->is_yb_relation)
 	{
-		ybcCostEstimate(rel, YBC_FULL_SCAN_SELECTIVITY,
-						false, /* is_backward_scan */
-						true, /* is_seq_scan */
-						false, /* is_uncovered_idx_scan */
-						&pathnode->startup_cost,
-						&pathnode->total_cost,
-						rel->reltablespace);
-		pathnode->rows = rel->rows;
+		if (yb_enable_base_scans_cost_model)
+		{
+			yb_cost_seqscan(pathnode, root, rel, pathnode->param_info);
+		}
+		else
+		{
+			ybcCostEstimate(rel, YBC_FULL_SCAN_SELECTIVITY,
+							false, /* is_backward_scan */
+							true, /* is_seq_scan */
+							false, /* is_uncovered_idx_scan */
+							&pathnode->startup_cost,
+							&pathnode->total_cost,
+							rel->reltablespace);
+			pathnode->rows = rel->rows;
+		}
 	}
 	else
 		cost_seqscan(pathnode, root, rel, pathnode->param_info);
@@ -1135,10 +1115,6 @@ create_samplescan_path(PlannerInfo *root, RelOptInfo *rel, Relids required_outer
 	pathnode->parallel_safe = rel->consider_parallel;
 	pathnode->parallel_workers = 0;
 	pathnode->pathkeys = NIL;	/* samplescan has unordered result */
-
-	yb_maybe_set_range_lock_mechanism(
-		root->parse->rowMarks,
-		&pathnode->yb_path_info.yb_lock_mechanism);
 
 	cost_samplescan(pathnode, root, rel, pathnode->param_info);
 
@@ -1193,17 +1169,6 @@ create_index_path(PlannerInfo *root,
 	pathnode->path.parallel_safe = rel->consider_parallel;
 	pathnode->path.parallel_workers = 0;
 	pathnode->path.pathkeys = pathkeys;
-	/*
-	 * In a serializable transaction, the presence of rowMarks tells us that
-	 * this is a locked operation. Therefore we will take locks as part of
-	 * this index scan.
-	 */
-	if (indexclauses != NIL)
-	{
-		yb_maybe_set_range_lock_mechanism(
-			root->parse->rowMarks,
-			&pathnode->path.yb_path_info.yb_lock_mechanism);
-	}
 
 	pathnode->indexinfo = index;
 	pathnode->indexclauses = indexclauses;
@@ -1211,7 +1176,17 @@ create_index_path(PlannerInfo *root,
 	pathnode->indexorderbycols = indexorderbycols;
 	pathnode->indexscandir = indexscandir;
 
-	cost_index(pathnode, root, loop_count, partial_path);
+	if (IsYugaByteEnabled() &&
+		yb_enable_base_scans_cost_model &&
+		index->relam == LSM_AM_OID)
+	{
+		yb_cost_index(pathnode, root, loop_count, partial_path);
+	}
+	else
+	{
+		cost_index(pathnode, root, loop_count, partial_path);
+	}
+
 
 	return pathnode;
 }
@@ -1387,10 +1362,6 @@ create_tidscan_path(PlannerInfo *root, RelOptInfo *rel, List *tidquals,
 	pathnode->path.parallel_safe = rel->consider_parallel;
 	pathnode->path.parallel_workers = 0;
 	pathnode->path.pathkeys = NIL;	/* always unordered */
-
-	yb_maybe_set_range_lock_mechanism(
-		root->parse->rowMarks,
-		&pathnode->path.yb_path_info.yb_lock_mechanism);
 
 	pathnode->tidquals = tidquals;
 
@@ -2254,10 +2225,6 @@ create_functionscan_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->parallel_workers = 0;
 	pathnode->pathkeys = pathkeys;
 
-	yb_maybe_set_range_lock_mechanism(
-		root->parse->rowMarks,
-		&pathnode->yb_path_info.yb_lock_mechanism);
-
 	cost_functionscan(pathnode, root, rel, pathnode->param_info);
 
 	return pathnode;
@@ -2283,10 +2250,6 @@ create_tablefuncscan_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->parallel_safe = rel->consider_parallel;
 	pathnode->parallel_workers = 0;
 	pathnode->pathkeys = NIL;	/* result is always unordered */
-
-	yb_maybe_set_range_lock_mechanism(
-		root->parse->rowMarks,
-		&pathnode->yb_path_info.yb_lock_mechanism);
 
 	cost_tablefuncscan(pathnode, root, rel, pathnode->param_info);
 
@@ -2314,10 +2277,6 @@ create_valuesscan_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->parallel_workers = 0;
 	pathnode->pathkeys = NIL;	/* result is always unordered */
 
-	yb_maybe_set_range_lock_mechanism(
-		root->parse->rowMarks,
-		&pathnode->yb_path_info.yb_lock_mechanism);
-
 	cost_valuesscan(pathnode, root, rel, pathnode->param_info);
 
 	return pathnode;
@@ -2342,10 +2301,6 @@ create_ctescan_path(PlannerInfo *root, RelOptInfo *rel, Relids required_outer)
 	pathnode->parallel_safe = rel->consider_parallel;
 	pathnode->parallel_workers = 0;
 	pathnode->pathkeys = NIL;	/* XXX for now, result is always unordered */
-
-	yb_maybe_set_range_lock_mechanism(
-		root->parse->rowMarks,
-		&pathnode->yb_path_info.yb_lock_mechanism);
 
 	cost_ctescan(pathnode, root, rel, pathnode->param_info);
 
@@ -2372,10 +2327,6 @@ create_namedtuplestorescan_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->parallel_safe = rel->consider_parallel;
 	pathnode->parallel_workers = 0;
 	pathnode->pathkeys = NIL;	/* result is always unordered */
-
-	yb_maybe_set_range_lock_mechanism(
-		root->parse->rowMarks,
-		&pathnode->yb_path_info.yb_lock_mechanism);
 
 	cost_namedtuplestorescan(pathnode, root, rel, pathnode->param_info);
 
@@ -2428,10 +2379,6 @@ create_worktablescan_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->parallel_safe = rel->consider_parallel;
 	pathnode->parallel_workers = 0;
 	pathnode->pathkeys = NIL;	/* result is always unordered */
-
-	yb_maybe_set_range_lock_mechanism(
-		root->parse->rowMarks,
-		&pathnode->yb_path_info.yb_lock_mechanism);
 
 	/* Cost is the same as for a regular CTE scan */
 	cost_ctescan(pathnode, root, rel, pathnode->param_info);
@@ -2572,10 +2519,6 @@ create_foreign_upper_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->path.total_cost = total_cost;
 	pathnode->path.pathkeys = pathkeys;
 
-	yb_maybe_set_range_lock_mechanism(
-		root->parse->rowMarks,
-		&pathnode->path.yb_path_info.yb_lock_mechanism);
-
 	pathnode->fdw_outerpath = fdw_outerpath;
 	pathnode->fdw_private = fdw_private;
 
@@ -2681,7 +2624,7 @@ create_nestloop_path(PlannerInfo *root,
 	 ParamPathInfo *param_info = inner_path->param_info;
 	 Relids inner_req_batched = param_info == NULL
 		? NULL : param_info->yb_ppi_req_outer_batched;
-	 
+
 	 Relids outer_req_unbatched = outer_path->param_info ?
 	 	outer_path->param_info->yb_ppi_req_outer_unbatched :
 		NULL;
@@ -4615,4 +4558,289 @@ reparameterize_pathlist_by_child(PlannerInfo *root,
 	}
 
 	return result;
+}
+
+/*
+ * YB: yb_create_unique_path
+ *
+ * Reuses create_upper_unique_path since that path already provides most of
+ * the functionality required.
+ */
+static UpperUniquePath *
+yb_create_unique_path(PlannerInfo *root,
+					  RelOptInfo *rel,
+					  Path *subpath,
+					  int numCols,
+					  double numGroups)
+{
+	UpperUniquePath *pathnode;
+
+	pathnode = create_upper_unique_path(root, rel, subpath, numCols, numGroups);
+	/*
+	 * create_upper_unique_path does not copy param info since it assumes
+	 * that join paths are all already created.
+	 * Cannot make that assumption here since this is not an upper path.
+	 * XXX: Hopefully, no other such assumptions were made.
+	 */
+	pathnode->path.param_info = subpath->param_info;
+	/* Typically there aren't many duplicate values. */
+	pathnode->path.total_cost = subpath->total_cost + cpu_operator_cost;
+	return pathnode;
+}
+
+/*
+ * YB: yb_create_distinct_index_path
+ *
+ * A distinct index scan fetches distinct values of the index's prefix. A
+ * prefix is a list of leading columns of the 'index' that we want to be
+ * distinct.
+ *
+ * Creating a distinct index scan path is similar to creating a regular index
+ * scan path. For this reason, we copy the path 'basepath' and modify it as
+ * necessary. We make the following modifications:
+ *
+ * Prefix Length
+ * =============
+ * 'yb_distinct_prefixlen' represents the minimal number of columns that can
+ * cover the necessary distinct key columns for the scan. We choose a minimal
+ * prefix since shorter prefixes are more efficient. This also means that we
+ * want to exclude trailing columns that are constant from the prefix. Constants
+ * have two key properties that make this possible.
+ *
+ * a. Constants are included in index clauses. For example, if r2 is equal to
+ * 1, r2 = 1 is always an index clause. This means that the clause always seeps
+ * past the DISTINCT pushdown operation on the DocDB side. Here, r2 is a range
+ * column of the index.
+ *
+ * b. On top of that, there is at most one distinct value of a constant, i.e.
+ * there exists at most one distinct tuple that satisfies the constant
+ * constraint for each distinct tuple of other columns. This means that the
+ * constant column need not be included in the prefix because any tuple
+ * returned by the distinct index scan must satisfy the index conditions.
+ * Constant hash columns do not make index conditions.
+ * On the other hand, this property does not necessarily hold for other index
+ * conditions, say IN queries. For example, a constraint such as r2 IN (0, 1)
+ * cannot eliminate r2 from the prefix since there can be two distinct values of
+ * r2 that satisfy the constraint. And distinct values of r1 cannot pick up
+ * both values of r2. Here, r1 and r2 are leading range columns of the index.
+ *
+ * Furthermore, DocDB requires that the prefix length be at least 1 in
+ * range-partitioned tables and at least the number of hash columns in hash
+ * partitioned tables. If the prefix length is zero because all the columns
+ * are constant, we stick a unique node on top of the path to pick at most
+ * one tuple from the scan.
+ *
+ * Cost
+ * ====
+ * Distinct index scans are so useful because they are retrieved efficiently
+ * and pull fewer tuples from the underlying storage. Hence, we need to adjust
+ * the cost accordingly. For that, we first estimate the number of distinct
+ * tuples that will be returned by the prefix and then scale down the cost of
+ * the path by the selectivity of the scan.
+ *
+ * Unique Node
+ * ===========
+ * We discussed a few scenarios where we add a Unique node on top when all
+ * the columns are constant. However, we also require one when the
+ * distinct index scan itself may return duplicate values. This can happen when
+ * the table is range-partitioned. A distinct index scan only removes duplicate
+ * values within a tablet. See the long comment inside the function for
+ * examples and further details.
+ *
+ * Uniqkeys
+ * ========
+ * Uniqkeys represents the collective set of expressions that is distinct for
+ * the distinct index scan. These keys are pivotal to prove whether the
+ * distinct index scan is distinct enough for the query. The set of uniqkeys
+ * must include all trailing constant columns even though they are not part of
+ * the prefix, because all the unique columns are necessary to prove that the
+ * keys required by the query are distinct. On the other hand, when all the
+ * columns are constant, we do not include the leading column even though it is
+ * part of the prefix, since the unique node on top ensures that the constant
+ * columns are distinct.
+ *
+ * Here, we use a separate set of keys instead of using pathkeys directly.
+ * DISTINCT possesses some key properties that makes such an approach
+ * attractive.
+ *
+ * First, DISTINCT on a superset of distinct keys requested by the query
+ * produces at least all the required data for the final result.
+ * Example: SELECT DISTINCT r1, r2 includes all the rows produced by
+ * 			SELECT DISTINCT r2
+ * On the other hand, only prefixes of sort keys can be assumed sorted.
+ * Example: When tuples are sorted by r1, r2, they are also sorted by r1
+ * 			but not r2.
+ * This difference has an important implication: prefix based distinct index
+ * scans are not just useful for DISTINCT operations on prefixes but also
+ * arbitrary subsets of index key columns.
+ *
+ * Second, DISTINCT can permute its columns without changing the result.
+ * Example: Tuples ordered by r1, r2 are not equivalent to tuples ordered by
+ * r2, r1. However, DISTINCT r1, r2 is equivalent to DISTINCT r2, r1. The
+ * columns simply have to be rearranged.
+ * Having a separate list of keys lets us avoid being held back by pathkeys
+ * machinery that prevents us from making such inferences.
+ *
+ * Third, DISTINCT can distribute more easily than sort.
+ * Example: DISTINCT t1.r, t2.r FROM t1, t2 is, in many cases, same as
+ * 			(DISTINCT r FROM t1), (DISTINCT r FROM t2)
+ * Unlike pathkeys, uniqkeys can be propagated across joins using a union
+ * of the uniqkeys of the constituent relations (bar some exceptions).
+ *
+ * 'index' is the index on which the distinct index scan is performed.
+ * 'basepath' is the index scan path that is being modified to perform a
+ * 			distinct index scan. The path is copied before modification.
+ * 'yb_distinct_prefixlen' is the prefix length, in columns, of the distinct
+ * 			index scan. This value is sent to DocDB as a scan parameter.
+ * 'yb_distinct_nkeys' is the number of pathkeys corresponding to the distinct
+ * 			prefix.
+ *
+ * Returns a polymorphic path.
+ * - either a bare distinct index scan path
+ * - or an UpperUniquePath on top of a distinct index scan path
+ */
+Path *
+yb_create_distinct_index_path(PlannerInfo *root,
+							  IndexOptInfo *index,
+							  IndexPath *basepath,
+							  int yb_distinct_prefixlen,
+							  int yb_distinct_nkeys)
+{
+	IndexPath  *pathnode = makeNode(IndexPath);
+	int			numDistinctRows;
+	bool		ignore_prefix_for_uniqkeys;
+	List	   *prefixExprs;
+	ListCell   *lc;
+	int			i;
+	Selectivity selectivity;
+
+	/*
+	 * XXX: Memcpy'ing the index scan path the same way it is done in the
+	 * reparameterize_path function.
+	 */
+	memcpy(pathnode, basepath, sizeof(IndexPath));
+
+	/*
+	 * Adjust prefix length appropriately.
+	 * Prefix length must be at least max(1, index->nhashcolumns).
+	 * Input prefix length is zero => all referenced columns are constant.
+	 */
+	Assert(yb_distinct_prefixlen >= 0);
+	ignore_prefix_for_uniqkeys = false;
+	if (yb_distinct_prefixlen == 0)
+	{
+		Assert(index->nhashcolumns > 0 || yb_distinct_nkeys == 0);
+		yb_distinct_prefixlen = 1;
+		ignore_prefix_for_uniqkeys = true;
+	}
+	if (yb_distinct_prefixlen < index->nhashcolumns)
+		yb_distinct_prefixlen = index->nhashcolumns;
+	pathnode->yb_index_path_info.yb_distinct_prefixlen = yb_distinct_prefixlen;
+
+	/*
+	 * Compute the set of uniqkeys.
+	 * Ignore prefix when all columns are constant.
+	 */
+	pathnode->path.yb_path_info.yb_uniqkeys = yb_get_uniqkeys(
+		index, ignore_prefix_for_uniqkeys ? 0 : yb_distinct_prefixlen);
+
+	/* Estimate cost. */
+	prefixExprs = NIL;
+	i = 0;
+	foreach(lc, index->indextlist)
+	{
+		TargetEntry *tle;
+
+		if (i >= yb_distinct_prefixlen)
+			break;
+
+		tle = (TargetEntry *) lfirst(lc);
+		prefixExprs = lappend(prefixExprs, tle->expr);
+		i++;
+	}
+
+	numDistinctRows = estimate_num_groups(root,
+										  prefixExprs,
+										  pathnode->path.rows,
+										  NULL,
+										  NULL);
+	selectivity = ((Cost) numDistinctRows) / ((Cost) pathnode->path.rows);
+
+	pathnode->path.total_cost *= selectivity;
+	pathnode->path.rows = numDistinctRows;
+	pathnode->indextotalcost *= selectivity;
+	pathnode->indexselectivity *= selectivity;
+
+	Assert(yb_distinct_prefixlen >= index->nhashcolumns);
+	/*
+	 * DocDB may return duplicate rows from different tablets.
+	 * So, attach an upper unique node in that case.
+	 *
+	 * The decision to stick a Unique node is subtler than it looks.
+	 * Here are a few examples for further understanding.
+	 * h = hash column, r = range column.
+	 *
+	 * 1. SELECT DISTINCT r2
+	 * 	  This is an example where a distinct index scan works well but
+	 * 	  still insufficient. The planner further DISTINCT'ifies the column
+	 * 	  using either sort or agg methods.
+	 * 	  As a consequence, a Unique node on top is not very helpful.
+	 * 	  More importantly, the pathkey corresponding to r2 is not part of
+	 * 	  this pathnode's pathkeys since column r2 is not a prefix.
+	 *
+	 * 2. SELECT DISTINCT r1, r2, r3 WHERE r1 = r2
+	 * 	  This is another tricky example. The prefix length here is 3 since
+	 * 	  all the keys r1, r2, r3 must be DISTINCT. However, after filtering
+	 * 	  r1 and r2 are the same, requiring the Unique node only DISTINCTify
+	 * 	  r1 and r3. This is represented by a prefix of pathnode's pathkeys
+	 * 	  corresponding to the DISTINCT prefix requested.
+	 * 	  'yb_distinct_nkeys' represents precisely this.
+	 *
+	 * 3. SELECT DISTINCT h1, h2 WHERE h1 IN (0, 1) AND h2 IN (0, 1)
+	 * 	  Easy case. YB's LSM indexes support IN clauses natively,
+	 * 	  so the corresponding pathkeys are readily available.
+	 * 	  However, do not stick a unique node on top since hash columns
+	 * 	  seperate keys across the tablets cleanly unlike range columns.
+	 *
+	 * 4. SELECT DISTINCT h1, h2, r1
+	 * 	  Almost easy. Even though the query selects a range column, a hash
+	 * 	  prefix is sufficient to cleanly separate the keys.
+	 * 	  Again, a Unique node is not necessary in this case.
+	 *
+	 * 5. SELECT DISTINCT r2 WHERE r2 = 1
+	 * 	  yb_distinct_nkeys == 0. In this case all tuples are equal to 1.
+	 * 	  Hence, 0 or 1 tuples are returned with a unique node on top.
+	 *
+	 * 6. SELECT DISTINCT h1, h2 WHERE h1 = 1 AND h2 = 1
+	 * 	  No unique node necessary.
+	 *
+	 * Informal correctness argument:
+	 * - There exists at least one hash column => No unique node necessary.
+	 * 	 i.e. Unique Node => nhashcolumns == 0.
+	 * - yb_distinct_nkeys < 0 => Keys missing from prefix.
+	 * 	 At least one key missing from prefix => No unique node necessary
+	 * 	 because the keys are not sufficiently distinct for the query anyway.
+	 * 	 i.e. Unique Node => yb_distinct_nkeys >= 0.
+	 * Hence, a unique node is unnecessary when there are hash columns or
+	 * when some keys are missing from the prefix. For simplicity, the above
+	 * argument excluded the degenerate case where all the referenced columns
+	 * are constant, in which case we do add a unique node.
+	 */
+	if (index->nhashcolumns == 0)
+	{
+		/* Range partitioned */
+		if (yb_distinct_nkeys >= 0)
+			/* pathkeys available. Can use UpperUniquePath here. */
+			return (Path *)
+				yb_create_unique_path(root, index->rel, (Path *) pathnode,
+									yb_distinct_nkeys, numDistinctRows);
+
+		/*
+		 * Unique path cannot be added on top => possible duplicate tuples
+		 * => no uniqkeys.
+		 */
+		pathnode->path.yb_path_info.yb_uniqkeys = NIL;
+	}
+
+	return (Path *) pathnode;
 }

@@ -18,21 +18,11 @@ import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.YcqlQueryExecutor;
-import com.yugabyte.yw.common.YsqlQueryExecutor;
-import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
-import com.yugabyte.yw.forms.ConfigureDBApiParams;
-import com.yugabyte.yw.forms.DatabaseSecurityFormData;
-import com.yugabyte.yw.forms.DatabaseUserDropFormData;
-import com.yugabyte.yw.forms.DatabaseUserFormData;
-import com.yugabyte.yw.forms.RunQueryFormData;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.*;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Universe;
@@ -110,9 +100,7 @@ public class UniverseYbDbAdminHandler {
 
     dbCreds.validation();
     if (!isCloudEnabled) {
-      boolean checkPasswordLeak =
-          confGetter.getConfForScope(customer, CustomerConfKeys.enforceSecureUniversePassword);
-      dbCreds.validatePassword(policyService, checkPasswordLeak);
+      dbCreds.validatePassword(policyService);
     }
 
     if (!StringUtils.isEmpty(dbCreds.ysqlAdminUsername)) {
@@ -187,9 +175,7 @@ public class UniverseYbDbAdminHandler {
         universe.getUniverseDetails().getPrimaryCluster().userIntent;
     // Verify request params
     requestParams.verifyParams(universe);
-    boolean checkPasswordLeak =
-        confGetter.getConfForScope(customer, CustomerConfKeys.enforceSecureUniversePassword);
-    requestParams.validatePassword(policyService, checkPasswordLeak);
+    requestParams.validatePassword(policyService);
     TaskType taskType =
         userIntent.providerType.equals(Common.CloudType.kubernetes)
             ? TaskType.ConfigureDBApisKubernetes
@@ -222,9 +208,7 @@ public class UniverseYbDbAdminHandler {
         universe.getUniverseDetails().getPrimaryCluster().userIntent;
     // Verify request params
     requestParams.verifyParams(universe);
-    boolean checkPasswordLeak =
-        confGetter.getConfForScope(customer, CustomerConfKeys.enforceSecureUniversePassword);
-    requestParams.validatePassword(policyService, checkPasswordLeak);
+    requestParams.validatePassword(policyService);
     TaskType taskType =
         userIntent.providerType.equals(Common.CloudType.kubernetes)
             ? TaskType.ConfigureDBApisKubernetes

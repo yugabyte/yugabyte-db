@@ -30,7 +30,9 @@ public enum NodeActionType {
   // Precheck for detached node.
   PRECHECK_DETACHED(true),
   // Hard reboot the node (stop + start).
-  HARD_REBOOT;
+  HARD_REBOOT,
+  // Re-provision node with already stopped processes.
+  REPROVISION;
 
   NodeActionType() {
     this(false);
@@ -70,6 +72,8 @@ public enum NodeActionType {
         return completed ? "Started Master" : "Starting Master";
       case PRECHECK_DETACHED:
         return completed ? "Performed preflight check" : "Performing preflight check";
+      case REPROVISION:
+        return completed ? "Re-provisioned" : "Re-provisioning";
       default:
         return null;
     }
@@ -96,6 +100,8 @@ public enum NodeActionType {
         return TaskType.StartMasterOnNode;
       case PRECHECK_DETACHED:
         return TaskType.PrecheckNodeDetached;
+      case REPROVISION:
+        return TaskType.ReprovisionNode;
       default:
         return null;
     }
@@ -123,6 +129,8 @@ public enum NodeActionType {
         return CustomerTask.TaskType.StartMaster;
       case PRECHECK_DETACHED:
         return CustomerTask.TaskType.PrecheckNode;
+      case REPROVISION:
+        return CustomerTask.TaskType.ReprovisionNode;
       default:
         return null;
     }

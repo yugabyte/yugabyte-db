@@ -179,6 +179,8 @@ class Peer : public std::enable_shared_from_this<Peer> {
     return failed_attempts_;
   }
 
+  void DumpToHtml(std::ostream& out) const;
+
  private:
   void SendNextRequest(RequestTriggerMode trigger_mode);
 

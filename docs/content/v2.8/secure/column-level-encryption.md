@@ -45,7 +45,7 @@ $ ./ysqlsh -U yugabyte -W
 
 
 
-When prompted for the password, enter the yugabyte password. You should be able to login and see a response like below.
+When prompted for the password, enter the yugabyte password. You should be able to log in and see a response like below.
 
 
 ```
@@ -187,7 +187,7 @@ The example below walks through configuring YugabyteDB cluster with a new set of
     $ ./ysqlsh -U yugabyte -W
     ```
 
-    When prompted for the password, enter the yugabyte password. You should be able to login and see a response like below.
+    When prompted for the password, enter the yugabyte password. You should be able to log in and see a response like below.
 
     ```
     ysqlsh (11.2-YB-2.5.0.0-b0)

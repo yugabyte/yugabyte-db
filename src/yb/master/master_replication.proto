@@ -223,6 +223,16 @@ message GetUDTypeMetadataResponsePB {
  repeated PgCompositeInfoPB composites = 3;
 }
 
+enum SetupReplicationWithBootstrapStatePB {
+ BOOTSTRAP_PRODUCER = 1;
+ CREATE_PRODUCER_SNAPSHOT = 2;
+ IMPORT_SNAPSHOT = 3;
+ CREATE_CONSUMER_SNAPSHOT = 4;
+ TRANSFER_SNAPSHOT = 5;
+ RESTORE_SNAPSHOT = 6;
+ SETUP_REPLICATION = 7;
+}
+
 message SetupNamespaceReplicationWithBootstrapRequestPB {
  required string replication_id = 1;
  repeated HostPortPB producer_master_addresses = 2;
@@ -325,6 +335,23 @@ message IsSetupUniverseReplicationDoneResponsePB {
   optional bool done = 2;
   // The more specific error that occurred during replication, or OK if we succeeded.
   optional AppStatusPB replication_error = 3;
+}
+
+message IsSetupNamespaceReplicationWithBootstrapDoneRequestPB {
+  optional string replication_group_id = 1;
+}
+
+message IsSetupNamespaceReplicationWithBootstrapDoneResponsePB {
+  optional MasterErrorPB error = 1;
+  // True if the bootstrapping is complete, false otherwise.
+  optional bool done = 2;
+
+  // The current state of the bootstrap.
+  optional SysUniverseReplicationBootstrapEntryPB.State state = 3;
+
+  // The more specific error that occurred during replication, or OK if we
+  // succeeded.
+  optional AppStatusPB bootstrap_error = 4;
 }
 
 message ProducerSplitTabletInfoPB {
@@ -489,6 +516,9 @@ service MasterReplication {
       returns (PauseResumeXClusterProducerStreamsResponsePB);
   rpc GetUniverseReplication(GetUniverseReplicationRequestPB)
       returns (GetUniverseReplicationResponsePB);
+  rpc IsSetupNamespaceReplicationWithBootstrapDone(
+      IsSetupNamespaceReplicationWithBootstrapDoneRequestPB)
+      returns (IsSetupNamespaceReplicationWithBootstrapDoneResponsePB);
   rpc IsSetupUniverseReplicationDone(IsSetupUniverseReplicationDoneRequestPB)
       returns (IsSetupUniverseReplicationDoneResponsePB);
   rpc SetupNSUniverseReplication(SetupNSUniverseReplicationRequestPB)

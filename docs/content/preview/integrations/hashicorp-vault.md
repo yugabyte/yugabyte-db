@@ -72,7 +72,7 @@ Install the YSQL plugin for Hashicorp Vault as follows:
 Start the Vault server using the [server](https://developer.hashicorp.com/vault/docs/commands/server) command with the following flags:
 
 - To have Vault automatically register the plugin, provide the path to the directory containing the plugin binary using the `-dev-plugin-dir` flag.
-- Set the `-dev-root-token` flag to inform the vault to use the default vault token of root to login (this token is required in production mode).
+- Set the `-dev-root-token` flag to inform the vault to use the default vault token of root to log in (this token is required in production mode).
 - To run the server in development mode, use the `-dev` flag; development mode makes it easier to experiment with Vault or start a Vault instance for development.
 
 {{< warning title="Don't run Development mode in production" >}}

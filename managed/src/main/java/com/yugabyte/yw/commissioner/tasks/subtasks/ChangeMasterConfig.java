@@ -13,19 +13,28 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.services.config.YbClientConfig;
 import com.yugabyte.yw.common.services.config.YbClientConfigFactory;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.time.Duration;
+import java.util.List;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.yb.CommonNet;
+import org.yb.CommonTypes;
 import org.yb.client.ChangeConfigResponse;
+import org.yb.client.GetMasterRegistrationResponse;
 import org.yb.client.YBClient;
 
 @Slf4j
 public class ChangeMasterConfig extends UniverseTaskBase {
+
+  private static final int WAIT_FOR_CHANGE_COMPLETED_INITIAL_DELAY_MILLIS = 1000;
+  private static final int WAIT_FOR_CHANGE_COMPLETED_MAX_DELAY_MILLIS = 20000;
 
   private static final Duration YBCLIENT_ADMIN_OPERATION_TIMEOUT = Duration.ofMinutes(15);
   private final YbClientConfigFactory ybcClientConfigFactory;
@@ -99,6 +108,8 @@ public class ChangeMasterConfig extends UniverseTaskBase {
         hasSecondaryIp && shouldUseSecondary
             ? node.cloudInfo.secondary_private_ip
             : node.cloudInfo.private_ip;
+    String certificate = universe.getCertificateNodetoNode();
+    YbClientConfig config = ybcClientConfigFactory.create(masterAddresses, certificate);
     // The call changeMasterConfig is not idempotent. The client library internally keeps retrying
     // for a long time until it gives up if the node is already added or removed.
     // This optional check ensures that changeMasterConfig is not invoked if the operation is
@@ -110,6 +121,10 @@ public class ChangeMasterConfig extends UniverseTaskBase {
           node.nodeName,
           node.cloudInfo.private_ip,
           node.masterRpcPort);
+      if (isAddMasterOp) {
+        // Even if it's returned as one of the masters - it can be not bootstrapped yet.
+        waitForChangeToComplete(config, node, ipToUse);
+      }
       return;
     }
     // The param useHostPort should be true when removing a dead master.
@@ -123,8 +138,6 @@ public class ChangeMasterConfig extends UniverseTaskBase {
       useHostPort = !isServerAlive(node, ServerType.MASTER, masterAddresses);
     }
     ChangeConfigResponse response = null;
-    String certificate = universe.getCertificateNodetoNode();
-    YbClientConfig config = ybcClientConfigFactory.create(masterAddresses, certificate);
     config.setAdminOperationTimeout(YBCLIENT_ADMIN_OPERATION_TIMEOUT);
     YBClient client = ybService.getClientWithConfig(config);
     try {
@@ -156,5 +169,91 @@ public class ChangeMasterConfig extends UniverseTaskBase {
       log.error(msg);
       throw new RuntimeException(msg);
     }
+
+    waitForChangeToComplete(config, node, ipToUse);
+  }
+
+  private void waitForChangeToComplete(
+      YbClientConfig clientConfig, NodeDetails node, String masterIp) {
+
+    boolean waitForMasterConfigChangeCheckEnabled =
+        confGetter.getConfForScope(getUniverse(), UniverseConfKeys.changeMasterConfigCheckEnabled);
+    if (!waitForMasterConfigChangeCheckEnabled) {
+      return;
+    }
+    Duration maxWaitTime =
+        confGetter.getConfForScope(getUniverse(), UniverseConfKeys.changeMasterConfigCheckTimeout);
+    YBClient client = ybService.getClientWithConfig(clientConfig);
+    CommonTypes.PeerRole role;
+    try {
+      long endTime = System.currentTimeMillis() + maxWaitTime.toMillis();
+      boolean checkSuccessful = false;
+      int iterationNumber = 0;
+      do {
+        log.info(
+            "Checking master registration response for ({}:{}, op={})",
+            masterIp,
+            node.masterRpcPort,
+            taskParams().opType);
+        List<GetMasterRegistrationResponse> masterRegistrationResponseList =
+            client.getMasterRegistrationResponseList();
+        GetMasterRegistrationResponse registrationResponse =
+            getMasterRegistrationResponse(
+                masterRegistrationResponseList, masterIp, node.masterRpcPort);
+        role = registrationResponse != null ? registrationResponse.getRole() : null;
+        log.info(
+            "Master ({}:{}) role is {}",
+            masterIp,
+            node.masterRpcPort,
+            role != null ? role.name() : null);
+        if (taskParams().opType == OpType.AddMaster) {
+          if (role != null
+              && (role.equals(CommonTypes.PeerRole.LEADER)
+                  || role.equals(CommonTypes.PeerRole.FOLLOWER))) {
+            checkSuccessful = true;
+            break;
+          }
+        } else if (taskParams().opType == OpType.RemoveMaster) {
+          if (role == null || role.equals(CommonTypes.PeerRole.NON_PARTICIPANT)) {
+            checkSuccessful = true;
+            break;
+          }
+        }
+        waitFor(
+            Duration.ofMillis(
+                Util.getExponentialBackoffDelayMs(
+                    WAIT_FOR_CHANGE_COMPLETED_INITIAL_DELAY_MILLIS,
+                    WAIT_FOR_CHANGE_COMPLETED_MAX_DELAY_MILLIS,
+                    iterationNumber++)));
+      } while (System.currentTimeMillis() < endTime);
+      if (!checkSuccessful) {
+        throw new RuntimeException(
+            taskParams().opType.name() + " operation has not completed within " + maxWaitTime);
+      }
+    } catch (Exception e) {
+      String msg =
+          String.format(
+              "Error while checking master registration status on node %s (%s:%d) - %s",
+              node.nodeName, masterIp, node.masterRpcPort, e.getMessage());
+      log.error(msg, e);
+      throw new RuntimeException(msg);
+    } finally {
+      ybService.closeClient(client, clientConfig.getMasterHostPorts());
+    }
+  }
+
+  private GetMasterRegistrationResponse getMasterRegistrationResponse(
+      List<GetMasterRegistrationResponse> masterRegistrationResponseList,
+      String privateIp,
+      int port) {
+    for (GetMasterRegistrationResponse response : masterRegistrationResponseList) {
+      for (CommonNet.HostPortPB hostPortPB :
+          response.getServerRegistration().getPrivateRpcAddressesList()) {
+        if (hostPortPB.getHost().equals(privateIp) && (hostPortPB.getPort() == port)) {
+          return response;
+        }
+      }
+    }
+    return null;
   }
 }

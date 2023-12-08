@@ -202,7 +202,7 @@ class Proxy {
   boost::lockfree::queue<RpcController*> resolve_waiters_;
   ConcurrentPod<Endpoint> resolved_ep_;
 
-  scoped_refptr<Histogram> latency_hist_;
+  scoped_refptr<EventStats> latency_stats_;
 
   // Number of outbound connections to create per each destination server address.
   int num_connections_to_server_;

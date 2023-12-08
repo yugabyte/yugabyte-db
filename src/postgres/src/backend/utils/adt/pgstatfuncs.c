@@ -34,7 +34,10 @@
 
 /* YB includes */
 #include "commands/progress.h"
+#include "inttypes.h"
 #include "pg_yb_utils.h"
+#include "utils/uuid.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 #define UINT32_ACCESS_ONCE(var)		 ((uint32)(*((volatile uint32 *)&(var))))
 
@@ -631,19 +634,43 @@ Datum
 pg_stat_get_activity(PG_FUNCTION_ARGS)
 {
 #define PG_STAT_GET_ACTIVITY_COLS	30
+/* YB specific fields in pg_stat_activity */
+#define YB_PG_STAT_GET_ACTIVITY_COLS 1
+#define YB_BACKEND_XID_COL			 (PG_STAT_GET_ACTIVITY_COLS)
 	int			num_backends = pgstat_fetch_stat_numbackends();
 	int			curr_backend;
-	int			pid = PG_ARGISNULL(0) ? -1 : PG_GETARG_INT32(0);
+	int pid = PG_ARGISNULL(0) ? -1 : PG_GETARG_INT32(0);
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	TimestampTz txn_rpc_timestamp;
 
 	InitMaterializedSRF(fcinfo, 0);
+
+	YBCPgSessionTxnInfo *txn_infos = NULL;
+	if (YBIsEnabledInPostgresEnvVar() && yb_enable_pg_locks)
+	{
+		txn_infos = (YBCPgSessionTxnInfo *) palloc0(
+			sizeof(YBCPgSessionTxnInfo) * num_backends);
+		/* 1-based index */
+		for (curr_backend = 1; curr_backend <= num_backends; ++curr_backend)
+		{
+			const PgBackendStatus *beentry =
+				pgstat_fetch_stat_beentry(curr_backend);
+			if (!beentry)
+				break;
+			txn_infos[curr_backend - 1].session_id = beentry->yb_session_id;
+		}
+		txn_rpc_timestamp = GetCurrentTimestamp();
+		HandleYBStatus(YBCPgActiveTransactions(txn_infos, num_backends));
+	}
 
 	/* 1-based index */
 	for (curr_backend = 1; curr_backend <= num_backends; curr_backend++)
 	{
 		/* for each row */
-		Datum		values[PG_STAT_GET_ACTIVITY_COLS];
-		bool		nulls[PG_STAT_GET_ACTIVITY_COLS];
+		Datum 		values[PG_STAT_GET_ACTIVITY_COLS +
+			YB_PG_STAT_GET_ACTIVITY_COLS];
+		bool 		nulls[PG_STAT_GET_ACTIVITY_COLS +
+			YB_PG_STAT_GET_ACTIVITY_COLS];
 		LocalPgBackendStatus *local_beentry;
 		PgBackendStatus *beentry;
 		PGPROC	   *proc;
@@ -981,6 +1008,26 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 			nulls[27] = true;
 			nulls[28] = true;
 			nulls[29] = true;
+		}
+
+		nulls[YB_BACKEND_XID_COL] = true;
+		/* The activity_start_timestamp is updated at the start of every
+		 * query. When the query start timestamp is later (greater) than the
+		 * timestamp of the RPC above, this indicates that the data in the
+		 * RPC is out-of-date. In such cases, we skip printing the
+		 * transaction ID.  */
+
+		if (yb_enable_pg_locks && beentry->yb_session_id &&
+			beentry->st_activity_start_timestamp <= txn_rpc_timestamp)
+		{
+			Assert(txn_infos);
+			const YBCPgSessionTxnInfo *info = txn_infos + curr_backend - 1;
+
+			if (info->is_not_null)
+			{
+				values[YB_BACKEND_XID_COL] = UUIDPGetDatum(&info->txn_id);
+				nulls[YB_BACKEND_XID_COL] = false;
+			}
 		}
 
 		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);

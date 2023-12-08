@@ -14,6 +14,7 @@
  */
 
 #include "postgres.h"
+#include "pg_yb_utils.h"
 
 #include <limits.h>
 #include <math.h>
@@ -37,6 +38,7 @@
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
+#include "pg_yb_utils.h"
 #ifdef OPTIMIZER_DEBUG
 #include "nodes/print.h"
 #endif
@@ -69,6 +71,9 @@
 double		cursor_tuple_fraction = DEFAULT_CURSOR_TUPLE_FRACTION;
 int			force_parallel_mode = FORCE_PARALLEL_OFF;
 bool		parallel_leader_participation = true;
+
+/* GUC flag, whether to attempt single RPC lock+select in RR and RC levels. */
+bool yb_lock_pk_single_rpc = true;
 
 /* Hook for plugins to get control in planner() */
 planner_hook_type planner_hook = NULL;
@@ -1247,6 +1252,150 @@ preprocess_phv_expression(PlannerInfo *root, Expr *expr)
 	return (Expr *) preprocess_expression(root, (Node *) expr, EXPRKIND_PHV);
 }
 
+/*
+ * Returns whether the given IndexOptInfo represents the primary index in
+ * YugabyteDB (i.e., contains the primary source of truth for the data).
+ */
+static bool
+yb_is_main_table(IndexOptInfo *indexinfo)
+{
+	Relation indrel;
+	bool is_main_table = false;
+
+	if (!IsYugaByteEnabled())
+		return false;
+
+	if (indexinfo->rel->reloptkind != RELOPT_BASEREL)
+		return false;
+
+	indrel = RelationIdGetRelation(indexinfo->indexoid);
+	if (indrel != NULL && indrel->rd_index != NULL)
+		is_main_table = indrel->rd_index->indisprimary;
+	if (indrel != NULL)
+		RelationClose(indrel);
+	return is_main_table;
+}
+
+/* Returns whether the given index_path matches the primary key exactly. */
+static bool
+yb_ipath_matches_pk(IndexPath *index_path) {
+	return false;
+#ifdef YB_TODO
+	/* Trevor Foucher This function needs changes to work with Pg15 */
+	ListCell   *values;
+	Bitmapset  *primary_key_attrs = NULL;
+	List	   *qinfos = NIL;
+	ListCell   *lc = NULL;
+
+	/*
+	 * Verify no non-primary-key filters are specified. There is one
+	 * indrestrictinfo per query term.
+	 */
+	foreach(values, index_path->indexinfo->indrestrictinfo)
+	{
+		RestrictInfo *rinfo = lfirst_node(RestrictInfo, values);
+
+		/*
+		 * There is one indexquals per key that has a query term. Note this
+		 * means we can't simply compare indrestrictinfo count to indexquals,
+		 * because if there is only one query term, both structures will contain
+		 * one item, even if there are more columns in the primary key.
+		 */
+		if (!list_member_ptr(index_path->indexquals, rinfo))
+			return false;
+	}
+
+	/*
+	 * Check that all WHERE clause conditions in the query use the equality
+	 * operator, and count the number of primary keys used.
+	 */
+	qinfos = deconstruct_indexquals(index_path);
+	foreach(lc, qinfos)
+	{
+		IndexQualInfo *qinfo = (IndexQualInfo *) lfirst(lc);
+		RestrictInfo *rinfo = qinfo->rinfo;
+		Expr	   *clause = rinfo->clause;
+		Oid			clause_op;
+		int			op_strategy;
+
+		if (!IsA(clause, OpExpr))
+			return false;
+
+		clause_op = qinfo->clause_op;
+		if (!OidIsValid(clause_op))
+			return false;
+
+		op_strategy = get_op_opfamily_strategy(
+			clause_op, index_path->indexinfo->opfamily[qinfo->indexcol]);
+		Assert(op_strategy != 0);  /* not a member of opfamily?? */
+		if (op_strategy != BTEqualStrategyNumber)
+			return false;
+		/* Just used for counting, not matching. */
+		primary_key_attrs = bms_add_member(primary_key_attrs, qinfo->indexcol);
+	}
+
+	/*
+	 * After checking all queries are for equality on primary keys, now we just
+	 * have to ensure we've covered all the primary keys.
+	 */
+	return bms_num_members(primary_key_attrs) ==
+		   index_path->indexinfo->nkeycolumns;
+#endif
+}
+
+/*
+ * Checks if conditions are suitable to create a path with a single-RPC
+ * lock+select, and creates that path.
+ */
+static void
+yb_consider_locking_scan(PlannerInfo *root, RelOptInfo *final_rel)
+{
+	IndexPath  *new_path = NULL;
+	ListCell   *lc;
+
+	/*
+	 * This optimization only happens if there are rowMarks in the parse
+	 * (meaning locking).
+	 */
+	if (!root->parse->rowMarks)
+		return;
+
+	/* Isolation level SERIALIZABLE is handled by checking for the level. */
+	if (IsolationIsSerializable())
+		return;
+
+	foreach(lc, final_rel->pathlist)
+	{
+		Path	   *path = (Path *) lfirst(lc);
+		LockRowsPath *lr_path;
+		IndexPath *original_index_path;
+		if (!IsA(path, LockRowsPath))
+			continue;
+		lr_path = castNode(LockRowsPath, path);
+		if (!IsA(lr_path->subpath, IndexPath))
+			continue;
+		original_index_path = castNode(IndexPath, lr_path->subpath);
+		if (original_index_path->indexclauses != NIL && yb_lock_pk_single_rpc &&
+			yb_is_main_table(original_index_path->indexinfo) &&
+			yb_ipath_matches_pk(original_index_path))
+		{
+			/*
+			 * We can't use create_index_path directly, Instead we do a
+			 * hack as in reparameterize_paths: flat-copy the path node,
+			 * add the lock mechanism, and redo the cost estimate.
+			 */
+			new_path = makeNode(IndexPath);
+			memcpy(new_path, original_index_path, sizeof(IndexPath));
+			new_path->yb_index_path_info.yb_lock_mechanism = YB_LOCK_CLAUSE_ON_PK;
+			cost_index(new_path, root, /*loop_count=*/ 1.0, false);
+		}
+	}
+
+	/* The new path should dominate the old one because LockRows adds cost. */
+	if (new_path)
+		add_path(final_rel, (Path *) new_path);
+}
+
 /*--------------------
  * grouping_planner
  *	  Perform planning steps related to grouping, aggregation, etc.
@@ -1739,10 +1888,9 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		 * handled by the ModifyTable node instead.  However, root->rowMarks
 		 * is what goes into the LockRows node.)
 		 *
-		 * For Yugabyte, some locks can be pushed down into an underlying scan.
-		 * We avoid adding a LockRows node in this case.
+		 * In isolation level SERIALIZABLE, locking is done in the scans.
 		 */
-		if (parse->rowMarks && path->yb_path_info.yb_lock_mechanism == YB_NO_SCAN_LOCK)
+		if (parse->rowMarks && !IsolationIsSerializable())
 		{
 			path = (Path *) create_lockrows_path(root, final_rel, path,
 												 root->rowMarks,
@@ -1987,6 +2135,12 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		final_rel->fdwroutine->GetForeignUpperPaths(root, UPPERREL_FINAL,
 													current_rel, final_rel,
 													&extra);
+
+	/*
+	 * If YugabyteDB can create a more efficient path, let it do so.
+	 */
+	if (IsYugaByteEnabled())
+		yb_consider_locking_scan(root, final_rel);
 
 	/* Let extensions possibly add some more paths */
 	if (create_upper_paths_hook)
@@ -4540,6 +4694,25 @@ create_final_distinct_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	bool		allow_hash;
 	Path	   *path;
 	ListCell   *lc;
+	List	   *yb_distinct_paths;
+
+	/* YB: Figure out paths that are already distinct. */
+	yb_distinct_paths = NIL;
+	if (IsYugaByteEnabled())
+	{
+		foreach(lc, input_rel->pathlist)
+		{
+			Path* path = (Path *) lfirst(lc);
+
+			/*
+			 * YB: Do not add these paths to distinct_rel yet because we refer
+			 * to them later on in this function and we don't want add_path()
+			 * to pfree these paths.
+			 */
+			if (yb_has_sufficient_uniqkeys(root, path))
+				yb_distinct_paths = lappend(yb_distinct_paths, path);
+		}
+	}
 
 	/* Estimate number of distinct rows there will be */
 	if (parse->groupClause || parse->groupingSets || parse->hasAggs ||
@@ -4598,11 +4771,21 @@ create_final_distinct_paths(PlannerInfo *root, RelOptInfo *input_rel,
 
 			if (pathkeys_contained_in(needed_pathkeys, path->pathkeys))
 			{
-				add_path(distinct_rel, (Path *)
-						 create_upper_unique_path(root, distinct_rel,
-												  path,
-												  list_length(root->distinct_pathkeys),
-												  numDistinctRows));
+				/* YB: Do not consider paths that are already distinct. */
+				if (!IsYugaByteEnabled() ||
+					!list_member_ptr(yb_distinct_paths, path))
+				{
+					/* YB: Avoid adding UpperUniquePath twice. */
+					if (IsYugaByteEnabled() && IsA(path, UpperUniquePath))
+						path = ((UpperUniquePath *) path)->subpath;
+
+					add_path(distinct_rel, (Path *)
+							 create_upper_unique_path(
+								root, distinct_rel,
+								path,
+								list_length(root->distinct_pathkeys),
+								numDistinctRows));
+				}
 			}
 		}
 
@@ -4625,11 +4808,20 @@ create_final_distinct_paths(PlannerInfo *root, RelOptInfo *input_rel,
 											 needed_pathkeys,
 											 -1.0);
 
-		add_path(distinct_rel, (Path *)
-				 create_upper_unique_path(root, distinct_rel,
-										  path,
-										  list_length(root->distinct_pathkeys),
-										  numDistinctRows));
+		/* YB: Do not consider paths that are already distinct. */
+		if (!IsYugaByteEnabled() || !list_member_ptr(yb_distinct_paths, path))
+		{
+			/* YB: Avoid adding UpperUniquePath twice. */
+			if (IsYugaByteEnabled() && IsA(path, UpperUniquePath))
+				path = ((UpperUniquePath *) path)->subpath;
+
+			add_path(distinct_rel, (Path *)
+					 create_upper_unique_path(
+						root, distinct_rel,
+						path,
+						list_length(root->distinct_pathkeys),
+						numDistinctRows));
+		}
 	}
 
 	/*
@@ -4666,6 +4858,13 @@ create_final_distinct_paths(PlannerInfo *root, RelOptInfo *input_rel,
 								 NULL,
 								 numDistinctRows));
 	}
+
+	/*
+	 * YB: Now, add all paths that are already distinct.
+	 * We add these at the end to avoid add_path() from pfree'ing them.
+	 */
+	foreach(lc, yb_distinct_paths)
+		add_path(distinct_rel, (Path *) lfirst(lc));
 
 	return distinct_rel;
 }

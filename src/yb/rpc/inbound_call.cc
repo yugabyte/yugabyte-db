@@ -148,7 +148,7 @@ void InboundCall::RecordCallReceived() {
   timing_.time_received = MonoTime::Now();
 }
 
-void InboundCall::RecordHandlingStarted(scoped_refptr<Histogram> incoming_queue_time) {
+void InboundCall::RecordHandlingStarted(scoped_refptr<EventStats> incoming_queue_time) {
   DCHECK(incoming_queue_time != nullptr);
   // Protect against multiple calls.
   LOG_IF_WITH_PREFIX(DFATAL, timing_.time_handled.Initialized()) << "Already marked as started";

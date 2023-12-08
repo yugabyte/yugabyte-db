@@ -51,7 +51,7 @@ Use any convenient sandbox database and a role that has no special attributes an
 \set u  <the ordinary role>
 ```
 
- Here are enough examples to illustrate all of the syntax possibilities.
+Here's an example. It relies on the **[plpgsql_open_cursor_stmt](../executable-section/basic-statements/cursor-manipulation/#plpgsql-open-cursor-stmt)** and **[plpgsql_fetch_from_cursor_stmt](../executable-section/basic-statements/cursor-manipulation/#plpgsql-fetch-from-cursor-stmt)** statements.
 
 ```plpgsql
 \c :db :u
@@ -152,8 +152,6 @@ declare cur no scroll cursor without hold for
 select source, v from c order by source;
 ```
 
-<!--- _to_do_ x-ref to account of _open_ and _fetch_ (needs syntax) --->
-
 Notice that the target for the _fetch_ statement, _rec_, is declared as a _record_ so that it can accommodate a result row of any shape. It is the programmer's responsibility to know what the result's column names and data types will be so that the fields (in this example _rec.source_ and _rec.v_) can be referenced correctly.
 
 ## Semantics for the "plpgsql_bound_refcursor_declaration" rule
@@ -162,7 +160,7 @@ Notice that the target for the _fetch_ statement, _rec_, is declared as a _recor
 The [Cursors](../../../../cursors/) section is a direct child of the major section [Yugabyte Structured Query Language (YSQL)](../../../../../ysql/) and, as such, is a peer of the [User-defined subprograms and anonymous blocks](../../../../user-defined-subprograms-and-anon-blocks/) section. This reflects the fact that cursor functionality is first and foremost a SQL feature—just as, for example, _select_, _insert_, _update_, and _delete_ are.
 {{< /tip >}}
 
-Here is an example:
+Here is an example. It uses the **["Query for loop" with a bound refcursor variable](../executable-section/compound-statements/loop-exit-continue/query-for-loop/#query-for-loop-with-a-bound-refcursor-variable)**.
 
 ```plpgsql
 create table s.t3(k int primary key, v text not null);

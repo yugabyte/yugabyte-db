@@ -2,8 +2,8 @@
 title: Global ordering by time
 headerTitle: Global ordering by time
 linkTitle: Global ordering by time
-description: Distribute your time-ordered data and retrieve fast
-headcontent: Distribute your time-ordered data and retrieve fast
+description: Distribute your time-ordered data and retrieve data efficiently
+headcontent: Distribute time-ordered data and retrieve data efficiently
 menu:
   preview:
     identifier: timeseries-global-ordering
@@ -33,9 +33,9 @@ CREATE TABLE global_order1 (
 );
 ```
 
-The `global_order1` stores the speed data points of different cars as they arrive in the system.
+The `global_order1` table stores the speed data points of different cars as they arrive in the system.
 
-Insert some sample data into the table.
+Insert some sample data into the table as follows:
 
 ```sql
 INSERT INTO global_order1 (ts, car, speed)
@@ -44,7 +44,7 @@ INSERT INTO global_order1 (ts, car, speed)
             FROM generate_series(1,100) AS id);
 ```
 
-Retrieve some data from the table.
+Retrieve some data from the table as follows:
 
 ```sql
 SELECT * FROM global_order1;
@@ -64,7 +64,7 @@ SELECT * FROM global_order1;
  2023-07-01 00:00:09 | car-2 |    55
 ```
 
-You can notice that the data is automatically ordered on time. This is because the table is set to be sorted on the `ts` by `PRIMARY KEY(ts ASC)`. This ensures that the data is sorted and all data closeby resides in the same tablet. This order makes it efficient for range queries to get all data within a specific time range. For example,
+Notice how the data is automatically ordered by time. This is because the table is set to be sorted on the `ts` by `PRIMARY KEY(ts ASC)`. This ensures that the data is sorted and all nearby data resides in the same tablet. This order makes it efficient for range queries to retrieve all data within a specific time range. For example:
 
 ```sql
 SELECT * FROM global_order1 WHERE ts > '2023-07-01 00:01:00' AND ts < '2023-07-01 00:01:05';
@@ -79,13 +79,13 @@ SELECT * FROM global_order1 WHERE ts > '2023-07-01 00:01:00' AND ts < '2023-07-0
  2023-07-01 00:01:04 | car-2 |    60
 ```
 
-But as the data grows, the tablet splits and one-half moves to a different tablet ensuring scalability, and so on. This also means that the data grows in one shard before moving to the next tablet. Also, because a specific range could be in a single shard, this could lead to one shard becoming a hot shard.
-
-The following section describes how to distribute the ordered data across different tablets.
+As the amount of data grows, the tablet splits and half moves to a different tablet, ensuring scalability. This also means that the data grows in one shard before moving to the next tablet. However, because a specific range could be in a single shard, this could lead to one shard becoming a hot shard.
 
 ## Bucket-based distribution
 
-To make sure the ordered data is also distributed, you need to split the data into buckets and distribute the buckets. For this, you would have to modify the table to a `bucketid` field that would have a small range of values and distribute the buckets. For example,
+To distribute ordered data across different tablets, you can use bucket-based distribution, where data is split into buckets and then distributed.
+
+To do this, modify the table to include a `bucketid` field that would have a small range of values, and distribute the buckets. For example:
 
 ```sql
 CREATE TABLE global_order2 (
@@ -97,13 +97,11 @@ CREATE TABLE global_order2 (
 ) SPLIT INTO 3 TABLETS;
 ```
 
-{{<note>}}
-Note that the table is explicitly split into 3 tablets only to view the tablet information for the following examples.
-{{</note>}}
+{{<note>}}The table is explicitly split into three tablets to better view the tablet information in the following examples.{{</note>}}
 
-Notice that you have added a `bucketid` to your data which is a random number between `0` and `7` and are distributing the data on the entity and `bucketid`.
+This adds a `bucketid` to your data, consisting of a random number between `0` and `7`, and which you will use to distribute the data on the entity and `bucketid`.
 
-Add the same data to this table as follows:
+Add the same data to the new table as follows:
 
 ```sql
 INSERT INTO global_order2 (ts, car, speed)
@@ -112,7 +110,7 @@ INSERT INTO global_order2 (ts, car, speed)
             FROM generate_series(1,100) AS id);
 ```
 
-As a default value of `bucketid` column to `random()*8` is set, you do not have to explicitly insert the value.
+Because the default value of `bucketid` is set to `random()*8`, you do not have to explicitly insert the value.
 
 Retrieve the data from the table as follows:
 
@@ -136,7 +134,9 @@ SELECT *, yb_hash_code(bucketid) % 3 as tablet FROM global_order2;
  2023-07-01 00:00:40 | car-1 |    16 |        0 |      0
 ```
 
-Notice that the data is split into buckets and the buckets are distributed across different tablets. The data is ordered on the `ts` in each bucket but your result is not ordered. As the query planner does not know about the different values of `bucketid`, it will do a sequential scan for the above query. To optimally retrieve all the data for a specific car, say `car-1`, you need to modify the query to explicitly call out the buckets as follows:
+Notice that the data is split into buckets and the buckets are distributed across different tablets. The data is ordered by `ts` in each bucket, but your result is not ordered.
+
+Because the query planner does not know about the different values of `bucketid`, it must perform a sequential scan for the preceding query. To efficiently retrieve all the data for a specific car, say `car-1`, modify the query to explicitly call out the buckets as follows:
 
 ```sql
 SELECT * FROM global_order2 WHERE bucketid IN (0,1,2,3,4,5,6,7) ORDER BY ts ASC;
@@ -156,7 +156,7 @@ SELECT * FROM global_order2 WHERE bucketid IN (0,1,2,3,4,5,6,7) ORDER BY ts ASC;
  2023-07-01 00:00:09 | car-1 |    58 |        3
 ```
 
-You can execute an example query plan to verify that the above query uses the primary key index as follows:
+You can execute an example query plan to verify that the preceding query uses the primary key index as follows:
 
 ```sql
 EXPLAIN ANALYZE SELECT * FROM global_order2 WHERE bucketid IN (0,1,2,3,4,5,6,7) ORDER BY ts ASC;

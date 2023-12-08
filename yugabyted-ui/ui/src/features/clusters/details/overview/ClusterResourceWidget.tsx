@@ -71,7 +71,7 @@ export const ClusterResourceWidget: FC<ClusterDiskWidgetProps> = ({ cluster }) =
   const [value, setValue] = React.useState<string>('tabvCpu');
 
   return (
-    <Box flex={1} minWidth={0}>
+    <Box minWidth={0}>
       <TabContext value={value}>
         <Box display="flex" alignItems="center">
           <div className={classes.tabSectionContainer}>

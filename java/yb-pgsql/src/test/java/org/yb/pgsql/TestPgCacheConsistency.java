@@ -28,6 +28,7 @@ import org.yb.YBTestRunner;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -609,6 +610,48 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
       return Optional.empty();
     } catch (Throwable t) {
       return Optional.of(t);
+    }
+  }
+
+  // Check that an error message contains all the relevant error information with the Catalog
+  // Version Mismatch message appended.
+  @Test
+  public void testCatalogVersionLogging() throws Exception {
+    try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
+         Connection connection2 = getConnectionBuilder().withTServer(1).connect();
+         Statement statement1 = connection1.createStatement();
+         Statement statement2 = connection2.createStatement()) {
+
+      statement1.execute("CREATE TABLE test_table(id int, x0 int)");
+
+      waitForTServerHeartbeat();
+
+      // Force a cache refresh on connection 2.
+      statement2.execute("SELECT * FROM test_table");
+
+      statement1.execute("ALTER TABLE test_table ADD COLUMN x1 int");
+
+      try {
+        // Immediately try selecting row from connection 2.
+        String query = "SELECT x1 FROM test_table";
+        statement2.execute(query);
+        fail(String.format("Statement did not fail: %s", query));
+      } catch (SQLException error) {
+        LOG.info(error.getMessage());
+        assertThat(
+          error.getMessage(),
+          CoreMatchers.containsString("Catalog Version Mismatch")
+        );
+        assertThat(
+          error.getMessage(),
+          CoreMatchers.containsString("Hint: Perhaps you meant to reference the column " +
+            "\"test_table.x0\"")
+        );
+        assertThat(
+          error.getMessage(),
+          CoreMatchers.not(CoreMatchers.containsString("(null)"))
+        );
+      }
     }
   }
 }

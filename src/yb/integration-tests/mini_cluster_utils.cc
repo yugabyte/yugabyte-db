@@ -115,13 +115,14 @@ void CreateTabletForTesting(MiniCluster* cluster,
                             std::string* tablet_id,
                             std::string* table_id) {
   auto* mini_master = cluster->mini_master();
+  auto epoch = mini_master->catalog_manager().GetLeaderEpochInternal();
   {
     master::CreateNamespaceRequestPB req;
     master::CreateNamespaceResponsePB resp;
     req.set_name(table_name.resolved_namespace_name());
 
     const Status s = mini_master->catalog_manager().CreateNamespace(
-        &req, &resp,  /* rpc::RpcContext* */ nullptr);
+        &req, &resp, /* rpc::RpcContext* */ nullptr, epoch);
     ASSERT_TRUE(s.ok() || s.IsAlreadyPresent()) << " status=" << s.ToString();
   }
   {
@@ -133,7 +134,7 @@ void CreateTabletForTesting(MiniCluster* cluster,
 
     SchemaToPB(schema, req.mutable_schema());
     ASSERT_OK(mini_master->catalog_manager().CreateTable(
-        &req, &resp, /* rpc::RpcContext* */ nullptr));
+        &req, &resp, /* rpc::RpcContext* */ nullptr, epoch));
   }
 
   int wait_time = 1000;

@@ -37,6 +37,7 @@ import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.JoinColumn;
+import javax.persistence.JoinTable;
 import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
 import lombok.Getter;
@@ -61,8 +62,7 @@ public class XClusterConfig extends Model {
               TableType.YCQL,
               CommonTypes.TableType.YQL_TABLE_TYPE);
 
-  private static final Finder<UUID, XClusterConfig> find =
-      new Finder<UUID, XClusterConfig>(XClusterConfig.class) {};
+  private static final Finder<UUID, XClusterConfig> find = new Finder<>(XClusterConfig.class) {};
 
   @Id
   @ApiModelProperty(value = "XCluster config UUID")
@@ -173,6 +173,28 @@ public class XClusterConfig extends Model {
 
   @ApiModelProperty(value = "Whether the target is active in txn xCluster")
   private boolean targetActive;
+
+  @ManyToOne
+  @JoinColumn(name = "dr_config_uuid", referencedColumnName = "uuid")
+  @JsonIgnore
+  private DrConfig drConfig;
+
+  @OneToMany
+  @JoinTable(
+      name = "xcluster_pitr",
+      joinColumns = @JoinColumn(name = "xcluster_uuid", referencedColumnName = "uuid"),
+      inverseJoinColumns = @JoinColumn(name = "pitr_uuid", referencedColumnName = "uuid"))
+  private List<PitrConfig> pitrConfigs;
+
+  @JsonProperty
+  public boolean isUsedForDr() {
+    return Objects.nonNull(this.drConfig);
+  }
+
+  public void addPitrConfig(PitrConfig pitrConfig) {
+    this.pitrConfigs.add(pitrConfig);
+    this.update();
+  }
 
   @Override
   public String toString() {
@@ -801,6 +823,8 @@ public class XClusterConfig extends Model {
   public static List<XClusterConfig> getByTargetUniverseUUID(UUID targetUniverseUUID) {
     return find.query()
         .fetch("tables")
+        .fetch("drConfig")
+        .fetch("pitrConfigs")
         .where()
         .eq("target_universe_uuid", targetUniverseUUID)
         .findList();
@@ -809,6 +833,8 @@ public class XClusterConfig extends Model {
   public static List<XClusterConfig> getBySourceUniverseUUID(UUID sourceUniverseUUID) {
     return find.query()
         .fetch("tables")
+        .fetch("drConfig")
+        .fetch("pitrConfigs")
         .where()
         .eq("source_universe_uuid", sourceUniverseUUID)
         .findList();
@@ -825,6 +851,8 @@ public class XClusterConfig extends Model {
       UUID sourceUniverseUUID, UUID targetUniverseUUID) {
     return find.query()
         .fetch("tables")
+        .fetch("drConfig")
+        .fetch("pitrConfigs")
         .where()
         .eq("source_universe_uuid", sourceUniverseUUID)
         .eq("target_universe_uuid", targetUniverseUUID)
@@ -852,7 +880,7 @@ public class XClusterConfig extends Model {
         .findOne();
   }
 
-  private static void checkXClusterConfigInCustomer(
+  public static void checkXClusterConfigInCustomer(
       XClusterConfig xClusterConfig, Customer customer) {
     Set<UUID> customerUniverseUUIDs = customer.getUniverseUUIDs();
     if ((xClusterConfig.getSourceUniverseUUID() != null

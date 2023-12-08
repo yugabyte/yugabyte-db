@@ -308,33 +308,33 @@ func fixConfigValues() {
 
 	if len(viper.GetString("service_username")) == 0 {
 		log.Info(fmt.Sprintf("Systemd services will be run as user %s", DefaultServiceUser))
-		setYamlValue(InputFile(), "service_username", DefaultServiceUser)
+		SetYamlValue(InputFile(), "service_username", DefaultServiceUser)
 	}
 
 	if len(viper.GetString("platform.appSecret")) == 0 {
 		log.Debug("Generating default app secret for platform")
-		setYamlValue(InputFile(), "platform.appSecret", GenerateRandomStringURLSafe(64))
+		SetYamlValue(InputFile(), "platform.appSecret", GenerateRandomStringURLSafe(64))
 		InitViper()
 	}
 
 	if len(viper.GetString("platform.keyStorePassword")) == 0 {
 		log.Debug("Generating default app secret for platform")
-		setYamlValue(InputFile(), "platform.keyStorePassword", GenerateRandomStringURLSafe(32))
+		SetYamlValue(InputFile(), "platform.keyStorePassword", GenerateRandomStringURLSafe(32))
 		InitViper()
 	}
 
 	if len(viper.GetString("host")) == 0 {
 		host := GuessPrimaryIP()
 		log.Info("Guessing primary IP of host to be " + host)
-		setYamlValue(InputFile(), "host", host)
+		SetYamlValue(InputFile(), "host", host)
 		InitViper()
 	}
 
 	if len(viper.GetString("server_cert_path")) == 0 {
 		log.Info("Generating self-signed server certificates")
 		serverCertPath, serverKeyPath := generateSelfSignedCerts()
-		setYamlValue(InputFile(), "server_cert_path", serverCertPath)
-		setYamlValue(InputFile(), "server_key_path", serverKeyPath)
+		SetYamlValue(InputFile(), "server_cert_path", serverCertPath)
+		SetYamlValue(InputFile(), "server_key_path", serverKeyPath)
 		InitViper()
 	}
 

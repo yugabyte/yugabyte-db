@@ -45,7 +45,7 @@ KeyEntryValue GetKeyEntryValue(FuzzedDataProvider *fdp) {
       return KeyEntryValue::Float(fdp->ConsumeFloatingPoint<float>());
     case FuzzKeyEntryValue::VarInt:
       return KeyEntryValue::VarInt(
-          util::VarInt(fdp->ConsumeIntegral<uint64_t>()).EncodeToComparable(),
+          VarInt(fdp->ConsumeIntegral<uint64_t>()).EncodeToComparable(),
           SortOrder::kDescending);
     case FuzzKeyEntryValue::ArrayIndex:
       return KeyEntryValue::ArrayIndex(fdp->ConsumeIntegral<int64_t>());

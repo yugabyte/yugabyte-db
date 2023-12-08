@@ -63,37 +63,44 @@ public class CloudProviderDelete extends AbstractTaskBase {
     if (customer.getUniversesForProvider(provider.getUuid()).size() > 0) {
       throw new IllegalStateException("Cannot delete Provider with Universes");
     }
-    provider.setUsabilityState(Provider.UsabilityState.ERROR);
+
+    provider.setUsabilityState(Provider.UsabilityState.DELETING);
     provider.save();
 
-    // Clear the key files in the DB.
-    String keyFileBasePath = accessManager.getOrCreateKeyFilePath(provider.getUuid());
-    // We would delete only the files for k8s provider
-    // others are already taken care off during access key deletion.
-    boolean isKubernetes = provider.getCode().equals(CloudType.kubernetes.toString());
-    FileData.deleteFiles(keyFileBasePath, isKubernetes);
+    try {
+      // Clear the key files in the DB.
+      String keyFileBasePath = accessManager.getOrCreateKeyFilePath(provider.getUuid());
+      // We would delete only the files for k8s provider
+      // others are already taken care off during access key deletion.
+      boolean isKubernetes = provider.getCode().equals(CloudType.kubernetes.toString());
+      FileData.deleteFiles(keyFileBasePath, isKubernetes);
 
-    // Clear Access Key related metadata
-    for (AccessKey accessKey : AccessKey.getAll(provider.getUuid())) {
-      final String provisionInstanceScript = provider.getDetails().provisionInstanceScript;
-      if (!provisionInstanceScript.isEmpty()) {
-        new File(provisionInstanceScript).delete();
+      // Clear Access Key related metadata
+      for (AccessKey accessKey : AccessKey.getAll(provider.getUuid())) {
+        final String provisionInstanceScript = provider.getDetails().provisionInstanceScript;
+        if (!provisionInstanceScript.isEmpty()) {
+          new File(provisionInstanceScript).delete();
+        }
+        accessManager.deleteKeyByProvider(
+            provider, accessKey.getKeyCode(), accessKey.getKeyInfo().deleteRemote);
+        accessKey.delete();
       }
-      accessManager.deleteKeyByProvider(
-          provider, accessKey.getKeyCode(), accessKey.getKeyInfo().deleteRemote);
-      accessKey.delete();
+      // Clear Node instance for the provider.
+      NodeInstance.deleteByProvider(providerUUID);
+      // Delete the instance types for the provider.
+      InstanceType.deleteInstanceTypesForProvider(provider, config);
+
+      // Delete the provider.
+      provider.delete();
+
+      cloudProviderHelper.updatePrometheusConfig(provider);
+
+      log.info("Finished {} task.", getName());
+    } catch (Exception e) {
+      // Handle errors, set provider state back to ERROR, and log the error
+      provider.setUsabilityState(Provider.UsabilityState.ERROR);
+      provider.save();
+      log.error("An error occurred during provider deletion: {}", e.getMessage(), e);
     }
-
-    // Clear Node instance for the provider.
-    NodeInstance.deleteByProvider(providerUUID);
-    // Delete the instance types for the provider.
-    InstanceType.deleteInstanceTypesForProvider(provider, config);
-
-    // Delete the provider.
-    provider.delete();
-
-    cloudProviderHelper.updatePrometheusConfig(provider);
-
-    log.info("Finished {} task.", getName());
   }
 }

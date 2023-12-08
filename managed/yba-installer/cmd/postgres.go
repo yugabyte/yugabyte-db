@@ -92,8 +92,14 @@ func (pg Postgres) Name() string {
 	return pg.name
 }
 
+// Version gets the version.
+func (pg Postgres) Version() string {
+	return pg.version
+}
+
+// Version gets the version
 func (pg Postgres) getPgUserName() string {
-	return "postgres"
+	return viper.GetString("postgres.install.username")
 }
 
 // Install postgres and create the yugaware DB for YBA.
@@ -115,9 +121,18 @@ func (pg Postgres) Install() error {
 	pg.setUpDataDir()
 
 	// Finally update the conf file location to match this new data dir location
-	pg.modifyPostgresConf()
+	if err := pg.modifyPostgresConf(); err != nil {
+		return err
+	}
+
 	pg.Start()
 
+	// work to set up LDAP
+	if (viper.GetBool("postgres.install.ldap_enabled")) {
+		if err := pg.setUpLDAP(); err != nil {
+			return err
+		}
+	}
 	if viper.GetBool("postgres.install.enabled") {
 		pg.createYugawareDatabase()
 	}
@@ -376,7 +391,7 @@ func (pg Postgres) RestoreBackup(backupPath string) {
 		"-d", "yugaware",
 		"-f", backupPath,
 		"-h", "localhost",
-		"-p", viper.GetString("postgres.port"),
+		"-p", viper.GetString("postgres.install.port"),
 		"-U", pg.getPgUserName(),
 	}
 	out := shell.Run(psql, args...)
@@ -408,7 +423,9 @@ func (pg Postgres) UpgradeMajorVersion() error {
 		return err
 	}
 	pg.setUpDataDir()
-	pg.modifyPostgresConf()
+	if err := pg.modifyPostgresConf(); err != nil {
+		return err
+	}
 	pg.Start()
 	backupFile := filepath.Join(common.GetBaseInstall(), "data", "postgres_backup")
 	pg.RestoreBackup(backupFile)
@@ -433,7 +450,9 @@ func (pg Postgres) Upgrade() error {
 		return err
 	}
 
-	pg.modifyPostgresConf()
+	if err := pg.modifyPostgresConf(); err != nil {
+		return err
+	}
 
 	if !common.HasSudoAccess() {
 		pg.createCronJob()
@@ -446,7 +465,43 @@ func (pg Postgres) Upgrade() error {
 // restored onto the new postgres install, we currently will just do a full install.
 // TODO: Implement the backup/restore of postgres.
 func (pg Postgres) MigrateFromReplicated() error {
-	return pg.Install()
+	config.GenerateTemplate(pg)
+	if err := pg.extractPostgresPackage(); err != nil {
+		return fmt.Errorf("Error extracting postgres package: %s", err.Error())
+	}
+
+	if err := pg.createFilesAndDirs(); err != nil {
+		return fmt.Errorf("Error creating postgres files and directories: %s", err.Error())
+	}
+
+	// First let initdb create its config and data files in the software/pg../conf location
+	if err := pg.runInitDB(); err != nil {
+		return fmt.Errorf("Error running initdb: %s", err.Error())
+	}
+	// Then copy over data files to the intended data dir location
+	if err := pg.setUpDataDir(); err != nil {
+		return fmt.Errorf("Error setting up data directory: %s", err.Error())
+	}
+
+	// Finally update the conf file location to match this new data dir location
+	pg.modifyPostgresConf()
+
+	log.Info("Finished postgres migration")
+	return nil
+}
+
+// TODO: Error handling for this function (need to return errors from createYugawareDB and start)
+func (pg Postgres) finishMigrateFromReplicated() error {
+	pg.Start()
+
+	if viper.GetBool("postgres.install.enabled") {
+		pg.createYugawareDatabase()
+	}
+
+	if !common.HasSudoAccess() {
+		pg.createCronJob()
+	}
+	return nil
 }
 
 func (pg Postgres) extractPostgresPackage() error {
@@ -487,19 +542,66 @@ func (pg Postgres) runInitDB() error {
 }
 
 // Set the data directory in postgresql.conf
-func (pg Postgres) modifyPostgresConf() {
+// Also sets up LDAP if necessary
+func (pg Postgres) modifyPostgresConf() error {
 	// work to set data directory separate in postgresql.conf
 	pgConfPath := filepath.Join(pg.ConfFileLocation, "postgresql.conf")
 	confFile, err := os.OpenFile(pgConfPath, os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
-		log.Fatal(fmt.Sprintf("Error: %s reading file %s", err.Error(), pgConfPath))
+		return fmt.Errorf("Error opening %s: %s", pgConfPath, err.Error())
 	}
+
 	defer confFile.Close()
+
 	_, err = confFile.WriteString(
 		fmt.Sprintf("data_directory = '%s'\n", pg.dataDir))
 	if err != nil {
-		log.Fatal(fmt.Sprintf("Error: %s writing new data_directory to %s", err.Error(), pgConfPath))
+		return fmt.Errorf("Error writing data directory to %s: %s", pgConfPath, err.Error())
 	}
+
+	_, err = confFile.WriteString(fmt.Sprintf("port = %d", viper.GetInt("postgres.install.port")))
+	if err != nil {
+		return fmt.Errorf("Error writing port to %s: %s", pgConfPath, err.Error())
+	}
+
+	return nil
+}
+
+func (pg Postgres) setUpLDAP() error {
+	pgHbaConfPath := filepath.Join(pg.ConfFileLocation, "pg_hba.conf")
+	hbaConf, err := os.OpenFile(pgHbaConfPath, os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		return fmt.Errorf("Error opening %s: %s", pgHbaConfPath, err.Error())
+	}
+	defer hbaConf.Close()
+	ldapServer := viper.GetString("postgres.install.ldap_server")
+	ldapPrefix := viper.GetString("postgres.install.ldap_prefix")
+	ldapSuffix := viper.GetString("postgres.install.ldap_suffix")
+	ldapPort := viper.GetInt("postgres.install.ldap_port")
+	ldapTLS := viper.GetBool("postgres.install.secure_ldap")
+	_, err = hbaConf.WriteString(
+		fmt.Sprintf("host all all all ldap ldapserver=%s ldapprefix=\"%s\" " +
+								"ldapsuffix=\"%s\" ldapport=%d ldaptls=%d",
+								ldapServer, ldapPrefix, ldapSuffix, ldapPort, common.Bool2Int(ldapTLS)))
+	if err != nil {
+		return fmt.Errorf("Error writing ldap config to %s: %s", pgHbaConfPath, err.Error())
+	}
+
+	// Reload hba conf
+	reloadCmd := "SELECT pg_reload_conf();"
+	psql := filepath.Join(pg.PgBin, "psql")
+	args := []string{
+		"-d", "postgres",
+		"-h", "localhost",
+		"-p", viper.GetString("postgres.install.port"),
+		"-U", pg.getPgUserName(),
+		"-c", reloadCmd,
+	}
+	out := shell.Run(psql, args...)
+	if !out.SucceededOrLog() {
+		return out.Error
+	}
+	return nil
 }
 
 // Move required files from initdb to the new data directory
@@ -553,6 +655,7 @@ func (pg Postgres) createYugawareDatabase() {
 	args := []string{
 		"-h", pg.MountPath,
 		"-U", pg.getPgUserName(),
+		"-p", viper.GetString("postgres.install.port"),
 		"yugaware",
 	}
 	var out *shell.Output

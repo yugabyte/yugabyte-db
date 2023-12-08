@@ -2103,8 +2103,8 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
  * attribute numbers from table-based numbers to index-based ones.
  */
 void
-YbDmlAppendTargetsAggregate(List *aggrefs, TupleDesc tupdesc,
-							Relation index, YBCPgStatement handle)
+YbDmlAppendTargetsAggregate(List *aggrefs, TupleDesc tupdesc, Relation index,
+							bool xs_want_itup, YBCPgStatement handle)
 {
 	ListCell   *lc;
 
@@ -2168,10 +2168,10 @@ YbDmlAppendTargetsAggregate(List *aggrefs, TupleDesc tupdesc,
 					 */
 					int attno = castNode(Var, tle->expr)->varattnosyn;
 					/*
-					 * For index (only) scans, translate the table-based
+					 * For index only scans, translate the table-based
 					 * attribute number to an index-based one.
 					 */
-					if (index)
+					if (index && xs_want_itup)
 						attno = YbGetIndexAttnum(attno, index);
 					Form_pg_attribute attr = TupleDescAttr(tupdesc, attno - 1);
 					YBCPgTypeAttrs type_attrs = {attr->atttypmod};
@@ -2196,6 +2196,11 @@ YbDmlAppendTargetsAggregate(List *aggrefs, TupleDesc tupdesc,
 		/* Add aggregate operator as scan target. */
 		HandleYBStatus(YBCPgDmlAppendTarget(handle, op_handle));
 	}
+
+	/* Set ybbasectid in case of non-primary secondary index scan. */
+	if (index && !xs_want_itup && !index->rd_index->indisprimary)
+		YbDmlAppendTargetSystem(YBIdxBaseTupleIdAttributeNumber,
+								handle);
 }
 
 /*
@@ -2316,6 +2321,7 @@ ybcBeginScan(Relation relation,
 			 PushdownExprs *rel_pushdown,
 			 PushdownExprs *idx_pushdown,
 			 List *aggrefs,
+			 int distinct_prefixlen,
 			 YBCPgExecParameters *exec_params)
 {
 	/* Set up Yugabyte scan description */
@@ -2369,7 +2375,7 @@ ybcBeginScan(Relation relation,
 	 */
 	if (aggrefs != NIL)
 		YbDmlAppendTargetsAggregate(aggrefs, ybScan->target_desc, index,
-									ybScan->handle);
+									xs_want_itup, ybScan->handle);
 	else
 		ybcSetupTargets(ybScan, &scan_plan, pg_scan_plan);
 
@@ -2401,6 +2407,10 @@ ybcBeginScan(Relation relation,
 	if (!IsSystemRelation(relation))
 		YbSetCatalogCacheVersion(ybScan->handle,
 								 YbGetCatalogCacheVersion());
+
+	/* Set distinct prefix length. */
+	if (distinct_prefixlen > 0)
+		YBCPgSetDistinctPrefixLength(ybScan->handle, distinct_prefixlen);
 
 	bms_free(scan_plan.hash_key);
 	bms_free(scan_plan.primary_key);
@@ -2481,12 +2491,19 @@ YbNeedsRecheck(YbScanDesc ybScan)
 	if (ybScan->hash_code_keys != NIL)
 		return true;
 
+	/*
+	 * In case ordinary keys are bound (and no yb_hash_code pushdown),
+	 * everything is pushed down.
+	 */
+	if (ybScan->all_ordinary_keys_bound)
+		return false;
+
 	if (ybScan->prepare_params.index_only_scan)
 	{
 		/*
 		 * For IndexOnlyScan, always recheck if any ordinary key was not bound.
 		 */
-		return !ybScan->all_ordinary_keys_bound;
+		return true;
 	}
 	else
 	{
@@ -2539,6 +2556,27 @@ IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool 
 		return NULL;
 	*recheck = YbNeedsRecheck(ybScan);
 	return ybcFetchNextIndexTuple(ybScan, is_forward_scan);
+}
+
+bool
+ybc_getnext_aggslot(IndexScanDesc scan, YBCPgStatement handle,
+					bool index_only_scan)
+{
+	/*
+	 * As of 2023-08-10, the relid passed into ybFetchNext is not going to
+	 * be used as it is only used when there are system targets, not
+	 * counting the internal ybbasectid lookup to the index.
+	 * YbDmlAppendTargetsAggregate only adds that ybbasectid plus operator
+	 * targets.
+	 * TODO(jason): this may need to be revisited when supporting GROUP BY
+	 * aggregate pushdown where system columns are directly targeted.
+	 */
+	scan->yb_agg_slot = ybFetchNext(handle, scan->yb_agg_slot,
+									InvalidOid /* relid */);
+	/* For IndexScan, hack to make index_getnext think there are tuples. */
+	if (!index_only_scan)
+		scan->xs_hitup = (HeapTuple) 1;
+	return !TTS_EMPTY(scan->yb_agg_slot);
 }
 
 void ybc_free_ybscan(YbScanDesc ybscan)
@@ -2596,6 +2634,7 @@ SysScanDesc ybc_systable_beginscan(Relation relation,
 									 NULL /* rel_pushdown */,
 									 NULL /* idx_pushdown */,
 									 NULL /* aggrefs */,
+									 0 /* distinct_prefixlen */,
 									 NULL /* exec_params */);
 
 	/* Set up Postgres sys table scan description */
@@ -2649,6 +2688,7 @@ TableScanDesc ybc_heap_beginscan(Relation relation,
 									 NULL /* rel_pushdown */,
 									 NULL /* idx_pushdown */,
 									 NULL /* aggrefs */,
+									 0 /* distinct_prefixlen */,
 									 NULL /* exec_params */);
 
 	/* Set up Postgres sys table scan description */
@@ -2709,6 +2749,7 @@ ybc_remote_beginscan(Relation relation,
 									 pushdown /* rel_pushdown */,
 									 NULL /* idx_pushdown */,
 									 aggrefs,
+									 0 /* distinct_prefixlen */,
 									 exec_params);
 
 	/* Set up Postgres sys table scan description */
@@ -2944,8 +2985,8 @@ yb_is_hashed(Expr *clause, IndexOptInfo *index)
 
 
 void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
-						  Selectivity *selectivity, Cost *startup_cost,
-						  Cost *total_cost)
+							Selectivity *selectivity, Cost *startup_cost,
+							Cost *total_cost)
 {
 	Relation	index = RelationIdGetRelation(path->indexinfo->indexoid);
 	bool		isprimary = index->rd_index->indisprimary;
@@ -3450,6 +3491,10 @@ ybFetchNext(YBCPgStatement handle,
 		slot->tts_flags &= ~TTS_FLAG_EMPTY; /* Not empty */
 		TABLETUPLE_YBCTID(slot) = PointerGetDatum(syscols.ybctid);
 		slot->tts_tableOid = relid;
+		/*
+		 * YB_TODO(jason): remove functions related to
+		 * 3037fd3a755515cf7bfbc13450b3059940e2ffa2.
+		 */
 	}
 	return slot;
 }

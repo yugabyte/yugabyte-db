@@ -8,6 +8,7 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
+import jwt
 import logging
 import shlex
 import time
@@ -25,8 +26,7 @@ from ybops.node_agent.server_pb2_grpc import NodeAgentStub
 
 SERVER_READY_RETRY_LIMIT = 60
 PING_TIMEOUT_SEC = 10
-COMMAND_EXECUTION_TIMEOUT_SEC = 900
-FILE_UPLOAD_DOWNLOAD_TIMEOUT_SEC = 1800
+RPC_TIMEOUT_SEC = 900
 FILE_UPLOAD_CHUNK_BYTES = 524288
 
 
@@ -68,6 +68,12 @@ class RpcClient(object):
         assert self.auth_token is not None, 'RPC api_token is required'
         with open(self.cert_path, mode='rb') as file:
             self.root_certs = file.read()
+        claims = jwt.decode(self.auth_token, options={"verify_signature": False})
+        # Use the token expiry (seconds) as the timeout for RPC calls.
+        self.rpc_timeout_sec = int(claims.get('exp', 0)) - int(claims.get('iat', time.time()))
+        if self.rpc_timeout_sec < RPC_TIMEOUT_SEC:
+            self.rpc_timeout_sec = RPC_TIMEOUT_SEC
+        logging.info("RPC time-out is set to {} secs".format(self.rpc_timeout_sec))
 
     def connect(self):
         """
@@ -109,7 +115,7 @@ class RpcClient(object):
 
         output = RpcOutput()
         try:
-            timeout_sec = kwargs.get('timeout', COMMAND_EXECUTION_TIMEOUT_SEC)
+            timeout_sec = kwargs.get('timeout', self.rpc_timeout_sec)
             bash = kwargs.get('bash', False)
             if isinstance(cmd, str):
                 if bash:
@@ -127,7 +133,7 @@ class RpcClient(object):
                     cmd_args_list = cmd
             for response in self.stub.ExecuteCommand(
                     ExecuteCommandRequest(user=self.user, command=cmd_args_list),
-                    timeout=timeout_sec):
+                    timeout=timeout_sec, wait_for_ready=True):
                 if response.HasField('error'):
                     output.rc = response.error.code
                     output.stderr = response.error.message
@@ -148,7 +154,7 @@ class RpcClient(object):
         output = RpcOutput()
         task_id = kwargs.get('task_id', str(uuid.uuid4()))
         try:
-            timeout_sec = kwargs.get('timeout', COMMAND_EXECUTION_TIMEOUT_SEC)
+            timeout_sec = kwargs.get('timeout', self.rpc_timeout_sec)
             bash = kwargs.get('bash', False)
             if isinstance(cmd, str):
                 if bash:
@@ -167,12 +173,12 @@ class RpcClient(object):
             cmd_input = CommandInput(command=cmd_args_list)
             self.stub.SubmitTask(SubmitTaskRequest(user=self.user, taskId=task_id,
                                                    commandInput=cmd_input),
-                                 timeout=timeout_sec)
+                                 timeout=timeout_sec, wait_for_ready=True)
             while True:
                 try:
                     for response in self.stub.DescribeTask(
                             DescribeTaskRequest(taskId=task_id),
-                            timeout=timeout_sec):
+                            timeout=timeout_sec, wait_for_ready=True):
                         if response.HasField('error'):
                             output.rc = response.error.code
                             output.stderr = response.error.message
@@ -200,10 +206,10 @@ class RpcClient(object):
         task_id = kwargs.get('task_id', str(uuid.uuid4()))
         output_json = kwargs.get('output_json', True)
         try:
-            timeout_sec = kwargs.get('timeout', COMMAND_EXECUTION_TIMEOUT_SEC)
+            timeout_sec = kwargs.get('timeout', self.rpc_timeout_sec)
             request = SubmitTaskRequest(user=self.user, taskId=task_id)
             self._set_request_oneof_field(request, param)
-            self.stub.SubmitTask(request, timeout=timeout_sec)
+            self.stub.SubmitTask(request, timeout=timeout_sec, wait_for_ready=True)
             while True:
                 try:
                     for response in self.stub.DescribeTask(
@@ -236,7 +242,7 @@ class RpcClient(object):
 
     def abort_task(self, task_id, **kwargs):
         try:
-            timeout_sec = kwargs.get('timeout', COMMAND_EXECUTION_TIMEOUT_SEC)
+            timeout_sec = kwargs.get('timeout', self.rpc_timeout_sec)
             self.stub.AbortTask(AbortTaskRequest(taskId=task_id), timeout=timeout_sec)
         except Exception:
             # Ignore error.
@@ -259,18 +265,19 @@ class RpcClient(object):
         Transfer a file from local to the remote node agent.
         """
         chmod = kwargs.get('chmod', 0)
-        timeout_sec = kwargs.get('timeout', FILE_UPLOAD_DOWNLOAD_TIMEOUT_SEC)
+        timeout_sec = kwargs.get('timeout', self.rpc_timeout_sec)
         self.stub.UploadFile(self.read_iterfile(self.user, local_path, remote_path, chmod),
-                             timeout=timeout_sec)
+                             timeout=timeout_sec, wait_for_ready=True)
 
     def fetch_file(self, in_path, out_path, **kwargs):
         """
         Fetch a file from the remote node agent to local.
         """
 
-        timeout_sec = kwargs.get('timeout', FILE_UPLOAD_DOWNLOAD_TIMEOUT_SEC)
+        timeout_sec = kwargs.get('timeout', self.rpc_timeout_sec)
         for response in self.stub.DownloadFile(
-                DownloadFileRequest(filename=in_path, user=self.user), timeout=timeout_sec):
+                DownloadFileRequest(filename=in_path, user=self.user),
+                timeout=timeout_sec, wait_for_ready=True):
             with open(out_path, mode="ab") as f:
                 f.write(response.chunkData)
 

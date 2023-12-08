@@ -238,7 +238,9 @@ Note that if your Cloud Shell session is idle for more than 5 minutes, your brow
 
   <div id="anywhere" class="tab-pane fade" role="tabpanel" aria-labelledby="anywhere-tab">
 
-To run the examples in YugabyteDB Anywhere, [create a universe](../yugabyte-platform/create-deployments/create-universe-multi-zone/).
+To run the examples, you need to create a single- or multi-node universe.
+
+For instructions on creating a universe in YugabyteDB Anywhere, refer to [Create a multi-zone universe](../yugabyte-platform/create-deployments/create-universe-multi-zone/).
 
   </div>
 </div>

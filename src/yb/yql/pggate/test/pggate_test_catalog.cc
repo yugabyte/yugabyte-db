@@ -120,7 +120,7 @@ TEST_F(PggateTestCatalog, TestDml) {
     CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_projcnt, 100 + seed, false));
     CHECK_YBC_STATUS(YBCPgUpdateConstFloat4(expr_salary, seed + 1.0*seed/10.0, false));
     job = strings::Substitute("Job_title_$0", seed);
-    CHECK_YBC_STATUS(YBCPgUpdateConstChar(expr_job, job.c_str(), job.size(), false));
+    CHECK_YBC_STATUS(YBCPgUpdateConstText(expr_job, job.c_str(), false));
   }
 
   pg_stmt = nullptr;
@@ -300,7 +300,7 @@ TEST_F(PggateTestCatalog, TestDml) {
     CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_projcnt, 77 + 100 + seed, false));
     CHECK_YBC_STATUS(YBCPgUpdateConstFloat4(expr_salary, 77 + seed + 1.0*seed/10.0, false));
     job = strings::Substitute("Job_title_$0", 77 + seed);
-    CHECK_YBC_STATUS(YBCPgUpdateConstChar(expr_job, job.c_str(), job.size(), false));
+    CHECK_YBC_STATUS(YBCPgUpdateConstBinary(expr_job, job.c_str(), job.size(), false));
   }
 
   pg_stmt = nullptr;

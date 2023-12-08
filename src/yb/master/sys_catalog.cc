@@ -61,6 +61,7 @@
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
+#include "yb/consensus/retryable_requests.h"
 #include "yb/consensus/state_change_context.h"
 
 #include "yb/docdb/doc_rowwise_iterator.h"
@@ -128,7 +129,7 @@ DEFINE_UNKNOWN_bool(notify_peer_of_removal_from_cluster, true,
 TAG_FLAG(notify_peer_of_removal_from_cluster, hidden);
 TAG_FLAG(notify_peer_of_removal_from_cluster, advanced);
 
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
   server, dns_resolve_latency_during_sys_catalog_setup,
   "yb.master.SysCatalogTable.SetupConfig DNS Resolve",
   yb::MetricUnit::kMicroseconds,
@@ -182,7 +183,7 @@ SysCatalogTable::SysCatalogTable(Master* master, MetricRegistry* metrics,
               .set_min_threads(1).Build(&log_sync_pool_));
   CHECK_OK(ThreadPoolBuilder("log-alloc").set_min_threads(1).Build(&allocation_pool_));
 
-  setup_config_dns_histogram_ = METRIC_dns_resolve_latency_during_sys_catalog_setup.Instantiate(
+  setup_config_dns_stats_ = METRIC_dns_resolve_latency_during_sys_catalog_setup.Instantiate(
       metric_entity_);
   peer_write_count = METRIC_sys_catalog_peer_write_count.Instantiate(metric_entity_);
 }
@@ -379,7 +380,7 @@ Status SysCatalogTable::SetupConfig(const MasterOptions& options,
   RaftConfigPB resolved_config;
   resolved_config.set_opid_index(consensus::kInvalidOpIdIndex);
 
-  ScopedDnsTracker dns_tracker(setup_config_dns_histogram_);
+  ScopedDnsTracker dns_tracker(setup_config_dns_stats_);
   for (const auto& list : *options.GetMasterAddresses()) {
     LOG(INFO) << "Determining permanent_uuid for " + yb::ToString(list);
     RaftPeerPB new_peer;
@@ -552,6 +553,14 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
   tablet::TabletPtr tablet;
   scoped_refptr<Log> log;
   consensus::ConsensusBootstrapInfo consensus_info;
+  consensus::RetryableRequestsManager retryable_requests_manager(
+      metadata->raft_group_id(),
+      metadata->fs_manager(),
+      metadata->wal_dir(),
+      master_->mem_tracker(),
+      LogPrefix());
+  RETURN_NOT_OK(retryable_requests_manager.Init(master_->clock()));
+
   RETURN_NOT_OK(tablet_peer()->SetBootstrapping());
   tablet::TabletOptions tablet_options;
 
@@ -609,7 +618,8 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
       .append_pool = append_pool(),
       .allocation_pool = allocation_pool_.get(),
       .log_sync_pool = log_sync_pool(),
-      .retryable_requests_manager = nullptr,
+      .retryable_requests_manager = &retryable_requests_manager,
+      .bootstrap_retryable_requests = true
   };
   RETURN_NOT_OK(BootstrapTablet(data, &tablet, &log, &consensus_info));
 
@@ -627,8 +637,8 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
           tablet->GetTabletMetricsEntity(),
           raft_pool(),
           tablet_prepare_pool(),
-          nullptr /* retryable_requests_manager */,
-          nullptr /* consensus_meta */,
+          &retryable_requests_manager /* retryable_requests_manager */,
+          nullptr,
           multi_raft_manager_.get(),
           nullptr /* flush_retryable_requests_pool */),
       "Failed to Init() TabletPeer");
@@ -860,7 +870,7 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
         std::make_unique<OwningGaugePrototype<uint64>>(
             "server", id, description, yb::MetricUnit::kEntries, description,
             yb::MetricLevel::kInfo, yb::EXPOSE_AS_COUNTER);
-    visitor_duration_metrics_[id] = metric_entity_->FindOrCreateGauge(
+    visitor_duration_metrics_[id] = metric_entity_->FindOrCreateMetric<AtomicGauge<uint64_t>>(
         std::move(counter_gauge), static_cast<uint64>(0) /* initial_value */);
   }
   visitor_duration_metrics_[id]->IncrementBy(count);
@@ -872,7 +882,7 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
         std::make_unique<OwningGaugePrototype<uint64>>(
             "server", id, description, yb::MetricUnit::kMilliseconds, description,
             yb::MetricLevel::kInfo);
-    visitor_duration_metrics_[id] = metric_entity_->FindOrCreateGauge(
+    visitor_duration_metrics_[id] = metric_entity_->FindOrCreateMetric<AtomicGauge<uint64_t>>(
         std::move(duration_gauge), static_cast<uint64>(0) /* initial_value */);
   }
   visitor_duration_metrics_[id]->IncrementBy(ToMilliseconds(duration));
@@ -927,6 +937,7 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersion(const TableId& ysql_catalog_tab
 
 Status SysCatalogTable::ReadYsqlAllDBCatalogVersions(
     const TableId& ysql_catalog_table_id, DbOidToCatalogVersionMap* versions) {
+  TRACE_EVENT0("master", "ReadYsqlAllDBCatalogVersions");
   return ReadYsqlDBCatalogVersionImpl(
       ysql_catalog_table_id, kInvalidOid, nullptr, nullptr, versions);
 }
@@ -937,7 +948,6 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImpl(
     uint64_t* catalog_version,
     uint64_t* last_breaking_version,
     DbOidToCatalogVersionMap* versions) {
-  TRACE_EVENT0("master", "ReadYsqlAllDBCatalogVersions");
   return ReadWithRestarts(
       [this, ysql_catalog_table_id, db_oid, catalog_version, last_breaking_version, versions](
           const ReadHybridTime& read_ht, HybridTime* read_restart_ht) -> Status {
@@ -1046,6 +1056,7 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImplWithReadTime(
       // has db_oid column as primary key in ASC order and we use the row for template1 to store
       // global catalog version. The db_oid of template1 is 1, which is the smallest db_oid.
       // Therefore we only need to read the first row to retrieve the global catalog version.
+      *read_restart_ht = VERIFY_RESULT(iter->RestartReadHt());
       return Status::OK();
     }
   }
