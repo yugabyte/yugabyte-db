@@ -1,32 +1,33 @@
 ---
 title: Real-Time Data Streaming with YugabyteDB CDC and Azure Event Hubs
-headerTitle: Real-Time Data Streaming with YugabyteDB CDC and Azure Event Hubs
+headerTitle: Real-time data streaming with YugabyteDB CDC and Azure Event Hubs
 linkTitle: Azure Event Hubs
 description: Real-Time Data Streaming with YugabyteDB CDC and Azure Event Hubs
 image: /images/tutorials/azure/icons/Event-Hubs-Icon.svg
-headcontent: Real-Time Data Streaming with YugabyteDB CDC and Azure Event Hubs
-aliases:
-  - /preview/tutorials/azure/event-hubs
+headcontent: Stream data from YugabyteDB to Azure Event Hubs using Kafka Connect
 menu:
   preview:
     identifier: tutorials-azure-event-hubs
     parent: tutorials-azure
-type: indexpage
+    weight: 70
+type: docs
 ---
+
 The [Azure Event Hubs](https://learn.microsoft.com/en-us/azure/event-hubs/event-hubs-about) data streaming service is [Apache Kafka](https://kafka.apache.org/intro) compatible, enabling existing workloads to easily be moved to Azure. With the [Debezium Connector for YugabyteDB](https://docs.yugabyte.com/preview/explore/change-data-capture/debezium-connector-yugabytedb), we can stream changes from a YugabyteDB cluster to a Kafka topic using [Kafka Connect](https://docs.confluent.io/platform/current/connect/index.html#:~:text=Kafka%20Connect%20is%20a%20tool,in%20and%20out%20of%20Kafka.).
 
-In this tutorial, we’ll examine how the [YugabyteDB CDC](https://docs.yugabyte.com/preview/explore/change-data-capture/cdc-overview/) can be used with Azure Event Hubs to stream real-time data for downstream processing.
+In this tutorial, we'll examine how the [YugabyteDB CDC](https://docs.yugabyte.com/preview/explore/change-data-capture/cdc-overview/) can be used with Azure Event Hubs to stream real-time data for downstream processing.
 
 ## Prerequisites
+
 * An Azure Cloud account with permissions to create services
 * [Download Apache Kafka](https://kafka.apache.org/downloads) version 2.12-3.2.0
 * [Download YugabyteDB](https://download.yugabyte.com/#/) version 2.16.8.0
 * [Download Debezium Connector for YugabyteDB](https://github.com/yugabyte/debezium-connector-yugabytedb/tree/v1.9.5.y.15) version 1.9.5.y.15
 * Node.js version 18
 
-## What You’ll Build
+## What you'll build
 
-[Find the full project on GitHub](https://github.com/YugabyteDB-Samples/yugabytedb-azure-event-hubs-demo-nodejs), which uses an eCommerce application and DB schema along with YugabyteDB’s CDC functionality to send data to Azure Event Hubs via Kafka Connect. 
+[Find the full project on GitHub](https://github.com/YugabyteDB-Samples/yugabytedb-azure-event-hubs-demo-nodejs), which uses an eCommerce application and DB schema along with YugabyteDB CDC functionality to send data to Azure Event Hubs via Kafka Connect.
 
 This application runs a Node.js process to insert order records to a YugabyteDB cluster at a regular, configurable interval. The records are then automatically captured and sent to Azure Event Hubs.
 
@@ -35,16 +36,21 @@ This application runs a Node.js process to insert order records to a YugabyteDB 
 With YugabyteDB downloaded on your machine, run a cluster and seed it with data.
 
 1. Start a cluster using the [yugabyted utility](https://docs.yugabyte.com/preview/reference/configuration/yugabyted/).
+
     ```sh
     ./path/to/bin/yugabyted start 
     ```
+
 1. Connect to the cluster using the [YugabyteDB SQL shell](https://docs.yugabyte.com/preview/admin/ysqlsh/).
+
     ```sh
     ./path/to/bin/ysqlsh -U yugabyte
     ```
+
 1. Prepare the database schema.
-   ```sql
-   CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+    ```sql
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
     CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -67,7 +73,9 @@ With YugabyteDB downloaded on your machine, run a cluster and seed it with data.
     status VARCHAR(50)
     );
    ```
+
 1. Add _users_ and _products_ to the database.
+
     ```sql
     INSERT INTO
     users (first_name, last_name)
@@ -92,7 +100,7 @@ With YugabyteDB downloaded on your machine, run a cluster and seed it with data.
     ('adidas', 'adizero adios pro 3');
    ```
 
-## Get Started on Azure Event Hubs
+## Get started on Azure Event Hubs
 
 1. [Create an Azure Event Hubs Namespace](https://learn.microsoft.com/en-us/azure/event-hubs/event-hubs-create#create-an-event-hubs-namespace) in the Azure Web Portal.
 
@@ -107,16 +115,16 @@ An Event Hubs instance will be created automatically by Debezium when Kafka Conn
 
 1. Create a new Shared Access Policy in the Event Hubs Namespace with **Manage** access. This is a best practice, as opposed to using the root access key for the namespace to securely send and receive events.
 
-
     ![Create a new Shared Access Policy](/images/tutorials/azure/azure-event-hubs/azure-event-hubs-shared-access-key.png "Create a new Shared Access Policy")
 
 ## Configure Kafka Connect
 
-While Kafka’s core broker functionality is being replaced by Event Hubs, Kafka Connect can still be used to connect the YugabyteDB CDC to the Event Hubs we just created. The _connect-distributed.sh _script is used to start Kafka Connect in a distributed mode. This script can be found in the _/bin _directory of the downloaded Kafka distribution.
+While Kafka's core broker functionality is being replaced by Event Hubs, Kafka Connect can still be used to connect the YugabyteDB CDC to the Event Hubs we just created. The _connect-distributed.sh_ script is used to start Kafka Connect in a distributed mode. This script can be found in the _bin_ directory of the downloaded Kafka distribution.
 
 A Kafka Connect configuration file is required to provide information about the bootstrap servers (in this case, the Event Hubs host), cluster coordination, and data conversion settings, just to name a few. [Refer to the official documentation](https://learn.microsoft.com/en-us/azure/event-hubs/event-hubs-kafka-connect-tutorial#configure-kafka-connect-for-event-hubs) for a sample Kafka Connect configuration for Event Hubs.
 
 1. Create a Kafka Connect configuration file named _event-hubs.config_.
+
     ```config
     bootstrap.servers={YOUR.EVENTHUBS.FQDN}:9093
     group.id=$Default
@@ -145,6 +153,7 @@ A Kafka Connect configuration file is required to provide information about the 
     consumer.sasl.mechanism=PLAIN
     consumer.sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username="$ConnectionString" password="{YOUR.EVENTHUBS.CONNECTION.STRING}";
     ```
+
 1. Replace the {YOUR.EVENTHUBS.FQDN} with the Event Hubs Namespace host name.
 
     ![Locate domain name for Event Hubs Namespace](/images/tutorials/azure/azure-event-hubs/azure-event-hubs-host-name.png "Locate domain name for Event Hubs Namespace")
@@ -153,26 +162,35 @@ A Kafka Connect configuration file is required to provide information about the 
 
     ![Locate connection string](/images/tutorials/azure/azure-event-hubs/azure-event-hubs-connection-string.png "Locate connection string")
 
-2. Copy your configuration file to the Kafka /_bin _directory.
+1. Copy your configuration file to the Kafka _bin_ directory.
+
    ```sh
    cp /path/to/event-hubs.config  /path/to/kafka_2.12-3.2.0/bin
    ```
-3. Copy the Debezium Connector for YugabyteDB to the Kafka _/libs_ directory.
+
+1. Copy the Debezium Connector for YugabyteDB to the Kafka _/libs_ directory.
+
     ```sh
     cp /path/to/debezium-connector-yugabytedb-1.9.5.y.15.jar /path/to/kafka_2.12-3.2.0/libs
     ```
-4. Run Kafka Connect via the _connect-distributed.sh script from the Kafka root directory.
+
+1. Run Kafka Connect via the _connect-distributed.sh script from the Kafka root directory.
+
     ```sh
     ./bin/connect-distributed.sh ./bin/event-hubs.config
     ```
-5.  [Create a CDC stream ID](https://docs.yugabyte.com/preview/admin/yb-admin/#create-change-data-stream) to connect to Kafka Connect.
+
+1. [Create a CDC stream ID](https://docs.yugabyte.com/preview/admin/yb-admin/#create-change-data-stream) to connect to Kafka Connect.
+
     ```sh
     ./bin/yb-admin --master_addresses 127.0.0.1:7100 create_change_data_stream ysql.yugabyte
 
     # Example output:                   
     # CDC Stream ID: efb6cd0ed21346e5b0ed4bb69497dfc3
     ```
-6. POST a connector for YugabyteDB with the generated CDC stream ID value.
+
+1. POST a connector for YugabyteDB with the generated CDC stream ID value.
+
     ```sh
     curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" \
     localhost:8083/connectors/ \
@@ -200,21 +218,24 @@ Now writes to the _orders_ table in the YugabyteDB cluster will be streamed to A
 Debezium will auto-create a topic for each table included and several metadata topics. A Kafka topic corresponds to an Event Hubs instance. For more information, check out the [Kafka and Event Hubs conceptual mapping](https://learn.microsoft.com/en-us/azure/event-hubs/azure-event-hubs-kafka-overview#apache-kafka-and-azure-event-hubs-conceptual-mapping).
 {{< /note >}}
 
-
-## Testing the Application
+## Test the application
 
 We can test this real-time functionality by running a sample application to insert orders into our YugabyteDB instance. With a Kafka Connect configured properly to an Event Hubs namespace, we can see messages being sent to an Event Hubs instance.
 
 1. Clone the repository.
+
     ```sh
     git clone git@github.com:YugabyteDB-Samples/yugabytedb-azure-event-hubs-demo-nodejs.git
 
     cd yugabytedb-azure-event-hubs-demo-nodejs
     ```
+
 1. Install Node.js application dependencies.
+
     ```sh
     npm install
     ```
+
 1. Review the Node.js sample application.
 
     ```sh
@@ -256,9 +277,10 @@ We can test this real-time functionality by running a sample application to inse
     start();
     ```
 
-    This application initializes a connection pool to connect to the YugabyteDB cluster using the  [YugabyteDB node-postres Smart Driver](https://docs.yugabyte.com/preview/drivers-orms/nodejs/yugabyte-node-driver/). It then randomly inserts records into the _orders _table at a regular interval.
+    This application initializes a connection pool to connect to the YugabyteDB cluster using the  [YugabyteDB node-postres Smart Driver](https://docs.yugabyte.com/preview/drivers-orms/nodejs/yugabyte-node-driver/). It then randomly inserts records into the _orders_ table at a regular interval.
 
 1. Run the application.
+
     ```sh
     node index.js 
     ```
@@ -288,13 +310,12 @@ We can test this real-time functionality by running a sample application to inse
 
     Heading over to the Azure Event Hubs instance _database1.public.orders_, we can see that the messages are reaching Azure and can be consumed by downstream applications and services.
 
-
     ![Incoming messages](/images/tutorials/azure/azure-event-hubs/azure-event-hubs-incoming-messages.png "Incoming messages")
 
-## The Wrap-up
+## Wrap-up
 
-YugabyteDB’s CDC combined with Azure Event Hubs enables real-time application development using a familiar Kafka interface. 
+YugabyteDB CDC combined with Azure Event Hubs enables real-time application development using a familiar Kafka interface.
 
-If you’re interested in real-time data processing on Azure, you might want to consider:
+If you're interested in real-time data processing on Azure, you might want to consider:
 
 * [Azure Synapse Analytics integration using Azure Event Hubs](https://docs.yugabyte.com/preview/explore/change-data-capture/cdc-tutorials/cdc-azure-event-hub/)

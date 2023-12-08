@@ -4,13 +4,13 @@ headerTitle: Develop centralized APIs using Azure API Management and YugaybteDB
 linkTitle: Azure API Management
 description: Developing Centralized APIs Using Azure API Management and YugaybteDB
 image: /images/tutorials/azure/icons/API-Management-Icon.svg
-headcontent: Developing Centralized APIs Using Azure API Management and YugaybteDB
+headcontent: Use YugaybteDB as the database backend for your API
 menu:
   preview:
     identifier: tutorials-azure-api-management
     parent: tutorials-azure
-    weight: 30
-type: indexpage
+    weight: 60
+type: docs
 ---
 
 [Azure API Management (APIM)](https://azure.microsoft.com/en-us/products/api-management/) can be used to design, manage, and protect your APIs. This service acts as a centralized hub for your APIs, providing API gateway functionality, security measures, rate limiting, analytics, and monitoring, among other features.
@@ -25,7 +25,7 @@ In the following sections, we will:
 
 **Prerequisites**
 
-- A YugabyteDB account. Sign up for a [free trial of our fully-managed deployment of YugabyteDB](https://cloud.yugabyte.com/signup/).
+- A YugabyteDB Managed account. Sign up for a [free trial](https://cloud.yugabyte.com/signup/).
 - An Azure Cloud account with permission to create services.
 
 ## Create a YugabyteDB cluster
@@ -38,9 +38,11 @@ Begin by deploying a multi-region, [geo-partitioned cluster](../../../yugabyte-c
     ![Geo-partitioned YugabyteDB deployment on Azure](/images/tutorials/azure/azure-private-link/yb-deployment.png "Geo-partitioned YugabyteDB deployment on Azure")
 
 1. Enable public access on the cluster and add 0.0.0.0/0 to the cluster IP Allow List. This setup allows connections to the cluster from all IP addresses.
+
     {{< note title="Note" >}}
-In a production application, [Azure Private Link](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/managed-endpoint-aws/) can be used with [private service endpoints](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/managed-endpoint-azure/#create-a-pse-in-yugabytedb-managed) to create a secure connection between your application and database VPCs.
-   {{< /note >}}
+In a production application, [Azure Private Link](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/managed-endpoint-azure/) can be used with [private service endpoints](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/managed-endpoint-azure/#create-a-pse-in-yugabytedb-managed) to create a secure connection between your application and database VPCs.
+    {{< /note >}}
+
 1. Upon creation, save the credentials and [download the CA certificate](../../../develop/build-apps/cloud-add-ip/#download-your-cluster-certificate) once everything is up and running. This is essential for secure connections using the Node.js Smart Client.
 
 ## Create tables and insert records
@@ -73,11 +75,9 @@ This function uses the supplied region route parameter to determine which databa
 
     ![Add http protocol to APIM instance](/images/tutorials/azure/azure-api-management/azure-api-mgmt-http.png "Add http protocol to APIM instance")
 
-1. Review and install your APIM instance. 
-    {{< note title="Note" >}}
-This can take around 15-30 minutes depending on Azure's resources.
-    {{< /note >}}
-    
+1. Review and install your APIM instance.
+
+    This can take around 15-30 minutes depending on Azure's resources.
 
 ## Design a REST API in Azure
 
@@ -86,11 +86,11 @@ Azure's API Management service provides multiple options for API design. Users c
 ![Designing an API in API Management instance](/images/tutorials/azure/azure-api-management/azure-api-mgmt-designing-api.png "Designing an API in API Management instance")
 
 1. Select the **Function App** option in the **Create from Azure resource** section.
-2. Browse for your Azure Function App and create the API in APIM.
+1. Browse for your Azure Function App and create the API in APIM.
 
     ![Create API from Azure Function](/images/tutorials/azure/azure-api-management/azure-api-mgmt-function-app.png "Create API from Azure Function")
 
-3. Review your API configuration.
+1. Review your API configuration.
 
     ![Review API configuration](/images/tutorials/azure/azure-api-management/azure-api-mgmt-api-overview.png "Review API configuration")
 

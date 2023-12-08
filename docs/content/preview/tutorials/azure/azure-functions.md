@@ -1,30 +1,36 @@
 ---
 title: How to Develop Azure Functions with YugabyteDB
-headerTitle: How to Develop Azure Functions with YugabyteDB
+headerTitle: Develop Azure Functions
 linkTitle: Azure Functions
 description: How to Develop Azure Functions with YugabyteDB
 image: /images/tutorials/azure/icons/Function-App-Icon.svg
-headcontent: How to Develop Azure Functions with YugabyteDB
+headcontent: Use YugabyteDB as the backend for Azure Functions
 menu:
   preview:
     identifier: tutorials-azure-functions
     parent: tutorials-azure
     weight: 20
-type: indexpage
+type: docs
 ---
 
-In this tutorial, we’ll guide you through the steps required to develop and deploy a serverless function using Azure Functions and YugabyteDB.
+In this tutorial, we'll guide you through the steps required to develop and deploy a serverless function using Azure Functions and YugabyteDB.
 
-Serverless functions serve many different use cases, including API endpoints, scheduled jobs and file processing. Azure Functions work with a number of [triggers and bindings](https://learn.microsoft.com/en-us/azure/azure-functions/functions-triggers-bindings?tabs=isolated-process%2Cpython-v2&pivots=programming-language-javascript), which allow developers to define precisely when a function will be invoked and how it will interact with other services.
+Serverless functions serve many different use cases, including API endpoints, scheduled jobs, and file processing. Azure Functions work with a number of [triggers and bindings](https://learn.microsoft.com/en-us/azure/azure-functions/functions-triggers-bindings?tabs=isolated-process%2Cpython-v2&pivots=programming-language-javascript), which allow developers to define precisely when a function will be invoked and how it will interact with other services.
 
 In the following sections, we will:
 
 1. Cover the prerequisites for developing an Azure Function backed by our fully managed DBaaS, [YugabyteDB Managed](https://www.yugabyte.com/managed/)
-2. Deploy a database cluster to Azure on YugabyteDB Managed
-3. Develop an Azure Function using an HTTP trigger
-4. Deploy this serverless function to Azure
+1. Deploy a database cluster to Azure on YugabyteDB Managed
+1. Develop an Azure Function using an HTTP trigger
+1. Deploy this serverless function to Azure
 
-Let’s begin by installing the dependencies required to begin effectively developing Azure Functions.
+Let's begin by installing the dependencies required to begin effectively developing Azure Functions.
+
+## What we'll build
+
+First, visit GitHub for the [function application](https://github.com/YugabyteDB-Samples/yugabytedb-azure-serverless-functions-demo-nodejs) we will be deploying to Azure.
+
+We'll develop and deploy an HTTP trigger function, which connects to YugabyteDB and returns the current inventory of our shoe store, YB Shoes.
 
 ### Prerequisites
 
@@ -34,15 +40,9 @@ Let’s begin by installing the dependencies required to begin effectively devel
 - [Azure Functions Core Tools](https://github.com/Azure/azure-functions-core-tools)
 - A [YugabyteDB Managed](https://cloud.yugabyte.com/) account
 
-## What We’ll Build
+## Get started on YugabyteDB Managed
 
-First, visit GitHub for the [function application](https://github.com/YugabyteDB-Samples/yugabytedb-azure-serverless-functions-demo-nodejs) we will be deploying to Azure.
-
-We’ll develop and deploy an HTTP trigger function, which connects to YugabyteDB and returns the current inventory of our shoe store, YB Shoes.
-
-## Get Started on YugabyteDB Managed
-
-Follow [these instructions](https://docs.yugabyte.com/preview/quick-start-yugabytedb-managed/) to create a YugabyteDB cluster on Azure.
+See the [Quick start](../../../yugabyte-cloud/cloud-quickstart/) to create a free cluster in YugabyteDB Managed.
 
 For a configuration that provides fault tolerance across availability zones, deploy a three-node cluster to Azure, in the WestUS3 region. However, you can start with an always-free single-node cluster.
 
@@ -52,9 +52,9 @@ Add the [outbound addresses for your function app](https://learn.microsoft.com/e
 
 ![Locate outbound IP addresses in the Azure web portal.](/images/tutorials/azure/azure-functions/azure-networking.png "Locate outbound IP addresses in the Azure web portal.")
 
-In addition to the outbound IP addresses in Azure, add your machine’s IP address to the IP Allow List in YugabyteDB Managed, to successfully run your serverless functions locally in development. Now that we have a working cluster in YugabyteDB Managed, let’s add some data.
+In addition to the outbound IP addresses in Azure, add your machine's IP address to the IP Allow List in YugabyteDB Managed, to successfully run your serverless functions locally in development. Now that we have a working cluster in YugabyteDB Managed, let's add some data.
 
-## Adding Data to YugabyteDB
+## Add data to YugabyteDB
 
 Now that our cluster is running in the cloud, we can seed it with data using the provided `schema.sql` and `data.sql` files.
 
@@ -64,7 +64,7 @@ Now that our cluster is running in the cloud, we can seed it with data using the
 
 With your cluster seeded with data, it's time to build the serverless function to connect to it.
 
-## Serverless Function Development
+## Develop serverless functions
 
 The Azure Functions Core Tools provide a command-line interface for developing functions on your local machine and deploying them to Azure.
 
@@ -81,13 +81,13 @@ The Azure Functions Core Tools provide a command-line interface for developing f
     func new --template "Http Trigger" --name GetShoeInventory
     ```
 
-2. Install the YugabyteDB node-postgres Smart Driver.
+1. Install the YugabyteDB node-postgres Smart Driver.
 
     ```sh
     npm install @yugabytedb/pg
     ```
 
-3. Update the boilerplate code in _GetShoeInventory.js_.
+1. Update the boilerplate code in _GetShoeInventory.js_.
 
     ```javascript
     const { app } = require("@azure/functions");
@@ -137,7 +137,7 @@ The Azure Functions Core Tools provide a command-line interface for developing f
         }
     },
     });
-```
+    ```
 
 1. Update _local.settings.json_ with the configuration settings required to run the GetShoeInventory function locally.
 
@@ -156,19 +156,19 @@ The Azure Functions Core Tools provide a command-line interface for developing f
     "DB_CERTIFICATE": [BASE_64_ENCODED_YUGABYTE_DB_CERTIFICATE]
     ```
 
-2. Run the function locally.
+1. Run the function locally.
 
     ```sh
     func start
     ```
 
-Test your function in the browser at [http://localhost:7071/api/GetShoeInventory](http://localhost:7071/api/GetShoeInventory).
+Test your function in the browser at <http://localhost:7071/api/GetShoeInventory>.
 
-It’s now time to deploy our function to Azure.
+Now we'll deploy our function to Azure.
 
 ## Deploy a Function App to Azure
 
-We can deploy our application to Azure using the Azure CLI.
+We can deploy our application to Azure using the [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/).
 
 1. Create a Function App.
 
@@ -196,8 +196,8 @@ We can deploy our application to Azure using the Azure CLI.
     [{"quantity":24,"model":"speedgoat 5","brand":"hoka one one"},{"quantity":74,"model":"adizero adios pro 3","brand":"adidas"},{"quantity":13,"model":"torrent 2","brand":"hoka one one"},{"quantity":99,"model":"vaporfly 3","brand":"nike"}]
     ```
 
-## Wrapping Up
+## Wrap-up
 
-As you can see, it’s easy to begin developing and publishing database-backed Azure Functions with YugabyteDB. If you’re also interested in building a Node.js web application for YB Shoes using Azure App Service and YugabyteDB, check out the following blog:
+As you can see, it's easy to begin developing and publishing database-backed Azure Functions with YugabyteDB. If you're also interested in building a Node.js web application for YB Shoes using Azure App Service and YugabyteDB, check out the following blog:
 
 - [Build Applications Using Azure App Service and YugabyteDB](https://www.yugabyte.com/blog/build-apps-azure-app-service/)

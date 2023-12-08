@@ -56,11 +56,11 @@ After creating your application, visit the associated URL to confirm it's up and
 
 Now that we've set the foundation on Azure, let's deploy a database cluster for YB Shoes on YugabyteDB Managed.
 
-## Get Started on YugabyteDB Managed
+## Create a cluster in YugabyteDB Managed
 
-Visit our documentation site to create a YugabyteDB cluster on Azure.
+For steps on creating a cluster in YugabyteDB Managed, see the [Quick start](../../../yugabyte-cloud/managed-freetrial/).
 
-I've chosen to deploy a three-node cluster to Azure, in the WestUS3 region. This configuration provides fault tolerance across availability zones. However, you can start with an always-free single-node cluster.
+This example shows a three-node cluster to Azure in the WestUS3 region, which provides fault tolerance across availability zones, but the application also runs fine on the always-free single-node Sandbox cluster.
 
 ![Create free YugabyteDB single-region cluster.](/images/tutorials/azure/azure-app-service/yb-create-cluster.png "Create free YugabyteDB single-region cluster.")
 
@@ -75,8 +75,8 @@ Now that we have a working cluster in YugabyteDB Managed, let's add some data.
 Now that our cluster is running in the cloud, we can seed it with data using the provided `schema.sql` and `data.sql` files.
 
 1. Use the [YugabyteDB Cloud Shell](https://docs.yugabyte.com/preview/yugabyte-cloud/cloud-connect/connect-cloud-shell/)to connect to your cluster.
-1. Execute the `schema.sql` script against your cluster.
-1. Execute the `data.sql` script against your cluster.
+1. Execute the commands in the `schema.sql` script against your cluster.
+1. Execute the commands in the `data.sql` script against your cluster.
 
 Now that your cluster is seeded with data, it's time to deploy and run the application on Azure.
 
@@ -84,9 +84,9 @@ Now that your cluster is seeded with data, it's time to deploy and run the appli
 
 Azure provides multiple deployment methods for your applications.
 
-Since we'll be deploying our application from a local git repository, let's use the Azure CLI. It's also worth noting that Azure has a powerful extension for Visual Studio Code, which can execute the same commands.
+As we're deploying the application from a local git repository, let's use the [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/). It's also worth noting that Azure has a powerful extension for Visual Studio Code, which can execute the same commands.
 
-First, we need to [configure our application settings](https://learn.microsoft.com/en-us/cli/azure/webapp/config/appsettings?view=azure-cli-latest) in Azure.
+First, you need to [configure the application settings](https://learn.microsoft.com/en-us/cli/azure/webapp/config/appsettings?view=azure-cli-latest) in Azure:
 
 ```sh
 # Convert the downloaded CA certificate from YugabyteDB Managed to a single line string, then Base64 encode it
@@ -103,7 +103,6 @@ After you execute this command, you can view the configuration settings in the A
 
 Next, use the Azure CLI to deploy your application code to the cloud, as follows:
 
-1. Install the Azure CLI.
 1. In the Azure Deployment Center, configure your Local Git / FTPS Credentials under User Scope
 1. Configure the project for local git deployment as follows:
 
@@ -133,8 +132,8 @@ Next, use the Azure CLI to deploy your application code to the cloud, as follows
 
 After pushing code to the remote repository, Azure automatically builds and publishes the application. Once this is complete, visit your application's default domain to view YB Shoes, running in the Azure cloud infrastructure!
 
-## Wrapping up
+## Wrap-up
 
-As you see, moving an application to the cloud with Azure App Service and YugabyteDB Managed doesn't require much additional configuration. For further insight into building Node.js applications with YugabyteDB, check out the following blog:
+As you see, moving an application to the cloud with Azure App Service and YugabyteDB Managed doesn't require much additional configuration. For more insight into building Node.js applications with YugabyteDB, check out the following blog:
 
 - [Node.js Smart Drivers for YugabyteDB: Why You Should Care](https://www.yugabyte.com/blog/node-js-smart-drivers-for-yugabytedb/)

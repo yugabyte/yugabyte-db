@@ -81,4 +81,15 @@ type: indexpage
       </div>
     </a>
   </div>
+    <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="azure-event-hubs/">
+      <div class="head">
+        <img class="icon" src="/images/tutorials/azure/icons/Event-Hubs-Icon.svg" aria-hidden="true" />
+        <div class="title">Azure Event Hubs</div>
+      </div>
+      <div class="body">
+        Stream data from YugabyteDB to Azure Event Hubs using Kafka Connect.
+      </div>
+    </a>
+  </div>
 </div>

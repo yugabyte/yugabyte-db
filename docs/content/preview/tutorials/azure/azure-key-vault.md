@@ -1,17 +1,16 @@
 ---
 title: Developing Secure Applications with Azure Key Vault, Azure SDKs and YugabyteDB
-headerTitle: Developing Secure Applications with Azure Key Vault, Azure SDKs and YugabyteDB
+headerTitle: Secure applications using Azure Key Vault, Azure SDKs, and YugabyteDB
 linkTitle: Azure Key Vault
 description: Developing Secure Applications with Azure Key Vault, Azure SDKs and YugabyteDB
 image: /images/tutorials/azure/icons/Key-Vaults-Icon.svg
-headcontent: Developing Secure Applications with Azure Key Vault, Azure SDKs and YugabyteDB
-aliases:
-  - /preview/tutorials/azure/key-vault
+headcontent: Use Azure SDKs to add services to applications
 menu:
   preview:
     identifier: tutorials-azure-key-vault
     parent: tutorials-azure
-type: indexpage
+    weight: 30
+type: docs
 ---
 
 In this article, we’ll explore some ways that [Azure SDKs](https://azure.microsoft.com/en-us/downloads/) can be leveraged to interact with [Azure services](https://azure.microsoft.com/en-us/products#compute) and how SDKs can be used with database-backed applications, like those running YugabyteDB.
@@ -31,13 +30,13 @@ As the Azure Cloud continues to expand and evolve, so do the mechanisms used to 
 
 For instance, Azure’s new [OpenAI SDK](https://github.com/Azure/azure-sdk-for-js/tree/main/sdk/openai/openai) can be used to [build generative AI applications](https://www.yugabyte.com/blog/build-generative-ai-low-latency/).
 
-SDKs provide an interface to interact with Azure’s services via application code, but there are also [tools](https://azure.microsoft.com/en-us/downloads/) available for download, including a rich command-line interface and a comprehensive set of Visual Studio Code extensions.
+SDKs provide an interface to interact with Azure services via application code, but there are also [tools](https://azure.microsoft.com/en-us/downloads/) available for download, including a rich command-line interface and a comprehensive set of Visual Studio Code extensions.
 
-Now, let’s build a sample application which connects to the [Azure Key Vault](https://azure.microsoft.com/en-us/products/key-vault) from Node.js. We’ll then use the secrets stored in this service to connect to a YugabyteDB Managed cluster.
+Now, let's build a sample application which connects to the [Azure Key Vault](https://azure.microsoft.com/en-us/products/key-vault) from Node.js. We'll then use the secrets stored in this service to connect to a YugabyteDB Managed cluster.
 
 ## Example SDK Usage
 
-A reference to the application we’ll be developing can be found [here on GitHub](https://github.com/YugabyteDB-Samples/yugabytedb-azure-key-vault-sdk-demo-nodejs).
+A reference to the application we’ll be developing can be found [on GitHub](https://github.com/YugabyteDB-Samples/yugabytedb-azure-key-vault-sdk-demo-nodejs).
 
 1. Initialize a new directory for your project.
 
@@ -66,7 +65,7 @@ A reference to the application we’ll be developing can be found [here on GitHu
 
 1. Install [Dotenv](https://www.npmjs.com/package/dotenv) and use it to set environment variables.
 
-    ```
+    ```sh
     npm install dotenv --save-dev
     ```
 
@@ -189,14 +188,14 @@ A reference to the application we’ll be developing can be found [here on GitHu
     Connected successfully.
     ```
 
-Thanks to the Azure Key Vault SDK, we’ve successfully connected to YugabyteDB, using credentials stored securely in the cloud. This protects our data and ensures a simplified development environment, where credentials can be centrally updated by multiple end users.
+Thanks to the Azure Key Vault SDK, we've successfully connected to YugabyteDB, using credentials stored securely in the cloud. This protects our data and ensures a simplified development environment, where credentials can be centrally updated by multiple end users.
 
-The Azure Key Vault SDK comes with additional features for interacting with secrets. These include the ability to update, delete and purge values if required.. You can also use the Azure web console to make any necessary changes.
+The Azure Key Vault SDK comes with additional features for interacting with secrets. These include the ability to update, delete, and purge values if required. You can also use the Azure web console to make any necessary changes.
 
 ![Editing secrets in Azure Key Vault.](/images/tutorials/azure/azure-key-vault/azure-key-vault.png "Editing secrets in Azure Key Vault.")
 
-## Wrapping up
+## Wrap-up
 
-We’ve just scratched the surface with what is possible with Azure SDKs and the surrounding ecosystem. I look forward to developing more applications on Azure in the coming months, as the list of tools continues to expand.
+We've just scratched the surface with what is possible using Azure SDKs and the surrounding ecosystem. I look forward to developing more applications on Azure in the coming months, as the list of tools continues to expand.
 
 Look out for more of my blogs on Azure and Node.js in the coming weeks. You might also be interested in learning more about [building applications using Azure App Service and YugabyteDB](https://www.yugabyte.com/blog/build-apps-azure-app-service/).
