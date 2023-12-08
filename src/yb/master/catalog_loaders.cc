@@ -33,6 +33,9 @@
 #include "yb/master/catalog_loaders.h"
 
 #include "yb/common/constants.h"
+
+#include "yb/master/async_rpc_tasks.h"
+#include "yb/master/backfill_index.h"
 #include "yb/master/master_util.h"
 #include "yb/master/ysql_tablegroup_manager.h"
 #include "yb/master/ysql_transaction_ddl.h"
@@ -40,8 +43,6 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-
-using std::string;
 
 DEFINE_bool(master_ignore_deleted_on_load, true,
   "Whether the Master should ignore deleted tables & tablets on restart.  "
@@ -74,56 +75,66 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
   CHECK(!ContainsKey(*catalog_manager_->table_ids_map_, table_id))
         << "Table already exists: " << table_id;
 
-  bool needs_async_write_to_sys_catalog = false;
   // Setup the table info.
   scoped_refptr<TableInfo> table = catalog_manager_->NewTableInfo(table_id);
-  auto l = table->LockForWrite();
-  auto& pb = l.mutable_data()->pb;
-  pb.CopyFrom(metadata);
+  auto  table_lock = table->LockForWrite();
+  auto& table_data = *table_lock.mutable_data();
+  auto& table_pb   = table_data.pb;
+  table_pb.CopyFrom(metadata);
 
-  if (pb.table_type() == TableType::REDIS_TABLE_TYPE && pb.name() == kGlobalTransactionsTableName) {
-    pb.set_table_type(TableType::TRANSACTION_STATUS_TABLE_TYPE);
+  if (table_pb.table_type() == TableType::REDIS_TABLE_TYPE &&
+      table_pb.name() == kGlobalTransactionsTableName) {
+    table_pb.set_table_type(TableType::TRANSACTION_STATUS_TABLE_TYPE);
   }
 
   // Backward compatibility: tables colocated via DB/tablegroup created prior to #7378 use
   // YSQL table OID as a colocation ID, and won't have colocation ID explicitly set.
-  if (pb.table_type() == PGSQL_TABLE_TYPE &&
-      pb.colocated() &&
+  if (table_pb.table_type() == PGSQL_TABLE_TYPE &&
+      table_pb.colocated() &&
       !IsColocationParentTableId(table_id) &&
-      pb.schema().has_colocated_table_id() &&
-      !pb.schema().colocated_table_id().has_colocation_id()) {
+      table_pb.schema().has_colocated_table_id() &&
+      !table_pb.schema().colocated_table_id().has_colocation_id()) {
     auto clc_id = CHECK_RESULT(GetPgsqlTableOid(table_id));
-    pb.mutable_schema()->mutable_colocated_table_id()->set_colocation_id(clc_id);
+    table_pb.mutable_schema()->mutable_colocated_table_id()->set_colocation_id(clc_id);
   }
 
   // Add the table to the IDs map and to the name map (if the table is not deleted). Do not
   // add Postgres tables to the name map as the table name is not unique in a namespace.
   auto table_ids_map_checkout = catalog_manager_->table_ids_map_.CheckOut();
   (*table_ids_map_checkout)[table->id()] = table;
-  if (!l->started_deleting() && !l->started_hiding()) {
-    if (l->table_type() != PGSQL_TABLE_TYPE) {
-      catalog_manager_->table_names_map_[{l->namespace_id(), l->name()}] = table;
+  if (!table_lock->started_deleting() && !table_lock->started_hiding()) {
+    if (table_lock->table_type() != PGSQL_TABLE_TYPE) {
+      catalog_manager_->table_names_map_[{table_lock->namespace_id(), table_lock->name()}] = table;
     }
-    if (l->table_type() == TRANSACTION_STATUS_TABLE_TYPE) {
+    if (table_lock->table_type() == TRANSACTION_STATUS_TABLE_TYPE) {
       catalog_manager_->transaction_table_ids_set_.insert(table_id);
     }
   }
 
   // Backfill the SysTablesEntryPB namespace_name field.
-  if (pb.namespace_name().empty()) {
-    auto namespace_name = catalog_manager_->GetNamespaceNameUnlocked(pb.namespace_id());
+  if (table_pb.namespace_name().empty()) {
+    auto namespace_name = catalog_manager_->GetNamespaceNameUnlocked(table_pb.namespace_id());
     if (!namespace_name.empty()) {
-      pb.set_namespace_name(namespace_name);
-      needs_async_write_to_sys_catalog = true;
+      table_pb.set_namespace_name(namespace_name);
+      state_->write_to_disk_tables.emplace(table_id);
       LOG(INFO) << "Backfilling namespace_name " << namespace_name << " for table " << table_id;
     } else {
       LOG(WARNING) << Format(
           "Could not find namespace name for table $0 with namespace id $1",
-          table_id, pb.namespace_id());
+          table_id, table_pb.namespace_id());
     }
   }
 
-  l.Commit();
+  // Need to validate an index table's backfilling status if retain delete markers property
+  // is set for the table (which means backfilling is supposed to be in progress).
+  if (table_data.is_index() && BackfillTable::GetIndexTableRetainsDeleteMarkers(table_data)) {
+    const auto& indexed_table_id = table_data.indexed_table_id();
+    CHECK(!indexed_table_id.empty()); // Sanity check.
+    state_->validate_backfill_status_index_tables[indexed_table_id].emplace(table_id);
+    LOG(INFO) << "Index table " << table_id << " added for backfill status validation";
+  }
+
+  table_lock.Commit();
   catalog_manager_->HandleNewTableId(table->id());
 
   // Tables created as part of a Transaction should check transaction status and be deleted
@@ -138,13 +149,6 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
                   catalog_manager_->ysql_transaction_.get(),
                   txn, when_done),
         "VerifyTransaction");
-  }
-
-  if (needs_async_write_to_sys_catalog) {
-    // Update the sys catalog asynchronously, so as to not block leader start up.
-    state_->AddPostLoadTask(
-        std::bind(&CatalogManager::WriteTableToSysCatalog, catalog_manager_, table_id),
-        "WriteTableToSysCatalog");
   }
 
   LOG(INFO) << "Loaded metadata for table " << table->ToString() << ", state: "
@@ -294,7 +298,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
     if (should_delete_tablet) {
       LOG(INFO) << Format("Marking tablet $0 for table $1 as DELETED in-memory. Sys catalog will "
           "be updated asynchronously.", tablet->id(), first_table->ToString());
-      string deletion_msg = "Tablet deleted at " + LocalTimeAsString();
+      std::string deletion_msg = "Tablet deleted at " + LocalTimeAsString();
       l.mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
       needs_async_write_to_sys_catalog = true;
     }
@@ -566,7 +570,7 @@ Status RoleLoader::Visit(const RoleName& role_name, const SysRoleEntryPB& metada
 // Sys Config Loader
 ////////////////////////////////////////////////////////////
 
-Status SysConfigLoader::Visit(const string& config_type, const SysConfigEntryPB& metadata) {
+Status SysConfigLoader::Visit(const std::string& config_type, const SysConfigEntryPB& metadata) {
   SysConfigInfo* const config = new SysConfigInfo(config_type);
   {
     auto l = config->LockForWrite();
