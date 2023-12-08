@@ -106,11 +106,11 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
       return props.isDrInterface
         ? api.updateTablesInDr(props.drConfigUuid, {
             tables: formValues.tableUuids,
-            bootstrapParams: {
-              ...(formValues.storageConfig && {
+            ...(formValues.storageConfig && {
+              bootstrapParams: {
                 backupRequestParams: { storageConfigUUID: formValues.storageConfig.value.uuid }
-              })
-            }
+              }
+            })
           })
         : editXClusterConfigTables(xClusterConfig.uuid, formValues.tableUuids);
     },
@@ -238,7 +238,9 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
         if (formValues.tableUuids.length <= 0) {
           formMethods.setError('tableUuids', {
             type: 'min',
-            message: t('error.validationMinimumTableUuids')
+            message: t('error.validationMinimumTableUuids.title', {
+              keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
+            })
           });
           // The TableSelect component expects error objects with title and body fields.
           // React-hook-form only allows string error messages.
@@ -363,11 +365,14 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
         assertUnreachableCase(currentFormStep);
     }
   };
+
   const getSubmitlabel = () => {
     switch (currentFormStep) {
       case FormStep.SELECT_TABLES:
         return isTableSelectionValidated
-          ? t('step.selectTables.nextButton')
+          ? bootstrapRequiredTableUUIDs.length > 0
+            ? t('step.selectTables.nextButton')
+            : t('applyChanges', { keyPrefix: 'common' })
           : t('submitButton.validate');
       case FormStep.CONFIGURE_BOOTSTRAP:
         return t('applyChanges', { keyPrefix: 'common' });

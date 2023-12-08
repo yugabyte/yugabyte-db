@@ -23,3 +23,8 @@ export const DURATION_UNIT_TO_MS = {
   [DurationUnit.MINUTE]: 60 * 1000,
   [DurationUnit.HOUR]: 60 * 60 * 1000
 } as const;
+
+/**
+ * Standard width for all dropdown select components in the DR workflow.
+ */
+export const DR_DROPDOWN_SELECT_INPUT_WIDTH = '350px';

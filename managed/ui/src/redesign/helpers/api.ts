@@ -180,9 +180,10 @@ export interface CreateDrConfigRequest {
   sourceUniverseUUID: string;
   targetUniverseUUID: string;
   dbs: string[]; // Database uuids (from source universe) selected for replication.
-  bootstrapBackupParams: {
-    storageConfigUUID: string;
-    parallelism?: number;
+  bootstrapParams: {
+    backupRequestParams?: {
+      storageConfigUUID: string;
+    };
   };
 
   dryRun?: boolean; // Run the pre-checks without actually running the subtasks
@@ -228,9 +229,9 @@ export interface RestartDrConfigRequest {
 
 export interface UpdateTablesInDrRequest {
   tables: string[];
-  // Bootstrap Params is required now, but it will be removed in future releases when
+  // Bootstrap Params will be removed in future releases when
   // we're able to save a storage config for each DR config.
-  bootstrapParams: {
+  bootstrapParams?: {
     backupRequestParams?: {
       storageConfigUUID: string;
     };
